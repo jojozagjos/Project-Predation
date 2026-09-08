@@ -14,6 +14,7 @@
 
 #include <filesystem>
 #include <string>
+#include <vector>
 
 using namespace pred;
 
@@ -344,6 +345,119 @@ TEST_CASE("Primitive builders produce closed, correctly sized geometry", "[rende
         const MeshData empty;
         REQUIRE_FALSE(empty.ComputeBounds().IsValid());
     }
+}
+
+namespace
+{
+// Signed volume of a closed mesh, via the divergence theorem. Positive means the triangles are
+// wound so their faces point outwards; negative means the whole solid is inside-out.
+double SignedVolume(const MeshData& mesh)
+{
+    double volume = 0.0;
+    for (size_t i = 0; i + 2 < mesh.indices.size(); i += 3)
+    {
+        const glm::vec3& v0 = mesh.vertices[mesh.indices[i]].position;
+        const glm::vec3& v1 = mesh.vertices[mesh.indices[i + 1]].position;
+        const glm::vec3& v2 = mesh.vertices[mesh.indices[i + 2]].position;
+        volume += glm::dot(glm::dvec3(v0), glm::cross(glm::dvec3(v1), glm::dvec3(v2)));
+    }
+    return volume / 6.0;
+}
+
+// Counts triangles whose winding-derived normal disagrees with their stored vertex normals.
+int WindingMismatches(const MeshData& mesh)
+{
+    int mismatches = 0;
+    for (size_t i = 0; i + 2 < mesh.indices.size(); i += 3)
+    {
+        const MeshVertex& a = mesh.vertices[mesh.indices[i]];
+        const MeshVertex& b = mesh.vertices[mesh.indices[i + 1]];
+        const MeshVertex& c = mesh.vertices[mesh.indices[i + 2]];
+
+        const glm::vec3 edge0 = b.position - a.position;
+        const glm::vec3 edge1 = c.position - a.position;
+        const glm::vec3 geometric = glm::cross(edge0, edge1);
+        // Degeneracy has to be judged relative to the triangle's own edge lengths, not against a
+        // fixed epsilon, or slivers on a large mesh slip through as if they were real faces.
+        const float edgeScale = glm::length(edge0) * glm::length(edge1);
+        if (edgeScale < 1e-12f || glm::length(geometric) < edgeScale * 1e-4f)
+        {
+            continue; // degenerate triangle, nothing meaningful to compare against
+        }
+        const glm::vec3 stored = a.normal + b.normal + c.normal;
+        if (glm::length(stored) < 1e-9f || glm::dot(glm::normalize(geometric), glm::normalize(stored)) <= 0.0f)
+        {
+            ++mismatches;
+        }
+    }
+    return mismatches;
+}
+} // namespace
+
+// This invariant is what catches inside-out geometry. Supplying a face's normal separately from its
+// winding lets the two disagree, which is how the ramp shipped inverted: it rendered as a hole
+// because backface culling discarded the surfaces the player was meant to walk on.
+TEST_CASE("Primitive faces wind outwards and agree with their normals", "[render][primitives]")
+{
+    struct Case
+    {
+        const char* name;
+        MeshData mesh;
+        double expectedVolume; // <= 0 means "only require positive"
+    };
+
+    std::vector<Case> cases;
+    cases.push_back({"box", Primitives::Box({2.0f, 4.0f, 6.0f}), 48.0});
+    cases.push_back({"ramp", Primitives::Ramp(3.0f, 6.0f, 2.0f), 0.5 * 3.0 * 6.0 * 2.0});
+    cases.push_back({"stairs", Primitives::Stairs(10, 2.0f, 0.2f, 0.3f), 6.6});
+    cases.push_back({"sphere", Primitives::Sphere(2.0f, 32, 24), -1.0});
+    cases.push_back({"cylinder", Primitives::Cylinder(1.0f, 2.0f, 32), -1.0});
+
+    for (const Case& testCase : cases)
+    {
+        INFO("primitive: " << testCase.name);
+        REQUIRE(WindingMismatches(testCase.mesh) == 0);
+
+        const double volume = SignedVolume(testCase.mesh);
+        REQUIRE(volume > 0.0);
+        if (testCase.expectedVolume > 0.0)
+        {
+            REQUIRE(volume == Catch::Approx(testCase.expectedVolume).epsilon(0.02));
+        }
+    }
+}
+
+TEST_CASE("Ramp rises along +Z with an upward-facing slope", "[render][primitives]")
+{
+    const MeshData ramp = Primitives::Ramp(3.0f, 6.0f, 2.0f);
+
+    // The sloped surface must face upwards and lean back towards the low end.
+    int upwardSlopeVertices = 0;
+    for (const MeshVertex& vertex : ramp.vertices)
+    {
+        if (vertex.normal.y > 0.3f && vertex.normal.z < -0.1f)
+        {
+            ++upwardSlopeVertices;
+        }
+    }
+    REQUIRE(upwardSlopeVertices >= 4);
+
+    // Exactly one face should point straight down, and one straight back along +Z.
+    int downward = 0;
+    int backward = 0;
+    for (const MeshVertex& vertex : ramp.vertices)
+    {
+        if (vertex.normal.y < -0.99f)
+        {
+            ++downward;
+        }
+        if (vertex.normal.z > 0.99f)
+        {
+            ++backward;
+        }
+    }
+    REQUIRE(downward == 4);
+    REQUIRE(backward == 4);
 }
 
 TEST_CASE("MeshData::Append offsets indices and transforms vertices", "[render][primitives]")

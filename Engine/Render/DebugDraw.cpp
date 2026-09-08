@@ -55,6 +55,29 @@ void DebugDraw::Box(const glm::vec3& min, const glm::vec3& max, uint32_t color)
     }
 }
 
+void DebugDraw::BoxOriented(const glm::mat4& transform, const glm::vec3& halfExtents, uint32_t color)
+{
+    glm::vec3 corners[8];
+    for (int i = 0; i < 8; ++i)
+    {
+        const glm::vec3 local{(i & 1) ? halfExtents.x : -halfExtents.x, (i & 2) ? halfExtents.y : -halfExtents.y,
+                              (i & 4) ? halfExtents.z : -halfExtents.z};
+        corners[i] = glm::vec3(transform * glm::vec4(local, 1.0f));
+    }
+    // Pairs of corner indices that differ in exactly one bit are the box edges.
+    for (int i = 0; i < 8; ++i)
+    {
+        for (int bit = 1; bit < 8; bit <<= 1)
+        {
+            const int j = i | bit;
+            if (j != i)
+            {
+                Line(corners[i], corners[j], color);
+            }
+        }
+    }
+}
+
 void DebugDraw::Axes(const glm::mat4& transform, float size)
 {
     const glm::vec3 origin = glm::vec3(transform[3]);

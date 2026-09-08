@@ -73,6 +73,8 @@ void DebugOverlay::Draw(const Info& info)
                 static_cast<double>(memory.privateBytes) / (1024.0 * 1024.0));
     ImGui::Text("Entities %zu   meshes %zu   triangles %zu   debug lines %zu", info.entityCount,
                 info.meshesDrawn, info.trianglesDrawn, info.debugLineCount);
+    ImGui::Text("Physics %s   bodies %zu (%zu active)   step %.2f ms", info.physicsEnabled ? "on" : "PAUSED",
+                info.physicsBodies, info.physicsActiveBodies, info.physicsStepMs);
 
     ImGui::Separator();
     ImGui::TextUnformatted("Debug categories");

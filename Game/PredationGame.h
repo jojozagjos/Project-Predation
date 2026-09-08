@@ -19,12 +19,25 @@ public:
     void OnImGui() override;
 
 private:
+    // A prop whose scene transform is driven by its physics body each frame.
+    struct DynamicProp
+    {
+        Entity entity;
+        BodyHandle body;
+    };
+
     void RegisterCommands();
     void DrawDebugOverlays();
+    void SyncDynamicProps();
+    void SpawnProp(bool sphere, float impulse);
+    void ClearProps();
 
     Application* m_app = nullptr;
     Scene m_scene;
     FlyCamera m_camera;
+    std::vector<DynamicProp> m_props;
+    MeshHandle m_propSphereMesh;
+    MeshHandle m_propBoxMesh;
     bool m_looking = false;
     double m_time = 0.0;
 };

@@ -74,6 +74,12 @@ void main()
 	float hemisphere = N.y * 0.5 + 0.5;
 	vec3 ambient = mix(u_ambientGround.rgb, u_ambientSky.rgb, hemisphere);
 	color += diffuseColor * ambient;
+
+	// Metals have no diffuse, so without an ambient specular term they render black wherever the
+	// sun does not hit them. This approximates a uniform environment reflection until there is one.
+	vec3 ambientFresnel = fresnelSchlick(f0, NoV) * (1.0 - roughness);
+	color += ambient * mix(f0, ambientFresnel, 0.5);
+
 	color += u_emissive.rgb;
 
 	// Linear distance fog. Cheap, and it does most of the atmospheric work in dark interiors.

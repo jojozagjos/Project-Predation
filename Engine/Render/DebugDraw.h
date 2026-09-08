@@ -41,6 +41,8 @@ public:
 
     void Line(const glm::vec3& a, const glm::vec3& b, uint32_t color);
     void Box(const glm::vec3& min, const glm::vec3& max, uint32_t color);
+    // Box in the local space of `transform`, so rotated bodies draw correctly.
+    void BoxOriented(const glm::mat4& transform, const glm::vec3& halfExtents, uint32_t color);
     void Axes(const glm::mat4& transform, float size = 1.0f);
     // `height` lifts the grid off y = 0 so it does not z-fight with a floor at the same level.
     void Grid(float halfExtent, float step, float height = 0.0f, uint32_t minorColor = Color::kDarkGrey,

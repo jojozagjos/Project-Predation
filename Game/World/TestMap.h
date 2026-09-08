@@ -5,6 +5,7 @@ namespace pred
 
 class Scene;
 class MeshLibrary;
+class PhysicsWorld;
 
 // Builds the developer test map: a laboratory for gameplay systems rather than a real level.
 //
@@ -18,7 +19,9 @@ class MeshLibrary;
 //
 // Heights and widths here are the numbers the player controller will be tuned against, so they are
 // named constants rather than literals scattered through the builder.
-void BuildTestMap(Scene& scene, MeshLibrary& meshes);
+// Passing `physics` also creates static collision geometry that matches the visuals exactly.
+// Pass nullptr for a render-only build.
+void BuildTestMap(Scene& scene, MeshLibrary& meshes, PhysicsWorld* physics);
 
 namespace TestMapSpec
 {

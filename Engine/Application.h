@@ -5,6 +5,7 @@
 #include "Engine/Debug/Console.h"
 #include "Engine/Debug/DebugOverlay.h"
 #include "Engine/Debug/ImGuiLayer.h"
+#include "Engine/Physics/PhysicsWorld.h"
 #include "Engine/Platform/Input.h"
 #include "Engine/Platform/Window.h"
 #include "Engine/Render/DebugDraw.h"
@@ -51,6 +52,9 @@ struct CommandLine
     std::optional<std::string> backend;
     std::optional<std::string> logLevel;
     std::vector<std::pair<std::string, std::string>> overrides;
+    // Console commands run once, immediately after the game initializes. Makes headless
+    // verification scriptable: position the camera, spawn things, then screenshot.
+    std::vector<std::string> execCommands;
     bool showHelp = false;
     bool noWindowFocus = false;
 
@@ -78,6 +82,7 @@ public:
     FileWatcher& GetFileWatcher() { return m_fileWatcher; }
     MeshLibrary& GetMeshes() { return m_meshes; }
     SceneRenderer& GetSceneRenderer() { return m_sceneRenderer; }
+    PhysicsWorld& GetPhysics() { return m_physics; }
 
     // Reported by the game each frame so the F3 overlay can show world statistics.
     void SetEntityCount(size_t count) { m_entityCount = count; }
@@ -107,6 +112,7 @@ private:
     ShaderLibrary m_shaders;
     MeshLibrary m_meshes;
     SceneRenderer m_sceneRenderer;
+    PhysicsWorld m_physics;
     DebugDraw m_debugDraw;
     ImGuiLayer m_imgui;
     Console m_console;

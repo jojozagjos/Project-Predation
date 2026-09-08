@@ -4,6 +4,7 @@
 #include "Engine/Core/Log.h"
 #include "Engine/Debug/DebugCategories.h"
 #include "Engine/Render/DebugDraw.h"
+#include "Engine/Render/Primitives.h"
 #include "Game/World/TestMap.h"
 
 #include <glm/gtc/matrix_transform.hpp>
@@ -28,13 +29,21 @@ CVar<float> cv_fogStart{"r.fog_start", 12.0f, "Fog start distance in meters"};
 CVar<float> cv_fogEnd{"r.fog_end", 90.0f, "Fog end distance in meters"};
 CVar<float> cv_sunIntensity{"r.sun_intensity", 2.2f, "Directional light intensity"};
 
+constexpr float kPropRadius = 0.3f;
+constexpr float kPropSize = 0.5f;
+const Material kPropMaterial = Material::Diffuse({0.70f, 0.55f, 0.25f}, 0.55f);
+
 } // namespace
 
 bool PredationGame::OnInit(Application& app)
 {
     m_app = &app;
 
-    BuildTestMap(m_scene, app.GetMeshes());
+    BuildTestMap(m_scene, app.GetMeshes(), &app.GetPhysics());
+
+    // Meshes for the dynamic props spawned by the phys_drop command.
+    m_propSphereMesh = app.GetMeshes().Upload(Primitives::Sphere(kPropRadius, 20, 14), "prop_sphere");
+    m_propBoxMesh = app.GetMeshes().Upload(Primitives::Box(glm::vec3(kPropSize)), "prop_box");
 
     // Start looking at the test map from a comfortable height.
     m_camera.position = {0.0f, 3.2f, 14.0f};
@@ -59,7 +68,7 @@ void PredationGame::RegisterCommands()
                             });
 
     console.RegisterCommand(
-        "cam_pos", "Print or set the fly camera position",
+        "cam_pos", "Print or set the fly camera position, and optionally its yaw and pitch",
         [this](const std::vector<std::string>& args)
         {
             if (args.size() >= 4)
@@ -68,13 +77,18 @@ void PredationGame::RegisterCommands()
                                               std::strtof(args[2].c_str(), nullptr),
                                               std::strtof(args[3].c_str(), nullptr));
             }
+            if (args.size() >= 6)
+            {
+                m_camera.yaw = glm::radians(std::strtof(args[4].c_str(), nullptr));
+                m_camera.pitch = glm::radians(std::strtof(args[5].c_str(), nullptr));
+            }
             char buffer[160];
             std::snprintf(buffer, sizeof(buffer), "camera %.2f %.2f %.2f  yaw %.1f pitch %.1f",
                           m_camera.position.x, m_camera.position.y, m_camera.position.z,
                           glm::degrees(m_camera.yaw), glm::degrees(m_camera.pitch));
             m_app->GetConsole().Print(buffer);
         },
-        "cam_pos [x y z]");
+        "cam_pos [x y z [yaw pitch]]");
 
     console.RegisterCommand("scene_stats", "Print scene and mesh statistics",
                             [this](const std::vector<std::string>&)
@@ -92,10 +106,111 @@ void PredationGame::RegisterCommands()
     console.RegisterCommand("scene_rebuild", "Clear and rebuild the test map",
                             [this](const std::vector<std::string>&)
                             {
+                                ClearProps();
                                 m_scene.Clear();
-                                BuildTestMap(m_scene, m_app->GetMeshes());
+                                m_app->GetPhysics().DestroyAllBodies();
+                                BuildTestMap(m_scene, m_app->GetMeshes(), &m_app->GetPhysics());
                                 m_app->GetConsole().Print("Test map rebuilt");
                             });
+
+    console.RegisterCommand(
+        "phys_drop", "Spawn a dynamic prop in front of the camera: phys_drop [sphere|box] [count]",
+        [this](const std::vector<std::string>& args)
+        {
+            const bool sphere = args.size() < 2 || args[1] != "box";
+            const int count = args.size() > 2 ? std::atoi(args[2].c_str()) : 1;
+            for (int i = 0; i < std::clamp(count, 1, 64); ++i)
+            {
+                SpawnProp(sphere, 6.0f);
+            }
+            m_app->GetConsole().Print("Props in world: " + std::to_string(m_props.size()));
+        },
+        "phys_drop [sphere|box] [count]");
+
+    console.RegisterCommand("phys_clear", "Remove every dynamic prop",
+                            [this](const std::vector<std::string>&)
+                            {
+                                const size_t removed = m_props.size();
+                                ClearProps();
+                                m_app->GetConsole().Print("Removed " + std::to_string(removed) + " props");
+                            });
+
+    console.RegisterCommand(
+        "phys_raycast", "Cast a ray forward from the camera and report what it hits",
+        [this](const std::vector<std::string>& args)
+        {
+            const float distance = args.size() > 1 ? std::strtof(args[1].c_str(), nullptr) : 100.0f;
+            const RayHit hit = m_app->GetPhysics().RayCast(m_camera.position, m_camera.Forward(), distance);
+            char buffer[200];
+            if (hit)
+            {
+                std::snprintf(buffer, sizeof(buffer),
+                              "hit at %.2f %.2f %.2f  distance %.2f m  normal %.2f %.2f %.2f",
+                              hit.position.x, hit.position.y, hit.position.z, hit.distance, hit.normal.x,
+                              hit.normal.y, hit.normal.z);
+            }
+            else
+            {
+                std::snprintf(buffer, sizeof(buffer), "no hit within %.1f m", distance);
+            }
+            m_app->GetConsole().Print(buffer);
+        },
+        "phys_raycast [distance]");
+}
+
+void PredationGame::SpawnProp(bool sphere, float impulse)
+{
+    PhysicsWorld& physics = m_app->GetPhysics();
+
+    Transform transform;
+    // Spawn ahead of the camera, spread across a small grid. Dropping several props into the exact
+    // same point would leave them deeply interpenetrating, and the separation impulse would fling
+    // them across the map.
+    const int index = static_cast<int>(m_props.size());
+    constexpr float spread = 0.9f;
+    const glm::vec3 jitter{static_cast<float>(index % 3 - 1) * spread,
+                           static_cast<float>(index / 9) * spread,
+                           static_cast<float>((index / 3) % 3 - 1) * spread};
+    transform.position = m_camera.position + m_camera.Forward() * 2.5f + jitter;
+
+    const BodyHandle body = sphere
+                                ? physics.CreateSphere(kPropRadius, transform, BodyMotion::Dynamic, 400.0f)
+                                : physics.CreateBox(glm::vec3(kPropSize * 0.5f), transform,
+                                                    BodyMotion::Dynamic, 400.0f);
+    if (!body.IsValid())
+    {
+        m_app->GetConsole().PrintError("Could not create a physics body for the prop");
+        return;
+    }
+    physics.SetLinearVelocity(body, m_camera.Forward() * impulse);
+
+    const Entity entity = m_scene.CreateMeshEntity("prop", transform,
+                                                   sphere ? m_propSphereMesh : m_propBoxMesh, kPropMaterial);
+    m_props.push_back(DynamicProp{entity, body});
+}
+
+void PredationGame::ClearProps()
+{
+    PhysicsWorld& physics = m_app->GetPhysics();
+    for (const DynamicProp& prop : m_props)
+    {
+        physics.DestroyBody(prop.body);
+        m_scene.Destroy(prop.entity);
+    }
+    m_props.clear();
+}
+
+void PredationGame::SyncDynamicProps()
+{
+    PhysicsWorld& physics = m_app->GetPhysics();
+    for (const DynamicProp& prop : m_props)
+    {
+        Transform* transform = m_scene.GetTransform(prop.entity);
+        if (transform != nullptr && physics.IsValid(prop.body))
+        {
+            *transform = physics.GetTransform(prop.body);
+        }
+    }
 }
 
 void PredationGame::OnShutdown()
@@ -139,6 +254,10 @@ void PredationGame::OnUpdate(double dt, double /*alpha*/)
     environment.sunIntensity = cv_sunIntensity.Get();
     renderer.SetClearColor(0x11131aff);
 
+    // Physics has already advanced in the fixed step; copy the results onto the scene transforms
+    // that the renderer reads.
+    SyncDynamicProps();
+
     app.GetSceneRenderer().SetWireframe(cv_wireframe.Get());
     app.SetEntityCount(m_scene.EntityCount());
 }
@@ -159,6 +278,12 @@ void PredationGame::DrawDebugOverlays()
         // Lifted off the floor so it does not fight with the ground plane for depth.
         draw.Grid(24.0f, 1.0f, 0.02f);
         draw.Axes(glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.02f, 0.0f)), 1.5f);
+    }
+
+    if (DebugCategories::IsEnabled(DebugCategory::Physics))
+    {
+        // Green: static geometry. Yellow: awake dynamic bodies. Grey: asleep.
+        m_app->GetPhysics().DebugDraw(draw);
     }
 
     if (DebugCategories::IsEnabled(DebugCategory::Rendering))

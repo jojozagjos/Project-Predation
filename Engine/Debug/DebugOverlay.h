@@ -24,6 +24,10 @@ public:
         size_t debugLineCount = 0;
         size_t meshesDrawn = 0;
         size_t trianglesDrawn = 0;
+        size_t physicsBodies = 0;
+        size_t physicsActiveBodies = 0;
+        double physicsStepMs = 0.0;
+        bool physicsEnabled = true;
     };
 
     void Draw(const Info& info);

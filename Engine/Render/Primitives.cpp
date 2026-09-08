@@ -31,6 +31,23 @@ void AddQuad(MeshData& mesh, const glm::vec3& center, const glm::vec3& u, const 
     mesh.indices.insert(mesh.indices.end(), {base, base + 1, base + 2, base, base + 2, base + 3});
 }
 
+// Adds a quad from four explicit corners in winding order. The normal is derived from the winding
+// rather than supplied, so the two can never disagree: supplying them separately is exactly how the
+// ramp ended up inside-out.
+void AddQuadCorners(MeshData& mesh, const glm::vec3& v0, const glm::vec3& v1, const glm::vec3& v2,
+                    const glm::vec3& v3)
+{
+    const glm::vec3 normal = glm::normalize(glm::cross(v1 - v0, v2 - v0));
+    const auto base = static_cast<uint32_t>(mesh.vertices.size());
+    const glm::vec3 corners[4] = {v0, v1, v2, v3};
+    const glm::vec2 uvs[4] = {{0.0f, 0.0f}, {1.0f, 0.0f}, {1.0f, 1.0f}, {0.0f, 1.0f}};
+    for (int i = 0; i < 4; ++i)
+    {
+        mesh.vertices.push_back(MeshVertex{corners[i], normal, uvs[i]});
+    }
+    mesh.indices.insert(mesh.indices.end(), {base, base + 1, base + 2, base, base + 2, base + 3});
+}
+
 void AddTriangle(MeshData& mesh, const glm::vec3& a, const glm::vec3& b, const glm::vec3& c)
 {
     const glm::vec3 normal = glm::normalize(glm::cross(b - a, c - a));
@@ -111,9 +128,12 @@ MeshData Sphere(float radius, int segments, int rings)
     for (int ring = 0; ring <= rings; ++ring)
     {
         const float v = static_cast<float>(ring) / static_cast<float>(rings);
-        const float phi = v * glm::pi<float>(); // 0 at +Y pole
-        const float sinPhi = std::sin(phi);
-        const float cosPhi = std::cos(phi);
+        const float phi = v * glm::pi<float>(); // 0 at the +Y pole
+        // Snap the poles: std::sin(pi) is about 8.7e-8 rather than 0 in float, which would otherwise
+        // spread the pole into a tiny circle and generate sliver triangles.
+        const bool atPole = ring == 0 || ring == rings;
+        const float sinPhi = atPole ? 0.0f : std::sin(phi);
+        const float cosPhi = atPole ? (ring == 0 ? 1.0f : -1.0f) : std::cos(phi);
 
         for (int segment = 0; segment <= segments; ++segment)
         {
@@ -132,7 +152,16 @@ MeshData Sphere(float radius, int segments, int rings)
         {
             const auto i0 = static_cast<uint32_t>(ring * stride + segment);
             const auto i1 = static_cast<uint32_t>(i0 + stride);
-            mesh.indices.insert(mesh.indices.end(), {i0, i1, i0 + 1, i0 + 1, i1, i1 + 1});
+            // The rings touching a pole collapse to a fan: one triangle of each quad is degenerate
+            // there and is skipped rather than emitted with zero area.
+            if (ring != 0)
+            {
+                mesh.indices.insert(mesh.indices.end(), {i0, i1, i0 + 1});
+            }
+            if (ring != rings - 1)
+            {
+                mesh.indices.insert(mesh.indices.end(), {i0 + 1, i1, i1 + 1});
+            }
         }
     }
     return mesh;
@@ -185,13 +214,15 @@ MeshData Cylinder(float radius, float height, int segments)
         {
             const auto i0 = static_cast<uint32_t>(center + 1 + segment);
             const auto i1 = static_cast<uint32_t>(center + 2 + segment);
+            // Angles increase counter-clockwise about +Y, so the fan runs in index order for the
+            // top cap and reversed for the bottom, keeping both faces pointing away from the solid.
             if (top)
             {
-                mesh.indices.insert(mesh.indices.end(), {center, i1, i0});
+                mesh.indices.insert(mesh.indices.end(), {center, i0, i1});
             }
             else
             {
-                mesh.indices.insert(mesh.indices.end(), {center, i0, i1});
+                mesh.indices.insert(mesh.indices.end(), {center, i1, i0});
             }
         }
     }
@@ -222,42 +253,20 @@ MeshData Ramp(float width, float length, float height)
     MeshData mesh;
     const float hw = width * 0.5f;
 
-    // Corners: base at y=0 spanning z in [0, length], rising to `height` at z = length.
-    const glm::vec3 a{-hw, 0.0f, 0.0f};
-    const glm::vec3 b{hw, 0.0f, 0.0f};
-    const glm::vec3 c{hw, 0.0f, length};
-    const glm::vec3 d{-hw, 0.0f, length};
-    const glm::vec3 e{hw, height, length};
-    const glm::vec3 f{-hw, height, length};
+    // Corners: base at y = 0 spanning z in [0, length], rising to `height` at z = length.
+    const glm::vec3 a{-hw, 0.0f, 0.0f};      // bottom, near, -X
+    const glm::vec3 b{hw, 0.0f, 0.0f};       // bottom, near, +X
+    const glm::vec3 c{hw, 0.0f, length};     // bottom, far,  +X
+    const glm::vec3 d{-hw, 0.0f, length};    // bottom, far,  -X
+    const glm::vec3 e{hw, height, length};   // top,    far,  +X
+    const glm::vec3 f{-hw, height, length};  // top,    far,  -X
 
-    // Sloped top surface (a, b, e, f) wound counter-clockwise seen from above.
-    const glm::vec3 slopeNormal = glm::normalize(glm::cross(b - a, f - a));
-    {
-        const auto base = static_cast<uint32_t>(mesh.vertices.size());
-        mesh.vertices.push_back({a, slopeNormal, {0.0f, 0.0f}});
-        mesh.vertices.push_back({b, slopeNormal, {1.0f, 0.0f}});
-        mesh.vertices.push_back({e, slopeNormal, {1.0f, 1.0f}});
-        mesh.vertices.push_back({f, slopeNormal, {0.0f, 1.0f}});
-        mesh.indices.insert(mesh.indices.end(), {base, base + 1, base + 2, base, base + 2, base + 3});
-    }
+    AddQuadCorners(mesh, a, f, e, b); // sloped top, normal points up and back towards -Z
+    AddQuadCorners(mesh, a, b, c, d); // underside, normal points down
+    AddQuadCorners(mesh, d, c, e, f); // tall back wall at z = length, normal points +Z
 
-    // Bottom, seen from below: reverse order.
-    {
-        const glm::vec3 normal{0.0f, -1.0f, 0.0f};
-        const auto base = static_cast<uint32_t>(mesh.vertices.size());
-        mesh.vertices.push_back({a, normal, {0.0f, 0.0f}});
-        mesh.vertices.push_back({d, normal, {0.0f, 1.0f}});
-        mesh.vertices.push_back({c, normal, {1.0f, 1.0f}});
-        mesh.vertices.push_back({b, normal, {1.0f, 0.0f}});
-        mesh.indices.insert(mesh.indices.end(), {base, base + 1, base + 2, base, base + 2, base + 3});
-    }
-
-    // Back wall (the tall end at z = length).
-    AddQuad(mesh, {0.0f, height * 0.5f, length}, {hw, 0.0f, 0.0f}, {0.0f, height * 0.5f, 0.0f});
-
-    // Triangular sides.
-    AddTriangle(mesh, b, c, e); // +X side
-    AddTriangle(mesh, a, f, d); // -X side
+    AddTriangle(mesh, b, e, c); // +X side
+    AddTriangle(mesh, a, d, f); // -X side
 
     return mesh;
 }

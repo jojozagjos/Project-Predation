@@ -36,6 +36,8 @@ CVar<std::string> cv_backend{"r.backend", "auto", "Render backend: auto, dx11, d
 CVar<bool> cv_renderDebug{"r.debug", false, "Enable graphics API validation (slow, applied at startup)"};
 CVar<bool> cv_bgfxStats{"r.bgfx_stats", false, "Show bgfx's built-in statistics text"};
 CVar<bool> cv_overlay{"debug.overlay", false, "Show the F3 debug overlay"};
+CVar<bool> cv_physicsEnabled{"physics.enabled", true, "Step the physics simulation"};
+CVar<int> cv_physicsSteps{"physics.collision_steps", 1, "Jolt collision steps per simulation tick"};
 
 std::string TimestampForFile()
 {
@@ -67,6 +69,7 @@ const char* CommandLine::Usage()
            "  --log-level <level>   trace | debug | info | warn | error | critical | off\n"
            "  --set <cvar>=<value>  Override a cvar (repeatable)\n"
            "  +<cvar> <value>       Same as --set\n"
+           "  --exec \"<command>\"    Run a console command at startup (repeatable)\n"
            "  --help                Show this text\n";
 }
 
@@ -131,6 +134,13 @@ CommandLine CommandLine::Parse(int argc, char** argv)
                 {
                     std::fprintf(stderr, "--set expects <cvar>=<value>, got '%s'\n", value);
                 }
+            }
+        }
+        else if (arg == "--exec")
+        {
+            if (const char* value = nextValue(i))
+            {
+                result.execCommands.emplace_back(value);
             }
         }
         else if (!arg.empty() && arg[0] == '+')
@@ -208,6 +218,12 @@ int Application::Run(Game& game, int argc, char** argv)
         return 1;
     }
 
+    for (const std::string& command : m_commandLine.execCommands)
+    {
+        PRED_LOG_INFO(Engine, "--exec: {}", command);
+        m_console.Execute(command);
+    }
+
     PRED_LOG_INFO(Engine, "Entering main loop");
     FrameStats& stats = FrameStats::Instance();
     bool screenshotRequested = false;
@@ -232,7 +248,13 @@ int Application::Run(Game& game, int argc, char** argv)
             m_fixedStepsLastFrame = m_fixedStep.Accumulate(dt);
             for (int i = 0; i < m_fixedStepsLastFrame; ++i)
             {
+                // Gameplay decides first, then physics resolves what it asked for. Both run at the
+                // fixed rate so the simulation stays reproducible and network-predictable.
                 game.OnFixedUpdate(m_fixedStep.Step());
+                if (cv_physicsEnabled.Get())
+                {
+                    m_physics.Step(static_cast<float>(m_fixedStep.Step()));
+                }
             }
         }
 
@@ -273,6 +295,10 @@ int Application::Run(Game& game, int argc, char** argv)
                 info.debugLineCount = debugLines;
                 info.meshesDrawn = m_sceneRenderer.LastStats().meshesSubmitted;
                 info.trianglesDrawn = m_sceneRenderer.LastStats().trianglesSubmitted;
+                info.physicsBodies = m_physics.GetStats().bodyCount;
+                info.physicsActiveBodies = m_physics.GetStats().activeBodyCount;
+                info.physicsStepMs = m_physics.GetStats().lastStepMs;
+                info.physicsEnabled = cv_physicsEnabled.Get();
                 m_overlay.Draw(info);
             }
             int windowWidth = 0;
@@ -388,6 +414,13 @@ bool Application::InitSubsystems(const CommandLine& commandLine)
     {
         return false;
     }
+
+    PhysicsWorld::Settings physicsSettings;
+    physicsSettings.collisionSteps = std::max(1, cv_physicsSteps.Get());
+    if (!m_physics.Init(physicsSettings))
+    {
+        return false;
+    }
     if (!m_imgui.Init(m_window, m_renderer, m_shaders))
     {
         return false;
@@ -419,6 +452,7 @@ void Application::ShutdownSubsystems()
     m_console.Shutdown();
     m_imgui.Shutdown();
     m_debugDraw.Shutdown();
+    m_physics.Shutdown();
     m_sceneRenderer.Shutdown();
     // GPU buffers must go before the shader library and the device itself.
     m_meshes.Shutdown();

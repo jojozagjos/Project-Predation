@@ -1,6 +1,7 @@
 find_package(SDL3 CONFIG REQUIRED)
 find_package(bgfx CONFIG REQUIRED)
 find_package(imgui CONFIG REQUIRED)
+find_package(Jolt CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(glm CONFIG REQUIRED)
@@ -26,6 +27,9 @@ set(PRED_ENGINE_SOURCES
     Scene/Entity.h
     Scene/Scene.h
     Scene/Scene.cpp
+
+    Physics/PhysicsWorld.h
+    Physics/PhysicsWorld.cpp
 
     Platform/Window.h
     Platform/Window.cpp
@@ -79,6 +83,7 @@ target_link_libraries(PredationEngine
         SDL3::SDL3
         bgfx::bgfx
         bgfx::bx
+        Jolt::Jolt
         imgui::imgui
         spdlog::spdlog
         nlohmann_json::nlohmann_json
