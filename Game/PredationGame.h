@@ -52,8 +52,18 @@ private:
     PlayerBody m_body;
     glm::vec3 m_spawnPoint{0.0f, 0.5f, 18.0f};
 
+    // First person for play, third person for watching the body animate, fly to inspect the level.
+    enum class CameraMode : uint8_t
+    {
+        FirstPerson,
+        ThirdPerson,
+        Fly
+    };
+    CameraMode m_cameraMode = CameraMode::FirstPerson;
+    float m_thirdPersonDistance = 3.2f;
+    float m_thirdPersonHeight = 1.35f;
+
     FlyCamera m_camera;
-    bool m_flyMode = false;
 
     // Mouse capture has exactly one owner. `m_wantMouseCaptured` is the player's intent, toggled by
     // Escape and by clicking back into the world. The effective state additionally requires window

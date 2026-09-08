@@ -72,16 +72,31 @@ public:
         float armSwingDegrees = 22.0f;
         float armRestDegrees = 8.0f;
 
-        // Where the hips sit for each stance, as a fraction of standing height, and how far the
-        // torso pitches forward. Limb lengths never change: crouching lowers the hips and lets the
-        // knees bend, which is what actually happens and what the IK solver is for.
-        float standPelvisRatio = 0.530f;
-        float crouchPelvisRatio = 0.345f;
-        float pronePelvisRatio = 0.170f;
-        float standPitchDegrees = 0.0f;
-        float crouchPitchDegrees = 14.0f;
-        float pronePitchDegrees = 78.0f;
-        float stanceBlendSpeed = 10.0f;
+        // One posture per stance, blended between. Limb lengths never change: lowering the hips and
+        // letting the knees bend is what actually happens when someone crouches.
+        struct StancePose
+        {
+            float pelvisRatio = 0.530f;   // hip height as a fraction of standing height
+            float pelvisPitchDeg = 0.0f;  // tips the whole body; this is what lays it down for prone
+            float spineLeanDeg = 0.0f;    // torso folds forward over the hips; this is the crouch
+            float footBackRatio = 0.0f;   // feet behind the hips, as a fraction of total leg length
+            float footSpread = 1.0f;      // stance width multiplier
+            float armForwardDeg = 0.0f;
+        };
+
+        // Crouching folds at the hip and knee with the pelvis kept upright. Pitching the pelvis
+        // instead threw the legs out behind and read as a ski jump rather than a squat. The feet
+        // sit slightly *forward* of the hips, because squatting sends the hips back over the heels.
+        StancePose stand{0.530f, 0.0f, 0.0f, 0.00f, 1.00f, 0.0f};
+        StancePose crouch{0.375f, 0.0f, 32.0f, -0.12f, 1.20f, 10.0f};
+        // Prone lays the pelvis flat so the spine continues horizontally. The feet go almost a full
+        // leg length back so the legs lie out straight; leaving slack let the knees fold up into the
+        // air, because once the pelvis is flat the knee's bend direction points at the sky.
+        // Arms need no extra rotation here: with the pelvis flat, "hanging down" in body space
+        // already points forward along the ground.
+        StancePose prone{0.130f, 87.0f, 0.0f, 0.97f, 0.80f, 0.0f};
+
+        float stanceBlendSpeed = 7.0f;
 
         // Hips follow the direction of travel; the torso twists back to stay aimed where the player
         // is looking. Locking the whole body to the camera makes it look welded to the view, because
@@ -171,8 +186,8 @@ private:
     glm::vec3 m_rootPosition{0.0f};
     float m_bodyYaw = 0.0f;
     float m_lean = 0.0f;
-    float m_pelvisRatio = 0.530f;   // smoothed towards the current stance
-    float m_stancePitch = 0.0f;     // radians, smoothed
+    // The live posture, smoothed towards the target stance so transitions animate rather than snap.
+    Config::StancePose m_pose_blend;
     float m_stridePhase = 0.0f;
     float m_gaitWeight = 0.0f;
     bool m_built = false;

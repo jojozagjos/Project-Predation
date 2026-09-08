@@ -26,7 +26,7 @@ CVar<float> cv_fov{"r.fov", 90.0f, "Horizontal field of view in degrees", CVarFl
 CVar<float> cv_mouseSensitivity{"input.mouse_sensitivity", 0.12f, "Mouse look sensitivity in degrees per pixel",
                                 CVarFlags::Archive};
 CVar<bool> cv_invertY{"input.invert_y", false, "Invert vertical mouse look", CVarFlags::Archive};
-CVar<bool> cv_crouchToggle{"input.crouch_toggle", false, "Crouch toggles instead of being held",
+CVar<bool> cv_crouchToggle{"input.crouch_toggle", true, "Crouch and prone toggle instead of being held",
                            CVarFlags::Archive};
 CVar<bool> cv_sprintToggle{"input.sprint_toggle", false, "Sprint toggles instead of being held",
                            CVarFlags::Archive};
@@ -116,11 +116,37 @@ void PredationGame::RegisterCommands()
         },
         "teleport <x> <y> <z>");
 
+    console.RegisterCommand(
+        "camera", "Switch camera: camera <first|third|fly>",
+        [this](const std::vector<std::string>& args)
+        {
+            const std::string which = args.size() > 1 ? args[1] : "first";
+            if (which == "first")
+            {
+                m_cameraMode = CameraMode::FirstPerson;
+            }
+            else if (which == "third")
+            {
+                m_cameraMode = CameraMode::ThirdPerson;
+            }
+            else if (which == "fly")
+            {
+                m_cameraMode = CameraMode::Fly;
+            }
+            else
+            {
+                m_app->GetConsole().PrintError("usage: camera <first|third|fly>");
+                return;
+            }
+            m_app->GetConsole().Print("Camera: " + which);
+        },
+        "camera <first|third|fly>");
+
     console.RegisterCommand("fly", "Toggle the free-flying inspection camera",
                             [this](const std::vector<std::string>&)
                             {
-                                m_flyMode = !m_flyMode;
-                                m_app->GetConsole().Print(m_flyMode ? "Fly camera on" : "Player camera on");
+                                m_cameraMode = m_cameraMode == CameraMode::Fly ? CameraMode::FirstPerson
+                                                                               : CameraMode::Fly;
                             });
 
     console.RegisterCommand(
@@ -180,7 +206,7 @@ void PredationGame::RegisterCommands()
                 m_camera.position = glm::vec3(std::strtof(args[1].c_str(), nullptr),
                                               std::strtof(args[2].c_str(), nullptr),
                                               std::strtof(args[3].c_str(), nullptr));
-                m_flyMode = true;
+                m_cameraMode = CameraMode::Fly;
             }
             if (args.size() >= 6)
             {
@@ -355,7 +381,7 @@ PlayerInput PredationGame::BuildPlayerInput()
 void PredationGame::OnFixedUpdate(double fixedDt)
 {
     PlayerInput input = BuildPlayerInput();
-    if (m_flyMode)
+    if (m_cameraMode == CameraMode::Fly)
     {
         // The free camera is an inspection tool, not a different game mode. The player keeps
         // simulating underneath it, standing still and holding its own facing, so the body stays
@@ -403,7 +429,11 @@ void PredationGame::OnUpdate(double dt, double alpha)
         }
         if (input.WasActionPressed("toggle_fly"))
         {
-            m_flyMode = !m_flyMode;
+            // Cycles first person, third person, fly. Third person exists so the body animation can
+            // actually be watched, which is impossible from inside the head.
+            m_cameraMode = m_cameraMode == CameraMode::FirstPerson  ? CameraMode::ThirdPerson
+                           : m_cameraMode == CameraMode::ThirdPerson ? CameraMode::Fly
+                                                                     : CameraMode::FirstPerson;
         }
         if (input.WasActionPressed("respawn"))
         {
@@ -426,24 +456,55 @@ void PredationGame::OnUpdate(double dt, double alpha)
 
     glm::mat4 view;
     glm::vec3 viewPosition;
-    if (m_flyMode)
+    switch (m_cameraMode)
     {
+    case CameraMode::Fly:
         m_camera.yaw = m_lookYaw;
         m_camera.pitch = m_lookPitch;
         m_camera.moveSpeed = cv_flySpeed.Get();
         m_camera.Update(input, deltaSeconds, false); // look is applied above, this only moves
         view = m_camera.View();
         viewPosition = m_camera.position;
-    }
-    else
+        break;
+
+    case CameraMode::ThirdPerson:
     {
+        // Orbits the player at a fixed offset along the look direction. It follows the interpolated
+        // position for the same reason the body does: anything using the raw simulation state
+        // steps at the tick rate and judders.
+        const PlayerView& playerView = m_player.View();
+        const glm::vec3 focus =
+            playerView.renderPosition + glm::vec3(0.0f, m_thirdPersonHeight, 0.0f);
+        const float cp = std::cos(m_lookPitch);
+        const glm::vec3 lookDirection{std::sin(m_lookYaw) * cp, std::sin(m_lookPitch),
+                                      -std::cos(m_lookYaw) * cp};
+
+        // Pull the camera in when something is in the way, so it does not end up inside a wall or a
+        // pillar with the player hidden behind it.
+        constexpr float kCameraSkin = 0.25f;
+        float distance = m_thirdPersonDistance;
+        const RayHit blocked =
+            app.GetPhysics().RayCast(focus, -lookDirection, m_thirdPersonDistance + kCameraSkin);
+        if (blocked)
+        {
+            distance = std::max(0.35f, blocked.distance - kCameraSkin);
+        }
+
+        viewPosition = focus - lookDirection * distance;
+        view = glm::lookAtRH(viewPosition, focus, glm::vec3(0.0f, 1.0f, 0.0f));
+        break;
+    }
+
+    case CameraMode::FirstPerson:
+    default:
         view = m_player.View().ViewMatrix();
         viewPosition = m_player.View().eyePosition;
+        break;
     }
 
     // The body follows the simulation every frame. Its head is only drawn from the fly camera,
     // because in first person the camera sits inside it.
-    m_body.Tuning().hideHead = !m_flyMode;
+    m_body.Tuning().hideHead = m_cameraMode == CameraMode::FirstPerson;
     m_body.Update(m_scene, m_player.State(), m_player.View(), m_player.Config(), app.GetPhysics(),
                   deltaSeconds);
 
@@ -474,8 +535,8 @@ void PredationGame::SpawnProp(bool sphere, float impulse)
 {
     PhysicsWorld& physics = m_app->GetPhysics();
 
-    const glm::vec3 origin = m_flyMode ? m_camera.position : m_player.View().eyePosition;
-    const glm::vec3 forward = m_flyMode ? m_camera.Forward() : m_player.View().Forward();
+    const glm::vec3 origin = m_cameraMode == CameraMode::Fly ? m_camera.position : m_player.View().eyePosition;
+    const glm::vec3 forward = m_cameraMode == CameraMode::Fly ? m_camera.Forward() : m_player.View().Forward();
 
     Transform transform;
     // Spread successive props over a small grid: dropping several into the same point leaves them
@@ -530,7 +591,7 @@ void PredationGame::SyncDynamicProps()
 void PredationGame::OnRender()
 {
     Application& app = *m_app;
-    const glm::vec3 viewPosition = m_flyMode ? m_camera.position : m_player.View().eyePosition;
+    const glm::vec3 viewPosition = m_cameraMode == CameraMode::Fly ? m_camera.position : m_player.View().eyePosition;
     app.GetSceneRenderer().Draw(Renderer::kViewMain, m_scene, app.GetMeshes(), viewPosition);
     DrawDebugOverlays();
 }
@@ -550,7 +611,7 @@ void PredationGame::DrawDebugOverlays()
         m_app->GetPhysics().DebugDraw(draw);
     }
 
-    if (DebugCategories::IsEnabled(DebugCategory::Player) && m_flyMode)
+    if (DebugCategories::IsEnabled(DebugCategory::Player) && m_cameraMode != CameraMode::FirstPerson)
     {
         // Only worth drawing the capsule when it is not wrapped around the camera.
         m_player.DebugDraw(draw);
@@ -714,7 +775,7 @@ void PredationGame::OnImGui()
     ImGui::SetNextWindowSize(ImVec2(400.0f, 620.0f), ImGuiCond_FirstUseEver);
     if (ImGui::Begin("Player"))
     {
-        if (m_flyMode)
+        if (m_cameraMode == CameraMode::Fly)
         {
             ImGui::TextUnformatted("Fly camera active. Press F for the player camera.");
             ImGui::Text("Camera %.2f %.2f %.2f", m_camera.position.x, m_camera.position.y,

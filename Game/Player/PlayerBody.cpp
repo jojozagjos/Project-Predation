@@ -319,33 +319,28 @@ void PlayerBody::UpdatePosture(const PlayerState& state, const PlayerView& view,
         std::clamp(WrapAngle(view.yaw - m_bodyYaw), -glm::radians(m_config.maxTorsoTwistDegrees * 1.4f),
                    glm::radians(m_config.maxTorsoTwistDegrees * 1.4f));
 
-    // Stance changes the hip height and the torso angle. Limb lengths stay fixed, so the knees bend
-    // to reach the ground, which is what actually happens when a person crouches. Scaling the legs
-    // instead made crouch and prone look like the whole body had shrunk.
-    float targetPelvisRatio = m_config.standPelvisRatio;
-    float targetPitch = m_config.standPitchDegrees;
-    switch (state.stance)
-    {
-    case PlayerStance::Crouching:
-        targetPelvisRatio = m_config.crouchPelvisRatio;
-        targetPitch = m_config.crouchPitchDegrees;
-        break;
-    case PlayerStance::Prone:
-        targetPelvisRatio = m_config.pronePelvisRatio;
-        targetPitch = m_config.pronePitchDegrees;
-        break;
-    case PlayerStance::Standing:
-    default:
-        break;
-    }
-    m_pelvisRatio = SmoothTowards(m_pelvisRatio, targetPelvisRatio, m_config.stanceBlendSpeed, dt);
-    m_stancePitch = SmoothTowards(m_stancePitch, glm::radians(targetPitch), m_config.stanceBlendSpeed, dt);
+    // Blend the whole posture towards the target stance, so going prone plays out over a moment
+    // instead of snapping between two poses.
+    const Config::StancePose& target = state.stance == PlayerStance::Crouching ? m_config.crouch
+                                       : state.stance == PlayerStance::Prone   ? m_config.prone
+                                                                               : m_config.stand;
+    const float blend = m_config.stanceBlendSpeed;
+    m_pose_blend.pelvisRatio = SmoothTowards(m_pose_blend.pelvisRatio, target.pelvisRatio, blend, dt);
+    m_pose_blend.pelvisPitchDeg =
+        SmoothTowards(m_pose_blend.pelvisPitchDeg, target.pelvisPitchDeg, blend, dt);
+    m_pose_blend.spineLeanDeg = SmoothTowards(m_pose_blend.spineLeanDeg, target.spineLeanDeg, blend, dt);
+    m_pose_blend.footBackRatio = SmoothTowards(m_pose_blend.footBackRatio, target.footBackRatio, blend, dt);
+    m_pose_blend.footSpread = SmoothTowards(m_pose_blend.footSpread, target.footSpread, blend, dt);
+    m_pose_blend.armForwardDeg = SmoothTowards(m_pose_blend.armForwardDeg, target.armForwardDeg, blend, dt);
+
+    const float pelvisPitch = glm::radians(m_pose_blend.pelvisPitchDeg);
+    const float spineLean = glm::radians(m_pose_blend.spineLeanDeg);
 
     // Placed from the interpolated render position, not from the simulation state. The camera uses
     // the interpolated one, so using the raw state here made the body step at the tick rate while
     // the view moved at the frame rate, which reads as the body stuttering underneath you.
     const glm::vec3 facing{std::sin(m_bodyYaw), 0.0f, -std::cos(m_bodyYaw)};
-    m_rootPosition = view.renderPosition + glm::vec3(0.0f, m_pelvisRatio * m_rig.height, 0.0f) -
+    m_rootPosition = view.renderPosition + glm::vec3(0.0f, m_pose_blend.pelvisRatio * m_rig.height, 0.0f) -
                      facing * m_config.eyeForwardOffset;
 
     const float speed = state.HorizontalSpeed();
@@ -372,9 +367,9 @@ void PlayerBody::UpdatePosture(const PlayerState& state, const PlayerView& view,
 
     Transform& pelvis = m_pose.Local(m_rig.pelvis);
     pelvis.position = glm::vec3(sway, bob, 0.0f);
-    // Stance pitch tips the whole body forward, which is what turns a standing rig into a crouched
-    // or prone one without needing a second skeleton.
-    pelvis.rotation = glm::angleAxis(m_stancePitch, glm::vec3(1.0f, 0.0f, 0.0f)) *
+    // Pelvis pitch lays the body down for prone. It stays upright for crouching, where the fold
+    // belongs at the hip and knee instead.
+    pelvis.rotation = glm::angleAxis(pelvisPitch, glm::vec3(1.0f, 0.0f, 0.0f)) *
                       glm::angleAxis(glm::radians(sway * 60.0f), glm::vec3(0.0f, 0.0f, 1.0f));
 
     // Lean forward from the spine, counter-rotate the chest slightly so the torso does not fold, and
@@ -383,15 +378,20 @@ void PlayerBody::UpdatePosture(const PlayerState& state, const PlayerView& view,
     // opposite way to the yaw convention.
     m_pose.Local(m_rig.spine).rotation =
         glm::angleAxis(-torsoTwist * 0.45f, glm::vec3(0.0f, 1.0f, 0.0f)) *
-        glm::angleAxis(glm::radians(m_lean * 0.6f), glm::vec3(1.0f, 0.0f, 0.0f));
+        glm::angleAxis(spineLean * 0.65f + glm::radians(m_lean * 0.6f), glm::vec3(1.0f, 0.0f, 0.0f));
     m_pose.Local(m_rig.chest).rotation =
         glm::angleAxis(-torsoTwist * 0.55f, glm::vec3(0.0f, 1.0f, 0.0f)) *
-        glm::angleAxis(glm::radians(-m_lean * 0.2f), glm::vec3(1.0f, 0.0f, 0.0f));
+        glm::angleAxis(spineLean * 0.35f - glm::radians(m_lean * 0.2f), glm::vec3(1.0f, 0.0f, 0.0f));
 
-    // The head carries the camera's pitch, minus what the spine already contributed.
+    // The neck and head undo whatever the pelvis and spine did, so the head stays level and keeps
+    // looking where the player is aiming. Without this, laying the pelvis flat for prone drags the
+    // head face-down into the floor and the spine reads as a backbend.
+    const float torsoPitch = pelvisPitch + spineLean;
     m_pose.Local(m_rig.neck).rotation =
-        glm::angleAxis(view.pitch * 0.35f - glm::radians(m_lean * 0.2f), glm::vec3(1.0f, 0.0f, 0.0f));
-    m_pose.Local(m_rig.head).rotation = glm::angleAxis(view.pitch * 0.5f, glm::vec3(1.0f, 0.0f, 0.0f));
+        glm::angleAxis(-torsoPitch * 0.55f + view.pitch * 0.35f - glm::radians(m_lean * 0.2f),
+                       glm::vec3(1.0f, 0.0f, 0.0f));
+    m_pose.Local(m_rig.head).rotation =
+        glm::angleAxis(-torsoPitch * 0.45f + view.pitch * 0.5f, glm::vec3(1.0f, 0.0f, 0.0f));
 
     // Arms swing opposite the legs.
     for (int side = 0; side < 2; ++side)
@@ -401,8 +401,10 @@ void PlayerBody::UpdatePosture(const PlayerState& state, const PlayerView& view,
                             glm::radians(m_config.armSwingDegrees) * m_gaitWeight;
         const float rest = glm::radians(m_config.armRestDegrees);
 
+        // Arms reach forward as the body goes down, so they are not left dangling through the floor
+        // when prone.
         m_pose.Local(m_rig.upperArm[side]).rotation =
-            glm::angleAxis(swing, glm::vec3(1.0f, 0.0f, 0.0f)) *
+            glm::angleAxis(swing + glm::radians(m_pose_blend.armForwardDeg), glm::vec3(1.0f, 0.0f, 0.0f)) *
             glm::angleAxis(sideSign * rest, glm::vec3(0.0f, 0.0f, 1.0f));
         // A permanently straight elbow reads as a mannequin, so keep a little bend at all times.
         m_pose.Local(m_rig.lowerArm[side]).rotation =
@@ -434,10 +436,19 @@ void PlayerBody::UpdateLegs(const PlayerState& state, const PlayerView& view,
     const glm::vec3 facing{std::sin(m_bodyYaw), 0.0f, -std::cos(m_bodyYaw)};
     const glm::quat bodyRotation = BodyRotation();
 
-    // The more the torso is pitched forward, the further behind the hips the feet belong. At full
-    // prone the legs trail almost straight back.
+    // Prone trails the legs out behind; crouching keeps the feet under the hips, which is what
+    // makes it read as a squat rather than a lunge.
     const float legSpan = m_rig.upperLegLength + m_rig.lowerLegLength;
-    const glm::vec3 stanceFootOffset = -facing * (std::sin(m_stancePitch) * legSpan * 0.85f);
+    const glm::vec3 stanceFootOffset = -facing * (m_pose_blend.footBackRatio * legSpan);
+
+    // Knees bend towards the body's front while upright. Once the pelvis is laid flat that axis
+    // points at the sky, which folds the legs upwards, so the pole is blended back down towards the
+    // ground as the body goes prone.
+    const glm::vec3 bodyForward =
+        glm::normalize(glm::vec3(m_pose.Global(m_rig.pelvis) * glm::vec4(0.0f, 0.0f, -1.0f, 0.0f)));
+    const float flatness = std::clamp(m_pose_blend.pelvisPitchDeg / 90.0f, 0.0f, 1.0f);
+    const glm::vec3 kneePole =
+        glm::normalize(glm::mix(bodyForward, glm::vec3(0.0f, -1.0f, 0.0f), flatness) + glm::vec3(1e-4f));
 
     for (int side = 0; side < 2; ++side)
     {
@@ -449,7 +460,13 @@ void PlayerBody::UpdateLegs(const PlayerState& state, const PlayerView& view,
         const float reach = std::cos(footPhase) * m_config.strideLength * 0.5f * m_gaitWeight;
         const float lift = std::max(0.0f, std::sin(footPhase)) * m_config.stepHeight * m_gaitWeight;
 
-        glm::vec3 target = hip + moveDirection * reach + stanceFootOffset;
+        // Stance width: a crouch plants the feet wider, prone brings them together.
+        const glm::vec3 right{std::cos(m_bodyYaw), 0.0f, std::sin(m_bodyYaw)};
+        const float sideSign = side == kLeft ? -1.0f : 1.0f;
+        const glm::vec3 spread =
+            right * (sideSign * (m_pose_blend.footSpread - 1.0f) * Ratio::kHipHalfWidth * m_rig.height);
+
+        glm::vec3 target = hip + moveDirection * reach + stanceFootOffset + spread;
         target.y = view.renderPosition.y + m_rig.ankleHeight + lift;
 
         // Trace for the real ground under the foot so it lands on stairs and slopes instead of
@@ -466,9 +483,8 @@ void PlayerBody::UpdateLegs(const PlayerState& state, const PlayerView& view,
         foot.position = SmoothTowards(foot.position, target, m_config.footPlantSmoothing, dt);
         foot.planted = lift < 0.01f;
 
-        // Knees bend forwards, so the pole points along the body's facing. Limb lengths are constant
-        // in every stance; the knee bend is what absorbs a lowered hip.
-        const TwoBoneIKResult ik = SolveTwoBoneIK(hip, foot.position, facing, m_rig.upperLegLength,
+        // Limb lengths are constant in every stance; the knee bend is what absorbs a lowered hip.
+        const TwoBoneIKResult ik = SolveTwoBoneIK(hip, foot.position, kneePole, m_rig.upperLegLength,
                                                   m_rig.lowerLegLength);
 
         // Write the solved chain straight into the pose's globals. Parent before child, because

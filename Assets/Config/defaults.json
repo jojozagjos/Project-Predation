@@ -13,7 +13,10 @@
     "fov": 90.0
   },
   "input": {
-    "mouse_sensitivity": 0.12
+    "mouse_sensitivity": 0.12,
+    "invert_y": false,
+    "crouch_toggle": true,
+    "sprint_toggle": false
   },
   "cam": {
     "fly_speed": 4.0
