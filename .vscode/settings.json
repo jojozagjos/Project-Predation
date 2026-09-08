@@ -1,0 +1,21 @@
+{
+  "cmake.useCMakePresets": "always",
+  "cmake.configureOnOpen": false,
+  "cmake.options.statusBarVisibility": "visible",
+  "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
+  "C_Cpp.default.cppStandard": "c++20",
+  "C_Cpp.clang_format_style": "file",
+  "files.associations": {
+    "*.sc": "glsl",
+    "Engine/Shaders/**/*.sh": "glsl"
+  },
+  "files.eol": "\n",
+  "files.insertFinalNewline": true,
+  "files.trimTrailingWhitespace": true,
+  "editor.rulers": [ 120 ],
+  "editor.formatOnSave": false,
+  "search.exclude": {
+    "**/build": true,
+    "**/vcpkg_installed": true
+  }
+}

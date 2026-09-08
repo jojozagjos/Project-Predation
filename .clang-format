@@ -1,0 +1,24 @@
+---
+BasedOnStyle: LLVM
+Language: Cpp
+Standard: c++20
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ColumnLimit: 120
+BreakBeforeBraces: Allman
+AccessModifierOffset: -4
+NamespaceIndentation: None
+PointerAlignment: Left
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortBlocksOnASingleLine: Never
+AlwaysBreakTemplateDeclarations: Yes
+BinPackArguments: true
+BinPackParameters: true
+IncludeBlocks: Preserve
+SortIncludes: CaseSensitive
+IndentCaseLabels: false
+FixNamespaceComments: true
+SpaceAfterTemplateKeyword: true

@@ -1,0 +1,33 @@
+# Build output
+/build/
+/out/
+/bin/
+CMakeUserPresets.json
+CMakeCache.txt
+CMakeFiles/
+compile_commands.json
+vcpkg_installed/
+
+# IDE / tooling
+.vs/
+.idea/
+.cache/
+*.user
+*.suo
+.vscode/ipch/
+.vscode/browse.vc.db*
+.claude/settings.local.json
+
+# OS
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# Runtime output
+*.log
+Saved/
+Screenshots/
+imgui.ini
+
+# Claude Code worktrees
+.claude/worktrees/

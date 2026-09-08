@@ -1,0 +1,24 @@
+{
+  "app": {
+    "fixed_hz": 60,
+    "max_frames": 0
+  },
+  "r": {
+    "width": 1600,
+    "height": 900,
+    "fullscreen": false,
+    "vsync": true,
+    "msaa": 0,
+    "backend": "auto",
+    "fov": 90.0
+  },
+  "input": {
+    "mouse_sensitivity": 0.12
+  },
+  "cam": {
+    "fly_speed": 4.0
+  },
+  "debug": {
+    "overlay": false
+  }
+}
