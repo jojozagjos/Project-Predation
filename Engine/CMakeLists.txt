@@ -24,6 +24,11 @@ set(PRED_ENGINE_SOURCES
     Core/SystemInfo.cpp
     Core/Math.h
 
+    Animation/Skeleton.h
+    Animation/Skeleton.cpp
+    Animation/IK.h
+    Animation/IK.cpp
+
     Scene/Entity.h
     Scene/Scene.h
     Scene/Scene.cpp

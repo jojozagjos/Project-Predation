@@ -65,6 +65,8 @@ bool PredationGame::OnInit(Application& app)
         return false;
     }
 
+    m_body.Build(m_scene, app.GetMeshes(), m_player.Config());
+
     // Editing player.json on disk applies immediately, without a rebuild or a restart.
     app.GetFileWatcher().Watch(PlayerConfigPath(),
                                [this](const std::filesystem::path&) { ReloadPlayerConfig(); });
@@ -215,6 +217,7 @@ void PredationGame::RegisterCommands()
 void PredationGame::OnShutdown()
 {
     ClearProps();
+    m_body.Destroy(m_scene);
     m_player.Shutdown();
     m_scene.Clear();
     PRED_LOG_INFO(Gameplay, "Game shutdown");
@@ -260,6 +263,10 @@ void PredationGame::UpdateMouseCapture()
     {
         m_mouseCaptured = shouldCapture;
         m_app->GetWindow().SetRelativeMouse(shouldCapture);
+        if (shouldCapture)
+        {
+            m_discardNextMouseDelta = true;
+        }
     }
 }
 
@@ -272,6 +279,13 @@ void PredationGame::SampleLook(float /*dt*/)
     }
 
     const glm::vec2 delta = input.MouseDelta();
+    if (m_discardNextMouseDelta)
+    {
+        // The first report after relative mode is enabled can carry the distance from wherever the
+        // cursor happened to be, which snaps the view somewhere arbitrary.
+        m_discardNextMouseDelta = false;
+        return;
+    }
     const float sensitivity = glm::radians(cv_mouseSensitivity.Get());
     m_lookYaw += delta.x * sensitivity;
     m_lookPitch += (cv_invertY.Get() ? delta.y : -delta.y) * sensitivity;
@@ -394,6 +408,12 @@ void PredationGame::OnUpdate(double dt, double alpha)
         viewPosition = m_player.View().eyePosition;
     }
 
+    // The body follows the simulation every frame. Its head is only drawn from the fly camera,
+    // because in first person the camera sits inside it.
+    m_body.Tuning().hideHead = !m_flyMode;
+    m_body.Update(m_scene, m_player.State(), m_player.View(), m_player.Config(), app.GetPhysics(),
+                  deltaSeconds);
+
     const float aspect = renderer.Height() > 0
                              ? static_cast<float>(renderer.Width()) / static_cast<float>(renderer.Height())
                              : 16.0f / 9.0f;
@@ -497,10 +517,15 @@ void PredationGame::DrawDebugOverlays()
         m_app->GetPhysics().DebugDraw(draw);
     }
 
-    // The player capsule is only worth drawing when it is not wrapped around the camera.
     if (DebugCategories::IsEnabled(DebugCategory::Player) && m_flyMode)
     {
+        // Only worth drawing the capsule when it is not wrapped around the camera.
         m_player.DebugDraw(draw);
+    }
+
+    if (DebugCategories::IsEnabled(DebugCategory::Animation))
+    {
+        m_body.DebugDraw(draw);
     }
 
     if (DebugCategories::IsEnabled(DebugCategory::Rendering))
@@ -618,6 +643,25 @@ void PredationGame::DrawPlayerPanel()
         ImGui::Checkbox("Enabled", &config.fallDamageEnabled);
         ImGui::SliderFloat("Free below", &config.fallDamageMinSpeed, 1.0f, 25.0f, "%.1f m/s");
         ImGui::SliderFloat("Lethal at", &config.fallDamageLethalSpeed, 5.0f, 60.0f, "%.1f m/s");
+    }
+
+    if (ImGui::CollapsingHeader("Body and gait", ImGuiTreeNodeFlags_DefaultOpen))
+    {
+        PlayerBody::Config& body = m_body.Tuning();
+        bool visible = body.visible;
+        if (ImGui::Checkbox("Show body", &visible))
+        {
+            m_body.SetVisible(m_scene, visible);
+        }
+        ImGui::SliderFloat("Stride length", &body.strideLength, 0.6f, 3.0f, "%.2f m");
+        ImGui::SliderFloat("Step height", &body.stepHeight, 0.0f, 0.4f, "%.3f m");
+        ImGui::SliderFloat("Hip sway", &body.hipSwayAmount, 0.0f, 0.12f, "%.3f m");
+        ImGui::SliderFloat("Hip bob", &body.hipBobAmount, 0.0f, 0.12f, "%.3f m");
+        ImGui::SliderFloat("Lean per m/s", &body.leanPerSpeed, 0.0f, 6.0f, "%.2f deg");
+        ImGui::SliderFloat("Max lean", &body.maxLean, 0.0f, 40.0f, "%.0f deg");
+        ImGui::SliderFloat("Arm swing", &body.armSwingDegrees, 0.0f, 60.0f, "%.0f deg");
+        ImGui::SliderFloat("Foot smoothing", &body.footPlantSmoothing, 2.0f, 60.0f, "%.0f");
+        ImGui::TextUnformatted("Skeleton overlay: enable the ANIMATION debug category.");
     }
 
     if (capsuleChanged)

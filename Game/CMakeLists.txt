@@ -6,6 +6,8 @@ set(PRED_GAME_SOURCES
     Player/PlayerConfig.cpp
     Player/PlayerController.h
     Player/PlayerController.cpp
+    Player/PlayerBody.h
+    Player/PlayerBody.cpp
 
     World/TestMap.h
     World/TestMap.cpp

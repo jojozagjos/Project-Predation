@@ -1,6 +1,35 @@
 # Animation
 
-**Status**: design. Player animation starts in Milestone 4; creature procedural animation in Milestone 11.
+**Status**: the foundation is built. `Engine/Animation` has the skeleton, pose and IK solvers, and
+`Game/Player/PlayerBody` drives a fully procedural first-person body with them. Authored clips,
+stride warping, weapon poses and creature gaits are still design, marked **(planned)** below.
+
+## What exists
+
+- **Skeleton**: a flat bone array with parent indices, kept in parent-before-child order so global
+  transforms resolve in a single forward pass with no recursion.
+- **Pose**: local transforms plus evaluated globals. `SetGlobal` writes a world transform and
+  rebuilds that bone's descendants, which is what IK needs since it produces global positions.
+- **Two-bone IK**: analytic, not iterative, so it is exact and free of jitter. A pole vector decides
+  which way the joint bends, and the reach is clamped with a span-relative margin. Degenerate input
+  (zero-length bones, a pole parallel to the chain, a target on the root) is handled rather than
+  producing NaNs or aborting.
+- **Player body**: a 19-bone humanoid built from anthropometric ratios, drawn as 31 parts. Parts are
+  either limb segments stretched between two joints or fixed equipment attached at a joint. Gear
+  uses the body's facing rather than the bone's, because IK-solved limb bones carry an arbitrary
+  roll about their own axis.
+- **Procedural locomotion**: stride phase driven by distance travelled rather than time, so the legs
+  stay in step as speed changes. Feet swing along the direction of travel, lift on the forward half
+  of the cycle, and trace downward for real ground so they land on stairs and slopes. Hip sway and
+  bob, speed-scaled forward lean, and opposed arm swing.
+
+The camera stays authoritative: the body is positioned to agree with the view, never the reverse.
+Driving a first-person camera from an animated head is what produces motion sickness.
+
+**Known limitation.** With no art assets the body is box geometry, so looking straight down reads as
+blocks rather than a person. The framing is deliberately conservative: the torso is flatter than it
+is wide and the body sits slightly behind the eyes, because a square torso on the camera's own axis
+hides the legs entirely. This wants a real mesh, not more tuning.
 
 ## Principle
 

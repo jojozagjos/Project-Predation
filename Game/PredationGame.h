@@ -3,6 +3,7 @@
 #include "Engine/Application.h"
 #include "Engine/Render/Camera.h"
 #include "Engine/Scene/Scene.h"
+#include "Game/Player/PlayerBody.h"
 #include "Game/Player/PlayerController.h"
 
 #include <glm/vec3.hpp>
@@ -48,6 +49,7 @@ private:
     Scene m_scene;
 
     PlayerController m_player;
+    PlayerBody m_body;
     glm::vec3 m_spawnPoint{0.0f, 0.5f, 18.0f};
 
     FlyCamera m_camera;
@@ -60,6 +62,9 @@ private:
     bool m_wantMouseCaptured = true;
     bool m_mouseCaptured = false;
     bool m_windowFocused = true;
+    // The first motion event after relative mode is enabled can carry the whole distance from
+    // wherever the cursor was, which would snap the view. Swallow one frame of delta.
+    bool m_discardNextMouseDelta = false;
 
     // Look angles are sampled every frame, outside the fixed tick, so aiming is never limited by
     // the simulation rate.
