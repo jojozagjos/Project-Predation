@@ -213,6 +213,83 @@ TEST_CASE("Crouching shrinks the player and slows them down", "[player]")
     REQUIRE(harness.State().stance == PlayerStance::Standing);
 }
 
+// Prone is shorter than the standing capsule is wide, which makes the capsule geometry degenerate
+// unless the radius is narrowed to suit. Getting that wrong made Jolt assert, and the assert
+// handler terminated the process: pressing the prone key closed the game.
+TEST_CASE("Going prone produces a valid shape and does not abort", "[player][prone]")
+{
+    PlayerHarness harness;
+    harness.Spawn();
+    harness.Settle();
+
+    REQUIRE(harness.config.proneHeight < 2.0f * harness.config.radius); // the case that used to crash
+
+    PlayerInput prone;
+    prone.proneHeld = true;
+    harness.Simulate(prone, 30);
+
+    REQUIRE(harness.State().stance == PlayerStance::Prone);
+    REQUIRE_FALSE(harness.State().stanceBlocked);
+
+    // Still simulating normally afterwards, rather than wedged or fallen through the floor.
+    REQUIRE(harness.State().grounded);
+    REQUIRE(harness.State().position.y == Catch::Approx(0.0f).margin(0.1));
+
+    PlayerInput proneForward = prone;
+    proneForward.move = {0.0f, 1.0f};
+    harness.Simulate(proneForward, 90);
+    REQUIRE(harness.State().HorizontalSpeed() == Catch::Approx(harness.config.proneSpeed).epsilon(0.15));
+
+    // And back up again in the open.
+    harness.Simulate(PlayerInput{}, 40);
+    REQUIRE(harness.State().stance == PlayerStance::Standing);
+}
+
+TEST_CASE("Character shapes stay valid at awkward dimensions", "[player][physics]")
+{
+    // Every one of these has a height at or below twice the radius, so a naive capsule would have a
+    // zero or negative cylinder section.
+    const float heights[] = {0.60f, 0.50f, 0.40f, 0.30f, 0.10f, 0.02f};
+
+    for (const float height : heights)
+    {
+        PlayerHarness harness;
+        harness.config.proneHeight = height;
+        harness.Spawn();
+        harness.Settle(10);
+
+        PlayerInput prone;
+        prone.proneHeld = true;
+        harness.Simulate(prone, 20);
+
+        INFO("prone height " << height);
+        REQUIRE(harness.State().stance == PlayerStance::Prone);
+        REQUIRE(harness.State().position.y == Catch::Approx(0.0f).margin(0.2));
+    }
+}
+
+TEST_CASE("Prone is lower and slower than crouching", "[player][prone]")
+{
+    PlayerHarness harness;
+    harness.Spawn();
+    harness.Settle();
+
+    PlayerInput crouch;
+    crouch.crouchHeld = true;
+    crouch.move = {0.0f, 1.0f};
+    harness.Simulate(crouch, 90);
+    const float crouchSpeed = harness.State().HorizontalSpeed();
+
+    PlayerInput prone;
+    prone.proneHeld = true;
+    prone.move = {0.0f, 1.0f};
+    harness.Simulate(prone, 90);
+    const float proneSpeed = harness.State().HorizontalSpeed();
+
+    REQUIRE(proneSpeed < crouchSpeed);
+    REQUIRE(harness.config.proneHeight < harness.config.crouchHeight);
+}
+
 TEST_CASE("Player cannot stand up under a low ceiling", "[player]")
 {
     PlayerHarness harness;

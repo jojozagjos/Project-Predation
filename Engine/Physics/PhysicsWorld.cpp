@@ -1,5 +1,6 @@
 #include "Engine/Physics/PhysicsWorld.h"
 
+#include "Engine/Core/CVar.h"
 #include "Engine/Core/Log.h"
 #include "Engine/Physics/PhysicsLayers.h"
 #include "Engine/Render/DebugDraw.h"
@@ -170,12 +171,18 @@ void JoltTrace(const char* format, ...)
     PRED_LOG_DEBUG(Physics, "jolt: {}", buffer);
 }
 
+CVar<bool> cv_breakOnPhysicsAssert{"physics.break_on_assert", false,
+                                   "Break into the debugger when Jolt reports a failed assertion"};
+
 #ifdef JPH_ENABLE_ASSERTS
 bool JoltAssertFailed(const char* expression, const char* message, const char* file, JPH::uint line)
 {
     PRED_LOG_ERROR(Physics, "jolt assert: {}:{}: ({}) {}", file != nullptr ? file : "?", line, expression,
                    message != nullptr ? message : "");
-    return true; // break into the debugger
+    // Returning true triggers a breakpoint, which with no debugger attached terminates the process.
+    // A failed physics assertion is a bug worth shouting about, but it must never be able to close
+    // the game from a keypress, so the default is to log loudly and carry on.
+    return cv_breakOnPhysicsAssert.Get();
 }
 #endif
 

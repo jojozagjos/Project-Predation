@@ -46,15 +46,38 @@ glm::vec3 FromJoltR(JPH::RVec3Arg v)
 // reason about in those terms.
 JPH::RefConst<JPH::Shape> MakeStandingShape(float height, float radius)
 {
-    const float clampedRadius = std::max(0.01f, radius);
-    // A capsule's cylindrical section cannot be negative, so very short shapes become spheres.
-    const float halfCylinder = std::max(0.0f, height * 0.5f - clampedRadius);
+    // A capsule is a cylinder capped by two hemispheres, so its total height can never be less than
+    // twice its radius. Prone is shorter than a standing radius is wide, so the radius is what has
+    // to give; keeping a sliver of cylinder leaves a valid shape instead of a degenerate one.
+    constexpr float kMinCylinderHalfHeight = 0.01f;
+    const float safeHeight = std::max(height, 4.0f * kMinCylinderHalfHeight);
+    const float maxRadius = safeHeight * 0.5f - kMinCylinderHalfHeight;
+    const float clampedRadius = std::clamp(radius, 0.01f, maxRadius);
+    const float halfCylinder = safeHeight * 0.5f - clampedRadius;
 
-    const JPH::RefConst<JPH::Shape> capsule = new JPH::CapsuleShape(halfCylinder, clampedRadius);
-    const JPH::ShapeSettings::ShapeResult result =
-        JPH::RotatedTranslatedShapeSettings(JPH::Vec3(0.0f, height * 0.5f, 0.0f), JPH::Quat::sIdentity(),
-                                            capsule)
-            .Create();
+    if (clampedRadius < radius - 1e-4f)
+    {
+        PRED_LOG_DEBUG(Physics, "Character radius narrowed from {:.3f} to {:.3f} to fit a {:.3f} m shape",
+                       radius, clampedRadius, safeHeight);
+    }
+
+    // Built through settings rather than constructed directly: the settings path reports invalid
+    // dimensions as an error we can handle, where the direct constructor asserts.
+    JPH::CapsuleShapeSettings capsuleSettings(halfCylinder, clampedRadius);
+    capsuleSettings.SetEmbedded();
+    const JPH::ShapeSettings::ShapeResult capsuleResult = capsuleSettings.Create();
+    if (capsuleResult.HasError())
+    {
+        PRED_LOG_ERROR(Physics, "Character capsule creation failed ({:.3f} half-cylinder, {:.3f} radius): {}",
+                       halfCylinder, clampedRadius, capsuleResult.GetError().c_str());
+        return {};
+    }
+
+    // Offset so the shape's base sits at the origin, making the character's position its feet.
+    JPH::RotatedTranslatedShapeSettings offsetSettings(JPH::Vec3(0.0f, safeHeight * 0.5f, 0.0f),
+                                                       JPH::Quat::sIdentity(), capsuleResult.Get());
+    offsetSettings.SetEmbedded();
+    const JPH::ShapeSettings::ShapeResult result = offsetSettings.Create();
     if (result.HasError())
     {
         PRED_LOG_ERROR(Physics, "Character shape creation failed: {}", result.GetError().c_str());
