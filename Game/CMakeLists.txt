@@ -9,8 +9,19 @@ set(PRED_GAME_SOURCES
     Player/PlayerBody.h
     Player/PlayerBody.cpp
 
+    Interaction/Interactable.h
+    Interaction/InteractionSystem.h
+    Interaction/InteractionSystem.cpp
+
+    Items/ItemDatabase.h
+    Items/ItemDatabase.cpp
+    Items/Inventory.h
+    Items/Inventory.cpp
+
     World/TestMap.h
     World/TestMap.cpp
+    World/WorldObjects.h
+    World/WorldObjects.cpp
 )
 
 # Gameplay lives in a library rather than directly in the executable so the tests can link it.

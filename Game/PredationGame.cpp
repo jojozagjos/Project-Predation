@@ -67,6 +67,10 @@ bool PredationGame::OnInit(Application& app)
 
     m_body.Build(m_scene, app.GetMeshes(), m_player.Config());
 
+    m_items.LoadFromFile(Paths::AssetsRoot() / "Data" / "items.json");
+    m_world.Build(m_scene, app.GetMeshes(), app.GetPhysics(), m_interactions, m_items);
+    app.GetPhysics().OptimizeBroadPhase();
+
     // Editing player.json on disk applies immediately, without a rebuild or a restart.
     app.GetFileWatcher().Watch(PlayerConfigPath(),
                                [this](const std::filesystem::path&) { ReloadPlayerConfig(); });
@@ -395,9 +399,135 @@ PlayerInput PredationGame::BuildPlayerInput()
     return result;
 }
 
+void PredationGame::TryInteract()
+{
+    const InteractionSystem::Focus& focus = m_interactions.CurrentFocus();
+    if (m_hidingSpot >= 0)
+    {
+        LeaveHidingSpot();
+        return;
+    }
+    if (!focus.valid)
+    {
+        return;
+    }
+
+    switch (focus.kind)
+    {
+    case InteractionKind::Door:
+        m_world.ToggleDoor(focus.payload, m_interactions);
+        break;
+
+    case InteractionKind::Pickup:
+    {
+        WorldObjects::Pickup* pickup = m_world.GetPickup(focus.payload);
+        if (pickup == nullptr)
+        {
+            break;
+        }
+        const int stored = m_inventory.Add(m_items, pickup->item, pickup->count);
+        if (stored <= 0)
+        {
+            m_app->GetConsole().Print("Inventory full");
+            break;
+        }
+        if (stored >= pickup->count)
+        {
+            m_world.ConsumePickup(focus.payload, m_scene, m_app->GetPhysics(), m_interactions);
+        }
+        else
+        {
+            // Partial pickup: leave the remainder on the floor rather than silently eating it.
+            pickup->count -= stored;
+            if (Interactable* interactable = m_interactions.Find(pickup->entity))
+            {
+                const ItemDefinition* definition = m_items.Get(pickup->item);
+                interactable->name = definition != nullptr
+                                         ? definition->name + " x" + std::to_string(pickup->count)
+                                         : "Item";
+            }
+        }
+        break;
+    }
+
+    case InteractionKind::HidingSpot:
+        EnterHidingSpot(focus.payload);
+        break;
+
+    case InteractionKind::Generic:
+    default:
+        break;
+    }
+}
+
+void PredationGame::DropSelected()
+{
+    if (m_hidingSpot >= 0)
+    {
+        return;
+    }
+    const Inventory::Slot slot = m_inventory.Selected();
+    if (slot.IsEmpty())
+    {
+        return;
+    }
+
+    const int removed = m_inventory.RemoveFromSlot(m_inventory.SelectedSlot(), 1);
+    if (removed <= 0)
+    {
+        return;
+    }
+
+    const PlayerView& view = m_player.View();
+    const glm::vec3 origin = view.eyePosition + view.Forward() * 0.6f;
+    m_world.SpawnPickup(m_scene, m_app->GetMeshes(), m_app->GetPhysics(), m_interactions, m_items,
+                        slot.item, removed, origin, view.Forward() * 2.5f);
+}
+
+void PredationGame::EnterHidingSpot(int index)
+{
+    WorldObjects::HidingSpot* spot = m_world.GetHidingSpot(index);
+    if (spot == nullptr || spot->occupied)
+    {
+        return;
+    }
+
+    spot->occupied = true;
+    m_hidingSpot = index;
+    m_player.Teleport(spot->insidePosition);
+    m_lookYaw = spot->insideYaw;
+    // The door swings shut behind the player, which is most of what makes hiding feel like hiding.
+    m_world.SetDoorOpen(spot->doorIndex, false, m_interactions);
+    m_interactions.SetVerb(spot->entity, "Leave");
+    m_app->GetConsole().Print("Hidden. Press interact to leave.");
+}
+
+void PredationGame::LeaveHidingSpot()
+{
+    WorldObjects::HidingSpot* spot = m_world.GetHidingSpot(m_hidingSpot);
+    m_hidingSpot = -1;
+    if (spot == nullptr)
+    {
+        return;
+    }
+    spot->occupied = false;
+    m_world.SetDoorOpen(spot->doorIndex, true, m_interactions);
+    m_interactions.SetVerb(spot->entity, "Hide in");
+    m_player.Teleport(spot->exitPosition);
+}
+
 void PredationGame::OnFixedUpdate(double fixedDt)
 {
+    m_world.Update(m_scene, m_app->GetPhysics(), m_interactions, static_cast<float>(fixedDt));
+
     PlayerInput input = BuildPlayerInput();
+    if (m_hidingSpot >= 0)
+    {
+        // Hidden: the player can still look around, but not walk out of the locker.
+        input.move = glm::vec2(0.0f);
+        input.jump = false;
+        input.lean = 0.0f;
+    }
     if (m_cameraMode == CameraMode::Fly)
     {
         // The free camera is an inspection tool, not a different game mode. The player keeps
@@ -444,7 +574,26 @@ void PredationGame::OnUpdate(double dt, double alpha)
         {
             m_sprintToggleState = !m_sprintToggleState;
         }
-        if (input.WasActionPressed("toggle_fly"))
+        if (input.WasActionPressed("interact"))
+        {
+            TryInteract();
+        }
+        if (input.WasActionPressed("drop"))
+        {
+            DropSelected();
+        }
+        for (int slot = 0; slot < 6; ++slot)
+        {
+            if (input.WasActionPressed("slot_" + std::to_string(slot + 1)))
+            {
+                m_inventory.SelectSlot(slot);
+            }
+        }
+        if (const float wheel = input.WheelDelta(); std::abs(wheel) > 0.1f)
+        {
+            m_inventory.SelectNext(wheel > 0.0f ? -1 : 1);
+        }
+        if (input.WasActionPressed("toggle_camera"))
         {
             // Cycles first person, third person, fly. Third person exists so the body animation can
             // actually be watched, which is impossible from inside the head.
@@ -542,6 +691,18 @@ void PredationGame::OnUpdate(double dt, double alpha)
     environment.fogEnd = cv_fogEnd.Get();
     environment.sunIntensity = cv_sunIntensity.Get();
     renderer.SetClearColor(0x11131aff);
+
+    // What the player can reach, decided by where they are looking rather than by proximity.
+    if (m_hidingSpot >= 0)
+    {
+        m_interactions.ClearFocus();
+    }
+    else
+    {
+        const PlayerView& playerView = m_player.View();
+        m_interactions.UpdateFocus(m_scene, app.GetPhysics(), playerView.eyePosition,
+                                   playerView.Forward());
+    }
 
     SyncDynamicProps();
     app.GetSceneRenderer().SetWireframe(cv_wireframe.Get());
@@ -781,8 +942,90 @@ void PredationGame::DrawPlayerPanel()
     }
 }
 
+void PredationGame::DrawHud()
+{
+    const ImGuiViewport* viewport = ImGui::GetMainViewport();
+    const ImVec2 centre{viewport->Pos.x + viewport->Size.x * 0.5f,
+                        viewport->Pos.y + viewport->Size.y * 0.5f};
+    constexpr ImGuiWindowFlags kHudFlags = ImGuiWindowFlags_NoDecoration |
+                                           ImGuiWindowFlags_AlwaysAutoResize |
+                                           ImGuiWindowFlags_NoSavedSettings |
+                                           ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav |
+                                           ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoBackground;
+
+    // Reticle.
+    ImDrawList* draw = ImGui::GetBackgroundDrawList();
+    const ImU32 reticleColor = IM_COL32(230, 230, 235, 150);
+    draw->AddLine({centre.x - 6.0f, centre.y}, {centre.x - 2.0f, centre.y}, reticleColor, 1.5f);
+    draw->AddLine({centre.x + 2.0f, centre.y}, {centre.x + 6.0f, centre.y}, reticleColor, 1.5f);
+    draw->AddLine({centre.x, centre.y - 6.0f}, {centre.x, centre.y - 2.0f}, reticleColor, 1.5f);
+    draw->AddLine({centre.x, centre.y + 2.0f}, {centre.x, centre.y + 6.0f}, reticleColor, 1.5f);
+
+    // Interaction prompt, just below the reticle.
+    const InteractionSystem::Focus& focus = m_interactions.CurrentFocus();
+    const std::string prompt = m_hidingSpot >= 0 ? std::string("Leave Locker") : focus.prompt;
+    if (!prompt.empty())
+    {
+        const std::string line = "[F]  " + prompt;
+        ImGui::SetNextWindowPos({centre.x, centre.y + 42.0f}, ImGuiCond_Always, {0.5f, 0.0f});
+        if (ImGui::Begin("##Prompt", nullptr, kHudFlags))
+        {
+            ImGui::TextUnformatted(line.c_str());
+        }
+        ImGui::End();
+    }
+
+    // Inventory bar.
+    ImGui::SetNextWindowPos({centre.x, viewport->Pos.y + viewport->Size.y - 18.0f}, ImGuiCond_Always,
+                            {0.5f, 1.0f});
+    ImGui::SetNextWindowBgAlpha(0.35f);
+    if (ImGui::Begin("##Inventory", nullptr, kHudFlags & ~ImGuiWindowFlags_NoBackground))
+    {
+        for (int i = 0; i < m_inventory.SlotCount(); ++i)
+        {
+            const Inventory::Slot& slot = m_inventory.At(i);
+            const bool selected = i == m_inventory.SelectedSlot();
+
+            std::string label = std::to_string(i + 1) + ". ";
+            if (slot.IsEmpty())
+            {
+                label += "-";
+            }
+            else
+            {
+                const ItemDefinition* definition = m_items.Get(slot.item);
+                label += definition != nullptr ? definition->name : "?";
+                if (slot.count > 1)
+                {
+                    label += " x" + std::to_string(slot.count);
+                }
+            }
+
+            if (i > 0)
+            {
+                ImGui::SameLine(0.0f, 18.0f);
+            }
+            if (selected)
+            {
+                ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.45f, 1.0f), "%s", label.c_str());
+            }
+            else
+            {
+                ImGui::TextColored(ImVec4(0.75f, 0.76f, 0.80f, 0.85f), "%s", label.c_str());
+            }
+        }
+    }
+    ImGui::End();
+}
+
 void PredationGame::OnImGui()
 {
+    // The HUD is part of the game, not the debug overlay, so it is always drawn.
+    if (m_cameraMode != CameraMode::Fly)
+    {
+        DrawHud();
+    }
+
     if (!m_app->IsOverlayVisible())
     {
         return;

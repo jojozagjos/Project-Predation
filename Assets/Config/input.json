@@ -14,10 +14,19 @@
     "lean_left": [ "Q" ],
     "lean_right": [ "E" ],
 
+    "interact": [ "F" ],
+    "drop": [ "G" ],
+    "slot_1": [ "1" ],
+    "slot_2": [ "2" ],
+    "slot_3": [ "3" ],
+    "slot_4": [ "4" ],
+    "slot_5": [ "5" ],
+    "slot_6": [ "6" ],
+
     "move_up": [ "Space" ],
     "move_down": [ "Left Ctrl" ],
     "look": [ "Mouse2" ],
-    "toggle_fly": [ "F" ],
+    "toggle_camera": [ "P" ],
     "respawn": [ "R" ],
 
     "quit_capture": [ "Escape" ],

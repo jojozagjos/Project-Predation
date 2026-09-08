@@ -575,6 +575,16 @@ void PhysicsWorld::SetTransform(BodyHandle body, const Transform& transform)
                                             JPH::EActivation::Activate);
 }
 
+void PhysicsWorld::MoveKinematic(BodyHandle body, const Transform& target, float deltaSeconds)
+{
+    if (!IsValid(body) || deltaSeconds <= 0.0f)
+    {
+        return;
+    }
+    m_impl->Bodies().MoveKinematic(JPH::BodyID(body.id), ToJoltR(target.position),
+                                   ToJolt(target.rotation), deltaSeconds);
+}
+
 glm::vec3 PhysicsWorld::GetLinearVelocity(BodyHandle body) const
 {
     if (!IsValid(body))

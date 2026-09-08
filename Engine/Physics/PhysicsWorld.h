@@ -108,6 +108,9 @@ public:
     bool IsValid(BodyHandle body) const;
     Transform GetTransform(BodyHandle body) const;
     void SetTransform(BodyHandle body, const Transform& transform);
+    // Drives a kinematic body towards a transform over one step, giving it a real velocity so it
+    // pushes what it meets instead of teleporting through it. This is how doors should move.
+    void MoveKinematic(BodyHandle body, const Transform& target, float deltaSeconds);
     glm::vec3 GetLinearVelocity(BodyHandle body) const;
     void SetLinearVelocity(BodyHandle body, const glm::vec3& velocity);
     void AddImpulse(BodyHandle body, const glm::vec3& impulse);

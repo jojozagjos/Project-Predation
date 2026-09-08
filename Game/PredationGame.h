@@ -3,8 +3,12 @@
 #include "Engine/Application.h"
 #include "Engine/Render/Camera.h"
 #include "Engine/Scene/Scene.h"
+#include "Game/Interaction/InteractionSystem.h"
+#include "Game/Items/Inventory.h"
+#include "Game/Items/ItemDatabase.h"
 #include "Game/Player/PlayerBody.h"
 #include "Game/Player/PlayerController.h"
+#include "Game/World/WorldObjects.h"
 
 #include <glm/vec3.hpp>
 
@@ -41,6 +45,11 @@ private:
 
     void SampleLook(float dt);
     PlayerInput BuildPlayerInput();
+    void TryInteract();
+    void DropSelected();
+    void EnterHidingSpot(int index);
+    void LeaveHidingSpot();
+    void DrawHud();
     void UpdateMouseCapture();
     void ReloadPlayerConfig();
     void DrawPlayerPanel();
@@ -51,6 +60,13 @@ private:
     PlayerController m_player;
     PlayerBody m_body;
     glm::vec3 m_spawnPoint{0.0f, 0.5f, 18.0f};
+
+    ItemDatabase m_items;
+    Inventory m_inventory;
+    InteractionSystem m_interactions;
+    WorldObjects m_world;
+    // -1 when not hidden. While hidden the player holds still inside the locker.
+    int m_hidingSpot = -1;
 
     // First person for play, third person for watching the body animate, fly to inspect the level.
     enum class CameraMode : uint8_t
