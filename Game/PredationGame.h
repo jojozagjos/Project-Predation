@@ -73,6 +73,9 @@ private:
 
     // Latched between frames so a press that happens between two ticks is never dropped.
     bool m_jumpLatch = false;
+    // Debug stance override, so stances can be inspected without holding a key.
+    bool m_forceCrouch = false;
+    bool m_forceProne = false;
     bool m_crouchToggleState = false;
     bool m_proneToggleState = false;
     bool m_sprintToggleState = false;

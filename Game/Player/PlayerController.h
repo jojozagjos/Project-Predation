@@ -17,6 +17,10 @@ class DebugDraw;
 struct PlayerView
 {
     glm::vec3 eyePosition{0.0f};
+    // Feet, interpolated between the two most recent simulation states. Anything drawn as part of
+    // the player must be placed from this rather than from PlayerState::position, or it will step
+    // at the simulation rate while the camera moves at the frame rate, and visibly stutter.
+    glm::vec3 renderPosition{0.0f};
     float yaw = 0.0f;
     float pitch = 0.0f;
 

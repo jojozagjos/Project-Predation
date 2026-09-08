@@ -73,6 +73,7 @@ bool PlayerController::Init(PhysicsWorld& physics, const PlayerConfig& config, c
     m_prevPosition = spawnPosition;
     m_view = PlayerView{};
     m_view.eyeHeight = config.standEyeHeight;
+    m_view.renderPosition = spawnPosition;
     m_view.eyePosition = spawnPosition + glm::vec3(0.0f, config.standEyeHeight, 0.0f);
     m_initialized = true;
 
@@ -334,6 +335,7 @@ void PlayerController::UpdateView(float dt, float alpha)
     // Render between the two most recent simulation states, so a 144 Hz display does not show the
     // 60 Hz simulation stepping.
     const glm::vec3 renderPosition = glm::mix(m_prevPosition, m_state.position, std::clamp(alpha, 0.0f, 1.0f));
+    m_view.renderPosition = renderPosition;
 
     m_view.eyeHeight = SmoothTowards(m_view.eyeHeight, m_config.EyeHeightForStance(m_state.stance),
                                      m_config.eyeTransitionSpeed, dt);

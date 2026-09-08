@@ -43,6 +43,21 @@ constexpr float kLowerArm = 0.146f;
 constexpr float kHand = 0.090f;
 } // namespace Ratio
 
+// Wraps an angle into (-pi, pi]. Without this, turning past the wrap point makes the body spin the
+// long way round.
+float WrapAngle(float radians)
+{
+    while (radians > glm::pi<float>())
+    {
+        radians -= glm::two_pi<float>();
+    }
+    while (radians <= -glm::pi<float>())
+    {
+        radians += glm::two_pi<float>();
+    }
+    return radians;
+}
+
 Transform LocalOffset(float x, float y, float z)
 {
     Transform transform;
@@ -61,15 +76,12 @@ glm::mat4 SegmentMatrix(const glm::vec3& a, const glm::vec3& b)
     return glm::translate(glm::mat4(1.0f), a) * glm::mat4_cast(rotation);
 }
 
-// ACRD field kit: near-black tactical clothing over dark load-bearing gear, with only the visor
-// catching any light. Values are deliberately low; against the bright test map the operator should
-// read as a silhouette.
-const Material kSuitMaterial = Material::Diffuse({0.055f, 0.056f, 0.062f}, 0.93f);
-const Material kGearMaterial = Material::Diffuse({0.032f, 0.033f, 0.038f}, 0.86f);
-const Material kPadMaterial = Material::Diffuse({0.046f, 0.047f, 0.051f}, 0.80f);
-const Material kGloveMaterial = Material::Diffuse({0.028f, 0.028f, 0.032f}, 0.72f);
-const Material kHelmetMaterial = Material::Diffuse({0.041f, 0.042f, 0.047f}, 0.55f);
-const Material kVisorMaterial = Material::Metal({0.10f, 0.11f, 0.13f}, 0.20f);
+// Neutral grey work kit. Light enough to read against dark interiors and to show the shading that
+// sells the shape, which matters more than colour while the body is still placeholder geometry.
+const Material kSuitMaterial = Material::Diffuse({0.215f, 0.230f, 0.265f}, 0.88f);
+const Material kGearMaterial = Material::Diffuse({0.170f, 0.180f, 0.210f}, 0.84f);
+const Material kGloveMaterial = Material::Diffuse({0.115f, 0.120f, 0.140f}, 0.72f);
+const Material kHelmetMaterial = Material::Diffuse({0.190f, 0.200f, 0.230f}, 0.62f);
 
 } // namespace
 
@@ -164,54 +176,31 @@ void PlayerBody::BuildParts(Scene& scene, MeshLibrary& meshes)
         specs.push_back({name, bone, kInvalidBone, size, offset, frame, &material, hidden});
     };
 
-    // --- Torso. A real torso is much wider than it is deep; modelling it as a square column pushes
-    // the chest far enough forward to hide the legs from the wearer's own eyes.
+    // A deliberately plain figure: enough parts to read as a person, few enough to keep the
+    // silhouette clean. The detailed load-out belongs on a real mesh, not on stacked boxes.
+    //
+    // A real torso is much wider than it is deep. Modelling it as a square column pushes the chest
+    // far enough forward to hide the legs from the wearer's own eyes.
     limb("hips", m_rig.pelvis, m_rig.spine, 0.150f * h, 0.108f * h, kSuitMaterial);
-    limb("abdomen", m_rig.spine, m_rig.chest, 0.158f * h, 0.110f * h, kSuitMaterial);
-    limb("upper_chest", m_rig.chest, m_rig.neck, 0.088f * h, 0.086f * h, kSuitMaterial);
-    limb("neck", m_rig.neck, m_rig.head, 0.052f * h, 0.052f * h, kSuitMaterial, true);
+    limb("abdomen", m_rig.spine, m_rig.chest, 0.160f * h, 0.112f * h, kSuitMaterial);
+    limb("chest", m_rig.chest, m_rig.neck, 0.170f * h, 0.118f * h, kGearMaterial);
+    limb("neck", m_rig.neck, m_rig.head, 0.050f * h, 0.050f * h, kSuitMaterial, true);
 
-    gear("plate_carrier", m_rig.chest, {0.186f * h, 0.200f * h, 0.140f * h}, {0.0f, -0.075f * h, 0.0f},
-         kGearMaterial);
-    gear("backpack", m_rig.chest, {0.150f * h, 0.190f * h, 0.080f * h}, {0.0f, -0.070f * h, 0.104f * h},
-         kGearMaterial);
-    gear("belt", m_rig.pelvis, {0.162f * h, 0.038f * h, 0.118f * h}, {0.0f, 0.012f * h, 0.0f},
-         kGearMaterial);
-
-    // Chest rig pouches, mirrored either side of the sternum.
-    for (int side = 0; side < 2; ++side)
-    {
-        const float sign = side == kLeft ? -1.0f : 1.0f;
-        gear(side == kLeft ? "pouch_left" : "pouch_right", m_rig.chest,
-             {0.056f * h, 0.062f * h, 0.042f * h},
-             {sign * 0.048f * h, -0.100f * h, -0.086f * h}, kGearMaterial);
-    }
-
-    // --- Head. All of it is suppressed in first person, because the camera sits inside it.
-    gear("helmet", m_rig.head, {0.118f * h, 0.104f * h, 0.128f * h}, {0.0f, 0.020f * h, 0.006f * h},
+    // A human head is about 0.13 of standing height tall and noticeably narrower than it is tall.
+    // Sized from the crown down, so the top of the head lands at full standing height.
+    gear("head", m_rig.head, {0.098f * h, 0.132f * h, 0.118f * h}, {0.0f, 0.063f * h, 0.004f * h},
          kHelmetMaterial, PartFrame::BoneFrame, true);
-    gear("visor", m_rig.head, {0.100f * h, 0.042f * h, 0.030f * h}, {0.0f, 0.008f * h, -0.062f * h},
-         kVisorMaterial, PartFrame::BoneFrame, true);
-    gear("respirator", m_rig.head, {0.074f * h, 0.052f * h, 0.044f * h},
-         {0.0f, -0.034f * h, -0.056f * h}, kGearMaterial, PartFrame::BoneFrame, true);
 
     // --- Arms.
     for (int side = 0; side < 2; ++side)
     {
-        const float sign = side == kLeft ? -1.0f : 1.0f;
-        const char* pad = side == kLeft ? "shoulder_pad_left" : "shoulder_pad_right";
         const char* upper = side == kLeft ? "upper_arm_left" : "upper_arm_right";
-        const char* elbow = side == kLeft ? "elbow_pad_left" : "elbow_pad_right";
         const char* fore = side == kLeft ? "forearm_left" : "forearm_right";
-        const char* glove = side == kLeft ? "glove_left" : "glove_right";
+        const char* glove = side == kLeft ? "hand_left" : "hand_right";
 
-        gear(pad, m_rig.shoulder[side], {0.080f * h, 0.064f * h, 0.078f * h},
-             {sign * 0.006f * h, -0.008f * h, 0.0f}, kGearMaterial);
-        limb(upper, m_rig.shoulder[side], m_rig.lowerArm[side], 0.058f * h, 0.058f * h, kSuitMaterial);
-        gear(elbow, m_rig.lowerArm[side], {0.056f * h, 0.052f * h, 0.056f * h}, glm::vec3(0.0f),
-             kPadMaterial);
+        limb(upper, m_rig.shoulder[side], m_rig.lowerArm[side], 0.060f * h, 0.060f * h, kSuitMaterial);
         limb(fore, m_rig.lowerArm[side], m_rig.hand[side], 0.050f * h, 0.050f * h, kSuitMaterial);
-        gear(glove, m_rig.hand[side], {0.050f * h, 0.086f * h, 0.046f * h}, {0.0f, -0.030f * h, 0.0f},
+        gear(glove, m_rig.hand[side], {0.050f * h, 0.082f * h, 0.046f * h}, {0.0f, -0.028f * h, 0.0f},
              kGloveMaterial);
     }
 
@@ -219,21 +208,14 @@ void PlayerBody::BuildParts(Scene& scene, MeshLibrary& meshes)
     for (int side = 0; side < 2; ++side)
     {
         const char* thigh = side == kLeft ? "thigh_left" : "thigh_right";
-        const char* knee = side == kLeft ? "knee_pad_left" : "knee_pad_right";
         const char* shin = side == kLeft ? "shin_left" : "shin_right";
         const char* boot = side == kLeft ? "boot_left" : "boot_right";
 
-        limb(thigh, m_rig.upperLeg[side], m_rig.lowerLeg[side], 0.084f * h, 0.084f * h, kSuitMaterial);
-        gear(knee, m_rig.lowerLeg[side], {0.078f * h, 0.072f * h, 0.048f * h},
-             {0.0f, 0.010f * h, -0.032f * h}, kPadMaterial);
+        limb(thigh, m_rig.upperLeg[side], m_rig.lowerLeg[side], 0.086f * h, 0.086f * h, kSuitMaterial);
         limb(shin, m_rig.lowerLeg[side], m_rig.foot[side], 0.068f * h, 0.068f * h, kSuitMaterial);
         gear(boot, m_rig.foot[side], {0.074f * h, m_rig.ankleHeight * 1.35f, 0.160f * h},
-             {0.0f, 0.004f * h, -0.024f * h}, kGloveMaterial);
+             {0.0f, 0.004f * h, -0.026f * h}, kGloveMaterial);
     }
-
-    // Sidearm on the right thigh, as in the reference kit.
-    gear("holster", m_rig.upperLeg[kRight], {0.048f * h, 0.115f * h, 0.055f * h},
-         {0.052f * h, -0.115f * h, 0.010f * h}, kGearMaterial);
 
     for (const PartSpec& spec : specs)
     {
@@ -302,20 +284,68 @@ void PlayerBody::SetVisible(Scene& scene, bool visible)
 void PlayerBody::UpdatePosture(const PlayerState& state, const PlayerView& view,
                                const PlayerConfig& playerConfig, float dt)
 {
-    // The body stands under the camera. Placing the root from the simulation rather than from the
-    // smoothed view would make the body slide against the camera on stairs.
-    const float stanceHeight = playerConfig.HeightForStance(state.stance);
-    const float stanceScale = stanceHeight / std::max(playerConfig.standHeight, 0.01f);
+    // --- Hips versus aim -------------------------------------------------------------------------
+    // Locking the whole body to the camera means nothing ever rotates relative to the view, so the
+    // body reads as welded to it. Instead the hips follow where the player is actually travelling
+    // and the torso twists back towards where they are looking.
+    const glm::vec3 flat{state.velocity.x, 0.0f, state.velocity.z};
+    const float planarSpeed = glm::length(flat);
+    const bool moving = planarSpeed > 0.35f && state.grounded;
 
-    // Yaw follows the camera. Turn-in-place and a decoupled upper body come with the animation
-    // milestone; for now the whole body faces where the player looks.
-    m_bodyYaw = view.yaw;
+    float hipTarget = m_bodyYaw;
+    float turnSpeed = m_config.hipTurnSpeedIdle;
+    if (moving)
+    {
+        // atan2 inverted to match the engine's convention that yaw 0 faces -Z.
+        hipTarget = std::atan2(flat.x, -flat.z);
+        turnSpeed = m_config.hipTurnSpeedMoving;
+    }
+    else
+    {
+        // Standing still, the hips hold their ground until the twist gets uncomfortable, then swing
+        // round to catch up. That is the turn-in-place you see in a real person.
+        const float twist = WrapAngle(view.yaw - m_bodyYaw);
+        if (std::abs(twist) > glm::radians(m_config.maxTorsoTwistDegrees))
+        {
+            const float sign = twist > 0.0f ? 1.0f : -1.0f;
+            hipTarget = view.yaw - sign * glm::radians(m_config.turnInPlaceDegrees);
+        }
+    }
+    m_bodyYaw = m_bodyYaw + WrapAngle(hipTarget - m_bodyYaw) * (1.0f - std::exp(-turnSpeed * dt));
+    m_bodyYaw = WrapAngle(m_bodyYaw);
 
-    // Push the body back along the facing so the camera sits at the eyes rather than on the body's
-    // own centre line.
+    // Whatever the hips did not cover, the spine makes up, so the chest stays aimed down the view.
+    const float torsoTwist =
+        std::clamp(WrapAngle(view.yaw - m_bodyYaw), -glm::radians(m_config.maxTorsoTwistDegrees * 1.4f),
+                   glm::radians(m_config.maxTorsoTwistDegrees * 1.4f));
+
+    // Stance changes the hip height and the torso angle. Limb lengths stay fixed, so the knees bend
+    // to reach the ground, which is what actually happens when a person crouches. Scaling the legs
+    // instead made crouch and prone look like the whole body had shrunk.
+    float targetPelvisRatio = m_config.standPelvisRatio;
+    float targetPitch = m_config.standPitchDegrees;
+    switch (state.stance)
+    {
+    case PlayerStance::Crouching:
+        targetPelvisRatio = m_config.crouchPelvisRatio;
+        targetPitch = m_config.crouchPitchDegrees;
+        break;
+    case PlayerStance::Prone:
+        targetPelvisRatio = m_config.pronePelvisRatio;
+        targetPitch = m_config.pronePitchDegrees;
+        break;
+    case PlayerStance::Standing:
+    default:
+        break;
+    }
+    m_pelvisRatio = SmoothTowards(m_pelvisRatio, targetPelvisRatio, m_config.stanceBlendSpeed, dt);
+    m_stancePitch = SmoothTowards(m_stancePitch, glm::radians(targetPitch), m_config.stanceBlendSpeed, dt);
+
+    // Placed from the interpolated render position, not from the simulation state. The camera uses
+    // the interpolated one, so using the raw state here made the body step at the tick rate while
+    // the view moved at the frame rate, which reads as the body stuttering underneath you.
     const glm::vec3 facing{std::sin(m_bodyYaw), 0.0f, -std::cos(m_bodyYaw)};
-    m_rootPosition = state.position +
-                     glm::vec3(0.0f, Ratio::kPelvisHeight * m_rig.height * stanceScale, 0.0f) -
+    m_rootPosition = view.renderPosition + glm::vec3(0.0f, m_pelvisRatio * m_rig.height, 0.0f) -
                      facing * m_config.eyeForwardOffset;
 
     const float speed = state.HorizontalSpeed();
@@ -342,12 +372,20 @@ void PlayerBody::UpdatePosture(const PlayerState& state, const PlayerView& view,
 
     Transform& pelvis = m_pose.Local(m_rig.pelvis);
     pelvis.position = glm::vec3(sway, bob, 0.0f);
-    pelvis.rotation = glm::angleAxis(glm::radians(sway * 60.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+    // Stance pitch tips the whole body forward, which is what turns a standing rig into a crouched
+    // or prone one without needing a second skeleton.
+    pelvis.rotation = glm::angleAxis(m_stancePitch, glm::vec3(1.0f, 0.0f, 0.0f)) *
+                      glm::angleAxis(glm::radians(sway * 60.0f), glm::vec3(0.0f, 0.0f, 1.0f));
 
-    // Lean forward from the spine, and counter-rotate the chest slightly so the torso does not fold.
+    // Lean forward from the spine, counter-rotate the chest slightly so the torso does not fold, and
+    // spread the twist between the two so it does not all happen at one joint.
+    // The twist is negated for the same reason the root rotation is: a model facing -Z turns the
+    // opposite way to the yaw convention.
     m_pose.Local(m_rig.spine).rotation =
+        glm::angleAxis(-torsoTwist * 0.45f, glm::vec3(0.0f, 1.0f, 0.0f)) *
         glm::angleAxis(glm::radians(m_lean * 0.6f), glm::vec3(1.0f, 0.0f, 0.0f));
     m_pose.Local(m_rig.chest).rotation =
+        glm::angleAxis(-torsoTwist * 0.55f, glm::vec3(0.0f, 1.0f, 0.0f)) *
         glm::angleAxis(glm::radians(-m_lean * 0.2f), glm::vec3(1.0f, 0.0f, 0.0f));
 
     // The head carries the camera's pitch, minus what the spine already contributed.
@@ -371,21 +409,35 @@ void PlayerBody::UpdatePosture(const PlayerState& state, const PlayerView& view,
             glm::angleAxis(glm::radians(12.0f) + std::abs(swing) * 0.5f, glm::vec3(1.0f, 0.0f, 0.0f));
     }
 
-    const glm::mat4 root = glm::translate(glm::mat4(1.0f), m_rootPosition) *
-                           glm::mat4_cast(glm::angleAxis(m_bodyYaw, glm::vec3(0.0f, 1.0f, 0.0f)));
+    const glm::mat4 root =
+        glm::translate(glm::mat4(1.0f), m_rootPosition) * glm::mat4_cast(BodyRotation());
     m_pose.ComputeGlobals(m_skeleton, root);
 }
 
-void PlayerBody::UpdateLegs(const PlayerState& state, const PlayerConfig& playerConfig,
-                            PhysicsWorld& physics, float dt)
+glm::quat PlayerBody::BodyRotation() const
 {
+    // Yaw zero looks down -Z, and yaw increases turning right. Rotating a model's local -Z by +yaw
+    // about +Y sends it the other way, so the sign is negated here. Getting this wrong mirrors the
+    // body: it turns left when the camera turns right.
+    return glm::angleAxis(-m_bodyYaw, glm::vec3(0.0f, 1.0f, 0.0f));
+}
+
+void PlayerBody::UpdateLegs(const PlayerState& state, const PlayerView& view,
+                            const PlayerConfig& playerConfig, PhysicsWorld& physics, float dt)
+{
+    (void)playerConfig;
     const glm::vec3 flatVelocity{state.velocity.x, 0.0f, state.velocity.z};
     const float speed = glm::length(flatVelocity);
     const glm::vec3 moveDirection = speed > 0.05f ? flatVelocity / speed : glm::vec3(0.0f);
 
     const float phase = m_stridePhase * glm::two_pi<float>();
-    const float stanceScale =
-        playerConfig.HeightForStance(state.stance) / std::max(playerConfig.standHeight, 0.01f);
+    const glm::vec3 facing{std::sin(m_bodyYaw), 0.0f, -std::cos(m_bodyYaw)};
+    const glm::quat bodyRotation = BodyRotation();
+
+    // The more the torso is pitched forward, the further behind the hips the feet belong. At full
+    // prone the legs trail almost straight back.
+    const float legSpan = m_rig.upperLegLength + m_rig.lowerLegLength;
+    const glm::vec3 stanceFootOffset = -facing * (std::sin(m_stancePitch) * legSpan * 0.85f);
 
     for (int side = 0; side < 2; ++side)
     {
@@ -397,8 +449,8 @@ void PlayerBody::UpdateLegs(const PlayerState& state, const PlayerConfig& player
         const float reach = std::cos(footPhase) * m_config.strideLength * 0.5f * m_gaitWeight;
         const float lift = std::max(0.0f, std::sin(footPhase)) * m_config.stepHeight * m_gaitWeight;
 
-        glm::vec3 target = hip + moveDirection * reach;
-        target.y = state.position.y + m_rig.ankleHeight + lift;
+        glm::vec3 target = hip + moveDirection * reach + stanceFootOffset;
+        target.y = view.renderPosition.y + m_rig.ankleHeight + lift;
 
         // Trace for the real ground under the foot so it lands on stairs and slopes instead of
         // hovering at the character's own base height.
@@ -406,7 +458,7 @@ void PlayerBody::UpdateLegs(const PlayerState& state, const PlayerConfig& player
         const RayHit hit = physics.RayCast(traceStart, glm::vec3(0.0f, -1.0f, 0.0f), 1.4f);
         if (hit)
         {
-            target.y = std::max(hit.position.y + m_rig.ankleHeight, hit.position.y) + lift;
+            target.y = hit.position.y + m_rig.ankleHeight + lift;
         }
 
         FootState& foot = m_feet[static_cast<size_t>(side)];
@@ -414,11 +466,10 @@ void PlayerBody::UpdateLegs(const PlayerState& state, const PlayerConfig& player
         foot.position = SmoothTowards(foot.position, target, m_config.footPlantSmoothing, dt);
         foot.planted = lift < 0.01f;
 
-        // Knees bend forwards, so the pole points along the body's facing.
-        const glm::vec3 forward{std::sin(m_bodyYaw), 0.0f, -std::cos(m_bodyYaw)};
-        const TwoBoneIKResult ik =
-            SolveTwoBoneIK(hip, foot.position, forward, m_rig.upperLegLength * stanceScale,
-                           m_rig.lowerLegLength * stanceScale);
+        // Knees bend forwards, so the pole points along the body's facing. Limb lengths are constant
+        // in every stance; the knee bend is what absorbs a lowered hip.
+        const TwoBoneIKResult ik = SolveTwoBoneIK(hip, foot.position, facing, m_rig.upperLegLength,
+                                                  m_rig.lowerLegLength);
 
         // Write the solved chain straight into the pose's globals. Parent before child, because
         // setting a bone rebuilds everything after it from local transforms.
@@ -426,14 +477,13 @@ void PlayerBody::UpdateLegs(const PlayerState& state, const PlayerConfig& player
         m_pose.SetGlobal(m_skeleton, m_rig.lowerLeg[side],
                          SegmentMatrix(ik.jointPosition, ik.endPosition));
         m_pose.SetGlobal(m_skeleton, m_rig.foot[side],
-                         glm::translate(glm::mat4(1.0f), ik.endPosition) *
-                             glm::mat4_cast(glm::angleAxis(m_bodyYaw, glm::vec3(0.0f, 1.0f, 0.0f))));
+                         glm::translate(glm::mat4(1.0f), ik.endPosition) * glm::mat4_cast(bodyRotation));
     }
 }
 
 void PlayerBody::PushToScene(Scene& scene)
 {
-    const glm::quat bodyRotation = glm::angleAxis(m_bodyYaw, glm::vec3(0.0f, 1.0f, 0.0f));
+    const glm::quat bodyRotation = BodyRotation();
 
     for (const Part& part : m_parts)
     {
@@ -490,7 +540,7 @@ void PlayerBody::Update(Scene& scene, const PlayerState& state, const PlayerView
         return;
     }
     UpdatePosture(state, view, playerConfig, dt);
-    UpdateLegs(state, playerConfig, physics, dt);
+    UpdateLegs(state, view, playerConfig, physics, dt);
     PushToScene(scene);
 }
 

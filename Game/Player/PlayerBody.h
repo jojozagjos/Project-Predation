@@ -4,6 +4,7 @@
 #include "Engine/Scene/Scene.h"
 #include "Game/Player/PlayerTypes.h"
 
+#include <glm/gtc/quaternion.hpp>
 #include <glm/vec3.hpp>
 
 #include <array>
@@ -71,6 +72,25 @@ public:
         float armSwingDegrees = 22.0f;
         float armRestDegrees = 8.0f;
 
+        // Where the hips sit for each stance, as a fraction of standing height, and how far the
+        // torso pitches forward. Limb lengths never change: crouching lowers the hips and lets the
+        // knees bend, which is what actually happens and what the IK solver is for.
+        float standPelvisRatio = 0.530f;
+        float crouchPelvisRatio = 0.345f;
+        float pronePelvisRatio = 0.170f;
+        float standPitchDegrees = 0.0f;
+        float crouchPitchDegrees = 14.0f;
+        float pronePitchDegrees = 78.0f;
+        float stanceBlendSpeed = 10.0f;
+
+        // Hips follow the direction of travel; the torso twists back to stay aimed where the player
+        // is looking. Locking the whole body to the camera makes it look welded to the view, because
+        // nothing ever rotates relative to it.
+        float hipTurnSpeedMoving = 9.0f;
+        float hipTurnSpeedIdle = 6.0f;
+        float maxTorsoTwistDegrees = 55.0f; // past this, the hips turn to catch up
+        float turnInPlaceDegrees = 42.0f;   // how far a turn-in-place swings the hips
+
         // Presentation
         float responsiveness = 14.0f; // smoothing rate for posture changes
         // Eyes sit in front of the neck, not on top of it. Without this the body stands on the
@@ -135,8 +155,8 @@ private:
     void BuildParts(Scene& scene, MeshLibrary& meshes);
     void UpdatePosture(const PlayerState& state, const PlayerView& view, const PlayerConfig& playerConfig,
                        float dt);
-    void UpdateLegs(const PlayerState& state, const PlayerConfig& playerConfig, PhysicsWorld& physics,
-                    float dt);
+    void UpdateLegs(const PlayerState& state, const PlayerView& view, const PlayerConfig& playerConfig,
+                    PhysicsWorld& physics, float dt);
     void PushToScene(Scene& scene);
 
     Skeleton m_skeleton;
@@ -146,9 +166,13 @@ private:
     std::vector<Part> m_parts;
     std::array<FootState, 2> m_feet;
 
+    glm::quat BodyRotation() const;
+
     glm::vec3 m_rootPosition{0.0f};
     float m_bodyYaw = 0.0f;
     float m_lean = 0.0f;
+    float m_pelvisRatio = 0.530f;   // smoothed towards the current stance
+    float m_stancePitch = 0.0f;     // radians, smoothed
     float m_stridePhase = 0.0f;
     float m_gaitWeight = 0.0f;
     bool m_built = false;

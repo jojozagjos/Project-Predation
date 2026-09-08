@@ -123,6 +123,22 @@ void PredationGame::RegisterCommands()
                                 m_app->GetConsole().Print(m_flyMode ? "Fly camera on" : "Player camera on");
                             });
 
+    console.RegisterCommand(
+        "stance", "Hold a stance for inspection: stance <stand|crouch|prone|auto>",
+        [this](const std::vector<std::string>& args)
+        {
+            const std::string which = args.size() > 1 ? args[1] : "auto";
+            m_forceCrouch = which == "crouch";
+            m_forceProne = which == "prone";
+            if (which != "stand" && which != "crouch" && which != "prone" && which != "auto")
+            {
+                m_app->GetConsole().PrintError("usage: stance <stand|crouch|prone|auto>");
+                return;
+            }
+            m_app->GetConsole().Print("Stance override: " + which);
+        },
+        "stance <stand|crouch|prone|auto>");
+
     console.RegisterCommand("player_reload", "Reload player.json from disk",
                             [this](const std::vector<std::string>&) { ReloadPlayerConfig(); });
 
@@ -329,15 +345,28 @@ PlayerInput PredationGame::BuildPlayerInput()
     result.crouchHeld = cv_crouchToggle.Get() ? m_crouchToggleState : input.IsActionDown("crouch");
     result.proneHeld = cv_crouchToggle.Get() ? m_proneToggleState : input.IsActionDown("prone");
     result.walk = input.IsActionDown("walk");
+
+    // Debug override from the `stance` console command.
+    result.crouchHeld = result.crouchHeld || m_forceCrouch;
+    result.proneHeld = result.proneHeld || m_forceProne;
     return result;
 }
 
 void PredationGame::OnFixedUpdate(double fixedDt)
 {
-    if (!m_flyMode)
+    PlayerInput input = BuildPlayerInput();
+    if (m_flyMode)
     {
-        m_player.Step(BuildPlayerInput(), static_cast<float>(fixedDt));
+        // The free camera is an inspection tool, not a different game mode. The player keeps
+        // simulating underneath it, standing still and holding its own facing, so the body stays
+        // alive and stances can be examined from outside. Skipping the step entirely froze the
+        // player and made every stance look identical.
+        input.move = glm::vec2(0.0f);
+        input.jump = false;
+        input.yaw = m_player.State().yaw;
+        input.pitch = m_player.State().pitch;
     }
+    m_player.Step(input, static_cast<float>(fixedDt));
 }
 
 void PredationGame::OnUpdate(double dt, double alpha)
@@ -390,6 +419,11 @@ void PredationGame::OnUpdate(double dt, double alpha)
     UpdateMouseCapture();
 
     // --- Camera -----------------------------------------------------------------------------------
+    // Always update the player's view, even while flying. It is presentation-only, and the body is
+    // placed from its interpolated position, so skipping it would leave the body behind at the
+    // origin whenever the free camera is active.
+    m_player.UpdateView(deltaSeconds, static_cast<float>(alpha));
+
     glm::mat4 view;
     glm::vec3 viewPosition;
     if (m_flyMode)
@@ -403,7 +437,6 @@ void PredationGame::OnUpdate(double dt, double alpha)
     }
     else
     {
-        m_player.UpdateView(deltaSeconds, static_cast<float>(alpha));
         view = m_player.View().ViewMatrix();
         viewPosition = m_player.View().eyePosition;
     }
