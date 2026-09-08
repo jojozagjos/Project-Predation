@@ -29,7 +29,12 @@ Scripts\build.cmd                    configure + build   (windows-debug)
 Scripts\build.cmd windows-release    other presets: windows-relwithdebinfo, windows-release
 Scripts\test.cmd                     run unit tests through CTest
 Scripts\run.cmd                      launch the game
+Scripts\smoke.cmd                    headless 60-frame run: screenshot + log check
 ```
+
+`smoke.cmd` is the fastest way to answer "is it still fundamentally working?" without looking at a window.
+It runs the game headless for 60 frames, requires a real screenshot to come out the other side, and fails if
+anything logged an error. Run it before every commit.
 
 The first configure builds every dependency through vcpkg (SDL3, bgfx, ImGui, spdlog, Catch2, ...).
 Expect 15 to 30 minutes on a laptop. Later configures reuse the vcpkg binary cache.
@@ -53,24 +58,33 @@ Recommended extensions are listed in `.vscode/extensions.json` (CMake Tools, C/C
 
 CMake Tools sets up the MSVC environment itself, so no developer prompt is needed inside VS Code.
 
-## 4. Build directory and OneDrive
+## 4. Where the repository should live
 
-By default the build lands in `build/<preset>`. If the repository lives inside a OneDrive folder, keep build
-output out of the synced tree by creating a `CMakeUserPresets.json` (git-ignored) next to `CMakePresets.json`.
-User presets must use new names; they cannot override a name that `CMakePresets.json` already defines:
+Keep the working copy on a **local, non-synced path**. The reference checkout is `C:\Dev\Project-Predation`.
+
+Do not put it inside OneDrive, Dropbox, or a similar synced folder. A C++ build writes tens of thousands of
+intermediate files; a sync client will try to upload every one of them, slow the build to a crawl, and
+occasionally hold a file open at the moment the compiler wants to replace it, producing failures that look
+like random compiler bugs.
+
+The build lands in `build/<preset>` inside the repository, which `.gitignore` excludes.
+
+If you ever do need the build output somewhere else, add a git-ignored `CMakeUserPresets.json` next to
+`CMakePresets.json`. User presets must use **new** names; they cannot redefine one that `CMakePresets.json`
+already declares:
 
 ```json
 {
   "version": 6,
   "configurePresets": [
-    { "name": "local-debug", "inherits": "windows-debug", "binaryDir": "C:/Dev/build/Project-Predation/${presetName}" }
+    { "name": "local-debug", "inherits": "windows-debug", "binaryDir": "D:/build/Project-Predation/${presetName}" }
   ],
   "buildPresets": [ { "name": "local-debug", "configurePreset": "local-debug" } ],
   "testPresets": [ { "name": "local-debug", "configurePreset": "local-debug", "output": { "outputOnFailure": true } } ]
 }
 ```
 
-Then build with `Scripts\build.cmd local-debug` and run with `set PRED_BUILD_DIR=C:\Dev\build\Project-Predation\local-debug` before `Scripts\run.cmd`.
+Then build with `Scripts\build.cmd local-debug`, and set `PRED_BUILD_DIR` before `Scripts\run.cmd`.
 
 ## 5. Triplets and linking
 
@@ -115,4 +129,9 @@ build\windows-debug\bin\ProjectPredation.exe --frames 30 --screenshot build\shot
   target, and make sure the executable can find `GeneratedAssets` (the path is baked in at configure time).
 - **SDL_CreateWindow failed**: run with `--backend dx11` and check the log; on remote desktop sessions the
   D3D11 backend is the most reliable.
-- **Very slow builds**: the repository or build directory is inside OneDrive. See section 4.
+- **Very slow builds**: the repository or build directory is inside a synced folder. See section 4.
+- **`'vswhere.exe' is not recognized`**: harmless. Microsoft's own `vcvarsall.bat` prints it. `vsenv.cmd`
+  silences it.
+- **vcpkg using the wrong copy of itself**: `vcvarsall.bat` overwrites `VCPKG_ROOT` with the vcpkg bundled
+  inside Visual Studio. `vsenv.cmd` saves and restores the value so your `C:\Dev\vcpkg` wins. If you set up
+  the environment by hand, re-set `VCPKG_ROOT` *after* calling `vcvarsall.bat`.

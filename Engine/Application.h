@@ -88,7 +88,7 @@ public:
 
 private:
     bool InitSubsystems(const CommandLine& commandLine);
-    void ShutdownSubsystems(Game& game);
+    void ShutdownSubsystems();
     void PumpEvents(Game& game);
     bool HandleHotkey(const SDL_Event& event);
     void RegisterCoreCommands();

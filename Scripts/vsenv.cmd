@@ -24,5 +24,15 @@ if not defined VSPATH (
     exit /b 1
 )
 
-call "%VSPATH%\VC\Auxiliary\Build\vcvarsall.bat" x64 >nul
-exit /b %errorlevel%
+rem vcvarsall overwrites VCPKG_ROOT with the copy bundled in Visual Studio and prints a harmless
+rem "'vswhere.exe' is not recognized" line on stderr. Keep our vcpkg and silence the noise.
+set "PRED_SAVED_VCPKG_ROOT=%VCPKG_ROOT%"
+call "%VSPATH%\VC\Auxiliary\Build\vcvarsall.bat" x64 >nul 2>&1
+set "PRED_VCVARS_RC=%errorlevel%"
+set "VCPKG_ROOT=%PRED_SAVED_VCPKG_ROOT%"
+set "PRED_SAVED_VCPKG_ROOT="
+if not "%PRED_VCVARS_RC%"=="0" (
+    echo [vsenv] vcvarsall.bat failed with exit code %PRED_VCVARS_RC%
+    exit /b %PRED_VCVARS_RC%
+)
+exit /b 0

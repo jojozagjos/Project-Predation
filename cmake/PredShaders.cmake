@@ -52,10 +52,11 @@ function(pred_compile_shaders)
         message(FATAL_ERROR "bgfx_shader.sh not found. Searched: ${_include_hints}")
     endif()
 
-    # profile-directory ; shaderc --platform ; shaderc --profile
-    set(_profiles
-        "dx11;windows;s_5_0"
-        "spirv;linux;spirv")
+    # Three parallel lists, indexed together below. They are kept separate because a CMake list of
+    # semicolon-joined strings flattens into one long list rather than a list of triples.
+    set(_profile_dirs      dx11    spirv)   # output subdirectory, matches Renderer::ShaderProfileDir()
+    set(_profile_platforms windows linux)   # shaderc --platform
+    set(_profile_names     s_5_0   spirv)   # shaderc --profile
 
     file(GLOB_RECURSE _sources CONFIGURE_DEPENDS "${ARG_SHADER_ROOT}/*.sc")
     set(_outputs)
@@ -75,10 +76,12 @@ function(pred_compile_shaders)
         if(NOT EXISTS "${_varying}")
             message(FATAL_ERROR "Shader ${_src} has no varying.def.sc next to it")
         endif()
-        foreach(_profile_entry IN LISTS _profiles)
-            list(GET _profile_entry 0 _profile_dir)
-            list(GET _profile_entry 1 _platform)
-            list(GET _profile_entry 2 _profile)
+        list(LENGTH _profile_dirs _profile_count)
+        math(EXPR _profile_last "${_profile_count} - 1")
+        foreach(_i RANGE ${_profile_last})
+            list(GET _profile_dirs ${_i} _profile_dir)
+            list(GET _profile_platforms ${_i} _platform)
+            list(GET _profile_names ${_i} _profile)
             set(_out_dir "${ARG_OUTPUT_DIR}/Shaders/${_profile_dir}")
             set(_out "${_out_dir}/${_name}.bin")
             add_custom_command(

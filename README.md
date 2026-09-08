@@ -45,6 +45,7 @@ grave (`) for the console. Type `help` in the console.
 
 - [Docs/DESIGN_PLAN.md](Docs/DESIGN_PLAN.md): the approved plan, tech stack, roadmap
 - [Docs/BUILDING.md](Docs/BUILDING.md): toolchain setup and build instructions
+- [Docs/CPP_PRIMER.md](Docs/CPP_PRIMER.md): C++ and build-system orientation for this codebase
 - [Docs/ARCHITECTURE.md](Docs/ARCHITECTURE.md): engine and game architecture
 - [Docs/DEBUGGING.md](Docs/DEBUGGING.md): overlay, console, cvars, screenshots, logs
 - [Docs/DECISIONS.md](Docs/DECISIONS.md): architecture decision records

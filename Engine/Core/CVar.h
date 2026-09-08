@@ -73,6 +73,13 @@ public:
 protected:
     void NotifyChanged();
 
+    // Applies a value that arrived from config before this cvar existed.
+    //
+    // This MUST be called from the most-derived constructor's body, never from CVarBase's own
+    // constructor: during base-class construction the object's dynamic type is still CVarBase, so a
+    // virtual call would dispatch to the pure virtual SetFromString and abort the process.
+    void ApplyPendingValue();
+
 private:
     std::string m_name;
     std::string m_description;
@@ -125,6 +132,8 @@ public:
         : CVarBase(name, description, flags, detail::CVarTypeOf<T>()), m_value(defaultValue),
           m_default(std::move(defaultValue))
     {
+        // Safe here: this object is fully constructed, so the virtual call resolves correctly.
+        ApplyPendingValue();
     }
 
     const T& Get() const { return m_value; }
@@ -179,6 +188,9 @@ public:
 
     CVarBase* Find(std::string_view name) const;
     SetResult Set(std::string_view name, std::string_view value, bool allowReadOnly = false);
+
+    // Removes and returns a value stored for a cvar that had not registered yet.
+    bool TakePending(const std::string& name, std::string& outValue);
 
     std::vector<CVarBase*> All() const; // sorted by name
     size_t PendingCount() const;

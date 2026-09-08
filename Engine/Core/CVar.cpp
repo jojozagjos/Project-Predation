@@ -52,6 +52,15 @@ void CVarBase::NotifyChanged()
     }
 }
 
+void CVarBase::ApplyPendingValue()
+{
+    std::string pending;
+    if (CVarRegistry::Instance().TakePending(m_name, pending))
+    {
+        SetFromString(pending);
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Parsing / formatting
 // ---------------------------------------------------------------------------
@@ -181,24 +190,23 @@ CVarRegistry& CVarRegistry::Instance()
 
 void CVarRegistry::Register(CVarBase& var)
 {
-    std::string pendingValue;
-    bool hasPending = false;
+    // Only records the pointer. Any pending value is applied by the most-derived constructor via
+    // CVarBase::ApplyPendingValue(), because a virtual call is not usable during base construction.
+    std::lock_guard lock(m_mutex);
+    m_vars[var.Name()] = &var;
+}
+
+bool CVarRegistry::TakePending(const std::string& name, std::string& outValue)
+{
+    std::lock_guard lock(m_mutex);
+    const auto it = m_pending.find(name);
+    if (it == m_pending.end())
     {
-        std::lock_guard lock(m_mutex);
-        m_vars[var.Name()] = &var;
-        const auto it = m_pending.find(var.Name());
-        if (it != m_pending.end())
-        {
-            pendingValue = it->second;
-            hasPending = true;
-            m_pending.erase(it);
-        }
+        return false;
     }
-    if (hasPending)
-    {
-        // Applied outside the lock: change callbacks may query the registry.
-        var.SetFromString(pendingValue);
-    }
+    outValue = it->second;
+    m_pending.erase(it);
+    return true;
 }
 
 void CVarRegistry::Unregister(CVarBase& var)
