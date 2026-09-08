@@ -2,6 +2,9 @@ set(PRED_GAME_SOURCES
     Main.cpp
     PredationGame.h
     PredationGame.cpp
+
+    World/TestMap.h
+    World/TestMap.cpp
 )
 
 add_executable(ProjectPredation ${PRED_GAME_SOURCES})

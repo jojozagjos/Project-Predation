@@ -21,6 +21,11 @@ set(PRED_ENGINE_SOURCES
     Core/Paths.cpp
     Core/SystemInfo.h
     Core/SystemInfo.cpp
+    Core/Math.h
+
+    Scene/Entity.h
+    Scene/Scene.h
+    Scene/Scene.cpp
 
     Platform/Window.h
     Platform/Window.cpp
@@ -35,6 +40,13 @@ set(PRED_ENGINE_SOURCES
     Render/DebugDraw.cpp
     Render/Camera.h
     Render/Camera.cpp
+    Render/Material.h
+    Render/Mesh.h
+    Render/Mesh.cpp
+    Render/Primitives.h
+    Render/Primitives.cpp
+    Render/SceneRenderer.h
+    Render/SceneRenderer.cpp
     Render/StbImpl.cpp
 
     Debug/ImGuiLayer.h

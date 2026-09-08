@@ -22,6 +22,8 @@ public:
         bool droppedFixedTime = false;
         size_t entityCount = 0;
         size_t debugLineCount = 0;
+        size_t meshesDrawn = 0;
+        size_t trianglesDrawn = 0;
     };
 
     void Draw(const Info& info);

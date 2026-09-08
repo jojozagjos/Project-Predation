@@ -42,7 +42,8 @@ public:
     void Line(const glm::vec3& a, const glm::vec3& b, uint32_t color);
     void Box(const glm::vec3& min, const glm::vec3& max, uint32_t color);
     void Axes(const glm::mat4& transform, float size = 1.0f);
-    void Grid(float halfExtent, float step, uint32_t minorColor = Color::kDarkGrey,
+    // `height` lifts the grid off y = 0 so it does not z-fight with a floor at the same level.
+    void Grid(float halfExtent, float step, float height = 0.0f, uint32_t minorColor = Color::kDarkGrey,
               uint32_t majorColor = Color::kGrey, int majorEvery = 5);
     void Sphere(const glm::vec3& center, float radius, uint32_t color, int segments = 16);
 

@@ -71,7 +71,8 @@ void DebugOverlay::Draw(const Info& info)
     ImGui::Text("Memory working set %.1f MB   private %.1f MB",
                 static_cast<double>(memory.workingSetBytes) / (1024.0 * 1024.0),
                 static_cast<double>(memory.privateBytes) / (1024.0 * 1024.0));
-    ImGui::Text("Entities %zu   debug lines %zu", info.entityCount, info.debugLineCount);
+    ImGui::Text("Entities %zu   meshes %zu   triangles %zu   debug lines %zu", info.entityCount,
+                info.meshesDrawn, info.trianglesDrawn, info.debugLineCount);
 
     ImGui::Separator();
     ImGui::TextUnformatted("Debug categories");

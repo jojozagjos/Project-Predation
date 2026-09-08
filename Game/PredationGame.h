@@ -2,12 +2,13 @@
 
 #include "Engine/Application.h"
 #include "Engine/Render/Camera.h"
+#include "Engine/Scene/Scene.h"
 
 namespace pred
 {
 
-// Milestone 1 game: a fly camera over a debug-drawn reference scene.
-// Real gameplay systems arrive in later milestones.
+// Milestone 2 game: a lit scene built from procedural geometry, viewed with the developer fly
+// camera. The player controller replaces the fly camera in Milestone 3.
 class PredationGame final : public Game
 {
 public:
@@ -18,7 +19,11 @@ public:
     void OnImGui() override;
 
 private:
+    void RegisterCommands();
+    void DrawDebugOverlays();
+
     Application* m_app = nullptr;
+    Scene m_scene;
     FlyCamera m_camera;
     bool m_looking = false;
     double m_time = 0.0;

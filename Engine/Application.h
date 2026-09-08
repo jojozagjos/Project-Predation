@@ -8,7 +8,9 @@
 #include "Engine/Platform/Input.h"
 #include "Engine/Platform/Window.h"
 #include "Engine/Render/DebugDraw.h"
+#include "Engine/Render/Mesh.h"
 #include "Engine/Render/Renderer.h"
+#include "Engine/Render/SceneRenderer.h"
 #include "Engine/Render/ShaderLibrary.h"
 
 #include <cstdint>
@@ -74,6 +76,11 @@ public:
     DebugDraw& GetDebugDraw() { return m_debugDraw; }
     Console& GetConsole() { return m_console; }
     FileWatcher& GetFileWatcher() { return m_fileWatcher; }
+    MeshLibrary& GetMeshes() { return m_meshes; }
+    SceneRenderer& GetSceneRenderer() { return m_sceneRenderer; }
+
+    // Reported by the game each frame so the F3 overlay can show world statistics.
+    void SetEntityCount(size_t count) { m_entityCount = count; }
 
     double FixedStepSeconds() const { return m_fixedStep.Step(); }
     double TimeSeconds() const { return m_clock.ElapsedSeconds(); }
@@ -98,6 +105,8 @@ private:
     Input m_input;
     Renderer m_renderer;
     ShaderLibrary m_shaders;
+    MeshLibrary m_meshes;
+    SceneRenderer m_sceneRenderer;
     DebugDraw m_debugDraw;
     ImGuiLayer m_imgui;
     Console m_console;
@@ -110,6 +119,7 @@ private:
     std::filesystem::path m_userSettingsFile;
 
     uint64_t m_frameIndex = 0;
+    size_t m_entityCount = 0;
     int m_fixedStepsLastFrame = 0;
     bool m_quitRequested = false;
     bool m_subsystemsInitialized = false;

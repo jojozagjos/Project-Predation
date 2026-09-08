@@ -269,8 +269,10 @@ int Application::Run(Game& game, int argc, char** argv)
                 info.fixedStepsLastFrame = m_fixedStepsLastFrame;
                 info.fixedStepHz = 1.0 / m_fixedStep.Step();
                 info.droppedFixedTime = m_fixedStep.DroppedTimeLastFrame();
-                info.entityCount = 0;
+                info.entityCount = m_entityCount;
                 info.debugLineCount = debugLines;
+                info.meshesDrawn = m_sceneRenderer.LastStats().meshesSubmitted;
+                info.trianglesDrawn = m_sceneRenderer.LastStats().trianglesSubmitted;
                 m_overlay.Draw(info);
             }
             int windowWidth = 0;
@@ -382,6 +384,10 @@ bool Application::InitSubsystems(const CommandLine& commandLine)
     {
         return false;
     }
+    if (!m_sceneRenderer.Init(m_shaders))
+    {
+        return false;
+    }
     if (!m_imgui.Init(m_window, m_renderer, m_shaders))
     {
         return false;
@@ -413,6 +419,9 @@ void Application::ShutdownSubsystems()
     m_console.Shutdown();
     m_imgui.Shutdown();
     m_debugDraw.Shutdown();
+    m_sceneRenderer.Shutdown();
+    // GPU buffers must go before the shader library and the device itself.
+    m_meshes.Shutdown();
     m_shaders.Shutdown();
     m_renderer.Shutdown();
     m_window.Destroy();

@@ -66,7 +66,8 @@ void DebugDraw::Axes(const glm::mat4& transform, float size)
     Line(origin, origin + z, Color::kBlue);
 }
 
-void DebugDraw::Grid(float halfExtent, float step, uint32_t minorColor, uint32_t majorColor, int majorEvery)
+void DebugDraw::Grid(float halfExtent, float step, float height, uint32_t minorColor, uint32_t majorColor,
+                     int majorEvery)
 {
     if (step <= 0.0f)
     {
@@ -77,8 +78,8 @@ void DebugDraw::Grid(float halfExtent, float step, uint32_t minorColor, uint32_t
     {
         const float offset = static_cast<float>(i) * step;
         const uint32_t color = (majorEvery > 0 && i % majorEvery == 0) ? majorColor : minorColor;
-        Line({offset, 0.0f, -halfExtent}, {offset, 0.0f, halfExtent}, color);
-        Line({-halfExtent, 0.0f, offset}, {halfExtent, 0.0f, offset}, color);
+        Line({offset, height, -halfExtent}, {offset, height, halfExtent}, color);
+        Line({-halfExtent, height, offset}, {halfExtent, height, offset}, color);
     }
 }
 
