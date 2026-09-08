@@ -259,6 +259,17 @@ void PlayerBody::Build(Scene& scene, MeshLibrary& meshes, const PlayerConfig& pl
                   m_parts.size());
 }
 
+void PlayerBody::BuildForSimulation(const PlayerConfig& playerConfig)
+{
+    BuildSkeleton(playerConfig);
+    m_parts.clear();
+    for (FootState& foot : m_feet)
+    {
+        foot = FootState{};
+    }
+    m_built = true;
+}
+
 void PlayerBody::Destroy(Scene& scene)
 {
     for (const Part& part : m_parts)
@@ -369,34 +380,41 @@ void PlayerBody::UpdatePosture(const PlayerState& state, const PlayerView& view,
     pelvis.position = glm::vec3(sway, bob, 0.0f);
     // Pelvis pitch lays the body down for prone. It stays upright for crouching, where the fold
     // belongs at the hip and knee instead.
-    pelvis.rotation = glm::angleAxis(pelvisPitch, glm::vec3(1.0f, 0.0f, 0.0f)) *
+    //
+    // Note the sign. Rotating by a positive angle about +X tips the body's up axis towards +Z,
+    // which is *backwards* here, because forward is -Z. Every forward pitch below is therefore
+    // negative. Getting this wrong arches the body backwards: it is what made crouch look like a
+    // limbo and prone like a backbend.
+    pelvis.rotation = glm::angleAxis(-pelvisPitch, glm::vec3(1.0f, 0.0f, 0.0f)) *
                       glm::angleAxis(glm::radians(sway * 60.0f), glm::vec3(0.0f, 0.0f, 1.0f));
 
     // Lean forward from the spine, counter-rotate the chest slightly so the torso does not fold, and
     // spread the twist between the two so it does not all happen at one joint.
     // The twist is negated for the same reason the root rotation is: a model facing -Z turns the
     // opposite way to the yaw convention.
+    const float runLean = glm::radians(m_lean);
     m_pose.Local(m_rig.spine).rotation =
         glm::angleAxis(-torsoTwist * 0.45f, glm::vec3(0.0f, 1.0f, 0.0f)) *
-        glm::angleAxis(spineLean * 0.65f + glm::radians(m_lean * 0.6f), glm::vec3(1.0f, 0.0f, 0.0f));
+        glm::angleAxis(-(spineLean * 0.65f + runLean * 0.6f), glm::vec3(1.0f, 0.0f, 0.0f));
     m_pose.Local(m_rig.chest).rotation =
         glm::angleAxis(-torsoTwist * 0.55f, glm::vec3(0.0f, 1.0f, 0.0f)) *
-        glm::angleAxis(spineLean * 0.35f - glm::radians(m_lean * 0.2f), glm::vec3(1.0f, 0.0f, 0.0f));
+        glm::angleAxis(-(spineLean * 0.35f + runLean * 0.2f), glm::vec3(1.0f, 0.0f, 0.0f));
 
     // The neck and head undo whatever the pelvis and spine did, so the head stays level and keeps
-    // looking where the player is aiming. Without this, laying the pelvis flat for prone drags the
-    // head face-down into the floor and the spine reads as a backbend.
-    const float torsoPitch = pelvisPitch + spineLean;
+    // looking where the player is aiming. Positive here, because it is cancelling a forward pitch.
+    // Without it, laying the pelvis flat for prone drives the head face-down into the floor.
+    const float torsoPitch = pelvisPitch + spineLean + runLean * 0.8f;
     m_pose.Local(m_rig.neck).rotation =
-        glm::angleAxis(-torsoPitch * 0.55f + view.pitch * 0.35f - glm::radians(m_lean * 0.2f),
-                       glm::vec3(1.0f, 0.0f, 0.0f));
+        glm::angleAxis(torsoPitch * 0.55f + view.pitch * 0.35f, glm::vec3(1.0f, 0.0f, 0.0f));
     m_pose.Local(m_rig.head).rotation =
-        glm::angleAxis(-torsoPitch * 0.45f + view.pitch * 0.5f, glm::vec3(1.0f, 0.0f, 0.0f));
+        glm::angleAxis(torsoPitch * 0.45f + view.pitch * 0.5f, glm::vec3(1.0f, 0.0f, 0.0f));
 
     // Arms swing opposite the legs.
     for (int side = 0; side < 2; ++side)
     {
-        const float sideSign = side == kLeft ? 1.0f : -1.0f;
+        // Must match the skeleton's own convention, where the left side sits at -X. Having this
+        // backwards swung both arms inwards, straight through the thighs.
+        const float sideSign = side == kLeft ? -1.0f : 1.0f;
         const float swing = std::sin(phase + (side == kLeft ? 0.0f : glm::pi<float>())) *
                             glm::radians(m_config.armSwingDegrees) * m_gaitWeight;
         const float rest = glm::radians(m_config.armRestDegrees);

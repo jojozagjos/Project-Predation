@@ -4,6 +4,7 @@ add_executable(PredationTests
     CoreTests.cpp
     PlayerTests.cpp
     AnimationTests.cpp
+    BodyPoseTests.cpp
 )
 pred_set_warnings(PredationTests)
 target_link_libraries(PredationTests PRIVATE Predation::GameLib Catch2::Catch2WithMain)

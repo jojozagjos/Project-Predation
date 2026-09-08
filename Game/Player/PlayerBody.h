@@ -70,7 +70,9 @@ public:
         float leanPerSpeed = 1.4f;    // degrees of forward lean per m/s
         float maxLean = 12.0f;
         float armSwingDegrees = 22.0f;
-        float armRestDegrees = 8.0f;
+        // Splays the arms clear of the thighs. Anything under about 10 degrees and the upper arms
+        // overlap the legs at this build's proportions.
+        float armRestDegrees = 13.0f;
 
         // One posture per stance, blended between. Limb lengths never change: lowering the hips and
         // letting the knees bend is what actually happens when someone crouches.
@@ -117,6 +119,9 @@ public:
     };
 
     void Build(Scene& scene, MeshLibrary& meshes, const PlayerConfig& playerConfig);
+    // Skeleton only, with nothing to draw. Lets the posing be exercised in tests, which need no
+    // renderer and where uploading meshes would mean standing up a GPU device.
+    void BuildForSimulation(const PlayerConfig& playerConfig);
     void Destroy(Scene& scene);
 
     // Runs once per frame after the view is updated. Presentation only: it reads the simulation but

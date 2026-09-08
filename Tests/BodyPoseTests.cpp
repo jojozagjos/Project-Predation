@@ -1,0 +1,220 @@
+#include "Engine/Physics/PhysicsWorld.h"
+#include "Engine/Scene/Scene.h"
+#include "Game/Player/PlayerBody.h"
+#include "Game/Player/PlayerController.h"
+
+#include <catch2/catch_approx.hpp>
+#include <catch2/catch_test_macros.hpp>
+
+#include <algorithm>
+
+using namespace pred;
+
+// Poses are checked numerically rather than by looking at screenshots. Every bug in this area so
+// far has been a sign error that produced a plausible-looking but anatomically backwards pose, and
+// eyeballing a box figure is exactly how those survived.
+namespace
+{
+
+constexpr float kTick = 1.0f / 60.0f;
+
+// Drives the body directly, with no renderer and no meshes.
+struct BodyHarness
+{
+    PhysicsWorld physics;
+    Scene scene;
+    PlayerBody body;
+    PlayerConfig config;
+    PlayerState state;
+    PlayerView view;
+
+    BodyHarness()
+    {
+        PhysicsWorld::Settings settings;
+        settings.workerThreads = 1;
+        REQUIRE(physics.Init(settings));
+        physics.CreateBox({60.0f, 0.5f, 60.0f}, Transform{{0.0f, -0.5f, 0.0f}}, BodyMotion::Static);
+        physics.OptimizeBroadPhase();
+
+        body.BuildForSimulation(config);
+
+        state.grounded = true;
+        state.position = glm::vec3(0.0f);
+        view.renderPosition = glm::vec3(0.0f);
+        view.eyePosition = glm::vec3(0.0f, config.standEyeHeight, 0.0f);
+    }
+
+    ~BodyHarness() { physics.Shutdown(); }
+
+    // Long enough for the stance blend to settle.
+    void Settle(PlayerStance stance, int ticks = 240)
+    {
+        state.stance = stance;
+        for (int i = 0; i < ticks; ++i)
+        {
+            body.Update(scene, state, view, config, physics, kTick);
+        }
+    }
+
+    glm::vec3 Bone(BoneIndex index) const { return body.GetPose().GlobalPosition(index); }
+    const HumanoidRig& Rig() const { return body.Rig(); }
+
+    // Forward is -Z at yaw 0, so a larger forward offset means a more negative z.
+    float ForwardOf(BoneIndex index) const { return -Bone(index).z; }
+};
+
+} // namespace
+
+TEST_CASE("Standing holds the body upright over the feet", "[body][pose]")
+{
+    BodyHarness harness;
+    harness.Settle(PlayerStance::Standing);
+
+    const glm::vec3 pelvis = harness.Bone(harness.Rig().pelvis);
+    const glm::vec3 chest = harness.Bone(harness.Rig().chest);
+    const glm::vec3 head = harness.Bone(harness.Rig().head);
+
+    REQUIRE(pelvis.y == Catch::Approx(0.53f * harness.config.standHeight).margin(0.06));
+    REQUIRE(chest.y > pelvis.y);
+    REQUIRE(head.y > chest.y);
+
+    // Upright means the chest sits essentially over the pelvis, not in front of or behind it.
+    REQUIRE(std::abs(harness.ForwardOf(harness.Rig().chest) - harness.ForwardOf(harness.Rig().pelvis)) <
+            0.08f);
+}
+
+TEST_CASE("Crouching lowers the hips and folds the torso forwards, never backwards", "[body][pose]")
+{
+    BodyHarness harness;
+    harness.Settle(PlayerStance::Standing);
+    const float standingPelvisY = harness.Bone(harness.Rig().pelvis).y;
+    const float standingHeadY = harness.Bone(harness.Rig().head).y;
+
+    harness.Settle(PlayerStance::Crouching);
+    const glm::vec3 pelvis = harness.Bone(harness.Rig().pelvis);
+    const glm::vec3 chest = harness.Bone(harness.Rig().chest);
+    const glm::vec3 head = harness.Bone(harness.Rig().head);
+
+    // Hips and head both come down.
+    REQUIRE(pelvis.y < standingPelvisY - 0.15f);
+    REQUIRE(head.y < standingHeadY - 0.2f);
+
+    // The torso leans FORWARD over the hips. This is the assertion that catches the sign error that
+    // made crouching arch the back and lean the chest behind the hips.
+    REQUIRE(harness.ForwardOf(harness.Rig().chest) > harness.ForwardOf(harness.Rig().pelvis) + 0.04f);
+    REQUIRE(head.y > chest.y); // still the right way up
+
+    // Feet stay on the ground and roughly under the body, not flung out behind.
+    for (int side = 0; side < 2; ++side)
+    {
+        const glm::vec3 foot = harness.Bone(harness.Rig().foot[side]);
+        INFO("foot side " << side);
+        REQUIRE(foot.y == Catch::Approx(harness.Rig().ankleHeight).margin(0.09));
+        REQUIRE(std::abs(foot.z - pelvis.z) < 0.45f);
+    }
+}
+
+TEST_CASE("Prone lays the body flat and face down with the legs trailing behind", "[body][pose]")
+{
+    BodyHarness harness;
+    harness.Settle(PlayerStance::Standing);
+    const float standingChestY = harness.Bone(harness.Rig().chest).y;
+
+    harness.Settle(PlayerStance::Prone);
+    const glm::vec3 pelvis = harness.Bone(harness.Rig().pelvis);
+    const glm::vec3 chest = harness.Bone(harness.Rig().chest);
+    const glm::vec3 head = harness.Bone(harness.Rig().head);
+
+    // Everything comes near the floor.
+    REQUIRE(pelvis.y < 0.45f);
+    REQUIRE(chest.y < 0.55f);
+    REQUIRE(chest.y < standingChestY - 0.7f);
+
+    // The spine runs forwards along the ground rather than standing up: the chest is well in front
+    // of the pelvis, and barely above it.
+    REQUIRE(harness.ForwardOf(harness.Rig().chest) > harness.ForwardOf(harness.Rig().pelvis) + 0.25f);
+    REQUIRE(std::abs(chest.y - pelvis.y) < 0.22f);
+
+    // Head ahead of the chest and still off the floor, which is what keeps it looking forward
+    // instead of being driven into the ground.
+    REQUIRE(harness.ForwardOf(harness.Rig().head) > harness.ForwardOf(harness.Rig().chest));
+    REQUIRE(head.y > 0.05f);
+
+    // Legs trail out behind, near the floor, not folded up into the air.
+    for (int side = 0; side < 2; ++side)
+    {
+        const glm::vec3 knee = harness.Bone(harness.Rig().lowerLeg[side]);
+        const glm::vec3 foot = harness.Bone(harness.Rig().foot[side]);
+        INFO("leg side " << side);
+        // Behind the hips: forward is -Z, so a trailing foot has a smaller forward offset.
+        REQUIRE(-foot.z < harness.ForwardOf(harness.Rig().pelvis) - 0.3f);
+        REQUIRE(foot.y < 0.35f);
+        REQUIRE(knee.y < 0.5f);
+    }
+}
+
+TEST_CASE("Arms hang clear of the legs", "[body][pose]")
+{
+    BodyHarness harness;
+    harness.Settle(PlayerStance::Standing);
+
+    for (int side = 0; side < 2; ++side)
+    {
+        const glm::vec3 hand = harness.Bone(harness.Rig().hand[side]);
+        const glm::vec3 knee = harness.Bone(harness.Rig().lowerLeg[side]);
+        INFO("side " << side);
+        // Hands must sit further out than the legs, or the arms pass through the thighs.
+        REQUIRE(std::abs(hand.x) > std::abs(knee.x) + 0.04f);
+        // And on the correct side of the body.
+        REQUIRE((hand.x < 0.0f) == (knee.x < 0.0f));
+    }
+}
+
+TEST_CASE("Strafing turns the hips while the torso stays aimed", "[body][pose]")
+{
+    BodyHarness harness;
+    harness.Settle(PlayerStance::Standing);
+
+    // Looking straight down -Z while travelling to the right. A real person's hips follow where
+    // they are going; their chest stays pointed at what they are looking at.
+    harness.view.yaw = 0.0f;
+    harness.state.velocity = glm::vec3(4.0f, 0.0f, 0.0f);
+    harness.state.grounded = true;
+    for (int i = 0; i < 240; ++i)
+    {
+        harness.body.Update(harness.scene, harness.state, harness.view, harness.config, harness.physics,
+                            kTick);
+    }
+
+    // The local -Z axis of each bone is where that part of the body faces.
+    const auto facingOf = [&](BoneIndex bone)
+    { return glm::normalize(-glm::vec3(harness.body.GetPose().Global(bone)[2])); };
+
+    const glm::vec3 hips = facingOf(harness.Rig().pelvis);
+    const glm::vec3 chest = facingOf(harness.Rig().chest);
+
+    // Hips swing towards the direction of travel, +X.
+    REQUIRE(hips.x > 0.45f);
+    // The chest stays much closer to the aim direction, -Z, than the hips do.
+    REQUIRE(-chest.z > -hips.z + 0.25f);
+    REQUIRE(chest.x < hips.x - 0.25f);
+}
+
+TEST_CASE("Stance changes blend rather than snapping", "[body][pose]")
+{
+    BodyHarness harness;
+    harness.Settle(PlayerStance::Standing);
+    const float standingPelvisY = harness.Bone(harness.Rig().pelvis).y;
+
+    // A single tick must move only part of the way, or the transition would pop.
+    harness.state.stance = PlayerStance::Prone;
+    harness.body.Update(harness.scene, harness.state, harness.view, harness.config, harness.physics,
+                        kTick);
+    const float afterOneTick = harness.Bone(harness.Rig().pelvis).y;
+    REQUIRE(afterOneTick < standingPelvisY);
+    REQUIRE(afterOneTick > standingPelvisY - 0.25f);
+
+    // And it must actually arrive.
+    harness.Settle(PlayerStance::Prone);
+    REQUIRE(harness.Bone(harness.Rig().pelvis).y < 0.45f);
+}
