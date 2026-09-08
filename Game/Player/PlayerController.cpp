@@ -47,7 +47,10 @@ glm::vec3 PlayerView::Right() const
 
 glm::mat4 PlayerView::ViewMatrix() const
 {
-    return glm::lookAtRH(eyePosition, eyePosition + Forward(), glm::vec3(0.0f, 1.0f, 0.0f));
+    const glm::vec3 forward = Forward();
+    // Roll about the view axis so leaning tilts the horizon, which is most of what sells it.
+    const glm::vec3 up = glm::angleAxis(leanRoll, forward) * glm::vec3(0.0f, 1.0f, 0.0f);
+    return glm::lookAtRH(eyePosition, eyePosition + forward, up);
 }
 
 // -----------------------------------------------------------------------------------------------
@@ -322,6 +325,13 @@ void PlayerController::Step(const PlayerInput& input, float dt)
     {
         m_state.strideDistance += glm::length(glm::vec2(m_state.velocity.x, m_state.velocity.z)) * dt;
     }
+
+    // Leaning. Sprinting cancels it, since nobody peeks round a corner at a run.
+    const float leanTarget = (m_config.leanEnabled && !sprinting && m_state.stance != PlayerStance::Prone)
+                                 ? std::clamp(input.lean, -1.0f, 1.0f)
+                                 : 0.0f;
+    m_state.leanAmount = SmoothTowards(m_state.leanAmount, leanTarget, m_config.leanSpeed, dt);
+
     m_debug.horizontalSpeed = m_state.HorizontalSpeed();
 }
 
@@ -382,9 +392,14 @@ void PlayerController::UpdateView(float dt, float alpha)
 
     m_view.yaw = m_state.yaw;
     m_view.pitch = m_state.pitch;
+    m_view.leanRoll = -m_state.leanAmount * glm::radians(m_config.leanAngleDegrees);
+
     m_view.eyePosition =
         renderPosition +
         glm::vec3(0.0f, m_view.eyeHeight + m_view.stepOffset + m_view.landingDip + m_view.bobOffset, 0.0f);
+    // Shift the eye sideways as well as rolling it, so leaning actually moves the viewpoint out
+    // past cover rather than only tilting the picture.
+    m_view.eyePosition += m_view.Right() * (m_state.leanAmount * m_config.leanSideOffset);
 }
 
 void PlayerController::Teleport(const glm::vec3& footPosition)

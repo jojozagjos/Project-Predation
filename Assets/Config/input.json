@@ -11,8 +11,11 @@
     "crouch": [ "Left Ctrl", "C" ],
     "prone": [ "Z" ],
 
-    "move_up": [ "E" ],
-    "move_down": [ "Q" ],
+    "lean_left": [ "Q" ],
+    "lean_right": [ "E" ],
+
+    "move_up": [ "Space" ],
+    "move_down": [ "Left Ctrl" ],
     "look": [ "Mouse2" ],
     "toggle_fly": [ "F" ],
     "respawn": [ "R" ],

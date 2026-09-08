@@ -132,6 +132,34 @@ glm::quat RotationBetween(const glm::vec3& from, const glm::vec3& to)
     return glm::normalize(glm::quat(1.0f + dot, axis.x, axis.y, axis.z));
 }
 
+glm::quat AlignYWithRoll(const glm::vec3& along, const glm::vec3& forward)
+{
+    const float length = glm::length(along);
+    if (length < 1e-5f)
+    {
+        return glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
+    }
+    const glm::vec3 y = along / length;
+
+    glm::vec3 flattened = forward - y * glm::dot(forward, y);
+    if (glm::length(flattened) < 1e-4f)
+    {
+        // The reference is parallel to the segment, so any perpendicular will do.
+        const glm::vec3 fallback =
+            std::abs(y.y) < 0.9f ? glm::vec3(0.0f, 1.0f, 0.0f) : glm::vec3(1.0f, 0.0f, 0.0f);
+        flattened = fallback - y * glm::dot(fallback, y);
+    }
+
+    const glm::vec3 z = -glm::normalize(flattened); // local -Z faces `forward`
+    const glm::vec3 x = glm::normalize(glm::cross(y, z));
+
+    glm::mat3 basis;
+    basis[0] = x;
+    basis[1] = y;
+    basis[2] = z;
+    return glm::normalize(glm::quat_cast(basis));
+}
+
 float SmoothTowards(float value, float target, float speed, float dt)
 {
     return value + (target - value) * (1.0f - std::exp(-speed * dt));

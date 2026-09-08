@@ -165,6 +165,20 @@ void PredationGame::RegisterCommands()
         },
         "stance <stand|crouch|prone|auto>");
 
+    console.RegisterCommand(
+        "player_yaw", "Face the player in a given direction, for inspection: player_yaw <degrees>",
+        [this](const std::vector<std::string>& args)
+        {
+            if (args.size() < 2)
+            {
+                m_app->GetConsole().PrintError("usage: player_yaw <degrees>");
+                return;
+            }
+            m_player.State().yaw = glm::radians(std::strtof(args[1].c_str(), nullptr));
+            m_app->GetConsole().Print("Player yaw set");
+        },
+        "player_yaw <degrees>");
+
     console.RegisterCommand("player_reload", "Reload player.json from disk",
                             [this](const std::vector<std::string>&) { ReloadPlayerConfig(); });
 
@@ -371,6 +385,9 @@ PlayerInput PredationGame::BuildPlayerInput()
     result.crouchHeld = cv_crouchToggle.Get() ? m_crouchToggleState : input.IsActionDown("crouch");
     result.proneHeld = cv_crouchToggle.Get() ? m_proneToggleState : input.IsActionDown("prone");
     result.walk = input.IsActionDown("walk");
+
+    result.lean = (input.IsActionDown("lean_right") ? 1.0f : 0.0f) -
+                  (input.IsActionDown("lean_left") ? 1.0f : 0.0f);
 
     // Debug override from the `stance` console command.
     result.crouchHeld = result.crouchHeld || m_forceCrouch;

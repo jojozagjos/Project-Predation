@@ -29,6 +29,7 @@ struct PlayerView
     float landingDip = 0.0f;    // downward kick on impact, springs back
     float landingDipVelocity = 0.0f;
     float bobOffset = 0.0f;
+    float leanRoll = 0.0f; // radians of camera roll from leaning
 
     glm::vec3 Forward() const;
     glm::vec3 Right() const;

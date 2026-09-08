@@ -31,6 +31,9 @@ struct PlayerInput
     bool walk = false;         // slow, quiet movement
     bool crouchHeld = false;   // already resolved from hold-vs-toggle before it gets here
     bool proneHeld = false;
+    // -1 left, +1 right. Part of the simulation rather than the camera, because peeking round a
+    // corner changes what the player can see and be seen from.
+    float lean = 0.0f;
 };
 
 // Everything the simulation needs to continue from this tick. Also the unit of network state:
@@ -63,6 +66,9 @@ struct PlayerState
 
     // Distance travelled on foot, used to drive stride-phase effects such as head bob.
     float strideDistance = 0.0f;
+    // Smoothed lean, -1 to +1. Simulated rather than presentation, so it can later be blocked by
+    // geometry and read by the creature's line of sight.
+    float leanAmount = 0.0f;
 
     float HorizontalSpeed() const;
 };
@@ -115,6 +121,12 @@ struct PlayerConfig
     float bobAmount = 0.030f;
     float bobStrideLength = 1.55f; // metres per full bob cycle
     float bobSprintScale = 1.35f;
+
+    // --- Leaning ---
+    float leanAngleDegrees = 16.0f; // camera roll at full lean
+    float leanSideOffset = 0.32f;   // how far the eye shifts sideways
+    float leanSpeed = 9.0f;
+    bool leanEnabled = true;
 
     // --- Look ---
     float maxPitchDegrees = 89.0f;

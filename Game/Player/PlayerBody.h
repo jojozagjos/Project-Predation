@@ -108,6 +108,19 @@ public:
         float maxTorsoTwistDegrees = 55.0f; // past this, the hips turn to catch up
         float turnInPlaceDegrees = 42.0f;   // how far a turn-in-place swings the hips
 
+        // Crawling. Prone movement is driven by the arms: the hands reach forward, plant, and pull
+        // the body along, with the legs pushing on the opposite beat.
+        float crawlCycleLength = 1.1f; // metres of travel per full reach-and-pull cycle
+        float crawlReach = 0.30f;      // how far the hands swing fore and aft
+        float crawlLift = 0.10f;       // how far a hand lifts while swinging forward
+        float crawlHandForward = 0.42f; // where the hands plant relative to the shoulders
+        float crawlLegPush = 0.16f;     // how much the legs drive on the opposite beat
+
+        // Leaning to peek round cover.
+        float leanAngleDegrees = 16.0f;
+        float leanOffset = 0.32f; // metres the eye shifts sideways at full lean
+        float leanSpeed = 9.0f;
+
         // Presentation
         float responsiveness = 14.0f; // smoothing rate for posture changes
         // Eyes sit in front of the neck, not on top of it. Without this the body stands on the
@@ -175,6 +188,10 @@ private:
     void BuildParts(Scene& scene, MeshLibrary& meshes);
     void UpdatePosture(const PlayerState& state, const PlayerView& view, const PlayerConfig& playerConfig,
                        float dt);
+    // Arms are solved before legs on purpose: writing a global transform rebuilds every bone after
+    // it, and the legs come last in the hierarchy, so doing it the other way round would undo the
+    // leg IK every frame.
+    void UpdateArms(const PlayerState& state, const PlayerView& view, PhysicsWorld& physics, float dt);
     void UpdateLegs(const PlayerState& state, const PlayerView& view, const PlayerConfig& playerConfig,
                     PhysicsWorld& physics, float dt);
     void PushToScene(Scene& scene);
@@ -185,6 +202,8 @@ private:
     Config m_config;
     std::vector<Part> m_parts;
     std::array<FootState, 2> m_feet;
+    std::array<FootState, 2> m_hands; // same shape: a smoothed target and whether it is planted
+    float m_flatness = 0.0f;          // 0 upright, 1 fully prone
 
     glm::quat BodyRotation() const;
 

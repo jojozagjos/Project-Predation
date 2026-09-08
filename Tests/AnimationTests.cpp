@@ -224,6 +224,51 @@ TEST_CASE("LookRotation stays finite when looking along its own up axis", "[anim
     REQUIRE(zero.w == Catch::Approx(1.0f));
 }
 
+// This is the bug that made the player's torso never turn. A body segment that runs straight up
+// gets the identity from RotationBetween, because the spin about the segment is undefined, so the
+// box ignored the character's facing entirely.
+TEST_CASE("AlignYWithRoll keeps a vertical segment facing where the body faces", "[animation][ik]")
+{
+    const glm::vec3 up{0.0f, 1.0f, 0.0f};
+
+    // Same vertical segment, four different facings: the resulting orientation must differ each
+    // time, and must point where it was told to.
+    const float yaws[] = {0.0f, 45.0f, 90.0f, 200.0f};
+    for (const float yawDegrees : yaws)
+    {
+        const float yaw = glm::radians(yawDegrees);
+        const glm::vec3 forward{std::sin(yaw), 0.0f, -std::cos(yaw)};
+
+        const glm::quat rotation = AlignYWithRoll(up, forward);
+        const glm::vec3 localUp = rotation * up;
+        const glm::vec3 localForward = rotation * glm::vec3(0.0f, 0.0f, -1.0f);
+
+        INFO("yaw " << yawDegrees);
+        // +Y still runs along the segment.
+        REQUIRE(localUp.y == Catch::Approx(1.0f).margin(1e-3));
+        // And -Z now faces the requested direction, which RotationBetween would not have done.
+        REQUIRE(localForward.x == Catch::Approx(forward.x).margin(1e-3));
+        REQUIRE(localForward.z == Catch::Approx(forward.z).margin(1e-3));
+    }
+
+    // The old approach loses the facing entirely for this case; confirm the difference is real.
+    const glm::quat minimal = RotationBetween(up, up);
+    REQUIRE((minimal * glm::vec3(0.0f, 0.0f, -1.0f)).z == Catch::Approx(-1.0f).margin(1e-3));
+}
+
+TEST_CASE("AlignYWithRoll survives degenerate input", "[animation][ik]")
+{
+    // Forward parallel to the segment leaves the roll undefined; it must still return a usable
+    // orthonormal rotation rather than NaNs.
+    const glm::quat parallel = AlignYWithRoll(glm::vec3(0.0f, 1.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+    const glm::vec3 y = parallel * glm::vec3(0.0f, 1.0f, 0.0f);
+    REQUIRE(std::isfinite(y.x));
+    REQUIRE(y.y == Catch::Approx(1.0f).margin(1e-3));
+
+    const glm::quat zero = AlignYWithRoll(glm::vec3(0.0f), glm::vec3(0.0f, 0.0f, -1.0f));
+    REQUIRE(zero.w == Catch::Approx(1.0f));
+}
+
 TEST_CASE("Exponential smoothing is frame-rate independent", "[animation][ik]")
 {
     constexpr float speed = 8.0f;

@@ -33,6 +33,14 @@ glm::quat LookRotation(const glm::vec3& direction, const glm::vec3& up = glm::ve
 // is the one that produces NaNs in naive implementations.
 glm::quat RotationBetween(const glm::vec3& from, const glm::vec3& to);
 
+// Rotation whose local +Y runs along `along`, with local -Z turned as close to `forward` as it can.
+//
+// Use this, rather than RotationBetween, whenever a limb or body segment is drawn along an axis.
+// The minimal rotation onto a direction leaves the spin about that direction undefined, so a
+// segment that happens to point straight up gets the identity and silently ignores which way the
+// character is facing. Supplying a forward reference pins that remaining degree of freedom.
+glm::quat AlignYWithRoll(const glm::vec3& along, const glm::vec3& forward);
+
 // Frame-rate independent smoothing, matching the convention used by the player camera.
 float SmoothTowards(float value, float target, float speed, float dt);
 glm::vec3 SmoothTowards(const glm::vec3& value, const glm::vec3& target, float speed, float dt);

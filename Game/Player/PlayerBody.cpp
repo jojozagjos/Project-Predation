@@ -65,6 +65,7 @@ Transform LocalOffset(float x, float y, float z)
     return transform;
 }
 
+
 // A matrix placing a segment that runs from `a` to `b`, with its local +Y along the segment.
 glm::mat4 SegmentMatrix(const glm::vec3& a, const glm::vec3& b)
 {
@@ -346,6 +347,8 @@ void PlayerBody::UpdatePosture(const PlayerState& state, const PlayerView& view,
 
     const float pelvisPitch = glm::radians(m_pose_blend.pelvisPitchDeg);
     const float spineLean = glm::radians(m_pose_blend.spineLeanDeg);
+    // How far through the transition to lying flat we are. Drives the crawl and the knee pole.
+    m_flatness = std::clamp(m_pose_blend.pelvisPitchDeg / 90.0f, 0.0f, 1.0f);
 
     // Placed from the interpolated render position, not from the simulation state. The camera uses
     // the interpolated one, so using the raw state here made the body step at the tick rate while
@@ -354,12 +357,14 @@ void PlayerBody::UpdatePosture(const PlayerState& state, const PlayerView& view,
     m_rootPosition = view.renderPosition + glm::vec3(0.0f, m_pose_blend.pelvisRatio * m_rig.height, 0.0f) -
                      facing * m_config.eyeForwardOffset;
 
+    // Measured against the speed this stance normally travels at, not against a standing walk.
+    // Otherwise crawling at 0.75 m/s reads as a fifth of a stride and the limbs barely move.
     const float speed = state.HorizontalSpeed();
-    m_gaitWeight = SmoothTowards(m_gaitWeight,
-                                 state.grounded ? std::clamp(speed / std::max(playerConfig.moveSpeed, 0.1f),
-                                                             0.0f, 1.6f)
-                                                : 0.0f,
-                                 m_config.responsiveness, dt);
+    const float referenceSpeed = std::max(playerConfig.SpeedForStance(state.stance, false, false), 0.1f);
+    m_gaitWeight =
+        SmoothTowards(m_gaitWeight,
+                      state.grounded ? std::clamp(speed / referenceSpeed, 0.0f, 1.6f) : 0.0f,
+                      m_config.responsiveness, dt);
 
     const float targetLean =
         std::clamp(speed * m_config.leanPerSpeed, 0.0f, m_config.maxLean) * (state.grounded ? 1.0f : 0.3f);
@@ -393,12 +398,16 @@ void PlayerBody::UpdatePosture(const PlayerState& state, const PlayerView& view,
     // The twist is negated for the same reason the root rotation is: a model facing -Z turns the
     // opposite way to the yaw convention.
     const float runLean = glm::radians(m_lean);
+    // Peek lean: the torso tips sideways so the body follows the camera out past cover.
+    const float peek = state.leanAmount * glm::radians(m_config.leanAngleDegrees);
     m_pose.Local(m_rig.spine).rotation =
         glm::angleAxis(-torsoTwist * 0.45f, glm::vec3(0.0f, 1.0f, 0.0f)) *
-        glm::angleAxis(-(spineLean * 0.65f + runLean * 0.6f), glm::vec3(1.0f, 0.0f, 0.0f));
+        glm::angleAxis(-(spineLean * 0.65f + runLean * 0.6f), glm::vec3(1.0f, 0.0f, 0.0f)) *
+        glm::angleAxis(-peek * 0.55f, glm::vec3(0.0f, 0.0f, 1.0f));
     m_pose.Local(m_rig.chest).rotation =
         glm::angleAxis(-torsoTwist * 0.55f, glm::vec3(0.0f, 1.0f, 0.0f)) *
-        glm::angleAxis(-(spineLean * 0.35f + runLean * 0.2f), glm::vec3(1.0f, 0.0f, 0.0f));
+        glm::angleAxis(-(spineLean * 0.35f + runLean * 0.2f), glm::vec3(1.0f, 0.0f, 0.0f)) *
+        glm::angleAxis(-peek * 0.45f, glm::vec3(0.0f, 0.0f, 1.0f));
 
     // The neck and head undo whatever the pelvis and spine did, so the head stays level and keeps
     // looking where the player is aiming. Positive here, because it is cancelling a forward pitch.
@@ -442,6 +451,68 @@ glm::quat PlayerBody::BodyRotation() const
     return glm::angleAxis(-m_bodyYaw, glm::vec3(0.0f, 1.0f, 0.0f));
 }
 
+void PlayerBody::UpdateArms(const PlayerState& state, const PlayerView& view, PhysicsWorld& physics,
+                            float dt)
+{
+    // Only prone drives the arms with IK. Upright, the procedural rotations set in UpdatePosture
+    // are enough, and this is where a weapon grip will hook in later.
+    if (m_flatness < 0.02f)
+    {
+        return;
+    }
+
+    const glm::vec3 facing{std::sin(m_bodyYaw), 0.0f, -std::cos(m_bodyYaw)};
+    const glm::vec3 right{std::cos(m_bodyYaw), 0.0f, std::sin(m_bodyYaw)};
+    const float armSpan = m_rig.upperArmLength + m_rig.lowerArmLength;
+
+    // Crawling runs on its own cycle, opposite the legs, so the body reads as pulling itself along
+    // rather than sliding.
+    const float crawlPhase =
+        state.strideDistance / std::max(m_config.crawlCycleLength, 0.05f) * glm::two_pi<float>();
+
+    for (int side = 0; side < 2; ++side)
+    {
+        const glm::vec3 shoulder = m_pose.GlobalPosition(m_rig.shoulder[side]);
+        const float sideSign = side == kLeft ? -1.0f : 1.0f;
+        const float phase = crawlPhase + (side == kLeft ? 0.0f : glm::pi<float>());
+
+        const float reach = std::cos(phase) * m_config.crawlReach * m_gaitWeight;
+        const float lift = std::max(0.0f, std::sin(phase)) * m_config.crawlLift * m_gaitWeight;
+
+        glm::vec3 target = shoulder + facing * (m_config.crawlHandForward + reach) +
+                           right * (sideSign * 0.16f * m_rig.height);
+        target.y = view.renderPosition.y + 0.05f + lift;
+
+        // Plant the hand on whatever is actually underneath it.
+        const RayHit hit = physics.RayCast(target + glm::vec3(0.0f, 0.5f, 0.0f),
+                                           glm::vec3(0.0f, -1.0f, 0.0f), 1.2f);
+        if (hit)
+        {
+            target.y = hit.position.y + 0.05f + lift;
+        }
+
+        FootState& hand = m_hands[static_cast<size_t>(side)];
+        // Blend in from the upright pose so going prone does not snap the arms into place.
+        const glm::vec3 restHand = m_pose.GlobalPosition(m_rig.hand[side]);
+        const glm::vec3 blended = glm::mix(restHand, target, m_flatness);
+        hand.position = SmoothTowards(hand.position, blended, m_config.footPlantSmoothing, dt);
+        hand.planted = lift < 0.01f;
+
+        // Elbows bend backwards and outwards, away from the body's front.
+        const glm::vec3 elbowPole = -facing * 0.6f + right * (sideSign * 0.8f) +
+                                    glm::vec3(0.0f, 0.4f, 0.0f);
+        const TwoBoneIKResult ik = SolveTwoBoneIK(shoulder, hand.position, elbowPole,
+                                                  m_rig.upperArmLength, m_rig.lowerArmLength);
+
+        m_pose.SetGlobal(m_skeleton, m_rig.upperArm[side], SegmentMatrix(shoulder, ik.jointPosition));
+        m_pose.SetGlobal(m_skeleton, m_rig.lowerArm[side],
+                         SegmentMatrix(ik.jointPosition, ik.endPosition));
+        m_pose.SetGlobal(m_skeleton, m_rig.hand[side],
+                         glm::translate(glm::mat4(1.0f), ik.endPosition) * glm::mat4_cast(BodyRotation()));
+        (void)armSpan;
+    }
+}
+
 void PlayerBody::UpdateLegs(const PlayerState& state, const PlayerView& view,
                             const PlayerConfig& playerConfig, PhysicsWorld& physics, float dt)
 {
@@ -462,11 +533,14 @@ void PlayerBody::UpdateLegs(const PlayerState& state, const PlayerView& view,
     // Knees bend towards the body's front while upright. Once the pelvis is laid flat that axis
     // points at the sky, which folds the legs upwards, so the pole is blended back down towards the
     // ground as the body goes prone.
-    const glm::vec3 bodyForward =
+    const glm::vec3 pelvisForward =
         glm::normalize(glm::vec3(m_pose.Global(m_rig.pelvis) * glm::vec4(0.0f, 0.0f, -1.0f, 0.0f)));
-    const float flatness = std::clamp(m_pose_blend.pelvisPitchDeg / 90.0f, 0.0f, 1.0f);
-    const glm::vec3 kneePole =
-        glm::normalize(glm::mix(bodyForward, glm::vec3(0.0f, -1.0f, 0.0f), flatness) + glm::vec3(1e-4f));
+    const glm::vec3 kneePole = glm::normalize(
+        glm::mix(pelvisForward, glm::vec3(0.0f, -1.0f, 0.0f), m_flatness) + glm::vec3(1e-4f));
+
+    // Crawling: the legs push on the opposite beat to the hands.
+    const float crawlPhase =
+        state.strideDistance / std::max(m_config.crawlCycleLength, 0.05f) * glm::two_pi<float>();
 
     for (int side = 0; side < 2; ++side)
     {
@@ -484,7 +558,12 @@ void PlayerBody::UpdateLegs(const PlayerState& state, const PlayerView& view,
         const glm::vec3 spread =
             right * (sideSign * (m_pose_blend.footSpread - 1.0f) * Ratio::kHipHalfWidth * m_rig.height);
 
-        glm::vec3 target = hip + moveDirection * reach + stanceFootOffset + spread;
+        // While crawling the legs drive fore and aft against the hands rather than stepping.
+        const float crawlDrive =
+            std::cos(crawlPhase + (side == kLeft ? glm::pi<float>() : 0.0f)) * m_config.crawlLegPush *
+            m_gaitWeight * m_flatness;
+
+        glm::vec3 target = hip + moveDirection * reach + stanceFootOffset + spread + facing * crawlDrive;
         target.y = view.renderPosition.y + m_rig.ankleHeight + lift;
 
         // Trace for the real ground under the foot so it lands on stairs and slopes instead of
@@ -518,6 +597,10 @@ void PlayerBody::UpdateLegs(const PlayerState& state, const PlayerView& view,
 void PlayerBody::PushToScene(Scene& scene)
 {
     const glm::quat bodyRotation = BodyRotation();
+    // Torso segments must inherit the chest's twist, not just the hips', or the upper body reads as
+    // rigidly welded to the legs.
+    const glm::vec3 bodyForward =
+        glm::normalize(-glm::vec3(m_pose.Global(m_rig.chest)[2]) + glm::vec3(1e-5f));
 
     for (const Part& part : m_parts)
     {
@@ -555,11 +638,11 @@ void PlayerBody::PushToScene(Scene& scene)
         const float length = glm::length(delta);
 
         // Box meshes are built centred on their own origin, so the transform sits at the segment's
-        // midpoint and rotates the local +Y axis onto the bone.
+        // midpoint and aligns its local +Y with the bone. The body's facing resolves the spin about
+        // that axis, without which a vertical segment such as the torso would never turn with the
+        // character.
         transform->position = (a + b) * 0.5f;
-        transform->rotation = length > 1e-5f
-                                  ? RotationBetween(glm::vec3(0.0f, 1.0f, 0.0f), delta / length)
-                                  : glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
+        transform->rotation = AlignYWithRoll(delta, bodyForward);
         // Parts are built at their bind length; stances change limb spans slightly, so stretch along
         // the bone only.
         transform->scale = glm::vec3(1.0f, part.bindLength > 1e-4f ? length / part.bindLength : 1.0f, 1.0f);
@@ -574,6 +657,7 @@ void PlayerBody::Update(Scene& scene, const PlayerState& state, const PlayerView
         return;
     }
     UpdatePosture(state, view, playerConfig, dt);
+    UpdateArms(state, view, physics, dt);
     UpdateLegs(state, view, playerConfig, physics, dt);
     PushToScene(scene);
 }

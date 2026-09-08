@@ -200,6 +200,93 @@ TEST_CASE("Strafing turns the hips while the torso stays aimed", "[body][pose]")
     REQUIRE(chest.x < hips.x - 0.25f);
 }
 
+TEST_CASE("Crawling reaches the hands forward and cycles them", "[body][pose]")
+{
+    BodyHarness harness;
+    harness.Settle(PlayerStance::Prone);
+
+    // Crawl forward. Stride distance is what drives the cycle, so it has to advance.
+    harness.state.velocity = glm::vec3(0.0f, 0.0f, -0.7f);
+    harness.state.grounded = true;
+
+    float minHandForward = 1e9f;
+    float maxHandForward = -1e9f;
+    float highestHand = -1e9f;
+
+    for (int i = 0; i < 400; ++i)
+    {
+        harness.state.strideDistance += 0.7f * kTick;
+        harness.body.Update(harness.scene, harness.state, harness.view, harness.config, harness.physics,
+                            kTick);
+
+        const glm::vec3 hand = harness.Bone(harness.Rig().hand[0]);
+        const float forward = -hand.z;
+        minHandForward = std::min(minHandForward, forward);
+        maxHandForward = std::max(maxHandForward, forward);
+        highestHand = std::max(highestHand, hand.y);
+    }
+
+    // The hand must actually travel fore and aft, which is what pulls the body along. A static
+    // hand would mean the crawl is not animating at all.
+    REQUIRE(maxHandForward - minHandForward > 0.15f);
+    // And stay near the ground rather than waving in the air.
+    REQUIRE(highestHand < 0.6f);
+
+    // Hands reach out in front of the chest.
+    REQUIRE(maxHandForward > harness.ForwardOf(harness.Rig().chest));
+}
+
+TEST_CASE("Leaning rolls and shifts the view without moving the feet", "[player][lean]")
+{
+    PhysicsWorld physics;
+    PhysicsWorld::Settings settings;
+    settings.workerThreads = 1;
+    REQUIRE(physics.Init(settings));
+    physics.CreateBox({60.0f, 0.5f, 60.0f}, Transform{{0.0f, -0.5f, 0.0f}}, BodyMotion::Static);
+    physics.OptimizeBroadPhase();
+
+    PlayerController player;
+    PlayerConfig config;
+    REQUIRE(player.Init(physics, config, {0.0f, 0.05f, 0.0f}));
+
+    PlayerInput input;
+    for (int i = 0; i < 30; ++i)
+    {
+        player.Step(input, kTick);
+        physics.Step(kTick);
+    }
+    player.UpdateView(kTick, 1.0f);
+    const glm::vec3 uprightEye = player.View().eyePosition;
+    const glm::vec3 uprightFeet = player.State().position;
+
+    input.lean = 1.0f;
+    for (int i = 0; i < 90; ++i)
+    {
+        player.Step(input, kTick);
+        physics.Step(kTick);
+        player.UpdateView(kTick, 1.0f);
+    }
+
+    REQUIRE(player.State().leanAmount == Catch::Approx(1.0f).margin(0.05));
+    // The eye moves sideways, which is the point: it lets the player see past cover.
+    REQUIRE(std::abs(player.View().eyePosition.x - uprightEye.x) > 0.2f);
+    REQUIRE(std::abs(player.View().leanRoll) > glm::radians(10.0f));
+    // The feet stay put; leaning is not a step.
+    REQUIRE(glm::length(player.State().position - uprightFeet) < 0.05f);
+
+    // Releasing returns to upright.
+    input.lean = 0.0f;
+    for (int i = 0; i < 120; ++i)
+    {
+        player.Step(input, kTick);
+        physics.Step(kTick);
+    }
+    REQUIRE(player.State().leanAmount == Catch::Approx(0.0f).margin(0.05));
+
+    player.Shutdown();
+    physics.Shutdown();
+}
+
 TEST_CASE("Stance changes blend rather than snapping", "[body][pose]")
 {
     BodyHarness harness;
