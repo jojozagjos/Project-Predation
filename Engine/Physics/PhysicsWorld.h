@@ -100,6 +100,10 @@ public:
     void DestroyBody(BodyHandle body);
     void DestroyAllBodies();
 
+    // Rebuilds the broad-phase acceleration structure. Worth calling once after bulk-adding static
+    // level geometry; without it the tree stays in the order bodies happened to be created.
+    void OptimizeBroadPhase();
+
     // --- Body state -----------------------------------------------------------------------------
     bool IsValid(BodyHandle body) const;
     Transform GetTransform(BodyHandle body) const;
@@ -118,6 +122,13 @@ public:
     const Stats& GetStats() const;
     void SetGravity(const glm::vec3& gravity);
     glm::vec3 GetGravity() const;
+
+    // --- Internal ---------------------------------------------------------------------------------
+    // Handles to the underlying Jolt objects, for other physics translation units such as
+    // CharacterController. Typed as void* so Jolt's headers stay out of this header; nothing outside
+    // Engine/Physics should touch these.
+    void* NativePhysicsSystem() const;
+    void* NativeTempAllocator() const;
 
 private:
     struct Impl;

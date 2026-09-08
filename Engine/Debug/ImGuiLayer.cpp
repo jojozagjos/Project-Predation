@@ -153,13 +153,32 @@ void ImGuiLayer::UpdateTexture(ImTextureData* texture)
     if (texture->Status == ImTextureStatus_WantCreate)
     {
         IM_ASSERT(texture->Format == ImTextureFormat_RGBA32);
-        const uint32_t size = static_cast<uint32_t>(texture->Width * texture->Height * texture->BytesPerPixel);
-        const bgfx::Memory* memory = bgfx::copy(texture->GetPixels(), size);
+
+        // Create the texture WITHOUT initial data, then fill it with an update.
+        //
+        // Passing pixels to createTexture2D makes bgfx allocate an immutable resource, and every
+        // later updateTexture2D against it is silently discarded. ImGui 1.92 rasterizes glyphs on
+        // demand and streams them into the atlas as they are first used, so an immutable atlas
+        // freezes at whatever was baked on the first frame: most text then renders as blanks with
+        // only a few scattered letters visible.
         const bgfx::TextureHandle handle =
             bgfx::createTexture2D(static_cast<uint16_t>(texture->Width), static_cast<uint16_t>(texture->Height),
                                   false, 1, bgfx::TextureFormat::RGBA8,
-                                  BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP, memory);
+                                  BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP, nullptr);
+        if (!bgfx::isValid(handle))
+        {
+            PRED_LOG_ERROR(Debug, "ImGui: could not create a {}x{} atlas texture", texture->Width,
+                           texture->Height);
+            return;
+        }
         bgfx::setName(handle, "ImGuiTexture");
+
+        const uint32_t size = static_cast<uint32_t>(texture->Width * texture->Height * texture->BytesPerPixel);
+        const bgfx::Memory* memory = bgfx::copy(texture->GetPixels(), size);
+        bgfx::updateTexture2D(handle, 0, 0, 0, 0, static_cast<uint16_t>(texture->Width),
+                              static_cast<uint16_t>(texture->Height), memory,
+                              static_cast<uint16_t>(texture->GetPitch()));
+
         texture->SetTexID(ToTextureId(handle));
         texture->SetStatus(ImTextureStatus_OK);
     }

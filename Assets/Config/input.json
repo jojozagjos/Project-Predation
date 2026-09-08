@@ -4,11 +4,19 @@
     "move_back": [ "S" ],
     "move_left": [ "A" ],
     "move_right": [ "D" ],
-    "move_up": [ "E", "Space" ],
-    "move_down": [ "Q", "C" ],
+
+    "jump": [ "Space" ],
     "sprint": [ "Left Shift" ],
-    "walk": [ "Left Ctrl" ],
+    "walk": [ "Left Alt" ],
+    "crouch": [ "Left Ctrl", "C" ],
+    "prone": [ "Z" ],
+
+    "move_up": [ "E" ],
+    "move_down": [ "Q" ],
     "look": [ "Mouse2" ],
+    "toggle_fly": [ "F" ],
+    "respawn": [ "R" ],
+
     "quit_capture": [ "Escape" ],
     "debug_overlay": [ "F3" ],
     "console": [ "Grave" ],

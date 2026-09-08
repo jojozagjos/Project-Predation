@@ -28,8 +28,11 @@ set(PRED_ENGINE_SOURCES
     Scene/Scene.h
     Scene/Scene.cpp
 
+    Physics/PhysicsLayers.h
     Physics/PhysicsWorld.h
     Physics/PhysicsWorld.cpp
+    Physics/CharacterController.h
+    Physics/CharacterController.cpp
 
     Platform/Window.h
     Platform/Window.cpp

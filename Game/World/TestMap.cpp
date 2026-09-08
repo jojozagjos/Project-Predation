@@ -232,6 +232,13 @@ void BuildTestMap(Scene& scene, MeshLibrary& meshes, PhysicsWorld* physics)
     builder.AddBox("angled_block", AtPositionYaw(6.0f, 0.5f, 12.0f, 35.0f), {2.0f, 1.0f, 4.0f},
                    kLedgeMaterial);
 
+    if (physics != nullptr)
+    {
+        // The level is static and fully built at this point, so rebuild the broad-phase once rather
+        // than leaving it in creation order.
+        physics->OptimizeBroadPhase();
+    }
+
     PRED_LOG_INFO(Gameplay, "Test map built: {} entities, {} meshes, {} physics bodies", scene.EntityCount(),
                   meshes.Count(), physics != nullptr ? physics->GetStats().bodyCount : 0u);
 }

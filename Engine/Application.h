@@ -92,6 +92,10 @@ public:
     uint64_t FrameIndex() const { return m_frameIndex; }
 
     bool IsConsoleOpen() const { return m_console.IsOpen(); }
+    // True while an ImGui window is under the cursor or has keyboard focus. Game code should not
+    // act on input that the debug UI is already consuming.
+    bool IsUiCapturingMouse() const;
+    bool IsUiCapturingKeyboard() const;
     bool IsOverlayVisible() const;
     void SetOverlayVisible(bool visible);
 

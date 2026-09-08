@@ -1,0 +1,58 @@
+{
+  "_comment": "Player movement tuning. Edited live from the F3 overlay's Player panel and saved back here. Hot-reloads while the game is running.",
+
+  "speeds": {
+    "walk": 1.5,
+    "move": 3.4,
+    "sprint": 5.6,
+    "crouch": 1.5,
+    "prone": 0.75,
+    "backward_scale": 0.78,
+    "strafe_scale": 0.92
+  },
+
+  "acceleration": {
+    "ground": 60.0,
+    "ground_decel": 75.0,
+    "air": 14.0
+  },
+
+  "jump": {
+    "height": 0.95,
+    "gravity_scale": 1.7,
+    "fall_gravity_scale": 2.1,
+    "coyote_time": 0.12,
+    "buffer_time": 0.15
+  },
+
+  "capsule": {
+    "stand_height": 1.8,
+    "crouch_height": 1.15,
+    "prone_height": 0.6,
+    "radius": 0.32,
+    "step_height": 0.35,
+    "max_slope_angle": 46.0
+  },
+
+  "camera": {
+    "stand_eye_height": 1.66,
+    "crouch_eye_height": 1.02,
+    "prone_eye_height": 0.36,
+    "eye_transition_speed": 9.0,
+    "step_smooth_speed": 11.0,
+    "step_smooth_max": 0.5,
+    "landing_dip_per_speed": 0.012,
+    "landing_dip_max": 0.2,
+    "landing_recover_speed": 8.0,
+    "bob_amount": 0.03,
+    "bob_stride_length": 1.55,
+    "bob_sprint_scale": 1.35,
+    "max_pitch_degrees": 89.0
+  },
+
+  "fall_damage": {
+    "enabled": true,
+    "min_speed": 9.5,
+    "lethal_speed": 24.0
+  }
+}

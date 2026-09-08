@@ -1,6 +1,7 @@
 #include "Engine/Physics/PhysicsWorld.h"
 
 #include "Engine/Core/Log.h"
+#include "Engine/Physics/PhysicsLayers.h"
 #include "Engine/Render/DebugDraw.h"
 #include "Engine/Render/Mesh.h"
 
@@ -41,16 +42,16 @@ namespace
 // never tests against other static geometry, which is most of the win.
 namespace Layers
 {
-constexpr JPH::ObjectLayer kNonMoving = 0;
-constexpr JPH::ObjectLayer kMoving = 1;
-constexpr JPH::ObjectLayer kCount = 2;
+constexpr JPH::ObjectLayer kNonMoving = PhysicsLayers::kNonMoving;
+constexpr JPH::ObjectLayer kMoving = PhysicsLayers::kMoving;
+constexpr JPH::ObjectLayer kCount = PhysicsLayers::kCount;
 } // namespace Layers
 
 namespace BroadPhaseLayers
 {
-constexpr JPH::BroadPhaseLayer kNonMoving(0);
-constexpr JPH::BroadPhaseLayer kMoving(1);
-constexpr JPH::uint kCount(2);
+constexpr JPH::BroadPhaseLayer kNonMoving(PhysicsLayers::kBroadPhaseNonMoving);
+constexpr JPH::BroadPhaseLayer kMoving(PhysicsLayers::kBroadPhaseMoving);
+constexpr JPH::uint kCount(PhysicsLayers::kBroadPhaseCount);
 } // namespace BroadPhaseLayers
 
 class BroadPhaseLayerInterfaceImpl final : public JPH::BroadPhaseLayerInterface
@@ -527,6 +528,14 @@ void PhysicsWorld::DestroyAllBodies()
     impl.stats.bodyCount = 0;
 }
 
+void PhysicsWorld::OptimizeBroadPhase()
+{
+    if (m_impl->initialized)
+    {
+        m_impl->system->OptimizeBroadPhase();
+    }
+}
+
 bool PhysicsWorld::IsValid(BodyHandle body) const
 {
     return m_impl->initialized && body.IsValid() && m_impl->records.contains(body.id);
@@ -687,6 +696,16 @@ void PhysicsWorld::SetGravity(const glm::vec3& gravity)
 glm::vec3 PhysicsWorld::GetGravity() const
 {
     return m_impl->initialized ? FromJolt(m_impl->system->GetGravity()) : m_impl->settings.gravity;
+}
+
+void* PhysicsWorld::NativePhysicsSystem() const
+{
+    return m_impl->initialized ? m_impl->system.get() : nullptr;
+}
+
+void* PhysicsWorld::NativeTempAllocator() const
+{
+    return m_impl->initialized ? m_impl->tempAllocator.get() : nullptr;
 }
 
 } // namespace pred

@@ -333,6 +333,16 @@ int Application::Run(Game& game, int argc, char** argv)
     return 0;
 }
 
+bool Application::IsUiCapturingMouse() const
+{
+    return m_imgui.WantCaptureMouse();
+}
+
+bool Application::IsUiCapturingKeyboard() const
+{
+    return m_imgui.WantCaptureKeyboard();
+}
+
 bool Application::IsOverlayVisible() const
 {
     return cv_overlay.Get();
