@@ -76,6 +76,9 @@ private:
     void TakeAmmunition(int crateIndex);
     void EnterHidingSpot(int index);
     void LeaveHidingSpot();
+    // Health and stamina, bottom left. Bars rather than numbers: both are things to glance at.
+    // Takes no ImGui types, so this header does not have to know that ImGui exists.
+    void DrawCondition();
     void DrawHud();
     void DrawInventoryPanel();
     // Draws the item as it actually looks, from the offscreen atlas. Falls back to nothing rather

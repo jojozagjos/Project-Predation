@@ -3139,6 +3139,49 @@ void PredationGame::DrawPlayerPanel()
     }
 }
 
+void PredationGame::DrawCondition()
+{
+    const ImGuiViewport* viewport = ImGui::GetMainViewport();
+    ImDrawList* draw = ImGui::GetBackgroundDrawList();
+    // What shape the player is in, bottom left. Two bars and no numbers: how hurt you are and how
+    // much running is left are things to glance at, and a number invites arithmetic in a game that
+    // is meant to be making you panic.
+    const float left = viewport->Pos.x + 26.0f;
+    const float bottom = viewport->Pos.y + viewport->Size.y - 26.0f;
+    constexpr float kWidth = 168.0f;
+    constexpr float kHeight = 7.0f;
+    constexpr float kGap = 9.0f;
+
+    const auto bar = [&](float y, float fill, ImU32 colour)
+    {
+        const ImVec2 from{left, y};
+        const ImVec2 to{left + kWidth, y + kHeight};
+        draw->AddRectFilled(from, to, IM_COL32(14, 16, 20, 150), 2.0f);
+        if (fill > 0.0f)
+        {
+            draw->AddRectFilled(from, {left + kWidth * std::clamp(fill, 0.0f, 1.0f), to.y}, colour, 2.0f);
+        }
+        draw->AddRect(from, to, IM_COL32(120, 126, 138, 130), 2.0f);
+    };
+
+    const PlayerState& state = m_player.State();
+    const float health = std::clamp(state.health / 100.0f, 0.0f, 1.0f);
+    // Reddens as it empties, so the colour says the same thing as the length.
+    const ImU32 healthColour = health > 0.6f   ? IM_COL32(150, 190, 160, 220)
+                               : health > 0.3f ? IM_COL32(210, 180, 110, 225)
+                                               : IM_COL32(205, 90, 80, 235);
+    bar(bottom - kHeight, health, healthColour);
+
+    // Stamina is only worth the space when it is not full, or when it has run out, which is exactly
+    // when the player needs to know about it.
+    if (state.stamina < 0.999f)
+    {
+        const ImU32 staminaColour =
+            state.winded ? IM_COL32(200, 120, 90, 220) : IM_COL32(140, 165, 195, 200);
+        bar(bottom - kHeight * 2.0f - kGap, state.stamina, staminaColour);
+    }
+}
+
 void PredationGame::DrawHud()
 {
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
@@ -3242,6 +3285,7 @@ void PredationGame::DrawHud()
                                  viewport->Pos.y + viewport->Size.y - 20.0f},
                                 ImGuiCond_Always, {1.0f, 1.0f});
         ImGui::SetNextWindowBgAlpha(0.0f);
+        DrawCondition();
         if (ImGui::Begin("##Ammo", nullptr, kHudFlags))
         {
             if (m_weapon.IsReloading())

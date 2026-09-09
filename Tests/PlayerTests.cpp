@@ -758,3 +758,106 @@ TEST_CASE("A refused stance change says so", "[player][stance]")
     player.Shutdown();
     physics.Shutdown();
 }
+
+TEST_CASE("Sprinting runs out and comes back", "[player][stamina]")
+{
+    // Running out is the point. If the answer to everything is to run away, nothing is frightening,
+    // and the decision to run is not a decision.
+    PhysicsWorld physics;
+    PhysicsWorld::Settings settings;
+    settings.workerThreads = 1;
+    REQUIRE(physics.Init(settings));
+    physics.CreateBox({80.0f, 0.5f, 80.0f}, Transform{{0.0f, -0.5f, 0.0f}}, BodyMotion::Static);
+    physics.OptimizeBroadPhase();
+
+    PlayerConfig config;
+    PlayerController player;
+    REQUIRE(player.Init(physics, config, {0.0f, 0.05f, 30.0f}));
+
+    PlayerInput input;
+    input.move = {0.0f, 1.0f};
+    input.sprint = true;
+
+    const auto run = [&](int ticks)
+    {
+        for (int i = 0; i < ticks; ++i)
+        {
+            physics.Step(1.0f / 60.0f);
+            player.Step(input, 1.0f / 60.0f);
+        }
+    };
+
+    // A moment of sprinting: full speed, stamina falling.
+    run(60);
+    const float sprintSpeed = player.State().HorizontalSpeed();
+    INFO("sprinting at " << sprintSpeed << " with " << player.State().stamina << " left");
+    CHECK(sprintSpeed > config.moveSpeed + 0.5f);
+    CHECK(player.State().stamina < 0.95f);
+
+    // Keep going past the end of it.
+    run(static_cast<int>(config.sprintSeconds * 60.0f) + 60);
+    // It hit zero and stopped the sprint. It does not stay at zero: once you are no longer
+    // sprinting it starts coming back, which is what gives an exhausted player short bursts rather
+    // than nothing at all.
+    CHECK(player.State().winded);
+    CHECK(player.State().stamina < config.staminaSprintAgain);
+    const float windedSpeed = player.State().HorizontalSpeed();
+    INFO("winded, moving at " << windedSpeed);
+    CHECK(windedSpeed < config.moveSpeed + 0.3f);
+
+    // Still holding sprint, it must not flicker back on the instant a trickle returns.
+    run(30);
+    CHECK(player.State().winded);
+
+    // Let go and it comes back.
+    input.sprint = false;
+    input.move = glm::vec2(0.0f);
+    run(static_cast<int>((config.staminaRecoverDelay + config.staminaRecoverSeconds) * 60.0f) + 60);
+    CHECK(player.State().stamina > 0.95f);
+    CHECK_FALSE(player.State().winded);
+
+    player.Shutdown();
+    physics.Shutdown();
+}
+
+TEST_CASE("Being hurt slows you down", "[player][injury]")
+{
+    // Health that does nothing until it reaches zero is an accounting entry, not a wound.
+    const auto speedAtHealth = [](float health)
+    {
+        PhysicsWorld physics;
+        PhysicsWorld::Settings settings;
+        settings.workerThreads = 1;
+        REQUIRE(physics.Init(settings));
+        physics.CreateBox({80.0f, 0.5f, 80.0f}, Transform{{0.0f, -0.5f, 0.0f}}, BodyMotion::Static);
+        physics.OptimizeBroadPhase();
+
+        PlayerConfig config;
+        PlayerController player;
+        REQUIRE(player.Init(physics, config, {0.0f, 0.05f, 30.0f}));
+        player.State().health = health;
+
+        PlayerInput input;
+        input.move = {0.0f, 1.0f};
+        for (int i = 0; i < 90; ++i)
+        {
+            physics.Step(1.0f / 60.0f);
+            player.Step(input, 1.0f / 60.0f);
+        }
+        const float speed = player.State().HorizontalSpeed();
+        player.Shutdown();
+        physics.Shutdown();
+        return speed;
+    };
+
+    const float healthy = speedAtHealth(100.0f);
+    const float grazed = speedAtHealth(70.0f);
+    const float badly = speedAtHealth(15.0f);
+
+    INFO("healthy " << healthy << ", grazed " << grazed << ", badly hurt " << badly);
+    // Above the threshold a scratch costs nothing.
+    CHECK(grazed == Catch::Approx(healthy).margin(0.05));
+    // Near death it is a limp.
+    CHECK(badly < healthy * 0.75f);
+    CHECK(badly > 0.4f); // still moving, not frozen
+}

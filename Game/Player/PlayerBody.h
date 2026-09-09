@@ -380,6 +380,8 @@ private:
     float m_crawlDistance = 0.0f;
     // How much of the arms the climb owns. Fades out after it ends so the release is not a cut.
     float m_mantleFade = 0.0f;
+    // How much extra sway injury is adding to a held weapon.
+    float m_injurySway = 0.0f;
     Ragdoll m_ragdoll;
     Entity m_heldItemEntity;
     MeshHandle m_heldItemMesh;

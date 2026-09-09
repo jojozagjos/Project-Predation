@@ -80,6 +80,13 @@ struct PlayerState
     float health = 100.0f;
     bool alive = true;
 
+    // How much running is left, 0 to 1. Sprinting spends it and standing still gets it back, after
+    // a pause. In a game about being hunted, running out is the point: it is what stops the answer
+    // to everything being to run away, and it is what makes the decision to run a decision.
+    float stamina = 1.0f;
+    float staminaRecoveryDelay = 0.0f; // counts down before recovery starts
+    bool winded = false;               // spent it all, and cannot sprint again until it comes back
+
     // Distance travelled on foot, used to drive stride-phase effects such as head bob.
     float strideDistance = 0.0f;
     // Where in the two-step walk cycle the player is, wrapped to [0, 1). Both the camera dip and
@@ -159,6 +166,25 @@ struct PlayerConfig
     // stances no longer overlap, which is what makes a run a run.
     float stanceFractionWalk = 0.56f;
     float stanceFractionRun = 0.44f;
+
+    // --- Stamina ---
+    // Seconds of sprinting from full, and seconds to get it all back. Recovery waits a moment after
+    // you stop, so tapping sprint on and off is not free.
+    float sprintSeconds = 7.0f;
+    float staminaRecoverSeconds = 11.0f;
+    float staminaRecoverDelay = 1.1f;
+    // Once it is gone you cannot sprint again until this much is back. Without it, sprint flickers
+    // on and off at zero and the player runs at a limp for ever.
+    float staminaSprintAgain = 0.28f;
+
+    // --- Injury ---
+    // Below this fraction of health, movement starts to suffer. Above it, damage is a number and
+    // nothing else, which is what made being shot feel like an accounting entry.
+    float injuryThreshold = 0.6f;
+    // How slow a nearly-dead player is, as a fraction of their normal speed.
+    float injuredSpeedScale = 0.55f;
+    // And how much harder a weapon is to hold steady. Multiplies the body's breathing sway.
+    float injuredSwayScale = 3.2f;
 
     // --- Mantling ---
     // Pulling yourself up onto something. Below the step height the character walks up it without

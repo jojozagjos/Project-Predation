@@ -495,6 +495,16 @@ void PlayerBody::UpdatePosture(const PlayerState& state, const PlayerView& view,
 
     // The walk cycle comes from the simulation, not from a second clock kept here. The camera dip
     // runs off the same value, so the head drops exactly as a foot lands.
+    // How badly hurt, as far as the pose is concerned. Smoothed, so a hit is a wobble that grows
+    // rather than an instant change of how the weapon is held.
+    {
+        const float healthFraction = std::clamp(state.health / 100.0f, 0.0f, 1.0f);
+        const float threshold = std::max(playerConfig.injuryThreshold, 0.01f);
+        const float hurt = healthFraction < threshold ? (1.0f - healthFraction / threshold) : 0.0f;
+        m_injurySway = SmoothTowards(m_injurySway, hurt * (playerConfig.injuredSwayScale - 1.0f),
+                                     2.5f, dt);
+    }
+
     m_stridePhase = state.stridePhase;
 
     // The crawl cycle is measured along the body rather than as a distance travelled, so it runs
@@ -773,7 +783,10 @@ bool PlayerBody::UpdateWeaponHold(const PlayerView& view, float dt)
     // gun looking welded to the camera. It all but stops when the sights are up, because that is
     // what holding your breath is for.
     m_swayClock += dt;
-    const float breathe = (1.0f - aim * 0.85f) * m_config.weaponBreatheAmount;
+    // A hurt player cannot hold a weapon still. This is most of what makes being shot something
+    // you feel rather than a number you read.
+    const float breathe =
+        (1.0f - aim * 0.85f) * m_config.weaponBreatheAmount * (1.0f + m_injurySway);
     const glm::vec2 idle{std::sin(m_swayClock * 0.9f) * breathe,
                          std::sin(m_swayClock * 1.7f + 1.1f) * breathe * 0.6f};
 

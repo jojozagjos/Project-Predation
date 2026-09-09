@@ -5,15 +5,12 @@ list of gaps rather than a list of achievements: it is for deciding what to do n
 
 ## Player controller and embodiment
 
-Built: walking, running, sprinting, crouching, prone, mantling, jumping, leaning, stairs
+Built: walking, running, sprinting with stamina, crouching, prone, mantling, injury, jumping, leaning, stairs
 and slopes, fall damage, a full procedural body with IK, weapon holding, items held in the hand,
 and ragdolls on death.
 
 Still missing:
 
-- **Stamina.** Sprinting is currently free. In a game about being hunted, running out is the point.
-- **Injury.** Health is a number that does nothing until it reaches zero. Limping, a shaking aim and
-  a slower stance change are what make damage frightening rather than administrative.
 - **Melee or shoving.** There is no answer to something being close except shooting it.
 - **Audio.** There is no audio system at all. Footsteps, breathing and weapon sound are most of what
   makes a horror game work, and creature hearing later needs the same loudness values.

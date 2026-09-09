@@ -369,10 +369,49 @@ void PlayerController::Step(const PlayerInput& input, float dt)
     const float wishLength = glm::length(wishFlat);
     const glm::vec2 wishDir = wishLength > 1e-4f ? wishFlat / wishLength : glm::vec2(0.0f);
 
-    // Sprinting only counts when actually heading forwards, so nobody sprints backwards.
-    const bool sprinting = effective.sprint && effective.move.y > 0.4f && m_state.stance == PlayerStance::Standing;
+    // --- Stamina ---------------------------------------------------------------------------------
+    // Spent by sprinting and recovered by not, after a pause. Once it is gone you have to let a
+    // little back before you can sprint again, or sprint flickers on and off at zero and the player
+    // runs at a permanent limp.
+    const bool wantsSprint =
+        effective.sprint && effective.move.y > 0.4f && m_state.stance == PlayerStance::Standing;
+    const bool canSprint = m_state.stamina > (m_state.winded ? m_config.staminaSprintAgain : 0.0f);
+    const bool sprinting = wantsSprint && canSprint && m_state.alive;
+
+    if (sprinting)
+    {
+        m_state.stamina =
+            std::max(m_state.stamina - dt / std::max(m_config.sprintSeconds, 0.1f), 0.0f);
+        m_state.staminaRecoveryDelay = m_config.staminaRecoverDelay;
+        if (m_state.stamina <= 0.0f)
+        {
+            m_state.winded = true;
+        }
+    }
+    else
+    {
+        m_state.staminaRecoveryDelay = std::max(m_state.staminaRecoveryDelay - dt, 0.0f);
+        if (m_state.staminaRecoveryDelay <= 0.0f)
+        {
+            m_state.stamina =
+                std::min(m_state.stamina + dt / std::max(m_config.staminaRecoverSeconds, 0.1f), 1.0f);
+        }
+        if (m_state.stamina >= m_config.staminaSprintAgain)
+        {
+            m_state.winded = false;
+        }
+    }
     float targetSpeed = m_config.SpeedForStance(m_state.stance, sprinting, effective.walk) *
                         std::clamp(effective.speedScale, 0.05f, 1.0f);
+
+    // Injury. Below the threshold a player slows down, all the way to a limp at the point of death.
+    // Health that does nothing until it reaches zero is an accounting entry, not a wound.
+    const float healthFraction = std::clamp(m_state.health / 100.0f, 0.0f, 1.0f);
+    if (healthFraction < m_config.injuryThreshold)
+    {
+        const float hurt = 1.0f - healthFraction / std::max(m_config.injuryThreshold, 0.01f);
+        targetSpeed *= glm::mix(1.0f, m_config.injuredSpeedScale, hurt);
+    }
 
     // Slower sideways and slower still backwards, blended so there is no discontinuity.
     if (wishLength > 1e-4f)
