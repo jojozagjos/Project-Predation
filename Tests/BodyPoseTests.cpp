@@ -884,3 +884,127 @@ TEST_CASE("The legs roll with the body instead of staying flat on the floor", "[
     CHECK(flatSeparation < 0.05f);
     CHECK(mostStacked > 0.12f);
 }
+
+TEST_CASE("Rolling goes the way you turned when the turn is gradual", "[body][pose]")
+{
+    // The existing direction test snaps the view round in one tick. A mouse does not: the twist
+    // grows a degree at a time, and which shoulder you go over is decided somewhere in the middle
+    // of that. This is the case the player actually plays.
+    const auto rollDirection = [](float degreesPerSecond)
+    {
+        BodyHarness harness;
+        harness.SetStance(PlayerStance::Prone);
+        harness.Settle(300);
+
+        float extreme = 0.0f;
+        for (int i = 0; i < 400; ++i)
+        {
+            harness.input.yaw = WrapAngle(harness.input.yaw + glm::radians(degreesPerSecond) * kTick);
+            harness.Tick();
+            const float side = glm::vec3(harness.body.GetPose().Global(harness.Rig().chest)[0]).y;
+            if (std::abs(side) > std::abs(extreme))
+            {
+                extreme = side;
+            }
+        }
+        return extreme;
+    };
+
+    const float right = rollDirection(90.0f);   // a second and a half to look behind
+    const float left = rollDirection(-90.0f);
+    INFO("turning right rolled " << right << ", turning left rolled " << left);
+    CHECK(std::abs(right) > 0.3f);
+    CHECK(std::abs(left) > 0.3f);
+    CHECK(right * left < 0.0f);
+}
+
+TEST_CASE("Crawling backwards keeps the body facing forward", "[body][pose]")
+{
+    // Prone movement used to turn the body towards wherever it was travelling, so backing up
+    // pivoted the whole character round to face its own heels and then crawled forwards while the
+    // player slid the other way. It also read as being spun round every time you looked behind you
+    // and backed off, because the pivot always went the same way.
+    BodyHarness harness;
+    harness.SetStance(PlayerStance::Prone);
+    harness.Settle(300);
+
+    const float facingBefore = harness.body.DebugBodyYaw();
+
+    // Push straight backwards for two seconds.
+    harness.input.move = {0.0f, -1.0f};
+    harness.Settle(120);
+
+    const float turned = std::abs(WrapAngle(harness.body.DebugBodyYaw() - facingBefore));
+    INFO("body turned " << glm::degrees(turned) << " degrees while backing up");
+    CHECK(turned < glm::radians(25.0f));
+
+    // And it really did move backwards, rather than staying put.
+    CHECK(harness.State().position.z > 0.15f);
+}
+
+TEST_CASE("The crawl cycle runs backwards when you back up", "[body][pose]")
+{
+    // The reach and pull has to reverse, or backing up plays a forward crawl while the body slides
+    // the wrong way. The cycle is measured along the body, so its direction follows the movement.
+    const auto handTravel = [](float forward)
+    {
+        BodyHarness harness;
+        harness.SetStance(PlayerStance::Prone);
+        harness.Settle(300);
+        harness.input.move = {0.0f, forward};
+        harness.Settle(40);
+
+        // Where the left hand is relative to its shoulder, along the body, sampled over a stretch
+        // of the cycle. Which way it sweeps is the direction the crawl is running.
+        const glm::vec3 startHand = harness.Bone(harness.Rig().hand[0]);
+        const glm::vec3 startShoulder = harness.Bone(harness.Rig().shoulder[0]);
+        harness.Settle(20);
+        const glm::vec3 endHand = harness.Bone(harness.Rig().hand[0]);
+        const glm::vec3 endShoulder = harness.Bone(harness.Rig().shoulder[0]);
+        return -((endHand.z - endShoulder.z) - (startHand.z - startShoulder.z));
+    };
+
+    const float forwards = handTravel(1.0f);
+    const float backwards = handTravel(-1.0f);
+    INFO("hand swept " << forwards << " crawling forwards and " << backwards << " backing up");
+    CHECK(std::abs(forwards) > 1e-3f);
+    CHECK(std::abs(backwards) > 1e-3f);
+    CHECK(forwards * backwards < 0.0f);
+}
+
+TEST_CASE("The trigger hand stays on the weapon through a reload", "[body][pose][weapon]")
+{
+    // Writing a bone's global transform rebuilds every bone after it, and the left arm comes before
+    // the right. Placing the support hand on the magazine after the trigger hand therefore threw
+    // the right arm back onto its parent's pose and dropped it off the gun. The order is the fix,
+    // so this measures the hand against the grip for the whole of a reload.
+    BodyHarness harness;
+    WeaponDefinition weapon;
+    weapon.id = 1;
+    weapon.key = "test_carbine";
+    weapon.size = {0.06f, 0.16f, 0.62f};
+    harness.body.SetWeaponForSimulation(&weapon);
+    harness.Settle(120);
+
+    float worst = 0.0f;
+    float worstAt = 0.0f;
+    for (int step = 0; step <= 20; ++step)
+    {
+        PlayerBody::WeaponPose pose;
+        pose.reloading = true;
+        pose.reload = static_cast<float>(step) / 20.0f;
+        harness.body.SetWeaponPose(pose);
+        harness.Tick();
+
+        const glm::vec3 hand = harness.Bone(harness.Rig().hand[1]); // right, the trigger hand
+        const float distance = glm::length(hand - harness.body.WeaponOrigin());
+        if (distance > worst)
+        {
+            worst = distance;
+            worstAt = pose.reload;
+        }
+    }
+
+    INFO("trigger hand was " << worst << " m from the grip, worst at reload " << worstAt);
+    CHECK(worst < 0.20f);
+}

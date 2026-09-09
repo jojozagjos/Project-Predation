@@ -341,6 +341,9 @@ private:
     // The live posture, smoothed towards the target stance so transitions animate rather than snap.
     Config::StancePose m_pose_blend;
     float m_stridePhase = 0.0f;
+    // Signed distance crawled along the body. Negative when backing up, which runs the reach and
+    // pull the other way round.
+    float m_crawlDistance = 0.0f;
     float m_gaitWeight = 0.0f;
     bool m_built = false;
 };

@@ -360,7 +360,17 @@ void PlayerBody::UpdatePosture(const PlayerState& state, const PlayerView& view,
 
         if (moving)
         {
-            const float target = std::atan2(flat.x, -flat.z);
+            // The heading follows the *line* of travel, not its direction, taking whichever end is
+            // nearer to the way the body already lies. Crawling backwards then keeps you facing
+            // where you were and pushes you back on your elbows, instead of pivoting the whole
+            // body round to face its own heels. That pivot is what made backing up look wrong, and
+            // it also read as being spun round every time, because turning to look behind you and
+            // then backing away always swung the body the same way.
+            float target = std::atan2(flat.x, -flat.z);
+            if (std::abs(WrapAngle(target - m_bodyYaw)) > glm::radians(115.0f))
+            {
+                target = WrapAngle(target + glm::pi<float>());
+            }
             m_bodyYaw = WrapAngle(m_bodyYaw + WrapAngle(target - m_bodyYaw) *
                                                   (1.0f - std::exp(-m_config.proneTurnSpeed * dt)));
         }
@@ -493,6 +503,16 @@ void PlayerBody::UpdatePosture(const PlayerState& state, const PlayerView& view,
     // runs off the same value, so the head drops exactly as a foot lands.
     m_stridePhase = state.stridePhase;
 
+    // The crawl cycle is measured along the body rather than as a distance travelled, so it runs
+    // backwards when you back up. The simulation's stride distance only ever grows, which ran the
+    // reach-and-pull the same way whichever way you were going: backing up looked like crawling
+    // forwards while sliding the wrong way. This is presentation only, and nothing reads it but the
+    // arms and legs below.
+    {
+        const glm::vec3 facing{std::sin(m_bodyYaw), 0.0f, -std::cos(m_bodyYaw)};
+        m_crawlDistance += glm::dot(flat, facing) * dt;
+    }
+
     m_pose.ResetToBind(m_skeleton);
 
     // Hip sway and bob, the two things that stop a walk looking like a sliding statue.
@@ -530,7 +550,7 @@ void PlayerBody::UpdatePosture(const PlayerState& state, const PlayerView& view,
     // torso slides along the floor as one rigid plank while the limbs work, which is what made the
     // crawl read as a body being dragged rather than one pulling itself.
     const float crawlPhase =
-        state.strideDistance / std::max(m_config.crawlCycleLength, 0.05f) * glm::two_pi<float>();
+        m_crawlDistance / std::max(m_config.crawlCycleLength, 0.05f) * glm::two_pi<float>();
     const float crawlRoll = std::sin(crawlPhase) * glm::radians(m_config.crawlShoulderRollDegrees) *
                             m_gaitWeight * m_flatness;
 
@@ -1025,6 +1045,32 @@ bool PlayerBody::UpdateWeaponHold(const PlayerView& view, float dt)
     const bool supportHandFree = flat || (m_weaponPose.reloading && m_weaponPose.reload > 0.12f &&
                                           m_weaponPose.reload < 0.92f);
 
+    // The magazine change needs a hand to do it with, so the support hand goes to the magazine well
+    // rather than hanging in mid air.
+    //
+    // This runs BEFORE the trigger hand, and the order is load-bearing. Writing a bone's global
+    // transform rebuilds every bone after it in the skeleton, and the left arm comes before the
+    // right, so placing the left hand last threw the right arm back onto its parent's pose: the
+    // trigger hand dropped off the gun the moment a reload started.
+    if (supportHandFree && !flat && m_weaponPose.reloading)
+    {
+        const glm::vec3 shoulder = m_pose.GlobalPosition(m_rig.shoulder[kLeft]);
+        const glm::vec3 magazineWorld =
+            m_weaponTransform.position + rotation * (m_weaponVisual.magazineSeated + magazineOffset);
+        const glm::vec3 target = magazineWorld + weaponRight * -0.03f;
+        FootState& hand = m_hands[static_cast<size_t>(kLeft)];
+        hand.position = SmoothTowards(hand.position, target, m_config.weaponHandSmoothing, dt);
+
+        const glm::vec3 elbowPole =
+            glm::normalize(-carryUp * 1.0f - carryRight * 0.9f - carryForward * 0.25f);
+        const TwoBoneIKResult ik = SolveTwoBoneIK(shoulder, hand.position, elbowPole,
+                                                  m_rig.upperArmLength, m_rig.lowerArmLength);
+        m_pose.SetGlobal(m_skeleton, m_rig.upperArm[kLeft], SegmentMatrix(shoulder, ik.jointPosition));
+        m_pose.SetGlobal(m_skeleton, m_rig.lowerArm[kLeft], SegmentMatrix(ik.jointPosition, ik.endPosition));
+        m_pose.SetGlobal(m_skeleton, m_rig.hand[kLeft],
+                         glm::translate(glm::mat4(1.0f), ik.endPosition) * glm::mat4_cast(rotation));
+    }
+
     for (int side = firstSide; side < 2; ++side)
     {
         if (side == kLeft && supportHandFree)
@@ -1054,26 +1100,6 @@ bool PlayerBody::UpdateWeaponHold(const PlayerView& view, float dt)
                          glm::translate(glm::mat4(1.0f), ik.endPosition) * glm::mat4_cast(rotation));
     }
 
-    // The magazine change needs a hand to do it with, so the support hand goes to the magazine well
-    // rather than hanging in mid air.
-    if (supportHandFree && !flat && m_weaponPose.reloading)
-    {
-        const glm::vec3 shoulder = m_pose.GlobalPosition(m_rig.shoulder[kLeft]);
-        const glm::vec3 magazineWorld =
-            m_weaponTransform.position + rotation * (m_weaponVisual.magazineSeated + magazineOffset);
-        const glm::vec3 target = magazineWorld + weaponRight * -0.03f;
-        FootState& hand = m_hands[static_cast<size_t>(kLeft)];
-        hand.position = SmoothTowards(hand.position, target, m_config.weaponHandSmoothing, dt);
-
-        const glm::vec3 elbowPole =
-            glm::normalize(-carryUp * 1.0f - carryRight * 0.9f - carryForward * 0.25f);
-        const TwoBoneIKResult ik = SolveTwoBoneIK(shoulder, hand.position, elbowPole,
-                                                  m_rig.upperArmLength, m_rig.lowerArmLength);
-        m_pose.SetGlobal(m_skeleton, m_rig.upperArm[kLeft], SegmentMatrix(shoulder, ik.jointPosition));
-        m_pose.SetGlobal(m_skeleton, m_rig.lowerArm[kLeft], SegmentMatrix(ik.jointPosition, ik.endPosition));
-        m_pose.SetGlobal(m_skeleton, m_rig.hand[kLeft],
-                         glm::translate(glm::mat4(1.0f), ik.endPosition) * glm::mat4_cast(rotation));
-    }
     return true;
 }
 
@@ -1110,7 +1136,7 @@ void PlayerBody::UpdateCrawlArms(const PlayerState& state, const PlayerView& vie
     // reaches, plants and pulls on every stride rather than every other one.
     const float cycleLength =
         m_config.crawlCycleLength * (supportArmOnly ? 0.55f : 1.0f);
-    const float crawlPhase = state.strideDistance / std::max(cycleLength, 0.05f) * glm::two_pi<float>();
+    const float crawlPhase = m_crawlDistance / std::max(cycleLength, 0.05f) * glm::two_pi<float>();
 
     const int firstSide = supportArmOnly ? kLeft : 0;
     const int lastSide = supportArmOnly ? kLeft : 1;
@@ -1202,7 +1228,7 @@ void PlayerBody::UpdateLegs(const PlayerState& state, const PlayerView& view,
     // runs opposite the hands, so the body reads as pulling with one arm and pushing with the
     // opposite leg.
     const float crawlPhase =
-        state.strideDistance / std::max(m_config.crawlCycleLength, 0.05f) * glm::two_pi<float>();
+        m_crawlDistance / std::max(m_config.crawlCycleLength, 0.05f) * glm::two_pi<float>();
 
     for (int side = 0; side < 2; ++side)
     {
