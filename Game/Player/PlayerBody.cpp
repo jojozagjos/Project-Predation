@@ -309,7 +309,22 @@ void PlayerBody::UpdatePosture(const PlayerState& state, const PlayerView& view,
     if (moving)
     {
         // atan2 inverted to match the engine's convention that yaw 0 faces -Z.
-        hipTarget = std::atan2(flat.x, -flat.z);
+        float moveYaw = std::atan2(flat.x, -flat.z);
+
+        // Hips align to the *line* of travel, not its direction, taking whichever end is nearer to
+        // where the player is aiming. Walking backwards then keeps the body facing forward and the
+        // feet stepping back, instead of spinning the whole character round to face its own heels.
+        float offset = WrapAngle(moveYaw - view.yaw);
+        if (std::abs(offset) > glm::radians(135.0f))
+        {
+            moveYaw = WrapAngle(moveYaw + glm::pi<float>());
+            offset = WrapAngle(moveYaw - view.yaw);
+        }
+
+        // Never let the hips stray further from the aim than the torso can twist back, or the upper
+        // body ends up wrenched round to compensate.
+        const float maxOffset = glm::radians(m_config.maxTorsoTwistDegrees * 0.9f);
+        hipTarget = view.yaw + std::clamp(offset, -maxOffset, maxOffset);
         turnSpeed = m_config.hipTurnSpeedMoving;
     }
     else
@@ -337,7 +352,6 @@ void PlayerBody::UpdatePosture(const PlayerState& state, const PlayerView& view,
                                        : state.stance == PlayerStance::Prone   ? m_config.prone
                                                                                : m_config.stand;
     const float blend = m_config.stanceBlendSpeed;
-    m_pose_blend.pelvisRatio = SmoothTowards(m_pose_blend.pelvisRatio, target.pelvisRatio, blend, dt);
     m_pose_blend.pelvisPitchDeg =
         SmoothTowards(m_pose_blend.pelvisPitchDeg, target.pelvisPitchDeg, blend, dt);
     m_pose_blend.spineLeanDeg = SmoothTowards(m_pose_blend.spineLeanDeg, target.spineLeanDeg, blend, dt);
@@ -350,12 +364,13 @@ void PlayerBody::UpdatePosture(const PlayerState& state, const PlayerView& view,
     // How far through the transition to lying flat we are. Drives the crawl and the knee pole.
     m_flatness = std::clamp(m_pose_blend.pelvisPitchDeg / 90.0f, 0.0f, 1.0f);
 
-    // Placed from the interpolated render position, not from the simulation state. The camera uses
-    // the interpolated one, so using the raw state here made the body step at the tick rate while
-    // the view moved at the frame rate, which reads as the body stuttering underneath you.
-    const glm::vec3 facing{std::sin(m_bodyYaw), 0.0f, -std::cos(m_bodyYaw)};
-    m_rootPosition = view.renderPosition + glm::vec3(0.0f, m_pose_blend.pelvisRatio * m_rig.height, 0.0f) -
-                     facing * m_config.eyeForwardOffset;
+    // Provisional placement only. The height here cancels out: the pose is built relative to this
+    // root and then the whole root is shifted so the head lands on the eye, so any starting height
+    // gives the same answer. What matters is the horizontal position, which comes from the
+    // interpolated render position rather than the simulation state. Using the raw state made the
+    // body step at the tick rate while the view moved at the frame rate, which reads as the body
+    // stuttering underneath you.
+    m_rootPosition = view.renderPosition + glm::vec3(0.0f, m_rig.height * 0.53f, 0.0f);
 
     // Measured against the speed this stance normally travels at, not against a standing walk.
     // Otherwise crawling at 0.75 m/s reads as a fifth of a stride and the limbs barely move.
@@ -438,8 +453,21 @@ void PlayerBody::UpdatePosture(const PlayerState& state, const PlayerView& view,
             glm::angleAxis(glm::radians(12.0f) + std::abs(swing) * 0.5f, glm::vec3(1.0f, 0.0f, 0.0f));
     }
 
-    const glm::mat4 root =
-        glm::translate(glm::mat4(1.0f), m_rootPosition) * glm::mat4_cast(BodyRotation());
+    glm::mat4 root = glm::translate(glm::mat4(1.0f), m_rootPosition) * glm::mat4_cast(BodyRotation());
+    m_pose.ComputeGlobals(m_skeleton, root);
+
+    // Anchor the head to the camera, rather than placing the body by a guessed offset and hoping the
+    // head lands near the eye. Solving it exactly fixes several problems at once: the head no longer
+    // drifts off-centre when the hips turn away from the view while strafing, the torso stops
+    // sitting too far forward, and the camera stops clipping through the body on stairs and while
+    // crouching, because the head now carries the same step smoothing and landing dip the camera
+    // does. It costs one extra pass over nineteen bones.
+    const glm::vec3 viewFacing{std::sin(view.yaw), 0.0f, -std::cos(view.yaw)};
+    const glm::vec3 desiredHead = view.eyePosition - viewFacing * m_config.eyeForwardOfHead -
+                                  glm::vec3(0.0f, m_config.eyeAboveHead, 0.0f);
+    m_rootPosition += desiredHead - m_pose.GlobalPosition(m_rig.head);
+
+    root = glm::translate(glm::mat4(1.0f), m_rootPosition) * glm::mat4_cast(BodyRotation());
     m_pose.ComputeGlobals(m_skeleton, root);
 }
 

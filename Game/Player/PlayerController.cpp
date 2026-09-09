@@ -392,7 +392,10 @@ void PlayerController::UpdateView(float dt, float alpha)
 
     m_view.yaw = m_state.yaw;
     m_view.pitch = m_state.pitch;
-    m_view.leanRoll = -m_state.leanAmount * glm::radians(m_config.leanAngleDegrees);
+    // Leaning right tips the head right, so the up vector tips right and the horizon rolls the other
+    // way. Rotating about the view axis, that needs a positive angle; negating it rolled the camera
+    // into the lean instead of with it.
+    m_view.leanRoll = m_state.leanAmount * glm::radians(m_config.leanAngleDegrees);
 
     m_view.eyePosition =
         renderPosition +

@@ -16,6 +16,8 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <limits>
+#include <string>
 
 namespace pred
 {
@@ -71,6 +73,10 @@ bool PredationGame::OnInit(Application& app)
     m_world.Build(m_scene, app.GetMeshes(), app.GetPhysics(), m_interactions, m_items);
     app.GetPhysics().OptimizeBroadPhase();
 
+    // Checked once the whole level exists, so a piece placed on top of another is caught here
+    // rather than by walking into it. 10 mm is below anything anyone would notice.
+    ReportMapOverlaps(0.01f);
+
     // Editing player.json on disk applies immediately, without a rebuild or a restart.
     app.GetFileWatcher().Watch(PlayerConfigPath(),
                                [this](const std::filesystem::path&) { ReloadPlayerConfig(); });
@@ -84,9 +90,58 @@ bool PredationGame::OnInit(Application& app)
     UpdateMouseCapture();
 
     PRED_LOG_INFO(Gameplay,
-                  "Milestone 3 ready. WASD move, Space jump, Ctrl crouch, Z prone, Shift sprint, "
-                  "Alt walk. F toggles the fly camera, R respawns, Escape releases the mouse.");
+                  "Controls: WASD move, Space jump, Ctrl/C crouch, Z prone, Shift sprint, Alt walk, "
+                  "Q/E lean, F interact, G drop, 1-6 and wheel select, Tab inventory. "
+                  "P cycles first/third/free camera; in third person hold right mouse to orbit. "
+                  "R respawns, F3 overlay, Escape frees the cursor.");
     return true;
+}
+
+std::string PredationGame::DescribeBody(BodyHandle body) const
+{
+    if (m_app == nullptr || !m_app->GetPhysics().IsValid(body))
+    {
+        return "<unknown>";
+    }
+    const glm::vec3 position = m_app->GetPhysics().GetTransform(body).position;
+
+    std::string best = "<unnamed>";
+    float bestDistance = std::numeric_limits<float>::max();
+    m_scene.ForEachMeshRenderer([&](Entity entity, const Transform& transform, const MeshRenderer&) {
+        const float distance = glm::distance(transform.position, position);
+        if (distance < bestDistance)
+        {
+            bestDistance = distance;
+            best = m_scene.Name(entity);
+        }
+    });
+    // A body far from every entity centre is one of several making up a compound object, such as a
+    // locker wall, so say so rather than claiming a name that is only roughly right.
+    return bestDistance > 1.5f ? best + "?" : best;
+}
+
+void PredationGame::ReportMapOverlaps(float minPenetration)
+{
+    if (m_app == nullptr)
+    {
+        return;
+    }
+    const std::vector<PhysicsWorld::StaticOverlap> overlaps =
+        m_app->GetPhysics().FindStaticOverlaps(minPenetration);
+    if (overlaps.empty())
+    {
+        PRED_LOG_INFO(Gameplay, "Map geometry check: no static solids overlap by more than {:.0f} mm",
+                      minPenetration * 1000.0f);
+        return;
+    }
+
+    PRED_LOG_WARN(Gameplay, "Map geometry check: {} overlapping pairs of static solids", overlaps.size());
+    for (const PhysicsWorld::StaticOverlap& overlap : overlaps)
+    {
+        PRED_LOG_WARN(Gameplay, "  {} into {}, {:.0f} mm deep at ({:.2f}, {:.2f}, {:.2f})",
+                      DescribeBody(overlap.a), DescribeBody(overlap.b), overlap.penetration * 1000.0f,
+                      overlap.position.x, overlap.position.y, overlap.position.z);
+    }
 }
 
 void PredationGame::ReloadPlayerConfig()
@@ -127,31 +182,43 @@ void PredationGame::RegisterCommands()
             const std::string which = args.size() > 1 ? args[1] : "first";
             if (which == "first")
             {
-                m_cameraMode = CameraMode::FirstPerson;
+                SetCameraMode(CameraMode::FirstPerson);
             }
             else if (which == "third")
             {
-                m_cameraMode = CameraMode::ThirdPerson;
+                SetCameraMode(CameraMode::ThirdPerson);
             }
             else if (which == "fly")
             {
-                m_cameraMode = CameraMode::Fly;
+                SetCameraMode(CameraMode::Fly);
             }
             else
             {
                 m_app->GetConsole().PrintError("usage: camera <first|third|fly>");
-                return;
             }
-            m_app->GetConsole().Print("Camera: " + which);
         },
         "camera <first|third|fly>");
 
     console.RegisterCommand("fly", "Toggle the free-flying inspection camera",
                             [this](const std::vector<std::string>&)
                             {
-                                m_cameraMode = m_cameraMode == CameraMode::Fly ? CameraMode::FirstPerson
-                                                                               : CameraMode::Fly;
+                                SetCameraMode(m_cameraMode == CameraMode::Fly ? CameraMode::FirstPerson
+                                                                              : CameraMode::Fly);
                             });
+
+    console.RegisterCommand(
+        "cam_orbit", "Set the third-person orbit offset: cam_orbit <yaw> <pitch>",
+        [this](const std::vector<std::string>& args)
+        {
+            if (args.size() < 3)
+            {
+                m_app->GetConsole().PrintError("usage: cam_orbit <yaw> <pitch>");
+                return;
+            }
+            m_orbitYaw = glm::radians(std::strtof(args[1].c_str(), nullptr));
+            m_orbitPitch = glm::radians(std::strtof(args[2].c_str(), nullptr));
+        },
+        "cam_orbit <yaw> <pitch>");
 
     console.RegisterCommand(
         "stance", "Hold a stance for inspection: stance <stand|crouch|prone|auto>",
@@ -183,6 +250,29 @@ void PredationGame::RegisterCommands()
         },
         "player_yaw <degrees>");
 
+    console.RegisterCommand(
+        "map_overlaps", "List level geometry that intersects other level geometry",
+        [this](const std::vector<std::string>& args)
+        {
+            const float minimum = args.size() >= 2 ? std::strtof(args[1].c_str(), nullptr) : 0.01f;
+            const std::vector<PhysicsWorld::StaticOverlap> overlaps =
+                m_app->GetPhysics().FindStaticOverlaps(minimum);
+            if (overlaps.empty())
+            {
+                m_app->GetConsole().Print("No static solids overlap");
+                return;
+            }
+            for (const PhysicsWorld::StaticOverlap& overlap : overlaps)
+            {
+                char buffer[256];
+                std::snprintf(buffer, sizeof(buffer), "%s into %s, %.0f mm at %.2f %.2f %.2f",
+                              DescribeBody(overlap.a).c_str(), DescribeBody(overlap.b).c_str(),
+                              overlap.penetration * 1000.0f, overlap.position.x, overlap.position.y,
+                              overlap.position.z);
+                m_app->GetConsole().Print(buffer);
+            }
+        },
+        "map_overlaps [minimum metres]");
     console.RegisterCommand("player_reload", "Reload player.json from disk",
                             [this](const std::vector<std::string>&) { ReloadPlayerConfig(); });
 
@@ -238,6 +328,34 @@ void PredationGame::RegisterCommands()
             m_app->GetConsole().Print(buffer);
         },
         "cam_pos [x y z [yaw pitch]]");
+
+    console.RegisterCommand(
+        "give", "Put an item straight into the inventory: give <key> [count]",
+        [this](const std::vector<std::string>& args)
+        {
+            if (args.size() < 2)
+            {
+                m_app->GetConsole().PrintError("usage: give <key> [count]");
+                return;
+            }
+            const ItemId id = m_items.IdOf(args[1]);
+            if (id == kInvalidItem)
+            {
+                m_app->GetConsole().PrintError("no such item: " + args[1]);
+                return;
+            }
+            const int count = args.size() >= 3 ? std::atoi(args[2].c_str()) : 1;
+            const int stored = m_inventory.Add(m_items, id, std::max(count, 1));
+            m_app->GetConsole().Print("Stored " + std::to_string(stored) + " " + args[1]);
+        },
+        "give <key> [count]");
+
+    console.RegisterCommand("inventory", "Open or close the inventory panel",
+                            [this](const std::vector<std::string>&)
+                            {
+                                m_inventoryOpen = !m_inventoryOpen;
+                                UpdateMouseCapture();
+                            });
 
     console.RegisterCommand("scene_stats", "Print scene and mesh statistics",
                             [this](const std::vector<std::string>&)
@@ -347,11 +465,20 @@ void PredationGame::SampleLook(float /*dt*/)
         return;
     }
     const float sensitivity = glm::radians(cv_mouseSensitivity.Get());
-    m_lookYaw += delta.x * sensitivity;
-    m_lookPitch += (cv_invertY.Get() ? delta.y : -delta.y) * sensitivity;
-
+    const float vertical = (cv_invertY.Get() ? delta.y : -delta.y) * sensitivity;
     const float limit = glm::radians(m_player.Config().maxPitchDegrees);
-    m_lookPitch = std::clamp(m_lookPitch, -limit, limit);
+
+    // Holding the look button in third person orbits the camera instead of turning the character,
+    // which is the only way to see the animation from the front.
+    if (m_cameraMode == CameraMode::ThirdPerson && input.IsActionDown("look"))
+    {
+        m_orbitYaw += delta.x * sensitivity;
+        m_orbitPitch = std::clamp(m_orbitPitch + vertical, -limit, limit);
+        return;
+    }
+
+    m_lookYaw += delta.x * sensitivity;
+    m_lookPitch = std::clamp(m_lookPitch + vertical, -limit, limit);
     if (m_lookYaw > glm::pi<float>())
     {
         m_lookYaw -= glm::two_pi<float>();
@@ -397,6 +524,33 @@ PlayerInput PredationGame::BuildPlayerInput()
     result.crouchHeld = result.crouchHeld || m_forceCrouch;
     result.proneHeld = result.proneHeld || m_forceProne;
     return result;
+}
+
+const char* PredationGame::CameraModeName() const
+{
+    switch (m_cameraMode)
+    {
+    case CameraMode::ThirdPerson:
+        return "third person";
+    case CameraMode::Fly:
+        return "free camera";
+    case CameraMode::FirstPerson:
+    default:
+        return "first person";
+    }
+}
+
+void PredationGame::SetCameraMode(CameraMode mode)
+{
+    m_cameraMode = mode;
+    // Orbit is an inspection tool, not a persistent state; entering third person starts behind the
+    // character rather than wherever it was last left.
+    m_orbitYaw = 0.0f;
+    m_orbitPitch = 0.0f;
+    if (m_app != nullptr)
+    {
+        m_app->GetConsole().Print(std::string("Camera: ") + CameraModeName());
+    }
 }
 
 void PredationGame::TryInteract()
@@ -582,6 +736,12 @@ void PredationGame::OnUpdate(double dt, double alpha)
         {
             DropSelected();
         }
+        if (input.WasActionPressed("inventory"))
+        {
+            m_inventoryOpen = !m_inventoryOpen;
+            // The panel is clickable, so it needs the pointer back.
+            m_wantMouseCaptured = !m_inventoryOpen;
+        }
         for (int slot = 0; slot < 6; ++slot)
         {
             if (input.WasActionPressed("slot_" + std::to_string(slot + 1)))
@@ -597,9 +757,9 @@ void PredationGame::OnUpdate(double dt, double alpha)
         {
             // Cycles first person, third person, fly. Third person exists so the body animation can
             // actually be watched, which is impossible from inside the head.
-            m_cameraMode = m_cameraMode == CameraMode::FirstPerson  ? CameraMode::ThirdPerson
-                           : m_cameraMode == CameraMode::ThirdPerson ? CameraMode::Fly
-                                                                     : CameraMode::FirstPerson;
+            SetCameraMode(m_cameraMode == CameraMode::FirstPerson    ? CameraMode::ThirdPerson
+                          : m_cameraMode == CameraMode::ThirdPerson ? CameraMode::Fly
+                                                                    : CameraMode::FirstPerson);
         }
         if (input.WasActionPressed("respawn"))
         {
@@ -635,15 +795,19 @@ void PredationGame::OnUpdate(double dt, double alpha)
 
     case CameraMode::ThirdPerson:
     {
-        // Orbits the player at a fixed offset along the look direction. It follows the interpolated
-        // position for the same reason the body does: anything using the raw simulation state
-        // steps at the tick rate and judders.
-        const PlayerView& playerView = m_player.View();
-        const glm::vec3 focus =
-            playerView.renderPosition + glm::vec3(0.0f, m_thirdPersonHeight, 0.0f);
-        const float cp = std::cos(m_lookPitch);
-        const glm::vec3 lookDirection{std::sin(m_lookYaw) * cp, std::sin(m_lookPitch),
-                                      -std::cos(m_lookYaw) * cp};
+        // Orbits the torso along the look direction. Framing on the body itself, rather than a fixed
+        // height above the feet, keeps the character centred in every stance; a constant height
+        // works for standing and then looks straight over the top of them once they lie down. The
+        // body follows the interpolated position, so the camera inherits that and does not judder.
+        const glm::vec3 focus = (m_body.GetPose().GlobalPosition(m_body.Rig().head) +
+                                 m_body.GetPose().GlobalPosition(m_body.Rig().pelvis)) *
+                                0.5f;
+        const float orbitYaw = m_lookYaw + m_orbitYaw;
+        const float orbitPitch = std::clamp(m_lookPitch + m_orbitPitch, glm::radians(-85.0f),
+                                            glm::radians(85.0f));
+        const float cp = std::cos(orbitPitch);
+        const glm::vec3 lookDirection{std::sin(orbitYaw) * cp, std::sin(orbitPitch),
+                                      -std::cos(orbitYaw) * cp};
 
         // Pull the camera in when something is in the way, so it does not end up inside a wall or a
         // pillar with the player hidden behind it.
@@ -657,6 +821,10 @@ void PredationGame::OnUpdate(double dt, double alpha)
         }
 
         viewPosition = focus - lookDirection * distance;
+        // Never let the orbit drop the camera through the floor. Looking down at a prone character
+        // puts the camera below a focus that is itself only a few centimetres up, and the occlusion
+        // ray then pulls it hard into the body. The player's own feet are the ground reference.
+        viewPosition.y = std::max(viewPosition.y, m_player.View().renderPosition.y + 0.4f);
         view = glm::lookAtRH(viewPosition, focus, glm::vec3(0.0f, 1.0f, 0.0f));
         break;
     }
@@ -975,45 +1143,180 @@ void PredationGame::DrawHud()
         ImGui::End();
     }
 
-    // Inventory bar.
-    ImGui::SetNextWindowPos({centre.x, viewport->Pos.y + viewport->Size.y - 18.0f}, ImGuiCond_Always,
+    // Hotbar: one icon per slot, with the selected one picked out and stack counts in the corner.
+    constexpr float kSlotSize = 46.0f;
+    constexpr float kSlotGap = 6.0f;
+
+    ImGui::SetNextWindowPos({centre.x, viewport->Pos.y + viewport->Size.y - 16.0f}, ImGuiCond_Always,
                             {0.5f, 1.0f});
-    ImGui::SetNextWindowBgAlpha(0.35f);
-    if (ImGui::Begin("##Inventory", nullptr, kHudFlags & ~ImGuiWindowFlags_NoBackground))
+    ImGui::SetNextWindowBgAlpha(0.0f);
+    if (ImGui::Begin("##Hotbar", nullptr, kHudFlags))
     {
+        ImDrawList* list = ImGui::GetWindowDrawList();
         for (int i = 0; i < m_inventory.SlotCount(); ++i)
         {
+            if (i > 0)
+            {
+                ImGui::SameLine(0.0f, kSlotGap);
+            }
+
             const Inventory::Slot& slot = m_inventory.At(i);
             const bool selected = i == m_inventory.SelectedSlot();
+            const ImVec2 origin = ImGui::GetCursorScreenPos();
 
-            std::string label = std::to_string(i + 1) + ". ";
-            if (slot.IsEmpty())
+            list->AddRectFilled(origin, {origin.x + kSlotSize, origin.y + kSlotSize},
+                                IM_COL32(18, 20, 26, selected ? 190 : 130), 4.0f);
+            list->AddRect(origin, {origin.x + kSlotSize, origin.y + kSlotSize},
+                          selected ? IM_COL32(235, 205, 130, 235) : IM_COL32(120, 124, 134, 150), 4.0f,
+                          0, selected ? 2.0f : 1.0f);
+
+            if (const ItemDefinition* definition = m_items.Get(slot.item); definition != nullptr)
             {
-                label += "-";
-            }
-            else
-            {
-                const ItemDefinition* definition = m_items.Get(slot.item);
-                label += definition != nullptr ? definition->name : "?";
+                DrawItemIcon(*definition, kSlotSize);
                 if (slot.count > 1)
                 {
-                    label += " x" + std::to_string(slot.count);
+                    const std::string count = std::to_string(slot.count);
+                    list->AddText({origin.x + kSlotSize - 6.0f - ImGui::CalcTextSize(count.c_str()).x,
+                                   origin.y + kSlotSize - 17.0f},
+                                  IM_COL32(240, 240, 245, 235), count.c_str());
                 }
             }
 
-            if (i > 0)
-            {
-                ImGui::SameLine(0.0f, 18.0f);
-            }
-            if (selected)
-            {
-                ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.45f, 1.0f), "%s", label.c_str());
-            }
-            else
-            {
-                ImGui::TextColored(ImVec4(0.75f, 0.76f, 0.80f, 0.85f), "%s", label.c_str());
-            }
+            const std::string number = std::to_string(i + 1);
+            list->AddText({origin.x + 4.0f, origin.y + 2.0f},
+                          selected ? IM_COL32(235, 205, 130, 220) : IM_COL32(150, 154, 164, 170),
+                          number.c_str());
+
+            ImGui::Dummy({kSlotSize, kSlotSize});
         }
+    }
+    ImGui::End();
+
+    if (m_inventoryOpen)
+    {
+        DrawInventoryPanel();
+    }
+}
+
+void PredationGame::DrawItemIcon(const ItemDefinition& definition, float boxSize) const
+{
+    ImDrawList* list = ImGui::GetWindowDrawList();
+    const ImVec2 origin = ImGui::GetCursorScreenPos();
+    const ImVec2 centre{origin.x + boxSize * 0.5f, origin.y + boxSize * 0.5f};
+
+    // Icons are derived from the item's own definition rather than authored, so a new entry in
+    // items.json is immediately distinguishable without waiting for art.
+    const ImU32 fill = ImGui::ColorConvertFloat4ToU32(
+        ImVec4(definition.color.r * 1.6f, definition.color.g * 1.6f, definition.color.b * 1.6f, 1.0f));
+    const ImU32 edge = ImGui::ColorConvertFloat4ToU32(
+        ImVec4(definition.color.r * 2.4f + 0.15f, definition.color.g * 2.4f + 0.15f,
+               definition.color.b * 2.4f + 0.15f, 1.0f));
+
+    // Keep the item's real proportions, scaled to fit the slot.
+    const float longest = std::max({definition.size.x, definition.size.y, definition.size.z, 0.01f});
+    const float scale = boxSize * 0.52f / longest;
+    const float halfWidth = std::max(definition.size.x * scale * 0.5f, 3.0f);
+    const float halfHeight = std::max(definition.size.y * scale * 0.5f, 3.0f);
+
+    switch (definition.shape)
+    {
+    case ItemShape::Sphere:
+        list->AddCircleFilled(centre, std::max(halfWidth, 4.0f), fill, 20);
+        list->AddCircle(centre, std::max(halfWidth, 4.0f), edge, 20, 1.5f);
+        break;
+
+    case ItemShape::Cylinder:
+        list->AddRectFilled({centre.x - halfWidth, centre.y - halfHeight},
+                            {centre.x + halfWidth, centre.y + halfHeight}, fill, halfWidth * 0.8f);
+        list->AddRect({centre.x - halfWidth, centre.y - halfHeight},
+                      {centre.x + halfWidth, centre.y + halfHeight}, edge, halfWidth * 0.8f, 0, 1.5f);
+        break;
+
+    case ItemShape::Box:
+    default:
+        list->AddRectFilled({centre.x - halfWidth, centre.y - halfHeight},
+                            {centre.x + halfWidth, centre.y + halfHeight}, fill, 2.0f);
+        list->AddRect({centre.x - halfWidth, centre.y - halfHeight},
+                      {centre.x + halfWidth, centre.y + halfHeight}, edge, 2.0f, 0, 1.5f);
+        break;
+    }
+}
+
+void PredationGame::DrawInventoryPanel()
+{
+    const ImGuiViewport* viewport = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos({viewport->Pos.x + viewport->Size.x * 0.5f,
+                             viewport->Pos.y + viewport->Size.y * 0.5f},
+                            ImGuiCond_Always, {0.5f, 0.5f});
+    ImGui::SetNextWindowBgAlpha(0.92f);
+    if (ImGui::Begin("Inventory", nullptr,
+                     ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse |
+                         ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings))
+    {
+        constexpr float kSlotSize = 76.0f;
+        constexpr int kColumns = 3;
+
+        for (int i = 0; i < m_inventory.SlotCount(); ++i)
+        {
+            if (i % kColumns != 0)
+            {
+                ImGui::SameLine(0.0f, 10.0f);
+            }
+            ImGui::BeginGroup();
+
+            const Inventory::Slot& slot = m_inventory.At(i);
+            const bool selected = i == m_inventory.SelectedSlot();
+            const ImVec2 origin = ImGui::GetCursorScreenPos();
+            ImDrawList* list = ImGui::GetWindowDrawList();
+
+            list->AddRectFilled(origin, {origin.x + kSlotSize, origin.y + kSlotSize},
+                                IM_COL32(26, 28, 36, 220), 4.0f);
+            list->AddRect(origin, {origin.x + kSlotSize, origin.y + kSlotSize},
+                          selected ? IM_COL32(235, 205, 130, 235) : IM_COL32(110, 114, 124, 160), 4.0f,
+                          0, selected ? 2.0f : 1.0f);
+
+            const ItemDefinition* definition = m_items.Get(slot.item);
+            if (definition != nullptr)
+            {
+                DrawItemIcon(*definition, kSlotSize);
+                // The count rides on the icon, as it does on the hotbar, so the caption below only
+                // ever has to hold a name.
+                if (slot.count > 1)
+                {
+                    const std::string count = std::to_string(slot.count);
+                    list->AddText({origin.x + kSlotSize - 6.0f - ImGui::CalcTextSize(count.c_str()).x,
+                                   origin.y + kSlotSize - 17.0f},
+                                  IM_COL32(240, 240, 245, 235), count.c_str());
+                }
+            }
+
+            // An invisible button over the slot makes it clickable for selecting.
+            ImGui::InvisibleButton(("##slot" + std::to_string(i)).c_str(), {kSlotSize, kSlotSize});
+            if (ImGui::IsItemClicked())
+            {
+                m_inventory.SelectSlot(i);
+            }
+            if (definition != nullptr && ImGui::IsItemHovered())
+            {
+                ImGui::SetTooltip("%s", definition->name.c_str());
+            }
+
+            // One line, clipped to the slot. Wrapping split words across lines and made a tidy grid
+            // look broken.
+            const std::string label = definition != nullptr ? definition->name : std::string("Empty");
+            const ImVec2 caption = ImGui::GetCursorScreenPos();
+            list->PushClipRect(caption, {caption.x + kSlotSize, caption.y + ImGui::GetTextLineHeight()}, true);
+            list->AddText(caption,
+                          definition != nullptr ? IM_COL32(220, 222, 230, 255) : IM_COL32(115, 118, 128, 255),
+                          label.c_str());
+            list->PopClipRect();
+            ImGui::Dummy({kSlotSize, ImGui::GetTextLineHeight()});
+
+            ImGui::EndGroup();
+        }
+
+        ImGui::Separator();
+        ImGui::TextDisabled("Tab closes.  G drops the selected item.");
     }
     ImGui::End();
 }

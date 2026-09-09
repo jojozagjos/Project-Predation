@@ -1,3 +1,6 @@
+#include "Engine/Animation/IK.h"
+
+#include <glm/matrix.hpp>
 #include "Engine/Physics/PhysicsWorld.h"
 #include "Engine/Scene/Scene.h"
 #include "Game/Player/PlayerBody.h"
@@ -7,6 +10,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <cmath>
 
 using namespace pred;
 
@@ -41,18 +45,31 @@ struct BodyHarness
         state.grounded = true;
         state.position = glm::vec3(0.0f);
         view.renderPosition = glm::vec3(0.0f);
+        view.eyeHeight = config.standEyeHeight;
         view.eyePosition = glm::vec3(0.0f, config.standEyeHeight, 0.0f);
     }
 
     ~BodyHarness() { physics.Shutdown(); }
 
+    // One simulation tick. The eye moves with the stance, exactly as PlayerController drives it.
+    // That coupling is not incidental: the body anchors its head to the eye, so feeding a standing
+    // eye height while asking for a crouch describes a posture nobody can adopt, and the resulting
+    // pose is meaningless.
+    void Tick(PlayerStance stance)
+    {
+        state.stance = stance;
+        view.eyeHeight = SmoothTowards(view.eyeHeight, config.EyeHeightForStance(stance),
+                                       config.eyeTransitionSpeed, kTick);
+        view.eyePosition = view.renderPosition + glm::vec3(0.0f, view.eyeHeight, 0.0f);
+        body.Update(scene, state, view, config, physics, kTick);
+    }
+
     // Long enough for the stance blend to settle.
     void Settle(PlayerStance stance, int ticks = 240)
     {
-        state.stance = stance;
         for (int i = 0; i < ticks; ++i)
         {
-            body.Update(scene, state, view, config, physics, kTick);
+            Tick(stance);
         }
     }
 
@@ -268,9 +285,18 @@ TEST_CASE("Leaning rolls and shifts the view without moving the feet", "[player]
     }
 
     REQUIRE(player.State().leanAmount == Catch::Approx(1.0f).margin(0.05));
-    // The eye moves sideways, which is the point: it lets the player see past cover.
-    REQUIRE(std::abs(player.View().eyePosition.x - uprightEye.x) > 0.2f);
-    REQUIRE(std::abs(player.View().leanRoll) > glm::radians(10.0f));
+
+    // Direction matters, and testing the magnitude alone is how the camera came to roll the wrong
+    // way unnoticed. At yaw 0 the player faces -Z, so their right hand is +X.
+    REQUIRE(player.View().eyePosition.x - uprightEye.x > 0.2f);
+    REQUIRE(player.View().leanRoll > glm::radians(10.0f));
+
+    // Leaning right tips the head right, so the camera's own up axis tips towards +X with it.
+    // Rolling the other way is what made the horizon fight the lean.
+    const glm::vec3 up = glm::vec3(glm::inverse(player.View().ViewMatrix())[1]);
+    INFO("camera up " << up.x << ", " << up.y << ", " << up.z);
+    REQUIRE(up.x > 0.15f);
+    REQUIRE(up.y > 0.8f);
     // The feet stay put; leaning is not a step.
     REQUIRE(glm::length(player.State().position - uprightFeet) < 0.05f);
 
@@ -294,9 +320,7 @@ TEST_CASE("Stance changes blend rather than snapping", "[body][pose]")
     const float standingPelvisY = harness.Bone(harness.Rig().pelvis).y;
 
     // A single tick must move only part of the way, or the transition would pop.
-    harness.state.stance = PlayerStance::Prone;
-    harness.body.Update(harness.scene, harness.state, harness.view, harness.config, harness.physics,
-                        kTick);
+    harness.Tick(PlayerStance::Prone);
     const float afterOneTick = harness.Bone(harness.Rig().pelvis).y;
     REQUIRE(afterOneTick < standingPelvisY);
     REQUIRE(afterOneTick > standingPelvisY - 0.25f);
@@ -304,4 +328,83 @@ TEST_CASE("Stance changes blend rather than snapping", "[body][pose]")
     // And it must actually arrive.
     harness.Settle(PlayerStance::Prone);
     REQUIRE(harness.Bone(harness.Rig().pelvis).y < 0.45f);
+}
+
+TEST_CASE("Every stance puts the head on the camera", "[body][pose]")
+{
+    // The whole first-person body rests on this: if the head bone is not where the eye is, the
+    // camera is somewhere inside the model and the player sees the back of their own skull. It is
+    // also the assertion that keeps the stance eye heights in player.json honest, because the body
+    // now follows them rather than guessing its own.
+    const PlayerStance stances[] = {PlayerStance::Standing, PlayerStance::Crouching, PlayerStance::Prone};
+    for (const PlayerStance stance : stances)
+    {
+        BodyHarness harness;
+        harness.Settle(stance);
+
+        const glm::vec3 head = harness.Bone(harness.Rig().head);
+        const glm::vec3 pelvis = harness.Bone(harness.Rig().pelvis);
+        const glm::vec3 facing{std::sin(harness.view.yaw), 0.0f, -std::cos(harness.view.yaw)};
+        const glm::vec3 eye = head + facing * 0.085f + glm::vec3(0.0f, 0.085f, 0.0f);
+
+        INFO("stance " << PlayerStanceName(stance) << " eye " << harness.view.eyeHeight << " head "
+                       << head.y << " pelvis " << pelvis.y);
+        REQUIRE(glm::distance(eye, harness.view.eyePosition) < 0.01f);
+
+        // And the legs must still be able to reach the ground from wherever that leaves the hips.
+        for (int side = 0; side < 2; ++side)
+        {
+            const glm::vec3 foot = harness.Bone(harness.Rig().foot[side]);
+            INFO("foot side " << side << " at " << foot.y);
+            REQUIRE(foot.y < harness.Rig().ankleHeight + 0.12f);
+        }
+    }
+}
+
+TEST_CASE("The head stays on the camera through every direction of travel", "[body][pose]")
+{
+    // Strafing turns the hips away from the view, which used to slide the head off to one side of
+    // the camera because the body was positioned by a fixed offset from the feet rather than by
+    // where the head actually ended up. Walking backwards is the same failure from the other end.
+    struct Case
+    {
+        const char* name;
+        glm::vec3 velocity;
+    };
+    const Case cases[] = {{"strafe right", {4.0f, 0.0f, 0.0f}},
+                          {"strafe left", {-4.0f, 0.0f, 0.0f}},
+                          {"backwards", {0.0f, 0.0f, 4.0f}},
+                          {"forwards", {0.0f, 0.0f, -4.0f}}};
+
+    for (const Case& testCase : cases)
+    {
+        BodyHarness harness;
+        harness.Settle(PlayerStance::Standing);
+        harness.view.yaw = 0.0f;
+        harness.state.velocity = testCase.velocity;
+        harness.Settle(PlayerStance::Standing, 120);
+
+        const glm::vec3 head = harness.Bone(harness.Rig().head);
+        INFO(testCase.name << ": head at " << head.x << ", " << head.y << ", " << head.z);
+        REQUIRE(std::abs(head.x - harness.view.eyePosition.x) < 0.01f);
+        REQUIRE(std::abs(head.y - (harness.view.eyePosition.y - 0.085f)) < 0.01f);
+    }
+}
+
+TEST_CASE("Walking backwards keeps the body facing the way the player looks", "[body][pose]")
+{
+    // Reversing away from the aim used to spin the character round to face its own heels, because
+    // the hips chased the direction of travel rather than the line of it.
+    BodyHarness harness;
+    harness.Settle(PlayerStance::Standing);
+    harness.view.yaw = 0.0f;
+    harness.state.velocity = glm::vec3(0.0f, 0.0f, 4.0f); // straight backwards, since forward is -Z
+    harness.Settle(PlayerStance::Standing, 240);
+
+    const auto facingOf = [&](BoneIndex bone)
+    { return glm::normalize(-glm::vec3(harness.body.GetPose().Global(bone)[2])); };
+
+    // The hips still point roughly where the player is looking, not 180 degrees away from it.
+    REQUIRE(-facingOf(harness.Rig().pelvis).z > 0.5f);
+    REQUIRE(-facingOf(harness.Rig().chest).z > 0.8f);
 }

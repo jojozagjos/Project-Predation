@@ -78,7 +78,6 @@ public:
         // letting the knees bend is what actually happens when someone crouches.
         struct StancePose
         {
-            float pelvisRatio = 0.530f;   // hip height as a fraction of standing height
             float pelvisPitchDeg = 0.0f;  // tips the whole body; this is what lays it down for prone
             float spineLeanDeg = 0.0f;    // torso folds forward over the hips; this is the crouch
             float footBackRatio = 0.0f;   // feet behind the hips, as a fraction of total leg length
@@ -89,14 +88,14 @@ public:
         // Crouching folds at the hip and knee with the pelvis kept upright. Pitching the pelvis
         // instead threw the legs out behind and read as a ski jump rather than a squat. The feet
         // sit slightly *forward* of the hips, because squatting sends the hips back over the heels.
-        StancePose stand{0.530f, 0.0f, 0.0f, 0.00f, 1.00f, 0.0f};
-        StancePose crouch{0.375f, 0.0f, 32.0f, -0.12f, 1.20f, 10.0f};
+        StancePose stand{0.0f, 0.0f, 0.00f, 1.00f, 0.0f};
+        StancePose crouch{0.0f, 32.0f, -0.12f, 1.20f, 10.0f};
         // Prone lays the pelvis flat so the spine continues horizontally. The feet go almost a full
         // leg length back so the legs lie out straight; leaving slack let the knees fold up into the
         // air, because once the pelvis is flat the knee's bend direction points at the sky.
         // Arms need no extra rotation here: with the pelvis flat, "hanging down" in body space
         // already points forward along the ground.
-        StancePose prone{0.130f, 87.0f, 0.0f, 0.97f, 0.80f, 0.0f};
+        StancePose prone{87.0f, 0.0f, 0.97f, 0.80f, 0.0f};
 
         float stanceBlendSpeed = 7.0f;
 
@@ -123,10 +122,12 @@ public:
 
         // Presentation
         float responsiveness = 14.0f; // smoothing rate for posture changes
-        // Eyes sit in front of the neck, not on top of it. Without this the body stands on the
-        // camera's own axis and the chest fills the screen the moment you look down, hiding the
-        // legs entirely.
-        float eyeForwardOffset = 0.07f;
+        // Where the camera sits relative to the head bone: eyes are in front of and above the skull
+        // pivot. The body is anchored so the head lands exactly here, rather than being placed by a
+        // guessed offset and hoping it lines up. Guessing meant the head drifted off the camera
+        // whenever the hips turned away from the view, such as when strafing.
+        float eyeForwardOfHead = 0.085f;
+        float eyeAboveHead = 0.085f;
         bool hideHead = true; // the camera lives inside it
         bool visible = true;
     };

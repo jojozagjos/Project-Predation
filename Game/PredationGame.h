@@ -12,6 +12,7 @@
 
 #include <glm/vec3.hpp>
 
+#include <string>
 #include <vector>
 
 namespace pred
@@ -50,7 +51,17 @@ private:
     void EnterHidingSpot(int index);
     void LeaveHidingSpot();
     void DrawHud();
+    void DrawInventoryPanel();
+    // Draws a placeholder icon derived from the item's own shape and colour, so items are
+    // distinguishable at a glance without needing art.
+    void DrawItemIcon(const ItemDefinition& definition, float boxSize) const;
     void UpdateMouseCapture();
+    // Logs any level geometry that intersects other level geometry. Overlapping static solids read
+    // as modelling errors from inside and can shove the player, so the build reports its own.
+    void ReportMapOverlaps(float minPenetration);
+    // Best-effort name for a physics body, by finding the nearest scene entity. Bodies are not
+    // named, and several can belong to one entity, so this is a diagnostic aid rather than a lookup.
+    std::string DescribeBody(BodyHandle body) const;
     void ReloadPlayerConfig();
     void DrawPlayerPanel();
 
@@ -67,6 +78,7 @@ private:
     WorldObjects m_world;
     // -1 when not hidden. While hidden the player holds still inside the locker.
     int m_hidingSpot = -1;
+    bool m_inventoryOpen = false;
 
     // First person for play, third person for watching the body animate, fly to inspect the level.
     enum class CameraMode : uint8_t
@@ -77,7 +89,14 @@ private:
     };
     CameraMode m_cameraMode = CameraMode::FirstPerson;
     float m_thirdPersonDistance = 3.2f;
-    float m_thirdPersonHeight = 1.35f;
+    // Third-person orbit, applied on top of the look angles. Holding the look button turns the
+    // camera around the character without turning the character, so the animation can be inspected
+    // from any side.
+    float m_orbitYaw = 0.0f;
+    float m_orbitPitch = 0.0f;
+
+    void SetCameraMode(CameraMode mode);
+    const char* CameraModeName() const;
 
     FlyCamera m_camera;
 

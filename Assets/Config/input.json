@@ -16,6 +16,7 @@
 
     "interact": [ "F" ],
     "drop": [ "G" ],
+    "inventory": [ "Tab" ],
     "slot_1": [ "1" ],
     "slot_2": [ "2" ],
     "slot_3": [ "3" ],
