@@ -506,7 +506,14 @@ void Application::PumpEvents(Game& game)
         game.OnEvent(event);
     }
 
-    m_input.SetBlocked(m_console.IsOpen() || m_imgui.WantCaptureKeyboard(), m_imgui.WantCaptureMouse());
+    // While the mouse is captured the OS cursor does not move, so ImGui's idea of where the pointer
+    // is freezes wherever it last was. If that happened to be over a panel, it reports wanting the
+    // mouse for ever, and the game stops receiving any mouse movement at all: opening the debug
+    // overlay would silently take mouse look away until the pointer was released and moved. A
+    // captured mouse belongs to the game, full stop.
+    const bool captured = m_window.IsRelativeMouse();
+    m_input.SetBlocked(m_console.IsOpen() || m_imgui.WantCaptureKeyboard(),
+                       !captured && m_imgui.WantCaptureMouse());
 }
 
 bool Application::HandleHotkey(const SDL_Event& event)

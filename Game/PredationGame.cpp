@@ -98,11 +98,17 @@ bool PredationGame::OnInit(Application& app)
     UpdateMouseCapture();
 
     PRED_LOG_INFO(Gameplay,
-                  "Controls: WASD move, Space jump, Ctrl/C crouch, Z prone, Shift sprint, Alt walk, "
-                  "Q/E lean. Left mouse fires, right mouse aims, R reloads. "
-                  "F interact, G drop, 1-6 and wheel select, Tab inventory. "
-                  "P cycles first/third/free camera; in third person hold middle mouse to orbit. "
-                  "F5 respawns, F3 overlay, Escape frees the cursor.");
+                  "Controls: WASD move, Space jump, Ctrl or C crouch, Z prone, Shift sprint, Alt "
+                  "walk, Q and E lean. Left mouse fires, right mouse aims, R reloads. "
+                  "F interact, G drop, 1 to 6 and the wheel select, Tab inventory. "
+                  "P cycles first person, third person and free camera; in third person hold middle "
+                  "mouse to orbit. F2 model editor, F3 overlay, F5 respawn, backtick console, "
+                  "Escape frees the cursor.");
+    if (!cv_crouchToggle.Get())
+    {
+        PRED_LOG_INFO(Gameplay, "Crouch and prone are hold-to-activate. Set input.crouch_toggle to "
+                                "true in the console to make them toggle instead.");
+    }
     return true;
 }
 
@@ -439,22 +445,10 @@ void PredationGame::RegisterCommands()
         "editor", "Open or close the model and animation editor: editor [model name]",
         [this](const std::vector<std::string>& args)
         {
-            m_editor.SetOpen(m_scene, !m_editor.IsOpen());
-            if (m_editor.IsOpen())
+            ToggleEditor();
+            if (m_editor.IsOpen() && args.size() >= 2)
             {
-                if (args.size() >= 2)
-                {
-                    m_editor.Load(args[1]);
-                }
-                // The editor owns the view while it is open, so the player is left standing.
-                SetCameraMode(CameraMode::Fly);
-                m_wantMouseCaptured = false;
-                UpdateMouseCapture();
-                m_app->GetConsole().Print("Editor open. Right mouse to look, WASD to move.");
-            }
-            else
-            {
-                SetCameraMode(CameraMode::FirstPerson);
+                m_editor.Load(args[1]);
             }
         },
         "editor [model]");
@@ -837,6 +831,27 @@ void PredationGame::ResolveShots()
     }
 }
 
+void PredationGame::ToggleEditor()
+{
+    m_editor.SetOpen(m_scene, !m_editor.IsOpen());
+    if (m_editor.IsOpen())
+    {
+        // The editor owns the view while it is open, so the player is left standing. The mouse is
+        // released because everything in the editor is done with the pointer.
+        SetCameraMode(CameraMode::Fly);
+        m_wantMouseCaptured = false;
+        UpdateMouseCapture();
+        m_app->GetConsole().Print(
+            "Model editor open. Hold right mouse to look, WASD to move, F2 to close.");
+    }
+    else
+    {
+        SetCameraMode(CameraMode::FirstPerson);
+        m_wantMouseCaptured = true;
+        UpdateMouseCapture();
+    }
+}
+
 void PredationGame::TryInteract()
 {
     const InteractionSystem::Focus& focus = m_interactions.CurrentFocus();
@@ -939,7 +954,7 @@ void PredationGame::EnterHidingSpot(int index)
     // The door swings shut behind the player, which is most of what makes hiding feel like hiding.
     m_world.SetDoorOpen(spot->doorIndex, false, m_interactions);
     m_interactions.SetVerb(spot->entity, "Leave");
-    m_app->GetConsole().Print("Hidden. Press interact to leave.");
+    m_app->GetConsole().Print("Hidden. Press F to leave.");
 }
 
 void PredationGame::LeaveHidingSpot()
@@ -1089,6 +1104,10 @@ void PredationGame::OnUpdate(double dt, double alpha)
         if (const float wheel = input.WheelDelta(); std::abs(wheel) > 0.1f)
         {
             m_inventory.SelectNext(wheel > 0.0f ? -1 : 1);
+        }
+        if (input.WasActionPressed("editor"))
+        {
+            ToggleEditor();
         }
         if (input.WasActionPressed("toggle_camera"))
         {
@@ -1759,7 +1778,7 @@ void PredationGame::OnImGui()
     {
         if (m_cameraMode == CameraMode::Fly)
         {
-            ImGui::TextUnformatted("Fly camera active. Press F for the player camera.");
+            ImGui::TextUnformatted("Free camera. P cycles first person, third person and this.");
             ImGui::Text("Camera %.2f %.2f %.2f", m_camera.position.x, m_camera.position.y,
                         m_camera.position.z);
             ImGui::Separator();

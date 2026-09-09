@@ -3,11 +3,13 @@
 #include "Engine/Scene/Scene.h"
 #include "Game/Player/PlayerBody.h"
 #include "Game/Player/PlayerController.h"
+#include "Game/Weapons/WeaponAppearance.h"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include <glm/common.hpp>
+#include <glm/gtc/constants.hpp>
 #include <glm/matrix.hpp>
 
 #include <algorithm>
@@ -24,6 +26,19 @@ namespace
 {
 
 constexpr float kTick = 1.0f / 60.0f;
+
+float WrapAngle(float radians)
+{
+    while (radians > glm::pi<float>())
+    {
+        radians -= glm::two_pi<float>();
+    }
+    while (radians <= -glm::pi<float>())
+    {
+        radians += glm::two_pi<float>();
+    }
+    return radians;
+}
 
 // Runs the real controller and feeds its output to the body, with no renderer and no meshes.
 //
@@ -389,8 +404,9 @@ TEST_CASE("Every stance puts the head on the camera", "[body][pose]")
 
         const glm::vec3 head = harness.Bone(harness.Rig().head);
         const glm::vec3 pelvis = harness.Bone(harness.Rig().pelvis);
-        const glm::vec3 facing{std::sin(harness.View().yaw), 0.0f, -std::cos(harness.View().yaw)};
-        const glm::vec3 eye = head + facing * 0.085f + glm::vec3(0.0f, 0.085f, 0.0f);
+        // Straight below the eye. The offset is deliberately vertical only: anything horizontal is
+        // measured along the view, and swings the whole body when the player turns round.
+        const glm::vec3 eye = head + glm::vec3(0.0f, 0.085f, 0.0f);
 
         INFO("stance " << PlayerStanceName(stance) << " eye " << harness.View().eyeHeight << " head "
                        << head.y << " pelvis " << pelvis.y);
@@ -434,6 +450,7 @@ TEST_CASE("The head stays on the camera through every direction of travel", "[bo
         INFO(testCase.name << ": head at " << head.x << ", " << head.y << ", " << head.z);
         REQUIRE(std::abs(head.x - harness.View().eyePosition.x) < 0.01f);
         REQUIRE(std::abs(head.y - (harness.View().eyePosition.y - 0.085f)) < 0.01f);
+        REQUIRE(std::abs(head.z - harness.View().eyePosition.z) < 0.01f);
     }
 }
 
@@ -622,4 +639,59 @@ TEST_CASE("Airborne legs stop reaching for a floor that is not there", "[body][g
     REQUIRE(drop < legSpan * 0.97f);
     // And the foot is nowhere near the floor.
     REQUIRE(foot.y > 1.5f);
+}
+
+TEST_CASE("Turning on the spot leaves the body where it is", "[body][pose]")
+{
+    // In first person you look down and see your own body. Turning round must not slide it out from
+    // under you: the hips swing to catch up, but the body stays under the head.
+    BodyHarness harness;
+    harness.SetStance(PlayerStance::Standing);
+    harness.Settle(120);
+
+    const glm::vec3 start = harness.Local(harness.Rig().pelvis);
+    float worst = 0.0f;
+
+    // A full turn, at a speed a mouse can easily produce.
+    for (int i = 0; i < 240; ++i)
+    {
+        harness.input.yaw = WrapAngle(harness.input.yaw + glm::radians(1.5f));
+        harness.Tick();
+        const glm::vec3 pelvis = harness.Local(harness.Rig().pelvis);
+        worst = std::max(worst, glm::length(glm::vec2(pelvis.x - start.x, pelvis.z - start.z)));
+    }
+
+    INFO("worst horizontal drift of the hips " << worst << " m");
+    REQUIRE(worst < 0.02f);
+}
+
+TEST_CASE("The trigger hand keeps hold of the weapon while crawling", "[body][pose]")
+{
+    // Solving the arms in the wrong order let go of the gun the moment the player lay down. Writing
+    // a bone's global transform rebuilds every bone after it, and the right arm comes after the
+    // left, so the crawling arm has to be solved before the one holding the weapon.
+    BodyHarness harness;
+    WeaponDefinition weapon;
+    weapon.id = 1;
+    weapon.key = "test_rifle";
+    weapon.size = {0.06f, 0.16f, 0.62f};
+
+    harness.SetStance(PlayerStance::Prone);
+    harness.Settle(240);
+    harness.body.SetWeaponForSimulation(&weapon);
+    harness.SetTravel(glm::vec3(0.0f, 0.0f, -1.0f));
+    harness.Settle(180);
+
+    // The trigger hand is the right one, and it must be on the weapon rather than out on the floor
+    // with the other arm.
+    const glm::vec3 hand = harness.Bone(harness.Rig().hand[1]);
+    const glm::vec3 muzzle = harness.body.MuzzlePoint();
+    const glm::vec3 grip = harness.body.WeaponOrigin();
+    INFO("right hand " << hand.x << ", " << hand.y << ", " << hand.z << "  grip " << grip.x << ", "
+                       << grip.y << ", " << grip.z);
+    REQUIRE(glm::distance(hand, grip) < 0.12f);
+
+    // And the weapon is out in front, not dropped on the ground behind.
+    INFO("muzzle " << muzzle.x << ", " << muzzle.y << ", " << muzzle.z);
+    REQUIRE(muzzle.z < grip.z);
 }

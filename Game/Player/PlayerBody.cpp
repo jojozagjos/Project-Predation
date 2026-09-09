@@ -189,7 +189,8 @@ void PlayerBody::BuildParts(Scene& scene, MeshLibrary& meshes)
 
     // A human head is about 0.13 of standing height tall and noticeably narrower than it is tall.
     // Sized from the crown down, so the top of the head lands at full standing height.
-    gear("head", m_rig.head, {0.098f * h, 0.132f * h, 0.118f * h}, {0.0f, 0.063f * h, 0.004f * h},
+    gear("head", m_rig.head, {0.098f * h, 0.132f * h, 0.118f * h},
+         {0.0f, 0.063f * h, 0.004f * h + m_config.skullBehindEye},
          kHelmetMaterial, PartFrame::BoneFrame, true);
 
     // --- Arms.
@@ -475,14 +476,23 @@ void PlayerBody::UpdatePosture(const PlayerState& state, const PlayerView& view,
     const float runLean = glm::radians(m_lean);
     // Peek lean: the torso tips sideways so the body follows the camera out past cover.
     const float peek = state.leanAmount * glm::radians(m_config.leanAngleDegrees);
+
+    // Crawling, the shoulders roll from side to side as each arm reaches and pulls. Without it the
+    // torso slides along the floor as one rigid plank while the limbs work, which is what made the
+    // crawl read as a body being dragged rather than one pulling itself.
+    const float crawlPhase =
+        state.strideDistance / std::max(m_config.crawlCycleLength, 0.05f) * glm::two_pi<float>();
+    const float crawlRoll = std::sin(crawlPhase) * glm::radians(m_config.crawlShoulderRollDegrees) *
+                            m_gaitWeight * m_flatness;
+
     m_pose.Local(m_rig.spine).rotation =
         glm::angleAxis(-torsoTwist * 0.45f, glm::vec3(0.0f, 1.0f, 0.0f)) *
         glm::angleAxis(-(spineLean * 0.65f + runLean * 0.6f), glm::vec3(1.0f, 0.0f, 0.0f)) *
-        glm::angleAxis(-peek * 0.55f, glm::vec3(0.0f, 0.0f, 1.0f));
+        glm::angleAxis(-peek * 0.55f + crawlRoll * 0.4f, glm::vec3(0.0f, 0.0f, 1.0f));
     m_pose.Local(m_rig.chest).rotation =
         glm::angleAxis(-torsoTwist * 0.55f, glm::vec3(0.0f, 1.0f, 0.0f)) *
         glm::angleAxis(-(spineLean * 0.35f + runLean * 0.2f), glm::vec3(1.0f, 0.0f, 0.0f)) *
-        glm::angleAxis(-peek * 0.45f, glm::vec3(0.0f, 0.0f, 1.0f));
+        glm::angleAxis(-peek * 0.45f + crawlRoll * 0.6f, glm::vec3(0.0f, 0.0f, 1.0f));
 
     // The neck and head undo whatever the pelvis and spine did, so the head stays level and keeps
     // looking where the player is aiming. Positive here, because it is cancelling a forward pitch.
@@ -562,6 +572,25 @@ void PlayerBody::DestroyWeapon(Scene& scene)
     m_weaponEntity = Entity{};
     m_muzzleFlashEntity = Entity{};
     m_weaponId = kInvalidWeapon;
+    m_hasWeapon = false;
+}
+
+void PlayerBody::SetWeaponForSimulation(const WeaponDefinition* definition)
+{
+    if (definition == nullptr || definition->id == kInvalidWeapon)
+    {
+        m_weaponVisual = WeaponVisual{};
+        m_weaponId = kInvalidWeapon;
+        m_hasWeapon = false;
+        return;
+    }
+    if (definition->id == m_weaponId && m_hasWeapon)
+    {
+        return;
+    }
+    m_weaponId = definition->id;
+    m_weaponVisual = BuildWeaponVisual(*definition);
+    m_hasWeapon = true;
 }
 
 void PlayerBody::SetWeapon(Scene& scene, MeshLibrary& meshes, const WeaponDefinition* definition)
@@ -594,6 +623,7 @@ void PlayerBody::SetWeapon(Scene& scene, MeshLibrary& meshes, const WeaponDefini
         m_weaponPartTransforms.emplace_back();
     }
     m_weaponEntity = m_weaponParts.empty() ? Entity{} : m_weaponParts.front();
+    m_hasWeapon = true;
 
     // A flash is a scaled-to-nothing sphere most of the time. Giving it its own entity means firing
     // costs a transform write rather than creating and destroying geometry.
@@ -611,7 +641,7 @@ glm::vec3 PlayerBody::MuzzlePoint() const
 
 bool PlayerBody::UpdateWeaponHold(const PlayerView& view, float dt)
 {
-    if (!m_weaponEntity.IsValid())
+    if (!m_hasWeapon)
     {
         return false;
     }
@@ -659,16 +689,25 @@ bool PlayerBody::UpdateWeaponHold(const PlayerView& view, float dt)
     // Aiming follows the view exactly, because the sights have to line up with it. Carrying it does
     // not: a weapon held ready stays in front of the chest, so it follows yaw fully but pitch only
     // part way. Following pitch fully meant looking at your feet swung the gun round behind you.
+    // Right comes from the yaw alone. Crossing forward with world up looks equivalent and is not:
+    // at ninety degrees of pitch, forward *is* world up and the cross product collapses to nothing,
+    // so the whole frame flips and the weapon ends up somewhere behind the player. A yaw-only right
+    // is well defined at every pitch, and up follows from it.
+    const glm::vec3 yawRight{std::cos(view.yaw), 0.0f, std::sin(view.yaw)};
+
     const float carryPitch = view.pitch * glm::mix(m_config.weaponCarryPitchFollow, 1.0f, aim);
     const float cp = std::cos(carryPitch);
     const glm::vec3 carryForward{std::sin(view.yaw) * cp, std::sin(carryPitch), -std::cos(view.yaw) * cp};
-    const glm::vec3 carryRight = glm::normalize(glm::cross(carryForward, glm::vec3(0.0f, 1.0f, 0.0f)));
+    const glm::vec3 carryRight = yawRight;
     const glm::vec3 carryUp = glm::cross(carryRight, carryForward);
 
-    // The aim frame, which the barrel is pointed down.
+    // The aim frame, which the barrel is pointed down. Leaning rolls it, so the sights stay lined up
+    // with a view that has itself rolled: without that, peeking round a corner left the sight block
+    // off the axis and aiming stopped meaning anything.
     const float ap = std::cos(view.pitch);
     const glm::vec3 aimForward{std::sin(view.yaw) * ap, std::sin(view.pitch), -std::cos(view.yaw) * ap};
-    const glm::vec3 aimRight = glm::normalize(glm::cross(aimForward, glm::vec3(0.0f, 1.0f, 0.0f)));
+    const glm::quat leanRoll = glm::angleAxis(view.leanRoll, aimForward);
+    const glm::vec3 aimRight = leanRoll * yawRight;
     const glm::vec3 aimUp = glm::cross(aimRight, aimForward);
 
     // --- Where the weapon sits ------------------------------------------------------------------
@@ -684,7 +723,7 @@ bool PlayerBody::UpdateWeaponHold(const PlayerView& view, float dt)
 
     // Prone puts it down beside the body, muzzle forward, out of the way of the arm that is doing
     // the crawling.
-    const glm::vec3 proneOffset = carryRight * 0.14f + carryUp * -0.30f + carryForward * 0.34f;
+    const glm::vec3 proneOffset = carryRight * 0.11f + carryUp * -0.26f + carryForward * 0.36f;
 
     glm::vec3 offset = glm::mix(readyOffset, sightedOffset, aim);
     if (flat)
@@ -734,12 +773,14 @@ bool PlayerBody::UpdateWeaponHold(const PlayerView& view, float dt)
                             glm::angleAxis(glm::radians(-4.0f), glm::vec3(0.0f, 0.0f, 1.0f));
     glm::quat rotation = glm::slerp(ready, sighted, aim);
 
-    // Peeking rolls the weapon with the head. Leaning past a corner without the gun following meant
-    // the sights stayed level while the horizon tipped, which reads as the weapon floating free of
-    // the person holding it.
-    if (std::abs(view.leanRoll) > 1e-4f)
+    // Peeking rolls the weapon with the head. The roll is already in the aim frame above, so the
+    // sighted offset rolls with it and the sight block stays on the view axis; applying the roll
+    // only to the rotation, as this used to, tipped the weapon without moving where it sat, and the
+    // sights came off the middle of the screen exactly when the player needed them.
+    if (std::abs(view.leanRoll) > 1e-4f && aim < 0.999f)
     {
-        rotation = glm::angleAxis(view.leanRoll, aimForward) * rotation;
+        rotation = glm::slerp(glm::angleAxis(view.leanRoll, carryForward), glm::quat(1, 0, 0, 0), aim) *
+                   rotation;
     }
     if (draw < 1.0f && !authoredDraw)
     {
@@ -973,18 +1014,22 @@ void PlayerBody::UpdateArms(const PlayerState& state, const PlayerView& view, Ph
                             float dt)
 {
     // A weapon takes the arms over: both hands go on it, and the elbows follow. It keeps hold of it
-    // when the body goes flat too, because dropping a rifle to crawl is not what anybody does.
-    const bool holding = UpdateWeaponHold(view, dt);
-
-    // Upright and empty-handed, the procedural rotations set in UpdatePosture are enough.
-    if (m_flatness < 0.02f)
+    // when the body goes flat too, because dropping a rifle to crawl is not what anybody does: only
+    // the support arm reaches and pulls, and the trigger hand stays on the gun.
+    //
+    // The order is load-bearing. Writing a bone's global transform rebuilds every bone after it,
+    // and the right arm comes after the left in the skeleton, so the crawl has to be solved first
+    // or it wipes the grip it was meant to leave alone. Holding the weapon first is what made the
+    // hand let go of it the moment the player lay down.
+    const bool holding = m_hasWeapon;
+    if (m_flatness >= 0.02f)
     {
-        return;
+        UpdateCrawlArms(state, view, physics, dt, holding);
     }
-
-    // Flat on the ground: the arms crawl. With a weapon in the trigger hand, only the support arm
-    // reaches and pulls; the weapon hand stays on the gun and comes along.
-    UpdateCrawlArms(state, view, physics, dt, holding);
+    if (holding)
+    {
+        UpdateWeaponHold(view, dt);
+    }
 }
 
 void PlayerBody::UpdateCrawlArms(const PlayerState& state, const PlayerView& view,
@@ -1166,7 +1211,13 @@ void PlayerBody::UpdateLegs(const PlayerState& state, const PlayerView& view,
             // Cast at knee height, deliberately. Anything the player can step onto is below this,
             // so stair risers and kerbs pass underneath and a step still reaches the tread above;
             // anything at or above it is a wall, and the foot stops short of it.
-            const glm::vec3 knee{hip.x, view.renderPosition.y + m_config.maxFootRise, hip.z};
+            //
+            // Knee height is measured from the hip rather than fixed, because a crouched or prone
+            // hip is well below a standing one and a fixed height passed clean over the crates the
+            // legs were sinking into.
+            const float kneeHeight =
+                std::min(m_config.maxFootRise, std::max((hip.y - view.renderPosition.y) * 0.5f, 0.12f));
+            const glm::vec3 knee{hip.x, view.renderPosition.y + kneeHeight, hip.z};
             const glm::vec3 toTarget{target.x - knee.x, 0.0f, target.z - knee.z};
             const float span = glm::length(toTarget);
             if (span > 0.02f)
@@ -1191,8 +1242,15 @@ void PlayerBody::UpdateLegs(const PlayerState& state, const PlayerView& view,
         const RayHit hit = physics.RayCast(traceStart, glm::vec3(0.0f, -1.0f, 0.0f), 2.0f);
         // Clamped to what the character could actually have stepped onto. Without this a trace that
         // lands on top of something tall puts the foot up there while the player stands beside it.
-        const float groundY = hit ? std::min(hit.position.y, view.renderPosition.y + m_config.maxFootRise)
-                                  : view.renderPosition.y;
+        // Clamped both ways to what the character could actually have stepped onto or off. Without
+        // the upper bound a trace that lands on something tall puts the foot up there while the
+        // player stands beside it; without the lower one, a foot whose target hangs over the edge
+        // of whatever they are standing on drops all the way to the floor below, and the leg
+        // stretches down through the side of the crate. That is the one that looks worst.
+        const float base = view.renderPosition.y;
+        const float groundY =
+            hit ? std::clamp(hit.position.y, base - m_config.maxFootDrop, base + m_config.maxFootRise)
+                : base;
         target.y = groundY + m_rig.ankleHeight + lift;
 
         // In the air the ground is no use: it can be metres below, and reaching for it stretches the

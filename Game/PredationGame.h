@@ -54,6 +54,8 @@ private:
     void SampleLook(float dt);
     PlayerInput BuildPlayerInput();
     void TryInteract();
+    // Opens or closes the model editor and hands the view and the mouse over to it.
+    void ToggleEditor();
     // Equips whatever weapon the selected inventory slot carries, or nothing if it carries none.
     void SyncEquippedWeapon();
     // Applies the rounds fired this tick. Only the authority may call this; it is the one place a

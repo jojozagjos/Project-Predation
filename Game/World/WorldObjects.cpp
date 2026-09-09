@@ -180,9 +180,14 @@ void WorldObjects::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physic
         spot.insideYaw = 0.0f;
         // The door fills the clear opening between the sides, so closing it does not drive the panel
         // into them.
+        //
+        // The open angle is positive, which swings the panel out of the locker. A negative one
+        // swings it the other way, which for a door in a frame is a choice and for a cabinet is the
+        // panel folding back through its own side: that is what left the locker looking broken
+        // after it had been used once.
         spot.doorIndex = AddDoor(scene, meshes, physics, interactions,
                                  position + glm::vec3(-lockerInnerHalfWidth, 0.0f, -lockerSize.z * 0.5f),
-                                 0.0f, glm::radians(-105.0f),
+                                 0.0f, glm::radians(105.0f),
                                  {lockerInnerHalfWidth * 2.0f, lockerSize.y, 0.06f}, "locker_door", false);
         spot.doorEntity = m_doors[static_cast<size_t>(spot.doorIndex)].entity;
 

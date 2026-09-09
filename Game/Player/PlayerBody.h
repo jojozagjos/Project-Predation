@@ -75,7 +75,7 @@ public:
         // How much of the view pitch a carried weapon follows. Following it fully swung the gun
         // round behind the player whenever they looked straight down. Aiming raises this to one,
         // because the sights have to line up with the view exactly.
-        float weaponCarryPitchFollow = 0.45f;
+        float weaponCarryPitchFollow = 0.90f;
         // The weapon lags a turn and then catches up, which is what gives it weight.
         float weaponSwayAmount = 0.55f;   // how far a turn drags the weapon behind the view
         float weaponSwayRecover = 11.0f;  // how fast it catches up again
@@ -91,6 +91,9 @@ public:
         // How far above the player a foot may be planted. A stair step or a kerb, not the top of a
         // wall the player is standing next to.
         float maxFootRise = 0.45f;
+        // And how far below. A foot whose target hangs over an edge would otherwise reach the floor
+        // underneath, which puts the leg through whatever the player is standing on.
+        float maxFootDrop = 0.40f;
         float hipSwayAmount = 0.035f;
         float hipBobAmount = 0.030f;
 
@@ -142,6 +145,7 @@ public:
         float crawlLift = 0.10f;       // how far a hand lifts while swinging forward
         float crawlHandForward = 0.42f; // where the hands plant relative to the shoulders
         float crawlLegDraw = 0.40f;     // how far a knee swings out to the side as it is drawn up
+        float crawlShoulderRollDegrees = 9.0f; // shoulders roll as each arm reaches and pulls
         // Prone turning is slow and deliberate: the body pivots towards where you are crawling.
         float proneTurnSpeed = 3.2f;
         // Look this far from the way the body is lying and it rolls over rather than twisting.
@@ -169,8 +173,14 @@ public:
         // pivot. The body is anchored so the head lands exactly here, rather than being placed by a
         // guessed offset and hoping it lines up. Guessing meant the head drifted off the camera
         // whenever the hips turned away from the view, such as when strafing.
-        float eyeForwardOfHead = 0.085f;
+        // Only the vertical part. A horizontal offset here is measured along the view, so turning
+        // round swung the whole body through twice that distance: the body slid out from under the
+        // player exactly when they turned to look at it. The skull is drawn behind this point
+        // instead, in the head bone's own frame, where turning the head moves the skull and not the
+        // body, which is what actually happens.
+        float eyeForwardOfHead = 0.0f;
         float eyeAboveHead = 0.085f;
+        float skullBehindEye = 0.088f;
         bool hideHead = true; // the camera lives inside it
         bool visible = true;
     };
@@ -210,11 +220,16 @@ public:
     // Puts a weapon in the character's hands, built from its data entry. Passing nothing takes it
     // away again.
     void SetWeapon(Scene& scene, MeshLibrary& meshes, const WeaponDefinition* definition);
+    // The same, with nothing to draw. Lets the hold be exercised in tests, which have no renderer
+    // and where uploading a mesh would mean standing up a GPU device.
+    void SetWeaponForSimulation(const WeaponDefinition* definition);
     void SetWeaponPose(const WeaponPose& pose) { m_weaponPose = pose; }
-    bool HasWeapon() const { return m_weaponEntity.IsValid(); }
+    bool HasWeapon() const { return m_hasWeapon; }
     // Where a round would appear to leave the model, for the muzzle flash. Not where rounds are
     // actually traced from: that comes from the eye, so what is under the crosshair is what is hit.
     glm::vec3 MuzzlePoint() const;
+    // Where the weapon is held. Exposed so a test can check the hand is actually on it.
+    glm::vec3 WeaponOrigin() const { return m_weaponTransform.position; }
 
 private:
     // How a piece of gear is oriented. Limb bones are re-solved by IK and end up with an arbitrary
@@ -287,6 +302,7 @@ private:
     Transform m_muzzleFlashTransform;
     WeaponVisual m_weaponVisual;
     WeaponId m_weaponId = kInvalidWeapon;
+    bool m_hasWeapon = false;
     WeaponPose m_weaponPose;
     // The weapon lags the view a little when the player turns, then catches up. Held on the weapon
     // rather than on the hands, so the grip never separates from the gun.
