@@ -123,30 +123,45 @@ void WorldObjects::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physic
     const glm::vec3 lockerSize{0.85f, 2.0f, 0.75f};
     const MeshHandle lockerMesh = meshes.Upload(Primitives::Box(lockerSize), "locker_shell");
 
-    const glm::vec3 lockerPositions[] = {{-7.0f, 0.0f, 0.5f}, {7.5f, 0.0f, 0.5f}};
+    // The shell is three slabs, and they meet edge to edge rather than lapping over one another.
+    // Overlapping panels are invisible but they make the level's own geometry check report an
+    // intersection on every start, and a warning that always fires is a warning nobody reads.
+    constexpr float panelHalfThickness = 0.06f;
+    const float lockerInnerHalfWidth = lockerSize.x * 0.5f - panelHalfThickness * 2.0f;
+
+    // Clear of the stair landings on +X and the doors on z = 2; the right locker used to sit
+    // inside the first landing.
+    const glm::vec3 lockerPositions[] = {{-5.5f, 0.0f, 6.5f}, {5.5f, 0.0f, 6.5f}};
     for (const glm::vec3& position : lockerPositions)
     {
         HidingSpot spot;
         // The shell is a visual and a collider; the player stands inside it while hidden.
         spot.entity = scene.CreateMeshEntity("locker", MakeTransform(position + glm::vec3(0.0f, lockerSize.y * 0.5f, 0.0f), 0.0f),
                                              lockerMesh, kLockerMaterial);
-        physics.CreateBox({lockerSize.x * 0.5f, lockerSize.y * 0.5f, 0.06f},
+        // Back, fitted between the two sides.
+        physics.CreateBox({lockerInnerHalfWidth, lockerSize.y * 0.5f, panelHalfThickness},
                           MakeTransform(position + glm::vec3(0.0f, lockerSize.y * 0.5f, lockerSize.z * 0.5f), 0.0f),
                           BodyMotion::Static);
-        physics.CreateBox({0.06f, lockerSize.y * 0.5f, lockerSize.z * 0.5f},
-                          MakeTransform(position + glm::vec3(-lockerSize.x * 0.5f, lockerSize.y * 0.5f, 0.0f), 0.0f),
+        physics.CreateBox({panelHalfThickness, lockerSize.y * 0.5f, lockerSize.z * 0.5f},
+                          MakeTransform(position + glm::vec3(-lockerSize.x * 0.5f + panelHalfThickness,
+                                                             lockerSize.y * 0.5f, 0.0f),
+                                        0.0f),
                           BodyMotion::Static);
-        physics.CreateBox({0.06f, lockerSize.y * 0.5f, lockerSize.z * 0.5f},
-                          MakeTransform(position + glm::vec3(lockerSize.x * 0.5f, lockerSize.y * 0.5f, 0.0f), 0.0f),
+        physics.CreateBox({panelHalfThickness, lockerSize.y * 0.5f, lockerSize.z * 0.5f},
+                          MakeTransform(position + glm::vec3(lockerSize.x * 0.5f - panelHalfThickness,
+                                                             lockerSize.y * 0.5f, 0.0f),
+                                        0.0f),
                           BodyMotion::Static);
 
         spot.insidePosition = position + glm::vec3(0.0f, 0.0f, 0.05f);
         spot.exitPosition = position - glm::vec3(0.0f, 0.0f, 1.15f);
         spot.insideYaw = glm::radians(180.0f); // facing out through the door
+        // The door fills the clear opening between the sides, so closing it does not drive the panel
+        // into them.
         spot.doorIndex = AddDoor(scene, meshes, physics, interactions,
-                                 position + glm::vec3(-lockerSize.x * 0.5f, 0.0f, -lockerSize.z * 0.5f),
-                                 0.0f, glm::radians(-105.0f), {lockerSize.x, lockerSize.y, 0.06f},
-                                 "locker_door", false);
+                                 position + glm::vec3(-lockerInnerHalfWidth, 0.0f, -lockerSize.z * 0.5f),
+                                 0.0f, glm::radians(-105.0f),
+                                 {lockerInnerHalfWidth * 2.0f, lockerSize.y, 0.06f}, "locker_door", false);
         spot.doorEntity = m_doors[static_cast<size_t>(spot.doorIndex)].entity;
 
         const auto index = static_cast<int>(m_hidingSpots.size());

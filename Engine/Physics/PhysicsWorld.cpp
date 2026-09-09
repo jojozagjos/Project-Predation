@@ -13,8 +13,12 @@
 #include <Jolt/Core/JobSystemThreadPool.h>
 #include <Jolt/Core/TempAllocator.h>
 #include <Jolt/Physics/Body/BodyCreationSettings.h>
+#include <Jolt/Physics/Body/BodyFilter.h>
 #include <Jolt/Physics/Body/BodyLock.h>
 #include <Jolt/Physics/Collision/CastResult.h>
+#include <Jolt/Physics/Collision/CollideShape.h>
+#include <Jolt/Physics/Collision/CollisionCollectorImpl.h>
+#include <Jolt/Physics/Collision/NarrowPhaseQuery.h>
 #include <Jolt/Physics/Collision/RayCast.h>
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
 #include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
@@ -32,6 +36,7 @@
 #include <cstdio>
 #include <thread>
 #include <unordered_map>
+#include <utility>
 
 namespace pred
 {
@@ -651,6 +656,83 @@ RayHit PhysicsWorld::RayCast(const glm::vec3& origin, const glm::vec3& direction
         hit.normal = FromJolt(lock.GetBody().GetWorldSpaceSurfaceNormal(result.mSubShapeID2, ToJoltR(hit.position)));
     }
     return hit;
+}
+
+std::vector<PhysicsWorld::StaticOverlap> PhysicsWorld::FindStaticOverlaps(float minPenetration) const
+{
+    std::vector<StaticOverlap> overlaps;
+    const Impl& impl = *m_impl;
+    if (!impl.initialized)
+    {
+        return overlaps;
+    }
+
+    const auto isNonMoving = [&impl](uint32_t id) {
+        const auto it = impl.records.find(id);
+        return it != impl.records.end() && it->second.motion != BodyMotion::Dynamic;
+    };
+
+    JPH::CollideShapeSettings settings;
+    settings.mMaxSeparationDistance = 0.0f;
+
+    const JPH::BodyLockInterfaceLocking& lockInterface = impl.system->GetBodyLockInterface();
+    // A pair of convex bodies is found from both ends, so remember which ones are already reported.
+    std::vector<std::pair<uint32_t, uint32_t>> reported;
+
+    for (const auto& [id, record] : impl.records)
+    {
+        // A triangle mesh cannot be the probe shape: Jolt dispatches mesh against mesh nowhere.
+        // Convex probes still find mesh bodies, so only mesh-against-mesh goes unchecked.
+        if (record.motion == BodyMotion::Dynamic || record.kind == Impl::ShapeKind::Mesh)
+        {
+            continue;
+        }
+
+        JPH::RefConst<JPH::Shape> shape;
+        JPH::RMat44 centerOfMass;
+        {
+            const JPH::BodyLockRead lock(lockInterface, JPH::BodyID(id));
+            if (!lock.Succeeded())
+            {
+                continue;
+            }
+            shape = lock.GetBody().GetShape();
+            centerOfMass = lock.GetBody().GetCenterOfMassTransform();
+        }
+
+        JPH::AllHitCollisionCollector<JPH::CollideShapeCollector> collector;
+        impl.system->GetNarrowPhaseQuery().CollideShape(shape, JPH::Vec3::sReplicate(1.0f), centerOfMass,
+                                                        settings, JPH::RVec3::sZero(), collector, {}, {},
+                                                        JPH::IgnoreSingleBodyFilter(JPH::BodyID(id)));
+
+        for (const JPH::CollideShapeResult& hit : collector.mHits)
+        {
+            const uint32_t otherId = hit.mBodyID2.GetIndexAndSequenceNumber();
+            if (hit.mPenetrationDepth <= minPenetration || !isNonMoving(otherId))
+            {
+                continue;
+            }
+
+            const auto pair = std::minmax(id, otherId);
+            if (std::find(reported.begin(), reported.end(), std::pair{pair.first, pair.second}) != reported.end())
+            {
+                continue;
+            }
+            reported.emplace_back(pair.first, pair.second);
+
+            StaticOverlap overlap;
+            overlap.a = BodyHandle{pair.first};
+            overlap.b = BodyHandle{pair.second};
+            overlap.position = FromJolt(JPH::Vec3(hit.mContactPointOn1));
+            overlap.penetration = hit.mPenetrationDepth;
+            overlaps.push_back(overlap);
+        }
+    }
+
+    // Worst first, so a report that has to be truncated still shows the ones that matter.
+    std::sort(overlaps.begin(), overlaps.end(),
+              [](const StaticOverlap& lhs, const StaticOverlap& rhs) { return lhs.penetration > rhs.penetration; });
+    return overlaps;
 }
 
 void PhysicsWorld::DebugDraw(class DebugDraw& draw) const

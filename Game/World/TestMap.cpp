@@ -190,13 +190,16 @@ void BuildTestMap(Scene& scene, MeshLibrary& meshes, PhysicsWorld* physics)
     constexpr float corridorZ = -14.0f;
     constexpr float wallThickness = 0.4f;
     constexpr float wallHeight = 3.2f;
-    constexpr float segmentLength = 4.0f;
-    constexpr float sideWidth = 3.0f;
+    // Doorways must be spaced further apart than the walls flanking them are wide, or consecutive
+    // segments build walls on top of each other. At the previous 4 m spacing with 3 m walls they
+    // overlapped almost entirely.
+    constexpr float sideWidth = 2.4f;
+    constexpr float segmentLength = 7.5f;
 
     const glm::vec3 sideWallSize{sideWidth, wallHeight, wallThickness};
     const MeshHandle sideWallMesh = meshes.Upload(Primitives::Box(sideWallSize), "corridor_wall");
 
-    float gapX = -10.0f;
+    float gapX = -15.0f;
     for (const float gap : kGapWidths)
     {
         const float halfGap = gap * 0.5f;
@@ -228,8 +231,9 @@ void BuildTestMap(Scene& scene, MeshLibrary& meshes, PhysicsWorld* physics)
                                 kPillarMaterial);
     }
 
-    // A rotated block, to prove non-axis-aligned transforms survive the whole pipeline.
-    builder.AddBox("angled_block", AtPositionYaw(6.0f, 0.5f, 12.0f, 35.0f), {2.0f, 1.0f, 4.0f},
+    // A rotated block, to prove non-axis-aligned transforms survive the whole pipeline. Placed
+    // clear of the ledge row, which it used to intersect.
+    builder.AddBox("angled_block", AtPositionYaw(10.0f, 0.5f, 13.5f, 35.0f), {2.0f, 1.0f, 4.0f},
                    kLedgeMaterial);
 
     if (physics != nullptr)

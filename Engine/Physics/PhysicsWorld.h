@@ -120,6 +120,22 @@ public:
     // `direction` need not be normalized; `maxDistance` is measured along the normalized direction.
     RayHit RayCast(const glm::vec3& origin, const glm::vec3& direction, float maxDistance) const;
 
+    // A pair of non-moving solids that intersect. Level geometry built out of overlapping pieces
+    // looks wrong from the inside and can shove or trap the player, so the build checks itself
+    // rather than relying on somebody noticing while they walk past.
+    struct StaticOverlap
+    {
+        BodyHandle a;
+        BodyHandle b;
+        glm::vec3 position{0.0f}; // a point inside the intersection, for reporting
+        float penetration = 0.0f; // metres, along the shallowest separating direction
+    };
+
+    // Every static or kinematic body that penetrates another by more than `minPenetration`.
+    // Triangle-mesh pairs are not reported: Jolt has no mesh-against-mesh collision, so stairs and
+    // ramps are only tested against convex shapes. Bodies merely touching are not a penetration.
+    std::vector<StaticOverlap> FindStaticOverlaps(float minPenetration = 0.01f) const;
+
     // --- Debug ----------------------------------------------------------------------------------
     void DebugDraw(class DebugDraw& draw) const;
     const Stats& GetStats() const;
