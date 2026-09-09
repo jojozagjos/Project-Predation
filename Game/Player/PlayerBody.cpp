@@ -46,6 +46,22 @@ constexpr float kShoulderRise = 0.028f;
 constexpr float kUpperArm = 0.186f;
 constexpr float kLowerArm = 0.146f;
 constexpr float kHand = 0.090f;
+
+// How thick each part is drawn, as fractions of standing height: width across the body, then depth
+// front to back. Named here rather than written into the mesh sizes, because two things need them:
+// what gets drawn, and how far a collapsed body has to keep off the floor. A ragdoll that used one
+// radius for every joint sank its chest into the ground while its wrists floated above it.
+constexpr float kHipsWide = 0.150f, kHipsDeep = 0.108f;
+constexpr float kAbdomenWide = 0.160f, kAbdomenDeep = 0.112f;
+constexpr float kChestWide = 0.215f, kChestDeep = 0.120f;
+constexpr float kNeckWide = 0.050f, kNeckDeep = 0.050f;
+constexpr float kHeadWide = 0.098f, kHeadTall = 0.132f, kHeadDeep = 0.118f;
+constexpr float kUpperArmWide = 0.060f, kUpperArmDeep = 0.060f;
+constexpr float kLowerArmWide = 0.050f, kLowerArmDeep = 0.050f;
+constexpr float kHandWide = 0.050f, kHandTall = 0.082f, kHandDeep = 0.046f;
+constexpr float kThighWide = 0.086f, kThighDeep = 0.086f;
+constexpr float kShinWide = 0.068f, kShinDeep = 0.068f;
+constexpr float kBootWide = 0.074f, kBootDeep = 0.160f;
 } // namespace Ratio
 
 // Wraps an angle into (-pi, pi]. Without this, turning past the wrap point makes the body spin the
@@ -148,6 +164,40 @@ void PlayerBody::BuildSkeleton(const PlayerConfig& playerConfig)
         PRED_LOG_ERROR(Animation, "Humanoid skeleton is not in parent-before-child order");
     }
     m_pose.ResetToBind(m_skeleton);
+
+    // How far each joint has to keep off the floor once the body is a ragdoll. A single radius for
+    // every joint is wrong by a factor of three across a body: it either sinks the chest into the
+    // ground or floats the wrists above it. Half the mean of the part's width and depth is the
+    // radius of the cylinder it would roll on, which is what a joint resting on a floor is doing.
+    //
+    // Done here rather than with the drawn parts, because a body posed for a test has no meshes and
+    // still has to fall over correctly.
+    const auto radius = [](float wide, float deep) { return (wide + deep) * 0.25f; };
+    m_boneRadius.assign(static_cast<size_t>(m_skeleton.BoneCount()), Ratio::kNeckWide * 0.5f * h);
+    const auto setRadius = [&](BoneIndex bone, float value)
+    {
+        if (bone != kInvalidBone && static_cast<size_t>(bone) < m_boneRadius.size())
+        {
+            m_boneRadius[static_cast<size_t>(bone)] = value;
+        }
+    };
+    setRadius(m_rig.pelvis, radius(Ratio::kHipsWide, Ratio::kHipsDeep) * h);
+    setRadius(m_rig.spine, radius(Ratio::kAbdomenWide, Ratio::kAbdomenDeep) * h);
+    setRadius(m_rig.chest, radius(Ratio::kChestWide, Ratio::kChestDeep) * h);
+    setRadius(m_rig.neck, radius(Ratio::kNeckWide, Ratio::kNeckDeep) * h);
+    setRadius(m_rig.head, radius(Ratio::kHeadWide, Ratio::kHeadDeep) * h);
+    for (int side = 0; side < 2; ++side)
+    {
+        setRadius(m_rig.shoulder[side], radius(Ratio::kUpperArmWide, Ratio::kUpperArmDeep) * h);
+        setRadius(m_rig.upperArm[side], radius(Ratio::kUpperArmWide, Ratio::kUpperArmDeep) * h);
+        setRadius(m_rig.lowerArm[side], radius(Ratio::kLowerArmWide, Ratio::kLowerArmDeep) * h);
+        setRadius(m_rig.hand[side], radius(Ratio::kHandWide, Ratio::kHandDeep) * h);
+        setRadius(m_rig.upperLeg[side], radius(Ratio::kThighWide, Ratio::kThighDeep) * h);
+        setRadius(m_rig.lowerLeg[side], radius(Ratio::kShinWide, Ratio::kShinDeep) * h);
+        // A boot rests on its sole, so what keeps the ankle up is the ankle height, not the width.
+        setRadius(m_rig.foot[side], m_rig.ankleHeight);
+    }
+    m_ragdoll.SetJointRadii(m_boneRadius);
 }
 
 void PlayerBody::BuildParts(Scene& scene, MeshLibrary& meshes)
@@ -187,18 +237,19 @@ void PlayerBody::BuildParts(Scene& scene, MeshLibrary& meshes)
     //
     // A real torso is much wider than it is deep. Modelling it as a square column pushes the chest
     // far enough forward to hide the legs from the wearer's own eyes.
-    limb("hips", m_rig.pelvis, m_rig.spine, 0.150f * h, 0.108f * h, kSuitMaterial);
-    limb("abdomen", m_rig.spine, m_rig.chest, 0.160f * h, 0.112f * h, kSuitMaterial);
+    limb("hips", m_rig.pelvis, m_rig.spine, Ratio::kHipsWide * h, Ratio::kHipsDeep * h, kSuitMaterial);
+    limb("abdomen", m_rig.spine, m_rig.chest, Ratio::kAbdomenWide * h, Ratio::kAbdomenDeep * h,
+         kSuitMaterial);
     // The shoulder yoke: broad and shallow, spanning between the shoulder joints and closing the
     // top of the torso. With the chest joint at its proper height this is the whole top of the
     // body, so there is nothing left to cap and no separate collar piece between it and the neck.
-    limb("chest", m_rig.chest, m_rig.neck, 0.215f * h, 0.120f * h, kGearMaterial);
+    limb("chest", m_rig.chest, m_rig.neck, Ratio::kChestWide * h, Ratio::kChestDeep * h, kGearMaterial);
     // Hidden in first person, because nobody can see their own neck.
-    limb("neck", m_rig.neck, m_rig.head, 0.050f * h, 0.050f * h, kSuitMaterial, true);
+    limb("neck", m_rig.neck, m_rig.head, Ratio::kNeckWide * h, Ratio::kNeckDeep * h, kSuitMaterial, true);
 
     // A human head is about 0.13 of standing height tall and noticeably narrower than it is tall.
     // Sized from the crown down, so the top of the head lands at full standing height.
-    gear("head", m_rig.head, {0.098f * h, 0.132f * h, 0.118f * h},
+    gear("head", m_rig.head, {Ratio::kHeadWide * h, Ratio::kHeadTall * h, Ratio::kHeadDeep * h},
          {0.0f, 0.063f * h, 0.004f * h + m_config.skullBehindEye},
          kHelmetMaterial, PartFrame::BoneFrame, true);
 
@@ -209,9 +260,12 @@ void PlayerBody::BuildParts(Scene& scene, MeshLibrary& meshes)
         const char* fore = side == kLeft ? "forearm_left" : "forearm_right";
         const char* glove = side == kLeft ? "hand_left" : "hand_right";
 
-        limb(upper, m_rig.shoulder[side], m_rig.lowerArm[side], 0.060f * h, 0.060f * h, kSuitMaterial);
-        limb(fore, m_rig.lowerArm[side], m_rig.hand[side], 0.050f * h, 0.050f * h, kSuitMaterial);
-        gear(glove, m_rig.hand[side], {0.050f * h, 0.082f * h, 0.046f * h}, {0.0f, -0.028f * h, 0.0f},
+        limb(upper, m_rig.shoulder[side], m_rig.lowerArm[side], Ratio::kUpperArmWide * h,
+             Ratio::kUpperArmDeep * h, kSuitMaterial);
+        limb(fore, m_rig.lowerArm[side], m_rig.hand[side], Ratio::kLowerArmWide * h,
+             Ratio::kLowerArmDeep * h, kSuitMaterial);
+        gear(glove, m_rig.hand[side], {Ratio::kHandWide * h, Ratio::kHandTall * h, Ratio::kHandDeep * h},
+             {0.0f, -0.028f * h, 0.0f},
              kGloveMaterial);
     }
 
@@ -222,9 +276,11 @@ void PlayerBody::BuildParts(Scene& scene, MeshLibrary& meshes)
         const char* shin = side == kLeft ? "shin_left" : "shin_right";
         const char* boot = side == kLeft ? "boot_left" : "boot_right";
 
-        limb(thigh, m_rig.upperLeg[side], m_rig.lowerLeg[side], 0.086f * h, 0.086f * h, kSuitMaterial);
-        limb(shin, m_rig.lowerLeg[side], m_rig.foot[side], 0.068f * h, 0.068f * h, kSuitMaterial);
-        gear(boot, m_rig.foot[side], {0.074f * h, m_rig.ankleHeight * 1.35f, 0.160f * h},
+        limb(thigh, m_rig.upperLeg[side], m_rig.lowerLeg[side], Ratio::kThighWide * h,
+             Ratio::kThighDeep * h, kSuitMaterial);
+        limb(shin, m_rig.lowerLeg[side], m_rig.foot[side], Ratio::kShinWide * h,
+             Ratio::kShinDeep * h, kSuitMaterial);
+        gear(boot, m_rig.foot[side], {Ratio::kBootWide * h, m_rig.ankleHeight * 1.35f, Ratio::kBootDeep * h},
              {0.0f, 0.004f * h, -0.026f * h}, kGloveMaterial);
     }
 

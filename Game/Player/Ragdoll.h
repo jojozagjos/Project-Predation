@@ -49,6 +49,11 @@ public:
     // Writes the joint positions back into a pose, so the same drawn parts follow the ragdoll.
     void ApplyTo(const Skeleton& skeleton, Pose& pose) const;
 
+    // How far each joint keeps off the floor, one per bone. A body is not the same thickness all
+    // over: a chest is three times a wrist. Leave it unset and every joint uses Settings::radius,
+    // which is what buried the torso and floated the hands.
+    void SetJointRadii(std::vector<float> radii) { m_jointRadius = std::move(radii); }
+
     Settings& Tuning() { return m_settings; }
     const Settings& Tuning() const { return m_settings; }
     // Exposed for tests: bone lengths must survive, or the body stretches into spaghetti.
@@ -73,6 +78,7 @@ private:
     std::vector<glm::vec3> m_positions;
     std::vector<glm::vec3> m_previous;
     std::vector<float> m_groundHeight;
+    std::vector<float> m_jointRadius;
     // Where each joint was when its floor was last traced, so the trace is only redone when it has
     // gone somewhere the answer might differ.
     std::vector<glm::vec3> m_groundSampledAt;

@@ -1276,3 +1276,36 @@ TEST_CASE("A crouch walk shuffles instead of flinging its legs", "[body][pose]")
     // And the foot skims rather than stepping over something.
     CHECK(lift < 0.08f);
 }
+
+TEST_CASE("A settled ragdoll lies on the floor rather than in it", "[body][ragdoll]")
+{
+    // Every joint used to keep the same six centimetres off the ground, which is about right for a
+    // wrist and nothing like right for a chest. A body that came to rest had its torso buried past
+    // the shoulders while its hands floated. The clearance now comes from what is drawn at each
+    // joint, so a thick part rests on its own thickness.
+    BodyHarness harness;
+    harness.Settle(120);
+    harness.body.Collapse(glm::vec3(0.0f, 1.0f, -5.0f));
+    for (int i = 0; i < 480; ++i)
+    {
+        harness.Tick();
+    }
+
+    const HumanoidRig& rig = harness.Rig();
+    const BoneIndex bones[] = {rig.pelvis,      rig.spine,        rig.chest,       rig.neck,
+                               rig.head,        rig.upperArm[0],  rig.lowerArm[0], rig.hand[0],
+                               rig.upperLeg[0], rig.lowerLeg[0],  rig.foot[0]};
+    for (const BoneIndex bone : bones)
+    {
+        const float y = harness.Bone(bone).y;
+        const float radius = harness.body.BoneRadius(bone);
+        INFO("bone at " << y << " with radius " << radius);
+        REQUIRE(radius > 0.0f);
+        // The floor is at zero in this harness, so the joint has to clear it by its own thickness.
+        // A millimetre of slack, because the ground is traced and the clamp runs once a step.
+        CHECK(y > radius - 0.001f);
+    }
+
+    // And the torso really is thicker than the wrist, or the clearance is not doing anything.
+    CHECK(harness.body.BoneRadius(rig.chest) > harness.body.BoneRadius(rig.hand[0]) * 1.5f);
+}

@@ -242,7 +242,9 @@ void Ragdoll::Step(PhysicsWorld& physics, float dt)
             m_groundSampledAt[i] = flat;
         }
 
-        const float floor = m_groundHeight[i] + m_settings.radius;
+        const float clearance =
+            i < m_jointRadius.size() ? m_jointRadius[i] : m_settings.radius;
+        const float floor = m_groundHeight[i] + clearance;
         if (m_positions[i].y >= floor)
         {
             continue;

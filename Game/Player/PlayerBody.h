@@ -307,6 +307,13 @@ public:
     glm::vec3 MuzzlePoint() const;
     // Where the weapon is held. Exposed so a test can check the hand is actually on it.
     glm::vec3 WeaponOrigin() const { return m_weaponTransform.position; }
+    // How far a joint keeps off the floor once the body is a ragdoll, sized to what is drawn at it.
+    float BoneRadius(BoneIndex bone) const
+    {
+        return bone != kInvalidBone && static_cast<size_t>(bone) < m_boneRadius.size()
+                   ? m_boneRadius[static_cast<size_t>(bone)]
+                   : 0.0f;
+    }
     // Where the drawn skull actually sits, as opposed to where the head bone is. They differ, and
     // which one is wrong is the first question when somebody says the head looks off.
     glm::vec3 DebugSkullCentre() const;
@@ -410,6 +417,8 @@ private:
     float m_swayClock = 0.0f;   // drives the breathing movement
     std::array<FootState, 2> m_feet;
     std::array<FootState, 2> m_hands; // same shape: a smoothed target and whether it is planted
+    // How far each joint keeps off the floor as a ragdoll, sized to what is drawn there.
+    std::vector<float> m_boneRadius;
     float m_flatness = 0.0f;            // 0 upright, 1 fully prone
     // How far through the crouch, 0 standing to 1 fully down. Smoothed with the rest of the pose.
     float m_crouchness = 0.0f;
