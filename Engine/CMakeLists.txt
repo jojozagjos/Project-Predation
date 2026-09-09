@@ -72,6 +72,11 @@ set(PRED_ENGINE_SOURCES
     Debug/DebugOverlay.h
     Debug/DebugOverlay.cpp
 
+    Net/BitStream.h
+    Net/BitStream.cpp
+    Net/Transport.h
+    Net/LoopbackTransport.cpp
+
     Assets/MeshImport.h
     Assets/MeshImport.cpp
     Assets/ModelAsset.h

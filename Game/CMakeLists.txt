@@ -32,6 +32,9 @@ set(PRED_GAME_SOURCES
     Weapons/ShotResolver.h
     Weapons/ShotResolver.cpp
 
+    Net/Protocol.h
+    Net/Protocol.cpp
+
     World/TestMap.h
     World/TestMap.cpp
     World/WorldObjects.h
