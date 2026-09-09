@@ -74,6 +74,7 @@ public:
     std::vector<PeerId> TakeDisconnected() override { return std::exchange(m_disconnected, {}); }
 
     std::vector<PeerId> Peers() const override;
+    std::string AddressOf(PeerId) const override { return {}; }
     bool IsListening() const override { return m_listening; }
 
     // Called by the transport at the other end of a link.

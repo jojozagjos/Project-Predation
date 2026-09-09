@@ -77,6 +77,11 @@ public:
     virtual std::vector<PeerId> TakeConnected() = 0;
     virtual std::vector<PeerId> TakeDisconnected() = 0;
 
+    // Where a peer is, as a string this transport could be told to connect to. A host hands these
+    // round so that if it goes, the players left know where to find each other. Empty when the
+    // transport has no notion of an address, which the in-process one does not.
+    virtual std::string AddressOf(PeerId peer) const = 0;
+
     virtual std::vector<PeerId> Peers() const = 0;
     virtual bool IsListening() const = 0;
 };

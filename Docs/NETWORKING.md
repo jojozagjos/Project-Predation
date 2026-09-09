@@ -152,3 +152,18 @@ rejoining the same game does not mean typing it again. Escape frees the cursor, 
 with the cursor already free returns to the title screen.
 
 The console commands still do the same things, and hosting from the console also enters the world.
+
+## When the host leaves
+
+The game does not end. The host publishes the roster whenever it changes: who is playing and the
+address each was seen from. When the host goes, everyone waits a moment (`net.migration_seconds`),
+the lowest surviving player number starts hosting on the port everyone was already using, and the
+rest connect to it. Nobody has to agree on the choice, because everybody is working from the same
+list.
+
+The world survives it because every machine already holds a complete copy; the successor's copy
+simply becomes the authoritative one.
+
+On one network this works. Through a router the addresses are the holes that router punched, which
+stay open only as long as they stay open, so migration over the internet is best effort until there
+is NAT traversal.

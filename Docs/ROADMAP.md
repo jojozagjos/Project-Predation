@@ -20,7 +20,7 @@ Still missing:
 ## Multiplayer
 
 Built: UDP with its own reliability, host authority, client prediction with replay, interpolated
-remote players, lag compensation, doors, lockers, pickups, ammunition crates, loose objects, shots,
+remote players, lag compensation, host migration, doors, lockers, pickups, ammunition crates, loose objects, shots,
 friendly fire, damage and death.
 
 Still missing:
@@ -32,7 +32,8 @@ Still missing:
   stimulus.
 - **Weapon state per player.** The host passes on what a client says it is holding but does not
   simulate their ammunition, so a client is trusted about its own magazine.
-- **Reconnecting.** A dropped player is gone for the round.
+- **Reconnecting.** A player who drops is gone for the round. Host migration covers the host
+  leaving, but not anybody else coming back.
 - **Matchmaking and NAT traversal.** Joining means typing an address and forwarding a port.
 
 ## Not started

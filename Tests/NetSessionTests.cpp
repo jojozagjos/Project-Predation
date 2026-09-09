@@ -505,10 +505,12 @@ TEST_CASE("Loose objects are replicated as state", "[net][session]")
         state.bodies[i].id = i;
         state.bodies[i].position = {static_cast<float>(i) * 2.0f, 0.5f, -1.0f};
     }
-    link.host.SendWorldState(state);
-
+    // Sent again every tick, as the host really does. A single unreliable packet on a link that
+    // drops one in seven is a coin toss, and the point of the channel is that the next one is
+    // along in a moment.
     for (int i = 0; i < 100 && !link.client.HasWorldState(); ++i)
     {
+        link.host.SendWorldState(state);
         link.Run(1, PlayerInput{});
     }
 
@@ -678,4 +680,79 @@ TEST_CASE("A climb is visible to everyone else", "[net][session]")
     CHECK(seen.mantlePhase == Catch::Approx(0.5f).margin(0.05));
     CHECK(seen.mantleEdge.x == Catch::Approx(1.5f).margin(0.01));
     CHECK(seen.mantleEdge.y == Catch::Approx(1.1f).margin(0.01));
+}
+
+TEST_CASE("Everyone is told who else is here, so a lost host can be replaced", "[net][session]")
+{
+    // The roster is what makes migration possible at all: once the host has gone there is nobody
+    // left to ask who was playing or where they were.
+    NetConditions perfect;
+    Link link(41020, perfect);
+    link.Run(40, PlayerInput{});
+    REQUIRE(link.client.Connected());
+
+    const std::vector<NetClient::KnownPeer>& peers = link.client.Peers();
+    REQUIRE_FALSE(peers.empty());
+    CHECK(peers[0].id == link.client.PlayerId());
+    CHECK(peers[0].name == "tester");
+}
+
+TEST_CASE("The lowest surviving player takes over when the host goes", "[net][session]")
+{
+    // Everyone was given the same roster, so everyone reaches the same answer without agreeing on
+    // one. That matters, because the machine they would have agreed through is the one that left.
+    Machine hostMachine;
+    NetHost host;
+    NetHost::Config config;
+    config.port = 41021;
+    REQUIRE(host.Start(CreateLoopbackTransport(), config, hostMachine.physics, hostMachine.config,
+                       {0.0f, 0.05f, 0.0f}));
+
+    std::vector<std::unique_ptr<NetClient>> clients;
+    for (int i = 0; i < 3; ++i)
+    {
+        auto client = std::make_unique<NetClient>();
+        REQUIRE(client->Connect(CreateLoopbackTransport(), "loopback", 41021, "player",
+                                NetClient::Config{}));
+        clients.push_back(std::move(client));
+    }
+
+    Machine clientMachine;
+    const auto pump = [&](int ticks)
+    {
+        for (int i = 0; i < ticks; ++i)
+        {
+            host.Tick(static_cast<uint32_t>(i + 1), hostMachine.player.State(), kTick);
+            for (auto& client : clients)
+            {
+                client->Tick(PlayerInput{}, clientMachine.player, kTick);
+            }
+        }
+    };
+    pump(40);
+    for (auto& client : clients)
+    {
+        REQUIRE(client->Connected());
+    }
+
+    // The host goes.
+    host.Stop();
+    pump(40);
+
+    int volunteers = 0;
+    for (auto& client : clients)
+    {
+        CHECK(client->HostLost());
+        if (client->ShouldBecomeHost())
+        {
+            ++volunteers;
+            // And it is the lowest number that stepped forward.
+            for (const NetClient::KnownPeer& peer : client->Peers())
+            {
+                CHECK(peer.id >= client->PlayerId());
+            }
+        }
+    }
+    INFO(volunteers << " clients think they should take over");
+    CHECK(volunteers == 1);
 }

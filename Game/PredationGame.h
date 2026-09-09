@@ -147,6 +147,8 @@ private:
     void ApplyPlayerDamage(uint8_t player, float amount, uint8_t killer, const glm::vec3& direction);
     void KillPlayer(uint8_t player, const glm::vec3& direction);
     // Death is a pause. The authority runs the clock and says when somebody comes back.
+    // The host left. Whoever is left elects a successor and the rest follow it.
+    void UpdateHostMigration(float dt);
     void UpdateRespawns(float dt);
     // Dead, you watch a teammate through their own eyes. Never a free camera: that would show you
     // where the creature is, which is the one thing being dead must not tell you.
@@ -297,6 +299,7 @@ private:
     float m_worldStateTimer = 0.0f;
     glm::vec3 m_deathImpulse{0.0f};
     float m_respawnTimer = 0.0f;
+    float m_migrationTimer = 0.0f;
     std::map<uint8_t, float> m_remoteRespawnTimers;
     // Whose eyes we are watching through while dead. -1 when alive or when nobody is left.
     int m_spectating = -1;

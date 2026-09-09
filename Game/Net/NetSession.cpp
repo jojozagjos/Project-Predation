@@ -268,6 +268,9 @@ void NetHost::HandleJoin(PeerId peer, BitReader& reader)
     PRED_LOG_INFO(Network, "{} joined as player {}", client->name, playerId);
     m_joined.push_back(playerId);
     m_clients.push_back(std::move(client));
+    // After the new client is on the list, not before: sending it first leaves them out of the
+    // roster everybody else keeps, and leaves them with no roster at all.
+    BroadcastPeerList();
 }
 
 void NetHost::HandlePacket(const NetPacket& packet)
@@ -485,6 +488,39 @@ float NetHost::HealthOf(uint8_t playerId) const
     return 0.0f;
 }
 
+void NetHost::BroadcastPeerList()
+{
+    if (m_transport == nullptr)
+    {
+        return;
+    }
+    // Sent whenever the roster changes, and only then. It is what lets the players left find each
+    // other if this machine goes: by that point there is nobody to ask.
+    PeerListMessage list;
+    for (const auto& client : m_clients)
+    {
+        if (client->welcomed && list.count < kMaxPlayers)
+        {
+            PeerEntry& entry = list.peers[list.count++];
+            entry.id = client->playerId;
+            entry.name = client->name;
+            entry.address = m_transport->AddressOf(client->peer);
+        }
+    }
+
+    BitWriter writer;
+    WriteMessageHeader(writer, MessageType::PeerList);
+    WritePeerList(writer, list);
+    const std::vector<uint8_t>& bytes = writer.Finish();
+    for (const auto& client : m_clients)
+    {
+        if (client->welcomed)
+        {
+            m_transport->Send(client->peer, Channel::Reliable, bytes.data(), bytes.size());
+        }
+    }
+}
+
 void NetHost::Broadcast(const WorldEventMessage& event)
 {
     if (m_transport == nullptr)
@@ -579,6 +615,7 @@ void NetHost::RemoveClient(PeerId peer)
     PRED_LOG_INFO(Network, "{} left", (*found)->name);
     (*found)->controller.Shutdown();
     m_clients.erase(found);
+    BroadcastPeerList();
 }
 
 void NetHost::Tick(uint32_t tick, const PlayerState& localState, float dt)
@@ -751,6 +788,9 @@ bool NetClient::Connect(std::unique_ptr<Transport> transport, const std::string&
     m_lastAcknowledged = 0;
     m_corrections = 0;
     m_clock = 0.0f;
+    m_sessionPort = port;
+    m_hostLost = false;
+    m_peers.clear();
     m_visualError = glm::vec3(0.0f);
     m_history.Clear();
     m_snapshots.clear();
@@ -851,6 +891,20 @@ void NetClient::HandlePacket(const NetPacket& packet)
         break;
     }
 
+    case MessageType::PeerList:
+    {
+        PeerListMessage list;
+        if (ReadPeerList(reader, list))
+        {
+            m_peers.clear();
+            for (uint8_t i = 0; i < list.count; ++i)
+            {
+                m_peers.push_back({list.peers[i].id, list.peers[i].name, list.peers[i].address});
+            }
+        }
+        break;
+    }
+
     case MessageType::WorldEvent:
     {
         WorldEventMessage event;
@@ -935,8 +989,13 @@ void NetClient::Tick(const PlayerInput& input, PlayerController& local, float dt
     }
     if (!m_transport->TakeDisconnected().empty())
     {
+        // Only a host that was actually reached can be lost. A connection that never came up is a
+        // failure to join, and a client that never joined knows nothing about who else is playing:
+        // treating that as a lost host had every one of them declare itself the new one.
+        const bool wasInGame = m_welcomed;
         m_welcomed = false;
         m_transport.reset();
+        m_hostLost = wasInGame;
         PRED_LOG_WARN(Network, "Lost the connection to the host");
         return;
     }
@@ -969,6 +1028,46 @@ void NetClient::Tick(const PlayerInput& input, PlayerController& local, float dt
     local.Step(input, dt);
     m_history.Record(m_sequence, input, local.State());
     SendInput();
+}
+
+bool NetClient::ShouldBecomeHost() const
+{
+    if (!m_hostLost)
+    {
+        return false;
+    }
+    // The lowest surviving player number takes over. Everyone was given the same roster, so
+    // everyone reaches the same answer without having to agree on one, which is just as well
+    // because the machine they would have agreed through is the one that left.
+    for (const KnownPeer& peer : m_peers)
+    {
+        if (peer.id < m_playerId)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+std::string NetClient::SuccessorAddress() const
+{
+    if (!m_hostLost)
+    {
+        return {};
+    }
+    const KnownPeer* best = nullptr;
+    for (const KnownPeer& peer : m_peers)
+    {
+        if (peer.id == m_playerId || peer.address.empty())
+        {
+            continue;
+        }
+        if (best == nullptr || peer.id < best->id)
+        {
+            best = &peer;
+        }
+    }
+    return best != nullptr ? best->address : std::string{};
 }
 
 void NetClient::SetHeld(uint8_t heldItem, float aim, bool reloading, float progress)

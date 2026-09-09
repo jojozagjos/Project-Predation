@@ -580,4 +580,66 @@ bool ReadDrop(BitReader& reader, DropMessage& out)
     return !reader.Overran() && out.count > 0;
 }
 
+namespace
+{
+void WriteText(BitWriter& writer, const std::string& text, size_t limit)
+{
+    const size_t length = std::min(text.size(), limit);
+    writer.WriteBits(static_cast<uint32_t>(length), 6);
+    for (size_t i = 0; i < length; ++i)
+    {
+        writer.WriteByte(static_cast<uint8_t>(text[i]));
+    }
+}
+
+bool ReadText(BitReader& reader, std::string& out, size_t limit)
+{
+    const uint32_t length = reader.ReadBits(6);
+    if (length > limit)
+    {
+        return false;
+    }
+    out.clear();
+    out.reserve(length);
+    for (uint32_t i = 0; i < length; ++i)
+    {
+        const uint8_t byte = reader.ReadByte();
+        out.push_back(byte >= 32 && byte < 127 ? static_cast<char>(byte) : '?');
+    }
+    return !reader.Overran();
+}
+} // namespace
+
+void WritePeerList(BitWriter& writer, const PeerListMessage& message)
+{
+    const uint8_t count = std::min<uint8_t>(message.count, kMaxPlayers);
+    writer.WriteBits(count, 3);
+    for (uint8_t i = 0; i < count; ++i)
+    {
+        writer.WriteBits(message.peers[i].id, 3);
+        WriteText(writer, message.peers[i].name, kMaxNameLength);
+        WriteText(writer, message.peers[i].address, 48);
+    }
+}
+
+bool ReadPeerList(BitReader& reader, PeerListMessage& out)
+{
+    const uint32_t count = reader.ReadBits(3);
+    if (count > kMaxPlayers)
+    {
+        return false;
+    }
+    out.count = static_cast<uint8_t>(count);
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        out.peers[i].id = static_cast<uint8_t>(reader.ReadBits(3));
+        if (!ReadText(reader, out.peers[i].name, kMaxNameLength) ||
+            !ReadText(reader, out.peers[i].address, 48))
+        {
+            return false;
+        }
+    }
+    return !reader.Overran();
+}
+
 } // namespace pred

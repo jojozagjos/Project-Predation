@@ -122,6 +122,25 @@ struct DynamicBodyState
     glm::quat rotation{1.0f, 0.0f, 0.0f, 0.0f};
 };
 
+// Who else is here and where they can be reached. Sent by the host whenever the roster changes.
+//
+// It exists for one reason: when the host goes, whoever is left has to find each other, and by
+// then there is nobody to ask. The addresses are the ones the host saw, so on one network they are
+// the machines' own addresses and work; through a router they are the hole that router punched,
+// which stays open only as long as it stays open.
+struct PeerEntry
+{
+    uint8_t id = 0;
+    std::string name;
+    std::string address; // empty for the host itself, which everyone already knows how to reach
+};
+
+struct PeerListMessage
+{
+    uint8_t count = 0;
+    std::array<PeerEntry, kMaxPlayers> peers{};
+};
+
 struct WorldStateMessage
 {
     uint8_t count = 0;
@@ -238,6 +257,7 @@ void WriteInteract(BitWriter& writer, const InteractMessage& message);
 void WriteShot(BitWriter& writer, const ShotMessage& message);
 void WriteWorldState(BitWriter& writer, const WorldStateMessage& message);
 void WriteDrop(BitWriter& writer, const DropMessage& message);
+void WritePeerList(BitWriter& writer, const PeerListMessage& message);
 
 // --- Reading -----------------------------------------------------------------------------------
 //
@@ -255,5 +275,6 @@ bool ReadInteract(BitReader& reader, InteractMessage& out);
 bool ReadShot(BitReader& reader, ShotMessage& out);
 bool ReadWorldState(BitReader& reader, WorldStateMessage& out);
 bool ReadDrop(BitReader& reader, DropMessage& out);
+bool ReadPeerList(BitReader& reader, PeerListMessage& out);
 
 } // namespace pred

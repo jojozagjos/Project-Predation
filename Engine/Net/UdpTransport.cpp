@@ -191,6 +191,7 @@ public:
     std::vector<PeerId> TakeConnected() override { return std::exchange(m_connected, {}); }
     std::vector<PeerId> TakeDisconnected() override { return std::exchange(m_disconnected, {}); }
     std::vector<PeerId> Peers() const override;
+    std::string AddressOf(PeerId peer) const override;
     bool IsListening() const override { return m_listening; }
 
 private:
@@ -412,6 +413,21 @@ std::vector<PeerId> UdpTransport::Peers() const
     }
     std::sort(ids.begin(), ids.end());
     return ids;
+}
+
+std::string UdpTransport::AddressOf(PeerId peer) const
+{
+    for (const Peer& entry : m_peers)
+    {
+        if (entry.id == peer)
+        {
+            // The address as seen from here. On one network that is the machine's own address and
+            // works for everybody; through a router it is the hole that router punched, which is
+            // open only as long as it stays open.
+            return DescribeAddress(entry.address);
+        }
+    }
+    return {};
 }
 
 float UdpTransport::DrawDelay()

@@ -242,3 +242,25 @@ Finding the ledge is four raycasts: down from in front to find the top, forward 
 something in the way rather than open ground, down again further on to confirm there is enough top
 to stand on, and up to confirm there is headroom. All against static geometry, so both machines find
 the same ledge.
+
+## ADR-020: The host hands round a roster so it can be replaced
+
+**Status**: accepted, 2026-09-09
+
+When the host leaves, the game does not end. The lowest surviving player number takes over and the
+rest connect to it.
+
+The whole difficulty is that by the time anyone notices, the machine they would have asked is the
+one that left. So the host publishes the roster whenever it changes: who is playing, what they are
+called, and the address each was seen from. Everybody therefore already holds the same list when
+they need it, and everybody reaches the same answer without having to agree on one.
+
+The world survives the handover because every machine already has a complete copy of it. That is
+what applying the same events to the same starting state buys: the successor does not have to be
+sent anything, its own copy simply becomes the authoritative one.
+
+Two limits worth stating. The addresses are the ones the old host saw, so on one network they are
+the machines' own addresses and work; through a router they are the hole that router punched, which
+stays open only as long as it stays open. And a player who never finished joining holds no roster,
+so it is not allowed to elect itself: without that rule every client that failed to connect declared
+itself the new host.

@@ -46,6 +46,9 @@ CVar<int> cv_lastPort{"net.last_port", kDefaultPort, "Port the join box opens wi
 // On by default: a four-player extraction game where rounds pass through your team is a different
 // game, and a quieter one.
 CVar<bool> cv_friendlyFire{"game.friendly_fire", true, "Rounds hurt other players", CVarFlags::Archive};
+CVar<float> cv_migrationSeconds{"net.migration_seconds", 2.5f,
+                              "How long to wait after losing the host before taking over",
+                              CVarFlags::Archive};
 CVar<float> cv_respawnSeconds{"game.respawn_seconds", 6.0f, "How long you lie there before coming back",
                              CVarFlags::Archive};
 CVar<bool> cv_showGrid{"debug.show_grid", false, "Draw the reference grid"};
@@ -1035,6 +1038,86 @@ void PredationGame::ApplyDynamicBodies(const WorldStateMessage& state)
 }
 
 // --- Damage ------------------------------------------------------------------------------------
+
+void PredationGame::UpdateHostMigration(float dt)
+{
+    // The host has gone. Rather than the game ending for everybody left, the lowest surviving
+    // player number takes over and the rest connect to it. Everyone was given the same roster while
+    // the old host was alive, so everyone reaches the same answer without having to agree on one,
+    // which matters because the machine they would have agreed through is the one that left.
+    //
+    // The world survives the handover because every machine already has a complete copy of it: that
+    // is what applying the same events to the same starting state buys. The new host's copy becomes
+    // the authoritative one.
+    if (m_sessionMode != SessionMode::Client || !m_client.HostLost())
+    {
+        return;
+    }
+
+    m_migrationTimer += dt;
+    // A moment of quiet first. A host that drops off for a second and comes back would otherwise
+    // race with the successor for the same port, and the settling time is also long enough that
+    // everybody has noticed rather than only the client with the best connection.
+    if (m_migrationTimer < cv_migrationSeconds.Get())
+    {
+        return;
+    }
+
+    const bool takeOver = m_client.ShouldBecomeHost();
+    const std::string successor = m_client.SuccessorAddress();
+    // Where everyone will look for the new host: the port they were already on.
+    const uint16_t port = m_client.SessionPort();
+    m_migrationTimer = 0.0f;
+
+    if (takeOver)
+    {
+        PRED_LOG_INFO(Network, "Host went; taking over on port {}", port);
+        m_client.Disconnect();
+        m_sessionMode = SessionMode::Offline;
+
+        NetHost::Config config;
+        config.port = port;
+        auto transport = CreateUdpTransport();
+        transport->SetConditions(m_simulatedConditions);
+        if (m_host.Start(std::move(transport), config, m_app->GetPhysics(), m_player.Config(),
+                         m_spawnPoint))
+        {
+            m_sessionMode = SessionMode::Host;
+            m_app->GetConsole().Print("The host left. You are hosting now.");
+        }
+        else
+        {
+            m_app->GetConsole().PrintError("The host left and this machine could not take over.");
+            ReturnToTitle();
+        }
+        return;
+    }
+
+    if (successor.empty())
+    {
+        // Nobody left to play with.
+        m_app->GetConsole().Print("The host left and there is nobody else here.");
+        ReturnToTitle();
+        return;
+    }
+
+    PRED_LOG_INFO(Network, "Host went; following {}", successor);
+    auto transport = CreateUdpTransport();
+    transport->SetConditions(m_simulatedConditions);
+    NetClient::Config config;
+    // The address carries its own port, because it is where that machine was seen from, not where
+    // it listens. The successor listens on the game's port.
+    const std::string host = successor.substr(0, successor.find(':'));
+    if (m_client.Connect(std::move(transport), host, port, "operator", config))
+    {
+        m_app->GetConsole().Print("The host left. Reconnecting to " + host);
+    }
+    else
+    {
+        m_app->GetConsole().PrintError("The host left and " + host + " could not be reached.");
+        ReturnToTitle();
+    }
+}
 
 void PredationGame::UpdateRespawns(float dt)
 {
@@ -2544,6 +2627,7 @@ void PredationGame::OnFixedUpdate(double fixedDt)
         m_player.Step(input, dt);
     }
 
+    UpdateHostMigration(dt);
     UpdateRespawns(dt);
 
     // The toggles follow what the body actually did. A stance change can be refused, by a ceiling
