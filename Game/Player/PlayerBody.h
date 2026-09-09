@@ -148,14 +148,14 @@ public:
         float crawlShoulderRollDegrees = 9.0f; // shoulders roll as each arm reaches and pulls
         // Prone turning is slow and deliberate: the body pivots towards where you are crawling.
         float proneTurnSpeed = 3.2f;
-        // Look this far from the way the body is lying and it rolls over rather than twisting.
-        float proneRollOverDegrees = 100.0f;
-        // And back onto your front again. Apart from the other threshold so it settles rather than
-        // chattering when the view sits right on the boundary.
-        float proneRollBackDegrees = 55.0f;
-        // How long rolling over takes, start to finish. Eased at both ends rather than run through an
-        // exponential, so it reads as a body turning over rather than as a switch being thrown.
-        float proneRollSeconds = 0.55f;
+        // Look this far from the way the body is lying and it starts coming up onto its side. From
+        // here to straight behind, how far over the body is tracks how far round you are looking,
+        // so up on one shoulder is a position you can hold and aim from rather than a frame of a
+        // transition. Straight behind is flat on your back.
+        float proneRollOverDegrees = 95.0f;
+        // How long a full roll from front to back takes. The rate is constant, so a quarter turn
+        // takes a quarter as long, and it reads as a body turning over rather than a pose changing.
+        float proneRollSeconds = 0.7f;
 
         // In the air. Legs tuck on the way up and reach on the way down; the arms come out either
         // way. Without any of this the legs simply stretch straight down towards a floor that is
@@ -325,6 +325,8 @@ private:
     // magnitude is how far through the roll it is, and most of the pose only cares about that.
     float m_proneRoll = 0.0f;
     float m_proneRollT = 0.0f;        // 0 to 1 through the roll, advanced at a constant rate
+    float m_proneRollTarget = 0.0f;   // where the roll is heading, from how far round you are looking
+    float m_proneRollAngle = 0.0f;    // radians about the body length, signed; limbs are placed with it
     float m_proneRollSign = 1.0f;
     float m_proneRollAmount = 0.0f;  // how far over, ignoring which way
     float m_airborne = 0.0f;          // 0 on the ground, 1 fully in the air

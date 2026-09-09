@@ -771,3 +771,116 @@ TEST_CASE("Rolling over is a movement, not a jump", "[body][pose]")
     // that is a jump rather than a roll. An instant flip would put the whole two in one tick.
     REQUIRE(worstStep < 0.25f);
 }
+
+TEST_CASE("The arms hang from the shoulders, not from the middle of the ribcage", "[body][pose]")
+{
+    // Standard anthropometry, as fractions of standing height: the shoulder joint is at 0.818, the
+    // base of the neck around 0.825, and the fingertips of a hanging arm reach 0.377. The rig had
+    // the shoulder at 0.732, which is inside the ribcage; the arms visibly grew out of the wrong
+    // place and the hands hung past the knees.
+    BodyHarness harness;
+    harness.Settle(120);
+
+    const float height = harness.config.standHeight;
+    const float feet = harness.State().position.y;
+
+    for (int side = 0; side < 2; ++side)
+    {
+        const float shoulder =
+            (harness.Bone(harness.Rig().shoulder[static_cast<size_t>(side)]).y - feet) / height;
+        INFO("side " << side << " shoulder at " << shoulder << " of standing height");
+        CHECK(shoulder > 0.79f);
+        CHECK(shoulder < 0.85f);
+    }
+
+    const float neck = (harness.Bone(harness.Rig().neck).y - feet) / height;
+    INFO("neck base at " << neck);
+    CHECK(neck > 0.80f);
+    CHECK(neck < 0.87f);
+
+    // The shoulder sits below the base of the neck, never above it.
+    CHECK(harness.Bone(harness.Rig().shoulder[0]).y < harness.Bone(harness.Rig().neck).y);
+
+    // And below the chin, which is where the drawn head starts.
+    CHECK(harness.Bone(harness.Rig().neck).y < harness.Bone(harness.Rig().head).y);
+}
+
+TEST_CASE("Rolling over passes through the side rather than switching to the back", "[body][pose]")
+{
+    // Halfway through, a body turning over is on its shoulder: its own right axis is pointing at
+    // the sky or the floor rather than sideways. That intermediate is the whole difference between
+    // rolling over and being flipped, and it is also a position worth being able to hold.
+    BodyHarness harness;
+    harness.SetStance(PlayerStance::Prone);
+    harness.Settle(300);
+
+    harness.input.yaw = glm::pi<float>();
+
+    float mostVertical = 0.0f;
+    for (int i = 0; i < 200; ++i)
+    {
+        harness.Tick();
+        // The vertical part of the body's own right axis: zero lying flat either way up, one when
+        // it is stood on its side.
+        const float side = glm::vec3(harness.body.GetPose().Global(harness.Rig().chest)[0]).y;
+        mostVertical = std::max(mostVertical, std::abs(side));
+    }
+
+    INFO("most vertical the body's right axis got: " << mostVertical);
+    CHECK(mostVertical > 0.7f);
+}
+
+TEST_CASE("How far you look round decides how far over you roll", "[body][pose]")
+{
+    // Not two states with a transition between them. Looking part way behind should leave the body
+    // part way over and hold it there, because up on one shoulder is where you can cover behind
+    // without giving up the ground.
+    const auto restingRoll = [](float lookDegrees)
+    {
+        BodyHarness harness;
+        harness.SetStance(PlayerStance::Prone);
+        harness.Settle(300);
+        harness.input.yaw = glm::radians(lookDegrees);
+        harness.Settle(300);
+        // Straight down on the front, straight up on the back.
+        return glm::normalize(-glm::vec3(harness.body.GetPose().Global(harness.Rig().chest)[2])).y;
+    };
+
+    const float front = restingRoll(0.0f);
+    const float part = restingRoll(135.0f);
+    const float back = restingRoll(180.0f);
+
+    INFO("front " << front << ", part way " << part << ", behind " << back);
+    CHECK(front < -0.7f);  // face down
+    CHECK(back > 0.7f);    // face up
+    // Part way round rests part way over, and stays there.
+    CHECK(part > front + 0.3f);
+    CHECK(part < back - 0.3f);
+}
+
+TEST_CASE("The legs roll with the body instead of staying flat on the floor", "[body][pose]")
+{
+    // A body on its side has one leg stacked above the other. Leaving both feet pinned to the
+    // ground while the torso turned is what made rolling read as the top half being switched onto
+    // its back rather than the whole body turning through its side.
+    BodyHarness harness;
+    harness.SetStance(PlayerStance::Prone);
+    harness.Settle(300);
+
+    const float flatSeparation =
+        std::abs(harness.Bone(harness.Rig().foot[0]).y - harness.Bone(harness.Rig().foot[1]).y);
+
+    harness.input.yaw = glm::pi<float>();
+    float mostStacked = 0.0f;
+    for (int i = 0; i < 200; ++i)
+    {
+        harness.Tick();
+        mostStacked = std::max(mostStacked, std::abs(harness.Bone(harness.Rig().foot[0]).y -
+                                                     harness.Bone(harness.Rig().foot[1]).y));
+    }
+
+    INFO("feet were " << flatSeparation << " m apart vertically lying flat, " << mostStacked
+                      << " m at the most stacked point of the roll");
+    CHECK(flatSeparation < 0.05f);
+    CHECK(mostStacked > 0.12f);
+}

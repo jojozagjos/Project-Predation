@@ -32,12 +32,17 @@ constexpr float kHipHalfWidth = 0.055f;
 constexpr float kUpperLeg = 0.245f;
 constexpr float kLowerLeg = 0.246f;
 constexpr float kAnkle = 0.039f;
-constexpr float kSpine = 0.086f;
-constexpr float kChest = 0.086f;
-constexpr float kNeck = 0.100f;
-constexpr float kHead = 0.070f;
+// Heights up the torso, each measured from the joint below it, as fractions of standing height.
+// They add up to put the chin at 0.873 and the shoulder joint at 0.818, which is where a real
+// shoulder is. The chest joint used to sit at 0.702, which put the shoulders fifteen centimetres
+// too low: the arms grew out of the middle of the ribcage, the hands hung past the knees, and the
+// gap left above the chest needed a separate block to plug it.
+constexpr float kSpine = 0.090f; // pelvis to the waist
+constexpr float kChest = 0.170f; // waist to the top of the ribcage, where the shoulders hang
+constexpr float kNeck = 0.035f;  // ribcage to the base of the neck
+constexpr float kHead = 0.048f;  // neck to the jaw
 constexpr float kShoulderHalfWidth = 0.115f;
-constexpr float kShoulderRise = 0.030f;
+constexpr float kShoulderRise = 0.028f;
 constexpr float kUpperArm = 0.186f;
 constexpr float kLowerArm = 0.146f;
 constexpr float kHand = 0.090f;
@@ -184,14 +189,12 @@ void PlayerBody::BuildParts(Scene& scene, MeshLibrary& meshes)
     // far enough forward to hide the legs from the wearer's own eyes.
     limb("hips", m_rig.pelvis, m_rig.spine, 0.150f * h, 0.108f * h, kSuitMaterial);
     limb("abdomen", m_rig.spine, m_rig.chest, 0.160f * h, 0.112f * h, kSuitMaterial);
-    limb("chest", m_rig.chest, m_rig.neck, 0.170f * h, 0.118f * h, kGearMaterial);
-    // The neck is hidden in first person, because nobody can see their own neck. Hiding it alone
-    // left the top of the torso open, and looking down you could see straight past the collar into
-    // the inside of the chest, so a collar caps it: wide and low, well clear of the camera, and it
-    // reads as the top of a jacket rather than as a neck.
+    // The shoulder yoke: broad and shallow, spanning between the shoulder joints and closing the
+    // top of the torso. With the chest joint at its proper height this is the whole top of the
+    // body, so there is nothing left to cap and no separate collar piece between it and the neck.
+    limb("chest", m_rig.chest, m_rig.neck, 0.215f * h, 0.120f * h, kGearMaterial);
+    // Hidden in first person, because nobody can see their own neck.
     limb("neck", m_rig.neck, m_rig.head, 0.050f * h, 0.050f * h, kSuitMaterial, true);
-    gear("collar", m_rig.neck, {0.125f * h, 0.048f * h, 0.105f * h}, {0.0f, 0.012f * h, 0.0f},
-         kGearMaterial);
 
     // A human head is about 0.13 of standing height tall and noticeably narrower than it is tall.
     // Sized from the crown down, so the top of the head lands at full standing height.
@@ -333,16 +336,26 @@ void PlayerBody::UpdatePosture(const PlayerState& state, const PlayerView& view,
         // apart so it settles instead of chattering at the boundary.
         const float signedTwist = WrapAngle(view.yaw - m_bodyYaw);
         const float twist = std::abs(signedTwist);
-        if (!m_proneOnBack && twist > glm::radians(m_config.proneRollOverDegrees))
+
+        // How far over you are follows how far round you are looking, rather than flipping between
+        // lying on your front and lying on your back. Past the point where the neck runs out you
+        // start coming up onto your side, and you are only fully supine looking straight behind.
+        //
+        // The difference matters because halfway is a real position and not just a frame of a
+        // transition: up on one shoulder is where you can cover behind you without giving up the
+        // ground, and two fixed states cannot express it. It also means the roll cannot snap,
+        // because there is no state to snap between.
+        const float over = glm::radians(m_config.proneRollOverDegrees);
+        const float span = std::max(glm::pi<float>() - over, glm::radians(5.0f));
+        m_proneRollTarget = std::clamp((twist - over) / span, 0.0f, 1.0f);
+        m_proneOnBack = m_proneRollTarget > 0.5f;
+
+        // Which shoulder you go over is decided once, as the roll starts, and held until you are
+        // flat on your front again. Deciding it every frame let a small wobble across the centre
+        // throw the body the other way mid-roll.
+        if (m_proneRollT <= 0.001f && m_proneRollTarget > 0.0f)
         {
-            m_proneOnBack = true;
-            // Over the shoulder you turned towards. Rolling the same way every time meant turning
-            // right threw you over to the left, which is the opposite of what the hands did.
             m_proneRollSign = signedTwist > 0.0f ? 1.0f : -1.0f;
-        }
-        else if (m_proneOnBack && twist < glm::radians(m_config.proneRollBackDegrees))
-        {
-            m_proneOnBack = false;
         }
 
         if (moving)
@@ -355,15 +368,23 @@ void PlayerBody::UpdatePosture(const PlayerState& state, const PlayerView& view,
     else
     {
         m_proneOnBack = false;
+        m_proneRollTarget = 0.0f;
     }
-    // Advanced at a constant rate and eased at both ends, so the roll takes the same time however
-    // far through it is and reads as a body turning over. Smoothing exponentially towards the
-    // target, as this used to, is fastest at the start and slowest at the end, which looks like a
-    // switch being thrown rather than a movement.
+    // Moved towards the target at a constant rate, so a body takes the same time to turn over
+    // however far it is going and can be stopped anywhere along the way. Smoothing exponentially
+    // towards it, as this used to, is fastest at the start and slowest at the end, which reads as a
+    // switch being thrown rather than as a movement.
     const float rollStep = dt / std::max(m_config.proneRollSeconds, 0.05f);
-    m_proneRollT = std::clamp(m_proneRollT + (m_proneOnBack ? rollStep : -rollStep), 0.0f, 1.0f);
+    const float toTarget = m_proneRollTarget - m_proneRollT;
+    m_proneRollT = std::clamp(m_proneRollT + std::clamp(toTarget, -rollStep, rollStep), 0.0f, 1.0f);
+    // Eased only at the ends of the whole movement, so coming to rest on the side or the back
+    // settles rather than stopping dead.
     m_proneRoll = m_proneRollSign * glm::smoothstep(0.0f, 1.0f, m_proneRollT);
     m_proneRollAmount = std::abs(m_proneRoll);
+    // The angle the whole body is turned through about its own length. The limbs are placed with
+    // this too, or the torso rolls while the arms and legs stay flat on the floor, which is what
+    // made the roll read as the body switching sides instead of turning over through them.
+    m_proneRollAngle = m_proneRoll * glm::pi<float>();
 
     float hipTarget = m_bodyYaw;
     float turnSpeed = m_config.hipTurnSpeedIdle;
@@ -494,7 +515,7 @@ void PlayerBody::UpdatePosture(const PlayerState& state, const PlayerView& view,
     // between lying on your front and lying on your back. Between the two it reads as rolling over,
     // which is exactly the movement being animated.
     pelvis.rotation = glm::angleAxis(-pelvisPitch, glm::vec3(1.0f, 0.0f, 0.0f)) *
-                      glm::angleAxis(m_proneRoll * glm::pi<float>(), glm::vec3(0.0f, 1.0f, 0.0f)) *
+                      glm::angleAxis(m_proneRollAngle, glm::vec3(0.0f, 1.0f, 0.0f)) *
                       glm::angleAxis(glm::radians(sway * 60.0f), glm::vec3(0.0f, 0.0f, 1.0f));
 
     // Lean forward from the spine, counter-rotate the chest slightly so the torso does not fold, and
@@ -1109,15 +1130,22 @@ void PlayerBody::UpdateCrawlArms(const PlayerState& state, const PlayerView& vie
         const float forwardReach = glm::mix(m_config.crawlHandForward + reach, -0.06f, onBack);
         const float outward = glm::mix(0.16f, 0.30f, onBack) * m_rig.height;
 
-        glm::vec3 target = shoulder + facing * forwardReach + right * (sideSign * outward);
-        target.y = view.renderPosition.y + 0.05f + lift * (1.0f - onBack);
+        // The hand's offset out to the side swings up and over as the body rolls, the same way the
+        // feet do. On your side the upper arm is genuinely in the air, not still pressed flat
+        // against a floor the shoulder has left.
+        const float lateral = sideSign * outward;
+        const float rollRise = -lateral * std::sin(m_proneRollAngle);
 
-        // Plant the hand on whatever is actually underneath it.
+        glm::vec3 target = shoulder + facing * forwardReach +
+                           right * (lateral * std::cos(m_proneRollAngle));
+        target.y = view.renderPosition.y + 0.05f + lift * (1.0f - onBack) + rollRise;
+
+        // Plant the hand on whatever is actually underneath it, unless the roll has lifted it clear.
         const RayHit hit = physics.RayCast(target + glm::vec3(0.0f, 0.5f, 0.0f),
                                            glm::vec3(0.0f, -1.0f, 0.0f), 1.2f);
         if (hit)
         {
-            target.y = hit.position.y + 0.05f + lift;
+            target.y = std::max(target.y, hit.position.y + 0.05f + lift);
         }
 
         FootState& hand = m_hands[static_cast<size_t>(side)];
@@ -1191,6 +1219,11 @@ void PlayerBody::UpdateLegs(const PlayerState& state, const PlayerView& view,
 
         glm::vec3 target = rest;
         float lift = 0.0f;
+        // Where this foot goes while the body is up on its side, following its own hip instead of
+        // the floor. Kept apart from the ground trace below, which answers where the floor is, not
+        // how far above it a rolling body has taken the foot.
+        float rollRise = 0.0f;
+        float proneFootY = hip.y;
         if (walking)
         {
             // Half a stance ahead of the hip, so the foot lands as far in front as it will end up
@@ -1241,9 +1274,27 @@ void PlayerBody::UpdateLegs(const PlayerState& state, const PlayerView& view,
                 (std::cos(crawlPhase + (side == kLeft ? glm::pi<float>() : 0.0f)) * 0.5f + 0.5f) *
                 m_gaitWeight;
             const float back = glm::mix(0.96f, 0.56f, drawn) * legSpan;
-            const glm::vec3 crawlTarget =
-                hip - facing * back +
-                right * (sideSign * drawn * m_config.crawlLegDraw * legSpan) + spread;
+
+            // How far this foot sits out to the side of the body, in the body's own frame.
+            const float lateral = sideSign * drawn * m_config.crawlLegDraw * legSpan +
+                                  sideSign * (m_pose_blend.footSpread - 1.0f) * Ratio::kHipHalfWidth *
+                                      m_rig.height;
+
+            // Rolling over turns the whole body about its own length, so that sideways offset
+            // swings up and over with it: halfway through, the upper leg is stacked above the lower
+            // one and the body is genuinely on its side. Leaving the feet flat on the floor while
+            // the torso turned is what made rolling look like the body being switched onto its back
+            // rather than rolling through the side to get there.
+            //
+            // Rotating the offset about the body's forward axis sends the right side down for a
+            // positive roll, which is the same way the chest goes.
+            const glm::vec3 crawlTarget = hip - facing * back +
+                                          right * (lateral * std::cos(m_proneRollAngle));
+            rollRise = -lateral * std::sin(m_proneRollAngle) * m_flatness;
+            // The hips themselves are already stacked by the pelvis roll, so following them is
+            // most of what puts one leg above the other.
+            proneFootY = hip.y + rollRise;
+
             target = glm::mix(target, crawlTarget, m_flatness);
             lift *= 1.0f - m_flatness;
         }
@@ -1297,7 +1348,13 @@ void PlayerBody::UpdateLegs(const PlayerState& state, const PlayerView& view,
         const float groundY =
             hit ? std::clamp(hit.position.y, base - m_config.maxFootDrop, base + m_config.maxFootRise)
                 : base;
-        target.y = groundY + m_rig.ankleHeight + lift;
+        const float groundedY = groundY + m_rig.ankleHeight + lift + rollRise;
+        // Up on its side a body has its legs stacked, and only the lower one is on the floor.
+        // Pinning both feet to the ground there is what left the legs lying flat while the torso
+        // turned over above them. It peaks halfway through and returns to nothing at both ends,
+        // because on your front and on your back your heels really are on the ground.
+        const float sideness = std::abs(std::sin(m_proneRollAngle)) * m_flatness;
+        target.y = glm::mix(groundedY, proneFootY, sideness);
 
         // In the air the ground is no use: it can be metres below, and reaching for it stretches the
         // legs into two straight poles, which is what a jump used to look like. The feet are placed
