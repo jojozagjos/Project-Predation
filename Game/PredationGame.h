@@ -152,6 +152,8 @@ private:
 
     // Latched between frames so a press that happens between two ticks is never dropped.
     bool m_jumpLatch = false;
+    bool m_crouchPressLatch = false;
+    bool m_pronePressLatch = false;
     // Debug stance override, so stances can be inspected without holding a key.
     glm::vec2 m_debugMove{0.0f};
     // A reload request holds for a moment rather than a single tick, so pressing it while the
@@ -162,6 +164,9 @@ private:
     // Visual recoil: one on the frame a round leaves, decaying away. Separate from the weapon's own
     // recoil, which moves the aim; this only moves the model.
     float m_weaponKick = 0.0f;
+    // Runs 0 to 1 as a weapon is brought up. Reset whenever what is held changes, so swapping is a
+    // movement rather than one model being substituted for another.
+    float m_weaponDraw = 1.0f;
     // Console-driven aim, so the sighted hold can be inspected in a headless capture.
     bool m_debugAim = false;
     bool m_forceCrouch = false;

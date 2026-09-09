@@ -45,6 +45,7 @@ ItemIcons::~ItemIcons()
 }
 
 bool ItemIcons::Build(const ItemDatabase& items, MeshLibrary& meshes, const Renderer& renderer,
+                      const WeaponDatabase* weapons,
                       int cellPixels)
 {
     Shutdown();
@@ -59,7 +60,7 @@ bool ItemIcons::Build(const ItemDatabase& items, MeshLibrary& meshes, const Rend
             continue; // index 0 is the placeholder for "no item"
         }
 
-        const MeshData data = ItemMesh(definition);
+        const MeshData data = ItemMesh(definition, weapons);
         if (data.indices.empty())
         {
             continue;

@@ -594,7 +594,30 @@ bool PlayerBody::UpdateWeaponHold(const PlayerView& view, float dt)
     glm::vec3 offset = glm::mix(readyOffset, sightedOffset, aim);
     if (flat)
     {
-        offset = glm::mix(offset, proneOffset, glm::clamp((m_flatness - 0.5f) * 2.0f, 0.0f, 1.0f));
+        // Only what is left over after aiming. Blending the prone carry in on top of the sighted
+        // offset overrode it completely, which is why the sights did nothing while lying down:
+        // prone is where a rifle is steadiest and where aiming matters most.
+        const float prone = glm::clamp((m_flatness - 0.5f) * 2.0f, 0.0f, 1.0f) * (1.0f - aim);
+        offset = glm::mix(offset, proneOffset, prone);
+    }
+
+    // Looking steeply down, the sighted hold puts the weapon inside the player's own chest and
+    // legs, because the offset runs straight down the view. Shortening it as the angle steepens
+    // keeps the model out of the body while the sights stay on the axis, which is what matters.
+    if (view.pitch < 0.0f)
+    {
+        const float steep = glm::clamp(-view.pitch / glm::radians(75.0f), 0.0f, 1.0f);
+        offset -= aimForward * (m_config.weaponAimForward * 0.55f * steep * aim);
+        offset += carryUp * (0.10f * steep * aim);
+    }
+
+    // Bringing a weapon up: it starts low and out of the way and rises into the hold. Presentation
+    // only, so it never delays a shot.
+    const float draw = glm::clamp(m_weaponPose.draw, 0.0f, 1.0f);
+    if (draw < 1.0f)
+    {
+        const float lift = (1.0f - draw) * (1.0f - draw);
+        offset += carryUp * (-0.40f * lift) + carryRight * (0.10f * lift) - carryForward * (0.12f * lift);
     }
 
     // --- Which way it points --------------------------------------------------------------------
@@ -604,6 +627,20 @@ bool PlayerBody::UpdateWeaponHold(const PlayerView& view, float dt)
                             glm::angleAxis(glm::radians(-9.0f), glm::vec3(1.0f, 0.0f, 0.0f)) *
                             glm::angleAxis(glm::radians(-4.0f), glm::vec3(0.0f, 0.0f, 1.0f));
     glm::quat rotation = glm::slerp(ready, sighted, aim);
+
+    // Peeking rolls the weapon with the head. Leaning past a corner without the gun following meant
+    // the sights stayed level while the horizon tipped, which reads as the weapon floating free of
+    // the person holding it.
+    if (std::abs(view.leanRoll) > 1e-4f)
+    {
+        rotation = glm::angleAxis(view.leanRoll, aimForward) * rotation;
+    }
+    if (draw < 1.0f)
+    {
+        const float lift = (1.0f - draw) * (1.0f - draw);
+        rotation = rotation * glm::angleAxis(glm::radians(-34.0f * lift), glm::vec3(1.0f, 0.0f, 0.0f)) *
+                   glm::angleAxis(glm::radians(18.0f * lift), glm::vec3(0.0f, 0.0f, 1.0f));
+    }
 
     // --- Reload ---------------------------------------------------------------------------------
     // The weapon rolls towards the player so the magazine well is where the hand can reach it, dips

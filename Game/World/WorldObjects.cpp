@@ -8,6 +8,7 @@
 #include "Game/World/TestMap.h"
 
 #include <glm/gtc/constants.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
 
 #include <algorithm>
@@ -90,9 +91,11 @@ int WorldObjects::AddDoor(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physi
 }
 
 void WorldObjects::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics,
-                         InteractionSystem& interactions, const ItemDatabase& items)
+                         InteractionSystem& interactions, const ItemDatabase& items,
+                         const WeaponDatabase* weapons)
 {
     using namespace TestMapSpec;
+    m_weapons = weapons;
 
     // Everything in this function lives in one of the two bays the map builder lays out, so doors,
     // lockers and loose items are each together with their own kind rather than dotted about.
@@ -112,13 +115,34 @@ void WorldObjects::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physic
     // 0.64 m across, so hiding wedged them into the walls and Jolt pushed them straight back out.
     // The controller also pins them in place now, but the model still has to fit the box.
     const glm::vec3 lockerSize{1.06f, 2.05f, 0.88f};
-    const MeshHandle lockerMesh = meshes.Upload(Primitives::Box(lockerSize), "locker_shell");
 
     // The shell is three slabs, and they meet edge to edge rather than lapping over one another.
     // Overlapping panels are invisible but they make the level's own geometry check report an
     // intersection on every start, and a warning that always fires is a warning nobody reads.
     constexpr float panelHalfThickness = 0.06f;
     const float lockerInnerHalfWidth = lockerSize.x * 0.5f - panelHalfThickness * 2.0f;
+
+    // Drawn as the same three panels the colliders use, plus a floor and a roof. It used to be one
+    // solid box, which is why hiding put the player inside what looked like a solid cabinet: the
+    // colliders were a shell but the model was not.
+    MeshData lockerShell;
+    {
+        const float halfHeight = lockerSize.y * 0.5f;
+        const auto panel = [&](const glm::vec3& size, const glm::vec3& centre)
+        { lockerShell.Append(Primitives::Box(size), glm::translate(glm::mat4(1.0f), centre)); };
+
+        panel({lockerInnerHalfWidth * 2.0f, lockerSize.y, panelHalfThickness * 2.0f},
+              {0.0f, 0.0f, lockerSize.z * 0.5f - panelHalfThickness});
+        panel({panelHalfThickness * 2.0f, lockerSize.y, lockerSize.z},
+              {-lockerSize.x * 0.5f + panelHalfThickness, 0.0f, 0.0f});
+        panel({panelHalfThickness * 2.0f, lockerSize.y, lockerSize.z},
+              {lockerSize.x * 0.5f - panelHalfThickness, 0.0f, 0.0f});
+        panel({lockerSize.x, panelHalfThickness * 2.0f, lockerSize.z},
+              {0.0f, halfHeight - panelHalfThickness, 0.0f});
+        panel({lockerSize.x, panelHalfThickness * 2.0f, lockerSize.z},
+              {0.0f, -halfHeight + panelHalfThickness, 0.0f});
+    }
+    const MeshHandle lockerMesh = meshes.Upload(lockerShell, "locker_shell");
 
     // Against the back of the interaction bay, opening towards the plaza.
     const glm::vec3 lockerPositions[] = {{kInteractionBayX - 1.3f, 0.0f, kBayZ + 0.9f},
@@ -129,9 +153,12 @@ void WorldObjects::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physic
         // The shell is a visual and a collider; the player stands inside it while hidden.
         spot.entity = scene.CreateMeshEntity("locker", MakeTransform(position + glm::vec3(0.0f, lockerSize.y * 0.5f, 0.0f), 0.0f),
                                              lockerMesh, kLockerMaterial);
-        // Back, fitted between the two sides.
+        // Back, fitted between the two sides. Every collider below sits exactly where its panel is
+        // drawn: the shell used to stick a collider out past the model it belonged to.
         physics.CreateBox({lockerInnerHalfWidth, lockerSize.y * 0.5f, panelHalfThickness},
-                          MakeTransform(position + glm::vec3(0.0f, lockerSize.y * 0.5f, lockerSize.z * 0.5f), 0.0f),
+                          MakeTransform(position + glm::vec3(0.0f, lockerSize.y * 0.5f,
+                                                             lockerSize.z * 0.5f - panelHalfThickness),
+                                        0.0f),
                           BodyMotion::Static);
         physics.CreateBox({panelHalfThickness, lockerSize.y * 0.5f, lockerSize.z * 0.5f},
                           MakeTransform(position + glm::vec3(-lockerSize.x * 0.5f + panelHalfThickness,
@@ -226,7 +253,7 @@ int WorldObjects::SpawnPickup(Scene& scene, MeshLibrary& meshes, PhysicsWorld& p
     pickup.item = item;
     pickup.count = count;
 
-    const MeshHandle mesh = meshes.Upload(ItemMesh(*definition), "item_" + definition->key);
+    const MeshHandle mesh = meshes.Upload(ItemMesh(*definition, m_weapons), "item_" + definition->key);
     Transform transform;
     transform.position = position;
     pickup.entity = scene.CreateMeshEntity("pickup_" + definition->key, transform, mesh,

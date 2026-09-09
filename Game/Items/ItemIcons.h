@@ -15,6 +15,7 @@ namespace pred
 class MeshLibrary;
 class Renderer;
 class SceneRenderer;
+class WeaponDatabase;
 
 // Inventory icons, drawn as the items themselves.
 //
@@ -39,6 +40,7 @@ public:
 
     // Uploads a mesh per item and creates the render target. Safe to call again after a reload.
     bool Build(const ItemDatabase& items, MeshLibrary& meshes, const Renderer& renderer,
+               const WeaponDatabase* weapons = nullptr,
                int cellPixels = 128);
     void Shutdown();
     void Invalidate() { m_rendered = false; }

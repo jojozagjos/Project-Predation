@@ -16,6 +16,7 @@ namespace pred
 class Scene;
 class MeshLibrary;
 class InteractionSystem;
+class WeaponDatabase;
 
 // The usable things in a level: doors that swing, items lying about, and places to hide.
 //
@@ -62,8 +63,10 @@ public:
         bool occupied = false;
     };
 
+    // `weapons` is optional and only affects appearance: with it, a dropped rifle looks like the
+    // rifle rather than like a block.
     void Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, InteractionSystem& interactions,
-               const ItemDatabase& items);
+               const ItemDatabase& items, const WeaponDatabase* weapons = nullptr);
     void Clear(Scene& scene, PhysicsWorld& physics, InteractionSystem& interactions);
 
     // Advances door swings. Called from the fixed update, before physics steps.
@@ -99,7 +102,8 @@ private:
     std::vector<Door> m_doors;
     std::vector<Pickup> m_pickups;
     std::vector<HidingSpot> m_hidingSpots;
-
+    // Held only so pickups can be built with the real weapon models. Appearance, never behaviour.
+    const WeaponDatabase* m_weapons = nullptr;
     // Meshes reused by pickups spawned at runtime.
     std::vector<MeshHandle> m_itemMeshes;
 };

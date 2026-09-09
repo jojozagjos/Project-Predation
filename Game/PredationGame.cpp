@@ -71,9 +71,11 @@ bool PredationGame::OnInit(Application& app)
     m_body.Build(m_scene, app.GetMeshes(), m_player.Config());
 
     m_items.LoadFromFile(Paths::AssetsRoot() / "Data" / "items.json");
-    m_itemIcons.Build(m_items, app.GetMeshes(), app.GetRenderer());
+    // Weapons load before the icons, because a weapon item draws its icon from the weapon's own
+    // model and would otherwise fall back to the placeholder block.
     m_weaponData.LoadFromFile(Paths::AssetsRoot() / "Data" / "weapons.json");
-    m_world.Build(m_scene, app.GetMeshes(), app.GetPhysics(), m_interactions, m_items);
+    m_itemIcons.Build(m_items, app.GetMeshes(), app.GetRenderer(), &m_weaponData);
+    m_world.Build(m_scene, app.GetMeshes(), app.GetPhysics(), m_interactions, m_items, &m_weaponData);
     app.GetPhysics().OptimizeBroadPhase();
 
     // Checked once the whole level exists, so a piece placed on top of another is caught here
@@ -602,6 +604,24 @@ PlayerInput PredationGame::BuildPlayerInput()
     m_jumpLatch = false;
 
     result.sprint = cv_sprintToggle.Get() ? m_sprintToggleState : input.IsActionDown("sprint");
+
+    // Toggles are applied here, in the tick, so a press can never fall between two of them.
+    if (cv_crouchToggle.Get())
+    {
+        if (m_crouchPressLatch)
+        {
+            m_crouchToggleState = !m_crouchToggleState;
+            m_proneToggleState = false;
+        }
+        if (m_pronePressLatch)
+        {
+            m_proneToggleState = !m_proneToggleState;
+            m_crouchToggleState = false;
+        }
+    }
+    m_crouchPressLatch = false;
+    m_pronePressLatch = false;
+
     result.crouchHeld = cv_crouchToggle.Get() ? m_crouchToggleState : input.IsActionDown("crouch");
     result.proneHeld = cv_crouchToggle.Get() ? m_proneToggleState : input.IsActionDown("prone");
     result.walk = input.IsActionDown("walk");
@@ -658,6 +678,8 @@ void PredationGame::SyncEquippedWeapon()
     {
         return;
     }
+    // Anything arriving in the hands is brought up rather than appearing already held.
+    m_weaponDraw = 0.0f;
 
     if (wanted == kInvalidWeapon)
     {
@@ -945,15 +967,16 @@ void PredationGame::OnUpdate(double dt, double alpha)
         {
             m_jumpLatch = true;
         }
-        if (input.WasActionPressed("crouch") && cv_crouchToggle.Get())
+        // Latched rather than applied here, for the same reason a jump is. Fixed updates run before
+        // this function every frame, so a stance toggled here was not seen by the simulation until
+        // the frame after, and on a frame with no fixed step at all it could be missed entirely.
+        if (input.WasActionPressed("crouch"))
         {
-            m_crouchToggleState = !m_crouchToggleState;
-            m_proneToggleState = false;
+            m_crouchPressLatch = true;
         }
-        if (input.WasActionPressed("prone") && cv_crouchToggle.Get())
+        if (input.WasActionPressed("prone"))
         {
-            m_proneToggleState = !m_proneToggleState;
-            m_crouchToggleState = false;
+            m_pronePressLatch = true;
         }
         if (input.WasActionPressed("sprint") && cv_sprintToggle.Get())
         {
@@ -1067,6 +1090,37 @@ void PredationGame::OnUpdate(double dt, double alpha)
         break;
     }
 
+    // What is in the player's hands has to be settled before the body is posed, not after. Deciding
+    // it afterwards left a newly equipped weapon sitting at the world origin for one frame, which
+    // reads as the gun flying in from the middle of the map.
+    //
+    // The selected slot decides what is held, so this is checked every frame rather than hooked
+    // onto each of the several places a slot can change.
+    SyncEquippedWeapon();
+    const WeaponDefinition* weapon = EquippedWeapon();
+    m_body.SetWeapon(m_scene, app.GetMeshes(), weapon);
+    if (weapon != nullptr)
+    {
+        PlayerBody::WeaponPose pose;
+        pose.aim = m_weapon.aim;
+        pose.reloading = m_weapon.IsReloading();
+        // Runs 0 at the start of the reload to 1 at the end, so the animation does not have to know
+        // how long any particular weapon takes.
+        pose.reload = pose.reloading
+                          ? 1.0f - m_weapon.reloadRemaining / std::max(weapon->reloadSeconds, 0.01f)
+                          : -1.0f;
+        pose.kick = m_weaponKick;
+        pose.draw = m_weaponDraw;
+        m_body.SetWeaponPose(pose);
+    }
+
+    // The kick is presentation, so it decays per frame rather than per tick. Firing sets it to one
+    // in ResolveShots, which is the only place that knows a round actually left the barrel.
+    m_weaponKick = std::max(m_weaponKick - deltaSeconds * 7.0f, 0.0f);
+    // Drawing a weapon runs 0 to 1 over its own moment, so swapping is a movement rather than a
+    // substitution.
+    m_weaponDraw = std::min(m_weaponDraw + deltaSeconds * 3.2f, 1.0f);
+
     // The body follows the simulation every frame. Its head is only drawn from the fly camera,
     // because in first person the camera sits inside it.
     m_body.Tuning().hideHead = m_cameraMode == CameraMode::FirstPerson;
@@ -1103,31 +1157,6 @@ void PredationGame::OnUpdate(double dt, double alpha)
                                    playerView.Forward());
     }
 
-    // The selected slot decides what is in your hands, so this is checked every frame rather than
-    // hooked onto each of the several places a slot can change.
-    SyncEquippedWeapon();
-
-    // What the body is holding follows what the simulation says is equipped, never the other way
-    // round: the model is a view of the state.
-    const WeaponDefinition* weapon = EquippedWeapon();
-    m_body.SetWeapon(m_scene, app.GetMeshes(), weapon);
-    if (weapon != nullptr)
-    {
-        PlayerBody::WeaponPose pose;
-        pose.aim = m_weapon.aim;
-        pose.reloading = m_weapon.IsReloading();
-        // Runs 0 at the start of the reload to 1 at the end, so the animation does not have to know
-        // how long any particular weapon takes.
-        pose.reload = pose.reloading
-                          ? 1.0f - m_weapon.reloadRemaining / std::max(weapon->reloadSeconds, 0.01f)
-                          : -1.0f;
-        pose.kick = m_weaponKick;
-        m_body.SetWeaponPose(pose);
-    }
-
-    // The kick is presentation, so it decays per frame rather than per tick. Firing sets it to one
-    // in ResolveShots, which is the only place that knows a round actually left the barrel.
-    m_weaponKick = std::max(m_weaponKick - deltaSeconds * 7.0f, 0.0f);
     AgeTracers(deltaSeconds);
     SyncDynamicProps();
     app.GetSceneRenderer().SetWireframe(cv_wireframe.Get());

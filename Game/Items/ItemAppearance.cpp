@@ -1,12 +1,29 @@
 #include "Game/Items/ItemAppearance.h"
 
 #include "Engine/Render/Primitives.h"
+#include "Game/Weapons/WeaponAppearance.h"
+#include "Game/Weapons/WeaponDatabase.h"
+
+#include <glm/gtc/matrix_transform.hpp>
 
 namespace pred
 {
 
-MeshData ItemMesh(const ItemDefinition& definition)
+MeshData ItemMesh(const ItemDefinition& definition, const WeaponDatabase* weapons)
 {
+    if (weapons != nullptr)
+    {
+        if (const WeaponDefinition* weapon = weapons->Get(weapons->ForItem(definition.key)))
+        {
+            // The real model, magazine included, so a dropped rifle and its inventory icon are the
+            // same object the player was just holding.
+            WeaponVisual visual = BuildWeaponVisual(*weapon);
+            visual.body.Append(visual.magazine,
+                               glm::translate(glm::mat4(1.0f), visual.magazineSeated));
+            return visual.body;
+        }
+    }
+
     switch (definition.shape)
     {
     case ItemShape::Cylinder:

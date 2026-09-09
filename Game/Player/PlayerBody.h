@@ -186,6 +186,7 @@ public:
         float aim = 0.0f;    // 0 held ready, 1 sighted
         float reload = 0.0f; // 0 at the start of a reload, 1 at the end; negative when not reloading
         float kick = 0.0f;   // 0 to 1, decaying after each shot
+        float draw = 1.0f;   // 0 as a weapon is brought up, 1 once it is ready
         bool reloading = false;
     };
 
