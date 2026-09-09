@@ -19,6 +19,10 @@ enum class DebugCategory : uint8_t
     Rendering,
     Audio,
     Player,
+    // Shots: where a round was traced from, where it went, and what it found. Separate from Player
+    // because the answer to "is my aim lying to me" is a different question from "where is my
+    // capsule", and they are wanted at different times.
+    Combat,
     Count
 };
 

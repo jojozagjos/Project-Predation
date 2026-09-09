@@ -125,6 +125,10 @@ private:
     void ServeClientRequests();
     // Changes the host has made, applied to this machine's copy of the world.
     void ApplyWorldEvent(const WorldEventMessage& event);
+    // The drawn stand-in for another player, or null if they have none here yet. Declared after
+    // RemoteAvatar in the class, so the definition is in the source file.
+    struct RemoteAvatar;
+    RemoteAvatar* AvatarFor(uint8_t id);
     void SendDynamicBodies();
     void ApplyDynamicBodies(const WorldStateMessage& state);
     // Everything a player who has just joined needs in order to see the world as it now is.
@@ -185,7 +189,12 @@ private:
     // Where the last few rounds went, purely so they can be drawn. Never read by the simulation.
     struct Tracer
     {
+        // Where the round is drawn from: the muzzle, so it looks like it came out of the gun.
         glm::vec3 from{0.0f};
+        // Where it was really traced from: the eye, so the crosshair tells the truth. The two
+        // differ by most of an arm's length, which is why the debug view draws both. For somebody
+        // else's round this is the muzzle as well, because their eye never crosses the wire.
+        glm::vec3 origin{0.0f};
         glm::vec3 to{0.0f};
         bool hit = false;
         float age = 0.0f;
@@ -280,6 +289,14 @@ private:
         bool built = false;
         bool collapsed = false;
         uint8_t heldItem = 0xFF; // 0xFF forces the first sync to put something in their hands
+        // Firing is an event, not a state: the snapshot cannot carry it, because the frame a shot
+        // was fired on is usually not a frame a snapshot went out on. The shot event sets this to
+        // one and it decays the same way the local one does, which is what makes somebody else's
+        // weapon flash and recoil instead of firing silently.
+        float weaponKick = 0.0f;
+        // Raised the moment something arrives in their hands, so a remote weapon is brought up
+        // rather than appearing already shouldered.
+        float weaponDraw = 1.0f;
     };
     Screen m_screen = Screen::Title;
     float m_titleClock = 0.0f;

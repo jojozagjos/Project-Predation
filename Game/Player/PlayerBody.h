@@ -65,6 +65,9 @@ public:
     {
         // Gait
         float stepHeight = 0.14f; // how far a swinging foot lifts
+        // And how much of that is left when the body is right down. A crouched foot skims the floor:
+        // there is no room under a folded leg to pick it up any further.
+        float crouchStepScale = 0.38f;
         float footPlantSmoothing = 22.0f;
         float weaponHandSmoothing = 26.0f;
         // Where a weapon sits when it is carried rather than aimed, in the view frame. Close enough
@@ -350,7 +353,12 @@ private:
     // Places the weapon and puts both hands on it. Returns false when there is nothing to hold, so
     // the caller can fall through to whatever the arms would otherwise be doing.
     // Places the weapon and puts the hands on it. Returns false when there is nothing to hold.
-    bool UpdateWeaponHold(const PlayerView& view, PhysicsWorld& physics, float dt);
+    bool UpdateWeaponHold(const PlayerState& state, const PlayerView& view, PhysicsWorld& physics,
+                          float dt);
+    // Where the trigger hand goes during a climb, and how far through the climb it is. Shared by
+    // the arm solve and by whatever is being carried, so the two agree.
+    bool MantleCarry(const PlayerState& state, glm::vec3& outPoint, glm::quat& outRotation,
+                     float& outWeight) const;
     // Pulls a point the hands are reaching for back out of whatever it has gone into: anything
     // between the eye and it, and the floor underneath it.
     glm::vec3 ClearOfWorld(PhysicsWorld& physics, const glm::vec3& eye, glm::vec3 wanted,
@@ -367,7 +375,8 @@ private:
     // leg IK every frame.
     void UpdateArms(const PlayerState& state, const PlayerView& view, PhysicsWorld& physics, float dt);
     // Poses the right arm to carry a held item and puts the item in the hand.
-    void UpdateHeldItem(const PlayerView& view, PhysicsWorld& physics, float dt);
+    void UpdateHeldItem(const PlayerState& state, const PlayerView& view, PhysicsWorld& physics,
+                        float dt);
     // Both hands on the lip of the ledge for the pull, then released as the body comes over.
     void UpdateMantleArms(const PlayerState& state, float weight);
     void UpdateLegs(const PlayerState& state, const PlayerView& view, const PlayerConfig& playerConfig,
@@ -401,7 +410,9 @@ private:
     float m_swayClock = 0.0f;   // drives the breathing movement
     std::array<FootState, 2> m_feet;
     std::array<FootState, 2> m_hands; // same shape: a smoothed target and whether it is planted
-    float m_flatness = 0.0f;          // 0 upright, 1 fully prone
+    float m_flatness = 0.0f;            // 0 upright, 1 fully prone
+    // How far through the crouch, 0 standing to 1 fully down. Smoothed with the rest of the pose.
+    float m_crouchness = 0.0f;
     float m_airborne = 0.0f;          // 0 on the ground, 1 fully in the air
     float m_airRise = 0.0f;           // +1 rising, -1 falling
     // Shuffling round on the spot while prone. The direction is held for the whole pivot so the

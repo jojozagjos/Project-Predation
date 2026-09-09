@@ -7,6 +7,7 @@
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 
 #include <glm/common.hpp>
 #include <glm/gtc/constants.hpp>
@@ -1188,4 +1189,90 @@ TEST_CASE("Lying down does not put what is in the hands through the floor", "[bo
     const glm::vec3 hand = harness.Bone(harness.Rig().hand[1]);
     INFO("carrying hand y " << hand.y);
     CHECK(hand.y > 0.0f);
+}
+
+TEST_CASE("Climbing takes what is in the hands with it", "[body][pose][mantle]")
+{
+    // Both hands go to the ledge, but the carry offset for a weapon or an item is measured from the
+    // eye, so it went on describing a hold in front of a chest that had climbed away from it. From
+    // outside, the gun hung in mid-air while its owner hauled themselves over a wall.
+    //
+    // A weapon and a bare item are posed by different code, so both are driven here. Only one of
+    // them is ever in the hands at a time, which is why they need separate runs.
+    const bool armed = GENERATE(true, false);
+    BodyHarness harness;
+    WeaponDefinition weapon;
+    weapon.id = 1;
+    weapon.key = "test_rifle";
+    weapon.size = {0.06f, 0.16f, 0.62f};
+    if (armed)
+    {
+        harness.body.SetWeaponForSimulation(&weapon);
+    }
+    else
+    {
+        harness.body.SetHeldItemForSimulation(true);
+    }
+    harness.Settle(120);
+
+    PlayerState& state = const_cast<PlayerState&>(harness.State());
+    const glm::vec3 from = state.position;
+    state.mantling = true;
+    state.mantleTime = 0.7f * 0.3f; // early, while the hands are taking the weight
+    state.mantleDuration = 0.7f;
+    state.mantleFrom = from;
+    state.mantleTo = from + glm::vec3(0.0f, 1.0f, -0.9f);
+    state.mantleEdge = from + glm::vec3(0.0f, 1.0f, -0.35f);
+
+    for (int i = 0; i < 30; ++i)
+    {
+        harness.body.Update(harness.scene, state, harness.View(), harness.config, harness.physics,
+                            kTick);
+    }
+
+    const glm::vec3 hand = harness.Bone(harness.Rig().hand[1]);
+    const glm::vec3 carried = armed ? harness.body.WeaponOrigin() : harness.body.HeldItemOrigin();
+    INFO("armed " << armed << " trigger hand " << hand.x << ", " << hand.y << ", " << hand.z
+                  << " carried " << carried.x << ", " << carried.y << ", " << carried.z);
+    CHECK(glm::distance(hand, carried) < 0.25f);
+
+    // And it has gone up to the ledge rather than staying at the height the body started at.
+    CHECK(carried.y > from.y + 0.6f);
+}
+
+TEST_CASE("A crouch walk shuffles instead of flinging its legs", "[body][pose]")
+{
+    // The stride and the step height were the standing ones whatever the stance, so a crouched
+    // player at walking pace was asked for a 0.6 m step lifted 0.14 m off the floor. With the hips
+    // down at 0.58 m and the knees already folded there is no leg free to do that, and the thigh
+    // swept through seventy degrees a stride reaching for it. From outside it read as the legs being
+    // flung rather than as walking.
+    BodyHarness harness;
+    harness.SetStance(PlayerStance::Crouching);
+    harness.Settle(200);
+    harness.SetTravel(glm::vec3(0.0f, 0.0f, -1.0f));
+    harness.Settle(120);
+
+    float lowest = 999.0f;
+    float highest = -999.0f;
+    float lift = 0.0f;
+    for (int i = 0; i < 120; ++i)
+    {
+        harness.Tick();
+        const glm::vec3 hip = harness.Bone(harness.Rig().upperLeg[0]);
+        const glm::vec3 knee = harness.Bone(harness.Rig().lowerLeg[0]);
+        const glm::vec3 foot = harness.Bone(harness.Rig().foot[0]);
+        const float thigh = glm::degrees(
+            std::acos(std::clamp(-(knee.y - hip.y) / glm::length(knee - hip), -1.0f, 1.0f)));
+        lowest = std::min(lowest, thigh);
+        highest = std::max(highest, thigh);
+        lift = std::max(lift, foot.y - harness.State().position.y - harness.Rig().ankleHeight);
+    }
+
+    INFO("thigh swings between " << lowest << " and " << highest << " degrees, foot lifts " << lift);
+    // The swing stays within what a folded leg has room for, and never puts the thigh past flat.
+    CHECK(highest - lowest < 45.0f);
+    CHECK(highest < 78.0f);
+    // And the foot skims rather than stepping over something.
+    CHECK(lift < 0.08f);
 }

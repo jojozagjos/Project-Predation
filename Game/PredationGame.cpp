@@ -57,6 +57,15 @@ CVar<float> cv_fogStart{"r.fog_start", 12.0f, "Fog start distance in meters"};
 CVar<float> cv_fogEnd{"r.fog_end", 90.0f, "Fog end distance in meters"};
 CVar<float> cv_sunIntensity{"r.sun_intensity", 2.2f, "Directional light intensity"};
 
+// How a round is drawn. It travels rather than appearing as a whole lit line, because a line from
+// the muzzle to the wall is a diagram of a shot rather than a shot. Fast enough to be over almost
+// at once, slow enough that the eye catches the direction it went.
+constexpr float kTracerSpeed = 260.0f;   // metres a second
+constexpr float kTracerLength = 2.2f;    // how much of it is lit at any moment
+constexpr float kSparkSeconds = 0.18f;   // how long the mark at the far end lasts
+// Long enough for the longest shot to arrive and its impact to fade.
+constexpr float kTracerSeconds = 0.75f;
+
 constexpr float kPropRadius = 0.3f;
 constexpr float kPropSize = 0.5f;
 const Material kPropMaterial = Material::Diffuse({0.70f, 0.55f, 0.25f}, 0.55f);
@@ -794,10 +803,19 @@ void PredationGame::ServeClientRequests()
         m_host.Broadcast(event);
 
         Tracer tracer;
+        // The host has the eye this was traced from, because the client sent it.
         tracer.from = event.position;
+        tracer.origin = shot.origin;
         tracer.to = event.direction;
         tracer.hit = event.flag;
         m_tracers.push_back(tracer);
+
+        // The host draws the shooter too, so their weapon has to kick here as well. The event goes
+        // out to everybody else; nobody sends it back to the machine that made it.
+        if (RemoteAvatar* avatar = AvatarFor(request.player))
+        {
+            avatar->weaponKick = 1.0f;
+        }
     }
 
     for (const NetHost::DropRequest& request : m_host.TakeDropRequests())
@@ -879,6 +897,18 @@ void PredationGame::SendWorldToPlayer(uint8_t player)
     }
 }
 
+PredationGame::RemoteAvatar* PredationGame::AvatarFor(uint8_t id)
+{
+    for (auto& candidate : m_avatars)
+    {
+        if (candidate->id == id)
+        {
+            return candidate.get();
+        }
+    }
+    return nullptr;
+}
+
 void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
 {
     switch (event.kind)
@@ -942,9 +972,20 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
             // Somebody else's round. Drawn, never resolved: what it hit was decided by the host.
             Tracer tracer;
             tracer.from = event.position;
+            // Their eye never crosses the wire, so the muzzle is the best origin there is.
+            tracer.origin = event.position;
             tracer.to = event.direction;
             tracer.hit = event.flag;
             m_tracers.push_back(tracer);
+
+            // And their weapon kicks and flashes. A snapshot cannot carry this: firing happens on
+            // one frame and snapshots go out on others, so the moment would be missed most times.
+            // It rides the shot message instead, which is the one thing that is sent exactly when
+            // a round leaves the barrel.
+            if (RemoteAvatar* avatar = AvatarFor(event.player))
+            {
+                avatar->weaponKick = 1.0f;
+            }
         }
         break;
 
@@ -1820,12 +1861,23 @@ void PredationGame::SyncRemoteAvatars(float frameDeltaSeconds)
             {
                 avatar->body.ClearHeldItem(m_scene);
             }
+            // Brought up rather than appearing already shouldered.
+            avatar->weaponDraw = 0.0f;
         }
+
+        // Decayed per frame, exactly as the local one is. Firing is an event rather than a state,
+        // so it arrives through the shot message and fades from there; without it, everybody else's
+        // weapon fired with no flash and no recoil, which is why shots from other players read as
+        // coming from nowhere.
+        avatar->weaponKick = std::max(avatar->weaponKick - frameDeltaSeconds * 7.0f, 0.0f);
+        avatar->weaponDraw = std::min(avatar->weaponDraw + frameDeltaSeconds * 3.2f, 1.0f);
 
         PlayerBody::WeaponPose weaponPose;
         weaponPose.aim = remote.aim;
         weaponPose.reloading = remote.reloading;
         weaponPose.reload = remote.reloadProgress;
+        weaponPose.kick = avatar->weaponKick;
+        weaponPose.draw = avatar->weaponDraw;
         avatar->body.SetWeaponPose(weaponPose);
 
         // Somebody else going down collapses the same way, from the state the host sent.
@@ -2290,7 +2342,6 @@ glm::vec3 PredationGame::MuzzlePosition() const
 
 void PredationGame::AgeTracers(float dt)
 {
-    constexpr float kTracerSeconds = 0.12f;
     for (Tracer& tracer : m_tracers)
     {
         tracer.age += dt;
@@ -2328,6 +2379,7 @@ void PredationGame::ResolveShots()
             // so it looks like it came out of the gun. Those are different points and the round is
             // entitled to both.
             tracer.from = MuzzlePosition();
+            tracer.origin = shot.origin;
             tracer.to = predicted ? predicted.position : shot.origin + shot.direction * shot.range;
             tracer.hit = predicted.hit;
             m_tracers.push_back(tracer);
@@ -2339,6 +2391,7 @@ void PredationGame::ResolveShots()
 
         Tracer tracer;
         tracer.from = MuzzlePosition();
+        tracer.origin = shot.origin;
         tracer.to = result ? result.position : shot.origin + shot.direction * shot.range;
         tracer.hit = result.hit;
         m_tracers.push_back(tracer);
@@ -3082,14 +3135,66 @@ void PredationGame::DrawDebugOverlays()
         return;
     }
 
-    // Tracers are always drawn, not gated behind a debug category: without a muzzle flash or a
-    // projectile model yet, this is the only thing that shows a round actually left the barrel.
+    // A round is drawn as something that travels, with a short lit section and a mark where it
+    // arrives. Lighting the whole line at once, which is what this used to do, draws a diagram of
+    // a shot rather than a shot, and it stayed on screen long enough to read as a laser.
     for (const Tracer& tracer : m_tracers)
     {
-        draw.Line(tracer.from, tracer.to, tracer.hit ? Color::kYellow : Color::kWhite);
-        if (tracer.hit)
+        const glm::vec3 travel = tracer.to - tracer.from;
+        const float distance = glm::length(travel);
+        if (distance < 1e-3f)
         {
-            draw.Sphere(tracer.to, 0.045f, Color::kRed, 8);
+            continue;
+        }
+        const glm::vec3 direction = travel / distance;
+        const float head = tracer.age * kTracerSpeed;
+
+        if (head < distance)
+        {
+            const float tail = std::max(head - kTracerLength, 0.0f);
+            // Dimmer the further it has gone, so a long shot thins out down range.
+            const float bright = 1.0f - 0.40f * (head / distance);
+            const auto level = [bright](float channel)
+            { return static_cast<uint8_t>(std::clamp(channel * bright, 0.0f, 255.0f)); };
+            draw.Line(tracer.from + direction * tail, tracer.from + direction * head,
+                      Color::RGBA(level(255.0f), level(226.0f), level(150.0f)));
+        }
+        else if (tracer.hit)
+        {
+            // Arrived, and found something. A small burst that shrinks away, so an impact is
+            // visible for a moment after the round itself has gone.
+            const float left =
+                1.0f - std::clamp((tracer.age - distance / kTracerSpeed) / kSparkSeconds, 0.0f, 1.0f);
+            if (left > 0.0f)
+            {
+                const float size = 0.16f * left;
+                const auto level = [left](float channel)
+                { return static_cast<uint8_t>(std::clamp(channel * left, 0.0f, 255.0f)); };
+                const uint32_t colour = Color::RGBA(level(255.0f), level(190.0f), level(90.0f));
+                draw.Line(tracer.to - glm::vec3(size, 0.0f, 0.0f),
+                          tracer.to + glm::vec3(size, 0.0f, 0.0f), colour);
+                draw.Line(tracer.to - glm::vec3(0.0f, size, 0.0f),
+                          tracer.to + glm::vec3(0.0f, size, 0.0f), colour);
+                draw.Line(tracer.to - glm::vec3(0.0f, 0.0f, size),
+                          tracer.to + glm::vec3(0.0f, 0.0f, size), colour);
+            }
+        }
+    }
+
+    // The line a round was actually traced along, which is not the line it is drawn along: rounds
+    // are traced from the eye so the crosshair tells the truth, and drawn from the muzzle so they
+    // look right. Seeing both at once is the only way to check that difference has not become a
+    // lie, and it is a developer's question, so it lives behind a toggle rather than on screen.
+    if (DebugCategories::IsEnabled(DebugCategory::Combat))
+    {
+        for (const Tracer& tracer : m_tracers)
+        {
+            draw.Line(tracer.origin, tracer.to, Color::kMagenta);
+            draw.Line(tracer.from, tracer.to, tracer.hit ? Color::kYellow : Color::kGrey);
+            if (tracer.hit)
+            {
+                draw.Sphere(tracer.to, 0.045f, Color::kRed, 8);
+            }
         }
     }
 

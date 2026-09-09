@@ -162,6 +162,13 @@ struct PlayerConfig
     float strideLengthBase = 0.75f;
     float strideLengthPerSpeed = 0.22f;
     float strideLengthMax = 2.00f;
+    // And shorter the lower the body is. A crouched stride is short because the hips are low, the
+    // knees are already folded, and there is much less leg free to swing. Keeping the standing
+    // stride while crouched asked the thigh to sweep through seventy degrees a step, which reads as
+    // the legs being flung rather than walking. Shortening the stride raises the cadence to match,
+    // because the phase is integrated from distance travelled over stride length.
+    float strideCrouchScale = 0.50f;
+    float strideProneScale = 0.52f;
     // Share of the cycle each foot spends on the ground, from a walk to a run. Below 0.5 the two
     // stances no longer overlap, which is what makes a run a run.
     float stanceFractionWalk = 0.56f;
@@ -225,7 +232,7 @@ struct PlayerConfig
     float EyeHeightForStance(PlayerStance stance) const;
     // Metres per full two-step cycle at a given speed. Longer steps at speed rather than a faster
     // cadence, which is what people actually do.
-    float StrideLength(float speed) const;
+    float StrideLength(float speed, PlayerStance stance) const;
     // Share of the cycle a foot is on the ground, blending from a walk towards a run.
     float StanceFraction(float speed) const;
     float SpeedForStance(PlayerStance stance, bool sprint, bool walk) const;

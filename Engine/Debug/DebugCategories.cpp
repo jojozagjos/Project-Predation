@@ -13,7 +13,8 @@ namespace
 {
 
 constexpr std::array<const char*, static_cast<size_t>(DebugCategory::Count)> kNames = {
-    "AI", "NAVIGATION", "PERCEPTION", "ANIMATION", "PHYSICS", "NETWORK", "RENDERING", "AUDIO", "PLAYER"};
+    "AI",      "NAVIGATION", "PERCEPTION", "ANIMATION", "PHYSICS",
+    "NETWORK", "RENDERING",  "AUDIO",      "PLAYER",    "COMBAT"};
 
 CVar<bool> cv_ai{"debug.ai", false, "Show AI debug visualization"};
 CVar<bool> cv_navigation{"debug.navigation", false, "Show navigation debug visualization"};
@@ -24,12 +25,13 @@ CVar<bool> cv_network{"debug.network", false, "Show network debug information"};
 CVar<bool> cv_rendering{"debug.rendering", false, "Show rendering debug information"};
 CVar<bool> cv_audio{"debug.audio", false, "Show audio debug information"};
 CVar<bool> cv_player{"debug.player", false, "Show player debug visualization"};
+CVar<bool> cv_combat{"debug.combat", false, "Show the lines rounds were actually traced along"};
 
 std::array<CVar<bool>*, static_cast<size_t>(DebugCategory::Count)>& Vars()
 {
     static std::array<CVar<bool>*, static_cast<size_t>(DebugCategory::Count)> vars = {
         &cv_ai,      &cv_navigation, &cv_perception, &cv_animation, &cv_physics,
-        &cv_network, &cv_rendering,  &cv_audio,      &cv_player};
+        &cv_network, &cv_rendering,  &cv_audio,      &cv_player,     &cv_combat};
     return vars;
 }
 

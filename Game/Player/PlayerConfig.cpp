@@ -58,9 +58,13 @@ float PlayerConfig::EyeHeightForStance(PlayerStance stance) const
     }
 }
 
-float PlayerConfig::StrideLength(float speed) const
+float PlayerConfig::StrideLength(float speed, PlayerStance stance) const
 {
-    return std::clamp(strideLengthBase + strideLengthPerSpeed * speed, 0.45f, strideLengthMax);
+    const float scale = stance == PlayerStance::Crouching ? strideCrouchScale
+                        : stance == PlayerStance::Prone   ? strideProneScale
+                                                          : 1.0f;
+    return std::clamp((strideLengthBase + strideLengthPerSpeed * speed) * scale, 0.28f,
+                      strideLengthMax);
 }
 
 float PlayerConfig::StanceFraction(float speed) const

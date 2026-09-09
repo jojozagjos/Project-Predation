@@ -460,6 +460,11 @@ void PlayerBody::UpdatePosture(const PlayerState& state, const PlayerView& view,
     const float spineLean = glm::radians(m_pose_blend.spineLeanDeg);
     // How far through the transition to lying flat we are. Drives the crawl and the knee pole.
     m_flatness = std::clamp(m_pose_blend.pelvisPitchDeg / 90.0f, 0.0f, 1.0f);
+    // And how far through the crouch. The spine lean is only ever non-zero for a crouch, so it
+    // doubles as the blend and follows the same smoothing as the rest of the posture.
+    m_crouchness = m_config.crouch.spineLeanDeg > 0.01f
+                       ? std::clamp(m_pose_blend.spineLeanDeg / m_config.crouch.spineLeanDeg, 0.0f, 1.0f)
+                       : 0.0f;
 
     // Provisional placement only. The height here cancels out: the pose is built relative to this
     // root and then the whole root is shifted so the head lands on the eye, so any starting height
@@ -649,18 +654,11 @@ void PlayerBody::UpdatePosture(const PlayerState& state, const PlayerView& view,
     // it slid off to one side as soon as you turned your head while looking at your boots.
     const glm::vec3 bodyFacing{std::sin(m_bodyYaw), 0.0f, -std::cos(m_bodyYaw)};
     const glm::vec3 viewFacing{std::sin(view.yaw), 0.0f, -std::cos(view.yaw)};
-    // How far through the crouch the posture is. The spine lean is only ever non-zero for a
-    // crouch, so it doubles as the blend, and it follows the same smoothing as the rest of the pose.
-    const float crouchBlend =
-        m_config.crouch.spineLeanDeg > 0.01f
-            ? std::clamp(m_pose_blend.spineLeanDeg / m_config.crouch.spineLeanDeg, 0.0f, 1.0f)
-            : 0.0f;
-
     // Negative, because this offset is subtracted: pushing the desired head position forward is
     // what carries the hips forward with it.
     const glm::vec3 offset = bodyFacing * m_config.eyeForwardOfHead +
                              viewFacing * (m_config.eyeForwardLookingDown * lookingDown) -
-                             bodyFacing * (m_config.crouchBodyForward * crouchBlend);
+                             bodyFacing * (m_config.crouchBodyForward * m_crouchness);
 
     const glm::vec3 desiredHead =
         view.eyePosition - offset - glm::vec3(0.0f, m_config.eyeAboveHead, 0.0f);
@@ -801,7 +799,38 @@ glm::vec3 PlayerBody::ClearOfWorld(PhysicsWorld& physics, const glm::vec3& eye, 
     return wanted;
 }
 
-bool PlayerBody::UpdateWeaponHold(const PlayerView& view, PhysicsWorld& physics, float dt)
+// Where the trigger hand will be during a climb, and how much of the way there it is.
+//
+// Worked out here as well as in the arm solve, because whatever is being carried has to move before
+// the weapon's parts are placed and the arms are solved after that. Both read the same lip and the
+// same release curve, so the gun and the hand holding it arrive together.
+bool PlayerBody::MantleCarry(const PlayerState& state, glm::vec3& outPoint, glm::quat& outRotation,
+                             float& outWeight) const
+{
+    if (m_mantleFade <= 0.001f)
+    {
+        return false;
+    }
+
+    const float duration = std::max(state.mantleDuration, 0.05f);
+    const float t = std::clamp(state.mantleTime / duration, 0.0f, 1.0f);
+    const glm::vec3 travel = state.mantleTo - state.mantleFrom;
+    const glm::vec3 flat{travel.x, 0.0f, travel.z};
+    const glm::vec3 forward = glm::length(flat) > 1e-4f
+                                  ? glm::normalize(flat)
+                                  : glm::vec3(std::sin(m_bodyYaw), 0.0f, -std::cos(m_bodyYaw));
+    const glm::vec3 right{-forward.z, 0.0f, forward.x};
+
+    const float release = glm::smoothstep(m_config.mantleReleaseAt, 1.0f, t);
+    outWeight = (1.0f - release) * m_mantleFade;
+    outPoint = state.mantleEdge + right * (m_config.mantleGripSpread * m_rig.height);
+    // Muzzle along the way the climb is going, which is where a hand over a lip points it.
+    outRotation = LookRotation(forward, glm::vec3(0.0f, 1.0f, 0.0f));
+    return outWeight > 0.001f;
+}
+
+bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& view,
+                                  PhysicsWorld& physics, float dt)
 {
     if (!m_hasWeapon)
     {
@@ -1090,6 +1119,23 @@ bool PlayerBody::UpdateWeaponHold(const PlayerView& view, PhysicsWorld& physics,
         }
     }
 
+    // Climbing takes both hands, whatever is in them. The carry offset above is measured from the
+    // eye, and during a climb the body is nowhere near where that offset assumes it is, so the
+    // weapon was left hanging in the air in front of a player who had both hands on a ledge. Done
+    // here rather than with the arms, because the parts below are placed from this frame and the
+    // arms are solved after they are.
+    {
+        glm::vec3 climbPoint{0.0f};
+        glm::quat climbRotation{1.0f, 0.0f, 0.0f, 0.0f};
+        float climbWeight = 0.0f;
+        if (MantleCarry(state, climbPoint, climbRotation, climbWeight))
+        {
+            m_weaponTransform.position = glm::mix(m_weaponTransform.position, climbPoint, climbWeight);
+            rotation = glm::slerp(rotation, climbRotation, climbWeight);
+            m_weaponTransform.rotation = rotation;
+        }
+    }
+
     const glm::mat4 weaponMatrix =
         glm::translate(glm::mat4(1.0f), m_weaponTransform.position) * glm::mat4_cast(rotation);
     for (size_t i = 0; i < m_weaponVisual.parts.size() && i < m_weaponPartTransforms.size(); ++i)
@@ -1247,11 +1293,11 @@ void PlayerBody::UpdateArms(const PlayerState& state, const PlayerView& view, Ph
     }
     if (holding)
     {
-        UpdateWeaponHold(view, physics, dt);
+        UpdateWeaponHold(state, view, physics, dt);
     }
     else if (m_hasHeldItem)
     {
-        UpdateHeldItem(view, physics, dt);
+        UpdateHeldItem(state, view, physics, dt);
     }
 
     // Last, and blended over whatever the arms were already doing. Solving the climb first and
@@ -1282,7 +1328,8 @@ void PlayerBody::ClearHeldItem(Scene& scene)
     m_hasHeldItem = false;
 }
 
-void PlayerBody::UpdateHeldItem(const PlayerView& view, PhysicsWorld& physics, float dt)
+void PlayerBody::UpdateHeldItem(const PlayerState& state, const PlayerView& view,
+                                PhysicsWorld& physics, float dt)
 {
     // Carried in the trigger hand, out in front and a little to the side, where you would hold
     // something you were about to use. The other arm is left alone: one hand is what carrying a
@@ -1334,6 +1381,21 @@ void PlayerBody::UpdateHeldItem(const PlayerView& view, PhysicsWorld& physics, f
     // stretches when the two disagree; the thing in the hand stays in shot.
     m_heldItemTransform.position = target;
     m_heldItemTransform.rotation = rotation;
+
+    // Except while climbing, when the hand it is in has gone to the ledge and the carry offset,
+    // which is measured from the eye, no longer describes anywhere the body is.
+    {
+        glm::vec3 climbPoint{0.0f};
+        glm::quat climbRotation{1.0f, 0.0f, 0.0f, 0.0f};
+        float climbWeight = 0.0f;
+        if (MantleCarry(state, climbPoint, climbRotation, climbWeight))
+        {
+            m_heldItemTransform.position =
+                glm::mix(m_heldItemTransform.position, climbPoint, climbWeight);
+            m_heldItemTransform.rotation =
+                glm::slerp(m_heldItemTransform.rotation, climbRotation, climbWeight);
+        }
+    }
 }
 
 void PlayerBody::UpdateMantleArms(const PlayerState& state, float weight)
@@ -1384,6 +1446,7 @@ void PlayerBody::UpdateMantleArms(const PlayerState& state, float weight)
                          glm::translate(glm::mat4(1.0f), ik.endPosition) *
                              glm::mat4_cast(BodyRotation()));
     }
+
 }
 
 void PlayerBody::UpdateCrawlArms(const PlayerState& state, const PlayerView& view,
@@ -1480,7 +1543,7 @@ void PlayerBody::UpdateLegs(const PlayerState& state, const PlayerView& view,
     // direction of travel look like skating. Strafing was worst, because the hips can only turn so
     // far towards the way you are going, so the sliding ran diagonally across the stride.
     const float stanceShare = std::clamp(playerConfig.StanceFraction(speed), 0.2f, 0.9f);
-    const float stride = playerConfig.StrideLength(speed);
+    const float stride = playerConfig.StrideLength(speed, state.stance);
     // Below a slow walk there is no cycle worth playing, so the feet simply stand under the hips.
     const float gait = std::clamp((m_gaitWeight - 0.10f) / 0.30f, 0.0f, 1.0f);
     const bool walking = gait > 0.0f && travelling;
@@ -1546,7 +1609,12 @@ void PlayerBody::UpdateLegs(const PlayerState& state, const PlayerView& view,
                 const float remaining = stride * (1.0f - stanceShare) * (1.0f - t);
                 const glm::vec3 landing = rest + travel * (remaining + lead);
                 target = glm::mix(foot.swingFrom, landing, glm::smoothstep(0.0f, 1.0f, t));
-                lift = std::sin(t * glm::pi<float>()) * m_config.stepHeight;
+                // Lower the more the body is crouched. A folded leg has nowhere to pick the foot up
+                // to, and lifting it a standing step's worth put the thigh through the horizontal
+                // at the top of every stride.
+                const float height =
+                    m_config.stepHeight * glm::mix(1.0f, m_config.crouchStepScale, m_crouchness);
+                lift = std::sin(t * glm::pi<float>()) * height;
             }
             else
             {

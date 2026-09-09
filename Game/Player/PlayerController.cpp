@@ -547,7 +547,8 @@ void PlayerController::Step(const PlayerInput& input, float dt)
         // with speed; dividing a running total by a moving divisor would jump the phase, and the
         // legs with it, every time the player sped up or slowed down.
         m_state.stridePhase =
-            glm::fract(m_state.stridePhase + distance / m_config.StrideLength(m_state.HorizontalSpeed()));
+            glm::fract(m_state.stridePhase +
+                       distance / m_config.StrideLength(m_state.HorizontalSpeed(), m_state.stance));
     }
 
     // Leaning. Sprinting cancels it, since nobody peeks round a corner at a run.
