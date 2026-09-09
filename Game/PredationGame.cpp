@@ -899,6 +899,7 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
         {
             m_player.State().health = 0.0f;
             m_player.State().alive = false;
+            m_deathImpulse = event.direction;
         }
         break;
 
@@ -920,6 +921,17 @@ void PredationGame::SendDynamicBodies()
     {
         return;
     }
+
+    // At the snapshot rate, not the tick rate. Sending loose objects sixty times a second doubles
+    // what they cost for a value nobody can see change twice in a thirtieth of a second, and it is
+    // the largest message the host sends.
+    m_worldStateTimer += 1.0f / 60.0f;
+    constexpr float kInterval = 1.0f / 30.0f;
+    if (m_worldStateTimer < kInterval)
+    {
+        return;
+    }
+    m_worldStateTimer = std::fmod(m_worldStateTimer, kInterval);
 
     // Loose objects are sent as state rather than as events: a crate sliding across the floor is a
     // value that will be sent again in a thirtieth of a second, so losing one costs nothing.
@@ -1107,6 +1119,7 @@ void PredationGame::KillPlayer(uint8_t player, const glm::vec3& direction)
     {
         m_player.State().alive = false;
         m_player.State().health = 0.0f;
+        m_deathImpulse = direction * 6.0f;
     }
     PRED_LOG_INFO(Gameplay, "Player {} died", player);
 }
@@ -1456,6 +1469,18 @@ void PredationGame::SyncRemoteAvatars(float frameDeltaSeconds)
         avatar->view.yaw = remote.yaw;
         avatar->view.pitch = remote.pitch;
         avatar->view.leanRoll = glm::radians(config.leanAngleDegrees) * remote.leanAmount;
+
+        // Somebody else going down collapses the same way, from the state the host sent.
+        if (!remote.alive && !avatar->collapsed)
+        {
+            avatar->body.Collapse(remote.velocity * 0.5f + glm::vec3(0.0f, 1.0f, 0.0f));
+            avatar->collapsed = true;
+        }
+        else if (remote.alive && avatar->collapsed)
+        {
+            avatar->body.Revive();
+            avatar->collapsed = false;
+        }
 
         avatar->body.Update(m_scene, avatar->state, avatar->view, config, m_app->GetPhysics(),
                             frameDeltaSeconds);
@@ -1833,6 +1858,24 @@ void PredationGame::SyncEquippedWeapon()
     const Inventory::Slot& slot = m_inventory.Selected();
     const ItemDefinition* item = m_items.Get(slot.item);
     const WeaponId wanted = item != nullptr ? m_weaponData.ForItem(item->key) : kInvalidWeapon;
+
+    // Anything that is not a weapon is still carried in a hand. Selecting a medical kit should put
+    // the medical kit in your hand, not leave you empty-handed holding an inventory entry.
+    const ItemId heldNow = (item != nullptr && wanted == kInvalidWeapon) ? item->id : kInvalidItem;
+    if (heldNow != m_heldItem)
+    {
+        m_heldItem = heldNow;
+        if (heldNow == kInvalidItem)
+        {
+            m_body.ClearHeldItem(m_scene);
+        }
+        else
+        {
+            m_body.SetHeldItem(m_scene, m_app->GetMeshes(), item->key,
+                               ItemMesh(*item, &m_weaponData), ItemMaterial(*item));
+        }
+    }
+
     if (wanted == m_weapon.weapon)
     {
         return;
@@ -2047,8 +2090,24 @@ void PredationGame::DropSelected()
 
     const PlayerView& view = m_player.View();
     const glm::vec3 origin = view.eyePosition + view.Forward() * 0.6f;
-    m_world.SpawnPickup(m_scene, m_app->GetMeshes(), m_app->GetPhysics(), m_interactions, m_items,
-                        slot.item, removed, origin, view.Forward() * 2.5f);
+    const glm::vec3 throwVelocity = view.Forward() * 2.5f;
+    const int index = m_world.SpawnPickup(m_scene, m_app->GetMeshes(), m_app->GetPhysics(),
+                                          m_interactions, m_items, slot.item, removed, origin,
+                                          throwVelocity);
+
+    // Everyone else has to see it land, and it has to be there to pick up. The throw is sent too,
+    // so it arcs on their screen rather than appearing on the floor.
+    if (m_sessionMode == SessionMode::Host && index >= 0)
+    {
+        WorldEventMessage event;
+        event.kind = WorldEventKind::PickupSpawned;
+        event.index = static_cast<uint8_t>(index);
+        event.item = static_cast<uint16_t>(slot.item);
+        event.other = static_cast<uint8_t>(removed);
+        event.position = origin;
+        event.direction = throwVelocity;
+        m_host.Broadcast(event);
+    }
 }
 
 void PredationGame::EnterHidingSpot(int index)
@@ -2281,6 +2340,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
         if (input.WasActionPressed("respawn"))
         {
             m_player.Respawn(m_spawnPoint);
+                                m_deathImpulse = glm::vec3(0.0f);
         }
         if (input.WasActionPressed("quit_capture"))
         {
@@ -2406,7 +2466,21 @@ void PredationGame::OnUpdate(double dt, double alpha)
 
     // The body follows the simulation every frame. Its head is only drawn from the fly camera,
     // because in first person the camera sits inside it.
-    m_body.Tuning().hideHead = m_cameraMode == CameraMode::FirstPerson;
+    m_body.Tuning().hideHead = m_cameraMode == CameraMode::FirstPerson && m_player.State().alive;
+
+    // Death hands the body over to the ragdoll, once. Everything below it is animation, and that is
+    // exactly what stops.
+    if (!m_player.State().alive && !m_localCollapsed)
+    {
+        m_body.Collapse(m_deathImpulse);
+        m_localCollapsed = true;
+    }
+    else if (m_player.State().alive && m_localCollapsed)
+    {
+        m_body.Revive();
+        m_localCollapsed = false;
+    }
+
     m_body.Update(m_scene, m_player.State(), m_player.View(), m_player.Config(), app.GetPhysics(),
                   deltaSeconds);
 

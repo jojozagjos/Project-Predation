@@ -6,6 +6,7 @@
 #include "Game/Interaction/InteractionSystem.h"
 #include "Game/Items/Inventory.h"
 #include "Game/Items/ItemDatabase.h"
+#include "Game/Items/ItemAppearance.h"
 #include "Game/Items/ItemIcons.h"
 #include "Game/Net/NetSession.h"
 #include "Game/Player/PlayerBody.h"
@@ -173,6 +174,8 @@ private:
     InteractionSystem m_interactions;
     WorldObjects m_world;
     // -1 when not hidden. While hidden the player holds still inside the locker.
+    // What is carried in the hand when it is not a weapon.
+    ItemId m_heldItem = kInvalidItem;
     int m_hidingSpot = -1;
     bool m_inventoryOpen = false;
 
@@ -255,6 +258,7 @@ private:
         PlayerState state;
         PlayerView view;
         bool built = false;
+        bool collapsed = false;
     };
     Screen m_screen = Screen::Title;
     float m_titleClock = 0.0f;
@@ -270,6 +274,10 @@ private:
     NetClient m_client;
     std::vector<std::unique_ptr<RemoteAvatar>> m_avatars;
     uint32_t m_networkTick = 0;
+    // Which way the blow that killed the local player came from, so the body goes down that way.
+    float m_worldStateTimer = 0.0f;
+    glm::vec3 m_deathImpulse{0.0f};
+    bool m_localCollapsed = false;
     NetConditions m_simulatedConditions;
 
     std::vector<DynamicProp> m_props;

@@ -1008,3 +1008,93 @@ TEST_CASE("The trigger hand stays on the weapon through a reload", "[body][pose]
     INFO("trigger hand was " << worst << " m from the grip, worst at reload " << worstAt);
     CHECK(worst < 0.20f);
 }
+
+TEST_CASE("A dead body falls over and keeps its bones the length they were", "[body][ragdoll]")
+{
+    // The whole point of solving this with distance constraints is that limbs cannot stretch. A
+    // ragdoll that pulls itself into spaghetti is the classic failure, so it is what gets measured.
+    BodyHarness harness;
+    harness.Settle(120);
+
+    // Bone lengths before, so they can be checked after.
+    std::vector<float> before;
+    for (int i = 0; i < harness.body.GetSkeleton().BoneCount(); ++i)
+    {
+        const BoneIndex bone = static_cast<BoneIndex>(i);
+        const BoneIndex parent = harness.body.GetSkeleton().GetBone(bone).parent;
+        before.push_back(parent == kInvalidBone
+                             ? 0.0f
+                             : glm::distance(harness.Bone(bone), harness.Bone(parent)));
+    }
+
+    const float headBefore = harness.Bone(harness.Rig().head).y;
+    harness.body.Collapse(glm::vec3(0.0f, 1.0f, -6.0f));
+    CHECK(harness.body.IsCollapsed());
+
+    for (int i = 0; i < 240; ++i)
+    {
+        harness.Tick();
+    }
+
+    // It went down.
+    const float headAfter = harness.Bone(harness.Rig().head).y;
+    INFO("head fell from " << headBefore << " to " << headAfter);
+    CHECK(headAfter < headBefore - 0.6f);
+
+    // And it did not sink through the floor.
+    CHECK(headAfter > harness.State().position.y - 0.2f);
+
+    // And every bone is still the length it was.
+    float worstStretch = 0.0f;
+    for (int i = 0; i < harness.body.GetSkeleton().BoneCount(); ++i)
+    {
+        const BoneIndex bone = static_cast<BoneIndex>(i);
+        const BoneIndex parent = harness.body.GetSkeleton().GetBone(bone).parent;
+        if (parent == kInvalidBone || before[static_cast<size_t>(i)] < 1e-3f)
+        {
+            continue;
+        }
+        const float now = glm::distance(harness.Bone(bone), harness.Bone(parent));
+        worstStretch = std::max(worstStretch, std::abs(now - before[static_cast<size_t>(i)]));
+    }
+    INFO("worst bone length change " << worstStretch << " m");
+    CHECK(worstStretch < 0.02f);
+}
+
+TEST_CASE("A ragdoll settles instead of being simulated for ever", "[body][ragdoll]")
+{
+    BodyHarness harness;
+    harness.Settle(120);
+    harness.body.Collapse(glm::vec3(0.0f, 0.0f, -3.0f));
+
+    for (int i = 0; i < 600 && !harness.body.GetRagdoll().Settled(); ++i)
+    {
+        harness.Tick();
+    }
+    INFO("settled after " << harness.body.GetRagdoll().Age() << " seconds");
+    CHECK(harness.body.GetRagdoll().Settled());
+    CHECK(harness.body.GetRagdoll().Age() < 8.0f);
+}
+
+TEST_CASE("A body goes down the way it was hit", "[body][ragdoll]")
+{
+    // Forward is -Z, so a round from in front drives the body backwards, towards +Z.
+    const auto fallDirection = [](const glm::vec3& impulse)
+    {
+        BodyHarness harness;
+        harness.Settle(120);
+        const glm::vec3 start = harness.Bone(harness.Rig().chest);
+        harness.body.Collapse(impulse);
+        for (int i = 0; i < 120; ++i)
+        {
+            harness.Tick();
+        }
+        return harness.Bone(harness.Rig().chest) - start;
+    };
+
+    const glm::vec3 pushedBack = fallDirection(glm::vec3(0.0f, 1.0f, 8.0f));
+    const glm::vec3 pushedForward = fallDirection(glm::vec3(0.0f, 1.0f, -8.0f));
+    INFO("back " << pushedBack.z << ", forward " << pushedForward.z);
+    CHECK(pushedBack.z > 0.15f);
+    CHECK(pushedForward.z < -0.15f);
+}

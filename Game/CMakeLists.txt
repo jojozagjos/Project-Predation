@@ -6,6 +6,8 @@ set(PRED_GAME_SOURCES
     Player/PlayerConfig.cpp
     Player/PlayerController.h
     Player/PlayerController.cpp
+    Player/Ragdoll.h
+    Player/Ragdoll.cpp
     Player/PlayerBody.h
     Player/PlayerBody.cpp
 

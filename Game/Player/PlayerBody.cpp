@@ -1123,6 +1123,58 @@ void PlayerBody::UpdateArms(const PlayerState& state, const PlayerView& view, Ph
     {
         UpdateWeaponHold(view, dt);
     }
+    else if (m_hasHeldItem)
+    {
+        UpdateHeldItem(view, dt);
+    }
+}
+
+void PlayerBody::SetHeldItem(Scene& scene, MeshLibrary& meshes, const std::string& name,
+                             const MeshData& mesh, const Material& material)
+{
+    ClearHeldItem(scene);
+    m_heldItemMesh = meshes.Upload(mesh, "held_" + name);
+    m_heldItemEntity = scene.CreateMeshEntity("held_" + name, Transform{}, m_heldItemMesh, material);
+    m_hasHeldItem = true;
+}
+
+void PlayerBody::ClearHeldItem(Scene& scene)
+{
+    if (m_hasHeldItem)
+    {
+        scene.Destroy(m_heldItemEntity);
+    }
+    m_heldItemEntity = Entity{};
+    m_hasHeldItem = false;
+}
+
+void PlayerBody::UpdateHeldItem(const PlayerView& view, float dt)
+{
+    // Carried in the trigger hand, out in front and a little to the side, where you would hold
+    // something you were about to use. The other arm is left alone: one hand is what carrying a
+    // medical kit takes, and posing both would read as presenting it rather than holding it.
+    const glm::vec3 forward = view.Forward();
+    const glm::vec3 yawRight{std::cos(view.yaw), 0.0f, std::sin(view.yaw)};
+    const glm::vec3 up = glm::cross(yawRight, forward);
+
+    const glm::vec3 target = view.eyePosition + forward * 0.52f + yawRight * 0.26f + up * -0.34f;
+
+    const glm::vec3 shoulder = m_pose.GlobalPosition(m_rig.shoulder[kRight]);
+    FootState& hand = m_hands[static_cast<size_t>(kRight)];
+    hand.position = SmoothTowards(hand.position, target, m_config.weaponHandSmoothing, dt);
+
+    const glm::vec3 elbowPole = glm::normalize(-up * 1.0f + yawRight * 0.8f - forward * 0.3f);
+    const TwoBoneIKResult ik = SolveTwoBoneIK(shoulder, hand.position, elbowPole,
+                                              m_rig.upperArmLength, m_rig.lowerArmLength);
+
+    const glm::quat rotation = glm::quat_cast(glm::mat3(glm::vec3(yawRight), up, -forward));
+    m_pose.SetGlobal(m_skeleton, m_rig.upperArm[kRight], SegmentMatrix(shoulder, ik.jointPosition));
+    m_pose.SetGlobal(m_skeleton, m_rig.lowerArm[kRight], SegmentMatrix(ik.jointPosition, ik.endPosition));
+    m_pose.SetGlobal(m_skeleton, m_rig.hand[kRight],
+                     glm::translate(glm::mat4(1.0f), ik.endPosition) * glm::mat4_cast(rotation));
+
+    m_heldItemTransform.position = ik.endPosition;
+    m_heldItemTransform.rotation = rotation;
 }
 
 void PlayerBody::UpdateCrawlArms(const PlayerState& state, const PlayerView& view,
@@ -1459,6 +1511,18 @@ void PlayerBody::UpdateLegs(const PlayerState& state, const PlayerView& view,
 
 void PlayerBody::PushToScene(Scene& scene)
 {
+    if (m_hasHeldItem)
+    {
+        if (Transform* transform = scene.GetTransform(m_heldItemEntity))
+        {
+            *transform = m_heldItemTransform;
+        }
+        if (MeshRenderer* renderer = scene.GetMeshRenderer(m_heldItemEntity))
+        {
+            renderer->visible = m_config.visible && !m_ragdoll.Active();
+        }
+    }
+
     // Each weapon part is its own entity, so a reload can move the magazine on its own and firing
     // can flash the muzzle without either disturbing the rest of the model.
     for (size_t i = 0; i < m_weaponParts.size() && i < m_weaponPartTransforms.size(); ++i)
@@ -1536,10 +1600,37 @@ void PlayerBody::Update(Scene& scene, const PlayerState& state, const PlayerView
     {
         return;
     }
+    // A dead body is not posed, it falls. Everything below this is animation, and animation is what
+    // stops when somebody dies.
+    if (m_ragdoll.Active())
+    {
+        m_ragdoll.Step(physics, dt);
+        m_ragdoll.ApplyTo(m_skeleton, m_pose);
+        PushToScene(scene);
+        return;
+    }
+
     UpdatePosture(state, view, playerConfig, dt);
     UpdateArms(state, view, physics, dt);
     UpdateLegs(state, view, playerConfig, physics, dt);
     PushToScene(scene);
+}
+
+void PlayerBody::Collapse(const glm::vec3& impulse)
+{
+    if (!m_built || m_ragdoll.Active())
+    {
+        return;
+    }
+    // Started from the pose as it stands, so a body falls from wherever it was standing rather than
+    // snapping to a death pose first.
+    m_ragdoll.Start(m_skeleton, m_pose, impulse);
+}
+
+void PlayerBody::Revive()
+{
+    m_ragdoll.Stop();
+    m_pose.ResetToBind(m_skeleton);
 }
 
 void PlayerBody::DebugDraw(class DebugDraw& draw) const

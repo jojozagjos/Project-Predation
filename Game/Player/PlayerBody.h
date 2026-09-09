@@ -3,6 +3,7 @@
 #include "Engine/Animation/Skeleton.h"
 #include "Engine/Scene/Scene.h"
 #include "Game/Player/PlayerTypes.h"
+#include "Game/Player/Ragdoll.h"
 #include "Game/Weapons/WeaponAppearance.h"
 
 #include <glm/gtc/quaternion.hpp>
@@ -10,6 +11,7 @@
 #include <glm/vec3.hpp>
 
 #include <array>
+#include <string>
 #include <vector>
 
 namespace pred
@@ -201,6 +203,13 @@ public:
     void Update(Scene& scene, const PlayerState& state, const PlayerView& view,
                 const PlayerConfig& playerConfig, PhysicsWorld& physics, float dt);
 
+    // Death. The body stops being animated and starts falling: the pose is handed to a set of
+    // points with the bone lengths between them, and everything drawn follows those instead.
+    void Collapse(const glm::vec3& impulse);
+    void Revive();
+    bool IsCollapsed() const { return m_ragdoll.Active(); }
+    const Ragdoll& GetRagdoll() const { return m_ragdoll; }
+
     void DebugDraw(class DebugDraw& draw) const;
 
     Config& Tuning() { return m_config; }
@@ -229,6 +238,11 @@ public:
     // and where uploading a mesh would mean standing up a GPU device.
     void SetWeaponForSimulation(const WeaponDefinition* definition);
     void SetWeaponPose(const WeaponPose& pose) { m_weaponPose = pose; }
+    // Something that is not a weapon, carried in one hand. A rifle takes both hands and the whole
+    // upper body; a medical kit is just held, which is a different pose and a much smaller one.
+    void SetHeldItem(Scene& scene, MeshLibrary& meshes, const std::string& name, const MeshData& mesh,
+                     const Material& material);
+    void ClearHeldItem(Scene& scene);
     bool HasWeapon() const { return m_hasWeapon; }
     // Where a round would appear to leave the model, for the muzzle flash. Not where rounds are
     // actually traced from: that comes from the eye, so what is under the crosshair is what is hit.
@@ -289,6 +303,8 @@ private:
     // it, and the legs come last in the hierarchy, so doing it the other way round would undo the
     // leg IK every frame.
     void UpdateArms(const PlayerState& state, const PlayerView& view, PhysicsWorld& physics, float dt);
+    // Poses the right arm to carry a held item and puts the item in the hand.
+    void UpdateHeldItem(const PlayerView& view, float dt);
     void UpdateLegs(const PlayerState& state, const PlayerView& view, const PlayerConfig& playerConfig,
                     PhysicsWorld& physics, float dt);
     void PushToScene(Scene& scene);
@@ -344,6 +360,11 @@ private:
     // Signed distance crawled along the body. Negative when backing up, which runs the reach and
     // pull the other way round.
     float m_crawlDistance = 0.0f;
+    Ragdoll m_ragdoll;
+    Entity m_heldItemEntity;
+    MeshHandle m_heldItemMesh;
+    bool m_hasHeldItem = false;
+    Transform m_heldItemTransform;
     float m_gaitWeight = 0.0f;
     bool m_built = false;
 };
