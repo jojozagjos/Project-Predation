@@ -87,8 +87,13 @@ Notable cvars in Milestone 1:
 
 ## Debug categories
 
-AI, NAVIGATION, PERCEPTION, ANIMATION, PHYSICS, NETWORK, RENDERING, AUDIO, PLAYER. Each is a `debug.<name>`
-cvar. Systems check `DebugCategories::IsEnabled()` before drawing their overlays.
+AI, NAVIGATION, PERCEPTION, ANIMATION, PHYSICS, NETWORK, RENDERING, AUDIO, PLAYER, COMBAT. Each is a
+`debug.<name>` cvar. Systems check `DebugCategories::IsEnabled()` before drawing their overlays.
+
+COMBAT is the one to reach for when a shot does not go where it looked like it should. It draws two
+lines per round: the line it was traced along, from the eye, and the line it was drawn along, from
+the muzzle. Those are different points by most of an arm's length, on purpose, and seeing both at
+once is how you tell a mismatch from a miss.
 
 ## Logging
 

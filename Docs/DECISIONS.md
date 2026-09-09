@@ -264,3 +264,78 @@ the machines' own addresses and work; through a router they are the hole that ro
 stays open only as long as it stays open. And a player who never finished joining holds no roster,
 so it is not allowed to elect itself: without that rule every client that failed to connect declared
 itself the new host.
+
+## ADR-021: The crouch folds forward so the hips have somewhere to be
+
+**Status**: accepted, 2026-09-09
+
+A crouch is a leg problem before it is a pose problem. The camera is dropped to crouch eye height,
+the body is anchored so the head lands on the camera, and whatever height is left over between the
+hips and the eye decides how much of it the legs have to absorb. With the torso near-upright there
+was almost nothing left over: the hips sat 0.56 m up, the leg folded to 57 per cent of its length,
+and the thigh finished 70 degrees off vertical with the knee half a metre in front of the body.
+
+No knee pole fixes that. With two bones of equal length, the hip and the foot fix where the knee
+can be, up to a sign; the pole picks which of two points, not where they are. So the hips had to
+come up, and the only height available to raise them with is the torso. A real crouch folds forward
+for exactly this reason. The lean is now 46 degrees and the thigh and shin each sit at about 52.
+
+Folding forward pushes the pelvis out behind the camera. That is also true of a real squat, and it
+is wrong here, because a game camera is locked over the collision capsule rather than over the feet.
+The whole crouched figure is therefore slid forward to compensate, which leaves the head a little in
+front of the eye. Nothing sees that: the head is hidden from its owner and the camera is invisible to
+everyone else. What does matter is that the figure stays inside its capsule, so nobody is shooting at
+a body that is not where the hit test says it is, and that is asserted rather than assumed.
+
+The stride goes with it. Stride length and step height were the standing ones whatever the stance,
+so a crouched player at walking pace was asked for a 0.6 m step lifted 0.14 m clear. There is no leg
+free to do that when the knees are already folded, and the thigh swept 70 degrees a stride reaching
+for it. Both scale with the stance now. Because the walk phase is integrated from distance travelled
+over stride length, shortening the stride raises the cadence to match instead of sliding the feet.
+
+## ADR-022: What the hands are holding is traced against the world, not guessed
+
+**Status**: accepted, 2026-09-09
+
+Where a weapon or a carried item sits is worked out as an offset from the eye. That is the right
+frame for it, because it has to stay on screen and the screen is at the eye. It knows nothing about
+the world, and it showed: walking into a wall put most of a metre of barrel through it, and lying
+down put the hold under the floor, because the prone carry hangs below an eye that is itself a few
+centimetres up.
+
+The first attempt at the wall was a soft pull-back driven by a single trace along the view. It half
+worked, and failed in the case people actually hit: walk into a wall, then turn. The trace runs off
+along the face and finds nothing much while the barrel is still crossing it, measured at 0.17 m
+through in the test that now covers it.
+
+Both are the same question asked of the world instead of a rule. One trace from the eye to the point
+being held, one straight down beneath it. The first stops the muzzle at whatever is really in front
+of it whichever way the player is looking; the second puts the hold on top of whatever is underneath,
+traced rather than compared against the player's own feet, so lying on a crate keeps the weapon on
+the crate. The soft pull-back stays, because bringing a long weapon in against a wall is what anyone
+does with one in a corridor; it is now a matter of how it looks rather than the thing preventing a
+solid object passing through another.
+
+## ADR-023: Firing is an event, so it travels as one
+
+**Status**: accepted, 2026-09-09
+
+Everything else about another player is a state: where they are, which way they are looking, what
+stance they are in, what is in their hands. Snapshots carry states well, because a snapshot that
+goes missing is superseded by the next one.
+
+Firing is not a state. It happens on one frame, and that frame is almost never a frame a snapshot
+goes out on, so a snapshot-carried "is firing" flag misses the moment more often than it catches it.
+That is why other players' weapons fired silently: no flash, no recoil, no animation, and rounds
+that appeared to come from nowhere.
+
+The recoil is driven from the shot message instead, which is sent exactly when a round leaves the
+barrel and is already reliable because the round itself has to arrive. The host has to apply it to
+the shooter's avatar itself, because nobody sends that message back to the machine that made it.
+
+Rounds are drawn as something that travels: a short lit section flying from the muzzle at 260 m/s
+and a mark where it lands. Lighting the whole line at once draws a diagram of a shot rather than a
+shot, and left up long enough to be seen it reads as a laser. The full traced line moves behind a
+debug toggle, alongside the line the round was really traced along, because rounds are traced from
+the eye so the crosshair tells the truth and drawn from the muzzle so they look right, and checking
+that difference has not become a lie needs both drawn at once.

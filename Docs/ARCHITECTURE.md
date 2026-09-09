@@ -92,7 +92,7 @@ SMAA, decals. Tracy GPU zones through bgfx profiler callbacks.
 | `Debug/ImGuiLayer` | ImGui context, SDL3 platform backend, bgfx renderer backend with dynamic texture support. |
 | `Debug/DebugOverlay` | F3 overlay: FPS, frame time graph, CPU/GPU time, per-phase timings, fixed step info, renderer stats, memory, debug category toggles. |
 | `Debug/Console` | Command registry, cvar get/set, log mirror, history, tab completion. |
-| `Debug/DebugCategories` | AI, NAVIGATION, PERCEPTION, ANIMATION, PHYSICS, NETWORK, RENDERING, AUDIO, PLAYER toggles backed by `debug.*` cvars. |
+| `Debug/DebugCategories` | AI, NAVIGATION, PERCEPTION, ANIMATION, PHYSICS, NETWORK, RENDERING, AUDIO, PLAYER, COMBAT toggles backed by `debug.*` cvars. |
 | `Debug/FrameStats` | Frame history ring and scoped CPU timers (`PRED_PROFILE_SCOPE`). |
 
 ### Assets (bootstrap implemented)
