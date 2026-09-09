@@ -1017,10 +1017,17 @@ void PredationGame::OnFixedUpdate(double fixedDt)
 
     if (m_hidingSpot >= 0)
     {
-        // Hidden: the player can still look around, but not walk out of the locker.
+        // Hidden: the player can still look around, and that is all. Crouching or going prone
+        // inside a locker put the body through the floor of it, and there is nowhere to lean to.
         input.move = glm::vec2(0.0f);
         input.jump = false;
         input.lean = 0.0f;
+        input.crouchHeld = false;
+        input.proneHeld = false;
+        m_crouchToggleState = false;
+        m_proneToggleState = false;
+        m_forceCrouch = false;
+        m_forceProne = false;
     }
     if (m_cameraMode == CameraMode::Fly)
     {
@@ -1049,11 +1056,34 @@ void PredationGame::OnUpdate(double dt, double alpha)
     SampleLook(deltaSeconds);
 
     // The editor drives its own camera and hides the world, so nothing below has to know it exists.
+    //
+    // The cursor stays free, because everything in an editor is done by pointing at it. Holding the
+    // right button takes the mouse for as long as it is held and turns the camera, then hands it
+    // straight back. Keeping the mouse locked the whole time, as this used to, made every panel
+    // unreachable; releasing it without this made the camera impossible to turn.
     if (m_editor.IsOpen())
     {
+        const bool wantLook = input.IsMouseDown(MouseButton::Right) &&
+                              (m_editorLooking || !app.IsUiCapturingMouse());
+        if (wantLook != m_editorLooking)
+        {
+            m_editorLooking = wantLook;
+            m_wantMouseCaptured = wantLook;
+            UpdateMouseCapture();
+        }
+        if (m_editorLooking && !m_discardNextMouseDelta)
+        {
+            const glm::vec2 delta = input.MouseDelta();
+            const float sensitivity = glm::radians(cv_mouseSensitivity.Get());
+            m_lookYaw += delta.x * sensitivity;
+            m_lookPitch = std::clamp(m_lookPitch - delta.y * sensitivity, glm::radians(-89.0f),
+                                     glm::radians(89.0f));
+        }
+        m_discardNextMouseDelta = false;
+
         m_editor.Camera().yaw = m_lookYaw;
         m_editor.Camera().pitch = m_lookPitch;
-        m_editor.Camera().moveSpeed = 1.4f;
+        m_editor.Camera().moveSpeed = m_editor.CameraSpeed();
         m_editor.Camera().Update(input, deltaSeconds, false);
         m_editor.Update(m_scene, app.GetMeshes(), deltaSeconds);
         m_camera = m_editor.Camera();
@@ -1199,7 +1229,9 @@ void PredationGame::OnUpdate(double dt, double alpha)
     // The selected slot decides what is held, so this is checked every frame rather than hooked
     // onto each of the several places a slot can change.
     SyncEquippedWeapon();
-    const WeaponDefinition* weapon = EquippedWeapon();
+    // Inside a locker there is nowhere to hold a rifle: it is stowed rather than drawn, because a
+    // metre of barrel held in front of the chest goes straight through the door.
+    const WeaponDefinition* weapon = m_hidingSpot >= 0 ? nullptr : EquippedWeapon();
     m_body.SetWeapon(m_scene, app.GetMeshes(), weapon);
     if (weapon != nullptr)
     {

@@ -176,6 +176,9 @@ private:
     float m_weaponDraw = 1.0f;
     // Console-driven aim, so the sighted hold can be inspected in a headless capture.
     bool m_debugAim = false;
+    // True only while the right button is held in the editor, which is when the mouse belongs to the
+    // camera rather than to the panels.
+    bool m_editorLooking = false;
     bool m_forceCrouch = false;
     bool m_forceProne = false;
     bool m_crouchToggleState = false;

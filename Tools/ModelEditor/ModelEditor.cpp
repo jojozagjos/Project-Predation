@@ -99,6 +99,9 @@ void ModelEditor::AddPart(const char* name, PartShape shape)
         part.name = std::string(name) + "_" + std::to_string(++suffix);
     }
     part.shape = shape;
+    // Sitting on the grid rather than half buried in it. A new box centred on the origin has half
+    // its height below the floor, which is a poor first impression of a modelling tool.
+    part.position.y = part.size.y * 0.5f;
     m_model.parts.push_back(std::move(part));
     m_selectedPart = static_cast<int>(m_model.parts.size()) - 1;
     m_dirty = true;
@@ -448,6 +451,71 @@ void ModelEditor::DrawSocketPanel()
     }
 }
 
+AnimationTrack* ModelEditor::SelectedTrack()
+{
+    AnimationClip* clip = CurrentClip();
+    if (clip == nullptr || m_selectedTrack < 0 || m_selectedTrack >= static_cast<int>(clip->tracks.size()))
+    {
+        return nullptr;
+    }
+    return &clip->tracks[static_cast<size_t>(m_selectedTrack)];
+}
+
+AnimationTrack& ModelEditor::TrackFor(AnimationClip& clip, const std::string& partName)
+{
+    const auto found = std::find_if(clip.tracks.begin(), clip.tracks.end(),
+                                    [&](const AnimationTrack& track) { return track.part == partName; });
+    if (found != clip.tracks.end())
+    {
+        return *found;
+    }
+    AnimationTrack fresh;
+    fresh.part = partName;
+    clip.tracks.push_back(std::move(fresh));
+    return clip.tracks.back();
+}
+
+AnimationKey* ModelEditor::KeyAt(AnimationTrack& track, float time)
+{
+    const auto found = std::find_if(track.keys.begin(), track.keys.end(), [&](const AnimationKey& key)
+                                    { return std::abs(key.time - time) < 1e-3f; });
+    return found == track.keys.end() ? nullptr : &*found;
+}
+
+AnimationKey& ModelEditor::AddOrGetKey(AnimationTrack& track, float time)
+{
+    if (AnimationKey* existing = KeyAt(track, time))
+    {
+        return *existing;
+    }
+    // A new key starts from where the track already is at this moment, so adding one never moves
+    // anything: it pins down what is already on screen and then you change it.
+    AnimationKey key;
+    key.time = time;
+    if (!track.keys.empty())
+    {
+        const ModelPart* part = nullptr;
+        for (const ModelPart& candidate : m_model.parts)
+        {
+            if (candidate.name == track.part)
+            {
+                part = &candidate;
+                break;
+            }
+        }
+        if (part != nullptr && m_selectedClip >= 0)
+        {
+            const AnimationClip& clip = m_model.clips[static_cast<size_t>(m_selectedClip)];
+            const glm::mat4 local = m_model.PartMatrixAt(*part, &clip, time, &key.visible);
+            key.position = glm::vec3(local[3]) - part->position;
+        }
+    }
+    track.keys.push_back(key);
+    std::sort(track.keys.begin(), track.keys.end(),
+              [](const AnimationKey& a, const AnimationKey& b) { return a.time < b.time; });
+    return *KeyAt(track, time);
+}
+
 void ModelEditor::KeyAllParts()
 {
     AnimationClip* clip = CurrentClip();
@@ -457,38 +525,71 @@ void ModelEditor::KeyAllParts()
     }
     for (const ModelPart& part : m_model.parts)
     {
-        auto track = std::find_if(clip->tracks.begin(), clip->tracks.end(),
-                                  [&](const AnimationTrack& candidate) { return candidate.part == part.name; });
-        if (track == clip->tracks.end())
-        {
-            AnimationTrack fresh;
-            fresh.part = part.name;
-            clip->tracks.push_back(std::move(fresh));
-            track = clip->tracks.end() - 1;
-        }
-
-        AnimationKey key;
-        key.time = m_playhead;
+        AnimationKey& key = AddOrGetKey(TrackFor(*clip, part.name), m_playhead);
         key.visible = part.visible ? 1.0f : 0.0f;
-
-        // Replace a key already at this time rather than stacking a second one on top of it.
-        const auto existing = std::find_if(track->keys.begin(), track->keys.end(),
-                                           [&](const AnimationKey& candidate)
-                                           { return std::abs(candidate.time - m_playhead) < 1e-3f; });
-        if (existing != track->keys.end())
-        {
-            key.position = existing->position;
-            key.rotation = existing->rotation;
-            *existing = key;
-        }
-        else
-        {
-            track->keys.push_back(key);
-            std::sort(track->keys.begin(), track->keys.end(),
-                      [](const AnimationKey& a, const AnimationKey& b) { return a.time < b.time; });
-        }
     }
-    m_status = "Keyed every part at " + std::to_string(m_playhead) + " s";
+    m_status = "Keyed every part";
+}
+
+void ModelEditor::DrawTimeline(AnimationClip& clip)
+{
+    // A row per part with its keys drawn on it, and a playhead across the whole thing. Clicking the
+    // strip moves the playhead; clicking a key selects it; the buttons act on the selection. The
+    // old panel was a list of numbers with no sense of when anything happened, which is most of
+    // what an animation editor is for.
+    constexpr float kRowHeight = 22.0f;
+    constexpr float kLabelWidth = 110.0f;
+    const float width = std::max(ImGui::GetContentRegionAvail().x - kLabelWidth - 12.0f, 120.0f);
+    const float duration = std::max(clip.duration, 0.05f);
+
+    ImDrawList* draw = ImGui::GetWindowDrawList();
+    const ImU32 laneColor = IM_COL32(38, 41, 50, 255);
+    const ImU32 gridColor = IM_COL32(60, 64, 76, 255);
+    const ImU32 keyColor = IM_COL32(210, 190, 120, 255);
+    const ImU32 keySelected = IM_COL32(255, 235, 170, 255);
+    const ImU32 headColor = IM_COL32(230, 120, 110, 255);
+
+    for (size_t t = 0; t < clip.tracks.size(); ++t)
+    {
+        AnimationTrack& track = clip.tracks[t];
+        ImGui::PushID(static_cast<int>(t));
+
+        const bool isSelected = m_selectedTrack == static_cast<int>(t);
+        if (ImGui::Selectable(track.part.c_str(), isSelected, 0, {kLabelWidth, kRowHeight}))
+        {
+            m_selectedTrack = static_cast<int>(t);
+        }
+        ImGui::SameLine(kLabelWidth + 8.0f);
+
+        const ImVec2 origin = ImGui::GetCursorScreenPos();
+        draw->AddRectFilled(origin, {origin.x + width, origin.y + kRowHeight}, laneColor, 3.0f);
+        for (int mark = 0; mark <= 4; ++mark)
+        {
+            const float x = origin.x + width * static_cast<float>(mark) * 0.25f;
+            draw->AddLine({x, origin.y}, {x, origin.y + kRowHeight}, gridColor);
+        }
+
+        ImGui::InvisibleButton("##lane", {width, kRowHeight});
+        if (ImGui::IsItemActive())
+        {
+            const float local = (ImGui::GetIO().MousePos.x - origin.x) / width;
+            m_playhead = std::clamp(local, 0.0f, 1.0f) * duration;
+            m_selectedTrack = static_cast<int>(t);
+            m_playing = false;
+        }
+
+        for (const AnimationKey& key : track.keys)
+        {
+            const float x = origin.x + width * std::clamp(key.time / duration, 0.0f, 1.0f);
+            const float y = origin.y + kRowHeight * 0.5f;
+            const bool onPlayhead = std::abs(key.time - m_playhead) < 1e-3f;
+            draw->AddCircleFilled({x, y}, 5.0f, onPlayhead && isSelected ? keySelected : keyColor, 8);
+        }
+
+        const float headX = origin.x + width * std::clamp(m_playhead / duration, 0.0f, 1.0f);
+        draw->AddLine({headX, origin.y}, {headX, origin.y + kRowHeight}, headColor, 1.5f);
+        ImGui::PopID();
+    }
 }
 
 void ModelEditor::DrawAnimationPanel()
@@ -500,7 +601,11 @@ void ModelEditor::DrawAnimationPanel()
         clip.duration = 1.5f;
         m_model.clips.push_back(std::move(clip));
         m_selectedClip = static_cast<int>(m_model.clips.size()) - 1;
+        m_selectedTrack = -1;
+        m_playhead = 0.0f;
     }
+    ImGui::SameLine();
+    ImGui::TextDisabled("Name one reload or equip and the game plays it at the right moment.");
 
     for (int i = 0; i < static_cast<int>(m_model.clips.size()); ++i)
     {
@@ -508,6 +613,7 @@ void ModelEditor::DrawAnimationPanel()
         if (ImGui::RadioButton(m_model.clips[static_cast<size_t>(i)].name.c_str(), m_selectedClip == i))
         {
             m_selectedClip = i;
+            m_selectedTrack = -1;
             m_playhead = 0.0f;
         }
         ImGui::PopID();
@@ -520,8 +626,7 @@ void ModelEditor::DrawAnimationPanel()
     AnimationClip* clip = CurrentClip();
     if (clip == nullptr)
     {
-        ImGui::TextDisabled("No clip selected. Name one 'reload', 'equip' or 'fire' and the game will "
-                            "play it at the right moment.");
+        ImGui::TextDisabled("No clip selected.");
         return;
     }
 
@@ -532,56 +637,129 @@ void ModelEditor::DrawAnimationPanel()
         clip->name = nameBuffer;
     }
     ImGui::DragFloat("Duration", &clip->duration, 0.05f, 0.1f, 20.0f, "%.2f s");
+    ImGui::SameLine();
     ImGui::Checkbox("Loop", &clip->loop);
+    ImGui::SameLine();
+    if (ImGui::Button("Delete clip"))
+    {
+        m_model.clips.erase(m_model.clips.begin() + m_selectedClip);
+        m_selectedClip = m_model.clips.empty() ? -1 : 0;
+        m_selectedTrack = -1;
+        return;
+    }
 
-    ImGui::SliderFloat("Time", &m_playhead, 0.0f, clip->duration, "%.2f s");
+    // --- Transport ---------------------------------------------------------------------------
     if (ImGui::Button(m_playing ? "Pause" : "Play"))
     {
         m_playing = !m_playing;
     }
     ImGui::SameLine();
-    if (ImGui::Button("Rewind"))
+    if (ImGui::Button("|<"))
     {
         m_playhead = 0.0f;
+        m_playing = false;
+    }
+    ImGui::SameLine();
+    if (ImGui::Button(">|"))
+    {
+        m_playhead = clip->duration;
+        m_playing = false;
+    }
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(-1.0f);
+    if (ImGui::SliderFloat("##time", &m_playhead, 0.0f, clip->duration, "%.2f s"))
+    {
+        m_playing = false;
+    }
+
+    // --- Adding tracks and keys --------------------------------------------------------------
+    if (ImGui::BeginCombo("Animate part", "add a track"))
+    {
+        // "root" moves the whole weapon rather than one part, which is what an equip needs.
+        if (ImGui::Selectable("root (the whole model)"))
+        {
+            TrackFor(*clip, "root");
+            m_selectedTrack = static_cast<int>(clip->tracks.size()) - 1;
+        }
+        for (const ModelPart& part : m_model.parts)
+        {
+            if (ImGui::Selectable(part.name.c_str()))
+            {
+                TrackFor(*clip, part.name);
+                m_selectedTrack = static_cast<int>(clip->tracks.size()) - 1;
+            }
+        }
+        ImGui::EndCombo();
+    }
+
+    if (ImGui::Button("Key here"))
+    {
+        if (AnimationTrack* track = SelectedTrack())
+        {
+            AddOrGetKey(*track, m_playhead);
+        }
     }
     ImGui::SameLine();
     if (ImGui::Button("Key all parts"))
     {
         KeyAllParts();
     }
-
-    // Per-part offsets at the playhead. Editing one writes straight into the key, so the model in
-    // front of you is the animation as it will play.
-    for (AnimationTrack& track : clip->tracks)
+    ImGui::SameLine();
+    if (ImGui::Button("Delete key"))
     {
-        if (!ImGui::TreeNode(track.part.c_str()))
+        if (AnimationTrack* track = SelectedTrack())
         {
-            continue;
-        }
-        for (size_t k = 0; k < track.keys.size(); ++k)
-        {
-            AnimationKey& key = track.keys[k];
-            ImGui::PushID(static_cast<int>(k));
-            ImGui::DragFloat("t", &key.time, 0.01f, 0.0f, clip->duration, "%.2f s");
-            DragVec3("Offset", key.position, 0.005f);
-            DragVec3("Turn", key.rotation, 0.5f, "%.1f deg");
-            ImGui::SliderFloat("Visible", &key.visible, 0.0f, 1.0f);
-            if (ImGui::SmallButton("Go to"))
+            const auto found = std::find_if(track->keys.begin(), track->keys.end(),
+                                            [&](const AnimationKey& key)
+                                            { return std::abs(key.time - m_playhead) < 1e-3f; });
+            if (found != track->keys.end())
             {
-                m_playhead = key.time;
+                track->keys.erase(found);
             }
-            ImGui::SameLine();
-            if (ImGui::SmallButton("Remove"))
-            {
-                track.keys.erase(track.keys.begin() + static_cast<long>(k));
-                ImGui::PopID();
-                break;
-            }
-            ImGui::Separator();
-            ImGui::PopID();
         }
-        ImGui::TreePop();
     }
+    ImGui::SameLine();
+    if (ImGui::Button("Delete track"))
+    {
+        if (m_selectedTrack >= 0 && m_selectedTrack < static_cast<int>(clip->tracks.size()))
+        {
+            clip->tracks.erase(clip->tracks.begin() + m_selectedTrack);
+            m_selectedTrack = -1;
+            return;
+        }
+    }
+
+    ImGui::Separator();
+    DrawTimeline(*clip);
+    ImGui::Separator();
+
+    // --- The key under the playhead ------------------------------------------------------------
+    AnimationTrack* track = SelectedTrack();
+    if (track == nullptr)
+    {
+        ImGui::TextDisabled("Select a track above, then move the playhead and press Key here.");
+        return;
+    }
+    AnimationKey* key = KeyAt(*track, m_playhead);
+    if (key == nullptr)
+    {
+        ImGui::TextDisabled("No key on '%s' at %.2f s. Press Key here to make one.", track->part.c_str(),
+                            static_cast<double>(m_playhead));
+        return;
+    }
+
+    ImGui::Text("%s at %.2f s", track->part.c_str(), static_cast<double>(key->time));
+    ImGui::DragFloat("Key time", &key->time, 0.01f, 0.0f, clip->duration, "%.2f s");
+    if (ImGui::IsItemDeactivatedAfterEdit())
+    {
+        std::sort(track->keys.begin(), track->keys.end(),
+                  [](const AnimationKey& a, const AnimationKey& b) { return a.time < b.time; });
+        m_playhead = key->time;
+    }
+    DragVec3("Move", key->position, 0.005f);
+    DragVec3("Turn", key->rotation, 0.5f, "%.1f deg");
+    ImGui::SliderFloat("Visible", &key->visible, 0.0f, 1.0f);
+    ImGui::TextDisabled("Offsets are from the part's rest pose, so editing the model keeps the clip.");
 }
 
 void ModelEditor::ImportMesh(const std::string& file)

@@ -149,8 +149,13 @@ public:
         // Prone turning is slow and deliberate: the body pivots towards where you are crawling.
         float proneTurnSpeed = 3.2f;
         // Look this far from the way the body is lying and it rolls over rather than twisting.
-        float proneRollOverDegrees = 105.0f;
-        float proneRollSpeed = 7.0f;
+        float proneRollOverDegrees = 100.0f;
+        // And back onto your front again. Apart from the other threshold so it settles rather than
+        // chattering when the view sits right on the boundary.
+        float proneRollBackDegrees = 55.0f;
+        // How long rolling over takes, start to finish. Eased at both ends rather than run through an
+        // exponential, so it reads as a body turning over rather than as a switch being thrown.
+        float proneRollSeconds = 0.55f;
 
         // In the air. Legs tuck on the way up and reach on the way down; the arms come out either
         // way. Without any of this the legs simply stretch straight down towards a floor that is
@@ -180,7 +185,7 @@ public:
         // body, which is what actually happens.
         float eyeForwardOfHead = 0.0f;
         float eyeAboveHead = 0.085f;
-        float skullBehindEye = 0.088f;
+        float skullBehindEye = 0.042f;
         bool hideHead = true; // the camera lives inside it
         bool visible = true;
     };
@@ -230,6 +235,8 @@ public:
     glm::vec3 MuzzlePoint() const;
     // Where the weapon is held. Exposed so a test can check the hand is actually on it.
     glm::vec3 WeaponOrigin() const { return m_weaponTransform.position; }
+    // Which way the body is lying or facing. Exposed for tests; nothing in the game reads it.
+    float DebugBodyYaw() const { return m_bodyYaw; }
 
 private:
     // How a piece of gear is oriented. Limb bones are re-solved by IK and end up with an arbitrary
@@ -314,7 +321,12 @@ private:
     std::array<FootState, 2> m_feet;
     std::array<FootState, 2> m_hands; // same shape: a smoothed target and whether it is planted
     float m_flatness = 0.0f;          // 0 upright, 1 fully prone
-    float m_proneRoll = 0.0f;         // 0 lying face down, 1 lying on the back
+    // Signed: negative rolls left, positive rolls right, so you go over the way you turned. The
+    // magnitude is how far through the roll it is, and most of the pose only cares about that.
+    float m_proneRoll = 0.0f;
+    float m_proneRollT = 0.0f;        // 0 to 1 through the roll, advanced at a constant rate
+    float m_proneRollSign = 1.0f;
+    float m_proneRollAmount = 0.0f;  // how far over, ignoring which way
     float m_airborne = 0.0f;          // 0 on the ground, 1 fully in the air
     float m_airRise = 0.0f;           // +1 rising, -1 falling
     bool m_proneOnBack = false;       // the state the roll is heading towards

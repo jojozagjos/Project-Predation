@@ -44,6 +44,8 @@ public:
     const FlyCamera& Camera() const { return m_camera; }
     FlyCamera& Camera() { return m_camera; }
 
+    float CameraSpeed() const { return m_cameraSpeed; }
+
     bool Load(const std::string& modelName);
     bool Save();
 
@@ -61,6 +63,11 @@ private:
     // Writes the current offsets of every part into the selected clip at the playhead, which is how
     // a pose becomes a keyframe.
     void KeyAllParts();
+    void DrawTimeline(AnimationClip& clip);
+    AnimationTrack& TrackFor(AnimationClip& clip, const std::string& partName);
+    AnimationKey* KeyAt(AnimationTrack& track, float time);
+    AnimationKey& AddOrGetKey(AnimationTrack& track, float time);
+    AnimationTrack* SelectedTrack();
 
     Application* m_app = nullptr;
     ModelAsset m_model;
@@ -74,11 +81,13 @@ private:
     int m_selectedPart = -1;
     int m_selectedSocket = -1;
     int m_selectedClip = -1;
+    int m_selectedTrack = -1;
 
     float m_playhead = 0.0f;
     bool m_playing = false;
 
     FlyCamera m_camera;
+    float m_cameraSpeed = 1.4f;
     float m_gridSnap = 0.005f;
     bool m_snapEnabled = true;
     bool m_showSockets = true;
