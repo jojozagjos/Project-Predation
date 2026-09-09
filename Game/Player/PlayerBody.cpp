@@ -536,7 +536,20 @@ void PlayerBody::UpdatePosture(const PlayerState& state, const PlayerView& view,
     // spread the twist between the two so it does not all happen at one joint.
     // The twist is negated for the same reason the root rotation is: a model facing -Z turns the
     // opposite way to the yaw convention.
-    const float runLean = glm::radians(m_lean);
+    // Climbing folds the body forward over the ledge as the hands pull, then straightens as the
+    // legs come under it. Without it the torso rides up the wall bolt upright, which is what made
+    // the climb read as being lifted rather than as pulling yourself up.
+    float climbFold = 0.0f;
+    if (state.mantling || m_mantleFade > 0.001f)
+    {
+        const float duration = std::max(state.mantleDuration, 0.05f);
+        const float t = std::clamp(state.mantleTime / duration, 0.0f, 1.0f);
+        // Most of the fold in the middle of the pull, gone by the time you stand up on top.
+        climbFold = glm::radians(m_config.mantleFoldDegrees) *
+                    std::sin(t * glm::pi<float>()) * std::max(m_mantleFade, state.mantling ? 1.0f : 0.0f);
+    }
+
+    const float runLean = glm::radians(m_lean) + climbFold;
     // Peek lean: the torso tips sideways so the body follows the camera out past cover.
     const float peek = state.leanAmount * glm::radians(m_config.leanAngleDegrees);
 
@@ -613,8 +626,17 @@ void PlayerBody::UpdatePosture(const PlayerState& state, const PlayerView& view,
     // Measured along the *body's* facing rather than the view's. Using the view swings the whole
     // body sideways whenever you turn your head, which is the drift this anchoring was written to
     // remove in the first place; using the body only moves it when the body itself turns.
+    // And further forward the further down you look, so looking at your own feet shows you the
+    // length of your body rather than the top of your chest. Tucking your chin does move your eyes
+    // out over your torso, and the offset can afford to be bigger here because nobody spins on the
+    // spot while staring at the floor, which is the case a large fixed offset would spoil.
+    const float lookingDown =
+        glm::smoothstep(0.0f, 1.0f, std::clamp(-view.pitch / glm::half_pi<float>(), 0.0f, 1.0f));
+    const float forwardOffset =
+        m_config.eyeForwardOfHead + m_config.eyeForwardLookingDown * lookingDown;
+
     const glm::vec3 bodyFacing{std::sin(m_bodyYaw), 0.0f, -std::cos(m_bodyYaw)};
-    const glm::vec3 desiredHead = view.eyePosition - bodyFacing * m_config.eyeForwardOfHead -
+    const glm::vec3 desiredHead = view.eyePosition - bodyFacing * forwardOffset -
                                   glm::vec3(0.0f, m_config.eyeAboveHead, 0.0f);
     m_rootPosition += desiredHead - m_pose.GlobalPosition(m_rig.head);
 
@@ -1127,11 +1149,13 @@ void PlayerBody::UpdateArms(const PlayerState& state, const PlayerView& view, Ph
     // hand let go of it the moment the player lay down.
     // Climbing takes both hands, whatever is in them. Nobody hauls themselves over a wall one
     // handed with a rifle up, and it is the only part of a climb anyone can see from inside it.
-    if (state.mantling)
-    {
-        UpdateMantleArms(state, dt);
-        return;
-    }
+    //
+    // The fade carries on past the end of the climb, because cutting straight back to the normal
+    // arms put the hands somewhere else in a single frame, which is what snapped.
+    const float mantleTarget = state.mantling ? 1.0f : 0.0f;
+    const float fadeStep = dt / std::max(m_config.mantleArmFadeSeconds, 0.01f);
+    m_mantleFade = mantleTarget > m_mantleFade ? std::min(m_mantleFade + fadeStep * 3.0f, 1.0f)
+                                               : std::max(m_mantleFade - fadeStep, 0.0f);
 
     const bool holding = m_hasWeapon;
     if (m_flatness >= 0.02f)
@@ -1145,6 +1169,14 @@ void PlayerBody::UpdateArms(const PlayerState& state, const PlayerView& view, Ph
     else if (m_hasHeldItem)
     {
         UpdateHeldItem(view, dt);
+    }
+
+    // Last, and blended over whatever the arms were already doing. Solving the climb first and
+    // returning meant the transition out of it was a cut; blending onto the pose the arms would
+    // otherwise be in means there is nothing to cut between.
+    if (m_mantleFade > 0.001f)
+    {
+        UpdateMantleArms(state, m_mantleFade);
     }
 }
 
@@ -1176,11 +1208,26 @@ void PlayerBody::UpdateHeldItem(const PlayerView& view, float dt)
     const glm::vec3 yawRight{std::cos(view.yaw), 0.0f, std::sin(view.yaw)};
     const glm::vec3 up = glm::cross(yawRight, forward);
 
-    const glm::vec3 target = view.eyePosition + forward * 0.52f + yawRight * 0.26f + up * -0.34f;
+    glm::vec3 target = view.eyePosition + forward * 0.52f + yawRight * 0.26f + up * -0.34f;
 
     const glm::vec3 shoulder = m_pose.GlobalPosition(m_rig.shoulder[kRight]);
+
+    // Pulled into reach before the arm is solved. An over-extended chain draws the arm as a
+    // straight bar pointing at the target, and the hand ends up short of what it is meant to be
+    // holding.
+    const float reach = (m_rig.upperArmLength + m_rig.lowerArmLength) * 0.94f;
+    const glm::vec3 toTarget = target - shoulder;
+    const float distance = glm::length(toTarget);
+    if (distance > reach && distance > 1e-4f)
+    {
+        target = shoulder + toTarget * (reach / distance);
+    }
+
+    // Placed, not smoothed. Something in your hand moves with you, so smoothing here is not weight,
+    // it is lag: running dragged the item out of shot and left it trailing behind the camera.
     FootState& hand = m_hands[static_cast<size_t>(kRight)];
-    hand.position = SmoothTowards(hand.position, target, m_config.weaponHandSmoothing, dt);
+    hand.position = target;
+    (void)dt;
 
     const glm::vec3 elbowPole = glm::normalize(-up * 1.0f + yawRight * 0.8f - forward * 0.3f);
     const TwoBoneIKResult ik = SolveTwoBoneIK(shoulder, hand.position, elbowPole,
@@ -1192,14 +1239,18 @@ void PlayerBody::UpdateHeldItem(const PlayerView& view, float dt)
     m_pose.SetGlobal(m_skeleton, m_rig.hand[kRight],
                      glm::translate(glm::mat4(1.0f), ik.endPosition) * glm::mat4_cast(rotation));
 
-    m_heldItemTransform.position = ik.endPosition;
+    // Drawn where the hand was asked to be, not where the arm managed to get. The arm is what
+    // stretches when the two disagree; the thing in the hand stays in shot.
+    m_heldItemTransform.position = target;
     m_heldItemTransform.rotation = rotation;
 }
 
-void PlayerBody::UpdateMantleArms(const PlayerState& state, float dt)
+void PlayerBody::UpdateMantleArms(const PlayerState& state, float weight)
 {
     // Both hands go to the lip of the ledge, take the weight while the body rises, and let go as it
-    // comes over the top. Where the lip is is known exactly: the climb was aimed at it.
+    // comes over the top. The lip is where the wall face meets the top, which the climb recorded:
+    // aiming at the landing spot instead put the hands most of a metre past the edge, out over
+    // thin air, which is why nothing appeared to be grabbed.
     const float duration = std::max(state.mantleDuration, 0.05f);
     const float t = std::clamp(state.mantleTime / duration, 0.0f, 1.0f);
 
@@ -1208,15 +1259,11 @@ void PlayerBody::UpdateMantleArms(const PlayerState& state, float dt)
     const glm::vec3 forward =
         glm::length(flat) > 1e-4f ? glm::normalize(flat) : glm::vec3(std::sin(m_bodyYaw), 0.0f, -std::cos(m_bodyYaw));
     const glm::vec3 right{-forward.z, 0.0f, forward.x};
+    const glm::vec3 lip = state.mantleEdge;
 
-    // The edge itself: at the height being climbed to, back from the landing spot by roughly the
-    // depth the body has to clear.
-    const glm::vec3 lip = glm::vec3(state.mantleTo.x, state.mantleTo.y, state.mantleTo.z) -
-                          forward * m_config.mantleGripBack;
-
-    // Held for the pull, then released to the sides as the body comes over.
+    // Held for the pull, then released as the body comes over.
     const float release = glm::smoothstep(m_config.mantleReleaseAt, 1.0f, t);
-    const float grip = 1.0f - release;
+    const float grip = (1.0f - release) * weight;
 
     for (int side = 0; side < 2; ++side)
     {
@@ -1224,14 +1271,13 @@ void PlayerBody::UpdateMantleArms(const PlayerState& state, float dt)
         const glm::vec3 shoulder = m_pose.GlobalPosition(m_rig.shoulder[side]);
 
         const glm::vec3 held = lip + right * (sideSign * m_config.mantleGripSpread * m_rig.height);
-        // Once the hands let go they swing down and forward, which is where they would be as you
-        // step off the top.
-        const glm::vec3 freed = shoulder + forward * 0.28f - glm::vec3(0.0f, 0.42f, 0.0f) +
-                                right * (sideSign * 0.16f * m_rig.height);
-        const glm::vec3 target = glm::mix(held, freed, release);
+        // Blended onto wherever the arms already are, which for a released hand is exactly where it
+        // is going anyway. That is what makes the end of a climb a fade rather than a cut.
+        const glm::vec3 natural = m_pose.GlobalPosition(m_rig.hand[side]);
+        const glm::vec3 target = glm::mix(natural, held, grip);
 
         FootState& hand = m_hands[static_cast<size_t>(side)];
-        hand.position = SmoothTowards(hand.position, target, m_config.weaponHandSmoothing, dt);
+        hand.position = target;
         hand.planted = grip > 0.5f;
 
         // Elbows out and down while pulling, which is what taking your own weight looks like.

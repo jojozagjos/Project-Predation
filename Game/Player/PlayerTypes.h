@@ -69,6 +69,9 @@ struct PlayerState
     float mantleDuration = 0.0f;
     glm::vec3 mantleFrom{0.0f};
     glm::vec3 mantleTo{0.0f};
+    // The lip itself: where the wall face meets the top. The hands go here, and it is nowhere near
+    // the landing spot, which is a body's depth further on.
+    glm::vec3 mantleEdge{0.0f};
 
     float fallPeakSpeed = 0.0f;      // fastest downward speed during the current fall
     bool landedThisTick = false;

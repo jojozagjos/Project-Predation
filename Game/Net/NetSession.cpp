@@ -67,7 +67,7 @@ void ApplySnapshot(RemotePlayerView& view, const PlayerSnapshot& snapshot)
     view.grounded = snapshot.grounded;
     view.alive = snapshot.alive;
     view.heldItem = snapshot.heldItem;
-    view.aiming = snapshot.aiming;
+    view.aim = snapshot.aim;
     view.reloading = snapshot.reloading;
     view.reloadProgress = snapshot.reloadProgress;
 }
@@ -110,7 +110,7 @@ struct NetHost::Client
     // What they are holding. The host does not simulate their weapon, it only passes on what they
     // say they have out, because from outside that is all anyone can see.
     uint8_t heldItem = 0;
-    bool aiming = false;
+    float aim = 0.0f;
     bool reloading = false;
     float reloadProgress = 0.0f;
     // What this client has taken out of the world. The host does not model their bag, only what it
@@ -307,6 +307,10 @@ void NetHost::HandlePacket(const NetPacket& packet)
                 client->pending.push_back(command);
             }
         }
+        // What they are holding rides along with the input, so the host knows without asking.
+        SetPlayerHeld(client->playerId, message.heldItem, message.aim, message.reloading,
+                      message.reloadProgress);
+
         std::sort(client->pending.begin(), client->pending.end(),
                   [](const InputCommand& a, const InputCommand& b) { return a.sequence < b.sequence; });
         // A client that floods the host with inputs is spending its own bandwidth and gaining
@@ -531,14 +535,14 @@ void NetHost::SendWorldState(const WorldStateMessage& state)
     }
 }
 
-void NetHost::SetPlayerHeld(uint8_t playerId, uint8_t heldItem, bool aiming, bool reloading,
+void NetHost::SetPlayerHeld(uint8_t playerId, uint8_t heldItem, float aim, bool reloading,
                             float progress)
 {
     if (playerId == 0)
     {
         // The host is player zero, and its own hands go into the snapshot the same way.
         m_localHeldItem = heldItem;
-        m_localAiming = aiming;
+        m_localAim = aim;
         m_localReloading = reloading;
         m_localReloadProgress = progress;
         return;
@@ -548,7 +552,7 @@ void NetHost::SetPlayerHeld(uint8_t playerId, uint8_t heldItem, bool aiming, boo
         if (client->playerId == playerId)
         {
             client->heldItem = heldItem;
-            client->aiming = aiming;
+            client->aim = aim;
             client->reloading = reloading;
             client->reloadProgress = progress;
             return;
@@ -672,7 +676,7 @@ void NetHost::SendSnapshots(uint32_t tick, const PlayerState& localState)
     snapshot.tick = tick;
     snapshot.players[0] = SnapshotOf(0, localState);
     snapshot.players[0].heldItem = m_localHeldItem;
-    snapshot.players[0].aiming = m_localAiming;
+    snapshot.players[0].aim = m_localAim;
     snapshot.players[0].reloading = m_localReloading;
     snapshot.players[0].reloadProgress = m_localReloadProgress;
     snapshot.count = 1;
@@ -683,7 +687,7 @@ void NetHost::SendSnapshots(uint32_t tick, const PlayerState& localState)
             PlayerSnapshot& entry = snapshot.players[snapshot.count++];
             entry = SnapshotOf(client->playerId, client->controller.State());
             entry.heldItem = client->heldItem;
-            entry.aiming = client->aiming;
+            entry.aim = client->aim;
             entry.reloading = client->reloading;
             entry.reloadProgress = client->reloadProgress;
         }
@@ -951,6 +955,14 @@ void NetClient::Tick(const PlayerInput& input, PlayerController& local, float dt
     SendInput();
 }
 
+void NetClient::SetHeld(uint8_t heldItem, float aim, bool reloading, float progress)
+{
+    m_heldItem = heldItem;
+    m_heldAim = aim;
+    m_heldReloading = reloading;
+    m_heldReloadProgress = progress;
+}
+
 void NetClient::SendInput()
 {
     const std::vector<PredictedTick> recent = m_history.After(m_lastAcknowledged);
@@ -968,6 +980,10 @@ void NetClient::SendInput()
         message.commands[i].input = recent[first + i].input;
     }
     message.count = static_cast<uint8_t>(count);
+    message.heldItem = m_heldItem;
+    message.aim = m_heldAim;
+    message.reloading = m_heldReloading;
+    message.reloadProgress = m_heldReloadProgress;
 
     BitWriter writer;
     WriteMessageHeader(writer, MessageType::Input);

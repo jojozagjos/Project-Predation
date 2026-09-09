@@ -170,6 +170,14 @@ struct InputMessage
 {
     uint8_t count = 0;
     std::array<InputCommand, kInputRedundancy> commands{};
+    // What this client has in its hands, and what its hands are doing. It rides along with the
+    // input because it changes at about the same rate and there is nowhere cheaper to put it. The
+    // host cannot know any of it otherwise, which is why only the host was ever seen holding
+    // anything.
+    uint8_t heldItem = 0;
+    float aim = 0.0f;
+    bool reloading = false;
+    float reloadProgress = 0.0f;
 };
 
 // What one player looks like from outside. Deliberately smaller than PlayerState: a remote player
@@ -192,7 +200,9 @@ struct PlayerSnapshot
     // weapon so a medical kit shows up as well as a rifle: from outside, holding something is
     // holding something.
     uint8_t heldItem = 0;
-    bool aiming = false;
+    // How far the sights are up, not whether they are. Sights come up over a fifth of a second, and
+    // sending a yes or no makes everyone else watch them snap.
+    float aim = 0.0f;
     bool reloading = false;
     float reloadProgress = 0.0f;
 };

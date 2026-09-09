@@ -1312,9 +1312,37 @@ void PredationGame::KillPlayer(uint8_t player, const glm::vec3& direction)
 // is only ever one world, which is what keeps hosting, joining and leaving from needing their own
 // loading paths.
 
+void PredationGame::ResetWorld()
+{
+    // Everything that can be used up is put back. Starting a game has to start a game: doors shut,
+    // lockers empty, crates full, and every item back on the bench, including the ones somebody
+    // walked off with last time.
+    m_world.Clear(m_scene, m_app->GetPhysics(), m_interactions);
+    m_world.Build(m_scene, m_app->GetMeshes(), m_app->GetPhysics(), m_interactions, m_items,
+                  &m_weaponData);
+
+    m_inventory.Clear();
+    m_weapon = WeaponState{};
+    m_heldItem = kInvalidItem;
+    m_body.ClearHeldItem(m_scene);
+    m_hidingSpot = -1;
+    m_tracers.clear();
+    m_remoteRespawnTimers.clear();
+    m_respawnTimer = 0.0f;
+    m_spectating = -1;
+    m_deathImpulse = glm::vec3(0.0f);
+    m_localCollapsed = false;
+    m_body.Revive();
+    m_player.Respawn(m_spawnPoint);
+    PRED_LOG_INFO(Gameplay, "World reset");
+}
+
 void PredationGame::EnterWorld()
 {
     PRED_LOG_INFO(Gameplay, "Entering the world");
+    // A new game starts from the beginning. The world has been simulating behind the menu, and
+    // whatever was done to it last time is still done.
+    ResetWorld();
     m_screen = Screen::Playing;
     m_titleStatus.clear();
     SetCameraMode(CameraMode::FirstPerson);
@@ -1360,10 +1388,27 @@ void PredationGame::DrawTitleScreen()
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
     const ImVec2 size = viewport->WorkSize;
 
-    // A dark wash over the world so the type reads whatever the camera happens to be pointing at.
-    ImGui::GetBackgroundDrawList()->AddRectFilled(viewport->WorkPos,
-                                                 {viewport->WorkPos.x + size.x, viewport->WorkPos.y + size.y},
-                                                 IM_COL32(6, 8, 10, 165));
+    // The menu stands on its own rather than in front of the developer test map, which is a grid of
+    // grey boxes and says nothing about the game. A slow vertical fall of light over black: enough
+    // to not be a flat void, quiet enough to read type against.
+    ImDrawList* backdrop = ImGui::GetBackgroundDrawList();
+    const ImVec2 topLeft = viewport->WorkPos;
+    const ImVec2 bottomRight{topLeft.x + size.x, topLeft.y + size.y};
+    backdrop->AddRectFilledMultiColor(topLeft, bottomRight, IM_COL32(10, 12, 15, 255),
+                                      IM_COL32(10, 12, 15, 255), IM_COL32(22, 26, 30, 255),
+                                      IM_COL32(16, 18, 22, 255));
+
+    // A few slow motes drifting down it, so the screen is alive without being a scene.
+    for (int i = 0; i < 40; ++i)
+    {
+        const float seed = static_cast<float>(i) * 12.9898f;
+        const float column = std::fmod(std::sin(seed) * 43758.5f, 1.0f);
+        const float speed = 6.0f + std::fmod(std::abs(std::cos(seed)) * 91.0f, 14.0f);
+        const float y = std::fmod(m_titleClock * speed + static_cast<float>(i) * 37.0f, size.y);
+        const float alpha = 18.0f + 26.0f * std::abs(std::sin(seed * 2.0f));
+        backdrop->AddCircleFilled({topLeft.x + std::abs(column) * size.x, topLeft.y + y}, 1.4f,
+                                  IM_COL32(150, 170, 190, static_cast<int>(alpha)), 6);
+    }
 
     ImGui::SetNextWindowPos({viewport->WorkPos.x + size.x * 0.5f, viewport->WorkPos.y + size.y * 0.5f},
                             ImGuiCond_Always, {0.5f, 0.5f});
@@ -1543,7 +1588,7 @@ bool PredationGame::StepSession(const PlayerInput& input, float dt)
 
     if (m_sessionMode == SessionMode::Host)
     {
-        m_host.SetPlayerHeld(0, heldId, m_weapon.aim > 0.5f, m_weapon.IsReloading(),
+        m_host.SetPlayerHeld(0, heldId, m_weapon.aim, m_weapon.IsReloading(),
                              m_weapon.IsReloading() ? 1.0f - m_weapon.reloadRemaining : 0.0f);
 
         // The host is a player too: it steps itself first, then runs everyone else from what they
@@ -1557,6 +1602,11 @@ bool PredationGame::StepSession(const PlayerInput& input, float dt)
 
     if (m_sessionMode == SessionMode::Client)
     {
+        // Told to the host with the next input, or nobody else ever sees this player holding
+        // anything: the host cannot see inside another machine.
+        m_client.SetHeld(heldId, m_weapon.aim, m_weapon.IsReloading(),
+                         m_weapon.IsReloading() ? 1.0f - m_weapon.reloadRemaining : 0.0f);
+
         // The client's step happens inside prediction, so the same call is used for the first guess
         // and for every replay of it. Doing it here as well would run each input twice.
         m_client.Tick(input, m_player, dt);
@@ -1674,7 +1724,7 @@ void PredationGame::SyncRemoteAvatars(float frameDeltaSeconds)
         }
 
         PlayerBody::WeaponPose weaponPose;
-        weaponPose.aim = remote.aiming ? 1.0f : 0.0f;
+        weaponPose.aim = remote.aim;
         weaponPose.reloading = remote.reloading;
         weaponPose.reload = remote.reloadProgress;
         avatar->body.SetWeaponPose(weaponPose);
@@ -2883,6 +2933,13 @@ void PredationGame::OnRender()
     // one frame only, because items do not change; the reserved view ids sort ahead of the UI that
     // samples the result.
     m_itemIcons.Render(app.GetSceneRenderer(), app.GetMeshes());
+
+    // The menu draws its own backdrop, so the world is not drawn behind it. Nothing else changes:
+    // it is still built and still simulating, so starting a game is still instant.
+    if (m_screen == Screen::Title)
+    {
+        return;
+    }
 
     const glm::vec3 viewPosition = m_cameraMode == CameraMode::Fly ? m_camera.position : m_player.View().eyePosition;
     app.GetSceneRenderer().Draw(Renderer::kViewMain, m_scene, app.GetMeshes(), viewPosition);

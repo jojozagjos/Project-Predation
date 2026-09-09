@@ -246,6 +246,16 @@ void WriteInput(BitWriter& writer, const InputMessage& message)
         }
         WritePlayerInput(writer, message.commands[i].input);
     }
+
+    // What is in their hands. Once per packet rather than once per tick of input in it, because it
+    // does not change three times in three ticks.
+    writer.WriteBits(message.heldItem, 6);
+    writer.WriteQuantised(message.aim, 0.0f, 1.0f, 5);
+    writer.WriteBool(message.reloading);
+    if (message.reloading)
+    {
+        writer.WriteQuantised(message.reloadProgress, 0.0f, 1.0f, 6);
+    }
 }
 
 bool ReadInput(BitReader& reader, InputMessage& out)
@@ -267,6 +277,11 @@ bool ReadInput(BitReader& reader, InputMessage& out)
         out.commands[i].sequence = small ? base + reader.ReadBits(kSequenceDeltaBits) : reader.ReadUInt();
         out.commands[i].input = ReadPlayerInput(reader);
     }
+
+    out.heldItem = static_cast<uint8_t>(reader.ReadBits(6));
+    out.aim = reader.ReadQuantised(0.0f, 1.0f, 5);
+    out.reloading = reader.ReadBool();
+    out.reloadProgress = out.reloading ? reader.ReadQuantised(0.0f, 1.0f, 6) : 0.0f;
     return !reader.Overran();
 }
 
@@ -291,7 +306,7 @@ void WriteSnapshot(BitWriter& writer, const SnapshotMessage& message)
         writer.WriteQuantised(player.health, 0.0f, 100.0f, kHealthBits);
         writer.WriteBool(player.grounded);
         writer.WriteBits(player.heldItem, 6);
-        writer.WriteBool(player.aiming);
+        writer.WriteQuantised(player.aim, 0.0f, 1.0f, 5);
         writer.WriteBool(player.reloading);
         // Only worth a byte, and only when there is a reload to be part way through.
         if (player.reloading)
@@ -326,7 +341,7 @@ bool ReadSnapshot(BitReader& reader, SnapshotMessage& out)
         player.health = reader.ReadQuantised(0.0f, 100.0f, kHealthBits);
         player.grounded = reader.ReadBool();
         player.heldItem = static_cast<uint8_t>(reader.ReadBits(6));
-        player.aiming = reader.ReadBool();
+        player.aim = reader.ReadQuantised(0.0f, 1.0f, 5);
         player.reloading = reader.ReadBool();
         player.reloadProgress = player.reloading ? reader.ReadQuantised(0.0f, 1.0f, 6) : 0.0f;
 

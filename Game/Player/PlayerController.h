@@ -101,7 +101,7 @@ private:
     // ledge is the wrong height, its top is too narrow to stand on, or there is no headroom above
     // it. All of it is raycasts against static geometry, so a client replaying an input finds the
     // same ledge the host did.
-    bool FindMantle(const PlayerInput& input, glm::vec3& outTarget) const;
+    bool FindMantle(const PlayerInput& input, glm::vec3& outTarget, glm::vec3& outEdge) const;
     void StepMantle(float dt);
     glm::vec3 ComputeWishDirection(const PlayerInput& input) const;
 

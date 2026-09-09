@@ -104,6 +104,8 @@ private:
     void ReturnToTitle();
     // Slowly circles the camera around the spawn area behind the menu.
     void UpdateTitleCamera(float frameDeltaSeconds);
+    // Puts the level back to how it started, so a new game is a new game.
+    void ResetWorld();
 
     // --- World replication ----------------------------------------------------------------------
     //

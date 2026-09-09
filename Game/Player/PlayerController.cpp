@@ -157,7 +157,7 @@ void PlayerController::UpdateStance(const PlayerInput& input, float /*dt*/)
     }
 }
 
-bool PlayerController::FindMantle(const PlayerInput& input, glm::vec3& outTarget) const
+bool PlayerController::FindMantle(const PlayerInput& input, glm::vec3& outTarget, glm::vec3& outEdge) const
 {
     if (!m_config.mantleEnabled || m_physics == nullptr || !m_state.alive ||
         m_state.stance == PlayerStance::Prone)
@@ -225,6 +225,7 @@ bool PlayerController::FindMantle(const PlayerInput& input, glm::vec3& outTarget
     }
 
     outTarget = glm::vec3(landing.x, top.position.y + 0.02f, landing.z);
+    outEdge = glm::vec3(wall.position.x, top.position.y, wall.position.z);
     return true;
 }
 
@@ -431,12 +432,14 @@ void PlayerController::Step(const PlayerInput& input, float dt)
     if (m_state.jumpBufferTimer > 0.0f && m_state.alive)
     {
         glm::vec3 target{0.0f};
-        if (FindMantle(effective, target))
+        glm::vec3 edge{0.0f};
+        if (FindMantle(effective, target, edge))
         {
             m_state.mantling = true;
             m_state.mantleTime = 0.0f;
             m_state.mantleFrom = m_state.position;
             m_state.mantleTo = target;
+            m_state.mantleEdge = edge;
             const float height = std::max(target.y - m_state.position.y, 0.0f);
             const float reachedFraction =
                 std::clamp(height / std::max(m_config.mantleMaxHeight, 0.01f), 0.0f, 1.0f);

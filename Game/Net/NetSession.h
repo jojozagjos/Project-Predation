@@ -46,7 +46,7 @@ struct RemotePlayerView
 
     // What they are carrying and what their hands are doing with it.
     uint8_t heldItem = 0;
-    bool aiming = false;
+    float aim = 0.0f;
     bool reloading = false;
     float reloadProgress = 0.0f;
 };
@@ -146,7 +146,7 @@ public:
     void SendWorldState(const WorldStateMessage& state);
 
     // What a client is holding and doing with it, so everyone sees the right thing in their hands.
-    void SetPlayerHeld(uint8_t playerId, uint8_t heldItem, bool aiming, bool reloading, float progress);
+    void SetPlayerHeld(uint8_t playerId, uint8_t heldItem, float aim, bool reloading, float progress);
     // Damage a client. The host owns their body, so this is where their health actually changes:
     // the published view is rebuilt from the controller every tick, so writing to that changed
     // nothing and health came back the moment it was read again.
@@ -201,7 +201,7 @@ private:
     float m_snapshotTimer = 0.0f;
     uint32_t m_starvedTicks = 0;
     uint8_t m_localHeldItem = 0;
-    bool m_localAiming = false;
+    float m_localAim = 0.0f;
     bool m_localReloading = false;
     float m_localReloadProgress = 0.0f;
     bool m_running = false;
@@ -242,6 +242,10 @@ public:
 
     // Once per fixed tick. Steps `local` from `input`, remembers the guess, sends it, and applies
     // any correction the host has sent back.
+    // What this client has in its hands, sent up with the next input. The host cannot see inside
+    // another machine, so unless this is set nobody else ever sees you holding anything.
+    void SetHeld(uint8_t heldItem, float aim, bool reloading, float progress);
+
     void Tick(const PlayerInput& input, PlayerController& local, float dt);
 
     // Once per frame. Advances the interpolation clock and rebuilds the remote player views.
@@ -304,6 +308,10 @@ private:
     uint32_t m_sequence = 0;
     uint32_t m_lastAcknowledged = 0;
     uint32_t m_corrections = 0;
+    uint8_t m_heldItem = 0;
+    float m_heldAim = 0.0f;
+    bool m_heldReloading = false;
+    float m_heldReloadProgress = 0.0f;
     uint32_t m_renderTick = 0;
     uint8_t m_playerId = 0;
     bool m_snapshotArrived = false;

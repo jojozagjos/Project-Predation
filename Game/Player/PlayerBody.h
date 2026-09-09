@@ -152,14 +152,19 @@ public:
         float proneTurnSpeed = 3.2f;
         // Turned further than this from the way the body is lying, a prone body shuffles round on
         // its front to catch up, at this rate. Rolling onto your back is gone; see ADR-018.
-        float pronePivotSpeed = 1.9f;
-        float pronePivotDegrees = 70.0f;
+        float pronePivotSpeed = 4.2f;
+        float pronePivotDegrees = 55.0f;
 
         // Climbing. The hands take the lip of the ledge while the body rises, then let go as it
         // comes over the top.
-        float mantleGripBack = 0.22f;    // how far back from the landing spot the edge is
+
         float mantleGripSpread = 0.13f;  // how far apart the hands go, as a fraction of height
         float mantleReleaseAt = 0.62f;   // how far through the climb the hands let go
+        // How long the hands take to come off the ledge after the climb ends. Cutting straight back
+        // to the normal arms moved them somewhere else in a single frame.
+        float mantleArmFadeSeconds = 0.28f;
+        // How far the torso folds forward over the ledge at the middle of the pull.
+        float mantleFoldDegrees = 34.0f;
 
         // In the air. Legs tuck on the way up and reach on the way down; the arms come out either
         // way. Without any of this the legs simply stretch straight down towards a floor that is
@@ -191,6 +196,10 @@ public:
         // much, and it is what makes looking down show you the front of your torso instead of the
         // tops of your shoulders.
         float eyeForwardOfHead = 0.070f;
+        // Added on top of that as the view pitches down, so looking at your boots shows you the
+        // length of your body. It can afford to be larger than the standing offset because nobody
+        // turns on the spot while staring at the floor.
+        float eyeForwardLookingDown = 0.115f;
         float eyeAboveHead = 0.085f;
         // Almost nothing. The head bone is anchored under the eye and the neck is directly below
         // it, so whatever this is, the drawn skull sits that far behind the neck. At forty
@@ -318,7 +327,7 @@ private:
     // Poses the right arm to carry a held item and puts the item in the hand.
     void UpdateHeldItem(const PlayerView& view, float dt);
     // Both hands on the lip of the ledge for the pull, then released as the body comes over.
-    void UpdateMantleArms(const PlayerState& state, float dt);
+    void UpdateMantleArms(const PlayerState& state, float weight);
     void UpdateLegs(const PlayerState& state, const PlayerView& view, const PlayerConfig& playerConfig,
                     PhysicsWorld& physics, float dt);
     void PushToScene(Scene& scene);
@@ -369,6 +378,8 @@ private:
     // Signed distance crawled along the body. Negative when backing up, which runs the reach and
     // pull the other way round.
     float m_crawlDistance = 0.0f;
+    // How much of the arms the climb owns. Fades out after it ends so the release is not a cut.
+    float m_mantleFade = 0.0f;
     Ragdoll m_ragdoll;
     Entity m_heldItemEntity;
     MeshHandle m_heldItemMesh;
