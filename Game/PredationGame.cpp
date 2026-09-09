@@ -35,6 +35,10 @@ CVar<bool> cv_crouchToggle{"input.crouch_toggle", true, "Crouch and prone toggle
 CVar<bool> cv_sprintToggle{"input.sprint_toggle", false, "Sprint toggles instead of being held",
                            CVarFlags::Archive};
 CVar<float> cv_flySpeed{"cam.fly_speed", 6.0f, "Fly camera speed in meters per second"};
+// Remembered between runs, so rejoining the same friend does not mean typing the address again.
+CVar<std::string> cv_lastAddress{"net.last_address", "127.0.0.1", "Address the join box opens with",
+                                 CVarFlags::Archive};
+CVar<int> cv_lastPort{"net.last_port", kDefaultPort, "Port the join box opens with", CVarFlags::Archive};
 CVar<bool> cv_showGrid{"debug.show_grid", false, "Draw the reference grid"};
 CVar<bool> cv_wireframe{"r.wireframe", false, "Draw scene meshes as wireframe"};
 CVar<float> cv_fogStart{"r.fog_start", 12.0f, "Fog start distance in meters"};
@@ -96,6 +100,10 @@ bool PredationGame::OnInit(Application& app)
 
     RegisterCommands();
     RegisterNetCommands();
+    // The game opens at the menu, with the world already built behind it.
+    std::snprintf(m_joinAddress, sizeof(m_joinAddress), "%s", cv_lastAddress.Get().c_str());
+    m_joinPort = std::clamp(cv_lastPort.Get(), 1024, 65535);
+    ReturnToTitle();
     UpdateMouseCapture();
 
     PRED_LOG_INFO(Gameplay,
@@ -546,6 +554,197 @@ void PredationGame::RegisterCommands()
                             });
 }
 
+// --- The front end ---------------------------------------------------------------------------
+//
+// The world is built and simulating behind the menu rather than being loaded when you press a
+// button, so the menu has a moving backdrop and starting a game is instant. That also means there
+// is only ever one world, which is what keeps hosting, joining and leaving from needing their own
+// loading paths.
+
+void PredationGame::EnterWorld()
+{
+    PRED_LOG_INFO(Gameplay, "Entering the world");
+    m_screen = Screen::Playing;
+    m_titleStatus.clear();
+    SetCameraMode(CameraMode::FirstPerson);
+    m_wantMouseCaptured = true;
+}
+
+void PredationGame::ReturnToTitle()
+{
+    PRED_LOG_INFO(Gameplay, "Back to the title screen");
+    StopSession();
+    m_screen = Screen::Title;
+    m_titleStatus.clear();
+    m_wantMouseCaptured = false;
+    m_inventoryOpen = false;
+    if (m_hidingSpot >= 0)
+    {
+        LeaveHidingSpot();
+    }
+    SetCameraMode(CameraMode::Fly);
+}
+
+void PredationGame::UpdateTitleCamera(float frameDeltaSeconds)
+{
+    m_titleClock += frameDeltaSeconds;
+
+    // A slow arc around the spawn area, looking back at it. Slow enough that it reads as a held
+    // shot rather than as a camera being flown.
+    constexpr float kRadius = 9.0f;
+    constexpr float kHeight = 2.6f;
+    const float angle = m_titleClock * 0.06f;
+    const glm::vec3 centre = m_spawnPoint + glm::vec3(0.0f, 1.1f, -2.0f);
+
+    m_camera.position = centre + glm::vec3(std::sin(angle) * kRadius, kHeight, std::cos(angle) * kRadius);
+    const glm::vec3 toCentre = centre - m_camera.position;
+    // Yaw zero looks down -Z and increases turning right, which is what this atan2 encodes. Writing
+    // it the other way round aims the camera at the mirror image of where you meant.
+    m_camera.yaw = std::atan2(toCentre.x, -toCentre.z);
+    m_camera.pitch = std::asin(glm::clamp(glm::normalize(toCentre).y, -1.0f, 1.0f));
+}
+
+void PredationGame::DrawTitleScreen()
+{
+    const ImGuiViewport* viewport = ImGui::GetMainViewport();
+    const ImVec2 size = viewport->WorkSize;
+
+    // A dark wash over the world so the type reads whatever the camera happens to be pointing at.
+    ImGui::GetBackgroundDrawList()->AddRectFilled(viewport->WorkPos,
+                                                 {viewport->WorkPos.x + size.x, viewport->WorkPos.y + size.y},
+                                                 IM_COL32(6, 8, 10, 165));
+
+    ImGui::SetNextWindowPos({viewport->WorkPos.x + size.x * 0.5f, viewport->WorkPos.y + size.y * 0.5f},
+                            ImGuiCond_Always, {0.5f, 0.5f});
+    ImGui::SetNextWindowSize({420.0f, 0.0f}, ImGuiCond_Always);
+
+    constexpr ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
+                                       ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse |
+                                       ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_AlwaysAutoResize;
+    if (!ImGui::Begin("##title", nullptr, flags))
+    {
+        ImGui::End();
+        return;
+    }
+
+    ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(226, 232, 236, 255));
+    ImGui::SetWindowFontScale(2.4f);
+    ImGui::TextUnformatted("PROJECT PREDATION");
+    ImGui::SetWindowFontScale(1.0f);
+    ImGui::PopStyleColor();
+    ImGui::TextDisabled("ACRD  //  Anomalous Containment & Research Directorate");
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Spacing();
+
+    const ImVec2 wide{-1.0f, 34.0f};
+
+    if (m_sessionMode == SessionMode::Client && !m_client.Connected())
+    {
+        // Joining takes a moment and can fail, so it gets its own state rather than dropping the
+        // player into an empty world and leaving them to work out that nothing happened.
+        ImGui::TextUnformatted("Joining...");
+        if (m_client.Rejection() == JoinRejection::ServerFull)
+        {
+            ImGui::TextColored({0.90f, 0.55f, 0.35f, 1.0f}, "That game is full.");
+        }
+        else if (m_client.Rejection() == JoinRejection::VersionMismatch)
+        {
+            ImGui::TextColored({0.90f, 0.55f, 0.35f, 1.0f}, "That host is running a different version.");
+        }
+        if (ImGui::Button("Cancel", wide))
+        {
+            StopSession();
+        }
+        ImGui::End();
+        return;
+    }
+
+    if (ImGui::Button("Play on your own", wide))
+    {
+        StopSession();
+        EnterWorld();
+    }
+
+    ImGui::Spacing();
+    ImGui::TextDisabled("Host a game");
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted("Port");
+    ImGui::SameLine(86.0f);
+    ImGui::SetNextItemWidth(110.0f);
+    ImGui::InputInt("##hostport", &m_hostPort, 0, 0);
+    m_hostPort = std::clamp(m_hostPort, 1024, 65535);
+    ImGui::SameLine();
+    ImGui::TextDisabled("others join on your address");
+    if (ImGui::Button("Open a game", wide))
+    {
+        StopSession();
+        NetHost::Config config;
+        config.port = static_cast<uint16_t>(m_hostPort);
+        auto transport = CreateUdpTransport();
+        transport->SetConditions(m_simulatedConditions);
+        if (m_host.Start(std::move(transport), config, m_app->GetPhysics(), m_player.Config(), m_spawnPoint))
+        {
+            m_sessionMode = SessionMode::Host;
+            EnterWorld();
+        }
+        else
+        {
+            m_titleStatus = "Could not open port " + std::to_string(m_hostPort);
+        }
+    }
+
+    ImGui::Spacing();
+    ImGui::TextDisabled("Join a game");
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted("Address");
+    ImGui::SameLine(86.0f);
+    ImGui::SetNextItemWidth(160.0f);
+    ImGui::InputText("##joinaddress", m_joinAddress, sizeof(m_joinAddress));
+    ImGui::SameLine();
+    ImGui::TextUnformatted("Port");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(-1.0f);
+    ImGui::InputInt("##joinport", &m_joinPort, 0, 0);
+    m_joinPort = std::clamp(m_joinPort, 1024, 65535);
+    if (ImGui::Button("Join", wide))
+    {
+        // Kept for next time, in the archived config, so the box opens on the last game joined.
+        cv_lastAddress.Set(m_joinAddress);
+        cv_lastPort.Set(m_joinPort);
+        StopSession();
+        auto transport = CreateUdpTransport();
+        transport->SetConditions(m_simulatedConditions);
+        NetClient::Config config;
+        if (m_client.Connect(std::move(transport), m_joinAddress, static_cast<uint16_t>(m_joinPort),
+                             "operator", config))
+        {
+            m_sessionMode = SessionMode::Client;
+            m_titleStatus.clear();
+        }
+        else
+        {
+            m_titleStatus = std::string("Could not reach ") + m_joinAddress;
+        }
+    }
+
+    if (!m_titleStatus.empty())
+    {
+        ImGui::TextColored({0.90f, 0.55f, 0.35f, 1.0f}, "%s", m_titleStatus.c_str());
+    }
+
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Spacing();
+    if (ImGui::Button("Quit", wide))
+    {
+        m_app->RequestQuit();
+    }
+    ImGui::TextDisabled("Escape returns here from a game.");
+
+    ImGui::End();
+}
+
 // --- Multiplayer -----------------------------------------------------------------------------
 //
 // The host runs the real simulation for everyone. A client predicts its own movement from local
@@ -699,6 +898,9 @@ void PredationGame::RegisterNetCommands()
                 return;
             }
             m_sessionMode = SessionMode::Host;
+            // Hosting from the console at the menu should put you in the game, the same as the
+            // button does. Joining does not, because it is not a game until the host answers.
+            EnterWorld();
             m_app->GetConsole().Print("Hosting on port " + std::to_string(config.port) + " for up to " +
                                       std::to_string(kMaxPlayers) + " players");
         });
@@ -894,7 +1096,9 @@ void PredationGame::UpdateMouseCapture()
     // to be over a panel, testing it here would release capture, let the cursor reappear over the
     // same panel, and oscillate. Whether the UI is hovered only matters when deciding to re-capture
     // on a click, which is handled in OnEvent.
-    const bool shouldCapture = m_wantMouseCaptured && m_windowFocused && !m_app->IsConsoleOpen();
+    // The menu is pointed at, so the pointer is never taken while it is up.
+    const bool shouldCapture = m_wantMouseCaptured && m_windowFocused && !m_app->IsConsoleOpen() &&
+                               m_screen == Screen::Playing;
 
     if (shouldCapture != m_mouseCaptured)
     {
@@ -1312,6 +1516,14 @@ void PredationGame::OnFixedUpdate(double fixedDt)
     m_world.Update(m_scene, m_app->GetPhysics(), m_interactions, dt);
 
     PlayerInput input = BuildPlayerInput();
+    if (m_screen == Screen::Title)
+    {
+        // The world keeps simulating behind the menu so the backdrop is alive and starting a game
+        // is instant, but nothing the player does at the menu reaches the character.
+        input = PlayerInput{};
+        input.yaw = m_player.State().yaw;
+        input.pitch = m_player.State().pitch;
+    }
     const bool restrained = m_hidingSpot >= 0 || m_cameraMode == CameraMode::Fly;
 
     // The weapon runs before the movement, because aiming down the sights slows the player and the
@@ -1431,7 +1643,9 @@ void PredationGame::OnUpdate(double dt, double alpha)
         m_camera = m_editor.Camera();
     }
 
-    if (!app.IsConsoleOpen())
+    // Nothing bound to a game key does anything at the menu. The menu is pointed at and typed into,
+    // and a stray W while filling in an address must not make the character walk.
+    if (!app.IsConsoleOpen() && m_screen == Screen::Playing)
     {
         if (input.WasActionPressed("jump"))
         {
@@ -1495,9 +1709,18 @@ void PredationGame::OnUpdate(double dt, double alpha)
         }
         if (input.WasActionPressed("quit_capture"))
         {
-            // Escape toggles, so the same key both frees the pointer for the debug UI and puts it
-            // back. Only releasing it left no way back except clicking, which was easy to miss.
-            m_wantMouseCaptured = !m_wantMouseCaptured;
+            // Escape first frees the pointer for the debug UI, and pressing it again with the
+            // pointer already free leaves the game. Toggling capture alone left no way out to the
+            // menu; going straight to the menu would have taken the debug panels away from anyone
+            // who only wanted the cursor back.
+            if (m_wantMouseCaptured)
+            {
+                m_wantMouseCaptured = false;
+            }
+            else
+            {
+                ReturnToTitle();
+            }
         }
     }
     UpdateMouseCapture();
@@ -1513,10 +1736,18 @@ void PredationGame::OnUpdate(double dt, double alpha)
     switch (m_cameraMode)
     {
     case CameraMode::Fly:
-        m_camera.yaw = m_lookYaw;
-        m_camera.pitch = m_lookPitch;
-        m_camera.moveSpeed = cv_flySpeed.Get();
-        m_camera.Update(input, deltaSeconds, false); // look is applied above, this only moves
+        if (m_screen == Screen::Title)
+        {
+            // The menu drives the camera itself, and typing an address into it must not fly it.
+            UpdateTitleCamera(deltaSeconds);
+        }
+        else
+        {
+            m_camera.yaw = m_lookYaw;
+            m_camera.pitch = m_lookPitch;
+            m_camera.moveSpeed = cv_flySpeed.Get();
+            m_camera.Update(input, deltaSeconds, false); // look is applied above, this only moves
+        }
         view = m_camera.View();
         viewPosition = m_camera.position;
         break;
@@ -1608,6 +1839,12 @@ void PredationGame::OnUpdate(double dt, double alpha)
     {
         m_client.UpdateInterpolation(deltaSeconds);
         SyncRemoteAvatars(deltaSeconds);
+    }
+
+    // A join finishes when the host answers, which can be a moment after the button was pressed.
+    if (m_screen == Screen::Title && m_sessionMode == SessionMode::Client && m_client.Connected())
+    {
+        EnterWorld();
     }
 
     const float aspect = renderer.Height() > 0
@@ -2139,6 +2376,12 @@ void PredationGame::OnImGui()
     if (m_editor.IsOpen())
     {
         m_editor.DrawUi(m_scene, m_app->GetMeshes());
+        return;
+    }
+
+    if (m_screen == Screen::Title)
+    {
+        DrawTitleScreen();
         return;
     }
 

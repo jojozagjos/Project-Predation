@@ -135,3 +135,20 @@ perfect connection where nothing has time to disagree.
 
 Creature replication, weapon events over the wire, voice, spectating, late join, host migration, and NAT
 traversal. Weapons already produce host-authoritative `FireEvent`s (ADR-014); they are not yet sent.
+
+## Getting into a game
+
+The game opens at a title screen with the world already built behind it, so starting is instant and
+there is only ever one world for hosting, joining and leaving to share.
+
+- **Play on your own** goes straight in with no session.
+- **Open a game** binds the port and puts you in the world. Other players join on your address.
+- **Join** takes an address and a port, shows a joining state while the handshake runs, and enters
+  the world when the host answers. Being turned away for a full game or a version mismatch is shown
+  there rather than dropping you into an empty world.
+
+The address and port are remembered in the archived config (`net.last_address`, `net.last_port`), so
+rejoining the same game does not mean typing it again. Escape frees the cursor, and Escape again
+with the cursor already free returns to the title screen.
+
+The console commands still do the same things, and hosting from the console also enters the world.

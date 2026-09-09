@@ -89,6 +89,20 @@ private:
     void ReloadPlayerConfig();
     void DrawPlayerPanel();
 
+    // --- The front end -------------------------------------------------------------------------
+    // Where the player is: at the menu, or in the world. The world is built and simulating either
+    // way, so the menu has something to sit in front of and starting a game is instant.
+    enum class Screen : uint8_t
+    {
+        Title,
+        Playing
+    };
+    void DrawTitleScreen();
+    void EnterWorld();
+    void ReturnToTitle();
+    // Slowly circles the camera around the spawn area behind the menu.
+    void UpdateTitleCamera(float frameDeltaSeconds);
+
     // --- Multiplayer ---------------------------------------------------------------------------
     void RegisterNetCommands();
     void StopSession();
@@ -212,6 +226,15 @@ private:
         PlayerView view;
         bool built = false;
     };
+    Screen m_screen = Screen::Title;
+    float m_titleClock = 0.0f;
+    // Kept between visits to the menu so rejoining the same friend does not mean typing the address
+    // again. Sized for an address and a port; anything longer is not an address.
+    char m_joinAddress[64] = "127.0.0.1";
+    int m_joinPort = kDefaultPort;
+    int m_hostPort = kDefaultPort;
+    std::string m_titleStatus;
+
     SessionMode m_sessionMode = SessionMode::Offline;
     NetHost m_host;
     NetClient m_client;
