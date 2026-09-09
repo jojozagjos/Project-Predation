@@ -1211,10 +1211,41 @@ void PredationGame::TryInteract()
         EnterHidingSpot(focus.payload);
         break;
 
+    case InteractionKind::AmmoCrate:
+        TakeAmmunition(focus.payload);
+        break;
+
     case InteractionKind::Generic:
     default:
         break;
     }
+}
+
+void PredationGame::TakeAmmunition(int crateIndex)
+{
+    const WeaponDefinition* definition = EquippedWeapon();
+    if (definition == nullptr)
+    {
+        m_app->GetConsole().Print("Nothing to load");
+        return;
+    }
+    if (m_weapon.reserve >= definition->reserveOnPickup)
+    {
+        m_app->GetConsole().Print("Already carrying full spare magazines");
+        return;
+    }
+    if (!m_world.DrawFromAmmoCrate(crateIndex, m_interactions))
+    {
+        m_app->GetConsole().Print("The crate is empty");
+        return;
+    }
+
+    // Fills the spare rounds, not the magazine. What is in the weapon still has to be reloaded, so
+    // resupplying never doubles as a free reload in the middle of a fight.
+    const int taken = definition->reserveOnPickup - m_weapon.reserve;
+    m_weapon.reserve = definition->reserveOnPickup;
+    m_app->GetConsole().Print("Took " + std::to_string(taken) + " rounds for the " + definition->name);
+    PRED_LOG_INFO(Gameplay, "Resupplied {} rounds from crate {}", taken, crateIndex);
 }
 
 void PredationGame::DropSelected()

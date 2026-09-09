@@ -52,6 +52,19 @@ public:
         bool alive = true;
     };
 
+    // A place to refill magazines. The developer map leaves it unlimited so weapons can be
+    // exercised without walking back and forth; a real map will give each one a fixed number of
+    // refills, because ammunition you can always get more of is not a decision.
+    struct AmmoCrate
+    {
+        Entity entity;
+        Entity lidEntity;
+        glm::vec3 lidRest{0.0f}; // where the lid sits closed
+        int refillsLeft = -1;    // -1 is unlimited
+        float lidAngle = 0.0f;
+        float lidTarget = 0.0f;
+    };
+
     struct HidingSpot
     {
         Entity entity;
@@ -78,6 +91,10 @@ public:
     Door* GetDoor(int index);
     Pickup* GetPickup(int index);
     HidingSpot* GetHidingSpot(int index);
+    AmmoCrate* GetAmmoCrate(int index);
+    // Takes one refill. False when the crate has nothing left, so the caller can say so rather than
+    // silently doing nothing.
+    bool DrawFromAmmoCrate(int index, InteractionSystem& interactions);
 
     // Removes a pickup from the world, for when it goes into a bag.
     bool ConsumePickup(int index, Scene& scene, PhysicsWorld& physics, InteractionSystem& interactions);
@@ -90,6 +107,7 @@ public:
     const std::vector<Door>& Doors() const { return m_doors; }
     const std::vector<Pickup>& Pickups() const { return m_pickups; }
     const std::vector<HidingSpot>& HidingSpots() const { return m_hidingSpots; }
+    const std::vector<AmmoCrate>& AmmoCrates() const { return m_ammoCrates; }
 
 private:
     Transform DoorPanelTransform(const Door& door) const;
@@ -102,6 +120,7 @@ private:
     std::vector<Door> m_doors;
     std::vector<Pickup> m_pickups;
     std::vector<HidingSpot> m_hidingSpots;
+    std::vector<AmmoCrate> m_ammoCrates;
     // Held only so pickups can be built with the real weapon models. Appearance, never behaviour.
     const WeaponDatabase* m_weapons = nullptr;
     // Meshes reused by pickups spawned at runtime.

@@ -15,7 +15,8 @@ enum class InteractionKind : uint8_t
     Generic,
     Door,
     Pickup,
-    HidingSpot
+    HidingSpot,
+    AmmoCrate
 };
 
 const char* InteractionKindName(InteractionKind kind);

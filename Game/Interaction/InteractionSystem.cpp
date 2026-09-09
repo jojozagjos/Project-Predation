@@ -23,6 +23,8 @@ const char* InteractionKindName(InteractionKind kind)
         return "pickup";
     case InteractionKind::HidingSpot:
         return "hiding spot";
+    case InteractionKind::AmmoCrate:
+        return "ammo crate";
     case InteractionKind::Generic:
     default:
         return "generic";

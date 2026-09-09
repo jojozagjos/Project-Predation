@@ -70,6 +70,8 @@ private:
     glm::vec3 MuzzlePosition() const;
     glm::vec3 AimDirection() const;
     void DropSelected();
+    // Refills the spare rounds for the equipped weapon from a crate in the world.
+    void TakeAmmunition(int crateIndex);
     void EnterHidingSpot(int index);
     void LeaveHidingSpot();
     void DrawHud();

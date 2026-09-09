@@ -22,6 +22,9 @@ namespace
 
 const Material kDoorMaterial = Material::Diffuse({0.34f, 0.30f, 0.26f}, 0.80f);
 const Material kLockerMaterial = Material::Diffuse({0.26f, 0.29f, 0.32f}, 0.70f);
+// Olive, because an ammunition crate should be findable at a glance in a corridor full of grey.
+const Material kAmmoCrateMaterial = Material::Diffuse({0.28f, 0.31f, 0.20f}, 0.75f);
+const Material kAmmoLidMaterial = Material::Diffuse({0.34f, 0.37f, 0.24f}, 0.70f);
 
 Transform MakeTransform(const glm::vec3& position, float yaw)
 {
@@ -205,6 +208,54 @@ void WorldObjects::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physic
         interactions.Register(interactable);
     }
 
+    // --- Ammunition crates, at either end of the equipment bench.
+    //
+    // Two of them, so there is one within reach of wherever you happen to be shooting from. The lid
+    // tips open when you take from it, which is the only feedback there is that anything happened:
+    // a resupply with no visible result reads as a broken interaction.
+    {
+        constexpr glm::vec3 crateSize{0.72f, 0.44f, 0.46f};
+        constexpr float lidThickness = 0.05f;
+        const MeshHandle crateMesh = meshes.Upload(
+            Primitives::Box({crateSize.x, crateSize.y - lidThickness, crateSize.z}), "ammo_crate");
+        const MeshHandle lidMesh =
+            meshes.Upload(Primitives::Box({crateSize.x, lidThickness, crateSize.z}), "ammo_crate_lid");
+
+        // On the floor in front of the bench, not on it: the bench is already full of loose items,
+        // and a crate standing inside it is exactly what the level's own overlap check exists to
+        // catch.
+        const glm::vec3 cratePositions[] = {{kEquipmentBayX - 1.5f, 0.0f, kBayZ + 0.3f},
+                                            {kEquipmentBayX + 1.5f, 0.0f, kBayZ + 0.3f}};
+
+        for (const glm::vec3& position : cratePositions)
+        {
+            AmmoCrate crate;
+            const float bodyHeight = crateSize.y - lidThickness;
+            const glm::vec3 bodyCentre = position + glm::vec3(0.0f, bodyHeight * 0.5f, 0.0f);
+            crate.entity = scene.CreateMeshEntity("ammo_crate", MakeTransform(bodyCentre, 0.0f),
+                                                  crateMesh, kAmmoCrateMaterial);
+            crate.lidRest = position + glm::vec3(0.0f, bodyHeight + lidThickness * 0.5f, 0.0f);
+            crate.lidEntity = scene.CreateMeshEntity(
+                "ammo_crate_lid", MakeTransform(crate.lidRest, 0.0f), lidMesh, kAmmoLidMaterial);
+            physics.CreateBox({crateSize.x * 0.5f, crateSize.y * 0.5f, crateSize.z * 0.5f},
+                              MakeTransform(position + glm::vec3(0.0f, crateSize.y * 0.5f, 0.0f), 0.0f),
+                              BodyMotion::Static);
+
+            const auto index = static_cast<int>(m_ammoCrates.size());
+            m_ammoCrates.push_back(crate);
+
+            Interactable interactable;
+            interactable.entity = crate.entity;
+            interactable.kind = InteractionKind::AmmoCrate;
+            interactable.verb = "Take ammunition from";
+            interactable.name = "Ammunition Crate";
+            interactable.payload = index;
+            interactable.range = 2.2f;
+            interactable.focusOffset = {0.0f, crateSize.y * 0.4f, 0.0f};
+            interactions.Register(interactable);
+        }
+    }
+
     // --- Loose items, laid out along the equipment bench in one row.
     //
     // Every item the game knows about appears here, weapons included, in the order they are defined.
@@ -359,6 +410,32 @@ void WorldObjects::Update(Scene& scene, PhysicsWorld& physics, InteractionSystem
         physics.MoveKinematic(door.body, transform, dt);
     }
 
+    // Crate lids: they tip open when something is taken and fall shut again on their own. There is
+    // no collider on the lid, because it exists purely so that taking from a crate is visible.
+    for (AmmoCrate& crate : m_ammoCrates)
+    {
+        constexpr float kOpenSpeed = 7.0f;
+        constexpr float kCloseSpeed = 2.4f;
+        const bool opening = crate.lidTarget > crate.lidAngle;
+        const float step = (opening ? kOpenSpeed : kCloseSpeed) * dt;
+        crate.lidAngle += std::clamp(crate.lidTarget - crate.lidAngle, -step, step);
+        if (opening && crate.lidTarget - crate.lidAngle < 1e-3f)
+        {
+            crate.lidTarget = 0.0f;
+        }
+
+        if (Transform* transform = scene.GetTransform(crate.lidEntity))
+        {
+            // Hinged along the back edge, so it swings up and back rather than turning about its
+            // own middle and sinking half of itself into the crate.
+            constexpr float kHalfDepth = 0.23f;
+            const float lift = std::sin(crate.lidAngle) * kHalfDepth;
+            const float pull = (1.0f - std::cos(crate.lidAngle)) * kHalfDepth;
+            transform->rotation = glm::angleAxis(-crate.lidAngle, glm::vec3(1.0f, 0.0f, 0.0f));
+            transform->position = crate.lidRest + glm::vec3(0.0f, lift, pull);
+        }
+    }
+
     // Dropped items are dynamic bodies, so their meshes have to follow the simulation. Without this
     // a dropped item's collider tumbled away while the thing you could see stayed hanging in the
     // air where you let go of it.
@@ -441,6 +518,45 @@ WorldObjects::Pickup* WorldObjects::GetPickup(int index)
     return pickup->alive ? pickup : nullptr;
 }
 
+WorldObjects::AmmoCrate* WorldObjects::GetAmmoCrate(int index)
+{
+    if (index < 0 || index >= static_cast<int>(m_ammoCrates.size()))
+    {
+        return nullptr;
+    }
+    return &m_ammoCrates[static_cast<size_t>(index)];
+}
+
+bool WorldObjects::DrawFromAmmoCrate(int index, InteractionSystem& interactions)
+{
+    AmmoCrate* crate = GetAmmoCrate(index);
+    if (crate == nullptr || crate->refillsLeft == 0)
+    {
+        return false;
+    }
+    if (crate->refillsLeft > 0)
+    {
+        --crate->refillsLeft;
+    }
+
+    // The lid tips open and falls shut again on its own, so taking from it looks like taking from it.
+    crate->lidTarget = glm::radians(62.0f);
+
+    if (Interactable* interactable = interactions.Find(crate->entity))
+    {
+        if (crate->refillsLeft == 0)
+        {
+            interactable->name = "Ammunition Crate (empty)";
+            interactable->enabled = false;
+        }
+        else if (crate->refillsLeft > 0)
+        {
+            interactable->name = "Ammunition Crate x" + std::to_string(crate->refillsLeft);
+        }
+    }
+    return true;
+}
+
 WorldObjects::HidingSpot* WorldObjects::GetHidingSpot(int index)
 {
     if (index < 0 || index >= static_cast<int>(m_hidingSpots.size()))
@@ -472,9 +588,16 @@ void WorldObjects::Clear(Scene& scene, PhysicsWorld& physics, InteractionSystem&
         interactions.Unregister(spot.entity);
         scene.Destroy(spot.entity);
     }
+    for (AmmoCrate& crate : m_ammoCrates)
+    {
+        interactions.Unregister(crate.entity);
+        scene.Destroy(crate.lidEntity);
+        scene.Destroy(crate.entity);
+    }
     m_doors.clear();
     m_pickups.clear();
     m_hidingSpots.clear();
+    m_ammoCrates.clear();
     m_itemMeshes.clear();
 }
 
