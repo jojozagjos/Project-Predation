@@ -95,6 +95,59 @@ void BitWriter::WriteVec3(const glm::vec3& value)
     WriteFloat(value.z);
 }
 
+namespace
+{
+// A unit quaternion's largest component is at least 1/sqrt(2), so the other three all fit in
+// [-1/sqrt(2), 1/sqrt(2)] and the largest can be rebuilt from them. Dropping the biggest one keeps
+// the reconstruction best conditioned.
+constexpr float kQuatRange = 0.7071068f;
+constexpr int kQuatBits = 9;
+} // namespace
+
+void BitWriter::WriteQuaternion(const glm::quat& value)
+{
+    const glm::quat unit = glm::normalize(value);
+    const float components[4] = {unit.x, unit.y, unit.z, unit.w};
+
+    int largest = 0;
+    for (int i = 1; i < 4; ++i)
+    {
+        if (std::abs(components[i]) > std::abs(components[largest]))
+        {
+            largest = i;
+        }
+    }
+
+    // q and -q are the same rotation, so the dropped component is made positive and its sign never
+    // has to be sent.
+    const float sign = components[largest] < 0.0f ? -1.0f : 1.0f;
+    WriteBits(static_cast<uint32_t>(largest), 2);
+    for (int i = 0; i < 4; ++i)
+    {
+        if (i != largest)
+        {
+            WriteQuantised(components[i] * sign, -kQuatRange, kQuatRange, kQuatBits);
+        }
+    }
+}
+
+glm::quat BitReader::ReadQuaternion()
+{
+    const uint32_t largest = ReadBits(2);
+    float components[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+    float sumOfSquares = 0.0f;
+    for (int i = 0; i < 4; ++i)
+    {
+        if (static_cast<uint32_t>(i) != largest)
+        {
+            components[i] = ReadQuantised(-kQuatRange, kQuatRange, kQuatBits);
+            sumOfSquares += components[i] * components[i];
+        }
+    }
+    components[largest] = std::sqrt(std::max(1.0f - sumOfSquares, 0.0f));
+    return glm::normalize(glm::quat(components[3], components[0], components[1], components[2]));
+}
+
 const std::vector<uint8_t>& BitWriter::Finish()
 {
     m_finished = true;

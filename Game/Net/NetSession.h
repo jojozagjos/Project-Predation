@@ -8,6 +8,7 @@
 #include <glm/vec3.hpp>
 
 #include <memory>
+#include <utility>
 #include <string>
 #include <vector>
 
@@ -42,6 +43,12 @@ struct RemotePlayerView
     float health = 100.0f;
     bool grounded = true;
     bool alive = true;
+
+    // What they are carrying and what their hands are doing with it.
+    uint8_t heldItem = 0;
+    bool aiming = false;
+    bool reloading = false;
+    float reloadProgress = 0.0f;
 };
 
 // --- The host ----------------------------------------------------------------------------------
@@ -76,6 +83,37 @@ public:
     // Once per fixed tick, after the local player has been stepped. The host is also a player.
     void Tick(uint32_t tick, const PlayerState& localState, float dt);
 
+    // --- The world -------------------------------------------------------------------------------
+    //
+    // The host owns every door, locker, crate and loose object. A client asks; it never acts. These
+    // hand the requests to the game, which is what knows whether a door is within reach, and carry
+    // the results back out to everybody.
+
+    struct InteractRequest
+    {
+        uint8_t player = 0;
+        uint8_t kind = 0;
+        uint8_t index = 0;
+    };
+
+    struct ShotRequest
+    {
+        uint8_t player = 0;
+        ShotMessage shot;
+    };
+
+    std::vector<InteractRequest> TakeInteractRequests() { return std::exchange(m_interactRequests, {}); }
+    std::vector<ShotRequest> TakeShotRequests() { return std::exchange(m_shotRequests, {}); }
+    // Players who have just been let in. The game sends them the state of the world.
+    std::vector<uint8_t> TakeJoined() { return std::exchange(m_joined, {}); }
+
+    void Broadcast(const WorldEventMessage& event);
+    void SendTo(uint8_t playerId, const WorldEventMessage& event);
+    void SendWorldState(const WorldStateMessage& state);
+
+    // What a client is holding and doing with it, so everyone sees the right thing in their hands.
+    void SetPlayerHeld(uint8_t playerId, uint8_t heldItem, bool aiming, bool reloading, float progress);
+
     Transport* GetTransport() { return m_transport.get(); }
     const std::vector<RemotePlayerView>& Remotes() const { return m_views; }
     size_t ConnectedCount() const;
@@ -99,12 +137,19 @@ private:
     std::vector<std::unique_ptr<Client>> m_clients;
     std::vector<RemotePlayerView> m_views;
     std::vector<NetPacket> m_incoming;
+    std::vector<InteractRequest> m_interactRequests;
+    std::vector<ShotRequest> m_shotRequests;
+    std::vector<uint8_t> m_joined;
     Config m_config;
     PhysicsWorld* m_physics = nullptr;
     PlayerConfig m_playerConfig;
     glm::vec3 m_spawn{0.0f};
     float m_snapshotTimer = 0.0f;
     uint32_t m_starvedTicks = 0;
+    uint8_t m_localHeldItem = 0;
+    bool m_localAiming = false;
+    bool m_localReloading = false;
+    float m_localReloadProgress = 0.0f;
     bool m_running = false;
 };
 
@@ -153,6 +198,18 @@ public:
     // than a twitch.
     const glm::vec3& VisualOffset() const { return m_visualError; }
 
+    // --- The world -------------------------------------------------------------------------------
+    //
+    // Changes the host has made, for the game to apply to its own copy of the world, and the
+    // requests this client would like the host to consider.
+
+    std::vector<WorldEventMessage> TakeWorldEvents() { return std::exchange(m_worldEvents, {}); }
+    const WorldStateMessage& LatestWorldState() const { return m_worldState; }
+    bool HasWorldState() const { return m_hasWorldState; }
+
+    void SendInteract(uint8_t kind, uint8_t index);
+    void SendShot(const ShotMessage& shot);
+
     const std::vector<RemotePlayerView>& Remotes() const { return m_views; }
     const ReconciliationResult& LastReconciliation() const { return m_lastReconciliation; }
     // How many times the host has disagreed. A count that climbs every second means prediction is
@@ -177,6 +234,8 @@ private:
     std::vector<NetPacket> m_incoming;
     std::vector<SnapshotRecord> m_snapshots;
     std::vector<RemotePlayerView> m_views;
+    std::vector<WorldEventMessage> m_worldEvents;
+    WorldStateMessage m_worldState;
     PredictionBuffer m_history;
     Config m_config;
     ReconciliationResult m_lastReconciliation;
@@ -189,6 +248,7 @@ private:
     uint32_t m_corrections = 0;
     uint8_t m_playerId = 0;
     bool m_snapshotArrived = false;
+    bool m_hasWorldState = false;
     JoinRejection m_rejection = JoinRejection::None;
     bool m_welcomed = false;
 };

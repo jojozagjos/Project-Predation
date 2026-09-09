@@ -39,6 +39,9 @@ public:
 
     Interactable* Find(Entity entity);
     const Interactable* Find(Entity entity) const;
+    // Looks one up by what it is and which one it is, which is how a machine that did not register
+    // it refers to it: both ends build the same map, so the pair is a name both agree on.
+    const Interactable* FindByPayload(InteractionKind kind, int payload) const;
     void SetEnabled(Entity entity, bool enabled);
     void SetVerb(Entity entity, std::string verb);
 

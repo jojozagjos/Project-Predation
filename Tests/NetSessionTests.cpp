@@ -396,3 +396,124 @@ TEST_CASE("A disconnecting client is dropped by the host", "[net][session]")
     CHECK(link.host.ConnectedCount() == 0);
     CHECK(link.host.Remotes().empty());
 }
+
+TEST_CASE("World changes reach every client, and losses do not lose them", "[net][session]")
+{
+    // A door opening is an event, not a value that will be sent again. If it goes missing the door
+    // is shut on that player's screen for the rest of the game, so these go on the channel that
+    // resends. This runs on a link that drops a third of everything.
+    NetConditions awful;
+    awful.latencyMs = 40.0f;
+    awful.jitterMs = 30.0f;
+    awful.lossPercent = 33.0f;
+    Link link(41011, awful);
+
+    link.Run(40, PlayerInput{});
+    REQUIRE(link.client.Connected());
+
+    for (uint8_t i = 0; i < 6; ++i)
+    {
+        WorldEventMessage event;
+        event.kind = WorldEventKind::DoorMoved;
+        event.index = i;
+        event.flag = i % 2 == 0;
+        link.host.Broadcast(event);
+    }
+
+    std::vector<WorldEventMessage> received;
+    for (int i = 0; i < 400 && received.size() < 6; ++i)
+    {
+        link.Run(1, PlayerInput{});
+        for (const WorldEventMessage& event : link.client.TakeWorldEvents())
+        {
+            received.push_back(event);
+        }
+    }
+
+    REQUIRE(received.size() == 6);
+    for (uint8_t i = 0; i < 6; ++i)
+    {
+        INFO("event " << static_cast<int>(i));
+        CHECK(received[i].kind == WorldEventKind::DoorMoved);
+        CHECK(received[i].index == i); // in the order they happened
+        CHECK(received[i].flag == (i % 2 == 0));
+    }
+}
+
+TEST_CASE("A client asks the host to open things rather than opening them", "[net][session]")
+{
+    NetConditions laggy;
+    laggy.latencyMs = 50.0f;
+    Link link(41012, laggy);
+    link.Run(40, PlayerInput{});
+    REQUIRE(link.client.Connected());
+
+    link.client.SendInteract(1 /* door */, 3);
+    link.Run(30, PlayerInput{});
+
+    const std::vector<NetHost::InteractRequest> requests = link.host.TakeInteractRequests();
+    REQUIRE(requests.size() == 1);
+    CHECK(requests[0].player == link.client.PlayerId());
+    CHECK(requests[0].kind == 1);
+    CHECK(requests[0].index == 3);
+
+    // Reading them clears them, so one press is one request.
+    CHECK(link.host.TakeInteractRequests().empty());
+}
+
+TEST_CASE("A shot reaches the host with its aim intact", "[net][session]")
+{
+    NetConditions laggy;
+    laggy.latencyMs = 60.0f;
+    laggy.lossPercent = 20.0f;
+    Link link(41013, laggy);
+    link.Run(40, PlayerInput{});
+    REQUIRE(link.client.Connected());
+
+    ShotMessage shot;
+    shot.shotNumber = 7;
+    shot.origin = {1.0f, 1.6f, -2.0f};
+    shot.direction = glm::normalize(glm::vec3(0.1f, 0.0f, -1.0f));
+    link.client.SendShot(shot);
+
+    std::vector<NetHost::ShotRequest> requests;
+    for (int i = 0; i < 200 && requests.empty(); ++i)
+    {
+        link.Run(1, PlayerInput{});
+        requests = link.host.TakeShotRequests();
+    }
+
+    REQUIRE(requests.size() == 1);
+    CHECK(requests[0].player == link.client.PlayerId());
+    CHECK(requests[0].shot.shotNumber == 7);
+    CHECK(glm::distance(requests[0].shot.direction, shot.direction) < 0.01f);
+}
+
+TEST_CASE("Loose objects are replicated as state", "[net][session]")
+{
+    NetConditions laggy;
+    laggy.latencyMs = 30.0f;
+    laggy.lossPercent = 15.0f;
+    Link link(41014, laggy);
+    link.Run(40, PlayerInput{});
+    REQUIRE(link.client.Connected());
+
+    WorldStateMessage state;
+    state.count = 3;
+    for (uint8_t i = 0; i < 3; ++i)
+    {
+        state.bodies[i].id = i;
+        state.bodies[i].position = {static_cast<float>(i) * 2.0f, 0.5f, -1.0f};
+    }
+    link.host.SendWorldState(state);
+
+    for (int i = 0; i < 100 && !link.client.HasWorldState(); ++i)
+    {
+        link.Run(1, PlayerInput{});
+    }
+
+    REQUIRE(link.client.HasWorldState());
+    const WorldStateMessage& got = link.client.LatestWorldState();
+    REQUIRE(got.count == 3);
+    CHECK(got.bodies[2].position.x == Catch::Approx(4.0f).margin(0.002));
+}

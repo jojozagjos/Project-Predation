@@ -63,6 +63,18 @@ const Interactable* InteractionSystem::Find(Entity entity) const
     return it == m_interactables.end() ? nullptr : &it->second;
 }
 
+const Interactable* InteractionSystem::FindByPayload(InteractionKind kind, int payload) const
+{
+    for (const auto& entry : m_interactables)
+    {
+        if (entry.second.kind == kind && entry.second.payload == payload)
+        {
+            return &entry.second;
+        }
+    }
+    return nullptr;
+}
+
 void InteractionSystem::SetEnabled(Entity entity, bool enabled)
 {
     if (Interactable* interactable = Find(entity))

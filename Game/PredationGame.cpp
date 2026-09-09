@@ -43,6 +43,9 @@ CVar<float> cv_thirdDistance{"cam.third_distance", 3.2f, "How far the third-pers
 CVar<std::string> cv_lastAddress{"net.last_address", "127.0.0.1", "Address the join box opens with",
                                  CVarFlags::Archive};
 CVar<int> cv_lastPort{"net.last_port", kDefaultPort, "Port the join box opens with", CVarFlags::Archive};
+// On by default: a four-player extraction game where rounds pass through your team is a different
+// game, and a quieter one.
+CVar<bool> cv_friendlyFire{"game.friendly_fire", true, "Rounds hurt other players", CVarFlags::Archive};
 CVar<bool> cv_showGrid{"debug.show_grid", false, "Draw the reference grid"};
 CVar<bool> cv_wireframe{"r.wireframe", false, "Draw scene meshes as wireframe"};
 CVar<float> cv_fogStart{"r.fog_start", 12.0f, "Fog start distance in meters"};
@@ -558,6 +561,556 @@ void PredationGame::RegisterCommands()
                             });
 }
 
+// --- World replication -------------------------------------------------------------------------
+//
+// One rule decides every question here: the host owns the world. A client that opens a door has
+// asked to open it, and what it draws is what the host sends back. Offline the local player is the
+// host, so single player and hosting are the same code with nobody to send to.
+
+uint8_t PredationGame::LocalPlayerId() const
+{
+    return m_sessionMode == SessionMode::Client ? m_client.PlayerId() : 0;
+}
+
+glm::vec3 PredationGame::PlayerPosition(uint8_t player) const
+{
+    if (player == LocalPlayerId())
+    {
+        return m_player.State().position;
+    }
+    for (const RemotePlayerView& remote : RemotePlayers())
+    {
+        if (remote.id == player)
+        {
+            return remote.position;
+        }
+    }
+    return m_player.State().position;
+}
+
+bool PredationGame::PerformInteraction(InteractionKind kind, int index, uint8_t player)
+{
+    switch (kind)
+    {
+    case InteractionKind::Door:
+    {
+        if (!m_world.ToggleDoor(index, m_interactions))
+        {
+            return false;
+        }
+        if (m_sessionMode == SessionMode::Host)
+        {
+            const WorldObjects::Door* door = m_world.GetDoor(index);
+            WorldEventMessage event;
+            event.kind = WorldEventKind::DoorMoved;
+            event.index = static_cast<uint8_t>(index);
+            event.flag = door != nullptr && std::abs(door->target - door->closedYaw) > 1e-3f;
+            m_host.Broadcast(event);
+        }
+        return true;
+    }
+
+    case InteractionKind::Pickup:
+    {
+        WorldObjects::Pickup* pickup = m_world.GetPickup(index);
+        if (pickup == nullptr || !pickup->alive)
+        {
+            return false;
+        }
+        // Only the player who asked gets it in their bag. Everyone else just sees it disappear,
+        // which is all there is to see from outside.
+        const bool mine = player == LocalPlayerId();
+        const int wanted = pickup->count;
+        int stored = wanted;
+        if (mine)
+        {
+            stored = m_inventory.Add(m_items, pickup->item, pickup->count);
+            if (stored <= 0)
+            {
+                m_app->GetConsole().Print("Inventory full");
+                return false;
+            }
+        }
+
+        if (stored >= wanted)
+        {
+            m_world.ConsumePickup(index, m_scene, m_app->GetPhysics(), m_interactions);
+            if (m_sessionMode == SessionMode::Host)
+            {
+                WorldEventMessage event;
+                event.kind = WorldEventKind::PickupTaken;
+                event.index = static_cast<uint8_t>(index);
+                event.player = player;
+                m_host.Broadcast(event);
+            }
+        }
+        else
+        {
+            // Partial pickup: leave the remainder on the floor rather than silently eating it.
+            pickup->count -= stored;
+            if (Interactable* interactable = m_interactions.Find(pickup->entity))
+            {
+                const ItemDefinition* definition = m_items.Get(pickup->item);
+                interactable->name = definition != nullptr
+                                         ? definition->name + " x" + std::to_string(pickup->count)
+                                         : "Item";
+            }
+        }
+        return true;
+    }
+
+    case InteractionKind::HidingSpot:
+    {
+        WorldObjects::HidingSpot* spot = m_world.GetHidingSpot(index);
+        if (spot == nullptr || (spot->occupied && player != LocalPlayerId()))
+        {
+            return false;
+        }
+        if (player == LocalPlayerId())
+        {
+            EnterHidingSpot(index);
+        }
+        else
+        {
+            // Somebody else got in. Their body is drawn from their replicated position anyway, so
+            // all this machine has to do is swing the door and mark the locker taken.
+            spot->occupied = true;
+            m_world.SetDoorOpen(spot->doorIndex, false, m_interactions);
+        }
+        if (m_sessionMode == SessionMode::Host)
+        {
+            WorldEventMessage event;
+            event.kind = WorldEventKind::LockerUsed;
+            event.index = static_cast<uint8_t>(index);
+            event.player = player;
+            event.flag = true;
+            m_host.Broadcast(event);
+        }
+        return true;
+    }
+
+    case InteractionKind::AmmoCrate:
+    {
+        if (player == LocalPlayerId())
+        {
+            TakeAmmunition(index);
+        }
+        else if (!m_world.DrawFromAmmoCrate(index, m_interactions))
+        {
+            return false;
+        }
+        if (m_sessionMode == SessionMode::Host)
+        {
+            WorldEventMessage event;
+            event.kind = WorldEventKind::AmmoTaken;
+            event.index = static_cast<uint8_t>(index);
+            event.player = player;
+            m_host.Broadcast(event);
+        }
+        return true;
+    }
+
+    case InteractionKind::Generic:
+    default:
+        return false;
+    }
+}
+
+void PredationGame::ServeClientRequests()
+{
+    if (m_sessionMode != SessionMode::Host)
+    {
+        return;
+    }
+
+    for (const NetHost::InteractRequest& request : m_host.TakeInteractRequests())
+    {
+        if (request.kind >= static_cast<uint8_t>(InteractionKind::AmmoCrate) + 1)
+        {
+            continue;
+        }
+        const auto kind = static_cast<InteractionKind>(request.kind);
+
+        // A client says what it wants, never where it is. The host checks the distance itself
+        // against the position it simulated, so reach cannot be claimed.
+        const Interactable* target = m_interactions.FindByPayload(kind, request.index);
+        if (target == nullptr || !target->enabled)
+        {
+            continue;
+        }
+        const Transform* transform = m_scene.GetTransform(target->entity);
+        if (transform == nullptr)
+        {
+            continue;
+        }
+        const glm::vec3 focus = transform->position + target->focusOffset;
+        const glm::vec3 from = PlayerPosition(request.player) + glm::vec3(0.0f, 1.2f, 0.0f);
+        // A little slack over the prompt's own range, because the client asked at a position the
+        // host has since moved them on from.
+        if (glm::distance(focus, from) > target->range + 1.0f)
+        {
+            PRED_LOG_DEBUG(Network, "Player {} asked for something out of reach", request.player);
+            continue;
+        }
+        PerformInteraction(kind, request.index, request.player);
+    }
+
+    for (const NetHost::ShotRequest& request : m_host.TakeShotRequests())
+    {
+        // The client has already played the shot for itself. The host decides what it hit.
+        const WeaponDefinition* definition = EquippedWeapon();
+        FireEvent shot;
+        shot.origin = request.shot.origin;
+        shot.direction = glm::normalize(request.shot.direction);
+        shot.range = definition != nullptr ? definition->range : 60.0f;
+        shot.damage = definition != nullptr ? definition->damage : 20.0f;
+        shot.sequence = request.shot.shotNumber;
+
+        ShotResult result = ResolveShot(m_app->GetPhysics(), shot);
+        ResolvePlayerHits(shot, request.player, result);
+
+        WorldEventMessage event;
+        event.kind = WorldEventKind::ShotFired;
+        event.player = request.player;
+        event.position = shot.origin;
+        event.direction = result ? result.position : shot.origin + shot.direction * shot.range;
+        event.flag = result.hit;
+        m_host.Broadcast(event);
+
+        Tracer tracer;
+        tracer.from = event.position;
+        tracer.to = event.direction;
+        tracer.hit = event.flag;
+        m_tracers.push_back(tracer);
+    }
+
+    for (const uint8_t player : m_host.TakeJoined())
+    {
+        SendWorldToPlayer(player);
+    }
+}
+
+void PredationGame::SendWorldToPlayer(uint8_t player)
+{
+    // Somebody who has just walked in has to be told what has already happened, or every door that
+    // was opened before they arrived is shut on their screen for the rest of the game.
+    for (size_t i = 0; i < m_world.Doors().size(); ++i)
+    {
+        const WorldObjects::Door& door = m_world.Doors()[i];
+        if (!door.IsOpen())
+        {
+            continue;
+        }
+        WorldEventMessage event;
+        event.kind = WorldEventKind::DoorMoved;
+        event.index = static_cast<uint8_t>(i);
+        event.flag = true;
+        m_host.SendTo(player, event);
+    }
+
+    for (size_t i = 0; i < m_world.Pickups().size(); ++i)
+    {
+        if (m_world.Pickups()[i].alive)
+        {
+            continue;
+        }
+        WorldEventMessage event;
+        event.kind = WorldEventKind::PickupTaken;
+        event.index = static_cast<uint8_t>(i);
+        event.player = 0;
+        m_host.SendTo(player, event);
+    }
+
+    for (size_t i = 0; i < m_world.HidingSpots().size(); ++i)
+    {
+        if (!m_world.HidingSpots()[i].occupied)
+        {
+            continue;
+        }
+        WorldEventMessage event;
+        event.kind = WorldEventKind::LockerUsed;
+        event.index = static_cast<uint8_t>(i);
+        event.player = 0;
+        event.flag = true;
+        m_host.SendTo(player, event);
+    }
+}
+
+void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
+{
+    switch (event.kind)
+    {
+    case WorldEventKind::DoorMoved:
+        m_world.SetDoorOpen(event.index, event.flag, m_interactions);
+        break;
+
+    case WorldEventKind::PickupTaken:
+        // If it was this player who took it, it is already in the bag: the request was answered.
+        m_world.ConsumePickup(event.index, m_scene, m_app->GetPhysics(), m_interactions);
+        break;
+
+    case WorldEventKind::PickupSpawned:
+        m_world.SpawnPickup(m_scene, m_app->GetMeshes(), m_app->GetPhysics(), m_interactions, m_items,
+                            static_cast<ItemId>(event.item), static_cast<int>(event.other),
+                            event.position, event.direction);
+        break;
+
+    case WorldEventKind::LockerUsed:
+        if (WorldObjects::HidingSpot* spot = m_world.GetHidingSpot(event.index))
+        {
+            if (event.player == LocalPlayerId())
+            {
+                break; // our own, already applied when we asked
+            }
+            spot->occupied = event.flag;
+            m_world.SetDoorOpen(spot->doorIndex, !event.flag, m_interactions);
+        }
+        break;
+
+    case WorldEventKind::AmmoTaken:
+        if (event.player != LocalPlayerId())
+        {
+            m_world.DrawFromAmmoCrate(event.index, m_interactions);
+        }
+        break;
+
+    case WorldEventKind::ShotFired:
+        if (event.player != LocalPlayerId())
+        {
+            // Somebody else's round. Drawn, never resolved: what it hit was decided by the host.
+            Tracer tracer;
+            tracer.from = event.position;
+            tracer.to = event.direction;
+            tracer.hit = event.flag;
+            m_tracers.push_back(tracer);
+        }
+        break;
+
+    case WorldEventKind::PlayerDamaged:
+        if (event.player == LocalPlayerId())
+        {
+            // The host is the authority on health, so this is set rather than subtracted.
+            m_player.State().health = std::max(m_player.State().health - event.amount, 0.0f);
+        }
+        break;
+
+    case WorldEventKind::PlayerDied:
+        if (event.player == LocalPlayerId())
+        {
+            m_player.State().health = 0.0f;
+            m_player.State().alive = false;
+        }
+        break;
+
+    case WorldEventKind::PlayerRespawned:
+        if (event.player == LocalPlayerId())
+        {
+            m_player.Respawn(event.position);
+        }
+        break;
+
+    case WorldEventKind::Count:
+        break;
+    }
+}
+
+void PredationGame::SendDynamicBodies()
+{
+    if (m_sessionMode != SessionMode::Host)
+    {
+        return;
+    }
+
+    // Loose objects are sent as state rather than as events: a crate sliding across the floor is a
+    // value that will be sent again in a thirtieth of a second, so losing one costs nothing.
+    WorldStateMessage state;
+    PhysicsWorld& physics = m_app->GetPhysics();
+
+    for (size_t i = 0; i < m_world.Pickups().size() && state.count < kMaxDynamicBodies; ++i)
+    {
+        const WorldObjects::Pickup& pickup = m_world.Pickups()[i];
+        if (!pickup.alive || !physics.IsValid(pickup.body))
+        {
+            continue;
+        }
+        const Transform transform = physics.GetTransform(pickup.body);
+        DynamicBodyState& entry = state.bodies[state.count++];
+        entry.id = static_cast<uint8_t>(i);
+        entry.position = transform.position;
+        entry.rotation = transform.rotation;
+    }
+
+    m_host.SendWorldState(state);
+}
+
+void PredationGame::ApplyDynamicBodies(const WorldStateMessage& state)
+{
+    PhysicsWorld& physics = m_app->GetPhysics();
+    for (uint8_t i = 0; i < state.count; ++i)
+    {
+        const DynamicBodyState& entry = state.bodies[i];
+        const WorldObjects::Pickup* pickup = m_world.GetPickup(entry.id);
+        if (pickup == nullptr || !pickup->alive || !physics.IsValid(pickup->body))
+        {
+            continue;
+        }
+        // Placed, not simulated. A client running its own physics for a dropped rifle would
+        // disagree with everyone else within a second, and there is nothing to be gained by it.
+        Transform transform;
+        transform.position = entry.position;
+        transform.rotation = entry.rotation;
+        physics.SetTransform(pickup->body, transform);
+    }
+}
+
+// --- Damage ------------------------------------------------------------------------------------
+
+void PredationGame::ResolvePlayerHits(const FireEvent& shot, uint8_t shooter, ShotResult& worldHit)
+{
+    if (!cv_friendlyFire.Get())
+    {
+        return;
+    }
+
+    // Players are tested against directly rather than through the physics world, because a
+    // character capsule is a moving query volume rather than a body a ray can find. Doing it here
+    // also puts every hit decision in one place, which is where rewinding for lag will go.
+    const float maxDistance = worldHit ? worldHit.distance : shot.range;
+    const float radius = m_player.Config().radius;
+
+    uint8_t bestPlayer = kMaxPlayers;
+    float bestDistance = maxDistance;
+    glm::vec3 bestPoint{0.0f};
+
+    const auto testPlayer = [&](uint8_t id, const glm::vec3& feet, PlayerStance stance)
+    {
+        if (id == shooter)
+        {
+            return;
+        }
+        const float height = m_player.Config().HeightForStance(stance);
+        // The capsule as a segment from its lower to its upper centre, which is what the character
+        // controller actually is.
+        const glm::vec3 low = feet + glm::vec3(0.0f, radius, 0.0f);
+        const glm::vec3 high = feet + glm::vec3(0.0f, std::max(height - radius, radius), 0.0f);
+
+        // Closest approach between the shot ray and the capsule's axis.
+        const glm::vec3 axis = high - low;
+        const glm::vec3 toLow = low - shot.origin;
+        const float axisLengthSq = glm::dot(axis, axis);
+        const float rayDotAxis = glm::dot(shot.direction, axis);
+        const float rayDotToLow = glm::dot(shot.direction, toLow);
+        const float axisDotToLow = glm::dot(axis, toLow);
+
+        const float denominator = axisLengthSq - rayDotAxis * rayDotAxis;
+        float alongRay = 0.0f;
+        float alongAxis = 0.0f;
+        if (std::abs(denominator) > 1e-5f)
+        {
+            alongRay = (rayDotToLow * axisLengthSq - axisDotToLow * rayDotAxis) / denominator;
+            alongAxis = (alongRay * rayDotAxis - axisDotToLow) / std::max(axisLengthSq, 1e-5f);
+        }
+        else
+        {
+            alongRay = rayDotToLow;
+        }
+        alongRay = std::clamp(alongRay, 0.0f, bestDistance);
+        alongAxis = std::clamp(alongAxis, 0.0f, 1.0f);
+
+        const glm::vec3 onRay = shot.origin + shot.direction * alongRay;
+        const glm::vec3 onAxis = low + axis * alongAxis;
+        if (glm::distance(onRay, onAxis) > radius || alongRay <= 0.05f || alongRay >= bestDistance)
+        {
+            return;
+        }
+        bestPlayer = id;
+        bestDistance = alongRay;
+        bestPoint = onRay;
+    };
+
+    testPlayer(0, m_player.State().position, m_player.State().stance);
+    for (const RemotePlayerView& remote : RemotePlayers())
+    {
+        if (remote.alive)
+        {
+            testPlayer(remote.id, remote.position, remote.stance);
+        }
+    }
+
+    if (bestPlayer >= kMaxPlayers)
+    {
+        return;
+    }
+
+    // A player in the way stops the round before whatever the world trace found.
+    worldHit.hit = true;
+    worldHit.position = bestPoint;
+    worldHit.distance = bestDistance;
+    ApplyPlayerDamage(bestPlayer, shot.damage, shooter, shot.direction);
+}
+
+void PredationGame::ApplyPlayerDamage(uint8_t player, float amount, uint8_t killer,
+                                      const glm::vec3& direction)
+{
+    if (m_sessionMode == SessionMode::Client)
+    {
+        return; // clients never decide damage
+    }
+
+    float remaining = 0.0f;
+    if (player == 0)
+    {
+        m_player.ApplyDamage(amount, "gunfire");
+        remaining = m_player.State().health;
+    }
+    else
+    {
+        // A remote player's health lives on the host, in the view it publishes.
+        remaining = 0.0f;
+        for (const RemotePlayerView& remote : m_host.Remotes())
+        {
+            if (remote.id == player)
+            {
+                remaining = std::max(remote.health - amount, 0.0f);
+                break;
+            }
+        }
+    }
+
+    if (m_sessionMode == SessionMode::Host)
+    {
+        WorldEventMessage event;
+        event.kind = WorldEventKind::PlayerDamaged;
+        event.player = player;
+        event.other = killer;
+        event.amount = amount;
+        m_host.Broadcast(event);
+    }
+
+    if (remaining <= 0.0f)
+    {
+        KillPlayer(player, direction);
+    }
+}
+
+void PredationGame::KillPlayer(uint8_t player, const glm::vec3& direction)
+{
+    if (m_sessionMode == SessionMode::Host)
+    {
+        WorldEventMessage event;
+        event.kind = WorldEventKind::PlayerDied;
+        event.player = player;
+        event.direction = direction * 6.0f;
+        m_host.Broadcast(event);
+    }
+    if (player == LocalPlayerId())
+    {
+        m_player.State().alive = false;
+        m_player.State().health = 0.0f;
+    }
+    PRED_LOG_INFO(Gameplay, "Player {} died", player);
+}
+
 // --- The front end ---------------------------------------------------------------------------
 //
 // The world is built and simulating behind the menu rather than being loaded when you press a
@@ -790,12 +1343,21 @@ bool PredationGame::StepSession(const PlayerInput& input, float dt)
 {
     ++m_networkTick;
 
+    // What is in the local player's hands, so everyone else sees it.
+    const ItemDefinition* held = m_items.Get(m_inventory.Selected().item);
+    const uint8_t heldId = held != nullptr ? static_cast<uint8_t>(held->id) : 0;
+
     if (m_sessionMode == SessionMode::Host)
     {
+        m_host.SetPlayerHeld(0, heldId, m_weapon.aim > 0.5f, m_weapon.IsReloading(),
+                             m_weapon.IsReloading() ? 1.0f - m_weapon.reloadRemaining : 0.0f);
+
         // The host is a player too: it steps itself first, then runs everyone else from what they
         // sent, then tells them all where everybody ended up.
         m_player.Step(input, dt);
         m_host.Tick(m_networkTick, m_player.State(), dt);
+        ServeClientRequests();
+        SendDynamicBodies();
         return true;
     }
 
@@ -804,6 +1366,14 @@ bool PredationGame::StepSession(const PlayerInput& input, float dt)
         // The client's step happens inside prediction, so the same call is used for the first guess
         // and for every replay of it. Doing it here as well would run each input twice.
         m_client.Tick(input, m_player, dt);
+        for (const WorldEventMessage& event : m_client.TakeWorldEvents())
+        {
+            ApplyWorldEvent(event);
+        }
+        if (m_client.HasWorldState())
+        {
+            ApplyDynamicBodies(m_client.LatestWorldState());
+        }
         return true;
     }
 
@@ -848,6 +1418,10 @@ void PredationGame::SyncRemoteAvatars(float frameDeltaSeconds)
             auto fresh = std::make_unique<RemoteAvatar>();
             fresh->id = remote.id;
             fresh->body.Build(m_scene, m_app->GetMeshes(), config);
+            // Other people have heads. The body hides its own by default because in first person
+            // the camera lives inside it, which is true of exactly one body on this machine.
+            fresh->body.Tuning().hideHead = false;
+            fresh->view.eyeHeight = config.EyeHeightForStance(remote.stance);
             fresh->built = true;
             m_avatars.push_back(std::move(fresh));
             avatar = m_avatars.back().get();
@@ -868,10 +1442,17 @@ void PredationGame::SyncRemoteAvatars(float frameDeltaSeconds)
         avatar->state.alive = remote.alive;
         avatar->state.grounded = remote.grounded;
 
-        const float eyeHeight = config.EyeHeightForStance(remote.stance);
+        // The eye eases towards the stance's height rather than being set to it, exactly as the
+        // local player's own view does. The body is anchored to the eye, so setting it outright
+        // dropped a remote player straight into a crouch in one frame while their own screen
+        // showed them sinking into it.
+        const float targetEye = config.EyeHeightForStance(remote.stance);
+        avatar->view.eyeHeight +=
+            (targetEye - avatar->view.eyeHeight) *
+            (1.0f - std::exp(-config.eyeTransitionSpeed * frameDeltaSeconds));
+
         avatar->view.renderPosition = remote.position;
-        avatar->view.eyePosition = remote.position + glm::vec3(0.0f, eyeHeight, 0.0f);
-        avatar->view.eyeHeight = eyeHeight;
+        avatar->view.eyePosition = remote.position + glm::vec3(0.0f, avatar->view.eyeHeight, 0.0f);
         avatar->view.yaw = remote.yaw;
         avatar->view.pitch = remote.pitch;
         avatar->view.leanRoll = glm::radians(config.leanAngleDegrees) * remote.leanAmount;
@@ -1321,13 +1902,44 @@ void PredationGame::ResolveShots()
 
     for (const FireEvent& shot : m_shots)
     {
-        const ShotResult result = ResolveShot(physics, shot);
+        if (m_sessionMode == SessionMode::Client)
+        {
+            // Fired for feel and sent up. The tracer is drawn straight away because a weapon that
+            // waits a round trip to go off feels broken; what it actually hit is the host's answer.
+            ShotMessage message;
+            message.shotNumber = shot.sequence;
+            message.origin = shot.origin;
+            message.direction = shot.direction;
+            m_client.SendShot(message);
+
+            const ShotResult predicted = ResolveShot(physics, shot);
+            Tracer tracer;
+            tracer.from = shot.origin;
+            tracer.to = predicted ? predicted.position : shot.origin + shot.direction * shot.range;
+            tracer.hit = predicted.hit;
+            m_tracers.push_back(tracer);
+            continue;
+        }
+
+        ShotResult result = ResolveShot(physics, shot);
+        ResolvePlayerHits(shot, LocalPlayerId(), result);
 
         Tracer tracer;
         tracer.from = shot.origin;
         tracer.to = result ? result.position : shot.origin + shot.direction * shot.range;
         tracer.hit = result.hit;
         m_tracers.push_back(tracer);
+
+        if (m_sessionMode == SessionMode::Host)
+        {
+            WorldEventMessage event;
+            event.kind = WorldEventKind::ShotFired;
+            event.player = 0;
+            event.position = tracer.from;
+            event.direction = tracer.to;
+            event.flag = tracer.hit;
+            m_host.Broadcast(event);
+        }
 
         if (!result)
         {
@@ -1377,56 +1989,15 @@ void PredationGame::TryInteract()
         return;
     }
 
-    switch (focus.kind)
+    // A client asks; it does not act. Everything in the world belongs to the host, so what happens
+    // next arrives as an event and is applied the same way another player's interaction would be.
+    if (m_sessionMode == SessionMode::Client)
     {
-    case InteractionKind::Door:
-        m_world.ToggleDoor(focus.payload, m_interactions);
-        break;
-
-    case InteractionKind::Pickup:
-    {
-        WorldObjects::Pickup* pickup = m_world.GetPickup(focus.payload);
-        if (pickup == nullptr)
-        {
-            break;
-        }
-        const int stored = m_inventory.Add(m_items, pickup->item, pickup->count);
-        if (stored <= 0)
-        {
-            m_app->GetConsole().Print("Inventory full");
-            break;
-        }
-        if (stored >= pickup->count)
-        {
-            m_world.ConsumePickup(focus.payload, m_scene, m_app->GetPhysics(), m_interactions);
-        }
-        else
-        {
-            // Partial pickup: leave the remainder on the floor rather than silently eating it.
-            pickup->count -= stored;
-            if (Interactable* interactable = m_interactions.Find(pickup->entity))
-            {
-                const ItemDefinition* definition = m_items.Get(pickup->item);
-                interactable->name = definition != nullptr
-                                         ? definition->name + " x" + std::to_string(pickup->count)
-                                         : "Item";
-            }
-        }
-        break;
+        m_client.SendInteract(static_cast<uint8_t>(focus.kind), static_cast<uint8_t>(focus.payload));
+        return;
     }
 
-    case InteractionKind::HidingSpot:
-        EnterHidingSpot(focus.payload);
-        break;
-
-    case InteractionKind::AmmoCrate:
-        TakeAmmunition(focus.payload);
-        break;
-
-    case InteractionKind::Generic:
-    default:
-        break;
-    }
+    PerformInteraction(focus.kind, focus.payload, LocalPlayerId());
 }
 
 void PredationGame::TakeAmmunition(int crateIndex)

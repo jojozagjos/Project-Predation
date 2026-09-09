@@ -247,10 +247,11 @@ TEST_CASE("A snapshot round-trips and stays small enough to send at 30 Hz", "[ne
     WriteSnapshot(writer, sent);
     const std::vector<uint8_t>& bytes = writer.Finish();
 
-    // A full four-player snapshot is 85 bytes: 152 bits per player plus a 71-bit header. At the
-    // 30 Hz send rate that is 2.6 kB/s to each client, so a host with three of them spends under
-    // 8 kB/s upstream. The bound is here to catch a field being added carelessly, not to be tight.
-    CHECK(bytes.size() <= 88);
+    // A full four-player snapshot is 89 bytes: 160 bits per player plus a 71-bit header, the last
+    // eight of those being what is in their hands. At the 30 Hz send rate that is 2.7 kB/s to each
+    // client, so a host with three of them spends under 8 kB/s upstream. The bound is here to catch
+    // a field being added carelessly, not to be tight.
+    CHECK(bytes.size() <= 96);
 
     BitReader reader(bytes.data(), bytes.size());
     MessageType type = MessageType::Count;
@@ -597,4 +598,171 @@ TEST_CASE("A client that goes away leaves the host intact", "[net][transport]")
     CHECK(host->Peers().empty());
     // Sending to a peer that is gone is a no-op, not a crash.
     SendText(*host, clientPeer, Channel::Reliable, "anyone there");
+}
+
+TEST_CASE("A rotation round-trips in 29 bits", "[net][bitstream]")
+{
+    // Dropping the largest component and rebuilding it costs about a tenth of a degree, which is
+    // far below what anyone can see on a crate sliding across a floor.
+    const glm::quat rotations[] = {
+        glm::quat(1.0f, 0.0f, 0.0f, 0.0f),
+        glm::normalize(glm::quat(0.5f, 0.5f, 0.5f, 0.5f)),
+        glm::normalize(glm::quat(0.1f, -0.7f, 0.2f, 0.65f)),
+        glm::normalize(glm::quat(-0.3f, 0.4f, -0.85f, 0.1f)),
+    };
+
+    for (const glm::quat& rotation : rotations)
+    {
+        BitWriter writer;
+        writer.WriteQuaternion(rotation);
+        CHECK(writer.BitsWritten() == 29);
+
+        const std::vector<uint8_t>& bytes = writer.Finish();
+        BitReader reader(bytes.data(), bytes.size());
+        const glm::quat decoded = reader.ReadQuaternion();
+
+        // q and -q are the same rotation, so compare what they do rather than their components.
+        const glm::vec3 axis{0.37f, -0.51f, 0.77f};
+        const glm::vec3 before = rotation * axis;
+        const glm::vec3 after = decoded * axis;
+        INFO("turned a vector " << glm::degrees(std::acos(std::clamp(
+                    glm::dot(glm::normalize(before), glm::normalize(after)), -1.0f, 1.0f)))
+                                << " degrees off");
+        CHECK(glm::distance(before, after) < 0.005f);
+    }
+}
+
+TEST_CASE("World events carry only what their kind needs", "[net][protocol]")
+{
+    SECTION("a door is a handful of bits")
+    {
+        WorldEventMessage sent;
+        sent.kind = WorldEventKind::DoorMoved;
+        sent.index = 3;
+        sent.flag = true;
+
+        BitWriter writer;
+        WriteMessageHeader(writer, MessageType::WorldEvent);
+        WriteWorldEvent(writer, sent);
+        // Four bits of message type, four of event kind, six of index and one flag.
+        CHECK(writer.BitsWritten() == 15);
+
+        const std::vector<uint8_t>& bytes = writer.Finish();
+        BitReader reader(bytes.data(), bytes.size());
+        MessageType type = MessageType::Count;
+        REQUIRE(ReadMessageHeader(reader, type));
+        CHECK(type == MessageType::WorldEvent);
+
+        WorldEventMessage received;
+        REQUIRE(ReadWorldEvent(reader, received));
+        CHECK(received.kind == WorldEventKind::DoorMoved);
+        CHECK(received.index == 3);
+        CHECK(received.flag);
+    }
+
+    SECTION("a dropped item carries where it was thrown")
+    {
+        WorldEventMessage sent;
+        sent.kind = WorldEventKind::PickupSpawned;
+        sent.index = 12;
+        sent.item = 5;
+        sent.other = 3;
+        sent.position = {1.5f, 0.8f, -2.25f};
+        sent.direction = {0.5f, 2.0f, -1.5f};
+
+        BitWriter writer;
+        WriteWorldEvent(writer, sent);
+        const std::vector<uint8_t>& bytes = writer.Finish();
+        BitReader reader(bytes.data(), bytes.size());
+
+        WorldEventMessage received;
+        REQUIRE(ReadWorldEvent(reader, received));
+        CHECK(received.index == 12);
+        CHECK(received.item == 5);
+        CHECK(received.other == 3);
+        CHECK(received.position.x == Catch::Approx(1.5f).margin(0.002));
+        CHECK(received.position.z == Catch::Approx(-2.25f).margin(0.002));
+        CHECK(received.direction.y == Catch::Approx(2.0f).margin(0.05));
+    }
+
+    SECTION("a death carries the direction of the blow")
+    {
+        WorldEventMessage sent;
+        sent.kind = WorldEventKind::PlayerDied;
+        sent.player = 2;
+        sent.other = 1;
+        sent.direction = {0.0f, 1.0f, -6.0f};
+
+        BitWriter writer;
+        WriteWorldEvent(writer, sent);
+        const std::vector<uint8_t>& bytes = writer.Finish();
+        BitReader reader(bytes.data(), bytes.size());
+
+        WorldEventMessage received;
+        REQUIRE(ReadWorldEvent(reader, received));
+        CHECK(received.player == 2);
+        CHECK(received.other == 1);
+        CHECK(received.direction.z == Catch::Approx(-6.0f).margin(0.05));
+    }
+
+    SECTION("an event naming a player nobody could be is rejected")
+    {
+        BitWriter writer;
+        writer.WriteBits(static_cast<uint32_t>(WorldEventKind::PlayerDied), 4);
+        writer.WriteBits(7u, 3); // player seven in a four-player game
+        writer.WriteBits(0u, 3);
+        writer.WriteBits(0u, 36);
+        const std::vector<uint8_t>& bytes = writer.Finish();
+        BitReader reader(bytes.data(), bytes.size());
+        WorldEventMessage received;
+        CHECK_FALSE(ReadWorldEvent(reader, received));
+    }
+}
+
+TEST_CASE("A shot request round-trips its aim", "[net][protocol]")
+{
+    ShotMessage sent;
+    sent.shotNumber = 41;
+    sent.origin = {2.0f, 1.6f, -3.0f};
+    sent.direction = glm::normalize(glm::vec3(0.3f, -0.1f, -0.95f));
+
+    BitWriter writer;
+    WriteShot(writer, sent);
+    const std::vector<uint8_t>& bytes = writer.Finish();
+    BitReader reader(bytes.data(), bytes.size());
+
+    ShotMessage received;
+    REQUIRE(ReadShot(reader, received));
+    CHECK(received.shotNumber == 41);
+    CHECK(received.origin.y == Catch::Approx(1.6f).margin(0.002));
+    // A tenth of a degree at sixty metres is six centimetres, which is inside a torso.
+    CHECK(glm::distance(received.direction, sent.direction) < 0.005f);
+}
+
+TEST_CASE("Loose objects are sent as state, and stay small", "[net][protocol]")
+{
+    WorldStateMessage sent;
+    sent.count = 16;
+    for (uint8_t i = 0; i < sent.count; ++i)
+    {
+        sent.bodies[i].id = i;
+        sent.bodies[i].position = {static_cast<float>(i), 0.4f, -static_cast<float>(i) * 0.5f};
+        sent.bodies[i].rotation = glm::normalize(glm::quat(0.6f, 0.1f * static_cast<float>(i), 0.3f, 0.7f));
+    }
+
+    BitWriter writer;
+    WriteWorldState(writer, sent);
+    const std::vector<uint8_t>& bytes = writer.Finish();
+    // Sixteen loose objects in under 200 bytes, at the same rate as a snapshot.
+    CHECK(bytes.size() < 200);
+
+    BitReader reader(bytes.data(), bytes.size());
+    WorldStateMessage received;
+    REQUIRE(ReadWorldState(reader, received));
+    REQUIRE(received.count == 16);
+    for (uint8_t i = 0; i < 16; ++i)
+    {
+        CHECK(received.bodies[i].id == i);
+        CHECK(received.bodies[i].position.x == Catch::Approx(static_cast<float>(i)).margin(0.002));
+    }
 }

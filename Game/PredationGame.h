@@ -103,6 +103,36 @@ private:
     // Slowly circles the camera around the spawn area behind the menu.
     void UpdateTitleCamera(float frameDeltaSeconds);
 
+    // --- World replication ----------------------------------------------------------------------
+    //
+    // The host owns the world. A client asks for a door and applies what it is told; it never
+    // decides. Offline the local player is the host, which is what keeps single player and hosting
+    // on exactly one code path.
+    bool IsAuthority() const { return m_sessionMode != SessionMode::Client; }
+    uint8_t LocalPlayerId() const;
+
+    // Carrying out an interaction, whoever asked for it. Returns false when it could not be done,
+    // which for a request from a client is an answer in itself.
+    bool PerformInteraction(InteractionKind kind, int index, uint8_t player);
+    // Requests from clients, checked against the world before anything happens.
+    void ServeClientRequests();
+    // Changes the host has made, applied to this machine's copy of the world.
+    void ApplyWorldEvent(const WorldEventMessage& event);
+    void SendDynamicBodies();
+    void ApplyDynamicBodies(const WorldStateMessage& state);
+    // Everything a player who has just joined needs in order to see the world as it now is.
+    void SendWorldToPlayer(uint8_t player);
+
+    // Where a player is, for checking they are close enough to what they are asking for.
+    glm::vec3 PlayerPosition(uint8_t player) const;
+
+    // --- Damage ---------------------------------------------------------------------------------
+    // Runs the rounds fired this tick against the world and against the other players. Host only:
+    // this is the one place a shot turns into damage.
+    void ResolvePlayerHits(const FireEvent& shot, uint8_t shooter, ShotResult& worldHit);
+    void ApplyPlayerDamage(uint8_t player, float amount, uint8_t killer, const glm::vec3& direction);
+    void KillPlayer(uint8_t player, const glm::vec3& direction);
+
     // --- Multiplayer ---------------------------------------------------------------------------
     void RegisterNetCommands();
     void StopSession();

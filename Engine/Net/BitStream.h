@@ -1,5 +1,6 @@
 #pragma once
 
+#include <glm/gtc/quaternion.hpp>
 #include <glm/vec3.hpp>
 
 #include <cstdint>
@@ -35,6 +36,10 @@ public:
     // or precision of a float, and saying so is most of what keeps a snapshot small.
     void WriteQuantised(float value, float min, float max, int bits);
     void WriteVec3(const glm::vec3& value);
+    // A unit quaternion in 29 bits, by dropping its largest component and rebuilding it from the
+    // other three. A rotation only has three degrees of freedom, so sending four numbers sends one
+    // of them twice, and the dropped one is always the best conditioned to reconstruct.
+    void WriteQuaternion(const glm::quat& value);
 
     // Pads to the next byte boundary and hands back the finished packet.
     const std::vector<uint8_t>& Finish();
@@ -62,6 +67,7 @@ public:
     float ReadFloat();
     float ReadQuantised(float min, float max, int bits);
     glm::vec3 ReadVec3();
+    glm::quat ReadQuaternion();
 
     // True once a read has run off the end. Everything after that returns zero, so a malformed
     // packet produces a harmless message rather than reading whatever happened to be in memory.

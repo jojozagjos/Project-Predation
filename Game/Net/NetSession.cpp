@@ -65,6 +65,10 @@ void ApplySnapshot(RemotePlayerView& view, const PlayerSnapshot& snapshot)
     view.health = snapshot.health;
     view.grounded = snapshot.grounded;
     view.alive = snapshot.alive;
+    view.heldItem = snapshot.heldItem;
+    view.aiming = snapshot.aiming;
+    view.reloading = snapshot.reloading;
+    view.reloadProgress = snapshot.reloadProgress;
 }
 
 void SendPacket(Transport& transport, PeerId peer, Channel channel, BitWriter& writer)
@@ -102,6 +106,12 @@ struct NetHost::Client
     bool started = false;
     PlayerInput lastInput;
     PlayerController controller;
+    // What they are holding. The host does not simulate their weapon, it only passes on what they
+    // say they have out, because from outside that is all anyone can see.
+    uint8_t heldItem = 0;
+    bool aiming = false;
+    bool reloading = false;
+    float reloadProgress = 0.0f;
 };
 
 NetHost::NetHost() = default;
@@ -244,6 +254,7 @@ void NetHost::HandleJoin(PeerId peer, BitReader& reader)
     SendPacket(*m_transport, peer, Channel::Reliable, writer);
 
     PRED_LOG_INFO(Network, "{} joined as player {}", client->name, playerId);
+    m_joined.push_back(playerId);
     m_clients.push_back(std::move(client));
 }
 
@@ -305,12 +316,128 @@ void NetHost::HandlePacket(const NetPacket& packet)
         break;
     }
 
+    case MessageType::Interact:
+    {
+        const Client* client = FindClient(packet.peer);
+        InteractMessage message;
+        if (client == nullptr || !ReadInteract(reader, message))
+        {
+            return;
+        }
+        // Queued rather than acted on. Whether the player is close enough to that door is a
+        // question about the world, and the world is the game's, not the transport's.
+        InteractRequest request;
+        request.player = client->playerId;
+        request.kind = message.kind;
+        request.index = message.index;
+        m_interactRequests.push_back(request);
+        break;
+    }
+
+    case MessageType::Shot:
+    {
+        const Client* client = FindClient(packet.peer);
+        ShotMessage message;
+        if (client == nullptr || !ReadShot(reader, message))
+        {
+            return;
+        }
+        ShotRequest request;
+        request.player = client->playerId;
+        request.shot = message;
+        m_shotRequests.push_back(request);
+        break;
+    }
+
     case MessageType::Leave:
         RemoveClient(packet.peer);
         break;
 
     default:
         break;
+    }
+}
+
+void NetHost::Broadcast(const WorldEventMessage& event)
+{
+    if (m_transport == nullptr)
+    {
+        return;
+    }
+    BitWriter writer;
+    WriteMessageHeader(writer, MessageType::WorldEvent);
+    WriteWorldEvent(writer, event);
+    const std::vector<uint8_t>& bytes = writer.Finish();
+    for (const auto& client : m_clients)
+    {
+        if (client->welcomed)
+        {
+            m_transport->Send(client->peer, Channel::Reliable, bytes.data(), bytes.size());
+        }
+    }
+}
+
+void NetHost::SendTo(uint8_t playerId, const WorldEventMessage& event)
+{
+    if (m_transport == nullptr)
+    {
+        return;
+    }
+    for (const auto& client : m_clients)
+    {
+        if (client->welcomed && client->playerId == playerId)
+        {
+            BitWriter writer;
+            WriteMessageHeader(writer, MessageType::WorldEvent);
+            WriteWorldEvent(writer, event);
+            const std::vector<uint8_t>& bytes = writer.Finish();
+            m_transport->Send(client->peer, Channel::Reliable, bytes.data(), bytes.size());
+            return;
+        }
+    }
+}
+
+void NetHost::SendWorldState(const WorldStateMessage& state)
+{
+    if (m_transport == nullptr || state.count == 0)
+    {
+        return;
+    }
+    BitWriter writer;
+    WriteMessageHeader(writer, MessageType::WorldState);
+    WriteWorldState(writer, state);
+    const std::vector<uint8_t>& bytes = writer.Finish();
+    for (const auto& client : m_clients)
+    {
+        if (client->welcomed)
+        {
+            m_transport->Send(client->peer, Channel::Unreliable, bytes.data(), bytes.size());
+        }
+    }
+}
+
+void NetHost::SetPlayerHeld(uint8_t playerId, uint8_t heldItem, bool aiming, bool reloading,
+                            float progress)
+{
+    if (playerId == 0)
+    {
+        // The host is player zero, and its own hands go into the snapshot the same way.
+        m_localHeldItem = heldItem;
+        m_localAiming = aiming;
+        m_localReloading = reloading;
+        m_localReloadProgress = progress;
+        return;
+    }
+    for (auto& client : m_clients)
+    {
+        if (client->playerId == playerId)
+        {
+            client->heldItem = heldItem;
+            client->aiming = aiming;
+            client->reloading = reloading;
+            client->reloadProgress = progress;
+            return;
+        }
     }
 }
 
@@ -409,12 +536,21 @@ void NetHost::SendSnapshots(uint32_t tick, const PlayerState& localState)
     SnapshotMessage snapshot;
     snapshot.tick = tick;
     snapshot.players[0] = SnapshotOf(0, localState);
+    snapshot.players[0].heldItem = m_localHeldItem;
+    snapshot.players[0].aiming = m_localAiming;
+    snapshot.players[0].reloading = m_localReloading;
+    snapshot.players[0].reloadProgress = m_localReloadProgress;
     snapshot.count = 1;
     for (const auto& client : m_clients)
     {
         if (client->welcomed && snapshot.count < kMaxPlayers)
         {
-            snapshot.players[snapshot.count++] = SnapshotOf(client->playerId, client->controller.State());
+            PlayerSnapshot& entry = snapshot.players[snapshot.count++];
+            entry = SnapshotOf(client->playerId, client->controller.State());
+            entry.heldItem = client->heldItem;
+            entry.aiming = client->aiming;
+            entry.reloading = client->reloading;
+            entry.reloadProgress = client->reloadProgress;
         }
     }
 
@@ -560,9 +696,61 @@ void NetClient::HandlePacket(const NetPacket& packet)
         break;
     }
 
+    case MessageType::WorldEvent:
+    {
+        WorldEventMessage event;
+        if (ReadWorldEvent(reader, event))
+        {
+            // Queued rather than applied here. What a door or a locker is belongs to the game; this
+            // only knows that one changed.
+            m_worldEvents.push_back(event);
+        }
+        break;
+    }
+
+    case MessageType::WorldState:
+    {
+        WorldStateMessage state;
+        if (ReadWorldState(reader, state))
+        {
+            m_worldState = state;
+            m_hasWorldState = true;
+        }
+        break;
+    }
+
     default:
         break;
     }
+}
+
+void NetClient::SendInteract(uint8_t kind, uint8_t index)
+{
+    if (m_transport == nullptr || !m_welcomed)
+    {
+        return;
+    }
+    BitWriter writer;
+    WriteMessageHeader(writer, MessageType::Interact);
+    InteractMessage message;
+    message.kind = kind;
+    message.index = index;
+    WriteInteract(writer, message);
+    // Reliable: opening a door is a thing that happens once, and a lost request is a door that
+    // never opens rather than a frame that looks slightly wrong.
+    SendPacket(*m_transport, kHostPeer, Channel::Reliable, writer);
+}
+
+void NetClient::SendShot(const ShotMessage& shot)
+{
+    if (m_transport == nullptr || !m_welcomed)
+    {
+        return;
+    }
+    BitWriter writer;
+    WriteMessageHeader(writer, MessageType::Shot);
+    WriteShot(writer, shot);
+    SendPacket(*m_transport, kHostPeer, Channel::Reliable, writer);
 }
 
 void NetClient::Tick(const PlayerInput& input, PlayerController& local, float dt)
