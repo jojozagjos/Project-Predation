@@ -154,9 +154,16 @@ private:
     bool m_jumpLatch = false;
     // Debug stance override, so stances can be inspected without holding a key.
     glm::vec2 m_debugMove{0.0f};
-    bool m_reloadLatch = false;
+    // A reload request holds for a moment rather than a single tick, so pressing it while the
+    // trigger is down or mid-shot still reloads as soon as the weapon can accept it.
+    int m_reloadLatch = 0;
     // Console-driven trigger, so firing can be exercised in a headless capture.
     int m_debugTriggerTicks = 0;
+    // Visual recoil: one on the frame a round leaves, decaying away. Separate from the weapon's own
+    // recoil, which moves the aim; this only moves the model.
+    float m_weaponKick = 0.0f;
+    // Console-driven aim, so the sighted hold can be inspected in a headless capture.
+    bool m_debugAim = false;
     bool m_forceCrouch = false;
     bool m_forceProne = false;
     bool m_crouchToggleState = false;

@@ -422,6 +422,14 @@ void PredationGame::RegisterCommands()
                                 m_app->GetConsole().Print(buffer);
                             });
 
+    console.RegisterCommand(
+        "aim", "Hold or release the sights, for inspecting the hold without a mouse: aim [0|1]",
+        [this](const std::vector<std::string>& args)
+        { m_debugAim = args.size() < 2 || std::atoi(args[1].c_str()) != 0; }, "aim [0|1]");
+
+    console.RegisterCommand("reload", "Start a reload",
+                            [this](const std::vector<std::string>&) { m_reloadLatch = 30; });
+
     console.RegisterCommand("interact", "Use whatever the player is looking at",
                             [this](const std::vector<std::string>&) { TryInteract(); });
 
@@ -709,6 +717,7 @@ void PredationGame::ResolveShots()
         return;
     }
     PhysicsWorld& physics = m_app->GetPhysics();
+    m_weaponKick = 1.0f;
 
     for (const FireEvent& shot : m_shots)
     {
@@ -868,10 +877,13 @@ void PredationGame::OnFixedUpdate(double fixedDt)
     {
         Input& raw = m_app->GetInput();
         weaponInput.trigger = raw.IsActionDown("fire") || m_debugTriggerTicks > 0;
-        weaponInput.aim = raw.IsActionDown("aim");
-        weaponInput.reload = raw.WasActionPressed("reload") || m_reloadLatch;
+        weaponInput.aim = raw.IsActionDown("aim") || m_debugAim;
+        if (raw.WasActionPressed("reload"))
+        {
+            m_reloadLatch = 30;
+        }
+        weaponInput.reload = m_reloadLatch > 0;
     }
-    m_reloadLatch = false;
     m_debugTriggerTicks = std::max(m_debugTriggerTicks - 1, 0);
 
     m_shots.clear();
@@ -889,6 +901,10 @@ void PredationGame::OnFixedUpdate(double fixedDt)
     // Single player, so this process is the authority. When there is a host, a client stops here and
     // sends m_shots instead; nothing above this line ever touches another player's health.
     ResolveShots();
+
+    // The request is held for half a second rather than one tick, so pressing reload part way
+    // through a shot still takes effect once the weapon can accept it.
+    m_reloadLatch = m_weapon.IsReloading() ? 0 : std::max(m_reloadLatch - 1, 0);
 
     if (m_hidingSpot >= 0)
     {
@@ -1093,15 +1109,25 @@ void PredationGame::OnUpdate(double dt, double alpha)
 
     // What the body is holding follows what the simulation says is equipped, never the other way
     // round: the model is a view of the state.
-    if (const WeaponDefinition* weapon = EquippedWeapon())
+    const WeaponDefinition* weapon = EquippedWeapon();
+    m_body.SetWeapon(m_scene, app.GetMeshes(), weapon);
+    if (weapon != nullptr)
     {
-        m_body.SetWeapon(m_scene, app.GetMeshes(), weapon->size, weapon->color);
-        m_body.SetAimBlend(m_weapon.aim);
+        PlayerBody::WeaponPose pose;
+        pose.aim = m_weapon.aim;
+        pose.reloading = m_weapon.IsReloading();
+        // Runs 0 at the start of the reload to 1 at the end, so the animation does not have to know
+        // how long any particular weapon takes.
+        pose.reload = pose.reloading
+                          ? 1.0f - m_weapon.reloadRemaining / std::max(weapon->reloadSeconds, 0.01f)
+                          : -1.0f;
+        pose.kick = m_weaponKick;
+        m_body.SetWeaponPose(pose);
     }
-    else
-    {
-        m_body.SetWeapon(m_scene, app.GetMeshes(), glm::vec3(0.0f), glm::vec3(0.0f));
-    }
+
+    // The kick is presentation, so it decays per frame rather than per tick. Firing sets it to one
+    // in ResolveShots, which is the only place that knows a round actually left the barrel.
+    m_weaponKick = std::max(m_weaponKick - deltaSeconds * 7.0f, 0.0f);
     AgeTracers(deltaSeconds);
     SyncDynamicProps();
     app.GetSceneRenderer().SetWireframe(cv_wireframe.Get());

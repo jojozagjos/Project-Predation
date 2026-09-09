@@ -3,8 +3,10 @@
 #include "Engine/Animation/Skeleton.h"
 #include "Engine/Scene/Scene.h"
 #include "Game/Player/PlayerTypes.h"
+#include "Game/Weapons/WeaponAppearance.h"
 
 #include <glm/gtc/quaternion.hpp>
+#include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
 
 #include <array>
@@ -63,6 +65,20 @@ public:
         float stepHeight = 0.14f; // how far a swinging foot lifts
         float footPlantSmoothing = 22.0f;
         float weaponHandSmoothing = 26.0f;
+        // Where a weapon sits when it is carried rather than aimed, in the view frame. Close enough
+        // to the axis to be on screen: at a 90 degree horizontal field of view anything at arm's
+        // length below the chin is outside the frame entirely.
+        float weaponReadyRight = 0.185f;
+        float weaponReadyDown = -0.205f;
+        float weaponReadyForward = 0.56f;
+        float weaponAimForward = 0.42f;
+        // How much of the view pitch a carried weapon follows. Following it fully swung the gun
+        // round behind the player whenever they looked straight down. Aiming raises this to one,
+        // because the sights have to line up with the view exactly.
+        float weaponCarryPitchFollow = 0.45f;
+        // The weapon lags a turn and then catches up, which is what gives it weight.
+        float weaponSwayAmount = 0.55f;
+        float weaponSwayRecover = 9.0f;
         // A swinging foot follows an already-smooth arc, so it tracks its target almost exactly. It
         // has to: any lag here lands the foot short of where the step was aimed, and it spends the
         // stance catching up, which is a visible skid at every touchdown.
@@ -163,13 +179,24 @@ public:
 
     void SetVisible(Scene& scene, bool visible);
 
-    // Puts a weapon in the character's hands. The body owns where it sits and which way it points;
-    // the game owns what it is and what it does. Passing a zero size takes it away again.
-    void SetWeapon(Scene& scene, MeshLibrary& meshes, const glm::vec3& size, const glm::vec3& colour);
-    // 0 held at the hip, 1 sighted. Moves the weapon and the hands together, so the arms follow the
-    // gun rather than the gun being stuck to a hand that is doing something else.
-    void SetAimBlend(float aim) { m_aimBlend = std::clamp(aim, 0.0f, 1.0f); }
+    // How the weapon is being held this frame. The body owns where it sits and which way it points;
+    // the game owns what it is and what it is doing.
+    struct WeaponPose
+    {
+        float aim = 0.0f;    // 0 held ready, 1 sighted
+        float reload = 0.0f; // 0 at the start of a reload, 1 at the end; negative when not reloading
+        float kick = 0.0f;   // 0 to 1, decaying after each shot
+        bool reloading = false;
+    };
+
+    // Puts a weapon in the character's hands, built from its data entry. Passing nothing takes it
+    // away again.
+    void SetWeapon(Scene& scene, MeshLibrary& meshes, const WeaponDefinition* definition);
+    void SetWeaponPose(const WeaponPose& pose) { m_weaponPose = pose; }
     bool HasWeapon() const { return m_weaponEntity.IsValid(); }
+    // Where a round would appear to leave the model, for the muzzle flash. Not where rounds are
+    // actually traced from: that comes from the eye, so what is under the crosshair is what is hit.
+    glm::vec3 MuzzlePoint() const;
 
 private:
     // How a piece of gear is oriented. Limb bones are re-solved by IK and end up with an arbitrary
@@ -209,7 +236,12 @@ private:
     void BuildParts(Scene& scene, MeshLibrary& meshes);
     // Places the weapon and puts both hands on it. Returns false when there is nothing to hold, so
     // the caller can fall through to whatever the arms would otherwise be doing.
+    // Places the weapon and puts the hands on it. Returns false when there is nothing to hold.
     bool UpdateWeaponHold(const PlayerView& view, float dt);
+    // The reach-and-pull crawl. With a weapon in hand only the support arm crawls; the other keeps
+    // hold of the gun.
+    void UpdateCrawlArms(const PlayerState& state, const PlayerView& view, PhysicsWorld& physics,
+                         float dt, bool supportArmOnly);
     void UpdatePosture(const PlayerState& state, const PlayerView& view, const PlayerConfig& playerConfig,
                        float dt);
     // Arms are solved before legs on purpose: writing a global transform rebuilds every bone after
@@ -227,10 +259,19 @@ private:
     std::vector<Part> m_parts;
 
     Entity m_weaponEntity;
-    MeshHandle m_weaponMesh;
+    Entity m_magazineEntity;
+    Entity m_muzzleFlashEntity;
     Transform m_weaponTransform;
-    glm::vec3 m_weaponSize{0.0f};
-    float m_aimBlend = 0.0f;
+    Transform m_magazineTransform;
+    Transform m_muzzleFlashTransform;
+    WeaponVisual m_weaponVisual;
+    WeaponId m_weaponId = kInvalidWeapon;
+    WeaponPose m_weaponPose;
+    // The weapon lags the view a little when the player turns, then catches up. Held on the weapon
+    // rather than on the hands, so the grip never separates from the gun.
+    glm::vec2 m_weaponSway{0.0f};
+    float m_lastViewYaw = 0.0f;
+    float m_lastViewPitch = 0.0f;
     std::array<FootState, 2> m_feet;
     std::array<FootState, 2> m_hands; // same shape: a smoothed target and whether it is planted
     float m_flatness = 0.0f;          // 0 upright, 1 fully prone

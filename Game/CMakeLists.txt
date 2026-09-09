@@ -23,6 +23,8 @@ set(PRED_GAME_SOURCES
     Items/Inventory.cpp
 
     Weapons/WeaponTypes.h
+    Weapons/WeaponAppearance.h
+    Weapons/WeaponAppearance.cpp
     Weapons/WeaponDatabase.h
     Weapons/WeaponDatabase.cpp
     Weapons/WeaponSystem.h

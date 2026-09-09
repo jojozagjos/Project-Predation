@@ -138,13 +138,17 @@ void BuildTestMap(Scene& scene, MeshLibrary& meshes, PhysicsWorld* physics)
     // collider, and the post is emissive so it can be found in the dark.
     const MeshData postData = Primitives::Cylinder(0.09f, 2.4f, 12);
     const MeshHandle postMesh = meshes.Upload(postData, "zone_post");
+    int zoneIndex = 0;
     auto zone = [&](const char* name, float centreX, float centreZ, float sizeX, float sizeZ,
                     const glm::vec3& tint)
     {
         const MeshHandle pad =
             meshes.Upload(Primitives::Plane({sizeX, sizeZ}, 1), std::string("zone_pad_") + name);
-        // A hair above the ground, so the two surfaces do not fight over the same depth.
-        builder.AddDecoration("zone_pad", AtPosition(centreX, 0.012f, centreZ), pad,
+        // Each pad sits a couple of millimetres above the last. The zones do not overlap any more,
+        // but two coplanar surfaces flicker horribly where they do, and a two millimetre step is
+        // invisible; this makes the layout impossible to get wrong in that particular way.
+        const float height = 0.012f + 0.002f * static_cast<float>(zoneIndex++);
+        builder.AddDecoration("zone_pad", AtPosition(centreX, height, centreZ), pad,
                               Material::Diffuse(tint, 0.95f));
         builder.AddDecoration("zone_post",
                               AtPosition(centreX - sizeX * 0.5f + 0.3f, 1.2f, centreZ + sizeZ * 0.5f - 0.3f),
@@ -155,8 +159,10 @@ void BuildTestMap(Scene& scene, MeshLibrary& meshes, PhysicsWorld* physics)
     // Origin: the spawn plaza, with a 1 m cube as the scale reference for
     // everything else. The spawn looks south, with every zone in view.
     // ---------------------------------------------------------------------
-    zone("spawn", 0.0f, 13.0f, 9.0f, 9.0f, {0.30f, 0.32f, 0.36f});
-    builder.AddBox("reference_cube", AtPosition(0.0f, 0.5f, 13.5f), {1.0f, 1.0f, 1.0f}, kMarkerMaterial);
+    // Kept clear of the ledge row in front of it. Two pads sharing ground looked like a patch, and
+    // before the heights were staggered they flickered against each other as well.
+    zone("spawn", 0.0f, 15.6f, 8.0f, 8.0f, {0.30f, 0.32f, 0.36f});
+    builder.AddBox("reference_cube", AtPosition(0.0f, 0.5f, 14.2f), {1.0f, 1.0f, 1.0f}, kMarkerMaterial);
 
     // ---------------------------------------------------------------------
     // +X: staircases. Same total climb, different step rises, side by side so
@@ -201,7 +207,7 @@ void BuildTestMap(Scene& scene, MeshLibrary& meshes, PhysicsWorld* physics)
     // ---------------------------------------------------------------------
     // +Z: ledges at mantle-relevant heights, in one rising row.
     // ---------------------------------------------------------------------
-    zone("ledges", 0.0f, 10.0f, 19.0f, 3.4f, {0.34f, 0.26f, 0.26f});
+    zone("ledges", 0.0f, 10.0f, 19.0f, 3.0f, {0.34f, 0.26f, 0.26f});
     float ledgeX = -7.5f;
     for (const float height : kLedgeHeights)
     {

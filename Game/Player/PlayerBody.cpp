@@ -479,41 +479,61 @@ glm::quat PlayerBody::BodyRotation() const
     return glm::angleAxis(-m_bodyYaw, glm::vec3(0.0f, 1.0f, 0.0f));
 }
 
-void PlayerBody::SetWeapon(Scene& scene, MeshLibrary& meshes, const glm::vec3& size,
-                           const glm::vec3& colour)
+void PlayerBody::SetWeapon(Scene& scene, MeshLibrary& meshes, const WeaponDefinition* definition)
 {
-    const bool wanted = size.x > 1e-3f && size.y > 1e-3f && size.z > 1e-3f;
-    if (!wanted)
+    if (definition == nullptr || definition->id == kInvalidWeapon)
     {
         if (m_weaponEntity.IsValid())
         {
             scene.Destroy(m_weaponEntity);
+            scene.Destroy(m_magazineEntity);
+            scene.Destroy(m_muzzleFlashEntity);
             m_weaponEntity = Entity{};
+            m_magazineEntity = Entity{};
+            m_muzzleFlashEntity = Entity{};
         }
-        m_weaponSize = glm::vec3(0.0f);
+        m_weaponId = kInvalidWeapon;
+        return;
+    }
+    if (definition->id == m_weaponId && m_weaponEntity.IsValid())
+    {
         return;
     }
 
-    if (m_weaponSize != size || !m_weaponEntity.IsValid())
+    if (m_weaponEntity.IsValid())
     {
-        if (m_weaponEntity.IsValid())
-        {
-            scene.Destroy(m_weaponEntity);
-        }
-        // The mesh is built around the grip rather than the centre, so the model's origin is the
-        // point the hand holds and the barrel runs forward from it. LookRotation puts local +Z on
-        // the direction it is given, so forward here is +Z, not the -Z the world models use.
-        MeshData data = Primitives::Box(size);
-        for (MeshVertex& vertex : data.vertices)
-        {
-            vertex.position.z += size.z * 0.5f - 0.06f;
-        }
-        m_weaponMesh = meshes.Upload(data, "player_weapon");
-        m_weaponSize = size;
-
-        Material material = Material::Metal(colour, 0.45f);
-        m_weaponEntity = scene.CreateMeshEntity("player_weapon", Transform{}, m_weaponMesh, material);
+        scene.Destroy(m_weaponEntity);
+        scene.Destroy(m_magazineEntity);
+        scene.Destroy(m_muzzleFlashEntity);
     }
+
+    m_weaponId = definition->id;
+    m_weaponVisual = BuildWeaponVisual(*definition);
+
+    const std::string key = "weapon_" + definition->key;
+    const Material metal = Material::Metal(definition->color, 0.42f);
+    // The magazine reads slightly darker, so it can be told apart from the receiver while it is
+    // moving during a reload.
+    const Material magazineMetal = Material::Metal(definition->color * 0.75f, 0.55f);
+
+    m_weaponEntity = scene.CreateMeshEntity(key, Transform{}, meshes.Upload(m_weaponVisual.body, key),
+                                            metal);
+    m_magazineEntity = scene.CreateMeshEntity(key + "_mag", Transform{},
+                                              meshes.Upload(m_weaponVisual.magazine, key + "_mag"),
+                                              magazineMetal);
+
+    // A flash is a scaled-to-nothing sphere most of the time. Giving it its own entity means firing
+    // costs a transform write rather than creating and destroying geometry.
+    const float flashRadius = std::max(definition->size.y, 0.06f) * 0.9f;
+    m_muzzleFlashEntity =
+        scene.CreateMeshEntity(key + "_flash", Transform{},
+                               meshes.Upload(Primitives::Sphere(flashRadius, 10, 6), key + "_flash"),
+                               Material::Emissive({1.0f, 0.78f, 0.36f}, 3.4f));
+}
+
+glm::vec3 PlayerBody::MuzzlePoint() const
+{
+    return m_weaponTransform.position + m_weaponTransform.rotation * m_weaponVisual.muzzle;
 }
 
 bool PlayerBody::UpdateWeaponHold(const PlayerView& view, float dt)
@@ -523,41 +543,140 @@ bool PlayerBody::UpdateWeaponHold(const PlayerView& view, float dt)
         return false;
     }
 
-    // The view's own frame, because a held weapon belongs to where the player is looking, not to
-    // where their hips happen to be pointing.
-    const float cp = std::cos(view.pitch);
-    const glm::vec3 forward{std::sin(view.yaw) * cp, std::sin(view.pitch), -std::cos(view.yaw) * cp};
-    const glm::vec3 right = glm::normalize(glm::cross(forward, glm::vec3(0.0f, 1.0f, 0.0f)));
-    const glm::vec3 up = glm::cross(right, forward);
+    const float aim = glm::clamp(m_weaponPose.aim, 0.0f, 1.0f);
+    const bool flat = m_flatness > 0.5f;
 
-    // Held low and off to the side until the sights come up, at which point it moves onto the eye
-    // line. Both ends of that are tuned in view space so they hold at any pitch.
-    const glm::vec3 hipGrip = right * 0.16f + up * -0.34f + forward * 0.20f;
-    const glm::vec3 aimGrip = right * 0.0f + up * -0.055f + forward * 0.18f;
-    const glm::vec3 grip = view.eyePosition + glm::mix(hipGrip, aimGrip, m_aimBlend);
+    // --- Sway -----------------------------------------------------------------------------------
+    // The weapon lags the view a little when the player turns, then catches up. Deliberately held
+    // on the weapon and not on the hands: smoothing the hands towards a moving grip point pulled
+    // them off the gun every time the player looked around quickly.
+    const float yawDelta = WrapAngle(view.yaw - m_lastViewYaw);
+    const float pitchDelta = view.pitch - m_lastViewPitch;
+    m_lastViewYaw = view.yaw;
+    m_lastViewPitch = view.pitch;
+    const float swayScale = (1.0f - aim * 0.7f) * m_config.weaponSwayAmount;
+    m_weaponSway += glm::vec2(-yawDelta, -pitchDelta) * swayScale;
+    m_weaponSway = glm::vec2(SmoothTowards(m_weaponSway.x, 0.0f, m_config.weaponSwayRecover, dt),
+                             SmoothTowards(m_weaponSway.y, 0.0f, m_config.weaponSwayRecover, dt));
+    m_weaponSway = glm::clamp(m_weaponSway, glm::vec2(-0.09f), glm::vec2(0.09f));
 
-    // At the hip the barrel points a little downwards; sighted, it runs exactly down the view.
-    const glm::quat lowered = glm::angleAxis(glm::radians(-11.0f), right) * LookRotation(forward, up);
-    const glm::quat sighted = LookRotation(forward, up);
-    const glm::quat rotation = glm::slerp(lowered, sighted, m_aimBlend);
+    // --- The frame the weapon is carried in -----------------------------------------------------
+    // Aiming follows the view exactly, because the sights have to line up with it. Carrying it does
+    // not: a weapon held ready stays in front of the chest, so it follows yaw fully but pitch only
+    // part way. Following pitch fully meant looking at your feet swung the gun round behind you.
+    const float carryPitch = view.pitch * glm::mix(m_config.weaponCarryPitchFollow, 1.0f, aim);
+    const float cp = std::cos(carryPitch);
+    const glm::vec3 carryForward{std::sin(view.yaw) * cp, std::sin(carryPitch), -std::cos(view.yaw) * cp};
+    const glm::vec3 carryRight = glm::normalize(glm::cross(carryForward, glm::vec3(0.0f, 1.0f, 0.0f)));
+    const glm::vec3 carryUp = glm::cross(carryRight, carryForward);
 
-    Transform transform;
-    transform.position = grip;
-    transform.rotation = rotation;
-    m_weaponTransform = transform;
+    // The aim frame, which the barrel is pointed down.
+    const float ap = std::cos(view.pitch);
+    const glm::vec3 aimForward{std::sin(view.yaw) * ap, std::sin(view.pitch), -std::cos(view.yaw) * ap};
+    const glm::vec3 aimRight = glm::normalize(glm::cross(aimForward, glm::vec3(0.0f, 1.0f, 0.0f)));
+    const glm::vec3 aimUp = glm::cross(aimRight, aimForward);
 
-    const glm::vec3 barrel =
-        glm::normalize(glm::vec3(glm::mat4_cast(rotation) * glm::vec4(0.0f, 0.0f, 1.0f, 0.0f)));
-    const glm::vec3 weaponUp = glm::normalize(glm::vec3(glm::mat4_cast(rotation) * glm::vec4(0.0f, 1.0f, 0.0f, 0.0f)));
+    // --- Where the weapon sits ------------------------------------------------------------------
+    // Held ready it sits low and to the right, close enough to the view axis to be on screen: at a
+    // 90 degree horizontal field of view anything at arm's length below the chin is outside the
+    // frame entirely, which is why the weapon used to be invisible until the sights came up.
+    //
+    // Sighted, the origin drops by exactly the sight height, which puts the sight block on the view
+    // axis rather than near it.
+    const glm::vec3 readyOffset = carryRight * m_config.weaponReadyRight +
+                                  carryUp * m_config.weaponReadyDown + carryForward * m_config.weaponReadyForward;
+    const glm::vec3 sightedOffset = aimForward * m_config.weaponAimForward - aimUp * m_weaponVisual.sightHeight;
+
+    // Prone puts it down beside the body, muzzle forward, out of the way of the arm that is doing
+    // the crawling.
+    const glm::vec3 proneOffset = carryRight * 0.14f + carryUp * -0.30f + carryForward * 0.34f;
+
+    glm::vec3 offset = glm::mix(readyOffset, sightedOffset, aim);
+    if (flat)
+    {
+        offset = glm::mix(offset, proneOffset, glm::clamp((m_flatness - 0.5f) * 2.0f, 0.0f, 1.0f));
+    }
+
+    // --- Which way it points --------------------------------------------------------------------
+    const glm::quat sighted = LookRotation(aimForward, aimUp);
+    // Held ready the muzzle drops and the weapon cants inwards, the way a carried rifle does.
+    const glm::quat ready = LookRotation(carryForward, carryUp) *
+                            glm::angleAxis(glm::radians(-9.0f), glm::vec3(1.0f, 0.0f, 0.0f)) *
+                            glm::angleAxis(glm::radians(-4.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+    glm::quat rotation = glm::slerp(ready, sighted, aim);
+
+    // --- Reload ---------------------------------------------------------------------------------
+    // The weapon rolls towards the player so the magazine well is where the hand can reach it, dips
+    // as the magazine comes out, and comes back up as the new one seats. `reload` runs 0 to 1.
+    glm::vec3 magazineOffset{0.0f};
+    float magazineVisible = 1.0f;
+    if (m_weaponPose.reloading)
+    {
+        const float t = glm::clamp(m_weaponPose.reload, 0.0f, 1.0f);
+        // A raised-cosine envelope: nothing at either end, most of the movement in the middle.
+        const float envelope = 0.5f - 0.5f * std::cos(t * glm::two_pi<float>());
+        rotation = rotation * glm::angleAxis(glm::radians(38.0f * envelope), glm::vec3(0.0f, 0.0f, 1.0f)) *
+                   glm::angleAxis(glm::radians(-16.0f * envelope), glm::vec3(1.0f, 0.0f, 0.0f));
+        offset += carryUp * (-0.09f * envelope) + carryRight * (-0.05f * envelope);
+
+        // The old magazine drops away over the first third, then the new one rises into place.
+        constexpr float kOut = 0.34f;
+        constexpr float kIn = 0.78f;
+        if (t < kOut)
+        {
+            const float drop = t / kOut;
+            magazineOffset.y = -0.32f * drop * drop;
+            magazineVisible = 1.0f - drop;
+        }
+        else if (t < kIn)
+        {
+            magazineVisible = 0.0f;
+        }
+        else
+        {
+            const float rise = (t - kIn) / (1.0f - kIn);
+            magazineOffset.y = -0.30f * (1.0f - rise) * (1.0f - rise);
+            magazineVisible = 1.0f;
+        }
+    }
+
+    // --- Fire kick ------------------------------------------------------------------------------
+    const float kick = glm::clamp(m_weaponPose.kick, 0.0f, 1.0f);
+    if (kick > 0.0f)
+    {
+        offset -= aimForward * (0.055f * kick);
+        rotation = rotation * glm::angleAxis(glm::radians(-7.5f * kick), glm::vec3(1.0f, 0.0f, 0.0f));
+    }
+
+    // Sway is applied last, as a rotation about the carry frame, so it moves the whole hold: weapon,
+    // magazine and both hands together.
+    rotation = glm::angleAxis(m_weaponSway.x, glm::vec3(0.0f, 1.0f, 0.0f)) *
+               glm::angleAxis(m_weaponSway.y, carryRight) * rotation;
+    offset += carryRight * (m_weaponSway.x * 0.16f) + carryUp * (m_weaponSway.y * 0.16f);
+
+    m_weaponTransform.position = view.eyePosition + offset;
+    m_weaponTransform.rotation = rotation;
+    m_weaponTransform.scale = glm::vec3(1.0f);
+
+    m_magazineTransform.position =
+        m_weaponTransform.position + rotation * (m_weaponVisual.magazineSeated + magazineOffset);
+    m_magazineTransform.rotation = rotation;
+    m_magazineTransform.scale = glm::vec3(magazineVisible > 0.01f ? 1.0f : 0.0f);
+
+    // The flash lives at the muzzle and is scaled to nothing except on the frames just after a shot.
+    m_muzzleFlashTransform.position = MuzzlePoint();
+    m_muzzleFlashTransform.rotation = rotation;
+    const float flash = glm::clamp((kick - 0.62f) / 0.38f, 0.0f, 1.0f);
+    m_muzzleFlashTransform.scale = glm::vec3(flash);
+
+    // --- Hands ----------------------------------------------------------------------------------
+    const glm::vec3 barrel = rotation * glm::vec3(0.0f, 0.0f, 1.0f);
+    const glm::vec3 weaponUp = rotation * glm::vec3(0.0f, 1.0f, 0.0f);
     const glm::vec3 weaponRight = glm::cross(barrel, weaponUp);
 
-    // The trigger hand is at the grip; the support hand is further along the barrel. Anything with
-    // a forward grip long enough to reach gets both hands on it, which is what makes a rifle read
-    // as a rifle rather than a pistol held in two places.
     glm::vec3 gripPoints[2] = {
-        grip + barrel * std::clamp(m_weaponSize.z * 0.45f, 0.10f, 0.30f) - weaponUp * 0.015f -
-            weaponRight * 0.03f,  // left, the support hand
-        grip - weaponUp * 0.012f  // right, the trigger hand
+        m_weaponTransform.position + rotation * m_weaponVisual.supportGrip, // left, the support hand
+        m_weaponTransform.position - weaponUp * 0.02f                       // right, the trigger hand
     };
 
     // A long weapon puts the handguard further out than the arm can reach, and an over-extended IK
@@ -567,29 +686,40 @@ bool PlayerBody::UpdateWeaponHold(const PlayerView& view, float dt)
     {
         const glm::vec3 leftShoulder = m_pose.GlobalPosition(m_rig.shoulder[kLeft]);
         const float armSpan = (m_rig.upperArmLength + m_rig.lowerArmLength) * 0.94f;
-        glm::vec3 offset = gripPoints[kLeft] - leftShoulder;
-        float distance = glm::length(offset);
-        while (distance > armSpan && glm::dot(gripPoints[kLeft] - grip, barrel) > 0.02f)
+        while (glm::length(gripPoints[kLeft] - leftShoulder) > armSpan &&
+               glm::dot(gripPoints[kLeft] - m_weaponTransform.position, barrel) > 0.02f)
         {
             gripPoints[kLeft] -= barrel * 0.02f;
-            offset = gripPoints[kLeft] - leftShoulder;
-            distance = glm::length(offset);
         }
     }
 
-    for (int side = 0; side < 2; ++side)
+    // Crawling, the support hand lets go and reaches for the ground; only the trigger hand stays on
+    // the weapon, which is how anyone actually low-crawls with a rifle.
+    const int firstSide = flat ? kRight : kLeft;
+    // The support hand also comes off the gun while the magazine is being changed.
+    const bool supportHandFree = flat || (m_weaponPose.reloading && m_weaponPose.reload > 0.12f &&
+                                          m_weaponPose.reload < 0.92f);
+
+    for (int side = firstSide; side < 2; ++side)
     {
+        if (side == kLeft && supportHandFree)
+        {
+            continue;
+        }
         const glm::vec3 shoulder = m_pose.GlobalPosition(m_rig.shoulder[side]);
         const float sideSign = side == kLeft ? -1.0f : 1.0f;
 
         FootState& hand = m_hands[static_cast<size_t>(side)];
-        hand.position = SmoothTowards(hand.position, gripPoints[side], m_config.weaponHandSmoothing, dt);
+        // Placed, not smoothed. A hand holding a weapon is rigidly attached to it, so any smoothing
+        // here shows up as the grip sliding off the gun whenever the player turns.
+        hand.position = gripPoints[side];
         hand.planted = true;
 
         // Elbows drop and swing outwards, away from the ribs. Aiming tucks them in, which is what
         // brings the silhouette down behind the sights.
-        const glm::vec3 elbowPole = glm::normalize(-up * 1.0f + right * (sideSign * (0.85f - 0.45f * m_aimBlend)) -
-                                                   forward * 0.35f);
+        const glm::vec3 elbowPole =
+            glm::normalize(-carryUp * 1.0f + carryRight * (sideSign * (0.85f - 0.45f * aim)) -
+                           carryForward * 0.35f);
         const TwoBoneIKResult ik = SolveTwoBoneIK(shoulder, hand.position, elbowPole,
                                                   m_rig.upperArmLength, m_rig.lowerArmLength);
 
@@ -598,37 +728,63 @@ bool PlayerBody::UpdateWeaponHold(const PlayerView& view, float dt)
         m_pose.SetGlobal(m_skeleton, m_rig.hand[side],
                          glm::translate(glm::mat4(1.0f), ik.endPosition) * glm::mat4_cast(rotation));
     }
+
+    // The magazine change needs a hand to do it with, so the support hand goes to the magazine well
+    // rather than hanging in mid air.
+    if (supportHandFree && !flat && m_weaponPose.reloading)
+    {
+        const glm::vec3 shoulder = m_pose.GlobalPosition(m_rig.shoulder[kLeft]);
+        const glm::vec3 target = m_magazineTransform.position + weaponRight * -0.03f;
+        FootState& hand = m_hands[static_cast<size_t>(kLeft)];
+        hand.position = SmoothTowards(hand.position, target, m_config.weaponHandSmoothing, dt);
+
+        const glm::vec3 elbowPole =
+            glm::normalize(-carryUp * 1.0f - carryRight * 0.9f - carryForward * 0.25f);
+        const TwoBoneIKResult ik = SolveTwoBoneIK(shoulder, hand.position, elbowPole,
+                                                  m_rig.upperArmLength, m_rig.lowerArmLength);
+        m_pose.SetGlobal(m_skeleton, m_rig.upperArm[kLeft], SegmentMatrix(shoulder, ik.jointPosition));
+        m_pose.SetGlobal(m_skeleton, m_rig.lowerArm[kLeft], SegmentMatrix(ik.jointPosition, ik.endPosition));
+        m_pose.SetGlobal(m_skeleton, m_rig.hand[kLeft],
+                         glm::translate(glm::mat4(1.0f), ik.endPosition) * glm::mat4_cast(rotation));
+    }
     return true;
 }
 
 void PlayerBody::UpdateArms(const PlayerState& state, const PlayerView& view, PhysicsWorld& physics,
                             float dt)
 {
-    // A weapon takes the arms over completely: both hands go on it and the elbows follow. Once the
-    // body is more than half way to lying flat, crawling wins instead, because you cannot pull
-    // yourself along the floor with a rifle in both hands.
-    if (m_flatness < 0.5f && UpdateWeaponHold(view, dt))
-    {
-        return;
-    }
+    // A weapon takes the arms over: both hands go on it, and the elbows follow. It keeps hold of it
+    // when the body goes flat too, because dropping a rifle to crawl is not what anybody does.
+    const bool holding = UpdateWeaponHold(view, dt);
 
-    // Otherwise only prone drives the arms with IK. Upright and empty-handed, the procedural
-    // rotations set in UpdatePosture are enough.
+    // Upright and empty-handed, the procedural rotations set in UpdatePosture are enough.
     if (m_flatness < 0.02f)
     {
         return;
     }
 
+    // Flat on the ground: the arms crawl. With a weapon in the trigger hand, only the support arm
+    // reaches and pulls; the weapon hand stays on the gun and comes along.
+    UpdateCrawlArms(state, view, physics, dt, holding);
+}
+
+void PlayerBody::UpdateCrawlArms(const PlayerState& state, const PlayerView& view,
+                                 PhysicsWorld& physics, float dt, bool supportArmOnly)
+{
     const glm::vec3 facing{std::sin(m_bodyYaw), 0.0f, -std::cos(m_bodyYaw)};
     const glm::vec3 right{std::cos(m_bodyYaw), 0.0f, std::sin(m_bodyYaw)};
-    const float armSpan = m_rig.upperArmLength + m_rig.lowerArmLength;
 
     // Crawling runs on its own cycle, opposite the legs, so the body reads as pulling itself along
-    // rather than sliding.
-    const float crawlPhase =
-        state.strideDistance / std::max(m_config.crawlCycleLength, 0.05f) * glm::two_pi<float>();
+    // rather than sliding. Holding a weapon halves the cycle: one arm is doing all the work, so it
+    // reaches, plants and pulls on every stride rather than every other one.
+    const float cycleLength =
+        m_config.crawlCycleLength * (supportArmOnly ? 0.55f : 1.0f);
+    const float crawlPhase = state.strideDistance / std::max(cycleLength, 0.05f) * glm::two_pi<float>();
 
-    for (int side = 0; side < 2; ++side)
+    const int firstSide = supportArmOnly ? kLeft : 0;
+    const int lastSide = supportArmOnly ? kLeft : 1;
+
+    for (int side = firstSide; side <= lastSide; ++side)
     {
         const glm::vec3 shoulder = m_pose.GlobalPosition(m_rig.shoulder[side]);
         const float sideSign = side == kLeft ? -1.0f : 1.0f;
@@ -657,8 +813,8 @@ void PlayerBody::UpdateArms(const PlayerState& state, const PlayerView& view, Ph
         hand.planted = lift < 0.01f;
 
         // Elbows bend backwards and outwards, away from the body's front.
-        const glm::vec3 elbowPole = -facing * 0.6f + right * (sideSign * 0.8f) +
-                                    glm::vec3(0.0f, 0.4f, 0.0f);
+        const glm::vec3 elbowPole =
+            -facing * 0.6f + right * (sideSign * 0.8f) + glm::vec3(0.0f, 0.4f, 0.0f);
         const TwoBoneIKResult ik = SolveTwoBoneIK(shoulder, hand.position, elbowPole,
                                                   m_rig.upperArmLength, m_rig.lowerArmLength);
 
@@ -667,7 +823,6 @@ void PlayerBody::UpdateArms(const PlayerState& state, const PlayerView& view, Ph
                          SegmentMatrix(ik.jointPosition, ik.endPosition));
         m_pose.SetGlobal(m_skeleton, m_rig.hand[side],
                          glm::translate(glm::mat4(1.0f), ik.endPosition) * glm::mat4_cast(BodyRotation()));
-        (void)armSpan;
     }
 }
 
@@ -868,11 +1023,21 @@ void PlayerBody::UpdateLegs(const PlayerState& state, const PlayerView& view,
 
 void PlayerBody::PushToScene(Scene& scene)
 {
+    // The weapon is three separate entities so a reload can move the magazine on its own and firing
+    // can flash the muzzle without either disturbing the other.
     if (m_weaponEntity.IsValid())
     {
         if (Transform* transform = scene.GetTransform(m_weaponEntity))
         {
             *transform = m_weaponTransform;
+        }
+        if (Transform* transform = scene.GetTransform(m_magazineEntity))
+        {
+            *transform = m_magazineTransform;
+        }
+        if (Transform* transform = scene.GetTransform(m_muzzleFlashEntity))
+        {
+            *transform = m_muzzleFlashTransform;
         }
     }
 
