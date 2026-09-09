@@ -206,20 +206,22 @@ Only position, orientation, stance, lean and stride phase cross the wire. The wa
 the head and the weapon hold are reproduced locally by the same procedural body the local player
 uses. A gait is expensive to send and cheap to reproduce.
 
-## ADR-018: Rolling onto your back while prone is off, not deleted
+## ADR-018: Rolling onto your back while prone is gone
 
-**Status**: accepted, 2026-09-09
+**Status**: accepted, 2026-09-09, superseded by removal the same day
 
-Supine prone works: the roll follows how far round you are looking, passes through the side, and
-the limbs go with it. It is switched off anyway, behind `proneRollEnabled`.
+Supine prone was built and worked: the roll followed how far round you were looking, passed through
+the side, and the limbs went with it. It was first switched off behind a flag, then removed
+altogether at the request of whoever has to play it. It is a whole movement of its own and the game
+does not need it yet.
 
-It is a whole movement of its own and the game does not need it yet. Turning it off is one flag and
-turning it back on is the same flag, so the work and its tests stay. The tests set the flag
-themselves, which means the code cannot rot while it is unused: it is still exercised on every run.
+The code is in the history rather than behind a flag. A flag that is never true is a second version
+of every function it touches, and the pelvis roll reached into the arms, the legs, the weapon hold
+and the torso twist limit: keeping it meant keeping five conditionals nobody could exercise.
 
-With it off, a prone body turned further than the neck allows shuffles round on its front instead.
-That is the other thing people actually do, and it means looking behind you while prone still has an
-answer rather than leaving the body wrenched at its twist limit.
+What replaces it: a prone body turned further than a neck allows shuffles round on its front. Which
+way it goes is decided once and held, because deciding it every tick makes the body jitter at
+exactly half a turn, where which way is shorter flips between one frame and the next.
 
 ## ADR-019: Climbing is a fixed path, not a force
 

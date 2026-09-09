@@ -634,9 +634,15 @@ bool PredationGame::PerformInteraction(InteractionKind kind, int index, uint8_t 
 
         if (stored >= wanted)
         {
+            const ItemId taken = pickup->item;
             m_world.ConsumePickup(index, m_scene, m_app->GetPhysics(), m_interactions);
             if (m_sessionMode == SessionMode::Host)
             {
+                // Remembered, so the same client cannot later put down more than it took.
+                if (player != 0)
+                {
+                    m_host.NoteCarried(player, static_cast<uint16_t>(taken), wanted);
+                }
                 WorldEventMessage event;
                 event.kind = WorldEventKind::PickupTaken;
                 event.index = static_cast<uint8_t>(index);
@@ -774,7 +780,10 @@ void PredationGame::ServeClientRequests()
         WorldEventMessage event;
         event.kind = WorldEventKind::ShotFired;
         event.player = request.player;
-        event.position = shot.origin;
+        // The trace starts at the eye, so that what is under the crosshair is what gets hit. The
+        // drawn line has to start at the muzzle instead, or everyone else watches rounds come out
+        // of the shooter's face. Where their muzzle is, is where this machine is drawing their gun.
+        event.position = MuzzleOf(request.player, shot.origin, shot.direction);
         event.direction = result ? result.position : shot.origin + shot.direction * shot.range;
         event.flag = result.hit;
         m_host.Broadcast(event);
@@ -784,6 +793,33 @@ void PredationGame::ServeClientRequests()
         tracer.to = event.direction;
         tracer.hit = event.flag;
         m_tracers.push_back(tracer);
+    }
+
+    for (const NetHost::DropRequest& request : m_host.TakeDropRequests())
+    {
+        // Only what the host actually handed them. Otherwise dropping is a way to make items out of
+        // nothing, which is what let one get duplicated.
+        if (!m_host.TakeCarried(request.player, request.drop.item, request.drop.count))
+        {
+            continue;
+        }
+        const int index = m_world.SpawnPickup(m_scene, m_app->GetMeshes(), m_app->GetPhysics(),
+                                              m_interactions, m_items,
+                                              static_cast<ItemId>(request.drop.item),
+                                              request.drop.count, request.drop.position,
+                                              request.drop.velocity);
+        if (index < 0)
+        {
+            continue;
+        }
+        WorldEventMessage event;
+        event.kind = WorldEventKind::PickupSpawned;
+        event.index = static_cast<uint8_t>(index);
+        event.item = request.drop.item;
+        event.other = request.drop.count;
+        event.position = request.drop.position;
+        event.direction = request.drop.velocity;
+        m_host.Broadcast(event);
     }
 
     for (const uint8_t player : m_host.TakeJoined())
@@ -997,6 +1033,21 @@ void PredationGame::ApplyDynamicBodies(const WorldStateMessage& state)
 }
 
 // --- Damage ------------------------------------------------------------------------------------
+
+glm::vec3 PredationGame::MuzzleOf(uint8_t player, const glm::vec3& eye, const glm::vec3& direction) const
+{
+    // Where that player's weapon is being drawn on this machine. Falls back to a point in front of
+    // the eye when there is no body for them, which is better than the eye itself: a round leaving
+    // somebody's face is the thing this exists to stop.
+    for (const auto& avatar : m_avatars)
+    {
+        if (avatar->id == player && avatar->body.HasWeapon())
+        {
+            return avatar->body.MuzzlePoint();
+        }
+    }
+    return eye + direction * 0.45f - glm::vec3(0.0f, 0.12f, 0.0f);
+}
 
 std::vector<NetHost::PlayerPose> PredationGame::PosesNow() const
 {
@@ -1504,6 +1555,34 @@ void PredationGame::SyncRemoteAvatars(float frameDeltaSeconds)
         avatar->view.yaw = remote.yaw;
         avatar->view.pitch = remote.pitch;
         avatar->view.leanRoll = glm::radians(config.leanAngleDegrees) * remote.leanAmount;
+
+        // Put in their hands what the snapshot says they are holding. This was replicated and then
+        // never used, which is why everybody else appeared empty-handed however obviously they were
+        // carrying a rifle.
+        if (avatar->heldItem != remote.heldItem)
+        {
+            avatar->heldItem = remote.heldItem;
+            const ItemDefinition* item = m_items.Get(static_cast<ItemId>(remote.heldItem));
+            const WeaponDefinition* weapon =
+                item != nullptr ? m_weaponData.Get(m_weaponData.ForItem(item->key)) : nullptr;
+
+            avatar->body.SetWeapon(m_scene, m_app->GetMeshes(), weapon);
+            if (weapon == nullptr && item != nullptr)
+            {
+                avatar->body.SetHeldItem(m_scene, m_app->GetMeshes(), item->key,
+                                         ItemMesh(*item, &m_weaponData), ItemMaterial(*item));
+            }
+            else
+            {
+                avatar->body.ClearHeldItem(m_scene);
+            }
+        }
+
+        PlayerBody::WeaponPose weaponPose;
+        weaponPose.aim = remote.aiming ? 1.0f : 0.0f;
+        weaponPose.reloading = remote.reloading;
+        weaponPose.reload = remote.reloadProgress;
+        avatar->body.SetWeaponPose(weaponPose);
 
         // Somebody else going down collapses the same way, from the state the host sent.
         if (!remote.alive && !avatar->collapsed)
@@ -2016,7 +2095,7 @@ void PredationGame::ResolveShots()
             WorldEventMessage event;
             event.kind = WorldEventKind::ShotFired;
             event.player = 0;
-            event.position = tracer.from;
+            event.position = MuzzlePosition();
             event.direction = tracer.to;
             event.flag = tracer.hit;
             m_host.Broadcast(event);
@@ -2141,6 +2220,21 @@ void PredationGame::DropSelected()
     const PlayerView& view = m_player.View();
     const glm::vec3 origin = view.eyePosition + view.Forward() * 0.6f;
     const glm::vec3 throwVelocity = view.Forward() * 2.5f;
+
+    // A client asks to put it down and waits to be told. Dropping locally made an item nobody else
+    // had: it could not be picked up, the indices the two machines used stopped agreeing, and
+    // dropping the same thing twice made two of it.
+    if (m_sessionMode == SessionMode::Client)
+    {
+        DropMessage message;
+        message.item = static_cast<uint16_t>(slot.item);
+        message.count = static_cast<uint8_t>(removed);
+        message.position = origin;
+        message.velocity = throwVelocity;
+        m_client.SendDrop(message);
+        return;
+    }
+
     const int index = m_world.SpawnPickup(m_scene, m_app->GetMeshes(), m_app->GetPhysics(),
                                           m_interactions, m_items, slot.item, removed, origin,
                                           throwVelocity);
@@ -2278,6 +2372,17 @@ void PredationGame::OnFixedUpdate(double fixedDt)
     if (!StepSession(input, dt))
     {
         m_player.Step(input, dt);
+    }
+
+    // The toggles follow what the body actually did. A stance change can be refused, by a ceiling
+    // overhead or by the capsule being somewhere it cannot grow, and when that happened the toggle
+    // still flipped: the button and the body then disagreed, so the next press asked for the stance
+    // you were already in and nothing happened. That is what made crouch and prone go dead until
+    // something else moved you.
+    if (cv_crouchToggle.Get() && m_player.State().stanceBlocked)
+    {
+        m_crouchToggleState = m_player.State().stance == PlayerStance::Crouching;
+        m_proneToggleState = m_player.State().stance == PlayerStance::Prone;
     }
 }
 

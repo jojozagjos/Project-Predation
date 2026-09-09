@@ -345,29 +345,27 @@ void PlayerBody::UpdatePosture(const PlayerState& state, const PlayerView& view,
         // transition: up on one shoulder is where you can cover behind you without giving up the
         // ground, and two fixed states cannot express it. It also means the roll cannot snap,
         // because there is no state to snap between.
-        const float over = glm::radians(m_config.proneRollOverDegrees);
-        const float span = std::max(glm::pi<float>() - over, glm::radians(5.0f));
-        m_proneRollTarget = m_config.proneRollEnabled
-                                ? std::clamp((twist - over) / span, 0.0f, 1.0f)
-                                : 0.0f;
-        m_proneOnBack = m_proneRollTarget > 0.5f;
-
-        // With rolling off, a body turned further than the neck allows shuffles round on its front
-        // instead of being left wrenched. It is slow, because pivoting on your elbows is.
-        if (!m_config.proneRollEnabled && twist > glm::radians(m_config.pronePivotDegrees))
+        // Turned further than a neck allows, a prone body shuffles round on its front. It is slow,
+        // because pivoting on your elbows is, and it is the only answer now that rolling onto your
+        // back is gone: without it the body is left wrenched at its twist limit.
+        //
+        // Which way it goes is decided once and held until the body has caught up. Deciding it
+        // every tick makes the body jitter at exactly half a turn, where which way is shorter
+        // flips back and forth between one frame and the next.
+        if (twist > glm::radians(m_config.pronePivotDegrees))
         {
+            if (!m_pronePivoting)
+            {
+                m_pronePivoting = true;
+                m_pronePivotSign = signedTwist > 0.0f ? 1.0f : -1.0f;
+            }
             const float excess = twist - glm::radians(m_config.pronePivotDegrees);
-            const float direction = signedTwist > 0.0f ? 1.0f : -1.0f;
-            m_bodyYaw = WrapAngle(m_bodyYaw + direction *
+            m_bodyYaw = WrapAngle(m_bodyYaw + m_pronePivotSign *
                                                   std::min(excess, m_config.pronePivotSpeed * dt));
         }
-
-        // Which shoulder you go over is decided once, as the roll starts, and held until you are
-        // flat on your front again. Deciding it every frame let a small wobble across the centre
-        // throw the body the other way mid-roll.
-        if (m_proneRollT <= 0.001f && m_proneRollTarget > 0.0f)
+        else
         {
-            m_proneRollSign = signedTwist > 0.0f ? 1.0f : -1.0f;
+            m_pronePivoting = false;
         }
 
         if (moving)
@@ -389,24 +387,8 @@ void PlayerBody::UpdatePosture(const PlayerState& state, const PlayerView& view,
     }
     else
     {
-        m_proneOnBack = false;
-        m_proneRollTarget = 0.0f;
+        m_pronePivoting = false;
     }
-    // Moved towards the target at a constant rate, so a body takes the same time to turn over
-    // however far it is going and can be stopped anywhere along the way. Smoothing exponentially
-    // towards it, as this used to, is fastest at the start and slowest at the end, which reads as a
-    // switch being thrown rather than as a movement.
-    const float rollStep = dt / std::max(m_config.proneRollSeconds, 0.05f);
-    const float toTarget = m_proneRollTarget - m_proneRollT;
-    m_proneRollT = std::clamp(m_proneRollT + std::clamp(toTarget, -rollStep, rollStep), 0.0f, 1.0f);
-    // Eased only at the ends of the whole movement, so coming to rest on the side or the back
-    // settles rather than stopping dead.
-    m_proneRoll = m_proneRollSign * glm::smoothstep(0.0f, 1.0f, m_proneRollT);
-    m_proneRollAmount = std::abs(m_proneRoll);
-    // The angle the whole body is turned through about its own length. The limbs are placed with
-    // this too, or the torso rolls while the arms and legs stay flat on the floor, which is what
-    // made the roll read as the body switching sides instead of turning over through them.
-    m_proneRollAngle = m_proneRoll * glm::pi<float>();
 
     float hipTarget = m_bodyYaw;
     float turnSpeed = m_config.hipTurnSpeedIdle;
@@ -458,7 +440,7 @@ void PlayerBody::UpdatePosture(const PlayerState& state, const PlayerView& view,
     // standing twist through while prone wound the chest most of the way round and left the body
     // lying on its side instead of its back.
     const float twistLimit = glm::radians(m_config.maxTorsoTwistDegrees) *
-                             glm::mix(1.4f, 0.55f, m_flatness) * (1.0f - m_proneRollAmount * 0.85f);
+                             glm::mix(1.4f, 0.55f, m_flatness);
     const float torsoTwist = std::clamp(WrapAngle(view.yaw - m_bodyYaw), -twistLimit, twistLimit);
 
     // Blend the whole posture towards the target stance, so going prone plays out over a moment
@@ -547,7 +529,7 @@ void PlayerBody::UpdatePosture(const PlayerState& state, const PlayerView& view,
     // between lying on your front and lying on your back. Between the two it reads as rolling over,
     // which is exactly the movement being animated.
     pelvis.rotation = glm::angleAxis(-pelvisPitch, glm::vec3(1.0f, 0.0f, 0.0f)) *
-                      glm::angleAxis(m_proneRollAngle, glm::vec3(0.0f, 1.0f, 0.0f)) *
+
                       glm::angleAxis(glm::radians(sway * 60.0f), glm::vec3(0.0f, 0.0f, 1.0f));
 
     // Lean forward from the spine, counter-rotate the chest slightly so the torso does not fold, and
@@ -583,7 +565,7 @@ void PlayerBody::UpdatePosture(const PlayerState& state, const PlayerView& view,
     // that used to lift the chin now drops it. The compensation flips sign with the roll; without
     // that, rolling over drives the face into the floor it just came off.
     const float torsoPitch = pelvisPitch + spineLean + runLean * 0.8f;
-    const float pitchSign = 1.0f - 2.0f * m_proneRollAmount;
+    constexpr float pitchSign = 1.0f;
     m_pose.Local(m_rig.neck).rotation = glm::angleAxis(
         pitchSign * torsoPitch * 0.55f + view.pitch * 0.35f, glm::vec3(1.0f, 0.0f, 0.0f));
     m_pose.Local(m_rig.head).rotation =
@@ -624,8 +606,15 @@ void PlayerBody::UpdatePosture(const PlayerState& state, const PlayerView& view,
     // sitting too far forward, and the camera stops clipping through the body on stairs and while
     // crouching, because the head now carries the same step smoothing and landing dip the camera
     // does. It costs one extra pass over nineteen bones.
-    const glm::vec3 viewFacing{std::sin(view.yaw), 0.0f, -std::cos(view.yaw)};
-    const glm::vec3 desiredHead = view.eyePosition - viewFacing * m_config.eyeForwardOfHead -
+    // The eye sits forward of the body, not on top of it. Your chest is behind your face, which is
+    // why looking down shows you the front of your torso and your boots rather than the tops of
+    // your own shoulders.
+    //
+    // Measured along the *body's* facing rather than the view's. Using the view swings the whole
+    // body sideways whenever you turn your head, which is the drift this anchoring was written to
+    // remove in the first place; using the body only moves it when the body itself turns.
+    const glm::vec3 bodyFacing{std::sin(m_bodyYaw), 0.0f, -std::cos(m_bodyYaw)};
+    const glm::vec3 desiredHead = view.eyePosition - bodyFacing * m_config.eyeForwardOfHead -
                                   glm::vec3(0.0f, m_config.eyeAboveHead, 0.0f);
     m_rootPosition += desiredHead - m_pose.GlobalPosition(m_rig.head);
 
@@ -825,8 +814,8 @@ bool PlayerBody::UpdateWeaponHold(const PlayerView& view, float dt)
         const float prone = glm::clamp((m_flatness - 0.5f) * 2.0f, 0.0f, 1.0f) * (1.0f - aim);
         // On the back the weapon comes up over the chest rather than down beside the body: there is
         // no ground on that side to lay it on.
-        offset = glm::mix(offset, proneOffset, prone * (1.0f - m_proneRollAmount));
-        offset += carryUp * (0.24f * m_proneRollAmount * (1.0f - aim));
+        offset = glm::mix(offset, proneOffset, prone);
+
     }
 
     // Looking steeply down, the sighted hold puts the weapon inside the player's own chest and
@@ -1226,7 +1215,7 @@ void PlayerBody::UpdateCrawlArms(const PlayerState& state, const PlayerView& vie
 
         // On the back you do not reach ahead and pull; you dig your elbows in beside you and push.
         // The arms come back to the hips and the reach shortens as the roll completes.
-        const float onBack = m_proneRollAmount;
+        constexpr float onBack = 0.0f;
         const float forwardReach = glm::mix(m_config.crawlHandForward + reach, -0.06f, onBack);
         const float outward = glm::mix(0.16f, 0.30f, onBack) * m_rig.height;
 
@@ -1234,10 +1223,10 @@ void PlayerBody::UpdateCrawlArms(const PlayerState& state, const PlayerView& vie
         // feet do. On your side the upper arm is genuinely in the air, not still pressed flat
         // against a floor the shoulder has left.
         const float lateral = sideSign * outward;
-        const float rollRise = -lateral * std::sin(m_proneRollAngle);
+        constexpr float rollRise = 0.0f;
 
         glm::vec3 target = shoulder + facing * forwardReach +
-                           right * (lateral * std::cos(m_proneRollAngle));
+                           right * lateral;
         target.y = view.renderPosition.y + 0.05f + lift * (1.0f - onBack) + rollRise;
 
         // Plant the hand on whatever is actually underneath it, unless the roll has lifted it clear.
@@ -1257,7 +1246,7 @@ void PlayerBody::UpdateCrawlArms(const PlayerState& state, const PlayerView& vie
 
         // Elbows bend backwards and outwards, away from the body's front. Rolled onto the back the
         // arm is the other way up, so the elbow drops instead of lifting.
-        const float elbowSign = 1.0f - 2.0f * m_proneRollAmount;
+        constexpr float elbowSign = 1.0f;
         const glm::vec3 elbowPole = -facing * 0.6f + right * (sideSign * elbowSign * 0.8f) +
                                     glm::vec3(0.0f, 0.4f * elbowSign, 0.0f);
         const TwoBoneIKResult ik = SolveTwoBoneIK(shoulder, hand.position, elbowPole,
@@ -1389,8 +1378,8 @@ void PlayerBody::UpdateLegs(const PlayerState& state, const PlayerView& view,
             // Rotating the offset about the body's forward axis sends the right side down for a
             // positive roll, which is the same way the chest goes.
             const glm::vec3 crawlTarget = hip - facing * back +
-                                          right * (lateral * std::cos(m_proneRollAngle));
-            rollRise = -lateral * std::sin(m_proneRollAngle) * m_flatness;
+                                          right * lateral;
+            rollRise = 0.0f;
             // The hips themselves are already stacked by the pelvis roll, so following them is
             // most of what puts one leg above the other.
             proneFootY = hip.y + rollRise;
@@ -1453,7 +1442,7 @@ void PlayerBody::UpdateLegs(const PlayerState& state, const PlayerView& view,
         // Pinning both feet to the ground there is what left the legs lying flat while the torso
         // turned over above them. It peaks halfway through and returns to nothing at both ends,
         // because on your front and on your back your heels really are on the ground.
-        const float sideness = std::abs(std::sin(m_proneRollAngle)) * m_flatness;
+        constexpr float sideness = 0.0f;
         target.y = glm::mix(groundedY, proneFootY, sideness);
 
         // In the air the ground is no use: it can be metres below, and reaching for it stretches the
@@ -1511,7 +1500,7 @@ void PlayerBody::UpdateLegs(const PlayerState& state, const PlayerView& view,
         // down: that is the direction a knee actually goes when you draw it up to crawl.
         // On the back the knee goes the other way, because the leg is now the other way up. Left and
         // right swap with it, for the same reason.
-        const float rollSign = 1.0f - 2.0f * m_proneRollAmount;
+        constexpr float rollSign = 1.0f;
         const glm::vec3 pronePole = glm::normalize(right * (sideSign * rollSign * 0.78f) +
                                                    glm::vec3(0.0f, -0.62f * rollSign, 0.0f));
         const glm::vec3 kneePole =

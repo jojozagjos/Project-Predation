@@ -150,25 +150,10 @@ public:
         float crawlShoulderRollDegrees = 9.0f; // shoulders roll as each arm reaches and pulls
         // Prone turning is slow and deliberate: the body pivots towards where you are crawling.
         float proneTurnSpeed = 3.2f;
-        // Rolling onto your back while prone. Off for now: it is a whole movement of its own and it
-        // is not what the game needs yet. With it off, a prone body that is turned far enough
-        // shuffles round on its front instead, which is the other thing people actually do.
-        //
-        // The roll itself is kept rather than deleted, because it works and turning it back on is
-        // one flag. See ADR-018.
-        bool proneRollEnabled = false;
-        // Look this far from the way the body is lying and it starts coming up onto its side. From
-        // here to straight behind, how far over the body is tracks how far round you are looking,
-        // so up on one shoulder is a position you can hold and aim from rather than a frame of a
-        // transition. Straight behind is flat on your back.
-        float proneRollOverDegrees = 95.0f;
-        // With the roll off, how fast a prone body pivots on the spot to catch up with where you
-        // are looking, and how far it lets you look before it bothers.
+        // Turned further than this from the way the body is lying, a prone body shuffles round on
+        // its front to catch up, at this rate. Rolling onto your back is gone; see ADR-018.
         float pronePivotSpeed = 1.9f;
         float pronePivotDegrees = 70.0f;
-        // How long a full roll from front to back takes. The rate is constant, so a quarter turn
-        // takes a quarter as long, and it reads as a body turning over rather than a pose changing.
-        float proneRollSeconds = 0.7f;
 
         // In the air. Legs tuck on the way up and reach on the way down; the arms come out either
         // way. Without any of this the legs simply stretch straight down towards a floor that is
@@ -196,7 +181,10 @@ public:
         // player exactly when they turned to look at it. The skull is drawn behind this point
         // instead, in the head bone's own frame, where turning the head moves the skull and not the
         // body, which is what actually happens.
-        float eyeForwardOfHead = 0.0f;
+        // How far in front of the body the eye sits. Your chest is behind your face by about this
+        // much, and it is what makes looking down show you the front of your torso instead of the
+        // tops of your shoulders.
+        float eyeForwardOfHead = 0.070f;
         float eyeAboveHead = 0.085f;
         // Almost nothing. The head bone is anchored under the eye and the neck is directly below
         // it, so whatever this is, the drawn skull sits that far behind the neck. At forty
@@ -355,17 +343,12 @@ private:
     std::array<FootState, 2> m_feet;
     std::array<FootState, 2> m_hands; // same shape: a smoothed target and whether it is planted
     float m_flatness = 0.0f;          // 0 upright, 1 fully prone
-    // Signed: negative rolls left, positive rolls right, so you go over the way you turned. The
-    // magnitude is how far through the roll it is, and most of the pose only cares about that.
-    float m_proneRoll = 0.0f;
-    float m_proneRollT = 0.0f;        // 0 to 1 through the roll, advanced at a constant rate
-    float m_proneRollTarget = 0.0f;   // where the roll is heading, from how far round you are looking
-    float m_proneRollAngle = 0.0f;    // radians about the body length, signed; limbs are placed with it
-    float m_proneRollSign = 1.0f;
-    float m_proneRollAmount = 0.0f;  // how far over, ignoring which way
     float m_airborne = 0.0f;          // 0 on the ground, 1 fully in the air
     float m_airRise = 0.0f;           // +1 rising, -1 falling
-    bool m_proneOnBack = false;       // the state the roll is heading towards
+    // Shuffling round on the spot while prone. The direction is held for the whole pivot so the
+    // body does not jitter at half a turn, where which way is shorter keeps flipping.
+    bool m_pronePivoting = false;
+    float m_pronePivotSign = 1.0f;
 
     glm::quat BodyRotation() const;
 

@@ -44,6 +44,7 @@ enum class MessageType : uint8_t
     Interact,    // client to host, reliable: I want to use that
     Shot,        // client to host, reliable: I pulled the trigger
     WorldState,  // host to client, unreliable: where the loose physics has got to
+    Drop,        // client to host, reliable: I am putting this down
     Count
 };
 
@@ -96,6 +97,18 @@ struct ShotMessage
     uint32_t renderTick = 0;
     glm::vec3 origin{0.0f};
     glm::vec3 direction{0.0f};
+};
+
+// A client putting something down. It is a request like any other: the host spawns the item and
+// tells everybody, and the client waits to be told rather than dropping one of its own. A client
+// that dropped locally created an item nobody else had, which could not then be picked up and
+// could be dropped again for a second copy.
+struct DropMessage
+{
+    uint16_t item = 0;
+    uint8_t count = 1;
+    glm::vec3 position{0.0f};
+    glm::vec3 velocity{0.0f};
 };
 
 // Where the loose rigid bodies have got to. Unreliable and periodic, because a crate sliding across
@@ -207,6 +220,7 @@ void WriteWorldEvent(BitWriter& writer, const WorldEventMessage& message);
 void WriteInteract(BitWriter& writer, const InteractMessage& message);
 void WriteShot(BitWriter& writer, const ShotMessage& message);
 void WriteWorldState(BitWriter& writer, const WorldStateMessage& message);
+void WriteDrop(BitWriter& writer, const DropMessage& message);
 
 // --- Reading -----------------------------------------------------------------------------------
 //
@@ -223,5 +237,6 @@ bool ReadWorldEvent(BitReader& reader, WorldEventMessage& out);
 bool ReadInteract(BitReader& reader, InteractMessage& out);
 bool ReadShot(BitReader& reader, ShotMessage& out);
 bool ReadWorldState(BitReader& reader, WorldStateMessage& out);
+bool ReadDrop(BitReader& reader, DropMessage& out);
 
 } // namespace pred

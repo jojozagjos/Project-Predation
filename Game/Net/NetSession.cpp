@@ -8,6 +8,7 @@
 #include <glm/gtc/constants.hpp>
 
 #include <algorithm>
+#include <map>
 #include <cmath>
 
 namespace pred
@@ -112,6 +113,9 @@ struct NetHost::Client
     bool aiming = false;
     bool reloading = false;
     float reloadProgress = 0.0f;
+    // What this client has taken out of the world. The host does not model their bag, only what it
+    // handed them, which is enough to refuse a drop of something they never picked up.
+    std::map<uint16_t, int> carried;
 };
 
 NetHost::NetHost() = default;
@@ -349,6 +353,21 @@ void NetHost::HandlePacket(const NetPacket& packet)
         break;
     }
 
+    case MessageType::Drop:
+    {
+        const Client* client = FindClient(packet.peer);
+        DropMessage message;
+        if (client == nullptr || !ReadDrop(reader, message))
+        {
+            return;
+        }
+        DropRequest request;
+        request.player = client->playerId;
+        request.drop = message;
+        m_dropRequests.push_back(request);
+        break;
+    }
+
     case MessageType::Leave:
         RemoveClient(packet.peer);
         break;
@@ -356,6 +375,39 @@ void NetHost::HandlePacket(const NetPacket& packet)
     default:
         break;
     }
+}
+
+void NetHost::NoteCarried(uint8_t player, uint16_t item, int count)
+{
+    for (auto& client : m_clients)
+    {
+        if (client->playerId == player)
+        {
+            client->carried[item] += count;
+            return;
+        }
+    }
+}
+
+bool NetHost::TakeCarried(uint8_t player, uint16_t item, int count)
+{
+    for (auto& client : m_clients)
+    {
+        if (client->playerId != player)
+        {
+            continue;
+        }
+        const auto found = client->carried.find(item);
+        if (found == client->carried.end() || found->second < count)
+        {
+            PRED_LOG_WARN(Network, "Player {} tried to put down something they never picked up",
+                          player);
+            return false;
+        }
+        found->second -= count;
+        return true;
+    }
+    return false;
 }
 
 std::vector<NetHost::PlayerPose> NetHost::PosesAt(uint32_t tick) const
@@ -785,6 +837,18 @@ void NetClient::SendInteract(uint8_t kind, uint8_t index)
     WriteInteract(writer, message);
     // Reliable: opening a door is a thing that happens once, and a lost request is a door that
     // never opens rather than a frame that looks slightly wrong.
+    SendPacket(*m_transport, kHostPeer, Channel::Reliable, writer);
+}
+
+void NetClient::SendDrop(const DropMessage& drop)
+{
+    if (m_transport == nullptr || !m_welcomed)
+    {
+        return;
+    }
+    BitWriter writer;
+    WriteMessageHeader(writer, MessageType::Drop);
+    WriteDrop(writer, drop);
     SendPacket(*m_transport, kHostPeer, Channel::Reliable, writer);
 }
 

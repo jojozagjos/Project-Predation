@@ -102,6 +102,12 @@ public:
         ShotMessage shot;
     };
 
+    struct DropRequest
+    {
+        uint8_t player = 0;
+        DropMessage drop;
+    };
+
     // Where somebody was, as opposed to where they are.
     struct PlayerPose
     {
@@ -127,6 +133,11 @@ public:
 
     std::vector<InteractRequest> TakeInteractRequests() { return std::exchange(m_interactRequests, {}); }
     std::vector<ShotRequest> TakeShotRequests() { return std::exchange(m_shotRequests, {}); }
+    std::vector<DropRequest> TakeDropRequests() { return std::exchange(m_dropRequests, {}); }
+    // The host keeps a tally of what each client has picked up, so a client cannot put down
+    // something it never had. Without it, dropping is a way to make items out of nothing.
+    void NoteCarried(uint8_t player, uint16_t item, int count);
+    bool TakeCarried(uint8_t player, uint16_t item, int count);
     // Players who have just been let in. The game sends them the state of the world.
     std::vector<uint8_t> TakeJoined() { return std::exchange(m_joined, {}); }
 
@@ -162,6 +173,7 @@ private:
     std::vector<NetPacket> m_incoming;
     std::vector<InteractRequest> m_interactRequests;
     std::vector<ShotRequest> m_shotRequests;
+    std::vector<DropRequest> m_dropRequests;
     struct HistoryEntry
     {
         uint32_t tick = 0;
@@ -244,6 +256,7 @@ public:
     bool HasWorldState() const { return m_hasWorldState; }
 
     void SendInteract(uint8_t kind, uint8_t index);
+    void SendDrop(const DropMessage& drop);
     void SendShot(const ShotMessage& shot);
 
     const std::vector<RemotePlayerView>& Remotes() const { return m_views; }

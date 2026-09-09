@@ -667,3 +667,94 @@ TEST_CASE("A climb takes time and cannot be steered out of", "[player][mantle]")
     player.Shutdown();
     physics.Shutdown();
 }
+
+TEST_CASE("Stances can be changed in the air", "[player][stance]")
+{
+    // Crouching and going prone mid-jump is something people try, and there is no reason to refuse
+    // it: the capsule is shrinking, and shrinking cannot be blocked.
+    PhysicsWorld physics;
+    PhysicsWorld::Settings settings;
+    settings.workerThreads = 1;
+    REQUIRE(physics.Init(settings));
+    physics.CreateBox({20.0f, 0.5f, 20.0f}, Transform{{0.0f, -0.5f, 0.0f}}, BodyMotion::Static);
+    physics.OptimizeBroadPhase();
+
+    PlayerConfig config;
+    PlayerController player;
+    REQUIRE(player.Init(physics, config, {0.0f, 0.05f, 0.0f}));
+
+    PlayerInput input;
+    for (int i = 0; i < 30; ++i)
+    {
+        physics.Step(1.0f / 60.0f);
+        player.Step(input, 1.0f / 60.0f);
+    }
+
+    input.jump = true;
+    physics.Step(1.0f / 60.0f);
+    player.Step(input, 1.0f / 60.0f);
+    input.jump = false;
+
+    // A few ticks into the jump, well clear of the floor.
+    for (int i = 0; i < 8; ++i)
+    {
+        physics.Step(1.0f / 60.0f);
+        player.Step(input, 1.0f / 60.0f);
+    }
+    REQUIRE_FALSE(player.State().grounded);
+
+    input.crouchHeld = true;
+    physics.Step(1.0f / 60.0f);
+    player.Step(input, 1.0f / 60.0f);
+    CHECK(player.State().stance == PlayerStance::Crouching);
+
+    input.crouchHeld = false;
+    input.proneHeld = true;
+    physics.Step(1.0f / 60.0f);
+    player.Step(input, 1.0f / 60.0f);
+    CHECK(player.State().stance == PlayerStance::Prone);
+
+    player.Shutdown();
+    physics.Shutdown();
+}
+
+TEST_CASE("A refused stance change says so", "[player][stance]")
+{
+    // The game keeps its toggle in step with the body by watching this. Without it a refused stand
+    // still flipped the toggle, the button and the body disagreed, and the next press asked for the
+    // stance you were already in.
+    PhysicsWorld physics;
+    PhysicsWorld::Settings settings;
+    settings.workerThreads = 1;
+    REQUIRE(physics.Init(settings));
+    physics.CreateBox({20.0f, 0.5f, 20.0f}, Transform{{0.0f, -0.5f, 0.0f}}, BodyMotion::Static);
+    // A lintel low enough to crouch under and not to stand under.
+    physics.CreateBox({2.0f, 0.2f, 2.0f}, Transform{{0.0f, 1.4f, 0.0f}}, BodyMotion::Static);
+    physics.OptimizeBroadPhase();
+
+    PlayerConfig config;
+    PlayerController player;
+    REQUIRE(player.Init(physics, config, {0.0f, 0.05f, 0.0f}));
+
+    PlayerInput input;
+    input.crouchHeld = true;
+    for (int i = 0; i < 30; ++i)
+    {
+        physics.Step(1.0f / 60.0f);
+        player.Step(input, 1.0f / 60.0f);
+    }
+    REQUIRE(player.State().stance == PlayerStance::Crouching);
+    CHECK_FALSE(player.State().stanceBlocked);
+
+    input.crouchHeld = false;
+    for (int i = 0; i < 10; ++i)
+    {
+        physics.Step(1.0f / 60.0f);
+        player.Step(input, 1.0f / 60.0f);
+    }
+    CHECK(player.State().stance == PlayerStance::Crouching);
+    CHECK(player.State().stanceBlocked);
+
+    player.Shutdown();
+    physics.Shutdown();
+}

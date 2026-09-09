@@ -187,8 +187,6 @@ TEST_CASE("Prone lays the body flat and face down with the legs trailing behind"
     const float standingChestY = harness.Bone(harness.Rig().chest).y;
 
     harness.SetStance(PlayerStance::Prone);
-    // Rolling onto your back is off by default now; these cover it for when it comes back.
-    harness.body.Tuning().proneRollEnabled = true;
     harness.Settle();
     const glm::vec3 pelvis = harness.Bone(harness.Rig().pelvis);
     const glm::vec3 chest = harness.Bone(harness.Rig().chest);
@@ -269,8 +267,6 @@ TEST_CASE("Crawling reaches the hands forward and cycles them", "[body][pose]")
 {
     BodyHarness harness;
     harness.SetStance(PlayerStance::Prone);
-    // Rolling onto your back is off by default now; these cover it for when it comes back.
-    harness.body.Tuning().proneRollEnabled = true;
     harness.Settle();
 
     harness.SetTravel(glm::vec3(0.0f, 0.0f, -1.0f));
@@ -382,8 +378,6 @@ TEST_CASE("Stance changes blend rather than snapping", "[body][pose]")
 
     // A single tick must move only part of the way, or the transition would pop.
     harness.SetStance(PlayerStance::Prone);
-    // Rolling onto your back is off by default now; these cover it for when it comes back.
-    harness.body.Tuning().proneRollEnabled = true;
     harness.Tick();
     const float afterOneTick = harness.Bone(harness.Rig().pelvis).y;
     REQUIRE(afterOneTick < standingPelvisY);
@@ -391,8 +385,6 @@ TEST_CASE("Stance changes blend rather than snapping", "[body][pose]")
 
     // And it must actually arrive.
     harness.SetStance(PlayerStance::Prone);
-    // Rolling onto your back is off by default now; these cover it for when it comes back.
-    harness.body.Tuning().proneRollEnabled = true;
     harness.Settle();
     REQUIRE(harness.Bone(harness.Rig().pelvis).y < 0.45f);
 }
@@ -412,13 +404,16 @@ TEST_CASE("Every stance puts the head on the camera", "[body][pose]")
 
         const glm::vec3 head = harness.Bone(harness.Rig().head);
         const glm::vec3 pelvis = harness.Bone(harness.Rig().pelvis);
-        // Straight below the eye. The offset is deliberately vertical only: anything horizontal is
-        // measured along the view, and swings the whole body when the player turns round.
-        const glm::vec3 eye = head + glm::vec3(0.0f, 0.085f, 0.0f);
+        // Below the eye and a little behind it, because a face is in front of a skull. The
+        // horizontal part is measured along the body rather than the view, so looking around does
+        // not swing the whole character; only turning the body moves it.
+        const glm::vec3 eye = harness.View().eyePosition;
 
         INFO("stance " << PlayerStanceName(stance) << " eye " << harness.View().eyeHeight << " head "
                        << head.y << " pelvis " << pelvis.y);
-        REQUIRE(glm::distance(eye, harness.View().eyePosition) < 0.01f);
+        REQUIRE(std::abs(head.y - (eye.y - 0.085f)) < 0.01f);
+        REQUIRE(glm::length(glm::vec2(head.x - eye.x, head.z - eye.z)) ==
+                Catch::Approx(0.070f).margin(0.012));
 
         // And the legs must still be able to reach the ground from wherever that leaves the hips.
         for (int side = 0; side < 2; ++side)
@@ -455,10 +450,16 @@ TEST_CASE("The head stays on the camera through every direction of travel", "[bo
     harness.Settle(120);
 
         const glm::vec3 head = harness.Bone(harness.Rig().head);
-        INFO(testCase.name << ": head at " << head.x << ", " << head.y << ", " << head.z);
-        REQUIRE(std::abs(head.x - harness.View().eyePosition.x) < 0.01f);
-        REQUIRE(std::abs(head.y - (harness.View().eyePosition.y - 0.085f)) < 0.01f);
-        REQUIRE(std::abs(head.z - harness.View().eyePosition.z) < 0.01f);
+        const glm::vec3 eye = harness.View().eyePosition;
+        const float horizontal = glm::length(glm::vec2(head.x - eye.x, head.z - eye.z));
+        INFO(testCase.name << ": head at " << head.x << ", " << head.y << ", " << head.z
+                           << ", horizontally " << horizontal << " m from the eye");
+        // The head sits a fixed distance behind the eye, because a face is in front of a skull.
+        // What matters is that the distance is the same whichever way the player is travelling: it
+        // used to slide off to one side while strafing, because the body was placed by a guessed
+        // offset from the feet rather than by where the head actually ended up.
+        REQUIRE(horizontal == Catch::Approx(0.070f).margin(0.012));
+        REQUIRE(std::abs(head.y - (eye.y - 0.085f)) < 0.01f);
     }
 }
 
@@ -567,64 +568,6 @@ TEST_CASE("Feet stop at a wall instead of climbing it", "[body][gait]")
     REQUIRE(harness.State().position.z < 0.0f);
 }
 
-TEST_CASE("Looking behind while prone rolls the body onto its back", "[body][pose]")
-{
-    // A person on their belly cannot twist round to cover behind them, so they roll over. The body
-    // keeps its own heading while prone and turns end over end when the view leaves what a neck can
-    // reach, which is what makes lying down feel like lying down rather than standing up sideways.
-    BodyHarness harness;
-    harness.SetStance(PlayerStance::Prone);
-    // Rolling onto your back is off by default now; these cover it for when it comes back.
-    harness.body.Tuning().proneRollEnabled = true;
-    harness.Settle(300);
-
-    const auto facingOf = [&](BoneIndex bone)
-    { return glm::normalize(-glm::vec3(harness.body.GetPose().Global(bone)[2])); };
-
-    INFO("face down chest facing y " << facingOf(harness.Rig().chest).y);
-    REQUIRE(facingOf(harness.Rig().chest).y < -0.35f);
-
-    // Look behind. The roll is a latched state, so it settles rather than flickering.
-    harness.input.yaw = glm::pi<float>();
-    harness.Settle(300);
-
-    // The heading is unchanged: rolling over is a roll, not a turn. Turning the body end for end as
-    // well snapped it round behind the player, and a half turn on top of a half roll leaves you
-    // face down again pointing the other way.
-    REQUIRE(std::abs(WrapAngle(harness.body.DebugBodyYaw())) < glm::radians(20.0f));
-
-    const glm::vec3 chestFacing = facingOf(harness.Rig().chest);
-    INFO("on back chest facing " << chestFacing.x << ", " << chestFacing.y << ", " << chestFacing.z);
-    REQUIRE(chestFacing.y > 0.35f);
-
-    // Still lying down, not sitting up or standing.
-    const glm::vec3 chest = harness.Bone(harness.Rig().chest);
-    const glm::vec3 pelvis = harness.Bone(harness.Rig().pelvis);
-    INFO("chest y " << chest.y << " pelvis y " << pelvis.y);
-    REQUIRE(std::abs(chest.y - pelvis.y) < 0.3f);
-    REQUIRE(chest.y < 0.7f);
-
-    // The head stayed where it was. Rolling over is a roll, not a turn: flipping the body end for
-    // end as well is what left it face down again pointing the other way.
-    const glm::vec3 head = harness.Bone(harness.Rig().head);
-    const glm::vec3 toHead = head - pelvis;
-    INFO("pelvis to head " << toHead.x << ", " << toHead.y << ", " << toHead.z);
-    REQUIRE(toHead.z < -0.42f);
-
-    // Legs trail behind, on the ground, rather than folding up under the body.
-    for (int side = 0; side < 2; ++side)
-    {
-        const glm::vec3 foot = harness.Bone(harness.Rig().foot[side]);
-        INFO("foot " << side << " at " << foot.x << ", " << foot.y << ", " << foot.z);
-        REQUIRE(foot.y < harness.State().position.y + 0.35f);
-        REQUIRE(foot.z > pelvis.z + 0.4f);
-    }
-
-    // And it settles: looking there does not make it roll back and forth for ever.
-    const float settledY = chestFacing.y;
-    harness.Settle(120);
-    REQUIRE(facingOf(harness.Rig().chest).y == Catch::Approx(settledY).margin(0.1));
-}
 
 TEST_CASE("Airborne legs stop reaching for a floor that is not there", "[body][gait]")
 {
@@ -661,6 +604,10 @@ TEST_CASE("Turning on the spot leaves the body where it is", "[body][pose]")
 {
     // In first person you look down and see your own body. Turning round must not slide it out from
     // under you: the hips swing to catch up, but the body stays under the head.
+    //
+    // Not exactly under it, though. The eye sits seven centimetres in front of the body, because a
+    // chest is behind a face, and a body offset from the camera genuinely does move when it turns.
+    // The bound is what that geometry allows over a turn in place, not zero.
     BodyHarness harness;
     harness.SetStance(PlayerStance::Standing);
     harness.Settle(120);
@@ -678,7 +625,10 @@ TEST_CASE("Turning on the spot leaves the body where it is", "[body][pose]")
     }
 
     INFO("worst horizontal drift of the hips " << worst << " m");
-    REQUIRE(worst < 0.02f);
+    // Over a full turn the body traces a circle of radius eyeForwardOfHead about the eye, so the
+    // furthest it can get from where it started is twice that. Seven centimetres of offset means
+    // fourteen of travel, and anything much beyond that is the body sliding rather than turning.
+    REQUIRE(worst < 0.16f);
 }
 
 TEST_CASE("The trigger hand keeps hold of the weapon while crawling", "[body][pose]")
@@ -693,8 +643,6 @@ TEST_CASE("The trigger hand keeps hold of the weapon while crawling", "[body][po
     weapon.size = {0.06f, 0.16f, 0.62f};
 
     harness.SetStance(PlayerStance::Prone);
-    // Rolling onto your back is off by default now; these cover it for when it comes back.
-    harness.body.Tuning().proneRollEnabled = true;
     harness.Settle(240);
     harness.body.SetWeaponForSimulation(&weapon);
     harness.SetTravel(glm::vec3(0.0f, 0.0f, -1.0f));
@@ -714,79 +662,7 @@ TEST_CASE("The trigger hand keeps hold of the weapon while crawling", "[body][po
     REQUIRE(muzzle.z < grip.z);
 }
 
-TEST_CASE("Rolling over goes the way you turned", "[body][pose]")
-{
-    // Turning right and turning left have to put you over opposite shoulders. Rolling the same way
-    // every time meant looking right threw the body over to the left.
-    // The body's own right hand side is level at both ends of the roll and swings through the
-    // vertical on the way, so the extreme it reaches part way through is which way it went.
-    const auto rollDirection = [](float lookYaw)
-    {
-        BodyHarness harness;
-        harness.SetStance(PlayerStance::Prone);
-        // Rolling onto your back is off by default now; these cover it for when it comes back.
-        harness.body.Tuning().proneRollEnabled = true;
-        harness.Settle(300);
-        harness.input.yaw = lookYaw;
-        float extreme = 0.0f;
-        for (int i = 0; i < 200; ++i)
-        {
-            harness.Tick();
-            const float side = glm::vec3(harness.body.GetPose().Global(harness.Rig().chest)[0]).y;
-            if (std::abs(side) > std::abs(extreme))
-            {
-                extreme = side;
-            }
-        }
-        return extreme;
-    };
 
-    const float right = rollDirection(glm::radians(170.0f));
-    const float left = rollDirection(glm::radians(-170.0f));
-    INFO("turning right rolled " << right << ", turning left rolled " << left);
-    REQUIRE(std::abs(right) > 0.3f);
-    REQUIRE(std::abs(left) > 0.3f);
-    REQUIRE(right * left < 0.0f); // opposite shoulders
-}
-
-TEST_CASE("Rolling over is a movement, not a jump", "[body][pose]")
-{
-    // It has to take a moment and ease at both ends. Smoothing exponentially towards the target is
-    // fastest at the start, which reads as a switch being thrown rather than a body turning over.
-    BodyHarness harness;
-    harness.SetStance(PlayerStance::Prone);
-    // Rolling onto your back is off by default now; these cover it for when it comes back.
-    harness.body.Tuning().proneRollEnabled = true;
-    harness.Settle(300);
-
-    // Which way the chest faces: straight down on your front, straight up on your back.
-    const auto chestFacing = [&]
-    { return glm::normalize(-glm::vec3(harness.body.GetPose().Global(harness.Rig().chest)[2])).y; };
-    const float before = chestFacing();
-
-    harness.input.yaw = glm::pi<float>();
-    float worstStep = 0.0f;
-    float previous = before;
-    int ticksMoving = 0;
-    for (int i = 0; i < 120; ++i)
-    {
-        harness.Tick();
-        const float now = chestFacing();
-        const float step = std::abs(now - previous);
-        worstStep = std::max(worstStep, step);
-        if (step > 0.002f)
-        {
-            ++ticksMoving;
-        }
-        previous = now;
-    }
-
-    INFO("worst single-tick change " << worstStep << " over " << ticksMoving << " moving ticks");
-    REQUIRE(ticksMoving > 20); // a third of a second at the very least
-    // The facing swings through two units in total, so a single tick doing more than an eighth of
-    // that is a jump rather than a roll. An instant flip would put the whole two in one tick.
-    REQUIRE(worstStep < 0.25f);
-}
 
 TEST_CASE("The arms hang from the shoulders, not from the middle of the ribcage", "[body][pose]")
 {
@@ -821,126 +697,9 @@ TEST_CASE("The arms hang from the shoulders, not from the middle of the ribcage"
     CHECK(harness.Bone(harness.Rig().neck).y < harness.Bone(harness.Rig().head).y);
 }
 
-TEST_CASE("Rolling over passes through the side rather than switching to the back", "[body][pose]")
-{
-    // Halfway through, a body turning over is on its shoulder: its own right axis is pointing at
-    // the sky or the floor rather than sideways. That intermediate is the whole difference between
-    // rolling over and being flipped, and it is also a position worth being able to hold.
-    BodyHarness harness;
-    harness.SetStance(PlayerStance::Prone);
-    // Rolling onto your back is off by default now; these cover it for when it comes back.
-    harness.body.Tuning().proneRollEnabled = true;
-    harness.Settle(300);
 
-    harness.input.yaw = glm::pi<float>();
 
-    float mostVertical = 0.0f;
-    for (int i = 0; i < 200; ++i)
-    {
-        harness.Tick();
-        // The vertical part of the body's own right axis: zero lying flat either way up, one when
-        // it is stood on its side.
-        const float side = glm::vec3(harness.body.GetPose().Global(harness.Rig().chest)[0]).y;
-        mostVertical = std::max(mostVertical, std::abs(side));
-    }
 
-    INFO("most vertical the body's right axis got: " << mostVertical);
-    CHECK(mostVertical > 0.7f);
-}
-
-TEST_CASE("How far you look round decides how far over you roll", "[body][pose]")
-{
-    // Not two states with a transition between them. Looking part way behind should leave the body
-    // part way over and hold it there, because up on one shoulder is where you can cover behind
-    // without giving up the ground.
-    const auto restingRoll = [](float lookDegrees)
-    {
-        BodyHarness harness;
-        harness.SetStance(PlayerStance::Prone);
-        // Rolling onto your back is off by default now; these cover it for when it comes back.
-        harness.body.Tuning().proneRollEnabled = true;
-        harness.Settle(300);
-        harness.input.yaw = glm::radians(lookDegrees);
-        harness.Settle(300);
-        // Straight down on the front, straight up on the back.
-        return glm::normalize(-glm::vec3(harness.body.GetPose().Global(harness.Rig().chest)[2])).y;
-    };
-
-    const float front = restingRoll(0.0f);
-    const float part = restingRoll(135.0f);
-    const float back = restingRoll(180.0f);
-
-    INFO("front " << front << ", part way " << part << ", behind " << back);
-    CHECK(front < -0.7f);  // face down
-    CHECK(back > 0.7f);    // face up
-    // Part way round rests part way over, and stays there.
-    CHECK(part > front + 0.3f);
-    CHECK(part < back - 0.3f);
-}
-
-TEST_CASE("The legs roll with the body instead of staying flat on the floor", "[body][pose]")
-{
-    // A body on its side has one leg stacked above the other. Leaving both feet pinned to the
-    // ground while the torso turned is what made rolling read as the top half being switched onto
-    // its back rather than the whole body turning through its side.
-    BodyHarness harness;
-    harness.SetStance(PlayerStance::Prone);
-    // Rolling onto your back is off by default now; these cover it for when it comes back.
-    harness.body.Tuning().proneRollEnabled = true;
-    harness.Settle(300);
-
-    const float flatSeparation =
-        std::abs(harness.Bone(harness.Rig().foot[0]).y - harness.Bone(harness.Rig().foot[1]).y);
-
-    harness.input.yaw = glm::pi<float>();
-    float mostStacked = 0.0f;
-    for (int i = 0; i < 200; ++i)
-    {
-        harness.Tick();
-        mostStacked = std::max(mostStacked, std::abs(harness.Bone(harness.Rig().foot[0]).y -
-                                                     harness.Bone(harness.Rig().foot[1]).y));
-    }
-
-    INFO("feet were " << flatSeparation << " m apart vertically lying flat, " << mostStacked
-                      << " m at the most stacked point of the roll");
-    CHECK(flatSeparation < 0.05f);
-    CHECK(mostStacked > 0.12f);
-}
-
-TEST_CASE("Rolling goes the way you turned when the turn is gradual", "[body][pose]")
-{
-    // The existing direction test snaps the view round in one tick. A mouse does not: the twist
-    // grows a degree at a time, and which shoulder you go over is decided somewhere in the middle
-    // of that. This is the case the player actually plays.
-    const auto rollDirection = [](float degreesPerSecond)
-    {
-        BodyHarness harness;
-        harness.SetStance(PlayerStance::Prone);
-        // Rolling onto your back is off by default now; these cover it for when it comes back.
-        harness.body.Tuning().proneRollEnabled = true;
-        harness.Settle(300);
-
-        float extreme = 0.0f;
-        for (int i = 0; i < 400; ++i)
-        {
-            harness.input.yaw = WrapAngle(harness.input.yaw + glm::radians(degreesPerSecond) * kTick);
-            harness.Tick();
-            const float side = glm::vec3(harness.body.GetPose().Global(harness.Rig().chest)[0]).y;
-            if (std::abs(side) > std::abs(extreme))
-            {
-                extreme = side;
-            }
-        }
-        return extreme;
-    };
-
-    const float right = rollDirection(90.0f);   // a second and a half to look behind
-    const float left = rollDirection(-90.0f);
-    INFO("turning right rolled " << right << ", turning left rolled " << left);
-    CHECK(std::abs(right) > 0.3f);
-    CHECK(std::abs(left) > 0.3f);
-    CHECK(right * left < 0.0f);
-}
 
 TEST_CASE("Crawling backwards keeps the body facing forward", "[body][pose]")
 {
@@ -950,8 +709,6 @@ TEST_CASE("Crawling backwards keeps the body facing forward", "[body][pose]")
     // and backed off, because the pivot always went the same way.
     BodyHarness harness;
     harness.SetStance(PlayerStance::Prone);
-    // Rolling onto your back is off by default now; these cover it for when it comes back.
-    harness.body.Tuning().proneRollEnabled = true;
     harness.Settle(300);
 
     const float facingBefore = harness.body.DebugBodyYaw();
@@ -976,8 +733,6 @@ TEST_CASE("The crawl cycle runs backwards when you back up", "[body][pose]")
     {
         BodyHarness harness;
         harness.SetStance(PlayerStance::Prone);
-        // Rolling onto your back is off by default now; these cover it for when it comes back.
-        harness.body.Tuning().proneRollEnabled = true;
         harness.Settle(300);
         harness.input.move = {0.0f, forward};
         harness.Settle(40);
@@ -1143,4 +898,99 @@ TEST_CASE("The drawn skull sits over the neck, not behind it", "[body][pose]")
     CHECK(std::abs(behind) < 0.02f);
     // And above it, because that is where a head goes.
     CHECK(skull.y > neck.y);
+}
+
+TEST_CASE("A prone body turned right round shuffles after you without flipping", "[body][pose]")
+{
+    // Rolling onto your back is gone. What is left has to be smooth: the body pivots on its front
+    // to catch up, and nothing may jump. Parts flipping end for end part way through a turn is the
+    // thing this measures, because that is what it looked like.
+    BodyHarness harness;
+    harness.SetStance(PlayerStance::Prone);
+    harness.Settle(300);
+
+    const auto chestFacing = [&]
+    { return glm::normalize(-glm::vec3(harness.body.GetPose().Global(harness.Rig().chest)[2])); };
+    const auto headFacing = [&]
+    { return glm::normalize(-glm::vec3(harness.body.GetPose().Global(harness.Rig().head)[2])); };
+
+    glm::vec3 previousChest = chestFacing();
+    glm::vec3 previousHead = headFacing();
+    float worstChestStep = 0.0f;
+    float worstHeadStep = 0.0f;
+
+    // Turn all the way round, the way a mouse does.
+    for (int i = 0; i < 400; ++i)
+    {
+        harness.input.yaw = WrapAngle(harness.input.yaw + glm::radians(120.0f) * kTick);
+        harness.Tick();
+        worstChestStep = std::max(worstChestStep, glm::distance(chestFacing(), previousChest));
+        worstHeadStep = std::max(worstHeadStep, glm::distance(headFacing(), previousHead));
+        previousChest = chestFacing();
+        previousHead = headFacing();
+    }
+
+    INFO("worst single-tick change: chest " << worstChestStep << ", head " << worstHeadStep);
+    // A flip is a change of about two units in one tick. Turning at 120 degrees a second is two
+    // degrees a tick, which is well under a tenth.
+    CHECK(worstChestStep < 0.15f);
+    CHECK(worstHeadStep < 0.15f);
+}
+
+TEST_CASE("A prone body ends up facing where you turned", "[body][pose]")
+{
+    BodyHarness harness;
+    harness.SetStance(PlayerStance::Prone);
+    harness.Settle(300);
+
+    const float before = harness.body.DebugBodyYaw();
+    harness.input.yaw = WrapAngle(before + glm::radians(150.0f));
+    harness.Settle(400);
+
+    const float turned = WrapAngle(harness.body.DebugBodyYaw() - before);
+    INFO("body turned " << glm::degrees(turned) << " degrees");
+    // It shuffles round to within the slack it is allowed to leave, and it goes the way you turned.
+    CHECK(turned > glm::radians(60.0f));
+    CHECK(turned < glm::radians(160.0f));
+}
+
+TEST_CASE("The torso sits behind the eye, the way a chest sits behind a face", "[body][pose]")
+{
+    // With the body directly under the camera, looking down showed the top of the shoulder yoke.
+    // A person looking down sees the front of their chest and their boots, because their eyes are
+    // in front of their torso.
+    BodyHarness harness;
+    harness.Settle(180);
+
+    const glm::vec3 eye = harness.View().eyePosition;
+    const glm::vec3 chest = harness.Bone(harness.Rig().chest);
+    const glm::vec3 pelvis = harness.Bone(harness.Rig().pelvis);
+
+    // Forward is -Z at yaw 0, so behind the eye is a larger z.
+    INFO("chest is " << (chest.z - eye.z) << " m behind the eye, pelvis " << (pelvis.z - eye.z));
+    CHECK(chest.z - eye.z > 0.04f);
+    CHECK(chest.z - eye.z < 0.18f);
+    CHECK(pelvis.z - eye.z > 0.04f);
+}
+
+TEST_CASE("Turning your head does not drag the body sideways", "[body][pose]")
+{
+    // The reason the eye offset is measured along the body and not the view. Measuring it along the
+    // view swings the whole body round the camera whenever you look about, which is the drift this
+    // anchoring exists to remove.
+    BodyHarness harness;
+    harness.Settle(180);
+    const glm::vec3 before = harness.Bone(harness.Rig().pelvis);
+
+    // Look ninety degrees to the side, slowly, without moving.
+    for (int i = 0; i < 90; ++i)
+    {
+        harness.input.yaw = glm::radians(static_cast<float>(i));
+        harness.Tick();
+    }
+
+    const glm::vec3 after = harness.Bone(harness.Rig().pelvis);
+    const float drift = glm::length(glm::vec2(after.x - before.x, after.z - before.z));
+    INFO("pelvis drifted " << drift << " m while looking around");
+    CHECK(drift < 0.09f);
 }

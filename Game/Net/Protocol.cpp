@@ -128,6 +128,7 @@ const char* MessageTypeName(MessageType type)
     case MessageType::Interact: return "Interact";
     case MessageType::Shot: return "Shot";
     case MessageType::WorldState: return "WorldState";
+    case MessageType::Drop: return "Drop";
     case MessageType::Count: break;
     }
     return "Unknown";
@@ -536,6 +537,23 @@ bool ReadWorldState(BitReader& reader, WorldStateMessage& out)
         out.bodies[i].rotation = reader.ReadQuaternion();
     }
     return !reader.Overran();
+}
+
+void WriteDrop(BitWriter& writer, const DropMessage& message)
+{
+    writer.WriteBits(message.item, 8);
+    writer.WriteBits(message.count, 6);
+    WritePosition(writer, message.position);
+    WriteVelocity(writer, message.velocity);
+}
+
+bool ReadDrop(BitReader& reader, DropMessage& out)
+{
+    out.item = reader.ReadByte();
+    out.count = static_cast<uint8_t>(reader.ReadBits(6));
+    out.position = ReadPosition(reader);
+    out.velocity = ReadVelocity(reader);
+    return !reader.Overran() && out.count > 0;
 }
 
 } // namespace pred

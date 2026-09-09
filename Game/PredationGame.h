@@ -127,6 +127,8 @@ private:
     // Where a player is, for checking they are close enough to what they are asking for.
     glm::vec3 PlayerPosition(uint8_t player) const;
     // Everyone, where they are this instant.
+    // Where a player's weapon is being drawn here, for the line a round leaves along.
+    glm::vec3 MuzzleOf(uint8_t player, const glm::vec3& eye, const glm::vec3& direction) const;
     std::vector<NetHost::PlayerPose> PosesNow() const;
 
     // --- Damage ---------------------------------------------------------------------------------
@@ -264,6 +266,7 @@ private:
         PlayerView view;
         bool built = false;
         bool collapsed = false;
+        uint8_t heldItem = 0xFF; // 0xFF forces the first sync to put something in their hands
     };
     Screen m_screen = Screen::Title;
     float m_titleClock = 0.0f;
