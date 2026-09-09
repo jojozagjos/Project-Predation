@@ -67,7 +67,7 @@ public:
         float stepHeight = 0.14f; // how far a swinging foot lifts
         // And how much of that is left when the body is right down. A crouched foot skims the floor:
         // there is no room under a folded leg to pick it up any further.
-        float crouchStepScale = 0.38f;
+        float crouchStepScale = 0.50f;
         float footPlantSmoothing = 22.0f;
         float weaponHandSmoothing = 26.0f;
         // Where a weapon sits when it is carried rather than aimed, in the view frame. Close enough

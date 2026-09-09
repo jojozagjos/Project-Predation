@@ -27,7 +27,7 @@
 
   "capsule": {
     "stand_height": 1.8,
-    "crouch_height": 1.15,
+    "crouch_height": 1.44,
     "prone_height": 0.6,
     "radius": 0.32,
     "step_height": 0.35,
@@ -36,7 +36,7 @@
 
   "camera": {
     "stand_eye_height": 1.66,
-    "crouch_eye_height": 1.02,
+    "crouch_eye_height": 1.30,
     "prone_eye_height": 0.36,
     "eye_transition_speed": 9.0,
     "step_smooth_speed": 11.0,

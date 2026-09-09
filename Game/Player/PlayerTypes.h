@@ -127,7 +127,10 @@ struct PlayerConfig
 
     // --- Capsule, metres ---
     float standHeight = 1.80f;
-    float crouchHeight = 1.38f;
+    // A crouch, not a squat. Dropping the eye further than this leaves the hips so low that the leg
+    // has to fold double to reach the floor, and there is then no leg free to take a step with: the
+    // thigh goes flat at the top of every stride and the walk reads as a shuffle. See ADR-021.
+    float crouchHeight = 1.44f;
     float proneHeight = 0.60f;
     float radius = 0.32f;
     float stepHeight = 0.35f;
@@ -135,7 +138,7 @@ struct PlayerConfig
 
     // --- Camera ---
     float standEyeHeight = 1.66f;
-    float crouchEyeHeight = 1.24f;
+    float crouchEyeHeight = 1.30f;
     float proneEyeHeight = 0.36f;
     float eyeTransitionSpeed = 9.0f;
     // Stair steps teleport the capsule upwards. Without smoothing, the camera snaps and stairs feel
@@ -167,7 +170,7 @@ struct PlayerConfig
     // stride while crouched asked the thigh to sweep through seventy degrees a step, which reads as
     // the legs being flung rather than walking. Shortening the stride raises the cadence to match,
     // because the phase is integrated from distance travelled over stride length.
-    float strideCrouchScale = 0.50f;
+    float strideCrouchScale = 0.58f;
     float strideProneScale = 0.52f;
     // Share of the cycle each foot spends on the ground, from a walk to a run. Below 0.5 the two
     // stances no longer overlap, which is what makes a run a run.

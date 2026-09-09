@@ -293,9 +293,15 @@ TEST_CASE("Prone is lower and slower than crouching", "[player][prone]")
 TEST_CASE("Player cannot stand up under a low ceiling", "[player]")
 {
     PlayerHarness harness;
-    // A slab spanning y = 1.30 to 1.75, ten metres along +X. Crouch height fits under it; standing
-    // height does not.
-    harness.AddStaticBox({3.0f, 0.225f, 3.0f}, {10.0f, 1.525f, 0.0f});
+    // A slab spanning y = 1.55 to 1.90, ten metres along +X. Crouch height fits under it; standing
+    // height does not. Sized from the config rather than written down, so raising the crouch does
+    // not quietly turn this into a test of nothing: the last time these numbers were fixed, a
+    // taller crouch stopped fitting and the test failed for a reason that had nothing to do with
+    // ceilings.
+    const float gap = (harness.config.crouchHeight + harness.config.standHeight) * 0.5f;
+    REQUIRE(gap > harness.config.crouchHeight);
+    REQUIRE(gap < harness.config.standHeight);
+    harness.AddStaticBox({3.0f, 0.225f, 3.0f}, {10.0f, gap + 0.225f, 0.0f});
     harness.Spawn();
     harness.Settle();
 
@@ -728,12 +734,13 @@ TEST_CASE("A refused stance change says so", "[player][stance]")
     settings.workerThreads = 1;
     REQUIRE(physics.Init(settings));
     physics.CreateBox({20.0f, 0.5f, 20.0f}, Transform{{0.0f, -0.5f, 0.0f}}, BodyMotion::Static);
-    // A lintel low enough to crouch under and not to stand under. The gap below it is 1.5 m: the
-    // crouch capsule is 1.38 and the standing one is 1.80.
-    physics.CreateBox({2.0f, 0.2f, 2.0f}, Transform{{0.0f, 1.7f, 0.0f}}, BodyMotion::Static);
+    PlayerConfig config;
+    // A lintel low enough to crouch under and not to stand under, measured from the config rather
+    // than written down, so changing either stance height keeps this a test about ceilings.
+    const float gap = (config.crouchHeight + config.standHeight) * 0.5f;
+    physics.CreateBox({2.0f, 0.2f, 2.0f}, Transform{{0.0f, gap + 0.2f, 0.0f}}, BodyMotion::Static);
     physics.OptimizeBroadPhase();
 
-    PlayerConfig config;
     PlayerController player;
     REQUIRE(player.Init(physics, config, {0.0f, 0.05f, 0.0f}));
 
@@ -861,4 +868,56 @@ TEST_CASE("Being hurt slows you down", "[player][injury]")
     // Near death it is a limp.
     CHECK(badly < healthy * 0.75f);
     CHECK(badly > 0.4f); // still moving, not frozen
+}
+
+TEST_CASE("Crouching is never refused by the floor being there", "[player][stance]")
+{
+    // Shrinking the capsule was still put through the same zero-tolerance overlap test as growing
+    // it. A character standing on the ground is touching the ground, and whether that contact
+    // reports a penetration of exactly nothing or of a millionth of a metre turns out to depend on
+    // the capsule's dimensions. So crouching worked at 1.42 m, was silently refused at 1.44 and
+    // 1.50, and worked again at 1.55, with nothing to tell them apart but rounding.
+    //
+    // Swept rather than spot-checked, because the failure was not a threshold and a single height
+    // would have missed it.
+    for (int step = 0; step <= 20; ++step)
+    {
+        const float crouchHeight = 1.00f + 0.04f * static_cast<float>(step);
+
+        PhysicsWorld physics;
+        PhysicsWorld::Settings settings;
+        settings.workerThreads = 1;
+        REQUIRE(physics.Init(settings));
+        physics.CreateBox({20.0f, 0.5f, 20.0f}, Transform{{0.0f, -0.5f, 0.0f}}, BodyMotion::Static);
+        physics.OptimizeBroadPhase();
+
+        PlayerConfig config;
+        config.crouchHeight = crouchHeight;
+        PlayerController player;
+        REQUIRE(player.Init(physics, config, {0.0f, 0.05f, 0.0f}));
+
+        // Settled first, standing, which is the state the refusal needed: a fresh character has not
+        // yet come to rest on anything.
+        PlayerInput idle;
+        for (int i = 0; i < 180; ++i)
+        {
+            player.Step(idle, 1.0f / 60.0f);
+            physics.Step(1.0f / 60.0f);
+        }
+
+        PlayerInput crouch;
+        crouch.crouchHeld = true;
+        for (int i = 0; i < 30; ++i)
+        {
+            player.Step(crouch, 1.0f / 60.0f);
+            physics.Step(1.0f / 60.0f);
+        }
+
+        INFO("crouch height " << crouchHeight);
+        CHECK(player.State().stance == PlayerStance::Crouching);
+        CHECK_FALSE(player.State().stanceBlocked);
+
+        player.Shutdown();
+        physics.Shutdown();
+    }
 }

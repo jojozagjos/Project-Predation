@@ -13,6 +13,7 @@
 #include <Jolt/Physics/PhysicsSystem.h>
 
 #include <algorithm>
+#include <cfloat>
 #include <cmath>
 
 namespace pred
@@ -265,7 +266,16 @@ bool CharacterController::TryResize(float height, float radius)
     const JPH::ObjectLayer movingLayer = PhysicsLayers::kMoving;
     // A zero penetration allowance means the resize is rejected outright if the new shape would
     // overlap anything, which is exactly the "cannot stand up under this ceiling" test.
-    const bool resized = impl.character->SetShape(shape, 0.0f,
+    //
+    // Only when growing, though. A shape that is smaller in every dimension fits wherever the
+    // current one does, so there is nothing to test and testing anyway is actively wrong: a
+    // character resting on the floor is touching it, and whether that contact reports a
+    // penetration of exactly zero or of a millionth of a metre depends on the capsule's
+    // dimensions. Crouching therefore worked at some heights and was silently refused at others,
+    // with nothing to distinguish them but rounding. FLT_MAX tells Jolt to skip the check.
+    const bool shrinking = height <= impl.height + 1e-4f && radius <= impl.radius + 1e-4f;
+    const float allowance = shrinking ? FLT_MAX : 0.0f;
+    const bool resized = impl.character->SetShape(shape, allowance,
                                                   impl.system->GetDefaultBroadPhaseLayerFilter(movingLayer),
                                                   impl.system->GetDefaultLayerFilter(movingLayer), {}, {},
                                                   *impl.tempAllocator);

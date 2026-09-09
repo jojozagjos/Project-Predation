@@ -293,6 +293,19 @@ free to do that when the knees are already folded, and the thigh swept 70 degree
 for it. Both scale with the stance now. Because the walk phase is integrated from distance travelled
 over stride length, shortening the stride raises the cadence to match instead of sliding the feet.
 
+The crouch itself had to come up as well, and this is the part that took two tries to find. Every
+pose test ran on the defaults compiled into PlayerConfig, and the game ran on Assets/Data/player.json,
+which asked for a crouch eye height of 1.02 m. That is a full squat: the hips land at 0.38 m, the leg
+folds to a third of its length, and the thigh passes the horizontal partway through every stride,
+knee above hip. Shortening the stride enough to hide that turns the walk into a shuffle, which is
+what the first attempt did. The eye is now at 1.30 m in both places, and a test loads the shipped
+file and checks the pose it produces, because the whole cost of this was that nothing did.
+
+Raising the capsule to match cost some of the range of things you can crouch under: the band is now
+1.44 m to 1.80 m rather than 1.15 m to 1.80 m. That is a level design constraint and it is the one
+to revisit if crouching needs to get under something lower, but it cannot be bought back by lowering
+the eye alone, because it is the eye that decides where the hips are.
+
 ## ADR-022: What the hands are holding is traced against the world, not guessed
 
 **Status**: accepted, 2026-09-09
@@ -339,3 +352,22 @@ shot, and left up long enough to be seen it reads as a laser. The full traced li
 debug toggle, alongside the line the round was really traced along, because rounds are traced from
 the eye so the crosshair tells the truth and drawn from the muzzle so they look right, and checking
 that difference has not become a lie needs both drawn at once.
+
+## ADR-024: Shrinking a character capsule is not a question
+
+**Status**: accepted, 2026-09-09
+
+Changing stance resizes the collision capsule, and the resize can be refused: that refusal is what
+stops a player standing up inside a vent. It was implemented as one call with a zero penetration
+allowance, used for growing and shrinking alike.
+
+Shrinking cannot create an overlap, so the test had nothing to find, but it found something anyway.
+A character standing on the ground is touching the ground, and whether that contact reports a
+penetration of exactly zero or of a millionth of a metre depends on the capsule's dimensions.
+Crouching therefore worked at a capsule height of 1.42 m, was silently refused at 1.44 and 1.50, and
+worked again at 1.55, with nothing to tell those apart but rounding. It had never shown up because
+the shipped height happened to fall on a value that worked.
+
+The check now runs only when the new shape is larger in some dimension than the current one. The
+regression test sweeps twenty-one crouch heights rather than checking one, because the failure was
+not a threshold and any single height would have missed it.

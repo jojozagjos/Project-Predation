@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -92,6 +93,16 @@ struct BodyHarness
         {
             Tick();
         }
+    }
+
+    // Changes the tuning in both places it lives. The controller took a copy at Init and the body
+    // is handed another every tick; changing one and not the other is how a sweep silently measures
+    // nothing at all.
+    template <typename Fn>
+    void Retune(Fn&& change)
+    {
+        change(config);
+        change(player.Config());
     }
 
     void SetStance(PlayerStance stance)
@@ -1308,4 +1319,49 @@ TEST_CASE("A settled ragdoll lies on the floor rather than in it", "[body][ragdo
 
     // And the torso really is thicker than the wrist, or the clearance is not doing anything.
     CHECK(harness.body.BoneRadius(rig.chest) > harness.body.BoneRadius(rig.hand[0]) * 1.5f);
+}
+
+TEST_CASE("The shipped crouch tuning leaves the legs somewhere to go", "[body][pose]")
+{
+    // Every other pose test runs on the defaults compiled into PlayerConfig. The game runs on
+    // Assets/Data/player.json, and the two had drifted a long way apart: the file asked for a crouch
+    // eye height of 1.02 m, which is a full squat. It puts the hips at 0.38 m with a 0.88 m leg, so
+    // the leg folds to under half its length and the thigh passes the horizontal partway through
+    // every stride. No knee pole or stride length rescues that, and none of the tests saw it,
+    // because none of them read the file the game reads.
+    PlayerConfig shipped;
+    const std::filesystem::path file =
+        std::filesystem::path(PRED_SOURCE_DIR) / "Assets" / "Data" / "player.json";
+    INFO("loading " << file.string());
+    REQUIRE(shipped.LoadFromFile(file));
+
+    BodyHarness harness;
+    harness.Retune([&](PlayerConfig& config) { config = shipped; });
+    harness.SetStance(PlayerStance::Crouching);
+    harness.Settle(240);
+
+    const auto thighAngle = [&](int side)
+    {
+        const glm::vec3 hip = harness.Bone(harness.Rig().upperLeg[side]);
+        const glm::vec3 knee = harness.Bone(harness.Rig().lowerLeg[side]);
+        return glm::degrees(
+            std::acos(std::clamp(-(knee.y - hip.y) / glm::length(knee - hip), -1.0f, 1.0f)));
+    };
+
+    INFO("crouch eye height " << shipped.crouchEyeHeight << ", hip at "
+                              << harness.Bone(harness.Rig().upperLeg[0]).y);
+    CHECK(thighAngle(0) < 55.0f);
+
+    // And through a stride, which is where the depth really tells: a thigh that is merely steep
+    // standing still goes past flat as soon as the foot reaches forward.
+    harness.SetTravel(glm::vec3(0.0f, 0.0f, -1.0f));
+    harness.Settle(120);
+    float steepest = 0.0f;
+    for (int i = 0; i < 150; ++i)
+    {
+        harness.Tick();
+        steepest = std::max(steepest, std::max(thighAngle(0), thighAngle(1)));
+    }
+    INFO("steepest thigh through a crouch walk: " << steepest << " degrees");
+    CHECK(steepest < 75.0f);
 }
