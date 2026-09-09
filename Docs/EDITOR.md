@@ -72,8 +72,24 @@ is one self-contained thing.
 
 The model in front of you is the animation as it will play. There is no separate preview mode.
 
+## Clips the game plays
+
+Name a clip one of these and the game plays it at the right moment. Its progress comes from the
+simulation's own timers, so a clip works at whatever reload or draw time the weapon has.
+
+| Clip | When it plays |
+| --- | --- |
+| `reload` | while the magazine is being changed |
+| `equip` | while the weapon is being brought up |
+
+A track named `root` moves the whole weapon rather than one part, in the frame it is carried in.
+That is what an equip needs: every other track in a clip moves a part relative to the weapon, and
+bringing a weapon up moves the weapon relative to the hands.
+
+A model with no clip of a given name falls back to movement written in code, so a weapon works
+before anything has been authored for it.
+
 ## Not yet
 
-Rotating and scaling with a handle in the viewport rather than by typing numbers; undo; glTF import;
-per-part parenting; and playing clips for anything other than a weapon reload. Equip, unequip and
-fire are animated in code today and should move to clips.
+Rotating and scaling with a handle in the viewport rather than by typing numbers; undo; glTF
+import; per-part parenting; and clips for holstering and firing.

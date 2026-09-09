@@ -77,8 +77,10 @@ public:
         // because the sights have to line up with the view exactly.
         float weaponCarryPitchFollow = 0.45f;
         // The weapon lags a turn and then catches up, which is what gives it weight.
-        float weaponSwayAmount = 0.55f;
-        float weaponSwayRecover = 9.0f;
+        float weaponSwayAmount = 0.55f;   // how far a turn drags the weapon behind the view
+        float weaponSwayRecover = 11.0f;  // how fast it catches up again
+        float weaponBreatheAmount = 0.018f; // the small movement of a weapon in someone's hands
+        float weaponWalkAmount = 0.030f;  // how much walking swings it, on the stride's own phase
         // A swinging foot follows an already-smooth arc, so it tracks its target almost exactly. It
         // has to: any lag here lands the foot short of where the step was aimed, and it spends the
         // stance catching up, which is a visible skid at every touchdown.
@@ -291,6 +293,8 @@ private:
     glm::vec2 m_weaponSway{0.0f};
     float m_lastViewYaw = 0.0f;
     float m_lastViewPitch = 0.0f;
+    glm::vec2 m_viewRate{0.0f}; // radians per second, so sway does not depend on the frame rate
+    float m_swayClock = 0.0f;   // drives the breathing movement
     std::array<FootState, 2> m_feet;
     std::array<FootState, 2> m_hands; // same shape: a smoothed target and whether it is planted
     float m_flatness = 0.0f;          // 0 upright, 1 fully prone

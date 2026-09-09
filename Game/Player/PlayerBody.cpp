@@ -620,18 +620,40 @@ bool PlayerBody::UpdateWeaponHold(const PlayerView& view, float dt)
     const bool flat = m_flatness > 0.5f;
 
     // --- Sway -----------------------------------------------------------------------------------
-    // The weapon lags the view a little when the player turns, then catches up. Deliberately held
-    // on the weapon and not on the hands: smoothing the hands towards a moving grip point pulled
-    // them off the gun every time the player looked around quickly.
-    const float yawDelta = WrapAngle(view.yaw - m_lastViewYaw);
-    const float pitchDelta = view.pitch - m_lastViewPitch;
+    // Three things move a held weapon, and they are separate on purpose.
+    //
+    // Turning lags it and it catches up. That is driven by how fast the view is turning rather than
+    // by how far it turned this frame: accumulating per-frame deltas and decaying them per frame
+    // made the amount of sway depend on the frame rate, which is why it felt different on every
+    // machine. Angular velocity is the same number at any frame rate.
+    if (dt > 1e-5f)
+    {
+        m_viewRate = glm::vec2(WrapAngle(view.yaw - m_lastViewYaw) / dt, (view.pitch - m_lastViewPitch) / dt);
+    }
     m_lastViewYaw = view.yaw;
     m_lastViewPitch = view.pitch;
-    const float swayScale = (1.0f - aim * 0.7f) * m_config.weaponSwayAmount;
-    m_weaponSway += glm::vec2(-yawDelta, -pitchDelta) * swayScale;
-    m_weaponSway = glm::vec2(SmoothTowards(m_weaponSway.x, 0.0f, m_config.weaponSwayRecover, dt),
-                             SmoothTowards(m_weaponSway.y, 0.0f, m_config.weaponSwayRecover, dt));
-    m_weaponSway = glm::clamp(m_weaponSway, glm::vec2(-0.09f), glm::vec2(0.09f));
+
+    const float swayScale = (1.0f - aim * 0.75f) * m_config.weaponSwayAmount;
+    const glm::vec2 lagTarget = glm::clamp(-m_viewRate * swayScale * 0.12f, glm::vec2(-0.10f),
+                                           glm::vec2(0.10f));
+
+    // Breathing. A weapon in someone's hands is never still, and this is most of what stops a held
+    // gun looking welded to the camera. It all but stops when the sights are up, because that is
+    // what holding your breath is for.
+    m_swayClock += dt;
+    const float breathe = (1.0f - aim * 0.85f) * m_config.weaponBreatheAmount;
+    const glm::vec2 idle{std::sin(m_swayClock * 0.9f) * breathe,
+                         std::sin(m_swayClock * 1.7f + 1.1f) * breathe * 0.6f};
+
+    // Walking swings it with the stride, on the same phase the legs use, so the weapon moves with
+    // the steps rather than on a rhythm of its own.
+    const float walkPhase = m_stridePhase * glm::two_pi<float>();
+    const float walk = m_gaitWeight * (1.0f - aim * 0.6f) * m_config.weaponWalkAmount;
+    const glm::vec2 stride{std::sin(walkPhase) * walk, -std::abs(std::cos(walkPhase)) * walk * 0.8f};
+
+    m_weaponSway = glm::vec2(SmoothTowards(m_weaponSway.x, lagTarget.x, m_config.weaponSwayRecover, dt),
+                             SmoothTowards(m_weaponSway.y, lagTarget.y, m_config.weaponSwayRecover, dt));
+    const glm::vec2 sway = m_weaponSway + idle + stride;
 
     // --- The frame the weapon is carried in -----------------------------------------------------
     // Aiming follows the view exactly, because the sights have to line up with it. Carrying it does
@@ -689,8 +711,16 @@ bool PlayerBody::UpdateWeaponHold(const PlayerView& view, float dt)
 
     // Bringing a weapon up: it starts low and out of the way and rises into the hold. Presentation
     // only, so it never delays a shot.
+    //
+    // These are the fallbacks. A model that carries its own "equip" or "reload" clip animates
+    // through that instead, and the built-in movement steps out of the way rather than fighting it.
+    const auto hasClip = [this](const char* clipName)
+    { return m_weaponVisual.asset != nullptr && m_weaponVisual.asset->FindClip(clipName) != nullptr; };
+    const bool authoredDraw = hasClip("equip");
+    const bool authoredReload = hasClip("reload");
+
     const float draw = glm::clamp(m_weaponPose.draw, 0.0f, 1.0f);
-    if (draw < 1.0f)
+    if (draw < 1.0f && !authoredDraw)
     {
         const float lift = (1.0f - draw) * (1.0f - draw);
         offset += carryUp * (-0.40f * lift) + carryRight * (0.10f * lift) - carryForward * (0.12f * lift);
@@ -711,7 +741,7 @@ bool PlayerBody::UpdateWeaponHold(const PlayerView& view, float dt)
     {
         rotation = glm::angleAxis(view.leanRoll, aimForward) * rotation;
     }
-    if (draw < 1.0f)
+    if (draw < 1.0f && !authoredDraw)
     {
         const float lift = (1.0f - draw) * (1.0f - draw);
         rotation = rotation * glm::angleAxis(glm::radians(-34.0f * lift), glm::vec3(1.0f, 0.0f, 0.0f)) *
@@ -723,7 +753,7 @@ bool PlayerBody::UpdateWeaponHold(const PlayerView& view, float dt)
     // as the magazine comes out, and comes back up as the new one seats. `reload` runs 0 to 1.
     glm::vec3 magazineOffset{0.0f};
     float magazineVisible = 1.0f;
-    if (m_weaponPose.reloading)
+    if (m_weaponPose.reloading && !authoredReload)
     {
         const float t = glm::clamp(m_weaponPose.reload, 0.0f, 1.0f);
         // A raised-cosine envelope: nothing at either end, most of the movement in the middle.
@@ -761,11 +791,11 @@ bool PlayerBody::UpdateWeaponHold(const PlayerView& view, float dt)
         rotation = rotation * glm::angleAxis(glm::radians(-7.5f * kick), glm::vec3(1.0f, 0.0f, 0.0f));
     }
 
-    // Sway is applied last, as a rotation about the carry frame, so it moves the whole hold: weapon,
-    // magazine and both hands together.
-    rotation = glm::angleAxis(m_weaponSway.x, glm::vec3(0.0f, 1.0f, 0.0f)) *
-               glm::angleAxis(m_weaponSway.y, carryRight) * rotation;
-    offset += carryRight * (m_weaponSway.x * 0.16f) + carryUp * (m_weaponSway.y * 0.16f);
+    // Sway is applied last, entirely in the carry frame, so it moves the whole hold together:
+    // weapon, magazine and both hands. Turning about the world up axis instead, as this used to,
+    // stopped lining up with the screen as soon as the player looked up or down.
+    rotation = glm::angleAxis(sway.x, carryUp) * glm::angleAxis(sway.y, carryRight) * rotation;
+    offset += carryRight * (sway.x * 0.16f) + carryUp * (sway.y * 0.16f);
 
     m_weaponTransform.position = view.eyePosition + offset;
     m_weaponTransform.rotation = rotation;
@@ -774,14 +804,46 @@ bool PlayerBody::UpdateWeaponHold(const PlayerView& view, float dt)
     // Every part rides the weapon's frame. A model authored in the editor can carry its own clip
     // for a reload, in which case that is what moves its parts; otherwise the built-in magazine
     // swap below is what a reload looks like.
+    //
+    // Which clip plays is decided by what the weapon is doing, and its progress comes from the
+    // simulation's own timers, so a clip works at whatever reload or draw time the weapon has.
     const AnimationClip* clip = nullptr;
     float clipTime = 0.0f;
-    if (m_weaponVisual.asset != nullptr && m_weaponPose.reloading)
+    float clipProgress = 0.0f;
+    if (m_weaponVisual.asset != nullptr)
     {
-        clip = m_weaponVisual.asset->FindClip("reload");
+        if (m_weaponPose.reloading)
+        {
+            clip = m_weaponVisual.asset->FindClip("reload");
+            clipProgress = glm::clamp(m_weaponPose.reload, 0.0f, 1.0f);
+        }
+        else if (draw < 1.0f)
+        {
+            clip = m_weaponVisual.asset->FindClip("equip");
+            clipProgress = draw;
+        }
         if (clip != nullptr)
         {
-            clipTime = glm::clamp(m_weaponPose.reload, 0.0f, 1.0f) * clip->duration;
+            clipTime = clipProgress * clip->duration;
+        }
+    }
+
+    // A track named "root" moves the whole weapon rather than one part, in the frame it is carried
+    // in. That is what lets an equip, a holster or a fire kick be authored in the editor instead of
+    // written in here.
+    if (clip != nullptr)
+    {
+        const auto root = std::find_if(clip->tracks.begin(), clip->tracks.end(),
+                                       [](const AnimationTrack& track) { return track.part == "root"; });
+        if (root != clip->tracks.end() && !root->keys.empty())
+        {
+            ModelPart origin;
+            origin.name = "root";
+            const glm::mat4 local = m_weaponVisual.asset->PartMatrixAt(origin, clip, clipTime, nullptr);
+            const glm::vec3 shift = glm::vec3(local[3]);
+            m_weaponTransform.position +=
+                carryRight * shift.x + carryUp * shift.y + carryForward * shift.z;
+            rotation = rotation * glm::quat_cast(glm::mat3(local));
         }
     }
 
@@ -804,8 +866,9 @@ bool PlayerBody::UpdateWeaponHold(const PlayerView& view, float dt)
                 local = m_weaponVisual.asset->PartMatrixAt(*found, clip, clipTime, &visible);
             }
         }
-        else if (static_cast<int>(i) == m_weaponVisual.magazinePart)
+        else if (static_cast<int>(i) == m_weaponVisual.magazinePart && !authoredReload)
         {
+            // The built-in magazine swap, for a model that has no reload clip of its own.
             local = glm::translate(glm::mat4(1.0f), magazineOffset) * local;
             visible = magazineVisible;
         }
