@@ -649,8 +649,18 @@ void PlayerBody::UpdatePosture(const PlayerState& state, const PlayerView& view,
     // it slid off to one side as soon as you turned your head while looking at your boots.
     const glm::vec3 bodyFacing{std::sin(m_bodyYaw), 0.0f, -std::cos(m_bodyYaw)};
     const glm::vec3 viewFacing{std::sin(view.yaw), 0.0f, -std::cos(view.yaw)};
+    // How far through the crouch the posture is. The spine lean is only ever non-zero for a
+    // crouch, so it doubles as the blend, and it follows the same smoothing as the rest of the pose.
+    const float crouchBlend =
+        m_config.crouch.spineLeanDeg > 0.01f
+            ? std::clamp(m_pose_blend.spineLeanDeg / m_config.crouch.spineLeanDeg, 0.0f, 1.0f)
+            : 0.0f;
+
+    // Negative, because this offset is subtracted: pushing the desired head position forward is
+    // what carries the hips forward with it.
     const glm::vec3 offset = bodyFacing * m_config.eyeForwardOfHead +
-                             viewFacing * (m_config.eyeForwardLookingDown * lookingDown);
+                             viewFacing * (m_config.eyeForwardLookingDown * lookingDown) -
+                             bodyFacing * (m_config.crouchBodyForward * crouchBlend);
 
     const glm::vec3 desiredHead =
         view.eyePosition - offset - glm::vec3(0.0f, m_config.eyeAboveHead, 0.0f);
@@ -757,7 +767,41 @@ glm::vec3 PlayerBody::MuzzlePoint() const
     return m_weaponTransform.position + m_weaponTransform.rotation * m_weaponVisual.muzzle;
 }
 
-bool PlayerBody::UpdateWeaponHold(const PlayerView& view, float dt)
+// Two failures with one cause. Walking up to a wall put the barrel through it, because the capsule
+// stops a third of a metre from a surface and a rifle is most of a metre long; the soft pull-back
+// that was meant to handle it traced along the view, so looking sideways at the wall aimed the trace
+// somewhere the barrel was not. And lying down put the hold under the floor, because the prone carry
+// hangs the weapon below an eye that is itself only a few centimetres up.
+//
+// Both are the same question, asked of the world rather than of a rule: is anything between the
+// player and where they want to hold this, and is there floor under it.
+glm::vec3 PlayerBody::ClearOfWorld(PhysicsWorld& physics, const glm::vec3& eye, glm::vec3 wanted,
+                                   float clearance) const
+{
+    const glm::vec3 toHold = wanted - eye;
+    const float distance = glm::length(toHold);
+    if (distance > 1e-4f)
+    {
+        const glm::vec3 direction = toHold / distance;
+        const RayHit blocked = physics.RayCast(eye, direction, distance + clearance);
+        if (blocked)
+        {
+            wanted = eye + direction * std::max(blocked.distance - clearance, 0.0f);
+        }
+    }
+
+    // Traced rather than compared against the player's own feet, so lying on a crate keeps the hold
+    // on top of the crate instead of at the height of the floor beside it.
+    const RayHit ground =
+        physics.RayCast(wanted + glm::vec3(0.0f, 0.6f, 0.0f), glm::vec3(0.0f, -1.0f, 0.0f), 1.2f);
+    if (ground)
+    {
+        wanted.y = std::max(wanted.y, ground.position.y + clearance);
+    }
+    return wanted;
+}
+
+bool PlayerBody::UpdateWeaponHold(const PlayerView& view, PhysicsWorld& physics, float dt)
 {
     if (!m_hasWeapon)
     {
@@ -987,6 +1031,19 @@ bool PlayerBody::UpdateWeaponHold(const PlayerView& view, float dt)
         }
     }
 
+    // And the barrel out of the scenery. The muzzle is what goes through a wall, not the grip, so
+    // that is what gets traced for, and the whole weapon moves by whatever correction it needs.
+    // After the reach clamp, not before: this only ever pulls the weapon in towards the eye or up,
+    // both of which leave it inside the arm's reach, whereas the reach clamp pulls towards the
+    // shoulder and could put the muzzle straight back into the floor it was just lifted out of.
+    {
+        const glm::vec3 muzzle =
+            m_weaponTransform.position + m_weaponTransform.rotation * m_weaponVisual.muzzle;
+        const glm::vec3 clear =
+            ClearOfWorld(physics, view.eyePosition, muzzle, m_config.muzzleClearance);
+        m_weaponTransform.position += clear - muzzle;
+    }
+
     // Every part rides the weapon's frame. A model authored in the editor can carry its own clip
     // for a reload, in which case that is what moves its parts; otherwise the built-in magazine
     // swap below is what a reload looks like.
@@ -1190,11 +1247,11 @@ void PlayerBody::UpdateArms(const PlayerState& state, const PlayerView& view, Ph
     }
     if (holding)
     {
-        UpdateWeaponHold(view, dt);
+        UpdateWeaponHold(view, physics, dt);
     }
     else if (m_hasHeldItem)
     {
-        UpdateHeldItem(view, dt);
+        UpdateHeldItem(view, physics, dt);
     }
 
     // Last, and blended over whatever the arms were already doing. Solving the climb first and
@@ -1225,7 +1282,7 @@ void PlayerBody::ClearHeldItem(Scene& scene)
     m_hasHeldItem = false;
 }
 
-void PlayerBody::UpdateHeldItem(const PlayerView& view, float dt)
+void PlayerBody::UpdateHeldItem(const PlayerView& view, PhysicsWorld& physics, float dt)
 {
     // Carried in the trigger hand, out in front and a little to the side, where you would hold
     // something you were about to use. The other arm is left alone: one hand is what carrying a
@@ -1238,6 +1295,11 @@ void PlayerBody::UpdateHeldItem(const PlayerView& view, float dt)
     const float crowded = 1.0f - m_wallClearance;
     glm::vec3 target = view.eyePosition + forward * glm::mix(0.52f, 0.26f, crowded) +
                        yawRight * 0.26f + up * -0.34f;
+
+    // Out of the wall in front and off the floor below, the same as a weapon is. The soft pull-back
+    // above only knows what is straight ahead; this knows where the item actually is, which is what
+    // matters when the body is lying down and the hold hangs below an eye a few centimetres up.
+    target = ClearOfWorld(physics, view.eyePosition, target, m_config.heldItemClearance);
 
     const glm::vec3 shoulder = m_pose.GlobalPosition(m_rig.shoulder[kRight]);
 
@@ -1436,7 +1498,14 @@ void PlayerBody::UpdateLegs(const PlayerState& state, const PlayerView& view,
         const glm::vec3 spread =
             right * (sideSign * (m_pose_blend.footSpread - 1.0f) * Ratio::kHipHalfWidth * m_rig.height);
         // Where this foot would stand if the player were not going anywhere.
-        const glm::vec3 rest = hip - facing * (m_pose_blend.footBackRatio * legSpan) + spread;
+        //
+        // Measured from where the character is standing, not from the hip. The hip moves: folding
+        // the torso to crouch swings the pelvis back behind the camera, and feet anchored to it went
+        // back with it, which left the legs folded double with the knees out in front and the shins
+        // running backwards. Your feet are under where you are standing whatever your back is doing.
+        const glm::vec3 stance = view.renderPosition +
+                                 right * (sideSign * Ratio::kHipHalfWidth * m_rig.height);
+        const glm::vec3 rest = stance - facing * (m_pose_blend.footBackRatio * legSpan) + spread;
 
         FootState& foot = m_feet[static_cast<size_t>(side)];
         const float cycle = glm::fract(m_stridePhase + (side == kLeft ? 0.0f : 0.5f));
@@ -1639,8 +1708,15 @@ void PlayerBody::UpdateLegs(const PlayerState& state, const PlayerView& view,
         constexpr float rollSign = 1.0f;
         const glm::vec3 pronePole = glm::normalize(right * (sideSign * rollSign * 0.78f) +
                                                    glm::vec3(0.0f, -0.62f * rollSign, 0.0f));
+        // A knee bends forward and down, and the more the leg is folded the more of it is down. A
+        // purely forward pole sends the knee straight out in front of a crouching hip and ends up
+        // above it, which is a leg bending the wrong way.
+        const float fold =
+            1.0f - std::clamp(glm::distance(hip, foot.position) / legSpan, 0.0f, 1.0f);
+        const glm::vec3 uprightPole = glm::normalize(
+            pelvisForward - glm::vec3(0.0f, m_config.kneeDropWhenFolded * fold, 0.0f) + glm::vec3(1e-4f));
         const glm::vec3 kneePole =
-            glm::normalize(glm::mix(pelvisForward, pronePole, m_flatness) + glm::vec3(1e-4f));
+            glm::normalize(glm::mix(uprightPole, pronePole, m_flatness) + glm::vec3(1e-4f));
 
         // Limb lengths are constant in every stance; the knee bend is what absorbs a lowered hip.
         const TwoBoneIKResult ik = SolveTwoBoneIK(hip, foot.position, kneePole, m_rig.upperLegLength,

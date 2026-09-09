@@ -127,7 +127,7 @@ struct PlayerConfig
 
     // --- Capsule, metres ---
     float standHeight = 1.80f;
-    float crouchHeight = 1.15f;
+    float crouchHeight = 1.38f;
     float proneHeight = 0.60f;
     float radius = 0.32f;
     float stepHeight = 0.35f;
@@ -135,7 +135,7 @@ struct PlayerConfig
 
     // --- Camera ---
     float standEyeHeight = 1.66f;
-    float crouchEyeHeight = 1.02f;
+    float crouchEyeHeight = 1.24f;
     float proneEyeHeight = 0.36f;
     float eyeTransitionSpeed = 9.0f;
     // Stair steps teleport the capsule upwards. Without smoothing, the camera snaps and stairs feel

@@ -2630,12 +2630,16 @@ void PredationGame::OnFixedUpdate(double fixedDt)
     UpdateHostMigration(dt);
     UpdateRespawns(dt);
 
-    // The toggles follow what the body actually did. A stance change can be refused, by a ceiling
-    // overhead or by the capsule being somewhere it cannot grow, and when that happened the toggle
-    // still flipped: the button and the body then disagreed, so the next press asked for the stance
-    // you were already in and nothing happened. That is what made crouch and prone go dead until
-    // something else moved you.
-    if (cv_crouchToggle.Get() && m_player.State().stanceBlocked)
+    // The toggles mirror the stance the body is actually in, every tick, not just when a change is
+    // refused. They are a request, and the body is the answer; a request that has been answered is
+    // spent. Anything else lets the two drift apart, and then the next press asks for the stance you
+    // are already in and nothing happens.
+    //
+    // On a client this matters twice over. The host owns the stance, and reconciliation writes its
+    // answer over the prediction: with the toggle left alone, a client could hold "standing" while
+    // the host held "prone", stand up locally every tick and be pulled back down by the next
+    // snapshot. Spamming the key was the quickest way to get there.
+    if (cv_crouchToggle.Get())
     {
         m_crouchToggleState = m_player.State().stance == PlayerStance::Crouching;
         m_proneToggleState = m_player.State().stance == PlayerStance::Prone;

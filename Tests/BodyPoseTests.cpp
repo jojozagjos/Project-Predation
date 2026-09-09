@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <string>
 #include <vector>
 
@@ -412,8 +413,16 @@ TEST_CASE("Every stance puts the head on the camera", "[body][pose]")
         INFO("stance " << PlayerStanceName(stance) << " eye " << harness.View().eyeHeight << " head "
                        << head.y << " pelvis " << pelvis.y);
         REQUIRE(std::abs(head.y - (eye.y - 0.085f)) < 0.01f);
+        // Crouching is the exception, and deliberately: the torso folds forward so the hips can
+        // come up under the body, and the whole figure is slid forward to keep the pelvis over the
+        // capsule. That leaves the head in front of the eye rather than behind it. Nothing sees the
+        // difference, because the head is hidden from its owner and the camera is invisible to
+        // everyone else, and the check that matters is the one below: the body stays inside its own
+        // capsule, so what you shoot at is where the hit test says it is.
+        const float expected =
+            stance == PlayerStance::Crouching ? harness.body.Tuning().crouchBodyForward - 0.070f : 0.070f;
         REQUIRE(glm::length(glm::vec2(head.x - eye.x, head.z - eye.z)) ==
-                Catch::Approx(0.070f).margin(0.012));
+                Catch::Approx(expected).margin(0.012));
 
         // And the legs must still be able to reach the ground from wherever that leaves the hips.
         for (int side = 0; side < 2; ++side)
@@ -1073,4 +1082,110 @@ TEST_CASE("A ragdoll keeps its shape instead of folding into a knot", "[body][ra
         glm::distance(harness.Bone(harness.Rig().pelvis), harness.Bone(harness.Rig().neck));
     INFO("pelvis to neck " << torso);
     CHECK(torso > 0.42f);
+}
+
+TEST_CASE("Crouching squats over the feet instead of sitting on nothing", "[body][pose]")
+{
+    // The failure this pins down: with the torso near-upright, dropping the eye to crouch height
+    // leaves the hips so low that the leg has to fold double. The thigh goes flat, the knees end up
+    // a long way in front, the feet stay under the camera, and nothing at all sits under the hips.
+    // From outside it reads as sitting on an invisible chair.
+    //
+    // A squat shares the bend between thigh and shin and puts the feet under the hips, which is
+    // only possible if the hips are high enough, which is only possible if the torso folds forward.
+    BodyHarness harness;
+    harness.SetStance(PlayerStance::Crouching);
+    harness.Settle(240);
+
+    const glm::vec3 base = harness.State().position;
+    for (int side = 0; side < 2; ++side)
+    {
+        const glm::vec3 hip = harness.Bone(harness.Rig().upperLeg[side]);
+        const glm::vec3 knee = harness.Bone(harness.Rig().lowerLeg[side]);
+        const glm::vec3 foot = harness.Bone(harness.Rig().foot[side]);
+
+        const float thigh = glm::degrees(
+            std::acos(std::clamp(-(knee.y - hip.y) / glm::length(knee - hip), -1.0f, 1.0f)));
+        const float shin = glm::degrees(
+            std::acos(std::clamp(-(foot.y - knee.y) / glm::length(foot - knee), -1.0f, 1.0f)));
+
+        INFO("side " << side << " thigh " << thigh << " deg, shin " << shin << " deg");
+        // Neither segment goes flat.
+        CHECK(thigh < 62.0f);
+        CHECK(shin < 62.0f);
+        // And they share the fold rather than one taking all of it.
+        CHECK(std::abs(thigh - shin) < 20.0f);
+        // The knee stays below the hip and comes forward, which is which way a knee bends.
+        CHECK(knee.y < hip.y);
+        CHECK(-(knee.z - base.z) > -(hip.z - base.z));
+
+        // The foot is under the hip, so the body has something beneath it.
+        const float hipForward = -(hip.z - base.z);
+        const float footForward = -(foot.z - base.z);
+        INFO("hip forward " << hipForward << " foot forward " << footForward);
+        CHECK(std::abs(footForward - hipForward) < 0.12f);
+
+        // And the whole crouched body stays inside the capsule it collides with, or players would
+        // be shooting at a body that is not where the hit test says it is.
+        CHECK(std::abs(hipForward) < harness.config.radius);
+        CHECK(std::abs(-(knee.z - base.z)) < harness.config.radius);
+    }
+}
+
+TEST_CASE("A held weapon stops at a wall it is looking sideways at", "[body][pose]")
+{
+    // The pull-back this replaces traced along the view, so it only knew about walls the player was
+    // pointing at. Walk into one and then turn, and the trace runs off along the face and finds
+    // nothing much, while the barrel is still crossing it.
+    BodyHarness harness;
+    WeaponDefinition weapon;
+    weapon.id = 1;
+    weapon.key = "test_rifle";
+    weapon.size = {0.06f, 0.16f, 0.62f};
+    harness.body.SetWeaponForSimulation(&weapon);
+
+    // A wall across the player's front. CreateBox takes half extents, so the face is the centre
+    // plus the half depth: this one faces the player at z = -0.32, exactly a capsule radius away.
+    const float wallZ = -0.32f;
+    harness.physics.CreateBox({8.0f, 3.0f, 1.0f}, Transform{{0.0f, 1.5f, wallZ - 1.0f}},
+                              BodyMotion::Static);
+    harness.physics.OptimizeBroadPhase();
+
+    // Walk into it, then turn to look along it.
+    harness.input.yaw = 0.0f;
+    harness.SetTravel(glm::vec3(0.0f, 0.0f, -1.0f));
+    harness.Settle(150);
+    harness.input.move = glm::vec2(0.0f);
+    harness.input.yaw = glm::radians(40.0f);
+    harness.Settle(90);
+
+    const glm::vec3 muzzle = harness.body.MuzzlePoint();
+    INFO("muzzle at " << muzzle.x << ", " << muzzle.y << ", " << muzzle.z << ", player z "
+                      << harness.State().position.z << ", wall face at " << wallZ);
+    CHECK(muzzle.z > wallZ);
+}
+
+TEST_CASE("Lying down does not put what is in the hands through the floor", "[body][pose]")
+{
+    // Prone hangs the carry below the eye, and the prone eye is a few centimetres off the ground,
+    // so the arithmetic put the item under the floor and the hand holding it in with it. Nothing in
+    // the hold knew where the floor was until it was traced for.
+    BodyHarness harness;
+    harness.body.SetHeldItemForSimulation(true);
+
+    harness.SetStance(PlayerStance::Prone);
+    harness.Settle(240);
+    harness.SetTravel(glm::vec3(0.0f, 0.0f, -1.0f));
+    harness.Settle(120);
+
+    const glm::vec3 item = harness.body.HeldItemOrigin();
+    INFO("item at " << item.x << ", " << item.y << ", " << item.z);
+    // Not merely above zero: an item has size, so the point it is drawn at has to clear the floor
+    // by enough for the model to sit on top of it rather than half in it.
+    CHECK(item.y > 0.08f);
+
+    // And the hand holding it is above the floor too, rather than buried alongside it.
+    const glm::vec3 hand = harness.Bone(harness.Rig().hand[1]);
+    INFO("carrying hand y " << hand.y);
+    CHECK(hand.y > 0.0f);
 }

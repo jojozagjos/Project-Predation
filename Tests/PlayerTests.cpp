@@ -728,8 +728,9 @@ TEST_CASE("A refused stance change says so", "[player][stance]")
     settings.workerThreads = 1;
     REQUIRE(physics.Init(settings));
     physics.CreateBox({20.0f, 0.5f, 20.0f}, Transform{{0.0f, -0.5f, 0.0f}}, BodyMotion::Static);
-    // A lintel low enough to crouch under and not to stand under.
-    physics.CreateBox({2.0f, 0.2f, 2.0f}, Transform{{0.0f, 1.4f, 0.0f}}, BodyMotion::Static);
+    // A lintel low enough to crouch under and not to stand under. The gap below it is 1.5 m: the
+    // crouch capsule is 1.38 and the standing one is 1.80.
+    physics.CreateBox({2.0f, 0.2f, 2.0f}, Transform{{0.0f, 1.7f, 0.0f}}, BodyMotion::Static);
     physics.OptimizeBroadPhase();
 
     PlayerConfig config;

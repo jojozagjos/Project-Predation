@@ -156,13 +156,11 @@ void BuildTestMap(Scene& scene, MeshLibrary& meshes, PhysicsWorld* physics)
     };
 
     // ---------------------------------------------------------------------
-    // Origin: the spawn plaza, with a 1 m cube as the scale reference for
-    // everything else. The spawn looks south, with every zone in view.
+    // Origin: the spawn plaza. The spawn looks south, with every zone in view.
     // ---------------------------------------------------------------------
     // Kept clear of the ledge row in front of it. Two pads sharing ground looked like a patch, and
     // before the heights were staggered they flickered against each other as well.
     zone("spawn", 0.0f, 15.6f, 8.0f, 8.0f, {0.30f, 0.32f, 0.36f});
-    builder.AddBox("reference_cube", AtPosition(0.0f, 0.5f, 14.2f), {1.0f, 1.0f, 1.0f}, kMarkerMaterial);
 
     // ---------------------------------------------------------------------
     // +X: staircases. Same total climb, different step rises, side by side so

@@ -89,6 +89,14 @@ public:
         float wallCheckSpeed = 12.0f;
         float weaponWallForward = 0.34f;  // how far forward it still reaches when crowded
         float weaponWallRaise = 0.16f;    // and how far up it comes
+
+        // The pull-back above is a soft rule measured along the view, which is why a gun still went
+        // through a wall the player was looking sideways at: the trace and the barrel were pointing
+        // in different directions. These are the hard limits, traced along the barrel itself and
+        // straight down, so the muzzle stops at whatever is really in front of it and a hold does
+        // not sink into the floor when the body lies down on it.
+        float muzzleClearance = 0.05f;
+        float heldItemClearance = 0.11f;
         // A swinging foot follows an already-smooth arc, so it tracks its target almost exactly. It
         // has to: any lag here lands the foot short of where the step was aimed, and it spends the
         // stance catching up, which is a visible skid at every touchdown.
@@ -96,6 +104,9 @@ public:
         // How much of the reachable leg length a step is allowed to use. Going right to the limit
         // leaves the knee locked straight at the end of every stance, which reads as stiff.
         float stepReachMargin = 0.99f;
+        // How far the knee pole tips downwards as the leg folds. Straight out in front is where a
+        // knee goes when the leg is nearly straight; a folded one goes forward and down.
+        float kneeDropWhenFolded = 1.35f;
         // How far above the player a foot may be planted. A stair step or a kerb, not the top of a
         // wall the player is standing next to.
         float maxFootRise = 0.45f;
@@ -125,10 +136,19 @@ public:
         };
 
         // Crouching folds at the hip and knee with the pelvis kept upright. Pitching the pelvis
-        // instead threw the legs out behind and read as a ski jump rather than a squat. The feet
-        // sit slightly *forward* of the hips, because squatting sends the hips back over the heels.
+        // instead threw the legs out behind and read as a ski jump rather than a squat.
+        //
+        // The lean is large because the hips have to come up to meet it. Dropping the eye to
+        // crouch height with the torso near-upright leaves the hips so low that the leg folds double
+        // and the thigh ends up flat: knees out in front, feet under the body, nothing under the
+        // hips at all, which reads as sitting on an invisible chair. Folding the torso forward is
+        // what a real crouch does with the height it has to lose, and it lets the hips sit high
+        // enough for the thigh and shin to share the bend evenly.
+        //
+        // The feet then sit under the hips rather than in front of them, so the body has something
+        // beneath it. See crouchBodyForward, which keeps the pelvis over the capsule while it does.
         StancePose stand{0.0f, 0.0f, 0.00f, 1.00f, 0.0f};
-        StancePose crouch{0.0f, 32.0f, -0.12f, 1.20f, 10.0f};
+        StancePose crouch{0.0f, 46.0f, 0.06f, 1.20f, 10.0f};
         // Prone lays the pelvis flat so the spine continues horizontally. The feet go almost a full
         // leg length back so the legs lie out straight; leaving slack let the knees fold up into the
         // air, because once the pelvis is flat the knee's bend direction points at the sky.
@@ -211,6 +231,14 @@ public:
         // it, so whatever this is, the drawn skull sits that far behind the neck. At forty
         // millimetres the head read as floating off the back of the shoulders.
         float skullBehindEye = 0.006f;
+
+        // Crouching folds the torso forward, and the head is pinned to the camera, so the hips have
+        // to go somewhere: they swing out behind. That is what a real squat does, but the camera in
+        // a game is locked over the capsule rather than over the feet, so the result was a body
+        // sitting well behind the space it occupies. Sliding the whole crouched body forward by this
+        // much puts the pelvis back over the feet. The head then sits slightly in front of the eye,
+        // which costs nothing: it is hidden in first person, and nobody else can see the camera.
+        float crouchBodyForward = 0.25f;
         bool hideHead = true; // the camera lives inside it
         bool visible = true;
     };
@@ -266,6 +294,10 @@ public:
     void SetHeldItem(Scene& scene, MeshLibrary& meshes, const std::string& name, const MeshData& mesh,
                      const Material& material);
     void ClearHeldItem(Scene& scene);
+    // The same, with nothing to draw, so the one-handed carry can be posed in a test.
+    void SetHeldItemForSimulation(bool held) { m_hasHeldItem = held; }
+    // Where the carried item is drawn. Exposed for the same reason WeaponOrigin is.
+    glm::vec3 HeldItemOrigin() const { return m_heldItemTransform.position; }
     bool HasWeapon() const { return m_hasWeapon; }
     // Where a round would appear to leave the model, for the muzzle flash. Not where rounds are
     // actually traced from: that comes from the eye, so what is under the crosshair is what is hit.
@@ -318,7 +350,11 @@ private:
     // Places the weapon and puts both hands on it. Returns false when there is nothing to hold, so
     // the caller can fall through to whatever the arms would otherwise be doing.
     // Places the weapon and puts the hands on it. Returns false when there is nothing to hold.
-    bool UpdateWeaponHold(const PlayerView& view, float dt);
+    bool UpdateWeaponHold(const PlayerView& view, PhysicsWorld& physics, float dt);
+    // Pulls a point the hands are reaching for back out of whatever it has gone into: anything
+    // between the eye and it, and the floor underneath it.
+    glm::vec3 ClearOfWorld(PhysicsWorld& physics, const glm::vec3& eye, glm::vec3 wanted,
+                           float clearance) const;
     void DestroyWeapon(Scene& scene);
     // The reach-and-pull crawl. With a weapon in hand only the support arm crawls; the other keeps
     // hold of the gun.
@@ -331,7 +367,7 @@ private:
     // leg IK every frame.
     void UpdateArms(const PlayerState& state, const PlayerView& view, PhysicsWorld& physics, float dt);
     // Poses the right arm to carry a held item and puts the item in the hand.
-    void UpdateHeldItem(const PlayerView& view, float dt);
+    void UpdateHeldItem(const PlayerView& view, PhysicsWorld& physics, float dt);
     // Both hands on the lip of the ledge for the pull, then released as the body comes over.
     void UpdateMantleArms(const PlayerState& state, float weight);
     void UpdateLegs(const PlayerState& state, const PlayerView& view, const PlayerConfig& playerConfig,
