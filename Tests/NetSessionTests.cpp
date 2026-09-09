@@ -517,3 +517,67 @@ TEST_CASE("Loose objects are replicated as state", "[net][session]")
     REQUIRE(got.count == 3);
     CHECK(got.bodies[2].position.x == Catch::Approx(4.0f).margin(0.002));
 }
+
+TEST_CASE("The host can rewind to where a client was looking", "[net][session][lag]")
+{
+    // A client draws everyone else a fixed delay behind the newest snapshot, and that snapshot took
+    // a one-way trip to reach it. It therefore aims at where somebody was. Testing a shot against
+    // the present punishes a player for their own connection, so the host keeps a second of history
+    // and rewinds to the moment the shot was aimed.
+    NetConditions laggy;
+    laggy.latencyMs = 90.0f;
+    Link link(41015, laggy);
+    link.Run(40, PlayerInput{});
+    REQUIRE(link.client.Connected());
+
+    // The host walks steadily while the client stands still and watches.
+    link.Run(150, PlayerInput{}, WalkForward());
+
+    const uint32_t renderTick = link.client.RenderTick();
+    REQUIRE(renderTick > 0);
+
+    const std::vector<NetHost::PlayerPose> then = link.host.PosesAt(renderTick);
+    const std::vector<NetHost::PlayerPose> now = link.host.PosesAt(link.host.CurrentTick());
+    REQUIRE_FALSE(then.empty());
+    REQUIRE_FALSE(now.empty());
+
+    // The host is player zero in both.
+    const float thenZ = then[0].position.z;
+    const float nowZ = now[0].position.z;
+    INFO("client was looking at z " << thenZ << ", host is now at z " << nowZ);
+
+    // The rewind actually goes back: the host has moved on since the moment the client was drawing.
+    CHECK(nowZ < thenZ - 0.05f);
+
+    // And it matches where the client is actually drawing the host, which is the whole point.
+    REQUIRE(link.client.Remotes().size() == 1);
+    const float drawnZ = link.client.Remotes()[0].position.z;
+    INFO("client is drawing the host at z " << drawnZ);
+    CHECK(std::abs(drawnZ - thenZ) < 0.15f);
+}
+
+TEST_CASE("A rewind further back than anyone could need is refused", "[net][session][lag]")
+{
+    // The obvious way to cheat with lag compensation is to claim you were looking a long way into
+    // the past and shoot people where they used to be. The clamp is what stops that.
+    NetConditions laggy;
+    laggy.latencyMs = 40.0f;
+    Link link(41016, laggy);
+    link.Run(40, PlayerInput{});
+    REQUIRE(link.client.Connected());
+    link.Run(120, PlayerInput{}, WalkForward());
+
+    const uint32_t now = link.host.CurrentTick();
+    const std::vector<NetHost::PlayerPose> honest = link.host.PosesAt(now - 10);
+    const std::vector<NetHost::PlayerPose> absurd = link.host.PosesAt(1); // "I was looking at the start"
+    REQUIRE_FALSE(honest.empty());
+    REQUIRE_FALSE(absurd.empty());
+
+    // The absurd claim is answered with the oldest rewind anyone is allowed, not with tick one.
+    const std::vector<NetHost::PlayerPose> limit = link.host.PosesAt(now - 15);
+    INFO("absurd " << absurd[0].position.z << ", limit " << limit[0].position.z);
+    CHECK(std::abs(absurd[0].position.z - limit[0].position.z) < 0.01f);
+    // And the honest one is more recent than the limit, so the clamp is not just flattening
+    // everything to one answer.
+    CHECK(honest[0].position.z < limit[0].position.z - 0.01f);
+}

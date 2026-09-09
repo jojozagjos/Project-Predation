@@ -358,6 +358,33 @@ void NetHost::HandlePacket(const NetPacket& packet)
     }
 }
 
+std::vector<NetHost::PlayerPose> NetHost::PosesAt(uint32_t tick) const
+{
+    if (m_history.empty())
+    {
+        return {};
+    }
+
+    // Clamped before it is trusted. A client asking to be rewound further than a playable
+    // connection could justify is either badly wrong about the time or trying it on, and either way
+    // the answer is the same: it gets the oldest rewind anyone is allowed.
+    const uint32_t oldest = m_tick > kMaxRewindTicks ? m_tick - kMaxRewindTicks : 0;
+    const uint32_t wanted = std::clamp(tick, oldest, m_tick);
+
+    const HistoryEntry* best = &m_history.front();
+    uint32_t bestDistance = std::numeric_limits<uint32_t>::max();
+    for (const HistoryEntry& entry : m_history)
+    {
+        const uint32_t distance = entry.tick > wanted ? entry.tick - wanted : wanted - entry.tick;
+        if (distance < bestDistance)
+        {
+            bestDistance = distance;
+            best = &entry;
+        }
+    }
+    return best->poses;
+}
+
 void NetHost::Broadcast(const WorldEventMessage& event)
 {
     if (m_transport == nullptr)
@@ -504,6 +531,26 @@ void NetHost::Tick(uint32_t tick, const PlayerState& localState, float dt)
     }
 
     BuildViews(localState);
+
+    // Where everybody is, kept for a second, so a shot can be tested against where the shooter saw
+    // them rather than where they have got to since.
+    m_tick = tick;
+    HistoryEntry entry;
+    entry.tick = tick;
+    entry.poses.push_back({0, localState.position, localState.stance, localState.alive});
+    for (const auto& client : m_clients)
+    {
+        if (client->welcomed)
+        {
+            const PlayerState& state = client->controller.State();
+            entry.poses.push_back({client->playerId, state.position, state.stance, state.alive});
+        }
+    }
+    m_history.push_back(std::move(entry));
+    if (m_history.size() > kHistoryTicks)
+    {
+        m_history.erase(m_history.begin());
+    }
 
     const float interval = 1.0f / std::max<float>(m_config.snapshotHz, 1);
     m_snapshotTimer += dt;
@@ -956,6 +1003,7 @@ void NetClient::UpdateInterpolation(float frameDeltaSeconds)
         // Not enough history yet, or the connection has stalled and nothing new has arrived. Show
         // the most recent truth rather than nothing.
         const SnapshotMessage& latest = m_snapshots.back().message;
+        m_renderTick = latest.tick;
         for (uint8_t i = 0; i < latest.count; ++i)
         {
             if (latest.players[i].playerId == m_playerId)
@@ -971,6 +1019,11 @@ void NetClient::UpdateInterpolation(float frameDeltaSeconds)
 
     const float span = std::max(newer->time - older->time, 1e-5f);
     const float t = std::clamp((renderTime - older->time) / span, 0.0f, 1.0f);
+
+    // Which host tick is on screen right now. A shot carries this up, so the host can test it
+    // against the world as it looked to whoever fired rather than as it is.
+    m_renderTick = static_cast<uint32_t>(
+        glm::mix(static_cast<float>(older->message.tick), static_cast<float>(newer->message.tick), t));
 
     for (uint8_t i = 0; i < newer->message.count; ++i)
     {

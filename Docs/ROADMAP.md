@@ -5,14 +5,12 @@ list of gaps rather than a list of achievements: it is for deciding what to do n
 
 ## Player controller and embodiment
 
-Built: walking, running, sprinting, crouching, prone with a supine roll, jumping, leaning, stairs
+Built: walking, running, sprinting, crouching, prone, mantling, jumping, leaning, stairs
 and slopes, fall damage, a full procedural body with IK, weapon holding, items held in the hand,
 and ragdolls on death.
 
 Still missing:
 
-- **Mantling and vaulting.** The test map has ledges from 0.3 to 1.8 m and nothing can climb them.
-  This is the largest hole in the movement set and it changes level design, so it should come first.
 - **Stamina.** Sprinting is currently free. In a game about being hunted, running out is the point.
 - **Injury.** Health is a number that does nothing until it reaches zero. Limping, a shaking aim and
   a slower stance change are what make damage frightening rather than administrative.
@@ -25,14 +23,11 @@ Still missing:
 ## Multiplayer
 
 Built: UDP with its own reliability, host authority, client prediction with replay, interpolated
-remote players, doors, lockers, pickups, ammunition crates, loose objects, shots, friendly fire,
-damage and death.
+remote players, lag compensation, doors, lockers, pickups, ammunition crates, loose objects, shots,
+friendly fire, damage and death.
 
 Still missing:
 
-- **Lag compensation.** The host tests hits against where players are now, not where the shooter saw
-  them. At 100 ms that is a metre of error on a running target. The hit test is already in one
-  place, which is what this needs.
 - **Death and respawn as a flow.** Dying leaves a body and nothing else happens. There is no
   spectating a teammate, which the brief asks for, and no round structure to respawn into.
 - **Nameplates.** You cannot tell who anybody is.

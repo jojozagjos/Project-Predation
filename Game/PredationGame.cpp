@@ -767,7 +767,9 @@ void PredationGame::ServeClientRequests()
         shot.sequence = request.shot.shotNumber;
 
         ShotResult result = ResolveShot(m_app->GetPhysics(), shot);
-        ResolvePlayerHits(shot, request.player, result);
+        // Rewound to the moment this client says it was looking at, clamped by the host to what a
+        // playable connection could justify.
+        ResolvePlayerHits(shot, request.player, result, m_host.PosesAt(request.shot.renderTick));
 
         WorldEventMessage event;
         event.kind = WorldEventKind::ShotFired;
@@ -996,7 +998,22 @@ void PredationGame::ApplyDynamicBodies(const WorldStateMessage& state)
 
 // --- Damage ------------------------------------------------------------------------------------
 
-void PredationGame::ResolvePlayerHits(const FireEvent& shot, uint8_t shooter, ShotResult& worldHit)
+std::vector<NetHost::PlayerPose> PredationGame::PosesNow() const
+{
+    // Who is where at this instant. The host's own shots are aimed at what is on its own screen,
+    // which is the present, so there is nothing to rewind.
+    std::vector<NetHost::PlayerPose> poses;
+    poses.push_back({LocalPlayerId(), m_player.State().position, m_player.State().stance,
+                     m_player.State().alive});
+    for (const RemotePlayerView& remote : RemotePlayers())
+    {
+        poses.push_back({remote.id, remote.position, remote.stance, remote.alive});
+    }
+    return poses;
+}
+
+void PredationGame::ResolvePlayerHits(const FireEvent& shot, uint8_t shooter, ShotResult& worldHit,
+                                      const std::vector<NetHost::PlayerPose>& poses)
 {
     if (!cv_friendlyFire.Get())
     {
@@ -1059,12 +1076,11 @@ void PredationGame::ResolvePlayerHits(const FireEvent& shot, uint8_t shooter, Sh
         bestPoint = onRay;
     };
 
-    testPlayer(0, m_player.State().position, m_player.State().stance);
-    for (const RemotePlayerView& remote : RemotePlayers())
+    for (const NetHost::PlayerPose& pose : poses)
     {
-        if (remote.alive)
+        if (pose.alive)
         {
-            testPlayer(remote.id, remote.position, remote.stance);
+            testPlayer(pose.id, pose.position, pose.stance);
         }
     }
 
@@ -1972,6 +1988,9 @@ void PredationGame::ResolveShots()
             message.shotNumber = shot.sequence;
             message.origin = shot.origin;
             message.direction = shot.direction;
+            // The moment this client was drawing everyone else at, so the host can test the shot
+            // against what was actually on screen when the trigger went down.
+            message.renderTick = m_client.RenderTick();
             m_client.SendShot(message);
 
             const ShotResult predicted = ResolveShot(physics, shot);
@@ -1984,7 +2003,7 @@ void PredationGame::ResolveShots()
         }
 
         ShotResult result = ResolveShot(physics, shot);
-        ResolvePlayerHits(shot, LocalPlayerId(), result);
+        ResolvePlayerHits(shot, LocalPlayerId(), result, PosesNow());
 
         Tracer tracer;
         tracer.from = shot.origin;

@@ -493,6 +493,7 @@ bool ReadInteract(BitReader& reader, InteractMessage& out)
 void WriteShot(BitWriter& writer, const ShotMessage& message)
 {
     writer.WriteUInt(message.shotNumber);
+    writer.WriteUInt(message.renderTick);
     WritePosition(writer, message.origin);
     // A direction is a unit vector, so it costs the same as a rotation and no more.
     writer.WriteQuaternion(glm::quat(glm::vec3(0.0f, 0.0f, 1.0f), message.direction));
@@ -501,6 +502,7 @@ void WriteShot(BitWriter& writer, const ShotMessage& message)
 bool ReadShot(BitReader& reader, ShotMessage& out)
 {
     out.shotNumber = reader.ReadUInt();
+    out.renderTick = reader.ReadUInt();
     out.origin = ReadPosition(reader);
     const glm::quat rotation = reader.ReadQuaternion();
     out.direction = glm::normalize(rotation * glm::vec3(0.0f, 0.0f, 1.0f));

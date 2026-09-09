@@ -102,6 +102,29 @@ public:
         ShotMessage shot;
     };
 
+    // Where somebody was, as opposed to where they are.
+    struct PlayerPose
+    {
+        uint8_t id = 0;
+        glm::vec3 position{0.0f};
+        PlayerStance stance = PlayerStance::Standing;
+        bool alive = true;
+    };
+
+    // Everyone's position at a tick in the recent past, for deciding what a shot hit.
+    //
+    // A client draws other players a fixed delay behind the newest snapshot, and that snapshot took
+    // a one-way trip to get there. It therefore aims at where somebody was, not where they are, and
+    // testing a shot against the present punishes a player for their own connection: at a hundred
+    // milliseconds that is a metre of lead on a running target. Rewinding is the only way a shot
+    // that looked like a hit is one.
+    //
+    // Bounded on purpose. A client that claims to have been looking a long way into the past would
+    // otherwise get to shoot people where they used to be, which is the obvious way to cheat with
+    // this, so the rewind is clamped to what a playable connection can justify.
+    std::vector<PlayerPose> PosesAt(uint32_t tick) const;
+    uint32_t CurrentTick() const { return m_tick; }
+
     std::vector<InteractRequest> TakeInteractRequests() { return std::exchange(m_interactRequests, {}); }
     std::vector<ShotRequest> TakeShotRequests() { return std::exchange(m_shotRequests, {}); }
     // Players who have just been let in. The game sends them the state of the world.
@@ -139,6 +162,19 @@ private:
     std::vector<NetPacket> m_incoming;
     std::vector<InteractRequest> m_interactRequests;
     std::vector<ShotRequest> m_shotRequests;
+    struct HistoryEntry
+    {
+        uint32_t tick = 0;
+        std::vector<PlayerPose> poses;
+    };
+    // A second of it. Longer than any connection worth rewinding for, and short enough that the
+    // whole thing is a few kilobytes.
+    static constexpr size_t kHistoryTicks = 60;
+    // How far back a client is allowed to claim it was looking. A quarter of a second covers a bad
+    // connection plus the interpolation delay; past that the claim is refused rather than believed.
+    static constexpr uint32_t kMaxRewindTicks = 15;
+    std::vector<HistoryEntry> m_history;
+    uint32_t m_tick = 0;
     std::vector<uint8_t> m_joined;
     Config m_config;
     PhysicsWorld* m_physics = nullptr;
@@ -216,6 +252,9 @@ public:
     // diverging, which is the first thing to look at when movement starts to feel rubbery.
     uint32_t CorrectionCount() const { return m_corrections; }
     uint32_t Sequence() const { return m_sequence; }
+    // The host tick this client is drawing everyone else at. A shot carries it so the host can
+    // rewind to the moment the shot was actually aimed.
+    uint32_t RenderTick() const { return m_renderTick; }
     Transport* GetTransport() { return m_transport.get(); }
 
 private:
@@ -246,6 +285,7 @@ private:
     uint32_t m_sequence = 0;
     uint32_t m_lastAcknowledged = 0;
     uint32_t m_corrections = 0;
+    uint32_t m_renderTick = 0;
     uint8_t m_playerId = 0;
     bool m_snapshotArrived = false;
     bool m_hasWorldState = false;

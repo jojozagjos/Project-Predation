@@ -90,6 +90,10 @@ struct InteractMessage
 struct ShotMessage
 {
     uint32_t shotNumber = 0;
+    // The host tick this client was drawing everyone else at when it pulled the trigger. Remote
+    // players are shown a fixed delay in the past, so this is the only moment at which the shot
+    // was aimed at anything, and it is the moment the host has to rewind to.
+    uint32_t renderTick = 0;
     glm::vec3 origin{0.0f};
     glm::vec3 direction{0.0f};
 };

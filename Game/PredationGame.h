@@ -126,11 +126,16 @@ private:
 
     // Where a player is, for checking they are close enough to what they are asking for.
     glm::vec3 PlayerPosition(uint8_t player) const;
+    // Everyone, where they are this instant.
+    std::vector<NetHost::PlayerPose> PosesNow() const;
 
     // --- Damage ---------------------------------------------------------------------------------
     // Runs the rounds fired this tick against the world and against the other players. Host only:
     // this is the one place a shot turns into damage.
-    void ResolvePlayerHits(const FireEvent& shot, uint8_t shooter, ShotResult& worldHit);
+    // `poses` is who was where at the moment the shot was aimed, which for a client is a rewound
+    // moment and for the host is now.
+    void ResolvePlayerHits(const FireEvent& shot, uint8_t shooter, ShotResult& worldHit,
+                           const std::vector<NetHost::PlayerPose>& poses);
     void ApplyPlayerDamage(uint8_t player, float amount, uint8_t killer, const glm::vec3& direction);
     void KillPlayer(uint8_t player, const glm::vec3& direction);
 
