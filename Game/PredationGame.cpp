@@ -72,6 +72,7 @@ bool PredationGame::OnInit(Application& app)
 
     m_items.LoadFromFile(Paths::AssetsRoot() / "Data" / "items.json");
     m_itemIcons.Build(m_items, app.GetMeshes(), app.GetRenderer());
+    m_weaponData.LoadFromFile(Paths::AssetsRoot() / "Data" / "weapons.json");
     m_world.Build(m_scene, app.GetMeshes(), app.GetPhysics(), m_interactions, m_items);
     app.GetPhysics().OptimizeBroadPhase();
 
@@ -93,9 +94,10 @@ bool PredationGame::OnInit(Application& app)
 
     PRED_LOG_INFO(Gameplay,
                   "Controls: WASD move, Space jump, Ctrl/C crouch, Z prone, Shift sprint, Alt walk, "
-                  "Q/E lean, F interact, G drop, 1-6 and wheel select, Tab inventory. "
-                  "P cycles first/third/free camera; in third person hold right mouse to orbit. "
-                  "R respawns, F3 overlay, Escape frees the cursor.");
+                  "Q/E lean. Left mouse fires, right mouse aims, R reloads. "
+                  "F interact, G drop, 1-6 and wheel select, Tab inventory. "
+                  "P cycles first/third/free camera; in third person hold middle mouse to orbit. "
+                  "F5 respawns, F3 overlay, Escape frees the cursor.");
     return true;
 }
 
@@ -362,6 +364,64 @@ void PredationGame::RegisterCommands()
         },
         "move <x> <y>");
 
+    console.RegisterCommand(
+        "give_weapon", "Put a weapon in the inventory and select it: give_weapon <key>",
+        [this](const std::vector<std::string>& args)
+        {
+            if (args.size() < 2)
+            {
+                m_app->GetConsole().PrintError("usage: give_weapon <key>");
+                return;
+            }
+            const WeaponDefinition* weapon = m_weaponData.Find(args[1]);
+            if (weapon == nullptr)
+            {
+                m_app->GetConsole().PrintError("no such weapon: " + args[1]);
+                return;
+            }
+            const ItemId id = m_items.IdOf(weapon->item);
+            if (id == kInvalidItem || m_inventory.Add(m_items, id, 1) <= 0)
+            {
+                m_app->GetConsole().PrintError("no room for " + weapon->name);
+                return;
+            }
+            for (int i = 0; i < m_inventory.SlotCount(); ++i)
+            {
+                if (m_inventory.At(i).item == id)
+                {
+                    m_inventory.SelectSlot(i);
+                    break;
+                }
+            }
+            SyncEquippedWeapon();
+            m_app->GetConsole().Print("Equipped " + weapon->name);
+        },
+        "give_weapon <key>");
+
+    console.RegisterCommand(
+        "fire", "Hold the trigger for a number of ticks, for testing without a mouse: fire [ticks]",
+        [this](const std::vector<std::string>& args)
+        { m_debugTriggerTicks = args.size() >= 2 ? std::atoi(args[1].c_str()) : 1; }, "fire [ticks]");
+
+    console.RegisterCommand("weapon_state", "Print the equipped weapon's simulation state",
+                            [this](const std::vector<std::string>&)
+                            {
+                                const WeaponDefinition* weapon = EquippedWeapon();
+                                if (weapon == nullptr)
+                                {
+                                    m_app->GetConsole().Print("Unarmed");
+                                    return;
+                                }
+                                char buffer[224];
+                                std::snprintf(buffer, sizeof(buffer),
+                                              "%s  %d/%d  %s  aim %.2f  spread %.2f deg  shots %u",
+                                              weapon->name.c_str(), m_weapon.rounds, m_weapon.reserve,
+                                              m_weapon.IsReloading() ? "reloading" : "ready", m_weapon.aim,
+                                              WeaponSim::CurrentSpread(*weapon, m_weapon),
+                                              m_weapon.shotCount);
+                                m_app->GetConsole().Print(buffer);
+                            });
+
     console.RegisterCommand("drop", "Drop the selected item in front of the player",
                             [this](const std::vector<std::string>&) { DropSelected(); });
 
@@ -486,7 +546,7 @@ void PredationGame::SampleLook(float /*dt*/)
 
     // Holding the look button in third person orbits the camera instead of turning the character,
     // which is the only way to see the animation from the front.
-    if (m_cameraMode == CameraMode::ThirdPerson && input.IsActionDown("look"))
+    if (m_cameraMode == CameraMode::ThirdPerson && input.IsActionDown("orbit"))
     {
         m_orbitYaw += delta.x * sensitivity;
         m_orbitPitch = std::clamp(m_orbitPitch + vertical, -limit, limit);
@@ -568,6 +628,106 @@ void PredationGame::SetCameraMode(CameraMode mode)
     if (m_app != nullptr)
     {
         m_app->GetConsole().Print(std::string("Camera: ") + CameraModeName());
+    }
+}
+
+const WeaponDefinition* PredationGame::EquippedWeapon() const
+{
+    return m_weaponData.Get(m_weapon.weapon);
+}
+
+void PredationGame::SyncEquippedWeapon()
+{
+    // The selected slot decides what is in your hands. Keeping it that way means there is no second
+    // notion of "equipped" to fall out of step with the inventory.
+    const Inventory::Slot& slot = m_inventory.Selected();
+    const ItemDefinition* item = m_items.Get(slot.item);
+    const WeaponId wanted = item != nullptr ? m_weaponData.ForItem(item->key) : kInvalidWeapon;
+    if (wanted == m_weapon.weapon)
+    {
+        return;
+    }
+
+    if (wanted == kInvalidWeapon)
+    {
+        m_weapon = WeaponState{};
+        return;
+    }
+    if (const WeaponDefinition* definition = m_weaponData.Get(wanted))
+    {
+        // Rounds do not carry between weapons; each comes with its own magazine and reserve. Swapping
+        // back and forth would otherwise be a free reload.
+        WeaponSim::Equip(*definition, m_weapon);
+        PRED_LOG_INFO(Gameplay, "Equipped {} ({} rounds, {} spare)", definition->name, m_weapon.rounds,
+                      m_weapon.reserve);
+    }
+}
+
+glm::vec3 PredationGame::AimDirection() const
+{
+    // Recoil is an offset on top of where the player is pointing, not a change to it, so it decays
+    // back and hands their aim over intact. Rounds leave along the same line the camera looks down,
+    // so what you see under the crosshair is what you hit.
+    const float yaw = m_lookYaw + glm::radians(m_weapon.recoilYaw);
+    const float pitch = std::clamp(m_lookPitch + glm::radians(m_weapon.recoilPitch),
+                                   glm::radians(-89.0f), glm::radians(89.0f));
+    const float cp = std::cos(pitch);
+    return {std::sin(yaw) * cp, std::sin(pitch), -std::cos(yaw) * cp};
+}
+
+glm::vec3 PredationGame::MuzzlePosition() const
+{
+    const WeaponDefinition* definition = EquippedWeapon();
+    const glm::vec3 eye = m_player.View().eyePosition;
+    if (definition == nullptr)
+    {
+        return eye;
+    }
+    // From the eye rather than from the model's barrel. A round that starts at the visible muzzle
+    // can be on the far side of a doorframe the player is peering round, so they shoot the wall
+    // they can see past. Starting at the eye means what is under the crosshair is what is hit.
+    return eye + AimDirection() * (definition->muzzleForward * 0.5f);
+}
+
+void PredationGame::AgeTracers(float dt)
+{
+    constexpr float kTracerSeconds = 0.12f;
+    for (Tracer& tracer : m_tracers)
+    {
+        tracer.age += dt;
+    }
+    std::erase_if(m_tracers, [](const Tracer& tracer) { return tracer.age > kTracerSeconds; });
+}
+
+void PredationGame::ResolveShots()
+{
+    if (m_shots.empty())
+    {
+        return;
+    }
+    PhysicsWorld& physics = m_app->GetPhysics();
+
+    for (const FireEvent& shot : m_shots)
+    {
+        const ShotResult result = ResolveShot(physics, shot);
+
+        Tracer tracer;
+        tracer.from = shot.origin;
+        tracer.to = result ? result.position : shot.origin + shot.direction * shot.range;
+        tracer.hit = result.hit;
+        m_tracers.push_back(tracer);
+
+        if (!result)
+        {
+            continue;
+        }
+        // Nothing in the level has health yet, so for now a hit shows itself by shoving whatever it
+        // struck. When creatures arrive this is where their damage is applied, and it stays on the
+        // authority's side of the line.
+        if (physics.IsValid(result.body))
+        {
+            physics.AddImpulse(result.body, shot.direction * (result.damage * 0.35f));
+        }
     }
 }
 
@@ -690,9 +850,41 @@ void PredationGame::LeaveHidingSpot()
 
 void PredationGame::OnFixedUpdate(double fixedDt)
 {
-    m_world.Update(m_scene, m_app->GetPhysics(), m_interactions, static_cast<float>(fixedDt));
+    const auto dt = static_cast<float>(fixedDt);
+    m_world.Update(m_scene, m_app->GetPhysics(), m_interactions, dt);
 
     PlayerInput input = BuildPlayerInput();
+    const bool restrained = m_hidingSpot >= 0 || m_cameraMode == CameraMode::Fly;
+
+    // The weapon runs before the movement, because aiming down the sights slows the player and the
+    // controller needs that this tick rather than next.
+    WeaponInput weaponInput;
+    if (!restrained && !m_inventoryOpen)
+    {
+        Input& raw = m_app->GetInput();
+        weaponInput.trigger = raw.IsActionDown("fire") || m_debugTriggerTicks > 0;
+        weaponInput.aim = raw.IsActionDown("aim");
+        weaponInput.reload = raw.WasActionPressed("reload") || m_reloadLatch;
+    }
+    m_reloadLatch = false;
+    m_debugTriggerTicks = std::max(m_debugTriggerTicks - 1, 0);
+
+    m_shots.clear();
+    if (const WeaponDefinition* definition = EquippedWeapon())
+    {
+        WeaponSim::Step(*definition, weaponInput, m_weapon, MuzzlePosition(), AimDirection(), dt, m_shots);
+        input.speedScale = 1.0f - (1.0f - definition->aimSpeedScale) * m_weapon.aim;
+    }
+    else
+    {
+        WeaponSim::Step(WeaponDefinition{}, weaponInput, m_weapon, MuzzlePosition(), AimDirection(), dt,
+                        m_shots);
+    }
+
+    // Single player, so this process is the authority. When there is a host, a client stops here and
+    // sends m_shots instead; nothing above this line ever touches another player's health.
+    ResolveShots();
+
     if (m_hidingSpot >= 0)
     {
         // Hidden: the player can still look around, but not walk out of the locker.
@@ -711,7 +903,7 @@ void PredationGame::OnFixedUpdate(double fixedDt)
         input.yaw = m_player.State().yaw;
         input.pitch = m_player.State().pitch;
     }
-    m_player.Step(input, static_cast<float>(fixedDt));
+    m_player.Step(input, dt);
 }
 
 void PredationGame::OnUpdate(double dt, double alpha)
@@ -890,6 +1082,22 @@ void PredationGame::OnUpdate(double dt, double alpha)
                                    playerView.Forward());
     }
 
+    // The selected slot decides what is in your hands, so this is checked every frame rather than
+    // hooked onto each of the several places a slot can change.
+    SyncEquippedWeapon();
+
+    // What the body is holding follows what the simulation says is equipped, never the other way
+    // round: the model is a view of the state.
+    if (const WeaponDefinition* weapon = EquippedWeapon())
+    {
+        m_body.SetWeapon(m_scene, app.GetMeshes(), weapon->size, weapon->color);
+        m_body.SetAimBlend(m_weapon.aim);
+    }
+    else
+    {
+        m_body.SetWeapon(m_scene, app.GetMeshes(), glm::vec3(0.0f), glm::vec3(0.0f));
+    }
+    AgeTracers(deltaSeconds);
     SyncDynamicProps();
     app.GetSceneRenderer().SetWireframe(cv_wireframe.Get());
     app.SetEntityCount(m_scene.EntityCount());
@@ -969,6 +1177,17 @@ void PredationGame::OnRender()
 void PredationGame::DrawDebugOverlays()
 {
     DebugDraw& draw = m_app->GetDebugDraw();
+
+    // Tracers are always drawn, not gated behind a debug category: without a muzzle flash or a
+    // projectile model yet, this is the only thing that shows a round actually left the barrel.
+    for (const Tracer& tracer : m_tracers)
+    {
+        draw.Line(tracer.from, tracer.to, tracer.hit ? Color::kYellow : Color::kWhite);
+        if (tracer.hit)
+        {
+            draw.Sphere(tracer.to, 0.045f, Color::kRed, 8);
+        }
+    }
 
     if (cv_showGrid.Get())
     {
@@ -1150,14 +1369,27 @@ void PredationGame::DrawHud()
                                            ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav |
                                            ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoBackground;
 
-    // Reticle.
+    // Reticle. The gap opens with the weapon's current cone, so the crosshair says where rounds can
+    // actually go rather than always promising the centre of the screen.
     ImDrawList* draw = ImGui::GetBackgroundDrawList();
     const ImU32 reticleColor = IM_COL32(230, 230, 235, 150);
-    draw->AddLine({centre.x - 6.0f, centre.y}, {centre.x - 2.0f, centre.y}, reticleColor, 1.5f);
-    draw->AddLine({centre.x + 2.0f, centre.y}, {centre.x + 6.0f, centre.y}, reticleColor, 1.5f);
-    draw->AddLine({centre.x, centre.y - 6.0f}, {centre.x, centre.y - 2.0f}, reticleColor, 1.5f);
-    draw->AddLine({centre.x, centre.y + 2.0f}, {centre.x, centre.y + 6.0f}, reticleColor, 1.5f);
-
+    float gap = 2.0f;
+    if (const WeaponDefinition* weapon = EquippedWeapon())
+    {
+        // Half the vertical field of view maps to half the screen height, so a cone in degrees
+        // converts to pixels through the same projection the world is drawn with.
+        const float halfFov = glm::radians(cv_fov.Get()) * 0.5f;
+        const float aspect = viewport->Size.x / std::max(viewport->Size.y, 1.0f);
+        const float verticalHalfFov = std::atan(std::tan(halfFov) / std::max(aspect, 0.01f));
+        const float spread = glm::radians(WeaponSim::CurrentSpread(*weapon, m_weapon));
+        gap = 2.0f + std::tan(spread) / std::max(std::tan(verticalHalfFov), 1e-3f) * viewport->Size.y * 0.5f;
+        gap = std::min(gap, viewport->Size.y * 0.25f);
+    }
+    const float tick = 5.0f;
+    draw->AddLine({centre.x - gap - tick, centre.y}, {centre.x - gap, centre.y}, reticleColor, 1.5f);
+    draw->AddLine({centre.x + gap, centre.y}, {centre.x + gap + tick, centre.y}, reticleColor, 1.5f);
+    draw->AddLine({centre.x, centre.y - gap - tick}, {centre.x, centre.y - gap}, reticleColor, 1.5f);
+    draw->AddLine({centre.x, centre.y + gap}, {centre.x, centre.y + gap + tick}, reticleColor, 1.5f);
     // Interaction prompt, just below the reticle.
     const InteractionSystem::Focus& focus = m_interactions.CurrentFocus();
     const std::string prompt = m_hidingSpot >= 0 ? std::string("Leave Locker") : focus.prompt;
@@ -1220,6 +1452,31 @@ void PredationGame::DrawHud()
         }
     }
     ImGui::End();
+
+    // Ammunition, bottom right, away from the hotbar. Reads magazine over reserve, the way a
+    // shooter always has, and says so plainly while the magazine is out.
+    if (const WeaponDefinition* weapon = EquippedWeapon())
+    {
+        ImGui::SetNextWindowPos({viewport->Pos.x + viewport->Size.x - 24.0f,
+                                 viewport->Pos.y + viewport->Size.y - 20.0f},
+                                ImGuiCond_Always, {1.0f, 1.0f});
+        ImGui::SetNextWindowBgAlpha(0.0f);
+        if (ImGui::Begin("##Ammo", nullptr, kHudFlags))
+        {
+            if (m_weapon.IsReloading())
+            {
+                ImGui::TextColored({0.85f, 0.80f, 0.55f, 1.0f}, "Reloading");
+            }
+            else
+            {
+                const ImVec4 colour = m_weapon.rounds == 0 ? ImVec4(0.88f, 0.42f, 0.38f, 1.0f)
+                                                           : ImVec4(0.90f, 0.91f, 0.94f, 1.0f);
+                ImGui::TextColored(colour, "%d / %d", m_weapon.rounds, m_weapon.reserve);
+            }
+            ImGui::TextDisabled("%s  %s", weapon->name.c_str(), FireModeName(weapon->mode));
+        }
+        ImGui::End();
+    }
 
     if (m_inventoryOpen)
     {

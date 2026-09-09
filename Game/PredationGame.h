@@ -9,6 +9,9 @@
 #include "Game/Items/ItemIcons.h"
 #include "Game/Player/PlayerBody.h"
 #include "Game/Player/PlayerController.h"
+#include "Game/Weapons/ShotResolver.h"
+#include "Game/Weapons/WeaponDatabase.h"
+#include "Game/Weapons/WeaponSystem.h"
 #include "Game/World/WorldObjects.h"
 
 #include <glm/vec2.hpp>
@@ -49,6 +52,17 @@ private:
     void SampleLook(float dt);
     PlayerInput BuildPlayerInput();
     void TryInteract();
+    // Equips whatever weapon the selected inventory slot carries, or nothing if it carries none.
+    void SyncEquippedWeapon();
+    // Applies the rounds fired this tick. Only the authority may call this; it is the one place a
+    // shot turns into an effect on the world.
+    void ResolveShots();
+    // Fades the drawn tracers. Presentation only.
+    void AgeTracers(float dt);
+    const WeaponDefinition* EquippedWeapon() const;
+    // Where the barrel is and which way it points, including recoil.
+    glm::vec3 MuzzlePosition() const;
+    glm::vec3 AimDirection() const;
     void DropSelected();
     void EnterHidingSpot(int index);
     void LeaveHidingSpot();
@@ -77,6 +91,22 @@ private:
     ItemDatabase m_items;
     ItemIcons m_itemIcons;
     Inventory m_inventory;
+
+    // The weapon simulation is deliberately separate from the controller. It is a pure function of
+    // state, input and time, which is what lets a client run it the instant the trigger goes down
+    // and a host run the identical code to decide what the round hit.
+    WeaponDatabase m_weaponData;
+    WeaponState m_weapon;
+    std::vector<FireEvent> m_shots;
+    // Where the last few rounds went, purely so they can be drawn. Never read by the simulation.
+    struct Tracer
+    {
+        glm::vec3 from{0.0f};
+        glm::vec3 to{0.0f};
+        bool hit = false;
+        float age = 0.0f;
+    };
+    std::vector<Tracer> m_tracers;
     InteractionSystem m_interactions;
     WorldObjects m_world;
     // -1 when not hidden. While hidden the player holds still inside the locker.
@@ -123,6 +153,9 @@ private:
     bool m_jumpLatch = false;
     // Debug stance override, so stances can be inspected without holding a key.
     glm::vec2 m_debugMove{0.0f};
+    bool m_reloadLatch = false;
+    // Console-driven trigger, so firing can be exercised in a headless capture.
+    int m_debugTriggerTicks = 0;
     bool m_forceCrouch = false;
     bool m_forceProne = false;
     bool m_crouchToggleState = false;

@@ -223,7 +223,8 @@ void PlayerController::Step(const PlayerInput& input, float dt)
 
     // Sprinting only counts when actually heading forwards, so nobody sprints backwards.
     const bool sprinting = input.sprint && input.move.y > 0.4f && m_state.stance == PlayerStance::Standing;
-    float targetSpeed = m_config.SpeedForStance(m_state.stance, sprinting, input.walk);
+    float targetSpeed = m_config.SpeedForStance(m_state.stance, sprinting, input.walk) *
+                        std::clamp(input.speedScale, 0.05f, 1.0f);
 
     // Slower sideways and slower still backwards, blended so there is no discontinuity.
     if (wishLength > 1e-4f)

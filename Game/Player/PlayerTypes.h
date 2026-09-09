@@ -34,6 +34,10 @@ struct PlayerInput
     // -1 left, +1 right. Part of the simulation rather than the camera, because peeking round a
     // corner changes what the player can see and be seen from.
     float lean = 0.0f;
+    // Multiplies the stance's movement speed. Aiming down the sights is the first thing to use it;
+    // injury and heavy cargo are the obvious next ones. Kept as a plain number so the controller
+    // does not have to know why the player is slower.
+    float speedScale = 1.0f;
 };
 
 // Everything the simulation needs to continue from this tick. Also the unit of network state:

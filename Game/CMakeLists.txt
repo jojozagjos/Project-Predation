@@ -22,6 +22,14 @@ set(PRED_GAME_SOURCES
     Items/Inventory.h
     Items/Inventory.cpp
 
+    Weapons/WeaponTypes.h
+    Weapons/WeaponDatabase.h
+    Weapons/WeaponDatabase.cpp
+    Weapons/WeaponSystem.h
+    Weapons/WeaponSystem.cpp
+    Weapons/ShotResolver.h
+    Weapons/ShotResolver.cpp
+
     World/TestMap.h
     World/TestMap.cpp
     World/WorldObjects.h

@@ -1,0 +1,56 @@
+{
+  "_comment": "Weapon definitions. 'key' is the stable identity used by data files and network messages; ids are assigned at load and are only valid within a run. 'item' links the weapon to the inventory entry that carries it. Angles are degrees, times are seconds, ranges are metres.",
+
+  "weapons": [
+    {
+      "key": "sidearm",
+      "name": "ACRD Sidearm",
+      "item": "sidearm",
+      "fire_mode": "single",
+      "rounds_per_minute": 340,
+      "magazine": 12,
+      "reserve": 48,
+      "reload_seconds": 1.7,
+      "damage": 26,
+      "range": 55,
+      "spread_hip": 3.2,
+      "spread_aim": 0.5,
+      "spread_per_shot": 0.7,
+      "spread_max": 6.5,
+      "spread_recover": 5.5,
+      "recoil_pitch": 1.5,
+      "recoil_yaw": 0.4,
+      "recoil_recover": 9.0,
+      "aim_seconds": 0.18,
+      "aim_speed_scale": 0.6,
+      "size": [ 0.05, 0.14, 0.24 ],
+      "color": [ 0.15, 0.16, 0.18 ],
+      "muzzle_forward": 0.16
+    },
+    {
+      "key": "carbine",
+      "name": "ACRD Carbine",
+      "item": "carbine",
+      "fire_mode": "auto",
+      "rounds_per_minute": 620,
+      "magazine": 30,
+      "reserve": 90,
+      "reload_seconds": 2.4,
+      "damage": 21,
+      "range": 90,
+      "spread_hip": 4.5,
+      "spread_aim": 0.35,
+      "spread_per_shot": 0.45,
+      "spread_max": 7.5,
+      "spread_recover": 6.0,
+      "recoil_pitch": 0.85,
+      "recoil_yaw": 0.3,
+      "recoil_recover": 8.0,
+      "aim_seconds": 0.26,
+      "aim_speed_scale": 0.5,
+      "size": [ 0.06, 0.16, 0.62 ],
+      "color": [ 0.17, 0.18, 0.20 ],
+      "muzzle_forward": 0.38
+    }
+  ]
+}

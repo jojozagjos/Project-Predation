@@ -14,6 +14,10 @@
     "lean_left": [ "Q" ],
     "lean_right": [ "E" ],
 
+    "fire": [ "Mouse1" ],
+    "aim": [ "Mouse2" ],
+    "reload": [ "R" ],
+
     "interact": [ "F" ],
     "drop": [ "G" ],
     "inventory": [ "Tab" ],
@@ -26,9 +30,9 @@
 
     "move_up": [ "Space" ],
     "move_down": [ "Left Ctrl" ],
-    "look": [ "Mouse2" ],
+    "orbit": [ "Mouse3" ],
     "toggle_camera": [ "P" ],
-    "respawn": [ "R" ],
+    "respawn": [ "F5" ],
 
     "quit_capture": [ "Escape" ],
     "debug_overlay": [ "F3" ],

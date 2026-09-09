@@ -62,6 +62,7 @@ public:
         // Gait
         float stepHeight = 0.14f; // how far a swinging foot lifts
         float footPlantSmoothing = 22.0f;
+        float weaponHandSmoothing = 26.0f;
         // A swinging foot follows an already-smooth arc, so it tracks its target almost exactly. It
         // has to: any lag here lands the foot short of where the step was aimed, and it spends the
         // stance catching up, which is a visible skid at every touchdown.
@@ -159,6 +160,14 @@ public:
 
     void SetVisible(Scene& scene, bool visible);
 
+    // Puts a weapon in the character's hands. The body owns where it sits and which way it points;
+    // the game owns what it is and what it does. Passing a zero size takes it away again.
+    void SetWeapon(Scene& scene, MeshLibrary& meshes, const glm::vec3& size, const glm::vec3& colour);
+    // 0 held at the hip, 1 sighted. Moves the weapon and the hands together, so the arms follow the
+    // gun rather than the gun being stuck to a hand that is doing something else.
+    void SetAimBlend(float aim) { m_aimBlend = std::clamp(aim, 0.0f, 1.0f); }
+    bool HasWeapon() const { return m_weaponEntity.IsValid(); }
+
 private:
     // How a piece of gear is oriented. Limb bones are re-solved by IK and end up with an arbitrary
     // roll about their own axis, so anything that has to face forwards (knee pads, pouches, the
@@ -195,6 +204,9 @@ private:
 
     void BuildSkeleton(const PlayerConfig& playerConfig);
     void BuildParts(Scene& scene, MeshLibrary& meshes);
+    // Places the weapon and puts both hands on it. Returns false when there is nothing to hold, so
+    // the caller can fall through to whatever the arms would otherwise be doing.
+    bool UpdateWeaponHold(const PlayerView& view, float dt);
     void UpdatePosture(const PlayerState& state, const PlayerView& view, const PlayerConfig& playerConfig,
                        float dt);
     // Arms are solved before legs on purpose: writing a global transform rebuilds every bone after
@@ -210,6 +222,12 @@ private:
     HumanoidRig m_rig;
     Config m_config;
     std::vector<Part> m_parts;
+
+    Entity m_weaponEntity;
+    MeshHandle m_weaponMesh;
+    Transform m_weaponTransform;
+    glm::vec3 m_weaponSize{0.0f};
+    float m_aimBlend = 0.0f;
     std::array<FootState, 2> m_feet;
     std::array<FootState, 2> m_hands; // same shape: a smoothed target and whether it is planted
     float m_flatness = 0.0f;          // 0 upright, 1 fully prone

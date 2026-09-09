@@ -86,3 +86,57 @@ rate. Rendering interpolates between fixed states.
 
 `bgfx::renderFrame()` is called before `bgfx::init()` so bgfx does not create a render thread. Simpler to debug
 while the renderer is young. The multithreaded encoder path can be enabled later without API changes.
+
+## ADR-011: The player body is anchored to the camera, not to the feet
+
+**Status**: accepted, 2026-09-08
+
+The visible body was placed by adding a fixed offset to the player's feet, and the head landed near the eye
+only when standing still and facing forward. It drifted off-centre whenever the hips turned away from the view,
+sat too far forward, and pushed the skull through the camera when crouching or cresting a step.
+
+The body now builds its pose, evaluates it once, then translates the root so the head bone lands exactly on
+the eye, and evaluates again. Two passes over nineteen bones. The head is on the camera by construction in
+every stance and every direction of travel.
+
+The consequence is that the stance eye heights in `player.json` are the single source of truth for how low
+each stance sits. The body's per-stance pose describes shape only; a hip height there would cancel out and
+mislead whoever tuned it, so the field was removed.
+
+## ADR-012: Walking lowers the hips, because otherwise a step is geometrically impossible
+
+**Status**: accepted, 2026-09-08
+
+With the hips at standing height this rig's leg is exactly long enough to reach the ground straight down and
+no further: hip height above the ankle and the sum of the leg segments are both 0.53 of standing height, which
+is anthropometrically correct and leaves zero room to place a foot anywhere but directly underneath. No
+planted step was reachable at all, which is why the old gait slid the feet instead.
+
+Walking therefore lowers the eye, by a constant amount while moving plus a deeper dip at each footfall. That
+is what a real gait does, and combined with ADR-011 it is also the only thing that lets a leg reach out far
+enough to plant a step. Camera and body share one stride phase in `PlayerState` so the head drops exactly as
+a foot lands, and every foot target is clamped to what the leg can actually reach, so a step can never drag.
+
+## ADR-013: Inventory icons are rendered from the item's own geometry
+
+**Status**: accepted, 2026-09-08
+
+Every item is rendered once into a cell of an offscreen atlas, using the same mesh and the same shader the
+world uses, and the inventory draws a sub-rectangle of that texture. Adding an entry to `items.json` gives it
+an icon immediately, with nobody drawing one, and an icon can never disagree with the object it stands for.
+
+The alternative, hand-drawn 2D stand-ins, needs new art for every item and drifts from the real thing the
+moment either changes.
+
+## ADR-014: Firing is a pure simulation that never resolves its own hits
+
+**Status**: accepted, 2026-09-08
+
+`WeaponSim::Step` is a function of state, input and time. It takes no renderer, no physics and no scene, and
+it produces `FireEvent`s rather than damage. Resolving an event against the world is a separate call.
+
+This is the shape the networking model needs, built in from the start rather than retrofitted: a client runs
+the simulation the instant the trigger goes down so the weapon feels immediate, and sends the events up; the
+host runs identical code and is the only thing that turns an event into damage. Spread comes from a hash of
+the shot number rather than a random generator, so both machines deviate the same round the same way without
+either sending the direction, and there is no generator state to keep in step.
