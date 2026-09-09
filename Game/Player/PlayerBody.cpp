@@ -304,9 +304,52 @@ void PlayerBody::UpdatePosture(const PlayerState& state, const PlayerView& view,
     const float planarSpeed = glm::length(flat);
     const bool moving = planarSpeed > 0.35f && state.grounded;
 
+    // Prone is a different animal, so it is settled first and the upright cases below are skipped.
+    //
+    // Lying down, the body has a heading of its own. It turns towards where you are crawling, and
+    // looking around does not turn it: a person on their belly pivots slowly and deliberately, and
+    // that is most of what makes prone feel like prone rather than like standing up sideways.
+    //
+    // Turn far enough that the body cannot follow and you roll onto your back instead, coming to
+    // rest facing the new direction. That is what a person does rather than twisting their neck
+    // past what a neck does, and it is what lets you cover behind you without getting up.
+    const bool prone = m_flatness > 0.5f;
+    if (prone)
+    {
+        const float twist = WrapAngle(view.yaw - m_bodyYaw);
+        const float settledRoll = m_proneOnBack ? 1.0f : 0.0f;
+        const bool settled = std::abs(m_proneRoll - settledRoll) < 0.06f;
+        if (settled && std::abs(twist) > glm::radians(m_config.proneRollOverDegrees))
+        {
+            // Rolling over swaps which way is down and turns the body end for end, so the head
+            // finishes at the end you are now looking towards.
+            m_proneOnBack = !m_proneOnBack;
+            m_bodyYaw = WrapAngle(m_bodyYaw + glm::pi<float>());
+        }
+
+        float target = m_bodyYaw;
+        float speed = 0.0f;
+        if (moving)
+        {
+            target = std::atan2(flat.x, -flat.z);
+            speed = m_config.proneTurnSpeed;
+        }
+        m_bodyYaw = WrapAngle(m_bodyYaw + WrapAngle(target - m_bodyYaw) * (1.0f - std::exp(-speed * dt)));
+    }
+    else
+    {
+        m_proneOnBack = false;
+    }
+    m_proneRoll = SmoothTowards(m_proneRoll, m_proneOnBack ? 1.0f : 0.0f, m_config.proneRollSpeed, dt);
+
     float hipTarget = m_bodyYaw;
     float turnSpeed = m_config.hipTurnSpeedIdle;
-    if (moving)
+    if (prone)
+    {
+        // Already settled above.
+        turnSpeed = 0.0f;
+    }
+    else if (moving)
     {
         // atan2 inverted to match the engine's convention that yaw 0 faces -Z.
         float moveYaw = std::atan2(flat.x, -flat.z);
@@ -381,8 +424,19 @@ void PlayerBody::UpdatePosture(const PlayerState& state, const PlayerView& view,
                       state.grounded ? std::clamp(speed / referenceSpeed, 0.0f, 1.6f) : 0.0f,
                       m_config.responsiveness, dt);
 
+    // Airborne. Whether the player is going up or down changes the whole shape of the pose: legs
+    // come up on the way up and reach down on the way down, and the arms come out either way. Held
+    // as two smoothed numbers rather than read straight from the state so a hop over a kerb does
+    // not snap the body into a jump pose and out again.
+    m_airborne = SmoothTowards(m_airborne, state.grounded ? 0.0f : 1.0f, m_config.airBlendSpeed, dt);
+    m_airRise = SmoothTowards(m_airRise, std::clamp(state.velocity.y / m_config.airRiseReference, -1.0f, 1.0f),
+                              m_config.airBlendSpeed, dt);
+
+    // Running tips the torso forward. In the air it tips back on the way up and forward on the way
+    // down, which is what a body does when its legs are no longer under it.
     const float targetLean =
-        std::clamp(speed * m_config.leanPerSpeed, 0.0f, m_config.maxLean) * (state.grounded ? 1.0f : 0.3f);
+        std::clamp(speed * m_config.leanPerSpeed, 0.0f, m_config.maxLean) * (state.grounded ? 1.0f : 0.3f) -
+        m_config.airLeanDegrees * m_airborne * m_airRise;
     m_lean = SmoothTowards(m_lean, targetLean, m_config.responsiveness * 0.5f, dt);
 
     // The walk cycle comes from the simulation, not from a second clock kept here. The camera dip
@@ -405,7 +459,13 @@ void PlayerBody::UpdatePosture(const PlayerState& state, const PlayerView& view,
     // which is *backwards* here, because forward is -Z. Every forward pitch below is therefore
     // negative. Getting this wrong arches the body backwards: it is what made crouch look like a
     // limbo and prone like a backbend.
+    //
+    // The roll is applied before the pitch, about the spine. Standing that would be a turn on the
+    // spot; laid down it becomes a roll about the body's own length, which is the difference
+    // between lying on your front and lying on your back. Between the two it reads as rolling over,
+    // which is exactly the movement being animated.
     pelvis.rotation = glm::angleAxis(-pelvisPitch, glm::vec3(1.0f, 0.0f, 0.0f)) *
+                      glm::angleAxis(m_proneRoll * glm::pi<float>(), glm::vec3(0.0f, 1.0f, 0.0f)) *
                       glm::angleAxis(glm::radians(sway * 60.0f), glm::vec3(0.0f, 0.0f, 1.0f));
 
     // Lean forward from the spine, counter-rotate the chest slightly so the torso does not fold, and
@@ -427,11 +487,16 @@ void PlayerBody::UpdatePosture(const PlayerState& state, const PlayerView& view,
     // The neck and head undo whatever the pelvis and spine did, so the head stays level and keeps
     // looking where the player is aiming. Positive here, because it is cancelling a forward pitch.
     // Without it, laying the pelvis flat for prone drives the head face-down into the floor.
+    //
+    // Rolled onto the back, the body is turned end over end about its own length, so a rotation
+    // that used to lift the chin now drops it. The compensation flips sign with the roll; without
+    // that, rolling over drives the face into the floor it just came off.
     const float torsoPitch = pelvisPitch + spineLean + runLean * 0.8f;
-    m_pose.Local(m_rig.neck).rotation =
-        glm::angleAxis(torsoPitch * 0.55f + view.pitch * 0.35f, glm::vec3(1.0f, 0.0f, 0.0f));
+    const float pitchSign = 1.0f - 2.0f * m_proneRoll;
+    m_pose.Local(m_rig.neck).rotation = glm::angleAxis(
+        pitchSign * torsoPitch * 0.55f + view.pitch * 0.35f, glm::vec3(1.0f, 0.0f, 0.0f));
     m_pose.Local(m_rig.head).rotation =
-        glm::angleAxis(torsoPitch * 0.45f + view.pitch * 0.5f, glm::vec3(1.0f, 0.0f, 0.0f));
+        glm::angleAxis(pitchSign * torsoPitch * 0.45f + view.pitch * 0.5f, glm::vec3(1.0f, 0.0f, 0.0f));
 
     // Arms swing opposite the legs.
     for (int side = 0; side < 2; ++side)
@@ -445,12 +510,18 @@ void PlayerBody::UpdatePosture(const PlayerState& state, const PlayerView& view,
 
         // Arms reach forward as the body goes down, so they are not left dangling through the floor
         // when prone.
+        // In the air the arms come out from the sides for balance, and lift as the jump rises.
+        const float airSpread = glm::radians(m_config.airArmDegrees) * m_airborne;
+        const float airLift = glm::radians(m_config.airArmDegrees * 0.45f) * m_airborne * m_airRise;
+
         m_pose.Local(m_rig.upperArm[side]).rotation =
-            glm::angleAxis(swing + glm::radians(m_pose_blend.armForwardDeg), glm::vec3(1.0f, 0.0f, 0.0f)) *
-            glm::angleAxis(sideSign * rest, glm::vec3(0.0f, 0.0f, 1.0f));
+            glm::angleAxis(swing + glm::radians(m_pose_blend.armForwardDeg) - airLift,
+                           glm::vec3(1.0f, 0.0f, 0.0f)) *
+            glm::angleAxis(sideSign * (rest + airSpread), glm::vec3(0.0f, 0.0f, 1.0f));
         // A permanently straight elbow reads as a mannequin, so keep a little bend at all times.
         m_pose.Local(m_rig.lowerArm[side]).rotation =
-            glm::angleAxis(glm::radians(12.0f) + std::abs(swing) * 0.5f, glm::vec3(1.0f, 0.0f, 0.0f));
+            glm::angleAxis(glm::radians(12.0f) + std::abs(swing) * 0.5f + airSpread * 0.45f,
+                           glm::vec3(1.0f, 0.0f, 0.0f));
     }
 
     glm::mat4 root = glm::translate(glm::mat4(1.0f), m_rootPosition) * glm::mat4_cast(BodyRotation());
@@ -600,7 +671,10 @@ bool PlayerBody::UpdateWeaponHold(const PlayerView& view, float dt)
         // offset overrode it completely, which is why the sights did nothing while lying down:
         // prone is where a rifle is steadiest and where aiming matters most.
         const float prone = glm::clamp((m_flatness - 0.5f) * 2.0f, 0.0f, 1.0f) * (1.0f - aim);
-        offset = glm::mix(offset, proneOffset, prone);
+        // On the back the weapon comes up over the chest rather than down beside the body: there is
+        // no ground on that side to lay it on.
+        offset = glm::mix(offset, proneOffset, prone * (1.0f - m_proneRoll));
+        offset += carryUp * (0.24f * m_proneRoll * (1.0f - aim));
     }
 
     // Looking steeply down, the sighted hold puts the weapon inside the player's own chest and
@@ -875,9 +949,14 @@ void PlayerBody::UpdateCrawlArms(const PlayerState& state, const PlayerView& vie
         const float reach = std::cos(phase) * m_config.crawlReach * m_gaitWeight;
         const float lift = std::max(0.0f, std::sin(phase)) * m_config.crawlLift * m_gaitWeight;
 
-        glm::vec3 target = shoulder + facing * (m_config.crawlHandForward + reach) +
-                           right * (sideSign * 0.16f * m_rig.height);
-        target.y = view.renderPosition.y + 0.05f + lift;
+        // On the back you do not reach ahead and pull; you dig your elbows in beside you and push.
+        // The arms come back to the hips and the reach shortens as the roll completes.
+        const float onBack = m_proneRoll;
+        const float forwardReach = glm::mix(m_config.crawlHandForward + reach, -0.06f, onBack);
+        const float outward = glm::mix(0.16f, 0.30f, onBack) * m_rig.height;
+
+        glm::vec3 target = shoulder + facing * forwardReach + right * (sideSign * outward);
+        target.y = view.renderPosition.y + 0.05f + lift * (1.0f - onBack);
 
         // Plant the hand on whatever is actually underneath it.
         const RayHit hit = physics.RayCast(target + glm::vec3(0.0f, 0.5f, 0.0f),
@@ -894,9 +973,11 @@ void PlayerBody::UpdateCrawlArms(const PlayerState& state, const PlayerView& vie
         hand.position = SmoothTowards(hand.position, blended, m_config.footPlantSmoothing, dt);
         hand.planted = lift < 0.01f;
 
-        // Elbows bend backwards and outwards, away from the body's front.
-        const glm::vec3 elbowPole =
-            -facing * 0.6f + right * (sideSign * 0.8f) + glm::vec3(0.0f, 0.4f, 0.0f);
+        // Elbows bend backwards and outwards, away from the body's front. Rolled onto the back the
+        // arm is the other way up, so the elbow drops instead of lifting.
+        const float elbowSign = 1.0f - 2.0f * m_proneRoll;
+        const glm::vec3 elbowPole = -facing * 0.6f + right * (sideSign * elbowSign * 0.8f) +
+                                    glm::vec3(0.0f, 0.4f * elbowSign, 0.0f);
         const TwoBoneIKResult ik = SolveTwoBoneIK(shoulder, hand.position, elbowPole,
                                                   m_rig.upperArmLength, m_rig.lowerArmLength);
 
@@ -1051,6 +1132,26 @@ void PlayerBody::UpdateLegs(const PlayerState& state, const PlayerView& view,
                                   : view.renderPosition.y;
         target.y = groundY + m_rig.ankleHeight + lift;
 
+        // In the air the ground is no use: it can be metres below, and reaching for it stretches the
+        // legs into two straight poles, which is what a jump used to look like. The feet are placed
+        // relative to the hips instead, tucked up on the way up and reaching down on the way down.
+        // The blend fades back in as the ground comes within a step, so a landing is still planted.
+        if (m_airborne > 0.001f)
+        {
+            const float clearance = view.renderPosition.y - groundY;
+            const float airborne = m_airborne * std::clamp((clearance - 0.12f) / 0.35f, 0.0f, 1.0f);
+            if (airborne > 0.001f)
+            {
+                const float tuck = std::max(m_airRise, 0.0f);
+                const float reach = std::max(-m_airRise, 0.0f);
+                glm::vec3 airTarget = hip + spread + facing * (m_config.airTuck * tuck * legSpan * 0.5f);
+                airTarget.y =
+                    hip.y - legSpan * (0.62f - m_config.airTuck * tuck + m_config.airReach * reach);
+                target = glm::mix(target, airTarget, airborne);
+                foot.plant = target;
+            }
+        }
+
         // Never ask for a foot the leg cannot reach. With the hips at standing height a leg is
         // almost straight, so there is very little room to reach forward or back; asking for more
         // makes the IK stretch to its limit and the foot gets dragged along the ground for the rest
@@ -1084,8 +1185,11 @@ void PlayerBody::UpdateLegs(const PlayerState& state, const PlayerView& view,
         // Knees bend towards the body's front while upright. Once the pelvis is laid flat that axis
         // points at the sky, which folds the legs upwards, so the pole swings out to the side and
         // down: that is the direction a knee actually goes when you draw it up to crawl.
-        const glm::vec3 pronePole =
-            glm::normalize(right * (sideSign * 0.78f) + glm::vec3(0.0f, -0.62f, 0.0f));
+        // On the back the knee goes the other way, because the leg is now the other way up. Left and
+        // right swap with it, for the same reason.
+        const float rollSign = 1.0f - 2.0f * m_proneRoll;
+        const glm::vec3 pronePole = glm::normalize(right * (sideSign * rollSign * 0.78f) +
+                                                   glm::vec3(0.0f, -0.62f * rollSign, 0.0f));
         const glm::vec3 kneePole =
             glm::normalize(glm::mix(pelvisForward, pronePole, m_flatness) + glm::vec3(1e-4f));
 

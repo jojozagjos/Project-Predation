@@ -541,3 +541,85 @@ TEST_CASE("Feet stop at a wall instead of climbing it", "[body][gait]")
     // And the player really did reach the wall, or the test proved nothing.
     REQUIRE(harness.State().position.z < 0.0f);
 }
+
+TEST_CASE("Looking behind while prone rolls the body onto its back", "[body][pose]")
+{
+    // A person on their belly cannot twist round to cover behind them, so they roll over. The body
+    // keeps its own heading while prone and turns end over end when the view leaves what a neck can
+    // reach, which is what makes lying down feel like lying down rather than standing up sideways.
+    BodyHarness harness;
+    harness.SetStance(PlayerStance::Prone);
+    harness.Settle(300);
+
+    const auto facingOf = [&](BoneIndex bone)
+    { return glm::normalize(-glm::vec3(harness.body.GetPose().Global(bone)[2])); };
+
+    INFO("face down chest facing y " << facingOf(harness.Rig().chest).y);
+    REQUIRE(facingOf(harness.Rig().chest).y < -0.35f);
+
+    // Look behind. The roll is a latched state, so it settles rather than flickering.
+    harness.input.yaw = glm::pi<float>();
+    harness.Settle(300);
+
+    const glm::vec3 chestFacing = facingOf(harness.Rig().chest);
+    INFO("on back chest facing " << chestFacing.x << ", " << chestFacing.y << ", " << chestFacing.z);
+    REQUIRE(chestFacing.y > 0.35f);
+
+    // Still lying down, not sitting up or standing.
+    const glm::vec3 chest = harness.Bone(harness.Rig().chest);
+    const glm::vec3 pelvis = harness.Bone(harness.Rig().pelvis);
+    INFO("chest y " << chest.y << " pelvis y " << pelvis.y);
+    REQUIRE(std::abs(chest.y - pelvis.y) < 0.3f);
+    REQUIRE(chest.y < 0.7f);
+
+    // The head finished at the end being looked at, which is the point of rolling over at all.
+    const glm::vec3 head = harness.Bone(harness.Rig().head);
+    const glm::vec3 toHead = head - pelvis;
+    INFO("pelvis to head " << toHead.x << ", " << toHead.y << ", " << toHead.z);
+    REQUIRE(toHead.z > 0.42f); // looking towards +Z, so the head is a torso length that way
+
+    // Legs trail behind, on the ground, rather than folding up under the body.
+    for (int side = 0; side < 2; ++side)
+    {
+        const glm::vec3 foot = harness.Bone(harness.Rig().foot[side]);
+        INFO("foot " << side << " at " << foot.x << ", " << foot.y << ", " << foot.z);
+        REQUIRE(foot.y < harness.State().position.y + 0.35f);
+        REQUIRE(foot.z < pelvis.z - 0.4f);
+    }
+
+    // And it settles: looking there does not make it roll back and forth for ever.
+    const float settledY = chestFacing.y;
+    harness.Settle(120);
+    REQUIRE(facingOf(harness.Rig().chest).y == Catch::Approx(settledY).margin(0.1));
+}
+
+TEST_CASE("Airborne legs stop reaching for a floor that is not there", "[body][gait]")
+{
+    // Off the ground, the ground trace can be metres below, and reaching for it stretched both legs
+    // into straight poles pointing at the floor. That is what a jump looked like. The feet are
+    // placed relative to the hips instead once the ground is further away than a step.
+    BodyHarness harness;
+    harness.SetStance(PlayerStance::Standing);
+    harness.Settle(60);
+
+    const float legSpan = harness.Rig().upperLegLength + harness.Rig().lowerLegLength;
+
+    // Straight up, well clear of the ground.
+    harness.player.Teleport({0.0f, 3.0f, 0.0f});
+    harness.input.jump = true;
+    harness.Settle(20);
+    harness.input.jump = false;
+    harness.Settle(20);
+
+    REQUIRE_FALSE(harness.State().grounded);
+
+    const glm::vec3 hip = harness.Bone(harness.Rig().upperLeg[0]);
+    const glm::vec3 foot = harness.Bone(harness.Rig().foot[0]);
+    const float drop = hip.y - foot.y;
+    INFO("hip " << hip.y << " foot " << foot.y << " drop " << drop << " of a " << legSpan << " leg");
+
+    // The leg is bent, not locked out reaching for the ground three metres down.
+    REQUIRE(drop < legSpan * 0.97f);
+    // And the foot is nowhere near the floor.
+    REQUIRE(foot.y > 1.5f);
+}

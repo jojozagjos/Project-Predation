@@ -486,6 +486,23 @@ void PredationGame::RegisterCommands()
         },
         "model_export <weapon> [model]");
 
+    console.RegisterCommand(
+        "look", "Point the view, for inspecting poses without a mouse: look <yaw> [pitch]",
+        [this](const std::vector<std::string>& args)
+        {
+            if (args.size() < 2)
+            {
+                m_app->GetConsole().PrintError("usage: look <yaw> [pitch]");
+                return;
+            }
+            m_lookYaw = glm::radians(std::strtof(args[1].c_str(), nullptr));
+            if (args.size() >= 3)
+            {
+                m_lookPitch = glm::radians(std::strtof(args[2].c_str(), nullptr));
+            }
+        },
+        "look <yaw> [pitch]");
+
     console.RegisterCommand("interact", "Use whatever the player is looking at",
                             [this](const std::vector<std::string>&) { TryInteract(); });
 

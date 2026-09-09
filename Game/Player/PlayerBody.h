@@ -140,6 +140,21 @@ public:
         float crawlLift = 0.10f;       // how far a hand lifts while swinging forward
         float crawlHandForward = 0.42f; // where the hands plant relative to the shoulders
         float crawlLegDraw = 0.40f;     // how far a knee swings out to the side as it is drawn up
+        // Prone turning is slow and deliberate: the body pivots towards where you are crawling.
+        float proneTurnSpeed = 3.2f;
+        // Look this far from the way the body is lying and it rolls over rather than twisting.
+        float proneRollOverDegrees = 105.0f;
+        float proneRollSpeed = 7.0f;
+
+        // In the air. Legs tuck on the way up and reach on the way down; the arms come out either
+        // way. Without any of this the legs simply stretch straight down towards a floor that is
+        // metres away, which is what a jump looked like.
+        float airBlendSpeed = 9.0f;
+        float airRiseReference = 4.5f;  // vertical speed counted as fully rising or fully falling
+        float airTuck = 0.30f;          // how far the feet come up under the hips when rising
+        float airReach = 0.16f;         // how far they stretch down when falling
+        float airArmDegrees = 46.0f;    // how far the arms come out
+        float airLeanDegrees = 9.0f;    // torso tips back rising, forward falling
 
         // Leaning to peek round cover.
         float leanAngleDegrees = 16.0f;
@@ -279,6 +294,10 @@ private:
     std::array<FootState, 2> m_feet;
     std::array<FootState, 2> m_hands; // same shape: a smoothed target and whether it is planted
     float m_flatness = 0.0f;          // 0 upright, 1 fully prone
+    float m_proneRoll = 0.0f;         // 0 lying face down, 1 lying on the back
+    float m_airborne = 0.0f;          // 0 on the ground, 1 fully in the air
+    float m_airRise = 0.0f;           // +1 rising, -1 falling
+    bool m_proneOnBack = false;       // the state the roll is heading towards
 
     glm::quat BodyRotation() const;
 
