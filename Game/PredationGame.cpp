@@ -35,6 +35,10 @@ CVar<bool> cv_crouchToggle{"input.crouch_toggle", true, "Crouch and prone toggle
 CVar<bool> cv_sprintToggle{"input.sprint_toggle", false, "Sprint toggles instead of being held",
                            CVarFlags::Archive};
 CVar<float> cv_flySpeed{"cam.fly_speed", 6.0f, "Fly camera speed in meters per second"};
+// Adjustable because a prone body needs the camera much further back than a standing one, and
+// inspecting the prone roll from three metres puts the camera inside the character.
+CVar<float> cv_thirdDistance{"cam.third_distance", 3.2f, "How far the third-person camera sits behind the character",
+                             CVarFlags::Archive};
 // Remembered between runs, so rejoining the same friend does not mean typing the address again.
 CVar<std::string> cv_lastAddress{"net.last_address", "127.0.0.1", "Address the join box opens with",
                                  CVarFlags::Archive};
@@ -1771,6 +1775,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
         // Pull the camera in when something is in the way, so it does not end up inside a wall or a
         // pillar with the player hidden behind it.
         constexpr float kCameraSkin = 0.25f;
+        m_thirdPersonDistance = std::clamp(cv_thirdDistance.Get(), 0.5f, 20.0f);
         float distance = m_thirdPersonDistance;
         const RayHit blocked =
             app.GetPhysics().RayCast(focus, -lookDirection, m_thirdPersonDistance + kCameraSkin);
