@@ -278,6 +278,19 @@ void PlayerController::Step(const PlayerInput& input, float dt)
     m_debug.jumpConsumedBuffer = false;
     m_debug.jumpUsedCoyote = false;
 
+    // The dead do not walk, climb or stand up. Gravity still applies, so a body killed in mid-air
+    // comes down rather than hanging there, and the look angles still track so a corpse can be
+    // looked around from while somebody is spectating it.
+    PlayerInput living = input;
+    if (!m_state.alive)
+    {
+        living = PlayerInput{};
+        living.yaw = input.yaw;
+        living.pitch = input.pitch;
+        m_state.mantling = false;
+    }
+    const PlayerInput& effective = living;
+
     if (m_attached)
     {
         // Held where something else put them: inside a locker now, carried by a creature later.
@@ -292,7 +305,7 @@ void PlayerController::Step(const PlayerInput& input, float dt)
         m_state.grounded = true;
         m_state.fallPeakSpeed = 0.0f;
         m_state.timeSinceGrounded = 0.0f;
-        UpdateStance(input, dt);
+        UpdateStance(effective, dt);
         return;
     }
 
@@ -301,7 +314,7 @@ void PlayerController::Step(const PlayerInput& input, float dt)
     if (m_state.mantling)
     {
         StepMantle(dt);
-        UpdateStance(input, dt);
+        UpdateStance(effective, dt);
         return;
     }
 
@@ -342,28 +355,28 @@ void PlayerController::Step(const PlayerInput& input, float dt)
 
     // --- Jump buffering --------------------------------------------------------------------------
     m_state.jumpBufferTimer = std::max(0.0f, m_state.jumpBufferTimer - dt);
-    if (input.jump)
+    if (effective.jump)
     {
         m_state.jumpBufferTimer = m_config.jumpBufferTime;
     }
 
-    UpdateStance(input, dt);
+    UpdateStance(effective, dt);
 
     // --- Horizontal velocity ---------------------------------------------------------------------
-    const glm::vec3 wish = ComputeWishDirection(input);
+    const glm::vec3 wish = ComputeWishDirection(effective);
     const glm::vec2 wishFlat{wish.x, wish.z};
     const float wishLength = glm::length(wishFlat);
     const glm::vec2 wishDir = wishLength > 1e-4f ? wishFlat / wishLength : glm::vec2(0.0f);
 
     // Sprinting only counts when actually heading forwards, so nobody sprints backwards.
-    const bool sprinting = input.sprint && input.move.y > 0.4f && m_state.stance == PlayerStance::Standing;
-    float targetSpeed = m_config.SpeedForStance(m_state.stance, sprinting, input.walk) *
-                        std::clamp(input.speedScale, 0.05f, 1.0f);
+    const bool sprinting = effective.sprint && effective.move.y > 0.4f && m_state.stance == PlayerStance::Standing;
+    float targetSpeed = m_config.SpeedForStance(m_state.stance, sprinting, effective.walk) *
+                        std::clamp(effective.speedScale, 0.05f, 1.0f);
 
     // Slower sideways and slower still backwards, blended so there is no discontinuity.
     if (wishLength > 1e-4f)
     {
-        const glm::vec2 normalized = input.move / std::max(glm::length(input.move), 1e-4f);
+        const glm::vec2 normalized = effective.move / std::max(glm::length(effective.move), 1e-4f);
         float directionScale = 1.0f;
         if (normalized.y < 0.0f)
         {
@@ -418,7 +431,7 @@ void PlayerController::Step(const PlayerInput& input, float dt)
     if (m_state.jumpBufferTimer > 0.0f && m_state.alive)
     {
         glm::vec3 target{0.0f};
-        if (FindMantle(input, target))
+        if (FindMantle(effective, target))
         {
             m_state.mantling = true;
             m_state.mantleTime = 0.0f;

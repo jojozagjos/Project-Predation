@@ -46,6 +46,8 @@ CVar<int> cv_lastPort{"net.last_port", kDefaultPort, "Port the join box opens wi
 // On by default: a four-player extraction game where rounds pass through your team is a different
 // game, and a quieter one.
 CVar<bool> cv_friendlyFire{"game.friendly_fire", true, "Rounds hurt other players", CVarFlags::Archive};
+CVar<float> cv_respawnSeconds{"game.respawn_seconds", 6.0f, "How long you lie there before coming back",
+                             CVarFlags::Archive};
 CVar<bool> cv_showGrid{"debug.show_grid", false, "Draw the reference grid"};
 CVar<bool> cv_wireframe{"r.wireframe", false, "Draw scene meshes as wireframe"};
 CVar<float> cv_fogStart{"r.fog_start", 12.0f, "Fog start distance in meters"};
@@ -1034,6 +1036,96 @@ void PredationGame::ApplyDynamicBodies(const WorldStateMessage& state)
 
 // --- Damage ------------------------------------------------------------------------------------
 
+void PredationGame::UpdateRespawns(float dt)
+{
+    // Death is a pause, not an end. Offline and as a host the clock is run here; a client is told
+    // when it comes back, because whether it is alive is not its own decision to make.
+    if (m_sessionMode == SessionMode::Client)
+    {
+        return;
+    }
+
+    if (!m_player.State().alive && m_respawnTimer > 0.0f)
+    {
+        m_respawnTimer -= dt;
+        if (m_respawnTimer <= 0.0f)
+        {
+            m_player.Respawn(m_spawnPoint);
+            m_spectating = -1;
+            if (m_sessionMode == SessionMode::Host)
+            {
+                WorldEventMessage event;
+                event.kind = WorldEventKind::PlayerRespawned;
+                event.player = 0;
+                event.position = m_spawnPoint;
+                m_host.Broadcast(event);
+            }
+        }
+    }
+
+    if (m_sessionMode != SessionMode::Host)
+    {
+        return;
+    }
+    for (auto& entry : m_remoteRespawnTimers)
+    {
+        if (entry.second <= 0.0f)
+        {
+            continue;
+        }
+        entry.second -= dt;
+        if (entry.second > 0.0f)
+        {
+            continue;
+        }
+        m_host.RespawnPlayer(entry.first, m_spawnPoint);
+        WorldEventMessage event;
+        event.kind = WorldEventKind::PlayerRespawned;
+        event.player = entry.first;
+        event.position = m_spawnPoint;
+        m_host.Broadcast(event);
+    }
+}
+
+void PredationGame::UpdateSpectating()
+{
+    // Dead, you watch a teammate through their own eyes. A free camera is deliberately not offered:
+    // it would show you where the creature is, which is the one thing being dead should not tell
+    // you. Cycling is by the interact key, because there is nothing else to press.
+    if (m_player.State().alive)
+    {
+        m_spectating = -1;
+        return;
+    }
+
+    const std::vector<RemotePlayerView>& remotes = RemotePlayers();
+    const auto living = [&](int id)
+    {
+        for (const RemotePlayerView& remote : remotes)
+        {
+            if (remote.id == id && remote.alive)
+            {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    if (m_spectating >= 0 && living(m_spectating))
+    {
+        return;
+    }
+    m_spectating = -1;
+    for (const RemotePlayerView& remote : remotes)
+    {
+        if (remote.alive)
+        {
+            m_spectating = remote.id;
+            break;
+        }
+    }
+}
+
 glm::vec3 PredationGame::MuzzleOf(uint8_t player, const glm::vec3& eye, const glm::vec3& direction) const
 {
     // Where that player's weapon is being drawn on this machine. Falls back to a point in front of
@@ -1163,16 +1255,12 @@ void PredationGame::ApplyPlayerDamage(uint8_t player, float amount, uint8_t kill
     }
     else
     {
-        // A remote player's health lives on the host, in the view it publishes.
-        remaining = 0.0f;
-        for (const RemotePlayerView& remote : m_host.Remotes())
-        {
-            if (remote.id == player)
-            {
-                remaining = std::max(remote.health - amount, 0.0f);
-                break;
-            }
-        }
+        // Into the controller the host is simulating for them. The published view is rebuilt from
+        // that controller every tick, so subtracting from the view changed nothing and their health
+        // came back the moment it was read again: nobody could be killed by anything short of a
+        // single fatal round, and the two machines then disagreed about who was alive.
+        m_host.ApplyDamageTo(player, amount);
+        remaining = m_host.HealthOf(player);
     }
 
     if (m_sessionMode == SessionMode::Host)
@@ -1206,6 +1294,13 @@ void PredationGame::KillPlayer(uint8_t player, const glm::vec3& direction)
         m_player.State().alive = false;
         m_player.State().health = 0.0f;
         m_deathImpulse = direction * 6.0f;
+        m_respawnTimer = cv_respawnSeconds.Get();
+        m_spectating = -1;
+    }
+    else if (m_sessionMode == SessionMode::Host)
+    {
+        // The host runs the clock for everybody, because the host is what decides they are dead.
+        m_remoteRespawnTimers[player] = cv_respawnSeconds.Get();
     }
     PRED_LOG_INFO(Gameplay, "Player {} died", player);
 }
@@ -2374,6 +2469,8 @@ void PredationGame::OnFixedUpdate(double fixedDt)
         m_player.Step(input, dt);
     }
 
+    UpdateRespawns(dt);
+
     // The toggles follow what the body actually did. A stance change can be refused, by a ceiling
     // overhead or by the capsule being somewhere it cannot grow, and when that happened the toggle
     // still flipped: the button and the body then disagreed, so the next press asked for the stance
@@ -2581,9 +2678,40 @@ void PredationGame::OnUpdate(double dt, double alpha)
 
     case CameraMode::FirstPerson:
     default:
-        view = m_player.View().ViewMatrix();
-        viewPosition = m_player.View().eyePosition;
+    {
+        // Dead, the camera moves to a living teammate's eyes. Their look angles come from the
+        // snapshot, so you see what they see rather than steering a camera of your own.
+        const RemotePlayerView* watched = nullptr;
+        if (m_spectating >= 0)
+        {
+            for (const RemotePlayerView& remote : RemotePlayers())
+            {
+                if (remote.id == m_spectating)
+                {
+                    watched = &remote;
+                    break;
+                }
+            }
+        }
+
+        if (watched != nullptr)
+        {
+            PlayerView spectated;
+            spectated.eyePosition =
+                watched->position +
+                glm::vec3(0.0f, m_player.Config().EyeHeightForStance(watched->stance), 0.0f);
+            spectated.yaw = watched->yaw;
+            spectated.pitch = watched->pitch;
+            view = spectated.ViewMatrix();
+            viewPosition = spectated.eyePosition;
+        }
+        else
+        {
+            view = m_player.View().ViewMatrix();
+            viewPosition = m_player.View().eyePosition;
+        }
         break;
+    }
     }
 
     // What is in the player's hands has to be settled before the body is posed, not after. Deciding
@@ -2638,6 +2766,8 @@ void PredationGame::OnUpdate(double dt, double alpha)
 
     m_body.Update(m_scene, m_player.State(), m_player.View(), m_player.Config(), app.GetPhysics(),
                   deltaSeconds);
+
+    UpdateSpectating();
 
     // Everyone else, driven the same way from replicated state.
     if (m_sessionMode != SessionMode::Offline)

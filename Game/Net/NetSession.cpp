@@ -437,6 +437,42 @@ std::vector<NetHost::PlayerPose> NetHost::PosesAt(uint32_t tick) const
     return best->poses;
 }
 
+void NetHost::ApplyDamageTo(uint8_t playerId, float amount)
+{
+    for (auto& client : m_clients)
+    {
+        if (client->playerId == playerId)
+        {
+            client->controller.ApplyDamage(amount, "gunfire");
+            return;
+        }
+    }
+}
+
+void NetHost::RespawnPlayer(uint8_t playerId, const glm::vec3& position)
+{
+    for (auto& client : m_clients)
+    {
+        if (client->playerId == playerId)
+        {
+            client->controller.Respawn(position);
+            return;
+        }
+    }
+}
+
+float NetHost::HealthOf(uint8_t playerId) const
+{
+    for (const auto& client : m_clients)
+    {
+        if (client->playerId == playerId)
+        {
+            return client->controller.State().health;
+        }
+    }
+    return 0.0f;
+}
+
 void NetHost::Broadcast(const WorldEventMessage& event)
 {
     if (m_transport == nullptr)

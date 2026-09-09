@@ -994,3 +994,38 @@ TEST_CASE("Turning your head does not drag the body sideways", "[body][pose]")
     INFO("pelvis drifted " << drift << " m while looking around");
     CHECK(drift < 0.09f);
 }
+
+TEST_CASE("Climbing puts both hands on the ledge", "[body][pose][mantle]")
+{
+    // The only part of a climb you can see from inside it. Without this the arms carried on doing
+    // their walking swing while the body rose past a wall, which reads as being levitated.
+    BodyHarness harness;
+    harness.Settle(120);
+
+    // Drive a climb directly: the harness has no ledge, and what is being measured is the pose.
+    PlayerState& state = const_cast<PlayerState&>(harness.State());
+    const glm::vec3 from = state.position;
+    const glm::vec3 to = from + glm::vec3(0.0f, 1.0f, -0.9f);
+    state.mantling = true;
+    state.mantleTime = 0.0f;
+    state.mantleDuration = 0.7f;
+    state.mantleFrom = from;
+    state.mantleTo = to;
+
+    float closest = 100.0f;
+    for (int i = 0; i < 20; ++i)
+    {
+        state.mantleTime = 0.7f * 0.3f; // early, while the hands are taking the weight
+        harness.body.Update(harness.scene, state, harness.View(), harness.config, harness.physics,
+                            kTick);
+        const glm::vec3 lip = to - glm::vec3(0.0f, 0.0f, -0.22f);
+        for (int side = 0; side < 2; ++side)
+        {
+            const glm::vec3 hand = harness.Bone(harness.Rig().hand[side]);
+            closest = std::min(closest, glm::length(glm::vec2(hand.y - lip.y, hand.z - lip.z)));
+        }
+    }
+
+    INFO("nearest hand came within " << closest << " m of the ledge edge");
+    CHECK(closest < 0.35f);
+}

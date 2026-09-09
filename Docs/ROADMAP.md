@@ -28,8 +28,8 @@ friendly fire, damage and death.
 
 Still missing:
 
-- **Death and respawn as a flow.** Dying leaves a body and nothing else happens. There is no
-  spectating a teammate, which the brief asks for, and no round structure to respawn into.
+- **A round structure.** Death and respawn work and you spectate a teammate while dead, but there
+  is nothing to respawn into: no extraction, no objective, no end.
 - **Nameplates.** You cannot tell who anybody is.
 - **Voice.** Proximity voice over the same transport, which the creature's hearing later reads as a
   stimulus.

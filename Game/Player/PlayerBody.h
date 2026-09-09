@@ -155,6 +155,12 @@ public:
         float pronePivotSpeed = 1.9f;
         float pronePivotDegrees = 70.0f;
 
+        // Climbing. The hands take the lip of the ledge while the body rises, then let go as it
+        // comes over the top.
+        float mantleGripBack = 0.22f;    // how far back from the landing spot the edge is
+        float mantleGripSpread = 0.13f;  // how far apart the hands go, as a fraction of height
+        float mantleReleaseAt = 0.62f;   // how far through the climb the hands let go
+
         // In the air. Legs tuck on the way up and reach on the way down; the arms come out either
         // way. Without any of this the legs simply stretch straight down towards a floor that is
         // metres away, which is what a jump looked like.
@@ -311,6 +317,8 @@ private:
     void UpdateArms(const PlayerState& state, const PlayerView& view, PhysicsWorld& physics, float dt);
     // Poses the right arm to carry a held item and puts the item in the hand.
     void UpdateHeldItem(const PlayerView& view, float dt);
+    // Both hands on the lip of the ledge for the pull, then released as the body comes over.
+    void UpdateMantleArms(const PlayerState& state, float dt);
     void UpdateLegs(const PlayerState& state, const PlayerView& view, const PlayerConfig& playerConfig,
                     PhysicsWorld& physics, float dt);
     void PushToScene(Scene& scene);

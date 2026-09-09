@@ -147,6 +147,12 @@ public:
 
     // What a client is holding and doing with it, so everyone sees the right thing in their hands.
     void SetPlayerHeld(uint8_t playerId, uint8_t heldItem, bool aiming, bool reloading, float progress);
+    // Damage a client. The host owns their body, so this is where their health actually changes:
+    // the published view is rebuilt from the controller every tick, so writing to that changed
+    // nothing and health came back the moment it was read again.
+    void ApplyDamageTo(uint8_t playerId, float amount);
+    void RespawnPlayer(uint8_t playerId, const glm::vec3& position);
+    float HealthOf(uint8_t playerId) const;
 
     Transport* GetTransport() { return m_transport.get(); }
     const std::vector<RemotePlayerView>& Remotes() const { return m_views; }

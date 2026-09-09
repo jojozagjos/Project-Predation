@@ -1125,6 +1125,14 @@ void PlayerBody::UpdateArms(const PlayerState& state, const PlayerView& view, Ph
     // and the right arm comes after the left in the skeleton, so the crawl has to be solved first
     // or it wipes the grip it was meant to leave alone. Holding the weapon first is what made the
     // hand let go of it the moment the player lay down.
+    // Climbing takes both hands, whatever is in them. Nobody hauls themselves over a wall one
+    // handed with a rifle up, and it is the only part of a climb anyone can see from inside it.
+    if (state.mantling)
+    {
+        UpdateMantleArms(state, dt);
+        return;
+    }
+
     const bool holding = m_hasWeapon;
     if (m_flatness >= 0.02f)
     {
@@ -1186,6 +1194,59 @@ void PlayerBody::UpdateHeldItem(const PlayerView& view, float dt)
 
     m_heldItemTransform.position = ik.endPosition;
     m_heldItemTransform.rotation = rotation;
+}
+
+void PlayerBody::UpdateMantleArms(const PlayerState& state, float dt)
+{
+    // Both hands go to the lip of the ledge, take the weight while the body rises, and let go as it
+    // comes over the top. Where the lip is is known exactly: the climb was aimed at it.
+    const float duration = std::max(state.mantleDuration, 0.05f);
+    const float t = std::clamp(state.mantleTime / duration, 0.0f, 1.0f);
+
+    const glm::vec3 travel = state.mantleTo - state.mantleFrom;
+    const glm::vec3 flat{travel.x, 0.0f, travel.z};
+    const glm::vec3 forward =
+        glm::length(flat) > 1e-4f ? glm::normalize(flat) : glm::vec3(std::sin(m_bodyYaw), 0.0f, -std::cos(m_bodyYaw));
+    const glm::vec3 right{-forward.z, 0.0f, forward.x};
+
+    // The edge itself: at the height being climbed to, back from the landing spot by roughly the
+    // depth the body has to clear.
+    const glm::vec3 lip = glm::vec3(state.mantleTo.x, state.mantleTo.y, state.mantleTo.z) -
+                          forward * m_config.mantleGripBack;
+
+    // Held for the pull, then released to the sides as the body comes over.
+    const float release = glm::smoothstep(m_config.mantleReleaseAt, 1.0f, t);
+    const float grip = 1.0f - release;
+
+    for (int side = 0; side < 2; ++side)
+    {
+        const float sideSign = side == kLeft ? -1.0f : 1.0f;
+        const glm::vec3 shoulder = m_pose.GlobalPosition(m_rig.shoulder[side]);
+
+        const glm::vec3 held = lip + right * (sideSign * m_config.mantleGripSpread * m_rig.height);
+        // Once the hands let go they swing down and forward, which is where they would be as you
+        // step off the top.
+        const glm::vec3 freed = shoulder + forward * 0.28f - glm::vec3(0.0f, 0.42f, 0.0f) +
+                                right * (sideSign * 0.16f * m_rig.height);
+        const glm::vec3 target = glm::mix(held, freed, release);
+
+        FootState& hand = m_hands[static_cast<size_t>(side)];
+        hand.position = SmoothTowards(hand.position, target, m_config.weaponHandSmoothing, dt);
+        hand.planted = grip > 0.5f;
+
+        // Elbows out and down while pulling, which is what taking your own weight looks like.
+        const glm::vec3 elbowPole = glm::normalize(right * (sideSign * 1.0f) -
+                                                   glm::vec3(0.0f, 0.7f, 0.0f) - forward * 0.3f);
+        const TwoBoneIKResult ik = SolveTwoBoneIK(shoulder, hand.position, elbowPole,
+                                                  m_rig.upperArmLength, m_rig.lowerArmLength);
+
+        m_pose.SetGlobal(m_skeleton, m_rig.upperArm[side], SegmentMatrix(shoulder, ik.jointPosition));
+        m_pose.SetGlobal(m_skeleton, m_rig.lowerArm[side],
+                         SegmentMatrix(ik.jointPosition, ik.endPosition));
+        m_pose.SetGlobal(m_skeleton, m_rig.hand[side],
+                         glm::translate(glm::mat4(1.0f), ik.endPosition) *
+                             glm::mat4_cast(BodyRotation()));
+    }
 }
 
 void PlayerBody::UpdateCrawlArms(const PlayerState& state, const PlayerView& view,
