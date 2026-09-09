@@ -150,11 +150,22 @@ public:
         float crawlShoulderRollDegrees = 9.0f; // shoulders roll as each arm reaches and pulls
         // Prone turning is slow and deliberate: the body pivots towards where you are crawling.
         float proneTurnSpeed = 3.2f;
+        // Rolling onto your back while prone. Off for now: it is a whole movement of its own and it
+        // is not what the game needs yet. With it off, a prone body that is turned far enough
+        // shuffles round on its front instead, which is the other thing people actually do.
+        //
+        // The roll itself is kept rather than deleted, because it works and turning it back on is
+        // one flag. See ADR-018.
+        bool proneRollEnabled = false;
         // Look this far from the way the body is lying and it starts coming up onto its side. From
         // here to straight behind, how far over the body is tracks how far round you are looking,
         // so up on one shoulder is a position you can hold and aim from rather than a frame of a
         // transition. Straight behind is flat on your back.
         float proneRollOverDegrees = 95.0f;
+        // With the roll off, how fast a prone body pivots on the spot to catch up with where you
+        // are looking, and how far it lets you look before it bothers.
+        float pronePivotSpeed = 1.9f;
+        float pronePivotDegrees = 70.0f;
         // How long a full roll from front to back takes. The rate is constant, so a quarter turn
         // takes a quarter as long, and it reads as a body turning over rather than a pose changing.
         float proneRollSeconds = 0.7f;
@@ -187,7 +198,10 @@ public:
         // body, which is what actually happens.
         float eyeForwardOfHead = 0.0f;
         float eyeAboveHead = 0.085f;
-        float skullBehindEye = 0.042f;
+        // Almost nothing. The head bone is anchored under the eye and the neck is directly below
+        // it, so whatever this is, the drawn skull sits that far behind the neck. At forty
+        // millimetres the head read as floating off the back of the shoulders.
+        float skullBehindEye = 0.006f;
         bool hideHead = true; // the camera lives inside it
         bool visible = true;
     };
@@ -249,6 +263,10 @@ public:
     glm::vec3 MuzzlePoint() const;
     // Where the weapon is held. Exposed so a test can check the hand is actually on it.
     glm::vec3 WeaponOrigin() const { return m_weaponTransform.position; }
+    // Where the drawn skull actually sits, as opposed to where the head bone is. They differ, and
+    // which one is wrong is the first question when somebody says the head looks off.
+    glm::vec3 DebugSkullCentre() const;
+
     // Which way the body is lying or facing. Exposed for tests; nothing in the game reads it.
     float DebugBodyYaw() const { return m_bodyYaw; }
 

@@ -61,6 +61,15 @@ struct PlayerState
     float jumpBufferTimer = 0.0f;
     bool jumpedThisTick = false;
 
+    // Climbing a ledge. While this runs the character is moved along a fixed path rather than
+    // simulated, which is why it lives in the state: a client replaying its inputs has to replay
+    // the climb the same way, and it cannot do that from a timer kept somewhere else.
+    bool mantling = false;
+    float mantleTime = 0.0f;
+    float mantleDuration = 0.0f;
+    glm::vec3 mantleFrom{0.0f};
+    glm::vec3 mantleTo{0.0f};
+
     float fallPeakSpeed = 0.0f;      // fastest downward speed during the current fall
     bool landedThisTick = false;
     float landingImpactSpeed = 0.0f; // downward speed at the moment of landing
@@ -147,6 +156,21 @@ struct PlayerConfig
     // stances no longer overlap, which is what makes a run a run.
     float stanceFractionWalk = 0.56f;
     float stanceFractionRun = 0.44f;
+
+    // --- Mantling ---
+    // Pulling yourself up onto something. Below the step height the character walks up it without
+    // noticing; above head height there is nothing to pull against. In between, pressing jump at a
+    // ledge climbs it.
+    bool mantleEnabled = true;
+    float mantleMinHeight = 0.40f;  // anything lower is a step, not a climb
+    float mantleMaxHeight = 1.60f;  // about chest height on a 1.8 m body
+    float mantleReach = 0.55f;      // how far in front of the capsule a ledge can be
+    float mantleClearance = 0.30f;  // how much flat top a ledge needs before it can be stood on
+    // A low vault is quick and a full pull-up is not, so the time scales with the height. Being
+    // stuck in a climb is the cost of using one, and it is what stops mantling being strictly
+    // better than walking round.
+    float mantleSecondsLow = 0.32f;
+    float mantleSecondsHigh = 0.85f;
 
     // --- Leaning ---
     float leanAngleDegrees = 16.0f; // camera roll at full lean

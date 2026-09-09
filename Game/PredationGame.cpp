@@ -845,9 +845,28 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
         break;
 
     case WorldEventKind::PickupTaken:
-        // If it was this player who took it, it is already in the bag: the request was answered.
+    {
+        // This is the host answering. Asking put nothing in the bag, because asking is all a client
+        // does, so the item goes in now. Without this the thing simply vanished: the host took it
+        // out of the world and nobody ever gave it to anyone.
+        //
+        // What it was is read from this machine's own copy rather than sent, because both ends
+        // built the same world and have applied the same events, so the index means the same thing
+        // on both. Sending it again would be sending something already known.
+        const WorldObjects::Pickup* pickup = m_world.GetPickup(event.index);
+        if (pickup != nullptr && pickup->alive && event.player == LocalPlayerId())
+        {
+            const int stored = m_inventory.Add(m_items, pickup->item, pickup->count);
+            if (stored < pickup->count)
+            {
+                // The bag filled between asking and being answered. Rare, and worth saying out loud
+                // rather than losing the difference in silence.
+                PRED_LOG_WARN(Gameplay, "Only had room for {} of {}", stored, pickup->count);
+            }
+        }
         m_world.ConsumePickup(event.index, m_scene, m_app->GetPhysics(), m_interactions);
         break;
+    }
 
     case WorldEventKind::PickupSpawned:
         m_world.SpawnPickup(m_scene, m_app->GetMeshes(), m_app->GetPhysics(), m_interactions, m_items,
@@ -2036,6 +2055,18 @@ void PredationGame::TryInteract()
     // next arrives as an event and is applied the same way another player's interaction would be.
     if (m_sessionMode == SessionMode::Client)
     {
+        // The one thing worth checking before asking: whether there is room. The host cannot know
+        // what is in this player's bag, so if it hands over something that will not fit the item is
+        // gone. Checking here costs nothing and is the same answer the offline path gives.
+        if (focus.kind == InteractionKind::Pickup)
+        {
+            const WorldObjects::Pickup* pickup = m_world.GetPickup(focus.payload);
+            if (pickup != nullptr && !m_inventory.CanAdd(m_items, pickup->item, 1))
+            {
+                m_app->GetConsole().Print("Inventory full");
+                return;
+            }
+        }
         m_client.SendInteract(static_cast<uint8_t>(focus.kind), static_cast<uint8_t>(focus.payload));
         return;
     }

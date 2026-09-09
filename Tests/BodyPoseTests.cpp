@@ -187,6 +187,8 @@ TEST_CASE("Prone lays the body flat and face down with the legs trailing behind"
     const float standingChestY = harness.Bone(harness.Rig().chest).y;
 
     harness.SetStance(PlayerStance::Prone);
+    // Rolling onto your back is off by default now; these cover it for when it comes back.
+    harness.body.Tuning().proneRollEnabled = true;
     harness.Settle();
     const glm::vec3 pelvis = harness.Bone(harness.Rig().pelvis);
     const glm::vec3 chest = harness.Bone(harness.Rig().chest);
@@ -267,6 +269,8 @@ TEST_CASE("Crawling reaches the hands forward and cycles them", "[body][pose]")
 {
     BodyHarness harness;
     harness.SetStance(PlayerStance::Prone);
+    // Rolling onto your back is off by default now; these cover it for when it comes back.
+    harness.body.Tuning().proneRollEnabled = true;
     harness.Settle();
 
     harness.SetTravel(glm::vec3(0.0f, 0.0f, -1.0f));
@@ -378,6 +382,8 @@ TEST_CASE("Stance changes blend rather than snapping", "[body][pose]")
 
     // A single tick must move only part of the way, or the transition would pop.
     harness.SetStance(PlayerStance::Prone);
+    // Rolling onto your back is off by default now; these cover it for when it comes back.
+    harness.body.Tuning().proneRollEnabled = true;
     harness.Tick();
     const float afterOneTick = harness.Bone(harness.Rig().pelvis).y;
     REQUIRE(afterOneTick < standingPelvisY);
@@ -385,6 +391,8 @@ TEST_CASE("Stance changes blend rather than snapping", "[body][pose]")
 
     // And it must actually arrive.
     harness.SetStance(PlayerStance::Prone);
+    // Rolling onto your back is off by default now; these cover it for when it comes back.
+    harness.body.Tuning().proneRollEnabled = true;
     harness.Settle();
     REQUIRE(harness.Bone(harness.Rig().pelvis).y < 0.45f);
 }
@@ -566,6 +574,8 @@ TEST_CASE("Looking behind while prone rolls the body onto its back", "[body][pos
     // reach, which is what makes lying down feel like lying down rather than standing up sideways.
     BodyHarness harness;
     harness.SetStance(PlayerStance::Prone);
+    // Rolling onto your back is off by default now; these cover it for when it comes back.
+    harness.body.Tuning().proneRollEnabled = true;
     harness.Settle(300);
 
     const auto facingOf = [&](BoneIndex bone)
@@ -683,6 +693,8 @@ TEST_CASE("The trigger hand keeps hold of the weapon while crawling", "[body][po
     weapon.size = {0.06f, 0.16f, 0.62f};
 
     harness.SetStance(PlayerStance::Prone);
+    // Rolling onto your back is off by default now; these cover it for when it comes back.
+    harness.body.Tuning().proneRollEnabled = true;
     harness.Settle(240);
     harness.body.SetWeaponForSimulation(&weapon);
     harness.SetTravel(glm::vec3(0.0f, 0.0f, -1.0f));
@@ -712,6 +724,8 @@ TEST_CASE("Rolling over goes the way you turned", "[body][pose]")
     {
         BodyHarness harness;
         harness.SetStance(PlayerStance::Prone);
+        // Rolling onto your back is off by default now; these cover it for when it comes back.
+        harness.body.Tuning().proneRollEnabled = true;
         harness.Settle(300);
         harness.input.yaw = lookYaw;
         float extreme = 0.0f;
@@ -741,6 +755,8 @@ TEST_CASE("Rolling over is a movement, not a jump", "[body][pose]")
     // fastest at the start, which reads as a switch being thrown rather than a body turning over.
     BodyHarness harness;
     harness.SetStance(PlayerStance::Prone);
+    // Rolling onto your back is off by default now; these cover it for when it comes back.
+    harness.body.Tuning().proneRollEnabled = true;
     harness.Settle(300);
 
     // Which way the chest faces: straight down on your front, straight up on your back.
@@ -812,6 +828,8 @@ TEST_CASE("Rolling over passes through the side rather than switching to the bac
     // rolling over and being flipped, and it is also a position worth being able to hold.
     BodyHarness harness;
     harness.SetStance(PlayerStance::Prone);
+    // Rolling onto your back is off by default now; these cover it for when it comes back.
+    harness.body.Tuning().proneRollEnabled = true;
     harness.Settle(300);
 
     harness.input.yaw = glm::pi<float>();
@@ -839,6 +857,8 @@ TEST_CASE("How far you look round decides how far over you roll", "[body][pose]"
     {
         BodyHarness harness;
         harness.SetStance(PlayerStance::Prone);
+        // Rolling onto your back is off by default now; these cover it for when it comes back.
+        harness.body.Tuning().proneRollEnabled = true;
         harness.Settle(300);
         harness.input.yaw = glm::radians(lookDegrees);
         harness.Settle(300);
@@ -865,6 +885,8 @@ TEST_CASE("The legs roll with the body instead of staying flat on the floor", "[
     // its back rather than the whole body turning through its side.
     BodyHarness harness;
     harness.SetStance(PlayerStance::Prone);
+    // Rolling onto your back is off by default now; these cover it for when it comes back.
+    harness.body.Tuning().proneRollEnabled = true;
     harness.Settle(300);
 
     const float flatSeparation =
@@ -894,6 +916,8 @@ TEST_CASE("Rolling goes the way you turned when the turn is gradual", "[body][po
     {
         BodyHarness harness;
         harness.SetStance(PlayerStance::Prone);
+        // Rolling onto your back is off by default now; these cover it for when it comes back.
+        harness.body.Tuning().proneRollEnabled = true;
         harness.Settle(300);
 
         float extreme = 0.0f;
@@ -926,6 +950,8 @@ TEST_CASE("Crawling backwards keeps the body facing forward", "[body][pose]")
     // and backed off, because the pivot always went the same way.
     BodyHarness harness;
     harness.SetStance(PlayerStance::Prone);
+    // Rolling onto your back is off by default now; these cover it for when it comes back.
+    harness.body.Tuning().proneRollEnabled = true;
     harness.Settle(300);
 
     const float facingBefore = harness.body.DebugBodyYaw();
@@ -950,6 +976,8 @@ TEST_CASE("The crawl cycle runs backwards when you back up", "[body][pose]")
     {
         BodyHarness harness;
         harness.SetStance(PlayerStance::Prone);
+        // Rolling onto your back is off by default now; these cover it for when it comes back.
+        harness.body.Tuning().proneRollEnabled = true;
         harness.Settle(300);
         harness.input.move = {0.0f, forward};
         harness.Settle(40);
@@ -1097,4 +1125,22 @@ TEST_CASE("A body goes down the way it was hit", "[body][ragdoll]")
     INFO("back " << pushedBack.z << ", forward " << pushedForward.z);
     CHECK(pushedBack.z > 0.15f);
     CHECK(pushedForward.z < -0.15f);
+}
+
+TEST_CASE("The drawn skull sits over the neck, not behind it", "[body][pose]")
+{
+    // The head bone is anchored to the camera, and the skull is drawn at an offset from it. Get
+    // that offset wrong and the head reads as detached, floating behind the shoulders, which is
+    // exactly what it looked like.
+    BodyHarness harness;
+    harness.Settle(180);
+
+    const glm::vec3 skull = harness.body.DebugSkullCentre();
+    const glm::vec3 neck = harness.Bone(harness.Rig().neck);
+    const float behind = skull.z - neck.z; // forward is -Z, so positive is behind
+
+    INFO("skull is " << behind << " m behind the neck, " << (skull.y - neck.y) << " m above it");
+    CHECK(std::abs(behind) < 0.02f);
+    // And above it, because that is where a head goes.
+    CHECK(skull.y > neck.y);
 }

@@ -347,8 +347,20 @@ void PlayerBody::UpdatePosture(const PlayerState& state, const PlayerView& view,
         // because there is no state to snap between.
         const float over = glm::radians(m_config.proneRollOverDegrees);
         const float span = std::max(glm::pi<float>() - over, glm::radians(5.0f));
-        m_proneRollTarget = std::clamp((twist - over) / span, 0.0f, 1.0f);
+        m_proneRollTarget = m_config.proneRollEnabled
+                                ? std::clamp((twist - over) / span, 0.0f, 1.0f)
+                                : 0.0f;
         m_proneOnBack = m_proneRollTarget > 0.5f;
+
+        // With rolling off, a body turned further than the neck allows shuffles round on its front
+        // instead of being left wrenched. It is slow, because pivoting on your elbows is.
+        if (!m_config.proneRollEnabled && twist > glm::radians(m_config.pronePivotDegrees))
+        {
+            const float excess = twist - glm::radians(m_config.pronePivotDegrees);
+            const float direction = signedTwist > 0.0f ? 1.0f : -1.0f;
+            m_bodyYaw = WrapAngle(m_bodyYaw + direction *
+                                                  std::min(excess, m_config.pronePivotSpeed * dt));
+        }
 
         // Which shoulder you go over is decided once, as the roll starts, and held until you are
         // flat on your front again. Deciding it every frame let a small wobble across the centre
@@ -619,6 +631,16 @@ void PlayerBody::UpdatePosture(const PlayerState& state, const PlayerView& view,
 
     root = glm::translate(glm::mat4(1.0f), m_rootPosition) * glm::mat4_cast(BodyRotation());
     m_pose.ComputeGlobals(m_skeleton, root);
+}
+
+glm::vec3 PlayerBody::DebugSkullCentre() const
+{
+    // The same arithmetic PushToScene does for a piece of equipment in its bone frame.
+    const glm::mat4 head = m_pose.Global(m_rig.head);
+    const glm::quat frame = glm::normalize(glm::quat_cast(glm::mat3(head)));
+    const float h = m_rig.height;
+    return glm::vec3(head[3]) +
+           frame * glm::vec3(0.0f, 0.063f * h, 0.004f * h + m_config.skullBehindEye);
 }
 
 glm::quat PlayerBody::BodyRotation() const

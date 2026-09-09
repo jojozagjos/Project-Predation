@@ -533,3 +533,137 @@ TEST_CASE("An attached player holds still inside geometry that would push them o
     player.Shutdown();
     physics.Shutdown();
 }
+
+TEST_CASE("Mantling climbs the ledges it should and refuses the rest", "[player][mantle]")
+{
+    // The test map has ledges from 0.3 to 1.8 m for exactly this. Below the step height the
+    // character walks up without noticing; above chest height there is nothing to pull against.
+    // What matters is that the boundaries are where the config says, not where the code drifts to.
+    const auto climb = [](float ledgeHeight)
+    {
+        PhysicsWorld physics;
+        PhysicsWorld::Settings settings;
+        settings.workerThreads = 1;
+        REQUIRE(physics.Init(settings));
+        physics.CreateBox({20.0f, 0.5f, 20.0f}, Transform{{0.0f, -0.5f, 0.0f}}, BodyMotion::Static);
+        // A block in front, long enough that walking on after getting up never reaches the far
+        // edge. A short one measures where the test ends rather than where the climb does.
+        physics.CreateBox({2.0f, ledgeHeight * 0.5f, 9.0f},
+                          Transform{{0.0f, ledgeHeight * 0.5f, -10.0f}}, BodyMotion::Static);
+        physics.OptimizeBroadPhase();
+
+        PlayerConfig config;
+        PlayerController player;
+        REQUIRE(player.Init(physics, config, {0.0f, 0.05f, -0.6f}));
+
+        PlayerInput input;
+        input.move = {0.0f, 1.0f}; // forward is -Z at yaw 0, straight at the block
+
+        // Walk into it, then press jump.
+        for (int i = 0; i < 120; ++i)
+        {
+            physics.Step(1.0f / 60.0f);
+            player.Step(input, 1.0f / 60.0f);
+        }
+        input.jump = true;
+        physics.Step(1.0f / 60.0f);
+        player.Step(input, 1.0f / 60.0f);
+        input.jump = false;
+
+        const bool started = player.State().mantling;
+        for (int i = 0; i < 180; ++i)
+        {
+            physics.Step(1.0f / 60.0f);
+            player.Step(input, 1.0f / 60.0f);
+        }
+
+        const float ended = player.State().position.y;
+        player.Shutdown();
+        physics.Shutdown();
+        return std::make_pair(started, ended);
+    };
+
+    SECTION("a knee-high step is walked up, not climbed")
+    {
+        const auto [started, height] = climb(0.30f);
+        INFO("ended at " << height);
+        CHECK_FALSE(started);
+        CHECK(height > 0.25f); // it still got up there, by stepping
+    }
+
+    SECTION("a waist-high ledge is climbed")
+    {
+        const auto [started, height] = climb(1.00f);
+        INFO("ended at " << height);
+        CHECK(started);
+        CHECK(height > 0.95f);
+    }
+
+    SECTION("a chest-high ledge is climbed")
+    {
+        const auto [started, height] = climb(1.50f);
+        INFO("ended at " << height);
+        CHECK(started);
+        CHECK(height > 1.45f);
+    }
+
+    SECTION("a wall above head height is not")
+    {
+        const auto [started, height] = climb(2.40f);
+        INFO("ended at " << height);
+        CHECK_FALSE(started);
+        CHECK(height < 0.5f);
+    }
+}
+
+TEST_CASE("A climb takes time and cannot be steered out of", "[player][mantle]")
+{
+    // The cost of the shortcut is that you are committed. If a climb could be cancelled or steered
+    // it would be strictly better than walking round, and nobody would ever walk round.
+    PhysicsWorld physics;
+    PhysicsWorld::Settings settings;
+    settings.workerThreads = 1;
+    REQUIRE(physics.Init(settings));
+    physics.CreateBox({20.0f, 0.5f, 20.0f}, Transform{{0.0f, -0.5f, 0.0f}}, BodyMotion::Static);
+    physics.CreateBox({2.0f, 0.6f, 2.0f}, Transform{{0.0f, 0.6f, -3.0f}}, BodyMotion::Static);
+    physics.OptimizeBroadPhase();
+
+    PlayerConfig config;
+    PlayerController player;
+    REQUIRE(player.Init(physics, config, {0.0f, 0.05f, -0.6f}));
+
+    PlayerInput input;
+    input.move = {0.0f, 1.0f};
+    for (int i = 0; i < 120; ++i)
+    {
+        physics.Step(1.0f / 60.0f);
+        player.Step(input, 1.0f / 60.0f);
+    }
+    input.jump = true;
+    physics.Step(1.0f / 60.0f);
+    player.Step(input, 1.0f / 60.0f);
+    REQUIRE(player.State().mantling);
+
+    // Let go of everything and try to walk backwards out of it.
+    input.jump = false;
+    input.move = {0.0f, -1.0f};
+
+    int ticks = 0;
+    float highest = player.State().position.y;
+    while (player.State().mantling && ticks < 240)
+    {
+        physics.Step(1.0f / 60.0f);
+        player.Step(input, 1.0f / 60.0f);
+        highest = std::max(highest, player.State().position.y);
+        ++ticks;
+    }
+
+    const float seconds = static_cast<float>(ticks) / 60.0f;
+    INFO("climb took " << seconds << " s and reached " << highest);
+    CHECK(seconds > 0.2f);
+    CHECK(seconds < 1.2f);
+    CHECK(highest > 1.15f); // it finished the climb despite being told to go the other way
+
+    player.Shutdown();
+    physics.Shutdown();
+}

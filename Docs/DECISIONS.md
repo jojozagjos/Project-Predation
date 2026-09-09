@@ -205,3 +205,38 @@ slightly late.
 Only position, orientation, stance, lean and stride phase cross the wire. The walk cycle, the arms,
 the head and the weapon hold are reproduced locally by the same procedural body the local player
 uses. A gait is expensive to send and cheap to reproduce.
+
+## ADR-018: Rolling onto your back while prone is off, not deleted
+
+**Status**: accepted, 2026-09-09
+
+Supine prone works: the roll follows how far round you are looking, passes through the side, and
+the limbs go with it. It is switched off anyway, behind `proneRollEnabled`.
+
+It is a whole movement of its own and the game does not need it yet. Turning it off is one flag and
+turning it back on is the same flag, so the work and its tests stay. The tests set the flag
+themselves, which means the code cannot rot while it is unused: it is still exercised on every run.
+
+With it off, a prone body turned further than the neck allows shuffles round on its front instead.
+That is the other thing people actually do, and it means looking behind you while prone still has an
+answer rather than leaving the body wrenched at its twist limit.
+
+## ADR-019: Climbing is a fixed path, not a force
+
+**Status**: accepted, 2026-09-09
+
+Mantling moves the character along a computed path with the simulation switched off for its
+duration, rather than applying an upward impulse and hoping. Two reasons.
+
+It has to be repeatable. A client replays its own inputs whenever the host disagrees, so a climb
+must produce the same result every time it is run. A scripted path does; a push against a collider
+resolved by a solver does not, quite.
+
+And it has to be committing. The path takes longer for a higher ledge, cannot be steered, and cannot
+be cancelled. That is the cost of the shortcut, and without it climbing would be strictly better
+than walking round and nobody would ever walk round.
+
+Finding the ledge is four raycasts: down from in front to find the top, forward to confirm there is
+something in the way rather than open ground, down again further on to confirm there is enough top
+to stand on, and up to confirm there is headroom. All against static geometry, so both machines find
+the same ledge.

@@ -157,6 +157,113 @@ void PlayerController::UpdateStance(const PlayerInput& input, float /*dt*/)
     }
 }
 
+bool PlayerController::FindMantle(const PlayerInput& input, glm::vec3& outTarget) const
+{
+    if (!m_config.mantleEnabled || m_physics == nullptr || !m_state.alive ||
+        m_state.stance == PlayerStance::Prone)
+    {
+        return false;
+    }
+    // You climb what you are walking at. Without this you would haul yourself over every crate you
+    // happened to be standing next to whenever you pressed jump.
+    if (input.move.y < 0.5f)
+    {
+        return false;
+    }
+
+    const glm::vec3 forward{std::sin(m_state.yaw), 0.0f, -std::cos(m_state.yaw)};
+    const glm::vec3 feet = m_state.position;
+    const float ahead = m_config.radius + m_config.mantleReach;
+
+    // Look down from above and in front. Where that lands is the top of whatever is there, which is
+    // the only thing a climb actually needs to know.
+    const glm::vec3 probe = feet + forward * ahead;
+    const float ceiling = m_config.mantleMaxHeight + 0.25f;
+    const RayHit top = m_physics->RayCast(probe + glm::vec3(0.0f, ceiling, 0.0f),
+                                          glm::vec3(0.0f, -1.0f, 0.0f), ceiling);
+    if (!top)
+    {
+        return false;
+    }
+
+    const float height = top.position.y - feet.y;
+    if (height < m_config.mantleMinHeight || height > m_config.mantleMaxHeight)
+    {
+        return false;
+    }
+    // Facing a wall, not a slope. A surface you could walk up is not something you climb.
+    if (top.normal.y < 0.7f)
+    {
+        return false;
+    }
+
+    // There has to be something in the way, or this is flat ground and walking is the answer.
+    const RayHit wall =
+        m_physics->RayCast(feet + glm::vec3(0.0f, height * 0.5f, 0.0f), forward, ahead + 0.1f);
+    if (!wall)
+    {
+        return false;
+    }
+
+    // Enough flat top to stand on. A ledge one centimetre deep is a lip, and climbing onto it drops
+    // you straight back off the far side.
+    const glm::vec3 landing = probe + forward * m_config.mantleClearance;
+    const RayHit far = m_physics->RayCast(landing + glm::vec3(0.0f, ceiling, 0.0f),
+                                          glm::vec3(0.0f, -1.0f, 0.0f), ceiling);
+    if (!far || std::abs(far.position.y - top.position.y) > m_config.stepHeight)
+    {
+        return false;
+    }
+
+    // And headroom, or the climb ends with the capsule inside a ceiling.
+    const float standing = m_config.HeightForStance(PlayerStance::Standing);
+    const RayHit above = m_physics->RayCast(top.position + glm::vec3(0.0f, 0.05f, 0.0f),
+                                            glm::vec3(0.0f, 1.0f, 0.0f), standing);
+    if (above)
+    {
+        return false;
+    }
+
+    outTarget = glm::vec3(landing.x, top.position.y + 0.02f, landing.z);
+    return true;
+}
+
+void PlayerController::StepMantle(float dt)
+{
+    m_state.mantleTime += dt;
+    const float duration = std::max(m_state.mantleDuration, 0.05f);
+    const float t = std::clamp(m_state.mantleTime / duration, 0.0f, 1.0f);
+
+    // Up first, then over. Doing both at once slides the body through the corner of the ledge,
+    // which is what a straight line between two points looks like when there is a solid between
+    // them. Rising early and stepping across late is also what the movement actually is.
+    const float rise = glm::smoothstep(0.0f, 0.65f, t);
+    const float across = glm::smoothstep(0.35f, 1.0f, t);
+
+    glm::vec3 position = m_state.mantleFrom;
+    position.y = glm::mix(m_state.mantleFrom.y, m_state.mantleTo.y, rise);
+    position.x = glm::mix(m_state.mantleFrom.x, m_state.mantleTo.x, across);
+    position.z = glm::mix(m_state.mantleFrom.z, m_state.mantleTo.z, across);
+
+    m_prevPosition = m_state.position;
+    m_character.SetPosition(position);
+    m_character.SetLinearVelocity(glm::vec3(0.0f));
+    m_state.position = position;
+    // The velocity reported is what the climb is actually doing, so the body leans and the camera
+    // bobs as if it were moving, which it is.
+    m_state.velocity = dt > 1e-5f ? (position - m_prevPosition) / dt : glm::vec3(0.0f);
+    m_state.grounded = false;
+    m_state.fallPeakSpeed = 0.0f;
+    m_state.timeSinceGrounded = 0.0f;
+
+    if (t >= 1.0f)
+    {
+        m_state.mantling = false;
+        m_state.velocity = glm::vec3(0.0f);
+        m_state.grounded = true;
+    }
+}
+
 void PlayerController::Step(const PlayerInput& input, float dt)
 {
     if (!m_initialized || dt <= 0.0f)
@@ -185,6 +292,15 @@ void PlayerController::Step(const PlayerInput& input, float dt)
         m_state.grounded = true;
         m_state.fallPeakSpeed = 0.0f;
         m_state.timeSinceGrounded = 0.0f;
+        UpdateStance(input, dt);
+        return;
+    }
+
+    // A climb is a fixed path, not a simulation. Nothing below runs while one is in progress: the
+    // player has committed, which is the cost of the shortcut.
+    if (m_state.mantling)
+    {
+        StepMantle(dt);
         UpdateStance(input, dt);
         return;
     }
@@ -290,6 +406,33 @@ void PlayerController::Step(const PlayerInput& input, float dt)
         const float gravity =
             kEarthGravity * (verticalVelocity < 0.0f ? m_config.fallGravityScale : m_config.gravityScale);
         verticalVelocity -= gravity * dt;
+    }
+
+    // --- Mantle -------------------------------------------------------------------------------------
+    // Checked before the jump and on the same button. Pressing jump at a ledge you could climb
+    // should climb it rather than bouncing you off the front of it, and a separate key for climbing
+    // is a key nobody presses.
+    //
+    // It works in the air too, so running at a wall and jumping catches the top, which is both what
+    // people try and what makes the movement feel like it belongs to a body.
+    if (m_state.jumpBufferTimer > 0.0f && m_state.alive)
+    {
+        glm::vec3 target{0.0f};
+        if (FindMantle(input, target))
+        {
+            m_state.mantling = true;
+            m_state.mantleTime = 0.0f;
+            m_state.mantleFrom = m_state.position;
+            m_state.mantleTo = target;
+            const float height = std::max(target.y - m_state.position.y, 0.0f);
+            const float reachedFraction =
+                std::clamp(height / std::max(m_config.mantleMaxHeight, 0.01f), 0.0f, 1.0f);
+            m_state.mantleDuration =
+                glm::mix(m_config.mantleSecondsLow, m_config.mantleSecondsHigh, reachedFraction);
+            m_state.jumpBufferTimer = 0.0f;
+            StepMantle(dt);
+            return;
+        }
     }
 
     // --- Jump ---------------------------------------------------------------------------------------
