@@ -385,9 +385,9 @@ void PlayerBody::UpdatePosture(const PlayerState& state, const PlayerView& view,
         std::clamp(speed * m_config.leanPerSpeed, 0.0f, m_config.maxLean) * (state.grounded ? 1.0f : 0.3f);
     m_lean = SmoothTowards(m_lean, targetLean, m_config.responsiveness * 0.5f, dt);
 
-    // Stride phase advances with distance travelled, so the legs stay in step with actual motion
-    // rather than drifting against it as speed changes.
-    m_stridePhase = state.strideDistance / std::max(m_config.strideLength, 0.05f);
+    // The walk cycle comes from the simulation, not from a second clock kept here. The camera dip
+    // runs off the same value, so the head drops exactly as a foot lands.
+    m_stridePhase = state.stridePhase;
 
     m_pose.ResetToBind(m_skeleton);
 
@@ -544,69 +544,151 @@ void PlayerBody::UpdateArms(const PlayerState& state, const PlayerView& view, Ph
 void PlayerBody::UpdateLegs(const PlayerState& state, const PlayerView& view,
                             const PlayerConfig& playerConfig, PhysicsWorld& physics, float dt)
 {
-    (void)playerConfig;
     const glm::vec3 flatVelocity{state.velocity.x, 0.0f, state.velocity.z};
     const float speed = glm::length(flatVelocity);
-    const glm::vec3 moveDirection = speed > 0.05f ? flatVelocity / speed : glm::vec3(0.0f);
+    const bool travelling = speed > 0.05f;
+    const glm::vec3 travel = travelling ? flatVelocity / speed : glm::vec3(0.0f);
 
-    const float phase = m_stridePhase * glm::two_pi<float>();
     const glm::vec3 facing{std::sin(m_bodyYaw), 0.0f, -std::cos(m_bodyYaw)};
+    const glm::vec3 right{std::cos(m_bodyYaw), 0.0f, std::sin(m_bodyYaw)};
     const glm::quat bodyRotation = BodyRotation();
-
-    // Prone trails the legs out behind; crouching keeps the feet under the hips, which is what
-    // makes it read as a squat rather than a lunge.
     const float legSpan = m_rig.upperLegLength + m_rig.lowerLegLength;
-    const glm::vec3 stanceFootOffset = -facing * (m_pose_blend.footBackRatio * legSpan);
 
-    // Knees bend towards the body's front while upright. Once the pelvis is laid flat that axis
-    // points at the sky, which folds the legs upwards, so the pole is blended back down towards the
-    // ground as the body goes prone.
     const glm::vec3 pelvisForward =
         glm::normalize(glm::vec3(m_pose.Global(m_rig.pelvis) * glm::vec4(0.0f, 0.0f, -1.0f, 0.0f)));
-    const glm::vec3 kneePole = glm::normalize(
-        glm::mix(pelvisForward, glm::vec3(0.0f, -1.0f, 0.0f), m_flatness) + glm::vec3(1e-4f));
 
-    // Crawling: the legs push on the opposite beat to the hands.
+    // A foot on the ground stays where it is, in world space, while the body walks past it. That is
+    // the whole trick: swinging the foot around the hip on a sine wave, as this used to, slides it
+    // backwards under the character at several times walking pace, which is what made every
+    // direction of travel look like skating. Strafing was worst, because the hips can only turn so
+    // far towards the way you are going, so the sliding ran diagonally across the stride.
+    const float stanceShare = std::clamp(playerConfig.StanceFraction(speed), 0.2f, 0.9f);
+    const float stride = playerConfig.StrideLength(speed);
+    // Below a slow walk there is no cycle worth playing, so the feet simply stand under the hips.
+    const float gait = std::clamp((m_gaitWeight - 0.10f) / 0.30f, 0.0f, 1.0f);
+    const bool walking = gait > 0.0f && travelling;
+
+    // Crawling has its own cycle: a knee draws up and out to the side, then extends to push. It
+    // runs opposite the hands, so the body reads as pulling with one arm and pushing with the
+    // opposite leg.
     const float crawlPhase =
         state.strideDistance / std::max(m_config.crawlCycleLength, 0.05f) * glm::two_pi<float>();
 
     for (int side = 0; side < 2; ++side)
     {
         const glm::vec3 hip = m_pose.GlobalPosition(m_rig.upperLeg[side]);
-        const float footPhase = phase + (side == kLeft ? 0.0f : glm::pi<float>());
-
-        // Swing the foot forward and back along the direction of travel, lifting it on the forward
-        // half of the cycle.
-        const float reach = std::cos(footPhase) * m_config.strideLength * 0.5f * m_gaitWeight;
-        const float lift = std::max(0.0f, std::sin(footPhase)) * m_config.stepHeight * m_gaitWeight;
-
-        // Stance width: a crouch plants the feet wider, prone brings them together.
-        const glm::vec3 right{std::cos(m_bodyYaw), 0.0f, std::sin(m_bodyYaw)};
         const float sideSign = side == kLeft ? -1.0f : 1.0f;
         const glm::vec3 spread =
             right * (sideSign * (m_pose_blend.footSpread - 1.0f) * Ratio::kHipHalfWidth * m_rig.height);
+        // Where this foot would stand if the player were not going anywhere.
+        const glm::vec3 rest = hip - facing * (m_pose_blend.footBackRatio * legSpan) + spread;
 
-        // While crawling the legs drive fore and aft against the hands rather than stepping.
-        const float crawlDrive =
-            std::cos(crawlPhase + (side == kLeft ? glm::pi<float>() : 0.0f)) * m_config.crawlLegPush *
-            m_gaitWeight * m_flatness;
+        FootState& foot = m_feet[static_cast<size_t>(side)];
+        const float cycle = glm::fract(m_stridePhase + (side == kLeft ? 0.0f : 0.5f));
+        const bool inSwing = walking && cycle >= stanceShare;
 
-        glm::vec3 target = hip + moveDirection * reach + stanceFootOffset + spread + facing * crawlDrive;
-        target.y = view.renderPosition.y + m_rig.ankleHeight + lift;
+        glm::vec3 target = rest;
+        float lift = 0.0f;
+        if (walking)
+        {
+            // Half a stance ahead of the hip, so the foot lands as far in front as it will end up
+            // behind. The step is then symmetric about the moment the hip passes over it, which is
+            // also the moment the leg has the least reaching to do.
+            const float lead = stride * stanceShare * 0.5f;
+
+            if (inSwing && !foot.inSwing)
+            {
+                foot.swingFrom = foot.plant;
+            }
+            else if (!inSwing && foot.inSwing)
+            {
+                // Planted where the step was aimed, not where the foot had got to. Using the
+                // current position instead landed it short, because the smoothing lags a target
+                // moving at twice walking pace, and the foot then spent the whole stance trailing
+                // further behind the hip than the leg could reach.
+                foot.plant = rest + travel * lead;
+            }
+
+            if (inSwing)
+            {
+                const float t = (cycle - stanceShare) / (1.0f - stanceShare);
+                // The landing spot is worked out afresh every frame rather than fixed at lift-off,
+                // so changing direction mid-step puts the foot down where you are going now.
+                const float remaining = stride * (1.0f - stanceShare) * (1.0f - t);
+                const glm::vec3 landing = rest + travel * (remaining + lead);
+                target = glm::mix(foot.swingFrom, landing, glm::smoothstep(0.0f, 1.0f, t));
+                lift = std::sin(t * glm::pi<float>()) * m_config.stepHeight;
+            }
+            else
+            {
+                target = foot.plant;
+            }
+            target = glm::mix(rest, target, gait);
+        }
+        else
+        {
+            foot.plant = rest;
+        }
+        foot.inSwing = inSwing;
+
+        // Crawling replaces the step entirely as the body goes flat: both feet stay down and the
+        // legs work like a frog kick, alternately drawing up and pushing back.
+        if (m_flatness > 0.001f)
+        {
+            const float drawn =
+                (std::cos(crawlPhase + (side == kLeft ? glm::pi<float>() : 0.0f)) * 0.5f + 0.5f) *
+                m_gaitWeight;
+            const float back = glm::mix(0.96f, 0.56f, drawn) * legSpan;
+            const glm::vec3 crawlTarget =
+                hip - facing * back +
+                right * (sideSign * drawn * m_config.crawlLegDraw * legSpan) + spread;
+            target = glm::mix(target, crawlTarget, m_flatness);
+            lift *= 1.0f - m_flatness;
+        }
 
         // Trace for the real ground under the foot so it lands on stairs and slopes instead of
         // hovering at the character's own base height.
-        const glm::vec3 traceStart = target + glm::vec3(0.0f, 0.6f, 0.0f);
-        const RayHit hit = physics.RayCast(traceStart, glm::vec3(0.0f, -1.0f, 0.0f), 1.4f);
-        if (hit)
+        const glm::vec3 traceStart{target.x, view.renderPosition.y + 0.9f, target.z};
+        const RayHit hit = physics.RayCast(traceStart, glm::vec3(0.0f, -1.0f, 0.0f), 2.0f);
+        target.y = (hit ? hit.position.y : view.renderPosition.y) + m_rig.ankleHeight + lift;
+
+        // Never ask for a foot the leg cannot reach. With the hips at standing height a leg is
+        // almost straight, so there is very little room to reach forward or back; asking for more
+        // makes the IK stretch to its limit and the foot gets dragged along the ground for the rest
+        // of the stance. Pulling the target in instead turns the overrun into a short slip as the
+        // stance ends, which is what happens to a real foot that has run out of leg.
+        // The clamp is horizontal only: the foot has to stay on the ground it is standing on, so
+        // pulling it in towards the hip in three dimensions would lift it into the air instead.
+        const float drop = hip.y - target.y;
+        const float maxReach = legSpan * m_config.stepReachMargin;
+        const float maxHorizontal = std::sqrt(std::max(maxReach * maxReach - drop * drop, 0.0f));
+        const glm::vec2 offset{target.x - hip.x, target.z - hip.z};
+        const float horizontal = glm::length(offset);
+        if (horizontal > maxHorizontal)
         {
-            target.y = hit.position.y + m_rig.ankleHeight + lift;
+            const float scale = maxHorizontal / std::max(horizontal, 1e-4f);
+            target.x = hip.x + offset.x * scale;
+            target.z = hip.z + offset.y * scale;
+            // The foot has slipped, so this is where it now stands.
+            if (!inSwing)
+            {
+                foot.plant = target;
+            }
         }
 
-        FootState& foot = m_feet[static_cast<size_t>(side)];
-        // Smoothing hides the discontinuity when the trace steps from one surface to another.
-        foot.position = SmoothTowards(foot.position, target, m_config.footPlantSmoothing, dt);
-        foot.planted = lift < 0.01f;
+        // Smoothing hides the discontinuity when the trace steps from one surface to another. A
+        // planted foot converges to a fixed point, so this costs it nothing.
+        foot.position = SmoothTowards(
+            foot.position, target, inSwing ? m_config.footSwingSmoothing : m_config.footPlantSmoothing, dt);
+        foot.planted = !inSwing;
+
+        // Knees bend towards the body's front while upright. Once the pelvis is laid flat that axis
+        // points at the sky, which folds the legs upwards, so the pole swings out to the side and
+        // down: that is the direction a knee actually goes when you draw it up to crawl.
+        const glm::vec3 pronePole =
+            glm::normalize(right * (sideSign * 0.78f) + glm::vec3(0.0f, -0.62f, 0.0f));
+        const glm::vec3 kneePole =
+            glm::normalize(glm::mix(pelvisForward, pronePole, m_flatness) + glm::vec3(1e-4f));
 
         // Limb lengths are constant in every stance; the knee bend is what absorbs a lowered hip.
         const TwoBoneIKResult ik = SolveTwoBoneIK(hip, foot.position, kneePole, m_rig.upperLegLength,

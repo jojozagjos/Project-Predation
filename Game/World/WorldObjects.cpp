@@ -4,6 +4,7 @@
 #include "Engine/Render/Primitives.h"
 #include "Engine/Scene/Scene.h"
 #include "Game/Interaction/InteractionSystem.h"
+#include "Game/Items/ItemAppearance.h"
 
 #include <glm/gtc/constants.hpp>
 #include <glm/gtc/quaternion.hpp>
@@ -25,30 +26,6 @@ Transform MakeTransform(const glm::vec3& position, float yaw)
     transform.position = position;
     transform.rotation = glm::angleAxis(yaw, glm::vec3(0.0f, 1.0f, 0.0f));
     return transform;
-}
-
-Material MaterialFor(const ItemDefinition& definition)
-{
-    Material material;
-    material.baseColor = definition.color;
-    material.roughness = definition.roughness;
-    material.metallic = definition.metallic;
-    material.emissive = definition.color * definition.emissive;
-    return material;
-}
-
-MeshData MeshFor(const ItemDefinition& definition)
-{
-    switch (definition.shape)
-    {
-    case ItemShape::Cylinder:
-        return Primitives::Cylinder(definition.size.x * 0.5f, definition.size.y, 16);
-    case ItemShape::Sphere:
-        return Primitives::Sphere(definition.size.x * 0.5f, 16, 12);
-    case ItemShape::Box:
-    default:
-        return Primitives::Box(definition.size);
-    }
 }
 
 } // namespace
@@ -222,11 +199,11 @@ int WorldObjects::SpawnPickup(Scene& scene, MeshLibrary& meshes, PhysicsWorld& p
     pickup.item = item;
     pickup.count = count;
 
-    const MeshHandle mesh = meshes.Upload(MeshFor(*definition), "item_" + definition->key);
+    const MeshHandle mesh = meshes.Upload(ItemMesh(*definition), "item_" + definition->key);
     Transform transform;
     transform.position = position;
     pickup.entity = scene.CreateMeshEntity("pickup_" + definition->key, transform, mesh,
-                                           MaterialFor(*definition));
+                                           ItemMaterial(*definition));
     // Dropped items are dynamic so they settle naturally rather than floating where they were let go.
     pickup.body = physics.CreateBox(definition->size * 0.5f, transform, BodyMotion::Dynamic,
                                     std::max(definition->mass, 0.01f) * 400.0f);
@@ -267,6 +244,18 @@ int WorldObjects::SpawnPickup(Scene& scene, MeshLibrary& meshes, PhysicsWorld& p
     return index;
 }
 
+void WorldObjects::Despawn(Pickup& pickup, Scene& scene, PhysicsWorld& physics,
+                           InteractionSystem& interactions)
+{
+    interactions.Unregister(pickup.entity);
+    physics.DestroyBody(pickup.body);
+    scene.Destroy(pickup.entity);
+    pickup.alive = false;
+    pickup.item = kInvalidItem;
+    pickup.count = 0;
+    pickup.body = BodyHandle{};
+}
+
 bool WorldObjects::ConsumePickup(int index, Scene& scene, PhysicsWorld& physics,
                                  InteractionSystem& interactions)
 {
@@ -275,12 +264,7 @@ bool WorldObjects::ConsumePickup(int index, Scene& scene, PhysicsWorld& physics,
     {
         return false;
     }
-    interactions.Unregister(pickup->entity);
-    physics.DestroyBody(pickup->body);
-    scene.Destroy(pickup->entity);
-    pickup->alive = false;
-    pickup->item = kInvalidItem;
-    pickup->count = 0;
+    Despawn(*pickup, scene, physics, interactions);
     return true;
 }
 
@@ -309,6 +293,33 @@ void WorldObjects::Update(Scene& scene, PhysicsWorld& physics, InteractionSystem
         }
         // Kinematic movement rather than teleporting, so the panel shoves what is in its way.
         physics.MoveKinematic(door.body, transform, dt);
+    }
+
+    // Dropped items are dynamic bodies, so their meshes have to follow the simulation. Without this
+    // a dropped item's collider tumbled away while the thing you could see stayed hanging in the
+    // air where you let go of it.
+    //
+    // This is also the single place a client would instead apply transforms sent by the host, so
+    // keep it as the only route from a pickup's body to its visible transform.
+    for (Pickup& pickup : m_pickups)
+    {
+        if (!pickup.alive || !pickup.body.IsValid() || !physics.IsActive(pickup.body))
+        {
+            continue;
+        }
+        Transform* transform = scene.GetTransform(pickup.entity);
+        if (transform == nullptr)
+        {
+            continue;
+        }
+        *transform = physics.GetTransform(pickup.body);
+
+        // Anything that has fallen out of the level is gone; leaving it costs a body and an
+        // interactable for something nobody can ever reach.
+        if (transform->position.y < -25.0f)
+        {
+            Despawn(pickup, scene, physics, interactions);
+        }
     }
 
     // Keep the prompt honest about what using it will do.

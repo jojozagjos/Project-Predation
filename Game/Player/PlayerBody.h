@@ -60,9 +60,15 @@ public:
     struct Config
     {
         // Gait
-        float strideLength = 1.55f;   // metres per full two-step cycle
-        float stepHeight = 0.14f;     // how far a swinging foot lifts
+        float stepHeight = 0.14f; // how far a swinging foot lifts
         float footPlantSmoothing = 22.0f;
+        // A swinging foot follows an already-smooth arc, so it tracks its target almost exactly. It
+        // has to: any lag here lands the foot short of where the step was aimed, and it spends the
+        // stance catching up, which is a visible skid at every touchdown.
+        float footSwingSmoothing = 70.0f;
+        // How much of the reachable leg length a step is allowed to use. Going right to the limit
+        // leaves the knee locked straight at the end of every stance, which reads as stiff.
+        float stepReachMargin = 0.99f;
         float hipSwayAmount = 0.035f;
         float hipBobAmount = 0.030f;
 
@@ -113,7 +119,7 @@ public:
         float crawlReach = 0.30f;      // how far the hands swing fore and aft
         float crawlLift = 0.10f;       // how far a hand lifts while swinging forward
         float crawlHandForward = 0.42f; // where the hands plant relative to the shoulders
-        float crawlLegPush = 0.16f;     // how much the legs drive on the opposite beat
+        float crawlLegDraw = 0.40f;     // how far a knee swings out to the side as it is drawn up
 
         // Leaning to peek round cover.
         float leanAngleDegrees = 16.0f;
@@ -180,8 +186,10 @@ private:
 
     struct FootState
     {
-        glm::vec3 position{0.0f};
-        glm::vec3 plantPosition{0.0f};
+        glm::vec3 position{0.0f};  // smoothed, and what actually gets drawn
+        glm::vec3 plant{0.0f};     // the world point this foot is standing on
+        glm::vec3 swingFrom{0.0f}; // where the current step started
+        bool inSwing = false;
         bool planted = true;
     };
 

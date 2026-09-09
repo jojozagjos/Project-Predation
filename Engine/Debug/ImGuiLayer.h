@@ -2,6 +2,7 @@
 
 #include <bgfx/bgfx.h>
 
+#include <cstdint>
 #include <string>
 
 union SDL_Event;
@@ -30,6 +31,11 @@ public:
     bool WantCaptureKeyboard() const;
     bool WantCaptureMouse() const;
     bool WantTextInput() const;
+
+    // How this backend packs a bgfx texture into an ImTextureID, so game UI can draw its own render
+    // targets without knowing the encoding. Zero is ImGui's "no texture", hence the offset. Typed
+    // as uint64_t so imgui.h stays out of the engine headers; it is ImTextureID's own type.
+    static uint64_t TextureId(bgfx::TextureHandle handle);
 
 private:
     void RenderDrawData(ImDrawData* drawData);

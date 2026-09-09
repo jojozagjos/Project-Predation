@@ -66,6 +66,10 @@ struct PlayerState
 
     // Distance travelled on foot, used to drive stride-phase effects such as head bob.
     float strideDistance = 0.0f;
+    // Where in the two-step walk cycle the player is, wrapped to [0, 1). Both the camera dip and
+    // the body's feet run off this one value, so the head drops exactly when a foot lands rather
+    // than on a cycle of its own that slowly drifts out of step with the legs.
+    float stridePhase = 0.0f;
     // Smoothed lean, -1 to +1. Simulated rather than presentation, so it can later be blocked by
     // geometry and read by the creature's line of sight.
     float leanAmount = 0.0f;
@@ -118,9 +122,27 @@ struct PlayerConfig
     float landingDipPerSpeed = 0.012f;
     float landingDipMax = 0.20f;
     float landingRecoverSpeed = 8.0f;
-    float bobAmount = 0.030f;
-    float bobStrideLength = 1.55f; // metres per full bob cycle
-    float bobSprintScale = 1.35f;
+    // The head drops as each foot lands, twice per cycle, and never rises above standing height.
+    // That is what walking really does to your eyeline, and it is also what gives the legs room:
+    // with the hips at standing height a leg is almost straight, so without a dip a planted foot
+    // cannot be more than a few centimetres from the hip before the leg runs out of length.
+    float bobAmount = 0.055f;      // how far the eye dips at each footfall
+    // A constant lowering while moving, on top of the footfall dip. Standing still the legs are
+    // straight and the character stands tall; walking, the knees soften and the hips come down.
+    // That is both what people do and what gives the legs the room to reach out and plant a step.
+    float bobWalkLower = 0.055f;
+    float bobSprintScale = 1.8f;   // deeper at speed, as a real gait is
+
+    // --- Stride ---
+    // Metres of travel per full two-step cycle, growing with speed: a walk takes short steps, a run
+    // takes long ones. Cadence would otherwise go up with speed alone and the legs would windmill.
+    float strideLengthBase = 0.75f;
+    float strideLengthPerSpeed = 0.22f;
+    float strideLengthMax = 2.00f;
+    // Share of the cycle each foot spends on the ground, from a walk to a run. Below 0.5 the two
+    // stances no longer overlap, which is what makes a run a run.
+    float stanceFractionWalk = 0.56f;
+    float stanceFractionRun = 0.44f;
 
     // --- Leaning ---
     float leanAngleDegrees = 16.0f; // camera roll at full lean
@@ -141,6 +163,11 @@ struct PlayerConfig
 
     float HeightForStance(PlayerStance stance) const;
     float EyeHeightForStance(PlayerStance stance) const;
+    // Metres per full two-step cycle at a given speed. Longer steps at speed rather than a faster
+    // cadence, which is what people actually do.
+    float StrideLength(float speed) const;
+    // Share of the cycle a foot is on the ground, blending from a walk towards a run.
+    float StanceFraction(float speed) const;
     float SpeedForStance(PlayerStance stance, bool sprint, bool walk) const;
 };
 

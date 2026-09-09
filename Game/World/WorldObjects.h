@@ -93,6 +93,8 @@ private:
     int AddDoor(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, InteractionSystem& interactions,
                 const glm::vec3& hinge, float closedYaw, float openYaw, const glm::vec3& panelSize,
                 const std::string& name, bool registerInteractable);
+    // Removes a pickup from the world, whether it was taken or fell out of the level.
+    void Despawn(Pickup& pickup, Scene& scene, PhysicsWorld& physics, InteractionSystem& interactions);
 
     std::vector<Door> m_doors;
     std::vector<Pickup> m_pickups;

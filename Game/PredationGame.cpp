@@ -4,6 +4,7 @@
 #include "Engine/Core/Log.h"
 #include "Engine/Core/Paths.h"
 #include "Engine/Debug/DebugCategories.h"
+#include "Engine/Debug/ImGuiLayer.h"
 #include "Engine/Render/DebugDraw.h"
 #include "Engine/Render/Primitives.h"
 #include "Game/World/TestMap.h"
@@ -70,6 +71,7 @@ bool PredationGame::OnInit(Application& app)
     m_body.Build(m_scene, app.GetMeshes(), m_player.Config());
 
     m_items.LoadFromFile(Paths::AssetsRoot() / "Data" / "items.json");
+    m_itemIcons.Build(m_items, app.GetMeshes(), app.GetRenderer());
     m_world.Build(m_scene, app.GetMeshes(), app.GetPhysics(), m_interactions, m_items);
     app.GetPhysics().OptimizeBroadPhase();
 
@@ -350,6 +352,19 @@ void PredationGame::RegisterCommands()
         },
         "give <key> [count]");
 
+    console.RegisterCommand(
+        "move", "Drive the player from the console, for inspecting animation: move <x> <y> (-1..1)",
+        [this](const std::vector<std::string>& args)
+        {
+            m_debugMove = args.size() >= 3 ? glm::vec2(std::strtof(args[1].c_str(), nullptr),
+                                                       std::strtof(args[2].c_str(), nullptr))
+                                           : glm::vec2(0.0f);
+        },
+        "move <x> <y>");
+
+    console.RegisterCommand("drop", "Drop the selected item in front of the player",
+                            [this](const std::vector<std::string>&) { DropSelected(); });
+
     console.RegisterCommand("inventory", "Open or close the inventory panel",
                             [this](const std::vector<std::string>&)
                             {
@@ -394,6 +409,7 @@ void PredationGame::RegisterCommands()
 
 void PredationGame::OnShutdown()
 {
+    m_itemIcons.Shutdown();
     ClearProps();
     m_body.Destroy(m_scene);
     m_player.Shutdown();
@@ -507,6 +523,8 @@ PlayerInput PredationGame::BuildPlayerInput()
                     (input.IsActionDown("move_back") ? 1.0f : 0.0f);
     result.move.x = (input.IsActionDown("move_right") ? 1.0f : 0.0f) -
                     (input.IsActionDown("move_left") ? 1.0f : 0.0f);
+    // Console-driven movement, so animation can be inspected in a headless capture.
+    result.move += m_debugMove;
 
     // The latch carries a press that landed between two fixed ticks.
     result.jump = m_jumpLatch;
@@ -937,6 +955,12 @@ void PredationGame::SyncDynamicProps()
 void PredationGame::OnRender()
 {
     Application& app = *m_app;
+
+    // Inventory icons are drawn into their own offscreen target before the world is. It happens on
+    // one frame only, because items do not change; the reserved view ids sort ahead of the UI that
+    // samples the result.
+    m_itemIcons.Render(app.GetSceneRenderer(), app.GetMeshes());
+
     const glm::vec3 viewPosition = m_cameraMode == CameraMode::Fly ? m_camera.position : m_player.View().eyePosition;
     app.GetSceneRenderer().Draw(Renderer::kViewMain, m_scene, app.GetMeshes(), viewPosition);
     DrawDebugOverlays();
@@ -1073,8 +1097,9 @@ void PredationGame::DrawPlayerPanel()
         ImGui::SliderFloat("Landing dip", &config.landingDipPerSpeed, 0.0f, 0.05f, "%.4f m per m/s");
         ImGui::SliderFloat("Landing dip max", &config.landingDipMax, 0.0f, 0.6f, "%.2f m");
         ImGui::SliderFloat("Landing recovery", &config.landingRecoverSpeed, 1.0f, 25.0f, "%.1f");
-        ImGui::SliderFloat("Bob amount", &config.bobAmount, 0.0f, 0.12f, "%.3f m");
-        ImGui::SliderFloat("Bob stride", &config.bobStrideLength, 0.5f, 4.0f, "%.2f m");
+        ImGui::SliderFloat("Footfall dip", &config.bobAmount, 0.0f, 0.16f, "%.3f m");
+        ImGui::SliderFloat("Walk lower", &config.bobWalkLower, 0.0f, 0.16f, "%.3f m");
+        ImGui::SliderFloat("Dip at speed", &config.bobSprintScale, 1.0f, 3.0f, "%.2f x");
         ImGui::SliderFloat("Max pitch", &config.maxPitchDegrees, 45.0f, 89.9f, "%.1f deg");
     }
 
@@ -1093,8 +1118,12 @@ void PredationGame::DrawPlayerPanel()
         {
             m_body.SetVisible(m_scene, visible);
         }
-        ImGui::SliderFloat("Stride length", &body.strideLength, 0.6f, 3.0f, "%.2f m");
+        ImGui::SliderFloat("Stride base", &config.strideLengthBase, 0.4f, 2.0f, "%.2f m");
+        ImGui::SliderFloat("Stride per m/s", &config.strideLengthPerSpeed, 0.0f, 0.6f, "%.3f m");
+        ImGui::SliderFloat("Stance walk", &config.stanceFractionWalk, 0.4f, 0.85f, "%.2f");
+        ImGui::SliderFloat("Stance run", &config.stanceFractionRun, 0.3f, 0.7f, "%.2f");
         ImGui::SliderFloat("Step height", &body.stepHeight, 0.0f, 0.4f, "%.3f m");
+        ImGui::SliderFloat("Step reach", &body.stepReachMargin, 0.7f, 0.99f, "%.2f");
         ImGui::SliderFloat("Hip sway", &body.hipSwayAmount, 0.0f, 0.12f, "%.3f m");
         ImGui::SliderFloat("Hip bob", &body.hipBobAmount, 0.0f, 0.12f, "%.3f m");
         ImGui::SliderFloat("Lean per m/s", &body.leanPerSpeed, 0.0f, 6.0f, "%.2f deg");
@@ -1172,7 +1201,7 @@ void PredationGame::DrawHud()
 
             if (const ItemDefinition* definition = m_items.Get(slot.item); definition != nullptr)
             {
-                DrawItemIcon(*definition, kSlotSize);
+                DrawItemIcon(slot.item, kSlotSize);
                 if (slot.count > 1)
                 {
                     const std::string count = std::to_string(slot.count);
@@ -1198,48 +1227,21 @@ void PredationGame::DrawHud()
     }
 }
 
-void PredationGame::DrawItemIcon(const ItemDefinition& definition, float boxSize) const
+void PredationGame::DrawItemIcon(ItemId item, float boxSize) const
 {
-    ImDrawList* list = ImGui::GetWindowDrawList();
-    const ImVec2 origin = ImGui::GetCursorScreenPos();
-    const ImVec2 centre{origin.x + boxSize * 0.5f, origin.y + boxSize * 0.5f};
-
-    // Icons are derived from the item's own definition rather than authored, so a new entry in
-    // items.json is immediately distinguishable without waiting for art.
-    const ImU32 fill = ImGui::ColorConvertFloat4ToU32(
-        ImVec4(definition.color.r * 1.6f, definition.color.g * 1.6f, definition.color.b * 1.6f, 1.0f));
-    const ImU32 edge = ImGui::ColorConvertFloat4ToU32(
-        ImVec4(definition.color.r * 2.4f + 0.15f, definition.color.g * 2.4f + 0.15f,
-               definition.color.b * 2.4f + 0.15f, 1.0f));
-
-    // Keep the item's real proportions, scaled to fit the slot.
-    const float longest = std::max({definition.size.x, definition.size.y, definition.size.z, 0.01f});
-    const float scale = boxSize * 0.52f / longest;
-    const float halfWidth = std::max(definition.size.x * scale * 0.5f, 3.0f);
-    const float halfHeight = std::max(definition.size.y * scale * 0.5f, 3.0f);
-
-    switch (definition.shape)
+    const ItemIcons::Icon* icon = m_itemIcons.Find(item);
+    if (icon == nullptr || !m_itemIcons.IsReady())
     {
-    case ItemShape::Sphere:
-        list->AddCircleFilled(centre, std::max(halfWidth, 4.0f), fill, 20);
-        list->AddCircle(centre, std::max(halfWidth, 4.0f), edge, 20, 1.5f);
-        break;
-
-    case ItemShape::Cylinder:
-        list->AddRectFilled({centre.x - halfWidth, centre.y - halfHeight},
-                            {centre.x + halfWidth, centre.y + halfHeight}, fill, halfWidth * 0.8f);
-        list->AddRect({centre.x - halfWidth, centre.y - halfHeight},
-                      {centre.x + halfWidth, centre.y + halfHeight}, edge, halfWidth * 0.8f, 0, 1.5f);
-        break;
-
-    case ItemShape::Box:
-    default:
-        list->AddRectFilled({centre.x - halfWidth, centre.y - halfHeight},
-                            {centre.x + halfWidth, centre.y + halfHeight}, fill, 2.0f);
-        list->AddRect({centre.x - halfWidth, centre.y - halfHeight},
-                      {centre.x + halfWidth, centre.y + halfHeight}, edge, 2.0f, 0, 1.5f);
-        break;
+        return;
     }
+
+    // Inset a little, so the render's own framing does not touch the slot border.
+    const float inset = boxSize * 0.06f;
+    const ImVec2 origin = ImGui::GetCursorScreenPos();
+    ImGui::GetWindowDrawList()->AddImage(static_cast<ImTextureID>(ImGuiLayer::TextureId(m_itemIcons.Texture())),
+                                        {origin.x + inset, origin.y + inset},
+                                        {origin.x + boxSize - inset, origin.y + boxSize - inset},
+                                        {icon->uv0.x, icon->uv0.y}, {icon->uv1.x, icon->uv1.y});
 }
 
 void PredationGame::DrawInventoryPanel()
@@ -1278,7 +1280,7 @@ void PredationGame::DrawInventoryPanel()
             const ItemDefinition* definition = m_items.Get(slot.item);
             if (definition != nullptr)
             {
-                DrawItemIcon(*definition, kSlotSize);
+                DrawItemIcon(slot.item, kSlotSize);
                 // The count rides on the icon, as it does on the hotbar, so the caption below only
                 // ever has to hold a name.
                 if (slot.count > 1)

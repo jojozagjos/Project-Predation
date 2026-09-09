@@ -25,7 +25,7 @@ static_assert(sizeof(ImDrawVert) == 20, "ImDrawVert layout changed; update the b
 
 ImTextureID ToTextureId(bgfx::TextureHandle handle)
 {
-    return static_cast<ImTextureID>(handle.idx) + 1;
+    return static_cast<ImTextureID>(ImGuiLayer::TextureId(handle));
 }
 
 bgfx::TextureHandle FromTextureId(ImTextureID id)
@@ -44,7 +44,11 @@ bool ImGuiLayer::Init(Window& window, Renderer& renderer, ShaderLibrary& shaders
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
-    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    // Keyboard navigation is deliberately off. With it on, ImGui reports that it wants the
+    // keyboard whenever any window has focus, and the application honours that by blocking game
+    // input; opening the inventory then froze the player where they stood. Every panel here is
+    // driven with the mouse, and the console still receives keys because its text field is an
+    // active item, which claims the keyboard on its own.
     io.BackendFlags |= ImGuiBackendFlags_RendererHasVtxOffset | ImGuiBackendFlags_RendererHasTextures;
     io.BackendRendererName = "predation_bgfx";
 
@@ -131,6 +135,11 @@ void ImGuiLayer::EndFrame()
 {
     ImGui::Render();
     RenderDrawData(ImGui::GetDrawData());
+}
+
+uint64_t ImGuiLayer::TextureId(bgfx::TextureHandle handle)
+{
+    return static_cast<uint64_t>(handle.idx) + 1;
 }
 
 bool ImGuiLayer::WantCaptureKeyboard() const

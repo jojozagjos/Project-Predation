@@ -30,6 +30,11 @@ class Renderer
 public:
     static constexpr bgfx::ViewId kViewMain = 0;
     static constexpr bgfx::ViewId kViewDebug = 1;
+    // A block reserved for rendering into offscreen targets, such as the inventory icon atlas.
+    // bgfx runs views in id order, so anything drawn here is finished before the world is, and long
+    // before the UI that samples it.
+    static constexpr bgfx::ViewId kViewOffscreenFirst = 200;
+    static constexpr bgfx::ViewId kViewOffscreenCount = 48;
     static constexpr bgfx::ViewId kViewUI = 250;
 
     Renderer();

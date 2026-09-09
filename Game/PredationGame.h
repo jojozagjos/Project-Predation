@@ -6,10 +6,12 @@
 #include "Game/Interaction/InteractionSystem.h"
 #include "Game/Items/Inventory.h"
 #include "Game/Items/ItemDatabase.h"
+#include "Game/Items/ItemIcons.h"
 #include "Game/Player/PlayerBody.h"
 #include "Game/Player/PlayerController.h"
 #include "Game/World/WorldObjects.h"
 
+#include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
 
 #include <string>
@@ -52,9 +54,9 @@ private:
     void LeaveHidingSpot();
     void DrawHud();
     void DrawInventoryPanel();
-    // Draws a placeholder icon derived from the item's own shape and colour, so items are
-    // distinguishable at a glance without needing art.
-    void DrawItemIcon(const ItemDefinition& definition, float boxSize) const;
+    // Draws the item as it actually looks, from the offscreen atlas. Falls back to nothing rather
+    // than a stand-in shape: an icon that disagrees with the object is worse than no icon.
+    void DrawItemIcon(ItemId item, float boxSize) const;
     void UpdateMouseCapture();
     // Logs any level geometry that intersects other level geometry. Overlapping static solids read
     // as modelling errors from inside and can shove the player, so the build reports its own.
@@ -73,6 +75,7 @@ private:
     glm::vec3 m_spawnPoint{0.0f, 0.5f, 18.0f};
 
     ItemDatabase m_items;
+    ItemIcons m_itemIcons;
     Inventory m_inventory;
     InteractionSystem m_interactions;
     WorldObjects m_world;
@@ -119,6 +122,7 @@ private:
     // Latched between frames so a press that happens between two ticks is never dropped.
     bool m_jumpLatch = false;
     // Debug stance override, so stances can be inspected without holding a key.
+    glm::vec2 m_debugMove{0.0f};
     bool m_forceCrouch = false;
     bool m_forceProne = false;
     bool m_crouchToggleState = false;

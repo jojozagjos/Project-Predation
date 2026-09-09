@@ -54,17 +54,10 @@ void SceneRenderer::Shutdown()
     m_program = BGFX_INVALID_HANDLE;
 }
 
-void SceneRenderer::Draw(bgfx::ViewId view, const Scene& scene, const MeshLibrary& meshes,
-                         const glm::vec3& cameraPosition)
+// Uniforms that are the same for every mesh in a pass. Split out so the item icon atlas can draw
+// single meshes through the same shader the world uses, rather than approximating them in 2D.
+void SceneRenderer::SetEnvironmentUniforms(const Environment& environment, const glm::vec3& cameraPosition)
 {
-    m_stats = Stats{};
-    if (!bgfx::isValid(m_program))
-    {
-        return;
-    }
-
-    const Environment& environment = scene.GetEnvironment();
-
     // Shader wants the direction *towards* the light, which is the opposite of travel direction.
     const glm::vec3 towardsLight = glm::normalize(-environment.sunDirection);
     const float lightDirection[4] = {towardsLight.x, towardsLight.y, towardsLight.z, 0.0f};
@@ -85,7 +78,10 @@ void SceneRenderer::Draw(bgfx::ViewId view, const Scene& scene, const MeshLibrar
     bgfx::setUniform(m_uFogColor, fogColor);
     bgfx::setUniform(m_uFogParams, fogParams);
     bgfx::setUniform(m_uCameraPosition, cameraPos);
+}
 
+uint64_t SceneRenderer::DrawState() const
+{
     // Primitives are wound counter-clockwise when seen from outside (the glTF convention). A
     // right-handed projection flips that to clockwise in screen space, so the winding to discard is
     // CW. Getting this backwards renders the *insides* of objects: surfaces lit by ambient only and
@@ -96,6 +92,41 @@ void SceneRenderer::Draw(bgfx::ViewId view, const Scene& scene, const MeshLibrar
     {
         state |= BGFX_STATE_PT_LINES;
     }
+    return state;
+}
+
+void SceneRenderer::SubmitMesh(bgfx::ViewId view, const Mesh& mesh, const Material& material,
+                               const glm::mat4& model, uint64_t state)
+{
+    const float baseColor[4] = {material.baseColor.r, material.baseColor.g, material.baseColor.b, 1.0f};
+    const float materialParams[4] = {material.metallic, material.roughness, 0.0f, 0.0f};
+    const float emissive[4] = {material.emissive.r, material.emissive.g, material.emissive.b, 0.0f};
+
+    bgfx::setUniform(m_uBaseColor, baseColor);
+    bgfx::setUniform(m_uMaterialParams, materialParams);
+    bgfx::setUniform(m_uEmissive, emissive);
+
+    bgfx::setTransform(glm::value_ptr(model));
+    bgfx::setVertexBuffer(0, mesh.vertexBuffer);
+    bgfx::setIndexBuffer(mesh.indexBuffer);
+    bgfx::setState(state);
+    bgfx::submit(view, m_program);
+
+    ++m_stats.meshesSubmitted;
+    m_stats.trianglesSubmitted += mesh.indexCount / 3;
+}
+
+void SceneRenderer::Draw(bgfx::ViewId view, const Scene& scene, const MeshLibrary& meshes,
+                         const glm::vec3& cameraPosition)
+{
+    m_stats = Stats{};
+    if (!bgfx::isValid(m_program))
+    {
+        return;
+    }
+
+    SetEnvironmentUniforms(scene.GetEnvironment(), cameraPosition);
+    const uint64_t state = DrawState();
 
     scene.ForEachMeshRenderer(
         [&](Entity, const Transform& transform, const MeshRenderer& renderer)
@@ -105,26 +136,20 @@ void SceneRenderer::Draw(bgfx::ViewId view, const Scene& scene, const MeshLibrar
             {
                 return;
             }
-
-            const Material& material = renderer.material;
-            const float baseColor[4] = {material.baseColor.r, material.baseColor.g, material.baseColor.b, 1.0f};
-            const float materialParams[4] = {material.metallic, material.roughness, 0.0f, 0.0f};
-            const float emissive[4] = {material.emissive.r, material.emissive.g, material.emissive.b, 0.0f};
-
-            bgfx::setUniform(m_uBaseColor, baseColor);
-            bgfx::setUniform(m_uMaterialParams, materialParams);
-            bgfx::setUniform(m_uEmissive, emissive);
-
-            const glm::mat4 model = transform.Matrix();
-            bgfx::setTransform(glm::value_ptr(model));
-            bgfx::setVertexBuffer(0, mesh->vertexBuffer);
-            bgfx::setIndexBuffer(mesh->indexBuffer);
-            bgfx::setState(state);
-            bgfx::submit(view, m_program);
-
-            ++m_stats.meshesSubmitted;
-            m_stats.trianglesSubmitted += mesh->indexCount / 3;
+            SubmitMesh(view, *mesh, renderer.material, transform.Matrix(), state);
         });
+}
+
+void SceneRenderer::DrawOne(bgfx::ViewId view, const Mesh& mesh, const Material& material,
+                            const glm::mat4& model, const Environment& environment,
+                            const glm::vec3& cameraPosition)
+{
+    if (!bgfx::isValid(m_program) || !mesh.IsValid())
+    {
+        return;
+    }
+    SetEnvironmentUniforms(environment, cameraPosition);
+    SubmitMesh(view, mesh, material, model, DrawState());
 }
 
 } // namespace pred

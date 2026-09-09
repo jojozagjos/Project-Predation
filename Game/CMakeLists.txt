@@ -15,6 +15,10 @@ set(PRED_GAME_SOURCES
 
     Items/ItemDatabase.h
     Items/ItemDatabase.cpp
+    Items/ItemAppearance.h
+    Items/ItemAppearance.cpp
+    Items/ItemIcons.h
+    Items/ItemIcons.cpp
     Items/Inventory.h
     Items/Inventory.cpp
 

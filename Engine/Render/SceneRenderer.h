@@ -1,6 +1,7 @@
 #pragma once
 
 #include <bgfx/bgfx.h>
+#include <glm/mat4x4.hpp>
 #include <glm/vec3.hpp>
 
 #include <cstddef>
@@ -11,6 +12,9 @@ namespace pred
 class Scene;
 class MeshLibrary;
 class ShaderLibrary;
+struct Environment;
+struct Material;
+struct Mesh;
 
 // Draws the scene's mesh renderers with a single forward lit pass.
 //
@@ -31,11 +35,22 @@ public:
 
     void Draw(bgfx::ViewId view, const Scene& scene, const MeshLibrary& meshes, const glm::vec3& cameraPosition);
 
+    // Draws one mesh on its own, with an environment supplied by the caller rather than a scene.
+    // The item icon atlas uses this so inventory icons are the real geometry under the real shader,
+    // instead of a hand-drawn 2D stand-in that has to be redrawn for every new item.
+    void DrawOne(bgfx::ViewId view, const Mesh& mesh, const Material& material, const glm::mat4& model,
+                 const Environment& environment, const glm::vec3& cameraPosition);
+
     const Stats& LastStats() const { return m_stats; }
     bool WireframeEnabled() const { return m_wireframe; }
     void SetWireframe(bool enabled) { m_wireframe = enabled; }
 
 private:
+    void SetEnvironmentUniforms(const Environment& environment, const glm::vec3& cameraPosition);
+    uint64_t DrawState() const;
+    void SubmitMesh(bgfx::ViewId view, const Mesh& mesh, const Material& material, const glm::mat4& model,
+                    uint64_t state);
+
     bgfx::ProgramHandle m_program = BGFX_INVALID_HANDLE;
 
     bgfx::UniformHandle m_uBaseColor = BGFX_INVALID_HANDLE;

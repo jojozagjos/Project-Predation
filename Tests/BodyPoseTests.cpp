@@ -1,6 +1,4 @@
 #include "Engine/Animation/IK.h"
-
-#include <glm/matrix.hpp>
 #include "Engine/Physics/PhysicsWorld.h"
 #include "Engine/Scene/Scene.h"
 #include "Game/Player/PlayerBody.h"
@@ -9,8 +7,13 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <glm/common.hpp>
+#include <glm/matrix.hpp>
+
 #include <algorithm>
 #include <cmath>
+#include <string>
+#include <vector>
 
 using namespace pred;
 
@@ -22,15 +25,22 @@ namespace
 
 constexpr float kTick = 1.0f / 60.0f;
 
-// Drives the body directly, with no renderer and no meshes.
+// Runs the real controller and feeds its output to the body, with no renderer and no meshes.
+//
+// It used to fake the state instead: velocity set by hand, position and stride left at zero, the
+// eye parked at standing height. That made every gait test meaningless, because the walk cycle
+// never advanced, and it hid a geometric impossibility: the body anchors itself to the eye, and
+// with the eye at full standing height a leg is exactly long enough to reach the ground straight
+// down and no further. Only the controller's footfall dip gives the legs any room to step, so the
+// controller has to be in the loop.
 struct BodyHarness
 {
     PhysicsWorld physics;
     Scene scene;
     PlayerBody body;
+    PlayerController player;
     PlayerConfig config;
-    PlayerState state;
-    PlayerView view;
+    PlayerInput input;
 
     BodyHarness()
     {
@@ -41,43 +51,63 @@ struct BodyHarness
         physics.OptimizeBroadPhase();
 
         body.BuildForSimulation(config);
-
-        state.grounded = true;
-        state.position = glm::vec3(0.0f);
-        view.renderPosition = glm::vec3(0.0f);
-        view.eyeHeight = config.standEyeHeight;
-        view.eyePosition = glm::vec3(0.0f, config.standEyeHeight, 0.0f);
+        REQUIRE(player.Init(physics, config, {0.0f, 0.05f, 0.0f}));
     }
 
-    ~BodyHarness() { physics.Shutdown(); }
-
-    // One simulation tick. The eye moves with the stance, exactly as PlayerController drives it.
-    // That coupling is not incidental: the body anchors its head to the eye, so feeding a standing
-    // eye height while asking for a crouch describes a posture nobody can adopt, and the resulting
-    // pose is meaningless.
-    void Tick(PlayerStance stance)
+    ~BodyHarness()
     {
-        state.stance = stance;
-        view.eyeHeight = SmoothTowards(view.eyeHeight, config.EyeHeightForStance(stance),
-                                       config.eyeTransitionSpeed, kTick);
-        view.eyePosition = view.renderPosition + glm::vec3(0.0f, view.eyeHeight, 0.0f);
-        body.Update(scene, state, view, config, physics, kTick);
+        player.Shutdown();
+        physics.Shutdown();
     }
 
-    // Long enough for the stance blend to settle.
-    void Settle(PlayerStance stance, int ticks = 240)
+    void Tick()
+    {
+        player.Step(input, kTick);
+        physics.Step(kTick);
+        player.UpdateView(kTick, 1.0f);
+        body.Update(scene, player.State(), player.View(), config, physics, kTick);
+    }
+
+    // Long enough for a stance change or a change of direction to settle.
+    void Settle(int ticks = 240)
     {
         for (int i = 0; i < ticks; ++i)
         {
-            Tick(stance);
+            Tick();
         }
     }
+
+    void SetStance(PlayerStance stance)
+    {
+        input.crouchHeld = stance == PlayerStance::Crouching;
+        input.proneHeld = stance == PlayerStance::Prone;
+    }
+
+    // Moves in a world direction, whatever way the player happens to be facing.
+    void SetTravel(const glm::vec3& direction)
+    {
+        if (glm::length(direction) < 1e-4f)
+        {
+            input.move = glm::vec2(0.0f);
+            return;
+        }
+        const glm::vec3 forward{std::sin(input.yaw), 0.0f, -std::cos(input.yaw)};
+        const glm::vec3 right{std::cos(input.yaw), 0.0f, std::sin(input.yaw)};
+        const glm::vec3 unit = glm::normalize(direction);
+        input.move = glm::vec2(glm::dot(unit, right), glm::dot(unit, forward));
+    }
+
+    const PlayerState& State() const { return player.State(); }
+    const PlayerView& View() const { return player.View(); }
 
     glm::vec3 Bone(BoneIndex index) const { return body.GetPose().GlobalPosition(index); }
     const HumanoidRig& Rig() const { return body.Rig(); }
 
+    // Where a bone sits relative to the player, so a moving character does not swamp the reading.
+    glm::vec3 Local(BoneIndex index) const { return Bone(index) - State().position; }
+
     // Forward is -Z at yaw 0, so a larger forward offset means a more negative z.
-    float ForwardOf(BoneIndex index) const { return -Bone(index).z; }
+    float ForwardOf(BoneIndex index) const { return -Local(index).z; }
 };
 
 } // namespace
@@ -85,7 +115,8 @@ struct BodyHarness
 TEST_CASE("Standing holds the body upright over the feet", "[body][pose]")
 {
     BodyHarness harness;
-    harness.Settle(PlayerStance::Standing);
+    harness.SetStance(PlayerStance::Standing);
+    harness.Settle();
 
     const glm::vec3 pelvis = harness.Bone(harness.Rig().pelvis);
     const glm::vec3 chest = harness.Bone(harness.Rig().chest);
@@ -103,11 +134,13 @@ TEST_CASE("Standing holds the body upright over the feet", "[body][pose]")
 TEST_CASE("Crouching lowers the hips and folds the torso forwards, never backwards", "[body][pose]")
 {
     BodyHarness harness;
-    harness.Settle(PlayerStance::Standing);
+    harness.SetStance(PlayerStance::Standing);
+    harness.Settle();
     const float standingPelvisY = harness.Bone(harness.Rig().pelvis).y;
     const float standingHeadY = harness.Bone(harness.Rig().head).y;
 
-    harness.Settle(PlayerStance::Crouching);
+    harness.SetStance(PlayerStance::Crouching);
+    harness.Settle();
     const glm::vec3 pelvis = harness.Bone(harness.Rig().pelvis);
     const glm::vec3 chest = harness.Bone(harness.Rig().chest);
     const glm::vec3 head = harness.Bone(harness.Rig().head);
@@ -134,10 +167,12 @@ TEST_CASE("Crouching lowers the hips and folds the torso forwards, never backwar
 TEST_CASE("Prone lays the body flat and face down with the legs trailing behind", "[body][pose]")
 {
     BodyHarness harness;
-    harness.Settle(PlayerStance::Standing);
+    harness.SetStance(PlayerStance::Standing);
+    harness.Settle();
     const float standingChestY = harness.Bone(harness.Rig().chest).y;
 
-    harness.Settle(PlayerStance::Prone);
+    harness.SetStance(PlayerStance::Prone);
+    harness.Settle();
     const glm::vec3 pelvis = harness.Bone(harness.Rig().pelvis);
     const glm::vec3 chest = harness.Bone(harness.Rig().chest);
     const glm::vec3 head = harness.Bone(harness.Rig().head);
@@ -173,7 +208,8 @@ TEST_CASE("Prone lays the body flat and face down with the legs trailing behind"
 TEST_CASE("Arms hang clear of the legs", "[body][pose]")
 {
     BodyHarness harness;
-    harness.Settle(PlayerStance::Standing);
+    harness.SetStance(PlayerStance::Standing);
+    harness.Settle();
 
     for (int side = 0; side < 2; ++side)
     {
@@ -190,18 +226,13 @@ TEST_CASE("Arms hang clear of the legs", "[body][pose]")
 TEST_CASE("Strafing turns the hips while the torso stays aimed", "[body][pose]")
 {
     BodyHarness harness;
-    harness.Settle(PlayerStance::Standing);
+    harness.SetStance(PlayerStance::Standing);
+    harness.Settle();
 
     // Looking straight down -Z while travelling to the right. A real person's hips follow where
     // they are going; their chest stays pointed at what they are looking at.
-    harness.view.yaw = 0.0f;
-    harness.state.velocity = glm::vec3(4.0f, 0.0f, 0.0f);
-    harness.state.grounded = true;
-    for (int i = 0; i < 240; ++i)
-    {
-        harness.body.Update(harness.scene, harness.state, harness.view, harness.config, harness.physics,
-                            kTick);
-    }
+    harness.SetTravel(glm::vec3(1.0f, 0.0f, 0.0f));
+    harness.Settle(240);
 
     // The local -Z axis of each bone is where that part of the body faces.
     const auto facingOf = [&](BoneIndex bone)
@@ -220,37 +251,47 @@ TEST_CASE("Strafing turns the hips while the torso stays aimed", "[body][pose]")
 TEST_CASE("Crawling reaches the hands forward and cycles them", "[body][pose]")
 {
     BodyHarness harness;
-    harness.Settle(PlayerStance::Prone);
+    harness.SetStance(PlayerStance::Prone);
+    harness.Settle();
 
-    // Crawl forward. Stride distance is what drives the cycle, so it has to advance.
-    harness.state.velocity = glm::vec3(0.0f, 0.0f, -0.7f);
-    harness.state.grounded = true;
+    harness.SetTravel(glm::vec3(0.0f, 0.0f, -1.0f));
 
-    float minHandForward = 1e9f;
-    float maxHandForward = -1e9f;
+    // Measured against the shoulder, not the world. The body is travelling, so a world-space range
+    // would mostly be reporting how far the character moved.
+    float minReach = 1e9f;
+    float maxReach = -1e9f;
     float highestHand = -1e9f;
+    float minKneeOut = 1e9f;
+    float maxKneeOut = -1e9f;
 
     for (int i = 0; i < 400; ++i)
     {
-        harness.state.strideDistance += 0.7f * kTick;
-        harness.body.Update(harness.scene, harness.state, harness.view, harness.config, harness.physics,
-                            kTick);
+        harness.Tick();
 
+        const glm::vec3 shoulder = harness.Bone(harness.Rig().shoulder[0]);
         const glm::vec3 hand = harness.Bone(harness.Rig().hand[0]);
-        const float forward = -hand.z;
-        minHandForward = std::min(minHandForward, forward);
-        maxHandForward = std::max(maxHandForward, forward);
-        highestHand = std::max(highestHand, hand.y);
+        const float reach = shoulder.z - hand.z; // forward is -Z, so positive means out in front
+        minReach = std::min(minReach, reach);
+        maxReach = std::max(maxReach, reach);
+        highestHand = std::max(highestHand, hand.y - harness.State().position.y);
+
+        // The knee has to swing out to the side and back as the leg is drawn up and pushed. A knee
+        // that only moves fore and aft is the leg sliding, not crawling.
+        const glm::vec3 knee = harness.Bone(harness.Rig().lowerLeg[0]);
+        const float out = knee.x - harness.State().position.x;
+        minKneeOut = std::min(minKneeOut, out);
+        maxKneeOut = std::max(maxKneeOut, out);
     }
 
     // The hand must actually travel fore and aft, which is what pulls the body along. A static
     // hand would mean the crawl is not animating at all.
-    REQUIRE(maxHandForward - minHandForward > 0.15f);
+    REQUIRE(maxReach - minReach > 0.15f);
     // And stay near the ground rather than waving in the air.
     REQUIRE(highestHand < 0.6f);
-
-    // Hands reach out in front of the chest.
-    REQUIRE(maxHandForward > harness.ForwardOf(harness.Rig().chest));
+    // Hands reach out in front of the shoulders, not behind them.
+    REQUIRE(maxReach > 0.2f);
+    // The knees work sideways as well as backwards.
+    REQUIRE(maxKneeOut - minKneeOut > 0.08f);
 }
 
 TEST_CASE("Leaning rolls and shifts the view without moving the feet", "[player][lean]")
@@ -316,17 +357,20 @@ TEST_CASE("Leaning rolls and shifts the view without moving the feet", "[player]
 TEST_CASE("Stance changes blend rather than snapping", "[body][pose]")
 {
     BodyHarness harness;
-    harness.Settle(PlayerStance::Standing);
+    harness.SetStance(PlayerStance::Standing);
+    harness.Settle();
     const float standingPelvisY = harness.Bone(harness.Rig().pelvis).y;
 
     // A single tick must move only part of the way, or the transition would pop.
-    harness.Tick(PlayerStance::Prone);
+    harness.SetStance(PlayerStance::Prone);
+    harness.Tick();
     const float afterOneTick = harness.Bone(harness.Rig().pelvis).y;
     REQUIRE(afterOneTick < standingPelvisY);
     REQUIRE(afterOneTick > standingPelvisY - 0.25f);
 
     // And it must actually arrive.
-    harness.Settle(PlayerStance::Prone);
+    harness.SetStance(PlayerStance::Prone);
+    harness.Settle();
     REQUIRE(harness.Bone(harness.Rig().pelvis).y < 0.45f);
 }
 
@@ -340,16 +384,17 @@ TEST_CASE("Every stance puts the head on the camera", "[body][pose]")
     for (const PlayerStance stance : stances)
     {
         BodyHarness harness;
-        harness.Settle(stance);
+        harness.SetStance(stance);
+        harness.Settle();
 
         const glm::vec3 head = harness.Bone(harness.Rig().head);
         const glm::vec3 pelvis = harness.Bone(harness.Rig().pelvis);
-        const glm::vec3 facing{std::sin(harness.view.yaw), 0.0f, -std::cos(harness.view.yaw)};
+        const glm::vec3 facing{std::sin(harness.View().yaw), 0.0f, -std::cos(harness.View().yaw)};
         const glm::vec3 eye = head + facing * 0.085f + glm::vec3(0.0f, 0.085f, 0.0f);
 
-        INFO("stance " << PlayerStanceName(stance) << " eye " << harness.view.eyeHeight << " head "
+        INFO("stance " << PlayerStanceName(stance) << " eye " << harness.View().eyeHeight << " head "
                        << head.y << " pelvis " << pelvis.y);
-        REQUIRE(glm::distance(eye, harness.view.eyePosition) < 0.01f);
+        REQUIRE(glm::distance(eye, harness.View().eyePosition) < 0.01f);
 
         // And the legs must still be able to reach the ground from wherever that leaves the hips.
         for (int side = 0; side < 2; ++side)
@@ -379,15 +424,16 @@ TEST_CASE("The head stays on the camera through every direction of travel", "[bo
     for (const Case& testCase : cases)
     {
         BodyHarness harness;
-        harness.Settle(PlayerStance::Standing);
-        harness.view.yaw = 0.0f;
-        harness.state.velocity = testCase.velocity;
-        harness.Settle(PlayerStance::Standing, 120);
+        harness.SetStance(PlayerStance::Standing);
+    harness.Settle();
+        harness.SetTravel(testCase.velocity);
+        harness.SetStance(PlayerStance::Standing);
+    harness.Settle(120);
 
         const glm::vec3 head = harness.Bone(harness.Rig().head);
         INFO(testCase.name << ": head at " << head.x << ", " << head.y << ", " << head.z);
-        REQUIRE(std::abs(head.x - harness.view.eyePosition.x) < 0.01f);
-        REQUIRE(std::abs(head.y - (harness.view.eyePosition.y - 0.085f)) < 0.01f);
+        REQUIRE(std::abs(head.x - harness.View().eyePosition.x) < 0.01f);
+        REQUIRE(std::abs(head.y - (harness.View().eyePosition.y - 0.085f)) < 0.01f);
     }
 }
 
@@ -396,10 +442,11 @@ TEST_CASE("Walking backwards keeps the body facing the way the player looks", "[
     // Reversing away from the aim used to spin the character round to face its own heels, because
     // the hips chased the direction of travel rather than the line of it.
     BodyHarness harness;
-    harness.Settle(PlayerStance::Standing);
-    harness.view.yaw = 0.0f;
-    harness.state.velocity = glm::vec3(0.0f, 0.0f, 4.0f); // straight backwards, since forward is -Z
-    harness.Settle(PlayerStance::Standing, 240);
+    harness.SetStance(PlayerStance::Standing);
+    harness.Settle();
+    harness.SetTravel(glm::vec3(0.0f, 0.0f, 4.0f)); // straight backwards, since forward is -Z
+    harness.SetStance(PlayerStance::Standing);
+    harness.Settle(240);
 
     const auto facingOf = [&](BoneIndex bone)
     { return glm::normalize(-glm::vec3(harness.body.GetPose().Global(bone)[2])); };
@@ -408,3 +455,56 @@ TEST_CASE("Walking backwards keeps the body facing the way the player looks", "[
     REQUIRE(-facingOf(harness.Rig().pelvis).z > 0.5f);
     REQUIRE(-facingOf(harness.Rig().chest).z > 0.8f);
 }
+
+TEST_CASE("A foot on the ground stays where it is put", "[body][gait]")
+{
+    // The single thing that separates a walk from a skate. A foot in contact must be still in world
+    // space while the body travels past it; the old cycle swung the foot around the hip on a sine
+    // wave, which slid it backwards along the ground at several times walking pace in every
+    // direction of travel.
+    struct Case
+    {
+        const char* name;
+        glm::vec3 velocity;
+    };
+    const Case cases[] = {{"forwards", {0.0f, 0.0f, -3.4f}},
+                          {"backwards", {0.0f, 0.0f, 3.4f}},
+                          {"strafe right", {3.4f, 0.0f, 0.0f}},
+                          {"diagonal", {2.4f, 0.0f, -2.4f}}};
+
+    for (const Case& testCase : cases)
+    {
+        BodyHarness harness;
+        harness.SetStance(PlayerStance::Standing);
+    harness.Settle();
+        harness.SetTravel(testCase.velocity);
+        harness.SetStance(PlayerStance::Standing);
+    harness.Settle(90); // let the gait reach a steady state
+
+        const float bodyStep = glm::length(glm::vec2(testCase.velocity.x, testCase.velocity.z)) * kTick;
+
+        // Only the ticks where the foot is actually touching the ground count. A swinging foot is
+        // supposed to move; what must not move is one bearing weight.
+        std::vector<float> slips;
+        glm::vec3 previous = harness.Bone(harness.Rig().foot[0]);
+        for (int i = 0; i < 240; ++i)
+        {
+            harness.Tick();
+            const glm::vec3 current = harness.Bone(harness.Rig().foot[0]);
+            if (current.y - harness.State().position.y < harness.Rig().ankleHeight + 0.02f)
+            {
+                slips.push_back(glm::length(glm::vec2(current.x - previous.x, current.z - previous.z)));
+            }
+            previous = current;
+        }
+
+        REQUIRE(slips.size() > 60); // a foot that is never down is not walking
+        std::sort(slips.begin(), slips.end());
+        const float median = slips[slips.size() / 2];
+
+        INFO(testCase.name << ": median movement of a planted foot " << median
+                           << " m/tick against a body step of " << bodyStep);
+        REQUIRE(median < bodyStep * 0.15f);
+    }
+}
+

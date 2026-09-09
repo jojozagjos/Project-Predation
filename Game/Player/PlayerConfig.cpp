@@ -5,6 +5,7 @@
 #include <glm/geometric.hpp>
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
 #include <fstream>
 
 namespace pred
@@ -55,6 +56,19 @@ float PlayerConfig::EyeHeightForStance(PlayerStance stance) const
     default:
         return standEyeHeight;
     }
+}
+
+float PlayerConfig::StrideLength(float speed) const
+{
+    return std::clamp(strideLengthBase + strideLengthPerSpeed * speed, 0.45f, strideLengthMax);
+}
+
+float PlayerConfig::StanceFraction(float speed) const
+{
+    // Walking pace keeps both feet down for part of the cycle; by sprint speed the stances no
+    // longer overlap and there is a moment with neither foot on the ground.
+    const float t = std::clamp((speed - walkSpeed) / std::max(sprintSpeed - walkSpeed, 0.1f), 0.0f, 1.0f);
+    return stanceFractionWalk + (stanceFractionRun - stanceFractionWalk) * t;
 }
 
 float PlayerConfig::SpeedForStance(PlayerStance stance, bool sprint, bool walk) const
@@ -161,9 +175,17 @@ bool PlayerConfig::LoadFromFile(const std::filesystem::path& file)
         ReadField(*it, "landing_dip_max", landingDipMax);
         ReadField(*it, "landing_recover_speed", landingRecoverSpeed);
         ReadField(*it, "bob_amount", bobAmount);
-        ReadField(*it, "bob_stride_length", bobStrideLength);
+        ReadField(*it, "bob_walk_lower", bobWalkLower);
         ReadField(*it, "bob_sprint_scale", bobSprintScale);
         ReadField(*it, "max_pitch_degrees", maxPitchDegrees);
+    }
+    if (const auto it = json.find("stride"); it != json.end())
+    {
+        ReadField(*it, "length_base", strideLengthBase);
+        ReadField(*it, "length_per_speed", strideLengthPerSpeed);
+        ReadField(*it, "length_max", strideLengthMax);
+        ReadField(*it, "stance_fraction_walk", stanceFractionWalk);
+        ReadField(*it, "stance_fraction_run", stanceFractionRun);
     }
     if (const auto it = json.find("fall_damage"); it != json.end())
     {
@@ -203,9 +225,14 @@ bool PlayerConfig::SaveToFile(const std::filesystem::path& file) const
                       {"landing_dip_max", landingDipMax},
                       {"landing_recover_speed", landingRecoverSpeed},
                       {"bob_amount", bobAmount},
-                      {"bob_stride_length", bobStrideLength},
+                      {"bob_walk_lower", bobWalkLower},
                       {"bob_sprint_scale", bobSprintScale},
                       {"max_pitch_degrees", maxPitchDegrees}};
+    json["stride"] = {{"length_base", strideLengthBase},
+                      {"length_per_speed", strideLengthPerSpeed},
+                      {"length_max", strideLengthMax},
+                      {"stance_fraction_walk", stanceFractionWalk},
+                      {"stance_fraction_run", stanceFractionRun}};
     json["fall_damage"] = {
         {"enabled", fallDamageEnabled}, {"min_speed", fallDamageMinSpeed}, {"lethal_speed", fallDamageLethalSpeed}};
 

@@ -4,6 +4,7 @@
 #include "Engine/Physics/PhysicsWorld.h"
 #include "Engine/Render/DebugDraw.h"
 
+#include <glm/common.hpp>
 #include <glm/gtc/constants.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -323,7 +324,13 @@ void PlayerController::Step(const PlayerInput& input, float dt)
 
     if (m_state.grounded)
     {
-        m_state.strideDistance += glm::length(glm::vec2(m_state.velocity.x, m_state.velocity.z)) * dt;
+        const float distance = glm::length(glm::vec2(m_state.velocity.x, m_state.velocity.z)) * dt;
+        m_state.strideDistance += distance;
+        // Integrated rather than derived from the total distance, because the stride length changes
+        // with speed; dividing a running total by a moving divisor would jump the phase, and the
+        // legs with it, every time the player sped up or slowed down.
+        m_state.stridePhase =
+            glm::fract(m_state.stridePhase + distance / m_config.StrideLength(m_state.HorizontalSpeed()));
     }
 
     // Leaning. Sprinting cancels it, since nobody peeks round a corner at a run.
@@ -379,11 +386,16 @@ void PlayerController::UpdateView(float dt, float alpha)
     const float speed = m_state.HorizontalSpeed();
     if (m_state.grounded && speed > 0.15f && m_config.bobAmount > 0.0f)
     {
-        const float phase =
-            m_state.strideDistance / std::max(m_config.bobStrideLength, 0.05f) * glm::two_pi<float>();
+        // Deepest at each footfall and never above standing height, which is what a real gait does
+        // to your eyeline. It is not decoration: the body anchors itself to the eye, so this dip is
+        // also what lowers the hips far enough for a leg to reach forward and plant a step.
+        const float phase = m_state.stridePhase * glm::two_pi<float>();
+        const float dip = (1.0f + std::cos(phase * 2.0f)) * 0.5f;
         const float intensity =
             std::min(speed / std::max(m_config.moveSpeed, 0.1f), m_config.bobSprintScale);
-        m_view.bobOffset = std::sin(phase) * m_config.bobAmount * intensity;
+        const float target = -(m_config.bobWalkLower + dip * m_config.bobAmount) * intensity;
+        // Eased in, so setting off does not drop the camera in one frame.
+        m_view.bobOffset = SmoothTowards(m_view.bobOffset, target, 12.0f, dt);
     }
     else
     {
