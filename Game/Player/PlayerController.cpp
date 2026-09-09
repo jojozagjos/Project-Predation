@@ -171,6 +171,24 @@ void PlayerController::Step(const PlayerInput& input, float dt)
     m_debug.jumpConsumedBuffer = false;
     m_debug.jumpUsedCoyote = false;
 
+    if (m_attached)
+    {
+        // Held where something else put them: inside a locker now, carried by a creature later.
+        // Movement is not simulated at all rather than being fed zero input, because a capsule
+        // that overlaps geometry gets pushed out by depenetration however still it is being asked
+        // to stand. That is what drifted the player out through the side of a locker.
+        m_character.SetPosition(m_attachPosition);
+        m_character.SetLinearVelocity(glm::vec3(0.0f));
+        m_prevPosition = m_attachPosition;
+        m_state.position = m_attachPosition;
+        m_state.velocity = glm::vec3(0.0f);
+        m_state.grounded = true;
+        m_state.fallPeakSpeed = 0.0f;
+        m_state.timeSinceGrounded = 0.0f;
+        UpdateStance(input, dt);
+        return;
+    }
+
     // --- Ground state, as resolved by the previous character update -----------------------------
     const GroundState ground = m_character.GetGroundState();
     const bool wasGrounded = m_state.grounded;
@@ -435,6 +453,21 @@ void PlayerController::Teleport(const glm::vec3& footPosition)
     m_pendingLandingImpact = 0.0f;
 }
 
+void PlayerController::Attach(const glm::vec3& footPosition, float yaw)
+{
+    Teleport(footPosition);
+    m_attachPosition = footPosition;
+    m_attached = true;
+    m_state.yaw = yaw;
+    m_state.velocity = glm::vec3(0.0f);
+}
+
+void PlayerController::Detach(const glm::vec3& footPosition)
+{
+    m_attached = false;
+    Teleport(footPosition);
+}
+
 void PlayerController::Respawn(const glm::vec3& footPosition)
 {
     const float yaw = m_state.yaw;
@@ -442,6 +475,9 @@ void PlayerController::Respawn(const glm::vec3& footPosition)
     m_state = PlayerState{};
     m_state.yaw = yaw;
     m_state.pitch = pitch;
+    // Respawning has to break any attachment, or a player killed inside a locker comes back still
+    // pinned to it.
+    m_attached = false;
     Teleport(footPosition);
     m_character.TryResize(m_config.standHeight, m_config.radius);
     m_state.stance = PlayerStance::Standing;

@@ -57,6 +57,13 @@ public:
     void UpdateView(float frameDeltaSeconds, float alpha);
 
     void Teleport(const glm::vec3& footPosition);
+
+    // Pins the player to a fixed spot: hiding in a locker now, being carried by a creature later.
+    // Movement stops being simulated entirely rather than being fed zero input, because a capsule
+    // wedged inside geometry gets pushed out by depenetration no matter what the input says.
+    void Attach(const glm::vec3& footPosition, float yaw);
+    void Detach(const glm::vec3& footPosition);
+    bool IsAttached() const { return m_attached; }
     void Respawn(const glm::vec3& footPosition);
     void ApplyDamage(float amount, const char* cause);
 
@@ -93,6 +100,8 @@ private:
     PlayerState m_state;
     PlayerView m_view;
     Debug m_debug;
+    bool m_attached = false;
+    glm::vec3 m_attachPosition{0.0f};
 
     // Position at the start of the current tick, for render interpolation.
     glm::vec3 m_prevPosition{0.0f};

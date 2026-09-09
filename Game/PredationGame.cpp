@@ -422,6 +422,9 @@ void PredationGame::RegisterCommands()
                                 m_app->GetConsole().Print(buffer);
                             });
 
+    console.RegisterCommand("interact", "Use whatever the player is looking at",
+                            [this](const std::vector<std::string>&) { TryInteract(); });
+
     console.RegisterCommand("drop", "Drop the selected item in front of the player",
                             [this](const std::vector<std::string>&) { DropSelected(); });
 
@@ -826,7 +829,9 @@ void PredationGame::EnterHidingSpot(int index)
 
     spot->occupied = true;
     m_hidingSpot = index;
-    m_player.Teleport(spot->insidePosition);
+    // Attached, not teleported. A locker is barely wider than the player's capsule, so left to
+    // simulate normally Jolt pushes them straight back out through the side of it.
+    m_player.Attach(spot->insidePosition, spot->insideYaw);
     m_lookYaw = spot->insideYaw;
     // The door swings shut behind the player, which is most of what makes hiding feel like hiding.
     m_world.SetDoorOpen(spot->doorIndex, false, m_interactions);
@@ -845,7 +850,7 @@ void PredationGame::LeaveHidingSpot()
     spot->occupied = false;
     m_world.SetDoorOpen(spot->doorIndex, true, m_interactions);
     m_interactions.SetVerb(spot->entity, "Hide in");
-    m_player.Teleport(spot->exitPosition);
+    m_player.Detach(spot->exitPosition);
 }
 
 void PredationGame::OnFixedUpdate(double fixedDt)
@@ -1222,9 +1227,12 @@ void PredationGame::DrawDebugOverlays()
                 {
                     return;
                 }
-                const glm::vec3 center = transform.position + mesh->bounds.Center() * transform.scale;
-                const glm::vec3 extents = mesh->bounds.HalfExtents() * transform.scale;
-                draw.Box(center - extents, center + extents, Color::kCyan);
+                // Drawn in the entity's own frame. Building an axis-aligned box from the position
+                // and scale alone ignored the rotation, so anything turned showed a bounds box
+                // sitting at an angle to the collider it was supposed to describe.
+                const glm::mat4 model =
+                    transform.Matrix() * glm::translate(glm::mat4(1.0f), mesh->bounds.Center());
+                draw.BoxOriented(model, mesh->bounds.HalfExtents(), Color::kCyan);
             });
     }
 }

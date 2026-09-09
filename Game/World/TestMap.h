@@ -35,6 +35,18 @@ inline constexpr float kStepRises[] = {0.12f, 0.18f, 0.25f};   // shallow, norma
 inline constexpr float kRampAngles[] = {15.0f, 25.0f, 35.0f, 45.0f};
 inline constexpr float kLedgeHeights[] = {0.3f, 0.6f, 0.9f, 1.2f, 1.5f, 1.8f};
 inline constexpr float kGapWidths[] = {1.2f, 0.9f, 0.7f, 0.55f, 0.45f};
+
+// Where each zone sits, so everything that belongs together is together and nothing has to be
+// hunted for. WorldObjects places the doors, lockers and loose items, so both files read these
+// rather than each keeping a private copy of the layout that drifts from the other.
+//
+// The spawn looks south down the middle of the map with every zone in view.
+inline constexpr float kSpawnZ = 16.0f;
+inline constexpr float kBayZ = 8.6f;          // both bays share a row, either side of the middle
+inline constexpr float kEquipmentBayX = -13.5f; // everything you can pick up
+inline constexpr float kInteractionBayX = 13.5f; // everything you can open or get inside
+inline constexpr float kBayHalfWidth = 2.6f;
+inline constexpr float kBenchTop = 0.92f; // items sit on this, so they are at hand height
 } // namespace TestMapSpec
 
 } // namespace pred

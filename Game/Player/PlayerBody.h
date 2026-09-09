@@ -70,6 +70,9 @@ public:
         // How much of the reachable leg length a step is allowed to use. Going right to the limit
         // leaves the knee locked straight at the end of every stance, which reads as stiff.
         float stepReachMargin = 0.99f;
+        // How far above the player a foot may be planted. A stair step or a kerb, not the top of a
+        // wall the player is standing next to.
+        float maxFootRise = 0.45f;
         float hipSwayAmount = 0.035f;
         float hipBobAmount = 0.030f;
 

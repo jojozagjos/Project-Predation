@@ -5,12 +5,14 @@
 #include "Engine/Scene/Scene.h"
 #include "Game/Interaction/InteractionSystem.h"
 #include "Game/Items/ItemAppearance.h"
+#include "Game/World/TestMap.h"
 
 #include <glm/gtc/constants.hpp>
 #include <glm/gtc/quaternion.hpp>
 
 #include <algorithm>
 #include <cmath>
+#include <iterator>
 
 namespace pred
 {
@@ -90,14 +92,26 @@ int WorldObjects::AddDoor(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physi
 void WorldObjects::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics,
                          InteractionSystem& interactions, const ItemDatabase& items)
 {
-    // --- Doors, standing in the open where they are easy to walk up to and try.
-    AddDoor(scene, meshes, physics, interactions, {4.0f, 0.0f, 2.0f}, 0.0f, glm::radians(-100.0f),
-            {0.95f, 2.05f, 0.09f}, "door_a", true);
-    AddDoor(scene, meshes, physics, interactions, {-4.0f, 0.0f, 2.0f}, glm::radians(180.0f),
-            glm::radians(80.0f), {0.95f, 2.05f, 0.09f}, "door_b", true);
+    using namespace TestMapSpec;
+
+    // Everything in this function lives in one of the two bays the map builder lays out, so doors,
+    // lockers and loose items are each together with their own kind rather than dotted about.
+
+    // --- Doors, hung in the two frames at the front of the interaction bay.
+    const float doorFrameZ = kBayZ - 2.1f;
+    AddDoor(scene, meshes, physics, interactions,
+            {kInteractionBayX - 1.55f - 0.55f, 0.0f, doorFrameZ}, 0.0f, glm::radians(-100.0f),
+            {1.10f, 2.05f, 0.09f}, "door_a", true);
+    AddDoor(scene, meshes, physics, interactions,
+            {kInteractionBayX + 1.55f + 0.55f, 0.0f, doorFrameZ}, glm::radians(180.0f),
+            glm::radians(80.0f), {1.10f, 2.05f, 0.09f}, "door_b", true);
 
     // --- Lockers to hide in. The panel is a door in its own right so it swings when used.
-    const glm::vec3 lockerSize{0.85f, 2.0f, 0.75f};
+    //
+    // Wide enough that a person fits. The old shell had a 0.61 m interior and the player capsule is
+    // 0.64 m across, so hiding wedged them into the walls and Jolt pushed them straight back out.
+    // The controller also pins them in place now, but the model still has to fit the box.
+    const glm::vec3 lockerSize{1.06f, 2.05f, 0.88f};
     const MeshHandle lockerMesh = meshes.Upload(Primitives::Box(lockerSize), "locker_shell");
 
     // The shell is three slabs, and they meet edge to edge rather than lapping over one another.
@@ -106,9 +120,9 @@ void WorldObjects::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physic
     constexpr float panelHalfThickness = 0.06f;
     const float lockerInnerHalfWidth = lockerSize.x * 0.5f - panelHalfThickness * 2.0f;
 
-    // Clear of the stair landings on +X and the doors on z = 2; the right locker used to sit
-    // inside the first landing.
-    const glm::vec3 lockerPositions[] = {{-5.5f, 0.0f, 6.5f}, {5.5f, 0.0f, 6.5f}};
+    // Against the back of the interaction bay, opening towards the plaza.
+    const glm::vec3 lockerPositions[] = {{kInteractionBayX - 1.3f, 0.0f, kBayZ + 0.9f},
+                                         {kInteractionBayX + 1.3f, 0.0f, kBayZ + 0.9f}};
     for (const glm::vec3& position : lockerPositions)
     {
         HidingSpot spot;
@@ -130,9 +144,13 @@ void WorldObjects::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physic
                                         0.0f),
                           BodyMotion::Static);
 
-        spot.insidePosition = position + glm::vec3(0.0f, 0.0f, 0.05f);
-        spot.exitPosition = position - glm::vec3(0.0f, 0.0f, 1.15f);
-        spot.insideYaw = glm::radians(180.0f); // facing out through the door
+        // Centred in the clear space, which sits slightly forward of the shell's middle because the
+        // back panel takes up depth that the door does not.
+        spot.insidePosition = position - glm::vec3(0.0f, 0.0f, panelHalfThickness * 0.5f);
+        spot.exitPosition = position - glm::vec3(0.0f, 0.0f, 1.25f);
+        // The door is on the -Z face, and yaw 0 faces -Z, so this is looking out of it. It used to
+        // be 180 degrees, which turned the player round to face the back of the locker.
+        spot.insideYaw = 0.0f;
         // The door fills the clear opening between the sides, so closing it does not drive the panel
         // into them.
         spot.doorIndex = AddDoor(scene, meshes, physics, interactions,
@@ -155,30 +173,39 @@ void WorldObjects::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physic
         interactions.Register(interactable);
     }
 
-    // --- Loose items.
+    // --- Loose items, laid out along the equipment bench in one row.
+    //
+    // Every item the game knows about appears here, weapons included, in the order they are defined.
+    // Scattering a few of them across the map meant a weapon could not be found without knowing
+    // where to look, and adding an item to items.json left it nowhere in the world at all.
     struct Placement
     {
         const char* key;
-        glm::vec3 position;
         int count;
     };
     const Placement placements[] = {
-        {"sample_container", {1.6f, 0.0f, 3.4f}, 1},
-        {"medkit", {-1.8f, 0.0f, 3.8f}, 1},
-        {"battery", {0.4f, 0.0f, 4.6f}, 3},
-        {"keycard", {5.2f, 0.0f, 5.0f}, 1},
+        {"sidearm", 1},  {"carbine", 1},  {"medkit", 2}, {"battery", 4},
+        {"keycard", 1},  {"flare", 2},    {"sample_container", 1},
     };
 
+    constexpr float kSpacing = 0.62f;
+    const float rowWidth = kSpacing * static_cast<float>(std::size(placements) - 1);
+    float x = kEquipmentBayX - rowWidth * 0.5f;
     for (const Placement& placement : placements)
     {
         const ItemId id = items.IdOf(placement.key);
-        if (id == kInvalidItem)
+        const ItemDefinition* definition = items.Get(id);
+        if (id == kInvalidItem || definition == nullptr)
         {
             PRED_LOG_WARN(Gameplay, "Test map references unknown item '{}'", placement.key);
             continue;
         }
+        // Standing on the bench, not dropped onto it. A pickup's position is the centre of its box,
+        // so a fixed clearance buried the tall ones in the surface, and the separation impulse
+        // flipped them onto their ends.
         SpawnPickup(scene, meshes, physics, interactions, items, id, placement.count,
-                    placement.position + glm::vec3(0.0f, 0.4f, 0.0f), glm::vec3(0.0f));
+                    {x, kBenchTop + definition->size.y * 0.5f + 0.005f, kBayZ + 1.3f}, glm::vec3(0.0f));
+        x += kSpacing;
     }
 
     PRED_LOG_INFO(Gameplay, "World objects: {} doors, {} pickups, {} hiding spots", m_doors.size(),
@@ -273,17 +300,15 @@ void WorldObjects::Update(Scene& scene, PhysicsWorld& physics, InteractionSystem
 {
     for (Door& door : m_doors)
     {
-        if (!door.IsMoving())
+        if (door.IsMoving())
         {
-            continue;
-        }
-
-        const float step = door.speed * dt;
-        const float delta = door.target - door.angle;
-        door.angle += std::clamp(delta, -step, step);
-        if (std::abs(door.target - door.angle) < 1e-3f)
-        {
-            door.angle = door.target;
+            const float step = door.speed * dt;
+            const float delta = door.target - door.angle;
+            door.angle += std::clamp(delta, -step, step);
+            if (std::abs(door.target - door.angle) < 1e-3f)
+            {
+                door.angle = door.target;
+            }
         }
 
         const Transform transform = DoorPanelTransform(door);
@@ -291,7 +316,14 @@ void WorldObjects::Update(Scene& scene, PhysicsWorld& physics, InteractionSystem
         {
             *sceneTransform = transform;
         }
-        // Kinematic movement rather than teleporting, so the panel shoves what is in its way.
+
+        // Kinematic movement rather than teleporting, so the panel shoves what is in its way. It is
+        // driven every tick, not only while the angle is changing: MoveKinematic works by setting
+        // the velocity needed to reach the target within dt, and that velocity persists until it is
+        // set again. Skipping still doors left every one of them carrying the velocity from its
+        // last moving tick, so the collider slowly sailed away from the panel it belonged to.
+        // Driving a door that is already where it should be asks for zero velocity, which both
+        // stops it and pulls back anything that has drifted.
         physics.MoveKinematic(door.body, transform, dt);
     }
 

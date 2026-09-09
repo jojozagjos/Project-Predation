@@ -133,12 +133,36 @@ void BuildTestMap(Scene& scene, MeshLibrary& meshes, PhysicsWorld* physics)
 
     const MeshHandle markerMesh = meshes.Upload(Primitives::Sphere(0.15f, 20, 14), "marker");
 
-    // A 1 m cube at the origin is the scale reference for everything else.
-    builder.AddBox("reference_cube", AtPosition(0.0f, 0.5f, 0.0f), {1.0f, 1.0f, 1.0f}, kMarkerMaterial);
+    // Each zone gets a painted floor and a coloured post at one corner, so from the spawn the map
+    // reads as a set of rooms rather than a field of scattered props. Both are decoration: no
+    // collider, and the post is emissive so it can be found in the dark.
+    const MeshData postData = Primitives::Cylinder(0.09f, 2.4f, 12);
+    const MeshHandle postMesh = meshes.Upload(postData, "zone_post");
+    auto zone = [&](const char* name, float centreX, float centreZ, float sizeX, float sizeZ,
+                    const glm::vec3& tint)
+    {
+        const MeshHandle pad =
+            meshes.Upload(Primitives::Plane({sizeX, sizeZ}, 1), std::string("zone_pad_") + name);
+        // A hair above the ground, so the two surfaces do not fight over the same depth.
+        builder.AddDecoration("zone_pad", AtPosition(centreX, 0.012f, centreZ), pad,
+                              Material::Diffuse(tint, 0.95f));
+        builder.AddDecoration("zone_post",
+                              AtPosition(centreX - sizeX * 0.5f + 0.3f, 1.2f, centreZ + sizeZ * 0.5f - 0.3f),
+                              postMesh, Material::Emissive(tint * 2.2f, 0.55f));
+    };
 
     // ---------------------------------------------------------------------
-    // +X: staircases. Same total climb, different step rises.
+    // Origin: the spawn plaza, with a 1 m cube as the scale reference for
+    // everything else. The spawn looks south, with every zone in view.
     // ---------------------------------------------------------------------
+    zone("spawn", 0.0f, 13.0f, 9.0f, 9.0f, {0.30f, 0.32f, 0.36f});
+    builder.AddBox("reference_cube", AtPosition(0.0f, 0.5f, 13.5f), {1.0f, 1.0f, 1.0f}, kMarkerMaterial);
+
+    // ---------------------------------------------------------------------
+    // +X: staircases. Same total climb, different step rises, side by side so
+    // one can be tried straight after another.
+    // ---------------------------------------------------------------------
+    zone("stairs", 13.0f, -1.0f, 16.0f, 12.0f, {0.34f, 0.31f, 0.25f});
     float stairX = 8.0f;
     for (const float rise : kStepRises)
     {
@@ -158,6 +182,7 @@ void BuildTestMap(Scene& scene, MeshLibrary& meshes, PhysicsWorld* physics)
     // ---------------------------------------------------------------------
     // -X: ramps at increasing angles. The steepest is the walk/slide boundary.
     // ---------------------------------------------------------------------
+    zone("ramps", -15.5f, -1.0f, 21.0f, 12.0f, {0.24f, 0.30f, 0.34f});
     float rampX = -8.0f;
     for (const float angleDegrees : kRampAngles)
     {
@@ -174,8 +199,9 @@ void BuildTestMap(Scene& scene, MeshLibrary& meshes, PhysicsWorld* physics)
     }
 
     // ---------------------------------------------------------------------
-    // +Z: ledges at mantle-relevant heights.
+    // +Z: ledges at mantle-relevant heights, in one rising row.
     // ---------------------------------------------------------------------
+    zone("ledges", 0.0f, 10.0f, 19.0f, 3.4f, {0.34f, 0.26f, 0.26f});
     float ledgeX = -7.5f;
     for (const float height : kLedgeHeights)
     {
@@ -195,6 +221,8 @@ void BuildTestMap(Scene& scene, MeshLibrary& meshes, PhysicsWorld* physics)
     // overlapped almost entirely.
     constexpr float sideWidth = 2.4f;
     constexpr float segmentLength = 7.5f;
+
+    zone("corridor", 0.0f, corridorZ, 42.0f, 4.0f, {0.26f, 0.27f, 0.31f});
 
     const glm::vec3 sideWallSize{sideWidth, wallHeight, wallThickness};
     const MeshHandle sideWallMesh = meshes.Upload(Primitives::Box(sideWallSize), "corridor_wall");
@@ -219,21 +247,59 @@ void BuildTestMap(Scene& scene, MeshLibrary& meshes, PhysicsWorld* physics)
     }
 
     // ---------------------------------------------------------------------
+    // Equipment bay: every loose item in the level, in one row on one bench,
+    // weapons included. Items used to be scattered across four zones, which
+    // taught nobody anything and made the guns impossible to find.
+    // WorldObjects lays the items themselves out on top of this.
+    // ---------------------------------------------------------------------
+    zone("equipment", kEquipmentBayX, kBayZ, kBayHalfWidth * 2.0f + 1.4f, 5.6f, {0.24f, 0.32f, 0.26f});
+    builder.AddBox("equipment_bench", AtPosition(kEquipmentBayX, kBenchTop * 0.5f, kBayZ + 1.3f),
+                   {kBayHalfWidth * 2.0f, kBenchTop, 0.75f}, kStairMaterial);
+    builder.AddBox("equipment_backboard", AtPosition(kEquipmentBayX, 1.35f, kBayZ + 1.95f),
+                   {kBayHalfWidth * 2.0f + 0.6f, 2.7f, 0.2f}, kWallMaterial);
+
+    // ---------------------------------------------------------------------
+    // Interaction bay: both doors and both lockers together, so everything
+    // you operate is one place you can walk between.
+    // WorldObjects hangs the doors and stands the lockers here.
+    // ---------------------------------------------------------------------
+    zone("interaction", kInteractionBayX, kBayZ, kBayHalfWidth * 2.0f + 1.4f, 5.6f, {0.30f, 0.26f, 0.34f});
+    builder.AddBox("locker_backboard", AtPosition(kInteractionBayX, 1.35f, kBayZ + 1.95f),
+                   {kBayHalfWidth * 2.0f + 0.6f, 2.7f, 0.2f}, kWallMaterial);
+
+    // Two door frames facing the plaza, wide enough to walk through and tall enough not to duck.
+    for (int side = 0; side < 2; ++side)
+    {
+        const float frameX = kInteractionBayX + (side == 0 ? -1.55f : 1.55f);
+        constexpr float openingWidth = 1.15f;
+        constexpr float frameHeight = 2.6f;
+        constexpr float postWidth = 0.35f;
+        const float frameZ = kBayZ - 2.1f;
+        for (int post = 0; post < 2; ++post)
+        {
+            const float postX = frameX + (post == 0 ? -1.0f : 1.0f) * (openingWidth + postWidth) * 0.5f;
+            builder.AddBox("door_post", AtPosition(postX, frameHeight * 0.5f, frameZ),
+                           {postWidth, frameHeight, 0.28f}, kWallMaterial);
+        }
+        builder.AddBox("door_lintel", AtPosition(frameX, (frameHeight + kDoorHeight) * 0.5f, frameZ),
+                       {openingWidth, frameHeight - kDoorHeight, 0.28f}, kWallMaterial);
+    }
+
+    // ---------------------------------------------------------------------
     // Pillars: occlusion, cover, and future line-of-sight tests.
     // ---------------------------------------------------------------------
     const MeshData pillarData = Primitives::Cylinder(0.35f, 4.5f, 20);
     const MeshHandle pillarMesh = meshes.Upload(pillarData, "pillar");
-    const float pillarPositions[][2] = {{-14.0f, 14.0f}, {14.0f, 14.0f}, {-14.0f, -22.0f}, {14.0f, -22.0f},
-                                        {0.0f, 20.0f},   {-20.0f, 4.0f}, {20.0f, 4.0f}};
+    const float pillarPositions[][2] = {{-6.0f, 17.5f},  {6.0f, 17.5f},   {-14.0f, -22.0f},
+                                        {14.0f, -22.0f}, {-22.0f, 12.0f}, {22.0f, 12.0f}};
     for (const auto& position : pillarPositions)
     {
         builder.AddMeshInstance("pillar", AtPosition(position[0], 2.25f, position[1]), pillarMesh, pillarData,
                                 kPillarMaterial);
     }
 
-    // A rotated block, to prove non-axis-aligned transforms survive the whole pipeline. Placed
-    // clear of the ledge row, which it used to intersect.
-    builder.AddBox("angled_block", AtPositionYaw(10.0f, 0.5f, 13.5f, 35.0f), {2.0f, 1.0f, 4.0f},
+    // A rotated block, to prove non-axis-aligned transforms survive the whole pipeline.
+    builder.AddBox("angled_block", AtPositionYaw(0.0f, 0.5f, 20.5f, 35.0f), {2.0f, 1.0f, 4.0f},
                    kLedgeMaterial);
 
     if (physics != nullptr)

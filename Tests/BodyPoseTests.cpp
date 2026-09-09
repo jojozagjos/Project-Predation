@@ -508,3 +508,36 @@ TEST_CASE("A foot on the ground stays where it is put", "[body][gait]")
     }
 }
 
+
+TEST_CASE("Feet stop at a wall instead of climbing it", "[body][gait]")
+{
+    // Walking into a wall used to put the foot target inside it, because a step reaches further
+    // from the hip than the capsule the player is actually stopped by. The downward ground trace
+    // then found the top of the wall, and the leg climbed three metres of it.
+    BodyHarness harness;
+    harness.physics.CreateBox({4.0f, 1.6f, 0.2f}, Transform{{0.0f, 1.6f, -1.0f}}, BodyMotion::Static);
+    harness.physics.OptimizeBroadPhase();
+
+    harness.SetStance(PlayerStance::Standing);
+    harness.Settle(60);
+    harness.SetTravel(glm::vec3(0.0f, 0.0f, -1.0f)); // straight at it
+    harness.Settle(180);
+
+    constexpr float kWallFace = -0.8f; // near face of a 0.4 m deep wall centred on z = -1
+    for (int i = 0; i < 120; ++i)
+    {
+        harness.Tick();
+        for (int side = 0; side < 2; ++side)
+        {
+            const glm::vec3 foot = harness.Bone(harness.Rig().foot[side]);
+            INFO("foot " << side << " at " << foot.x << ", " << foot.y << ", " << foot.z);
+            // Never standing part way up the wall.
+            REQUIRE(foot.y < harness.State().position.y + 0.5f);
+            // Never inside or beyond it.
+            REQUIRE(foot.z > kWallFace);
+        }
+    }
+
+    // And the player really did reach the wall, or the test proved nothing.
+    REQUIRE(harness.State().position.z < 0.0f);
+}

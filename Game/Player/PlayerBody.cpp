@@ -776,11 +776,43 @@ void PlayerBody::UpdateLegs(const PlayerState& state, const PlayerView& view,
             lift *= 1.0f - m_flatness;
         }
 
+        // Keep the foot out of walls. A step aims at a point up to a third of a metre from the hip,
+        // which reaches past the capsule the player is actually stopped by, so pressing into a wall
+        // put the foot target inside it; the ground trace below then found the top of the wall and
+        // the leg climbed it. Sweeping from beside the ankle to the target and stopping short of
+        // whatever is in the way keeps the step on the near side of the surface.
+        {
+            // Cast at knee height, deliberately. Anything the player can step onto is below this,
+            // so stair risers and kerbs pass underneath and a step still reaches the tread above;
+            // anything at or above it is a wall, and the foot stops short of it.
+            const glm::vec3 knee{hip.x, view.renderPosition.y + m_config.maxFootRise, hip.z};
+            const glm::vec3 toTarget{target.x - knee.x, 0.0f, target.z - knee.z};
+            const float span = glm::length(toTarget);
+            if (span > 0.02f)
+            {
+                const RayHit blocked = physics.RayCast(knee, toTarget / span, span + 0.10f);
+                if (blocked && blocked.distance < span)
+                {
+                    const float allowed = std::max(blocked.distance - 0.10f, 0.0f);
+                    target.x = knee.x + toTarget.x / span * allowed;
+                    target.z = knee.z + toTarget.z / span * allowed;
+                    if (!inSwing)
+                    {
+                        foot.plant = target;
+                    }
+                }
+            }
+        }
+
         // Trace for the real ground under the foot so it lands on stairs and slopes instead of
         // hovering at the character's own base height.
         const glm::vec3 traceStart{target.x, view.renderPosition.y + 0.9f, target.z};
         const RayHit hit = physics.RayCast(traceStart, glm::vec3(0.0f, -1.0f, 0.0f), 2.0f);
-        target.y = (hit ? hit.position.y : view.renderPosition.y) + m_rig.ankleHeight + lift;
+        // Clamped to what the character could actually have stepped onto. Without this a trace that
+        // lands on top of something tall puts the foot up there while the player stands beside it.
+        const float groundY = hit ? std::min(hit.position.y, view.renderPosition.y + m_config.maxFootRise)
+                                  : view.renderPosition.y;
+        target.y = groundY + m_rig.ankleHeight + lift;
 
         // Never ask for a foot the leg cannot reach. With the hips at standing height a leg is
         // almost straight, so there is very little room to reach forward or back; asking for more

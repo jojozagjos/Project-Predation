@@ -481,3 +481,55 @@ TEST_CASE("A partial player config overrides only the fields it names", "[player
 
     std::filesystem::remove(file);
 }
+
+TEST_CASE("An attached player holds still inside geometry that would push them out", "[player][attach]")
+{
+    // Hiding in a locker. The shell is barely wider than the capsule, so a player left to simulate
+    // normally gets pushed out sideways by depenetration however still they are asked to stand, and
+    // slowly drifts through the wall. Attaching suspends movement instead of feeding it zero input,
+    // which is the same mechanism a creature will use when it carries someone off.
+    PhysicsWorld physics;
+    PhysicsWorld::Settings settings;
+    settings.workerThreads = 1;
+    REQUIRE(physics.Init(settings));
+    physics.CreateBox({20.0f, 0.5f, 20.0f}, Transform{{0.0f, -0.5f, 0.0f}}, BodyMotion::Static);
+
+    PlayerConfig config;
+    // A box narrower than the capsule is wide, which is the situation that caused the drift.
+    const float clearance = config.radius * 0.8f;
+    physics.CreateBox({0.06f, 1.0f, 0.5f}, Transform{{-clearance, 1.0f, 0.0f}}, BodyMotion::Static);
+    physics.CreateBox({0.06f, 1.0f, 0.5f}, Transform{{clearance, 1.0f, 0.0f}}, BodyMotion::Static);
+    physics.OptimizeBroadPhase();
+
+    PlayerController player;
+    REQUIRE(player.Init(physics, config, {0.0f, 4.0f, 0.0f}));
+
+    const glm::vec3 inside{0.0f, 0.0f, 0.0f};
+    player.Attach(inside, 0.0f);
+    REQUIRE(player.IsAttached());
+
+    PlayerInput input;
+    for (int i = 0; i < 300; ++i)
+    {
+        player.Step(input, 1.0f / 60.0f);
+        physics.Step(1.0f / 60.0f);
+    }
+
+    INFO("ended at " << player.State().position.x << ", " << player.State().position.y << ", "
+                     << player.State().position.z);
+    REQUIRE(glm::length(player.State().position - inside) < 0.001f);
+    REQUIRE(glm::length(player.State().velocity) < 0.001f);
+
+    // Letting go hands control back, and the player falls out of the gap under gravity.
+    player.Detach({0.0f, 0.0f, -2.0f});
+    REQUIRE_FALSE(player.IsAttached());
+    for (int i = 0; i < 60; ++i)
+    {
+        player.Step(input, 1.0f / 60.0f);
+        physics.Step(1.0f / 60.0f);
+    }
+    REQUIRE(player.State().position.z == Catch::Approx(-2.0f).margin(0.1));
+
+    player.Shutdown();
+    physics.Shutdown();
+}

@@ -12,6 +12,7 @@
 #include "Game/Weapons/ShotResolver.h"
 #include "Game/Weapons/WeaponDatabase.h"
 #include "Game/Weapons/WeaponSystem.h"
+#include "Game/World/TestMap.h"
 #include "Game/World/WorldObjects.h"
 
 #include <glm/vec2.hpp>
@@ -86,7 +87,7 @@ private:
 
     PlayerController m_player;
     PlayerBody m_body;
-    glm::vec3 m_spawnPoint{0.0f, 0.5f, 18.0f};
+    glm::vec3 m_spawnPoint{0.0f, 0.5f, TestMapSpec::kSpawnZ};
 
     ItemDatabase m_items;
     ItemIcons m_itemIcons;
