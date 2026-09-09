@@ -60,9 +60,14 @@ private:
         int a = 0;
         int b = 0;
         float length = 0.0f;
+        // A spacer only pushes apart. Bones hold a distance; joints have a limit past which they
+        // will not fold, and without those a body folds through itself into a knot.
+        bool pushOnly = false;
     };
 
     void AddConstraint(int a, int b);
+    // A minimum separation rather than a fixed one, given as a fraction of the rest distance.
+    void AddSpacer(int a, int b, float fraction);
 
     Settings m_settings;
     std::vector<glm::vec3> m_positions;

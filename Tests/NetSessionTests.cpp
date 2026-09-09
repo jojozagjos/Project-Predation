@@ -581,3 +581,101 @@ TEST_CASE("A rewind further back than anyone could need is refused", "[net][sess
     // everything to one answer.
     CHECK(honest[0].position.z < limit[0].position.z - 0.01f);
 }
+
+TEST_CASE("What a client holds reaches the host and the other clients", "[net][session]")
+{
+    // The host cannot see inside another machine, so unless a client says what it is holding
+    // nobody else ever sees it holding anything. This has been reported fixed once already, so it
+    // gets a test rather than an assurance.
+    NetConditions laggy;
+    laggy.latencyMs = 45.0f;
+    laggy.lossPercent = 10.0f;
+    Link link(41017, laggy);
+    link.Run(40, PlayerInput{});
+    REQUIRE(link.client.Connected());
+
+    // A rifle, half raised, mid-reload.
+    link.client.SetHeld(7, 0.5f, true, 0.4f);
+    link.Run(60, PlayerInput{});
+
+    REQUIRE(link.host.Remotes().size() == 1);
+    const RemotePlayerView& seen = link.host.Remotes()[0];
+    INFO("host sees item " << static_cast<int>(seen.heldItem) << " aim " << seen.aim);
+    CHECK(seen.heldItem == 7);
+    CHECK(seen.aim == Catch::Approx(0.5f).margin(0.05));
+    CHECK(seen.reloading);
+    CHECK(seen.reloadProgress == Catch::Approx(0.4f).margin(0.05));
+
+    // Putting it away is seen too.
+    link.client.SetHeld(0, 0.0f, false, 0.0f);
+    link.Run(60, PlayerInput{});
+    CHECK(link.host.Remotes()[0].heldItem == 0);
+    CHECK(link.host.Remotes()[0].aim == Catch::Approx(0.0f).margin(0.05));
+}
+
+TEST_CASE("Aim reaches other players as a number, not a switch", "[net][session]")
+{
+    // Sights come up over a fifth of a second. Sent as a yes or no, everyone else watches them snap.
+    NetConditions laggy;
+    laggy.latencyMs = 40.0f;
+    Link link(41018, laggy);
+    link.Run(40, PlayerInput{});
+    REQUIRE(link.client.Connected());
+
+    std::vector<float> seen;
+    for (int i = 0; i <= 10; ++i)
+    {
+        link.client.SetHeld(3, static_cast<float>(i) / 10.0f, false, 0.0f);
+        link.Run(12, PlayerInput{});
+        seen.push_back(link.host.Remotes()[0].aim);
+    }
+
+    // It climbed rather than jumping from nothing to everything.
+    int distinct = 0;
+    for (size_t i = 1; i < seen.size(); ++i)
+    {
+        if (std::abs(seen[i] - seen[i - 1]) > 0.02f)
+        {
+            ++distinct;
+        }
+    }
+    INFO("saw " << distinct << " separate steps between hip and sights");
+    CHECK(distinct >= 6);
+}
+
+TEST_CASE("A climb is visible to everyone else", "[net][session]")
+{
+    // A climb moves the character along a fixed path. Sent as position alone it reads as a body
+    // sliding up a wall, so the fact of it, how far through it is, and where the ledge is all go
+    // over the wire while it lasts.
+    NetConditions laggy;
+    laggy.latencyMs = 40.0f;
+    Link link(41019, laggy);
+    link.Run(40, PlayerInput{});
+    REQUIRE(link.client.Connected());
+
+    // Put the host mid-climb by hand: what is being tested is the replication, not the ledge search.
+    PlayerState& state = link.hostMachine.player.State();
+    state.mantling = true;
+    state.mantleTime = 0.4f;
+    state.mantleDuration = 0.8f;
+    state.mantleEdge = {1.5f, 1.1f, -2.5f};
+
+    for (int i = 0; i < 40; ++i)
+    {
+        link.Run(1, PlayerInput{});
+        state.mantling = true; // the harness steps the controller, which would end it
+        state.mantleTime = 0.4f;
+        state.mantleDuration = 0.8f;
+        state.mantleEdge = {1.5f, 1.1f, -2.5f};
+    }
+
+    REQUIRE(link.client.Remotes().size() == 1);
+    const RemotePlayerView& seen = link.client.Remotes()[0];
+    INFO("client sees mantling=" << seen.mantling << " phase " << seen.mantlePhase << " edge "
+                                 << seen.mantleEdge.x << "," << seen.mantleEdge.y);
+    CHECK(seen.mantling);
+    CHECK(seen.mantlePhase == Catch::Approx(0.5f).margin(0.05));
+    CHECK(seen.mantleEdge.x == Catch::Approx(1.5f).margin(0.01));
+    CHECK(seen.mantleEdge.y == Catch::Approx(1.1f).margin(0.01));
+}

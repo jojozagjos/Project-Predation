@@ -642,12 +642,18 @@ void PlayerBody::UpdatePosture(const PlayerState& state, const PlayerView& view,
     // spot while staring at the floor, which is the case a large fixed offset would spoil.
     const float lookingDown =
         glm::smoothstep(0.0f, 1.0f, std::clamp(-view.pitch / glm::half_pi<float>(), 0.0f, 1.0f));
-    const float forwardOffset =
-        m_config.eyeForwardOfHead + m_config.eyeForwardLookingDown * lookingDown;
 
+    // The standing offset follows the body, so looking around does not swing the character. The
+    // part that only exists while looking down follows the *view*, because that is the case where
+    // you are looking at your own body and it has to stay in front of you: measured along the body
+    // it slid off to one side as soon as you turned your head while looking at your boots.
     const glm::vec3 bodyFacing{std::sin(m_bodyYaw), 0.0f, -std::cos(m_bodyYaw)};
-    const glm::vec3 desiredHead = view.eyePosition - bodyFacing * forwardOffset -
-                                  glm::vec3(0.0f, m_config.eyeAboveHead, 0.0f);
+    const glm::vec3 viewFacing{std::sin(view.yaw), 0.0f, -std::cos(view.yaw)};
+    const glm::vec3 offset = bodyFacing * m_config.eyeForwardOfHead +
+                             viewFacing * (m_config.eyeForwardLookingDown * lookingDown);
+
+    const glm::vec3 desiredHead =
+        view.eyePosition - offset - glm::vec3(0.0f, m_config.eyeAboveHead, 0.0f);
     m_rootPosition += desiredHead - m_pose.GlobalPosition(m_rig.head);
 
     root = glm::translate(glm::mat4(1.0f), m_rootPosition) * glm::mat4_cast(BodyRotation());
@@ -832,9 +838,16 @@ bool PlayerBody::UpdateWeaponHold(const PlayerView& view, float dt)
     //
     // Sighted, the origin drops by exactly the sight height, which puts the sight block on the view
     // axis rather than near it.
+    // Pulled in and turned up against a wall, which is what anyone does with a long weapon in a
+    // corridor. Walking into one otherwise put the barrel straight through it.
+    const float crowded = 1.0f - m_wallClearance;
+    const float forwardScale = glm::mix(1.0f, m_config.weaponWallForward, crowded);
+
     const glm::vec3 readyOffset = carryRight * m_config.weaponReadyRight +
-                                  carryUp * m_config.weaponReadyDown + carryForward * m_config.weaponReadyForward;
-    const glm::vec3 sightedOffset = aimForward * m_config.weaponAimForward - aimUp * m_weaponVisual.sightHeight;
+                                  carryUp * (m_config.weaponReadyDown + m_config.weaponWallRaise * crowded) +
+                                  carryForward * (m_config.weaponReadyForward * forwardScale);
+    const glm::vec3 sightedOffset =
+        aimForward * (m_config.weaponAimForward * forwardScale) - aimUp * m_weaponVisual.sightHeight;
 
     // Prone puts it down beside the body, muzzle forward, out of the way of the arm that is doing
     // the crawling.
@@ -1221,7 +1234,10 @@ void PlayerBody::UpdateHeldItem(const PlayerView& view, float dt)
     const glm::vec3 yawRight{std::cos(view.yaw), 0.0f, std::sin(view.yaw)};
     const glm::vec3 up = glm::cross(yawRight, forward);
 
-    glm::vec3 target = view.eyePosition + forward * 0.52f + yawRight * 0.26f + up * -0.34f;
+    // Brought in against a wall, the same as a weapon is.
+    const float crowded = 1.0f - m_wallClearance;
+    glm::vec3 target = view.eyePosition + forward * glm::mix(0.52f, 0.26f, crowded) +
+                       yawRight * 0.26f + up * -0.34f;
 
     const glm::vec3 shoulder = m_pose.GlobalPosition(m_rig.shoulder[kRight]);
 
@@ -1739,6 +1755,19 @@ void PlayerBody::Update(Scene& scene, const PlayerState& state, const PlayerView
         m_ragdoll.ApplyTo(m_skeleton, m_pose);
         PushToScene(scene);
         return;
+    }
+
+    // How close a wall is in front of the eye, as a fraction of how far a weapon reaches. A rifle is
+    // most of a metre long and the capsule stops a third of a metre from a wall, so walking up to
+    // one put the barrel through it. Measured here because it is one trace for everything the hands
+    // might be holding.
+    {
+        const glm::vec3 forward = view.Forward();
+        const float reach = m_config.wallCheckDistance;
+        const RayHit hit = physics.RayCast(view.eyePosition, forward, reach);
+        const float free = hit ? std::clamp(hit.distance / std::max(reach, 0.01f), 0.0f, 1.0f) : 1.0f;
+        // Eased, so brushing past a doorframe does not jerk the weapon in and out.
+        m_wallClearance = SmoothTowards(m_wallClearance, free, m_config.wallCheckSpeed, dt);
     }
 
     UpdatePosture(state, view, playerConfig, dt);

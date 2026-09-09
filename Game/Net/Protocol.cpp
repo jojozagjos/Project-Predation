@@ -313,6 +313,12 @@ void WriteSnapshot(BitWriter& writer, const SnapshotMessage& message)
         {
             writer.WriteQuantised(player.reloadProgress, 0.0f, 1.0f, 6);
         }
+        writer.WriteBool(player.mantling);
+        if (player.mantling)
+        {
+            writer.WriteQuantised(player.mantlePhase, 0.0f, 1.0f, 6);
+            WritePosition(writer, player.mantleEdge);
+        }
     }
 }
 
@@ -344,6 +350,9 @@ bool ReadSnapshot(BitReader& reader, SnapshotMessage& out)
         player.aim = reader.ReadQuantised(0.0f, 1.0f, 5);
         player.reloading = reader.ReadBool();
         player.reloadProgress = player.reloading ? reader.ReadQuantised(0.0f, 1.0f, 6) : 0.0f;
+        player.mantling = reader.ReadBool();
+        player.mantlePhase = player.mantling ? reader.ReadQuantised(0.0f, 1.0f, 6) : 0.0f;
+        player.mantleEdge = player.mantling ? ReadPosition(reader) : glm::vec3(0.0f);
 
         if (player.playerId >= kMaxPlayers || stance > static_cast<uint32_t>(PlayerStance::Prone))
         {

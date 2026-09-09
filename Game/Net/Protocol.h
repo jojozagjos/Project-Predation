@@ -205,6 +205,13 @@ struct PlayerSnapshot
     float aim = 0.0f;
     bool reloading = false;
     float reloadProgress = 0.0f;
+
+    // Climbing. Sent as a flag, how far through it is, and where the ledge is, so everyone else
+    // sees the climb rather than a body sliding up a wall. Only while it is happening, which is
+    // under a second at a time.
+    bool mantling = false;
+    float mantlePhase = 0.0f;
+    glm::vec3 mantleEdge{0.0f};
 };
 
 struct SnapshotMessage

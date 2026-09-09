@@ -57,6 +57,27 @@ void Ragdoll::AddConstraint(int a, int b)
     m_constraints.push_back(constraint);
 }
 
+void Ragdoll::AddSpacer(int a, int b, float fraction)
+{
+    // A constraint that only pushes. Distance constraints alone let a body fold through itself: an
+    // elbow closes to nothing, a knee inverts, the chest packs down into the hips, and what should
+    // be a person on the floor becomes a knot. A minimum separation across each joint and across
+    // the torso is what stops it, and it costs the same as a distance constraint.
+    if (a < 0 || b < 0 || a >= static_cast<int>(m_positions.size()) ||
+        b >= static_cast<int>(m_positions.size()) || a == b)
+    {
+        return;
+    }
+    Constraint constraint;
+    constraint.a = a;
+    constraint.b = b;
+    constraint.length = glm::distance(m_positions[static_cast<size_t>(a)],
+                                      m_positions[static_cast<size_t>(b)]) *
+                        fraction;
+    constraint.pushOnly = true;
+    m_constraints.push_back(constraint);
+}
+
 void Ragdoll::Start(const Skeleton& skeleton, const Pose& pose, const glm::vec3& impulse)
 {
     const int bones = skeleton.BoneCount();
@@ -113,6 +134,38 @@ void Ragdoll::Start(const Skeleton& skeleton, const Pose& pose, const glm::vec3&
     AddConstraint(shoulderLeft, pelvis);
     AddConstraint(shoulderRight, pelvis);
 
+    // And the joints are given room. A hip to an ankle at two thirds of its straight length is a
+    // knee that can bend but not fold flat or invert; the same across each elbow. Across the torso
+    // it stops the chest packing down into the hips, which is what turned a body on the floor into
+    // a heap rather than a shape.
+    const int ankleLeft = boneNamed("foot_left");
+    const int ankleRight = boneNamed("foot_right");
+    const int handLeft = boneNamed("hand_left");
+    const int handRight = boneNamed("hand_right");
+    const int head = boneNamed("head");
+
+    // 0.71 of full extension is a joint bent to a right angle, by the cosine rule on two equal
+    // segments. That is about as far as a knee or an elbow goes before something stops it.
+    AddSpacer(hipLeft, ankleLeft, 0.71f);
+    AddSpacer(hipRight, ankleRight, 0.71f);
+    AddSpacer(shoulderLeft, handLeft, 0.71f);
+    AddSpacer(shoulderRight, handRight, 0.71f);
+    // And the hips themselves only fold so far. Without these the knees come up to the chest and
+    // the whole body curls into a ball, which is what a collapsed ragdoll looked like: every joint
+    // within its limit and the shape still wrong.
+    AddSpacer(chest, ankleLeft, 0.66f);
+    AddSpacer(chest, ankleRight, 0.66f);
+    AddSpacer(pelvis, handLeft, 0.45f);
+    AddSpacer(pelvis, handRight, 0.45f);
+    AddSpacer(pelvis, chest, 0.92f);
+    AddSpacer(pelvis, neck, 0.90f);
+    AddSpacer(chest, head, 0.85f);
+    AddSpacer(hipLeft, shoulderLeft, 0.88f);
+    AddSpacer(hipRight, shoulderRight, 0.88f);
+    // The legs keep out of each other, which is most of what stops a corpse tying itself in a knot.
+    AddSpacer(ankleLeft, ankleRight, 0.55f);
+    AddSpacer(hipLeft, hipRight, 0.95f);
+
     // The blow lands on the chest and the rest follows through the constraints, which is what makes
     // a body go down the way it was hit rather than dropping straight through itself.
     if (chest >= 0)
@@ -154,6 +207,12 @@ void Ragdoll::Step(PhysicsWorld& physics, float dt)
             const glm::vec3 delta = b - a;
             const float distance = glm::length(delta);
             if (distance < 1e-5f)
+            {
+                continue;
+            }
+            // A push-only constraint does nothing while the two are far enough apart. That is the
+            // difference between a bone and a joint limit.
+            if (constraint.pushOnly && distance >= constraint.length)
             {
                 continue;
             }

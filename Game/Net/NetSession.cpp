@@ -47,6 +47,11 @@ PlayerSnapshot SnapshotOf(uint8_t id, const PlayerState& state)
     snapshot.stance = state.stance;
     snapshot.leanAmount = state.leanAmount;
     snapshot.stridePhase = state.stridePhase;
+    snapshot.mantling = state.mantling;
+    snapshot.mantlePhase = state.mantleDuration > 0.0f
+                               ? std::clamp(state.mantleTime / state.mantleDuration, 0.0f, 1.0f)
+                               : 0.0f;
+    snapshot.mantleEdge = state.mantleEdge;
     snapshot.health = state.health;
     snapshot.grounded = state.grounded;
     snapshot.alive = state.alive;
@@ -70,6 +75,9 @@ void ApplySnapshot(RemotePlayerView& view, const PlayerSnapshot& snapshot)
     view.aim = snapshot.aim;
     view.reloading = snapshot.reloading;
     view.reloadProgress = snapshot.reloadProgress;
+    view.mantling = snapshot.mantling;
+    view.mantlePhase = snapshot.mantlePhase;
+    view.mantleEdge = snapshot.mantleEdge;
 }
 
 void SendPacket(Transport& transport, PeerId peer, Channel channel, BitWriter& writer)
@@ -666,6 +674,14 @@ void NetHost::BuildViews(const PlayerState& localState)
         RemotePlayerView view;
         ApplySnapshot(view, SnapshotOf(client->playerId, client->controller.State()));
         view.name = client->name;
+        // What they are holding is not part of the state the host simulates for them, it is what
+        // they told us, so it has to be put back in here. Leaving it out is why the host never saw
+        // anybody else holding anything, and why rounds from a client left their face on the host's
+        // screen: the muzzle is looked up from the weapon being drawn for them, and there was none.
+        view.heldItem = client->heldItem;
+        view.aim = client->aim;
+        view.reloading = client->reloading;
+        view.reloadProgress = client->reloadProgress;
         m_views.push_back(std::move(view));
     }
 }

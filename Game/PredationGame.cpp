@@ -1095,6 +1095,7 @@ void PredationGame::UpdateSpectating()
     if (m_player.State().alive)
     {
         m_spectating = -1;
+        m_spectateEyeHeight = 0.0f;
         return;
     }
 
@@ -1685,6 +1686,14 @@ void PredationGame::SyncRemoteAvatars(float frameDeltaSeconds)
         avatar->state.health = remote.health;
         avatar->state.alive = remote.alive;
         avatar->state.grounded = remote.grounded;
+        // The climb, so a remote player is seen hauling themselves over rather than sliding up a
+        // wall. The duration is nominal here: only the phase matters for the pose.
+        avatar->state.mantling = remote.mantling;
+        avatar->state.mantleDuration = 1.0f;
+        avatar->state.mantleTime = remote.mantlePhase;
+        avatar->state.mantleEdge = remote.mantleEdge;
+        avatar->state.mantleFrom = remote.position;
+        avatar->state.mantleTo = remote.position;
 
         // The eye eases towards the stance's height rather than being set to it, exactly as the
         // local player's own view does. The body is anchored to the eye, so setting it outright
@@ -1697,6 +1706,13 @@ void PredationGame::SyncRemoteAvatars(float frameDeltaSeconds)
 
         avatar->view.renderPosition = remote.position;
         avatar->view.eyePosition = remote.position + glm::vec3(0.0f, avatar->view.eyeHeight, 0.0f);
+
+        // Leaning moves the eye out sideways, and the body is anchored to the eye, so a remote
+        // player who is leaning has to have their eye moved the same way here. Without it they saw
+        // round a corner while their body stayed squarely behind it: they could see you and you
+        // could not see them, which is the worst thing a peek can be.
+        const glm::vec3 leanRight{std::cos(remote.yaw), 0.0f, std::sin(remote.yaw)};
+        avatar->view.eyePosition += leanRight * (remote.leanAmount * config.leanSideOffset);
         avatar->view.yaw = remote.yaw;
         avatar->view.pitch = remote.pitch;
         avatar->view.leanRoll = glm::radians(config.leanAngleDegrees) * remote.leanAmount;
@@ -1999,6 +2015,12 @@ void PredationGame::SampleLook(float /*dt*/)
     const float sensitivity = glm::radians(cv_mouseSensitivity.Get());
     const float vertical = (cv_invertY.Get() ? delta.y : -delta.y) * sensitivity;
     const float limit = glm::radians(m_player.Config().maxPitchDegrees);
+    // Lying down, the eye is a third of a metre off the floor and there is a body in the way.
+    // Looking straight down from there puts the camera through the ground and shows the underside
+    // of the level, so the downward half of the range is cut to what a neck could manage anyway.
+    const float downLimit = m_player.State().stance == PlayerStance::Prone
+                                ? glm::radians(m_player.Config().pronePitchDownDegrees)
+                                : limit;
 
     // Holding the look button in third person orbits the camera instead of turning the character,
     // which is the only way to see the animation from the front.
@@ -2010,7 +2032,7 @@ void PredationGame::SampleLook(float /*dt*/)
     }
 
     m_lookYaw += delta.x * sensitivity;
-    m_lookPitch = std::clamp(m_lookPitch + vertical, -limit, limit);
+    m_lookPitch = std::clamp(m_lookPitch + vertical, -downLimit, limit);
     if (m_lookYaw > glm::pi<float>())
     {
         m_lookYaw -= glm::two_pi<float>();
@@ -2219,7 +2241,10 @@ void PredationGame::ResolveShots()
 
             const ShotResult predicted = ResolveShot(physics, shot);
             Tracer tracer;
-            tracer.from = shot.origin;
+            // Traced from the eye so that what is under the crosshair is hit, drawn from the muzzle
+            // so it looks like it came out of the gun. Those are different points and the round is
+            // entitled to both.
+            tracer.from = MuzzlePosition();
             tracer.to = predicted ? predicted.position : shot.origin + shot.direction * shot.range;
             tracer.hit = predicted.hit;
             m_tracers.push_back(tracer);
@@ -2230,7 +2255,7 @@ void PredationGame::ResolveShots()
         ResolvePlayerHits(shot, LocalPlayerId(), result, PosesNow());
 
         Tracer tracer;
-        tracer.from = shot.origin;
+        tracer.from = MuzzlePosition();
         tracer.to = result ? result.position : shot.origin + shot.direction * shot.range;
         tracer.hit = result.hit;
         m_tracers.push_back(tracer);
@@ -2746,12 +2771,25 @@ void PredationGame::OnUpdate(double dt, double alpha)
 
         if (watched != nullptr)
         {
+            // Eased, exactly as your own eye is. Taking the stance's height outright dropped the
+            // camera into a crouch in a single frame, which the player being watched never sees on
+            // their own screen.
+            const float target = m_player.Config().EyeHeightForStance(watched->stance);
+            m_spectateEyeHeight =
+                m_spectateEyeHeight <= 0.0f
+                    ? target
+                    : m_spectateEyeHeight + (target - m_spectateEyeHeight) *
+                                                (1.0f - std::exp(-m_player.Config().eyeTransitionSpeed *
+                                                                 deltaSeconds));
+
+            const glm::vec3 leanRight{std::cos(watched->yaw), 0.0f, std::sin(watched->yaw)};
             PlayerView spectated;
-            spectated.eyePosition =
-                watched->position +
-                glm::vec3(0.0f, m_player.Config().EyeHeightForStance(watched->stance), 0.0f);
+            spectated.eyePosition = watched->position + glm::vec3(0.0f, m_spectateEyeHeight, 0.0f) +
+                                    leanRight * (watched->leanAmount * m_player.Config().leanSideOffset);
             spectated.yaw = watched->yaw;
             spectated.pitch = watched->pitch;
+            spectated.leanRoll =
+                glm::radians(m_player.Config().leanAngleDegrees) * watched->leanAmount;
             view = spectated.ViewMatrix();
             viewPosition = spectated.eyePosition;
         }
@@ -3277,6 +3315,10 @@ void PredationGame::DrawHud()
     }
     ImGui::End();
 
+    // How the player is doing. Nothing to do with what is in their hands, which is where this was
+    // and why it only appeared when a weapon was out.
+    DrawCondition();
+
     // Ammunition, bottom right, away from the hotbar. Reads magazine over reserve, the way a
     // shooter always has, and says so plainly while the magazine is out.
     if (const WeaponDefinition* weapon = EquippedWeapon())
@@ -3285,7 +3327,6 @@ void PredationGame::DrawHud()
                                  viewport->Pos.y + viewport->Size.y - 20.0f},
                                 ImGuiCond_Always, {1.0f, 1.0f});
         ImGui::SetNextWindowBgAlpha(0.0f);
-        DrawCondition();
         if (ImGui::Begin("##Ammo", nullptr, kHudFlags))
         {
             if (m_weapon.IsReloading())

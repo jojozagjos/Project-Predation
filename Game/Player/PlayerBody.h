@@ -83,6 +83,12 @@ public:
         float weaponSwayRecover = 11.0f;  // how fast it catches up again
         float weaponBreatheAmount = 0.018f; // the small movement of a weapon in someone's hands
         float weaponWalkAmount = 0.030f;  // how much walking swings it, on the stride's own phase
+        // Against a wall a long weapon comes in and comes up. Traced from the eye, so it reacts to
+        // what is actually in front of the muzzle rather than to what the capsule is touching.
+        float wallCheckDistance = 1.10f;
+        float wallCheckSpeed = 12.0f;
+        float weaponWallForward = 0.34f;  // how far forward it still reaches when crowded
+        float weaponWallRaise = 0.16f;    // and how far up it comes
         // A swinging foot follows an already-smooth arc, so it tracks its target almost exactly. It
         // has to: any lag here lands the foot short of where the step was aimed, and it spends the
         // stance catching up, which is a visible skid at every touchdown.
@@ -382,6 +388,8 @@ private:
     float m_mantleFade = 0.0f;
     // How much extra sway injury is adding to a held weapon.
     float m_injurySway = 0.0f;
+    // 1 when nothing is in front of the eye, 0 when a wall is right against it.
+    float m_wallClearance = 1.0f;
     Ragdoll m_ragdoll;
     Entity m_heldItemEntity;
     MeshHandle m_heldItemMesh;

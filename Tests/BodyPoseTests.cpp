@@ -1031,3 +1031,46 @@ TEST_CASE("Climbing puts both hands on the ledge", "[body][pose][mantle]")
     INFO("nearest hand came within " << closest << " m of the ledge edge");
     CHECK(closest < 0.35f);
 }
+
+TEST_CASE("A ragdoll keeps its shape instead of folding into a knot", "[body][ragdoll]")
+{
+    // Distance constraints alone let a body fold through itself: elbows close to nothing, knees
+    // invert, the chest packs into the hips, and a corpse becomes a heap. Joint limits are what
+    // stop it, so what gets measured is that a settled body still occupies a body's worth of space.
+    BodyHarness harness;
+    harness.Settle(120);
+
+    const float standingSpan =
+        glm::distance(harness.Bone(harness.Rig().head), harness.Bone(harness.Rig().foot[0]));
+
+    harness.body.Collapse(glm::vec3(0.0f, 1.0f, -5.0f));
+    for (int i = 0; i < 420; ++i)
+    {
+        harness.Tick();
+    }
+
+    // Head to foot: a body lying down is about as long as it was standing, whatever shape it landed
+    // in. Half that means it has folded up.
+    const float span =
+        glm::distance(harness.Bone(harness.Rig().head), harness.Bone(harness.Rig().foot[0]));
+    INFO("standing span " << standingSpan << ", settled span " << span);
+    CHECK(span > standingSpan * 0.62f);
+
+    // Joints still open. A knee that has folded flat reads as zero here.
+    for (int side = 0; side < 2; ++side)
+    {
+        const float knee = glm::distance(harness.Bone(harness.Rig().upperLeg[side]),
+                                         harness.Bone(harness.Rig().foot[side]));
+        const float elbow = glm::distance(harness.Bone(harness.Rig().shoulder[side]),
+                                          harness.Bone(harness.Rig().hand[side]));
+        INFO("side " << side << " hip to ankle " << knee << ", shoulder to hand " << elbow);
+        CHECK(knee > 0.45f);
+        CHECK(elbow > 0.28f);
+    }
+
+    // And the torso has not concertinaed.
+    const float torso =
+        glm::distance(harness.Bone(harness.Rig().pelvis), harness.Bone(harness.Rig().neck));
+    INFO("pelvis to neck " << torso);
+    CHECK(torso > 0.42f);
+}

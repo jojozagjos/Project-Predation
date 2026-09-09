@@ -49,6 +49,12 @@ struct RemotePlayerView
     float aim = 0.0f;
     bool reloading = false;
     float reloadProgress = 0.0f;
+
+    // Climbing, so a remote player is seen hauling themselves over a ledge rather than sliding up
+    // a wall.
+    bool mantling = false;
+    float mantlePhase = 0.0f;
+    glm::vec3 mantleEdge{0.0f};
 };
 
 // --- The host ----------------------------------------------------------------------------------

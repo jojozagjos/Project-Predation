@@ -300,6 +300,8 @@ private:
     std::map<uint8_t, float> m_remoteRespawnTimers;
     // Whose eyes we are watching through while dead. -1 when alive or when nobody is left.
     int m_spectating = -1;
+    // Eased like your own eye height, so a watched player crouching is a sink rather than a snap.
+    float m_spectateEyeHeight = 0.0f;
     bool m_localCollapsed = false;
     NetConditions m_simulatedConditions;
 

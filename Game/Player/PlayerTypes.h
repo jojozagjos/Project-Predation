@@ -209,6 +209,9 @@ struct PlayerConfig
 
     // --- Look ---
     float maxPitchDegrees = 89.0f;
+    // How far down you can look while lying on your front. The eye is a third of a metre off the
+    // floor there, so the rest of the range is inside the ground.
+    float pronePitchDownDegrees = 42.0f;
 
     // --- Fall damage ---
     float fallDamageMinSpeed = 9.5f;    // below this, landing is free
