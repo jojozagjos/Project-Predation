@@ -239,6 +239,7 @@ private:
     // the caller can fall through to whatever the arms would otherwise be doing.
     // Places the weapon and puts the hands on it. Returns false when there is nothing to hold.
     bool UpdateWeaponHold(const PlayerView& view, float dt);
+    void DestroyWeapon(Scene& scene);
     // The reach-and-pull crawl. With a weapon in hand only the support arm crawls; the other keeps
     // hold of the gun.
     void UpdateCrawlArms(const PlayerState& state, const PlayerView& view, PhysicsWorld& physics,
@@ -259,11 +260,13 @@ private:
     Config m_config;
     std::vector<Part> m_parts;
 
-    Entity m_weaponEntity;
-    Entity m_magazineEntity;
+    // One entity per model part, so a reload can take the magazine out and an authored clip can
+    // move anything it likes.
+    std::vector<Entity> m_weaponParts;
+    std::vector<Transform> m_weaponPartTransforms;
+    Entity m_weaponEntity;  // the first part, and what HasWeapon asks about
     Entity m_muzzleFlashEntity;
     Transform m_weaponTransform;
-    Transform m_magazineTransform;
     Transform m_muzzleFlashTransform;
     WeaponVisual m_weaponVisual;
     WeaponId m_weaponId = kInvalidWeapon;

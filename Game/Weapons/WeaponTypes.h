@@ -27,7 +27,10 @@ struct WeaponDefinition
     WeaponId id = kInvalidWeapon;
     std::string key;  // stable identity for data files and network messages
     std::string name; // shown to the player
-    std::string item; // the inventory item that carries this weapon
+    std::string item;  // the inventory item that carries this weapon
+    // Names a file in Assets/Models. When set, that model is what the player holds, which is how
+    // anything built in the editor gets into the game. Empty means use the built-in shape.
+    std::string model;
 
     FireMode mode = FireMode::Single;
     int burstCount = 3;

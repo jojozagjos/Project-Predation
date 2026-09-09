@@ -41,6 +41,7 @@ set(PRED_GENERATED_ASSETS_DIR "${CMAKE_BINARY_DIR}/GeneratedAssets")
 
 add_subdirectory(Engine)
 add_subdirectory(Game)
+add_subdirectory(Tools)
 
 if(PRED_BUILD_TESTS)
     enable_testing()

@@ -479,48 +479,50 @@ glm::quat PlayerBody::BodyRotation() const
     return glm::angleAxis(-m_bodyYaw, glm::vec3(0.0f, 1.0f, 0.0f));
 }
 
+void PlayerBody::DestroyWeapon(Scene& scene)
+{
+    for (Entity entity : m_weaponParts)
+    {
+        scene.Destroy(entity);
+    }
+    m_weaponParts.clear();
+    m_weaponPartTransforms.clear();
+    scene.Destroy(m_muzzleFlashEntity);
+    m_weaponEntity = Entity{};
+    m_muzzleFlashEntity = Entity{};
+    m_weaponId = kInvalidWeapon;
+}
+
 void PlayerBody::SetWeapon(Scene& scene, MeshLibrary& meshes, const WeaponDefinition* definition)
 {
     if (definition == nullptr || definition->id == kInvalidWeapon)
     {
         if (m_weaponEntity.IsValid())
         {
-            scene.Destroy(m_weaponEntity);
-            scene.Destroy(m_magazineEntity);
-            scene.Destroy(m_muzzleFlashEntity);
-            m_weaponEntity = Entity{};
-            m_magazineEntity = Entity{};
-            m_muzzleFlashEntity = Entity{};
+            DestroyWeapon(scene);
         }
-        m_weaponId = kInvalidWeapon;
         return;
     }
     if (definition->id == m_weaponId && m_weaponEntity.IsValid())
     {
         return;
     }
-
-    if (m_weaponEntity.IsValid())
-    {
-        scene.Destroy(m_weaponEntity);
-        scene.Destroy(m_magazineEntity);
-        scene.Destroy(m_muzzleFlashEntity);
-    }
+    DestroyWeapon(scene);
 
     m_weaponId = definition->id;
     m_weaponVisual = BuildWeaponVisual(*definition);
 
+    // One entity per part, whether the model came from the editor or was built from the weapon's
+    // numbers. That is what lets a reload take the magazine out and an authored clip move anything.
     const std::string key = "weapon_" + definition->key;
-    const Material metal = Material::Metal(definition->color, 0.42f);
-    // The magazine reads slightly darker, so it can be told apart from the receiver while it is
-    // moving during a reload.
-    const Material magazineMetal = Material::Metal(definition->color * 0.75f, 0.55f);
-
-    m_weaponEntity = scene.CreateMeshEntity(key, Transform{}, meshes.Upload(m_weaponVisual.body, key),
-                                            metal);
-    m_magazineEntity = scene.CreateMeshEntity(key + "_mag", Transform{},
-                                              meshes.Upload(m_weaponVisual.magazine, key + "_mag"),
-                                              magazineMetal);
+    for (const WeaponVisual::Part& part : m_weaponVisual.parts)
+    {
+        const MeshHandle mesh = meshes.Upload(part.mesh, key + "_" + part.name);
+        m_weaponParts.push_back(scene.CreateMeshEntity(key + "_" + part.name, Transform{}, mesh,
+                                                       part.material));
+        m_weaponPartTransforms.emplace_back();
+    }
+    m_weaponEntity = m_weaponParts.empty() ? Entity{} : m_weaponParts.front();
 
     // A flash is a scaled-to-nothing sphere most of the time. Giving it its own entity means firing
     // costs a transform write rather than creating and destroying geometry.
@@ -695,10 +697,51 @@ bool PlayerBody::UpdateWeaponHold(const PlayerView& view, float dt)
     m_weaponTransform.rotation = rotation;
     m_weaponTransform.scale = glm::vec3(1.0f);
 
-    m_magazineTransform.position =
-        m_weaponTransform.position + rotation * (m_weaponVisual.magazineSeated + magazineOffset);
-    m_magazineTransform.rotation = rotation;
-    m_magazineTransform.scale = glm::vec3(magazineVisible > 0.01f ? 1.0f : 0.0f);
+    // Every part rides the weapon's frame. A model authored in the editor can carry its own clip
+    // for a reload, in which case that is what moves its parts; otherwise the built-in magazine
+    // swap below is what a reload looks like.
+    const AnimationClip* clip = nullptr;
+    float clipTime = 0.0f;
+    if (m_weaponVisual.asset != nullptr && m_weaponPose.reloading)
+    {
+        clip = m_weaponVisual.asset->FindClip("reload");
+        if (clip != nullptr)
+        {
+            clipTime = glm::clamp(m_weaponPose.reload, 0.0f, 1.0f) * clip->duration;
+        }
+    }
+
+    const glm::mat4 weaponMatrix =
+        glm::translate(glm::mat4(1.0f), m_weaponTransform.position) * glm::mat4_cast(rotation);
+    for (size_t i = 0; i < m_weaponVisual.parts.size() && i < m_weaponPartTransforms.size(); ++i)
+    {
+        const WeaponVisual::Part& part = m_weaponVisual.parts[i];
+        glm::mat4 local = part.rest;
+        float visible = 1.0f;
+
+        if (clip != nullptr && m_weaponVisual.asset != nullptr)
+        {
+            const auto& modelParts = m_weaponVisual.asset->parts;
+            const auto found = std::find_if(modelParts.begin(), modelParts.end(),
+                                            [&](const ModelPart& candidate)
+                                            { return candidate.name == part.name; });
+            if (found != modelParts.end())
+            {
+                local = m_weaponVisual.asset->PartMatrixAt(*found, clip, clipTime, &visible);
+            }
+        }
+        else if (static_cast<int>(i) == m_weaponVisual.magazinePart)
+        {
+            local = glm::translate(glm::mat4(1.0f), magazineOffset) * local;
+            visible = magazineVisible;
+        }
+
+        const glm::mat4 world = weaponMatrix * local;
+        Transform& transform = m_weaponPartTransforms[i];
+        transform.position = glm::vec3(world[3]);
+        transform.rotation = glm::quat_cast(glm::mat3(world));
+        transform.scale = glm::vec3(visible > 0.01f ? 1.0f : 0.0f);
+    }
 
     // The flash lives at the muzzle and is scaled to nothing except on the frames just after a shot.
     m_muzzleFlashTransform.position = MuzzlePoint();
@@ -771,7 +814,9 @@ bool PlayerBody::UpdateWeaponHold(const PlayerView& view, float dt)
     if (supportHandFree && !flat && m_weaponPose.reloading)
     {
         const glm::vec3 shoulder = m_pose.GlobalPosition(m_rig.shoulder[kLeft]);
-        const glm::vec3 target = m_magazineTransform.position + weaponRight * -0.03f;
+        const glm::vec3 magazineWorld =
+            m_weaponTransform.position + rotation * (m_weaponVisual.magazineSeated + magazineOffset);
+        const glm::vec3 target = magazineWorld + weaponRight * -0.03f;
         FootState& hand = m_hands[static_cast<size_t>(kLeft)];
         hand.position = SmoothTowards(hand.position, target, m_config.weaponHandSmoothing, dt);
 
@@ -1060,18 +1105,17 @@ void PlayerBody::UpdateLegs(const PlayerState& state, const PlayerView& view,
 
 void PlayerBody::PushToScene(Scene& scene)
 {
-    // The weapon is three separate entities so a reload can move the magazine on its own and firing
-    // can flash the muzzle without either disturbing the other.
-    if (m_weaponEntity.IsValid())
+    // Each weapon part is its own entity, so a reload can move the magazine on its own and firing
+    // can flash the muzzle without either disturbing the rest of the model.
+    for (size_t i = 0; i < m_weaponParts.size() && i < m_weaponPartTransforms.size(); ++i)
     {
-        if (Transform* transform = scene.GetTransform(m_weaponEntity))
+        if (Transform* transform = scene.GetTransform(m_weaponParts[i]))
         {
-            *transform = m_weaponTransform;
+            *transform = m_weaponPartTransforms[i];
         }
-        if (Transform* transform = scene.GetTransform(m_magazineEntity))
-        {
-            *transform = m_magazineTransform;
-        }
+    }
+    if (m_muzzleFlashEntity.IsValid())
+    {
         if (Transform* transform = scene.GetTransform(m_muzzleFlashEntity))
         {
             *transform = m_muzzleFlashTransform;

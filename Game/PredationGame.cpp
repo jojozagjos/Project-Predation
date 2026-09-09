@@ -7,6 +7,7 @@
 #include "Engine/Debug/ImGuiLayer.h"
 #include "Engine/Render/DebugDraw.h"
 #include "Engine/Render/Primitives.h"
+#include "Game/Weapons/WeaponAppearance.h"
 #include "Game/World/TestMap.h"
 
 #include <SDL3/SDL_events.h>
@@ -90,6 +91,8 @@ bool PredationGame::OnInit(Application& app)
     m_lookYaw = 0.0f;
     m_lookPitch = 0.0f;
     m_camera.position = {0.0f, 3.2f, 22.0f};
+
+    m_editor.Init(app);
 
     RegisterCommands();
     UpdateMouseCapture();
@@ -432,6 +435,57 @@ void PredationGame::RegisterCommands()
     console.RegisterCommand("reload", "Start a reload",
                             [this](const std::vector<std::string>&) { m_reloadLatch = 30; });
 
+    console.RegisterCommand(
+        "editor", "Open or close the model and animation editor: editor [model name]",
+        [this](const std::vector<std::string>& args)
+        {
+            m_editor.SetOpen(m_scene, !m_editor.IsOpen());
+            if (m_editor.IsOpen())
+            {
+                if (args.size() >= 2)
+                {
+                    m_editor.Load(args[1]);
+                }
+                // The editor owns the view while it is open, so the player is left standing.
+                SetCameraMode(CameraMode::Fly);
+                m_wantMouseCaptured = false;
+                UpdateMouseCapture();
+                m_app->GetConsole().Print("Editor open. Right mouse to look, WASD to move.");
+            }
+            else
+            {
+                SetCameraMode(CameraMode::FirstPerson);
+            }
+        },
+        "editor [model]");
+
+    console.RegisterCommand(
+        "model_export",
+        "Write a weapon's built-in shape out as an editable model: model_export <weapon> [model name]",
+        [this](const std::vector<std::string>& args)
+        {
+            if (args.size() < 2)
+            {
+                m_app->GetConsole().PrintError("usage: model_export <weapon> [model name]");
+                return;
+            }
+            const WeaponDefinition* weapon = m_weaponData.Find(args[1]);
+            if (weapon == nullptr)
+            {
+                m_app->GetConsole().PrintError("no such weapon: " + args[1]);
+                return;
+            }
+            const std::string modelName = args.size() >= 3 ? args[2] : weapon->key;
+            if (ExportWeaponModel(*weapon, modelName))
+            {
+                m_app->GetConsole().Print("Wrote model '" + modelName +
+                                          "'. Open it with: editor " + modelName);
+                m_app->GetConsole().Print("Add \"model\": \"" + modelName +
+                                          "\" to the weapon in weapons.json to use it in the game.");
+            }
+        },
+        "model_export <weapon> [model]");
+
     console.RegisterCommand("interact", "Use whatever the player is looking at",
                             [this](const std::vector<std::string>&) { TryInteract(); });
 
@@ -482,6 +536,7 @@ void PredationGame::RegisterCommands()
 
 void PredationGame::OnShutdown()
 {
+    m_editor.Shutdown(m_scene);
     m_itemIcons.Shutdown();
     ClearProps();
     m_body.Destroy(m_scene);
@@ -961,6 +1016,17 @@ void PredationGame::OnUpdate(double dt, double alpha)
     // --- Input that is sampled per frame, not per tick ------------------------------------------
     SampleLook(deltaSeconds);
 
+    // The editor drives its own camera and hides the world, so nothing below has to know it exists.
+    if (m_editor.IsOpen())
+    {
+        m_editor.Camera().yaw = m_lookYaw;
+        m_editor.Camera().pitch = m_lookPitch;
+        m_editor.Camera().moveSpeed = 1.4f;
+        m_editor.Camera().Update(input, deltaSeconds, false);
+        m_editor.Update(m_scene, app.GetMeshes(), deltaSeconds);
+        m_camera = m_editor.Camera();
+    }
+
     if (!app.IsConsoleOpen())
     {
         if (input.WasActionPressed("jump"))
@@ -1237,6 +1303,12 @@ void PredationGame::OnRender()
 void PredationGame::DrawDebugOverlays()
 {
     DebugDraw& draw = m_app->GetDebugDraw();
+
+    if (m_editor.IsOpen())
+    {
+        m_editor.DrawOverlays(draw);
+        return;
+    }
 
     // Tracers are always drawn, not gated behind a debug category: without a muzzle flash or a
     // projectile model yet, this is the only thing that shows a round actually left the barrel.
@@ -1645,6 +1717,14 @@ void PredationGame::DrawInventoryPanel()
 
 void PredationGame::OnImGui()
 {
+    // The editor is a tool, not part of the game's own interface, so it is drawn whether or not the
+    // debug overlay is showing and it takes the screen to itself.
+    if (m_editor.IsOpen())
+    {
+        m_editor.DrawUi(m_scene, m_app->GetMeshes());
+        return;
+    }
+
     // The HUD is part of the game, not the debug overlay, so it is always drawn.
     if (m_cameraMode != CameraMode::Fly)
     {

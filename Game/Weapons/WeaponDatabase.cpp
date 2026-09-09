@@ -124,6 +124,7 @@ bool WeaponDatabase::LoadFromFile(const std::filesystem::path& file)
         ReadField(node, "key", definition.key);
         ReadField(node, "name", definition.name);
         ReadField(node, "item", definition.item);
+        ReadField(node, "model", definition.model);
         if (definition.name.empty())
         {
             definition.name = definition.key;

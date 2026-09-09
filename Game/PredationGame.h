@@ -13,6 +13,7 @@
 #include "Game/Weapons/WeaponDatabase.h"
 #include "Game/Weapons/WeaponSystem.h"
 #include "Game/World/TestMap.h"
+#include "Tools/ModelEditor/ModelEditor.h"
 #include "Game/World/WorldObjects.h"
 
 #include <glm/vec2.hpp>
@@ -133,6 +134,10 @@ private:
     const char* CameraModeName() const;
 
     FlyCamera m_camera;
+
+    // The model and animation editor. It runs inside the game so that what is built in it is drawn
+    // by the same renderer and the same shader the world uses.
+    ModelEditor m_editor;
 
     // Mouse capture has exactly one owner. `m_wantMouseCaptured` is the player's intent, toggled by
     // Escape and by clicking back into the world. The effective state additionally requires window

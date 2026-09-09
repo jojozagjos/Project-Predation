@@ -140,3 +140,21 @@ the simulation the instant the trigger goes down so the weapon feels immediate, 
 host runs identical code and is the only thing that turns an event into damage. Spread comes from a hash of
 the shot number rather than a random generator, so both machines deviate the same round the same way without
 either sending the direction, and there is no generator state to keep in step.
+
+## ADR-015: The model editor runs inside the game, not beside it
+
+**Status**: accepted, 2026-09-09
+
+Models and animations are authored in a panel inside the running game rather than in a separate
+program. It draws through the same renderer, the same shader and the same lighting the world uses,
+so what is built is what appears in the player's hands: there is no export step, no second
+definition of what a model is, and nothing that can look right in a tool and wrong in the game.
+
+The cost is that the editor ships in the game executable. That is acceptable while it is small, and
+the alternative, a second application duplicating the render path, is exactly the thing that makes
+tool output stop matching the game.
+
+Models are JSON: a list of parts, a list of named sockets, and animation clips. Sockets are the
+contract between a model and whatever holds it, so moving a grip in the editor moves the hand that
+holds it without a line of code changing. Imported geometry is stored inside the model file rather
+than referenced by path, so a model is one self-contained thing even when it came from a download.

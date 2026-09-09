@@ -17,10 +17,7 @@ MeshData ItemMesh(const ItemDefinition& definition, const WeaponDatabase* weapon
         {
             // The real model, magazine included, so a dropped rifle and its inventory icon are the
             // same object the player was just holding.
-            WeaponVisual visual = BuildWeaponVisual(*weapon);
-            visual.body.Append(visual.magazine,
-                               glm::translate(glm::mat4(1.0f), visual.magazineSeated));
-            return visual.body;
+            return BuildWeaponVisual(*weapon).Combined();
         }
     }
 

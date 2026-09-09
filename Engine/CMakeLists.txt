@@ -72,6 +72,10 @@ set(PRED_ENGINE_SOURCES
     Debug/DebugOverlay.h
     Debug/DebugOverlay.cpp
 
+    Assets/MeshImport.h
+    Assets/MeshImport.cpp
+    Assets/ModelAsset.h
+    Assets/ModelAsset.cpp
     Assets/FileWatcher.h
     Assets/FileWatcher.cpp
 )
