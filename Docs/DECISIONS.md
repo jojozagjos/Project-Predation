@@ -158,3 +158,50 @@ Models are JSON: a list of parts, a list of named sockets, and animation clips. 
 contract between a model and whatever holds it, so moving a grip in the editor moves the hand that
 holds it without a line of code changing. Imported geometry is stored inside the model file rather
 than referenced by path, so a model is one self-contained thing even when it came from a download.
+
+## ADR-016: UDP with reliability built on top, not TCP
+
+**Status**: accepted, 2026-09-09
+
+The transport is UDP, with an in-house reliable channel over it. TCP was rejected because it
+bundles together the one property the game wants and one it cannot afford: guaranteed delivery, and
+strict ordering of everything.
+
+A lost snapshot must not delay the next one. TCP would hold every later snapshot behind the missing
+one until a resend arrived, by which time the world has moved on twice and the resent snapshot is
+worthless. The correct response to a lost snapshot is to ignore it, which TCP cannot express.
+
+So both channels share one socket. The unreliable one is fire and forget. The reliable one keeps
+each message until the far end acknowledges it, buffers anything that arrives early, and delivers
+in order. Acknowledgements ride on traffic already going the other way, so they cost nothing.
+
+Reliability is deliberately small: sequence numbers, a resend timer, and an in-order delivery queue.
+No congestion control, no fragmentation. The largest message in the game is an 85-byte snapshot, and
+building the parts of TCP the game does not need would be work spent recreating the problem.
+
+## ADR-017: The host simulates every player; clients predict only themselves
+
+**Status**: accepted, 2026-09-09
+
+Clients send input, never results. The host runs the same movement code against its own physics
+world for every player, and what comes out of that is what happened. A client that says it is
+somewhere is making a claim, and claims are not written into the world.
+
+A client still moves the instant a key goes down, because a round trip of dead controls would make
+the game feel broken. It runs the movement itself, remembers each tick it guessed at, and compares
+against the host's answer when it arrives. Agreement is the normal case and costs nothing. On
+disagreement it takes the host state and replays every input the host had not yet seen, which is
+why `PlayerController::Step` had to be a pure function of state, input and world from Milestone 3
+onward: replaying it must give the same answer as running it the first time.
+
+The remaining difference is carried as a drawing offset that decays over a few frames, so a
+correction of a few centimetres is invisible rather than a twitch. Past two metres it snaps instead:
+the client has been through a wall or has been grabbed, and smoothing that would look worse.
+
+Remote players are interpolated between the two snapshots that bracket a moment 66 ms in the past,
+never extrapolated. A guess about a body that has just stopped or turned is worse than being
+slightly late.
+
+Only position, orientation, stance, lean and stride phase cross the wire. The walk cycle, the arms,
+the head and the weapon hold are reproduced locally by the same procedural body the local player
+uses. A gait is expensive to send and cheap to reproduce.

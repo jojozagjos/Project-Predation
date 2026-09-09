@@ -7,6 +7,7 @@
 #include "Game/Items/Inventory.h"
 #include "Game/Items/ItemDatabase.h"
 #include "Game/Items/ItemIcons.h"
+#include "Game/Net/NetSession.h"
 #include "Game/Player/PlayerBody.h"
 #include "Game/Player/PlayerController.h"
 #include "Game/Weapons/ShotResolver.h"
@@ -19,6 +20,7 @@
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
 
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -84,6 +86,17 @@ private:
     std::string DescribeBody(BodyHandle body) const;
     void ReloadPlayerConfig();
     void DrawPlayerPanel();
+
+    // --- Multiplayer ---------------------------------------------------------------------------
+    void RegisterNetCommands();
+    void StopSession();
+    // Runs the host or the client for one tick. Returns true when it has already stepped the local
+    // player, which a client does inside prediction so the replay uses the same code path.
+    bool StepSession(const PlayerInput& input, float dt);
+    // Builds a body for anyone who has appeared and animates everyone from their replicated state.
+    void SyncRemoteAvatars(float frameDeltaSeconds);
+    void DrawNetworkPanel();
+    const std::vector<RemotePlayerView>& RemotePlayers() const;
 
     Application* m_app = nullptr;
     Scene m_scene;
@@ -184,6 +197,25 @@ private:
     bool m_crouchToggleState = false;
     bool m_proneToggleState = false;
     bool m_sprintToggleState = false;
+
+    // Another player's body on this machine. It is driven entirely from replicated state through
+    // the same procedural animation the local body uses, so a remote player walks, crouches and
+    // leans the way the local one does without any of it being sent: only where they are and what
+    // they are doing crosses the wire.
+    struct RemoteAvatar
+    {
+        uint8_t id = 0xFF;
+        PlayerBody body;
+        PlayerState state;
+        PlayerView view;
+        bool built = false;
+    };
+    SessionMode m_sessionMode = SessionMode::Offline;
+    NetHost m_host;
+    NetClient m_client;
+    std::vector<std::unique_ptr<RemoteAvatar>> m_avatars;
+    uint32_t m_networkTick = 0;
+    NetConditions m_simulatedConditions;
 
     std::vector<DynamicProp> m_props;
     MeshHandle m_propSphereMesh;

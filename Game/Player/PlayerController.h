@@ -58,6 +58,11 @@ public:
 
     void Teleport(const glm::vec3& footPosition);
 
+    // Puts the simulation back to a state the host sent, so the client can replay the inputs the
+    // host had not yet seen. Unlike Teleport this keeps velocity, stance and the gait, because a
+    // correction that reset those would turn a two-centimetre disagreement into a visible stumble.
+    void RestoreState(const PlayerState& state);
+
     // Pins the player to a fixed spot: hiding in a locker now, being carried by a creature later.
     // Movement stops being simulated entirely rather than being fed zero input, because a capsule
     // wedged inside geometry gets pushed out by depenetration no matter what the input says.

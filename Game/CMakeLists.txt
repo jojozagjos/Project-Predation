@@ -34,6 +34,10 @@ set(PRED_GAME_SOURCES
 
     Net/Protocol.h
     Net/Protocol.cpp
+    Net/Prediction.h
+    Net/Prediction.cpp
+    Net/NetSession.h
+    Net/NetSession.cpp
 
     World/TestMap.h
     World/TestMap.cpp

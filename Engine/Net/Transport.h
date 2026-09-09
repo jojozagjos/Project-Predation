@@ -87,4 +87,12 @@ public:
 // fails again.
 std::unique_ptr<Transport> CreateLoopbackTransport(uint32_t seed = 0x9E3779B9u);
 
+// The real one, over UDP. Reliability is built on top rather than taken from TCP on purpose: TCP
+// stalls every later message while it resends a lost one, which for a game means the whole world
+// freezing because one snapshot went missing. Here a lost snapshot is simply skipped, and only the
+// reliable channel waits.
+//
+// The simulated conditions apply to this too, so a bad link can be reproduced on a good one.
+std::unique_ptr<Transport> CreateUdpTransport(uint32_t seed = 0x9E3779B9u);
+
 } // namespace pred

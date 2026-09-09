@@ -78,3 +78,60 @@ Late join, host migration, interest management, dedicated servers.
 ## Debug
 
 Network overlay (RTT, loss, bandwidth per channel), replication log, and the simulated-conditions controls.
+
+---
+
+# Implementation notes
+
+**Status**: Milestone 6 built. Two machines connect over UDP, the host simulates everyone, clients predict
+their own movement and interpolate everyone else. Creature replication, voice and spectating are still design.
+
+## What exists
+
+| Piece | Where |
+| --- | --- |
+| Bit-level packet reading and writing | `Engine/Net/BitStream.h` |
+| Transport interface, five operations | `Engine/Net/Transport.h` |
+| In-process transport for tests | `Engine/Net/LoopbackTransport.cpp` |
+| Real transport with its own reliability | `Engine/Net/UdpTransport.cpp` |
+| The wire format | `Game/Net/Protocol.h` |
+| Prediction history and reconciliation | `Game/Net/Prediction.h` |
+| Host and client | `Game/Net/NetSession.h` |
+
+## Console commands
+
+    net_host [port]                      open a game, default port 27015
+    net_join [address] [port]            join one, default 127.0.0.1:27015
+    net_leave                            back to single player
+    net_sim <latency ms> <jitter ms> <loss %>   pretend the connection is worse than it is
+    net_status                           print the session state
+
+The Network panel in the debug overlay (F3) shows packet and byte counters, how many corrections prediction
+has needed, how far off the last one was, and sliders for the simulated conditions.
+
+## Bandwidth
+
+A four-player snapshot is 85 bytes: 152 bits per player plus a 71-bit header. At the 30 Hz send rate that is
+2.6 kB/s to each client, so a host with three of them spends under 8 kB/s upstream. An input packet carries
+three ticks of input in under 32 bytes and goes out at 60 Hz.
+
+Positions are quantised to about a millimetre over a kilometre, angles to a twentieth of a degree, velocity to
+three centimetres a second. A value outside a field's range has no encoding at all, so a modified client
+cannot claim to be ten kilometres away.
+
+## Input redundancy rather than resends
+
+Every input packet repeats the last three ticks. An input is only useful for a few milliseconds, so a resend
+would arrive after the host had already run past that tick. Repeating instead means a quarter of packets can
+go missing with almost no effect, which the tests exercise directly.
+
+## Simulated conditions
+
+Latency, jitter, loss and duplication are simulated by both transports, including the real one. Prediction is
+only exercised by a bad link, so the tests run at a round trip a real player would have rather than on a
+perfect connection where nothing has time to disagree.
+
+## Not yet
+
+Creature replication, weapon events over the wire, voice, spectating, late join, host migration, and NAT
+traversal. Weapons already produce host-authoritative `FireEvent`s (ADR-014); they are not yet sent.

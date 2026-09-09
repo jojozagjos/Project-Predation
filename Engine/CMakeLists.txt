@@ -75,6 +75,7 @@ set(PRED_ENGINE_SOURCES
     Net/BitStream.h
     Net/BitStream.cpp
     Net/Transport.h
+    Net/UdpTransport.cpp
     Net/LoopbackTransport.cpp
 
     Assets/MeshImport.h
@@ -108,7 +109,7 @@ target_link_libraries(PredationEngine
 )
 
 if(WIN32)
-    target_link_libraries(PredationEngine PUBLIC psapi)
+    target_link_libraries(PredationEngine PUBLIC psapi ws2_32)
 endif()
 
 target_compile_definitions(PredationEngine

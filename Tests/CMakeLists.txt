@@ -8,6 +8,8 @@ add_executable(PredationTests
     InteractionTests.cpp
     WeaponTests.cpp
     NetTests.cpp
+    NetSessionTests.cpp
+    NetUdpTests.cpp
 )
 pred_set_warnings(PredationTests)
 target_link_libraries(PredationTests PRIVATE Predation::GameLib Catch2::Catch2WithMain)

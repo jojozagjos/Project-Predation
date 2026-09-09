@@ -453,6 +453,19 @@ void PlayerController::Teleport(const glm::vec3& footPosition)
     m_pendingLandingImpact = 0.0f;
 }
 
+void PlayerController::RestoreState(const PlayerState& state)
+{
+    if (!m_initialized)
+    {
+        return;
+    }
+    m_state = state;
+    m_character.SetPosition(state.position);
+    m_character.SetLinearVelocity(state.velocity);
+    ApplyConfigToCharacter();
+    m_prevPosition = state.position;
+}
+
 void PlayerController::Attach(const glm::vec3& footPosition, float yaw)
 {
     Teleport(footPosition);

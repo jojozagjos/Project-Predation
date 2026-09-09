@@ -95,6 +95,7 @@ bool PredationGame::OnInit(Application& app)
     m_editor.Init(app);
 
     RegisterCommands();
+    RegisterNetCommands();
     UpdateMouseCapture();
 
     PRED_LOG_INFO(Gameplay,
@@ -545,8 +546,311 @@ void PredationGame::RegisterCommands()
                             });
 }
 
+// --- Multiplayer -----------------------------------------------------------------------------
+//
+// The host runs the real simulation for everyone. A client predicts its own movement from local
+// input and interpolates everybody else. Nothing a client sends is written into the world: the host
+// runs the same movement code against its own physics and what comes out is what happened.
+
+const std::vector<RemotePlayerView>& PredationGame::RemotePlayers() const
+{
+    static const std::vector<RemotePlayerView> kNone;
+    switch (m_sessionMode)
+    {
+    case SessionMode::Host: return m_host.Remotes();
+    case SessionMode::Client: return m_client.Remotes();
+    case SessionMode::Offline: break;
+    }
+    return kNone;
+}
+
+void PredationGame::StopSession()
+{
+    if (m_sessionMode == SessionMode::Host)
+    {
+        m_host.Stop();
+    }
+    else if (m_sessionMode == SessionMode::Client)
+    {
+        m_client.Disconnect();
+    }
+    for (auto& avatar : m_avatars)
+    {
+        avatar->body.Destroy(m_scene);
+    }
+    m_avatars.clear();
+    m_sessionMode = SessionMode::Offline;
+    m_networkTick = 0;
+}
+
+bool PredationGame::StepSession(const PlayerInput& input, float dt)
+{
+    ++m_networkTick;
+
+    if (m_sessionMode == SessionMode::Host)
+    {
+        // The host is a player too: it steps itself first, then runs everyone else from what they
+        // sent, then tells them all where everybody ended up.
+        m_player.Step(input, dt);
+        m_host.Tick(m_networkTick, m_player.State(), dt);
+        return true;
+    }
+
+    if (m_sessionMode == SessionMode::Client)
+    {
+        // The client's step happens inside prediction, so the same call is used for the first guess
+        // and for every replay of it. Doing it here as well would run each input twice.
+        m_client.Tick(input, m_player, dt);
+        return true;
+    }
+
+    return false;
+}
+
+void PredationGame::SyncRemoteAvatars(float frameDeltaSeconds)
+{
+    const std::vector<RemotePlayerView>& remotes = RemotePlayers();
+
+    // Anyone who has gone gets their body taken away.
+    for (size_t i = 0; i < m_avatars.size();)
+    {
+        const uint8_t id = m_avatars[i]->id;
+        const bool present = std::any_of(remotes.begin(), remotes.end(),
+                                         [&](const RemotePlayerView& view) { return view.id == id; });
+        if (present)
+        {
+            ++i;
+        }
+        else
+        {
+            m_avatars[i]->body.Destroy(m_scene);
+            m_avatars.erase(m_avatars.begin() + static_cast<ptrdiff_t>(i));
+        }
+    }
+
+    const PlayerConfig& config = m_player.Config();
+    for (const RemotePlayerView& remote : remotes)
+    {
+        RemoteAvatar* avatar = nullptr;
+        for (auto& candidate : m_avatars)
+        {
+            if (candidate->id == remote.id)
+            {
+                avatar = candidate.get();
+                break;
+            }
+        }
+        if (avatar == nullptr)
+        {
+            auto fresh = std::make_unique<RemoteAvatar>();
+            fresh->id = remote.id;
+            fresh->body.Build(m_scene, m_app->GetMeshes(), config);
+            fresh->built = true;
+            m_avatars.push_back(std::move(fresh));
+            avatar = m_avatars.back().get();
+        }
+
+        // Only where they are and what they are doing crosses the wire. The walk cycle, the lean,
+        // the arms and the head all come out of the same procedural body the local player uses, run
+        // here from replicated state. A gait is expensive to send and cheap to reproduce.
+        avatar->state.position = remote.position;
+        avatar->state.velocity = remote.velocity;
+        avatar->state.yaw = remote.yaw;
+        avatar->state.pitch = remote.pitch;
+        avatar->state.stance = remote.stance;
+        avatar->state.desiredStance = remote.stance;
+        avatar->state.leanAmount = remote.leanAmount;
+        avatar->state.stridePhase = remote.stridePhase;
+        avatar->state.health = remote.health;
+        avatar->state.alive = remote.alive;
+        avatar->state.grounded = remote.grounded;
+
+        const float eyeHeight = config.EyeHeightForStance(remote.stance);
+        avatar->view.renderPosition = remote.position;
+        avatar->view.eyePosition = remote.position + glm::vec3(0.0f, eyeHeight, 0.0f);
+        avatar->view.eyeHeight = eyeHeight;
+        avatar->view.yaw = remote.yaw;
+        avatar->view.pitch = remote.pitch;
+        avatar->view.leanRoll = glm::radians(config.leanAngleDegrees) * remote.leanAmount;
+
+        avatar->body.Update(m_scene, avatar->state, avatar->view, config, m_app->GetPhysics(),
+                            frameDeltaSeconds);
+    }
+}
+
+void PredationGame::RegisterNetCommands()
+{
+    Console& console = m_app->GetConsole();
+
+    console.RegisterCommand(
+        "net_host", "Start hosting on a UDP port: net_host [port]",
+        [this](const std::vector<std::string>& args)
+        {
+            StopSession();
+            NetHost::Config config;
+            config.port = args.size() > 1 ? static_cast<uint16_t>(std::strtoul(args[1].c_str(), nullptr, 10))
+                                          : kDefaultPort;
+            auto transport = CreateUdpTransport();
+            transport->SetConditions(m_simulatedConditions);
+            if (!m_host.Start(std::move(transport), config, m_app->GetPhysics(), m_player.Config(),
+                              m_spawnPoint))
+            {
+                m_app->GetConsole().PrintError("Could not open UDP port " + std::to_string(config.port));
+                return;
+            }
+            m_sessionMode = SessionMode::Host;
+            m_app->GetConsole().Print("Hosting on port " + std::to_string(config.port) + " for up to " +
+                                      std::to_string(kMaxPlayers) + " players");
+        });
+
+    console.RegisterCommand(
+        "net_join", "Join a host: net_join [address] [port]",
+        [this](const std::vector<std::string>& args)
+        {
+            StopSession();
+            const std::string address = args.size() > 1 ? args[1] : "127.0.0.1";
+            const auto port = args.size() > 2
+                                  ? static_cast<uint16_t>(std::strtoul(args[2].c_str(), nullptr, 10))
+                                  : kDefaultPort;
+            auto transport = CreateUdpTransport();
+            transport->SetConditions(m_simulatedConditions);
+            NetClient::Config config;
+            if (!m_client.Connect(std::move(transport), address, port, "operator", config))
+            {
+                m_app->GetConsole().PrintError("Could not reach " + address);
+                return;
+            }
+            m_sessionMode = SessionMode::Client;
+            m_app->GetConsole().Print("Joining " + address + ":" + std::to_string(port));
+        });
+
+    console.RegisterCommand("net_leave", "Leave the session, or stop hosting",
+                            [this](const std::vector<std::string>&)
+                            {
+                                StopSession();
+                                m_app->GetConsole().Print("Back to single player");
+                            });
+
+    console.RegisterCommand(
+        "net_sim", "Simulate a bad connection: net_sim <latency ms> <jitter ms> <loss %>",
+        [this](const std::vector<std::string>& args)
+        {
+            if (args.size() < 4)
+            {
+                m_app->GetConsole().PrintError("usage: net_sim <latency ms> <jitter ms> <loss %>");
+                return;
+            }
+            m_simulatedConditions.latencyMs = std::strtof(args[1].c_str(), nullptr);
+            m_simulatedConditions.jitterMs = std::strtof(args[2].c_str(), nullptr);
+            m_simulatedConditions.lossPercent = std::strtof(args[3].c_str(), nullptr);
+
+            Transport* transport = m_sessionMode == SessionMode::Host   ? m_host.GetTransport()
+                                   : m_sessionMode == SessionMode::Client ? m_client.GetTransport()
+                                                                          : nullptr;
+            if (transport != nullptr)
+            {
+                transport->SetConditions(m_simulatedConditions);
+            }
+            m_app->GetConsole().Print("Simulating " + args[1] + " ms latency, " + args[2] +
+                                      " ms jitter, " + args[3] + "% loss");
+        });
+
+    console.RegisterCommand(
+        "net_status", "Print the state of the session",
+        [this](const std::vector<std::string>&)
+        {
+            Console& out = m_app->GetConsole();
+            out.Print(std::string("Session: ") + SessionModeName(m_sessionMode));
+            if (m_sessionMode == SessionMode::Host)
+            {
+                out.Print("Clients: " + std::to_string(m_host.ConnectedCount()));
+                out.Print("Starved ticks: " + std::to_string(m_host.StarvedTicks()));
+            }
+            else if (m_sessionMode == SessionMode::Client)
+            {
+                out.Print(m_client.Connected() ? "Connected as player " + std::to_string(m_client.PlayerId())
+                                               : "Still trying to join");
+                out.Print("Corrections: " + std::to_string(m_client.CorrectionCount()));
+            }
+        });
+}
+
+void PredationGame::DrawNetworkPanel()
+{
+    ImGui::SetNextWindowPos(ImVec2(420.0f, 470.0f), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(340.0f, 260.0f), ImGuiCond_FirstUseEver);
+    if (!ImGui::Begin("Network"))
+    {
+        ImGui::End();
+        return;
+    }
+
+    ImGui::Text("Session: %s", SessionModeName(m_sessionMode));
+
+    Transport* transport = m_sessionMode == SessionMode::Host     ? m_host.GetTransport()
+                           : m_sessionMode == SessionMode::Client ? m_client.GetTransport()
+                                                                  : nullptr;
+
+    if (m_sessionMode == SessionMode::Offline)
+    {
+        ImGui::TextWrapped("Single player. Use net_host in the console to open a game, or net_join "
+                           "<address> to enter one.");
+    }
+    else if (m_sessionMode == SessionMode::Host)
+    {
+        ImGui::Text("Clients: %d of %d", static_cast<int>(m_host.ConnectedCount()), kMaxPlayers - 1);
+        ImGui::Text("Starved ticks: %u", m_host.StarvedTicks());
+        ImGui::TextDisabled("A starved tick is one where a client's input had not arrived and the "
+                            "host repeated the last one.");
+    }
+    else
+    {
+        ImGui::Text("%s", m_client.Connected() ? "Connected" : "Joining");
+        ImGui::Text("Player %u, tick %u", m_client.PlayerId(), m_client.Sequence());
+        ImGui::Text("Corrections: %u", m_client.CorrectionCount());
+        const ReconciliationResult& last = m_client.LastReconciliation();
+        ImGui::Text("Last error: %.3f m over %u replayed ticks", static_cast<double>(last.errorDistance),
+                    last.replayedTicks);
+        ImGui::Text("Hidden offset: %.3f m", static_cast<double>(glm::length(m_client.VisualOffset())));
+    }
+
+    if (transport != nullptr)
+    {
+        const NetStats& stats = transport->Stats();
+        ImGui::Separator();
+        ImGui::Text("Sent %llu packets, %llu bytes", static_cast<unsigned long long>(stats.packetsSent),
+                    static_cast<unsigned long long>(stats.bytesSent));
+        ImGui::Text("Received %llu packets, %llu bytes",
+                    static_cast<unsigned long long>(stats.packetsReceived),
+                    static_cast<unsigned long long>(stats.bytesReceived));
+        ImGui::Text("Dropped %llu", static_cast<unsigned long long>(stats.packetsDropped));
+
+        ImGui::Separator();
+        ImGui::TextUnformatted("Simulated conditions");
+        bool changed = ImGui::SliderFloat("Latency ms", &m_simulatedConditions.latencyMs, 0.0f, 300.0f);
+        changed |= ImGui::SliderFloat("Jitter ms", &m_simulatedConditions.jitterMs, 0.0f, 150.0f);
+        changed |= ImGui::SliderFloat("Loss %", &m_simulatedConditions.lossPercent, 0.0f, 50.0f);
+        if (changed)
+        {
+            transport->SetConditions(m_simulatedConditions);
+        }
+    }
+
+    ImGui::Separator();
+    ImGui::Text("Other players: %d", static_cast<int>(RemotePlayers().size()));
+    for (const RemotePlayerView& remote : RemotePlayers())
+    {
+        ImGui::Text("  %u %s  %.1f %.1f %.1f  %s", remote.id, remote.name.c_str(),
+                    static_cast<double>(remote.position.x), static_cast<double>(remote.position.y),
+                    static_cast<double>(remote.position.z), PlayerStanceName(remote.stance));
+    }
+
+    ImGui::End();
+}
+
 void PredationGame::OnShutdown()
 {
+    StopSession();
     m_editor.Shutdown(m_scene);
     m_itemIcons.Shutdown();
     ClearProps();
@@ -1040,7 +1344,14 @@ void PredationGame::OnFixedUpdate(double fixedDt)
         input.yaw = m_player.State().yaw;
         input.pitch = m_player.State().pitch;
     }
-    m_player.Step(input, dt);
+
+    // In a session the host and the client each own how the local player is stepped: the host runs
+    // it directly and then everyone else, the client runs it inside prediction so that the first
+    // guess and every replay of it go through exactly the same code.
+    if (!StepSession(input, dt))
+    {
+        m_player.Step(input, dt);
+    }
 }
 
 void PredationGame::OnUpdate(double dt, double alpha)
@@ -1260,6 +1571,13 @@ void PredationGame::OnUpdate(double dt, double alpha)
     m_body.Tuning().hideHead = m_cameraMode == CameraMode::FirstPerson;
     m_body.Update(m_scene, m_player.State(), m_player.View(), m_player.Config(), app.GetPhysics(),
                   deltaSeconds);
+
+    // Everyone else, driven the same way from replicated state.
+    if (m_sessionMode != SessionMode::Offline)
+    {
+        m_client.UpdateInterpolation(deltaSeconds);
+        SyncRemoteAvatars(deltaSeconds);
+    }
 
     const float aspect = renderer.Height() > 0
                              ? static_cast<float>(renderer.Width()) / static_cast<float>(renderer.Height())
@@ -1803,6 +2121,8 @@ void PredationGame::OnImGui()
     {
         return;
     }
+
+    DrawNetworkPanel();
 
     ImGui::SetNextWindowPos(ImVec2(8.0f, 470.0f), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSize(ImVec2(400.0f, 620.0f), ImGuiCond_FirstUseEver);
