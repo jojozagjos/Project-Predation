@@ -325,7 +325,11 @@ int Application::Run(Game& game, int argc, char** argv)
         }
     }
 
-    PRED_LOG_INFO(Engine, "Main loop finished after {} frames", m_frameIndex);
+    // Said out loud at the end of every run, so a headless one answers the only performance
+    // question that matters here without anyone having to watch an overlay. Sixty is the floor.
+    const float averageMs = stats.AverageFrameMs();
+    PRED_LOG_INFO(Engine, "Main loop finished after {} frames, {:.2f} ms average ({:.0f} FPS)",
+                  m_frameIndex, averageMs, averageMs > 0.0f ? 1000.0f / averageMs : 0.0f);
     game.OnShutdown();
     ShutdownSubsystems();
     PRED_LOG_INFO(Engine, "Shutdown complete");

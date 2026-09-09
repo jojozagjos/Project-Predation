@@ -135,3 +135,16 @@ build\windows-debug\bin\ProjectPredation.exe --frames 30 --screenshot build\shot
 - **vcpkg using the wrong copy of itself**: `vcvarsall.bat` overwrites `VCPKG_ROOT` with the vcpkg bundled
   inside Visual Studio. `vsenv.cmd` saves and restores the value so your `C:\Dev\vcpkg` wins. If you set up
   the environment by hand, re-set `VCPKG_ROOT` *after* calling `vcvarsall.bat`.
+
+## Sending it to somebody
+
+    Scripts\package.cmd
+
+Builds a release, lays out `build\package\ProjectPredation` and zips it. The folder holds the
+executable, the data files, and the shaders the build compiled, all under an `Assets` folder beside
+the exe, which is the first place the game looks. It runs from anywhere with nothing else installed
+except the Microsoft Visual C++ Redistributable for x64.
+
+Send the zip. To play together, one person opens a game and the others type their address into the
+join box. On the same network that is the host's local address; over the internet the host has to
+forward UDP port 27015, because there is no matchmaking or NAT traversal yet.
