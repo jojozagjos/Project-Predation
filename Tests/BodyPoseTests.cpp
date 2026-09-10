@@ -1428,3 +1428,55 @@ TEST_CASE("Limbs keep their roll through a stride", "[body][pose]")
         CHECK(worst < 25.0f);
     }
 }
+
+TEST_CASE("A weapon stays in the hand beside a wall", "[body][pose]")
+{
+    // Keeping the barrel out of the scenery ran after the clamp that keeps the grip inside the
+    // arm's reach, on the argument that it only ever pulled the weapon in towards the eye. It also
+    // lifts it off whatever is underneath, and standing against a crate and looking up put the
+    // muzzle above the crate, so the lift threw the weapon up out of reach. The arm then drew as a
+    // straight bar pointing at a gun that had visibly left the hand.
+    BodyHarness harness;
+    WeaponDefinition weapon;
+    weapon.id = 1;
+    weapon.key = "test_rifle";
+    weapon.size = {0.06f, 0.16f, 0.62f};
+    harness.body.SetWeaponForSimulation(&weapon);
+
+    // A crate directly in front, chest high, its top well within a probe's reach of the muzzle.
+    harness.physics.CreateBox({1.5f, 0.6f, 0.5f}, Transform{{0.0f, 0.6f, -0.85f}}, BodyMotion::Static);
+    harness.physics.OptimizeBroadPhase();
+
+    harness.input.yaw = 0.0f;
+    harness.SetTravel(glm::vec3(0.0f, 0.0f, -1.0f));
+    harness.Settle(150);
+    harness.input.move = glm::vec2(0.0f);
+
+    // Sweep the pitch, because the failure was at one particular angle rather than everywhere.
+    float worst = 0.0f;
+    for (int step = 0; step <= 24; ++step)
+    {
+        harness.input.pitch = glm::radians(-60.0f + 5.0f * static_cast<float>(step));
+        harness.Settle(12);
+        const glm::vec3 hand = harness.Bone(harness.Rig().hand[1]);
+        const glm::vec3 grip = harness.body.WeaponOrigin();
+        worst = std::max(worst, glm::distance(hand, grip));
+    }
+
+    INFO("furthest the trigger hand got from the grip: " << worst);
+    CHECK(worst < 0.14f);
+
+    // The invariant behind that: the grip is never further from the shoulder than the arm is long.
+    // Whatever the world does to where the weapon wants to be, this runs last and settles it.
+    const float armReach = (harness.Rig().upperArmLength + harness.Rig().lowerArmLength) * 0.94f;
+    float furthest = 0.0f;
+    for (int step = 0; step <= 24; ++step)
+    {
+        harness.input.pitch = glm::radians(-60.0f + 5.0f * static_cast<float>(step));
+        harness.Settle(12);
+        const glm::vec3 shoulder = harness.Bone(harness.Rig().shoulder[1]);
+        furthest = std::max(furthest, glm::distance(shoulder, harness.body.WeaponOrigin()));
+    }
+    INFO("furthest the grip got from the shoulder: " << furthest << ", arm reaches " << armReach);
+    CHECK(furthest <= armReach + 0.001f);
+}

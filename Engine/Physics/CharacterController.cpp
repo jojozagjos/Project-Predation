@@ -273,8 +273,14 @@ bool CharacterController::TryResize(float height, float radius)
     // penetration of exactly zero or of a millionth of a metre depends on the capsule's
     // dimensions. Crouching therefore worked at some heights and was silently refused at others,
     // with nothing to distinguish them but rounding. FLT_MAX tells Jolt to skip the check.
+    // And growing gets a couple of millimetres rather than nothing, for the same reason. The floor
+    // the character is already standing on is in the way of every shape it could possibly take, so
+    // a hard zero there means standing up is refused whenever that contact happens to round the
+    // wrong way. Two millimetres is far below anything a player could stand under and far above
+    // what a resting contact reports, so a ceiling still blocks and a floor no longer does.
+    constexpr float kRestingContact = 0.002f;
     const bool shrinking = height <= impl.height + 1e-4f && radius <= impl.radius + 1e-4f;
-    const float allowance = shrinking ? FLT_MAX : 0.0f;
+    const float allowance = shrinking ? FLT_MAX : kRestingContact;
     const bool resized = impl.character->SetShape(shape, allowance,
                                                   impl.system->GetDefaultBroadPhaseLayerFilter(movingLayer),
                                                   impl.system->GetDefaultLayerFilter(movingLayer), {}, {},

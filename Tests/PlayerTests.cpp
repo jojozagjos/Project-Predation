@@ -921,3 +921,58 @@ TEST_CASE("Crouching is never refused by the floor being there", "[player][stanc
         physics.Shutdown();
     }
 }
+
+TEST_CASE("Standing up is never refused by the floor being there", "[player][stance]")
+{
+    // The mirror of the crouch case. Growing the capsule is checked against the world, which is
+    // what stops a player standing up inside a vent, and it was checked with no tolerance at all.
+    // The floor a character is standing on is in the way of every shape it could take, so whether
+    // standing up worked came down to whether that resting contact rounded to zero.
+    //
+    // Swept across stance heights, and from prone as well as from a crouch, because prone is the
+    // largest change and the one that was reported.
+    for (int step = 0; step <= 12; ++step)
+    {
+        const float crouchHeight = 1.10f + 0.03f * static_cast<float>(step);
+
+        for (const bool fromProne : {false, true})
+        {
+            PhysicsWorld physics;
+            PhysicsWorld::Settings settings;
+            settings.workerThreads = 1;
+            REQUIRE(physics.Init(settings));
+            physics.CreateBox({20.0f, 0.5f, 20.0f}, Transform{{0.0f, -0.5f, 0.0f}}, BodyMotion::Static);
+            physics.OptimizeBroadPhase();
+
+            PlayerConfig config;
+            config.crouchHeight = crouchHeight;
+            PlayerController player;
+            REQUIRE(player.Init(physics, config, {0.0f, 0.05f, 0.0f}));
+
+            PlayerInput down;
+            down.crouchHeld = !fromProne;
+            down.proneHeld = fromProne;
+            for (int i = 0; i < 180; ++i)
+            {
+                player.Step(down, 1.0f / 60.0f);
+                physics.Step(1.0f / 60.0f);
+            }
+            REQUIRE(player.State().stance ==
+                    (fromProne ? PlayerStance::Prone : PlayerStance::Crouching));
+
+            PlayerInput up;
+            for (int i = 0; i < 120; ++i)
+            {
+                player.Step(up, 1.0f / 60.0f);
+                physics.Step(1.0f / 60.0f);
+            }
+
+            INFO("crouch height " << crouchHeight << (fromProne ? ", from prone" : ", from crouch"));
+            CHECK(player.State().stance == PlayerStance::Standing);
+            CHECK_FALSE(player.State().stanceBlocked);
+
+            player.Shutdown();
+            physics.Shutdown();
+        }
+    }
+}

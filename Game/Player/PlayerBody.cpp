@@ -924,8 +924,15 @@ glm::vec3 PlayerBody::ClearOfWorld(PhysicsWorld& physics, const glm::vec3& eye, 
 
     // Traced rather than compared against the player's own feet, so lying on a crate keeps the hold
     // on top of the crate instead of at the height of the floor beside it.
-    const RayHit ground =
-        physics.RayCast(wanted + glm::vec3(0.0f, 0.6f, 0.0f), glm::vec3(0.0f, -1.0f, 0.0f), 1.2f);
+    //
+    // Only just below, deliberately. A long probe finds the top of anything the player happens to be
+    // standing against and lifts the weapon onto it, which is how looking up beside a crate threw
+    // the gun out of the player's hands. This is meant to answer "is this resting in the floor",
+    // which is a question about the few centimetres underneath it.
+    constexpr float kProbeAbove = 0.12f;
+    const float probe = kProbeAbove + clearance + 0.24f;
+    const RayHit ground = physics.RayCast(wanted + glm::vec3(0.0f, kProbeAbove, 0.0f),
+                                          glm::vec3(0.0f, -1.0f, 0.0f), probe);
     if (ground)
     {
         wanted.y = std::max(wanted.y, ground.position.y + clearance);
@@ -1178,11 +1185,31 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
     m_weaponTransform.rotation = rotation;
     m_weaponTransform.scale = glm::vec3(1.0f);
 
+    // The barrel out of the scenery. The muzzle is what goes through a wall, not the grip, so that
+    // is what gets traced for, and the whole weapon moves by whatever correction it needs.
+    //
+    // Skipped during a climb: both hands are on a ledge, the carry offset this started from
+    // describes nowhere the body is, and the correction was dragging the weapon down onto whatever
+    // the player was climbing.
+    if (m_mantleFade <= 0.001f)
+    {
+        const glm::vec3 muzzle =
+            m_weaponTransform.position + m_weaponTransform.rotation * m_weaponVisual.muzzle;
+        const glm::vec3 clear =
+            ClearOfWorld(physics, view.eyePosition, muzzle, m_config.muzzleClearance);
+        m_weaponTransform.position += clear - muzzle;
+    }
+
     // The trigger hand never lets go, so the weapon is pulled in until the grip is somewhere the
     // arm can actually reach. Without this the hold asked for a point further away than the arm is
     // long, the IK stretched to its limit, and the weapon appeared to float free of the hand that
     // was supposed to be holding it: looking straight up, or turning while prone, put the grip well
     // out of range. It happens here, before the parts are placed, so the model moves with it.
+    //
+    // And after the clearance above rather than before it, which is the way round it has to be. A
+    // weapon standing against a wall and looked up at could have its muzzle lifted onto whatever
+    // was above, well out of reach, and the arm then drew as a straight bar pointing at a gun that
+    // had visibly left the hand. Half a centimetre of barrel back in the wall is the cheaper fault.
     {
         const glm::vec3 shoulder = m_pose.GlobalPosition(m_rig.shoulder[kRight]);
         const float reach = (m_rig.upperArmLength + m_rig.lowerArmLength) * 0.94f;
@@ -1192,19 +1219,6 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
         {
             m_weaponTransform.position = shoulder + toGrip * (reach / distance);
         }
-    }
-
-    // And the barrel out of the scenery. The muzzle is what goes through a wall, not the grip, so
-    // that is what gets traced for, and the whole weapon moves by whatever correction it needs.
-    // After the reach clamp, not before: this only ever pulls the weapon in towards the eye or up,
-    // both of which leave it inside the arm's reach, whereas the reach clamp pulls towards the
-    // shoulder and could put the muzzle straight back into the floor it was just lifted out of.
-    {
-        const glm::vec3 muzzle =
-            m_weaponTransform.position + m_weaponTransform.rotation * m_weaponVisual.muzzle;
-        const glm::vec3 clear =
-            ClearOfWorld(physics, view.eyePosition, muzzle, m_config.muzzleClearance);
-        m_weaponTransform.position += clear - muzzle;
     }
 
     // Every part rides the weapon's frame. A model authored in the editor can carry its own clip
@@ -1488,7 +1502,14 @@ void PlayerBody::UpdateHeldItem(const PlayerState& state, const PlayerView& view
     // Out of the wall in front and off the floor below, the same as a weapon is. The soft pull-back
     // above only knows what is straight ahead; this knows where the item actually is, which is what
     // matters when the body is lying down and the hold hangs below an eye a few centimetres up.
-    target = ClearOfWorld(physics, view.eyePosition, target, m_config.heldItemClearance);
+    //
+    // Not during a climb. The hand this is in has gone to the ledge, so an offset measured from the
+    // eye describes nowhere, and correcting it only dragged the item down onto the block being
+    // climbed.
+    if (m_mantleFade <= 0.001f)
+    {
+        target = ClearOfWorld(physics, view.eyePosition, target, m_config.heldItemClearance);
+    }
 
     const glm::vec3 shoulder = m_pose.GlobalPosition(m_rig.shoulder[kRight]);
 
