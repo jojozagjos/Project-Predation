@@ -1365,3 +1365,66 @@ TEST_CASE("The shipped crouch tuning leaves the legs somewhere to go", "[body][p
     INFO("steepest thigh through a crouch walk: " << steepest << " degrees");
     CHECK(steepest < 75.0f);
 }
+
+TEST_CASE("Limbs keep their roll through a stride", "[body][pose]")
+{
+    // Bones are drawn as boxes aligned to the segment, and the spin about the segment has to come
+    // from somewhere. It used to come from the body's facing, which is the worst available choice:
+    // a crouched thigh runs almost exactly along a folded torso's facing, and what survived
+    // projecting the one out of the other was rounding. The drawn thigh turned a full circle about
+    // its own axis every stride. Square limb sections make that read as the leg twisting into a
+    // diamond and back, which is how it kept being reported: the legs rotating sideways.
+    //
+    // Measured as how far each limb bone's own front turns from one tick to the next. No world
+    // reference, deliberately: any fixed direction degenerates for bones that happen to line up
+    // with it, and a test that measures its own reference collapsing is worse than no test.
+    struct Case
+    {
+        const char* label;
+        PlayerStance stance;
+    };
+    const Case cases[] = {{"standing", PlayerStance::Standing},
+                          {"crouching", PlayerStance::Crouching},
+                          {"prone", PlayerStance::Prone}};
+
+    for (const Case& c : cases)
+    {
+        BodyHarness harness;
+        harness.SetStance(c.stance);
+        harness.Settle(200);
+        harness.SetTravel(glm::vec3(0.0f, 0.0f, -1.0f));
+        harness.Settle(120);
+
+        const HumanoidRig& rig = harness.Rig();
+        const BoneIndex limbs[] = {rig.upperLeg[0], rig.lowerLeg[0], rig.upperLeg[1],
+                                   rig.lowerLeg[1], rig.upperArm[0], rig.lowerArm[0]};
+
+        std::vector<glm::vec3> previous(std::size(limbs), glm::vec3(0.0f));
+        float worst = 0.0f;
+        const char* worstName = "";
+        for (int i = 0; i < 150; ++i)
+        {
+            harness.Tick();
+            for (size_t limb = 0; limb < std::size(limbs); ++limb)
+            {
+                const glm::vec3 front = -glm::normalize(glm::vec3(harness.body.GetPose().Global(limbs[limb])[2]));
+                if (i > 0)
+                {
+                    const float turn = glm::degrees(
+                        std::acos(std::clamp(glm::dot(previous[limb], front), -1.0f, 1.0f)));
+                    if (turn > worst)
+                    {
+                        worst = turn;
+                        worstName = limb < 4 ? "leg" : "arm";
+                    }
+                }
+                previous[limb] = front;
+            }
+        }
+
+        INFO(c.label << ": worst one-tick turn was " << worst << " degrees on a " << worstName);
+        // A sixtieth of a second cannot turn a limb far. Before this, a stride put a half turn
+        // through in a couple of ticks.
+        CHECK(worst < 25.0f);
+    }
+}

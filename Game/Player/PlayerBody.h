@@ -366,6 +366,11 @@ private:
     // the arm solve and by whatever is being carried, so the two agree.
     bool MantleCarry(const PlayerState& state, glm::vec3& outPoint, glm::quat& outRotation,
                      float& outWeight) const;
+    // Which way a bone's front faces, carried between frames so a limb's roll can never flip.
+    glm::vec3 RollFront(BoneIndex bone, const glm::vec3& axis, const glm::vec3& hinge);
+    // Places a limb bone from `a` to `b`, rolled so its front faces the way its joint bends.
+    glm::mat4 SegmentFrame(BoneIndex bone, const glm::vec3& a, const glm::vec3& b,
+                           const glm::vec3& hinge);
     // Pulls a point the hands are reaching for back out of whatever it has gone into: anything
     // between the eye and it, and the floor underneath it.
     glm::vec3 ClearOfWorld(PhysicsWorld& physics, const glm::vec3& eye, glm::vec3 wanted,
@@ -419,6 +424,8 @@ private:
     std::array<FootState, 2> m_hands; // same shape: a smoothed target and whether it is planted
     // How far each joint keeps off the floor as a ragdoll, sized to what is drawn there.
     std::vector<float> m_boneRadius;
+    // Which way each bone was facing last frame, so its roll about its own length is continuous.
+    std::vector<glm::vec3> m_boneFront;
     float m_flatness = 0.0f;            // 0 upright, 1 fully prone
     // How far through the crouch, 0 standing to 1 fully down. Smoothed with the rest of the pose.
     float m_crouchness = 0.0f;

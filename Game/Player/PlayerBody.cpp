@@ -87,15 +87,27 @@ Transform LocalOffset(float x, float y, float z)
 }
 
 
-// A matrix placing a segment that runs from `a` to `b`, with its local +Y along the segment.
-glm::mat4 SegmentMatrix(const glm::vec3& a, const glm::vec3& b)
+// A matrix placing a segment that runs from `a` to `b`, with its local +Y along the segment and its
+// local +X turned towards `side`.
+//
+// The roll about the segment is not decoration. This used to take the minimal rotation onto the
+// direction, which leaves the spin undefined, and every drawn limb then had to recover a roll from
+// somewhere else. The body's facing was the obvious somewhere and it is the worst possible choice:
+// a crouched thigh runs almost exactly along a folded torso's facing, so what survived projecting
+// the one out of the other was three centimetres of rounding, and the drawn leg spun a full turn
+// about its own axis every stride. Limb sections are square, so that reads as the leg twisting into
+// a diamond and back rather than as a spin, which is how it was reported: the legs rotating
+// sideways.
+//
+// There is no fixed reference that works. Sideways is the best single choice for a leg, which never
+// points out along the hips, and a poor one for an arm, which spends half a crawl reaching out to
+// the side. The knee pole is worse still: it lies in the plane the leg swings through and crosses
+// the thigh once a stride. So the reference is the joint's own hinge, which is square to both of
+// its segments by construction and only fails when the limb straightens, and the caller carries the
+// answer forward from the last frame to cover that. See PlayerBody::RollFront.
+glm::mat4 SegmentMatrix(const glm::vec3& a, const glm::vec3& b, const glm::vec3& front)
 {
-    const glm::vec3 delta = b - a;
-    const float length = glm::length(delta);
-    const glm::quat rotation =
-        length > 1e-5f ? RotationBetween(glm::vec3(0.0f, 1.0f, 0.0f), delta / length)
-                       : glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
-    return glm::translate(glm::mat4(1.0f), a) * glm::mat4_cast(rotation);
+    return glm::translate(glm::mat4(1.0f), a) * glm::mat4_cast(AlignYWithRoll(b - a, front));
 }
 
 // Neutral grey work kit. Light enough to read against dark interiors and to show the shading that
@@ -198,6 +210,7 @@ void PlayerBody::BuildSkeleton(const PlayerConfig& playerConfig)
         setRadius(m_rig.foot[side], m_rig.ankleHeight);
     }
     m_ragdoll.SetJointRadii(m_boneRadius);
+    m_boneFront.assign(static_cast<size_t>(m_skeleton.BoneCount()), glm::vec3(0.0f, 0.0f, -1.0f));
 }
 
 void PlayerBody::BuildParts(Scene& scene, MeshLibrary& meshes)
@@ -260,7 +273,10 @@ void PlayerBody::BuildParts(Scene& scene, MeshLibrary& meshes)
         const char* fore = side == kLeft ? "forearm_left" : "forearm_right";
         const char* glove = side == kLeft ? "hand_left" : "hand_right";
 
-        limb(upper, m_rig.shoulder[side], m_rig.lowerArm[side], Ratio::kUpperArmWide * h,
+        // Hung off the upper arm bone rather than the shoulder, though the two sit at the same
+        // point. The shoulder belongs to the torso and carries the chest's front; the upper arm
+        // carries the arm's own, which is what the drawn segment needs to take its roll from.
+        limb(upper, m_rig.upperArm[side], m_rig.lowerArm[side], Ratio::kUpperArmWide * h,
              Ratio::kUpperArmDeep * h, kSuitMaterial);
         limb(fore, m_rig.lowerArm[side], m_rig.hand[side], Ratio::kLowerArmWide * h,
              Ratio::kLowerArmDeep * h, kSuitMaterial);
@@ -722,6 +738,68 @@ void PlayerBody::UpdatePosture(const PlayerState& state, const PlayerView& view,
 
     root = glm::translate(glm::mat4(1.0f), m_rootPosition) * glm::mat4_cast(BodyRotation());
     m_pose.ComputeGlobals(m_skeleton, root);
+}
+
+// The direction a bone's front faces, carried forward from the last frame so it can never flip.
+//
+// Whatever fixed direction is used to resolve a limb's spin, some pose lines the limb up with it and
+// the answer collapses into rounding. That is what turned a crouched thigh a full circle about its
+// own axis every stride. The joint's hinge is square to both its segments and so cannot line up with
+// either, but it vanishes when the limb straightens, which a standing leg nearly does.
+//
+// So the roll is carried: last frame's answer, projected onto this frame's direction, which is
+// continuous by construction. The hinge only pulls it back into line, and only as far as the hinge
+// is square to this bone and therefore has an opinion worth listening to. A straight limb keeps the
+// roll it had, which is exactly right, because a straight limb has no bend to take one from.
+glm::vec3 PlayerBody::RollFront(BoneIndex bone, const glm::vec3& axis, const glm::vec3& hinge)
+{
+    const size_t index = static_cast<size_t>(bone);
+    const glm::vec3 preferred = glm::cross(hinge, axis);
+    const float trust = glm::length(preferred);
+
+    glm::vec3 carried = index < m_boneFront.size() ? m_boneFront[index] : glm::vec3(0.0f);
+    carried -= axis * glm::dot(carried, axis);
+    if (glm::length(carried) < 1e-3f)
+    {
+        carried = trust > 1e-3f ? preferred : glm::vec3(0.0f, 0.0f, -1.0f) - axis * -axis.z;
+    }
+    if (glm::length(carried) < 1e-3f)
+    {
+        carried = glm::vec3(1.0f, 0.0f, 0.0f) - axis * axis.x;
+    }
+    carried = glm::normalize(carried);
+
+    if (trust > 1e-3f)
+    {
+        // A quarter of the way each frame, scaled by how square the hinge is. Fast enough that the
+        // roll never drifts anywhere, slow enough that a hinge passing through nothing as the limb
+        // straightens cannot drag the roll round with it.
+        const glm::vec3 blended =
+            glm::mix(carried, preferred / trust, std::clamp(trust, 0.0f, 1.0f) * 0.25f);
+        if (glm::length(blended) > 1e-4f)
+        {
+            carried = glm::normalize(blended);
+        }
+    }
+
+    if (index < m_boneFront.size())
+    {
+        m_boneFront[index] = carried;
+    }
+    return carried;
+}
+
+// Places a limb bone from `a` to `b`, rolled so its front faces the way the joint bends.
+glm::mat4 PlayerBody::SegmentFrame(BoneIndex bone, const glm::vec3& a, const glm::vec3& b,
+                                   const glm::vec3& hinge)
+{
+    const glm::vec3 delta = b - a;
+    const float length = glm::length(delta);
+    if (length < 1e-5f)
+    {
+        return glm::translate(glm::mat4(1.0f), a);
+    }
+    return SegmentMatrix(a, b, RollFront(bone, delta / length, hinge));
 }
 
 glm::vec3 PlayerBody::DebugSkullCentre() const
@@ -1281,10 +1359,14 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
 
         const glm::vec3 elbowPole =
             glm::normalize(-carryUp * 1.0f - carryRight * 0.9f - carryForward * 0.25f);
-        const TwoBoneIKResult ik = SolveTwoBoneIK(shoulder, hand.position, elbowPole,
+        const TwoBoneIKResult ik = SolveTwoBoneIK(shoulder, hand.position, carryRight,
                                                   m_rig.upperArmLength, m_rig.lowerArmLength);
-        m_pose.SetGlobal(m_skeleton, m_rig.upperArm[kLeft], SegmentMatrix(shoulder, ik.jointPosition));
-        m_pose.SetGlobal(m_skeleton, m_rig.lowerArm[kLeft], SegmentMatrix(ik.jointPosition, ik.endPosition));
+        const glm::vec3 hinge =
+            glm::cross(ik.jointPosition - shoulder, ik.endPosition - ik.jointPosition);
+        m_pose.SetGlobal(m_skeleton, m_rig.upperArm[kLeft],
+                         SegmentFrame(m_rig.upperArm[kLeft], shoulder, ik.jointPosition, hinge));
+        m_pose.SetGlobal(m_skeleton, m_rig.lowerArm[kLeft],
+                         SegmentFrame(m_rig.lowerArm[kLeft], ik.jointPosition, ik.endPosition, hinge));
         m_pose.SetGlobal(m_skeleton, m_rig.hand[kLeft],
                          glm::translate(glm::mat4(1.0f), ik.endPosition) * glm::mat4_cast(rotation));
     }
@@ -1309,11 +1391,15 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
         const glm::vec3 elbowPole =
             glm::normalize(-carryUp * 1.0f + carryRight * (sideSign * (0.85f - 0.45f * aim)) -
                            carryForward * 0.35f);
-        const TwoBoneIKResult ik = SolveTwoBoneIK(shoulder, hand.position, elbowPole,
+        const TwoBoneIKResult ik = SolveTwoBoneIK(shoulder, hand.position, carryRight,
                                                   m_rig.upperArmLength, m_rig.lowerArmLength);
 
-        m_pose.SetGlobal(m_skeleton, m_rig.upperArm[side], SegmentMatrix(shoulder, ik.jointPosition));
-        m_pose.SetGlobal(m_skeleton, m_rig.lowerArm[side], SegmentMatrix(ik.jointPosition, ik.endPosition));
+        const glm::vec3 hinge =
+            glm::cross(ik.jointPosition - shoulder, ik.endPosition - ik.jointPosition);
+        m_pose.SetGlobal(m_skeleton, m_rig.upperArm[side],
+                         SegmentFrame(m_rig.upperArm[side], shoulder, ik.jointPosition, hinge));
+        m_pose.SetGlobal(m_skeleton, m_rig.lowerArm[side],
+                         SegmentFrame(m_rig.lowerArm[side], ik.jointPosition, ik.endPosition, hinge));
         m_pose.SetGlobal(m_skeleton, m_rig.hand[side],
                          glm::translate(glm::mat4(1.0f), ik.endPosition) * glm::mat4_cast(rotation));
     }
@@ -1428,8 +1514,11 @@ void PlayerBody::UpdateHeldItem(const PlayerState& state, const PlayerView& view
                                               m_rig.upperArmLength, m_rig.lowerArmLength);
 
     const glm::quat rotation = glm::quat_cast(glm::mat3(glm::vec3(yawRight), up, -forward));
-    m_pose.SetGlobal(m_skeleton, m_rig.upperArm[kRight], SegmentMatrix(shoulder, ik.jointPosition));
-    m_pose.SetGlobal(m_skeleton, m_rig.lowerArm[kRight], SegmentMatrix(ik.jointPosition, ik.endPosition));
+    const glm::vec3 hinge = glm::cross(ik.jointPosition - shoulder, ik.endPosition - ik.jointPosition);
+    m_pose.SetGlobal(m_skeleton, m_rig.upperArm[kRight],
+                     SegmentFrame(m_rig.upperArm[kRight], shoulder, ik.jointPosition, hinge));
+    m_pose.SetGlobal(m_skeleton, m_rig.lowerArm[kRight],
+                     SegmentFrame(m_rig.lowerArm[kRight], ik.jointPosition, ik.endPosition, hinge));
     m_pose.SetGlobal(m_skeleton, m_rig.hand[kRight],
                      glm::translate(glm::mat4(1.0f), ik.endPosition) * glm::mat4_cast(rotation));
 
@@ -1492,12 +1581,15 @@ void PlayerBody::UpdateMantleArms(const PlayerState& state, float weight)
         // Elbows out and down while pulling, which is what taking your own weight looks like.
         const glm::vec3 elbowPole = glm::normalize(right * (sideSign * 1.0f) -
                                                    glm::vec3(0.0f, 0.7f, 0.0f) - forward * 0.3f);
-        const TwoBoneIKResult ik = SolveTwoBoneIK(shoulder, hand.position, elbowPole,
+        const TwoBoneIKResult ik = SolveTwoBoneIK(shoulder, hand.position, right,
                                                   m_rig.upperArmLength, m_rig.lowerArmLength);
 
-        m_pose.SetGlobal(m_skeleton, m_rig.upperArm[side], SegmentMatrix(shoulder, ik.jointPosition));
+        const glm::vec3 hinge =
+            glm::cross(ik.jointPosition - shoulder, ik.endPosition - ik.jointPosition);
+        m_pose.SetGlobal(m_skeleton, m_rig.upperArm[side],
+                         SegmentFrame(m_rig.upperArm[side], shoulder, ik.jointPosition, hinge));
         m_pose.SetGlobal(m_skeleton, m_rig.lowerArm[side],
-                         SegmentMatrix(ik.jointPosition, ik.endPosition));
+                         SegmentFrame(m_rig.lowerArm[side], ik.jointPosition, ik.endPosition, hinge));
         m_pose.SetGlobal(m_skeleton, m_rig.hand[side],
                          glm::translate(glm::mat4(1.0f), ik.endPosition) *
                              glm::mat4_cast(BodyRotation()));
@@ -1566,12 +1658,15 @@ void PlayerBody::UpdateCrawlArms(const PlayerState& state, const PlayerView& vie
         constexpr float elbowSign = 1.0f;
         const glm::vec3 elbowPole = -facing * 0.6f + right * (sideSign * elbowSign * 0.8f) +
                                     glm::vec3(0.0f, 0.4f * elbowSign, 0.0f);
-        const TwoBoneIKResult ik = SolveTwoBoneIK(shoulder, hand.position, elbowPole,
+        const TwoBoneIKResult ik = SolveTwoBoneIK(shoulder, hand.position, right,
                                                   m_rig.upperArmLength, m_rig.lowerArmLength);
 
-        m_pose.SetGlobal(m_skeleton, m_rig.upperArm[side], SegmentMatrix(shoulder, ik.jointPosition));
+        const glm::vec3 hinge =
+            glm::cross(ik.jointPosition - shoulder, ik.endPosition - ik.jointPosition);
+        m_pose.SetGlobal(m_skeleton, m_rig.upperArm[side],
+                         SegmentFrame(m_rig.upperArm[side], shoulder, ik.jointPosition, hinge));
         m_pose.SetGlobal(m_skeleton, m_rig.lowerArm[side],
-                         SegmentMatrix(ik.jointPosition, ik.endPosition));
+                         SegmentFrame(m_rig.lowerArm[side], ik.jointPosition, ik.endPosition, hinge));
         m_pose.SetGlobal(m_skeleton, m_rig.hand[side],
                          glm::translate(glm::mat4(1.0f), ik.endPosition) * glm::mat4_cast(BodyRotation()));
     }
@@ -1848,9 +1943,11 @@ void PlayerBody::UpdateLegs(const PlayerState& state, const PlayerView& view,
 
         // Write the solved chain straight into the pose's globals. Parent before child, because
         // setting a bone rebuilds everything after it from local transforms.
-        m_pose.SetGlobal(m_skeleton, m_rig.upperLeg[side], SegmentMatrix(hip, ik.jointPosition));
+        const glm::vec3 hinge = glm::cross(ik.jointPosition - hip, ik.endPosition - ik.jointPosition);
+        m_pose.SetGlobal(m_skeleton, m_rig.upperLeg[side],
+                         SegmentFrame(m_rig.upperLeg[side], hip, ik.jointPosition, hinge));
         m_pose.SetGlobal(m_skeleton, m_rig.lowerLeg[side],
-                         SegmentMatrix(ik.jointPosition, ik.endPosition));
+                         SegmentFrame(m_rig.lowerLeg[side], ik.jointPosition, ik.endPosition, hinge));
         m_pose.SetGlobal(m_skeleton, m_rig.foot[side],
                          glm::translate(glm::mat4(1.0f), ik.endPosition) * glm::mat4_cast(bodyRotation));
     }
@@ -1929,11 +2026,17 @@ void PlayerBody::PushToScene(Scene& scene)
         const float length = glm::length(delta);
 
         // Box meshes are built centred on their own origin, so the transform sits at the segment's
-        // midpoint and aligns its local +Y with the bone. The body's facing resolves the spin about
-        // that axis, without which a vertical segment such as the torso would never turn with the
-        // character.
+        // midpoint and aligns its local +Y with the bone.
+        //
+        // The spin about that axis comes from the bone the part hangs off, not from the body. Every
+        // bone in this rig has its own front square to its own length, by construction: the torso
+        // chain from the FK pose, every limb from the pole its IK was solved against. The body's
+        // facing has no such guarantee, and a crouched thigh runs so nearly along a folded torso's
+        // facing that what survived projecting the one out of the other was rounding: the drawn leg
+        // spun a full turn about its own axis every stride.
+        const glm::vec3 boneFront = -glm::vec3(m_pose.Global(part.from)[2]);
         transform->position = (a + b) * 0.5f;
-        transform->rotation = AlignYWithRoll(delta, bodyForward);
+        transform->rotation = AlignYWithRoll(delta, boneFront);
         // Parts are built at their bind length; stances change limb spans slightly, so stretch along
         // the bone only.
         transform->scale = glm::vec3(1.0f, part.bindLength > 1e-4f ? length / part.bindLength : 1.0f, 1.0f);
