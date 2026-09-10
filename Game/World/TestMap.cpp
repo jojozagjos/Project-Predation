@@ -57,7 +57,17 @@ public:
     void AddBox(const std::string& name, const Transform& transform, const glm::vec3& size,
                 const Material& material)
     {
-        const MeshHandle mesh = m_meshes.Upload(Primitives::Box(size), name);
+        // The mesh gets a name of its own, numbered in the order the map is built.
+        //
+        // Meshes are shared by name, so several boxes that call themselves the same thing and are
+        // not the same size all end up drawing whichever of them was uploaded last. The corridor
+        // builds a row of doorways that narrow as they go and calls every lintel "gap_lintel", so
+        // they all came out the width of the last one and the tops of the wide ones stopped
+        // reaching their walls. Numbered by build order rather than made unique some other way,
+        // because the map is rebuilt for every new game and a name that changes each time would
+        // upload the whole level again.
+        const std::string meshName = name + "#" + std::to_string(m_boxCount++);
+        const MeshHandle mesh = m_meshes.Upload(Primitives::Box(size), meshName);
         m_scene.CreateMeshEntity(name, transform, mesh, material);
         if (m_physics != nullptr)
         {
@@ -80,7 +90,9 @@ public:
     void AddMesh(const std::string& name, const Transform& transform, const MeshData& data,
                  const Material& material, bool collide = true)
     {
-        const MeshHandle mesh = m_meshes.Upload(data, name);
+        // Numbered like the boxes above, and for the same reason: two stairs of different sizes
+        // both called "stairs" would share one mesh and the second would draw as the first.
+        const MeshHandle mesh = m_meshes.Upload(data, name + "#" + std::to_string(m_boxCount++));
         m_scene.CreateMeshEntity(name, transform, mesh, material);
         if (collide && m_physics != nullptr)
         {
@@ -109,6 +121,8 @@ private:
     Scene& m_scene;
     MeshLibrary& m_meshes;
     PhysicsWorld* m_physics;
+    // How many boxes have been added, so each gets a mesh name of its own in a stable order.
+    size_t m_boxCount = 0;
 };
 
 } // namespace

@@ -160,11 +160,6 @@ private:
     // named, and several can belong to one entity, so this is a diagnostic aid rather than a lookup.
     std::string DescribeBody(BodyHandle body) const;
     void ReloadPlayerConfig();
-    // Where the hands hold a weapon, out of player.json and back into it. Placed by eye in the
-    // bench, so it has to be saveable from where it is placed.
-    void LoadWeaponCarry();
-    bool SaveWeaponCarry();
-    static void CopyWeaponCarry(const PlayerBody::Config& from, PlayerBody::Config& to);
     void DrawPlayerPanel();
 
     // --- The front end -------------------------------------------------------------------------
@@ -183,6 +178,8 @@ private:
     // player back exactly where they were. In a session nothing stops simulating, because a shared
     // world cannot be paused by one person in it.
     void DrawPauseMenu();
+    // Where the weapon sits relative to the eye, for comparing the editor with the game.
+    void ReportHold();
     // How far through a reload the local player is, 0 to 1. One place, because the pose and the wire
     // each had their own and only one of them was a fraction.
     float ReloadProgress() const;
@@ -409,6 +406,9 @@ private:
     };
     Screen m_screen = Screen::Title;
     bool m_paused = false;
+    // Frames left before a deferred hold report. Commands from --exec all run before the first
+    // frame, when nothing is equipped, so a report taken then is about an empty hand.
+    int m_holdReportIn = 0;
     float m_titleClock = 0.0f;
     // Kept between visits to the menu so rejoining the same friend does not mean typing the address
     // again. Sized for an address and a port; anything longer is not an address.

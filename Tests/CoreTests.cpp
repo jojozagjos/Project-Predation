@@ -4,6 +4,7 @@
 #include "Engine/Core/Time.h"
 #include "Engine/Debug/Console.h"
 #include "Engine/Platform/Input.h"
+#include "Engine/Render/Mesh.h"
 #include "Engine/Render/Primitives.h"
 #include "Engine/Scene/Scene.h"
 
@@ -542,4 +543,25 @@ TEST_CASE("Console tokenizer handles quotes and whitespace", "[console]")
     REQUIRE(tokens[2] == "42");
     REQUIRE(Console::Tokenize("").empty());
     REQUIRE(Console::Tokenize("\"\"").size() == 1);
+}
+
+
+TEST_CASE("Two boxes of different sizes do not end up as the same mesh", "[render][map]")
+{
+    // Meshes are shared by name, which is what stopped the editor exhausting the renderer by
+    // uploading a new one on every frame of a drag. It also means that anything uploading several
+    // different shapes under one name gets whichever was uploaded last, for all of them: the
+    // corridor's doorways narrow as they go and every lintel was called "gap_lintel", so they all
+    // came out the width of the last and the tops of the wide ones stopped reaching their walls.
+    //
+    // Checked on the fingerprint rather than through the renderer, because there is no renderer in
+    // a test: the fingerprint is what Upload compares, so two shapes that disagree here are two
+    // shapes it will keep apart.
+    const MeshData wide = Primitives::Box({1.6f, 0.9f, 0.3f});
+    const MeshData narrow = Primitives::Box({0.7f, 0.9f, 0.3f});
+    CHECK(MeshFingerprintForTesting(wide) != MeshFingerprintForTesting(narrow));
+
+    // And the same shape twice really is the same, or the sharing does nothing.
+    const MeshData again = Primitives::Box({1.6f, 0.9f, 0.3f});
+    CHECK(MeshFingerprintForTesting(wide) == MeshFingerprintForTesting(again));
 }

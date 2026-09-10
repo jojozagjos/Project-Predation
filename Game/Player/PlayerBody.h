@@ -203,7 +203,7 @@ public:
         // The feet then sit under the hips rather than in front of them, so the body has something
         // beneath it. See crouchBodyForward, which keeps the pelvis over the capsule while it does.
         StancePose stand{0.0f, 0.0f, 0.00f, 1.00f, 0.0f};
-        StancePose crouch{0.0f, 46.0f, 0.06f, 1.20f, 10.0f};
+        StancePose crouch{0.0f, 46.0f, 0.15f, 1.20f, 10.0f};
         // Prone lays the pelvis flat so the spine continues horizontally. The feet go almost a full
         // leg length back so the legs lie out straight; leaving slack let the knees fold up into the
         // air, because once the pelvis is flat the knee's bend direction points at the sky.
@@ -296,7 +296,7 @@ public:
         // sitting well behind the space it occupies. Sliding the whole crouched body forward by this
         // much puts the pelvis back over the feet. The head then sits slightly in front of the eye,
         // which costs nothing: it is hidden in first person, and nobody else can see the camera.
-        float crouchBodyForward = 0.25f;
+        float crouchBodyForward = 0.12f;
         bool hideHead = true; // the camera lives inside it
         bool visible = true;
     };

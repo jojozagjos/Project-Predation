@@ -2158,3 +2158,38 @@ TEST_CASE("Aiming does not pull the weapon back towards the eye", "[body][pose][
     CHECK(sighted.rear >= hip.rear - 0.01f);
     CHECK(sighted.muzzle >= hip.muzzle - 0.01f);
 }
+
+
+TEST_CASE("Crouching does not put more of the body under the camera", "[body][pose]")
+{
+    // Looking down while crouched showed far more of the player's own chest than looking down while
+    // standing. The body is anchored to the eye, and a crouch pushes it forward to keep it under a
+    // camera that a folded torso would otherwise leave behind; pushed too far, the chest ends up
+    // directly beneath the view and fills it.
+    BodyHarness harness;
+
+    const auto forwardOfEye = [&](BoneIndex bone)
+    {
+        const glm::vec3 eye = harness.View().eyePosition;
+        const glm::vec3 at = harness.Bone(bone);
+        return -(at.z - eye.z); // forward is -Z at yaw zero
+    };
+
+    harness.input.pitch = glm::radians(-80.0f);
+    harness.SetStance(PlayerStance::Standing);
+    harness.Settle(240);
+    const float standChest = forwardOfEye(harness.Rig().chest);
+    const float standPelvis = forwardOfEye(harness.Rig().pelvis);
+
+    harness.SetStance(PlayerStance::Crouching);
+    harness.Settle(240);
+    const float crouchChest = forwardOfEye(harness.Rig().chest);
+    const float crouchPelvis = forwardOfEye(harness.Rig().pelvis);
+
+    INFO("standing: chest " << standChest << " m in front of the eye, pelvis " << standPelvis
+                            << " m; crouched: chest " << crouchChest << " m, pelvis " << crouchPelvis
+                            << " m");
+    // Some difference is honest: a crouch folds the torso and the chest really does come forward.
+    // Twice as far is what reads as a different game.
+    CHECK(crouchChest < standChest + 0.08f);
+}

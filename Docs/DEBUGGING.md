@@ -221,3 +221,16 @@ A window saying `abort() has been called` is a renderer fatal, and it is written
 the process goes. The log is at `%APPDATA%/ACRD/ProjectPredation/Logs/predation.log`, and the run
 before it is kept beside it as `predation.prev.log`, which is the one to look at after a restart.
 Search for `critical`.
+
+### When the editor and the game disagree
+
+`hold_report [frames]` prints where the weapon sits relative to the eye, in the view's own frame:
+across, up and out. It reports the editor's body when the editor is open and the player's when it is
+not, so the two can be compared as numbers rather than argued about from screenshots. The frame
+count defers it, because commands from `--exec` all run before the first frame, when nothing has been
+equipped and no body has been posed.
+
+```
+ProjectPredation.exe --frames 300 --exec "solo" --exec "give carbine" --exec "slot 1" --exec "hold_report 200"
+ProjectPredation.exe --frames 300 --exec "editor m4_carbine" --exec "hold_report 200"
+```
