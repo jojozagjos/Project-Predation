@@ -31,7 +31,9 @@ Systems added later add their own rows (physics, AI, animation, network, audio).
 
 ## Console
 
-Type `help` for the command list, `help <command>` for usage. Tab completes command and cvar names. Up and
+Type `help` for the command list, `help <command>` for usage. What could be typed appears under the
+input as you type it, with each command's own usage beside it; click one to fill it in. Tab completes
+command and cvar names to their common prefix. Up and
 Down recall history. Every log line is mirrored into the console with level colors.
 
 Built-in commands:
@@ -183,3 +185,26 @@ a socket that is too far forward shows up as a hand that is not on it.
 
 Keys: right mouse to look with WASD while held, left click to select, drag a handle to move, Ctrl+Z
 and Ctrl+Y, F to put the view back on the model, Escape to leave.
+
+### The first-person panel
+
+Everything else in the editor looks at a model from outside, and outside is not where the player is.
+A grip that reads perfectly in the viewport can put the receiver across half the screen from behind
+the eye. The **First person** panel is the editor body's own eye, at the game's field of view, drawn
+every frame. Turn it off while working on something else: it is a second render of the scene.
+
+### Turning a model in the hand
+
+The `grip` socket carries a turn as well as a place, and that turn is how the weapon sits in the
+hand. Select the socket and use the Turn fields, or the X+90, Y+90 and Z+90 buttons, under it.
+
+Do not turn the geometry instead. The Model panel's turn moves the vertices, the sockets, the clips
+and everything else together, so a model righted that way comes out facing the other way with its
+muzzle where its stock was. The grip's turn moves nothing but the hold.
+
+### When the game aborts
+
+A window saying `abort() has been called` is a renderer fatal, and it is written to the log before
+the process goes. The log is at `%APPDATA%/ACRD/ProjectPredation/Logs/predation.log`, and the run
+before it is kept beside it as `predation.prev.log`, which is the one to look at after a restart.
+Search for `critical`.

@@ -150,6 +150,7 @@ WeaponVisual FromModel(const ModelAsset& model, const WeaponDefinition& definiti
     if (const ModelSocket* socket = model.FindSocket("grip"))
     {
         visual.triggerGrip = socket->position;
+        visual.gripRotation = socket->Rotation();
     }
     if (const ModelSocket* socket = model.FindSocket("support"))
     {
@@ -174,10 +175,16 @@ WeaponVisual FromModel(const ModelAsset& model, const WeaponDefinition& definiti
     if (const ModelSocket* socket = model.FindSocket("sight"))
     {
         visual.sightPoint = socket->position;
+        // Falls back to the grip's turn rather than to none. A model corrected by turning its grip
+        // is corrected for the whole weapon; leaving the sight square would have the gun snap back
+        // to its uncorrected attitude the moment the sights came up.
+        visual.sightRotation =
+            socket->rotation == glm::vec3(0.0f) ? visual.gripRotation : socket->Rotation();
     }
     else
     {
         visual.sightPoint = {0.0f, height * 0.76f, visual.triggerGrip.z + length * 0.20f};
+        visual.sightRotation = visual.gripRotation;
     }
 
     // Measured rather than named, because no exporter marks the back of a stock and nobody would

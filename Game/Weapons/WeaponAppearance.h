@@ -45,12 +45,19 @@ struct WeaponVisual
     // imported model has its origin wherever the person who made it left it, which for the two that
     // arrived first is the middle of the weapon and nowhere near the grip.
     glm::vec3 triggerGrip{0.0f};
+    // And how the weapon is turned in that hand. A socket carries a rotation as well as a place,
+    // and this is what it is for: the carry decides where the hold goes and which way the hold
+    // faces, and this turns the model within it. It is the only way to correct a model that was
+    // exported lying on its side without turning the geometry itself, which would move the sockets,
+    // the clips and everything else along with it.
+    glm::quat gripRotation{1.0f, 0.0f, 0.0f, 0.0f};
     glm::vec3 supportGrip{0.0f};    // where the support hand goes
     glm::vec3 muzzle{0.0f};         // where a round appears to leave
     // Where the sight line leaves the weapon. Aiming puts this point on the view axis, all three
     // axes of it: a height alone lines the sights up only while the player is looking level, and a
     // sight that is off to one side or set back along the rail is off the axis the moment it is not.
     glm::vec3 sightPoint{0.0f};
+    glm::quat sightRotation{1.0f, 0.0f, 0.0f, 0.0f};
     // The furthest point back along the weapon, which in first person is the point nearest the
     // camera: on a rifle, the end of the stock. Keeping the grip out of the near plane is not the
     // same as keeping the weapon out of it, and the difference is a whole buttstock long.

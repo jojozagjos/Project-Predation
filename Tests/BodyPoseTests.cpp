@@ -1765,3 +1765,81 @@ TEST_CASE("Sighted, the whole weapon stays in front of the near plane", "[body][
     INFO("the sight sits " << across << " m off the view axis");
     CHECK(across < 0.02f);
 }
+
+
+TEST_CASE("Turning the grip socket turns the weapon in the hand", "[body][pose][weapons]")
+{
+    // The only way to right a model that was exported lying on its side. Turning the geometry
+    // instead takes the sockets, the clips and the animation with it, and the first attempt at that
+    // left the shipped carbine facing backwards with its muzzle where its stock had been.
+    //
+    // What has to hold is that the model turns and the grip does not move: the hand stays where the
+    // carry put it and the weapon spins about it.
+    Paths::Init(nullptr, std::filesystem::path(PRED_SOURCE_DIR) / "Assets");
+
+    ModelAsset model;
+    model.name = "grip_turn_test";
+    ModelPart body;
+    body.name = "body";
+    body.shape = PartShape::Box;
+    body.size = {0.05f, 0.10f, 0.70f};
+    model.parts.push_back(body);
+    ModelSocket grip;
+    grip.name = "grip";
+    grip.position = {0.0f, -0.04f, -0.20f};
+    model.sockets.push_back(grip);
+    ModelSocket muzzle;
+    muzzle.name = "muzzle";
+    muzzle.position = {0.0f, 0.0f, 0.35f};
+    model.sockets.push_back(muzzle);
+
+    const std::filesystem::path file = ModelDirectory() / "grip_turn_test.json";
+    REQUIRE(model.SaveToFile(file));
+
+    WeaponDefinition weapon;
+    weapon.id = 1;
+    weapon.key = "grip_turn_test";
+    weapon.model = "grip_turn_test";
+    weapon.size = {0.05f, 0.10f, 0.70f};
+
+    const auto measure = [&](float turnDegrees)
+    {
+        ModelAsset turned = model;
+        turned.sockets[0].rotation = {0.0f, turnDegrees, 0.0f};
+        REQUIRE(turned.SaveToFile(file));
+        ForgetWeaponModels();
+
+        BodyHarness harness;
+        harness.SetStance(PlayerStance::Standing);
+        harness.Settle(120);
+        harness.body.SetWeaponForSimulation(&weapon);
+        harness.Settle(120);
+
+        struct Reading
+        {
+            glm::vec3 hold;
+            glm::vec3 barrel;
+        };
+        return Reading{harness.body.HoldPoint(),
+                       glm::normalize(harness.body.MuzzlePoint() - harness.body.HoldPoint())};
+    };
+
+    const auto square = measure(0.0f);
+    const auto quarter = measure(90.0f);
+    std::filesystem::remove(file);
+    ForgetWeaponModels();
+
+    // The hold does not move. The hand is where the carry put it either way.
+    INFO("hold square at " << square.hold.x << ", " << square.hold.y << ", " << square.hold.z
+                           << " and turned at " << quarter.hold.x << ", " << quarter.hold.y << ", "
+                           << quarter.hold.z);
+    CHECK(glm::distance(square.hold, quarter.hold) < 0.01f);
+
+    // And the weapon has turned about a quarter. Not exactly ninety degrees: the carry lowers the
+    // muzzle a little, and turning the model turns that lowering into a lean.
+    const float turned = glm::degrees(std::acos(
+        glm::clamp(glm::dot(square.barrel, quarter.barrel), -1.0f, 1.0f)));
+    INFO("the barrel turned " << turned << " degrees");
+    CHECK(turned > 75.0f);
+    CHECK(turned < 105.0f);
+}

@@ -607,9 +607,52 @@ void ModelEditor::DrawSocketPanel()
             PushUndo("a socket delete");
             m_model.sockets.erase(m_model.sockets.begin() + i);
             m_dirty = true;
-    m_previewChanged = true;
+            m_previewChanged = true;
             ImGui::PopID();
             break;
+        }
+
+        // The turn, under the selected socket only, because it is three more fields and only one
+        // socket is being worked on at a time. On `grip` this is how the weapon sits in the hand,
+        // which is the only way to right a model that was exported on its side: turning the
+        // geometry instead would drag the sockets, the clips and the animation along with it.
+        if (selected)
+        {
+            ImGui::Indent();
+            if (DragVec3("Turn", socket.rotation, 0.5f, "%.1f deg"))
+            {
+                m_dirty = true;
+                m_previewChanged = true;
+            }
+            const auto quarter = [&](const char* label, const glm::vec3& about)
+            {
+                if (ImGui::SmallButton(label))
+                {
+                    PushUndo("a socket turn");
+                    socket.rotation += about;
+                    m_dirty = true;
+                    m_previewChanged = true;
+                }
+            };
+            quarter("X+90", {90.0f, 0.0f, 0.0f});
+            ImGui::SameLine();
+            quarter("Y+90", {0.0f, 90.0f, 0.0f});
+            ImGui::SameLine();
+            quarter("Z+90", {0.0f, 0.0f, 90.0f});
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Square"))
+            {
+                PushUndo("a socket turn");
+                socket.rotation = glm::vec3(0.0f);
+                m_dirty = true;
+                m_previewChanged = true;
+            }
+            if (socket.name == "grip")
+            {
+                ImGui::TextDisabled("This turns the whole weapon in the hand. The grip stays where "
+                                    "it is; the model spins about it.");
+            }
+            ImGui::Unindent();
         }
         ImGui::PopID();
     }

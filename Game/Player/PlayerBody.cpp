@@ -1318,6 +1318,12 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
     // firing hand is. Sighted, it is the sight itself, which is what puts the sight block on the
     // view axis in all three axes rather than only in height.
     const glm::vec3 holdPoint = glm::mix(m_weaponVisual.triggerGrip, m_weaponVisual.sightPoint, aim);
+    // And the socket's own turn, so a model exported lying on its side can be righted by rotating
+    // the grip rather than by rotating the geometry, which would take the sockets, the clips and
+    // everything else along with it. The model spins about the hold: the grip stays in the hand.
+    const glm::quat holdTurn =
+        glm::slerp(m_weaponVisual.gripRotation, m_weaponVisual.sightRotation, aim);
+    rotation = rotation * holdTurn;
     m_weaponTransform.position = view.eyePosition + offset - rotation * holdPoint;
     m_weaponTransform.rotation = rotation;
     m_weaponTransform.scale = glm::vec3(1.0f);

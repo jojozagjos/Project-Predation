@@ -7,6 +7,7 @@
 #include <nlohmann/json.hpp>
 
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/quaternion.hpp>
 
 #include <algorithm>
 #include <fstream>
@@ -80,6 +81,11 @@ PartShape PartShapeFromString(const std::string& name)
         return PartShape::Mesh;
     }
     return PartShape::Box;
+}
+
+glm::quat ModelSocket::Rotation() const
+{
+    return glm::quat_cast(EulerMatrix(rotation));
 }
 
 glm::mat4 ModelPart::LocalMatrix() const

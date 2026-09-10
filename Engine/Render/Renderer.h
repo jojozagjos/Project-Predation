@@ -35,6 +35,9 @@ public:
     // before the UI that samples it.
     static constexpr bgfx::ViewId kViewOffscreenFirst = 200;
     static constexpr bgfx::ViewId kViewOffscreenCount = 48;
+    // One more offscreen view, redrawn every frame rather than once: the editor's first-person
+    // panel. Kept out of the block above so a long item list can never grow into it.
+    static constexpr bgfx::ViewId kViewOffscreenLive = 249;
     static constexpr bgfx::ViewId kViewUI = 250;
 
     Renderer();

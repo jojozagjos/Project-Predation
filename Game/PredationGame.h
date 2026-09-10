@@ -88,8 +88,26 @@ private:
     // against the sockets. Open beside the editor, because placing a grip means looking at where
     // the hand ends up and there is no other way to find out.
     void DrawWeaponBench();
+    // Points a weapon at the model open in the editor, for the rest of this run. One function so
+    // the button and the console command do exactly the same thing, and so the thing the button
+    // does can be run without a button.
+    void AssignModelToWeapon(WeaponId weapon);
     bool m_benchSockets = true;
     int m_benchWeapon = 0;
+
+    // A first-person window onto the editor's own body.
+    //
+    // Everything else in the editor looks at the model from outside, and outside is not where the
+    // player is: a grip that reads perfectly in the viewport can put the receiver across half the
+    // screen from behind the eye, and there was no way to find that out without leaving the editor,
+    // starting a game and picking the thing up. The body is already here and already holding it, so
+    // this is its own eye rendered into a panel.
+    void RenderEditorFirstPerson();
+    void DrawEditorFirstPerson();
+    void DestroyEditorFirstPerson();
+    bool m_editorFirstPerson = true;
+    bgfx::FrameBufferHandle m_editorEyeBuffer = BGFX_INVALID_HANDLE;
+    bgfx::TextureHandle m_editorEyeTexture = BGFX_INVALID_HANDLE;
     // Equips whatever weapon the selected inventory slot carries, or nothing if it carries none.
     void SyncEquippedWeapon();
     // Applies the rounds fired this tick. Only the authority may call this; it is the one place a

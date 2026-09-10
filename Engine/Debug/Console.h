@@ -76,6 +76,8 @@ private:
         CommandFn fn;
     };
 
+    // The live list of what could be typed, drawn under the input as it is typed.
+    void DrawSuggestions(float x, float y, float width);
     void RegisterBuiltins();
     int TextEditCallback(ImGuiInputTextCallbackData* data);
     static int TextEditCallbackStub(ImGuiInputTextCallbackData* data);

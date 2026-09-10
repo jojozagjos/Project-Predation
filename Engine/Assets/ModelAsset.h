@@ -3,6 +3,7 @@
 #include "Engine/Render/Mesh.h"
 
 #include <glm/vec3.hpp>
+#include <glm/gtc/quaternion.hpp>
 
 #include <cstdint>
 #include <filesystem>
@@ -68,6 +69,9 @@ struct ModelSocket
     std::string name;
     glm::vec3 position{0.0f};
     glm::vec3 rotation{0.0f}; // euler degrees
+    // The same three numbers as a turn, in the order the editor's fields read: X, then Y, then Z.
+    // What it means depends on the socket: on `grip` it is how the weapon is turned in the hand.
+    glm::quat Rotation() const;
 };
 
 // One keyframe of one part, at a moment in a clip.

@@ -705,13 +705,16 @@ void WorldObjects::Clear(Scene& scene, PhysicsWorld& physics, InteractionSystem&
         physics.DestroyBody(door.body);
         scene.Destroy(door.entity);
     }
+    // Through the same teardown a single pickup goes through, rather than a second copy of it. The
+    // copy that used to be here destroyed only the entity a pickup calls its own and not the rest
+    // of the parts it is drawn as, so starting a new game left most of every dropped rifle lying on
+    // the floor of a world that no longer existed. Two teardowns for one thing is how that happened
+    // and there is now one.
     for (Pickup& pickup : m_pickups)
     {
         if (pickup.alive)
         {
-            interactions.Unregister(pickup.entity);
-            physics.DestroyBody(pickup.body);
-            scene.Destroy(pickup.entity);
+            Despawn(pickup, scene, physics, interactions);
         }
     }
     for (HidingSpot& spot : m_hidingSpots)

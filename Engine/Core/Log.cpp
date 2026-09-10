@@ -94,6 +94,15 @@ void Log::Init(const InitOptions& options)
     {
         std::error_code ec;
         std::filesystem::create_directories(options.logFile.parent_path(), ec);
+        // The run before this one is kept alongside it. A crash is reported after the game has been
+        // restarted, by which time the log that would explain it has been truncated by the restart;
+        // one file back is the difference between a diagnosable fault and a description of one.
+        {
+            std::filesystem::path previous = options.logFile;
+            previous.replace_extension(".prev.log");
+            std::filesystem::remove(previous, ec);
+            std::filesystem::rename(options.logFile, previous, ec);
+        }
         try
         {
             state.sinks.push_back(std::make_shared<spdlog::sinks::basic_file_sink_mt>(options.logFile.string(), true));

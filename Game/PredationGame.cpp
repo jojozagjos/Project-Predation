@@ -13,6 +13,7 @@
 
 #include <SDL3/SDL_events.h>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
 #include <imgui.h>
 
 #include <algorithm>
@@ -492,6 +493,19 @@ void PredationGame::RegisterCommands()
             EnterEditor(args.size() >= 2 ? args[1] : std::string());
         },
         "editor [model]");
+
+    console.RegisterCommand(
+        "bench_weapon",
+        "Point a weapon at the model open in the editor: bench_weapon <key>",
+        [this](const std::vector<std::string>& args)
+        {
+            if (args.size() < 2)
+            {
+                m_app->GetConsole().PrintError("usage: bench_weapon <key>");
+                return;
+            }
+            AssignModelToWeapon(m_weaponData.IdOf(args[1]));
+        });
 
     console.RegisterCommand("solo", "Leave the title screen and start a game on your own",
                             [this](const std::vector<std::string>&)
@@ -2191,6 +2205,7 @@ void PredationGame::DrawNetworkPanel()
 void PredationGame::OnShutdown()
 {
     StopSession();
+    DestroyEditorFirstPerson();
     m_editor.Shutdown(m_editorScene);
     if (m_editorBodyBuilt)
     {
@@ -2727,19 +2742,147 @@ void PredationGame::DrawWeaponBench()
         }
         if (ImGui::Button("Assign this model to it"))
         {
-            if (WeaponDefinition* chosen =
-                    m_weaponData.Mutable(weapons[static_cast<size_t>(m_benchWeapon)].id))
-            {
-                chosen->model = model.name;
-                ForgetWeaponModels();
-                m_app->GetConsole().Print(chosen->name + " now wears " + model.name);
-            }
+            AssignModelToWeapon(weapons[static_cast<size_t>(m_benchWeapon)].id);
         }
         ImGui::TextDisabled("Not written to weapons.json: set it there to keep it.");
     }
 
     ImGui::PopTextWrapPos();
     ImGui::End();
+}
+
+namespace
+{
+
+// The panel's own resolution. Small on purpose: it is redrawn every frame, and what it is for is
+// the shape and placement of a hold, which reads at this size.
+constexpr uint16_t kEditorEyeWidth = 640;
+constexpr uint16_t kEditorEyeHeight = 360;
+
+} // namespace
+
+void PredationGame::RenderEditorFirstPerson()
+{
+    if (m_screen != Screen::Editor || !m_editorFirstPerson || !m_editorBodyBuilt)
+    {
+        return;
+    }
+
+    if (!bgfx::isValid(m_editorEyeBuffer))
+    {
+        const uint64_t targetFlags = BGFX_TEXTURE_RT | BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP;
+        bgfx::TextureHandle attachments[2] = {
+            bgfx::createTexture2D(kEditorEyeWidth, kEditorEyeHeight, false, 1,
+                                  bgfx::TextureFormat::BGRA8, targetFlags),
+            bgfx::createTexture2D(kEditorEyeWidth, kEditorEyeHeight, false, 1,
+                                  bgfx::TextureFormat::D24S8, BGFX_TEXTURE_RT_WRITE_ONLY)};
+        if (!bgfx::isValid(attachments[0]) || !bgfx::isValid(attachments[1]))
+        {
+            PRED_LOG_ERROR(Render, "Editor first-person panel: could not create its render target");
+            m_editorFirstPerson = false;
+            return;
+        }
+        // The framebuffer takes ownership of both, so destroying it destroys them.
+        m_editorEyeBuffer = bgfx::createFrameBuffer(2, attachments, true);
+        m_editorEyeTexture = attachments[0];
+        if (!bgfx::isValid(m_editorEyeBuffer))
+        {
+            PRED_LOG_ERROR(Render, "Editor first-person panel: could not create its framebuffer");
+            m_editorFirstPerson = false;
+            return;
+        }
+    }
+
+    const PlayerView& view = m_editorView;
+    const glm::vec3 forward = view.Forward();
+    const glm::mat4 viewMatrix =
+        glm::lookAtRH(view.eyePosition, view.eyePosition + forward, glm::vec3(0.0f, 1.0f, 0.0f));
+    // The same horizontal field of view as the game, or the panel answers a question nobody asked:
+    // whether a weapon is on screen depends entirely on how wide the screen is.
+    const float aspect = static_cast<float>(kEditorEyeWidth) / static_cast<float>(kEditorEyeHeight);
+    const float vertical = 2.0f * std::atan(std::tan(glm::radians(cv_fov.Get()) * 0.5f) / aspect);
+    const bool homogeneous = bgfx::getCaps()->homogeneousDepth;
+    const glm::mat4 projection = homogeneous
+                                     ? glm::perspectiveRH_NO(vertical, aspect, 0.05f, 200.0f)
+                                     : glm::perspectiveRH_ZO(vertical, aspect, 0.05f, 200.0f);
+
+    bgfx::setViewFrameBuffer(Renderer::kViewOffscreenLive, m_editorEyeBuffer);
+    bgfx::setViewRect(Renderer::kViewOffscreenLive, 0, 0, kEditorEyeWidth, kEditorEyeHeight);
+    bgfx::setViewClear(Renderer::kViewOffscreenLive, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, 0x14181cff,
+                       1.0f, 0);
+    bgfx::setViewTransform(Renderer::kViewOffscreenLive, glm::value_ptr(viewMatrix),
+                           glm::value_ptr(projection));
+    m_app->GetSceneRenderer().Draw(Renderer::kViewOffscreenLive, m_editorScene, m_app->GetMeshes(),
+                                   view.eyePosition);
+}
+
+void PredationGame::DrawEditorFirstPerson()
+{
+    if (m_screen != Screen::Editor || !m_editorBodyBuilt)
+    {
+        return;
+    }
+
+    ImGui::SetNextWindowPos({ImGui::GetIO().DisplaySize.x - 372.0f, 560.0f}, ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize({350.0f, 260.0f}, ImGuiCond_FirstUseEver);
+    if (!ImGui::Begin("First person"))
+    {
+        ImGui::End();
+        return;
+    }
+
+    ImGui::Checkbox("Draw it", &m_editorFirstPerson);
+    if (m_editorFirstPerson && bgfx::isValid(m_editorEyeTexture))
+    {
+        // Fitted to the panel, keeping the shape of the frame it is standing in for. A stretched
+        // one would answer the on-screen question wrongly, which is the question it exists for.
+        const float aspect =
+            static_cast<float>(kEditorEyeWidth) / static_cast<float>(kEditorEyeHeight);
+        const ImVec2 room = ImGui::GetContentRegionAvail();
+        const float width = std::min(room.x, std::max(room.y, 1.0f) * aspect);
+        ImGui::Image(static_cast<ImTextureID>(ImGuiLayer::TextureId(m_editorEyeTexture)),
+                     ImVec2(width, width / aspect));
+    }
+    else if (!m_editorFirstPerson)
+    {
+        ImGui::TextDisabled("Off. The panel is redrawn every frame, so leave it off while working "
+                            "on something else.");
+    }
+
+    ImGui::End();
+}
+
+void PredationGame::DestroyEditorFirstPerson()
+{
+    if (bgfx::isValid(m_editorEyeBuffer))
+    {
+        bgfx::destroy(m_editorEyeBuffer);
+    }
+    m_editorEyeBuffer = BGFX_INVALID_HANDLE;
+    m_editorEyeTexture = BGFX_INVALID_HANDLE;
+}
+
+void PredationGame::AssignModelToWeapon(WeaponId weapon)
+{
+    WeaponDefinition* chosen = m_weaponData.Mutable(weapon);
+    if (chosen == nullptr)
+    {
+        m_app->GetConsole().PrintError("No such weapon to assign a model to");
+        return;
+    }
+
+    const std::string name = m_editor.Model().name;
+    if (name.empty())
+    {
+        m_app->GetConsole().PrintError("The model has no name yet: give it one and save it first");
+        return;
+    }
+
+    chosen->model = name;
+    // Anything already built from the old model file is now wrong, so the cache goes and the next
+    // weapon built reads the file again.
+    ForgetWeaponModels();
+    m_app->GetConsole().Print(chosen->name + " now wears " + name);
 }
 
 
@@ -3747,6 +3890,9 @@ void PredationGame::OnRender()
     // place rather than a mode: a model is judged against an empty floor.
     if (m_screen == Screen::Editor)
     {
+        // The panel first, into its own target: its view id sorts ahead of everything on screen, so
+        // what the UI samples this frame is this frame's picture rather than the last one's.
+        RenderEditorFirstPerson();
         app.GetSceneRenderer().Draw(Renderer::kViewMain, m_editorScene, app.GetMeshes(),
                                     m_camera.position);
         DrawDebugOverlays();
@@ -4350,6 +4496,7 @@ void PredationGame::OnImGui()
         // Beside it, because it answers the one question the editor cannot: where does the hand end
         // up.
         DrawWeaponBench();
+        DrawEditorFirstPerson();
         return;
     }
 

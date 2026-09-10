@@ -470,3 +470,26 @@ below that: the weapon drops off the bottom of the screen entirely. Holding the 
 the reach puts it just inside the bottom edge. Short weapons are pushed out, up and in towards the
 middle from there, blended by the weapon's own length, because a pistol held at a carbine's grip
 points at the floor beside your hip.
+
+## ADR-029: A socket carries a turn, and that is how a model is righted
+
+**Status**: accepted, 2026-09-10
+
+A model arrives however its author left it, and the two conventions in the wild differ by a quarter
+turn. The importer can turn it on the way in, but by the time anyone can see that it is wrong the
+model has been saved, its sockets have been placed and its clips have been authored. Turning it
+after that means turning the geometry, which takes the sockets, the clips and everything else with
+it: the first attempt at that left the shipped carbine facing backwards with its muzzle where its
+stock had been.
+
+`ModelSocket` already carried a rotation and nothing read it. The `grip` socket's rotation is now how
+the weapon is turned in the hand, and the `sight` socket's is how it is turned once the sights are
+up, falling back to the grip's. The model spins about the hold, so the hand does not move. Nothing
+in the file changes except three numbers on one socket, which is what makes it undoable.
+
+The same reasoning gave the editor a first-person panel. Everything else in it looks at a model from
+outside, and outside is not where the player is: a hold that reads perfectly in the viewport can put
+the receiver across half the screen from behind the eye, and finding that out meant leaving the
+editor, starting a game and picking the thing up. The body is already in the editor and already
+holding the model, so the panel is that body's own eye at the game's field of view, drawn into an
+offscreen target every frame.

@@ -314,6 +314,92 @@ void Console::Draw(int displayWidth, int displayHeight)
         m_reclaimFocus = false;
     }
 
+    const ImVec2 consolePos = ImGui::GetWindowPos();
+    const ImVec2 consoleSize = ImGui::GetWindowSize();
+    ImGui::End();
+
+    DrawSuggestions(consolePos.x, consolePos.y + consoleSize.y, consoleSize.x);
+}
+
+// What is being typed, matched against everything that could be typed, as it is typed.
+//
+// Tab completion was already here and was not enough: it tells you what you half-remembered only
+// once you have half-remembered it, and it says nothing about what any of them do. This is the
+// list, under the cursor, with each command's own description beside it.
+void Console::DrawSuggestions(float x, float y, float width)
+{
+    // Only while the first word is still being typed. Once there is a space the rest of the line is
+    // arguments, and a list of command names is no help with those.
+    const std::string_view typed(m_inputBuffer);
+    if (typed.empty() || typed.find(' ') != std::string_view::npos)
+    {
+        return;
+    }
+
+    std::vector<CommandInfo> matches;
+    for (const auto& [name, command] : m_commands)
+    {
+        if (name.size() >= typed.size() && name.compare(0, typed.size(), typed) == 0)
+        {
+            matches.push_back({name, command.description, command.usage});
+        }
+    }
+    for (const CVarBase* var : CVarRegistry::Instance().All())
+    {
+        const std::string& name = var->Name();
+        if (name.size() >= typed.size() && name.compare(0, typed.size(), typed) == 0)
+        {
+            matches.push_back({name, var->Description(), std::string()});
+        }
+    }
+    if (matches.empty())
+    {
+        return;
+    }
+    std::sort(matches.begin(), matches.end(),
+              [](const CommandInfo& a, const CommandInfo& b) { return a.name < b.name; });
+
+    constexpr size_t kMostShown = 8;
+    const size_t shown = std::min(matches.size(), kMostShown);
+    const float rowHeight = ImGui::GetTextLineHeightWithSpacing();
+    const float height = rowHeight * static_cast<float>(shown + (matches.size() > shown ? 1 : 0)) +
+                         ImGui::GetStyle().WindowPadding.y * 2.0f;
+
+    ImGui::SetNextWindowPos(ImVec2(x, y));
+    ImGui::SetNextWindowSize(ImVec2(width, height));
+    ImGui::SetNextWindowBgAlpha(0.94f);
+    const ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
+                                   ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse |
+                                   ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoScrollbar |
+                                   ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNavInputs;
+    if (ImGui::Begin("##PredationConsoleSuggestions", nullptr, flags))
+    {
+        for (size_t i = 0; i < shown; ++i)
+        {
+            const CommandInfo& match = matches[i];
+            ImGui::PushID(static_cast<int>(i));
+            // Clicking one fills it in. Tab still completes to the common prefix, which is faster
+            // once you know what you are typing; this is for when you do not.
+            if (ImGui::Selectable(match.name.c_str(), false, ImGuiSelectableFlags_AllowOverlap,
+                                  ImVec2(ImGui::GetContentRegionAvail().x * 0.28f, 0.0f)))
+            {
+                std::snprintf(m_inputBuffer, sizeof(m_inputBuffer), "%s ", match.name.c_str());
+                m_reclaimFocus = true;
+            }
+            ImGui::SameLine();
+            ImGui::PushStyleColor(ImGuiCol_Text, kColorMuted);
+            ImGui::TextUnformatted(match.usage.empty() ? match.description.c_str()
+                                                       : match.usage.c_str());
+            ImGui::PopStyleColor();
+            ImGui::PopID();
+        }
+        if (matches.size() > shown)
+        {
+            ImGui::PushStyleColor(ImGuiCol_Text, kColorMuted);
+            ImGui::Text("and %zu more", matches.size() - shown);
+            ImGui::PopStyleColor();
+        }
+    }
     ImGui::End();
 }
 
