@@ -1060,8 +1060,11 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
     const glm::vec3 readyOffset = carryRight * m_config.weaponReadyRight +
                                   carryUp * (m_config.weaponReadyDown + m_config.weaponWallRaise * crowded) +
                                   carryForward * (m_config.weaponReadyForward * forwardScale);
-    const glm::vec3 sightedOffset =
-        aimForward * (m_config.weaponAimForward * forwardScale) - aimUp * m_weaponVisual.sightHeight;
+    // Never closer than the minimum, however crowded it is: at full aim the pull-back runs straight
+    // down the view axis, so an unclamped one puts the receiver through the near plane.
+    const float aimForwardDistance =
+        std::max(m_config.weaponAimForward * forwardScale, m_config.weaponAimMinForward);
+    const glm::vec3 sightedOffset = aimForward * aimForwardDistance - aimUp * m_weaponVisual.sightHeight;
 
     // Prone puts it down beside the body, muzzle forward, out of the way of the arm that is doing
     // the crawling.
@@ -1086,8 +1089,13 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
     if (view.pitch < 0.0f)
     {
         const float steep = glm::clamp(-view.pitch / glm::radians(75.0f), 0.0f, 1.0f);
-        offset -= aimForward * (m_config.weaponAimForward * 0.55f * steep * aim);
-        offset += carryUp * (0.10f * steep * aim);
+        // Shortened only, and only along the aim axis. Moving along that axis leaves the sight on
+        // it; moving across it does not, and the lift that used to be added here is why the sights
+        // stopped lining up as soon as the player aimed downwards. Whatever it was keeping the
+        // weapon clear of, a sight that does not sit on the axis is not aiming at all.
+        const float shorten = std::min(m_config.weaponAimForward * 0.55f * steep * aim,
+                                       std::max(aimForwardDistance - m_config.weaponAimMinForward, 0.0f));
+        offset -= aimForward * shorten;
     }
 
     // Bringing a weapon up: it starts low and out of the way and rises into the hold. Presentation
@@ -1197,7 +1205,22 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
             m_weaponTransform.position + m_weaponTransform.rotation * m_weaponVisual.muzzle;
         const glm::vec3 clear =
             ClearOfWorld(physics, view.eyePosition, muzzle, m_config.muzzleClearance);
-        m_weaponTransform.position += clear - muzzle;
+        glm::vec3 corrected = m_weaponTransform.position + (clear - muzzle);
+
+        // Aiming, the correction runs straight down the view axis, so an unlimited one drags the
+        // sights back through the near plane and the player ends up looking at the inside of their
+        // own receiver. The hold stops at the minimum and the barrel takes the difference.
+        if (aim > 0.01f)
+        {
+            const glm::vec3 fromEye = corrected - view.eyePosition;
+            const float along = glm::dot(fromEye, aimForward);
+            const float floorDistance = glm::mix(0.0f, m_config.weaponAimMinForward, aim);
+            if (along < floorDistance)
+            {
+                corrected += aimForward * (floorDistance - along);
+            }
+        }
+        m_weaponTransform.position = corrected;
     }
 
     // The trigger hand never lets go, so the weapon is pulled in until the grip is somewhere the
@@ -1213,6 +1236,20 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
     {
         const glm::vec3 shoulder = m_pose.GlobalPosition(m_rig.shoulder[kRight]);
         const float reach = (m_rig.upperArmLength + m_rig.lowerArmLength) * 0.94f;
+
+        // Aiming, the hold comes back along the sight line rather than in towards the shoulder.
+        // Sliding along that line leaves the sight on it; pulling across it is what took the sights
+        // off the middle of the screen when the player aimed steeply upwards, where the hold is
+        // furthest from the shoulder and the clamp bites hardest.
+        if (aim > 0.5f)
+        {
+            for (int step = 0;
+                 step < 40 && glm::distance(m_weaponTransform.position, shoulder) > reach; ++step)
+            {
+                m_weaponTransform.position -= aimForward * 0.02f;
+            }
+        }
+
         const glm::vec3 toGrip = m_weaponTransform.position - shoulder;
         const float distance = glm::length(toGrip);
         if (distance > reach && distance > 1e-4f)

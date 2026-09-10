@@ -1480,3 +1480,79 @@ TEST_CASE("A weapon stays in the hand beside a wall", "[body][pose]")
     INFO("furthest the grip got from the shoulder: " << furthest << ", arm reaches " << armReach);
     CHECK(furthest <= armReach + 0.001f);
 }
+
+TEST_CASE("Aiming puts the sights on the view axis, whatever the pitch", "[body][pose]")
+{
+    // Aiming means one thing: the sight line lies along the line the camera looks down. Everything
+    // else about the hold is decoration. Looking downwards used to add a lift to keep the model out
+    // of the player's own chest, and that lift is across the axis rather than along it, so the
+    // sights came off the middle of the screen exactly when the player was aiming at something.
+    BodyHarness harness;
+    WeaponDefinition weapon;
+    weapon.id = 1;
+    weapon.key = "test_rifle";
+    weapon.size = {0.06f, 0.16f, 0.62f};
+    harness.body.SetWeaponForSimulation(&weapon);
+
+    PlayerBody::WeaponPose pose;
+    pose.aim = 1.0f;
+    harness.body.SetWeaponPose(pose);
+
+    float worst = 0.0f;
+    float steepest = 0.0f;
+    for (int step = 0; step <= 20; ++step)
+    {
+        const float pitch = glm::radians(-80.0f + 8.0f * static_cast<float>(step));
+        harness.input.pitch = pitch;
+        harness.Settle(20);
+        harness.body.SetWeaponPose(pose);
+        harness.Settle(10);
+
+        const glm::vec3 eye = harness.View().eyePosition;
+        const glm::vec3 forward = harness.View().Forward();
+        const glm::vec3 toSight = harness.body.SightPoint() - eye;
+        // How far off the line the sight sits: the part of the offset that is not along the view.
+        const float across = glm::length(toSight - forward * glm::dot(toSight, forward));
+        if (across > worst)
+        {
+            worst = across;
+            steepest = glm::degrees(pitch);
+        }
+    }
+
+    INFO("worst miss " << worst << " m, at " << steepest << " degrees of pitch");
+    CHECK(worst < 0.02f);
+}
+
+TEST_CASE("Aiming at a wall does not put the gun through the near plane", "[body][pose]")
+{
+    // The pull-back that keeps a barrel out of a wall is measured from the eye, and at full aim it
+    // runs straight down the view axis, so it drags the sights back into the player's face. The
+    // near plane then cuts the receiver open and you are looking at the inside of your own gun.
+    BodyHarness harness;
+    WeaponDefinition weapon;
+    weapon.id = 1;
+    weapon.key = "test_rifle";
+    weapon.size = {0.06f, 0.16f, 0.62f};
+    harness.body.SetWeaponForSimulation(&weapon);
+
+    harness.physics.CreateBox({4.0f, 3.0f, 0.5f}, Transform{{0.0f, 1.5f, -0.82f}}, BodyMotion::Static);
+    harness.physics.OptimizeBroadPhase();
+
+    PlayerBody::WeaponPose pose;
+    pose.aim = 1.0f;
+    harness.body.SetWeaponPose(pose);
+    harness.SetTravel(glm::vec3(0.0f, 0.0f, -1.0f));
+    harness.Settle(150);
+    harness.input.move = glm::vec2(0.0f);
+    for (int i = 0; i < 30; ++i)
+    {
+        harness.body.SetWeaponPose(pose);
+        harness.Settle(4);
+    }
+
+    const glm::vec3 eye = harness.View().eyePosition;
+    const float along = glm::dot(harness.body.WeaponOrigin() - eye, harness.View().Forward());
+    INFO("hold sits " << along << " m down the view axis");
+    CHECK(along > harness.body.Tuning().weaponAimMinForward - 0.02f);
+}

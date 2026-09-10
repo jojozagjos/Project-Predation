@@ -77,6 +77,12 @@ public:
         float weaponReadyDown = -0.205f;
         float weaponReadyForward = 0.56f;
         float weaponAimForward = 0.42f;
+        // However crowded it gets, the sights never come closer to the eye than this. The pull-back
+        // against a wall is measured from the eye, so at full aim it pulls the weapon straight down
+        // the view axis and into the player's face: the near plane cuts the receiver open and you
+        // end up looking at the inside of your own gun. A barrel a little way into a wall is the
+        // cheaper fault, and the muzzle trace already keeps that honest for the part you can see.
+        float weaponAimMinForward = 0.26f;
         // How much of the view pitch a carried weapon follows. Following it fully swung the gun
         // round behind the player whenever they looked straight down. Aiming raises this to one,
         // because the sights have to line up with the view exactly.
@@ -307,6 +313,13 @@ public:
     glm::vec3 MuzzlePoint() const;
     // Where the weapon is held. Exposed so a test can check the hand is actually on it.
     glm::vec3 WeaponOrigin() const { return m_weaponTransform.position; }
+    // Where the sight line leaves the weapon. Aiming has to put this on the view axis, and that is
+    // the whole of what aiming means, so it is worth being able to measure.
+    glm::vec3 SightPoint() const
+    {
+        return m_weaponTransform.position +
+               m_weaponTransform.rotation * glm::vec3(0.0f, m_weaponVisual.sightHeight, 0.0f);
+    }
     // How far a joint keeps off the floor once the body is a ragdoll, sized to what is drawn at it.
     float BoneRadius(BoneIndex bone) const
     {
