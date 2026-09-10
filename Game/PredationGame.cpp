@@ -15,8 +15,10 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <imgui.h>
+#include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <fstream>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -106,6 +108,7 @@ bool PredationGame::OnInit(Application& app)
         PRED_LOG_ERROR(Gameplay, "Player controller failed to initialize");
         return false;
     }
+    LoadWeaponCarry();
 
     m_body.Build(m_scene, app.GetMeshes(), m_player.Config());
     m_body.SetTextureLibrary(app.GetTextures());
@@ -212,6 +215,131 @@ void PredationGame::ReloadPlayerConfig()
         m_player.Config() = config;
         m_player.ApplyConfigToCharacter();
     }
+    LoadWeaponCarry();
+}
+
+// Where the hands hold a weapon, out of player.json.
+//
+// It is tuning like any other and it belongs in the file rather than in a header: it is placed by
+// eye against a particular model in the bench, and something placed by eye has to be saveable from
+// where it was placed. Everything else about the hold is derived; these six numbers are the ones a
+// person actually sets.
+void PredationGame::LoadWeaponCarry()
+{
+    std::ifstream stream(PlayerConfigPath());
+    if (!stream.is_open())
+    {
+        return;
+    }
+    nlohmann::json json;
+    try
+    {
+        stream >> json;
+    }
+    catch (const std::exception&)
+    {
+        return;
+    }
+    const auto hold = json.find("hold");
+    if (hold == json.end() || !hold->is_object())
+    {
+        return;
+    }
+
+    PlayerBody::Config& body = m_body.Tuning();
+    const auto read = [&](const char* key, float& target)
+    {
+        if (const auto it = hold->find(key); it != hold->end() && it->is_number())
+        {
+            target = it->get<float>();
+        }
+    };
+    read("right", body.weaponReadyRight);
+    read("down", body.weaponReadyDown);
+    read("forward", body.weaponReadyForward);
+    read("aim_forward", body.weaponAimForward);
+    read("inward_degrees", body.weaponReadyInward);
+    read("blade_degrees", body.weaponCarryTurnDegrees);
+    read("short_forward", body.weaponShortForward);
+    read("short_rise", body.weaponShortRise);
+    read("short_right", body.weaponShortRight);
+
+    // Every body on this machine holds a weapon the same way, so the numbers go to all of them.
+    if (m_editorBodyBuilt)
+    {
+        CopyWeaponCarry(body, m_editorBody.Tuning());
+    }
+    for (auto& avatar : m_avatars)
+    {
+        CopyWeaponCarry(body, avatar->body.Tuning());
+    }
+}
+
+void PredationGame::CopyWeaponCarry(const PlayerBody::Config& from, PlayerBody::Config& to)
+{
+    to.weaponReadyRight = from.weaponReadyRight;
+    to.weaponReadyDown = from.weaponReadyDown;
+    to.weaponReadyForward = from.weaponReadyForward;
+    to.weaponAimForward = from.weaponAimForward;
+    to.weaponReadyInward = from.weaponReadyInward;
+    to.weaponCarryTurnDegrees = from.weaponCarryTurnDegrees;
+    to.weaponShortForward = from.weaponShortForward;
+    to.weaponShortRise = from.weaponShortRise;
+    to.weaponShortRight = from.weaponShortRight;
+}
+
+bool PredationGame::SaveWeaponCarry()
+{
+    // Read, change the one block, write back, exactly as items.json is handled: writing the whole
+    // file out from memory would delete every field this game does not happen to read.
+    const std::filesystem::path file = PlayerConfigPath();
+    nlohmann::json json;
+    {
+        std::ifstream stream(file);
+        if (stream.is_open())
+        {
+            try
+            {
+                stream >> json;
+            }
+            catch (const std::exception& error)
+            {
+                m_app->GetConsole().PrintError(std::string("player.json is not valid JSON: ") +
+                                               error.what());
+                return false;
+            }
+        }
+    }
+
+    const PlayerBody::Config& body = m_editorBody.Tuning();
+    nlohmann::json hold;
+    hold["right"] = body.weaponReadyRight;
+    hold["down"] = body.weaponReadyDown;
+    hold["forward"] = body.weaponReadyForward;
+    hold["aim_forward"] = body.weaponAimForward;
+    hold["inward_degrees"] = body.weaponReadyInward;
+    hold["blade_degrees"] = body.weaponCarryTurnDegrees;
+    hold["short_forward"] = body.weaponShortForward;
+    hold["short_rise"] = body.weaponShortRise;
+    hold["short_right"] = body.weaponShortRight;
+    json["hold"] = std::move(hold);
+
+    std::ofstream out(file);
+    if (!out.is_open())
+    {
+        m_app->GetConsole().PrintError("Cannot write player.json");
+        return false;
+    }
+    out << json.dump(2) << '\n';
+
+    // And applied everywhere at once, so leaving the editor does not leave the game holding weapons
+    // the old way until a restart.
+    CopyWeaponCarry(body, m_body.Tuning());
+    for (auto& avatar : m_avatars)
+    {
+        CopyWeaponCarry(body, avatar->body.Tuning());
+    }
+    return true;
 }
 
 void PredationGame::RegisterCommands()
@@ -2034,6 +2162,8 @@ void PredationGame::SyncRemoteAvatars(float frameDeltaSeconds)
             fresh->id = remote.id;
             fresh->body.Build(m_scene, m_app->GetMeshes(), config);
             fresh->body.SetTextureLibrary(m_app->GetTextures());
+            // Everyone on this machine holds a weapon the same way.
+            CopyWeaponCarry(m_body.Tuning(), fresh->body.Tuning());
             // Other people have heads. The body hides its own by default because in first person
             // the camera lives inside it, which is true of exactly one body on this machine at a
             // time, and while spectating it is theirs rather than yours. Set below, every frame.
@@ -2863,6 +2993,15 @@ void PredationGame::DrawWeaponBench()
 
     // The numbers that decide whether a grip is placed right.
     ImGui::Checkbox("Draw sockets and the hands they belong to", &m_benchSockets);
+    if (ImGui::Checkbox("Hold the weapon still while placing sockets", &m_benchHoldStill))
+    {
+        m_editorBody.PinWeaponGrip(m_benchHoldStill);
+    }
+    ImGui::TextDisabled(m_benchHoldStill
+                            ? "Moving the grip moves the trigger hand along the weapon, which is "
+                              "the question being asked while a grip is placed."
+                            : "As in the game: the hold is fixed and the weapon hangs off the grip, "
+                              "so moving the grip moves the gun and the trigger hand stays put.");
     const WeaponVisual& visual = m_editorBody.Weapon();
     const glm::quat hold = m_editorBody.WeaponRotation();
     const glm::vec3 origin = m_editorBody.WeaponOrigin();
@@ -2901,6 +3040,48 @@ void PredationGame::DrawWeaponBench()
                         "is not on it rather than as an arm stretched to nothing. An arm at its "
                         "full reach is the one to move: that is where the elbow locks straight and "
                         "the hold stops looking like a hold.");
+
+    // --- Where the hands are ----------------------------------------------------------------------
+    //
+    // The sockets say where on the weapon the hands close. This says where the hands are. Both are
+    // needed to line a weapon up and only one of them lives on the model: this half is the same for
+    // every weapon a person carries, so it belongs to the player rather than to the gun, and it is
+    // in player.json where the rest of the player's tuning is.
+    ImGui::Separator();
+    if (ImGui::CollapsingHeader("Where the hands are"))
+    {
+        PlayerBody::Config& hold = m_editorBody.Tuning();
+        ImGui::TextDisabled("Carried, in the view's own frame: across, down and out from the eye.");
+        ImGui::DragFloat("Across", &hold.weaponReadyRight, 0.002f, -0.5f, 0.5f, "%.3f m");
+        ImGui::DragFloat("Down", &hold.weaponReadyDown, 0.002f, -0.8f, 0.2f, "%.3f m");
+        ImGui::DragFloat("Out", &hold.weaponReadyForward, 0.002f, 0.05f, 0.9f, "%.3f m");
+        ImGui::DragFloat("Sighted, out", &hold.weaponAimForward, 0.002f, 0.05f, 0.9f, "%.3f m");
+        ImGui::DragFloat("Turned in", &hold.weaponReadyInward, 0.25f, -30.0f, 30.0f, "%.1f deg");
+        ImGui::DragFloat("Torso bladed", &hold.weaponCarryTurnDegrees, 0.25f, 0.0f, 45.0f, "%.1f deg");
+
+        if (ImGui::TreeNode("And for something short"))
+        {
+            ImGui::TextDisabled("Added on top, by how short the weapon is. A pistol is held further "
+                                "out, higher and nearer the middle than a carbine.");
+            ImGui::DragFloat("Further out", &hold.weaponShortForward, 0.002f, -0.2f, 0.3f, "%.3f m");
+            ImGui::DragFloat("Higher", &hold.weaponShortRise, 0.002f, -0.2f, 0.3f, "%.3f m");
+            ImGui::DragFloat("Inwards", &hold.weaponShortRight, 0.002f, -0.3f, 0.2f, "%.3f m");
+            ImGui::TreePop();
+        }
+
+        if (ImGui::Button("Write to player.json"))
+        {
+            m_app->GetConsole().Print(SaveWeaponCarry()
+                                          ? "Hold written to player.json and applied to the game"
+                                          : "Could not write player.json");
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Back to the file"))
+        {
+            LoadWeaponCarry();
+            CopyWeaponCarry(m_body.Tuning(), m_editorBody.Tuning());
+        }
+    }
 
     // --- Something that is not a weapon ---------------------------------------------------------
     //
@@ -3234,6 +3415,9 @@ void PredationGame::UpdateEditorBody(float frameDeltaSeconds)
         m_editorPreviewWeapon.magazineSize = 30;
         ForgetWeaponModels();
         m_editorBody.SetWeaponFromModel(m_editorScene, m_app->GetMeshes(), m_editorPreviewWeapon, model);
+        // Re-pinned against the model as it now is, so a rebuild does not leave the gun hanging off
+        // a grip that no longer exists.
+        m_editorBody.PinWeaponGrip(m_benchHoldStill);
     }
     // Something that is not a weapon, held so its place in the hand can be set by eye. Put in the
     // hand once rather than every frame: building a mesh per frame is how an editor comes to feel
@@ -3342,6 +3526,8 @@ void PredationGame::EnterEditor(const std::string& modelName)
         m_editorBody.Build(m_editorScene, m_app->GetMeshes(), m_player.Config());
         m_editorBody.SetTextureLibrary(m_app->GetTextures());
         m_editorBody.Tuning().hideHead = false;
+        // The same hold the game uses, so what is lined up here is what is held out there.
+        CopyWeaponCarry(m_body.Tuning(), m_editorBody.Tuning());
         m_editorBodyBuilt = true;
     }
     m_editorState = PlayerState{};

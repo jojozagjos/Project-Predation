@@ -1716,52 +1716,27 @@ void ModelEditor::DrawModelPanel()
     ImGui::SameLine();
     ImGui::TextDisabled("Everything below is all parts and sockets at once.");
 
-    // Whether the shape and the sockets still agree about which end is the front.
-    //
-    // Turning the model turns the sockets with it, so the two can only disagree if one of them was
-    // turned on its own, and once they do the weapon is held by its muzzle with no sign of why. The
-    // check is the same one the importer makes: the heavy low mass on a weapon is its grip and its
-    // magazine, and both are behind the middle.
+    // Which way round the weapon is, judged by the only thing that decides it: the game holds a
+    // weapon by its grip and sends rounds out of its muzzle, so the muzzle has to be in front of the
+    // grip down +Z. Everything else about the model can be however its author left it.
     {
-        glm::vec3 low{1e9f};
-        glm::vec3 high{-1e9f};
-        for (const ModelPart& part : m_model.parts)
+        const ModelSocket* grip = m_model.FindSocket("grip");
+        const ModelSocket* muzzle = m_model.FindSocket("muzzle");
+        if (grip != nullptr && muzzle != nullptr && muzzle->position.z <= grip->position.z)
         {
-            for (const MeshVertex& vertex : part.mesh.vertices)
+            ImGui::TextColored({0.95f, 0.55f, 0.45f, 1.0f},
+                               "This model faces backwards: its muzzle socket is behind its grip, so "
+                               "the game will hold it by the barrel. Turn everything round, which "
+                               "moves the geometry and the sockets together:");
+            if (ImGui::Button("Turn it round"))
             {
-                const glm::vec3 placed = glm::vec3(part.LocalMatrix() * glm::vec4(vertex.position, 1.0f));
-                low = glm::min(low, placed);
-                high = glm::max(high, placed);
+                PushUndo("turning the model round");
+                TransformModel(glm::rotate(glm::mat4(1.0f), glm::pi<float>(), {0.0f, 1.0f, 0.0f}));
+                m_status = "Turned the model round";
             }
-        }
-        if (high.y > low.y)
-        {
-            double lowestAlong = 0.0;
-            size_t counted = 0;
-            const float floorLine = low.y + (high.y - low.y) * 0.06f;
-            for (const ModelPart& part : m_model.parts)
-            {
-                for (const MeshVertex& vertex : part.mesh.vertices)
-                {
-                    const glm::vec3 placed =
-                        glm::vec3(part.LocalMatrix() * glm::vec4(vertex.position, 1.0f));
-                    if (placed.y < floorLine)
-                    {
-                        lowestAlong += placed.z;
-                        ++counted;
-                    }
-                }
-            }
-            const ModelSocket* muzzle = m_model.FindSocket("muzzle");
-            if (counted > 0 && muzzle != nullptr && lowestAlong / static_cast<double>(counted) > 0.0 &&
-                muzzle->position.z > 0.0f)
-            {
-                ImGui::TextColored({0.95f, 0.55f, 0.45f, 1.0f},
-                                   "This model's shape runs the other way from its muzzle socket: "
-                                   "its grip and magazine are in front of its middle while the "
-                                   "muzzle socket is too. Turn it around, or move the sockets. Held "
-                                   "as it is, the player holds it by the barrel.");
-            }
+            ImGui::SameLine();
+            ImGui::TextDisabled("or set the grip socket's Turn to 0, 180, 0 to leave the geometry "
+                                "alone and turn it in the hand instead.");
         }
     }
 

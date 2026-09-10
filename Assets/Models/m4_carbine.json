@@ -71293,7 +71293,7 @@
         ]
       },
       "metallic": 0.25,
-      "name": "magazine",
+      "name": "main",
       "position": [
         0.0,
         0.0,
@@ -76815,7 +76815,7 @@
         ]
       },
       "metallic": 0.25,
-      "name": "Object_4_Material.003",
+      "name": "sight",
       "position": [
         0.0,
         0.0,
@@ -77063,7 +77063,7 @@
         ]
       },
       "metallic": 0.0,
-      "name": "Object_5_Material.004",
+      "name": "redical",
       "position": [
         0.0,
         0.0,
@@ -78265,7 +78265,7 @@
         ]
       },
       "metallic": 0.0,
-      "name": "Object_6_Material.005",
+      "name": "bullet",
       "position": [
         0.0,
         0.0,

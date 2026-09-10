@@ -375,8 +375,20 @@ public:
     void SetHeldItem(Scene& scene, MeshLibrary& meshes, const std::string& name, const MeshData& mesh,
                      const Material& material);
     void ClearHeldItem(Scene& scene);
-    // Where in the hand it sits. Live, so the editor can place it by eye and the game reads the same
-    // numbers out of items.json.
+    // Holds the weapon still while its sockets are moved, instead of placing it from the live grip.
+    //
+    // In the game the hold is fixed and the weapon hangs off it, so the trigger hand is at the carry
+    // point by construction and moving the grip socket moves the gun. That is right for playing and
+    // useless for authoring, where the question is where the hand lands on the weapon. Pinned, the
+    // gun stays where it is and the hand walks along it.
+    void PinWeaponGrip(bool pinned)
+    {
+        m_weaponGripPinned = pinned;
+        m_weaponPinnedGrip = m_weaponVisual.triggerGrip;
+    }
+    bool WeaponGripPinned() const { return m_weaponGripPinned; }
+    // Where in the hand a carried item sits. Live, so the editor can place it by eye and the game
+    // reads the same numbers out of items.json.
     void SetHeldItemPlacement(const glm::vec3& offset, const glm::vec3& rotationDegrees)
     {
         m_heldItemOffset = offset;
@@ -517,6 +529,10 @@ private:
     // Where the carry tuning put the hold this frame, in world space. Kept so the point the floors
     // act on can be measured rather than guessed at from the origin.
     glm::vec3 m_weaponHold{0.0f};
+    // The grip the weapon is carried by, when that is not the live one. See the note where it is
+    // used: pinning it is what lets the editor hold a weapon still and move the hand along it.
+    bool m_weaponGripPinned = false;
+    glm::vec3 m_weaponPinnedGrip{0.0f};
     Transform m_muzzleFlashTransform;
     WeaponVisual m_weaponVisual;
     WeaponId m_weaponId = kInvalidWeapon;

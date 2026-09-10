@@ -1272,7 +1272,16 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
     // Held ready, the point carried is the trigger grip, so the tuning below reads as where the
     // firing hand is. Sighted, it is the sight itself, which is what puts the sight block on the
     // view axis in all three axes rather than only in height.
-    const glm::vec3 holdPoint = glm::mix(m_weaponVisual.triggerGrip, m_weaponVisual.sightPoint, aim);
+    //
+    // Which grip the weapon is *carried* by can be pinned to an older value, and that is the whole
+    // of what the editor's "hold it still" does. Placing the weapon by the live grip socket means
+    // the trigger hand is at the carry point by construction and can never move: dragging the grip
+    // moves the gun instead, which is the right answer in the game and the wrong one while placing
+    // a grip, where the question is where the hand ends up on the weapon. Pinning the carried grip
+    // leaves the gun where it is and walks the hand along it.
+    const glm::vec3 carriedGrip =
+        m_weaponGripPinned ? m_weaponPinnedGrip : m_weaponVisual.triggerGrip;
+    const glm::vec3 holdPoint = glm::mix(carriedGrip, m_weaponVisual.sightPoint, aim);
     // And the socket's own turn, so a model exported lying on its side can be righted by rotating
     // the grip rather than by rotating the geometry, which would take the sockets, the clips and
     // everything else along with it. The model spins about the hold: the grip stays in the hand.
@@ -1356,7 +1365,7 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
         const float reach = (m_rig.upperArmLength + m_rig.lowerArmLength) * 0.94f;
         // The grip, not the origin. Measuring the origin let an imported weapon sit with its grip
         // well past the arm's reach while the point being checked was still inside it.
-        const glm::vec3 gripOffset = m_weaponTransform.rotation * m_weaponVisual.triggerGrip;
+        const glm::vec3 gripOffset = m_weaponTransform.rotation * carriedGrip;
 
         // Aiming, the hold comes back along the sight line rather than in towards the shoulder.
         // Sliding along that line leaves the sight on it; pulling across it is what took the sights

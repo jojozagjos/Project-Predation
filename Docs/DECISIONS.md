@@ -562,3 +562,22 @@ They are worked on, they spend afternoons half-turned, and a suite that goes red
 editing an asset is a suite everyone learns to ignore. The rules are checked against models the
 tests write themselves; the shipped files are reported on with WARN, and the editor says the same
 thing on screen while you are looking at it.
+
+## ADR-034: The editor anchors the hold at the other end
+
+**Status**: accepted, 2026-09-10
+
+In the game the hold is fixed and the weapon hangs off its grip socket: the weapon's position is the
+carry point minus the grip, so the trigger hand is at the carry point by construction. That is
+right, and it is what ADR-028 is about, and it makes the editor unusable for the one job it exists
+for. Dragging the grip socket moves the gun and never moves the hand, so placing a grip by watching
+where the hand lands is impossible: the hand does not go anywhere.
+
+The bench pins the grip the weapon is *carried* by while leaving the grip the hand *reaches* for
+live. The gun then stays where it is and the hand walks along it, which is the question being asked.
+It is the same relationship anchored at the other end, and the toggle says which end.
+
+Where the hands are is separate from where on the weapon they close, and only the second half
+belongs to the model. The first half is the same for every weapon a person carries, so it is the
+player's tuning: nine numbers under `hold` in `player.json`, edited in the bench and written back
+from there, because something placed by eye has to be saveable from where it was placed.

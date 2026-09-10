@@ -178,6 +178,17 @@ What is in it:
   hard the arm is working to hold it, which is the only way to place a grip: the question is where
   the hand ends up, not what the model looks like.
 
+The bench holds the weapon still while you place sockets, which is the opposite of what the game
+does and the right way round for authoring. In the game the hold is fixed and the weapon hangs off
+its grip socket, so the trigger hand sits at the carry point by construction and dragging the grip
+moves the gun. Pinned, the gun stays put and the hand walks along it, which is the question you are
+actually asking. The toggle is in the Hold it panel.
+
+Where the hands themselves go is under "Where the hands are" in the same panel: how far across, down
+and out from the eye the carried grip sits, and the same for the sights. Those belong to the player
+rather than to any one weapon, so they live in `Assets/Data/player.json` under `hold`, and the panel
+writes them there.
+
 Where the sockets go, in practice. The weapon is carried by its `grip`, so that socket decides where
 the whole model sits relative to the player: put it on the stock and the gun ends up a hand-span too
 far forward with its butt in the camera. `support` has to be somewhere the other arm can reach with

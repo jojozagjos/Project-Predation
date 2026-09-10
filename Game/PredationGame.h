@@ -101,6 +101,9 @@ private:
     int m_benchItem = 0;
     bool m_benchHoldItem = false;
     bool m_benchItemHeld = false;
+    // Whether the bench holds the weapon still while sockets are moved. On, because that is what
+    // makes placing a grip legible: the hand walks along the gun instead of the gun moving.
+    bool m_benchHoldStill = true;
 
     // A first-person window onto the editor's own body.
     //
@@ -155,6 +158,11 @@ private:
     // named, and several can belong to one entity, so this is a diagnostic aid rather than a lookup.
     std::string DescribeBody(BodyHandle body) const;
     void ReloadPlayerConfig();
+    // Where the hands hold a weapon, out of player.json and back into it. Placed by eye in the
+    // bench, so it has to be saveable from where it is placed.
+    void LoadWeaponCarry();
+    bool SaveWeaponCarry();
+    static void CopyWeaponCarry(const PlayerBody::Config& from, PlayerBody::Config& to);
     void DrawPlayerPanel();
 
     // --- The front end -------------------------------------------------------------------------
