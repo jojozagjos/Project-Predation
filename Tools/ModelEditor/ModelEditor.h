@@ -54,6 +54,12 @@ public:
     // Selects whatever a ray runs through, and returns true if that changed anything. Clicking
     // nothing clears the selection, which is what clicking nothing means everywhere else.
     bool SelectUnderRay(const glm::vec3& origin, const glm::vec3& direction);
+    // Asks for the view to be put on the model. The game owns the camera angles, so the editor can
+    // only ask; it returns where to stand and what to look at, or false when nothing has asked.
+    bool TakeFrameRequest(glm::vec3& outPosition, glm::vec3& outTarget);
+    // Asks for it now.
+    void FrameModel() { m_frameRequested = true; }
+
     // Which part a ray runs through, or -1. The ray comes from the game, which owns the camera and
     // the pointer; the editor owns the parts and is the only thing that can say what was hit.
     int PartUnderRay(const glm::vec3& origin, const glm::vec3& direction) const;
@@ -108,6 +114,7 @@ private:
     bool m_open = false;
     bool m_dirty = true; // the preview needs rebuilding
     bool m_previewChanged = true; // and whatever is holding it needs rebuilding too
+    bool m_frameRequested = true; // put the view on the model at the next opportunity
 
     // One entity per part, so a part can be hidden or animated on its own.
     std::vector<Entity> m_entities;

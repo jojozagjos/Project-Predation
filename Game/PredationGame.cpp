@@ -107,6 +107,7 @@ bool PredationGame::OnInit(Application& app)
     }
 
     m_body.Build(m_scene, app.GetMeshes(), m_player.Config());
+    m_body.SetTextureLibrary(app.GetTextures());
 
     m_items.LoadFromFile(Paths::AssetsRoot() / "Data" / "items.json");
     // Weapons load before the icons, because a weapon item draws its icon from the weapon's own
@@ -513,6 +514,10 @@ void PredationGame::RegisterCommands()
                 return;
             }
             GltfImportOptions options;
+            // Images inside the file are written out beside the model, because a model file is meant
+            // to stay something a person can open and a base colour image is two megabytes of it.
+            options.textureDirectory = ModelDirectory() / "Textures";
+            options.texturePrefix = args[2];
             if (args.size() >= 4)
             {
                 options.targetSize = static_cast<float>(std::atof(args[3].c_str()));
@@ -1891,6 +1896,7 @@ void PredationGame::SyncRemoteAvatars(float frameDeltaSeconds)
             auto fresh = std::make_unique<RemoteAvatar>();
             fresh->id = remote.id;
             fresh->body.Build(m_scene, m_app->GetMeshes(), config);
+            fresh->body.SetTextureLibrary(m_app->GetTextures());
             // Other people have heads. The body hides its own by default because in first person
             // the camera lives inside it, which is true of exactly one body on this machine at a
             // time, and while spectating it is theirs rather than yours. Set below, every frame.
@@ -2713,7 +2719,9 @@ void PredationGame::UpdateEditorBody(float frameDeltaSeconds)
     m_editorState.stance = stance;
     m_editorState.grounded = true;
     m_editorState.alive = true;
-    m_editorState.position = glm::vec3(0.0f);
+    // Aside from the origin, where the model itself is laid out. Standing the two in the same place
+    // means the body is always in front of the thing being edited.
+    m_editorState.position = {1.1f, 0.0f, 0.0f};
 
     // Walking on the spot. The stride advances but the body does not travel, so the gait can be
     // watched from one place rather than chased across the floor.
@@ -2730,7 +2738,9 @@ void PredationGame::UpdateEditorBody(float frameDeltaSeconds)
     m_editorView.eyeHeight = config.EyeHeightForStance(stance);
     m_editorView.renderPosition = m_editorState.position;
     m_editorView.eyePosition = m_editorState.position + glm::vec3(0.0f, m_editorView.eyeHeight, 0.0f);
-    m_editorView.yaw = 0.0f;
+    // Turned a little towards the model, so the weapon is presented rather than seen end-on.
+    m_editorView.yaw = glm::radians(28.0f);
+    m_editorState.yaw = m_editorView.yaw;
     m_editorView.pitch = 0.0f;
     m_editorView.leanRoll = 0.0f;
 
@@ -2794,6 +2804,7 @@ void PredationGame::EnterEditor(const std::string& modelName)
         // Someone to hold it. Built once and kept, because building a body is not free and the
         // editor is opened and closed a great deal.
         m_editorBody.Build(m_editorScene, m_app->GetMeshes(), m_player.Config());
+        m_editorBody.SetTextureLibrary(m_app->GetTextures());
         m_editorBody.Tuning().hideHead = false;
         m_editorBodyBuilt = true;
     }
@@ -2805,9 +2816,11 @@ void PredationGame::EnterEditor(const std::string& modelName)
     // Everything in an editor is done with the pointer, so the mouse is free and the camera is taken
     // only while the right button is held.
     SetCameraMode(CameraMode::Fly);
-    m_camera.position = {1.4f, 1.5f, 1.9f};
-    m_lookYaw = glm::radians(-35.0f);
-    m_lookPitch = glm::radians(-14.0f);
+    // Framed on the model, which sits at the origin, with the body it will be held by off to one
+    // side and in shot.
+    m_camera.position = {0.30f, 0.62f, 1.15f};
+    m_lookYaw = glm::radians(12.0f);
+    m_lookPitch = glm::radians(-22.0f);
     m_wantMouseCaptured = false;
     UpdateMouseCapture();
     m_app->GetConsole().Print(
@@ -3170,6 +3183,25 @@ void PredationGame::OnUpdate(double dt, double alpha)
         m_editor.Camera().Update(input, deltaSeconds, false);
         m_editor.Update(m_editorScene, app.GetMeshes(), deltaSeconds);
         UpdateEditorBody(deltaSeconds);
+
+        // The editor knows how big the model is and the game owns the camera, so framing is asked
+        // for rather than done. A model that opens off screen looks exactly like one that failed to
+        // load, and either way the first thing anyone does is go hunting for it.
+        glm::vec3 framePosition{0.0f};
+        glm::vec3 frameTarget{0.0f};
+        if (m_editor.TakeFrameRequest(framePosition, frameTarget))
+        {
+            m_camera.position = framePosition;
+            const glm::vec3 toTarget = frameTarget - framePosition;
+            if (glm::length(toTarget) > 1e-4f)
+            {
+                const glm::vec3 look = glm::normalize(toTarget);
+                m_lookYaw = std::atan2(look.x, -look.z);
+                m_lookPitch = std::asin(std::clamp(look.y, -1.0f, 1.0f));
+            }
+            m_editor.Camera().position = m_camera.position;
+        }
+
         m_camera = m_editor.Camera();
 
         // Clicking in the viewport selects what is under the pointer. The game owns the camera and

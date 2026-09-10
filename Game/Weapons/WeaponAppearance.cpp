@@ -1,5 +1,7 @@
 #include "Game/Weapons/WeaponAppearance.h"
 
+#include "Engine/Core/Paths.h"
+
 #include "Engine/Core/Log.h"
 #include "Engine/Render/Primitives.h"
 
@@ -109,7 +111,7 @@ ModelAsset ProceduralModel(const WeaponDefinition& definition)
 }
 
 WeaponVisual FromModel(const ModelAsset& model, const WeaponDefinition& definition,
-                       std::shared_ptr<const ModelAsset> shared)
+                       std::shared_ptr<const ModelAsset> shared, TextureLibrary* textures)
 {
     WeaponVisual visual;
     visual.asset = std::move(shared);
@@ -123,6 +125,15 @@ WeaponVisual FromModel(const ModelAsset& model, const WeaponDefinition& definiti
         built.material.roughness = part.roughness;
         built.material.metallic = part.metallic;
         built.material.emissive = part.color * part.emissive;
+        // The image the part names, read once and shared by name. A part with none keeps the
+        // library's white pixel, so an untextured model draws in its material colours as before.
+        if (textures != nullptr && !part.texture.empty())
+        {
+            if (const auto resolved = Paths::Resolve(part.texture))
+            {
+                built.material.baseColorTexture = textures->LoadFromFile(resolved->string(), part.texture);
+            }
+        }
         built.rest = part.LocalMatrix();
         if (part.name == "magazine")
         {
@@ -196,12 +207,13 @@ MeshData WeaponVisual::Combined() const
     return combined;
 }
 
-WeaponVisual BuildWeaponVisualFrom(const ModelAsset& model, const WeaponDefinition& definition)
+WeaponVisual BuildWeaponVisualFrom(const ModelAsset& model, const WeaponDefinition& definition,
+                                   TextureLibrary* textures)
 {
-    return FromModel(model, definition, nullptr);
+    return FromModel(model, definition, nullptr, textures);
 }
 
-WeaponVisual BuildWeaponVisual(const WeaponDefinition& definition)
+WeaponVisual BuildWeaponVisual(const WeaponDefinition& definition, TextureLibrary* textures)
 {
     if (!definition.model.empty())
     {
@@ -223,12 +235,12 @@ WeaponVisual BuildWeaponVisual(const WeaponDefinition& definition)
         }
         if (found != cache.end() && found->second != nullptr)
         {
-            return FromModel(*found->second, definition, found->second);
+            return FromModel(*found->second, definition, found->second, textures);
         }
     }
 
     const ModelAsset model = ProceduralModel(definition);
-    return FromModel(model, definition, nullptr);
+    return FromModel(model, definition, nullptr, textures);
 }
 
 bool ExportWeaponModel(const WeaponDefinition& definition, const std::string& modelName)

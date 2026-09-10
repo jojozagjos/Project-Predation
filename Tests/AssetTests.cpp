@@ -241,3 +241,81 @@ TEST_CASE("The shipped weapon models are the size of the weapons they belong to"
         CHECK(visual.supportGrip.z > visual.triggerGrip.z);
     }
 }
+
+TEST_CASE("A textured model keeps its textures through the model file", "[assets][gltf]")
+{
+    // The images are written out beside the model and named from it, so what has to survive is the
+    // name. A model that loads with its texture field empty draws flat grey, which is exactly what
+    // a model with no texture does, so nothing about it says anything went wrong.
+    Paths::Init(nullptr, std::filesystem::path(PRED_SOURCE_DIR) / "Assets");
+
+    ModelAsset model;
+    REQUIRE(model.LoadFromFile(ModelDirectory() / "m4_carbine.json"));
+    REQUIRE_FALSE(model.parts.empty());
+
+    int textured = 0;
+    for (const ModelPart& part : model.parts)
+    {
+        if (part.texture.empty())
+        {
+            continue;
+        }
+        ++textured;
+        INFO("part " << part.name << " names " << part.texture);
+        // Named relative to the assets root, so a model file does not carry the paths of the
+        // machine it was imported on.
+        CHECK(part.texture.rfind("Models/Textures/", 0) == 0);
+        // And the file is really there, which is the half of it a name alone does not prove.
+        const auto resolved = Paths::Resolve(part.texture);
+        REQUIRE(resolved.has_value());
+        CHECK(std::filesystem::exists(*resolved));
+    }
+    INFO("of " << model.parts.size() << " parts, " << textured << " are textured");
+    CHECK(textured > 0);
+}
+
+TEST_CASE("The shipped weapons are not facing backwards", "[assets][weapons]")
+{
+    // A rifle carries its magazine and its grip behind the middle, and a pistol carries its own
+    // grip further back still, so the lowest part of a weapon is behind its centre. When it is not,
+    // the model is the wrong way round, and it is held by its muzzle. Both models that arrived ran
+    // along +X as exported and had to be turned a quarter, and the first attempt turned one of them
+    // the wrong way.
+    Paths::Init(nullptr, std::filesystem::path(PRED_SOURCE_DIR) / "Assets");
+
+    for (const char* name : {"m4_carbine", "g17_pistol"})
+    {
+        ModelAsset model;
+        REQUIRE(model.LoadFromFile(ModelDirectory() / (std::string(name) + ".json")));
+
+        glm::vec3 low{1e9f};
+        glm::vec3 high{-1e9f};
+        for (const ModelPart& part : model.parts)
+        {
+            for (const MeshVertex& vertex : part.mesh.vertices)
+            {
+                low = glm::min(low, vertex.position);
+                high = glm::max(high, vertex.position);
+            }
+        }
+        const glm::vec3 extent = high - low;
+
+        double lowestAlong = 0.0;
+        size_t counted = 0;
+        for (const ModelPart& part : model.parts)
+        {
+            for (const MeshVertex& vertex : part.mesh.vertices)
+            {
+                if (vertex.position.y < low.y + extent.y * 0.06f)
+                {
+                    lowestAlong += vertex.position.z;
+                    ++counted;
+                }
+            }
+        }
+        REQUIRE(counted > 0);
+        const double behind = lowestAlong / static_cast<double>(counted);
+        INFO(name << ": lowest mass sits at z " << behind << ", model is " << extent.z << " long");
+        CHECK(behind < 0.0);
+    }
+}

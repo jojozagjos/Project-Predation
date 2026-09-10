@@ -10,6 +10,7 @@
 #include "Engine/Platform/Window.h"
 #include "Engine/Render/DebugDraw.h"
 #include "Engine/Render/Mesh.h"
+#include "Engine/Render/TextureLibrary.h"
 #include "Engine/Render/Renderer.h"
 #include "Engine/Render/SceneRenderer.h"
 #include "Engine/Render/ShaderLibrary.h"
@@ -81,6 +82,7 @@ public:
     Console& GetConsole() { return m_console; }
     FileWatcher& GetFileWatcher() { return m_fileWatcher; }
     MeshLibrary& GetMeshes() { return m_meshes; }
+    TextureLibrary& GetTextures() { return m_textures; }
     SceneRenderer& GetSceneRenderer() { return m_sceneRenderer; }
     PhysicsWorld& GetPhysics() { return m_physics; }
 
@@ -115,6 +117,7 @@ private:
     Renderer m_renderer;
     ShaderLibrary m_shaders;
     MeshLibrary m_meshes;
+    TextureLibrary m_textures;
     SceneRenderer m_sceneRenderer;
     PhysicsWorld m_physics;
     DebugDraw m_debugDraw;

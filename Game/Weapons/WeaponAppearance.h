@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Engine/Assets/ModelAsset.h"
+#include "Engine/Render/TextureLibrary.h"
 #include "Engine/Render/Mesh.h"
 #include "Engine/Scene/Scene.h"
 #include "Game/Weapons/WeaponTypes.h"
@@ -56,11 +57,12 @@ struct WeaponVisual
     MeshData Combined() const;
 };
 
-WeaponVisual BuildWeaponVisual(const WeaponDefinition& definition);
+WeaponVisual BuildWeaponVisual(const WeaponDefinition& definition, TextureLibrary* textures = nullptr);
 
 // The same, from a model already in memory rather than one named on disk. The editor holds what is
 // open in front of it, which has usually not been saved and belongs to no weapon.
-WeaponVisual BuildWeaponVisualFrom(const ModelAsset& model, const WeaponDefinition& definition);
+WeaponVisual BuildWeaponVisualFrom(const ModelAsset& model, const WeaponDefinition& definition,
+                                   TextureLibrary* textures = nullptr);
 
 // Writes a procedurally built weapon out as an editable model file, so the editor has something to
 // start from rather than a blank page.

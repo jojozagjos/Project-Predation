@@ -1,18 +1,25 @@
 #pragma once
 
+#include "Engine/Render/TextureLibrary.h"
+
 #include <glm/vec3.hpp>
 
 namespace pred
 {
 
 // Metallic-roughness surface parameters, matching the glTF convention so imported assets map
-// directly onto it later. Textures arrive with the asset pipeline; for now these are flat values.
+// directly onto it.
 struct Material
 {
     glm::vec3 baseColor{0.75f, 0.75f, 0.78f};
     float metallic = 0.0f;
     float roughness = 0.85f;
     glm::vec3 emissive{0.0f};
+
+    // Multiplied into the base colour. An invalid handle draws the library's single white pixel, so
+    // an untextured material is a textured one whose texture happens to be white and the shader
+    // needs no branch.
+    TextureHandle baseColorTexture;
 
     static Material Diffuse(const glm::vec3& color, float roughness = 0.85f)
     {

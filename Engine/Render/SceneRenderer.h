@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Engine/Render/TextureLibrary.h"
+
 #include <bgfx/bgfx.h>
 #include <glm/mat4x4.hpp>
 #include <glm/vec3.hpp>
@@ -44,6 +46,10 @@ public:
     const Stats& LastStats() const { return m_stats; }
     bool WireframeEnabled() const { return m_wireframe; }
     void SetWireframe(bool enabled) { m_wireframe = enabled; }
+    // Where the textures materials name actually live. Held rather than passed to every draw call,
+    // because it is one object for the life of the renderer and threading it through would touch
+    // every call site to say the same thing.
+    void SetTextures(const TextureLibrary& textures) { m_textures = &textures; }
 
 private:
     void SetEnvironmentUniforms(const Environment& environment, const glm::vec3& cameraPosition);
@@ -63,6 +69,10 @@ private:
     bgfx::UniformHandle m_uFogColor = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uFogParams = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uCameraPosition = BGFX_INVALID_HANDLE;
+    // The base colour texture. Always bound, because a material with none samples the library's
+    // single white pixel and the shader then needs no branch.
+    bgfx::UniformHandle m_sBaseColor = BGFX_INVALID_HANDLE;
+    const TextureLibrary* m_textures = nullptr;
 
     Stats m_stats;
     bool m_wireframe = false;

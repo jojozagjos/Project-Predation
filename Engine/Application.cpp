@@ -428,6 +428,10 @@ bool Application::InitSubsystems(const CommandLine& commandLine)
     {
         return false;
     }
+    // Before anything can be drawn: the first entry is the white pixel every untextured material
+    // samples, so a draw with no texture of its own still has one bound.
+    m_textures.Init();
+    m_sceneRenderer.SetTextures(m_textures);
 
     PhysicsWorld::Settings physicsSettings;
     physicsSettings.collisionSteps = std::max(1, cv_physicsSteps.Get());
@@ -470,6 +474,7 @@ void Application::ShutdownSubsystems()
     m_sceneRenderer.Shutdown();
     // GPU buffers must go before the shader library and the device itself.
     m_meshes.Shutdown();
+    m_textures.Shutdown();
     m_shaders.Shutdown();
     m_renderer.Shutdown();
     m_window.Destroy();

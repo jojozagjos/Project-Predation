@@ -2,6 +2,7 @@
 
 #include "Engine/Assets/MeshImport.h"
 #include "Engine/Core/Log.h"
+#include "Engine/Render/TextureLibrary.h"
 
 #include <nlohmann/json.hpp>
 
@@ -15,6 +16,7 @@
 #include <cstring>
 #include <fstream>
 #include <functional>
+#include <unordered_map>
 
 namespace pred
 {
@@ -267,8 +269,120 @@ std::string PartName(const nlohmann::json& document, const nlohmann::json& node,
     return name;
 }
 
+// Writes the base colour image a material names out beside the model, and returns what to call it.
+//
+// glTF embeds images in the binary chunk as PNG or JPEG. They are written out rather than carried in
+// the model file, because a model file is meant to stay something a person can open and a base
+// colour image is two megabytes of it. Decoded and re-encoded rather than copied, so a JPEG arrives
+// as a PNG like everything else and the loader has one format to know about.
+//
+// Returns an empty string when the material has no base colour texture, which is a normal thing for
+// a material to be missing and not a fault.
+std::string ExtractBaseColorTexture(const nlohmann::json& document, const std::vector<uint8_t>& binary,
+                                    int material, const GltfImportOptions& options,
+                                    std::unordered_map<int, std::string>& written)
+{
+    if (material < 0 || options.textureDirectory.empty() || !document.contains("materials"))
+    {
+        return {};
+    }
+    const auto& materials = document["materials"];
+    if (static_cast<size_t>(material) >= materials.size())
+    {
+        return {};
+    }
+    const auto pbr = materials[static_cast<size_t>(material)].find("pbrMetallicRoughness");
+    if (pbr == materials[static_cast<size_t>(material)].end())
+    {
+        return {};
+    }
+    const auto baseColor = pbr->find("baseColorTexture");
+    if (baseColor == pbr->end())
+    {
+        return {};
+    }
+
+    const int textureIndex = baseColor->value("index", -1);
+    if (textureIndex < 0 || !document.contains("textures"))
+    {
+        return {};
+    }
+    const auto& textures = document["textures"];
+    if (static_cast<size_t>(textureIndex) >= textures.size())
+    {
+        return {};
+    }
+    const int imageIndex = textures[static_cast<size_t>(textureIndex)].value("source", -1);
+    if (imageIndex < 0 || !document.contains("images"))
+    {
+        return {};
+    }
+
+    // The same image is usually named by several materials. Written once.
+    if (const auto found = written.find(imageIndex); found != written.end())
+    {
+        return found->second;
+    }
+
+    const auto& images = document["images"];
+    if (static_cast<size_t>(imageIndex) >= images.size())
+    {
+        return {};
+    }
+    const nlohmann::json& image = images[static_cast<size_t>(imageIndex)];
+
+    // Only images inside the file. A glTF may point at one beside it instead, which this importer
+    // does not read for the same reason it only reads .glb: one file in, one model out.
+    const auto viewIt = image.find("bufferView");
+    if (viewIt == image.end() || !document.contains("bufferViews"))
+    {
+        return {};
+    }
+    const auto& views = document["bufferViews"];
+    const size_t viewIndex = viewIt->get<size_t>();
+    if (viewIndex >= views.size())
+    {
+        return {};
+    }
+    const nlohmann::json& view = views[viewIndex];
+    const size_t offset = view.value("byteOffset", size_t{0});
+    const size_t length = view.value("byteLength", size_t{0});
+    if (length == 0 || offset + length > binary.size())
+    {
+        return {};
+    }
+
+    ImageData decoded;
+    if (!DecodeImage(binary.data() + offset, length, decoded))
+    {
+        return {};
+    }
+
+    std::error_code ec;
+    std::filesystem::create_directories(options.textureDirectory, ec);
+    const std::string name =
+        (options.texturePrefix.empty() ? std::string("texture") : options.texturePrefix) + "_" +
+        std::to_string(imageIndex) + ".png";
+    const std::filesystem::path path = options.textureDirectory / name;
+    if (!WritePng(path.string(), decoded))
+    {
+        PRED_LOG_WARN(Asset, "Could not write the texture {}", path.string());
+        return {};
+    }
+    PRED_LOG_INFO(Asset, "Wrote {} ({} by {})", path.string(), decoded.width, decoded.height);
+
+    // Named relative to the assets root, so the model file does not carry this machine's paths.
+    const std::string relative = "Models/Textures/" + name;
+    written.emplace(imageIndex, relative);
+    return relative;
+}
+
+
 void ApplyMaterial(const nlohmann::json& document, int material, ModelPart& part)
 {
+    // Grey, for a primitive with no material at all. A material that exists but says nothing about
+    // its colour is white by the specification, and white is what a textured part needs, because
+    // the factor is multiplied into the image.
     part.color = {0.62f, 0.63f, 0.66f};
     part.roughness = 0.55f;
     part.metallic = 0.25f;
@@ -276,6 +390,7 @@ void ApplyMaterial(const nlohmann::json& document, int material, ModelPart& part
     {
         return;
     }
+    part.color = glm::vec3(1.0f);
     const auto& materials = document["materials"];
     if (static_cast<size_t>(material) >= materials.size())
     {
@@ -512,6 +627,10 @@ bool LoadGlbModel(const std::filesystem::path& file, const GltfImportOptions& op
     ModelAsset built;
     built.name = file.stem().string();
 
+    // Which images have already been written out, keyed by their index in the file. The same image
+    // is usually named by several materials and there is no reason to decode it more than once.
+    std::unordered_map<int, std::string> writtenTextures;
+
     const auto addNode = [&](const nlohmann::json& node, const glm::mat4& world)
     {
         const auto& meshes = document["meshes"];
@@ -541,6 +660,8 @@ bool LoadGlbModel(const std::filesystem::path& file, const GltfImportOptions& op
             }
             part.name = PartName(document, node, i, material);
             ApplyMaterial(document, material, part);
+            part.texture =
+                ExtractBaseColorTexture(document, binary, material, options, writtenTextures);
             built.parts.push_back(std::move(part));
         }
     };
@@ -653,12 +774,42 @@ bool LoadGlbModel(const std::filesystem::path& file, const GltfImportOptions& op
             built.sockets.push_back(entry);
         };
 
-        socket("grip", {0.0f, low.y + height * 0.34f, longArm ? low.z + length * 0.34f : 0.0f});
-        socket("support",
-               {0.0f, barrelY - height * 0.12f, longArm ? low.z + length * 0.68f : low.z + length * 0.6f});
+        // A rifle's pistol grip sits just behind the magazine well, about a fifth of the way along
+        // from the back; a pistol's is most of the way back and most of the way down.
+        socket("grip", {0.0f, low.y + height * (longArm ? 0.30f : 0.42f),
+                        low.z + length * (longArm ? 0.22f : 0.30f)});
+        socket("support", {0.0f, barrelY - height * 0.14f,
+                           low.z + length * (longArm ? 0.66f : 0.58f)});
         socket("muzzle", {0.0f, barrelY, high.z});
         socket("sight", {0.0f, high.y, low.z + length * (longArm ? 0.45f : 0.6f)});
-        socket("magazine", {0.0f, low.y + height * 0.2f, longArm ? low.z + length * 0.42f : 0.0f});
+        socket("magazine", {0.0f, low.y + height * 0.2f,
+                            low.z + length * (longArm ? 0.34f : 0.28f)});
+
+        // A rifle carries its magazine and its grip behind the middle, and a pistol carries its own
+        // grip further back still, so the lowest part of a weapon is behind its centre. When it is
+        // not, the model is almost certainly facing the wrong way, and saying so beats leaving
+        // someone to work out why the thing is held by its muzzle.
+        double lowestAlong = 0.0;
+        size_t lowest = 0;
+        for (const ModelPart& part : built.parts)
+        {
+            for (const MeshVertex& vertex : part.mesh.vertices)
+            {
+                if (vertex.position.y < low.y + height * 0.06f)
+                {
+                    lowestAlong += vertex.position.z;
+                    ++lowest;
+                }
+            }
+        }
+        if (lowest > 0 && lowestAlong / static_cast<double>(lowest) > length * 0.02)
+        {
+            PRED_LOG_WARN(Asset,
+                          "{} looks like it is facing backwards: its lowest parts, which on a "
+                          "weapon are the grip and the magazine, are in front of its middle. Turn "
+                          "it around in the editor, or import it with the opposite turn.",
+                          file.filename().string());
+        }
     }
 
     size_t triangles = 0;

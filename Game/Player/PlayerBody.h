@@ -302,6 +302,10 @@ public:
     // usually not been saved yet and belongs to no weapon at all.
     void SetWeaponFromModel(Scene& scene, MeshLibrary& meshes, const WeaponDefinition& definition,
                             const ModelAsset& model);
+    // Where the images a model names are loaded from. Set once, because it is one object for the
+    // life of the renderer; a body without one draws its weapon in flat colours, which is what a
+    // headless pose test wants and all it can have.
+    void SetTextureLibrary(TextureLibrary& textures) { m_textures = &textures; }
     // The same, with nothing to draw. Lets the hold be exercised in tests, which have no renderer
     // and where uploading a mesh would mean standing up a GPU device.
     void SetWeaponForSimulation(const WeaponDefinition* definition);
@@ -455,6 +459,7 @@ private:
     std::vector<float> m_boneRadius;
     // Which way each bone was facing last frame, so its roll about its own length is continuous.
     std::vector<glm::vec3> m_boneFront;
+    TextureLibrary* m_textures = nullptr;
     float m_flatness = 0.0f;            // 0 upright, 1 fully prone
     // How far through the crouch, 0 standing to 1 fully down. Smoothed with the rest of the pose.
     float m_crouchness = 0.0f;

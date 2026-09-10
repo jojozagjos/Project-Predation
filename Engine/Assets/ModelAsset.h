@@ -53,6 +53,11 @@ struct ModelPart
     MeshData mesh;
     std::string sourceFile; // where it was imported from, for reference only
 
+    // The base colour image, named relative to the assets root: "Models/Textures/m4_0.png". A path
+    // rather than the bytes, unlike the mesh, because a texture is two megabytes and a model file
+    // is meant to stay something a person can open. Empty means the part is drawn in `color` alone.
+    std::string texture;
+
     glm::mat4 LocalMatrix() const;
 };
 

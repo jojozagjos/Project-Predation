@@ -868,7 +868,7 @@ void PlayerBody::SetWeaponFromModel(Scene& scene, MeshLibrary& meshes,
 {
     DestroyWeapon(scene);
     m_weaponId = definition.id;
-    m_weaponVisual = BuildWeaponVisualFrom(model, definition);
+    m_weaponVisual = BuildWeaponVisualFrom(model, definition, m_textures);
     BuildWeaponEntities(scene, meshes, definition);
 }
 
@@ -889,7 +889,7 @@ void PlayerBody::SetWeapon(Scene& scene, MeshLibrary& meshes, const WeaponDefini
     DestroyWeapon(scene);
 
     m_weaponId = definition->id;
-    m_weaponVisual = BuildWeaponVisual(*definition);
+    m_weaponVisual = BuildWeaponVisual(*definition, m_textures);
     BuildWeaponEntities(scene, meshes, *definition);
 }
 

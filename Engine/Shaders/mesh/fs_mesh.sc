@@ -2,6 +2,8 @@ $input v_worldPos, v_normal, v_texcoord0
 
 #include <bgfx_shader.sh>
 
+SAMPLER2D(s_baseColor, 0);     // multiplied into the albedo; white when a material has none
+
 uniform vec4 u_baseColor;       // rgb = albedo
 uniform vec4 u_materialParams;  // x = metallic, y = roughness
 uniform vec4 u_emissive;        // rgb = emissive radiance
@@ -52,7 +54,15 @@ void main()
 	float NoH = max(dot(N, H), 0.0);
 	float VoH = max(dot(V, H), 0.0);
 
-	vec3 albedo = u_baseColor.rgb;
+	// The texture is always bound. A material without one samples a single white pixel, so this is
+	// a multiply by one rather than a branch, and there is only ever one mesh program.
+	vec3 textured = texture2D(s_baseColor, v_texcoord0).rgb;
+	// Downloads arrive with textures authored in gamma space, which is what an image viewer shows
+	// and what a lighting calculation must not be given: multiplying light by a gamma-encoded
+	// colour washes everything out. Decoded here rather than by asking bgfx for an sRGB format,
+	// because that would have to be decided at upload for every image the game will ever load.
+	textured = pow(textured, vec3_splat(2.2));
+	vec3 albedo = u_baseColor.rgb * textured;
 	float metallic = clamp(u_materialParams.x, 0.0, 1.0);
 	// Clamp roughness away from zero: perfectly smooth surfaces alias badly with a single light.
 	float roughness = clamp(u_materialParams.y, 0.045, 1.0);

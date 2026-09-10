@@ -33,6 +33,12 @@ struct GltfImportOptions
     // Slides the origin to the middle of the model's footprint first. Off by default because a
     // weapon's origin is usually meaningful; on, it makes an arbitrary download easier to place.
     bool centre = true;
+    // Where the images embedded in the file are written, and what they are named relative to the
+    // assets root. Textures are written out beside the model rather than carried inside it: a
+    // model file is meant to stay something a person can open, and a base colour image is two
+    // megabytes. Leave the directory empty to skip textures altogether.
+    std::filesystem::path textureDirectory;
+    std::string texturePrefix;
 };
 
 // Returns false and leaves `out` untouched when the file cannot be read or holds no triangles.

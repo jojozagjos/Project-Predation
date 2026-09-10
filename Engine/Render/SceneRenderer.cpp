@@ -2,6 +2,7 @@
 
 #include "Engine/Core/Log.h"
 #include "Engine/Render/Mesh.h"
+#include "Engine/Render/TextureLibrary.h"
 #include "Engine/Render/ShaderLibrary.h"
 #include "Engine/Scene/Scene.h"
 
@@ -29,6 +30,7 @@ bool SceneRenderer::Init(ShaderLibrary& shaders)
     m_uFogColor = bgfx::createUniform("u_fogColor", bgfx::UniformType::Vec4);
     m_uFogParams = bgfx::createUniform("u_fogParams", bgfx::UniformType::Vec4);
     m_uCameraPosition = bgfx::createUniform("u_cameraPosition", bgfx::UniformType::Vec4);
+    m_sBaseColor = bgfx::createUniform("s_baseColor", bgfx::UniformType::Sampler);
 
     PRED_LOG_INFO(Render, "SceneRenderer initialized");
     return true;
@@ -50,6 +52,11 @@ void SceneRenderer::Shutdown()
     m_uBaseColor = m_uMaterialParams = m_uEmissive = BGFX_INVALID_HANDLE;
     m_uLightDirection = m_uLightColor = m_uAmbientSky = m_uAmbientGround = BGFX_INVALID_HANDLE;
     m_uFogColor = m_uFogParams = m_uCameraPosition = BGFX_INVALID_HANDLE;
+    if (bgfx::isValid(m_sBaseColor))
+    {
+        bgfx::destroy(m_sBaseColor);
+    }
+    m_sBaseColor = BGFX_INVALID_HANDLE;
     // The program itself is owned by the ShaderLibrary.
     m_program = BGFX_INVALID_HANDLE;
 }
@@ -105,6 +112,13 @@ void SceneRenderer::SubmitMesh(bgfx::ViewId view, const Mesh& mesh, const Materi
     bgfx::setUniform(m_uBaseColor, baseColor);
     bgfx::setUniform(m_uMaterialParams, materialParams);
     bgfx::setUniform(m_uEmissive, emissive);
+
+    // Always bound. A material with no texture of its own gets the library's white pixel, so the
+    // shader multiplies by one and there is no second program and no branch per fragment.
+    if (bgfx::isValid(m_sBaseColor) && m_textures != nullptr)
+    {
+        bgfx::setTexture(0, m_sBaseColor, m_textures->Get(material.baseColorTexture));
+    }
 
     bgfx::setTransform(glm::value_ptr(model));
     bgfx::setVertexBuffer(0, mesh.vertexBuffer);

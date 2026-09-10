@@ -2,6 +2,7 @@
 
 #include "Engine/Application.h"
 #include "Engine/Core/Log.h"
+#include "Engine/Core/Paths.h"
 #include "Engine/Render/DebugDraw.h"
 #include "Engine/Render/Mesh.h"
 #include "Engine/Assets/MeshImport.h"
@@ -123,6 +124,7 @@ bool ModelEditor::Load(const std::string& modelName)
     }
     m_model = std::move(loaded);
     m_saveName = modelName;
+    m_frameRequested = true;
     m_selectedPart = m_model.parts.empty() ? -1 : 0;
     m_selectedSocket = -1;
     m_selectedClip = m_model.clips.empty() ? -1 : 0;
@@ -175,6 +177,16 @@ void ModelEditor::Rebuild(Scene& scene, MeshLibrary& meshes)
         material.roughness = part.roughness;
         material.metallic = part.metallic;
         material.emissive = part.color * part.emissive;
+        // The image the part names, if it has one. Read through the same library the game uses, so
+        // what the editor shows is what the game draws rather than a second interpretation of it.
+        if (m_app != nullptr && !part.texture.empty())
+        {
+            if (const auto resolved = Paths::Resolve(part.texture))
+            {
+                material.baseColorTexture =
+                    m_app->GetTextures().LoadFromFile(resolved->string(), part.texture);
+            }
+        }
         const MeshHandle mesh =
             meshes.Upload(m_model.BuildPartMesh(part), "editor_" + m_model.name + "_" + part.name);
         m_entities.push_back(scene.CreateMeshEntity("editor_part", Transform{}, mesh, material));
@@ -833,8 +845,9 @@ void ModelEditor::ImportMesh(const std::string& file)
         }
 
         m_selectedPart = m_model.parts.empty() ? -1 : 0;
+        m_frameRequested = true;
         m_dirty = true;
-    m_previewChanged = true;
+        m_previewChanged = true;
         m_status = "Imported " + std::to_string(imported.parts.size()) + " parts from " +
                    path.filename().string();
         return;
@@ -875,6 +888,73 @@ void ModelEditor::ImportMesh(const std::string& file)
 // triangles and a click has to answer instantly; boxes overlap a little, so the nearest hit wins,
 // which is what picking the front-most thing means. Anything finer than this is only wanted for
 // picking one blade of grass out of a field, which is not what an editor is for.
+// Where to stand to see the whole model, and what to look at.
+//
+// Asked for rather than done, because the game owns the camera: the editor knows how big the model
+// is and nothing else does. Requested whenever a model is opened or imported, because a model that
+// arrives off screen or a hundred times too large looks exactly like one that failed to load, and
+// the first thing anyone does either way is hunt for it.
+bool ModelEditor::TakeFrameRequest(glm::vec3& outPosition, glm::vec3& outTarget)
+{
+    if (!m_frameRequested)
+    {
+        return false;
+    }
+    m_frameRequested = false;
+
+    AABB bounds;
+    bool any = false;
+    for (const ModelPart& part : m_model.parts)
+    {
+        if (!part.visible)
+        {
+            continue;
+        }
+        AABB partBounds;
+        if (part.shape == PartShape::Mesh)
+        {
+            if (part.mesh.vertices.empty())
+            {
+                continue;
+            }
+            partBounds = part.mesh.ComputeBounds();
+        }
+        else
+        {
+            partBounds.min = part.size * -0.5f;
+            partBounds.max = part.size * 0.5f;
+        }
+        const glm::mat4 local = part.LocalMatrix();
+        // The eight corners, because a turned box's bounds are not its bounds turned.
+        for (int corner = 0; corner < 8; ++corner)
+        {
+            const glm::vec3 point{(corner & 1) ? partBounds.max.x : partBounds.min.x,
+                                  (corner & 2) ? partBounds.max.y : partBounds.min.y,
+                                  (corner & 4) ? partBounds.max.z : partBounds.min.z};
+            const glm::vec3 world = glm::vec3(local * glm::vec4(point, 1.0f));
+            bounds.min = any ? glm::min(bounds.min, world) : world;
+            bounds.max = any ? glm::max(bounds.max, world) : world;
+            any = true;
+        }
+    }
+
+    if (!any)
+    {
+        outTarget = glm::vec3(0.0f, 0.3f, 0.0f);
+        outPosition = outTarget + glm::vec3(0.35f, 0.25f, 0.8f);
+        return true;
+    }
+
+    outTarget = (bounds.min + bounds.max) * 0.5f;
+    const glm::vec3 extent = bounds.max - bounds.min;
+    const float size = std::max({extent.x, extent.y, extent.z, 0.05f});
+    // Far enough back that the longest side fits comfortably across the view, from three quarters
+    // on, which is the angle anything is easiest to judge from.
+    const float distance = size * 1.6f;
+    outPosition = outTarget + glm::normalize(glm::vec3(0.55f, 0.42f, 1.0f)) * distance;
+    return true;
+}
+
 int ModelEditor::PartUnderRay(const glm::vec3& origin, const glm::vec3& direction) const
 {
     int best = -1;
@@ -999,7 +1079,12 @@ void ModelEditor::TransformModel(const glm::mat4& transform)
 
 void ModelEditor::DrawModelPanel()
 {
-    ImGui::TextDisabled("Everything at once: geometry, parts and sockets together.");
+    if (ImGui::Button("Frame it"))
+    {
+        FrameModel();
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("Everything below is all parts and sockets at once.");
 
     // Quarter turns, because that is what a wrongly exported model needs. Anything else is a job for
     // the part inspector.

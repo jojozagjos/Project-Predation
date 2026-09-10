@@ -82,6 +82,8 @@ set(PRED_ENGINE_SOURCES
     Assets/MeshImport.cpp
     Assets/GltfImport.h
     Assets/GltfImport.cpp
+    Render/TextureLibrary.h
+    Render/TextureLibrary.cpp
     Assets/ModelAsset.h
     Assets/ModelAsset.cpp
     Assets/FileWatcher.h

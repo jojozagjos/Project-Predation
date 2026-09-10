@@ -264,6 +264,7 @@ bool ModelAsset::LoadFromFile(const std::filesystem::path& file)
             ReadField(node, "emissive", part.emissive);
             ReadField(node, "visible", part.visible);
             ReadField(node, "source", part.sourceFile);
+            ReadField(node, "texture", part.texture);
 
             // An imported mesh is stored inline, as flat arrays, so the model stays one file.
             if (const auto field = node.find("mesh"); field != node.end() && field->is_object())
@@ -382,6 +383,7 @@ bool ModelAsset::SaveToFile(const std::filesystem::path& file) const
         if (part.shape == PartShape::Mesh && !part.mesh.vertices.empty())
         {
             node["source"] = part.sourceFile;
+            node["texture"] = part.texture;
             nlohmann::json positions = nlohmann::json::array();
             nlohmann::json normals = nlohmann::json::array();
             for (const MeshVertex& vertex : part.mesh.vertices)
