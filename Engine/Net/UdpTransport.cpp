@@ -836,4 +836,59 @@ std::unique_ptr<Transport> CreateUdpTransport(uint32_t seed)
     return std::make_unique<UdpTransport>(seed);
 }
 
+// Every address on this machine another machine could reach it on.
+//
+// The host binds to every interface, so it is listening on all of these at once. What it cannot do
+// is know which one to tell a player to hand out, and "your address" turned out to be advice nobody
+// could act on: the obvious thing to look up is the public address, which is the router's and not
+// this machine's. Showing the actual list removes the guess.
+//
+// Loopback is left out on purpose. It is the one that always works and never helps.
+std::vector<std::string> LocalNetworkAddresses()
+{
+    std::vector<std::string> found;
+    if (!SocketSystem::Acquire())
+    {
+        return found;
+    }
+
+    char host[256] = {};
+    if (gethostname(host, sizeof(host) - 1) == 0)
+    {
+        addrinfo hints{};
+        hints.ai_family = AF_INET;
+        hints.ai_socktype = SOCK_DGRAM;
+        addrinfo* results = nullptr;
+        if (getaddrinfo(host, nullptr, &hints, &results) == 0)
+        {
+            for (const addrinfo* it = results; it != nullptr; it = it->ai_next)
+            {
+                if (it->ai_family != AF_INET || it->ai_addr == nullptr)
+                {
+                    continue;
+                }
+                const auto* address = reinterpret_cast<const sockaddr_in*>(it->ai_addr);
+                char text[INET_ADDRSTRLEN] = {};
+                if (inet_ntop(AF_INET, &address->sin_addr, text, sizeof(text)) == nullptr)
+                {
+                    continue;
+                }
+                const std::string entry = text;
+                if (entry.rfind("127.", 0) == 0)
+                {
+                    continue;
+                }
+                if (std::find(found.begin(), found.end(), entry) == found.end())
+                {
+                    found.push_back(entry);
+                }
+            }
+            freeaddrinfo(results);
+        }
+    }
+
+    SocketSystem::Release();
+    return found;
+}
+
 } // namespace pred

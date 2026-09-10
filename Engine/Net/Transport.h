@@ -100,4 +100,10 @@ std::unique_ptr<Transport> CreateLoopbackTransport(uint32_t seed = 0x9E3779B9u);
 // The simulated conditions apply to this too, so a bad link can be reproduced on a good one.
 std::unique_ptr<Transport> CreateUdpTransport(uint32_t seed = 0x9E3779B9u);
 
+// Every address on this machine that another machine on the same network could reach it on, with
+// loopback left out. A host listens on all of them at once and has no way of knowing which one to
+// hand out, so it shows the list: "your address" is advice nobody can act on, and the obvious thing
+// to look up is the public address, which belongs to the router rather than to this machine.
+std::vector<std::string> LocalNetworkAddresses();
+
 } // namespace pred

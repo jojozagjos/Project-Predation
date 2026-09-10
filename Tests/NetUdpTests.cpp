@@ -200,3 +200,37 @@ TEST_CASE("Two hosts cannot bind the same UDP port", "[net][udp]")
     REQUIRE(first->Listen(47816));
     CHECK_FALSE(second->Listen(47816));
 }
+
+TEST_CASE("The host can say where it can be reached", "[net][udp]")
+{
+    // Telling a player to hand out "your address" is advice nobody can act on: the obvious thing to
+    // look up is the public address, which belongs to the router rather than to the machine, and a
+    // friend on the same network cannot reach it. So the game lists the addresses it is actually
+    // listening on.
+    const std::vector<std::string> addresses = LocalNetworkAddresses();
+
+    // Loopback is the one that always works and never helps, so it is left out.
+    for (const std::string& address : addresses)
+    {
+        INFO("address " << address);
+        CHECK(address.rfind("127.", 0) != 0);
+        CHECK(address.find_first_not_of("0123456789.") == std::string::npos);
+    }
+
+    // And whatever it lists, a host really does accept a connection on the loopback that is not
+    // listed, because it binds every interface rather than one.
+    auto host = CreateUdpTransport(1);
+    REQUIRE(host->Listen(48311));
+    auto client = CreateUdpTransport(2);
+    REQUIRE(client->Connect("127.0.0.1", 48311));
+
+    std::vector<NetPacket> packets;
+    bool joined = false;
+    for (int i = 0; i < 120 && !joined; ++i)
+    {
+        host->Poll(1.0f / 60.0f, packets);
+        client->Poll(1.0f / 60.0f, packets);
+        joined = !host->Peers().empty();
+    }
+    CHECK(joined);
+}

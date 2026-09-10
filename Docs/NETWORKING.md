@@ -167,3 +167,28 @@ simply becomes the authoritative one.
 On one network this works. Through a router the addresses are the holes that router punched, which
 stay open only as long as they stay open, so migration over the internet is best effort until there
 is NAT traversal.
+
+## Playing on the same network
+
+The host binds every interface, so it is listening on all of the machine's addresses at once. What
+it cannot do is know which one to hand out, so the title screen lists them and a click copies one.
+Loopback is left out because it is the address that always works and never helps.
+
+Two things go wrong, and neither of them is the game:
+
+**The wrong address.** Told to hand out "your IP", the obvious thing to look up is the public
+address. That belongs to the router, not to the machine, and nothing on the same network can reach
+the host through it. The right one starts `192.168.`, `10.` or `172.` and is in the list on the
+title screen.
+
+**The firewall.** Windows asks once, the first time the game listens, and the prompt is easy to
+dismiss or to miss entirely. It has to be allowed on private networks. If it was refused, this adds
+the rule back, run from an administrator command prompt with the path to the executable:
+
+```bash
+netsh advfirewall firewall add rule name="Project Predation" dir=in action=allow protocol=UDP localport=7777 program="C:\path\to\ProjectPredation.exe"
+```
+
+Playing across the internet is a different problem and is not solved yet: it needs the host's router
+to forward the port, or a relay. That is what Steam networking is for, and it is why the transport
+is behind an interface.

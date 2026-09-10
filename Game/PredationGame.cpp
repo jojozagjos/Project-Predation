@@ -1611,7 +1611,28 @@ void PredationGame::DrawTitleScreen()
     ImGui::InputInt("##hostport", &m_hostPort, 0, 0);
     m_hostPort = std::clamp(m_hostPort, 1024, 65535);
     ImGui::SameLine();
-    ImGui::TextDisabled("others join on your address");
+    ImGui::TextDisabled("others join on one of these");
+    // The actual addresses, not the advice to go and find one. Told to look up "your address", the
+    // obvious answer is the public one, which belongs to the router and not to this machine, and a
+    // friend on the same network cannot reach it.
+    {
+        static const std::vector<std::string> addresses = LocalNetworkAddresses();
+        if (addresses.empty())
+        {
+            ImGui::TextDisabled("  no network address found: is this machine on a network?");
+        }
+        for (const std::string& address : addresses)
+        {
+            ImGui::TextColored({0.70f, 0.80f, 0.95f, 1.0f}, "  %s:%d", address.c_str(), m_hostPort);
+            if (ImGui::IsItemClicked())
+            {
+                ImGui::SetClipboardText((address + ":" + std::to_string(m_hostPort)).c_str());
+            }
+        }
+        ImGui::TextDisabled("  click one to copy. Windows will ask to allow the game through its");
+        ImGui::TextDisabled("  firewall the first time you host: it has to be allowed, on private");
+        ImGui::TextDisabled("  networks, or nobody can reach you.");
+    }
     if (ImGui::Button("Open a game", wide))
     {
         StopSession();
@@ -1660,7 +1681,13 @@ void PredationGame::DrawTitleScreen()
         }
         else
         {
-            m_titleStatus = std::string("Could not reach ") + m_joinAddress;
+            // Naming the two things that are almost always wrong, because "could not reach" on its
+            // own leaves a player with nothing to try.
+            m_titleStatus = std::string("Could not reach ") + m_joinAddress + ":" +
+                            std::to_string(m_joinPort) +
+                            ". Check they are hosting, that this is their address on this network "
+                            "rather than their public one, and that their firewall is letting the "
+                            "game through.";
         }
     }
 
