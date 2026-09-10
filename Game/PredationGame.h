@@ -60,6 +60,14 @@ private:
     void TryInteract();
     // Opens or closes the model editor and hands the view and the mouse over to it.
     void ToggleEditor();
+    // The weapon bench: point a weapon at a model, play what it does, and see where the hands land
+    // against the sockets. Open beside the editor, because placing a grip means looking at where
+    // the hand ends up and there is no other way to find out.
+    void DrawWeaponBench();
+    bool m_benchOpen = false;
+    bool m_benchSockets = true;
+    char m_benchModel[64] = "";
+    int m_benchWeapon = 0;
     // Equips whatever weapon the selected inventory slot carries, or nothing if it carries none.
     void SyncEquippedWeapon();
     // Applies the rounds fired this tick. Only the authority may call this; it is the one place a

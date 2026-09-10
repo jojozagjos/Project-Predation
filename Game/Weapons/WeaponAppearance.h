@@ -40,6 +40,10 @@ struct WeaponVisual
     int magazinePart = -1; // index into parts, or -1 when the weapon has no detachable magazine
 
     glm::vec3 magazineSeated{0.0f}; // where the magazine sits when it is in
+    // Where the trigger hand closes. Read from the model rather than assumed to be its origin: an
+    // imported model has its origin wherever the person who made it left it, which for the two that
+    // arrived first is the middle of the weapon and nowhere near the grip.
+    glm::vec3 triggerGrip{0.0f};
     glm::vec3 supportGrip{0.0f};    // where the support hand goes
     glm::vec3 muzzle{0.0f};         // where a round appears to leave
     float sightHeight = 0.0f;       // sight line above the origin; aiming puts this on the view axis
@@ -57,5 +61,10 @@ WeaponVisual BuildWeaponVisual(const WeaponDefinition& definition);
 // Writes a procedurally built weapon out as an editable model file, so the editor has something to
 // start from rather than a blank page.
 bool ExportWeaponModel(const WeaponDefinition& definition, const std::string& modelName);
+
+// Forgets every model read from disk, so the next weapon built picks up what was just saved.
+// Without it the editor and the hands holding the model disagree until the game is restarted, which
+// is the whole difficulty with placing a grip: it is placed by looking at where the hand lands.
+void ForgetWeaponModels();
 
 } // namespace pred

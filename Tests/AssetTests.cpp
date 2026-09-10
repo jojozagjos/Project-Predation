@@ -1,0 +1,243 @@
+#include "Engine/Assets/GltfImport.h"
+#include "Engine/Assets/ModelAsset.h"
+#include "Engine/Core/Paths.h"
+#include "Game/Weapons/WeaponAppearance.h"
+#include "Game/Weapons/WeaponDatabase.h"
+
+#include <catch2/catch_test_macros.hpp>
+
+#include <cstdio>
+#include <filesystem>
+#include <string>
+
+using namespace pred;
+
+// The glTF importer, run against the files it was written for. A parser tested only on something
+// this repository generated is a parser tested against its own assumptions, and every fault worth
+// catching here is a fault about what real exporters actually write.
+namespace
+{
+
+std::filesystem::path SourceModel(const char* name)
+{
+    return std::filesystem::path(PRED_SOURCE_DIR) / "Assets" / "Models" / "Source" / name;
+}
+
+} // namespace
+
+TEST_CASE("A downloaded weapon imports as separable parts", "[assets][gltf]")
+{
+    const std::filesystem::path file = SourceModel("m4_carbine.glb");
+    INFO("reading " << file.string());
+    REQUIRE(std::filesystem::exists(file));
+    REQUIRE(IsGltfFile(file));
+
+    GltfImportOptions options;
+    options.targetSize = 0.86f; // a carbine, near enough
+    std::string error;
+    ModelAsset model;
+    REQUIRE(LoadGlbModel(file, options, model, &error));
+    INFO("importer said: " << error);
+
+    // Separate parts, not one welded lump. A magazine has to be its own part or a reload cannot
+    // move it, and that is the whole reason primitives are kept apart rather than merged.
+    CHECK(model.parts.size() > 1);
+
+    size_t triangles = 0;
+    for (const ModelPart& part : model.parts)
+    {
+        INFO("part " << part.name);
+        CHECK(part.shape == PartShape::Mesh);
+        CHECK_FALSE(part.name.empty());
+        CHECK(part.mesh.vertices.size() >= 3);
+        CHECK(part.mesh.indices.size() % 3 == 0);
+        triangles += part.mesh.TriangleCount();
+
+        // Every index has to point at a vertex of the part it belongs to. An index that runs past
+        // the end is the classic way a primitive-per-part importer goes wrong, and it does not
+        // crash: it draws a triangle across the model to a vertex from somewhere else.
+        for (const uint32_t index : part.mesh.indices)
+        {
+            REQUIRE(index < part.mesh.vertices.size());
+        }
+    }
+    CHECK(triangles > 100);
+}
+
+TEST_CASE("An imported model is scaled to something a person can hold", "[assets][gltf]")
+{
+    // Downloads arrive in wildly different units. A model a hundred times too large is
+    // indistinguishable from one that failed to load, because both fill the screen with nothing.
+    for (const char* name : {"m4_carbine.glb", "g17_pistol.glb"})
+    {
+        const std::filesystem::path file = SourceModel(name);
+        REQUIRE(std::filesystem::exists(file));
+
+        GltfImportOptions options;
+        options.targetSize = 0.5f;
+        ModelAsset model;
+        REQUIRE(LoadGlbModel(file, options, model));
+
+        glm::vec3 low{1e9f};
+        glm::vec3 high{-1e9f};
+        for (const ModelPart& part : model.parts)
+        {
+            for (const MeshVertex& vertex : part.mesh.vertices)
+            {
+                low = glm::min(low, vertex.position);
+                high = glm::max(high, vertex.position);
+            }
+        }
+
+        const glm::vec3 extent = high - low;
+        const float longest = std::max({extent.x, extent.y, extent.z});
+        INFO(name << " came out " << extent.x << " by " << extent.y << " by " << extent.z);
+        CHECK(longest > 0.49f);
+        CHECK(longest < 0.51f);
+
+        // And centred on its own middle, so it appears where it is placed rather than off in space.
+        const glm::vec3 centre = (low + high) * 0.5f;
+        CHECK(glm::length(centre) < 0.01f);
+    }
+}
+
+TEST_CASE("The importer turns a model when asked", "[assets][gltf]")
+{
+    // glTF has no idea which way a weapon points, and the game wants the barrel down +Z. Turning it
+    // once at import beats turning every part by hand afterwards.
+    const std::filesystem::path file = SourceModel("g17_pistol.glb");
+    REQUIRE(std::filesystem::exists(file));
+
+    GltfImportOptions upright;
+    upright.targetSize = 0.3f;
+    ModelAsset straight;
+    REQUIRE(LoadGlbModel(file, upright, straight));
+
+    GltfImportOptions turned = upright;
+    turned.rotationDegrees = {0.0f, 90.0f, 0.0f};
+    ModelAsset sideways;
+    REQUIRE(LoadGlbModel(file, turned, sideways));
+
+    REQUIRE(straight.parts.size() == sideways.parts.size());
+    REQUIRE(!straight.parts.empty());
+    REQUIRE(straight.parts[0].mesh.vertices.size() == sideways.parts[0].mesh.vertices.size());
+
+    // A quarter turn about Y sends what was along +X off along -Z. Checked on the extent rather than
+    // on one vertex, because which vertex is which is the exporter's business.
+    const AABB before = straight.parts[0].mesh.ComputeBounds();
+    const AABB after = sideways.parts[0].mesh.ComputeBounds();
+    const glm::vec3 wide = before.max - before.min;
+    const glm::vec3 tall = after.max - after.min;
+    INFO("before " << wide.x << "," << wide.y << "," << wide.z << "  after " << tall.x << "," << tall.y
+                   << "," << tall.z);
+    CHECK(std::abs(tall.z - wide.x) < 0.01f);
+    CHECK(std::abs(tall.x - wide.z) < 0.01f);
+    CHECK(std::abs(tall.y - wide.y) < 0.01f);
+}
+
+TEST_CASE("A file that is not a glb is refused rather than half read", "[assets][gltf]")
+{
+    GltfImportOptions options;
+    ModelAsset model;
+    std::string error;
+
+    CHECK_FALSE(LoadGlbModel(std::filesystem::path(PRED_SOURCE_DIR) / "does_not_exist.glb", options,
+                             model, &error));
+    CHECK_FALSE(error.empty());
+    CHECK(model.parts.empty());
+
+    // A real file of the wrong kind, so the failure is about the contents rather than about the
+    // file being missing.
+    error.clear();
+    CHECK_FALSE(LoadGlbModel(std::filesystem::path(PRED_SOURCE_DIR) / "README.md", options, model, &error));
+    CHECK_FALSE(error.empty());
+    CHECK(model.parts.empty());
+}
+
+TEST_CASE("An imported model survives a trip through the model file", "[assets][gltf]")
+{
+    // The importer is only half of it. What the editor opens and what the game holds is the saved
+    // model file, so a mesh that imports and then does not round-trip through JSON is no use.
+    const std::filesystem::path file = SourceModel("g17_pistol.glb");
+    REQUIRE(std::filesystem::exists(file));
+
+    GltfImportOptions options;
+    options.targetSize = 0.24f;
+    ModelAsset imported;
+    REQUIRE(LoadGlbModel(file, options, imported));
+    imported.name = "round_trip_test";
+
+    const std::filesystem::path saved =
+        std::filesystem::temp_directory_path() / "pred_round_trip_test.json";
+    REQUIRE(imported.SaveToFile(saved));
+
+    ModelAsset reopened;
+    REQUIRE(reopened.LoadFromFile(saved));
+    std::filesystem::remove(saved);
+
+    REQUIRE(reopened.parts.size() == imported.parts.size());
+    for (size_t i = 0; i < imported.parts.size(); ++i)
+    {
+        INFO("part " << i << " " << imported.parts[i].name);
+        CHECK(reopened.parts[i].name == imported.parts[i].name);
+        CHECK(reopened.parts[i].shape == PartShape::Mesh);
+        REQUIRE(reopened.parts[i].mesh.vertices.size() == imported.parts[i].mesh.vertices.size());
+        REQUIRE(reopened.parts[i].mesh.indices.size() == imported.parts[i].mesh.indices.size());
+
+        // Positions to within a tenth of a millimetre. A model file that quietly rounds geometry is
+        // a model that drifts every time it is opened and saved.
+        for (size_t v = 0; v < imported.parts[i].mesh.vertices.size(); v += 37)
+        {
+            const glm::vec3 before = imported.parts[i].mesh.vertices[v].position;
+            const glm::vec3 after = reopened.parts[i].mesh.vertices[v].position;
+            REQUIRE(glm::distance(before, after) < 0.0001f);
+        }
+    }
+}
+
+TEST_CASE("The shipped weapon models are the size of the weapons they belong to", "[assets][weapons]")
+{
+    // Both weapons point at imported models now, and an import that came out ten times too large or
+    // facing backwards is not something a unit test of the importer would notice: it only shows when
+    // the model is held. These are the numbers the weapon bench puts on screen.
+    // The test runs from the build directory, which has no assets beside it, so the source tree is
+    // pointed at explicitly. Without this the weapons fall back to their built-in shapes and the
+    // test measures the thing it was written to stop being used.
+    Paths::Init(nullptr, std::filesystem::path(PRED_SOURCE_DIR) / "Assets");
+    REQUIRE(std::filesystem::exists(ModelDirectory() / "m4_carbine.json"));
+
+    WeaponDatabase weapons;
+    REQUIRE(weapons.LoadFromFile(std::filesystem::path(PRED_SOURCE_DIR) / "Assets" / "Data" /
+                                 "weapons.json"));
+    REQUIRE_FALSE(weapons.All().empty());
+
+    for (const WeaponDefinition& definition : weapons.All())
+    {
+        INFO("weapon " << definition.key << " wearing model '" << definition.model << "'");
+        const WeaponVisual visual = BuildWeaponVisual(definition);
+        REQUIRE_FALSE(visual.parts.empty());
+
+        const AABB bounds = visual.Combined().ComputeBounds();
+        const glm::vec3 extent = bounds.max - bounds.min;
+        INFO("extent " << extent.x << " by " << extent.y << " by " << extent.z);
+
+        // Long enough to read as a weapon and short enough to be carried by a person.
+        CHECK(extent.z > 0.12f);
+        CHECK(extent.z < 1.20f);
+        CHECK(extent.y < 0.60f);
+        CHECK(extent.x < 0.30f);
+
+        // The barrel runs down +Z, so the longest axis has to be Z. A model imported facing sideways
+        // comes out wide instead of long, and everything that aims it is then pointing at its flank.
+        CHECK(extent.z > extent.x);
+        CHECK(extent.z > extent.y);
+
+        // The muzzle is at the front, and it is somewhere on the weapon rather than out in space.
+        INFO("muzzle at " << visual.muzzle.x << ", " << visual.muzzle.y << ", " << visual.muzzle.z);
+        CHECK(visual.muzzle.z > visual.triggerGrip.z);
+        CHECK(visual.muzzle.z <= bounds.max.z + 0.02f);
+
+        // And the hands are asked for points on it, not for its origin.
+        CHECK(visual.supportGrip.z > visual.triggerGrip.z);
+    }
+}

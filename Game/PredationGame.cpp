@@ -4,6 +4,7 @@
 #include "Engine/Core/Log.h"
 #include "Engine/Core/Paths.h"
 #include "Engine/Debug/DebugCategories.h"
+#include "Engine/Assets/GltfImport.h"
 #include "Engine/Debug/ImGuiLayer.h"
 #include "Engine/Render/DebugDraw.h"
 #include "Engine/Render/Primitives.h"
@@ -493,6 +494,66 @@ void PredationGame::RegisterCommands()
             }
         },
         "editor [model]");
+
+    console.RegisterCommand("solo", "Leave the title screen and start a game on your own",
+                            [this](const std::vector<std::string>&)
+                            {
+                                if (m_screen == Screen::Title)
+                                {
+                                    StopSession();
+                                    EnterWorld();
+                                }
+                            });
+
+    console.RegisterCommand("bench", "Open or close the weapon bench",
+                            [this](const std::vector<std::string>&)
+                            {
+                                m_benchOpen = !m_benchOpen;
+                                m_app->GetConsole().Print(m_benchOpen ? "Weapon bench open"
+                                                                     : "Weapon bench closed");
+                            });
+
+    console.RegisterCommand(
+        "model_import",
+        "Import a glTF binary as an editable model: model_import <file.glb> <name> [size] [turn x y z]",
+        [this](const std::vector<std::string>& args)
+        {
+            if (args.size() < 3)
+            {
+                m_app->GetConsole().PrintError(
+                    "usage: model_import <file.glb> <name> [size] [turn x y z]");
+                return;
+            }
+            GltfImportOptions options;
+            if (args.size() >= 4)
+            {
+                options.targetSize = static_cast<float>(std::atof(args[3].c_str()));
+            }
+            if (args.size() >= 7)
+            {
+                options.rotationDegrees = {static_cast<float>(std::atof(args[4].c_str())),
+                                           static_cast<float>(std::atof(args[5].c_str())),
+                                           static_cast<float>(std::atof(args[6].c_str()))};
+            }
+            ModelAsset imported;
+            std::string error;
+            if (!LoadGlbModel(args[1], options, imported, &error))
+            {
+                m_app->GetConsole().PrintError("import failed: " + error);
+                return;
+            }
+            imported.name = args[2];
+            if (!imported.SaveToFile(ModelDirectory() / (args[2] + ".json")))
+            {
+                m_app->GetConsole().PrintError("could not write the model");
+                return;
+            }
+            ForgetWeaponModels();
+            m_app->GetConsole().Print("Imported " + std::to_string(imported.parts.size()) +
+                                      " parts as " + args[2] +
+                                      ". Open it with: editor " + args[2]);
+        },
+        "model_import <file.glb> <name> [size] [turn x y z]");
 
     console.RegisterCommand(
         "model_export",
@@ -2490,6 +2551,167 @@ void PredationGame::ResolveShots()
     }
 }
 
+
+// The weapon bench.
+//
+// Placing a grip socket is not something that can be done by looking at the model on its own: the
+// only question that matters is where the hand ends up, and the only way to answer it is to hold
+// the thing. So the bench points a weapon at a model without a restart, drives everything the
+// weapon does, and draws the sockets on the weapon as it is held, with the distance from each one
+// to the hand that is supposed to be at it.
+void PredationGame::DrawWeaponBench()
+{
+    if (!m_benchOpen)
+    {
+        return;
+    }
+
+    ImGui::SetNextWindowSize({380.0f, 460.0f}, ImGuiCond_FirstUseEver);
+    if (!ImGui::Begin("Weapon bench", &m_benchOpen))
+    {
+        ImGui::End();
+        return;
+    }
+
+    const std::vector<WeaponDefinition>& weapons = m_weaponData.All();
+    if (weapons.empty())
+    {
+        ImGui::TextDisabled("No weapons are loaded.");
+        ImGui::End();
+        return;
+    }
+    m_benchWeapon = std::clamp(m_benchWeapon, 0, static_cast<int>(weapons.size()) - 1);
+
+    if (ImGui::BeginCombo("Weapon", weapons[static_cast<size_t>(m_benchWeapon)].name.c_str()))
+    {
+        for (int i = 0; i < static_cast<int>(weapons.size()); ++i)
+        {
+            if (ImGui::Selectable(weapons[static_cast<size_t>(i)].name.c_str(), i == m_benchWeapon))
+            {
+                m_benchWeapon = i;
+            }
+        }
+        ImGui::EndCombo();
+    }
+
+    WeaponDefinition* chosen = m_weaponData.Mutable(weapons[static_cast<size_t>(m_benchWeapon)].id);
+    if (chosen == nullptr)
+    {
+        ImGui::End();
+        return;
+    }
+
+    // Which model it wears. Blank means the built-in shape, which is what every weapon starts with.
+    if (m_benchModel[0] == '\0' && !chosen->model.empty())
+    {
+        std::snprintf(m_benchModel, sizeof(m_benchModel), "%s", chosen->model.c_str());
+    }
+    ImGui::InputText("Model", m_benchModel, sizeof(m_benchModel));
+    if (ImGui::BeginCombo("##models", "pick one"))
+    {
+        for (const std::string& available : ListModels())
+        {
+            if (ImGui::Selectable(available.c_str()))
+            {
+                std::snprintf(m_benchModel, sizeof(m_benchModel), "%s", available.c_str());
+            }
+        }
+        ImGui::EndCombo();
+    }
+
+    if (ImGui::Button("Put it in my hands"))
+    {
+        chosen->model = m_benchModel;
+        // Read from disk again, or the hands go on holding whatever was loaded before the last save
+        // and the whole point of the bench is lost.
+        ForgetWeaponModels();
+        m_body.SetWeapon(m_scene, m_app->GetMeshes(), nullptr);
+        SyncEquippedWeapon();
+        m_app->GetConsole().Print("Holding " + chosen->name +
+                                  (chosen->model.empty() ? " (built-in shape)" : " as " + chosen->model));
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Reload from disk"))
+    {
+        ForgetWeaponModels();
+        m_body.SetWeapon(m_scene, m_app->GetMeshes(), nullptr);
+        SyncEquippedWeapon();
+    }
+    ImGui::TextDisabled("Save in the editor, then reload here. Nothing is written to weapons.json.");
+
+    ImGui::Separator();
+
+    const WeaponDefinition* equipped = EquippedWeapon();
+    if (equipped == nullptr)
+    {
+        ImGui::TextDisabled("Nothing in your hands: take a weapon out first.");
+        ImGui::End();
+        return;
+    }
+
+    ImGui::Text("Holding %s", equipped->name.c_str());
+    if (ImGui::Button("Reload"))
+    {
+        // The same latch the console reload command uses, so the bench asks for a reload the way
+        // the player does rather than reaching into the weapon state behind it.
+        m_reloadLatch = 30;
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Draw again"))
+    {
+        m_weaponDraw = 0.0f;
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Fire"))
+    {
+        m_debugTriggerTicks = 1;
+    }
+    ImGui::SliderFloat("Sights", &m_weapon.aim, 0.0f, 1.0f, "%.2f");
+
+    // Which clips the model carries, and how far through the one that is playing. A model with no
+    // clip of its own uses the built-in movements, and saying so beats leaving the list empty.
+    ImGui::Separator();
+    const WeaponVisual& visual = m_body.Weapon();
+    if (visual.asset == nullptr || visual.asset->clips.empty())
+    {
+        ImGui::TextDisabled("No clips on this model: the built-in reload and draw are playing.");
+    }
+    else
+    {
+        for (const AnimationClip& clip : visual.asset->clips)
+        {
+            ImGui::BulletText("%s  %.2fs  %d tracks", clip.name.c_str(), clip.duration,
+                              static_cast<int>(clip.tracks.size()));
+        }
+    }
+    if (m_weapon.IsReloading())
+    {
+        const float through =
+            1.0f - m_weapon.reloadRemaining / std::max(equipped->reloadSeconds, 0.01f);
+        ImGui::ProgressBar(through, {-1.0f, 0.0f}, "reloading");
+    }
+
+    // The numbers that actually decide whether a grip is placed right: how far each hand is from
+    // the socket it is meant to be holding. Under a couple of centimetres and it looks held.
+    ImGui::Separator();
+    ImGui::Checkbox("Draw sockets on the weapon", &m_benchSockets);
+    const glm::quat hold = m_body.WeaponRotation();
+    const glm::vec3 origin = m_body.WeaponOrigin();
+    const auto report = [&](const char* label, const glm::vec3& socket, BoneIndex bone)
+    {
+        const glm::vec3 world = origin + hold * socket;
+        const float gap = glm::distance(world, m_body.GetPose().GlobalPosition(bone));
+        ImGui::TextColored(gap < 0.03f ? ImVec4(0.65f, 0.85f, 0.65f, 1.0f)
+                                       : ImVec4(0.90f, 0.70f, 0.45f, 1.0f),
+                           "%s hand is %.1f cm from its socket", label, gap * 100.0f);
+    };
+    report("Trigger", visual.triggerGrip, m_body.Rig().hand[1]);
+    report("Support", visual.supportGrip, m_body.Rig().hand[0]);
+    ImGui::TextDisabled("Move the grip and support sockets in the editor until both read small.");
+
+    ImGui::End();
+}
+
 void PredationGame::ToggleEditor()
 {
     m_editor.SetOpen(m_scene, !m_editor.IsOpen());
@@ -3346,6 +3568,25 @@ void PredationGame::DrawDebugOverlays()
         }
     }
 
+    // The sockets on the weapon as it is actually held, with a line to the hand that is meant to be
+    // at each. Placing a grip is a matter of looking at where the hand lands, and there is nothing
+    // else that shows both at once.
+    if (m_benchOpen && m_benchSockets && m_body.Weapon().asset != nullptr)
+    {
+        const glm::quat hold = m_body.WeaponRotation();
+        const glm::vec3 origin = m_body.WeaponOrigin();
+        const auto mark = [&](const glm::vec3& socket, BoneIndex bone, uint32_t colour)
+        {
+            const glm::vec3 world = origin + hold * socket;
+            draw.Sphere(world, 0.018f, colour, 8);
+            draw.Line(world, m_body.GetPose().GlobalPosition(bone), colour);
+        };
+        mark(m_body.Weapon().triggerGrip, m_body.Rig().hand[1], Color::kGreen);
+        mark(m_body.Weapon().supportGrip, m_body.Rig().hand[0], Color::kCyan);
+        draw.Sphere(origin + hold * m_body.Weapon().muzzle, 0.014f, Color::kYellow, 8);
+        draw.Axes(glm::translate(glm::mat4(1.0f), origin) * glm::mat4_cast(hold), 0.12f);
+    }
+
     if (cv_showGrid.Get())
     {
         draw.Grid(24.0f, 1.0f, 0.02f);
@@ -3843,8 +4084,14 @@ void PredationGame::OnImGui()
     if (m_editor.IsOpen())
     {
         m_editor.DrawUi(m_scene, m_app->GetMeshes());
+        // Beside the editor, because the bench answers the one question the editor cannot: where
+        // does the hand end up.
+        DrawWeaponBench();
         return;
     }
+
+    // And in the game as well, which is where a reload can be watched from behind the character.
+    DrawWeaponBench();
 
     if (m_screen == Screen::Title)
     {

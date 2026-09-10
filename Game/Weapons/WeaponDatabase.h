@@ -27,6 +27,9 @@ public:
     WeaponId ForItem(const std::string& itemKey) const;
 
     const std::vector<WeaponDefinition>& All() const { return m_weapons; }
+    // Mutable, so the weapon bench can point a weapon at a model without a restart and an edit to
+    // weapons.json. What is changed here is not written back: the bench has a button for that.
+    WeaponDefinition* Mutable(WeaponId id);
     size_t Count() const { return m_weapons.size(); }
 
 private:

@@ -136,6 +136,10 @@ WeaponVisual FromModel(const ModelAsset& model, const WeaponDefinition& definiti
     const float length = std::max(definition.size.z, 0.12f);
     const float height = std::max(definition.size.y, 0.06f);
 
+    if (const ModelSocket* socket = model.FindSocket("grip"))
+    {
+        visual.triggerGrip = socket->position;
+    }
     if (const ModelSocket* socket = model.FindSocket("support"))
     {
         visual.supportGrip = socket->position;
@@ -176,6 +180,11 @@ std::unordered_map<std::string, std::shared_ptr<const ModelAsset>>& ModelCache()
 }
 
 } // namespace
+
+void ForgetWeaponModels()
+{
+    ModelCache().clear();
+}
 
 MeshData WeaponVisual::Combined() const
 {

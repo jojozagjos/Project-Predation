@@ -316,6 +316,10 @@ public:
     glm::vec3 MuzzlePoint() const;
     // Where the weapon is held. Exposed so a test can check the hand is actually on it.
     glm::vec3 WeaponOrigin() const { return m_weaponTransform.position; }
+    // Which way the held weapon is turned, so a socket on it can be put into world space.
+    glm::quat WeaponRotation() const { return m_weaponTransform.rotation; }
+    // What is being held, for the weapon bench: its sockets are what the hands are placed by.
+    const WeaponVisual& Weapon() const { return m_weaponVisual; }
     // Where the sight line leaves the weapon. Aiming has to put this on the view axis, and that is
     // the whole of what aiming means, so it is worth being able to measure.
     glm::vec3 SightPoint() const

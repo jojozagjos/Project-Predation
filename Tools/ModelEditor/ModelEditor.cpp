@@ -302,7 +302,18 @@ void ModelEditor::DrawFilePanel(Scene& scene, MeshLibrary& meshes)
     {
         ImportMesh(m_importPath);
     }
-    ImGui::TextDisabled("OBJ files. Paste a path, including one from a Sketchfab download.");
+    ImGui::TextDisabled("OBJ or GLB. Paste a path, including one from a Sketchfab download.");
+
+    // How a download is turned into something the game can hold. All four are wanted before the
+    // first look rather than after it: a model that arrives a hundred times too large and facing
+    // sideways is indistinguishable from one that failed to load.
+    ImGui::DragFloat("Fit to (m)", &m_importSize, 0.01f, 0.05f, 4.0f, "%.2f");
+    ImGui::DragFloat3("Turn (deg)", &m_importRotation.x, 1.0f, -180.0f, 180.0f, "%.0f");
+    ImGui::Checkbox("Centre on import", &m_importCentre);
+    ImGui::SameLine();
+    ImGui::Checkbox("Replace parts", &m_importReplace);
+    ImGui::TextDisabled("The game wants the barrel down +Z and the grip at the origin.");
+    ImGui::TextDisabled("Replacing keeps sockets and clips, so turning it right takes a few goes.");
 
     if (!m_status.empty())
     {
@@ -769,23 +780,71 @@ void ModelEditor::ImportMesh(const std::string& file)
         m_status = "Nothing to import: paste a path first";
         return;
     }
+
+    const std::filesystem::path path = file;
+
+    // A glTF file describes a whole model rather than one lump of geometry, so it arrives as a set
+    // of parts. That is the difference that matters for a weapon: a magazine has to be a part of
+    // its own or no reload can move it, and merging the file down to one mesh throws that away.
+    if (IsGltfFile(path))
+    {
+        GltfImportOptions options;
+        options.targetSize = m_importSize;
+        options.rotationDegrees = m_importRotation;
+        options.centre = m_importCentre;
+
+        ModelAsset imported;
+        std::string error;
+        if (!LoadGlbModel(path, options, imported, &error))
+        {
+            m_status = "Could not import: " + error;
+            return;
+        }
+
+        if (m_importReplace)
+        {
+            // Sockets and clips survive a reimport. Turning a model the right way round usually
+            // takes two or three goes, and losing the grip placement each time is what would make
+            // that unbearable.
+            m_model.parts = std::move(imported.parts);
+            if (m_model.name.empty())
+            {
+                m_model.name = imported.name;
+            }
+        }
+        else
+        {
+            for (ModelPart& part : imported.parts)
+            {
+                m_model.parts.push_back(std::move(part));
+            }
+        }
+
+        m_selectedPart = m_model.parts.empty() ? -1 : 0;
+        m_dirty = true;
+        m_status = "Imported " + std::to_string(imported.parts.size()) + " parts from " +
+                   path.filename().string();
+        return;
+    }
+
     MeshData imported;
-    if (!LoadObjMesh(file, imported))
+    if (!LoadObjMesh(path, imported))
     {
         m_status = "Could not import " + file;
         return;
     }
 
     ModelPart part;
-    part.name = std::filesystem::path(file).stem().string();
+    part.name = path.stem().string();
     part.shape = PartShape::Mesh;
     part.mesh = std::move(imported);
     part.sourceFile = file;
     part.size = glm::vec3(1.0f);
+    NormalizeMeshScale(part.mesh, m_importSize);
     m_model.parts.push_back(std::move(part));
     m_selectedPart = static_cast<int>(m_model.parts.size()) - 1;
     m_dirty = true;
-    m_status = "Imported " + part.sourceFile;
+    m_status = "Imported " + file;
 }
 
 void ModelEditor::DrawUi(Scene& scene, MeshLibrary& meshes)

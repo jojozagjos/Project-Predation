@@ -1386,9 +1386,13 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
     const glm::vec3 weaponUp = rotation * glm::vec3(0.0f, 1.0f, 0.0f);
     const glm::vec3 weaponRight = glm::cross(barrel, weaponUp);
 
+    // Both from the model, rather than the support hand from the model and the trigger hand from
+    // the origin. A model's origin is wherever the person who made it left it, and for anything
+    // imported that is usually the middle of the weapon: the trigger hand ended up floating in the
+    // air beside the receiver with nothing under it.
     glm::vec3 gripPoints[2] = {
         m_weaponTransform.position + rotation * m_weaponVisual.supportGrip, // left, the support hand
-        m_weaponTransform.position - weaponUp * 0.02f                       // right, the trigger hand
+        m_weaponTransform.position + rotation * m_weaponVisual.triggerGrip  // right, the trigger hand
     };
 
     // A long weapon puts the handguard further out than the arm can reach, and an over-extended IK

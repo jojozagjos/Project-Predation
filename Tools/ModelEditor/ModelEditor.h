@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Engine/Assets/GltfImport.h"
 #include "Engine/Assets/ModelAsset.h"
 #include "Engine/Render/Camera.h"
 #include "Engine/Scene/Scene.h"
@@ -95,6 +96,14 @@ private:
     std::string m_status;
     std::string m_saveName = "new_model";
     std::string m_importPath;
+    // How a download is turned into something a person can hold: the size it is fitted to, the turn
+    // that puts the barrel down +Z, whether the origin is moved to the middle, and whether an
+    // import replaces the parts or adds to them. Replacing keeps sockets and clips, because getting
+    // the turn right takes a few goes and losing the grip placement each time would be unbearable.
+    float m_importSize = 0.6f;
+    glm::vec3 m_importRotation{0.0f};
+    bool m_importCentre = true;
+    bool m_importReplace = true;
     // Offsets being edited at the playhead, before they are committed as keys.
     std::vector<AnimationKey> m_liveOffsets;
 };

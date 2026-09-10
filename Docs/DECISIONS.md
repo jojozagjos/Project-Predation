@@ -394,3 +394,47 @@ dropped one covers several centimetres in a tick; and clients ease towards the h
 than being teleported to it, because the host speaks thirty times a second and the screen draws at
 least twice that. The client's own solver is held still while that happens, so the two are not
 pulling against each other, which is separately how a thin item could be pushed through a floor.
+
+## ADR-026: glTF is read here rather than by a library, and every primitive becomes a part
+
+**Status**: accepted, 2026-09-09
+
+Models arrive as .glb. The part of glTF a static prop needs is small and completely specified: a
+JSON chunk, a binary chunk, and accessors saying how to read one out of the other. The JSON parser
+is already a dependency, so the importer is about four hundred lines and no new third-party code.
+What is deliberately not read is skinning, morph targets, cameras, lights and textures, none of
+which this renderer has anything to do with. A textured download arrives as flat-shaded parts in
+the colours of its materials, which is the look the game has anyway.
+
+Every primitive becomes one part, baked into place by its node's transform, rather than the file
+being merged into a single mesh. That matters more than fidelity for a weapon: a magazine has to be
+its own part or no reload can move it. The carbine that arrived came in as four parts; the pistol as
+one, which means it will need splitting before its slide can cycle.
+
+Three things happen at import that are not in the file. The model is scaled to a stated size,
+because downloads arrive in wildly different units and one a hundred times too large is
+indistinguishable from one that failed to load. It can be turned, because glTF has no idea which way
+a weapon points and the game wants the barrel down +Z; both models that arrived ran along +X. And
+sockets are seeded from the geometry, because a model with no sockets is held by its origin, which
+for anything downloaded is the middle of the receiver: the hand ends up inside the weapon and the
+barrel points out of the wrist. Those seeds are guesses meant to be moved, but a guess taken from
+the shape is close enough to see what is wrong with it.
+
+## ADR-027: The grip is placed by looking at where the hand lands
+
+**Status**: accepted, 2026-09-09
+
+The trigger hand was placed at the weapon's origin rather than at its grip socket. That worked while
+every weapon was built procedurally with its origin at the grip, and stopped working the moment a
+model came from outside. Both hands now come from sockets.
+
+Which raises the question of how a socket gets placed correctly, and the answer is not by looking at
+the model: the only question that matters is where the hand ends up, and the only way to answer it
+is to hold the thing. So there is a weapon bench. It points a weapon at a model without a restart or
+an edit to weapons.json, drives everything the weapon does, draws the sockets on the weapon as it is
+held with a line to the hand meant to be at each, and puts the distance between them on screen in
+centimetres. Placing a grip is then a matter of moving a socket in the editor and watching a number
+come down.
+
+The model cache had to learn to forget, or the editor and the hands holding the model disagree until
+the game is restarted, which is exactly the loop the bench exists to close.

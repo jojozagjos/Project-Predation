@@ -80,6 +80,8 @@ set(PRED_ENGINE_SOURCES
 
     Assets/MeshImport.h
     Assets/MeshImport.cpp
+    Assets/GltfImport.h
+    Assets/GltfImport.cpp
     Assets/ModelAsset.h
     Assets/ModelAsset.cpp
     Assets/FileWatcher.h

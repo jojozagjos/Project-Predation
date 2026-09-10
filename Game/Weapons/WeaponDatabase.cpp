@@ -198,6 +198,15 @@ const WeaponDefinition* WeaponDatabase::Get(WeaponId id) const
     return &m_weapons[static_cast<size_t>(id)];
 }
 
+WeaponDefinition* WeaponDatabase::Mutable(WeaponId id)
+{
+    if (id <= kInvalidWeapon || static_cast<size_t>(id) >= m_weapons.size())
+    {
+        return nullptr;
+    }
+    return &m_weapons[static_cast<size_t>(id)];
+}
+
 const WeaponDefinition* WeaponDatabase::Find(const std::string& key) const
 {
     return Get(IdOf(key));
