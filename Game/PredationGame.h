@@ -109,6 +109,8 @@ private:
     void DrawEditorFirstPerson();
     void DestroyEditorFirstPerson();
     bool m_editorFirstPerson = true;
+    // Crosshairs over the panel, for lining a sight up on the view axis by something other than eye.
+    bool m_editorEyeReticle = true;
     bgfx::FrameBufferHandle m_editorEyeBuffer = BGFX_INVALID_HANDLE;
     bgfx::TextureHandle m_editorEyeTexture = BGFX_INVALID_HANDLE;
     // Equips whatever weapon the selected inventory slot carries, or nothing if it carries none.
@@ -167,6 +169,9 @@ private:
     // player back exactly where they were. In a session nothing stops simulating, because a shared
     // world cannot be paused by one person in it.
     void DrawPauseMenu();
+    // How far through a reload the local player is, 0 to 1. One place, because the pose and the wire
+    // each had their own and only one of them was a fraction.
+    float ReloadProgress() const;
     void DrawTitleScreen();
     void EnterWorld();
     void EnterEditor(const std::string& modelName);
@@ -371,6 +376,14 @@ private:
         // Raised the moment something arrives in their hands, so a remote weapon is brought up
         // rather than appearing already shouldered.
         float weaponDraw = 1.0f;
+        // Where their last climb ended and how far through it was.
+        //
+        // The snapshot only carries these while somebody is climbing, and the hands go on fading
+        // off the ledge for a moment after they stop: reading the wire's zero during that fade
+        // pulled their weapon towards the world origin at full strength and then let it snap back,
+        // which is the gun everyone saw fly away from a player pulling themselves over a wall.
+        glm::vec3 mantleEdge{0.0f};
+        float mantlePhase = 0.0f;
     };
     Screen m_screen = Screen::Title;
     bool m_paused = false;

@@ -493,3 +493,34 @@ the receiver across half the screen from behind the eye, and finding that out me
 editor, starting a game and picking the thing up. The body is already in the editor and already
 holding the model, so the panel is that body's own eye at the game's field of view, drawn into an
 offscreen target every frame.
+
+## ADR-030: A weapon's movements belong to its model, except the recoil
+
+**Status**: accepted, 2026-09-10
+
+There were two versions of a reload and two of an equip: one written in C++ against the whole weapon
+as a single lump, and one authored on the model as a clip. The built-in one stepped aside when a
+clip of the same name existed, which made what an author saw depend on what they had named things,
+and it could never be right anyway: it does not know what parts a weapon has, and a reload is a
+magazine leaving a well and a bolt going home. Those are the model's parts. The built-in versions
+are gone, and `reload`, `equip` and `unequip` are clips or they are nothing.
+
+Fire is the exception, and it is a real distinction rather than an inconsistency. The recoil is the
+whole weapon moving in a hold; every weapon does it, it is the same movement for all of them, and it
+has to agree with the hold that the carry code computes. The bolt cycling is this weapon's alone and
+nothing in the game could guess at it. So a `fire` clip layers on top of the recoil instead of
+replacing it.
+
+The support hand is the other thing that cannot be a clip. A clip moves parts of a weapon, and a
+hand is not one of them, so the hand that fetches a magazine off the belt during a reload stays
+where it is: driven from how far through the reload the simulation says the player is.
+
+## ADR-031: The developer tools are a build option
+
+**Status**: accepted, 2026-09-10
+
+`PRED_DEV_TOOLS` is on for anything built here and off for anything packaged. A packaged build has
+no model editor in its menu and no editor commands in its console, and the packaging script leaves
+out the raw model downloads the importer works on, which are tens of megabytes and no use without
+it. The editor's code is still linked; what is gone is every way to reach it, which is what "not
+shipped" has to mean while the editor and the game share a scene, a body and a renderer.

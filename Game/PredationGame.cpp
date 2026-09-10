@@ -1608,6 +1608,22 @@ void PredationGame::EnterWorld()
     m_wantMouseCaptured = true;
 }
 
+float PredationGame::ReloadProgress() const
+{
+    // 0 at the start of a reload, 1 at the end. One function, because there were two: the pose used
+    // the fraction and the wire sent one minus the seconds remaining, which is the same number only
+    // for a reload that happens to take a second. At 2.2 seconds it stayed at zero until the last
+    // one and then ran the whole movement inside it, so everybody else saw a reload begin as it
+    // ended and play at more than twice the speed.
+    if (!m_weapon.IsReloading())
+    {
+        return 0.0f;
+    }
+    const WeaponDefinition* weapon = EquippedWeapon();
+    const float seconds = weapon != nullptr ? std::max(weapon->reloadSeconds, 0.01f) : 1.0f;
+    return glm::clamp(1.0f - m_weapon.reloadRemaining / seconds, 0.0f, 1.0f);
+}
+
 void PredationGame::DrawPauseMenu()
 {
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
@@ -1935,11 +1951,13 @@ bool PredationGame::StepSession(const PlayerInput& input, float dt)
     // What is in the local player's hands, so everyone else sees it.
     const ItemDefinition* held = m_items.Get(m_inventory.Selected().item);
     const uint8_t heldId = held != nullptr ? static_cast<uint8_t>(held->id) : 0;
+    // A fraction of the reload, not the seconds left of it. See the note on the client's copy of
+    // this below: the two were wrong in the same way and for the same reason.
+    const float reloadPlay = ReloadProgress();
 
     if (m_sessionMode == SessionMode::Host)
     {
-        m_host.SetPlayerHeld(0, heldId, m_weapon.aim, m_weapon.IsReloading(),
-                             m_weapon.IsReloading() ? 1.0f - m_weapon.reloadRemaining : 0.0f);
+        m_host.SetPlayerHeld(0, heldId, m_weapon.aim, m_weapon.IsReloading(), reloadPlay);
 
         // The host is a player too: it steps itself first, then runs everyone else from what they
         // sent, then tells them all where everybody ended up.
@@ -1954,8 +1972,11 @@ bool PredationGame::StepSession(const PlayerInput& input, float dt)
     {
         // Told to the host with the next input, or nobody else ever sees this player holding
         // anything: the host cannot see inside another machine.
-        m_client.SetHeld(heldId, m_weapon.aim, m_weapon.IsReloading(),
-                         m_weapon.IsReloading() ? 1.0f - m_weapon.reloadRemaining : 0.0f);
+        // How far through the reload is, as a fraction. It used to send one minus the seconds left,
+        // which is a fraction only for a reload that takes exactly one second: with a 2.2 second
+        // one it stayed at zero until the last second and then ran the whole movement in it, so
+        // everyone else saw the reload start when it was nearly over and play at twice the speed.
+        m_client.SetHeld(heldId, m_weapon.aim, m_weapon.IsReloading(), reloadPlay);
 
         // The client's step happens inside prediction, so the same call is used for the first guess
         // and for every replay of it. Doing it here as well would run each input twice.
@@ -2039,10 +2060,24 @@ void PredationGame::SyncRemoteAvatars(float frameDeltaSeconds)
         avatar->state.grounded = remote.grounded;
         // The climb, so a remote player is seen hauling themselves over rather than sliding up a
         // wall. The duration is nominal here: only the phase matters for the pose.
+        //
+        // The edge and the phase are remembered rather than read fresh every frame. The snapshot
+        // carries them only while somebody is climbing, and the hands go on fading off the ledge
+        // for a moment after they stop; taking the wire's zero during that fade dragged their
+        // weapon towards the world origin at full strength and then let it snap back.
+        if (remote.mantling)
+        {
+            avatar->mantleEdge = remote.mantleEdge;
+            avatar->mantlePhase = remote.mantlePhase;
+        }
+        else
+        {
+            avatar->mantlePhase = 1.0f;
+        }
         avatar->state.mantling = remote.mantling;
         avatar->state.mantleDuration = 1.0f;
-        avatar->state.mantleTime = remote.mantlePhase;
-        avatar->state.mantleEdge = remote.mantleEdge;
+        avatar->state.mantleTime = avatar->mantlePhase;
+        avatar->state.mantleEdge = avatar->mantleEdge;
         avatar->state.mantleFrom = remote.position;
         avatar->state.mantleTo = remote.position;
 
@@ -2769,9 +2804,10 @@ void PredationGame::DrawWeaponBench()
     const ModelAsset& model = m_editor.Model();
     if (model.clips.empty())
     {
-        ImGui::TextDisabled("No clips on this model, so the built-in reload and draw are playing. "
-                            "Add one under Animation to author your own. Name it reload, equip or "
-                            "fire and the game will play it instead of the built-in one.");
+        ImGui::TextDisabled("No clips on this model, so nothing moves on it: reloading and drawing "
+                            "are the model's own now, not something written into the game. Add one "
+                            "under Animation and name it reload, equip, unequip or fire. A fire "
+                            "clip plays on top of the recoil rather than instead of it.");
     }
     else
     {
@@ -2969,6 +3005,8 @@ void PredationGame::DrawEditorFirstPerson()
     }
 
     ImGui::Checkbox("Draw it", &m_editorFirstPerson);
+    ImGui::SameLine();
+    ImGui::Checkbox("Centre lines", &m_editorEyeReticle);
     if (m_editorFirstPerson && bgfx::isValid(m_editorEyeTexture))
     {
         // Fitted to the panel, keeping the shape of the frame it is standing in for. A stretched
@@ -2977,8 +3015,21 @@ void PredationGame::DrawEditorFirstPerson()
             static_cast<float>(kEditorEyeWidth) / static_cast<float>(kEditorEyeHeight);
         const ImVec2 room = ImGui::GetContentRegionAvail();
         const float width = std::min(room.x, std::max(room.y, 1.0f) * aspect);
-        ImGui::Image(static_cast<ImTextureID>(ImGuiLayer::TextureId(m_editorEyeTexture)),
-                     ImVec2(width, width / aspect));
+        const ImVec2 at = ImGui::GetCursorScreenPos();
+        const ImVec2 size(width, width / aspect);
+        ImGui::Image(static_cast<ImTextureID>(ImGuiLayer::TextureId(m_editorEyeTexture)), size);
+
+        // Where the view axis is, drawn over the picture. Lining a sight up means putting it on
+        // that axis, and by eye alone the middle of a small panel is a guess.
+        if (m_editorEyeReticle)
+        {
+            ImDrawList* draw = ImGui::GetWindowDrawList();
+            const ImVec2 centre(at.x + size.x * 0.5f, at.y + size.y * 0.5f);
+            constexpr ImU32 kLine = IM_COL32(120, 230, 140, 150);
+            draw->AddLine({at.x, centre.y}, {at.x + size.x, centre.y}, kLine);
+            draw->AddLine({centre.x, at.y}, {centre.x, at.y + size.y}, kLine);
+            draw->AddCircle(centre, size.y * 0.06f, kLine, 0, 1.0f);
+        }
     }
     else if (!m_editorFirstPerson)
     {
@@ -3870,9 +3921,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
         pose.reloading = m_weapon.IsReloading();
         // Runs 0 at the start of the reload to 1 at the end, so the animation does not have to know
         // how long any particular weapon takes.
-        pose.reload = pose.reloading
-                          ? 1.0f - m_weapon.reloadRemaining / std::max(weapon->reloadSeconds, 0.01f)
-                          : -1.0f;
+        pose.reload = pose.reloading ? ReloadProgress() : -1.0f;
         pose.kick = m_weaponKick;
         pose.draw = m_weaponDraw;
         pose.holster = m_weaponHolster;

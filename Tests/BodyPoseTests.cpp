@@ -1854,3 +1854,4 @@ TEST_CASE("Turning the grip socket turns the weapon in the hand", "[body][pose][
     CHECK(turned > 75.0f);
     CHECK(turned < 105.0f);
 }
+

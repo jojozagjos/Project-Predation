@@ -169,8 +169,10 @@ What is in it:
 - **Sockets**: the contract with the game. `grip` and `support` are where the hands close, `muzzle`
   is where rounds appear, `magazine` is where the magazine seats, `sight` is the line aiming puts on
   the view axis. Click one in the viewport and drag a handle.
-- **Animation**: clips named `reload`, `equip` and `fire` replace the built-in movements of the same
-  name. Anything else is yours, and playable from the panel that holds the weapon.
+- **Animation**: clips named `reload`, `equip` and `unequip` are the whole of what those movements
+  are; there is no built-in version any more. `fire` plays on top of the recoil rather than instead
+  of it, so a bolt can cycle without re-authoring the kick. Anything else is yours, and playable
+  from the panel that holds the weapon.
 - **Hold it**: the game's own body, holding whatever is open. It stands, crouches, lies down, walks
   on the spot, aims, draws, reloads and fires. It says whether each hand is on its socket and how
   hard the arm is working to hold it, which is the only way to place a grip: the question is where

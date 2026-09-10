@@ -2170,10 +2170,15 @@ void PlayerBody::UpdateLegs(const PlayerState& state, const PlayerView& view,
         // player stands beside it; without the lower one, a foot whose target hangs over the edge
         // of whatever they are standing on drops all the way to the floor below, and the leg
         // stretches down through the side of the crate. That is the one that looks worst.
+        //
+        // And a body lying down cannot step onto anything at all. Nearly half a metre of rise is a
+        // kerb to somebody standing; to somebody on their belly beside a low wall it is the top of
+        // the wall, and the trace found it and put the foot up there. Crawling along a wall had the
+        // legs climbing it.
         const float base = view.renderPosition.y;
+        const float rise = glm::mix(m_config.maxFootRise, 0.10f, m_flatness);
         const float groundY =
-            hit ? std::clamp(hit.position.y, base - m_config.maxFootDrop, base + m_config.maxFootRise)
-                : base;
+            hit ? std::clamp(hit.position.y, base - m_config.maxFootDrop, base + rise) : base;
         const float groundedY = groundY + m_rig.ankleHeight + lift + rollRise;
         // Up on its side a body has its legs stacked, and only the lower one is on the floor.
         // Pinning both feet to the ground there is what left the legs lying flat while the torso

@@ -344,9 +344,17 @@ int WorldObjects::SpawnPickup(Scene& scene, MeshLibrary& meshes, PhysicsWorld& p
             const uint32_t mixed = (seed + static_cast<uint32_t>(which) * 0x9E3779B9u) * 1103515245u;
             return static_cast<float>((mixed >> 8) & 0xFFFFu) / 65535.0f;
         };
-        const glm::vec3 axis =
-            glm::normalize(glm::vec3(unit(0) - 0.5f, unit(1) - 0.5f, unit(2) - 0.5f) + glm::vec3(1e-3f));
-        transform.rotation = glm::angleAxis(unit(3) * glm::two_pi<float>(), axis);
+        // Turned about the up axis and tipped a little, rather than tumbled about a random one.
+        // A free axis puts a rifle on its muzzle and a keycard on one corner as often as not, which
+        // is not what dropping something looks like: things land flat and face whichever way they
+        // happened to be going. The tip is what keeps it from reading as stock on a shelf.
+        constexpr float kMaxTiltDegrees = 14.0f;
+        transform.rotation =
+            glm::angleAxis(unit(0) * glm::two_pi<float>(), glm::vec3(0.0f, 1.0f, 0.0f)) *
+            glm::angleAxis(glm::radians((unit(1) - 0.5f) * 2.0f * kMaxTiltDegrees),
+                           glm::vec3(1.0f, 0.0f, 0.0f)) *
+            glm::angleAxis(glm::radians((unit(2) - 0.5f) * 2.0f * kMaxTiltDegrees),
+                           glm::vec3(0.0f, 0.0f, 1.0f));
     }
 
     // A weapon is drawn as the parts it is made of rather than as one merged lump, so a dropped
