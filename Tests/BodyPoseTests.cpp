@@ -1183,10 +1183,17 @@ TEST_CASE("A held weapon stops at a wall it is looking sideways at", "[body][pos
     // left is a barrel tip rather than half a weapon. It used to be 0.17 m with the barrel level.
     CHECK(muzzle.z > wallZ - 0.12f);
 
-    // And the muzzle has come down, which is what makes the remainder small.
-    const glm::vec3 barrel = muzzle - harness.body.WeaponOrigin();
+    // And it was pulled back rather than swung down. Sixty degrees of muzzle drop used to be what
+    // made the remainder small, and what it read as was the rifle falling out of the hold every
+    // time the player brushed a doorframe. The barrel stays roughly level; the hold comes in.
+    const glm::vec3 barrel = glm::normalize(muzzle - harness.body.HoldPoint());
     INFO("barrel points " << barrel.x << ", " << barrel.y << ", " << barrel.z);
-    CHECK(barrel.y < -0.05f);
+    CHECK(barrel.y > -0.40f);
+    const float along = glm::dot(harness.body.HoldPoint() - harness.View().eyePosition,
+                                 harness.View().Forward());
+    INFO("the hold sits " << along << " m down the view axis, of "
+                          << harness.body.Tuning().weaponReadyForward << " in the open");
+    CHECK(along < harness.body.Tuning().weaponReadyForward - 0.03f);
 }
 
 TEST_CASE("Lying down does not put what is in the hands through the floor", "[body][pose]")
@@ -1539,12 +1546,13 @@ TEST_CASE("Aiming puts the sights on the view axis, whatever the pitch", "[body]
     CHECK(worst < 0.02f);
 }
 
-TEST_CASE("A weapon against a wall comes down rather than into the camera", "[body][pose]")
+TEST_CASE("A weapon against a wall comes back rather than into the camera", "[body][pose]")
 {
     // A long weapon and a near wall cannot both be satisfied. Pulling straight back gives the barrel
     // to the wall and the receiver to the camera: the near plane cuts it open and the player is
-    // looking at the inside of their own gun. Dropping the muzzle gives up only where the weapon is
-    // pointing, which nobody is using in a corridor anyway.
+    // looking at the inside of their own gun. Two floors decide how far in it may come, and the one
+    // that matters here is on the back of the weapon rather than on the hold.
+
     BodyHarness harness;
     WeaponDefinition weapon;
     weapon.id = 1;
@@ -1576,11 +1584,14 @@ TEST_CASE("A weapon against a wall comes down rather than into the camera", "[bo
     // Far enough out that the near plane, at five centimetres, is nowhere near it.
     CHECK(along > harness.body.Tuning().weaponMinForward - 0.02f);
 
-    // And the muzzle has come down rather than staying level and buried in the wall.
-    const glm::vec3 muzzle = harness.body.MuzzlePoint();
-    const glm::vec3 barrel = muzzle - harness.body.WeaponOrigin();
-    INFO("barrel points " << barrel.x << ", " << barrel.y << ", " << barrel.z);
-    CHECK(barrel.y < -0.05f);
+    // And the back of the weapon is still in front of the near plane. This is the case that needs
+    // it: aiming into something jammed puts the whole weapon on the view axis, and the pull-back
+    // then runs straight down that axis towards the eye.
+    const glm::vec3 rear =
+        harness.body.WeaponOrigin() + harness.body.WeaponRotation() * harness.body.Weapon().rearPoint;
+    const float behind = glm::dot(rear - eye, harness.View().Forward());
+    INFO("the back of the weapon sits " << behind << " m down the view axis");
+    CHECK(behind > harness.body.Tuning().weaponRearMinForward - 0.02f);
 }
 
 TEST_CASE("Crawling keeps the hands inside a vent", "[body][pose]")

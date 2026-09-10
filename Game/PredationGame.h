@@ -76,6 +76,9 @@ private:
     float m_editorAim = 0.0f;
     float m_editorDraw = 1.0f;
     float m_editorKick = 0.0f;
+    // Putting it away, so an unequip clip can be watched. Runs 1 to 0 and then holds.
+    float m_editorHolster = 1.0f;
+    bool m_editorHolstering = false;
     float m_editorReload = -1.0f; // negative when not reloading, matching WeaponPose
     // A clip being watched on demand, and where in it. Empty means the built-in movements play,
     // which is what happens in the game.
@@ -328,6 +331,11 @@ private:
     // Runs 0 to 1 as a weapon is brought up. Reset whenever what is held changes, so swapping is a
     // movement rather than one model being substituted for another.
     float m_weaponDraw = 1.0f;
+    // How far a weapon in the hands has been put away: 1 while it is out, 0 once it has gone. A
+    // swap waits for this to run down, so an authored unequip has a moment to happen in.
+    float m_weaponHolster = 1.0f;
+    // The last frame's length, for presentation timers that live outside the fixed tick.
+    float m_lastFrameSeconds = 1.0f / 60.0f;
     // Which inventory slot the equipped weapon's magazine belongs to, so it can be put back there
     // when something else comes out. Inventory::kNoSlot when nothing is in hand.
     int m_ammoSlot = -1;

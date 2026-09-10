@@ -1036,8 +1036,8 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
     // You cannot aim into a wall. Holding the sights up against one puts them on the view axis with
     // the barrel inside the bricks, which is a lie in the shape of a feature; the sights come down
     // instead, and the player can see perfectly well why.
-    const float aim = glm::clamp(m_weaponPose.aim, 0.0f, 1.0f) *
-                      glm::mix(1.0f, m_config.weaponWallAim, crowded);
+    const float wantedAim = glm::clamp(m_weaponPose.aim, 0.0f, 1.0f);
+    const float aim = wantedAim * glm::mix(1.0f, m_config.weaponWallAim, crowded);
 
     // --- Sway -----------------------------------------------------------------------------------
     // Three things move a held weapon, and they are separate on purpose.
@@ -1175,19 +1175,17 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
     // Bringing a weapon up: it starts low and out of the way and rises into the hold. Presentation
     // only, so it never delays a shot.
     //
-    // These are the fallbacks. A model that carries its own "equip" or "reload" clip animates
-    // through that instead, and the built-in movement steps out of the way rather than fighting it.
-    const auto hasClip = [this](const char* clipName)
-    { return m_weaponVisual.asset != nullptr && m_weaponVisual.asset->FindClip(clipName) != nullptr; };
-    const bool authoredDraw = hasClip("equip");
-    const bool authoredReload = hasClip("reload");
-
+    // Bringing a weapon up and reloading it are authored on the model now, not written in here.
+    //
+    // There was a built-in version of each, and it was in the way. It could only ever move the
+    // weapon as one lump, because it does not know what parts a weapon has; a real reload is a
+    // magazine coming out of a well and a bolt going home, and those are the model's own parts.
+    // Worse, a model that carried its own clip had to fight it: the built-in movement stepped aside
+    // for a clip of the same name, so what an author saw depended on what they had named things.
+    // Fire is the exception and it is deliberate, below: the recoil stays here, because it is the
+    // whole weapon moving in a hold and every weapon does it, and a "fire" clip plays on top of it
+    // so a bolt can cycle without anybody re-authoring the kick.
     const float draw = glm::clamp(m_weaponPose.draw, 0.0f, 1.0f);
-    if (draw < 1.0f && !authoredDraw)
-    {
-        const float lift = (1.0f - draw) * (1.0f - draw);
-        offset += carryUp * (-0.40f * lift) + carryRight * (0.10f * lift) - carryForward * (0.12f * lift);
-    }
 
     // --- Which way it points --------------------------------------------------------------------
     const glm::quat sighted = LookRotation(aimForward, aimUp);
@@ -1217,18 +1215,11 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
         rotation = glm::slerp(glm::angleAxis(view.leanRoll, carryForward), glm::quat(1, 0, 0, 0), aim) *
                    rotation;
     }
-    if (draw < 1.0f && !authoredDraw)
-    {
-        const float lift = (1.0f - draw) * (1.0f - draw);
-        rotation = rotation * glm::angleAxis(glm::radians(-34.0f * lift), glm::vec3(1.0f, 0.0f, 0.0f)) *
-                   glm::angleAxis(glm::radians(18.0f * lift), glm::vec3(0.0f, 0.0f, 1.0f));
-    }
-
     // --- Reload ---------------------------------------------------------------------------------
-    // The weapon rolls towards the player so the magazine well is where the hand can reach it, dips
-    // as the magazine comes out, and comes back up as the new one seats. `reload` runs 0 to 1.
-    glm::vec3 magazineOffset{0.0f};
-    float magazineVisible = 1.0f;
+    // How far through a reload the hands are. The weapon's own movement through one is the model's
+    // "reload" clip; this is what the support hand follows, which no clip can do because a clip
+    // moves parts of a weapon and a hand is not one of them.
+    //
     // The movement runs to its end even when the reload itself finishes first. The weapon is
     // usable again the moment the simulation says so; what is left is a pair of hands finishing
     // what they were doing, and cutting that off partway is what snapped.
@@ -1247,65 +1238,6 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
         }
     }
 
-    if (m_reloadRunning && !authoredReload)
-    {
-        const float t = glm::clamp(m_reloadPlay, 0.0f, 1.0f);
-
-        // Quick in, held through the work, unhurried out. A raised cosine, which is what this was,
-        // spends as long arriving as it does leaving and reads as the weapon being waved rather
-        // than brought in to be worked on.
-        const float envelope = glm::smoothstep(0.0f, 0.16f, t) * (1.0f - glm::smoothstep(0.74f, 1.0f, t));
-
-        // Rolled towards the player and tipped down, which is what puts the magazine well where the
-        // other hand can reach it and the ejection port where it can be seen.
-        rotation = rotation * glm::angleAxis(glm::radians(52.0f * envelope), glm::vec3(0.0f, 0.0f, 1.0f)) *
-                   glm::angleAxis(glm::radians(-28.0f * envelope), glm::vec3(1.0f, 0.0f, 0.0f)) *
-                   glm::angleAxis(glm::radians(14.0f * envelope), glm::vec3(0.0f, 1.0f, 0.0f));
-        offset += carryUp * (-0.14f * envelope) + carryRight * (-0.08f * envelope) -
-                  carryForward * (0.07f * envelope);
-
-        // The new magazine is slapped home rather than slid in. One short jolt through the whole
-        // weapon, which is the moment of a reload anyone actually notices.
-        constexpr float kSeatAt = 0.80f;
-        const float sinceSeat = (t - kSeatAt) / 0.09f;
-        if (sinceSeat > 0.0f && sinceSeat < 1.0f)
-        {
-            const float jolt = std::sin(sinceSeat * glm::pi<float>()) * (1.0f - sinceSeat);
-            offset += carryUp * (0.022f * jolt);
-            rotation = rotation * glm::angleAxis(glm::radians(-5.0f * jolt), glm::vec3(1.0f, 0.0f, 0.0f));
-        }
-
-        // And the bolt is released at the end, which is a shorter, sharper knock the other way.
-        const float sinceBolt = (t - 0.90f) / 0.07f;
-        if (sinceBolt > 0.0f && sinceBolt < 1.0f)
-        {
-            const float knock = std::sin(sinceBolt * glm::pi<float>());
-            offset -= carryForward * (0.018f * knock);
-            rotation = rotation * glm::angleAxis(glm::radians(3.5f * knock), glm::vec3(1.0f, 0.0f, 0.0f));
-        }
-
-        // The old magazine drops away, there is a moment with nothing in the well, and the new one
-        // comes up into it. Falling accelerates and seating decelerates, because that is what each
-        // of those two things does.
-        constexpr float kOut = 0.30f;
-        constexpr float kIn = 0.62f;
-        if (t < kOut)
-        {
-            const float drop = t / kOut;
-            magazineOffset.y = -0.34f * drop * drop;
-            magazineVisible = 1.0f - glm::smoothstep(0.45f, 1.0f, drop);
-        }
-        else if (t < kIn)
-        {
-            magazineVisible = 0.0f;
-        }
-        else
-        {
-            const float rise = glm::clamp((t - kIn) / (kSeatAt - kIn), 0.0f, 1.0f);
-            magazineOffset.y = -0.32f * (1.0f - rise) * (1.0f - rise);
-            magazineVisible = 1.0f;
-        }
-    }
 
     // --- Fire kick ------------------------------------------------------------------------------
     const float kick = glm::clamp(m_weaponPose.kick, 0.0f, 1.0f);
@@ -1386,7 +1318,12 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
         // all: nothing is drawn and nothing is cut. Sighted, the whole weapon lies along the view
         // axis, and then the near plane really does slice the receiver open. Enforcing it while
         // carried buys nothing and pushes the muzzle further into every wall.
-        const float rearFloor = glm::mix(-0.30f, m_config.weaponRearMinForward, aim);
+        //
+        // On the aim the player asked for, not the one the wall left them with. Jammed against
+        // something, the sights are broken down towards the carry, and using that here switched the
+        // floor off exactly where it was needed: aiming into a corner is the one place a receiver
+        // ends up through the near plane.
+        const float rearFloor = glm::mix(-0.30f, m_config.weaponRearMinForward, wantedAim);
         const float push = std::max(floorDistance - glm::dot(held - view.eyePosition, along),
                                     rearFloor - glm::dot(rear - view.eyePosition, along));
         if (push > 0.0f)
@@ -1458,15 +1395,37 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
             clip = m_weaponVisual.asset->FindClip(m_weaponPose.clip);
             clipProgress = glm::clamp(m_weaponPose.clipProgress, 0.0f, 1.0f);
         }
-        else if (m_weaponPose.reloading)
+        else if (m_reloadRunning)
         {
             clip = m_weaponVisual.asset->FindClip("reload");
-            clipProgress = glm::clamp(m_weaponPose.reload, 0.0f, 1.0f);
+            clipProgress = glm::clamp(m_reloadPlay, 0.0f, 1.0f);
+        }
+        else if (m_weaponPose.holster < 1.0f)
+        {
+            // Going away, not coming out. Put back to front rather than a clip of its own when
+            // there is none, because a weapon leaving the hands the way it arrived is far closer to
+            // right than a weapon that simply vanishes.
+            clip = m_weaponVisual.asset->FindClip("unequip");
+            clipProgress = 1.0f - glm::clamp(m_weaponPose.holster, 0.0f, 1.0f);
+            if (clip == nullptr)
+            {
+                clip = m_weaponVisual.asset->FindClip("equip");
+                clipProgress = glm::clamp(m_weaponPose.holster, 0.0f, 1.0f);
+            }
         }
         else if (draw < 1.0f)
         {
             clip = m_weaponVisual.asset->FindClip("equip");
             clipProgress = draw;
+        }
+        // Firing is the one that layers. The kick below is the whole weapon moving in a hold, which
+        // every weapon does and nobody should have to author; a "fire" clip is the bolt cycling,
+        // which only this weapon does and nothing here could guess at. So the clip runs on top of a
+        // movement rather than instead of one, and it wins any part it names.
+        if (clip == nullptr && m_weaponPose.kick > 0.001f)
+        {
+            clip = m_weaponVisual.asset->FindClip("fire");
+            clipProgress = 1.0f - glm::clamp(m_weaponPose.kick, 0.0f, 1.0f);
         }
         if (clip != nullptr)
         {
@@ -1528,12 +1487,6 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
             {
                 local = m_weaponVisual.asset->PartMatrixAt(*found, clip, clipTime, &visible);
             }
-        }
-        else if (static_cast<int>(i) == m_weaponVisual.magazinePart && !authoredReload)
-        {
-            // The built-in magazine swap, for a model that has no reload clip of its own.
-            local = glm::translate(glm::mat4(1.0f), magazineOffset) * local;
-            visible = magazineVisible;
         }
 
         const glm::mat4 world = weaponMatrix * local;
@@ -1618,7 +1571,7 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
     {
         const glm::vec3 shoulder = m_pose.GlobalPosition(m_rig.shoulder[kLeft]);
         const glm::vec3 magazineWorld =
-            m_weaponTransform.position + rotation * (m_weaponVisual.magazineSeated + magazineOffset);
+            m_weaponTransform.position + rotation * m_weaponVisual.magazineSeated;
         glm::vec3 target = magazineWorld + weaponRight * -0.03f;
 
         // Between letting the old magazine go and bringing the new one up, the hand has somewhere

@@ -2534,8 +2534,24 @@ void PredationGame::SyncEquippedWeapon()
 
     if (slotNow == m_ammoSlot && wanted == m_weapon.weapon)
     {
+        // Nothing is changing hands, so whatever was being put away is back.
+        m_weaponHolster = 1.0f;
         return;
     }
+
+    // A weapon already in the hands goes away before the next one comes out. Two tenths of a second
+    // is enough to see it leave, and it is what a model's "unequip" clip runs on: without it a swap
+    // is one weapon vanishing and another appearing in the same frame, and there is no moment for
+    // an authored put-away to happen in.
+    if (m_weapon.HasWeapon() && m_weaponHolster > 0.0f)
+    {
+        m_weaponHolster = std::max(m_weaponHolster - m_lastFrameSeconds / 0.20f, 0.0f);
+        if (m_weaponHolster > 0.0f)
+        {
+            return;
+        }
+    }
+    m_weaponHolster = 1.0f;
 
     // The magazine goes back in the slot it came out of before anything else changes hands.
     // Without this, putting a weapon away and taking it out again refilled it, which the key that
@@ -2729,6 +2745,12 @@ void PredationGame::DrawWeaponBench()
     if (ImGui::Button("Draw"))
     {
         m_editorDraw = 0.0f;
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Put away"))
+    {
+        m_editorHolster = 1.0f;
+        m_editorHolstering = true;
     }
     ImGui::SameLine();
     if (ImGui::Button("Fire"))
@@ -3082,9 +3104,22 @@ void PredationGame::UpdateEditorBody(float frameDeltaSeconds)
     pose.reload = m_editorReload;
     pose.clip = m_editorClip;
     pose.clipProgress = m_editorClipTime;
+    pose.holster = m_editorHolster;
     m_editorBody.SetWeaponPose(pose);
 
     m_editorDraw = std::min(m_editorDraw + frameDeltaSeconds * 1.6f, 1.0f);
+    if (m_editorHolstering)
+    {
+        m_editorHolster -= frameDeltaSeconds / 0.6f;
+        if (m_editorHolster <= 0.0f)
+        {
+            // Held at nothing for a moment and then brought back out, so the put-away can be
+            // watched over and over from one button.
+            m_editorHolster = 1.0f;
+            m_editorHolstering = false;
+            m_editorDraw = 0.0f;
+        }
+    }
     m_editorKick = std::max(m_editorKick - frameDeltaSeconds * 7.0f, 0.0f);
     if (m_editorReload >= 0.0f)
     {
@@ -3840,6 +3875,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
                           : -1.0f;
         pose.kick = m_weaponKick;
         pose.draw = m_weaponDraw;
+        pose.holster = m_weaponHolster;
         m_body.SetWeaponPose(pose);
     }
 
@@ -3849,6 +3885,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
     // Drawing a weapon runs 0 to 1 over its own moment, so swapping is a movement rather than a
     // substitution.
     m_weaponDraw = std::min(m_weaponDraw + deltaSeconds * 3.2f, 1.0f);
+    m_lastFrameSeconds = deltaSeconds;
 
     // The body follows the simulation every frame. Its head is only drawn from the fly camera,
     // because in first person the camera sits inside it.

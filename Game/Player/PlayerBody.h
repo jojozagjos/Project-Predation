@@ -106,7 +106,7 @@ public:
         // the view axis and into the player's face: the near plane cuts the receiver open and you
         // end up looking at the inside of your own gun. A barrel a little way into a wall is the
         // cheaper fault, and the muzzle trace already keeps that honest for the part you can see.
-        float weaponAimMinForward = 0.26f;
+        float weaponAimMinForward = 0.30f;
         // How long the reload movement takes to finish after the reload itself has. Cutting it off
         // at the moment the weapon becomes usable again is what made a reload end with a jump.
         float reloadFollowThrough = 0.28f;
@@ -132,9 +132,14 @@ public:
         // holds the grip out; a stock is a further quarter of a metre behind the grip, and it is the
         // stock that ends up on the wrong side of the near plane when a corridor closes in.
         float weaponRearMinForward = 0.06f;
-        // How far the muzzle drops when there is a wall in front of it, in degrees. Lowering is what
-        // makes room; pulling back only moves the problem from the wall to the camera.
-        float weaponWallLower = 62.0f;
+        // How far the muzzle drops when there is a wall in front of it, in degrees.
+        //
+        // A dip, not a swing. This was sixty degrees on the reasoning that lowering makes room where
+        // pulling back only moves the problem from the wall to the camera, and it does, but sixty
+        // degrees points a carried rifle at your own feet the moment you brush a doorframe: what it
+        // reads as is the weapon falling out of the hold. Pulling back is what a person does with a
+        // rifle in a corridor, and the floors above are what keep the camera out of it.
+        float weaponWallLower = 14.0f;
         // And how much of the sights are left while jammed against something. You cannot aim into a
         // wall, and pretending otherwise means the sights are on the view axis with the barrel
         // inside the bricks.
@@ -332,6 +337,10 @@ public:
         float reload = 0.0f; // 0 at the start of a reload, 1 at the end; negative when not reloading
         float kick = 0.0f;   // 0 to 1, decaying after each shot
         float draw = 1.0f;   // 0 as a weapon is brought up, 1 once it is ready
+        // And the other way: 1 while a weapon is in the hands, falling to 0 as it is put away. A
+        // model's "unequip" clip runs on this; without one its "equip" clip is played backwards,
+        // because a weapon leaving the hands the way it arrived beats one that vanishes.
+        float holster = 1.0f;
         bool reloading = false;
 
         // A clip to play by name, and how far through it is. Only the editor sets these: in the
