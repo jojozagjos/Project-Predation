@@ -314,9 +314,15 @@ TEST_CASE("The shipped weapons are not facing backwards", "[assets][weapons]")
             }
         }
         REQUIRE(counted > 0);
-        const double behind = lowestAlong / static_cast<double>(counted);
-        INFO(name << ": lowest mass sits at z " << behind << ", model is " << extent.z << " long");
-        CHECK(behind < 0.0);
+        // Through the grip socket's own turn, because that is now a legitimate way to right a model
+        // whose geometry runs the wrong way: what has to be behind the middle is the low mass as it
+        // is held, not as it is stored.
+        const ModelSocket* grip = model.FindSocket("grip");
+        const glm::quat hold = grip != nullptr ? grip->Rotation() : glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
+        const glm::vec3 held =
+            hold * glm::vec3(0.0f, 0.0f, static_cast<float>(lowestAlong / static_cast<double>(counted)));
+        INFO(name << ": lowest mass sits at z " << held.z << " as held, " << extent.z << " long");
+        CHECK(held.z < 0.0f);
     }
 }
 

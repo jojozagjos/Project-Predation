@@ -655,12 +655,19 @@ void PlayerBody::UpdatePosture(const PlayerState& state, const PlayerView& view,
     const float crawlRoll = std::sin(crawlPhase) * glm::radians(m_config.crawlShoulderRollDegrees) *
                             m_gaitWeight * m_flatness;
 
+    // A bladed stance while a weapon is up. Negative about +Y turns the body towards its own right,
+    // which is the side the weapon is carried on, and that brings the support shoulder forward and
+    // in towards the centre line where the handguard actually is. It fades out lying down, where
+    // the body has its own heading and both arms are doing something else.
+    const float carryBlade =
+        m_hasWeapon ? glm::radians(m_config.weaponCarryTurnDegrees) * (1.0f - m_flatness) : 0.0f;
+
     m_pose.Local(m_rig.spine).rotation =
-        glm::angleAxis(-torsoTwist * 0.45f, glm::vec3(0.0f, 1.0f, 0.0f)) *
+        glm::angleAxis(-torsoTwist * 0.45f - carryBlade * 0.4f, glm::vec3(0.0f, 1.0f, 0.0f)) *
         glm::angleAxis(-(spineLean * 0.65f + runLean * 0.6f), glm::vec3(1.0f, 0.0f, 0.0f)) *
         glm::angleAxis(-peek * 0.55f + crawlRoll * 0.4f, glm::vec3(0.0f, 0.0f, 1.0f));
     m_pose.Local(m_rig.chest).rotation =
-        glm::angleAxis(-torsoTwist * 0.55f, glm::vec3(0.0f, 1.0f, 0.0f)) *
+        glm::angleAxis(-torsoTwist * 0.55f - carryBlade * 0.6f, glm::vec3(0.0f, 1.0f, 0.0f)) *
         glm::angleAxis(-(spineLean * 0.35f + runLean * 0.2f), glm::vec3(1.0f, 0.0f, 0.0f)) *
         glm::angleAxis(-peek * 0.45f + crawlRoll * 0.6f, glm::vec3(0.0f, 0.0f, 1.0f));
 

@@ -914,13 +914,18 @@ void ModelEditor::DrawAnimationPanel()
             TrackFor(*clip, "root");
             m_selectedTrack = static_cast<int>(clip->tracks.size()) - 1;
         }
-        for (const ModelPart& part : m_model.parts)
+        // Each row carries its own id. A part whose name has been cleared would otherwise be a row
+        // with an empty id at the root of a popup, which ImGui refuses by aborting the process.
+        for (size_t p = 0; p < m_model.parts.size(); ++p)
         {
-            if (ImGui::Selectable(part.name.c_str()))
+            const ModelPart& part = m_model.parts[p];
+            ImGui::PushID(static_cast<int>(p));
+            if (ImGui::Selectable(part.name.empty() ? "(unnamed part)" : part.name.c_str()))
             {
                 TrackFor(*clip, part.name);
                 m_selectedTrack = static_cast<int>(clip->tracks.size()) - 1;
             }
+            ImGui::PopID();
         }
         ImGui::EndCombo();
     }
@@ -1618,6 +1623,55 @@ void ModelEditor::DrawModelPanel()
     }
     ImGui::SameLine();
     ImGui::TextDisabled("Everything below is all parts and sockets at once.");
+
+    // Whether the shape and the sockets still agree about which end is the front.
+    //
+    // Turning the model turns the sockets with it, so the two can only disagree if one of them was
+    // turned on its own, and once they do the weapon is held by its muzzle with no sign of why. The
+    // check is the same one the importer makes: the heavy low mass on a weapon is its grip and its
+    // magazine, and both are behind the middle.
+    {
+        glm::vec3 low{1e9f};
+        glm::vec3 high{-1e9f};
+        for (const ModelPart& part : m_model.parts)
+        {
+            for (const MeshVertex& vertex : part.mesh.vertices)
+            {
+                const glm::vec3 placed = glm::vec3(part.LocalMatrix() * glm::vec4(vertex.position, 1.0f));
+                low = glm::min(low, placed);
+                high = glm::max(high, placed);
+            }
+        }
+        if (high.y > low.y)
+        {
+            double lowestAlong = 0.0;
+            size_t counted = 0;
+            const float floorLine = low.y + (high.y - low.y) * 0.06f;
+            for (const ModelPart& part : m_model.parts)
+            {
+                for (const MeshVertex& vertex : part.mesh.vertices)
+                {
+                    const glm::vec3 placed =
+                        glm::vec3(part.LocalMatrix() * glm::vec4(vertex.position, 1.0f));
+                    if (placed.y < floorLine)
+                    {
+                        lowestAlong += placed.z;
+                        ++counted;
+                    }
+                }
+            }
+            const ModelSocket* muzzle = m_model.FindSocket("muzzle");
+            if (counted > 0 && muzzle != nullptr && lowestAlong / static_cast<double>(counted) > 0.0 &&
+                muzzle->position.z > 0.0f)
+            {
+                ImGui::TextColored({0.95f, 0.55f, 0.45f, 1.0f},
+                                   "This model's shape runs the other way from its muzzle socket: "
+                                   "its grip and magazine are in front of its middle while the "
+                                   "muzzle socket is too. Turn it around, or move the sockets. Held "
+                                   "as it is, the player holds it by the barrel.");
+            }
+        }
+    }
 
     // Quarter turns, because that is what a wrongly exported model needs. Anything else is a job for
     // the part inspector.

@@ -95,6 +95,12 @@ public:
         // is what brings the support hand back towards the centre line where the other arm can
         // actually reach it: held square, the handguard sits out beyond the left arm entirely.
         float weaponReadyInward = 7.0f;
+        // How far the torso blades towards the weapon while one is held, in degrees. Nobody shoots
+        // square on: the support side comes forward and the firing side goes back, and that is not
+        // only how it looks but where the reach comes from. Held square, the support shoulder is a
+        // shoulder's width across the body from the handguard and the arm cannot get there, so the
+        // hand slid back down the barrel and stopped following the socket it was given.
+        float weaponCarryTurnDegrees = 17.0f;
         // However crowded it gets, the sights never come closer to the eye than this. The pull-back
         // against a wall is measured from the eye, so at full aim it pulls the weapon straight down
         // the view axis and into the player's face: the near plane cuts the receiver open and you

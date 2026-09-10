@@ -2652,9 +2652,11 @@ void PredationGame::DrawWeaponBench()
     }
     else
     {
+        int clipIndex = 0;
         for (const AnimationClip& clip : model.clips)
         {
-            ImGui::PushID(clip.name.c_str());
+            // By position, not by name. A clip whose name has been cleared would push an empty id.
+            ImGui::PushID(clipIndex++);
             const bool playing = m_editorClip == clip.name;
             if (ImGui::Button(playing ? "Stop" : "Play"))
             {
@@ -2725,18 +2727,30 @@ void PredationGame::DrawWeaponBench()
 
     ImGui::Separator();
     ImGui::TextDisabled("The weapon this model is worn by, for the game:");
+    // Index zero is the database's "no weapon" placeholder: no key, no name. It has no business in
+    // a list of weapons to assign a model to, and offering it crashed the game outright, because a
+    // row with an empty name is a row with an empty id, and an empty id at the root of a popup is
+    // the one thing ImGui refuses outright. Every row also carries its own id, so two weapons that
+    // happen to share a name cannot collide either.
     const std::vector<WeaponDefinition>& weapons = m_weaponData.All();
-    if (!weapons.empty())
+    if (weapons.size() > 1)
     {
-        m_benchWeapon = std::clamp(m_benchWeapon, 0, static_cast<int>(weapons.size()) - 1);
-        if (ImGui::BeginCombo("Weapon", weapons[static_cast<size_t>(m_benchWeapon)].name.c_str()))
+        m_benchWeapon = std::clamp(m_benchWeapon, 1, static_cast<int>(weapons.size()) - 1);
+        const auto label = [&](int index)
         {
-            for (int i = 0; i < static_cast<int>(weapons.size()); ++i)
+            const WeaponDefinition& weapon = weapons[static_cast<size_t>(index)];
+            return weapon.name.empty() ? weapon.key : weapon.name;
+        };
+        if (ImGui::BeginCombo("Weapon", label(m_benchWeapon).c_str()))
+        {
+            for (int i = 1; i < static_cast<int>(weapons.size()); ++i)
             {
-                if (ImGui::Selectable(weapons[static_cast<size_t>(i)].name.c_str(), i == m_benchWeapon))
+                ImGui::PushID(i);
+                if (ImGui::Selectable(label(i).c_str(), i == m_benchWeapon))
                 {
                     m_benchWeapon = i;
                 }
+                ImGui::PopID();
             }
             ImGui::EndCombo();
         }
@@ -3381,7 +3395,14 @@ void PredationGame::OnUpdate(double dt, double alpha)
         m_editor.Camera().yaw = m_lookYaw;
         m_editor.Camera().pitch = m_lookPitch;
         m_editor.Camera().moveSpeed = m_editor.CameraSpeed();
-        m_editor.Camera().Update(input, deltaSeconds, false);
+        // The camera only moves while the right button is held, which is what the controls have
+        // always said and what the code did not do. Ctrl is the fly camera's "down", so every
+        // Ctrl+Z sank the view a little; the same went for Ctrl+Y and for typing in any field the
+        // editor did not have focus on.
+        if (m_editorLooking)
+        {
+            m_editor.Camera().Update(input, deltaSeconds, false);
+        }
         m_editor.Update(m_editorScene, app.GetMeshes(), deltaSeconds);
         UpdateEditorBody(deltaSeconds);
 
