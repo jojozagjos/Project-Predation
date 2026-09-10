@@ -886,6 +886,15 @@ void PlayerBody::SetWeaponFromModel(Scene& scene, MeshLibrary& meshes,
     BuildWeaponEntities(scene, meshes, definition);
 }
 
+void PlayerBody::RefreshWeaponSockets(const WeaponDefinition& definition, const ModelAsset& model)
+{
+    if (!m_hasWeapon)
+    {
+        return;
+    }
+    ApplyWeaponSockets(m_weaponVisual, model, definition);
+}
+
 void PlayerBody::SetWeapon(Scene& scene, MeshLibrary& meshes, const WeaponDefinition* definition)
 {
     if (definition == nullptr || definition->id == kInvalidWeapon)
@@ -1353,13 +1362,25 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
         // Sliding along that line leaves the sight on it; pulling across it is what took the sights
         // off the middle of the screen when the player aimed steeply upwards, where the hold is
         // furthest from the shoulder and the clamp bites hardest.
+        //
+        // Solved rather than stepped. This walked back along the sight line two centimetres at a
+        // time until the grip came within reach, which means the answer moves in two-centimetre
+        // jumps: with the hold sitting near the limit, one frame takes a step and the next does not,
+        // and what that looks like from inside is the hands shaking while you aim and turn. The
+        // distance to move is the smaller root of where the line first enters the arm's sphere.
         if (aim > 0.5f)
         {
-            for (int step = 0; step < 40 && glm::distance(m_weaponTransform.position + gripOffset,
-                                                          shoulder) > reach;
-                 ++step)
+            const glm::vec3 fromShoulder = m_weaponTransform.position + gripOffset - shoulder;
+            const float along = glm::dot(fromShoulder, aimForward);
+            const float outside = glm::dot(fromShoulder, fromShoulder) - reach * reach;
+            const float inside = along * along - outside;
+            if (outside > 0.0f && inside >= 0.0f)
             {
-                m_weaponTransform.position -= aimForward * 0.02f;
+                const float back = along - std::sqrt(inside);
+                if (back > 0.0f)
+                {
+                    m_weaponTransform.position -= aimForward * back;
+                }
             }
         }
 
@@ -1540,14 +1561,25 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
     // the arm drew as a straight bar. The floor is one hand's width ahead of the trigger hand,
     // which is as close as two hands can get without sharing a knuckle.
     {
+        // Solved rather than stepped, for the same reason the aim clamp above is: two centimetres at
+        // a time means the answer moves in two-centimetre jumps, and near the limit it takes a step
+        // on one frame and not the next, which reads as the support hand shaking.
         const glm::vec3 leftShoulder = m_pose.GlobalPosition(m_rig.shoulder[kLeft]);
         constexpr float kHandsApart = 0.11f;
         const float nearest = glm::dot(m_weaponVisual.triggerGrip, glm::vec3(0.0f, 0.0f, 1.0f)) +
                               kHandsApart;
-        while (glm::length(gripPoints[kLeft] - leftShoulder) > armSpan + kWristBack &&
-               glm::dot(gripPoints[kLeft] - m_weaponTransform.position, barrel) > nearest)
+        const float span = armSpan + kWristBack;
+        const glm::vec3 fromShoulder = gripPoints[kLeft] - leftShoulder;
+        if (glm::dot(fromShoulder, fromShoulder) > span * span)
         {
-            gripPoints[kLeft] -= barrel * 0.02f;
+            const float along = glm::dot(fromShoulder, barrel);
+            const float inside =
+                along * along - (glm::dot(fromShoulder, fromShoulder) - span * span);
+            // How far back down the barrel the socket has to come, and how far back it may come:
+            // one hand's width in front of the trigger hand, which is as close as two hands get.
+            const float travel = glm::dot(gripPoints[kLeft] - m_weaponTransform.position, barrel) - nearest;
+            const float wanted = inside >= 0.0f ? along - std::sqrt(inside) : travel;
+            gripPoints[kLeft] -= barrel * glm::clamp(wanted, 0.0f, std::max(travel, 0.0f));
         }
     }
 
@@ -1783,8 +1815,13 @@ void PlayerBody::UpdateHeldItem(const PlayerState& state, const PlayerView& view
     // arm cannot quite get there, and the difference is exactly the gap between the glove and the
     // thing it is supposed to be holding. Carried a little beyond the wrist, where the fingers are.
     const glm::vec3 palm = glm::normalize(ik.endPosition - ik.jointPosition + glm::vec3(1e-5f));
-    m_heldItemTransform.position = ik.endPosition + palm * (Ratio::kHand * m_rig.height * 0.45f);
-    m_heldItemTransform.rotation = rotation;
+    // And then wherever the item itself says it sits. No rule about a bounding box can work out how
+    // a keycard is held or which way up a flare goes, so each item carries its own offset and turn,
+    // placed by eye in the editor and written into items.json.
+    const glm::quat itemTurn = glm::quat(glm::radians(m_heldItemRotation));
+    m_heldItemTransform.rotation = rotation * itemTurn;
+    m_heldItemTransform.position = ik.endPosition + palm * (Ratio::kHand * m_rig.height * 0.45f) +
+                                   m_heldItemTransform.rotation * m_heldItemOffset;
 
     // Except while climbing, when the hand it is in has gone to the ledge and the carry offset,
     // which is measured from the eye, no longer describes anywhere the body is.
@@ -2039,6 +2076,28 @@ void PlayerBody::UpdateLegs(const PlayerState& state, const PlayerView& view,
         const bool inSwing = walking && cycle >= stanceShare;
 
         glm::vec3 target = rest;
+        // Standing still, a foot stays where it was put.
+        //
+        // The stance above is worked out from where the character is and which way the body faces,
+        // and both of those move while the player is standing perfectly still: leaning shifts the
+        // body sideways and turning swings the shoulders, and the feet slid across the floor with
+        // them. A foot on the ground is on the ground; the leg above it takes up the difference.
+        // The plant is given up when the foot has to reach too far for it, which is what turning
+        // far enough on the spot does, and a step re-establishes it anyway.
+        if (!walking && m_flatness < 0.5f)
+        {
+            const glm::vec2 fromRest{foot.plant.x - rest.x, foot.plant.z - rest.z};
+            if (!foot.holding || glm::length(fromRest) > legSpan * 0.42f)
+            {
+                foot.plant = rest;
+                foot.holding = true;
+            }
+            target = glm::vec3(foot.plant.x, rest.y, foot.plant.z);
+        }
+        else
+        {
+            foot.holding = false;
+        }
         float lift = 0.0f;
         // Where this foot goes while the body is up on its side, following its own hip instead of
         // the floor. Kept apart from the ground trace below, which answers where the floor is, not

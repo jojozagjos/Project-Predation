@@ -358,6 +358,10 @@ public:
     // usually not been saved yet and belongs to no weapon at all.
     void SetWeaponFromModel(Scene& scene, MeshLibrary& meshes, const WeaponDefinition& definition,
                             const ModelAsset& model);
+    // Rereads the sockets of a model already in the hands, without rebuilding a thing that is
+    // drawn. Moving a grip changes where a hand goes and nothing else, and the editor moves grips
+    // constantly.
+    void RefreshWeaponSockets(const WeaponDefinition& definition, const ModelAsset& model);
     // Where the images a model names are loaded from. Set once, because it is one object for the
     // life of the renderer; a body without one draws its weapon in flat colours, which is what a
     // headless pose test wants and all it can have.
@@ -371,6 +375,13 @@ public:
     void SetHeldItem(Scene& scene, MeshLibrary& meshes, const std::string& name, const MeshData& mesh,
                      const Material& material);
     void ClearHeldItem(Scene& scene);
+    // Where in the hand it sits. Live, so the editor can place it by eye and the game reads the same
+    // numbers out of items.json.
+    void SetHeldItemPlacement(const glm::vec3& offset, const glm::vec3& rotationDegrees)
+    {
+        m_heldItemOffset = offset;
+        m_heldItemRotation = rotationDegrees;
+    }
     // The same, with nothing to draw, so the one-handed carry can be posed in a test.
     void SetHeldItemForSimulation(bool held) { m_hasHeldItem = held; }
     // Where the carried item is drawn. Exposed for the same reason WeaponOrigin is.
@@ -441,6 +452,9 @@ private:
         glm::vec3 swingFrom{0.0f}; // where the current step started
         bool inSwing = false;
         bool planted = true;
+        // Whether this foot has been left standing where it was put. Standing still, a foot does
+        // not move because the body above it leaned or turned its shoulders: the leg takes that up.
+        bool holding = false;
     };
 
     void BuildSkeleton(const PlayerConfig& playerConfig);
@@ -555,6 +569,10 @@ private:
     float m_wallClearance = 1.0f;
     Ragdoll m_ragdoll;
     Entity m_heldItemEntity;
+    // How the thing in the hand sits there, from its own definition. Nothing about a box says which
+    // way up a flare goes, so each item carries its own and it is placed by eye in the editor.
+    glm::vec3 m_heldItemOffset{0.0f};
+    glm::vec3 m_heldItemRotation{0.0f};
     MeshHandle m_heldItemMesh;
     bool m_hasHeldItem = false;
     Transform m_heldItemTransform;

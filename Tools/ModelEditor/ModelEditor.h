@@ -137,6 +137,18 @@ public:
         m_previewChanged = false;
         return changed;
     }
+    // And whether what changed was geometry rather than a socket or a clip.
+    //
+    // Moving a socket changes nothing that is drawn: it changes where a hand goes. Rebuilding the
+    // meshes for it copied a quarter of a megabyte per part, destroyed and remade every entity, and
+    // did it on every frame of every drag, which is why the editor fell to single-figure frame
+    // rates after a while of moving grips about.
+    bool TakeGeometryChanged()
+    {
+        const bool changed = m_geometryChanged;
+        m_geometryChanged = false;
+        return changed;
+    }
 
 private:
     void Rebuild(Scene& scene, MeshLibrary& meshes);
@@ -164,6 +176,8 @@ private:
     bool m_open = false;
     bool m_dirty = true; // the preview needs rebuilding
     bool m_previewChanged = true; // and whatever is holding it needs rebuilding too
+    // Whether the change was to geometry. A socket or a clip does not need the meshes rebuilt.
+    bool m_geometryChanged = true;
     bool m_frameRequested = true; // put the view on the model at the next opportunity
 
     // One entity per part, so a part can be hidden or animated on its own.
@@ -204,6 +218,10 @@ private:
     float m_dragGrab = 0.0f;
     int m_selectedClip = -1;
     int m_selectedTrack = -1;
+    // The key being dragged along its lane, if any. A key is a moment in time and dragging it is
+    // how a moment is moved; the values on it are edited in the inspector below the timeline.
+    int m_dragTrack = -1;
+    int m_dragKey = -1;
 
     float m_playhead = 0.0f;
     bool m_playing = false;

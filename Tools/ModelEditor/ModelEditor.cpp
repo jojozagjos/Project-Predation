@@ -73,6 +73,7 @@ void ModelEditor::SetOpen(Scene& scene, bool open)
     {
         m_dirty = true;
     m_previewChanged = true;
+    m_geometryChanged = true;
     }
     else
     {
@@ -90,6 +91,7 @@ void ModelEditor::NewModel()
     m_selectedClip = -1;
     m_dirty = true;
     m_previewChanged = true;
+    m_geometryChanged = true;
     AddPart("body", PartShape::Box);
 }
 
@@ -114,6 +116,7 @@ void ModelEditor::AddPart(const char* name, PartShape shape)
     m_pick = Pick::Part;
     m_dirty = true;
     m_previewChanged = true;
+    m_geometryChanged = true;
 }
 
 bool ModelEditor::Load(const std::string& modelName)
@@ -133,6 +136,7 @@ bool ModelEditor::Load(const std::string& modelName)
     m_selectedClip = m_model.clips.empty() ? -1 : 0;
     m_dirty = true;
     m_previewChanged = true;
+    m_geometryChanged = true;
     m_status = "Loaded " + modelName;
     return true;
 }
@@ -373,7 +377,8 @@ void ModelEditor::DrawFilePanel(Scene& scene, MeshLibrary& meshes)
     {
         // Aligned columns, so this one block does not wrap.
         ImGui::PushTextWrapPos(-1.0f);
-        ImGui::TextDisabled("Right mouse    look around, WASD to move while held");
+        ImGui::TextDisabled("WASD           move the view    Q and E  down and up");
+        ImGui::TextDisabled("Right mouse    look around");
         ImGui::TextDisabled("Left click     select a part, or a socket if one is under it");
         ImGui::TextDisabled("Drag a handle  move the selected thing along that axis");
         ImGui::TextDisabled("Ctrl+Z         undo      Ctrl+Y  redo");
@@ -488,6 +493,7 @@ void ModelEditor::DrawPartList()
             m_pick = Pick::Part;
             m_dirty = true;
     m_previewChanged = true;
+    m_geometryChanged = true;
         }
         ImGui::SameLine();
         if (ImGui::Button("Delete"))
@@ -497,6 +503,7 @@ void ModelEditor::DrawPartList()
             m_selectedPart = std::min(m_selectedPart, static_cast<int>(m_model.parts.size()) - 1);
             m_dirty = true;
     m_previewChanged = true;
+    m_geometryChanged = true;
         }
     }
 }
@@ -542,6 +549,7 @@ void ModelEditor::DrawPartInspector()
     {
         m_dirty = true;
     m_previewChanged = true;
+    m_geometryChanged = true;
     }
 
     if (part.shape == PartShape::Mesh)
@@ -777,20 +785,96 @@ void ModelEditor::DrawTimeline(AnimationClip& clip)
         }
 
         ImGui::InvisibleButton("##lane", {width, kRowHeight});
-        if (ImGui::IsItemActive())
+        const bool hovered = ImGui::IsItemHovered();
+        const float mouseTime =
+            std::clamp((ImGui::GetIO().MousePos.x - origin.x) / width, 0.0f, 1.0f) * duration;
+
+        // Which key the pointer is over, in pixels rather than in seconds. Landing on a key used to
+        // mean putting the playhead within a thousandth of a second of it, which at this width is a
+        // fraction of a pixel: keys were selectable only by accident.
+        constexpr float kGrabPixels = 7.0f;
+        const float grabSeconds = duration * (kGrabPixels / std::max(width, 1.0f));
+        int nearest = -1;
+        float nearestGap = grabSeconds;
+        for (size_t k = 0; k < track.keys.size(); ++k)
         {
-            const float local = (ImGui::GetIO().MousePos.x - origin.x) / width;
-            m_playhead = std::clamp(local, 0.0f, 1.0f) * duration;
-            m_selectedTrack = static_cast<int>(t);
-            m_playing = false;
+            const float gap = std::abs(track.keys[k].time - mouseTime);
+            if (gap <= nearestGap)
+            {
+                nearestGap = gap;
+                nearest = static_cast<int>(k);
+            }
         }
 
-        for (const AnimationKey& key : track.keys)
+        if (ImGui::IsItemActivated())
         {
+            m_selectedTrack = static_cast<int>(t);
+            m_playing = false;
+            // Grabbing a key takes hold of it; grabbing anywhere else moves the playhead. Either
+            // way the playhead ends up on the key, so the inspector below is showing the one being
+            // dragged rather than whatever happened to be under the last click.
+            m_dragTrack = nearest >= 0 ? static_cast<int>(t) : -1;
+            m_dragKey = nearest;
+            if (nearest >= 0)
+            {
+                PushUndo("moving a key");
+                m_playhead = track.keys[static_cast<size_t>(nearest)].time;
+            }
+            else
+            {
+                m_playhead = mouseTime;
+            }
+        }
+        else if (ImGui::IsItemActive())
+        {
+            if (m_dragTrack == static_cast<int>(t) && m_dragKey >= 0 &&
+                m_dragKey < static_cast<int>(track.keys.size()))
+            {
+                // Dragged in time only. A key is a moment, and the values on it are edited in the
+                // inspector; letting a drag change both at once means never being sure which moved.
+                track.keys[static_cast<size_t>(m_dragKey)].time = mouseTime;
+                std::sort(track.keys.begin(), track.keys.end(),
+                          [](const AnimationKey& a, const AnimationKey& b) { return a.time < b.time; });
+                // The sort may have moved it, so find it again by the time it now has.
+                for (size_t k = 0; k < track.keys.size(); ++k)
+                {
+                    if (std::abs(track.keys[k].time - mouseTime) < 1e-6f)
+                    {
+                        m_dragKey = static_cast<int>(k);
+                        break;
+                    }
+                }
+                m_playhead = mouseTime;
+                m_dirty = true;
+                m_previewChanged = true;
+            }
+            else
+            {
+                m_playhead = mouseTime;
+            }
+        }
+        else if (ImGui::IsItemDeactivated())
+        {
+            m_dragTrack = -1;
+            m_dragKey = -1;
+        }
+
+        for (size_t k = 0; k < track.keys.size(); ++k)
+        {
+            const AnimationKey& key = track.keys[k];
             const float x = origin.x + width * std::clamp(key.time / duration, 0.0f, 1.0f);
             const float y = origin.y + kRowHeight * 0.5f;
             const bool onPlayhead = std::abs(key.time - m_playhead) < 1e-3f;
-            draw->AddCircleFilled({x, y}, 5.0f, onPlayhead && isSelected ? keySelected : keyColor, 8);
+            const bool underPointer = hovered && nearest == static_cast<int>(k);
+            // Bigger under the pointer, so it is clear what a click is about to take hold of.
+            const float radius = underPointer ? 7.0f : 5.0f;
+            draw->AddCircleFilled({x, y}, radius,
+                                  (onPlayhead && isSelected) || underPointer ? keySelected : keyColor,
+                                  10);
+            if (underPointer)
+            {
+                draw->AddCircle({x, y}, radius + 2.0f, headColor, 10, 1.5f);
+            }
         }
 
         const float headX = origin.x + width * std::clamp(m_playhead / duration, 0.0f, 1.0f);
@@ -1075,6 +1159,7 @@ void ModelEditor::ImportMesh(const std::string& file)
     m_selectedPart = static_cast<int>(m_model.parts.size()) - 1;
     m_dirty = true;
     m_previewChanged = true;
+    m_geometryChanged = true;
     m_status = "Imported " + file;
 }
 
@@ -1204,6 +1289,7 @@ bool ModelEditor::Undo()
     m_selectedSocket = std::min(m_selectedSocket, static_cast<int>(m_model.sockets.size()) - 1);
     m_selectedClip = std::min(m_selectedClip, static_cast<int>(m_model.clips.size()) - 1);
     m_dirty = true;
+    m_geometryChanged = true;
     m_previewChanged = true;
     return true;
 }
@@ -1222,6 +1308,7 @@ bool ModelEditor::Redo()
     m_selectedPart = std::min(m_selectedPart, static_cast<int>(m_model.parts.size()) - 1);
     m_selectedSocket = std::min(m_selectedSocket, static_cast<int>(m_model.sockets.size()) - 1);
     m_selectedClip = std::min(m_selectedClip, static_cast<int>(m_model.clips.size()) - 1);
+    m_geometryChanged = true;
     m_dirty = true;
     m_previewChanged = true;
     return true;
@@ -1252,10 +1339,14 @@ void ModelEditor::MoveSelection(const glm::vec3& delta)
         m_selectedPart < static_cast<int>(m_model.parts.size()))
     {
         m_model.parts[static_cast<size_t>(m_selectedPart)].position += delta;
+        m_geometryChanged = true;
     }
     else if (m_pick == Pick::Socket && m_selectedSocket >= 0 &&
              m_selectedSocket < static_cast<int>(m_model.sockets.size()))
     {
+        // Not geometry. A socket says where a hand goes; nothing about the model is drawn
+        // differently for it, and rebuilding every mesh on every frame of the drag is what took the
+        // frame rate down to single figures.
         m_model.sockets[static_cast<size_t>(m_selectedSocket)].position += delta;
     }
     else
@@ -1610,6 +1701,7 @@ void ModelEditor::TransformModel(const glm::mat4& transform)
     {
         socket.position = glm::vec3(transform * glm::vec4(socket.position, 1.0f));
     }
+    m_geometryChanged = true;
 
     m_dirty = true;
     m_previewChanged = true;
@@ -1810,7 +1902,7 @@ void ModelEditor::DrawUi(Scene& scene, MeshLibrary& meshes)
                 m_dirty = true;
                 m_previewChanged = true;
             }
-            ImGui::TextDisabled("Right mouse to look, WASD to move, Space and Ctrl for up and down.");
+            ImGui::TextDisabled("WASD to move, Q and E for down and up, right mouse to look.");
         }
         ImGui::PopTextWrapPos();
     }

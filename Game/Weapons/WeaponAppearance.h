@@ -71,6 +71,12 @@ struct WeaponVisual
     MeshData Combined() const;
 };
 
+// Rereads the named points from a model into a visual that already has its geometry. Moving a
+// socket changes nothing that is drawn, and the editor moves sockets constantly: rebuilding the
+// meshes for it copies a quarter of a megabyte per part per frame and takes the frame rate with it.
+void ApplyWeaponSockets(WeaponVisual& visual, const ModelAsset& model,
+                        const WeaponDefinition& definition);
+
 WeaponVisual BuildWeaponVisual(const WeaponDefinition& definition, TextureLibrary* textures = nullptr);
 
 // The same, from a model already in memory rather than one named on disk. The editor holds what is

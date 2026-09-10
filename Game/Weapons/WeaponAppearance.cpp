@@ -142,8 +142,21 @@ WeaponVisual FromModel(const ModelAsset& model, const WeaponDefinition& definiti
         visual.parts.push_back(std::move(built));
     }
 
+    ApplyWeaponSockets(visual, model, definition);
+    return visual;
+}
+
+} // namespace
+
+void ApplyWeaponSockets(WeaponVisual& visual, const ModelAsset& model,
+                        const WeaponDefinition& definition)
+{
     // Sockets are the contract between a model and the hands that hold it. Anything missing falls
     // back to something derived from the weapon's footprint, so a half-finished model still works.
+    //
+    // Separate from building the visual because moving a socket changes none of the geometry, and
+    // the editor moves sockets a great deal: rebuilding every mesh for it copied a quarter of a
+    // megabyte per part per frame and took the frame rate with it.
     const float length = std::max(definition.size.z, 0.12f);
     const float height = std::max(definition.size.y, 0.06f);
 
@@ -207,8 +220,10 @@ WeaponVisual FromModel(const ModelAsset& model, const WeaponDefinition& definiti
         }
         visual.rearPoint = {0.0f, visual.triggerGrip.y, any ? back : visual.triggerGrip.z};
     }
-    return visual;
 }
+
+namespace
+{
 
 // Loaded models are shared: several weapons can name the same one, and reloading a weapon should
 // not re-read the file every time it is drawn.

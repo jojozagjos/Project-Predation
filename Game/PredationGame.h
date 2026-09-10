@@ -97,6 +97,10 @@ private:
     void AssignModelToWeapon(WeaponId weapon);
     bool m_benchSockets = true;
     int m_benchWeapon = 0;
+    // Placing something that is not a weapon in the hand: which one, and whether it is held.
+    int m_benchItem = 0;
+    bool m_benchHoldItem = false;
+    bool m_benchItemHeld = false;
 
     // A first-person window onto the editor's own body.
     //
@@ -376,6 +380,14 @@ private:
         // Raised the moment something arrives in their hands, so a remote weapon is brought up
         // rather than appearing already shouldered.
         float weaponDraw = 1.0f;
+        // Where their body is actually drawn, eased towards where the wire says they are.
+        //
+        // On the host, everyone else's published position is rebuilt once per simulation tick while
+        // the screen draws whenever it likes, so an avatar taken straight from it moves in steps.
+        // From inside their head, spectating, those steps are the camera jumping back and forth; the
+        // body they are attached to smears with them, which is the double image.
+        glm::vec3 drawn{0.0f};
+        bool drawnValid = false;
         // Where their last climb ended and how far through it was.
         //
         // The snapshot only carries these while somebody is climbing, and the hands go on fading

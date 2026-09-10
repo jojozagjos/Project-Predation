@@ -24,6 +24,9 @@ public:
     float fastMultiplier = 4.0f;
     float slowMultiplier = 0.25f;
     float mouseSensitivity = 0.12f; // degrees per pixel
+    // Whether Ctrl counts as "down". Off wherever Ctrl is a modifier, such as the model editor,
+    // where taking it as movement means every Ctrl+Z sinks the view.
+    bool ctrlMovesDown = true;
 
     // Applies look (when looking is true) and movement actions from the input state.
     void Update(const Input& input, float dt, bool looking);

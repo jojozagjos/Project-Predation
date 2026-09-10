@@ -109,6 +109,15 @@ bool ItemDatabase::LoadFromFile(const std::filesystem::path& file)
         {
             definition.color = ReadVec3(entry["color"], definition.color);
         }
+        // Where it sits in the hand, placed by eye in the editor and written back here.
+        if (entry.contains("hold_offset"))
+        {
+            definition.holdOffset = ReadVec3(entry["hold_offset"], definition.holdOffset);
+        }
+        if (entry.contains("hold_rotation"))
+        {
+            definition.holdRotation = ReadVec3(entry["hold_rotation"], definition.holdRotation);
+        }
         Add(std::move(definition));
     }
 
@@ -136,6 +145,72 @@ const ItemDefinition* ItemDatabase::Get(ItemId id) const
         return nullptr;
     }
     return &m_items[static_cast<size_t>(id)];
+}
+
+ItemDefinition* ItemDatabase::Mutable(ItemId id)
+{
+    if (id <= kInvalidItem || static_cast<size_t>(id) >= m_items.size())
+    {
+        return nullptr;
+    }
+    return &m_items[static_cast<size_t>(id)];
+}
+
+bool ItemDatabase::SaveHoldPlacements(const std::filesystem::path& file) const
+{
+    // Read, change two fields per item, write back. Not built from these structs, because this
+    // loader reads a handful of the fields a person might put in that file and writing it out from
+    // memory would silently delete the rest.
+    nlohmann::json json;
+    {
+        std::ifstream stream(file);
+        if (!stream.is_open())
+        {
+            PRED_LOG_ERROR(Gameplay, "Cannot open {} to write hold placements", file.string());
+            return false;
+        }
+        try
+        {
+            stream >> json;
+        }
+        catch (const std::exception& error)
+        {
+            PRED_LOG_ERROR(Gameplay, "{} is not valid JSON: {}", file.string(), error.what());
+            return false;
+        }
+    }
+
+    const auto items = json.find("items");
+    if (items == json.end() || !items->is_array())
+    {
+        PRED_LOG_ERROR(Gameplay, "{} has no 'items' array", file.string());
+        return false;
+    }
+
+    const auto write = [](nlohmann::json& node, const char* key, const glm::vec3& value)
+    { node[key] = nlohmann::json::array({value.x, value.y, value.z}); };
+
+    for (nlohmann::json& entry : *items)
+    {
+        const std::string key = entry.value("key", std::string());
+        const ItemDefinition* definition = Find(key);
+        if (definition == nullptr)
+        {
+            continue;
+        }
+        write(entry, "hold_offset", definition->holdOffset);
+        write(entry, "hold_rotation", definition->holdRotation);
+    }
+
+    std::ofstream out(file);
+    if (!out.is_open())
+    {
+        PRED_LOG_ERROR(Gameplay, "Cannot write {}", file.string());
+        return false;
+    }
+    out << json.dump(2) << '\n';
+    PRED_LOG_INFO(Gameplay, "Wrote hold placements to {}", file.string());
+    return true;
 }
 
 const ItemDefinition* ItemDatabase::Find(const std::string& key) const

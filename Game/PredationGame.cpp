@@ -2047,7 +2047,23 @@ void PredationGame::SyncRemoteAvatars(float frameDeltaSeconds)
         // Only where they are and what they are doing crosses the wire. The walk cycle, the lean,
         // the arms and the head all come out of the same procedural body the local player uses, run
         // here from replicated state. A gait is expensive to send and cheap to reproduce.
-        avatar->state.position = remote.position;
+        // Eased towards where they are rather than set to it. The host rebuilds what it publishes
+        // about everyone else once per simulation tick and the screen draws whenever it likes, so
+        // taking that position straight moves a body in steps; from inside their head it is the
+        // camera jumping back and forth, and the body it is attached to smears with it. A long way
+        // out means a respawn or a teleport, where arriving beats sliding across the room.
+        if (!avatar->drawnValid || glm::distance(avatar->drawn, remote.position) > 2.0f)
+        {
+            avatar->drawn = remote.position;
+            avatar->drawnValid = true;
+        }
+        else
+        {
+            const float blend = 1.0f - std::exp(-26.0f * frameDeltaSeconds);
+            avatar->drawn = glm::mix(avatar->drawn, remote.position, blend);
+        }
+
+        avatar->state.position = avatar->drawn;
         avatar->state.velocity = remote.velocity;
         avatar->state.yaw = remote.yaw;
         avatar->state.pitch = remote.pitch;
@@ -2078,8 +2094,8 @@ void PredationGame::SyncRemoteAvatars(float frameDeltaSeconds)
         avatar->state.mantleDuration = 1.0f;
         avatar->state.mantleTime = avatar->mantlePhase;
         avatar->state.mantleEdge = avatar->mantleEdge;
-        avatar->state.mantleFrom = remote.position;
-        avatar->state.mantleTo = remote.position;
+        avatar->state.mantleFrom = avatar->drawn;
+        avatar->state.mantleTo = avatar->drawn;
 
         // The eye eases towards the stance's height rather than being set to it, exactly as the
         // local player's own view does. The body is anchored to the eye, so setting it outright
@@ -2090,8 +2106,8 @@ void PredationGame::SyncRemoteAvatars(float frameDeltaSeconds)
             (targetEye - avatar->view.eyeHeight) *
             (1.0f - std::exp(-config.eyeTransitionSpeed * frameDeltaSeconds));
 
-        avatar->view.renderPosition = remote.position;
-        avatar->view.eyePosition = remote.position + glm::vec3(0.0f, avatar->view.eyeHeight, 0.0f);
+        avatar->view.renderPosition = avatar->drawn;
+        avatar->view.eyePosition = avatar->drawn + glm::vec3(0.0f, avatar->view.eyeHeight, 0.0f);
 
         // Leaning moves the eye out sideways, and the body is anchored to the eye, so a remote
         // player who is leaning has to have their eye moved the same way here. Without it they saw
@@ -2118,6 +2134,7 @@ void PredationGame::SyncRemoteAvatars(float frameDeltaSeconds)
             {
                 avatar->body.SetHeldItem(m_scene, m_app->GetMeshes(), item->key,
                                          ItemMesh(*item, &m_weaponData), ItemMaterial(*item));
+                avatar->body.SetHeldItemPlacement(item->holdOffset, item->holdRotation);
             }
             else
             {
@@ -2564,6 +2581,7 @@ void PredationGame::SyncEquippedWeapon()
         {
             m_body.SetHeldItem(m_scene, m_app->GetMeshes(), item->key,
                                ItemMesh(*item, &m_weaponData), ItemMaterial(*item));
+            m_body.SetHeldItemPlacement(item->holdOffset, item->holdRotation);
         }
     }
 
@@ -2884,6 +2902,83 @@ void PredationGame::DrawWeaponBench()
                         "full reach is the one to move: that is where the elbow locks straight and "
                         "the hold stops looking like a hold.");
 
+    // --- Something that is not a weapon ---------------------------------------------------------
+    //
+    // A weapon is placed by its sockets and everything else is placed by a rule about its box, and
+    // that rule cannot know which way up a flare goes or how a keycard is pinched. Each item
+    // carries its own offset and turn instead, and this is where they are put: hold it, drag it
+    // until it looks held, and write it back to items.json.
+    ImGui::Separator();
+    if (ImGui::CollapsingHeader("An item in the hand"))
+    {
+        const std::vector<ItemDefinition>& items = m_items.All();
+        std::vector<const ItemDefinition*> holdable;
+        for (const ItemDefinition& item : items)
+        {
+            if (item.id != kInvalidItem && !item.key.empty() &&
+                m_weaponData.ForItem(item.key) == kInvalidWeapon)
+            {
+                holdable.push_back(&item);
+            }
+        }
+
+        if (holdable.empty())
+        {
+            ImGui::TextDisabled("Every item in the data is a weapon, so there is nothing here to "
+                                "place by hand.");
+        }
+        else
+        {
+            m_benchItem = std::clamp(m_benchItem, 0, static_cast<int>(holdable.size()) - 1);
+            const ItemDefinition* chosen = holdable[static_cast<size_t>(m_benchItem)];
+            if (ImGui::BeginCombo("Item", chosen->name.empty() ? chosen->key.c_str()
+                                                               : chosen->name.c_str()))
+            {
+                for (int i = 0; i < static_cast<int>(holdable.size()); ++i)
+                {
+                    ImGui::PushID(i);
+                    const ItemDefinition* option = holdable[static_cast<size_t>(i)];
+                    if (ImGui::Selectable(option->name.empty() ? option->key.c_str()
+                                                               : option->name.c_str(),
+                                          i == m_benchItem))
+                    {
+                        m_benchItem = i;
+                        m_benchItemHeld = false;
+                    }
+                    ImGui::PopID();
+                }
+                ImGui::EndCombo();
+            }
+
+            if (ImGui::Checkbox("Put it in the hand", &m_benchHoldItem) && !m_benchHoldItem)
+            {
+                m_editorBody.ClearHeldItem(m_editorScene);
+                m_benchItemHeld = false;
+            }
+
+            if (ItemDefinition* editable = m_items.Mutable(chosen->id))
+            {
+                bool moved = ImGui::DragFloat3("Offset", &editable->holdOffset.x, 0.002f, -0.5f, 0.5f,
+                                               "%.3f m");
+                moved |= ImGui::DragFloat3("Turn", &editable->holdRotation.x, 1.0f, -180.0f, 180.0f,
+                                           "%.0f deg");
+                if (moved)
+                {
+                    m_editorBody.SetHeldItemPlacement(editable->holdOffset, editable->holdRotation);
+                }
+                if (ImGui::Button("Write to items.json"))
+                {
+                    const std::filesystem::path file = Paths::AssetsRoot() / "Data" / "items.json";
+                    m_app->GetConsole().Print(m_items.SaveHoldPlacements(file)
+                                                  ? "Hold placements written to items.json"
+                                                  : "Could not write items.json");
+                }
+            }
+            ImGui::TextDisabled("The offset is from the fingers and the turn is in the hand's own "
+                                "frame, so both follow the arm wherever it goes.");
+        }
+    }
+
     ImGui::Separator();
     ImGui::TextDisabled("The weapon this model is worn by, for the game:");
     // Index zero is the database's "no weapon" placeholder: no key, no name. It has no business in
@@ -3126,7 +3221,9 @@ void PredationGame::UpdateEditorBody(float frameDeltaSeconds)
     // What it is holding is whatever the editor has open, rebuilt whenever the editor says the model
     // changed. That is the whole loop: move a socket, see the hand move.
     const ModelAsset& model = m_editor.Model();
-    if (m_editor.TakePreviewChanged() || !m_editorBody.HasWeapon())
+    const bool geometryChanged = m_editor.TakeGeometryChanged();
+    const bool anythingChanged = m_editor.TakePreviewChanged();
+    if (geometryChanged || !m_editorBody.HasWeapon())
     {
         m_editorPreviewWeapon = WeaponDefinition{};
         m_editorPreviewWeapon.id = static_cast<WeaponId>(1);
@@ -3137,6 +3234,43 @@ void PredationGame::UpdateEditorBody(float frameDeltaSeconds)
         m_editorPreviewWeapon.magazineSize = 30;
         ForgetWeaponModels();
         m_editorBody.SetWeaponFromModel(m_editorScene, m_app->GetMeshes(), m_editorPreviewWeapon, model);
+    }
+    // Something that is not a weapon, held so its place in the hand can be set by eye. Put in the
+    // hand once rather than every frame: building a mesh per frame is how an editor comes to feel
+    // slow, and dragging its offset does not change the mesh.
+    if (m_benchHoldItem)
+    {
+        const std::vector<ItemDefinition>& all = m_items.All();
+        std::vector<const ItemDefinition*> holdable;
+        for (const ItemDefinition& item : all)
+        {
+            if (item.id != kInvalidItem && !item.key.empty() &&
+                m_weaponData.ForItem(item.key) == kInvalidWeapon)
+            {
+                holdable.push_back(&item);
+            }
+        }
+        if (!holdable.empty())
+        {
+            const int index = std::clamp(m_benchItem, 0, static_cast<int>(holdable.size()) - 1);
+            const ItemDefinition* item = holdable[static_cast<size_t>(index)];
+            if (!m_benchItemHeld)
+            {
+                m_editorBody.SetHeldItem(m_editorScene, m_app->GetMeshes(), item->key,
+                                         ItemMesh(*item, &m_weaponData), ItemMaterial(*item));
+                m_editorBody.SetHeldItemPlacement(item->holdOffset, item->holdRotation);
+                m_benchItemHeld = true;
+            }
+        }
+    }
+
+    if (anythingChanged && !geometryChanged)
+    {
+        // A socket or a clip. Nothing that is drawn has changed, so nothing that is drawn is
+        // rebuilt: only the named points the hands are placed by are read again. Rebuilding the
+        // meshes for a socket drag copied a quarter of a megabyte per part and destroyed and remade
+        // every entity, on every frame of the drag.
+        m_editorBody.RefreshWeaponSockets(m_editorPreviewWeapon, model);
     }
 
     // A clip being watched runs on its own clock, so it can be scrubbed or left running.
@@ -3215,18 +3349,23 @@ void PredationGame::EnterEditor(const std::string& modelName)
     m_editorState.grounded = true;
     m_editorClock = 0.0f;
 
-    // Everything in an editor is done with the pointer, so the mouse is free and the camera is taken
-    // only while the right button is held.
+    // Everything in an editor is done with the pointer, so the mouse is free and it is only taken
+    // while the right button is held to look around.
     SetCameraMode(CameraMode::Fly);
     // Framed on the model, which sits at the origin, with the body it will be held by off to one
     // side and in shot.
-    m_camera.position = {0.30f, 0.62f, 1.15f};
+    //
+    // Written to the editor's camera, not the game's. The game's is copied from the editor's every
+    // frame while the editor is open, so setting it here was undone one frame later and the view
+    // jumped back to wherever the editor had last left it.
+    m_editor.Camera().position = {0.30f, 0.62f, 1.15f};
+    m_camera.position = m_editor.Camera().position;
     m_lookYaw = glm::radians(12.0f);
     m_lookPitch = glm::radians(-22.0f);
     m_wantMouseCaptured = false;
     UpdateMouseCapture();
     m_app->GetConsole().Print(
-        "Model editor. Hold right mouse to look, WASD to move, Escape to leave.");
+        "Model editor. WASD to move, Q and E for down and up, right mouse to look, Escape to leave.");
 }
 
 void PredationGame::TryInteract()
@@ -3582,13 +3721,20 @@ void PredationGame::OnUpdate(double dt, double alpha)
         m_editor.Camera().yaw = m_lookYaw;
         m_editor.Camera().pitch = m_lookPitch;
         m_editor.Camera().moveSpeed = m_editor.CameraSpeed();
-        // The camera only moves while the right button is held, which is what the controls have
-        // always said and what the code did not do. Ctrl is the fly camera's "down", so every
-        // Ctrl+Z sank the view a little; the same went for Ctrl+Y and for typing in any field the
-        // editor did not have focus on.
-        if (m_editorLooking)
+        // WASD moves whenever the editor has the keyboard, held button or not: an editor where you
+        // have to hold a mouse button to walk is one you cannot drive with one hand.
+        //
+        // Ctrl is left out of it. The fly camera takes Ctrl as "down", and in here Ctrl is the
+        // modifier on undo and redo, so every Ctrl+Z sank the view. Q and E do up and down instead,
+        // which is where an editor usually puts them, and Space still lifts.
+        m_editor.Camera().ctrlMovesDown = false;
+        const bool typing = ImGui::GetIO().WantCaptureKeyboard;
+        if (!typing)
         {
             m_editor.Camera().Update(input, deltaSeconds, false);
+            const float vertical = (input.IsActionDown("lean_right") ? 1.0f : 0.0f) -
+                                   (input.IsActionDown("lean_left") ? 1.0f : 0.0f);
+            m_editor.Camera().position.y += vertical * m_editor.CameraSpeed() * deltaSeconds;
         }
         m_editor.Update(m_editorScene, app.GetMeshes(), deltaSeconds);
         UpdateEditorBody(deltaSeconds);

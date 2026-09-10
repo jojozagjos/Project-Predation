@@ -53,7 +53,7 @@ void FlyCamera::Update(const Input& input, float dt, bool looking)
     {
         move += glm::vec3(0.0f, 1.0f, 0.0f);
     }
-    if (input.IsActionDown("move_down"))
+    if (ctrlMovesDown && input.IsActionDown("move_down"))
     {
         move -= glm::vec3(0.0f, 1.0f, 0.0f);
     }

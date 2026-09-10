@@ -524,3 +524,41 @@ no model editor in its menu and no editor commands in its console, and the packa
 out the raw model downloads the importer works on, which are tens of megabytes and no use without
 it. The editor's code is still linked; what is gone is every way to reach it, which is what "not
 shipped" has to mean while the editor and the game share a scene, a body and a renderer.
+
+## ADR-032: A clamp is solved, not stepped
+
+**Status**: accepted, 2026-09-10
+
+Two of the clamps that keep a weapon inside the arm's reach walked towards their answer in two
+centimetre steps. A loop like that does not converge on a value, it converges on a two-centimetre
+lattice, and near the limit it takes a step on one frame and not on the next. What that looks like
+from inside is the hands shaking, and it looks worst while aiming and turning, which is exactly when
+the hold sits closest to the limit.
+
+Both are now solved directly: the distance to move back along a line until a point enters a sphere
+is the smaller root of a quadratic. `Tests/BodyPoseTests.cpp` measures the change in the hold's
+movement from tick to tick while aiming through a sweep; it was 20 mm, which is the step, and is
+now 0.1 mm.
+
+The general rule this stands for: an iterative approximation inside a per-frame update has to
+converge to something finer than the eye can see, or it is a source of jitter rather than a way of
+avoiding maths.
+
+## ADR-033: Editing a socket is not editing the model
+
+**Status**: accepted, 2026-09-10
+
+The editor had one "something changed" flag, and the preview rebuild it drove tore down and rebuilt
+every mesh and every entity of the weapon in the hands. Moving a grip about therefore copied a
+quarter of a megabyte per part per frame of the drag, which is why the frame rate fell into single
+figures after a while of placing sockets.
+
+A socket changes nothing that is drawn. It changes where a hand goes. There are now two flags, and a
+socket or a clip edit only rereads the named points; the meshes are rebuilt when the geometry
+changes, which is on an import, a part edit, an undo or a model-wide transform.
+
+The same distinction is why the shipped weapon models are no longer asserted on in the test suite.
+They are worked on, they spend afternoons half-turned, and a suite that goes red because somebody is
+editing an asset is a suite everyone learns to ignore. The rules are checked against models the
+tests write themselves; the shipped files are reported on with WARN, and the editor says the same
+thing on screen while you are looking at it.
