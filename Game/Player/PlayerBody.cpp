@@ -1045,7 +1045,11 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
     // You cannot aim into a wall. Holding the sights up against one puts them on the view axis with
     // the barrel inside the bricks, which is a lie in the shape of a feature; the sights come down
     // instead, and the player can see perfectly well why.
-    const float wantedAim = glm::clamp(m_weaponPose.aim, 0.0f, 1.0f);
+    //
+    // And you cannot aim while hauling yourself over a ledge, for the same reason: both hands are on
+    // the wall. The sights come down as the climb starts and come back as it releases, on the same
+    // fade the hands use, so it is one movement rather than the sights switching off.
+    const float wantedAim = glm::clamp(m_weaponPose.aim, 0.0f, 1.0f) * (1.0f - m_mantleFade);
     const float aim = wantedAim * glm::mix(1.0f, m_config.weaponWallAim, crowded);
 
     // --- Sway -----------------------------------------------------------------------------------
@@ -1129,7 +1133,14 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
     // straight back gives the barrel to the wall and the receiver to the camera. Dropping the muzzle
     // gives up only where the weapon is pointing, which nobody is using in a corridor anyway, and it
     // is what anyone does with a rifle indoors.
-    const float forwardScale = glm::mix(1.0f, m_config.weaponWallForward, crowded);
+    //
+    // Not while aiming. Sighted, the whole weapon lies on the view axis and pulling it in runs it
+    // straight at the eye: what a player sees is the gun reversing into their face the moment they
+    // brush a doorframe, which is worse than a barrel in the bricks and is the one thing they are
+    // looking at while it happens. The pull-back fades out with the sights coming up, on the aim
+    // asked for rather than the one the wall left behind.
+    const float forwardScale =
+        glm::mix(glm::mix(1.0f, m_config.weaponWallForward, crowded), 1.0f, wantedAim);
 
     // How short the weapon is, from the weapon itself rather than from anything anyone had to
     // write down: a metre-long carbine reads zero, a pistol reads one, and a submachine gun lands
@@ -1305,9 +1316,10 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
             m_weaponTransform.position + m_weaponTransform.rotation * m_weaponVisual.muzzle;
         const glm::vec3 clear =
             ClearOfWorld(physics, view.eyePosition, muzzle, m_config.muzzleClearance);
-        glm::vec3 corrected = m_weaponTransform.position + (clear - muzzle);
-
-        m_weaponTransform.position = corrected;
+        // Faded out with the sights, like the pull-back above and for the same reason: sighted, the
+        // weapon lies along the view, so lifting the muzzle out of a wall drags the receiver back
+        // through the camera. Aiming, the barrel is given to the wall.
+        m_weaponTransform.position += (clear - muzzle) * (1.0f - wantedAim);
     }
 
     // Never so close to the eye that the camera is inside it. The trace above keeps the barrel out
@@ -1601,6 +1613,23 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
     const bool supportHandFree =
         flat || (m_reloadRunning && m_reloadPlay > 0.10f && m_reloadPlay < 0.94f);
 
+    // How far back onto the weapon the support hand has got since it let go.
+    //
+    // A hand on a weapon is placed rather than smoothed, because it is rigidly attached to it and
+    // any smoothing shows up as the grip sliding off the gun whenever the player turns. That is
+    // right while it is holding, and wrong on the frame it starts: the hand had been down at the
+    // magazine well and was put on the handguard in one step, which is the snap at the end of every
+    // reload. It goes back over a fifth of a second and is rigid after that.
+    constexpr float kRejoinSeconds = 0.22f;
+    if (supportHandFree)
+    {
+        m_supportRejoin = 0.0f;
+    }
+    else if (m_supportRejoin < 1.0f)
+    {
+        m_supportRejoin = std::min(m_supportRejoin + dt / kRejoinSeconds, 1.0f);
+    }
+
     // The magazine change needs a hand to do it with, so the support hand goes to the magazine well
     // rather than hanging in mid air.
     //
@@ -1660,7 +1689,15 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
         FootState& hand = m_hands[static_cast<size_t>(side)];
         // Placed, not smoothed. A hand holding a weapon is rigidly attached to it, so any smoothing
         // here shows up as the grip sliding off the gun whenever the player turns.
-        hand.position = wristFor(gripPoints[side], shoulder);
+        //
+        // Except on the way back. The support hand spends a reload at the magazine well and a crawl
+        // on the floor, and putting it back on the handguard in one step is what snapped.
+        glm::vec3 wanted = wristFor(gripPoints[side], shoulder);
+        if (side == kLeft && m_supportRejoin < 1.0f)
+        {
+            wanted = glm::mix(hand.position, wanted, glm::smoothstep(0.0f, 1.0f, m_supportRejoin));
+        }
+        hand.position = wanted;
         // And never further out than the arm goes. The slide above works from the pose as it was
         // before the spine and shoulders were written this frame, so the shoulder has usually moved
         // a couple of centimetres by the time the arm is solved, and a couple of centimetres is the

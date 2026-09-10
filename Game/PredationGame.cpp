@@ -3035,6 +3035,27 @@ void PredationGame::DrawWeaponBench()
     };
     report("Trigger", visual.triggerGrip, 1);
     report("Support", visual.supportGrip, 0);
+
+    // What is wrong with the hold, said where the hold is being looked at. The same faults are
+    // reported in the editor's Model panel, which is collapsed most of the time and is not where
+    // anybody is looking while they place a grip.
+    {
+        const ImVec4 warn{0.95f, 0.55f, 0.45f, 1.0f};
+        if (visual.muzzle.z <= visual.triggerGrip.z)
+        {
+            ImGui::TextColored(warn, "The muzzle socket is behind the grip, so this is being held "
+                                     "by the barrel and pointed at its own stock. Turn the model "
+                                     "round under Model, or set the grip's Turn to 0, 180, 0.");
+        }
+        const float across = std::max(std::abs(visual.triggerGrip.x), std::abs(visual.supportGrip.x));
+        if (across > 0.08f)
+        {
+            ImGui::TextColored(warn,
+                               "A grip sits %.0f cm off the middle of the weapon. Hands close on the "
+                               "centre line of a gun, and an offset there twists the whole hold.",
+                               across * 100.0f);
+        }
+    }
     ImGui::TextDisabled("The support hand slides back down the barrel when its socket is out of "
                         "reach, so a socket out past the end of the handguard shows as a hand that "
                         "is not on it rather than as an arm stretched to nothing. An arm at its "
@@ -3206,7 +3227,7 @@ namespace
 // The panel's own resolution. Small on purpose: it is redrawn every frame, and what it is for is
 // the shape and placement of a hold, which reads at this size.
 constexpr uint16_t kEditorEyeWidth = 640;
-constexpr uint16_t kEditorEyeHeight = 360;
+// The height is the window's, worked out per frame: see RenderEditorFirstPerson.
 
 } // namespace
 
@@ -3217,13 +3238,30 @@ void PredationGame::RenderEditorFirstPerson()
         return;
     }
 
+    // The panel is the shape of the game's window, not a fixed 16:9. How much of a weapon is on
+    // screen depends entirely on how wide the screen is, so a hold lined up against a panel of the
+    // wrong shape comes out somewhere else in the game. The target is remade when the window
+    // changes shape, which is rare enough to cost nothing.
+    const Renderer& renderer = m_app->GetRenderer();
+    const float windowAspect = renderer.Height() > 0 ? static_cast<float>(renderer.Width()) /
+                                                           static_cast<float>(renderer.Height())
+                                                     : 16.0f / 9.0f;
+    const auto wantedHeight = static_cast<uint16_t>(
+        std::clamp(static_cast<int>(std::lround(kEditorEyeWidth / std::max(windowAspect, 0.2f))), 180,
+                   1200));
+    if (wantedHeight != m_editorEyeHeightPixels)
+    {
+        DestroyEditorFirstPerson();
+        m_editorEyeHeightPixels = wantedHeight;
+    }
+
     if (!bgfx::isValid(m_editorEyeBuffer))
     {
         const uint64_t targetFlags = BGFX_TEXTURE_RT | BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP;
         bgfx::TextureHandle attachments[2] = {
-            bgfx::createTexture2D(kEditorEyeWidth, kEditorEyeHeight, false, 1,
+            bgfx::createTexture2D(kEditorEyeWidth, m_editorEyeHeightPixels, false, 1,
                                   bgfx::TextureFormat::BGRA8, targetFlags),
-            bgfx::createTexture2D(kEditorEyeWidth, kEditorEyeHeight, false, 1,
+            bgfx::createTexture2D(kEditorEyeWidth, m_editorEyeHeightPixels, false, 1,
                                   bgfx::TextureFormat::D24S8, BGFX_TEXTURE_RT_WRITE_ONLY)};
         if (!bgfx::isValid(attachments[0]) || !bgfx::isValid(attachments[1]))
         {
@@ -3246,9 +3284,10 @@ void PredationGame::RenderEditorFirstPerson()
     const glm::vec3 forward = view.Forward();
     const glm::mat4 viewMatrix =
         glm::lookAtRH(view.eyePosition, view.eyePosition + forward, glm::vec3(0.0f, 1.0f, 0.0f));
-    // The same horizontal field of view as the game, or the panel answers a question nobody asked:
-    // whether a weapon is on screen depends entirely on how wide the screen is.
-    const float aspect = static_cast<float>(kEditorEyeWidth) / static_cast<float>(kEditorEyeHeight);
+    // The game's own field of view, and the near plane it uses, because that is what decides how
+    // much of a receiver the camera cuts through.
+    const float aspect =
+        static_cast<float>(kEditorEyeWidth) / static_cast<float>(m_editorEyeHeightPixels);
     const float vertical = 2.0f * std::atan(std::tan(glm::radians(cv_fov.Get()) * 0.5f) / aspect);
     const bool homogeneous = bgfx::getCaps()->homogeneousDepth;
     const glm::mat4 projection = homogeneous
@@ -3256,7 +3295,7 @@ void PredationGame::RenderEditorFirstPerson()
                                      : glm::perspectiveRH_ZO(vertical, aspect, 0.05f, 200.0f);
 
     bgfx::setViewFrameBuffer(Renderer::kViewOffscreenLive, m_editorEyeBuffer);
-    bgfx::setViewRect(Renderer::kViewOffscreenLive, 0, 0, kEditorEyeWidth, kEditorEyeHeight);
+    bgfx::setViewRect(Renderer::kViewOffscreenLive, 0, 0, kEditorEyeWidth, m_editorEyeHeightPixels);
     bgfx::setViewClear(Renderer::kViewOffscreenLive, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, 0x14181cff,
                        1.0f, 0);
     bgfx::setViewTransform(Renderer::kViewOffscreenLive, glm::value_ptr(viewMatrix),
@@ -3288,7 +3327,7 @@ void PredationGame::DrawEditorFirstPerson()
         // Fitted to the panel, keeping the shape of the frame it is standing in for. A stretched
         // one would answer the on-screen question wrongly, which is the question it exists for.
         const float aspect =
-            static_cast<float>(kEditorEyeWidth) / static_cast<float>(kEditorEyeHeight);
+            static_cast<float>(kEditorEyeWidth) / static_cast<float>(m_editorEyeHeightPixels);
         const ImVec2 room = ImGui::GetContentRegionAvail();
         const float width = std::min(room.x, std::max(room.y, 1.0f) * aspect);
         const ImVec2 at = ImGui::GetCursorScreenPos();
@@ -3446,6 +3485,18 @@ void PredationGame::UpdateEditorBody(float frameDeltaSeconds)
                 m_benchItemHeld = true;
             }
         }
+    }
+
+    // Pinned only while a socket is actually being moved.
+    //
+    // Pinning holds the weapon still so the hand walks along it, which is what makes placing a grip
+    // legible; but it also means the gun is not where the game would put it, and the first-person
+    // panel beside it is then showing a hold nobody will ever see. Re-pinning the moment the drag
+    // ends settles the weapon into the game's own placement, so what the panel shows between edits
+    // is the truth. Dragging is a handle in the viewport or a field being typed into.
+    if (!m_editor.Dragging() && !ImGui::IsAnyItemActive())
+    {
+        m_editorBody.PinWeaponGrip(m_benchHoldStill);
     }
 
     if (anythingChanged && !geometryChanged)

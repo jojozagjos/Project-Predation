@@ -555,6 +555,9 @@ private:
     // How far through the reload movement, kept separately from the reload itself. The weapon is
     // usable again the moment the simulation says so; the hands still have to finish.
     float m_reloadPlay = 0.0f;
+    // How far the support hand has got back onto the weapon since it let go of it, 0 to 1. A hand on
+    // a weapon is placed rather than smoothed; this is the exception, for the frame it starts.
+    float m_supportRejoin = 1.0f;
     bool m_reloadRunning = false;
     float m_flatness = 0.0f;            // 0 upright, 1 fully prone
     // How far through the crouch, 0 standing to 1 fully down. Smoothed with the rest of the pose.

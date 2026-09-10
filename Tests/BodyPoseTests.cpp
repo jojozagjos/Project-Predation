@@ -2049,3 +2049,56 @@ TEST_CASE("Pinning the grip moves the hand along the weapon instead of moving th
     std::filesystem::remove(file);
     ForgetWeaponModels();
 }
+
+
+TEST_CASE("The support hand comes back onto the weapon rather than snapping to it",
+          "[body][pose][weapons]")
+{
+    // A hand on a weapon is placed rather than smoothed, because it is rigidly attached to it and
+    // smoothing shows up as the grip sliding off the gun whenever the player turns. That is right
+    // while it is holding and wrong on the frame it starts: the support hand spends a reload down
+    // at the magazine well and was put back on the handguard in a single step.
+    BodyHarness harness;
+    WeaponDefinition weapon;
+    weapon.id = 1;
+    weapon.key = "test_rifle";
+    weapon.size = {0.06f, 0.16f, 0.62f};
+    weapon.reloadSeconds = 2.2f;
+    harness.body.SetWeaponForSimulation(&weapon);
+    harness.Settle(120);
+
+    // Through a whole reload and out the far side, watching how far the hand moves each tick.
+    PlayerBody::WeaponPose pose;
+    pose.reloading = true;
+    float worst = 0.0f;
+    float at = 0.0f;
+    glm::vec3 previous = harness.Bone(harness.Rig().hand[0]);
+    for (int i = 0; i <= 260; ++i)
+    {
+        const float play = static_cast<float>(i) / 200.0f;
+        pose.reloading = play <= 1.0f;
+        pose.reload = std::min(play, 1.0f);
+        harness.body.SetWeaponPose(pose);
+        harness.Tick();
+
+        const glm::vec3 now = harness.Bone(harness.Rig().hand[0]);
+        // Only the moment it comes back. The hand leaving at the start is smoothed already, and the
+        // fetch from the belt in the middle is a hand moving on purpose.
+        if (play > 0.90f)
+        {
+            const float step = glm::distance(now, previous);
+            if (step > worst)
+            {
+                worst = step;
+                at = play;
+            }
+        }
+        previous = now;
+    }
+
+    // A hand crossing forty centimetres in one tick is the snap. Moving it over a fifth of a second
+    // at sixty ticks is about a centimetre and a half a tick at its fastest.
+    INFO("furthest the support hand moved in one tick: " << worst * 100.0f << " cm, at " << at
+                                                         << " through the reload");
+    CHECK(worst < 0.02f);
+}

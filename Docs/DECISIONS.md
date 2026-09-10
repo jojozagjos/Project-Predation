@@ -581,3 +581,21 @@ Where the hands are is separate from where on the weapon they close, and only th
 belongs to the model. The first half is the same for every weapon a person carries, so it is the
 player's tuning: nine numbers under `hold` in `player.json`, edited in the bench and written back
 from there, because something placed by eye has to be saveable from where it was placed.
+
+## ADR-035: The editor's first-person panel has to be able to lie only while you are dragging
+
+**Status**: accepted, 2026-09-10
+
+Pinning the carried grip (ADR-034) is what makes placing a grip legible: the gun holds still and the
+hand walks along it. It is also, by construction, not where the game will put the weapon, and the
+first-person panel beside it was therefore showing a hold nobody would ever see. Someone lined a
+weapon up in the editor, started a game, and found it somewhere else entirely.
+
+The pin is now re-taken the moment a drag ends. While a handle or a field is being held the gun
+stays still and the hand moves; the instant it is let go the weapon settles into the game's own
+placement and the panel is telling the truth again. The panel also renders at the game window's
+shape rather than at a fixed 16:9, because how much of a weapon is on screen depends entirely on how
+wide the screen is.
+
+The general rule: a preview may differ from the thing it previews only while an edit is in progress,
+and never at rest.

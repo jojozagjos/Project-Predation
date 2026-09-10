@@ -120,6 +120,8 @@ private:
     bool m_editorEyeReticle = true;
     bgfx::FrameBufferHandle m_editorEyeBuffer = BGFX_INVALID_HANDLE;
     bgfx::TextureHandle m_editorEyeTexture = BGFX_INVALID_HANDLE;
+    // The panel is the shape of the game window, so a hold lined up in it is lined up in the game.
+    uint16_t m_editorEyeHeightPixels = 360;
     // Equips whatever weapon the selected inventory slot carries, or nothing if it carries none.
     void SyncEquippedWeapon();
     // Applies the rounds fired this tick. Only the authority may call this; it is the one place a
