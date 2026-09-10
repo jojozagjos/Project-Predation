@@ -15,8 +15,15 @@ set "BUILD_DIR=%ROOT%\build\%PRESET%"
 set "STAGE=%ROOT%\build\package\ProjectPredation"
 set "ZIP=%ROOT%\build\package\ProjectPredation-%PRESET%.zip"
 
-echo [package] Building %PRESET%...
-call "%~dp0build.cmd" %PRESET%
+rem Configured without the developer tools. What somebody else is handed has no model editor in
+rem its menu and no editor commands in its console: they are for building the game, not playing it.
+echo [package] Building %PRESET% without the developer tools...
+cmake --preset %PRESET% -DPRED_DEV_TOOLS=OFF
+if errorlevel 1 (
+    echo [package] FAIL: configure failed
+    exit /b 1
+)
+cmake --build --preset %PRESET%
 if errorlevel 1 (
     echo [package] FAIL: build failed
     exit /b 1
@@ -38,6 +45,8 @@ for %%F in ("%BUILD_DIR%\bin\*.dll") do copy /y "%%F" "%STAGE%\" >nul 2>nul
 rem The data files, and then the compiled shaders on top of them. Both end up under Assets, which
 rem is the first place the game looks, so the folder runs anywhere without the build tree.
 xcopy /e /i /q /y "%ROOT%\Assets" "%STAGE%\Assets" >nul
+rem The raw downloads the model editor imports from are tens of megabytes and no use without it.
+if exist "%STAGE%\Assets\Models\Source" rmdir /s /q "%STAGE%\Assets\Models\Source"
 if exist "%BUILD_DIR%\GeneratedAssets\Shaders" (
     xcopy /e /i /q /y "%BUILD_DIR%\GeneratedAssets\Shaders" "%STAGE%\Assets\Shaders" >nul
 ) else (
@@ -63,7 +72,7 @@ if exist "%BUILD_DIR%\GeneratedAssets\Shaders" (
     echo   Q and E lean, left mouse fire, right mouse aim, R reload
     echo   F interact, G drop, 1-6 and the wheel select, Tab inventory
     echo   P cycles first person, third person and free camera
-    echo   F3 debug overlay, backtick console, Escape frees the cursor and then leaves
+    echo   F3 debug overlay, backtick console, Escape pauses
     echo.
     echo If it will not start, install the Microsoft Visual C++ Redistributable for x64.
 )

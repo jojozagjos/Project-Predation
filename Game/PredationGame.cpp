@@ -486,6 +486,7 @@ void PredationGame::RegisterCommands()
     console.RegisterCommand("reload", "Start a reload",
                             [this](const std::vector<std::string>&) { m_reloadLatch = 30; });
 
+#if PRED_DEV_TOOLS
     console.RegisterCommand(
         "editor", "Open or close the model and animation editor: editor [model name]",
         [this](const std::vector<std::string>& args)
@@ -589,6 +590,7 @@ void PredationGame::RegisterCommands()
             }
         },
         "model_export <weapon> [model]");
+#endif // PRED_DEV_TOOLS
 
     console.RegisterCommand(
         "look", "Point the view, for inspecting poses without a mouse: look <yaw> [pitch]",
@@ -1600,9 +1602,64 @@ void PredationGame::EnterWorld()
     // whatever was done to it last time is still done.
     ResetWorld();
     m_screen = Screen::Playing;
+    m_paused = false;
     m_titleStatus.clear();
     SetCameraMode(CameraMode::FirstPerson);
     m_wantMouseCaptured = true;
+}
+
+void PredationGame::DrawPauseMenu()
+{
+    const ImGuiViewport* viewport = ImGui::GetMainViewport();
+    const ImVec2 centre{viewport->Pos.x + viewport->Size.x * 0.5f,
+                        viewport->Pos.y + viewport->Size.y * 0.5f};
+    ImGui::SetNextWindowPos(centre, ImGuiCond_Always, {0.5f, 0.5f});
+    ImGui::SetNextWindowSize({320.0f, 0.0f}, ImGuiCond_Always);
+    ImGui::SetNextWindowBgAlpha(0.92f);
+    constexpr ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
+                                       ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse |
+                                       ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings;
+    if (!ImGui::Begin("##pause", nullptr, flags))
+    {
+        ImGui::End();
+        return;
+    }
+
+    ImGui::SetWindowFontScale(1.6f);
+    ImGui::TextUnformatted("Paused");
+    ImGui::SetWindowFontScale(1.0f);
+    ImGui::Separator();
+    ImGui::Spacing();
+
+    const ImVec2 wide{-1.0f, 32.0f};
+    if (ImGui::Button("Resume", wide))
+    {
+        m_paused = false;
+        m_wantMouseCaptured = true;
+    }
+    // In a session the world carries on without you, and saying so is better than letting somebody
+    // believe they have stopped the game everyone else is in.
+    if (m_sessionMode != SessionMode::Offline)
+    {
+        ImGui::TextDisabled("The others are still playing.");
+    }
+
+    ImGui::Spacing();
+    if (ImGui::Button(m_sessionMode == SessionMode::Offline ? "Leave to menu" : "Leave the game", wide))
+    {
+        m_paused = false;
+        ReturnToTitle();
+        ImGui::End();
+        return;
+    }
+
+    ImGui::Spacing();
+    if (ImGui::Button("Quit to desktop", wide))
+    {
+        m_app->RequestQuit();
+    }
+
+    ImGui::End();
 }
 
 void PredationGame::ReturnToTitle()
@@ -1614,6 +1671,7 @@ void PredationGame::ReturnToTitle()
         m_editor.SetOpen(m_editorScene, false);
     }
     m_screen = Screen::Title;
+    m_paused = false;
     m_titleStatus.clear();
     m_wantMouseCaptured = false;
     m_inventoryOpen = false;
@@ -1688,7 +1746,6 @@ void PredationGame::DrawTitleScreen()
     ImGui::TextUnformatted("PROJECT PREDATION");
     ImGui::SetWindowFontScale(1.0f);
     ImGui::PopStyleColor();
-    ImGui::TextDisabled("ACRD  //  Anomalous Containment & Research Directorate");
     ImGui::Spacing();
     ImGui::Separator();
     ImGui::Spacing();
@@ -1751,13 +1808,7 @@ void PredationGame::DrawTitleScreen()
         }
         // Wrapped to the panel rather than broken by hand. Lines written to a width run off the end
         // of it the moment anything about the panel or the font changes.
-        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
-        ImGui::PushTextWrapPos(0.0f);
-        ImGui::TextUnformatted(
-            "Click one to copy. Windows asks to allow the game through its firewall the first time "
-            "you host. It has to be allowed on private networks, or nobody can reach you.");
-        ImGui::PopTextWrapPos();
-        ImGui::PopStyleColor();
+        ImGui::TextDisabled("  click to copy");
     }
     if (ImGui::Button("Open a game", wide))
     {
@@ -1822,6 +1873,7 @@ void PredationGame::DrawTitleScreen()
         ImGui::TextColored({0.90f, 0.55f, 0.35f, 1.0f}, "%s", m_titleStatus.c_str());
     }
 
+#if PRED_DEV_TOOLS
     ImGui::Spacing();
     ImGui::Separator();
     ImGui::Spacing();
@@ -1829,14 +1881,12 @@ void PredationGame::DrawTitleScreen()
     {
         EnterEditor(std::string());
     }
-    ImGui::TextDisabled("Build weapons and props, and hold them, without starting a game.");
-
+#endif
     ImGui::Spacing();
     if (ImGui::Button("Quit", wide))
     {
         m_app->RequestQuit();
     }
-    ImGui::TextDisabled("Escape returns here from a game.");
 
     ImGui::End();
 }
@@ -3620,18 +3670,12 @@ void PredationGame::OnUpdate(double dt, double alpha)
         }
         if (input.WasActionPressed("quit_capture"))
         {
-            // Escape first frees the pointer for the debug UI, and pressing it again with the
-            // pointer already free leaves the game. Toggling capture alone left no way out to the
-            // menu; going straight to the menu would have taken the debug panels away from anyone
-            // who only wanted the cursor back.
-            if (m_wantMouseCaptured)
-            {
-                m_wantMouseCaptured = false;
-            }
-            else
-            {
-                ReturnToTitle();
-            }
+            // Escape opens the pause menu and frees the pointer; Escape again closes it and takes
+            // the pointer back. It used to leave the game outright on the second press, which meant
+            // there was no way to let go of the mouse for a moment without ending up at the title
+            // screen, and no way to leave deliberately either: the same key did both.
+            m_paused = !m_paused;
+            m_wantMouseCaptured = !m_paused;
         }
     }
 
@@ -4586,6 +4630,11 @@ void PredationGame::OnImGui()
     if (m_cameraMode != CameraMode::Fly)
     {
         DrawHud();
+    }
+
+    if (m_paused)
+    {
+        DrawPauseMenu();
     }
 
     if (!m_app->IsOverlayVisible())

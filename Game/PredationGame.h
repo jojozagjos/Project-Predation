@@ -160,6 +160,10 @@ private:
         // built, and nothing in the world simulates while it is open.
         Editor
     };
+    // The in-game pause menu: an overlay on the world rather than a place, so leaving it puts the
+    // player back exactly where they were. In a session nothing stops simulating, because a shared
+    // world cannot be paused by one person in it.
+    void DrawPauseMenu();
     void DrawTitleScreen();
     void EnterWorld();
     void EnterEditor(const std::string& modelName);
@@ -361,6 +365,7 @@ private:
         float weaponDraw = 1.0f;
     };
     Screen m_screen = Screen::Title;
+    bool m_paused = false;
     float m_titleClock = 0.0f;
     // Kept between visits to the menu so rejoining the same friend does not mean typing the address
     // again. Sized for an address and a port; anything longer is not an address.

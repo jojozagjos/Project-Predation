@@ -10,6 +10,7 @@ project(ProjectPredation
 # ---------------------------------------------------------------------------
 option(PRED_BUILD_TESTS "Build unit tests" ON)
 option(PRED_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
+option(PRED_DEV_TOOLS "Build the in-game developer tools: the model editor and its console commands" ON)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -29,6 +30,15 @@ if(MSVC)
     # Parallel compilation, UTF-8 sources, strict conformance.
     add_compile_options(/MP /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor)
     add_compile_definitions(NOMINMAX WIN32_LEAN_AND_MEAN _CRT_SECURE_NO_WARNINGS)
+endif()
+
+# Whether this build carries the developer tools. On for anything built here; the packaging script
+# turns it off, so what somebody else is handed has no model editor in its menu, no editor commands
+# in its console, and none of the raw model downloads those tools work on.
+if(PRED_DEV_TOOLS)
+    add_compile_definitions(PRED_DEV_TOOLS=1)
+else()
+    add_compile_definitions(PRED_DEV_TOOLS=0)
 endif()
 
 # All targets put their runtime output in one place so the game can find
