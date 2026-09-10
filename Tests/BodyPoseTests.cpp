@@ -2245,3 +2245,59 @@ TEST_CASE("A hand on a weapon keeps the same grip on it while the player turns",
     CHECK(worstTrigger < 25.0f);
     CHECK(worstSupport < 25.0f);
 }
+
+
+TEST_CASE("Reloading while turning keeps the hand on the magazine well", "[body][pose][weapons]")
+{
+    // The reloading hand eased towards its target in world space, and both places that target can
+    // be are attached to the player: the magazine well is on the weapon and the weapon follows the
+    // view. Easing in the world therefore charged the smoothing for every degree the camera turned,
+    // so the hand trailed the well it was reaching into and never lined up while the player moved.
+    BodyHarness harness;
+    WeaponDefinition weapon;
+    weapon.id = 1;
+    weapon.key = "test_rifle";
+    weapon.size = {0.06f, 0.16f, 0.62f};
+    weapon.reloadSeconds = 2.2f;
+    harness.body.SetWeaponForSimulation(&weapon);
+    harness.Settle(120);
+
+    // Into a reload, past the point where the hand has fetched a magazine and is bringing it back to
+    // the well, and then turn steadily while it does.
+    PlayerBody::WeaponPose pose;
+    pose.reloading = true;
+    float worst = 0.0f;
+    float at = 0.0f;
+    for (int i = 0; i <= 200; ++i)
+    {
+        const float play = static_cast<float>(i) / 200.0f;
+        pose.reload = play;
+        harness.body.SetWeaponPose(pose);
+        if (play > 0.70f)
+        {
+            harness.input.yaw += glm::radians(6.0f); // 360 degrees a second, a normal mouse flick
+        }
+        harness.Tick();
+
+        // Only while the hand is meant to be at the well: before the fetch and after it, not during.
+        if (play > 0.72f && play < 0.92f)
+        {
+            const glm::vec3 well = harness.body.WeaponOrigin() +
+                                   harness.body.WeaponRotation() * harness.body.Weapon().magazineSeated;
+            const float gap = glm::distance(harness.Bone(harness.Rig().hand[0]), well);
+            if (gap > worst)
+            {
+                worst = gap;
+                at = play;
+            }
+        }
+    }
+
+    // A wrist sits a hand's length from what it holds, so a few centimetres is right. Smoothed in
+    // the world instead of in the carry frame this reads 12 cm at this turn rate, and worse the
+    // faster the player turns: that is the hand being dragged behind a weapon it is supposed to be
+    // holding.
+    INFO("furthest the reloading hand got from the magazine well while turning: " << worst * 100.0f
+                                                                                 << " cm, at " << at);
+    CHECK(worst < 0.06f);
+}

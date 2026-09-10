@@ -1656,9 +1656,15 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
     {
         m_supportRejoin = 0.0f;
     }
-    else if (m_supportRejoin < 1.0f)
+    else
     {
-        m_supportRejoin = std::min(m_supportRejoin + dt / kRejoinSeconds, 1.0f);
+        // Back on the weapon, so the frame the reload smoothed in is finished with. Left standing,
+        // the next reload would start from wherever the hand happened to be a reload ago.
+        m_reloadHandValid = false;
+        if (m_supportRejoin < 1.0f)
+        {
+            m_supportRejoin = std::min(m_supportRejoin + dt / kRejoinSeconds, 1.0f);
+        }
     }
 
     // The magazine change needs a hand to do it with, so the support hand goes to the magazine well
@@ -1689,7 +1695,30 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
         }
 
         FootState& hand = m_hands[static_cast<size_t>(kLeft)];
-        hand.position = SmoothTowards(hand.position, target, m_config.weaponHandSmoothing, dt);
+        // Smoothed in the carry frame, not in the world.
+        //
+        // Both places this hand goes are attached to the player: the magazine well is on the weapon
+        // and the weapon follows the view, and the belt is on the body. Easing towards them in world
+        // space therefore charges the smoothing for every degree the player turns, so the hand
+        // trailed the magazine well it was reaching into and never lined up while the camera moved.
+        // In this frame a turn moves the target hardly at all, and what is left to smooth is the
+        // hand's own journey from the gun to the belt and back, which is what wants easing.
+        const auto intoFrame = [&](const glm::vec3& at)
+        {
+            const glm::vec3 local = at - view.eyePosition;
+            return glm::vec3(glm::dot(local, carryRight), glm::dot(local, carryUp),
+                             glm::dot(local, carryForward));
+        };
+        const glm::vec3 wantedLocal = intoFrame(target);
+        if (!m_reloadHandValid)
+        {
+            m_reloadHandLocal = intoFrame(hand.position);
+            m_reloadHandValid = true;
+        }
+        m_reloadHandLocal =
+            SmoothTowards(m_reloadHandLocal, wantedLocal, m_config.weaponHandSmoothing, dt);
+        hand.position = view.eyePosition + carryRight * m_reloadHandLocal.x +
+                        carryUp * m_reloadHandLocal.y + carryForward * m_reloadHandLocal.z;
 
         const glm::vec3 elbowPole =
             glm::normalize(-carryUp * 1.0f - carryRight * 0.9f - carryForward * 0.25f);

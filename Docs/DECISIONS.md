@@ -678,3 +678,22 @@ what is left is the arm honestly reaching differently as the body turns.
 
 The hand that fetches a magazine during a reload is rolled the same way, because a magazine well is
 part of the weapon too.
+
+## ADR-040: Smooth a hand in the frame the thing it is reaching for lives in
+
+**Status**: accepted, 2026-09-10
+
+The hand that fetches a magazine during a reload eased towards its target in world space. Both places
+that target can be are attached to the player: the magazine well is on the weapon and the weapon
+follows the view, and the belt is on the body. Easing in the world therefore charged the smoothing
+for every degree the camera turned, so the hand trailed the well it was reaching into and never lined
+up while the player was moving. At a normal mouse turn of 360 degrees a second it lagged by 12
+centimetres, and worse the faster you turn.
+
+It is smoothed in the carry frame now, where a turn moves the target hardly at all and what is left
+to ease is the hand's own journey from the gun to the belt and back, which is the thing that wants
+easing. The same measurement reads 3 centimetres at any turn rate.
+
+This is the second time the same mistake has been found in a different place: the first was a hand
+placed rigidly and snapping, this one a hand smoothed loosely and lagging. The rule that covers both
+is that the frame a movement is smoothed in has to be the frame the target is still in.

@@ -538,6 +538,11 @@ private:
     // How far the support hand has got back onto the weapon since it let go of it, 0 to 1. A hand on
     // a weapon is placed rather than smoothed; this is the exception, for the frame it starts.
     float m_supportRejoin = 1.0f;
+    // Where the reloading hand is, in the carry frame rather than in the world. Both places it goes
+    // are attached to the player, so easing towards them in the world charges the smoothing for
+    // every degree the camera turns and the hand never catches up with what it is reaching into.
+    glm::vec3 m_reloadHandLocal{0.0f};
+    bool m_reloadHandValid = false;
     bool m_reloadRunning = false;
     float m_flatness = 0.0f;            // 0 upright, 1 fully prone
     // How far through the crouch, 0 standing to 1 fully down. Smoothed with the rest of the pose.
