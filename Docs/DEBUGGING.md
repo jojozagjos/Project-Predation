@@ -128,3 +128,24 @@ From the brief, to be built with their systems:
 - **Navigation**: navmesh, links, vent navigation, climb paths, per-creature traversal, blocked paths,
   destination, path cost
 - **Network**: stats, replication log, latency and packet loss simulation
+
+## Working on a weapon model
+
+The loop, end to end:
+
+1. `model_import <file.glb> <name> [size] [turn x y z]` reads a download into `Assets/Models`. Size
+   is the longest side in metres. The turn is what puts the barrel down +Z; both models shipped so
+   far ran along +X and needed `0 -90 0`. If the muzzle comes out at the back, use `0 90 0`.
+2. `editor <name>` opens it. Parts, sockets and clips are all here.
+3. `bench` opens the weapon bench beside it. Point a weapon at the model, put it in your hands, and
+   play the reload and the draw.
+4. The bench prints how far each hand is from the socket it is meant to be holding, and draws a line
+   between them in the world. Move the socket in the editor, save, press "Reload from disk" on the
+   bench, and watch the number come down. Under three centimetres reads as held.
+5. `camera third` to watch it from outside.
+
+Nothing the bench does is written to `weapons.json`. Once a model is right, set its name in that
+file by hand so it survives a restart.
+
+A model imports as one part per primitive, which is what lets a magazine be animated separately. A
+download that came in as a single part has to be split before anything on it can move on its own.
