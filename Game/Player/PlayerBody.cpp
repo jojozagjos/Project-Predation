@@ -1359,7 +1359,7 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
 
         const glm::vec3 elbowPole =
             glm::normalize(-carryUp * 1.0f - carryRight * 0.9f - carryForward * 0.25f);
-        const TwoBoneIKResult ik = SolveTwoBoneIK(shoulder, hand.position, carryRight,
+        const TwoBoneIKResult ik = SolveTwoBoneIK(shoulder, hand.position, elbowPole,
                                                   m_rig.upperArmLength, m_rig.lowerArmLength);
         const glm::vec3 hinge =
             glm::cross(ik.jointPosition - shoulder, ik.endPosition - ik.jointPosition);
@@ -1391,7 +1391,7 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
         const glm::vec3 elbowPole =
             glm::normalize(-carryUp * 1.0f + carryRight * (sideSign * (0.85f - 0.45f * aim)) -
                            carryForward * 0.35f);
-        const TwoBoneIKResult ik = SolveTwoBoneIK(shoulder, hand.position, carryRight,
+        const TwoBoneIKResult ik = SolveTwoBoneIK(shoulder, hand.position, elbowPole,
                                                   m_rig.upperArmLength, m_rig.lowerArmLength);
 
         const glm::vec3 hinge =
@@ -1581,7 +1581,7 @@ void PlayerBody::UpdateMantleArms(const PlayerState& state, float weight)
         // Elbows out and down while pulling, which is what taking your own weight looks like.
         const glm::vec3 elbowPole = glm::normalize(right * (sideSign * 1.0f) -
                                                    glm::vec3(0.0f, 0.7f, 0.0f) - forward * 0.3f);
-        const TwoBoneIKResult ik = SolveTwoBoneIK(shoulder, hand.position, right,
+        const TwoBoneIKResult ik = SolveTwoBoneIK(shoulder, hand.position, elbowPole,
                                                   m_rig.upperArmLength, m_rig.lowerArmLength);
 
         const glm::vec3 hinge =
@@ -1658,7 +1658,7 @@ void PlayerBody::UpdateCrawlArms(const PlayerState& state, const PlayerView& vie
         constexpr float elbowSign = 1.0f;
         const glm::vec3 elbowPole = -facing * 0.6f + right * (sideSign * elbowSign * 0.8f) +
                                     glm::vec3(0.0f, 0.4f * elbowSign, 0.0f);
-        const TwoBoneIKResult ik = SolveTwoBoneIK(shoulder, hand.position, right,
+        const TwoBoneIKResult ik = SolveTwoBoneIK(shoulder, hand.position, elbowPole,
                                                   m_rig.upperArmLength, m_rig.lowerArmLength);
 
         const glm::vec3 hinge =
