@@ -780,6 +780,11 @@ bool LoadGlbModel(const std::filesystem::path& file, const GltfImportOptions& op
         // grip, the whole gun then sat a hand-span too far forward with its stock in the camera.
         socket("grip", {0.0f, low.y + height * (longArm ? 0.30f : 0.42f),
                         low.z + length * (longArm ? 0.38f : 0.16f)});
+        // Where the weapon itself is carried, seeded on the grip because that is where it used to
+        // be carried and it is a reasonable place to start. Moving it moves the gun on the screen;
+        // moving the grip moves the hand along the gun. Two sockets because they are two questions.
+        socket("carry", {0.0f, low.y + height * (longArm ? 0.30f : 0.42f),
+                         low.z + length * (longArm ? 0.38f : 0.16f)});
         // Further back than a photograph of someone shooting would suggest. The support hand has to
         // be somewhere the arm can reach with the weapon carried where the camera can see it, and
         // two thirds of the way down an 86 cm carbine is a good 20 cm past that: the hand slid back

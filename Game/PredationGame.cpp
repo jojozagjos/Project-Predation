@@ -2840,6 +2840,76 @@ void PredationGame::DrawWeaponBench()
     ImGui::TextDisabled("Whatever is open in the editor, in someone's hands.");
     ImGui::Separator();
 
+    // What is in the hands: the model being edited, or one of the items that is not a weapon.
+    //
+    // One list rather than a list and a checkbox and a second list. They were separate because a
+    // weapon and an item are placed by different machinery, and a person holding one thing at a
+    // time does not care about that. Choosing an item also takes the weapon out of the hands, which
+    // it has to: a weapon takes both of them and the one-handed carry never runs while one is held,
+    // so the item was placed and then never posed and never appeared.
+    {
+        std::vector<const ItemDefinition*> holdable;
+        for (const ItemDefinition& item : m_items.All())
+        {
+            if (item.id != kInvalidItem && !item.key.empty() &&
+                m_weaponData.ForItem(item.key) == kInvalidWeapon)
+            {
+                holdable.push_back(&item);
+            }
+        }
+        m_benchItem = std::clamp(m_benchItem, -1, static_cast<int>(holdable.size()) - 1);
+
+        const auto label = [](const ItemDefinition* item)
+        { return item->name.empty() ? item->key.c_str() : item->name.c_str(); };
+        const char* current = m_benchItem < 0 ? "the model in the editor"
+                                              : label(holdable[static_cast<size_t>(m_benchItem)]);
+        if (ImGui::BeginCombo("In the hands", current))
+        {
+            if (ImGui::Selectable("the model in the editor", m_benchItem < 0))
+            {
+                m_benchItem = -1;
+                m_benchItemHeld = false;
+            }
+            for (int i = 0; i < static_cast<int>(holdable.size()); ++i)
+            {
+                ImGui::PushID(i);
+                if (ImGui::Selectable(label(holdable[static_cast<size_t>(i)]), i == m_benchItem))
+                {
+                    m_benchItem = i;
+                    m_benchItemHeld = false;
+                }
+                ImGui::PopID();
+            }
+            ImGui::EndCombo();
+        }
+
+        if (m_benchItem >= 0)
+        {
+            const ItemDefinition* chosen = holdable[static_cast<size_t>(m_benchItem)];
+            if (ItemDefinition* editable = m_items.Mutable(chosen->id))
+            {
+                bool moved =
+                    ImGui::DragFloat3("Offset", &editable->holdOffset.x, 0.002f, -0.5f, 0.5f, "%.3f m");
+                moved |= ImGui::DragFloat3("Turn", &editable->holdRotation.x, 1.0f, -180.0f, 180.0f,
+                                           "%.0f deg");
+                if (moved)
+                {
+                    m_editorBody.SetHeldItemPlacement(editable->holdOffset, editable->holdRotation);
+                }
+                if (ImGui::Button("Write to items.json"))
+                {
+                    const std::filesystem::path file = Paths::AssetsRoot() / "Data" / "items.json";
+                    m_app->GetConsole().Print(m_items.SaveHoldPlacements(file)
+                                                  ? "Hold placements written to items.json"
+                                                  : "Could not write items.json");
+                }
+                ImGui::TextDisabled("The offset is from the fingers and the turn is in the hand's "
+                                    "own frame, so both follow the arm wherever it goes.");
+            }
+        }
+    }
+    ImGui::Separator();
+
     // What the body is doing. Nothing simulates in here, so every movement is a button: the point
     // is to watch one thing at a time and as often as you like.
     const char* stances[] = {"Standing", "Crouching", "Prone"};
@@ -2917,185 +2987,73 @@ void PredationGame::DrawWeaponBench()
     }
 
     ImGui::Separator();
-
-    // The numbers that decide whether a grip is placed right.
-    // Moving the weapon within the hand, which is a different question from where the hand is and
-    // the one that gets asked once the hand is right. The game hangs a weapon off its grip socket,
-    // so this writes to that socket backwards; nobody should have to work the sign out while
-    // looking at a gun that is sitting too high.
-    ImGui::Separator();
-    ImGui::TextDisabled("Move the weapon in the hand. The hand stays where it is.");
-    {
-        constexpr float kStep = 0.005f;
-        const auto nudge = [&](const char* label, const glm::vec3& delta)
+    if (m_editorBody.HasWeapon())
         {
-            if (ImGui::Button(label) && !m_editor.NudgeWeaponInHand(delta * kStep))
-            {
-                m_app->GetConsole().PrintError("This model has no grip socket to move it by");
-            }
+        ImGui::Checkbox("Draw sockets and the hands they belong to", &m_benchSockets);
+        ImGui::TextDisabled("The carry socket is where the weapon sits: move it and the gun moves on "
+                            "the screen. The grip is where the trigger hand closes: move that and the "
+                            "hand moves along the weapon. Neither drags the other any more.");
+        const WeaponVisual& visual = m_editorBody.Weapon();
+        const glm::quat hold = m_editorBody.WeaponRotation();
+        const glm::vec3 origin = m_editorBody.WeaponOrigin();
+        // Two separate questions, and they used to be answered by one number that could not tell them
+        // apart. A wrist sits a hand's length behind whatever the palm closes on, so a hand properly on
+        // a grip still reads several centimetres away from it, and a support hand that slid back down
+        // the barrel because the socket was out of reach read as a much larger miss than a hand that
+        // simply could not get there. The useful readings are whether the fingers close on the socket,
+        // and how hard the arm is working to hold that.
+        const auto report = [&](const char* label, const glm::vec3& socket, int side)
+        {
+            const glm::vec3 world = origin + hold * socket;
+            const glm::vec3 wrist = m_editorBody.GetPose().GlobalPosition(m_editorBody.Rig().hand[side]);
+            const glm::vec3 shoulder =
+                m_editorBody.GetPose().GlobalPosition(m_editorBody.Rig().shoulder[side]);
+            const float gap = glm::distance(world, wrist);
+            const float span =
+                m_editorBody.Rig().upperArmLength + m_editorBody.Rig().lowerArmLength;
+            const float working = glm::distance(wrist, shoulder) / std::max(span, 1e-3f);
+    
+            // A hand is about eleven centimetres from wrist to closed fingers, so anything inside that
+            // is a hand on the grip. Beyond it the arm went somewhere else.
+            const bool held = gap < 0.11f;
+            ImGui::TextColored(held ? ImVec4(0.65f, 0.85f, 0.65f, 1.0f) : ImVec4(0.90f, 0.70f, 0.45f, 1.0f),
+                               held ? "%s hand is on its socket, wrist %.1f cm behind it"
+                                    : "%s hand ended up %.1f cm from its socket",
+                               label, gap * 100.0f);
+            ImGui::TextColored(working < 0.95f ? ImVec4(0.65f, 0.85f, 0.65f, 1.0f)
+                                               : ImVec4(0.90f, 0.70f, 0.45f, 1.0f),
+                               "   arm at %.0f%% of its reach", working * 100.0f);
         };
-        nudge("Lower", {0.0f, -1.0f, 0.0f});
-        ImGui::SameLine();
-        nudge("Raise", {0.0f, 1.0f, 0.0f});
-        ImGui::SameLine();
-        nudge("Back", {0.0f, 0.0f, -1.0f});
-        ImGui::SameLine();
-        nudge("Forward", {0.0f, 0.0f, 1.0f});
-        ImGui::SameLine();
-        nudge("Left", {-1.0f, 0.0f, 0.0f});
-        ImGui::SameLine();
-        nudge("Right", {1.0f, 0.0f, 0.0f});
-        ImGui::TextDisabled("Five millimetres a press, written into the grip socket. Save the model "
-                            "to keep it.");
-    }
-
-    ImGui::Separator();
-    ImGui::Checkbox("Draw sockets and the hands they belong to", &m_benchSockets);
-    if (ImGui::Checkbox("Hold the weapon still while placing sockets", &m_benchHoldStill))
-    {
-        m_editorBody.PinWeaponGrip(m_benchHoldStill);
-    }
-    ImGui::TextDisabled(m_benchHoldStill
-                            ? "Moving the grip moves the trigger hand along the weapon, which is "
-                              "the question being asked while a grip is placed."
-                            : "As in the game: the hold is fixed and the weapon hangs off the grip, "
-                              "so moving the grip moves the gun and the trigger hand stays put.");
-    const WeaponVisual& visual = m_editorBody.Weapon();
-    const glm::quat hold = m_editorBody.WeaponRotation();
-    const glm::vec3 origin = m_editorBody.WeaponOrigin();
-    // Two separate questions, and they used to be answered by one number that could not tell them
-    // apart. A wrist sits a hand's length behind whatever the palm closes on, so a hand properly on
-    // a grip still reads several centimetres away from it, and a support hand that slid back down
-    // the barrel because the socket was out of reach read as a much larger miss than a hand that
-    // simply could not get there. The useful readings are whether the fingers close on the socket,
-    // and how hard the arm is working to hold that.
-    const auto report = [&](const char* label, const glm::vec3& socket, int side)
-    {
-        const glm::vec3 world = origin + hold * socket;
-        const glm::vec3 wrist = m_editorBody.GetPose().GlobalPosition(m_editorBody.Rig().hand[side]);
-        const glm::vec3 shoulder =
-            m_editorBody.GetPose().GlobalPosition(m_editorBody.Rig().shoulder[side]);
-        const float gap = glm::distance(world, wrist);
-        const float span =
-            m_editorBody.Rig().upperArmLength + m_editorBody.Rig().lowerArmLength;
-        const float working = glm::distance(wrist, shoulder) / std::max(span, 1e-3f);
-
-        // A hand is about eleven centimetres from wrist to closed fingers, so anything inside that
-        // is a hand on the grip. Beyond it the arm went somewhere else.
-        const bool held = gap < 0.11f;
-        ImGui::TextColored(held ? ImVec4(0.65f, 0.85f, 0.65f, 1.0f) : ImVec4(0.90f, 0.70f, 0.45f, 1.0f),
-                           held ? "%s hand is on its socket, wrist %.1f cm behind it"
-                                : "%s hand ended up %.1f cm from its socket",
-                           label, gap * 100.0f);
-        ImGui::TextColored(working < 0.95f ? ImVec4(0.65f, 0.85f, 0.65f, 1.0f)
-                                           : ImVec4(0.90f, 0.70f, 0.45f, 1.0f),
-                           "   arm at %.0f%% of its reach", working * 100.0f);
-    };
-    report("Trigger", visual.triggerGrip, 1);
-    report("Support", visual.supportGrip, 0);
-
-    // What is wrong with the hold, said where the hold is being looked at. The same faults are
-    // reported in the editor's Model panel, which is collapsed most of the time and is not where
-    // anybody is looking while they place a grip.
-    {
-        const ImVec4 warn{0.95f, 0.55f, 0.45f, 1.0f};
-        if (visual.muzzle.z <= visual.triggerGrip.z)
+        report("Trigger", visual.triggerGrip, 1);
+        report("Support", visual.supportGrip, 0);
+    
+        // What is wrong with the hold, said where the hold is being looked at. The same faults are
+        // reported in the editor's Model panel, which is collapsed most of the time and is not where
+        // anybody is looking while they place a grip.
         {
-            ImGui::TextColored(warn, "The muzzle socket is behind the grip, so this is being held "
-                                     "by the barrel and pointed at its own stock. Turn the model "
-                                     "round under Model, or set the grip's Turn to 0, 180, 0.");
-        }
-        const float across = std::max(std::abs(visual.triggerGrip.x), std::abs(visual.supportGrip.x));
-        if (across > 0.08f)
-        {
-            ImGui::TextColored(warn,
-                               "A grip sits %.0f cm off the middle of the weapon. Hands close on the "
-                               "centre line of a gun, and an offset there twists the whole hold.",
-                               across * 100.0f);
-        }
-    }
-    ImGui::TextDisabled("The support hand slides back down the barrel when its socket is out of "
-                        "reach, so a socket out past the end of the handguard shows as a hand that "
-                        "is not on it rather than as an arm stretched to nothing. An arm at its "
-                        "full reach is the one to move: that is where the elbow locks straight and "
-                        "the hold stops looking like a hold.");
-
-    // --- Something that is not a weapon ---------------------------------------------------------
-    //
-    // A weapon is placed by its sockets and everything else is placed by a rule about its box, and
-    // that rule cannot know which way up a flare goes or how a keycard is pinched. Each item
-    // carries its own offset and turn instead, and this is where they are put: hold it, drag it
-    // until it looks held, and write it back to items.json.
-    ImGui::Separator();
-    if (ImGui::CollapsingHeader("An item in the hand"))
-    {
-        const std::vector<ItemDefinition>& items = m_items.All();
-        std::vector<const ItemDefinition*> holdable;
-        for (const ItemDefinition& item : items)
-        {
-            if (item.id != kInvalidItem && !item.key.empty() &&
-                m_weaponData.ForItem(item.key) == kInvalidWeapon)
+            const ImVec4 warn{0.95f, 0.55f, 0.45f, 1.0f};
+            if (visual.muzzle.z <= visual.triggerGrip.z)
             {
-                holdable.push_back(&item);
+                ImGui::TextColored(warn, "The muzzle socket is behind the grip, so this is being held "
+                                         "by the barrel and pointed at its own stock. Turn the model "
+                                         "round under Model, or set the grip's Turn to 0, 180, 0.");
+            }
+            const float across = std::max(std::abs(visual.triggerGrip.x), std::abs(visual.supportGrip.x));
+            if (across > 0.08f)
+            {
+                ImGui::TextColored(warn,
+                                   "A grip sits %.0f cm off the middle of the weapon. Hands close on the "
+                                   "centre line of a gun, and an offset there twists the whole hold.",
+                                   across * 100.0f);
             }
         }
-
-        if (holdable.empty())
-        {
-            ImGui::TextDisabled("Every item in the data is a weapon, so there is nothing here to "
-                                "place by hand.");
-        }
-        else
-        {
-            m_benchItem = std::clamp(m_benchItem, 0, static_cast<int>(holdable.size()) - 1);
-            const ItemDefinition* chosen = holdable[static_cast<size_t>(m_benchItem)];
-            if (ImGui::BeginCombo("Item", chosen->name.empty() ? chosen->key.c_str()
-                                                               : chosen->name.c_str()))
-            {
-                for (int i = 0; i < static_cast<int>(holdable.size()); ++i)
-                {
-                    ImGui::PushID(i);
-                    const ItemDefinition* option = holdable[static_cast<size_t>(i)];
-                    if (ImGui::Selectable(option->name.empty() ? option->key.c_str()
-                                                               : option->name.c_str(),
-                                          i == m_benchItem))
-                    {
-                        m_benchItem = i;
-                        m_benchItemHeld = false;
-                    }
-                    ImGui::PopID();
-                }
-                ImGui::EndCombo();
-            }
-
-            if (ImGui::Checkbox("Put it in the hand", &m_benchHoldItem) && !m_benchHoldItem)
-            {
-                m_editorBody.ClearHeldItem(m_editorScene);
-                m_benchItemHeld = false;
-            }
-
-            if (ItemDefinition* editable = m_items.Mutable(chosen->id))
-            {
-                bool moved = ImGui::DragFloat3("Offset", &editable->holdOffset.x, 0.002f, -0.5f, 0.5f,
-                                               "%.3f m");
-                moved |= ImGui::DragFloat3("Turn", &editable->holdRotation.x, 1.0f, -180.0f, 180.0f,
-                                           "%.0f deg");
-                if (moved)
-                {
-                    m_editorBody.SetHeldItemPlacement(editable->holdOffset, editable->holdRotation);
-                }
-                if (ImGui::Button("Write to items.json"))
-                {
-                    const std::filesystem::path file = Paths::AssetsRoot() / "Data" / "items.json";
-                    m_app->GetConsole().Print(m_items.SaveHoldPlacements(file)
-                                                  ? "Hold placements written to items.json"
-                                                  : "Could not write items.json");
-                }
-            }
-            ImGui::TextDisabled("The offset is from the fingers and the turn is in the hand's own "
-                                "frame, so both follow the arm wherever it goes.");
-        }
+        ImGui::TextDisabled("The support hand slides back down the barrel when its socket is out of "
+                            "reach, so a socket out past the end of the handguard shows as a hand that "
+                            "is not on it rather than as an arm stretched to nothing. An arm at its "
+                            "full reach is the one to move: that is where the elbow locks straight and "
+                            "the hold stops looking like a hold.");
     }
+
 
     ImGui::Separator();
     ImGui::TextDisabled("The weapon this model is worn by, for the game:");
@@ -3359,60 +3317,62 @@ void PredationGame::UpdateEditorBody(float frameDeltaSeconds)
     const ModelAsset& model = m_editor.Model();
     const bool geometryChanged = m_editor.TakeGeometryChanged();
     const bool anythingChanged = m_editor.TakePreviewChanged();
-    if (geometryChanged || !m_editorBody.HasWeapon())
-    {
-        m_editorPreviewWeapon = WeaponDefinition{};
-        m_editorPreviewWeapon.id = static_cast<WeaponId>(1);
-        m_editorPreviewWeapon.key = model.name.empty() ? "preview" : model.name;
-        m_editorPreviewWeapon.name = m_editorPreviewWeapon.key;
-        m_editorPreviewWeapon.model = model.name;
-        m_editorPreviewWeapon.reloadSeconds = 2.2f;
-        m_editorPreviewWeapon.magazineSize = 30;
-        ForgetWeaponModels();
-        m_editorBody.SetWeaponFromModel(m_editorScene, m_app->GetMeshes(), m_editorPreviewWeapon, model);
-        // Re-pinned against the model as it now is, so a rebuild does not leave the gun hanging off
-        // a grip that no longer exists.
-        m_editorBody.PinWeaponGrip(m_benchHoldStill);
-    }
-    // Something that is not a weapon, held so its place in the hand can be set by eye. Put in the
-    // hand once rather than every frame: building a mesh per frame is how an editor comes to feel
-    // slow, and dragging its offset does not change the mesh.
-    if (m_benchHoldItem)
-    {
-        const std::vector<ItemDefinition>& all = m_items.All();
-        std::vector<const ItemDefinition*> holdable;
-        for (const ItemDefinition& item : all)
-        {
-            if (item.id != kInvalidItem && !item.key.empty() &&
-                m_weaponData.ForItem(item.key) == kInvalidWeapon)
-            {
-                holdable.push_back(&item);
-            }
-        }
-        if (!holdable.empty())
-        {
-            const int index = std::clamp(m_benchItem, 0, static_cast<int>(holdable.size()) - 1);
-            const ItemDefinition* item = holdable[static_cast<size_t>(index)];
-            if (!m_benchItemHeld)
-            {
-                m_editorBody.SetHeldItem(m_editorScene, m_app->GetMeshes(), item->key,
-                                         ItemMesh(*item, &m_weaponData), ItemMaterial(*item));
-                m_editorBody.SetHeldItemPlacement(item->holdOffset, item->holdRotation);
-                m_benchItemHeld = true;
-            }
-        }
-    }
 
-    // Pinned only while a socket is actually being moved.
+    // One thing in the hands at a time.
     //
-    // Pinning holds the weapon still so the hand walks along it, which is what makes placing a grip
-    // legible; but it also means the gun is not where the game would put it, and the first-person
-    // panel beside it is then showing a hold nobody will ever see. Re-pinning the moment the drag
-    // ends settles the weapon into the game's own placement, so what the panel shows between edits
-    // is the truth. Dragging is a handle in the viewport or a field being typed into.
-    if (!m_editor.Dragging() && !ImGui::IsAnyItemActive())
+    // A weapon takes both of them, and the one-handed carry never runs while one is held, so an
+    // item put in the hand alongside a weapon was placed and then never posed: it stayed at the
+    // origin and nobody ever saw it. Choosing an item takes the weapon away and choosing the model
+    // brings it back.
+    std::vector<const ItemDefinition*> holdable;
+    for (const ItemDefinition& item : m_items.All())
     {
-        m_editorBody.PinWeaponGrip(m_benchHoldStill);
+        if (item.id != kInvalidItem && !item.key.empty() &&
+            m_weaponData.ForItem(item.key) == kInvalidWeapon)
+        {
+            holdable.push_back(&item);
+        }
+    }
+    const int itemIndex =
+        m_benchItem >= 0 && m_benchItem < static_cast<int>(holdable.size()) ? m_benchItem : -1;
+
+    if (itemIndex >= 0)
+    {
+        if (m_editorBody.HasWeapon())
+        {
+            m_editorBody.SetWeapon(m_editorScene, m_app->GetMeshes(), nullptr);
+        }
+        // Built once rather than every frame: making a mesh per frame is how an editor comes to
+        // feel slow, and dragging an offset does not change the mesh.
+        if (!m_benchItemHeld)
+        {
+            const ItemDefinition* item = holdable[static_cast<size_t>(itemIndex)];
+            m_editorBody.SetHeldItem(m_editorScene, m_app->GetMeshes(), item->key,
+                                     ItemMesh(*item, &m_weaponData), ItemMaterial(*item));
+            m_editorBody.SetHeldItemPlacement(item->holdOffset, item->holdRotation);
+            m_benchItemHeld = true;
+        }
+    }
+    else
+    {
+        if (m_benchItemHeld)
+        {
+            m_editorBody.ClearHeldItem(m_editorScene);
+            m_benchItemHeld = false;
+        }
+        if (geometryChanged || !m_editorBody.HasWeapon())
+        {
+            m_editorPreviewWeapon = WeaponDefinition{};
+            m_editorPreviewWeapon.id = static_cast<WeaponId>(1);
+            m_editorPreviewWeapon.key = model.name.empty() ? "preview" : model.name;
+            m_editorPreviewWeapon.name = m_editorPreviewWeapon.key;
+            m_editorPreviewWeapon.model = model.name;
+            m_editorPreviewWeapon.reloadSeconds = 2.2f;
+            m_editorPreviewWeapon.magazineSize = 30;
+            ForgetWeaponModels();
+            m_editorBody.SetWeaponFromModel(m_editorScene, m_app->GetMeshes(), m_editorPreviewWeapon,
+                                            model);
+        }
     }
 
     if (anythingChanged && !geometryChanged)

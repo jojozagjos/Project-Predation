@@ -562,10 +562,34 @@ void ModelEditor::DrawPartInspector()
 
 void ModelEditor::DrawSocketPanel()
 {
-    ImGui::TextDisabled("Sockets are what the game asks for by name: grip and support are where "
-                        "the hands close, muzzle is where rounds appear, magazine is where the "
-                        "magazine seats, sight is the line aiming puts on the view axis. Click one "
-                        "in the viewport to select it, then drag a handle.");
+    ImGui::TextDisabled("Sockets are what the game asks for by name. Carry is where the weapon "
+                        "sits, so moving it moves the gun on the screen; grip and support are "
+                        "where the hands close, so moving those moves the hands along the gun. "
+                        "Muzzle is where rounds appear, magazine is where the magazine seats, and "
+                        "sight is the line aiming puts on the view axis. Click one in the viewport "
+                        "to select it, then drag a handle.");
+
+    // A model written before the carry socket existed has none, and falls back to being carried by
+    // its grip, which is the behaviour that could not tell the two apart. Offering to add one where
+    // the grip is changes nothing until it is moved.
+    if (m_model.FindSocket("carry") == nullptr && m_model.FindSocket("grip") != nullptr)
+    {
+        ImGui::TextColored({0.90f, 0.80f, 0.55f, 1.0f},
+                           "This model has no carry socket, so the gun is carried by its grip and "
+                           "moving the grip moves both.");
+        if (ImGui::Button("Add a carry socket on the grip"))
+        {
+            PushUndo("a carry socket");
+            ModelSocket carry;
+            carry.name = "carry";
+            carry.position = m_model.FindSocket("grip")->position;
+            m_model.sockets.push_back(carry);
+            m_selectedSocket = static_cast<int>(m_model.sockets.size()) - 1;
+            m_pick = Pick::Socket;
+            m_dirty = true;
+            m_previewChanged = true;
+        }
+    }
     if (ImGui::Button("Add socket"))
     {
         PushUndo("a new socket");
@@ -1338,23 +1362,6 @@ bool ModelEditor::SelectionPosition(glm::vec3& out) const
         return true;
     }
     return false;
-}
-
-bool ModelEditor::NudgeWeaponInHand(const glm::vec3& delta)
-{
-    const auto grip = std::find_if(m_model.sockets.begin(), m_model.sockets.end(),
-                                   [](const ModelSocket& socket) { return socket.name == "grip"; });
-    if (grip == m_model.sockets.end())
-    {
-        return false;
-    }
-    PushUndo("moving the weapon in the hand");
-    // Backwards, because the game places the weapon by subtracting its grip from the hold: the
-    // socket is the point the hand is on, so raising it lowers the gun.
-    grip->position -= delta;
-    m_dirty = true;
-    m_previewChanged = true;
-    return true;
 }
 
 void ModelEditor::MoveSelection(const glm::vec3& delta)

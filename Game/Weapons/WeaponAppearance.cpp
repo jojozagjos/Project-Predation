@@ -165,6 +165,20 @@ void ApplyWeaponSockets(WeaponVisual& visual, const ModelAsset& model,
         visual.triggerGrip = socket->position;
         visual.gripRotation = socket->Rotation();
     }
+    // Where the gun itself is carried, which is a separate question from where the hand is on it.
+    // Falling back to the grip is what every model written before this socket existed expects.
+    if (const ModelSocket* socket = model.FindSocket("carry"))
+    {
+        visual.carryPoint = socket->position;
+        if (socket->rotation != glm::vec3(0.0f))
+        {
+            visual.gripRotation = socket->Rotation();
+        }
+    }
+    else
+    {
+        visual.carryPoint = visual.triggerGrip;
+    }
     if (const ModelSocket* socket = model.FindSocket("support"))
     {
         visual.supportGrip = socket->position;

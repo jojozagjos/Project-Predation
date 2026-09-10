@@ -41,6 +41,16 @@ struct WeaponVisual
     int magazinePart = -1; // index into parts, or -1 when the weapon has no detachable magazine
 
     glm::vec3 magazineSeated{0.0f}; // where the magazine sits when it is in
+    // The point on the weapon that the carry puts where it wants the weapon: change this and the
+    // gun moves on the screen.
+    //
+    // Separate from the grip, and it has to be. When the carry placed the grip, the trigger hand
+    // was at the carry point by construction and the two could not be set independently: moving the
+    // grip to put the hand somewhere moved the whole gun instead, so a hold that was right could
+    // never be kept while the gun was nudged. Now the carry socket says where the gun goes and the
+    // grip says where the hand closes on it. A model with no carry socket falls back to its grip,
+    // which is what every model written before this one has.
+    glm::vec3 carryPoint{0.0f};
     // Where the trigger hand closes. Read from the model rather than assumed to be its origin: an
     // imported model has its origin wherever the person who made it left it, which for the two that
     // arrived first is the middle of the weapon and nowhere near the grip.

@@ -1963,95 +1963,6 @@ TEST_CASE("Aiming and turning does not make the hold jitter", "[body][pose][weap
 }
 
 
-TEST_CASE("Pinning the grip moves the hand along the weapon instead of moving the weapon",
-          "[body][pose][weapons]")
-{
-    // The editor's whole difficulty with placing a grip. The game holds a weapon by its grip
-    // socket, so the trigger hand sits at the carry point by construction: dragging the socket
-    // moves the gun and the hand never moves, which is right for playing and useless for authoring.
-    // Pinned, the gun stays where it is and the hand walks along it.
-    Paths::Init(nullptr, std::filesystem::path(PRED_SOURCE_DIR) / "Assets");
-
-    ModelAsset model;
-    model.name = "pin_grip_test";
-    ModelPart body;
-    body.name = "body";
-    body.shape = PartShape::Box;
-    body.size = {0.05f, 0.10f, 0.70f};
-    model.parts.push_back(body);
-    ModelSocket grip;
-    grip.name = "grip";
-    grip.position = {0.0f, -0.04f, -0.20f};
-    model.sockets.push_back(grip);
-    ModelSocket muzzle;
-    muzzle.name = "muzzle";
-    muzzle.position = {0.0f, 0.0f, 0.35f};
-    model.sockets.push_back(muzzle);
-
-    const std::filesystem::path file = ModelDirectory() / "pin_grip_test.json";
-    WeaponDefinition weapon;
-    weapon.id = 1;
-    weapon.key = "pin_grip_test";
-    weapon.model = "pin_grip_test";
-    weapon.size = {0.05f, 0.10f, 0.70f};
-
-    struct Reading
-    {
-        glm::vec3 hand;
-        glm::vec3 origin;
-    };
-    // The editor pins once, when the weapon is built, and then edits sockets without rebuilding it.
-    // Pinning after every edit would capture the value being changed and do nothing at all.
-    const auto measure = [&](bool pinned, std::vector<Reading>& out)
-    {
-        ModelAsset moved = model;
-        REQUIRE(moved.SaveToFile(file));
-        ForgetWeaponModels();
-
-        BodyHarness harness;
-        harness.SetStance(PlayerStance::Standing);
-        harness.Settle(90);
-        harness.body.SetWeaponForSimulation(&weapon);
-        harness.body.PinWeaponGrip(pinned);
-        harness.Settle(90);
-        out.push_back({harness.Bone(harness.Rig().hand[1]), harness.body.WeaponOrigin()});
-
-        // The socket moves and nothing is rebuilt, which is what a drag in the editor does.
-        moved.sockets[0].position.z = -0.05f;
-        harness.body.RefreshWeaponSockets(weapon, moved);
-        harness.Settle(90);
-        out.push_back({harness.Bone(harness.Rig().hand[1]), harness.body.WeaponOrigin()});
-    };
-
-    // Unpinned, as the game holds it: the hand is where it was and the weapon has moved.
-    std::vector<Reading> loose;
-    measure(false, loose);
-    REQUIRE(loose.size() == 2);
-    const Reading loose0 = loose[0];
-    const Reading loose1 = loose[1];
-    INFO("unpinned: hand moved " << glm::distance(loose0.hand, loose1.hand) * 100.0f
-                                 << " cm, weapon moved "
-                                 << glm::distance(loose0.origin, loose1.origin) * 100.0f << " cm");
-    CHECK(glm::distance(loose0.hand, loose1.hand) < 0.02f);
-    CHECK(glm::distance(loose0.origin, loose1.origin) > 0.10f);
-
-    // Pinned, as the editor holds it: the weapon is where it was and the hand has moved.
-    std::vector<Reading> held;
-    measure(true, held);
-    REQUIRE(held.size() == 2);
-    const Reading held0 = held[0];
-    const Reading held1 = held[1];
-    INFO("pinned: hand moved " << glm::distance(held0.hand, held1.hand) * 100.0f
-                               << " cm, weapon moved "
-                               << glm::distance(held0.origin, held1.origin) * 100.0f << " cm");
-    CHECK(glm::distance(held0.hand, held1.hand) > 0.10f);
-    CHECK(glm::distance(held0.origin, held1.origin) < 0.02f);
-
-    std::filesystem::remove(file);
-    ForgetWeaponModels();
-}
-
-
 TEST_CASE("The support hand comes back onto the weapon rather than snapping to it",
           "[body][pose][weapons]")
 {
@@ -2192,4 +2103,92 @@ TEST_CASE("Crouching does not put more of the body under the camera", "[body][po
     // Some difference is honest: a crouch folds the torso and the chest really does come forward.
     // Twice as far is what reads as a different game.
     CHECK(crouchChest < standChest + 0.08f);
+}
+
+
+TEST_CASE("The carry socket moves the weapon and the grip socket moves the hand",
+          "[body][pose][weapons]")
+{
+    // The two used to be one. The carry placed the grip socket, so the trigger hand sat at the carry
+    // point by construction: moving the grip to put the hand somewhere moved the whole gun instead,
+    // and a hold that was right could never be kept while the gun was nudged. They are separate
+    // points on the model now, and this is the whole of what that means.
+    Paths::Init(nullptr, std::filesystem::path(PRED_SOURCE_DIR) / "Assets");
+
+    ModelAsset model;
+    model.name = "carry_socket_test";
+    ModelPart part;
+    part.name = "body";
+    part.shape = PartShape::Box;
+    part.size = {0.05f, 0.10f, 0.70f};
+    model.parts.push_back(part);
+    const auto socket = [&](const char* name, const glm::vec3& at)
+    {
+        ModelSocket entry;
+        entry.name = name;
+        entry.position = at;
+        model.sockets.push_back(entry);
+    };
+    socket("carry", {0.0f, 0.0f, 0.0f});
+    socket("grip", {0.0f, -0.04f, -0.15f});
+    socket("muzzle", {0.0f, 0.0f, 0.35f});
+
+    const std::filesystem::path file = ModelDirectory() / "carry_socket_test.json";
+    REQUIRE(model.SaveToFile(file));
+    ForgetWeaponModels();
+
+    WeaponDefinition weapon;
+    weapon.id = 1;
+    weapon.key = "carry_socket_test";
+    weapon.model = "carry_socket_test";
+    weapon.size = part.size;
+
+    BodyHarness harness;
+    harness.SetStance(PlayerStance::Standing);
+    harness.Settle(90);
+    harness.body.SetWeaponForSimulation(&weapon);
+    harness.Settle(90);
+
+    struct Reading
+    {
+        glm::vec3 hand;
+        glm::vec3 origin;
+    };
+    const auto read = [&]
+    { return Reading{harness.Bone(harness.Rig().hand[1]), harness.body.WeaponOrigin()}; };
+    const auto settleWith = [&](const ModelAsset& changed)
+    {
+        harness.body.RefreshWeaponSockets(weapon, changed);
+        harness.Settle(90);
+        return read();
+    };
+
+    const Reading start = read();
+
+    // Moving the grip moves the hand along the weapon and leaves the weapon where it is.
+    ModelAsset gripMoved = model;
+    gripMoved.sockets[1].position.z = 0.05f;
+    const Reading afterGrip = settleWith(gripMoved);
+    INFO("grip moved: hand by " << glm::distance(start.hand, afterGrip.hand) * 100.0f
+                                << " cm, weapon by "
+                                << glm::distance(start.origin, afterGrip.origin) * 100.0f << " cm");
+    CHECK(glm::distance(start.hand, afterGrip.hand) > 0.10f);
+    CHECK(glm::distance(start.origin, afterGrip.origin) < 0.02f);
+
+    // Moving the carry moves the weapon, and the hand goes with it still holding the same place on
+    // it, which is what holding something means. What matters is that the grip it has is unchanged:
+    // the gun can be nudged about the screen without the hand sliding along it.
+    ModelAsset carryMoved = gripMoved;
+    carryMoved.sockets[0].position.y = 0.12f;
+    const Reading afterCarry = settleWith(carryMoved);
+    const glm::vec3 heldBefore = afterGrip.hand - afterGrip.origin;
+    const glm::vec3 heldAfter = afterCarry.hand - afterCarry.origin;
+    INFO("carry moved: weapon by " << glm::distance(afterGrip.origin, afterCarry.origin) * 100.0f
+                                   << " cm, the hand's place on it by "
+                                   << glm::distance(heldBefore, heldAfter) * 100.0f << " cm");
+    CHECK(glm::distance(afterGrip.origin, afterCarry.origin) > 0.10f);
+    CHECK(glm::distance(heldBefore, heldAfter) < 0.02f);
+
+    std::filesystem::remove(file);
+    ForgetWeaponModels();
 }

@@ -1172,7 +1172,7 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
     // So the ready distance plus that gap is a floor: the weapon may go further out when the sights
     // come up and it may not come back.
     const float sightAhead =
-        std::max(m_weaponVisual.sightPoint.z - m_weaponVisual.triggerGrip.z, 0.0f);
+        std::max(m_weaponVisual.sightPoint.z - m_weaponVisual.carryPoint.z, 0.0f);
     const float aimForwardWanted =
         std::max(m_config.weaponAimForward, m_config.weaponReadyForward + sightAhead);
     // Never closer than the minimum, however crowded it is: at full aim the pull-back runs straight
@@ -1305,14 +1305,12 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
     // firing hand is. Sighted, it is the sight itself, which is what puts the sight block on the
     // view axis in all three axes rather than only in height.
     //
-    // Which grip the weapon is *carried* by can be pinned to an older value, and that is the whole
-    // of what the editor's "hold it still" does. Placing the weapon by the live grip socket means
-    // the trigger hand is at the carry point by construction and can never move: dragging the grip
-    // moves the gun instead, which is the right answer in the game and the wrong one while placing
-    // a grip, where the question is where the hand ends up on the weapon. Pinning the carried grip
-    // leaves the gun where it is and walks the hand along it.
-    const glm::vec3 carriedGrip =
-        m_weaponGripPinned ? m_weaponPinnedGrip : m_weaponVisual.triggerGrip;
+    // The point carried is the weapon's own `carry` socket, not its grip. Those were the same thing
+    // and could not both be set: the carry placed the grip, so the trigger hand sat at the carry
+    // point by construction, and moving the grip to put the hand somewhere moved the whole gun
+    // instead. Two sockets, two questions. A model with no carry socket falls back to its grip and
+    // behaves as it always did.
+    const glm::vec3 carriedGrip = m_weaponVisual.carryPoint;
     const glm::vec3 holdPoint = glm::mix(carriedGrip, m_weaponVisual.sightPoint, aim);
     // And the socket's own turn, so a model exported lying on its side can be righted by rotating
     // the grip rather than by rotating the geometry, which would take the sockets, the clips and

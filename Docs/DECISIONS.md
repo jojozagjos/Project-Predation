@@ -638,3 +638,25 @@ The muzzle correction also keeps only the part of itself that runs along the car
 be applied as it came out of the trace, which is a vector towards whatever surface happened to be
 nearest, so brushing a wall on the left slid the weapon right and down as well as back: a gun being
 knocked out of the hold rather than drawn in.
+
+## ADR-038: Where a weapon sits and where the hand sits are two sockets
+
+**Status**: accepted, 2026-09-10
+
+The carry placed the grip socket, so the trigger hand was at the carry point by construction. That
+made the two impossible to set independently: moving the grip to put the hand somewhere moved the
+whole gun instead, and a hold that was right could never be kept while the gun was nudged on the
+screen. It also produced the editor's ugliest feature, a pin that held the weapon still during a
+drag so the hand would appear to move, which then had to be un-pinned on release so the preview
+would stop lying about where the game puts things.
+
+There is a `carry` socket now. It says where the weapon sits, so moving it moves the gun; `grip`
+says where the trigger hand closes, so moving that moves the hand along the gun. A model without one
+falls back to its grip and behaves exactly as before, and the editor offers to add one where the
+grip is, which changes nothing until it is moved.
+
+The pin is gone with it. So is the six-button nudge that existed only to work around the coupling.
+
+The general shape of the mistake: one value serving as the answer to two questions is not a
+simplification, it is a constraint that nobody wrote down, and it shows up as a tool that cannot
+express what someone is plainly trying to say.

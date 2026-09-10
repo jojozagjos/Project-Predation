@@ -98,12 +98,10 @@ private:
     bool m_benchSockets = true;
     int m_benchWeapon = 0;
     // Placing something that is not a weapon in the hand: which one, and whether it is held.
-    int m_benchItem = 0;
-    bool m_benchHoldItem = false;
+    // Which item the bench is holding, or -1 for the model being edited. One choice, because one
+    // pair of hands holds one thing.
+    int m_benchItem = -1;
     bool m_benchItemHeld = false;
-    // Whether the bench holds the weapon still while sockets are moved. On, because that is what
-    // makes placing a grip legible: the hand walks along the gun instead of the gun moving.
-    bool m_benchHoldStill = true;
 
     // A first-person window onto the editor's own body.
     //
