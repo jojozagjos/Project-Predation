@@ -154,8 +154,13 @@ void PlayerBody::BuildSkeleton(const PlayerConfig& playerConfig)
                                                   LocalOffset(0.0f, 0.0f, 0.0f));
         m_rig.lowerArm[side] = m_skeleton.AddBone("lower_arm" + suffix, m_rig.upperArm[side],
                                                   LocalOffset(0.0f, -m_rig.upperArmLength, 0.0f));
-        m_rig.hand[side] = m_skeleton.AddBone("hand" + suffix, m_rig.lowerArm[side],
-                                              LocalOffset(0.0f, -m_rig.lowerArmLength, 0.0f));
+        // Turned end over end relative to the forearm, so the hand's own +Y runs from the wrist
+        // towards the fingers. Every arm bone in this rig hangs down its parent's -Y, so without
+        // this the hand would point back up the arm and the glove drawn in its frame would sit
+        // above the wrist rather than beyond it.
+        Transform handRest = LocalOffset(0.0f, -m_rig.lowerArmLength, 0.0f);
+        handRest.rotation = glm::angleAxis(glm::pi<float>(), glm::vec3(1.0f, 0.0f, 0.0f));
+        m_rig.hand[side] = m_skeleton.AddBone("hand" + suffix, m_rig.lowerArm[side], handRest);
     }
 
     for (int side = 0; side < 2; ++side)
@@ -280,9 +285,11 @@ void PlayerBody::BuildParts(Scene& scene, MeshLibrary& meshes)
              Ratio::kUpperArmDeep * h, kSuitMaterial);
         limb(fore, m_rig.lowerArm[side], m_rig.hand[side], Ratio::kLowerArmWide * h,
              Ratio::kLowerArmDeep * h, kSuitMaterial);
+        // In the hand bone's own frame, whose +Y runs from the wrist towards the fingers. Drawn in
+        // the body's frame instead, as it was, a glove is a box hanging below the wrist however the
+        // arm is held: reach out to carry something and the hand still points at the floor.
         gear(glove, m_rig.hand[side], {Ratio::kHandWide * h, Ratio::kHandTall * h, Ratio::kHandDeep * h},
-             {0.0f, -0.028f * h, 0.0f},
-             kGloveMaterial);
+             {0.0f, Ratio::kHandTall * 0.34f * h, 0.0f}, kGloveMaterial, PartFrame::BoneFrame);
     }
 
     // --- Legs.
@@ -894,6 +901,18 @@ void PlayerBody::SetWeapon(Scene& scene, MeshLibrary& meshes, const WeaponDefini
                                Material::Emissive({1.0f, 0.78f, 0.36f}, 3.4f));
 }
 
+// Moves the whole drawn weapon, parts and all. The parts carry their own world transforms, worked
+// out when the hold was solved, so moving the weapon afterwards has to move them with it.
+void PlayerBody::ShiftWeapon(const glm::vec3& delta)
+{
+    m_weaponTransform.position += delta;
+    for (Transform& transform : m_weaponPartTransforms)
+    {
+        transform.position += delta;
+    }
+    m_muzzleFlashTransform.position += delta;
+}
+
 glm::vec3 PlayerBody::MuzzlePoint() const
 {
     return m_weaponTransform.position + m_weaponTransform.rotation * m_weaponVisual.muzzle;
@@ -1418,8 +1437,11 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
                          SegmentFrame(m_rig.upperArm[kLeft], shoulder, ik.jointPosition, hinge));
         m_pose.SetGlobal(m_skeleton, m_rig.lowerArm[kLeft],
                          SegmentFrame(m_rig.lowerArm[kLeft], ik.jointPosition, ik.endPosition, hinge));
+        // The hand continues the forearm: its +Y runs from the wrist towards the fingers, which is
+        // the convention the glove is drawn in.
         m_pose.SetGlobal(m_skeleton, m_rig.hand[kLeft],
-                         glm::translate(glm::mat4(1.0f), ik.endPosition) * glm::mat4_cast(rotation));
+                         SegmentFrame(m_rig.hand[kLeft], ik.endPosition,
+                                      ik.endPosition + (ik.endPosition - ik.jointPosition), hinge));
     }
 
     for (int side = firstSide; side < 2; ++side)
@@ -1452,7 +1474,8 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
         m_pose.SetGlobal(m_skeleton, m_rig.lowerArm[side],
                          SegmentFrame(m_rig.lowerArm[side], ik.jointPosition, ik.endPosition, hinge));
         m_pose.SetGlobal(m_skeleton, m_rig.hand[side],
-                         glm::translate(glm::mat4(1.0f), ik.endPosition) * glm::mat4_cast(rotation));
+                         SegmentFrame(m_rig.hand[side], ik.endPosition,
+                                      ik.endPosition + (ik.endPosition - ik.jointPosition), hinge));
     }
 
     return true;
@@ -1578,11 +1601,14 @@ void PlayerBody::UpdateHeldItem(const PlayerState& state, const PlayerView& view
     m_pose.SetGlobal(m_skeleton, m_rig.lowerArm[kRight],
                      SegmentFrame(m_rig.lowerArm[kRight], ik.jointPosition, ik.endPosition, hinge));
     m_pose.SetGlobal(m_skeleton, m_rig.hand[kRight],
-                     glm::translate(glm::mat4(1.0f), ik.endPosition) * glm::mat4_cast(rotation));
+                     SegmentFrame(m_rig.hand[kRight], ik.endPosition,
+                                  ik.endPosition + (ik.endPosition - ik.jointPosition), hinge));
 
-    // Drawn where the hand was asked to be, not where the arm managed to get. The arm is what
-    // stretches when the two disagree; the thing in the hand stays in shot.
-    m_heldItemTransform.position = target;
+    // Drawn in the hand rather than at the point the hand was aimed at. The two differ whenever the
+    // arm cannot quite get there, and the difference is exactly the gap between the glove and the
+    // thing it is supposed to be holding. Carried a little beyond the wrist, where the fingers are.
+    const glm::vec3 palm = glm::normalize(ik.endPosition - ik.jointPosition + glm::vec3(1e-5f));
+    m_heldItemTransform.position = ik.endPosition + palm * (Ratio::kHand * m_rig.height * 0.45f);
     m_heldItemTransform.rotation = rotation;
 
     // Except while climbing, when the hand it is in has gone to the ledge and the carry offset,
@@ -1621,6 +1647,11 @@ void PlayerBody::UpdateMantleArms(const PlayerState& state, float weight)
     const float release = glm::smoothstep(m_config.mantleReleaseAt, 1.0f, t);
     const float grip = (1.0f - release) * weight;
 
+    // Where the trigger hand actually finished, as opposed to where it was aimed.
+    glm::vec3 triggerWrist{0.0f};
+    glm::vec3 triggerPalm{0.0f, 1.0f, 0.0f};
+    bool solvedTrigger = false;
+
     for (int side = 0; side < 2; ++side)
     {
         const float sideSign = side == kLeft ? -1.0f : 1.0f;
@@ -1649,10 +1680,34 @@ void PlayerBody::UpdateMantleArms(const PlayerState& state, float weight)
         m_pose.SetGlobal(m_skeleton, m_rig.lowerArm[side],
                          SegmentFrame(m_rig.lowerArm[side], ik.jointPosition, ik.endPosition, hinge));
         m_pose.SetGlobal(m_skeleton, m_rig.hand[side],
-                         glm::translate(glm::mat4(1.0f), ik.endPosition) *
-                             glm::mat4_cast(BodyRotation()));
+                         SegmentFrame(m_rig.hand[side], ik.endPosition,
+                                      ik.endPosition + (ik.endPosition - ik.jointPosition), hinge));
+
+        if (side == kRight)
+        {
+            triggerWrist = ik.endPosition;
+            triggerPalm = glm::normalize(ik.endPosition - ik.jointPosition + glm::vec3(1e-5f));
+            solvedTrigger = true;
+        }
     }
 
+    // Whatever is in the hands goes where the hands actually got to. The carry that ran earlier
+    // predicts where the trigger hand is heading, because a weapon's parts are placed before the
+    // arms are solved and they have to be placed somewhere. A prediction is not an arm that ran out
+    // of reach on the way to a ledge, and the difference is the gap between the glove and the thing
+    // it is supposed to be holding.
+    if (solvedTrigger && weight > 0.001f)
+    {
+        if (m_hasHeldItem)
+        {
+            m_heldItemTransform.position =
+                triggerWrist + triggerPalm * (Ratio::kHand * m_rig.height * 0.45f);
+        }
+        if (m_hasWeapon)
+        {
+            ShiftWeapon(triggerWrist - m_weaponTransform.position);
+        }
+    }
 }
 
 void PlayerBody::UpdateCrawlArms(const PlayerState& state, const PlayerView& view,
@@ -1746,7 +1801,8 @@ void PlayerBody::UpdateCrawlArms(const PlayerState& state, const PlayerView& vie
         m_pose.SetGlobal(m_skeleton, m_rig.lowerArm[side],
                          SegmentFrame(m_rig.lowerArm[side], ik.jointPosition, ik.endPosition, hinge));
         m_pose.SetGlobal(m_skeleton, m_rig.hand[side],
-                         glm::translate(glm::mat4(1.0f), ik.endPosition) * glm::mat4_cast(BodyRotation()));
+                         SegmentFrame(m_rig.hand[side], ik.endPosition,
+                                      ik.endPosition + (ik.endPosition - ik.jointPosition), hinge));
     }
 }
 

@@ -382,6 +382,8 @@ private:
     // the arm solve and by whatever is being carried, so the two agree.
     bool MantleCarry(const PlayerState& state, glm::vec3& outPoint, glm::quat& outRotation,
                      float& outWeight) const;
+    // Moves the whole drawn weapon, parts and all, after the hold has already been solved.
+    void ShiftWeapon(const glm::vec3& delta);
     // Which way a bone's front faces, carried between frames so a limb's roll can never flip.
     glm::vec3 RollFront(BoneIndex bone, const glm::vec3& axis, const glm::vec3& hinge);
     // Places a limb bone from `a` to `b`, rolled so its front faces the way its joint bends.

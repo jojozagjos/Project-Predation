@@ -1548,7 +1548,7 @@ void PredationGame::DrawTitleScreen()
 
     ImGui::SetNextWindowPos({viewport->WorkPos.x + size.x * 0.5f, viewport->WorkPos.y + size.y * 0.5f},
                             ImGuiCond_Always, {0.5f, 0.5f});
-    ImGui::SetNextWindowSize({420.0f, 0.0f}, ImGuiCond_Always);
+    ImGui::SetNextWindowSize({460.0f, 0.0f}, ImGuiCond_Always);
 
     constexpr ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
                                        ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse |
@@ -1615,7 +1615,7 @@ void PredationGame::DrawTitleScreen()
         static const std::vector<std::string> addresses = LocalNetworkAddresses();
         if (addresses.empty())
         {
-            ImGui::TextDisabled("  no network address found: is this machine on a network?");
+            ImGui::TextDisabled("  no network address found");
         }
         for (const std::string& address : addresses)
         {
@@ -1625,9 +1625,15 @@ void PredationGame::DrawTitleScreen()
                 ImGui::SetClipboardText((address + ":" + std::to_string(m_hostPort)).c_str());
             }
         }
-        ImGui::TextDisabled("  click one to copy. Windows will ask to allow the game through its");
-        ImGui::TextDisabled("  firewall the first time you host: it has to be allowed, on private");
-        ImGui::TextDisabled("  networks, or nobody can reach you.");
+        // Wrapped to the panel rather than broken by hand. Lines written to a width run off the end
+        // of it the moment anything about the panel or the font changes.
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+        ImGui::PushTextWrapPos(0.0f);
+        ImGui::TextUnformatted(
+            "Click one to copy. Windows asks to allow the game through its firewall the first time "
+            "you host. It has to be allowed on private networks, or nobody can reach you.");
+        ImGui::PopTextWrapPos();
+        ImGui::PopStyleColor();
     }
     if (ImGui::Button("Open a game", wide))
     {
@@ -3762,16 +3768,64 @@ void PredationGame::DrawInventoryPanel()
                 ImGui::SetTooltip("%s", definition->name.c_str());
             }
 
-            // One line, clipped to the slot. Wrapping split words across lines and made a tidy grid
-            // look broken.
+            // Up to two lines, broken between words, with anything that still will not fit cut short
+            // and marked as cut. Clipping one line at the slot edge, which is what this did, reads
+            // as a rendering fault rather than as an abbreviation: "Access Keycard" came out as
+            // "Access Keyc" with the c half drawn.
             const std::string label = definition != nullptr ? definition->name : std::string("Empty");
+            const float lineHeight = ImGui::GetTextLineHeight();
+            const ImU32 colour =
+                definition != nullptr ? IM_COL32(220, 222, 230, 255) : IM_COL32(115, 118, 128, 255);
             const ImVec2 caption = ImGui::GetCursorScreenPos();
-            list->PushClipRect(caption, {caption.x + kSlotSize, caption.y + ImGui::GetTextLineHeight()}, true);
-            list->AddText(caption,
-                          definition != nullptr ? IM_COL32(220, 222, 230, 255) : IM_COL32(115, 118, 128, 255),
-                          label.c_str());
-            list->PopClipRect();
-            ImGui::Dummy({kSlotSize, ImGui::GetTextLineHeight()});
+
+            std::vector<std::string> lines;
+            {
+                std::string current;
+                size_t at = 0;
+                while (at <= label.size() && lines.size() < 2)
+                {
+                    const size_t space = label.find(' ', at);
+                    const std::string word = label.substr(at, space - at);
+                    const std::string candidate = current.empty() ? word : current + " " + word;
+                    if (!current.empty() && ImGui::CalcTextSize(candidate.c_str()).x > kSlotSize)
+                    {
+                        lines.push_back(current);
+                        current = word;
+                    }
+                    else
+                    {
+                        current = candidate;
+                    }
+                    if (space == std::string::npos)
+                    {
+                        break;
+                    }
+                    at = space + 1;
+                }
+                if (lines.size() < 2 && !current.empty())
+                {
+                    lines.push_back(current);
+                }
+            }
+            for (std::string& line : lines)
+            {
+                // A single word longer than the slot has nowhere to break, so it is shortened.
+                while (line.size() > 1 && ImGui::CalcTextSize((line + ".").c_str()).x > kSlotSize)
+                {
+                    line.pop_back();
+                }
+                if (ImGui::CalcTextSize(line.c_str()).x > kSlotSize)
+                {
+                    line += ".";
+                }
+            }
+            for (size_t line = 0; line < lines.size(); ++line)
+            {
+                list->AddText({caption.x, caption.y + lineHeight * static_cast<float>(line)}, colour,
+                              lines[line].c_str());
+            }
+            // Always two lines' worth, so a one-word name and a two-word one leave the grid level.
+            ImGui::Dummy({kSlotSize, lineHeight * 2.0f});
 
             ImGui::EndGroup();
         }

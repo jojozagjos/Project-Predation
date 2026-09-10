@@ -1245,7 +1245,10 @@ TEST_CASE("Climbing takes what is in the hands with it", "[body][pose][mantle]")
     const glm::vec3 carried = armed ? harness.body.WeaponOrigin() : harness.body.HeldItemOrigin();
     INFO("armed " << armed << " trigger hand " << hand.x << ", " << hand.y << ", " << hand.z
                   << " carried " << carried.x << ", " << carried.y << ", " << carried.z);
-    CHECK(glm::distance(hand, carried) < 0.25f);
+    // In the hand, not merely near it. The carry that runs before the arms are solved predicts
+    // where the hand is heading, and a prediction is not an arm that ran out of reach on the way to
+    // a ledge: the gap between the two is the gap between the glove and what it is holding.
+    CHECK(glm::distance(hand, carried) < 0.12f);
 
     // And it has gone up to the ledge rather than staying at the height the body started at.
     CHECK(carried.y > from.y + 0.6f);
