@@ -362,6 +362,13 @@ void PlayerBody::BuildForSimulation(const PlayerConfig& playerConfig)
 
 void PlayerBody::Destroy(Scene& scene)
 {
+    // The hands go with the body. Only the body's own parts used to, so a player who left took
+    // their skeleton away and left the rifle they were holding hanging in the air where they had
+    // been standing, with nothing to move it and nobody able to pick it up. The same leak filled a
+    // new game with the last one's guns.
+    DestroyWeapon(scene);
+    scene.Destroy(m_heldItemEntity);
+    m_heldItemEntity = Entity{};
     for (const Part& part : m_parts)
     {
         scene.Destroy(part.entity);

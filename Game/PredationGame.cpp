@@ -932,6 +932,33 @@ void PredationGame::ServeClientRequests()
     {
         SendWorldToPlayer(player);
     }
+
+    // Whatever somebody walked out with goes back on the floor where they were standing. It came
+    // out of the world and it belongs to the world: a player who quits holding the keycard
+    // otherwise takes it with them, and everybody else is left looking at an item hanging in the
+    // air where their body used to be.
+    for (const NetHost::Departure& departure : m_host.TakeDeparted())
+    {
+        for (const auto& [item, count] : departure.carried)
+        {
+            const int index = m_world.SpawnPickup(m_scene, m_app->GetMeshes(), m_app->GetPhysics(),
+                                                  m_interactions, m_items, static_cast<ItemId>(item),
+                                                  count, departure.position + glm::vec3(0.0f, 0.4f, 0.0f),
+                                                  glm::vec3(0.0f));
+            if (index < 0)
+            {
+                continue;
+            }
+            WorldEventMessage event;
+            event.kind = WorldEventKind::PickupSpawned;
+            event.index = static_cast<uint8_t>(index);
+            event.item = item;
+            event.other = static_cast<uint8_t>(count);
+            event.position = departure.position + glm::vec3(0.0f, 0.4f, 0.0f);
+            m_host.Broadcast(event);
+        }
+
+    }
 }
 
 void PredationGame::SendWorldToPlayer(uint8_t player)
@@ -952,6 +979,10 @@ void PredationGame::SendWorldToPlayer(uint8_t player)
         m_host.SendTo(player, event);
     }
 
+    // Every slot, in both directions. Telling them only what has been taken leaves out everything
+    // that has been dropped since, and leaves a slot that has been taken and then filled with
+    // something else showing whatever the map originally put there. Taking first and then spawning
+    // is also how a slot gets corrected: a spawn at an occupied index replaces what is there.
     for (size_t i = 0; i < m_world.Pickups().size(); ++i)
     {
         if (m_world.Pickups()[i].alive)
@@ -962,6 +993,26 @@ void PredationGame::SendWorldToPlayer(uint8_t player)
         event.kind = WorldEventKind::PickupTaken;
         event.index = static_cast<uint8_t>(i);
         event.player = 0;
+        m_host.SendTo(player, event);
+    }
+
+    for (size_t i = 0; i < m_world.Pickups().size(); ++i)
+    {
+        const WorldObjects::Pickup& pickup = m_world.Pickups()[i];
+        if (!pickup.alive)
+        {
+            continue;
+        }
+        WorldEventMessage event;
+        event.kind = WorldEventKind::PickupSpawned;
+        event.index = static_cast<uint8_t>(i);
+        event.item = static_cast<uint16_t>(pickup.item);
+        event.other = static_cast<uint8_t>(pickup.count);
+        event.rounds = LoadToWire(pickup.rounds);
+        event.reserve = LoadToWire(pickup.reserve);
+        event.position = m_app->GetPhysics().IsValid(pickup.body)
+                             ? m_app->GetPhysics().GetTransform(pickup.body).position
+                             : pickup.netPosition;
         m_host.SendTo(player, event);
     }
 
@@ -3796,6 +3847,10 @@ void PredationGame::OnUpdate(double dt, double alpha)
     if (m_screen == Screen::Title && m_sessionMode == SessionMode::Client && m_client.Connected())
     {
         EnterWorld();
+        // And only now ask what has already happened. The world this answer describes exists as of
+        // this line; asked any earlier, the answer arrives before there is anything to apply it to
+        // and the build that follows wipes it.
+        m_client.SendReady();
     }
 
     const float aspect = renderer.Height() > 0

@@ -129,19 +129,23 @@ const char* MessageTypeName(MessageType type)
     case MessageType::Shot: return "Shot";
     case MessageType::WorldState: return "WorldState";
     case MessageType::Drop: return "Drop";
+    case MessageType::Ready: return "Ready";
     case MessageType::Count: break;
     }
     return "Unknown";
 }
 
+// Five bits, not four. Four left room for fifteen message types and there were thirteen, so the
+// next one added would have been unrepresentable and the one after that would have been read as
+// something else entirely.
 void WriteMessageHeader(BitWriter& writer, MessageType type)
 {
-    writer.WriteBits(static_cast<uint32_t>(type), 4);
+    writer.WriteBits(static_cast<uint32_t>(type), kMessageTypeBits);
 }
 
 bool ReadMessageHeader(BitReader& reader, MessageType& outType)
 {
-    const uint32_t raw = reader.ReadBits(4);
+    const uint32_t raw = reader.ReadBits(kMessageTypeBits);
     if (reader.Overran() || raw == 0 || raw >= static_cast<uint32_t>(MessageType::Count))
     {
         return false;

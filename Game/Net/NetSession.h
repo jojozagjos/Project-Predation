@@ -147,6 +147,17 @@ public:
     // Players who have just been let in. The game sends them the state of the world.
     std::vector<uint8_t> TakeJoined() { return std::exchange(m_joined, {}); }
 
+    // Somebody who has gone, and what they were carrying when they went. Whatever the host handed
+    // them belongs to the world, not to a connection: without this it leaves with them, and what is
+    // left behind is their body still holding a copy of it that nobody can take.
+    struct Departure
+    {
+        uint8_t player = 0;
+        glm::vec3 position{0.0f};
+        std::vector<std::pair<uint16_t, int>> carried;
+    };
+    std::vector<Departure> TakeDeparted() { return std::exchange(m_departed, {}); }
+
     void Broadcast(const WorldEventMessage& event);
     // Who is here and where. Sent when the roster changes, so that if this machine goes the players
     // left know where to find each other.
@@ -203,6 +214,7 @@ private:
     std::vector<HistoryEntry> m_history;
     uint32_t m_tick = 0;
     std::vector<uint8_t> m_joined;
+    std::vector<Departure> m_departed;
     Config m_config;
     PhysicsWorld* m_physics = nullptr;
     PlayerConfig m_playerConfig;
@@ -296,6 +308,9 @@ public:
     bool HasWorldState() const { return m_hasWorldState; }
 
     void SendInteract(uint8_t kind, uint8_t index);
+    // Sent once, after this machine has built its world: only then can the host tell it what has
+    // already happened without the answer being thrown away by the build.
+    void SendReady();
     void SendDrop(const DropMessage& drop);
     void SendShot(const ShotMessage& shot);
 

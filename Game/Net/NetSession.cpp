@@ -266,7 +266,6 @@ void NetHost::HandleJoin(PeerId peer, BitReader& reader)
     SendPacket(*m_transport, peer, Channel::Reliable, writer);
 
     PRED_LOG_INFO(Network, "{} joined as player {}", client->name, playerId);
-    m_joined.push_back(playerId);
     m_clients.push_back(std::move(client));
     // After the new client is on the list, not before: sending it first leaves them out of the
     // roster everybody else keeps, and leaves them with no roster at all.
@@ -365,6 +364,17 @@ void NetHost::HandlePacket(const NetPacket& packet)
         request.player = client->playerId;
         request.shot = message;
         m_shotRequests.push_back(request);
+        break;
+    }
+
+    case MessageType::Ready:
+    {
+        // Now, not when they were let in. Their world exists now, so what they are told about it
+        // will still be there a frame later.
+        if (const Client* client = FindClient(packet.peer); client != nullptr)
+        {
+            m_joined.push_back(client->playerId);
+        }
         break;
     }
 
@@ -613,6 +623,23 @@ void NetHost::RemoveClient(PeerId peer)
         return;
     }
     PRED_LOG_INFO(Network, "{} left", (*found)->name);
+
+    // What the host handed them goes back to the world, at their feet. It belongs to the world
+    // rather than to the connection: a player who logs out holding the keycard otherwise takes it
+    // with them and nobody can finish, and what everyone else is left looking at is a body still
+    // holding a copy of something that no longer exists.
+    Departure departure;
+    departure.player = (*found)->playerId;
+    departure.position = (*found)->controller.State().position;
+    for (const auto& [item, count] : (*found)->carried)
+    {
+        if (count > 0)
+        {
+            departure.carried.emplace_back(item, count);
+        }
+    }
+    m_departed.push_back(std::move(departure));
+
     (*found)->controller.Shutdown();
     m_clients.erase(found);
     BroadcastPeerList();
@@ -947,6 +974,17 @@ void NetClient::SendInteract(uint8_t kind, uint8_t index)
     WriteInteract(writer, message);
     // Reliable: opening a door is a thing that happens once, and a lost request is a door that
     // never opens rather than a frame that looks slightly wrong.
+    SendPacket(*m_transport, kHostPeer, Channel::Reliable, writer);
+}
+
+void NetClient::SendReady()
+{
+    if (m_transport == nullptr || !m_welcomed)
+    {
+        return;
+    }
+    BitWriter writer;
+    WriteMessageHeader(writer, MessageType::Ready);
     SendPacket(*m_transport, kHostPeer, Channel::Reliable, writer);
 }
 

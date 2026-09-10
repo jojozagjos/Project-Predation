@@ -21,7 +21,11 @@ namespace pred
 //   - Values are quantised to what the game can actually perceive. A position good to two
 //     millimetres is indistinguishable from a full float and costs less than half as much.
 
-inline constexpr uint16_t kProtocolVersion = 1;
+// Bumped whenever the wire changes shape. Two ends that disagree are refused at the door rather
+// than left to misread each other, which is what a wire mismatch actually looks like from inside.
+inline constexpr uint16_t kProtocolVersion = 2;
+// How many bits name a message type. Five, so there is room to add one.
+inline constexpr uint32_t kMessageTypeBits = 5;
 inline constexpr uint8_t kMaxPlayers = 4;
 inline constexpr uint16_t kDefaultPort = 27015;
 
@@ -45,6 +49,14 @@ enum class MessageType : uint8_t
     Shot,        // client to host, reliable: I pulled the trigger
     WorldState,  // host to client, unreliable: where the loose physics has got to
     Drop,        // client to host, reliable: I am putting this down
+    // client to host, reliable: my world is built, tell me what has already happened.
+    //
+    // The host used to send that the moment it let somebody in, which is a moment too early: a
+    // client builds its world when it leaves the title screen, a frame or more after the welcome
+    // arrives, so every door that had been opened and every item that had been taken was applied to
+    // a world that was then thrown away and rebuilt from the map. Only the client knows when it is
+    // ready, so only the client can ask.
+    Ready,
     Count
 };
 

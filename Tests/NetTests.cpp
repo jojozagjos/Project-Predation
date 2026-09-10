@@ -336,7 +336,7 @@ TEST_CASE("Malformed packets are rejected rather than half-applied", "[net][prot
     SECTION("an unknown message type")
     {
         BitWriter writer;
-        writer.WriteBits(static_cast<uint32_t>(MessageType::Count) + 3u, 4);
+        writer.WriteBits(static_cast<uint32_t>(MessageType::Count) + 3u, kMessageTypeBits);
         const std::vector<uint8_t> bytes = writer.Finish();
         BitReader reader(bytes.data(), bytes.size());
         MessageType type = MessageType::Count;
@@ -644,8 +644,8 @@ TEST_CASE("World events carry only what their kind needs", "[net][protocol]")
         BitWriter writer;
         WriteMessageHeader(writer, MessageType::WorldEvent);
         WriteWorldEvent(writer, sent);
-        // Four bits of message type, four of event kind, six of index and one flag.
-        CHECK(writer.BitsWritten() == 15);
+        // Five bits of message type, four of event kind, six of index and one flag.
+        CHECK(writer.BitsWritten() == 16);
 
         const std::vector<uint8_t>& bytes = writer.Finish();
         BitReader reader(bytes.data(), bytes.size());

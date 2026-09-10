@@ -756,3 +756,53 @@ TEST_CASE("The lowest surviving player takes over when the host goes", "[net][se
     INFO(volunteers << " clients think they should take over");
     CHECK(volunteers == 1);
 }
+
+
+TEST_CASE("A joining client is caught up only once it asks", "[net][session]")
+{
+    // The host used to send the state of the world the instant it let somebody in. A client builds
+    // its world when it leaves the title screen, a frame or more after the welcome arrives, so
+    // every door that had been opened and every item that had been taken landed on a world that was
+    // then thrown away and rebuilt from the map: the joiner saw items still sitting on the table
+    // that everyone else had already taken.
+    NetConditions perfect;
+    Link link(41031, perfect);
+    link.Run(6, PlayerInput{});
+    REQUIRE(link.client.Connected());
+
+    // Nothing yet. Being let in is not the same as being ready for an answer.
+    CHECK(link.host.TakeJoined().empty());
+
+    link.client.SendReady();
+    link.Run(6, PlayerInput{});
+
+    const std::vector<uint8_t> joined = link.host.TakeJoined();
+    REQUIRE(joined.size() == 1);
+    CHECK(joined[0] == link.client.PlayerId());
+}
+
+TEST_CASE("What a departing player was carrying is handed back", "[net][session]")
+{
+    // It came out of the world and it belongs to the world. Without this a player who quits holding
+    // the keycard takes it with them and nobody left can finish.
+    NetConditions perfect;
+    Link link(41032, perfect);
+    link.Run(10, PlayerInput{});
+    REQUIRE(link.host.ConnectedCount() == 1);
+
+    constexpr uint16_t kKeycard = 4;
+    link.host.NoteCarried(link.client.PlayerId(), kKeycard, 1);
+
+    link.client.Disconnect();
+    for (int i = 0; i < 10; ++i)
+    {
+        ++link.tick;
+        link.host.Tick(link.tick, link.hostMachine.player.State(), kTick);
+    }
+
+    const std::vector<NetHost::Departure> departed = link.host.TakeDeparted();
+    REQUIRE(departed.size() == 1);
+    REQUIRE(departed[0].carried.size() == 1);
+    CHECK(departed[0].carried[0].first == kKeycard);
+    CHECK(departed[0].carried[0].second == 1);
+}
