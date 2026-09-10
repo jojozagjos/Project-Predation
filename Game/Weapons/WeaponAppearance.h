@@ -47,7 +47,14 @@ struct WeaponVisual
     glm::vec3 triggerGrip{0.0f};
     glm::vec3 supportGrip{0.0f};    // where the support hand goes
     glm::vec3 muzzle{0.0f};         // where a round appears to leave
-    float sightHeight = 0.0f;       // sight line above the origin; aiming puts this on the view axis
+    // Where the sight line leaves the weapon. Aiming puts this point on the view axis, all three
+    // axes of it: a height alone lines the sights up only while the player is looking level, and a
+    // sight that is off to one side or set back along the rail is off the axis the moment it is not.
+    glm::vec3 sightPoint{0.0f};
+    // The furthest point back along the weapon, which in first person is the point nearest the
+    // camera: on a rifle, the end of the stock. Keeping the grip out of the near plane is not the
+    // same as keeping the weapon out of it, and the difference is a whole buttstock long.
+    glm::vec3 rearPoint{0.0f};
 
     // Present only for authored models, and only so their animation clips can be played.
     std::shared_ptr<const ModelAsset> asset;

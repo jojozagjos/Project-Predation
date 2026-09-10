@@ -70,13 +70,31 @@ public:
         float crouchStepScale = 0.50f;
         float footPlantSmoothing = 22.0f;
         float weaponHandSmoothing = 26.0f;
-        // Where a weapon sits when it is carried rather than aimed, in the view frame. Close enough
-        // to the axis to be on screen: at a 90 degree horizontal field of view anything at arm's
-        // length below the chin is outside the frame entirely.
-        float weaponReadyRight = 0.185f;
-        float weaponReadyDown = -0.205f;
-        float weaponReadyForward = 0.56f;
+        // Where the trigger grip sits when a weapon is carried rather than aimed, in the view frame.
+        //
+        // Further out and less far down than a real hand would be, and deliberately. At a 90 degree
+        // horizontal field of view the frame stops about 29 degrees below the view axis, and a hand
+        // held where a hand actually goes is below that: the whole weapon drops off the bottom of
+        // the screen and the player is holding something they cannot see. The ratio of the drop to
+        // the reach is what decides whether it is in frame, and half of it puts the hold just
+        // inside the bottom edge, which is where a carried weapon belongs.
+        float weaponReadyRight = 0.145f;
+        float weaponReadyDown = -0.190f;
+        float weaponReadyForward = 0.38f;
         float weaponAimForward = 0.42f;
+        // And how that carry changes for something short. A pistol is not held where a carbine is:
+        // there is no stock to tuck in, both hands go on the one grip, and the whole thing is
+        // pushed out and up towards the eye line on the middle of the body. Held at a carbine's
+        // grip it points at the floor beside your hip with a forearm across half the screen.
+        // Blended in by how short the weapon is, so nothing has to be told which it is.
+        float weaponShortForward = 0.04f;  // further out
+        float weaponShortRise = 0.045f;    // and higher
+        float weaponShortRight = -0.06f;   // and in towards the middle, where two hands can meet
+        // How far the muzzle is turned in across the body while the weapon is carried, in degrees.
+        // A rifle held ready is angled inwards, not pointed straight down the lane, and the angle
+        // is what brings the support hand back towards the centre line where the other arm can
+        // actually reach it: held square, the handguard sits out beyond the left arm entirely.
+        float weaponReadyInward = 7.0f;
         // However crowded it gets, the sights never come closer to the eye than this. The pull-back
         // against a wall is measured from the eye, so at full aim it pulls the weapon straight down
         // the view axis and into the player's face: the near plane cuts the receiver open and you
@@ -104,6 +122,10 @@ public:
         // The eye sits above and behind the hold, so pulling in without a floor eventually pulls it
         // into the camera, and the near plane then cuts the receiver open.
         float weaponMinForward = 0.20f;
+        // And the back of the weapon never comes closer to the eye plane than this. The floor above
+        // holds the grip out; a stock is a further quarter of a metre behind the grip, and it is the
+        // stock that ends up on the wrong side of the near plane when a corridor closes in.
+        float weaponRearMinForward = 0.06f;
         // How far the muzzle drops when there is a wall in front of it, in degrees. Lowering is what
         // makes room; pulling back only moves the problem from the wall to the camera.
         float weaponWallLower = 62.0f;
@@ -344,6 +366,10 @@ public:
     glm::vec3 MuzzlePoint() const;
     // Where the weapon is held. Exposed so a test can check the hand is actually on it.
     glm::vec3 WeaponOrigin() const { return m_weaponTransform.position; }
+    // The point on the weapon the carry tuning actually places: the trigger grip while it is
+    // carried, the sight once it is up, and a blend of the two on the way between. The model's
+    // origin is wherever it was authored around and means nothing on its own.
+    glm::vec3 HoldPoint() const { return m_weaponHold; }
     // Which way the held weapon is turned, so a socket on it can be put into world space.
     glm::quat WeaponRotation() const { return m_weaponTransform.rotation; }
     // What is being held, for the weapon bench: its sockets are what the hands are placed by.
@@ -352,8 +378,7 @@ public:
     // the whole of what aiming means, so it is worth being able to measure.
     glm::vec3 SightPoint() const
     {
-        return m_weaponTransform.position +
-               m_weaponTransform.rotation * glm::vec3(0.0f, m_weaponVisual.sightHeight, 0.0f);
+        return m_weaponTransform.position + m_weaponTransform.rotation * m_weaponVisual.sightPoint;
     }
     // How far a joint keeps off the floor once the body is a ragdoll, sized to what is drawn at it.
     float BoneRadius(BoneIndex bone) const
@@ -460,6 +485,9 @@ private:
     Entity m_weaponEntity;  // the first part, and what HasWeapon asks about
     Entity m_muzzleFlashEntity;
     Transform m_weaponTransform;
+    // Where the carry tuning put the hold this frame, in world space. Kept so the point the floors
+    // act on can be measured rather than guessed at from the origin.
+    glm::vec3 m_weaponHold{0.0f};
     Transform m_muzzleFlashTransform;
     WeaponVisual m_weaponVisual;
     WeaponId m_weaponId = kInvalidWeapon;

@@ -438,3 +438,35 @@ come down.
 
 The model cache had to learn to forget, or the editor and the hands holding the model disagree until
 the game is restarted, which is exactly the loop the bench exists to close.
+
+## ADR-028: A weapon is carried by a named point on it, not by its origin
+
+**Status**: accepted, 2026-09-10
+
+The carry tuning placed the model's origin at an offset from the eye. That is meaningful only while
+every weapon is built here with its origin on the grip. An imported model's origin is wherever the
+person who made it left it, which for both guns that arrived is the middle of the receiver: the
+whole carbine sat a hand-span too far forward, the support arm was left pointing at a handguard 21
+centimetres beyond its reach, and the stock ended up in the camera.
+
+What the tuning places is now a named point on the weapon. Carried, that is the trigger grip, so
+the numbers read as where the firing hand is. Sighted, it is the sight socket, so aiming lines the
+sight up on the view axis in all three axes rather than in height alone; the old version put the
+sight at the right height and left it wherever it happened to be along and across, which is why the
+sights drifted off centre as soon as the player aimed anywhere but level. Everything that clamps the
+hold - the floor that keeps it out of the camera, the clamp that keeps it inside the arm's reach -
+measures that point too, for the same reason.
+
+Two smaller things follow from it. The back of the weapon is measured as well, because a floor on
+the grip is not a floor on the stock, and the difference is a whole buttstock; it is enforced only
+while aiming, since a carried weapon hangs low and to the right where the near plane never reaches
+it. And a socket is where the palm closes, while the arm chain ends at the wrist, so the wrist is
+now placed a hand's length short of the socket. Driving the wrist onto the socket put the joint
+inside the weapon and charged the arm for a hand it does not have.
+
+The carry itself is further out and less far down than a real hand. At a 90 degree horizontal field
+of view the frame stops about 29 degrees below the axis, and a hand where a hand actually goes is
+below that: the weapon drops off the bottom of the screen entirely. Holding the drop to about half
+the reach puts it just inside the bottom edge. Short weapons are pushed out, up and in towards the
+middle from there, blended by the weapon's own length, because a pistol held at a carbine's grip
+points at the floor beside your hip.

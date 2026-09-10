@@ -173,11 +173,32 @@ WeaponVisual FromModel(const ModelAsset& model, const WeaponDefinition& definiti
     }
     if (const ModelSocket* socket = model.FindSocket("sight"))
     {
-        visual.sightHeight = socket->position.y;
+        visual.sightPoint = socket->position;
     }
     else
     {
-        visual.sightHeight = height * 0.76f;
+        visual.sightPoint = {0.0f, height * 0.76f, visual.triggerGrip.z + length * 0.20f};
+    }
+
+    // Measured rather than named, because no exporter marks the back of a stock and nobody would
+    // remember to place a socket there. Taken from the drawn geometry so it means the same thing for
+    // an imported model as for one built from numbers.
+    {
+        float back = 0.0f;
+        bool any = false;
+        for (const WeaponVisual::Part& part : visual.parts)
+        {
+            for (const MeshVertex& vertex : part.mesh.vertices)
+            {
+                const glm::vec3 inWeapon = glm::vec3(part.rest * glm::vec4(vertex.position, 1.0f));
+                if (!any || inWeapon.z < back)
+                {
+                    back = inWeapon.z;
+                    any = true;
+                }
+            }
+        }
+        visual.rearPoint = {0.0f, visual.triggerGrip.y, any ? back : visual.triggerGrip.z};
     }
     return visual;
 }

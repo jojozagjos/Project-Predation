@@ -1108,14 +1108,23 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
     // is what anyone does with a rifle indoors.
     const float forwardScale = glm::mix(1.0f, m_config.weaponWallForward, crowded);
 
-    const glm::vec3 readyOffset = carryRight * m_config.weaponReadyRight +
-                                  carryUp * m_config.weaponReadyDown +
-                                  carryForward * (m_config.weaponReadyForward * forwardScale);
+    // How short the weapon is, from the weapon itself rather than from anything anyone had to
+    // write down: a metre-long carbine reads zero, a pistol reads one, and a submachine gun lands
+    // somewhere sensible in between without being a third case in the data.
+    const float weaponLength =
+        std::max(m_weaponVisual.muzzle.z - m_weaponVisual.rearPoint.z, 0.05f);
+    const float shortness = glm::clamp((0.52f - weaponLength) / 0.30f, 0.0f, 1.0f);
+
+    const glm::vec3 readyOffset =
+        carryRight * (m_config.weaponReadyRight + m_config.weaponShortRight * shortness) +
+        carryUp * (m_config.weaponReadyDown + m_config.weaponShortRise * shortness) +
+        carryForward *
+            ((m_config.weaponReadyForward + m_config.weaponShortForward * shortness) * forwardScale);
     // Never closer than the minimum, however crowded it is: at full aim the pull-back runs straight
     // down the view axis, so an unclamped one puts the receiver through the near plane.
     const float aimForwardDistance =
         std::max(m_config.weaponAimForward * forwardScale, m_config.weaponAimMinForward);
-    const glm::vec3 sightedOffset = aimForward * aimForwardDistance - aimUp * m_weaponVisual.sightHeight;
+    const glm::vec3 sightedOffset = aimForward * aimForwardDistance;
 
     // Prone puts it down beside the body, muzzle forward, out of the way of the arm that is doing
     // the crawling.
@@ -1179,7 +1188,10 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
         LookRotation(carryForward, carryUp) *
         glm::angleAxis(glm::radians(-9.0f + m_config.weaponWallLower * crowded),
                        glm::vec3(1.0f, 0.0f, 0.0f)) *
-        glm::angleAxis(glm::radians(-4.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        glm::angleAxis(glm::radians(-4.0f), glm::vec3(0.0f, 0.0f, 1.0f)) *
+        // Turned in across the body. A positive turn about +Y sends the barrel to the right, so
+        // inwards is negative.
+        glm::angleAxis(glm::radians(-m_config.weaponReadyInward), glm::vec3(0.0f, 1.0f, 0.0f));
     glm::quat rotation = glm::slerp(ready, sighted, aim);
 
     // Peeking rolls the weapon with the head. The roll is already in the aim frame above, so the
@@ -1295,7 +1307,18 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
     rotation = glm::angleAxis(sway.x, carryUp) * glm::angleAxis(sway.y, carryRight) * rotation;
     offset += carryRight * (sway.x * 0.16f) + carryUp * (sway.y * 0.16f);
 
-    m_weaponTransform.position = view.eyePosition + offset;
+    // The offset says where the *hold* goes, not where the model's origin goes, and the two are
+    // only the same thing for a weapon built procedurally with its origin on the grip. An imported
+    // model has its origin wherever the person who made it left it, which for both guns that
+    // arrived is the middle of the receiver: carrying by the origin put the whole carbine a
+    // hand-span too far forward, and the support arm was left pointing at a handguard 21 cm out of
+    // its reach.
+    //
+    // Held ready, the point carried is the trigger grip, so the tuning below reads as where the
+    // firing hand is. Sighted, it is the sight itself, which is what puts the sight block on the
+    // view axis in all three axes rather than only in height.
+    const glm::vec3 holdPoint = glm::mix(m_weaponVisual.triggerGrip, m_weaponVisual.sightPoint, aim);
+    m_weaponTransform.position = view.eyePosition + offset - rotation * holdPoint;
     m_weaponTransform.rotation = rotation;
     m_weaponTransform.scale = glm::vec3(1.0f);
 
@@ -1323,14 +1346,32 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
     // Given that choice the camera wins, because a barrel tip in the bricks is something nobody
     // looks at and a receiver through the near plane fills the screen. Lowering the muzzle is what
     // makes the choice rare.
+    //
+    // Measured at the hold rather than at the model's origin, which is the only reading that means
+    // anything across models: these two numbers were tuned when a weapon's origin was its grip, and
+    // an imported one has its origin in the middle of the receiver a hand-span further forward.
     {
         const float floorDistance =
             glm::mix(m_config.weaponMinForward, m_config.weaponAimMinForward, aim);
         const glm::vec3 along = aim > 0.5f ? aimForward : carryForward;
-        const float reach = glm::dot(m_weaponTransform.position - view.eyePosition, along);
-        if (reach < floorDistance)
+        const glm::vec3 held = m_weaponTransform.position + m_weaponTransform.rotation * holdPoint;
+        const glm::vec3 rear =
+            m_weaponTransform.position + m_weaponTransform.rotation * m_weaponVisual.rearPoint;
+        // Two floors, whichever needs the bigger push: the hold stays out at arm's length, and the
+        // back of the stock stays in front of the near plane.
+        //
+        // The second one only matters while aiming, and it is faded in with the sights rather than
+        // applied throughout. Carried, the stock hangs low and to the right, so a stock level with
+        // the eye is behind the camera and off to one side of a frustum that has no width there at
+        // all: nothing is drawn and nothing is cut. Sighted, the whole weapon lies along the view
+        // axis, and then the near plane really does slice the receiver open. Enforcing it while
+        // carried buys nothing and pushes the muzzle further into every wall.
+        const float rearFloor = glm::mix(-0.30f, m_config.weaponRearMinForward, aim);
+        const float push = std::max(floorDistance - glm::dot(held - view.eyePosition, along),
+                                    rearFloor - glm::dot(rear - view.eyePosition, along));
+        if (push > 0.0f)
         {
-            m_weaponTransform.position += along * (floorDistance - reach);
+            m_weaponTransform.position += along * push;
         }
     }
 
@@ -1347,6 +1388,9 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
     {
         const glm::vec3 shoulder = m_pose.GlobalPosition(m_rig.shoulder[kRight]);
         const float reach = (m_rig.upperArmLength + m_rig.lowerArmLength) * 0.94f;
+        // The grip, not the origin. Measuring the origin let an imported weapon sit with its grip
+        // well past the arm's reach while the point being checked was still inside it.
+        const glm::vec3 gripOffset = m_weaponTransform.rotation * m_weaponVisual.triggerGrip;
 
         // Aiming, the hold comes back along the sight line rather than in towards the shoulder.
         // Sliding along that line leaves the sight on it; pulling across it is what took the sights
@@ -1354,20 +1398,25 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
         // furthest from the shoulder and the clamp bites hardest.
         if (aim > 0.5f)
         {
-            for (int step = 0;
-                 step < 40 && glm::distance(m_weaponTransform.position, shoulder) > reach; ++step)
+            for (int step = 0; step < 40 && glm::distance(m_weaponTransform.position + gripOffset,
+                                                          shoulder) > reach;
+                 ++step)
             {
                 m_weaponTransform.position -= aimForward * 0.02f;
             }
         }
 
-        const glm::vec3 toGrip = m_weaponTransform.position - shoulder;
+        const glm::vec3 toGrip = m_weaponTransform.position + gripOffset - shoulder;
         const float distance = glm::length(toGrip);
         if (distance > reach && distance > 1e-4f)
         {
-            m_weaponTransform.position = shoulder + toGrip * (reach / distance);
+            m_weaponTransform.position = shoulder + toGrip * (reach / distance) - gripOffset;
         }
     }
+
+    // Recorded after every correction, so what is measured is where the hold ended up rather than
+    // where it was asked to go.
+    m_weaponHold = m_weaponTransform.position + m_weaponTransform.rotation * holdPoint;
 
     // Every part rides the weapon's frame. A model authored in the editor can carry its own clip
     // for a reload, in which case that is what moves its parts; otherwise the built-in magazine
@@ -1483,6 +1532,17 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
     // --- Hands ----------------------------------------------------------------------------------
     //
     const float armSpan = (m_rig.upperArmLength + m_rig.lowerArmLength) * 0.94f;
+    // A socket is where the palm closes, and the arm chain ends at the wrist, which is a hand's
+    // length short of that. Driving the wrist onto the socket put the joint inside the weapon and
+    // the fingers out the far side of it, and it charged the arm for a hand it does not have: the
+    // support hand was called out of reach while the fingers would have closed comfortably.
+    constexpr float kWristBack = 0.075f;
+    const auto wristFor = [](const glm::vec3& socket, const glm::vec3& shoulder)
+    {
+        const glm::vec3 out = socket - shoulder;
+        const float distance = glm::length(out);
+        return distance > 1e-4f ? socket - out * (kWristBack / distance) : socket;
+    };
     const glm::vec3 barrel = rotation * glm::vec3(0.0f, 0.0f, 1.0f);
     const glm::vec3 weaponUp = rotation * glm::vec3(0.0f, 1.0f, 0.0f);
     const glm::vec3 weaponRight = glm::cross(barrel, weaponUp);
@@ -1500,10 +1560,19 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
     // chain draws the arm as a straight bar pointing at the target. Slide the support hand back
     // along the barrel until it is within reach instead: a shorter hold looks like a hold, a
     // straight arm looks broken.
+    //
+    // How far back it may slide is measured from the trigger grip, not from the model's origin. An
+    // imported model's origin is the middle of its receiver, which on the carbine is a hand-span in
+    // front of the grip: the slide stopped there with the hand still 21 cm short of anything, and
+    // the arm drew as a straight bar. The floor is one hand's width ahead of the trigger hand,
+    // which is as close as two hands can get without sharing a knuckle.
     {
         const glm::vec3 leftShoulder = m_pose.GlobalPosition(m_rig.shoulder[kLeft]);
-        while (glm::length(gripPoints[kLeft] - leftShoulder) > armSpan &&
-               glm::dot(gripPoints[kLeft] - m_weaponTransform.position, barrel) > 0.02f)
+        constexpr float kHandsApart = 0.11f;
+        const float nearest = glm::dot(m_weaponVisual.triggerGrip, glm::vec3(0.0f, 0.0f, 1.0f)) +
+                              kHandsApart;
+        while (glm::length(gripPoints[kLeft] - leftShoulder) > armSpan + kWristBack &&
+               glm::dot(gripPoints[kLeft] - m_weaponTransform.position, barrel) > nearest)
         {
             gripPoints[kLeft] -= barrel * 0.02f;
         }
@@ -1577,7 +1646,19 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
         FootState& hand = m_hands[static_cast<size_t>(side)];
         // Placed, not smoothed. A hand holding a weapon is rigidly attached to it, so any smoothing
         // here shows up as the grip sliding off the gun whenever the player turns.
-        hand.position = gripPoints[side];
+        hand.position = wristFor(gripPoints[side], shoulder);
+        // And never further out than the arm goes. The slide above works from the pose as it was
+        // before the spine and shoulders were written this frame, so the shoulder has usually moved
+        // a couple of centimetres by the time the arm is solved, and a couple of centimetres is the
+        // difference between a bent elbow and a locked one. This is the last word on it.
+        {
+            const glm::vec3 toWrist = hand.position - shoulder;
+            const float outTo = glm::length(toWrist);
+            if (outTo > armSpan && outTo > 1e-4f)
+            {
+                hand.position = shoulder + toWrist * (armSpan / outTo);
+            }
+        }
         hand.planted = true;
 
         // Elbows drop and swing outwards, away from the ribs. Aiming tucks them in, which is what

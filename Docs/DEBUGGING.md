@@ -139,9 +139,12 @@ The loop, end to end:
 2. `editor <name>` opens it. Parts, sockets and clips are all here.
 3. `bench` opens the weapon bench beside it. Point a weapon at the model, put it in your hands, and
    play the reload and the draw.
-4. The bench prints how far each hand is from the socket it is meant to be holding, and draws a line
-   between them in the world. Move the socket in the editor, save, press "Reload from disk" on the
-   bench, and watch the number come down. Under three centimetres reads as held.
+4. The bench says whether each hand is on its socket, how far behind it the wrist sits, and how much
+   of the arm's reach is being used. A wrist sits about seven centimetres behind whatever the palm
+   closes on, so seven is what a hand properly on a grip reads. The number to watch is the reach: an
+   arm at its full reach is one with the elbow locked straight, which stops looking like a hold.
+   Move the socket in the editor, save, press "Reload from disk" on the bench, and watch it come
+   down.
 5. `camera third` to watch it from outside.
 
 Nothing the bench does is written to `weapons.json`. Once a model is right, set its name in that
@@ -167,9 +170,16 @@ What is in it:
 - **Animation**: clips named `reload`, `equip` and `fire` replace the built-in movements of the same
   name. Anything else is yours, and playable from the panel that holds the weapon.
 - **Hold it**: the game's own body, holding whatever is open. It stands, crouches, lies down, walks
-  on the spot, aims, draws, reloads and fires. It prints how far each hand is from the socket it is
-  meant to be holding, which is the only way to place a grip: the question is where the hand ends
-  up, not what the model looks like. Under three centimetres reads as held.
+  on the spot, aims, draws, reloads and fires. It says whether each hand is on its socket and how
+  hard the arm is working to hold it, which is the only way to place a grip: the question is where
+  the hand ends up, not what the model looks like.
+
+Where the sockets go, in practice. The weapon is carried by its `grip`, so that socket decides where
+the whole model sits relative to the player: put it on the stock and the gun ends up a hand-span too
+far forward with its butt in the camera. `support` has to be somewhere the other arm can reach with
+the weapon out where the camera can see it, which is closer to `grip` than a photograph of someone
+shooting suggests; the support hand slides back down the barrel on its own when it cannot reach, so
+a socket that is too far forward shows up as a hand that is not on it.
 
 Keys: right mouse to look with WASD while held, left click to select, drag a handle to move, Ctrl+Z
 and Ctrl+Y, F to put the view back on the model, Escape to leave.

@@ -1,9 +1,11 @@
 #include "Engine/Animation/IK.h"
+#include "Engine/Core/Paths.h"
 #include "Engine/Physics/PhysicsWorld.h"
 #include "Engine/Scene/Scene.h"
 #include "Game/Player/PlayerBody.h"
 #include "Game/Player/PlayerController.h"
 #include "Game/Weapons/WeaponAppearance.h"
+#include "Game/Weapons/WeaponDatabase.h"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -1566,8 +1568,11 @@ TEST_CASE("A weapon against a wall comes down rather than into the camera", "[bo
     }
 
     const glm::vec3 eye = harness.View().eyePosition;
-    const float along = glm::dot(harness.body.WeaponOrigin() - eye, harness.View().Forward());
-    INFO("hold sits " << along << " m down the view axis");
+    // The hold, not the origin. What the tuning places is the grip while a weapon is carried and
+    // the sight once it is up; the origin is wherever the model happened to be authored around, and
+    // for an imported one that is a hand-span away from either.
+    const float along = glm::dot(harness.body.HoldPoint() - eye, harness.View().Forward());
+    INFO("the hold sits " << along << " m down the view axis");
     // Far enough out that the near plane, at five centimetres, is nowhere near it.
     CHECK(along > harness.body.Tuning().weaponMinForward - 0.02f);
 
@@ -1638,4 +1643,125 @@ TEST_CASE("A carried item sits in the hand carrying it", "[body][pose]")
 
     INFO("furthest the item got from the hand: " << worst << " m, at " << at << " degrees");
     CHECK(worst < 0.12f);
+}
+
+
+TEST_CASE("Both hands reach the grips on the shipped weapons", "[body][pose][weapons]")
+{
+    // The bench panel reported the support hand missing the carbine's handguard by 21.9 cm, which
+    // is not a hold: it is one hand on the gun and one hand in the air beside it. The support hand
+    // is allowed to slide back along the barrel when the socket is out of reach, so the check is
+    // not that it lands on the socket but that it lands on the weapon, between the two grips, and
+    // that the arm is not stretched straight to get there.
+    Paths::Init(nullptr, std::filesystem::path(PRED_SOURCE_DIR) / "Assets");
+    ForgetWeaponModels();
+
+    WeaponDatabase weapons;
+    REQUIRE(weapons.LoadFromFile(std::filesystem::path(PRED_SOURCE_DIR) / "Assets" / "Data" /
+                                 "weapons.json"));
+
+    for (const char* key : {"carbine", "sidearm"})
+    {
+        const WeaponDefinition* definition = weapons.Find(key);
+        REQUIRE(definition != nullptr);
+
+        BodyHarness harness;
+        harness.SetStance(PlayerStance::Standing);
+        harness.Settle(120);
+        harness.body.SetWeaponForSimulation(definition);
+        harness.Settle(120);
+
+        const WeaponVisual& visual = harness.body.Weapon();
+        const glm::vec3 origin = harness.body.WeaponOrigin();
+        const glm::quat hold = harness.body.WeaponRotation();
+        const glm::vec3 triggerSocket = origin + hold * visual.triggerGrip;
+        const glm::vec3 supportSocket = origin + hold * visual.supportGrip;
+        const glm::vec3 trigger = harness.Bone(harness.Rig().hand[1]);
+        const glm::vec3 support = harness.Bone(harness.Rig().hand[0]);
+
+        const glm::vec3 leftShoulder = harness.Bone(harness.Rig().shoulder[0]);
+        INFO(key << ": trigger hand off by " << glm::distance(trigger, triggerSocket) * 100.0f
+                 << " cm, support hand off by " << glm::distance(support, supportSocket) * 100.0f
+                 << " cm");
+        const glm::vec3 eye = harness.View().eyePosition;
+        const glm::vec3 holdLocal = harness.body.HoldPoint() - eye;
+        const glm::vec3 shoulderLocal = leftShoulder - eye;
+        INFO(key << ": hold at " << holdLocal.x << ", " << holdLocal.y << ", " << holdLocal.z
+                 << " from the eye; left shoulder at " << shoulderLocal.x << ", " << shoulderLocal.y
+                 << ", " << shoulderLocal.z);
+        INFO(key << ": left shoulder to support socket " << glm::distance(leftShoulder, supportSocket)
+                 << " m, to the weapon origin " << glm::distance(leftShoulder, origin)
+                 << " m, arm span " << (harness.Rig().upperArmLength + harness.Rig().lowerArmLength)
+                 << " m");
+        INFO(key << ": support socket in weapon space " << visual.supportGrip.x << ", "
+                 << visual.supportGrip.y << ", " << visual.supportGrip.z << "  trigger "
+                 << visual.triggerGrip.x << ", " << visual.triggerGrip.y << ", "
+                 << visual.triggerGrip.z);
+
+        // The trigger hand is rigid: it holds the socket it was given or the weapon is not held.
+        // A wrist sits a hand's length behind the point the palm closes on, so what is checked is
+        // that the socket is inside the hand rather than under the wrist joint.
+        CHECK(glm::distance(trigger, triggerSocket) < 0.10f);
+
+        // The support hand is on the barrel line, whether or not it reached the socket.
+        const glm::vec3 barrel = hold * glm::vec3(0.0f, 0.0f, 1.0f);
+        const float along = glm::dot(support - origin, barrel);
+        const glm::vec3 onLine = origin + barrel * along;
+        INFO(key << ": support hand sits " << glm::distance(support, onLine) * 100.0f
+                 << " cm off the barrel line, " << along * 100.0f << " cm along it");
+        CHECK(glm::distance(support, onLine) < 0.10f);
+
+        // And it is in front of the trigger hand rather than folded back behind it. Wrist against
+        // wrist, because both sit a hand's length back from what they are holding and comparing one
+        // against the other's socket makes a pistol's two-handed grip look inside out.
+        const float triggerAlong = glm::dot(trigger - origin, barrel);
+        INFO(key << ": support wrist at " << along * 100.0f << " cm along the barrel, trigger wrist at "
+                 << triggerAlong * 100.0f << " cm");
+        CHECK(along > triggerAlong + 0.03f);
+
+        // Not stretched straight. A fully extended IK chain is what an unreachable target looks
+        // like, and it is the part of this that reads as broken from outside.
+        const float reach = glm::distance(support, harness.Bone(harness.Rig().shoulder[0]));
+        const float span = harness.Rig().upperArmLength + harness.Rig().lowerArmLength;
+        INFO(key << ": support arm reaching " << reach << " m of " << span << " m");
+        CHECK(reach < span * 0.97f);
+    }
+}
+
+
+TEST_CASE("Sighted, the whole weapon stays in front of the near plane", "[body][pose][weapons]")
+{
+    // Aiming lays the weapon along the view axis, which is the one time every part of it is in the
+    // middle of the frustum. Placing it by its origin left the stock behind the camera there, and
+    // the near plane cut the receiver open: you ended up looking at the inside of your own gun.
+    // Carried, the same weapon hangs low and to the right and none of this applies, which is why
+    // the floor fades in with the sights.
+    BodyHarness harness;
+    WeaponDefinition weapon;
+    weapon.id = 1;
+    weapon.key = "test_rifle";
+    weapon.size = {0.06f, 0.16f, 0.62f};
+    harness.body.SetWeaponForSimulation(&weapon);
+
+    PlayerBody::WeaponPose pose;
+    pose.aim = 1.0f;
+    for (int i = 0; i < 60; ++i)
+    {
+        harness.body.SetWeaponPose(pose);
+        harness.Settle(4);
+    }
+
+    const glm::vec3 eye = harness.View().eyePosition;
+    const glm::vec3 forward = harness.View().Forward();
+    const glm::vec3 rear =
+        harness.body.WeaponOrigin() + harness.body.WeaponRotation() * harness.body.Weapon().rearPoint;
+    const float along = glm::dot(rear - eye, forward);
+    INFO("the back of the weapon sits " << along << " m down the view axis");
+    CHECK(along > harness.body.Tuning().weaponRearMinForward - 0.005f);
+
+    // And the sight itself is on the axis, which is the whole point of raising it.
+    const glm::vec3 toSight = harness.body.SightPoint() - eye;
+    const float across = glm::length(toSight - forward * glm::dot(toSight, forward));
+    INFO("the sight sits " << across << " m off the view axis");
+    CHECK(across < 0.02f);
 }

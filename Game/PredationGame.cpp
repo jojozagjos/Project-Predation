@@ -2591,6 +2591,10 @@ void PredationGame::DrawWeaponBench()
         return;
     }
 
+    // Everything in here wraps to the panel. The explanations are the useful part of this window
+    // and a sentence that runs off the right edge is worse than no sentence: it reads as a bug.
+    ImGui::PushTextWrapPos(0.0f);
+
     ImGui::TextDisabled("Whatever is open in the editor, in someone's hands.");
     ImGui::Separator();
 
@@ -2627,9 +2631,9 @@ void PredationGame::DrawWeaponBench()
     const ModelAsset& model = m_editor.Model();
     if (model.clips.empty())
     {
-        ImGui::TextDisabled("No clips on this model, so the built-in reload and draw are playing.");
-        ImGui::TextDisabled("Add one under Animation to author your own. Name it reload, equip");
-        ImGui::TextDisabled("or fire and the game will play it instead of the built-in one.");
+        ImGui::TextDisabled("No clips on this model, so the built-in reload and draw are playing. "
+                            "Add one under Animation to author your own. Name it reload, equip or "
+                            "fire and the game will play it instead of the built-in one.");
     }
     else
     {
@@ -2656,8 +2660,8 @@ void PredationGame::DrawWeaponBench()
         if (model.FindPart("magazine") == nullptr)
         {
             ImGui::TextColored({0.90f, 0.70f, 0.45f, 1.0f},
-                               "No part called 'magazine', so the built-in reload has");
-            ImGui::TextColored({0.90f, 0.70f, 0.45f, 1.0f}, "nothing to take out.");
+                               "No part called 'magazine', so the built-in reload has nothing to "
+                               "take out. Rename the part that is one and it will move.");
         }
     }
 
@@ -2668,20 +2672,41 @@ void PredationGame::DrawWeaponBench()
     const WeaponVisual& visual = m_editorBody.Weapon();
     const glm::quat hold = m_editorBody.WeaponRotation();
     const glm::vec3 origin = m_editorBody.WeaponOrigin();
-    const auto report = [&](const char* label, const glm::vec3& socket, BoneIndex bone)
+    // Two separate questions, and they used to be answered by one number that could not tell them
+    // apart. A wrist sits a hand's length behind whatever the palm closes on, so a hand properly on
+    // a grip still reads several centimetres away from it, and a support hand that slid back down
+    // the barrel because the socket was out of reach read as a much larger miss than a hand that
+    // simply could not get there. The useful readings are whether the fingers close on the socket,
+    // and how hard the arm is working to hold that.
+    const auto report = [&](const char* label, const glm::vec3& socket, int side)
     {
         const glm::vec3 world = origin + hold * socket;
-        const float gap = glm::distance(world, m_editorBody.GetPose().GlobalPosition(bone));
-        ImGui::TextColored(gap < 0.03f ? ImVec4(0.65f, 0.85f, 0.65f, 1.0f)
-                                       : ImVec4(0.90f, 0.70f, 0.45f, 1.0f),
-                           "%s hand missed its socket by %.1f cm", label, gap * 100.0f);
+        const glm::vec3 wrist = m_editorBody.GetPose().GlobalPosition(m_editorBody.Rig().hand[side]);
+        const glm::vec3 shoulder =
+            m_editorBody.GetPose().GlobalPosition(m_editorBody.Rig().shoulder[side]);
+        const float gap = glm::distance(world, wrist);
+        const float span =
+            m_editorBody.Rig().upperArmLength + m_editorBody.Rig().lowerArmLength;
+        const float working = glm::distance(wrist, shoulder) / std::max(span, 1e-3f);
+
+        // A hand is about eleven centimetres from wrist to closed fingers, so anything inside that
+        // is a hand on the grip. Beyond it the arm went somewhere else.
+        const bool held = gap < 0.11f;
+        ImGui::TextColored(held ? ImVec4(0.65f, 0.85f, 0.65f, 1.0f) : ImVec4(0.90f, 0.70f, 0.45f, 1.0f),
+                           held ? "%s hand is on its socket, wrist %.1f cm behind it"
+                                : "%s hand ended up %.1f cm from its socket",
+                           label, gap * 100.0f);
+        ImGui::TextColored(working < 0.95f ? ImVec4(0.65f, 0.85f, 0.65f, 1.0f)
+                                           : ImVec4(0.90f, 0.70f, 0.45f, 1.0f),
+                           "   arm at %.0f%% of its reach", working * 100.0f);
     };
-    report("Trigger", visual.triggerGrip, m_editorBody.Rig().hand[1]);
-    report("Support", visual.supportGrip, m_editorBody.Rig().hand[0]);
-    ImGui::TextDisabled("This is how far the arm fell short of the socket, not whether the");
-    ImGui::TextDisabled("socket is in a sensible place: a socket out past the end of the");
-    ImGui::TextDisabled("barrel reads zero right up until the arm cannot reach it. Use it to");
-    ImGui::TextDisabled("find a grip the arm has to stretch for, and your eyes for the rest.");
+    report("Trigger", visual.triggerGrip, 1);
+    report("Support", visual.supportGrip, 0);
+    ImGui::TextDisabled("The support hand slides back down the barrel when its socket is out of "
+                        "reach, so a socket out past the end of the handguard shows as a hand that "
+                        "is not on it rather than as an arm stretched to nothing. An arm at its "
+                        "full reach is the one to move: that is where the elbow locks straight and "
+                        "the hold stops looking like a hold.");
 
     ImGui::Separator();
     ImGui::TextDisabled("The weapon this model is worn by, for the game:");
@@ -2713,6 +2738,7 @@ void PredationGame::DrawWeaponBench()
         ImGui::TextDisabled("Not written to weapons.json: set it there to keep it.");
     }
 
+    ImGui::PopTextWrapPos();
     ImGui::End();
 }
 

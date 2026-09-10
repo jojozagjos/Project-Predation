@@ -371,12 +371,15 @@ void ModelEditor::DrawFilePanel(Scene& scene, MeshLibrary& meshes)
     // one where the first ten minutes are spent finding out it can do anything at all.
     if (ImGui::TreeNode("Controls"))
     {
+        // Aligned columns, so this one block does not wrap.
+        ImGui::PushTextWrapPos(-1.0f);
         ImGui::TextDisabled("Right mouse    look around, WASD to move while held");
         ImGui::TextDisabled("Left click     select a part, or a socket if one is under it");
         ImGui::TextDisabled("Drag a handle  move the selected thing along that axis");
         ImGui::TextDisabled("Ctrl+Z         undo      Ctrl+Y  redo");
         ImGui::TextDisabled("F              put the view back on the model");
         ImGui::TextDisabled("Escape         back to the menu");
+        ImGui::PopTextWrapPos();
         ImGui::TreePop();
     }
 
@@ -427,8 +430,8 @@ void ModelEditor::DrawFilePanel(Scene& scene, MeshLibrary& meshes)
     ImGui::Checkbox("Centre on import", &m_importCentre);
     ImGui::SameLine();
     ImGui::Checkbox("Replace parts", &m_importReplace);
-    ImGui::TextDisabled("The game wants the barrel down +Z and the grip at the origin.");
-    ImGui::TextDisabled("Replacing keeps sockets and clips, so turning it right takes a few goes.");
+    ImGui::TextDisabled("The game wants the barrel down +Z and the grip at the origin. Replacing "
+                        "keeps sockets and clips, so turning it right takes a few goes.");
 
     if (!m_status.empty())
     {
@@ -551,11 +554,10 @@ void ModelEditor::DrawPartInspector()
 
 void ModelEditor::DrawSocketPanel()
 {
-    ImGui::TextDisabled("Sockets are what the game asks for by name:");
-    ImGui::TextDisabled("grip and support are where the hands close, muzzle is where");
-    ImGui::TextDisabled("rounds appear, magazine is where the magazine seats, sight is");
-    ImGui::TextDisabled("the line aiming puts on the view axis.");
-    ImGui::TextDisabled("Click one in the viewport to select it, then drag a handle.");
+    ImGui::TextDisabled("Sockets are what the game asks for by name: grip and support are where "
+                        "the hands close, muzzle is where rounds appear, magazine is where the "
+                        "magazine seats, sight is the line aiming puts on the view axis. Click one "
+                        "in the viewport to select it, then drag a handle.");
     if (ImGui::Button("Add socket"))
     {
         PushUndo("a new socket");
@@ -791,9 +793,9 @@ void ModelEditor::DrawAnimationPanel()
     {
         newClip(("clip_" + std::to_string(m_model.clips.size() + 1)).c_str(), 1.5f);
     }
-    ImGui::TextDisabled("The game plays reload, equip and fire at the right moments. Anything");
-    ImGui::TextDisabled("else is yours to play from the Hold it panel. A clip replaces the");
-    ImGui::TextDisabled("built-in movement of the same name rather than adding to it.");
+    ImGui::TextDisabled("The game plays reload, equip and fire at the right moments. Anything else "
+                        "is yours to play from the Hold it panel. A clip replaces the built-in "
+                        "movement of the same name rather than adding to it.");
 
     for (int i = 0; i < static_cast<int>(m_model.clips.size()); ++i)
     {
@@ -1673,9 +1675,13 @@ void ModelEditor::DrawUi(Scene& scene, MeshLibrary& meshes)
         return;
     }
 
-    ImGui::SetNextWindowSize({430.0f, 700.0f}, ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize({470.0f, 720.0f}, ImGuiCond_FirstUseEver);
     if (ImGui::Begin("Model editor"))
     {
+        // Everything in this window wraps to its width. The panel is mostly explanation and a
+        // sentence cut off at the right edge teaches nothing; the Controls table opts back out
+        // because it is aligned in columns that wrapping would scramble.
+        ImGui::PushTextWrapPos(0.0f);
         if (ImGui::CollapsingHeader("File", ImGuiTreeNodeFlags_DefaultOpen))
         {
             DrawFilePanel(scene, meshes);
@@ -1705,10 +1711,11 @@ void ModelEditor::DrawUi(Scene& scene, MeshLibrary& meshes)
             if (ImGui::Checkbox("Show sockets", &m_showSockets))
             {
                 m_dirty = true;
-    m_previewChanged = true;
+                m_previewChanged = true;
             }
             ImGui::TextDisabled("Right mouse to look, WASD to move, Space and Ctrl for up and down.");
         }
+        ImGui::PopTextWrapPos();
     }
     ImGui::End();
 }

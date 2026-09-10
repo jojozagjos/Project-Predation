@@ -774,12 +774,18 @@ bool LoadGlbModel(const std::filesystem::path& file, const GltfImportOptions& op
             built.sockets.push_back(entry);
         };
 
-        // A rifle's pistol grip sits just behind the magazine well, about a fifth of the way along
-        // from the back; a pistol's is most of the way back and most of the way down.
+        // A rifle's pistol grip sits just behind the magazine well, which on a carbine with the
+        // stock out is about two fifths of the way along from the back rather than the fifth this
+        // used to guess: the guess landed on the buttstock, and since a weapon is carried by its
+        // grip, the whole gun then sat a hand-span too far forward with its stock in the camera.
         socket("grip", {0.0f, low.y + height * (longArm ? 0.30f : 0.42f),
-                        low.z + length * (longArm ? 0.22f : 0.30f)});
+                        low.z + length * (longArm ? 0.38f : 0.16f)});
+        // Further back than a photograph of someone shooting would suggest. The support hand has to
+        // be somewhere the arm can reach with the weapon carried where the camera can see it, and
+        // two thirds of the way down an 86 cm carbine is a good 20 cm past that: the hand slid back
+        // on its own and the socket then read as missed by a distance that alarmed everyone.
         socket("support", {0.0f, barrelY - height * 0.14f,
-                           low.z + length * (longArm ? 0.66f : 0.58f)});
+                           low.z + length * (longArm ? 0.57f : 0.26f)});
         socket("muzzle", {0.0f, barrelY, high.z});
         socket("sight", {0.0f, high.y, low.z + length * (longArm ? 0.45f : 0.6f)});
         socket("magazine", {0.0f, low.y + height * 0.2f,
