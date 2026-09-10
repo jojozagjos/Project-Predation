@@ -1305,7 +1305,16 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
     float clipProgress = 0.0f;
     if (m_weaponVisual.asset != nullptr)
     {
-        if (m_weaponPose.reloading)
+        // The editor asks for a clip by name and says how far through it is. Nothing in the game
+        // does: what plays there is decided by what the weapon is doing. But an animation nobody
+        // can watch on demand is one nobody can make, and a clip that only plays when it happens to
+        // be named after a movement the weapon already has is most of a clip system nobody can use.
+        if (!m_weaponPose.clip.empty())
+        {
+            clip = m_weaponVisual.asset->FindClip(m_weaponPose.clip);
+            clipProgress = glm::clamp(m_weaponPose.clipProgress, 0.0f, 1.0f);
+        }
+        else if (m_weaponPose.reloading)
         {
             clip = m_weaponVisual.asset->FindClip("reload");
             clipProgress = glm::clamp(m_weaponPose.reload, 0.0f, 1.0f);

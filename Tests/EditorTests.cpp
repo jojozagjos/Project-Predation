@@ -110,3 +110,132 @@ TEST_CASE("Rescaling the model rescales what is on it", "[editor]")
     CHECK(scaled.sockets[0].position.z == Catch::Approx(0.5f).margin(0.001));
     CHECK(scaled.parts[2].position.z == Catch::Approx(1.0f).margin(0.001));
 }
+
+TEST_CASE("Undo puts back what an edit changed", "[editor][undo]")
+{
+    // An editor without undo is one nobody dares experiment in, and the fastest way to make an undo
+    // stack useless is to fill it with entries that undo nothing.
+    ModelEditor editor = MakeEditorWithParts();
+    const size_t before = editor.Model().parts.size();
+
+    REQUIRE_FALSE(editor.CanUndo());
+    REQUIRE_FALSE(editor.CanRedo());
+
+    editor.PushUndo("a turn");
+    editor.TransformModel(glm::translate(glm::mat4(1.0f), {0.0f, 1.0f, 0.0f}));
+    CHECK(editor.Model().parts[0].position.y == Catch::Approx(1.0f).margin(0.001));
+
+    // TransformModel records its own, so there are two entries and undoing twice is right.
+    REQUIRE(editor.CanUndo());
+    REQUIRE(editor.Undo());
+    CHECK(editor.Model().parts[0].position.y == Catch::Approx(0.0f).margin(0.001));
+    CHECK(editor.Model().parts.size() == before);
+
+    // And forward again.
+    REQUIRE(editor.CanRedo());
+    REQUIRE(editor.Redo());
+    CHECK(editor.Model().parts[0].position.y == Catch::Approx(1.0f).margin(0.001));
+}
+
+TEST_CASE("Undo has a floor and a ceiling", "[editor][undo]")
+{
+    ModelEditor editor = MakeEditorWithParts();
+
+    // Undoing with nothing to undo is refused rather than doing something surprising.
+    CHECK_FALSE(editor.Undo());
+    CHECK_FALSE(editor.Redo());
+
+    // The stack is bounded, because a copy of a model with imported geometry is megabytes and an
+    // editor that grows without limit is one that eventually stops.
+    for (int i = 0; i < 60; ++i)
+    {
+        editor.PushUndo("a change");
+    }
+    CHECK(editor.UndoDepth() <= 24);
+
+    // And doing something new is what makes the way forward stop existing.
+    REQUIRE(editor.Undo());
+    REQUIRE(editor.CanRedo());
+    editor.PushUndo("something else");
+    CHECK_FALSE(editor.CanRedo());
+}
+
+TEST_CASE("A socket can be selected and dragged along an axis", "[editor]")
+{
+    // Moving a grip is the single most common thing anyone does in here, and it could only be done
+    // by typing numbers. The handles are what make it a drag.
+    ModelEditor editor = MakeEditorWithParts();
+    const glm::vec3 socketAt = editor.Model().sockets[0].position;
+
+    // Straight at the socket from in front. Sockets win ties against parts, because they sit on the
+    // surface of one and would otherwise be unclickable.
+    REQUIRE(editor.SelectUnderRay({socketAt.x, socketAt.y, socketAt.z + 1.0f}, {0.0f, 0.0f, -1.0f}));
+    glm::vec3 selected{0.0f};
+    REQUIRE(editor.SelectionPosition(selected));
+    CHECK(glm::distance(selected, socketAt) < 0.001f);
+
+    // Grab the X handle, which runs from the socket towards +X. Aimed at its middle from above.
+    const glm::vec3 grabAt = socketAt + glm::vec3(ModelEditor::kHandleLength * 0.5f, 0.0f, 0.0f);
+    REQUIRE(editor.BeginDrag(grabAt + glm::vec3(0.0f, 1.0f, 0.0f), {0.0f, -1.0f, 0.0f}));
+    CHECK(editor.Dragging());
+
+    // Move the pointer ray along +X and the socket follows, keeping the grabbed point under it.
+    editor.UpdateDrag(grabAt + glm::vec3(0.2f, 1.0f, 0.0f), {0.0f, -1.0f, 0.0f});
+    CHECK(editor.Model().sockets[0].position.x == Catch::Approx(socketAt.x + 0.2f).margin(0.005));
+    // And only along that axis.
+    CHECK(editor.Model().sockets[0].position.y == Catch::Approx(socketAt.y).margin(0.001));
+    CHECK(editor.Model().sockets[0].position.z == Catch::Approx(socketAt.z).margin(0.001));
+
+    editor.EndDrag();
+    CHECK_FALSE(editor.Dragging());
+
+    // The drag recorded itself, so it can be taken back.
+    REQUIRE(editor.CanUndo());
+    REQUIRE(editor.Undo());
+    CHECK(editor.Model().sockets[0].position.x == Catch::Approx(socketAt.x).margin(0.001));
+}
+
+TEST_CASE("A click away from any handle selects instead of dragging", "[editor]")
+{
+    // The handles sit on top of the thing they move, so a click on one is never a click on it. A
+    // click anywhere else has to fall through to selection or nothing can be picked at all.
+    ModelEditor editor = MakeEditorWithParts();
+    REQUIRE(editor.SelectUnderRay({0.0f, 0.0f, 2.0f}, {0.0f, 0.0f, -1.0f}));
+
+    // Well off to the side of everything.
+    CHECK_FALSE(editor.BeginDrag({3.0f, 3.0f, 3.0f}, glm::normalize(glm::vec3(0.0f, -1.0f, 0.0f))));
+    CHECK_FALSE(editor.Dragging());
+}
+
+TEST_CASE("The selection outline follows the part rather than its nominal size", "[editor]")
+{
+    // An imported mesh keeps its size at one, which is not its size. Outlining by that drew a metre
+    // of box around six centimetres of barrel, and a selection you cannot see the edges of is one
+    // that does not tell you what is selected.
+    ModelPart imported;
+    imported.name = "imported";
+    imported.shape = PartShape::Mesh;
+    imported.size = glm::vec3(1.0f);
+    for (const glm::vec3 corner : {glm::vec3(-0.03f, -0.02f, -0.2f), glm::vec3(0.03f, 0.02f, 0.2f),
+                                   glm::vec3(0.0f, 0.0f, 0.0f)})
+    {
+        MeshVertex vertex;
+        vertex.position = corner;
+        imported.mesh.vertices.push_back(vertex);
+    }
+    imported.mesh.indices = {0, 1, 2};
+
+    const AABB bounds = ModelEditor::PartBounds(imported);
+    const glm::vec3 extent = bounds.max - bounds.min;
+    INFO("outline came out " << extent.x << " by " << extent.y << " by " << extent.z);
+    CHECK(extent.x == Catch::Approx(0.06f).margin(0.001));
+    CHECK(extent.y == Catch::Approx(0.04f).margin(0.001));
+    CHECK(extent.z == Catch::Approx(0.4f).margin(0.001));
+
+    // A primitive still uses its own size, which for a primitive really is its size.
+    ModelPart box;
+    box.shape = PartShape::Box;
+    box.size = {0.2f, 0.3f, 0.4f};
+    const AABB boxBounds = ModelEditor::PartBounds(box);
+    CHECK((boxBounds.max - boxBounds.min).y == Catch::Approx(0.3f).margin(0.001));
+}

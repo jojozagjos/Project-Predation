@@ -77,6 +77,11 @@ private:
     float m_editorDraw = 1.0f;
     float m_editorKick = 0.0f;
     float m_editorReload = -1.0f; // negative when not reloading, matching WeaponPose
+    // A clip being watched on demand, and where in it. Empty means the built-in movements play,
+    // which is what happens in the game.
+    std::string m_editorClip;
+    float m_editorClipTime = 0.0f;
+    bool m_editorClipPlaying = true;
     WeaponDefinition m_editorPreviewWeapon;
     void UpdateEditorBody(float frameDeltaSeconds);
     // The weapon bench: point a weapon at a model, play what it does, and see where the hands land

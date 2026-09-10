@@ -2621,20 +2621,36 @@ void PredationGame::DrawWeaponBench()
 
     ImGui::Separator();
 
-    // The clips the model carries. A model with none uses the built-in movements, and saying so
-    // beats an empty list that looks like a fault.
+    // The clips the model carries, each playable on demand. A clip that only runs when it happens
+    // to be named after something the weapon already does is most of a clip system nobody can use.
     const ModelAsset& model = m_editor.Model();
     if (model.clips.empty())
     {
-        ImGui::TextDisabled("No clips on this model: the built-in reload and draw are playing.");
-        ImGui::TextDisabled("Add one in Animation to author your own.");
+        ImGui::TextDisabled("No clips on this model, so the built-in reload and draw are playing.");
+        ImGui::TextDisabled("Add one under Animation to author your own. Name it reload, equip");
+        ImGui::TextDisabled("or fire and the game will play it instead of the built-in one.");
     }
     else
     {
         for (const AnimationClip& clip : model.clips)
         {
-            ImGui::BulletText("%s  %.2fs  %d tracks", clip.name.c_str(), clip.duration,
-                              static_cast<int>(clip.tracks.size()));
+            ImGui::PushID(clip.name.c_str());
+            const bool playing = m_editorClip == clip.name;
+            if (ImGui::Button(playing ? "Stop" : "Play"))
+            {
+                m_editorClip = playing ? std::string() : clip.name;
+                m_editorClipTime = 0.0f;
+            }
+            ImGui::SameLine();
+            ImGui::Text("%s  %.2fs  %d tracks", clip.name.c_str(), clip.duration,
+                        static_cast<int>(clip.tracks.size()));
+            if (playing)
+            {
+                ImGui::SliderFloat("##scrub", &m_editorClipTime, 0.0f, 1.0f, "%.2f");
+                ImGui::SameLine();
+                ImGui::Checkbox("Run", &m_editorClipPlaying);
+            }
+            ImGui::PopID();
         }
         if (model.FindPart("magazine") == nullptr)
         {
@@ -2760,12 +2776,22 @@ void PredationGame::UpdateEditorBody(float frameDeltaSeconds)
         m_editorBody.SetWeaponFromModel(m_editorScene, m_app->GetMeshes(), m_editorPreviewWeapon, model);
     }
 
+    // A clip being watched runs on its own clock, so it can be scrubbed or left running.
+    if (!m_editorClip.empty() && m_editorClipPlaying)
+    {
+        const AnimationClip* watching = model.FindClip(m_editorClip);
+        const float duration = watching != nullptr ? std::max(watching->duration, 0.05f) : 1.0f;
+        m_editorClipTime = glm::fract(m_editorClipTime + frameDeltaSeconds / duration);
+    }
+
     PlayerBody::WeaponPose pose;
     pose.aim = m_editorAim;
     pose.draw = m_editorDraw;
     pose.kick = m_editorKick;
     pose.reloading = m_editorReload >= 0.0f;
     pose.reload = m_editorReload;
+    pose.clip = m_editorClip;
+    pose.clipProgress = m_editorClipTime;
     m_editorBody.SetWeaponPose(pose);
 
     m_editorDraw = std::min(m_editorDraw + frameDeltaSeconds * 1.6f, 1.0f);
@@ -3204,12 +3230,12 @@ void PredationGame::OnUpdate(double dt, double alpha)
 
         m_camera = m_editor.Camera();
 
-        // Clicking in the viewport selects what is under the pointer. The game owns the camera and
-        // the pointer and the editor owns the parts, so the ray is built here and the answer given
-        // there. Not while the right button is held, because that is looking around rather than
-        // pointing, and not over a panel, because a click there belongs to the panel.
-        if (!m_editorLooking && !app.IsUiCapturingMouse() &&
-            input.WasMousePressed(MouseButton::Left))
+        // Pointing at the viewport: grabbing a handle, dragging it, or selecting what is under it.
+        // The game owns the camera and the pointer and the editor owns the model, so the ray is
+        // built here and every question about it answered there. Not while the right button is
+        // held, because that is looking around, and not over a panel, because that belongs to the
+        // panel.
+        if (!m_editorLooking && (!app.IsUiCapturingMouse() || m_editor.Dragging()))
         {
             const Renderer& renderer = app.GetRenderer();
             const float width = static_cast<float>(std::max<int>(renderer.Width(), 1));
@@ -3230,7 +3256,55 @@ void PredationGame::OnUpdate(double dt, double alpha)
             const glm::vec3 up = glm::cross(right, forward);
             const glm::vec3 direction = glm::normalize(forward + right * (x * halfHorizontal) +
                                                        up * (y * halfVertical));
-            m_editor.SelectUnderRay(m_camera.position, direction);
+            // A press either grabs a handle or selects. Grabbing wins, because the handles sit on
+            // top of the thing they move and a click on one is never a click on it.
+            if (input.WasMousePressed(MouseButton::Left))
+            {
+                if (!m_editor.BeginDrag(m_camera.position, direction))
+                {
+                    m_editor.SelectUnderRay(m_camera.position, direction);
+                }
+            }
+            else if (m_editor.Dragging())
+            {
+                if (input.IsMouseDown(MouseButton::Left))
+                {
+                    m_editor.UpdateDrag(m_camera.position, direction);
+                }
+                else
+                {
+                    m_editor.EndDrag();
+                }
+            }
+        }
+
+        // Undo. Ctrl+Z and Ctrl+Y, because those are the two every editor uses and an editor that
+        // does not have them is one nobody dares experiment in.
+        if (!app.IsConsoleOpen() && !app.IsUiCapturingKeyboard())
+        {
+            const bool control =
+                input.IsKeyDown(SDL_SCANCODE_LCTRL) || input.IsKeyDown(SDL_SCANCODE_RCTRL);
+            const bool shift =
+                input.IsKeyDown(SDL_SCANCODE_LSHIFT) || input.IsKeyDown(SDL_SCANCODE_RSHIFT);
+            if (control && input.WasKeyPressed(SDL_SCANCODE_Z))
+            {
+                if (shift)
+                {
+                    m_editor.Redo();
+                }
+                else
+                {
+                    m_editor.Undo();
+                }
+            }
+            if (control && input.WasKeyPressed(SDL_SCANCODE_Y))
+            {
+                m_editor.Redo();
+            }
+            if (!control && input.WasKeyPressed(SDL_SCANCODE_F))
+            {
+                m_editor.FrameModel();
+            }
         }
     }
 

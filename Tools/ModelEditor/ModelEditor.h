@@ -6,6 +6,7 @@
 #include "Engine/Scene/Scene.h"
 
 #include <string>
+#include <functional>
 #include <utility>
 #include <vector>
 
@@ -51,9 +52,55 @@ public:
     bool Load(const std::string& modelName);
     bool Save();
 
+    // What is selected. One thing at a time, part or socket, because everything that acts on a
+    // selection acts on one thing and a list of one is a list.
+    enum class Pick : uint8_t
+    {
+        None,
+        Part,
+        Socket
+    };
+
     // Selects whatever a ray runs through, and returns true if that changed anything. Clicking
     // nothing clears the selection, which is what clicking nothing means everywhere else.
     bool SelectUnderRay(const glm::vec3& origin, const glm::vec3& direction);
+    // Where the selected thing is, and whether there is one.
+    bool SelectionPosition(glm::vec3& out) const;
+    void MoveSelection(const glm::vec3& delta);
+
+    // --- Dragging -------------------------------------------------------------------------------
+    // The three axis handles on the selected thing. The game feeds a ray from the pointer, because
+    // it owns the camera and the pointer; the editor decides what that ray grabbed and where it
+    // moved to, because it owns the model.
+    //
+    // Returns true when a handle was grabbed, which is also how the game knows not to treat the
+    // same click as a selection.
+    bool BeginDrag(const glm::vec3& origin, const glm::vec3& direction);
+    void UpdateDrag(const glm::vec3& origin, const glm::vec3& direction);
+    void EndDrag() { m_dragAxis = -1; }
+    bool Dragging() const { return m_dragAxis >= 0; }
+    // How long the handles are drawn, in metres. Also how far out they can be grabbed.
+    static constexpr float kHandleLength = 0.11f;
+
+    // --- Undo -----------------------------------------------------------------------------------
+    // Records the state before a change, so it can be gone back to. Called by everything that edits
+    // the model; repeated calls inside one drag collapse into one entry, which is what makes
+    // dragging a slider one undo rather than four hundred.
+    void PushUndo(const char* what);
+    // Pushes a copy taken earlier, for a change already made. A gesture snapshots when it starts,
+    // because by the time a widget says it changed something, it has.
+    void PushSnapshot(ModelAsset before, const char* what);
+    // A cheap summary of everything a person can change by hand, used to tell whether a gesture
+    // altered anything at all. Geometry is left out: it only changes on an import, which records
+    // its own undo.
+    size_t Fingerprint() const;
+    bool Undo();
+    bool Redo();
+    bool CanUndo() const { return !m_undo.empty(); }
+    bool CanRedo() const { return !m_redo.empty(); }
+    const char* UndoName() const { return m_undo.empty() ? "" : m_undo.back().what; }
+    const char* RedoName() const { return m_redo.empty() ? "" : m_redo.back().what; }
+    size_t UndoDepth() const { return m_undo.size(); }
     // Asks for the view to be put on the model. The game owns the camera angles, so the editor can
     // only ask; it returns where to stand and what to look at, or false when nothing has asked.
     bool TakeFrameRequest(glm::vec3& outPosition, glm::vec3& outTarget);
@@ -63,6 +110,9 @@ public:
     // Which part a ray runs through, or -1. The ray comes from the game, which owns the camera and
     // the pointer; the editor owns the parts and is the only thing that can say what was hit.
     int PartUnderRay(const glm::vec3& origin, const glm::vec3& direction) const;
+    // The box a part actually occupies, in its own frame. An imported mesh keeps its size at one,
+    // which is not its size at all.
+    static AABB PartBounds(const ModelPart& part);
     // Turns, mirrors or rescales everything at once: geometry, part placements and sockets. A
     // download arrives however its author left it, and turning forty parts by hand is not editing.
     void TransformModel(const glm::mat4& transform);
@@ -122,6 +172,36 @@ private:
 
     int m_selectedPart = -1;
     int m_selectedSocket = -1;
+    Pick m_pick = Pick::None;
+
+    // Whole copies of the model, which is the only kind of undo worth having in an editor: every
+    // operation is then undoable without each one having to describe its own inverse, and getting
+    // one of those inverses wrong is how an undo stack quietly corrupts what it is protecting.
+    // Imported geometry makes a copy expensive, so the depth is small and a copy is only taken when
+    // something is actually about to change.
+    struct Snapshot
+    {
+        ModelAsset model;
+        const char* what = "edit";
+    };
+    static constexpr size_t kUndoDepth = 24;
+    std::vector<Snapshot> m_undo;
+    std::vector<Snapshot> m_redo;
+    // Collapses a drag into one entry: the same name arriving again within a moment is the same
+    // gesture continuing rather than a new one starting.
+    // The model as it was when the current gesture began, and what it looked like then. A widget
+    // only reports a change after making it, so the copy has to be taken when the widget is grabbed
+    // rather than when it reports. Watching for any widget at all being grabbed covers every one of
+    // them without each having to say so.
+    ModelAsset m_gestureStart;
+    size_t m_gestureFingerprint = 0;
+    bool m_gestureActive = false;
+
+    // Which axis handle is being dragged, or -1. The grab offset is kept so the thing does not jump
+    // to the pointer the instant it is grabbed, which is the difference between dragging something
+    // and throwing it.
+    int m_dragAxis = -1;
+    float m_dragGrab = 0.0f;
     int m_selectedClip = -1;
     int m_selectedTrack = -1;
 

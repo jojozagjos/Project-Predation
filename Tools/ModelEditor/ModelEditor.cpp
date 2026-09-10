@@ -95,6 +95,7 @@ void ModelEditor::NewModel()
 
 void ModelEditor::AddPart(const char* name, PartShape shape)
 {
+    PushUndo("a new part");
     ModelPart part;
     part.name = name;
     // Names have to be unique, because animation tracks address parts by name.
@@ -211,6 +212,29 @@ void ModelEditor::Update(Scene& scene, MeshLibrary& meshes, float dt)
     {
         return;
     }
+
+    // One undo entry per gesture. A widget only says it changed something after changing it, so the
+    // copy is taken when any widget is grabbed and kept until it is let go; if nothing about the
+    // model differs by then, the gesture is discarded rather than filling the stack with entries
+    // that undo nothing.
+    {
+        const bool holding = ImGui::IsAnyItemActive();
+        if (holding && !m_gestureActive)
+        {
+            m_gestureStart = m_model;
+            m_gestureFingerprint = Fingerprint();
+        }
+        else if (!holding && m_gestureActive)
+        {
+            if (Fingerprint() != m_gestureFingerprint)
+            {
+                PushSnapshot(std::move(m_gestureStart), "a change");
+            }
+            m_gestureStart = ModelAsset{};
+        }
+        m_gestureActive = holding;
+    }
+
     if (m_dirty)
     {
         Rebuild(scene, meshes);
@@ -264,14 +288,45 @@ void ModelEditor::DrawOverlays(DebugDraw& draw) const
     draw.Grid(0.5f, 0.05f, 0.0f);
     draw.Axes(glm::mat4(1.0f), 0.25f);
 
-    if (m_selectedPart >= 0 && m_selectedPart < static_cast<int>(m_model.parts.size()))
+    // Around what the part actually occupies. An imported mesh keeps its size at one, which is not
+    // its size: outlining by that drew a metre of box around six centimetres of barrel.
+    if (m_pick == Pick::Part && m_selectedPart >= 0 &&
+        m_selectedPart < static_cast<int>(m_model.parts.size()))
     {
         const ModelPart& part = m_model.parts[static_cast<size_t>(m_selectedPart)];
-        draw.BoxOriented(part.LocalMatrix(), part.size * 0.5f, Color::kYellow);
+        const AABB bounds = PartBounds(part);
+        const glm::vec3 centre = (bounds.min + bounds.max) * 0.5f;
+        const glm::vec3 half = glm::max((bounds.max - bounds.min) * 0.5f, glm::vec3(0.002f));
+        draw.BoxOriented(part.LocalMatrix() * glm::translate(glm::mat4(1.0f), centre), half,
+                         Color::kYellow);
     }
-    for (const ModelSocket& socket : m_model.sockets)
+
+    for (size_t i = 0; i < m_model.sockets.size(); ++i)
     {
-        draw.Axes(glm::translate(glm::mat4(1.0f), socket.position), 0.05f);
+        const ModelSocket& socket = m_model.sockets[i];
+        const bool selected = m_pick == Pick::Socket && static_cast<int>(i) == m_selectedSocket;
+        draw.Axes(glm::translate(glm::mat4(1.0f), socket.position), selected ? 0.09f : 0.045f);
+        if (selected)
+        {
+            draw.Sphere(socket.position, 0.022f, Color::kYellow, 10);
+        }
+    }
+
+    // The move handles. Three lines from whatever is selected, coloured the way axes are coloured
+    // everywhere, with the one being dragged lit. Drawn last so they are on top of what they move.
+    glm::vec3 at{0.0f};
+    if (SelectionPosition(at))
+    {
+        const uint32_t colours[3] = {Color::kRed, Color::kGreen, Color::kBlue};
+        for (int axis = 0; axis < 3; ++axis)
+        {
+            glm::vec3 unit{0.0f};
+            unit[axis] = 1.0f;
+            const uint32_t colour = axis == m_dragAxis ? Color::kYellow : colours[axis];
+            draw.Line(at, at + unit * kHandleLength, colour);
+            // A head on the end, so there is something with size to aim at rather than a line.
+            draw.Sphere(at + unit * kHandleLength, 0.009f, colour, 8);
+        }
     }
 }
 
@@ -282,6 +337,45 @@ void ModelEditor::DrawFilePanel(Scene& scene, MeshLibrary& meshes)
     if (ImGui::InputText("Name", buffer, sizeof(buffer)))
     {
         m_saveName = buffer;
+    }
+
+    // Undo where it can be seen, as well as on the keys. A tool whose undo is invisible is one
+    // people do not trust enough to experiment in, which is most of what an editor is for.
+    ImGui::BeginDisabled(!CanUndo());
+    if (ImGui::Button("Undo"))
+    {
+        Undo();
+    }
+    ImGui::EndDisabled();
+    if (CanUndo() && ImGui::IsItemHovered())
+    {
+        ImGui::SetTooltip("Ctrl+Z: %s", UndoName());
+    }
+    ImGui::SameLine();
+    ImGui::BeginDisabled(!CanRedo());
+    if (ImGui::Button("Redo"))
+    {
+        Redo();
+    }
+    ImGui::EndDisabled();
+    if (CanRedo() && ImGui::IsItemHovered())
+    {
+        ImGui::SetTooltip("Ctrl+Y: %s", RedoName());
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("%zu steps back", UndoDepth());
+
+    // What the keys and the mouse do, on screen. An editor whose controls have to be guessed at is
+    // one where the first ten minutes are spent finding out it can do anything at all.
+    if (ImGui::TreeNode("Controls"))
+    {
+        ImGui::TextDisabled("Right mouse    look around, WASD to move while held");
+        ImGui::TextDisabled("Left click     select a part, or a socket if one is under it");
+        ImGui::TextDisabled("Drag a handle  move the selected thing along that axis");
+        ImGui::TextDisabled("Ctrl+Z         undo      Ctrl+Y  redo");
+        ImGui::TextDisabled("F              put the view back on the model");
+        ImGui::TextDisabled("Escape         back to the menu");
+        ImGui::TreePop();
     }
 
     if (ImGui::Button("Save"))
@@ -380,6 +474,7 @@ void ModelEditor::DrawPartList()
     {
         if (ImGui::Button("Duplicate"))
         {
+            PushUndo("a duplicate");
             ModelPart copy = m_model.parts[static_cast<size_t>(m_selectedPart)];
             copy.name += "_copy";
             m_model.parts.push_back(std::move(copy));
@@ -390,6 +485,7 @@ void ModelEditor::DrawPartList()
         ImGui::SameLine();
         if (ImGui::Button("Delete"))
         {
+            PushUndo("a delete");
             m_model.parts.erase(m_model.parts.begin() + m_selectedPart);
             m_selectedPart = std::min(m_selectedPart, static_cast<int>(m_model.parts.size()) - 1);
             m_dirty = true;
@@ -451,9 +547,14 @@ void ModelEditor::DrawPartInspector()
 
 void ModelEditor::DrawSocketPanel()
 {
-    ImGui::TextDisabled("Sockets are what the game asks for by name: grip, support, muzzle, magazine.");
+    ImGui::TextDisabled("Sockets are what the game asks for by name:");
+    ImGui::TextDisabled("grip and support are where the hands close, muzzle is where");
+    ImGui::TextDisabled("rounds appear, magazine is where the magazine seats, sight is");
+    ImGui::TextDisabled("the line aiming puts on the view axis.");
+    ImGui::TextDisabled("Click one in the viewport to select it, then drag a handle.");
     if (ImGui::Button("Add socket"))
     {
+        PushUndo("a new socket");
         ModelSocket socket;
         socket.name = "socket_" + std::to_string(m_model.sockets.size() + 1);
         m_model.sockets.push_back(socket);
@@ -468,14 +569,36 @@ void ModelEditor::DrawSocketPanel()
         ImGui::PushID(1000 + i);
         char nameBuffer[64];
         std::snprintf(nameBuffer, sizeof(nameBuffer), "%s", socket.name.c_str());
+        // Clicking the name selects it, so the list and the viewport agree about what is being
+        // worked on and the handles appear on whichever one was picked either way.
+        const bool selected = m_pick == Pick::Socket && i == m_selectedSocket;
+        if (ImGui::RadioButton("##socketpick", selected))
+        {
+            m_pick = Pick::Socket;
+            m_selectedSocket = i;
+        }
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(96.0f);
         if (ImGui::InputText("##socketname", nameBuffer, sizeof(nameBuffer)))
         {
             socket.name = nameBuffer;
+            // The name is the whole contract with the game: renaming one is the difference
+            // between a hand holding the grip and a hand holding nothing.
+            m_dirty = true;
+            m_previewChanged = true;
         }
-        DragVec3("##socketpos", socket.position, 0.005f);
+        ImGui::SameLine();
+        if (DragVec3("##socketpos", socket.position, 0.005f))
+        {
+            // Without this a socket moved by typing changed the data and nothing else: the hands
+            // went on holding where it used to be, and moving a grip appeared to do nothing at all.
+            m_dirty = true;
+            m_previewChanged = true;
+        }
         ImGui::SameLine();
         if (ImGui::Button("x"))
         {
+            PushUndo("a socket delete");
             m_model.sockets.erase(m_model.sockets.begin() + i);
             m_dirty = true;
     m_previewChanged = true;
@@ -629,18 +752,44 @@ void ModelEditor::DrawTimeline(AnimationClip& clip)
 
 void ModelEditor::DrawAnimationPanel()
 {
-    if (ImGui::Button("New clip"))
+    // The three names the game looks for, offered rather than left to be guessed. A clip named
+    // anything else is still playable in here, but the game will never reach for it.
+    const auto newClip = [&](const char* name, float duration)
     {
+        PushUndo("a new clip");
         AnimationClip clip;
-        clip.name = "clip_" + std::to_string(m_model.clips.size() + 1);
-        clip.duration = 1.5f;
+        clip.name = name;
+        clip.duration = duration;
         m_model.clips.push_back(std::move(clip));
         m_selectedClip = static_cast<int>(m_model.clips.size()) - 1;
         m_selectedTrack = -1;
         m_playhead = 0.0f;
+        m_dirty = true;
+        m_previewChanged = true;
+    };
+
+    if (ImGui::Button("Reload clip"))
+    {
+        newClip("reload", 2.2f);
     }
     ImGui::SameLine();
-    ImGui::TextDisabled("Name one reload or equip and the game plays it at the right moment.");
+    if (ImGui::Button("Equip clip"))
+    {
+        newClip("equip", 0.6f);
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Fire clip"))
+    {
+        newClip("fire", 0.18f);
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Other"))
+    {
+        newClip(("clip_" + std::to_string(m_model.clips.size() + 1)).c_str(), 1.5f);
+    }
+    ImGui::TextDisabled("The game plays reload, equip and fire at the right moments. Anything");
+    ImGui::TextDisabled("else is yours to play from the Hold it panel. A clip replaces the");
+    ImGui::TextDisabled("built-in movement of the same name rather than adding to it.");
 
     for (int i = 0; i < static_cast<int>(m_model.clips.size()); ++i)
     {
@@ -812,6 +961,7 @@ void ModelEditor::ImportMesh(const std::string& file)
     // its own or no reload can move it, and merging the file down to one mesh throws that away.
     if (IsGltfFile(path))
     {
+        PushUndo("an import");
         GltfImportOptions options;
         options.targetSize = m_importSize;
         options.rotationDegrees = m_importRotation;
@@ -888,6 +1038,292 @@ void ModelEditor::ImportMesh(const std::string& file)
 // triangles and a click has to answer instantly; boxes overlap a little, so the nearest hit wins,
 // which is what picking the front-most thing means. Anything finer than this is only wanted for
 // picking one blade of grass out of a field, which is not what an editor is for.
+// --- Undo ---------------------------------------------------------------------------------------
+//
+// Whole copies of the model, which is the only kind of undo worth having in an editor this size.
+// Every operation becomes undoable without each one having to describe its own inverse, and getting
+// one of those inverses wrong is how an undo stack quietly corrupts the thing it is protecting.
+//
+// Imported geometry makes a copy expensive, so the depth is small and a copy is only taken when
+// something is about to change. Dragging a slider is one entry rather than four hundred: the same
+// operation arriving again within a moment is the same gesture continuing.
+void ModelEditor::PushUndo(const char* what)
+{
+    PushSnapshot(m_model, what);
+}
+
+void ModelEditor::PushSnapshot(ModelAsset before, const char* what)
+{
+    m_undo.push_back({std::move(before), what});
+    if (m_undo.size() > kUndoDepth)
+    {
+        m_undo.erase(m_undo.begin());
+    }
+    // Doing something new is what makes the way forward stop existing.
+    m_redo.clear();
+}
+
+// A cheap summary of everything a person can change by hand: placements, colours, names, sockets and
+// keyframes. Geometry is left out because it only changes on an import, which records its own undo.
+//
+// Used to tell whether a gesture actually altered anything. Grabbing a slider and letting go without
+// moving it must not fill the undo stack with entries that undo nothing, which is the fastest way to
+// make an undo stack useless.
+size_t ModelEditor::Fingerprint() const
+{
+    size_t hash = 1469598103934665603ull;
+    const auto mix = [&hash](size_t value)
+    {
+        hash ^= value + 0x9e3779b97f4a7c15ull + (hash << 6) + (hash >> 2);
+    };
+    const auto mixFloat = [&mix](float value)
+    {
+        // Quantised, so a value that merely redisplays itself does not read as a change.
+        mix(static_cast<size_t>(static_cast<long long>(value * 100000.0f)));
+    };
+
+    mix(m_model.parts.size());
+    mix(m_model.sockets.size());
+    mix(m_model.clips.size());
+    for (const ModelPart& part : m_model.parts)
+    {
+        mix(std::hash<std::string>{}(part.name));
+        mix(static_cast<size_t>(part.shape));
+        mix(part.visible ? 1u : 0u);
+        mix(std::hash<std::string>{}(part.texture));
+        for (int axis = 0; axis < 3; ++axis)
+        {
+            mixFloat(part.position[axis]);
+            mixFloat(part.rotation[axis]);
+            mixFloat(part.size[axis]);
+            mixFloat(part.color[axis]);
+        }
+        mixFloat(part.roughness);
+        mixFloat(part.metallic);
+        mixFloat(part.emissive);
+    }
+    for (const ModelSocket& socket : m_model.sockets)
+    {
+        mix(std::hash<std::string>{}(socket.name));
+        for (int axis = 0; axis < 3; ++axis)
+        {
+            mixFloat(socket.position[axis]);
+            mixFloat(socket.rotation[axis]);
+        }
+    }
+    for (const AnimationClip& clip : m_model.clips)
+    {
+        mix(std::hash<std::string>{}(clip.name));
+        mixFloat(clip.duration);
+        mix(clip.loop ? 1u : 0u);
+        for (const AnimationTrack& track : clip.tracks)
+        {
+            mix(std::hash<std::string>{}(track.part));
+            for (const AnimationKey& key : track.keys)
+            {
+                mixFloat(key.time);
+                mixFloat(key.visible);
+                for (int axis = 0; axis < 3; ++axis)
+                {
+                    mixFloat(key.position[axis]);
+                    mixFloat(key.rotation[axis]);
+                }
+            }
+        }
+    }
+    return hash;
+}
+
+bool ModelEditor::Undo()
+{
+    if (m_undo.empty())
+    {
+        return false;
+    }
+    m_redo.push_back({m_model, m_undo.back().what});
+    m_status = std::string("Undid ") + m_undo.back().what;
+    m_model = std::move(m_undo.back().model);
+    m_undo.pop_back();
+
+    // Whatever was selected may not exist any more.
+    m_selectedPart = std::min(m_selectedPart, static_cast<int>(m_model.parts.size()) - 1);
+    m_selectedSocket = std::min(m_selectedSocket, static_cast<int>(m_model.sockets.size()) - 1);
+    m_selectedClip = std::min(m_selectedClip, static_cast<int>(m_model.clips.size()) - 1);
+    m_dirty = true;
+    m_previewChanged = true;
+    return true;
+}
+
+bool ModelEditor::Redo()
+{
+    if (m_redo.empty())
+    {
+        return false;
+    }
+    m_undo.push_back({m_model, m_redo.back().what});
+    m_status = std::string("Redid ") + m_redo.back().what;
+    m_model = std::move(m_redo.back().model);
+    m_redo.pop_back();
+
+    m_selectedPart = std::min(m_selectedPart, static_cast<int>(m_model.parts.size()) - 1);
+    m_selectedSocket = std::min(m_selectedSocket, static_cast<int>(m_model.sockets.size()) - 1);
+    m_selectedClip = std::min(m_selectedClip, static_cast<int>(m_model.clips.size()) - 1);
+    m_dirty = true;
+    m_previewChanged = true;
+    return true;
+}
+
+// --- Selection ----------------------------------------------------------------------------------
+
+bool ModelEditor::SelectionPosition(glm::vec3& out) const
+{
+    if (m_pick == Pick::Part && m_selectedPart >= 0 &&
+        m_selectedPart < static_cast<int>(m_model.parts.size()))
+    {
+        out = m_model.parts[static_cast<size_t>(m_selectedPart)].position;
+        return true;
+    }
+    if (m_pick == Pick::Socket && m_selectedSocket >= 0 &&
+        m_selectedSocket < static_cast<int>(m_model.sockets.size()))
+    {
+        out = m_model.sockets[static_cast<size_t>(m_selectedSocket)].position;
+        return true;
+    }
+    return false;
+}
+
+void ModelEditor::MoveSelection(const glm::vec3& delta)
+{
+    if (m_pick == Pick::Part && m_selectedPart >= 0 &&
+        m_selectedPart < static_cast<int>(m_model.parts.size()))
+    {
+        m_model.parts[static_cast<size_t>(m_selectedPart)].position += delta;
+    }
+    else if (m_pick == Pick::Socket && m_selectedSocket >= 0 &&
+             m_selectedSocket < static_cast<int>(m_model.sockets.size()))
+    {
+        m_model.sockets[static_cast<size_t>(m_selectedSocket)].position += delta;
+    }
+    else
+    {
+        return;
+    }
+    m_dirty = true;
+    m_previewChanged = true;
+}
+
+// --- Dragging -----------------------------------------------------------------------------------
+//
+// Where a ray comes closest to running along an axis through a point, as a distance along that axis
+// and how far the ray missed by. The whole of a move gizmo is this: grab the axis whose handle the
+// pointer is nearest, then keep the grabbed point of it under the pointer.
+namespace
+{
+
+struct AxisHit
+{
+    float along = 0.0f;
+    float miss = std::numeric_limits<float>::max();
+};
+
+AxisHit ClosestOnAxis(const glm::vec3& origin, const glm::vec3& direction, const glm::vec3& point,
+                      const glm::vec3& axis)
+{
+    AxisHit hit;
+    const glm::vec3 toPoint = point - origin;
+    const float axisDotRay = glm::dot(axis, direction);
+    const float denominator = 1.0f - axisDotRay * axisDotRay;
+    if (std::abs(denominator) < 1e-5f)
+    {
+        // The ray runs along the axis, so every point on it is equally close and dragging it means
+        // nothing. Refused rather than answered with a number that will be enormous.
+        return hit;
+    }
+    const float alongRay = glm::dot(toPoint, direction);
+    const float alongAxis = glm::dot(toPoint, axis);
+    hit.along = (alongAxis - axisDotRay * alongRay) / -denominator;
+    const glm::vec3 onAxis = point + axis * hit.along;
+    const float onRay = std::max(glm::dot(onAxis - origin, direction), 0.0f);
+    hit.miss = glm::distance(onAxis, origin + direction * onRay);
+    return hit;
+}
+
+} // namespace
+
+bool ModelEditor::BeginDrag(const glm::vec3& origin, const glm::vec3& direction)
+{
+    glm::vec3 at{0.0f};
+    if (!SelectionPosition(at))
+    {
+        return false;
+    }
+
+    // Whichever handle the pointer is nearest, so long as it is near one at all and the point
+    // grabbed is on the handle rather than out along the line beyond it.
+    int best = -1;
+    float nearest = 0.018f; // how close counts as grabbing, in metres
+    float grabbed = 0.0f;
+    for (int axis = 0; axis < 3; ++axis)
+    {
+        glm::vec3 unit{0.0f};
+        unit[axis] = 1.0f;
+        const AxisHit hit = ClosestOnAxis(origin, direction, at, unit);
+        if (hit.along < -0.01f || hit.along > kHandleLength || hit.miss >= nearest)
+        {
+            continue;
+        }
+        nearest = hit.miss;
+        best = axis;
+        grabbed = hit.along;
+    }
+
+    if (best < 0)
+    {
+        return false;
+    }
+
+    PushUndo("a move");
+    m_dragAxis = best;
+    m_dragGrab = grabbed;
+    return true;
+}
+
+void ModelEditor::UpdateDrag(const glm::vec3& origin, const glm::vec3& direction)
+{
+    if (m_dragAxis < 0)
+    {
+        return;
+    }
+    glm::vec3 at{0.0f};
+    if (!SelectionPosition(at))
+    {
+        EndDrag();
+        return;
+    }
+
+    glm::vec3 unit{0.0f};
+    unit[m_dragAxis] = 1.0f;
+    const AxisHit hit = ClosestOnAxis(origin, direction, at, unit);
+    if (hit.miss >= std::numeric_limits<float>::max())
+    {
+        return; // looking straight down the axis, so there is nothing to follow
+    }
+
+    // The grabbed point stays under the pointer, which is the difference between dragging something
+    // and throwing it: without this the thing jumps so its origin is where the pointer is.
+    float wanted = at[m_dragAxis] + (hit.along - m_dragGrab);
+    if (m_snapEnabled)
+    {
+        // Snapped on the result rather than on the movement, or a drag that starts off the grid
+        // stays off it forever and the snapping does nothing anyone can see.
+        wanted = SnapTo(wanted, m_gridSnap);
+    }
+
+    glm::vec3 delta{0.0f};
+    delta[m_dragAxis] = wanted - at[m_dragAxis];
+    MoveSelection(delta);
+}
+
 // Where to stand to see the whole model, and what to look at.
 //
 // Asked for rather than done, because the game owns the camera: the editor knows how big the model
@@ -1033,19 +1469,67 @@ int ModelEditor::PartUnderRay(const glm::vec3& origin, const glm::vec3& directio
 
 bool ModelEditor::SelectUnderRay(const glm::vec3& origin, const glm::vec3& direction)
 {
-    const int hit = PartUnderRay(origin, direction);
-    if (hit == m_selectedPart)
+    // Sockets first, and generously. They are the smallest things on a model and the ones most
+    // often wanted, and a socket sitting on the surface of a part loses every tie against it.
+    int bestSocket = -1;
+    float nearestSocket = std::numeric_limits<float>::max();
+    constexpr float kSocketRadius = 0.025f;
+    for (size_t i = 0; i < m_model.sockets.size(); ++i)
     {
-        return false;
+        const glm::vec3 toSocket = m_model.sockets[i].position - origin;
+        const float along = glm::dot(toSocket, direction);
+        if (along < 0.0f)
+        {
+            continue; // behind the eye
+        }
+        const float miss = glm::length(toSocket - direction * along);
+        if (miss < kSocketRadius && along < nearestSocket)
+        {
+            nearestSocket = along;
+            bestSocket = static_cast<int>(i);
+        }
     }
+
+    if (bestSocket >= 0)
+    {
+        const bool changed = m_pick != Pick::Socket || m_selectedSocket != bestSocket;
+        m_pick = Pick::Socket;
+        m_selectedSocket = bestSocket;
+        m_status = "Selected the " + m_model.sockets[static_cast<size_t>(bestSocket)].name + " socket";
+        return changed;
+    }
+
+    const int hit = PartUnderRay(origin, direction);
+    const bool changed = m_pick != (hit >= 0 ? Pick::Part : Pick::None) || m_selectedPart != hit;
     m_selectedPart = hit;
+    m_pick = hit >= 0 ? Pick::Part : Pick::None;
     m_status = hit >= 0 ? "Selected " + m_model.parts[static_cast<size_t>(hit)].name
                         : std::string("Nothing selected");
-    return true;
+    return changed;
+}
+
+// The box a part actually occupies, in its own frame. An imported mesh keeps its size at one, which
+// is not its size at all: highlighting by that drew a metre of outline around six centimetres of
+// barrel and made the selection useless for seeing what was selected.
+AABB ModelEditor::PartBounds(const ModelPart& part)
+{
+    AABB bounds;
+    if (part.shape == PartShape::Mesh)
+    {
+        if (!part.mesh.vertices.empty())
+        {
+            bounds = part.mesh.ComputeBounds();
+        }
+        return bounds;
+    }
+    bounds.min = part.size * -0.5f;
+    bounds.max = part.size * 0.5f;
+    return bounds;
 }
 
 void ModelEditor::TransformModel(const glm::mat4& transform)
 {
+    PushUndo("turning the model");
     const glm::mat3 normalMatrix = glm::inverseTranspose(glm::mat3(transform));
     // A mirror turns triangles inside out, so their winding has to be turned back.
     const bool mirrors = glm::determinant(glm::mat3(transform)) < 0.0f;

@@ -292,6 +292,12 @@ public:
         float kick = 0.0f;   // 0 to 1, decaying after each shot
         float draw = 1.0f;   // 0 as a weapon is brought up, 1 once it is ready
         bool reloading = false;
+
+        // A clip to play by name, and how far through it is. Only the editor sets these: in the
+        // game, what plays is decided by what the weapon is doing. An animation nobody can watch
+        // on demand is one nobody can make.
+        std::string clip;
+        float clipProgress = 0.0f;
     };
 
     // Puts a weapon in the character's hands, built from its data entry. Passing nothing takes it
