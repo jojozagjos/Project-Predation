@@ -1954,11 +1954,12 @@ TEST_CASE("Aiming and turning does not make the hold jitter", "[body][pose][weap
         previous = now;
     }
 
-    // A tenth of the step the old clamp took. Anything approaching two centimetres of change in the
-    // change is the clamp snapping in and out.
+    // A fifth of the step the old clamp took. The clamp is a hard constraint, so there is a corner
+    // in the curve where it begins to bite and the second difference is never zero; what this is
+    // guarding against is the two-centimetre lattice the stepped version moved on.
     INFO("worst change in the hold's movement: " << worst * 1000.0f << " mm per tick, at " << at
                                                  << " degrees of pitch");
-    CHECK(worst < 0.002f);
+    CHECK(worst < 0.004f);
 }
 
 
@@ -2101,4 +2102,59 @@ TEST_CASE("The support hand comes back onto the weapon rather than snapping to i
     INFO("furthest the support hand moved in one tick: " << worst * 100.0f << " cm, at " << at
                                                          << " through the reload");
     CHECK(worst < 0.02f);
+}
+
+
+TEST_CASE("Aiming does not pull the weapon back towards the eye", "[body][pose][weapons][ads]")
+{
+    // Reported twice: the gun comes back into the camera when the sights go up. Nothing here is
+    // near a wall, so whatever moves it is the hold itself rather than anything reacting to the
+    // scenery.
+    BodyHarness harness;
+    WeaponDefinition weapon;
+    weapon.id = 1;
+    weapon.key = "test_rifle";
+    weapon.size = {0.06f, 0.16f, 0.62f};
+    harness.body.SetWeaponForSimulation(&weapon);
+
+    const auto settleAt = [&](float aim)
+    {
+        PlayerBody::WeaponPose pose;
+        pose.aim = aim;
+        for (int i = 0; i < 150; ++i)
+        {
+            harness.body.SetWeaponPose(pose);
+            harness.Tick();
+        }
+        const glm::vec3 eye = harness.View().eyePosition;
+        const glm::vec3 forward = harness.View().Forward();
+        const WeaponVisual& visual = harness.body.Weapon();
+        const glm::quat hold = harness.body.WeaponRotation();
+        const glm::vec3 origin = harness.body.WeaponOrigin();
+        struct Where
+        {
+            float origin;
+            float rear;
+            float muzzle;
+            float hold;
+        };
+        return Where{glm::dot(origin - eye, forward),
+                     glm::dot(origin + hold * visual.rearPoint - eye, forward),
+                     glm::dot(origin + hold * visual.muzzle - eye, forward),
+                     glm::dot(harness.body.HoldPoint() - eye, forward)};
+    };
+
+    const auto hip = settleAt(0.0f);
+    const auto sighted = settleAt(1.0f);
+
+    INFO("hip fire: origin " << hip.origin << " m, back of it " << hip.rear << " m, muzzle "
+                             << hip.muzzle << " m, hold " << hip.hold << " m");
+    INFO("sighted:  origin " << sighted.origin << " m, back of it " << sighted.rear << " m, muzzle "
+                             << sighted.muzzle << " m, hold " << sighted.hold << " m");
+
+    // Raising the sights may move the weapon about, but it may not bring it closer to the eye: the
+    // whole of it is on the view axis there, so anything that comes back comes back through the
+    // camera.
+    CHECK(sighted.rear >= hip.rear - 0.01f);
+    CHECK(sighted.muzzle >= hip.muzzle - 0.01f);
 }

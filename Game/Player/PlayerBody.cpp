@@ -1154,10 +1154,24 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
         carryUp * (m_config.weaponReadyDown + m_config.weaponShortRise * shortness) +
         carryForward *
             ((m_config.weaponReadyForward + m_config.weaponShortForward * shortness) * forwardScale);
+    // How far out the sights sit, and it is not simply `weaponAimForward`.
+    //
+    // The two tuning numbers measure different points on the weapon: the ready one places the grip
+    // and the sighted one places the sight, and a sight is forward of a grip. Treating them as the
+    // same number meant that raising the sights moved the whole gun back towards the eye by however
+    // far the sight sits ahead of the grip, which on a carbine is a hand's width. Nothing to do with
+    // walls, which is why it went on happening after the wall pull-back was taken out of aiming.
+    //
+    // So the ready distance plus that gap is a floor: the weapon may go further out when the sights
+    // come up and it may not come back.
+    const float sightAhead =
+        std::max(m_weaponVisual.sightPoint.z - m_weaponVisual.triggerGrip.z, 0.0f);
+    const float aimForwardWanted =
+        std::max(m_config.weaponAimForward, m_config.weaponReadyForward + sightAhead);
     // Never closer than the minimum, however crowded it is: at full aim the pull-back runs straight
     // down the view axis, so an unclamped one puts the receiver through the near plane.
     const float aimForwardDistance =
-        std::max(m_config.weaponAimForward * forwardScale, m_config.weaponAimMinForward);
+        std::max(aimForwardWanted * forwardScale, m_config.weaponAimMinForward);
     const glm::vec3 sightedOffset = aimForward * aimForwardDistance;
 
     // Prone puts it down beside the body, muzzle forward, out of the way of the arm that is doing

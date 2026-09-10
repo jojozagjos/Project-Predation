@@ -599,3 +599,23 @@ wide the screen is.
 
 The general rule: a preview may differ from the thing it previews only while an edit is in progress,
 and never at rest.
+
+## ADR-036: Two carry distances that measure different points are not comparable
+
+**Status**: accepted, 2026-09-10
+
+`weaponReadyForward` places the grip and `weaponAimForward` places the sight, and a sight is forward
+of a grip. Since ADR-028 made the carry place a named point rather than the model's origin, those
+two numbers stopped being comparable, and 0.42 to the sight is nearer the eye than 0.38 to the grip
+by however far the sight sits ahead of it. Raising the sights therefore pulled the whole weapon back
+about five centimetres, on open ground, with no wall anywhere. It was reported three times as the
+gun being pushed back while aiming, and twice I looked for it in the wall handling, because that is
+where a weapon coming back towards the eye normally comes from.
+
+The sighted distance is now floored at the ready distance plus the gap between the two sockets, so a
+weapon may go further out when the sights come up and may not come back. `Tests/BodyPoseTests.cpp`
+measures the origin, the back and the muzzle at both aims on open ground.
+
+The lesson is about the units of a tuning value rather than about weapons: a number that means "how
+far out X is" cannot be compared with one that means "how far out Y is", and giving both the same
+suffix is what makes the mistake invisible.
