@@ -1556,3 +1556,37 @@ TEST_CASE("Aiming at a wall does not put the gun through the near plane", "[body
     INFO("hold sits " << along << " m down the view axis");
     CHECK(along > harness.body.Tuning().weaponAimMinForward - 0.02f);
 }
+
+TEST_CASE("Crawling keeps the hands inside a vent", "[body][pose]")
+{
+    // A crawl reaches forward and out to the side, and nothing checked what was out there. In a
+    // vent that is the sheet metal either side of you, so the hands went through it and the arms
+    // followed. Vents are meant to be tight and unpleasant, not transparent.
+    BodyHarness harness;
+
+    // A duct 0.8 m wide, running along the way the player is going.
+    const float halfWidth = 0.40f;
+    harness.physics.CreateBox({0.5f, 1.0f, 8.0f}, Transform{{halfWidth + 0.5f, 1.0f, 0.0f}},
+                              BodyMotion::Static);
+    harness.physics.CreateBox({0.5f, 1.0f, 8.0f}, Transform{{-halfWidth - 0.5f, 1.0f, 0.0f}},
+                              BodyMotion::Static);
+    harness.physics.OptimizeBroadPhase();
+
+    harness.SetStance(PlayerStance::Prone);
+    harness.Settle(240);
+    harness.SetTravel(glm::vec3(0.0f, 0.0f, -1.0f));
+    harness.Settle(120);
+
+    float worst = 0.0f;
+    for (int i = 0; i < 180; ++i)
+    {
+        harness.Tick();
+        for (int side = 0; side < 2; ++side)
+        {
+            worst = std::max(worst, std::abs(harness.Bone(harness.Rig().hand[side]).x));
+        }
+    }
+
+    INFO("furthest a hand reached sideways: " << worst << " m, walls at " << halfWidth);
+    CHECK(worst < halfWidth);
+}

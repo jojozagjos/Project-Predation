@@ -181,6 +181,9 @@ public:
         float crawlReach = 0.30f;      // how far the hands swing fore and aft
         float crawlLift = 0.10f;       // how far a hand lifts while swinging forward
         float crawlHandForward = 0.42f; // where the hands plant relative to the shoulders
+        // How much air a crawling hand leaves between itself and whatever it is reaching into. A
+        // crawl reaches forward and out, which in a vent is into the wall either side.
+        float crawlHandClearance = 0.09f;
         float crawlLegDraw = 0.40f;     // how far a knee swings out to the side as it is drawn up
         float crawlShoulderRollDegrees = 9.0f; // shoulders roll as each arm reaches and pulls
         // Prone turning is slow and deliberate: the body pivots towards where you are crawling.

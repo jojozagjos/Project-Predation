@@ -1704,6 +1704,26 @@ void PlayerBody::UpdateCrawlArms(const PlayerState& state, const PlayerView& vie
             target.y = std::max(target.y, hit.position.y + 0.05f + lift);
         }
 
+        // And out of the walls. A crawl reaches forward and out to the side, which in a vent is
+        // straight into the sheet metal either side of you: the hands went through it and the arms
+        // with them. Swept from the shoulder, so what is found is between the body and the reach
+        // rather than something the hand is already past.
+        {
+            const glm::vec3 toTarget = target - shoulder;
+            const float span = glm::length(toTarget);
+            if (span > 0.02f)
+            {
+                const glm::vec3 direction = toTarget / span;
+                const RayHit blocked =
+                    physics.RayCast(shoulder, direction, span + m_config.crawlHandClearance);
+                if (blocked)
+                {
+                    target = shoulder +
+                             direction * std::max(blocked.distance - m_config.crawlHandClearance, 0.0f);
+                }
+            }
+        }
+
         FootState& hand = m_hands[static_cast<size_t>(side)];
         // Blend in from the upright pose so going prone does not snap the arms into place.
         const glm::vec3 restHand = m_pose.GlobalPosition(m_rig.hand[side]);
