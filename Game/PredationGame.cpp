@@ -2673,11 +2673,14 @@ void PredationGame::DrawWeaponBench()
         const float gap = glm::distance(world, m_editorBody.GetPose().GlobalPosition(bone));
         ImGui::TextColored(gap < 0.03f ? ImVec4(0.65f, 0.85f, 0.65f, 1.0f)
                                        : ImVec4(0.90f, 0.70f, 0.45f, 1.0f),
-                           "%s hand: %.1f cm from its socket", label, gap * 100.0f);
+                           "%s hand missed its socket by %.1f cm", label, gap * 100.0f);
     };
     report("Trigger", visual.triggerGrip, m_editorBody.Rig().hand[1]);
     report("Support", visual.supportGrip, m_editorBody.Rig().hand[0]);
-    ImGui::TextDisabled("Move the grip and support sockets until both read small.");
+    ImGui::TextDisabled("This is how far the arm fell short of the socket, not whether the");
+    ImGui::TextDisabled("socket is in a sensible place: a socket out past the end of the");
+    ImGui::TextDisabled("barrel reads zero right up until the arm cannot reach it. Use it to");
+    ImGui::TextDisabled("find a grip the arm has to stretch for, and your eyes for the rest.");
 
     ImGui::Separator();
     ImGui::TextDisabled("The weapon this model is worn by, for the game:");

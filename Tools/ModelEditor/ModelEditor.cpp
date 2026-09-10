@@ -111,6 +111,7 @@ void ModelEditor::AddPart(const char* name, PartShape shape)
     part.position.y = part.size.y * 0.5f;
     m_model.parts.push_back(std::move(part));
     m_selectedPart = static_cast<int>(m_model.parts.size()) - 1;
+    m_pick = Pick::Part;
     m_dirty = true;
     m_previewChanged = true;
 }
@@ -127,6 +128,7 @@ bool ModelEditor::Load(const std::string& modelName)
     m_saveName = modelName;
     m_frameRequested = true;
     m_selectedPart = m_model.parts.empty() ? -1 : 0;
+    m_pick = m_model.parts.empty() ? Pick::None : Pick::Part;
     m_selectedSocket = -1;
     m_selectedClip = m_model.clips.empty() ? -1 : 0;
     m_dirty = true;
@@ -363,7 +365,7 @@ void ModelEditor::DrawFilePanel(Scene& scene, MeshLibrary& meshes)
         ImGui::SetTooltip("Ctrl+Y: %s", RedoName());
     }
     ImGui::SameLine();
-    ImGui::TextDisabled("%zu steps back", UndoDepth());
+    ImGui::TextDisabled(UndoDepth() == 1 ? "1 step back" : "%zu steps back", UndoDepth());
 
     // What the keys and the mouse do, on screen. An editor whose controls have to be guessed at is
     // one where the first ten minutes are spent finding out it can do anything at all.
@@ -465,6 +467,7 @@ void ModelEditor::DrawPartList()
         if (ImGui::Selectable(part.name.c_str(), m_selectedPart == i))
         {
             m_selectedPart = i;
+            m_pick = Pick::Part;
         }
         ImGui::PopID();
     }
@@ -479,6 +482,7 @@ void ModelEditor::DrawPartList()
             copy.name += "_copy";
             m_model.parts.push_back(std::move(copy));
             m_selectedPart = static_cast<int>(m_model.parts.size()) - 1;
+            m_pick = Pick::Part;
             m_dirty = true;
     m_previewChanged = true;
         }
