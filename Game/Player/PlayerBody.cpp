@@ -1014,8 +1014,16 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
         return false;
     }
 
-    const float aim = glm::clamp(m_weaponPose.aim, 0.0f, 1.0f);
     const bool flat = m_flatness > 0.5f;
+
+    // How boxed in the weapon is, from the trace taken once a frame in Update.
+    const float crowded = 1.0f - m_wallClearance;
+
+    // You cannot aim into a wall. Holding the sights up against one puts them on the view axis with
+    // the barrel inside the bricks, which is a lie in the shape of a feature; the sights come down
+    // instead, and the player can see perfectly well why.
+    const float aim = glm::clamp(m_weaponPose.aim, 0.0f, 1.0f) *
+                      glm::mix(1.0f, m_config.weaponWallAim, crowded);
 
     // --- Sway -----------------------------------------------------------------------------------
     // Three things move a held weapon, and they are separate on purpose.
@@ -1088,13 +1096,20 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
     //
     // Sighted, the origin drops by exactly the sight height, which puts the sight block on the view
     // axis rather than near it.
-    // Pulled in and turned up against a wall, which is what anyone does with a long weapon in a
-    // corridor. Walking into one otherwise put the barrel straight through it.
-    const float crowded = 1.0f - m_wallClearance;
+    // Pulled in against a wall, which is what anyone does with a long weapon in a corridor. Walking
+    // into one otherwise put the barrel straight through it.
+    //
+    // Pulled straight back, and only back. It used to be lifted as well, on the idea that a weapon
+    // comes up in a corridor, and what that did was raise the receiver into the camera: the eye
+    // sits above the hold, so lifting the hold closes the last of the gap between them.
+    // A long weapon and a near wall cannot both be satisfied. Something has to give, and pulling
+    // straight back gives the barrel to the wall and the receiver to the camera. Dropping the muzzle
+    // gives up only where the weapon is pointing, which nobody is using in a corridor anyway, and it
+    // is what anyone does with a rifle indoors.
     const float forwardScale = glm::mix(1.0f, m_config.weaponWallForward, crowded);
 
     const glm::vec3 readyOffset = carryRight * m_config.weaponReadyRight +
-                                  carryUp * (m_config.weaponReadyDown + m_config.weaponWallRaise * crowded) +
+                                  carryUp * m_config.weaponReadyDown +
                                   carryForward * (m_config.weaponReadyForward * forwardScale);
     // Never closer than the minimum, however crowded it is: at full aim the pull-back runs straight
     // down the view axis, so an unclamped one puts the receiver through the near plane.
@@ -1153,10 +1168,18 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
 
     // --- Which way it points --------------------------------------------------------------------
     const glm::quat sighted = LookRotation(aimForward, aimUp);
-    // Held ready the muzzle drops and the weapon cants inwards, the way a carried rifle does.
-    const glm::quat ready = LookRotation(carryForward, carryUp) *
-                            glm::angleAxis(glm::radians(-9.0f), glm::vec3(1.0f, 0.0f, 0.0f)) *
-                            glm::angleAxis(glm::radians(-4.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+    // Held ready the weapon cants inwards, the way a carried rifle does, and the muzzle comes down
+    // as the space in front runs out. Lowering is what makes room for a long weapon indoors: pulling
+    // it back only moves the problem from the wall to the camera.
+    //
+    // Note the sign. The barrel runs down the weapon's +Z, and a positive turn about +X sends +Z
+    // downwards, so lowering the muzzle is a positive angle here. The small standing cant is
+    // negative and therefore lifts it slightly, which is what a rifle held ready actually does.
+    const glm::quat ready =
+        LookRotation(carryForward, carryUp) *
+        glm::angleAxis(glm::radians(-9.0f + m_config.weaponWallLower * crowded),
+                       glm::vec3(1.0f, 0.0f, 0.0f)) *
+        glm::angleAxis(glm::radians(-4.0f), glm::vec3(0.0f, 0.0f, 1.0f));
     glm::quat rotation = glm::slerp(ready, sighted, aim);
 
     // Peeking rolls the weapon with the head. The roll is already in the aim frame above, so the
@@ -1180,24 +1203,71 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
     // as the magazine comes out, and comes back up as the new one seats. `reload` runs 0 to 1.
     glm::vec3 magazineOffset{0.0f};
     float magazineVisible = 1.0f;
-    if (m_weaponPose.reloading && !authoredReload)
+    // The movement runs to its end even when the reload itself finishes first. The weapon is
+    // usable again the moment the simulation says so; what is left is a pair of hands finishing
+    // what they were doing, and cutting that off partway is what snapped.
+    if (m_weaponPose.reloading)
     {
-        const float t = glm::clamp(m_weaponPose.reload, 0.0f, 1.0f);
-        // A raised-cosine envelope: nothing at either end, most of the movement in the middle.
-        const float envelope = 0.5f - 0.5f * std::cos(t * glm::two_pi<float>());
-        rotation = rotation * glm::angleAxis(glm::radians(48.0f * envelope), glm::vec3(0.0f, 0.0f, 1.0f)) *
-                   glm::angleAxis(glm::radians(-24.0f * envelope), glm::vec3(1.0f, 0.0f, 0.0f));
-        offset += carryUp * (-0.13f * envelope) + carryRight * (-0.07f * envelope) -
-                  carryForward * (0.06f * envelope);
+        m_reloadPlay = glm::clamp(m_weaponPose.reload, 0.0f, 1.0f);
+        m_reloadRunning = true;
+    }
+    else if (m_reloadRunning)
+    {
+        m_reloadPlay += dt / std::max(m_config.reloadFollowThrough, 0.05f);
+        if (m_reloadPlay >= 1.0f)
+        {
+            m_reloadPlay = 1.0f;
+            m_reloadRunning = false;
+        }
+    }
 
-        // The old magazine drops away over the first third, then the new one rises into place.
-        constexpr float kOut = 0.34f;
-        constexpr float kIn = 0.78f;
+    if (m_reloadRunning && !authoredReload)
+    {
+        const float t = glm::clamp(m_reloadPlay, 0.0f, 1.0f);
+
+        // Quick in, held through the work, unhurried out. A raised cosine, which is what this was,
+        // spends as long arriving as it does leaving and reads as the weapon being waved rather
+        // than brought in to be worked on.
+        const float envelope = glm::smoothstep(0.0f, 0.16f, t) * (1.0f - glm::smoothstep(0.74f, 1.0f, t));
+
+        // Rolled towards the player and tipped down, which is what puts the magazine well where the
+        // other hand can reach it and the ejection port where it can be seen.
+        rotation = rotation * glm::angleAxis(glm::radians(52.0f * envelope), glm::vec3(0.0f, 0.0f, 1.0f)) *
+                   glm::angleAxis(glm::radians(-28.0f * envelope), glm::vec3(1.0f, 0.0f, 0.0f)) *
+                   glm::angleAxis(glm::radians(14.0f * envelope), glm::vec3(0.0f, 1.0f, 0.0f));
+        offset += carryUp * (-0.14f * envelope) + carryRight * (-0.08f * envelope) -
+                  carryForward * (0.07f * envelope);
+
+        // The new magazine is slapped home rather than slid in. One short jolt through the whole
+        // weapon, which is the moment of a reload anyone actually notices.
+        constexpr float kSeatAt = 0.80f;
+        const float sinceSeat = (t - kSeatAt) / 0.09f;
+        if (sinceSeat > 0.0f && sinceSeat < 1.0f)
+        {
+            const float jolt = std::sin(sinceSeat * glm::pi<float>()) * (1.0f - sinceSeat);
+            offset += carryUp * (0.022f * jolt);
+            rotation = rotation * glm::angleAxis(glm::radians(-5.0f * jolt), glm::vec3(1.0f, 0.0f, 0.0f));
+        }
+
+        // And the bolt is released at the end, which is a shorter, sharper knock the other way.
+        const float sinceBolt = (t - 0.90f) / 0.07f;
+        if (sinceBolt > 0.0f && sinceBolt < 1.0f)
+        {
+            const float knock = std::sin(sinceBolt * glm::pi<float>());
+            offset -= carryForward * (0.018f * knock);
+            rotation = rotation * glm::angleAxis(glm::radians(3.5f * knock), glm::vec3(1.0f, 0.0f, 0.0f));
+        }
+
+        // The old magazine drops away, there is a moment with nothing in the well, and the new one
+        // comes up into it. Falling accelerates and seating decelerates, because that is what each
+        // of those two things does.
+        constexpr float kOut = 0.30f;
+        constexpr float kIn = 0.62f;
         if (t < kOut)
         {
             const float drop = t / kOut;
-            magazineOffset.y = -0.32f * drop * drop;
-            magazineVisible = 1.0f - drop;
+            magazineOffset.y = -0.34f * drop * drop;
+            magazineVisible = 1.0f - glm::smoothstep(0.45f, 1.0f, drop);
         }
         else if (t < kIn)
         {
@@ -1205,8 +1275,8 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
         }
         else
         {
-            const float rise = (t - kIn) / (1.0f - kIn);
-            magazineOffset.y = -0.30f * (1.0f - rise) * (1.0f - rise);
+            const float rise = glm::clamp((t - kIn) / (kSeatAt - kIn), 0.0f, 1.0f);
+            magazineOffset.y = -0.32f * (1.0f - rise) * (1.0f - rise);
             magazineVisible = 1.0f;
         }
     }
@@ -1229,6 +1299,7 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
     m_weaponTransform.rotation = rotation;
     m_weaponTransform.scale = glm::vec3(1.0f);
 
+
     // The barrel out of the scenery. The muzzle is what goes through a wall, not the grip, so that
     // is what gets traced for, and the whole weapon moves by whatever correction it needs.
     //
@@ -1243,20 +1314,24 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
             ClearOfWorld(physics, view.eyePosition, muzzle, m_config.muzzleClearance);
         glm::vec3 corrected = m_weaponTransform.position + (clear - muzzle);
 
-        // Aiming, the correction runs straight down the view axis, so an unlimited one drags the
-        // sights back through the near plane and the player ends up looking at the inside of their
-        // own receiver. The hold stops at the minimum and the barrel takes the difference.
-        if (aim > 0.01f)
-        {
-            const glm::vec3 fromEye = corrected - view.eyePosition;
-            const float along = glm::dot(fromEye, aimForward);
-            const float floorDistance = glm::mix(0.0f, m_config.weaponAimMinForward, aim);
-            if (along < floorDistance)
-            {
-                corrected += aimForward * (floorDistance - along);
-            }
-        }
         m_weaponTransform.position = corrected;
+    }
+
+    // Never so close to the eye that the camera is inside it. The trace above keeps the barrel out
+    // of a wall, and it has to give way to this: a barrel is half a metre long and a player can
+    // stand a third of a metre from a wall, so there are places where the two cannot both be had.
+    // Given that choice the camera wins, because a barrel tip in the bricks is something nobody
+    // looks at and a receiver through the near plane fills the screen. Lowering the muzzle is what
+    // makes the choice rare.
+    {
+        const float floorDistance =
+            glm::mix(m_config.weaponMinForward, m_config.weaponAimMinForward, aim);
+        const glm::vec3 along = aim > 0.5f ? aimForward : carryForward;
+        const float reach = glm::dot(m_weaponTransform.position - view.eyePosition, along);
+        if (reach < floorDistance)
+        {
+            m_weaponTransform.position += along * (floorDistance - reach);
+        }
     }
 
     // The trigger hand never lets go, so the weapon is pulled in until the grip is somewhere the
@@ -1438,8 +1513,10 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
     // the weapon, which is how anyone actually low-crawls with a rifle.
     const int firstSide = flat ? kRight : kLeft;
     // The support hand also comes off the gun while the magazine is being changed.
-    const bool supportHandFree = flat || (m_weaponPose.reloading && m_weaponPose.reload > 0.12f &&
-                                          m_weaponPose.reload < 0.92f);
+    // Driven by the movement rather than by the reload, so the hand comes back to the handguard as
+    // part of finishing rather than the instant the weapon becomes usable again.
+    const bool supportHandFree =
+        flat || (m_reloadRunning && m_reloadPlay > 0.10f && m_reloadPlay < 0.94f);
 
     // The magazine change needs a hand to do it with, so the support hand goes to the magazine well
     // rather than hanging in mid air.
@@ -1448,12 +1525,26 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
     // transform rebuilds every bone after it in the skeleton, and the left arm comes before the
     // right, so placing the left hand last threw the right arm back onto its parent's pose: the
     // trigger hand dropped off the gun the moment a reload started.
-    if (supportHandFree && !flat && m_weaponPose.reloading)
+    if (supportHandFree && !flat && m_reloadRunning)
     {
         const glm::vec3 shoulder = m_pose.GlobalPosition(m_rig.shoulder[kLeft]);
         const glm::vec3 magazineWorld =
             m_weaponTransform.position + rotation * (m_weaponVisual.magazineSeated + magazineOffset);
-        const glm::vec3 target = magazineWorld + weaponRight * -0.03f;
+        glm::vec3 target = magazineWorld + weaponRight * -0.03f;
+
+        // Between letting the old magazine go and bringing the new one up, the hand has somewhere
+        // to be, and it is not hovering under the weapon: it is down at the belt fetching one.
+        // Without this the reload reads as a magazine teleporting into a hand that never moved.
+        const float fetch = glm::smoothstep(0.26f, 0.42f, m_reloadPlay) *
+                            (1.0f - glm::smoothstep(0.52f, 0.66f, m_reloadPlay));
+        if (fetch > 0.001f)
+        {
+            const glm::vec3 belt = view.eyePosition - carryUp * (m_rig.height * 0.34f) -
+                                   carryRight * (m_rig.height * 0.11f) +
+                                   carryForward * (m_rig.height * 0.05f);
+            target = glm::mix(target, belt, fetch);
+        }
+
         FootState& hand = m_hands[static_cast<size_t>(kLeft)];
         hand.position = SmoothTowards(hand.position, target, m_config.weaponHandSmoothing, dt);
 
@@ -1726,16 +1817,20 @@ void PlayerBody::UpdateMantleArms(const PlayerState& state, float weight)
     // arms are solved and they have to be placed somewhere. A prediction is not an arm that ran out
     // of reach on the way to a ledge, and the difference is the gap between the glove and the thing
     // it is supposed to be holding.
+    // Blended by the same weight the arms are, not applied outright. Applied outright it held the
+    // weapon exactly in the hand right up to the frame the fade ran out, and then let go of it in
+    // one step: the correction stopping is what snapped, not the climb ending.
     if (solvedTrigger && weight > 0.001f)
     {
         if (m_hasHeldItem)
         {
-            m_heldItemTransform.position =
+            const glm::vec3 inHand =
                 triggerWrist + triggerPalm * (Ratio::kHand * m_rig.height * 0.45f);
+            m_heldItemTransform.position = glm::mix(m_heldItemTransform.position, inHand, weight);
         }
         if (m_hasWeapon)
         {
-            ShiftWeapon(triggerWrist - m_weaponTransform.position);
+            ShiftWeapon((triggerWrist - m_weaponTransform.position) * weight);
         }
     }
 }

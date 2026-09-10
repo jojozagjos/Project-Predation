@@ -319,3 +319,38 @@ TEST_CASE("The shipped weapons are not facing backwards", "[assets][weapons]")
         CHECK(behind < 0.0);
     }
 }
+
+TEST_CASE("A dropped weapon keeps the pieces it was made of", "[assets][weapons]")
+{
+    // A dropped weapon used to be one merged mesh with one flat material, so it lay on the floor as
+    // a single lump in one colour: none of the textures, and no way for them to be there, because a
+    // merged mesh has one material and this weapon has three.
+    Paths::Init(nullptr, std::filesystem::path(PRED_SOURCE_DIR) / "Assets");
+
+    WeaponDatabase weapons;
+    REQUIRE(weapons.LoadFromFile(std::filesystem::path(PRED_SOURCE_DIR) / "Assets" / "Data" /
+                                 "weapons.json"));
+    const WeaponDefinition* carbine = weapons.Find("carbine");
+    REQUIRE(carbine != nullptr);
+
+    const WeaponVisual visual = BuildWeaponVisual(*carbine);
+    INFO("carbine is " << visual.parts.size() << " parts");
+    CHECK(visual.parts.size() > 1);
+
+    // Each piece carries its own material, and more than one of them names an image. That is the
+    // whole reason a pickup is drawn as pieces rather than as one mesh.
+    int named = 0;
+    for (const WeaponVisual::Part& part : visual.parts)
+    {
+        INFO("part " << part.name);
+        CHECK(part.mesh.vertices.size() >= 3);
+        if (part.material.baseColorTexture.IsValid())
+        {
+            ++named;
+        }
+    }
+    // No renderer here, so nothing resolves to a real handle; what is checked is that the parts are
+    // separate and each has a material of its own to carry one.
+    CHECK(named == 0);
+    CHECK(visual.Combined().vertices.size() > visual.parts.front().mesh.vertices.size());
+}

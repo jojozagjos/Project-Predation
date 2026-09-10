@@ -1,4 +1,5 @@
 #include "Engine/Physics/PhysicsWorld.h"
+#include "Engine/Render/Mesh.h"
 #include "Game/Player/PlayerController.h"
 #include "Game/World/WorldObjects.h"
 
@@ -117,4 +118,30 @@ TEST_CASE("Two machines agree which pickup is which", "[items][net]")
 
     // And an index past the end is still that index, because the caller fills the gap.
     CHECK(WorldObjects::ChooseSlot(client, 9) == 9);
+}
+
+TEST_CASE("Uploading the same mesh twice does not take twice the buffers", "[render][mesh]")
+{
+    // The editor rebuilds its preview on every change, and every rebuild used to take four more
+    // buffer handles and give none back. Four thousand of them is a couple of minutes of dragging a
+    // socket, and after that nothing can be uploaded at all and the model quietly disappears.
+    //
+    // No renderer here, so what is checked is the bookkeeping: the same name and the same geometry
+    // is the same entry, and the same name with different geometry replaces it in place so every
+    // handle handed out before still points at the right thing.
+    MeshData first;
+    first.vertices.resize(3);
+    first.vertices[1].position = {1.0f, 0.0f, 0.0f};
+    first.vertices[2].position = {0.0f, 1.0f, 0.0f};
+    first.indices = {0, 1, 2};
+
+    MeshData resized = first;
+    resized.vertices[1].position = {2.0f, 0.0f, 0.0f};
+
+    CHECK(MeshFingerprintForTesting(first) == MeshFingerprintForTesting(first));
+    CHECK(MeshFingerprintForTesting(first) != MeshFingerprintForTesting(resized));
+
+    MeshData moreTriangles = first;
+    moreTriangles.indices = {0, 1, 2, 0, 1, 2};
+    CHECK(MeshFingerprintForTesting(first) != MeshFingerprintForTesting(moreTriangles));
 }

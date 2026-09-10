@@ -5,6 +5,8 @@
 #include "Engine/Scene/Scene.h"
 #include "Game/Interaction/InteractionSystem.h"
 #include "Game/Items/ItemAppearance.h"
+#include "Game/Weapons/WeaponAppearance.h"
+#include "Game/Weapons/WeaponDatabase.h"
 #include "Game/World/TestMap.h"
 
 #include <glm/gtc/constants.hpp>
@@ -329,11 +331,51 @@ int WorldObjects::SpawnPickup(Scene& scene, MeshLibrary& meshes, PhysicsWorld& p
     pickup.rounds = rounds;
     pickup.reserve = reserve;
 
-    const MeshHandle mesh = meshes.Upload(ItemMesh(*definition, m_weapons), "item_" + definition->key);
     Transform transform;
     transform.position = position;
-    pickup.entity = scene.CreateMeshEntity("pickup_" + definition->key, transform, mesh,
-                                           ItemMaterial(*definition));
+    // Dropped facing whichever way it left the hand, and tumbling, rather than all of them lying in
+    // the same direction like stock on a shelf. The seed is the index and the item, so the two
+    // machines that both spawn this pickup agree about how it landed.
+    {
+        const uint32_t seed =
+            static_cast<uint32_t>(atIndex + 1) * 2654435761u + static_cast<uint32_t>(item) * 40503u;
+        const auto unit = [seed](int which)
+        {
+            const uint32_t mixed = (seed + static_cast<uint32_t>(which) * 0x9E3779B9u) * 1103515245u;
+            return static_cast<float>((mixed >> 8) & 0xFFFFu) / 65535.0f;
+        };
+        const glm::vec3 axis =
+            glm::normalize(glm::vec3(unit(0) - 0.5f, unit(1) - 0.5f, unit(2) - 0.5f) + glm::vec3(1e-3f));
+        transform.rotation = glm::angleAxis(unit(3) * glm::two_pi<float>(), axis);
+    }
+
+    // A weapon is drawn as the parts it is made of rather than as one merged lump, so a dropped
+    // rifle looks like the rifle: every piece keeps its own material and its own texture. Anything
+    // that is not a weapon is one shape and one colour, and one entity is all it needs.
+    const WeaponDefinition* weapon =
+        m_weapons != nullptr ? m_weapons->Get(m_weapons->ForItem(definition->key)) : nullptr;
+    if (weapon != nullptr)
+    {
+        const WeaponVisual visual = BuildWeaponVisual(*weapon, m_textures);
+        for (size_t part = 0; part < visual.parts.size(); ++part)
+        {
+            const MeshHandle partMesh = meshes.Upload(
+                visual.parts[part].mesh, "pickup_" + definition->key + "_" + visual.parts[part].name);
+            pickup.parts.push_back(scene.CreateMeshEntity("pickup_" + definition->key, transform,
+                                                          partMesh, visual.parts[part].material));
+            pickup.partRest.push_back(visual.parts[part].rest);
+        }
+    }
+
+    if (pickup.parts.empty())
+    {
+        const MeshHandle mesh =
+            meshes.Upload(ItemMesh(*definition, m_weapons), "item_" + definition->key);
+        pickup.parts.push_back(scene.CreateMeshEntity("pickup_" + definition->key, transform, mesh,
+                                                      ItemMaterial(*definition)));
+        pickup.partRest.push_back(glm::mat4(1.0f));
+    }
+    pickup.entity = pickup.parts.front();
     // Dropped items are dynamic so they settle naturally rather than floating where they were let
     // go, and they are debris so the player walks through them rather than kicking them about. An
     // item wedged against a capsule is one that cannot be picked up.
@@ -386,7 +428,12 @@ void WorldObjects::Despawn(Pickup& pickup, Scene& scene, PhysicsWorld& physics,
 {
     interactions.Unregister(pickup.entity);
     physics.DestroyBody(pickup.body);
-    scene.Destroy(pickup.entity);
+    for (const Entity part : pickup.parts)
+    {
+        scene.Destroy(part);
+    }
+    pickup.parts.clear();
+    pickup.partRest.clear();
     pickup.alive = false;
     pickup.item = kInvalidItem;
     pickup.count = 0;
@@ -523,16 +570,25 @@ void WorldObjects::Update(Scene& scene, PhysicsWorld& physics, InteractionSystem
         {
             continue;
         }
-        Transform* transform = scene.GetTransform(pickup.entity);
-        if (transform == nullptr)
+        const Transform body = physics.GetTransform(pickup.body);
+        // Every piece rides the body's frame, each keeping where it sits on the weapon.
+        for (size_t part = 0; part < pickup.parts.size() && part < pickup.partRest.size(); ++part)
         {
-            continue;
+            Transform* transform = scene.GetTransform(pickup.parts[part]);
+            if (transform == nullptr)
+            {
+                continue;
+            }
+            const glm::mat4 world = glm::translate(glm::mat4(1.0f), body.position) *
+                                    glm::mat4_cast(body.rotation) * pickup.partRest[part];
+            transform->position = glm::vec3(world[3]);
+            transform->rotation = glm::quat_cast(glm::mat3(world));
+            transform->scale = glm::vec3(1.0f);
         }
-        *transform = physics.GetTransform(pickup.body);
 
         // Anything that has fallen out of the level is gone; leaving it costs a body and an
         // interactable for something nobody can ever reach.
-        if (transform->position.y < -25.0f)
+        if (body.position.y < -25.0f)
         {
             Despawn(pickup, scene, physics, interactions);
         }

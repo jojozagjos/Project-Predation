@@ -83,6 +83,9 @@ public:
         // end up looking at the inside of your own gun. A barrel a little way into a wall is the
         // cheaper fault, and the muzzle trace already keeps that honest for the part you can see.
         float weaponAimMinForward = 0.26f;
+        // How long the reload movement takes to finish after the reload itself has. Cutting it off
+        // at the moment the weapon becomes usable again is what made a reload end with a jump.
+        float reloadFollowThrough = 0.28f;
         // How much of the view pitch a carried weapon follows. Following it fully swung the gun
         // round behind the player whenever they looked straight down. Aiming raises this to one,
         // because the sights have to line up with the view exactly.
@@ -97,7 +100,17 @@ public:
         float wallCheckDistance = 1.10f;
         float wallCheckSpeed = 12.0f;
         float weaponWallForward = 0.34f;  // how far forward it still reaches when crowded
-        float weaponWallRaise = 0.16f;    // and how far up it comes
+        // However crowded it is, the hold never comes closer to the eye than this along the view.
+        // The eye sits above and behind the hold, so pulling in without a floor eventually pulls it
+        // into the camera, and the near plane then cuts the receiver open.
+        float weaponMinForward = 0.20f;
+        // How far the muzzle drops when there is a wall in front of it, in degrees. Lowering is what
+        // makes room; pulling back only moves the problem from the wall to the camera.
+        float weaponWallLower = 62.0f;
+        // And how much of the sights are left while jammed against something. You cannot aim into a
+        // wall, and pretending otherwise means the sights are on the view axis with the barrel
+        // inside the bricks.
+        float weaponWallAim = 0.30f;
 
         // The pull-back above is a soft rule measured along the view, which is why a gun still went
         // through a wall the player was looking sideways at: the trace and the barrel were pointing
@@ -466,6 +479,10 @@ private:
     // Which way each bone was facing last frame, so its roll about its own length is continuous.
     std::vector<glm::vec3> m_boneFront;
     TextureLibrary* m_textures = nullptr;
+    // How far through the reload movement, kept separately from the reload itself. The weapon is
+    // usable again the moment the simulation says so; the hands still have to finish.
+    float m_reloadPlay = 0.0f;
+    bool m_reloadRunning = false;
     float m_flatness = 0.0f;            // 0 upright, 1 fully prone
     // How far through the crouch, 0 standing to 1 fully down. Smoothed with the rest of the pose.
     float m_crouchness = 0.0f;

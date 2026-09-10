@@ -1174,7 +1174,17 @@ TEST_CASE("A held weapon stops at a wall it is looking sideways at", "[body][pos
     const glm::vec3 muzzle = harness.body.MuzzlePoint();
     INFO("muzzle at " << muzzle.x << ", " << muzzle.y << ", " << muzzle.z << ", player z "
                       << harness.State().position.z << ", wall face at " << wallZ);
-    CHECK(muzzle.z > wallZ);
+
+    // Not out of the wall entirely, and it cannot be: a barrel is half a metre long, a player can
+    // stand a third of a metre from a wall, and the only way to have both is to put the receiver
+    // through the camera. Given that choice the camera wins, so what is checked is that what is
+    // left is a barrel tip rather than half a weapon. It used to be 0.17 m with the barrel level.
+    CHECK(muzzle.z > wallZ - 0.12f);
+
+    // And the muzzle has come down, which is what makes the remainder small.
+    const glm::vec3 barrel = muzzle - harness.body.WeaponOrigin();
+    INFO("barrel points " << barrel.x << ", " << barrel.y << ", " << barrel.z);
+    CHECK(barrel.y < -0.05f);
 }
 
 TEST_CASE("Lying down does not put what is in the hands through the floor", "[body][pose]")
@@ -1527,11 +1537,12 @@ TEST_CASE("Aiming puts the sights on the view axis, whatever the pitch", "[body]
     CHECK(worst < 0.02f);
 }
 
-TEST_CASE("Aiming at a wall does not put the gun through the near plane", "[body][pose]")
+TEST_CASE("A weapon against a wall comes down rather than into the camera", "[body][pose]")
 {
-    // The pull-back that keeps a barrel out of a wall is measured from the eye, and at full aim it
-    // runs straight down the view axis, so it drags the sights back into the player's face. The
-    // near plane then cuts the receiver open and you are looking at the inside of your own gun.
+    // A long weapon and a near wall cannot both be satisfied. Pulling straight back gives the barrel
+    // to the wall and the receiver to the camera: the near plane cuts it open and the player is
+    // looking at the inside of their own gun. Dropping the muzzle gives up only where the weapon is
+    // pointing, which nobody is using in a corridor anyway.
     BodyHarness harness;
     WeaponDefinition weapon;
     weapon.id = 1;
@@ -1557,7 +1568,14 @@ TEST_CASE("Aiming at a wall does not put the gun through the near plane", "[body
     const glm::vec3 eye = harness.View().eyePosition;
     const float along = glm::dot(harness.body.WeaponOrigin() - eye, harness.View().Forward());
     INFO("hold sits " << along << " m down the view axis");
-    CHECK(along > harness.body.Tuning().weaponAimMinForward - 0.02f);
+    // Far enough out that the near plane, at five centimetres, is nowhere near it.
+    CHECK(along > harness.body.Tuning().weaponMinForward - 0.02f);
+
+    // And the muzzle has come down rather than staying level and buried in the wall.
+    const glm::vec3 muzzle = harness.body.MuzzlePoint();
+    const glm::vec3 barrel = muzzle - harness.body.WeaponOrigin();
+    INFO("barrel points " << barrel.x << ", " << barrel.y << ", " << barrel.z);
+    CHECK(barrel.y < -0.05f);
 }
 
 TEST_CASE("Crawling keeps the hands inside a vent", "[body][pose]")

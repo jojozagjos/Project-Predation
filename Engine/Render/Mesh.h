@@ -8,6 +8,7 @@
 
 #include <cstdint>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace pred
@@ -50,6 +51,8 @@ struct Mesh
     uint32_t vertexCount = 0;
     AABB bounds;
     std::string name;
+    // Enough of the geometry to tell whether a second upload under the same name is the same mesh.
+    size_t fingerprint = 0;
 
     bool IsValid() const { return bgfx::isValid(vertexBuffer) && bgfx::isValid(indexBuffer); }
 };
@@ -62,6 +65,10 @@ struct MeshHandle
     bool IsValid() const { return index != kInvalid; }
     bool operator==(const MeshHandle& other) const = default;
 };
+
+// Enough of a mesh to tell whether a second upload under the same name is the same mesh. Exposed so
+// a test can check the rule without a renderer to upload through.
+size_t MeshFingerprintForTesting(const MeshData& data);
 
 // Owns every uploaded mesh for the lifetime of the renderer.
 class MeshLibrary
@@ -78,6 +85,9 @@ public:
 
 private:
     std::vector<Mesh> m_meshes;
+    // Uploads are keyed by name, so asking twice gives back the same buffers rather than another
+    // pair. Without it the editor exhausted the renderer in a couple of minutes of dragging.
+    std::unordered_map<std::string, uint16_t> m_byName;
 };
 
 } // namespace pred

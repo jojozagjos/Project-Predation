@@ -114,6 +114,7 @@ bool PredationGame::OnInit(Application& app)
     // model and would otherwise fall back to the placeholder block.
     m_weaponData.LoadFromFile(Paths::AssetsRoot() / "Data" / "weapons.json");
     m_itemIcons.Build(m_items, app.GetMeshes(), app.GetRenderer(), &m_weaponData);
+    m_world.SetTextures(app.GetTextures());
     m_world.Build(m_scene, app.GetMeshes(), app.GetPhysics(), m_interactions, m_items, &m_weaponData);
     app.GetPhysics().OptimizeBroadPhase();
 
@@ -2757,9 +2758,11 @@ void PredationGame::UpdateEditorBody(float frameDeltaSeconds)
     m_editorView.eyeHeight = config.EyeHeightForStance(stance);
     m_editorView.renderPosition = m_editorState.position;
     m_editorView.eyePosition = m_editorState.position + glm::vec3(0.0f, m_editorView.eyeHeight, 0.0f);
-    // Turned a little towards the model, so the weapon is presented rather than seen end-on.
-    m_editorView.yaw = glm::radians(28.0f);
-    m_editorState.yaw = m_editorView.yaw;
+    // Facing straight ahead. It used to be turned a little towards the model, on the idea that the
+    // weapon reads better presented than seen end-on, and what it actually looked like was a body
+    // standing crooked for no reason anyone could see.
+    m_editorView.yaw = 0.0f;
+    m_editorState.yaw = 0.0f;
     m_editorView.pitch = 0.0f;
     m_editorView.leanRoll = 0.0f;
 

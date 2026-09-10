@@ -110,6 +110,37 @@ MeshLibrary::~MeshLibrary()
     Shutdown();
 }
 
+namespace
+{
+
+// Enough of a mesh to tell whether it is the same one as last time. Counts and bounds, because the
+// things that ask for the same name twice are re-uploading a part that has either not changed at
+// all or has been resized, and both of those show up here. Hashing every vertex would be exact and
+// would cost more than the upload it is trying to avoid.
+size_t MeshFingerprintImpl(const MeshData& data)
+{
+    const AABB bounds = data.ComputeBounds();
+    size_t hash = data.vertices.size() * 1000003ull + data.indices.size();
+    const auto mix = [&hash](float value)
+    {
+        hash ^= static_cast<size_t>(static_cast<long long>(value * 100000.0f)) + 0x9e3779b97f4a7c15ull +
+                (hash << 6) + (hash >> 2);
+    };
+    for (int axis = 0; axis < 3; ++axis)
+    {
+        mix(bounds.min[axis]);
+        mix(bounds.max[axis]);
+    }
+    return hash;
+}
+
+} // namespace
+
+size_t MeshFingerprintForTesting(const MeshData& data)
+{
+    return MeshFingerprintImpl(data);
+}
+
 MeshHandle MeshLibrary::Upload(const MeshData& data, std::string name)
 {
     if (data.vertices.empty() || data.indices.empty())
@@ -118,6 +149,32 @@ MeshHandle MeshLibrary::Upload(const MeshData& data, std::string name)
                        data.vertices.size(), data.indices.size());
         return MeshHandle{};
     }
+
+    // The same name twice is the same mesh, and it is asked for constantly: the editor rebuilds its
+    // preview on every change, and every rebuild used to take four more buffer handles and never
+    // give any back. Four thousand of them is a couple of minutes of dragging a socket, and after
+    // that nothing can be uploaded at all and the model quietly disappears.
+    const size_t fingerprint = MeshFingerprintImpl(data);
+    if (const auto found = m_byName.find(name); found != m_byName.end())
+    {
+        Mesh& existing = m_meshes[found->second];
+        if (existing.fingerprint == fingerprint && existing.IsValid())
+        {
+            return MeshHandle{found->second};
+        }
+        // Same name, different geometry: a part that has been resized. The buffers are replaced
+        // where they are, so everything already holding the handle keeps working.
+        if (bgfx::isValid(existing.vertexBuffer))
+        {
+            bgfx::destroy(existing.vertexBuffer);
+        }
+        if (bgfx::isValid(existing.indexBuffer))
+        {
+            bgfx::destroy(existing.indexBuffer);
+        }
+        existing = Mesh{};
+    }
+
     if (m_meshes.size() >= MeshHandle::kInvalid)
     {
         PRED_LOG_ERROR(Render, "Mesh library is full, cannot upload '{}'", name);
@@ -152,10 +209,21 @@ MeshHandle MeshLibrary::Upload(const MeshData& data, std::string name)
     }
 
     bgfx::setName(mesh.vertexBuffer, mesh.name.c_str());
+    mesh.fingerprint = fingerprint;
     PRED_LOG_DEBUG(Render, "Uploaded mesh '{}': {} vertices, {} triangles", mesh.name, mesh.vertexCount,
                    mesh.indexCount / 3);
 
+    // Back into the slot the name already had, when it had one, so every handle handed out before
+    // still points at the right thing.
+    if (const auto found = m_byName.find(mesh.name); found != m_byName.end())
+    {
+        const uint16_t index = found->second;
+        m_meshes[index] = std::move(mesh);
+        return MeshHandle{index};
+    }
+
     const auto handleIndex = static_cast<uint16_t>(m_meshes.size());
+    m_byName.emplace(mesh.name, handleIndex);
     m_meshes.push_back(std::move(mesh));
     return MeshHandle{handleIndex};
 }
@@ -185,6 +253,7 @@ void MeshLibrary::Shutdown()
         }
     }
     m_meshes.clear();
+    m_byName.clear();
 }
 
 } // namespace pred

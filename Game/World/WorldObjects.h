@@ -4,6 +4,7 @@
 #include "Engine/Physics/PhysicsWorld.h"
 #include "Engine/Render/Mesh.h"
 #include "Engine/Scene/Entity.h"
+#include "Engine/Render/TextureLibrary.h"
 #include "Game/Items/ItemDatabase.h"
 
 #include <glm/vec3.hpp>
@@ -45,7 +46,13 @@ public:
 
     struct Pickup
     {
+        // The first drawn piece, which is what the interaction system points at. A weapon is drawn
+        // as the same set of parts the player was holding, so a dropped rifle looks like the rifle
+        // rather than like one flat-coloured lump of it, and every piece keeps its own texture.
         Entity entity;
+        std::vector<Entity> parts;
+        // Where each piece sits in the pickup's own frame, so they move together with the body.
+        std::vector<glm::mat4> partRest;
         BodyHandle body;
         ItemId item = kInvalidItem;
         int count = 1;
@@ -149,6 +156,14 @@ private:
     std::vector<AmmoCrate> m_ammoCrates;
     // Held only so pickups can be built with the real weapon models. Appearance, never behaviour.
     const WeaponDatabase* m_weapons = nullptr;
+    // Where the images a dropped weapon's parts name are loaded from. Null in a headless test,
+    // which then draws them in their material colours.
+    TextureLibrary* m_textures = nullptr;
+
+public:
+    void SetTextures(TextureLibrary& textures) { m_textures = &textures; }
+
+private:
     // Meshes reused by pickups spawned at runtime.
     std::vector<MeshHandle> m_itemMeshes;
 };
