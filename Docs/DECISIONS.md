@@ -660,3 +660,21 @@ The pin is gone with it. So is the six-button nudge that existed only to work ar
 The general shape of the mistake: one value serving as the answer to two questions is not a
 simplification, it is a constraint that nobody wrote down, and it shows up as a tool that cannot
 express what someone is plainly trying to say.
+
+## ADR-039: A hand on a weapon rolls with the weapon
+
+**Status**: accepted, 2026-09-10
+
+Every bone in the rig takes its roll from the plane its own joint bends in, which is the right answer
+for a limb and cannot be resolved any other way: a straight limb has no bend to take one from. It is
+the wrong answer for a hand that is gripping something. The arm's plane turns as the player turns, so
+the hand rolled about its own forearm while the gun in it did not, and the fingers wound round the
+grip. Measured through a full turn, the trigger hand's orientation relative to the weapon moved 49
+degrees.
+
+A hand closed on a weapon is part of the weapon, so its roll comes from the weapon's own frame and
+its fingers point at the socket rather than on down the forearm. The same 49 degrees is now 9, and
+what is left is the arm honestly reaching differently as the body turns.
+
+The hand that fetches a magazine during a reload is rolled the same way, because a magazine well is
+part of the weapon too.

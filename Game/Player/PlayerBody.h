@@ -115,10 +115,10 @@ public:
         // because the sights have to line up with the view exactly.
         float weaponCarryPitchFollow = 0.90f;
         // The weapon lags a turn and then catches up, which is what gives it weight.
-        float weaponSwayAmount = 0.55f;   // how far a turn drags the weapon behind the view
+        float weaponSwayAmount = 0.34f;   // how far a turn drags the weapon behind the view
         float weaponSwayRecover = 11.0f;  // how fast it catches up again
         float weaponBreatheAmount = 0.018f; // the small movement of a weapon in someone's hands
-        float weaponWalkAmount = 0.030f;  // how much walking swings it, on the stride's own phase
+        float weaponWalkAmount = 0.018f;  // how much walking swings it, on the stride's own phase
         // Against a wall a long weapon comes in and comes up. Traced from the eye, so it reacts to
         // what is actually in front of the muzzle rather than to what the capsule is touching.
         float wallCheckDistance = 1.10f;

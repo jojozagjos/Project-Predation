@@ -2192,3 +2192,56 @@ TEST_CASE("The carry socket moves the weapon and the grip socket moves the hand"
     std::filesystem::remove(file);
     ForgetWeaponModels();
 }
+
+
+TEST_CASE("A hand on a weapon keeps the same grip on it while the player turns",
+          "[body][pose][weapons]")
+{
+    // Every bone rolls about the plane its own joint bends in, which is right for a limb and wrong
+    // for a hand that is gripping something: the arm's plane turns as the player turns, so the hand
+    // rolled about its own forearm while the gun in it did not, and the fingers wound round the
+    // grip. A hand closed on a weapon is part of the weapon.
+    BodyHarness harness;
+    WeaponDefinition weapon;
+    weapon.id = 1;
+    weapon.key = "test_rifle";
+    weapon.size = {0.06f, 0.16f, 0.62f};
+    harness.body.SetWeaponForSimulation(&weapon);
+    harness.Settle(150);
+
+    // How the hand is turned relative to the weapon. If the hand belongs to the weapon this is the
+    // same however the player is standing; if it belongs to the arm it swings with the shoulders.
+    const auto gripOnWeapon = [&](int side)
+    {
+        const glm::mat3 hand{harness.body.GetPose().Global(harness.Rig().hand[side])};
+        return glm::normalize(glm::inverse(harness.body.WeaponRotation()) *
+                              glm::quat_cast(glm::mat3(glm::normalize(hand[0]), glm::normalize(hand[1]),
+                                                       glm::normalize(hand[2]))));
+    };
+
+    const glm::quat trigger = gripOnWeapon(1);
+    const glm::quat support = gripOnWeapon(0);
+
+    float worstTrigger = 0.0f;
+    float worstSupport = 0.0f;
+    for (int step = 1; step <= 24; ++step)
+    {
+        harness.input.yaw = glm::radians(static_cast<float>(step) * 15.0f);
+        harness.Settle(30);
+        const auto angle = [](const glm::quat& a, const glm::quat& b)
+        {
+            const float dot = std::abs(glm::dot(a, b));
+            return glm::degrees(2.0f * std::acos(glm::clamp(dot, -1.0f, 1.0f)));
+        };
+        worstTrigger = std::max(worstTrigger, angle(trigger, gripOnWeapon(1)));
+        worstSupport = std::max(worstSupport, angle(support, gripOnWeapon(0)));
+    }
+
+    INFO("through a full turn the trigger hand's grip moved " << worstTrigger
+                                                              << " degrees and the support hand's "
+                                                              << worstSupport << " degrees");
+    // Some change is honest: the arm has to reach differently as the body turns, and the hand aims
+    // at its socket. A quarter turn of roll is the hand winding round the grip.
+    CHECK(worstTrigger < 25.0f);
+    CHECK(worstSupport < 25.0f);
+}

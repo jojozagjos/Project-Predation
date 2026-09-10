@@ -1701,11 +1701,13 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
                          SegmentFrame(m_rig.upperArm[kLeft], shoulder, ik.jointPosition, hinge));
         m_pose.SetGlobal(m_skeleton, m_rig.lowerArm[kLeft],
                          SegmentFrame(m_rig.lowerArm[kLeft], ik.jointPosition, ik.endPosition, hinge));
-        // The hand continues the forearm: its +Y runs from the wrist towards the fingers, which is
-        // the convention the glove is drawn in.
+        // Rolled with the weapon rather than with the arm, like the hands on the gun below: this
+        // one is reaching for the magazine well, which is part of the weapon, and a hand that rolls
+        // about its own forearm while the thing it is reaching for does not is a hand winding up.
         m_pose.SetGlobal(m_skeleton, m_rig.hand[kLeft],
                          SegmentFrame(m_rig.hand[kLeft], ik.endPosition,
-                                      ik.endPosition + (ik.endPosition - ik.jointPosition), hinge));
+                                      ik.endPosition + (ik.endPosition - ik.jointPosition),
+                                      weaponRight));
     }
 
     for (int side = firstSide; side < 2; ++side)
@@ -1757,9 +1759,16 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
                          SegmentFrame(m_rig.upperArm[side], shoulder, ik.jointPosition, hinge));
         m_pose.SetGlobal(m_skeleton, m_rig.lowerArm[side],
                          SegmentFrame(m_rig.lowerArm[side], ik.jointPosition, ik.endPosition, hinge));
+        // The hand takes its roll from the weapon, not from the arm.
+        //
+        // Every other bone rolls about the plane its own joint bends in, which is right for a limb
+        // and wrong for a hand gripping something: the arm's plane turns as the player turns, so the
+        // hand rolled about the forearm while the gun in it did not, and the fingers wound round the
+        // grip. A hand closed on a weapon is part of the weapon. Its fingers point at the socket
+        // rather than on down the forearm, for the same reason.
         m_pose.SetGlobal(m_skeleton, m_rig.hand[side],
-                         SegmentFrame(m_rig.hand[side], ik.endPosition,
-                                      ik.endPosition + (ik.endPosition - ik.jointPosition), hinge));
+                         SegmentFrame(m_rig.hand[side], ik.endPosition, gripPoints[side],
+                                      weaponRight));
     }
 
     return true;
