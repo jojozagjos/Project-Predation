@@ -149,3 +149,27 @@ file by hand so it survives a restart.
 
 A model imports as one part per primitive, which is what lets a magazine be animated separately. A
 download that came in as a single part has to be split before anything on it can move on its own.
+
+## The model editor
+
+Its own screen, reached from the menu. Nothing of the game is behind it: its own scene, no world, no
+player simulating. Escape goes back to the menu.
+
+What is in it:
+
+- **Model**: turn, mirror, rescale and recentre everything at once, sockets included. A download
+  arrives however its author left it and turning forty parts by hand is not editing.
+- **Parts**: one per glTF primitive. Click one in the viewport to select it, or pick it from the
+  list. Duplicate and delete are there.
+- **Sockets**: the contract with the game. `grip` and `support` are where the hands close, `muzzle`
+  is where rounds appear, `magazine` is where the magazine seats, `sight` is the line aiming puts on
+  the view axis. Click one in the viewport and drag a handle.
+- **Animation**: clips named `reload`, `equip` and `fire` replace the built-in movements of the same
+  name. Anything else is yours, and playable from the panel that holds the weapon.
+- **Hold it**: the game's own body, holding whatever is open. It stands, crouches, lies down, walks
+  on the spot, aims, draws, reloads and fires. It prints how far each hand is from the socket it is
+  meant to be holding, which is the only way to place a grip: the question is where the hand ends
+  up, not what the model looks like. Under three centimetres reads as held.
+
+Keys: right mouse to look with WASD while held, left click to select, drag a handle to move, Ctrl+Z
+and Ctrl+Y, F to put the view back on the model, Escape to leave.
