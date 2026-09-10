@@ -1830,7 +1830,8 @@ void PredationGame::SyncRemoteAvatars(float frameDeltaSeconds)
             fresh->id = remote.id;
             fresh->body.Build(m_scene, m_app->GetMeshes(), config);
             // Other people have heads. The body hides its own by default because in first person
-            // the camera lives inside it, which is true of exactly one body on this machine.
+            // the camera lives inside it, which is true of exactly one body on this machine at a
+            // time, and while spectating it is theirs rather than yours. Set below, every frame.
             fresh->body.Tuning().hideHead = false;
             fresh->view.eyeHeight = config.EyeHeightForStance(remote.stance);
             fresh->built = true;
@@ -1933,6 +1934,12 @@ void PredationGame::SyncRemoteAvatars(float frameDeltaSeconds)
             avatar->body.Revive();
             avatar->collapsed = false;
         }
+
+        // Spectating puts the camera in their head, so their head has to come off, exactly as your
+        // own does when you are alive. Without it the view spends the whole time inside a skull.
+        avatar->body.Tuning().hideHead = !m_player.State().alive &&
+                                         m_cameraMode == CameraMode::FirstPerson &&
+                                         static_cast<int>(avatar->id) == m_spectating;
 
         avatar->body.Update(m_scene, avatar->state, avatar->view, config, m_app->GetPhysics(),
                             frameDeltaSeconds);
@@ -3027,11 +3034,25 @@ void PredationGame::OnUpdate(double dt, double alpha)
             }
         }
 
-        if (watched != nullptr)
+        // Their body is already being posed on this machine every frame, and it is anchored to an
+        // eye that eases between stance heights exactly as your own does. Taking that eye rather
+        // than working a second one out here is what stops the camera and the head it is inside
+        // disagreeing: they were computed separately, so crouching moved one before the other and
+        // the camera spent the difference inside the skull.
+        RemoteAvatar* avatar = watched != nullptr ? AvatarFor(watched->id) : nullptr;
+        if (avatar != nullptr)
         {
-            // Eased, exactly as your own eye is. Taking the stance's height outright dropped the
-            // camera into a crouch in a single frame, which the player being watched never sees on
-            // their own screen.
+            PlayerView spectated = avatar->view;
+            spectated.yaw = watched->yaw;
+            spectated.pitch = watched->pitch;
+            view = spectated.ViewMatrix();
+            viewPosition = spectated.eyePosition;
+            m_spectateEyeHeight = avatar->view.eyeHeight;
+        }
+        else if (watched != nullptr)
+        {
+            // No body for them yet, on the frame they joined. Eased, so the fallback does not snap
+            // either.
             const float target = m_player.Config().EyeHeightForStance(watched->stance);
             m_spectateEyeHeight =
                 m_spectateEyeHeight <= 0.0f

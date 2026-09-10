@@ -687,7 +687,7 @@ TEST_CASE("Stances can be changed in the air", "[player][stance]")
 
     PlayerConfig config;
     PlayerController player;
-    REQUIRE(player.Init(physics, config, {0.0f, 0.05f, 0.0f}));
+    REQUIRE(player.Init(physics, config, {-0.30f, 0.05f, 0.0f}));
 
     PlayerInput input;
     for (int i = 0; i < 30; ++i)
@@ -742,7 +742,7 @@ TEST_CASE("A refused stance change says so", "[player][stance]")
     physics.OptimizeBroadPhase();
 
     PlayerController player;
-    REQUIRE(player.Init(physics, config, {0.0f, 0.05f, 0.0f}));
+    REQUIRE(player.Init(physics, config, {-0.30f, 0.05f, 0.0f}));
 
     PlayerInput input;
     input.crouchHeld = true;
@@ -894,7 +894,7 @@ TEST_CASE("Crouching is never refused by the floor being there", "[player][stanc
         PlayerConfig config;
         config.crouchHeight = crouchHeight;
         PlayerController player;
-        REQUIRE(player.Init(physics, config, {0.0f, 0.05f, 0.0f}));
+        REQUIRE(player.Init(physics, config, {-0.30f, 0.05f, 0.0f}));
 
         // Settled first, standing, which is the state the refusal needed: a fresh character has not
         // yet come to rest on anything.
@@ -947,7 +947,7 @@ TEST_CASE("Standing up is never refused by the floor being there", "[player][sta
             PlayerConfig config;
             config.crouchHeight = crouchHeight;
             PlayerController player;
-            REQUIRE(player.Init(physics, config, {0.0f, 0.05f, 0.0f}));
+            REQUIRE(player.Init(physics, config, {-0.30f, 0.05f, 0.0f}));
 
             PlayerInput down;
             down.crouchHeld = !fromProne;
@@ -975,4 +975,77 @@ TEST_CASE("Standing up is never refused by the floor being there", "[player][sta
             physics.Shutdown();
         }
     }
+}
+
+TEST_CASE("The camera is never left inside the world", "[player][camera]")
+{
+    // The eye is a stack of offsets and several of them move it off the middle of the capsule:
+    // leaning pushes it sideways past cover, a step pulls it down, a landing dips it. At the tuning
+    // that ships, the sideways offset happens to equal the capsule radius, so a lean stops exactly
+    // at the surface the capsule is already stopped by. That is a coincidence of two numbers, not a
+    // guarantee, and it is the kind of coincidence that stops holding the first time either is
+    // changed. So the eye is traced for, and the tuning here is deliberately pushed past the point
+    // where the coincidence saves it.
+    PhysicsWorld physics;
+    PhysicsWorld::Settings settings;
+    settings.workerThreads = 1;
+    REQUIRE(physics.Init(settings));
+    physics.CreateBox({20.0f, 0.5f, 20.0f}, Transform{{0.0f, -0.5f, 0.0f}}, BodyMotion::Static);
+    // A thin wall running along Z. CreateBox takes half extents, so its near face is at 0.36.
+    const float wallFace = 0.36f;
+    physics.CreateBox({0.08f, 2.0f, 8.0f}, Transform{{wallFace + 0.08f, 2.0f, 0.0f}}, BodyMotion::Static);
+    physics.OptimizeBroadPhase();
+
+    PlayerConfig config;
+    config.leanSideOffset = 0.70f; // twice the capsule radius: the eye can now leave the body
+    PlayerController player;
+    REQUIRE(player.Init(physics, config, {0.0f, 0.05f, 0.0f}));
+
+    PlayerInput input;
+    input.lean = 1.0f; // hard right, which is +X at yaw 0
+    for (int i = 0; i < 120; ++i)
+    {
+        player.Step(input, 1.0f / 60.0f);
+        physics.Step(1.0f / 60.0f);
+        player.UpdateView(1.0f / 60.0f, 1.0f);
+    }
+
+    INFO("eye at x " << player.View().eyePosition.x << ", wall face at " << wallFace);
+    CHECK(player.View().eyePosition.x < wallFace);
+    // And it went as far as it could rather than not leaning at all.
+    CHECK(player.View().eyePosition.x > 0.15f);
+    CHECK(player.State().leanAmount > 0.9f);
+
+    player.Shutdown();
+    physics.Shutdown();
+}
+
+TEST_CASE("Leaning in the open still moves the eye", "[player][camera]")
+{
+    // The guard above must not turn into a lean that does nothing.
+    PhysicsWorld physics;
+    PhysicsWorld::Settings settings;
+    settings.workerThreads = 1;
+    REQUIRE(physics.Init(settings));
+    physics.CreateBox({20.0f, 0.5f, 20.0f}, Transform{{0.0f, -0.5f, 0.0f}}, BodyMotion::Static);
+    physics.OptimizeBroadPhase();
+
+    PlayerConfig config;
+    PlayerController player;
+    REQUIRE(player.Init(physics, config, {0.0f, 0.05f, 0.0f}));
+
+    PlayerInput input;
+    input.lean = 1.0f;
+    for (int i = 0; i < 120; ++i)
+    {
+        player.Step(input, 1.0f / 60.0f);
+        physics.Step(1.0f / 60.0f);
+        player.UpdateView(1.0f / 60.0f, 1.0f);
+    }
+
+    INFO("eye at x " << player.View().eyePosition.x);
+    CHECK(player.View().eyePosition.x == Catch::Approx(config.leanSideOffset).margin(0.02));
+
+    player.Shutdown();
+    physics.Shutdown();
 }

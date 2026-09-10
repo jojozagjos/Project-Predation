@@ -633,6 +633,37 @@ void PlayerController::UpdateView(float dt, float alpha)
     // Shift the eye sideways as well as rolling it, so leaning actually moves the viewpoint out
     // past cover rather than only tilting the picture.
     m_view.eyePosition += m_view.Right() * (m_state.leanAmount * m_config.leanSideOffset);
+
+    // And then make sure it is not inside anything.
+    //
+    // The eye is a stack of offsets and several of them move it away from the middle of the
+    // capsule: leaning pushes it sideways out past cover, a step pulls it down, a landing dips it,
+    // the walk bobs it. Each is reasonable alone, and together they put the camera through a wall
+    // or into the floor. That is what "the camera is in the map" is, and no amount of tuning the
+    // individual offsets fixes it, because the fault is in the total.
+    //
+    // Traced from a point that is always well inside the player, so whatever it finds is genuinely
+    // between the body and the eye rather than something the eye is standing on.
+    if (m_physics != nullptr)
+    {
+        const float inside = std::min(m_view.eyeHeight, m_config.HeightForStance(m_state.stance) * 0.5f);
+        const glm::vec3 from = renderPosition + glm::vec3(0.0f, inside, 0.0f);
+        const glm::vec3 toEye = m_view.eyePosition - from;
+        const float distance = glm::length(toEye);
+        if (distance > 1e-4f)
+        {
+            // The near plane needs room in front of it, or stopping exactly at the surface still
+            // shows what is on the other side.
+            constexpr float kNearPlaneRoom = 0.10f;
+            const glm::vec3 direction = toEye / distance;
+            const RayHit blocked = m_physics->RayCast(from, direction, distance + kNearPlaneRoom);
+            if (blocked)
+            {
+                m_view.eyePosition =
+                    from + direction * std::max(blocked.distance - kNearPlaneRoom, 0.0f);
+            }
+        }
+    }
 }
 
 void PlayerController::Teleport(const glm::vec3& footPosition)
