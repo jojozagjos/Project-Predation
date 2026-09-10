@@ -67,6 +67,12 @@ public:
     // Where the selected thing is, and whether there is one.
     bool SelectionPosition(glm::vec3& out) const;
     void MoveSelection(const glm::vec3& delta);
+    // Moves the weapon within the hand, in the weapon's own frame: down here is down on the screen.
+    //
+    // The game hangs a weapon off its grip socket, so moving the gun means moving that socket the
+    // other way, and the sign is exactly the sort of thing nobody should have to work out while
+    // looking at a gun that is too high. Returns false when the model has no grip socket to move.
+    bool NudgeWeaponInHand(const glm::vec3& delta);
 
     // --- Dragging -------------------------------------------------------------------------------
     // The three axis handles on the selected thing. The game feeds a ray from the pointer, because

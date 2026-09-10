@@ -619,3 +619,22 @@ measures the origin, the back and the muzzle at both aims on open ground.
 The lesson is about the units of a tuning value rather than about weapons: a number that means "how
 far out X is" cannot be compared with one that means "how far out Y is", and giving both the same
 suffix is what makes the mistake invisible.
+
+## ADR-037: A wall does not touch an aimed weapon
+
+**Status**: accepted, 2026-09-10
+
+Three separate mechanisms moved a weapon when the player got near something: the carry offset was
+shortened, the muzzle was traced out of whatever it had entered, and the sights were broken down
+towards the carry. All three were sound reasoning about a rifle in a corridor and all three read, in
+the sights, as the gun being shoved about the moment you brush a doorframe. Sighted, the weapon lies
+along the view axis, so every one of them runs it at the eye.
+
+None of them applies while aiming now. Aiming into a wall puts the barrel in the wall, which is what
+a barrel in a wall looks like. Nothing about where a round goes changes, because shooting has always
+traced from the eye.
+
+The muzzle correction also keeps only the part of itself that runs along the carry axis. It used to
+be applied as it came out of the trace, which is a vector towards whatever surface happened to be
+nearest, so brushing a wall on the left slid the weapon right and down as well as back: a gun being
+knocked out of the hold rather than drawn in.

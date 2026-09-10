@@ -1049,8 +1049,15 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
     // And you cannot aim while hauling yourself over a ledge, for the same reason: both hands are on
     // the wall. The sights come down as the climb starts and come back as it releases, on the same
     // fade the hands use, so it is one movement rather than the sights switching off.
+    //
+    // A wall no longer takes the sights down either. Breaking the aim swings the weapon from the
+    // sighted pose towards the carried one, which is lower, further out to the side and shorter, and
+    // from behind the sights that is the gun being shoved about the moment you brush a doorframe.
+    // Asked for twice, and it is the honest trade: aiming into a wall puts the barrel in the wall,
+    // which is what a barrel in a wall looks like, rather than pretending the weapon has nowhere to
+    // be. Shooting traces from the eye regardless, so nothing about where a round goes changes.
     const float wantedAim = glm::clamp(m_weaponPose.aim, 0.0f, 1.0f) * (1.0f - m_mantleFade);
-    const float aim = wantedAim * glm::mix(1.0f, m_config.weaponWallAim, crowded);
+    const float aim = wantedAim;
 
     // --- Sway -----------------------------------------------------------------------------------
     // Three things move a held weapon, and they are separate on purpose.
@@ -1330,10 +1337,22 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
             m_weaponTransform.position + m_weaponTransform.rotation * m_weaponVisual.muzzle;
         const glm::vec3 clear =
             ClearOfWorld(physics, view.eyePosition, muzzle, m_config.muzzleClearance);
-        // Faded out with the sights, like the pull-back above and for the same reason: sighted, the
-        // weapon lies along the view, so lifting the muzzle out of a wall drags the receiver back
-        // through the camera. Aiming, the barrel is given to the wall.
-        m_weaponTransform.position += (clear - muzzle) * (1.0f - wantedAim);
+        // Straight back, and only back.
+        //
+        // The correction used to be applied as it came out of the trace, which is a vector in
+        // whatever direction the nearest surface happened to lie: brushing a wall on the left slid
+        // the weapon right and down as well as back, and what that reads as is the gun being
+        // knocked out of the hold rather than drawn in. Only the part of it along the carry axis is
+        // kept, so a weapon meeting anything comes back towards the player and does nothing else.
+        //
+        // Faded out with the sights as well, for the reason the pull-back above is: sighted, the
+        // weapon lies along the view, so drawing it in runs it at the eye. Aiming, the barrel is
+        // given to the wall.
+        const float back = glm::dot(clear - muzzle, -carryForward);
+        if (back > 0.0f)
+        {
+            m_weaponTransform.position -= carryForward * (back * (1.0f - wantedAim));
+        }
     }
 
     // Never so close to the eye that the camera is inside it. The trace above keeps the barrel out

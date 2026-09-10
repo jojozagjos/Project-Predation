@@ -239,3 +239,48 @@ TEST_CASE("The selection outline follows the part rather than its nominal size",
     const AABB boxBounds = ModelEditor::PartBounds(box);
     CHECK((boxBounds.max - boxBounds.min).y == Catch::Approx(0.3f).margin(0.001));
 }
+
+
+TEST_CASE("Nudging the weapon in the hand moves the weapon, not the hand", "[editor]")
+{
+    // Asked for after a hold was already right: the hands were where they should be and the gun sat
+    // too high on the screen. The game hangs a weapon off its grip socket, so moving the gun means
+    // moving that socket the other way, and the sign is exactly what nobody should have to work out
+    // while looking at the problem.
+    ModelAsset model;
+    model.name = "nudge_test";
+    ModelPart part;
+    part.name = "body";
+    part.size = {0.05f, 0.10f, 0.60f};
+    model.parts.push_back(part);
+    ModelSocket grip;
+    grip.name = "grip";
+    grip.position = {0.0f, -0.05f, -0.10f};
+    model.sockets.push_back(grip);
+
+    ModelEditor editor;
+    editor.SetModelForTesting(model);
+
+    // Down on the screen is up in the socket.
+    REQUIRE(editor.NudgeWeaponInHand({0.0f, -0.02f, 0.0f}));
+    const ModelSocket* moved = editor.Model().FindSocket("grip");
+    REQUIRE(moved != nullptr);
+    CHECK(moved->position.y == Catch::Approx(-0.03f).margin(1e-5));
+    CHECK(moved->position.z == Catch::Approx(-0.10f).margin(1e-5));
+
+    // And back is forward in the socket.
+    REQUIRE(editor.NudgeWeaponInHand({0.0f, 0.0f, -0.03f}));
+    CHECK(editor.Model().FindSocket("grip")->position.z == Catch::Approx(-0.07f).margin(1e-5));
+
+    // One undo puts each of them back, so a run of nudges is a run of steps rather than one lump.
+    REQUIRE(editor.Undo());
+    CHECK(editor.Model().FindSocket("grip")->position.z == Catch::Approx(-0.10f).margin(1e-5));
+
+    // A model with no grip has nothing to move, and says so rather than silently doing nothing.
+    ModelAsset bare;
+    bare.name = "bare";
+    bare.parts.push_back(part);
+    ModelEditor other;
+    other.SetModelForTesting(bare);
+    CHECK_FALSE(other.NudgeWeaponInHand({0.0f, -0.02f, 0.0f}));
+}

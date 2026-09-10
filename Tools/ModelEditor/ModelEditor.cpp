@@ -659,6 +659,13 @@ void ModelEditor::DrawSocketPanel()
             {
                 ImGui::TextDisabled("This turns the whole weapon in the hand. The grip stays where "
                                     "it is; the model spins about it.");
+                // Which way the position fields move things is worth saying outright, because it is
+                // the reverse of what it looks like: this socket is the point the hand holds, so
+                // the game places the weapon by subtracting it. Raising it lowers the gun.
+                ImGui::TextDisabled("The position above is where the hand grips. The game hangs the "
+                                    "weapon off it, so this is also how the weapon is moved in the "
+                                    "hand, backwards: raise this socket and the gun sits lower on "
+                                    "the screen, move it forward and the gun comes back.");
             }
             ImGui::Unindent();
         }
@@ -1331,6 +1338,23 @@ bool ModelEditor::SelectionPosition(glm::vec3& out) const
         return true;
     }
     return false;
+}
+
+bool ModelEditor::NudgeWeaponInHand(const glm::vec3& delta)
+{
+    const auto grip = std::find_if(m_model.sockets.begin(), m_model.sockets.end(),
+                                   [](const ModelSocket& socket) { return socket.name == "grip"; });
+    if (grip == m_model.sockets.end())
+    {
+        return false;
+    }
+    PushUndo("moving the weapon in the hand");
+    // Backwards, because the game places the weapon by subtracting its grip from the hold: the
+    // socket is the point the hand is on, so raising it lowers the gun.
+    grip->position -= delta;
+    m_dirty = true;
+    m_previewChanged = true;
+    return true;
 }
 
 void ModelEditor::MoveSelection(const glm::vec3& delta)

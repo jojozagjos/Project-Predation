@@ -140,10 +140,6 @@ public:
         // reads as is the weapon falling out of the hold. Pulling back is what a person does with a
         // rifle in a corridor, and the floors above are what keep the camera out of it.
         float weaponWallLower = 14.0f;
-        // And how much of the sights are left while jammed against something. You cannot aim into a
-        // wall, and pretending otherwise means the sights are on the view axis with the barrel
-        // inside the bricks.
-        float weaponWallAim = 0.30f;
 
         // The pull-back above is a soft rule measured along the view, which is why a gun still went
         // through a wall the player was looking sideways at: the trace and the barrel were pointing

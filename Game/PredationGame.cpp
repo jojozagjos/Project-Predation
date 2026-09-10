@@ -2919,6 +2919,37 @@ void PredationGame::DrawWeaponBench()
     ImGui::Separator();
 
     // The numbers that decide whether a grip is placed right.
+    // Moving the weapon within the hand, which is a different question from where the hand is and
+    // the one that gets asked once the hand is right. The game hangs a weapon off its grip socket,
+    // so this writes to that socket backwards; nobody should have to work the sign out while
+    // looking at a gun that is sitting too high.
+    ImGui::Separator();
+    ImGui::TextDisabled("Move the weapon in the hand. The hand stays where it is.");
+    {
+        constexpr float kStep = 0.005f;
+        const auto nudge = [&](const char* label, const glm::vec3& delta)
+        {
+            if (ImGui::Button(label) && !m_editor.NudgeWeaponInHand(delta * kStep))
+            {
+                m_app->GetConsole().PrintError("This model has no grip socket to move it by");
+            }
+        };
+        nudge("Lower", {0.0f, -1.0f, 0.0f});
+        ImGui::SameLine();
+        nudge("Raise", {0.0f, 1.0f, 0.0f});
+        ImGui::SameLine();
+        nudge("Back", {0.0f, 0.0f, -1.0f});
+        ImGui::SameLine();
+        nudge("Forward", {0.0f, 0.0f, 1.0f});
+        ImGui::SameLine();
+        nudge("Left", {-1.0f, 0.0f, 0.0f});
+        ImGui::SameLine();
+        nudge("Right", {1.0f, 0.0f, 0.0f});
+        ImGui::TextDisabled("Five millimetres a press, written into the grip socket. Save the model "
+                            "to keep it.");
+    }
+
+    ImGui::Separator();
     ImGui::Checkbox("Draw sockets and the hands they belong to", &m_benchSockets);
     if (ImGui::Checkbox("Hold the weapon still while placing sockets", &m_benchHoldStill))
     {
