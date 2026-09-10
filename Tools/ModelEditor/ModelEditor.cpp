@@ -9,12 +9,15 @@
 
 #include <imgui.h>
 
+#include <glm/gtc/matrix_inverse.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
 #include <algorithm>
+#include <utility>
 #include <cstdio>
 #include <filesystem>
+#include <limits>
 
 namespace pred
 {
@@ -68,6 +71,7 @@ void ModelEditor::SetOpen(Scene& scene, bool open)
     if (open)
     {
         m_dirty = true;
+    m_previewChanged = true;
     }
     else
     {
@@ -84,6 +88,7 @@ void ModelEditor::NewModel()
     m_selectedSocket = -1;
     m_selectedClip = -1;
     m_dirty = true;
+    m_previewChanged = true;
     AddPart("body", PartShape::Box);
 }
 
@@ -105,6 +110,7 @@ void ModelEditor::AddPart(const char* name, PartShape shape)
     m_model.parts.push_back(std::move(part));
     m_selectedPart = static_cast<int>(m_model.parts.size()) - 1;
     m_dirty = true;
+    m_previewChanged = true;
 }
 
 bool ModelEditor::Load(const std::string& modelName)
@@ -121,6 +127,7 @@ bool ModelEditor::Load(const std::string& modelName)
     m_selectedSocket = -1;
     m_selectedClip = m_model.clips.empty() ? -1 : 0;
     m_dirty = true;
+    m_previewChanged = true;
     m_status = "Loaded " + modelName;
     return true;
 }
@@ -366,6 +373,7 @@ void ModelEditor::DrawPartList()
             m_model.parts.push_back(std::move(copy));
             m_selectedPart = static_cast<int>(m_model.parts.size()) - 1;
             m_dirty = true;
+    m_previewChanged = true;
         }
         ImGui::SameLine();
         if (ImGui::Button("Delete"))
@@ -373,6 +381,7 @@ void ModelEditor::DrawPartList()
             m_model.parts.erase(m_model.parts.begin() + m_selectedPart);
             m_selectedPart = std::min(m_selectedPart, static_cast<int>(m_model.parts.size()) - 1);
             m_dirty = true;
+    m_previewChanged = true;
         }
     }
 }
@@ -417,6 +426,7 @@ void ModelEditor::DrawPartInspector()
     if (changed)
     {
         m_dirty = true;
+    m_previewChanged = true;
     }
 
     if (part.shape == PartShape::Mesh)
@@ -437,6 +447,7 @@ void ModelEditor::DrawSocketPanel()
         m_model.sockets.push_back(socket);
         m_selectedSocket = static_cast<int>(m_model.sockets.size()) - 1;
         m_dirty = true;
+    m_previewChanged = true;
     }
 
     for (int i = 0; i < static_cast<int>(m_model.sockets.size()); ++i)
@@ -455,6 +466,7 @@ void ModelEditor::DrawSocketPanel()
         {
             m_model.sockets.erase(m_model.sockets.begin() + i);
             m_dirty = true;
+    m_previewChanged = true;
             ImGui::PopID();
             break;
         }
@@ -822,6 +834,7 @@ void ModelEditor::ImportMesh(const std::string& file)
 
         m_selectedPart = m_model.parts.empty() ? -1 : 0;
         m_dirty = true;
+    m_previewChanged = true;
         m_status = "Imported " + std::to_string(imported.parts.size()) + " parts from " +
                    path.filename().string();
         return;
@@ -844,7 +857,240 @@ void ModelEditor::ImportMesh(const std::string& file)
     m_model.parts.push_back(std::move(part));
     m_selectedPart = static_cast<int>(m_model.parts.size()) - 1;
     m_dirty = true;
+    m_previewChanged = true;
     m_status = "Imported " + file;
+}
+
+
+// Turns, mirrors or rescales the whole model at once.
+//
+// A download arrives however its author left it: the two that turned up first ran along +X and the
+// game wants the barrel down +Z. Turning forty parts by hand is not editing, and doing it at import
+// only helps if the guess was right the first time.
+//
+// Sockets move with the geometry, or the grip ends up on the other side of the weapon from the hand.
+// Which part a ray runs through, or -1.
+//
+// Tested against each part's box rather than against its triangles. A weapon has a few thousand
+// triangles and a click has to answer instantly; boxes overlap a little, so the nearest hit wins,
+// which is what picking the front-most thing means. Anything finer than this is only wanted for
+// picking one blade of grass out of a field, which is not what an editor is for.
+int ModelEditor::PartUnderRay(const glm::vec3& origin, const glm::vec3& direction) const
+{
+    int best = -1;
+    float nearest = std::numeric_limits<float>::max();
+
+    for (size_t i = 0; i < m_model.parts.size(); ++i)
+    {
+        const ModelPart& part = m_model.parts[i];
+        if (!part.visible)
+        {
+            continue; // you cannot click what you cannot see
+        }
+
+        // The ray is put into the part's own frame rather than the box into the world's, so a part
+        // turned on its side is still tested against the box it actually occupies.
+        const glm::mat4 inverse = glm::inverse(part.LocalMatrix());
+        const glm::vec3 from = glm::vec3(inverse * glm::vec4(origin, 1.0f));
+        const glm::vec3 along = glm::vec3(inverse * glm::vec4(direction, 0.0f));
+
+        glm::vec3 low{-0.5f};
+        glm::vec3 high{0.5f};
+        if (part.shape == PartShape::Mesh)
+        {
+            if (part.mesh.vertices.empty())
+            {
+                continue;
+            }
+            const AABB bounds = part.mesh.ComputeBounds();
+            low = bounds.min;
+            high = bounds.max;
+        }
+        else
+        {
+            low = part.size * -0.5f;
+            high = part.size * 0.5f;
+        }
+
+        // Slab test. A tiny thickness is added, or a part modelled flat is unclickable.
+        constexpr float kMinimumThickness = 0.002f;
+        low -= glm::vec3(kMinimumThickness);
+        high += glm::vec3(kMinimumThickness);
+
+        float enter = 0.0f;
+        float exit = std::numeric_limits<float>::max();
+        bool missed = false;
+        for (int axis = 0; axis < 3 && !missed; ++axis)
+        {
+            if (std::abs(along[axis]) < 1e-8f)
+            {
+                missed = from[axis] < low[axis] || from[axis] > high[axis];
+                continue;
+            }
+            const float inverseAlong = 1.0f / along[axis];
+            float first = (low[axis] - from[axis]) * inverseAlong;
+            float second = (high[axis] - from[axis]) * inverseAlong;
+            if (first > second)
+            {
+                std::swap(first, second);
+            }
+            enter = std::max(enter, first);
+            exit = std::min(exit, second);
+            missed = enter > exit;
+        }
+        if (missed || exit < 0.0f)
+        {
+            continue;
+        }
+        if (enter < nearest)
+        {
+            nearest = enter;
+            best = static_cast<int>(i);
+        }
+    }
+    return best;
+}
+
+bool ModelEditor::SelectUnderRay(const glm::vec3& origin, const glm::vec3& direction)
+{
+    const int hit = PartUnderRay(origin, direction);
+    if (hit == m_selectedPart)
+    {
+        return false;
+    }
+    m_selectedPart = hit;
+    m_status = hit >= 0 ? "Selected " + m_model.parts[static_cast<size_t>(hit)].name
+                        : std::string("Nothing selected");
+    return true;
+}
+
+void ModelEditor::TransformModel(const glm::mat4& transform)
+{
+    const glm::mat3 normalMatrix = glm::inverseTranspose(glm::mat3(transform));
+    // A mirror turns triangles inside out, so their winding has to be turned back.
+    const bool mirrors = glm::determinant(glm::mat3(transform)) < 0.0f;
+
+    for (ModelPart& part : m_model.parts)
+    {
+        part.position = glm::vec3(transform * glm::vec4(part.position, 1.0f));
+        for (MeshVertex& vertex : part.mesh.vertices)
+        {
+            vertex.position = glm::vec3(transform * glm::vec4(vertex.position, 1.0f));
+            const glm::vec3 normal = normalMatrix * vertex.normal;
+            vertex.normal =
+                glm::length(normal) > 1e-6f ? glm::normalize(normal) : glm::vec3(0.0f, 1.0f, 0.0f);
+        }
+        if (mirrors)
+        {
+            for (size_t i = 0; i + 2 < part.mesh.indices.size(); i += 3)
+            {
+                std::swap(part.mesh.indices[i + 1], part.mesh.indices[i + 2]);
+            }
+        }
+    }
+    for (ModelSocket& socket : m_model.sockets)
+    {
+        socket.position = glm::vec3(transform * glm::vec4(socket.position, 1.0f));
+    }
+
+    m_dirty = true;
+    m_previewChanged = true;
+}
+
+void ModelEditor::DrawModelPanel()
+{
+    ImGui::TextDisabled("Everything at once: geometry, parts and sockets together.");
+
+    // Quarter turns, because that is what a wrongly exported model needs. Anything else is a job for
+    // the part inspector.
+    const auto turn = [&](const char* label, const glm::vec3& axis, float degrees)
+    {
+        if (ImGui::Button(label))
+        {
+            TransformModel(glm::rotate(glm::mat4(1.0f), glm::radians(degrees), axis));
+            m_status = "Turned the model";
+        }
+    };
+    turn("Turn left", {0.0f, 1.0f, 0.0f}, 90.0f);
+    ImGui::SameLine();
+    turn("Turn right", {0.0f, 1.0f, 0.0f}, -90.0f);
+    ImGui::SameLine();
+    turn("Turn around", {0.0f, 1.0f, 0.0f}, 180.0f);
+
+    turn("Tip forward", {1.0f, 0.0f, 0.0f}, -90.0f);
+    ImGui::SameLine();
+    turn("Tip back", {1.0f, 0.0f, 0.0f}, 90.0f);
+    ImGui::SameLine();
+    turn("Roll", {0.0f, 0.0f, 1.0f}, 90.0f);
+
+    if (ImGui::Button("Mirror left to right"))
+    {
+        TransformModel(glm::scale(glm::mat4(1.0f), {-1.0f, 1.0f, 1.0f}));
+        m_status = "Mirrored the model";
+    }
+
+    ImGui::Separator();
+
+    // Where it sits and how big it is. Both are measured from what is there rather than typed in
+    // blind, because the useful operations are "put the origin at the grip" and "make it this long".
+    AABB bounds;
+    bool first = true;
+    for (const ModelPart& part : m_model.parts)
+    {
+        if (part.mesh.vertices.empty())
+        {
+            continue;
+        }
+        const AABB partBounds = part.mesh.ComputeBounds();
+        bounds.min = first ? partBounds.min : glm::min(bounds.min, partBounds.min);
+        bounds.max = first ? partBounds.max : glm::max(bounds.max, partBounds.max);
+        first = false;
+    }
+    if (first)
+    {
+        ImGui::TextDisabled("Nothing with geometry in this model yet.");
+        return;
+    }
+
+    const glm::vec3 extent = bounds.max - bounds.min;
+    ImGui::Text("Size: %.3f wide, %.3f tall, %.3f long", extent.x, extent.y, extent.z);
+    ImGui::Text("Origin sits %.3f, %.3f, %.3f from the middle", -(bounds.min.x + bounds.max.x) * 0.5f,
+                -(bounds.min.y + bounds.max.y) * 0.5f, -(bounds.min.z + bounds.max.z) * 0.5f);
+
+    ImGui::SetNextItemWidth(90.0f);
+    ImGui::DragFloat("##fit", &m_importSize, 0.01f, 0.05f, 4.0f, "%.2f");
+    ImGui::SameLine();
+    if (ImGui::Button("Fit longest side to this"))
+    {
+        const float longest = std::max({extent.x, extent.y, extent.z});
+        if (longest > 1e-5f)
+        {
+            TransformModel(glm::scale(glm::mat4(1.0f), glm::vec3(m_importSize / longest)));
+            m_status = "Rescaled the model";
+        }
+    }
+
+    if (ImGui::Button("Move the origin to the middle"))
+    {
+        TransformModel(glm::translate(glm::mat4(1.0f), -(bounds.min + bounds.max) * 0.5f));
+        m_status = "Recentred the model";
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Sit it on the floor"))
+    {
+        TransformModel(glm::translate(glm::mat4(1.0f), {0.0f, -bounds.min.y, 0.0f}));
+        m_status = "Dropped the model onto the floor";
+    }
+
+    if (m_selectedPart >= 0 && m_selectedPart < static_cast<int>(m_model.parts.size()))
+    {
+        if (ImGui::Button("Move the origin to the selected part"))
+        {
+            TransformModel(
+                glm::translate(glm::mat4(1.0f), -m_model.parts[static_cast<size_t>(m_selectedPart)].position));
+            m_status = "Moved the origin";
+        }
+    }
 }
 
 void ModelEditor::DrawUi(Scene& scene, MeshLibrary& meshes)
@@ -860,6 +1106,10 @@ void ModelEditor::DrawUi(Scene& scene, MeshLibrary& meshes)
         if (ImGui::CollapsingHeader("File", ImGuiTreeNodeFlags_DefaultOpen))
         {
             DrawFilePanel(scene, meshes);
+        }
+        if (ImGui::CollapsingHeader("Model"))
+        {
+            DrawModelPanel();
         }
         if (ImGui::CollapsingHeader("Parts", ImGuiTreeNodeFlags_DefaultOpen))
         {
@@ -882,6 +1132,7 @@ void ModelEditor::DrawUi(Scene& scene, MeshLibrary& meshes)
             if (ImGui::Checkbox("Show sockets", &m_showSockets))
             {
                 m_dirty = true;
+    m_previewChanged = true;
             }
             ImGui::TextDisabled("Right mouse to look, WASD to move, Space and Ctrl for up and down.");
         }

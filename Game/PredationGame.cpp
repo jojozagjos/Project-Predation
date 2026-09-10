@@ -487,11 +487,7 @@ void PredationGame::RegisterCommands()
         "editor", "Open or close the model and animation editor: editor [model name]",
         [this](const std::vector<std::string>& args)
         {
-            ToggleEditor();
-            if (m_editor.IsOpen() && args.size() >= 2)
-            {
-                m_editor.Load(args[1]);
-            }
+            EnterEditor(args.size() >= 2 ? args[1] : std::string());
         },
         "editor [model]");
 
@@ -503,14 +499,6 @@ void PredationGame::RegisterCommands()
                                     StopSession();
                                     EnterWorld();
                                 }
-                            });
-
-    console.RegisterCommand("bench", "Open or close the weapon bench",
-                            [this](const std::vector<std::string>&)
-                            {
-                                m_benchOpen = !m_benchOpen;
-                                m_app->GetConsole().Print(m_benchOpen ? "Weapon bench open"
-                                                                     : "Weapon bench closed");
                             });
 
     console.RegisterCommand(
@@ -1550,6 +1538,10 @@ void PredationGame::ReturnToTitle()
 {
     PRED_LOG_INFO(Gameplay, "Back to the title screen");
     StopSession();
+    if (m_editor.IsOpen())
+    {
+        m_editor.SetOpen(m_editorScene, false);
+    }
     m_screen = Screen::Title;
     m_titleStatus.clear();
     m_wantMouseCaptured = false;
@@ -1761,6 +1753,13 @@ void PredationGame::DrawTitleScreen()
 
     ImGui::Spacing();
     ImGui::Separator();
+    ImGui::Spacing();
+    if (ImGui::Button("Model editor", wide))
+    {
+        EnterEditor(std::string());
+    }
+    ImGui::TextDisabled("Build weapons and props, and hold them, without starting a game.");
+
     ImGui::Spacing();
     if (ImGui::Button("Quit", wide))
     {
@@ -2185,7 +2184,12 @@ void PredationGame::DrawNetworkPanel()
 void PredationGame::OnShutdown()
 {
     StopSession();
-    m_editor.Shutdown(m_scene);
+    m_editor.Shutdown(m_editorScene);
+    if (m_editorBodyBuilt)
+    {
+        m_editorBody.Destroy(m_editorScene);
+        m_editorBodyBuilt = false;
+    }
     m_itemIcons.Shutdown();
     ClearProps();
     m_body.Destroy(m_scene);
@@ -2559,178 +2563,255 @@ void PredationGame::ResolveShots()
 // the thing. So the bench points a weapon at a model without a restart, drives everything the
 // weapon does, and draws the sockets on the weapon as it is held, with the distance from each one
 // to the hand that is supposed to be at it.
+// The editor's try-it panel: someone holding what is being built.
+//
+// Placing a grip cannot be done by looking at the model. The only question is where the hand ends
+// up, so the panel shows the distance from each socket to the hand meant to be at it, draws the line
+// between them in the world, and plays every movement the weapon has on demand. Move a socket, watch
+// the number come down.
 void PredationGame::DrawWeaponBench()
 {
-    if (!m_benchOpen)
+    if (m_screen != Screen::Editor || !m_editorBodyBuilt)
     {
         return;
     }
 
-    ImGui::SetNextWindowSize({380.0f, 460.0f}, ImGuiCond_FirstUseEver);
-    if (!ImGui::Begin("Weapon bench", &m_benchOpen))
+    ImGui::SetNextWindowPos({ImGui::GetIO().DisplaySize.x - 372.0f, 24.0f}, ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize({350.0f, 520.0f}, ImGuiCond_FirstUseEver);
+    if (!ImGui::Begin("Hold it"))
     {
         ImGui::End();
         return;
     }
 
-    const std::vector<WeaponDefinition>& weapons = m_weaponData.All();
-    if (weapons.empty())
-    {
-        ImGui::TextDisabled("No weapons are loaded.");
-        ImGui::End();
-        return;
-    }
-    m_benchWeapon = std::clamp(m_benchWeapon, 0, static_cast<int>(weapons.size()) - 1);
-
-    if (ImGui::BeginCombo("Weapon", weapons[static_cast<size_t>(m_benchWeapon)].name.c_str()))
-    {
-        for (int i = 0; i < static_cast<int>(weapons.size()); ++i)
-        {
-            if (ImGui::Selectable(weapons[static_cast<size_t>(i)].name.c_str(), i == m_benchWeapon))
-            {
-                m_benchWeapon = i;
-            }
-        }
-        ImGui::EndCombo();
-    }
-
-    WeaponDefinition* chosen = m_weaponData.Mutable(weapons[static_cast<size_t>(m_benchWeapon)].id);
-    if (chosen == nullptr)
-    {
-        ImGui::End();
-        return;
-    }
-
-    // Which model it wears. Blank means the built-in shape, which is what every weapon starts with.
-    if (m_benchModel[0] == '\0' && !chosen->model.empty())
-    {
-        std::snprintf(m_benchModel, sizeof(m_benchModel), "%s", chosen->model.c_str());
-    }
-    ImGui::InputText("Model", m_benchModel, sizeof(m_benchModel));
-    if (ImGui::BeginCombo("##models", "pick one"))
-    {
-        for (const std::string& available : ListModels())
-        {
-            if (ImGui::Selectable(available.c_str()))
-            {
-                std::snprintf(m_benchModel, sizeof(m_benchModel), "%s", available.c_str());
-            }
-        }
-        ImGui::EndCombo();
-    }
-
-    if (ImGui::Button("Put it in my hands"))
-    {
-        chosen->model = m_benchModel;
-        // Read from disk again, or the hands go on holding whatever was loaded before the last save
-        // and the whole point of the bench is lost.
-        ForgetWeaponModels();
-        m_body.SetWeapon(m_scene, m_app->GetMeshes(), nullptr);
-        SyncEquippedWeapon();
-        m_app->GetConsole().Print("Holding " + chosen->name +
-                                  (chosen->model.empty() ? " (built-in shape)" : " as " + chosen->model));
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Reload from disk"))
-    {
-        ForgetWeaponModels();
-        m_body.SetWeapon(m_scene, m_app->GetMeshes(), nullptr);
-        SyncEquippedWeapon();
-    }
-    ImGui::TextDisabled("Save in the editor, then reload here. Nothing is written to weapons.json.");
-
+    ImGui::TextDisabled("Whatever is open in the editor, in someone's hands.");
     ImGui::Separator();
 
-    const WeaponDefinition* equipped = EquippedWeapon();
-    if (equipped == nullptr)
-    {
-        ImGui::TextDisabled("Nothing in your hands: take a weapon out first.");
-        ImGui::End();
-        return;
-    }
+    // What the body is doing. Nothing simulates in here, so every movement is a button: the point
+    // is to watch one thing at a time and as often as you like.
+    const char* stances[] = {"Standing", "Crouching", "Prone"};
+    ImGui::Combo("Stance", &m_editorStance, stances, 3);
+    ImGui::Checkbox("Walk on the spot", &m_editorWalking);
+    ImGui::SliderFloat("Sights", &m_editorAim, 0.0f, 1.0f, "%.2f");
 
-    ImGui::Text("Holding %s", equipped->name.c_str());
     if (ImGui::Button("Reload"))
     {
-        // The same latch the console reload command uses, so the bench asks for a reload the way
-        // the player does rather than reaching into the weapon state behind it.
-        m_reloadLatch = 30;
+        m_editorReload = 0.0f;
     }
     ImGui::SameLine();
-    if (ImGui::Button("Draw again"))
+    if (ImGui::Button("Draw"))
     {
-        m_weaponDraw = 0.0f;
+        m_editorDraw = 0.0f;
     }
     ImGui::SameLine();
     if (ImGui::Button("Fire"))
     {
-        m_debugTriggerTicks = 1;
+        m_editorKick = 1.0f;
     }
-    ImGui::SliderFloat("Sights", &m_weapon.aim, 0.0f, 1.0f, "%.2f");
+    if (m_editorReload >= 0.0f)
+    {
+        ImGui::ProgressBar(m_editorReload, {-1.0f, 0.0f}, "reloading");
+    }
 
-    // Which clips the model carries, and how far through the one that is playing. A model with no
-    // clip of its own uses the built-in movements, and saying so beats leaving the list empty.
     ImGui::Separator();
-    const WeaponVisual& visual = m_body.Weapon();
-    if (visual.asset == nullptr || visual.asset->clips.empty())
+
+    // The clips the model carries. A model with none uses the built-in movements, and saying so
+    // beats an empty list that looks like a fault.
+    const ModelAsset& model = m_editor.Model();
+    if (model.clips.empty())
     {
         ImGui::TextDisabled("No clips on this model: the built-in reload and draw are playing.");
+        ImGui::TextDisabled("Add one in Animation to author your own.");
     }
     else
     {
-        for (const AnimationClip& clip : visual.asset->clips)
+        for (const AnimationClip& clip : model.clips)
         {
             ImGui::BulletText("%s  %.2fs  %d tracks", clip.name.c_str(), clip.duration,
                               static_cast<int>(clip.tracks.size()));
         }
-    }
-    if (m_weapon.IsReloading())
-    {
-        const float through =
-            1.0f - m_weapon.reloadRemaining / std::max(equipped->reloadSeconds, 0.01f);
-        ImGui::ProgressBar(through, {-1.0f, 0.0f}, "reloading");
+        if (model.FindPart("magazine") == nullptr)
+        {
+            ImGui::TextColored({0.90f, 0.70f, 0.45f, 1.0f},
+                               "No part called 'magazine', so the built-in reload has");
+            ImGui::TextColored({0.90f, 0.70f, 0.45f, 1.0f}, "nothing to take out.");
+        }
     }
 
-    // The numbers that actually decide whether a grip is placed right: how far each hand is from
-    // the socket it is meant to be holding. Under a couple of centimetres and it looks held.
     ImGui::Separator();
-    ImGui::Checkbox("Draw sockets on the weapon", &m_benchSockets);
-    const glm::quat hold = m_body.WeaponRotation();
-    const glm::vec3 origin = m_body.WeaponOrigin();
+
+    // The numbers that decide whether a grip is placed right.
+    ImGui::Checkbox("Draw sockets and the hands they belong to", &m_benchSockets);
+    const WeaponVisual& visual = m_editorBody.Weapon();
+    const glm::quat hold = m_editorBody.WeaponRotation();
+    const glm::vec3 origin = m_editorBody.WeaponOrigin();
     const auto report = [&](const char* label, const glm::vec3& socket, BoneIndex bone)
     {
         const glm::vec3 world = origin + hold * socket;
-        const float gap = glm::distance(world, m_body.GetPose().GlobalPosition(bone));
+        const float gap = glm::distance(world, m_editorBody.GetPose().GlobalPosition(bone));
         ImGui::TextColored(gap < 0.03f ? ImVec4(0.65f, 0.85f, 0.65f, 1.0f)
                                        : ImVec4(0.90f, 0.70f, 0.45f, 1.0f),
-                           "%s hand is %.1f cm from its socket", label, gap * 100.0f);
+                           "%s hand: %.1f cm from its socket", label, gap * 100.0f);
     };
-    report("Trigger", visual.triggerGrip, m_body.Rig().hand[1]);
-    report("Support", visual.supportGrip, m_body.Rig().hand[0]);
-    ImGui::TextDisabled("Move the grip and support sockets in the editor until both read small.");
+    report("Trigger", visual.triggerGrip, m_editorBody.Rig().hand[1]);
+    report("Support", visual.supportGrip, m_editorBody.Rig().hand[0]);
+    ImGui::TextDisabled("Move the grip and support sockets until both read small.");
+
+    ImGui::Separator();
+    ImGui::TextDisabled("The weapon this model is worn by, for the game:");
+    const std::vector<WeaponDefinition>& weapons = m_weaponData.All();
+    if (!weapons.empty())
+    {
+        m_benchWeapon = std::clamp(m_benchWeapon, 0, static_cast<int>(weapons.size()) - 1);
+        if (ImGui::BeginCombo("Weapon", weapons[static_cast<size_t>(m_benchWeapon)].name.c_str()))
+        {
+            for (int i = 0; i < static_cast<int>(weapons.size()); ++i)
+            {
+                if (ImGui::Selectable(weapons[static_cast<size_t>(i)].name.c_str(), i == m_benchWeapon))
+                {
+                    m_benchWeapon = i;
+                }
+            }
+            ImGui::EndCombo();
+        }
+        if (ImGui::Button("Assign this model to it"))
+        {
+            if (WeaponDefinition* chosen =
+                    m_weaponData.Mutable(weapons[static_cast<size_t>(m_benchWeapon)].id))
+            {
+                chosen->model = model.name;
+                ForgetWeaponModels();
+                m_app->GetConsole().Print(chosen->name + " now wears " + model.name);
+            }
+        }
+        ImGui::TextDisabled("Not written to weapons.json: set it there to keep it.");
+    }
 
     ImGui::End();
 }
 
-void PredationGame::ToggleEditor()
+
+
+// The preview body in the editor: someone to hold what is being built.
+//
+// Driven from numbers rather than from a controller, because there is nothing to control. The body
+// is the game's own, posed by the same code that poses the player, so a grip that looks held here is
+// held in the game. A separate mannequin drawn by separate code would answer a different question.
+void PredationGame::UpdateEditorBody(float frameDeltaSeconds)
 {
-    m_editor.SetOpen(m_scene, !m_editor.IsOpen());
-    if (m_editor.IsOpen())
+    if (!m_editorBodyBuilt)
     {
-        // The editor owns the view while it is open, so the player is left standing. The mouse is
-        // released because everything in the editor is done with the pointer.
-        SetCameraMode(CameraMode::Fly);
-        m_wantMouseCaptured = false;
-        UpdateMouseCapture();
-        m_app->GetConsole().Print(
-            "Model editor open. Hold right mouse to look, WASD to move, F2 to close.");
+        return;
     }
-    else
+
+    m_editorClock += frameDeltaSeconds;
+
+    const PlayerConfig& config = m_player.Config();
+    const PlayerStance stance = m_editorStance == 2   ? PlayerStance::Prone
+                                : m_editorStance == 1 ? PlayerStance::Crouching
+                                                      : PlayerStance::Standing;
+    m_editorState.stance = stance;
+    m_editorState.grounded = true;
+    m_editorState.alive = true;
+    m_editorState.position = glm::vec3(0.0f);
+
+    // Walking on the spot. The stride advances but the body does not travel, so the gait can be
+    // watched from one place rather than chased across the floor.
+    const float speed = m_editorWalking ? config.SpeedForStance(stance, false, false) : 0.0f;
+    m_editorState.velocity = glm::vec3(0.0f, 0.0f, -speed);
+    if (m_editorWalking)
     {
-        SetCameraMode(CameraMode::FirstPerson);
-        m_wantMouseCaptured = true;
-        UpdateMouseCapture();
+        m_editorState.strideDistance += speed * frameDeltaSeconds;
+        m_editorState.stridePhase = glm::fract(
+            m_editorState.stridePhase +
+            speed * frameDeltaSeconds / std::max(config.StrideLength(speed, stance), 0.05f));
     }
+
+    m_editorView.eyeHeight = config.EyeHeightForStance(stance);
+    m_editorView.renderPosition = m_editorState.position;
+    m_editorView.eyePosition = m_editorState.position + glm::vec3(0.0f, m_editorView.eyeHeight, 0.0f);
+    m_editorView.yaw = 0.0f;
+    m_editorView.pitch = 0.0f;
+    m_editorView.leanRoll = 0.0f;
+
+    // What it is holding is whatever the editor has open, rebuilt whenever the editor says the model
+    // changed. That is the whole loop: move a socket, see the hand move.
+    const ModelAsset& model = m_editor.Model();
+    if (m_editor.TakePreviewChanged() || !m_editorBody.HasWeapon())
+    {
+        m_editorPreviewWeapon = WeaponDefinition{};
+        m_editorPreviewWeapon.id = static_cast<WeaponId>(1);
+        m_editorPreviewWeapon.key = model.name.empty() ? "preview" : model.name;
+        m_editorPreviewWeapon.name = m_editorPreviewWeapon.key;
+        m_editorPreviewWeapon.model = model.name;
+        m_editorPreviewWeapon.reloadSeconds = 2.2f;
+        m_editorPreviewWeapon.magazineSize = 30;
+        ForgetWeaponModels();
+        m_editorBody.SetWeaponFromModel(m_editorScene, m_app->GetMeshes(), m_editorPreviewWeapon, model);
+    }
+
+    PlayerBody::WeaponPose pose;
+    pose.aim = m_editorAim;
+    pose.draw = m_editorDraw;
+    pose.kick = m_editorKick;
+    pose.reloading = m_editorReload >= 0.0f;
+    pose.reload = m_editorReload;
+    m_editorBody.SetWeaponPose(pose);
+
+    m_editorDraw = std::min(m_editorDraw + frameDeltaSeconds * 1.6f, 1.0f);
+    m_editorKick = std::max(m_editorKick - frameDeltaSeconds * 7.0f, 0.0f);
+    if (m_editorReload >= 0.0f)
+    {
+        m_editorReload += frameDeltaSeconds / 2.2f;
+        if (m_editorReload > 1.0f)
+        {
+            m_editorReload = -1.0f;
+        }
+    }
+
+    m_editorBody.Update(m_editorScene, m_editorState, m_editorView, config, m_app->GetPhysics(),
+                        frameDeltaSeconds);
+}
+
+void PredationGame::EnterEditor(const std::string& modelName)
+{
+    // A place of its own rather than a mode switched on in the middle of a game. It has its own
+    // scene, so what is being built stands against an empty floor instead of against whatever
+    // happens to be at the spawn point, and nothing in the world simulates behind it.
+    StopSession();
+    m_screen = Screen::Editor;
+    m_titleStatus.clear();
+    m_inventoryOpen = false;
+
+    m_editor.SetOpen(m_editorScene, true);
+    if (!modelName.empty())
+    {
+        m_editor.Load(modelName);
+    }
+
+    if (!m_editorBodyBuilt)
+    {
+        // Someone to hold it. Built once and kept, because building a body is not free and the
+        // editor is opened and closed a great deal.
+        m_editorBody.Build(m_editorScene, m_app->GetMeshes(), m_player.Config());
+        m_editorBody.Tuning().hideHead = false;
+        m_editorBodyBuilt = true;
+    }
+    m_editorState = PlayerState{};
+    m_editorState.alive = true;
+    m_editorState.grounded = true;
+    m_editorClock = 0.0f;
+
+    // Everything in an editor is done with the pointer, so the mouse is free and the camera is taken
+    // only while the right button is held.
+    SetCameraMode(CameraMode::Fly);
+    m_camera.position = {1.4f, 1.5f, 1.9f};
+    m_lookYaw = glm::radians(-35.0f);
+    m_lookPitch = glm::radians(-14.0f);
+    m_wantMouseCaptured = false;
+    UpdateMouseCapture();
+    m_app->GetConsole().Print(
+        "Model editor. Hold right mouse to look, WASD to move, Escape to leave.");
 }
 
 void PredationGame::TryInteract()
@@ -3087,8 +3168,38 @@ void PredationGame::OnUpdate(double dt, double alpha)
         m_editor.Camera().pitch = m_lookPitch;
         m_editor.Camera().moveSpeed = m_editor.CameraSpeed();
         m_editor.Camera().Update(input, deltaSeconds, false);
-        m_editor.Update(m_scene, app.GetMeshes(), deltaSeconds);
+        m_editor.Update(m_editorScene, app.GetMeshes(), deltaSeconds);
+        UpdateEditorBody(deltaSeconds);
         m_camera = m_editor.Camera();
+
+        // Clicking in the viewport selects what is under the pointer. The game owns the camera and
+        // the pointer and the editor owns the parts, so the ray is built here and the answer given
+        // there. Not while the right button is held, because that is looking around rather than
+        // pointing, and not over a panel, because a click there belongs to the panel.
+        if (!m_editorLooking && !app.IsUiCapturingMouse() &&
+            input.WasMousePressed(MouseButton::Left))
+        {
+            const Renderer& renderer = app.GetRenderer();
+            const float width = static_cast<float>(std::max<int>(renderer.Width(), 1));
+            const float height = static_cast<float>(std::max<int>(renderer.Height(), 1));
+            const glm::vec2 pointer = input.MousePosition();
+
+            // From the pointer through the near plane, in the same projection the frame was drawn
+            // with. Working it out from the field of view rather than by unprojecting a matrix keeps
+            // this readable, and the two agree because both start from the same cvar.
+            const float aspect = width / height;
+            const float halfHorizontal = std::tan(glm::radians(cv_fov.Get()) * 0.5f);
+            const float halfVertical = halfHorizontal / aspect;
+            const float x = (pointer.x / width) * 2.0f - 1.0f;
+            const float y = 1.0f - (pointer.y / height) * 2.0f;
+
+            const glm::vec3 forward = m_camera.Forward();
+            const glm::vec3 right = glm::normalize(glm::cross(forward, glm::vec3(0.0f, 1.0f, 0.0f)));
+            const glm::vec3 up = glm::cross(right, forward);
+            const glm::vec3 direction = glm::normalize(forward + right * (x * halfHorizontal) +
+                                                       up * (y * halfVertical));
+            m_editor.SelectUnderRay(m_camera.position, direction);
+        }
     }
 
     // Nothing bound to a game key does anything at the menu. The menu is pointed at and typed into,
@@ -3141,10 +3252,6 @@ void PredationGame::OnUpdate(double dt, double alpha)
         {
             m_inventory.SelectNext(wheel > 0.0f ? -1 : 1);
         }
-        if (input.WasActionPressed("editor"))
-        {
-            ToggleEditor();
-        }
         if (input.WasActionPressed("toggle_camera"))
         {
             // Cycles first person, third person, fly. Third person exists so the body animation can
@@ -3173,6 +3280,14 @@ void PredationGame::OnUpdate(double dt, double alpha)
                 ReturnToTitle();
             }
         }
+    }
+
+    // Escape leaves the editor for the menu. It is a place rather than an overlay, so leaving it is
+    // going somewhere else rather than switching something off.
+    if (!app.IsConsoleOpen() && m_screen == Screen::Editor &&
+        input.WasActionPressed("quit_capture") && !m_editorLooking)
+    {
+        ReturnToTitle();
     }
     UpdateMouseCapture();
 
@@ -3490,6 +3605,16 @@ void PredationGame::OnRender()
         return;
     }
 
+    // The editor draws its own scene. The level is not behind it, which is the point of it being a
+    // place rather than a mode: a model is judged against an empty floor.
+    if (m_screen == Screen::Editor)
+    {
+        app.GetSceneRenderer().Draw(Renderer::kViewMain, m_editorScene, app.GetMeshes(),
+                                    m_camera.position);
+        DrawDebugOverlays();
+        return;
+    }
+
     const glm::vec3 viewPosition = m_cameraMode == CameraMode::Fly ? m_camera.position : m_player.View().eyePosition;
     app.GetSceneRenderer().Draw(Renderer::kViewMain, m_scene, app.GetMeshes(), viewPosition);
     DrawDebugOverlays();
@@ -3571,19 +3696,19 @@ void PredationGame::DrawDebugOverlays()
     // The sockets on the weapon as it is actually held, with a line to the hand that is meant to be
     // at each. Placing a grip is a matter of looking at where the hand lands, and there is nothing
     // else that shows both at once.
-    if (m_benchOpen && m_benchSockets && m_body.Weapon().asset != nullptr)
+    if (m_screen == Screen::Editor && m_benchSockets && m_editorBodyBuilt)
     {
-        const glm::quat hold = m_body.WeaponRotation();
-        const glm::vec3 origin = m_body.WeaponOrigin();
+        const glm::quat hold = m_editorBody.WeaponRotation();
+        const glm::vec3 origin = m_editorBody.WeaponOrigin();
         const auto mark = [&](const glm::vec3& socket, BoneIndex bone, uint32_t colour)
         {
             const glm::vec3 world = origin + hold * socket;
             draw.Sphere(world, 0.018f, colour, 8);
-            draw.Line(world, m_body.GetPose().GlobalPosition(bone), colour);
+            draw.Line(world, m_editorBody.GetPose().GlobalPosition(bone), colour);
         };
-        mark(m_body.Weapon().triggerGrip, m_body.Rig().hand[1], Color::kGreen);
-        mark(m_body.Weapon().supportGrip, m_body.Rig().hand[0], Color::kCyan);
-        draw.Sphere(origin + hold * m_body.Weapon().muzzle, 0.014f, Color::kYellow, 8);
+        mark(m_editorBody.Weapon().triggerGrip, m_editorBody.Rig().hand[1], Color::kGreen);
+        mark(m_editorBody.Weapon().supportGrip, m_editorBody.Rig().hand[0], Color::kCyan);
+        draw.Sphere(origin + hold * m_editorBody.Weapon().muzzle, 0.014f, Color::kYellow, 8);
         draw.Axes(glm::translate(glm::mat4(1.0f), origin) * glm::mat4_cast(hold), 0.12f);
     }
 
@@ -4083,15 +4208,12 @@ void PredationGame::OnImGui()
     // debug overlay is showing and it takes the screen to itself.
     if (m_editor.IsOpen())
     {
-        m_editor.DrawUi(m_scene, m_app->GetMeshes());
-        // Beside the editor, because the bench answers the one question the editor cannot: where
-        // does the hand end up.
+        m_editor.DrawUi(m_editorScene, m_app->GetMeshes());
+        // Beside it, because it answers the one question the editor cannot: where does the hand end
+        // up.
         DrawWeaponBench();
         return;
     }
-
-    // And in the game as well, which is where a reload can be watched from behind the character.
-    DrawWeaponBench();
 
     if (m_screen == Screen::Title)
     {

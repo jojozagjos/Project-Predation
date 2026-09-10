@@ -860,6 +860,18 @@ void PlayerBody::SetWeaponForSimulation(const WeaponDefinition* definition)
     m_hasWeapon = true;
 }
 
+// Puts a model in the hands directly, without going through the weapon database or the disk. The
+// editor needs this: what it is holding is whatever is open in front of it, which has usually not
+// been saved yet and belongs to no weapon at all.
+void PlayerBody::SetWeaponFromModel(Scene& scene, MeshLibrary& meshes,
+                                    const WeaponDefinition& definition, const ModelAsset& model)
+{
+    DestroyWeapon(scene);
+    m_weaponId = definition.id;
+    m_weaponVisual = BuildWeaponVisualFrom(model, definition);
+    BuildWeaponEntities(scene, meshes, definition);
+}
+
 void PlayerBody::SetWeapon(Scene& scene, MeshLibrary& meshes, const WeaponDefinition* definition)
 {
     if (definition == nullptr || definition->id == kInvalidWeapon)
@@ -878,10 +890,15 @@ void PlayerBody::SetWeapon(Scene& scene, MeshLibrary& meshes, const WeaponDefini
 
     m_weaponId = definition->id;
     m_weaponVisual = BuildWeaponVisual(*definition);
+    BuildWeaponEntities(scene, meshes, *definition);
+}
 
-    // One entity per part, whether the model came from the editor or was built from the weapon's
-    // numbers. That is what lets a reload take the magazine out and an authored clip move anything.
-    const std::string key = "weapon_" + definition->key;
+// One entity per part, however the visual was arrived at.
+void PlayerBody::BuildWeaponEntities(Scene& scene, MeshLibrary& meshes,
+                                     const WeaponDefinition& definition)
+{
+    // One entity per part, which is what lets a reload take the magazine out on its own.
+    const std::string key = "weapon_" + definition.key;
     for (const WeaponVisual::Part& part : m_weaponVisual.parts)
     {
         const MeshHandle mesh = meshes.Upload(part.mesh, key + "_" + part.name);
@@ -894,7 +911,7 @@ void PlayerBody::SetWeapon(Scene& scene, MeshLibrary& meshes, const WeaponDefini
 
     // A flash is a scaled-to-nothing sphere most of the time. Giving it its own entity means firing
     // costs a transform write rather than creating and destroying geometry.
-    const float flashRadius = std::max(definition->size.y, 0.06f) * 0.9f;
+    const float flashRadius = std::max(definition.size.y, 0.06f) * 0.9f;
     m_muzzleFlashEntity =
         scene.CreateMeshEntity(key + "_flash", Transform{},
                                meshes.Upload(Primitives::Sphere(flashRadius, 10, 6), key + "_flash"),

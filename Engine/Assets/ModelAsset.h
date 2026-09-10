@@ -110,6 +110,7 @@ public:
     const ModelSocket* FindSocket(const std::string& socketName) const;
     const AnimationClip* FindClip(const std::string& clipName) const;
     ModelPart* FindPart(const std::string& partName);
+    const ModelPart* FindPart(const std::string& partName) const;
 
     // Where a part sits at a moment in a clip, as a matrix in the model's frame. Falls back to the
     // rest pose when the clip does not touch that part.

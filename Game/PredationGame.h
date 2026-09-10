@@ -59,14 +59,31 @@ private:
     PlayerInput BuildPlayerInput();
     void TryInteract();
     // Opens or closes the model editor and hands the view and the mouse over to it.
-    void ToggleEditor();
+    // The editor's own scene. Nothing of the game is in it: a model is looked at against an empty
+    // floor rather than against whatever happens to be at the spawn point.
+    Scene m_editorScene;
+    // A body to hold what is being built. The only question that matters about a grip is where the
+    // hand ends up, and that cannot be answered without someone to hold it.
+    PlayerBody m_editorBody;
+    PlayerState m_editorState;
+    PlayerView m_editorView;
+    float m_editorClock = 0.0f;
+    bool m_editorBodyBuilt = false;
+    int m_editorStance = 0;
+    bool m_editorWalking = false;
+    // What the preview is doing with the weapon. Driven from buttons, because there is no simulation
+    // behind it: the point is to watch one movement at a time and as often as you like.
+    float m_editorAim = 0.0f;
+    float m_editorDraw = 1.0f;
+    float m_editorKick = 0.0f;
+    float m_editorReload = -1.0f; // negative when not reloading, matching WeaponPose
+    WeaponDefinition m_editorPreviewWeapon;
+    void UpdateEditorBody(float frameDeltaSeconds);
     // The weapon bench: point a weapon at a model, play what it does, and see where the hands land
     // against the sockets. Open beside the editor, because placing a grip means looking at where
     // the hand ends up and there is no other way to find out.
     void DrawWeaponBench();
-    bool m_benchOpen = false;
     bool m_benchSockets = true;
-    char m_benchModel[64] = "";
     int m_benchWeapon = 0;
     // Equips whatever weapon the selected inventory slot carries, or nothing if it carries none.
     void SyncEquippedWeapon();
@@ -114,10 +131,15 @@ private:
     enum class Screen : uint8_t
     {
         Title,
-        Playing
+        Playing,
+        // The model editor, which is a separate place rather than something switched on in the middle
+        // of a game. It has its own scene, so the level is not standing behind whatever is being
+        // built, and nothing in the world simulates while it is open.
+        Editor
     };
     void DrawTitleScreen();
     void EnterWorld();
+    void EnterEditor(const std::string& modelName);
     void ReturnToTitle();
     // Slowly circles the camera around the spawn area behind the menu.
     void UpdateTitleCamera(float frameDeltaSeconds);

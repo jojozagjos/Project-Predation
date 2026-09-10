@@ -6,6 +6,7 @@
 #include "Engine/Scene/Scene.h"
 
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace pred
@@ -50,11 +51,43 @@ public:
     bool Load(const std::string& modelName);
     bool Save();
 
+    // Selects whatever a ray runs through, and returns true if that changed anything. Clicking
+    // nothing clears the selection, which is what clicking nothing means everywhere else.
+    bool SelectUnderRay(const glm::vec3& origin, const glm::vec3& direction);
+    // Which part a ray runs through, or -1. The ray comes from the game, which owns the camera and
+    // the pointer; the editor owns the parts and is the only thing that can say what was hit.
+    int PartUnderRay(const glm::vec3& origin, const glm::vec3& direction) const;
+    // Turns, mirrors or rescales everything at once: geometry, part placements and sockets. A
+    // download arrives however its author left it, and turning forty parts by hand is not editing.
+    void TransformModel(const glm::mat4& transform);
+
+    // What is open, so something outside can hold it.
+    const ModelAsset& Model() const { return m_model; }
+    // Puts a model in without touching the disk or the scene. Only tests use this: everything the
+    // editor does to a model is worth checking, and none of it needs a renderer.
+    void SetModelForTesting(ModelAsset model)
+    {
+        m_model = std::move(model);
+        m_selectedPart = m_model.parts.empty() ? -1 : 0;
+        m_dirty = true;
+        m_previewChanged = true;
+    }
+    // True once each time the model has changed since this was last asked. The preview rebuilds on
+    // it: a weapon visual is meshes and materials, and building one every frame while a slider is
+    // dragged is how an editor comes to feel slow.
+    bool TakePreviewChanged()
+    {
+        const bool changed = m_previewChanged;
+        m_previewChanged = false;
+        return changed;
+    }
+
 private:
     void Rebuild(Scene& scene, MeshLibrary& meshes);
     void NewModel();
     void AddPart(const char* name, PartShape shape);
     void ImportMesh(const std::string& file);
+    void DrawModelPanel();
     void DrawPartList();
     void DrawPartInspector();
     void DrawSocketPanel();
@@ -74,6 +107,7 @@ private:
     ModelAsset m_model;
     bool m_open = false;
     bool m_dirty = true; // the preview needs rebuilding
+    bool m_previewChanged = true; // and whatever is holding it needs rebuilding too
 
     // One entity per part, so a part can be hidden or animated on its own.
     std::vector<Entity> m_entities;

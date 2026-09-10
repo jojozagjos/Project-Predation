@@ -12,6 +12,7 @@ add_executable(PredationTests
     NetUdpTests.cpp
     PhysicsTests.cpp
     AssetTests.cpp
+    EditorTests.cpp
 )
 pred_set_warnings(PredationTests)
 target_link_libraries(PredationTests PRIVATE Predation::GameLib Catch2::Catch2WithMain)

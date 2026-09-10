@@ -58,6 +58,10 @@ struct WeaponVisual
 
 WeaponVisual BuildWeaponVisual(const WeaponDefinition& definition);
 
+// The same, from a model already in memory rather than one named on disk. The editor holds what is
+// open in front of it, which has usually not been saved and belongs to no weapon.
+WeaponVisual BuildWeaponVisualFrom(const ModelAsset& model, const WeaponDefinition& definition);
+
 // Writes a procedurally built weapon out as an editable model file, so the editor has something to
 // start from rather than a blank page.
 bool ExportWeaponModel(const WeaponDefinition& definition, const std::string& modelName);

@@ -147,6 +147,13 @@ ModelPart* ModelAsset::FindPart(const std::string& partName)
     return it == parts.end() ? nullptr : &*it;
 }
 
+const ModelPart* ModelAsset::FindPart(const std::string& partName) const
+{
+    const auto it = std::find_if(parts.begin(), parts.end(),
+                                 [&](const ModelPart& part) { return part.name == partName; });
+    return it == parts.end() ? nullptr : &*it;
+}
+
 glm::mat4 ModelAsset::PartMatrixAt(const ModelPart& part, const AnimationClip* clip, float time,
                                    float* visibility) const
 {

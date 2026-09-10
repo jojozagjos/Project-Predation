@@ -297,6 +297,11 @@ public:
     // Puts a weapon in the character's hands, built from its data entry. Passing nothing takes it
     // away again.
     void SetWeapon(Scene& scene, MeshLibrary& meshes, const WeaponDefinition* definition);
+    // Puts a model in the hands directly, without going through the weapon database or the disk.
+    // The editor needs this: what it is holding is whatever is open in front of it, which has
+    // usually not been saved yet and belongs to no weapon at all.
+    void SetWeaponFromModel(Scene& scene, MeshLibrary& meshes, const WeaponDefinition& definition,
+                            const ModelAsset& model);
     // The same, with nothing to draw. Lets the hold be exercised in tests, which have no renderer
     // and where uploading a mesh would mean standing up a GPU device.
     void SetWeaponForSimulation(const WeaponDefinition* definition);
@@ -388,6 +393,8 @@ private:
                      float& outWeight) const;
     // Moves the whole drawn weapon, parts and all, after the hold has already been solved.
     void ShiftWeapon(const glm::vec3& delta);
+    // One entity per weapon part, however the visual was arrived at.
+    void BuildWeaponEntities(Scene& scene, MeshLibrary& meshes, const WeaponDefinition& definition);
     // Which way a bone's front faces, carried between frames so a limb's roll can never flip.
     glm::vec3 RollFront(BoneIndex bone, const glm::vec3& axis, const glm::vec3& hinge);
     // Places a limb bone from `a` to `b`, rolled so its front faces the way its joint bends.

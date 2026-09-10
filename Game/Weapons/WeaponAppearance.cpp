@@ -196,6 +196,11 @@ MeshData WeaponVisual::Combined() const
     return combined;
 }
 
+WeaponVisual BuildWeaponVisualFrom(const ModelAsset& model, const WeaponDefinition& definition)
+{
+    return FromModel(model, definition, nullptr);
+}
+
 WeaponVisual BuildWeaponVisual(const WeaponDefinition& definition)
 {
     if (!definition.model.empty())
