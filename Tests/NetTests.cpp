@@ -667,6 +667,9 @@ TEST_CASE("World events carry only what their kind needs", "[net][protocol]")
         sent.index = 12;
         sent.item = 5;
         sent.other = 3;
+        // And what it is carrying, so a rifle dropped with three rounds left is picked up with three.
+        sent.rounds = 7;
+        sent.reserve = 90;
         sent.position = {1.5f, 0.8f, -2.25f};
         sent.direction = {0.5f, 2.0f, -1.5f};
 
@@ -680,6 +683,8 @@ TEST_CASE("World events carry only what their kind needs", "[net][protocol]")
         CHECK(received.index == 12);
         CHECK(received.item == 5);
         CHECK(received.other == 3);
+        CHECK(received.rounds == 7);
+        CHECK(received.reserve == 90);
         CHECK(received.position.x == Catch::Approx(1.5f).margin(0.002));
         CHECK(received.position.z == Catch::Approx(-2.25f).margin(0.002));
         CHECK(received.direction.y == Catch::Approx(2.0f).margin(0.05));
@@ -765,4 +770,42 @@ TEST_CASE("Loose objects are sent as state, and stay small", "[net][protocol]")
         CHECK(received.bodies[i].id == i);
         CHECK(received.bodies[i].position.x == Catch::Approx(static_cast<float>(i)).margin(0.002));
     }
+}
+
+TEST_CASE("A drop request carries what the weapon had left in it", "[net][protocol]")
+{
+    // Without this the host spawned a fresh weapon wherever a client put one down, so throwing an
+    // empty rifle on the floor and picking it up again was a reload.
+    DropMessage sent;
+    sent.item = 4;
+    sent.count = 1;
+    sent.rounds = 3;
+    sent.reserve = 0;
+    sent.position = {-2.0f, 1.1f, 6.5f};
+    sent.velocity = {0.0f, 1.0f, -2.5f};
+
+    BitWriter writer;
+    WriteDrop(writer, sent);
+    const std::vector<uint8_t>& bytes = writer.Finish();
+    BitReader reader(bytes.data(), bytes.size());
+
+    DropMessage received;
+    REQUIRE(ReadDrop(reader, received));
+    CHECK(received.item == 4);
+    CHECK(received.count == 1);
+    CHECK(received.rounds == 3);
+    CHECK(received.reserve == 0);
+
+    // Anything with no state of its own says so, and says it the same way at both ends.
+    DropMessage plain;
+    plain.item = 9;
+    plain.count = 2;
+    BitWriter plainWriter;
+    WriteDrop(plainWriter, plain);
+    const std::vector<uint8_t>& plainBytes = plainWriter.Finish();
+    BitReader plainReader(plainBytes.data(), plainBytes.size());
+    DropMessage plainBack;
+    REQUIRE(ReadDrop(plainReader, plainBack));
+    CHECK(plainBack.rounds == kDefaultLoad);
+    CHECK(plainBack.reserve == kDefaultLoad);
 }

@@ -297,7 +297,8 @@ void WorldObjects::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physic
 
 int WorldObjects::SpawnPickup(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics,
                               InteractionSystem& interactions, const ItemDatabase& items, ItemId item,
-                              int count, const glm::vec3& position, const glm::vec3& velocity)
+                              int count, const glm::vec3& position, const glm::vec3& velocity,
+                              int rounds, int reserve)
 {
     const ItemDefinition* definition = items.Get(item);
     if (definition == nullptr || count <= 0)
@@ -308,15 +309,19 @@ int WorldObjects::SpawnPickup(Scene& scene, MeshLibrary& meshes, PhysicsWorld& p
     Pickup pickup;
     pickup.item = item;
     pickup.count = count;
+    pickup.rounds = rounds;
+    pickup.reserve = reserve;
 
     const MeshHandle mesh = meshes.Upload(ItemMesh(*definition, m_weapons), "item_" + definition->key);
     Transform transform;
     transform.position = position;
     pickup.entity = scene.CreateMeshEntity("pickup_" + definition->key, transform, mesh,
                                            ItemMaterial(*definition));
-    // Dropped items are dynamic so they settle naturally rather than floating where they were let go.
+    // Dropped items are dynamic so they settle naturally rather than floating where they were let
+    // go, and they are debris so the player walks through them rather than kicking them about. An
+    // item wedged against a capsule is one that cannot be picked up.
     pickup.body = physics.CreateBox(definition->size * 0.5f, transform, BodyMotion::Dynamic,
-                                    std::max(definition->mass, 0.01f) * 400.0f);
+                                    std::max(definition->mass, 0.01f) * 400.0f, PhysicsLayer::Debris);
     if (pickup.body.IsValid() && glm::length(velocity) > 0.0f)
     {
         physics.SetLinearVelocity(pickup.body, velocity);

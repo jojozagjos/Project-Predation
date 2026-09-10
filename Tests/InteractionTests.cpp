@@ -121,13 +121,25 @@ TEST_CASE("Inventory slot selection wraps in both directions", "[items][inventor
     inventory.SelectNext(1);
     REQUIRE(inventory.SelectedSlot() == 1);
     inventory.SelectNext(-1);
+    REQUIRE(inventory.SelectedSlot() == 0);
+
+    // Empty hands sit between the last slot and the first, so the wheel reaches them. Without a way
+    // back to carrying nothing, putting something away means remembering which number it was on.
     inventory.SelectNext(-1);
-    REQUIRE(inventory.SelectedSlot() == 3); // wrapped past zero
+    REQUIRE(inventory.SelectedSlot() == Inventory::kNoSlot);
+    REQUIRE(inventory.Selected().IsEmpty());
+    inventory.SelectNext(-1);
+    REQUIRE(inventory.SelectedSlot() == 3);
 
     inventory.SelectSlot(2);
     REQUIRE(inventory.SelectedSlot() == 2);
     inventory.SelectSlot(99); // out of range is ignored, not clamped into a surprise
     REQUIRE(inventory.SelectedSlot() == 2);
+
+    // And selecting nothing is a real request, not an out-of-range one.
+    inventory.SelectSlot(Inventory::kNoSlot);
+    REQUIRE(inventory.SelectedSlot() == Inventory::kNoSlot);
+    REQUIRE(inventory.Selected().IsEmpty());
 }
 
 TEST_CASE("Interaction focus follows the aim, not proximity", "[interaction]")
@@ -259,4 +271,35 @@ TEST_CASE("A destroyed entity stops being offered", "[interaction]")
     REQUIRE_FALSE(interactions.UpdateFocus(scene, physics, eye, forward).valid);
 
     physics.Shutdown();
+}
+
+TEST_CASE("A weapon keeps its magazine through a slot and back", "[items][inventory]")
+{
+    // Putting a weapon away and taking it out again used to refill it, which the key that holsters
+    // what is already out made trivial to exploit. The magazine belongs to the slot, not to the
+    // hands, because the hands are only ever a view of whichever slot is selected.
+    const ItemDatabase database = MakeDatabase();
+    const ItemDefinition* rifle = database.Find("medkit");
+    REQUIRE(rifle != nullptr);
+    const ItemId id = rifle->id;
+
+    Inventory inventory(4);
+    REQUIRE(inventory.Add(database, id, 1) == 1);
+    REQUIRE(inventory.At(0).rounds == -1); // never drawn: use whatever it starts with
+
+    inventory.SetSlotAmmo(0, 7, 60);
+    REQUIRE(inventory.At(0).rounds == 7);
+    REQUIRE(inventory.At(0).reserve == 60);
+
+    // Selecting something else and coming back does not touch it.
+    inventory.SelectSlot(Inventory::kNoSlot);
+    inventory.SelectSlot(0);
+    REQUIRE(inventory.At(0).rounds == 7);
+
+    // And it travels with the item when it is dropped and picked up again.
+    REQUIRE(inventory.RemoveFromSlot(0, 1) == 1);
+    REQUIRE(inventory.At(0).rounds == -1); // the slot is empty, so it holds nothing at all
+    REQUIRE(inventory.Add(database, id, 1, 7, 60) == 1);
+    REQUIRE(inventory.At(0).rounds == 7);
+    REQUIRE(inventory.At(0).reserve == 60);
 }

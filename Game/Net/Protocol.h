@@ -72,6 +72,9 @@ struct WorldEventMessage
     uint8_t player = 0;   // who did it, or who it happened to
     uint8_t other = 0;    // the other party: an occupant, a killer, a stack count
     uint16_t item = 0;    // item id, for a pickup
+    // What a spawned pickup is carrying, for a weapon. kDefaultLoad when it has no particular state.
+    uint16_t rounds = 511;
+    uint16_t reserve = 511;
     bool flag = false;    // open, or hit
     float amount = 0.0f;  // damage, or remaining health
     glm::vec3 position{0.0f};
@@ -107,9 +110,17 @@ struct DropMessage
 {
     uint16_t item = 0;
     uint8_t count = 1;
+    // What state the thing is in, for things that have any: a weapon keeps the magazine it was
+    // carrying. 511 means "whatever it starts with", which is what everything else sends.
+    uint16_t rounds = 511;
+    uint16_t reserve = 511;
     glm::vec3 position{0.0f};
     glm::vec3 velocity{0.0f};
 };
+
+// The value that means "no particular state; use whatever this item starts with". Nine bits on the
+// wire, so it is the largest number those bits can carry.
+inline constexpr uint16_t kDefaultLoad = 511;
 
 // Where the loose rigid bodies have got to. Unreliable and periodic, because a crate sliding across
 // the floor is a value that will be sent again rather than an event.

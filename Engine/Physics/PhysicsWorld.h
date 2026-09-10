@@ -26,7 +26,9 @@ enum class BodyMotion : uint8_t
 enum class PhysicsLayer : uint8_t
 {
     Static = 0,
-    Moving = 1
+    Moving = 1,
+    // Loose items. Falls and settles like anything else, but characters walk through it.
+    Debris = 2
 };
 
 struct BodyHandle
@@ -88,7 +90,7 @@ public:
 
     // --- Body creation. Density is ignored for static bodies. -----------------------------------
     BodyHandle CreateBox(const glm::vec3& halfExtents, const Transform& transform, BodyMotion motion,
-                         float density = 1000.0f);
+                         float density = 1000.0f, PhysicsLayer layer = PhysicsLayer::Moving);
     BodyHandle CreateSphere(float radius, const Transform& transform, BodyMotion motion,
                             float density = 1000.0f);
     // Capsule total height is 2 * (halfHeight + radius). This is the player/creature body shape.

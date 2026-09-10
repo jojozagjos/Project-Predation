@@ -50,6 +50,7 @@ namespace Layers
 {
 constexpr JPH::ObjectLayer kNonMoving = PhysicsLayers::kNonMoving;
 constexpr JPH::ObjectLayer kMoving = PhysicsLayers::kMoving;
+constexpr JPH::ObjectLayer kDebris = PhysicsLayers::kDebris;
 constexpr JPH::ObjectLayer kCount = PhysicsLayers::kCount;
 } // namespace Layers
 
@@ -67,6 +68,9 @@ public:
     {
         m_objectToBroadPhase[Layers::kNonMoving] = BroadPhaseLayers::kNonMoving;
         m_objectToBroadPhase[Layers::kMoving] = BroadPhaseLayers::kMoving;
+        // Debris moves, so it shares the moving broad phase; what it does not do is touch
+        // characters, and that is decided in the narrow phase below.
+        m_objectToBroadPhase[Layers::kDebris] = BroadPhaseLayers::kMoving;
     }
 
     JPH::uint GetNumBroadPhaseLayers() const override { return BroadPhaseLayers::kCount; }
@@ -111,7 +115,18 @@ class ObjectLayerPairFilterImpl final : public JPH::ObjectLayerPairFilter
 public:
     bool ShouldCollide(JPH::ObjectLayer layer1, JPH::ObjectLayer layer2) const override
     {
-        return layer1 != Layers::kNonMoving || layer2 == Layers::kMoving;
+        // Static geometry is never tested against itself.
+        if (layer1 == Layers::kNonMoving && layer2 == Layers::kNonMoving)
+        {
+            return false;
+        }
+        // And characters walk through anything lying on the floor.
+        if ((layer1 == Layers::kDebris && layer2 == Layers::kMoving) ||
+            (layer1 == Layers::kMoving && layer2 == Layers::kDebris))
+        {
+            return false;
+        }
+        return true;
     }
 };
 
@@ -160,9 +175,13 @@ JPH::EMotionType ToJoltMotion(BodyMotion motion)
     }
 }
 
-JPH::ObjectLayer ToJoltLayer(BodyMotion motion)
+JPH::ObjectLayer ToJoltLayer(BodyMotion motion, PhysicsLayer layer = PhysicsLayer::Moving)
 {
-    return motion == BodyMotion::Static ? Layers::kNonMoving : Layers::kMoving;
+    if (motion == BodyMotion::Static)
+    {
+        return Layers::kNonMoving;
+    }
+    return layer == PhysicsLayer::Debris ? Layers::kDebris : Layers::kMoving;
 }
 
 // --- Jolt diagnostics into our log --------------------------------------------------------------
@@ -261,9 +280,8 @@ struct PhysicsWorld::Impl
 
     JPH::BodyInterface& Bodies() { return system->GetBodyInterface(); }
     const JPH::BodyInterface& Bodies() const { return system->GetBodyInterface(); }
-
     BodyHandle AddBody(const JPH::ShapeRefC& shape, const Transform& transform, BodyMotion motion,
-                       const BodyRecord& record);
+                       PhysicsLayer layer, const BodyRecord& record);
 };
 
 PhysicsWorld::PhysicsWorld() : m_impl(std::make_unique<Impl>()) {}
@@ -352,10 +370,11 @@ void PhysicsWorld::Step(float deltaSeconds)
 }
 
 BodyHandle PhysicsWorld::Impl::AddBody(const JPH::ShapeRefC& shape, const Transform& transform,
-                                       BodyMotion motion, const BodyRecord& record)
+                                       BodyMotion motion, PhysicsLayer layer,
+                                       const BodyRecord& record)
 {
     JPH::BodyCreationSettings creation(shape, ToJoltR(transform.position), ToJolt(transform.rotation),
-                                       ToJoltMotion(motion), ToJoltLayer(motion));
+                                       ToJoltMotion(motion), ToJoltLayer(motion, layer));
     // Sensible defaults for level props; specific bodies can be tuned later.
     creation.mFriction = 0.6f;
     creation.mRestitution = 0.05f;
@@ -375,8 +394,8 @@ BodyHandle PhysicsWorld::Impl::AddBody(const JPH::ShapeRefC& shape, const Transf
     return BodyHandle{id.GetIndexAndSequenceNumber()};
 }
 
-BodyHandle PhysicsWorld::CreateBox(const glm::vec3& halfExtents, const Transform& transform, BodyMotion motion,
-                                   float density)
+BodyHandle PhysicsWorld::CreateBox(const glm::vec3& halfExtents, const Transform& transform,
+                                   BodyMotion motion, float density, PhysicsLayer layer)
 {
     Impl& impl = *m_impl;
     if (!impl.initialized)
@@ -403,7 +422,7 @@ BodyHandle PhysicsWorld::CreateBox(const glm::vec3& halfExtents, const Transform
     record.kind = Impl::ShapeKind::Box;
     record.motion = motion;
     record.halfExtents = safeExtents;
-    return impl.AddBody(result.Get(), transform, motion, record);
+    return impl.AddBody(result.Get(), transform, motion, layer, record);
 }
 
 BodyHandle PhysicsWorld::CreateSphere(float radius, const Transform& transform, BodyMotion motion,
@@ -431,7 +450,7 @@ BodyHandle PhysicsWorld::CreateSphere(float radius, const Transform& transform, 
     record.kind = Impl::ShapeKind::Sphere;
     record.motion = motion;
     record.radius = safeRadius;
-    return impl.AddBody(result.Get(), transform, motion, record);
+    return impl.AddBody(result.Get(), transform, motion, PhysicsLayer::Moving, record);
 }
 
 BodyHandle PhysicsWorld::CreateCapsule(float halfHeight, float radius, const Transform& transform,
@@ -461,7 +480,7 @@ BodyHandle PhysicsWorld::CreateCapsule(float halfHeight, float radius, const Tra
     record.motion = motion;
     record.radius = safeRadius;
     record.halfHeight = safeHalfHeight;
-    return impl.AddBody(result.Get(), transform, motion, record);
+    return impl.AddBody(result.Get(), transform, motion, PhysicsLayer::Moving, record);
 }
 
 BodyHandle PhysicsWorld::CreateMeshBody(const MeshData& mesh, const Transform& transform)
@@ -506,7 +525,7 @@ BodyHandle PhysicsWorld::CreateMeshBody(const MeshData& mesh, const Transform& t
     record.motion = BodyMotion::Static;
     record.meshBounds = mesh.ComputeBounds();
     // Triangle meshes have no volume, so they can only ever be static.
-    return impl.AddBody(result.Get(), transform, BodyMotion::Static, record);
+    return impl.AddBody(result.Get(), transform, BodyMotion::Static, PhysicsLayer::Static, record);
 }
 
 void PhysicsWorld::DestroyBody(BodyHandle body)

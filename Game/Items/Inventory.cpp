@@ -43,7 +43,7 @@ bool Inventory::CanAdd(const ItemDatabase& database, ItemId item, int count) con
     return false;
 }
 
-int Inventory::Add(const ItemDatabase& database, ItemId item, int count)
+int Inventory::Add(const ItemDatabase& database, ItemId item, int count, int rounds, int reserve)
 {
     const ItemDefinition* definition = database.Get(item);
     if (definition == nullptr || count <= 0)
@@ -80,6 +80,11 @@ int Inventory::Add(const ItemDatabase& database, ItemId item, int count)
             const int moved = std::min(definition->maxStack, remaining);
             slot.item = item;
             slot.count = moved;
+            // The state travels with the item onto the slot it opens for itself. Anything that
+            // stacked onto an existing pile above keeps that pile's state, because a stack of
+            // identical things cannot say which of them a magazine belongs to.
+            slot.rounds = rounds;
+            slot.reserve = reserve;
             remaining -= moved;
         }
     }
@@ -146,9 +151,19 @@ void Inventory::Clear()
     }
 }
 
-void Inventory::SelectSlot(int index)
+void Inventory::SetSlotAmmo(int index, int rounds, int reserve)
 {
     if (index >= 0 && index < SlotCount())
+    {
+        Slot& slot = m_slots[static_cast<size_t>(index)];
+        slot.rounds = rounds;
+        slot.reserve = reserve;
+    }
+}
+
+void Inventory::SelectSlot(int index)
+{
+    if (index == kNoSlot || (index >= 0 && index < SlotCount()))
     {
         m_selected = index;
     }
@@ -160,8 +175,19 @@ void Inventory::SelectNext(int direction)
     {
         return;
     }
-    const int count = SlotCount();
-    m_selected = ((m_selected + direction) % count + count) % count;
+    // The wheel runs through the slots and through empty hands, so there is a way back to carrying
+    // nothing without having to remember which slot you had out.
+    const int count = SlotCount() + 1;
+    const int from = m_selected == kNoSlot ? SlotCount() : m_selected;
+    const int next = ((from + direction) % count + count) % count;
+    m_selected = next == SlotCount() ? kNoSlot : next;
+}
+
+const Inventory::Slot& Inventory::Selected() const
+{
+    static const Slot empty;
+    return m_selected >= 0 && m_selected < SlotCount() ? m_slots[static_cast<size_t>(m_selected)]
+                                                      : empty;
 }
 
 } // namespace pred

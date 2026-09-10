@@ -66,6 +66,17 @@ constexpr float kSparkSeconds = 0.18f;   // how long the mark at the far end las
 // Long enough for the longest shot to arrive and its impact to fade.
 constexpr float kTracerSeconds = 0.75f;
 
+// The wire carries "no particular state" as a sentinel, because nine bits cannot hold a negative.
+int LoadFromWire(uint16_t value)
+{
+    return value >= kDefaultLoad ? -1 : static_cast<int>(value);
+}
+
+uint16_t LoadToWire(int value)
+{
+    return value < 0 ? kDefaultLoad : static_cast<uint16_t>(std::min(value, kDefaultLoad - 1));
+}
+
 constexpr float kPropRadius = 0.3f;
 constexpr float kPropSize = 0.5f;
 const Material kPropMaterial = Material::Diffuse({0.70f, 0.55f, 0.25f}, 0.55f);
@@ -638,7 +649,10 @@ bool PredationGame::PerformInteraction(InteractionKind kind, int index, uint8_t 
         int stored = wanted;
         if (mine)
         {
-            stored = m_inventory.Add(m_items, pickup->item, pickup->count);
+            // The magazine comes with it, so a rifle dropped with three rounds left is picked up
+            // with three rather than refilled by the act of taking it.
+            stored = m_inventory.Add(m_items, pickup->item, pickup->count, pickup->rounds,
+                                     pickup->reserve);
             if (stored <= 0)
             {
                 m_app->GetConsole().Print("Inventory full");
@@ -826,11 +840,11 @@ void PredationGame::ServeClientRequests()
         {
             continue;
         }
-        const int index = m_world.SpawnPickup(m_scene, m_app->GetMeshes(), m_app->GetPhysics(),
-                                              m_interactions, m_items,
-                                              static_cast<ItemId>(request.drop.item),
-                                              request.drop.count, request.drop.position,
-                                              request.drop.velocity);
+        const int index = m_world.SpawnPickup(
+            m_scene, m_app->GetMeshes(), m_app->GetPhysics(), m_interactions, m_items,
+            static_cast<ItemId>(request.drop.item), request.drop.count, request.drop.position,
+            request.drop.velocity, LoadFromWire(request.drop.rounds),
+            LoadFromWire(request.drop.reserve));
         if (index < 0)
         {
             continue;
@@ -944,7 +958,8 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
     case WorldEventKind::PickupSpawned:
         m_world.SpawnPickup(m_scene, m_app->GetMeshes(), m_app->GetPhysics(), m_interactions, m_items,
                             static_cast<ItemId>(event.item), static_cast<int>(event.other),
-                            event.position, event.direction);
+                            event.position, event.direction, LoadFromWire(event.rounds),
+                            LoadFromWire(event.reserve));
         break;
 
     case WorldEventKind::LockerUsed:
@@ -2271,7 +2286,8 @@ void PredationGame::SyncEquippedWeapon()
 {
     // The selected slot decides what is in your hands. Keeping it that way means there is no second
     // notion of "equipped" to fall out of step with the inventory.
-    const Inventory::Slot& slot = m_inventory.Selected();
+    const int slotNow = m_inventory.SelectedSlot();
+    const Inventory::Slot slot = m_inventory.Selected();
     const ItemDefinition* item = m_items.Get(slot.item);
     const WeaponId wanted = item != nullptr ? m_weaponData.ForItem(item->key) : kInvalidWeapon;
 
@@ -2292,10 +2308,20 @@ void PredationGame::SyncEquippedWeapon()
         }
     }
 
-    if (wanted == m_weapon.weapon)
+    if (slotNow == m_ammoSlot && wanted == m_weapon.weapon)
     {
         return;
     }
+
+    // The magazine goes back in the slot it came out of before anything else changes hands.
+    // Without this, putting a weapon away and taking it out again refilled it, which the key that
+    // now holsters what is already out made trivial to do.
+    if (m_ammoSlot != Inventory::kNoSlot && m_weapon.HasWeapon())
+    {
+        m_inventory.SetSlotAmmo(m_ammoSlot, m_weapon.rounds, m_weapon.reserve);
+    }
+    m_ammoSlot = slotNow;
+
     // Anything arriving in the hands is brought up rather than appearing already held.
     m_weaponDraw = 0.0f;
 
@@ -2306,9 +2332,16 @@ void PredationGame::SyncEquippedWeapon()
     }
     if (const WeaponDefinition* definition = m_weaponData.Get(wanted))
     {
-        // Rounds do not carry between weapons; each comes with its own magazine and reserve. Swapping
-        // back and forth would otherwise be a free reload.
+        // Rounds do not carry between weapons; each comes with its own magazine and reserve.
+        // Swapping back and forth would otherwise be a free reload.
         WeaponSim::Equip(*definition, m_weapon);
+        // Unless this particular one has been carried before, in which case it is however the
+        // player left it.
+        if (slot.rounds >= 0)
+        {
+            m_weapon.rounds = slot.rounds;
+            m_weapon.reserve = slot.reserve;
+        }
         PRED_LOG_INFO(Gameplay, "Equipped {} ({} rounds, {} spare)", definition->name, m_weapon.rounds,
                       m_weapon.reserve);
     }
@@ -2517,33 +2550,55 @@ void PredationGame::DropSelected()
         return;
     }
 
+    // What this one is carrying goes with it. For the weapon in hand that is the live state rather
+    // than the slot's copy, which is only written back when something else comes out.
+    const bool inHand = m_inventory.SelectedSlot() == m_ammoSlot && m_weapon.HasWeapon();
+    const int rounds = inHand ? m_weapon.rounds : slot.rounds;
+    const int reserve = inHand ? m_weapon.reserve : slot.reserve;
+
     const int removed = m_inventory.RemoveFromSlot(m_inventory.SelectedSlot(), 1);
     if (removed <= 0)
     {
         return;
+    }
+    if (inHand)
+    {
+        // The weapon has left the hand, so the state that was riding on it belongs to nothing now.
+        m_weapon = WeaponState{};
+        m_ammoSlot = Inventory::kNoSlot;
     }
 
     const PlayerView& view = m_player.View();
     const glm::vec3 origin = view.eyePosition + view.Forward() * 0.6f;
     const glm::vec3 throwVelocity = view.Forward() * 2.5f;
 
-    // A client asks to put it down and waits to be told. Dropping locally made an item nobody else
-    // had: it could not be picked up, the indices the two machines used stopped agreeing, and
-    // dropping the same thing twice made two of it.
+    DropIntoWorld(slot.item, removed, rounds, reserve, origin, throwVelocity);
+}
+
+// Puts one thing on the floor, wherever it came from.
+//
+// A client asks to put it down and waits to be told. Dropping locally made an item nobody else had:
+// it could not be picked up, the indices the two machines used stopped agreeing, and dropping the
+// same thing twice made two of it.
+void PredationGame::DropIntoWorld(ItemId item, int count, int rounds, int reserve,
+                                  const glm::vec3& origin, const glm::vec3& velocity)
+{
     if (m_sessionMode == SessionMode::Client)
     {
         DropMessage message;
-        message.item = static_cast<uint16_t>(slot.item);
-        message.count = static_cast<uint8_t>(removed);
+        message.item = static_cast<uint16_t>(item);
+        message.count = static_cast<uint8_t>(count);
+        message.rounds = LoadToWire(rounds);
+        message.reserve = LoadToWire(reserve);
         message.position = origin;
-        message.velocity = throwVelocity;
+        message.velocity = velocity;
         m_client.SendDrop(message);
         return;
     }
 
-    const int index = m_world.SpawnPickup(m_scene, m_app->GetMeshes(), m_app->GetPhysics(),
-                                          m_interactions, m_items, slot.item, removed, origin,
-                                          throwVelocity);
+    const int index =
+        m_world.SpawnPickup(m_scene, m_app->GetMeshes(), m_app->GetPhysics(), m_interactions, m_items,
+                            item, count, origin, velocity, rounds, reserve);
 
     // Everyone else has to see it land, and it has to be there to pick up. The throw is sent too,
     // so it arcs on their screen rather than appearing on the floor.
@@ -2552,12 +2607,45 @@ void PredationGame::DropSelected()
         WorldEventMessage event;
         event.kind = WorldEventKind::PickupSpawned;
         event.index = static_cast<uint8_t>(index);
-        event.item = static_cast<uint16_t>(slot.item);
-        event.other = static_cast<uint8_t>(removed);
+        event.item = static_cast<uint16_t>(item);
+        event.other = static_cast<uint8_t>(count);
+        event.rounds = LoadToWire(rounds);
+        event.reserve = LoadToWire(reserve);
         event.position = origin;
-        event.direction = throwVelocity;
+        event.direction = velocity;
         m_host.Broadcast(event);
     }
+}
+
+// Everything you were carrying goes on the floor where you fell.
+//
+// Death is meant to matter, and the way it matters most in an extraction game is that what you were
+// carrying stops being yours. Scattered rather than stacked, so a kill leaves a spread of things to
+// pick through rather than one pile occupying a single point.
+void PredationGame::DropEverything()
+{
+    const glm::vec3 at = m_player.State().position + glm::vec3(0.0f, 0.35f, 0.0f);
+    for (int i = 0; i < m_inventory.SlotCount(); ++i)
+    {
+        const Inventory::Slot slot = m_inventory.At(i);
+        if (slot.IsEmpty())
+        {
+            continue;
+        }
+        // Whatever was in the hand carries its live magazine; the rest carry the slot's copy.
+        const bool inHand = i == m_ammoSlot && m_weapon.HasWeapon();
+        const int rounds = inHand ? m_weapon.rounds : slot.rounds;
+        const int reserve = inHand ? m_weapon.reserve : slot.reserve;
+
+        const float angle = glm::two_pi<float>() * static_cast<float>(i) /
+                            static_cast<float>(std::max(m_inventory.SlotCount(), 1));
+        const glm::vec3 scatter{std::cos(angle) * 1.2f, 1.4f, std::sin(angle) * 1.2f};
+        DropIntoWorld(slot.item, slot.count, rounds, reserve, at, scatter);
+    }
+
+    m_inventory.Clear();
+    m_weapon = WeaponState{};
+    m_ammoSlot = Inventory::kNoSlot;
 }
 
 void PredationGame::EnterHidingSpot(int index)
@@ -2786,7 +2874,9 @@ void PredationGame::OnUpdate(double dt, double alpha)
         {
             if (input.WasActionPressed("slot_" + std::to_string(slot + 1)))
             {
-                m_inventory.SelectSlot(slot);
+                // Pressing the number for what is already out puts it away again. One key for both,
+                // because a separate holster key is one nobody finds.
+                m_inventory.SelectSlot(m_inventory.SelectedSlot() == slot ? Inventory::kNoSlot : slot);
             }
         }
         if (const float wheel = input.WheelDelta(); std::abs(wheel) > 0.1f)
@@ -2986,6 +3076,9 @@ void PredationGame::OnUpdate(double dt, double alpha)
     {
         m_body.Collapse(m_deathImpulse);
         m_localCollapsed = true;
+        // And the bag goes on the floor. Once, on the frame the player goes down, which is what the
+        // collapse latch is already for.
+        DropEverything();
     }
     else if (m_player.State().alive && m_localCollapsed)
     {
@@ -3612,7 +3705,8 @@ void PredationGame::DrawInventoryPanel()
             ImGui::InvisibleButton(("##slot" + std::to_string(i)).c_str(), {kSlotSize, kSlotSize});
             if (ImGui::IsItemClicked())
             {
-                m_inventory.SelectSlot(i);
+                // Clicking what is already out puts it away, the same as pressing its number.
+                m_inventory.SelectSlot(m_inventory.SelectedSlot() == i ? Inventory::kNoSlot : i);
             }
             if (definition != nullptr && ImGui::IsItemHovered())
             {

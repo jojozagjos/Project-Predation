@@ -387,6 +387,9 @@ void WriteWorldEvent(BitWriter& writer, const WorldEventMessage& message)
         writer.WriteBits(message.index, 8);
         writer.WriteBits(message.item, 8);
         writer.WriteBits(message.other, 6);
+        // What it is carrying, so a rifle dropped with three rounds left is picked up with three.
+        writer.WriteBits(std::min<uint32_t>(message.rounds, kDefaultLoad), 9);
+        writer.WriteBits(std::min<uint32_t>(message.reserve, kDefaultLoad), 9);
         WritePosition(writer, message.position);
         WriteVelocity(writer, message.direction);
         break;
@@ -456,6 +459,8 @@ bool ReadWorldEvent(BitReader& reader, WorldEventMessage& out)
         out.index = reader.ReadByte();
         out.item = reader.ReadByte();
         out.other = static_cast<uint8_t>(reader.ReadBits(6));
+        out.rounds = static_cast<uint16_t>(reader.ReadBits(9));
+        out.reserve = static_cast<uint16_t>(reader.ReadBits(9));
         out.position = ReadPosition(reader);
         out.direction = ReadVelocity(reader);
         break;
@@ -567,6 +572,8 @@ void WriteDrop(BitWriter& writer, const DropMessage& message)
 {
     writer.WriteBits(message.item, 8);
     writer.WriteBits(message.count, 6);
+    writer.WriteBits(std::min<uint32_t>(message.rounds, kDefaultLoad), 9);
+    writer.WriteBits(std::min<uint32_t>(message.reserve, kDefaultLoad), 9);
     WritePosition(writer, message.position);
     WriteVelocity(writer, message.velocity);
 }
@@ -575,6 +582,8 @@ bool ReadDrop(BitReader& reader, DropMessage& out)
 {
     out.item = reader.ReadByte();
     out.count = static_cast<uint8_t>(reader.ReadBits(6));
+    out.rounds = static_cast<uint16_t>(reader.ReadBits(9));
+    out.reserve = static_cast<uint16_t>(reader.ReadBits(9));
     out.position = ReadPosition(reader);
     out.velocity = ReadVelocity(reader);
     return !reader.Overran() && out.count > 0;

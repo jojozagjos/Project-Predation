@@ -49,6 +49,10 @@ public:
         BodyHandle body;
         ItemId item = kInvalidItem;
         int count = 1;
+        // What it is carrying, for a weapon somebody dropped. Negative means it has never been
+        // fired and comes with its own starting load.
+        int rounds = -1;
+        int reserve = -1;
         bool alive = true;
     };
 
@@ -100,9 +104,12 @@ public:
     bool ConsumePickup(int index, Scene& scene, PhysicsWorld& physics, InteractionSystem& interactions);
 
     // Creates a new pickup, for when something is dropped back out.
+    // `rounds` and `reserve` are what a dropped weapon is carrying; negative means it uses whatever
+    // the weapon starts with, which is what everything that is not a weapon passes.
     int SpawnPickup(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics,
                     InteractionSystem& interactions, const ItemDatabase& items, ItemId item, int count,
-                    const glm::vec3& position, const glm::vec3& velocity);
+                    const glm::vec3& position, const glm::vec3& velocity, int rounds = -1,
+                    int reserve = -1);
 
     const std::vector<Door>& Doors() const { return m_doors; }
     const std::vector<Pickup>& Pickups() const { return m_pickups; }

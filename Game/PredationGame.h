@@ -72,6 +72,12 @@ private:
     glm::vec3 MuzzlePosition() const;
     glm::vec3 AimDirection() const;
     void DropSelected();
+    // Puts one thing on the floor. A client asks the host and waits; the host does it and tells
+    // everyone. `rounds` and `reserve` are negative for anything with no state of its own.
+    void DropIntoWorld(ItemId item, int count, int rounds, int reserve, const glm::vec3& origin,
+                       const glm::vec3& velocity);
+    // Everything in the bag, scattered where the player fell.
+    void DropEverything();
     // Refills the spare rounds for the equipped weapon from a crate in the world.
     void TakeAmmunition(int crateIndex);
     void EnterHidingSpot(int index);
@@ -265,6 +271,9 @@ private:
     // Runs 0 to 1 as a weapon is brought up. Reset whenever what is held changes, so swapping is a
     // movement rather than one model being substituted for another.
     float m_weaponDraw = 1.0f;
+    // Which inventory slot the equipped weapon's magazine belongs to, so it can be put back there
+    // when something else comes out. Inventory::kNoSlot when nothing is in hand.
+    int m_ammoSlot = -1;
     // Console-driven aim, so the sighted hold can be inspected in a headless capture.
     bool m_debugAim = false;
     // True only while the right button is held in the editor, which is when the mouse belongs to the
