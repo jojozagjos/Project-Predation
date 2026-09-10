@@ -15,6 +15,12 @@ set "BUILD_DIR=%ROOT%\build\%PRESET%"
 set "STAGE=%ROOT%\build\package\ProjectPredation"
 set "ZIP=%ROOT%\build\package\ProjectPredation-%PRESET%.zip"
 
+call "%~dp0vsenv.cmd"
+if errorlevel 1 (
+    echo [package] FAIL: Visual Studio environment setup failed
+    exit /b 1
+)
+
 rem Configured without the developer tools. What somebody else is handed has no model editor in
 rem its menu and no editor commands in its console: they are for building the game, not playing it.
 echo [package] Building %PRESET% without the developer tools...
