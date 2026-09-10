@@ -1,5 +1,7 @@
 #include "Engine/Physics/PhysicsWorld.h"
 #include "Game/Player/PlayerController.h"
+#include "Game/World/WorldObjects.h"
+
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -68,4 +70,51 @@ TEST_CASE("A character walks through loose items but not through the world", "[p
     CHECK(glm::distance(restingAt, nowAt) < 0.01f);
 
     physics.Shutdown();
+}
+TEST_CASE("Two machines agree which pickup is which", "[items][net]")
+{
+    // The index is the name every machine uses for a dropped item afterwards: it is taken by index
+    // and removed by index everywhere at once. Both sides used to choose their own, so two machines
+    // with different holes in their pickup lists disagreed about which item was which, and from
+    // then on taking one removed a different one somewhere else. That is an item that cannot be
+    // picked up on one screen and a second copy of it on another.
+    //
+    // Only the choice of index is exercised here. Everything else about spawning a pickup needs a
+    // renderer, and the choice is the whole of what the two machines have to agree on.
+    using Pickup = WorldObjects::Pickup;
+    std::vector<Pickup> host;
+    std::vector<Pickup> client;
+
+    const auto add = [](std::vector<Pickup>& list, int index)
+    {
+        if (static_cast<size_t>(index) >= list.size())
+        {
+            Pickup empty;
+            empty.alive = false;
+            list.resize(static_cast<size_t>(index) + 1, empty);
+        }
+        list[static_cast<size_t>(index)].alive = true;
+    };
+
+    // The host drops three and picks the middle one back up, leaving a hole at index 1.
+    for (int i = 0; i < 3; ++i)
+    {
+        const int at = WorldObjects::ChooseSlot(host, -1);
+        CHECK(at == i);
+        add(host, at);
+    }
+    host[1].alive = false;
+
+    // The client has seen none of it, so left to itself it would call the next drop index 0.
+    CHECK(WorldObjects::ChooseSlot(client, -1) == 0);
+
+    // The host's next drop reuses its hole.
+    const int chosen = WorldObjects::ChooseSlot(host, -1);
+    CHECK(chosen == 1);
+
+    // Told that number, the client uses it rather than its own answer. That is the whole fix.
+    CHECK(WorldObjects::ChooseSlot(client, chosen) == chosen);
+
+    // And an index past the end is still that index, because the caller fills the gap.
+    CHECK(WorldObjects::ChooseSlot(client, 9) == 9);
 }

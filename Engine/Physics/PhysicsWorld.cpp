@@ -381,6 +381,15 @@ BodyHandle PhysicsWorld::Impl::AddBody(const JPH::ShapeRefC& shape, const Transf
     creation.mLinearDamping = 0.05f;
     creation.mAngularDamping = 0.1f;
 
+    // Loose items are swept rather than stepped. A keycard is fifteen millimetres thick and a
+    // dropped one covers several centimetres in a tick, so the default discrete solver could put it
+    // on the far side of a floor between one step and the next. Sweeping costs more, and there are
+    // only ever a few dozen of these; the alternative is items disappearing through the level.
+    if (layer == PhysicsLayer::Debris && motion == BodyMotion::Dynamic)
+    {
+        creation.mMotionQuality = JPH::EMotionQuality::LinearCast;
+    }
+
     const JPH::BodyID id = Bodies().CreateAndAddBody(
         creation, motion == BodyMotion::Static ? JPH::EActivation::DontActivate : JPH::EActivation::Activate);
     if (id.IsInvalid())
@@ -623,6 +632,14 @@ void PhysicsWorld::SetLinearVelocity(BodyHandle body, const glm::vec3& velocity)
     if (IsValid(body))
     {
         m_impl->Bodies().SetLinearVelocity(JPH::BodyID(body.id), ToJolt(velocity));
+    }
+}
+
+void PhysicsWorld::SetAngularVelocity(BodyHandle body, const glm::vec3& velocity)
+{
+    if (IsValid(body))
+    {
+        m_impl->Bodies().SetAngularVelocity(JPH::BodyID(body.id), ToJolt(velocity));
     }
 }
 

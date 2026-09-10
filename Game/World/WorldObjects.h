@@ -53,6 +53,14 @@ public:
         // fired and comes with its own starting load.
         int rounds = -1;
         int reserve = -1;
+        // Where the host last said this is, on a machine that is not the host. Followed rather than
+        // simulated: two machines running their own physics for a dropped rifle disagree within a
+        // second. Followed smoothly rather than set, because the host speaks thirty times a second
+        // and the screen draws twice that: teleporting to each new answer is what made a dropped
+        // item fall in visible steps.
+        glm::vec3 netPosition{0.0f};
+        glm::quat netRotation{1.0f, 0.0f, 0.0f, 0.0f};
+        bool netValid = false;
         bool alive = true;
     };
 
@@ -109,7 +117,18 @@ public:
     int SpawnPickup(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics,
                     InteractionSystem& interactions, const ItemDatabase& items, ItemId item, int count,
                     const glm::vec3& position, const glm::vec3& velocity, int rounds = -1,
-                    int reserve = -1);
+                    int reserve = -1, int atIndex = -1);
+
+    // Which record a new pickup goes into: the one the host asked for, or the first free one, or a
+    // new one on the end. Separated out because it is the part two machines have to agree on and
+    // everything else about spawning a pickup needs a renderer.
+    static int ChooseSlot(const std::vector<Pickup>& existing, int requested);
+
+    // Eases every replicated pickup towards where the host last said it was. Called on machines that
+    // are not the host, once a frame.
+    void FollowNetworkState(PhysicsWorld& physics, float dt);
+    // Records where the host says a pickup is. Nothing moves until FollowNetworkState runs.
+    void SetNetworkState(int index, const glm::vec3& position, const glm::quat& rotation);
 
     const std::vector<Door>& Doors() const { return m_doors; }
     const std::vector<Pickup>& Pickups() const { return m_pickups; }

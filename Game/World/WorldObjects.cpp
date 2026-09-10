@@ -295,10 +295,27 @@ void WorldObjects::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physic
                   m_pickups.size(), m_hidingSpots.size());
 }
 
+int WorldObjects::ChooseSlot(const std::vector<Pickup>& existing, int requested)
+{
+    if (requested >= 0)
+    {
+        return requested;
+    }
+    // Reuse a free record if there is one, so indices stay small enough to fit the wire.
+    for (size_t i = 0; i < existing.size(); ++i)
+    {
+        if (!existing[i].alive)
+        {
+            return static_cast<int>(i);
+        }
+    }
+    return static_cast<int>(existing.size());
+}
+
 int WorldObjects::SpawnPickup(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics,
                               InteractionSystem& interactions, const ItemDatabase& items, ItemId item,
                               int count, const glm::vec3& position, const glm::vec3& velocity,
-                              int rounds, int reserve)
+                              int rounds, int reserve, int atIndex)
 {
     const ItemDefinition* definition = items.Get(item);
     if (definition == nullptr || count <= 0)
@@ -327,25 +344,30 @@ int WorldObjects::SpawnPickup(Scene& scene, MeshLibrary& meshes, PhysicsWorld& p
         physics.SetLinearVelocity(pickup.body, velocity);
     }
 
-    // Reuse an existing free record if one is available, so indices stay small.
-    int index = -1;
-    for (size_t i = 0; i < m_pickups.size(); ++i)
+    // The index is the name everyone uses for this thing afterwards: a pickup is taken by index and
+    // removed by index on every machine at once. So when the host says which one it made, that is
+    // the one that gets made here, even if this machine would have chosen differently.
+    //
+    // It used to choose for itself on both sides. Two machines with different holes in their pickup
+    // lists then disagreed about which item was which, and from that moment taking one removed a
+    // different one somewhere else: an item that could not be picked up on one screen and a second
+    // copy of it on another.
+    const int index = ChooseSlot(m_pickups, atIndex);
+    if (static_cast<size_t>(index) >= m_pickups.size())
     {
-        if (!m_pickups[i].alive)
-        {
-            index = static_cast<int>(i);
-            break;
-        }
+        // Told to use an index past the end, which happens whenever this machine has had fewer
+        // drops than the host. The gap is filled with dead records so the numbering still lines up.
+        Pickup empty;
+        empty.alive = false;
+        m_pickups.resize(static_cast<size_t>(index) + 1, empty);
     }
-    if (index < 0)
+    else if (m_pickups[static_cast<size_t>(index)].alive)
     {
-        index = static_cast<int>(m_pickups.size());
-        m_pickups.push_back(pickup);
+        // Something is already there. The host is the authority on what that index means, so what
+        // was there is wrong and goes.
+        ConsumePickup(index, scene, physics, interactions);
     }
-    else
-    {
-        m_pickups[static_cast<size_t>(index)] = pickup;
-    }
+    m_pickups[static_cast<size_t>(index)] = pickup;
 
     Interactable interactable;
     interactable.entity = pickup.entity;
@@ -381,6 +403,54 @@ bool WorldObjects::ConsumePickup(int index, Scene& scene, PhysicsWorld& physics,
     }
     Despawn(*pickup, scene, physics, interactions);
     return true;
+}
+
+void WorldObjects::SetNetworkState(int index, const glm::vec3& position, const glm::quat& rotation)
+{
+    if (index < 0 || static_cast<size_t>(index) >= m_pickups.size())
+    {
+        return;
+    }
+    Pickup& pickup = m_pickups[static_cast<size_t>(index)];
+    pickup.netPosition = position;
+    pickup.netRotation = rotation;
+    pickup.netValid = true;
+}
+
+void WorldObjects::FollowNetworkState(PhysicsWorld& physics, float dt)
+{
+    if (dt <= 0.0f)
+    {
+        return;
+    }
+
+    // Eased towards the host's answer rather than set to it. The host speaks thirty times a second
+    // and the screen draws at least twice that, so setting the transform on each new answer draws a
+    // falling item in visible steps. It also fought the client's own solver, which went on
+    // integrating between updates and was snapped back, and which could push a thin item through
+    // the floor on the frame it was teleported into it.
+    const float blend = 1.0f - std::exp(-18.0f * dt);
+    for (Pickup& pickup : m_pickups)
+    {
+        if (!pickup.alive || !pickup.netValid || !physics.IsValid(pickup.body))
+        {
+            continue;
+        }
+
+        // Nothing of this machine's own is allowed to move it, or the ease is a tug of war.
+        physics.SetLinearVelocity(pickup.body, glm::vec3(0.0f));
+        physics.SetAngularVelocity(pickup.body, glm::vec3(0.0f));
+
+        const Transform current = physics.GetTransform(pickup.body);
+        Transform next;
+        // A long way out means it was just spawned or teleported, and easing across a room looks
+        // worse than arriving.
+        const bool far = glm::distance(current.position, pickup.netPosition) > 1.5f;
+        next.position = far ? pickup.netPosition : glm::mix(current.position, pickup.netPosition, blend);
+        next.rotation = far ? pickup.netRotation : glm::slerp(current.rotation, pickup.netRotation, blend);
+        next.scale = current.scale;
+        physics.SetTransform(pickup.body, next);
+    }
 }
 
 void WorldObjects::Update(Scene& scene, PhysicsWorld& physics, InteractionSystem& interactions,

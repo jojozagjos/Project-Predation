@@ -956,10 +956,12 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
     }
 
     case WorldEventKind::PickupSpawned:
+        // At the index the host chose, not one of this machine's own choosing. Everything after
+        // this refers to the pickup by that number.
         m_world.SpawnPickup(m_scene, m_app->GetMeshes(), m_app->GetPhysics(), m_interactions, m_items,
                             static_cast<ItemId>(event.item), static_cast<int>(event.other),
                             event.position, event.direction, LoadFromWire(event.rounds),
-                            LoadFromWire(event.reserve));
+                            LoadFromWire(event.reserve), static_cast<int>(event.index));
         break;
 
     case WorldEventKind::LockerUsed:
@@ -1075,21 +1077,15 @@ void PredationGame::SendDynamicBodies()
 
 void PredationGame::ApplyDynamicBodies(const WorldStateMessage& state)
 {
-    PhysicsWorld& physics = m_app->GetPhysics();
+    // Recorded, not applied. A client running its own physics for a dropped rifle would disagree
+    // with everyone else within a second, so the host is the authority; but the host speaks thirty
+    // times a second and the screen draws at least twice that, so setting the transform on arrival
+    // drew a falling item in visible steps. WorldObjects::FollowNetworkState eases towards these
+    // every frame instead.
     for (uint8_t i = 0; i < state.count; ++i)
     {
         const DynamicBodyState& entry = state.bodies[i];
-        const WorldObjects::Pickup* pickup = m_world.GetPickup(entry.id);
-        if (pickup == nullptr || !pickup->alive || !physics.IsValid(pickup->body))
-        {
-            continue;
-        }
-        // Placed, not simulated. A client running its own physics for a dropped rifle would
-        // disagree with everyone else within a second, and there is nothing to be gained by it.
-        Transform transform;
-        transform.position = entry.position;
-        transform.rotation = entry.rotation;
-        physics.SetTransform(pickup->body, transform);
+        m_world.SetNetworkState(entry.id, entry.position, entry.rotation);
     }
 }
 
@@ -3144,6 +3140,11 @@ void PredationGame::OnUpdate(double dt, double alpha)
     {
         m_client.UpdateInterpolation(deltaSeconds);
         SyncRemoteAvatars(deltaSeconds);
+    }
+    // And the loose items, which the host owns and everyone else follows.
+    if (m_sessionMode == SessionMode::Client)
+    {
+        m_world.FollowNetworkState(m_app->GetPhysics(), deltaSeconds);
     }
 
     // A join finishes when the host answers, which can be a moment after the button was pressed.

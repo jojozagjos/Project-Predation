@@ -115,6 +115,7 @@ public:
     void MoveKinematic(BodyHandle body, const Transform& target, float deltaSeconds);
     glm::vec3 GetLinearVelocity(BodyHandle body) const;
     void SetLinearVelocity(BodyHandle body, const glm::vec3& velocity);
+    void SetAngularVelocity(BodyHandle body, const glm::vec3& velocity);
     void AddImpulse(BodyHandle body, const glm::vec3& impulse);
     bool IsActive(BodyHandle body) const;
 
