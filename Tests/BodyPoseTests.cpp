@@ -1593,3 +1593,31 @@ TEST_CASE("Crawling keeps the hands inside a vent", "[body][pose]")
     INFO("furthest a hand reached sideways: " << worst << " m, walls at " << halfWidth);
     CHECK(worst < halfWidth);
 }
+
+TEST_CASE("A carried item sits in the hand carrying it", "[body][pose]")
+{
+    // It used to be drawn at the point the hand was aimed at rather than where the arm got to, and
+    // the two differ whenever the arm cannot quite reach. That difference is the gap between the
+    // glove and the thing it is supposed to be holding.
+    BodyHarness harness;
+    harness.body.SetHeldItemForSimulation(true);
+    harness.Settle(120);
+
+    float worst = 0.0f;
+    float at = 0.0f;
+    for (int step = 0; step <= 20; ++step)
+    {
+        harness.input.pitch = glm::radians(-80.0f + 8.0f * static_cast<float>(step));
+        harness.Settle(15);
+        const float gap = glm::distance(harness.Bone(harness.Rig().hand[1]),
+                                        harness.body.HeldItemOrigin());
+        if (gap > worst)
+        {
+            worst = gap;
+            at = glm::degrees(harness.input.pitch);
+        }
+    }
+
+    INFO("furthest the item got from the hand: " << worst << " m, at " << at << " degrees");
+    CHECK(worst < 0.12f);
+}

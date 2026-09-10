@@ -371,3 +371,26 @@ the shipped height happened to fall on a value that worked.
 The check now runs only when the new shape is larger in some dimension than the current one. The
 regression test sweeps twenty-one crouch heights rather than checking one, because the failure was
 not a threshold and any single height would have missed it.
+
+## ADR-025: The host names a dropped item, not the machine drawing it
+
+**Status**: accepted, 2026-09-09
+
+A pickup's index is the name every machine uses for it afterwards. It is taken by index and removed
+by index everywhere at once, so the number has to mean the same thing on all of them.
+
+Both sides chose their own, reusing the first free record so numbers stayed small enough to fit in a
+byte on the wire. That is a sensible rule and it is not a shared one: two machines with different
+holes in their lists reach different answers, and from the first disagreement onwards taking one item
+removed a different one somewhere else. What that looks like from inside the game is an item that
+cannot be picked up on one screen and a second copy of it on another.
+
+The host now names the index in the spawn event and everyone else uses it, filling any gap with dead
+records so the numbering stays aligned. The choice is a separate function so it can be tested
+without a renderer, which everything else about spawning a pickup needs.
+
+Loose items are also swept rather than stepped, because a keycard is fifteen millimetres thick and a
+dropped one covers several centimetres in a tick; and clients ease towards the host's answer rather
+than being teleported to it, because the host speaks thirty times a second and the screen draws at
+least twice that. The client's own solver is held still while that happens, so the two are not
+pulling against each other, which is separately how a thin item could be pushed through a floor.
