@@ -697,3 +697,23 @@ easing. The same measurement reads 3 centimetres at any turn rate.
 This is the second time the same mistake has been found in a different place: the first was a hand
 placed rigidly and snapping, this one a hand smoothed loosely and lagging. The rule that covers both
 is that the frame a movement is smoothed in has to be the frame the target is still in.
+
+## ADR-041: A client predicts where it will be, never whether it is alive
+
+**Status**: accepted, 2026-09-10
+
+A client's own controller is a prediction of what the host will do with its input. It was also
+applying its own fall damage, and both ends were counting the same respawn clock. That agrees only
+while both ends agree the player died, and a mantle interrupted by a fall is exactly where they stop
+agreeing: the client killed itself on a landing the host had run a little differently, told nobody,
+and then revived itself too. The result was a player alive and playing on their own screen and lying
+on the floor for good on every other.
+
+Health, death and coming back are the host's, like everything else about the world. A client's
+controller no longer applies damage at all, and its respawn clock does not run; both arrive as world
+events. Nothing about movement prediction changes, because movement is the part a client is supposed
+to guess at.
+
+The ammunition in a picked-up weapon was the same shape of mistake in miniature: the host sent the
+rounds with every spawn and the client threw them away when it took one, so a rifle dropped with
+three rounds came back full.

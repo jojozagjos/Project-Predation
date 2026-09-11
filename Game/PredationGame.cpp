@@ -1083,7 +1083,13 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
         const WorldObjects::Pickup* pickup = m_world.GetPickup(event.index);
         if (pickup != nullptr && pickup->alive && event.player == LocalPlayerId())
         {
-            const int stored = m_inventory.Add(m_items, pickup->item, pickup->count);
+            // With whatever it was carrying, which is the whole point of a dropped weapon keeping
+            // its magazine. This asked for the item and the count and nothing else, so a client
+            // picking up a rifle with three rounds left in it got a full one, and a client picking
+            // up a full one that the host had emptied got an empty one: the ammunition was the one
+            // thing about a pickup that only ever crossed the wire in one direction.
+            const int stored = m_inventory.Add(m_items, pickup->item, pickup->count, pickup->rounds,
+                                               pickup->reserve);
             if (stored < pickup->count)
             {
                 // The bag filled between asking and being answered. Rare, and worth saying out loud
@@ -1320,7 +1326,14 @@ void PredationGame::UpdateRespawns(float dt)
         return;
     }
 
-    if (!m_player.State().alive && m_respawnTimer > 0.0f)
+    // A client does not decide when it comes back, and this ran everywhere.
+    //
+    // Both ends counted the same seconds and each revived the player it owned, which agrees only
+    // while both ends agree that the player died in the first place. A client that killed itself
+    // locally, on fall damage from a climb the host had not run the same way, then revived itself
+    // too: alive and playing on its own screen and lying on the floor for good on everybody else's.
+    // Dying and coming back are the host's to say, like everything else about the world.
+    if (m_sessionMode != SessionMode::Client && !m_player.State().alive && m_respawnTimer > 0.0f)
     {
         m_respawnTimer -= dt;
         if (m_respawnTimer <= 0.0f)
@@ -1922,6 +1935,8 @@ void PredationGame::DrawTitleScreen()
                              "operator", config))
         {
             m_sessionMode = SessionMode::Client;
+            // A client predicts where it will be, never whether it is alive.
+            m_player.SetDecidesDamage(false);
             m_titleStatus.clear();
         }
         else
@@ -1997,6 +2012,8 @@ void PredationGame::StopSession()
     }
     m_avatars.clear();
     m_sessionMode = SessionMode::Offline;
+    // On its own again, so the player is once more the authority on its own health.
+    m_player.SetDecidesDamage(true);
     m_networkTick = 0;
 }
 
@@ -2284,6 +2301,7 @@ void PredationGame::RegisterNetCommands()
                 return;
             }
             m_sessionMode = SessionMode::Client;
+            m_player.SetDecidesDamage(false);
             m_app->GetConsole().Print("Joining " + address + ":" + std::to_string(port));
         });
 

@@ -1049,3 +1049,39 @@ TEST_CASE("Leaning in the open still moves the eye", "[player][camera]")
     player.Shutdown();
     physics.Shutdown();
 }
+
+
+TEST_CASE("A client does not decide its own health", "[player][net]")
+{
+    // A client's controller is a prediction of what the host will do, not the thing that decides
+    // anything, and it was applying its own fall damage. A landing the host had run a little
+    // differently therefore killed the player on their own screen with nobody else told; they then
+    // revived on their own clock as well, and were alive and playing on one machine while lying on
+    // the floor for good on every other.
+    PhysicsWorld physics;
+    PhysicsWorld::Settings settings;
+    settings.workerThreads = 1;
+    REQUIRE(physics.Init(settings));
+    physics.CreateBox({40.0f, 0.5f, 40.0f}, Transform{{0.0f, -0.5f, 0.0f}}, BodyMotion::Static);
+    physics.OptimizeBroadPhase();
+
+    PlayerConfig config;
+    PlayerController player;
+    REQUIRE(player.Init(physics, config, {0.0f, 0.05f, 0.0f}));
+
+    // On its own, damage lands and enough of it is fatal.
+    player.ApplyDamage(40.0f, "test");
+    CHECK(player.State().health == Catch::Approx(60.0f).margin(0.01));
+    player.ApplyDamage(100.0f, "test");
+    CHECK_FALSE(player.State().alive);
+
+    // As a client, the same damage does nothing at all: it comes from the host or not at all.
+    PlayerController joined;
+    REQUIRE(joined.Init(physics, config, {0.0f, 0.05f, 0.0f}));
+    joined.SetDecidesDamage(false);
+    joined.ApplyDamage(1000.0f, "test");
+    CHECK(joined.State().health == Catch::Approx(100.0f).margin(0.01));
+    CHECK(joined.State().alive);
+
+    physics.Shutdown();
+}

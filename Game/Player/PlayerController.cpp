@@ -731,7 +731,10 @@ void PlayerController::Respawn(const glm::vec3& footPosition)
 
 void PlayerController::ApplyDamage(float amount, const char* cause)
 {
-    if (!m_state.alive || amount <= 0.0f)
+    // A client predicts where it will be, not whether it is alive. Its own copy of this controller
+    // applied fall damage, so a landing the host had run a little differently killed the player on
+    // their own screen with nobody else told, and they then revived on their own clock as well.
+    if (!m_decidesDamage || !m_state.alive || amount <= 0.0f)
     {
         return;
     }

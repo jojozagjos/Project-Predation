@@ -71,6 +71,14 @@ public:
     bool IsAttached() const { return m_attached; }
     void Respawn(const glm::vec3& footPosition);
     void ApplyDamage(float amount, const char* cause);
+    // Whether this controller is allowed to hurt the player it is simulating.
+    //
+    // Off on a client, whose own controller is a prediction of what the host will do rather than
+    // the thing that decides anything. It applied its own fall damage, so a landing the host had
+    // run differently killed the player on their own screen with nobody else told: they then
+    // revived on their own clock too, and were alive and playing on one machine and dead for good
+    // on every other.
+    void SetDecidesDamage(bool decides) { m_decidesDamage = decides; }
 
     PlayerState& State() { return m_state; }
     const PlayerState& State() const { return m_state; }
@@ -120,6 +128,8 @@ private:
     // depends on how often the view updates.
     float m_pendingStepOffset = 0.0f;
     float m_pendingLandingImpact = 0.0f;
+    // Whether this controller decides the player's health. False on a client's own predicted copy.
+    bool m_decidesDamage = true;
 
     bool m_initialized = false;
 };
