@@ -9,6 +9,7 @@
 #include "Game/Items/ItemAppearance.h"
 #include "Game/Items/ItemIcons.h"
 #include "Game/Net/NetSession.h"
+#include "Engine/Net/PortMapper.h"
 #include "Game/Player/PlayerBody.h"
 #include "Game/Player/PlayerController.h"
 #include "Game/Weapons/ShotResolver.h"
@@ -417,6 +418,9 @@ private:
 
     SessionMode m_sessionMode = SessionMode::Offline;
     NetHost m_host;
+    // The router, asked to forward the port while this machine is hosting, so people outside the
+    // house can reach it. Best effort: the menu says what happened.
+    PortMapper m_ports;
     NetClient m_client;
     std::vector<std::unique_ptr<RemoteAvatar>> m_avatars;
     uint32_t m_networkTick = 0;

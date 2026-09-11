@@ -1887,8 +1887,41 @@ void PredationGame::DrawTitleScreen()
                 ImGui::SetClipboardText((address + ":" + std::to_string(m_hostPort)).c_str());
             }
         }
-        // Wrapped to the panel rather than broken by hand. Lines written to a width run off the end
-        // of it the moment anything about the panel or the font changes.
+        // And the address from outside the house, once the router has agreed to forward the port.
+        // Local addresses only reach people on the same network, which is most of what "I gave
+        // someone my IP and they could not join" turns out to be.
+        switch (m_ports.Status())
+        {
+        case PortMapper::State::Working:
+            ImGui::TextDisabled("  asking the router about the outside world...");
+            break;
+        case PortMapper::State::Open:
+        {
+            const std::string outside = m_ports.ExternalAddress();
+            if (!outside.empty())
+            {
+                ImGui::TextColored({0.70f, 0.95f, 0.75f, 1.0f}, "  %s:%d  (from anywhere)",
+                                   outside.c_str(), m_hostPort);
+                if (ImGui::IsItemClicked())
+                {
+                    ImGui::SetClipboardText((outside + ":" + std::to_string(m_hostPort)).c_str());
+                }
+            }
+            break;
+        }
+        case PortMapper::State::Failed:
+        {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+            ImGui::PushTextWrapPos(0.0f);
+            ImGui::TextUnformatted(m_ports.Message().c_str());
+            ImGui::PopTextWrapPos();
+            ImGui::PopStyleColor();
+            break;
+        }
+        case PortMapper::State::Idle:
+        default:
+            break;
+        }
         ImGui::TextDisabled("  click to copy");
     }
     if (ImGui::Button("Open a game", wide))
@@ -1901,6 +1934,10 @@ void PredationGame::DrawTitleScreen()
         if (m_host.Start(std::move(transport), config, m_app->GetPhysics(), m_player.Config(), m_spawnPoint))
         {
             m_sessionMode = SessionMode::Host;
+            // And ask the router to let people in from outside, which takes a second or two and
+            // happens on its own thread. It often works and sometimes cannot; the panel says which,
+            // and the local addresses are still there either way.
+            m_ports.Open(static_cast<uint16_t>(m_hostPort));
             EnterWorld();
         }
         else
@@ -2001,6 +2038,9 @@ void PredationGame::StopSession()
     if (m_sessionMode == SessionMode::Host)
     {
         m_host.Stop();
+        // And take the forwarding down. A door left open onto a machine that is no longer
+        // listening is worse than no door.
+        m_ports.Close();
     }
     else if (m_sessionMode == SessionMode::Client)
     {
@@ -2276,6 +2316,7 @@ void PredationGame::RegisterNetCommands()
                 return;
             }
             m_sessionMode = SessionMode::Host;
+            m_ports.Open(config.port);
             // Hosting from the console at the menu should put you in the game, the same as the
             // button does. Joining does not, because it is not a game until the host answers.
             EnterWorld();

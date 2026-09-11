@@ -77,6 +77,8 @@ set(PRED_ENGINE_SOURCES
     Net/Transport.h
     Net/UdpTransport.cpp
     Net/LoopbackTransport.cpp
+    Net/PortMapper.h
+    Net/PortMapper.cpp
 
     Assets/MeshImport.h
     Assets/MeshImport.cpp

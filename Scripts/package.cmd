@@ -69,9 +69,13 @@ if exist "%BUILD_DIR%\GeneratedAssets\Shaders" (
     echo Playing together:
     echo   One person picks "Open a game" and tells the others their address.
     echo   Everyone else types that address into "Join a game" and presses Join.
-    echo   On the same house or office network that is the host's local address,
-    echo   something like 192.168.1.20. Over the internet the host has to forward
-    echo   UDP port 27015 to their machine; there is no matchmaking yet.
+    echo   The host is shown two kinds of address. The local one, something like
+    echo   192.168.1.20, reaches people on the same network. The one marked "from
+    echo   anywhere" appears when the router agrees to forward the port, and is the
+    echo   one to give somebody elsewhere.
+    echo   If no such address appears, the router has UPnP switched off or there is
+    echo   more than one router in the way. Forward UDP 27015 to the host machine
+    echo   by hand, or play on one network. There is no matchmaking yet.
     echo.
     echo Controls:
     echo   WASD move, Space jump, Ctrl or C crouch, Z prone, Shift sprint, Alt walk

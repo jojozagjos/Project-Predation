@@ -192,3 +192,24 @@ netsh advfirewall firewall add rule name="Project Predation" dir=in action=allow
 Playing across the internet is a different problem and is not solved yet: it needs the host's router
 to forward the port, or a relay. That is what Steam networking is for, and it is why the transport
 is behind an interface.
+
+## Playing across the internet
+
+A home connection has one public address and the router has no idea which machine behind it a
+stranger's packet is for, so hosting reaches the local network and nothing else until somebody tells
+the router otherwise. Setting that up by hand is port forwarding. The game asks for it instead: when
+you open a game it looks for a router on the network, asks it to forward the port it is listening on,
+and asks what the connection's address looks like from outside. That address appears in the menu
+marked "from anywhere", and it is the one to give somebody who is not in the house.
+
+It is best effort and says which. A router with UPnP switched off, a network with two routers between
+the machine and the internet, and a connection where the provider does the translating are all real,
+and none can be fixed from inside the game; the menu says so and the local addresses are still there.
+Forwarding UDP 27015 to the host machine by hand does the same job.
+
+The mapping is taken down when hosting stops. A forwarded port pointing at a machine that is no
+longer listening is worse than no port, and routers keep mappings for a long time.
+
+What is checked in `Tests/NetTests.cpp` is the text handling: reading an address apart, and finding
+the one service in a router's description that forwards ports, which is never the first one in the
+document. Discovery and the requests themselves need a router in the room.
