@@ -1956,6 +1956,10 @@ void PredationGame::DrawTitleScreen()
         m_app->RequestQuit();
     }
 
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::TextDisabled("by jojozagjos");
+
     ImGui::End();
 }
 
@@ -3700,7 +3704,9 @@ void PredationGame::OnFixedUpdate(double fixedDt)
         input.yaw = m_player.State().yaw;
         input.pitch = m_player.State().pitch;
     }
-    const bool restrained = m_hidingSpot >= 0 || m_cameraMode == CameraMode::Fly;
+    // Dead counts as restrained: a body on the floor does not fire, aim or reload.
+    const bool restrained =
+        m_hidingSpot >= 0 || m_cameraMode == CameraMode::Fly || !m_player.State().alive;
 
     // The weapon runs before the movement, because aiming down the sights slows the player and the
     // controller needs that this tick rather than next.
@@ -3950,7 +3956,13 @@ void PredationGame::OnUpdate(double dt, double alpha)
 
     // Nothing bound to a game key does anything at the menu. The menu is pointed at and typed into,
     // and a stray W while filling in an address must not make the character walk.
-    if (!app.IsConsoleOpen() && m_screen == Screen::Playing)
+    //
+    // Nor does anything while dead. A body on the floor was still picking things up, opening doors,
+    // getting into lockers, dropping its inventory and changing what it had in hand: none of the
+    // actions asked whether the player was alive, because the camera moves to a teammate and it
+    // looked as though nothing was being driven any more. Movement is already refused by the
+    // controller; this is everything else.
+    if (!app.IsConsoleOpen() && m_screen == Screen::Playing && m_player.State().alive)
     {
         if (input.WasActionPressed("jump"))
         {
@@ -4578,9 +4590,9 @@ void PredationGame::DrawPlayerPanel()
         capsuleChanged |= ImGui::SliderFloat("Crouch height", &config.crouchHeight, 0.6f, 1.6f, "%.2f m");
         capsuleChanged |= ImGui::SliderFloat("Prone height", &config.proneHeight, 0.3f, 1.0f, "%.2f m");
         capsuleChanged |= ImGui::SliderFloat("Radius", &config.radius, 0.15f, 0.6f, "%.2f m");
-        ImGui::SliderFloat("Step height", &config.stepHeight, 0.05f, 0.8f, "%.2f m");
+        ImGui::SliderFloat("Step up", &config.stepHeight, 0.05f, 0.8f, "%.2f m");
         ImGui::SliderFloat("Max slope", &config.maxSlopeAngle, 20.0f, 70.0f, "%.0f deg");
-        ImGui::TextUnformatted("Step height and slope apply on respawn.");
+        ImGui::TextUnformatted("Step up and slope apply on respawn.");
     }
 
     if (ImGui::CollapsingHeader("Camera feel", ImGuiTreeNodeFlags_DefaultOpen))
@@ -4618,7 +4630,7 @@ void PredationGame::DrawPlayerPanel()
         ImGui::SliderFloat("Stride per m/s", &config.strideLengthPerSpeed, 0.0f, 0.6f, "%.3f m");
         ImGui::SliderFloat("Stance walk", &config.stanceFractionWalk, 0.4f, 0.85f, "%.2f");
         ImGui::SliderFloat("Stance run", &config.stanceFractionRun, 0.3f, 0.7f, "%.2f");
-        ImGui::SliderFloat("Step height", &body.stepHeight, 0.0f, 0.4f, "%.3f m");
+        ImGui::SliderFloat("Foot lift", &body.stepHeight, 0.0f, 0.4f, "%.3f m");
         ImGui::SliderFloat("Step reach", &body.stepReachMargin, 0.7f, 0.99f, "%.2f");
         ImGui::SliderFloat("Hip sway", &body.hipSwayAmount, 0.0f, 0.12f, "%.3f m");
         ImGui::SliderFloat("Hip bob", &body.hipBobAmount, 0.0f, 0.12f, "%.3f m");

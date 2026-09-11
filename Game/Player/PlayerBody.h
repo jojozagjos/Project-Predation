@@ -100,7 +100,12 @@ public:
         // only how it looks but where the reach comes from. Held square, the support shoulder is a
         // shoulder's width across the body from the handguard and the arm cannot get there, so the
         // hand slid back down the barrel and stopped following the socket it was given.
-        float weaponCarryTurnDegrees = 17.0f;
+        float weaponCarryTurnDegrees = 7.0f;
+        // And how far the support shoulder rolls forward and in while a weapon is held. This is
+        // where the reach for a handguard comes from. Turning the whole torso far enough to supply
+        // it reads, in first person, as the player standing skewed towards their own gun.
+        float weaponShoulderForward = 0.075f;
+        float weaponShoulderIn = 0.030f;
         // However crowded it gets, the sights never come closer to the eye than this. The pull-back
         // against a wall is measured from the eye, so at full aim it pulls the weapon straight down
         // the view axis and into the player's face: the near plane cuts the receiver open and you
@@ -513,6 +518,9 @@ private:
     // Where the carry tuning put the hold this frame, in world space. Kept so the point the floors
     // act on can be measured rather than guessed at from the origin.
     glm::vec3 m_weaponHold{0.0f};
+    // Where the shoulders sit in the chest when nothing is being held, so the carry can move them
+    // and put them back. Taken from the skeleton at build time.
+    std::array<glm::vec3, 2> m_shoulderRest{glm::vec3(0.0f), glm::vec3(0.0f)};
     Transform m_muzzleFlashTransform;
     WeaponVisual m_weaponVisual;
     WeaponId m_weaponId = kInvalidWeapon;

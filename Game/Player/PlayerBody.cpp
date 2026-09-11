@@ -150,6 +150,8 @@ void PlayerBody::BuildSkeleton(const PlayerConfig& playerConfig)
         m_rig.shoulder[side] = m_skeleton.AddBone(
             "shoulder" + suffix, m_rig.chest,
             LocalOffset(sign * Ratio::kShoulderHalfWidth * h, Ratio::kShoulderRise * h, 0.0f));
+        m_shoulderRest[static_cast<size_t>(side)] = {sign * Ratio::kShoulderHalfWidth * h,
+                                                     Ratio::kShoulderRise * h, 0.0f};
         m_rig.upperArm[side] = m_skeleton.AddBone("upper_arm" + suffix, m_rig.shoulder[side],
                                                   LocalOffset(0.0f, 0.0f, 0.0f));
         m_rig.lowerArm[side] = m_skeleton.AddBone("lower_arm" + suffix, m_rig.upperArm[side],
@@ -668,6 +670,21 @@ void PlayerBody::UpdatePosture(const PlayerState& state, const PlayerView& view,
     // the body has its own heading and both arms are doing something else.
     const float carryBlade =
         m_hasWeapon ? glm::radians(m_config.weaponCarryTurnDegrees) * (1.0f - m_flatness) : 0.0f;
+
+    // The support shoulder rolls forward and in, which is where most of the reach comes from.
+    //
+    // It used to come out of the blade alone, and the blade had to be large to supply it: seventeen
+    // degrees of turned torso, which from inside reads as the player standing skewed towards their
+    // own gun. A shoulder rolling forward is what actually happens when you bring a support hand
+    // across, it costs the body no facing at all, and it buys the same centimetres. The blade is
+    // now the small amount that belongs there and this is the rest.
+    const float carryReach = m_hasWeapon ? (1.0f - m_flatness) : 0.0f;
+    m_pose.Local(m_rig.shoulder[kLeft]).position =
+        m_shoulderRest[kLeft] + glm::vec3(m_config.weaponShoulderIn * carryReach, 0.0f,
+                                          -m_config.weaponShoulderForward * carryReach);
+    m_pose.Local(m_rig.shoulder[kRight]).position =
+        m_shoulderRest[kRight] +
+        glm::vec3(0.0f, 0.0f, m_config.weaponShoulderForward * carryReach * 0.35f);
 
     m_pose.Local(m_rig.spine).rotation =
         glm::angleAxis(-torsoTwist * 0.45f - carryBlade * 0.4f, glm::vec3(0.0f, 1.0f, 0.0f)) *
@@ -1674,7 +1691,7 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
     // transform rebuilds every bone after it in the skeleton, and the left arm comes before the
     // right, so placing the left hand last threw the right arm back onto its parent's pose: the
     // trigger hand dropped off the gun the moment a reload started.
-    if (supportHandFree && !flat && m_reloadRunning)
+    if (supportHandFree && m_reloadRunning)
     {
         const glm::vec3 shoulder = m_pose.GlobalPosition(m_rig.shoulder[kLeft]);
         const glm::vec3 magazineWorld =
@@ -1825,7 +1842,10 @@ void PlayerBody::UpdateArms(const PlayerState& state, const PlayerView& view, Ph
                                                : std::max(m_mantleFade - fadeStep, 0.0f);
 
     const bool holding = m_hasWeapon;
-    if (m_flatness >= 0.02f)
+    // Not while reloading with a weapon in hand. Lying down, the support arm crawls and the trigger
+    // hand keeps the gun; a reload needs that support arm for the magazine, and with the crawl still
+    // driving it the reload had no hand to do anything with and nothing moved at all.
+    if (m_flatness >= 0.02f && !(holding && m_reloadRunning))
     {
         UpdateCrawlArms(state, view, physics, dt, holding);
     }
