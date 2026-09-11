@@ -1360,13 +1360,18 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
         // knocked out of the hold rather than drawn in. Only the part of it along the carry axis is
         // kept, so a weapon meeting anything comes back towards the player and does nothing else.
         //
-        // Faded out with the sights as well, for the reason the pull-back above is: sighted, the
-        // weapon lies along the view, so drawing it in runs it at the eye. Aiming, the barrel is
-        // given to the wall.
+        // And it applies while aiming too, which it did not for one revision.
+        //
+        // Taking it out of aiming stopped the weapon reversing into the camera and left the barrel
+        // buried in the wall instead, which is no better to look at. The three things wanted here
+        // cannot all be had: the barrel out of the wall, the receiver out of the camera, and the
+        // sights on the axis. What can be had is the most barrel out of the wall that leaves the
+        // receiver alone, and that is what this is: the correction pulls back and the floor below,
+        // which keeps the back of the weapon in front of the near plane, decides how far it gets.
         const float back = glm::dot(clear - muzzle, -carryForward);
         if (back > 0.0f)
         {
-            m_weaponTransform.position -= carryForward * (back * (1.0f - wantedAim));
+            m_weaponTransform.position -= carryForward * back;
         }
     }
 
@@ -1610,6 +1615,25 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
     const glm::vec3 weaponUp = rotation * glm::vec3(0.0f, 1.0f, 0.0f);
     const glm::vec3 weaponRight = glm::cross(barrel, weaponUp);
 
+    // Which of the weapon's own axes to roll a hand about, given where the forearm is pointing.
+    //
+    // A roll reference only says anything while it is square to the bone; line the two up and the
+    // answer collapses into rounding and can come back a half turn out, which is what made the
+    // hands flip during a reload, where the support forearm swings right across the weapon's own
+    // right axis on its way to the belt. Two axes, and whichever is further from the bone wins.
+    const auto weaponRoll = [&](const glm::vec3& along)
+    {
+        const float lengthSquared = glm::dot(along, along);
+        if (lengthSquared < 1e-8f)
+        {
+            return weaponRight;
+        }
+        const glm::vec3 unit = along / std::sqrt(lengthSquared);
+        return std::abs(glm::dot(unit, weaponRight)) <= std::abs(glm::dot(unit, weaponUp))
+                   ? weaponRight
+                   : weaponUp;
+    };
+
     // Both from the model, rather than the support hand from the model and the trigger hand from
     // the origin. A model's origin is wherever the person who made it left it, and for anything
     // imported that is usually the middle of the weapon: the trigger hand ended up floating in the
@@ -1753,7 +1777,7 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
         m_pose.SetGlobal(m_skeleton, m_rig.hand[kLeft],
                          SegmentFrame(m_rig.hand[kLeft], ik.endPosition,
                                       ik.endPosition + (ik.endPosition - ik.jointPosition),
-                                      weaponRight));
+                                      weaponRoll(ik.endPosition - ik.jointPosition)));
     }
 
     for (int side = firstSide; side < 2; ++side)
@@ -1814,7 +1838,7 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
         // rather than on down the forearm, for the same reason.
         m_pose.SetGlobal(m_skeleton, m_rig.hand[side],
                          SegmentFrame(m_rig.hand[side], ik.endPosition, gripPoints[side],
-                                      weaponRight));
+                                      weaponRoll(gripPoints[side] - ik.endPosition)));
     }
 
     return true;
@@ -1966,8 +1990,13 @@ void PlayerBody::UpdateHeldItem(const PlayerState& state, const PlayerView& view
         float climbWeight = 0.0f;
         if (MantleCarry(state, climbPoint, climbRotation, climbWeight))
         {
-            m_heldItemTransform.position =
-                glm::mix(m_heldItemTransform.position, climbPoint, climbWeight);
+            // Turned towards the climb but left in the hand.
+            //
+            // It used to be moved to the ledge as well, on the same weight, and the hand goes there
+            // too: partway through, the item sat between the palm and the ledge, which reads as the
+            // thing sliding up the arm. The hand is already going where the climb wants it, so
+            // carrying the item is a matter of not moving it off the palm. The correction below,
+            // which puts it back in the fingers once the arms are solved, then has nothing to undo.
             m_heldItemTransform.rotation =
                 glm::slerp(m_heldItemTransform.rotation, climbRotation, climbWeight);
         }
@@ -2371,8 +2400,25 @@ void PlayerBody::UpdateLegs(const PlayerState& state, const PlayerView& view,
         // legs climbing it.
         const float base = view.renderPosition.y;
         const float rise = glm::mix(m_config.maxFootRise, 0.10f, m_flatness);
-        const float groundY =
+        float groundY =
             hit ? std::clamp(hit.position.y, base - m_config.maxFootDrop, base + rise) : base;
+
+        // A foot that is standing on something keeps the height it landed at.
+        //
+        // The trace runs every frame at wherever the foot's target has got to, and along the edge of
+        // a ledge that target crosses the edge partway through a stance: the answer jumps by the
+        // whole height of the ledge and the leg snaps up or down with it, worst of all walking
+        // sideways along one. A real foot picks a surface when it lands and stays on it until it
+        // lifts. Only a swinging foot gets a fresh answer, and while it swings the height is eased
+        // rather than taken, so a step onto a stair still arrives smoothly.
+        constexpr float kGroundEase = 14.0f;
+        if (inSwing || !foot.standing)
+        {
+            foot.groundY = foot.standing ? SmoothTowards(foot.groundY, groundY, kGroundEase, dt)
+                                         : groundY;
+            foot.standing = true;
+        }
+        groundY = foot.groundY;
         const float groundedY = groundY + m_rig.ankleHeight + lift + rollRise;
         // Up on its side a body has its legs stacked, and only the lower one is on the floor.
         // Pinning both feet to the ground there is what left the legs lying flat while the torso

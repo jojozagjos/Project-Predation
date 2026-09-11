@@ -136,7 +136,7 @@ public:
         // And the back of the weapon never comes closer to the eye plane than this. The floor above
         // holds the grip out; a stock is a further quarter of a metre behind the grip, and it is the
         // stock that ends up on the wrong side of the near plane when a corridor closes in.
-        float weaponRearMinForward = 0.06f;
+        float weaponRearMinForward = 0.11f;
         // How far the muzzle drops when there is a wall in front of it, in degrees.
         //
         // A dip, not a swing. This was sixty degrees on the reasoning that lowering makes room where
@@ -456,6 +456,11 @@ private:
         // Whether this foot has been left standing where it was put. Standing still, a foot does
         // not move because the body above it leaned or turned its shoulders: the leg takes that up.
         bool holding = false;
+        // The height of the surface this foot last landed on, and whether it has landed at all. A
+        // planted foot keeps its surface until it lifts, or it snaps up and down the edge of a
+        // ledge as its target crosses it.
+        float groundY = 0.0f;
+        bool standing = false;
     };
 
     void BuildSkeleton(const PlayerConfig& playerConfig);

@@ -2301,3 +2301,4 @@ TEST_CASE("Reloading while turning keeps the hand on the magazine well", "[body]
                                                                                  << " cm, at " << at);
     CHECK(worst < 0.06f);
 }
+
