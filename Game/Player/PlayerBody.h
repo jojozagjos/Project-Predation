@@ -145,6 +145,23 @@ public:
         // reads as is the weapon falling out of the hold. Pulling back is what a person does with a
         // rifle in a corridor, and the floors above are what keep the camera out of it.
         float weaponWallLower = 14.0f;
+        // And how far it is allowed to drop once the barrel is actually crossing something, in
+        // degrees, with how fast it gets there.
+        //
+        // The dip above is a guess made from how boxed in the player is. This is the answer to the
+        // question itself: the surface the barrel is crossing is traced for, and the weapon turns
+        // about the point it is held by until the muzzle is in front of that surface and no
+        // further. Turning about the hold is free in a way that pulling back is not, because the
+        // hold does not move and so the receiver does not come any nearer the camera.
+        //
+        // It applies while aiming too, and that is the trade. Nobody can aim a rifle through a
+        // wall: a barrel is half a metre long, a player can stand a third of a metre from a wall,
+        // and the near plane decides how far the weapon may come back. Forty centimetres of barrel
+        // in the bricks was what the sights used to cost. The barrel comes down instead, the
+        // sights stop meaning anything for as long as you are that close, and shooting traces from
+        // the eye regardless so nothing about where a round goes changes.
+        float weaponWallTipMax = 80.0f;
+        float weaponWallTipSpeed = 13.0f;
 
         // The pull-back above is a soft rule measured along the view, which is why a gun still went
         // through a wall the player was looking sideways at: the trace and the barrel were pointing
@@ -397,6 +414,9 @@ public:
     // carried, the sight once it is up, and a blend of the two on the way between. The model's
     // origin is wherever it was authored around and means nothing on its own.
     glm::vec3 HoldPoint() const { return m_weaponHold; }
+    // How far the muzzle is currently dropped to stay out of what is in front of it, in degrees.
+    // Zero in the open. Worth reading when a weapon looks wrong in a corridor.
+    float MuzzleTipDegrees() const { return glm::degrees(m_muzzleTip); }
     // Which way the held weapon is turned, so a socket on it can be put into world space.
     glm::quat WeaponRotation() const { return m_weaponTransform.rotation; }
     // What is being held, for the weapon bench: its sockets are what the hands are placed by.
@@ -551,6 +571,14 @@ private:
     // How far the support hand has got back onto the weapon since it let go of it, 0 to 1. A hand on
     // a weapon is placed rather than smoothed; this is the exception, for the frame it starts.
     float m_supportRejoin = 1.0f;
+    // And the same for the hand a crawl uses. A reload borrows the support arm while the body is
+    // lying down, and when it gives it back the arm has to travel from the magazine well back to
+    // the floor. Handed straight to the crawl's own smoothing that is a fling.
+    float m_crawlHandReturn = 1.0f;
+    // Where that hand was when the reload let go of it, measured from the shoulder rather than in
+    // the world: the body is crawling while the arm comes back, so a world-space start would drag
+    // the hand along behind a body that has moved on.
+    glm::vec3 m_crawlHandRelease{0.0f};
     // Where the reloading hand is, in the carry frame rather than in the world. Both places it goes
     // are attached to the player, so easing towards them in the world charges the smoothing for
     // every degree the camera turns and the hand never catches up with what it is reaching into.
@@ -584,6 +612,11 @@ private:
     float m_injurySway = 0.0f;
     // 1 when nothing is in front of the eye, 0 when a wall is right against it.
     float m_wallClearance = 1.0f;
+    // How far the muzzle is currently dropped to keep the barrel out of whatever is in front of
+    // it, in radians. Solved from the surface the barrel is actually crossing rather than from how
+    // boxed in the player is, and smoothed, because a trace that flickers on an edge would
+    // otherwise flick the weapon with it.
+    float m_muzzleTip = 0.0f;
     Ragdoll m_ragdoll;
     Entity m_heldItemEntity;
     // How the thing in the hand sits there, from its own definition. Nothing about a box says which

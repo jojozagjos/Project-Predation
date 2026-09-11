@@ -1177,18 +1177,16 @@ TEST_CASE("A held weapon stops at a wall it is looking sideways at", "[body][pos
     INFO("muzzle at " << muzzle.x << ", " << muzzle.y << ", " << muzzle.z << ", player z "
                       << harness.State().position.z << ", wall face at " << wallZ);
 
-    // Not out of the wall entirely, and it cannot be: a barrel is half a metre long, a player can
-    // stand a third of a metre from a wall, and the only way to have both is to put the receiver
-    // through the camera. Given that choice the camera wins, so what is checked is that what is
-    // left is a barrel tip rather than half a weapon. It used to be 0.17 m with the barrel level.
-    CHECK(muzzle.z > wallZ - 0.12f);
+    // Out of it, which it now is. A barrel half a metre long and a wall a third of a metre away
+    // cannot both be had by moving the weapon, and for a long time this checked only that what was
+    // left inside was a barrel tip rather than half a weapon. Turning the weapon about the point it
+    // is held by costs nothing the hold needs, so the muzzle comes down instead and gets out.
+    CHECK(muzzle.z > wallZ - 0.02f);
 
-    // And it was pulled back rather than swung down. Sixty degrees of muzzle drop used to be what
-    // made the remainder small, and what it read as was the rifle falling out of the hold every
-    // time the player brushed a doorframe. The barrel stays roughly level; the hold comes in.
+    // It comes in as well as down. Dropping alone would leave the weapon at full stretch in a
+    // corridor with its stock in open air behind the player.
     const glm::vec3 barrel = glm::normalize(muzzle - harness.body.HoldPoint());
     INFO("barrel points " << barrel.x << ", " << barrel.y << ", " << barrel.z);
-    CHECK(barrel.y > -0.40f);
     const float along = glm::dot(harness.body.HoldPoint() - harness.View().eyePosition,
                                  harness.View().Forward());
     INFO("the hold sits " << along << " m down the view axis, of "
@@ -2302,3 +2300,180 @@ TEST_CASE("Reloading while turning keeps the hand on the magazine well", "[body]
     CHECK(worst < 0.06f);
 }
 
+
+namespace
+{
+
+// How far one orientation is from another, in degrees. Two quaternions describe the same
+// orientation when one is the negative of the other, so the sign of the dot product is dropped
+// before it is read as an angle.
+float DegreesBetween(const glm::quat& a, const glm::quat& b)
+{
+    const float d = std::clamp(std::abs(glm::dot(glm::normalize(a), glm::normalize(b))), 0.0f, 1.0f);
+    return glm::degrees(2.0f * std::acos(d));
+}
+
+glm::quat BoneRotation(const PlayerBody& body, BoneIndex bone)
+{
+    return glm::normalize(glm::quat_cast(glm::mat3(body.GetPose().Global(bone))));
+}
+
+} // namespace
+
+TEST_CASE("The support hand does not spin as it comes back from a reload",
+          "[body][pose][weapons][reload]")
+{
+    BodyHarness harness;
+    WeaponDefinition weapon;
+    weapon.id = 1;
+    weapon.key = "test_rifle";
+    weapon.size = {0.06f, 0.16f, 0.62f};
+    weapon.reloadSeconds = 2.2f;
+    harness.body.SetWeaponForSimulation(&weapon);
+    harness.Settle(120);
+
+    PlayerBody::WeaponPose pose;
+    float worst = 0.0f;
+    float at = 0.0f;
+    glm::quat previous = BoneRotation(harness.body, harness.Rig().hand[0]);
+    for (int i = 0; i <= 280; ++i)
+    {
+        const float play = static_cast<float>(i) / 200.0f;
+        pose.reloading = play <= 1.0f;
+        pose.reload = std::min(play, 1.0f);
+        harness.body.SetWeaponPose(pose);
+        harness.Tick();
+
+        const glm::quat now = BoneRotation(harness.body, harness.Rig().hand[0]);
+        if (play > 0.92f)
+        {
+            const float turn = DegreesBetween(previous, now);
+            if (turn > worst)
+            {
+                worst = turn;
+                at = play;
+            }
+        }
+        previous = now;
+    }
+
+    INFO("fastest the support hand turned: " << worst << " degrees in one tick, at " << at);
+    CHECK(worst < 6.0f);
+}
+
+TEST_CASE("A prone reload puts the arm back on the floor rather than through it",
+          "[body][pose][weapons][reload]")
+{
+    BodyHarness harness;
+    WeaponDefinition weapon;
+    weapon.id = 1;
+    weapon.key = "test_rifle";
+    weapon.size = {0.06f, 0.16f, 0.62f};
+    weapon.reloadSeconds = 2.2f;
+    harness.body.SetWeaponForSimulation(&weapon);
+    harness.SetStance(PlayerStance::Prone);
+    harness.Settle(240);
+
+    PlayerBody::WeaponPose pose;
+    float lowestHand = 10.0f;
+    float lowestElbow = 10.0f;
+    float worstStep = 0.0f;
+    float at = 0.0f;
+    glm::vec3 previous = harness.Bone(harness.Rig().hand[0]);
+    for (int i = 0; i <= 300; ++i)
+    {
+        const float play = static_cast<float>(i) / 200.0f;
+        pose.reloading = play <= 1.0f;
+        pose.reload = std::min(play, 1.0f);
+        harness.body.SetWeaponPose(pose);
+        harness.Tick();
+
+        const glm::vec3 hand = harness.Bone(harness.Rig().hand[0]);
+        const glm::vec3 elbow = harness.Bone(harness.Rig().lowerArm[0]);
+        if (play > 0.90f)
+        {
+            lowestHand = std::min(lowestHand, hand.y);
+            lowestElbow = std::min(lowestElbow, elbow.y);
+            const float step = glm::distance(hand, previous);
+            if (step > worstStep)
+            {
+                worstStep = step;
+                at = play;
+            }
+        }
+        previous = hand;
+    }
+
+    INFO("lowest the wrist got: " << lowestHand << " m, elbow " << lowestElbow
+                                  << " m, furthest it moved in a tick " << worstStep * 100.0f
+                                  << " cm at " << at);
+    CHECK(lowestHand > 0.0f);
+    CHECK(lowestElbow > 0.0f);
+    // Half a metre from the magazine well to the floor is a real movement and it takes a real
+    // third of a second, so a couple of centimetres a tick is a hand reaching rather than a snap.
+    // What this catches is the frame where nobody wrote this arm at all and it fell back to the
+    // rest pose it hangs in: that reads 117 cm in a single tick.
+    CHECK(worstStep < 0.05f);
+}
+
+TEST_CASE("Walking into a wall keeps the barrel out of it", "[body][pose][weapons][walls]")
+{
+    BodyHarness harness;
+    WeaponDefinition weapon;
+    weapon.id = 1;
+    weapon.key = "test_rifle";
+    weapon.size = {0.06f, 0.16f, 0.62f};
+    harness.body.SetWeaponForSimulation(&weapon);
+
+    const float wallZ = -0.32f;
+    harness.physics.CreateBox({8.0f, 3.0f, 1.0f}, Transform{{0.0f, 1.5f, wallZ - 1.0f}},
+                              BodyMotion::Static);
+    harness.physics.OptimizeBroadPhase();
+
+    harness.SetTravel(glm::vec3(0.0f, 0.0f, -1.0f));
+    harness.Settle(200);
+
+    const glm::vec3 muzzle = harness.body.MuzzlePoint();
+    INFO("muzzle " << (wallZ - muzzle.z) * 100.0f << " cm inside the wall, at " << muzzle.x << ", "
+                   << muzzle.y << ", " << muzzle.z << ", player z " << harness.State().position.z
+                   << ", muzzle dropped " << harness.body.MuzzleTipDegrees() << " degrees, hold "
+                   << glm::dot(harness.body.HoldPoint() - harness.View().eyePosition,
+                               harness.View().Forward())
+                   << " m down the view");
+    CHECK(muzzle.z > wallZ - 0.02f);
+}
+
+TEST_CASE("Aiming into a wall keeps the barrel out of it", "[body][pose][weapons][walls][ads]")
+{
+    BodyHarness harness;
+    WeaponDefinition weapon;
+    weapon.id = 1;
+    weapon.key = "test_rifle";
+    weapon.size = {0.06f, 0.16f, 0.62f};
+    harness.body.SetWeaponForSimulation(&weapon);
+
+    const float wallZ = -0.32f;
+    harness.physics.CreateBox({8.0f, 3.0f, 1.0f}, Transform{{0.0f, 1.5f, wallZ - 1.0f}},
+                              BodyMotion::Static);
+    harness.physics.OptimizeBroadPhase();
+
+    PlayerBody::WeaponPose pose;
+    pose.aim = 1.0f;
+    harness.SetTravel(glm::vec3(0.0f, 0.0f, -1.0f));
+    for (int i = 0; i < 200; ++i)
+    {
+        harness.body.SetWeaponPose(pose);
+        harness.Tick();
+    }
+
+    const glm::vec3 muzzle = harness.body.MuzzlePoint();
+    const glm::vec3 eye = harness.View().eyePosition;
+    const glm::vec3 rear =
+        harness.body.WeaponOrigin() + harness.body.WeaponRotation() * harness.body.Weapon().rearPoint;
+    INFO("muzzle " << (wallZ - muzzle.z) * 100.0f << " cm inside the wall; the back of the weapon is "
+                   << glm::dot(rear - eye, harness.View().Forward())
+                   << " m down the view axis, muzzle dropped " << harness.body.MuzzleTipDegrees()
+                   << " degrees, hold "
+                   << glm::dot(harness.body.HoldPoint() - eye, harness.View().Forward()) << " m out");
+    CHECK(muzzle.z > wallZ - 0.02f);
+}

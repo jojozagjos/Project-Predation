@@ -110,6 +110,16 @@ glm::mat4 SegmentMatrix(const glm::vec3& a, const glm::vec3& b, const glm::vec3&
     return glm::translate(glm::mat4(1.0f), a) * glm::mat4_cast(AlignYWithRoll(b - a, front));
 }
 
+// How long the support hand takes to get back to wherever it belongs after a reload has finished
+// with it. On a weapon that is the handguard; lying down it is the floor. A hand that is holding
+// something is placed rather than smoothed, because it is rigidly attached to it, so this is the
+// exception that covers the journey back.
+constexpr float kSupportReturnSeconds = 0.22f;
+// Longer for the one that goes back to the floor, because it is a longer way. A hand coming off the
+// magazine well onto the ground beside a crawling body covers about half a metre, and a fifth of a
+// second to cross that is four metres a second, which is a throw rather than a reach.
+constexpr float kCrawlReturnSeconds = 0.34f;
+
 // Neutral grey work kit. Light enough to read against dark interiors and to show the shading that
 // sells the shape, which matters more than colour while the body is still placeholder geometry.
 const Material kSuitMaterial = Material::Diffuse({0.215f, 0.230f, 0.265f}, 0.88f);
@@ -1273,30 +1283,6 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
         rotation = glm::slerp(glm::angleAxis(view.leanRoll, carryForward), glm::quat(1, 0, 0, 0), aim) *
                    rotation;
     }
-    // --- Reload ---------------------------------------------------------------------------------
-    // How far through a reload the hands are. The weapon's own movement through one is the model's
-    // "reload" clip; this is what the support hand follows, which no clip can do because a clip
-    // moves parts of a weapon and a hand is not one of them.
-    //
-    // The movement runs to its end even when the reload itself finishes first. The weapon is
-    // usable again the moment the simulation says so; what is left is a pair of hands finishing
-    // what they were doing, and cutting that off partway is what snapped.
-    if (m_weaponPose.reloading)
-    {
-        m_reloadPlay = glm::clamp(m_weaponPose.reload, 0.0f, 1.0f);
-        m_reloadRunning = true;
-    }
-    else if (m_reloadRunning)
-    {
-        m_reloadPlay += dt / std::max(m_config.reloadFollowThrough, 0.05f);
-        if (m_reloadPlay >= 1.0f)
-        {
-            m_reloadPlay = 1.0f;
-            m_reloadRunning = false;
-        }
-    }
-
-
     // --- Fire kick ------------------------------------------------------------------------------
     const float kick = glm::clamp(m_weaponPose.kick, 0.0f, 1.0f);
     if (kick > 0.0f)
@@ -1339,6 +1325,25 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
     m_weaponTransform.rotation = rotation;
     m_weaponTransform.scale = glm::vec3(1.0f);
 
+    // --- The barrel out of the wall, by turning rather than by moving -------------------------
+    //
+    // Turning the weapon about the point it is held by is the one correction here that is free. The
+    // hold does not move, so the receiver comes no nearer the camera and the hand keeps its grip;
+    // all that changes is where the barrel is pointing, which in a corridor nobody is using anyway.
+    //
+    // How far it is turned was worked out at the end of the last frame, when everything that moves
+    // the weapon had already had its say. It is put back on here, before any of them run again, so
+    // that what they measure is the weapon as it will actually be drawn: a tipped weapon reaches
+    // less far forward and its stock sits higher, and both of those change how far back the floors
+    // below will let it come.
+    const float tipApplied = m_mantleFade <= 0.001f ? m_muzzleTip : 0.0f;
+    if (tipApplied > 1e-4f)
+    {
+        const glm::vec3 hold = m_weaponTransform.position + rotation * holdPoint;
+        rotation = rotation * glm::angleAxis(tipApplied, glm::vec3(1.0f, 0.0f, 0.0f));
+        m_weaponTransform.rotation = rotation;
+        m_weaponTransform.position = hold - rotation * holdPoint;
+    }
 
     // The barrel out of the scenery. The muzzle is what goes through a wall, not the grip, so that
     // is what gets traced for, and the whole weapon moves by whatever correction it needs.
@@ -1406,7 +1411,16 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
         // something, the sights are broken down towards the carry, and using that here switched the
         // floor off exactly where it was needed: aiming into a corner is the one place a receiver
         // ends up through the near plane.
-        const float rearFloor = glm::mix(-0.30f, m_config.weaponRearMinForward, wantedAim);
+        //
+        // And it is measured off again by however far the muzzle has already come down. The floor
+        // is a stand-in for "the stock is about to be cut open by the near plane", and that is only
+        // true while the weapon lies along the view. Tipped forty degrees the stock is a hand's
+        // width above the axis, which that close to the eye is outside the frustum altogether, and
+        // holding it out anyway is what kept the sighted weapon far enough forward that its barrel
+        // could not be got out of a wall at any angle.
+        const float lifted = glm::clamp(std::sin(tipApplied), 0.0f, 1.0f);
+        const float rearFloor =
+            glm::mix(glm::mix(-0.30f, m_config.weaponRearMinForward, wantedAim), -0.30f, lifted);
         const float push = std::max(floorDistance - glm::dot(held - view.eyePosition, along),
                                     rearFloor - glm::dot(rear - view.eyePosition, along));
         if (push > 0.0f)
@@ -1464,6 +1478,98 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
         {
             m_weaponTransform.position = shoulder + toGrip * (reach / distance) - gripOffset;
         }
+    }
+
+    // How far the muzzle has to come down to be out of whatever is in front of it, now that
+    // everything which moves the weapon has moved it.
+    //
+    // Solved, not stepped and not guessed at. The surface the barrel is crossing is a plane, and
+    // the muzzle swung about the hold traces a circle, so "how far round until the muzzle is in
+    // front of that plane" has an exact answer: `a cos t + b sin t >= k` is one rearrangement away
+    // from an arc cosine. Walking round in two-degree steps would make the answer move in
+    // two-degree steps, and an answer that moves in steps while the player turns is a weapon that
+    // shakes in the hands.
+    //
+    // What it replaces was a fixed dip applied in proportion to how boxed in the player was, which
+    // is a guess about a different question: it was fourteen degrees whether the barrel was a
+    // finger's width into a doorframe or half a metre into a wall.
+    //
+    // It cannot always win, and it is worth being plain about why. A carbine is six hundred
+    // millimetres long, a player can stand three hundred and twenty from a wall because that is
+    // how wide they are, and the weapon has to be held far enough out that the camera is not
+    // inside it. At the very closest approach there is no angle that clears the wall and keeps the
+    // stock out of the player's face, so the barrel comes down as far as it is allowed and what is
+    // left is a muzzle tip in the bricks instead of most of a weapon.
+    if (m_mantleFade <= 0.001f)
+    {
+        const glm::vec3 hold = m_weaponTransform.position + m_weaponTransform.rotation * holdPoint;
+        const glm::vec3 reach = m_weaponTransform.rotation * (m_weaponVisual.muzzle - holdPoint);
+        const glm::vec3 muzzle = hold + reach;
+        float wanted = 0.0f;
+
+        const glm::vec3 toMuzzle = muzzle - view.eyePosition;
+        const float range = glm::length(toMuzzle);
+        if (range > 1e-4f)
+        {
+            const RayHit blocked = physics.RayCast(view.eyePosition, toMuzzle / range,
+                                                   range + m_config.muzzleClearance);
+            if (blocked)
+            {
+                // Positive turns about the weapon's own right axis drop the muzzle, which is what
+                // anybody does with a rifle when a room runs out. Lifting it would clear the same
+                // wall and lay the barrel across the middle of the screen to do it.
+                //
+                // Measured from the untipped weapon, so what comes out is the whole angle rather
+                // than one more helping of it: the turn already on the weapon is taken back off
+                // first and put on again at the top of the next frame.
+                const glm::quat base =
+                    m_weaponTransform.rotation * glm::angleAxis(-tipApplied, glm::vec3(1, 0, 0));
+                const glm::vec3 axis = base * glm::vec3(1.0f, 0.0f, 0.0f);
+                const glm::vec3 span = base * (m_weaponVisual.muzzle - holdPoint);
+                const glm::vec3 normal = blocked.normal;
+                const float alongAxis = glm::dot(axis, span);
+                const float turning = alongAxis * glm::dot(axis, normal);
+                const float a = glm::dot(span, normal) - turning;
+                const float b = glm::dot(glm::cross(axis, span), normal);
+                // Where the muzzle has to get to: in front of the surface by the same clearance the
+                // trace itself allows for.
+                const float needed = m_config.muzzleClearance -
+                                     glm::dot(hold - blocked.position, normal) - turning;
+                const float radius = std::sqrt(a * a + b * b);
+                const float limit = glm::radians(m_config.weaponWallTipMax);
+                wanted = limit;
+                if (radius > 1e-5f && std::abs(needed) <= radius)
+                {
+                    const float phase = std::atan2(b, a);
+                    const float spread = std::acos(glm::clamp(needed / radius, -1.0f, 1.0f));
+                    const float candidates[3] = {phase - spread, phase + spread,
+                                                 phase - spread + glm::two_pi<float>()};
+                    for (const float candidate : candidates)
+                    {
+                        if (candidate > 0.0f && candidate < wanted)
+                        {
+                            wanted = candidate;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Smoothed, because one ray flickers on the edge of anything it grazes, and a weapon that
+        // followed a flickering ray would snap down and up again as a doorframe went past.
+        m_muzzleTip = SmoothTowards(m_muzzleTip, wanted, m_config.weaponWallTipSpeed, dt);
+        const float remaining = m_muzzleTip - tipApplied;
+        if (std::abs(remaining) > 1e-5f)
+        {
+            m_weaponTransform.rotation =
+                m_weaponTransform.rotation * glm::angleAxis(remaining, glm::vec3(1.0f, 0.0f, 0.0f));
+            m_weaponTransform.position = hold - m_weaponTransform.rotation * holdPoint;
+        }
+        rotation = m_weaponTransform.rotation;
+    }
+    else
+    {
+        m_muzzleTip = 0.0f;
     }
 
     // Recorded after every correction, so what is measured is where the hold ended up rather than
@@ -1615,12 +1721,20 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
     const glm::vec3 weaponUp = rotation * glm::vec3(0.0f, 1.0f, 0.0f);
     const glm::vec3 weaponRight = glm::cross(barrel, weaponUp);
 
-    // Which of the weapon's own axes to roll a hand about, given where the forearm is pointing.
+    // How a hand on the weapon is rolled about its own length, given which way it is pointing.
     //
-    // A roll reference only says anything while it is square to the bone; line the two up and the
-    // answer collapses into rounding and can come back a half turn out, which is what made the
-    // hands flip during a reload, where the support forearm swings right across the weapon's own
-    // right axis on its way to the belt. Two axes, and whichever is further from the bone wins.
+    // A hand holding something takes its roll from the thing it is holding, not from the bone it
+    // hangs off, so the answer is the weapon's own frame turned the shortest way that puts the
+    // hand along the bone. Nothing about it depends on an axis being square to anything, which is
+    // what matters: the reference used to be one of the weapon's two axes, whichever was further
+    // from the bone, and the two of them are a quarter turn apart. Coming back from a reload the
+    // forearm swings across the point where the choice changes, so the hand was told to roll ninety
+    // degrees and then roll back, which is the wrist turning over as a reload ends. Measured at
+    // twenty-nine degrees in a single tick.
+    //
+    // The roll is handed on as a hinge because that is what the bone placement below takes: it
+    // reads `cross(hinge, bone)`, so crossing the other way round hands it the direction wanted and
+    // nothing else.
     const auto weaponRoll = [&](const glm::vec3& along)
     {
         const float lengthSquared = glm::dot(along, along);
@@ -1629,9 +1743,29 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
             return weaponRight;
         }
         const glm::vec3 unit = along / std::sqrt(lengthSquared);
-        return std::abs(glm::dot(unit, weaponRight)) <= std::abs(glm::dot(unit, weaponUp))
-                   ? weaponRight
-                   : weaponUp;
+        // The weapon's frame with its up axis turned down the barrel, because that is roughly where
+        // a forearm points while the hand is on the gun. Any constant turn would be continuous; this
+        // one is the constant that leaves a hand on a handguard rolled exactly as it was before.
+        const glm::quat held = rotation * glm::angleAxis(glm::half_pi<float>(), glm::vec3(1, 0, 0));
+        const glm::vec3 restAxis = held * glm::vec3(0.0f, 1.0f, 0.0f);
+        // The shortest turn from where that frame points to where the bone actually points. It is
+        // the one turn that carries the roll across without adding any of its own.
+        const float cosine = glm::dot(restAxis, unit);
+        glm::quat swing{1.0f, 0.0f, 0.0f, 0.0f};
+        if (cosine < -0.99999f)
+        {
+            // Pointing exactly backwards, where no shortest turn exists. Any half turn about
+            // something square to it will do, and this is far enough from anything real that it
+            // only has to be defined rather than good.
+            swing = glm::angleAxis(glm::pi<float>(), glm::normalize(glm::cross(restAxis, weaponUp)));
+        }
+        else
+        {
+            const glm::vec3 axis = glm::cross(restAxis, unit);
+            swing = glm::normalize(glm::quat(1.0f + cosine, axis.x, axis.y, axis.z));
+        }
+        const glm::vec3 front = swing * (held * glm::vec3(0.0f, 0.0f, -1.0f));
+        return glm::cross(unit, front);
     };
 
     // Both from the model, rather than the support hand from the model and the trigger hand from
@@ -1692,7 +1826,6 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
     // right while it is holding, and wrong on the frame it starts: the hand had been down at the
     // magazine well and was put on the handguard in one step, which is the snap at the end of every
     // reload. It goes back over a fifth of a second and is rigid after that.
-    constexpr float kRejoinSeconds = 0.22f;
     if (supportHandFree)
     {
         m_supportRejoin = 0.0f;
@@ -1704,7 +1837,7 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
         m_reloadHandValid = false;
         if (m_supportRejoin < 1.0f)
         {
-            m_supportRejoin = std::min(m_supportRejoin + dt / kRejoinSeconds, 1.0f);
+            m_supportRejoin = std::min(m_supportRejoin + dt / kSupportReturnSeconds, 1.0f);
         }
     }
 
@@ -1760,9 +1893,24 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
             SmoothTowards(m_reloadHandLocal, wantedLocal, m_config.weaponHandSmoothing, dt);
         hand.position = view.eyePosition + carryRight * m_reloadHandLocal.x +
                         carryUp * m_reloadHandLocal.y + carryForward * m_reloadHandLocal.z;
+        // Kept for the crawl, which takes this arm back the moment the reload finishes with it and
+        // has to know where it is starting from.
+        m_crawlHandRelease = hand.position - shoulder;
 
+        // Where the elbow goes while the magazine is being changed. Standing, it drops and comes in
+        // towards the ribs, which is what an elbow does when a hand comes off a weapon.
+        //
+        // Lying down it cannot: down is the floor, and the crawl that takes this arm back the moment
+        // the reload lets go of it puts the elbow up and out to the side. A pole that disagrees with
+        // the one taking over turns the whole arm over on the handover, which is a fling from inside.
+        // Blended by how flat the body is, so at the handover the two agree.
+        const glm::vec3 bodyFacing{std::sin(m_bodyYaw), 0.0f, -std::cos(m_bodyYaw)};
+        const glm::vec3 bodyRight{std::cos(m_bodyYaw), 0.0f, std::sin(m_bodyYaw)};
+        const glm::vec3 uprightPole = -carryUp * 1.0f - carryRight * 0.9f - carryForward * 0.25f;
+        const glm::vec3 flatPole = -bodyFacing * 0.6f - bodyRight * 0.8f + glm::vec3(0.0f, 0.4f, 0.0f);
+        const glm::vec3 poleWanted = glm::mix(uprightPole, flatPole, m_flatness);
         const glm::vec3 elbowPole =
-            glm::normalize(-carryUp * 1.0f - carryRight * 0.9f - carryForward * 0.25f);
+            glm::length(poleWanted) > 1e-4f ? glm::normalize(poleWanted) : uprightPole;
         const TwoBoneIKResult ik = SolveTwoBoneIK(shoulder, hand.position, elbowPole,
                                                   m_rig.upperArmLength, m_rig.lowerArmLength);
         const glm::vec3 hinge =
@@ -1836,9 +1984,21 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
         // hand rolled about the forearm while the gun in it did not, and the fingers wound round the
         // grip. A hand closed on a weapon is part of the weapon. Its fingers point at the socket
         // rather than on down the forearm, for the same reason.
+        //
+        // On the way back from a reload that is not yet true, and saying it is turns the wrist over
+        // in one frame. A hand still down by the magazine does not point at the handguard, it
+        // points on down the forearm the way it did a tick ago while the reload was placing it, and
+        // the two directions are most of a right angle apart. Where the fingers point comes back on
+        // the same curve the hand itself does.
+        glm::vec3 fingers = gripPoints[side];
+        if (side == kLeft && m_supportRejoin < 1.0f)
+        {
+            const glm::vec3 onward = ik.endPosition + (ik.endPosition - ik.jointPosition);
+            fingers = glm::mix(onward, fingers, glm::smoothstep(0.0f, 1.0f, m_supportRejoin));
+        }
         m_pose.SetGlobal(m_skeleton, m_rig.hand[side],
-                         SegmentFrame(m_rig.hand[side], ik.endPosition, gripPoints[side],
-                                      weaponRoll(gripPoints[side] - ik.endPosition)));
+                         SegmentFrame(m_rig.hand[side], ik.endPosition, fingers,
+                                      weaponRoll(fingers - ik.endPosition)));
     }
 
     return true;
@@ -1866,10 +2026,48 @@ void PlayerBody::UpdateArms(const PlayerState& state, const PlayerView& view, Ph
                                                : std::max(m_mantleFade - fadeStep, 0.0f);
 
     const bool holding = m_hasWeapon;
+
+    // How far through a reload the hands are. The weapon's own movement through one is the model's
+    // "reload" clip; this is what the support hand follows, which no clip can do because a clip
+    // moves parts of a weapon and a hand is not one of them.
+    //
+    // The movement runs to its end even when the reload itself finishes first. The weapon is
+    // usable again the moment the simulation says so; what is left is a pair of hands finishing
+    // what they were doing, and cutting that off partway is what snapped.
+    //
+    // Advanced here, once, before anything asks about it. It used to be advanced inside the weapon
+    // hold, which runs after the crawl, and on the tick it finished the two disagreed about who had
+    // the support arm: the crawl had already stood aside for a reload that was about to stop, and
+    // the hold then stood aside for the crawl that had already run. Nobody wrote that arm at all,
+    // so for one frame it fell back to the rest pose it hangs in, which lying down is straight
+    // through the floor. A frame is enough to see.
+    if (m_weaponPose.reloading && holding)
+    {
+        m_reloadPlay = glm::clamp(m_weaponPose.reload, 0.0f, 1.0f);
+        m_reloadRunning = true;
+    }
+    else if (m_reloadRunning)
+    {
+        m_reloadPlay += dt / std::max(m_config.reloadFollowThrough, 0.05f);
+        if (m_reloadPlay >= 1.0f || !holding)
+        {
+            m_reloadPlay = 1.0f;
+            m_reloadRunning = false;
+        }
+    }
+
+    // Whether the reload has borrowed the arm a crawl would otherwise be using, and how far back
+    // towards the crawl that arm has got since it was handed over. The hand goes from the magazine
+    // well to the floor, which is a long way for one tick of the crawl's own smoothing.
+    const bool reloadHasCrawlArm = holding && m_reloadRunning;
+    m_crawlHandReturn = reloadHasCrawlArm
+                            ? 0.0f
+                            : std::min(m_crawlHandReturn + dt / kCrawlReturnSeconds, 1.0f);
+
     // Not while reloading with a weapon in hand. Lying down, the support arm crawls and the trigger
     // hand keeps the gun; a reload needs that support arm for the magazine, and with the crawl still
     // driving it the reload had no hand to do anything with and nothing moved at all.
-    if (m_flatness >= 0.02f && !(holding && m_reloadRunning))
+    if (m_flatness >= 0.02f && !reloadHasCrawlArm)
     {
         UpdateCrawlArms(state, view, physics, dt, holding);
     }
@@ -2163,7 +2361,23 @@ void PlayerBody::UpdateCrawlArms(const PlayerState& state, const PlayerView& vie
         // Blend in from the upright pose so going prone does not snap the arms into place.
         const glm::vec3 restHand = m_pose.GlobalPosition(m_rig.hand[side]);
         const glm::vec3 blended = glm::mix(restHand, target, m_flatness);
-        hand.position = SmoothTowards(hand.position, blended, m_config.footPlantSmoothing, dt);
+        // Coming back from a reload the hand is carried rather than smoothed.
+        //
+        // A reload borrows this arm to change the magazine, and gives it back with the hand up at
+        // the magazine well and half a metre to travel. Handed to the smoothing below that is a
+        // third of the distance on the first tick, which is a fling; the hand is walked from where
+        // the reload left it to where the crawl wants it instead, on a curve with a known top
+        // speed. The start is measured from the shoulder because the body is still crawling while
+        // the arm comes back.
+        if (side == kLeft && m_crawlHandReturn < 1.0f)
+        {
+            hand.position = glm::mix(shoulder + m_crawlHandRelease, blended,
+                                     glm::smoothstep(0.0f, 1.0f, m_crawlHandReturn));
+        }
+        else
+        {
+            hand.position = SmoothTowards(hand.position, blended, m_config.footPlantSmoothing, dt);
+        }
         hand.planted = lift < 0.01f;
 
         // Elbows bend backwards and outwards, away from the body's front. Rolled onto the back the
