@@ -40,6 +40,11 @@ glm::mat4 SegmentFrame(const glm::vec3& a, const glm::vec3& b, const glm::vec3& 
     return frame;
 }
 
+// How fast a joint climbs onto a floor that has come up under it, in metres a second. Fast enough
+// that a body settling on a step looks like it has settled on the step, slow enough that a limb
+// being dragged across one is carried rather than flicked.
+constexpr float kFloorRise = 1.6f;
+
 } // namespace
 
 void Ragdoll::AddConstraint(int a, int b)
@@ -84,13 +89,22 @@ void Ragdoll::Start(const Skeleton& skeleton, const Pose& pose, const glm::vec3&
     m_positions.resize(static_cast<size_t>(bones));
     m_previous.resize(static_cast<size_t>(bones));
     m_groundHeight.assign(static_cast<size_t>(bones), -1000.0f);
+    m_groundTarget.assign(static_cast<size_t>(bones), -1000.0f);
     m_groundSampledAt.assign(static_cast<size_t>(bones), glm::vec3(1e6f));
     m_constraints.clear();
+    m_boneFront.assign(static_cast<size_t>(bones), glm::vec3(0.0f, 0.0f, -1.0f));
 
     for (int i = 0; i < bones; ++i)
     {
         m_positions[static_cast<size_t>(i)] = pose.GlobalPosition(static_cast<BoneIndex>(i));
         m_previous[static_cast<size_t>(i)] = m_positions[static_cast<size_t>(i)];
+        // The way each bone was already facing when the body stopped being animated. Carried from
+        // here rather than worked out fresh each frame from a fixed direction: a bone that happens
+        // to point along that direction has no defined spin about its own length, and a body lying
+        // face down has several of them pointing very near it. What the player sees when one crosses
+        // it is a forearm turning over for no reason, which is most of the limbs snapping.
+        const glm::mat3 frame(pose.Global(static_cast<BoneIndex>(i)));
+        m_boneFront[static_cast<size_t>(i)] = -frame[2];
     }
 
     // Along the bones. This is what keeps limbs the length they were.
@@ -196,6 +210,35 @@ void Ragdoll::Step(PhysicsWorld& physics, float dt)
         fastest = std::max(fastest, glm::length(velocity) / dt);
         m_previous[i] = m_positions[i];
         m_positions[i] += velocity + glm::vec3(0.0f, m_settings.gravity, 0.0f) * dt * dt;
+
+        // And into the scenery, not only onto it.
+        //
+        // The only collision here was a floor height, so a limb thrown at a wall went straight
+        // through it and a body that came to rest against a crate came to rest inside it. Each
+        // joint is swept from where it was to where its own speed has taken it, which is one ray per
+        // moving joint and none at all once the body has stopped.
+        //
+        // Its own speed, and not the constraint passes below. Those relax by a centimetre or two a
+        // step for as long as a body is settling, in whatever direction the solver happens to want,
+        // and sweeping that meant a joint resting on the floor was picked up and put back on it
+        // every step for ever. The body never went still, so it never settled, so it was simulated
+        // for the rest of the round.
+        const glm::vec3 moved = m_positions[i] - m_previous[i];
+        const float travel = glm::length(moved);
+        const float clearance = i < m_jointRadius.size() ? m_jointRadius[i] : m_settings.radius;
+        if (travel > 0.01f)
+        {
+            const RayHit blocked = physics.RayCast(m_previous[i], moved / travel, travel + clearance);
+            // Only what it is running into. A surface it is already leaving is behind it.
+            if (blocked && glm::dot(blocked.normal, moved) < 0.0f)
+            {
+                m_positions[i] = blocked.position + blocked.normal * clearance;
+                // Whatever speed it had into the surface is gone; what it had along the surface is
+                // kept, less friction. Taking all of it glues a body to the first thing it touches.
+                const glm::vec3 along = moved - blocked.normal * glm::dot(moved, blocked.normal);
+                m_previous[i] = m_positions[i] - along * (1.0f - m_settings.friction);
+            }
+        }
     }
 
     for (int pass = 0; pass < m_settings.iterations; ++pass)
@@ -235,15 +278,29 @@ void Ragdoll::Step(PhysicsWorld& physics, float dt)
         {
             const glm::vec3 from = m_positions[i] + glm::vec3(0.0f, 1.0f, 0.0f);
             const RayHit hit = physics.RayCast(from, glm::vec3(0.0f, -1.0f, 0.0f), 3.0f);
-            if (hit)
-            {
-                m_groundHeight[i] = hit.position.y;
-            }
+            m_groundTarget[i] = hit ? hit.position.y : -1000.0f;
             m_groundSampledAt[i] = flat;
+            if (m_groundHeight[i] < -900.0f)
+            {
+                m_groundHeight[i] = m_groundTarget[i];
+            }
         }
+
+        // Down at once, up over a moment.
+        //
+        // The trace is only redone when a joint has moved somewhere new, so its answer arrives in
+        // steps: drag an arm off the edge of a crate and the floor under it drops half a metre
+        // between one reading and the next. Dropping is safe to take outright, because a joint that
+        // finds itself above its floor simply falls. Rising is not: the new floor is already under
+        // the joint and shoves it up there in a single frame, which is the limb snapping to
+        // somewhere it has never been. So a floor that has come up is climbed rather than jumped to.
+        m_groundHeight[i] = m_groundTarget[i] < m_groundHeight[i]
+                                ? m_groundTarget[i]
+                                : std::min(m_groundHeight[i] + kFloorRise * dt, m_groundTarget[i]);
 
         const float clearance =
             i < m_jointRadius.size() ? m_jointRadius[i] : m_settings.radius;
+
         const float floor = m_groundHeight[i] + clearance;
         if (m_positions[i].y >= floor)
         {
@@ -274,7 +331,7 @@ void Ragdoll::Step(PhysicsWorld& physics, float dt)
     }
 }
 
-void Ragdoll::ApplyTo(const Skeleton& skeleton, Pose& pose) const
+void Ragdoll::ApplyTo(const Skeleton& skeleton, Pose& pose)
 {
     if (m_positions.empty())
     {
@@ -312,7 +369,30 @@ void Ragdoll::ApplyTo(const Skeleton& skeleton, Pose& pose) const
             towards = position + (position - parent);
         }
 
-        pose.SetGlobal(skeleton, index, SegmentFrame(position, towards, glm::vec3(0.0f, 0.0f, -1.0f)));
+        // The spin about the bone's own length comes from where it was facing last frame, projected
+        // square to wherever it is pointing now. A fixed reference cannot answer for a bone that
+        // points along it, and the reference used to be a world axis that a body lying down has
+        // several bones very near: crossing it turned a limb over in one frame.
+        glm::vec3& front = m_boneFront[static_cast<size_t>(i)];
+        const glm::vec3 delta = towards - position;
+        const float length = glm::length(delta);
+        if (length > 1e-5f)
+        {
+            const glm::vec3 along = delta / length;
+            glm::vec3 carried = front - along * glm::dot(front, along);
+            if (glm::dot(carried, carried) < 1e-6f)
+            {
+                // Only when the bone has turned to point exactly where it was facing, which takes a
+                // frame-perfect coincidence. Any perpendicular will do and the next frame carries on
+                // from it.
+                const glm::vec3 fallback = std::abs(along.y) < 0.9f ? glm::vec3(0.0f, 1.0f, 0.0f)
+                                                                    : glm::vec3(1.0f, 0.0f, 0.0f);
+                carried = fallback - along * glm::dot(fallback, along);
+            }
+            front = glm::normalize(carried);
+        }
+
+        pose.SetGlobal(skeleton, index, SegmentFrame(position, towards, front));
     }
 }
 

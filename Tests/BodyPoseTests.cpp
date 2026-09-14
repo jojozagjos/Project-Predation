@@ -2659,3 +2659,66 @@ TEST_CASE("Climbing puts a foot on the ledge rather than dangling", "[body][pose
     // means. Left to the airborne pose the feet hang under the hips and never pass y 0.4.
     CHECK(highestFoot > 1.08f);
 }
+
+TEST_CASE("A ragdoll stays out of the walls beside it", "[body][ragdoll]")
+{
+    // The only collision a falling body had was a floor height, so a limb thrown at a wall went
+    // through it and a body that came to rest against a crate came to rest inside it.
+    BodyHarness harness;
+    // A wall a little way to the right of the spawn.
+    const float wallX = 0.55f;
+    harness.physics.CreateBox({0.5f, 2.0f, 4.0f}, Transform{{wallX + 0.5f, 2.0f, 0.0f}},
+                              BodyMotion::Static);
+    harness.physics.OptimizeBroadPhase();
+    harness.Settle(60);
+
+    // Knocked hard into it.
+    harness.body.Collapse({14.0f, 1.0f, 0.0f});
+    float deepest = 0.0f;
+    for (int i = 0; i < 240; ++i)
+    {
+        harness.Tick();
+        for (const glm::vec3& joint : harness.body.GetRagdoll().Points())
+        {
+            deepest = std::max(deepest, joint.x - wallX);
+        }
+    }
+
+    INFO("the furthest a joint got past the wall face was " << deepest * 100.0f << " cm");
+    // A joint keeps its own radius off a surface, so a few centimetres short of the face is right
+    // and past it is not. Without the sweep the body ends up most of a metre inside.
+    CHECK(deepest < 0.02f);
+}
+
+TEST_CASE("A ragdoll limb is not flicked onto a step it is dragged over", "[body][ragdoll]")
+{
+    // The floor under each joint is only re-traced when that joint has moved somewhere new, so the
+    // answer arrives in steps: drag an arm over the edge of a crate and the height under it changes
+    // by the whole height of the crate between one reading and the next. Taken outright, the new
+    // floor is already under the joint and shoves it there in a single frame.
+    BodyHarness harness;
+    harness.physics.CreateBox({1.0f, 0.25f, 4.0f}, Transform{{1.4f, 0.25f, 0.0f}}, BodyMotion::Static);
+    harness.physics.OptimizeBroadPhase();
+    harness.Settle(60);
+
+    harness.body.Collapse({11.0f, 2.0f, 0.0f});
+    std::vector<glm::vec3> previous = harness.body.GetRagdoll().Points();
+    float worst = 0.0f;
+    for (int i = 0; i < 300; ++i)
+    {
+        harness.Tick();
+        const std::vector<glm::vec3>& now = harness.body.GetRagdoll().Points();
+        if (now.size() == previous.size())
+        {
+            for (size_t j = 0; j < now.size(); ++j)
+            {
+                worst = std::max(worst, now[j].y - previous[j].y);
+            }
+        }
+        previous = now;
+    }
+
+    INFO("the furthest a joint rose in one tick was " << worst * 1000.0f << " mm");
+    // A joint riding up onto a step climbs it. One that is hit by it jumps the whole height at once.
+    CHECK(worst < 0.06f);
+}

@@ -47,7 +47,7 @@ public:
 
     void Step(PhysicsWorld& physics, float dt);
     // Writes the joint positions back into a pose, so the same drawn parts follow the ragdoll.
-    void ApplyTo(const Skeleton& skeleton, Pose& pose) const;
+    void ApplyTo(const Skeleton& skeleton, Pose& pose);
 
     // How far each joint keeps off the floor, one per bone. A body is not the same thickness all
     // over: a chest is three times a wrist. Leave it unset and every joint uses Settings::radius,
@@ -78,10 +78,16 @@ private:
     std::vector<glm::vec3> m_positions;
     std::vector<glm::vec3> m_previous;
     std::vector<float> m_groundHeight;
+    // What the trace last said, as opposed to what the joint is currently standing on. The second
+    // climbs to the first rather than being set to it.
+    std::vector<float> m_groundTarget;
     std::vector<float> m_jointRadius;
     // Where each joint was when its floor was last traced, so the trace is only redone when it has
     // gone somewhere the answer might differ.
     std::vector<glm::vec3> m_groundSampledAt;
+    // Which way each bone was facing, carried from frame to frame so its spin about its own length
+    // is continuous even when the bone points where a fixed reference cannot answer.
+    std::vector<glm::vec3> m_boneFront;
     std::vector<Constraint> m_constraints;
     float m_age = 0.0f;
     float m_stillFor = 0.0f;
