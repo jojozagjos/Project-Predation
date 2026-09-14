@@ -6,6 +6,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
+#include <string>
 #include <vector>
 
 using namespace pred;
@@ -375,4 +377,139 @@ TEST_CASE("A full mixer drops the quietest voice, not the newest", "[audio]")
     CHECK(mixer.IsPlaying(close));
     CHECK_FALSE(mixer.IsPlaying(distant));
     CHECK(mixer.GetStats().stolen == 1);
+}
+
+namespace
+{
+
+// Builds a wav in memory. `junk` puts a JUNK chunk before the format, which is what the footstep
+// pack this was written for actually does and what a reader that seeks to a fixed offset gets wrong.
+std::vector<unsigned char> MakeWav(const std::vector<std::vector<int16_t>>& channels, int rate,
+                                   bool junk)
+{
+    const size_t frames = channels.empty() ? 0 : channels.front().size();
+    const size_t channelCount = channels.size();
+    const size_t dataBytes = frames * channelCount * 2;
+
+    std::vector<unsigned char> out;
+    const auto u32 = [&out](uint32_t v)
+    {
+        out.push_back(static_cast<unsigned char>(v & 0xFF));
+        out.push_back(static_cast<unsigned char>((v >> 8) & 0xFF));
+        out.push_back(static_cast<unsigned char>((v >> 16) & 0xFF));
+        out.push_back(static_cast<unsigned char>((v >> 24) & 0xFF));
+    };
+    const auto u16 = [&out](uint16_t v)
+    {
+        out.push_back(static_cast<unsigned char>(v & 0xFF));
+        out.push_back(static_cast<unsigned char>((v >> 8) & 0xFF));
+    };
+    const auto tag = [&out](const char* s)
+    { for (int i = 0; i < 4; ++i) { out.push_back(static_cast<unsigned char>(s[i])); } };
+
+    tag("RIFF");
+    u32(0); // patched at the end
+    tag("WAVE");
+    if (junk)
+    {
+        tag("JUNK");
+        u32(4);
+        u32(0);
+    }
+    tag("fmt ");
+    u32(16);
+    u16(1);                                        // PCM
+    u16(static_cast<uint16_t>(channelCount));
+    u32(static_cast<uint32_t>(rate));
+    u32(static_cast<uint32_t>(rate * channelCount * 2)); // bytes per second
+    u16(static_cast<uint16_t>(channelCount * 2));        // block align
+    u16(16);                                             // bits
+    tag("data");
+    u32(static_cast<uint32_t>(dataBytes));
+    for (size_t frame = 0; frame < frames; ++frame)
+    {
+        for (size_t channel = 0; channel < channelCount; ++channel)
+        {
+            u16(static_cast<uint16_t>(channels[channel][frame]));
+        }
+    }
+    const uint32_t riffSize = static_cast<uint32_t>(out.size() - 8);
+    out[4] = static_cast<unsigned char>(riffSize & 0xFF);
+    out[5] = static_cast<unsigned char>((riffSize >> 8) & 0xFF);
+    out[6] = static_cast<unsigned char>((riffSize >> 16) & 0xFF);
+    out[7] = static_cast<unsigned char>((riffSize >> 24) & 0xFF);
+    return out;
+}
+
+} // namespace
+
+TEST_CASE("A wav is read past whatever chunks come before the format")
+{
+    const std::vector<int16_t> ramp{0, 16384, -16384, 32767, -32768};
+    const std::vector<unsigned char> file = MakeWav({ramp}, 44100, true);
+
+    SoundData data;
+    std::string error;
+    REQUIRE(LoadWav(file.data(), file.size(), data, error));
+    CHECK(error.empty());
+    CHECK(data.sampleRate == 44100);
+    REQUIRE(data.samples.size() == ramp.size());
+    CHECK(data.samples[0] == Catch::Approx(0.0f));
+    CHECK(data.samples[1] == Catch::Approx(0.5f));
+    CHECK(data.samples[2] == Catch::Approx(-0.5f));
+    CHECK(data.samples[4] == Catch::Approx(-1.0f));
+}
+
+TEST_CASE("A stereo wav is averaged down to mono")
+{
+    // The mixer places sounds itself, so a source that has already decided which ear it is in is
+    // fighting the positioning. Left and right that cancel must come out silent, not one-sided.
+    const std::vector<int16_t> left{16384, 16384};
+    const std::vector<int16_t> right{-16384, 16384};
+    const std::vector<unsigned char> file = MakeWav({left, right}, 48000, false);
+
+    SoundData data;
+    std::string error;
+    REQUIRE(LoadWav(file.data(), file.size(), data, error));
+    REQUIRE(data.samples.size() == 2);
+    CHECK(data.samples[0] == Catch::Approx(0.0f).margin(1e-6));
+    CHECK(data.samples[1] == Catch::Approx(0.5f));
+}
+
+TEST_CASE("Nonsense is refused with a reason rather than crashing")
+{
+    SoundData data;
+    std::string error;
+    const char* notAWav = "this is not a wav file at all";
+    CHECK_FALSE(LoadWav(notAWav, std::strlen(notAWav), data, error));
+    CHECK_FALSE(error.empty());
+    CHECK_FALSE(LoadWav(nullptr, 0, data, error));
+}
+
+TEST_CASE("Trailing silence is trimmed and the cut is faded")
+{
+    // A sound pack pads its clips. That padding holds a voice open for its whole length, and at a
+    // sprint the next step starts before the last file has finished being silent at us.
+    SoundData data;
+    data.sampleRate = 1000;
+    data.samples.assign(1000, 0.0f);
+    for (int i = 0; i < 100; ++i)
+    {
+        data.samples[static_cast<size_t>(i)] = 0.8f;
+    }
+
+    const size_t removed = TrimTrailingSilence(data, 0.0025f, 0.005f);
+    CHECK(removed == 900);
+    REQUIRE(data.samples.size() == 100);
+    // The last sample is on its way down rather than landing on full scale, which is the click.
+    CHECK(data.samples.back() < 0.8f);
+    CHECK(data.samples.back() > 0.0f);
+    CHECK(data.samples[0] == Catch::Approx(0.8f));
+
+    // Nothing to trim leaves the buffer exactly as it was.
+    SoundData loud;
+    loud.sampleRate = 1000;
+    loud.samples.assign(10, 0.5f);
+    CHECK(TrimTrailingSilence(loud) == 0);
+    CHECK(loud.samples.size() == 10);
 }

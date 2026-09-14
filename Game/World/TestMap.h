@@ -47,6 +47,39 @@ inline constexpr float kEquipmentBayX = -13.5f; // everything you can pick up
 inline constexpr float kInteractionBayX = 13.5f; // everything you can open or get inside
 inline constexpr float kBayHalfWidth = 2.6f;
 inline constexpr float kBenchTop = 0.92f; // items sit on this, so they are at hand height
+
+// A row of low slabs, one per footstep surface, to walk along and hear them against each other.
+//
+// A footstep cannot be judged on its own and cannot be judged against silence: the question is
+// always whether this one sounds different from that one and whether either sounds like the floor
+// it is on. Five pads in a line answers that in about ten seconds of walking.
+//
+// Which surface is underfoot is worked out from these rectangles rather than from the collider you
+// are standing on. That is the right amount of machinery for a test lineup: when the game has real
+// levels, the surface will come off the material on the geometry, and this row will not be needed.
+struct SurfacePad
+{
+    const char* surface;
+    float centreX;
+    float centreZ;
+    float sizeX;
+    float sizeZ;
+};
+inline constexpr float kSurfaceRowZ = 5.0f;
+inline constexpr float kSurfacePadDepth = 3.0f;
+inline constexpr float kSurfacePadWidth = 1.8f;
+inline constexpr float kSurfacePadHeight = 0.06f;
+inline constexpr SurfacePad kSurfacePads[] = {
+    {"concrete", -3.8f, kSurfaceRowZ, kSurfacePadWidth, kSurfacePadDepth},
+    {"stone", -1.9f, kSurfaceRowZ, kSurfacePadWidth, kSurfacePadDepth},
+    {"metal", 0.0f, kSurfaceRowZ, kSurfacePadWidth, kSurfacePadDepth},
+    {"gravel", 1.9f, kSurfaceRowZ, kSurfacePadWidth, kSurfacePadDepth},
+    {"wood", 3.8f, kSurfaceRowZ, kSurfacePadWidth, kSurfacePadDepth},
+};
 } // namespace TestMapSpec
+
+// Which surface pad, if any, a world position is over. Null off the row, which the caller reads as
+// "the default surface": the rest of the map is one floor and has no opinion yet.
+const char* SurfaceUnderfoot(float worldX, float worldZ);
 
 } // namespace pred

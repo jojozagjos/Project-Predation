@@ -10,6 +10,7 @@
 #include <glm/gtc/quaternion.hpp>
 
 #include <cmath>
+#include <iterator>
 #include <string>
 #include <utility>
 
@@ -229,6 +230,34 @@ void BuildTestMap(Scene& scene, MeshLibrary& meshes, PhysicsWorld* physics)
     }
 
     // ---------------------------------------------------------------------
+    // Between the ledges and the stairs: the footstep surfaces, in a row.
+    //
+    // Low enough to walk straight onto without a step up, wide enough to get two or three paces on
+    // one before reaching the next. Each is tinted differently so it is obvious which is underfoot
+    // while listening, and the colours are roughly what the material looks like rather than an
+    // arbitrary palette: what you hear and what you see should agree.
+    // ---------------------------------------------------------------------
+    zone("surfaces", 0.0f, kSurfaceRowZ, 10.4f, kSurfacePadDepth + 0.6f, {0.28f, 0.28f, 0.30f});
+    {
+        const Material padMaterials[] = {
+            Material::Diffuse({0.46f, 0.46f, 0.45f}, 0.94f), // concrete: flat grey
+            Material::Diffuse({0.55f, 0.54f, 0.50f}, 0.78f), // stone: paler, harder
+            Material::Diffuse({0.40f, 0.44f, 0.48f}, 0.35f), // metal: blue-grey and shiny
+            Material::Diffuse({0.40f, 0.36f, 0.30f}, 0.98f), // gravel: brown and rough
+            Material::Diffuse({0.44f, 0.31f, 0.19f}, 0.85f), // wood: warm
+        };
+        static_assert(std::size(padMaterials) == std::size(kSurfacePads),
+                      "every surface pad needs a material");
+        for (size_t i = 0; i < std::size(kSurfacePads); ++i)
+        {
+            const SurfacePad& pad = kSurfacePads[i];
+            builder.AddBox(std::string("surface_") + pad.surface,
+                           AtPosition(pad.centreX, kSurfacePadHeight * 0.5f, pad.centreZ),
+                           {pad.sizeX, kSurfacePadHeight, pad.sizeZ}, padMaterials[i]);
+        }
+    }
+
+    // ---------------------------------------------------------------------
     // -Z: a corridor whose doorways narrow, for collision and squeeze tuning.
     // ---------------------------------------------------------------------
     constexpr float corridorZ = -14.0f;
@@ -329,6 +358,19 @@ void BuildTestMap(Scene& scene, MeshLibrary& meshes, PhysicsWorld* physics)
 
     PRED_LOG_INFO(Gameplay, "Test map built: {} entities, {} meshes, {} physics bodies", scene.EntityCount(),
                   meshes.Count(), physics != nullptr ? physics->GetStats().bodyCount : 0u);
+}
+
+const char* SurfaceUnderfoot(float worldX, float worldZ)
+{
+    for (const TestMapSpec::SurfacePad& pad : TestMapSpec::kSurfacePads)
+    {
+        if (std::abs(worldX - pad.centreX) <= pad.sizeX * 0.5f &&
+            std::abs(worldZ - pad.centreZ) <= pad.sizeZ * 0.5f)
+        {
+            return pad.surface;
+        }
+    }
+    return nullptr;
 }
 
 } // namespace pred

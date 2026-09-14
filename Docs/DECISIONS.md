@@ -912,3 +912,38 @@ What stays is the handful of POSIX branches inside the engine: the `#else` arms 
 `Engine/CMakeLists.txt`. They compile to nothing on Windows, they are the parts that were reasoned
 out carefully rather than typed quickly, and deleting inert correct code to look tidier is how you
 end up writing it twice.
+
+## ADR-052: Footsteps are recordings; everything else is still a recipe
+
+**Status**: accepted, 2026-09-14
+
+ADR-047 said sounds are recipes rather than recordings, and the reason held: there is no sound
+designer here, and a placeholder that can be tuned from a text file while the game runs is worth
+more than a library of files that can only be replaced. Footsteps are the exception, because a
+footstep is a physical event with a texture, and texture is the one thing a handful of tunable
+numbers cannot fake. A synthesised step is recognisably a burst of filtered noise no matter how
+carefully the numbers are set.
+
+So `Assets/Data/footsteps.json` names clips per surface and the engine reads wav. Everything else
+is still synthesised, and the synthesised footstep is still there and still used when the clips are
+missing: a sound pack that cannot be shipped must not be able to take the game's audio down with it.
+
+Three things fall out of reading real files rather than generating them.
+
+Trailing silence is trimmed on load. The pack's clips are around half a second each and hold about
+a sixth of a second of sound; the rest is padding, and padding holds a voice open for its whole
+length. At a sprint the next step would begin while two previous files were still being silent.
+
+Clips are picked at random with an immediate repeat refused, rather than alternating. Two clips
+alternating strictly is a pattern the ear finds within about six steps.
+
+Surfaces are levelled by a gain in the file, and the numbers are measured rather than guessed: each
+clip's RMS was taken after trimming and the gains bring each surface to roughly concrete's level.
+Gravel is recorded nearly three times louder than metal in this pack; without levelling, walking
+from one to the other is a volume change rather than a material change.
+
+Concrete is the default. Not by taste, because nobody here can claim to have listened carefully:
+its two variants are the shortest in the pack at 255 and 260 ms, they are within 5% of each other in
+level so alternating them does not read as a limp, and at a spectral centroid near 300 Hz they sit
+below the range you need clear to hear something moving in the dark. Metal's two variants are 414
+and 604 ms and 50% apart in level, which is the opposite of all three.

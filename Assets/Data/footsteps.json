@@ -1,0 +1,42 @@
+{
+  "_comment": [
+    "Footsteps, as recordings rather than recipes. Everything else this game makes a noise with is",
+    "synthesised from Data/sounds.json, and a footstep is where that stops being good enough: it is a",
+    "physical event with a texture, and texture is the one thing a handful of tunable numbers cannot",
+    "fake.",
+    "",
+    "Each surface names its clips. One is picked at random per footfall and its pitch is nudged, so a",
+    "run down a corridor does not turn into a metronome.",
+    "",
+    "gain levels the surfaces against each other. The numbers are not guesses: each clip was measured",
+    "after its trailing silence was trimmed, and the gain brings that surface's RMS to roughly the",
+    "same place as concrete's. Switching surface should change what the floor sounds like and not how",
+    "loud the game is."
+  ],
+  "_source": "JDSherbert - Footstep Foley SFX Pack (FREE), mono 48 kHz. See Docs/CREDITS.md.",
+
+  "default_surface": "concrete",
+
+  "surfaces": {
+    "concrete": {
+      "gain": 1.00,
+      "clips": [ "concrete_1.wav", "concrete_2.wav" ]
+    },
+    "stone": {
+      "gain": 1.20,
+      "clips": [ "stone_1.wav", "stone_2.wav" ]
+    },
+    "metal": {
+      "gain": 1.58,
+      "clips": [ "metal_1.wav", "metal_2.wav" ]
+    },
+    "gravel": {
+      "gain": 0.74,
+      "clips": [ "gravel_1.wav", "gravel_2.wav" ]
+    },
+    "wood": {
+      "gain": 0.98,
+      "clips": [ "wood_1.wav", "wood_2.wav" ]
+    }
+  }
+}

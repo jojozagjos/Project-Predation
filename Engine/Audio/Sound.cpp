@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 
 namespace pred
 {
@@ -99,6 +100,173 @@ SoundData Synthesise(const SoundRecipe& recipe, int sampleRate)
     }
 
     return data;
+}
+
+namespace
+{
+
+// RIFF stores everything little-endian. Reading byte by byte rather than memcpy-ing a struct means
+// this behaves the same on a big-endian machine, and costs nothing on the ones we have.
+uint16_t ReadU16(const unsigned char* p) { return static_cast<uint16_t>(p[0] | (p[1] << 8)); }
+
+uint32_t ReadU32(const unsigned char* p)
+{
+    return static_cast<uint32_t>(p[0]) | (static_cast<uint32_t>(p[1]) << 8) |
+           (static_cast<uint32_t>(p[2]) << 16) | (static_cast<uint32_t>(p[3]) << 24);
+}
+
+constexpr uint16_t kFormatPcm = 1;
+constexpr uint16_t kFormatFloat = 3;
+constexpr uint16_t kFormatExtensible = 0xFFFE;
+
+} // namespace
+
+bool LoadWav(const void* bytes, size_t byteCount, SoundData& out, std::string& error)
+{
+    const auto* data = static_cast<const unsigned char*>(bytes);
+    if (data == nullptr || byteCount < 12)
+    {
+        error = "not long enough to be a wav";
+        return false;
+    }
+    if (std::memcmp(data, "RIFF", 4) != 0 || std::memcmp(data + 8, "WAVE", 4) != 0)
+    {
+        error = "no RIFF/WAVE header";
+        return false;
+    }
+
+    uint16_t format = 0;
+    uint16_t channels = 0;
+    uint16_t bits = 0;
+    uint32_t rate = 0;
+    const unsigned char* samples = nullptr;
+    size_t sampleBytes = 0;
+
+    // Walk the chunks. Each is a four character id, a length, and that many bytes, padded to even.
+    size_t at = 12;
+    while (at + 8 <= byteCount)
+    {
+        const unsigned char* id = data + at;
+        uint32_t length = ReadU32(data + at + 4);
+        const size_t body = at + 8;
+        if (length > byteCount - body)
+        {
+            // A truncated final chunk. Take what is there rather than refusing the whole file: a
+            // recording that was cut short is still worth hearing most of.
+            length = static_cast<uint32_t>(byteCount - body);
+        }
+        if (std::memcmp(id, "fmt ", 4) == 0 && length >= 16)
+        {
+            format = ReadU16(data + body + 0);
+            channels = ReadU16(data + body + 2);
+            rate = ReadU32(data + body + 4);
+            bits = ReadU16(data + body + 14);
+            // WAVE_FORMAT_EXTENSIBLE hides the real format in a sub-chunk at the end. Only the
+            // first two bytes of that GUID matter and they hold the same numbers as `format`.
+            if (format == kFormatExtensible && length >= 26)
+            {
+                format = ReadU16(data + body + 24);
+            }
+        }
+        else if (std::memcmp(id, "data", 4) == 0)
+        {
+            samples = data + body;
+            sampleBytes = length;
+        }
+        at = body + length + (length & 1u);
+    }
+
+    if (channels == 0 || rate == 0 || bits == 0)
+    {
+        error = "no format chunk";
+        return false;
+    }
+    if (samples == nullptr)
+    {
+        error = "no data chunk";
+        return false;
+    }
+    const bool supported = (format == kFormatPcm && (bits == 8 || bits == 16 || bits == 24 || bits == 32)) ||
+                           (format == kFormatFloat && bits == 32);
+    if (!supported)
+    {
+        error = "format " + std::to_string(format) + " at " + std::to_string(bits) +
+                " bits is not one this reads";
+        return false;
+    }
+
+    const size_t bytesPerSample = bits / 8u;
+    const size_t stride = bytesPerSample * channels;
+    const size_t frames = stride > 0 ? sampleBytes / stride : 0;
+
+    out.sampleRate = static_cast<int>(rate);
+    out.samples.assign(frames, 0.0f);
+    for (size_t frame = 0; frame < frames; ++frame)
+    {
+        float total = 0.0f;
+        for (uint16_t channel = 0; channel < channels; ++channel)
+        {
+            const unsigned char* p = samples + frame * stride + channel * bytesPerSample;
+            float value = 0.0f;
+            if (format == kFormatFloat)
+            {
+                uint32_t raw = ReadU32(p);
+                std::memcpy(&value, &raw, sizeof(value));
+            }
+            else if (bits == 8)
+            {
+                // Eight bit wav is the odd one out: unsigned, centred on 128.
+                value = (static_cast<float>(p[0]) - 128.0f) / 128.0f;
+            }
+            else if (bits == 16)
+            {
+                value = static_cast<float>(static_cast<int16_t>(ReadU16(p))) / 32768.0f;
+            }
+            else if (bits == 24)
+            {
+                int32_t raw = static_cast<int32_t>(p[0]) | (static_cast<int32_t>(p[1]) << 8) |
+                              (static_cast<int32_t>(p[2]) << 16);
+                if (raw & 0x00800000) // sign extend
+                {
+                    raw |= static_cast<int32_t>(0xFF000000u);
+                }
+                value = static_cast<float>(raw) / 8388608.0f;
+            }
+            else
+            {
+                value = static_cast<float>(static_cast<int32_t>(ReadU32(p))) / 2147483648.0f;
+            }
+            total += value;
+        }
+        out.samples[frame] = total / static_cast<float>(channels);
+    }
+    return true;
+}
+
+size_t TrimTrailingSilence(SoundData& data, float threshold, float fadeSeconds)
+{
+    const size_t original = data.samples.size();
+    size_t end = original;
+    while (end > 0 && std::abs(data.samples[end - 1]) < threshold)
+    {
+        --end;
+    }
+    if (end == original || end == 0)
+    {
+        return 0;
+    }
+    data.samples.resize(end);
+
+    // Cutting at the first quiet sample still cuts somewhere, and a waveform that stops mid-slope
+    // is a click. A few milliseconds of fade is inaudible and removes the question.
+    const size_t fade = std::min(end, static_cast<size_t>(std::max(0.0f, fadeSeconds) *
+                                                          static_cast<float>(data.sampleRate)));
+    for (size_t i = 0; i < fade; ++i)
+    {
+        const float t = static_cast<float>(i + 1) / static_cast<float>(fade + 1);
+        data.samples[end - 1 - i] *= t;
+    }
+    return original - end;
 }
 
 std::vector<SoundLibraryEntry> LoadSoundRecipes(const std::string& jsonText)

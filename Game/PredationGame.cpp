@@ -145,6 +145,8 @@ bool PredationGame::OnInit(Application& app)
         }
     }
 
+    LoadFootsteps(app.GetAudio());
+
     m_items.LoadFromFile(Paths::AssetsRoot() / "Data" / "items.json");
     // Weapons load before the icons, because a weapon item draws its icon from the weapon's own
     // model and would otherwise fall back to the placeholder block.
@@ -2548,6 +2550,277 @@ void PredationGame::DrawTitleScreen()
 // input and interpolates everybody else. Nothing a client sends is written into the world: the host
 // runs the same movement code against its own physics and what comes out is what happened.
 
+void PredationGame::DrawSoundPanel()
+{
+    ImGui::SetNextWindowPos(ImVec2(420.0f, 470.0f), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(360.0f, 380.0f), ImGuiCond_FirstUseEver);
+    if (!ImGui::Begin("Sound"))
+    {
+        ImGui::End();
+        return;
+    }
+
+    AudioEngine& audio = m_app->GetAudio();
+    if (!audio.HasDevice())
+    {
+        ImGui::TextColored({0.90f, 0.55f, 0.35f, 1.0f}, "No audio device. Nothing will be heard.");
+    }
+
+    float master = audio.MasterGain();
+    if (ImGui::SliderFloat("Master", &master, 0.0f, 1.0f, "%.2f"))
+    {
+        audio.SetMasterGain(master);
+    }
+
+    const AudioEngine::Stats stats = audio.GetStats();
+    ImGui::Text("%d voices, %u started, %u stolen, %u clipped", stats.voices, stats.started,
+                stats.stolen, stats.clipped);
+
+    ImGui::Spacing();
+    ImGui::SeparatorText("Footsteps");
+
+    if (m_footsteps.empty())
+    {
+        ImGui::TextDisabled("No clips loaded. Falling back to the synthesised step.");
+        if (ImGui::Button("Play the synthesised one"))
+        {
+            PlaySound(m_sounds.step, m_camera.position, 0.30f, 1.0f, false);
+        }
+    }
+    else
+    {
+        // The surface the whole world walks on, for now. Changing it here is the point of the
+        // panel: walk a few steps, change it, walk a few more, and the difference is obvious in a
+        // way that no amount of looking at waveforms will tell you.
+        std::string current = m_footsteps[static_cast<size_t>(m_footstepSurface)].name;
+        if (ImGui::BeginCombo("Surface", current.c_str()))
+        {
+            for (int i = 0; i < static_cast<int>(m_footsteps.size()); ++i)
+            {
+                const bool selected = i == m_footstepSurface;
+                if (ImGui::Selectable(m_footsteps[static_cast<size_t>(i)].name.c_str(), selected))
+                {
+                    m_footstepSurface = i;
+                }
+                if (selected)
+                {
+                    ImGui::SetItemDefaultFocus();
+                }
+            }
+            ImGui::EndCombo();
+        }
+
+        // What the floor says, which overrides the combo while standing on the surface row. Shown
+        // rather than hidden, so a clip that sounds wrong can be blamed on the right surface.
+        if (const char* underfoot = SurfaceUnderfoot(m_player.State().position.x,
+                                                     m_player.State().position.z))
+        {
+            ImGui::TextColored({0.70f, 0.95f, 0.75f, 1.0f}, "standing on %s", underfoot);
+        }
+        else
+        {
+            ImGui::TextDisabled("off the surface row: using the choice above");
+        }
+
+        FootstepSurface& surface = m_footsteps[static_cast<size_t>(m_footstepSurface)];
+        ImGui::SliderFloat("Surface gain", &surface.gain, 0.0f, 3.0f, "%.2f");
+        ImGui::SetItemTooltip("Levels this surface against the others. Not saved: when it sounds "
+                              "right, put the number in Assets/Data/footsteps.json.");
+
+        // One step, and a run of them, because a footstep is judged in a sequence and not alone.
+        // A single clip can sound fine and still turn into a machine gun at a sprint.
+        if (ImGui::Button("One step"))
+        {
+            float gain = 0.30f;
+            const SoundId clip = PickFootstep(gain, m_footstepSurface);
+            PlaySound(clip, m_camera.position, gain, 1.0f, false);
+        }
+        ImGui::SameLine();
+        if (ImGui::Button(m_footstepAudition > 0.0f ? "Stop walking" : "Walk on the spot"))
+        {
+            m_footstepAudition = m_footstepAudition > 0.0f ? 0.0f : 0.001f;
+        }
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(90.0f);
+        ImGui::SliderFloat("##cadence", &m_footstepCadence, 0.20f, 1.00f, "%.2f s");
+        ImGui::SetItemTooltip("Seconds between steps. About 0.55 is a walk and 0.30 a sprint.");
+
+        ImGui::Spacing();
+        ImGui::TextDisabled("Clips in this surface");
+        for (size_t i = 0; i < surface.clips.size(); ++i)
+        {
+            ImGui::PushID(static_cast<int>(i));
+            if (ImGui::SmallButton("Play"))
+            {
+                PlaySound(surface.clips[i], m_camera.position, 0.30f * surface.gain, 1.0f, false);
+            }
+            ImGui::SameLine();
+            ImGui::Text("%zu", i + 1);
+            ImGui::PopID();
+        }
+    }
+
+    ImGui::End();
+}
+
+void PredationGame::LoadFootsteps(AudioEngine& audio)
+{
+    m_footsteps.clear();
+    m_footstepSurface = 0;
+
+    const std::filesystem::path file = Paths::AssetsRoot() / "Data" / "footsteps.json";
+    std::ifstream stream(file);
+    if (!stream)
+    {
+        PRED_LOG_INFO(Gameplay, "No {}; footsteps fall back to the synthesised one",
+                      file.filename().string());
+        return;
+    }
+    const std::string text((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
+    nlohmann::json root = nlohmann::json::parse(text, nullptr, false);
+    if (root.is_discarded() || !root.is_object())
+    {
+        PRED_LOG_WARN(Gameplay, "{} is not valid JSON; footsteps fall back to the synthesised one",
+                      file.filename().string());
+        return;
+    }
+
+    const std::filesystem::path folder = Paths::AssetsRoot() / "Audio" / "Footsteps";
+    const auto surfaces = root.find("surfaces");
+    if (surfaces == root.end() || !surfaces->is_object())
+    {
+        PRED_LOG_WARN(Gameplay, "{} has no surfaces", file.filename().string());
+        return;
+    }
+
+    size_t trimmed = 0;
+    for (const auto& [name, value] : surfaces->items())
+    {
+        if (!value.is_object())
+        {
+            continue;
+        }
+        FootstepSurface surface;
+        surface.name = name;
+        const auto gain = value.find("gain");
+        if (gain != value.end() && gain->is_number())
+        {
+            surface.gain = gain->get<float>();
+        }
+        const auto clips = value.find("clips");
+        if (clips == value.end() || !clips->is_array())
+        {
+            continue;
+        }
+        for (const auto& clip : *clips)
+        {
+            if (!clip.is_string())
+            {
+                continue;
+            }
+            const std::string leaf = clip.get<std::string>();
+            const std::filesystem::path path = folder / leaf;
+            std::ifstream wav(path, std::ios::binary);
+            if (!wav)
+            {
+                PRED_LOG_WARN(Gameplay, "Footstep clip missing: {}", path.string());
+                continue;
+            }
+            const std::string bytes((std::istreambuf_iterator<char>(wav)),
+                                    std::istreambuf_iterator<char>());
+            SoundData data;
+            std::string error;
+            if (!LoadWav(bytes.data(), bytes.size(), data, error))
+            {
+                PRED_LOG_WARN(Gameplay, "Footstep clip {}: {}", leaf, error);
+                continue;
+            }
+            trimmed += TrimTrailingSilence(data);
+            const SoundId id = audio.Add("step/" + name + "/" + leaf, std::move(data));
+            if (id != kInvalidSound)
+            {
+                surface.clips.push_back(id);
+            }
+        }
+        if (!surface.clips.empty())
+        {
+            m_footsteps.push_back(std::move(surface));
+        }
+    }
+
+    // Whichever surface the file names, or the first one it described.
+    const auto preferred = root.find("default_surface");
+    if (preferred != root.end() && preferred->is_string())
+    {
+        const std::string want = preferred->get<std::string>();
+        for (size_t i = 0; i < m_footsteps.size(); ++i)
+        {
+            if (m_footsteps[i].name == want)
+            {
+                m_footstepSurface = static_cast<int>(i);
+                break;
+            }
+        }
+    }
+
+    if (m_footsteps.empty())
+    {
+        PRED_LOG_WARN(Gameplay, "No footstep clips loaded; falling back to the synthesised one");
+        return;
+    }
+    int clips = 0;
+    for (const FootstepSurface& surface : m_footsteps)
+    {
+        clips += static_cast<int>(surface.clips.size());
+    }
+    PRED_LOG_INFO(Gameplay, "Footsteps: {} clips over {} surfaces, on '{}'. Trimmed {:.2f}s of "
+                            "trailing silence.",
+                  clips, m_footsteps.size(), m_footsteps[m_footstepSurface].name,
+                  static_cast<double>(trimmed) / 48000.0);
+}
+
+int PredationGame::SurfaceIndexAt(const glm::vec3& position) const
+{
+    // The test map's surface row, if this is standing on it. Everywhere else keeps whatever the
+    // panel last chose, which is what makes the panel useful away from the row.
+    if (const char* name = SurfaceUnderfoot(position.x, position.z))
+    {
+        for (size_t i = 0; i < m_footsteps.size(); ++i)
+        {
+            if (m_footsteps[i].name == name)
+            {
+                return static_cast<int>(i);
+            }
+        }
+    }
+    return m_footstepSurface;
+}
+
+SoundId PredationGame::PickFootstep(float& gain, int surfaceIndex) const
+{
+    if (m_footsteps.empty())
+    {
+        return m_sounds.step;
+    }
+    const FootstepSurface& surface =
+        m_footsteps[static_cast<size_t>(std::clamp(surfaceIndex, 0,
+                                                   static_cast<int>(m_footsteps.size()) - 1))];
+    if (surface.clips.empty())
+    {
+        return m_sounds.step;
+    }
+    // Not round-robin. Two clips alternating strictly is a pattern the ear finds within about six
+    // steps; picking at random and refusing an immediate repeat is not.
+    size_t pick = static_cast<size_t>(m_footstepRandom() % surface.clips.size());
+    if (surface.clips.size() > 1 && surface.clips[pick] == m_lastFootstep)
+    {
+        pick = (pick + 1) % surface.clips.size();
+    }
+    m_lastFootstep = surface.clips[pick];
+    gain *= surface.gain;
+    return m_lastFootstep;
+}
+
 void PredationGame::PlaySound(SoundId sound, const glm::vec3& at, float gain, float pitch,
                               bool positioned)
 {
@@ -2571,6 +2844,20 @@ void PredationGame::UpdateSounds(float dt)
     // Where the ears are. The camera rather than the body, because the camera is what the player is
     // looking through: spectating a teammate, their ears are the ones that matter.
     audio.SetListener(m_camera.position, m_camera.Forward(), glm::vec3(0.0f, 1.0f, 0.0f));
+
+    // Walking on the spot for the sound panel. Above the check below on purpose, so it keeps going
+    // while the game is paused: judging a footstep means listening to it and not to the game.
+    if (m_footstepAudition > 0.0f)
+    {
+        m_footstepAudition += dt;
+        if (m_footstepAudition >= m_footstepCadence)
+        {
+            m_footstepAudition -= m_footstepCadence;
+            float gain = 0.30f;
+            const SoundId clip = PickFootstep(gain, m_footstepSurface);
+            PlaySound(clip, m_camera.position, gain, 0.96f + 0.08f * m_footstepAudition, false);
+        }
+    }
 
     if (m_screen != Screen::Playing)
     {
@@ -2596,8 +2883,12 @@ void PredationGame::UpdateSounds(float dt)
         if (crossed(0.0f) || crossed(0.5f))
         {
             // A little variation in pitch, or twenty identical steps in a row read as a machine.
-            const float wobble = 0.94f + 0.12f * std::fmod(std::abs(phase) * 7.13f, 1.0f);
-            PlaySound(m_sounds.step, where, gain, wobble, positioned);
+            // With recorded clips the random pick does most of that work and the pitch nudge only
+            // has to stop two plays of the same clip being identical, so it is gentler than it was.
+            float loudness = gain;
+            const SoundId clip = PickFootstep(loudness, SurfaceIndexAt(where));
+            const float wobble = 0.96f + 0.08f * std::fmod(std::abs(phase) * 7.13f, 1.0f);
+            PlaySound(clip, where, loudness, wobble, positioned);
         }
         previous = phase;
     };
@@ -5976,6 +6267,7 @@ void PredationGame::OnImGui()
     }
 
     DrawNetworkPanel();
+    DrawSoundPanel();
 
     ImGui::SetNextWindowPos(ImVec2(8.0f, 470.0f), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSize(ImVec2(400.0f, 620.0f), ImGuiCond_FirstUseEver);

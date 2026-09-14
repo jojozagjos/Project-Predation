@@ -26,6 +26,7 @@
 
 #include <map>
 #include <memory>
+#include <random>
 #include <string>
 #include <vector>
 
@@ -268,6 +269,18 @@ private:
     void UpdateSounds(float dt);
     void PlaySound(SoundId sound, const glm::vec3& at, float gain = 1.0f, float pitch = 1.0f,
                    bool positioned = true);
+    // Reads Data/footsteps.json and the clips it names. Missing or broken leaves the synthesised
+    // footstep in place rather than making the game silent underfoot.
+    void LoadFootsteps(AudioEngine& audio);
+    // One clip from the given surface, and that surface's loudness folded into `gain`.
+    SoundId PickFootstep(float& gain, int surfaceIndex) const;
+    // Which surface a position is standing on. The test map has a row of them; everywhere else
+    // there is nothing to go on yet, so whatever the sound panel last chose stands.
+    int SurfaceIndexAt(const glm::vec3& position) const;
+    // The sound panel: master volume, what the mixer is doing, and somewhere to audition footsteps.
+    // A footstep is judged in a sequence, so this can walk on the spot at a chosen cadence rather
+    // than only playing one.
+    void DrawSoundPanel();
     void UpdateMantleStow();
     // Whether the hands are busy with something that is not the inventory. Nothing changes hands
     // while both of them are on a ledge.
@@ -506,6 +519,31 @@ private:
         SoundId death = kInvalidSound;
     };
     SoundSet m_sounds;
+
+    // Recorded footsteps, one group of clips per surface.
+    //
+    // The rest of the game's sounds are synthesised from a recipe, and footsteps are where that
+    // stops being enough: a footstep is a physical event with a texture. Which surface is underfoot
+    // is one value for the whole world today, because the test map is one floor; when the map has
+    // more than one kind of ground under it, this is what the ground will pick.
+    struct FootstepSurface
+    {
+        std::string name;
+        float gain = 1.0f;
+        std::vector<SoundId> clips;
+    };
+    std::vector<FootstepSurface> m_footsteps;
+    int m_footstepSurface = 0;
+    // Which clip was used last, so the same one is not heard twice running.
+    mutable SoundId m_lastFootstep = kInvalidSound;
+    // Deliberately not the simulation's random source: what a footstep sounds like must never be
+    // able to change where a bullet goes.
+    mutable std::minstd_rand m_footstepRandom{20260914u};
+    // Walking on the spot from the sound panel: seconds since the last step, and how far apart they
+    // are. Zero means not walking.
+    float m_footstepAudition = 0.0f;
+    float m_footstepCadence = 0.55f;
+
     // Where the walk cycle had got to last frame, so a footfall is heard as the foot passes rather
     // than on a clock of its own.
     float m_lastStridePhase = 0.0f;

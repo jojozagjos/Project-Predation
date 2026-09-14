@@ -52,6 +52,30 @@ struct SoundRecipe
 // test can assert on one and two machines in a game never disagree about what a gunshot sounds like.
 SoundData Synthesise(const SoundRecipe& recipe, int sampleRate);
 
+// Reads a RIFF/WAVE file that is already in memory.
+//
+// Recipes are still how most of this game's sounds are made, but a real recording beats a
+// synthesised one the moment somebody has a real recording, and footsteps are where the difference
+// is most obvious: a footstep is a physical event with a texture, and texture is the one thing a
+// handful of tunable numbers cannot fake.
+//
+// Handles what a sound pack actually ships: 8, 16, 24 and 32 bit PCM and 32 bit float, any channel
+// count, any rate. Stereo and above are averaged down to mono, because the mixer positions sounds
+// itself and a stereo source has already decided which ear it belongs in. The chunk list is walked
+// rather than assumed: plenty of tools write a JUNK or LIST chunk before the format, and a reader
+// that seeks to a fixed offset works on its own files and nothing else.
+//
+// Returns false and fills `error` with something a person can act on.
+bool LoadWav(const void* bytes, size_t byteCount, SoundData& out, std::string& error);
+
+// Drops trailing near-silence, and fades the last few milliseconds so the cut cannot click.
+//
+// Sound packs pad the end of a clip: the footsteps this was written for are half-second files
+// holding about a sixth of a second of sound. That padding costs a voice slot for the rest of its
+// length, and at a sprint the next step starts before the previous file has finished being silent
+// at us. Returns how many samples were removed.
+size_t TrimTrailingSilence(SoundData& data, float threshold = 0.0025f, float fadeSeconds = 0.005f);
+
 // Reads a table of recipes from JSON, as the rest of the game's tuning is read. Returns how many
 // were understood; anything malformed is skipped with a warning rather than taking the file down.
 struct SoundLibraryEntry
