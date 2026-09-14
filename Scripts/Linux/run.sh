@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Usage: Scripts/run.sh [preset] [game args...]
+# Usage: Scripts/Linux/run.sh [preset] [game args...]
 # Plays whichever build is actually there, preferring release.
 set -euo pipefail
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 PRESET=""
 if [[ $# -gt 0 && -d "$ROOT/build/$1" ]]; then
@@ -22,7 +22,7 @@ PRESET="${PRESET:-linux-release}"
 EXE="${PRED_BUILD_DIR:-$ROOT/build/$PRESET}/bin/ProjectPredation"
 if [[ ! -x "$EXE" ]]; then
     echo "[run] Nothing built yet: $EXE"
-    echo "[run] Build it with Scripts/build.sh $PRESET, or run ./play.sh which builds and then runs."
+    echo "[run] Build it with Scripts/Linux/build.sh $PRESET, or run Scripts/Linux/play.sh which builds and then runs."
     exit 1
 fi
 echo "[run] Playing the $PRESET build."

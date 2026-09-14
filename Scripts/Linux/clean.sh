@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Usage: Scripts/clean.sh [all]
+# Usage: Scripts/Linux/clean.sh [all]
 # Removes the intermediate trees vcpkg keeps after it has finished building a library. Nothing here
 # needs downloading again. "all" also removes the compiled output, so the next build is a full one.
 set -euo pipefail
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 echo "[clean] vcpkg intermediates"
 for preset in linux-debug linux-release linux-relwithdebinfo; do

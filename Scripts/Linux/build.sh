@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Usage: Scripts/build.sh [preset]      default preset: linux-release
+# Usage: Scripts/Linux/build.sh [preset]      default preset: linux-release
 # Configures (if needed) and builds the given CMake preset.
 #
 # The Windows scripts have a block at the top that holds the console window open when the file is
@@ -8,7 +8,7 @@
 set -euo pipefail
 
 PRESET="${1:-linux-release}"
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 if [[ -z "${VCPKG_ROOT:-}" ]]; then
     for candidate in "$HOME/vcpkg" "/opt/vcpkg" "/usr/local/vcpkg"; do

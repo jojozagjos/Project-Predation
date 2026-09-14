@@ -25,11 +25,11 @@ The Build Tools installer needs administrator rights. The other tools install pe
 The helper scripts locate MSVC through `vswhere`, set up the x64 environment, and drive CMake presets:
 
 ```
-Scripts\build.cmd                    configure + build   (windows-debug)
-Scripts\build.cmd windows-release    other presets: windows-relwithdebinfo, windows-release
-Scripts\test.cmd                     run unit tests through CTest
-Scripts\run.cmd                      launch the game
-Scripts\smoke.cmd                    headless 60-frame run: screenshot + log check
+Scripts\Windows\build.cmd                    configure + build   (windows-debug)
+Scripts\Windows\build.cmd windows-release    other presets: windows-relwithdebinfo, windows-release
+Scripts\Windows\test.cmd                     run unit tests through CTest
+Scripts\Windows\run.cmd                      launch the game
+Scripts\Windows\smoke.cmd                    headless 60-frame run: screenshot + log check
 ```
 
 `smoke.cmd` is the fastest way to answer "is it still fundamentally working?" without looking at a window.
@@ -84,7 +84,7 @@ already declares:
 }
 ```
 
-Then build with `Scripts\build.cmd local-debug`, and set `PRED_BUILD_DIR` before `Scripts\run.cmd`.
+Then build with `Scripts\Windows\build.cmd local-debug`, and set `PRED_BUILD_DIR` before `Scripts\Windows\run.cmd`.
 
 ## 5. Triplets and linking
 
@@ -138,7 +138,7 @@ build\windows-debug\bin\ProjectPredation.exe --frames 30 --screenshot build\shot
 
 ## Sending it to somebody
 
-    Scripts\package.cmd
+    Scripts\Windows\package.cmd
 
 Builds a release, lays out `build\package\ProjectPredation` and zips it. The folder holds the
 executable, the data files, and the shaders the build compiled, all under an `Assets` folder beside

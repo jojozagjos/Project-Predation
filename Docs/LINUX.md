@@ -8,8 +8,8 @@ build will find things. That is expected and it is why this file exists.
 
 - **Presets.** `linux-debug` and `linux-release`, on the `x64-linux` triplet, using the same vcpkg
   manifest as Windows. They are hidden on a Windows host, the way the Windows ones are on Linux.
-- **Scripts.** `play.sh` at the top, and `build.sh`, `test.sh`, `run.sh` and `clean.sh` beside their
-  `.cmd` equivalents. They take the same arguments and print the same things.
+- **Scripts.** `Scripts/Linux/` holds `play.sh`, `build.sh`, `test.sh`, `run.sh` and `clean.sh`,
+  mirroring `Scripts/Windows/`. They take the same arguments and print the same things.
 - **The window.** A renderer on X11 or Wayland needs the display connection as well as the window,
   and the engine only ever handed over the window. `Window::NativeDisplay()` is what was missing;
   without it a first port comes up to a black screen and no error at all.
@@ -29,14 +29,14 @@ build will find things. That is expected and it is why this file exists.
 - **The audio device.** SDL3 opens ALSA or PipeWire here rather than WASAPI. The engine asks SDL
   for a default playback device and mixes into it, so there is nothing platform-specific to write,
   but it has not been heard.
-- **Packaging.** `package.cmd` lays out a folder and zips it. There is no `package.sh` yet.
+- **Packaging.** `Scripts/Windows/package.cmd` lays out a folder and zips it. There is no `package.sh` yet.
 
 ## Building it
 
 ```
 git clone https://github.com/microsoft/vcpkg ~/vcpkg && ~/vcpkg/bootstrap-vcpkg.sh
 export VCPKG_ROOT=~/vcpkg
-./play.sh
+./Scripts/Linux/play.sh
 ```
 
 The dependencies want the usual development packages for X11, Wayland, ALSA and OpenGL; vcpkg says

@@ -251,15 +251,15 @@ Picking one triplet and sticking to it prevents a whole category of pain.
 ## 10. Practical workflow
 
 ```bash
-Scripts\build.cmd windows-debug
+Scripts\Windows\build.cmd windows-debug
 ```
 
 ```bash
-Scripts\test.cmd windows-debug
+Scripts\Windows\test.cmd windows-debug
 ```
 
 ```bash
-Scripts\run.cmd windows-debug
+Scripts\Windows\run.cmd windows-debug
 ```
 
 **In VS Code:** install the CMake Tools and C/C++ extensions (already recommended in

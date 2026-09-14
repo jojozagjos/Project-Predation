@@ -19,11 +19,18 @@ unit tests, and documentation. No gameplay yet.
 
 Prerequisites and the full build walkthrough are in [Docs/BUILDING.md](Docs/BUILDING.md).
 
+Double-click `Scripts\Windows\Play.cmd`. It builds whatever changed and then starts the game.
+
+Or, from a command prompt:
+
 ```
-Scripts\build.cmd            (configure + build, preset windows-debug)
-Scripts\test.cmd             (run unit tests)
-Scripts\run.cmd              (launch the game)
+Scripts\Windows\build.cmd            (configure + build, preset windows-debug)
+Scripts\Windows\test.cmd             (run unit tests)
+Scripts\Windows\run.cmd              (launch the game)
 ```
+
+On Linux the same scripts live in `Scripts/Linux/` with `.sh` endings. See
+[Scripts/README.md](Scripts/README.md).
 
 In the game: hold the right mouse button to look, WASD to move, F3 for the debug overlay,
 grave (`) for the console. Type `help` in the console.
@@ -38,7 +45,7 @@ grave (`) for the console. Type `help` in the console.
 | `Assets/` | Config, data, maps, models, textures, audio |
 | `Tests/` | Unit tests (Catch2) |
 | `Docs/` | Design and engineering documentation |
-| `Scripts/` | Build, test, and run helpers |
+| `Scripts/` | Build, test, and run helpers, split into `Windows/` and `Linux/` |
 | `cmake/` | CMake modules |
 
 ## Documentation

@@ -1,25 +1,16 @@
 @echo off
-rem Double-clicked from Explorer, a script window closes the instant the script finishes and
-rem takes everything it printed with it, so a run that worked and a run that failed look exactly
-rem the same: nothing. Run again under a shell that waits, and say so at the end.
-if defined PRED_KEEP_OPEN goto :pred_body
-rem Anything started through "cmd /c", which is how Explorer starts a double-clicked script, has the
-rem script named on the shell's own command line. A script typed at a prompt that is already open
-rem does not: that shell was started for the person, not for this file. Matching the name rather
-rem than the full path is deliberate, because Explorer does not always hand over the same spelling
-rem of a path that the script sees for itself, and a missed pause is a window that vanishes.
-rem
-rem Pausing too often costs nothing: with no console to read a key from, pause returns at once.
-if defined PRED_NO_PAUSE goto :pred_body
-echo %cmdcmdline% | find /i "%~nx0" >nul || goto :pred_body
+rem Holds the window open when this is double-clicked. See Scripts/README.md for why.
+if defined PRED_KEEP_OPEN goto :body
+if defined PRED_NO_PAUSE goto :body
+echo %cmdcmdline% | "%SystemRoot%\System32\find.exe" /i "%~nx0" >nul || goto :body
 set "PRED_KEEP_OPEN=1"
 call "%~f0" %*
 echo.
 echo [%~n0] finished with code %errorlevel%. Press any key to close this window.
 pause >nul
 exit /b %errorlevel%
-:pred_body
-rem Usage: Scripts\clean.cmd [all]
+:body
+rem Usage: Scripts\Windows\clean.cmd [all]
 rem
 rem Reclaims the disk space a C++ build leaves lying about. By default it removes only work that
 rem can be regenerated without downloading anything: the intermediate trees vcpkg keeps after it
@@ -30,7 +21,7 @@ rem "all" additionally removes the compiled output of both presets, which means 
 rem full one. It does not touch vcpkg's downloads, so even that stays offline.
 
 setlocal
-set "ROOT=%~dp0.."
+set "ROOT=%~dp0..\.."
 
 echo [clean] vcpkg intermediates
 for %%d in (
