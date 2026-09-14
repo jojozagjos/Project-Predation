@@ -1,5 +1,6 @@
 #include "Engine/Audio/AudioEngine.h"
 #include "Engine/Audio/Sound.h"
+#include "Engine/Audio/VoiceCapture.h"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -618,4 +619,92 @@ TEST_CASE("A stream that falls behind drops the oldest, not the newest", "[audio
     INFO("queued " << queued << " samples of " << flood.size() << " pushed");
     CHECK(queued <= 48000 / 2 + 1);
     CHECK(queued > 48000 / 4);
+}
+
+TEST_CASE("Captured audio comes out in whole frames", "[audio][voice][capture]")
+{
+    // The device hands over whatever it has, in whatever size it likes. What goes on the wire has
+    // to be the same size every time, so the queue is cut into frames here and a part frame waits.
+    //
+    // Configured rather than started, and driven through OnRecorded rather than through a
+    // microphone. Opening a real device in a test would mix whatever the build machine can hear
+    // into the thing being measured, which is not a test.
+    VoiceCapture capture;
+    VoiceCapture::Settings settings;
+    settings.sampleRate = 48000;
+    settings.frameSeconds = 0.020f; // 960 samples
+    capture.Configure(settings);
+    REQUIRE(capture.FrameSamples() == 960);
+
+    std::vector<float> frame;
+    CHECK_FALSE(capture.ReadFrame(frame));
+
+    // One and a half frames in: one comes out, the half waits rather than being sent short.
+    std::vector<float> recorded(1440, 0.3f);
+    capture.OnRecorded(recorded.data(), recorded.size());
+    REQUIRE(capture.ReadFrame(frame));
+    CHECK(frame.size() == 960);
+    CHECK_FALSE(capture.ReadFrame(frame));
+
+    // The rest of it arrives and completes the second frame.
+    capture.OnRecorded(recorded.data(), 480);
+    REQUIRE(capture.ReadFrame(frame));
+    CHECK(frame.size() == 960);
+}
+
+TEST_CASE("The microphone queue drops the oldest when nobody reads it", "[audio][voice][capture]")
+{
+    // A game that stalls must not then transmit the backlog. Everybody else has moved on, and
+    // audio that arrives late in a conversation is worse than audio that never arrives.
+    VoiceCapture capture;
+    VoiceCapture::Settings settings;
+    settings.sampleRate = 8000;
+    settings.frameSeconds = 0.020f;    // 160 samples
+    settings.maxQueuedSeconds = 0.10f; // 800 samples
+    capture.Configure(settings);
+
+    std::vector<float> loud(16000, 0.0f);
+    for (size_t i = 0; i < loud.size(); ++i)
+    {
+        // A ramp, so which part survived can be told from the values.
+        loud[i] = static_cast<float>(i) / static_cast<float>(loud.size());
+    }
+    capture.OnRecorded(loud.data(), loud.size());
+
+    std::vector<float> frame;
+    REQUIRE(capture.ReadFrame(frame));
+    REQUIRE(frame.size() == 160);
+    // The samples that survived are from the end of what was recorded, not the beginning.
+    INFO("first surviving sample is " << frame.front());
+    CHECK(frame.front() > 0.85f);
+
+    // And only the cap's worth is there: five frames of 160, minus the one just taken.
+    int remaining = 0;
+    while (capture.ReadFrame(frame))
+    {
+        ++remaining;
+    }
+    INFO(remaining << " further frames were queued");
+    CHECK(remaining == 4);
+}
+
+TEST_CASE("The level meter follows the loudest sample in the frame", "[audio][voice][capture]")
+{
+    VoiceCapture capture;
+    VoiceCapture::Settings settings;
+    settings.sampleRate = 8000;
+    settings.frameSeconds = 0.020f;
+    capture.Configure(settings);
+
+    std::vector<float> quiet(160, 0.02f);
+    capture.OnRecorded(quiet.data(), quiet.size());
+    std::vector<float> frame;
+    REQUIRE(capture.ReadFrame(frame));
+    CHECK(capture.LastLevel() == Catch::Approx(0.02f));
+
+    std::vector<float> shout(160, 0.0f);
+    shout[80] = -0.9f; // negative, because loudness is not a sign
+    capture.OnRecorded(shout.data(), shout.size());
+    REQUIRE(capture.ReadFrame(frame));
+    CHECK(capture.LastLevel() == Catch::Approx(0.9f));
 }

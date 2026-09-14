@@ -1,0 +1,83 @@
+#pragma once
+
+#include <cstddef>
+#include <mutex>
+#include <string>
+#include <vector>
+
+struct SDL_AudioStream;
+
+namespace pred
+{
+
+// A microphone, read in frames.
+//
+// The counterpart of the mixer's streams: that plays sound that is still arriving, and this is
+// where sound that is still being made comes from. Neither knows about the other or about the
+// network, which is what lets both be tested without a sound card or a second machine.
+//
+// Mono at a fixed rate, because everything downstream of it wants exactly that: a voice is one
+// source in one place and the mixer positions it, so a stereo microphone has already decided
+// something that is not its business.
+//
+// The device is opened when somebody starts talking and closed when they stop, rather than held
+// open for the session. That costs the first few tens of milliseconds of the first word, and it
+// buys the operating system's microphone indicator meaning what it says: a game that holds the
+// microphone open all match and promises it is not listening is asking to be taken on trust, and
+// this way there is nothing to take on trust.
+class VoiceCapture
+{
+public:
+    struct Settings
+    {
+        int sampleRate = 48000;
+        // How long a frame is. Twenty milliseconds is what voice codecs work in, so choosing it
+        // here means nothing has to be re-cut later.
+        float frameSeconds = 0.020f;
+        // How much unread audio may pile up before the oldest is dropped. A game that stalls must
+        // not then transmit the backlog: what arrives late in a conversation is worse than useless,
+        // because everybody else has moved on.
+        float maxQueuedSeconds = 0.40f;
+    };
+
+    VoiceCapture() = default;
+    ~VoiceCapture();
+    VoiceCapture(const VoiceCapture&) = delete;
+    VoiceCapture& operator=(const VoiceCapture&) = delete;
+
+    // Applies the settings without touching a device. Start does this first; a test does only this,
+    // so that framing and backlog can be checked deterministically rather than against whatever a
+    // build machine has plugged into it.
+    void Configure(const Settings& settings);
+    // Opens the microphone. False means there is not one, or it is refused, which is not an error:
+    // the game plays without a voice and says so once.
+    bool Start(const Settings& settings);
+    void Stop();
+    bool Running() const { return m_stream != nullptr; }
+    const std::string& Message() const { return m_message; }
+
+    int SampleRate() const { return m_settings.sampleRate; }
+    size_t FrameSamples() const;
+
+    // The next whole frame, or false when one has not been recorded yet. Frames rather than
+    // whatever happens to be there, so what goes on the wire is the same size every time.
+    bool ReadFrame(std::vector<float>& out);
+
+    // How loud the last frame read was, 0 to 1, as the peak sample. For a level meter, and later for
+    // deciding whether anybody is actually speaking.
+    float LastLevel() const;
+
+    // Called by SDL from its own thread. Public because SDL needs a plain function to reach it.
+    void OnRecorded(const float* samples, size_t count);
+
+private:
+    Settings m_settings;
+    SDL_AudioStream* m_stream = nullptr;
+    std::string m_message;
+
+    mutable std::mutex m_mutex;
+    std::vector<float> m_pending;
+    float m_lastLevel = 0.0f;
+};
+
+} // namespace pred

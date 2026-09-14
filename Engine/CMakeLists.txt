@@ -29,6 +29,8 @@ set(PRED_ENGINE_SOURCES
     Audio/Sound.cpp
     Audio/AudioEngine.h
     Audio/AudioEngine.cpp
+    Audio/VoiceCapture.h
+    Audio/VoiceCapture.cpp
 
     Animation/Skeleton.h
     Animation/Skeleton.cpp
