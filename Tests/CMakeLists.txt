@@ -7,6 +7,7 @@ add_executable(PredationTests
     BodyPoseTests.cpp
     InteractionTests.cpp
     WeaponTests.cpp
+    AudioTests.cpp
     NetTests.cpp
     NetSessionTests.cpp
     NetUdpTests.cpp

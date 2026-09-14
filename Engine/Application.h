@@ -5,6 +5,7 @@
 #include "Engine/Debug/Console.h"
 #include "Engine/Debug/DebugOverlay.h"
 #include "Engine/Debug/ImGuiLayer.h"
+#include "Engine/Audio/AudioEngine.h"
 #include "Engine/Physics/PhysicsWorld.h"
 #include "Engine/Platform/Input.h"
 #include "Engine/Platform/Window.h"
@@ -85,6 +86,9 @@ public:
     TextureLibrary& GetTextures() { return m_textures; }
     SceneRenderer& GetSceneRenderer() { return m_sceneRenderer; }
     PhysicsWorld& GetPhysics() { return m_physics; }
+    // Everything that makes a noise. Present whether or not the machine has a sound card: with no
+    // device it takes the sounds, holds the voices, and mixes nothing.
+    AudioEngine& GetAudio() { return m_audio; }
 
     // Reported by the game each frame so the F3 overlay can show world statistics.
     void SetEntityCount(size_t count) { m_entityCount = count; }
@@ -119,6 +123,7 @@ private:
     MeshLibrary m_meshes;
     TextureLibrary m_textures;
     SceneRenderer m_sceneRenderer;
+    AudioEngine m_audio;
     PhysicsWorld m_physics;
     DebugDraw m_debugDraw;
     ImGuiLayer m_imgui;

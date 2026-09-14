@@ -38,6 +38,8 @@ CVar<bool> cv_bgfxStats{"r.bgfx_stats", false, "Show bgfx's built-in statistics 
 CVar<bool> cv_overlay{"debug.overlay", false, "Show the F3 debug overlay"};
 CVar<bool> cv_physicsEnabled{"physics.enabled", true, "Step the physics simulation"};
 CVar<int> cv_physicsSteps{"physics.collision_steps", 1, "Jolt collision steps per simulation tick"};
+CVar<float> cv_audioVolume{"audio.volume", 0.8f, "How loud everything is, 0 to 1", CVarFlags::Archive};
+CVar<int> cv_audioRate{"audio.sample_rate", 48000, "Output sample rate in Hz", CVarFlags::Archive};
 
 std::string TimestampForFile()
 {
@@ -439,6 +441,17 @@ bool Application::InitSubsystems(const CommandLine& commandLine)
     {
         return false;
     }
+    // Not checked, deliberately. A machine with no sound card, or one running this over a remote
+    // desktop, still plays the game; the engine holds its sounds and its voices either way and
+    // simply mixes nothing. Refusing to start over it would be the tail wagging the dog.
+    {
+        AudioEngine::Settings audioSettings;
+        audioSettings.sampleRate = std::clamp(cv_audioRate.Get(), 8000, 192000);
+        m_audio.Init(audioSettings);
+        m_audio.SetMasterGain(cv_audioVolume.Get());
+        cv_audioVolume.OnChange([this](CVarBase&) { m_audio.SetMasterGain(cv_audioVolume.Get()); });
+    }
+
     if (!m_imgui.Init(m_window, m_renderer, m_shaders))
     {
         return false;
@@ -466,6 +479,12 @@ void Application::ShutdownSubsystems()
     }
     cv_vsync.ClearOnChange();
     cv_bgfxStats.ClearOnChange();
+    cv_audioVolume.ClearOnChange();
+    // First of everything, and before SDL is shut down. The audio device runs a thread of its own
+    // that is inside the mixer whenever it likes, so it has to be stopped while the thing it is
+    // mixing still exists. Left to the destructor it ran after SDL_Quit had already taken the
+    // subsystem out from under it.
+    m_audio.Shutdown();
     m_fileWatcher.Clear();
     m_console.Shutdown();
     m_imgui.Shutdown();

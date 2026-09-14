@@ -792,3 +792,40 @@ neither may name a host the game then goes and talks to. A reply is believed onl
 it names, that address has to be on this network, and a control URL has to stay on the device whose
 description it came from. The mapping itself has an hour's lease, renewed while the game is up, so
 a crash cannot leave a hole in the router open for ever.
+
+## ADR-046: The mixer is a function, and the sound card is the outer layer
+
+**Status**: accepted, 2026-09-13
+
+Sound is the one subsystem where a fault is hard to see and easy to hear, and "play it and listen"
+is not a test anybody can run twice the same way. So the mixer takes a list of voices and a
+listener and returns samples, and everything that decides how loud a thing is and which ear it is
+in is arithmetic that a test can assert on: attenuation with distance, panning with the listener's
+own facing, a voice ending when it runs out, the ceiling that stops eight gunshots at once tearing,
+and the gain smoothing that stops a moving source clicking.
+
+The device wraps that rather than containing it. With no sound card the engine still takes sounds,
+holds voices and answers questions; it simply never mixes. A headless run therefore makes no noise
+and takes no special path to do it, and the game does not refuse to start on a machine with the
+audio switched off.
+
+One thing this arrangement will not catch, and it is worth being plain about: whether a gunshot
+sounds like a gunshot. Nothing here can. The recipes are a starting point to be tuned by ear.
+
+## ADR-047: Sounds are recipes, not recordings
+
+**Status**: accepted, 2026-09-13
+
+Every sound is generated at startup from a line of JSON: how long, how fast it decays, how much of
+it is hiss and how much a note, what note, how far that note slides, how much top is taken off, and
+how hard the click on the front is. Twelve sounds are a few hundred kilobytes of samples built in a
+few milliseconds.
+
+The same reason the models are boxes. There is no sound designer on this project, and a placeholder
+that can be tuned in a text file while the game runs is worth more right now than a library of wav
+files that can only be replaced. Every field is something a person can hear the effect of, so
+tuning is a thing the person making the game can actually do.
+
+It is deterministic, which matters more than it looks: the same recipe gives the same samples on
+every machine, so two people in a game never disagree about what a gunshot sounds like, and a test
+can assert on a waveform.

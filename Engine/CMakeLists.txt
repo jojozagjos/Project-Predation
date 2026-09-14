@@ -24,6 +24,11 @@ set(PRED_ENGINE_SOURCES
     Core/SystemInfo.cpp
     Core/Math.h
 
+    Audio/Sound.h
+    Audio/Sound.cpp
+    Audio/AudioEngine.h
+    Audio/AudioEngine.cpp
+
     Animation/Skeleton.h
     Animation/Skeleton.cpp
     Animation/IK.h

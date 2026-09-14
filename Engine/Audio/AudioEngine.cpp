@@ -4,8 +4,11 @@
 
 #include <SDL3/SDL.h>
 
+#include <glm/geometric.hpp>
+
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace pred
 {
@@ -344,10 +347,16 @@ void AudioEngine::MixLocked(float* out, int frames)
                 distance > 1e-4f ? glm::dot(toSource / distance, m_listenerRight) : 0.0f;
             const float closeness = std::min(distance / std::max(voice.nearDistance, 0.01f), 1.0f);
             const float pan = sideways * closeness * 0.85f;
-            // Constant power, so a sound crossing in front of you does not dip in the middle.
+            // Constant power, so a sound crossing in front of you does not dip in the middle: the
+            // two channels together hold the same energy at every angle, which is what the ear
+            // hears rather than the amplitude in either one.
+            //
+            // And no louder than one at the extremes. Scaling this up so that a hard-panned sound
+            // reaches full amplitude in its own channel is the obvious mistake and makes every
+            // sound beside the listener clip on its own, before anything else is mixed in.
             const float angle = (pan + 1.0f) * 0.25f * 3.14159265f;
-            left *= std::cos(angle) * 1.41421356f * falloff;
-            right *= std::sin(angle) * 1.41421356f * falloff;
+            left *= std::cos(angle) * falloff;
+            right *= std::sin(angle) * falloff;
         }
         if (voice.stopping)
         {

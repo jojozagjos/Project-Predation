@@ -8,6 +8,7 @@
 #include "Game/Items/ItemDatabase.h"
 #include "Game/Items/ItemAppearance.h"
 #include "Game/Items/ItemIcons.h"
+#include "Engine/Audio/AudioEngine.h"
 #include "Game/Net/NetSession.h"
 #include "Engine/Net/PortMapper.h"
 #include "Game/Player/PlayerBody.h"
@@ -253,6 +254,10 @@ private:
     const std::vector<RemotePlayerView>& RemotePlayers() const;
     // Brings the local player back: upright, standing, and not still wearing their own corpse.
     // Puts what is in the hands away for a climb and takes it back out at the top.
+    // Footsteps, landings and where the ears are. Called once a frame.
+    void UpdateSounds(float dt);
+    void PlaySound(SoundId sound, const glm::vec3& at, float gain = 1.0f, float pitch = 1.0f,
+                   bool positioned = true);
     void UpdateMantleStow();
     // Whether the hands are busy with something that is not the inventory. Nothing changes hands
     // while both of them are on a ledge.
@@ -418,6 +423,8 @@ private:
         // which is the gun everyone saw fly away from a player pulling themselves over a wall.
         glm::vec3 mantleEdge{0.0f};
         float mantlePhase = 0.0f;
+        // Their walk cycle last frame, for their footsteps.
+        float lastStridePhase = 0.0f;
     };
     Screen m_screen = Screen::Title;
     bool m_paused = false;
@@ -453,6 +460,26 @@ private:
     // when there was nothing to put away.
     int m_mantleStowedSlot = -1;
     bool m_mantleStowing = false;
+    // Every sound the game plays, looked up by name once rather than on every shot.
+    struct SoundSet
+    {
+        SoundId gunshot = kInvalidSound;
+        SoundId dryFire = kInvalidSound;
+        SoundId reloadOut = kInvalidSound;
+        SoundId reloadIn = kInvalidSound;
+        SoundId step = kInvalidSound;
+        SoundId land = kInvalidSound;
+        SoundId door = kInvalidSound;
+        SoundId locker = kInvalidSound;
+        SoundId pickup = kInvalidSound;
+        SoundId drop = kInvalidSound;
+        SoundId hurt = kInvalidSound;
+        SoundId death = kInvalidSound;
+    };
+    SoundSet m_sounds;
+    // Where the walk cycle had got to last frame, so a footfall is heard as the foot passes rather
+    // than on a clock of its own.
+    float m_lastStridePhase = 0.0f;
     int m_spectating = -1;
     // Set when a dead player asks to watch somebody else. Consumed on the next spectator update.
     bool m_spectateNext = false;

@@ -114,6 +114,37 @@ bool PredationGame::OnInit(Application& app)
     m_body.Build(m_scene, app.GetMeshes(), m_player.Config());
     m_body.SetTextureLibrary(app.GetTextures());
 
+    // Every sound the game makes, built from recipes rather than loaded from recordings. The whole
+    // library is a few hundred kilobytes of samples generated in a few milliseconds at startup.
+    {
+        const std::filesystem::path file = Paths::AssetsRoot() / "Data" / "sounds.json";
+        std::ifstream stream(file);
+        if (stream)
+        {
+            const std::string text((std::istreambuf_iterator<char>(stream)),
+                                   std::istreambuf_iterator<char>());
+            const int made = app.GetAudio().AddRecipes(text);
+            PRED_LOG_INFO(Gameplay, "{} sounds built from {}", made, file.filename().string());
+            AudioEngine& audio = app.GetAudio();
+            m_sounds.gunshot = audio.Find("gunshot");
+            m_sounds.dryFire = audio.Find("dry_fire");
+            m_sounds.reloadOut = audio.Find("reload_out");
+            m_sounds.reloadIn = audio.Find("reload_in");
+            m_sounds.step = audio.Find("step_hard");
+            m_sounds.land = audio.Find("land");
+            m_sounds.door = audio.Find("door");
+            m_sounds.locker = audio.Find("locker");
+            m_sounds.pickup = audio.Find("pickup");
+            m_sounds.drop = audio.Find("drop");
+            m_sounds.hurt = audio.Find("hurt");
+            m_sounds.death = audio.Find("death");
+        }
+        else
+        {
+            PRED_LOG_WARN(Gameplay, "No sound recipes at {}; the game will be silent", file.string());
+        }
+    }
+
     m_items.LoadFromFile(Paths::AssetsRoot() / "Data" / "items.json");
     // Weapons load before the icons, because a weapon item draws its icon from the weapon's own
     // model and would otherwise fall back to the placeholder block.
@@ -1072,6 +1103,12 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
     {
     case WorldEventKind::DoorMoved:
         m_world.SetDoorOpen(event.index, event.flag, m_interactions);
+        // Heard where the door is rather than where the player is, which is the point of a door
+        // opening somewhere else in the building.
+        if (const WorldObjects::Door* moved = m_world.GetDoor(event.index); moved != nullptr)
+        {
+            PlaySound(m_sounds.door, moved->hinge, 0.8f);
+        }
         break;
 
     case WorldEventKind::PickupTaken:
@@ -1100,6 +1137,7 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
                 PRED_LOG_WARN(Gameplay, "Only had room for {} of {}", stored, pickup->count);
             }
         }
+        PlaySound(m_sounds.pickup, event.position, 0.6f, 1.0f, event.player != LocalPlayerId());
         m_world.ConsumePickup(event.index, m_scene, m_app->GetPhysics(), m_interactions);
         break;
     }
@@ -1111,6 +1149,7 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
                             static_cast<ItemId>(event.item), static_cast<int>(event.other),
                             event.position, event.direction, LoadFromWire(event.rounds),
                             LoadFromWire(event.reserve), static_cast<int>(event.index));
+        PlaySound(m_sounds.drop, event.position, 0.7f);
         break;
 
     case WorldEventKind::LockerUsed:
@@ -1143,6 +1182,9 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
             tracer.to = event.direction;
             tracer.hit = event.flag;
             m_tracers.push_back(tracer);
+            // And it is heard where it was fired from, which is most of what tells a player there
+            // is somebody else in the building and roughly where.
+            PlaySound(m_sounds.gunshot, event.position, 1.0f, 1.0f, true);
 
             // And their weapon kicks and flashes. A snapshot cannot carry this: firing happens on
             // one frame and snapshots go out on others, so the moment would be missed most times.
@@ -1160,6 +1202,7 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
         {
             // The host is the authority on health, so this is set rather than subtracted.
             m_player.State().health = std::max(m_player.State().health - event.amount, 0.0f);
+            PlaySound(m_sounds.hurt, m_player.State().position, 0.8f, 1.0f, false);
         }
         break;
 
@@ -1169,6 +1212,7 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
             m_player.State().health = 0.0f;
             m_player.State().alive = false;
             m_deathImpulse = event.direction;
+            PlaySound(m_sounds.death, m_player.State().position, 1.0f, 1.0f, false);
         }
         break;
 
@@ -1966,6 +2010,12 @@ void PredationGame::DrawTitleScreen()
             ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
             ImGui::PushTextWrapPos(0.0f);
             ImGui::TextUnformatted(m_ports.Message().c_str());
+            // The way round that needs nothing from this end at all, and the one most likely to
+            // work. Reaching out through a router is what a router is for; being reached through
+            // one is what needs its permission. If the other machine can get that permission and
+            // this one cannot, the game goes the other way round and nothing else changes.
+            ImGui::TextUnformatted("Whoever can open a game should: joining one works from here "
+                                   "either way.");
             ImGui::PopTextWrapPos();
             ImGui::PopStyleColor();
             break;
@@ -2088,6 +2138,86 @@ void PredationGame::DrawTitleScreen()
 // The host runs the real simulation for everyone. A client predicts its own movement from local
 // input and interpolates everybody else. Nothing a client sends is written into the world: the host
 // runs the same movement code against its own physics and what comes out is what happened.
+
+void PredationGame::PlaySound(SoundId sound, const glm::vec3& at, float gain, float pitch,
+                              bool positioned)
+{
+    if (sound == kInvalidSound)
+    {
+        return;
+    }
+    AudioEngine::PlayDesc desc;
+    desc.sound = sound;
+    desc.position = at;
+    desc.positioned = positioned;
+    desc.gain = gain;
+    desc.pitch = pitch;
+    m_app->GetAudio().Play(desc);
+}
+
+void PredationGame::UpdateSounds(float dt)
+{
+    AudioEngine& audio = m_app->GetAudio();
+
+    // Where the ears are. The camera rather than the body, because the camera is what the player is
+    // looking through: spectating a teammate, their ears are the ones that matter.
+    audio.SetListener(m_camera.position, m_camera.Forward(), glm::vec3(0.0f, 1.0f, 0.0f));
+
+    if (m_screen != Screen::Playing)
+    {
+        return;
+    }
+
+    // Footsteps, from the stride the body is already walking to.
+    //
+    // Not from a timer of its own: the leg animation runs on a phase that goes round once per pair
+    // of steps, and a foot lands as it passes nought and a half. Reading that is the only way the
+    // sound and the foot arrive together, and a footstep that lands a tenth of a second from the
+    // foot is worse than none.
+    const auto footfalls = [&](float phase, float& previous, const glm::vec3& where, bool moving,
+                               float gain, bool positioned)
+    {
+        if (!moving)
+        {
+            previous = phase;
+            return;
+        }
+        const auto crossed = [&](float mark)
+        { return (previous < mark && phase >= mark) || (previous > phase && mark < 0.25f); };
+        if (crossed(0.0f) || crossed(0.5f))
+        {
+            // A little variation in pitch, or twenty identical steps in a row read as a machine.
+            const float wobble = 0.94f + 0.12f * std::fmod(std::abs(phase) * 7.13f, 1.0f);
+            PlaySound(m_sounds.step, where, gain, wobble, positioned);
+        }
+        previous = phase;
+    };
+
+    const PlayerState& local = m_player.State();
+    const bool localMoving = local.alive && local.grounded &&
+                             glm::length(glm::vec2(local.velocity.x, local.velocity.z)) > 0.8f;
+    // Your own steps are not placed in the world either: they come from under you, and panning
+    // them puts your own feet in one ear.
+    footfalls(local.stridePhase, m_lastStridePhase, local.position, localMoving, 0.30f, false);
+
+    for (const std::unique_ptr<RemoteAvatar>& avatar : m_avatars)
+    {
+        const bool moving = avatar->state.alive && avatar->state.grounded &&
+                            glm::length(glm::vec2(avatar->state.velocity.x,
+                                                  avatar->state.velocity.z)) > 0.8f;
+        footfalls(avatar->state.stridePhase, avatar->lastStridePhase, avatar->drawn, moving, 0.75f,
+                  true);
+    }
+
+    // And landing, which is an event rather than a phase.
+    if (local.landedThisTick && local.fallPeakSpeed > 2.0f)
+    {
+        const float force = std::clamp(local.fallPeakSpeed / 9.0f, 0.2f, 1.0f);
+        PlaySound(m_sounds.land, local.position, force * 0.7f, 1.0f, false);
+    }
+
+    (void)dt;
+}
 
 void PredationGame::UpdateMantleStow()
 {
@@ -2456,6 +2586,29 @@ void PredationGame::SyncRemoteAvatars(float frameDeltaSeconds)
 void PredationGame::RegisterNetCommands()
 {
     Console& console = m_app->GetConsole();
+
+    console.RegisterCommand(
+        "snd", "Play a sound by name, to hear one without making it happen: snd <name> [gain]",
+        [this](const std::vector<std::string>& args)
+        {
+            if (args.size() < 2)
+            {
+                m_app->GetConsole().PrintError("snd <name> [gain]");
+                return;
+            }
+            AudioEngine& audio = m_app->GetAudio();
+            const SoundId sound = audio.Find(args[1]);
+            if (sound == kInvalidSound)
+            {
+                m_app->GetConsole().PrintError("No sound called '" + args[1] + "'");
+                return;
+            }
+            const float gain = args.size() > 2 ? std::strtof(args[2].c_str(), nullptr) : 1.0f;
+            PlaySound(sound, m_camera.position, gain, 1.0f, false);
+            m_app->GetConsole().Print("Played " + args[1] +
+                                      (audio.HasDevice() ? "" : " (no audio device, so silently)"));
+        },
+        "snd <name> [gain]");
 
     console.RegisterCommand(
         "net_host", "Start hosting on a UDP port: net_host [port]",
@@ -2962,6 +3115,13 @@ void PredationGame::ResolveShots()
     }
     PhysicsWorld& physics = m_app->GetPhysics();
     m_weaponKick = 1.0f;
+    // Your own shot is played flat in both ears rather than placed in the world. It comes from a
+    // weapon a forearm's length from your face: positioning it means panning it hard to whichever
+    // side the barrel is on, which is both wrong and the most obvious way a mix sounds broken.
+    for (size_t i = 0; i < m_shots.size(); ++i)
+    {
+        PlaySound(m_sounds.gunshot, MuzzlePosition(), 0.85f, 1.0f, false);
+    }
 
     for (const FireEvent& shot : m_shots)
     {
@@ -4531,6 +4691,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
     }
 
     AgeTracers(deltaSeconds);
+    UpdateSounds(deltaSeconds);
     SyncDynamicProps();
     app.GetSceneRenderer().SetWireframe(cv_wireframe.Get());
     app.SetEntityCount(m_scene.EntityCount());
@@ -5378,6 +5539,23 @@ void PredationGame::OnImGui()
             ImGui::Separator();
         }
         DrawPlayerPanel();
+
+        // What the mixer is doing. Sound is the one subsystem with nothing to look at, so the
+        // numbers are the only way to tell a silent bug from a quiet moment.
+        ImGui::Separator();
+        AudioEngine& audio = m_app->GetAudio();
+        const AudioEngine::Stats sound = audio.GetStats();
+        ImGui::Text("Audio %s  %d voices, %u played", audio.HasDevice() ? "on" : "OFF (no device)",
+                    sound.voices, sound.started);
+        if (sound.stolen > 0 || sound.clipped > 0)
+        {
+            ImGui::TextDisabled("%u cut short, %u samples limited", sound.stolen, sound.clipped);
+        }
+        float volume = audio.MasterGain();
+        if (ImGui::SliderFloat("Volume", &volume, 0.0f, 1.5f, "%.2f"))
+        {
+            audio.SetMasterGain(volume);
+        }
     }
     ImGui::End();
 

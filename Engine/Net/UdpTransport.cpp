@@ -924,6 +924,14 @@ std::vector<std::string> LocalNetworkAddresses()
                 {
                     continue;
                 }
+                // And nothing an adapter gave itself because nothing gave it one. A machine with a
+                // Bluetooth adapter and two virtual ones has three of these, all of them 169.254,
+                // none of them reachable by anybody, and all of them printed above the one address
+                // that works. A list where most entries are wrong is a list nobody can use.
+                if (entry.rfind("169.254.", 0) == 0)
+                {
+                    continue;
+                }
                 if (std::find(found.begin(), found.end(), entry) == found.end())
                 {
                     found.push_back(entry);
