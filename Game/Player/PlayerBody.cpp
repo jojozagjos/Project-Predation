@@ -659,16 +659,28 @@ void PlayerBody::UpdatePosture(const PlayerState& state, const PlayerView& view,
     // in the air. What a person does is drop the downhill hip, which is a thing the body could not
     // do here at all.
     //
-    // Measured from what each foot is already standing on, which is last frame's answer and a frame
+    // Measured from the surface the feet are standing on, which is last frame's answer and a frame
     // late. A slope does not change under somebody in a sixtieth of a second, and taking it from
     // here rather than tracing again means the hips follow the ground the feet actually found
     // rather than a second opinion about it.
     //
+    // From the ground's *normal* rather than from the difference in height between the two feet.
+    // The height difference was the obvious reading and it is wrong while walking: a foot in mid
+    // swing is higher than the one on the ground because it is being carried, not because the
+    // ground under it is higher. So the difference oscillated once per step and the hips rolled
+    // with it, which on a ramp or a staircase read as the whole body wobbling side to side. A
+    // surface's normal is a property of the surface. It says the same thing wherever on the ramp
+    // the foot happens to be, and it says nothing at all while the foot is in the air, which is
+    // also correct.
+    //
     // Only part of the way, and only while upright. Following it completely reads as a body poured
     // sideways, and lying down the hips belong flat against whatever they are lying on.
     {
-        const float across = m_feet[kRight].groundY - m_feet[kLeft].groundY;
-        const float span = 2.0f * Ratio::kHipHalfWidth * m_rig.height;
+        const glm::vec3 right{std::cos(m_bodyYaw), 0.0f, std::sin(m_bodyYaw)};
+        // How far the ground tilts across the hips. Negated because a surface rising to the right
+        // has its normal leaning to the left, and the hip that drops is the one on the low side.
+        const float across = -glm::dot(m_groundNormal, right);
+        const float span = std::max(m_groundNormal.y, 0.10f);
         const float wanted = std::atan2(across, span) * m_config.hipSlopeFollow *
                              (1.0f - m_flatness) * (1.0f - m_airborne);
         m_hipRoll = SmoothTowards(m_hipRoll, glm::clamp(wanted, -glm::radians(m_config.hipSlopeMax),
@@ -2776,6 +2788,21 @@ void PlayerBody::UpdateLegs(const PlayerState& state, const PlayerView& view,
         // Which way the surface under this foot faces, kept so that moving the foot across it later
         // can follow its height without a second trace.
         const glm::vec3 groundNormal = hit ? hit.normal : glm::vec3(0.0f, 1.0f, 0.0f);
+        // Kept for the hips, which tilt to follow the ground across them. Only from a foot that is
+        // actually on something: a foot in mid air is over whatever it is about to land on, or over
+        // nothing, and neither is the surface being stood on. Eased rather than taken outright,
+        // because walking off one surface onto another changes this in a single frame and the hips
+        // should arrive at the new slope rather than snap to it.
+        if (hit && state.grounded)
+        {
+            m_groundNormal = glm::normalize(
+                SmoothTowards(m_groundNormal, groundNormal, m_config.stanceBlendSpeed, dt));
+        }
+        else if (!state.grounded)
+        {
+            m_groundNormal = glm::normalize(
+                SmoothTowards(m_groundNormal, glm::vec3(0.0f, 1.0f, 0.0f), m_config.stanceBlendSpeed, dt));
+        }
         const float base = view.renderPosition.y;
         const float rise = glm::mix(m_config.maxFootRise, 0.10f, m_flatness);
         float groundY =

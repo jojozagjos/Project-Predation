@@ -14,6 +14,7 @@
 #if defined(_WIN32)
 #    include <winsock2.h>
 #    include <ws2tcpip.h>
+#    include <iphlpapi.h>
 using SocketHandle = SOCKET;
 constexpr SocketHandle kInvalidSocket = INVALID_SOCKET;
 #else
@@ -986,6 +987,86 @@ std::vector<std::string> LocalNetworkAddresses()
     {
         return found;
     }
+
+#if defined(_WIN32)
+    // Ask Windows for the adapters rather than resolving our own hostname.
+    //
+    // Resolving the hostname returns an address for every adapter the machine has, and a developer
+    // machine has several that no other machine can reach: WSL and Docker each install a virtual
+    // Ethernet adapter with an address in private space, and those look exactly like a real LAN
+    // address in a list. Telling a friend 172.21.96.1 and waiting is a bad ten minutes.
+    //
+    // The discriminator is the default gateway. A virtual switch for containers has none, because
+    // there is nowhere for it to go; the adapter plugged into the actual network has one. It is not
+    // a perfect rule — a machine on a switch with no router would be filtered out too — so if it
+    // leaves nothing at all, everything found is used instead of showing an empty list.
+    std::vector<std::string> gatewayed;
+    ULONG size = 16 * 1024;
+    std::vector<unsigned char> buffer(size);
+    ULONG result = GetAdaptersAddresses(AF_INET, GAA_FLAG_SKIP_ANYCAST | GAA_FLAG_SKIP_MULTICAST |
+                                                    GAA_FLAG_SKIP_DNS_SERVER,
+                                        nullptr, reinterpret_cast<IP_ADAPTER_ADDRESSES*>(buffer.data()),
+                                        &size);
+    if (result == ERROR_BUFFER_OVERFLOW)
+    {
+        buffer.resize(size);
+        result = GetAdaptersAddresses(AF_INET, GAA_FLAG_SKIP_ANYCAST | GAA_FLAG_SKIP_MULTICAST |
+                                                   GAA_FLAG_SKIP_DNS_SERVER,
+                                      nullptr, reinterpret_cast<IP_ADAPTER_ADDRESSES*>(buffer.data()),
+                                      &size);
+    }
+    if (result == NO_ERROR)
+    {
+        for (auto* adapter = reinterpret_cast<IP_ADAPTER_ADDRESSES*>(buffer.data()); adapter != nullptr;
+             adapter = adapter->Next)
+        {
+            if (adapter->OperStatus != IfOperStatusUp || adapter->IfType == IF_TYPE_SOFTWARE_LOOPBACK)
+            {
+                continue;
+            }
+            const bool hasGateway = adapter->FirstGatewayAddress != nullptr;
+            for (auto* unicast = adapter->FirstUnicastAddress; unicast != nullptr;
+                 unicast = unicast->Next)
+            {
+                if (unicast->Address.lpSockaddr == nullptr ||
+                    unicast->Address.lpSockaddr->sa_family != AF_INET)
+                {
+                    continue;
+                }
+                const auto* address = reinterpret_cast<const sockaddr_in*>(unicast->Address.lpSockaddr);
+                char text[INET_ADDRSTRLEN] = {};
+                if (inet_ntop(AF_INET, &address->sin_addr, text, sizeof(text)) == nullptr)
+                {
+                    continue;
+                }
+                const std::string entry = text;
+                if (entry.rfind("127.", 0) == 0 || entry.rfind("169.254.", 0) == 0)
+                {
+                    continue;
+                }
+                if (std::find(found.begin(), found.end(), entry) == found.end())
+                {
+                    found.push_back(entry);
+                }
+                if (hasGateway && std::find(gatewayed.begin(), gatewayed.end(), entry) == gatewayed.end())
+                {
+                    gatewayed.push_back(entry);
+                }
+            }
+        }
+    }
+    if (!gatewayed.empty())
+    {
+        found = std::move(gatewayed);
+    }
+    if (!found.empty())
+    {
+        SocketSystem::Release();
+        return found;
+    }
+    // Nothing came back. Fall through to the hostname lookup below rather than reporting that this
+    // machine has no network at all.
+#endif
 
     char host[256] = {};
     if (gethostname(host, sizeof(host) - 1) == 0)

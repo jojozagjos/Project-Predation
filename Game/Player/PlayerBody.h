@@ -645,6 +645,10 @@ private:
     // How far the hips are tilted to follow the ground across them, in radians. Positive drops the
     // left hip, which is what standing on a slope that rises to the right asks for.
     float m_hipRoll = 0.0f;
+    // The surface being stood on, smoothed. Drives the hip tilt. A normal rather than a difference
+    // in foot heights, because a foot in mid swing is higher for reasons that have nothing to do
+    // with the ground: see UpdatePosture.
+    glm::vec3 m_groundNormal{0.0f, 1.0f, 0.0f};
     // The live posture, smoothed towards the target stance so transitions animate rather than snap.
     Config::StancePose m_pose_blend;
     float m_stridePhase = 0.0f;

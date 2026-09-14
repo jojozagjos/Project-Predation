@@ -13,6 +13,7 @@
 
 #include <glm/common.hpp>
 #include <glm/gtc/constants.hpp>
+#include <glm/gtc/quaternion.hpp>
 #include <glm/matrix.hpp>
 
 #include <algorithm>
@@ -62,16 +63,24 @@ struct BodyHarness
     PlayerConfig config;
     PlayerInput input;
 
-    BodyHarness()
+    // `slopeDegrees` tilts the ground about X, so -Z is uphill. Zero is the flat floor every
+    // other test wants and builds exactly what it built before.
+    explicit BodyHarness(float slopeDegrees = 0.0f)
     {
         PhysicsWorld::Settings settings;
         settings.workerThreads = 1;
         REQUIRE(physics.Init(settings));
-        physics.CreateBox({60.0f, 0.5f, 60.0f}, Transform{{0.0f, -0.5f, 0.0f}}, BodyMotion::Static);
+        Transform ground{{0.0f, -0.5f, 0.0f}};
+        if (slopeDegrees != 0.0f)
+        {
+            ground.rotation =
+                glm::angleAxis(glm::radians(slopeDegrees), glm::vec3(1.0f, 0.0f, 0.0f));
+        }
+        physics.CreateBox({60.0f, 0.5f, 60.0f}, ground, BodyMotion::Static);
         physics.OptimizeBroadPhase();
 
         body.BuildForSimulation(config);
-        REQUIRE(player.Init(physics, config, {0.0f, 0.05f, 0.0f}));
+        REQUIRE(player.Init(physics, config, {0.0f, 0.60f, 0.0f}));
     }
 
     ~BodyHarness()
@@ -2839,4 +2848,100 @@ TEST_CASE("Standing on a slope puts both feet on the slope", "[body][pose]")
     // little more leg it is under four; with hips that follow the ground it is under two and a half,
     // which is a third of the thickness of the foot.
     CHECK(worstGap < 0.03f);
+}
+
+TEST_CASE("Walking up a slope does not rock the hips from side to side", "[body][gait][slope]")
+{
+    // The hips tilt to follow the ground across them, which is the degree of freedom that lets the
+    // downhill foot reach the floor at all. The first version of it read the slope from the
+    // difference in height between the two feet, and that is wrong the moment anybody walks: a foot
+    // in mid swing is higher than the planted one because it is being carried, not because the
+    // ground under it is higher. On a ramp the difference swung once per step, the hips rolled with
+    // it, and the whole body wobbled side to side going up a slope or a staircase.
+    //
+    // Uphill is -Z, which is also straight ahead, so a body facing up the ramp has no cross-slope
+    // at all and the correct amount of roll is none. Anything that moves here is the gait leaking in.
+    BodyHarness harness(15.0f);
+    harness.SetStance(PlayerStance::Standing);
+    harness.Settle(180);
+
+    // Up the slope, which is forward.
+    harness.SetTravel(glm::vec3(0.0f, 0.0f, -1.0f));
+    harness.Settle(120);
+
+    // The pelvis's own up axis, against the world's. Their difference across the body is the roll.
+    const auto rollOf = [&]()
+    {
+        const glm::vec3 up = glm::normalize(glm::vec3(harness.body.GetPose().Global(harness.Rig().pelvis)[1]));
+        const glm::vec3 right{std::cos(harness.input.yaw), 0.0f, std::sin(harness.input.yaw)};
+        return std::asin(std::clamp(glm::dot(up, right), -1.0f, 1.0f));
+    };
+
+    // Two full strides is plenty: the wobble was once per step, so any swing shows up inside this.
+    float lowest = 1.0f;
+    float highest = -1.0f;
+    bool stepped = false;
+    const float startPhase = harness.State().stridePhase;
+    for (int i = 0; i < 180; ++i)
+    {
+        harness.Tick();
+        const float roll = rollOf();
+        lowest = std::min(lowest, roll);
+        highest = std::max(highest, roll);
+        if (i > 30 && std::abs(harness.State().stridePhase - startPhase) > 0.4f)
+        {
+            stepped = true;
+        }
+    }
+
+    // The gait really did run, or this measured a statue and proves nothing.
+    REQUIRE(stepped);
+    const float slopeSwing = glm::degrees(highest - lowest);
+
+    // A walk sways its hips on purpose, and that sway is in this reading too. So the question is
+    // not whether the number is small; it is whether walking up a slope adds anything to what
+    // walking on the flat already does. The same walk on level ground is the baseline.
+    BodyHarness flat;
+    flat.SetStance(PlayerStance::Standing);
+    flat.Settle(180);
+    flat.SetTravel(glm::vec3(0.0f, 0.0f, -1.0f));
+    flat.Settle(120);
+    float flatLow = 1.0f;
+    float flatHigh = -1.0f;
+    for (int i = 0; i < 180; ++i)
+    {
+        flat.Tick();
+        const glm::vec3 up =
+            glm::normalize(glm::vec3(flat.body.GetPose().Global(flat.Rig().pelvis)[1]));
+        const glm::vec3 right{std::cos(flat.input.yaw), 0.0f, std::sin(flat.input.yaw)};
+        const float roll = std::asin(std::clamp(glm::dot(up, right), -1.0f, 1.0f));
+        flatLow = std::min(flatLow, roll);
+        flatHigh = std::max(flatHigh, roll);
+    }
+    const float flatSwing = glm::degrees(flatHigh - flatLow);
+
+    INFO("hip roll swung " << slopeSwing << " degrees on the slope and " << flatSwing
+                           << " on the flat");
+    // Reading the slope off the feet added roll on top of that sway, once per step. Following the
+    // ground's normal instead adds essentially nothing.
+    CHECK(slopeSwing < flatSwing + 1.0f);
+}
+
+TEST_CASE("The hips drop towards the low side of a cross slope", "[body][gait][slope]")
+{
+    // And the tilt still has to happen, or the fix above would be "hold the hips level", which
+    // brings back the locked leg and the foot hanging in the air that it was added to solve.
+    // Facing across the ramp: the slope now runs left to right, which is where the hips can help.
+    BodyHarness harness(15.0f);
+    harness.SetStance(PlayerStance::Standing);
+    harness.input.yaw = glm::half_pi<float>(); // looking down +X, so the slope crosses the body
+    harness.Settle(240);
+
+    const glm::vec3 up = glm::normalize(glm::vec3(harness.body.GetPose().Global(harness.Rig().pelvis)[1]));
+    const glm::vec3 right{std::cos(harness.input.yaw), 0.0f, std::sin(harness.input.yaw)};
+    const float rollDegrees = glm::degrees(std::asin(std::clamp(glm::dot(up, right), -1.0f, 1.0f)));
+
+    INFO("hip roll on a 15 degree cross slope: " << rollDegrees << " degrees");
+    CHECK(std::abs(rollDegrees) > 2.0f);
+    CHECK(std::abs(rollDegrees) < harness.body.Tuning().hipSlopeMax + 1.0f);
 }

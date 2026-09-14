@@ -3531,7 +3531,13 @@ void PredationGame::OnEvent(const SDL_Event& event)
     case SDL_EVENT_MOUSE_BUTTON_DOWN:
         // Clicking back into the world re-captures. Clicking an ImGui window must not, or dragging
         // a slider would yank the pointer away mid-drag.
-        if (!m_wantMouseCaptured && !m_app->IsConsoleOpen() && !m_app->IsUiCapturingMouse())
+        //
+        // Nor while paused. The pause menu is a small box in the middle of the screen, so most of
+        // the window is not over it, and a click out there was reading as "back to the game": the
+        // pointer vanished, the view started turning, and the menu was still up in front of it.
+        // Leaving the pause menu is a thing you do on purpose, with Escape or with Resume.
+        if (!m_wantMouseCaptured && !m_paused && !m_app->IsConsoleOpen() &&
+            !m_app->IsUiCapturingMouse())
         {
             m_wantMouseCaptured = true;
         }
@@ -3558,9 +3564,11 @@ void PredationGame::UpdateMouseCapture()
     // to be over a panel, testing it here would release capture, let the cursor reappear over the
     // same panel, and oscillate. Whether the UI is hovered only matters when deciding to re-capture
     // on a click, which is handled in OnEvent.
-    // The menu is pointed at, so the pointer is never taken while it is up.
-    const bool shouldCapture = m_wantMouseCaptured && m_windowFocused && !m_app->IsConsoleOpen() &&
-                               m_screen == Screen::Playing;
+    // The menu is pointed at, so the pointer is never taken while it is up. Said here as well as
+    // where the click is handled, because this is the one place capture is actually decided and a
+    // rule that matters this much should not depend on every caller having remembered it.
+    const bool shouldCapture = m_wantMouseCaptured && m_windowFocused && !m_paused &&
+                               !m_app->IsConsoleOpen() && m_screen == Screen::Playing;
 
     if (shouldCapture != m_mouseCaptured)
     {
@@ -5150,8 +5158,19 @@ void PredationGame::OnUpdate(double dt, double alpha)
             // the pointer back. It used to leave the game outright on the second press, which meant
             // there was no way to let go of the mouse for a moment without ending up at the title
             // screen, and no way to leave deliberately either: the same key did both.
-            m_paused = !m_paused;
-            m_wantMouseCaptured = !m_paused;
+            //
+            // Settings is a page inside the pause menu, so Escape there goes back one step rather
+            // than all the way out. Escape should undo the last thing you opened, and dropping
+            // straight into the game from three levels in is a surprise every time.
+            if (m_paused && m_settingsOpen)
+            {
+                m_settingsOpen = false;
+            }
+            else
+            {
+                m_paused = !m_paused;
+                m_wantMouseCaptured = !m_paused;
+            }
         }
     }
 

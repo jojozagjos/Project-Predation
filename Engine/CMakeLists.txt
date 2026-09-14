@@ -124,7 +124,7 @@ target_link_libraries(PredationEngine
 )
 
 if(WIN32)
-    target_link_libraries(PredationEngine PUBLIC psapi ws2_32)
+    target_link_libraries(PredationEngine PUBLIC psapi ws2_32 iphlpapi)
 else()
     # Sockets are in libc here, so there is no equivalent of ws2_32 to name. Threads and the dynamic
     # loader are: bgfx opens its graphics driver at run time rather than linking against one, which
