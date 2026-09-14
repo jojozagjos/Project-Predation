@@ -351,8 +351,20 @@ bool UdpTransport::Connect(const std::string& address, uint16_t port)
     const std::string target = address.empty() ? "127.0.0.1" : address;
     if (inet_pton(AF_INET, target.c_str(), &m_hostAddress.sin_addr) != 1)
     {
-        PRED_LOG_ERROR(Network, "{} is not an address this build can reach", target);
-        return false;
+        // Not a dotted address, so try it as a name. People share the name of a machine on their
+        // own network, or whatever their connection is registered as, as readily as they share
+        // numbers, and refusing those outright is a failure with nothing to learn from.
+        addrinfo hints{};
+        hints.ai_family = AF_INET;
+        hints.ai_socktype = SOCK_DGRAM;
+        addrinfo* results = nullptr;
+        if (getaddrinfo(target.c_str(), nullptr, &hints, &results) != 0 || results == nullptr)
+        {
+            PRED_LOG_ERROR(Network, "{} is not an address or a name this machine can reach", target);
+            return false;
+        }
+        m_hostAddress.sin_addr = reinterpret_cast<sockaddr_in*>(results->ai_addr)->sin_addr;
+        freeaddrinfo(results);
     }
 
     // The host end of the connection is always peer 1, whatever its address turns out to be.

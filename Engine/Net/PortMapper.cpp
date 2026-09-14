@@ -144,6 +144,21 @@ bool IsPrivateAddress(const std::string& text)
     return top == 169 && second == 254; // link-local, for a network with no server handing addresses out
 }
 
+// And whether it is one of the addresses a provider hands out to its own customers behind its own
+// translation. A connection with one of these has no address of its own from outside, and no
+// amount of asking the router in the house will make one.
+bool IsCarrierAddress(const std::string& text)
+{
+    in_addr address{};
+    if (inet_pton(AF_INET, text.c_str(), &address) != 1)
+    {
+        return false;
+    }
+    const uint32_t host = ntohl(address.s_addr);
+    // 100.64.0.0 to 100.127.255.255, the range set aside for exactly this.
+    return (host >> 22) == (0x64400000u >> 22);
+}
+
 bool ParseUrl(const std::string& text, Url& out)
 {
     constexpr const char* kPrefix = "http://";
@@ -687,18 +702,33 @@ void PortMapper::Run(uint16_t port)
         // Checked before it is put on the screen for somebody to copy and send to a friend. It is
         // whatever text the router put between two tags, and an address that is not an address is
         // worse than no address: it reads as the feature having worked.
+        std::string trouble;
         if (!IsIPv4(external))
         {
             external.clear();
+            trouble = "The router is forwarding the port, but would not say what this connection's "
+                      "address is.";
+        }
+        else if (IsPrivateAddress(external) || IsCarrierAddress(external))
+        {
+            // The router forwarded the port and the address it is forwarding to is one that only
+            // exists inside somebody else's network, which means this router is itself behind
+            // another one. Nothing here can open that second door, and handing the player an
+            // address that cannot be reached is worse than telling them why: they send it to a
+            // friend, the friend cannot connect, and neither of them has anything to go on.
+            PRED_LOG_WARN(Network, "Router reports {} as this connection's address, which is not one "
+                                   "the outside world can reach",
+                          external);
+            external.clear();
+            trouble = "The router forwarded the port, but this connection is behind a second router "
+                      "or your provider's own, so there is no address from outside to give anyone. "
+                      "Play on one network, or ask your provider about a public address.";
         }
 
         {
             std::lock_guard lock(m_textMutex);
             m_external = external;
-            m_message = external.empty()
-                            ? "The router is forwarding the port, but would not say what this "
-                              "connection's address is."
-                            : std::string();
+            m_message = trouble;
         }
         m_state.store(State::Open);
         PRED_LOG_INFO(Network, "Router is forwarding UDP {} to {} (outside address {})", port, internal,

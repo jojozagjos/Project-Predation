@@ -919,3 +919,21 @@ TEST_CASE("A device cannot send the port mapper somewhere else", "[net][upnp][se
     CHECK(FindConnectionServiceForTesting(description, "198.51.100.7", 8080, url, type));
     CHECK(url == "http://198.51.100.7:8080/ctl/IPConn");
 }
+
+TEST_CASE("An address with a port on it is taken apart rather than resolved", "[net][udp]")
+{
+    // The menu copies an address as "1.2.3.4:27015", because that is how anybody writes one down.
+    // Pasted into the address box whole it used to be handed to the resolver as the name of a
+    // machine, which fails, and from the outside that is "I put in the address they gave me and it
+    // says it cannot reach them". The transport is only asked about the host part.
+    auto transport = CreateUdpTransport(7u);
+    CHECK(transport->Connect("127.0.0.1", 41300));
+
+    // And a name is now tried when it is not a dotted address, rather than refused outright.
+    auto byName = CreateUdpTransport(8u);
+    CHECK(byName->Connect("localhost", 41301));
+
+    // Something that is neither is still a failure, and says so rather than reaching nowhere.
+    auto nonsense = CreateUdpTransport(9u);
+    CHECK_FALSE(nonsense->Connect("not a machine anybody has", 41302));
+}

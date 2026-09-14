@@ -1941,6 +1941,18 @@ void PredationGame::DrawTitleScreen()
                 {
                     ImGui::SetClipboardText((outside + ":" + std::to_string(m_hostPort)).c_str());
                 }
+                ImGui::TextDisabled("  the first time, Windows will ask whether to let the game "
+                                    "through: say yes to both");
+            }
+            else
+            {
+                // The port was forwarded and there is still no address worth giving anybody, which
+                // is its own answer and a common one.
+                ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+                ImGui::PushTextWrapPos(0.0f);
+                ImGui::TextUnformatted(m_ports.Message().c_str());
+                ImGui::PopTextWrapPos();
+                ImGui::PopStyleColor();
             }
             break;
         }
@@ -1997,6 +2009,21 @@ void PredationGame::DrawTitleScreen()
     m_joinPort = std::clamp(m_joinPort, 1024, 65535);
     if (ImGui::Button("Join", wide))
     {
+        // An address with a port on the end of it belongs in both boxes.
+        //
+        // The panel above copies an address as "1.2.3.4:27015", because that is how anybody would
+        // write one down and send it to a friend. Pasted into the address box whole, it was handed
+        // to the resolver as the name of a machine and failed, which from the outside is "I put in
+        // the address they gave me and it says it cannot reach them".
+        if (const char* colon = std::strrchr(m_joinAddress, ':'); colon != nullptr)
+        {
+            const int typed = std::atoi(colon + 1);
+            if (typed >= 1024 && typed <= 65535)
+            {
+                m_joinPort = typed;
+            }
+            m_joinAddress[colon - m_joinAddress] = '\0';
+        }
         // Kept for next time, in the archived config, so the box opens on the last game joined.
         cv_lastAddress.Set(m_joinAddress);
         cv_lastPort.Set(m_joinPort);
