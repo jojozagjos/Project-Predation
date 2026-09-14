@@ -20,8 +20,8 @@ read the same on the other.
 | `test.cmd [preset]` | Runs the unit tests through CTest. |
 | `run.cmd [preset] [args]` | Starts an already built game. |
 | `smoke.cmd [preset]` | Headless 60-frame run. Requires a screenshot out the other side and fails on any logged error. |
-| `package.cmd [preset]` | Lays out a release folder and zips it. |
-| `clean.cmd [all]` | Deletes the build folder. `all` also clears the vcpkg working trees. |
+| `package.cmd [preset]` | Builds the shipping preset, lays out a folder and zips it. Default preset `windows-shipping`. |
+| `clean.cmd [all]` | Clears vcpkg working trees. `all` also deletes every preset's compiled output, keeping the shared dependency tree. |
 | `vsenv.cmd` | Finds MSVC through `vswhere` and sets up the x64 environment. The others call it; you do not. |
 
 ## Linux
@@ -32,7 +32,7 @@ read the same on the other.
 | `build.sh [preset]` | Configures if needed, then builds. Default preset `linux-release`. |
 | `test.sh [preset]` | Runs the unit tests through CTest. |
 | `run.sh [preset] [args]` | Starts an already built game. |
-| `clean.sh [all]` | Deletes the build folder. `all` also clears the vcpkg working trees. |
+| `clean.sh [all]` | Clears vcpkg working trees. `all` also deletes every preset's compiled output, keeping the shared dependency tree. |
 
 There is no `package.sh` yet. The Linux port is prepared but has not been compiled; see
 [../Docs/LINUX.md](../Docs/LINUX.md) for what is known to be left.
@@ -66,3 +66,23 @@ it was not needed costs nothing — with no console to read a key from, `pause` 
 `.gitattributes` checks the `.cmd` files out with CRLF line endings. This is not cosmetic: `cmd.exe`
 seeks through a batch file by byte offset, and `goto` in a file with bare LF endings can land in the
 wrong place. If you edit these with a tool that rewrites line endings, check them afterwards.
+
+## Two builds
+
+`windows-debug`, `windows-relwithdebinfo` and `windows-release` are developer builds: the model
+editor is on the title screen and its commands are in the console. `windows-shipping` is what other
+people get — same code, `PRED_DEV_TOOLS=OFF`, no way in to any of that.
+
+They are separate folders under `build/` on purpose. The developer tools are a cached CMake
+variable, so building a shipping exe inside a developer folder used to leave that folder without
+its tools, silently, until somebody noticed a missing button.
+
+To tell them apart at a glance: the developer build says "developer build" beside the byline on the
+title screen, and both say which they are in the first line of the log.
+
+## Where the dependencies live
+
+All presets share one vcpkg tree at `build/vcpkg_installed`, set by `VCPKG_INSTALLED_DIR` in the
+base presets. vcpkg's default is one tree per build folder, which on this project was 3.1 GB each
+and identical every time. Sharing is safe because a triplet's tree already holds both the debug and
+the release libraries.

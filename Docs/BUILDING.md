@@ -136,15 +136,49 @@ build\windows-debug\bin\ProjectPredation.exe --frames 30 --screenshot build\shot
   inside Visual Studio. `vsenv.cmd` saves and restores the value so your `C:\Dev\vcpkg` wins. If you set up
   the environment by hand, re-set `VCPKG_ROOT` *after* calling `vcvarsall.bat`.
 
+## 9. The two builds
+
+| Preset | What it is |
+|---|---|
+| `windows-debug` | Everyday development. Assertions on, no optimisation, slow. |
+| `windows-relwithdebinfo` | Optimised but debuggable. For chasing something that only happens fast. |
+| `windows-release` | Optimised. What you play while working on the game. |
+| `windows-shipping` | What other people get. Same code with `PRED_DEV_TOOLS=OFF`. |
+
+The first three are developer builds: the model editor is on the title screen and its commands are
+in the console. The shipping build has neither, and the packaging script leaves out the raw model
+downloads the importer works on. See ADR-031 and ADR-049.
+
+Each preset has its own folder under `build/`, including the shipping one. That separation is not
+cosmetic: `PRED_DEV_TOOLS` is a cached CMake variable, so producing a shipping exe inside a
+developer folder leaves that folder without its tools until the cache is cleared, and nothing says
+so. The developer presets pin the variable back on for the same reason.
+
+To tell which one is running: the first line of the log says so, and the developer build says
+"developer build" beside the byline on the title screen.
+
+All presets share one vcpkg tree at `build/vcpkg_installed`, set by `VCPKG_INSTALLED_DIR` in the
+base presets. vcpkg's default is a tree per build folder, which here was 3.1 GB each and byte for
+byte the same. A triplet's tree already contains both the debug and the release libraries, so there
+is nothing to keep apart.
+
 ## Sending it to somebody
 
-    Scripts\Windows\package.cmd
+```
+Scripts\Windows\package.cmd
+```
 
-Builds a release, lays out `build\package\ProjectPredation` and zips it. The folder holds the
-executable, the data files, and the shaders the build compiled, all under an `Assets` folder beside
-the exe, which is the first place the game looks. It runs from anywhere with nothing else installed
-except the Microsoft Visual C++ Redistributable for x64.
+Builds `windows-shipping`, lays out `build\package\ProjectPredation` and zips it. The folder holds
+the executable, the data files, and the shaders the build compiled, all under an `Assets` folder
+beside the exe, which is the first place the game looks. It runs from anywhere with nothing else
+installed except the Microsoft Visual C++ Redistributable for x64. A `README.txt` goes in the folder
+with the controls and how to connect.
 
-Send the zip. To play together, one person opens a game and the others type their address into the
-join box. On the same network that is the host's local address; over the internet the host has to
-forward UDP port 27015, because there is no matchmaking or NAT traversal yet.
+The script checks the CMake cache actually says `PRED_DEV_TOOLS:BOOL=OFF` before it stages
+anything, and stops if it does not. A stale cache is silent, and an editor that leaked into
+somebody else's copy is not visible from the outside.
+
+To play over the internet, the host takes a code from "Open a game" and sends it; the other person
+pastes it into "Join a game" and sends the code they get back. Both machines dial at once and the
+routers open a hole between them (ADR-048). Nothing needs forwarding. On one network there is still
+the plain address route, which is simpler when it applies.

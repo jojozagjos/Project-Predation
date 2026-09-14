@@ -17,24 +17,27 @@ rem can be regenerated without downloading anything: the intermediate trees vcpk
 rem has finished building a library, which on this project are about twenty gigabytes and are
 rem consulted by nothing afterwards.
 rem
-rem "all" additionally removes the compiled output of both presets, which means the next build is a
-rem full one. It does not touch vcpkg's downloads, so even that stays offline.
+rem "all" additionally removes every preset's compiled output, which means the next build is a full
+rem one. It leaves build\vcpkg_installed alone, so the next build is a compile and not a download,
+rem and it does not touch vcpkg's own downloads either.
 
-setlocal
+setlocal EnableDelayedExpansion
 set "ROOT=%~dp0..\.."
+set "BUILD=%ROOT%\build"
 
 echo [clean] vcpkg intermediates
-for %%d in (
-    "%ROOT%\build\windows-debug\vcpkg_installed\vcpkg\blds"
-    "%ROOT%\build\windows-debug\vcpkg_installed\vcpkg\pkgs"
-    "%ROOT%\build\windows-release\vcpkg_installed\vcpkg\blds"
-    "%ROOT%\build\windows-release\vcpkg_installed\vcpkg\pkgs"
-    "%ROOT%\build\windows-relwithdebinfo\vcpkg_installed\vcpkg\blds"
-    "%ROOT%\build\windows-relwithdebinfo\vcpkg_installed\vcpkg\pkgs"
-) do (
+rem The shared tree the presets point at, and any per-preset trees left over from before they
+rem shared one. Each of those was three gigabytes of exactly the same libraries.
+for %%d in ("%BUILD%\vcpkg_installed\vcpkg\blds" "%BUILD%\vcpkg_installed\vcpkg\pkgs") do (
     if exist %%d (
         echo   %%~d
         rmdir /s /q %%d
+    )
+)
+for /d %%p in ("%BUILD%\*") do (
+    if exist "%%~fp\vcpkg_installed" (
+        echo   %%~fp\vcpkg_installed  ^(superseded by the shared one^)
+        rmdir /s /q "%%~fp\vcpkg_installed"
     )
 )
 
@@ -48,21 +51,13 @@ for %%d in ("%VCPKG_ROOT%\buildtrees" "%VCPKG_ROOT%\packages") do (
 
 if /i "%~1"=="all" (
     echo [clean] compiled output
-    for %%d in (
-        "%ROOT%\build\windows-debug\bin"
-        "%ROOT%\build\windows-debug\Engine"
-        "%ROOT%\build\windows-debug\Game"
-        "%ROOT%\build\windows-debug\Tools"
-        "%ROOT%\build\windows-debug\Tests"
-        "%ROOT%\build\windows-release\bin"
-        "%ROOT%\build\windows-release\Engine"
-        "%ROOT%\build\windows-release\Game"
-        "%ROOT%\build\windows-release\Tools"
-        "%ROOT%\build\windows-release\Tests"
-    ) do (
-        if exist %%d (
-            echo   %%~d
-            rmdir /s /q %%d
+    rem Every preset folder under build, which is to say everything except the shared dependency
+    rem tree and whatever the packaging script laid out.
+    for /d %%p in ("%BUILD%\*") do (
+        set "NAME=%%~nxp"
+        if /i not "!NAME!"=="vcpkg_installed" if /i not "!NAME!"=="package" (
+            echo   %%~fp
+            rmdir /s /q "%%~fp"
         )
     )
 )

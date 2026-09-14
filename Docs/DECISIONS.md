@@ -878,3 +878,20 @@ somebody else's copy is not visible from the outside.
 The build also says which one it is: once in the log at startup, and on the title screen next to
 the byline in the developer build. Two builds that look identical and behave differently are worth
 one line of text each.
+
+## ADR-050: One vcpkg tree for every preset
+
+**Status**: accepted, 2026-09-13
+
+vcpkg's manifest mode installs the dependencies into the build folder, which means a tree per
+preset. On this project that is 3.1 GB, and with debug, release and shipping folders it was 9.3 GB
+of the same bytes three times over: two thirds of everything the repository occupied.
+
+`VCPKG_INSTALLED_DIR` in the base presets points them all at `build/vcpkg_installed`. Nothing is
+lost by sharing, because a triplet's installed tree already holds the debug and the release
+libraries side by side, and the presets here differ only in build type and in options of our own.
+
+The one thing to watch is `find_program`: it caches an absolute path and does not check afterwards
+that the path still exists, so the shader compiler had to be un-cached once by hand when the tree
+moved. `clean.cmd` and `clean.sh` now remove any per-preset tree they find, so a folder configured
+before this change stops costing anything the first time either is run.
