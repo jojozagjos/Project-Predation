@@ -1058,3 +1058,33 @@ The microphone is opened when the key goes down and closed when it comes up. Tha
 few tens of milliseconds of the first word. It buys the operating system's microphone indicator
 meaning what it says: a game that holds the microphone open all match and promises it is not
 listening is asking to be taken on trust, and this way there is nothing to take on trust.
+
+## ADR-057: On a slope, the eye comes down
+
+**Status**: accepted, 2026-09-14
+
+Walking up a ramp looked like shuffling: almost no stride, the legs barely moving. Walking down, the
+legs over-extended instead. The cause is not the animation and not the cadence — the stride phase
+advances at exactly the same rate on the flat, up fifteen, down fifteen, up twenty-five and down
+twenty-five, 3.3999 metres a second of stride in every case.
+
+It is the proportions. The hip sits at 0.530 of standing height and the leg plus the ankle comes to
+0.542, so a body standing level has about two per cent of its leg in hand. On the flat that is
+enough, because the feet are never far from under the hips. Walking up a ramp the trailing foot is
+behind the body *and* below it and the two add together: the leg is asked for 0.998 of its own
+length, which is dead straight, and a foot that cannot be reached is pulled in towards the hip
+instead. That is the shuffle.
+
+Two fixes were tried and measured before this one. Shifting the whole stance up the slope: the leg
+stays at 0.998 through every value from 0 to 0.8 metres per unit of slope. Shortening the stride so
+the foot is placed where the leg can get to: also 0.998 at every value, and it made the uphill
+stride shorter still, which was the complaint. Neither works, and the reason is the same for both —
+the shortfall is vertical and neither of them is.
+
+The eye drops a little on a slope instead, up to twelve centimetres, eased like any other change of
+stance. That is a person bending their knees on a hill, and it is the only place the slack can come
+from: the body is anchored to the eye, so lowering the pelvis on its own nets out to nothing once
+the head is put back on the camera.
+
+Measured after: the worst leg extension going up twenty-five degrees is 0.963 against 0.970 on the
+flat, and the stride went from 0.52 m to 0.61 m. Nothing is at full stretch any more.

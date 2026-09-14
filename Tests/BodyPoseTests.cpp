@@ -3433,3 +3433,52 @@ TEST_CASE("Whether the legs run out of reach on a slope", "[.][body][gait][slope
     table += "  down 25     " + std::to_string(measure(25.0f, false)).substr(0, 5) + "\n";
     WARN(table);
 }
+
+TEST_CASE("The legs are not at full stretch walking up a slope", "[body][gait][slope]")
+{
+    // The proportions leave almost nothing spare: the hip sits at 0.530 of standing height and the
+    // leg plus ankle comes to 0.542. On the flat that is enough because the feet stay near the hips.
+    // Walking up a ramp the trailing foot is behind the body and below it, the two add together, and
+    // the leg was asked for more than it has — 0.998 of its own length, dead straight. A foot that
+    // cannot be reached is pulled in towards the hip instead, and the stride collapses into a
+    // shuffle, which is exactly what walking up a ramp looked like.
+    //
+    // Shifting the stance up the slope and shortening the stride were both tried and measured: the
+    // leg stays at 0.998 through every value of either, because the shortfall is vertical and
+    // neither of them is. The eye comes down a little instead, which is a person bending their knees
+    // on a hill.
+    const auto worstExtension = [](float slopeDegrees, bool uphill)
+    {
+        BodyHarness harness(slopeDegrees);
+        harness.SetStance(PlayerStance::Standing);
+        harness.input.yaw = uphill ? 0.0f : glm::pi<float>();
+        harness.SetTravel(glm::vec3(0.0f, 0.0f, uphill ? -1.0f : 1.0f));
+        harness.Settle(180);
+
+        const float legLength = harness.Rig().upperLegLength + harness.Rig().lowerLegLength;
+        float worst = 0.0f;
+        for (int i = 0; i < 120; ++i)
+        {
+            harness.Tick();
+            for (int side = 0; side < 2; ++side)
+            {
+                const glm::vec3 hip = harness.Bone(harness.Rig().upperLeg[static_cast<size_t>(side)]);
+                const glm::vec3 foot = harness.Bone(harness.Rig().foot[static_cast<size_t>(side)]);
+                worst = std::max(worst, glm::length(foot - hip) / legLength);
+            }
+        }
+        return worst;
+    };
+
+    const float flat = worstExtension(0.0f, true);
+    const float up15 = worstExtension(15.0f, true);
+    const float up25 = worstExtension(25.0f, true);
+    INFO("worst leg extension: flat " << flat << ", up 15 " << up15 << ", up 25 " << up25);
+
+    // Not straight. Anything at 0.99 and above is a leg that has run out and a foot that is being
+    // dragged in to fit; it used to be 0.998 on both slopes.
+    CHECK(up15 < 0.985f);
+    CHECK(up25 < 0.985f);
+    // And no worse than standing on the flat, which is the bar this was always meant to clear.
+    CHECK(up15 <= flat + 0.01f);
+}

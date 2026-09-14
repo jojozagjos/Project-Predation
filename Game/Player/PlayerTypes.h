@@ -140,6 +140,10 @@ struct PlayerConfig
     float standEyeHeight = 1.66f;
     float crouchEyeHeight = 1.30f;
     float proneEyeHeight = 0.36f;
+    // How far the eye drops per unit of slope, and the most it may drop, in metres. This is where
+    // the reach for the trailing leg on a ramp comes from; see where it is used.
+    float eyeSlopeCrouch = 0.20f;
+    float eyeSlopeCrouchMax = 0.12f;
     float eyeTransitionSpeed = 9.0f;
     // Stair steps teleport the capsule upwards. Without smoothing, the camera snaps and stairs feel
     // like a series of small shocks.

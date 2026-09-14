@@ -2608,7 +2608,7 @@ void PredationGame::DrawTitleScreen()
         }
         ImGui::Spacing();
         ImGui::Separator();
-        ImGui::TextDisabled("by jojozagjos");
+        ImGui::TextDisabled("by jojozagjos  |  v" PRED_VERSION_STRING);
         return;
     }
 
@@ -2677,7 +2677,7 @@ void PredationGame::DrawTitleScreen()
         }
         ImGui::Spacing();
         ImGui::Separator();
-        ImGui::TextDisabled("by jojozagjos");
+        ImGui::TextDisabled("by jojozagjos  |  v" PRED_VERSION_STRING);
         return;
     }
     if (m_titlePage == TitlePage::Join)
@@ -2691,7 +2691,7 @@ void PredationGame::DrawTitleScreen()
         }
         ImGui::Spacing();
         ImGui::Separator();
-        ImGui::TextDisabled("by jojozagjos");
+        ImGui::TextDisabled("by jojozagjos  |  v" PRED_VERSION_STRING);
         return;
     }
 
@@ -2730,7 +2730,7 @@ void PredationGame::DrawTitleScreen()
 
     ImGui::Spacing();
     ImGui::Separator();
-    ImGui::TextDisabled("by jojozagjos");
+    ImGui::TextDisabled("by jojozagjos  |  v" PRED_VERSION_STRING);
 #if PRED_DEV_TOOLS
     // Said on the title screen as well as in the log. The two builds look identical until
     // you go looking for a menu entry, and knowing which one you handed somebody matters.
@@ -6304,6 +6304,19 @@ void PredationGame::DrawHud()
     // Reticle. The gap opens with the weapon's current cone, so the crosshair says where rounds can
     // actually go rather than always promising the centre of the screen.
     ImDrawList* draw = ImGui::GetBackgroundDrawList();
+
+    // The version, bottom left, quietly.
+    //
+    // It is on the title screen too, but by the time somebody is describing a problem they are
+    // usually in the game and not looking at the menu. A screenshot of a bug that says which build
+    // took it is worth a round of "which version were you running"; this whole session has had two
+    // of those.
+    {
+        const char* version = "v" PRED_VERSION_STRING;
+        const ImVec2 size = ImGui::CalcTextSize(version);
+        draw->AddText({viewport->Pos.x + 10.0f, viewport->Pos.y + viewport->Size.y - size.y - 8.0f},
+                      IM_COL32(180, 190, 200, 90), version);
+    }
     const ImU32 reticleColor = IM_COL32(230, 230, 235, 150);
     float gap = 2.0f;
     if (const WeaponDefinition* weapon = EquippedWeapon())

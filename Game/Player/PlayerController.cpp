@@ -621,8 +621,30 @@ void PlayerController::UpdateView(float dt, float alpha)
     const glm::vec3 renderPosition = glm::mix(m_prevPosition, m_state.position, std::clamp(alpha, 0.0f, 1.0f));
     m_view.renderPosition = renderPosition;
 
-    m_view.eyeHeight = SmoothTowards(m_view.eyeHeight, m_config.EyeHeightForStance(m_state.stance),
-                                     m_config.eyeTransitionSpeed, dt);
+    // Lower on a slope, which is what gives the legs anywhere to go.
+    //
+    // The proportions leave almost nothing spare: the hip sits at 0.530 of standing height and the
+    // leg plus ankle comes to 0.542, about two per cent in hand. On the flat that is enough. Walking
+    // up a ramp the trailing foot is behind the body and below it and the two add together into a
+    // reach the leg does not have — measured at 0.998 of its own length, dead straight — so the foot
+    // is pulled in towards the hip and the stride collapses into a shuffle.
+    //
+    // Shifting the stance up the slope and shortening the stride were both tried and both measured:
+    // the leg stays at 0.998 through every value of either, because the shortfall is vertical and
+    // neither of them is. Bending the knees is the only thing that makes any, and bending your knees
+    // lowers your head: the body is anchored to the eye, so dropping the pelvis alone nets out to
+    // nothing once the head is put back on the camera.
+    //
+    // Which is also what a person does on a hill, and it is small: nine centimetres at twenty-five
+    // degrees, eased in like any other change of stance.
+    const float slope = m_state.grounded && m_state.groundNormal.y > 0.10f
+                            ? glm::length(glm::vec2(m_state.groundNormal.x, m_state.groundNormal.z)) /
+                                  m_state.groundNormal.y
+                            : 0.0f;
+    const float slopeCrouch = std::min(slope * m_config.eyeSlopeCrouch, m_config.eyeSlopeCrouchMax);
+    m_view.eyeHeight =
+        SmoothTowards(m_view.eyeHeight, m_config.EyeHeightForStance(m_state.stance) - slopeCrouch,
+                      m_config.eyeTransitionSpeed, dt);
 
     // Absorb any stair step recorded by the simulation, then decay the offset away.
     m_view.stepOffset = std::clamp(m_view.stepOffset + m_pendingStepOffset, -m_config.stepSmoothMax,
