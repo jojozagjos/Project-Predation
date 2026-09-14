@@ -832,7 +832,7 @@ can assert on a waveform.
 
 ## ADR-048: Two players dial each other, and swap the number by hand
 
-**Status**: accepted, 2026-09-13
+**Status**: superseded by ADR-058, 2026-09-14. Originally accepted, 2026-09-13
 
 Hosting across the internet needs somebody's router to forward a port, and on a network somebody
 else runs there is nobody to ask: no router answers a forwarding request, and the address the menu
@@ -950,7 +950,7 @@ and 604 ms and 50% apart in level, which is the opposite of all three.
 
 ## ADR-053: A host holds one punched connection per guest
 
-**Status**: accepted, 2026-09-14, extending ADR-048
+**Status**: superseded by ADR-058, 2026-09-14. Originally accepted, 2026-09-14, extending ADR-048
 
 ADR-048 had two players dial each other and swap the number by hand. What it did not say, because
 it did not occur to anyone at the time, is that a hole punched through two routers joins exactly two
@@ -1088,3 +1088,38 @@ the head is put back on the camera.
 
 Measured after: the worst leg extension going up twenty-five degrees is 0.963 against 0.970 on the
 flat, and the stride went from 0.52 m to 0.61 m. Nothing is at full stretch any more.
+
+## ADR-058: A relay, not hole punching
+
+**Status**: accepted, 2026-09-14. Supersedes ADR-048 and ADR-053.
+
+Hole punching was a mistake, and the way it failed says why. Two machines behind home routers cannot
+reach each other, so both dial at once and hope the routers open. That needs each end to describe
+itself to the other first, which needed a code swapped by hand; it needs one end to be "controlling"
+and the other "controlled", which ICE decides from the order things happen in, which in our case was
+a race between two people pasting into a box — and what that produced, in the log, was a flood of
+"ICE role conflict (both controlled)" alternating with "(both controlling)". And on a symmetric NAT
+it cannot work at all, at which point the answer is a relay anyway.
+
+So: a relay. Everybody connects outwards to one machine both can reach and it forwards between them.
+Outbound always works — it is why the web works without anybody configuring a router — so there are
+no candidates to gather, no roles to agree, and nothing that can work on one network and fail on
+another.
+
+The costs are real and small. One extra hop of latency, typically ten to forty milliseconds. And
+whoever runs the relay pays the bandwidth, which is about two hundred kilobits a second for a full
+game: a four player snapshot is 89 bytes at 30 Hz, and a voice is 82 bytes per twenty milliseconds.
+For co-op against an AI creature that is fine. For competitive shooting between players it would not
+be.
+
+What it buys beyond working at all is the lobby. One code, and anybody who types it joins — before
+or after the game has started. Hole punching could not do that even in principle: every pair of
+machines had to swap a fresh pair of codes, so a four player game was six exchanges and the host had
+to be sitting at a menu for each one.
+
+It also removed the only copyleft dependency in the project. libjuice is MPL-2.0; nothing that is
+left is.
+
+The transport did not change. A relayed link is a `DatagramCarrier` exactly as a punched one was, so
+the handshake, the reliability, the prediction and the roster are the same code running over a
+different pipe, and none of it knows.

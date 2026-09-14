@@ -11,7 +11,7 @@
 #include "Engine/Audio/AudioEngine.h"
 #include "Engine/Audio/VoiceCapture.h"
 #include "Engine/Audio/VoiceCodec.h"
-#include "Game/Net/IceCarrier.h"
+#include "Engine/Net/RelayCarrier.h"
 #include "Game/Net/NetSession.h"
 #include "Engine/Net/PortMapper.h"
 #include "Game/Player/PlayerBody.h"
@@ -184,25 +184,15 @@ private:
     // player back exactly where they were. In a session nothing stops simulating, because a shared
     // world cannot be paused by one person in it.
     // The settings panel, drawn inside the menu and inside the pause screen alike.
-    // Punching a way through two routers by swapping a code with the other player.
     // The two things anybody came to the menu to do, each on its own page.
     void DrawTitleOpen();
     void DrawTitleOpenLocal();
     void DrawTitleJoin();
-    void StartPunchedSession(bool asHost);
-    void StopPunchedSession();
-    void DrawPunchThrough();
-    // Adds one more punched connection and starts it gathering. Returns which one it is. The host
-    // calls this per invitation; a guest calls it once.
-    size_t AddPunchLink();
-    // One invitation: its code to send, a box for the reply, and what it is doing. Drawn on the
-    // title screen while opening a game and from the pause menu once the game is running, because
-    // the second and third players do not arrive at the same moment as the first.
-    void DrawPunchSlot(size_t slot);
-    // The host's invitations panel, on the pause menu.
-    void DrawInvitePanel();
-    // Hands any newly connected link to the running session. Called once a frame while hosting.
-    void AdoptConnectedLinks();
+    // The lobby, over a relay. One code, and anybody who types it joins: there is nothing to swap
+    // and nothing that goes stale while somebody reads it out.
+    void StartLobby(bool asHost, uint32_t code);
+    void StopLobby();
+    void DrawLobby();
     void DrawSettings();
     void DrawPauseMenu();
     // Where the weapon sits relative to the eye, for comparing the editor with the game.
@@ -491,37 +481,15 @@ private:
         Join
     };
     TitlePage m_titlePage = TitlePage::Root;
-    bool m_punching = false;
-    bool m_punchingAsHost = false;
+    // Whether the lobby screen is up, and whether this machine opened the lobby or joined one.
+    bool m_inLobby = false;
+    bool m_hostingLobby = false;
 
-    // The punched connections, and the carrier that holds them for the transport.
-    //
-    // A hole punched through two routers joins exactly two machines, so one link is one other
-    // player. A guest needs one, to the host. A host needs one per guest, which is why these are
-    // lists: with a single link a game over the internet was two players and no more, whatever the
-    // lobby size said. The carrier outlives any one link because the transport holds it for the
-    // whole session, and link n there is the same n as here.
-    std::shared_ptr<IceCarrier> m_iceCarrier;
-    std::vector<std::shared_ptr<IceLink>> m_punchLinks;
-    // What was pasted into the join box: a code, or an address. Separate from the per-invitation
-    // buffers below because it is a different question asked in a different place.
+    // The relay connection, when playing over the internet. One socket, outwards, and one link per
+    // other person: see Engine/Net/RelayCarrier.h for why that replaced hole punching.
+    std::shared_ptr<RelayCarrier> m_relay;
+    // What was pasted into the join box: a lobby code, or an address for a game on this network.
     char m_joinInput[1400] = "";
-    // Their code, pasted, one buffer per invitation. Long, because a code carries every address
-    // that machine has.
-    struct PunchSlot
-    {
-        char code[1400] = "";
-        bool started = false; // whether this link has been handed to the session yet
-    };
-    std::vector<PunchSlot> m_punchSlots;
-    // The invitation panel, shown from the pause menu once a host is already playing.
-    bool m_inviteOpen = false;
-    // A link started by the net_punch console command and nothing else: a way to find out from one
-    // machine whether this connection can be described to another at all. Deliberately not one of
-    // the session links above, because it is a diagnostic and joins nothing.
-    std::shared_ptr<IceLink> m_probeLink;
-    // Frames left before the punch report gives up waiting for a code. Debug tooling only.
-    int m_punchReportIn = 0;
     // Frames left before a deferred hold report. Commands from --exec all run before the first
     // frame, when nothing is equipped, so a report taken then is about an empty hand.
     int m_holdReportIn = 0;

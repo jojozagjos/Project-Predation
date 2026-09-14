@@ -213,3 +213,28 @@ To play over the internet, the host takes a code from "Open a game" and sends it
 pastes it into "Join a game" and sends the code they get back. Both machines dial at once and the
 routers open a hole between them (ADR-048). Nothing needs forwarding. On one network there is still
 the plain address route, which is simpler when it applies.
+
+## Running a relay
+
+Playing over the internet needs one, and it has to be somewhere both players can reach: a cheap
+virtual machine, a free tier, or any machine with a forwarded UDP port. It is not needed for a game
+on one network.
+
+```
+PredationRelay.exe --port 27020
+```
+
+It links no renderer and no physics, so it builds and runs on a headless box. Point the game at it
+from the console, and the setting is remembered:
+
+```
+net.relay_host relay.example.com
+net.relay_port 27020
+```
+
+Then **Open a game → Over the internet** gives a six character code, and anybody who types that code
+into **Join a game** is in — before or after the game has started.
+
+How much it costs to run: a four player snapshot is 89 bytes at 30 Hz and a voice frame is 82 bytes
+every twenty milliseconds, so a full game with everybody talking is roughly two hundred kilobits a
+second in each direction. A free tier will not notice.

@@ -22,10 +22,12 @@ replaced is still in `Assets/Data/sounds.json` and still works.
 
 ## Code
 
-Dependencies are declared in `vcpkg.json` and their licences are the ones vcpkg records. The one
-worth naming here is **libjuice** (MPL-2.0), which does the NAT traversal: MPL-2.0 is file-level
-copyleft, so linking it is fine and modifying its own source would require publishing those changes.
-We do not modify it.
+Dependencies are declared in `vcpkg.json` and their licences are the ones vcpkg records. All of them
+are permissive. The one worth naming is **Opus** (BSD three-clause), which compresses voice: it is
+the codec every voice application uses and there is no obligation beyond keeping the notice.
+
+**libjuice** (MPL-2.0) was here and is gone. It did the hole punching, which a relay replaced, so
+the only copyleft obligation in the project went with it.
 
 ## Everything else
 

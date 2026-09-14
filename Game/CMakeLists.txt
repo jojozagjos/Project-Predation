@@ -34,7 +34,6 @@ set(PRED_GAME_SOURCES
     Weapons/ShotResolver.h
     Weapons/ShotResolver.cpp
 
-    Net/IceCarrier.h
     Net/Protocol.h
     Net/Protocol.cpp
     Net/Prediction.h

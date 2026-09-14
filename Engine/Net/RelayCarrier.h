@@ -97,6 +97,9 @@ private:
     float m_keepAliveTimer = 0.0f;
     float m_connectTimer = 0.0f;
     bool m_hosting = false;
+    // Whether this carrier holds a reference to the socket system, so Close releases exactly the
+    // ones Join took.
+    bool m_socketSystem = false;
     // Slot per link, in the order the slots were first heard of. Never reordered: the transport
     // holds a peer per link and renumbering would move somebody else's peer under it.
     std::vector<uint8_t> m_slots;

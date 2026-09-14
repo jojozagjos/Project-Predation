@@ -22,7 +22,6 @@
     "glm",
     "stb",
     "catch2",
-    "libjuice",
     "opus"
   ]
 }

@@ -1,6 +1,7 @@
 #include "Engine/Net/RelayCarrier.h"
 
 #include "Engine/Core/Log.h"
+#include "Engine/Net/SocketSystem.h"
 
 #include <algorithm>
 #include <array>
@@ -130,6 +131,11 @@ void RelayCarrier::Close()
     m_slots.clear();
     m_incoming.clear();
     m_relayAddress.clear();
+    if (m_socketSystem)
+    {
+        SocketSystem::Release();
+        m_socketSystem = false;
+    }
 }
 
 bool RelayCarrier::Host(const Settings& settings)
@@ -156,6 +162,28 @@ bool RelayCarrier::Join(const Settings& settings, uint32_t code)
     m_hosting = false;
     m_connectTimer = 0.0f;
     m_keepAliveTimer = 0.0f;
+
+    // Winsock has to be running before any of this. On a machine that has not opened a socket yet,
+    // which is every machine that goes straight to the lobby from the menu, socket() otherwise just
+    // returns an invalid handle and the whole thing reports "No socket".
+    if (!SocketSystem::Acquire())
+    {
+        m_message = "Networking is unavailable on this machine";
+        m_state = State::Failed;
+        return false;
+    }
+    m_socketSystem = true;
+
+    // Winsock has to be running before any of this. On a machine that has not opened a socket yet —
+    // which is every machine that goes straight from the menu to a lobby — socket() otherwise just
+    // returns an invalid handle and the whole thing reports "No socket" with no hint as to why.
+    if (!SocketSystem::Acquire())
+    {
+        m_message = "Networking is unavailable on this machine";
+        m_state = State::Failed;
+        return false;
+    }
+    m_socketSystem = true;
 
     sockaddr_in relay{};
     if (!Resolve(settings.relayHost, settings.relayPort, relay))

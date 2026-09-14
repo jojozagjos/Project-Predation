@@ -5,7 +5,6 @@ find_package(Jolt CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(glm CONFIG REQUIRED)
-find_package(LibJuice CONFIG REQUIRED)
 find_package(Opus CONFIG REQUIRED)
 find_path(STB_INCLUDE_DIRS "stb_image_write.h" REQUIRED)
 
@@ -85,11 +84,11 @@ set(PRED_ENGINE_SOURCES
 
     Net/BitStream.h
     Net/BitStream.cpp
-    Net/IceLink.h
-    Net/IceLink.cpp
     Net/Transport.h
     Net/UdpTransport.cpp
     Net/LoopbackTransport.cpp
+    Net/SocketSystem.h
+    Net/SocketSystem.cpp
     Net/RelayProtocol.h
     Net/RelayProtocol.cpp
     Net/RelayServer.h
@@ -131,7 +130,6 @@ target_link_libraries(PredationEngine
         spdlog::spdlog
         nlohmann_json::nlohmann_json
         glm::glm
-        LibJuice::LibJuice
         Opus::opus
 )
 
