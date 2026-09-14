@@ -22,6 +22,7 @@ read the same on the other.
 | `smoke.cmd [preset]` | Headless 60-frame run. Requires a screenshot out the other side and fails on any logged error. |
 | `package.cmd [preset]` | Builds the shipping preset, lays out a folder and zips it. Default preset `windows-shipping`. |
 | `clean.cmd [all]` | Clears vcpkg working trees. `all` also deletes every preset's compiled output, keeping the shared dependency tree. |
+| `linux-build.cmd [preset]` | Builds and tests the Linux version in a Docker container. Needs Docker Desktop running. |
 | `vsenv.cmd` | Finds MSVC through `vswhere` and sets up the x64 environment. The others call it; you do not. |
 
 ## Linux
