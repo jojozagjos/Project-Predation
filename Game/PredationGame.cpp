@@ -1785,6 +1785,221 @@ void SetSetting(const char* name, const std::string& value)
 
 } // namespace
 
+
+void PredationGame::DrawTitleOpen()
+{
+    const ImVec2 wide{-1.0f, 34.0f};
+    ImGui::TextDisabled("Open a game");
+    ImGui::Spacing();
+
+    // Over the internet first, because it is the one that works from anywhere and the one somebody
+    // came looking for. The same network is underneath it, for when both machines are in the house.
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextUnformatted("Send a friend a code and they send one back. Neither machine has to be "
+                           "reachable: both dial at once and both routers open a hole.");
+    ImGui::PopTextWrapPos();
+    if (ImGui::Button("Get a code to send", wide))
+    {
+        StartPunchedSession(true);
+    }
+
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::TextDisabled("Or on this network");
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted("Port");
+    ImGui::SameLine(86.0f);
+    ImGui::SetNextItemWidth(110.0f);
+    ImGui::InputInt("##hostport", &m_hostPort, 0, 0);
+    m_hostPort = std::clamp(m_hostPort, 1024, 65535);
+
+    // The actual addresses, not the advice to go and find one. Told to look up "your address", the
+    // obvious answer is the public one, which belongs to the router and not to this machine, and a
+    // friend on the same network cannot reach it.
+    {
+        static const std::vector<std::string> addresses = LocalNetworkAddresses();
+        if (addresses.empty())
+        {
+            ImGui::TextDisabled("  no network address found");
+        }
+        for (const std::string& address : addresses)
+        {
+            // Said on the line itself rather than in a heading above it, because the line is what
+            // gets copied and sent.
+            ImGui::TextColored({0.70f, 0.80f, 0.95f, 1.0f}, "  %s:%d  (same network only)",
+                               address.c_str(), m_hostPort);
+            if (ImGui::IsItemClicked())
+            {
+                ImGui::SetClipboardText((address + ":" + std::to_string(m_hostPort)).c_str());
+            }
+        }
+        // And the address from outside, if the router agreed to forward the port. It often will
+        // not, which is why the code above exists and is offered first.
+        switch (m_ports.Status())
+        {
+        case PortMapper::State::Working:
+            ImGui::TextDisabled("  asking the router about the outside world...");
+            break;
+        case PortMapper::State::Open:
+        {
+            const std::string outside = m_ports.ExternalAddress();
+            if (!outside.empty())
+            {
+                ImGui::TextColored({0.70f, 0.95f, 0.75f, 1.0f}, "  %s:%d  (from anywhere)",
+                                   outside.c_str(), m_hostPort);
+                if (ImGui::IsItemClicked())
+                {
+                    ImGui::SetClipboardText((outside + ":" + std::to_string(m_hostPort)).c_str());
+                }
+                ImGui::TextDisabled("  the first time, Windows will ask whether to let the game "
+                                    "through: say yes to both");
+            }
+            else
+            {
+                ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+                ImGui::PushTextWrapPos(0.0f);
+                ImGui::TextUnformatted(m_ports.Message().c_str());
+                ImGui::PopTextWrapPos();
+                ImGui::PopStyleColor();
+            }
+            break;
+        }
+        case PortMapper::State::Failed:
+        {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+            ImGui::PushTextWrapPos(0.0f);
+            ImGui::TextUnformatted(m_ports.Message().c_str());
+            ImGui::PopTextWrapPos();
+            ImGui::PopStyleColor();
+            break;
+        }
+        case PortMapper::State::Idle:
+        default:
+            break;
+        }
+        ImGui::TextDisabled("  click to copy");
+    }
+
+    if (ImGui::Button("Start on this network", wide))
+    {
+        StopSession();
+        NetHost::Config config;
+        config.port = static_cast<uint16_t>(m_hostPort);
+        config.name = PlayerName();
+        auto transport = CreateUdpTransport();
+        transport->SetConditions(m_simulatedConditions);
+        if (m_host.Start(std::move(transport), config, m_app->GetPhysics(), m_player.Config(),
+                         m_spawnPoint))
+        {
+            m_sessionMode = SessionMode::Host;
+            // And ask the router to let people in from outside, which takes a second or two on its
+            // own thread. It often works and sometimes cannot; the panel says which, and the local
+            // addresses are there either way.
+            m_ports.Open(static_cast<uint16_t>(m_hostPort));
+            EnterWorld();
+        }
+        else
+        {
+            m_titleStatus = "Could not open port " + std::to_string(m_hostPort);
+        }
+    }
+
+    if (!m_titleStatus.empty())
+    {
+        ImGui::PushTextWrapPos(0.0f);
+        ImGui::TextColored({0.90f, 0.55f, 0.35f, 1.0f}, "%s", m_titleStatus.c_str());
+        ImGui::PopTextWrapPos();
+    }
+}
+
+void PredationGame::DrawTitleJoin()
+{
+    const ImVec2 wide{-1.0f, 34.0f};
+    ImGui::TextDisabled("Join a game");
+    ImGui::Spacing();
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextUnformatted("Paste whatever they sent you: a code, or an address if you are both on "
+                           "the same network.");
+    ImGui::PopTextWrapPos();
+
+    ImGui::SetNextItemWidth(-1.0f);
+    ImGui::InputText("##joinwhatever", m_punchCode, sizeof(m_punchCode));
+    if (ImGui::Button("Paste from the clipboard", wide))
+    {
+        if (const char* clip = ImGui::GetClipboardText(); clip != nullptr)
+        {
+            std::snprintf(m_punchCode, sizeof(m_punchCode), "%s", clip);
+        }
+    }
+
+    if (ImGui::Button("Join", wide))
+    {
+        // One box, and the game works out which of the two it was handed. A code is a code and
+        // nothing else looks like one, so there is nothing to ask the player about.
+        std::string decoded;
+        if (DecodeIceCode(m_punchCode, decoded))
+        {
+            const std::string code = m_punchCode;
+            StartPunchedSession(false);
+            if (m_link != nullptr && !m_link->SetRemoteCode(code))
+            {
+                m_titleStatus = m_link->Message();
+            }
+            return;
+        }
+
+        // An address, then, with the port on the end of it if there is one. The panel that hands
+        // these out writes them that way, because that is how anybody writes one down.
+        std::string address = m_punchCode;
+        int port = m_joinPort;
+        if (const size_t colon = address.rfind(':'); colon != std::string::npos)
+        {
+            const int typed = std::atoi(address.c_str() + colon + 1);
+            if (typed >= 1024 && typed <= 65535)
+            {
+                port = typed;
+            }
+            address = address.substr(0, colon);
+        }
+        if (address.empty())
+        {
+            m_titleStatus = "Nothing to join. Paste what they sent you.";
+            return;
+        }
+
+        std::snprintf(m_joinAddress, sizeof(m_joinAddress), "%s", address.c_str());
+        m_joinPort = port;
+        cv_lastAddress.Set(m_joinAddress);
+        cv_lastPort.Set(m_joinPort);
+        StopSession();
+        auto transport = CreateUdpTransport();
+        transport->SetConditions(m_simulatedConditions);
+        NetClient::Config config;
+        if (m_client.Connect(std::move(transport), m_joinAddress, static_cast<uint16_t>(m_joinPort),
+                             PlayerName(), config))
+        {
+            m_sessionMode = SessionMode::Client;
+            // A client predicts where it will be, never whether it is alive.
+            m_player.SetDecidesDamage(false);
+            m_titleStatus.clear();
+        }
+        else
+        {
+            m_titleStatus = std::string("Could not reach ") + m_joinAddress + ":" +
+                            std::to_string(m_joinPort) +
+                            ". Check they are hosting, that this is their address on this network "
+                            "rather than their public one, and that their firewall is letting the "
+                            "game through.";
+        }
+    }
+
+    if (!m_titleStatus.empty())
+    {
+        ImGui::PushTextWrapPos(0.0f);
+        ImGui::TextColored({0.90f, 0.55f, 0.35f, 1.0f}, "%s", m_titleStatus.c_str());
+        ImGui::PopTextWrapPos();
+    }
+}
 void PredationGame::StartPunchedSession(bool asHost)
 {
     StopSession();
@@ -2094,6 +2309,11 @@ void PredationGame::ReturnToTitle()
 {
     PRED_LOG_INFO(Gameplay, "Back to the title screen");
     StopSession();
+    // Back to the two buttons, not to whichever page somebody was last on. Coming out of a game
+    // onto a half-filled join box is a screen nobody asked for.
+    StopPunchedSession();
+    m_titlePage = TitlePage::Root;
+    m_settingsOpen = false;
     if (m_editor.IsOpen())
     {
         m_editor.SetOpen(m_editorScene, false);
@@ -2227,7 +2447,10 @@ void PredationGame::DrawTitleScreen()
         return;
     }
 
-    // What everyone else sees on the player list. Kept in the archived config, so it is typed once.
+
+    // The menu is two buttons and a name, because that is what anybody came here to do. Everything
+    // about ports, addresses and codes belongs on the screen for the thing it is part of, not on
+    // the first screen somebody sees.
     ImGui::AlignTextToFramePadding();
     ImGui::TextUnformatted("Name");
     ImGui::SameLine(86.0f);
@@ -2236,193 +2459,49 @@ void PredationGame::DrawTitleScreen()
     {
         cv_playerName.Set(m_playerName);
     }
-
     ImGui::Spacing();
-    ImGui::TextDisabled("Host a game");
-    ImGui::AlignTextToFramePadding();
-    ImGui::TextUnformatted("Port");
-    ImGui::SameLine(86.0f);
-    ImGui::SetNextItemWidth(110.0f);
-    ImGui::InputInt("##hostport", &m_hostPort, 0, 0);
-    m_hostPort = std::clamp(m_hostPort, 1024, 65535);
-    ImGui::SameLine();
-    ImGui::TextDisabled("others join on one of these");
-    // The actual addresses, not the advice to go and find one. Told to look up "your address", the
-    // obvious answer is the public one, which belongs to the router and not to this machine, and a
-    // friend on the same network cannot reach it.
-    {
-        static const std::vector<std::string> addresses = LocalNetworkAddresses();
-        if (addresses.empty())
-        {
-            ImGui::TextDisabled("  no network address found");
-        }
-        for (const std::string& address : addresses)
-        {
-            // Said on the line itself rather than in a heading above it, because the line is what
-            // gets copied and sent. Somebody on the far side of the country being handed an address
-            // that only works in this building is most of what "we tried multiplayer and it did not
-            // work" turns out to be.
-            ImGui::TextColored({0.70f, 0.80f, 0.95f, 1.0f}, "  %s:%d  (same network only)",
-                               address.c_str(), m_hostPort);
-            if (ImGui::IsItemClicked())
-            {
-                ImGui::SetClipboardText((address + ":" + std::to_string(m_hostPort)).c_str());
-            }
-        }
-        // And the address from outside the house, once the router has agreed to forward the port.
-        // Local addresses only reach people on the same network, which is most of what "I gave
-        // someone my IP and they could not join" turns out to be.
-        switch (m_ports.Status())
-        {
-        case PortMapper::State::Working:
-            ImGui::TextDisabled("  asking the router about the outside world...");
-            break;
-        case PortMapper::State::Open:
-        {
-            const std::string outside = m_ports.ExternalAddress();
-            if (!outside.empty())
-            {
-                ImGui::TextColored({0.70f, 0.95f, 0.75f, 1.0f}, "  %s:%d  (from anywhere)",
-                                   outside.c_str(), m_hostPort);
-                if (ImGui::IsItemClicked())
-                {
-                    ImGui::SetClipboardText((outside + ":" + std::to_string(m_hostPort)).c_str());
-                }
-                ImGui::TextDisabled("  the first time, Windows will ask whether to let the game "
-                                    "through: say yes to both");
-            }
-            else
-            {
-                // The port was forwarded and there is still no address worth giving anybody, which
-                // is its own answer and a common one.
-                ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
-                ImGui::PushTextWrapPos(0.0f);
-                ImGui::TextUnformatted(m_ports.Message().c_str());
-                ImGui::PopTextWrapPos();
-                ImGui::PopStyleColor();
-            }
-            break;
-        }
-        case PortMapper::State::Failed:
-        {
-            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
-            ImGui::PushTextWrapPos(0.0f);
-            ImGui::TextUnformatted(m_ports.Message().c_str());
-            // The way round that needs nothing from this end at all, and the one most likely to
-            // work. Reaching out through a router is what a router is for; being reached through
-            // one is what needs its permission. If the other machine can get that permission and
-            // this one cannot, the game goes the other way round and nothing else changes.
-            ImGui::TextUnformatted("Whoever can open a game should: joining one works from here "
-                                   "either way.");
-            ImGui::PopTextWrapPos();
-            ImGui::PopStyleColor();
-            break;
-        }
-        case PortMapper::State::Idle:
-        default:
-            break;
-        }
-        ImGui::TextDisabled("  click to copy");
-    }
-    if (ImGui::Button("Open a game", wide))
-    {
-        StopSession();
-        NetHost::Config config;
-        config.port = static_cast<uint16_t>(m_hostPort);
-        config.name = PlayerName();
-        auto transport = CreateUdpTransport();
-        transport->SetConditions(m_simulatedConditions);
-        if (m_host.Start(std::move(transport), config, m_app->GetPhysics(), m_player.Config(), m_spawnPoint))
-        {
-            m_sessionMode = SessionMode::Host;
-            // And ask the router to let people in from outside, which takes a second or two and
-            // happens on its own thread. It often works and sometimes cannot; the panel says which,
-            // and the local addresses are still there either way.
-            m_ports.Open(static_cast<uint16_t>(m_hostPort));
-            EnterWorld();
-        }
-        else
-        {
-            m_titleStatus = "Could not open port " + std::to_string(m_hostPort);
-        }
-    }
 
-    ImGui::Spacing();
-    ImGui::TextDisabled("Join a game");
-    ImGui::AlignTextToFramePadding();
-    ImGui::TextUnformatted("Address");
-    ImGui::SameLine(86.0f);
-    ImGui::SetNextItemWidth(160.0f);
-    ImGui::InputText("##joinaddress", m_joinAddress, sizeof(m_joinAddress));
-    ImGui::SameLine();
-    ImGui::TextUnformatted("Port");
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(-1.0f);
-    ImGui::InputInt("##joinport", &m_joinPort, 0, 0);
-    m_joinPort = std::clamp(m_joinPort, 1024, 65535);
-    if (ImGui::Button("Join", wide))
+    if (m_titlePage == TitlePage::Open)
     {
-        // An address with a port on the end of it belongs in both boxes.
-        //
-        // The panel above copies an address as "1.2.3.4:27015", because that is how anybody would
-        // write one down and send it to a friend. Pasted into the address box whole, it was handed
-        // to the resolver as the name of a machine and failed, which from the outside is "I put in
-        // the address they gave me and it says it cannot reach them".
-        if (const char* colon = std::strrchr(m_joinAddress, ':'); colon != nullptr)
+        DrawTitleOpen();
+        ImGui::Spacing();
+        if (ImGui::Button("Back", wide))
         {
-            const int typed = std::atoi(colon + 1);
-            if (typed >= 1024 && typed <= 65535)
-            {
-                m_joinPort = typed;
-            }
-            m_joinAddress[colon - m_joinAddress] = '\0';
-        }
-        // Kept for next time, in the archived config, so the box opens on the last game joined.
-        cv_lastAddress.Set(m_joinAddress);
-        cv_lastPort.Set(m_joinPort);
-        StopSession();
-        auto transport = CreateUdpTransport();
-        transport->SetConditions(m_simulatedConditions);
-        NetClient::Config config;
-        if (m_client.Connect(std::move(transport), m_joinAddress, static_cast<uint16_t>(m_joinPort),
-                             PlayerName(), config))
-        {
-            m_sessionMode = SessionMode::Client;
-            // A client predicts where it will be, never whether it is alive.
-            m_player.SetDecidesDamage(false);
+            m_titlePage = TitlePage::Root;
             m_titleStatus.clear();
         }
-        else
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::TextDisabled("by jojozagjos");
+        ImGui::End();
+        return;
+    }
+    if (m_titlePage == TitlePage::Join)
+    {
+        DrawTitleJoin();
+        ImGui::Spacing();
+        if (ImGui::Button("Back", wide))
         {
-            // Naming the two things that are almost always wrong, because "could not reach" on its
-            // own leaves a player with nothing to try.
-            m_titleStatus = std::string("Could not reach ") + m_joinAddress + ":" +
-                            std::to_string(m_joinPort) +
-                            ". Check they are hosting, that this is their address on this network "
-                            "rather than their public one, and that their firewall is letting the "
-                            "game through.";
+            m_titlePage = TitlePage::Root;
+            m_titleStatus.clear();
         }
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::TextDisabled("by jojozagjos");
+        ImGui::End();
+        return;
     }
 
-    if (!m_titleStatus.empty())
+    if (ImGui::Button("Open a game", wide))
     {
-        ImGui::TextColored({0.90f, 0.55f, 0.35f, 1.0f}, "%s", m_titleStatus.c_str());
+        m_titlePage = TitlePage::Open;
+        m_titleStatus.clear();
     }
-
     ImGui::Spacing();
-    ImGui::Separator();
-    ImGui::TextDisabled("Over the internet");
-    ImGui::PushTextWrapPos(0.0f);
-    ImGui::TextDisabled("Neither machine has to be reachable. Both swap one line of text, then dial "
-                        "each other at the same moment so both routers open a hole.");
-    ImGui::PopTextWrapPos();
-    if (ImGui::Button("Open a game, and send a code", wide))
+    if (ImGui::Button("Join a game", wide))
     {
-        StartPunchedSession(true);
-    }
-    if (ImGui::Button("Join a game with their code", wide))
-    {
-        StartPunchedSession(false);
+        m_titlePage = TitlePage::Join;
+        m_titleStatus.clear();
     }
 
     ImGui::Spacing();

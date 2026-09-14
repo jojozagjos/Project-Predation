@@ -182,6 +182,9 @@ private:
     // world cannot be paused by one person in it.
     // The settings panel, drawn inside the menu and inside the pause screen alike.
     // Punching a way through two routers by swapping a code with the other player.
+    // The two things anybody came to the menu to do, each on its own page.
+    void DrawTitleOpen();
+    void DrawTitleJoin();
     void StartPunchedSession(bool asHost);
     void StopPunchedSession();
     void DrawPunchThrough();
@@ -439,6 +442,14 @@ private:
     // of those screens is ever on at a time.
     bool m_settingsOpen = false;
     // Swapping codes with the other player, and the connection it is trying to make.
+    // Which page of the menu is showing. The first one is two buttons and a name.
+    enum class TitlePage : uint8_t
+    {
+        Root,
+        Open,
+        Join
+    };
+    TitlePage m_titlePage = TitlePage::Root;
     bool m_punching = false;
     bool m_punchingAsHost = false;
     std::shared_ptr<IceLink> m_link;
