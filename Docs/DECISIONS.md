@@ -717,3 +717,78 @@ to guess at.
 The ammunition in a picked-up weapon was the same shape of mistake in miniature: the host sent the
 rounds with every spawn and the client threw them away when it took one, so a rifle dropped with
 three rounds came back full.
+
+## ADR-042: A correction must not watch its own output
+
+**Status**: accepted, 2026-09-13
+
+Two corrections keep a held weapon out of a wall: the muzzle comes down, and the whole weapon comes
+back. Both were measured on the weapon as it stood, which is the weapon after both had already run.
+So each was reacting to its own work. Turned out of the wall, the barrel was no longer in the wall,
+so the turn unwound, so the barrel went back in; and separately a dropped muzzle is near and low, so
+it needed drawing in hardly at all, so the weapon sat further out, so it needed dropping further. A
+centimetre of ground could tip the pair between those states, and what a player saw was the weapon
+flicking as they walked up to a wall.
+
+Both now measure the weapon with every correction taken back off it, which asks a question about the
+room the player is standing in. Their own movement is then the only thing that changes the answer.
+
+The same shape of mistake has appeared three times now in this codebase and is worth naming: a
+per-frame correction that reads the state it has already corrected is a feedback loop, and a
+feedback loop with a threshold in it oscillates. Measure the uncorrected state.
+
+## ADR-043: There is no honest way to aim at a wall a hand's length away
+
+**Status**: accepted, 2026-09-13
+
+A carbine is six hundred millimetres long, a player can stand three hundred and twenty from a wall
+because that is how wide they are, and a sighted weapon has to be far enough out that the camera is
+not inside the receiver. The three cannot be had at once, and for a long time what gave was the
+barrel: forty centimetres of it inside the wall. Dropping the muzzle is what gets a barrel out of a
+wall, and it is the one correction the sights cannot survive, because the sights are the pose.
+
+So the sights do not come up that close, which is also what happens to a person who tries it. This
+reverses ADR-037, which was right about the thing it was reacting to: breaking the aim on how boxed
+in the player felt shoved the weapon about every time they brushed a doorframe. What is refused now
+is measured against where the muzzle would be with the sights up, so it refuses only where the
+sights would be a lie and works exactly as before everywhere else. The simulation refuses too, so
+nobody walks at aiming pace and shoots at aiming accuracy while looking at a weapon held at the hip.
+
+## ADR-044: An arriving body places its limbs; a walking one eases them
+
+**Status**: accepted, 2026-09-13
+
+Feet and hands are smoothed towards where the pose wants them, which hides the step when a foot
+trace crosses from one surface to another. That is right for somebody walking about and wrong for
+somebody who has just arrived somewhere: a respawned body spent half a second hauling its limbs back
+from where its corpse fell, through itself, at whatever angles the solver found on the way.
+
+A body that is put somewhere rather than having walked there places its limbs outright for one frame
+and eases from then on. Everything the old body was part way through is cleared with it.
+
+The same rule applies to what a foot remembers. A planted foot keeps the height of the surface it
+landed on so its target does not snap up and down the edge of a ledge; off the ledge that stops
+being an answer to anything, and holding it anyway left the legs reaching up over the head for a
+surface the body had long since fallen past.
+
+## ADR-045: Limits on what a stranger can make this machine allocate
+
+**Status**: accepted, 2026-09-13
+
+Hosting now opens a port that people outside the house can reach, which makes every buffer sized
+from a packet an attacker's to size. Two were unbounded. A connect request is one datagram and it
+bought a peer with two vectors in it, so a stream of datagrams with forged source addresses bought
+as many as the sender cared to send. And a peer could open a gap in the reliable stream and post
+packets behind it for ever, because nothing makes a sender fill a gap: sixty thousand sequence
+numbers of held payload is eighty megabytes for one connection.
+
+Sixteen peers and sixty-four held packets. Neither costs anything in a real game, which is four
+players on a connection that works, and both turn "use this machine up" into "this datagram was
+dropped".
+
+The port mapper is held to the same rule from the other direction: a search reply is a datagram from
+whatever felt like answering, and a device description is a document fetched over the network, so
+neither may name a host the game then goes and talks to. A reply is believed only from the address
+it names, that address has to be on this network, and a control URL has to stay on the device whose
+description it came from. The mapping itself has an hour's lease, renewed while the game is up, so
+a crash cannot leave a hole in the router open for ever.
