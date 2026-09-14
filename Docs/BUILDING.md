@@ -162,13 +162,44 @@ base presets. vcpkg's default is a tree per build folder, which here was 3.1 GB 
 byte the same. A triplet's tree already contains both the debug and the release libraries, so there
 is nothing to keep apart.
 
+## 10. What is in build, and why there is so much of it
+
+```
+build/vcpkg_installed/     the dependencies: SDL, bgfx, Jolt, spdlog and the rest
+build/windows-debug/       one folder per preset you have configured
+build/windows-release/
+build/windows-shipping/
+dist/                      what you send somebody: the folder and the zip
+```
+
+Only two kinds of thing are in there. `vcpkg_installed` is the libraries the game is built against,
+built once and shared by every preset; everything else is one folder per build you have made.
+`dist` is deliberately not under `build`, because the thing you hand somebody is not another build.
+
+Rough sizes: the dependencies are about 3 GB, a debug build is about 1 GB, and an optimised build
+is about 120 MB. Most of the 3 GB is the host tree that exists to produce one program, the bgfx
+shader compiler; it is the price of building the dependencies from source instead of trusting a
+binary someone else made.
+
+None of it is in git. Deleting `build` entirely costs a full rebuild and nothing else.
+
+```
+Scripts\Windows\clean.cmd        vcpkg's staging area: a few gigabytes, nothing needs it
+Scripts\Windows\clean.cmd all    also every preset folder, keeping the dependencies
+```
+
+`clean.cmd all` is the one to reach for when a build folder is not needed for a while: the preset
+comes back with one `build.cmd`, and because the dependency tree stays it is a compile rather than
+a download.
+
+
 ## Sending it to somebody
 
 ```
 Scripts\Windows\package.cmd
 ```
 
-Builds `windows-shipping`, lays out `build\package\ProjectPredation` and zips it. The folder holds
+Builds `windows-shipping`, lays out `dist\ProjectPredation` and zips it. The folder holds
 the executable, the data files, and the shaders the build compiled, all under an `Assets` folder
 beside the exe, which is the first place the game looks. It runs from anywhere with nothing else
 installed except the Microsoft Visual C++ Redistributable for x64. A `README.txt` goes in the folder

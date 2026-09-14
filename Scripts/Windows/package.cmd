@@ -25,10 +25,12 @@ setlocal EnableDelayedExpansion
 set "PRESET=%~1"
 if "%PRESET%"=="" set "PRESET=windows-shipping"
 
+rem The staged folder and the zip go in dist, not in build. build holds the dependencies
+rem and one folder per preset, and the thing you send somebody is not another build.
 set "ROOT=%~dp0..\.."
 set "BUILD_DIR=%ROOT%\build\%PRESET%"
-set "STAGE=%ROOT%\build\package\ProjectPredation"
-set "ZIP=%ROOT%\build\package\ProjectPredation-%PRESET%.zip"
+set "STAGE=%ROOT%\dist\ProjectPredation"
+set "ZIP=%ROOT%\dist\ProjectPredation-%PRESET%.zip"
 
 call "%~dp0vsenv.cmd"
 if errorlevel 1 (

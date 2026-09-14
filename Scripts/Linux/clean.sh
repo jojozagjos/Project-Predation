@@ -41,10 +41,10 @@ done
 if [[ "${1:-}" == "all" ]]; then
     echo "[clean] compiled output"
     # Every preset folder under build, which is to say everything except the shared dependency tree
-    # and whatever the packaging script laid out.
+    # Anything packaged is in dist, untouched.
     for preset in "$BUILD"/*/; do
         name="$(basename "$preset")"
-        if [[ "$name" != "vcpkg_installed" && "$name" != "package" ]]; then
+        if [[ "$name" != "vcpkg_installed" ]]; then
             echo "  $preset"
             rm -rf "$preset"
         fi

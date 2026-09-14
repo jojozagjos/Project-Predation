@@ -52,10 +52,10 @@ for %%d in ("%VCPKG_ROOT%\buildtrees" "%VCPKG_ROOT%\packages") do (
 if /i "%~1"=="all" (
     echo [clean] compiled output
     rem Every preset folder under build, which is to say everything except the shared dependency
-    rem tree and whatever the packaging script laid out.
+    rem tree. What the packaging script lays out is in dist, which this does not touch.
     for /d %%p in ("%BUILD%\*") do (
         set "NAME=%%~nxp"
-        if /i not "!NAME!"=="vcpkg_installed" if /i not "!NAME!"=="package" (
+        if /i not "!NAME!"=="vcpkg_installed" (
             echo   %%~fp
             rmdir /s /q "%%~fp"
         )
