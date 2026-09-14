@@ -2228,7 +2228,13 @@ void PredationGame::UpdateMantleStow()
     // and the same bring-up as any other swap: the weapon goes down, the arms are free for the
     // climb, and it comes back up afterwards. Hiding it instead would have left the simulation
     // thinking a rifle was in hands that were holding a ledge.
-    const bool climbing = m_player.State().mantling;
+    // The hands stay empty until they are off the ledge, not until the climb ends.
+    //
+    // The arms go on fading out of the climb for a moment after the body arrives at the top, which
+    // is them letting go. Putting a weapon back in them during that fade means the hand is being
+    // asked to be on a ledge and on a handguard at once: what came out was the weapon appearing in
+    // mid air and the hands snapping across to it. It is a fifth of a second of waiting.
+    const bool climbing = m_player.State().mantling || m_body.ArmsAreClimbing();
     if (climbing == m_mantleStowing)
     {
         return;

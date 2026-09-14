@@ -119,6 +119,11 @@ public:
         // round behind the player whenever they looked straight down. Aiming raises this to one,
         // because the sights have to line up with the view exactly.
         float weaponCarryPitchFollow = 0.90f;
+        // And how much of it a weapon follows downwards while the body is flat. A prone player has a
+        // floor a hand.s width under the weapon and can still look ninety degrees down; following
+        // that puts the barrel through the ground, and nothing afterwards can take it back out
+        // because the thing it is pointing at is the thing the player is lying on.
+        float weaponPronePitchFollow = 0.22f;
         // The weapon lags a turn and then catches up, which is what gives it weight.
         float weaponSwayAmount = 0.34f;   // how far a turn drags the weapon behind the view
         float weaponSwayRecover = 11.0f;  // how fast it catches up again
@@ -445,6 +450,9 @@ public:
     // a sighted weapon would have most of its barrel inside it. The game reads this to decide
     // whether the player is aiming at all, so that what is drawn and what is simulated agree.
     bool AimHasRoom() const { return !m_aimBlocked; }
+    // Whether a climb still has hold of the arms. True through the fade after one finishes, which
+    // is when they are still coming off the ledge and nothing should be put back in them.
+    bool ArmsAreClimbing() const { return m_mantleFade > 0.001f; }
     // Which way the held weapon is turned, so a socket on it can be put into world space.
     glm::quat WeaponRotation() const { return m_weaponTransform.rotation; }
     // What is being held, for the weapon bench: its sockets are what the hands are placed by.
@@ -520,8 +528,6 @@ private:
                           float dt);
     // Where the trigger hand goes during a climb, and how far through the climb it is. Shared by
     // the arm solve and by whatever is being carried, so the two agree.
-    bool MantleCarry(const PlayerState& state, glm::vec3& outPoint, glm::quat& outRotation,
-                     float& outWeight) const;
     // Moves the whole drawn weapon, parts and all, after the hold has already been solved.
     void ShiftWeapon(const glm::vec3& delta);
     // One entity per weapon part, however the visual was arrived at.

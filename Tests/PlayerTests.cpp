@@ -674,10 +674,15 @@ TEST_CASE("A climb takes time and cannot be steered out of", "[player][mantle]")
     physics.Shutdown();
 }
 
-TEST_CASE("Stances can be changed in the air", "[player][stance]")
+TEST_CASE("You can crouch in the air but not lie down in it", "[player][stance]")
 {
-    // Crouching and going prone mid-jump is something people try, and there is no reason to refuse
-    // it: the capsule is shrinking, and shrinking cannot be blocked.
+    // Crouching mid-jump is something people try and there is no reason to refuse it: tucking your
+    // legs up is a real thing a jumping body does, the capsule is shrinking, and shrinking cannot
+    // be blocked.
+    //
+    // Lying down is not. There is nothing to lie on halfway through a jump, and what it did instead
+    // was shrink the capsule while the body carried on falling, so a player could dive through a
+    // gap they could not walk through and land already flat.
     PhysicsWorld physics;
     PhysicsWorld::Settings settings;
     settings.workerThreads = 1;
@@ -718,7 +723,8 @@ TEST_CASE("Stances can be changed in the air", "[player][stance]")
     input.proneHeld = true;
     physics.Step(1.0f / 60.0f);
     player.Step(input, 1.0f / 60.0f);
-    CHECK(player.State().stance == PlayerStance::Prone);
+    INFO("asked to lie down in the air and got " << PlayerStanceName(player.State().stance));
+    CHECK(player.State().stance == PlayerStance::Crouching);
 
     player.Shutdown();
     physics.Shutdown();
@@ -1129,4 +1135,61 @@ TEST_CASE("A climbable ledge behind a wall is not a way through the wall", "[pla
     CHECK_FALSE(started);
     // And still on this side of it.
     CHECK(ended.z > -1.0f);
+}
+
+TEST_CASE("You cannot lie down in mid air", "[player][stance]")
+{
+    // Lying down is a thing you do to a floor. Held in the air it shrank the capsule while the body
+    // carried on falling, so a player could dive through a gap they could not walk through.
+    PhysicsWorld physics;
+    PhysicsWorld::Settings settings;
+    settings.workerThreads = 1;
+    REQUIRE(physics.Init(settings));
+    physics.CreateBox({20.0f, 0.5f, 20.0f}, Transform{{0.0f, -0.5f, 0.0f}}, BodyMotion::Static);
+    physics.OptimizeBroadPhase();
+
+    PlayerConfig config;
+    PlayerController player;
+    REQUIRE(player.Init(physics, config, {0.0f, 0.05f, 0.0f}));
+
+    PlayerInput input;
+    for (int i = 0; i < 30; ++i)
+    {
+        physics.Step(1.0f / 60.0f);
+        player.Step(input, 1.0f / 60.0f);
+    }
+    REQUIRE(player.State().grounded);
+
+    // Jump, then ask to go prone on the way up.
+    input.jump = true;
+    physics.Step(1.0f / 60.0f);
+    player.Step(input, 1.0f / 60.0f);
+    input.jump = false;
+    input.proneHeld = true;
+    for (int i = 0; i < 20; ++i)
+    {
+        physics.Step(1.0f / 60.0f);
+        player.Step(input, 1.0f / 60.0f);
+    }
+
+    INFO("airborne at y " << player.State().position.y << " in stance "
+                          << PlayerStanceName(player.State().stance));
+    REQUIRE_FALSE(player.State().grounded);
+    CHECK(player.State().stance != PlayerStance::Prone);
+
+    // And it takes on landing, without the key being pressed again.
+    for (int i = 0; i < 120; ++i)
+    {
+        physics.Step(1.0f / 60.0f);
+        player.Step(input, 1.0f / 60.0f);
+    }
+    INFO("after landing, stance is " << PlayerStanceName(player.State().stance) << ", desired "
+                                     << PlayerStanceName(player.State().desiredStance) << ", blocked "
+                                     << player.State().stanceBlocked << ", grounded "
+                                     << player.State().grounded << ", y " << player.State().position.y);
+    CHECK(player.State().grounded);
+    CHECK(player.State().stance == PlayerStance::Prone);
+
+    player.Shutdown();
+    physics.Shutdown();
 }

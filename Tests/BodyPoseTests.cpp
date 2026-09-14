@@ -1225,57 +1225,6 @@ TEST_CASE("Lying down does not put what is in the hands through the floor", "[bo
     CHECK(hand.y > 0.0f);
 }
 
-TEST_CASE("Climbing takes what is in the hands with it", "[body][pose][mantle]")
-{
-    // Both hands go to the ledge, but the carry offset for a weapon or an item is measured from the
-    // eye, so it went on describing a hold in front of a chest that had climbed away from it. From
-    // outside, the gun hung in mid-air while its owner hauled themselves over a wall.
-    //
-    // A weapon and a bare item are posed by different code, so both are driven here. Only one of
-    // them is ever in the hands at a time, which is why they need separate runs.
-    const bool armed = GENERATE(true, false);
-    BodyHarness harness;
-    WeaponDefinition weapon;
-    weapon.id = 1;
-    weapon.key = "test_rifle";
-    weapon.size = {0.06f, 0.16f, 0.62f};
-    if (armed)
-    {
-        harness.body.SetWeaponForSimulation(&weapon);
-    }
-    else
-    {
-        harness.body.SetHeldItemForSimulation(true);
-    }
-    harness.Settle(120);
-
-    PlayerState& state = const_cast<PlayerState&>(harness.State());
-    const glm::vec3 from = state.position;
-    state.mantling = true;
-    state.mantleTime = 0.7f * 0.3f; // early, while the hands are taking the weight
-    state.mantleDuration = 0.7f;
-    state.mantleFrom = from;
-    state.mantleTo = from + glm::vec3(0.0f, 1.0f, -0.9f);
-    state.mantleEdge = from + glm::vec3(0.0f, 1.0f, -0.35f);
-
-    for (int i = 0; i < 30; ++i)
-    {
-        harness.body.Update(harness.scene, state, harness.View(), harness.config, harness.physics,
-                            kTick);
-    }
-
-    const glm::vec3 hand = harness.Bone(harness.Rig().hand[1]);
-    const glm::vec3 carried = armed ? harness.body.WeaponOrigin() : harness.body.HeldItemOrigin();
-    INFO("armed " << armed << " trigger hand " << hand.x << ", " << hand.y << ", " << hand.z
-                  << " carried " << carried.x << ", " << carried.y << ", " << carried.z);
-    // In the hand, not merely near it. The carry that runs before the arms are solved predicts
-    // where the hand is heading, and a prediction is not an arm that ran out of reach on the way to
-    // a ledge: the gap between the two is the gap between the glove and what it is holding.
-    CHECK(glm::distance(hand, carried) < 0.12f);
-
-    // And it has gone up to the ledge rather than staying at the height the body started at.
-    CHECK(carried.y > from.y + 0.6f);
-}
 
 TEST_CASE("A crouch walk shuffles instead of flinging its legs", "[body][pose]")
 {
@@ -2790,4 +2739,48 @@ TEST_CASE("The legs come back under you at the top of a climb", "[body][pose][ma
     // behind on a ledge the body has already walked off.
     CHECK(worst < 0.56f);
     CHECK(lowest > -0.20f);
+}
+
+TEST_CASE("Lying down and looking at the floor keeps the barrel out of it",
+          "[body][pose][weapons][prone]")
+{
+    // The drop that keeps a barrel out of a wall is the wrong lever against a floor: a muzzle in
+    // the ground comes out by being lifted, and lowering it further is the one thing that cannot
+    // help. Lying down and looking at your hands is where the two meet.
+    BodyHarness harness;
+    WeaponDefinition weapon;
+    weapon.id = 1;
+    weapon.key = "test_rifle";
+    weapon.size = {0.06f, 0.16f, 0.62f};
+    harness.body.SetWeaponForSimulation(&weapon);
+
+    harness.SetStance(PlayerStance::Prone);
+    harness.Settle(240);
+    REQUIRE(harness.State().stance == PlayerStance::Prone);
+
+    float deepest = 0.0f;
+    float at = 0.0f;
+    float worstTip = 0.0f;
+    for (int step = 0; step <= 20; ++step)
+    {
+        const float pitch = -glm::radians(4.5f) * static_cast<float>(step); // down to -90
+        harness.input.pitch = pitch;
+        harness.Settle(30);
+
+        const glm::vec3 muzzle = harness.body.MuzzlePoint();
+        if (-muzzle.y > deepest)
+        {
+            deepest = -muzzle.y;
+            at = glm::degrees(pitch);
+        }
+        worstTip = std::max(worstTip, harness.body.MuzzleTipDegrees());
+    }
+
+    INFO("the muzzle got " << deepest * 100.0f << " cm under the floor, looking " << at
+                           << " degrees down, and the drop reached " << worstTip << " degrees");
+    // The floor is at zero. A muzzle below it is inside it.
+    CHECK(deepest < 0.02f);
+    // And the weapon is not being swung about to get there. Lying down, there is nowhere for a
+    // drop to go.
+    CHECK(worstTip < 20.0f);
 }

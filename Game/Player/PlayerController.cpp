@@ -128,12 +128,26 @@ glm::vec3 PlayerController::ComputeWishDirection(const PlayerInput& input) const
 void PlayerController::UpdateStance(const PlayerInput& input, float /*dt*/)
 {
     PlayerStance desired = PlayerStance::Standing;
-    if (input.proneHeld)
+    // Not in mid air. Lying down is a thing you do to a floor, and there is nothing to lie on
+    // halfway through a jump: what it did instead was shrink the capsule while the body carried on
+    // falling, so a player could dive through a gap they could not walk through and land already
+    // flat. Crouching in the air is left alone, because tucking your legs up is a real thing a
+    // jumping body does and it changes nothing about where the body can fit.
+    //
+    // Measured on how long the feet have been off the ground rather than on whether they are off it
+    // this instant. Walking over a stair nosing or a doorway lip reports airborne for a tick or two
+    // at a time, and a rule written on the instant would sit a crawling player up every time they
+    // crossed one.
+    const bool airborne = !m_state.grounded && m_state.timeSinceGrounded > m_config.coyoteTime;
+    if (input.proneHeld && !airborne)
     {
         desired = PlayerStance::Prone;
     }
-    else if (input.crouchHeld)
+    else if (input.crouchHeld || input.proneHeld)
     {
+        // Already down and now off the ground, which is walking off a ledge while prone. Crouching
+        // is the nearest thing to it that is not lying on nothing, and it is what the body will be
+        // in when it lands.
         desired = PlayerStance::Crouching;
     }
     m_state.desiredStance = desired;

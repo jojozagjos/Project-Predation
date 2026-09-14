@@ -899,6 +899,10 @@ void PlayerBody::SetWeaponForSimulation(const WeaponDefinition* definition)
     m_weaponId = definition->id;
     m_weaponVisual = BuildWeaponVisual(*definition);
     m_hasWeapon = true;
+    // The support hand eases onto whatever has just arrived rather than being placed on it. A hand
+    // holding a weapon is rigidly attached to it, which is right while it is holding and wrong on
+    // the frame it starts: a weapon coming back after a climb had the hands snap across to it.
+    m_supportRejoin = 0.0f;
 }
 
 // Puts a model in the hands directly, without going through the weapon database or the disk. The
@@ -958,6 +962,8 @@ void PlayerBody::BuildWeaponEntities(Scene& scene, MeshLibrary& meshes,
     }
     m_weaponEntity = m_weaponParts.empty() ? Entity{} : m_weaponParts.front();
     m_hasWeapon = true;
+    // And the same here, where a weapon built from a model arrives.
+    m_supportRejoin = 0.0f;
 
     // A flash is a scaled-to-nothing sphere most of the time. Giving it its own entity means firing
     // costs a transform write rather than creating and destroying geometry.
@@ -1024,36 +1030,6 @@ glm::vec3 PlayerBody::ClearOfWorld(PhysicsWorld& physics, const glm::vec3& eye, 
         wanted.y = std::max(wanted.y, ground.position.y + clearance);
     }
     return wanted;
-}
-
-// Where the trigger hand will be during a climb, and how much of the way there it is.
-//
-// Worked out here as well as in the arm solve, because whatever is being carried has to move before
-// the weapon's parts are placed and the arms are solved after that. Both read the same lip and the
-// same release curve, so the gun and the hand holding it arrive together.
-bool PlayerBody::MantleCarry(const PlayerState& state, glm::vec3& outPoint, glm::quat& outRotation,
-                             float& outWeight) const
-{
-    if (m_mantleFade <= 0.001f)
-    {
-        return false;
-    }
-
-    const float duration = std::max(state.mantleDuration, 0.05f);
-    const float t = std::clamp(state.mantleTime / duration, 0.0f, 1.0f);
-    const glm::vec3 travel = state.mantleTo - state.mantleFrom;
-    const glm::vec3 flat{travel.x, 0.0f, travel.z};
-    const glm::vec3 forward = glm::length(flat) > 1e-4f
-                                  ? glm::normalize(flat)
-                                  : glm::vec3(std::sin(m_bodyYaw), 0.0f, -std::cos(m_bodyYaw));
-    const glm::vec3 right{-forward.z, 0.0f, forward.x};
-
-    const float release = glm::smoothstep(m_config.mantleReleaseAt, 1.0f, t);
-    outWeight = (1.0f - release) * m_mantleFade;
-    outPoint = state.mantleEdge + right * (m_config.mantleGripSpread * m_rig.height);
-    // Muzzle along the way the climb is going, which is where a hand over a lip points it.
-    outRotation = LookRotation(forward, glm::vec3(0.0f, 1.0f, 0.0f));
-    return outWeight > 0.001f;
 }
 
 bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& view,
@@ -1142,7 +1118,18 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
     // is well defined at every pitch, and up follows from it.
     const glm::vec3 yawRight{std::cos(view.yaw), 0.0f, std::sin(view.yaw)};
 
-    const float carryPitch = view.pitch * glm::mix(m_config.weaponCarryPitchFollow, 1.0f, aim);
+    // How much of the view's pitch the carry follows, and lying down it follows far less of it
+    // downwards.
+    //
+    // A body on its front has a floor a hand's width under the weapon, and the view can still look
+    // ninety degrees down: followed, the barrel goes straight through the ground, and no amount of
+    // correcting afterwards helps because the thing it is pointing at is the thing it is lying on.
+    // Looking up is unaffected, because there is nothing above a prone player to stop them.
+    const float pitchFollow =
+        view.pitch < 0.0f ? glm::mix(m_config.weaponCarryPitchFollow, m_config.weaponPronePitchFollow,
+                                     m_flatness)
+                          : m_config.weaponCarryPitchFollow;
+    const float carryPitch = view.pitch * glm::mix(pitchFollow, 1.0f, aim);
     const float cp = std::cos(carryPitch);
     const glm::vec3 carryForward{std::sin(view.yaw) * cp, std::sin(carryPitch), -std::cos(view.yaw) * cp};
     const glm::vec3 carryRight = yawRight;
@@ -1530,7 +1517,13 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
         {
             const RayHit blocked = physics.RayCast(view.eyePosition, toMuzzle / range,
                                                    range + m_config.muzzleClearance);
-            if (blocked)
+            // And only against something a drop can get a barrel out of, which means something
+            // roughly upright. A muzzle in the ground comes out by being lifted; lowering it
+            // further is the one thing that cannot possibly help, and lying down looking at your own
+            // hands is exactly where the two meet. Measured at eighty degrees of drop and the
+            // muzzle still half a metre under the floor, which is the correction working as hard as
+            // it can in the wrong direction.
+            if (blocked && blocked.normal.y < 0.5f)
             {
                 // Positive turns about the weapon's own right axis drop the muzzle, which is what
                 // anybody does with a rifle when a room runs out. Lifting it would clear the same
@@ -1631,6 +1624,30 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
         m_muzzleTip = 0.0f;
     }
 
+    // And the muzzle out of the ground, which is the one direction none of the above can help with.
+    //
+    // Everything before this moves the weapon back or turns it down, and the ground is underneath:
+    // pulling in does not lift it and dropping the muzzle drives it further in. So the last word is
+    // a trace straight down from the muzzle, and whatever it finds above the muzzle the whole weapon
+    // rises by. Bounded, because a weapon standing over a hole in the floor would otherwise be
+    // lifted by however deep the hole is.
+    if (m_mantleFade <= 0.001f)
+    {
+        const glm::vec3 muzzle =
+            m_weaponTransform.position + m_weaponTransform.rotation * m_weaponVisual.muzzle;
+        constexpr float kLook = 0.45f;
+        const RayHit ground = physics.RayCast(muzzle + glm::vec3(0.0f, kLook, 0.0f),
+                                              glm::vec3(0.0f, -1.0f, 0.0f), kLook * 2.0f);
+        if (ground)
+        {
+            const float under = ground.position.y + m_config.muzzleClearance - muzzle.y;
+            if (under > 0.0f)
+            {
+                m_weaponTransform.position.y += std::min(under, kLook);
+            }
+        }
+    }
+
     // Recorded after every correction, so what is measured is where the hold ended up rather than
     // where it was asked to go.
     m_weaponHold = m_weaponTransform.position + m_weaponTransform.rotation * holdPoint;
@@ -1712,22 +1729,6 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
         }
     }
 
-    // Climbing takes both hands, whatever is in them. The carry offset above is measured from the
-    // eye, and during a climb the body is nowhere near where that offset assumes it is, so the
-    // weapon was left hanging in the air in front of a player who had both hands on a ledge. Done
-    // here rather than with the arms, because the parts below are placed from this frame and the
-    // arms are solved after they are.
-    {
-        glm::vec3 climbPoint{0.0f};
-        glm::quat climbRotation{1.0f, 0.0f, 0.0f, 0.0f};
-        float climbWeight = 0.0f;
-        if (MantleCarry(state, climbPoint, climbRotation, climbWeight))
-        {
-            m_weaponTransform.position = glm::mix(m_weaponTransform.position, climbPoint, climbWeight);
-            rotation = glm::slerp(rotation, climbRotation, climbWeight);
-            m_weaponTransform.rotation = rotation;
-        }
-    }
 
     const glm::mat4 weaponMatrix =
         glm::translate(glm::mat4(1.0f), m_weaponTransform.position) * glm::mat4_cast(rotation);
@@ -2239,25 +2240,6 @@ void PlayerBody::UpdateHeldItem(const PlayerState& state, const PlayerView& view
     m_heldItemTransform.position = ik.endPosition + palm * (Ratio::kHand * m_rig.height * 0.45f) +
                                    m_heldItemTransform.rotation * m_heldItemOffset;
 
-    // Except while climbing, when the hand it is in has gone to the ledge and the carry offset,
-    // which is measured from the eye, no longer describes anywhere the body is.
-    {
-        glm::vec3 climbPoint{0.0f};
-        glm::quat climbRotation{1.0f, 0.0f, 0.0f, 0.0f};
-        float climbWeight = 0.0f;
-        if (MantleCarry(state, climbPoint, climbRotation, climbWeight))
-        {
-            // Turned towards the climb but left in the hand.
-            //
-            // It used to be moved to the ledge as well, on the same weight, and the hand goes there
-            // too: partway through, the item sat between the palm and the ledge, which reads as the
-            // thing sliding up the arm. The hand is already going where the climb wants it, so
-            // carrying the item is a matter of not moving it off the palm. The correction below,
-            // which puts it back in the fingers once the arms are solved, then has nothing to undo.
-            m_heldItemTransform.rotation =
-                glm::slerp(m_heldItemTransform.rotation, climbRotation, climbWeight);
-        }
-    }
 }
 
 void PlayerBody::UpdateMantleArms(const PlayerState& state, float weight)
@@ -2324,27 +2306,16 @@ void PlayerBody::UpdateMantleArms(const PlayerState& state, float weight)
         }
     }
 
-    // Whatever is in the hands goes where the hands actually got to. The carry that ran earlier
-    // predicts where the trigger hand is heading, because a weapon's parts are placed before the
-    // arms are solved and they have to be placed somewhere. A prediction is not an arm that ran out
-    // of reach on the way to a ledge, and the difference is the gap between the glove and the thing
-    // it is supposed to be holding.
-    // Blended by the same weight the arms are, not applied outright. Applied outright it held the
-    // weapon exactly in the hand right up to the frame the fade ran out, and then let go of it in
-    // one step: the correction stopping is what snapped, not the climb ending.
-    if (solvedTrigger && weight > 0.001f)
-    {
-        if (m_hasHeldItem)
-        {
-            const glm::vec3 inHand =
-                triggerWrist + triggerPalm * (Ratio::kHand * m_rig.height * 0.45f);
-            m_heldItemTransform.position = glm::mix(m_heldItemTransform.position, inHand, weight);
-        }
-        if (m_hasWeapon)
-        {
-            ShiftWeapon((triggerWrist - m_weaponTransform.position) * weight);
-        }
-    }
+    // Nothing is carried up a ledge any more, because nothing is in the hands to carry.
+    //
+    // A climb puts away whatever was out and takes it back at the top, so all of the machinery that
+    // used to drag a weapon and a held item along with a hand on its way to a lip has gone with it.
+    // That machinery is where the sliding came from: the item was being pulled towards the ledge on
+    // one curve while the hand went there on another, so partway through it sat between the palm
+    // and the stone.
+    (void)solvedTrigger;
+    (void)triggerWrist;
+    (void)triggerPalm;
 }
 
 void PlayerBody::UpdateMantleLegs(const PlayerState& state, float weight)
