@@ -29,8 +29,7 @@ Scripts\Windows\test.cmd             (run unit tests)
 Scripts\Windows\run.cmd              (launch the game)
 ```
 
-On Linux the same scripts live in `Scripts/Linux/` with `.sh` endings. See
-[Scripts/README.md](Scripts/README.md).
+What each script does is in [Scripts/README.md](Scripts/README.md).
 
 In the game: hold the right mouse button to look, WASD to move, F3 for the debug overlay,
 grave (`) for the console. Type `help` in the console.
@@ -45,7 +44,7 @@ grave (`) for the console. Type `help` in the console.
 | `Assets/` | Config, data, maps, models, textures, audio |
 | `Tests/` | Unit tests (Catch2) |
 | `Docs/` | Design and engineering documentation |
-| `Scripts/` | Build, test, and run helpers, split into `Windows/` and `Linux/` |
+| `Scripts/` | Build, test, and run helpers |
 | `cmake/` | CMake modules |
 
 ## Documentation

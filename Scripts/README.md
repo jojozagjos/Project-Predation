@@ -1,15 +1,10 @@
 # Scripts
 
-Every helper the project has, split by the platform it runs on. Nothing here is required to build
-the game — they are the shortest way to do the things you do over and over.
+Every helper the project has. Nothing here is required to build the game — they are the shortest
+way to do the things you do over and over.
 
-```
-Scripts/Windows/    .cmd files, for Windows
-Scripts/Linux/      .sh files, for Linux
-```
-
-The two sides take the same arguments and print the same things, so instructions written for one
-read the same on the other.
+Windows only, for now. The folder keeps its platform name because the game is meant to run on other
+desktops eventually, and when that work starts it gets a folder beside this one.
 
 ## Windows
 
@@ -22,21 +17,8 @@ read the same on the other.
 | `smoke.cmd [preset]` | Headless 60-frame run. Requires a screenshot out the other side and fails on any logged error. |
 | `package.cmd [preset]` | Builds the shipping preset, lays out a folder and zips it. Default preset `windows-shipping`. |
 | `clean.cmd [all]` | Clears vcpkg working trees. `all` also deletes every preset's compiled output, keeping the shared dependency tree. |
-| `linux-build.cmd [preset]` | Builds and tests the Linux version in a Docker container. Needs Docker Desktop running. |
 | `vsenv.cmd` | Finds MSVC through `vswhere` and sets up the x64 environment. The others call it; you do not. |
 
-## Linux
-
-| Script | What it does |
-|---|---|
-| `play.sh` | Builds if anything changed, then starts the game. |
-| `build.sh [preset]` | Configures if needed, then builds. Default preset `linux-release`. |
-| `test.sh [preset]` | Runs the unit tests through CTest. |
-| `run.sh [preset] [args]` | Starts an already built game. |
-| `clean.sh [all]` | Clears vcpkg working trees. `all` also deletes every preset's compiled output, keeping the shared dependency tree. |
-
-There is no `package.sh` yet. The Linux port is prepared but has not been compiled; see
-[../Docs/LINUX.md](../Docs/LINUX.md) for what is known to be left.
 
 ## The window-holding preamble
 

@@ -43,51 +43,13 @@
         "PRED_DEV_TOOLS": "OFF",
         "PRED_BUILD_TESTS": "OFF"
       }
-    },
-    {
-      "name": "linux-base",
-      "hidden": true,
-      "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build/${presetName}",
-      "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
-      "cacheVariables": {
-        "VCPKG_TARGET_TRIPLET": "x64-linux",
-        "VCPKG_INSTALLED_DIR": "${sourceDir}/build/vcpkg_installed",
-        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
-      },
-      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Linux" }
-    },
-    {
-      "name": "linux-debug",
-      "displayName": "Linux Debug",
-      "inherits": "linux-base",
-      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug", "PRED_DEV_TOOLS": "ON" }
-    },
-    {
-      "name": "linux-release",
-      "displayName": "Linux Release",
-      "inherits": "linux-base",
-      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release", "PRED_DEV_TOOLS": "ON" }
-    },
-    {
-      "name": "linux-shipping",
-      "displayName": "Linux Shipping (no developer tools)",
-      "inherits": "linux-base",
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release",
-        "PRED_DEV_TOOLS": "OFF",
-        "PRED_BUILD_TESTS": "OFF"
-      }
     }
   ],
   "buildPresets": [
     { "name": "windows-debug", "configurePreset": "windows-debug" },
     { "name": "windows-relwithdebinfo", "configurePreset": "windows-relwithdebinfo" },
     { "name": "windows-release", "configurePreset": "windows-release" },
-    { "name": "windows-shipping", "configurePreset": "windows-shipping" },
-    { "name": "linux-debug", "configurePreset": "linux-debug" },
-    { "name": "linux-release", "configurePreset": "linux-release" },
-    { "name": "linux-shipping", "configurePreset": "linux-shipping" }
+    { "name": "windows-shipping", "configurePreset": "windows-shipping" }
   ],
   "testPresets": [
     {
@@ -103,16 +65,6 @@
     {
       "name": "windows-release",
       "configurePreset": "windows-release",
-      "output": { "outputOnFailure": true }
-    },
-    {
-      "name": "linux-debug",
-      "configurePreset": "linux-debug",
-      "output": { "outputOnFailure": true }
-    },
-    {
-      "name": "linux-release",
-      "configurePreset": "linux-release",
       "output": { "outputOnFailure": true }
     }
   ]

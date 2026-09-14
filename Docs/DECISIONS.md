@@ -869,7 +869,7 @@ CMake variable, so it stayed off afterwards: package once and your own release b
 its model editor until you cleared the cache. Nothing said so. The title screen simply had one
 fewer button.
 
-There is now a `windows-shipping` preset (and `linux-shipping`) with its own binary directory, and
+There is now a `windows-shipping` preset with its own binary directory, and
 the developer presets pin `PRED_DEV_TOOLS=ON` in their own cache variables so a preset configure
 always restores it. Packaging builds the shipping preset and then checks the cache actually says
 `OFF` before it lays anything out, because a stale cache is silent and an editor that leaked into
@@ -895,3 +895,20 @@ The one thing to watch is `find_program`: it caches an absolute path and does no
 that the path still exists, so the shader compiler had to be un-cached once by hand when the tree
 moved. `clean.cmd` and `clean.sh` now remove any per-preset tree they find, so a folder configured
 before this change stops costing anything the first time either is run.
+
+## ADR-051: The Linux port is withdrawn until the game is finished
+
+**Status**: accepted, 2026-09-14, withdrawing the groundwork from 2026-09-13
+
+The Linux preparation is removed: the `.sh` scripts, the `linux-*` presets, the container that
+would have compiled them, and `Docs/LINUX.md`. It was never a working port — nothing had ever been
+compiled by a Linux compiler — so what was actually there was a second platform's worth of files
+and presets to keep correct, in exchange for nothing that runs. Finishing the game on one platform
+comes first. It is all in the history, and reaching a second platform is easier from a finished
+game than from a half-built one.
+
+What stays is the handful of POSIX branches inside the engine: the `#else` arms in `SystemInfo`,
+`Window::NativeDisplay()`, the display handle the renderer passes to bgfx, and the Threads link in
+`Engine/CMakeLists.txt`. They compile to nothing on Windows, they are the parts that were reasoned
+out carefully rather than typed quickly, and deleting inert correct code to look tidier is how you
+end up writing it twice.
