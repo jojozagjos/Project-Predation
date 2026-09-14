@@ -513,3 +513,109 @@ TEST_CASE("Trailing silence is trimmed and the cut is faded")
     CHECK(TrimTrailingSilence(loud) == 0);
     CHECK(loud.samples.size() == 10);
 }
+
+TEST_CASE("A stream plays what has arrived and waits for the rest", "[audio][stream][voice]")
+{
+    // Every other sound in this game is a complete buffer before anybody hears it. A voice coming
+    // down a wire is not: it arrives while it is being played, in fragments, with holes. The mixer
+    // has to keep going through all of that rather than deciding the voice ended at the first gap.
+    AudioEngine mixer;
+    AudioEngine::Settings settings;
+    settings.sampleRate = 48000;
+    mixer.Init(settings);
+    mixer.Shutdown();
+
+    const StreamId stream = mixer.OpenStream(48000);
+    REQUIRE(stream != kInvalidStream);
+
+    AudioEngine::PlayDesc desc;
+    desc.stream = stream;
+    desc.positioned = false;
+    const VoiceId voice = mixer.Play(desc);
+    REQUIRE(voice != kInvalidVoice);
+    // Opened empty on purpose: a voice that refused an empty stream would lose the first syllable,
+    // because the first syllable is what opens it.
+    CHECK(mixer.IsPlaying(voice));
+
+    std::vector<float> out(64 * 2, 0.0f);
+
+    // Nothing has arrived. Silence, and the voice is still there.
+    mixer.Mix(out.data(), 64);
+    for (float sample : out)
+    {
+        CHECK(sample == Catch::Approx(0.0f));
+    }
+    CHECK(mixer.IsPlaying(voice));
+
+    // Now some does.
+    std::vector<float> speech(32, 0.5f);
+    mixer.PushStream(stream, speech.data(), speech.size());
+    CHECK(mixer.StreamQueued(stream) == 32);
+
+    std::fill(out.begin(), out.end(), 0.0f);
+    mixer.Mix(out.data(), 64);
+    // The first samples are the ones pushed; the rest is the gap after them.
+    CHECK(out[0] > 0.0f);
+    CHECK(out[2 * 20] > 0.0f);
+    CHECK(out[2 * 50] == Catch::Approx(0.0f));
+    CHECK(mixer.IsPlaying(voice));
+
+    // What was played is not kept: an hour of conversation must not be an hour of audio in memory.
+    CHECK(mixer.StreamQueued(stream) < 32);
+
+    // More arrives after the gap and is heard, rather than the voice having given up.
+    mixer.PushStream(stream, speech.data(), speech.size());
+    std::fill(out.begin(), out.end(), 0.0f);
+    mixer.Mix(out.data(), 64);
+    CHECK(out[0] > 0.0f);
+    CHECK(mixer.IsPlaying(voice));
+}
+
+TEST_CASE("A closed stream finishes what it has and then ends", "[audio][stream][voice]")
+{
+    AudioEngine mixer;
+    AudioEngine::Settings settings;
+    settings.sampleRate = 48000;
+    mixer.Init(settings);
+    mixer.Shutdown();
+
+    const StreamId stream = mixer.OpenStream(48000);
+    AudioEngine::PlayDesc desc;
+    desc.stream = stream;
+    desc.positioned = false;
+    const VoiceId voice = mixer.Play(desc);
+
+    std::vector<float> speech(16, 0.25f);
+    mixer.PushStream(stream, speech.data(), speech.size());
+    mixer.CloseStream(stream);
+    // Closing does not cut anybody off mid-word: what arrived is still played.
+    CHECK(mixer.IsPlaying(voice));
+
+    std::vector<float> out(64 * 2, 0.0f);
+    mixer.Mix(out.data(), 64);
+    CHECK(out[0] > 0.0f);
+    // And then it really is over, rather than sitting open forever waiting for a speaker who left.
+    CHECK_FALSE(mixer.IsPlaying(voice));
+}
+
+TEST_CASE("A stream that falls behind drops the oldest, not the newest", "[audio][stream][voice]")
+{
+    // A listener whose machine stalled would otherwise be permanently behind the conversation, with
+    // no way to catch up: everything they hear from then on is late by however long the stall was.
+    // Dropping audio is audible; being a second late for the rest of the game is worse.
+    AudioEngine mixer;
+    AudioEngine::Settings settings;
+    settings.sampleRate = 48000;
+    mixer.Init(settings);
+    mixer.Shutdown();
+
+    const StreamId stream = mixer.OpenStream(48000);
+    // Two seconds of it, against a half-second cap.
+    std::vector<float> flood(48000 * 2, 0.1f);
+    mixer.PushStream(stream, flood.data(), flood.size());
+
+    const size_t queued = mixer.StreamQueued(stream);
+    INFO("queued " << queued << " samples of " << flood.size() << " pushed");
+    CHECK(queued <= 48000 / 2 + 1);
+    CHECK(queued > 48000 / 4);
+}

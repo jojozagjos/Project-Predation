@@ -975,3 +975,33 @@ the first and going back to the menu to admit one would end the game for everybo
 
 `kMaxPlayers` stays 4 and stays the only place the number is written. Nothing in the transport
 cares: it holds sixteen peers and the carrier holds as many links as it is given.
+
+## ADR-054: Sound that is still arriving is a stream, not a sound
+
+**Status**: accepted, 2026-09-14
+
+Proximity voice needs the mixer to play audio that does not exist yet when it starts playing. Every
+other sound in this game is a complete buffer before anybody hears it; a voice coming down a wire
+arrives while it is being played, in fragments, out of order, with holes.
+
+A stream is therefore its own thing beside a sound, and the difference is entirely in what running
+out means. A sound that reaches its end is finished and its voice ends. A stream that runs dry plays
+silence and keeps its place, because a gap in the network is a pause in the sentence and not the end
+of it. A stream is only over when it has been closed and drained, which is when the speaker has
+actually stopped.
+
+Three things follow, and each was a decision rather than an accident.
+
+The cursor counts samples since the stream opened rather than samples into a buffer, because the
+buffer keeps having its front thrown away: what a voice has already played is dropped as it goes, or
+an hour of conversation would be an hour of audio held in memory.
+
+A queue that grows past half a second has its oldest thrown away. Letting it grow is what makes a
+listener permanently late: stall for a second and every word after it arrives a second behind, with
+no way to catch up. Dropping audio is audible, and being late for the rest of the game is worse.
+
+Playing a stream that is still empty is allowed. Refusing it would mean the voice opens on the first
+syllable and therefore loses it.
+
+Nothing here knows what a microphone is, and the mixer is still a pure function of its voices and
+its listener, so all of it is tested without a sound card.

@@ -17,8 +17,10 @@ namespace pred
 
 using SoundId = uint16_t;
 using VoiceId = uint32_t;
+using StreamId = uint16_t;
 inline constexpr SoundId kInvalidSound = 0xFFFF;
 inline constexpr VoiceId kInvalidVoice = 0;
+inline constexpr StreamId kInvalidStream = 0xFFFF;
 
 // Everything this game makes a noise with.
 //
@@ -46,6 +48,12 @@ public:
     struct PlayDesc
     {
         SoundId sound = kInvalidSound;
+        // A stream instead of a sound, for audio that does not exist yet when it starts playing.
+        //
+        // Every other sound in this game is a buffer that is complete before anybody hears it. A
+        // voice coming down a wire is not: it arrives while it is being played, in fragments, with
+        // gaps. When this is set, `sound` is ignored and the voice reads whatever has arrived.
+        StreamId stream = kInvalidStream;
         glm::vec3 position{0.0f};
         // False plays it in both ears at full volume, wherever the listener is. That is right for
         // your own weapon and for anything on the interface, and wrong for everything else.
@@ -85,6 +93,24 @@ public:
     // Builds every recipe in the text and adds it under its own name. Returns how many.
     int AddRecipes(const std::string& jsonText);
 
+    // --- Streams --------------------------------------------------------------------------------
+    //
+    // Sound that is still arriving. One per person talking: the packets turn up late, out of order
+    // and with holes in them, and the mixer has to keep playing through all of that rather than
+    // deciding the voice has ended every time the network hiccups.
+    //
+    // A stream that runs dry plays silence and stays open. That is the whole difference between
+    // this and a sound: a sound that reaches its end is finished, and a stream that reaches its end
+    // is merely waiting.
+    StreamId OpenStream(int sampleRate);
+    // Appends samples. Mono, in the stream's own rate; the mixer resamples like anything else.
+    // Beyond `maxQueuedSeconds` the oldest are dropped, because a listener who falls behind must
+    // not accumulate a growing delay: in conversation, late audio is worse than missing audio.
+    void PushStream(StreamId stream, const float* samples, size_t count);
+    // How much is waiting, in samples. Useful for deciding whether to start playing yet.
+    size_t StreamQueued(StreamId stream) const;
+    void CloseStream(StreamId stream);
+
     // --- Playing --------------------------------------------------------------------------------
     VoiceId Play(const PlayDesc& desc);
     // Convenience for the common case: a one-shot somewhere in the world.
@@ -106,10 +132,24 @@ public:
     Stats GetStats() const;
 
 private:
+    // Sound that is still arriving. See OpenStream.
+    struct Stream
+    {
+        StreamId id = kInvalidStream;
+        int sampleRate = 48000;
+        std::vector<float> pending;
+        // Kept so a voice reading this stream can hold its place between buffers without the whole
+        // queue having to survive: the cursor is in samples since the stream opened, and this is
+        // how many have already been thrown away off the front.
+        uint64_t consumed = 0;
+        bool open = true;
+    };
+
     struct Voice
     {
         VoiceId id = kInvalidVoice;
         SoundId sound = kInvalidSound;
+        StreamId stream = kInvalidStream;
         double cursor = 0.0; // in source samples, fractional because pitch is not always one
         glm::vec3 position{0.0f};
         bool positioned = true;
@@ -129,8 +169,17 @@ private:
     Voice* FindVoice(VoiceId id);
     const Voice* FindVoice(VoiceId id) const;
 
+    Stream* FindStream(StreamId id);
+    const Stream* FindStream(StreamId id) const;
+
     Settings m_settings;
     SDL_AudioStream* m_stream = nullptr;
+    // How much a stream may hold before the oldest is thrown away. Half a second is long enough to
+    // ride out a normal network wobble and short enough that a listener never ends up a second
+    // behind a conversation without noticing.
+    static constexpr float kMaxQueuedSeconds = 0.5f;
+    std::vector<Stream> m_streams;
+    StreamId m_nextStream = 0;
 
     // One lock over the voices and the listener. The game thread starts and moves voices at the
     // frame rate and the audio thread reads them a few hundred times a second, so the contention is

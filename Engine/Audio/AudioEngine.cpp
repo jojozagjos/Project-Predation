@@ -100,6 +100,7 @@ void AudioEngine::Shutdown()
     }
     std::lock_guard lock(m_mutex);
     m_voices.clear();
+    m_streams.clear();
 }
 
 SoundId AudioEngine::Add(const std::string& name, SoundData data)
@@ -141,7 +142,17 @@ int AudioEngine::AddRecipes(const std::string& jsonText)
 VoiceId AudioEngine::Play(const PlayDesc& desc)
 {
     std::lock_guard lock(m_mutex);
-    if (desc.sound >= m_sounds.size() || m_sounds[desc.sound].samples.empty())
+    if (desc.stream != kInvalidStream)
+    {
+        // A stream is allowed to be empty: that is the ordinary state of one at the moment somebody
+        // starts talking, and refusing it here would mean the first syllable is the one that opens
+        // the voice and therefore the one that is lost.
+        if (FindStream(desc.stream) == nullptr)
+        {
+            return kInvalidVoice;
+        }
+    }
+    else if (desc.sound >= m_sounds.size() || m_sounds[desc.sound].samples.empty())
     {
         return kInvalidVoice;
     }
@@ -179,6 +190,7 @@ VoiceId AudioEngine::Play(const PlayDesc& desc)
         ++m_nextVoice;
     }
     voice.sound = desc.sound;
+    voice.stream = desc.stream;
     voice.position = desc.position;
     voice.positioned = desc.positioned;
     voice.loop = desc.loop;
@@ -189,6 +201,88 @@ VoiceId AudioEngine::Play(const PlayDesc& desc)
     m_voices.push_back(voice);
     ++m_stats.started;
     return voice.id;
+}
+
+AudioEngine::Stream* AudioEngine::FindStream(StreamId id)
+{
+    const auto found = std::find_if(m_streams.begin(), m_streams.end(),
+                                    [&](const Stream& candidate) { return candidate.id == id; });
+    return found == m_streams.end() ? nullptr : &*found;
+}
+
+const AudioEngine::Stream* AudioEngine::FindStream(StreamId id) const
+{
+    const auto found = std::find_if(m_streams.begin(), m_streams.end(),
+                                    [&](const Stream& candidate) { return candidate.id == id; });
+    return found == m_streams.end() ? nullptr : &*found;
+}
+
+StreamId AudioEngine::OpenStream(int sampleRate)
+{
+    std::lock_guard lock(m_mutex);
+    if (m_streams.size() >= kInvalidStream)
+    {
+        return kInvalidStream;
+    }
+    Stream stream;
+    stream.id = m_nextStream++;
+    if (m_nextStream == kInvalidStream)
+    {
+        m_nextStream = 0;
+    }
+    stream.sampleRate = std::clamp(sampleRate, 8000, 192000);
+    m_streams.push_back(std::move(stream));
+    return m_streams.back().id;
+}
+
+void AudioEngine::PushStream(StreamId stream, const float* samples, size_t count)
+{
+    if (samples == nullptr || count == 0)
+    {
+        return;
+    }
+    std::lock_guard lock(m_mutex);
+    Stream* target = FindStream(stream);
+    if (target == nullptr || !target->open)
+    {
+        return;
+    }
+    target->pending.insert(target->pending.end(), samples, samples + count);
+
+    // Past the cap, the oldest go.
+    //
+    // The alternative is to let the queue grow, and what that sounds like is somebody talking to you
+    // from further and further in the past: a listener whose machine stalled for a second is then a
+    // second behind the conversation for the rest of it and has no way to catch up. Dropping audio
+    // is audible and being permanently late is worse.
+    const auto cap = static_cast<size_t>(kMaxQueuedSeconds * static_cast<float>(target->sampleRate));
+    if (target->pending.size() > cap)
+    {
+        const size_t drop = target->pending.size() - cap;
+        target->pending.erase(target->pending.begin(),
+                              target->pending.begin() + static_cast<ptrdiff_t>(drop));
+        target->consumed += drop;
+    }
+}
+
+size_t AudioEngine::StreamQueued(StreamId stream) const
+{
+    std::lock_guard lock(m_mutex);
+    const Stream* target = FindStream(stream);
+    return target == nullptr ? 0 : target->pending.size();
+}
+
+void AudioEngine::CloseStream(StreamId stream)
+{
+    std::lock_guard lock(m_mutex);
+    Stream* target = FindStream(stream);
+    if (target == nullptr)
+    {
+        return;
+    }
+    // Marked rather than removed. Whatever has already arrived is still played out, and the voice
+    // reading it ends when it reaches the end rather than being cut off mid-word.
+    target->open = false;
 }
 
 VoiceId AudioEngine::PlayAt(SoundId sound, const glm::vec3& position, float gain, float pitch)
@@ -317,8 +411,18 @@ void AudioEngine::MixLocked(float* out, int frames)
     for (size_t index = 0; index < m_voices.size();)
     {
         Voice& voice = m_voices[index];
-        const SoundData& sound = m_sounds[voice.sound];
-        const double rate = static_cast<double>(sound.sampleRate) /
+        // Either a finished buffer or one that is still arriving. The difference is only where the
+        // samples come from and what running out of them means: a sound that ends is over, a stream
+        // that runs dry is waiting.
+        Stream* stream = voice.stream != kInvalidStream ? FindStream(voice.stream) : nullptr;
+        const SoundData* sound = stream == nullptr ? &m_sounds[voice.sound] : nullptr;
+        if (stream == nullptr && sound == nullptr)
+        {
+            m_voices.erase(m_voices.begin() + static_cast<ptrdiff_t>(index));
+            continue;
+        }
+        const int sourceRate = stream != nullptr ? stream->sampleRate : sound->sampleRate;
+        const double rate = static_cast<double>(sourceRate) /
                             static_cast<double>(m_settings.sampleRate) * voice.pitch;
 
         // Where this voice sits, as two channel gains.
@@ -373,28 +477,60 @@ void AudioEngine::MixLocked(float* out, int frames)
         }
 
         bool finished = false;
-        const double length = static_cast<double>(sound.samples.size());
+        const double length =
+            stream != nullptr ? 0.0 : static_cast<double>(sound->samples.size());
         for (int frame = 0; frame < frames; ++frame)
         {
-            if (voice.cursor >= length)
+            float value = 0.0f;
+            if (stream != nullptr)
             {
-                if (!voice.loop)
+                // The cursor counts samples since the stream opened, not samples into the buffer,
+                // because the buffer keeps having its front thrown away as it is consumed.
+                const uint64_t arrived = stream->consumed + stream->pending.size();
+                const double position = voice.cursor - static_cast<double>(stream->consumed);
+                if (voice.cursor + 1.0 >= static_cast<double>(arrived))
                 {
-                    finished = true;
-                    break;
+                    // Nothing has arrived yet for this frame. Silence, and the cursor stays where
+                    // it is: a hole in the network is a gap in the sound and not a reason to start
+                    // reading the next words early. A closed stream that has run dry really is over.
+                    if (!stream->open)
+                    {
+                        finished = true;
+                        break;
+                    }
+                    voice.mixedLeft += std::clamp(left - voice.mixedLeft, -kGainStep, kGainStep);
+                    voice.mixedRight += std::clamp(right - voice.mixedRight, -kGainStep, kGainStep);
+                    continue;
                 }
-                voice.cursor = std::fmod(voice.cursor, length);
+                const auto whole = static_cast<size_t>(position);
+                const float fraction = static_cast<float>(position - static_cast<double>(whole));
+                const float a = stream->pending[whole];
+                const float b = whole + 1 < stream->pending.size() ? stream->pending[whole + 1] : a;
+                value = a + (b - a) * fraction;
             }
+            else
+            {
+                if (voice.cursor >= length)
+                {
+                    if (!voice.loop)
+                    {
+                        finished = true;
+                        break;
+                    }
+                    voice.cursor = std::fmod(voice.cursor, length);
+                }
 
-            // Linear interpolation between the two nearest samples. At a pitch of one this is exact
-            // and costs nothing; away from one it is what stops a resampled sound sounding gritty.
-            const auto whole = static_cast<size_t>(voice.cursor);
-            const float fraction = static_cast<float>(voice.cursor - static_cast<double>(whole));
-            const float a = sound.samples[whole];
-            const float b = whole + 1 < sound.samples.size()
-                                ? sound.samples[whole + 1]
-                                : (voice.loop ? sound.samples[0] : 0.0f);
-            const float value = a + (b - a) * fraction;
+                // Linear interpolation between the two nearest samples. At a pitch of one this is
+                // exact and costs nothing; away from one it is what stops a resampled sound
+                // sounding gritty.
+                const auto whole = static_cast<size_t>(voice.cursor);
+                const float fraction = static_cast<float>(voice.cursor - static_cast<double>(whole));
+                const float a = sound->samples[whole];
+                const float b = whole + 1 < sound->samples.size()
+                                    ? sound->samples[whole + 1]
+                                    : (voice.loop ? sound->samples[0] : 0.0f);
+                value = a + (b - a) * fraction;
+            }
 
             voice.mixedLeft += std::clamp(left - voice.mixedLeft, -kGainStep, kGainStep);
             voice.mixedRight += std::clamp(right - voice.mixedRight, -kGainStep, kGainStep);
@@ -402,6 +538,21 @@ void AudioEngine::MixLocked(float* out, int frames)
             out[static_cast<size_t>(frame) * 2] += value * voice.mixedLeft;
             out[static_cast<size_t>(frame) * 2 + 1] += value * voice.mixedRight;
             voice.cursor += rate;
+        }
+
+        // Everything this voice has read can go. The front of the queue is thrown away rather than
+        // kept, because a conversation that ran for an hour would otherwise be an hour of audio
+        // held in memory. One voice reads one stream, which is what makes this safe to do here.
+        if (stream != nullptr && voice.cursor > static_cast<double>(stream->consumed))
+        {
+            const auto used = static_cast<size_t>(voice.cursor - static_cast<double>(stream->consumed));
+            const size_t drop = std::min(used, stream->pending.size());
+            if (drop > 0)
+            {
+                stream->pending.erase(stream->pending.begin(),
+                                      stream->pending.begin() + static_cast<ptrdiff_t>(drop));
+                stream->consumed += drop;
+            }
         }
 
         // A stopping voice goes when it has faded out, which the gain step above guarantees within
