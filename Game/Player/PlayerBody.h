@@ -165,7 +165,28 @@ public:
         // in the bricks was what the sights used to cost. The barrel comes down instead, the
         // sights stop meaning anything for as long as you are that close, and shooting traces from
         // the eye regardless so nothing about where a round goes changes.
-        float weaponWallTipMax = 80.0f;
+        //
+        // Capped short of what would clear every wall, because past about half a right angle this
+        // stops reading as a hold and starts reading as presenting arms. At eighty degrees a player
+        // who walked up to a wall while looking upwards had the rifle stood vertically beside their
+        // head with both arms folded around it, which is not a thing anybody does with a rifle.
+        //
+        // Sixty-seven, and not lower, because lowering it further breaks something worse.
+        //
+        // There are three things wanted here and only two can be had: the barrel out of the wall,
+        // the receiver out of the camera, and the sights on the view axis. Tipping less leaves the
+        // weapon further forward, so the pull-back has to take it further in, and below about
+        // sixty-five the back of the stock crosses the near plane and the player is looking at the
+        // inside of their own gun. That is the worse fault of the two, so this is the floor rather
+        // than a preference. Eighty left about two centimetres of a sixty-two centimetre rifle in a
+        // wall; sixty-seven leaves about ten, none of which is visible from the player's own eye
+        // because it is on the far side of the wall face.
+        //
+        // Getting properly below this needs the hold to move rather than only rotate: somebody in a
+        // tight space brings a rifle in against the chest, they do not pivot it about the grip
+        // until the muzzle points at the floor. That is an animation, not a number, and it is the
+        // real answer whenever it gets written.
+        float weaponWallTipMax = 67.0f;
         float weaponWallTipSpeed = 13.0f;
         // How much barrel may be inside something before the drop starts, and over how much more it
         // comes fully in. Both in metres. See the note where they are used: the drop is a

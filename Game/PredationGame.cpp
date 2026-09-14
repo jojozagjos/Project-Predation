@@ -2968,6 +2968,29 @@ void PredationGame::PlaySound(SoundId sound, const glm::vec3& at, float gain, fl
     m_app->GetAudio().Play(desc);
 }
 
+// How loud a step is for the stance it is taken in.
+//
+// Crouching is quieter and crawling quieter still, which is what anybody expects and what makes
+// moving carefully worth doing. It matters more than it sounds: this is the first piece of the
+// thing that will eventually decide whether the creature heard you, and putting the numbers in one
+// place now means the hunt reads the same value the player hears.
+namespace
+{
+float StanceLoudness(PlayerStance stance)
+{
+    switch (stance)
+    {
+    case PlayerStance::Crouching:
+        return 0.45f;
+    case PlayerStance::Prone:
+        return 0.25f;
+    case PlayerStance::Standing:
+    default:
+        return 1.0f;
+    }
+}
+} // namespace
+
 void PredationGame::UpdateSounds(float dt)
 {
     AudioEngine& audio = m_app->GetAudio();
@@ -3029,15 +3052,16 @@ void PredationGame::UpdateSounds(float dt)
                              glm::length(glm::vec2(local.velocity.x, local.velocity.z)) > 0.8f;
     // Your own steps are not placed in the world either: they come from under you, and panning
     // them puts your own feet in one ear.
-    footfalls(local.stridePhase, m_lastStridePhase, local.position, localMoving, 0.30f, false);
+    footfalls(local.stridePhase, m_lastStridePhase, local.position, localMoving,
+              0.30f * StanceLoudness(local.stance), false);
 
     for (const std::unique_ptr<RemoteAvatar>& avatar : m_avatars)
     {
         const bool moving = avatar->state.alive && avatar->state.grounded &&
                             glm::length(glm::vec2(avatar->state.velocity.x,
                                                   avatar->state.velocity.z)) > 0.8f;
-        footfalls(avatar->state.stridePhase, avatar->lastStridePhase, avatar->drawn, moving, 0.75f,
-                  true);
+        footfalls(avatar->state.stridePhase, avatar->lastStridePhase, avatar->drawn, moving,
+                  0.75f * StanceLoudness(avatar->state.stance), true);
     }
 
     // And landing, which is an event rather than a phase.

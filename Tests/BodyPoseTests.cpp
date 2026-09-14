@@ -2404,7 +2404,14 @@ TEST_CASE("Walking into a wall keeps the barrel out of it", "[body][pose][weapon
                    << glm::dot(harness.body.HoldPoint() - harness.View().eyePosition,
                                harness.View().Forward())
                    << " m down the view");
-    CHECK(muzzle.z > wallZ - 0.02f);
+    // How much barrel is left inside the wall, which is a number chosen rather than achieved.
+    //
+    // This used to be two centimetres, and buying that cost a muzzle drop of eighty degrees: the
+    // rifle ended up stood on end beside the head, which is what the drop is capped against now.
+    // The trade runs at about three centimetres of barrel per five degrees. None of what is left is
+    // visible from the player's own eye, because it is on the far side of the wall face; the angle
+    // that bought it was visible from every other camera in the game.
+    CHECK(muzzle.z > wallZ - 0.13f);
 }
 
 TEST_CASE("The sights do not come up against a wall", "[body][pose][weapons][walls][ads]")
@@ -2442,7 +2449,7 @@ TEST_CASE("The sights do not come up against a wall", "[body][pose][weapons][wal
 
     // Refused, and the barrel is out of the wall because the carried pose is free to drop it.
     CHECK_FALSE(harness.body.AimHasRoom());
-    CHECK(muzzle.z > wallZ - 0.02f);
+    CHECK(muzzle.z > wallZ - 0.13f);
 
     // And they come back the moment there is room. Backing off two thirds of a metre is enough for
     // the whole weapon, so this is the other half of the rule: it refuses where it must and
@@ -2987,4 +2994,103 @@ TEST_CASE("Reloading on your front keeps both hands above the floor", "[body][po
 
     INFO("lowest hand was at y = " << lowest << " during reload " << lowestAt);
     CHECK(lowest > kUnderTheFloor);
+}
+
+TEST_CASE("Walking into a wall leaves the weapon in front of the player", "[body][pose][weapon]")
+{
+    // Whatever a wall does to the hold, the weapon stays somewhere a person could be holding it:
+    // in front, at about chest height, pointing roughly where they are looking. The failure this
+    // guards against had it stood on end beside the head with the arms folded up around it.
+    BodyHarness harness;
+    WeaponDefinition weapon;
+    weapon.id = 1;
+    weapon.key = "test_rifle";
+    weapon.size = {0.06f, 0.16f, 0.62f};
+    harness.body.SetWeaponForSimulation(&weapon);
+    harness.Settle(120);
+
+    // A crate, chest high, right where the player is walking.
+    harness.physics.CreateBox({1.2f, 0.75f, 1.2f}, Transform{{0.0f, 0.75f, -1.6f}},
+                              BodyMotion::Static);
+    harness.physics.OptimizeBroadPhase();
+
+    harness.input.yaw = 0.0f;
+    harness.SetTravel(glm::vec3(0.0f, 0.0f, -1.0f));
+    harness.Settle(180);
+    harness.input.move = glm::vec2(0.0f);
+    harness.Settle(60);
+
+    const glm::vec3 origin = harness.body.WeaponOrigin();
+    const glm::vec3 muzzle = harness.body.MuzzlePoint();
+    const glm::vec3 eye = harness.View().eyePosition;
+    const glm::vec3 barrel = glm::normalize(muzzle - origin);
+    const glm::vec3 look{std::sin(harness.input.yaw), 0.0f, -std::cos(harness.input.yaw)};
+
+    INFO("weapon origin " << origin.x << ", " << origin.y << ", " << origin.z << "; muzzle "
+                          << muzzle.x << ", " << muzzle.y << ", " << muzzle.z << "; eye "
+                          << eye.x << ", " << eye.y << ", " << eye.z);
+
+    // In front of the eye, not behind it.
+    CHECK(glm::dot(origin - eye, look) > -0.15f);
+    // Not standing on end. A barrel more than sixty degrees off the horizontal is not a carry.
+    CHECK(std::abs(barrel.y) < 0.87f);
+    // And still pointing more or less where the player is looking.
+    CHECK(glm::dot(glm::vec3(barrel.x, 0.0f, barrel.z), look) > 0.0f);
+}
+
+TEST_CASE("No wall and no angle stands the weapon on end", "[body][pose][weapon]")
+{
+    // The muzzle is allowed to drop a long way to get out of a wall, and that is deliberate: it is
+    // the lever that keeps the barrel out of the bricks without pulling the receiver into the
+    // camera. But there is an angle past which it stops reading as a hold at all and starts reading
+    // as somebody presenting arms. This sweeps a player pressed against a wall through every angle
+    // they can look at and checks none of them get there.
+    BodyHarness harness;
+    WeaponDefinition weapon;
+    weapon.id = 1;
+    weapon.key = "test_rifle";
+    weapon.size = {0.06f, 0.16f, 0.62f};
+    harness.body.SetWeaponForSimulation(&weapon);
+
+    // A wall taller than the player, right in front.
+    harness.physics.CreateBox({4.0f, 2.0f, 0.5f}, Transform{{0.0f, 2.0f, -1.3f}}, BodyMotion::Static);
+    harness.physics.OptimizeBroadPhase();
+
+    harness.input.yaw = 0.0f;
+    harness.SetTravel(glm::vec3(0.0f, 0.0f, -1.0f));
+    harness.Settle(180);
+    harness.input.move = glm::vec2(0.0f);
+
+    float worst = 0.0f;
+    float worstPitch = 0.0f;
+    bool worstAiming = false;
+    for (int aiming = 0; aiming < 2; ++aiming)
+    {
+        PlayerBody::WeaponPose pose;
+        pose.aim = aiming != 0 ? 1.0f : 0.0f;
+        harness.body.SetWeaponPose(pose);
+        for (int step = 0; step <= 24; ++step)
+        {
+            harness.input.pitch = glm::radians(-85.0f + 7.0f * static_cast<float>(step));
+            harness.Settle(30);
+            const glm::vec3 barrel =
+                glm::normalize(harness.body.MuzzlePoint() - harness.body.WeaponOrigin());
+            const float elevation = glm::degrees(std::asin(std::clamp(barrel.y, -1.0f, 1.0f)));
+            // How far the barrel is from where the player is pointing their eyes. A weapon that
+            // follows the look is fine at any angle; one that leaves it is the failure.
+            const float away = std::abs(elevation - glm::degrees(harness.input.pitch));
+            if (away > worst)
+            {
+                worst = away;
+                worstPitch = glm::degrees(harness.input.pitch);
+                worstAiming = aiming != 0;
+            }
+        }
+    }
+
+    INFO("barrel was worst " << worst << " degrees away from the look at pitch " << worstPitch
+                             << (worstAiming ? " while aiming" : " while carried"));
+    // The drop is capped in the tuning. Anything approaching that cap is the cap being reached,
+    // and a weapon most of a right angle off where you are looking is stood on end.
+    CHECK(worst < 68.0f);
 }
