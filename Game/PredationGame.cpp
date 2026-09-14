@@ -1764,13 +1764,122 @@ void PredationGame::ReportHold()
 }
 
 
+namespace
+{
+
+// A setting that lives in another translation unit, reached by name.
+//
+// The settings panel touches a few cvars the engine declares rather than the game: the volume, the
+// vertical sync. Naming them here and letting the registry do the lookup is what the console already
+// does, and it beats making every one of them a public symbol so that one panel can see it.
+bool SettingBool(const char* name, bool fallback)
+{
+    const CVarBase* var = CVarRegistry::Instance().Find(name);
+    return var == nullptr ? fallback : var->GetString() == "true" || var->GetString() == "1";
+}
+
+void SetSetting(const char* name, const std::string& value)
+{
+    CVarRegistry::Instance().Set(name, value);
+}
+
+} // namespace
+
+void PredationGame::DrawSettings()
+{
+    // One panel, drawn from the menu and from the pause screen alike.
+    //
+    // Everything here is a cvar, which means the console already reaches all of it and the archived
+    // ones are already remembered between runs. What this adds is a place to find them: a setting
+    // nobody can find is a setting nobody has.
+    ImGui::SetWindowFontScale(1.2f);
+    ImGui::TextUnformatted("Settings");
+    ImGui::SetWindowFontScale(1.0f);
+    ImGui::Separator();
+    ImGui::Spacing();
+
+    ImGui::TextDisabled("Sound");
+    AudioEngine& audio = m_app->GetAudio();
+    float volume = audio.MasterGain();
+    if (ImGui::SliderFloat("Volume", &volume, 0.0f, 1.5f, "%.2f"))
+    {
+        audio.SetMasterGain(volume);
+        SetSetting("audio.volume", std::to_string(volume));
+    }
+    if (!audio.HasDevice())
+    {
+        ImGui::TextDisabled("  no sound device on this machine");
+    }
+
+    ImGui::Spacing();
+    ImGui::TextDisabled("Looking about");
+    float sensitivity = cv_mouseSensitivity.Get();
+    if (ImGui::SliderFloat("Mouse", &sensitivity, 0.02f, 0.60f, "%.3f deg per pixel"))
+    {
+        cv_mouseSensitivity.Set(sensitivity);
+    }
+    bool invert = cv_invertY.Get();
+    if (ImGui::Checkbox("Invert up and down", &invert))
+    {
+        cv_invertY.Set(invert);
+    }
+    float fov = cv_fov.Get();
+    if (ImGui::SliderFloat("Field of view", &fov, 70.0f, 120.0f, "%.0f deg"))
+    {
+        cv_fov.Set(fov);
+    }
+
+    ImGui::Spacing();
+    ImGui::TextDisabled("Moving about");
+    bool crouchToggle = cv_crouchToggle.Get();
+    if (ImGui::Checkbox("Crouch and prone toggle", &crouchToggle))
+    {
+        cv_crouchToggle.Set(crouchToggle);
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("(?)");
+    if (ImGui::IsItemHovered())
+    {
+        ImGui::SetTooltip("Off, they are held down instead.");
+    }
+    bool sprintToggle = cv_sprintToggle.Get();
+    if (ImGui::Checkbox("Sprint toggles", &sprintToggle))
+    {
+        cv_sprintToggle.Set(sprintToggle);
+    }
+
+    ImGui::Spacing();
+    ImGui::TextDisabled("Picture");
+    bool vsync = SettingBool("r.vsync", true);
+    if (ImGui::Checkbox("Wait for the display", &vsync))
+    {
+        SetSetting("r.vsync", vsync ? "true" : "false");
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("(?)");
+    if (ImGui::IsItemHovered())
+    {
+        ImGui::SetTooltip("On, the picture never tears. Off, it is a little quicker to respond.");
+    }
+
+    ImGui::Spacing();
+    ImGui::TextDisabled("Who you are");
+    if (ImGui::InputText("Name", m_playerName, sizeof(m_playerName)))
+    {
+        cv_playerName.Set(m_playerName);
+    }
+
+    ImGui::Spacing();
+    ImGui::TextDisabled("Everything here is remembered. The console reaches all of it and more.");
+}
+
 void PredationGame::DrawPauseMenu()
 {
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
     const ImVec2 centre{viewport->Pos.x + viewport->Size.x * 0.5f,
                         viewport->Pos.y + viewport->Size.y * 0.5f};
     ImGui::SetNextWindowPos(centre, ImGuiCond_Always, {0.5f, 0.5f});
-    ImGui::SetNextWindowSize({320.0f, 0.0f}, ImGuiCond_Always);
+    ImGui::SetNextWindowSize({m_settingsOpen ? 420.0f : 320.0f, 0.0f}, ImGuiCond_Always);
     ImGui::SetNextWindowBgAlpha(0.92f);
     constexpr ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
                                        ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse |
@@ -1781,17 +1890,35 @@ void PredationGame::DrawPauseMenu()
         return;
     }
 
+    const ImVec2 wide{-1.0f, 32.0f};
+
+    if (m_settingsOpen)
+    {
+        DrawSettings();
+        ImGui::Spacing();
+        if (ImGui::Button("Back", wide))
+        {
+            m_settingsOpen = false;
+        }
+        ImGui::End();
+        return;
+    }
+
     ImGui::SetWindowFontScale(1.6f);
     ImGui::TextUnformatted("Paused");
     ImGui::SetWindowFontScale(1.0f);
     ImGui::Separator();
     ImGui::Spacing();
 
-    const ImVec2 wide{-1.0f, 32.0f};
     if (ImGui::Button("Resume", wide))
     {
         m_paused = false;
         m_wantMouseCaptured = true;
+    }
+    ImGui::Spacing();
+    if (ImGui::Button("Settings", wide))
+    {
+        m_settingsOpen = true;
     }
     // In a session the world carries on without you, and saying so is better than letting somebody
     // believe they have stopped the game everyone else is in.
@@ -1907,6 +2034,23 @@ void PredationGame::DrawTitleScreen()
     ImGui::Spacing();
 
     const ImVec2 wide{-1.0f, 34.0f};
+
+    // The same panel the pause screen shows, because they are the same settings and a player who
+    // finds them in one place should not have to find them again in the other.
+    if (m_settingsOpen)
+    {
+        DrawSettings();
+        ImGui::Spacing();
+        if (ImGui::Button("Back", wide))
+        {
+            m_settingsOpen = false;
+        }
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::TextDisabled("by jojozagjos");
+        ImGui::End();
+        return;
+    }
 
     if (m_sessionMode == SessionMode::Client && !m_client.Connected())
     {
@@ -2109,6 +2253,12 @@ void PredationGame::DrawTitleScreen()
     if (!m_titleStatus.empty())
     {
         ImGui::TextColored({0.90f, 0.55f, 0.35f, 1.0f}, "%s", m_titleStatus.c_str());
+    }
+
+    ImGui::Spacing();
+    if (ImGui::Button("Settings", wide))
+    {
+        m_settingsOpen = true;
     }
 
 #if PRED_DEV_TOOLS

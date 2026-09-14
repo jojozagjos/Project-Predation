@@ -179,6 +179,8 @@ private:
     // The in-game pause menu: an overlay on the world rather than a place, so leaving it puts the
     // player back exactly where they were. In a session nothing stops simulating, because a shared
     // world cannot be paused by one person in it.
+    // The settings panel, drawn inside the menu and inside the pause screen alike.
+    void DrawSettings();
     void DrawPauseMenu();
     // Where the weapon sits relative to the eye, for comparing the editor with the game.
     void ReportHold();
@@ -428,6 +430,9 @@ private:
     };
     Screen m_screen = Screen::Title;
     bool m_paused = false;
+    // Whether the settings panel is showing, on whichever screen is up. One flag, because only one
+    // of those screens is ever on at a time.
+    bool m_settingsOpen = false;
     // Frames left before a deferred hold report. Commands from --exec all run before the first
     // frame, when nothing is equipped, so a report taken then is about an empty hand.
     int m_holdReportIn = 0;
