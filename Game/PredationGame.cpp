@@ -183,8 +183,12 @@ bool PredationGame::OnInit(Application& app)
                   "walk, Q and E lean. Left mouse fires, right mouse aims, R reloads. "
                   "F interact, G drop, 1 to 6 and the wheel select, Tab inventory. "
                   "P cycles first person, third person and free camera; in third person hold middle "
-                  "mouse to orbit. F2 model editor, F3 overlay, F5 respawn, backtick console, "
+                  "mouse to orbit. F3 overlay, F5 respawn, backtick console, "
                   "Escape frees the cursor.");
+#if PRED_DEV_TOOLS
+    PRED_LOG_INFO(Gameplay, "Developer build: the model editor is on the title screen, or type "
+                            "\"editor\" in the console.");
+#endif
     if (!cv_crouchToggle.Get())
     {
         PRED_LOG_INFO(Gameplay, "Crouch and prone are hold-to-activate. Set input.crouch_toggle to "
@@ -2528,6 +2532,12 @@ void PredationGame::DrawTitleScreen()
     ImGui::Spacing();
     ImGui::Separator();
     ImGui::TextDisabled("by jojozagjos");
+#if PRED_DEV_TOOLS
+    // Said on the title screen as well as in the log. The two builds look identical until
+    // you go looking for a menu entry, and knowing which one you handed somebody matters.
+    ImGui::SameLine();
+    ImGui::TextDisabled("  |  developer build");
+#endif
 
     ImGui::End();
 }

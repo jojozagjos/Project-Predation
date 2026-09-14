@@ -858,3 +858,23 @@ and a pair of them wired together in a test is a pipe, which is how it is checke
 It is not certain to work. A network that hands out a different hole for every destination defeats
 hole punching, and the only answer to one of those is a relay somebody pays to run. What this does
 is turn "impossible without a router nobody can configure" into "works on most connections".
+
+## ADR-049: The shipping build has its own build folder
+
+**Status**: accepted, 2026-09-13
+
+ADR-031 made the developer tools a build option. The packaging script then turned that option off
+by reconfiguring the *same* build folder the everyday build uses. `PRED_DEV_TOOLS` is a cached
+CMake variable, so it stayed off afterwards: package once and your own release build quietly lost
+its model editor until you cleared the cache. Nothing said so. The title screen simply had one
+fewer button.
+
+There is now a `windows-shipping` preset (and `linux-shipping`) with its own binary directory, and
+the developer presets pin `PRED_DEV_TOOLS=ON` in their own cache variables so a preset configure
+always restores it. Packaging builds the shipping preset and then checks the cache actually says
+`OFF` before it lays anything out, because a stale cache is silent and an editor that leaked into
+somebody else's copy is not visible from the outside.
+
+The build also says which one it is: once in the log at startup, and on the title screen next to
+the byline in the developer build. Two builds that look identical and behave differently are worth
+one line of text each.

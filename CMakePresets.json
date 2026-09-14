@@ -19,19 +19,29 @@
       "name": "windows-debug",
       "displayName": "Windows Debug",
       "inherits": "windows-base",
-      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug", "PRED_DEV_TOOLS": "ON" }
     },
     {
       "name": "windows-relwithdebinfo",
       "displayName": "Windows RelWithDebInfo",
       "inherits": "windows-base",
-      "cacheVariables": { "CMAKE_BUILD_TYPE": "RelWithDebInfo" }
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "RelWithDebInfo", "PRED_DEV_TOOLS": "ON" }
     },
     {
       "name": "windows-release",
       "displayName": "Windows Release",
       "inherits": "windows-base",
-      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release", "PRED_DEV_TOOLS": "ON" }
+    },
+    {
+      "name": "windows-shipping",
+      "displayName": "Windows Shipping (no developer tools)",
+      "inherits": "windows-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "PRED_DEV_TOOLS": "OFF",
+        "PRED_BUILD_TESTS": "OFF"
+      }
     },
     {
       "name": "linux-base",
@@ -49,21 +59,33 @@
       "name": "linux-debug",
       "displayName": "Linux Debug",
       "inherits": "linux-base",
-      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug", "PRED_DEV_TOOLS": "ON" }
     },
     {
       "name": "linux-release",
       "displayName": "Linux Release",
       "inherits": "linux-base",
-      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release", "PRED_DEV_TOOLS": "ON" }
+    },
+    {
+      "name": "linux-shipping",
+      "displayName": "Linux Shipping (no developer tools)",
+      "inherits": "linux-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "PRED_DEV_TOOLS": "OFF",
+        "PRED_BUILD_TESTS": "OFF"
+      }
     }
   ],
   "buildPresets": [
     { "name": "windows-debug", "configurePreset": "windows-debug" },
     { "name": "windows-relwithdebinfo", "configurePreset": "windows-relwithdebinfo" },
     { "name": "windows-release", "configurePreset": "windows-release" },
+    { "name": "windows-shipping", "configurePreset": "windows-shipping" },
     { "name": "linux-debug", "configurePreset": "linux-debug" },
-    { "name": "linux-release", "configurePreset": "linux-release" }
+    { "name": "linux-release", "configurePreset": "linux-release" },
+    { "name": "linux-shipping", "configurePreset": "linux-shipping" }
   ],
   "testPresets": [
     {

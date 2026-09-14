@@ -35,7 +35,6 @@
     "respawn": [ "F5" ],
 
     "quit_capture": [ "Escape" ],
-    "editor": [ "F2" ],
     "debug_overlay": [ "F3" ],
     "console": [ "Grave" ],
     "screenshot": [ "F12" ]

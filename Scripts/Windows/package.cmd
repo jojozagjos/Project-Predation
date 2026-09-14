@@ -10,16 +10,20 @@ echo [%~n0] finished with code %errorlevel%. Press any key to close this window.
 pause >nul
 exit /b %errorlevel%
 :body
-rem Builds a release and lays out a folder somebody else can run, then zips it.
+rem Builds a shipping release and lays out a folder somebody else can run, then zips it.
 rem
 rem The game finds its assets in an "Assets" folder next to the executable, so packaging is a copy
 rem rather than a build step: the exe, the data files, and the shaders the build compiled.
 rem
-rem Usage: Scripts\Windows\package.cmd [preset]      default preset: windows-release
+rem This builds the windows-shipping preset, which has its own build folder. That matters: the
+rem developer tools are a cached CMake variable, so building a shipping exe inside the same folder
+rem as the everyday one used to leave that folder without its tools until somebody noticed.
+rem
+rem Usage: Scripts\Windows\package.cmd [preset]      default preset: windows-shipping
 setlocal EnableDelayedExpansion
 
 set "PRESET=%~1"
-if "%PRESET%"=="" set "PRESET=windows-release"
+if "%PRESET%"=="" set "PRESET=windows-shipping"
 
 set "ROOT=%~dp0..\.."
 set "BUILD_DIR=%ROOT%\build\%PRESET%"
@@ -32,14 +36,24 @@ if errorlevel 1 (
     exit /b 1
 )
 
-rem Configured without the developer tools. What somebody else is handed has no model editor in
-rem its menu and no editor commands in its console: they are for building the game, not playing it.
-echo [package] Building %PRESET% without the developer tools...
-cmake --preset %PRESET% -DPRED_DEV_TOOLS=OFF
+echo [package] Building %PRESET%...
+cmake --preset %PRESET%
 if errorlevel 1 (
     echo [package] FAIL: configure failed
     exit /b 1
 )
+
+rem What gets handed out must not have the model editor in its menu or the editor commands in its
+rem console: they are for building the game, not for playing it. The preset asks for that; this
+rem checks it actually happened, because a stale cache is silent and a leaked editor is not obvious
+rem from the outside.
+"%SystemRoot%\System32\find.exe" "PRED_DEV_TOOLS:BOOL=OFF" "%BUILD_DIR%\CMakeCache.txt" >nul
+if errorlevel 1 (
+    echo [package] FAIL: %PRESET% still has the developer tools switched on.
+    echo [package]       Package the windows-shipping preset, or delete %BUILD_DIR% and retry.
+    exit /b 1
+)
+
 cmake --build --preset %PRESET%
 if errorlevel 1 (
     echo [package] FAIL: build failed
@@ -77,25 +91,47 @@ if exist "%BUILD_DIR%\GeneratedAssets\Shaders" (
     echo.
     echo Run ProjectPredation.exe.
     echo.
-    echo Playing together:
-    echo   One person picks "Open a game" and tells the others their address.
-    echo   Everyone else types that address into "Join a game" and presses Join.
-    echo   The host is shown two kinds of address. The local one, something like
-    echo   192.168.1.20, reaches people on the same network. The one marked "from
-    echo   anywhere" appears when the router agrees to forward the port, and is the
-    echo   one to give somebody elsewhere.
-    echo   If no such address appears, the router has UPnP switched off or there is
-    echo   more than one router in the way. Forward UDP 27015 to the host machine
-    echo   by hand, or play on one network. There is no matchmaking yet.
+    echo If it will not start, install the Microsoft Visual C++ Redistributable for x64.
     echo.
-    echo Controls:
+    echo.
+    echo PLAYING TOGETHER, OVER THE INTERNET
+    echo.
+    echo Neither of you has to forward a port or change a router setting. You swap
+    echo two codes, over Discord or anywhere else you can paste text.
+    echo.
+    echo   1. One of you presses "Open a game", then "Get a code to send".
+    echo   2. That gives a long code. Send it to the other person.
+    echo   3. They press "Join a game", paste it in, and get a code back.
+    echo   4. They send that second code to the host, who pastes it in.
+    echo   5. Both machines dial at once and the connection opens.
+    echo.
+    echo Do the swap reasonably promptly. The codes describe where each machine can
+    echo be reached right now, and that can change.
+    echo.
+    echo If it does not connect, one of the two networks is refusing to cooperate.
+    echo Try again; if it keeps failing, one of you on a phone hotspot usually works.
+    echo.
+    echo.
+    echo PLAYING TOGETHER, SAME HOUSE
+    echo.
+    echo   The host presses "Open a game" and then "Start on this network", and reads
+    echo   out the address shown, something like 192.168.1.20:27015.
+    echo   Everyone else types that into "Join a game".
+    echo.
+    echo Windows will ask once whether to let the game through the firewall. Say yes
+    echo to both boxes.
+    echo.
+    echo.
+    echo CONTROLS
+    echo.
     echo   WASD move, Space jump, Ctrl or C crouch, Z prone, Shift sprint, Alt walk
     echo   Q and E lean, left mouse fire, right mouse aim, R reload
     echo   F interact, G drop, 1-6 and the wheel select, Tab inventory
     echo   P cycles first person, third person and free camera
-    echo   F3 debug overlay, backtick console, Escape pauses
+    echo   F3 shows frame time and ping, Escape pauses
     echo.
-    echo If it will not start, install the Microsoft Visual C++ Redistributable for x64.
+    echo Crouch and prone are hold-to-activate. There is a toggle for that in Settings,
+    echo on the pause menu and on the title screen.
 )
 
 echo [package] Zipping...
