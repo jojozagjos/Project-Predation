@@ -1,3 +1,5 @@
+#include "Engine/Net/IceLink.h"
+#include "Game/Net/IceCarrier.h"
 #include "Engine/Net/Transport.h"
 
 #include <catch2/catch_test_macros.hpp>
@@ -383,4 +385,75 @@ TEST_CASE("The transport works over a carrier as well as over a socket", "[net][
 
     REQUIRE(atHost.size() >= 1);
     CHECK(std::string(atHost.front().bytes.begin(), atHost.front().bytes.end()) == up);
+}
+
+TEST_CASE("Two ends punch through to each other and the game runs over it", "[net][udp][ice]")
+{
+    // The whole path, end to end: two agents gather what they know about themselves, swap the one
+    // line of text a player would paste, dial each other, and then carry the game's own transport.
+    // Both are on this machine, so what gets used is the host candidate rather than a hole through
+    // a router, and no public server is asked: what is being checked is the plumbing, which is the
+    // part that can be wrong in a way no amount of trying it with a friend would explain.
+    IceLink::Settings settings;
+    settings.stunHost.clear(); // nothing to ask, and nothing to wait for
+
+    auto a = std::make_shared<IceLink>();
+    auto b = std::make_shared<IceLink>();
+    REQUIRE(a->Start(settings));
+    REQUIRE(b->Start(settings));
+
+    const auto waitFor = [](const std::shared_ptr<IceLink>& link, auto&& ready, int seconds)
+    {
+        for (int i = 0; i < seconds * 100 && !ready(link); ++i)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        return ready(link);
+    };
+    const auto hasCode = [](const std::shared_ptr<IceLink>& link) { return !link->LocalCode().empty(); };
+
+    REQUIRE(waitFor(a, hasCode, 5));
+    REQUIRE(waitFor(b, hasCode, 5));
+
+    // What the two players paste to each other.
+    REQUIRE(a->SetRemoteCode(b->LocalCode()));
+    REQUIRE(b->SetRemoteCode(a->LocalCode()));
+
+    const auto connected = [](const std::shared_ptr<IceLink>& link)
+    { return link->Status() == IceLink::State::Connected; };
+    INFO("a is " << static_cast<int>(a->Status()) << ", b is " << static_cast<int>(b->Status()));
+    REQUIRE(waitFor(a, connected, 10));
+    REQUIRE(waitFor(b, connected, 10));
+
+    // And the game over the top of it, with nothing about the game aware of any of the above.
+    auto host = CreateCarrierTransport(std::make_shared<IceCarrier>(a), 11u);
+    auto client = CreateCarrierTransport(std::make_shared<IceCarrier>(b), 12u);
+    REQUIRE(host->Listen(0));
+    REQUIRE(client->Connect("punched", 0));
+
+    std::vector<NetPacket> atClient;
+    std::vector<NetPacket> batch;
+    PeerId clientPeer = kInvalidPeer;
+    const std::string message = "the lights just went out";
+    for (int i = 0; i < 400 && atClient.empty(); ++i)
+    {
+        host->Poll(kTick, batch);
+        batch.clear();
+        client->Poll(kTick, batch);
+        for (NetPacket& packet : batch)
+        {
+            atClient.push_back(std::move(packet));
+        }
+        if (clientPeer == kInvalidPeer && !host->Peers().empty())
+        {
+            clientPeer = host->Peers().front();
+            host->Send(clientPeer, Channel::Reliable,
+                       reinterpret_cast<const uint8_t*>(message.data()), message.size());
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
+
+    REQUIRE(clientPeer != kInvalidPeer);
+    REQUIRE_FALSE(atClient.empty());
+    CHECK(std::string(atClient.front().bytes.begin(), atClient.front().bytes.end()) == message);
 }

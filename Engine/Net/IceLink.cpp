@@ -193,8 +193,11 @@ bool IceLink::Start(const Settings& settings)
 
     juice_config_t config{};
     config.concurrency_mode = JUICE_CONCURRENCY_MODE_POLL;
-    config.stun_server_host = settings.stunHost.c_str();
-    config.stun_server_port = settings.stunPort;
+    // No server at all when none is named, rather than an empty name to resolve. Asking is what
+    // finds the address a router would show the world; without it only the addresses this machine
+    // already knows about are offered, which is all two machines on one network need.
+    config.stun_server_host = settings.stunHost.empty() ? nullptr : settings.stunHost.c_str();
+    config.stun_server_port = settings.stunHost.empty() ? 0 : settings.stunPort;
     config.cb_state_changed = [](juice_agent_t* agent, juice_state_t state, void* user)
     { OnState(agent, static_cast<int>(state), user); };
     config.cb_gathering_done = &IceLink::OnGatheringDone;

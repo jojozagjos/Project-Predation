@@ -485,6 +485,15 @@ std::vector<PeerId> UdpTransport::Peers() const
 
 std::string UdpTransport::AddressOf(PeerId peer) const
 {
+    // Over a carrier there is no address to give. The one the peers are held under is a stand-in
+    // that means nothing outside this process, and the thing that asks for these is the roster the
+    // others would use to find each other if the host went: handing them a made-up address would
+    // have them all dial it and fail, where an empty one correctly means "there is no way to reach
+    // this player except through the connection we already have".
+    if (m_carrier != nullptr)
+    {
+        return {};
+    }
     for (const Peer& entry : m_peers)
     {
         if (entry.id == peer)

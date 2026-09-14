@@ -4687,7 +4687,6 @@ void PredationGame::OnUpdate(double dt, double alpha)
         // panel.
         if (!m_editorLooking && (!app.IsUiCapturingMouse() || m_editor.Dragging()))
         {
-            const Renderer& renderer = app.GetRenderer();
             const float width = static_cast<float>(std::max<int>(renderer.Width(), 1));
             const float height = static_cast<float>(std::max<int>(renderer.Height(), 1));
             const glm::vec2 pointer = input.MousePosition();
