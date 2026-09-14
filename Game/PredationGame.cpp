@@ -2636,13 +2636,24 @@ void PredationGame::DrawTitleScreen()
     // The menu is two buttons and a name, because that is what anybody came here to do. Everything
     // about ports, addresses and codes belongs on the screen for the thing it is part of, not on
     // the first screen somebody sees.
+    // Not once a game is running. Everybody else was told this name when the connection was made
+    // and nothing re-tells them, so a name changed now is a name only this machine can see: the
+    // player list, the kill messages and whatever anybody says over voice all still say the old one.
+    // Better to be unable to change it than to change it and have it not take.
+    const bool inSession = m_sessionMode != SessionMode::Offline;
     ImGui::AlignTextToFramePadding();
     ImGui::TextUnformatted("Name");
     ImGui::SameLine(86.0f);
     ImGui::SetNextItemWidth(-1.0f);
+    ImGui::BeginDisabled(inSession);
     if (ImGui::InputText("##playername", m_playerName, sizeof(m_playerName)))
     {
         cv_playerName.Set(m_playerName);
+    }
+    ImGui::EndDisabled();
+    if (inSession)
+    {
+        ImGui::TextDisabled("Leave the game to change your name.");
     }
     ImGui::Spacing();
 

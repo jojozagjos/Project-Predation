@@ -3323,3 +3323,113 @@ TEST_CASE("Walking up a ramp does not judder at high frame rates", "[body][gait]
     // simulation step, sixty times a second.
     CHECK(worstDrop < 0.001f);
 }
+
+TEST_CASE("How fast the legs cycle on a slope", "[.][body][gait][slope][diagnose]")
+{
+    // Not run by default. Prints how far the stride phase advances per second walking on the flat,
+    // up a ramp and down it, so "the legs barely animate going up" can be a number.
+    const auto measure = [](float slopeDegrees, bool uphill)
+    {
+        BodyHarness harness(slopeDegrees);
+        harness.SetStance(PlayerStance::Standing);
+        harness.input.yaw = uphill ? 0.0f : glm::pi<float>();
+        // The harness tilts the ground about X so that -Z is uphill.
+        harness.SetTravel(glm::vec3(0.0f, 0.0f, uphill ? -1.0f : 1.0f));
+        harness.Settle(180);
+
+        const float startPhase = harness.State().strideDistance;
+        float speed = 0.0f;
+        constexpr int kTicks = 120;
+        for (int i = 0; i < kTicks; ++i)
+        {
+            harness.Tick();
+            speed += glm::length(glm::vec2(harness.State().velocity.x, harness.State().velocity.z));
+        }
+        const float ticks = static_cast<float>(kTicks);
+        return std::make_pair((harness.State().strideDistance - startPhase) / (ticks * kTick),
+                              speed / ticks);
+    };
+
+    std::string table = "\n  case          stride m/s   horizontal m/s\n";
+    const auto row = [&](const char* name, std::pair<float, float> result)
+    {
+        table += "  " + std::string(name) + "   " + std::to_string(result.first).substr(0, 6) +
+                 "      " + std::to_string(result.second).substr(0, 6) + "\n";
+    };
+    row("flat    ", measure(0.0f, true));
+    row("up 15   ", measure(15.0f, true));
+    row("down 15 ", measure(15.0f, false));
+    row("up 25   ", measure(25.0f, true));
+    row("down 25 ", measure(25.0f, false));
+    WARN(table);
+}
+
+TEST_CASE("How far the feet travel on a slope", "[.][body][gait][slope][diagnose]")
+{
+    // Not run by default. Prints how far apart the two feet get over a stride on the flat, uphill
+    // and downhill, which is what "the legs barely animate going up" actually describes.
+    const auto measure = [](float slopeDegrees, bool uphill)
+    {
+        BodyHarness harness(slopeDegrees);
+        harness.SetStance(PlayerStance::Standing);
+        harness.input.yaw = uphill ? 0.0f : glm::pi<float>();
+        harness.SetTravel(glm::vec3(0.0f, 0.0f, uphill ? -1.0f : 1.0f));
+        harness.Settle(180);
+
+        float widest = 0.0f;
+        for (int i = 0; i < 120; ++i)
+        {
+            harness.Tick();
+            const glm::vec3 left = harness.Bone(harness.Rig().foot[0]);
+            const glm::vec3 right = harness.Bone(harness.Rig().foot[1]);
+            // Along the direction of travel, which is what a stride is.
+            widest = std::max(widest, std::abs(left.z - right.z));
+        }
+        return widest;
+    };
+
+    std::string table = "\n  case        widest stride (m)\n";
+    table += "  flat        " + std::to_string(measure(0.0f, true)).substr(0, 6) + "\n";
+    table += "  up 15       " + std::to_string(measure(15.0f, true)).substr(0, 6) + "\n";
+    table += "  down 15     " + std::to_string(measure(15.0f, false)).substr(0, 6) + "\n";
+    table += "  up 25       " + std::to_string(measure(25.0f, true)).substr(0, 6) + "\n";
+    table += "  down 25     " + std::to_string(measure(25.0f, false)).substr(0, 6) + "\n";
+    WARN(table);
+}
+
+TEST_CASE("Whether the legs run out of reach on a slope", "[.][body][gait][slope][diagnose]")
+{
+    // Not run by default. A stride that looks short may be short because the foot was put there, or
+    // because the leg could not get to where the foot was put. This tells the two apart: it prints
+    // how close the hip-to-foot distance gets to the leg's actual length.
+    const auto measure = [](float slopeDegrees, bool uphill)
+    {
+        BodyHarness harness(slopeDegrees);
+        harness.SetStance(PlayerStance::Standing);
+        harness.input.yaw = uphill ? 0.0f : glm::pi<float>();
+        harness.SetTravel(glm::vec3(0.0f, 0.0f, uphill ? -1.0f : 1.0f));
+        harness.Settle(180);
+
+        const float legLength = harness.Rig().upperLegLength + harness.Rig().lowerLegLength;
+        float worst = 0.0f;
+        for (int i = 0; i < 120; ++i)
+        {
+            harness.Tick();
+            for (int side = 0; side < 2; ++side)
+            {
+                const glm::vec3 hip = harness.Bone(harness.Rig().upperLeg[static_cast<size_t>(side)]);
+                const glm::vec3 foot = harness.Bone(harness.Rig().foot[static_cast<size_t>(side)]);
+                worst = std::max(worst, glm::length(foot - hip) / legLength);
+            }
+        }
+        return worst;
+    };
+
+    std::string table = "\n  case        most extended leg (1.0 = straight)\n";
+    table += "  flat        " + std::to_string(measure(0.0f, true)).substr(0, 5) + "\n";
+    table += "  up 15       " + std::to_string(measure(15.0f, true)).substr(0, 5) + "\n";
+    table += "  down 15     " + std::to_string(measure(15.0f, false)).substr(0, 5) + "\n";
+    table += "  up 25       " + std::to_string(measure(25.0f, true)).substr(0, 5) + "\n";
+    table += "  down 25     " + std::to_string(measure(25.0f, false)).substr(0, 5) + "\n";
+    WARN(table);
+}
