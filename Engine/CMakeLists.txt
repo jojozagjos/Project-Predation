@@ -94,6 +94,8 @@ set(PRED_ENGINE_SOURCES
     Net/RelayProtocol.cpp
     Net/RelayServer.h
     Net/RelayServer.cpp
+    Net/RelayCarrier.h
+    Net/RelayCarrier.cpp
     Net/PortMapper.h
     Net/PortMapper.cpp
 

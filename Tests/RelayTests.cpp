@@ -1,12 +1,32 @@
+#include "Engine/Net/RelayCarrier.h"
 #include "Engine/Net/RelayProtocol.h"
 #include "Engine/Net/RelayServer.h"
+
+#if defined(_WIN32)
+#    include <winsock2.h>
+#    include <ws2tcpip.h>
+#    include <mstcpip.h>
+#    ifndef SIO_UDP_CONNRESET
+#        define SIO_UDP_CONNRESET _WSAIOW(IOC_VENDOR, 12)
+#    endif
+#else
+#    include <arpa/inet.h>
+#    include <fcntl.h>
+#    include <netinet/in.h>
+#    include <sys/socket.h>
+#    include <unistd.h>
+#endif
 
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
 #include <cctype>
 #include <cstring>
+#include <array>
+#include <chrono>
 #include <string>
+#include <thread>
+#include <unordered_map>
 #include <vector>
 
 using namespace pred;
@@ -89,6 +109,131 @@ struct RelayHarness
     }
 };
 
+
+// A UDP socket and the loop the relay executable puts around RelayServer, small enough to live in a
+// test. The executable is the same thing with a signal handler and an argument parser.
+struct RelaySocket
+{
+#if defined(_WIN32)
+    SOCKET handle = INVALID_SOCKET;
+#else
+    int handle = -1;
+#endif
+    std::unordered_map<std::string, sockaddr_in> addresses;
+    std::vector<RelayServer::Outgoing> outgoing;
+
+    ~RelaySocket() { Close(); }
+
+    bool Open(uint16_t port)
+    {
+#if defined(_WIN32)
+        WSADATA winsock{};
+        WSAStartup(MAKEWORD(2, 2), &winsock);
+#endif
+        handle = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+#if defined(_WIN32)
+        if (handle == INVALID_SOCKET)
+#else
+        if (handle < 0)
+#endif
+        {
+            return false;
+        }
+        sockaddr_in bound{};
+        bound.sin_family = AF_INET;
+        bound.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        bound.sin_port = htons(port);
+        if (bind(handle, reinterpret_cast<const sockaddr*>(&bound), sizeof(bound)) != 0)
+        {
+            return false;
+        }
+#if defined(_WIN32)
+        u_long nonBlocking = 1;
+        ioctlsocket(handle, static_cast<long>(FIONBIO), &nonBlocking);
+        DWORD behaviour = 0;
+        DWORD returned = 0;
+        WSAIoctl(handle, SIO_UDP_CONNRESET, &behaviour, sizeof(behaviour), nullptr, 0, &returned,
+                 nullptr, nullptr);
+#else
+        const int flags = fcntl(handle, F_GETFL, 0);
+        fcntl(handle, F_SETFL, flags | O_NONBLOCK);
+#endif
+        return true;
+    }
+
+    uint16_t Port() const
+    {
+        sockaddr_in bound{};
+#if defined(_WIN32)
+        int length = static_cast<int>(sizeof(bound));
+#else
+        socklen_t length = sizeof(bound);
+#endif
+        if (getsockname(handle, reinterpret_cast<sockaddr*>(&bound), &length) != 0)
+        {
+            return 0;
+        }
+        return ntohs(bound.sin_port);
+    }
+
+    void Pump(RelayServer& relay, float dt)
+    {
+        std::array<uint8_t, 1400> buffer{};
+        for (int guard = 0; guard < 256; ++guard)
+        {
+            sockaddr_in from{};
+#if defined(_WIN32)
+            int fromLength = static_cast<int>(sizeof(from));
+#else
+            socklen_t fromLength = sizeof(from);
+#endif
+            const int received =
+                recvfrom(handle, reinterpret_cast<char*>(buffer.data()),
+                         static_cast<int>(buffer.size()), 0, reinterpret_cast<sockaddr*>(&from),
+                         &fromLength);
+            if (received <= 0)
+            {
+                break;
+            }
+            char text[INET_ADDRSTRLEN] = {};
+            inet_ntop(AF_INET, &from.sin_addr, text, sizeof(text));
+            std::string key = std::string(text) + ":" + std::to_string(ntohs(from.sin_port));
+            addresses[key] = from;
+            relay.Receive(key, buffer.data(), static_cast<size_t>(received), outgoing);
+        }
+        relay.Tick(dt, outgoing);
+        for (const RelayServer::Outgoing& entry : outgoing)
+        {
+            const auto found = addresses.find(entry.to);
+            if (found == addresses.end())
+            {
+                continue;
+            }
+            sendto(handle, reinterpret_cast<const char*>(entry.datagram.data()),
+                   static_cast<int>(entry.datagram.size()), 0,
+                   reinterpret_cast<const sockaddr*>(&found->second), sizeof(found->second));
+        }
+        outgoing.clear();
+    }
+
+    void Close()
+    {
+#if defined(_WIN32)
+        if (handle != INVALID_SOCKET)
+        {
+            closesocket(handle);
+            handle = INVALID_SOCKET;
+            WSACleanup();
+        }
+#else
+        if (handle >= 0)
+        {
+            close(handle);
+            handle = -1;
+        }
+#endif
+    }
+};
 } // namespace
 
 TEST_CASE("A lobby code survives being written down", "[relay][code]")
@@ -340,4 +485,111 @@ TEST_CASE("Nonsense on the port is ignored rather than answered", "[relay][secur
     relay.server.Receive("scanner", empty.data(), 0, relay.out);
     CHECK(relay.out.empty());
     CHECK(relay.server.LobbyCount() == 0);
+}
+
+// --- Over a real socket --------------------------------------------------------------------------
+
+TEST_CASE("Two carriers meet through a relay on a real socket", "[relay][carrier][socket]")
+{
+    // Everything above is the relay's logic without a network. This is the other half: two real
+    // sockets, a real relay loop, a lobby opened and joined by code, and the game's own transport
+    // running over the top of it without knowing any of that has happened.
+    //
+    // Loopback, so it proves the plumbing rather than the traversal. Whether two routers cooperate
+    // is exactly the question a relay removes: there is nothing to traverse, only an outbound
+    // connection, and if that fails nothing else would have worked either.
+    RelayServer::Settings settings;
+    settings.seed = 12345u;
+    RelayServer relay(settings);
+
+    // The relay loop, driven by hand so the test owns the clock.
+    RelaySocket socket;
+    REQUIRE(socket.Open(0));
+    const uint16_t port = socket.Port();
+    INFO("relay on port " << port);
+
+    RelayCarrier::Settings carrierSettings;
+    carrierSettings.relayHost = "127.0.0.1";
+    carrierSettings.relayPort = port;
+    carrierSettings.connectTimeoutSeconds = 5.0f;
+
+    RelayCarrier host;
+    REQUIRE(host.Host(carrierSettings));
+
+    const auto pump = [&](int milliseconds)
+    {
+        for (int i = 0; i < milliseconds; ++i)
+        {
+            socket.Pump(relay, 0.001f);
+            host.Poll(0.001f);
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+    };
+
+    // The relay answers with a code.
+    for (int i = 0; i < 200 && host.Status() == RelayCarrier::State::Connecting; ++i)
+    {
+        pump(5);
+    }
+    REQUIRE(host.Status() == RelayCarrier::State::Ready);
+    const std::string code = host.CodeText();
+    INFO("lobby code " << code);
+    REQUIRE(code.size() == static_cast<size_t>(kRelayCodeLength));
+
+    // Somebody joins with it, typed the way a person would type it.
+    uint32_t typed = 0;
+    REQUIRE(EncodeRelayCode(code, typed));
+    RelayCarrier guest;
+    REQUIRE(guest.Join(carrierSettings, typed));
+
+    const auto pumpBoth = [&](int milliseconds)
+    {
+        for (int i = 0; i < milliseconds; ++i)
+        {
+            socket.Pump(relay, 0.001f);
+            host.Poll(0.001f);
+            guest.Poll(0.001f);
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+    };
+
+    for (int i = 0; i < 200 && guest.Status() == RelayCarrier::State::Connecting; ++i)
+    {
+        pumpBoth(5);
+    }
+    REQUIRE(guest.Status() == RelayCarrier::State::Ready);
+
+    // Both now know about each other, so both have a link to send on.
+    for (int i = 0; i < 100 && (host.Links() == 0 || guest.Links() == 0); ++i)
+    {
+        pumpBoth(5);
+    }
+    REQUIRE(host.Links() >= 1);
+    REQUIRE(guest.Links() >= 1);
+
+    // And the bytes go across.
+    const std::string hello = "the door is open";
+    REQUIRE(host.Send(0, reinterpret_cast<const uint8_t*>(hello.data()), hello.size()));
+    std::vector<uint8_t> heard;
+    size_t fromLink = 0;
+    bool arrived = false;
+    for (int i = 0; i < 200 && !arrived; ++i)
+    {
+        pumpBoth(5);
+        arrived = guest.Receive(fromLink, heard);
+    }
+    REQUIRE(arrived);
+    CHECK(std::string(heard.begin(), heard.end()) == hello);
+
+    // Back the other way, which is the direction a router would have refused.
+    const std::string reply = "coming through";
+    REQUIRE(guest.Send(fromLink, reinterpret_cast<const uint8_t*>(reply.data()), reply.size()));
+    arrived = false;
+    for (int i = 0; i < 200 && !arrived; ++i)
+    {
+        pumpBoth(5);
+        arrived = host.Receive(fromLink, heard);
+    }
+    REQUIRE(arrived);
+    CHECK(std::string(heard.begin(), heard.end()) == reply);
 }
