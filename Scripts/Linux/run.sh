@@ -2,6 +2,15 @@
 # Usage: Scripts/Linux/run.sh [preset] [game args...]
 # Plays whichever build is actually there, preferring release.
 set -euo pipefail
+
+# Git Bash, MSYS2 and Cygwin will happily start this on Windows and then fail somewhere
+# deep inside CMake, where the real problem is not visible. Say it here instead.
+case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*)
+        echo "[run] This is the Linux script. On Windows run Scripts/Windows/run.cmd instead." >&2
+        exit 1
+        ;;
+esac
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 PRESET=""

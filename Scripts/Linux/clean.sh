@@ -3,6 +3,15 @@
 # Removes the intermediate trees vcpkg keeps after it has finished building a library. Nothing here
 # needs downloading again. "all" also removes the compiled output, so the next build is a full one.
 set -euo pipefail
+
+# Git Bash, MSYS2 and Cygwin will happily start this on Windows and then fail somewhere
+# deep inside CMake, where the real problem is not visible. Say it here instead.
+case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*)
+        echo "[clean] This is the Linux script. On Windows run Scripts/Windows/clean.cmd instead." >&2
+        exit 1
+        ;;
+esac
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 echo "[clean] vcpkg intermediates"

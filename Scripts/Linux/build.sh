@@ -7,6 +7,15 @@
 # either keeps the terminal open itself or was started from one that is already open.
 set -euo pipefail
 
+# Git Bash, MSYS2 and Cygwin will happily start this on Windows and then fail somewhere
+# deep inside CMake, where the real problem is not visible. Say it here instead.
+case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*)
+        echo "[build] This is the Linux script. On Windows run Scripts/Windows/build.cmd instead." >&2
+        exit 1
+        ;;
+esac
+
 PRESET="${1:-linux-release}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
