@@ -2386,11 +2386,30 @@ void PlayerBody::UpdateMantleLegs(const PlayerState& state, float weight)
                                   glm::vec3(0.0f, m_rig.ankleHeight, 0.0f);
         const glm::vec3 wanted = glm::mix(hanging, planted, up);
 
+        // And let go before the climb is over.
+        //
+        // The foot is put on the lip, which is a fixed point in the world, and the body keeps going
+        // past it: hold on to the end and the legs are left out behind the player at the top, which
+        // is exactly what it looked like. The arms let go for the same reason and this is the same
+        // curve, a little later, because a hand comes off a ledge before a foot does.
+        const float release = 1.0f - glm::smoothstep(m_config.mantleLegRelease, 0.96f, t);
+
         FootState& foot = m_feet[static_cast<size_t>(side)];
         // Blended onto whatever the legs were already doing, so the end of a climb is a fade rather
         // than a cut, exactly as the arms are.
-        foot.position = glm::mix(foot.position, wanted, weight);
+        const float hold = weight * release;
+        if (hold <= 0.001f)
+        {
+            continue;
+        }
+        foot.position = glm::mix(foot.position, wanted, hold);
         foot.planted = up > 0.5f;
+        // Where this foot is standing, kept in step with where the climb has put it. Left at
+        // whatever it was before the climb, the ordinary pose picks a foot back up from the bottom
+        // of the wall the moment it takes over.
+        foot.plant = foot.position;
+        foot.holding = false;
+        foot.standing = false;
 
         // The knee goes forward and up towards the ledge while the leg is folded, which is the whole
         // shape of a mantle: a pole that pointed straight ahead put the knee through the wall.

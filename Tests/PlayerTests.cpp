@@ -1085,3 +1085,48 @@ TEST_CASE("A client does not decide its own health", "[player][net]")
 
     physics.Shutdown();
 }
+
+TEST_CASE("A climbable ledge behind a wall is not a way through the wall", "[player][mantle]")
+{
+    // The probe that finds a ledge looks down from a point in front of the player, and in front of
+    // a wall too tall to climb that point is on the far side of it. Anything standing over there at
+    // a climbable height answered, every other check agreed because the ledge really was there, and
+    // the climb moves the capsule by setting its position, so the player went straight through.
+    PhysicsWorld physics;
+    PhysicsWorld::Settings settings;
+    settings.workerThreads = 1;
+    REQUIRE(physics.Init(settings));
+    physics.CreateBox({20.0f, 0.5f, 20.0f}, Transform{{0.0f, -0.5f, 0.0f}}, BodyMotion::Static);
+    // A wall well above head height, and thin, so the probe in front reaches past it.
+    physics.CreateBox({6.0f, 1.4f, 0.08f}, Transform{{0.0f, 1.4f, -1.0f}}, BodyMotion::Static);
+    // And a crate on the far side of it, at a height anybody could climb.
+    physics.CreateBox({2.0f, 0.5f, 2.0f}, Transform{{0.0f, 0.5f, -3.0f}}, BodyMotion::Static);
+    physics.OptimizeBroadPhase();
+
+    PlayerConfig config;
+    PlayerController player;
+    REQUIRE(player.Init(physics, config, {0.0f, 0.05f, 0.4f}));
+
+    PlayerInput input;
+    input.move = {0.0f, 1.0f}; // straight at the wall
+
+    bool started = false;
+    for (int i = 0; i < 240 && !started; ++i)
+    {
+        input.jump = i % 20 == 0;
+        physics.Step(1.0f / 60.0f);
+        player.Step(input, 1.0f / 60.0f);
+        input.jump = false;
+        started = player.State().mantling;
+    }
+
+    const glm::vec3 ended = player.State().position;
+    player.Shutdown();
+    physics.Shutdown();
+
+    INFO("the climb " << (started ? "started" : "did not start") << " and the player ended at z "
+                      << ended.z << ", with the wall at z -1");
+    CHECK_FALSE(started);
+    // And still on this side of it.
+    CHECK(ended.z > -1.0f);
+}

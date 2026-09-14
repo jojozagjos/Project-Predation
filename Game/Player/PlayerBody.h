@@ -285,6 +285,10 @@ public:
         float mantleKneeAt = 0.42f;      // how far through the climb the leading knee comes up
         float mantleTrailingFoot = 0.18f; // how far behind it the other one is
         float mantleFootAhead = 0.10f;   // how far past the lip the foot lands, as a fraction of height
+        // And how far through the climb the feet let go of the lip again. A foot planted on a fixed
+        // point in the world has to be given up before the body walks past it, or the legs are left
+        // out behind the player at the top.
+        float mantleLegRelease = 0.70f;
         // How far the torso folds forward over the ledge at the middle of the pull.
         float mantleFoldDegrees = 34.0f;
 

@@ -2722,3 +2722,72 @@ TEST_CASE("A ragdoll limb is not flicked onto a step it is dragged over", "[body
     // A joint riding up onto a step climbs it. One that is hit by it jumps the whole height at once.
     CHECK(worst < 0.06f);
 }
+
+TEST_CASE("The legs come back under you at the top of a climb", "[body][pose][mantle]")
+{
+    // Getting up is only half of it. At the top the legs were still where the climb had put them,
+    // out behind the body, and stayed there.
+    BodyHarness harness;
+    harness.physics.CreateBox({2.0f, 0.55f, 2.0f}, Transform{{0.0f, 0.55f, -2.6f}}, BodyMotion::Static);
+    harness.physics.OptimizeBroadPhase();
+    harness.Settle(60);
+
+    // Walk at it until the climb triggers, then ride it out and stand still afterwards.
+    harness.SetTravel(glm::vec3(0.0f, 0.0f, -1.0f));
+    bool climbed = false;
+    for (int i = 0; i < 400 && !climbed; ++i)
+    {
+        // Climbing is on the jump key: running at a ledge and pressing jump is what people try.
+        harness.input.jump = i % 20 == 0;
+        harness.Tick();
+        harness.input.jump = false;
+        climbed = harness.State().mantling;
+    }
+    REQUIRE(climbed);
+    // Through the top of the climb and out the other side, watching all the way. The player is
+    // still walking, which is what anybody does: you do not stop dead the instant you are up.
+    float worst = 0.0f;
+    float at = 0.0f;
+    float lowest = 10.0f;
+    int sinceTop = -1;
+    for (int i = 0; i < 150; ++i)
+    {
+        harness.Tick();
+        if (!harness.State().mantling && sinceTop < 0)
+        {
+            sinceTop = 0;
+        }
+        else if (sinceTop >= 0)
+        {
+            ++sinceTop;
+        }
+        const glm::vec3 body = harness.State().position;
+        // Only over the handover: from the top of the climb until the climb pose has finished
+        // fading out. Before that the feet are meant to be below the body, and long after it they
+        // are wherever walking has put them, which is the gait's business and not this one's.
+        if (body.y < 1.05f || sinceTop < 0 || sinceTop > 30)
+        {
+            continue;
+        }
+        for (int side = 0; side < 2; ++side)
+        {
+            const glm::vec3 foot = harness.Bone(harness.Rig().foot[side]);
+            const glm::vec2 out{foot.x - body.x, foot.z - body.z};
+            if (glm::length(out) > worst)
+            {
+                worst = glm::length(out);
+                at = static_cast<float>(i) / 60.0f;
+            }
+            lowest = std::min(lowest, foot.y - body.y);
+        }
+    }
+
+    INFO("over the handover at the top, the furthest a foot got from under the body was "
+         << worst << " m, " << at << " s in, and the lowest was " << lowest << " m below it");
+    // Walking, a foot is half a stride from under the body and should be: with the climb pose taken
+    // out of the picture entirely this window reads 0.50 m, which is the gait and nothing else.
+    // Holding the lip to the end of the climb reads 0.62 m, and that difference is a leg left
+    // behind on a ledge the body has already walked off.
+    CHECK(worst < 0.56f);
+    CHECK(lowest > -0.20f);
+}

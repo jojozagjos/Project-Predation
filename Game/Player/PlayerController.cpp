@@ -205,6 +205,23 @@ bool PlayerController::FindMantle(const PlayerInput& input, glm::vec3& outTarget
         return false;
     }
 
+    // And what is in front has to be the thing whose top that is.
+    //
+    // The probe above looks down from in front of the player, which finds the top of whatever is
+    // under that point. Standing at a wall too tall to climb, that point is on the far side of it,
+    // and if anything stands over there at a climbable height, its top is what comes back. The
+    // checks that follow all agreed, because they are asking about a ledge that really is there.
+    // What none of them asked was whether the wall in between goes on up past it, and the climb
+    // itself moves the capsule by setting its position, so nothing stopped the player passing
+    // straight through. Tracing forward again at just above the lip is the whole of the question:
+    // if something is still in the way up there, this is not the top of it.
+    const RayHit beyond = m_physics->RayCast(
+        glm::vec3(feet.x, top.position.y + 0.08f, feet.z), forward, ahead + 0.1f);
+    if (beyond)
+    {
+        return false;
+    }
+
     // Enough flat top to stand on. A ledge one centimetre deep is a lip, and climbing onto it drops
     // you straight back off the far side.
     const glm::vec3 landing = probe + forward * m_config.mantleClearance;
