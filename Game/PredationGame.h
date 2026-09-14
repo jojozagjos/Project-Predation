@@ -405,6 +405,11 @@ private:
         // body they are attached to smears with them, which is the double image.
         glm::vec3 drawn{0.0f};
         bool drawnValid = false;
+        // And where they are looking, eased the same way and for the same reason: on the host the
+        // published angles step once a tick, which from inside their head is the view jumping.
+        float lookYaw = 0.0f;
+        float lookPitch = 0.0f;
+        bool lookValid = false;
         // Where their last climb ended and how far through it was.
         //
         // The snapshot only carries these while somebody is climbing, and the hands go on fading
@@ -449,6 +454,8 @@ private:
     int m_mantleStowedSlot = -1;
     bool m_mantleStowing = false;
     int m_spectating = -1;
+    // Set when a dead player asks to watch somebody else. Consumed on the next spectator update.
+    bool m_spectateNext = false;
     // Eased like your own eye height, so a watched player crouching is a sink rather than a snap.
     float m_spectateEyeHeight = 0.0f;
     bool m_localCollapsed = false;

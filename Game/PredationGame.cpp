@@ -1405,6 +1405,32 @@ void PredationGame::UpdateSpectating()
         return false;
     };
 
+    // Asked to watch somebody else, which is the only control a dead player has.
+    if (m_spectateNext && m_spectating >= 0)
+    {
+        // The next living player after the one being watched, wrapping. Everybody is on the same
+        // roster in the same order, so "next" means the same thing on every machine.
+        for (size_t step = 1; step <= remotes.size(); ++step)
+        {
+            size_t at = 0;
+            for (size_t i = 0; i < remotes.size(); ++i)
+            {
+                if (static_cast<int>(remotes[i].id) == m_spectating)
+                {
+                    at = i;
+                    break;
+                }
+            }
+            const RemotePlayerView& candidate = remotes[(at + step) % remotes.size()];
+            if (candidate.alive)
+            {
+                m_spectating = candidate.id;
+                break;
+            }
+        }
+    }
+    m_spectateNext = false;
+
     if (m_spectating >= 0 && living(m_spectating))
     {
         return;
@@ -2251,10 +2277,35 @@ void PredationGame::SyncRemoteAvatars(float frameDeltaSeconds)
             avatar->drawn = glm::mix(avatar->drawn, remote.position, blend);
         }
 
+        // Where they are looking, eased for the same reason their position is.
+        //
+        // On the host, what it publishes about everybody else is rebuilt once per simulation tick
+        // while the screen draws whenever it likes, so the angles arrive in steps even though the
+        // position no longer does. On a body across the room that is barely visible; from inside
+        // their head, spectating, it is the whole view jumping sixty times a second. The short way
+        // round for the yaw, or looking across the back of north spins the camera all the way about.
+        {
+            const float blend = 1.0f - std::exp(-26.0f * frameDeltaSeconds);
+            if (!avatar->lookValid)
+            {
+                avatar->lookYaw = remote.yaw;
+                avatar->lookPitch = remote.pitch;
+                avatar->lookValid = true;
+            }
+            else
+            {
+                float delta = remote.yaw - avatar->lookYaw;
+                while (delta > glm::pi<float>()) delta -= glm::two_pi<float>();
+                while (delta < -glm::pi<float>()) delta += glm::two_pi<float>();
+                avatar->lookYaw += delta * blend;
+                avatar->lookPitch += (remote.pitch - avatar->lookPitch) * blend;
+            }
+        }
+
         avatar->state.position = avatar->drawn;
         avatar->state.velocity = remote.velocity;
-        avatar->state.yaw = remote.yaw;
-        avatar->state.pitch = remote.pitch;
+        avatar->state.yaw = avatar->lookYaw;
+        avatar->state.pitch = avatar->lookPitch;
         avatar->state.stance = remote.stance;
         avatar->state.desiredStance = remote.stance;
         avatar->state.leanAmount = remote.leanAmount;
@@ -4123,7 +4174,17 @@ void PredationGame::OnUpdate(double dt, double alpha)
         }
         if (input.WasActionPressed("interact"))
         {
-            TryInteract();
+            // Alive it opens doors; dead it is the only control there is, so it moves you to the
+            // next teammate. A free camera is deliberately not offered: it would show a dead player
+            // where the creature is, which is the one thing being dead should not tell them.
+            if (m_player.State().alive)
+            {
+                TryInteract();
+            }
+            else
+            {
+                m_spectateNext = true;
+            }
         }
         if (input.WasActionPressed("drop"))
         {
@@ -4279,8 +4340,11 @@ void PredationGame::OnUpdate(double dt, double alpha)
         if (avatar != nullptr)
         {
             PlayerView spectated = avatar->view;
-            spectated.yaw = watched->yaw;
-            spectated.pitch = watched->pitch;
+            // The same eased angles their body is posed with, not the raw ones off the wire. Taking
+            // the wire's meant the camera and the head it is inside were looking in slightly
+            // different directions, and the difference arrived in steps.
+            spectated.yaw = avatar->lookYaw;
+            spectated.pitch = avatar->lookPitch;
             view = spectated.ViewMatrix();
             viewPosition = spectated.eyePosition;
             m_spectateEyeHeight = avatar->view.eyeHeight;
@@ -4963,6 +5027,29 @@ void PredationGame::DrawHud()
     }
 
     DrawPlayerList();
+
+    // Whose eyes these are, and how to move to somebody else's. Without it a dead player is looking
+    // through a stranger with no way to tell whose view it is or that it can be changed.
+    if (!m_player.State().alive && m_spectating >= 0)
+    {
+        std::string name = "a teammate";
+        for (const RemotePlayerView& other : RemotePlayers())
+        {
+            if (static_cast<int>(other.id) == m_spectating && !other.name.empty())
+            {
+                name = other.name;
+                break;
+            }
+        }
+        ImGui::SetNextWindowPos({centre.x, viewport->Pos.y + viewport->Size.y - 110.0f},
+                                ImGuiCond_Always, {0.5f, 1.0f});
+        if (ImGui::Begin("##Spectating", nullptr, kHudFlags))
+        {
+            ImGui::TextColored({0.82f, 0.84f, 0.88f, 1.0f}, "Watching %s", name.c_str());
+            ImGui::TextDisabled("[F]  next");
+        }
+        ImGui::End();
+    }
 
     if (m_inventoryOpen)
     {
