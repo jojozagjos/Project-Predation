@@ -1177,11 +1177,17 @@ TEST_CASE("A held weapon stops at a wall it is looking sideways at", "[body][pos
     INFO("muzzle at " << muzzle.x << ", " << muzzle.y << ", " << muzzle.z << ", player z "
                       << harness.State().position.z << ", wall face at " << wallZ);
 
-    // Out of it, which it now is. A barrel half a metre long and a wall a third of a metre away
-    // cannot both be had by moving the weapon, and for a long time this checked only that what was
-    // left inside was a barrel tip rather than half a weapon. Turning the weapon about the point it
-    // is held by costs nothing the hold needs, so the muzzle comes down instead and gets out.
-    CHECK(muzzle.z > wallZ - 0.02f);
+    // Nearly out of it. A barrel half a metre long and a wall a third of a metre away cannot both
+    // be had by moving the weapon, and for a long time this checked only that what was left inside
+    // was a barrel tip rather than half a weapon: it used to be 17 cm. Turning the weapon about the
+    // point it is held by costs nothing the hold needs, so the muzzle comes down instead.
+    //
+    // A few centimetres are deliberately left. Dropping the muzzle is a second-order lever against
+    // a wall, so an exact answer steps from nothing to thirty degrees at the moment of contact; the
+    // first couple of centimetres therefore buy no correction at all, which is what turns that step
+    // into a slope. Nobody can see two centimetres of barrel in a wall and everybody can see the
+    // weapon flick.
+    CHECK(muzzle.z > wallZ - 0.07f);
 
     // It comes in as well as down. Dropping alone would leave the weapon at full stretch in a
     // corridor with its stock in open air behind the player.
@@ -2443,8 +2449,12 @@ TEST_CASE("Walking into a wall keeps the barrel out of it", "[body][pose][weapon
     CHECK(muzzle.z > wallZ - 0.02f);
 }
 
-TEST_CASE("Aiming into a wall keeps the barrel out of it", "[body][pose][weapons][walls][ads]")
+TEST_CASE("The sights do not come up against a wall", "[body][pose][weapons][walls][ads]")
 {
+    // There is no honest way to aim at a wall a hand's length away. The weapon has to be far enough
+    // out that the camera is not inside the receiver, a barrel is longer than the gap that leaves,
+    // and dropping the muzzle to get it out of the wall is the one correction the sights cannot
+    // survive. So the sights do not come up that close, which is what a person does as well.
     BodyHarness harness;
     WeaponDefinition weapon;
     weapon.id = 1;
@@ -2468,12 +2478,94 @@ TEST_CASE("Aiming into a wall keeps the barrel out of it", "[body][pose][weapons
 
     const glm::vec3 muzzle = harness.body.MuzzlePoint();
     const glm::vec3 eye = harness.View().eyePosition;
-    const glm::vec3 rear =
-        harness.body.WeaponOrigin() + harness.body.WeaponRotation() * harness.body.Weapon().rearPoint;
-    INFO("muzzle " << (wallZ - muzzle.z) * 100.0f << " cm inside the wall; the back of the weapon is "
-                   << glm::dot(rear - eye, harness.View().Forward())
-                   << " m down the view axis, muzzle dropped " << harness.body.MuzzleTipDegrees()
-                   << " degrees, hold "
-                   << glm::dot(harness.body.HoldPoint() - eye, harness.View().Forward()) << " m out");
+    INFO("muzzle " << (wallZ - muzzle.z) * 100.0f << " cm inside the wall, hold "
+                   << glm::dot(harness.body.HoldPoint() - eye, harness.View().Forward())
+                   << " m out, sights " << (harness.body.AimHasRoom() ? "allowed" : "refused"));
+
+    // Refused, and the barrel is out of the wall because the carried pose is free to drop it.
+    CHECK_FALSE(harness.body.AimHasRoom());
     CHECK(muzzle.z > wallZ - 0.02f);
+
+    // And they come back the moment there is room. Backing off two thirds of a metre is enough for
+    // the whole weapon, so this is the other half of the rule: it refuses where it must and
+    // nowhere else.
+    harness.SetTravel(glm::vec3(0.0f, 0.0f, 1.0f));
+    for (int i = 0; i < 120; ++i)
+    {
+        harness.body.SetWeaponPose(pose);
+        harness.Tick();
+    }
+    INFO("after backing off to z " << harness.State().position.z << " the sights are "
+                                   << (harness.body.AimHasRoom() ? "allowed" : "refused"));
+    CHECK(harness.body.AimHasRoom());
+}
+
+TEST_CASE("Walking up to a wall does not make the weapon hunt", "[body][pose][weapons][walls]")
+{
+    // Turning the muzzle out of a wall is a correction that can watch its own output, and if it
+    // does it oscillates: traced from where the muzzle is now, the barrel comes out of the wall,
+    // the answer becomes "nothing is blocked", the turn unwinds, the barrel goes back in, and the
+    // weapon hunts between the two for as long as the player stands there. The trace has to ask
+    // about the room rather than about the weapon.
+    BodyHarness harness;
+    WeaponDefinition weapon;
+    weapon.id = 1;
+    weapon.key = "test_rifle";
+    weapon.size = {0.06f, 0.16f, 0.62f};
+    harness.body.SetWeaponForSimulation(&weapon);
+
+    harness.physics.CreateBox({8.0f, 3.0f, 1.0f}, Transform{{0.0f, 1.5f, -1.32f}}, BodyMotion::Static);
+    harness.physics.OptimizeBroadPhase();
+
+    // How far the muzzle is dropped, settled, at each distance from the wall. Stepping the player
+    // and letting it settle takes the smoothing out of the reading: what is left is the answer the
+    // correction gives, which is the thing that must not have a step in it. A correction that
+    // watches its own output settles on the knife edge where the trace only just reaches, and every
+    // small movement of the player flips it between "blocked" and "clear".
+    std::vector<std::pair<float, float>> settled;
+    for (float gap = 0.34f; gap <= 1.20f; gap += 0.01f)
+    {
+        harness.player.Teleport({0.0f, 0.05f, -1.32f + 1.0f + gap});
+        harness.Settle(90);
+        settled.emplace_back(gap, harness.body.MuzzleTipDegrees());
+    }
+
+    float worstStep = 0.0f;
+    float at = 0.0f;
+    std::string trace;
+    for (size_t i = 1; i < settled.size(); ++i)
+    {
+        const float step = std::abs(settled[i].second - settled[i - 1].second);
+        if (step > worstStep)
+        {
+            worstStep = step;
+            at = settled[i].first;
+        }
+        if (i % 6 == 0)
+        {
+            trace += std::to_string(static_cast<int>(settled[i].second)) + " ";
+        }
+    }
+
+    INFO("drop against distance, every six centimetres: " << trace);
+    INFO("the biggest step between two centimetres apart was " << worstStep << " degrees, at " << at
+         << " m from the wall");
+    // A centimetre of ground covered should not move the weapon more than a few degrees. Reading
+    // only the first turn's worth of solutions, this steps twenty-five degrees at the moment the
+    // barrel touches anything, and that step is the weapon flicking as a player walks up to a wall.
+    CHECK(worstStep < 6.0f);
+
+    // And it settles rather than hunting: standing still against the wall, the answer holds.
+    harness.player.Teleport({0.0f, 0.05f, 0.0f});
+    harness.Settle(120);
+    float lowest = 360.0f;
+    float highest = -360.0f;
+    for (int i = 0; i < 180; ++i)
+    {
+        harness.Tick();
+        lowest = std::min(lowest, harness.body.MuzzleTipDegrees());
+        highest = std::max(highest, harness.body.MuzzleTipDegrees());
+    }
+    INFO("standing still, the drop ranged over " << (highest - lowest) << " degrees");
+    CHECK(highest - lowest < 2.0f);
 }

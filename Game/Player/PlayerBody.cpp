@@ -1083,7 +1083,14 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
     // Asked for twice, and it is the honest trade: aiming into a wall puts the barrel in the wall,
     // which is what a barrel in a wall looks like, rather than pretending the weapon has nowhere to
     // be. Shooting traces from the eye regardless, so nothing about where a round goes changes.
-    const float wantedAim = glm::clamp(m_weaponPose.aim, 0.0f, 1.0f) * (1.0f - m_mantleFade);
+    // And a wall does take the sights down again, which is a reversal and worth saying so. It used
+    // to break the aim on how boxed in the player felt, which meant the weapon was shoved about
+    // every time they brushed a doorframe, and that was rightly rejected twice. What is here now
+    // refuses only where the sights would be a lie: close enough that a sighted barrel would be
+    // most of the way inside a wall, which is where a person lowers their rifle too. Everywhere
+    // else the sights work exactly as they did.
+    const float wantedAim =
+        glm::clamp(m_weaponPose.aim, 0.0f, 1.0f) * (1.0f - m_mantleFade) * m_aimRoom;
     const float aim = wantedAim;
 
     // --- Sway -----------------------------------------------------------------------------------
@@ -1353,8 +1360,16 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
     // the player was climbing.
     if (m_mantleFade <= 0.001f)
     {
-        const glm::vec3 muzzle =
-            m_weaponTransform.position + m_weaponTransform.rotation * m_weaponVisual.muzzle;
+        // Measured on the weapon with the wall turn taken back off it, for the same reason the turn
+        // itself is: a correction that looks at a weapon which has already been corrected is
+        // watching its own output. Left closed like that, the two fed each other. A dropped muzzle
+        // is near and low, so it needed pulling in hardly at all, so the weapon sat further out, so
+        // it needed dropping further; and a centimetre of ground could tip the pair from one of
+        // those states into the other. What a player saw was the weapon flicking as they walked up
+        // to a wall. Both now ask the same question, about the room rather than about the weapon.
+        const glm::quat untipped =
+            m_weaponTransform.rotation * glm::angleAxis(-tipApplied, glm::vec3(1.0f, 0.0f, 0.0f));
+        const glm::vec3 muzzle = m_weaponTransform.position + untipped * m_weaponVisual.muzzle;
         const glm::vec3 clear =
             ClearOfWorld(physics, view.eyePosition, muzzle, m_config.muzzleClearance);
         // Straight back, and only back.
@@ -1412,15 +1427,7 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
         // floor off exactly where it was needed: aiming into a corner is the one place a receiver
         // ends up through the near plane.
         //
-        // And it is measured off again by however far the muzzle has already come down. The floor
-        // is a stand-in for "the stock is about to be cut open by the near plane", and that is only
-        // true while the weapon lies along the view. Tipped forty degrees the stock is a hand's
-        // width above the axis, which that close to the eye is outside the frustum altogether, and
-        // holding it out anyway is what kept the sighted weapon far enough forward that its barrel
-        // could not be got out of a wall at any angle.
-        const float lifted = glm::clamp(std::sin(tipApplied), 0.0f, 1.0f);
-        const float rearFloor =
-            glm::mix(glm::mix(-0.30f, m_config.weaponRearMinForward, wantedAim), -0.30f, lifted);
+        const float rearFloor = glm::mix(-0.30f, m_config.weaponRearMinForward, wantedAim);
         const float push = std::max(floorDistance - glm::dot(held - view.eyePosition, along),
                                     rearFloor - glm::dot(rear - view.eyePosition, along));
         if (push > 0.0f)
@@ -1503,8 +1510,18 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
     if (m_mantleFade <= 0.001f)
     {
         const glm::vec3 hold = m_weaponTransform.position + m_weaponTransform.rotation * holdPoint;
-        const glm::vec3 reach = m_weaponTransform.rotation * (m_weaponVisual.muzzle - holdPoint);
-        const glm::vec3 muzzle = hold + reach;
+        // Everything below is measured on the weapon with the turn taken back off it.
+        //
+        // That is the difference between a correction and a wobble. Tracing to where the muzzle
+        // currently is asks "is the barrel in the wall now", and the answer, once it has been
+        // turned out of the wall, is no: the turn unwinds, the barrel goes back in, the answer
+        // becomes yes again, and the weapon hunts between the two for as long as the player stands
+        // there. Tracing to where the muzzle would be with no turn at all asks a question about the
+        // room the player is standing in, which their own movement is the only thing that changes.
+        const glm::quat base =
+            m_weaponTransform.rotation * glm::angleAxis(-tipApplied, glm::vec3(1.0f, 0.0f, 0.0f));
+        const glm::vec3 span = base * (m_weaponVisual.muzzle - holdPoint);
+        const glm::vec3 muzzle = hold + span;
         float wanted = 0.0f;
 
         const glm::vec3 toMuzzle = muzzle - view.eyePosition;
@@ -1518,14 +1535,7 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
                 // Positive turns about the weapon's own right axis drop the muzzle, which is what
                 // anybody does with a rifle when a room runs out. Lifting it would clear the same
                 // wall and lay the barrel across the middle of the screen to do it.
-                //
-                // Measured from the untipped weapon, so what comes out is the whole angle rather
-                // than one more helping of it: the turn already on the weapon is taken back off
-                // first and put on again at the top of the next frame.
-                const glm::quat base =
-                    m_weaponTransform.rotation * glm::angleAxis(-tipApplied, glm::vec3(1, 0, 0));
                 const glm::vec3 axis = base * glm::vec3(1.0f, 0.0f, 0.0f);
-                const glm::vec3 span = base * (m_weaponVisual.muzzle - holdPoint);
                 const glm::vec3 normal = blocked.normal;
                 const float alongAxis = glm::dot(axis, span);
                 const float turning = alongAxis * glm::dot(axis, normal);
@@ -1537,27 +1547,76 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
                                      glm::dot(hold - blocked.position, normal) - turning;
                 const float radius = std::sqrt(a * a + b * b);
                 const float limit = glm::radians(m_config.weaponWallTipMax);
-                wanted = limit;
-                if (radius > 1e-5f && std::abs(needed) <= radius)
+                // The angle that takes the muzzle furthest out of the surface, whether or not that
+                // is far enough to clear it.
+                const float phase = std::atan2(b, a);
+                // The angles that clear the wall are an arc: between the two at which the muzzle is
+                // exactly clear, repeating every turn. As the wall closes in those two shut towards
+                // the deepest angle and then vanish, which is what makes every case below meet its
+                // neighbour smoothly instead of jumping to it.
+                //
+                // The repeat matters and is easy to miss. A muzzle already hanging below the hold
+                // swings slightly forward for the first few degrees it is dropped, so the arc that
+                // clears the wall can begin past a quarter turn and be written as a negative angle
+                // before the wrap. Reading only the first turn's worth, the answer came out as "no
+                // angle helps" for exactly the geometry the drop was built for.
+                constexpr float kTurn = glm::two_pi<float>();
+                bool solved = false;
+                if (radius > 1e-5f && needed <= radius)
                 {
-                    const float phase = std::atan2(b, a);
                     const float spread = std::acos(glm::clamp(needed / radius, -1.0f, 1.0f));
-                    const float candidates[3] = {phase - spread, phase + spread,
-                                                 phase - spread + glm::two_pi<float>()};
-                    for (const float candidate : candidates)
+                    for (int wrap = 0; wrap <= 1 && !solved; ++wrap)
                     {
-                        if (candidate > 0.0f && candidate < wanted)
+                        const float from = phase - spread + static_cast<float>(wrap) * kTurn;
+                        const float to = phase + spread + static_cast<float>(wrap) * kTurn;
+                        if (to < 0.0f)
                         {
-                            wanted = candidate;
+                            continue;
+                        }
+                        // Inside the arc already means the barrel is clear without turning at all,
+                        // and the trace only reported a hit because it looks a little past the
+                        // muzzle. Reaching for the far edge there is what put a jump exactly where
+                        // the weapon comes off a wall.
+                        const float least = from <= 0.0f ? 0.0f : from;
+                        if (least <= limit)
+                        {
+                            wanted = least;
+                            solved = true;
                         }
                     }
                 }
+                if (!solved)
+                {
+                    // Nothing it is allowed to reach clears the wall, so take the angle that gets
+                    // the most of the barrel out of it, which is wherever the sweep is deepest.
+                    wanted = glm::clamp(phase < 0.0f ? phase + kTurn : phase, 0.0f, limit);
+                }
+
+                // And faded in over the first few centimetres of barrel, which is the one thing
+                // here that is a fudge and is worth saying why.
+                //
+                // Dropping the muzzle is a second-order lever against a wall straight ahead:
+                // swinging it down moves it along the wall, not away from it, and only the
+                // shortening as the angle opens buys any room at all. So the least turn that clears
+                // a barrel one millimetre inside a wall is not one degree, it is thirty, and an
+                // exact answer therefore steps from nothing to thirty degrees the moment a muzzle
+                // touches anything. Nobody can see a centimetre of barrel in a wall and everybody
+                // can see the weapon jump, so the first centimetre or two buys nothing and the
+                // correction comes in over the next handful.
+                const float depth = -glm::dot(muzzle - blocked.position, normal);
+                wanted *= glm::smoothstep(m_config.weaponWallTipSlack,
+                                          m_config.weaponWallTipSlack + m_config.weaponWallTipFade,
+                                          depth);
             }
         }
 
         // Smoothed, because one ray flickers on the edge of anything it grazes, and a weapon that
         // followed a flickering ray would snap down and up again as a doorframe went past.
-        m_muzzleTip = SmoothTowards(m_muzzleTip, wanted, m_config.weaponWallTipSpeed, dt);
+        // And not while the sights are up. Dropping the muzzle is the one correction a sighted
+        // weapon cannot take, because the sights are the whole point of the pose. It does not have
+        // to: the sights refuse to come up at all where a barrel would not fit, so the two never
+        // want the weapon in different places at once.
+        m_muzzleTip = SmoothTowards(m_muzzleTip, wanted * (1.0f - aim), m_config.weaponWallTipSpeed, dt);
         const float remaining = m_muzzleTip - tipApplied;
         if (std::abs(remaining) > 1e-5f)
         {
@@ -2843,6 +2902,32 @@ void PlayerBody::Update(Scene& scene, const PlayerState& state, const PlayerView
         const float free = hit ? std::clamp(hit.distance / std::max(reach, 0.01f), 0.0f, 1.0f) : 1.0f;
         // Eased, so brushing past a doorframe does not jerk the weapon in and out.
         m_wallClearance = SmoothTowards(m_wallClearance, free, m_config.wallCheckSpeed, dt);
+
+        // And whether there is room to put the sights up at all.
+        //
+        // There is no honest way to aim at a wall a hand's length from your face. The weapon has to
+        // be far enough out that the camera is not inside the receiver, and a barrel is longer than
+        // the gap that leaves, so something has to be inside the wall: for a long time that was
+        // forty centimetres of barrel, and dropping the muzzle to get it out is the one thing the
+        // sights cannot survive. So the sights simply do not come up that close, which is also what
+        // happens to a person who tries it.
+        //
+        // Measured against where the muzzle would be with the sights up rather than against how
+        // boxed in the player feels, so it refuses only where it would actually be a lie, and with
+        // a margin either side of the answer so that standing on the line does not flicker.
+        if (m_hasWeapon)
+        {
+            const float sightToMuzzle =
+                std::max(m_weaponVisual.muzzle.z - m_weaponVisual.sightPoint.z, 0.0f);
+            const float needed = m_config.weaponAimForward + sightToMuzzle - m_config.weaponAimAllowance;
+            const float room = hit ? hit.distance : reach;
+            m_aimBlocked = m_aimBlocked ? room < needed + m_config.weaponAimHysteresis : room < needed;
+        }
+        else
+        {
+            m_aimBlocked = false;
+        }
+        m_aimRoom = SmoothTowards(m_aimRoom, m_aimBlocked ? 0.0f : 1.0f, m_config.weaponAimBreakSpeed, dt);
     }
 
     UpdatePosture(state, view, playerConfig, dt);

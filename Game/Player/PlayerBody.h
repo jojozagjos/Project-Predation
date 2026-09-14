@@ -162,6 +162,20 @@ public:
         // the eye regardless so nothing about where a round goes changes.
         float weaponWallTipMax = 80.0f;
         float weaponWallTipSpeed = 13.0f;
+        // How much barrel may be inside something before the drop starts, and over how much more it
+        // comes fully in. Both in metres. See the note where they are used: the drop is a
+        // second-order lever, so an exact answer has a step in it at the moment of contact, and
+        // these are what turn that step into a slope.
+        float weaponWallTipSlack = 0.02f;
+        float weaponWallTipFade = 0.20f;
+        // How much of the barrel may be inside something before the sights refuse to come up, and
+        // how much further out of it the player has to get before they may come up again. The
+        // second number is what stops standing exactly on the line from flickering the sights.
+        float weaponAimAllowance = 0.10f;
+        float weaponAimHysteresis = 0.12f;
+        // How fast the sights come down when the room for them runs out. Quick enough to read as
+        // the weapon being brought in, slow enough not to be a cut.
+        float weaponAimBreakSpeed = 9.0f;
 
         // The pull-back above is a soft rule measured along the view, which is why a gun still went
         // through a wall the player was looking sideways at: the trace and the barrel were pointing
@@ -417,6 +431,10 @@ public:
     // How far the muzzle is currently dropped to stay out of what is in front of it, in degrees.
     // Zero in the open. Worth reading when a weapon looks wrong in a corridor.
     float MuzzleTipDegrees() const { return glm::degrees(m_muzzleTip); }
+    // Whether there is room in front of the player to put the sights up. False against a wall, where
+    // a sighted weapon would have most of its barrel inside it. The game reads this to decide
+    // whether the player is aiming at all, so that what is drawn and what is simulated agree.
+    bool AimHasRoom() const { return !m_aimBlocked; }
     // Which way the held weapon is turned, so a socket on it can be put into world space.
     glm::quat WeaponRotation() const { return m_weaponTransform.rotation; }
     // What is being held, for the weapon bench: its sockets are what the hands are placed by.
@@ -617,6 +635,10 @@ private:
     // boxed in the player is, and smoothed, because a trace that flickers on an edge would
     // otherwise flick the weapon with it.
     float m_muzzleTip = 0.0f;
+    // Whether there is room in front to put the sights up, and how far down they have got. The
+    // first is a decision with a margin on it; the second is what the pose actually follows.
+    bool m_aimBlocked = false;
+    float m_aimRoom = 1.0f;
     Ragdoll m_ragdoll;
     Entity m_heldItemEntity;
     // How the thing in the hand sits there, from its own definition. Nothing about a box says which

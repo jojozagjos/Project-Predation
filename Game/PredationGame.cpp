@@ -3797,7 +3797,10 @@ void PredationGame::OnFixedUpdate(double fixedDt)
     {
         Input& raw = m_app->GetInput();
         weaponInput.trigger = raw.IsActionDown("fire") || m_debugTriggerTicks > 0;
-        weaponInput.aim = raw.IsActionDown("aim") || m_debugAim;
+        // And only where the sights would mean anything. Against a wall the body refuses to raise
+        // them, so the simulation refuses too: otherwise the player would be walking at aiming
+        // pace and shooting at aiming accuracy while looking at a weapon held at their hip.
+        weaponInput.aim = (raw.IsActionDown("aim") || m_debugAim) && m_body.AimHasRoom();
         if (raw.WasActionPressed("reload"))
         {
             m_reloadLatch = 30;
