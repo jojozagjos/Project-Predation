@@ -2834,9 +2834,9 @@ TEST_CASE("Standing on a slope puts both feet on the slope", "[body][pose]")
          << " cm, facing " << at << " degrees");
     // An ankle's height above whatever is under it, all the way round. A foot keeping the height of
     // a different part of the slope reads a quarter of a metre out on an eighteen degree ramp.
-    // A leg with no bend to spare leaves the downhill foot 6.5 cm in the air on this ramp. With a
-    // couple of centimetres of bend it is under four, which is the thickness of the foot itself.
-    // Getting the rest of it needs the hips to drop when a leg runs out, which they cannot do while
-    // the head is pinned to the camera, and that is a bigger piece of work than this.
-    CHECK(worstGap < 0.045f);
+    // A body that cannot tilt its hips leaves the downhill foot 6.5 cm in the air on this ramp,
+    // because its legs are exactly long enough to stand on the flat and have nothing left. With a
+    // little more leg it is under four; with hips that follow the ground it is under two and a half,
+    // which is a third of the thickness of the foot.
+    CHECK(worstGap < 0.03f);
 }

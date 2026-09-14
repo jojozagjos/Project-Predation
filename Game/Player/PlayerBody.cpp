@@ -650,8 +650,37 @@ void PlayerBody::UpdatePosture(const PlayerState& state, const PlayerView& view,
     // spot; laid down it becomes a roll about the body's own length, which is the difference
     // between lying on your front and lying on your back. Between the two it reads as rolling over,
     // which is exactly the movement being animated.
-    pelvis.rotation = glm::angleAxis(-pelvisPitch, glm::vec3(1.0f, 0.0f, 0.0f)) *
+    // And the hips tilt to follow the ground across them.
+    //
+    // This is the missing degree of freedom for standing on a slope, and without it no amount of
+    // work on the feet helps. A real hip joint sits at 0.530 of standing height and a real leg plus
+    // an ankle comes to the same 0.530, so a body standing level has its legs straight and has
+    // nothing left to spend: the downhill foot is out of reach, the leg locks, and the foot hangs
+    // in the air. What a person does is drop the downhill hip, which is a thing the body could not
+    // do here at all.
+    //
+    // Measured from what each foot is already standing on, which is last frame's answer and a frame
+    // late. A slope does not change under somebody in a sixtieth of a second, and taking it from
+    // here rather than tracing again means the hips follow the ground the feet actually found
+    // rather than a second opinion about it.
+    //
+    // Only part of the way, and only while upright. Following it completely reads as a body poured
+    // sideways, and lying down the hips belong flat against whatever they are lying on.
+    {
+        const float across = m_feet[kRight].groundY - m_feet[kLeft].groundY;
+        const float span = 2.0f * Ratio::kHipHalfWidth * m_rig.height;
+        const float wanted = std::atan2(across, span) * m_config.hipSlopeFollow *
+                             (1.0f - m_flatness) * (1.0f - m_airborne);
+        m_hipRoll = SmoothTowards(m_hipRoll, glm::clamp(wanted, -glm::radians(m_config.hipSlopeMax),
+                                                        glm::radians(m_config.hipSlopeMax)),
+                                  m_config.stanceBlendSpeed, dt);
+    }
 
+    pelvis.rotation = glm::angleAxis(-pelvisPitch, glm::vec3(1.0f, 0.0f, 0.0f)) *
+                      // Positive drops the hip on the side the ground is higher, which is the way
+                      // round the arc tangent above hands it over: the body leans into the slope
+                      // rather than away from it.
+                      glm::angleAxis(m_hipRoll, glm::vec3(0.0f, 0.0f, 1.0f)) *
                       glm::angleAxis(glm::radians(sway * 60.0f), glm::vec3(0.0f, 0.0f, 1.0f));
 
     // Lean forward from the spine, counter-rotate the chest slightly so the torso does not fold, and

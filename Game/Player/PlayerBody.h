@@ -201,6 +201,12 @@ public:
         float kneeDropWhenFolded = 1.35f;
         // How far above the player a foot may be planted. A stair step or a kerb, not the top of a
         // wall the player is standing next to.
+        // How much of a slope across the hips the pelvis follows, and how far it will go. Standing on
+        // a ramp, a body whose legs are exactly long enough to stand on the flat cannot reach its
+        // downhill foot at all; dropping that hip is what gives the leg the room, and it is what a
+        // person does. All of the way reads as a body poured sideways, so it is most of the way.
+        float hipSlopeFollow = 0.75f;
+        float hipSlopeMax = 22.0f; // degrees
         float maxFootRise = 0.45f;
         // And how far below. A foot whose target hangs over an edge would otherwise reach the floor
         // underneath, which puts the leg through whatever the player is standing on.
@@ -636,6 +642,9 @@ private:
     glm::vec3 m_rootPosition{0.0f};
     float m_bodyYaw = 0.0f;
     float m_lean = 0.0f;
+    // How far the hips are tilted to follow the ground across them, in radians. Positive drops the
+    // left hip, which is what standing on a slope that rises to the right asks for.
+    float m_hipRoll = 0.0f;
     // The live posture, smoothed towards the target stance so transitions animate rather than snap.
     Config::StancePose m_pose_blend;
     float m_stridePhase = 0.0f;
