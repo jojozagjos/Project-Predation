@@ -2784,3 +2784,59 @@ TEST_CASE("Lying down and looking at the floor keeps the barrel out of it",
     // drop to go.
     CHECK(worstTip < 20.0f);
 }
+
+TEST_CASE("Standing on a slope puts both feet on the slope", "[body][pose]")
+{
+    // A foot keeps the height of the surface it landed on, so that its target does not snap up and
+    // down the edge of a ledge as it crosses it. Standing still, the foot is also allowed to give up
+    // its spot and be put somewhere else when the body has turned far enough away from it, and the
+    // two together left a foot at the height of a piece of slope it was no longer on: one leg
+    // hanging in the air and the other in the ground.
+    BodyHarness harness;
+    // A ramp, tilted about the Z axis so that walking along it keeps one foot higher than the other.
+    const float tilt = glm::radians(18.0f);
+    harness.physics.CreateBox({6.0f, 0.5f, 6.0f},
+                              Transform{{0.0f, 0.0f, -3.0f}, glm::angleAxis(tilt, glm::vec3(0, 0, 1))},
+                              BodyMotion::Static);
+    harness.physics.OptimizeBroadPhase();
+    harness.player.Teleport({0.0f, 1.2f, -3.0f});
+    harness.Settle(180);
+    REQUIRE(harness.State().grounded);
+
+    float worstGap = 0.0f;
+    float at = 0.0f;
+    // Turned slowly on the spot, which is what gives a planted foot up and puts it somewhere else.
+    for (int step = 0; step <= 24; ++step)
+    {
+        harness.input.yaw = glm::radians(15.0f) * static_cast<float>(step);
+        harness.Settle(45);
+
+        for (int side = 0; side < 2; ++side)
+        {
+            const glm::vec3 foot = harness.Bone(harness.Rig().foot[side]);
+            // What is actually under that foot.
+            const RayHit under = harness.physics.RayCast(foot + glm::vec3(0.0f, 1.0f, 0.0f),
+                                                         glm::vec3(0.0f, -1.0f, 0.0f), 3.0f);
+            if (!under)
+            {
+                continue;
+            }
+            const float gap = std::abs(foot.y - under.position.y - harness.Rig().ankleHeight);
+            if (gap > worstGap)
+            {
+                worstGap = gap;
+                at = glm::degrees(harness.input.yaw);
+            }
+        }
+    }
+
+    INFO("the worst a foot sat from the surface under it was " << worstGap * 100.0f
+         << " cm, facing " << at << " degrees");
+    // An ankle's height above whatever is under it, all the way round. A foot keeping the height of
+    // a different part of the slope reads a quarter of a metre out on an eighteen degree ramp.
+    // A leg with no bend to spare leaves the downhill foot 6.5 cm in the air on this ramp. With a
+    // couple of centimetres of bend it is under four, which is the thickness of the foot itself.
+    // Getting the rest of it needs the hips to drop when a leg runs out, which they cannot do while
+    // the head is pinned to the camera, and that is a bigger piece of work than this.
+    CHECK(worstGap < 0.045f);
+}

@@ -29,8 +29,17 @@ namespace Ratio
 {
 constexpr float kPelvisHeight = 0.530f;
 constexpr float kHipHalfWidth = 0.055f;
-constexpr float kUpperLeg = 0.245f;
-constexpr float kLowerLeg = 0.246f;
+// A little longer than a tape measure says, and deliberately.
+//
+// Real proportions put the hip joint at 0.530 of standing height and a leg plus an ankle at exactly
+// the same 0.530, which is correct and unusable: it means a standing body needs a perfectly straight
+// leg just to reach the floor it is standing on, and nothing in a world with slopes in it is
+// perfectly flat. The downhill foot on any ramp was then out of reach, so it hung five centimetres
+// in the air while the other leg locked straight. Two and a half percent of leg buys a couple of
+// centimetres of knee bend to spend on the ground actually being uneven, and on a 1.8 m body it is
+// two centimetres nobody can see.
+constexpr float kUpperLeg = 0.2512f;
+constexpr float kLowerLeg = 0.2522f;
 constexpr float kAnkle = 0.039f;
 // Heights up the torso, each measured from the joint below it, as fractions of standing height.
 // They add up to put the chin at 0.873 and the shoulder joint at 0.818, which is where a real
@@ -2584,6 +2593,14 @@ void PlayerBody::UpdateLegs(const PlayerState& state, const PlayerView& view,
             {
                 foot.plant = rest;
                 foot.holding = true;
+                // And the surface under it is asked about again, because the foot has just been put
+                // somewhere else. A foot keeps the height it landed at so that its target does not
+                // snap up and down the edge of a ledge; here it has deliberately moved, and keeping
+                // the old height means standing on a slope with one foot at the height of a
+                // different part of it. Turning on the spot on a ramp is where it showed: the foot
+                // slid across the slope and kept the height of where it used to be, so one leg
+                // hung in the air and the other went into the ground.
+                foot.standing = false;
             }
             target = glm::vec3(foot.plant.x, rest.y, foot.plant.z);
         }
@@ -2727,6 +2744,9 @@ void PlayerBody::UpdateLegs(const PlayerState& state, const PlayerView& view,
         // kerb to somebody standing; to somebody on their belly beside a low wall it is the top of
         // the wall, and the trace found it and put the foot up there. Crawling along a wall had the
         // legs climbing it.
+        // Which way the surface under this foot faces, kept so that moving the foot across it later
+        // can follow its height without a second trace.
+        const glm::vec3 groundNormal = hit ? hit.normal : glm::vec3(0.0f, 1.0f, 0.0f);
         const float base = view.renderPosition.y;
         const float rise = glm::mix(m_config.maxFootRise, 0.10f, m_flatness);
         float groundY =
@@ -2747,20 +2767,29 @@ void PlayerBody::UpdateLegs(const PlayerState& state, const PlayerView& view,
             foot.standing = false;
         }
 
-        // A foot that is standing on something keeps the height it landed at.
+        // A foot that is standing on something comes to the height it is standing at, rather than
+        // jumping to it.
         //
         // The trace runs every frame at wherever the foot's target has got to, and along the edge of
         // a ledge that target crosses the edge partway through a stance: the answer jumps by the
         // whole height of the ledge and the leg snaps up or down with it, worst of all walking
-        // sideways along one. A real foot picks a surface when it lands and stays on it until it
-        // lifts. Only a swinging foot gets a fresh answer, and while it swings the height is eased
-        // rather than taken, so a step onto a stair still arrives smoothly.
+        // sideways along one. Easing is what stops that, not freezing.
+        //
+        // It used to freeze: a planted foot kept the height it landed at until it next swung. That
+        // does stop the snap, and it also stops a foot ever finding out where it actually is. On a
+        // slope both feet kept whatever height they had when the body touched down, which is the
+        // same height for both, so the uphill one stood five centimetres in the air for as long as
+        // the player did not walk. Standing on a ramp is where it showed, and standing still is
+        // exactly when nothing was going to fix it.
         constexpr float kGroundEase = 14.0f;
-        if (inSwing || !foot.standing)
+        if (!foot.standing)
         {
-            foot.groundY = foot.standing ? SmoothTowards(foot.groundY, groundY, kGroundEase, dt)
-                                         : groundY;
+            foot.groundY = groundY;
             foot.standing = true;
+        }
+        else
+        {
+            foot.groundY = SmoothTowards(foot.groundY, groundY, kGroundEase, dt);
         }
         groundY = foot.groundY;
         const float groundedY = groundY + m_rig.ankleHeight + lift + rollRise;
@@ -2805,8 +2834,22 @@ void PlayerBody::UpdateLegs(const PlayerState& state, const PlayerView& view,
         if (horizontal > maxHorizontal)
         {
             const float scale = maxHorizontal / std::max(horizontal, 1e-4f);
-            target.x = hip.x + offset.x * scale;
-            target.z = hip.z + offset.y * scale;
+            const glm::vec2 moved{hip.x + offset.x * scale - target.x,
+                                  hip.z + offset.y * scale - target.z};
+            target.x += moved.x;
+            target.z += moved.y;
+            // And the height follows it across the slope it is standing on.
+            //
+            // The ground under a foot is traced for before this, at the spot the foot was asked
+            // for; this then moves it somewhere else, and on flat ground that costs nothing. On a
+            // ramp it is the whole fault: the foot slid twenty centimetres down the slope and kept
+            // the height of where it used to be, which at eighteen degrees is six centimetres in
+            // the air. The surface's own normal says exactly how far the ground falls over that
+            // step, and it is a plane, so no second trace is needed.
+            if (std::abs(groundNormal.y) > 0.1f)
+            {
+                target.y -= (moved.x * groundNormal.x + moved.y * groundNormal.z) / groundNormal.y;
+            }
             // The foot has slipped, so this is where it now stands.
             if (!inSwing)
             {
