@@ -1785,6 +1785,151 @@ void SetSetting(const char* name, const std::string& value)
 
 } // namespace
 
+void PredationGame::StartPunchedSession(bool asHost)
+{
+    StopSession();
+    m_punching = true;
+    m_punchingAsHost = asHost;
+    m_punchCode[0] = '\0';
+    m_link = std::make_shared<IceLink>();
+    m_link->Start(IceLink::Settings{});
+}
+
+void PredationGame::StopPunchedSession()
+{
+    m_punching = false;
+    m_link.reset();
+    m_punchCode[0] = '\0';
+}
+
+void PredationGame::DrawPunchThrough()
+{
+    const ImVec2 wide{-1.0f, 32.0f};
+    ImGui::SetWindowFontScale(1.2f);
+    ImGui::TextUnformatted(m_punchingAsHost ? "Opening a game" : "Joining a game");
+    ImGui::SetWindowFontScale(1.0f);
+    ImGui::Separator();
+    ImGui::Spacing();
+
+    if (m_link == nullptr)
+    {
+        StopPunchedSession();
+        return;
+    }
+
+    const IceLink::State state = m_link->Status();
+    const std::string code = m_link->LocalCode();
+
+    ImGui::PushTextWrapPos(0.0f);
+    switch (state)
+    {
+    case IceLink::State::Gathering:
+        ImGui::TextUnformatted("Working out how this connection looks from outside...");
+        break;
+    case IceLink::State::Ready:
+    case IceLink::State::Connecting:
+        ImGui::TextUnformatted("1. Send them this. 2. Paste theirs below. Both of you do both.");
+        break;
+    case IceLink::State::Connected:
+        ImGui::TextColored({0.70f, 0.95f, 0.75f, 1.0f}, "Through.");
+        break;
+    case IceLink::State::Failed:
+        ImGui::TextColored({0.90f, 0.55f, 0.35f, 1.0f}, "%s", m_link->Message().c_str());
+        break;
+    case IceLink::State::Idle:
+    default:
+        break;
+    }
+    ImGui::PopTextWrapPos();
+
+    if (!code.empty() && state != IceLink::State::Connected)
+    {
+        ImGui::Spacing();
+        if (ImGui::Button("Copy my code", wide))
+        {
+            ImGui::SetClipboardText(code.c_str());
+        }
+        // Shown as well as copied, because a button that says it copied something and a clipboard
+        // that did not are indistinguishable from here.
+        ImGui::TextDisabled("%zu characters, starting %.16s...", code.size(), code.c_str());
+
+        ImGui::Spacing();
+        ImGui::TextUnformatted("Their code");
+        ImGui::SetNextItemWidth(-1.0f);
+        ImGui::InputText("##theircode", m_punchCode, sizeof(m_punchCode));
+        if (ImGui::Button("Paste from the clipboard", wide))
+        {
+            if (const char* clip = ImGui::GetClipboardText(); clip != nullptr)
+            {
+                std::snprintf(m_punchCode, sizeof(m_punchCode), "%s", clip);
+            }
+        }
+        if (!m_link->HasRemote() && ImGui::Button("Use it", wide))
+        {
+            if (!m_link->SetRemoteCode(m_punchCode))
+            {
+                m_titleStatus = m_link->Message();
+            }
+            else
+            {
+                m_titleStatus.clear();
+            }
+        }
+        if (m_link->HasRemote())
+        {
+            ImGui::TextDisabled("Waiting for the two ends to find each other...");
+        }
+        if (!m_titleStatus.empty())
+        {
+            ImGui::PushTextWrapPos(0.0f);
+            ImGui::TextColored({0.90f, 0.55f, 0.35f, 1.0f}, "%s", m_titleStatus.c_str());
+            ImGui::PopTextWrapPos();
+        }
+    }
+
+    // Through: the game runs over it exactly as it runs over a socket.
+    if (state == IceLink::State::Connected)
+    {
+        auto carrier = std::make_shared<IceCarrier>(m_link);
+        if (m_punchingAsHost)
+        {
+            NetHost::Config config;
+            config.port = static_cast<uint16_t>(m_hostPort);
+            config.name = PlayerName();
+            auto transport = CreateCarrierTransport(carrier);
+            if (m_host.Start(std::move(transport), config, m_app->GetPhysics(), m_player.Config(),
+                             m_spawnPoint))
+            {
+                m_sessionMode = SessionMode::Host;
+                m_punching = false;
+                EnterWorld();
+                return;
+            }
+            m_titleStatus = "Got through, but could not start the game.";
+        }
+        else
+        {
+            auto transport = CreateCarrierTransport(carrier);
+            NetClient::Config config;
+            if (m_client.Connect(std::move(transport), "punched", 0, PlayerName(), config))
+            {
+                m_sessionMode = SessionMode::Client;
+                m_player.SetDecidesDamage(false);
+                m_punching = false;
+                m_titleStatus.clear();
+                return;
+            }
+            m_titleStatus = "Got through, but could not join the game.";
+        }
+    }
+
+    ImGui::Spacing();
+    if (ImGui::Button("Back", wide))
+    {
+        StopPunchedSession();
+    }
+}
+
 void PredationGame::DrawSettings()
 {
     // One panel, drawn from the menu and from the pause screen alike.
@@ -2035,6 +2180,15 @@ void PredationGame::DrawTitleScreen()
 
     const ImVec2 wide{-1.0f, 34.0f};
 
+    // Swapping codes with the other player, which is its own screen because it is a conversation
+    // rather than a button.
+    if (m_punching)
+    {
+        DrawPunchThrough();
+        ImGui::End();
+        return;
+    }
+
     // The same panel the pause screen shows, because they are the same settings and a player who
     // finds them in one place should not have to find them again in the other.
     if (m_settingsOpen)
@@ -2253,6 +2407,22 @@ void PredationGame::DrawTitleScreen()
     if (!m_titleStatus.empty())
     {
         ImGui::TextColored({0.90f, 0.55f, 0.35f, 1.0f}, "%s", m_titleStatus.c_str());
+    }
+
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::TextDisabled("Over the internet");
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextDisabled("Neither machine has to be reachable. Both swap one line of text, then dial "
+                        "each other at the same moment so both routers open a hole.");
+    ImGui::PopTextWrapPos();
+    if (ImGui::Button("Open a game, and send a code", wide))
+    {
+        StartPunchedSession(true);
+    }
+    if (ImGui::Button("Join a game with their code", wide))
+    {
+        StartPunchedSession(false);
     }
 
     ImGui::Spacing();
@@ -2765,6 +2935,24 @@ void PredationGame::RegisterNetCommands()
                                       (audio.HasDevice() ? "" : " (no audio device, so silently)"));
         },
         "snd <name> [gain]");
+
+    console.RegisterCommand(
+        "net_punch", "Ask a public server how this connection looks from outside, and say so",
+        [this](const std::vector<std::string>&)
+        {
+            // The one part of punching through that can be checked from one machine: whether this
+            // connection can be described to another at all. If no code ever appears, nothing
+            // further is going to work either, and that is worth being able to find out without a
+            // second person on the other end of a chat window.
+            m_link = std::make_shared<IceLink>();
+            if (!m_link->Start(IceLink::Settings{}))
+            {
+                m_app->GetConsole().PrintError(m_link->Message());
+                return;
+            }
+            m_punchReportIn = 300; // five seconds of frames
+            m_app->GetConsole().Print("Asking. The code will appear here when it is ready.");
+        });
 
     console.RegisterCommand(
         "net_host", "Start hosting on a UDP port: net_host [port]",
@@ -4847,6 +5035,24 @@ void PredationGame::OnUpdate(double dt, double alpha)
     }
 
     AgeTracers(deltaSeconds);
+    // The console asked how this connection looks from outside; say so when the answer arrives.
+    if (m_punchReportIn > 0 && m_link != nullptr)
+    {
+        --m_punchReportIn;
+        const std::string code = m_link->LocalCode();
+        if (!code.empty())
+        {
+            m_punchReportIn = 0;
+            PRED_LOG_INFO(Network, "Punch code ready, {} characters: {}", code.size(), code);
+            m_app->GetConsole().Print("Code ready, " + std::to_string(code.size()) +
+                                      " characters. It is in the log.");
+        }
+        else if (m_punchReportIn == 0)
+        {
+            PRED_LOG_WARN(Network, "No punch code after five seconds: {}", m_link->Message());
+            m_app->GetConsole().PrintError("No answer in five seconds. " + m_link->Message());
+        }
+    }
     UpdateSounds(deltaSeconds);
     SyncDynamicProps();
     app.GetSceneRenderer().SetWireframe(cv_wireframe.Get());

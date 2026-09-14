@@ -9,6 +9,7 @@
 #include "Game/Items/ItemAppearance.h"
 #include "Game/Items/ItemIcons.h"
 #include "Engine/Audio/AudioEngine.h"
+#include "Game/Net/IceCarrier.h"
 #include "Game/Net/NetSession.h"
 #include "Engine/Net/PortMapper.h"
 #include "Game/Player/PlayerBody.h"
@@ -180,6 +181,10 @@ private:
     // player back exactly where they were. In a session nothing stops simulating, because a shared
     // world cannot be paused by one person in it.
     // The settings panel, drawn inside the menu and inside the pause screen alike.
+    // Punching a way through two routers by swapping a code with the other player.
+    void StartPunchedSession(bool asHost);
+    void StopPunchedSession();
+    void DrawPunchThrough();
     void DrawSettings();
     void DrawPauseMenu();
     // Where the weapon sits relative to the eye, for comparing the editor with the game.
@@ -433,6 +438,14 @@ private:
     // Whether the settings panel is showing, on whichever screen is up. One flag, because only one
     // of those screens is ever on at a time.
     bool m_settingsOpen = false;
+    // Swapping codes with the other player, and the connection it is trying to make.
+    bool m_punching = false;
+    bool m_punchingAsHost = false;
+    std::shared_ptr<IceLink> m_link;
+    // Their code, pasted. Long, because a code carries every address this machine has.
+    char m_punchCode[1400] = "";
+    // Frames left before the punch report gives up waiting for a code. Debug tooling only.
+    int m_punchReportIn = 0;
     // Frames left before a deferred hold report. Commands from --exec all run before the first
     // frame, when nothing is equipped, so a report taken then is about an empty hand.
     int m_holdReportIn = 0;

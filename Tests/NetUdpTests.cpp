@@ -2,6 +2,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <chrono>
 #include <memory>
 #include <string>
@@ -267,4 +268,119 @@ TEST_CASE("A host stops taking peers rather than growing without limit", "[net][
     CHECK(host->Peers().size() <= 16);
     // And it still took some, so the limit is a limit rather than a refusal to work.
     CHECK(host->Peers().size() >= 4);
+}
+
+namespace
+{
+
+// Two of these wired to each other are a pipe: what one sends, the other receives. It stands in for
+// a connection punched through two routers, which is a thing no test can make happen.
+class PairedCarrier final : public DatagramCarrier
+{
+public:
+    bool Send(const uint8_t* data, size_t bytes) override
+    {
+        if (m_far == nullptr)
+        {
+            return false;
+        }
+        m_far->m_incoming.emplace_back(data, data + bytes);
+        return true;
+    }
+
+    bool Receive(std::vector<uint8_t>& out) override
+    {
+        if (m_incoming.empty())
+        {
+            return false;
+        }
+        out = std::move(m_incoming.front());
+        m_incoming.erase(m_incoming.begin());
+        return true;
+    }
+
+    bool Live() const override { return m_far != nullptr; }
+
+    static void Join(const std::shared_ptr<PairedCarrier>& a, const std::shared_ptr<PairedCarrier>& b)
+    {
+        a->m_far = b.get();
+        b->m_far = a.get();
+    }
+
+private:
+    PairedCarrier* m_far = nullptr;
+    std::vector<std::vector<uint8_t>> m_incoming;
+};
+
+} // namespace
+
+TEST_CASE("The transport works over a carrier as well as over a socket", "[net][udp][ice]")
+{
+    // A connection punched through two routers carries datagrams exactly as a socket does and
+    // cannot be bound to or read from like one. Rather than writing the sequence numbers and the
+    // acknowledgements a second time underneath it, the transport takes a carrier and uses that:
+    // everything above, which is all of the game, cannot tell the difference.
+    auto hostCarrier = std::make_shared<PairedCarrier>();
+    auto clientCarrier = std::make_shared<PairedCarrier>();
+    PairedCarrier::Join(hostCarrier, clientCarrier);
+
+    auto host = CreateCarrierTransport(hostCarrier, 3u);
+    auto client = CreateCarrierTransport(clientCarrier, 4u);
+    REQUIRE(host != nullptr);
+    REQUIRE(client != nullptr);
+
+    // No port is bound and no address is resolved: the far end is wherever the carrier goes.
+    REQUIRE(host->Listen(0));
+    REQUIRE(client->Connect("ignored", 0));
+
+    std::vector<NetPacket> atHost;
+    std::vector<NetPacket> atClient;
+    const auto pump = [&](int ticks)
+    {
+        for (int i = 0; i < ticks; ++i)
+        {
+            std::vector<NetPacket> batch;
+            host->Poll(kTick, batch);
+            for (NetPacket& packet : batch)
+            {
+                atHost.push_back(std::move(packet));
+            }
+            batch.clear();
+            client->Poll(kTick, batch);
+            for (NetPacket& packet : batch)
+            {
+                atClient.push_back(std::move(packet));
+            }
+        }
+    };
+
+    pump(10);
+    REQUIRE(host->Peers().size() == 1);
+    const PeerId clientPeer = host->Peers().front();
+
+    // Both channels, both ways.
+    const std::string reliable = "the door is open";
+    const std::string unreliable = "where everybody is";
+    host->Send(clientPeer, Channel::Reliable, reinterpret_cast<const uint8_t*>(reliable.data()),
+               reliable.size());
+    host->Send(clientPeer, Channel::Unreliable, reinterpret_cast<const uint8_t*>(unreliable.data()),
+               unreliable.size());
+    const std::string up = "I pulled the trigger";
+    client->Send(kHostPeer, Channel::Reliable, reinterpret_cast<const uint8_t*>(up.data()), up.size());
+    pump(10);
+
+    REQUIRE(atClient.size() >= 2);
+    bool sawReliable = false;
+    bool sawUnreliable = false;
+    for (const NetPacket& packet : atClient)
+    {
+        const std::string text(packet.bytes.begin(), packet.bytes.end());
+        sawReliable = sawReliable || (text == reliable && packet.channel == Channel::Reliable);
+        sawUnreliable = sawUnreliable || (text == unreliable && packet.channel == Channel::Unreliable);
+    }
+    CHECK(sawReliable);
+    CHECK(sawUnreliable);
+
+    REQUIRE(atHost.size() >= 1);
+    CHECK(std::string(atHost.front().bytes.begin(), atHost.front().bytes.end()) == up);
 }

@@ -1,3 +1,4 @@
+#include "Engine/Net/IceLink.h"
 #include "Engine/Net/PortMapper.h"
 #include "Engine/Net/BitStream.h"
 #include "Engine/Net/Transport.h"
@@ -936,4 +937,49 @@ TEST_CASE("An address with a port on it is taken apart rather than resolved", "[
     // Something that is neither is still a failure, and says so rather than reaching nowhere.
     auto nonsense = CreateUdpTransport(9u);
     CHECK_FALSE(nonsense->Connect("not a machine anybody has", 41302));
+}
+
+TEST_CASE("A connection code survives being pasted into a chat window", "[net][ice]")
+{
+    // The two players swap this by hand over whatever they are already talking on, so it has to be
+    // one line and it has to survive whatever that window does to it on the way.
+    const std::string description =
+        "a=ice-ufrag:Ktb1\r\n"
+        "a=ice-pwd:5FRWvJRfJRfLXRRPjZtSJq\r\n"
+        "a=candidate:1 1 UDP 2130706431 192.168.1.44 51820 typ host\r\n"
+        "a=candidate:2 1 UDP 1694498815 203.0.113.7 51820 typ srflx raddr 192.168.1.44 rport 51820\r\n"
+        "a=end-of-candidates\r\n";
+
+    const std::string code = EncodeIceCode(description);
+    INFO("the code is " << code.size() << " characters: " << code);
+    // One line, so a chat window has nothing to break.
+    CHECK(code.find('\n') == std::string::npos);
+    CHECK(code.find('\r') == std::string::npos);
+    CHECK(code.rfind("PRED1:", 0) == 0);
+
+    std::string back;
+    REQUIRE(DecodeIceCode(code, back));
+    CHECK(back == description);
+
+    // With a sentence in front of it, which is how anybody sends one.
+    std::string decorated;
+    REQUIRE(DecodeIceCode("here you go: " + code, decorated));
+    CHECK(decorated == description);
+
+    // Broken across lines by a window that wrapped it, which is the most likely thing to happen.
+    std::string wrapped;
+    for (size_t i = 0; i < code.size(); i += 40)
+    {
+        wrapped += code.substr(i, 40);
+        wrapped += "\n";
+    }
+    std::string unwrapped;
+    REQUIRE(DecodeIceCode(wrapped, unwrapped));
+    CHECK(unwrapped == description);
+
+    // And nonsense is refused rather than half read.
+    std::string nothing;
+    CHECK_FALSE(DecodeIceCode("hello", nothing));
+    CHECK_FALSE(DecodeIceCode("PRED1:not base64 at all!!", nothing));
+    CHECK_FALSE(DecodeIceCode("", nothing));
 }

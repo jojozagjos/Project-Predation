@@ -829,3 +829,32 @@ tuning is a thing the person making the game can actually do.
 It is deterministic, which matters more than it looks: the same recipe gives the same samples on
 every machine, so two people in a game never disagree about what a gunshot sounds like, and a test
 can assert on a waveform.
+
+## ADR-048: Two players dial each other, and swap the number by hand
+
+**Status**: accepted, 2026-09-13
+
+Hosting across the internet needs somebody's router to forward a port, and on a network somebody
+else runs there is nobody to ask: no router answers a forwarding request, and the address the menu
+can hand out only works inside the building. The way every peer-to-peer game solves this is ICE.
+Both machines ask a public server what their connection looks like from outside, they tell each
+other, and then both start sending at the same moment; each router sees a packet going out first and
+opens a hole for the reply, so a connection neither side was allowed to accept is made by both ends
+dialling at once. libjuice does it in about four hundred kilobytes and has no dependencies.
+
+The part ICE cannot do for itself is the telling. The two machines have to exchange a block of text
+before there is any connection to exchange it over, and a game with a server of its own would pass
+that through the server. This one has no server and is not going to grow one for this, so the
+players pass it themselves over whatever they are already talking on. It is one line of base64, it
+is two pastes, and it costs nothing to run. A code that does not survive a chat window is the most
+likely thing to be wrong, so the encoding is tested against wrapping, whitespace and a sentence in
+front of it.
+
+Underneath, none of the game changed. The sequence numbers, the acknowledgements and the ordering
+have nothing to do with how the bytes travel, so rather than writing them again the transport takes
+a carrier: something with a Send, a Receive and one far end. A punched connection is exactly that,
+and a pair of them wired together in a test is a pipe, which is how it is checked without a network.
+
+It is not certain to work. A network that hands out a different hole for every destination defeats
+hole punching, and the only answer to one of those is a relay somebody pays to run. What this does
+is turn "impossible without a router nobody can configure" into "works on most connections".

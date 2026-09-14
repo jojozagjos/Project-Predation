@@ -100,6 +100,18 @@ uint32_t ReadU32(const uint8_t* at)
            (static_cast<uint32_t>(at[2]) << 16) | (static_cast<uint32_t>(at[3]) << 24);
 }
 
+// The stand-in address for the far end of a carrier. A carrier has one and only one, so the value
+// is arbitrary; it exists because everything downstream addresses peers by one. Chosen outside any
+// range a real game would use, so that it can never be confused with a machine.
+sockaddr_in CarrierAddress()
+{
+    sockaddr_in address{};
+    address.sin_family = AF_INET;
+    address.sin_port = htons(1);
+    address.sin_addr.s_addr = htonl(0x00000001u);
+    return address;
+}
+
 bool SameAddress(const sockaddr_in& a, const sockaddr_in& b)
 {
     return a.sin_addr.s_addr == b.sin_addr.s_addr && a.sin_port == b.sin_port;
@@ -188,6 +200,10 @@ class UdpTransport final : public Transport
 {
 public:
     explicit UdpTransport(uint32_t seed) : m_rng(seed) {}
+    UdpTransport(std::shared_ptr<DatagramCarrier> carrier, uint32_t seed)
+        : m_carrier(std::move(carrier)), m_rng(seed)
+    {
+    }
     ~UdpTransport() override;
 
     bool Listen(uint16_t port) override;
@@ -270,6 +286,8 @@ private:
     PeerId m_nextPeerId = kHostPeer + 1;
     float m_connectTimer = 0.0f;
     float m_connectElapsed = 0.0f;
+    // Where the datagrams go when they are not going out of a socket of this transport.s own.
+    std::shared_ptr<DatagramCarrier> m_carrier;
     bool m_peersFullReported = false;
     bool m_listening = false;
     bool m_connecting = false;
@@ -329,6 +347,15 @@ bool UdpTransport::OpenSocket(uint16_t port)
 
 bool UdpTransport::Listen(uint16_t port)
 {
+    // Over a carrier there is no port to bind and nothing to listen on: the far end is already
+    // decided and already reachable. Listening is then only a statement that connections from it
+    // are welcome.
+    if (m_carrier != nullptr)
+    {
+        m_listening = true;
+        PRED_LOG_INFO(Network, "Listening on a punched connection");
+        return true;
+    }
     if (!OpenSocket(port))
     {
         return false;
@@ -340,6 +367,22 @@ bool UdpTransport::Listen(uint16_t port)
 
 bool UdpTransport::Connect(const std::string& address, uint16_t port)
 {
+    // Over a carrier the far end is wherever the carrier goes, and there is nothing to resolve or
+    // bind. The address it is given is a stand-in so that everything downstream, which addresses
+    // peers by one, has something to hold.
+    if (m_carrier != nullptr)
+    {
+        m_hostAddress = CarrierAddress();
+        Peer& peer = AddPeer(m_hostAddress, kHostPeer);
+        peer.established = false;
+        m_connecting = true;
+        m_connectTimer = 0.0f;
+        m_connectElapsed = 0.0f;
+        SendControl(PacketKind::ConnectRequest, m_hostAddress, nullptr);
+        PRED_LOG_INFO(Network, "Reaching for the other end of a punched connection");
+        return true;
+    }
+
     if (!OpenSocket(0)) // any free local port
     {
         return false;
@@ -475,6 +518,13 @@ bool UdpTransport::DrawChance(float percent)
 
 void UdpTransport::SendRaw(const std::vector<uint8_t>& datagram, const sockaddr_in& address)
 {
+    if (m_carrier != nullptr)
+    {
+        // One far end, so the address says nothing and is not consulted.
+        (void)address;
+        m_carrier->Send(datagram.data(), datagram.size());
+        return;
+    }
     if (m_socket == kInvalidSocket)
     {
         return;
@@ -759,6 +809,26 @@ void UdpTransport::HandleDatagram(const uint8_t* data, size_t bytes, const socka
 
 void UdpTransport::Receive(std::vector<NetPacket>& out)
 {
+    if (m_carrier != nullptr)
+    {
+        // Everything waiting, up to the same bound a socket gets, and all of it from the one far
+        // end the carrier has.
+        const sockaddr_in from = CarrierAddress();
+        std::vector<uint8_t> datagram;
+        for (int guard = 0; guard < 256; ++guard)
+        {
+            if (!m_carrier->Receive(datagram))
+            {
+                return;
+            }
+            if (!datagram.empty())
+            {
+                HandleDatagram(datagram.data(), datagram.size(), from, out);
+            }
+        }
+        return;
+    }
+
     if (m_socket == kInvalidSocket)
     {
         return;
@@ -792,7 +862,8 @@ void UdpTransport::Receive(std::vector<NetPacket>& out)
 void UdpTransport::Poll(float dt, std::vector<NetPacket>& out)
 {
     out.clear();
-    if (m_socket == kInvalidSocket)
+    // A carrier has no socket, and a transport with neither has nothing to do.
+    if (m_socket == kInvalidSocket && m_carrier == nullptr)
     {
         return;
     }
@@ -880,6 +951,15 @@ void UdpTransport::Poll(float dt, std::vector<NetPacket>& out)
 std::unique_ptr<Transport> CreateUdpTransport(uint32_t seed)
 {
     return std::make_unique<UdpTransport>(seed);
+}
+
+std::unique_ptr<Transport> CreateCarrierTransport(std::shared_ptr<DatagramCarrier> carrier, uint32_t seed)
+{
+    if (carrier == nullptr)
+    {
+        return nullptr;
+    }
+    return std::make_unique<UdpTransport>(std::move(carrier), seed);
 }
 
 // Every address on this machine another machine could reach it on.

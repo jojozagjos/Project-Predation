@@ -106,4 +106,27 @@ std::unique_ptr<Transport> CreateUdpTransport(uint32_t seed = 0x9E3779B9u);
 // to look up is the public address, which belongs to the router rather than to this machine.
 std::vector<std::string> LocalNetworkAddresses();
 
+// Somewhere for datagrams to go that is not a socket of this transport's own.
+//
+// The reliability in the UDP transport, the sequence numbers and the acknowledgements and the
+// ordering, has nothing to do with where the bytes actually travel. A connection punched through
+// two routers by ICE carries datagrams exactly as a socket does and cannot be bound to or read
+// from like one, so rather than writing that reliability a second time underneath it, the transport
+// can be handed a carrier and use that instead. Point to point: a carrier has one far end and no
+// addresses, which is what a punched connection is.
+class DatagramCarrier
+{
+public:
+    virtual ~DatagramCarrier() = default;
+    virtual bool Send(const uint8_t* data, size_t bytes) = 0;
+    // The oldest datagram waiting, or false when there is none.
+    virtual bool Receive(std::vector<uint8_t>& out) = 0;
+    // False once the far end has gone or was never reached.
+    virtual bool Live() const = 0;
+};
+
+// The same transport, over a carrier rather than over a socket of its own.
+std::unique_ptr<Transport> CreateCarrierTransport(std::shared_ptr<DatagramCarrier> carrier,
+                                                  uint32_t seed = 0x9E3779B9u);
+
 } // namespace pred
