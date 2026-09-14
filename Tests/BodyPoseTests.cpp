@@ -3482,3 +3482,67 @@ TEST_CASE("The legs are not at full stretch walking up a slope", "[body][gait][s
     // And no worse than standing on the flat, which is the bar this was always meant to clear.
     CHECK(up15 <= flat + 0.01f);
 }
+
+TEST_CASE("Hunting for any pose that points the barrel at the sky", "[.][body][weapon][diagnose]")
+{
+    // Not run by default. A wide sweep rather than one case: yaw so the wall can be in front, beside
+    // or behind, pitch through everything a player can look at, standing and crouched, and leaning
+    // both ways. Carried and aiming are reported separately, because a rifle in the sights pointing
+    // where the player is pointing their eyes is correct and a carried one doing it is not.
+    BodyHarness harness;
+    WeaponDefinition definition;
+    ModelAsset model;
+    REQUIRE(LoadShippedCarbine(harness, definition, model));
+
+    harness.physics.CreateBox({4.0f, 2.0f, 0.5f}, Transform{{0.0f, 2.0f, -1.3f}}, BodyMotion::Static);
+    harness.physics.CreateBox({0.8f, 0.8f, 0.8f}, Transform{{1.4f, 0.8f, 0.4f}}, BodyMotion::Static);
+    harness.physics.OptimizeBroadPhase();
+
+    harness.SetTravel(glm::vec3(0.0f, 0.0f, -1.0f));
+    harness.Settle(180);
+    harness.input.move = glm::vec2(0.0f);
+
+    float best[2] = {-180.0f, -180.0f};
+    std::string where[2];
+    for (int aiming = 0; aiming < 2; ++aiming)
+    {
+        for (int crouch = 0; crouch < 2; ++crouch)
+        {
+            harness.SetStance(crouch != 0 ? PlayerStance::Crouching : PlayerStance::Standing);
+            for (int leanStep = -1; leanStep <= 1; ++leanStep)
+            {
+                harness.input.lean = static_cast<float>(leanStep);
+                for (int yawStep = 0; yawStep < 8; ++yawStep)
+                {
+                    harness.input.yaw = glm::radians(45.0f * static_cast<float>(yawStep));
+                    for (int pitchStep = 0; pitchStep <= 10; ++pitchStep)
+                    {
+                        PlayerBody::WeaponPose pose;
+                        pose.aim = aiming != 0 ? 1.0f : 0.0f;
+                        harness.body.SetWeaponPose(pose);
+                        harness.input.pitch =
+                            glm::radians(-80.0f + 16.0f * static_cast<float>(pitchStep));
+                        harness.Settle(25);
+
+                        const glm::vec3 barrel =
+                            glm::normalize(harness.body.MuzzlePoint() - harness.body.WeaponOrigin());
+                        const float elevation =
+                            glm::degrees(std::asin(std::clamp(barrel.y, -1.0f, 1.0f)));
+                        if (elevation > best[aiming])
+                        {
+                            best[aiming] = elevation;
+                            where[aiming] = std::string(crouch ? "crouched" : "standing") +
+                                            " lean " + std::to_string(leanStep) + " yaw " +
+                                            std::to_string(static_cast<int>(45 * yawStep)) +
+                                            " pitch " +
+                                            std::to_string(static_cast<int>(-80 + 16 * pitchStep));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    WARN("\n  carried, highest: " + std::to_string(best[0]) + " degrees at " + where[0] +
+         "\n  aiming,  highest: " + std::to_string(best[1]) + " degrees at " + where[1] + "\n");
+}

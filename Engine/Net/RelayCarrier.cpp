@@ -260,7 +260,19 @@ void RelayCarrier::Poll(float dt)
         if (m_connectTimer > m_settings.connectTimeoutSeconds)
         {
             m_state = State::Failed;
-            m_message = "The relay did not answer. Check the address, or it may be down.";
+            // Two very different situations, and one message for both is how somebody spends an
+            // evening checking a firewall when the answer was that they had not started anything.
+            // Pointed at this machine, the overwhelmingly likely cause is that there is no relay on
+            // it; pointed anywhere else, it is a wrong address or one that is down.
+            const bool loopback = m_settings.relayHost == "127.0.0.1" ||
+                                  m_settings.relayHost == "localhost" ||
+                                  m_settings.relayHost == "::1";
+            m_message = loopback
+                            ? "No relay is running on this machine. Start PredationRelay.exe, which "
+                              "is in the folder next to the game, or point net.relay_host at one "
+                              "somewhere your friends can reach."
+                            : "No answer from " + m_settings.relayHost +
+                                  ". Check the address and that a relay is running there.";
             return;
         }
         // Asked again while waiting, in case the first request was lost. The relay repeats what it

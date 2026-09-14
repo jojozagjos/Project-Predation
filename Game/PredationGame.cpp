@@ -2224,6 +2224,34 @@ void PredationGame::DrawSettings()
     ImGui::Separator();
     ImGui::Spacing();
 
+    ImGui::TextDisabled("Multiplayer");
+    // The relay address, here rather than only in the console.
+    //
+    // Playing over the internet does not work without one, and a setting that can only be reached
+    // by knowing a cvar name is a setting nobody has. The default points at this machine, which is
+    // right for trying it out with a relay running here and wrong for playing with anybody else.
+    {
+        static char relayHost[128] = "";
+        if (relayHost[0] == '\0')
+        {
+            std::snprintf(relayHost, sizeof(relayHost), "%s", cv_relayHost.Get().c_str());
+        }
+        ImGui::SetNextItemWidth(-120.0f);
+        if (ImGui::InputText("Relay", relayHost, sizeof(relayHost)))
+        {
+            SetSetting("net.relay_host", relayHost);
+        }
+        int relayPort = cv_relayPort.Get();
+        ImGui::SetNextItemWidth(-120.0f);
+        if (ImGui::InputInt("Relay port", &relayPort, 0, 0))
+        {
+            SetSetting("net.relay_port", std::to_string(std::clamp(relayPort, 1024, 65535)));
+        }
+        ImGui::TextDisabled("One machine everybody can reach, running PredationRelay.exe. Only "
+                            "needed for playing over the internet.");
+    }
+    ImGui::Spacing();
+
     ImGui::TextDisabled("Sound");
     AudioEngine& audio = m_app->GetAudio();
     float volume = audio.MasterGain();
@@ -3604,7 +3632,7 @@ void PredationGame::RegisterNetCommands()
         "lobby [code]");
 
     console.RegisterCommand(
-        "menu", "Show a page of the title screen: menu <root|open|local|join>",
+        "menu", "Show a page of the title screen: menu <root|open|local|join|settings>",
         [this](const std::vector<std::string>& args)
         {
             // So a menu page can be looked at without clicking through to it, which is what makes
@@ -3623,6 +3651,10 @@ void PredationGame::RegisterNetCommands()
             {
                 m_titlePage = TitlePage::OpenLocal;
             }
+            else if (page == "settings")
+            {
+                m_settingsOpen = true;
+            }
             else if (page == "join")
             {
                 m_titlePage = TitlePage::Join;
@@ -3635,7 +3667,7 @@ void PredationGame::RegisterNetCommands()
             m_screen = Screen::Title;
             m_titleStatus.clear();
         },
-        "menu <root|open|local|join>");
+        "menu <root|open|local|join|settings>");
 
     console.RegisterCommand(
         "snd", "Play a sound by name, to hear one without making it happen: snd <name> [gain]",
