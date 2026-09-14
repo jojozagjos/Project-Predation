@@ -1916,7 +1916,12 @@ void PredationGame::DrawTitleScreen()
         }
         for (const std::string& address : addresses)
         {
-            ImGui::TextColored({0.70f, 0.80f, 0.95f, 1.0f}, "  %s:%d", address.c_str(), m_hostPort);
+            // Said on the line itself rather than in a heading above it, because the line is what
+            // gets copied and sent. Somebody on the far side of the country being handed an address
+            // that only works in this building is most of what "we tried multiplayer and it did not
+            // work" turns out to be.
+            ImGui::TextColored({0.70f, 0.80f, 0.95f, 1.0f}, "  %s:%d  (same network only)",
+                               address.c_str(), m_hostPort);
             if (ImGui::IsItemClicked())
             {
                 ImGui::SetClipboardText((address + ":" + std::to_string(m_hostPort)).c_str());

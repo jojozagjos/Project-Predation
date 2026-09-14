@@ -159,6 +159,21 @@ bool IsCarrierAddress(const std::string& text)
     return (host >> 22) == (0x64400000u >> 22);
 }
 
+// This machine, as the router's own settings page would want it written. Named in the message that
+// tells somebody to forward a port by hand, because the next question after "forward a port" is
+// always "to what", and the answer is on this machine and nowhere they would think to look.
+std::string HereOnThisNetwork()
+{
+    for (const std::string& address : LocalNetworkAddresses())
+    {
+        if (IsPrivateAddress(address))
+        {
+            return address;
+        }
+    }
+    return "this machine";
+}
+
 bool ParseUrl(const std::string& text, Url& out)
 {
     constexpr const char* kPrefix = "http://";
@@ -280,12 +295,34 @@ std::vector<std::string> DiscoverGatewayDescriptions()
     }
 
 #if defined(_WIN32)
-    DWORD timeout = 1500;
+    DWORD timeout = 300;
     setsockopt(handle, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&timeout), sizeof(timeout));
 #else
-    timeval timeout{1, 500000};
+    timeval timeout{0, 300000};
     setsockopt(handle, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
 #endif
+
+    // Bound before anything is sent, and to every address rather than to whichever one the system
+    // would have picked. A socket that has only ever sent is bound implicitly to the adapter it
+    // sent from, and the reply to a multicast search comes back as a plain datagram from the
+    // router's own address: on a machine with more than one adapter that reply can arrive at a
+    // different one and be dropped before this ever sees it.
+    {
+        sockaddr_in any{};
+        any.sin_family = AF_INET;
+        any.sin_addr.s_addr = INADDR_ANY;
+        any.sin_port = 0;
+        bind(handle, reinterpret_cast<const sockaddr*>(&any), sizeof(any));
+    }
+
+    // Two hops rather than one. The default for a multicast datagram is to die on the wire it was
+    // sent on, which is right for the router in the house and wrong the moment there is a switch or
+    // an access point that routes between two segments of the same home network.
+    {
+        const int ttl = 2;
+        setsockopt(handle, IPPROTO_IP, IP_MULTICAST_TTL, reinterpret_cast<const char*>(&ttl),
+                   sizeof(ttl));
+    }
 
     sockaddr_in target{};
     target.sin_family = AF_INET;
@@ -301,39 +338,65 @@ std::vector<std::string> DiscoverGatewayDescriptions()
     std::vector<std::string> interfaces = LocalNetworkAddresses();
     interfaces.emplace_back(); // and once more however the system would have done it
 
-    for (const std::string& from : interfaces)
+    // What to ask for.
+    //
+    // Firmwares disagree about what they advertise themselves as, and a search only gets an answer
+    // from a device that recognises the exact string. Two was not enough: some routers announce
+    // only the gateway device, some only one of the two connection services, and a stubborn few
+    // answer nothing but the generic ones. Asking for all five costs five datagrams.
+    static const char* const kWanted[] = {
+        "urn:schemas-upnp-org:device:InternetGatewayDevice:1",
+        "urn:schemas-upnp-org:service:WANIPConnection:1",
+        "urn:schemas-upnp-org:service:WANPPPConnection:1",
+        "upnp:rootdevice",
+        "ssdp:all",
+    };
+
+    const auto search = [&]()
     {
-        if (!from.empty())
+        for (const std::string& from : interfaces)
         {
-            in_addr adapter{};
-            if (inet_pton(AF_INET, from.c_str(), &adapter) != 1)
+            if (!from.empty())
             {
-                continue;
+                in_addr adapter{};
+                if (inet_pton(AF_INET, from.c_str(), &adapter) != 1)
+                {
+                    continue;
+                }
+                setsockopt(handle, IPPROTO_IP, IP_MULTICAST_IF,
+                           reinterpret_cast<const char*>(&adapter), sizeof(adapter));
             }
-            setsockopt(handle, IPPROTO_IP, IP_MULTICAST_IF, reinterpret_cast<const char*>(&adapter),
-                       sizeof(adapter));
-        }
 
-        // Both the gateway device and the connection service are asked for, because firmwares
-        // differ about which of the two they advertise and answering either is enough to go on.
-        for (const char* wanted : {"urn:schemas-upnp-org:device:InternetGatewayDevice:1",
-                                   "urn:schemas-upnp-org:service:WANIPConnection:1"})
-        {
-            const std::string search = std::string("M-SEARCH * HTTP/1.1\r\n"
-                                                   "HOST: 239.255.255.250:1900\r\n"
-                                                   "MAN: \"ssdp:discover\"\r\n"
-                                                   "MX: 1\r\n"
-                                                   "ST: ") +
-                                       wanted + "\r\n\r\n";
-            sendto(handle, search.data(), static_cast<int>(search.size()), 0,
-                   reinterpret_cast<const sockaddr*>(&target), sizeof(target));
+            for (const char* wanted : kWanted)
+            {
+                // Two seconds of spread rather than one. A device waits a random time up to this
+                // before answering, so that a hundred of them do not answer at once; asking for one
+                // second and then listening for a second and a half is a race with the standard.
+                const std::string message = std::string("M-SEARCH * HTTP/1.1\r\n"
+                                                        "HOST: 239.255.255.250:1900\r\n"
+                                                        "MAN: \"ssdp:discover\"\r\n"
+                                                        "MX: 2\r\n"
+                                                        "ST: ") +
+                                            wanted + "\r\n\r\n";
+                sendto(handle, message.data(), static_cast<int>(message.size()), 0,
+                       reinterpret_cast<const sockaddr*>(&target), sizeof(target));
+            }
         }
-    }
+    };
+    search();
 
-    const auto until = std::chrono::steady_clock::now() + std::chrono::milliseconds(1600);
+    // Asked twice, a second apart. A search is a UDP datagram to a multicast address and there is
+    // nothing at all making it arrive; one lost datagram used to be the whole answer.
+    auto askAgain = std::chrono::steady_clock::now() + std::chrono::milliseconds(1000);
+    const auto until = std::chrono::steady_clock::now() + std::chrono::milliseconds(3500);
     char buffer[2048];
     while (std::chrono::steady_clock::now() < until)
     {
+        if (std::chrono::steady_clock::now() >= askAgain)
+        {
+            askAgain = until; // once more, and only once
+            search();
+        }
         sockaddr_in from{};
 #if defined(_WIN32)
         int fromLength = static_cast<int>(sizeof(from));
@@ -619,8 +682,12 @@ void PortMapper::Run(uint16_t port)
     }
     if (locations.empty())
     {
-        fail("No router on this network offered to forward a port. Forward UDP " +
-             std::to_string(port) + " by hand, or play on one network.");
+        fail(std::string("No router here answered. Most routers can do this and ship with it "
+                         "switched off: look for UPnP in the router's settings and turn it on. "
+                         "Otherwise forward UDP ") +
+             std::to_string(port) + " to " + HereOnThisNetwork() +
+             " by hand. On a network somebody else runs, neither is likely to be possible, and a "
+             "virtual network tool that puts both machines on one network is the way round it.");
         return;
     }
 
@@ -755,9 +822,10 @@ void PortMapper::Run(uint16_t port)
         return;
     }
 
-    fail("A router answered but would not forward the port. It may have UPnP switched off. Forward "
-         "UDP " +
-         std::to_string(port) + " by hand, or play on one network.");
+    fail(std::string("A router answered but refused to forward the port, which usually means UPnP "
+                     "is switched off in its settings. Turn it on, or forward UDP ") +
+         std::to_string(port) + " to " + HereOnThisNetwork() +
+         " by hand, or play on one network.");
 }
 
 } // namespace pred
