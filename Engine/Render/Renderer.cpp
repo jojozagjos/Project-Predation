@@ -201,7 +201,7 @@ bool Renderer::Init(const RendererDesc& desc)
     init.type = ParseBackend(desc.backend);
     init.vendorId = BGFX_PCI_ID_NONE;
     init.platformData.nwh = desc.nativeWindowHandle;
-    init.platformData.ndt = nullptr;
+    init.platformData.ndt = desc.nativeDisplay;
     init.resolution.width = static_cast<uint32_t>(desc.width);
     init.resolution.height = static_cast<uint32_t>(desc.height);
     init.resolution.reset = impl.ResetFlags();

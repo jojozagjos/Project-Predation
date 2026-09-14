@@ -407,6 +407,7 @@ bool Application::InitSubsystems(const CommandLine& commandLine)
 
     RendererDesc rendererDesc;
     rendererDesc.nativeWindowHandle = m_window.NativeHandle();
+    rendererDesc.nativeDisplay = m_window.NativeDisplay();
     rendererDesc.width = pixelWidth;
     rendererDesc.height = pixelHeight;
     rendererDesc.vsync = cv_vsync.Get();

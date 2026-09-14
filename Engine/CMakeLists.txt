@@ -125,6 +125,13 @@ target_link_libraries(PredationEngine
 
 if(WIN32)
     target_link_libraries(PredationEngine PUBLIC psapi ws2_32)
+else()
+    # Sockets are in libc here, so there is no equivalent of ws2_32 to name. Threads and the dynamic
+    # loader are: bgfx opens its graphics driver at run time rather than linking against one, which
+    # is what lets the same binary use Vulkan on a machine that has it and OpenGL on one that does
+    # not.
+    find_package(Threads REQUIRED)
+    target_link_libraries(PredationEngine PUBLIC Threads::Threads ${CMAKE_DL_LIBS})
 endif()
 
 target_compile_definitions(PredationEngine

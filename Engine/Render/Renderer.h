@@ -14,6 +14,9 @@ namespace pred
 struct RendererDesc
 {
     void* nativeWindowHandle = nullptr;
+    // The display connection the window belongs to. Null on Windows and macOS; on X11 and Wayland
+    // a window on its own is not enough to draw into.
+    void* nativeDisplay = nullptr;
     int width = 0;
     int height = 0;
     bool vsync = true;

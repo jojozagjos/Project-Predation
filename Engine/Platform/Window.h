@@ -28,7 +28,13 @@ public:
     void Destroy();
 
     SDL_Window* Handle() const { return m_window; }
-    void* NativeHandle() const; // HWND on Windows
+    // What the renderer needs to draw into this window. A HWND on Windows, an NSWindow on macOS, a
+    // Wayland surface or an X11 window elsewhere.
+    void* NativeHandle() const;
+    // And the connection that window was made on, which on X11 and Wayland is a separate thing the
+    // renderer cannot do without. Null on Windows and macOS, where there is only one and the system
+    // already knows where it is.
+    void* NativeDisplay() const;
 
     void GetSize(int& width, int& height) const;
     void GetSizeInPixels(int& width, int& height) const;
