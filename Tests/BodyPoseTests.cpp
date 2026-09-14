@@ -2945,3 +2945,46 @@ TEST_CASE("The hips drop towards the low side of a cross slope", "[body][gait][s
     CHECK(std::abs(rollDegrees) > 2.0f);
     CHECK(std::abs(rollDegrees) < harness.body.Tuning().hipSlopeMax + 1.0f);
 }
+
+TEST_CASE("Reloading on your front keeps both hands above the floor", "[body][pose][weapon][prone]")
+{
+    // Halfway through a reload the support hand leaves the weapon and fetches a magazine from the
+    // belt. The belt was a third of a body height below the eye, which is right standing up and
+    // absurd lying down: the eye is then barely above the ground, and a third of a body height
+    // below it is underneath the floor. The forearm went through the world.
+    BodyHarness harness(0.0f);
+    WeaponDefinition weapon;
+    weapon.id = 1;
+    weapon.key = "test_carbine";
+    weapon.size = {0.06f, 0.16f, 0.62f};
+    harness.body.SetWeaponForSimulation(&weapon);
+    harness.SetStance(PlayerStance::Prone);
+    harness.Settle(300);
+    REQUIRE(harness.State().stance == PlayerStance::Prone);
+
+    // The floor is at y = 0 in this harness, and a hand is a thing with thickness.
+    constexpr float kUnderTheFloor = -0.01f;
+    float lowest = 10.0f;
+    float lowestAt = 0.0f;
+    for (int step = 0; step <= 40; ++step)
+    {
+        PlayerBody::WeaponPose pose;
+        pose.reloading = true;
+        pose.reload = static_cast<float>(step) / 40.0f;
+        harness.body.SetWeaponPose(pose);
+        harness.Tick();
+
+        for (int side = 0; side < 2; ++side)
+        {
+            const float y = harness.Bone(harness.Rig().hand[static_cast<size_t>(side)]).y;
+            if (y < lowest)
+            {
+                lowest = y;
+                lowestAt = pose.reload;
+            }
+        }
+    }
+
+    INFO("lowest hand was at y = " << lowest << " during reload " << lowestAt);
+    CHECK(lowest > kUnderTheFloor);
+}

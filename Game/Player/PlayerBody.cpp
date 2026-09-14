@@ -1972,10 +1972,27 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
                             (1.0f - glm::smoothstep(0.52f, 0.66f, m_reloadPlay));
         if (fetch > 0.001f)
         {
-            const glm::vec3 belt = view.eyePosition - carryUp * (m_rig.height * 0.34f) -
-                                   carryRight * (m_rig.height * 0.11f) +
-                                   carryForward * (m_rig.height * 0.05f);
+            // Standing, the belt is a third of a body height below the eye. Lying down the eye is
+            // barely above the floor, and a third of a body height below it is under the floor:
+            // reloading prone put the whole forearm through the ground. Flat, the hand goes out to
+            // the side and back along the ground instead, which is where a pouch is when you are on
+            // your front and where the hand would actually go.
+            const float drop = glm::mix(0.34f, 0.05f, m_flatness);
+            const float across = glm::mix(0.11f, 0.24f, m_flatness);
+            const float ahead = glm::mix(0.05f, -0.06f, m_flatness);
+            const glm::vec3 belt = view.eyePosition - carryUp * (m_rig.height * drop) -
+                                   carryRight * (m_rig.height * across) +
+                                   carryForward * (m_rig.height * ahead);
             target = glm::mix(target, belt, fetch);
+        }
+
+        // And whatever the numbers above say, the hand does not go through the floor. The blend
+        // handles the ordinary case; this handles the rest of them, including reloading on a slope
+        // and reloading while the stance is still changing. The clearance is roughly a wrist.
+        {
+            constexpr float kWristClearance = 0.06f;
+            const float floorY = view.renderPosition.y + kWristClearance;
+            target.y = std::max(target.y, floorY);
         }
 
         FootState& hand = m_hands[static_cast<size_t>(kLeft)];
@@ -2003,6 +2020,10 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
             SmoothTowards(m_reloadHandLocal, wantedLocal, m_config.weaponHandSmoothing, dt);
         hand.position = view.eyePosition + carryRight * m_reloadHandLocal.x +
                         carryUp * m_reloadHandLocal.y + carryForward * m_reloadHandLocal.z;
+        // The smoothing runs in the carry frame, so a target that was above the floor can still be
+        // reached from below while the hand is on its way there. Clamped again after the easing,
+        // which is the only place the answer is actually in world space.
+        hand.position.y = std::max(hand.position.y, view.renderPosition.y + 0.06f);
         // Kept for the crawl, which takes this arm back the moment the reload finishes with it and
         // has to know where it is starting from.
         m_crawlHandRelease = hand.position - shoulder;
