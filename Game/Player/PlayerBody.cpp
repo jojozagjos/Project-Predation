@@ -2433,6 +2433,10 @@ void PlayerBody::UpdateCrawlArms(const PlayerState& state, const PlayerView& vie
             hand.position = glm::mix(shoulder + m_crawlHandRelease, blended,
                                      glm::smoothstep(0.0f, 1.0f, m_crawlHandReturn));
         }
+        else if (m_placeLimbs)
+        {
+            hand.position = blended;
+        }
         else
         {
             hand.position = SmoothTowards(hand.position, blended, m_config.footPlantSmoothing, dt);
@@ -2675,6 +2679,21 @@ void PlayerBody::UpdateLegs(const PlayerState& state, const PlayerView& view,
         const float rise = glm::mix(m_config.maxFootRise, 0.10f, m_flatness);
         float groundY =
             hit ? std::clamp(hit.position.y, base - m_config.maxFootDrop, base + rise) : base;
+        // How far down the real ground is, before that clamp and without pinning. This is the only
+        // reading that means anything while the player is in the air: the clamped one cannot say
+        // more than a step's worth, and the pinned one is the height of whatever they were standing
+        // on before they left it.
+        const float toGround = hit ? std::max(base - hit.position.y, 0.0f) : m_config.maxFootDrop * 2.0f;
+
+        // Off the ground, a foot is not standing on anything and the surface it last landed on is
+        // not an answer to any question. Left pinned, a player who walked off a ledge kept the
+        // ledge's height: the foot target stayed up there while the body fell past it, so the legs
+        // reached up over the head for a surface that was now storeys above. Whatever a fall should
+        // look like, that is not it.
+        if (!state.grounded)
+        {
+            foot.standing = false;
+        }
 
         // A foot that is standing on something keeps the height it landed at.
         //
@@ -2706,8 +2725,7 @@ void PlayerBody::UpdateLegs(const PlayerState& state, const PlayerView& view,
         // The blend fades back in as the ground comes within a step, so a landing is still planted.
         if (m_airborne > 0.001f)
         {
-            const float clearance = view.renderPosition.y - groundY;
-            const float airborne = m_airborne * std::clamp((clearance - 0.12f) / 0.35f, 0.0f, 1.0f);
+            const float airborne = m_airborne * std::clamp((toGround - 0.12f) / 0.35f, 0.0f, 1.0f);
             if (airborne > 0.001f)
             {
                 const float tuck = std::max(m_airRise, 0.0f);
@@ -2745,9 +2763,14 @@ void PlayerBody::UpdateLegs(const PlayerState& state, const PlayerView& view,
         }
 
         // Smoothing hides the discontinuity when the trace steps from one surface to another. A
-        // planted foot converges to a fixed point, so this costs it nothing.
-        foot.position = SmoothTowards(
-            foot.position, target, inSwing ? m_config.footSwingSmoothing : m_config.footPlantSmoothing, dt);
+        // planted foot converges to a fixed point, so this costs it nothing. Except on the frame a
+        // body arrives somewhere rather than walking there, where there is nothing to smooth from.
+        foot.position =
+            m_placeLimbs ? target
+                         : SmoothTowards(foot.position, target,
+                                         inSwing ? m_config.footSwingSmoothing
+                                                 : m_config.footPlantSmoothing,
+                                         dt);
         foot.planted = !inSwing;
 
         // Knees bend towards the body's front while upright. Once the pelvis is laid flat that axis
@@ -2934,6 +2957,8 @@ void PlayerBody::Update(Scene& scene, const PlayerState& state, const PlayerView
     UpdateArms(state, view, physics, dt);
     UpdateLegs(state, view, playerConfig, physics, dt);
     PushToScene(scene);
+    // One frame of placing rather than easing is all an arrival gets.
+    m_placeLimbs = false;
 }
 
 void PlayerBody::Collapse(const glm::vec3& impulse)
@@ -2951,6 +2976,33 @@ void PlayerBody::Revive()
 {
     m_ragdoll.Stop();
     m_pose.ResetToBind(m_skeleton);
+    // And the limbs forget where the corpse left them.
+    //
+    // Feet and hands are smoothed towards where the pose wants them, which is right while somebody
+    // is walking about and wrong the moment they come back to life somewhere else: the body was
+    // lying in a heap across the room, so the new one spent the first half second hauling its own
+    // arms and legs back from there, through itself, at whatever angles the IK could find on the
+    // way. That is the limbs over the head on a respawn. Nothing is smoothed from a body that no
+    // longer exists: the next frame places them outright.
+    for (FootState& foot : m_feet)
+    {
+        foot = FootState{};
+    }
+    for (FootState& hand : m_hands)
+    {
+        hand = FootState{};
+    }
+    m_placeLimbs = true;
+    m_reloadRunning = false;
+    m_reloadHandValid = false;
+    m_supportRejoin = 1.0f;
+    m_crawlHandReturn = 1.0f;
+    m_mantleFade = 0.0f;
+    m_muzzleTip = 0.0f;
+    m_flatness = 0.0f;
+    m_crouchness = 0.0f;
+    m_airborne = 0.0f;
+    m_airRise = 0.0f;
 }
 
 void PlayerBody::DebugDraw(class DebugDraw& draw) const

@@ -224,7 +224,7 @@ void PredationGame::RegisterCommands()
     Console& console = m_app->GetConsole();
 
     console.RegisterCommand("respawn", "Return the player to the spawn point with full health",
-                            [this](const std::vector<std::string>&) { m_player.Respawn(m_spawnPoint); });
+                            [this](const std::vector<std::string>&) { RespawnLocalPlayer(m_spawnPoint); });
 
     console.RegisterCommand(
         "teleport", "Move the player to a position: teleport <x> <y> <z>",
@@ -1175,7 +1175,7 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
     case WorldEventKind::PlayerRespawned:
         if (event.player == LocalPlayerId())
         {
-            m_player.Respawn(event.position);
+            RespawnLocalPlayer(event.position);
         }
         break;
 
@@ -1344,8 +1344,7 @@ void PredationGame::UpdateRespawns(float dt)
         m_respawnTimer -= dt;
         if (m_respawnTimer <= 0.0f)
         {
-            m_player.Respawn(m_spawnPoint);
-            m_spectating = -1;
+            RespawnLocalPlayer(m_spawnPoint);
             if (m_sessionMode == SessionMode::Host)
             {
                 WorldEventMessage event;
@@ -1628,7 +1627,7 @@ void PredationGame::ResetWorld()
     m_deathImpulse = glm::vec3(0.0f);
     m_localCollapsed = false;
     m_body.Revive();
-    m_player.Respawn(m_spawnPoint);
+    RespawnLocalPlayer(m_spawnPoint);
     PRED_LOG_INFO(Gameplay, "World reset");
 }
 
@@ -2031,6 +2030,30 @@ void PredationGame::DrawTitleScreen()
 // The host runs the real simulation for everyone. A client predicts its own movement from local
 // input and interpolates everybody else. Nothing a client sends is written into the world: the host
 // runs the same movement code against its own physics and what comes out is what happened.
+
+void PredationGame::RespawnLocalPlayer(const glm::vec3& position)
+{
+    m_player.Respawn(position);
+    // Standing, whatever you were doing when you died.
+    //
+    // The controller already comes back standing, and it was put straight back down again: crouch
+    // and prone are toggles, the toggle still held whatever it held when the player was killed, and
+    // the very next tick of input asked for it. So dying prone meant coming back to life lying on
+    // the floor of the spawn room, which is not a thing anybody chose.
+    m_crouchToggleState = false;
+    m_proneToggleState = false;
+    m_forceCrouch = false;
+    m_forceProne = false;
+    m_sprintToggleState = false;
+    // And upright rather than in a heap. The body is a ragdoll from the moment it is killed, and
+    // its bones stay wherever they fell until something puts them back: coming back to life without
+    // clearing it gave the new body its corpse's arms and legs for the first few frames, which is
+    // where the legs over the head came from.
+    m_localCollapsed = false;
+    m_body.Revive();
+    m_deathImpulse = glm::vec3(0.0f);
+    m_spectating = -1;
+}
 
 std::string PredationGame::PlayerName() const
 {
@@ -4105,8 +4128,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
         }
         if (input.WasActionPressed("respawn"))
         {
-            m_player.Respawn(m_spawnPoint);
-                                m_deathImpulse = glm::vec3(0.0f);
+            RespawnLocalPlayer(m_spawnPoint);
         }
         if (input.WasActionPressed("quit_capture"))
         {
@@ -4627,7 +4649,7 @@ void PredationGame::DrawPlayerPanel()
     ImGui::Separator();
     if (ImGui::Button("Respawn"))
     {
-        m_player.Respawn(m_spawnPoint);
+        RespawnLocalPlayer(m_spawnPoint);
     }
     ImGui::SameLine();
     if (ImGui::Button("Save to player.json"))

@@ -639,6 +639,9 @@ private:
     // first is a decision with a margin on it; the second is what the pose actually follows.
     bool m_aimBlocked = false;
     float m_aimRoom = 1.0f;
+    // Set when the body has just been put somewhere rather than having walked there, so the next
+    // frame places the feet and hands outright instead of easing them in from wherever they were.
+    bool m_placeLimbs = true;
     Ragdoll m_ragdoll;
     Entity m_heldItemEntity;
     // How the thing in the hand sits there, from its own definition. Nothing about a box says which

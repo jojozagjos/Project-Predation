@@ -251,6 +251,8 @@ private:
     void SyncRemoteAvatars(float frameDeltaSeconds);
     void DrawNetworkPanel();
     const std::vector<RemotePlayerView>& RemotePlayers() const;
+    // Brings the local player back: upright, standing, and not still wearing their own corpse.
+    void RespawnLocalPlayer(const glm::vec3& position);
     // The name to join or host under: whatever is in the box, trimmed, never empty.
     std::string PlayerName() const;
 

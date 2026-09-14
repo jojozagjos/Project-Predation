@@ -2569,3 +2569,47 @@ TEST_CASE("Walking up to a wall does not make the weapon hunt", "[body][pose][we
     INFO("standing still, the drop ranged over " << (highest - lowest) << " degrees");
     CHECK(highest - lowest < 2.0f);
 }
+
+TEST_CASE("Falling off a ledge does not leave the legs reaching up for it", "[body][pose][air]")
+{
+    // A foot keeps the height of the surface it last landed on, so that its target does not snap up
+    // and down the edge of a ledge as it crosses it. Off the ledge that stops being an answer to
+    // anything: pinned, the target stayed up on the ledge while the body fell past it, so the legs
+    // reached up over the head for a surface that was by then storeys above.
+    BodyHarness harness;
+
+    // A platform to walk off, with a long drop beside it.
+    harness.physics.CreateBox({2.0f, 2.0f, 2.0f}, Transform{{0.0f, 6.0f, 0.0f}}, BodyMotion::Static);
+    harness.physics.OptimizeBroadPhase();
+    harness.player.Teleport({0.0f, 8.05f, 0.0f});
+    harness.Settle(60);
+    REQUIRE(harness.State().grounded);
+
+    // Off the edge, and falling.
+    harness.SetTravel(glm::vec3(0.0f, 0.0f, -1.0f));
+    float worstAboveHip = -10.0f;
+    float at = 0.0f;
+    for (int i = 0; i < 150; ++i)
+    {
+        harness.Tick();
+        if (harness.State().grounded || harness.State().position.y > 5.9f)
+        {
+            continue;
+        }
+        for (int side = 0; side < 2; ++side)
+        {
+            const float above = harness.Bone(harness.Rig().foot[side]).y -
+                                harness.Bone(harness.Rig().pelvis).y;
+            if (above > worstAboveHip)
+            {
+                worstAboveHip = above;
+                at = harness.State().position.y;
+            }
+        }
+    }
+
+    INFO("the highest a foot got, relative to the hips, was " << worstAboveHip << " m, at y " << at);
+    // Feet belong under the hips in a fall. Pinned to the ledge, they read 0.88 m above them, which
+    // is a body falling with its legs straight up over its own head.
+    CHECK(worstAboveHip < -0.05f);
+}
