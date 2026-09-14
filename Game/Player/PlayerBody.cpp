@@ -955,6 +955,15 @@ void PlayerBody::SetWeaponForSimulation(const WeaponDefinition* definition)
     m_supportRejoin = 0.0f;
 }
 
+void PlayerBody::SetWeaponModelForSimulation(const WeaponDefinition& definition,
+                                             const ModelAsset& model)
+{
+    m_weaponId = definition.id;
+    m_weaponVisual = BuildWeaponVisualFrom(model, definition, m_textures);
+    m_hasWeapon = true;
+    m_supportRejoin = 0.0f;
+}
+
 // Puts a model in the hands directly, without going through the weapon database or the disk. The
 // editor needs this: what it is holding is whatever is open in front of it, which has usually not
 // been saved yet and belongs to no weapon at all.
@@ -1179,7 +1188,26 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
         view.pitch < 0.0f ? glm::mix(m_config.weaponCarryPitchFollow, m_config.weaponPronePitchFollow,
                                      m_flatness)
                           : m_config.weaponCarryPitchFollow;
-    const float carryPitch = view.pitch * glm::mix(pitchFollow, 1.0f, aim);
+    float carryPitch = view.pitch * glm::mix(pitchFollow, 1.0f, aim);
+
+    // And however far up the player looks, a carried weapon stops well short of vertical.
+    //
+    // Nobody raises a rifle to point at the sky in order to look at it. They tip their head back and
+    // the weapon stays roughly where it was. Following ninety per cent of an eighty degree look does
+    // raise it to the sky, and what that looks like from outside is somebody presenting arms: the
+    // rifle stood on end beside the head with both arms folded around it. It was reported twice.
+    //
+    // It also removes a cliff rather than only an ugly pose. The muzzle correction at a wall is the
+    // thing that keeps the barrel out of the bricks, and it stops applying once the barrel is
+    // pointing over the top of the wall instead of into it. So between sixty and eighty degrees of
+    // look the correction collapsed from its full sixty-six degrees to nothing, and the barrel swung
+    // ninety-one degrees in twenty. Capped here, the barrel never gets high enough for that to
+    // happen and the correction fades instead of falling over.
+    //
+    // Aiming is exempt and has to be: the sights only mean anything on the view axis.
+    const float upwardCap = glm::mix(glm::radians(m_config.weaponCarryPitchMaxUp),
+                                     glm::half_pi<float>(), aim);
+    carryPitch = std::min(carryPitch, upwardCap);
     const float cp = std::cos(carryPitch);
     const glm::vec3 carryForward{std::sin(view.yaw) * cp, std::sin(carryPitch), -std::cos(view.yaw) * cp};
     const glm::vec3 carryRight = yawRight;

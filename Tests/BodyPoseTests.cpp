@@ -5,6 +5,8 @@
 #include "Game/Player/PlayerBody.h"
 #include "Game/Player/PlayerController.h"
 #include "Game/Weapons/WeaponAppearance.h"
+#include "Engine/Assets/ModelAsset.h"
+#include "Engine/Render/Primitives.h"
 #include "Game/Weapons/WeaponDatabase.h"
 
 #include <catch2/catch_approx.hpp>
@@ -97,6 +99,16 @@ struct BodyHarness
         body.Update(scene, player.State(), player.View(), config, physics, kTick);
     }
 
+    // One rendered frame between simulation steps, the way the game does it: the simulation runs at
+    // a fixed rate and the view is interpolated between the last two states by alpha. Tick always
+    // renders at alpha 1, which is the one value that hides any disagreement between interpolated
+    // and un-interpolated positions.
+    void Render(float alpha, float dt)
+    {
+        player.UpdateView(dt, alpha);
+        body.Update(scene, player.State(), player.View(), config, physics, dt);
+    }
+
     // Long enough for a stance change or a change of direction to settle.
     void Settle(int ticks = 240)
     {
@@ -148,6 +160,39 @@ struct BodyHarness
     // Forward is -Z at yaw 0, so a larger forward offset means a more negative z.
     float ForwardOf(BoneIndex index) const { return -Local(index).z; }
 };
+
+// The carbine the player actually holds, from the files the game reads.
+//
+// Every wall test before this one held a generated box weapon, whose origin is its grip and whose
+// sockets are at their defaults. The imported carbine has its origin in the middle of the receiver
+// and its sockets wherever the person who modelled it put them. Corrections that look right against
+// the first can be wrong against the second, and one of them was: the sweep said the muzzle drops
+// at a wall while the player was watching it stand on end.
+bool LoadShippedCarbine(BodyHarness& harness, WeaponDefinition& definition, ModelAsset& model)
+{
+    WeaponDatabase weapons;
+    const std::filesystem::path weaponFile =
+        std::filesystem::path(PRED_SOURCE_DIR) / "Assets" / "Data" / "weapons.json";
+    if (!weapons.LoadFromFile(weaponFile))
+    {
+        return false;
+    }
+    const WeaponDefinition* found = weapons.Find("carbine");
+    if (found == nullptr)
+    {
+        return false;
+    }
+    definition = *found;
+
+    const std::filesystem::path modelFile =
+        std::filesystem::path(PRED_SOURCE_DIR) / "Assets" / "Models" / (definition.model + ".json");
+    if (!model.LoadFromFile(modelFile))
+    {
+        return false;
+    }
+    harness.body.SetWeaponModelForSimulation(definition, model);
+    return true;
+}
 
 } // namespace
 
@@ -3040,19 +3085,25 @@ TEST_CASE("Walking into a wall leaves the weapon in front of the player", "[body
 
 TEST_CASE("No wall and no angle stands the weapon on end", "[body][pose][weapon]")
 {
-    // The muzzle is allowed to drop a long way to get out of a wall, and that is deliberate: it is
-    // the lever that keeps the barrel out of the bricks without pulling the receiver into the
-    // camera. But there is an angle past which it stops reading as a hold at all and starts reading
-    // as somebody presenting arms. This sweeps a player pressed against a wall through every angle
-    // they can look at and checks none of them get there.
+    // Held against a wall and looked around with, the weapon must stay something a person could be
+    // holding, and it must get there smoothly.
+    //
+    // Two faults, and the second is the one that matters. A carried rifle followed the view pitch
+    // almost exactly, so looking up at the sky raised it to the sky: from outside, the gun stood on
+    // end beside the head with both arms folded round it. And the muzzle correction that keeps the
+    // barrel out of a wall stops applying once the barrel points over the top of the wall rather
+    // than into it, so between sixty and eighty degrees of look it collapsed from its full range to
+    // nothing and the barrel swung ninety-one degrees in twenty degrees of look. That is a snap, and
+    // a snap is visible in a way that a wrong-but-steady angle is not.
+    //
+    // With the real carbine, from the files the game reads. The generated box weapon this used to
+    // hold has its origin at its grip and its sockets at their defaults, and it does not reproduce
+    // any of the above: the sweep said the muzzle drops while the player was watching it rise.
     BodyHarness harness;
-    WeaponDefinition weapon;
-    weapon.id = 1;
-    weapon.key = "test_rifle";
-    weapon.size = {0.06f, 0.16f, 0.62f};
-    harness.body.SetWeaponForSimulation(&weapon);
+    WeaponDefinition definition;
+    ModelAsset model;
+    REQUIRE(LoadShippedCarbine(harness, definition, model));
 
-    // A wall taller than the player, right in front.
     harness.physics.CreateBox({4.0f, 2.0f, 0.5f}, Transform{{0.0f, 2.0f, -1.3f}}, BodyMotion::Static);
     harness.physics.OptimizeBroadPhase();
 
@@ -3061,36 +3112,214 @@ TEST_CASE("No wall and no angle stands the weapon on end", "[body][pose][weapon]
     harness.Settle(180);
     harness.input.move = glm::vec2(0.0f);
 
-    float worst = 0.0f;
-    float worstPitch = 0.0f;
-    bool worstAiming = false;
-    for (int aiming = 0; aiming < 2; ++aiming)
+    const auto elevationOf = [&]()
     {
-        PlayerBody::WeaponPose pose;
-        pose.aim = aiming != 0 ? 1.0f : 0.0f;
-        harness.body.SetWeaponPose(pose);
-        for (int step = 0; step <= 24; ++step)
+        const glm::vec3 barrel =
+            glm::normalize(harness.body.MuzzlePoint() - harness.body.WeaponOrigin());
+        return glm::degrees(std::asin(std::clamp(barrel.y, -1.0f, 1.0f)));
+    };
+
+    float highest = -180.0f;
+    float highestAt = 0.0f;
+    float worstJump = 0.0f;
+    float worstJumpAt = 0.0f;
+    float previous = 0.0f;
+    bool first = true;
+    for (int step = 0; step <= 32; ++step)
+    {
+        const float pitch = -80.0f + 5.0f * static_cast<float>(step);
+        harness.input.pitch = glm::radians(pitch);
+        harness.Settle(40);
+        const float elevation = elevationOf();
+        if (elevation > highest)
         {
-            harness.input.pitch = glm::radians(-85.0f + 7.0f * static_cast<float>(step));
-            harness.Settle(30);
-            const glm::vec3 barrel =
-                glm::normalize(harness.body.MuzzlePoint() - harness.body.WeaponOrigin());
-            const float elevation = glm::degrees(std::asin(std::clamp(barrel.y, -1.0f, 1.0f)));
-            // How far the barrel is from where the player is pointing their eyes. A weapon that
-            // follows the look is fine at any angle; one that leaves it is the failure.
-            const float away = std::abs(elevation - glm::degrees(harness.input.pitch));
-            if (away > worst)
-            {
-                worst = away;
-                worstPitch = glm::degrees(harness.input.pitch);
-                worstAiming = aiming != 0;
-            }
+            highest = elevation;
+            highestAt = pitch;
+        }
+        if (!first && std::abs(elevation - previous) > worstJump)
+        {
+            worstJump = std::abs(elevation - previous);
+            worstJumpAt = pitch;
+        }
+        previous = elevation;
+        first = false;
+    }
+
+    INFO("barrel reached " << highest << " degrees at look " << highestAt
+                           << ", and moved at most " << worstJump << " degrees per five of look, at "
+                           << worstJumpAt);
+    // Never pointing at the sky. A carried weapon is capped well below vertical.
+    CHECK(highest < 25.0f);
+    // And no cliff: five degrees of look must not move the barrel a quarter turn.
+    CHECK(worstJump < 20.0f);
+}
+
+
+TEST_CASE("Which way the muzzle goes at a wall", "[.][body][weapon][diagnose]")
+{
+    // Not run by default. Prints the barrel elevation against the look angle for a player pressed
+    // against a wall, so the direction the correction moves the muzzle can be read off rather than
+    // guessed at.
+    BodyHarness harness;
+    WeaponDefinition definition;
+    ModelAsset model;
+    REQUIRE(LoadShippedCarbine(harness, definition, model));
+
+    harness.physics.CreateBox({4.0f, 2.0f, 0.5f}, Transform{{0.0f, 2.0f, -1.3f}}, BodyMotion::Static);
+    harness.physics.OptimizeBroadPhase();
+    harness.input.yaw = 0.0f;
+    harness.SetTravel(glm::vec3(0.0f, 0.0f, -1.0f));
+    harness.Settle(180);
+    harness.input.move = glm::vec2(0.0f);
+
+    std::string table = "\n  look   barrel   tip\n";
+    for (int step = 0; step <= 16; ++step)
+    {
+        harness.input.pitch = glm::radians(-80.0f + 10.0f * static_cast<float>(step));
+        harness.Settle(40);
+        const glm::vec3 barrel =
+            glm::normalize(harness.body.MuzzlePoint() - harness.body.WeaponOrigin());
+        const float elevation = glm::degrees(std::asin(std::clamp(barrel.y, -1.0f, 1.0f)));
+        table += "  " + std::to_string(static_cast<int>(glm::degrees(harness.input.pitch))) +
+                 "     " + std::to_string(static_cast<int>(elevation)) + "     " +
+                 std::to_string(static_cast<int>(harness.body.MuzzleTipDegrees())) + "\n";
+    }
+    WARN(table);
+}
+
+TEST_CASE("Standing on a slope holds still", "[.][body][gait][slope][diagnose]")
+{
+    // Not run by default. Prints the eye and both feet, frame by frame, for a player standing still
+    // on a ramp, so a shake can be read as numbers rather than argued about from a description.
+    BodyHarness harness(15.0f);
+    harness.SetStance(PlayerStance::Standing);
+    harness.Settle(300);
+
+    std::string table = "\n   eye      Lfoot     Rfoot     pos.y\n";
+    for (int i = 0; i < 30; ++i)
+    {
+        harness.Tick();
+        const float eye = harness.View().eyePosition.y;
+        const float left = harness.Bone(harness.Rig().foot[0]).y;
+        const float right = harness.Bone(harness.Rig().foot[1]).y;
+        table += "  " + std::to_string(eye).substr(0, 7) + "  " + std::to_string(left).substr(0, 7) +
+                 "  " + std::to_string(right).substr(0, 7) + "  " +
+                 std::to_string(harness.State().position.y).substr(0, 7) + "\n";
+    }
+    WARN(table);
+}
+
+TEST_CASE("Standing on the real ramp geometry", "[.][body][gait][slope][diagnose]")
+{
+    // Not run by default. The harness's own slope is a rotated box; the test map builds its ramps as
+    // static triangle meshes, which is a different collider with seams in it. This stands on the
+    // same geometry the map does.
+    BodyHarness harness;
+    constexpr float rampLength = 6.0f;
+    const float height = rampLength * std::tan(glm::radians(25.0f));
+    const MeshData rampData = Primitives::Ramp(3.0f, rampLength, height);
+    // The ramp rises towards +Z, from z = 1 to z = 7, so the player faces that way and walks up it.
+    harness.physics.CreateMeshBody(rampData, Transform{{0.0f, 0.0f, 1.0f}});
+    harness.physics.OptimizeBroadPhase();
+
+    // Walk onto it and then stop.
+    harness.input.yaw = glm::pi<float>();
+    harness.SetTravel(glm::vec3(0.0f, 0.0f, 1.0f));
+    harness.Settle(150);
+    harness.input.move = glm::vec2(0.0f);
+    harness.Settle(120);
+
+    std::string table = "\n   eye      Lfoot     Rfoot     pos.y    grounded\n";
+    for (int i = 0; i < 30; ++i)
+    {
+        harness.Tick();
+        table += "  " + std::to_string(harness.View().eyePosition.y).substr(0, 7) + "  " +
+                 std::to_string(harness.Bone(harness.Rig().foot[0]).y).substr(0, 7) + "  " +
+                 std::to_string(harness.Bone(harness.Rig().foot[1]).y).substr(0, 7) + "  " +
+                 std::to_string(harness.State().position.y).substr(0, 7) + "  " +
+                 (harness.State().grounded ? "yes" : "NO") + "\n";
+    }
+    WARN(table);
+}
+
+TEST_CASE("Walking up a ramp with the frame rate above the tick rate", "[.][body][gait][slope][diagnose]")
+{
+    // Not run by default. The game simulates at sixty and draws as fast as it can, interpolating
+    // between the last two simulation states. Every other test here draws exactly once per step at
+    // alpha one, which is the single value where interpolated and un-interpolated positions agree.
+    // This draws three times per step, the way a machine running at 180 does.
+    BodyHarness harness;
+    constexpr float rampLength = 6.0f;
+    const float height = rampLength * std::tan(glm::radians(25.0f));
+    const MeshData rampData = Primitives::Ramp(3.0f, rampLength, height);
+    harness.physics.CreateMeshBody(rampData, Transform{{0.0f, 0.0f, 1.0f}});
+    harness.physics.OptimizeBroadPhase();
+
+    harness.input.yaw = glm::pi<float>();
+    harness.SetTravel(glm::vec3(0.0f, 0.0f, 1.0f));
+    harness.Settle(120);
+
+    std::string table = "\n  alpha    eye      Lfoot     Rfoot\n";
+    for (int step = 0; step < 12; ++step)
+    {
+        harness.player.Step(harness.input, kTick);
+        harness.physics.Step(kTick);
+        for (int sub = 1; sub <= 3; ++sub)
+        {
+            const float alpha = static_cast<float>(sub) / 3.0f;
+            harness.Render(alpha, kTick / 3.0f);
+            table += "   " + std::to_string(alpha).substr(0, 4) + "   " +
+                     std::to_string(harness.View().eyePosition.y).substr(0, 7) + "  " +
+                     std::to_string(harness.Bone(harness.Rig().foot[0]).y).substr(0, 7) + "  " +
+                     std::to_string(harness.Bone(harness.Rig().foot[1]).y).substr(0, 7) + "\n";
+        }
+    }
+    WARN(table);
+}
+
+TEST_CASE("Walking up a ramp does not judder at high frame rates", "[body][gait][slope]")
+{
+    // The simulation runs at sixty and the game draws as fast as it can, interpolating between the
+    // last two simulation states. Every other test here draws exactly once per step at alpha one,
+    // which is the single value where interpolated and un-interpolated positions agree, and that is
+    // why this went unseen: it draws three times per step, the way a machine running at 180 does.
+    //
+    // The fault was the stair smoothing. Walking up a step teleports the capsule upward inside one
+    // tick, and the view absorbs that and lets it decay so a staircase does not read as a series of
+    // jolts. It worked out how much to absorb by comparing where physics put the body against where
+    // its own velocity would have, and on a slope those differ by the entire climb, because walking
+    // on a slope your velocity is nearly horizontal and the ground lifts you. So every tick on
+    // every ramp was recorded as a step, the camera was pulled down by about two centimetres and
+    // allowed to recover, and the whole body juddered.
+    BodyHarness harness;
+    constexpr float rampLength = 6.0f;
+    const float height = rampLength * std::tan(glm::radians(25.0f));
+    const MeshData rampData = Primitives::Ramp(3.0f, rampLength, height);
+    harness.physics.CreateMeshBody(rampData, Transform{{0.0f, 0.0f, 1.0f}});
+    harness.physics.OptimizeBroadPhase();
+
+    // The ramp rises towards +Z, so the player faces that way and walks up it.
+    harness.input.yaw = glm::pi<float>();
+    harness.SetTravel(glm::vec3(0.0f, 0.0f, 1.0f));
+    harness.Settle(120);
+
+    float worstDrop = 0.0f;
+    float previous = harness.View().eyePosition.y;
+    for (int step = 0; step < 24; ++step)
+    {
+        harness.player.Step(harness.input, kTick);
+        harness.physics.Step(kTick);
+        for (int sub = 1; sub <= 3; ++sub)
+        {
+            harness.Render(static_cast<float>(sub) / 3.0f, kTick / 3.0f);
+            const float eye = harness.View().eyePosition.y;
+            worstDrop = std::max(worstDrop, previous - eye);
+            previous = eye;
         }
     }
 
-    INFO("barrel was worst " << worst << " degrees away from the look at pitch " << worstPitch
-                             << (worstAiming ? " while aiming" : " while carried"));
-    // The drop is capped in the tuning. Anything approaching that cap is the cap being reached,
-    // and a weapon most of a right angle off where you are looking is stood on end.
-    CHECK(worst < 68.0f);
+    INFO("worst backward step of the eye while climbing: " << worstDrop * 1000.0f << " mm");
+    // Climbing steadily, the eye only rises. It used to fall about eight millimetres at every
+    // simulation step, sixty times a second.
+    CHECK(worstDrop < 0.001f);
 }

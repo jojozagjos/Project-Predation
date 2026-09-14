@@ -1005,3 +1005,27 @@ syllable and therefore loses it.
 
 Nothing here knows what a microphone is, and the mixer is still a pure function of its voices and
 its listener, so all of it is tested without a sound card.
+
+## ADR-055: A slope is not a staircase
+
+**Status**: accepted, 2026-09-14
+
+The view smooths stair steps: walking up a step teleports the capsule upward inside one tick, and
+feeding that straight to the camera reads as a jolt, so the view absorbs it and lets it decay. It
+decided how much to absorb by comparing where the physics put the body against where the body's own
+velocity would have put it.
+
+On a slope those two differ by the entire climb. Walking up a ramp your velocity is very nearly
+horizontal and the ground lifts you as you go, so the difference was about two centimetres a tick at
+walking pace on twenty-five degrees. Every tick on every ramp in the game was therefore recorded as
+a step, the camera was pulled down by it and allowed to recover, and the whole body juddered.
+
+The rise that walking along the ground you are already on would give is now subtracted first, from
+the ground normal and the distance travelled. On a staircase the ground under the foot is flat, that
+term is zero, and a real step is still the whole jump and still smoothed.
+
+It survived this long because every pose test drew exactly once per simulation step at an
+interpolation alpha of one, and that is the single value at which the interpolated and
+un-interpolated positions agree. The game draws as fast as it can. The test that found it draws
+three times per step, the way a machine running at 180 Hz does, and that is now how the slope tests
+run.

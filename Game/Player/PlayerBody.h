@@ -124,6 +124,9 @@ public:
         // that puts the barrel through the ground, and nothing afterwards can take it back out
         // because the thing it is pointing at is the thing the player is lying on.
         float weaponPronePitchFollow = 0.22f;
+        // And how far up a carried weapon may point, in degrees, however far up the player looks.
+        // Nobody raises a rifle at the sky to look at it. See where it is used.
+        float weaponCarryPitchMaxUp = 35.0f;
         // The weapon lags a turn and then catches up, which is what gives it weight.
         float weaponSwayAmount = 0.34f;   // how far a turn drags the weapon behind the view
         float weaponSwayRecover = 11.0f;  // how fast it catches up again
@@ -443,6 +446,14 @@ public:
     // The same, with nothing to draw. Lets the hold be exercised in tests, which have no renderer
     // and where uploading a mesh would mean standing up a GPU device.
     void SetWeaponForSimulation(const WeaponDefinition* definition);
+    // The same, but taking the sockets from a real model instead of the generated box.
+    //
+    // Without this every pose test was holding a different gun from the one the player holds: a
+    // generated weapon has its origin at its grip and its sockets at their defaults, and an
+    // imported one has its origin in the middle of the receiver and its sockets wherever the person
+    // who made it put them. Corrections that look right against the first can be wrong against the
+    // second, and were.
+    void SetWeaponModelForSimulation(const WeaponDefinition& definition, const ModelAsset& model);
     void SetWeaponPose(const WeaponPose& pose) { m_weaponPose = pose; }
     // Something that is not a weapon, carried in one hand. A rifle takes both hands and the whole
     // upper body; a medical kit is just held, which is a different pose and a much smaller one.

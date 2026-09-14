@@ -562,7 +562,25 @@ void PlayerController::Step(const PlayerInput& input, float dt)
     // the camera reads as a jolt, so the difference between where physics put us and where our own
     // velocity would have put us is handed to the view as an offset that decays away.
     const float actualDeltaY = m_state.position.y - m_prevPosition.y;
-    const float stepDelta = actualDeltaY - expectedDeltaY;
+
+    // What walking along the ground we are already on would have raised us by.
+    //
+    // Without this, a ramp is indistinguishable from a staircase and was treated as one. Walking on
+    // a slope, our own velocity is very nearly horizontal and the physics lifts us as we go, so the
+    // difference between the two was the whole of the climb — about two centimetres a tick at
+    // walking pace on a twenty-five degree ramp, which is well over the threshold below. Every
+    // single tick was therefore recorded as a step up, the view pulled the camera down by it and
+    // then let it recover, and what that looks like is the whole body juddering on every slope in
+    // the game. On a staircase the ground under the foot is flat and this term is zero, so a real
+    // step is still the whole jump and is still smoothed.
+    float slopeRise = 0.0f;
+    if (m_character.IsGrounded() && m_state.groundNormal.y > 0.10f)
+    {
+        const glm::vec3 moved = m_state.position - m_prevPosition;
+        slopeRise = -(moved.x * m_state.groundNormal.x + moved.z * m_state.groundNormal.z) /
+                    m_state.groundNormal.y;
+    }
+    const float stepDelta = actualDeltaY - expectedDeltaY - slopeRise;
     m_debug.lastStepUp = stepDelta;
     if (m_character.IsGrounded() && std::abs(stepDelta) > 0.004f &&
         std::abs(stepDelta) < m_config.stepHeight * 2.5f)
