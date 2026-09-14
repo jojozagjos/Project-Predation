@@ -897,3 +897,25 @@ TEST_CASE("A router's description is read for the service that forwards a port",
         CHECK_FALSE(FindConnectionServiceForTesting(description, "10.0.0.1", 80, url, type));
     }
 }
+
+TEST_CASE("A device cannot send the port mapper somewhere else", "[net][upnp][security]")
+{
+    // A device description is a document fetched off the network, so every address in it was
+    // written by whatever answered the search. An absolute control URL naming a different host
+    // would have the game post SOAP to wherever that device fancied, which is a machine on this
+    // network being used to reach a machine somewhere else.
+    const std::string description =
+        "<root><device><serviceList>"
+        "<service><serviceType>urn:schemas-upnp-org:service:WANIPConnection:1</serviceType>"
+        "<controlURL>http://198.51.100.7:8080/ctl/IPConn</controlURL></service>"
+        "</serviceList></device></root>";
+
+    std::string url;
+    std::string type;
+    CHECK_FALSE(FindConnectionServiceForTesting(description, "192.168.1.1", 5000, url, type));
+
+    // The same document served by the host it names is fine, because then it is that host talking
+    // about itself.
+    CHECK(FindConnectionServiceForTesting(description, "198.51.100.7", 8080, url, type));
+    CHECK(url == "http://198.51.100.7:8080/ctl/IPConn");
+}

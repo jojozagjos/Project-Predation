@@ -45,6 +45,18 @@ constexpr float kKeepAliveSeconds = 1.0f;
 constexpr float kTimeoutSeconds = 10.0f;
 constexpr float kConnectRetrySeconds = 0.25f;
 constexpr float kConnectTimeoutSeconds = 6.0f;
+// How many peers this socket will ever hold, and how many out-of-order reliable packets it will
+// hold for any one of them. Both are limits on what a stranger can make this machine allocate.
+//
+// An open UDP port is reachable by anybody who knows the address, and neither of these costs
+// anything in a real game: a full game is four players, and a reliable packet arriving more than
+// sixty ahead of the gap in front of it means the connection is long past playable. Without them,
+// a packet with a forged source address bought a peer with two vectors in it, and a stream of
+// forged addresses bought as many as the sender cared to send; a peer could separately hold a gap
+// open and post sixty thousand packets behind it, which is eighty megabytes of held payload for
+// one connection. Neither is a way in, but both are a way to use this machine up.
+constexpr size_t kMaxPeers = 16;
+constexpr size_t kMaxHeldReliable = 64;
 
 enum class PacketKind : uint8_t
 {
@@ -258,6 +270,7 @@ private:
     PeerId m_nextPeerId = kHostPeer + 1;
     float m_connectTimer = 0.0f;
     float m_connectElapsed = 0.0f;
+    bool m_peersFullReported = false;
     bool m_listening = false;
     bool m_connecting = false;
 };
@@ -571,6 +584,16 @@ void UdpTransport::DeliverReliable(Peer& peer, uint16_t sequence, const uint8_t*
     {
         // Arrived early. Hold it until the gap in front is filled, because reliable means in order
         // as well as eventually.
+        //
+        // Only so far ahead, though. Nothing makes the sender fill the gap, and a peer that never
+        // does can post as many packets behind it as it likes: sixty thousand sequence numbers of
+        // held payload is eighty megabytes for one connection. Anything further out than this is
+        // dropped, which costs a well-behaved sender nothing because reliable packets are resent
+        // until acknowledged and this one never was.
+        if (peer.received.size() >= kMaxHeldReliable)
+        {
+            return;
+        }
         const bool known = std::any_of(peer.received.begin(), peer.received.end(),
                                        [&](const Buffered& held) { return held.sequence == sequence; });
         if (!known)
@@ -641,6 +664,17 @@ void UdpTransport::HandleDatagram(const uint8_t* data, size_t bytes, const socka
         }
         if (peer == nullptr)
         {
+            if (m_peers.size() >= kMaxPeers)
+            {
+                // Full. Said once rather than once a datagram, because the thing that fills this is
+                // a flood and logging a flood is the flood's job done for it.
+                if (!m_peersFullReported)
+                {
+                    m_peersFullReported = true;
+                    PRED_LOG_WARN(Network, "Refusing new connections: {} peers already", m_peers.size());
+                }
+                return;
+            }
             peer = &AddPeer(from, m_nextPeerId++);
             peer->established = true;
             m_connected.push_back(peer->id);

@@ -234,3 +234,37 @@ TEST_CASE("The host can say where it can be reached", "[net][udp]")
     }
     CHECK(joined);
 }
+
+TEST_CASE("A host stops taking peers rather than growing without limit", "[net][udp][security]")
+{
+    // An open UDP port is reachable by anybody who knows the address, and a connect request is the
+    // cheapest thing to send: one datagram bought a peer with two vectors in it, and a stream of
+    // datagrams with different source addresses bought as many as the sender cared to send. Not a
+    // way in, but a way to use the machine up. A full game is four players.
+    auto host = CreateUdpTransport(99u);
+    REQUIRE(host->Listen(41200));
+
+    std::vector<std::unique_ptr<Transport>> callers;
+    for (int i = 0; i < 24; ++i)
+    {
+        auto caller = CreateUdpTransport(static_cast<uint32_t>(200 + i));
+        REQUIRE(caller->Connect("127.0.0.1", 41200));
+        callers.push_back(std::move(caller));
+    }
+
+    std::vector<NetPacket> packets;
+    for (int i = 0; i < 40; ++i)
+    {
+        host->Poll(kTick, packets);
+        for (auto& caller : callers)
+        {
+            caller->Poll(kTick, packets);
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
+
+    INFO("the host took " << host->Peers().size() << " of 24 callers");
+    CHECK(host->Peers().size() <= 16);
+    // And it still took some, so the limit is a limit rather than a refusal to work.
+    CHECK(host->Peers().size() >= 4);
+}

@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cctype>
 #include <chrono>
+#include <thread>
 #include <cstring>
 #include <vector>
 
@@ -29,6 +30,10 @@ namespace pred
 {
 namespace
 {
+
+// How long a mapping is asked for, in seconds. Renewed at well under this while the game is up, so
+// the only thing the number decides is how long a hole stays open after a crash.
+constexpr int kLeaseSeconds = 3600;
 
 void CloseSocketHandle(SocketHandle handle)
 {
@@ -99,6 +104,45 @@ struct Url
     uint16_t port = 80;
     std::string path;
 };
+
+// Whether a piece of text is a dotted IPv4 address and nothing else.
+bool IsIPv4(const std::string& text)
+{
+    in_addr address{};
+    return !text.empty() && inet_pton(AF_INET, text.c_str(), &address) == 1;
+}
+
+// And whether that address is one of the ranges that only exist inside a building.
+//
+// A router is on the local network by definition. Everything this file does afterwards is driven by
+// an address that arrived in a datagram from whatever felt like answering, so this is the line
+// between "ask the router on this network" and "connect to wherever a stranger on this network
+// said to". It is not a strong boundary and it is not meant to be one; it is the boundary that
+// matches what the feature is for.
+bool IsPrivateAddress(const std::string& text)
+{
+    in_addr address{};
+    if (inet_pton(AF_INET, text.c_str(), &address) != 1)
+    {
+        return false;
+    }
+    const uint32_t host = ntohl(address.s_addr);
+    const uint8_t top = static_cast<uint8_t>(host >> 24);
+    const uint8_t second = static_cast<uint8_t>((host >> 16) & 0xFF);
+    if (top == 10 || top == 127)
+    {
+        return true;
+    }
+    if (top == 172 && second >= 16 && second <= 31)
+    {
+        return true;
+    }
+    if (top == 192 && second == 168)
+    {
+        return true;
+    }
+    return top == 169 && second == 254; // link-local, for a network with no server handing addresses out
+}
 
 bool ParseUrl(const std::string& text, Url& out)
 {
@@ -275,12 +319,28 @@ std::vector<std::string> DiscoverGatewayDescriptions()
     char buffer[2048];
     while (std::chrono::steady_clock::now() < until)
     {
-        const int read = recv(handle, buffer, static_cast<int>(sizeof(buffer)) - 1, 0);
+        sockaddr_in from{};
+#if defined(_WIN32)
+        int fromLength = static_cast<int>(sizeof(from));
+#else
+        socklen_t fromLength = sizeof(from);
+#endif
+        const int read = recvfrom(handle, buffer, static_cast<int>(sizeof(buffer)) - 1, 0,
+                                  reinterpret_cast<sockaddr*>(&from), &fromLength);
         if (read <= 0)
         {
             continue;
         }
         buffer[read] = '\0';
+        // Who answered. Everything after this is a request made to an address that came out of this
+        // datagram, so the address has to be the one that sent it: anything on the network can
+        // answer a search, and without this check anything on the network could name any host and
+        // port in the world and have the game go and talk to it.
+        char sender[INET_ADDRSTRLEN] = {};
+        if (inet_ntop(AF_INET, &from.sin_addr, sender, sizeof(sender)) == nullptr)
+        {
+            continue;
+        }
         const std::string reply(buffer, static_cast<size_t>(read));
         const std::string lower = Lowercase(reply);
         const size_t at = lower.find("location:");
@@ -295,8 +355,21 @@ std::vector<std::string> DiscoverGatewayDescriptions()
         }
         const size_t end = reply.find_first_of("\r\n", start);
         std::string location = reply.substr(start, end == std::string::npos ? std::string::npos : end - start);
-        if (!location.empty() &&
-            std::find(locations.begin(), locations.end(), location) == locations.end())
+        Url parsed;
+        if (!ParseUrl(location, parsed))
+        {
+            continue;
+        }
+        // The description has to live on the device that answered, and that device has to be on
+        // this network. Both together mean the only thing a search can make this machine do is talk
+        // to a machine that was already talking to it.
+        if (parsed.host != sender || !IsPrivateAddress(parsed.host))
+        {
+            PRED_LOG_WARN(Network, "Ignoring a search reply from {} pointing at {}", sender,
+                          parsed.host);
+            continue;
+        }
+        if (std::find(locations.begin(), locations.end(), location) == locations.end())
         {
             locations.push_back(std::move(location));
         }
@@ -335,11 +408,25 @@ bool FindConnectionService(const std::string& description, const Url& base, std:
                 continue;
             }
 
+            // An absolute control URL has to stay on the device whose description this is. A
+            // description is a document fetched over the network, so a device that wanted to could
+            // otherwise name any host in the world here and have the game post to it.
+            if (control.rfind("http://", 0) == 0)
+            {
+                Url absolute;
+                if (!ParseUrl(control, absolute) || absolute.host != base.host)
+                {
+                    at += std::strlen(wanted);
+                    continue;
+                }
+                outUrl = control;
+            }
+            else
+            {
+                outUrl = "http://" + base.host + ":" + std::to_string(base.port) +
+                         (control.front() == '/' ? control : "/" + control);
+            }
             outType = type;
-            outUrl = control.rfind("http://", 0) == 0
-                         ? control
-                         : "http://" + base.host + ":" + std::to_string(base.port) +
-                               (control.front() == '/' ? control : "/" + control);
             return true;
         }
     }
@@ -555,19 +642,36 @@ void PortMapper::Run(uint16_t port)
             continue;
         }
 
-        // Asked for with no lease, because a lease that expires mid-game closes the door on
-        // everybody who is already through it. It is taken down on the way out instead.
-        const std::string arguments =
-            "<NewRemoteHost></NewRemoteHost><NewExternalPort>" + std::to_string(port) +
-            "</NewExternalPort><NewProtocol>UDP</NewProtocol><NewInternalPort>" + std::to_string(port) +
-            "</NewInternalPort><NewInternalClient>" + internal +
-            "</NewInternalClient><NewEnabled>1</NewEnabled>"
-            "<NewPortMappingDescription>Project Predation</NewPortMappingDescription>"
-            "<NewLeaseDuration>0</NewLeaseDuration>";
-        std::string reply;
-        if (!SoapAction(controlUrl, serviceType, "AddPortMapping", arguments, reply))
+        // Asked for with a lease, and renewed while the game is up.
+        //
+        // A mapping with no lease lasts until something deletes it, and the thing that deletes this
+        // one is the game shutting down tidily. A game that crashes, or a machine that loses power,
+        // therefore leaves a hole in the router pointing at a port nothing is listening on, and
+        // leaves it there for ever. An hour's lease that is renewed every twenty minutes behaves
+        // the same way while the game is running and closes itself within the hour if it is not.
+        //
+        // Some firmwares refuse any lease but zero, which is not a reason to give up on the
+        // feature, so that is what the second attempt is for.
+        const auto mappingArguments = [&](int leaseSeconds)
         {
-            continue;
+            return "<NewRemoteHost></NewRemoteHost><NewExternalPort>" + std::to_string(port) +
+                   "</NewExternalPort><NewProtocol>UDP</NewProtocol><NewInternalPort>" +
+                   std::to_string(port) + "</NewInternalPort><NewInternalClient>" + internal +
+                   "</NewInternalClient><NewEnabled>1</NewEnabled>"
+                   "<NewPortMappingDescription>Project Predation</NewPortMappingDescription>"
+                   "<NewLeaseDuration>" +
+                   std::to_string(leaseSeconds) + "</NewLeaseDuration>";
+        };
+        std::string reply;
+        int lease = kLeaseSeconds;
+        if (!SoapAction(controlUrl, serviceType, "AddPortMapping", mappingArguments(lease), reply))
+        {
+            lease = 0;
+            if (!SoapAction(controlUrl, serviceType, "AddPortMapping", mappingArguments(lease), reply))
+            {
+                continue;
+            }
+            PRED_LOG_INFO(Network, "Router would not take a lease; the mapping is open ended");
         }
 
         m_controlUrl = controlUrl;
@@ -579,6 +683,13 @@ void PortMapper::Run(uint16_t port)
         if (SoapAction(controlUrl, serviceType, "GetExternalIPAddress", {}, addressReply))
         {
             external = Tag(addressReply, "NewExternalIPAddress");
+        }
+        // Checked before it is put on the screen for somebody to copy and send to a friend. It is
+        // whatever text the router put between two tags, and an address that is not an address is
+        // worse than no address: it reads as the feature having worked.
+        if (!IsIPv4(external))
+        {
+            external.clear();
         }
 
         {
@@ -592,6 +703,25 @@ void PortMapper::Run(uint16_t port)
         m_state.store(State::Open);
         PRED_LOG_INFO(Network, "Router is forwarding UDP {} to {} (outside address {})", port, internal,
                       external.empty() ? "unknown" : external);
+
+        // Stay alive to renew it. The wait is in short slices so that quitting the game does not
+        // wait out a renewal interval before the mapping is taken down.
+        if (lease > 0)
+        {
+            float sinceRenewed = 0.0f;
+            while (!m_cancel.load())
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(200));
+                sinceRenewed += 0.2f;
+                if (sinceRenewed >= static_cast<float>(lease) * 0.4f)
+                {
+                    sinceRenewed = 0.0f;
+                    std::string renewal;
+                    SoapAction(controlUrl, serviceType, "AddPortMapping", mappingArguments(lease),
+                               renewal);
+                }
+            }
+        }
         return;
     }
 
