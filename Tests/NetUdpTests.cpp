@@ -9,6 +9,7 @@
 #include <memory>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 using namespace pred;
@@ -277,41 +278,60 @@ namespace
 
 // Two of these wired to each other are a pipe: what one sends, the other receives. It stands in for
 // a connection punched through two routers, which is a thing no test can make happen.
+//
+// A carrier can have several far ends, so this one can be joined to several partners. Link n is
+// whoever was joined nth, on both sides, which is the same arrangement the game makes: the host
+// adds a link per invitation and the guest who answers it has that host as its only link.
 class PairedCarrier final : public DatagramCarrier
 {
 public:
-    bool Send(const uint8_t* data, size_t bytes) override
+    size_t Links() const override { return m_far.size(); }
+
+    bool Send(size_t link, const uint8_t* data, size_t bytes) override
     {
-        if (m_far == nullptr)
+        if (link >= m_far.size() || m_far[link] == nullptr)
         {
             return false;
         }
-        m_far->m_incoming.emplace_back(data, data + bytes);
+        // Delivered to the link the far side holds this one under, which is not always the same
+        // number: the host may know a guest as link 2 while that guest knows the host as link 0.
+        PairedCarrier* target = m_far[link];
+        size_t back = 0;
+        for (size_t i = 0; i < target->m_far.size(); ++i)
+        {
+            if (target->m_far[i] == this)
+            {
+                back = i;
+                break;
+            }
+        }
+        target->m_incoming.emplace_back(back, std::vector<uint8_t>(data, data + bytes));
         return true;
     }
 
-    bool Receive(std::vector<uint8_t>& out) override
+    bool Receive(size_t& link, std::vector<uint8_t>& out) override
     {
         if (m_incoming.empty())
         {
             return false;
         }
-        out = std::move(m_incoming.front());
+        link = m_incoming.front().first;
+        out = std::move(m_incoming.front().second);
         m_incoming.erase(m_incoming.begin());
         return true;
     }
 
-    bool Live() const override { return m_far != nullptr; }
+    bool Live(size_t link) const override { return link < m_far.size() && m_far[link] != nullptr; }
 
     static void Join(const std::shared_ptr<PairedCarrier>& a, const std::shared_ptr<PairedCarrier>& b)
     {
-        a->m_far = b.get();
-        b->m_far = a.get();
+        a->m_far.push_back(b.get());
+        b->m_far.push_back(a.get());
     }
 
 private:
-    PairedCarrier* m_far = nullptr;
-    std::vector<std::vector<uint8_t>> m_incoming;
+    std::vector<PairedCarrier*> m_far;
+    std::vector<std::pair<size_t, std::vector<uint8_t>>> m_incoming;
 };
 
 } // namespace
@@ -456,4 +476,117 @@ TEST_CASE("Two ends punch through to each other and the game runs over it", "[ne
     REQUIRE(clientPeer != kInvalidPeer);
     REQUIRE_FALSE(atClient.empty());
     CHECK(std::string(atClient.front().bytes.begin(), atClient.front().bytes.end()) == message);
+}
+
+TEST_CASE("A host takes a full lobby over punched connections", "[net][udp][ice]")
+{
+    // A punched hole joins two machines and no more, so a carrier used to be a single pipe and a
+    // game over the internet was two players however large the lobby said it was. The host now
+    // holds one link per guest, each becoming an ordinary peer with its own stand-in address, so
+    // everything above this — the reliability, the roster, the snapshots — is unchanged and does
+    // not know the difference between a punched link and a socket.
+    auto hostCarrier = std::make_shared<PairedCarrier>();
+    std::vector<std::shared_ptr<PairedCarrier>> guestCarriers;
+    for (int i = 0; i < 3; ++i)
+    {
+        guestCarriers.push_back(std::make_shared<PairedCarrier>());
+        PairedCarrier::Join(hostCarrier, guestCarriers.back());
+    }
+    REQUIRE(hostCarrier->Links() == 3);
+
+    auto host = CreateCarrierTransport(hostCarrier, 11u);
+    std::vector<std::unique_ptr<Transport>> guests;
+    for (int i = 0; i < 3; ++i)
+    {
+        guests.push_back(CreateCarrierTransport(guestCarriers[static_cast<size_t>(i)],
+                                                static_cast<uint32_t>(20 + i)));
+        REQUIRE(guests.back() != nullptr);
+    }
+
+    REQUIRE(host->Listen(0));
+    for (auto& guest : guests)
+    {
+        REQUIRE(guest->Connect("ignored", 0));
+    }
+
+    std::vector<NetPacket> atHost;
+    std::vector<std::vector<NetPacket>> atGuest(guests.size());
+    const auto pump = [&](int ticks)
+    {
+        for (int i = 0; i < ticks; ++i)
+        {
+            std::vector<NetPacket> batch;
+            host->Poll(kTick, batch);
+            for (NetPacket& packet : batch)
+            {
+                atHost.push_back(std::move(packet));
+            }
+            for (size_t g = 0; g < guests.size(); ++g)
+            {
+                batch.clear();
+                guests[g]->Poll(kTick, batch);
+                for (NetPacket& packet : batch)
+                {
+                    atGuest[g].push_back(std::move(packet));
+                }
+            }
+        }
+    };
+
+    pump(20);
+
+    // Three guests, three peers, told apart.
+    INFO("host holds " << host->Peers().size() << " peers");
+    REQUIRE(host->Peers().size() == 3);
+    const std::vector<PeerId> peers = host->Peers();
+    CHECK(peers[0] != peers[1]);
+    CHECK(peers[1] != peers[2]);
+    CHECK(peers[0] != peers[2]);
+
+    // A message to one guest reaches that guest and nobody else. This is the part a single shared
+    // pipe cannot do at all: everything sent went to everyone.
+    const std::string secret = "only for the second";
+    host->Send(peers[1], Channel::Reliable, reinterpret_cast<const uint8_t*>(secret.data()),
+               secret.size());
+    pump(20);
+
+    const auto heard = [&](size_t guest)
+    {
+        for (const NetPacket& packet : atGuest[guest])
+        {
+            if (std::string(packet.bytes.begin(), packet.bytes.end()) == secret)
+            {
+                return true;
+            }
+        }
+        return false;
+    };
+    CHECK_FALSE(heard(0));
+    CHECK(heard(1));
+    CHECK_FALSE(heard(2));
+
+    // And each guest's own words come back tagged with the right sender.
+    for (size_t g = 0; g < guests.size(); ++g)
+    {
+        const std::string line = "guest " + std::to_string(g);
+        guests[g]->Send(kHostPeer, Channel::Reliable, reinterpret_cast<const uint8_t*>(line.data()),
+                        line.size());
+    }
+    pump(20);
+
+    int matched = 0;
+    for (const NetPacket& packet : atHost)
+    {
+        const std::string text(packet.bytes.begin(), packet.bytes.end());
+        for (size_t g = 0; g < guests.size(); ++g)
+        {
+            if (text == "guest " + std::to_string(g))
+            {
+                CHECK(packet.peer == peers[g]);
+                ++matched;
+            }
+        }
+    }
+    INFO("matched " << matched << " of 3 guest messages to the right peer");
+    CHECK(matched == 3);
 }

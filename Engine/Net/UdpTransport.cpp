@@ -101,16 +101,27 @@ uint32_t ReadU32(const uint8_t* at)
            (static_cast<uint32_t>(at[2]) << 16) | (static_cast<uint32_t>(at[3]) << 24);
 }
 
-// The stand-in address for the far end of a carrier. A carrier has one and only one, so the value
-// is arbitrary; it exists because everything downstream addresses peers by one. Chosen outside any
-// range a real game would use, so that it can never be confused with a machine.
-sockaddr_in CarrierAddress()
+// A stand-in address for one of a carrier's far ends.
+//
+// Nothing routes to these and nothing outside this process ever sees them. They exist so that a
+// carrier's links can go through the same peer table, the same reliability and the same timeouts as
+// real addresses: 0.0.0.1, 0.0.0.2 and so on, one per link. The alternative was a second set of
+// machinery that did the same work for punched connections, which is how two implementations of
+// acknowledgement end up disagreeing about what arrived.
+sockaddr_in CarrierAddress(size_t link)
 {
     sockaddr_in address{};
     address.sin_family = AF_INET;
     address.sin_port = htons(1);
-    address.sin_addr.s_addr = htonl(0x00000001u);
+    address.sin_addr.s_addr = htonl(static_cast<uint32_t>(link) + 1u);
     return address;
+}
+
+// And back again, so a datagram addressed to a peer knows which link to leave by.
+size_t CarrierLinkOf(const sockaddr_in& address)
+{
+    const uint32_t host = ntohl(address.sin_addr.s_addr);
+    return host == 0 ? 0 : static_cast<size_t>(host - 1u);
 }
 
 bool SameAddress(const sockaddr_in& a, const sockaddr_in& b)
@@ -373,7 +384,8 @@ bool UdpTransport::Connect(const std::string& address, uint16_t port)
     // peers by one, has something to hold.
     if (m_carrier != nullptr)
     {
-        m_hostAddress = CarrierAddress();
+        // A client has exactly one far end: the host.
+        m_hostAddress = CarrierAddress(0);
         Peer& peer = AddPeer(m_hostAddress, kHostPeer);
         peer.established = false;
         m_connecting = true;
@@ -530,9 +542,8 @@ void UdpTransport::SendRaw(const std::vector<uint8_t>& datagram, const sockaddr_
 {
     if (m_carrier != nullptr)
     {
-        // One far end, so the address says nothing and is not consulted.
-        (void)address;
-        m_carrier->Send(datagram.data(), datagram.size());
+        // The address is a stand-in, and which stand-in it is says which link to send on.
+        m_carrier->Send(CarrierLinkOf(address), datagram.data(), datagram.size());
         return;
     }
     if (m_socket == kInvalidSocket)
@@ -821,19 +832,20 @@ void UdpTransport::Receive(std::vector<NetPacket>& out)
 {
     if (m_carrier != nullptr)
     {
-        // Everything waiting, up to the same bound a socket gets, and all of it from the one far
-        // end the carrier has.
-        const sockaddr_in from = CarrierAddress();
+        // Everything waiting, up to the same bound a socket gets. Which link a datagram arrived
+        // on becomes which stand-in address it came from, so the peer table tells the far ends
+        // apart exactly as it would tell two real addresses apart.
         std::vector<uint8_t> datagram;
         for (int guard = 0; guard < 256; ++guard)
         {
-            if (!m_carrier->Receive(datagram))
+            size_t link = 0;
+            if (!m_carrier->Receive(link, datagram))
             {
                 return;
             }
             if (!datagram.empty())
             {
-                HandleDatagram(datagram.data(), datagram.size(), from, out);
+                HandleDatagram(datagram.data(), datagram.size(), CarrierAddress(link), out);
             }
         }
         return;

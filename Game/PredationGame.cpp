@@ -1715,6 +1715,7 @@ void PredationGame::EnterWorld()
     ResetWorld();
     m_screen = Screen::Playing;
     m_paused = false;
+    m_inviteOpen = false;
     m_titleStatus.clear();
     SetCameraMode(CameraMode::FirstPerson);
     m_wantMouseCaptured = true;
@@ -1929,12 +1930,12 @@ void PredationGame::DrawTitleJoin()
     ImGui::PopTextWrapPos();
 
     ImGui::SetNextItemWidth(-1.0f);
-    ImGui::InputText("##joinwhatever", m_punchCode, sizeof(m_punchCode));
+    ImGui::InputText("##joinwhatever", m_joinInput, sizeof(m_joinInput));
     if (ImGui::Button("Paste from the clipboard", wide))
     {
         if (const char* clip = ImGui::GetClipboardText(); clip != nullptr)
         {
-            std::snprintf(m_punchCode, sizeof(m_punchCode), "%s", clip);
+            std::snprintf(m_joinInput, sizeof(m_joinInput), "%s", clip);
         }
     }
 
@@ -1943,20 +1944,21 @@ void PredationGame::DrawTitleJoin()
         // One box, and the game works out which of the two it was handed. A code is a code and
         // nothing else looks like one, so there is nothing to ask the player about.
         std::string decoded;
-        if (DecodeIceCode(m_punchCode, decoded))
+        if (DecodeIceCode(m_joinInput, decoded))
         {
-            const std::string code = m_punchCode;
+            const std::string code = m_joinInput;
             StartPunchedSession(false);
-            if (m_link != nullptr && !m_link->SetRemoteCode(code))
+            if (!m_punchLinks.empty() && m_punchLinks.front() != nullptr &&
+                !m_punchLinks.front()->SetRemoteCode(code))
             {
-                m_titleStatus = m_link->Message();
+                m_titleStatus = m_punchLinks.front()->Message();
             }
             return;
         }
 
         // An address, then, with the port on the end of it if there is one. The panel that hands
         // these out writes them that way, because that is how anybody writes one down.
-        std::string address = m_punchCode;
+        std::string address = m_joinInput;
         int port = m_joinPort;
         if (const size_t colon = address.rfind(':'); colon != std::string::npos)
         {
@@ -2006,43 +2008,58 @@ void PredationGame::DrawTitleJoin()
         ImGui::PopTextWrapPos();
     }
 }
+size_t PredationGame::AddPunchLink()
+{
+    if (m_iceCarrier == nullptr)
+    {
+        m_iceCarrier = std::make_shared<IceCarrier>();
+    }
+    auto link = std::make_shared<IceLink>();
+    link->Start(IceLink::Settings{});
+    const size_t index = m_iceCarrier->Add(link);
+    m_punchLinks.push_back(std::move(link));
+    if (m_punchSlots.size() < m_punchLinks.size())
+    {
+        m_punchSlots.resize(m_punchLinks.size());
+    }
+    return index;
+}
+
 void PredationGame::StartPunchedSession(bool asHost)
 {
     StopSession();
+    StopPunchedSession();
     m_punching = true;
     m_punchingAsHost = asHost;
-    m_punchCode[0] = '\0';
-    m_link = std::make_shared<IceLink>();
-    m_link->Start(IceLink::Settings{});
+    AddPunchLink();
 }
 
 void PredationGame::StopPunchedSession()
 {
     m_punching = false;
-    m_link.reset();
-    m_punchCode[0] = '\0';
+    m_inviteOpen = false;
+    m_punchLinks.clear();
+    m_punchSlots.clear();
+    m_iceCarrier.reset();
 }
 
-void PredationGame::DrawPunchThrough()
+void PredationGame::DrawPunchSlot(size_t slot)
 {
-    const ImVec2 wide{-1.0f, 32.0f};
-    ImGui::SetWindowFontScale(1.2f);
-    ImGui::TextUnformatted(m_punchingAsHost ? "Opening a game" : "Joining a game");
-    ImGui::SetWindowFontScale(1.0f);
-    ImGui::Separator();
-    ImGui::Spacing();
-
-    if (m_link == nullptr)
+    if (slot >= m_punchLinks.size() || m_punchLinks[slot] == nullptr)
     {
-        StopPunchedSession();
         return;
     }
+    IceLink& link = *m_punchLinks[slot];
+    PunchSlot& state = m_punchSlots[slot];
 
-    const IceLink::State state = m_link->Status();
-    const std::string code = m_link->LocalCode();
+    const ImVec2 wide{-1.0f, 30.0f};
+    ImGui::PushID(static_cast<int>(slot));
+
+    const IceLink::State status = link.Status();
+    const std::string code = link.LocalCode();
 
     ImGui::PushTextWrapPos(0.0f);
-    switch (state)
+    switch (status)
     {
     case IceLink::State::Gathering:
         ImGui::TextUnformatted("Working out how this connection looks from outside...");
@@ -2055,7 +2072,7 @@ void PredationGame::DrawPunchThrough()
         ImGui::TextColored({0.70f, 0.95f, 0.75f, 1.0f}, "Through.");
         break;
     case IceLink::State::Failed:
-        ImGui::TextColored({0.90f, 0.55f, 0.35f, 1.0f}, "%s", m_link->Message().c_str());
+        ImGui::TextColored({0.90f, 0.55f, 0.35f, 1.0f}, "%s", link.Message().c_str());
         break;
     case IceLink::State::Idle:
     default:
@@ -2063,66 +2080,157 @@ void PredationGame::DrawPunchThrough()
     }
     ImGui::PopTextWrapPos();
 
-    if (!code.empty() && state != IceLink::State::Connected)
+    if (!code.empty() && status != IceLink::State::Connected)
     {
         ImGui::Spacing();
         if (ImGui::Button("Copy my code", wide))
         {
             ImGui::SetClipboardText(code.c_str());
         }
-        // Shown as well as copied, because a button that says it copied something and a clipboard
-        // that did not are indistinguishable from here.
-        ImGui::TextDisabled("%zu characters, starting %.16s...", code.size(), code.c_str());
-
         ImGui::Spacing();
-        ImGui::TextUnformatted("Their code");
         ImGui::SetNextItemWidth(-1.0f);
-        ImGui::InputText("##theircode", m_punchCode, sizeof(m_punchCode));
-        if (ImGui::Button("Paste from the clipboard", wide))
+        ImGui::InputTextWithHint("##theircode", "paste their code here", state.code,
+                                 sizeof(state.code));
+        if (!link.HasRemote() && ImGui::Button("Use it", wide))
         {
-            if (const char* clip = ImGui::GetClipboardText(); clip != nullptr)
+            if (!link.SetRemoteCode(state.code))
             {
-                std::snprintf(m_punchCode, sizeof(m_punchCode), "%s", clip);
-            }
-        }
-        if (!m_link->HasRemote() && ImGui::Button("Use it", wide))
-        {
-            if (!m_link->SetRemoteCode(m_punchCode))
-            {
-                m_titleStatus = m_link->Message();
+                m_titleStatus = link.Message();
             }
             else
             {
                 m_titleStatus.clear();
             }
         }
-        if (m_link->HasRemote())
+        if (link.HasRemote())
         {
             ImGui::TextDisabled("Waiting for the two ends to find each other...");
         }
-        if (!m_titleStatus.empty())
+    }
+
+    ImGui::PopID();
+}
+
+void PredationGame::AdoptConnectedLinks()
+{
+    // A link that has just come through is noted, once.
+    //
+    // There is nothing to hand over: the transport already holds the carrier and the carrier
+    // already holds every link, so a link coming through only means that one now carries traffic,
+    // and the peer appears on its own. All this does is remember that the slot is live, so the
+    // panel stops offering to negotiate it again.
+    for (size_t i = 0; i < m_punchLinks.size() && i < m_punchSlots.size(); ++i)
+    {
+        if (m_punchLinks[i] != nullptr && !m_punchSlots[i].started &&
+            m_punchLinks[i]->Status() == IceLink::State::Connected)
         {
-            ImGui::PushTextWrapPos(0.0f);
-            ImGui::TextColored({0.90f, 0.55f, 0.35f, 1.0f}, "%s", m_titleStatus.c_str());
-            ImGui::PopTextWrapPos();
+            m_punchSlots[i].started = true;
+            PRED_LOG_INFO(Network, "Punched connection {} is through", i);
         }
+    }
+}
+
+void PredationGame::DrawInvitePanel()
+{
+    // Invitations while the game is running.
+    //
+    // The first guest is negotiated from the title screen, before there is a game to be in. Every
+    // one after that arrives while the host is already playing, so this lives on the pause menu:
+    // asking a host to leave the game and start again to let a third person in is not a lobby.
+    const ImVec2 wide{-1.0f, 32.0f};
+    ImGui::SetWindowFontScale(1.2f);
+    ImGui::TextUnformatted("Invite");
+    ImGui::SetWindowFontScale(1.0f);
+    ImGui::Separator();
+    ImGui::Spacing();
+
+    const int inLobby = 1 + static_cast<int>(m_host.ConnectedCount());
+    ImGui::Text("%d of %d in the game", inLobby, static_cast<int>(kMaxPlayers));
+
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextDisabled("One code per person. Swap codes with them over chat; nothing needs "
+                        "forwarding at either end.");
+    ImGui::PopTextWrapPos();
+
+    for (size_t i = 0; i < m_punchLinks.size(); ++i)
+    {
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Text("Invitation %d", static_cast<int>(i + 1));
+        DrawPunchSlot(i);
+    }
+
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Spacing();
+    // One invitation per seat that is not the host's.
+    const bool room = static_cast<int>(m_punchLinks.size()) < static_cast<int>(kMaxPlayers) - 1;
+    ImGui::BeginDisabled(!room);
+    if (ImGui::Button("Invite another player", wide))
+    {
+        AddPunchLink();
+    }
+    ImGui::EndDisabled();
+    if (!room)
+    {
+        ImGui::TextDisabled("That is everybody this lobby holds.");
+    }
+
+    if (!m_titleStatus.empty())
+    {
+        ImGui::PushTextWrapPos(0.0f);
+        ImGui::TextColored({0.90f, 0.55f, 0.35f, 1.0f}, "%s", m_titleStatus.c_str());
+        ImGui::PopTextWrapPos();
+    }
+
+    ImGui::Spacing();
+    if (ImGui::Button("Back", wide))
+    {
+        m_inviteOpen = false;
+    }
+}
+
+void PredationGame::DrawPunchThrough()
+{
+    const ImVec2 wide{-1.0f, 32.0f};
+    ImGui::SetWindowFontScale(1.2f);
+    ImGui::TextUnformatted(m_punchingAsHost ? "Opening a game" : "Joining a game");
+    ImGui::SetWindowFontScale(1.0f);
+    ImGui::Separator();
+    ImGui::Spacing();
+
+    if (m_punchLinks.empty() || m_punchLinks.front() == nullptr)
+    {
+        StopPunchedSession();
+        return;
+    }
+
+    // The first invitation only. The rest are handed out from the pause menu once the game is
+    // running, because the second and third players do not turn up at the same moment as the first.
+    DrawPunchSlot(0);
+
+    if (!m_titleStatus.empty())
+    {
+        ImGui::PushTextWrapPos(0.0f);
+        ImGui::TextColored({0.90f, 0.55f, 0.35f, 1.0f}, "%s", m_titleStatus.c_str());
+        ImGui::PopTextWrapPos();
     }
 
     // Through: the game runs over it exactly as it runs over a socket.
-    if (state == IceLink::State::Connected)
+    if (m_punchLinks.front()->Status() == IceLink::State::Connected)
     {
-        auto carrier = std::make_shared<IceCarrier>(m_link);
         if (m_punchingAsHost)
         {
             NetHost::Config config;
             config.port = static_cast<uint16_t>(m_hostPort);
             config.name = PlayerName();
-            auto transport = CreateCarrierTransport(carrier);
+            auto transport = CreateCarrierTransport(m_iceCarrier);
             if (m_host.Start(std::move(transport), config, m_app->GetPhysics(), m_player.Config(),
                              m_spawnPoint))
             {
                 m_sessionMode = SessionMode::Host;
                 m_punching = false;
+                m_punchSlots[0].started = true;
                 EnterWorld();
                 return;
             }
@@ -2130,13 +2238,14 @@ void PredationGame::DrawPunchThrough()
         }
         else
         {
-            auto transport = CreateCarrierTransport(carrier);
+            auto transport = CreateCarrierTransport(m_iceCarrier);
             NetClient::Config config;
             if (m_client.Connect(std::move(transport), "punched", 0, PlayerName(), config))
             {
                 m_sessionMode = SessionMode::Client;
                 m_player.SetDecidesDamage(false);
                 m_punching = false;
+                m_punchSlots[0].started = true;
                 m_titleStatus.clear();
                 return;
             }
@@ -2270,6 +2379,13 @@ void PredationGame::DrawPauseMenu()
         return;
     }
 
+    if (m_inviteOpen)
+    {
+        DrawInvitePanel();
+        ImGui::End();
+        return;
+    }
+
     ImGui::SetWindowFontScale(1.6f);
     ImGui::TextUnformatted("Paused");
     ImGui::SetWindowFontScale(1.0f);
@@ -2285,6 +2401,21 @@ void PredationGame::DrawPauseMenu()
     if (ImGui::Button("Settings", wide))
     {
         m_settingsOpen = true;
+    }
+
+    // Letting somebody else in, while hosting a game that was opened over the internet.
+    //
+    // Only there: a game on a local network is joined by typing the host's address, and a client is
+    // not in a position to invite anybody. Offered from the pause menu because the second and third
+    // players do not arrive at the same moment as the first, and going back to the title screen to
+    // let one in would end the game for everybody already in it.
+    if (m_sessionMode == SessionMode::Host && m_iceCarrier != nullptr)
+    {
+        ImGui::Spacing();
+        if (ImGui::Button("Invite someone", wide))
+        {
+            m_inviteOpen = true;
+        }
     }
     // In a session the world carries on without you, and saying so is better than letting somebody
     // believe they have stopped the game everyone else is in.
@@ -3324,10 +3455,10 @@ void PredationGame::RegisterNetCommands()
             // connection can be described to another at all. If no code ever appears, nothing
             // further is going to work either, and that is worth being able to find out without a
             // second person on the other end of a chat window.
-            m_link = std::make_shared<IceLink>();
-            if (!m_link->Start(IceLink::Settings{}))
+            m_probeLink = std::make_shared<IceLink>();
+            if (!m_probeLink->Start(IceLink::Settings{}))
             {
-                m_app->GetConsole().PrintError(m_link->Message());
+                m_app->GetConsole().PrintError(m_probeLink->Message());
                 return;
             }
             m_punchReportIn = 300; // five seconds of frames
@@ -5433,11 +5564,12 @@ void PredationGame::OnUpdate(double dt, double alpha)
     }
 
     AgeTracers(deltaSeconds);
+    AdoptConnectedLinks();
     // The console asked how this connection looks from outside; say so when the answer arrives.
-    if (m_punchReportIn > 0 && m_link != nullptr)
+    if (m_punchReportIn > 0 && m_probeLink != nullptr)
     {
         --m_punchReportIn;
-        const std::string code = m_link->LocalCode();
+        const std::string code = m_probeLink->LocalCode();
         if (!code.empty())
         {
             m_punchReportIn = 0;
@@ -5447,8 +5579,8 @@ void PredationGame::OnUpdate(double dt, double alpha)
         }
         else if (m_punchReportIn == 0)
         {
-            PRED_LOG_WARN(Network, "No punch code after five seconds: {}", m_link->Message());
-            m_app->GetConsole().PrintError("No answer in five seconds. " + m_link->Message());
+            PRED_LOG_WARN(Network, "No punch code after five seconds: {}", m_probeLink->Message());
+            m_app->GetConsole().PrintError("No answer in five seconds. " + m_probeLink->Message());
         }
     }
     UpdateSounds(deltaSeconds);

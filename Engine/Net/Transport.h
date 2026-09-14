@@ -118,11 +118,19 @@ class DatagramCarrier
 {
 public:
     virtual ~DatagramCarrier() = default;
-    virtual bool Send(const uint8_t* data, size_t bytes) = 0;
-    // The oldest datagram waiting, or false when there is none.
-    virtual bool Receive(std::vector<uint8_t>& out) = 0;
-    // False once the far end has gone or was never reached.
-    virtual bool Live() const = 0;
+
+    // How many far ends this carrier has.
+    //
+    // A hole punched through two routers joins exactly two machines, so one of these is one other
+    // player. A client needs one. A host needs one per person who joined, which is why this is a
+    // count rather than the single pipe it started as: with one, a game over the internet was two
+    // players and no more, whatever the lobby size said.
+    virtual size_t Links() const = 0;
+    virtual bool Send(size_t link, const uint8_t* data, size_t bytes) = 0;
+    // The oldest datagram waiting on any link, and which link it arrived on.
+    virtual bool Receive(size_t& link, std::vector<uint8_t>& out) = 0;
+    // False once that far end has gone or was never reached.
+    virtual bool Live(size_t link) const = 0;
 };
 
 // The same transport, over a carrier rather than over a socket of its own.

@@ -947,3 +947,31 @@ its two variants are the shortest in the pack at 255 and 260 ms, they are within
 level so alternating them does not read as a limp, and at a spectral centroid near 300 Hz they sit
 below the range you need clear to hear something moving in the dark. Metal's two variants are 414
 and 604 ms and 50% apart in level, which is the opposite of all three.
+
+## ADR-053: A host holds one punched connection per guest
+
+**Status**: accepted, 2026-09-14, extending ADR-048
+
+ADR-048 had two players dial each other and swap the number by hand. What it did not say, because
+it did not occur to anyone at the time, is that a hole punched through two routers joins exactly two
+machines. One carrier meant one far end, so a game played over the internet was two players and no
+more, whatever `kMaxPlayers` said. On one network four players already worked, because a UDP socket
+hears from everybody; that difference is what made it easy to miss.
+
+The host now holds one link per guest. `DatagramCarrier` gained a link index, and each link gets a
+stand-in address of its own — 0.0.0.1, 0.0.0.2 and so on — so every punched connection becomes an
+ordinary peer and goes through the same peer table, the same reliability, the same acknowledgements
+and the same timeouts as a real address. Nothing above the transport knows the difference. The
+alternative was a second set of machinery that did the same work for punched connections, which is
+how two implementations of acknowledgement end up disagreeing about what arrived.
+
+Receiving is round-robin across the links rather than draining each in turn, so one player sending
+hard, or one link with a backlog after a stall, cannot hold the others out of the frame.
+
+The signalling follows from it: one code swap per guest, not one per game. The first is negotiated
+from the title screen before there is a game to be in, and the rest from the pause menu while the
+host is already playing, because the second and third players do not arrive at the same moment as
+the first and going back to the menu to admit one would end the game for everybody in it.
+
+`kMaxPlayers` stays 4 and stays the only place the number is written. Nothing in the transport
+cares: it holds sixteen peers and the carrier holds as many links as it is given.
