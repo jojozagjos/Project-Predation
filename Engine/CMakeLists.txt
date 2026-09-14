@@ -90,6 +90,10 @@ set(PRED_ENGINE_SOURCES
     Net/Transport.h
     Net/UdpTransport.cpp
     Net/LoopbackTransport.cpp
+    Net/RelayProtocol.h
+    Net/RelayProtocol.cpp
+    Net/RelayServer.h
+    Net/RelayServer.cpp
     Net/PortMapper.h
     Net/PortMapper.cpp
 

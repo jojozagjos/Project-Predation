@@ -34,10 +34,11 @@ inline constexpr uint8_t kRelayNoSlot = 0xFF;
 
 // A lobby code is six characters from an alphabet chosen so nobody has to ask which letter it was.
 //
-// No O or 0, no I, L or 1: a code is read aloud over voice chat or typed off a screenshot, and
-// every one of those pairs is a mistake waiting to happen. Thirty-two symbols means five bits each
-// and a billion codes, which is far more than enough to make guessing one pointless.
-inline constexpr char kRelayCodeAlphabet[] = "23456789ABCDEFGHJKMNPQRSTUVWXYZ#";
+// Digits 2 to 9 and the letters, less I and O. Nought and one are gone because they are the things
+// people read O and I as, and with those four out what is left is exactly thirty-two symbols: five
+// bits each, six characters, a billion codes. A code is read aloud over voice chat or typed off a
+// screenshot, and every confusable pair is a mistake waiting to happen.
+inline constexpr char kRelayCodeAlphabet[] = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
 inline constexpr int kRelayCodeLength = 6;
 
 // Text to bits and back. Case is ignored on the way in, because nobody types a code the way it was

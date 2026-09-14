@@ -11,6 +11,7 @@ add_executable(PredationTests
     NetTests.cpp
     NetSessionTests.cpp
     NetUdpTests.cpp
+    RelayTests.cpp
     PhysicsTests.cpp
     AssetTests.cpp
     EditorTests.cpp
