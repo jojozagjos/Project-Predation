@@ -1425,7 +1425,43 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
         // sights on the axis. What can be had is the most barrel out of the wall that leaves the
         // receiver alone, and that is what this is: the correction pulls back and the floor below,
         // which keeps the back of the weapon in front of the near plane, decides how far it gets.
-        const float back = glm::dot(clear - muzzle, -carryForward);
+        // And a second trace, along the weapon itself.
+        //
+        // The one above runs from the eye to the muzzle, which is a line the weapon does not lie
+        // on: the eye is above and behind the receiver. Anything between those two points that the
+        // line happens to miss is missed entirely, and two cases do that reliably. A low wall the
+        // player is looking over: the eye clears the top, the muzzle is out past it, and the
+        // segment between them passes over the edge while the barrel goes through it. And a corner
+        // the player is leaning around: leaning takes the eye past the corner and the muzzle is
+        // past it too, so the line between them is clear while the middle of the gun is inside the
+        // brickwork. Both of those were reported as the gun poking through walls.
+        //
+        // Tracing from the back of the stock to the muzzle tests where the weapon actually is.
+        const glm::vec3 rearWorld = m_weaponTransform.position + untipped * m_weaponVisual.rearPoint;
+        const glm::vec3 alongWeapon = muzzle - rearWorld;
+        const float barrelSpan = glm::length(alongWeapon);
+        float bodyBack = 0.0f;
+        if (barrelSpan > 1e-4f)
+        {
+            const glm::vec3 barrelDirection = alongWeapon / barrelSpan;
+            const RayHit through = physics.RayCast(rearWorld, barrelDirection, barrelSpan);
+            // Floors are somebody else's problem. A barrel pointed at the ground hits it constantly
+            // and the answer there is to lift the muzzle, which is handled further down; pulling the
+            // weapon back for it as well would fight that and drag the gun into the player.
+            if (through && through.normal.y < 0.70f)
+            {
+                const float past = barrelSpan - through.distance + m_config.muzzleClearance;
+                // Converted from distance along the barrel into distance along the carry axis,
+                // because back is the only direction this correction is allowed to move anything.
+                // Clamped because a barrel nearly across the carry axis divides by nearly nothing.
+                const float alongCarry = glm::dot(barrelDirection, carryForward);
+                bodyBack = past / std::max(alongCarry, 0.35f);
+            }
+        }
+
+        // Whichever of the two needs the weapon further in. They answer the same question about
+        // different lines, and the gun has to satisfy both.
+        const float back = std::max(glm::dot(clear - muzzle, -carryForward), bodyBack);
         if (back > 0.0f)
         {
             m_weaponTransform.position -= carryForward * back;
