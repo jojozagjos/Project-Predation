@@ -1795,57 +1795,119 @@ void SetSetting(const char* name, const std::string& value)
 
 void PredationGame::DrawTitleOpen()
 {
+    // Two ways to open a game, and one screen each.
+    //
+    // This page used to do both at once: a paragraph about codes, a button for them, a separator, a
+    // port box, a list of addresses, a line about the router, and a second start button. All of it
+    // was on screen whichever one you had come to do, so whichever you wanted you read past the
+    // other one first. A player opening a game has already decided who they are playing with, and
+    // that decision picks the screen.
     const ImVec2 wide{-1.0f, 34.0f};
     ImGui::TextDisabled("Open a game");
     ImGui::Spacing();
 
-    // Over the internet first, because it is the one that works from anywhere and the one somebody
-    // came looking for. The same network is underneath it, for when both machines are in the house.
-    ImGui::PushTextWrapPos(0.0f);
-    ImGui::TextUnformatted("Send a friend a code and they send one back. Neither machine has to be "
-                           "reachable: both dial at once and both routers open a hole.");
-    ImGui::PopTextWrapPos();
-    if (ImGui::Button("Get a code to send", wide))
+    if (ImGui::Button("Over the internet", wide))
     {
         StartPunchedSession(true);
     }
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextDisabled("Anywhere. You swap a code with each person. Nothing to forward.");
+    ImGui::PopTextWrapPos();
 
     ImGui::Spacing();
-    ImGui::Separator();
-    ImGui::TextDisabled("Or on this network");
-    ImGui::AlignTextToFramePadding();
-    ImGui::TextUnformatted("Port");
-    ImGui::SameLine(86.0f);
-    ImGui::SetNextItemWidth(110.0f);
-    ImGui::InputInt("##hostport", &m_hostPort, 0, 0);
-    m_hostPort = std::clamp(m_hostPort, 1024, 65535);
-
-    // The actual addresses, not the advice to go and find one. Told to look up "your address", the
-    // obvious answer is the public one, which belongs to the router and not to this machine, and a
-    // friend on the same network cannot reach it.
+    if (ImGui::Button("On this network", wide))
     {
-        static const std::vector<std::string> addresses = LocalNetworkAddresses();
-        if (addresses.empty())
+        m_titlePage = TitlePage::OpenLocal;
+        m_titleStatus.clear();
+    }
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextDisabled("Same house or same building. You read out an address.");
+    ImGui::PopTextWrapPos();
+
+    if (!m_titleStatus.empty())
+    {
+        ImGui::Spacing();
+        ImGui::PushTextWrapPos(0.0f);
+        ImGui::TextColored({0.90f, 0.55f, 0.35f, 1.0f}, "%s", m_titleStatus.c_str());
+        ImGui::PopTextWrapPos();
+    }
+}
+
+void PredationGame::DrawTitleOpenLocal()
+{
+    const ImVec2 wide{-1.0f, 34.0f};
+    ImGui::TextDisabled("On this network");
+    ImGui::Spacing();
+
+    // The address, not the advice to go and find one. Told to look up "your address", the obvious
+    // answer is the public one, which belongs to the router and not to this machine, and a friend
+    // on the same network cannot reach it.
+    //
+    // Machines that develop software have adapters nobody else can reach: WSL and Docker each
+    // install a virtual switch with an address that looks exactly like a LAN address in a list.
+    // Those are filtered out where the list is built, by whether the adapter has a default gateway,
+    // so what appears here is what somebody can actually type in.
+    static const std::vector<std::string> addresses = LocalNetworkAddresses();
+    if (addresses.empty())
+    {
+        ImGui::TextDisabled("  no network address found");
+    }
+    for (const std::string& address : addresses)
+    {
+        ImGui::TextColored({0.70f, 0.80f, 0.95f, 1.0f}, "  %s:%d", address.c_str(), m_hostPort);
+        if (ImGui::IsItemClicked())
         {
-            ImGui::TextDisabled("  no network address found");
+            ImGui::SetClipboardText((address + ":" + std::to_string(m_hostPort)).c_str());
         }
-        for (const std::string& address : addresses)
+    }
+    ImGui::TextDisabled("  click to copy, then read it out or paste it to them");
+
+    ImGui::Spacing();
+    if (ImGui::Button("Start", wide))
+    {
+        StopSession();
+        NetHost::Config config;
+        config.port = static_cast<uint16_t>(m_hostPort);
+        config.name = PlayerName();
+        auto transport = CreateUdpTransport();
+        transport->SetConditions(m_simulatedConditions);
+        if (m_host.Start(std::move(transport), config, m_app->GetPhysics(), m_player.Config(),
+                         m_spawnPoint))
         {
-            // Said on the line itself rather than in a heading above it, because the line is what
-            // gets copied and sent.
-            ImGui::TextColored({0.70f, 0.80f, 0.95f, 1.0f}, "  %s:%d  (same network only)",
-                               address.c_str(), m_hostPort);
-            if (ImGui::IsItemClicked())
-            {
-                ImGui::SetClipboardText((address + ":" + std::to_string(m_hostPort)).c_str());
-            }
+            m_sessionMode = SessionMode::Host;
+            EnterWorld();
         }
+        else
+        {
+            m_titleStatus = "Could not open port " + std::to_string(m_hostPort);
+        }
+    }
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextDisabled("Windows asks once whether to let the game through. Say yes to both.");
+    ImGui::PopTextWrapPos();
+
+    // The port, and the router, below the thing everybody needs. Both are here because sometimes
+    // they matter and neither is the first question.
+    ImGui::Spacing();
+    if (ImGui::TreeNode("If that does not work"))
+    {
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted("Port");
+        ImGui::SameLine(86.0f);
+        ImGui::SetNextItemWidth(110.0f);
+        ImGui::InputInt("##hostport", &m_hostPort, 0, 0);
+        m_hostPort = std::clamp(m_hostPort, 1024, 65535);
+        ImGui::PushTextWrapPos(0.0f);
+        ImGui::TextDisabled("Change this only if something else on this machine already has the "
+                            "port. Everybody has to use the same one.");
+        ImGui::PopTextWrapPos();
+
         // And the address from outside, if the router agreed to forward the port. It often will
-        // not, which is why the code above exists and is offered first.
+        // not, which is why the code swap exists and is offered first.
         switch (m_ports.Status())
         {
         case PortMapper::State::Working:
-            ImGui::TextDisabled("  asking the router about the outside world...");
+            ImGui::TextDisabled("Asking the router about the outside world...");
             break;
         case PortMapper::State::Open:
         {
@@ -1858,61 +1920,30 @@ void PredationGame::DrawTitleOpen()
                 {
                     ImGui::SetClipboardText((outside + ":" + std::to_string(m_hostPort)).c_str());
                 }
-                ImGui::TextDisabled("  the first time, Windows will ask whether to let the game "
-                                    "through: say yes to both");
             }
             else
             {
-                ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
                 ImGui::PushTextWrapPos(0.0f);
-                ImGui::TextUnformatted(m_ports.Message().c_str());
+                ImGui::TextDisabled("%s", m_ports.Message().c_str());
                 ImGui::PopTextWrapPos();
-                ImGui::PopStyleColor();
             }
             break;
         }
         case PortMapper::State::Failed:
-        {
-            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
             ImGui::PushTextWrapPos(0.0f);
-            ImGui::TextUnformatted(m_ports.Message().c_str());
+            ImGui::TextDisabled("%s", m_ports.Message().c_str());
             ImGui::PopTextWrapPos();
-            ImGui::PopStyleColor();
             break;
-        }
         case PortMapper::State::Idle:
         default:
             break;
         }
-        ImGui::TextDisabled("  click to copy");
-    }
-
-    if (ImGui::Button("Start on this network", wide))
-    {
-        StopSession();
-        NetHost::Config config;
-        config.port = static_cast<uint16_t>(m_hostPort);
-        config.name = PlayerName();
-        auto transport = CreateUdpTransport();
-        transport->SetConditions(m_simulatedConditions);
-        if (m_host.Start(std::move(transport), config, m_app->GetPhysics(), m_player.Config(),
-                         m_spawnPoint))
-        {
-            m_sessionMode = SessionMode::Host;
-            // And ask the router to let people in from outside, which takes a second or two on its
-            // own thread. It often works and sometimes cannot; the panel says which, and the local
-            // addresses are there either way.
-            m_ports.Open(static_cast<uint16_t>(m_hostPort));
-            EnterWorld();
-        }
-        else
-        {
-            m_titleStatus = "Could not open port " + std::to_string(m_hostPort);
-        }
+        ImGui::TreePop();
     }
 
     if (!m_titleStatus.empty())
     {
+        ImGui::Spacing();
         ImGui::PushTextWrapPos(0.0f);
         ImGui::TextColored({0.90f, 0.55f, 0.35f, 1.0f}, "%s", m_titleStatus.c_str());
         ImGui::PopTextWrapPos();
@@ -2598,13 +2629,22 @@ void PredationGame::DrawTitleScreen()
     }
     ImGui::Spacing();
 
-    if (m_titlePage == TitlePage::Open)
+    if (m_titlePage == TitlePage::Open || m_titlePage == TitlePage::OpenLocal)
     {
-        DrawTitleOpen();
+        const bool local = m_titlePage == TitlePage::OpenLocal;
+        if (local)
+        {
+            DrawTitleOpenLocal();
+        }
+        else
+        {
+            DrawTitleOpen();
+        }
         ImGui::Spacing();
         if (ImGui::Button("Back", wide))
         {
-            m_titlePage = TitlePage::Root;
+            // One step back, not all the way out: the local page is inside Open.
+            m_titlePage = local ? TitlePage::Open : TitlePage::Root;
             m_titleStatus.clear();
         }
         ImGui::Spacing();
@@ -3447,6 +3487,40 @@ void PredationGame::SyncRemoteAvatars(float frameDeltaSeconds)
 void PredationGame::RegisterNetCommands()
 {
     Console& console = m_app->GetConsole();
+
+    console.RegisterCommand(
+        "menu", "Show a page of the title screen: menu <root|open|local|join>",
+        [this](const std::vector<std::string>& args)
+        {
+            // So a menu page can be looked at without clicking through to it, which is what makes
+            // it possible to take a screenshot of one from a headless run and see what a change to
+            // it actually did.
+            const std::string page = args.size() >= 2 ? args[1] : "root";
+            if (page == "root")
+            {
+                m_titlePage = TitlePage::Root;
+            }
+            else if (page == "open")
+            {
+                m_titlePage = TitlePage::Open;
+            }
+            else if (page == "local")
+            {
+                m_titlePage = TitlePage::OpenLocal;
+            }
+            else if (page == "join")
+            {
+                m_titlePage = TitlePage::Join;
+            }
+            else
+            {
+                m_app->GetConsole().PrintError("Unknown page. Try root, open, local or join.");
+                return;
+            }
+            m_screen = Screen::Title;
+            m_titleStatus.clear();
+        },
+        "menu <root|open|local|join>");
 
     console.RegisterCommand(
         "snd", "Play a sound by name, to hear one without making it happen: snd <name> [gain]",

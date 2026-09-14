@@ -185,6 +185,7 @@ private:
     // Punching a way through two routers by swapping a code with the other player.
     // The two things anybody came to the menu to do, each on its own page.
     void DrawTitleOpen();
+    void DrawTitleOpenLocal();
     void DrawTitleJoin();
     void StartPunchedSession(bool asHost);
     void StopPunchedSession();
@@ -471,6 +472,7 @@ private:
     {
         Root,
         Open,
+        OpenLocal,
         Join
     };
     TitlePage m_titlePage = TitlePage::Root;

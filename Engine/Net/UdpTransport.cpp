@@ -1016,14 +1016,16 @@ std::vector<std::string> LocalNetworkAddresses()
     ULONG size = 16 * 1024;
     std::vector<unsigned char> buffer(size);
     ULONG result = GetAdaptersAddresses(AF_INET, GAA_FLAG_SKIP_ANYCAST | GAA_FLAG_SKIP_MULTICAST |
-                                                    GAA_FLAG_SKIP_DNS_SERVER,
+                                                    GAA_FLAG_SKIP_DNS_SERVER |
+                                                    GAA_FLAG_INCLUDE_GATEWAYS,
                                         nullptr, reinterpret_cast<IP_ADAPTER_ADDRESSES*>(buffer.data()),
                                         &size);
     if (result == ERROR_BUFFER_OVERFLOW)
     {
         buffer.resize(size);
         result = GetAdaptersAddresses(AF_INET, GAA_FLAG_SKIP_ANYCAST | GAA_FLAG_SKIP_MULTICAST |
-                                                   GAA_FLAG_SKIP_DNS_SERVER,
+                                                   GAA_FLAG_SKIP_DNS_SERVER |
+                                                   GAA_FLAG_INCLUDE_GATEWAYS,
                                       nullptr, reinterpret_cast<IP_ADAPTER_ADDRESSES*>(buffer.data()),
                                       &size);
     }

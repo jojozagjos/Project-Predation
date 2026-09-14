@@ -590,3 +590,15 @@ TEST_CASE("A host takes a full lobby over punched connections", "[net][udp][ice]
     INFO("matched " << matched << " of 3 guest messages to the right peer");
     CHECK(matched == 3);
 }
+
+TEST_CASE("What this machine offers as its address", "[.][net][addresses]")
+{
+    // Not run by default: the answer depends on the machine. Run it by name to see what the host
+    // panel would put in front of a player.
+    const std::vector<std::string> addresses = LocalNetworkAddresses();
+    for (const std::string& address : addresses)
+    {
+        WARN("offering " + address);
+    }
+    WARN("offering " + std::to_string(addresses.size()) + " address(es) in total");
+}
