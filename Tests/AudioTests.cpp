@@ -310,6 +310,10 @@ TEST_CASE("A recipe file is read, and a broken one does not take the rest with i
     CHECK(named("door")->recipe.toneHz == Catch::Approx(90.0f));
     CHECK(named("pickup")->recipe.toneDrop == Catch::Approx(-0.6f));
 
+    // A key beginning with an underscore is a note to whoever is editing the file, not a sound, and
+    // warning about one every startup teaches people to ignore the warnings.
+    CHECK(LoadSoundRecipes(R"({"_note": "a comment", "bang": {"seconds": 0.2}})").size() == 1);
+
     // Nonsense in gives nothing out rather than taking the process down.
     CHECK(LoadSoundRecipes("not json at all").empty());
     CHECK(LoadSoundRecipes("[1, 2, 3]").empty());

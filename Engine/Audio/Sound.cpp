@@ -114,6 +114,13 @@ std::vector<SoundLibraryEntry> LoadSoundRecipes(const std::string& jsonText)
 
     for (const auto& [name, value] : root.items())
     {
+        // A key beginning with an underscore is a note to whoever is editing the file. JSON has no
+        // comments, everybody works round that the same way, and warning about it every startup
+        // teaches people to ignore the warnings.
+        if (!name.empty() && name.front() == '_')
+        {
+            continue;
+        }
         if (!value.is_object())
         {
             PRED_LOG_WARN(Engine, "Sound '{}' is not an object; skipped", name);
