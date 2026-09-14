@@ -74,6 +74,9 @@ mkdir "%STAGE%" 2>nul
 rem The executable and anything the build deployed beside it.
 copy /y "%BUILD_DIR%\bin\ProjectPredation.exe" "%STAGE%\" >nul
 for %%F in ("%BUILD_DIR%\bin\*.dll") do copy /y "%%F" "%STAGE%\" >nul 2>nul
+rem And the relay, which is not for players but is for whoever is going to run one. A quarter of a
+rem megabyte, and the alternative is a second download nobody can find when they need it.
+if exist "%BUILD_DIR%\bin\PredationRelay.exe" copy /y "%BUILD_DIR%\bin\PredationRelay.exe" "%STAGE%\" >nul
 
 rem The data files, and then the compiled shaders on top of them. Both end up under Assets, which
 rem is the first place the game looks, so the folder runs anywhere without the build tree.
@@ -98,25 +101,28 @@ if exist "%BUILD_DIR%\GeneratedAssets\Shaders" (
     echo.
     echo PLAYING TOGETHER, OVER THE INTERNET
     echo.
-    echo Neither of you has to forward a port or change a router setting. You swap
-    echo two codes, over Discord or anywhere else you can paste text.
+    echo Neither of you has to forward a port or change a router setting. One of you
+    echo gets a six character code and everybody else types it in.
     echo.
-    echo   1. One of you presses "Open a game", then "Get a code to send".
-    echo   2. That gives a long code. Send it to the other person.
-    echo   3. They press "Join a game", paste it in, and get a code back.
-    echo   4. They send that second code to the host, who pastes it in.
-    echo   5. Both machines dial at once and the connection opens.
+    echo   1. One of you presses "Open a game", then "Over the internet".
+    echo   2. That gives a code like 7KMQX3. Send it to the others.
+    echo   3. They press "Join a game", type it in, and press Join.
     echo.
-    echo Do the swap reasonably promptly. The codes describe where each machine can
-    echo be reached right now, and that can change.
+    echo People can join at any time, before or after the host goes in.
     echo.
-    echo If it does not connect, one of the two networks is refusing to cooperate.
-    echo Try again; if it keeps failing, one of you on a phone hotspot usually works.
+    echo This needs a relay: one machine both of you can reach, which forwards
+    echo between you. PredationRelay.exe in this folder is it. Whoever is running it
+    echo needs a machine the others can reach - a cheap virtual server, a free tier,
+    echo or a home machine with UDP forwarded to it - and everybody else points the
+    echo game at it from the console with:
     echo.
+    echo   net.relay_host your.relay.address
+    echo.
+    echo That is remembered, so it only has to be typed once.
     echo.
     echo PLAYING TOGETHER, SAME HOUSE
     echo.
-    echo   The host presses "Open a game" and then "Start on this network", and reads
+    echo   The host presses "Open a game", then "On this network", and reads
     echo   out the address shown, something like 192.168.1.20:27015.
     echo   Everyone else types that into "Join a game".
     echo.
@@ -130,6 +136,7 @@ if exist "%BUILD_DIR%\GeneratedAssets\Shaders" (
     echo   Q and E lean, left mouse fire, right mouse aim, R reload
     echo   F interact, G drop, 1-6 and the wheel select, Tab inventory
     echo   P cycles first person, third person and free camera
+    echo   V talk to anybody near you
     echo   F3 shows frame time and ping, Escape pauses
     echo.
     echo Crouch and prone are hold-to-activate. There is a toggle for that in Settings,
