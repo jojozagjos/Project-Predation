@@ -194,7 +194,10 @@ TEST_CASE("An input message round-trips through the wire format", "[net][protoco
     const std::vector<uint8_t>& bytes = writer.Finish();
 
     // Three ticks of input in a packet small enough to send sixty times a second without noticing.
-    CHECK(bytes.size() <= 32);
+    // Thirty-three bytes: thirty-two of intent and twelve bits of the last host tick this client
+    // saw, which is the whole of how a ping is measured. A UDP datagram carries twenty-eight bytes
+    // of headers before any of this, so the byte it costs is not where the bandwidth goes.
+    CHECK(bytes.size() <= 34);
 
     BitReader reader(bytes.data(), bytes.size());
     MessageType type = MessageType::Count;

@@ -47,6 +47,8 @@ CVar<float> cv_thirdDistance{"cam.third_distance", 3.2f, "How far the third-pers
 CVar<std::string> cv_lastAddress{"net.last_address", "127.0.0.1", "Address the join box opens with",
                                  CVarFlags::Archive};
 CVar<int> cv_lastPort{"net.last_port", kDefaultPort, "Port the join box opens with", CVarFlags::Archive};
+CVar<std::string> cv_playerName{"net.name", "operator", "What other players see you called",
+                                CVarFlags::Archive};
 // On by default: a four-player extraction game where rounds pass through your team is a different
 // game, and a quieter one.
 CVar<bool> cv_friendlyFire{"game.friendly_fire", true, "Rounds hurt other players", CVarFlags::Archive};
@@ -140,6 +142,7 @@ bool PredationGame::OnInit(Application& app)
     RegisterNetCommands();
     // The game opens at the menu, with the world already built behind it.
     std::snprintf(m_joinAddress, sizeof(m_joinAddress), "%s", cv_lastAddress.Get().c_str());
+    std::snprintf(m_playerName, sizeof(m_playerName), "%s", cv_playerName.Get().c_str());
     m_joinPort = std::clamp(cv_lastPort.Get(), 1024, 65535);
     ReturnToTitle();
     UpdateMouseCapture();
@@ -1183,7 +1186,10 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
 
 void PredationGame::SendDynamicBodies()
 {
-    if (m_sessionMode != SessionMode::Host)
+    // Nobody to send to is the common case for a game somebody opened and then played alone, and
+    // walking every loose body in the world to build a packet for an empty room is the most
+    // expensive thing hosting does.
+    if (m_sessionMode != SessionMode::Host || m_host.ConnectedCount() == 0)
     {
         return;
     }
@@ -1306,7 +1312,7 @@ void PredationGame::UpdateHostMigration(float dt)
     // The address carries its own port, because it is where that machine was seen from, not where
     // it listens. The successor listens on the game's port.
     const std::string host = successor.substr(0, successor.find(':'));
-    if (m_client.Connect(std::move(transport), host, port, "operator", config))
+    if (m_client.Connect(std::move(transport), host, port, PlayerName(), config))
     {
         m_app->GetConsole().Print("The host left. Reconnecting to " + host);
     }
@@ -1854,10 +1860,14 @@ void PredationGame::DrawTitleScreen()
         return;
     }
 
-    if (ImGui::Button("Play on your own", wide))
+    // What everyone else sees on the player list. Kept in the archived config, so it is typed once.
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted("Name");
+    ImGui::SameLine(86.0f);
+    ImGui::SetNextItemWidth(-1.0f);
+    if (ImGui::InputText("##playername", m_playerName, sizeof(m_playerName)))
     {
-        StopSession();
-        EnterWorld();
+        cv_playerName.Set(m_playerName);
     }
 
     ImGui::Spacing();
@@ -1929,6 +1939,7 @@ void PredationGame::DrawTitleScreen()
         StopSession();
         NetHost::Config config;
         config.port = static_cast<uint16_t>(m_hostPort);
+        config.name = PlayerName();
         auto transport = CreateUdpTransport();
         transport->SetConditions(m_simulatedConditions);
         if (m_host.Start(std::move(transport), config, m_app->GetPhysics(), m_player.Config(), m_spawnPoint))
@@ -1969,7 +1980,7 @@ void PredationGame::DrawTitleScreen()
         transport->SetConditions(m_simulatedConditions);
         NetClient::Config config;
         if (m_client.Connect(std::move(transport), m_joinAddress, static_cast<uint16_t>(m_joinPort),
-                             "operator", config))
+                             PlayerName(), config))
         {
             m_sessionMode = SessionMode::Client;
             // A client predicts where it will be, never whether it is alive.
@@ -2020,6 +2031,17 @@ void PredationGame::DrawTitleScreen()
 // The host runs the real simulation for everyone. A client predicts its own movement from local
 // input and interpolates everybody else. Nothing a client sends is written into the world: the host
 // runs the same movement code against its own physics and what comes out is what happened.
+
+std::string PredationGame::PlayerName() const
+{
+    // Trimmed and never empty. A blank name on somebody else's player list is a row with nothing in
+    // it, and a name of pure spaces is the same thing with more effort.
+    std::string name = m_playerName;
+    const size_t first = name.find_first_not_of(" \t");
+    const size_t last = name.find_last_not_of(" \t");
+    name = first == std::string::npos ? std::string() : name.substr(first, last - first + 1);
+    return name.empty() ? std::string("operator") : name;
+}
 
 const std::vector<RemotePlayerView>& PredationGame::RemotePlayers() const
 {
@@ -2307,6 +2329,7 @@ void PredationGame::RegisterNetCommands()
             NetHost::Config config;
             config.port = args.size() > 1 ? static_cast<uint16_t>(std::strtoul(args[1].c_str(), nullptr, 10))
                                           : kDefaultPort;
+            config.name = PlayerName();
             auto transport = CreateUdpTransport();
             transport->SetConditions(m_simulatedConditions);
             if (!m_host.Start(std::move(transport), config, m_app->GetPhysics(), m_player.Config(),
@@ -2336,7 +2359,7 @@ void PredationGame::RegisterNetCommands()
             auto transport = CreateUdpTransport();
             transport->SetConditions(m_simulatedConditions);
             NetClient::Config config;
-            if (!m_client.Connect(std::move(transport), address, port, "operator", config))
+            if (!m_client.Connect(std::move(transport), address, port, PlayerName(), config))
             {
                 m_app->GetConsole().PrintError("Could not reach " + address);
                 return;
@@ -4873,10 +4896,102 @@ void PredationGame::DrawHud()
         ImGui::End();
     }
 
+    DrawPlayerList();
+
     if (m_inventoryOpen)
     {
         DrawInventoryPanel();
     }
+}
+
+void PredationGame::DrawPlayerList()
+{
+    // Only in a game with other people in it. On your own it is a list of one, which is a panel
+    // asking the player to look at their own name.
+    if (m_sessionMode == SessionMode::Offline)
+    {
+        return;
+    }
+    const std::vector<RemotePlayerView>& others = RemotePlayers();
+    if (others.empty())
+    {
+        return;
+    }
+
+    const ImGuiViewport* viewport = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos({viewport->Pos.x + viewport->Size.x - 16.0f, viewport->Pos.y + 16.0f},
+                            ImGuiCond_Always, {1.0f, 0.0f});
+    ImGui::SetNextWindowBgAlpha(0.35f);
+    constexpr ImGuiWindowFlags kFlags =
+        ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize |
+        ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing |
+        ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoInputs;
+    if (!ImGui::Begin("##Players", nullptr, kFlags))
+    {
+        ImGui::End();
+        return;
+    }
+
+    // One row per player, this machine first. Health as a short bar rather than a number: from
+    // across the screen a bar says "hurt" at a glance and a number has to be read.
+    const auto row = [](const char* name, float health, bool alive, int pingMs, bool self,
+                        bool spectated)
+    {
+        ImDrawList* list = ImGui::GetWindowDrawList();
+        const ImVec2 origin = ImGui::GetCursorScreenPos();
+        constexpr float kBarWidth = 54.0f;
+        constexpr float kBarHeight = 4.0f;
+
+        const ImVec4 nameColour = !alive     ? ImVec4(0.62f, 0.40f, 0.38f, 1.0f)
+                                 : spectated ? ImVec4(0.95f, 0.85f, 0.55f, 1.0f)
+                                 : self      ? ImVec4(0.88f, 0.92f, 0.96f, 1.0f)
+                                             : ImVec4(0.74f, 0.78f, 0.84f, 1.0f);
+        ImGui::TextColored(nameColour, "%s%s", name, self ? " (you)" : "");
+        ImGui::SameLine(132.0f);
+
+        if (alive)
+        {
+            const ImVec2 barAt{origin.x + 132.0f, origin.y + ImGui::GetTextLineHeight() * 0.5f - 1.0f};
+            const float fraction = glm::clamp(health / 100.0f, 0.0f, 1.0f);
+            list->AddRectFilled(barAt, {barAt.x + kBarWidth, barAt.y + kBarHeight},
+                                IM_COL32(60, 64, 72, 180));
+            const ImU32 fill = fraction > 0.6f   ? IM_COL32(120, 190, 130, 220)
+                               : fraction > 0.3f ? IM_COL32(210, 185, 110, 220)
+                                                 : IM_COL32(205, 100, 90, 230);
+            list->AddRectFilled(barAt, {barAt.x + kBarWidth * fraction, barAt.y + kBarHeight}, fill);
+            ImGui::Dummy({kBarWidth, ImGui::GetTextLineHeight()});
+        }
+        else
+        {
+            ImGui::TextColored({0.62f, 0.40f, 0.38f, 1.0f}, "down");
+        }
+
+        ImGui::SameLine(200.0f);
+        if (self && pingMs < 0)
+        {
+            // The host is not waiting on anybody, so it has no round trip worth printing.
+            ImGui::TextDisabled("host");
+        }
+        else
+        {
+            const ImVec4 colour = pingMs < 80    ? ImVec4(0.55f, 0.75f, 0.58f, 1.0f)
+                                  : pingMs < 180 ? ImVec4(0.82f, 0.76f, 0.50f, 1.0f)
+                                                 : ImVec4(0.85f, 0.50f, 0.45f, 1.0f);
+            ImGui::TextColored(colour, "%d ms", pingMs);
+        }
+    };
+
+    const bool hosting = m_sessionMode == SessionMode::Host;
+    row(PlayerName().c_str(), m_player.State().health, m_player.State().alive,
+        hosting ? -1 : static_cast<int>(m_client.PingMs()), true, false);
+    for (const RemotePlayerView& other : others)
+    {
+        const bool watched = m_spectating >= 0 && static_cast<int>(other.id) == m_spectating;
+        row(other.name.c_str(), other.health, other.alive, static_cast<int>(other.pingMs), false,
+            watched);
+    }
+
+    ImGui::End();
 }
 
 void PredationGame::DrawItemIcon(ItemId item, float boxSize) const

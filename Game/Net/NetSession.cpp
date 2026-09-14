@@ -78,6 +78,7 @@ void ApplySnapshot(RemotePlayerView& view, const PlayerSnapshot& snapshot)
     view.mantling = snapshot.mantling;
     view.mantlePhase = snapshot.mantlePhase;
     view.mantleEdge = snapshot.mantleEdge;
+    view.pingMs = snapshot.pingMs;
 }
 
 void SendPacket(Transport& transport, PeerId peer, Channel channel, BitWriter& writer)
@@ -124,6 +125,13 @@ struct NetHost::Client
     // What this client has taken out of the world. The host does not model their bag, only what it
     // handed them, which is enough to refuse a drop of something they never picked up.
     std::map<uint16_t, int> carried;
+    // Their round trip, smoothed. Every input packet carries back the last tick this client saw,
+    // and the host counts its own ticks, so the gap between the two is the round trip without
+    // either machine having to carry a clock or agree what time it is. A single reading jumps
+    // around by a tick or two depending on where in the client's frame the packet was sent, which
+    // on screen is a number that will not sit still, so it is eased rather than shown raw.
+    float pingMs = 0.0f;
+    bool pingSeen = false;
 };
 
 NetHost::NetHost() = default;
@@ -321,6 +329,23 @@ void NetHost::HandlePacket(const NetPacket& packet)
         SetPlayerHeld(client->playerId, message.heldItem, message.aim, message.reloading,
                       message.reloadProgress);
 
+        // And their round trip, from the tick they echoed back. Unsigned subtraction on sixteen
+        // bits gives the right answer across the wrap without being told about it. An echo from a
+        // tick the host has not reached is a client guessing or lying, and is thrown away rather
+        // than turned into a negative ping.
+        {
+            const uint16_t now = static_cast<uint16_t>(m_tick & 0xFFFFu);
+            const uint16_t elapsed = static_cast<uint16_t>(now - message.ackTick);
+            constexpr uint16_t kMaxTicksBehind = 600; // ten seconds at sixty; past that it is noise
+            if (elapsed <= kMaxTicksBehind)
+            {
+                const float sample =
+                    static_cast<float>(elapsed) * 1000.0f / std::max<float>(m_config.tickHz, 1.0f);
+                client->pingMs = client->pingSeen ? glm::mix(client->pingMs, sample, 0.15f) : sample;
+                client->pingSeen = true;
+            }
+        }
+
         std::sort(client->pending.begin(), client->pending.end(),
                   [](const InputCommand& a, const InputCommand& b) { return a.sequence < b.sequence; });
         // A client that floods the host with inputs is spending its own bandwidth and gaining
@@ -507,6 +532,15 @@ void NetHost::BroadcastPeerList()
     // Sent whenever the roster changes, and only then. It is what lets the players left find each
     // other if this machine goes: by that point there is nobody to ask.
     PeerListMessage list;
+    // The host goes in first, with no address. Everybody already knows how to reach this machine,
+    // so the entry is there for the name rather than for the address: without it a player list on
+    // a client has a row it cannot put a name to, which is the row belonging to whoever is running
+    // the game.
+    {
+        PeerEntry& self = list.peers[list.count++];
+        self.id = 0;
+        self.name = m_config.name;
+    }
     for (const auto& client : m_clients)
     {
         if (client->welcomed && list.count < kMaxPlayers)
@@ -694,6 +728,23 @@ void NetHost::Tick(uint32_t tick, const PlayerState& localState, float dt)
         }
     }
 
+    // Hosting on your own costs the socket and nothing else.
+    //
+    // Everything below here exists to tell other machines what happened, and with nobody connected
+    // there is nobody to tell: the views describe an empty table, the rewind history is a second of
+    // one player's own position that only a client's shot would ever look at, and the snapshots go
+    // nowhere. Opening a game and then playing alone used to run all of it anyway, every tick,
+    // which is a server doing a server's work for an audience of none. The socket stays open,
+    // because that is what somebody joining knocks on.
+    if (m_clients.empty())
+    {
+        m_tick = tick;
+        m_history.clear();
+        m_views.clear();
+        m_snapshotTimer = 0.0f;
+        return;
+    }
+
     BuildViews(localState);
 
     // Where everybody is, kept for a second, so a shot can be tested against where the shooter saw
@@ -746,6 +797,7 @@ void NetHost::BuildViews(const PlayerState& localState)
         view.aim = client->aim;
         view.reloading = client->reloading;
         view.reloadProgress = client->reloadProgress;
+        view.pingMs = static_cast<uint16_t>(std::lround(client->pingMs));
         m_views.push_back(std::move(view));
     }
 }
@@ -770,6 +822,7 @@ void NetHost::SendSnapshots(uint32_t tick, const PlayerState& localState)
             entry.aim = client->aim;
             entry.reloading = client->reloading;
             entry.reloadProgress = client->reloadProgress;
+            entry.pingMs = static_cast<uint16_t>(std::lround(client->pingMs));
         }
     }
 
@@ -907,6 +960,17 @@ void NetClient::HandlePacket(const NetPacket& packet)
         if (!m_snapshots.empty() && record.message.tick <= m_snapshots.back().message.tick)
         {
             return;
+        }
+        m_lastSnapshotTick = record.message.tick;
+        // This machine's own row carries the round trip the host measured for it. Nobody can time
+        // their own connection from one end, so it is read back rather than worked out here.
+        for (uint8_t i = 0; i < record.message.count; ++i)
+        {
+            if (record.message.players[i].playerId == m_playerId)
+            {
+                m_pingMs = record.message.players[i].pingMs;
+                break;
+            }
         }
         m_snapshots.push_back(std::move(record));
         m_snapshotArrived = true;
@@ -1079,12 +1143,30 @@ bool NetClient::ShouldBecomeHost() const
     // because the machine they would have agreed through is the one that left.
     for (const KnownPeer& peer : m_peers)
     {
-        if (peer.id < m_playerId)
+        // The host is on the roster too, for its name. It is also the machine that has just gone,
+        // so it is never a candidate to take over from itself: counting it here would mean nobody
+        // ever decided they were next and the game simply stopped.
+        if (peer.id != 0 && peer.id < m_playerId)
         {
             return false;
         }
     }
     return true;
+}
+
+std::string NetClient::NameOf(uint8_t id) const
+{
+    for (const KnownPeer& peer : m_peers)
+    {
+        if (peer.id == id)
+        {
+            return peer.name;
+        }
+    }
+    // Somebody who has arrived since the last roster went out. A number is a poor name but it is
+    // better than a blank row, and the roster is a reliable message so it is a moment behind at
+    // worst.
+    return "player " + std::to_string(static_cast<int>(id) + 1);
 }
 
 std::string NetClient::SuccessorAddress() const
@@ -1137,6 +1219,9 @@ void NetClient::SendInput()
     message.aim = m_heldAim;
     message.reloading = m_heldReloading;
     message.reloadProgress = m_heldReloadProgress;
+    // The last host tick this machine has seen, handed straight back so the host can time the round
+    // trip against its own tick counter. Nothing here has to know what the time is.
+    message.ackTick = static_cast<uint16_t>(m_lastSnapshotTick & 0xFFFFu);
 
     BitWriter writer;
     WriteMessageHeader(writer, MessageType::Input);
@@ -1281,6 +1366,7 @@ void NetClient::UpdateInterpolation(float frameDeltaSeconds)
             }
             RemotePlayerView view;
             ApplySnapshot(view, latest.players[i]);
+            view.name = NameOf(view.id);
             m_views.push_back(view);
         }
         return;
@@ -1304,6 +1390,10 @@ void NetClient::UpdateInterpolation(float frameDeltaSeconds)
 
         RemotePlayerView view;
         ApplySnapshot(view, to);
+        // Names never cross in a snapshot: they arrive once on the roster and are matched up here.
+        // A snapshot goes out thirty times a second and a name does not change, so sending one with
+        // every body would be most of the packet.
+        view.name = NameOf(view.id);
 
         for (uint8_t j = 0; j < older->message.count; ++j)
         {

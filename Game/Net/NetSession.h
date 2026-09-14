@@ -55,6 +55,10 @@ struct RemotePlayerView
     bool mantling = false;
     float mantlePhase = 0.0f;
     glm::vec3 mantleEdge{0.0f};
+
+    // Their round trip to the host in milliseconds, as the host measures it. Zero on the host's own
+    // row, which is the only honest figure for a machine talking to itself.
+    uint16_t pingMs = 0;
 };
 
 // --- The host ----------------------------------------------------------------------------------
@@ -74,6 +78,8 @@ public:
         // then still has something in front of it, and the player does not stutter. Too large and
         // every client is playing further in the past than they need to.
         uint8_t inputBufferTicks = 2;
+        // What to call this machine on everyone else's player list.
+        std::string name = "host";
     };
 
     NetHost();
@@ -294,6 +300,10 @@ public:
         std::string address;
     };
     const std::vector<KnownPeer>& Peers() const { return m_peers; }
+    // What to call a player, from the roster. Falls back to their number while a roster is in
+    // flight.
+    std::string NameOf(uint8_t id) const;
+    const std::string& Name() const { return m_name; }
     // True once the host has gone and this client is the one that should take over.
     bool ShouldBecomeHost() const;
     // Where the successor is, when it is not this machine.
@@ -323,6 +333,8 @@ public:
     // The host tick this client is drawing everyone else at. A shot carries it so the host can
     // rewind to the moment the shot was actually aimed.
     uint32_t RenderTick() const { return m_renderTick; }
+    // This machine's round trip to the host in milliseconds, as the host measured it.
+    uint16_t PingMs() const { return m_pingMs; }
     Transport* GetTransport() { return m_transport.get(); }
 
 private:
@@ -359,6 +371,10 @@ private:
     bool m_heldReloading = false;
     float m_heldReloadProgress = 0.0f;
     uint32_t m_renderTick = 0;
+    // The newest host tick this machine has seen, echoed back with every input so the host can time
+    // the round trip.
+    uint32_t m_lastSnapshotTick = 0;
+    uint16_t m_pingMs = 0;
     uint8_t m_playerId = 0;
     bool m_snapshotArrived = false;
     bool m_hasWorldState = false;

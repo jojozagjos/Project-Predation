@@ -693,8 +693,21 @@ TEST_CASE("Everyone is told who else is here, so a lost host can be replaced", "
 
     const std::vector<NetClient::KnownPeer>& peers = link.client.Peers();
     REQUIRE_FALSE(peers.empty());
-    CHECK(peers[0].id == link.client.PlayerId());
-    CHECK(peers[0].name == "tester");
+
+    // The host is on it too, first and with no address, because a player list needs a name for
+    // every row and the host's name cannot come from anywhere else. Everyone already knows how to
+    // reach the host, so the address it would carry is the one thing it does not need.
+    CHECK(peers[0].id == 0);
+    CHECK(peers[0].address.empty());
+    CHECK_FALSE(peers[0].name.empty());
+
+    // And this client, with the address the host saw it arrive from, which is what the others would
+    // have to reconnect to if the host went.
+    const auto self = std::find_if(peers.begin(), peers.end(),
+                                   [&](const NetClient::KnownPeer& peer)
+                                   { return peer.id == link.client.PlayerId(); });
+    REQUIRE(self != peers.end());
+    CHECK(self->name == "tester");
 }
 
 TEST_CASE("The lowest surviving player takes over when the host goes", "[net][session]")
@@ -746,10 +759,12 @@ TEST_CASE("The lowest surviving player takes over when the host goes", "[net][se
         if (client->ShouldBecomeHost())
         {
             ++volunteers;
-            // And it is the lowest number that stepped forward.
+            // And it is the lowest number that stepped forward. The host's own row is on the roster
+            // for its name and is skipped here: it is the machine that has just gone, so it is
+            // never a candidate to succeed itself.
             for (const NetClient::KnownPeer& peer : client->Peers())
             {
-                CHECK(peer.id >= client->PlayerId());
+                CHECK((peer.id == 0 || peer.id >= client->PlayerId()));
             }
         }
     }
@@ -805,4 +820,62 @@ TEST_CASE("What a departing player was carrying is handed back", "[net][session]
     REQUIRE(departed[0].carried.size() == 1);
     CHECK(departed[0].carried[0].first == kKeycard);
     CHECK(departed[0].carried[0].second == 1);
+}
+
+TEST_CASE("The host times everybody's round trip and tells everybody", "[net][session][ping]")
+{
+    // Nobody can measure their own connection from one end, and nobody can measure a third party's
+    // at all, so the host does both: every input carries back the last host tick that client saw,
+    // and the host counts its own ticks. Neither machine has to carry a clock or agree what time
+    // it is.
+    NetConditions slow;
+    slow.latencyMs = 60.0f; // one way, so a round trip of about 120 ms
+    Link link(41030, slow);
+    link.Run(240, PlayerInput{});
+    REQUIRE(link.client.Connected());
+
+    // What the client reads back off its own row in the snapshot.
+    const int measured = static_cast<int>(link.client.PingMs());
+    INFO("client reads its ping as " << measured << " ms, against 120 ms of simulated round trip");
+    // The reading includes however long the host sat on the input before running it, which is the
+    // input buffer, and however long the client waited before its next packet went out. Both are a
+    // tick or two, so the window is wide on the upper side and tight on the lower: a ping that
+    // reads zero means nothing is being measured at all, which is what this is here to catch.
+    CHECK(measured >= 100);
+    CHECK(measured <= 220);
+
+    // And the same figure reaches everyone else, because a player list shows the whole table.
+    REQUIRE_FALSE(link.host.Remotes().empty());
+    const int asHostSeesIt = static_cast<int>(link.host.Remotes()[0].pingMs);
+    INFO("host has that client at " << asHostSeesIt << " ms");
+    CHECK(asHostSeesIt >= 100);
+    CHECK(asHostSeesIt <= 220);
+}
+
+TEST_CASE("Hosting on your own costs nothing per tick", "[net][session]")
+{
+    // A game somebody opened and then played alone used to run the whole server loop anyway: views
+    // rebuilt for an empty table, a second of rewind history nobody would ever ask about, and a
+    // snapshot written thirty times a second and sent nowhere.
+    Machine machine;
+    NetHost host;
+    NetHost::Config config;
+    config.port = 41031;
+    REQUIRE(host.Start(CreateLoopbackTransport(), config, machine.physics, machine.config,
+                       {0.0f, 0.05f, 0.0f}));
+
+    for (uint32_t i = 1; i <= 120; ++i)
+    {
+        machine.Step(PlayerInput{});
+        host.Tick(i, machine.player.State(), kTick);
+    }
+
+    // Nothing was built, and the tick counter still moved so that a client joining a minute in is
+    // welcomed to the right tick rather than to tick zero.
+    CHECK(host.Remotes().empty());
+    CHECK(host.CurrentTick() == 120);
+    CHECK(host.PosesAt(119).empty());
+
+    // And the socket is still listening, which is the one thing hosting alone has to keep doing.
+    CHECK(host.Running());
 }

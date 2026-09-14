@@ -147,6 +147,8 @@ private:
     // Takes no ImGui types, so this header does not have to know that ImGui exists.
     void DrawCondition();
     void DrawHud();
+    // Who else is in the game, down the side: name, connection and whether they are still up.
+    void DrawPlayerList();
     void DrawInventoryPanel();
     // Draws the item as it actually looks, from the offscreen atlas. Falls back to nothing rather
     // than a stand-in shape: an icon that disagrees with the object is worse than no icon.
@@ -249,6 +251,8 @@ private:
     void SyncRemoteAvatars(float frameDeltaSeconds);
     void DrawNetworkPanel();
     const std::vector<RemotePlayerView>& RemotePlayers() const;
+    // The name to join or host under: whatever is in the box, trimmed, never empty.
+    std::string PlayerName() const;
 
     Application* m_app = nullptr;
     Scene m_scene;
@@ -414,6 +418,8 @@ private:
     char m_joinAddress[64] = "127.0.0.1";
     int m_joinPort = kDefaultPort;
     int m_hostPort = kDefaultPort;
+    // What other players see this one called. Short on purpose: a player list is a narrow panel.
+    char m_playerName[24] = "operator";
     std::string m_titleStatus;
 
     SessionMode m_sessionMode = SessionMode::Offline;

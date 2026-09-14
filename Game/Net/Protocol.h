@@ -23,7 +23,7 @@ namespace pred
 
 // Bumped whenever the wire changes shape. Two ends that disagree are refused at the door rather
 // than left to misread each other, which is what a wire mismatch actually looks like from inside.
-inline constexpr uint16_t kProtocolVersion = 2;
+inline constexpr uint16_t kProtocolVersion = 3;
 // How many bits name a message type. Five, so there is room to add one.
 inline constexpr uint32_t kMessageTypeBits = 5;
 inline constexpr uint8_t kMaxPlayers = 4;
@@ -220,6 +220,14 @@ struct InputMessage
     float aim = 0.0f;
     bool reloading = false;
     float reloadProgress = 0.0f;
+    // The low bits of the last host tick this client saw, echoed straight back.
+    //
+    // That echo is the whole of how a ping is measured. The host knows when it sent every tick
+    // because it counts them itself, so the gap between the tick it is on and the tick coming back
+    // to it is the round trip, and nothing has to carry a clock or agree about what time it is.
+    // Sixteen bits wraps every eighteen minutes at sixty ticks a second, which unsigned subtraction
+    // handles without being told.
+    uint16_t ackTick = 0;
 };
 
 // What one player looks like from outside. Deliberately smaller than PlayerState: a remote player
@@ -254,6 +262,11 @@ struct PlayerSnapshot
     bool mantling = false;
     float mantlePhase = 0.0f;
     glm::vec3 mantleEdge{0.0f};
+
+    // Their round trip to the host, in milliseconds, as the host measures it. Sent for everybody
+    // rather than only for whoever is being written to, because a player list shows the whole
+    // table: nobody else can measure a third party's connection, so the host has to say.
+    uint16_t pingMs = 0;
 };
 
 struct SnapshotMessage

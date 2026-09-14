@@ -30,6 +30,16 @@ constexpr int kSpeedScaleBits = 7;
 constexpr int kStanceBits = 2;
 constexpr int kSequenceDeltaBits = 6;
 constexpr size_t kMaxNameLength = 24;
+// The tick a client echoes back so the host can time the round trip. Twelve bits is four thousand
+// ticks, over a minute at the tick rate, so the wrap is never reached by a delay anybody is still
+// playing through; unsigned subtraction handles it either way.
+constexpr int kAckTickBits = 12;
+// And the round trip itself, in four-millisecond steps up to about a second. A ping is read off a
+// panel at a glance, so a millisecond of precision is four times the bits for a digit nobody can
+// see change, and anything past a second is unplayable rather than interesting.
+constexpr int kPingBits = 8;
+constexpr uint16_t kPingStepMs = 4;
+constexpr uint16_t kMaxPingMs = ((1 << kPingBits) - 1) * kPingStepMs;
 
 void WritePosition(BitWriter& writer, const glm::vec3& value)
 {
@@ -260,6 +270,7 @@ void WriteInput(BitWriter& writer, const InputMessage& message)
     {
         writer.WriteQuantised(message.reloadProgress, 0.0f, 1.0f, 6);
     }
+    writer.WriteBits(message.ackTick & 0xFFFu, kAckTickBits);
 }
 
 bool ReadInput(BitReader& reader, InputMessage& out)
@@ -286,6 +297,7 @@ bool ReadInput(BitReader& reader, InputMessage& out)
     out.aim = reader.ReadQuantised(0.0f, 1.0f, 5);
     out.reloading = reader.ReadBool();
     out.reloadProgress = out.reloading ? reader.ReadQuantised(0.0f, 1.0f, 6) : 0.0f;
+    out.ackTick = static_cast<uint16_t>(reader.ReadBits(kAckTickBits));
     return !reader.Overran();
 }
 
@@ -323,6 +335,9 @@ void WriteSnapshot(BitWriter& writer, const SnapshotMessage& message)
             writer.WriteQuantised(player.mantlePhase, 0.0f, 1.0f, 6);
             WritePosition(writer, player.mantleEdge);
         }
+        // Ten bits, so anything past a second reads as a second. A connection worse than that is
+        // unplayable and the exact figure stops being worth a bit.
+        writer.WriteBits(std::min<uint16_t>(player.pingMs, kMaxPingMs) / kPingStepMs, kPingBits);
     }
 }
 
@@ -357,6 +372,7 @@ bool ReadSnapshot(BitReader& reader, SnapshotMessage& out)
         player.mantling = reader.ReadBool();
         player.mantlePhase = player.mantling ? reader.ReadQuantised(0.0f, 1.0f, 6) : 0.0f;
         player.mantleEdge = player.mantling ? ReadPosition(reader) : glm::vec3(0.0f);
+        player.pingMs = static_cast<uint16_t>(reader.ReadBits(kPingBits) * kPingStepMs);
 
         if (player.playerId >= kMaxPlayers || stance > static_cast<uint32_t>(PlayerStance::Prone))
         {
