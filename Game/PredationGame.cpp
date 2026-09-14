@@ -30,6 +30,28 @@ namespace pred
 namespace
 {
 
+// Wraps every piece of text drawn while it is alive to the width of the window.
+//
+// ImGui does not wrap by default: a line longer than the panel runs off the right edge and the end
+// of it simply is not there. Doing it per line means remembering, and the lines that were forgotten
+// were the ones explaining what a button does, which are the ones somebody reading the menu for the
+// first time most needs. Scoped rather than pushed and popped by hand because these panels return
+// early in a dozen places and an unbalanced stack is an assert rather than a wrong-looking menu.
+struct WrapText
+{
+    WrapText() { ImGui::PushTextWrapPos(0.0f); }
+    // Pops and closes the window together. These panels return in a dozen places and each of those
+    // used to close the window itself, so a wrap pushed inside the window was popped outside it and
+    // ImGui rightly complained. One object owning both means neither can be forgotten.
+    ~WrapText()
+    {
+        ImGui::PopTextWrapPos();
+        ImGui::End();
+    }
+    WrapText(const WrapText&) = delete;
+    WrapText& operator=(const WrapText&) = delete;
+};
+
 CVar<float> cv_fov{"r.fov", 90.0f, "Horizontal field of view in degrees", CVarFlags::Archive};
 CVar<float> cv_mouseSensitivity{"input.mouse_sensitivity", 0.12f, "Mouse look sensitivity in degrees per pixel",
                                 CVarFlags::Archive};
@@ -2395,6 +2417,7 @@ void PredationGame::DrawPauseMenu()
         ImGui::End();
         return;
     }
+    const WrapText wrap;
 
     const ImVec2 wide{-1.0f, 32.0f};
 
@@ -2406,14 +2429,12 @@ void PredationGame::DrawPauseMenu()
         {
             m_settingsOpen = false;
         }
-        ImGui::End();
         return;
     }
 
     if (m_inviteOpen)
     {
         DrawInvitePanel();
-        ImGui::End();
         return;
     }
 
@@ -2460,7 +2481,6 @@ void PredationGame::DrawPauseMenu()
     {
         m_paused = false;
         ReturnToTitle();
-        ImGui::End();
         return;
     }
 
@@ -2470,7 +2490,6 @@ void PredationGame::DrawPauseMenu()
         m_app->RequestQuit();
     }
 
-    ImGui::End();
 }
 
 void PredationGame::ReturnToTitle()
@@ -2556,6 +2575,7 @@ void PredationGame::DrawTitleScreen()
         ImGui::End();
         return;
     }
+    const WrapText wrap;
 
     ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(226, 232, 236, 255));
     ImGui::SetWindowFontScale(2.4f);
@@ -2573,7 +2593,6 @@ void PredationGame::DrawTitleScreen()
     if (m_punching)
     {
         DrawPunchThrough();
-        ImGui::End();
         return;
     }
 
@@ -2590,7 +2609,6 @@ void PredationGame::DrawTitleScreen()
         ImGui::Spacing();
         ImGui::Separator();
         ImGui::TextDisabled("by jojozagjos");
-        ImGui::End();
         return;
     }
 
@@ -2611,7 +2629,6 @@ void PredationGame::DrawTitleScreen()
         {
             StopSession();
         }
-        ImGui::End();
         return;
     }
 
@@ -2650,7 +2667,6 @@ void PredationGame::DrawTitleScreen()
         ImGui::Spacing();
         ImGui::Separator();
         ImGui::TextDisabled("by jojozagjos");
-        ImGui::End();
         return;
     }
     if (m_titlePage == TitlePage::Join)
@@ -2665,7 +2681,6 @@ void PredationGame::DrawTitleScreen()
         ImGui::Spacing();
         ImGui::Separator();
         ImGui::TextDisabled("by jojozagjos");
-        ImGui::End();
         return;
     }
 
@@ -2712,7 +2727,6 @@ void PredationGame::DrawTitleScreen()
     ImGui::TextDisabled("  |  developer build");
 #endif
 
-    ImGui::End();
 }
 
 // --- Multiplayer -----------------------------------------------------------------------------
@@ -2746,6 +2760,26 @@ void PredationGame::DrawSoundPanel()
     const AudioEngine::Stats stats = audio.GetStats();
     ImGui::Text("%d voices, %u started, %u stolen, %u clipped", stats.voices, stats.started,
                 stats.stolen, stats.clipped);
+
+    ImGui::Spacing();
+    ImGui::SeparatorText("Voice");
+    if (m_sessionMode == SessionMode::Offline)
+    {
+        ImGui::TextDisabled("Nobody to talk to. Voice needs a game with somebody else in it.");
+    }
+    else
+    {
+        ImGui::Text("%s", m_talking ? "Talking (hold V)" : "Hold V to talk");
+        ImGui::ProgressBar(m_voiceLevel, ImVec2(-1.0f, 10.0f), "");
+        ImGui::SetItemTooltip("How loud the microphone is hearing you. If this stays flat while you "
+                              "talk, Windows is not letting the game hear it.");
+        ImGui::Text("%d %s speaking", static_cast<int>(m_speakers.size()),
+                    m_speakers.size() == 1 ? "person" : "people");
+        if (!m_microphone.Message().empty() && !m_talking)
+        {
+            ImGui::TextDisabled("%s", m_microphone.Message().c_str());
+        }
+    }
 
     ImGui::Spacing();
     ImGui::SeparatorText("Footsteps");
@@ -2832,6 +2866,165 @@ void PredationGame::DrawSoundPanel()
     }
 
     ImGui::End();
+}
+
+void PredationGame::StopTalking()
+{
+    if (!m_talking)
+    {
+        return;
+    }
+    m_talking = false;
+    m_voiceLevel = 0.0f;
+    // Closed rather than left open and ignored. The operating system's microphone indicator is the
+    // only thing a player has to go on, and it can only mean something if the device really is shut
+    // when nobody is speaking.
+    m_microphone.Stop();
+}
+
+void PredationGame::UpdateVoice(float dt)
+{
+    // --- Talking ---------------------------------------------------------------------------------
+    const bool inSession = m_sessionMode != SessionMode::Offline;
+    const bool wants = inSession && m_screen == Screen::Playing && !m_paused &&
+                       !m_app->IsConsoleOpen() && m_app->GetInput().IsActionDown("voice") &&
+                       m_player.State().alive;
+
+    if (wants && !m_talking)
+    {
+        VoiceCapture::Settings settings;
+        settings.sampleRate = 48000;
+        if (!m_voiceCodec.Ready() && !m_voiceCodec.Init(VoiceCodec::Settings{}))
+        {
+            // No codec, no voice. Said once by the codec itself; nothing here retries every frame.
+            m_talking = false;
+        }
+        else if (m_microphone.Start(settings))
+        {
+            m_talking = true;
+        }
+    }
+    else if (!wants && m_talking)
+    {
+        StopTalking();
+    }
+
+    if (m_talking)
+    {
+        std::vector<float> frame;
+        std::vector<uint8_t> packet;
+        // Everything the microphone has managed since the last frame, which at a steady frame rate
+        // is one and occasionally two. Bounded so a stall cannot turn into a burst that arrives all
+        // at once and is all stale by the time it is played.
+        for (int guard = 0; guard < 8 && m_microphone.ReadFrame(frame); ++guard)
+        {
+            if (!m_voiceCodec.Encode(frame.data(), frame.size(), packet))
+            {
+                break;
+            }
+            ++m_voiceSequence;
+            if (m_sessionMode == SessionMode::Host)
+            {
+                m_host.SendVoice(m_voiceSequence, packet, m_player.State().position);
+            }
+            else
+            {
+                m_client.SendVoice(m_voiceSequence, packet);
+            }
+        }
+        m_voiceLevel = m_microphone.LastLevel();
+    }
+
+    // --- Listening -------------------------------------------------------------------------------
+    //
+    // Where a speaker is standing decides where their voice comes from, so it goes through exactly
+    // the machinery a footstep does: the same attenuation, the same panning, the same distance cut.
+    const auto positionOf = [&](uint8_t speaker) { return PlayerPosition(speaker); };
+
+    if (m_sessionMode == SessionMode::Host)
+    {
+        for (NetHost::VoiceHeard& heard : m_host.TakeVoice())
+        {
+            HearVoice(heard.speaker, heard.frame, positionOf(heard.speaker));
+        }
+    }
+    else if (m_sessionMode == SessionMode::Client)
+    {
+        for (NetClient::VoiceHeard& heard : m_client.TakeVoice())
+        {
+            HearVoice(heard.speaker, heard.frame, positionOf(heard.speaker));
+        }
+    }
+
+    // A speaker who has stopped keeps their stream for a moment and then gives it back. Closing it
+    // the instant a frame is missed would end the voice in every gap between two words.
+    AudioEngine& audio = m_app->GetAudio();
+    for (size_t i = 0; i < m_speakers.size();)
+    {
+        Speaker& speaker = *m_speakers[i];
+        speaker.silentFor += dt;
+        if (speaker.silentFor > 1.0f)
+        {
+            audio.CloseStream(speaker.stream);
+            audio.Stop(speaker.voice);
+            m_speakers.erase(m_speakers.begin() + static_cast<ptrdiff_t>(i));
+            continue;
+        }
+        if (speaker.voice != kInvalidVoice)
+        {
+            audio.SetVoicePosition(speaker.voice, positionOf(speaker.id));
+        }
+        ++i;
+    }
+}
+
+void PredationGame::HearVoice(uint8_t speaker, const std::vector<uint8_t>& frame, const glm::vec3& at)
+{
+    AudioEngine& audio = m_app->GetAudio();
+
+    Speaker* found = nullptr;
+    for (const std::unique_ptr<Speaker>& candidate : m_speakers)
+    {
+        if (candidate->id == speaker)
+        {
+            found = candidate.get();
+            break;
+        }
+    }
+
+    if (found == nullptr)
+    {
+        auto fresh = std::make_unique<Speaker>();
+        fresh->id = speaker;
+        if (!fresh->codec.Init(VoiceCodec::Settings{}))
+        {
+            return;
+        }
+        fresh->stream = audio.OpenStream(48000);
+        if (fresh->stream == kInvalidStream)
+        {
+            return;
+        }
+        AudioEngine::PlayDesc desc;
+        desc.stream = fresh->stream;
+        desc.position = at;
+        desc.positioned = true;
+        desc.gain = 1.0f;
+        // A voice carries further than a footstep and falls off gently: the point of proximity chat
+        // is knowing roughly where somebody is, and a hard cut turns that into a switch.
+        desc.nearDistance = 2.5f;
+        desc.farDistance = kVoiceRange;
+        fresh->voice = audio.Play(desc);
+        m_speakers.push_back(std::move(fresh));
+        found = m_speakers.back().get();
+    }
+
+    found->silentFor = 0.0f;
+    std::vector<float> samples;
+    if (found->codec.Decode(frame.data(), frame.size(), samples) && !samples.empty())
+    {
+        audio.PushStream(found->stream, samples.data(), samples.size());
+    }
 }
 
 void PredationGame::LoadFootsteps(AudioEngine& audio)
@@ -5663,6 +5856,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
 
     AgeTracers(deltaSeconds);
     AdoptConnectedLinks();
+    UpdateVoice(deltaSeconds);
     // The console asked how this connection looks from outside; say so when the answer arrives.
     if (m_punchReportIn > 0 && m_probeLink != nullptr)
     {

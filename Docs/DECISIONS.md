@@ -1029,3 +1029,32 @@ interpolation alpha of one, and that is the single value at which the interpolat
 un-interpolated positions agree. The game draws as fast as it can. The test that found it draws
 three times per step, the way a machine running at 180 Hz does, and that is now how the slope tests
 run.
+
+## ADR-056: Proximity voice goes through the mixer like any other sound
+
+**Status**: accepted, 2026-09-14
+
+A voice is a thing that happens somewhere. So it is a positioned voice in the mixer, with the same
+attenuation, the same panning and the same distance cut a footstep gets, rather than a separate path
+with its own idea of where sound comes from. Knowing roughly where somebody is by hearing them is
+most of the point.
+
+Opus at 24 kbit/s, because voice codecs are not a thing to write yourself. A twenty millisecond
+frame at 48 kHz is 3840 bytes raw, three times what fits in a datagram; it compresses to about
+eighty. Frames go on the unreliable channel: a frame is useful for a twentieth of a second, a resend
+would arrive after the word it belonged to, and the codec fills a gap better than a late packet
+would. The decoder is told when a frame was lost rather than handed silence, so a dropped packet is
+a smudge rather than a hole.
+
+One decoder per speaker, because a codec carries the state of the conversation it is decoding and
+two people through one would be nonsense.
+
+The host decides who hears what. A client sends its own frames to the host, which stamps who they
+came from — a client filling that in could speak as somebody else — and forwards them only to
+players within `kVoiceRange`. Forwarding everything and letting each listener attenuate it would
+work and would also put the whole conversation on every machine, which somebody could read.
+
+The microphone is opened when the key goes down and closed when it comes up. That costs the first
+few tens of milliseconds of the first word. It buys the operating system's microphone indicator
+meaning what it says: a game that holds the microphone open all match and promises it is not
+listening is asking to be taken on trust, and this way there is nothing to take on trust.

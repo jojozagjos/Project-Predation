@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <map>
+#include <utility>
 #include <cmath>
 
 namespace pred
@@ -295,6 +296,34 @@ void NetHost::HandlePacket(const NetPacket& packet)
         HandleJoin(packet.peer, reader);
         break;
 
+    case MessageType::Voice:
+    {
+        Client* client = FindClient(packet.peer);
+        if (client == nullptr || !client->welcomed)
+        {
+            return;
+        }
+        VoiceMessage message;
+        if (!ReadVoice(reader, message))
+        {
+            return;
+        }
+        // Whose voice it is, is the host's to say. A client fills in nothing here and could not be
+        // believed if it did: taking its word would let anybody speak as anybody.
+        const glm::vec3 from = client->controller.State().position;
+        ForwardVoice(client->playerId, message.sequence, message.frame, from);
+        // And the host's own ears, if it is close enough to hear it.
+        if (glm::distance(m_localPosition, from) <= kVoiceRange)
+        {
+            VoiceHeard heard;
+            heard.speaker = client->playerId;
+            heard.sequence = message.sequence;
+            heard.frame = std::move(message.frame);
+            m_voiceHeard.push_back(std::move(heard));
+        }
+        return;
+    }
+
     case MessageType::Input:
     {
         Client* client = FindClient(packet.peer);
@@ -521,6 +550,55 @@ float NetHost::HealthOf(uint8_t playerId) const
         }
     }
     return 0.0f;
+}
+
+
+std::vector<NetHost::VoiceHeard> NetHost::TakeVoice()
+{
+    return std::exchange(m_voiceHeard, {});
+}
+
+void NetHost::ForwardVoice(uint8_t speaker, uint16_t sequence, const std::vector<uint8_t>& frame,
+                           const glm::vec3& from)
+{
+    if (frame.empty())
+    {
+        return;
+    }
+    VoiceMessage message;
+    message.speaker = speaker;
+    message.sequence = sequence;
+    message.frame = frame;
+
+    BitWriter writer(frame.size() + 8);
+    WriteMessageHeader(writer, MessageType::Voice);
+    WriteVoice(writer, message);
+    const std::vector<uint8_t>& bytes = writer.Finish();
+
+    for (const std::unique_ptr<Client>& client : m_clients)
+    {
+        if (!client->welcomed || client->playerId == speaker)
+        {
+            continue;
+        }
+        // Only to people who could actually hear it. The host owns every player's position, so this
+        // is a real distance and not a guess, and a player never receives speech they are not
+        // entitled to hear. Forwarding everything and letting each listener attenuate it would work
+        // and would also put the whole conversation on every machine.
+        const glm::vec3 to = client->controller.State().position;
+        if (glm::distance(to, from) > kVoiceRange)
+        {
+            continue;
+        }
+        m_transport->Send(client->peer, Channel::Unreliable, bytes.data(), bytes.size());
+    }
+}
+
+void NetHost::SendVoice(uint16_t sequence, const std::vector<uint8_t>& frame, const glm::vec3& from)
+{
+    // Player zero is the host. It never sends to itself: it hears its own microphone directly, and
+    // hearing yourself a network round trip later is the classic way to make somebody stop talking.
+    ForwardVoice(0, sequence, frame, from);
 }
 
 void NetHost::BroadcastPeerList()
@@ -752,6 +830,7 @@ void NetHost::Tick(uint32_t tick, const PlayerState& localState, float dt)
     m_tick = tick;
     HistoryEntry entry;
     entry.tick = tick;
+    m_localPosition = localState.position;
     entry.poses.push_back({0, localState.position, localState.stance, localState.alive});
     for (const auto& client : m_clients)
     {
@@ -1019,6 +1098,24 @@ void NetClient::HandlePacket(const NetPacket& packet)
         break;
     }
 
+    case MessageType::Voice:
+    {
+        VoiceMessage message;
+        if (!ReadVoice(reader, message) || message.speaker == m_playerId)
+        {
+            // Never our own voice back. The host does not send it, but a client that played it
+            // would hear itself a round trip late, which is the classic way to stop somebody
+            // talking mid-sentence.
+            break;
+        }
+        VoiceHeard heard;
+        heard.speaker = message.speaker;
+        heard.sequence = message.sequence;
+        heard.frame = std::move(message.frame);
+        m_voiceIn.push_back(std::move(heard));
+        break;
+    }
+
     default:
         break;
     }
@@ -1050,6 +1147,30 @@ void NetClient::SendReady()
     BitWriter writer;
     WriteMessageHeader(writer, MessageType::Ready);
     SendPacket(*m_transport, kHostPeer, Channel::Reliable, writer);
+}
+
+
+void NetClient::SendVoice(uint16_t sequence, const std::vector<uint8_t>& frame)
+{
+    if (m_transport == nullptr || !Connected() || frame.empty())
+    {
+        return;
+    }
+    VoiceMessage message;
+    // The speaker is left at zero: the host fills in who this came from, because it knows and
+    // because a client that could name the speaker could name somebody else.
+    message.sequence = sequence;
+    message.frame = frame;
+
+    BitWriter writer(frame.size() + 8);
+    WriteMessageHeader(writer, MessageType::Voice);
+    WriteVoice(writer, message);
+    SendPacket(*m_transport, kHostPeer, Channel::Unreliable, writer);
+}
+
+std::vector<NetClient::VoiceHeard> NetClient::TakeVoice()
+{
+    return std::exchange(m_voiceIn, {});
 }
 
 void NetClient::SendDrop(const DropMessage& drop)

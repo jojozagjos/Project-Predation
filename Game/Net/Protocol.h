@@ -7,6 +7,7 @@
 #include <glm/gtc/quaternion.hpp>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace pred
 {
@@ -23,7 +24,7 @@ namespace pred
 
 // Bumped whenever the wire changes shape. Two ends that disagree are refused at the door rather
 // than left to misread each other, which is what a wire mismatch actually looks like from inside.
-inline constexpr uint16_t kProtocolVersion = 3;
+inline constexpr uint16_t kProtocolVersion = 4;
 // How many bits name a message type. Five, so there is room to add one.
 inline constexpr uint32_t kMessageTypeBits = 5;
 inline constexpr uint8_t kMaxPlayers = 4;
@@ -34,6 +35,17 @@ inline constexpr uint16_t kDefaultPort = 27015;
 // an input is only useful for a few milliseconds, and by the time a resend arrived it would be a
 // tick the host had already run past.
 inline constexpr uint8_t kInputRedundancy = 3;
+
+// How far a voice carries, in metres.
+//
+// The host refuses to forward speech to anybody further away than this, so a player never receives
+// audio they are not entitled to hear. That matters in a game where listening is how you find
+// people: forwarding everything and letting each listener attenuate it would work and would also
+// mean the whole conversation was on every machine, which is a thing somebody could read.
+//
+// Shorter than the mixer silences a sound at, so the cut always happens because of this rather than
+// because a voice faded to nothing. Past it the mixer is doing nothing anyway.
+inline constexpr float kVoiceRange = 28.0f;
 
 enum class MessageType : uint8_t
 {
@@ -57,6 +69,13 @@ enum class MessageType : uint8_t
     // a world that was then thrown away and rebuilt from the map. Only the client knows when it is
     // ready, so only the client can ask.
     Ready,
+    // Voice, both directions, unreliable.
+    //
+    // A client sends its own frames to the host and the host passes them on to whoever is close
+    // enough to hear. Unreliable on purpose: a frame is useful for a twentieth of a second and a
+    // resend would arrive after the word it belonged to, and the codec fills a gap better than a
+    // late packet would anyway.
+    Voice,
     Count
 };
 
@@ -180,6 +199,21 @@ enum class JoinRejection : uint8_t
     Count
 };
 
+// One frame of somebody talking.
+//
+// `speaker` is filled in by the host on the way out. A client sending its own voice leaves it
+// alone: the host knows perfectly well who a packet came from, and trusting a client to say would
+// let one talk as somebody else.
+//
+// The sequence is what lets the far end tell a lost frame from a late one, so it can ask the codec
+// to invent the gap rather than play a stale frame out of order.
+struct VoiceMessage
+{
+    uint8_t speaker = 0;
+    uint16_t sequence = 0;
+    std::vector<uint8_t> frame;
+};
+
 struct JoinMessage
 {
     uint16_t protocolVersion = kProtocolVersion;
@@ -294,6 +328,7 @@ void WriteShot(BitWriter& writer, const ShotMessage& message);
 void WriteWorldState(BitWriter& writer, const WorldStateMessage& message);
 void WriteDrop(BitWriter& writer, const DropMessage& message);
 void WritePeerList(BitWriter& writer, const PeerListMessage& message);
+void WriteVoice(BitWriter& writer, const VoiceMessage& message);
 
 // --- Reading -----------------------------------------------------------------------------------
 //
@@ -312,5 +347,6 @@ bool ReadShot(BitReader& reader, ShotMessage& out);
 bool ReadWorldState(BitReader& reader, WorldStateMessage& out);
 bool ReadDrop(BitReader& reader, DropMessage& out);
 bool ReadPeerList(BitReader& reader, PeerListMessage& out);
+bool ReadVoice(BitReader& reader, VoiceMessage& out);
 
 } // namespace pred

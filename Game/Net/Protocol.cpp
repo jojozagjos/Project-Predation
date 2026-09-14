@@ -639,6 +639,47 @@ bool ReadText(BitReader& reader, std::string& out, size_t limit)
 }
 } // namespace
 
+
+// The most one voice frame may carry. Opus at speech bitrates produces about eighty bytes for a
+// twenty millisecond frame; this is several times that, so a legitimate frame never hits it, and it
+// is the bound that stops a forged packet claiming a kilobyte.
+constexpr size_t kMaxVoiceBytes = 320;
+
+void WriteVoice(BitWriter& writer, const VoiceMessage& message)
+{
+    writer.WriteBits(message.speaker, 3);
+    writer.WriteBits(message.sequence, 16);
+    const auto length = static_cast<uint32_t>(std::min(message.frame.size(), kMaxVoiceBytes));
+    writer.WriteBits(length, 9); // 511, comfortably over the cap
+    for (uint32_t i = 0; i < length; ++i)
+    {
+        writer.WriteByte(message.frame[i]);
+    }
+}
+
+bool ReadVoice(BitReader& reader, VoiceMessage& out)
+{
+    out.speaker = static_cast<uint8_t>(reader.ReadBits(3));
+    out.sequence = static_cast<uint16_t>(reader.ReadBits(16));
+    const uint32_t length = reader.ReadBits(9);
+    if (out.speaker >= kMaxPlayers || length > kMaxVoiceBytes)
+    {
+        return false;
+    }
+    // Checked against what is actually present before anything is reserved, so a packet claiming
+    // bytes it does not have buys an allocation for free.
+    if (reader.BitsRemaining() < static_cast<size_t>(length) * 8)
+    {
+        return false;
+    }
+    out.frame.resize(length);
+    for (uint32_t i = 0; i < length; ++i)
+    {
+        out.frame[i] = reader.ReadByte();
+    }
+    return !reader.Overran();
+}
+
 void WritePeerList(BitWriter& writer, const PeerListMessage& message)
 {
     const uint8_t count = std::min<uint8_t>(message.count, kMaxPlayers);

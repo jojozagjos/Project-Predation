@@ -1,6 +1,7 @@
 #include "Engine/Audio/AudioEngine.h"
 #include "Engine/Audio/Sound.h"
 #include "Engine/Audio/VoiceCapture.h"
+#include "Engine/Audio/VoiceCodec.h"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -707,4 +708,92 @@ TEST_CASE("The level meter follows the loudest sample in the frame", "[audio][vo
     capture.OnRecorded(shout.data(), shout.size());
     REQUIRE(capture.ReadFrame(frame));
     CHECK(capture.LastLevel() == Catch::Approx(0.9f));
+}
+
+TEST_CASE("Voice compresses to something that fits in a datagram", "[audio][voice][codec]")
+{
+    // A twenty millisecond frame at 48 kHz is 960 floats, which is 3840 bytes: three times what
+    // fits in a datagram, for a twentieth of a second of one person talking. Compression is not an
+    // optimisation here, it is the difference between voice being possible and not.
+    VoiceCodec codec;
+    VoiceCodec::Settings settings;
+    REQUIRE(codec.Init(settings));
+    REQUIRE(codec.FrameSamples() == 960);
+
+    // Something speech-shaped rather than silence: a couple of tones in the range a voice occupies,
+    // because an encoder handed nothing at all produces a packet of nothing at all and proves less.
+    std::vector<float> frame(codec.FrameSamples());
+    for (size_t i = 0; i < frame.size(); ++i)
+    {
+        const float t = static_cast<float>(i) / 48000.0f;
+        frame[i] = 0.35f * std::sin(6.2831853f * 180.0f * t) +
+                   0.15f * std::sin(6.2831853f * 900.0f * t);
+    }
+
+    std::vector<uint8_t> packet;
+    REQUIRE(codec.Encode(frame.data(), frame.size(), packet));
+    INFO("960 samples, " << frame.size() * sizeof(float) << " bytes raw, became " << packet.size());
+    CHECK(packet.size() > 0);
+    CHECK(packet.size() < 200); // comfortably inside a datagram, with the game's own traffic too
+
+    std::vector<float> back;
+    REQUIRE(codec.Decode(packet.data(), packet.size(), back));
+    CHECK(back.size() == frame.size());
+
+    // Lossy, so the samples do not come back identical and asserting that they do would be wrong.
+    // What must survive is the shape: roughly the same energy, and not silence.
+    const auto energy = [](const std::vector<float>& samples)
+    {
+        double sum = 0.0;
+        for (const float sample : samples)
+        {
+            sum += static_cast<double>(sample) * sample;
+        }
+        return std::sqrt(sum / std::max<size_t>(samples.size(), 1));
+    };
+    const double before = energy(frame);
+    const double after = energy(back);
+    INFO("energy " << before << " in, " << after << " out");
+    CHECK(after > before * 0.4);
+    CHECK(after < before * 2.0);
+}
+
+TEST_CASE("A lost voice frame is filled in rather than left as a hole", "[audio][voice][codec]")
+{
+    // Packets go missing. Handing the decoder silence for a missing one puts a hole in the middle
+    // of a word, and a hole is the most noticeable thing a voice connection can do. Opus can invent
+    // something plausible from what it has already heard, but only if it is told the frame was lost
+    // rather than being given zeroes.
+    VoiceCodec codec;
+    REQUIRE(codec.Init(VoiceCodec::Settings{}));
+
+    std::vector<float> frame(codec.FrameSamples());
+    for (size_t i = 0; i < frame.size(); ++i)
+    {
+        const float t = static_cast<float>(i) / 48000.0f;
+        frame[i] = 0.4f * std::sin(6.2831853f * 220.0f * t);
+    }
+
+    // Several frames of speech, so the decoder has something to work from.
+    std::vector<uint8_t> packet;
+    std::vector<float> back;
+    for (int i = 0; i < 5; ++i)
+    {
+        REQUIRE(codec.Encode(frame.data(), frame.size(), packet));
+        REQUIRE(codec.Decode(packet.data(), packet.size(), back));
+    }
+
+    // Now one goes missing.
+    std::vector<float> filled;
+    REQUIRE(codec.Decode(nullptr, 0, filled));
+    REQUIRE(filled.size() == frame.size());
+
+    double loudest = 0.0;
+    for (const float sample : filled)
+    {
+        loudest = std::max(loudest, std::abs(static_cast<double>(sample)));
+    }
+    INFO("the invented frame peaked at " << loudest);
+    // Not silence. It does not have to be right, it has to be something.
+    CHECK(loudest > 0.01);
 }

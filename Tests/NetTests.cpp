@@ -983,3 +983,57 @@ TEST_CASE("A connection code survives being pasted into a chat window", "[net][i
     CHECK_FALSE(DecodeIceCode("PRED1:not base64 at all!!", nothing));
     CHECK_FALSE(DecodeIceCode("", nothing));
 }
+
+TEST_CASE("A voice frame survives the wire", "[net][protocol][voice]")
+{
+    VoiceMessage sent;
+    sent.speaker = 2;
+    sent.sequence = 40000; // past the middle, so a sign error in sixteen bits shows
+    sent.frame.resize(82);
+    for (size_t i = 0; i < sent.frame.size(); ++i)
+    {
+        sent.frame[i] = static_cast<uint8_t>(i * 7 + 3);
+    }
+
+    BitWriter writer;
+    WriteVoice(writer, sent);
+    const std::vector<uint8_t>& bytes = writer.Finish();
+
+    BitReader reader(bytes.data(), bytes.size());
+    VoiceMessage back;
+    REQUIRE(ReadVoice(reader, back));
+    CHECK(back.speaker == sent.speaker);
+    CHECK(back.sequence == sent.sequence);
+    REQUIRE(back.frame.size() == sent.frame.size());
+    CHECK(back.frame == sent.frame);
+
+    INFO("an 82 byte frame took " << bytes.size() << " bytes on the wire");
+    // The header costs a few bits and nothing else. A frame that doubled in size on the wire would
+    // undo the point of compressing it.
+    CHECK(bytes.size() < sent.frame.size() + 8);
+}
+
+TEST_CASE("A forged voice packet is refused rather than believed", "[net][protocol][voice]")
+{
+    // Packets are attacker-controlled. A reader that believes a length field will happily be told
+    // to allocate more than the packet contains.
+    BitWriter writer;
+    writer.WriteBits(1, 3);      // speaker
+    writer.WriteBits(7, 16);     // sequence
+    writer.WriteBits(320, 9);    // claims the maximum...
+    writer.WriteByte(0xAB);      // ...and provides one byte
+    const std::vector<uint8_t>& bytes = writer.Finish();
+
+    BitReader reader(bytes.data(), bytes.size());
+    VoiceMessage out;
+    CHECK_FALSE(ReadVoice(reader, out));
+
+    // And a speaker who could not exist.
+    BitWriter second;
+    second.WriteBits(7, 3); // past kMaxPlayers
+    second.WriteBits(0, 16);
+    second.WriteBits(0, 9);
+    const std::vector<uint8_t>& more = second.Finish();
+    BitReader secondReader(more.data(), more.size());
+    CHECK_FALSE(ReadVoice(secondReader, out));
+}

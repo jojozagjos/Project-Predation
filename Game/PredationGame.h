@@ -9,6 +9,8 @@
 #include "Game/Items/ItemAppearance.h"
 #include "Game/Items/ItemIcons.h"
 #include "Engine/Audio/AudioEngine.h"
+#include "Engine/Audio/VoiceCapture.h"
+#include "Engine/Audio/VoiceCodec.h"
 #include "Game/Net/IceCarrier.h"
 #include "Game/Net/NetSession.h"
 #include "Engine/Net/PortMapper.h"
@@ -284,6 +286,19 @@ private:
     // Reads Data/footsteps.json and the clips it names. Missing or broken leaves the synthesised
     // footstep in place rather than making the game silent underfoot.
     void LoadFootsteps(AudioEngine& audio);
+
+    // --- Proximity voice --------------------------------------------------------------------------
+    //
+    // Push to talk opens the microphone, and closing it again when the key comes up is the whole
+    // privacy story: the operating system indicator means what it says because nothing holds the
+    // device open when nobody is speaking.
+    //
+    // Each speaker gets a stream in the mixer and a voice positioned where they are standing, so the
+    // attenuation, the panning and the distance cut are the same machinery a footstep goes through.
+    void UpdateVoice(float dt);
+    void StopTalking();
+    // Plays or updates a speaker's stream. `at` is where they are, in the world.
+    void HearVoice(uint8_t speaker, const std::vector<uint8_t>& frame, const glm::vec3& at);
     // One clip from the given surface, and that surface's loudness folded into `gain`.
     SoundId PickFootstep(float& gain, int surfaceIndex) const;
     // Which surface a position is standing on. The test map has a row of them; everywhere else
@@ -580,6 +595,27 @@ private:
     // are. Zero means not walking.
     float m_footstepAudition = 0.0f;
     float m_footstepCadence = 0.55f;
+
+    // Proximity voice. The microphone, the codec, and one stream per person talking.
+    VoiceCapture m_microphone;
+    VoiceCodec m_voiceCodec;
+    bool m_talking = false;
+    uint16_t m_voiceSequence = 0;
+    float m_voiceLevel = 0.0f;
+    struct Speaker
+    {
+        uint8_t id = 0;
+        StreamId stream = kInvalidStream;
+        VoiceId voice = kInvalidVoice;
+        VoiceCodec codec;
+        // The last sequence played, so a frame that arrives out of order can be dropped and a gap
+        // can be told from a reordering. One decoder per speaker, because a codec carries the state
+        // of the conversation it is decoding and two people through one would be nonsense.
+        uint16_t lastSequence = 0;
+        bool started = false;
+        float silentFor = 0.0f;
+    };
+    std::vector<std::unique_ptr<Speaker>> m_speakers;
 
     // Where the walk cycle had got to last frame, so a footfall is heard as the foot passes rather
     // than on a clock of its own.

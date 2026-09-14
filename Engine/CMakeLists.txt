@@ -6,6 +6,7 @@ find_package(spdlog CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(glm CONFIG REQUIRED)
 find_package(LibJuice CONFIG REQUIRED)
+find_package(Opus CONFIG REQUIRED)
 find_path(STB_INCLUDE_DIRS "stb_image_write.h" REQUIRED)
 
 set(PRED_ENGINE_SOURCES
@@ -31,6 +32,8 @@ set(PRED_ENGINE_SOURCES
     Audio/AudioEngine.cpp
     Audio/VoiceCapture.h
     Audio/VoiceCapture.cpp
+    Audio/VoiceCodec.h
+    Audio/VoiceCodec.cpp
 
     Animation/Skeleton.h
     Animation/Skeleton.cpp
@@ -123,6 +126,7 @@ target_link_libraries(PredationEngine
         nlohmann_json::nlohmann_json
         glm::glm
         LibJuice::LibJuice
+        Opus::opus
 )
 
 if(WIN32)

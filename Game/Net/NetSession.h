@@ -164,6 +164,19 @@ public:
     };
     std::vector<Departure> TakeDeparted() { return std::exchange(m_departed, {}); }
 
+    // Voice heard from somebody else, waiting to be played. Taken rather than read, because each
+    // frame is played once and holding them would be a growing buffer of old speech.
+    struct VoiceHeard
+    {
+        uint8_t speaker = 0;
+        uint16_t sequence = 0;
+        std::vector<uint8_t> frame;
+    };
+    std::vector<VoiceHeard> TakeVoice();
+
+    // The host talking. Goes to everybody within earshot of `from`.
+    void SendVoice(uint16_t sequence, const std::vector<uint8_t>& frame, const glm::vec3& from);
+
     void Broadcast(const WorldEventMessage& event);
     // Who is here and where. Sent when the roster changes, so that if this machine goes the players
     // left know where to find each other.
@@ -206,6 +219,14 @@ private:
     std::vector<InteractRequest> m_interactRequests;
     std::vector<ShotRequest> m_shotRequests;
     std::vector<DropRequest> m_dropRequests;
+    std::vector<VoiceHeard> m_voiceHeard;
+    // Where the host itself is, kept each tick, so a voice arriving between ticks can be told
+    // whether the host is near enough to hear it without the caller having to pass it in.
+    glm::vec3 m_localPosition{0.0f};
+    // One place that decides who hears a frame and sends it to them, used by a client relaying
+    // through and by the host talking itself.
+    void ForwardVoice(uint8_t speaker, uint16_t sequence, const std::vector<uint8_t>& frame,
+                      const glm::vec3& from);
     struct HistoryEntry
     {
         uint32_t tick = 0;
@@ -322,6 +343,17 @@ public:
     // already happened without the answer being thrown away by the build.
     void SendReady();
     void SendDrop(const DropMessage& drop);
+    // My microphone, on its way to the host, which decides who is close enough to hear it.
+    void SendVoice(uint16_t sequence, const std::vector<uint8_t>& frame);
+    // Voice from other people, waiting to be played. Taken rather than read: each frame is played
+    // once, and holding them would be a growing buffer of old speech.
+    struct VoiceHeard
+    {
+        uint8_t speaker = 0;
+        uint16_t sequence = 0;
+        std::vector<uint8_t> frame;
+    };
+    std::vector<VoiceHeard> TakeVoice();
     void SendShot(const ShotMessage& shot);
 
     const std::vector<RemotePlayerView>& Remotes() const { return m_views; }
@@ -355,6 +387,7 @@ private:
     std::vector<RemotePlayerView> m_views;
     std::vector<KnownPeer> m_peers;
     std::vector<WorldEventMessage> m_worldEvents;
+    std::vector<VoiceHeard> m_voiceIn;
     WorldStateMessage m_worldState;
     PredictionBuffer m_history;
     Config m_config;
