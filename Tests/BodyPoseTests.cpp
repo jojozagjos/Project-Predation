@@ -2613,3 +2613,49 @@ TEST_CASE("Falling off a ledge does not leave the legs reaching up for it", "[bo
     // is a body falling with its legs straight up over its own head.
     CHECK(worstAboveHip < -0.05f);
 }
+
+TEST_CASE("Climbing puts a foot on the ledge rather than dangling", "[body][pose][mantle]")
+{
+    // The arms went to the lip and the legs carried on with the airborne pose, which hangs them
+    // straight down under a body that is rising: a climb read as a torso being winched up a wall.
+    // A person pulls with the arms, drives a knee onto the top and stands up on it.
+    BodyHarness harness;
+    harness.Settle(60);
+
+    PlayerState state = harness.State();
+    state.mantling = true;
+    state.mantleDuration = 0.6f;
+    state.mantleFrom = {0.0f, 0.0f, 0.0f};
+    state.mantleTo = {0.0f, 1.1f, -0.9f};
+    state.mantleEdge = {0.0f, 1.1f, -0.55f};
+
+    float highestFoot = -10.0f;
+    for (int i = 0; i <= 60; ++i)
+    {
+        state.mantleTime = static_cast<float>(i) / 60.0f * state.mantleDuration;
+        // Climbing lifts the body, so the view has to come with it or the legs are being asked to
+        // reach a ledge from the floor.
+        PlayerView view = harness.View();
+        const float t = state.mantleTime / state.mantleDuration;
+        state.position = glm::mix(state.mantleFrom, state.mantleTo, t);
+        view.renderPosition = state.position;
+        view.eyePosition = state.position + glm::vec3(0.0f, 1.66f, 0.0f);
+        harness.body.Update(harness.scene, state, view, harness.config, harness.physics, kTick);
+
+        // Only while the body is still on its way up. Once it is standing on the ledge its feet
+        // are on the ledge whatever this code does, so that part says nothing.
+        if (state.position.y < 0.9f)
+        {
+            for (int side = 0; side < 2; ++side)
+            {
+                highestFoot = std::max(highestFoot, harness.Bone(harness.Rig().foot[side]).y);
+            }
+        }
+    }
+
+    INFO("while still climbing, the highest a foot reached was y " << highestFoot
+                                                                  << ", with the ledge at 1.1");
+    // A foot is up on the ledge before the body arrives there, which is what standing up on it
+    // means. Left to the airborne pose the feet hang under the hips and never pass y 0.4.
+    CHECK(highestFoot > 1.08f);
+}

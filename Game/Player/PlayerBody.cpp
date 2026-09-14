@@ -2347,6 +2347,68 @@ void PlayerBody::UpdateMantleArms(const PlayerState& state, float weight)
     }
 }
 
+void PlayerBody::UpdateMantleLegs(const PlayerState& state, float weight)
+{
+    // What the legs do while the arms are on a ledge.
+    //
+    // Nothing, until now: they ran the ordinary airborne pose, which hangs them straight down under
+    // a body that is rising, so a climb read as a torso being winched up a wall with its legs
+    // dangling. What a person does is pull with the arms, drive a knee up onto the lip, and stand
+    // up on it. The near leg therefore draws up and plants on the ledge partway through, and the
+    // far one follows once the body is over.
+    const float duration = std::max(state.mantleDuration, 0.05f);
+    const float t = std::clamp(state.mantleTime / duration, 0.0f, 1.0f);
+
+    const glm::vec3 travel = state.mantleTo - state.mantleFrom;
+    const glm::vec3 flat{travel.x, 0.0f, travel.z};
+    const glm::vec3 forward = glm::length(flat) > 1e-4f
+                                  ? glm::normalize(flat)
+                                  : glm::vec3(std::sin(m_bodyYaw), 0.0f, -std::cos(m_bodyYaw));
+    const glm::vec3 right{-forward.z, 0.0f, forward.x};
+    const glm::vec3 lip = state.mantleEdge;
+
+    for (int side = 0; side < 2; ++side)
+    {
+        const float sideSign = side == kLeft ? -1.0f : 1.0f;
+        const glm::vec3 hip = m_pose.GlobalPosition(m_rig.upperLeg[side]);
+        const float legSpan = m_rig.upperLegLength + m_rig.lowerLegLength;
+
+        // The leading leg goes first. Which one leads does not matter to anybody watching, so it is
+        // always the same one rather than a decision nothing else would agree with.
+        const float lead = side == kRight ? 0.0f : m_config.mantleTrailingFoot;
+        const float up = glm::smoothstep(m_config.mantleKneeAt + lead,
+                                         m_config.mantleKneeAt + lead + 0.26f, t);
+
+        // Hanging, then drawn up and forward onto the top of the ledge.
+        const glm::vec3 hanging = hip - glm::vec3(0.0f, legSpan * 0.72f, 0.0f) - forward * 0.04f;
+        const glm::vec3 planted = lip + forward * (m_config.mantleFootAhead * m_rig.height) +
+                                  right * (sideSign * Ratio::kHipHalfWidth * m_rig.height) +
+                                  glm::vec3(0.0f, m_rig.ankleHeight, 0.0f);
+        const glm::vec3 wanted = glm::mix(hanging, planted, up);
+
+        FootState& foot = m_feet[static_cast<size_t>(side)];
+        // Blended onto whatever the legs were already doing, so the end of a climb is a fade rather
+        // than a cut, exactly as the arms are.
+        foot.position = glm::mix(foot.position, wanted, weight);
+        foot.planted = up > 0.5f;
+
+        // The knee goes forward and up towards the ledge while the leg is folded, which is the whole
+        // shape of a mantle: a pole that pointed straight ahead put the knee through the wall.
+        const glm::vec3 kneePole = glm::normalize(forward * 1.0f + glm::vec3(0.0f, 0.55f, 0.0f) +
+                                                  right * (sideSign * 0.25f));
+        const TwoBoneIKResult ik = SolveTwoBoneIK(hip, foot.position, kneePole,
+                                                  m_rig.upperLegLength, m_rig.lowerLegLength);
+        const glm::vec3 hinge = glm::cross(ik.jointPosition - hip, ik.endPosition - ik.jointPosition);
+        m_pose.SetGlobal(m_skeleton, m_rig.upperLeg[side],
+                         SegmentFrame(m_rig.upperLeg[side], hip, ik.jointPosition, hinge));
+        m_pose.SetGlobal(m_skeleton, m_rig.lowerLeg[side],
+                         SegmentFrame(m_rig.lowerLeg[side], ik.jointPosition, ik.endPosition, hinge));
+        m_pose.SetGlobal(m_skeleton, m_rig.foot[side],
+                         SegmentFrame(m_rig.foot[side], ik.endPosition, ik.endPosition + forward * 0.1f,
+                                      glm::vec3(0.0f, 1.0f, 0.0f)));
+    }
+}
+
 void PlayerBody::UpdateCrawlArms(const PlayerState& state, const PlayerView& view,
                                  PhysicsWorld& physics, float dt, bool supportArmOnly)
 {
@@ -2956,6 +3018,12 @@ void PlayerBody::Update(Scene& scene, const PlayerState& state, const PlayerView
     UpdatePosture(state, view, playerConfig, dt);
     UpdateArms(state, view, physics, dt);
     UpdateLegs(state, view, playerConfig, physics, dt);
+    // After the legs rather than instead of them, and blended over what they were doing, so the end
+    // of a climb is a fade rather than a cut. The arms work the same way for the same reason.
+    if (m_mantleFade > 0.001f)
+    {
+        UpdateMantleLegs(state, m_mantleFade);
+    }
     PushToScene(scene);
     // One frame of placing rather than easing is all an arrival gets.
     m_placeLimbs = false;

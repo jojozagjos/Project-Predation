@@ -2031,6 +2031,36 @@ void PredationGame::DrawTitleScreen()
 // input and interpolates everybody else. Nothing a client sends is written into the world: the host
 // runs the same movement code against its own physics and what comes out is what happened.
 
+void PredationGame::UpdateMantleStow()
+{
+    // Climbing takes both hands, so whatever was in them is put away for the duration and taken
+    // back out at the top.
+    //
+    // Done through the selected slot rather than by hiding the model, so it is the same put-away
+    // and the same bring-up as any other swap: the weapon goes down, the arms are free for the
+    // climb, and it comes back up afterwards. Hiding it instead would have left the simulation
+    // thinking a rifle was in hands that were holding a ledge.
+    const bool climbing = m_player.State().mantling;
+    if (climbing == m_mantleStowing)
+    {
+        return;
+    }
+    m_mantleStowing = climbing;
+    if (climbing)
+    {
+        m_mantleStowedSlot = m_inventory.SelectedSlot();
+        if (m_mantleStowedSlot != Inventory::kNoSlot)
+        {
+            m_inventory.SelectSlot(Inventory::kNoSlot);
+        }
+    }
+    else if (m_mantleStowedSlot != Inventory::kNoSlot)
+    {
+        m_inventory.SelectSlot(m_mantleStowedSlot);
+        m_mantleStowedSlot = Inventory::kNoSlot;
+    }
+}
+
 void PredationGame::RespawnLocalPlayer(const glm::vec3& position)
 {
     m_player.Respawn(position);
@@ -4105,18 +4135,26 @@ void PredationGame::OnUpdate(double dt, double alpha)
             // The panel is clickable, so it needs the pointer back.
             m_wantMouseCaptured = !m_inventoryOpen;
         }
-        for (int slot = 0; slot < 6; ++slot)
+        // Nothing changes hands while both of them are on a ledge. The climb has put away whatever
+        // was out and will take it back out at the top; letting a number key run in the middle of
+        // that would leave the wrong thing in the hands when the climb finished, because the climb
+        // restores what it took rather than what is selected now.
+        if (HandsAreFree())
         {
-            if (input.WasActionPressed("slot_" + std::to_string(slot + 1)))
+            for (int slot = 0; slot < 6; ++slot)
             {
-                // Pressing the number for what is already out puts it away again. One key for both,
-                // because a separate holster key is one nobody finds.
-                m_inventory.SelectSlot(m_inventory.SelectedSlot() == slot ? Inventory::kNoSlot : slot);
+                if (input.WasActionPressed("slot_" + std::to_string(slot + 1)))
+                {
+                    // Pressing the number for what is already out puts it away again. One key for
+                    // both, because a separate holster key is one nobody finds.
+                    m_inventory.SelectSlot(m_inventory.SelectedSlot() == slot ? Inventory::kNoSlot
+                                                                              : slot);
+                }
             }
-        }
-        if (const float wheel = input.WheelDelta(); std::abs(wheel) > 0.1f)
-        {
-            m_inventory.SelectNext(wheel > 0.0f ? -1 : 1);
+            if (const float wheel = input.WheelDelta(); std::abs(wheel) > 0.1f)
+            {
+                m_inventory.SelectNext(wheel > 0.0f ? -1 : 1);
+            }
         }
         if (input.WasActionPressed("toggle_camera"))
         {
@@ -4284,7 +4322,10 @@ void PredationGame::OnUpdate(double dt, double alpha)
     // reads as the gun flying in from the middle of the map.
     //
     // The selected slot decides what is held, so this is checked every frame rather than hooked
-    // onto each of the several places a slot can change.
+    // onto each of the several places a slot can change. A climb is one of those places: it puts
+    // whatever was out away and takes it back at the top, which has to happen before the sync sees
+    // the slot rather than a frame after it.
+    UpdateMantleStow();
     SyncEquippedWeapon();
     // Inside a locker there is nowhere to hold a rifle: it is stowed rather than drawn, because a
     // metre of barrel held in front of the chest goes straight through the door.
@@ -5088,8 +5129,12 @@ void PredationGame::DrawInventoryPanel()
             ImGui::InvisibleButton(("##slot" + std::to_string(i)).c_str(), {kSlotSize, kSlotSize});
             if (ImGui::IsItemClicked())
             {
-                // Clicking what is already out puts it away, the same as pressing its number.
-                m_inventory.SelectSlot(m_inventory.SelectedSlot() == i ? Inventory::kNoSlot : i);
+                // Clicking what is already out puts it away, the same as pressing its number, and
+                // like the number it does nothing while a climb has the hands.
+                if (HandsAreFree())
+                {
+                    m_inventory.SelectSlot(m_inventory.SelectedSlot() == i ? Inventory::kNoSlot : i);
+                }
             }
             if (definition != nullptr && ImGui::IsItemHovered())
             {

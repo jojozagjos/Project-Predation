@@ -279,6 +279,12 @@ public:
         // How long the hands take to come off the ledge after the climb ends. Cutting straight back
         // to the normal arms moved them somewhere else in a single frame.
         float mantleArmFadeSeconds = 0.28f;
+        // And what the legs do while the arms are on the ledge. A knee comes up onto the top
+        // partway through and the other follows it; before that they hang, which is what a body
+        // pulling itself up actually looks like from the second before it gets a foot down.
+        float mantleKneeAt = 0.42f;      // how far through the climb the leading knee comes up
+        float mantleTrailingFoot = 0.18f; // how far behind it the other one is
+        float mantleFootAhead = 0.10f;   // how far past the lip the foot lands, as a fraction of height
         // How far the torso folds forward over the ledge at the middle of the pull.
         float mantleFoldDegrees = 34.0f;
 
@@ -541,6 +547,8 @@ private:
                         float dt);
     // Both hands on the lip of the ledge for the pull, then released as the body comes over.
     void UpdateMantleArms(const PlayerState& state, float weight);
+    // And the legs, which draw a knee up onto the ledge and stand on it.
+    void UpdateMantleLegs(const PlayerState& state, float weight);
     void UpdateLegs(const PlayerState& state, const PlayerView& view, const PlayerConfig& playerConfig,
                     PhysicsWorld& physics, float dt);
     void PushToScene(Scene& scene);

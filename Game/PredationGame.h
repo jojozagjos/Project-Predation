@@ -252,6 +252,11 @@ private:
     void DrawNetworkPanel();
     const std::vector<RemotePlayerView>& RemotePlayers() const;
     // Brings the local player back: upright, standing, and not still wearing their own corpse.
+    // Puts what is in the hands away for a climb and takes it back out at the top.
+    void UpdateMantleStow();
+    // Whether the hands are busy with something that is not the inventory. Nothing changes hands
+    // while both of them are on a ledge.
+    bool HandsAreFree() const { return !m_mantleStowing; }
     void RespawnLocalPlayer(const glm::vec3& position);
     // The name to join or host under: whatever is in the box, trimmed, never empty.
     std::string PlayerName() const;
@@ -439,6 +444,10 @@ private:
     float m_migrationTimer = 0.0f;
     std::map<uint8_t, float> m_remoteRespawnTimers;
     // Whose eyes we are watching through while dead. -1 when alive or when nobody is left.
+    // What was in the hands when a climb started, and whether a climb has hold of them. kNoSlot
+    // when there was nothing to put away.
+    int m_mantleStowedSlot = -1;
+    bool m_mantleStowing = false;
     int m_spectating = -1;
     // Eased like your own eye height, so a watched player crouching is a sink rather than a snap.
     float m_spectateEyeHeight = 0.0f;
