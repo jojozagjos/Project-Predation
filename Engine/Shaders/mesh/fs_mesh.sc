@@ -325,8 +325,18 @@ void main()
 	// depth within a texel and a sloped one crosses a great deal. Without it a ramp compares its own
 	// height against the height recorded at the middle of each texel, is above it on one side and
 	// below it on the other, and rules itself in fine horizontal stripes all the way up.
+	// abs, not max-with-zero.
+	//
+	// The slope term exists because a surface tilted away from the map crosses a lot of depth inside
+	// one texel and needs room not to shadow itself. A ceiling is not tilted away from a top-down
+	// map at all -- it is exactly square-on to it, the same as a floor, just facing the other way --
+	// so it needs the least slack there is, and max(N.y, 0) handed it the most.
+	//
+	// What that did: a roof 0.30 m thick got 0.90 m of slack on its underside, so it could not
+	// shadow itself. The ceiling of a sealed room read as fully lit by the sky, and that lit ceiling
+	// is what was bleeding into the corners of the dark room.
 	float skyReaches =
-		skyReaching(v_worldPos, N, shadowSlack(u_skyShadowParams.y, max(N.y, 0.0), 1.0));
+		skyReaching(v_worldPos, N, shadowSlack(u_skyShadowParams.y, abs(N.y), 1.0));
 	ambient *= mix(u_grade.z, 1.0, skyReaches);
 
 	color += diffuseColor * ambient;

@@ -546,6 +546,17 @@ private:
     // Whether the microphone.s output is actually leaving this machine this frame, as opposed to the
     // microphone merely being open. The two are different whenever the gate is shut, and the
     // difference is the thing somebody setting a threshold needs to see.
+    // Whether anything has gone out recently, rather than whether anything went out this frame.
+    //
+    // A voice frame is twenty milliseconds and the game draws at two hundred a second, so a packet
+    // leaves on about one frame in twelve. Read per frame, the label under the meter said "sending"
+    // for one frame and "open, gate shut" for eleven, which at that rate is not a flicker anybody
+    // resolves as a flicker -- it reads as two different labels drawn on top of each other, both
+    // half faded. That is what "I can see the text under it fade and see 2 text at once" was.
+    //
+    // Held for a fifth of a second after the last packet, which is longer than the gap between them
+    // and far shorter than anybody's idea of "just now".
+    float m_voiceSendingFor = 0.0f;
     bool m_voiceSending = false;
     StreamId m_micTestStream = kInvalidStream;
     bool m_torchOn = false;

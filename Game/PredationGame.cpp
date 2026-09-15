@@ -130,7 +130,13 @@ CVar<float> cv_sunShadowOffset{"r.shadow_normal_offset", 0.06f,
 // a ramp means the taps up-slope are a third of a metre above the point being shaded. Without enough
 // slack to ignore its own rise, a ramp rules itself in broad diagonal bands: not acne, but the
 // occlusion honestly reporting that a ramp is partly under itself.
-CVar<float> cv_skyShadowBias{"r.sky_bias", 0.45f, "Slack in the sky's occlusion test, in metres"};
+// It was 0.45, which was sized for a five-tap kernel over half a metre and for a slope term that
+// called a ceiling maximally glancing. Both have changed: the neighbourhood is narrower now and the
+// slope term uses abs(N.y), so the base no longer has to cover either. It also has to stay well
+// under the thinnest thing expected to cast its own shade -- a 0.30 m roof over a room -- or a
+// ceiling cannot shadow itself and the room lights up from above. At 0.16 a forty-five degree ramp
+// still gets 0.32 m, which comfortably clears the 0.25 m its own slope crosses within the kernel.
+CVar<float> cv_skyShadowBias{"r.sky_bias", 0.16f, "Slack in the sky's occlusion test, in metres"};
 CVar<float> cv_skyShadowOffset{"r.sky_normal_offset", 0.05f,
                                "How far out along the surface the sky's test is taken, in metres"};
 // How bright the backdrop is drawn. Only the backdrop: the ambient the world is lit by is separate,
@@ -154,6 +160,9 @@ CVar<bool> cv_voiceOpenMic{"audio.voice_open_mic", false,
 CVar<float> cv_voiceThreshold{"audio.voice_threshold", 0.04f,
                               "How loud you have to be before open mic transmits",
                               CVarFlags::Archive};
+// How long the meter goes on saying "sending" after the last packet. Longer than the gap between
+// them, so the label holds steady instead of strobing between two states at twelve to one.
+constexpr float kVoiceSendingHold = 0.20f;
 CVar<bool> cv_micMeter{"audio.mic_meter", true,
                        "Show the microphone level on screen", CVarFlags::Archive};
 // Which microphone, by SDL id, or zero for the system default. An id rather than a name because
@@ -3582,7 +3591,10 @@ void PredationGame::UpdateVoice(float dt)
         StopTalking();
     }
 
-    m_voiceSending = false;
+    // Decayed rather than cleared, so the indicator does not strobe between packets: see
+    // m_voiceSendingFor.
+    m_voiceSendingFor = std::max(m_voiceSendingFor - dt, 0.0f);
+    m_voiceSending = m_voiceSendingFor > 0.0f;
     if (m_talking)
     {
         std::vector<float> frame;
@@ -3604,6 +3616,7 @@ void PredationGame::UpdateVoice(float dt)
                 break;
             }
             ++m_voiceSequence;
+            m_voiceSendingFor = kVoiceSendingHold;
             m_voiceSending = true;
             if (m_sessionMode == SessionMode::Host)
             {
@@ -3780,7 +3793,11 @@ void PredationGame::UpdateMicrophoneTest(float dt)
         //
         // The test does not own m_talking and must not set it. What it has to report is whether the
         // gate is passing, which is a different thing and has its own flag.
-        m_voiceSending = sending;
+        if (sending)
+        {
+            m_voiceSendingFor = kVoiceSendingHold;
+        }
+        m_voiceSending = m_voiceSendingFor > 0.0f;
         if (sending)
         {
             audio.PushStream(m_micTestStream, frame.data(), frame.size());
@@ -6685,7 +6702,15 @@ void PredationGame::OnUpdate(double dt, double alpha)
     // eye, every surface is lit face-on and the room reads flat.
     {
         PunctualLight& torch = environment.lights[0];
-        const bool torchLit = m_torchOn && m_screen == Screen::Playing;
+        // Not while dead, and not while looking out of somebody else's head.
+        //
+        // Spectating puts the camera at the spectated player's eye, and this light is placed from
+        // that eye -- so a dead player's own torch was being hung on the person they were watching,
+        // on top of that person's torch, at the same place and pointing the same way. Two lights in
+        // one spot is twice the brightness, which is what "when you die it stacks your flashlight
+        // when spectating" was. A corpse does not hold a torch.
+        const bool torchLit = m_torchOn && m_screen == Screen::Playing &&
+                              m_player.State().alive && m_spectating < 0;
         if (torchLit)
         {
             // Straight up or straight down leaves no sideways direction to offset along, and
