@@ -1,18 +1,11 @@
-// The occlusion lookup, included once per kernel size.
+// The occlusion lookup, kept out of the shading function.
 //
-// Three maps are sampled per pixel and they do not all want the same filter. The near sun map is the
-// one whose edges are looked at from a metre away -- the shadow of your own head -- and it needs a
-// wide kernel or the silhouette climbs in steps. The far sun map exists to catch occluders the near
-// one missed, and the sky map is multiplied into ambient and changes over metres rather than
-// centimetres: on both of those a wide kernel buys nothing visible and costs as much as the one that
-// does. Twenty-five taps on all three came to seventy-five texture reads a pixel and halved the
-// frame rate.
-//
-// So the body lives here and is included twice with different sizes, rather than being written twice
-// or made to take a loop bound the compiler cannot unroll. Define KERNEL_NAME, KERNEL_TAPS and
-// KERNEL_RADIUS before including.
+// Twenty-five taps in the middle of the lighting is a wall of code in the way of the thing anybody
+// opens that file to read. It is an include rather than a plain function because it was compiled
+// twice for a while, at two kernel sizes, and the next thing that wants a second size will want that
+// back. Define KERNEL_NAME, KERNEL_TAPS and KERNEL_RADIUS before including.
 
-float KERNEL_NAME(sampler2D map, mat4 mtx, vec4 axis, vec4 params, vec3 P, vec3 N)
+float KERNEL_NAME(sampler2D map, mat4 mtx, vec4 axis, vec4 params, vec3 P, vec3 N, float bias)
 {
 	if (params.z < 0.5)
 	{
@@ -72,9 +65,10 @@ float KERNEL_NAME(sampler2D map, mat4 mtx, vec4 axis, vec4 params, vec3 P, vec3 
 		{
 			vec2 tap = base + vec2(float(x) - KERNEL_RADIUS, float(y) - KERNEL_RADIUS) * params.x;
 			float nearest = texture2DLod(map, tap, 0.0).x;
-			// Both numbers count from the back of the map, so the nearer surface to the light is
-			// the larger one, and being lit means not falling short of it by more than the slack.
-			float lit = (here + params.y >= nearest) ? 1.0 : 0.0;
+			// Both numbers count from the back of the map, so the nearer surface to the light is the
+			// larger one, and being lit means not falling short of it by more than the slack. The
+			// slack is worked out per fragment and handed in: see where this is called.
+			float lit = (here + bias >= nearest) ? 1.0 : 0.0;
 			float weight = weightX[x] * weightY[y];
 			reached += lit * weight;
 			total += weight;

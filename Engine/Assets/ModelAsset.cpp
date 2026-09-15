@@ -10,6 +10,8 @@
 #include <glm/gtc/quaternion.hpp>
 
 #include <algorithm>
+#include <glm/gtc/quaternion.hpp>
+#include <glm/gtx/quaternion.hpp>
 #include <fstream>
 
 namespace pred
@@ -180,8 +182,8 @@ glm::mat4 ModelAsset::PartMatrixAt(const ModelPart& part, const AnimationClip* c
         return part.LocalMatrix();
     }
 
-    // Linear between the two keys either side of `time`, holding the ends. Offsets are relative to
-    // the rest pose, so editing the model does not invalidate a clip that was authored against it.
+    // Between the two keys either side of `time`, holding the ends. Offsets are relative to the rest
+    // pose, so editing the model does not invalidate a clip that was authored against it.
     const std::vector<AnimationKey>& keys = track->keys;
     AnimationKey blended = keys.front();
     if (time >= keys.back().time)
@@ -197,10 +199,32 @@ glm::mat4 ModelAsset::PartMatrixAt(const ModelPart& part, const AnimationClip* c
                 const AnimationKey& a = keys[i - 1];
                 const AnimationKey& b = keys[i];
                 const float span = std::max(b.time - a.time, 1e-5f);
-                const float t = std::clamp((time - a.time) / span, 0.0f, 1.0f);
+                const float raw = std::clamp((time - a.time) / span, 0.0f, 1.0f);
+                // How the gap is crossed is a property of the key being left, not the one being
+                // arrived at: a key says how it hands over.
+                const float t = a.ease == KeyEase::Step      ? 0.0f
+                                : a.ease == KeyEase::Linear ? raw
+                                                            : raw * raw * (3.0f - 2.0f * raw);
                 blended.position = glm::mix(a.position, b.position, t);
-                blended.rotation = glm::mix(a.rotation, b.rotation, t);
-                blended.visible = glm::mix(a.visible, b.visible, t);
+
+                // Rotation goes the short way round, as a rotation rather than as three numbers.
+                //
+                // Mixing Euler triples is not interpolating a rotation, it is interpolating the
+                // notation. Two turns a hundred and eighty degrees apart average to something that
+                // is neither; a part crossing the wrap from 179 to -179 degrees takes the long way
+                // round the whole circle rather than the two degrees it actually moved; and near the
+                // poles the three numbers stop being independent at all. Converting each key to a
+                // rotation and taking the shortest arc between them does none of that, and for the
+                // small turns most keys hold it agrees with the old way to within a rounding error.
+                const glm::quat from = glm::quat(glm::radians(a.rotation));
+                const glm::quat to = glm::quat(glm::radians(b.rotation));
+                blended.rotation = glm::degrees(glm::eulerAngles(glm::slerp(from, to, t)));
+
+                // Visibility does not fade: a magazine is in the weapon or it is not. Mixed, the
+                // value only crosses the threshold the renderer tests against right at the far key,
+                // so a part keyed away at one moment and back at another stayed on screen for
+                // essentially the whole gap.
+                blended.visible = a.visible;
                 break;
             }
         }
@@ -349,6 +373,15 @@ bool ModelAsset::LoadFromFile(const std::filesystem::path& file)
                                 key.rotation = ReadVec3(*field, key.rotation);
                             }
                             ReadField(keyNode, "visible", key.visible);
+                            // Absent in anything authored before easing existed, which is every
+                            // clip currently on disk. Those were all linear, so that is what they
+                            // are read back as: a file that has never been opened in the editor
+                            // should not quietly start moving differently.
+                            std::string ease = "linear";
+                            ReadField(keyNode, "ease", ease);
+                            key.ease = ease == "step"     ? KeyEase::Step
+                                       : ease == "smooth" ? KeyEase::Smooth
+                                                          : KeyEase::Linear;
                             track.keys.push_back(key);
                         }
                         std::sort(track.keys.begin(), track.keys.end(),
@@ -425,10 +458,14 @@ bool ModelAsset::SaveToFile(const std::filesystem::path& file) const
             nlohmann::json keys = nlohmann::json::array();
             for (const AnimationKey& key : track.keys)
             {
+                const char* ease = key.ease == KeyEase::Step     ? "step"
+                                   : key.ease == KeyEase::Smooth ? "smooth"
+                                                                 : "linear";
                 keys.push_back({{"time", key.time},
                                 {"position", WriteVec3(key.position)},
                                 {"rotation", WriteVec3(key.rotation)},
-                                {"visible", key.visible}});
+                                {"visible", key.visible},
+                                {"ease", ease}});
             }
             tracks.push_back({{"part", track.part}, {"keys", std::move(keys)}});
         }

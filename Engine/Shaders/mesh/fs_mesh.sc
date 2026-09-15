@@ -33,9 +33,6 @@ uniform vec4 u_lights[MAX_LIGHTS * 4];
 // world position into a distance from that light in metres, and four numbers: the size of a texel
 // in texture coordinates, how much slack to allow in metres, whether the map is on at all, and how
 // far along the surface normal to take the reading.
-uniform mat4 u_sunNearMtx;
-uniform vec4 u_sunNearAxis;
-uniform vec4 u_sunNearParams;
 uniform mat4 u_sunShadowMtx;
 uniform vec4 u_sunShadowAxis;
 uniform vec4 u_sunShadowParams;
@@ -43,7 +40,6 @@ uniform mat4 u_skyShadowMtx;
 uniform vec4 u_skyShadowAxis;
 uniform vec4 u_skyShadowParams;
 SAMPLER2D(s_sunShadow, 1);
-SAMPLER2D(s_sunNear, 3);
 SAMPLER2D(s_skyShadow, 2);
 
 // bgfx gives HLSL a struct for a sampler and GLSL the built-in type, and makes `sampler2D` mean
@@ -53,50 +49,49 @@ SAMPLER2D(s_skyShadow, 2);
 #define PI 3.14159265359
 
 // How much of a light reaches this surface: 1 in the open, 0 behind something, and part of the way
-// along an edge. Two sizes -- see shadow_kernel.sh for why.
+// along an edge. Both maps are read the same way; see shadow_kernel.sh.
 #define KERNEL_NAME lightReachesFine
 #define KERNEL_TAPS 5
 #define KERNEL_RADIUS 2.0
 #include "shadow_kernel.sh"
 
-#define KERNEL_NAME lightReaches
-#define KERNEL_TAPS 3
-#define KERNEL_RADIUS 1.0
-#include "shadow_kernel.sh"
-
-// The sun, from both of its maps: the darker answer wins.
+// How much slack a surface needs before it stops shadowing itself.
 //
-// The near map covers a few metres around the player at about a centimetre a texel; the far one
-// covers everything else, at several. A single map cannot do both -- wide enough for a building, its
-// texels show as steps on the shadow of your own head; fine enough for that, it stops at your feet.
+// Not a constant, which is what it was, and that is most of what was wrong with these shadows.
 //
-// Picking one of them by where the shaded point is looks obvious and is wrong, and the way it is
-// wrong is that shadows disappear as the player walks. The map is fitted around the *player*, so
-// what is in it is what is near the player -- but the thing casting the shadow does not have to be.
-// A pillar five metres away throwing a shadow onto a wall three metres away is in the near map until
-// the player steps forward, and then it is outside it, and its shadow stops existing while the wall
-// it falls on is still being read from that map. Walking backwards and forwards made shadows come
-// and go.
-//
-// Consulting both and taking the minimum fixes that without having to know which map is right: an
-// occluder only has to be in one of them to cast. It also removes the seam where the two meet, since
-// there is no longer a line anything switches across. It costs a second set of taps on the surfaces
-// close enough to be in the near map, and nothing anywhere else.
-float sunReaching(vec3 P, vec3 N)
+// A map texel covers some area of world. A surface square-on to the light crosses almost no depth
+// within one texel and needs almost no slack. A surface at a glancing angle crosses a great deal --
+// the depth recorded for the texel is the depth somewhere in the middle of it, and the surface is
+// above that at one edge and below it at the other -- so it needs slack proportional to how steeply
+// it is tilted away from the light. One number cannot serve both: big enough for the glancing case
+// it lifts every shadow off the thing casting it, and small enough for the square-on case the
+// glancing surfaces stripe themselves with their own shadow, in a pattern that crawls as the map
+// snaps to its grid while the player walks. That crawl is what "flickering" was.
+float shadowSlack(float base, float NoL)
 {
-	float reaching =
-		lightReaches(s_sunShadow, u_sunShadowMtx, u_sunShadowAxis, u_sunShadowParams, P, N);
-	if (u_sunNearParams.z > 0.5)
-	{
-		vec4 nearClip = mul(u_sunNearMtx, vec4(P + N * u_sunNearParams.w, 1.0));
-		vec2 nearUv = nearClip.xy / nearClip.w;
-		if (nearUv.x > 0.02 && nearUv.x < 0.98 && nearUv.y > 0.02 && nearUv.y < 0.98)
-		{
-			reaching = min(reaching, lightReachesFine(s_sunNear, u_sunNearMtx, u_sunNearAxis,
-			                                          u_sunNearParams, P, N));
-		}
-	}
-	return reaching;
+	// tan of the angle from the surface normal to the light, which is how much depth one step
+	// across the surface covers. Clamped, because it runs to infinity at ninety degrees and the
+	// answer there is "this surface is edge-on to the light and nothing sensible can be said".
+	float slope = sqrt(max(1.0 - NoL * NoL, 0.0)) / max(NoL, 0.08);
+	return base * (1.0 + min(slope, 6.0));
+}
+
+// The sun, from one map.
+//
+// There were two for a while -- a fine one around the player and a coarse one beyond it -- and the
+// shaded point took the darker of their two answers so that an occluder only had to be in one of
+// them to cast. That fixed shadows disappearing as the player walked, and it brought its own
+// trouble: taking the darker answer also takes the worse artefact. The two maps have texels of very
+// different sizes, they shared one bias, and a bias right for one is wrong for the other, so
+// whichever map was striping itself won every pixel. Two maps' worth of acne, and it crawled.
+//
+// One map, fitted more tightly so its texels are small enough on their own, is less machinery and
+// fewer ways to be wrong. What it costs is shadows stopping at the edge of what it covers, which is
+// a clean limit rather than a thing that pops.
+float sunReaching(vec3 P, vec3 N, float NoL)
+{
+	return lightReachesFine(s_sunShadow, u_sunShadowMtx, u_sunShadowAxis, u_sunShadowParams, P, N,
+	                        shadowSlack(u_sunShadowParams.y, NoL));
 }
 
 // GGX / Trowbridge-Reitz normal distribution.
@@ -161,7 +156,7 @@ void main()
 	vec3 diffuse = diffuseColor / PI;
 	vec3 radiance = u_lightColor.rgb * u_lightColor.w;
 	// Whatever the roof, the wall or the crate in the way is keeping off this surface.
-	float sunReaches = sunReaching(v_worldPos, N);
+	float sunReaches = sunReaching(v_worldPos, N, NoL);
 	vec3 color = (diffuse + specular) * radiance * NoL * sunReaches;
 
 	// And the lights that have a place: a torch, a flare, a lamp on a wall.
@@ -230,7 +225,8 @@ void main()
 	// left where the sky cannot reach is a small fraction, standing in for the light that would have
 	// bounced its way in; without it, geometry out of the torch beam is not dark but absent.
 	float skyReaches =
-		lightReachesFine(s_skyShadow, u_skyShadowMtx, u_skyShadowAxis, u_skyShadowParams, v_worldPos, N);
+		lightReachesFine(s_skyShadow, u_skyShadowMtx, u_skyShadowAxis, u_skyShadowParams, v_worldPos, N,
+		                 u_skyShadowParams.y);
 	ambient *= mix(u_grade.z, 1.0, skyReaches);
 
 	color += diffuseColor * ambient;

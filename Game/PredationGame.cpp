@@ -102,12 +102,9 @@ CVar<bool> cv_sunShadows{"r.shadows", true, "Whether the sun is stopped by anyth
                          CVarFlags::Archive};
 CVar<bool> cv_skyShadows{"r.sky_occlusion", true, "Whether a roof keeps the sky out of a room",
                          CVarFlags::Archive};
-CVar<float> cv_shadowDistance{"r.shadow_distance", 32.0f,
+CVar<float> cv_shadowDistance{"r.shadow_distance", 20.0f,
                               "How far from the player occlusion is worked out, in metres",
                               CVarFlags::Archive};
-CVar<float> cv_shadowNear{"r.shadow_near", 6.0f,
-                          "How far the fine shadow map reaches before the coarse one takes over",
-                          CVarFlags::Archive};
 CVar<int> cv_occlusionDebug{"r.show_occlusion", 0,
                             "Draw occlusion instead of the scene: 1 the sun, 2 the sky"};
 CVar<float> cv_indoorLight{"r.indoor_light", 0.06f,
@@ -6537,7 +6534,6 @@ void PredationGame::OnUpdate(double dt, double alpha)
     shadows.sunEnabled = cv_sunShadows.Get();
     shadows.skyEnabled = cv_skyShadows.Get();
     shadows.distance = std::clamp(cv_shadowDistance.Get(), 10.0f, 120.0f);
-    shadows.nearDistance = std::clamp(cv_shadowNear.Get(), 2.0f, 30.0f);
     shadows.indoorLight = std::clamp(cv_indoorLight.Get(), 0.0f, 1.0f);
     shadows.sunBias = cv_sunShadowBias.Get();
     shadows.sunNormalOffset = cv_sunShadowOffset.Get();
@@ -6686,9 +6682,8 @@ void PredationGame::OnRender()
     // Depth from the sun and depth from overhead, both fitted around the eye, before anything is
     // shaded. This is where a room with a roof on it becomes dark: nothing declares it dark, the
     // roof is simply between it and the sky.
-    app.GetSceneRenderer().RenderShadows(Renderer::kViewSunNearShadow, Renderer::kViewSunShadow,
-                                         Renderer::kViewSkyShadow, m_scene, app.GetMeshes(),
-                                         viewPosition);
+    app.GetSceneRenderer().RenderShadows(Renderer::kViewSunShadow, Renderer::kViewSkyShadow, m_scene,
+                                         app.GetMeshes(), viewPosition);
     // The sky first, into the same view, so the world covers it where there is world.
     app.GetSkyRenderer().Draw(Renderer::kViewSky, m_scene.GetEnvironment(),
                               app.GetRenderer().ViewMatrix(), app.GetRenderer().ProjectionMatrix());

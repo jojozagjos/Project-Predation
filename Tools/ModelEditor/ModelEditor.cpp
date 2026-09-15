@@ -1111,7 +1111,31 @@ void ModelEditor::DrawAnimationPanel()
     }
     DragVec3("Move", key->position, 0.005f);
     DragVec3("Turn", key->rotation, 0.5f, "%.1f deg");
-    ImGui::SliderFloat("Visible", &key->visible, 0.0f, 1.0f);
+
+    // How this key hands over to the next one. It belongs to the key being left rather than the one
+    // being arrived at, because that is the one whose departure it describes.
+    int ease = static_cast<int>(key->ease);
+    if (ImGui::Combo("Leaves", &ease, "Holding\0Straight\0Eased\0"))
+    {
+        key->ease = static_cast<KeyEase>(std::clamp(ease, 0, 2));
+        m_dirty = true;
+        m_previewChanged = true;
+    }
+    ImGui::SetItemTooltip(
+        "%s", "Holding keeps this value until the next key, for anything that does not slide: a "
+              "magazine is in the weapon or gone. Straight runs at a constant speed. Eased starts "
+              "and stops, which is what most of a reload is and is the reason to prefer it.");
+
+    // A boolean, drawn as one. It was a slider from zero to one and it is not a fade: the renderer
+    // treats anything above a hundredth as present, and the sampler holds a key's value until the
+    // next one, so every value in between meant the same as one of the ends.
+    bool visible = key->visible > 0.5f;
+    if (ImGui::Checkbox("Part is there", &visible))
+    {
+        key->visible = visible ? 1.0f : 0.0f;
+        m_dirty = true;
+        m_previewChanged = true;
+    }
     ImGui::TextDisabled("Offsets are from the part's rest pose, so editing the model keeps the clip.");
 }
 

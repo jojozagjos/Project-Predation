@@ -74,13 +74,31 @@ struct ModelSocket
     glm::quat Rotation() const;
 };
 
-// One keyframe of one part, at a moment in a clip.
+// How a key reaches the next one.
+//
+// Every key used to be Linear, which is why hand-authored animation looked mechanical: a part moved
+// at a constant speed and changed direction with a corner. Real movement starts and stops.
+enum class KeyEase : uint8_t
+{
+    // Holds this key's value until the next one. For anything that does not slide: a magazine that
+    // is either in the weapon or gone, a bolt that is forward or back.
+    Step,
+    // Constant speed to the next key. What was here before, kept because a straight run at a
+    // steady rate is sometimes exactly right -- a belt feeding, a barrel spinning up.
+    Linear,
+    // Eases out of this key and into the next. The default, because most of what a weapon does is
+    // a hand starting and stopping, and because a chain of these is the cheapest thing that stops
+    // an animation looking like a machine.
+    Smooth
+};
+
 struct AnimationKey
 {
     float time = 0.0f; // seconds from the start of the clip
     glm::vec3 position{0.0f};
     glm::vec3 rotation{0.0f}; // euler degrees
     float visible = 1.0f;     // 0 hides the part, for a magazine that has left the weapon
+    KeyEase ease = KeyEase::Smooth;
 };
 
 // The animation of one part through a clip.

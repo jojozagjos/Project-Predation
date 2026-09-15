@@ -1,4 +1,5 @@
 #include "Engine/Animation/IK.h"
+#include "Engine/Assets/ModelAsset.h"
 #include "Engine/Animation/Skeleton.h"
 
 #include <catch2/catch_approx.hpp>
@@ -290,4 +291,139 @@ TEST_CASE("Exponential smoothing is frame-rate independent", "[animation][ik]")
     // produce different behaviour at another.
     REQUIRE(coarse == Catch::Approx(fine).epsilon(0.01));
     REQUIRE(coarse > 0.99f);
+}
+
+// --- Clip sampling ---------------------------------------------------------------------------
+//
+// What a clip does between its keys, which is most of what makes hand-authored animation look like
+// movement or like a machine.
+
+namespace
+{
+// A model with one part and one clip, so a sampler can be asked questions without a renderer.
+ModelAsset OnePartClip(std::vector<AnimationKey> keys)
+{
+    ModelAsset model;
+    ModelPart part;
+    part.name = "slide";
+    model.parts.push_back(part);
+
+    AnimationClip clip;
+    clip.name = "test";
+    clip.duration = 1.0f;
+    AnimationTrack track;
+    track.part = "slide";
+    track.keys = std::move(keys);
+    clip.tracks.push_back(std::move(track));
+    model.clips.push_back(std::move(clip));
+    return model;
+}
+
+glm::vec3 PositionAt(const ModelAsset& model, float time)
+{
+    return glm::vec3(model.PartMatrixAt(model.parts.front(), &model.clips.front(), time, nullptr)[3]);
+}
+} // namespace
+
+TEST_CASE("A smooth key eases out of itself and into the next", "[animation][clip]")
+{
+    // Linear was the only thing a key could do, and a part that moves at a constant speed and
+    // changes direction with a corner is what made this look mechanical. A smooth key starts slowly,
+    // runs, and arrives slowly.
+    AnimationKey start;
+    start.time = 0.0f;
+    start.position = glm::vec3(0.0f);
+    start.ease = KeyEase::Smooth;
+    AnimationKey end;
+    end.time = 1.0f;
+    end.position = glm::vec3(1.0f, 0.0f, 0.0f);
+    const ModelAsset model = OnePartClip({start, end});
+
+    // Halfway in time is halfway in space whatever the easing: it is the ends that differ.
+    CHECK(PositionAt(model, 0.5f).x == Catch::Approx(0.5f).margin(1e-4));
+    // A tenth of the way in, a linear move would be a tenth of the way along. An eased one has
+    // barely left.
+    CHECK(PositionAt(model, 0.1f).x < 0.06f);
+    // And a tenth from the end it has nearly arrived.
+    CHECK(PositionAt(model, 0.9f).x > 0.94f);
+
+    // Which is the whole difference from linear, so the same keys set linear must not do it.
+    AnimationKey linearStart = start;
+    linearStart.ease = KeyEase::Linear;
+    const ModelAsset straight = OnePartClip({linearStart, end});
+    CHECK(PositionAt(straight, 0.1f).x == Catch::Approx(0.1f).margin(1e-4));
+}
+
+TEST_CASE("A step key holds its value until the next one", "[animation][clip]")
+{
+    // For anything that does not slide: a bolt is forward or back, never a third of the way.
+    AnimationKey start;
+    start.time = 0.0f;
+    start.position = glm::vec3(0.0f);
+    start.ease = KeyEase::Step;
+    AnimationKey end;
+    end.time = 1.0f;
+    end.position = glm::vec3(1.0f, 0.0f, 0.0f);
+    const ModelAsset model = OnePartClip({start, end});
+
+    CHECK(PositionAt(model, 0.01f).x == Catch::Approx(0.0f).margin(1e-5));
+    CHECK(PositionAt(model, 0.99f).x == Catch::Approx(0.0f).margin(1e-5));
+    // And arrives on the key itself.
+    CHECK(PositionAt(model, 1.0f).x == Catch::Approx(1.0f).margin(1e-5));
+}
+
+TEST_CASE("A part keyed away stays away until it is keyed back", "[animation][clip]")
+{
+    // Visibility used to be mixed like a position. The renderer treats anything above a hundredth
+    // as visible, so a magazine keyed out at one moment and back at another was on screen for
+    // essentially the whole gap: it reappeared a few milliseconds after it left.
+    AnimationKey present;
+    present.time = 0.0f;
+    present.visible = 1.0f;
+    AnimationKey gone;
+    gone.time = 0.2f;
+    gone.visible = 0.0f;
+    AnimationKey back;
+    back.time = 0.8f;
+    back.visible = 1.0f;
+    const ModelAsset model = OnePartClip({present, gone, back});
+
+    const auto visibleAt = [&](float time)
+    {
+        float visible = 1.0f;
+        model.PartMatrixAt(model.parts.front(), &model.clips.front(), time, &visible);
+        return visible;
+    };
+
+    CHECK(visibleAt(0.1f) > 0.5f);
+    // Gone for the whole of the gap, not just the instant it was keyed.
+    CHECK(visibleAt(0.25f) < 0.01f);
+    CHECK(visibleAt(0.5f) < 0.01f);
+    CHECK(visibleAt(0.79f) < 0.01f);
+    CHECK(visibleAt(0.85f) > 0.5f);
+}
+
+TEST_CASE("Rotation between two keys takes the short way round", "[animation][clip]")
+{
+    // Euler triples were mixed one number at a time, which is interpolating the notation rather
+    // than the rotation: a part crossing the wrap from 170 to -170 degrees went the long way round
+    // the whole circle instead of the twenty degrees it actually moved.
+    AnimationKey start;
+    start.time = 0.0f;
+    start.rotation = glm::vec3(0.0f, 170.0f, 0.0f);
+    start.ease = KeyEase::Linear;
+    AnimationKey end;
+    end.time = 1.0f;
+    end.rotation = glm::vec3(0.0f, -170.0f, 0.0f);
+    const ModelAsset model = OnePartClip({start, end});
+
+    // Halfway should be at the far side, a hundred and eighty degrees from zero -- not back at
+    // zero, which is where averaging 170 and -170 as numbers lands.
+    const glm::mat4 middle =
+        model.PartMatrixAt(model.parts.front(), &model.clips.front(), 0.5f, nullptr);
+    // Where the part's own -Z ends up says which way it is facing without any euler bookkeeping.
+    const glm::vec3 facing = glm::normalize(glm::vec3(middle * glm::vec4(0.0f, 0.0f, -1.0f, 0.0f)));
+    INFO("halfway the part faces " << facing.x << ", " << facing.y << ", " << facing.z);
+    // Turned about 180 from its rest facing of -Z, so it should now face +Z.
+    CHECK(facing.z > 0.9f);
 }
