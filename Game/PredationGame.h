@@ -336,9 +336,26 @@ private:
         glm::vec3 origin{0.0f};
         glm::vec3 to{0.0f};
         bool hit = false;
+        // Which way the surface it hit faces, so the hole can be laid flat on it.
+        glm::vec3 normal{0.0f, 1.0f, 0.0f};
         float age = 0.0f;
+        // Set once the round has arrived and its hole has been placed, so it is placed once rather
+        // than every frame for as long as the tracer lives.
+        bool marked = false;
     };
     std::vector<Tracer> m_tracers;
+
+    // Bullet holes, as a ring of entities that are moved rather than created and destroyed.
+    //
+    // A hole is a mark on a wall and it should stay there: an impact that flashes and vanishes says
+    // a round arrived, and a hole says a round arrived and where, which is the thing a player reads
+    // a room with. Fixed count because they must not grow without limit over a long match -- the
+    // oldest is reused, so a wall somebody empties a magazine into keeps the last of them.
+    static constexpr size_t kMaxBulletHoles = 96;
+    std::vector<Entity> m_bulletHoles;
+    size_t m_nextBulletHole = 0;
+    MeshHandle m_bulletHoleMesh;
+    void PlaceBulletHole(const glm::vec3& at, const glm::vec3& normal);
     InteractionSystem m_interactions;
     WorldObjects m_world;
     // -1 when not hidden. While hidden the player holds still inside the locker.

@@ -14,6 +14,7 @@
 #include <SDL3/SDL_events.h>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <glm/gtx/quaternion.hpp>
 #include <imgui.h>
 #include <nlohmann/json.hpp>
 
@@ -170,7 +171,6 @@ CVar<float> cv_sunIntensity{"r.sun_intensity", 2.2f, "Directional light intensit
 // at once, slow enough that the eye catches the direction it went.
 constexpr float kTracerSpeed = 260.0f;   // metres a second
 constexpr float kTracerLength = 2.2f;    // how much of it is lit at any moment
-constexpr float kSparkSeconds = 0.18f;   // how long the mark at the far end lasts
 // Long enough for the longest shot to arrive and its impact to fade.
 constexpr float kTracerSeconds = 0.75f;
 
@@ -194,6 +194,28 @@ std::filesystem::path PlayerConfigPath()
     return Paths::AssetsRoot() / "Data" / "player.json";
 }
 
+// Which way the surface a round landed on faces.
+//
+// Not sent with the shot, and it does not need to be: the static world is the same on every machine,
+// so the cheapest way to know how to lay a hole on a wall is to ask this machine's own copy of that
+// wall. A short trace ending where the round did, rather than a new field on the wire and a protocol
+// version to go with it.
+//
+// Falls back to facing the round, which is right for a flat surface hit square on and near enough
+// for anything the trace misses.
+glm::vec3 SurfaceNormalAt(PhysicsWorld& physics, const glm::vec3& from, const glm::vec3& at)
+{
+    const glm::vec3 along = at - from;
+    const float distance = glm::length(along);
+    if (distance < 1e-4f)
+    {
+        return glm::vec3(0.0f, 1.0f, 0.0f);
+    }
+    const glm::vec3 direction = along / distance;
+    // Started a little short of the impact so the trace has something to run into.
+    const RayHit hit = physics.RayCast(at - direction * 0.25f, direction, 0.5f);
+    return hit ? hit.normal : -direction;
+}
 } // namespace
 
 bool PredationGame::OnInit(Application& app)
@@ -211,6 +233,34 @@ bool PredationGame::OnInit(Application& app)
     {
         PRED_LOG_ERROR(Gameplay, "Player controller failed to initialize");
         return false;
+    }
+
+    // The pool of bullet holes, made once and moved about thereafter.
+    //
+    // Creating an entity per round would grow the scene without limit across a match and put a mesh
+    // upload on the frame a trigger is pulled. A fixed ring costs its whole size up front, never
+    // allocates again, and the oldest hole quietly becomes the newest.
+    {
+        // A flat disc lying in the XZ plane. Eight sides is round enough at the size a bullet hole
+        // is drawn, and the shape is a dark ring rather than a dot because that is what a hole in a
+        // hard surface looks like: a bruise of cracked material with a shadow in the middle.
+        MeshData holeMesh = Primitives::Plane({0.055f, 0.055f}, 1);
+        m_bulletHoleMesh = app.GetMeshes().Upload(holeMesh, "bullet_hole");
+        const Material holeMaterial = Material::Diffuse({0.05f, 0.045f, 0.04f}, 0.95f);
+        m_bulletHoles.reserve(kMaxBulletHoles);
+        for (size_t i = 0; i < kMaxBulletHoles; ++i)
+        {
+            const Entity hole = m_scene.CreateMeshEntity("bullet_hole", Transform{},
+                                                         m_bulletHoleMesh, holeMaterial);
+            if (MeshRenderer* renderer = m_scene.GetMeshRenderer(hole))
+            {
+                // Hidden until it is used, and never a shadow caster: a decal lying on a wall would
+                // otherwise shadow the wall it is lying on.
+                renderer->visible = false;
+                renderer->castsShadow = false;
+            }
+            m_bulletHoles.push_back(hole);
+        }
     }
 
     m_body.Build(m_scene, app.GetMeshes(), m_player.Config());
@@ -1079,6 +1129,7 @@ void PredationGame::ServeClientRequests()
         tracer.origin = shot.origin;
         tracer.to = event.direction;
         tracer.hit = event.flag;
+        tracer.normal = SurfaceNormalAt(m_app->GetPhysics(), tracer.origin, tracer.to);
         m_tracers.push_back(tracer);
 
         // The host draws the shooter too, so their weapon has to kick here as well. The event goes
@@ -1230,7 +1281,6 @@ PredationGame::RemoteAvatar* PredationGame::AvatarFor(uint8_t id)
     }
     return nullptr;
 }
-
 void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
 {
     switch (event.kind)
@@ -1334,6 +1384,8 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
             tracer.origin = event.position;
             tracer.to = event.direction;
             tracer.hit = event.flag;
+            tracer.normal = SurfaceNormalAt(m_app->GetPhysics(), tracer.origin, tracer.to);
+        tracer.normal = SurfaceNormalAt(m_app->GetPhysics(), tracer.origin, tracer.to);
             m_tracers.push_back(tracer);
             // And it is heard where it was fired from, which is most of what tells a player there
             // is somebody else in the building and roughly where.
@@ -4756,6 +4808,7 @@ void PredationGame::ResolveShots()
             tracer.origin = shot.origin;
             tracer.to = predicted ? predicted.position : shot.origin + shot.direction * shot.range;
             tracer.hit = predicted.hit;
+            tracer.normal = predicted.normal;
             m_tracers.push_back(tracer);
             continue;
         }
@@ -6467,6 +6520,55 @@ void PredationGame::OnUpdate(double dt, double alpha)
     app.SetEntityCount(m_scene.EntityCount());
 }
 
+void PredationGame::PlaceBulletHole(const glm::vec3& at, const glm::vec3& normal)
+{
+    // Laid on the surface it hit, facing out of it.
+    //
+    // A quad rather than a projected decal. A real decal is clipped against the geometry underneath
+    // so it wraps a corner and does not hang off an edge; that needs a projection pass this renderer
+    // has no place for yet. A small quad a few millimetres off the surface is right everywhere flat,
+    // which every surface in this game currently is, and wrong only where a round lands within a
+    // centimetre of an edge.
+    //
+    // Offset along the normal because a quad exactly on a surface fights it for the same pixels, and
+    // which of the two wins changes with the angle -- a hole that flickers as the player walks past.
+    if (m_bulletHoleMesh.index == MeshHandle{}.index || m_bulletHoles.empty())
+    {
+        return;
+    }
+
+    const Entity hole = m_bulletHoles[m_nextBulletHole];
+    m_nextBulletHole = (m_nextBulletHole + 1) % m_bulletHoles.size();
+
+    Transform* transform = m_scene.GetTransform(hole);
+    MeshRenderer* renderer = m_scene.GetMeshRenderer(hole);
+    if (transform == nullptr || renderer == nullptr)
+    {
+        return;
+    }
+
+    const glm::vec3 out =
+        glm::length(normal) > 1e-4f ? glm::normalize(normal) : glm::vec3(0.0f, 1.0f, 0.0f);
+    // The quad is built lying in the XZ plane facing +Y, so this is the shortest turn from up to the
+    // surface's normal. Straight down is the one case that has no shortest turn, and a half turn
+    // about any horizontal axis will do there.
+    const glm::vec3 up{0.0f, 1.0f, 0.0f};
+    const float alignment = glm::dot(up, out);
+    transform->rotation = alignment < -0.9999f
+                              ? glm::angleAxis(glm::pi<float>(), glm::vec3(1.0f, 0.0f, 0.0f))
+                              : glm::rotation(up, out);
+    transform->position = at + out * 0.006f;
+    // Turned to a different angle each time and sized a little differently, so a wall somebody has
+    // emptied a magazine into does not read as the same stamp repeated.
+    transform->rotation =
+        transform->rotation * glm::angleAxis(glm::two_pi<float>() * static_cast<float>(std::rand()) /
+                                                 static_cast<float>(RAND_MAX),
+                                             glm::vec3(0.0f, 1.0f, 0.0f));
+    const float size = 0.85f + 0.3f * static_cast<float>(std::rand()) / static_cast<float>(RAND_MAX);
+    transform->scale = glm::vec3(size);
+    renderer->visible = true;
+}
+
 void PredationGame::SpawnProp(bool sphere, float impulse)
 {
     PhysicsWorld& physics = m_app->GetPhysics();
@@ -6601,25 +6703,17 @@ void PredationGame::DrawDebugOverlays()
             draw.Line(tracer.from + direction * tail, tracer.from + direction * head,
                       Color::RGBA(level(255.0f), level(226.0f), level(150.0f)));
         }
-        else if (tracer.hit)
+        else if (tracer.hit && !tracer.marked)
         {
-            // Arrived, and found something. A small burst that shrinks away, so an impact is
-            // visible for a moment after the round itself has gone.
-            const float left =
-                1.0f - std::clamp((tracer.age - distance / kTracerSpeed) / kSparkSeconds, 0.0f, 1.0f);
-            if (left > 0.0f)
-            {
-                const float size = 0.16f * left;
-                const auto level = [left](float channel)
-                { return static_cast<uint8_t>(std::clamp(channel * left, 0.0f, 255.0f)); };
-                const uint32_t colour = Color::RGBA(level(255.0f), level(190.0f), level(90.0f));
-                draw.Line(tracer.to - glm::vec3(size, 0.0f, 0.0f),
-                          tracer.to + glm::vec3(size, 0.0f, 0.0f), colour);
-                draw.Line(tracer.to - glm::vec3(0.0f, size, 0.0f),
-                          tracer.to + glm::vec3(0.0f, size, 0.0f), colour);
-                draw.Line(tracer.to - glm::vec3(0.0f, 0.0f, size),
-                          tracer.to + glm::vec3(0.0f, 0.0f, size), colour);
-            }
+            // Arrived. The round leaves a hole where it landed and that is the whole of the effect:
+            // a burst that flashes and vanishes says only that something happened, and a hole says
+            // what happened and where, and is still saying it a minute later. Reading a room by the
+            // marks in it is worth more to this game than a spark is.
+            //
+            // `marked` rather than a test on the age, so it happens on the one frame the round
+            // arrives rather than on every frame the tracer survives afterwards.
+            const_cast<Tracer&>(tracer).marked = true;
+            PlaceBulletHole(tracer.to, tracer.normal);
         }
     }
 
