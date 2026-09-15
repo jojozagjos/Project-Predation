@@ -76,6 +76,18 @@ CVar<float> cv_torchInner{"r.torch_inner", 13.0f, "The flashlight's bright cone,
                           CVarFlags::Archive};
 CVar<float> cv_torchOuter{"r.torch_outer", 26.0f, "Where the flashlight's beam fades out, in degrees",
                           CVarFlags::Archive};
+// How fast the beam catches up with the view. A torch is held in a hand on the end of an arm and
+// none of that turns at the speed of a mouse; without the lag the beam is not a carried light but a
+// spot painted on the middle of the screen.
+CVar<float> cv_torchFollow{"r.torch_follow", 9.0f, "How quickly the flashlight catches up with the view",
+                           CVarFlags::Archive};
+// And how big the bulb is. The weapon is a hand span from the eye, and an inverse square from a
+// mathematical point at that range is a hundred times the intensity.
+CVar<float> cv_torchSourceRadius{"r.torch_source_radius", 0.75f,
+                                 "How big the flashlight.s source is, in metres", CVarFlags::Archive};
+CVar<float> cv_torchReach{"r.torch_reach", 0.85f,
+                          "How far ahead of the eye the flashlight sits, in metres",
+                          CVarFlags::Archive};
 // Occlusion. Everything a light is stopped by is worked out from the geometry, and these say how
 // well and how far: see Engine/Render/ShadowMap.h for what the two maps are.
 CVar<bool> cv_sunShadows{"r.shadows", true, "Whether the sun is stopped by anything",
@@ -85,6 +97,9 @@ CVar<bool> cv_skyShadows{"r.sky_occlusion", true, "Whether a roof keeps the sky 
 CVar<float> cv_shadowDistance{"r.shadow_distance", 32.0f,
                               "How far from the player occlusion is worked out, in metres",
                               CVarFlags::Archive};
+CVar<float> cv_shadowNear{"r.shadow_near", 6.0f,
+                          "How far the fine shadow map reaches before the coarse one takes over",
+                          CVarFlags::Archive};
 CVar<int> cv_occlusionDebug{"r.show_occlusion", 0,
                             "Draw occlusion instead of the scene: 1 the sun, 2 the sky"};
 CVar<float> cv_indoorLight{"r.indoor_light", 0.06f,
@@ -5991,19 +6006,25 @@ void PredationGame::OnUpdate(double dt, double alpha)
     environment.exposure = cv_exposure.Get();
     environment.contrast = cv_contrast.Get();
 
-    // The flashlight, on the camera rather than in the hand.
+    // The flashlight, carried at the shoulder rather than screwed to the eye.
     //
     // A torch held in the hand is the honest version and it is also the one that fights everything
     // else: the hand moves with the weapon, the weapon moves with the wall corrections, and the beam
-    // would swing around the room every time the gun was nudged. On the eye it points where the
-    // player is looking, which is what anybody actually wants from a torch, and it costs nothing to
-    // move it into the hand later once there is a hand free to hold it.
+    // would swing around the room every time the gun was nudged. Carried near the eye it points
+    // roughly where the player is looking, which is what anybody wants from a torch.
     //
-    // Offset slightly down and to the side of the eye so the beam has some parallax against the
-    // walls: exactly on the eye, every surface is lit face-on and the room reads flat.
+    // "Roughly", because it does not point exactly there. A torch is a thing with weight held in a
+    // hand on the end of an arm, and none of that turns at the speed of a wrist on a mouse. The beam
+    // trails the view and catches up, which is most of what makes a light read as carried rather
+    // than as a property of the camera -- and in a dark room it is the difference between a beam
+    // that sweeps a wall and a spot that is simply always in the middle of the screen.
+    //
+    // Offset down and to the side so the beam has some parallax against the walls: exactly on the
+    // eye, every surface is lit face-on and the room reads flat.
     {
         PunctualLight& torch = environment.lights[0];
-        if (m_torchOn && m_screen == Screen::Playing)
+        const bool torchLit = m_torchOn && m_screen == Screen::Playing;
+        if (torchLit)
         {
             // Straight up or straight down leaves no sideways direction to offset along, and
             // normalising that zero vector would put the torch at NaN and take the whole frame's
@@ -6012,8 +6033,32 @@ void PredationGame::OnUpdate(double dt, double alpha)
             const glm::vec3 across = glm::cross(eyeForward, glm::vec3(0.0f, 1.0f, 0.0f));
             const glm::vec3 right =
                 glm::length(across) > 1e-3f ? glm::normalize(across) : glm::vec3(0.0f);
-            torch.position = eyePosition + right * 0.12f - glm::vec3(0.0f, 0.10f, 0.0f);
-            torch.direction = eyeForward;
+
+            // Snapped into place the first frame it comes on, then eased. Easing from wherever the
+            // beam was last pointing means switching the torch on after a turn sweeps it across the
+            // room to catch up, which looks like a fault rather than like weight.
+            const glm::vec3 wanted = eyeForward;
+            if (!m_torchAimed)
+            {
+                m_torchAim = wanted;
+                m_torchAimed = true;
+            }
+            else
+            {
+                const float follow = 1.0f - std::exp(-cv_torchFollow.Get() * deltaSeconds);
+                m_torchAim = glm::normalize(glm::mix(m_torchAim, wanted, follow) + glm::vec3(1e-5f));
+            }
+
+            // Ahead of the weapon, not level with the eye.
+            //
+            // A light beside the eye has the player's own rifle a hand span in front of its lens and
+            // square in the middle of its beam, and an inverse square at that range blows the weapon
+            // to white however the falloff is softened. Real weapon lights are clamped near the
+            // muzzle for exactly this reason: put the source past the thing you are holding and the
+            // thing you are holding stops being the brightest object in the room.
+            torch.position = eyePosition + eyeForward * cv_torchReach.Get() + right * 0.10f -
+                             glm::vec3(0.0f, 0.10f, 0.0f);
+            torch.direction = m_torchAim;
             torch.color = glm::vec3(1.0f, 0.97f, 0.88f);
             torch.intensity = cv_torchIntensity.Get();
             torch.range = cv_torchRange.Get();
@@ -6023,7 +6068,10 @@ void PredationGame::OnUpdate(double dt, double alpha)
         else
         {
             torch.intensity = 0.0f;
+            // So it snaps to the view next time rather than easing over from where it was left.
+            m_torchAimed = false;
         }
+        torch.sourceRadius = cv_torchSourceRadius.Get();
     }
 
     renderer.SetClearColor(0x11131aff);
@@ -6059,6 +6107,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
     shadows.sunEnabled = cv_sunShadows.Get();
     shadows.skyEnabled = cv_skyShadows.Get();
     shadows.distance = std::clamp(cv_shadowDistance.Get(), 10.0f, 120.0f);
+    shadows.nearDistance = std::clamp(cv_shadowNear.Get(), 2.0f, 30.0f);
     shadows.indoorLight = std::clamp(cv_indoorLight.Get(), 0.0f, 1.0f);
     shadows.sunBias = cv_sunShadowBias.Get();
     shadows.sunNormalOffset = cv_sunShadowOffset.Get();
@@ -6158,8 +6207,9 @@ void PredationGame::OnRender()
     // Depth from the sun and depth from overhead, both fitted around the eye, before anything is
     // shaded. This is where a room with a roof on it becomes dark: nothing declares it dark, the
     // roof is simply between it and the sky.
-    app.GetSceneRenderer().RenderShadows(Renderer::kViewSunShadow, Renderer::kViewSkyShadow, m_scene,
-                                         app.GetMeshes(), viewPosition);
+    app.GetSceneRenderer().RenderShadows(Renderer::kViewSunNearShadow, Renderer::kViewSunShadow,
+                                         Renderer::kViewSkyShadow, m_scene, app.GetMeshes(),
+                                         viewPosition);
     app.GetSceneRenderer().Draw(Renderer::kViewMain, m_scene, app.GetMeshes(), viewPosition);
     DrawDebugOverlays();
 }

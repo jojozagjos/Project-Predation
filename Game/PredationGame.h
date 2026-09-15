@@ -484,8 +484,13 @@ private:
     // Whether the lobby screen is up, and whether this machine opened the lobby or joined one.
     bool m_inLobby = false;
     bool m_hostingLobby = false;
-    // The flashlight.
+    // The flashlight, and where its beam is currently pointing -- which is not quite where the
+    // player is looking, because it trails the view and catches up. `m_torchAimed` is false until
+    // the first frame it is on, so switching it on snaps the beam to the view instead of sweeping
+    // it across the room from wherever it was left.
     bool m_torchOn = false;
+    bool m_torchAimed = false;
+    glm::vec3 m_torchAim{0.0f, 0.0f, -1.0f};
 
     // The relay connection, when playing over the internet. One socket, outwards, and one link per
     // other person: see Engine/Net/RelayCarrier.h for why that replaced hole punching.

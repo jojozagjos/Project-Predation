@@ -19,6 +19,9 @@ namespace
 // is only ever asked "is there a roof over this", an answer that changes over metres rather than
 // centimetres, and a coarse map is also a softer one: its texels are 18 cm of world, which is the
 // width of the fade at a doorway rather than a hard line across the floor.
+// The near map does not need to be as big as the far one: it covers a fifth of the distance, so even
+// at half the resolution its texels are a quarter the size.
+constexpr uint16_t kSunNearShadowSize = 1024;
 constexpr uint16_t kSunShadowSize = 2048;
 constexpr uint16_t kSkyShadowSize = 512;
 // How far the maps reach along their own axis. Deep enough that nothing in a level stands outside
@@ -48,6 +51,10 @@ bool SceneRenderer::Init(ShaderLibrary& shaders)
     m_uGrade = bgfx::createUniform("u_grade", bgfx::UniformType::Vec4);
     m_uLights = bgfx::createUniform("u_lights", bgfx::UniformType::Vec4,
                                     static_cast<uint16_t>(kMaxPunctualLights * 4));
+    m_uSunNearMtx = bgfx::createUniform("u_sunNearMtx", bgfx::UniformType::Mat4);
+    m_uSunNearAxis = bgfx::createUniform("u_sunNearAxis", bgfx::UniformType::Vec4);
+    m_uSunNearParams = bgfx::createUniform("u_sunNearParams", bgfx::UniformType::Vec4);
+    m_sSunNear = bgfx::createUniform("s_sunNear", bgfx::UniformType::Sampler);
     m_uSunShadowMtx = bgfx::createUniform("u_sunShadowMtx", bgfx::UniformType::Mat4);
     m_uSunShadowAxis = bgfx::createUniform("u_sunShadowAxis", bgfx::UniformType::Vec4);
     m_uSunShadowParams = bgfx::createUniform("u_sunShadowParams", bgfx::UniformType::Vec4);
@@ -61,7 +68,9 @@ bool SceneRenderer::Init(ShaderLibrary& shaders)
     // Occlusion is not required for a picture. If the depth program or the float target is missing
     // the game still runs, unshadowed, and says so once rather than every frame.
     const bgfx::ProgramHandle depthProgram = shaders.LoadProgram("vs_shadow", "fs_shadow");
-    m_shadowsReady = bgfx::isValid(depthProgram) && m_sunShadow.Init(kSunShadowSize, depthProgram) &&
+    m_shadowsReady = bgfx::isValid(depthProgram) &&
+                     m_sunNearShadow.Init(kSunNearShadowSize, depthProgram) &&
+                     m_sunShadow.Init(kSunShadowSize, depthProgram) &&
                      m_skyShadow.Init(kSkyShadowSize, depthProgram);
     if (!m_shadowsReady)
     {
@@ -74,6 +83,7 @@ bool SceneRenderer::Init(ShaderLibrary& shaders)
 
 void SceneRenderer::Shutdown()
 {
+    m_sunNearShadow.Shutdown();
     m_sunShadow.Shutdown();
     m_skyShadow.Shutdown();
     m_shadowsReady = false;
@@ -83,6 +93,7 @@ void SceneRenderer::Shutdown()
         m_uLightColor,     m_uAmbientSky,      m_uAmbientGround,   m_uFogColor,
         m_uFogParams,      m_uCameraPosition,  m_uGrade,           m_uLights,
         m_uSunShadowMtx,   m_uSunShadowAxis,   m_uSunShadowParams, m_uSkyShadowMtx,
+        m_uSunNearMtx,     m_uSunNearAxis,     m_uSunNearParams,   m_sSunNear,
         m_uSkyShadowAxis,  m_uSkyShadowParams, m_sBaseColor,       m_sSunShadow,
         m_sSkyShadow};
     for (const bgfx::UniformHandle handle : uniforms)
@@ -97,6 +108,7 @@ void SceneRenderer::Shutdown()
     m_uFogColor = m_uFogParams = m_uCameraPosition = BGFX_INVALID_HANDLE;
     m_uGrade = m_uLights = BGFX_INVALID_HANDLE;
     m_uSunShadowMtx = m_uSunShadowAxis = m_uSunShadowParams = BGFX_INVALID_HANDLE;
+    m_uSunNearMtx = m_uSunNearAxis = m_uSunNearParams = m_sSunNear = BGFX_INVALID_HANDLE;
     m_uSkyShadowMtx = m_uSkyShadowAxis = m_uSkyShadowParams = BGFX_INVALID_HANDLE;
     m_sBaseColor = m_sSunShadow = m_sSkyShadow = BGFX_INVALID_HANDLE;
     // The programs themselves are owned by the ShaderLibrary.
@@ -166,6 +178,7 @@ void SceneRenderer::SetEnvironmentUniforms(const Environment& environment,
         entry[11] = inner;
         entry[12] = outer;
         entry[13] = on ? 1.0f : 0.0f;
+        entry[14] = std::max(light.sourceRadius, 0.01f);
     }
     bgfx::setUniform(m_uLights, lights, static_cast<uint16_t>(kMaxPunctualLights * 4));
 
@@ -187,6 +200,12 @@ void SceneRenderer::SetEnvironmentUniforms(const Environment& environment,
     const float skyParams[4] = {1.0f / static_cast<float>(std::max<uint16_t>(m_skyShadow.Resolution(), 1)),
                                 m_shadowSettings.skyBias, sky ? 1.0f : 0.0f,
                                 m_shadowSettings.skyNormalOffset};
+    const float nearParams[4] = {
+        1.0f / static_cast<float>(std::max<uint16_t>(m_sunNearShadow.Resolution(), 1)),
+        m_shadowSettings.sunBias, sun ? 1.0f : 0.0f, m_shadowSettings.sunNormalOffset};
+    bgfx::setUniform(m_uSunNearMtx, glm::value_ptr(m_sunNearShadow.TextureMatrix()));
+    bgfx::setUniform(m_uSunNearAxis, glm::value_ptr(m_sunNearShadow.Axis()));
+    bgfx::setUniform(m_uSunNearParams, nearParams);
     bgfx::setUniform(m_uSunShadowParams, sunParams);
     bgfx::setUniform(m_uSkyShadowParams, skyParams);
 }
@@ -237,6 +256,7 @@ void SceneRenderer::SubmitMesh(bgfx::ViewId view, const Mesh& mesh, const Materi
     {
         const bgfx::TextureHandle white = m_textures->Get({});
         bgfx::setTexture(1, m_sSunShadow, m_shadowsReady ? m_sunShadow.Texture() : white);
+        bgfx::setTexture(3, m_sSunNear, m_shadowsReady ? m_sunNearShadow.Texture() : white);
         bgfx::setTexture(2, m_sSkyShadow, m_shadowsReady ? m_skyShadow.Texture() : white);
     }
 
@@ -265,7 +285,8 @@ void SceneRenderer::SubmitDepth(bgfx::ViewId view, const Mesh& mesh, const glm::
     bgfx::submit(view, program);
 }
 
-void SceneRenderer::RenderShadows(bgfx::ViewId sunView, bgfx::ViewId skyView, const Scene& scene,
+void SceneRenderer::RenderShadows(bgfx::ViewId sunNearView, bgfx::ViewId sunView,
+                                  bgfx::ViewId skyView, const Scene& scene,
                                   const MeshLibrary& meshes, const glm::vec3& focus)
 {
     if (!m_shadowsReady)
@@ -278,6 +299,8 @@ void SceneRenderer::RenderShadows(bgfx::ViewId sunView, bgfx::ViewId skyView, co
     // Both maps are fitted around the player rather than around the level. A level is bigger than a
     // map can be at any useful resolution, and the only part of it whose shadows anybody can see is
     // the part they are standing in.
+    m_sunNearShadow.Fit(focus, environment.sunDirection,
+                        std::min(settings.nearDistance, settings.distance), kShadowDepthRange);
     m_sunShadow.Fit(focus, environment.sunDirection, settings.distance, kShadowDepthRange);
     // Straight down. The sky is not a direction but a hemisphere, and the honest version of this
     // would gather visibility over all of it; one look straight down is the cheapest approximation
@@ -286,6 +309,7 @@ void SceneRenderer::RenderShadows(bgfx::ViewId sunView, bgfx::ViewId skyView, co
 
     if (settings.sunEnabled)
     {
+        m_sunNearShadow.Begin(sunNearView);
         m_sunShadow.Begin(sunView);
     }
     if (settings.skyEnabled)
@@ -293,7 +317,7 @@ void SceneRenderer::RenderShadows(bgfx::ViewId sunView, bgfx::ViewId skyView, co
         m_skyShadow.Begin(skyView);
     }
 
-    scene.ForEachMeshRenderer(
+    scene.ForEachShadowCaster(
         [&](Entity, const Transform& transform, const MeshRenderer& renderer)
         {
             if (!renderer.castsShadow)
@@ -308,6 +332,7 @@ void SceneRenderer::RenderShadows(bgfx::ViewId sunView, bgfx::ViewId skyView, co
             const glm::mat4 model = transform.Matrix();
             if (settings.sunEnabled)
             {
+                SubmitDepth(sunNearView, *mesh, model, m_sunNearShadow.Program());
                 SubmitDepth(sunView, *mesh, model, m_sunShadow.Program());
             }
             if (settings.skyEnabled)

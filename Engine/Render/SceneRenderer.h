@@ -30,6 +30,9 @@ struct ShadowSettings
     // this is the distance at which a building stops being dark inside, and it trades directly
     // against how much world each texel is responsible for.
     float distance = 32.0f;
+    // And the radius of the near one, which is where the shadows anybody looks closely at are: your
+    // own, and whatever you are standing next to.
+    float nearDistance = 6.0f;
     // Slack in the comparison, and how far along the surface normal to take the reading. The sky
     // map needs far more of the second: it has to move the lookup clear of the wall the surface
     // belongs to, or every outside wall stands in the shade of its own roof.
@@ -65,7 +68,8 @@ public:
 
     // Renders both depth maps, fitted around `focus`. Has to run before Draw, into lower view ids,
     // because bgfx submits views in the order of their ids and Draw reads what this writes.
-    void RenderShadows(bgfx::ViewId sunView, bgfx::ViewId skyView, const Scene& scene,
+    void RenderShadows(bgfx::ViewId sunNearView, bgfx::ViewId sunView, bgfx::ViewId skyView,
+                       const Scene& scene,
                        const MeshLibrary& meshes, const glm::vec3& focus);
 
     void Draw(bgfx::ViewId view, const Scene& scene, const MeshLibrary& meshes, const glm::vec3& cameraPosition);
@@ -115,6 +119,10 @@ private:
     bgfx::UniformHandle m_uCameraPosition = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uGrade = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uLights = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uSunNearMtx = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uSunNearAxis = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uSunNearParams = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_sSunNear = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uSunShadowMtx = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uSunShadowAxis = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uSunShadowParams = BGFX_INVALID_HANDLE;
@@ -133,6 +141,7 @@ private:
 
     // The two depth maps, and whether they could be created at all. A machine that cannot render to
     // a float target still gets a picture; it gets one with no occlusion in it.
+    ShadowMap m_sunNearShadow;
     ShadowMap m_sunShadow;
     ShadowMap m_skyShadow;
     ShadowSettings m_shadowSettings;

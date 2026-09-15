@@ -405,7 +405,10 @@ void PlayerBody::SetVisible(Scene& scene, bool visible)
     {
         if (MeshRenderer* renderer = scene.GetMeshRenderer(part.entity))
         {
-            renderer->visible = visible && !(part.hiddenInFirstPerson && m_config.hideHead);
+            // Hidden from the camera rather than made invisible: a head over the eye still throws
+            // a shadow, and that shadow is the only part of it the player can ever see.
+            renderer->visible = visible;
+            renderer->hiddenFromCamera = part.hiddenInFirstPerson && m_config.hideHead;
         }
     }
 }
@@ -3044,7 +3047,8 @@ void PlayerBody::PushToScene(Scene& scene)
             continue;
         }
 
-        renderer->visible = m_config.visible && !(part.hiddenInFirstPerson && m_config.hideHead);
+        renderer->visible = m_config.visible;
+        renderer->hiddenFromCamera = part.hiddenInFirstPerson && m_config.hideHead;
         if (!renderer->visible)
         {
             continue;

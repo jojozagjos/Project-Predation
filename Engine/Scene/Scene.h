@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace pred
@@ -23,7 +24,14 @@ struct MeshRenderer
     MeshHandle mesh;
     Material material;
     bool visible = true;
-    bool castsShadow = true; // honoured once shadow maps exist
+    bool castsShadow = true;
+    // In the world, but not to be drawn from the camera's own point of view.
+    //
+    // This is the player's head in first person. It is not absent -- it is over the eye, and its
+    // shadow on the ground in front of you is the only part of your own head you can ever see. Made
+    // invisible instead, the head vanishes from that shadow and the character is decapitated in the
+    // one view where anybody would notice.
+    bool hiddenFromCamera = false;
 };
 
 // A light that has a place, as opposed to the sun, which only has a direction.
@@ -43,11 +51,16 @@ struct PunctualLight
     // at the outer one. 180 makes it a bulb.
     float innerAngle = 18.0f;
     float outerAngle = 30.0f;
+    // How big the source is, in metres.
+    //
+    // Nothing is a mathematical point, and treating a light as one is what blows out everything near
+    // it: the inverse square of a tenth of a metre is a hundred. Inside this radius the brightness
+    // stops climbing, which is what a source of a real size does. It is the difference between a
+    // torch and a flashbulb pressed against whatever is in front of it -- and with the torch on the
+    // eye, what is in front of it is the player's own weapon.
+    float sourceRadius = 0.6f;
 };
 
-// How many the shader carries. Four is a torch, a dropped flare and two lamps, which is more than a
-// corridor in this game will hold; every one costs the same in the fragment shader whether it is
-// lit or not, so this is a budget rather than a maximum somebody should feel free to raise.
 inline constexpr size_t kMaxPunctualLights = 4;
 
 struct Environment
@@ -105,9 +118,27 @@ public:
     Entity CreateMeshEntity(std::string name, const Transform& transform, MeshHandle mesh,
                             const Material& material);
 
-    // Visits every alive entity that has a visible mesh renderer.
+    // Visits every alive entity the camera should draw.
     template <typename Fn>
     void ForEachMeshRenderer(Fn&& fn) const
+    {
+        ForEachRenderable(std::forward<Fn>(fn), false);
+    }
+
+    // And every one that should be in a shadow map, which is not the same set: a thing can be kept
+    // out of the camera's view and still block light. See MeshRenderer::hiddenFromCamera.
+    template <typename Fn>
+    void ForEachShadowCaster(Fn&& fn) const
+    {
+        ForEachRenderable(std::forward<Fn>(fn), true);
+    }
+
+    Environment& GetEnvironment() { return m_environment; }
+    const Environment& GetEnvironment() const { return m_environment; }
+
+private:
+    template <typename Fn>
+    void ForEachRenderable(Fn&& fn, bool forShadows) const
     {
         for (uint32_t i = 0; i < static_cast<uint32_t>(m_slots.size()); ++i)
         {
@@ -120,14 +151,14 @@ public:
             {
                 continue;
             }
+            if (forShadows ? !renderer.castsShadow : renderer.hiddenFromCamera)
+            {
+                continue;
+            }
             fn(Entity{i, m_slots[i].generation}, m_transforms[i], renderer);
         }
     }
 
-    Environment& GetEnvironment() { return m_environment; }
-    const Environment& GetEnvironment() const { return m_environment; }
-
-private:
     struct Slot
     {
         uint32_t generation = 0;

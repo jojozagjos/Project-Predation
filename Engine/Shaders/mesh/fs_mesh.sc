@@ -18,7 +18,8 @@ uniform vec4 u_grade;           // x = exposure, y = contrast, z = light where t
                                 // w = 0 normal, 1 show the sun's occlusion, 2 show the sky's
 
 // Lights that have a place. Four vec4 each: position and range, colour and intensity, direction and
-// the cosine of the inner cone, then the cosine of the outer cone and whether it is on at all.
+// the cosine of the inner cone, then the cosine of the outer cone, whether it is on at all, and how
+// big the source is.
 #define MAX_LIGHTS 4
 uniform vec4 u_lights[MAX_LIGHTS * 4];
 
@@ -32,6 +33,9 @@ uniform vec4 u_lights[MAX_LIGHTS * 4];
 // world position into a distance from that light in metres, and four numbers: the size of a texel
 // in texture coordinates, how much slack to allow in metres, whether the map is on at all, and how
 // far along the surface normal to take the reading.
+uniform mat4 u_sunNearMtx;
+uniform vec4 u_sunNearAxis;
+uniform vec4 u_sunNearParams;
 uniform mat4 u_sunShadowMtx;
 uniform vec4 u_sunShadowAxis;
 uniform vec4 u_sunShadowParams;
@@ -39,6 +43,7 @@ uniform mat4 u_skyShadowMtx;
 uniform vec4 u_skyShadowAxis;
 uniform vec4 u_skyShadowParams;
 SAMPLER2D(s_sunShadow, 1);
+SAMPLER2D(s_sunNear, 3);
 SAMPLER2D(s_skyShadow, 2);
 
 // bgfx gives HLSL a struct for a sampler and GLSL the built-in type, and makes `sampler2D` mean
@@ -46,6 +51,10 @@ SAMPLER2D(s_skyShadow, 2);
 // written once rather than once per map.
 
 #define PI 3.14159265359
+
+// How far apart the nine occlusion taps sit, in texels. Wider is softer and leaks a little further
+// under a shadow; this is about a two-and-a-half texel penumbra.
+#define SHADOW_SPREAD 1.7
 
 // How much of a light reaches this surface: 1 in the open, 0 behind something, and part of the way
 // along an edge.
@@ -91,12 +100,17 @@ float lightReaches(sampler2D map, mat4 mtx, vec4 axis, vec4 params, vec3 P, vec3
 	// the next along a line of texels, which is exactly the staircase. Weighting each tap by how much
 	// of it the sampling point actually covers makes the answer move continuously instead: the same
 	// nine samples, and no jump when the boundary is crossed.
-	float size = 1.0 / max(params.x, 1e-6);
+	// The taps are spread wider than one texel apart. A tent over three adjacent texels is a penumbra
+	// three texels wide, which on a fine map is under four centimetres -- sharp enough that the
+	// staircase in the silhouette is still the thing the eye finds. Spreading them softens the edge
+	// without needing more of them.
+	float step = params.x * SHADOW_SPREAD;
+	float size = 1.0 / max(step, 1e-6);
 	vec2 texel = uv * size - vec2_splat(0.5);
 	vec2 frac = texel - floor(texel);
 	vec3 weightX = vec3(1.0 - frac.x, 1.0, frac.x);
 	vec3 weightY = vec3(1.0 - frac.y, 1.0, frac.y);
-	vec2 base = (floor(texel) + vec2_splat(0.5)) * params.x;
+	vec2 base = (floor(texel) + vec2_splat(0.5)) * step;
 
 	float reached = 0.0;
 	float total = 0.0;
@@ -104,7 +118,7 @@ float lightReaches(sampler2D map, mat4 mtx, vec4 axis, vec4 params, vec3 P, vec3
 	{
 		for (int x = 0; x < 3; ++x)
 		{
-			vec2 tap = base + vec2(float(x) - 1.0, float(y) - 1.0) * params.x;
+			vec2 tap = base + vec2(float(x) - 1.0, float(y) - 1.0) * step;
 			float nearest = texture2DLod(map, tap, 0.0).x;
 			// Both numbers count from the back of the map, so the nearer surface to the light is
 			// the larger one, and being lit means not falling short of it by more than the slack.
@@ -115,6 +129,29 @@ float lightReaches(sampler2D map, mat4 mtx, vec4 axis, vec4 params, vec3 P, vec3
 		}
 	}
 	return reached / max(total, 1e-6);
+}
+
+// The sun, from whichever of its two maps covers this point.
+//
+// The near one covers a few metres around the player at about a centimetre a texel; the far one
+// covers the rest of what can be seen, at several. A single map cannot do both: made wide enough for
+// a building its texels are coarse enough to show as steps on the shadow of your own head, and made
+// fine enough for that it stops a few metres from your feet.
+//
+// The changeover is at the near map's own edge, pulled in slightly so the outermost texels -- the
+// ones whose filter taps would fall outside the map -- are never the ones used.
+float sunReaching(vec3 P, vec3 N)
+{
+	if (u_sunNearParams.z > 0.5)
+	{
+		vec4 nearClip = mul(u_sunNearMtx, vec4(P + N * u_sunNearParams.w, 1.0));
+		vec2 nearUv = nearClip.xy / nearClip.w;
+		if (nearUv.x > 0.03 && nearUv.x < 0.97 && nearUv.y > 0.03 && nearUv.y < 0.97)
+		{
+			return lightReaches(s_sunNear, u_sunNearMtx, u_sunNearAxis, u_sunNearParams, P, N);
+		}
+	}
+	return lightReaches(s_sunShadow, u_sunShadowMtx, u_sunShadowAxis, u_sunShadowParams, P, N);
 }
 
 // GGX / Trowbridge-Reitz normal distribution.
@@ -179,8 +216,7 @@ void main()
 	vec3 diffuse = diffuseColor / PI;
 	vec3 radiance = u_lightColor.rgb * u_lightColor.w;
 	// Whatever the roof, the wall or the crate in the way is keeping off this surface.
-	float sunReaches =
-		lightReaches(s_sunShadow, u_sunShadowMtx, u_sunShadowAxis, u_sunShadowParams, v_worldPos, N);
+	float sunReaches = sunReaching(v_worldPos, N);
 	vec3 color = (diffuse + specular) * radiance * NoL * sunReaches;
 
 	// And the lights that have a place: a torch, a flare, a lamp on a wall.
@@ -210,7 +246,9 @@ void main()
 
 		// Inverse square, with the singularity at zero removed and a window that reaches exactly
 		// nothing at the range rather than being cut off at some visible brightness.
-		float attenuation = 1.0 / max(distance * distance, 0.01);
+		// Inside the source radius the brightness stops climbing. Without that a torch on the eye
+		// puts a hundred times its own intensity onto the weapon a hand span in front of it.
+		float attenuation = 1.0 / max(distance * distance, outerOn.z * outerOn.z);
 		float window = clamp(1.0 - pow(distance / posRange.w, 4.0), 0.0, 1.0);
 		attenuation *= window * window;
 
