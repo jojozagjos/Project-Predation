@@ -640,6 +640,20 @@ private:
     // and put them back. Taken from the skeleton at build time.
     std::array<glm::vec3, 2> m_shoulderRest{glm::vec3(0.0f), glm::vec3(0.0f)};
     Transform m_muzzleFlashTransform;
+ public:
+    // Set when a shot is fired, so every flash is a different shape. See where it is used.
+    void SetMuzzleFlashShape(float roll, float spread)
+    {
+        m_muzzleFlashRoll = roll;
+        m_muzzleFlashSpread = spread;
+    }
+    // How bright the flash is this frame, 0 to 1, for the light that goes with it.
+    float MuzzleFlashStrength() const { return m_muzzleFlashTransform.scale.z; }
+ private:
+    // Rolled and stretched differently every shot. A flash that is identical each time is the thing
+    // the eye picks out as a repeated sprite rather than as fire.
+    float m_muzzleFlashRoll = 0.0f;
+    float m_muzzleFlashSpread = 1.0f;
     WeaponVisual m_weaponVisual;
     WeaponId m_weaponId = kInvalidWeapon;
     bool m_hasWeapon = false;

@@ -22,6 +22,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cstdlib>
 #include <limits>
 #include <string>
 
@@ -88,6 +89,12 @@ CVar<float> cv_torchSourceRadius{"r.torch_source_radius", 0.75f,
 CVar<float> cv_torchReach{"r.torch_reach", 0.85f,
                           "How far ahead of the eye the flashlight sits, in metres",
                           CVarFlags::Archive};
+// The muzzle flash as a light. Brief and very bright: for the moment it exists it is the brightest
+// thing in the level, and in a dark corridor it is the only thing that says where the walls are.
+CVar<float> cv_flashIntensity{"r.muzzle_flash_intensity", 42.0f,
+                              "How brightly a muzzle flash lights the room", CVarFlags::Archive};
+CVar<float> cv_flashRange{"r.muzzle_flash_range", 11.0f,
+                          "How far a muzzle flash throws light, in metres", CVarFlags::Archive};
 // Occlusion. Everything a light is stopped by is worked out from the geometry, and these say how
 // well and how far: see Engine/Render/ShadowMap.h for what the two maps are.
 CVar<bool> cv_sunShadows{"r.shadows", true, "Whether the sun is stopped by anything",
@@ -4711,6 +4718,12 @@ void PredationGame::ResolveShots()
     }
     PhysicsWorld& physics = m_app->GetPhysics();
     m_weaponKick = 1.0f;
+    // A different flash every shot: rolled to a new angle and squashed a different way. Gas leaves a
+    // barrel unevenly, and a flash that is identical each time is the thing the eye picks out as a
+    // repeated picture rather than as fire.
+    m_body.SetMuzzleFlashShape(
+        glm::two_pi<float>() * static_cast<float>(std::rand()) / static_cast<float>(RAND_MAX),
+        0.78f + 0.44f * static_cast<float>(std::rand()) / static_cast<float>(RAND_MAX));
     // Your own shot is played flat in both ears rather than placed in the world. It comes from a
     // weapon a forearm's length from your face: positioning it means panning it hard to whichever
     // side the barrel is on, which is both wrong and the most obvious way a mix sounds broken.
@@ -6377,6 +6390,37 @@ void PredationGame::OnUpdate(double dt, double alpha)
             m_torchAimed = false;
         }
         torch.sourceRadius = cv_torchSourceRadius.Get();
+    }
+
+    // And the flash throws light, which is most of what sells it.
+    //
+    // A muzzle flash that does not light anything is a picture stuck on the end of the barrel: the
+    // room stays exactly as dark as it was while a fire the size of a fist burns in the middle of
+    // it. One frame of a wall, a hand and the ceiling lit from below is worth more than any amount
+    // of work on the shape, and in a dark corridor it is the only thing that tells you where you
+    // are.
+    //
+    // A bulb rather than a cone -- an explosion at the crown throws light everywhere, including back
+    // down the weapon and onto the player's own arms. Short range, because it is small and brief;
+    // very bright, because for the moment it exists it is the brightest thing in the level.
+    {
+        PunctualLight& flash = environment.lights[1];
+        const float strength = m_body.MuzzleFlashStrength();
+        if (strength > 0.001f && m_screen == Screen::Playing)
+        {
+            flash.position = m_body.MuzzlePoint();
+            flash.direction = glm::vec3(0.0f, -1.0f, 0.0f);
+            flash.color = glm::vec3(1.0f, 0.86f, 0.62f);
+            flash.intensity = cv_flashIntensity.Get() * strength;
+            flash.range = cv_flashRange.Get();
+            flash.innerAngle = 180.0f;
+            flash.outerAngle = 180.0f;
+            flash.sourceRadius = 0.35f;
+        }
+        else
+        {
+            flash.intensity = 0.0f;
+        }
     }
 
     renderer.SetClearColor(0x11131aff);

@@ -987,13 +987,54 @@ void PlayerBody::BuildWeaponEntities(Scene& scene, MeshLibrary& meshes,
     // And the same here, where a weapon built from a model arrives.
     m_supportRejoin = 0.0f;
 
-    // A flash is a scaled-to-nothing sphere most of the time. Giving it its own entity means firing
-    // costs a transform write rather than creating and destroying geometry.
-    const float flashRadius = std::max(definition.size.y, 0.06f) * 0.9f;
+    // The flash: a short cone of gas leaving the barrel, not a ball of light on the end of it.
+    //
+    // A sphere was what was here, and a sphere is the one shape a muzzle flash is not. What comes
+    // out of a barrel is burning gas still travelling forwards, so it is longer than it is wide and
+    // it tapers; the round part is the hot core right at the crown. Two pieces do that well enough
+    // at this scale -- a cone lying along the barrel and a small sphere at its base -- and they cost
+    // one draw between them because they go into the same mesh.
+    //
+    // Built pointing down +Z, which is the barrel's own direction, so the transform that aims the
+    // weapon aims the flash.
+    const float flashWidth = std::max(definition.size.y, 0.06f) * 0.85f;
+    MeshData flashMesh = Primitives::Sphere(flashWidth * 0.62f, 10, 6);
+    {
+        // A cone as a cylinder whose far end is pinched to nothing. Written here rather than added
+        // to Primitives because a cone with a flat cap and no bottom is a muzzle flash, not a shape
+        // anything else in this game wants.
+        constexpr int kSides = 12;
+        const float length = flashWidth * 3.1f;
+        const uint32_t base = static_cast<uint32_t>(flashMesh.vertices.size());
+        MeshVertex tip;
+        tip.position = {0.0f, 0.0f, length};
+        tip.normal = {0.0f, 0.0f, 1.0f};
+        flashMesh.vertices.push_back(tip);
+        for (int i = 0; i < kSides; ++i)
+        {
+            const float angle = glm::two_pi<float>() * static_cast<float>(i) / kSides;
+            MeshVertex rim;
+            rim.position = {std::cos(angle) * flashWidth, std::sin(angle) * flashWidth, 0.0f};
+            rim.normal = glm::normalize(glm::vec3(std::cos(angle), std::sin(angle), 0.35f));
+            flashMesh.vertices.push_back(rim);
+        }
+        for (int i = 0; i < kSides; ++i)
+        {
+            flashMesh.indices.push_back(base);
+            flashMesh.indices.push_back(base + 1 + static_cast<uint32_t>(i));
+            flashMesh.indices.push_back(base + 1 + static_cast<uint32_t>((i + 1) % kSides));
+        }
+    }
     m_muzzleFlashEntity =
-        scene.CreateMeshEntity(key + "_flash", Transform{},
-                               meshes.Upload(Primitives::Sphere(flashRadius, 10, 6), key + "_flash"),
-                               Material::Emissive({1.0f, 0.78f, 0.36f}, 3.4f));
+        scene.CreateMeshEntity(key + "_flash", Transform{}, meshes.Upload(flashMesh, key + "_flash"),
+                               Material::Emissive({1.0f, 0.82f, 0.45f}, 5.5f));
+    // It throws light and it must not catch any: a flash inside its own shadow map would shadow the
+    // weapon it is attached to, and it is not there long enough for anybody to see the shadow that
+    // would have been right anyway.
+    if (MeshRenderer* renderer = scene.GetMeshRenderer(m_muzzleFlashEntity))
+    {
+        renderer->castsShadow = false;
+    }
 }
 
 // Moves the whole drawn weapon, parts and all. The parts carry their own world transforms, worked
@@ -1940,10 +1981,22 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
     }
 
     // The flash lives at the muzzle and is scaled to nothing except on the frames just after a shot.
+    //
+    // Three things make it read as a flash rather than as a shape that appears: it is stretched
+    // along the barrel and squashed across it, it is rolled to a different angle every shot, and it
+    // goes out much faster than it comes on. A flash that fades evenly looks like a light being
+    // turned down; a real one is there and then gone, and what is left for a frame or two is the
+    // dimmer gas behind it.
     m_muzzleFlashTransform.position = MuzzlePoint();
-    m_muzzleFlashTransform.rotation = rotation;
     const float flash = glm::clamp((kick - 0.62f) / 0.38f, 0.0f, 1.0f);
-    m_muzzleFlashTransform.scale = glm::vec3(flash);
+    // Cubed, so the tail is short and the peak is brief.
+    const float flashCurve = flash * flash * flash;
+    m_muzzleFlashTransform.rotation = rotation * glm::angleAxis(m_muzzleFlashRoll, glm::vec3(0.0f, 0.0f, 1.0f));
+    // Never perfectly round: the gas leaves unevenly and a flash that is the same every shot is the
+    // thing the eye picks out as repeated.
+    m_muzzleFlashTransform.scale =
+        glm::vec3(flashCurve * m_muzzleFlashSpread, flashCurve / std::max(m_muzzleFlashSpread, 0.1f),
+                  flashCurve * (0.75f + 0.5f * m_muzzleFlashSpread));
 
     // --- Hands ----------------------------------------------------------------------------------
     //
