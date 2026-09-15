@@ -1224,3 +1224,40 @@ because everything else on screen has been through exposure, ACES and gamma and 
 Also here: a dither of under half a level of output, in both shaders. A sky is the largest, smoothest
 gradient on screen and the first place eight bits per channel shows as bands; so is a dark curved
 surface lit only by a torch, which is where it was reported.
+
+## ADR-062: The shadow map's texel snapping, and why it was never working
+
+Shadows were reported as flickering five separate times. Each time something plausible was found and
+fixed -- a fractional tap spacing, a constant bias that could not serve both square-on and glancing
+surfaces, two cascades combined by taking the darker answer -- and each time the flicker came back
+somewhere else. That pattern is the tell: the thing being fixed was not the cause.
+
+The cause was in `ShadowMap::Fit`, and it had been there since the first shadow commit:
+
+    eye  = centre - forward * (depth * 0.5)
+    view = lookAtRH(eye, eye + forward, up)
+    viewCentre = view * centre          // (0, 0, -depth/2), always
+    snapped    = round(viewCentre.xy / texel) * texel
+
+`centre` lands on the view-space origin by construction -- that is what the view was built to do --
+so the rounding had nothing to round, the translation was the identity every frame, and the map slid
+smoothly along with the player while appearing to be snapped. The grid it samples the world on
+therefore moved a fraction of a texel every frame, so the filtered value for a fixed point in the
+world changed every frame: every shadow edge crawled and every partially occluded patch shimmered.
+
+The fix is to quantise against a frame that does not itself depend on the centre: a rotation-only
+light basis, the centre taken into it, rounded there, and brought back out to place the eye.
+
+Two things follow from having got this wrong for so long.
+
+The maths is now in a free function, `FitShadowMap`, that does not touch the graphics device, and it
+has a test. The bug is invisible in a still picture and unmistakable in motion, which is the worst
+combination there is: no screenshot could show it and the only way to see it was to play. The test
+creeps a centre past a fixed landmark in tenths of a texel and asserts the landmark keeps landing on
+the same texel. It fails eight of its nine assertions against the old code.
+
+And the filter can be narrow again. Much of the blur that had accumulated was compensation for crawl
+that could not otherwise be hidden -- the player's own shadow had become a cloud. The sun is back to
+nine taps and about a two-centimetre penumbra; the sky keeps twenty-five, because there the width is
+the answer rather than a way of hiding the lack of one: it is asking how much of a quarter-metre
+neighbourhood can see sky.

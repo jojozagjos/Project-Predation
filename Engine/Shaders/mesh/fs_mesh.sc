@@ -49,8 +49,22 @@ SAMPLER2D(s_skyShadow, 2);
 #define PI 3.14159265359
 
 // How much of a light reaches this surface: 1 in the open, 0 behind something, and part of the way
-// along an edge. Both maps are read the same way; see shadow_kernel.sh.
-#define KERNEL_NAME lightReachesFine
+// along an edge. Two sizes, because the two maps are asking different questions.
+//
+// The sun wants a narrow filter. Its map is fitted tightly enough that a texel is about two
+// centimetres, and a wide filter there does not soften a shadow so much as smear it -- the player's
+// own shadow came out as a cloud. Nine taps is a two-texel penumbra, which is a soft edge rather
+// than a blurred one.
+//
+// The sky wants a wide one, and not for softness. It is asking how much of the neighbourhood can see
+// sky, which is a question about a quarter of a metre around the point rather than about the point,
+// so the width is the answer rather than a way of hiding the lack of one.
+#define KERNEL_NAME lightReachesSharp
+#define KERNEL_TAPS 3
+#define KERNEL_RADIUS 1.0
+#include "shadow_kernel.sh"
+
+#define KERNEL_NAME lightReachesWide
 #define KERNEL_TAPS 5
 #define KERNEL_RADIUS 2.0
 #include "shadow_kernel.sh"
@@ -90,7 +104,7 @@ float shadowSlack(float base, float NoL)
 // a clean limit rather than a thing that pops.
 float sunReaching(vec3 P, vec3 N, float NoL)
 {
-	return lightReachesFine(s_sunShadow, u_sunShadowMtx, u_sunShadowAxis, u_sunShadowParams, P, N,
+	return lightReachesSharp(s_sunShadow, u_sunShadowMtx, u_sunShadowAxis, u_sunShadowParams, P, N,
 	                        shadowSlack(u_sunShadowParams.y, NoL));
 }
 
@@ -225,7 +239,7 @@ void main()
 	// left where the sky cannot reach is a small fraction, standing in for the light that would have
 	// bounced its way in; without it, geometry out of the torch beam is not dark but absent.
 	float skyReaches =
-		lightReachesFine(s_skyShadow, u_skyShadowMtx, u_skyShadowAxis, u_skyShadowParams, v_worldPos, N,
+		lightReachesWide(s_skyShadow, u_skyShadowMtx, u_skyShadowAxis, u_skyShadowParams, v_worldPos, N,
 		                 u_skyShadowParams.y);
 	ambient *= mix(u_grade.z, 1.0, skyReaches);
 

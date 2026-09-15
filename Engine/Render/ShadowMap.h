@@ -10,6 +10,24 @@
 namespace pred
 {
 
+// Where a shadow map stands and what it looks at, worked out without touching the graphics device.
+//
+// Split out from ShadowMap so it can be tested. The one thing in here that has to be right and
+// cannot be seen in a screenshot is the texel snapping, and getting it wrong is invisible in a still
+// picture and unmistakable in motion -- the map slides under the world and every shadow edge and
+// every partial value crawls. It was wrong for a long time and it took a test to see it.
+struct ShadowFit
+{
+    glm::mat4 view{1.0f};
+    glm::mat4 projection{1.0f};
+    float texelSize = 0.0f;
+};
+
+// `homogeneousDepth` is the backend's clip convention, which is the only thing the caller needs the
+// device for.
+ShadowFit FitShadowMap(const glm::vec3& centre, const glm::vec3& direction, float radius, float depth,
+                       uint16_t resolution, bool homogeneousDepth);
+
 // An orthographic depth render of the world from one direction, so the shading pass can ask whether
 // anything stands between a surface and a light.
 //

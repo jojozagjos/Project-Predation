@@ -3,6 +3,7 @@
 #include "Engine/Core/Log.h"
 
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/matrix_inverse.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/geometric.hpp>
 
@@ -76,14 +77,16 @@ void ShadowMap::Shutdown()
     m_uRange = BGFX_INVALID_HANDLE;
 }
 
-void ShadowMap::Fit(const glm::vec3& centre, const glm::vec3& direction, float radius, float depth)
+ShadowFit FitShadowMap(const glm::vec3& centre, const glm::vec3& direction, float radius, float depth,
+                       uint16_t resolution, bool homogeneousDepth)
 {
-    if (m_resolution == 0)
+    ShadowFit fit;
+    if (resolution == 0)
     {
-        return;
+        return fit;
     }
     radius = std::max(radius, 1.0f);
-    m_texelSize = (radius * 2.0f) / static_cast<float>(m_resolution);
+    fit.texelSize = (radius * 2.0f) / static_cast<float>(resolution);
 
     glm::vec3 forward = direction;
     if (glm::length(forward) < 1e-4f)
@@ -97,26 +100,47 @@ void ShadowMap::Fit(const glm::vec3& centre, const glm::vec3& direction, float r
     const glm::vec3 up =
         std::abs(forward.y) > 0.99f ? glm::vec3(0.0f, 0.0f, 1.0f) : glm::vec3(0.0f, 1.0f, 0.0f);
 
+    // Quantise where the map stands, in the light's own frame, to whole texels.
+    //
+    // This has to be done against a frame that does not itself depend on the centre, and getting
+    // that wrong is silent. The obvious version -- build the view from the centre, then ask where
+    // the centre lands in it -- returns the view-space origin every single time, because that is
+    // where the view was built to put it. The rounding then has nothing to round, the translation
+    // is the identity, and the map slides smoothly along with the player while appearing to be
+    // snapped. Every shadow edge and every partial occlusion value then changes a little every
+    // frame, which is the crawl that gets reported as flickering.
+    //
+    // So: a rotation with no translation in it, the centre taken into that, rounded there, and
+    // brought back. Now the map's position in the world really does move in texel steps.
+    const glm::mat4 lightRotation = glm::lookAtRH(glm::vec3(0.0f), forward, up);
+    glm::vec3 inLight = glm::vec3(lightRotation * glm::vec4(centre, 1.0f));
+    inLight.x = std::round(inLight.x / fit.texelSize) * fit.texelSize;
+    inLight.y = std::round(inLight.y / fit.texelSize) * fit.texelSize;
+    const glm::vec3 snappedCentre =
+        glm::vec3(glm::inverse(lightRotation) * glm::vec4(inLight, 1.0f));
+
     // Stand back far enough that everything between the light and the area is in front of the near
     // plane. Half the depth range, so the box is centred on what it is looking at.
-    const glm::vec3 eye = centre - forward * (depth * 0.5f);
-    glm::mat4 view = glm::lookAtRH(eye, eye + forward, up);
+    const glm::vec3 eye = snappedCentre - forward * (depth * 0.5f);
+    fit.view = glm::lookAtRH(eye, eye + forward, up);
+    fit.projection = homogeneousDepth
+                         ? glm::orthoRH_NO(-radius, radius, -radius, radius, 0.0f, depth)
+                         : glm::orthoRH_ZO(-radius, radius, -radius, radius, 0.0f, depth);
+    return fit;
+}
 
-    // Snap to whole texels, in the light's own space rather than the world's. A shadow edge lives
-    // at a texel boundary; if the boundaries slide as the player walks, every edge in the world
-    // shimmers. Moving the map in whole texels keeps them still.
-    const glm::vec3 viewCentre = glm::vec3(view * glm::vec4(centre, 1.0f));
-    const glm::vec2 snapped{std::round(viewCentre.x / m_texelSize) * m_texelSize,
-                            std::round(viewCentre.y / m_texelSize) * m_texelSize};
-    view = glm::translate(glm::mat4(1.0f),
-                          glm::vec3(snapped.x - viewCentre.x, snapped.y - viewCentre.y, 0.0f)) *
-           view;
-
+void ShadowMap::Fit(const glm::vec3& centre, const glm::vec3& direction, float radius, float depth)
+{
+    if (m_resolution == 0)
+    {
+        return;
+    }
     const bgfx::Caps* caps = bgfx::getCaps();
-    m_projection = caps->homogeneousDepth
-                       ? glm::orthoRH_NO(-radius, radius, -radius, radius, 0.0f, depth)
-                       : glm::orthoRH_ZO(-radius, radius, -radius, radius, 0.0f, depth);
-    m_view = view;
+    const ShadowFit fit =
+        FitShadowMap(centre, direction, radius, depth, m_resolution, caps->homogeneousDepth);
+    m_texelSize = fit.texelSize;
+    m_view = fit.view;
+    m_projection = fit.projection;
 
     // World -> texture coordinates. The clip cube runs -1..1 across the screen and the texture runs
     // 0..1, so the extra step is a halving and a shift; the vertical is flipped on the backends

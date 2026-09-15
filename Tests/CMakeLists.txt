@@ -5,6 +5,7 @@ add_executable(PredationTests
     PlayerTests.cpp
     AnimationTests.cpp
     BodyPoseTests.cpp
+    ShadowTests.cpp
     InteractionTests.cpp
     WeaponTests.cpp
     AudioTests.cpp
