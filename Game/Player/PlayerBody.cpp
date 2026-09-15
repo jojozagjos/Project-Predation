@@ -325,8 +325,16 @@ void PlayerBody::BuildParts(Scene& scene, MeshLibrary& meshes)
              Ratio::kThighDeep * h, kSuitMaterial);
         limb(shin, m_rig.lowerLeg[side], m_rig.foot[side], Ratio::kShinWide * h,
              Ratio::kShinDeep * h, kSuitMaterial);
-        gear(boot, m_rig.foot[side], {Ratio::kBootWide * h, m_rig.ankleHeight * 1.35f, Ratio::kBootDeep * h},
-             {0.0f, 0.004f * h, -0.026f * h}, kGloveMaterial);
+        // The boot, hung so its sole is on the floor rather than its middle on the ankle.
+        //
+        // The foot bone is placed at ankle height, which is where an ankle is, and the boot was
+        // drawn as a box centred on it -- so the sole ended up half a boot above the ankle joint and
+        // a finger's width clear of the ground. Standing still, the character floated. The offset is
+        // therefore whatever puts the bottom of the box at the bone's own foot level: half the
+        // boot's height, less the height of the ankle above the ground.
+        const float bootHeight = m_rig.ankleHeight * 1.35f;
+        gear(boot, m_rig.foot[side], {Ratio::kBootWide * h, bootHeight, Ratio::kBootDeep * h},
+             {0.0f, bootHeight * 0.5f - m_rig.ankleHeight, -0.026f * h}, kGloveMaterial);
     }
 
     for (const PartSpec& spec : specs)
