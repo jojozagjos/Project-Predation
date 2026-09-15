@@ -1149,24 +1149,35 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
                           : m_config.weaponCarryPitchFollow;
     float carryPitch = view.pitch * glm::mix(pitchFollow, 1.0f, aim);
 
-    // And however far up the player looks, a carried weapon stops well short of vertical.
+    // And however far up the player looks, a carried weapon eases towards a limit short of vertical.
     //
     // Nobody raises a rifle to point at the sky in order to look at it. They tip their head back and
-    // the weapon stays roughly where it was. Following ninety per cent of an eighty degree look does
-    // raise it to the sky, and what that looks like from outside is somebody presenting arms: the
-    // rifle stood on end beside the head with both arms folded around it. It was reported twice.
+    // the weapon comes up some of the way. Following ninety per cent of an eighty degree look stands
+    // the rifle on end beside the head with both arms folded around it, which was reported twice.
     //
-    // It also removes a cliff rather than only an ugly pose. The muzzle correction at a wall is the
-    // thing that keeps the barrel out of the bricks, and it stops applying once the barrel is
-    // pointing over the top of the wall instead of into it. So between sixty and eighty degrees of
-    // look the correction collapsed from its full sixty-six degrees to nothing, and the barrel swung
-    // ninety-one degrees in twenty. Capped here, the barrel never gets high enough for that to
-    // happen and the correction fades instead of falling over.
+    // The limit also removes a cliff rather than only an ugly pose. The muzzle correction at a wall
+    // is what keeps the barrel out of the bricks, and it stops applying once the barrel points over
+    // the top of the wall rather than into it. So between sixty and eighty degrees of look the
+    // correction collapsed from its full sixty-six degrees to nothing and the barrel swung ninety-one
+    // degrees in twenty. Kept below sixty, the correction fades instead of falling over.
+    //
+    // Eased rather than clamped, which is the whole difference between a limit and a stop. A hard
+    // minimum means the weapon tracks the view exactly and then, at one particular angle, stops dead
+    // and stays put however much further the player looks up. That reads as the gun having come
+    // loose from the view -- it was reported as "the gun doesn't follow all the way". Below the knee
+    // it follows exactly; above it, each further degree of looking up moves the weapon a little less
+    // than the last, and it approaches the limit without ever arriving or ever stopping.
     //
     // Aiming is exempt and has to be: the sights only mean anything on the view axis.
-    const float upwardCap = glm::mix(glm::radians(m_config.weaponCarryPitchMaxUp),
-                                     glm::half_pi<float>(), aim);
-    carryPitch = std::min(carryPitch, upwardCap);
+    const float knee = glm::radians(std::min(m_config.weaponCarryPitchKnee, m_config.weaponCarryPitchMaxUp));
+    const float limit = glm::radians(m_config.weaponCarryPitchMaxUp);
+    if (carryPitch > knee)
+    {
+        const float room = std::max(limit - knee, 1e-4f);
+        const float over = carryPitch - knee;
+        const float eased = knee + room * (1.0f - std::exp(-over / room));
+        carryPitch = glm::mix(eased, carryPitch, aim);
+    }
     const float cp = std::cos(carryPitch);
     const glm::vec3 carryForward{std::sin(view.yaw) * cp, std::sin(carryPitch), -std::cos(view.yaw) * cp};
     const glm::vec3 carryRight = yawRight;

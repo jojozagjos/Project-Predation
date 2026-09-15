@@ -124,9 +124,13 @@ public:
         // that puts the barrel through the ground, and nothing afterwards can take it back out
         // because the thing it is pointing at is the thing the player is lying on.
         float weaponPronePitchFollow = 0.22f;
-        // And how far up a carried weapon may point, in degrees, however far up the player looks.
-        // Nobody raises a rifle at the sky to look at it. See where it is used.
-        float weaponCarryPitchMaxUp = 35.0f;
+        // And how far up a carried weapon may point, in degrees, however far up the player looks,
+        // and the angle it starts easing towards that at. Nobody raises a rifle at the sky to look
+        // at it; equally, a weapon that tracks the view and then stops dead at one angle reads as
+        // having come loose from it. Below the knee it follows exactly, above it the movement
+        // shrinks with every further degree. See where they are used.
+        float weaponCarryPitchKnee = 24.0f;
+        float weaponCarryPitchMaxUp = 55.0f;
         // The weapon lags a turn and then catches up, which is what gives it weight.
         float weaponSwayAmount = 0.34f;   // how far a turn drags the weapon behind the view
         float weaponSwayRecover = 11.0f;  // how fast it catches up again

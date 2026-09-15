@@ -3082,6 +3082,53 @@ TEST_CASE("Reloading on your front keeps both hands above the floor", "[body][po
     CHECK(lowest > kUnderTheFloor);
 }
 
+TEST_CASE("Looking up keeps raising the weapon without standing it on end", "[body][pose][weapon]")
+{
+    // Two failures at once, from opposite directions. Following the view all the way up stands the
+    // rifle on end beside the head with the arms folded around it. Clamping instead means the weapon
+    // tracks the view exactly and then stops dead at one angle, which reads as the gun having come
+    // loose from the view -- both were reported by the player.
+    //
+    // So the barrel has to keep rising at every angle, and still never get near vertical.
+    BodyHarness harness;
+    WeaponDefinition definition;
+    ModelAsset model;
+    if (!LoadShippedCarbine(harness, definition, model))
+    {
+        WARN("no shipped carbine to test against");
+        return;
+    }
+    harness.Settle(120);
+
+    const auto barrelDegrees = [&](float lookDegrees)
+    {
+        harness.input.pitch = glm::radians(lookDegrees);
+        harness.Settle(90);
+        const glm::vec3 barrel =
+            glm::normalize(harness.body.MuzzlePoint() - harness.body.WeaponOrigin());
+        return glm::degrees(std::asin(std::clamp(barrel.y, -1.0f, 1.0f)));
+    };
+
+    float previous = barrelDegrees(0.0f);
+    float highest = previous;
+    for (float look = 10.0f; look <= 85.0f; look += 15.0f)
+    {
+        const float now = barrelDegrees(look);
+        INFO("looking up " << look << " degrees puts the barrel at " << now
+                           << ", from " << previous);
+        // Still rising. A tenth of a degree per fifteen is nothing to look at, but it is the
+        // difference between easing towards a limit and having stopped at one.
+        CHECK(now > previous + 0.1f);
+        previous = now;
+        highest = std::max(highest, now);
+    }
+
+    INFO("the barrel reached " << highest << " degrees above horizontal");
+    // And nowhere near presenting arms. The muzzle correction at a wall also collapses above sixty
+    // degrees, so this doubles as the guard on that: see UpdateWeapon.
+    CHECK(highest < 60.0f);
+}
+
 TEST_CASE("Walking into a wall leaves the weapon in front of the player", "[body][pose][weapon]")
 {
     // Whatever a wall does to the hold, the weapon stays somewhere a person could be holding it:
