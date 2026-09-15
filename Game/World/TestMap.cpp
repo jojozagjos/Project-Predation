@@ -28,7 +28,6 @@ const Material kRampMaterial = Material::Diffuse({0.30f, 0.38f, 0.42f}, 0.85f);
 const Material kLedgeMaterial = Material::Diffuse({0.44f, 0.32f, 0.32f}, 0.80f);
 const Material kWallMaterial = Material::Diffuse({0.26f, 0.27f, 0.30f}, 0.95f);
 const Material kPillarMaterial = Material::Metal({0.55f, 0.56f, 0.60f}, 0.42f);
-const Material kMarkerMaterial = Material::Emissive({0.9f, 0.45f, 0.2f}, 0.6f);
 
 Transform AtPosition(float x, float y, float z)
 {
@@ -146,13 +145,13 @@ void BuildTestMap(Scene& scene, MeshLibrary& meshes, PhysicsWorld* physics)
                            AtPosition(0.0f, -slabHalfThickness, 0.0f), BodyMotion::Static);
     }
 
-    const MeshHandle markerMesh = meshes.Upload(Primitives::Sphere(0.15f, 20, 14), "marker");
 
-    // Each zone gets a painted floor and a coloured post at one corner, so from the spawn the map
-    // reads as a set of rooms rather than a field of scattered props. Both are decoration: no
-    // collider, and the post is emissive so it can be found in the dark.
-    const MeshData postData = Primitives::Cylinder(0.09f, 2.4f, 12);
-    const MeshHandle postMesh = meshes.Upload(postData, "zone_post");
+    // Each zone gets a painted floor, so from the spawn the map reads as a set of rooms rather than a
+    // field of scattered props. Decoration: no collider.
+    //
+    // There were emissive posts at the corners and floating spheres over the ramps as well. They
+    // were a legend for a map nobody needs a legend for any more, and being emissive they were the
+    // brightest things in every dark scene -- six glowing sticks in the middle of the horror game.
     int zoneIndex = 0;
     auto zone = [&](const char* name, float centreX, float centreZ, float sizeX, float sizeZ,
                     const glm::vec3& tint)
@@ -165,9 +164,6 @@ void BuildTestMap(Scene& scene, MeshLibrary& meshes, PhysicsWorld* physics)
         const float height = 0.012f + 0.002f * static_cast<float>(zoneIndex++);
         builder.AddDecoration("zone_pad", AtPosition(centreX, height, centreZ), pad,
                               Material::Diffuse(tint, 0.95f));
-        builder.AddDecoration("zone_post",
-                              AtPosition(centreX - sizeX * 0.5f + 0.3f, 1.2f, centreZ + sizeZ * 0.5f - 0.3f),
-                              postMesh, Material::Emissive(tint * 2.2f, 0.55f));
     };
 
     // ---------------------------------------------------------------------
@@ -211,9 +207,6 @@ void BuildTestMap(Scene& scene, MeshLibrary& meshes, PhysicsWorld* physics)
         builder.AddMesh("ramp_" + std::to_string(static_cast<int>(angleDegrees)),
                         AtPosition(rampX, 0.0f, -4.0f), rampData, kRampMaterial);
 
-        // Marker floating above each ramp, to read the angle at a glance.
-        builder.AddDecoration("ramp_marker", AtPosition(rampX, height + 0.6f, -4.0f + rampLength), markerMesh,
-                              kMarkerMaterial);
         rampX -= 5.0f;
     }
 

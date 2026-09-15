@@ -102,7 +102,7 @@ CVar<bool> cv_sunShadows{"r.shadows", true, "Whether the sun is stopped by anyth
                          CVarFlags::Archive};
 CVar<bool> cv_skyShadows{"r.sky_occlusion", true, "Whether a roof keeps the sky out of a room",
                          CVarFlags::Archive};
-CVar<float> cv_shadowDistance{"r.shadow_distance", 20.0f,
+CVar<float> cv_shadowDistance{"r.shadow_distance", 16.0f,
                               "How far from the player occlusion is worked out, in metres",
                               CVarFlags::Archive};
 CVar<int> cv_occlusionDebug{"r.show_occlusion", 0,
@@ -114,9 +114,20 @@ CVar<float> cv_indoorLight{"r.indoor_light", 0.06f,
 CVar<float> cv_sunShadowBias{"r.shadow_bias", 0.05f, "Slack in the sun's occlusion test, in metres"};
 CVar<float> cv_sunShadowOffset{"r.shadow_normal_offset", 0.06f,
                                "How far out along the surface the sun's test is taken, in metres"};
-CVar<float> cv_skyShadowBias{"r.sky_bias", 0.12f, "Slack in the sky's occlusion test, in metres"};
+// Far larger than the sun.s, for two reasons that compound.
+//
+// The map it reads is coarse -- a texel is a quarter of a metre of world -- so a sloped surface
+// crosses a lot of depth inside one. And it is read over a neighbourhood half a metre wide, which on
+// a ramp means the taps up-slope are a third of a metre above the point being shaded. Without enough
+// slack to ignore its own rise, a ramp rules itself in broad diagonal bands: not acne, but the
+// occlusion honestly reporting that a ramp is partly under itself.
+CVar<float> cv_skyShadowBias{"r.sky_bias", 0.45f, "Slack in the sky's occlusion test, in metres"};
 CVar<float> cv_skyShadowOffset{"r.sky_normal_offset", 0.05f,
                                "How far out along the surface the sky's test is taken, in metres"};
+// How bright the backdrop is drawn. Only the backdrop: the ambient the world is lit by is separate,
+// so turning the sky down darkens what is behind the level without flattening what is in it.
+CVar<float> cv_skyBrightness{"r.sky_brightness", 0.62f, "How bright the sky is drawn",
+                             CVarFlags::Archive};
 // Adjustable because a prone body needs the camera much further back than a standing one, and
 // inspecting the prone roll from three metres puts the camera inside the character.
 CVar<float> cv_thirdDistance{"cam.third_distance", 3.2f, "How far the third-person camera sits behind the character",
@@ -6761,6 +6772,7 @@ void PredationGame::OnRender()
     app.GetSceneRenderer().RenderShadows(Renderer::kViewSunShadow, Renderer::kViewSkyShadow, m_scene,
                                          app.GetMeshes(), viewPosition);
     // The sky first, into the same view, so the world covers it where there is world.
+    app.GetSkyRenderer().SetBrightness(cv_skyBrightness.Get());
     app.GetSkyRenderer().Draw(Renderer::kViewSky, m_scene.GetEnvironment(),
                               app.GetRenderer().ViewMatrix(), app.GetRenderer().ProjectionMatrix());
     app.GetSceneRenderer().Draw(Renderer::kViewMain, m_scene, app.GetMeshes(), viewPosition);

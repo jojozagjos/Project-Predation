@@ -81,13 +81,19 @@ SAMPLER2D(s_skyShadow, 2);
 // it lifts every shadow off the thing casting it, and small enough for the square-on case the
 // glancing surfaces stripe themselves with their own shadow, in a pattern that crawls as the map
 // snaps to its grid while the player walks. That crawl is what "flickering" was.
-float shadowSlack(float base, float NoL)
+float shadowSlack(float base, float NoL, float mostSlope)
 {
 	// tan of the angle from the surface normal to the light, which is how much depth one step
-	// across the surface covers. Clamped, because it runs to infinity at ninety degrees and the
-	// answer there is "this surface is edge-on to the light and nothing sensible can be said".
+	// across the surface covers. It runs to infinity at ninety degrees, so it is clamped -- and the
+	// two maps want very different clamps.
+	//
+	// The sun can be generous: a surface edge-on to it is barely lit anyway, so slack there costs
+	// nothing visible. The sky cannot. A vertical wall reads as maximum slope against a map that
+	// looks straight down, and the generous clamp handed it nearly four metres of slack -- more than
+	// the height of a roof, so every wall in a sealed room ignored the roof over it and the room lit
+	// up. Its clamp has to stay well under the shortest ceiling in the game.
 	float slope = sqrt(max(1.0 - NoL * NoL, 0.0)) / max(NoL, 0.08);
-	return base * (1.0 + min(slope, 6.0));
+	return base * (1.0 + min(slope, mostSlope));
 }
 
 // The sun, from one map.
@@ -105,7 +111,7 @@ float shadowSlack(float base, float NoL)
 float sunReaching(vec3 P, vec3 N, float NoL)
 {
 	return lightReachesSharp(s_sunShadow, u_sunShadowMtx, u_sunShadowAxis, u_sunShadowParams, P, N,
-	                        shadowSlack(u_sunShadowParams.y, NoL));
+	                        shadowSlack(u_sunShadowParams.y, NoL, 6.0));
 }
 
 // GGX / Trowbridge-Reitz normal distribution.
@@ -230,7 +236,6 @@ void main()
 	// Hemispheric ambient stands in for indirect light until there is a real probe system.
 	float hemisphere = N.y * 0.5 + 0.5;
 	vec3 ambient = mix(u_ambientGround.rgb, u_ambientSky.rgb, hemisphere);
-
 	// And the sky is blocked by the same geometry that blocks the sun.
 	//
 	// This is what makes an interior dark rather than merely unlit by the sun. Shadowing the sun
@@ -238,9 +243,15 @@ void main()
 	// outside, which is the look of a room somebody forgot to light rather than a dark one. What is
 	// left where the sky cannot reach is a small fraction, standing in for the light that would have
 	// bounced its way in; without it, geometry out of the torch beam is not dark but absent.
+	//
+	// Its slack is worked out the same way the sun's is, against how far the surface is tilted from
+	// facing straight up -- because this map looks straight down, so an up-facing surface crosses no
+	// depth within a texel and a sloped one crosses a great deal. Without it a ramp compares its own
+	// height against the height recorded at the middle of each texel, is above it on one side and
+	// below it on the other, and rules itself in fine horizontal stripes all the way up.
 	float skyReaches =
 		lightReachesWide(s_skyShadow, u_skyShadowMtx, u_skyShadowAxis, u_skyShadowParams, v_worldPos, N,
-		                 u_skyShadowParams.y);
+		                 shadowSlack(u_skyShadowParams.y, max(N.y, 0.0), 1.0));
 	ambient *= mix(u_grade.z, 1.0, skyReaches);
 
 	color += diffuseColor * ambient;

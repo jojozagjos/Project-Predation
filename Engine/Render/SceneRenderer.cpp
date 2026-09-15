@@ -25,11 +25,19 @@ constexpr uint16_t kSunShadowSize = 2048;
 // The sky map is read close up on walls, where a coarse texel shows as a square patch of dimmer
 // ambient a hand span across -- reported as "big pixelated squares" next to a wall. It is not the
 // resolution the occlusion needs, it is the resolution the eye needs at arm.s length.
-// Deliberately coarse. The sky term is not asking "what is directly over this point" -- that
-// question has no good answer for a wall, whose own top is directly over it -- but "how much of the
-// neighbourhood can see sky". A texel of about twelve centimetres with a five-tap filter samples a
-// quarter of a metre either way, which is wider than a wall is thick and narrower than a room.
-constexpr uint16_t kSkyShadowSize = 512;
+// Deliberately very coarse, and the coarseness is the whole design.
+//
+// The sky term is not asking "what is directly over this point" -- that question has no good answer
+// for the side of anything, whose own top is directly over it -- but "how much of the neighbourhood
+// can see sky". So what matters is the size of the neighbourhood, and it has to sit between the two
+// scales the answer differs at: wider than the things a surface belongs to, narrower than a room.
+//
+// At a quarter of a metre it was too narrow, and the way that showed was crates with one side dark
+// and the top lit: a face of a metre-wide box never found open sky within reach of itself. Sixty
+// centimetres clears a crate, a bench and a wall, and is still nothing against a room four metres
+// across. Over a forty metre map that is a hundred and twenty-eight texels, which sounds absurd for
+// a shadow map and is exactly right for this one.
+constexpr uint16_t kSkyShadowSize = 128;
 // How far the maps reach along their own axis. Deep enough that nothing in a level stands outside
 // it and gets quietly clipped out of its own shadow.
 constexpr float kShadowDepthRange = 220.0f;

@@ -29,13 +29,13 @@ struct ShadowSettings
     // The radius around the player that the maps cover. Past it there is no occlusion at all, so
     // this is the distance at which a building stops being dark inside, and it trades directly
     // against how much world each texel is responsible for.
-    float distance = 20.0f;
+    float distance = 16.0f;
     // And the radius of the near one, which is where the shadows anybody looks closely at are: your
     // own, and whatever you are standing next to.
     // belongs to, or every outside wall stands in the shade of its own roof.
     float sunBias = 0.05f;
     float sunNormalOffset = 0.06f;
-    float skyBias = 0.12f;
+    float skyBias = 0.45f;
     float skyNormalOffset = 0.05f;
     // What is left of the ambient where the sky cannot reach, standing in for light that bounced
     // its way in. Zero is a void rather than a dark room: geometry outside the torch beam stops

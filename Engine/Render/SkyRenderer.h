@@ -41,6 +41,14 @@ private:
     bgfx::UniformHandle m_uSun = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uSunColor = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uGrade = BGFX_INVALID_HANDLE;
+
+public:
+    // How bright the sky is drawn, as a multiplier. The lighting is not changed by it -- this is the
+    // backdrop, not the ambient the world is lit by, and the two are separate on purpose.
+    void SetBrightness(float brightness) { m_brightness = brightness; }
+
+private:
+    float m_brightness = 1.0f;
 };
 
 } // namespace pred
