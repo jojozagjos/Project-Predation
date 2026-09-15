@@ -66,6 +66,43 @@ std::string KeyOf(const sockaddr_in& address)
     return std::string(text) + ":" + std::to_string(ntohs(address.sin_port));
 }
 
+// Every address this machine answers on, so the operator can read off what to hand out.
+//
+// Whoever starts the relay knows it is running, because it says so. What they do not know is the
+// address to give anybody else, and getting that wrong is indistinguishable from the relay being
+// broken: both look like a lobby that opens, sits there, and nobody ever arrives.
+std::vector<std::string> LocalAddresses()
+{
+    std::vector<std::string> found;
+    char host[256] = {};
+    if (gethostname(host, sizeof(host) - 1) != 0)
+    {
+        return found;
+    }
+    addrinfo hints{};
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_DGRAM;
+    addrinfo* list = nullptr;
+    if (getaddrinfo(host, nullptr, &hints, &list) != 0 || list == nullptr)
+    {
+        return found;
+    }
+    for (const addrinfo* entry = list; entry != nullptr; entry = entry->ai_next)
+    {
+        char text[INET_ADDRSTRLEN] = {};
+        const auto* in = reinterpret_cast<const sockaddr_in*>(entry->ai_addr);
+        inet_ntop(AF_INET, &in->sin_addr, text, sizeof(text));
+        const std::string address = text;
+        if (!address.empty() &&
+            std::find(found.begin(), found.end(), address) == found.end())
+        {
+            found.push_back(address);
+        }
+    }
+    freeaddrinfo(list);
+    return found;
+}
+
 } // namespace
 
 int main(int argc, char** argv)
@@ -134,6 +171,14 @@ int main(int argc, char** argv)
     RelayServer::Settings settings;
     RelayServer relay(settings);
     PRED_LOG_INFO(Network, "Relay listening on UDP {}", port);
+    for (const std::string& address : LocalAddresses())
+    {
+        PRED_LOG_INFO(Network, "  reachable on this network at {}:{}", address, port);
+    }
+    PRED_LOG_INFO(Network,
+                  "  players on this machine use 127.0.0.1:{}; players elsewhere on the internet "
+                  "need this machine's public address and UDP {} forwarded to it",
+                  port, port);
 
     std::array<uint8_t, 1400> buffer{};
     std::vector<RelayServer::Outgoing> outgoing;
@@ -143,6 +188,12 @@ int main(int argc, char** argv)
 
     auto previous = std::chrono::steady_clock::now();
     size_t lastLobbies = 0;
+    size_t lastClients = 0;
+    // Stray traffic is noted per datagram and logged per address, because a port scanner can send
+    // thousands and the useful information is "this address is talking to us and it is not the
+    // game", which is one line however many datagrams it took.
+    std::unordered_map<std::string, int> strays;
+    auto lastStrayReport = std::chrono::steady_clock::now();
 
     while (g_running)
     {
@@ -196,10 +247,61 @@ int main(int argc, char** argv)
             }
         }
 
-        if (relay.LobbyCount() != lastLobbies)
+        // What actually happened, one line each.
+        //
+        // This is the relay's only window into itself, so it errs towards saying too much: a lobby
+        // that opens and is never joined and one that is joined by somebody the game then cannot
+        // reach are the same picture from outside, and the difference is the whole diagnosis.
+        for (const RelayServer::Note& note : relay.Notes())
+        {
+            const std::string code = note.code == 0 ? std::string("-") : DecodeRelayCode(note.code);
+            switch (note.kind)
+            {
+            case RelayServer::Note::Kind::Opened:
+                PRED_LOG_INFO(Network, "Lobby {} opened by {}", code, note.client);
+                break;
+            case RelayServer::Note::Kind::Joined:
+                PRED_LOG_INFO(Network, "Lobby {}: {} joined as slot {}", code, note.client,
+                              static_cast<int>(note.slot));
+                break;
+            case RelayServer::Note::Kind::Left:
+                PRED_LOG_INFO(Network, "Lobby {}: slot {} ({}) {}", code,
+                              static_cast<int>(note.slot), note.client,
+                              note.timedOut ? "went quiet and was dropped" : "left");
+                break;
+            case RelayServer::Note::Kind::Closed:
+                PRED_LOG_INFO(Network, "Lobby {} closed{}", code,
+                              note.timedOut ? " because the host went quiet" : "");
+                break;
+            case RelayServer::Note::Kind::Refused:
+                PRED_LOG_WARN(Network, "Refused {} asking for lobby {}: {}", note.client, code,
+                              pred::Describe(note.reason));
+                break;
+            case RelayServer::Note::Kind::Ignored:
+                ++strays[note.client];
+                break;
+            }
+        }
+        relay.Notes().clear();
+
+        if (!strays.empty() && now - lastStrayReport > std::chrono::seconds(10))
+        {
+            lastStrayReport = now;
+            for (const auto& [who, count] : strays)
+            {
+                PRED_LOG_WARN(Network, "{} datagram(s) from {} that are not this game's", count, who);
+            }
+            strays.clear();
+        }
+
+        // And the standing count, on any change. It used to print only when the number of lobbies
+        // changed, which meant a second player joining -- the one event anybody starts this program
+        // to watch for -- printed nothing at all.
+        if (relay.LobbyCount() != lastLobbies || relay.ClientCount() != lastClients)
         {
             lastLobbies = relay.LobbyCount();
-            PRED_LOG_INFO(Network, "{} lobbies, {} clients", relay.LobbyCount(), relay.ClientCount());
+            lastClients = relay.ClientCount();
+            PRED_LOG_INFO(Network, "{} lobbies, {} clients", lastLobbies, lastClients);
         }
 
         // A relay is not a game: it has nothing to do between datagrams, and spinning would burn a

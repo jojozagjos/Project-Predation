@@ -163,20 +163,13 @@ bool RelayCarrier::Join(const Settings& settings, uint32_t code)
     m_connectTimer = 0.0f;
     m_keepAliveTimer = 0.0f;
 
-    // Winsock has to be running before any of this. On a machine that has not opened a socket yet,
-    // which is every machine that goes straight to the lobby from the menu, socket() otherwise just
-    // returns an invalid handle and the whole thing reports "No socket".
-    if (!SocketSystem::Acquire())
-    {
-        m_message = "Networking is unavailable on this machine";
-        m_state = State::Failed;
-        return false;
-    }
-    m_socketSystem = true;
-
-    // Winsock has to be running before any of this. On a machine that has not opened a socket yet —
-    // which is every machine that goes straight from the menu to a lobby — socket() otherwise just
+    // Winsock has to be running before any of this. On a machine that has not opened a socket yet --
+    // which is every machine that goes straight from the menu to a lobby -- socket() otherwise just
     // returns an invalid handle and the whole thing reports "No socket" with no hint as to why.
+    //
+    // Once, not twice. This block was here in duplicate, and the pair of them took two references to
+    // the socket system against the one flag that says to give a reference back, so every lobby
+    // leaked one and Winsock was never shut down.
     if (!SocketSystem::Acquire())
     {
         m_message = "Networking is unavailable on this machine";
@@ -356,7 +349,12 @@ void RelayCarrier::Poll(float dt)
         case RelayMessage::PeerJoined:
             // A link is made for them now rather than when they first speak, so the transport has
             // somewhere to dial before they say anything.
-            LinkForSlot(packet.slot);
+            //
+            // Logged, because this is the moment that separates the two ways a lobby fails. Somebody
+            // reaching the relay and then not reaching the game is a different fault from somebody
+            // never reaching the relay at all, and without this line both look like an empty lobby.
+            PRED_LOG_INFO(Network, "Slot {} is in the lobby; link {}", packet.slot,
+                          LinkForSlot(packet.slot));
             break;
 
         case RelayMessage::PeerLeft:
@@ -364,6 +362,7 @@ void RelayCarrier::Poll(float dt)
             // renumbering would move somebody else's peer under it; a link whose slot has gone
             // simply stops carrying anything, and the transport times that peer out as it would any
             // other silence.
+            PRED_LOG_INFO(Network, "Slot {} left the lobby", packet.slot);
             break;
 
         case RelayMessage::Relayed:

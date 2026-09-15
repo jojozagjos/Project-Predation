@@ -2531,8 +2531,21 @@ void PredationGame::DrawLobby()
                 ImGui::SetClipboardText(m_relay->CodeText().c_str());
             }
             ImGui::Spacing();
-            ImGui::Text("%d of %d here", 1 + static_cast<int>(m_host.ConnectedCount()),
-                        static_cast<int>(kMaxPlayers));
+            // Two counts, not one, because they fail separately.
+            //
+            // The relay knows who has typed the code. The game knows who has finished a handshake
+            // and has a player in the world. Somebody who reached the relay and never reached the
+            // game is a firewall or a version mismatch; somebody who never reached the relay typed
+            // the wrong code or cannot see the relay at all. Showing only the second number makes
+            // those identical -- an empty lobby, with nothing to go on.
+            const int inLobby = 1 + static_cast<int>(m_relay->Links());
+            const int inGame = 1 + static_cast<int>(m_host.ConnectedCount());
+            ImGui::Text("%d of %d here", inGame, static_cast<int>(kMaxPlayers));
+            if (inLobby > inGame)
+            {
+                ImGui::TextColored({0.90f, 0.80f, 0.45f, 1.0f},
+                                   "%d at the relay but not in the game yet", inLobby - inGame);
+            }
             ImGui::Spacing();
             if (m_sessionMode == SessionMode::Host && ImGui::Button("Go in", wide))
             {

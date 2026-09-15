@@ -303,6 +303,85 @@ TEST_CASE("Opening a lobby and joining it by code", "[relay]")
     CHECK(sawHost);
 }
 
+TEST_CASE("The relay says out loud what happened to it", "[relay][diagnostics]")
+{
+    // The relay's only output used to be a line printed when the number of lobbies changed. A second
+    // player joining an existing lobby does not change that number, so the one event anybody runs
+    // this program to watch for was the one event it never mentioned -- and "my friend never reached
+    // the relay" and "my friend reached it and the game link failed" produced identical consoles.
+    //
+    // This is that hole, as a test: every event that distinguishes those two cases has to appear.
+    using Kind = RelayServer::Note::Kind;
+    const auto kindsOf = [](const std::vector<RelayServer::Note>& notes)
+    {
+        std::vector<Kind> kinds;
+        for (const RelayServer::Note& note : notes)
+        {
+            kinds.push_back(note.kind);
+        }
+        return kinds;
+    };
+    const auto has = [&](const std::vector<RelayServer::Note>& notes, Kind kind)
+    {
+        const std::vector<Kind> kinds = kindsOf(notes);
+        return std::find(kinds.begin(), kinds.end(), kind) != kinds.end();
+    };
+
+    RelayHarness relay;
+    const uint32_t code = relay.OpenLobby("host");
+    REQUIRE(has(relay.server.Notes(), Kind::Opened));
+    CHECK(relay.server.Notes().front().code == code);
+    CHECK(relay.server.Notes().front().client == "host");
+    relay.server.Notes().clear();
+
+    // The one that used to be silent.
+    relay.JoinLobby("guest", code);
+    REQUIRE(has(relay.server.Notes(), Kind::Joined));
+    CHECK(relay.server.Notes().front().client == "guest");
+    CHECK(relay.server.Notes().front().slot == 1);
+    relay.server.Notes().clear();
+
+    // A wrong code, which is what a mistyped invitation looks like from here.
+    RelayPacket wrong;
+    wrong.kind = RelayMessage::Join;
+    wrong.code = code ^ 0x5A5Au;
+    relay.Send("stranger", wrong);
+    REQUIRE(has(relay.server.Notes(), Kind::Refused));
+    CHECK(relay.server.Notes().front().reason == RelayRejection::NoSuchLobby);
+    relay.server.Notes().clear();
+
+    // And traffic that is not this game at all, which is a different fault from no traffic.
+    const uint8_t rubbish[] = {0xDE, 0xAD, 0xBE, 0xEF};
+    relay.server.Receive("scanner", rubbish, sizeof(rubbish), relay.out);
+    REQUIRE(has(relay.server.Notes(), Kind::Ignored));
+    CHECK(relay.server.Notes().front().client == "scanner");
+    relay.server.Notes().clear();
+
+    // Silence drops the guest, and says that is why rather than that they left.
+    std::vector<RelayServer::Outgoing> out;
+    relay.server.Tick(RelayServer::Settings{}.timeoutSeconds + 1.0f, out);
+    REQUIRE(has(relay.server.Notes(), Kind::Left));
+    bool sawTimeout = false;
+    for (const RelayServer::Note& note : relay.server.Notes())
+    {
+        sawTimeout = sawTimeout || (note.kind == Kind::Left && note.timedOut);
+    }
+    CHECK(sawTimeout);
+    CHECK(has(relay.server.Notes(), Kind::Closed));
+}
+
+TEST_CASE("Notes do not pile up when nobody is reading them", "[relay][diagnostics]")
+{
+    // A relay left running for a week with no operator watching must not grow a note per datagram.
+    RelayHarness relay;
+    const uint8_t rubbish[] = {0xDE, 0xAD};
+    for (size_t i = 0; i < RelayServer::kMaxNotes * 3; ++i)
+    {
+        relay.server.Receive("scanner", rubbish, sizeof(rubbish), relay.out);
+    }
+    CHECK(relay.server.Notes().size() == RelayServer::kMaxNotes);
+}
+
 TEST_CASE("A wrong code is refused and says so", "[relay]")
 {
     RelayHarness relay;

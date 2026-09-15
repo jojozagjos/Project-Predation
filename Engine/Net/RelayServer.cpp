@@ -100,7 +100,26 @@ void RelayServer::Reject(std::vector<Outgoing>& out, const std::string& to,
     Send(out, to, packet);
 }
 
-void RelayServer::RemoveMember(Lobby& lobby, uint8_t slot, std::vector<Outgoing>& out)
+void RelayServer::AddNote(Note::Kind kind, const std::string& client, uint32_t code, uint8_t slot,
+                          RelayRejection reason, bool timedOut)
+{
+    // Dropped rather than queued without limit when nobody is draining them. A relay left running
+    // for a week with no operator watching must not grow a note per datagram.
+    if (m_notes.size() >= kMaxNotes)
+    {
+        m_notes.erase(m_notes.begin());
+    }
+    Note note;
+    note.kind = kind;
+    note.client = client;
+    note.code = code;
+    note.slot = slot;
+    note.reason = reason;
+    note.timedOut = timedOut;
+    m_notes.push_back(std::move(note));
+}
+
+void RelayServer::RemoveMember(Lobby& lobby, uint8_t slot, std::vector<Outgoing>& out, bool timedOut)
 {
     const auto found = std::find_if(lobby.members.begin(), lobby.members.end(),
                                     [&](const Member& member) { return member.slot == slot; });
@@ -108,6 +127,7 @@ void RelayServer::RemoveMember(Lobby& lobby, uint8_t slot, std::vector<Outgoing>
     {
         return;
     }
+    AddNote(Note::Kind::Left, found->key, lobby.code, slot, RelayRejection::None, timedOut);
     lobby.members.erase(found);
 
     RelayPacket left;
@@ -127,6 +147,11 @@ void RelayServer::Receive(const std::string& from, const uint8_t* data, size_t b
     {
         // Not ours. An open UDP port on the internet receives scans, stray game traffic and noise,
         // and none of it gets a reply: answering tells a scanner something is here.
+        //
+        // Noted, though, because "something is arriving from your friend's address and none of it is
+        // ours" and "nothing is arriving from your friend at all" are different faults with
+        // different fixes, and from the outside they look identical.
+        AddNote(Note::Kind::Ignored, from, 0, kRelayNoSlot);
         return;
     }
 
@@ -184,6 +209,7 @@ void RelayServer::Receive(const std::string& from, const uint8_t* data, size_t b
         hosted.code = code;
         hosted.slot = kRelayHostSlot;
         Send(out, from, hosted);
+        AddNote(Note::Kind::Opened, from, code, kRelayHostSlot);
         return;
     }
 
@@ -207,6 +233,8 @@ void RelayServer::Receive(const std::string& from, const uint8_t* data, size_t b
         if (target == nullptr)
         {
             Reject(out, from, RelayRejection::NoSuchLobby);
+            AddNote(Note::Kind::Refused, from, packet.code, kRelayNoSlot,
+                    RelayRejection::NoSuchLobby);
             return;
         }
         // The lowest free slot, so a lobby people come and go from does not run out of numbers.
@@ -224,6 +252,8 @@ void RelayServer::Receive(const std::string& from, const uint8_t* data, size_t b
         if (slot == kRelayNoSlot)
         {
             Reject(out, from, RelayRejection::LobbyFull);
+            AddNote(Note::Kind::Refused, from, packet.code, kRelayNoSlot,
+                    RelayRejection::LobbyFull);
             return;
         }
 
@@ -255,6 +285,7 @@ void RelayServer::Receive(const std::string& from, const uint8_t* data, size_t b
             Send(out, from, existing);
         }
         target->members.push_back(std::move(arrival));
+        AddNote(Note::Kind::Joined, from, target->code, slot);
         return;
     }
 
@@ -291,7 +322,7 @@ void RelayServer::Receive(const std::string& from, const uint8_t* data, size_t b
             return;
         }
         const uint8_t slot = member->slot;
-        RemoveMember(*lobby, slot, out);
+        RemoveMember(*lobby, slot, out, false);
         // An empty lobby is closed, and so is one whose host has gone: the others cannot play
         // without it and leaving the code alive would let somebody join a game that is not there.
         if (lobby->members.empty() || slot == kRelayHostSlot)
@@ -300,6 +331,7 @@ void RelayServer::Receive(const std::string& from, const uint8_t* data, size_t b
             {
                 Reject(out, other.key, RelayRejection::NoSuchLobby);
             }
+            AddNote(Note::Kind::Closed, from, lobby->code, slot);
             m_lobbies.erase(m_lobbies.begin() +
                             static_cast<ptrdiff_t>(lobby - m_lobbies.data()));
         }
@@ -333,7 +365,7 @@ void RelayServer::Tick(float dt, std::vector<Outgoing>& out)
             {
                 const uint8_t slot = entry.slot;
                 hostGone = hostGone || slot == kRelayHostSlot;
-                RemoveMember(lobby, slot, out);
+                RemoveMember(lobby, slot, out, true);
                 continue; // the vector shifted under us
             }
             ++member;
@@ -345,6 +377,8 @@ void RelayServer::Tick(float dt, std::vector<Outgoing>& out)
             {
                 Reject(out, other.key, RelayRejection::NoSuchLobby);
             }
+            AddNote(Note::Kind::Closed, std::string(), lobby.code, kRelayHostSlot,
+                    RelayRejection::None, true);
             m_lobbies.erase(m_lobbies.begin() + static_cast<ptrdiff_t>(index));
             continue;
         }

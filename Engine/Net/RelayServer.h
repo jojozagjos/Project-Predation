@@ -46,6 +46,41 @@ public:
         std::vector<uint8_t> datagram;
     };
 
+    // Something worth telling the operator about.
+    //
+    // The relay has no logger in it, for the same reason it has no socket: it is a function, and a
+    // function that writes to a log is one a test has to read a log to check. So it says what
+    // happened and the executable around it decides whether anybody is listening.
+    //
+    // This exists because the relay was unreadable in the one situation it matters. Its only output
+    // was a line printed when the number of lobbies changed, and a second player joining an existing
+    // lobby does not change that number -- so the one event anybody ever needs to see was the one
+    // event that printed nothing. "Did my friend reach the relay at all" could not be answered from
+    // the relay's own console.
+    struct Note
+    {
+        enum class Kind : uint8_t
+        {
+            Opened,   // a lobby was opened
+            Joined,   // somebody joined one
+            Left,     // somebody left or was dropped
+            Closed,   // a lobby ended
+            Refused,  // somebody asked for something and was told no
+            Ignored   // a datagram arrived that is not ours at all
+        };
+        Kind kind = Kind::Ignored;
+        std::string client;
+        uint32_t code = 0;
+        uint8_t slot = kRelayNoSlot;
+        RelayRejection reason = RelayRejection::None;
+        bool timedOut = false; // Left: dropped for silence rather than having said goodbye
+    };
+
+    // Drained by whoever is logging. Left to grow otherwise, so it is bounded: past this many the
+    // oldest are dropped rather than the relay quietly eating memory because nobody is reading.
+    std::vector<Note>& Notes() { return m_notes; }
+    static constexpr size_t kMaxNotes = 256;
+
     explicit RelayServer(const Settings& settings = {});
 
     // A datagram has arrived from `from`. Anything to send goes on `out`, appended rather than
@@ -82,11 +117,14 @@ private:
     uint32_t NextCode();
     void Send(std::vector<Outgoing>& out, const std::string& to, const RelayPacket& packet) const;
     void Reject(std::vector<Outgoing>& out, const std::string& to, RelayRejection reason) const;
-    void RemoveMember(Lobby& lobby, uint8_t slot, std::vector<Outgoing>& out);
+    void RemoveMember(Lobby& lobby, uint8_t slot, std::vector<Outgoing>& out, bool timedOut);
+    void AddNote(Note::Kind kind, const std::string& client, uint32_t code, uint8_t slot,
+               RelayRejection reason = RelayRejection::None, bool timedOut = false);
 
     Settings m_settings;
     std::vector<Lobby> m_lobbies;
     uint32_t m_random = 0;
+    std::vector<Note> m_notes;
 };
 
 } // namespace pred
