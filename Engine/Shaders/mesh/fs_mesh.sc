@@ -52,116 +52,51 @@ SAMPLER2D(s_skyShadow, 2);
 
 #define PI 3.14159265359
 
-// How wide the occlusion filter is, in taps across. Odd, and the radius is half of it rounded down.
-#define SHADOW_TAPS 5
-#define SHADOW_RADIUS 2.0
-
 // How much of a light reaches this surface: 1 in the open, 0 behind something, and part of the way
-// along an edge.
+// along an edge. Two sizes -- see shadow_kernel.sh for why.
+#define KERNEL_NAME lightReachesFine
+#define KERNEL_TAPS 5
+#define KERNEL_RADIUS 2.0
+#include "shadow_kernel.sh"
+
+#define KERNEL_NAME lightReaches
+#define KERNEL_TAPS 3
+#define KERNEL_RADIUS 1.0
+#include "shadow_kernel.sh"
+
+// The sun, from both of its maps: the darker answer wins.
 //
-// The map holds, for each texel, how far the nearest surface to the light is. So the question is
-// whether this surface is that one or something behind it, and the whole of the difficulty is that
-// both numbers are approximate. The map has a texel size, and a surface at a glancing angle to the
-// light crosses several texels' worth of distance within one texel, so comparing exactly makes
-// every lit surface stripe itself with its own shadow.
+// The near map covers a few metres around the player at about a centimetre a texel; the far one
+// covers everything else, at several. A single map cannot do both -- wide enough for a building, its
+// texels show as steps on the shadow of your own head; fine enough for that, it stops at your feet.
 //
-// Two things stop that. Some slack in the comparison, in metres. And taking the reading a little
-// way out along the surface normal, which moves the lookup off the surface being tested rather than
-// pushing the number around: that costs a thin skirt of missing shadow at the foot of a wall, and
-// buys a surface that does not shadow itself at any angle. The normal offset is the load-bearing
-// one for the sky map, where it also keeps the outside face of a wall out of its own roof's shade.
-float lightReaches(sampler2D map, mat4 mtx, vec4 axis, vec4 params, vec3 P, vec3 N)
-{
-	if (params.z < 0.5)
-	{
-		return 1.0;
-	}
-
-	vec3 sampleAt = P + N * params.w;
-	vec4 projected = mul(mtx, vec4(sampleAt, 1.0));
-	vec2 uv = projected.xy / projected.w;
-	// Outside the map is not "in shadow", it is "not known": the map only covers the ground around
-	// the player, and the world carries on past it.
-	if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0)
-	{
-		return 1.0;
-	}
-	float here = dot(sampleAt, axis.xyz) + axis.w;
-
-	// Twenty-five taps on the map's own texel grid, weighted so the edges of the kernel carry the
-	// fraction of a texel the sampling point sits at.
-	//
-	// Two things have to be true at once here and they pull against each other.
-	//
-	// The result has to move continuously as the sampling point moves, or a shadow edge climbs in
-	// stairs: equal votes from a fixed set of texels can only produce as many shades as there are
-	// taps, and the set changes in a jump at every texel boundary. That is what the weighting is for.
-	//
-	// And the taps have to land on whole texels. The map is snapped to its own texel grid each frame
-	// so that walking does not slide the grid under every shadow in the world -- but that only holds
-	// if what reads the map is on the same grid. Taps at a fractional spacing are not: point sampling
-	// snaps each one to whichever texel it happens to land in, the assignment changes as the map
-	// steps, and the shadow crawls and sparkles while the player walks. An earlier version spread the
-	// taps 1.7 texels apart to soften the edge and bought exactly that flicker with it.
-	//
-	// So the kernel is widened by taking more taps rather than by spacing them further out.
-	float size = 1.0 / max(params.x, 1e-6);
-	vec2 texel = uv * size - vec2_splat(0.5);
-	vec2 frac = texel - floor(texel);
-	vec2 base = (floor(texel) + vec2_splat(0.5)) * params.x;
-
-	// A box the width of the kernel with the two end taps sharing one texel between them, which is
-	// what makes the whole thing slide smoothly rather than step as `frac` passes one.
-	float weightX[SHADOW_TAPS];
-	float weightY[SHADOW_TAPS];
-	for (int i = 0; i < SHADOW_TAPS; ++i)
-	{
-		float edge = (i == 0) ? (1.0 - frac.x) : ((i == SHADOW_TAPS - 1) ? frac.x : 1.0);
-		weightX[i] = edge;
-		float edgeY = (i == 0) ? (1.0 - frac.y) : ((i == SHADOW_TAPS - 1) ? frac.y : 1.0);
-		weightY[i] = edgeY;
-	}
-
-	float reached = 0.0;
-	float total = 0.0;
-	for (int y = 0; y < SHADOW_TAPS; ++y)
-	{
-		for (int x = 0; x < SHADOW_TAPS; ++x)
-		{
-			vec2 tap = base + vec2(float(x) - SHADOW_RADIUS, float(y) - SHADOW_RADIUS) * params.x;
-			float nearest = texture2DLod(map, tap, 0.0).x;
-			// Both numbers count from the back of the map, so the nearer surface to the light is
-			// the larger one, and being lit means not falling short of it by more than the slack.
-			float lit = (here + params.y >= nearest) ? 1.0 : 0.0;
-			float weight = weightX[x] * weightY[y];
-			reached += lit * weight;
-			total += weight;
-		}
-	}
-	return reached / max(total, 1e-6);
-}
-
-// The sun, from whichever of its two maps covers this point.
+// Picking one of them by where the shaded point is looks obvious and is wrong, and the way it is
+// wrong is that shadows disappear as the player walks. The map is fitted around the *player*, so
+// what is in it is what is near the player -- but the thing casting the shadow does not have to be.
+// A pillar five metres away throwing a shadow onto a wall three metres away is in the near map until
+// the player steps forward, and then it is outside it, and its shadow stops existing while the wall
+// it falls on is still being read from that map. Walking backwards and forwards made shadows come
+// and go.
 //
-// The near one covers a few metres around the player at about a centimetre a texel; the far one
-// covers the rest of what can be seen, at several. A single map cannot do both: made wide enough for
-// a building its texels are coarse enough to show as steps on the shadow of your own head, and made
-// fine enough for that it stops a few metres from your feet.
-//
-// The changeover is at the near map's own edge, pulled in slightly so the outermost texels -- the
-// ones whose filter taps would fall outside the map -- are never the ones used.
+// Consulting both and taking the minimum fixes that without having to know which map is right: an
+// occluder only has to be in one of them to cast. It also removes the seam where the two meet, since
+// there is no longer a line anything switches across. It costs a second set of taps on the surfaces
+// close enough to be in the near map, and nothing anywhere else.
 float sunReaching(vec3 P, vec3 N)
 {
+	float reaching =
+		lightReaches(s_sunShadow, u_sunShadowMtx, u_sunShadowAxis, u_sunShadowParams, P, N);
 	if (u_sunNearParams.z > 0.5)
 	{
 		vec4 nearClip = mul(u_sunNearMtx, vec4(P + N * u_sunNearParams.w, 1.0));
 		vec2 nearUv = nearClip.xy / nearClip.w;
-		if (nearUv.x > 0.03 && nearUv.x < 0.97 && nearUv.y > 0.03 && nearUv.y < 0.97)
+		if (nearUv.x > 0.02 && nearUv.x < 0.98 && nearUv.y > 0.02 && nearUv.y < 0.98)
 		{
-			return lightReaches(s_sunNear, u_sunNearMtx, u_sunNearAxis, u_sunNearParams, P, N);
+			reaching = min(reaching, lightReachesFine(s_sunNear, u_sunNearMtx, u_sunNearAxis,
+			                                          u_sunNearParams, P, N));
 		}
 	}
-	return lightReaches(s_sunShadow, u_sunShadowMtx, u_sunShadowAxis, u_sunShadowParams, P, N);
+	return reaching;
 }
 
 // GGX / Trowbridge-Reitz normal distribution.

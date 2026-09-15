@@ -3082,13 +3082,19 @@ TEST_CASE("Reloading on your front keeps both hands above the floor", "[body][po
     CHECK(lowest > kUnderTheFloor);
 }
 
-TEST_CASE("Looking up does not lift the weapon over the player's head", "[body][pose][weapon]")
+TEST_CASE("The weapon stays put on screen as the view pitches", "[body][pose][weapon]")
 {
-    // Reported as the gun teleporting above the head near a low wall. The wall turned out to be
-    // incidental: the weapon sits on an offset from the eye measured in a frame that pitched with
-    // the view, so looking up swung the whole thing up around the eye like a boom, wall or no wall.
-    // Measured before the fix, in an empty room: the grip went from 0.21 m below the eye at a level
-    // view to 0.19 m above it at eighty degrees up, with the muzzle 0.58 m above.
+    // What a first-person weapon has to do is stay in the same place in the frame. Where it ends up
+    // in the world while doing that is not the player's problem -- they cannot see their own head.
+    //
+    // This was got wrong in both directions. Following the view fully put the weapon over the head
+    // in the world, which looked wrong from outside, so the position was decoupled from the pitch --
+    // and then the weapon slid down the screen and out of frame as the player looked up, which was
+    // reported as the gun no longer following the camera. It follows fully again, and the case that
+    // started it -- the weapon standing on end against a wall -- is handled where the wall is, by
+    // dropping the hold as the muzzle tips.
+    //
+    // So: measured in the view's own frame, not the world's.
     BodyHarness harness;
     WeaponDefinition definition;
     ModelAsset model;
@@ -3099,25 +3105,43 @@ TEST_CASE("Looking up does not lift the weapon over the player's head", "[body][
     }
     harness.Settle(120);
 
-    float highest = -10.0f;
-    float highestAt = 0.0f;
-    for (float look = 0.0f; look <= 85.0f; look += 5.0f)
+    const auto inView = [&]()
+    {
+        const float yaw = harness.input.yaw;
+        const float pitch = harness.input.pitch;
+        const glm::vec3 forward{std::sin(yaw) * std::cos(pitch), std::sin(pitch),
+                                -std::cos(yaw) * std::cos(pitch)};
+        const glm::vec3 right{std::cos(yaw), 0.0f, std::sin(yaw)};
+        const glm::vec3 up = glm::cross(right, forward);
+        const glm::vec3 offset = harness.body.WeaponOrigin() - harness.View().eyePosition;
+        return glm::vec3(glm::dot(offset, right), glm::dot(offset, up), glm::dot(offset, forward));
+    };
+
+    harness.input.pitch = 0.0f;
+    harness.Settle(60);
+    const glm::vec3 level = inView();
+
+    float worst = 0.0f;
+    float worstAt = 0.0f;
+    for (float look = -70.0f; look <= 80.0f; look += 10.0f)
     {
         harness.input.pitch = glm::radians(look);
-        harness.Settle(50);
-        const float above = harness.body.WeaponOrigin().y - harness.View().eyePosition.y;
-        if (above > highest)
+        harness.Settle(60);
+        const glm::vec3 now = inView();
+        const float moved = glm::length(now - level);
+        if (moved > worst)
         {
-            highest = above;
-            highestAt = look;
+            worst = moved;
+            worstAt = look;
         }
     }
 
-    INFO("the weapon rose to " << highest << " m above the eye, looking up " << highestAt);
-    // A carried weapon is held in front of the chest, which is below the eye, and looking up does
-    // not change where the hands are. It may come up towards the eye as the body follows the view;
-    // it may not come past it.
-    CHECK(highest < 0.0f);
+    INFO("the weapon moved " << worst << " m in the view frame, worst at " << worstAt
+                             << " degrees; level offset was " << level.x << ", " << level.y << ", "
+                             << level.z);
+    // Some movement is wanted: the weapon settles and sways, and the pose changes with the stance.
+    // What must not happen is it leaving the frame, which at this distance is about a hand's width.
+    CHECK(worst < 0.12f);
 }
 
 TEST_CASE("Diagnostic: the weapon's height against a low wall", "[.][body][weapon][diag]")

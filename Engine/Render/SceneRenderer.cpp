@@ -23,7 +23,10 @@ namespace
 // at half the resolution its texels are a quarter the size.
 constexpr uint16_t kSunNearShadowSize = 2048;
 constexpr uint16_t kSunShadowSize = 2048;
-constexpr uint16_t kSkyShadowSize = 512;
+// The sky map is read close up on walls, where a coarse texel shows as a square patch of dimmer
+// ambient a hand span across -- reported as "big pixelated squares" next to a wall. It is not the
+// resolution the occlusion needs, it is the resolution the eye needs at arm.s length.
+constexpr uint16_t kSkyShadowSize = 2048;
 // How far the maps reach along their own axis. Deep enough that nothing in a level stands outside
 // it and gets quietly clipped out of its own shadow.
 constexpr float kShadowDepthRange = 220.0f;

@@ -130,10 +130,16 @@ public:
         // having come loose from it. Below the knee it follows exactly, above it the movement
         // shrinks with every further degree. See where they are used.
         // How much of the view pitch the *position* of the weapon follows, as opposed to the way it
-        // points. A person looking up does not raise their rifle to their forehead: the hands stay
-        // in front of the chest and the weapon tips. One would put the gun over their head, which is
-        // where it was. Aiming takes this to one, because the sights have to lie on the view axis.
-        float weaponCarryRise = 0.35f;
+        // points.
+        //
+        // One, and it has to be. Less than one is anatomically truer -- a person looking up does not
+        // raise their rifle to their forehead -- and it is wrong for a first-person game, because a
+        // weapon whose position does not pitch with the view slides down the screen and out of frame
+        // as the player looks up. It was tried at 0.35 to stop the gun ending up over the head near a
+        // wall and the player reported the gun no longer following the camera, which is exactly that.
+        // The wall case is solved by weaponWallTipDrop instead, which only acts when there is a wall.
+        // Left here as a number rather than deleted because it is the honest knob for the trade.
+        float weaponCarryRise = 1.0f;
         float weaponCarryPitchKnee = 24.0f;
         float weaponCarryPitchMaxUp = 55.0f;
         // The weapon lags a turn and then catches up, which is what gives it weight.

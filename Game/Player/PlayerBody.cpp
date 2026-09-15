@@ -1152,6 +1152,13 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
                                      m_flatness)
                           : m_config.weaponCarryPitchFollow;
     float carryPitch = view.pitch * glm::mix(pitchFollow, 1.0f, aim);
+    // Kept before the upward limit below is applied to it.
+    //
+    // The limit belongs to the barrel and not to the hold. Where the weapon *is* has to keep
+    // following the view all the way up, or it lags the camera by however much the limit took off
+    // and slides down the screen and out of frame -- which is what "the gun doesn.t follow my
+    // camera any more" was. Where the weapon *points* is what must not stand on end.
+    const float holdPitchRaw = carryPitch;
 
     // And however far up the player looks, a carried weapon eases towards a limit short of vertical.
     //
@@ -1205,7 +1212,7 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
     // Aiming takes it back to one, because sighted the weapon has to lie on the view axis exactly --
     // and the sights refuse to come up where there is no room for the weapon, so the two never
     // disagree about somewhere it cannot go.
-    const float holdPitch = carryPitch * glm::mix(m_config.weaponCarryRise, 1.0f, aim);
+    const float holdPitch = holdPitchRaw * glm::mix(m_config.weaponCarryRise, 1.0f, aim);
     const float hp = std::cos(holdPitch);
     const glm::vec3 holdForward{std::sin(view.yaw) * hp, std::sin(holdPitch), -std::cos(view.yaw) * hp};
     const glm::vec3 holdRight = carryRight;
