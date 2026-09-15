@@ -3335,9 +3335,72 @@ TEST_CASE("Looking up keeps raising the weapon without standing it on end", "[bo
     }
 
     INFO("the barrel reached " << highest << " degrees above horizontal");
-    // And nowhere near presenting arms. The muzzle correction at a wall also collapses above sixty
-    // degrees, so this doubles as the guard on that: see UpdateWeapon.
-    CHECK(highest < 60.0f);
+    // And still not presenting arms. This used to be sixty, standing in for a constraint that
+    // belongs to walls: the muzzle correction cannot help once the barrel points over the top of
+    // what it is avoiding, so the barrel had to stay well under that. It was being paid for in an
+    // open field as well, where it reads as the weapon stopping dead while the view carries on, and
+    // the wall constraint is now enforced where the wall is -- see the test below. What is left here
+    // is the honest version: the muzzle comes up a long way and never stands on end.
+    CHECK(highest < 80.0f);
+    CHECK(highest > 60.0f);
+}
+
+TEST_CASE("Against a wall the barrel stays where the correction still works", "[body][pose][weapon]")
+{
+    // The other half of the limit above. The muzzle correction drops the barrel to keep it out of a
+    // wall, and it can only do that while the barrel still points into the wall: past that there is
+    // nothing to correct and it comes off, which at a steep look swung the barrel through ninety
+    // degrees in twenty of looking. So with a wall in play the barrel is held well below where that
+    // happens, and this is the test that says so.
+    BodyHarness harness;
+    WeaponDefinition definition;
+    ModelAsset model;
+    if (!LoadShippedCarbine(harness, definition, model))
+    {
+        WARN("no shipped carbine to test against");
+        return;
+    }
+    // A wall directly in front, close enough that the muzzle is in it at a level look. CreateBox
+    // takes half extents, so this face sits at z = -0.85.
+    harness.physics.CreateBox({4.0f, 1.6f, 0.15f}, Transform{{0.0f, 1.6f, -1.0f}}, BodyMotion::Static);
+    harness.physics.OptimizeBroadPhase();
+    harness.Settle(120);
+
+    // What matters is not how high it gets but that it never jumps.
+    //
+    // The fault this guards against was never "the barrel was at sixty-six degrees". It was that the
+    // correction stopped applying all at once, so between one degree of looking up and the next the
+    // barrel swung most of a right angle. A magnitude bound is a proxy for that and a bad one -- it
+    // fails on poses that are perfectly smooth and passes on a jump that happens low down. So this
+    // measures the thing itself: sweep the view up past the top of the wall, in small steps, and
+    // require the barrel to follow in small steps.
+    float previous = 0.0f;
+    bool first = true;
+    float worstJump = 0.0f;
+    float worstAt = 0.0f;
+    for (float look = 0.0f; look <= 85.0f; look += 2.5f)
+    {
+        harness.input.pitch = glm::radians(look);
+        harness.Settle(90);
+        const glm::vec3 barrel =
+            glm::normalize(harness.body.MuzzlePoint() - harness.body.WeaponOrigin());
+        const float now = glm::degrees(std::asin(std::clamp(barrel.y, -1.0f, 1.0f)));
+        if (!first)
+        {
+            const float jump = std::abs(now - previous);
+            if (jump > worstJump)
+            {
+                worstJump = jump;
+                worstAt = look;
+            }
+        }
+        previous = now;
+        first = false;
+    }
+    INFO("worst barrel step was " << worstJump << " degrees, at a look of " << worstAt);
+    // Two and a half degrees of look should move the barrel by something of that order. Ten degrees
+    // is generous and still nothing like the ninety this used to do.
+    CHECK(worstJump < 10.0f);
 }
 
 TEST_CASE("Walking into a wall leaves the weapon in front of the player", "[body][pose][weapon]")

@@ -1231,8 +1231,15 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
     // than the last, and it approaches the limit without ever arriving or ever stopping.
     //
     // Aiming is exempt and has to be: the sights only mean anything on the view axis.
-    const float knee = glm::radians(std::min(m_config.weaponCarryPitchKnee, m_config.weaponCarryPitchMaxUp));
-    const float carryLimit = glm::radians(m_config.weaponCarryPitchMaxUp);
+    // How much of a wall is currently being dealt with, from last frame's correction. It is already
+    // smoothed, so this blends rather than switching, and one frame of lag on a limit that is only
+    // ever approached is not something anybody can see.
+    const float wallness =
+        glm::clamp(m_muzzleTip / glm::radians(std::max(m_config.weaponWallTipMax, 1.0f)), 0.0f, 1.0f);
+    const float maxUp = glm::mix(m_config.weaponCarryPitchMaxUp,
+                                 m_config.weaponCarryPitchMaxUpNearWall, wallness);
+    const float knee = glm::radians(std::min(m_config.weaponCarryPitchKnee, maxUp));
+    const float carryLimit = glm::radians(maxUp);
     if (carryPitch > knee)
     {
         const float room = std::max(carryLimit - knee, 1e-4f);
@@ -1842,14 +1849,29 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
                 m_weaponTransform.rotation * glm::angleAxis(remaining, glm::vec3(1.0f, 0.0f, 0.0f));
             m_weaponTransform.position = hold - m_weaponTransform.rotation * holdPoint;
         }
-        // And the hands come down with it.
+        // And the hands come down with it, by however far the stock actually went up.
         //
         // Rotating a weapon nose-down about the grip swings everything behind the grip up, and at
         // the angles a corridor asks for that is the receiver over the player.s head -- which is
         // what they saw and reported as the gun teleporting above them. Tipping the muzzle without
-        // moving the hands is not what a person does with a rifle indoors: the hands drop too. This
-        // is that, and it buys back the clearance the tip was for rather than spending it.
-        m_weaponTransform.position -= holdUp * (m_config.weaponWallTipDrop * std::sin(m_muzzleTip));
+        // moving the hands is not what a person does with a rifle indoors: the hands drop too.
+        //
+        // How far to drop them is a question about this weapon, not a constant. It was a constant --
+        // 0.17 m at full tip -- and a constant is right for exactly one weapon length: the stock of a
+        // rifle a metre behind the grip rises three times as far as a carbine's through the same
+        // angle, so the number that hid this on the carbine left the long weapon's receiver above the
+        // eye. That is the whole of why it was reported as happening only with the longer guns.
+        //
+        // So it is measured. Take the weapon's own rear point -- the end of the stock, which is the
+        // part that ends up over the head -- and ask how much higher the tip has put it. Give back
+        // most of that. Every weapon gets the correction its own geometry asks for, and a weapon
+        // twice as long gets twice as much without anybody retuning anything.
+        const glm::quat untipped =
+            m_weaponTransform.rotation * glm::angleAxis(-m_muzzleTip, glm::vec3(1.0f, 0.0f, 0.0f));
+        const glm::vec3 rearFromGrip = m_weaponVisual.rearPoint - holdPoint;
+        const float rose = glm::dot(m_weaponTransform.rotation * rearFromGrip - untipped * rearFromGrip,
+                                    holdUp);
+        m_weaponTransform.position -= holdUp * (m_config.weaponWallTipDrop * std::max(rose, 0.0f));
         rotation = m_weaponTransform.rotation;
     }
     else

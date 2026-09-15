@@ -138,10 +138,43 @@ public:
         // as the player looks up. It was tried at 0.35 to stop the gun ending up over the head near a
         // wall and the player reported the gun no longer following the camera, which is exactly that.
         // The wall case is solved by weaponWallTipDrop instead, which only acts when there is a wall.
-        // Left here as a number rather than deleted because it is the honest knob for the trade.
+        //
+        // At one it follows the view entirely, and that is its own fault: measured with the shipped
+        // carbine in an empty room, a level view puts the grip 0.21 m below the eye and an eighty
+        // degree look puts it 0.19 m above, with the muzzle 0.58 m higher again. No wall involved --
+        // looking up swings the whole weapon over the head like a boom, because the offset it sits on
+        // is measured in a frame that pitches with the view.
+        //
+        // Lowering it was tried again at 0.5 and the test caught it: the weapon moved 0.35 m in the
+        // view frame, which is out of shot. That is not a tuning failure, it is geometry. Keeping a
+        // weapon in the same place on screen means keeping it in the same place relative to the view,
+        // and a view that pitches up carries it up with it; a pose that looks right on your own
+        // screen and a pose that looks right from outside are not the same pose, and this game has
+        // one body for both by design.
+        //
+        // So it stays at one, and the case that actually gets reported -- the receiver ending up over
+        // the head -- is handled where it comes from, which is the muzzle correction at a wall. That
+        // one really is length-dependent, and it is now measured from each weapon rather than
+        // assumed: see weaponWallTipDrop.
         float weaponCarryRise = 1.0f;
         float weaponCarryPitchKnee = 24.0f;
-        float weaponCarryPitchMaxUp = 55.0f;
+        // How far up the barrel is allowed to come, in the open and with a wall in the way.
+        //
+        // It used to be one number, fifty-five, and it was low for a reason that only applies next
+        // to a wall: the muzzle correction stops being able to help once the barrel points over the
+        // top of what it is avoiding, so at a steep enough look it collapses and the barrel swings.
+        // Keeping the barrel well under that kept the correction in the range it behaves in.
+        //
+        // But it was being paid for everywhere, including in an open field with nothing in front of
+        // the player, where it reads as the weapon stopping dead while the view carries on -- "I
+        // still can't look straight up with the gun". A person tipping their head right back does
+        // bring the muzzle most of the way up with it.
+        //
+        // So the limit is low only when there is a wall in play, and the game blends between them by
+        // how much the muzzle correction is actually doing. Nothing in front of you, and the barrel
+        // follows almost all the way; a corridor, and it stays where the correction can still work.
+        float weaponCarryPitchMaxUp = 82.0f;
+        float weaponCarryPitchMaxUpNearWall = 55.0f;
         // The weapon lags a turn and then catches up, which is what gives it weight.
         float weaponSwayAmount = 0.34f;   // how far a turn drags the weapon behind the view
         float weaponSwayRecover = 11.0f;  // how fast it catches up again
@@ -209,8 +242,17 @@ public:
         // swings its stock up, and at the angles a corridor asks for that puts the receiver over the
         // player.s head. A person tipping a rifle down drops their hands at the same time; without
         // this the hands stay put and only the gun pivots, which is where "it teleports above my
-        // head" came from. Metres at full tip.
-        float weaponWallTipDrop = 0.17f;
+        // head" came from.
+        //
+        // A share of how far the stock actually rose, not a distance. It was 0.17 m, and a fixed
+        // distance is only ever right for one weapon: a rifle whose stock sits a metre behind the
+        // grip lifts it three times as far as a carbine's does at the same angle, so the number that
+        // hid it on the carbine left the long weapon's receiver above the eye. That is why this was
+        // reported as happening "only with the longer guns like the ACRD" -- the correction was the
+        // same size for every weapon and the fault it was correcting was not.
+        //
+        // Measured from the weapon's own rear point, so it is the same rule for all of them.
+        float weaponWallTipDrop = 0.80f;
         float weaponWallTipSpeed = 13.0f;
         // How much barrel may be inside something before the drop starts, and over how much more it
         // comes fully in. Both in metres. See the note where they are used: the drop is a
