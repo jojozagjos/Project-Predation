@@ -5,6 +5,7 @@
 #include <SDL3/SDL.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 
 namespace pred
@@ -206,8 +207,27 @@ float VoiceCapture::LastLevel() const
 
 // Listed rather than remembered: devices come and go while the game is running, and a settings
 // screen that shows what was plugged in at startup is worse than one that shows nothing.
+//
+// But not on every frame either, which is what it was doing. The settings panel calls this while it
+// is being drawn, so at two hundred frames a second it was asking the operating system to enumerate
+// every recording device two hundred times a second, on the thread the game is drawn on. Windows
+// walks the device graph for that, and the audio it interrupts is the audio coming out of the
+// speakers -- which is most of what "the audio sounds bit crushed while I'm in the audio settings"
+// was. A second between listings is faster than anybody can plug something in and notice.
 std::vector<VoiceCapture::Device> VoiceCapture::Devices()
 {
+    static std::mutex cacheLock;
+    static std::vector<Device> cached;
+    static std::chrono::steady_clock::time_point taken{};
+    const auto now = std::chrono::steady_clock::now();
+    {
+        std::lock_guard<std::mutex> lock(cacheLock);
+        if (taken.time_since_epoch().count() != 0 && now - taken < std::chrono::seconds(1))
+        {
+            return cached;
+        }
+    }
+
     std::vector<Device> devices;
     if (!SDL_InitSubSystem(SDL_INIT_AUDIO))
     {
@@ -226,6 +246,11 @@ std::vector<VoiceCapture::Device> VoiceCapture::Devices()
         SDL_free(ids);
     }
     SDL_QuitSubSystem(SDL_INIT_AUDIO);
+    {
+        std::lock_guard<std::mutex> lock(cacheLock);
+        cached = devices;
+        taken = now;
+    }
     return devices;
 }
 

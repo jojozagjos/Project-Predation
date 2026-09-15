@@ -1010,6 +1010,42 @@ void PredationGame::RegisterCommands()
             out.Print(buffer);
         });
 
+    console.RegisterCommand(
+        "mic_probe", "List the recording devices and try to open the chosen one",
+        [this](const std::vector<std::string>&)
+        {
+            // The settings panel says "microphone shut" when the device will not open, and that is
+            // all it can say: it has one bool to work with. This says why, which is the difference
+            // between a setting somebody can fix and one they can only stare at.
+            Console& out = m_app->GetConsole();
+            const std::vector<VoiceCapture::Device> devices = VoiceCapture::Devices();
+            if (devices.empty())
+            {
+                out.PrintError("No recording devices at all. Windows may be denying microphone "
+                               "access to this application: Settings > Privacy > Microphone.");
+            }
+            for (const VoiceCapture::Device& device : devices)
+            {
+                out.Print("  " + std::to_string(device.id) + "  " + device.name +
+                          (static_cast<int>(device.id) == cv_voiceDevice.Get() ? "   <- chosen"
+                                                                              : ""));
+            }
+
+            // And actually open it, because a device that lists and will not open is the common
+            // case and the list alone looks like everything is fine.
+            VoiceCapture probe;
+            VoiceCapture::Settings settings;
+            settings.sampleRate = 48000;
+            settings.deviceId = static_cast<uint32_t>(std::max(cv_voiceDevice.Get(), 0));
+            if (!probe.Start(settings))
+            {
+                out.PrintError("Could not open it: " + probe.Message());
+                return;
+            }
+            out.Print("Opened. Say something and run this again to see whether it heard you.");
+            probe.Stop();
+        });
+
     console.RegisterCommand("scene_stats", "Print scene and mesh statistics",
                             [this](const std::vector<std::string>&)
                             {
@@ -3493,6 +3529,18 @@ void PredationGame::StopTalking()
     }
     m_talking = false;
     m_voiceLevel = 0.0f;
+    // Not while the loopback test has it.
+    //
+    // There is one microphone and two things that want it, and the rule is that the test wins while
+    // it is running -- UpdateVoice refuses to talk at all in that case. This is the same rule said
+    // again at the point where the device is actually closed, because saying it only in the caller
+    // is what let this go wrong: the test set a flag the voice path owned, the voice path read it a
+    // frame later as "the player has stopped talking", and closed a device it did not have. Every
+    // frame. A guard here costs one comparison and makes that impossible rather than unlikely.
+    if (m_micTest)
+    {
+        return;
+    }
     // Closed rather than left open and ignored. The operating system's microphone indicator is the
     // only thing a player has to go on, and it can only mean something if the device really is shut
     // when nobody is speaking.
@@ -3719,7 +3767,20 @@ void PredationGame::UpdateMicrophoneTest(float dt)
         // decides whether a word reaches anybody.
         const bool sending = !cv_voiceOpenMic.Get() ||
                              m_microphone.ShouldTransmit(m_voiceLevel, cv_voiceThreshold.Get(), dt);
-        m_talking = sending;
+        // `m_voiceSending`, not `m_talking`, and the difference is the whole of why this never
+        // worked.
+        //
+        // `m_talking` means "the voice path owns the microphone". UpdateVoice runs first, and every
+        // frame it saw m_talking set while its own conditions said it should not be talking -- its
+        // conditions exclude the loopback test on purpose -- so it concluded the player had stopped
+        // and called StopTalking, which destroys the capture device. The test then read from a
+        // device that had just been closed and got nothing, the panel said "microphone shut", and
+        // the game spent every frame tearing down and reopening a Windows capture stream, which is
+        // what the output audio was being wrecked by.
+        //
+        // The test does not own m_talking and must not set it. What it has to report is whether the
+        // gate is passing, which is a different thing and has its own flag.
+        m_voiceSending = sending;
         if (sending)
         {
             audio.PushStream(m_micTestStream, frame.data(), frame.size());
