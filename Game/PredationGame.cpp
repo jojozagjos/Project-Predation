@@ -1910,7 +1910,38 @@ void SetSetting(const char* name, const std::string& value)
     CVarRegistry::Instance().Set(name, value);
 }
 
-} // namespace
+// A "(?)" beside the thing it explains, with the explanation on hover.
+//
+// Every one of these replaced a paragraph. A menu that explains itself in full, on screen, all the
+// time, is a menu nobody reads: the prose crowds the buttons down the page and the one line that
+// matters is somewhere in the middle of it. What somebody needs in order to choose is a few words,
+// and what they need when the choice goes wrong is a paragraph -- so the few words stay and the
+// paragraph moves here, where it is a hover away and costs nothing until it is wanted.
+void Help(const char* text)
+{
+    ImGui::SameLine();
+    ImGui::TextDisabled("(?)");
+    if (ImGui::BeginItemTooltip())
+    {
+        ImGui::PushTextWrapPos(ImGui::GetFontSize() * 26.0f);
+        ImGui::TextUnformatted(text);
+        ImGui::PopTextWrapPos();
+        ImGui::EndTooltip();
+    }
+}
+
+// The same, under a button rather than beside a label: one short line, and the rest on hover.
+void Caption(const char* line, const char* detail = nullptr)
+{
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextDisabled("%s", line);
+    ImGui::PopTextWrapPos();
+    if (detail != nullptr)
+    {
+        Help(detail);
+    }
+}
+
 
 
 void PredationGame::DrawTitleOpen()
@@ -1930,9 +1961,10 @@ void PredationGame::DrawTitleOpen()
     {
         StartLobby(true, 0);
     }
-    ImGui::PushTextWrapPos(0.0f);
-    ImGui::TextDisabled("Anywhere. You swap a code with each person. Nothing to forward.");
-    ImGui::PopTextWrapPos();
+    Caption("Anywhere. Swap a code.",
+            "Everybody connects outwards to a relay that passes messages between you, so there is "
+            "nothing to forward on anybody's router and it works the same on every network. You "
+            "send each person the six-character code the next screen gives you.");
 
     ImGui::Spacing();
     if (ImGui::Button("By address", wide))
@@ -1940,10 +1972,10 @@ void PredationGame::DrawTitleOpen()
         m_titlePage = TitlePage::OpenLocal;
         m_titleStatus.clear();
     }
-    ImGui::PushTextWrapPos(0.0f);
-    ImGui::TextDisabled("Same building, or any address people can reach you on: a forwarded port, "
-                        "or a tunnel like playit.gg. You read out the address.");
-    ImGui::PopTextWrapPos();
+    Caption("Same building, or an address you can give out.",
+            "People connect straight to this machine, so they need an address that reaches it. On "
+            "your own network that is automatic. From further away it needs a port forwarded on "
+            "your router, or a tunnel such as playit.gg pointed at UDP 27015.");
 
     if (!m_titleStatus.empty())
     {
@@ -1981,11 +2013,11 @@ void PredationGame::DrawTitleOpenLocal()
             ImGui::SetClipboardText((address + ":" + std::to_string(m_hostPort)).c_str());
         }
     }
-    ImGui::TextDisabled("  click to copy. This one reaches people on your own network.");
-    ImGui::Spacing();
-    ImGui::TextDisabled("From further away, somebody needs an address that reaches this machine: a "
-                        "port forwarded on your router, or a tunnel such as playit.gg pointed at "
-                        "UDP 27015. Whatever it gives you goes in their Join box.");
+    Caption("  click to copy",
+            "This address reaches people on your own network. From further away somebody needs one "
+            "that reaches this machine from outside: a port forwarded on your router, or a tunnel "
+            "such as playit.gg pointed at UDP 27015. Whatever that gives you goes in their Join "
+            "box.");
 
     ImGui::Spacing();
     if (ImGui::Button("Start", wide))
@@ -2008,7 +2040,10 @@ void PredationGame::DrawTitleOpenLocal()
         }
     }
     ImGui::PushTextWrapPos(0.0f);
-    ImGui::TextDisabled("Windows asks once whether to let the game through. Say yes to both.");
+    Caption("Windows will ask once. Say yes to both.",
+            "The first time the game opens a port, Windows Firewall asks whether to allow it on "
+            "private and on public networks. Saying no to either is the most common reason a game "
+            "nobody can join looks like it started correctly.");
     ImGui::PopTextWrapPos();
 
     // The port, and the router, below the thing everybody needs. Both are here because sometimes
@@ -2023,8 +2058,9 @@ void PredationGame::DrawTitleOpenLocal()
         ImGui::InputInt("##hostport", &m_hostPort, 0, 0);
         m_hostPort = std::clamp(m_hostPort, 1024, 65535);
         ImGui::PushTextWrapPos(0.0f);
-        ImGui::TextDisabled("Change this only if something else on this machine already has the "
-                            "port. Everybody has to use the same one.");
+        ImGui::TextDisabled("Change this only if something else already has the port.");
+        ImGui::SetItemTooltip("%s", "Any port from 1024 to 65535 will do. Everybody has to use the "
+                              "same one, so if you change it, tell them.");
         ImGui::PopTextWrapPos();
 
         // And the address from outside, if the router agreed to forward the port. It often will
@@ -2358,12 +2394,41 @@ void PredationGame::DrawSettings()
         }
 
         ImGui::Spacing();
-        ImGui::Separator();
-        ImGui::TextDisabled("WASD move, Space jump, Ctrl or C crouch, Z prone, Shift sprint, Alt "
-                            "walk, Q and E lean. Left mouse fires, right mouse aims, R reloads. "
-                            "F interact, G drop, 1 to 6 and the wheel select, Tab inventory. "
-                            "V talk. P cycles the camera. F3 overlay, backtick console.");
-        ImGui::TextDisabled("The keys themselves are in Assets/Config/input.json.");
+        ImGui::SeparatorText("Keys");
+        // A table rather than a paragraph. Twenty bindings written as prose is a sentence nobody
+        // finishes, and the one key somebody came to look up is in the middle of it.
+        static constexpr struct
+        {
+            const char* keys;
+            const char* does;
+        } kBindings[] = {
+            {"WASD", "Move"},
+            {"Shift / Alt", "Sprint / walk"},
+            {"Space", "Jump"},
+            {"Ctrl or C / Z", "Crouch / prone"},
+            {"Q / E", "Lean"},
+            {"Mouse 1 / 2", "Fire / aim"},
+            {"R", "Reload"},
+            {"F / G", "Interact / drop"},
+            {"1 to 6, wheel", "Select"},
+            {"Tab", "Inventory"},
+            {"V", "Talk"},
+            {"P", "Change camera"},
+            {"F3 / `", "Overlay / console"},
+        };
+        if (ImGui::BeginTable("##bindings", 2, ImGuiTableFlags_SizingStretchProp))
+        {
+            for (const auto& binding : kBindings)
+            {
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                ImGui::TextDisabled("%s", binding.keys);
+                ImGui::TableNextColumn();
+                ImGui::TextDisabled("%s", binding.does);
+            }
+            ImGui::EndTable();
+        }
+        ImGui::TextDisabled("Set in Assets/Config/input.json.");
         ImGui::EndTabItem();
     }
 
@@ -2460,8 +2525,10 @@ void PredationGame::DrawSettings()
         {
             SetSetting("r.contrast", std::to_string(contrast));
         }
-        ImGui::TextDisabled("Turn brightness up until you can just make out the darkest corner of a "
-                            "room, and no further. Being able to see everything is not the game.");
+        Caption("Set these by the darkest corner, not the brightest wall.",
+                "Turn brightness up until you can just make out the darkest corner of a room, and "
+                "no further. A monitor that crushes its low end makes a dark game unplayable, "
+                "which is what these are for -- being able to see everything is not the game.");
         ImGui::EndTabItem();
     }
 
@@ -2497,15 +2564,18 @@ void PredationGame::DrawSettings()
         {
             SetSetting("net.relay_port", std::to_string(std::clamp(relayPort, 1024, 65535)));
         }
-        ImGui::TextDisabled("One machine everybody can reach, running PredationRelay.exe. Only "
-                            "needed for playing over the internet by code; a game on your own "
-                            "network, or one somebody reaches by address, does not use it.");
+        Caption("Only used for playing by code.",
+                "The relay is one machine everybody can reach, running PredationRelay.exe, which "
+                "passes messages between players so nobody has to forward a port. A game on your "
+                "own network, or one somebody reaches by address, never touches it.");
         ImGui::EndTabItem();
     }
 
     ImGui::EndTabBar();
     ImGui::Spacing();
-    ImGui::TextDisabled("Everything here is remembered. The console reaches all of it and more.");
+    ImGui::TextDisabled("Everything here is remembered.");
+    Help("These are all console variables, so the console reaches every one of them and a good many "
+         "more besides. Press the key above Tab to open it.");
 }
 
 void PredationGame::DrawPauseMenu()
