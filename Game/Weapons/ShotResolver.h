@@ -17,6 +17,13 @@ struct ShotResult
     float distance = 0.0f;
     BodyHandle body;
     float damage = 0.0f;
+    // Whether what was struck is a fixed surface, so a mark left on it stays true.
+    //
+    // A round that stops in a person hits something that then walks away, and the hole it left
+    // hangs in the air where they were standing. That is what "bullet holes stay in mid air" was:
+    // not a placement bug, but a mark put on a thing that moves. The world trace sets this; anything
+    // that intercepts the round on its way -- a player now, a creature later -- clears it.
+    bool surface = false;
 
     explicit operator bool() const { return hit; }
 };

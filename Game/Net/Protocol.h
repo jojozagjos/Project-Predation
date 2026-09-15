@@ -107,6 +107,10 @@ struct WorldEventMessage
     uint16_t rounds = 511;
     uint16_t reserve = 511;
     bool flag = false;    // open, or hit
+    // For a shot: whether what it struck was a fixed surface, as opposed to a person. A hole put on
+    // somebody is left hanging in the air the moment they move, so this decides whether one is left
+    // at all. Separate from `flag` because a round that hits a player has still hit something.
+    bool flag2 = false;
     float amount = 0.0f;  // damage, or remaining health
     glm::vec3 position{0.0f};
     glm::vec3 direction{0.0f};
@@ -152,6 +156,20 @@ struct DropMessage
 // The value that means "no particular state; use whatever this item starts with". Nine bits on the
 // wire, so it is the largest number those bits can carry.
 inline constexpr uint16_t kDefaultLoad = 511;
+
+// Builds the event that tells everybody a pickup has appeared on the floor.
+//
+// One function because there are two callers -- the host putting its own item down, and the host
+// serving a client's request to put one down -- and written out by hand they drifted: the second
+// filled in everything except what the weapon was carrying, so the field kept its default, which
+// means "whatever this item starts with". Every machine but the host then put a full magazine on
+// the floor, and a weapon dropped by anybody other than the host was picked up full.
+//
+// A dropped weapon keeping its magazine is a rule about the game, not about either call site, so it
+// is written once where it cannot be half-remembered.
+WorldEventMessage PickupSpawnedEvent(uint8_t index, uint16_t item, uint8_t count, uint16_t rounds,
+                                     uint16_t reserve, const glm::vec3& position,
+                                     const glm::vec3& velocity);
 
 // Where the loose rigid bodies have got to. Unreliable and periodic, because a crate sliding across
 // the floor is a value that will be sent again rather than an event.

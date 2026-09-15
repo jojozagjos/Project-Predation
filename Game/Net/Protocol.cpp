@@ -434,6 +434,7 @@ void WriteWorldEvent(BitWriter& writer, const WorldEventMessage& message)
         WritePosition(writer, message.position);
         WritePosition(writer, message.direction); // the far end of the trace, not a unit vector
         writer.WriteBool(message.flag);
+        writer.WriteBool(message.flag2);
         break;
 
     case WorldEventKind::PlayerDamaged:
@@ -505,6 +506,7 @@ bool ReadWorldEvent(BitReader& reader, WorldEventMessage& out)
         out.position = ReadPosition(reader);
         out.direction = ReadPosition(reader);
         out.flag = reader.ReadBool();
+        out.flag2 = reader.ReadBool();
         break;
 
     case WorldEventKind::PlayerDamaged:
@@ -714,6 +716,26 @@ bool ReadPeerList(BitReader& reader, PeerListMessage& out)
         }
     }
     return !reader.Overran();
+}
+
+WorldEventMessage PickupSpawnedEvent(uint8_t index, uint16_t item, uint8_t count, uint16_t rounds,
+                                     uint16_t reserve, const glm::vec3& position,
+                                     const glm::vec3& velocity)
+{
+    WorldEventMessage event;
+    event.kind = WorldEventKind::PickupSpawned;
+    event.index = index;
+    event.item = item;
+    // `other` carries the stack count for this event. It is the one field on WorldEventMessage whose
+    // meaning changes with the kind, which is most of why building this by hand went wrong.
+    event.other = count;
+    event.rounds = rounds;
+    event.reserve = reserve;
+    event.position = position;
+    // And `direction` is the throw, so it arcs on everybody's screen rather than appearing on the
+    // floor already at rest.
+    event.direction = velocity;
+    return event;
 }
 
 } // namespace pred

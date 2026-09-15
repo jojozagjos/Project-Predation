@@ -366,6 +366,9 @@ private:
         // Which way the surface it hit faces, so the hole can be laid flat on it.
         glm::vec3 normal{0.0f, 1.0f, 0.0f};
         float age = 0.0f;
+        // Whether what it struck was a fixed surface. A round that stops in a person leaves no
+        // hole: they walk away and it would hang in the air where they were standing.
+        bool surface = false;
         // Set once the round has arrived and its hole has been placed, so it is placed once rather
         // than every frame for as long as the tracer lives.
         bool marked = false;

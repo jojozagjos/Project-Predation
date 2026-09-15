@@ -1299,6 +1299,7 @@ void PredationGame::ServeClientRequests()
         event.position = MuzzleOf(request.player, shot.origin, shot.direction);
         event.direction = result ? result.position : shot.origin + shot.direction * shot.range;
         event.flag = result.hit;
+        event.flag2 = result.surface;
         m_host.Broadcast(event);
 
         Tracer tracer;
@@ -1307,6 +1308,7 @@ void PredationGame::ServeClientRequests()
         tracer.origin = shot.origin;
         tracer.to = event.direction;
         tracer.hit = event.flag;
+        tracer.surface = event.flag2;
         tracer.normal = SurfaceNormalAt(m_app->GetPhysics(), tracer.origin, tracer.to);
         m_tracers.push_back(tracer);
 
@@ -1335,14 +1337,10 @@ void PredationGame::ServeClientRequests()
         {
             continue;
         }
-        WorldEventMessage event;
-        event.kind = WorldEventKind::PickupSpawned;
-        event.index = static_cast<uint8_t>(index);
-        event.item = request.drop.item;
-        event.other = request.drop.count;
-        event.position = request.drop.position;
-        event.direction = request.drop.velocity;
-        m_host.Broadcast(event);
+        m_host.Broadcast(PickupSpawnedEvent(static_cast<uint8_t>(index), request.drop.item,
+                                            request.drop.count, request.drop.rounds,
+                                            request.drop.reserve, request.drop.position,
+                                            request.drop.velocity));
     }
 
     for (const uint8_t player : m_host.TakeJoined())
@@ -1562,8 +1560,8 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
             tracer.origin = event.position;
             tracer.to = event.direction;
             tracer.hit = event.flag;
+            tracer.surface = event.flag2;
             tracer.normal = SurfaceNormalAt(m_app->GetPhysics(), tracer.origin, tracer.to);
-        tracer.normal = SurfaceNormalAt(m_app->GetPhysics(), tracer.origin, tracer.to);
             m_tracers.push_back(tracer);
             // And it is heard where it was fired from, which is most of what tells a player there
             // is somebody else in the building and roughly where.
@@ -1983,6 +1981,10 @@ void PredationGame::ResolvePlayerHits(const FireEvent& shot, uint8_t shooter, Sh
     worldHit.hit = true;
     worldHit.position = bestPoint;
     worldHit.distance = bestDistance;
+    // And a person is not somewhere a hole can stay. Whatever surface the trace found behind them
+    // is no longer what was struck, so the mark belongs nowhere: they walk away and it would be
+    // left hanging in the air.
+    worldHit.surface = false;
     ApplyPlayerDamage(bestPlayer, shot.damage, shooter, shot.direction);
 }
 
@@ -5039,6 +5041,7 @@ void PredationGame::ResolveShots()
             tracer.origin = shot.origin;
             tracer.to = predicted ? predicted.position : shot.origin + shot.direction * shot.range;
             tracer.hit = predicted.hit;
+            tracer.surface = predicted.surface;
             tracer.normal = predicted.normal;
             m_tracers.push_back(tracer);
             continue;
@@ -5052,6 +5055,7 @@ void PredationGame::ResolveShots()
         tracer.origin = shot.origin;
         tracer.to = result ? result.position : shot.origin + shot.direction * shot.range;
         tracer.hit = result.hit;
+        tracer.surface = result.surface;
         tracer.normal = result.normal;
         m_tracers.push_back(tracer);
 
@@ -5063,6 +5067,7 @@ void PredationGame::ResolveShots()
             event.position = MuzzlePosition();
             event.direction = tracer.to;
             event.flag = tracer.hit;
+            event.flag2 = tracer.surface;
             m_host.Broadcast(event);
         }
 
@@ -5896,16 +5901,9 @@ void PredationGame::DropIntoWorld(ItemId item, int count, int rounds, int reserv
     // so it arcs on their screen rather than appearing on the floor.
     if (m_sessionMode == SessionMode::Host && index >= 0)
     {
-        WorldEventMessage event;
-        event.kind = WorldEventKind::PickupSpawned;
-        event.index = static_cast<uint8_t>(index);
-        event.item = static_cast<uint16_t>(item);
-        event.other = static_cast<uint8_t>(count);
-        event.rounds = LoadToWire(rounds);
-        event.reserve = LoadToWire(reserve);
-        event.position = origin;
-        event.direction = velocity;
-        m_host.Broadcast(event);
+        m_host.Broadcast(PickupSpawnedEvent(static_cast<uint8_t>(index), static_cast<uint16_t>(item),
+                                            static_cast<uint8_t>(count), LoadToWire(rounds),
+                                            LoadToWire(reserve), origin, velocity));
     }
 }
 
@@ -7061,7 +7059,7 @@ void PredationGame::DrawDebugOverlays()
             draw.Line(tracer.from + direction * tail, tracer.from + direction * head,
                       Color::RGBA(level(255.0f), level(226.0f), level(150.0f)));
         }
-        else if (tracer.hit && !tracer.marked)
+        else if (tracer.hit && tracer.surface && !tracer.marked)
         {
             // Arrived. The round leaves a hole where it landed and that is the whole of the effect:
             // a burst that flashes and vanishes says only that something happened, and a hole says

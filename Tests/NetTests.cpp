@@ -776,6 +776,75 @@ TEST_CASE("Loose objects are sent as state, and stay small", "[net][protocol]")
     }
 }
 
+TEST_CASE("A dropped weapon keeps its magazine all the way to everybody else", "[net][protocol]")
+{
+    // The wire format for this was right and tested, and a weapon dropped by anybody other than the
+    // host was still picked up full. The host spawned its own copy with the right magazine and then
+    // told everybody about it without saying what was in it: the field kept its default, which means
+    // "whatever this item starts with", so every other machine put a full one on the floor.
+    //
+    // The two callers now share one builder, and this is the test on the builder rather than on the
+    // wire, because the wire was never the part that was wrong.
+    const WorldEventMessage event =
+        PickupSpawnedEvent(3, 4, 1, 3, 0, {-2.0f, 1.1f, 6.5f}, {0.0f, 1.0f, -2.5f});
+    CHECK(event.kind == WorldEventKind::PickupSpawned);
+    CHECK(event.index == 3);
+    CHECK(event.item == 4);
+    CHECK(event.other == 1); // the stack count, which is what `other` means for this kind
+    CHECK(event.rounds == 3);
+    CHECK(event.reserve == 0);
+
+    // And it survives the wire, so what the other machines read is what was put in.
+    BitWriter writer;
+    WriteWorldEvent(writer, event);
+    const std::vector<uint8_t>& bytes = writer.Finish();
+    BitReader reader(bytes.data(), bytes.size());
+    WorldEventMessage received;
+    REQUIRE(ReadWorldEvent(reader, received));
+    CHECK(received.rounds == 3);
+    CHECK(received.reserve == 0);
+    CHECK(received.other == 1);
+
+    // An item with no state of its own still says so, rather than saying "empty".
+    const WorldEventMessage plain =
+        PickupSpawnedEvent(1, 9, 2, kDefaultLoad, kDefaultLoad, {}, {});
+    CHECK(plain.rounds == kDefaultLoad);
+    CHECK(plain.reserve == kDefaultLoad);
+}
+
+TEST_CASE("A round that stops in a person leaves no hole", "[net][protocol]")
+{
+    // A hole put on somebody hangs in the air the moment they walk away, so a shot carries both
+    // "it hit something" and "that something was a surface". They are different questions and the
+    // second one did not exist, which is why holes were left floating at head height.
+    WorldEventMessage shot;
+    shot.kind = WorldEventKind::ShotFired;
+    shot.player = 2;
+    shot.position = {1.0f, 1.6f, 2.0f};
+    shot.direction = {1.0f, 1.6f, 9.0f};
+    shot.flag = true;   // it hit
+    shot.flag2 = false; // but it hit a person
+
+    BitWriter writer;
+    WriteWorldEvent(writer, shot);
+    const std::vector<uint8_t>& bytes = writer.Finish();
+    BitReader reader(bytes.data(), bytes.size());
+    WorldEventMessage received;
+    REQUIRE(ReadWorldEvent(reader, received));
+    CHECK(received.flag);
+    CHECK_FALSE(received.flag2);
+
+    shot.flag2 = true; // a wall
+    BitWriter wallWriter;
+    WriteWorldEvent(wallWriter, shot);
+    const std::vector<uint8_t>& wallBytes = wallWriter.Finish();
+    BitReader wallReader(wallBytes.data(), wallBytes.size());
+    WorldEventMessage wall;
+    REQUIRE(ReadWorldEvent(wallReader, wall));
+    CHECK(wall.flag);
+    CHECK(wall.flag2);
+}
+
 TEST_CASE("A drop request carries what the weapon had left in it", "[net][protocol]")
 {
     // Without this the host spawned a fresh weapon wherever a client put one down, so throwing an
