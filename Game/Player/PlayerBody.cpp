@@ -11,6 +11,7 @@
 #include <glm/gtc/constants.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
+#include <glm/gtx/quaternion.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -922,7 +923,28 @@ glm::quat PlayerBody::BodyRotation() const
     // Yaw zero looks down -Z, and yaw increases turning right. Rotating a model's local -Z by +yaw
     // about +Y sends it the other way, so the sign is negated here. Getting this wrong mirrors the
     // body: it turns left when the camera turns right.
-    return glm::angleAxis(-m_bodyYaw, glm::vec3(0.0f, 1.0f, 0.0f));
+    const glm::quat facing = glm::angleAxis(-m_bodyYaw, glm::vec3(0.0f, 1.0f, 0.0f));
+    if (m_flatness < 0.001f)
+    {
+        return facing;
+    }
+
+    // Lying down, the body lies along whatever it is lying on.
+    //
+    // A person walking up a ramp stays upright, which is why this is not done standing -- it was,
+    // once, and leaning the whole character over on a slope looked wrong enough to be taken out. A
+    // person lying on a ramp is the opposite case: they are in contact with it along their whole
+    // length, so they take its angle. Kept horizontal, a prone body on a slope has its chest in the
+    // air at one end and its legs inside the hill at the other, and crawling up one looks like
+    // swimming through it.
+    //
+    // The turn that takes the body's up axis onto the ground's normal, applied before the facing so
+    // it is a tilt of the whole body rather than a turn about a tilted axis, and faded in by how
+    // flat the body is so standing up off a slope unwinds it rather than dropping it.
+    const glm::quat toGround = glm::rotation(glm::vec3(0.0f, 1.0f, 0.0f), m_groundNormal);
+    return glm::slerp(glm::quat(1.0f, 0.0f, 0.0f, 0.0f), toGround,
+                      glm::clamp(m_flatness, 0.0f, 1.0f)) *
+           facing;
 }
 
 void PlayerBody::DestroyWeapon(Scene& scene)
@@ -3415,6 +3437,27 @@ void PlayerBody::Update(Scene& scene, const PlayerState& state, const PlayerView
         m_ragdoll.ApplyTo(m_skeleton, m_pose);
         PushToScene(scene);
         return;
+    }
+
+    // Which way the ground under the player faces, for laying a prone body along it.
+    //
+    // Only prone uses it. Tilting a standing body to the ground was tried and taken out -- walking
+    // onto a ramp leaned the whole character over and it looked wrong, because a person walking up
+    // a slope stays upright. A person lying on a slope does not: they lie along it, and a body kept
+    // horizontal on a ramp has its chest in the air at one end and its legs inside the hill at the
+    // other, which is what this is for.
+    //
+    // Traced from above the hips rather than from the eye, so it follows the surface the body is
+    // actually resting on rather than whatever the head happens to be over.
+    {
+        const glm::vec3 from = view.renderPosition + glm::vec3(0.0f, 0.6f, 0.0f);
+        const RayHit hit = physics.RayCast(from, glm::vec3(0.0f, -1.0f, 0.0f), 2.0f);
+        const glm::vec3 wanted =
+            hit && hit.normal.y > 0.35f ? glm::normalize(hit.normal) : glm::vec3(0.0f, 1.0f, 0.0f);
+        // Eased, or crawling over a step snaps the whole body a few degrees in one frame.
+        const float follow = 1.0f - std::exp(-m_config.proneGroundFollow * dt);
+        m_groundNormal = glm::normalize(glm::mix(m_groundNormal, wanted, follow) +
+                                        glm::vec3(0.0f, 1e-5f, 0.0f));
     }
 
     // How close a wall is in front of the eye, as a fraction of how far a weapon reaches. A rifle is

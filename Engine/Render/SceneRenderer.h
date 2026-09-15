@@ -44,6 +44,9 @@ struct ShadowSettings
     bool spotEnabled = true;
     float spotBias = 0.035f;
     float spotNormalOffset = 0.03f;
+    // How wide the torch.s cone is at its far end, for working out what one of its texels covers.
+    // Set when the map is fitted.
+    float spotRange = 14.0f;
     // What is left of the ambient where the sky cannot reach, standing in for light that bounced
     // its way in. Zero is a void rather than a dark room: geometry outside the torch beam stops
     // existing rather than being hard to see.
@@ -152,6 +155,7 @@ private:
     bgfx::UniformHandle m_uSpotShadowMtx = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uSpotShadowAxis = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uSpotShadowParams = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uShadowTexelWorld = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_sSunShadow = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_sSkyShadow = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_sSpotShadow = BGFX_INVALID_HANDLE;

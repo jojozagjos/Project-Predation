@@ -51,8 +51,12 @@ struct WeaponDefinition
 
     // Recoil kicks the view; it decays back towards where the player was aiming, so a burst walks
     // upwards and then settles rather than permanently stealing their aim.
-    float recoilPitch = 1.4f; // degrees per shot, upwards
-    float recoilYaw = 0.35f;  // degrees per shot, alternating sides
+    // Degrees per shot, and the view keeps them. These are therefore much smaller than they were
+    // when the kick decayed away: a carbine emptying thirty rounds at 0.6 degrees apiece climbs
+    // eighteen degrees, which is a magazine's worth of pulling down.
+    float recoilPitch = 1.4f;
+    float recoilYaw = 0.35f; // alternating sides, so a burst wanders as well as climbs
+    // Left in place because the spread still reads it, and no longer used to take the kick back.
     float recoilRecover = 9.0f;
     // How fast the view chases the kick, as a rate. Higher is snappier; this is the difference
     // between a weapon that shoves the camera and one that teleports it. Around 25 puts most of a
@@ -89,17 +93,22 @@ struct WeaponState
     float aim = 0.0f;             // 0 hip, 1 fully aimed
     float bloom = 0.0f;           // extra spread from sustained fire, degrees
 
-    // Where the view has actually been pushed, in degrees, and where it is being pushed towards.
+    // Recoil still owed to the view, in degrees, and how much of it is being handed over this tick.
     //
-    // Two numbers rather than one, because a shot is not a step. Added straight onto the applied
-    // angle, every round teleports the camera a couple of degrees and a burst is a stack of jumps --
-    // which is what "make the recoil smoother" is about. A real weapon takes a few tens of
-    // milliseconds to get the muzzle up, so the round adds to the target and the applied angle
-    // chases it: fast enough to feel like a kick, slow enough to be a movement rather than a cut.
-    float recoilPitch = 0.0f;
+    // The view *keeps* what it is given. That is the whole difference between recoil you fight and
+    // recoil you watch: an offset that decays back to nothing returns the player's aim to exactly
+    // where it was, so the weapon climbs on screen and then politely un-climbs, and there is never
+    // anything to pull down against. Reported as "it's not moving my camera up -- when I'm done
+    // shooting my camera goes back to where it was", which is precisely what it was doing.
+    //
+    // So a round does not set an offset, it owes the view an angle. `pending` is what is owed and
+    // `kick` is the instalment paid this tick; the game adds the instalment to the player's own look
+    // angles, where it stays until they move the mouse. Paying it over a few tens of milliseconds
+    // rather than all at once is what keeps a burst from being a stack of cuts.
+    float recoilPitch = 0.0f; // owed, not yet given to the view
     float recoilYaw = 0.0f;
-    float recoilTargetPitch = 0.0f;
-    float recoilTargetYaw = 0.0f;
+    float kickPitch = 0.0f; // degrees to add to the view this tick
+    float kickYaw = 0.0f;
 
     bool triggerWasDown = false;
     int burstRemaining = 0;

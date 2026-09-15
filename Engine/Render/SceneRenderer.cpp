@@ -50,7 +50,7 @@ constexpr uint16_t kSunShadowSize = 4096;
 // centimetres clears a crate, a bench and a wall, and is still nothing against a room four metres
 // across. Over a forty metre map that is a hundred and twenty-eight texels, which sounds absurd for
 // a shadow map and is exactly right for this one.
-constexpr uint16_t kSkyShadowSize = 128;
+constexpr uint16_t kSkyShadowSize = 256;
 // The torch's. Smaller than the sun's, because a cone covers far less world: a 70 degree beam at 14
 // metres is about 20 m across at the far end, so 1024 texels is 2 cm there and finer everywhere
 // nearer. It is also redrawn every frame from a light that moves with the player's head, so it is
@@ -95,6 +95,7 @@ bool SceneRenderer::Init(ShaderLibrary& shaders)
     m_uSpotShadowMtx = bgfx::createUniform("u_spotShadowMtx", bgfx::UniformType::Mat4);
     m_uSpotShadowAxis = bgfx::createUniform("u_spotShadowAxis", bgfx::UniformType::Vec4);
     m_uSpotShadowParams = bgfx::createUniform("u_spotShadowParams", bgfx::UniformType::Vec4);
+    m_uShadowTexelWorld = bgfx::createUniform("u_shadowTexelWorld", bgfx::UniformType::Vec4);
     m_sSpotShadow = bgfx::createUniform("s_spotShadow", bgfx::UniformType::Sampler);
     m_uClipPlane = bgfx::createUniform("u_clipPlane", bgfx::UniformType::Vec4);
     m_uReflectParams = bgfx::createUniform("u_reflectParams", bgfx::UniformType::Vec4);
@@ -130,7 +131,8 @@ void SceneRenderer::Shutdown()
         m_uSunShadowMtx,   m_uSunShadowAxis,   m_uSunShadowParams, m_uSkyShadowMtx,
         m_uSkyShadowAxis,  m_uSkyShadowParams, m_sBaseColor,       m_sSunShadow,
         m_sSkyShadow,      m_uClipPlane,       m_uReflectParams,   m_sReflection,
-        m_uSpotShadowMtx,  m_uSpotShadowAxis,  m_uSpotShadowParams, m_sSpotShadow};
+        m_uSpotShadowMtx,  m_uSpotShadowAxis,  m_uSpotShadowParams, m_sSpotShadow,
+        m_uShadowTexelWorld};
     for (const bgfx::UniformHandle handle : uniforms)
     {
         if (bgfx::isValid(handle))
@@ -147,6 +149,7 @@ void SceneRenderer::Shutdown()
     m_sBaseColor = m_sSunShadow = m_sSkyShadow = BGFX_INVALID_HANDLE;
     m_uClipPlane = m_uReflectParams = m_sReflection = BGFX_INVALID_HANDLE;
     m_uSpotShadowMtx = m_uSpotShadowAxis = m_uSpotShadowParams = m_sSpotShadow = BGFX_INVALID_HANDLE;
+    m_uShadowTexelWorld = BGFX_INVALID_HANDLE;
 
     if (bgfx::isValid(m_reflectionTarget))
     {
@@ -258,6 +261,21 @@ void SceneRenderer::SetEnvironmentUniforms(const Environment& environment,
         1.0f / static_cast<float>(std::max<uint16_t>(m_spotShadow.Resolution(), 1)),
         m_shadowSettings.spotBias, spot ? 1.0f : 0.0f, m_shadowSettings.spotNormalOffset};
     bgfx::setUniform(m_uSpotShadowParams, spotParams);
+
+    // How much world one texel of each map covers. The slack every one of them needs is a distance
+    // in the world, so it is worked out from this rather than being a constant somebody has to
+    // remember to re-tune: raising the shadow distance from 16 m to 24 m made a sky texel half again
+    // as wide and put the banding back on the ramps, and nothing in the code said it would.
+    //
+    // The torch's map is a cone, so its texels grow with distance and there is no single figure. The
+    // one here is what a texel covers at the far end of the beam, which is the worst case and the
+    // only place it matters.
+    const float spotFar = m_spotShadow.Resolution() > 0
+                              ? (2.0f * m_shadowSettings.spotRange) /
+                                    static_cast<float>(m_spotShadow.Resolution())
+                              : 0.0f;
+    const float texelWorld[4] = {m_sunShadow.TexelSize(), m_skyShadow.TexelSize(), spotFar, 0.0f};
+    bgfx::setUniform(m_uShadowTexelWorld, texelWorld);
 
     // No clip, and the mirror on if there is one to sample. Both are overridden immediately after
     // this by the reflection pass itself, which needs the opposite of each.
@@ -397,6 +415,9 @@ void SceneRenderer::RenderShadows(bgfx::ViewId sunView, bgfx::ViewId skyView, bg
     const bool coneLight = first.intensity > 0.0f && first.range > 0.0f && first.outerAngle < 89.0f;
     if (settings.spotEnabled && coneLight)
     {
+        // Remembered so the shading pass can work out what one of the cone.s texels covers at the far
+        // end of the beam, which is the worst case for its slack.
+        m_shadowSettings.spotRange = first.range;
         m_spotShadow.FitSpot(first.position, first.direction, first.outerAngle, first.range);
         m_spotShadow.Begin(spotView);
         m_spotShadowLit = true;

@@ -4177,3 +4177,37 @@ TEST_CASE("The barrel follows the view up, standing and prone", "[body][pose][we
     CHECK(proneHigh > proneLevel + 55.0f);
     CHECK(proneHigh > 65.0f);
 }
+TEST_CASE("A body lying on a slope lies along it", "[body][pose][prone]")
+{
+    // A person walking up a ramp stays upright; a person lying on one does not. They are in contact
+    // with it along their whole length, so they take its angle. Kept horizontal, a prone body on a
+    // slope has its chest in the air at one end and its legs inside the hill at the other.
+    //
+    // This is only for lying down. Tilting a standing body to the ground was tried once and taken
+    // out because leaning the character over on a ramp looked wrong, so the second half of this
+    // checks that standing is still left alone.
+    BodyHarness harness(25.0f); // the ground itself is a 25 degree slope
+    harness.Settle(120);
+
+    const auto bodyTilt = [&]()
+    {
+        // How far the body's own up axis is off vertical, in degrees.
+        const glm::vec3 up = harness.body.BodyRotationForTest() * glm::vec3(0.0f, 1.0f, 0.0f);
+        return glm::degrees(std::acos(std::clamp(up.y, -1.0f, 1.0f)));
+    };
+
+    harness.SetStance(PlayerStance::Standing);
+    harness.Settle(180);
+    const float standing = bodyTilt();
+    INFO("standing on a 25 degree slope the body is " << standing << " degrees off vertical");
+    CHECK(standing < 3.0f);
+
+    harness.SetStance(PlayerStance::Prone);
+    harness.Settle(240);
+    const float prone = bodyTilt();
+    INFO("prone on a 25 degree slope the body is " << prone << " degrees off vertical");
+    // Most of the way onto the slope. Not all of it -- the trace is eased and the ground under the
+    // hips is what it follows -- but unmistakably lying along the ramp rather than across it.
+    CHECK(prone > 15.0f);
+    CHECK(prone < 32.0f);
+}

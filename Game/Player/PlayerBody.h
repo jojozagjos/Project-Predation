@@ -393,6 +393,10 @@ public:
         // through the chest, and how many radians a second the clock runs at.
         float proneBreatheDegrees = 1.9f;
         float proneBreatheRate = 1.15f;
+        // How fast the body settles onto the slope it is lying on, per second. Slow enough that
+        // crawling over a step does not snap it, fast enough that it is lined up by the time
+        // anybody looks.
+        float proneGroundFollow = 6.0f;
         // Prone turning is slow and deliberate: the body pivots towards where you are crawling.
         float proneTurnSpeed = 3.2f;
         // Turned further than this from the way the body is lying, a prone body shuffles round on
@@ -740,6 +744,8 @@ private:
     float m_lastViewPitch = 0.0f;
     glm::vec2 m_viewRate{0.0f}; // radians per second, so sway does not depend on the frame rate
     float m_swayClock = 0.0f;   // drives the breathing movement
+    // Which way the ground under the player faces, eased. Only prone reads it: see BodyRotation.
+    glm::vec3 m_groundNormal{0.0f, 1.0f, 0.0f};
     std::array<FootState, 2> m_feet;
     std::array<FootState, 2> m_hands; // same shape: a smoothed target and whether it is planted
     // How far each joint keeps off the floor as a ragdoll, sized to what is drawn there.
@@ -778,6 +784,11 @@ private:
     float m_pronePivotSign = 1.0f;
 
     glm::quat BodyRotation() const;
+public:
+    // The same rotation, for a test that has to ask how the body is lying. Not otherwise useful:
+    // everything in the game reads the posed bones rather than this.
+    glm::quat BodyRotationForTest() const { return BodyRotation(); }
+private:
 
     glm::vec3 m_rootPosition{0.0f};
     float m_bodyYaw = 0.0f;

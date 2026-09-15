@@ -49,6 +49,10 @@ SAMPLER2D(s_skyShadow, 2);
 uniform mat4 u_spotShadowMtx;
 uniform vec4 u_spotShadowAxis;
 uniform vec4 u_spotShadowParams;
+// How much world one texel of each map covers, in metres: x the sun, y the sky, z the torch. The
+// slack every map needs is a distance in the world, so it is worked out from this rather than being
+// a number somebody has to re-tune whenever a map changes size.
+uniform vec4 u_shadowTexelWorld;
 SAMPLER2D(s_spotShadow, 3);
 // The planar reflection: the world rendered again from a camera reflected across one flat surface.
 //
@@ -181,19 +185,32 @@ float skyReaching(vec3 P, vec3 N, float slack)
 // it lifts every shadow off the thing casting it, and small enough for the square-on case the
 // glancing surfaces stripe themselves with their own shadow, in a pattern that crawls as the map
 // snaps to its grid while the player walks. That crawl is what "flickering" was.
-float shadowSlack(float base, float NoL, float mostSlope)
+float shadowSlack(float base, float NoL, float mostSlope, float texelWorld, float reachTexels)
 {
-	// tan of the angle from the surface normal to the light, which is how much depth one step
-	// across the surface covers. It runs to infinity at ninety degrees, so it is clamped -- and the
-	// two maps want very different clamps.
+	// How much depth the surface crosses inside the filter's reach, which is the whole of what the
+	// slack is for -- and it is a distance in the world, so it has to be measured in the world.
 	//
-	// The sun can be generous: a surface edge-on to it is barely lit anyway, so slack there costs
-	// nothing visible. The sky cannot. A vertical wall reads as maximum slope against a map that
-	// looks straight down, and the generous clamp handed it nearly four metres of slack -- more than
-	// the height of a roof, so every wall in a sealed room ignored the roof over it and the room lit
-	// up. Its clamp has to stay well under the shortest ceiling in the game.
-	float slope = sqrt(max(1.0 - NoL * NoL, 0.0)) / max(NoL, 0.08);
-	return base * (1.0 + min(slope, mostSlope));
+	// It used to be `base * (1 + slope)`: a number in metres, tuned by eye, multiplied by the slope.
+	// That works until the map's coverage changes, and then it silently stops working. The sky bias
+	// was set to 0.16 when a texel was 25 cm of world; raising the shadow distance from 16 m to 24 m
+	// two commits later made a texel 37.5 cm, and nothing said so. A 45 degree ramp crosses 0.375 m
+	// within one texel of the filter and had 0.32 m of slack, so it ruled itself in stripes -- which
+	// is the ramp banding coming back after it had been fixed once.
+	//
+	// Derived, it cannot go stale. `texelWorld` is how much world one texel of this map covers and
+	// `reachTexels` how far the filter reaches in texels, so their product times the slope is
+	// exactly the depth the surface crosses under the filter. Change the resolution or the distance
+	// and this follows on its own.
+	//
+	// The clamp stays, and the two maps still want very different ones. The sun can be generous: a
+	// surface edge-on to it is barely lit anyway. The sky cannot -- a vertical wall reads as maximum
+	// slope against a map that looks straight down, and too much slack there lets every wall in a
+	// sealed room ignore the roof over it and the room lights up. Its clamp has to keep the total
+	// well under the shortest ceiling in the game.
+	float slope = min(sqrt(max(1.0 - NoL * NoL, 0.0)) / max(NoL, 0.08), mostSlope);
+	// Twice the geometric figure, because the depth recorded for a texel is the depth somewhere
+	// inside it rather than at its near edge, and the reading is taken a normal-offset away as well.
+	return base + texelWorld * reachTexels * slope * 2.0;
 }
 
 // The sun, from one map.
@@ -211,7 +228,7 @@ float shadowSlack(float base, float NoL, float mostSlope)
 float sunReaching(vec3 P, vec3 N, float NoL)
 {
 	return lightReachesSharp(s_sunShadow, u_sunShadowMtx, u_sunShadowAxis, u_sunShadowParams, P, N,
-	                        shadowSlack(u_sunShadowParams.y, NoL, 6.0));
+	                        shadowSlack(u_sunShadowParams.y, NoL, 6.0, u_shadowTexelWorld.x, 2.0));
 }
 
 // GGX / Trowbridge-Reitz normal distribution.
@@ -355,7 +372,8 @@ void main()
 		{
 			reaches = lightReachesSpot(s_spotShadow, u_spotShadowMtx, u_spotShadowAxis,
 			                           u_spotShadowParams, v_worldPos, N,
-			                           shadowSlack(u_spotShadowParams.y, NoLp, 4.0));
+			                           shadowSlack(u_spotShadowParams.y, NoLp, 4.0,
+			                                       u_shadowTexelWorld.z, 1.0));
 		}
 
 		vec3 lightRadiance = colorIntensity.rgb * colorIntensity.w * attenuation * cone * reaches;
@@ -389,7 +407,8 @@ void main()
 	// shadow itself. The ceiling of a sealed room read as fully lit by the sky, and that lit ceiling
 	// is what was bleeding into the corners of the dark room.
 	float skyReaches =
-		skyReaching(v_worldPos, N, shadowSlack(u_skyShadowParams.y, abs(N.y), 1.0));
+		skyReaching(v_worldPos, N,
+		            shadowSlack(u_skyShadowParams.y, abs(N.y), 1.0, u_shadowTexelWorld.y, 1.0));
 	ambient *= mix(u_grade.z, 1.0, skyReaches);
 
 	color += diffuseColor * ambient;

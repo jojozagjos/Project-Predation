@@ -97,15 +97,6 @@ void Step(const WeaponDefinition& definition, const WeaponInput& input, WeaponSt
 
     state.fireCooldown = std::max(state.fireCooldown - dt, 0.0f);
     state.bloom = std::max(state.bloom - definition.spreadRecover * dt, 0.0f);
-    // The target falls back towards nothing, and the applied angle chases the target.
-    //
-    // Both, in that order. The target is what a round adds to and what recovery takes from; the
-    // applied angle is what the view is actually pushed by, and it lags the target by a few
-    // hundredths of a second. That lag is the whole of the difference between a weapon that shoves
-    // the camera and one that cuts it to a new angle between frames.
-    state.recoilTargetPitch =
-        SmoothTowards(state.recoilTargetPitch, 0.0f, definition.recoilRecover, dt);
-    state.recoilTargetYaw = SmoothTowards(state.recoilTargetYaw, 0.0f, definition.recoilRecover, dt);
 
     if (state.IsReloading())
     {
@@ -177,8 +168,8 @@ void Step(const WeaponDefinition& definition, const WeaponInput& input, WeaponSt
         // Alternating sideways kick, so a long burst wanders rather than climbing in a straight
         // line. Derived from the shot count, so it is the same everywhere.
         const float side = (state.shotCount % 2u) == 0u ? 1.0f : -1.0f;
-        state.recoilTargetPitch += definition.recoilPitch * (1.0f - state.aim * 0.35f);
-        state.recoilTargetYaw += definition.recoilYaw * side * (1.0f - state.aim * 0.35f);
+        state.recoilPitch += definition.recoilPitch * (1.0f - state.aim * 0.35f);
+        state.recoilYaw += definition.recoilYaw * side * (1.0f - state.aim * 0.35f);
 
         if (state.burstRemaining > 0)
         {
@@ -186,15 +177,17 @@ void Step(const WeaponDefinition& definition, const WeaponInput& input, WeaponSt
         }
     }
 
-    // And the view chases the kick, after this tick's round has been added to it rather than before.
+    // And part of what is owed is handed to the view, after this tick's round has been added to the
+    // debt rather than before, so a trigger pull answers on the tick it happens.
     //
-    // Before, the shot landed on the target and the applied angle spent a whole tick still at the
-    // old value, so every round had sixteen milliseconds of nothing happening before it moved
-    // anything. A trigger pull has to answer immediately even if the movement it starts takes a
-    // moment to finish.
-    const float rise = std::max(definition.recoilRise, definition.recoilRecover);
-    state.recoilPitch = SmoothTowards(state.recoilPitch, state.recoilTargetPitch, rise, dt);
-    state.recoilYaw = SmoothTowards(state.recoilYaw, state.recoilTargetYaw, rise, dt);
+    // Nothing is taken back. What the view is given, it keeps: that is what makes this something to
+    // fight rather than something to watch. The instalments are what make it a shove rather than a
+    // cut -- most of a round's kick arrives inside a tenth of a second, and none of it in one frame.
+    const float paid = 1.0f - std::exp(-std::max(definition.recoilRise, 1.0f) * dt);
+    state.kickPitch = state.recoilPitch * paid;
+    state.kickYaw = state.recoilYaw * paid;
+    state.recoilPitch -= state.kickPitch;
+    state.recoilYaw -= state.kickYaw;
 
     state.triggerWasDown = input.trigger;
 }

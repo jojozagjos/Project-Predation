@@ -163,72 +163,7 @@ TEST_CASE("An empty magazine reloads itself rather than clicking", "[weapon]")
     REQUIRE(state.IsReloading());
 }
 
-TEST_CASE("Recoil climbs while firing and is given back when you stop", "[weapon][recoil]")
-{
-    // What recoil has to do in a game somebody plays: build up while the trigger is down so there
-    // is something to fight, come off when it is released, and never move where the player is
-    // actually aiming.
-    //
-    // The middle one is the whole of why this is tested rather than looked at. Recoil that does not
-    // return steals the player's aim a fraction of a degree at a time and there is no single frame
-    // in which that is visible.
-    WeaponDefinition definition = TestWeapon(FireMode::Auto);
-    definition.roundsPerMinute = 620.0f;
-    definition.recoilPitch = 2.6f;
-    definition.recoilYaw = 0.45f;
-    definition.recoilRecover = 5.0f;
-    definition.recoilRise = 26.0f;
 
-    WeaponState state;
-    WeaponSim::Equip(definition, state);
-
-    WeaponInput input;
-    input.trigger = true;
-
-    // One shot should be felt, and it should arrive over a few frames rather than in one.
-    Run(definition, state, input, 1);
-    const float afterOneTick = state.recoilPitch;
-    Run(definition, state, input, 5);
-    INFO("one tick after the first shot: " << afterOneTick << ", six ticks: " << state.recoilPitch);
-    CHECK(afterOneTick < state.recoilPitch); // still rising into the kick, not a step
-    CHECK(afterOneTick > 0.05f);             // but started immediately
-
-    // Held down, it settles somewhere worth fighting rather than running away or fizzling out.
-    Run(definition, state, input, 120);
-    const float sustained = state.recoilPitch;
-    INFO("sustained fire settles at " << sustained << " degrees");
-    CHECK(sustained > 2.0f);
-    CHECK(sustained < 12.0f);
-
-    // Released, it hands the aim back. All of it: anything left is aim quietly stolen.
-    input.trigger = false;
-    Run(definition, state, input, 180);
-    INFO("after three seconds off the trigger: " << state.recoilPitch);
-    CHECK(state.recoilPitch < sustained * 0.02f);
-}
-
-TEST_CASE("Recoil kicks the view up and then gives it back", "[weapon]")
-{
-    const WeaponDefinition definition = TestWeapon(FireMode::Single);
-    WeaponState state;
-    WeaponSim::Equip(definition, state);
-
-    WeaponInput input;
-    input.trigger = true;
-    // A few ticks, not one. The kick is no longer a step: the round goes onto a target and the view
-    // chases it over a few tens of milliseconds, which is what stops a burst reading as a stack of
-    // cuts. It starts on the tick the trigger goes down, and this is measured once it has arrived.
-    Run(definition, state, input, 6);
-
-    REQUIRE(state.recoilPitch > 0.5f);
-    const float afterShot = state.recoilPitch;
-
-    input.trigger = false;
-    Run(definition, state, input, 120);
-    // Recoil decays back towards where the player was aiming, so a burst does not permanently steal
-    // their aim.
-    REQUIRE(state.recoilPitch < afterShot * 0.05f);
-}
 
 TEST_CASE("Aiming tightens the spread and takes time to come up", "[weapon]")
 {
@@ -332,3 +267,68 @@ TEST_CASE("Weapon definitions load from the shipped data file", "[weapon][data]"
     REQUIRE(carbine != nullptr);
     REQUIRE(carbine->mode == FireMode::Auto);
 }
+TEST_CASE("Recoil is given to the aim and stays there", "[weapon][recoil]")
+{
+    // The point of recoil in a game somebody plays is that it takes their aim off the target and
+    // they have to put it back. An offset that decays returns the aim to exactly where it started,
+    // so the weapon climbs on screen and then un-climbs and there is nothing to fight -- which is
+    // what "it's not moving my camera up, when I'm done shooting my camera goes back to where it
+    // was" is describing.
+    //
+    // So a round owes the view an angle, the debt is paid off over a few tens of milliseconds, and
+    // what the view is given it keeps. This measures the total paid, which is what the player's aim
+    // actually moved by.
+    WeaponDefinition definition = TestWeapon(FireMode::Auto);
+    definition.roundsPerMinute = 620.0f;
+    definition.recoilPitch = 0.6f;
+    definition.recoilYaw = 0.28f;
+    definition.recoilRise = 26.0f;
+    definition.magazineSize = 60; // enough to hold the trigger down for thirty rounds
+
+    WeaponState state;
+    WeaponSim::Equip(definition, state);
+
+    WeaponInput input;
+    input.trigger = true;
+
+    // The tick the trigger goes down already moves the view: a shot has to answer immediately even
+    // if the movement it starts takes a moment to finish.
+    std::vector<FireEvent> shots;
+    WeaponSim::Step(definition, input, state, kMuzzle, kForward, kTick, shots);
+    CHECK(state.kickPitch > 0.0f);
+
+    // And it arrives over several ticks rather than in one, which is what stops a burst reading as
+    // a stack of cuts.
+    const float firstTick = state.kickPitch;
+    CHECK(firstTick < definition.recoilPitch * 0.8f);
+
+    // Thirty rounds, and the aim has moved by roughly thirty rounds' worth.
+    float climbed = firstTick;
+    int fired = 1;
+    for (int i = 0; i < 400 && fired < 30; ++i)
+    {
+        const size_t before = shots.size();
+        WeaponSim::Step(definition, input, state, kMuzzle, kForward, kTick, shots);
+        climbed += state.kickPitch;
+        fired += static_cast<int>(shots.size() - before);
+    }
+    INFO("thirty rounds moved the aim " << climbed << " degrees");
+    CHECK(climbed > 12.0f);
+    CHECK(climbed < 25.0f);
+
+    // Off the trigger, the rest of what is owed is paid and then nothing more happens. Crucially,
+    // none of it is taken back: the aim stays where the weapon put it.
+    input.trigger = false;
+    float afterRelease = 0.0f;
+    for (int i = 0; i < 240; ++i)
+    {
+        WeaponSim::Step(definition, input, state, kMuzzle, kForward, kTick, shots);
+        afterRelease += state.kickPitch;
+    }
+    INFO("after release the aim moved a further " << afterRelease << " degrees");
+    // Whatever is left owed is small and positive. Nothing ever moves the aim back down: a negative
+    // total here would be the weapon handing the player's aim back, which is the bug.
+    CHECK(afterRelease >= 0.0f);
+    CHECK(afterRelease < 1.0f);
+}
+

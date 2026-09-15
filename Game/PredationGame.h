@@ -164,6 +164,7 @@ private:
     // Where the barrel is and which way it points, including recoil.
     glm::vec3 MuzzlePosition() const;
     glm::vec2 AimAngles() const;
+    void ApplyRecoilToView();
     glm::vec3 AimDirection() const;
     void DropSelected();
     // Puts one thing on the floor. A client asks the host and waits; the host does it and tells

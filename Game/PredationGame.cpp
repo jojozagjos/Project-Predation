@@ -5291,11 +5291,40 @@ void PredationGame::SyncEquippedWeapon()
 // along. Written out twice, they would drift the first time either was tuned.
 glm::vec2 PredationGame::AimAngles() const
 {
-    // Recoil is an offset on top of where the player is pointing, not a change to it, so it decays
-    // back and hands their aim over intact.
-    return {m_lookYaw + glm::radians(m_weapon.recoilYaw),
-            std::clamp(m_lookPitch + glm::radians(m_weapon.recoilPitch), glm::radians(-89.0f),
-                       glm::radians(89.0f))};
+    // Just where the player is looking. Recoil is not an offset on top of this any more -- it has
+    // already been added to the look angles themselves, a tick at a time, and left there. See
+    // ApplyRecoilToView.
+    return {m_lookYaw, std::clamp(m_lookPitch, glm::radians(-89.0f), glm::radians(89.0f))};
+}
+
+// Hands this tick's recoil to the player's own aim, where it stays.
+//
+// This is the difference between recoil you fight and recoil you watch. Added as a decaying offset,
+// the weapon climbs on screen and then un-climbs, and the player's aim ends up exactly where it
+// started -- there is never anything to pull down against. Added to the look angles, the climb is
+// theirs: it stays until they move the mouse, and moving the mouse is the fight.
+//
+// It also means compensating works the way it should without anything being written to make it
+// work. Pulling down moves m_lookPitch down while the recoil is moving it up, and the two simply
+// sum; there is no second system trying to return the view to a remembered place and arguing with
+// the player about where they were aiming.
+void PredationGame::ApplyRecoilToView()
+{
+    if (std::abs(m_weapon.kickPitch) < 1e-5f && std::abs(m_weapon.kickYaw) < 1e-5f)
+    {
+        return;
+    }
+    m_lookPitch = std::clamp(m_lookPitch + glm::radians(m_weapon.kickPitch), glm::radians(-89.0f),
+                             glm::radians(89.0f));
+    m_lookYaw += glm::radians(m_weapon.kickYaw);
+    if (m_lookYaw > glm::pi<float>())
+    {
+        m_lookYaw -= glm::two_pi<float>();
+    }
+    else if (m_lookYaw < -glm::pi<float>())
+    {
+        m_lookYaw += glm::two_pi<float>();
+    }
 }
 
 glm::vec3 PredationGame::AimDirection() const
@@ -6362,6 +6391,10 @@ void PredationGame::OnFixedUpdate(double fixedDt)
         WeaponSim::Step(WeaponDefinition{}, weaponInput, m_weapon, MuzzlePosition(), AimDirection(), dt,
                         m_shots);
     }
+
+    // Whatever the weapon just kicked goes into the player's own aim, where it stays for them to
+    // pull back down. Straight after the step, so the same tick that fires is the tick that moves.
+    ApplyRecoilToView();
 
     // Single player, so this process is the authority. When there is a host, a client stops here and
     // sends m_shots instead; nothing above this line ever touches another player's health.
