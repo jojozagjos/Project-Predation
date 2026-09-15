@@ -919,29 +919,55 @@ bool PredationGame::PerformInteraction(InteractionKind kind, int index, uint8_t 
 
     case InteractionKind::HidingSpot:
     {
+        // One interaction, both directions: get in if it is empty, get out if you are the one in it.
+        //
+        // It used to be "get in" only. Leaving was a local call that told nobody, so everybody else
+        // kept the locker shut and occupied for the rest of the match, and the player who had been
+        // inside it could never be seen to come out. Making it a toggle means the same message, the
+        // same path and the same broadcast carry both halves.
         WorldObjects::HidingSpot* spot = m_world.GetHidingSpot(index);
-        if (spot == nullptr || (spot->occupied && player != LocalPlayerId()))
+        if (spot == nullptr)
         {
             return false;
         }
-        if (player == LocalPlayerId())
+        const bool leaving = spot->occupied && spot->occupant == player;
+        if (spot->occupied && !leaving)
+        {
+            return false; // somebody else is in there
+        }
+
+        if (leaving)
+        {
+            spot->occupied = false;
+            spot->occupant = 0;
+            m_world.SetDoorOpen(spot->doorIndex, true, m_interactions);
+            m_interactions.SetVerb(spot->entity, "Hide in");
+            if (player == LocalPlayerId())
+            {
+                LeaveHidingSpot();
+            }
+        }
+        else if (player == LocalPlayerId())
         {
             EnterHidingSpot(index);
+            spot->occupant = player;
         }
         else
         {
             // Somebody else got in. Their body is drawn from their replicated position anyway, so
             // all this machine has to do is swing the door and mark the locker taken.
             spot->occupied = true;
+            spot->occupant = player;
             m_world.SetDoorOpen(spot->doorIndex, false, m_interactions);
         }
+
         if (m_sessionMode == SessionMode::Host)
         {
             WorldEventMessage event;
             event.kind = WorldEventKind::LockerUsed;
             event.index = static_cast<uint8_t>(index);
             event.player = player;
-            event.flag = true;
+            event.flag = !leaving;
             m_host.Broadcast(event);
         }
         return true;
@@ -1256,12 +1282,31 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
     case WorldEventKind::LockerUsed:
         if (WorldObjects::HidingSpot* spot = m_world.GetHidingSpot(event.index))
         {
-            if (event.player == LocalPlayerId())
-            {
-                break; // our own, already applied when we asked
-            }
             spot->occupied = event.flag;
+            spot->occupant = event.flag ? event.player : 0;
             m_world.SetDoorOpen(spot->doorIndex, !event.flag, m_interactions);
+            // Including when it is about us.
+            //
+            // A client asks and does nothing else: the host decides, and the answer comes back as
+            // this event. Skipping it when the name matched -- on the reasoning that we had already
+            // done it when we asked -- meant a client could never get into a locker at all. It is
+            // only the host that has already applied its own, and the host does not receive its own
+            // broadcasts.
+            if (event.player == LocalPlayerId() && m_sessionMode != SessionMode::Host)
+            {
+                if (event.flag)
+                {
+                    EnterHidingSpot(static_cast<int>(event.index));
+                }
+                else if (m_hidingSpot == static_cast<int>(event.index))
+                {
+                    LeaveHidingSpot();
+                }
+            }
+            if (!event.flag)
+            {
+                m_interactions.SetVerb(spot->entity, "Hide in");
+            }
         }
         break;
 
@@ -5417,7 +5462,19 @@ void PredationGame::TryInteract()
     const InteractionSystem::Focus& focus = m_interactions.CurrentFocus();
     if (m_hidingSpot >= 0)
     {
-        LeaveHidingSpot();
+        // Leaving is the same interaction as entering, so it takes the same road: a client asks,
+        // the host decides and tells everybody. Done as a local call it told nobody, and every
+        // other machine kept the locker shut and occupied for the rest of the match.
+        const int spot = m_hidingSpot;
+        if (m_sessionMode == SessionMode::Client)
+        {
+            m_client.SendInteract(static_cast<uint8_t>(InteractionKind::HidingSpot),
+                                  static_cast<uint8_t>(spot));
+        }
+        else
+        {
+            PerformInteraction(InteractionKind::HidingSpot, spot, LocalPlayerId());
+        }
         return;
     }
     if (!focus.valid)

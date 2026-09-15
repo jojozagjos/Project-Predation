@@ -93,6 +93,10 @@ public:
         float insideYaw = 0.0f;
         int doorIndex = -1;
         bool occupied = false;
+        // Who is inside, so the interaction can tell "get out" from "somebody else is in there".
+        // Without it a locker could only ever be entered, which is why leaving one was never sent
+        // to anybody and everybody else saw it shut for the rest of the game.
+        uint8_t occupant = 0;
     };
 
     // `weapons` is optional and only affects appearance: with it, a dropped rifle looks like the

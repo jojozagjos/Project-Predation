@@ -195,6 +195,11 @@ void WorldObjects::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physic
                                  0.0f, glm::radians(105.0f),
                                  {lockerInnerHalfWidth * 2.0f, lockerSize.y, 0.06f}, "locker_door", false);
         spot.doorEntity = m_doors[static_cast<size_t>(spot.doorIndex)].entity;
+        // Standing open to begin with. A row of shut lockers is a row of cupboards: nothing about
+        // them says they are somewhere to get into, and the first thing a player does with one is
+        // open it. Open, the space inside is visible from across the room, which is the whole point
+        // of a hiding place -- you have to be able to see it to decide to run for it.
+        SetDoorOpen(spot.doorIndex, true, interactions);
 
         const auto index = static_cast<int>(m_hidingSpots.size());
         m_hidingSpots.push_back(spot);
