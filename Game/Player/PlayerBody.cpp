@@ -1307,7 +1307,40 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
     // Aiming takes it back to one, because sighted the weapon has to lie on the view axis exactly --
     // and the sights refuse to come up where there is no room for the weapon, so the two never
     // disagree about somewhere it cannot go.
-    const float holdPitch = holdPitchRaw * glm::mix(m_config.weaponCarryRise, 1.0f, aim);
+    // How far the *position* frame is allowed to pitch, which is a different question from how far
+    // the barrel may point and has its own limit.
+    //
+    // Measured, because this has been reported four times and guessed at three: the hands reach
+    // 26 cm above the eye at eighty-five degrees of look pressed against a wall, and 25 cm with no
+    // wall anywhere. The wall contributes a centimetre. It was never a wall bug -- it is that the
+    // weapon sits on an offset from the eye of about (forward 0.45, down 0.20) measured in a frame
+    // that pitches with the view, so craning the neck back rotates "forward" until it is "up" and
+    // carries the hands with it. Height above the eye is 0.45 sin(hold) - 0.20 cos(hold): at
+    // eighty-five degrees that is +0.43 m, at twenty-five it is zero.
+    //
+    // Both things cannot be had. A first-person weapon wants to sit still on screen, which means
+    // following the view; a body wants its hands in front of its chest, which means not. Below
+    // sixty degrees they agree and nothing here changes. Above it they do not, and this game draws
+    // the body it is looking out of -- the hands are seen by everybody else, in every mirror and in
+    // third person, while the screen position is only low for the second somebody spends staring
+    // straight up. So the hold stops climbing and the weapon lowers out of frame, which is also
+    // what happens when a person actually looks at the sky with a rifle in their hands.
+    //
+    // Aiming is exempt, as everywhere else: sighted, the weapon has to lie on the view axis.
+    float holdPitch = holdPitchRaw * glm::mix(m_config.weaponCarryRise, 1.0f, aim);
+    {
+        const float knee = glm::radians(m_config.weaponHoldPitchKnee);
+        // The cap is above the knee by construction: easing towards something below where the ease
+        // starts has no room to work in and collapses to a hard stop at the knee.
+        const float cap = glm::radians(std::max(m_config.weaponHoldPitchMaxUp,
+                                                m_config.weaponHoldPitchKnee + 1.0f));
+        if (holdPitch > knee)
+        {
+            const float room = std::max(cap - knee, 1e-4f);
+            const float eased = knee + room * (1.0f - std::exp(-(holdPitch - knee) / room));
+            holdPitch = glm::mix(eased, holdPitch, aim);
+        }
+    }
     const float hp = std::cos(holdPitch);
     const glm::vec3 holdForward{std::sin(view.yaw) * hp, std::sin(holdPitch), -std::cos(view.yaw) * hp};
     const glm::vec3 holdRight = carryRight;
@@ -2760,7 +2793,23 @@ void PlayerBody::UpdateCrawlArms(const PlayerState& state, const PlayerView& vie
         const float sideSign = side == kLeft ? -1.0f : 1.0f;
         const float phase = crawlPhase + (side == kLeft ? 0.0f : glm::pi<float>());
 
-        const float reach = std::cos(phase) * m_config.crawlReach * m_gaitWeight;
+        // Negative cosine, and the sign is the whole of what made the crawl look like a crawl
+        // backwards.
+        //
+        // `reach` is how far forward of the shoulder the hand sits, and `lift` says when it is off
+        // the floor. A crawl is: swing the hand forward while it is in the air, plant it, then let
+        // the body travel over it -- which from the shoulder's point of view is the hand moving
+        // backward while it is planted.
+        //
+        // With a positive cosine those two ran the wrong way round. The hand swung backward through
+        // the air and then pushed forward along the floor while planted, and a planted hand pushing
+        // forward drives the body backwards. The player was walking one way and their arms were
+        // rowing the other, which is exactly what "the crawl forward looks more like a crawl
+        // backwards, like you push yourself back" is.
+        //
+        // Negated, the lift and the reach agree: hand forward while in the air over (0, pi), planted
+        // and travelling back over (pi, 2pi).
+        const float reach = -std::cos(phase) * m_config.crawlReach * m_gaitWeight;
         const float lift = std::max(0.0f, std::sin(phase)) * m_config.crawlLift * m_gaitWeight;
 
         // On the back you do not reach ahead and pull; you dig your elbows in beside you and push.
@@ -2995,8 +3044,11 @@ void PlayerBody::UpdateLegs(const PlayerState& state, const PlayerView& view,
         // legs work like a frog kick, alternately drawing up and pushing back.
         if (m_flatness > 0.001f)
         {
+            // Opposite arm, opposite leg, which is how anybody actually crawls: the left arm reaches
+            // with the right knee. The sides are swapped from what they were because the arms' own
+            // phase has been corrected above, and the pairing is relative to that.
             const float drawn =
-                (std::cos(crawlPhase + (side == kLeft ? glm::pi<float>() : 0.0f)) * 0.5f + 0.5f) *
+                (std::cos(crawlPhase + (side == kLeft ? 0.0f : glm::pi<float>())) * 0.5f + 0.5f) *
                 m_gaitWeight;
             const float back = glm::mix(0.96f, 0.56f, drawn) * legSpan;
 
@@ -3078,7 +3130,31 @@ void PlayerBody::UpdateLegs(const PlayerState& state, const PlayerView& view,
         // can follow its height without a second trace.
         const glm::vec3 groundNormal = hit ? hit.normal : glm::vec3(0.0f, 1.0f, 0.0f);
         const float base = view.renderPosition.y;
-        const float rise = glm::mix(m_config.maxFootRise, 0.10f, m_flatness);
+        // How far above the body's own base a foot is allowed to be placed.
+        //
+        // Lying down it was a flat ten centimetres, and that is right for the case it was written
+        // for -- a prone body beside a low wall must not put a foot on top of it -- and wrong for
+        // every slope. Crawling down a ramp, the trailing foot is genuinely uphill of the body by
+        // however far behind it is times the gradient: a foot 0.9 m back on a 35 degree ramp is
+        // 0.63 m above the hips. Clamped to ten centimetres it was forced down into the ramp, and
+        // the legs disappeared into it.
+        //
+        // So the allowance follows the ground rather than being a number. The trace already knows
+        // which way the surface under this foot faces, and a slope is exactly what that normal
+        // measures: a ramp lets the foot rise as far as the ramp itself rises over that distance,
+        // and the flat top of a low wall -- whose normal points straight up, however tall the wall
+        // is -- allows nothing extra and stays clamped. The wall case that this limit exists for is
+        // unaffected, because a wall's top is flat.
+        float rise = m_config.maxFootRise;
+        if (m_flatness > 0.001f)
+        {
+            const float ny = std::max(groundNormal.y, 0.2f);
+            const float gradient = std::sqrt(std::max(1.0f - ny * ny, 0.0f)) / ny;
+            const glm::vec3 fromBase{target.x - view.renderPosition.x, 0.0f,
+                                     target.z - view.renderPosition.z};
+            const float flatRise = 0.10f + glm::length(fromBase) * gradient;
+            rise = glm::mix(m_config.maxFootRise, flatRise, m_flatness);
+        }
         float groundY =
             hit ? std::clamp(hit.position.y, base - m_config.maxFootDrop, base + rise) : base;
         // How far down the real ground is, before that clamp and without pinning. This is the only

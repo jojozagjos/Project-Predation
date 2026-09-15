@@ -362,6 +362,71 @@ TEST_CASE("Strafing turns the hips while the torso stays aimed", "[body][pose]")
     REQUIRE(chest.x < hips.x - 0.25f);
 }
 
+TEST_CASE("A planted crawling hand stays put while the body goes over it", "[body][pose][prone]")
+{
+    // This is what a crawl is, and getting the sign wrong on one cosine reverses it.
+    //
+    // The hand swings forward through the air, plants, and then the body travels over it -- so
+    // while it is down, the hand barely moves in the world and moves backward relative to the
+    // shoulder. Run the other way round it swings backward through the air and pushes forward along
+    // the floor, and a planted hand pushing forward drives the body backwards. That is exactly what
+    // it looked like, and it is invisible in a screenshot: the pose is identical, only the order is
+    // wrong.
+    //
+    // So this measures the thing itself. Crawl forward at a steady speed, and compare how far the
+    // hand travels in the world while it is low against how far the body travels in the same time.
+    BodyHarness harness;
+    harness.SetStance(PlayerStance::Prone);
+    harness.input.move = {0.0f, 1.0f};
+    harness.Settle(240);
+
+    float handTravel = 0.0f;
+    float bodyTravel = 0.0f;
+    int plantedSamples = 0;
+    glm::vec3 previousHand = harness.Bone(harness.Rig().hand[0]);
+    glm::vec3 previousBody = harness.View().renderPosition;
+    float lowest = std::numeric_limits<float>::max();
+    float highest = -std::numeric_limits<float>::max();
+    for (int i = 0; i < 240; ++i)
+    {
+        harness.Tick();
+        const glm::vec3 hand = harness.Bone(harness.Rig().hand[0]);
+        lowest = std::min(lowest, hand.y);
+        highest = std::max(highest, hand.y);
+        previousHand = hand;
+        previousBody = harness.View().renderPosition;
+    }
+    // The hand really does leave the floor and come back, or the rest of this measures nothing.
+    INFO("the hand swung through " << (highest - lowest) * 1000.0f << " mm of height");
+    REQUIRE(highest - lowest > 0.01f);
+
+    const float plantedBelow = lowest + (highest - lowest) * 0.25f;
+    previousHand = harness.Bone(harness.Rig().hand[0]);
+    previousBody = harness.View().renderPosition;
+    for (int i = 0; i < 240; ++i)
+    {
+        harness.Tick();
+        const glm::vec3 hand = harness.Bone(harness.Rig().hand[0]);
+        const glm::vec3 body = harness.View().renderPosition;
+        if (hand.y <= plantedBelow)
+        {
+            handTravel += glm::length(glm::vec2(hand.x - previousHand.x, hand.z - previousHand.z));
+            bodyTravel += glm::length(glm::vec2(body.x - previousBody.x, body.z - previousBody.z));
+            ++plantedSamples;
+        }
+        previousHand = hand;
+        previousBody = body;
+    }
+
+    REQUIRE(plantedSamples > 20);
+    REQUIRE(bodyTravel > 0.05f);
+    INFO("while planted the hand moved " << handTravel << " m and the body moved " << bodyTravel);
+    // A hand that is planted is a hand the world is going past. It does not have to be perfectly
+    // still -- the shoulder it hangs off is rolling and the arm is finite -- but it must not be
+    // keeping up with the body, which is what running the cycle backwards produced.
+    CHECK(handTravel < bodyTravel * 0.75f);
+}
+
 TEST_CASE("Crawling reaches the hands forward and cycles them", "[body][pose]")
 {
     BodyHarness harness;
@@ -3153,7 +3218,9 @@ TEST_CASE("The weapon stays put on screen as the view pitches", "[body][pose][we
 
     float worst = 0.0f;
     float worstAt = 0.0f;
-    for (float look = -70.0f; look <= 80.0f; look += 10.0f)
+    // Up to fifty-five degrees, which is the range anybody plays in. Past that the weapon
+    // deliberately stops following the view -- see the test below for why and for the numbers.
+    for (float look = -70.0f; look <= 55.0f; look += 10.0f)
     {
         harness.input.pitch = glm::radians(look);
         harness.Settle(60);
@@ -3169,9 +3236,79 @@ TEST_CASE("The weapon stays put on screen as the view pitches", "[body][pose][we
     INFO("the weapon moved " << worst << " m in the view frame, worst at " << worstAt
                              << " degrees; level offset was " << level.x << ", " << level.y << ", "
                              << level.z);
-    // Some movement is wanted: the weapon settles and sways, and the pose changes with the stance.
-    // What must not happen is it leaving the frame, which at this distance is about a hand's width.
-    CHECK(worst < 0.12f);
+    // Some movement is wanted: the weapon settles and sways, the pose changes with the stance, and
+    // above about forty degrees of look the hold deliberately stops following the view so the hands
+    // do not end up over the head -- see the test below for the measurements behind that.
+    //
+    // The budget used to be 0.12 m, which is a hand's width and was chosen when following the view
+    // was the only constraint there was. It cannot survive the other one: the on-screen movement
+    // for a hold that lags the view by D degrees is 2 * 0.49 * sin(D/2), the hands sit at eye level
+    // at a hold pitch of about 25 degrees, and those two together require a 20 degree lag by a 45
+    // degree look -- which is 0.17 m. So the number is what the design actually allows rather than
+    // what was hoped for, and what it still guards is the thing that matters: the weapon does not
+    // leave the frame.
+    CHECK(worst < 0.22f);
+}
+
+TEST_CASE("Looking near straight up lowers the weapon rather than raising the hands",
+          "[body][pose][weapon]")
+{
+    // The other side of the test above, and the reason its sweep stops at fifty-five degrees.
+    //
+    // A first-person weapon wants to sit still on screen, which means following the view. A body
+    // wants its hands in front of its chest, which means not following it. Below about sixty
+    // degrees those are the same place. Above it they are not: the weapon sits on an offset from
+    // the eye of roughly (forward 0.45, down 0.20) measured in a frame that pitches with the view,
+    // so craning the neck back rotates "forward" until it is "up" and takes the hands with it --
+    // 0.45 sin(pitch) - 0.20 cos(pitch), which at eighty-five degrees is 0.43 m above the eye.
+    //
+    // Measured before it was changed: 26 cm above the eye pressed against a wall, and 25 cm with no
+    // wall anywhere, which is what settled it. It was reported as a wall bug four times and the
+    // wall was worth one centimetre of it.
+    //
+    // This game draws the body it is looking out of, so the hands win: they are seen by everybody
+    // else, in every mirror and in third person, and the screen position is only low for the second
+    // somebody spends staring at the sky -- which is also when a real person cannot see their own
+    // rifle. So above the knee the hold stops climbing and the weapon lowers out of frame.
+    BodyHarness harness;
+    WeaponDefinition definition;
+    ModelAsset model;
+    if (!LoadShippedCarbine(harness, definition, model))
+    {
+        WARN("no shipped carbine to test against");
+        return;
+    }
+    harness.Settle(120);
+
+    const auto heightAboveEye = [&](float lookDegrees)
+    {
+        harness.input.pitch = glm::radians(lookDegrees);
+        harness.Settle(90);
+        const float eye = harness.View().eyePosition.y;
+        return std::max(harness.Bone(harness.Rig().hand[0]).y,
+                        harness.Bone(harness.Rig().hand[1]).y) -
+               eye;
+    };
+
+    // Level, and at the top of the range.
+    const float atLevel = heightAboveEye(0.0f);
+    const float atSteep = heightAboveEye(85.0f);
+    INFO("hands sat " << atLevel * 100.0f << " cm above the eye level, and " << atSteep * 100.0f
+                      << " cm looking up 85 degrees");
+    CHECK(atLevel < 0.0f);
+    CHECK(atSteep < 0.0f);
+
+    // And the weapon really does lower on screen as it does that, rather than the hands being
+    // clamped while everything else carries on -- which would take the sights off the barrel.
+    harness.input.pitch = glm::radians(85.0f);
+    harness.Settle(90);
+    const float steepHold = harness.body.WeaponOrigin().y - harness.View().eyePosition.y;
+    harness.input.pitch = 0.0f;
+    harness.Settle(90);
+    const float levelHold = harness.body.WeaponOrigin().y - harness.View().eyePosition.y;
+    INFO("weapon origin sat " << levelHold << " m below the eye level, " << steepHold
+                              << " m looking up");
+    CHECK(steepHold > levelHold); // it does still rise, just nothing like as far as the view
 }
 
 TEST_CASE("Diagnostic: the weapon's height against a low wall", "[.][body][weapon][diag]")
@@ -3431,6 +3568,60 @@ TEST_CASE("Against a wall the barrel stays where the correction still works", "[
     // Two and a half degrees of look should move the barrel by something of that order. Ten degrees
     // is generous and still nothing like the ninety this used to do.
     CHECK(worstJump < 10.0f);
+}
+
+TEST_CASE("Pressed against a tall wall the weapon never goes above the eye", "[body][pose][weapon]")
+{
+    // The reported case, as geometry: the back of a staircase landing is a solid box two and a bit
+    // metres tall, and walking into it with a long weapon put the gun and both arms over the
+    // player's head. What it should do is tip the muzzle down and leave the hands where hands go.
+    //
+    // A wall taller than the player is the hard case and the reason. Against a low one the
+    // correction fades out as the barrel clears the top; against a tall one it is engaged at every
+    // angle the player can look, so whatever it does to the pose, it does the whole time.
+    BodyHarness harness;
+    WeaponDefinition definition;
+    ModelAsset model;
+    if (!LoadShippedCarbine(harness, definition, model))
+    {
+        WARN("no shipped carbine to test against");
+        return;
+    }
+    // Taller than the player and right in front of them. CreateBox takes half extents.
+    harness.physics.CreateBox({3.0f, 1.2f, 1.5f}, Transform{{0.0f, 1.2f, -2.0f}}, BodyMotion::Static);
+    harness.physics.OptimizeBroadPhase();
+
+    // Walk into it and stay there.
+    harness.input.move = {0.0f, 1.0f};
+    harness.Settle(180);
+
+    float worstAboveEye = -10.0f;
+    float worstAt = 0.0f;
+    for (float look = -20.0f; look <= 85.0f; look += 5.0f)
+    {
+        harness.input.pitch = glm::radians(look);
+        harness.Settle(90);
+        const float eye = harness.View().eyePosition.y;
+        // The hands, which is what was reported -- "my arms and gun go above my head".
+        //
+        // Not the muzzle. A barrel points where the player is looking, so looking up puts the muzzle
+        // up, and measuring that calls the correct behaviour a bug. What must not happen is the
+        // hands leaving the chest and ending up over the head.
+        const float highest = std::max(harness.Bone(harness.Rig().hand[0]).y,
+                                       harness.Bone(harness.Rig().hand[1]).y);
+        const float above = highest - eye;
+        if (above > worstAboveEye)
+        {
+            worstAboveEye = above;
+            worstAt = look;
+        }
+    }
+
+    INFO("the hands reached " << worstAboveEye * 100.0f << " cm above the eye, looking up "
+                              << worstAt << " degrees");
+    // Hands belong in front of the chest. Level with the eye is already high; above it is over the
+    // head, which is the thing being reported.
+    CHECK(worstAboveEye < 0.0f);
 }
 
 TEST_CASE("Walking into a wall leaves the weapon in front of the player", "[body][pose][weapon]")

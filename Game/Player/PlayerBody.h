@@ -175,6 +175,12 @@ public:
         // follows almost all the way; a corridor, and it stays where the correction can still work.
         float weaponCarryPitchMaxUp = 82.0f;
         float weaponCarryPitchMaxUpNearWall = 55.0f;
+        // And the same for where the weapon is *held*, as opposed to where it points. Below the knee
+        // the hold follows the view exactly and nothing about normal play changes; above it, it eases
+        // towards the cap, which is the angle at which the hands sit level with the eye rather than
+        // over the head. See where these are used for the measurements.
+        float weaponHoldPitchKnee = 20.0f;
+        float weaponHoldPitchMaxUp = 23.0f;
         // The weapon lags a turn and then catches up, which is what gives it weight.
         float weaponSwayAmount = 0.34f;   // how far a turn drags the weapon behind the view
         float weaponSwayRecover = 11.0f;  // how fast it catches up again
@@ -253,6 +259,10 @@ public:
         //
         // Measured from the weapon's own rear point, so it is the same rule for all of them.
         float weaponWallTipDrop = 0.80f;
+        // How far below the eye the hands are held at the very most. Only ever reached by looking
+        // almost straight up, where keeping the weapon still on screen would otherwise put it over
+        // the head: see where this is used.
+        float weaponHoldEyeMargin = 0.06f;
         float weaponWallTipSpeed = 13.0f;
         // How much barrel may be inside something before the drop starts, and over how much more it
         // comes fully in. Both in metres. See the note where they are used: the drop is a
