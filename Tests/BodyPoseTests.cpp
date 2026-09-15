@@ -2974,16 +2974,20 @@ TEST_CASE("Walking up a slope does not rock the hips from side to side", "[body]
 
     INFO("hip roll swung " << slopeSwing << " degrees on the slope and " << flatSwing
                            << " on the flat");
-    // Reading the slope off the feet added roll on top of that sway, once per step. Following the
-    // ground's normal instead adds essentially nothing.
+    // Reading the slope off the feet added roll on top of that sway, once per step. The hips do not
+    // follow the ground at all now, so walking up a ramp should add nothing to the flat walk.
     CHECK(slopeSwing < flatSwing + 1.0f);
 }
 
-TEST_CASE("The hips drop towards the low side of a cross slope", "[body][gait][slope]")
+TEST_CASE("The hips stay level on a cross slope", "[body][gait][slope]")
 {
-    // And the tilt still has to happen, or the fix above would be "hold the hips level", which
-    // brings back the locked leg and the foot hanging in the air that it was added to solve.
-    // Facing across the ramp: the slope now runs left to right, which is where the hips can help.
+    // The hips used to tilt to follow the ground across them, on the reasoning that a body whose
+    // legs are exactly long enough to stand on the flat cannot otherwise reach its downhill foot.
+    // That reasoning is sound and the result still looked wrong: from behind, standing on a ramp
+    // rotated the whole character to lie along the slope, like a figure glued to a hillside. A
+    // person standing across a ramp keeps their head up and takes the difference in their knees.
+    //
+    // So the hips are held upright and the legs absorb it. What that costs is measured below.
     BodyHarness harness(15.0f);
     harness.SetStance(PlayerStance::Standing);
     harness.input.yaw = glm::half_pi<float>(); // looking down +X, so the slope crosses the body
@@ -2994,8 +2998,45 @@ TEST_CASE("The hips drop towards the low side of a cross slope", "[body][gait][s
     const float rollDegrees = glm::degrees(std::asin(std::clamp(glm::dot(up, right), -1.0f, 1.0f)));
 
     INFO("hip roll on a 15 degree cross slope: " << rollDegrees << " degrees");
-    CHECK(std::abs(rollDegrees) > 2.0f);
-    CHECK(std::abs(rollDegrees) < harness.body.Tuning().hipSlopeMax + 1.0f);
+    // Standing still there is no gait sway to allow for, so this is as close to nothing as the
+    // smoothing will settle at.
+    CHECK(std::abs(rollDegrees) < 1.0f);
+}
+
+TEST_CASE("Both feet still reach the ground across a slope", "[body][gait][slope]")
+{
+    // The cost of holding the hips level: the downhill leg has further to stretch. This is the
+    // measurement that decides whether that is affordable, and it is a floor test rather than a
+    // tuning one — a foot hanging in the air is visible from across the room.
+    //
+    // Across every ramp the test map has, because the gentlest one proves the least. 45 is left out
+    // only because the character slides down it and there is no standing still to measure.
+    const float slope = GENERATE(15.0f, 25.0f, 35.0f);
+    BodyHarness harness(slope);
+    harness.SetStance(PlayerStance::Standing);
+    harness.input.yaw = glm::half_pi<float>(); // looking down +X, so the slope crosses the body
+    harness.Settle(240);
+
+    // Straight down from each ankle to whatever is under it. The ground is a tilted plane, so the
+    // two feet are over different heights and neither can be checked against a constant.
+    const auto clearance = [&](BoneIndex bone)
+    {
+        const glm::vec3 foot = harness.Bone(bone);
+        const RayHit hit = harness.physics.RayCast(foot + glm::vec3(0.0f, 1.0f, 0.0f),
+                                                  glm::vec3(0.0f, -1.0f, 0.0f), 4.0f);
+        REQUIRE(hit);
+        return foot.y - hit.position.y;
+    };
+
+    const float left = clearance(harness.Rig().foot[0]);
+    const float right = clearance(harness.Rig().foot[1]);
+    INFO("on a " << slope << " degree cross slope the ankles sit " << left << " m and " << right
+                 << " m above it");
+    // An ankle sits above the sole, so neither reading is zero. What matters is that the downhill
+    // one is not hanging: half an ankle's height again is already visible from across the room.
+    CHECK(std::abs(left - right) < 0.04f);
+    CHECK(left < harness.Rig().ankleHeight + 0.04f);
+    CHECK(right < harness.Rig().ankleHeight + 0.04f);
 }
 
 TEST_CASE("Reloading on your front keeps both hands above the floor", "[body][pose][weapon][prone]")
