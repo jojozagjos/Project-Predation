@@ -137,6 +137,11 @@ const std::filesystem::path& Paths::UserDataDir()
     return State().userDataDir;
 }
 
+std::filesystem::path Paths::UserBindings()
+{
+    return State().userDataDir / "input.json";
+}
+
 const std::vector<std::filesystem::path>& Paths::SearchRoots()
 {
     return State().searchRoots;

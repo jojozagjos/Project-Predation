@@ -60,6 +60,7 @@ public:
     bool WasKeyReleased(SDL_Scancode key) const;
     bool IsMouseDown(MouseButton button) const;
     bool WasMousePressed(MouseButton button) const;
+    bool WasMousePressedRaw(MouseButton button) const;
     bool WasMouseReleased(MouseButton button) const;
     glm::vec2 MouseDelta() const;
     glm::vec2 MousePosition() const;
@@ -67,8 +68,22 @@ public:
 
     // Actions.
     bool LoadBindings(const std::filesystem::path& file);
+    // Merges a file over what is already bound: an action the file names replaces that action
+    // outright, and one it does not name keeps whatever it had.
+    //
+    // This is what makes rebinding possible without a copy of every default. The shipped file in
+    // Assets is the whole set; the player's file next to their settings holds only the ones they
+    // have changed. Adding an action to the game then works for everybody who has ever rebound
+    // anything, instead of arriving unbound because their file was written before it existed.
+    bool MergeBindings(const std::filesystem::path& file);
+    // Writes the actions named in `only` out as a bindings file. Empty writes all of them.
+    bool SaveBindings(const std::filesystem::path& file,
+                      const std::vector<std::string>& only = {}) const;
     void ClearBindings();
     void BindAction(std::string_view action, const Binding& binding);
+    // Replaces everything bound to an action. An empty list leaves it bound to nothing, which is a
+    // thing a player is allowed to want.
+    void SetAction(std::string_view action, const std::vector<Binding>& bindings);
     bool IsActionDown(std::string_view action) const;
     bool WasActionPressed(std::string_view action) const;
     bool WasActionReleased(std::string_view action) const;

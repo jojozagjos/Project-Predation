@@ -776,6 +776,54 @@ TEST_CASE("Loose objects are sent as state, and stay small", "[net][protocol]")
     }
 }
 
+TEST_CASE("Whether a torch is lit reaches everybody else", "[net][protocol]")
+{
+    // Nothing else in the protocol implies this: it is a key somebody pressed. Without it a torch is
+    // visible only to the player holding it, so two people in the same dark room see two different
+    // rooms, and that is not something either of them can tell is happening.
+    SnapshotMessage sent;
+    sent.tick = 99;
+    sent.count = 2;
+    sent.players[0].playerId = 0;
+    sent.players[0].torchOn = true;
+    sent.players[1].playerId = 1;
+    sent.players[1].torchOn = false;
+
+    BitWriter writer;
+    WriteSnapshot(writer, sent);
+    const std::vector<uint8_t>& bytes = writer.Finish();
+    BitReader reader(bytes.data(), bytes.size());
+    SnapshotMessage received;
+    REQUIRE(ReadSnapshot(reader, received));
+    REQUIRE(received.count == 2);
+    CHECK(received.players[0].torchOn);
+    CHECK_FALSE(received.players[1].torchOn);
+
+    // And the other way, so a bit read from the wrong place cannot pass by being true both times.
+    sent.players[0].torchOn = false;
+    sent.players[1].torchOn = true;
+    BitWriter second;
+    WriteSnapshot(second, sent);
+    const std::vector<uint8_t>& swapped = second.Finish();
+    BitReader swappedReader(swapped.data(), swapped.size());
+    SnapshotMessage back;
+    REQUIRE(ReadSnapshot(swappedReader, back));
+    CHECK_FALSE(back.players[0].torchOn);
+    CHECK(back.players[1].torchOn);
+
+    // A client tells the host the same thing on the way up, or the host has nothing to forward.
+    InputMessage input;
+    input.count = 1;
+    input.torchOn = true;
+    BitWriter up;
+    WriteInput(up, input);
+    const std::vector<uint8_t>& upBytes = up.Finish();
+    BitReader upReader(upBytes.data(), upBytes.size());
+    InputMessage upBack;
+    REQUIRE(ReadInput(upReader, upBack));
+    CHECK(upBack.torchOn);
+}
+
 TEST_CASE("A dropped weapon keeps its magazine all the way to everybody else", "[net][protocol]")
 {
     // The wire format for this was right and tested, and a weapon dropped by anybody other than the

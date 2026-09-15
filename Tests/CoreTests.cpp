@@ -14,6 +14,8 @@
 #include <nlohmann/json.hpp>
 
 #include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <string>
 #include <vector>
 
@@ -150,6 +152,89 @@ TEST_CASE("Config archive round-trips through a file", "[config]")
     REQUIRE(load.fileFound);
     REQUIRE(archived.Get() == 77);
     std::filesystem::remove(file);
+}
+
+TEST_CASE("A rebound key is saved, and only the ones that changed", "[input][bindings]")
+{
+    // A rebinding that does not survive a restart is not a rebinding. And the file has to hold the
+    // difference rather than the whole set: a copy of every default goes stale the first time an
+    // action is added to the game, arriving unbound for everybody who had ever touched a key.
+    const std::filesystem::path dir =
+        std::filesystem::temp_directory_path() / "pred_bindings_test";
+    std::error_code ec;
+    std::filesystem::remove_all(dir, ec);
+    std::filesystem::create_directories(dir, ec);
+    const std::filesystem::path shipped = dir / "shipped.json";
+    const std::filesystem::path mine = dir / "mine.json";
+
+    {
+        std::ofstream out(shipped);
+        out << R"({"actions":{"jump":["Space"],"fire":["Mouse1"],"crouch":["Left Ctrl","C"]}})";
+    }
+
+    Input input;
+    REQUIRE(input.LoadBindings(shipped));
+    // Rebind jump to J, leave the others alone.
+    Input::Binding j;
+    REQUIRE(Input::ParseBinding("J", j));
+    input.SetAction("jump", {j});
+
+    // Only the changed one is written.
+    REQUIRE(input.SaveBindings(mine, {"jump"}));
+
+    {
+        std::ifstream in(mine);
+        REQUIRE(in.is_open());
+        const std::string text((std::istreambuf_iterator<char>(in)),
+                               std::istreambuf_iterator<char>());
+        CHECK(text.find("jump") != std::string::npos);
+        // The untouched ones stay out of it, which is the whole point.
+        CHECK(text.find("crouch") == std::string::npos);
+        CHECK(text.find("fire") == std::string::npos);
+    }
+
+    // A fresh session: shipped first, then the overrides on top.
+    Input restarted;
+    REQUIRE(restarted.LoadBindings(shipped));
+    REQUIRE(restarted.MergeBindings(mine));
+    CHECK(restarted.ActionHasKey("jump", SDL_SCANCODE_J));
+    CHECK_FALSE(restarted.ActionHasKey("jump", SDL_SCANCODE_SPACE));
+    // And everything it did not mention is untouched, including the action with two keys on it.
+    CHECK(restarted.ActionHasKey("crouch", SDL_SCANCODE_LCTRL));
+    CHECK(restarted.ActionHasKey("crouch", SDL_SCANCODE_C));
+
+    std::filesystem::remove_all(dir, ec);
+}
+
+TEST_CASE("An action cleared on purpose stays cleared", "[input][bindings]")
+{
+    // Clearing has to be expressible, or "I do not want this bound to anything" is impossible to
+    // say: an empty entry that got erased would fall back to the shipped default on the next load
+    // and quietly rebind a key somebody had deliberately taken away.
+    const std::filesystem::path dir =
+        std::filesystem::temp_directory_path() / "pred_bindings_clear";
+    std::error_code ec;
+    std::filesystem::remove_all(dir, ec);
+    std::filesystem::create_directories(dir, ec);
+    const std::filesystem::path shipped = dir / "shipped.json";
+    const std::filesystem::path mine = dir / "mine.json";
+    {
+        std::ofstream out(shipped);
+        out << R"({"actions":{"lean_left":["Q"]}})";
+    }
+
+    Input input;
+    REQUIRE(input.LoadBindings(shipped));
+    CHECK(input.ActionHasKey("lean_left", SDL_SCANCODE_Q));
+    input.SetAction("lean_left", {});
+    REQUIRE(input.SaveBindings(mine, {"lean_left"}));
+
+    Input restarted;
+    REQUIRE(restarted.LoadBindings(shipped));
+    REQUIRE(restarted.MergeBindings(mine));
+    CHECK_FALSE(restarted.ActionHasKey("lean_left", SDL_SCANCODE_Q));
+
+    std::filesystem::remove_all(dir, ec);
 }
 
 TEST_CASE("Input binding names parse to scancodes and mouse buttons", "[input]")

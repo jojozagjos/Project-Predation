@@ -179,6 +179,13 @@ bool Input::IsMouseDown(MouseButton button) const
     return !m_mouseBlocked && button != MouseButton::Count && m_mouseDown[static_cast<size_t>(button)];
 }
 
+// Ignoring the block, for the one caller that has to see a click while a settings window has the
+// mouse: the rebinding screen, where the click IS the input being read.
+bool Input::WasMousePressedRaw(MouseButton button) const
+{
+    return button != MouseButton::Count && m_mousePressed[static_cast<size_t>(button)];
+}
+
 bool Input::WasMousePressed(MouseButton button) const
 {
     return !m_mouseBlocked && button != MouseButton::Count && m_mousePressed[static_cast<size_t>(button)];
@@ -202,6 +209,93 @@ glm::vec2 Input::MousePosition() const
 float Input::WheelDelta() const
 {
     return m_mouseBlocked ? 0.0f : m_wheelDelta;
+}
+
+void Input::SetAction(std::string_view action, const std::vector<Binding>& bindings)
+{
+    const std::string key(action);
+    if (bindings.empty())
+    {
+        // Kept as an empty entry rather than erased, so "this action is deliberately bound to
+        // nothing" survives being saved and loaded. Erasing it would make the next load fall back to
+        // the default and quietly rebind a key the player had cleared on purpose.
+        m_actions[key].clear();
+        return;
+    }
+    m_actions[key] = bindings;
+}
+
+bool Input::SaveBindings(const std::filesystem::path& file,
+                         const std::vector<std::string>& only) const
+{
+    nlohmann::json actions = nlohmann::json::object();
+    for (const auto& [action, bindings] : m_actions)
+    {
+        if (!only.empty() && std::find(only.begin(), only.end(), action) == only.end())
+        {
+            continue;
+        }
+        nlohmann::json names = nlohmann::json::array();
+        for (const Binding& binding : bindings)
+        {
+            names.push_back(BindingName(binding));
+        }
+        actions[action] = std::move(names);
+    }
+
+    nlohmann::json root;
+    root["actions"] = std::move(actions);
+
+    std::error_code ec;
+    std::filesystem::create_directories(file.parent_path(), ec);
+    std::ofstream stream(file, std::ios::trunc);
+    if (!stream.is_open())
+    {
+        PRED_LOG_ERROR(Platform, "Could not write input bindings to {}", file.string());
+        return false;
+    }
+    stream << root.dump(2) << '\n';
+    PRED_LOG_INFO(Platform, "Saved {} rebound action(s) to {}", root["actions"].size(), file.string());
+    return true;
+}
+
+bool Input::MergeBindings(const std::filesystem::path& file)
+{
+    std::ifstream stream(file);
+    if (!stream.is_open())
+    {
+        return false; // no overrides is the ordinary case, not a problem
+    }
+    const nlohmann::json json = nlohmann::json::parse(stream, nullptr, false, true);
+    if (json.is_discarded() || !json.is_object() || !json.contains("actions") ||
+        !json["actions"].is_object())
+    {
+        PRED_LOG_WARN(Platform, "Ignoring malformed input overrides at {}", file.string());
+        return false;
+    }
+    int changed = 0;
+    for (const auto& [action, keys] : json["actions"].items())
+    {
+        if (!keys.is_array())
+        {
+            continue;
+        }
+        // The file replaces this action outright rather than adding to it, or clearing a binding
+        // would be impossible: every load would put the default back alongside the new one.
+        std::vector<Binding> bindings;
+        for (const auto& keyName : keys)
+        {
+            Binding binding;
+            if (keyName.is_string() && ParseBinding(keyName.get<std::string>(), binding))
+            {
+                bindings.push_back(binding);
+            }
+        }
+        SetAction(action, bindings);
+        ++changed;
+    }
+    PRED_LOG_INFO(Platform, "Applied {} rebound action(s) from {}", changed, file.string());
+    return true;
 }
 
 bool Input::LoadBindings(const std::filesystem::path& file)

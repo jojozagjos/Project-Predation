@@ -2710,6 +2710,245 @@ void PredationGame::DrawLobby()
     }
 }
 
+// The key list, and the whole of rebinding.
+//
+// Every action is named here rather than enumerated out of the input system, because that map is in
+// whatever order a hash table put it and a settings screen has to be in the order somebody thinks
+// about the game: moving, then fighting, then carrying, then the rest.
+void PredationGame::DrawKeyBindings()
+{
+    struct Row
+    {
+        const char* action;
+        const char* label;
+    };
+    static constexpr Row kRows[] = {
+        {nullptr, "Moving"},
+        {"move_forward", "Forward"},
+        {"move_back", "Back"},
+        {"move_left", "Left"},
+        {"move_right", "Right"},
+        {"jump", "Jump"},
+        {"sprint", "Sprint"},
+        {"walk", "Walk"},
+        {"crouch", "Crouch"},
+        {"prone", "Go prone"},
+        {"lean_left", "Lean left"},
+        {"lean_right", "Lean right"},
+        {nullptr, "Fighting"},
+        {"fire", "Fire"},
+        {"aim", "Aim"},
+        {"reload", "Reload"},
+        {nullptr, "Carrying"},
+        {"interact", "Interact"},
+        {"drop", "Drop"},
+        {"inventory", "Inventory"},
+        {"slot_1", "Slot 1"},
+        {"slot_2", "Slot 2"},
+        {"slot_3", "Slot 3"},
+        {"slot_4", "Slot 4"},
+        {"slot_5", "Slot 5"},
+        {"slot_6", "Slot 6"},
+        {nullptr, "Other"},
+        {"voice", "Talk"},
+        {"flashlight", "Torch"},
+        {"toggle_camera", "Change camera"},
+        {"respawn", "Respawn"},
+    };
+
+    Input& input = m_app->GetInput();
+
+    if (!m_rebinding.empty())
+    {
+        ImGui::TextColored({0.95f, 0.85f, 0.45f, 1.0f}, "Press a key or a mouse button.");
+        ImGui::TextDisabled("Escape cancels. Backspace leaves it unbound.");
+    }
+    else
+    {
+        ImGui::TextDisabled("Click a key to change it.");
+    }
+    ImGui::Spacing();
+
+    if (ImGui::BeginTable("##bindings", 2, ImGuiTableFlags_SizingStretchProp))
+    {
+        for (const Row& row : kRows)
+        {
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            if (row.action == nullptr)
+            {
+                ImGui::Spacing();
+                ImGui::TextDisabled("%s", row.label);
+                ImGui::TableNextColumn();
+                continue;
+            }
+            ImGui::TextUnformatted(row.label);
+            ImGui::TableNextColumn();
+
+            // Every key on the action, not only the first. Crouch ships bound to both Ctrl and C,
+            // and a row that showed one of them would silently drop the other the moment anybody
+            // changed it.
+            std::string shown;
+            const auto found = input.Bindings().find(row.action);
+            if (found != input.Bindings().end())
+            {
+                for (const Input::Binding& binding : found->second)
+                {
+                    if (!shown.empty())
+                    {
+                        shown += " / ";
+                    }
+                    shown += Input::BindingName(binding);
+                }
+            }
+            if (shown.empty())
+            {
+                shown = "--";
+            }
+
+            ImGui::PushID(row.action);
+            const bool waiting = m_rebinding == row.action;
+            if (waiting)
+            {
+                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.55f, 0.45f, 0.15f, 1.0f));
+            }
+            if (ImGui::Button(waiting ? "press a key..." : shown.c_str(), {-1.0f, 0.0f}))
+            {
+                m_rebinding = waiting ? std::string() : row.action;
+            }
+            if (waiting)
+            {
+                ImGui::PopStyleColor();
+            }
+            ImGui::PopID();
+        }
+        ImGui::EndTable();
+    }
+
+    ImGui::Spacing();
+    if (ImGui::Button("Put the keys back"))
+    {
+        std::error_code ec;
+        std::filesystem::remove(Paths::UserBindings(), ec);
+        input.LoadBindings(Paths::AssetsRoot() / "Config" / "input.json");
+        m_rebinding.clear();
+    }
+    ImGui::SetItemTooltip("Throws away every key you have changed and reloads the shipped set.");
+}
+
+// Takes the next key or button pressed and gives it to whatever action is waiting for one.
+//
+// Read raw, because a settings window has the keyboard and the mouse: the filtered queries return
+// nothing while an ImGui widget has focus, which is exactly the situation this runs in.
+void PredationGame::UpdateRebinding()
+{
+    if (m_rebinding.empty())
+    {
+        return;
+    }
+    Input& input = m_app->GetInput();
+
+    if (input.WasKeyPressedRaw(SDL_SCANCODE_ESCAPE))
+    {
+        m_rebinding.clear();
+        return;
+    }
+    if (input.WasKeyPressedRaw(SDL_SCANCODE_BACKSPACE))
+    {
+        input.SetAction(m_rebinding, {});
+        input.SaveBindings(Paths::UserBindings(), ChangedActions());
+        m_rebinding.clear();
+        return;
+    }
+
+    Input::Binding chosen;
+    bool got = false;
+    // From 4, which is where SDL's usable scancodes start: below it are reserved values and the
+    // "unknown" slot, and a loop from zero picks one of those up on the first frame.
+    for (int code = 4; code < SDL_SCANCODE_COUNT && !got; ++code)
+    {
+        if (input.WasKeyPressedRaw(static_cast<SDL_Scancode>(code)))
+        {
+            chosen.kind = Input::Binding::Kind::Key;
+            chosen.code = code;
+            got = true;
+        }
+    }
+    // The mouse too. Fire and aim live on it, and a rebinding screen that cannot reach them is a
+    // rebinding screen for everything except the two that matter most.
+    for (int button = 0; button < static_cast<int>(MouseButton::Count) && !got; ++button)
+    {
+        if (input.WasMousePressedRaw(static_cast<MouseButton>(button)))
+        {
+            chosen.kind = Input::Binding::Kind::Mouse;
+            chosen.code = button;
+            got = true;
+        }
+    }
+    if (!got)
+    {
+        return;
+    }
+
+    // Taken off whatever else had it. One key on two actions means pressing it does both, which is
+    // never what somebody rebinding meant and is very hard to work out afterwards.
+    std::vector<std::pair<std::string, std::vector<Input::Binding>>> edits;
+    for (const auto& [action, bindings] : input.Bindings())
+    {
+        if (action == m_rebinding)
+        {
+            continue;
+        }
+        std::vector<Input::Binding> kept;
+        for (const Input::Binding& binding : bindings)
+        {
+            if (binding.kind != chosen.kind || binding.code != chosen.code)
+            {
+                kept.push_back(binding);
+            }
+        }
+        if (kept.size() != bindings.size())
+        {
+            edits.emplace_back(action, std::move(kept));
+        }
+    }
+    // Applied after the walk rather than during it: SetAction writes into the map being iterated.
+    for (auto& [action, kept] : edits)
+    {
+        input.SetAction(action, kept);
+    }
+
+    input.SetAction(m_rebinding, {chosen});
+    input.SaveBindings(Paths::UserBindings(), ChangedActions());
+    m_rebinding.clear();
+}
+
+// Which actions differ from the shipped file, so only those are written out. See Input::MergeBindings
+// for why the player's file holds the difference rather than the whole set.
+std::vector<std::string> PredationGame::ChangedActions() const
+{
+    Input shipped;
+    if (!shipped.LoadBindings(Paths::AssetsRoot() / "Config" / "input.json"))
+    {
+        return {}; // nothing to compare against, so write everything
+    }
+    std::vector<std::string> changed;
+    for (const auto& [action, bindings] : m_app->GetInput().Bindings())
+    {
+        const auto other = shipped.Bindings().find(action);
+        const bool same =
+            other != shipped.Bindings().end() && other->second.size() == bindings.size() &&
+            std::equal(bindings.begin(), bindings.end(), other->second.begin(),
+                       [](const Input::Binding& a, const Input::Binding& b)
+                       { return a.kind == b.kind && a.code == b.code; });
+        if (!same)
+        {
+            changed.push_back(action);
+        }
+    }
+    return changed;
+}
+
 void PredationGame::DrawSettings()
 {
     // One panel, drawn from the menu and from the pause screen alike.
@@ -2768,38 +3007,7 @@ void PredationGame::DrawSettings()
         ImGui::SeparatorText("Keys");
         // A table rather than a paragraph. Twenty bindings written as prose is a sentence nobody
         // finishes, and the one key somebody came to look up is in the middle of it.
-        static constexpr struct
-        {
-            const char* keys;
-            const char* does;
-        } kBindings[] = {
-            {"WASD", "Move"},
-            {"Shift / Alt", "Sprint / walk"},
-            {"Space", "Jump"},
-            {"Ctrl or C / Z", "Crouch / prone"},
-            {"Q / E", "Lean"},
-            {"Mouse 1 / 2", "Fire / aim"},
-            {"R", "Reload"},
-            {"F / G", "Interact / drop"},
-            {"1 to 6, wheel", "Select"},
-            {"Tab", "Inventory"},
-            {"V", "Talk"},
-            {"P", "Change camera"},
-            {"F3 / `", "Overlay / console"},
-        };
-        if (ImGui::BeginTable("##bindings", 2, ImGuiTableFlags_SizingStretchProp))
-        {
-            for (const auto& binding : kBindings)
-            {
-                ImGui::TableNextRow();
-                ImGui::TableNextColumn();
-                ImGui::TextDisabled("%s", binding.keys);
-                ImGui::TableNextColumn();
-                ImGui::TextDisabled("%s", binding.does);
-            }
-            ImGui::EndTable();
-        }
-        ImGui::TextDisabled("Set in Assets/Config/input.json.");
+        DrawKeyBindings();
         ImGui::EndTabItem();
     }
 
@@ -6943,6 +7151,9 @@ void PredationGame::OnUpdate(double dt, double alpha)
         }
         m_relayFailed = failed;
     }
+    // Before the voice and the rest: while a key is being rebound, that key press belongs to the
+    // settings screen and to nothing else.
+    UpdateRebinding();
     UpdateVoice(deltaSeconds);
     UpdateMicrophoneTest(deltaSeconds);
     UpdateSounds(deltaSeconds);

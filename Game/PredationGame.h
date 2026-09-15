@@ -222,6 +222,9 @@ private:
     void StopLobby();
     void DrawLobby();
     void DrawSettings();
+    void DrawKeyBindings();
+    void UpdateRebinding();
+    std::vector<std::string> ChangedActions() const;
     void DrawPauseMenu();
     // Where the weapon sits relative to the eye, for comparing the editor with the game.
     void ReportHold();
@@ -559,6 +562,9 @@ private:
     // and far shorter than anybody's idea of "just now".
     float m_voiceSendingFor = 0.0f;
     bool m_voiceSending = false;
+    // Which action is waiting for a key, empty when none is. A name rather than an index, so it
+    // cannot go stale if the list is reordered.
+    std::string m_rebinding;
     StreamId m_micTestStream = kInvalidStream;
     bool m_torchOn = false;
     bool m_torchAimed = false;

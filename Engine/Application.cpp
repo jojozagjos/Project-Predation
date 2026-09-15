@@ -474,9 +474,20 @@ bool Application::InitSubsystems(const CommandLine& commandLine)
     m_console.AttachLogSink();
     RegisterCoreCommands();
 
+    // The shipped bindings, then whatever the player has rebound on top.
+    //
+    // Two files rather than one, and the player's holds only what they changed. A copy of the whole
+    // set would go stale the first time an action was added to the game: it would arrive unbound for
+    // everybody who had ever touched a key, because their file was written before it existed.
     const std::filesystem::path bindingsFile = Paths::AssetsRoot() / "Config" / "input.json";
     m_input.LoadBindings(bindingsFile);
-    m_fileWatcher.Watch(bindingsFile, [this](const std::filesystem::path& path) { m_input.LoadBindings(path); });
+    m_input.MergeBindings(Paths::UserBindings());
+    m_fileWatcher.Watch(bindingsFile,
+                        [this](const std::filesystem::path& path)
+                        {
+                            m_input.LoadBindings(path);
+                            m_input.MergeBindings(Paths::UserBindings());
+                        });
     m_fileWatcher.Watch(Paths::AssetsRoot() / "Config" / "defaults.json",
                         [this](const std::filesystem::path&) { ReloadConfig(); });
 

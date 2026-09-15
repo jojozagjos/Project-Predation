@@ -23,6 +23,9 @@ public:
     static const std::filesystem::path& ExecutableDir();
     static const std::filesystem::path& AssetsRoot();
     static const std::filesystem::path& UserDataDir();
+    // Where the player.s own key bindings live, beside their settings rather than in Assets: an
+    // install can be replaced or verified without throwing away what somebody rebound.
+    static std::filesystem::path UserBindings();
     static const std::vector<std::filesystem::path>& SearchRoots();
 
     static void AddSearchRoot(const std::filesystem::path& root);
