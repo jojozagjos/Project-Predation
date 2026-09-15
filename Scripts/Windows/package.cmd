@@ -32,6 +32,15 @@ set "BUILD_DIR=%ROOT%\build\%PRESET%"
 set "STAGE=%ROOT%\dist\ProjectPredation"
 set "ZIP=%ROOT%\dist\ProjectPredation-%PRESET%.zip"
 
+rem Run from the repository root, because cmake --preset reads CMakePresets.json out of the working
+rem directory and nothing else. Every path below is absolute, so this is only about that lookup --
+rem but without it the script works when it is run from the root and fails when it is double-clicked,
+rem which is the one way it is meant to be used. build.cmd and test.cmd already did this; this one
+rem did not, and the error it produced blamed a missing presets file in Scripts\Windows.
+rem
+rem setlocal restores the working directory on exit, so there is nothing to undo.
+pushd "%ROOT%"
+
 call "%~dp0vsenv.cmd"
 if errorlevel 1 (
     echo [package] FAIL: Visual Studio environment setup failed

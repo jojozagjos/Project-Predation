@@ -1232,10 +1232,10 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
     //
     // Aiming is exempt and has to be: the sights only mean anything on the view axis.
     const float knee = glm::radians(std::min(m_config.weaponCarryPitchKnee, m_config.weaponCarryPitchMaxUp));
-    const float limit = glm::radians(m_config.weaponCarryPitchMaxUp);
+    const float carryLimit = glm::radians(m_config.weaponCarryPitchMaxUp);
     if (carryPitch > knee)
     {
-        const float room = std::max(limit - knee, 1e-4f);
+        const float room = std::max(carryLimit - knee, 1e-4f);
         const float over = carryPitch - knee;
         const float eased = knee + room * (1.0f - std::exp(-over / room));
         carryPitch = glm::mix(eased, carryPitch, aim);
