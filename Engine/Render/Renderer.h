@@ -42,8 +42,13 @@ public:
     static constexpr bgfx::ViewId kViewSunNearShadow = 0;
     static constexpr bgfx::ViewId kViewSunShadow = 1;
     static constexpr bgfx::ViewId kViewSkyShadow = 2;
-    static constexpr bgfx::ViewId kViewMain = 3;
-    static constexpr bgfx::ViewId kViewDebug = 4;
+    // The sky gets a view of its own rather than being the first thing submitted to the main one.
+    // bgfx sorts the draws inside a view to save state changes, so "submitted first" is not
+    // "drawn first" -- the sky came out over the top of the world. Views run in id order, and that
+    // order is a promise.
+    static constexpr bgfx::ViewId kViewSky = 3;
+    static constexpr bgfx::ViewId kViewMain = 4;
+    static constexpr bgfx::ViewId kViewDebug = 5;
     // A block reserved for rendering into offscreen targets, such as the inventory icon atlas.
     // bgfx runs views in id order, so these are finished long before the UI that samples them.
     static constexpr bgfx::ViewId kViewOffscreenFirst = 200;
@@ -66,6 +71,10 @@ public:
     void SetVSync(bool enabled);
     void SetClearColor(uint32_t rgba);
     void SetCamera(const glm::mat4& view, const glm::mat4& projection);
+    // What was last set, for passes that need the camera again after it was handed over -- the sky
+    // is drawn from the render step and the matrices are built in the update one.
+    const glm::mat4& ViewMatrix() const;
+    const glm::mat4& ProjectionMatrix() const;
     void SetBgfxStatsOverlay(bool enabled);
 
     void BeginFrame();

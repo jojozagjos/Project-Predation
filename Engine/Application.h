@@ -14,6 +14,7 @@
 #include "Engine/Render/TextureLibrary.h"
 #include "Engine/Render/Renderer.h"
 #include "Engine/Render/SceneRenderer.h"
+#include "Engine/Render/SkyRenderer.h"
 #include "Engine/Render/ShaderLibrary.h"
 
 #include <cstdint>
@@ -85,6 +86,7 @@ public:
     MeshLibrary& GetMeshes() { return m_meshes; }
     TextureLibrary& GetTextures() { return m_textures; }
     SceneRenderer& GetSceneRenderer() { return m_sceneRenderer; }
+    SkyRenderer& GetSkyRenderer() { return m_skyRenderer; }
     PhysicsWorld& GetPhysics() { return m_physics; }
     // Everything that makes a noise. Present whether or not the machine has a sound card: with no
     // device it takes the sounds, holds the voices, and mixes nothing.
@@ -123,6 +125,7 @@ private:
     MeshLibrary m_meshes;
     TextureLibrary m_textures;
     SceneRenderer m_sceneRenderer;
+    SkyRenderer m_skyRenderer;
     AudioEngine m_audio;
     PhysicsWorld m_physics;
     DebugDraw m_debugDraw;

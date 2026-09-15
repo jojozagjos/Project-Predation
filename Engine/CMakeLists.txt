@@ -69,6 +69,8 @@ set(PRED_ENGINE_SOURCES
     Render/Primitives.cpp
     Render/SceneRenderer.h
     Render/SceneRenderer.cpp
+    Render/SkyRenderer.h
+    Render/SkyRenderer.cpp
     Render/ShadowMap.h
     Render/ShadowMap.cpp
     Render/StbImpl.cpp

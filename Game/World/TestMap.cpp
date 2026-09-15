@@ -258,6 +258,34 @@ void BuildTestMap(Scene& scene, MeshLibrary& meshes, PhysicsWorld* physics)
     }
 
     // ---------------------------------------------------------------------
+    // Three panels of the same metal at three roughnesses, to look at what the
+    // reflections actually do.
+    //
+    // A polished surface is the only thing that shows whether reflection is working: everything else
+    // in the map is rough enough that its reflection is a wash. Standing in front of these and
+    // walking sideways, the sky slides across the mirror and stays put on the matte one, which is
+    // the difference between reflecting the world and being painted a lighter colour.
+    //
+    // They will not show the room. The reflection is a sky-and-ground hemisphere, not a probe, so a
+    // panel reflects what is above and below it and nothing that is beside it -- a mirror here shows
+    // sky, not the player. Reflecting the room needs probes or a screen-space pass, and ADR-060 says
+    // why neither is here yet. These are for judging the part that does exist.
+    // ---------------------------------------------------------------------
+    {
+        constexpr float kMirrorZ = kSurfaceRowZ - 2.6f;
+        constexpr float kMirrorHeight = 2.0f;
+        const float roughnesses[] = {0.03f, 0.18f, 0.45f};
+        const char* names[] = {"mirror_polished", "mirror_brushed", "mirror_matte"};
+        for (int i = 0; i < 3; ++i)
+        {
+            const Material panel = Material::Metal({0.92f, 0.93f, 0.95f}, roughnesses[i]);
+            builder.AddBox(names[i], AtPosition(-2.2f + 2.2f * static_cast<float>(i),
+                                                kMirrorHeight * 0.5f, kMirrorZ),
+                           {1.9f, kMirrorHeight, 0.12f}, panel);
+        }
+    }
+
+    // ---------------------------------------------------------------------
     // A room with no light in it.
     //
     // Four walls, a roof and one doorway, west of the spawn. It exists because a flashlight cannot

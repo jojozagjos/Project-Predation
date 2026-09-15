@@ -283,6 +283,16 @@ void Renderer::SetCamera(const glm::mat4& view, const glm::mat4& projection)
     m_impl->projection = projection;
 }
 
+const glm::mat4& Renderer::ViewMatrix() const
+{
+    return m_impl->view;
+}
+
+const glm::mat4& Renderer::ProjectionMatrix() const
+{
+    return m_impl->projection;
+}
+
 void Renderer::SetBgfxStatsOverlay(bool enabled)
 {
     m_impl->debugFlags = enabled ? BGFX_DEBUG_STATS : BGFX_DEBUG_NONE;
@@ -298,8 +308,14 @@ void Renderer::BeginFrame()
     const auto w = static_cast<uint16_t>(impl.width);
     const auto h = static_cast<uint16_t>(impl.height);
 
+    // The sky clears the colour and the main view clears only the depth over the top of it. Clearing
+    // colour in both would wipe the sky before the world was drawn on it.
+    bgfx::setViewRect(kViewSky, 0, 0, w, h);
+    bgfx::setViewClear(kViewSky, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, impl.clearColor, 1.0f, 0);
+    bgfx::touch(kViewSky);
+
     bgfx::setViewRect(kViewMain, 0, 0, w, h);
-    bgfx::setViewClear(kViewMain, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, impl.clearColor, 1.0f, 0);
+    bgfx::setViewClear(kViewMain, BGFX_CLEAR_DEPTH, impl.clearColor, 1.0f, 0);
     bgfx::setViewTransform(kViewMain, glm::value_ptr(impl.view), glm::value_ptr(impl.projection));
     bgfx::touch(kViewMain);
 

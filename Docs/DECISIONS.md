@@ -1193,3 +1193,34 @@ through the roof.
 This is still a two-colour environment and not a probe: it cannot reflect the object next to it, only
 the sky above and the ground below. Real reflections need either probes or a screen-space pass, and
 both want a deferred or at least a depth-prepassed renderer, which this is not yet.
+
+## ADR-061: The sky is a triangle, and it goes in its own view
+
+The background was the clear colour. It is now a procedural sky: two gradients meeting at the
+horizon, a sun glow, and the same tone curve the world goes through.
+
+It is drawn as one full-screen triangle at the far plane rather than as a box or a sphere around the
+camera. A box needs geometry, a size chosen against the far plane, and care that the player never
+reaches the edge of it. A triangle needs none of that, because the sky is not a thing in the world --
+it is what is left where nothing in the world was drawn. One triangle rather than two, because a quad
+has a seam down its diagonal and shades every pixel along it twice.
+
+Its colours come from the same `Environment` the lighting reads, so the sky a player sees and the sky
+the surfaces reflect cannot drift apart: the zenith is the ambient sky opened up, the horizon sits
+between that and the fog colour the distance fades into.
+
+Two things had to be got right and both were wrong first.
+
+It needs its own view id, ahead of the main one. Submitted first into the main view it came out *over*
+the world, because bgfx sorts the draws inside a view to save state changes and "submitted first" is
+therefore not "drawn first". Views run in id order and that order is a promise, so the sky has view 3
+and the world has view 4. The sky view clears the colour; the main view clears only the depth, or it
+would wipe the sky before the world was drawn onto it.
+
+And it has to go through the tone curve. Written straight out, its colours landed far darker than the
+same numbers do on a surface -- the horizon read as a black band where it should have been haze --
+because everything else on screen has been through exposure, ACES and gamma and it had not.
+
+Also here: a dither of under half a level of output, in both shaders. A sky is the largest, smoothest
+gradient on screen and the first place eight bits per channel shows as bands; so is a dark curved
+surface lit only by a torch, which is where it was reported.

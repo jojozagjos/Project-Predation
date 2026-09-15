@@ -6516,6 +6516,9 @@ void PredationGame::OnRender()
     app.GetSceneRenderer().RenderShadows(Renderer::kViewSunNearShadow, Renderer::kViewSunShadow,
                                          Renderer::kViewSkyShadow, m_scene, app.GetMeshes(),
                                          viewPosition);
+    // The sky first, into the same view, so the world covers it where there is world.
+    app.GetSkyRenderer().Draw(Renderer::kViewSky, m_scene.GetEnvironment(),
+                              app.GetRenderer().ViewMatrix(), app.GetRenderer().ProjectionMatrix());
     app.GetSceneRenderer().Draw(Renderer::kViewMain, m_scene, app.GetMeshes(), viewPosition);
     DrawDebugOverlays();
 }

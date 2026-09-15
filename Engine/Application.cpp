@@ -437,6 +437,9 @@ bool Application::InitSubsystems(const CommandLine& commandLine)
     {
         return false;
     }
+    // Optional: a machine that cannot build it gets the clear colour behind the world, which is what
+    // was there before there was a sky at all.
+    m_skyRenderer.Init(m_shaders);
     // Before anything can be drawn: the first entry is the white pixel every untextured material
     // samples, so a draw with no texture of its own still has one bound.
     m_textures.Init();
@@ -497,6 +500,7 @@ void Application::ShutdownSubsystems()
     m_imgui.Shutdown();
     m_debugDraw.Shutdown();
     m_physics.Shutdown();
+    m_skyRenderer.Shutdown();
     m_sceneRenderer.Shutdown();
     // GPU buffers must go before the shader library and the device itself.
     m_meshes.Shutdown();
