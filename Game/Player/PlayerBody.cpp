@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace pred
 {
@@ -1602,8 +1603,57 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
         const float range = glm::length(toMuzzle);
         if (range > 1e-4f)
         {
-            const RayHit blocked = physics.RayCast(view.eyePosition, toMuzzle / range,
-                                                   range + m_config.muzzleClearance);
+            // A fan of traces rather than one, spread across the muzzle in the direction the
+            // correction moves it.
+            //
+            // One trace is blocked or it is not, and there is nothing in between. The frame the
+            // barrel rises past the top edge of a wall that trace stops being blocked, and it stops
+            // while the muzzle is still half a metre deep -- so the correction goes from most of its
+            // travel to none of it between one degree of looking up and the next. Measured against a
+            // wall whose top edge is at 1.40 m: forty-five degrees of barrel for one degree of look.
+            // The player reported it twice as the weapon teleporting up near an edge.
+            //
+            // Several traces a few centimetres apart turn that cliff into a slope. What matters is
+            // not which of them hit but how many: as the barrel crosses an edge they stop being
+            // blocked one after another, and the correction comes off over the width of the fan
+            // instead of in a single frame. They are spread along the weapon's own up axis, because
+            // that is the way the muzzle travels when it is dropped, so the fan lies across exactly
+            // the edges this fails on.
+            const glm::vec3 lift = base * glm::vec3(0.0f, 1.0f, 0.0f);
+            constexpr int kProbes = 9;
+            RayHit blocked;
+            float deepest = -std::numeric_limits<float>::max();
+            int reached = 0;
+            for (int probe = 0; probe < kProbes; ++probe)
+            {
+                const float across =
+                    (static_cast<float>(probe) / (kProbes - 1) * 2.0f - 1.0f) * m_config.weaponWallTipProbe;
+                const glm::vec3 target = muzzle + lift * across;
+                const glm::vec3 toTarget = target - view.eyePosition;
+                const float reach = glm::length(toTarget);
+                if (reach < 1e-4f)
+                {
+                    continue;
+                }
+                const RayHit hit = physics.RayCast(view.eyePosition, toTarget / reach,
+                                                   reach + m_config.muzzleClearance);
+                if (!hit || hit.normal.y >= 0.5f)
+                {
+                    continue;
+                }
+                ++reached;
+                // The deepest one describes the wall for the solve below. Taking the middle trace
+                // instead would leave the correction with nothing to work from on exactly the frames
+                // the middle trace is the one that missed.
+                const float depth = -glm::dot(target - hit.position, hit.normal);
+                if (depth > deepest)
+                {
+                    deepest = depth;
+                    blocked = hit;
+                }
+            }
+            const float coverage = static_cast<float>(reached) / static_cast<float>(kProbes);
+
             // And only against something a drop can get a barrel out of, which means something
             // roughly upright. A muzzle in the ground comes out by being lifted; lowering it
             // further is the one thing that cannot possibly help, and lying down looking at your own
@@ -1687,6 +1737,9 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
                 wanted *= glm::smoothstep(m_config.weaponWallTipSlack,
                                           m_config.weaponWallTipSlack + m_config.weaponWallTipFade,
                                           depth);
+                // And by how much of the fan found the wall at all, which is what carries the
+                // correction off an edge over several degrees of looking instead of one frame.
+                wanted *= coverage;
             }
         }
 

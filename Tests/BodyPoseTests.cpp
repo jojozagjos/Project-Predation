@@ -3082,6 +3082,118 @@ TEST_CASE("Reloading on your front keeps both hands above the floor", "[body][po
     CHECK(lowest > kUnderTheFloor);
 }
 
+TEST_CASE("Diagnostic: where the muzzle correction jumps", "[.][body][weapon][diag]")
+{
+    // Sweeps the height of a wall's top edge and, for each, walks the view up through the crossing
+    // looking for the largest step the barrel takes for one degree of looking. Prints a table.
+    std::string table = "\n  wall top   worst step (deg)   at look\n";
+    for (float top = 1.10f; top <= 2.30f; top += 0.15f)
+    {
+        BodyHarness harness;
+        WeaponDefinition definition;
+        ModelAsset model;
+        if (!LoadShippedCarbine(harness, definition, model))
+        {
+            WARN("no shipped carbine to test against");
+            return;
+        }
+        harness.Settle(90);
+
+        const float halfHeight = top * 0.5f;
+        harness.physics.CreateBox({2.0f, halfHeight, 0.4f},
+                                  Transform{{0.0f, halfHeight, -0.9f}}, BodyMotion::Static);
+        harness.physics.OptimizeBroadPhase();
+        harness.input.yaw = 0.0f;
+        harness.SetTravel(glm::vec3(0.0f, 0.0f, -1.0f));
+        harness.Settle(150);
+
+        float previous = 0.0f;
+        float worst = 0.0f;
+        float worstAt = 0.0f;
+        bool first = true;
+        for (float look = -30.0f; look <= 60.0f; look += 1.0f)
+        {
+            harness.input.pitch = glm::radians(look);
+            harness.Settle(40);
+            const glm::vec3 barrel =
+                glm::normalize(harness.body.MuzzlePoint() - harness.body.WeaponOrigin());
+            const float degrees = glm::degrees(std::asin(std::clamp(barrel.y, -1.0f, 1.0f)));
+            if (!first && std::abs(degrees - previous) > worst)
+            {
+                worst = std::abs(degrees - previous);
+                worstAt = look;
+            }
+            first = false;
+            previous = degrees;
+        }
+        table += "    " + std::to_string(top) + "      " + std::to_string(worst) + "        " +
+                 std::to_string(worstAt) + "\n";
+    }
+    WARN(table);
+}
+
+TEST_CASE("The weapon does not jump as the barrel passes a wall's top edge", "[body][pose][weapon]")
+{
+    // Standing against something and looking slowly up, the barrel rises past its top edge. The
+    // correction that keeps the muzzle out of the bricks has to stop applying somewhere around
+    // there, and the whole question is whether it stops gradually or all at once.
+    //
+    // All at once is what the player saw and reported twice: "it teleports up when it thinks an
+    // edge is close above it". A single ray from the eye to the muzzle is either blocked or it is
+    // not, and the frame it stops being blocked the barrel is still half a metre deep -- so the
+    // correction goes from most of its travel to nothing between one degree of looking up and the
+    // next, and the weapon snaps.
+    BodyHarness harness;
+    WeaponDefinition definition;
+    ModelAsset model;
+    if (!LoadShippedCarbine(harness, definition, model))
+    {
+        WARN("no shipped carbine to test against");
+        return;
+    }
+    harness.Settle(120);
+
+    // A wall with its top edge just above where the barrel sits, and the player pressed against it:
+    // the correction is fully engaged looking level and has to let go as the barrel rises past the
+    // edge. Anything short of walking into it leaves the weapon far enough out that nothing happens.
+    // 1.40 m is the worst height there is: the diagnostic beside this test sweeps them, and this is
+    // where the barrel crossing the edge moved it furthest.
+    harness.physics.CreateBox({2.0f, 0.7f, 0.4f}, Transform{{0.0f, 0.7f, -0.9f}}, BodyMotion::Static);
+    harness.physics.OptimizeBroadPhase();
+    harness.input.yaw = 0.0f;
+    harness.SetTravel(glm::vec3(0.0f, 0.0f, -1.0f));
+    harness.Settle(150);
+
+    // Sweep the view up through the crossing in small steps, letting the weapon settle at each, and
+    // watch the barrel for a step that no amount of smoothing would hide.
+    float previous = 0.0f;
+    float worst = 0.0f;
+    float worstAt = 0.0f;
+    bool first = true;
+    for (float look = -20.0f; look <= 45.0f; look += 1.0f)
+    {
+        harness.input.pitch = glm::radians(look);
+        harness.Settle(40);
+        const glm::vec3 barrel =
+            glm::normalize(harness.body.MuzzlePoint() - harness.body.WeaponOrigin());
+        const float degrees = glm::degrees(std::asin(std::clamp(barrel.y, -1.0f, 1.0f)));
+        if (!first && std::abs(degrees - previous) > worst)
+        {
+            worst = std::abs(degrees - previous);
+            worstAt = look;
+        }
+        first = false;
+        previous = degrees;
+    }
+
+    INFO("the barrel moved at most " << worst << " degrees for one degree of looking up, at " << worstAt);
+    // It was forty-five. A fan of traces instead of one carries the correction off the edge over the
+    // width of the fan, and what is left is the solver's own step, which the smoothing turns into a
+    // movement rather than a jump. Twelve is the guard on the cliff coming back.
+    // Measured at 11.9, so fifteen is the guard with room for tuning to move under it.
+    CHECK(worst < 15.0f);
+}
+
 TEST_CASE("Looking up keeps raising the weapon without standing it on end", "[body][pose][weapon]")
 {
     // Two failures at once, from opposite directions. Following the view all the way up stands the

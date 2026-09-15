@@ -199,6 +199,10 @@ public:
         // comes fully in. Both in metres. See the note where they are used: the drop is a
         // second-order lever, so an exact answer has a step in it at the moment of contact, and
         // these are what turn that step into a slope.
+        // How far either side of the muzzle the traces are spread, in metres. This is the width of
+        // the barrel movement over which the correction lets go of an edge: too small and it lets go
+        // in a jump, too large and the weapon starts reacting to walls the barrel is nowhere near.
+        float weaponWallTipProbe = 0.09f;
         float weaponWallTipSlack = 0.02f;
         float weaponWallTipFade = 0.20f;
         // How much of the barrel may be inside something before the sights refuse to come up, and
