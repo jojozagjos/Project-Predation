@@ -35,6 +35,33 @@
 namespace pred
 {
 
+// One sound the game asks for, and every recording of it there happens to be.
+//
+// Most of these are synthesised at startup from a recipe, which is why the game ships with
+// almost no audio: a few hundred kilobytes of samples built in a few milliseconds. A recipe is a
+// stand-in though, and the way it shows is repetition -- the same gunshot, sample for sample,
+// forty times a magazine.
+//
+// So a folder of recordings replaces one. Drop wav files into Assets/Audio/<name>/ and they are
+// used instead of the recipe, and a different one is picked each time it plays. Nothing has to
+// be registered anywhere: the folder is the registration.
+struct SoundVariants
+{
+    std::vector<SoundId> ids;
+    SoundId Pick() const
+    {
+        if (ids.empty())
+        {
+            return kInvalidSound;
+        }
+        if (ids.size() == 1)
+        {
+            return ids.front();
+        }
+        return ids[static_cast<size_t>(std::rand()) % ids.size()];
+    }
+};
+
 // Milestone 3 game: a first-person player controller in the developer test map, with a free-flying
 // inspection camera available on a key.
 class PredationGame final : public Game
@@ -553,18 +580,18 @@ private:
     // Every sound the game plays, looked up by name once rather than on every shot.
     struct SoundSet
     {
-        SoundId gunshot = kInvalidSound;
-        SoundId dryFire = kInvalidSound;
-        SoundId reloadOut = kInvalidSound;
-        SoundId reloadIn = kInvalidSound;
-        SoundId step = kInvalidSound;
-        SoundId land = kInvalidSound;
-        SoundId door = kInvalidSound;
-        SoundId locker = kInvalidSound;
-        SoundId pickup = kInvalidSound;
-        SoundId drop = kInvalidSound;
-        SoundId hurt = kInvalidSound;
-        SoundId death = kInvalidSound;
+        SoundVariants gunshot;
+        SoundVariants dryFire;
+        SoundVariants reloadOut;
+        SoundVariants reloadIn;
+        SoundVariants step;
+        SoundVariants land;
+        SoundVariants door;
+        SoundVariants locker;
+        SoundVariants pickup;
+        SoundVariants drop;
+        SoundVariants hurt;
+        SoundVariants death;
     };
     SoundSet m_sounds;
 

@@ -214,6 +214,81 @@ glm::vec3 SurfaceNormalAt(PhysicsWorld& physics, const glm::vec3& from, const gl
     return hit ? hit.normal : -direction;
 }
 } // namespace
+// Whatever recordings of a sound are on disk, or the synthesised one if there are none.
+//
+// The folder is the registration. Assets/Audio/<name>/ holding any number of wav files means the
+// game plays those and picks a different one each time; an empty folder, or no folder, means it
+// falls back to the recipe in sounds.json. Nothing has to be listed anywhere and nothing has to be
+// rebuilt, which is the point: a sound can be replaced by somebody who does not build the game.
+//
+// Trailing silence is trimmed, as it is for footsteps, because a downloaded pack usually carries
+// some and it delays every sound after it in a queue by however long it is.
+SoundVariants LoadSoundVariants(AudioEngine& audio, const char* name)
+{
+    SoundVariants variants;
+    const std::filesystem::path folder = Paths::AssetsRoot() / "Audio" / name;
+    std::error_code ec;
+    if (std::filesystem::is_directory(folder, ec))
+    {
+        std::vector<std::filesystem::path> files;
+        for (const auto& entry : std::filesystem::directory_iterator(folder, ec))
+        {
+            if (!entry.is_regular_file())
+            {
+                continue;
+            }
+            std::string extension = entry.path().extension().string();
+            std::transform(extension.begin(), extension.end(), extension.begin(),
+                           [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            if (extension == ".wav")
+            {
+                files.push_back(entry.path());
+            }
+        }
+        // Sorted, so the order a machine happens to list a directory in cannot change which sound
+        // is which between two runs on two machines.
+        std::sort(files.begin(), files.end());
+        for (const std::filesystem::path& path : files)
+        {
+            std::ifstream wav(path, std::ios::binary);
+            if (!wav)
+            {
+                continue;
+            }
+            const std::string bytes((std::istreambuf_iterator<char>(wav)),
+                                    std::istreambuf_iterator<char>());
+            SoundData data;
+            std::string error;
+            if (!LoadWav(bytes.data(), bytes.size(), data, error))
+            {
+                PRED_LOG_WARN(Gameplay, "{}: {}", path.string(), error);
+                continue;
+            }
+            TrimTrailingSilence(data);
+            const SoundId id =
+                audio.Add(std::string("recorded/") + name + "/" + path.filename().string(),
+                          std::move(data));
+            if (id != kInvalidSound)
+            {
+                variants.ids.push_back(id);
+            }
+        }
+    }
+
+    if (!variants.ids.empty())
+    {
+        PRED_LOG_INFO(Gameplay, "{}: {} recording(s) from Assets/Audio/{}", name, variants.ids.size(),
+                      name);
+        return variants;
+    }
+    const SoundId recipe = audio.Find(name);
+    if (recipe != kInvalidSound)
+    {
+        variants.ids.push_back(recipe);
+    }
+    return variants;
+}
+
 
 bool PredationGame::OnInit(Application& app)
 {
@@ -301,18 +376,19 @@ bool PredationGame::OnInit(Application& app)
             const int made = app.GetAudio().AddRecipes(text);
             PRED_LOG_INFO(Gameplay, "{} sounds built from {}", made, file.filename().string());
             AudioEngine& audio = app.GetAudio();
-            m_sounds.gunshot = audio.Find("gunshot");
-            m_sounds.dryFire = audio.Find("dry_fire");
-            m_sounds.reloadOut = audio.Find("reload_out");
-            m_sounds.reloadIn = audio.Find("reload_in");
-            m_sounds.step = audio.Find("step_hard");
-            m_sounds.land = audio.Find("land");
-            m_sounds.door = audio.Find("door");
-            m_sounds.locker = audio.Find("locker");
-            m_sounds.pickup = audio.Find("pickup");
-            m_sounds.drop = audio.Find("drop");
-            m_sounds.hurt = audio.Find("hurt");
-            m_sounds.death = audio.Find("death");
+            // Recordings first, recipes where there are none: see LoadSoundVariants.
+            m_sounds.gunshot = LoadSoundVariants(audio, "gunshot");
+            m_sounds.dryFire = LoadSoundVariants(audio, "dry_fire");
+            m_sounds.reloadOut = LoadSoundVariants(audio, "reload_out");
+            m_sounds.reloadIn = LoadSoundVariants(audio, "reload_in");
+            m_sounds.step = LoadSoundVariants(audio, "step_hard");
+            m_sounds.land = LoadSoundVariants(audio, "land");
+            m_sounds.door = LoadSoundVariants(audio, "door");
+            m_sounds.locker = LoadSoundVariants(audio, "locker");
+            m_sounds.pickup = LoadSoundVariants(audio, "pickup");
+            m_sounds.drop = LoadSoundVariants(audio, "drop");
+            m_sounds.hurt = LoadSoundVariants(audio, "hurt");
+            m_sounds.death = LoadSoundVariants(audio, "death");
         }
         else
         {
@@ -1314,7 +1390,7 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
         // opening somewhere else in the building.
         if (const WorldObjects::Door* moved = m_world.GetDoor(event.index); moved != nullptr)
         {
-            PlaySound(m_sounds.door, moved->hinge, 0.8f);
+            PlaySound(m_sounds.door.Pick(), moved->hinge, 0.8f);
         }
         break;
 
@@ -1344,7 +1420,7 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
                 PRED_LOG_WARN(Gameplay, "Only had room for {} of {}", stored, pickup->count);
             }
         }
-        PlaySound(m_sounds.pickup, event.position, 0.6f, 1.0f, event.player != LocalPlayerId());
+        PlaySound(m_sounds.pickup.Pick(), event.position, 0.6f, 1.0f, event.player != LocalPlayerId());
         m_world.ConsumePickup(event.index, m_scene, m_app->GetPhysics(), m_interactions);
         break;
     }
@@ -1356,7 +1432,7 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
                             static_cast<ItemId>(event.item), static_cast<int>(event.other),
                             event.position, event.direction, LoadFromWire(event.rounds),
                             LoadFromWire(event.reserve), static_cast<int>(event.index));
-        PlaySound(m_sounds.drop, event.position, 0.7f);
+        PlaySound(m_sounds.drop.Pick(), event.position, 0.7f);
         break;
 
     case WorldEventKind::LockerUsed:
@@ -1412,7 +1488,7 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
             m_tracers.push_back(tracer);
             // And it is heard where it was fired from, which is most of what tells a player there
             // is somebody else in the building and roughly where.
-            PlaySound(m_sounds.gunshot, event.position, 1.0f, 1.0f, true);
+            PlaySound(m_sounds.gunshot.Pick(), event.position, 1.0f, 1.0f, true);
 
             // And their weapon kicks and flashes. A snapshot cannot carry this: firing happens on
             // one frame and snapshots go out on others, so the moment would be missed most times.
@@ -1430,7 +1506,7 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
         {
             // The host is the authority on health, so this is set rather than subtracted.
             m_player.State().health = std::max(m_player.State().health - event.amount, 0.0f);
-            PlaySound(m_sounds.hurt, m_player.State().position, 0.8f, 1.0f, false);
+            PlaySound(m_sounds.hurt.Pick(), m_player.State().position, 0.8f, 1.0f, false);
         }
         break;
 
@@ -1440,7 +1516,7 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
             m_player.State().health = 0.0f;
             m_player.State().alive = false;
             m_deathImpulse = event.direction;
-            PlaySound(m_sounds.death, m_player.State().position, 1.0f, 1.0f, false);
+            PlaySound(m_sounds.death.Pick(), m_player.State().position, 1.0f, 1.0f, false);
         }
         break;
 
@@ -3206,7 +3282,7 @@ void PredationGame::DrawSoundPanel()
         ImGui::TextDisabled("No clips loaded. Falling back to the synthesised step.");
         if (ImGui::Button("Play the synthesised one"))
         {
-            PlaySound(m_sounds.step, m_camera.position, 0.30f, 1.0f, false);
+            PlaySound(m_sounds.step.Pick(), m_camera.position, 0.30f, 1.0f, false);
         }
     }
     else
@@ -3659,14 +3735,14 @@ SoundId PredationGame::PickFootstep(float& gain, int surfaceIndex) const
 {
     if (m_footsteps.empty())
     {
-        return m_sounds.step;
+        return m_sounds.step.Pick();
     }
     const FootstepSurface& surface =
         m_footsteps[static_cast<size_t>(std::clamp(surfaceIndex, 0,
                                                    static_cast<int>(m_footsteps.size()) - 1))];
     if (surface.clips.empty())
     {
-        return m_sounds.step;
+        return m_sounds.step.Pick();
     }
     // Not round-robin. Two clips alternating strictly is a pattern the ear finds within about six
     // steps; picking at random and refusing an immediate repeat is not.
@@ -3796,7 +3872,7 @@ void PredationGame::UpdateSounds(float dt)
     if (local.landedThisTick && local.fallPeakSpeed > 2.0f)
     {
         const float force = std::clamp(local.fallPeakSpeed / 9.0f, 0.2f, 1.0f);
-        PlaySound(m_sounds.land, local.position, force * 0.7f, 1.0f, false);
+        PlaySound(m_sounds.land.Pick(), local.position, force * 0.7f, 1.0f, false);
     }
 
     (void)dt;
@@ -4804,7 +4880,7 @@ void PredationGame::ResolveShots()
     // side the barrel is on, which is both wrong and the most obvious way a mix sounds broken.
     for (size_t i = 0; i < m_shots.size(); ++i)
     {
-        PlaySound(m_sounds.gunshot, MuzzlePosition(), 0.85f, 1.0f, false);
+        PlaySound(m_sounds.gunshot.Pick(), MuzzlePosition(), 0.85f, 1.0f, false);
     }
 
     for (const FireEvent& shot : m_shots)
@@ -6117,7 +6193,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
         if (input.WasActionPressed("flashlight"))
         {
             m_torchOn = !m_torchOn;
-            PlaySound(m_torchOn ? m_sounds.pickup : m_sounds.drop, m_player.State().position, 0.25f,
+            PlaySound((m_torchOn ? m_sounds.pickup : m_sounds.drop).Pick(), m_player.State().position, 0.25f,
                       m_torchOn ? 1.6f : 1.4f, false);
         }
         if (input.WasActionPressed("respawn"))
