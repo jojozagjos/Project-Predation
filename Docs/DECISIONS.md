@@ -1123,3 +1123,47 @@ left is.
 The transport did not change. A relayed link is a `DatagramCarrier` exactly as a punched one was, so
 the handshake, the reliability, the prediction and the roster are the same code running over a
 different pipe, and none of it knows.
+
+## ADR-059: A room is dark because it has a roof
+
+Before this, the dark test room was dark because a function called `InsideDarkVolume` said so. The
+map declared a box, the game noticed the camera inside it, and the environment was blended down. It
+was honest about being a stand-in and it read exactly like what it was: walk through the doorway and
+the whole world dimmed, like a dimmer switch rather than like going indoors.
+
+Two things stop light reaching that room, so there are two depth maps and they are the same code.
+
+The **sun** is stopped by an ordinary shadow map: the scene is rendered from the sun's direction into
+an orthographic depth target, and shading asks whether anything stands between a surface and the sun.
+
+The **sky** is the other half, and it is the half that actually makes an interior dark. Shadowing the
+sun alone leaves a room filled with the same flat hemispheric ambient as the field outside it, which
+looks like a room somebody forgot to light rather than a dark one. Sky occlusion is a shadow test
+with the light directly overhead, so it is the same machinery pointed straight down: a roof blocks
+the sky exactly the way it blocks the sun. What is left underneath is a small fraction, standing in
+for light that bounced its way in, because zero is not a dark room but a void.
+
+Both maps are fitted around the player rather than the level: a level is larger than a map can be at
+any useful resolution, and the only shadows anybody can see are the ones they are standing among.
+
+Three things about the implementation are worth writing down because each cost time.
+
+The maps store distance from the **back** of the map rather than from the light. An empty texel then
+holds zero, and zero means "as far away as this can see", which is what "nothing is here" should
+mean. Storing distance-from-the-light needs an empty texel to hold a very large number, which needs a
+clear palette entry, which is one more thing that has to be working for the lighting to be right.
+
+The maps are bound **per draw**. bgfx keeps uniform values between draws but not texture bindings: a
+submit consumes them. Bound once before the loop, the first mesh reads the maps and every mesh after
+it samples an empty slot — and because the first mesh is the ground, the symptom was a correctly lit
+ground and a world where every other object was wrong. That looks like a broken map rather than a
+lost binding, and it sent me through the projection, the culling, the depth test and the encoding
+before the binding.
+
+The nine PCF taps are weighted as a tent rather than averaged flat. Nine equal votes give ten shades
+and the set of voting texels changes in a jump at each texel boundary, so shadow edges climb in
+stairs. Weighting each tap by how much of it the sampling point covers makes the answer move
+continuously for the same nine samples.
+
+The consequence for level building is the point of all of it: put a roof on something and it is dark
+underneath, anywhere, with nothing to declare and nothing to keep in step with the geometry.

@@ -31,11 +31,14 @@ struct RendererDesc
 class Renderer
 {
 public:
-    static constexpr bgfx::ViewId kViewMain = 0;
-    static constexpr bgfx::ViewId kViewDebug = 1;
+    // bgfx runs views in the order of their ids, so anything the main pass reads has to be drawn
+    // into a lower one. The two depth maps are therefore first, and the main view is no longer 0.
+    static constexpr bgfx::ViewId kViewSunShadow = 0;
+    static constexpr bgfx::ViewId kViewSkyShadow = 1;
+    static constexpr bgfx::ViewId kViewMain = 2;
+    static constexpr bgfx::ViewId kViewDebug = 3;
     // A block reserved for rendering into offscreen targets, such as the inventory icon atlas.
-    // bgfx runs views in id order, so anything drawn here is finished before the world is, and long
-    // before the UI that samples it.
+    // bgfx runs views in id order, so these are finished long before the UI that samples them.
     static constexpr bgfx::ViewId kViewOffscreenFirst = 200;
     static constexpr bgfx::ViewId kViewOffscreenCount = 48;
     // One more offscreen view, redrawn every frame rather than once: the editor's first-person

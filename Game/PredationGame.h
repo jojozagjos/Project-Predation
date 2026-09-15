@@ -484,6 +484,8 @@ private:
     // Whether the lobby screen is up, and whether this machine opened the lobby or joined one.
     bool m_inLobby = false;
     bool m_hostingLobby = false;
+    // The flashlight.
+    bool m_torchOn = false;
 
     // The relay connection, when playing over the internet. One socket, outwards, and one link per
     // other person: see Engine/Net/RelayCarrier.h for why that replaced hole punching.

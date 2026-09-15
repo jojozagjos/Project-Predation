@@ -7,6 +7,8 @@
 
 #include <glm/vec3.hpp>
 
+#include <array>
+
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -24,9 +26,30 @@ struct MeshRenderer
     bool castsShadow = true; // honoured once shadow maps exist
 };
 
-// Global lighting and atmosphere for the scene. Punctual lights (flashlights, lamps) arrive with
-// the interaction milestone; for now one directional light plus hemispheric ambient and fog is
-// enough to read shapes and depth.
+// A light that has a place, as opposed to the sun, which only has a direction.
+//
+// One shape covers both a bulb and a torch: a point light is a spot whose cone is the whole sphere.
+// Two kinds would mean two loops in the shader and two lists here, to say the same thing twice.
+struct PunctualLight
+{
+    glm::vec3 position{0.0f};
+    // Where it points. Ignored when the cone is wide open.
+    glm::vec3 direction{0.0f, -1.0f, 0.0f};
+    glm::vec3 color{1.0f};
+    // Brightness at the source. Falls off with the square of the distance, cut off at `range`.
+    float intensity = 0.0f;
+    float range = 10.0f;
+    // The cone, in degrees from the axis. Full brightness within the inner angle, fading to nothing
+    // at the outer one. 180 makes it a bulb.
+    float innerAngle = 18.0f;
+    float outerAngle = 30.0f;
+};
+
+// How many the shader carries. Four is a torch, a dropped flare and two lamps, which is more than a
+// corridor in this game will hold; every one costs the same in the fragment shader whether it is
+// lit or not, so this is a budget rather than a maximum somebody should feel free to raise.
+inline constexpr size_t kMaxPunctualLights = 4;
+
 struct Environment
 {
     glm::vec3 sunDirection{-0.35f, -0.85f, -0.4f}; // direction the light travels
@@ -39,6 +62,15 @@ struct Environment
     glm::vec3 fogColor{0.06f, 0.07f, 0.09f};
     float fogStart = 12.0f;
     float fogEnd = 90.0f;
+
+    std::array<PunctualLight, kMaxPunctualLights> lights{};
+
+    // How the picture is developed, rather than what is in it.
+    //
+    // Both belong to the viewer rather than the scene: a monitor that crushes its low end makes a
+    // dark game unplayable, and the answer to that is not to light the game brighter for everybody.
+    float exposure = 1.0f;
+    float contrast = 1.0f;
 };
 
 // Entity storage plus the components the renderer needs.

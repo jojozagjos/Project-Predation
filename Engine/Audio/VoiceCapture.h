@@ -63,9 +63,22 @@ public:
     // whatever happens to be there, so what goes on the wire is the same size every time.
     bool ReadFrame(std::vector<float>& out);
 
-    // How loud the last frame read was, 0 to 1, as the peak sample. For a level meter, and later for
+    // How loud the last frame read was, 0 to 1, as the peak sample. For a level meter, and for
     // deciding whether anybody is actually speaking.
     float LastLevel() const;
+
+    // Whether an open microphone should be transmitting, given how loud the last frame was.
+    //
+    // Hysteresis, and a hold after the last loud frame, because neither on its own is enough. One
+    // threshold alone chatters on and off through every pause between two words, and a gap in the
+    // middle of a sentence is more noticeable than a little room tone at the end of one. So it opens
+    // at the threshold, stays open until well below it, and then stays open a moment longer.
+    //
+    // Separate from the capture itself so it can be tested without a microphone: the whole of it is
+    // a decision about a number.
+    bool ShouldTransmit(float level, float threshold, float dt);
+    // What that decision is now, without advancing it.
+    bool Transmitting() const { return m_transmitting; }
 
     // Called by SDL from its own thread. Public because SDL needs a plain function to reach it.
     void OnRecorded(const float* samples, size_t count);
@@ -78,6 +91,10 @@ private:
     mutable std::mutex m_mutex;
     std::vector<float> m_pending;
     float m_lastLevel = 0.0f;
+    // Open-mic state: whether it is currently open, and how long since it last heard anything above
+    // the threshold.
+    bool m_transmitting = false;
+    float m_quietFor = 0.0f;
 };
 
 } // namespace pred

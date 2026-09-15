@@ -61,10 +61,59 @@ CVar<bool> cv_crouchToggle{"input.crouch_toggle", true, "Crouch and prone toggle
 CVar<bool> cv_sprintToggle{"input.sprint_toggle", false, "Sprint toggles instead of being held",
                            CVarFlags::Archive};
 CVar<float> cv_flySpeed{"cam.fly_speed", 6.0f, "Fly camera speed in meters per second"};
+// The picture, as opposed to the world. Both belong to the person looking at it: a monitor that
+// crushes its low end makes a dark game unplayable, and the fix for that is not to light the game
+// brighter for everybody.
+CVar<float> cv_exposure{"r.exposure", 1.0f, "How much light reaches the picture", CVarFlags::Archive};
+CVar<float> cv_contrast{"r.contrast", 1.05f, "How hard the picture separates dark from light",
+                        CVarFlags::Archive};
+// The flashlight, so it can be tuned by somebody standing in the dark room rather than by rebuilding.
+CVar<float> cv_torchRange{"r.torch_range", 22.0f, "How far the flashlight reaches, in metres",
+                          CVarFlags::Archive};
+CVar<float> cv_torchIntensity{"r.torch_intensity", 34.0f, "How bright the flashlight is",
+                              CVarFlags::Archive};
+CVar<float> cv_torchInner{"r.torch_inner", 13.0f, "The flashlight's bright cone, in degrees",
+                          CVarFlags::Archive};
+CVar<float> cv_torchOuter{"r.torch_outer", 26.0f, "Where the flashlight's beam fades out, in degrees",
+                          CVarFlags::Archive};
+// Occlusion. Everything a light is stopped by is worked out from the geometry, and these say how
+// well and how far: see Engine/Render/ShadowMap.h for what the two maps are.
+CVar<bool> cv_sunShadows{"r.shadows", true, "Whether the sun is stopped by anything",
+                         CVarFlags::Archive};
+CVar<bool> cv_skyShadows{"r.sky_occlusion", true, "Whether a roof keeps the sky out of a room",
+                         CVarFlags::Archive};
+CVar<float> cv_shadowDistance{"r.shadow_distance", 32.0f,
+                              "How far from the player occlusion is worked out, in metres",
+                              CVarFlags::Archive};
+CVar<int> cv_occlusionDebug{"r.show_occlusion", 0,
+                            "Draw occlusion instead of the scene: 1 the sun, 2 the sky"};
+CVar<float> cv_indoorLight{"r.indoor_light", 0.06f,
+                           "How much light is left where the sky cannot reach", CVarFlags::Archive};
+// Slack, in metres. Too little and flat surfaces stripe themselves with their own shadow; too much
+// and a shadow pulls away from the thing casting it.
+CVar<float> cv_sunShadowBias{"r.shadow_bias", 0.05f, "Slack in the sun's occlusion test, in metres"};
+CVar<float> cv_sunShadowOffset{"r.shadow_normal_offset", 0.06f,
+                               "How far out along the surface the sun's test is taken, in metres"};
+CVar<float> cv_skyShadowBias{"r.sky_bias", 0.12f, "Slack in the sky's occlusion test, in metres"};
+CVar<float> cv_skyShadowOffset{"r.sky_normal_offset", 0.40f,
+                               "How far out along the surface the sky's test is taken, in metres"};
 // Adjustable because a prone body needs the camera much further back than a standing one, and
 // inspecting the prone roll from three metres puts the camera inside the character.
 CVar<float> cv_thirdDistance{"cam.third_distance", 3.2f, "How far the third-person camera sits behind the character",
                              CVarFlags::Archive};
+// Proximity voice. Everything about it is a setting because everything about it is personal: whose
+// microphone is too quiet, whose room is too loud, and who does not want to be heard at all.
+CVar<bool> cv_voiceEnabled{"audio.voice", true, "Send and hear proximity voice", CVarFlags::Archive};
+CVar<float> cv_voiceVolume{"audio.voice_volume", 1.0f, "How loud other people's voices are",
+                           CVarFlags::Archive};
+// Open mic instead of push to talk. Off by default: a game about listening for something in the
+// dark is a bad place to broadcast somebody's room by accident.
+CVar<bool> cv_voiceOpenMic{"audio.voice_open_mic", false,
+                           "Transmit when you speak instead of while a key is held",
+                           CVarFlags::Archive};
+CVar<float> cv_voiceThreshold{"audio.voice_threshold", 0.04f,
+                              "How loud you have to be before open mic transmits",
+                              CVarFlags::Archive};
 // Remembered between runs, so rejoining the same friend does not mean typing the address again.
 // Where the relay is. Somebody has to run one, and whoever does will move it, so it is a setting
 // rather than a constant and it is remembered between runs.
@@ -1811,6 +1860,36 @@ bool SettingBool(const char* name, bool fallback)
     return var == nullptr ? fallback : var->GetString() == "true" || var->GetString() == "1";
 }
 
+// Reads a cvar this file does not own. The registry is the one place that knows about all of them,
+// and a setting declared in the engine is not visible to the game as a symbol.
+bool GetSettingBool(const char* name, bool fallback)
+{
+    const CVarBase* cvar = CVarRegistry::Instance().Find(name);
+    if (cvar == nullptr)
+    {
+        return fallback;
+    }
+    const std::string value = cvar->GetString();
+    return value == "true" || value == "1";
+}
+
+float GetSettingFloat(const char* name, float fallback)
+{
+    const CVarBase* cvar = CVarRegistry::Instance().Find(name);
+    if (cvar == nullptr)
+    {
+        return fallback;
+    }
+    try
+    {
+        return std::stof(cvar->GetString());
+    }
+    catch (...)
+    {
+        return fallback;
+    }
+}
+
 void SetSetting(const char* name, const std::string& value)
 {
     CVarRegistry::Instance().Set(name, value);
@@ -1841,13 +1920,14 @@ void PredationGame::DrawTitleOpen()
     ImGui::PopTextWrapPos();
 
     ImGui::Spacing();
-    if (ImGui::Button("On this network", wide))
+    if (ImGui::Button("By address", wide))
     {
         m_titlePage = TitlePage::OpenLocal;
         m_titleStatus.clear();
     }
     ImGui::PushTextWrapPos(0.0f);
-    ImGui::TextDisabled("Same house or same building. You read out an address.");
+    ImGui::TextDisabled("Same building, or any address people can reach you on: a forwarded port, "
+                        "or a tunnel like playit.gg. You read out the address.");
     ImGui::PopTextWrapPos();
 
     if (!m_titleStatus.empty())
@@ -1862,7 +1942,7 @@ void PredationGame::DrawTitleOpen()
 void PredationGame::DrawTitleOpenLocal()
 {
     const ImVec2 wide{-1.0f, 34.0f};
-    ImGui::TextDisabled("On this network");
+    ImGui::TextDisabled("By address");
     ImGui::Spacing();
 
     // The address, not the advice to go and find one. Told to look up "your address", the obvious
@@ -1886,7 +1966,11 @@ void PredationGame::DrawTitleOpenLocal()
             ImGui::SetClipboardText((address + ":" + std::to_string(m_hostPort)).c_str());
         }
     }
-    ImGui::TextDisabled("  click to copy, then read it out or paste it to them");
+    ImGui::TextDisabled("  click to copy. This one reaches people on your own network.");
+    ImGui::Spacing();
+    ImGui::TextDisabled("From further away, somebody needs an address that reaches this machine: a "
+                        "port forwarded on your router, or a tunnel such as playit.gg pointed at "
+                        "UDP 27015. Whatever it gives you goes in their Join box.");
 
     ImGui::Spacing();
     if (ImGui::Button("Start", wide))
@@ -2218,111 +2302,193 @@ void PredationGame::DrawSettings()
     // Everything here is a cvar, which means the console already reaches all of it and the archived
     // ones are already remembered between runs. What this adds is a place to find them: a setting
     // nobody can find is a setting nobody has.
+    //
+    // In tabs rather than one list, because the list had grown past a screen and the thing somebody
+    // came to change was always below the fold.
     ImGui::SetWindowFontScale(1.2f);
     ImGui::TextUnformatted("Settings");
     ImGui::SetWindowFontScale(1.0f);
     ImGui::Separator();
     ImGui::Spacing();
 
-    ImGui::TextDisabled("Multiplayer");
-    // The relay address, here rather than only in the console.
-    //
-    // Playing over the internet does not work without one, and a setting that can only be reached
-    // by knowing a cvar name is a setting nobody has. The default points at this machine, which is
-    // right for trying it out with a relay running here and wrong for playing with anybody else.
+    if (!ImGui::BeginTabBar("##settings"))
     {
+        return;
+    }
+
+    if (ImGui::BeginTabItem("Controls"))
+    {
+        float sensitivity = cv_mouseSensitivity.Get();
+        if (ImGui::SliderFloat("Mouse", &sensitivity, 0.02f, 0.60f, "%.3f deg per pixel"))
+        {
+            SetSetting("input.mouse_sensitivity", std::to_string(sensitivity));
+        }
+        bool invert = cv_invertY.Get();
+        if (ImGui::Checkbox("Invert up and down", &invert))
+        {
+            SetSetting("input.invert_y", invert ? "true" : "false");
+        }
+
+        ImGui::Spacing();
+        bool crouchToggle = cv_crouchToggle.Get();
+        if (ImGui::Checkbox("Crouch and prone toggle", &crouchToggle))
+        {
+            SetSetting("input.crouch_toggle", crouchToggle ? "true" : "false");
+        }
+        ImGui::SetItemTooltip("On, the key switches between standing and crouched. Off, you hold it.");
+        bool sprintToggle = cv_sprintToggle.Get();
+        if (ImGui::Checkbox("Sprint toggles", &sprintToggle))
+        {
+            SetSetting("input.sprint_toggle", sprintToggle ? "true" : "false");
+        }
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::TextDisabled("WASD move, Space jump, Ctrl or C crouch, Z prone, Shift sprint, Alt "
+                            "walk, Q and E lean. Left mouse fires, right mouse aims, R reloads. "
+                            "F interact, G drop, 1 to 6 and the wheel select, Tab inventory. "
+                            "V talk. P cycles the camera. F3 overlay, backtick console.");
+        ImGui::TextDisabled("The keys themselves are in Assets/Config/input.json.");
+        ImGui::EndTabItem();
+    }
+
+    if (ImGui::BeginTabItem("Audio"))
+    {
+        AudioEngine& audio = m_app->GetAudio();
+        float volume = audio.MasterGain();
+        if (ImGui::SliderFloat("Volume", &volume, 0.0f, 1.5f, "%.2f"))
+        {
+            audio.SetMasterGain(volume);
+            SetSetting("audio.volume", std::to_string(volume));
+        }
+        if (!audio.HasDevice())
+        {
+            ImGui::TextDisabled("  no sound device on this machine");
+        }
+
+        ImGui::Spacing();
+        ImGui::SeparatorText("Voice");
+        bool voice = cv_voiceEnabled.Get();
+        if (ImGui::Checkbox("Proximity voice", &voice))
+        {
+            SetSetting("audio.voice", voice ? "true" : "false");
+            if (!voice)
+            {
+                StopTalking();
+            }
+        }
+        ImGui::BeginDisabled(!voice);
+        float voiceVolume = cv_voiceVolume.Get();
+        if (ImGui::SliderFloat("Their volume", &voiceVolume, 0.0f, 2.0f, "%.2f"))
+        {
+            SetSetting("audio.voice_volume", std::to_string(voiceVolume));
+        }
+        bool openMic = cv_voiceOpenMic.Get();
+        if (ImGui::Checkbox("Open mic", &openMic))
+        {
+            SetSetting("audio.voice_open_mic", openMic ? "true" : "false");
+        }
+        ImGui::SetItemTooltip("Off, hold V to talk. On, it sends whenever you speak.");
+        ImGui::BeginDisabled(!openMic);
+        float threshold = cv_voiceThreshold.Get();
+        if (ImGui::SliderFloat("Speak above", &threshold, 0.005f, 0.30f, "%.3f"))
+        {
+            SetSetting("audio.voice_threshold", std::to_string(threshold));
+        }
+        ImGui::EndDisabled();
+
+        // The level meter, with the threshold drawn on it. Setting a threshold blind is guesswork;
+        // watching your own voice cross a line is not.
+        ImGui::Text("Microphone");
+        ImGui::ProgressBar(m_voiceLevel, ImVec2(-1.0f, 12.0f), "");
+        if (openMic)
+        {
+            const ImVec2 bar = ImGui::GetItemRectMin();
+            const ImVec2 far = ImGui::GetItemRectMax();
+            const float x = bar.x + (far.x - bar.x) * std::clamp(threshold, 0.0f, 1.0f);
+            ImGui::GetWindowDrawList()->AddLine({x, bar.y}, {x, far.y}, IM_COL32(240, 200, 120, 255),
+                                                2.0f);
+        }
+        ImGui::TextDisabled(m_talking ? "  hearing you" : "  not sending");
+        ImGui::EndDisabled();
+        ImGui::EndTabItem();
+    }
+
+    if (ImGui::BeginTabItem("Graphics"))
+    {
+        float fov = cv_fov.Get();
+        if (ImGui::SliderFloat("Field of view", &fov, 70.0f, 120.0f, "%.0f deg"))
+        {
+            SetSetting("r.fov", std::to_string(fov));
+        }
+
+        bool vsync = GetSettingBool("r.vsync", true);
+        if (ImGui::Checkbox("Wait for the display", &vsync))
+        {
+            SetSetting("r.vsync", vsync ? "true" : "false");
+        }
+        ImGui::SetItemTooltip("On, the picture never tears. Off, it is a little quicker to respond.");
+
+        ImGui::Spacing();
+        ImGui::SeparatorText("Light");
+        // Brightness and contrast rather than gamma, because those are the words on a television.
+        // They are also the two that matter in a game played in the dark: somebody whose monitor
+        // crushes the low end cannot see anything the lighting is doing, and the answer to that is
+        // not to make the game brighter for everybody.
+        float exposure = cv_exposure.Get();
+        if (ImGui::SliderFloat("Brightness", &exposure, 0.4f, 2.5f, "%.2f"))
+        {
+            SetSetting("r.exposure", std::to_string(exposure));
+        }
+        float contrast = cv_contrast.Get();
+        if (ImGui::SliderFloat("Contrast", &contrast, 0.6f, 1.8f, "%.2f"))
+        {
+            SetSetting("r.contrast", std::to_string(contrast));
+        }
+        ImGui::TextDisabled("Turn brightness up until you can just make out the darkest corner of a "
+                            "room, and no further. Being able to see everything is not the game.");
+        ImGui::EndTabItem();
+    }
+
+    if (ImGui::BeginTabItem("Multiplayer"))
+    {
+        // Not once a game is running, for the same reason the title screen refuses: everybody else
+        // was told this name when the connection was made and nothing re-tells them.
+        const bool inSession = m_sessionMode != SessionMode::Offline;
+        ImGui::BeginDisabled(inSession);
+        if (ImGui::InputText("Name", m_playerName, sizeof(m_playerName)))
+        {
+            cv_playerName.Set(m_playerName);
+        }
+        ImGui::EndDisabled();
+        if (inSession)
+        {
+            ImGui::TextDisabled("Leave the game to change your name.");
+        }
+
+        ImGui::Spacing();
+        ImGui::SeparatorText("Relay");
         static char relayHost[128] = "";
         if (relayHost[0] == '\0')
         {
             std::snprintf(relayHost, sizeof(relayHost), "%s", cv_relayHost.Get().c_str());
         }
-        ImGui::SetNextItemWidth(-120.0f);
-        if (ImGui::InputText("Relay", relayHost, sizeof(relayHost)))
+        if (ImGui::InputText("Address", relayHost, sizeof(relayHost)))
         {
             SetSetting("net.relay_host", relayHost);
         }
         int relayPort = cv_relayPort.Get();
-        ImGui::SetNextItemWidth(-120.0f);
-        if (ImGui::InputInt("Relay port", &relayPort, 0, 0))
+        if (ImGui::InputInt("Port", &relayPort, 0, 0))
         {
             SetSetting("net.relay_port", std::to_string(std::clamp(relayPort, 1024, 65535)));
         }
         ImGui::TextDisabled("One machine everybody can reach, running PredationRelay.exe. Only "
-                            "needed for playing over the internet.");
-    }
-    ImGui::Spacing();
-
-    ImGui::TextDisabled("Sound");
-    AudioEngine& audio = m_app->GetAudio();
-    float volume = audio.MasterGain();
-    if (ImGui::SliderFloat("Volume", &volume, 0.0f, 1.5f, "%.2f"))
-    {
-        audio.SetMasterGain(volume);
-        SetSetting("audio.volume", std::to_string(volume));
-    }
-    if (!audio.HasDevice())
-    {
-        ImGui::TextDisabled("  no sound device on this machine");
+                            "needed for playing over the internet by code; a game on your own "
+                            "network, or one somebody reaches by address, does not use it.");
+        ImGui::EndTabItem();
     }
 
-    ImGui::Spacing();
-    ImGui::TextDisabled("Looking about");
-    float sensitivity = cv_mouseSensitivity.Get();
-    if (ImGui::SliderFloat("Mouse", &sensitivity, 0.02f, 0.60f, "%.3f deg per pixel"))
-    {
-        cv_mouseSensitivity.Set(sensitivity);
-    }
-    bool invert = cv_invertY.Get();
-    if (ImGui::Checkbox("Invert up and down", &invert))
-    {
-        cv_invertY.Set(invert);
-    }
-    float fov = cv_fov.Get();
-    if (ImGui::SliderFloat("Field of view", &fov, 70.0f, 120.0f, "%.0f deg"))
-    {
-        cv_fov.Set(fov);
-    }
-
-    ImGui::Spacing();
-    ImGui::TextDisabled("Moving about");
-    bool crouchToggle = cv_crouchToggle.Get();
-    if (ImGui::Checkbox("Crouch and prone toggle", &crouchToggle))
-    {
-        cv_crouchToggle.Set(crouchToggle);
-    }
-    ImGui::SameLine();
-    ImGui::TextDisabled("(?)");
-    if (ImGui::IsItemHovered())
-    {
-        ImGui::SetTooltip("Off, they are held down instead.");
-    }
-    bool sprintToggle = cv_sprintToggle.Get();
-    if (ImGui::Checkbox("Sprint toggles", &sprintToggle))
-    {
-        cv_sprintToggle.Set(sprintToggle);
-    }
-
-    ImGui::Spacing();
-    ImGui::TextDisabled("Picture");
-    bool vsync = SettingBool("r.vsync", true);
-    if (ImGui::Checkbox("Wait for the display", &vsync))
-    {
-        SetSetting("r.vsync", vsync ? "true" : "false");
-    }
-    ImGui::SameLine();
-    ImGui::TextDisabled("(?)");
-    if (ImGui::IsItemHovered())
-    {
-        ImGui::SetTooltip("On, the picture never tears. Off, it is a little quicker to respond.");
-    }
-
-    ImGui::Spacing();
-    ImGui::TextDisabled("Who you are");
-    if (ImGui::InputText("Name", m_playerName, sizeof(m_playerName)))
-    {
-        cv_playerName.Set(m_playerName);
-    }
-
+    ImGui::EndTabBar();
     ImGui::Spacing();
     ImGui::TextDisabled("Everything here is remembered. The console reaches all of it and more.");
 }
@@ -2820,9 +2986,15 @@ void PredationGame::UpdateVoice(float dt)
 {
     // --- Talking ---------------------------------------------------------------------------------
     const bool inSession = m_sessionMode != SessionMode::Offline;
-    const bool wants = inSession && m_screen == Screen::Playing && !m_paused &&
-                       !m_app->IsConsoleOpen() && m_app->GetInput().IsActionDown("voice") &&
-                       m_player.State().alive;
+    // Push to talk, or open mic if that is what somebody asked for. Either way the microphone is
+    // only open while the game is being played and this player is alive: no talking from the pause
+    // menu, the console, or a corpse.
+    const bool allowed = inSession && cv_voiceEnabled.Get() && m_screen == Screen::Playing &&
+                         !m_paused && !m_app->IsConsoleOpen() && m_player.State().alive;
+    const bool held = m_app->GetInput().IsActionDown("voice");
+    // Open mic still needs the microphone open to hear whether anybody is speaking, so it opens on
+    // being allowed and the gate below decides what is sent.
+    const bool wants = allowed && (cv_voiceOpenMic.Get() || held);
 
     if (wants && !m_talking)
     {
@@ -2852,6 +3024,13 @@ void PredationGame::UpdateVoice(float dt)
         // at once and is all stale by the time it is played.
         for (int guard = 0; guard < 8 && m_microphone.ReadFrame(frame); ++guard)
         {
+            // Open mic decides per frame whether this is speech or the room. Push to talk has
+            // already been decided by the key being down, so it skips this entirely.
+            if (cv_voiceOpenMic.Get() &&
+                !m_microphone.ShouldTransmit(m_microphone.LastLevel(), cv_voiceThreshold.Get(), dt))
+            {
+                continue;
+            }
             if (!m_voiceCodec.Encode(frame.data(), frame.size(), packet))
             {
                 break;
@@ -3630,6 +3809,24 @@ void PredationGame::RegisterNetCommands()
             StartLobby(code == 0, code);
         },
         "lobby [code]");
+
+    console.RegisterCommand(
+        "play", "Enter the world on your own, without a session",
+        [this](const std::vector<std::string>&)
+        {
+            // The menu has no solo button any more, on purpose: this is a game about a team. But
+            // walking into the map to look at something is most of what development is, and doing
+            // that through a lobby is three steps for no reason.
+            if (m_screen != Screen::Playing)
+            {
+                m_sessionMode = SessionMode::Offline;
+                EnterWorld();
+            }
+        });
+
+    console.RegisterCommand(
+        "torch", "Switch the flashlight on or off",
+        [this](const std::vector<std::string>&) { m_torchOn = !m_torchOn; });
 
     console.RegisterCommand(
         "menu", "Show a page of the title screen: menu <root|open|local|join|settings>",
@@ -5507,6 +5704,12 @@ void PredationGame::OnUpdate(double dt, double alpha)
                           : m_cameraMode == CameraMode::ThirdPerson ? CameraMode::Fly
                                                                     : CameraMode::FirstPerson);
         }
+        if (input.WasActionPressed("flashlight"))
+        {
+            m_torchOn = !m_torchOn;
+            PlaySound(m_torchOn ? m_sounds.pickup : m_sounds.drop, m_player.State().position, 0.25f,
+                      m_torchOn ? 1.6f : 1.4f, false);
+        }
         if (input.WasActionPressed("respawn"))
         {
             RespawnLocalPlayer(m_spawnPoint);
@@ -5770,13 +5973,59 @@ void PredationGame::OnUpdate(double dt, double alpha)
                                      ? glm::perspectiveRH_NO(verticalFov, aspect, 0.05f, 500.0f)
                                      : glm::perspectiveRH_ZO(verticalFov, aspect, 0.05f, 500.0f);
     renderer.SetCamera(view, projection);
-    (void)viewPosition;
+
+    // Where the eye actually is and which way it faces, whichever camera is driving.
+    //
+    // m_camera is the free-flying inspection camera and is not where the player is looking unless
+    // that is the mode. Taking both out of the view matrix instead works for first person, third
+    // person, the free camera and spectating somebody else, because it is the matrix all four of
+    // them produced.
+    const glm::vec3 eyePosition = viewPosition;
+    const glm::vec3 eyeForward = -glm::vec3(view[0][2], view[1][2], view[2][2]);
 
     // --- World ------------------------------------------------------------------------------------
     Environment& environment = m_scene.GetEnvironment();
     environment.fogStart = cv_fogStart.Get();
     environment.fogEnd = cv_fogEnd.Get();
     environment.sunIntensity = cv_sunIntensity.Get();
+    environment.exposure = cv_exposure.Get();
+    environment.contrast = cv_contrast.Get();
+
+    // The flashlight, on the camera rather than in the hand.
+    //
+    // A torch held in the hand is the honest version and it is also the one that fights everything
+    // else: the hand moves with the weapon, the weapon moves with the wall corrections, and the beam
+    // would swing around the room every time the gun was nudged. On the eye it points where the
+    // player is looking, which is what anybody actually wants from a torch, and it costs nothing to
+    // move it into the hand later once there is a hand free to hold it.
+    //
+    // Offset slightly down and to the side of the eye so the beam has some parallax against the
+    // walls: exactly on the eye, every surface is lit face-on and the room reads flat.
+    {
+        PunctualLight& torch = environment.lights[0];
+        if (m_torchOn && m_screen == Screen::Playing)
+        {
+            // Straight up or straight down leaves no sideways direction to offset along, and
+            // normalising that zero vector would put the torch at NaN and take the whole frame's
+            // shading with it. The offset simply goes away at the poles, which is where it matters
+            // least: the beam is on the floor or the ceiling and has no wall to rake across.
+            const glm::vec3 across = glm::cross(eyeForward, glm::vec3(0.0f, 1.0f, 0.0f));
+            const glm::vec3 right =
+                glm::length(across) > 1e-3f ? glm::normalize(across) : glm::vec3(0.0f);
+            torch.position = eyePosition + right * 0.12f - glm::vec3(0.0f, 0.10f, 0.0f);
+            torch.direction = eyeForward;
+            torch.color = glm::vec3(1.0f, 0.97f, 0.88f);
+            torch.intensity = cv_torchIntensity.Get();
+            torch.range = cv_torchRange.Get();
+            torch.innerAngle = cv_torchInner.Get();
+            torch.outerAngle = cv_torchOuter.Get();
+        }
+        else
+        {
+            torch.intensity = 0.0f;
+        }
+    }
+
     renderer.SetClearColor(0x11131aff);
 
     // What the player can reach, decided by where they are looking rather than by proximity.
@@ -5803,6 +6052,19 @@ void PredationGame::OnUpdate(double dt, double alpha)
     UpdateSounds(deltaSeconds);
     SyncDynamicProps();
     app.GetSceneRenderer().SetWireframe(cv_wireframe.Get());
+
+    // Occlusion settings, pushed every frame rather than when they change, so the console and the
+    // graphics page move the same numbers and neither has to tell the renderer it did.
+    ShadowSettings& shadows = app.GetSceneRenderer().Shadows();
+    shadows.sunEnabled = cv_sunShadows.Get();
+    shadows.skyEnabled = cv_skyShadows.Get();
+    shadows.distance = std::clamp(cv_shadowDistance.Get(), 10.0f, 120.0f);
+    shadows.indoorLight = std::clamp(cv_indoorLight.Get(), 0.0f, 1.0f);
+    shadows.sunBias = cv_sunShadowBias.Get();
+    shadows.sunNormalOffset = cv_sunShadowOffset.Get();
+    shadows.skyBias = cv_skyShadowBias.Get();
+    shadows.skyNormalOffset = cv_skyShadowOffset.Get();
+    shadows.debugView = std::clamp(cv_occlusionDebug.Get(), 0, 4);
     app.SetEntityCount(m_scene.EntityCount());
 }
 
@@ -5893,6 +6155,11 @@ void PredationGame::OnRender()
     }
 
     const glm::vec3 viewPosition = m_cameraMode == CameraMode::Fly ? m_camera.position : m_player.View().eyePosition;
+    // Depth from the sun and depth from overhead, both fitted around the eye, before anything is
+    // shaded. This is where a room with a roof on it becomes dark: nothing declares it dark, the
+    // roof is simply between it and the sky.
+    app.GetSceneRenderer().RenderShadows(Renderer::kViewSunShadow, Renderer::kViewSkyShadow, m_scene,
+                                         app.GetMeshes(), viewPosition);
     app.GetSceneRenderer().Draw(Renderer::kViewMain, m_scene, app.GetMeshes(), viewPosition);
     DrawDebugOverlays();
 }

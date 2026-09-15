@@ -14,8 +14,108 @@ uniform vec4 u_ambientGround;   // rgb = bounce from below
 uniform vec4 u_fogColor;        // rgb
 uniform vec4 u_fogParams;       // x = start distance, y = end distance
 uniform vec4 u_cameraPosition;  // xyz
+uniform vec4 u_grade;           // x = exposure, y = contrast, z = light where the sky cannot reach,
+                                // w = 0 normal, 1 show the sun's occlusion, 2 show the sky's
+
+// Lights that have a place. Four vec4 each: position and range, colour and intensity, direction and
+// the cosine of the inner cone, then the cosine of the outer cone and whether it is on at all.
+#define MAX_LIGHTS 4
+uniform vec4 u_lights[MAX_LIGHTS * 4];
+
+// The two depth maps, and what turns a world position into a lookup in each.
+//
+// The sun's says what the sun can see. The sky's is rendered from straight overhead and says what
+// the sky can see, which is the whole reason a room with a roof on it is dark: there is no authored
+// darkness anywhere in this game, only geometry that light does not get past.
+//
+// Each map comes with a matrix from world space to its texture coordinates, an axis that turns a
+// world position into a distance from that light in metres, and four numbers: the size of a texel
+// in texture coordinates, how much slack to allow in metres, whether the map is on at all, and how
+// far along the surface normal to take the reading.
+uniform mat4 u_sunShadowMtx;
+uniform vec4 u_sunShadowAxis;
+uniform vec4 u_sunShadowParams;
+uniform mat4 u_skyShadowMtx;
+uniform vec4 u_skyShadowAxis;
+uniform vec4 u_skyShadowParams;
+SAMPLER2D(s_sunShadow, 1);
+SAMPLER2D(s_skyShadow, 2);
+
+// bgfx gives HLSL a struct for a sampler and GLSL the built-in type, and makes `sampler2D` mean
+// whichever of the two this backend has. So a function can take one, and the lookup below is
+// written once rather than once per map.
 
 #define PI 3.14159265359
+
+// How much of a light reaches this surface: 1 in the open, 0 behind something, and part of the way
+// along an edge.
+//
+// The map holds, for each texel, how far the nearest surface to the light is. So the question is
+// whether this surface is that one or something behind it, and the whole of the difficulty is that
+// both numbers are approximate. The map has a texel size, and a surface at a glancing angle to the
+// light crosses several texels' worth of distance within one texel, so comparing exactly makes
+// every lit surface stripe itself with its own shadow.
+//
+// Two things stop that. Some slack in the comparison, in metres. And taking the reading a little
+// way out along the surface normal, which moves the lookup off the surface being tested rather than
+// pushing the number around: that costs a thin skirt of missing shadow at the foot of a wall, and
+// buys a surface that does not shadow itself at any angle. The normal offset is the load-bearing
+// one for the sky map, where it also keeps the outside face of a wall out of its own roof's shade.
+float lightReaches(sampler2D map, mat4 mtx, vec4 axis, vec4 params, vec3 P, vec3 N)
+{
+	if (params.z < 0.5)
+	{
+		return 1.0;
+	}
+
+	vec3 sampleAt = P + N * params.w;
+	vec4 projected = mul(mtx, vec4(sampleAt, 1.0));
+	vec2 uv = projected.xy / projected.w;
+	// Outside the map is not "in shadow", it is "not known": the map only covers the ground around
+	// the player, and the world carries on past it.
+	if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0)
+	{
+		return 1.0;
+	}
+	float here = dot(sampleAt, axis.xyz) + axis.w;
+
+	// Nine taps a texel apart, weighted as a tent rather than averaged flat.
+	//
+	// Averaging the *answers* rather than the distances is the first half of this: halfway between a
+	// near surface and a far one is a distance belonging to neither, and blending those draws a band
+	// of shadow along every silhouette in the scene.
+	//
+	// The second half is the weighting, and it is what stops the edges looking like stairs. Nine
+	// equal votes can only ever produce ten shades, and which texels are voting changes in a jump as
+	// the sampling point crosses a texel boundary -- so the edge of a shadow steps from one level to
+	// the next along a line of texels, which is exactly the staircase. Weighting each tap by how much
+	// of it the sampling point actually covers makes the answer move continuously instead: the same
+	// nine samples, and no jump when the boundary is crossed.
+	float size = 1.0 / max(params.x, 1e-6);
+	vec2 texel = uv * size - vec2_splat(0.5);
+	vec2 frac = texel - floor(texel);
+	vec3 weightX = vec3(1.0 - frac.x, 1.0, frac.x);
+	vec3 weightY = vec3(1.0 - frac.y, 1.0, frac.y);
+	vec2 base = (floor(texel) + vec2_splat(0.5)) * params.x;
+
+	float reached = 0.0;
+	float total = 0.0;
+	for (int y = 0; y < 3; ++y)
+	{
+		for (int x = 0; x < 3; ++x)
+		{
+			vec2 tap = base + vec2(float(x) - 1.0, float(y) - 1.0) * params.x;
+			float nearest = texture2DLod(map, tap, 0.0).x;
+			// Both numbers count from the back of the map, so the nearer surface to the light is
+			// the larger one, and being lit means not falling short of it by more than the slack.
+			float lit = (here + params.y >= nearest) ? 1.0 : 0.0;
+			float weight = weightX[x] * weightY[y];
+			reached += lit * weight;
+			total += weight;
+		}
+	}
+	return reached / max(total, 1e-6);
+}
 
 // GGX / Trowbridge-Reitz normal distribution.
 float distributionGGX(float NoH, float roughness)
@@ -78,11 +178,78 @@ void main()
 	vec3 specular = D * Vis * F;
 	vec3 diffuse = diffuseColor / PI;
 	vec3 radiance = u_lightColor.rgb * u_lightColor.w;
-	vec3 color = (diffuse + specular) * radiance * NoL;
+	// Whatever the roof, the wall or the crate in the way is keeping off this surface.
+	float sunReaches =
+		lightReaches(s_sunShadow, u_sunShadowMtx, u_sunShadowAxis, u_sunShadowParams, v_worldPos, N);
+	vec3 color = (diffuse + specular) * radiance * NoL * sunReaches;
+
+	// And the lights that have a place: a torch, a flare, a lamp on a wall.
+	//
+	// The same shading as the sun, with two things added. Distance, which falls off with the square
+	// and is cut off at the light's range so a corridor does not pay for a lamp three rooms away.
+	// And the cone, which is the difference between a bulb and a torch: full brightness within the
+	// inner angle, fading to nothing by the outer one, and a wide-open inner angle makes it a bulb.
+	for (int i = 0; i < MAX_LIGHTS; ++i)
+	{
+		vec4 posRange = u_lights[i * 4 + 0];
+		vec4 colorIntensity = u_lights[i * 4 + 1];
+		vec4 dirInner = u_lights[i * 4 + 2];
+		vec4 outerOn = u_lights[i * 4 + 3];
+		if (outerOn.y < 0.5)
+		{
+			continue;
+		}
+
+		vec3 toLight = posRange.xyz - v_worldPos;
+		float distance = length(toLight);
+		if (distance > posRange.w)
+		{
+			continue;
+		}
+		vec3 Lp = toLight / max(distance, 1e-4);
+
+		// Inverse square, with the singularity at zero removed and a window that reaches exactly
+		// nothing at the range rather than being cut off at some visible brightness.
+		float attenuation = 1.0 / max(distance * distance, 0.01);
+		float window = clamp(1.0 - pow(distance / posRange.w, 4.0), 0.0, 1.0);
+		attenuation *= window * window;
+
+		float cosAngle = dot(-Lp, normalize(dirInner.xyz));
+		float cone = clamp((cosAngle - outerOn.x) / max(dirInner.w - outerOn.x, 1e-4), 0.0, 1.0);
+		// Squared, so the edge of the beam softens rather than ending on a line.
+		cone *= cone;
+		if (cone <= 0.0)
+		{
+			continue;
+		}
+
+		vec3 Hp = normalize(Lp + V);
+		float NoLp = max(dot(N, Lp), 0.0);
+		float NoHp = max(dot(N, Hp), 0.0);
+		float VoHp = max(dot(V, Hp), 0.0);
+
+		float Dp = distributionGGX(NoHp, roughness);
+		float Visp = visibilitySmith(NoV, NoLp, roughness);
+		vec3 Fp = fresnelSchlick(f0, VoHp);
+		vec3 lightRadiance = colorIntensity.rgb * colorIntensity.w * attenuation * cone;
+		color += (diffuse + Dp * Visp * Fp) * lightRadiance * NoLp;
+	}
 
 	// Hemispheric ambient stands in for indirect light until there is a real probe system.
 	float hemisphere = N.y * 0.5 + 0.5;
 	vec3 ambient = mix(u_ambientGround.rgb, u_ambientSky.rgb, hemisphere);
+
+	// And the sky is blocked by the same geometry that blocks the sun.
+	//
+	// This is what makes an interior dark rather than merely unlit by the sun. Shadowing the sun
+	// alone leaves a room filled with flat ambient light at the same brightness as the field
+	// outside, which is the look of a room somebody forgot to light rather than a dark one. What is
+	// left where the sky cannot reach is a small fraction, standing in for the light that would have
+	// bounced its way in; without it, geometry out of the torch beam is not dark but absent.
+	float skyReaches =
+		lightReaches(s_skyShadow, u_skyShadowMtx, u_skyShadowAxis, u_skyShadowParams, v_worldPos, N);
+	ambient *= mix(u_grade.z, 1.0, skyReaches);
+
 	color += diffuseColor * ambient;
 
 	// Metals have no diffuse, so without an ambient specular term they render black wherever the
@@ -92,14 +259,52 @@ void main()
 
 	color += u_emissive.rgb;
 
-	// Linear distance fog. Cheap, and it does most of the atmospheric work in dark interiors.
+	// Linear distance fog. Cheap, and it does most of the atmospheric work outdoors.
+	//
+	// Thinned where the sky cannot reach, because this fog is daylight scattering in the air between
+	// the eye and the surface. Left at full strength it lifts the inside of a sealed room back to
+	// the colour of the sky outside it, which undoes the occlusion above at exactly the distances an
+	// interior is viewed at.
 	float distanceToCamera = length(u_cameraPosition.xyz - v_worldPos);
 	float fogAmount = clamp((distanceToCamera - u_fogParams.x) / max(u_fogParams.y - u_fogParams.x, 1e-4), 0.0, 1.0);
-	color = mix(color, u_fogColor.rgb, fogAmount);
+	color = mix(color, u_fogColor.rgb, fogAmount * mix(0.15, 1.0, skyReaches));
 
-	// Reinhard tonemap, then encode to gamma space for the non-sRGB backbuffer.
-	color = color / (color + vec3_splat(1.0));
+	// Exposure, then a filmic curve, then contrast, then gamma.
+	//
+	// Reinhard was here and it is the wrong curve for this game. It rolls everything off towards
+	// grey, which is exactly what a dark scene must not do: the difference between a black corridor
+	// and a corridor with something at the end of it lives in the bottom of the range, and Reinhard
+	// spends its resolution at the top. This is the Narkowicz approximation of the ACES curve, which
+	// holds the shadows down and lets the highlights go without turning them to paste.
+	color *= max(u_grade.x, 0.0);
+	color = clamp((color * (2.51 * color + 0.03)) / (color * (2.43 * color + 0.59) + 0.14), 0.0, 1.0);
+
+	// Contrast about the middle grey of the encoded range rather than about zero, or turning it up
+	// only makes the picture darker.
 	color = pow(color, vec3_splat(1.0 / 2.2));
+	color = clamp((color - vec3_splat(0.5)) * max(u_grade.y, 0.0) + vec3_splat(0.5), 0.0, 1.0);
 
+	// Occlusion on its own, for when the lighting is wrong and the question is which of the two maps
+	// is saying what. 1 and 2 show what reaches, white for "it does". 3 shows whether the sky map
+	// has anything at all recorded over this surface, and 4 how far behind the recorded surface this
+	// one is: mid grey is level with it, brighter is behind it, darker is in front.
+	if (u_grade.w > 0.5)
+	{
+		if (u_grade.w > 2.5)
+		{
+			vec4 tc = mul(u_skyShadowMtx, vec4(v_worldPos + N * u_skyShadowParams.w, 1.0));
+			float nearest = texture2DLod(s_skyShadow, tc.xy / tc.w, 0.0).x;
+			float here = dot(v_worldPos + N * u_skyShadowParams.w, u_skyShadowAxis.xyz) +
+			             u_skyShadowAxis.w;
+			// Raw, over the map. Black means nothing was drawn into this texel at all.
+			float shown = u_grade.w < 3.5 ? clamp(nearest / 220.0, 0.0, 1.0)
+			                              : clamp(v_worldPos.y * 0.2, 0.0, 1.0);
+			gl_FragColor = vec4(vec3_splat(shown), 1.0);
+			return;
+		}
+		float shown = u_grade.w < 1.5 ? sunReaches : skyReaches;
+		gl_FragColor = vec4(vec3_splat(shown), 1.0);
+		return;
+	}
 	gl_FragColor = vec4(color, 1.0);
 }

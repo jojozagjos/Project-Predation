@@ -797,3 +797,72 @@ TEST_CASE("A lost voice frame is filled in rather than left as a hole", "[audio]
     // Not silence. It does not have to be right, it has to be something.
     CHECK(loudest > 0.01);
 }
+
+TEST_CASE("Open mic opens on speech and does not chatter", "[audio][voice][gate]")
+{
+    // One threshold opens and closes on the same number, so a voice sitting near it flickers on and
+    // off, and flicker is worse than either state. This opens at the threshold, stays open until
+    // well below it, and then holds on a moment longer so the pause between two words does not cut
+    // the channel.
+    //
+    // Tested without a microphone because the whole of it is a decision about a number.
+    VoiceCapture mic;
+    constexpr float kThreshold = 0.04f;
+    constexpr float kFrame = 0.020f;
+
+    // Silence says nothing.
+    CHECK_FALSE(mic.ShouldTransmit(0.001f, kThreshold, kFrame));
+    CHECK_FALSE(mic.Transmitting());
+
+    // Speech opens it at once: the first syllable is the one that must not be lost.
+    CHECK(mic.ShouldTransmit(0.20f, kThreshold, kFrame));
+    CHECK(mic.Transmitting());
+
+    // Just under the threshold keeps it open rather than closing on the quiet part of a word.
+    CHECK(mic.ShouldTransmit(kThreshold * 0.8f, kThreshold, kFrame));
+
+    // A short gap between words does not close it.
+    for (int i = 0; i < 10; ++i) // 0.2 s
+    {
+        CHECK(mic.ShouldTransmit(0.0f, kThreshold, kFrame));
+    }
+
+    // A long enough silence does.
+    bool closed = false;
+    for (int i = 0; i < 60 && !closed; ++i) // up to 1.2 s more
+    {
+        closed = !mic.ShouldTransmit(0.0f, kThreshold, kFrame);
+    }
+    CHECK(closed);
+    CHECK_FALSE(mic.Transmitting());
+
+    // And it opens again for the next thing said.
+    CHECK(mic.ShouldTransmit(0.30f, kThreshold, kFrame));
+}
+
+TEST_CASE("A voice hovering at the threshold does not flicker", "[audio][voice][gate]")
+{
+    // The failure this guards against is not silence being sent, it is the channel opening and
+    // closing several times a second, which sounds like somebody's connection failing.
+    VoiceCapture mic;
+    constexpr float kThreshold = 0.05f;
+    constexpr float kFrame = 0.020f;
+
+    int changes = 0;
+    bool previous = false;
+    // Two seconds of somebody speaking quietly, wavering either side of the threshold.
+    for (int i = 0; i < 100; ++i)
+    {
+        const float level = kThreshold * (i % 2 == 0 ? 1.1f : 0.85f);
+        const bool now = mic.ShouldTransmit(level, kThreshold, kFrame);
+        if (now != previous)
+        {
+            ++changes;
+            previous = now;
+        }
+    }
+    INFO("the channel changed state " << changes << " times in two seconds");
+    // Once: open, and stay open.
+    CHECK(changes == 1);
+    CHECK(previous);
+}

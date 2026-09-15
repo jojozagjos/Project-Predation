@@ -33,6 +33,7 @@
     "orbit": [ "Mouse3" ],
     "toggle_camera": [ "P" ],
     "respawn": [ "F5" ],
+    "flashlight": [ "L" ],
 
     "quit_capture": [ "Escape" ],
     "voice": [ "V" ],

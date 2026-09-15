@@ -258,6 +258,71 @@ void BuildTestMap(Scene& scene, MeshLibrary& meshes, PhysicsWorld* physics)
     }
 
     // ---------------------------------------------------------------------
+    // A room with no light in it.
+    //
+    // Four walls, a roof and one doorway, west of the spawn. It exists because a flashlight cannot
+    // be judged anywhere else: outdoors under a sun and a sky there is nothing for a beam to be
+    // brighter than.
+    //
+    // Nothing here declares the room dark and nothing in the game looks up whether a position is
+    // inside it. It is dark because the roof is between it and the sky, which the renderer works out
+    // for itself from this geometry: see Engine/Render/ShadowMap.h. Build a roof anywhere else and
+    // it will be dark underneath too.
+    // ---------------------------------------------------------------------
+    {
+        const Material kDarkWall = Material::Diffuse({0.20f, 0.20f, 0.22f}, 0.92f);
+        const float halfX = kDarkRoomWidth * 0.5f;
+        const float halfZ = kDarkRoomDepth * 0.5f;
+        const float t = kDarkRoomWallThickness;
+        const float h = kDarkRoomHeight;
+
+        // Floor, a little proud of the ground so the two do not fight for the same pixels.
+        //
+        // Every piece here runs from the inside face of one wall to the inside face of the next, so
+        // they butt rather than overlap or leave a slot. That is fiddlier than it sounds and it is
+        // not cosmetic: the first version left 15 cm gaps at both back corners, and with real
+        // occlusion they read as two blades of daylight down the inside of a supposedly sealed room.
+        // A wall that does not meet its neighbour is a window.
+        builder.AddBox("dark_floor", AtPosition(kDarkRoomX, 0.03f, kDarkRoomZ),
+                       {kDarkRoomWidth - t, 0.06f, kDarkRoomDepth - t}, kDarkWall);
+        builder.AddBox("dark_roof", AtPosition(kDarkRoomX, h + t * 0.5f, kDarkRoomZ),
+                       {kDarkRoomWidth + t * 2.0f, t, kDarkRoomDepth + t * 2.0f}, kDarkWall);
+
+        // Back and sides. The west wall runs the full outer depth and the other two stop against
+        // its inside face, so the corner is closed by one of them rather than by neither.
+        builder.AddBox("dark_wall_w", AtPosition(kDarkRoomX - halfX, h * 0.5f, kDarkRoomZ),
+                       {t, h, kDarkRoomDepth + t * 2.0f}, kDarkWall);
+        builder.AddBox("dark_wall_n", AtPosition(kDarkRoomX, h * 0.5f, kDarkRoomZ - halfZ),
+                       {kDarkRoomWidth - t, h, t}, kDarkWall);
+        builder.AddBox("dark_wall_s", AtPosition(kDarkRoomX, h * 0.5f, kDarkRoomZ + halfZ),
+                       {kDarkRoomWidth - t, h, t}, kDarkWall);
+
+        // The east wall, with a doorway in the middle of it facing the spawn. Two posts and a
+        // lintel rather than a hole, because the geometry is boxes. The posts reach the outer
+        // corners for the same reason the west wall does.
+        const float postWidth = (kDarkRoomDepth + t * 2.0f - kDarkRoomDoorWidth) * 0.5f;
+        const float postCentre = (kDarkRoomDoorWidth + postWidth) * 0.5f;
+        builder.AddBox("dark_door_a", AtPosition(kDarkRoomX + halfX, h * 0.5f, kDarkRoomZ - postCentre),
+                       {t, h, postWidth}, kDarkWall);
+        builder.AddBox("dark_door_b", AtPosition(kDarkRoomX + halfX, h * 0.5f, kDarkRoomZ + postCentre),
+                       {t, h, postWidth}, kDarkWall);
+        const float lintelHeight = h - kDoorHeight;
+        builder.AddBox("dark_lintel",
+                       AtPosition(kDarkRoomX + halfX, kDoorHeight + lintelHeight * 0.5f, kDarkRoomZ),
+                       {t, lintelHeight, kDarkRoomDoorWidth}, kDarkWall);
+
+        // Something inside to point a torch at. A beam on an empty floor says very little; a beam
+        // across a box, a cylinder and a sphere says whether the falloff and the cone are right.
+        builder.AddBox("dark_crate", AtPosition(kDarkRoomX - 1.6f, 0.51f, kDarkRoomZ - 1.4f),
+                       {0.9f, 0.9f, 0.9f}, Material::Diffuse({0.38f, 0.34f, 0.28f}, 0.85f));
+        builder.AddMesh("dark_pillar",
+                        AtPosition(kDarkRoomX + 1.8f, 1.36f, kDarkRoomZ + 1.2f),
+                        Primitives::Cylinder(0.28f, 2.6f, 16), kPillarMaterial);
+        builder.AddMesh("dark_sphere", AtPosition(kDarkRoomX, 0.68f, kDarkRoomZ + 2.4f),
+                        Primitives::Sphere(0.55f, 24, 16),
+                        Material::Metal({0.62f, 0.63f, 0.66f}, 0.30f));
+    }
+    // ---------------------------------------------------------------------
     // -Z: a corridor whose doorways narrow, for collision and squeeze tuning.
     // ---------------------------------------------------------------------
     constexpr float corridorZ = -14.0f;
@@ -372,5 +437,4 @@ const char* SurfaceUnderfoot(float worldX, float worldZ)
     }
     return nullptr;
 }
-
 } // namespace pred

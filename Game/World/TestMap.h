@@ -69,6 +69,18 @@ inline constexpr float kSurfaceRowZ = 5.0f;
 inline constexpr float kSurfacePadDepth = 3.0f;
 inline constexpr float kSurfacePadWidth = 1.8f;
 inline constexpr float kSurfacePadHeight = 0.06f;
+
+// The dark room: an enclosed box with one doorway, west of the spawn. Somewhere to stand with a
+// torch on and find out whether the lighting works. It is dark because it has a roof, not because
+// anything here says so -- see the comment where it is built.
+inline constexpr float kDarkRoomX = -13.0f;
+inline constexpr float kDarkRoomZ = 17.5f;
+inline constexpr float kDarkRoomWidth = 9.0f; // along X
+inline constexpr float kDarkRoomDepth = 8.0f; // along Z
+inline constexpr float kDarkRoomHeight = 3.4f;
+inline constexpr float kDarkRoomDoorWidth = 1.8f;
+inline constexpr float kDarkRoomWallThickness = 0.3f;
+
 inline constexpr SurfacePad kSurfacePads[] = {
     {"concrete", -3.8f, kSurfaceRowZ, kSurfacePadWidth, kSurfacePadDepth},
     {"stone", -1.9f, kSurfaceRowZ, kSurfacePadWidth, kSurfacePadDepth},

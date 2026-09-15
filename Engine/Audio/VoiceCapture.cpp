@@ -100,6 +100,8 @@ void VoiceCapture::Stop()
     std::lock_guard<std::mutex> lock(m_mutex);
     m_pending.clear();
     m_lastLevel = 0.0f;
+    m_transmitting = false;
+    m_quietFor = 0.0f;
 }
 
 size_t VoiceCapture::FrameSamples() const
@@ -150,6 +152,40 @@ bool VoiceCapture::ReadFrame(std::vector<float>& out)
     }
     m_lastLevel = std::min(peak, 1.0f);
     return true;
+}
+
+bool VoiceCapture::ShouldTransmit(float level, float threshold, float dt)
+{
+    // Opens at the threshold and closes at two thirds of it. A single threshold opens and closes on
+    // the same number, so a voice sitting near it flickers, and flicker is worse than either state.
+    constexpr float kCloseShare = 0.66f;
+    // And then holds on for a moment after the last loud frame, so the quiet end of a word is not
+    // cut off and the pause between two words does not close the channel.
+    constexpr float kHoldSeconds = 0.45f;
+
+    if (level >= threshold)
+    {
+        m_transmitting = true;
+        m_quietFor = 0.0f;
+        return true;
+    }
+    if (!m_transmitting)
+    {
+        return false;
+    }
+    if (level >= threshold * kCloseShare)
+    {
+        // Still speaking, just quieter. The hold does not start running until it drops properly.
+        m_quietFor = 0.0f;
+        return true;
+    }
+    m_quietFor += dt;
+    if (m_quietFor >= kHoldSeconds)
+    {
+        m_transmitting = false;
+        m_quietFor = 0.0f;
+    }
+    return m_transmitting;
 }
 
 float VoiceCapture::LastLevel() const
