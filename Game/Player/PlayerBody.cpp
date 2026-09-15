@@ -1419,11 +1419,25 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
                    rotation;
     }
     // --- Fire kick ------------------------------------------------------------------------------
+    //
+    // Straight back along the sight line, and nothing else.
+    //
+    // It used to tip the muzzle up seven and a half degrees as well, and that has to go now the
+    // camera carries the recoil: the two were doing the same job and the sum was twice the
+    // movement. Worse, they are not interchangeable. Pitching the view moves the weapon and the
+    // sights and the world together, so the sight picture stays assembled and only the aim point
+    // climbs. Pitching the weapon inside the view moves the sights off the screen centre while the
+    // world holds still, which takes the rear and front sights out of line with each other and the
+    // whole alignment with them -- and the moment that matters is the moment the player is aiming
+    // down them. That is exactly what "get rid of the gun tilting up so the ADS stays lined up" is.
+    //
+    // The push back along the aim axis stays. It is the part that reads as a weapon absorbing a
+    // round, and because it runs along the sight line rather than across it, it moves the sights
+    // nearer the eye without moving them off the mark.
     const float kick = glm::clamp(m_weaponPose.kick, 0.0f, 1.0f);
     if (kick > 0.0f)
     {
         offset -= aimForward * (0.055f * kick);
-        rotation = rotation * glm::angleAxis(glm::radians(-7.5f * kick), glm::vec3(1.0f, 0.0f, 0.0f));
     }
 
     // Sway is applied last, entirely in the carry frame, so it moves the whole hold together:

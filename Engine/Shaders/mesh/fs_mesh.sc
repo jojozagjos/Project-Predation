@@ -73,8 +73,8 @@ uniform vec4 u_reflectParams;
 // sky, which is a question about a quarter of a metre around the point rather than about the point,
 // so the width is the answer rather than a way of hiding the lack of one.
 #define KERNEL_NAME lightReachesSharp
-#define KERNEL_TAPS 3
-#define KERNEL_RADIUS 1.0
+#define KERNEL_TAPS 5
+#define KERNEL_RADIUS 2.0
 #include "shadow_kernel.sh"
 
 #define KERNEL_NAME lightReachesWide

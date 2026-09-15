@@ -21,6 +21,19 @@ float KERNEL_NAME(sampler2D map, mat4 mtx, vec4 axis, vec4 params, vec3 P, vec3 
 	{
 		return 1.0;
 	}
+	// And faded out before that edge rather than cut off at it.
+	//
+	// A hard boundary means every shadow in the level ends on the same circle around the player, and
+	// walking moves that circle: shadows switch on and off as the edge sweeps over them, which is
+	// what "shadows start to un-render when not that far away" is. They still stop -- the map cannot
+	// cover the world -- but over the last tenth of it rather than at a line, so a shadow thins out
+	// instead of blinking.
+	vec2 fromEdge = min(uv, vec2_splat(1.0) - uv);
+	float edgeFade = clamp(min(fromEdge.x, fromEdge.y) / 0.05, 0.0, 1.0);
+	if (edgeFade <= 0.0)
+	{
+		return 1.0;
+	}
 	float here = dot(sampleAt, axis.xyz) + axis.w;
 
 	// Twenty-five taps on the map's own texel grid, weighted so the edges of the kernel carry the
@@ -74,7 +87,7 @@ float KERNEL_NAME(sampler2D map, mat4 mtx, vec4 axis, vec4 params, vec3 P, vec3 
 			total += weight;
 		}
 	}
-	return reached / max(total, 1e-6);
+	return mix(1.0, reached / max(total, 1e-6), edgeFade);
 }
 
 

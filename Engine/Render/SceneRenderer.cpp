@@ -22,7 +22,19 @@ namespace
 // width of the fade at a doorway rather than a hard line across the floor.
 // The near map does not need to be as big as the far one: it covers a fifth of the distance, so even
 // at half the resolution its texels are a quarter the size.
-constexpr uint16_t kSunShadowSize = 2048;
+// Four thousand and ninety-six, not two, and the reason is arithmetic rather than taste.
+//
+// The map covers a circle of `distance` around the player, so a texel is (2 * distance) / size of
+// world. At 2048 over a 16 m radius that is 1.56 cm, and a shadow's silhouette is a staircase at
+// texel scale whatever the filter does -- each texel either holds the occluder or does not. At the
+// distance a player looks at their own shadow, 1.56 cm is about three pixels a step, which is
+// exactly the "my shadow is pixelated" that keeps being reported.
+//
+// Doubling the side halves the step to 0.78 cm and, just as usefully, buys the range back: the map
+// now reaches 24 m instead of 16 and the texel is still 1.17 cm, finer than it used to be at
+// two-thirds the distance. 64 MB of the card, which is a fair price for the one effect in this game
+// that is looked at closely from a metre away.
+constexpr uint16_t kSunShadowSize = 4096;
 // The sky map is read close up on walls, where a coarse texel shows as a square patch of dimmer
 // ambient a hand span across -- reported as "big pixelated squares" next to a wall. It is not the
 // resolution the occlusion needs, it is the resolution the eye needs at arm.s length.
