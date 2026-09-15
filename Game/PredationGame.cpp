@@ -1942,6 +1942,7 @@ void Caption(const char* line, const char* detail = nullptr)
     }
 }
 
+} // namespace
 
 
 void PredationGame::DrawTitleOpen()

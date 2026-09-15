@@ -290,10 +290,36 @@ void main()
 
 	color += diffuseColor * ambient;
 
-	// Metals have no diffuse, so without an ambient specular term they render black wherever the
-	// sun does not hit them. This approximates a uniform environment reflection until there is one.
-	vec3 ambientFresnel = fresnelSchlick(f0, NoV) * (1.0 - roughness);
-	color += ambient * mix(f0, ambientFresnel, 0.5);
+	// What the surface reflects of its surroundings.
+	//
+	// This was a single number: the same ambient the diffuse uses, tinted by Fresnel and faded out
+	// with roughness. That is enough to stop metal rendering black and it is not a reflection -- it
+	// does not know which way the surface faces the world, so a steel plate looks identical whether
+	// it is angled at the sky or at the floor, and turning the camera changes nothing on it.
+	//
+	// Now it looks along the reflected view direction and asks the same sky-and-ground hemisphere
+	// what is over there. A floor picks up the sky, the underside of a rail picks up the ground, and
+	// both change as you walk around them, which is most of what makes a surface read as polished
+	// rather than as painted a lighter colour. A rough surface reflects a wide cone rather than a
+	// direction, so its reflection is pulled back towards the surface normal in proportion.
+	vec3 reflected = reflect(-V, N);
+	reflected = normalize(mix(reflected, N, roughness * roughness));
+	float reflectedHemisphere = reflected.y * 0.5 + 0.5;
+	vec3 environmentColor = mix(u_ambientGround.rgb, u_ambientSky.rgb, reflectedHemisphere);
+	// Occluded like the rest of the ambient: a room the sky cannot see into has nothing to reflect.
+	environmentColor *= mix(u_grade.z, 1.0, skyReaches);
+
+	// How much of that reflection actually leaves the surface, from Karis' analytic fit to the split
+	// sum approximation. It is two numbers -- a scale and a bias on the Fresnel colour -- and they
+	// carry the two things the old single fade got wrong: that grazing angles reflect far more than
+	// head-on ones whatever the roughness, and that a rough surface keeps a little of that rather
+	// than none.
+	vec4 c0 = vec4(-1.0, -0.0275, -0.572, 0.022);
+	vec4 c1 = vec4(1.0, 0.0425, 1.04, -0.04);
+	vec4 envFit = roughness * c0 + c1;
+	float a004 = min(envFit.x * envFit.x, exp2(-9.28 * NoV)) * envFit.x + envFit.y;
+	vec2 envTerm = vec2(-1.04, 1.04) * a004 + envFit.zw;
+	color += environmentColor * (f0 * envTerm.x + vec3_splat(envTerm.y));
 
 	color += u_emissive.rgb;
 

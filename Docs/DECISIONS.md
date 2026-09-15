@@ -1167,3 +1167,29 @@ continuously for the same nine samples.
 
 The consequence for level building is the point of all of it: put a roof on something and it is dark
 underneath, anywhere, with nothing to declare and nothing to keep in step with the geometry.
+
+## ADR-060: Surfaces reflect where they face
+
+The ambient specular term was one number: the same hemispheric ambient the diffuse uses, tinted by
+Fresnel and faded out with roughness. That is enough to stop metal rendering black, and it is not a
+reflection. It does not know which way the surface faces the world, so a steel plate looks the same
+whether it is angled at the sky or at the floor, and walking around it changes nothing on it.
+
+It now looks along the reflected view direction and asks the same sky-and-ground hemisphere what is
+over there. A floor picks up the sky, the underside of a rail picks up the ground, and both change as
+the player moves, which is most of what separates a polished surface from one painted a lighter
+colour. A rough surface reflects a cone rather than a direction, so the reflection vector is pulled
+back towards the normal in proportion to roughness.
+
+How much of that reflection leaves the surface comes from Karis' analytic fit to the split-sum
+environment BRDF rather than from a linear fade. It carries the two things the fade got wrong: that
+grazing angles reflect far more than head-on ones whatever the roughness, and that a rough surface
+keeps some of that rather than none.
+
+The reflection is occluded by the same sky term as the rest of the ambient, because a room the sky
+cannot see into has nothing to reflect. Without that, every polished surface indoors would be a hole
+through the roof.
+
+This is still a two-colour environment and not a probe: it cannot reflect the object next to it, only
+the sky above and the ground below. Real reflections need either probes or a screen-space pass, and
+both want a deferred or at least a depth-prepassed renderer, which this is not yet.
