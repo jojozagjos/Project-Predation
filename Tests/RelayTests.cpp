@@ -370,6 +370,38 @@ TEST_CASE("The relay says out loud what happened to it", "[relay][diagnostics]")
     CHECK(has(relay.server.Notes(), Kind::Closed));
 }
 
+TEST_CASE("A client the relay has forgotten is told so", "[relay]")
+{
+    // A dropped client goes on sending keep-alives forever, because nothing in the protocol ever
+    // told it otherwise: it believes it is in a lobby and the relay believes nobody is there. The
+    // player is left looking at a lobby with a code in it that nobody can join, which looks exactly
+    // like a working lobby nobody has tried to join yet.
+    RelayHarness relay;
+    const uint32_t code = relay.OpenLobby("host");
+    relay.JoinLobby("guest", code);
+    relay.Clear();
+
+    // The host goes quiet for long enough to be dropped, which takes the lobby with it.
+    for (int i = 0; i < 30; ++i)
+    {
+        RelayPacket alive;
+        alive.kind = RelayMessage::KeepAlive;
+        relay.Send("guest", alive);
+        relay.Tick(1.0f);
+    }
+    REQUIRE(relay.server.LobbyCount() == 0);
+    relay.Clear();
+
+    // The guest, still talking, is told there is nothing there rather than being ignored.
+    RelayPacket alive;
+    alive.kind = RelayMessage::KeepAlive;
+    relay.Send("guest", alive);
+
+    RelayPacket rejected;
+    REQUIRE(relay.First("guest", RelayMessage::Rejected, rejected));
+    CHECK(rejected.reason == RelayRejection::NoSuchLobby);
+}
+
 TEST_CASE("Notes do not pile up when nobody is reading them", "[relay][diagnostics]")
 {
     // A relay left running for a week with no operator watching must not grow a note per datagram.

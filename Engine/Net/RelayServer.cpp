@@ -340,6 +340,20 @@ void RelayServer::Receive(const std::string& from, const uint8_t* data, size_t b
 
     case RelayMessage::KeepAlive:
         // The silence timer was already reset above, which is the whole of what this is for.
+        //
+        // Unless we have never heard of them, in which case they are told so. A client that has been
+        // dropped -- timed out, or in a lobby the host left -- goes on sending keep-alives forever,
+        // because nothing in the protocol told it otherwise: it believes it is in a lobby and the
+        // relay believes nobody is there, and neither ever finds out. The player sees a lobby with a
+        // code in it that nobody can join, which is indistinguishable from a working lobby nobody
+        // has tried to join.
+        //
+        // This is not a new thing to tell a stranger. Host and Join already answer an address the
+        // relay has never heard of, so a scanner learns nothing here it could not learn there.
+        if (lobby == nullptr)
+        {
+            Reject(out, from, RelayRejection::NoSuchLobby);
+        }
         return;
 
     default:

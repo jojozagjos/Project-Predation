@@ -2439,6 +2439,7 @@ void PredationGame::StartLobby(bool asHost, uint32_t code)
     StopLobby();
     m_inLobby = true;
     m_hostingLobby = asHost;
+    m_relayFailed = false;
     m_titleStatus.clear();
 
     m_relay = std::make_shared<RelayCarrier>();
@@ -6636,6 +6637,19 @@ void PredationGame::OnUpdate(double dt, double alpha)
     if (m_relay != nullptr)
     {
         m_relay->Poll(deltaSeconds);
+        // And said out loud if it has gone, once rather than every frame.
+        //
+        // A host whose lobby the relay has dropped keeps playing perfectly well -- the game is
+        // host-authoritative and everybody already in it stays in it -- but the code on the
+        // invitation is dead and nobody new can arrive. That is worth knowing, and from inside the
+        // world there is nothing at all to see.
+        const bool failed = m_relay->Status() == RelayCarrier::State::Failed;
+        if (failed && !m_relayFailed)
+        {
+            PRED_LOG_WARN(Network, "The relay lobby has gone: {}", m_relay->Message());
+            m_titleStatus = m_relay->Message();
+        }
+        m_relayFailed = failed;
     }
     UpdateVoice(deltaSeconds);
     UpdateMicrophoneTest(deltaSeconds);

@@ -530,6 +530,8 @@ private:
     // Whether the lobby screen is up, and whether this machine opened the lobby or joined one.
     bool m_inLobby = false;
     bool m_hostingLobby = false;
+    // Whether the relay has already been reported as gone, so it is said once and not every frame.
+    bool m_relayFailed = false;
     // The flashlight, and where its beam is currently pointing -- which is not quite where the
     // player is looking, because it trails the view and catches up. `m_torchAimed` is false until
     // the first frame it is on, so switching it on snaps the beam to the view instead of sweeping
