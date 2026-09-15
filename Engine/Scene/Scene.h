@@ -32,6 +32,15 @@ struct MeshRenderer
     // invisible instead, the head vanishes from that shadow and the character is decapitated in the
     // one view where anybody would notice.
     bool hiddenFromCamera = false;
+    // Whether this blocks the sky, as opposed to the sun.
+    //
+    // The sky map answers "is there a roof over this", which is a question about the building. A
+    // person standing on open ground does block the sky above the patch they are standing on, and
+    // putting them in the map is therefore correct and looks wrong: they get a soft round shadow
+    // underneath them as well as the sharp one the sun casts, and two shadows from one body reads
+    // as a fault however defensible it is. Static level geometry blocks the sky; things that walk
+    // about do not.
+    bool blocksSky = true;
 };
 
 // A light that has a place, as opposed to the sun, which only has a direction.

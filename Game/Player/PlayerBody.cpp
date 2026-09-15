@@ -410,6 +410,8 @@ void PlayerBody::SetVisible(Scene& scene, bool visible)
             // a shadow, and that shadow is the only part of it the player can ever see.
             renderer->visible = visible;
             renderer->hiddenFromCamera = part.hiddenInFirstPerson && m_config.hideHead;
+            // A body casts a sun shadow and not a sky one: see MeshRenderer::blocksSky.
+            renderer->blocksSky = false;
         }
     }
 }
@@ -3197,6 +3199,7 @@ void PlayerBody::PushToScene(Scene& scene)
 
         renderer->visible = m_config.visible;
         renderer->hiddenFromCamera = part.hiddenInFirstPerson && m_config.hideHead;
+        renderer->blocksSky = false;
         if (!renderer->visible)
         {
             continue;

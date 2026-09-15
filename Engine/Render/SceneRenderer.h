@@ -39,7 +39,7 @@ struct ShadowSettings
     float sunBias = 0.05f;
     float sunNormalOffset = 0.06f;
     float skyBias = 0.12f;
-    float skyNormalOffset = 0.40f;
+    float skyNormalOffset = 0.05f;
     // What is left of the ambient where the sky cannot reach, standing in for light that bounced
     // its way in. Zero is a void rather than a dark room: geometry outside the torch beam stops
     // existing rather than being hard to see.

@@ -230,7 +230,7 @@ void main()
 	// left where the sky cannot reach is a small fraction, standing in for the light that would have
 	// bounced its way in; without it, geometry out of the torch beam is not dark but absent.
 	float skyReaches =
-		lightReaches(s_skyShadow, u_skyShadowMtx, u_skyShadowAxis, u_skyShadowParams, v_worldPos, N);
+		lightReachesFine(s_skyShadow, u_skyShadowMtx, u_skyShadowAxis, u_skyShadowParams, v_worldPos, N);
 	ambient *= mix(u_grade.z, 1.0, skyReaches);
 
 	color += diffuseColor * ambient;

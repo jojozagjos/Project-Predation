@@ -26,7 +26,11 @@ constexpr uint16_t kSunShadowSize = 2048;
 // The sky map is read close up on walls, where a coarse texel shows as a square patch of dimmer
 // ambient a hand span across -- reported as "big pixelated squares" next to a wall. It is not the
 // resolution the occlusion needs, it is the resolution the eye needs at arm.s length.
-constexpr uint16_t kSkyShadowSize = 2048;
+// Deliberately coarse. The sky term is not asking "what is directly over this point" -- that
+// question has no good answer for a wall, whose own top is directly over it -- but "how much of the
+// neighbourhood can see sky". A texel of about twelve centimetres with a five-tap filter samples a
+// quarter of a metre either way, which is wider than a wall is thick and narrower than a room.
+constexpr uint16_t kSkyShadowSize = 512;
 // How far the maps reach along their own axis. Deep enough that nothing in a level stands outside
 // it and gets quietly clipped out of its own shadow.
 constexpr float kShadowDepthRange = 220.0f;
@@ -338,7 +342,7 @@ void SceneRenderer::RenderShadows(bgfx::ViewId sunNearView, bgfx::ViewId sunView
                 SubmitDepth(sunNearView, *mesh, model, m_sunNearShadow.Program());
                 SubmitDepth(sunView, *mesh, model, m_sunShadow.Program());
             }
-            if (settings.skyEnabled)
+            if (settings.skyEnabled && renderer.blocksSky)
             {
                 SubmitDepth(skyView, *mesh, model, m_skyShadow.Program());
             }

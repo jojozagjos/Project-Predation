@@ -118,7 +118,7 @@ CVar<float> cv_sunShadowBias{"r.shadow_bias", 0.05f, "Slack in the sun's occlusi
 CVar<float> cv_sunShadowOffset{"r.shadow_normal_offset", 0.06f,
                                "How far out along the surface the sun's test is taken, in metres"};
 CVar<float> cv_skyShadowBias{"r.sky_bias", 0.12f, "Slack in the sky's occlusion test, in metres"};
-CVar<float> cv_skyShadowOffset{"r.sky_normal_offset", 0.40f,
+CVar<float> cv_skyShadowOffset{"r.sky_normal_offset", 0.05f,
                                "How far out along the surface the sky's test is taken, in metres"};
 // Adjustable because a prone body needs the camera much further back than a standing one, and
 // inspecting the prone roll from three metres puts the camera inside the character.
@@ -241,10 +241,36 @@ bool PredationGame::OnInit(Application& app)
     // upload on the frame a trigger is pulled. A fixed ring costs its whole size up front, never
     // allocates again, and the oldest hole quietly becomes the newest.
     {
-        // A flat disc lying in the XZ plane. Eight sides is round enough at the size a bullet hole
-        // is drawn, and the shape is a dark ring rather than a dot because that is what a hole in a
-        // hard surface looks like: a bruise of cracked material with a shadow in the middle.
-        MeshData holeMesh = Primitives::Plane({0.055f, 0.055f}, 1);
+        // A disc, not a square. There is no texture on it, so the shape of the geometry is the shape
+        // of the hole, and a square quad reads as a square -- which is what a bullet hole is not.
+        // A fan of sixteen triangles is round enough at five centimetres across.
+        MeshData holeMesh;
+        {
+            constexpr int kSides = 16;
+            constexpr float kRadius = 0.028f;
+            MeshVertex centre;
+            centre.position = {0.0f, 0.0f, 0.0f};
+            centre.normal = {0.0f, 1.0f, 0.0f};
+            centre.uv = {0.5f, 0.5f};
+            holeMesh.vertices.push_back(centre);
+            for (int i = 0; i < kSides; ++i)
+            {
+                const float angle = glm::two_pi<float>() * static_cast<float>(i) / kSides;
+                MeshVertex rim;
+                rim.position = {std::cos(angle) * kRadius, 0.0f, std::sin(angle) * kRadius};
+                rim.normal = {0.0f, 1.0f, 0.0f};
+                rim.uv = {0.5f + 0.5f * std::cos(angle), 0.5f + 0.5f * std::sin(angle)};
+                holeMesh.vertices.push_back(rim);
+            }
+            for (int i = 0; i < kSides; ++i)
+            {
+                // Wound so the face points along +Y, which is the way the plane primitive faces and
+                // the way the placement code expects: it turns +Y onto the surface normal.
+                holeMesh.indices.push_back(0);
+                holeMesh.indices.push_back(static_cast<uint32_t>(1 + (i + 1) % kSides));
+                holeMesh.indices.push_back(static_cast<uint32_t>(1 + i));
+            }
+        }
         m_bulletHoleMesh = app.GetMeshes().Upload(holeMesh, "bullet_hole");
         const Material holeMaterial = Material::Diffuse({0.05f, 0.045f, 0.04f}, 0.95f);
         m_bulletHoles.reserve(kMaxBulletHoles);
@@ -4821,6 +4847,7 @@ void PredationGame::ResolveShots()
         tracer.origin = shot.origin;
         tracer.to = result ? result.position : shot.origin + shot.direction * shot.range;
         tracer.hit = result.hit;
+        tracer.normal = result.normal;
         m_tracers.push_back(tracer);
 
         if (m_sessionMode == SessionMode::Host)
