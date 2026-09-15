@@ -248,6 +248,36 @@ TEST_CASE("Crouching lowers the hips and folds the torso forwards, never backwar
     }
 }
 
+TEST_CASE("A prone body holding still still moves", "[body][pose][prone]")
+{
+    // Every other motion in the pose is scaled by how fast the body is going, so stopping while
+    // prone switched all of it off at once and left a perfectly symmetrical body lying perfectly
+    // rigid on the floor. That reads as a corpse or a prop, which is the one thing a player hiding
+    // in the dark must not look like, and it is what "the prone animation isn't the best when
+    // holding still" was.
+    BodyHarness harness;
+    harness.SetStance(PlayerStance::Prone);
+    harness.Settle(180);
+
+    // Sampled over a couple of seconds of standing perfectly still.
+    float lowest = std::numeric_limits<float>::max();
+    float highest = -std::numeric_limits<float>::max();
+    for (int i = 0; i < 180; ++i)
+    {
+        harness.Tick();
+        const float chest = harness.Bone(harness.Rig().chest).y;
+        lowest = std::min(lowest, chest);
+        highest = std::max(highest, chest);
+    }
+
+    const float breath = highest - lowest;
+    INFO("the chest moved " << breath * 1000.0f << " mm while lying still");
+    // Enough to see, and nowhere near enough to look like the body is heaving. A ribcage, not a
+    // bellows.
+    CHECK(breath > 0.002f);
+    CHECK(breath < 0.05f);
+}
+
 TEST_CASE("Prone lays the body flat and face down with the legs trailing behind", "[body][pose]")
 {
     BodyHarness harness;

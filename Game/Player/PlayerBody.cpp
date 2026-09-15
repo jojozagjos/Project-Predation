@@ -643,12 +643,47 @@ void PlayerBody::UpdatePosture(const PlayerState& state, const PlayerView& view,
         m_crawlDistance += glm::dot(flat, facing) * dt;
     }
 
+    // The clock the breathing runs on. Here rather than in the weapon hold, because a body breathes
+    // whether or not it is holding a weapon, and this drives the prone idle as well as the gun.
+    m_swayClock += dt;
+
     m_pose.ResetToBind(m_skeleton);
 
     // Hip sway and bob, the two things that stop a walk looking like a sliding statue.
     const float phase = m_stridePhase * glm::two_pi<float>();
     const float sway = std::sin(phase) * m_config.hipSwayAmount * m_gaitWeight;
     const float bob = -std::abs(std::cos(phase)) * m_config.hipBobAmount * m_gaitWeight;
+
+    // Crawling, the shoulders roll from side to side as each arm reaches and pulls. Without it the
+    // torso slides along the floor as one rigid plank while the limbs work, which is what made the
+    // crawl read as a body being dragged rather than one pulling itself.
+    const float crawlPhase =
+        m_crawlDistance / std::max(m_config.crawlCycleLength, 0.05f) * glm::two_pi<float>();
+    const float crawlRoll = std::sin(crawlPhase) * glm::radians(m_config.crawlShoulderRollDegrees) *
+                            m_gaitWeight * m_flatness;
+
+    // The hips counter-rotate against the shoulders, which is most of what makes a crawl a crawl.
+    //
+    // A body pulling itself along the floor does not move as one piece: the shoulder that reaches
+    // drives that hip back, and the spine carries the twist between them. Without it the shoulders
+    // rolled over a pelvis that stayed square, which reads as a torso rocking on top of a body
+    // rather than as a body working.
+    const float crawlHipTwist = -std::sin(crawlPhase) * glm::radians(m_config.crawlHipTwistDegrees) *
+                                m_gaitWeight * m_flatness;
+
+    // And a prone body holding still breathes.
+    //
+    // This is the whole of why lying down and not moving looked wrong. Every other motion in the
+    // pose is scaled by m_gaitWeight, so stopping while prone switched all of it off at once and
+    // left an exactly symmetrical body lying perfectly rigid on the floor -- which reads as a corpse
+    // or a prop, and is the one thing a hiding player must not look like.
+    //
+    // Slower and deeper than the weapon's own breathing, because this is the ribcage rather than a
+    // pair of hands, and only present where the other motion is not: flat on the floor and not
+    // crawling.
+    const float proneStill = m_flatness * (1.0f - glm::clamp(m_gaitWeight, 0.0f, 1.0f));
+    const float proneBreath = std::sin(m_swayClock * m_config.proneBreatheRate) *
+                              glm::radians(m_config.proneBreatheDegrees) * proneStill;
 
     Transform& pelvis = m_pose.Local(m_rig.pelvis);
     pelvis.position = glm::vec3(sway, bob, 0.0f);
@@ -666,6 +701,7 @@ void PlayerBody::UpdatePosture(const PlayerState& state, const PlayerView& view,
     // which is exactly the movement being animated.
 
     pelvis.rotation = glm::angleAxis(-pelvisPitch, glm::vec3(1.0f, 0.0f, 0.0f)) *
+                      glm::angleAxis(crawlHipTwist, glm::vec3(0.0f, 1.0f, 0.0f)) *
                       glm::angleAxis(glm::radians(sway * 60.0f), glm::vec3(0.0f, 0.0f, 1.0f));
 
     // Lean forward from the spine, counter-rotate the chest slightly so the torso does not fold, and
@@ -689,14 +725,6 @@ void PlayerBody::UpdatePosture(const PlayerState& state, const PlayerView& view,
     // Peek lean: the torso tips sideways so the body follows the camera out past cover.
     const float peek = state.leanAmount * glm::radians(m_config.leanAngleDegrees);
 
-    // Crawling, the shoulders roll from side to side as each arm reaches and pulls. Without it the
-    // torso slides along the floor as one rigid plank while the limbs work, which is what made the
-    // crawl read as a body being dragged rather than one pulling itself.
-    const float crawlPhase =
-        m_crawlDistance / std::max(m_config.crawlCycleLength, 0.05f) * glm::two_pi<float>();
-    const float crawlRoll = std::sin(crawlPhase) * glm::radians(m_config.crawlShoulderRollDegrees) *
-                            m_gaitWeight * m_flatness;
-
     // A bladed stance while a weapon is up. Negative about +Y turns the body towards its own right,
     // which is the side the weapon is carried on, and that brings the support shoulder forward and
     // in towards the centre line where the handguard actually is. It fades out lying down, where
@@ -719,13 +747,19 @@ void PlayerBody::UpdatePosture(const PlayerState& state, const PlayerView& view,
         m_shoulderRest[kRight] +
         glm::vec3(0.0f, 0.0f, m_config.weaponShoulderForward * carryReach * 0.35f);
 
+    // The breath goes in as pitch on the spine and chest: the ribcage lifting, which is what is
+    // actually visible from outside on somebody lying face down. Split between the two joints the
+    // same way every other pitch here is, so it bends along the back rather than hinging at one
+    // point.
     m_pose.Local(m_rig.spine).rotation =
         glm::angleAxis(-torsoTwist * 0.45f - carryBlade * 0.4f, glm::vec3(0.0f, 1.0f, 0.0f)) *
-        glm::angleAxis(-(spineLean * 0.65f + runLean * 0.6f), glm::vec3(1.0f, 0.0f, 0.0f)) *
+        glm::angleAxis(-(spineLean * 0.65f + runLean * 0.6f) + proneBreath * 0.6f,
+                       glm::vec3(1.0f, 0.0f, 0.0f)) *
         glm::angleAxis(-peek * 0.55f + crawlRoll * 0.4f, glm::vec3(0.0f, 0.0f, 1.0f));
     m_pose.Local(m_rig.chest).rotation =
         glm::angleAxis(-torsoTwist * 0.55f - carryBlade * 0.6f, glm::vec3(0.0f, 1.0f, 0.0f)) *
-        glm::angleAxis(-(spineLean * 0.35f + runLean * 0.2f), glm::vec3(1.0f, 0.0f, 0.0f)) *
+        glm::angleAxis(-(spineLean * 0.35f + runLean * 0.2f) + proneBreath * 0.4f,
+                       glm::vec3(1.0f, 0.0f, 0.0f)) *
         glm::angleAxis(-peek * 0.45f + crawlRoll * 0.6f, glm::vec3(0.0f, 0.0f, 1.0f));
 
     // The neck and head undo whatever the pelvis and spine did, so the head stays level and keeps
@@ -1163,7 +1197,10 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
     // Breathing. A weapon in someone's hands is never still, and this is most of what stops a held
     // gun looking welded to the camera. It all but stops when the sights are up, because that is
     // what holding your breath is for.
-    m_swayClock += dt;
+    //
+    // The clock itself is advanced in UpdatePosture rather than here: a body breathes whether or not
+    // it is holding anything, and running it from the weapon meant the prone idle stood perfectly
+    // still for anybody with empty hands.
     // A hurt player cannot hold a weapon still. This is most of what makes being shot something
     // you feel rather than a number you read.
     const float breathe =

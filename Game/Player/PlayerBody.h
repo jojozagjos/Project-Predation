@@ -360,6 +360,14 @@ public:
         float crawlHandClearance = 0.09f;
         float crawlLegDraw = 0.40f;     // how far a knee swings out to the side as it is drawn up
         float crawlShoulderRollDegrees = 9.0f; // shoulders roll as each arm reaches and pulls
+        // And the hips turn the other way. A body pulling itself along does not move as one piece:
+        // the shoulder that reaches drives that hip back and the spine carries the twist.
+        float crawlHipTwistDegrees = 6.0f;
+        // A prone body holding still breathes, because everything else in the pose is scaled by how
+        // fast it is moving and stopping switched all of it off at once. Degrees of rise and fall
+        // through the chest, and how many radians a second the clock runs at.
+        float proneBreatheDegrees = 1.9f;
+        float proneBreatheRate = 1.15f;
         // Prone turning is slow and deliberate: the body pivots towards where you are crawling.
         float proneTurnSpeed = 3.2f;
         // Turned further than this from the way the body is lying, a prone body shuffles round on
