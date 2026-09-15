@@ -485,6 +485,9 @@ private:
         // one and it decays the same way the local one does, which is what makes somebody else's
         // weapon flash and recoil instead of firing silently.
         float weaponKick = 0.0f;
+        // Whether their torch is lit, straight off the wire, so the light it throws is in this
+        // machine.s scene too. See where the environment lights are chosen.
+        bool torchOn = false;
         // Raised the moment something arrives in their hands, so a remote weapon is brought up
         // rather than appearing already shouldered.
         float weaponDraw = 1.0f;

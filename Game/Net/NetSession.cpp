@@ -73,6 +73,7 @@ void ApplySnapshot(RemotePlayerView& view, const PlayerSnapshot& snapshot)
     view.grounded = snapshot.grounded;
     view.alive = snapshot.alive;
     view.heldItem = snapshot.heldItem;
+    view.torchOn = snapshot.torchOn;
     view.aim = snapshot.aim;
     view.reloading = snapshot.reloading;
     view.reloadProgress = snapshot.reloadProgress;
@@ -123,6 +124,7 @@ struct NetHost::Client
     float aim = 0.0f;
     bool reloading = false;
     float reloadProgress = 0.0f;
+    bool torchOn = false;
     // What this client has taken out of the world. The host does not model their bag, only what it
     // handed them, which is enough to refuse a drop of something they never picked up.
     std::map<uint16_t, int> carried;
@@ -355,6 +357,7 @@ void NetHost::HandlePacket(const NetPacket& packet)
             }
         }
         // What they are holding rides along with the input, so the host knows without asking.
+        SetPlayerTorch(client->playerId, message.torchOn);
         SetPlayerHeld(client->playerId, message.heldItem, message.aim, message.reloading,
                       message.reloadProgress);
 
@@ -726,6 +729,23 @@ void NetHost::SetPlayerHeld(uint8_t playerId, uint8_t heldItem, float aim, bool 
     }
 }
 
+void NetHost::SetPlayerTorch(uint8_t playerId, bool on)
+{
+    if (playerId == 0)
+    {
+        m_localTorch = on;
+        return;
+    }
+    for (auto& client : m_clients)
+    {
+        if (client->playerId == playerId)
+        {
+            client->torchOn = on;
+            return;
+        }
+    }
+}
+
 void NetHost::RemoveClient(PeerId peer)
 {
     const auto found = std::find_if(m_clients.begin(), m_clients.end(),
@@ -873,6 +893,7 @@ void NetHost::BuildViews(const PlayerState& localState)
         // anybody else holding anything, and why rounds from a client left their face on the host's
         // screen: the muzzle is looked up from the weapon being drawn for them, and there was none.
         view.heldItem = client->heldItem;
+        view.torchOn = client->torchOn;
         view.aim = client->aim;
         view.reloading = client->reloading;
         view.reloadProgress = client->reloadProgress;
@@ -890,6 +911,7 @@ void NetHost::SendSnapshots(uint32_t tick, const PlayerState& localState)
     snapshot.players[0].aim = m_localAim;
     snapshot.players[0].reloading = m_localReloading;
     snapshot.players[0].reloadProgress = m_localReloadProgress;
+    snapshot.players[0].torchOn = m_localTorch;
     snapshot.count = 1;
     for (const auto& client : m_clients)
     {
@@ -901,6 +923,7 @@ void NetHost::SendSnapshots(uint32_t tick, const PlayerState& localState)
             entry.aim = client->aim;
             entry.reloading = client->reloading;
             entry.reloadProgress = client->reloadProgress;
+            entry.torchOn = client->torchOn;
             entry.pingMs = static_cast<uint16_t>(std::lround(client->pingMs));
         }
     }
@@ -1311,6 +1334,11 @@ std::string NetClient::SuccessorAddress() const
     return best != nullptr ? best->address : std::string{};
 }
 
+void NetClient::SetTorch(bool on)
+{
+    m_torchOn = on;
+}
+
 void NetClient::SetHeld(uint8_t heldItem, float aim, bool reloading, float progress)
 {
     m_heldItem = heldItem;
@@ -1340,6 +1368,7 @@ void NetClient::SendInput()
     message.aim = m_heldAim;
     message.reloading = m_heldReloading;
     message.reloadProgress = m_heldReloadProgress;
+    message.torchOn = m_torchOn;
     // The last host tick this machine has seen, handed straight back so the host can time the round
     // trip against its own tick counter. Nothing here has to know what the time is.
     message.ackTick = static_cast<uint16_t>(m_lastSnapshotTick & 0xFFFFu);

@@ -4127,6 +4127,7 @@ bool PredationGame::StepSession(const PlayerInput& input, float dt)
     if (m_sessionMode == SessionMode::Host)
     {
         m_host.SetPlayerHeld(0, heldId, m_weapon.aim, m_weapon.IsReloading(), reloadPlay);
+        m_host.SetPlayerTorch(0, m_torchOn);
 
         // The host is a player too: it steps itself first, then runs everyone else from what they
         // sent, then tells them all where everybody ended up.
@@ -4146,6 +4147,7 @@ bool PredationGame::StepSession(const PlayerInput& input, float dt)
         // one it stayed at zero until the last second and then ran the whole movement in it, so
         // everyone else saw the reload start when it was nearly over and play at twice the speed.
         m_client.SetHeld(heldId, m_weapon.aim, m_weapon.IsReloading(), reloadPlay);
+        m_client.SetTorch(m_torchOn);
 
         // The client's step happens inside prediction, so the same call is used for the first guess
         // and for every replay of it. Doing it here as well would run each input twice.
@@ -4309,6 +4311,8 @@ void PredationGame::SyncRemoteAvatars(float frameDeltaSeconds)
         // could not see them, which is the worst thing a peek can be.
         const glm::vec3 leanRight{std::cos(remote.yaw), 0.0f, std::sin(remote.yaw)};
         avatar->view.eyePosition += leanRight * (remote.leanAmount * config.leanSideOffset);
+        // Their torch, which only the wire can say: nothing about a body implies it.
+        avatar->torchOn = remote.torchOn;
         avatar->view.yaw = remote.yaw;
         avatar->view.pitch = remote.pitch;
         avatar->view.leanRoll = glm::radians(config.leanAngleDegrees) * remote.leanAmount;
@@ -6701,6 +6705,97 @@ void PredationGame::OnUpdate(double dt, double alpha)
         else
         {
             flash.intensity = 0.0f;
+        }
+    }
+
+    // And everybody else's torches and muzzle flashes, into whatever slots are left.
+    //
+    // Without this, a light is visible only to the player carrying it. Two people standing in the
+    // same dark room saw two different rooms: each one's own torch lit the walls for them and for
+    // nobody else, and a shot fired beside you lit nothing. That is the largest way two machines
+    // disagreed about what the world looks like, and none of it was the renderer -- the lights were
+    // simply never in anybody else's scene.
+    //
+    // There are four slots and up to seven things that want one, so they compete. The score is what
+    // a light actually contributes at the eye -- its brightness over the square of how far away it
+    // is -- which puts your own torch first by a mile, because it is at the eye, and picks the
+    // nearest of everybody else's after that. Cutting the faintest is the one choice that cannot be
+    // noticed.
+    {
+        struct Candidate
+        {
+            PunctualLight light;
+            float score = 0.0f;
+        };
+        std::vector<Candidate> candidates;
+        const auto consider = [&](const PunctualLight& light)
+        {
+            if (light.intensity <= 0.0f || light.range <= 0.0f)
+            {
+                return;
+            }
+            const float distance = glm::length(light.position - eyePosition);
+            candidates.push_back({light, light.intensity / std::max(distance * distance, 0.05f)});
+        };
+
+        // The two already filled in above keep their meaning; they are re-entered here so they
+        // compete on the same terms as everyone else's rather than being special.
+        consider(environment.lights[0]);
+        consider(environment.lights[1]);
+
+        for (const std::unique_ptr<RemoteAvatar>& avatar : m_avatars)
+        {
+            if (avatar == nullptr || !avatar->built || !avatar->state.alive)
+            {
+                continue;
+            }
+            if (avatar->torchOn)
+            {
+                // From their eye, pointing where they are looking. Not eased the way the local one
+                // is: that easing is about the weight of a thing held in your own hand, and from
+                // outside it is a beam that already lags behind their head by a network round trip.
+                const glm::vec3 forward = avatar->view.Forward();
+                PunctualLight torch;
+                torch.position = avatar->view.eyePosition + forward * cv_torchReach.Get();
+                torch.direction = forward;
+                torch.color = glm::vec3(1.0f, 0.97f, 0.88f);
+                torch.intensity = cv_torchIntensity.Get();
+                torch.range = cv_torchRange.Get();
+                torch.innerAngle = cv_torchInner.Get();
+                torch.outerAngle = cv_torchOuter.Get();
+                torch.sourceRadius = cv_torchSourceRadius.Get();
+                consider(torch);
+            }
+
+            const float strength = avatar->body.MuzzleFlashStrength();
+            if (strength > 0.001f)
+            {
+                PunctualLight flash;
+                flash.position = avatar->body.MuzzlePoint();
+                flash.direction = glm::vec3(0.0f, -1.0f, 0.0f);
+                flash.color = glm::vec3(1.0f, 0.86f, 0.62f);
+                flash.intensity = cv_flashIntensity.Get() * strength;
+                flash.range = cv_flashRange.Get();
+                flash.innerAngle = 180.0f;
+                flash.outerAngle = 180.0f;
+                flash.sourceRadius = 0.35f;
+                consider(flash);
+            }
+        }
+
+        std::sort(candidates.begin(), candidates.end(),
+                  [](const Candidate& a, const Candidate& b) { return a.score > b.score; });
+        for (size_t i = 0; i < kMaxPunctualLights; ++i)
+        {
+            if (i < candidates.size())
+            {
+                environment.lights[i] = candidates[i].light;
+            }
+            else
+            {
+                environment.lights[i] = PunctualLight{};
+                environment.lights[i].intensity = 0.0f;
+            }
         }
     }
 

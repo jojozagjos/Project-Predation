@@ -254,6 +254,11 @@ struct InputMessage
     float aim = 0.0f;
     bool reloading = false;
     float reloadProgress = 0.0f;
+    // Whether their torch is lit, which the host cannot work out for itself: it is a key this
+    // client pressed and nothing else in the protocol implies it. Without it everybody's torch is
+    // visible only to themselves, so two players standing in the same dark room see two different
+    // rooms -- one lit, one not.
+    bool torchOn = false;
     // The low bits of the last host tick this client saw, echoed straight back.
     //
     // That echo is the whole of how a ping is measured. The host knows when it sent every tick
@@ -289,6 +294,9 @@ struct PlayerSnapshot
     float aim = 0.0f;
     bool reloading = false;
     float reloadProgress = 0.0f;
+    // And whether their torch is lit, so the light it throws is in everybody's scene rather than
+    // only in its owner's.
+    bool torchOn = false;
 
     // Climbing. Sent as a flag, how far through it is, and where the ledge is, so everyone else
     // sees the climb rather than a body sliding up a wall. Only while it is happening, which is

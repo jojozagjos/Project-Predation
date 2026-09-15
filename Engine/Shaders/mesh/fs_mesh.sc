@@ -78,9 +78,58 @@ uniform vec4 u_reflectParams;
 #include "shadow_kernel.sh"
 
 #define KERNEL_NAME lightReachesWide
-#define KERNEL_TAPS 5
-#define KERNEL_RADIUS 2.0
+#define KERNEL_TAPS 3
+#define KERNEL_RADIUS 1.0
 #include "shadow_kernel.sh"
+
+// How much sky reaches a surface.
+//
+// A map rendered straight down can say what is above a point. For a floor that is the whole
+// question. For a wall it is the wrong question entirely, and asking it anyway is what put a
+// horizontal line across every box in the level.
+//
+// Work it through. The map is 128 texels over 32 metres, so a texel is 25 cm. On the side of a two
+// metre box, the texels covering the box report its own top, two metres up. A vertical surface gets
+// the largest slope allowance there is -- 0.45 * 2 = 0.9 m -- so everything on that side lower than
+// 0.9 m below the top counts as occluded by the box it is part of, and everything above it does not.
+// That is a hard horizontal line at 1.1 m on every box, and no amount of widening the filter moves
+// it, because the filter is averaging correct answers to the wrong question.
+//
+// The right question for a wall is not "what is over me" but "does the sky get to me from the
+// direction I face". So there are two lookups: one where the surface is, and one pushed out
+// sideways along the way it faces. Whichever finds more sky wins.
+//
+//   the side of a box   the probe lands off the box, on open ground  -> lit, and evenly
+//   a wall in a room    the probe is still under the roof            -> dark, as it must be
+//   a wall outdoors     the probe is in the open                     -> lit
+//   a crate by a wall   the probe clears it at three quarters of a metre
+//   a doorway           the probe crosses the threshold before the surface does, so it fades
+//
+// The reach has to sit between the two scales: further than half the things a surface is part of,
+// nearer than half a room. Three quarters of a metre clears a crate, a bench and a doorframe, and is
+// nothing against a room four metres across with a roof at three and a half.
+//
+// It is scaled by how vertical the surface is, so a floor -- where the straight-down map is exactly
+// right -- does not get pushed anywhere and nothing about it changes.
+#define SKY_REACH 0.75
+
+float skyReaching(vec3 P, vec3 N, float slack)
+{
+	float here = lightReachesWide(s_skyShadow, u_skyShadowMtx, u_skyShadowAxis, u_skyShadowParams,
+	                              P, N, slack);
+
+	vec3 sideways = vec3(N.x, 0.0, N.z);
+	float lateral = length(sideways);
+	if (lateral < 0.05)
+	{
+		return here; // facing straight up or straight down: there is no sideways to probe along
+	}
+	sideways /= lateral;
+	vec3 probe = P + sideways * SKY_REACH * lateral;
+	float there = lightReachesWide(s_skyShadow, u_skyShadowMtx, u_skyShadowAxis, u_skyShadowParams,
+	                               probe, N, slack);
+	return mix(here, max(here, there), lateral);
+}
 
 // How much slack a surface needs before it stops shadowing itself.
 //
@@ -277,8 +326,7 @@ void main()
 	// height against the height recorded at the middle of each texel, is above it on one side and
 	// below it on the other, and rules itself in fine horizontal stripes all the way up.
 	float skyReaches =
-		lightReachesWide(s_skyShadow, u_skyShadowMtx, u_skyShadowAxis, u_skyShadowParams, v_worldPos, N,
-		                 shadowSlack(u_skyShadowParams.y, max(N.y, 0.0), 1.0));
+		skyReaching(v_worldPos, N, shadowSlack(u_skyShadowParams.y, max(N.y, 0.0), 1.0));
 	ambient *= mix(u_grade.z, 1.0, skyReaches);
 
 	color += diffuseColor * ambient;

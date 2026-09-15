@@ -49,6 +49,7 @@ struct RemotePlayerView
     float aim = 0.0f;
     bool reloading = false;
     float reloadProgress = 0.0f;
+    bool torchOn = false;
 
     // Climbing, so a remote player is seen hauling themselves over a ledge rather than sliding up
     // a wall.
@@ -186,6 +187,10 @@ public:
 
     // What a client is holding and doing with it, so everyone sees the right thing in their hands.
     void SetPlayerHeld(uint8_t playerId, uint8_t heldItem, float aim, bool reloading, float progress);
+    // And whether their torch is lit. Separate from the hands because it is one bit that changes
+    // when a key is pressed rather than every frame, and because nothing else in the protocol
+    // implies it: without this, a torch is visible only to the player holding it.
+    void SetPlayerTorch(uint8_t playerId, bool on);
     // Damage a client. The host owns their body, so this is where their health actually changes:
     // the published view is rebuilt from the controller every tick, so writing to that changed
     // nothing and health came back the moment it was read again.
@@ -252,6 +257,7 @@ private:
     float m_localAim = 0.0f;
     bool m_localReloading = false;
     float m_localReloadProgress = 0.0f;
+    bool m_localTorch = false;
     bool m_running = false;
 };
 
@@ -293,6 +299,8 @@ public:
     // What this client has in its hands, sent up with the next input. The host cannot see inside
     // another machine, so unless this is set nobody else ever sees you holding anything.
     void SetHeld(uint8_t heldItem, float aim, bool reloading, float progress);
+    // Whether this machine.s torch is lit, so the host can put it in everybody else.s scene.
+    void SetTorch(bool on);
 
     void Tick(const PlayerInput& input, PlayerController& local, float dt);
 
@@ -403,6 +411,7 @@ private:
     float m_heldAim = 0.0f;
     bool m_heldReloading = false;
     float m_heldReloadProgress = 0.0f;
+    bool m_torchOn = false;
     uint32_t m_renderTick = 0;
     // The newest host tick this machine has seen, echoed back with every input so the host can time
     // the round trip.
