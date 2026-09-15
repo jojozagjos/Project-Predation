@@ -535,6 +535,10 @@ private:
     // the first frame it is on, so switching it on snaps the beam to the view instead of sweeping
     // it across the room from wherever it was left.
     bool m_micTest = false;
+    // Whether the microphone.s output is actually leaving this machine this frame, as opposed to the
+    // microphone merely being open. The two are different whenever the gate is shut, and the
+    // difference is the thing somebody setting a threshold needs to see.
+    bool m_voiceSending = false;
     StreamId m_micTestStream = kInvalidStream;
     bool m_torchOn = false;
     bool m_torchAimed = false;

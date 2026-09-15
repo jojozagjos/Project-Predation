@@ -145,6 +145,8 @@ CVar<bool> cv_voiceOpenMic{"audio.voice_open_mic", false,
 CVar<float> cv_voiceThreshold{"audio.voice_threshold", 0.04f,
                               "How loud you have to be before open mic transmits",
                               CVarFlags::Archive};
+CVar<bool> cv_micMeter{"audio.mic_meter", true,
+                       "Show the microphone level on screen", CVarFlags::Archive};
 // Which microphone, by SDL id, or zero for the system default. An id rather than a name because
 // names are not unique and change when a device is replugged; a stale id falls back to the default.
 CVar<int> cv_voiceDevice{"audio.voice_device", 0, "Which microphone to record from, 0 for default",
@@ -2722,7 +2724,10 @@ void PredationGame::DrawSettings()
         // The level meter, with the threshold drawn on it. Setting a threshold blind is guesswork;
         // watching your own voice cross a line is not.
         ImGui::Text("Microphone");
-        ImGui::ProgressBar(m_voiceLevel, ImVec2(-1.0f, 12.0f), "");
+        // Clamped. LastLevel is a peak sample and a loud voice really does exceed one; a progress
+        // bar handed a fraction above one draws past its own frame, which is what "the bar freaks
+        // out and breaks" was.
+        ImGui::ProgressBar(std::clamp(m_voiceLevel, 0.0f, 1.0f), ImVec2(-1.0f, 12.0f), "");
         if (openMic)
         {
             const ImVec2 bar = ImGui::GetItemRectMin();
@@ -2731,7 +2736,12 @@ void PredationGame::DrawSettings()
             ImGui::GetWindowDrawList()->AddLine({x, bar.y}, {x, far.y}, IM_COL32(240, 200, 120, 255),
                                                 2.0f);
         }
-        ImGui::TextDisabled(m_talking ? "  hearing you" : "  not sending");
+        // Three states, not two. "Not sending" while the microphone is shut and while the gate is
+        // holding it back mean quite different things, and showing one word for both is why this
+        // only ever said "not sending".
+        ImGui::TextDisabled(!m_microphone.Running() ? "  microphone shut"
+                            : m_voiceSending        ? "  sending"
+                                                    : "  hearing you, gate shut");
 
         // Which microphone, listed fresh rather than remembered: devices come and go while the game
         // is running, and a list of what was plugged in at startup is worse than no list.
@@ -3274,7 +3284,7 @@ void PredationGame::DrawSoundPanel()
     else
     {
         ImGui::Text("%s", m_talking ? "Talking (hold V)" : "Hold V to talk");
-        ImGui::ProgressBar(m_voiceLevel, ImVec2(-1.0f, 10.0f), "");
+        ImGui::ProgressBar(std::clamp(m_voiceLevel, 0.0f, 1.0f), ImVec2(-1.0f, 10.0f), "");
         ImGui::SetItemTooltip("How loud the microphone is hearing you. If this stays flat while you "
                               "talk, Windows is not letting the game hear it.");
         ImGui::Text("%d %s speaking", static_cast<int>(m_speakers.size()),
@@ -3421,6 +3431,7 @@ void PredationGame::UpdateVoice(float dt)
         StopTalking();
     }
 
+    m_voiceSending = false;
     if (m_talking)
     {
         std::vector<float> frame;
@@ -3442,6 +3453,7 @@ void PredationGame::UpdateVoice(float dt)
                 break;
             }
             ++m_voiceSequence;
+            m_voiceSending = true;
             if (m_sessionMode == SessionMode::Host)
             {
                 m_host.SendVoice(m_voiceSequence, packet, m_player.State().position);
@@ -3528,7 +3540,10 @@ void PredationGame::HearVoice(uint8_t speaker, const std::vector<uint8_t>& frame
         desc.stream = fresh->stream;
         desc.position = at;
         desc.positioned = true;
-        desc.gain = 1.0f;
+        // Their volume, which is a setting and was not being read: the slider moved and nothing
+        // happened. A voice at full gain on top of the game is also most of the way to the mix
+        // clipping on its own.
+        desc.gain = std::clamp(cv_voiceVolume.Get(), 0.0f, 2.0f);
         // A voice carries further than a footstep and falls off gently: the point of proximity chat
         // is knowing roughly where somebody is, and a hard cut turns that into a switch.
         desc.nearDistance = 2.5f;
@@ -7092,6 +7107,53 @@ void PredationGame::DrawHud()
     // Reticle. The gap opens with the weapon's current cone, so the crosshair says where rounds can
     // actually go rather than always promising the centre of the screen.
     ImDrawList* draw = ImGui::GetBackgroundDrawList();
+
+    // The microphone, top left, whenever voice could be sending.
+    //
+    // Everything about a microphone is otherwise invisible until somebody else says whether they
+    // could hear you, which is a slow way to find out that Windows never granted the game the
+    // device. This says three things at a glance: whether the microphone is open at all, how loud it
+    // is hearing you, and whether what it hears is actually going out.
+    //
+    // Mostly a testing tool, which is why it is plain and in a corner rather than designed.
+    if (cv_micMeter.Get() && m_screen == Screen::Playing)
+    {
+        const bool inSession = m_sessionMode != SessionMode::Offline;
+        const bool open = m_microphone.Running();
+        const float level = std::clamp(m_voiceLevel, 0.0f, 1.0f);
+
+        const ImVec2 origin{viewport->Pos.x + 18.0f, viewport->Pos.y + 18.0f};
+        constexpr float kWidth = 150.0f;
+        constexpr float kHeight = 9.0f;
+        draw->AddRectFilled(origin, {origin.x + kWidth, origin.y + kHeight},
+                            IM_COL32(18, 20, 26, 190), 2.0f);
+
+        // Green while it is going out, amber while it is heard but held back by the gate, grey when
+        // the microphone is shut. The colour is the state; the length is the loudness.
+        const ImU32 colour = !open              ? IM_COL32(90, 94, 104, 200)
+                             : m_voiceSending   ? IM_COL32(120, 210, 130, 230)
+                                                : IM_COL32(220, 180, 90, 230);
+        if (level > 0.001f)
+        {
+            draw->AddRectFilled(origin, {origin.x + kWidth * level, origin.y + kHeight}, colour, 2.0f);
+        }
+
+        // Where the gate opens, so a threshold can be set by watching your own voice cross a line
+        // rather than by guessing at a number.
+        if (cv_voiceOpenMic.Get())
+        {
+            const float mark = origin.x + kWidth * std::clamp(cv_voiceThreshold.Get(), 0.0f, 1.0f);
+            draw->AddLine({mark, origin.y - 2.0f}, {mark, origin.y + kHeight + 2.0f},
+                          IM_COL32(240, 200, 120, 220), 1.5f);
+        }
+
+        const char* what = !cv_voiceEnabled.Get() ? "voice off"
+                           : !inSession           ? "nobody to hear you"
+                           : !open                ? (cv_voiceOpenMic.Get() ? "mic shut" : "hold V")
+                           : m_voiceSending       ? "sending"
+                                                  : "open, gate shut";
+        draw->AddText({origin.x, origin.y + kHeight + 3.0f}, IM_COL32(200, 205, 215, 200), what);
+    }
 
     // The version, bottom left, quietly.
     //

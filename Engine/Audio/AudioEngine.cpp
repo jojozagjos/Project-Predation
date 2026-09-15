@@ -572,16 +572,32 @@ void AudioEngine::MixLocked(float* out, int frames)
         }
     }
 
-    // And nothing leaves here outside what a speaker can take. Four gunshots at once really do add
-    // up past one, and what a sound card does with a sample past one is not a louder gunshot, it is
-    // a tearing noise.
+    // And nothing leaves here outside what a speaker can take.
+    //
+    // Squashed rather than chopped. Four gunshots at once really do add up past one, and what a
+    // sound card does with a sample past one is not a louder gunshot -- but clamping is not much
+    // better: it flattens the tops of the waveform into straight lines, which is a square wave, and
+    // a square wave is harmonics that were never in the sound. A whole mix run through that comes
+    // back sounding coarse and grainy, and it does not recover when the loud thing stops, because
+    // every sample above the line is still being flattened. It was reported as everything sounding
+    // bit crushed after somebody used the voice chat.
+    //
+    // Below the knee nothing is touched at all, so quiet material passes through exactly as it was.
+    // Above it the curve bends over and approaches one without reaching it, so a loud moment loses
+    // some of its peak instead of gaining a buzz.
+    constexpr float kKnee = 0.70f;
     for (int i = 0; i < frames * 2; ++i)
     {
-        if (out[i] > 1.0f || out[i] < -1.0f)
+        const float sample = out[i];
+        const float magnitude = std::abs(sample);
+        if (magnitude <= kKnee)
         {
-            out[i] = std::clamp(out[i], -1.0f, 1.0f);
-            ++m_stats.clipped;
+            continue;
         }
+        const float over = (magnitude - kKnee) / (1.0f - kKnee);
+        const float squashed = kKnee + (1.0f - kKnee) * std::tanh(over);
+        out[i] = std::copysign(squashed, sample);
+        ++m_stats.clipped;
     }
 }
 
