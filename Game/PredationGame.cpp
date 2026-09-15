@@ -129,6 +129,10 @@ CVar<bool> cv_voiceOpenMic{"audio.voice_open_mic", false,
 CVar<float> cv_voiceThreshold{"audio.voice_threshold", 0.04f,
                               "How loud you have to be before open mic transmits",
                               CVarFlags::Archive};
+// Which microphone, by SDL id, or zero for the system default. An id rather than a name because
+// names are not unique and change when a device is replugged; a stale id falls back to the default.
+CVar<int> cv_voiceDevice{"audio.voice_device", 0, "Which microphone to record from, 0 for default",
+                         CVarFlags::Archive};
 // Remembered between runs, so rejoining the same friend does not mean typing the address again.
 // Where the relay is. Somebody has to run one, and whoever does will move it, so it is a setting
 // rather than a constant and it is remembered between runs.
@@ -1910,35 +1914,51 @@ void SetSetting(const char* name, const std::string& value)
     CVarRegistry::Instance().Set(name, value);
 }
 
-// A "(?)" beside the thing it explains, with the explanation on hover.
+// A line of explanation, shortened, with the rest of it on hover.
 //
 // Every one of these replaced a paragraph. A menu that explains itself in full, on screen, all the
 // time, is a menu nobody reads: the prose crowds the buttons down the page and the one line that
 // matters is somewhere in the middle of it. What somebody needs in order to choose is a few words,
 // and what they need when the choice goes wrong is a paragraph -- so the few words stay and the
-// paragraph moves here, where it is a hover away and costs nothing until it is wanted.
-void Help(const char* text)
+// paragraph moves into a tooltip, a hover away and costing nothing until it is wanted.
+//
+// The marker is part of the same text item rather than a separate one placed beside it. Put beside
+// it with SameLine, a "(?)" following a line that already reaches the right-hand edge has nowhere to
+// go and breaks apart down the margin, one character per line. As part of the text it wraps with the
+// text, and the whole line is the thing you hover.
+void Caption(const char* line, const char* detail = nullptr)
 {
-    ImGui::SameLine();
-    ImGui::TextDisabled("(?)");
+    ImGui::PushTextWrapPos(0.0f);
+    if (detail == nullptr)
+    {
+        ImGui::TextDisabled("%s", line);
+        ImGui::PopTextWrapPos();
+        return;
+    }
+    ImGui::TextDisabled("%s  (?)", line);
+    ImGui::PopTextWrapPos();
     if (ImGui::BeginItemTooltip())
     {
         ImGui::PushTextWrapPos(ImGui::GetFontSize() * 26.0f);
-        ImGui::TextUnformatted(text);
+        ImGui::TextUnformatted(detail);
         ImGui::PopTextWrapPos();
         ImGui::EndTooltip();
     }
 }
 
-// The same, under a button rather than beside a label: one short line, and the rest on hover.
-void Caption(const char* line, const char* detail = nullptr)
+// Puts every setting back the way it shipped.
+//
+// Only the archived ones, which are the ones a settings screen can reach. The console can set a
+// great many more and those are not the player's to lose: a developer who has turned occlusion off
+// to look at something has not asked for their graphics settings to be restored.
+void ResetSettingsToDefaults()
 {
-    ImGui::PushTextWrapPos(0.0f);
-    ImGui::TextDisabled("%s", line);
-    ImGui::PopTextWrapPos();
-    if (detail != nullptr)
+    for (CVarBase* cvar : CVarRegistry::Instance().All())
     {
-        Help(detail);
+        if (cvar != nullptr && cvar->HasFlag(CVarFlags::Archive) && !cvar->HasFlag(CVarFlags::ReadOnly))
+        {
+            cvar->ResetToDefault();
+        }
     }
 }
 
@@ -2363,8 +2383,15 @@ void PredationGame::DrawSettings()
     ImGui::Separator();
     ImGui::Spacing();
 
+    // Every tab gets the same height, whether or not it has that much in it.
+    //
+    // Sized to its contents, the panel was a different height on every tab: choosing Audio after
+    // Controls shrank the window by half, which moved Back and Reset out from under the cursor and
+    // made the whole thing jump about while being read. A settings screen should sit still.
+    ImGui::BeginChild("##settingsbody", {0.0f, 360.0f}, ImGuiChildFlags_None);
     if (!ImGui::BeginTabBar("##settings"))
     {
+        ImGui::EndChild();
         return;
     }
 
@@ -2491,6 +2518,51 @@ void PredationGame::DrawSettings()
                                                 2.0f);
         }
         ImGui::TextDisabled(m_talking ? "  hearing you" : "  not sending");
+
+        // Which microphone, listed fresh rather than remembered: devices come and go while the game
+        // is running, and a list of what was plugged in at startup is worse than no list.
+        ImGui::Spacing();
+        const std::vector<VoiceCapture::Device> devices = VoiceCapture::Devices();
+        const int chosen = cv_voiceDevice.Get();
+        std::string current = "System default";
+        for (const VoiceCapture::Device& device : devices)
+        {
+            if (static_cast<int>(device.id) == chosen)
+            {
+                current = device.name;
+            }
+        }
+        if (ImGui::BeginCombo("Microphone", current.c_str()))
+        {
+            if (ImGui::Selectable("System default", chosen == 0))
+            {
+                SetSetting("audio.voice_device", "0");
+            }
+            for (const VoiceCapture::Device& device : devices)
+            {
+                if (ImGui::Selectable(device.name.c_str(), static_cast<int>(device.id) == chosen))
+                {
+                    SetSetting("audio.voice_device", std::to_string(device.id));
+                }
+            }
+            ImGui::EndCombo();
+        }
+        if (devices.empty())
+        {
+            ImGui::TextDisabled("  nothing to record from");
+        }
+
+        // And a way to hear yourself, because every one of these settings is otherwise invisible
+        // until somebody else says whether they could hear you.
+        if (ImGui::Button(m_micTest ? "Stop test" : "Test microphone", {-1.0f, 0.0f}))
+        {
+            m_micTest = !m_micTest;
+        }
+        Caption(m_micTest ? "Speak. You should hear yourself." : "Hear what the others would hear.",
+                "Your microphone is played back out of your own speakers, through the same gate and "
+                "the same codec the game sends through -- so what you are judging is what would "
+                "actually reach the others, not a cleaner version of it. Use headphones, or the "
+                "speakers feed straight back into the microphone.");
         ImGui::EndDisabled();
         ImGui::EndTabItem();
     }
@@ -2573,10 +2645,39 @@ void PredationGame::DrawSettings()
     }
 
     ImGui::EndTabBar();
+    ImGui::EndChild();
     ImGui::Spacing();
-    ImGui::TextDisabled("Everything here is remembered.");
-    Help("These are all console variables, so the console reaches every one of them and a good many "
-         "more besides. Press the key above Tab to open it.");
+    if (ImGui::Button("Reset to defaults"))
+    {
+        ImGui::OpenPopup("##resetsettings");
+    }
+    // Asked about, because it throws away everything the player has set and there is no undo.
+    if (ImGui::BeginPopupModal("##resetsettings", nullptr,
+                               ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar))
+    {
+        ImGui::TextUnformatted("Put every setting back the way it shipped?");
+        Caption("Controls, audio, graphics and your name.",
+                "Only the settings on this screen. Anything set from the console that is not on it "
+                "keeps whatever you gave it.");
+        ImGui::Spacing();
+        if (ImGui::Button("Reset", {120.0f, 0.0f}))
+        {
+            ResetSettingsToDefaults();
+            m_app->GetAudio().SetMasterGain(GetSettingFloat("audio.volume", 1.0f));
+            std::snprintf(m_playerName, sizeof(m_playerName), "%s", cv_playerName.Get().c_str());
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Keep mine", {120.0f, 0.0f}))
+        {
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+    ImGui::SameLine();
+    Caption("Everything here is remembered.",
+            "These are all console variables, so the console reaches every one of them and a good "
+            "many more besides. Press the key above Tab to open it.");
 }
 
 void PredationGame::DrawPauseMenu()
@@ -2585,7 +2686,10 @@ void PredationGame::DrawPauseMenu()
     const ImVec2 centre{viewport->Pos.x + viewport->Size.x * 0.5f,
                         viewport->Pos.y + viewport->Size.y * 0.5f};
     ImGui::SetNextWindowPos(centre, ImGuiCond_Always, {0.5f, 0.5f});
-    ImGui::SetNextWindowSize({m_settingsOpen ? 420.0f : 320.0f, 0.0f}, ImGuiCond_Always);
+    // The settings panel keeps one size whichever tab is showing. Sized to the tab, the whole window
+    // jumped between Controls and Audio and the buttons under it moved out from under the cursor.
+    ImGui::SetNextWindowSize({m_settingsOpen ? 440.0f : 320.0f, m_settingsOpen ? 520.0f : 0.0f},
+                             ImGuiCond_Always);
     ImGui::SetNextWindowBgAlpha(0.92f);
     constexpr ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
                                        ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse |
@@ -3075,7 +3179,8 @@ void PredationGame::UpdateVoice(float dt)
     // Push to talk, or open mic if that is what somebody asked for. Either way the microphone is
     // only open while the game is being played and this player is alive: no talking from the pause
     // menu, the console, or a corpse.
-    const bool allowed = inSession && cv_voiceEnabled.Get() && m_screen == Screen::Playing &&
+    // Not while the loopback test is running either: one microphone, one owner.
+    const bool allowed = inSession && cv_voiceEnabled.Get() && !m_micTest && m_screen == Screen::Playing &&
                          !m_paused && !m_app->IsConsoleOpen() && m_player.State().alive;
     const bool held = m_app->GetInput().IsActionDown("voice");
     // Open mic still needs the microphone open to hear whether anybody is speaking, so it opens on
@@ -3086,6 +3191,7 @@ void PredationGame::UpdateVoice(float dt)
     {
         VoiceCapture::Settings settings;
         settings.sampleRate = 48000;
+        settings.deviceId = static_cast<uint32_t>(std::max(cv_voiceDevice.Get(), 0));
         if (!m_voiceCodec.Ready() && !m_voiceCodec.Init(VoiceCodec::Settings{}))
         {
             // No codec, no voice. Said once by the codec itself; nothing here retries every frame.
@@ -3223,6 +3329,69 @@ void PredationGame::HearVoice(uint8_t speaker, const std::vector<uint8_t>& frame
     if (found->codec.Decode(frame.data(), frame.size(), samples) && !samples.empty())
     {
         audio.PushStream(found->stream, samples.data(), samples.size());
+    }
+}
+
+void PredationGame::UpdateMicrophoneTest(float dt)
+{
+    // Hear yourself, so the threshold and the device can be set without a second person.
+    //
+    // Everything about a microphone setting is invisible until somebody speaks into it and somebody
+    // else says whether they heard anything. Picking a device from a list of four names, one of which
+    // is the monitor, is a guess; setting a gate threshold by watching a bar is a better guess. This
+    // closes the loop: what the other players would hear comes back out of the speakers, through the
+    // same gate and the same codec, so what is being judged is the thing that will actually be sent.
+    //
+    // Played flat rather than positioned. It is not coming from anywhere in the world.
+    AudioEngine& audio = m_app->GetAudio();
+    if (!m_micTest)
+    {
+        if (m_micTestStream != kInvalidStream)
+        {
+            audio.CloseStream(m_micTestStream);
+            m_micTestStream = kInvalidStream;
+            m_microphone.Stop();
+        }
+        return;
+    }
+
+    if (m_micTestStream == kInvalidStream)
+    {
+        VoiceCapture::Settings settings;
+        settings.sampleRate = 48000;
+        settings.deviceId = static_cast<uint32_t>(std::max(cv_voiceDevice.Get(), 0));
+        if (!m_microphone.Start(settings))
+        {
+            m_micTest = false;
+            return;
+        }
+        m_micTestStream = audio.OpenStream(48000);
+        if (m_micTestStream == kInvalidStream)
+        {
+            m_microphone.Stop();
+            m_micTest = false;
+            return;
+        }
+        AudioEngine::PlayDesc desc;
+        desc.stream = m_micTestStream;
+        desc.positioned = false;
+        desc.gain = 1.0f;
+        audio.Play(desc);
+    }
+
+    std::vector<float> frame;
+    while (m_microphone.ReadFrame(frame))
+    {
+        m_voiceLevel = m_microphone.LastLevel();
+        // Through the same gate the real thing uses, so a threshold set here is the threshold that
+        // decides whether a word reaches anybody.
+        const bool sending = !cv_voiceOpenMic.Get() ||
+                             m_microphone.ShouldTransmit(m_voiceLevel, cv_voiceThreshold.Get(), dt);
+        m_talking = sending;
+        if (sending)
+        {
+            audio.PushStream(m_micTestStream, frame.data(), frame.size());
+        }
     }
 }
 
@@ -4277,10 +4446,18 @@ PlayerInput PredationGame::BuildPlayerInput()
     result.yaw = m_lookYaw;
     result.pitch = m_lookPitch;
 
-    if (m_app->IsConsoleOpen())
+    if (m_app->IsConsoleOpen() || m_screen != Screen::Playing)
     {
-        // Console open: keep looking where we are, but stop moving.
+        // Console open, paused, or at the title: keep looking where we are and stop everything else.
+        //
+        // The console case was here already. The paused one was not, and the pause screen is not a
+        // screenshot of the game -- it is the game with a window over it, still running, still
+        // reading the keyboard. So WASD walked the character around behind the menu while the player
+        // was reading it, and anything else bound to a key did whatever it does. A pause that the
+        // character walks through is not a pause.
         m_jumpLatch = false;
+        m_crouchPressLatch = false;
+        m_pronePressLatch = false;
         return result;
     }
 
@@ -6168,6 +6345,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
         m_relay->Poll(deltaSeconds);
     }
     UpdateVoice(deltaSeconds);
+    UpdateMicrophoneTest(deltaSeconds);
     UpdateSounds(deltaSeconds);
     SyncDynamicProps();
     app.GetSceneRenderer().SetWireframe(cv_wireframe.Get());

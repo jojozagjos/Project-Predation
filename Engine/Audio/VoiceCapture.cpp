@@ -70,7 +70,17 @@ bool VoiceCapture::Start(const Settings& settings)
     spec.channels = 1;
     spec.freq = m_settings.sampleRate;
 
-    m_stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_RECORDING, &spec, Recorded, this);
+    // The chosen device, or the system default. A device that has been unplugged since it was
+    // chosen simply is not there any more, and falling back is better than refusing to record.
+    SDL_AudioDeviceID wanted = m_settings.deviceId != 0
+                                   ? static_cast<SDL_AudioDeviceID>(m_settings.deviceId)
+                                   : SDL_AUDIO_DEVICE_DEFAULT_RECORDING;
+    m_stream = SDL_OpenAudioDeviceStream(wanted, &spec, Recorded, this);
+    if (m_stream == nullptr && wanted != SDL_AUDIO_DEVICE_DEFAULT_RECORDING)
+    {
+        PRED_LOG_INFO(Engine, "Chosen microphone is gone; using the default instead");
+        m_stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_RECORDING, &spec, Recorded, this);
+    }
     if (m_stream == nullptr)
     {
         m_message = SDL_GetError();
@@ -192,6 +202,31 @@ float VoiceCapture::LastLevel() const
 {
     std::lock_guard<std::mutex> lock(m_mutex);
     return m_lastLevel;
+}
+
+// Listed rather than remembered: devices come and go while the game is running, and a settings
+// screen that shows what was plugged in at startup is worse than one that shows nothing.
+std::vector<VoiceCapture::Device> VoiceCapture::Devices()
+{
+    std::vector<Device> devices;
+    if (!SDL_InitSubSystem(SDL_INIT_AUDIO))
+    {
+        return devices;
+    }
+    int count = 0;
+    SDL_AudioDeviceID* ids = SDL_GetAudioRecordingDevices(&count);
+    if (ids != nullptr)
+    {
+        devices.reserve(static_cast<size_t>(count));
+        for (int i = 0; i < count; ++i)
+        {
+            const char* name = SDL_GetAudioDeviceName(ids[i]);
+            devices.push_back({static_cast<uint32_t>(ids[i]), name != nullptr ? name : "unnamed"});
+        }
+        SDL_free(ids);
+    }
+    SDL_QuitSubSystem(SDL_INIT_AUDIO);
+    return devices;
 }
 
 } // namespace pred

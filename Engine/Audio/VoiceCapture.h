@@ -4,6 +4,7 @@
 #include <mutex>
 #include <string>
 #include <vector>
+#include <vector>
 
 struct SDL_AudioStream;
 
@@ -38,7 +39,22 @@ public:
         // not then transmit the backlog: what arrives late in a conversation is worse than useless,
         // because everybody else has moved on.
         float maxQueuedSeconds = 0.40f;
+        // Which microphone, or zero for whatever the system calls the default.
+        //
+        // Worth choosing, because "the default" on a machine with a webcam, a headset and a monitor
+        // with a built-in array is a coin toss, and the one it lands on is usually the one pointing
+        // at the fans. An id rather than a name: names are not unique and change when a device is
+        // replugged, and a stale one should fall back to the default rather than fail.
+        uint32_t deviceId = 0;
     };
+
+    // The recording devices this machine has, for a settings screen to offer.
+    struct Device
+    {
+        uint32_t id = 0;
+        std::string name;
+    };
+    static std::vector<Device> Devices();
 
     VoiceCapture() = default;
     ~VoiceCapture();

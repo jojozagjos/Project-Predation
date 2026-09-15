@@ -286,6 +286,8 @@ private:
     // Each speaker gets a stream in the mixer and a voice positioned where they are standing, so the
     // attenuation, the panning and the distance cut are the same machinery a footstep goes through.
     void UpdateVoice(float dt);
+    // The loopback test: the microphone through the same gate, played back out of the speakers.
+    void UpdateMicrophoneTest(float dt);
     void StopTalking();
     // Plays or updates a speaker's stream. `at` is where they are, in the world.
     void HearVoice(uint8_t speaker, const std::vector<uint8_t>& frame, const glm::vec3& at);
@@ -488,6 +490,8 @@ private:
     // player is looking, because it trails the view and catches up. `m_torchAimed` is false until
     // the first frame it is on, so switching it on snaps the beam to the view instead of sweeping
     // it across the room from wherever it was left.
+    bool m_micTest = false;
+    StreamId m_micTestStream = kInvalidStream;
     bool m_torchOn = false;
     bool m_torchAimed = false;
     glm::vec3 m_torchAim{0.0f, 0.0f, -1.0f};
