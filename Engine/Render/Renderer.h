@@ -35,6 +35,8 @@ public:
     // an earlier one. The two depth maps come first, then the sky, then the world on top of it.
     static constexpr bgfx::ViewId kViewSunShadow = 0;
     static constexpr bgfx::ViewId kViewSkyShadow = 1;
+    // The torch's own depth map, so a cone light is stopped by walls like everything else.
+    static constexpr bgfx::ViewId kViewSpotShadow = 2;
     // The sky gets a view of its own rather than being the first thing submitted to the main one.
     // bgfx sorts the draws inside a view to save state changes, so "submitted first" is not
     // "drawn first" -- the sky came out over the top of the world. Views run in id order, and that
@@ -45,11 +47,11 @@ public:
     //
     // After the depth maps, because the reflection is lit and wants the same occlusion the world
     // does, and before the world, because the world reads what it writes.
-    static constexpr bgfx::ViewId kViewReflectionSky = 2;
-    static constexpr bgfx::ViewId kViewReflection = 3;
-    static constexpr bgfx::ViewId kViewSky = 4;
-    static constexpr bgfx::ViewId kViewMain = 5;
-    static constexpr bgfx::ViewId kViewDebug = 6;
+    static constexpr bgfx::ViewId kViewReflectionSky = 3;
+    static constexpr bgfx::ViewId kViewReflection = 4;
+    static constexpr bgfx::ViewId kViewSky = 5;
+    static constexpr bgfx::ViewId kViewMain = 6;
+    static constexpr bgfx::ViewId kViewDebug = 7;
     // A block reserved for rendering into offscreen targets, such as the inventory icon atlas.
     // bgfx runs views in id order, so these are finished long before the UI that samples them.
     static constexpr bgfx::ViewId kViewOffscreenFirst = 200;

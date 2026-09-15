@@ -51,6 +51,11 @@ constexpr uint16_t kSunShadowSize = 4096;
 // across. Over a forty metre map that is a hundred and twenty-eight texels, which sounds absurd for
 // a shadow map and is exactly right for this one.
 constexpr uint16_t kSkyShadowSize = 128;
+// The torch's. Smaller than the sun's, because a cone covers far less world: a 70 degree beam at 14
+// metres is about 20 m across at the far end, so 1024 texels is 2 cm there and finer everywhere
+// nearer. It is also redrawn every frame from a light that moves with the player's head, so it is
+// the one map whose cost is paid continuously.
+constexpr uint16_t kSpotShadowSize = 1024;
 // How far the maps reach along their own axis. Deep enough that nothing in a level stands outside
 // it and gets quietly clipped out of its own shadow.
 constexpr float kShadowDepthRange = 220.0f;
@@ -87,6 +92,10 @@ bool SceneRenderer::Init(ShaderLibrary& shaders)
     m_sBaseColor = bgfx::createUniform("s_baseColor", bgfx::UniformType::Sampler);
     m_sSunShadow = bgfx::createUniform("s_sunShadow", bgfx::UniformType::Sampler);
     m_sSkyShadow = bgfx::createUniform("s_skyShadow", bgfx::UniformType::Sampler);
+    m_uSpotShadowMtx = bgfx::createUniform("u_spotShadowMtx", bgfx::UniformType::Mat4);
+    m_uSpotShadowAxis = bgfx::createUniform("u_spotShadowAxis", bgfx::UniformType::Vec4);
+    m_uSpotShadowParams = bgfx::createUniform("u_spotShadowParams", bgfx::UniformType::Vec4);
+    m_sSpotShadow = bgfx::createUniform("s_spotShadow", bgfx::UniformType::Sampler);
     m_uClipPlane = bgfx::createUniform("u_clipPlane", bgfx::UniformType::Vec4);
     m_uReflectParams = bgfx::createUniform("u_reflectParams", bgfx::UniformType::Vec4);
     m_sReflection = bgfx::createUniform("s_reflection", bgfx::UniformType::Sampler);
@@ -96,7 +105,8 @@ bool SceneRenderer::Init(ShaderLibrary& shaders)
     const bgfx::ProgramHandle depthProgram = shaders.LoadProgram("vs_shadow", "fs_shadow");
     m_shadowsReady = bgfx::isValid(depthProgram) &&
                      m_sunShadow.Init(kSunShadowSize, depthProgram) &&
-                     m_skyShadow.Init(kSkyShadowSize, depthProgram);
+                     m_skyShadow.Init(kSkyShadowSize, depthProgram) &&
+                     m_spotShadow.Init(kSpotShadowSize, depthProgram);
     if (!m_shadowsReady)
     {
         PRED_LOG_WARN(Render, "SceneRenderer: no shadow maps; the sun and sky reach everywhere");
@@ -110,6 +120,7 @@ void SceneRenderer::Shutdown()
 {
     m_sunShadow.Shutdown();
     m_skyShadow.Shutdown();
+    m_spotShadow.Shutdown();
     m_shadowsReady = false;
 
     const bgfx::UniformHandle uniforms[] = {
@@ -118,7 +129,8 @@ void SceneRenderer::Shutdown()
         m_uFogParams,      m_uCameraPosition,  m_uGrade,           m_uLights,
         m_uSunShadowMtx,   m_uSunShadowAxis,   m_uSunShadowParams, m_uSkyShadowMtx,
         m_uSkyShadowAxis,  m_uSkyShadowParams, m_sBaseColor,       m_sSunShadow,
-        m_sSkyShadow,      m_uClipPlane,       m_uReflectParams,   m_sReflection};
+        m_sSkyShadow,      m_uClipPlane,       m_uReflectParams,   m_sReflection,
+        m_uSpotShadowMtx,  m_uSpotShadowAxis,  m_uSpotShadowParams, m_sSpotShadow};
     for (const bgfx::UniformHandle handle : uniforms)
     {
         if (bgfx::isValid(handle))
@@ -134,6 +146,7 @@ void SceneRenderer::Shutdown()
     m_uSkyShadowMtx = m_uSkyShadowAxis = m_uSkyShadowParams = BGFX_INVALID_HANDLE;
     m_sBaseColor = m_sSunShadow = m_sSkyShadow = BGFX_INVALID_HANDLE;
     m_uClipPlane = m_uReflectParams = m_sReflection = BGFX_INVALID_HANDLE;
+    m_uSpotShadowMtx = m_uSpotShadowAxis = m_uSpotShadowParams = m_sSpotShadow = BGFX_INVALID_HANDLE;
 
     if (bgfx::isValid(m_reflectionTarget))
     {
@@ -238,6 +251,14 @@ void SceneRenderer::SetEnvironmentUniforms(const Environment& environment,
     bgfx::setUniform(m_uSunShadowParams, sunParams);
     bgfx::setUniform(m_uSkyShadowParams, skyParams);
 
+    const bool spot = withShadows && m_shadowsReady && m_spotShadowLit;
+    bgfx::setUniform(m_uSpotShadowMtx, glm::value_ptr(m_spotShadow.TextureMatrix()));
+    bgfx::setUniform(m_uSpotShadowAxis, glm::value_ptr(m_spotShadow.Axis()));
+    const float spotParams[4] = {
+        1.0f / static_cast<float>(std::max<uint16_t>(m_spotShadow.Resolution(), 1)),
+        m_shadowSettings.spotBias, spot ? 1.0f : 0.0f, m_shadowSettings.spotNormalOffset};
+    bgfx::setUniform(m_uSpotShadowParams, spotParams);
+
     // No clip, and the mirror on if there is one to sample. Both are overridden immediately after
     // this by the reflection pass itself, which needs the opposite of each.
     //
@@ -298,6 +319,7 @@ void SceneRenderer::SubmitMesh(bgfx::ViewId view, const Mesh& mesh, const Materi
         const bgfx::TextureHandle white = m_textures->Get({});
         bgfx::setTexture(1, m_sSunShadow, m_shadowsReady ? m_sunShadow.Texture() : white);
         bgfx::setTexture(2, m_sSkyShadow, m_shadowsReady ? m_skyShadow.Texture() : white);
+        bgfx::setTexture(3, m_sSpotShadow, m_shadowsReady ? m_spotShadow.Texture() : white);
         // And the mirror, for the same reason: a sampler the shader declares and nobody fills reads
         // whatever was last in that slot.
         bgfx::setTexture(4, m_sReflection,
@@ -329,9 +351,11 @@ void SceneRenderer::SubmitDepth(bgfx::ViewId view, const Mesh& mesh, const glm::
     bgfx::submit(view, program);
 }
 
-void SceneRenderer::RenderShadows(bgfx::ViewId sunView, bgfx::ViewId skyView, const Scene& scene,
-                                  const MeshLibrary& meshes, const glm::vec3& focus)
+void SceneRenderer::RenderShadows(bgfx::ViewId sunView, bgfx::ViewId skyView, bgfx::ViewId spotView,
+                                  const Scene& scene, const MeshLibrary& meshes,
+                                  const glm::vec3& focus)
 {
+    m_spotShadowLit = false;
     if (!m_shadowsReady)
     {
         return;
@@ -356,6 +380,25 @@ void SceneRenderer::RenderShadows(bgfx::ViewId sunView, bgfx::ViewId skyView, co
         m_skyShadow.Begin(skyView);
     }
 
+    // And the torch, which is whatever is in the first light slot if it is a cone.
+    //
+    // One shadowed punctual light rather than all four. Each one is a whole extra pass over the
+    // scene, and the game already sorts the slots by what each light actually contributes at the
+    // eye -- so slot zero is the brightest thing near the player, which is the one whose leaking
+    // through a wall anybody would notice. A muzzle flash lands there for the frames it exists and
+    // gets shadowed too, which is a bonus rather than the point.
+    //
+    // Only a cone. A bulb throws light in every direction and one square map cannot see all of it;
+    // that wants a cube map and a much larger change.
+    const PunctualLight& first = environment.lights[0];
+    const bool coneLight = first.intensity > 0.0f && first.range > 0.0f && first.outerAngle < 89.0f;
+    if (settings.spotEnabled && coneLight)
+    {
+        m_spotShadow.FitSpot(first.position, first.direction, first.outerAngle, first.range);
+        m_spotShadow.Begin(spotView);
+        m_spotShadowLit = true;
+    }
+
     scene.ForEachShadowCaster(
         [&](Entity, const Transform& transform, const MeshRenderer& renderer)
         {
@@ -376,6 +419,10 @@ void SceneRenderer::RenderShadows(bgfx::ViewId sunView, bgfx::ViewId skyView, co
             if (settings.skyEnabled && renderer.blocksSky)
             {
                 SubmitDepth(skyView, *mesh, model, m_skyShadow.Program());
+            }
+            if (m_spotShadowLit)
+            {
+                SubmitDepth(spotView, *mesh, model, m_spotShadow.Program());
             }
         });
 }

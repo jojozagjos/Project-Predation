@@ -7,6 +7,7 @@
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/geometric.hpp>
 
+#include <algorithm>
 #include <cmath>
 
 namespace pred
@@ -160,6 +161,52 @@ void ShadowMap::Fit(const glm::vec3& centre, const glm::vec3& direction, float r
     // because a right-handed view looks down its own -Z, and once for the reversal.
     m_depthRange = depth;
     m_axis = glm::vec4(m_view[0][2], m_view[1][2], m_view[2][2], depth + m_view[3][2]);
+}
+
+void ShadowMap::FitSpot(const glm::vec3& position, const glm::vec3& direction, float outerDegrees,
+                        float range)
+{
+    if (m_resolution == 0)
+    {
+        return;
+    }
+    const bgfx::Caps* caps = bgfx::getCaps();
+
+    glm::vec3 forward = direction;
+    if (glm::length(forward) < 1e-4f)
+    {
+        forward = glm::vec3(0.0f, -1.0f, 0.0f);
+    }
+    forward = glm::normalize(forward);
+    const glm::vec3 up =
+        std::abs(forward.y) > 0.99f ? glm::vec3(0.0f, 0.0f, 1.0f) : glm::vec3(0.0f, 1.0f, 0.0f);
+
+    // A little wider than the cone, so the filter at the edge of the beam has map to read rather
+    // than falling off the side of it and reporting "not known", which reads as the rim of the beam
+    // never being shadowed.
+    const float fov = glm::radians(std::clamp(outerDegrees * 2.0f + 12.0f, 10.0f, 170.0f));
+    // The near plane cannot be at the light or the projection has no depth range at all, and it
+    // cannot be far out or the torch stops shadowing the thing the player is standing against.
+    const float nearPlane = 0.08f;
+    m_depthRange = std::max(range, nearPlane + 0.5f);
+
+    m_texelSize = 0.0f; // a perspective map has no single world texel size; the filter uses uv
+    m_view = glm::lookAtRH(position, position + forward, up);
+    m_projection = caps->homogeneousDepth ? glm::perspectiveRH_NO(fov, 1.0f, nearPlane, m_depthRange)
+                                          : glm::perspectiveRH_ZO(fov, 1.0f, nearPlane, m_depthRange);
+
+    const float flipY = caps->originBottomLeft ? 0.5f : -0.5f;
+    glm::mat4 toTexture(1.0f);
+    toTexture[0][0] = 0.5f;
+    toTexture[1][1] = flipY;
+    toTexture[3][0] = 0.5f;
+    toTexture[3][1] = 0.5f;
+    m_textureMatrix = toTexture * m_projection * m_view;
+
+    // The same plane equation as the orthographic case, and for the same reason: the depth pass
+    // stores distance from the back of the map along the light's own axis, which is a view-space z
+    // whichever projection follows it.
+    m_axis = glm::vec4(m_view[0][2], m_view[1][2], m_view[2][2], m_depthRange + m_view[3][2]);
 }
 
 void ShadowMap::Begin(bgfx::ViewId view) const

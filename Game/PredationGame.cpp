@@ -107,6 +107,10 @@ CVar<bool> cv_skyShadows{"r.sky_occlusion", true, "Whether a roof keeps the sky 
 CVar<float> cv_shadowDistance{"r.shadow_distance", 24.0f,
                               "How far from the player occlusion is worked out, in metres",
                               CVarFlags::Archive};
+// The torch's own depth map. Without it a light that has a place has no occlusion at all and shines
+// through walls, which in a game about what a beam reaches is the most visible thing on this page.
+CVar<bool> cv_spotShadows{"r.torch_shadows", true, "Whether the flashlight is stopped by walls",
+                          CVarFlags::Archive};
 CVar<int> cv_occlusionDebug{"r.show_occlusion", 0,
                             "Draw occlusion instead of the scene: 1 the sun, 2 the sky"};
 // Mirrors. A second pass over the whole scene, at half the window's width and height, so it is the
@@ -1127,6 +1131,18 @@ bool PredationGame::PerformInteraction(InteractionKind kind, int index, uint8_t 
         {
             return false;
         }
+        // Heard by whoever did it, which is where every interaction sound in this function was
+        // missing from.
+        //
+        // The sounds existed and were only ever played from the network event handlers -- the code
+        // that runs on a machine being *told* something happened. The machine that actually did it
+        // never runs those, so the player opening a door heard nothing, and in a solo game, where
+        // there are no events at all, nothing made any sound ever. A client is not double-served
+        // either: it sends a request and returns without performing, so it only hears the event.
+        if (const WorldObjects::Door* opened = m_world.GetDoor(index); opened != nullptr)
+        {
+            PlaySound(m_sounds.door.Pick(), opened->hinge, 0.8f);
+        }
         if (m_sessionMode == SessionMode::Host)
         {
             const WorldObjects::Door* door = m_world.GetDoor(index);
@@ -1148,6 +1164,12 @@ bool PredationGame::PerformInteraction(InteractionKind kind, int index, uint8_t 
         }
         // Only the player who asked gets it in their bag. Everyone else just sees it disappear,
         // which is all there is to see from outside.
+        // Taken before the pickup is consumed, because consuming it destroys the entity this reads.
+        glm::vec3 pickupAt{0.0f};
+        if (const Transform* where = m_scene.GetTransform(pickup->entity); where != nullptr)
+        {
+            pickupAt = where->position;
+        }
         const bool mine = player == LocalPlayerId();
         const int wanted = pickup->count;
         int stored = wanted;
@@ -1167,6 +1189,7 @@ bool PredationGame::PerformInteraction(InteractionKind kind, int index, uint8_t 
         if (stored >= wanted)
         {
             const ItemId taken = pickup->item;
+            PlaySound(m_sounds.pickup.Pick(), pickupAt, 0.6f);
             m_world.ConsumePickup(index, m_scene, m_app->GetPhysics(), m_interactions);
             if (m_sessionMode == SessionMode::Host)
             {
@@ -1215,6 +1238,7 @@ bool PredationGame::PerformInteraction(InteractionKind kind, int index, uint8_t 
         {
             return false; // somebody else is in there
         }
+        PlaySound(m_sounds.locker.Pick(), spot->insidePosition, 0.8f);
 
         if (leaving)
         {
@@ -6142,6 +6166,13 @@ void PredationGame::TakeAmmunition(int crateIndex)
     // resupplying never doubles as a free reload in the middle of a fight.
     const int taken = definition->reserveOnPickup - m_weapon.reserve;
     m_weapon.reserve = definition->reserveOnPickup;
+    if (const WorldObjects::AmmoCrate* crate = m_world.GetAmmoCrate(crateIndex); crate != nullptr)
+    {
+        if (const Transform* where = m_scene.GetTransform(crate->entity); where != nullptr)
+        {
+            PlaySound(m_sounds.pickup.Pick(), where->position, 0.55f, 0.85f);
+        }
+    }
     m_app->GetConsole().Print("Took " + std::to_string(taken) + " rounds for the " + definition->name);
     PRED_LOG_INFO(Gameplay, "Resupplied {} rounds from crate {}", taken, crateIndex);
 }
@@ -7171,6 +7202,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
     shadows.sunNormalOffset = cv_sunShadowOffset.Get();
     shadows.skyBias = cv_skyShadowBias.Get();
     shadows.skyNormalOffset = cv_skyShadowOffset.Get();
+    shadows.spotEnabled = cv_spotShadows.Get();
     shadows.debugView = std::clamp(cv_occlusionDebug.Get(), 0, 4);
     app.SetEntityCount(m_scene.EntityCount());
 }
@@ -7314,8 +7346,9 @@ void PredationGame::OnRender()
     // Depth from the sun and depth from overhead, both fitted around the eye, before anything is
     // shaded. This is where a room with a roof on it becomes dark: nothing declares it dark, the
     // roof is simply between it and the sky.
-    app.GetSceneRenderer().RenderShadows(Renderer::kViewSunShadow, Renderer::kViewSkyShadow, m_scene,
-                                         app.GetMeshes(), viewPosition);
+    app.GetSceneRenderer().RenderShadows(Renderer::kViewSunShadow, Renderer::kViewSkyShadow,
+                                         Renderer::kViewSpotShadow, m_scene, app.GetMeshes(),
+                                         viewPosition);
 
     // And the mirrors, which is the world drawn a second time from a camera reflected across their
     // plane. Skipped entirely when the eye is behind them or too far away to see one: this is a

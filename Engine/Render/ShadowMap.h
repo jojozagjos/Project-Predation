@@ -58,6 +58,21 @@ public:
     // whole texels and the edges stay put.
     void Fit(const glm::vec3& centre, const glm::vec3& direction, float radius, float depth);
 
+    // And the same map aimed as a cone, for a light that has a place rather than only a direction.
+    //
+    // A torch is the one light in this game that anybody looks along, and without this it shines
+    // through walls: a punctual light with no occlusion lights whatever is within its cone and its
+    // range, wall or no wall. In a game whose whole tension is what a beam does and does not reach,
+    // that is not a detail.
+    //
+    // Nothing else changes. The depth pass already stores metres along the light's own axis rather
+    // than a hardware depth value, which is the same number whichever projection put the fragment
+    // there, and the lookup already divides by w. Only the projection differs, and no snapping: a
+    // spot map moves with the light it belongs to, so there is no grid for the world to slide
+    // under -- the whole thing moves together and the shadows move with it, which is correct.
+    void FitSpot(const glm::vec3& position, const glm::vec3& direction, float outerDegrees,
+                 float range);
+
     // Points a view at this map, ready for meshes to be submitted to it.
     void Begin(bgfx::ViewId view) const;
 

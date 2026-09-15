@@ -39,6 +39,11 @@ struct ShadowSettings
     float sunNormalOffset = 0.06f;
     float skyBias = 0.16f;
     float skyNormalOffset = 0.05f;
+    // The torch. A cone light gets its own map, because it is the light the player actually aims
+    // and the one whose leaking through a wall is most obvious.
+    bool spotEnabled = true;
+    float spotBias = 0.035f;
+    float spotNormalOffset = 0.03f;
     // What is left of the ambient where the sky cannot reach, standing in for light that bounced
     // its way in. Zero is a void rather than a dark room: geometry outside the torch beam stops
     // existing rather than being hard to see.
@@ -67,8 +72,8 @@ public:
 
     // Renders both depth maps, fitted around `focus`. Has to run before Draw, into lower view ids,
     // because bgfx submits views in the order of their ids and Draw reads what this writes.
-    void RenderShadows(bgfx::ViewId sunView, bgfx::ViewId skyView, const Scene& scene,
-                       const MeshLibrary& meshes, const glm::vec3& focus);
+    void RenderShadows(bgfx::ViewId sunView, bgfx::ViewId skyView, bgfx::ViewId spotView,
+                       const Scene& scene, const MeshLibrary& meshes, const glm::vec3& focus);
 
     // Renders the world again from a camera reflected across `plane`, into a texture the mirror
     // samples. `plane` is xyz = normal, w = offset, in world space, pointing out of the mirror.
@@ -144,8 +149,12 @@ private:
     bgfx::UniformHandle m_uSkyShadowMtx = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uSkyShadowAxis = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uSkyShadowParams = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uSpotShadowMtx = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uSpotShadowAxis = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uSpotShadowParams = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_sSunShadow = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_sSkyShadow = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_sSpotShadow = BGFX_INVALID_HANDLE;
     // The base colour texture. Always bound, because a material with none samples the library's
     // single white pixel and the shader then needs no branch.
     bgfx::UniformHandle m_sBaseColor = BGFX_INVALID_HANDLE;
@@ -158,6 +167,10 @@ private:
     // a float target still gets a picture; it gets one with no occlusion in it.
     ShadowMap m_sunShadow;
     ShadowMap m_skyShadow;
+    // And one for the brightest cone light there is, which in this game is the torch. Without it a
+    // punctual light has no occlusion at all and shines through walls.
+    ShadowMap m_spotShadow;
+    bool m_spotShadowLit = false;
 
     // The planar reflection target, and whether this frame has one in it.
     bgfx::FrameBufferHandle m_reflectionTarget = BGFX_INVALID_HANDLE;

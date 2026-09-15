@@ -41,6 +41,15 @@ uniform vec4 u_skyShadowAxis;
 uniform vec4 u_skyShadowParams;
 SAMPLER2D(s_sunShadow, 1);
 SAMPLER2D(s_skyShadow, 2);
+// The torch's, rendered as a cone from wherever the brightest punctual light is.
+//
+// Without it a light that has a place has no occlusion at all: it lights whatever is inside its
+// cone and inside its range, wall or no wall. In a game whose whole tension is what a beam reaches,
+// a torch that shines through a wall is not a detail.
+uniform mat4 u_spotShadowMtx;
+uniform vec4 u_spotShadowAxis;
+uniform vec4 u_spotShadowParams;
+SAMPLER2D(s_spotShadow, 3);
 // The planar reflection: the world rendered again from a camera reflected across one flat surface.
 //
 // Sampled at the fragment's own place on the screen, which is what makes it a mirror rather than an
@@ -75,6 +84,14 @@ uniform vec4 u_reflectParams;
 #define KERNEL_NAME lightReachesSharp
 #define KERNEL_TAPS 5
 #define KERNEL_RADIUS 2.0
+#include "shadow_kernel.sh"
+
+// The torch's, narrower again. Its map is a cone rather than a box, so a texel is centimetres near
+// the player and grows with distance; a wide filter in texels is a wide filter in metres out at the
+// end of the beam, where the edge of a shadow is the thing being looked at.
+#define KERNEL_NAME lightReachesSpot
+#define KERNEL_TAPS 3
+#define KERNEL_RADIUS 1.0
 #include "shadow_kernel.sh"
 
 #define KERNEL_NAME lightReachesWide
@@ -305,7 +322,22 @@ void main()
 		float Dp = distributionGGX(NoHp, roughness);
 		float Visp = visibilitySmith(NoV, NoLp, roughness);
 		vec3 Fp = fresnelSchlick(f0, VoHp);
-		vec3 lightRadiance = colorIntensity.rgb * colorIntensity.w * attenuation * cone;
+		// Whatever is in the way of the torch.
+		//
+		// Only the first slot, because only the first slot has a map: one shadowed punctual light
+		// rather than four, and the game sorts the slots so that the first is whatever contributes
+		// most at the eye -- which is the player's own torch whenever it is lit, because it is at
+		// the eye. Every other light still shines through walls, and that is a deliberate limit
+		// rather than an oversight: each one would be another whole pass over the scene.
+		float reaches = 1.0;
+		if (i == 0)
+		{
+			reaches = lightReachesSpot(s_spotShadow, u_spotShadowMtx, u_spotShadowAxis,
+			                           u_spotShadowParams, v_worldPos, N,
+			                           shadowSlack(u_spotShadowParams.y, NoLp, 4.0));
+		}
+
+		vec3 lightRadiance = colorIntensity.rgb * colorIntensity.w * attenuation * cone * reaches;
 		color += (diffuse + Dp * Visp * Fp) * lightRadiance * NoLp;
 	}
 
