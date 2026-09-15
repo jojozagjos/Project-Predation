@@ -118,7 +118,10 @@ public:
         // How much of the view pitch a carried weapon follows. Following it fully swung the gun
         // round behind the player whenever they looked straight down. Aiming raises this to one,
         // because the sights have to line up with the view exactly.
-        float weaponCarryPitchFollow = 0.90f;
+        // All of it. Nine tenths meant the barrel was always a little behind the view, which
+        // compounds with the limit above into the weapon visibly giving up part way. Where the
+        // weapon is held is limited; where it points follows.
+        float weaponCarryPitchFollow = 1.0f;
         // And how much of it a weapon follows downwards while the body is flat. A prone player has a
         // floor a hand.s width under the weapon and can still look ninety degrees down; following
         // that puts the barrel through the ground, and nothing afterwards can take it back out
@@ -173,14 +176,26 @@ public:
         // So the limit is low only when there is a wall in play, and the game blends between them by
         // how much the muzzle correction is actually doing. Nothing in front of you, and the barrel
         // follows almost all the way; a corridor, and it stays where the correction can still work.
-        float weaponCarryPitchMaxUp = 82.0f;
+        // Effectively no limit any more, and it is the hold cap below that made that safe.
+        //
+        // This number existed to stop the rifle standing on end beside the head, and it was doing
+        // that by refusing to let the barrel follow the view -- which is what "the gun should follow
+        // my camera all the way up, it stops at a section" is: eased towards 82 degrees, an
+        // eighty-five degree look put the barrel at sixty-two, and the twenty-three degree gap is
+        // visible as the weapon giving up.
+        //
+        // But standing on end was never about where the barrel points. It was about where the
+        // weapon is *held*, and that has its own limit now. With the hands kept at chest height, a
+        // barrel tracking the view all the way up is a person tilting a rifle up while their hands
+        // stay where hands go, which is exactly right and exactly what was asked for.
+        float weaponCarryPitchMaxUp = 89.0f;
         float weaponCarryPitchMaxUpNearWall = 55.0f;
         // And the same for where the weapon is *held*, as opposed to where it points. Below the knee
         // the hold follows the view exactly and nothing about normal play changes; above it, it eases
         // towards the cap, which is the angle at which the hands sit level with the eye rather than
         // over the head. See where these are used for the measurements.
         float weaponHoldPitchKnee = 20.0f;
-        float weaponHoldPitchMaxUp = 23.0f;
+        float weaponHoldPitchMaxUp = 21.0f;
         // The weapon lags a turn and then catches up, which is what gives it weight.
         float weaponSwayAmount = 0.34f;   // how far a turn drags the weapon behind the view
         float weaponSwayRecover = 11.0f;  // how fast it catches up again

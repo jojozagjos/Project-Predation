@@ -209,14 +209,30 @@ void ShadowMap::FitSpot(const glm::vec3& position, const glm::vec3& direction, f
     m_axis = glm::vec4(m_view[0][2], m_view[1][2], m_view[2][2], m_depthRange + m_view[3][2]);
 }
 
+void ShadowMap::BindRange() const
+{
+    // Set per draw, not once per map, and the reason is worth the four lines.
+    //
+    // Every map creates a uniform called "u_shadowRange", and bgfx returns the same uniform for the
+    // same name -- there is one of them, shared. It is also captured at submit time rather than at
+    // set time. So setting it while starting a view and then submitting every map's draws
+    // afterwards means every map wrote whichever range was set last.
+    //
+    // That was invisible for as long as there were two maps, because the sun and the sky both reach
+    // 220 m and the wrong value was the right value. Adding the torch, which reaches fourteen,
+    // meant the sun recorded "14 minus the distance" in a map that is compared against 220 -- so its
+    // depths were nonsense and nothing in the level cast a sun shadow at all. Switching the torch on
+    // turned off every shadow in the game, which is exactly how it was reported.
+    const float range[4] = {m_depthRange, 0.0f, 0.0f, 0.0f};
+    bgfx::setUniform(m_uRange, range);
+}
+
 void ShadowMap::Begin(bgfx::ViewId view) const
 {
     if (!IsValid())
     {
         return;
     }
-    const float range[4] = {m_depthRange, 0.0f, 0.0f, 0.0f};
-    bgfx::setUniform(m_uRange, range);
     bgfx::setViewFrameBuffer(view, m_frameBuffer);
     bgfx::setViewRect(view, 0, 0, m_resolution, m_resolution);
     // Cleared to plain black, which in this encoding means "as far away as this map can see".

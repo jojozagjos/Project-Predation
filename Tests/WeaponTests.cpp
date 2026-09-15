@@ -163,6 +163,50 @@ TEST_CASE("An empty magazine reloads itself rather than clicking", "[weapon]")
     REQUIRE(state.IsReloading());
 }
 
+TEST_CASE("Recoil climbs while firing and is given back when you stop", "[weapon][recoil]")
+{
+    // What recoil has to do in a game somebody plays: build up while the trigger is down so there
+    // is something to fight, come off when it is released, and never move where the player is
+    // actually aiming.
+    //
+    // The middle one is the whole of why this is tested rather than looked at. Recoil that does not
+    // return steals the player's aim a fraction of a degree at a time and there is no single frame
+    // in which that is visible.
+    WeaponDefinition definition = TestWeapon(FireMode::Auto);
+    definition.roundsPerMinute = 620.0f;
+    definition.recoilPitch = 2.6f;
+    definition.recoilYaw = 0.45f;
+    definition.recoilRecover = 5.0f;
+    definition.recoilRise = 26.0f;
+
+    WeaponState state;
+    WeaponSim::Equip(definition, state);
+
+    WeaponInput input;
+    input.trigger = true;
+
+    // One shot should be felt, and it should arrive over a few frames rather than in one.
+    Run(definition, state, input, 1);
+    const float afterOneTick = state.recoilPitch;
+    Run(definition, state, input, 5);
+    INFO("one tick after the first shot: " << afterOneTick << ", six ticks: " << state.recoilPitch);
+    CHECK(afterOneTick < state.recoilPitch); // still rising into the kick, not a step
+    CHECK(afterOneTick > 0.05f);             // but started immediately
+
+    // Held down, it settles somewhere worth fighting rather than running away or fizzling out.
+    Run(definition, state, input, 120);
+    const float sustained = state.recoilPitch;
+    INFO("sustained fire settles at " << sustained << " degrees");
+    CHECK(sustained > 2.0f);
+    CHECK(sustained < 12.0f);
+
+    // Released, it hands the aim back. All of it: anything left is aim quietly stolen.
+    input.trigger = false;
+    Run(definition, state, input, 180);
+    INFO("after three seconds off the trigger: " << state.recoilPitch);
+    CHECK(state.recoilPitch < sustained * 0.02f);
+}
+
 TEST_CASE("Recoil kicks the view up and then gives it back", "[weapon]")
 {
     const WeaponDefinition definition = TestWeapon(FireMode::Single);
@@ -171,7 +215,10 @@ TEST_CASE("Recoil kicks the view up and then gives it back", "[weapon]")
 
     WeaponInput input;
     input.trigger = true;
-    Run(definition, state, input, 1);
+    // A few ticks, not one. The kick is no longer a step: the round goes onto a target and the view
+    // chases it over a few tens of milliseconds, which is what stops a burst reading as a stack of
+    // cuts. It starts on the tick the trigger goes down, and this is measured once it has arrived.
+    Run(definition, state, input, 6);
 
     REQUIRE(state.recoilPitch > 0.5f);
     const float afterShot = state.recoilPitch;

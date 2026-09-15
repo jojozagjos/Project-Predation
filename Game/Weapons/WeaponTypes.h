@@ -54,6 +54,10 @@ struct WeaponDefinition
     float recoilPitch = 1.4f; // degrees per shot, upwards
     float recoilYaw = 0.35f;  // degrees per shot, alternating sides
     float recoilRecover = 9.0f;
+    // How fast the view chases the kick, as a rate. Higher is snappier; this is the difference
+    // between a weapon that shoves the camera and one that teleports it. Around 25 puts most of a
+    // round's kick in under a tenth of a second, which reads as a shove.
+    float recoilRise = 26.0f;
 
     float aimSeconds = 0.22f;   // time to raise the sights
     float aimSpeedScale = 0.5f; // movement speed multiplier while aimed
@@ -85,8 +89,17 @@ struct WeaponState
     float aim = 0.0f;             // 0 hip, 1 fully aimed
     float bloom = 0.0f;           // extra spread from sustained fire, degrees
 
-    float recoilPitch = 0.0f; // degrees currently added to the view, decaying
+    // Where the view has actually been pushed, in degrees, and where it is being pushed towards.
+    //
+    // Two numbers rather than one, because a shot is not a step. Added straight onto the applied
+    // angle, every round teleports the camera a couple of degrees and a burst is a stack of jumps --
+    // which is what "make the recoil smoother" is about. A real weapon takes a few tens of
+    // milliseconds to get the muzzle up, so the round adds to the target and the applied angle
+    // chases it: fast enough to feel like a kick, slow enough to be a movement rather than a cut.
+    float recoilPitch = 0.0f;
     float recoilYaw = 0.0f;
+    float recoilTargetPitch = 0.0f;
+    float recoilTargetYaw = 0.0f;
 
     bool triggerWasDown = false;
     int burstRemaining = 0;

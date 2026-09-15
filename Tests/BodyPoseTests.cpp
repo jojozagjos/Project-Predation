@@ -4129,3 +4129,51 @@ TEST_CASE("Hunting for any pose that points the barrel at the sky", "[.][body][w
     WARN("\n  carried, highest: " + std::to_string(best[0]) + " degrees at " + where[0] +
          "\n  aiming,  highest: " + std::to_string(best[1]) + " degrees at " + where[1] + "\n");
 }
+TEST_CASE("The barrel follows the view up, standing and prone", "[body][pose][weapon]")
+{
+    // "The gun should follow my camera all the way up, it stops at a section, and when prone it is
+    // not following up either."
+    //
+    // It was two numbers, compounding. The barrel followed nine tenths of the view and was then
+    // eased towards a limit of 82 degrees, so an eighty-five degree look put it at sixty-two -- a
+    // twenty-three degree gap, which is plenty to read as the weapon giving up part way.
+    //
+    // Both are gone now, and what made that safe is that where the weapon is *held* has a limit of
+    // its own. Standing a rifle on end beside the head was never about where the barrel points; it
+    // was about where the hands are. With those separated, the barrel can track the view all the
+    // way and the hands stay at chest height, which is a person tilting a rifle up.
+    BodyHarness harness;
+    WeaponDefinition definition;
+    ModelAsset model;
+    if (!LoadShippedCarbine(harness, definition, model))
+    {
+        WARN("no shipped carbine to test against");
+        return;
+    }
+
+    const auto barrelAt = [&](float lookDegrees)
+    {
+        harness.input.pitch = glm::radians(lookDegrees);
+        harness.Settle(120);
+        const glm::vec3 barrel =
+            glm::normalize(harness.body.MuzzlePoint() - harness.body.WeaponOrigin());
+        return glm::degrees(std::asin(std::clamp(barrel.y, -1.0f, 1.0f)));
+    };
+
+    harness.SetStance(PlayerStance::Standing);
+    harness.Settle(120);
+    const float standingHigh = barrelAt(85.0f);
+    INFO("standing, an 85 degree look puts the barrel at " << standingHigh);
+    // Within striking distance of the view rather than twenty-three degrees behind it.
+    CHECK(standingHigh > 70.0f);
+
+    harness.SetStance(PlayerStance::Prone);
+    harness.Settle(180);
+    const float proneLevel = barrelAt(0.0f);
+    const float proneHigh = barrelAt(80.0f);
+    INFO("prone, the barrel went from " << proneLevel << " to " << proneHigh);
+    // Lying down there is nothing above you to stop the muzzle, so looking up has to work there
+    // too. It is the one direction a prone body is not restricted in.
+    CHECK(proneHigh > proneLevel + 55.0f);
+    CHECK(proneHigh > 65.0f);
+}

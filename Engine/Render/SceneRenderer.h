@@ -124,7 +124,7 @@ private:
     void SetEnvironmentUniforms(const Environment& environment, const glm::vec3& cameraPosition,
                                 bool withShadows);
     void SubmitDepth(bgfx::ViewId view, const Mesh& mesh, const glm::mat4& model,
-                     bgfx::ProgramHandle program);
+                     const ShadowMap& map);
     uint64_t DrawState() const;
     void SubmitMesh(bgfx::ViewId view, const Mesh& mesh, const Material& material, const glm::mat4& model,
                     uint64_t state);

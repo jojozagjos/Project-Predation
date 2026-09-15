@@ -74,6 +74,9 @@ public:
                  float range);
 
     // Points a view at this map, ready for meshes to be submitted to it.
+    // Puts this map.s depth range on the shared uniform. Has to be called immediately before every
+    // submit into this map rather than once when the view starts: see the note on the definition.
+    void BindRange() const;
     void Begin(bgfx::ViewId view) const;
 
     bgfx::ProgramHandle Program() const { return m_program; }

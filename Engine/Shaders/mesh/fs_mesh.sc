@@ -128,7 +128,7 @@ uniform vec4 u_reflectParams;
 //
 // It is scaled by how vertical the surface is, so a floor -- where the straight-down map is exactly
 // right -- does not get pushed anywhere and nothing about it changes.
-#define SKY_REACH 0.75
+#define SKY_REACH 1.15
 
 float skyReaching(vec3 P, vec3 N, float slack)
 {
@@ -142,10 +142,31 @@ float skyReaching(vec3 P, vec3 N, float slack)
 		return here; // facing straight up or straight down: there is no sideways to probe along
 	}
 	sideways /= lateral;
-	vec3 probe = P + sideways * SKY_REACH * lateral;
-	float there = lightReachesWide(s_skyShadow, u_skyShadowMtx, u_skyShadowAxis, u_skyShadowParams,
-	                               probe, N, slack);
-	return mix(here, max(here, there), lateral);
+
+	// Three probes at increasing distance, averaged, rather than one.
+	//
+	// One probe answers a yes-or-no question -- "is there sky three quarters of a metre that way" --
+	// and a surface either gets the answer or does not. Put a second box within that distance and
+	// the part of the face it covers flips to "no" while the rest stays "yes", with a hard vertical
+	// line between them wherever the neighbour's edge happens to fall. That is the band reported as
+	// "the side of the block looks different when it is close to another block", and it is a real
+	// occlusion -- a face half a metre from another face genuinely sees less sky -- arriving as a
+	// step instead of a gradient.
+	//
+	// Three distances make it a gradient. A neighbour at 0.4 m blocks the second and third probe and
+	// leaves the first, so the face darkens by a third rather than switching; as the surface runs
+	// past the neighbour's edge each probe clears at a different place, so the three transitions are
+	// staggered instead of stacked on one line. It is also a better question: how open is the
+	// neighbourhood on the side this surface faces, rather than at one arbitrary distance from it.
+	float open = 0.0;
+	open += lightReachesWide(s_skyShadow, u_skyShadowMtx, u_skyShadowAxis, u_skyShadowParams,
+	                         P + sideways * (0.30 * lateral), N, slack);
+	open += lightReachesWide(s_skyShadow, u_skyShadowMtx, u_skyShadowAxis, u_skyShadowParams,
+	                         P + sideways * (0.70 * lateral), N, slack);
+	open += lightReachesWide(s_skyShadow, u_skyShadowMtx, u_skyShadowAxis, u_skyShadowParams,
+	                         P + sideways * (SKY_REACH * lateral), N, slack);
+	open *= 1.0 / 3.0;
+	return mix(here, max(here, open), lateral);
 }
 
 // How much slack a surface needs before it stops shadowing itself.

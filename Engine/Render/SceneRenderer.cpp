@@ -337,8 +337,11 @@ void SceneRenderer::SubmitMesh(bgfx::ViewId view, const Mesh& mesh, const Materi
 }
 
 void SceneRenderer::SubmitDepth(bgfx::ViewId view, const Mesh& mesh, const glm::mat4& model,
-                                bgfx::ProgramHandle program)
+                                const ShadowMap& map)
 {
+    // This map's range, immediately before this draw. The uniform is shared between all three maps
+    // and captured at submit, so it cannot be set once when the view starts: see ShadowMap::BindRange.
+    map.BindRange();
     bgfx::setTransform(glm::value_ptr(model));
     bgfx::setVertexBuffer(0, mesh.vertexBuffer);
     bgfx::setIndexBuffer(mesh.indexBuffer);
@@ -348,7 +351,7 @@ void SceneRenderer::SubmitDepth(bgfx::ViewId view, const Mesh& mesh, const glm::
     // geometry changes the lighting of everything.
     bgfx::setState(BGFX_STATE_WRITE_R | BGFX_STATE_WRITE_Z | BGFX_STATE_DEPTH_TEST_LESS |
                    BGFX_STATE_CULL_CW);
-    bgfx::submit(view, program);
+    bgfx::submit(view, map.Program());
 }
 
 void SceneRenderer::RenderShadows(bgfx::ViewId sunView, bgfx::ViewId skyView, bgfx::ViewId spotView,
@@ -414,15 +417,15 @@ void SceneRenderer::RenderShadows(bgfx::ViewId sunView, bgfx::ViewId skyView, bg
             const glm::mat4 model = transform.Matrix();
             if (settings.sunEnabled)
             {
-                SubmitDepth(sunView, *mesh, model, m_sunShadow.Program());
+                SubmitDepth(sunView, *mesh, model, m_sunShadow);
             }
             if (settings.skyEnabled && renderer.blocksSky)
             {
-                SubmitDepth(skyView, *mesh, model, m_skyShadow.Program());
+                SubmitDepth(skyView, *mesh, model, m_skyShadow);
             }
             if (m_spotShadowLit)
             {
-                SubmitDepth(spotView, *mesh, model, m_spotShadow.Program());
+                SubmitDepth(spotView, *mesh, model, m_spotShadow);
             }
         });
 }
