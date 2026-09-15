@@ -1,12 +1,11 @@
 # Audio
 
-Almost every sound in the game is **synthesised at startup** from a recipe in
-`Assets/Data/sounds.json`. That is why the repository ships with hardly any audio: the whole library
-is a few hundred kilobytes of samples built in a few milliseconds, and it needs no licence, no
-attribution and no download.
+Every sound in the game is a `.wav` file in this folder. Nothing is generated at run time.
 
-A recipe is a stand-in. The way it shows is repetition — the same gunshot, sample for sample, forty
-times a magazine — and no recipe sounds like a real recording.
+The files here now are **placeholders**, and they sound like it. They were baked out of the old
+synthesiser — the one that used to build the whole library from a recipe in `Assets/Data/sounds.json`
+at startup — so the game sounds exactly as it did, with the difference that every sound is now a
+thing you can open, listen to, and drop a better one on top of.
 
 ## Replacing one
 
@@ -16,12 +15,23 @@ Put `.wav` files in the folder named after the sound. That is the whole procedur
     Assets/Audio/gunshot/carbine_02.wav
     Assets/Audio/gunshot/carbine_03.wav
 
-The game plays those instead of the recipe and picks a different one each time, so three recordings
-of a gunshot stop a magazine sounding like a loop. An empty folder falls back to the recipe, so
-deleting the files puts the old sound back.
+Delete the placeholder or leave it — the game plays **every** wav in the folder and picks a
+different one each time, which is the whole of how a sound stops repeating. Three recordings of a
+gunshot stop a magazine sounding like a loop. An empty folder means that sound is silent, and the
+log says which folder was empty.
+
+Any rate, any bit depth, any channel count: 8, 16, 24 and 32 bit PCM and 32 bit float are all read,
+and anything with more than one channel is averaged down to mono, because the mixer decides which
+ear a sound belongs in from where it is in the world. Trailing silence is trimmed automatically.
 
 Nothing has to be listed anywhere and nothing has to be rebuilt. The folder is the registration —
 the point being that somebody who does not build the game can still change its audio.
+
+## Regenerating the placeholders
+
+`sounds.json` and the synthesiser are still in the engine, reached only by the `sound_bake` console
+command. Run it and every recipe is written back out as `<name>/<name>_1.wav`, overwriting what is
+there. That is the only thing that still reads those recipes; the game itself never does.
 
 ## What goes where
 

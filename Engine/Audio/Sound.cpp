@@ -317,4 +317,62 @@ std::vector<SoundLibraryEntry> LoadSoundRecipes(const std::string& jsonText)
     return entries;
 }
 
+std::vector<uint8_t> SaveWav(const SoundData& data)
+{
+    // A canonical 44 byte RIFF header and then the samples. No LIST, no fact chunk, nothing
+    // optional: this is written to be read by everything rather than to carry anything.
+    const uint32_t rate = static_cast<uint32_t>(data.sampleRate > 0 ? data.sampleRate : 48000);
+    const uint32_t frames = static_cast<uint32_t>(data.samples.size());
+    const uint32_t dataBytes = frames * 2u; // one channel, sixteen bits
+    const uint32_t riffBytes = 36u + dataBytes;
+
+    std::vector<uint8_t> out;
+    out.reserve(44u + dataBytes);
+    const auto put = [&out](const char* text, size_t count)
+    {
+        for (size_t i = 0; i < count; ++i)
+        {
+            out.push_back(static_cast<uint8_t>(text[i]));
+        }
+    };
+    // Little endian, which is what RIFF is, spelled out rather than memcpy'd from an int so this
+    // file does not care what the machine building it does.
+    const auto put32 = [&out](uint32_t value)
+    {
+        out.push_back(static_cast<uint8_t>(value & 0xFFu));
+        out.push_back(static_cast<uint8_t>((value >> 8) & 0xFFu));
+        out.push_back(static_cast<uint8_t>((value >> 16) & 0xFFu));
+        out.push_back(static_cast<uint8_t>((value >> 24) & 0xFFu));
+    };
+    const auto put16 = [&out](uint16_t value)
+    {
+        out.push_back(static_cast<uint8_t>(value & 0xFFu));
+        out.push_back(static_cast<uint8_t>((value >> 8) & 0xFFu));
+    };
+
+    put("RIFF", 4);
+    put32(riffBytes);
+    put("WAVE", 4);
+    put("fmt ", 4);
+    put32(16);       // the size of this chunk
+    put16(1);        // PCM
+    put16(1);        // mono
+    put32(rate);
+    put32(rate * 2); // bytes per second
+    put16(2);        // bytes per frame
+    put16(16);       // bits per sample
+    put("data", 4);
+    put32(dataBytes);
+
+    for (const float sample : data.samples)
+    {
+        // Clamped before scaling, because a sample above one wraps rather than clips when it is
+        // truncated to sixteen bits, and a wrap is the loudest noise a sound card can make.
+        const float clamped = std::clamp(sample, -1.0f, 1.0f);
+        const auto value = static_cast<int16_t>(std::lround(clamped * 32767.0f));
+        put16(static_cast<uint16_t>(value));
+    }
+    return out;
+}
+
 } // namespace pred

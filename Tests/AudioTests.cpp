@@ -478,6 +478,69 @@ TEST_CASE("A stereo wav is averaged down to mono")
     CHECK(data.samples[1] == Catch::Approx(0.5f));
 }
 
+TEST_CASE("A sound written out reads back as the same sound", "[audio][wav]")
+{
+    // Every sound in the game is now a wav on disk, and they were produced by this writer. A writer
+    // that is subtly wrong -- a header field off by four, a sample scaled by 32768 so the loudest
+    // one wraps to silence -- would put twelve broken files in the repository and the fault would
+    // look like the mixer.
+    SoundData original;
+    original.sampleRate = 48000;
+    original.samples.reserve(512);
+    for (size_t i = 0; i < 512; ++i)
+    {
+        // A sweep that reaches both rails, because the interesting mistakes are all at the extremes.
+        const float t = static_cast<float>(i) / 511.0f;
+        original.samples.push_back(std::sin(t * 37.0f) * (0.02f + 0.98f * t));
+    }
+    original.samples.push_back(1.0f);
+    original.samples.push_back(-1.0f);
+
+    const std::vector<uint8_t> bytes = SaveWav(original);
+    REQUIRE(bytes.size() == 44 + original.samples.size() * 2);
+
+    SoundData read;
+    std::string error;
+    REQUIRE(LoadWav(bytes.data(), bytes.size(), read, error));
+    CHECK(read.sampleRate == original.sampleRate);
+    REQUIRE(read.samples.size() == original.samples.size());
+
+    // Two least significant bits, which is all that is available to lose.
+    //
+    // One of them is the rounding to sixteen bits. The other is that the writer scales by 32767 so
+    // that full scale lands exactly on the largest value a signed short holds, while the reader
+    // divides by 32768 so that the largest *negative* value maps to exactly -1. Both conventions are
+    // right on their own end of the range and they differ by one part in 32768; picking either one
+    // for both ends makes one rail slightly wrong instead. Under a thousandth of a decibel either
+    // way, and worth a sentence here rather than a bug report later.
+    for (size_t i = 0; i < original.samples.size(); ++i)
+    {
+        CHECK(std::abs(read.samples[i] - original.samples[i]) < 2.0f / 32767.0f);
+    }
+    // And the rails survive, rather than wrapping to the opposite one.
+    CHECK(read.samples[read.samples.size() - 2] > 0.99f);
+    CHECK(read.samples[read.samples.size() - 1] < -0.99f);
+}
+
+TEST_CASE("Anything above full scale is held at it rather than wrapping", "[audio][wav]")
+{
+    // A sample above one truncated into a signed short wraps to a large negative number, which is
+    // the loudest noise a sound card can make. Clamped before scaling, not after.
+    SoundData loud;
+    loud.sampleRate = 48000;
+    loud.samples = {4.0f, -4.0f, 1.5f, -1.5f};
+
+    SoundData read;
+    std::string error;
+    const std::vector<uint8_t> bytes = SaveWav(loud);
+    REQUIRE(LoadWav(bytes.data(), bytes.size(), read, error));
+    REQUIRE(read.samples.size() == 4);
+    CHECK(read.samples[0] > 0.99f);
+    CHECK(read.samples[1] < -0.99f);
+    CHECK(read.samples[2] > 0.99f);
+    CHECK(read.samples[3] < -0.99f);
+}
+
 TEST_CASE("Nonsense is refused with a reason rather than crashing")
 {
     SoundData data;

@@ -68,6 +68,18 @@ SoundData Synthesise(const SoundRecipe& recipe, int sampleRate);
 // Returns false and fills `error` with something a person can act on.
 bool LoadWav(const void* bytes, size_t byteCount, SoundData& out, std::string& error);
 
+// Writes one out again, as 16 bit mono PCM: the format every audio tool on earth opens without
+// asking a question.
+//
+// This exists so the sounds can stop being generated at runtime. A recipe in a JSON file is a fine
+// placeholder while there is nobody to record anything, and it is a dead end the moment there is:
+// you cannot open it in an editor, cannot send it to somebody, and cannot replace it without
+// learning what `bite` means. Baking each recipe to a file turns every sound in the game into a
+// thing that can be dragged over and replaced.
+//
+// Sixteen bit rather than float, because the point is that other programs can read it.
+std::vector<uint8_t> SaveWav(const SoundData& data);
+
 // Drops trailing near-silence, and fades the last few milliseconds so the cut cannot click.
 //
 // Sound packs pad the end of a clip: the footsteps this was written for are half-second files

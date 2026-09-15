@@ -10,6 +10,7 @@
 #include "Engine/Render/Primitives.h"
 #include "Game/Weapons/WeaponAppearance.h"
 #include "Game/World/TestMap.h"
+#include "Engine/Audio/Sound.h"
 
 #include <SDL3/SDL_events.h>
 #include <glm/gtc/matrix_transform.hpp>
@@ -19,6 +20,7 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <filesystem>
 #include <fstream>
 #include <cmath>
 #include <cstdio>
@@ -234,12 +236,13 @@ glm::vec3 SurfaceNormalAt(PhysicsWorld& physics, const glm::vec3& from, const gl
     return hit ? hit.normal : -direction;
 }
 } // namespace
-// Whatever recordings of a sound are on disk, or the synthesised one if there are none.
+// Every recording of a sound that is on disk.
 //
 // The folder is the registration. Assets/Audio/<name>/ holding any number of wav files means the
-// game plays those and picks a different one each time; an empty folder, or no folder, means it
-// falls back to the recipe in sounds.json. Nothing has to be listed anywhere and nothing has to be
-// rebuilt, which is the point: a sound can be replaced by somebody who does not build the game.
+// game plays those and picks a different one each time; an empty folder, or no folder, means that
+// sound is silent. Nothing has to be listed anywhere and nothing has to be rebuilt, which is the
+// point: a sound can be replaced by somebody who does not build the game, and adding a second and
+// third file is the whole of how a sound stops repeating.
 //
 // Trailing silence is trimmed, as it is for footsteps, because a downloaded pack usually carries
 // some and it delays every sound after it in a queue by however long it is.
@@ -301,11 +304,13 @@ SoundVariants LoadSoundVariants(AudioEngine& audio, const char* name)
                       name);
         return variants;
     }
-    const SoundId recipe = audio.Find(name);
-    if (recipe != kInvalidSound)
-    {
-        variants.ids.push_back(recipe);
-    }
+    // No file, no sound, and said so rather than quietly substituting something.
+    //
+    // This used to fall back to a recipe synthesised at startup, which meant a missing or misnamed
+    // file was inaudible as a problem: the game made a noise, just not the one anybody had put
+    // there. Silence and a line in the log is the honest version, and it is the one that tells
+    // somebody replacing a sound that they have put it in the wrong place.
+    PRED_LOG_WARN(Gameplay, "No wav files in Assets/Audio/{}; that sound will be silent", name);
     return variants;
 }
 
@@ -384,36 +389,31 @@ bool PredationGame::OnInit(Application& app)
     m_body.Build(m_scene, app.GetMeshes(), m_player.Config());
     m_body.SetTextureLibrary(app.GetTextures());
 
-    // Every sound the game makes, built from recipes rather than loaded from recordings. The whole
-    // library is a few hundred kilobytes of samples generated in a few milliseconds at startup.
+    // Every sound the game makes, from a file on disk. Nothing is generated at run time any more.
+    //
+    // They used to be built from recipes in sounds.json at startup, which was the right call while
+    // there was nobody to record anything and the wrong one to keep: a recipe cannot be opened in
+    // an editor, sent to anybody, or replaced without learning what `bite` means. Every sound is now
+    // a wav in Assets/Audio/<name>/, and replacing one is dropping a file on top of another file --
+    // no build, no JSON, no restart beyond the next run.
+    //
+    // The recipes and the synthesiser are still in the engine, reached only by the `sound_bake`
+    // console command that produced these files. That is where a generated sound belongs: in the
+    // thing that makes the placeholder, not in the thing that ships.
     {
-        const std::filesystem::path file = Paths::AssetsRoot() / "Data" / "sounds.json";
-        std::ifstream stream(file);
-        if (stream)
-        {
-            const std::string text((std::istreambuf_iterator<char>(stream)),
-                                   std::istreambuf_iterator<char>());
-            const int made = app.GetAudio().AddRecipes(text);
-            PRED_LOG_INFO(Gameplay, "{} sounds built from {}", made, file.filename().string());
-            AudioEngine& audio = app.GetAudio();
-            // Recordings first, recipes where there are none: see LoadSoundVariants.
-            m_sounds.gunshot = LoadSoundVariants(audio, "gunshot");
-            m_sounds.dryFire = LoadSoundVariants(audio, "dry_fire");
-            m_sounds.reloadOut = LoadSoundVariants(audio, "reload_out");
-            m_sounds.reloadIn = LoadSoundVariants(audio, "reload_in");
-            m_sounds.step = LoadSoundVariants(audio, "step_hard");
-            m_sounds.land = LoadSoundVariants(audio, "land");
-            m_sounds.door = LoadSoundVariants(audio, "door");
-            m_sounds.locker = LoadSoundVariants(audio, "locker");
-            m_sounds.pickup = LoadSoundVariants(audio, "pickup");
-            m_sounds.drop = LoadSoundVariants(audio, "drop");
-            m_sounds.hurt = LoadSoundVariants(audio, "hurt");
-            m_sounds.death = LoadSoundVariants(audio, "death");
-        }
-        else
-        {
-            PRED_LOG_WARN(Gameplay, "No sound recipes at {}; the game will be silent", file.string());
-        }
+        AudioEngine& audio = app.GetAudio();
+        m_sounds.gunshot = LoadSoundVariants(audio, "gunshot");
+        m_sounds.dryFire = LoadSoundVariants(audio, "dry_fire");
+        m_sounds.reloadOut = LoadSoundVariants(audio, "reload_out");
+        m_sounds.reloadIn = LoadSoundVariants(audio, "reload_in");
+        m_sounds.step = LoadSoundVariants(audio, "step_hard");
+        m_sounds.land = LoadSoundVariants(audio, "land");
+        m_sounds.door = LoadSoundVariants(audio, "door");
+        m_sounds.locker = LoadSoundVariants(audio, "locker");
+        m_sounds.pickup = LoadSoundVariants(audio, "pickup");
+        m_sounds.drop = LoadSoundVariants(audio, "drop");
+        m_sounds.hurt = LoadSoundVariants(audio, "hurt");
+        m_sounds.death = LoadSoundVariants(audio, "death");
     }
 
     LoadFootsteps(app.GetAudio());
@@ -950,6 +950,65 @@ void PredationGame::RegisterCommands()
                                 m_inventoryOpen = !m_inventoryOpen;
                                 UpdateMouseCapture();
                             });
+
+    console.RegisterCommand(
+        "sound_bake",
+        "Write every sound recipe out as a wav in Assets/Audio, for replacing by hand",
+        [this](const std::vector<std::string>&)
+        {
+            // Turns the generated sounds into files somebody can replace.
+            //
+            // A recipe in a JSON file is a fine placeholder while there is nobody to record
+            // anything and a dead end the moment there is: it cannot be opened in an editor, sent
+            // to anybody, or swapped without learning what `bite` means. This writes each one into
+            // the folder the game already prefers recordings from, so replacing a sound is dropping
+            // a file on top of another file.
+            //
+            // A command rather than a build step because it is run when the recipes change, which
+            // is rarely, and baking on every build would rewrite twelve files nobody asked about.
+            Console& out = m_app->GetConsole();
+            const std::filesystem::path recipes = Paths::AssetsRoot() / "Data" / "sounds.json";
+            std::ifstream file(recipes);
+            if (!file)
+            {
+                out.PrintError("No " + recipes.string());
+                return;
+            }
+            const std::string text((std::istreambuf_iterator<char>(file)),
+                                   std::istreambuf_iterator<char>());
+            const std::vector<SoundLibraryEntry> entries = LoadSoundRecipes(text);
+            if (entries.empty())
+            {
+                out.PrintError("No recipes in " + recipes.filename().string());
+                return;
+            }
+
+            int written = 0;
+            for (const SoundLibraryEntry& entry : entries)
+            {
+                const SoundData data = Synthesise(entry.recipe, 48000);
+                const std::vector<uint8_t> bytes = SaveWav(data);
+                const std::filesystem::path folder = Paths::AssetsRoot() / "Audio" / entry.name;
+                std::error_code ec;
+                std::filesystem::create_directories(folder, ec);
+                // Named for the sound and numbered, because the loader takes every wav in the
+                // folder as a variant and picks between them. One now; drop in _2 and _3 and the
+                // game alternates without being told.
+                const std::filesystem::path target = folder / (entry.name + "_1.wav");
+                std::ofstream wav(target, std::ios::binary | std::ios::trunc);
+                if (!wav)
+                {
+                    out.PrintError("Could not write " + target.string());
+                    continue;
+                }
+                wav.write(reinterpret_cast<const char*>(bytes.data()),
+                          static_cast<std::streamsize>(bytes.size()));
+                ++written;
+            }
+            char buffer[160];
+            std::snprintf(buffer, sizeof(buffer), "%d sound(s) written to Assets/Audio", written);
+            out.Print(buffer);
+        });
 
     console.RegisterCommand("scene_stats", "Print scene and mesh statistics",
                             [this](const std::vector<std::string>&)
@@ -3342,8 +3401,8 @@ void PredationGame::DrawSoundPanel()
 
     if (m_footsteps.empty())
     {
-        ImGui::TextDisabled("No clips loaded. Falling back to the synthesised step.");
-        if (ImGui::Button("Play the synthesised one"))
+        ImGui::TextDisabled("No clips loaded. Falling back to Assets/Audio/step_hard.");
+        if (ImGui::Button("Play the fallback step"))
         {
             PlaySound(m_sounds.step.Pick(), m_camera.position, 0.30f, 1.0f, false);
         }
@@ -3768,7 +3827,8 @@ void PredationGame::LoadFootsteps(AudioEngine& audio)
 
     if (m_footsteps.empty())
     {
-        PRED_LOG_WARN(Gameplay, "No footstep clips loaded; falling back to the synthesised one");
+        PRED_LOG_WARN(Gameplay,
+                      "No footstep clips loaded; steps fall back to Assets/Audio/step_hard");
         return;
     }
     int clips = 0;
