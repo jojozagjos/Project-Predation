@@ -1187,6 +1187,30 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
     const glm::vec3 carryRight = yawRight;
     const glm::vec3 carryUp = glm::cross(carryRight, carryForward);
 
+    // And a second frame, less pitched than the first, for where the weapon is *held* as opposed to
+    // where it points.
+    //
+    // The two are not the same thing and treating them as one is what put the gun over the player's
+    // head. The weapon sits on an offset from the eye -- out, down, and forward -- and if that offset
+    // is measured in a frame that pitches with the view, then looking up swings the whole weapon up
+    // around the eye like a boom. Measured with the shipped carbine and no wall anywhere near: at a
+    // level view the grip sits 0.21 m below the eye, and at eighty degrees up it sits 0.19 m above
+    // it, with the muzzle 0.58 m above. That is the gun ending up over the player's head, and it has
+    // nothing to do with walls -- it happens in an empty room.
+    //
+    // A person looking up does not raise their rifle to their forehead. The hands stay about where
+    // they were, in front of the chest, and the weapon tips. So the position frame follows only part
+    // of the pitch and the pointing frame follows the rest.
+    //
+    // Aiming takes it back to one, because sighted the weapon has to lie on the view axis exactly --
+    // and the sights refuse to come up where there is no room for the weapon, so the two never
+    // disagree about somewhere it cannot go.
+    const float holdPitch = carryPitch * glm::mix(m_config.weaponCarryRise, 1.0f, aim);
+    const float hp = std::cos(holdPitch);
+    const glm::vec3 holdForward{std::sin(view.yaw) * hp, std::sin(holdPitch), -std::cos(view.yaw) * hp};
+    const glm::vec3 holdRight = carryRight;
+    const glm::vec3 holdUp = glm::cross(holdRight, holdForward);
+
     // The aim frame, which the barrel is pointed down. Leaning rolls it, so the sights stay lined up
     // with a view that has itself rolled: without that, peeking round a corner left the sight block
     // off the axis and aiming stopped meaning anything.
@@ -1230,9 +1254,9 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
     const float shortness = glm::clamp((0.52f - weaponLength) / 0.30f, 0.0f, 1.0f);
 
     const glm::vec3 readyOffset =
-        carryRight * (m_config.weaponReadyRight + m_config.weaponShortRight * shortness) +
-        carryUp * (m_config.weaponReadyDown + m_config.weaponShortRise * shortness) +
-        carryForward *
+        holdRight * (m_config.weaponReadyRight + m_config.weaponShortRight * shortness) +
+        holdUp * (m_config.weaponReadyDown + m_config.weaponShortRise * shortness) +
+        holdForward *
             ((m_config.weaponReadyForward + m_config.weaponShortForward * shortness) * forwardScale);
     // How far out the sights sit, and it is not simply `weaponAimForward`.
     //
@@ -1256,7 +1280,7 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
 
     // Prone puts it down beside the body, muzzle forward, out of the way of the arm that is doing
     // the crawling.
-    const glm::vec3 proneOffset = carryRight * 0.11f + carryUp * -0.26f + carryForward * 0.36f;
+    const glm::vec3 proneOffset = holdRight * 0.11f + holdUp * -0.26f + holdForward * 0.36f;
 
     glm::vec3 offset = glm::mix(readyOffset, sightedOffset, aim);
     if (flat)
@@ -1463,10 +1487,10 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
 
         // Whichever of the two needs the weapon further in. They answer the same question about
         // different lines, and the gun has to satisfy both.
-        const float back = std::max(glm::dot(clear - muzzle, -carryForward), bodyBack);
+        const float back = std::max(glm::dot(clear - muzzle, -holdForward), bodyBack);
         if (back > 0.0f)
         {
-            m_weaponTransform.position -= carryForward * back;
+            m_weaponTransform.position -= holdForward * back;
         }
     }
 
@@ -1483,7 +1507,10 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
     {
         const float floorDistance =
             glm::mix(m_config.weaponMinForward, m_config.weaponAimMinForward, aim);
-        const glm::vec3 along = aim > 0.5f ? aimForward : carryForward;
+        // Along the hold frame rather than the pointing one while carried, for the same reason the
+        // offset is: pushing the weapon out along an axis that pitches with the view lifts it as the
+        // player looks up, which against a wall put the whole weapon above the eye.
+        const glm::vec3 along = aim > 0.5f ? aimForward : holdForward;
         const glm::vec3 held = m_weaponTransform.position + m_weaponTransform.rotation * holdPoint;
         const glm::vec3 rear =
             m_weaponTransform.position + m_weaponTransform.rotation * m_weaponVisual.rearPoint;
@@ -1757,6 +1784,14 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
                 m_weaponTransform.rotation * glm::angleAxis(remaining, glm::vec3(1.0f, 0.0f, 0.0f));
             m_weaponTransform.position = hold - m_weaponTransform.rotation * holdPoint;
         }
+        // And the hands come down with it.
+        //
+        // Rotating a weapon nose-down about the grip swings everything behind the grip up, and at
+        // the angles a corridor asks for that is the receiver over the player.s head -- which is
+        // what they saw and reported as the gun teleporting above them. Tipping the muzzle without
+        // moving the hands is not what a person does with a rifle indoors: the hands drop too. This
+        // is that, and it buys back the clearance the tip was for rather than spending it.
+        m_weaponTransform.position -= holdUp * (m_config.weaponWallTipDrop * std::sin(m_muzzleTip));
         rotation = m_weaponTransform.rotation;
     }
     else

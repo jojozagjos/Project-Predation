@@ -3082,6 +3082,81 @@ TEST_CASE("Reloading on your front keeps both hands above the floor", "[body][po
     CHECK(lowest > kUnderTheFloor);
 }
 
+TEST_CASE("Looking up does not lift the weapon over the player's head", "[body][pose][weapon]")
+{
+    // Reported as the gun teleporting above the head near a low wall. The wall turned out to be
+    // incidental: the weapon sits on an offset from the eye measured in a frame that pitched with
+    // the view, so looking up swung the whole thing up around the eye like a boom, wall or no wall.
+    // Measured before the fix, in an empty room: the grip went from 0.21 m below the eye at a level
+    // view to 0.19 m above it at eighty degrees up, with the muzzle 0.58 m above.
+    BodyHarness harness;
+    WeaponDefinition definition;
+    ModelAsset model;
+    if (!LoadShippedCarbine(harness, definition, model))
+    {
+        WARN("no shipped carbine to test against");
+        return;
+    }
+    harness.Settle(120);
+
+    float highest = -10.0f;
+    float highestAt = 0.0f;
+    for (float look = 0.0f; look <= 85.0f; look += 5.0f)
+    {
+        harness.input.pitch = glm::radians(look);
+        harness.Settle(50);
+        const float above = harness.body.WeaponOrigin().y - harness.View().eyePosition.y;
+        if (above > highest)
+        {
+            highest = above;
+            highestAt = look;
+        }
+    }
+
+    INFO("the weapon rose to " << highest << " m above the eye, looking up " << highestAt);
+    // A carried weapon is held in front of the chest, which is below the eye, and looking up does
+    // not change where the hands are. It may come up towards the eye as the body follows the view;
+    // it may not come past it.
+    CHECK(highest < 0.0f);
+}
+
+TEST_CASE("Diagnostic: the weapon's height against a low wall", "[.][body][weapon][diag]")
+{
+    // The player's report is about where the weapon *is*, not which way it points: walking up to a
+    // low wall and looking up puts the gun above their head. So this measures height above the eye,
+    // not barrel angle, which is what the earlier test measured and why it found nothing.
+    std::string table = "\n  wall top   look   origin-eye (m)   muzzle-eye (m)\n";
+    for (float top = 0.90f; top <= 1.80f; top += 0.30f)
+    {
+        BodyHarness harness;
+        WeaponDefinition definition;
+        ModelAsset model;
+        if (!LoadShippedCarbine(harness, definition, model))
+        {
+            WARN("no shipped carbine to test against");
+            return;
+        }
+        harness.Settle(90);
+        const float half = top * 0.5f;
+        harness.physics.CreateBox({2.0f, half, 0.4f}, Transform{{0.0f, half, -0.9f}}, BodyMotion::Static);
+        harness.physics.OptimizeBroadPhase();
+        harness.input.yaw = 0.0f;
+        harness.SetTravel(glm::vec3(0.0f, 0.0f, -1.0f));
+        harness.Settle(150);
+
+        for (float look = 0.0f; look <= 80.0f; look += 20.0f)
+        {
+            harness.input.pitch = glm::radians(look);
+            harness.Settle(60);
+            const float eye = harness.View().eyePosition.y;
+            table += "    " + std::to_string(top) + "    " + std::to_string(look) + "    " +
+                     std::to_string(harness.body.WeaponOrigin().y - eye) + "    " +
+                     std::to_string(harness.body.MuzzlePoint().y - eye) + "\n";
+        }
+    }
+    WARN(table);
+}
+
 TEST_CASE("Diagnostic: where the muzzle correction jumps", "[.][body][weapon][diag]")
 {
     // Sweeps the height of a wall's top edge and, for each, walks the view up through the crossing

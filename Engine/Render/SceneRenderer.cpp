@@ -21,7 +21,7 @@ namespace
 // width of the fade at a doorway rather than a hard line across the floor.
 // The near map does not need to be as big as the far one: it covers a fifth of the distance, so even
 // at half the resolution its texels are a quarter the size.
-constexpr uint16_t kSunNearShadowSize = 1024;
+constexpr uint16_t kSunNearShadowSize = 2048;
 constexpr uint16_t kSunShadowSize = 2048;
 constexpr uint16_t kSkyShadowSize = 512;
 // How far the maps reach along their own axis. Deep enough that nothing in a level stands outside

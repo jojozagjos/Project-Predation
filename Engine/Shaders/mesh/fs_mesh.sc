@@ -52,9 +52,9 @@ SAMPLER2D(s_skyShadow, 2);
 
 #define PI 3.14159265359
 
-// How far apart the nine occlusion taps sit, in texels. Wider is softer and leaks a little further
-// under a shadow; this is about a two-and-a-half texel penumbra.
-#define SHADOW_SPREAD 1.7
+// How wide the occlusion filter is, in taps across. Odd, and the radius is half of it rounded down.
+#define SHADOW_TAPS 5
+#define SHADOW_RADIUS 2.0
 
 // How much of a light reaches this surface: 1 in the open, 0 behind something, and part of the way
 // along an edge.
@@ -88,37 +88,47 @@ float lightReaches(sampler2D map, mat4 mtx, vec4 axis, vec4 params, vec3 P, vec3
 	}
 	float here = dot(sampleAt, axis.xyz) + axis.w;
 
-	// Nine taps a texel apart, weighted as a tent rather than averaged flat.
+	// Twenty-five taps on the map's own texel grid, weighted so the edges of the kernel carry the
+	// fraction of a texel the sampling point sits at.
 	//
-	// Averaging the *answers* rather than the distances is the first half of this: halfway between a
-	// near surface and a far one is a distance belonging to neither, and blending those draws a band
-	// of shadow along every silhouette in the scene.
+	// Two things have to be true at once here and they pull against each other.
 	//
-	// The second half is the weighting, and it is what stops the edges looking like stairs. Nine
-	// equal votes can only ever produce ten shades, and which texels are voting changes in a jump as
-	// the sampling point crosses a texel boundary -- so the edge of a shadow steps from one level to
-	// the next along a line of texels, which is exactly the staircase. Weighting each tap by how much
-	// of it the sampling point actually covers makes the answer move continuously instead: the same
-	// nine samples, and no jump when the boundary is crossed.
-	// The taps are spread wider than one texel apart. A tent over three adjacent texels is a penumbra
-	// three texels wide, which on a fine map is under four centimetres -- sharp enough that the
-	// staircase in the silhouette is still the thing the eye finds. Spreading them softens the edge
-	// without needing more of them.
-	float step = params.x * SHADOW_SPREAD;
-	float size = 1.0 / max(step, 1e-6);
+	// The result has to move continuously as the sampling point moves, or a shadow edge climbs in
+	// stairs: equal votes from a fixed set of texels can only produce as many shades as there are
+	// taps, and the set changes in a jump at every texel boundary. That is what the weighting is for.
+	//
+	// And the taps have to land on whole texels. The map is snapped to its own texel grid each frame
+	// so that walking does not slide the grid under every shadow in the world -- but that only holds
+	// if what reads the map is on the same grid. Taps at a fractional spacing are not: point sampling
+	// snaps each one to whichever texel it happens to land in, the assignment changes as the map
+	// steps, and the shadow crawls and sparkles while the player walks. An earlier version spread the
+	// taps 1.7 texels apart to soften the edge and bought exactly that flicker with it.
+	//
+	// So the kernel is widened by taking more taps rather than by spacing them further out.
+	float size = 1.0 / max(params.x, 1e-6);
 	vec2 texel = uv * size - vec2_splat(0.5);
 	vec2 frac = texel - floor(texel);
-	vec3 weightX = vec3(1.0 - frac.x, 1.0, frac.x);
-	vec3 weightY = vec3(1.0 - frac.y, 1.0, frac.y);
-	vec2 base = (floor(texel) + vec2_splat(0.5)) * step;
+	vec2 base = (floor(texel) + vec2_splat(0.5)) * params.x;
+
+	// A box the width of the kernel with the two end taps sharing one texel between them, which is
+	// what makes the whole thing slide smoothly rather than step as `frac` passes one.
+	float weightX[SHADOW_TAPS];
+	float weightY[SHADOW_TAPS];
+	for (int i = 0; i < SHADOW_TAPS; ++i)
+	{
+		float edge = (i == 0) ? (1.0 - frac.x) : ((i == SHADOW_TAPS - 1) ? frac.x : 1.0);
+		weightX[i] = edge;
+		float edgeY = (i == 0) ? (1.0 - frac.y) : ((i == SHADOW_TAPS - 1) ? frac.y : 1.0);
+		weightY[i] = edgeY;
+	}
 
 	float reached = 0.0;
 	float total = 0.0;
-	for (int y = 0; y < 3; ++y)
+	for (int y = 0; y < SHADOW_TAPS; ++y)
 	{
-		for (int x = 0; x < 3; ++x)
+		for (int x = 0; x < SHADOW_TAPS; ++x)
 		{
-			vec2 tap = base + vec2(float(x) - 1.0, float(y) - 1.0) * step;
+			vec2 tap = base + vec2(float(x) - SHADOW_RADIUS, float(y) - SHADOW_RADIUS) * params.x;
 			float nearest = texture2DLod(map, tap, 0.0).x;
 			// Both numbers count from the back of the map, so the nearer surface to the light is
 			// the larger one, and being lit means not falling short of it by more than the slack.
@@ -370,5 +380,20 @@ void main()
 		gl_FragColor = vec4(vec3_splat(shown), 1.0);
 		return;
 	}
+	// A little noise, smaller than one step of the output, before it is written.
+	//
+	// The screen holds 256 levels per channel. A wall lit by a torch, or a dark curved surface lit
+	// only by ambient, crosses a few of those over hundreds of pixels, so the picture shows the steps
+	// between them as bands -- and because the bands follow the shading rather than the geometry they
+	// read as something wrong with the surface. It is worst exactly where this game lives: smooth,
+	// dark, slowly changing.
+	//
+	// Adding under half a level of noise before the value is rounded turns each band edge into a
+	// scattering of pixels either side of it, which the eye averages back to the gradient that was
+	// there all along. This is interleaved gradient noise, which is cheap and, unlike a random hash,
+	// does not sparkle from frame to frame because it depends only on where the pixel is.
+	float dither = fract(52.9829189 * fract(0.06711056 * gl_FragCoord.x + 0.00583715 * gl_FragCoord.y));
+	color += vec3_splat((dither - 0.5) / 255.0);
+
 	gl_FragColor = vec4(color, 1.0);
 }

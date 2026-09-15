@@ -129,6 +129,11 @@ public:
         // at it; equally, a weapon that tracks the view and then stops dead at one angle reads as
         // having come loose from it. Below the knee it follows exactly, above it the movement
         // shrinks with every further degree. See where they are used.
+        // How much of the view pitch the *position* of the weapon follows, as opposed to the way it
+        // points. A person looking up does not raise their rifle to their forehead: the hands stay
+        // in front of the chest and the weapon tips. One would put the gun over their head, which is
+        // where it was. Aiming takes this to one, because the sights have to lie on the view axis.
+        float weaponCarryRise = 0.35f;
         float weaponCarryPitchKnee = 24.0f;
         float weaponCarryPitchMaxUp = 55.0f;
         // The weapon lags a turn and then catches up, which is what gives it weight.
@@ -194,6 +199,12 @@ public:
         // until the muzzle points at the floor. That is an animation, not a number, and it is the
         // real answer whenever it gets written.
         float weaponWallTipMax = 67.0f;
+        // And how far the hold comes down as it tips. Rotating a weapon nose-down about the grip
+        // swings its stock up, and at the angles a corridor asks for that puts the receiver over the
+        // player.s head. A person tipping a rifle down drops their hands at the same time; without
+        // this the hands stay put and only the gun pivots, which is where "it teleports above my
+        // head" came from. Metres at full tip.
+        float weaponWallTipDrop = 0.17f;
         float weaponWallTipSpeed = 13.0f;
         // How much barrel may be inside something before the drop starts, and over how much more it
         // comes fully in. Both in metres. See the note where they are used: the drop is a
