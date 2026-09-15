@@ -4,6 +4,7 @@
 #include "Engine/Render/Mesh.h"
 #include "Engine/Render/TextureLibrary.h"
 #include "Engine/Render/ShaderLibrary.h"
+#include "Engine/Render/SkyRenderer.h"
 #include "Engine/Scene/Scene.h"
 
 #include <glm/gtc/type_ptr.hpp>
@@ -74,6 +75,9 @@ bool SceneRenderer::Init(ShaderLibrary& shaders)
     m_sBaseColor = bgfx::createUniform("s_baseColor", bgfx::UniformType::Sampler);
     m_sSunShadow = bgfx::createUniform("s_sunShadow", bgfx::UniformType::Sampler);
     m_sSkyShadow = bgfx::createUniform("s_skyShadow", bgfx::UniformType::Sampler);
+    m_uClipPlane = bgfx::createUniform("u_clipPlane", bgfx::UniformType::Vec4);
+    m_uReflectParams = bgfx::createUniform("u_reflectParams", bgfx::UniformType::Vec4);
+    m_sReflection = bgfx::createUniform("s_reflection", bgfx::UniformType::Sampler);
 
     // Occlusion is not required for a picture. If the depth program or the float target is missing
     // the game still runs, unshadowed, and says so once rather than every frame.
@@ -102,7 +106,7 @@ void SceneRenderer::Shutdown()
         m_uFogParams,      m_uCameraPosition,  m_uGrade,           m_uLights,
         m_uSunShadowMtx,   m_uSunShadowAxis,   m_uSunShadowParams, m_uSkyShadowMtx,
         m_uSkyShadowAxis,  m_uSkyShadowParams, m_sBaseColor,       m_sSunShadow,
-        m_sSkyShadow};
+        m_sSkyShadow,      m_uClipPlane,       m_uReflectParams,   m_sReflection};
     for (const bgfx::UniformHandle handle : uniforms)
     {
         if (bgfx::isValid(handle))
@@ -117,6 +121,17 @@ void SceneRenderer::Shutdown()
     m_uSunShadowMtx = m_uSunShadowAxis = m_uSunShadowParams = BGFX_INVALID_HANDLE;
     m_uSkyShadowMtx = m_uSkyShadowAxis = m_uSkyShadowParams = BGFX_INVALID_HANDLE;
     m_sBaseColor = m_sSunShadow = m_sSkyShadow = BGFX_INVALID_HANDLE;
+    m_uClipPlane = m_uReflectParams = m_sReflection = BGFX_INVALID_HANDLE;
+
+    if (bgfx::isValid(m_reflectionTarget))
+    {
+        bgfx::destroy(m_reflectionTarget); // takes its colour and depth attachments with it
+    }
+    m_reflectionTarget = BGFX_INVALID_HANDLE;
+    m_reflectionTexture = BGFX_INVALID_HANDLE;
+    m_reflectionWidth = m_reflectionHeight = 0;
+    m_reflectionReady = false;
+
     // The programs themselves are owned by the ShaderLibrary.
     m_program = BGFX_INVALID_HANDLE;
 }
@@ -210,6 +225,17 @@ void SceneRenderer::SetEnvironmentUniforms(const Environment& environment,
         m_shadowSettings.sunBias, sun ? 1.0f : 0.0f, m_shadowSettings.sunNormalOffset};
     bgfx::setUniform(m_uSunShadowParams, sunParams);
     bgfx::setUniform(m_uSkyShadowParams, skyParams);
+
+    // No clip, and the mirror on if there is one to sample. Both are overridden immediately after
+    // this by the reflection pass itself, which needs the opposite of each.
+    //
+    // These have to be set for every pass rather than once, because a uniform bgfx never sees set
+    // holds whatever the last pass put there. Left alone, the icon atlas would inherit the world's
+    // reflection and paint a slice of the level onto every metal item in the inventory.
+    const float noClip[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+    const float reflect[4] = {(withShadows && m_reflectionReady) ? 1.0f : 0.0f, 0.0f, 0.0f, 0.0f};
+    bgfx::setUniform(m_uClipPlane, noClip);
+    bgfx::setUniform(m_uReflectParams, reflect);
 }
 
 uint64_t SceneRenderer::DrawState() const
@@ -232,7 +258,8 @@ void SceneRenderer::SubmitMesh(bgfx::ViewId view, const Mesh& mesh, const Materi
                                const glm::mat4& model, uint64_t state)
 {
     const float baseColor[4] = {material.baseColor.r, material.baseColor.g, material.baseColor.b, 1.0f};
-    const float materialParams[4] = {material.metallic, material.roughness, 0.0f, 0.0f};
+    const float materialParams[4] = {material.metallic, material.roughness, material.reflectivity,
+                                     0.0f};
     const float emissive[4] = {material.emissive.r, material.emissive.g, material.emissive.b, 0.0f};
 
     bgfx::setUniform(m_uBaseColor, baseColor);
@@ -259,6 +286,10 @@ void SceneRenderer::SubmitMesh(bgfx::ViewId view, const Mesh& mesh, const Materi
         const bgfx::TextureHandle white = m_textures->Get({});
         bgfx::setTexture(1, m_sSunShadow, m_shadowsReady ? m_sunShadow.Texture() : white);
         bgfx::setTexture(2, m_sSkyShadow, m_shadowsReady ? m_skyShadow.Texture() : white);
+        // And the mirror, for the same reason: a sampler the shader declares and nobody fills reads
+        // whatever was last in that slot.
+        bgfx::setTexture(4, m_sReflection,
+                         bgfx::isValid(m_reflectionTexture) ? m_reflectionTexture : white);
     }
 
     bgfx::setTransform(glm::value_ptr(model));
@@ -335,6 +366,127 @@ void SceneRenderer::RenderShadows(bgfx::ViewId sunView, bgfx::ViewId skyView, co
                 SubmitDepth(skyView, *mesh, model, m_skyShadow.Program());
             }
         });
+}
+
+void SceneRenderer::RenderReflection(bgfx::ViewId skyView, bgfx::ViewId worldView, const Scene& scene,
+                                     const MeshLibrary& meshes, const glm::vec4& plane,
+                                     const glm::mat4& cameraView, const glm::mat4& projection,
+                                     const glm::vec3& cameraPosition)
+{
+    m_reflectionReady = false;
+    if (!m_reflections || !bgfx::isValid(m_program))
+    {
+        return;
+    }
+    const glm::vec3 normal = glm::vec3(plane);
+    if (glm::length(normal) < 0.9f)
+    {
+        return; // not a plane
+    }
+
+    // The target follows the window at half its width and height.
+    //
+    // A mirror is looked at through a surface, from a distance, and at an angle; half resolution
+    // there is very hard to see and is a quarter of the pixels of a second full pass. The cost of
+    // this feature is a whole extra draw of the scene, so the place to spend care is on not making
+    // it two full ones.
+    const bgfx::Stats* stats = bgfx::getStats();
+    const auto wantWidth = static_cast<uint16_t>(std::max<uint32_t>(stats->width / 2, 64));
+    const auto wantHeight = static_cast<uint16_t>(std::max<uint32_t>(stats->height / 2, 64));
+    if (wantWidth != m_reflectionWidth || wantHeight != m_reflectionHeight ||
+        !bgfx::isValid(m_reflectionTarget))
+    {
+        if (bgfx::isValid(m_reflectionTarget))
+        {
+            bgfx::destroy(m_reflectionTarget);
+        }
+        m_reflectionTexture =
+            bgfx::createTexture2D(wantWidth, wantHeight, false, 1, bgfx::TextureFormat::RGBA8,
+                                  BGFX_TEXTURE_RT | BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP);
+        const bgfx::TextureHandle depth = bgfx::createTexture2D(
+            wantWidth, wantHeight, false, 1, bgfx::TextureFormat::D24S8, BGFX_TEXTURE_RT_WRITE_ONLY);
+        const bgfx::TextureHandle attachments[] = {m_reflectionTexture, depth};
+        // The frame buffer owns both from here: destroying it destroys them.
+        m_reflectionTarget = bgfx::createFrameBuffer(2, attachments, true);
+        m_reflectionWidth = wantWidth;
+        m_reflectionHeight = wantHeight;
+        if (!bgfx::isValid(m_reflectionTarget))
+        {
+            PRED_LOG_WARN(Render, "SceneRenderer: no reflection target; mirrors stay flat");
+            m_reflections = false;
+            return;
+        }
+    }
+
+    // The camera, reflected across the mirror's plane.
+    //
+    // Reflecting the world instead would do equally well and would mean moving every object;
+    // reflecting the camera moves one matrix. Householder: P' = P - 2(N.P + d)N, written out as a
+    // matrix so it can be composed with the view in one multiply.
+    //
+    // What this costs is that the reflection turns every triangle inside out, so the winding to
+    // discard is the opposite one for this pass. Miss that and the mirror shows the insides of
+    // everything -- ambient-lit shells with the ground missing, which reads as the reflection being
+    // broken rather than as a culling mistake.
+    glm::mat4 mirror(1.0f);
+    mirror[0][0] = 1.0f - 2.0f * normal.x * normal.x;
+    mirror[1][0] = -2.0f * normal.x * normal.y;
+    mirror[2][0] = -2.0f * normal.x * normal.z;
+    mirror[3][0] = -2.0f * normal.x * plane.w;
+    mirror[0][1] = -2.0f * normal.y * normal.x;
+    mirror[1][1] = 1.0f - 2.0f * normal.y * normal.y;
+    mirror[2][1] = -2.0f * normal.y * normal.z;
+    mirror[3][1] = -2.0f * normal.y * plane.w;
+    mirror[0][2] = -2.0f * normal.z * normal.x;
+    mirror[1][2] = -2.0f * normal.z * normal.y;
+    mirror[2][2] = 1.0f - 2.0f * normal.z * normal.z;
+    mirror[3][2] = -2.0f * normal.z * plane.w;
+    const glm::mat4 reflectedView = cameraView * mirror;
+    const glm::vec3 reflectedEye = glm::vec3(mirror * glm::vec4(cameraPosition, 1.0f));
+
+    // Two views into the one target, the same way the world is drawn: the sky clears the colour and
+    // the world clears only the depth over the top of it. One view would not do, because bgfx sorts
+    // the draws inside a view and the sky writes no depth -- sorted after the world it would paint
+    // straight over it.
+    bgfx::setViewFrameBuffer(skyView, m_reflectionTarget);
+    bgfx::setViewRect(skyView, 0, 0, m_reflectionWidth, m_reflectionHeight);
+    bgfx::setViewClear(skyView, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, 0x00000000, 1.0f, 0);
+    bgfx::setViewTransform(skyView, glm::value_ptr(reflectedView), glm::value_ptr(projection));
+    bgfx::touch(skyView);
+    if (m_sky != nullptr)
+    {
+        m_sky->Draw(skyView, scene.GetEnvironment(), reflectedView, projection);
+    }
+
+    bgfx::setViewFrameBuffer(worldView, m_reflectionTarget);
+    bgfx::setViewRect(worldView, 0, 0, m_reflectionWidth, m_reflectionHeight);
+    bgfx::setViewClear(worldView, BGFX_CLEAR_NONE, 0x00000000, 1.0f, 0);
+    bgfx::setViewTransform(worldView, glm::value_ptr(reflectedView), glm::value_ptr(projection));
+    bgfx::touch(worldView);
+
+    // Lit as the world is, from the reflected eye, with the mirror term off so a mirror cannot
+    // appear inside its own reflection, and with everything behind the plane clipped away.
+    SetEnvironmentUniforms(scene.GetEnvironment(), reflectedEye, true);
+    const float noReflection[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+    bgfx::setUniform(m_uReflectParams, noReflection);
+    bgfx::setUniform(m_uClipPlane, glm::value_ptr(plane));
+
+    const uint64_t state = (DrawState() & ~BGFX_STATE_CULL_MASK) | BGFX_STATE_CULL_CCW;
+    scene.ForEachReflected(
+        [&](Entity, const Transform& transform, const MeshRenderer& renderer)
+        {
+            const Mesh* mesh = meshes.Get(renderer.mesh);
+            if (mesh == nullptr || !mesh->IsValid())
+            {
+                return;
+            }
+            SubmitMesh(worldView, *mesh, renderer.material, transform.Matrix(), state);
+        });
+
+    // Whatever this pass drew is not part of the frame's count: those are the meshes the player can
+    // see, and doubling them because the scene was drawn twice makes the number mean nothing.
+    m_stats = Stats{};
+    m_reflectionReady = true;
 }
 
 void SceneRenderer::Draw(bgfx::ViewId view, const Scene& scene, const MeshLibrary& meshes,

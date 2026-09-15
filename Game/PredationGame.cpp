@@ -107,6 +107,13 @@ CVar<float> cv_shadowDistance{"r.shadow_distance", 16.0f,
                               CVarFlags::Archive};
 CVar<int> cv_occlusionDebug{"r.show_occlusion", 0,
                             "Draw occlusion instead of the scene: 1 the sun, 2 the sky"};
+// Mirrors. A second pass over the whole scene, at half the window's width and height, so it is the
+// most expensive thing that can be switched on here and the first thing to switch off.
+CVar<bool> cv_reflections{"r.reflections", true, "Whether mirrors show the world",
+                          CVarFlags::Archive};
+CVar<float> cv_reflectionDistance{"r.reflection_distance", 30.0f,
+                                  "How far from a mirror it stops being drawn, in metres",
+                                  CVarFlags::Archive};
 CVar<float> cv_indoorLight{"r.indoor_light", 0.06f,
                            "How much light is left where the sky cannot reach", CVarFlags::Archive};
 // Slack, in metres. Too little and flat surfaces stripe themselves with their own shadow; too much
@@ -2840,6 +2847,27 @@ void PredationGame::DrawSettings()
                 "Turn brightness up until you can just make out the darkest corner of a room, and "
                 "no further. A monitor that crushes its low end makes a dark game unplayable, "
                 "which is what these are for -- being able to see everything is not the game.");
+
+        ImGui::Spacing();
+        ImGui::SeparatorText("Mirrors");
+        bool reflections = cv_reflections.Get();
+        if (ImGui::Checkbox("Mirrors show the world", &reflections))
+        {
+            SetSetting("r.reflections", reflections ? "1" : "0");
+        }
+        ImGui::BeginDisabled(!reflections);
+        float reflectionDistance = cv_reflectionDistance.Get();
+        if (ImGui::SliderFloat("Mirror distance", &reflectionDistance, 5.0f, 60.0f, "%.0f m"))
+        {
+            SetSetting("r.reflection_distance", std::to_string(reflectionDistance));
+        }
+        ImGui::EndDisabled();
+        Caption("The most expensive thing on this page.",
+                "A mirror is the whole world drawn a second time from behind it, so this costs "
+                "about half again as much as an ordinary frame while you are standing in front of "
+                "one. The distance is where it stops being drawn at all -- lower it before turning "
+                "it off, because a mirror going flat as you walk away is much less noticeable than "
+                "one that was never there.");
         ImGui::EndTabItem();
     }
 
@@ -6813,8 +6841,31 @@ void PredationGame::OnRender()
     // roof is simply between it and the sky.
     app.GetSceneRenderer().RenderShadows(Renderer::kViewSunShadow, Renderer::kViewSkyShadow, m_scene,
                                          app.GetMeshes(), viewPosition);
-    // The sky first, into the same view, so the world covers it where there is world.
+
+    // And the mirrors, which is the world drawn a second time from a camera reflected across their
+    // plane. Skipped entirely when the eye is behind them or too far away to see one: this is a
+    // whole extra pass over the scene, and it is worth nothing at all from the wrong side.
+    //
+    // The near limit is generous rather than tight. A mirror going flat as you back away from it is
+    // far more noticeable than a mirror you cannot make out, so this is set to where the panels are
+    // a few pixels across rather than to where the reflection stops being informative.
     app.GetSkyRenderer().SetBrightness(cv_skyBrightness.Get());
+    const float inFront =
+        glm::dot(viewPosition, glm::vec3(TestMapSpec::kMirrorPlane)) + TestMapSpec::kMirrorPlane.w;
+    if (cv_reflections.Get() && inFront > 0.05f && inFront < cv_reflectionDistance.Get())
+    {
+        app.GetSceneRenderer().RenderReflection(
+            Renderer::kViewReflectionSky, Renderer::kViewReflection, m_scene, app.GetMeshes(),
+            TestMapSpec::kMirrorPlane, app.GetRenderer().ViewMatrix(), app.GetRenderer().ProjectionMatrix(),
+            viewPosition);
+    }
+    else
+    {
+        // Explicitly, rather than by leaving it alone: a stale reflection from wherever the camera
+        // was standing last time it saw one is worse than no reflection at all.
+        app.GetSceneRenderer().NoReflection();
+    }
+    // The sky first, into the same view, so the world covers it where there is world.
     app.GetSkyRenderer().Draw(Renderer::kViewSky, m_scene.GetEnvironment(),
                               app.GetRenderer().ViewMatrix(), app.GetRenderer().ProjectionMatrix());
     app.GetSceneRenderer().Draw(Renderer::kViewMain, m_scene, app.GetMeshes(), viewPosition);

@@ -39,9 +39,17 @@ public:
     // bgfx sorts the draws inside a view to save state changes, so "submitted first" is not
     // "drawn first" -- the sky came out over the top of the world. Views run in id order, and that
     // order is a promise.
-    static constexpr bgfx::ViewId kViewSky = 2;
-    static constexpr bgfx::ViewId kViewMain = 3;
-    static constexpr bgfx::ViewId kViewDebug = 4;
+    // The planar reflection: the world again from a mirrored camera, into a texture the main pass
+    // samples. Two views into the one target for the same reason the world has two -- the sky writes
+    // no depth, so sorted after the world inside a single view it would paint over it.
+    //
+    // After the depth maps, because the reflection is lit and wants the same occlusion the world
+    // does, and before the world, because the world reads what it writes.
+    static constexpr bgfx::ViewId kViewReflectionSky = 2;
+    static constexpr bgfx::ViewId kViewReflection = 3;
+    static constexpr bgfx::ViewId kViewSky = 4;
+    static constexpr bgfx::ViewId kViewMain = 5;
+    static constexpr bgfx::ViewId kViewDebug = 6;
     // A block reserved for rendering into offscreen targets, such as the inventory icon atlas.
     // bgfx runs views in id order, so these are finished long before the UI that samples them.
     static constexpr bgfx::ViewId kViewOffscreenFirst = 200;

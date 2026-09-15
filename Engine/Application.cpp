@@ -444,6 +444,9 @@ bool Application::InitSubsystems(const CommandLine& commandLine)
     // samples, so a draw with no texture of its own still has one bound.
     m_textures.Init();
     m_sceneRenderer.SetTextures(m_textures);
+    // So the reflection pass can draw the same sky behind itself that the world has. Without it a
+    // mirror shows a flat clear colour everywhere the world does not reach.
+    m_sceneRenderer.SetSky(m_skyRenderer);
 
     PhysicsWorld::Settings physicsSettings;
     physicsSettings.collisionSteps = std::max(1, cv_physicsSteps.Get());

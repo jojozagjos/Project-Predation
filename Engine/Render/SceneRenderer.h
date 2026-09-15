@@ -6,6 +6,7 @@
 #include <bgfx/bgfx.h>
 #include <glm/mat4x4.hpp>
 #include <glm/vec3.hpp>
+#include <glm/vec4.hpp>
 
 #include <cstddef>
 
@@ -15,6 +16,7 @@ namespace pred
 class Scene;
 class MeshLibrary;
 class ShaderLibrary;
+class SkyRenderer;
 struct Environment;
 struct Material;
 struct Mesh;
@@ -67,6 +69,27 @@ public:
     // because bgfx submits views in the order of their ids and Draw reads what this writes.
     void RenderShadows(bgfx::ViewId sunView, bgfx::ViewId skyView, const Scene& scene,
                        const MeshLibrary& meshes, const glm::vec3& focus);
+
+    // Renders the world again from a camera reflected across `plane`, into a texture the mirror
+    // samples. `plane` is xyz = normal, w = offset, in world space, pointing out of the mirror.
+    //
+    // One plane, not one per mirror. Several mirrors lying in the same plane share a reflection for
+    // nothing, which is how the three panels in the test map work; mirrors in different planes need
+    // a pass each and this renderer has room for one. That is a deliberate limit rather than an
+    // oversight: a second pass over the whole scene is the most expensive thing in this renderer.
+    void RenderReflection(bgfx::ViewId skyView, bgfx::ViewId worldView, const Scene& scene,
+                          const MeshLibrary& meshes, const glm::vec4& plane,
+                          const glm::mat4& cameraView, const glm::mat4& projection,
+                          const glm::vec3& cameraPosition);
+    // Turns it off for a frame, so nothing samples a stale or absent reflection.
+    void NoReflection() { m_reflectionReady = false; }
+    bool ReflectionAvailable() const { return m_reflectionReady; }
+    // Live, so the graphics page can turn the second pass off on a machine that cannot afford it.
+    bool ReflectionsEnabled() const { return m_reflections; }
+    void SetReflectionsEnabled(bool enabled) { m_reflections = enabled; }
+    // The sky, so the reflection pass can draw the same backdrop behind itself that the world has.
+    // Held rather than passed, for the same reason the texture library is.
+    void SetSky(SkyRenderer& sky) { m_sky = &sky; }
 
     void Draw(bgfx::ViewId view, const Scene& scene, const MeshLibrary& meshes, const glm::vec3& cameraPosition);
 
@@ -135,6 +158,18 @@ private:
     // a float target still gets a picture; it gets one with no occlusion in it.
     ShadowMap m_sunShadow;
     ShadowMap m_skyShadow;
+
+    // The planar reflection target, and whether this frame has one in it.
+    bgfx::FrameBufferHandle m_reflectionTarget = BGFX_INVALID_HANDLE;
+    bgfx::TextureHandle m_reflectionTexture = BGFX_INVALID_HANDLE;
+    uint16_t m_reflectionWidth = 0;
+    uint16_t m_reflectionHeight = 0;
+    bool m_reflectionReady = false;
+    bgfx::UniformHandle m_uClipPlane = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uReflectParams = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_sReflection = BGFX_INVALID_HANDLE;
+    bool m_reflections = true;
+    SkyRenderer* m_sky = nullptr;
     ShadowSettings m_shadowSettings;
     bool m_shadowsReady = false;
 };

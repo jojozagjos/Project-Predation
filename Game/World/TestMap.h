@@ -1,5 +1,7 @@
 #pragma once
 
+#include <glm/vec4.hpp>
+
 namespace pred
 {
 
@@ -66,6 +68,18 @@ struct SurfacePad
     float sizeZ;
 };
 inline constexpr float kSurfaceRowZ = 5.0f;
+
+// The three metal panels, and the plane their front faces lie in.
+//
+// Published rather than kept in the builder because the renderer needs it: a planar reflection is
+// the world drawn again from a camera mirrored across one flat surface, so somebody has to say which
+// surface, and the map is the only thing that knows. All three panels share it, which is the whole
+// reason they are lined up -- mirrors in different planes need a reflection pass each.
+inline constexpr float kMirrorZ = kSurfaceRowZ - 2.6f;
+inline constexpr float kMirrorThickness = 0.12f;
+// xyz = the normal, pointing out of the mirrors towards the spawn; w = the offset, so a point P is
+// in front of them when dot(P, xyz) + w is positive.
+inline constexpr glm::vec4 kMirrorPlane{0.0f, 0.0f, -1.0f, kMirrorZ - kMirrorThickness * 0.5f};
 inline constexpr float kSurfacePadDepth = 3.0f;
 inline constexpr float kSurfacePadWidth = 1.8f;
 inline constexpr float kSurfacePadHeight = 0.06f;

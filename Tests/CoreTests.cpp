@@ -271,6 +271,53 @@ TEST_CASE("Scene stores transforms and mesh renderers per entity", "[scene]")
     REQUIRE(scene.GetMeshRenderer(entity) == nullptr);
 }
 
+TEST_CASE("Your own head is hidden from your eyes and from nothing else", "[scene]")
+{
+    // Three sets, not two. `hiddenFromCamera` is the player's head in first person, and it means
+    // "not from the camera's own point of view" -- which is a statement about that one viewpoint,
+    // not about the head being absent. It has to be in the shadow maps, or the shadow on the ground
+    // in front of you is decapitated; and it has to be in a mirror, because a mirror is precisely
+    // not the camera's point of view, it is looking back at you from across the room.
+    //
+    // This is written down as a test because both failures look like a rendering fault rather than
+    // like a set membership mistake, and one of them has already happened once.
+    Scene scene;
+    const Entity body = scene.Create("body");
+    const Entity head = scene.Create("head");
+
+    MeshRenderer bodyRenderer;
+    bodyRenderer.mesh = MeshHandle{1};
+    scene.SetMeshRenderer(body, bodyRenderer);
+
+    MeshRenderer headRenderer;
+    headRenderer.mesh = MeshHandle{2};
+    headRenderer.hiddenFromCamera = true;
+    scene.SetMeshRenderer(head, headRenderer);
+
+    const auto count = [](auto&& visit)
+    {
+        size_t seen = 0;
+        visit([&](Entity, const Transform&, const MeshRenderer&) { ++seen; });
+        return seen;
+    };
+
+    CHECK(count([&](auto&& fn) { scene.ForEachMeshRenderer(fn); }) == 1);
+    CHECK(count([&](auto&& fn) { scene.ForEachShadowCaster(fn); }) == 2);
+    CHECK(count([&](auto&& fn) { scene.ForEachReflected(fn); }) == 2);
+
+    // And something that casts no shadow is missing from exactly one of the three.
+    scene.GetMeshRenderer(body)->castsShadow = false;
+    CHECK(count([&](auto&& fn) { scene.ForEachMeshRenderer(fn); }) == 1);
+    CHECK(count([&](auto&& fn) { scene.ForEachShadowCaster(fn); }) == 1);
+    CHECK(count([&](auto&& fn) { scene.ForEachReflected(fn); }) == 2);
+
+    // Invisible is invisible everywhere: it is the one flag that means "not in the world".
+    scene.GetMeshRenderer(head)->visible = false;
+    CHECK(count([&](auto&& fn) { scene.ForEachMeshRenderer(fn); }) == 1);
+    CHECK(count([&](auto&& fn) { scene.ForEachShadowCaster(fn); }) == 0);
+    CHECK(count([&](auto&& fn) { scene.ForEachReflected(fn); }) == 1);
+}
+
 TEST_CASE("Primitive builders produce closed, correctly sized geometry", "[render][primitives]")
 {
     SECTION("box")

@@ -5,7 +5,7 @@ $input v_worldPos, v_normal, v_texcoord0
 SAMPLER2D(s_baseColor, 0);     // multiplied into the albedo; white when a material has none
 
 uniform vec4 u_baseColor;       // rgb = albedo
-uniform vec4 u_materialParams;  // x = metallic, y = roughness
+uniform vec4 u_materialParams;  // x = metallic, y = roughness, z = how much of the mirror it shows
 uniform vec4 u_emissive;        // rgb = emissive radiance
 uniform vec4 u_lightDirection;  // xyz = direction towards the light
 uniform vec4 u_lightColor;      // rgb = colour, w = intensity
@@ -41,6 +41,19 @@ uniform vec4 u_skyShadowAxis;
 uniform vec4 u_skyShadowParams;
 SAMPLER2D(s_sunShadow, 1);
 SAMPLER2D(s_skyShadow, 2);
+// The planar reflection: the world rendered again from a camera reflected across one flat surface.
+//
+// Sampled at the fragment's own place on the screen, which is what makes it a mirror rather than an
+// approximation: the reflected image was rendered with the same projection from the mirrored camera,
+// so for any point lying in the mirror's plane the two line up exactly.
+SAMPLER2D(s_reflection, 4);
+// xyz = the plane's normal, w = its offset. Fragments behind it are thrown away while the reflection
+// is being drawn, or the mirror shows the things standing behind it. Zero means no clipping, which
+// is what the ordinary pass uses.
+uniform vec4 u_clipPlane;
+// x = whether a reflection is available to sample at all. Off while the reflection itself is being
+// rendered, so a mirror cannot reflect a mirror reflecting a mirror.
+uniform vec4 u_reflectParams;
 
 // bgfx gives HLSL a struct for a sampler and GLSL the built-in type, and makes `sampler2D` mean
 // whichever of the two this backend has. So a function can take one, and the lookup below is
@@ -141,6 +154,20 @@ vec3 fresnelSchlick(vec3 f0, float VoH)
 
 void main()
 {
+	// Thrown away if it is behind the mirror.
+	//
+	// The reflection pass renders the world from a camera reflected across the mirror's plane, and
+	// everything on the far side of that plane -- the wall the mirror is hung on, the room behind it
+	// -- reflects to somewhere in front of the camera and would be drawn. What a mirror shows is
+	// only what is in front of it.
+	if (u_clipPlane.w != 0.0 || dot(u_clipPlane.xyz, u_clipPlane.xyz) > 0.0)
+	{
+		if (dot(v_worldPos, u_clipPlane.xyz) + u_clipPlane.w < 0.0)
+		{
+			discard;
+		}
+	}
+
 	vec3 N = normalize(v_normal);
 	vec3 V = normalize(u_cameraPosition.xyz - v_worldPos);
 	vec3 L = normalize(u_lightDirection.xyz);
@@ -287,6 +314,21 @@ void main()
 	vec2 envTerm = vec2(-1.04, 1.04) * a004 + envFit.zw;
 	color += environmentColor * (f0 * envTerm.x + vec3_splat(envTerm.y));
 
+	// How much of the mirror this surface shows, worked out here and used right at the end.
+	//
+	// Blended in by Fresnel as well as by the material's own amount, because a mirror at a glancing
+	// angle reflects nearly everything and one looked at square on still shows some of its own
+	// colour. A mirror that is uniformly a perfect reflector reads as a hole in the wall.
+	// Mostly the material's own amount, nudged up at grazing angles.
+	//
+	// The Fresnel shape used here first was the dielectric one -- a third head-on, everything at a
+	// glancing angle -- which is right for glass and water and wrong for this. These are metal, and
+	// polished metal reflects most of what hits it from every angle: aluminium is about ninety per
+	// cent head-on. Weighted the dielectric way, the panel showed a third of a reflection under two
+	// thirds of its own shading and read as pale plastic rather than as a mirror.
+	float mirrorAmount =
+		clamp(u_materialParams.z * u_reflectParams.x * (0.82 + 0.18 * pow(1.0 - NoV, 5.0)), 0.0, 1.0);
+
 	color += u_emissive.rgb;
 
 	// Linear distance fog. Cheap, and it does most of the atmospheric work outdoors.
@@ -313,6 +355,25 @@ void main()
 	// only makes the picture darker.
 	color = pow(color, vec3_splat(1.0 / 2.2));
 	color = clamp((color - vec3_splat(0.5)) * max(u_grade.y, 0.0) + vec3_splat(0.5), 0.0, 1.0);
+
+	// And the mirror, here at the very end rather than up with the rest of the lighting.
+	//
+	// Sampled at this fragment's own place on the screen. The reflected image was rendered with the
+	// same projection from a camera reflected across the mirror's plane, so for a point lying in
+	// that plane the reflected view and this one agree pixel for pixel -- which is the whole trick,
+	// and why it is exact for a flat mirror and meaningless for anything else.
+	//
+	// It has to be after the tone curve because the thing being sampled has already been through it.
+	// The reflection pass runs this same shader, so what is in that texture is a finished picture:
+	// exposed, tonemapped and gamma encoded. Mixed in before the curve it went through all of that a
+	// second time, which lifts the blacks, flattens the highlights and leaves a mirror looking like
+	// a sheet of milky plastic -- which is exactly how it looked.
+	if (mirrorAmount > 0.001)
+	{
+		vec2 screen = gl_FragCoord.xy / max(u_viewRect.zw, vec2_splat(1.0));
+		vec3 mirrored = texture2DLod(s_reflection, screen, 0.0).rgb;
+		color = mix(color, mirrored, mirrorAmount);
+	}
 
 	// Occlusion on its own, for when the lighting is wrong and the question is which of the two maps
 	// is saying what. 1 and 2 show what reaches, white for "it does". 3 shows whether the sky map

@@ -259,22 +259,25 @@ void BuildTestMap(Scene& scene, MeshLibrary& meshes, PhysicsWorld* physics)
     // walking sideways, the sky slides across the mirror and stays put on the matte one, which is
     // the difference between reflecting the world and being painted a lighter colour.
     //
-    // They will not show the room. The reflection is a sky-and-ground hemisphere, not a probe, so a
-    // panel reflects what is above and below it and nothing that is beside it -- a mirror here shows
-    // sky, not the player. Reflecting the room needs probes or a screen-space pass, and ADR-060 says
-    // why neither is here yet. These are for judging the part that does exist.
+    // They do show the room, now. All three lie in one plane, which is what lets them share a single
+    // reflection pass: a planar reflection is the world drawn again from a camera mirrored across
+    // one flat surface, so mirrors in different planes need a pass each and these deliberately do
+    // not. Left to right they are polished, brushed and matte, and the reflection is mixed in less
+    // as the surface roughens, because a rough mirror is not a dimmer mirror but a blurrier one and
+    // this renderer cannot blur it yet. See kMirrorPlane in TestMap.h.
     // ---------------------------------------------------------------------
     {
-        constexpr float kMirrorZ = kSurfaceRowZ - 2.6f;
         constexpr float kMirrorHeight = 2.0f;
         const float roughnesses[] = {0.03f, 0.18f, 0.45f};
+        const float reflectivity[] = {0.90f, 0.45f, 0.0f};
         const char* names[] = {"mirror_polished", "mirror_brushed", "mirror_matte"};
         for (int i = 0; i < 3; ++i)
         {
-            const Material panel = Material::Metal({0.92f, 0.93f, 0.95f}, roughnesses[i]);
+            Material panel = Material::Metal({0.92f, 0.93f, 0.95f}, roughnesses[i]);
+            panel.reflectivity = reflectivity[i];
             builder.AddBox(names[i], AtPosition(-2.2f + 2.2f * static_cast<float>(i),
                                                 kMirrorHeight * 0.5f, kMirrorZ),
-                           {1.9f, kMirrorHeight, 0.12f}, panel);
+                           {1.9f, kMirrorHeight, kMirrorThickness}, panel);
         }
     }
 

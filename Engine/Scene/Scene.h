@@ -127,11 +127,20 @@ public:
     Entity CreateMeshEntity(std::string name, const Transform& transform, MeshHandle mesh,
                             const Material& material);
 
+    // Which of three sets to walk. They differ only in what they leave out, but they leave out
+    // different things and getting one of them wrong is invisible in a still and obvious in motion.
+    enum class Pass : uint8_t
+    {
+        Camera,     // what the player sees directly: everything but their own head
+        Shadow,     // what blocks light: everything that casts, head included
+        Reflection  // what a mirror sees: everything, because a mirror is not the camera
+    };
+
     // Visits every alive entity the camera should draw.
     template <typename Fn>
     void ForEachMeshRenderer(Fn&& fn) const
     {
-        ForEachRenderable(std::forward<Fn>(fn), false);
+        ForEachRenderable(std::forward<Fn>(fn), Pass::Camera);
     }
 
     // And every one that should be in a shadow map, which is not the same set: a thing can be kept
@@ -139,7 +148,19 @@ public:
     template <typename Fn>
     void ForEachShadowCaster(Fn&& fn) const
     {
-        ForEachRenderable(std::forward<Fn>(fn), true);
+        ForEachRenderable(std::forward<Fn>(fn), Pass::Shadow);
+    }
+
+    // And every one a mirror should show, which is a third set again.
+    //
+    // `hiddenFromCamera` means "not from the camera's own point of view", and a mirror is precisely
+    // not that point of view: it is looking back at the player from across the room. Using the
+    // camera's set here decapitates anybody who looks in a mirror, which is the same bug the head
+    // has already had once in its shadow and would read as the reflection being broken.
+    template <typename Fn>
+    void ForEachReflected(Fn&& fn) const
+    {
+        ForEachRenderable(std::forward<Fn>(fn), Pass::Reflection);
     }
 
     Environment& GetEnvironment() { return m_environment; }
@@ -147,7 +168,7 @@ public:
 
 private:
     template <typename Fn>
-    void ForEachRenderable(Fn&& fn, bool forShadows) const
+    void ForEachRenderable(Fn&& fn, Pass pass) const
     {
         for (uint32_t i = 0; i < static_cast<uint32_t>(m_slots.size()); ++i)
         {
@@ -160,7 +181,8 @@ private:
             {
                 continue;
             }
-            if (forShadows ? !renderer.castsShadow : renderer.hiddenFromCamera)
+            if (pass == Pass::Shadow ? !renderer.castsShadow
+                                     : pass == Pass::Camera && renderer.hiddenFromCamera)
             {
                 continue;
             }

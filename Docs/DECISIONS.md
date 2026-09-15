@@ -1261,3 +1261,49 @@ that could not otherwise be hidden -- the player's own shadow had become a cloud
 nine taps and about a two-centimetre penumbra; the sky keeps twenty-five, because there the width is
 the answer rather than a way of hiding the lack of one: it is asking how much of a quarter-metre
 neighbourhood can see sky.
+
+## ADR-063: Mirrors are one planar reflection, in one plane
+
+ADR-060 gave surfaces a reflection of the sky-and-ground hemisphere, which is enough for metal not
+to render black and is not a reflection: it does not know what is beside a surface, so a steel plate
+looks the same angled at the sky as at the floor, and nothing in it moves when you do. The report
+was that reflections "still aren't there", and that was right.
+
+What is here now is a planar reflection. The scene is drawn a second time from a camera reflected
+across one flat plane, into a texture, and a surface lying in that plane samples it at its own place
+on the screen. That last part is the whole trick: the reflected image was rendered with the same
+projection from the mirrored camera, so for any point in the mirror's plane the two views agree
+pixel for pixel. It is exact for a flat mirror and meaningless for anything else.
+
+Screen-space reflection was the alternative and is cheaper, because it reuses the frame that is
+already drawn. It also only knows about what is on screen, so you vanish out of a mirror the moment
+you step out of frame and every reflection has a ragged edge where the source data runs out. For a
+game whose whole tension is what you can and cannot see behind you, a mirror that stops working when
+it matters is worse than no mirror.
+
+The limit taken in exchange is one plane. Several mirrors lying in the same plane share a pass for
+nothing, which is why the three test panels are lined up; mirrors in different planes need a pass
+each and this renderer has room for one. That is a deliberate cap rather than an oversight -- a
+second pass over the whole scene is the most expensive thing in this renderer.
+
+Measured on the test map, standing four metres from the panels with them filling much of the screen:
+2.51 ms a frame without, 3.77 ms with. Half again as much, for one wall. It is off past thirty
+metres, off when the eye is behind the plane, and switchable from the graphics page, and the target
+is at half the window's width and height because a mirror is looked at through a surface and at an
+angle, where a quarter of the pixels is very hard to see.
+
+Three things had to be got right and each of them fails in a way that looks like something else.
+
+The reflection turns every triangle inside out, so the winding to discard is the opposite one for
+that pass. Miss it and the mirror shows the insides of everything.
+
+The mirror is blended in after the tone curve, not with the rest of the lighting. What is in that
+texture has already been exposed, tonemapped and gamma encoded, because the reflection pass runs the
+same shader; mixed in before the curve it goes through all of that twice, which lifts the blacks and
+flattens the highlights and leaves a mirror looking like milky plastic. It did.
+
+And a mirror is not the camera. `hiddenFromCamera` -- the player's own head in first person -- means
+"not from the camera's own point of view", and a mirror is precisely the other point of view. Drawn
+with the camera's set, anybody looking in a mirror is decapitated, which is the same bug the head
+has already had once in its shadow. There are now three renderable sets rather than two, and a test
+that says what each of them leaves out.
