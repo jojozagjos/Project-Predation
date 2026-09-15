@@ -4858,8 +4858,23 @@ PlayerInput PredationGame::BuildPlayerInput()
 {
     Input& input = m_app->GetInput();
     PlayerInput result;
-    result.yaw = m_lookYaw;
-    result.pitch = m_lookPitch;
+    // Where the player is pointing, plus whatever the weapon has kicked it by.
+    //
+    // The recoil was already here and it only moved the rounds: the barrel climbed and the camera
+    // did not, so a burst walked off the target while the crosshair sat still. That is the wrong way
+    // round -- what a player feels as recoil is the view moving, and the rounds following it is what
+    // makes the crosshair keep telling the truth while it does.
+    //
+    // Added to the input rather than to the camera alone, so it reaches the three places that have
+    // to agree: the view, the body everybody else sees, and the shot. A head that does not kick when
+    // the weapon does looks like somebody else is firing.
+    //
+    // It is an offset that decays to nothing, so it never moves where the player is actually aiming.
+    // Pulling down against it works the way it should: the mouse moves m_lookPitch, the recoil
+    // recovers to zero on top of it, and the two do not fight.
+    const glm::vec2 aimed = AimAngles();
+    result.yaw = aimed.x;
+    result.pitch = aimed.y;
 
     if (m_app->IsConsoleOpen() || m_screen != Screen::Playing)
     {
@@ -5038,16 +5053,26 @@ void PredationGame::SyncEquippedWeapon()
     }
 }
 
-glm::vec3 PredationGame::AimDirection() const
+// Where the player is pointing, with the weapon's kick on top. One function, because the camera and
+// the rounds both read it and they must never disagree: the whole reason the crosshair can be
+// trusted while a weapon climbs is that the thing it climbs is the same thing the rounds leave
+// along. Written out twice, they would drift the first time either was tuned.
+glm::vec2 PredationGame::AimAngles() const
 {
     // Recoil is an offset on top of where the player is pointing, not a change to it, so it decays
-    // back and hands their aim over intact. Rounds leave along the same line the camera looks down,
-    // so what you see under the crosshair is what you hit.
-    const float yaw = m_lookYaw + glm::radians(m_weapon.recoilYaw);
-    const float pitch = std::clamp(m_lookPitch + glm::radians(m_weapon.recoilPitch),
-                                   glm::radians(-89.0f), glm::radians(89.0f));
-    const float cp = std::cos(pitch);
-    return {std::sin(yaw) * cp, std::sin(pitch), -std::cos(yaw) * cp};
+    // back and hands their aim over intact.
+    return {m_lookYaw + glm::radians(m_weapon.recoilYaw),
+            std::clamp(m_lookPitch + glm::radians(m_weapon.recoilPitch), glm::radians(-89.0f),
+                       glm::radians(89.0f))};
+}
+
+glm::vec3 PredationGame::AimDirection() const
+{
+    // Rounds leave along the same line the camera looks down, so what you see under the crosshair is
+    // what you hit.
+    const glm::vec2 aimed = AimAngles();
+    const float cp = std::cos(aimed.y);
+    return {std::sin(aimed.x) * cp, std::sin(aimed.y), -std::cos(aimed.x) * cp};
 }
 
 glm::vec3 PredationGame::MuzzlePosition() const
