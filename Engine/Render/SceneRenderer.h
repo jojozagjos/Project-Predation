@@ -31,7 +31,7 @@ struct ShadowSettings
     // The radius around the player that the maps cover. Past it there is no occlusion at all, so
     // this is the distance at which a building stops being dark inside, and it trades directly
     // against how much world each texel is responsible for.
-    float distance = 24.0f;
+    float distance = 32.0f;
     // And the radius of the near one, which is where the shadows anybody looks closely at are: your
     // own, and whatever you are standing next to.
     // belongs to, or every outside wall stands in the shade of its own roof.

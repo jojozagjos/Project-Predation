@@ -104,7 +104,7 @@ CVar<bool> cv_sunShadows{"r.shadows", true, "Whether the sun is stopped by anyth
                          CVarFlags::Archive};
 CVar<bool> cv_skyShadows{"r.sky_occlusion", true, "Whether a roof keeps the sky out of a room",
                          CVarFlags::Archive};
-CVar<float> cv_shadowDistance{"r.shadow_distance", 24.0f,
+CVar<float> cv_shadowDistance{"r.shadow_distance", 32.0f,
                               "How far from the player occlusion is worked out, in metres",
                               CVarFlags::Archive};
 // The torch's own depth map. Without it a light that has a place has no occlusion at all and shines

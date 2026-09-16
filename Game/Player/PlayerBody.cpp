@@ -2932,7 +2932,30 @@ void PlayerBody::UpdateCrawlArms(const PlayerState& state, const PlayerView& vie
         FootState& hand = m_hands[static_cast<size_t>(side)];
         // Blend in from the upright pose so going prone does not snap the arms into place.
         const glm::vec3 restHand = m_pose.GlobalPosition(m_rig.hand[side]);
-        const glm::vec3 blended = glm::mix(restHand, target, m_flatness);
+        glm::vec3 blended = glm::mix(restHand, target, m_flatness);
+
+        // Kept inside what the arm can actually reach.
+        //
+        // A two-bone solve given a target further away than the arm is long can only straighten and
+        // stop there, and while the target stays out of reach the elbow sits pinned at full
+        // extension however the target moves. The crawl was asking for it: the hand goes up to
+        // 0.72 m forward of the shoulder and 0.29 m out, which is 0.78 m away, against an arm that
+        // is 0.60 m long. So for most of the reach the arm was locked straight, and then folded all
+        // at once the moment the target came back inside -- which is the elbow snapping as the arm
+        // comes back.
+        //
+        // Pulled in along the line to the shoulder rather than shortened in one axis, so the hand
+        // keeps its direction and only its distance changes, and the ninety-six per cent leaves the
+        // solve a little bend to work with instead of handing it a straight line.
+        {
+            const float armReach = (m_rig.upperArmLength + m_rig.lowerArmLength) * 0.96f;
+            const glm::vec3 fromShoulder = blended - shoulder;
+            const float span = glm::length(fromShoulder);
+            if (span > armReach && span > 1e-4f)
+            {
+                blended = shoulder + fromShoulder * (armReach / span);
+            }
+        }
         // Coming back from a reload the hand is carried rather than smoothed.
         //
         // A reload borrows this arm to change the magazine, and gives it back with the hand up at

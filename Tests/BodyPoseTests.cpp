@@ -4265,3 +4265,47 @@ TEST_CASE("Diagnostic: which correction lifts the weapon at a wall", "[.][body][
     }
     WARN(table);
 }
+
+TEST_CASE("A crawling arm never locks straight", "[body][pose][prone]")
+{
+    // A two-bone solve handed a target further away than the arm is long can only straighten and
+    // stop there, and while the target stays out of reach the elbow is pinned at full extension
+    // however the target moves. The crawl was asking for a point 0.78 m from the shoulder against an
+    // arm 0.60 m long, so the arm locked straight for most of the reach and then folded all at once
+    // when the target came back inside -- the elbow snapping as the arm comes back.
+    //
+    // Measured as the angle at the elbow: pinned, it sits at 180 degrees and stops responding.
+    BodyHarness harness;
+    harness.SetStance(PlayerStance::Prone);
+    harness.input.move = {0.0f, 1.0f};
+    harness.Settle(240);
+
+    float straightest = 0.0f;
+    float biggestStep = 0.0f;
+    float previous = -1.0f;
+    for (int i = 0; i < 300; ++i)
+    {
+        harness.Tick();
+        const glm::vec3 shoulder = harness.Bone(harness.Rig().shoulder[0]);
+        const glm::vec3 elbow = harness.Bone(harness.Rig().lowerArm[0]);
+        const glm::vec3 hand = harness.Bone(harness.Rig().hand[0]);
+        const glm::vec3 upper = glm::normalize(elbow - shoulder + glm::vec3(1e-6f));
+        const glm::vec3 fore = glm::normalize(hand - elbow + glm::vec3(1e-6f));
+        const float bend = glm::degrees(std::acos(std::clamp(glm::dot(upper, fore), -1.0f, 1.0f)));
+        // 0 is straight through, 180 is folded right back. Report how straight it gets.
+        const float straight = 180.0f - bend;
+        straightest = std::max(straightest, straight);
+        if (previous >= 0.0f)
+        {
+            biggestStep = std::max(biggestStep, std::abs(straight - previous));
+        }
+        previous = straight;
+    }
+
+    INFO("the arm got to " << straightest << " degrees of straight, worst step "
+                           << biggestStep);
+    // Never quite locked out, so the solve always has somewhere to go.
+    CHECK(straightest < 179.0f);
+    // And no frame in which it jumps, which is what being pinned and then released looks like.
+    CHECK(biggestStep < 12.0f);
+}
