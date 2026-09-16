@@ -81,6 +81,14 @@ void Step(const WeaponDefinition& definition, const WeaponInput& input, WeaponSt
           const glm::vec3& muzzle, const glm::vec3& aimDirection, float dt,
           std::vector<FireEvent>& events)
 {
+    // This tick's contribution to the view, cleared before anything can leave early.
+    //
+    // It is an output, written at the bottom, and the caller adds it to the player's aim every tick.
+    // Left over from a previous tick it is not stale data, it is a camera that climbs on its own --
+    // so it is zeroed here, where nothing can get past it, rather than trusted to be overwritten.
+    state.kickPitch = 0.0f;
+    state.kickYaw = 0.0f;
+
     if (!state.HasWeapon())
     {
         state.aim = SmoothTowards(state.aim, 0.0f, 12.0f, dt);
@@ -98,6 +106,18 @@ void Step(const WeaponDefinition& definition, const WeaponInput& input, WeaponSt
     state.fireCooldown = std::max(state.fireCooldown - dt, 0.0f);
     state.bloom = std::max(state.bloom - definition.spreadRecover * dt, 0.0f);
 
+    // Reloading and firing are exclusive, but neither may leave this function early.
+    //
+    // They both used to `return` here, and the recoil is settled at the bottom -- so on any tick
+    // spent reloading, `kickPitch` kept whatever it had been on the last tick that ran to the end.
+    // The game adds that to the player's aim every tick, so holding the trigger until the magazine
+    // ran dry started an automatic reload and the camera then climbed at a constant rate for the
+    // whole of it, with nothing being fired. "The camera recoil keeps going up even though I've used
+    // all my bullets and I'm not shooting" is exactly that, and it is a general hazard rather than a
+    // slip: a per-tick output written at the end of a function must be cleared at the start of it
+    // and must not be skippable.
+    bool mayFire = true;
+
     if (state.IsReloading())
     {
         state.reloadRemaining -= dt;
@@ -109,22 +129,20 @@ void Step(const WeaponDefinition& definition, const WeaponInput& input, WeaponSt
             state.rounds += taken;
             state.reserve -= taken;
         }
-        state.triggerWasDown = input.trigger;
-        return;
+        mayFire = false;
     }
 
     // Reload on request, and also the moment the magazine runs dry with the trigger held, because
     // hunting for the key while something is coming at you is not the kind of difficulty we want.
     const bool wantReload = input.reload || (input.trigger && state.rounds <= 0);
-    if (wantReload && state.reserve > 0 && state.rounds < definition.magazineSize)
+    if (mayFire && wantReload && state.reserve > 0 && state.rounds < definition.magazineSize)
     {
         state.reloadRemaining = definition.reloadSeconds;
         state.burstRemaining = 0;
-        state.triggerWasDown = input.trigger;
-        return;
+        mayFire = false;
     }
 
-    const bool pulled = input.trigger && !state.triggerWasDown;
+    const bool pulled = mayFire && input.trigger && !state.triggerWasDown;
     if (pulled && definition.mode == FireMode::Burst)
     {
         state.burstRemaining = definition.burstCount;
@@ -147,7 +165,7 @@ void Step(const WeaponDefinition& definition, const WeaponInput& input, WeaponSt
 
     // One round per tick at most. At sixty ticks a second that caps the rate at 3600 rounds per
     // minute, which is far above anything this game will carry.
-    if (wantsToFire && state.CanFire())
+    if (mayFire && wantsToFire && state.CanFire())
     {
         const float interval = 60.0f / std::max(definition.roundsPerMinute, 1.0f);
 

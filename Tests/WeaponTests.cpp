@@ -378,3 +378,94 @@ TEST_CASE("The shove settles and never takes the aim with it", "[weapon][recoil]
     CHECK(std::abs(state.shakePitch) < 0.02f);
     CHECK(std::abs(state.shakeVelocityPitch) < 1.0f);
 }
+
+TEST_CASE("Diagnostic: holding the trigger through an empty magazine", "[.][weapon][diag]")
+{
+    WeaponDefinition definition = TestWeapon(FireMode::Auto);
+    definition.roundsPerMinute = 620.0f;
+    definition.magazineSize = 30;
+    definition.recoilPitch = 0.6f;
+    definition.recoilRise = 26.0f;
+
+    WeaponState state;
+    WeaponSim::Equip(definition, state);
+
+    std::vector<FireEvent> shots;
+    WeaponInput input;
+    input.trigger = true;
+
+    float total = 0.0f;
+    int fired = 0;
+    std::string table = "\n tick | rounds | fired | pending | kick    | total\n";
+    for (int i = 0; i < 600; ++i)
+    {
+        const size_t before = shots.size();
+        WeaponSim::Step(definition, input, state, kMuzzle, kForward, kTick, shots);
+        fired += static_cast<int>(shots.size() - before);
+        total += state.kickPitch;
+        if (i % 40 == 0 || (i > 170 && i < 200))
+        {
+            char row[160];
+            std::snprintf(row, sizeof(row), "%5d | %6d | %5d | %7.4f | %7.4f | %7.3f\n", i,
+                          state.rounds, fired, state.recoilPitch, state.kickPitch, total);
+            table += row;
+        }
+    }
+    WARN(table);
+    WARN("rounds fired " + std::to_string(fired) + ", owed " +
+         std::to_string(fired * definition.recoilPitch) + ", paid " + std::to_string(total));
+}
+
+TEST_CASE("The aim stops moving when the shooting stops", "[weapon][recoil]")
+{
+    // Holding the trigger until the magazine ran dry started an automatic reload, and the reload
+    // path left the function before the recoil was settled -- so `kickPitch` kept whatever it had
+    // been on the last tick that ran to the end, and the caller went on adding it to the player's
+    // aim every tick. The camera climbed at a constant rate for the whole reload with nothing being
+    // fired. Reported as "the camera recoil keeps going up even though I've used all my bullets and
+    // I'm not shooting".
+    //
+    // The general shape of it is worth guarding rather than the one path: whatever the weapon is
+    // doing, the total handed to the aim must be what the rounds actually owed and not a penny more.
+    WeaponDefinition definition = TestWeapon(FireMode::Auto);
+    definition.roundsPerMinute = 620.0f;
+    definition.magazineSize = 30;
+    definition.reserveOnPickup = 60;
+    definition.reloadSeconds = 2.0f;
+    definition.recoilPitch = 0.6f;
+    definition.recoilRise = 26.0f;
+
+    WeaponState state;
+    WeaponSim::Equip(definition, state);
+
+    std::vector<FireEvent> shots;
+    WeaponInput input;
+    input.trigger = true;
+
+    // Ten seconds on the trigger: a magazine, a reload, and most of another magazine.
+    float total = 0.0f;
+    for (int i = 0; i < 600; ++i)
+    {
+        WeaponSim::Step(definition, input, state, kMuzzle, kForward, kTick, shots);
+        total += state.kickPitch;
+    }
+    const float owed = static_cast<float>(shots.size()) * definition.recoilPitch;
+    INFO(shots.size() << " rounds owed " << owed << " degrees and the aim moved " << total);
+    CHECK(total == Catch::Approx(owed).margin(0.05f));
+
+    // And once the trigger is released and the last instalment paid, the aim stops dead. A tenth of
+    // a degree over two seconds is the decay tailing off; anything more is movement from nowhere.
+    input.trigger = false;
+    for (int i = 0; i < 60; ++i)
+    {
+        WeaponSim::Step(definition, input, state, kMuzzle, kForward, kTick, shots);
+    }
+    float afterwards = 0.0f;
+    for (int i = 0; i < 120; ++i)
+    {
+        WeaponSim::Step(definition, input, state, kMuzzle, kForward, kTick, shots);
+        afterwards += std::abs(state.kickPitch);
+    }
+    INFO("two seconds after release the aim moved a further " << afterwards);
+    CHECK(afterwards < 0.01f);
+}
