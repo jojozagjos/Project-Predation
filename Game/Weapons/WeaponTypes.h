@@ -62,6 +62,12 @@ struct WeaponDefinition
     // between a weapon that shoves the camera and one that teleports it. Around 25 puts most of a
     // round's kick in under a tenth of a second, which reads as a shove.
     float recoilRise = 26.0f;
+    // The shove, in degrees, and how quickly it settles. A spring rather than a decay, because what
+    // a shot does to a camera is knock it and let it come back -- a little past centre and then
+    // still, which is what reads as weight rather than as a slow drift home.
+    float shakeAmount = 1.1f;
+    float shakeStiffness = 220.0f;
+    float shakeDamping = 22.0f;
 
     float aimSeconds = 0.22f;   // time to raise the sights
     float aimSpeedScale = 0.5f; // movement speed multiplier while aimed
@@ -109,6 +115,21 @@ struct WeaponState
     float recoilYaw = 0.0f;
     float kickPitch = 0.0f; // degrees to add to the view this tick
     float kickYaw = 0.0f;
+    // And a shove that is given back.
+    //
+    // Two different things happen to a camera when a weapon fires and they are easy to conflate. One
+    // is that the aim genuinely moves and stays moved -- that is the climb above, and it is what the
+    // player fights. The other is the shove: the whole view jolts and settles again within a
+    // fraction of a second, moving the aim nowhere at all. Without the first there is nothing to
+    // fight; without the second a shot has no weight, which is why taking the weapon's own tilt away
+    // left it feeling flat.
+    //
+    // This is the second. It is added to the view for drawing only and never reaches the look
+    // angles, so it cannot steal anybody's aim.
+    float shakePitch = 0.0f;
+    float shakeYaw = 0.0f;
+    float shakeVelocityPitch = 0.0f;
+    float shakeVelocityYaw = 0.0f;
 
     bool triggerWasDown = false;
     int burstRemaining = 0;

@@ -1059,6 +1059,55 @@ void PredationGame::RegisterCommands()
             probe.Stop();
         });
 
+    console.RegisterCommand(
+        "lobby_host", "Open a relay lobby from the console, for testing without the menu",
+        [this](const std::vector<std::string>&)
+        {
+            StartLobby(true, 0);
+            m_app->GetConsole().Print("Asking the relay for a lobby...");
+        });
+
+    console.RegisterCommand(
+        "lobby_join", "Join a relay lobby by code: lobby_join <code>",
+        [this](const std::vector<std::string>& args)
+        {
+            uint32_t code = 0;
+            if (args.size() < 2 || !EncodeRelayCode(args[1], code))
+            {
+                m_app->GetConsole().PrintError("usage: lobby_join <six character code>");
+                return;
+            }
+            StartLobby(false, code);
+            m_app->GetConsole().Print("Looking for lobby " + args[1] + "...");
+        },
+        "lobby_join <code>");
+
+    console.RegisterCommand(
+        "lobby_state", "Say what the relay connection is doing",
+        [this](const std::vector<std::string>&)
+        {
+            Console& out = m_app->GetConsole();
+            if (m_relay == nullptr)
+            {
+                out.Print("No lobby.");
+                return;
+            }
+            const char* what = "?";
+            switch (m_relay->Status())
+            {
+            case RelayCarrier::State::Idle: what = "idle"; break;
+            case RelayCarrier::State::Connecting: what = "waiting for the relay"; break;
+            case RelayCarrier::State::Ready: what = "in a lobby"; break;
+            case RelayCarrier::State::Failed: what = "failed"; break;
+            }
+            out.Print(std::string("Relay: ") + what + ", code " + m_relay->CodeText() + ", " +
+                      std::to_string(m_relay->Links()) + " other(s)");
+            if (!m_relay->Message().empty())
+            {
+                out.Print("  " + m_relay->Message());
+            }
+        });
+
     console.RegisterCommand("scene_stats", "Print scene and mesh statistics",
                             [this](const std::vector<std::string>&)
                             {
@@ -6861,7 +6910,17 @@ void PredationGame::OnUpdate(double dt, double alpha)
         }
         else
         {
-            view = m_player.View().ViewMatrix();
+        {
+            // The weapon's shove, on the camera and on nothing else.
+            //
+            // It never touches the look angles, so it cannot move where the player is aiming and
+            // cannot fight them for the mouse: rounds still go exactly where the crosshair was. It
+            // is the jolt a shot gives the head, and it is over in a fraction of a second.
+            PlayerView shaken = m_player.View();
+            shaken.pitch += glm::radians(m_weapon.shakePitch);
+            shaken.yaw += glm::radians(m_weapon.shakeYaw);
+            view = shaken.ViewMatrix();
+        }
             viewPosition = m_player.View().eyePosition;
         }
         break;
@@ -7211,7 +7270,13 @@ void PredationGame::OnUpdate(double dt, double alpha)
         if (failed && !m_relayFailed)
         {
             PRED_LOG_WARN(Network, "The relay lobby has gone: {}", m_relay->Message());
-            m_titleStatus = m_relay->Message();
+            // Not copied into m_titleStatus while the lobby screen is up: that screen already prints
+            // the carrier's own message, so putting it here as well printed the whole paragraph
+            // twice, one above the other.
+            if (!m_inLobby)
+            {
+                m_titleStatus = m_relay->Message();
+            }
         }
         m_relayFailed = failed;
     }

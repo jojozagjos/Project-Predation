@@ -332,3 +332,49 @@ TEST_CASE("Recoil is given to the aim and stays there", "[weapon][recoil]")
     CHECK(afterRelease < 1.0f);
 }
 
+
+TEST_CASE("The shove settles and never takes the aim with it", "[weapon][recoil]")
+{
+    // Two things happen to a camera when a weapon fires. The aim genuinely moves and stays moved,
+    // which is what the player fights, and the view jolts and settles again within a fraction of a
+    // second, which is what gives a shot weight. They are separate on purpose: the shove reaches the
+    // camera and never the look angles, so it cannot steal anybody's aim.
+    //
+    // It is a spring, and a spring integrated in the wrong order gains energy at these stiffnesses.
+    // A camera that slowly winds itself up is the one failure here nobody would think to look for,
+    // so this fires once and then watches for a long time.
+    WeaponDefinition definition = TestWeapon(FireMode::Single);
+    definition.shakeAmount = 1.1f;
+    definition.shakeStiffness = 220.0f;
+    definition.shakeDamping = 22.0f;
+
+    WeaponState state;
+    WeaponSim::Equip(definition, state);
+
+    std::vector<FireEvent> shots;
+    WeaponInput input;
+    input.trigger = true;
+    WeaponSim::Step(definition, input, state, kMuzzle, kForward, kTick, shots);
+    REQUIRE(shots.size() == 1);
+
+    input.trigger = false;
+    float peak = 0.0f;
+    for (int i = 0; i < 12; ++i)
+    {
+        WeaponSim::Step(definition, input, state, kMuzzle, kForward, kTick, shots);
+        peak = std::max(peak, std::abs(state.shakePitch));
+    }
+    INFO("the shove peaked at " << peak << " degrees");
+    CHECK(peak > 0.15f); // it is felt
+    CHECK(peak < 6.0f);  // and it is not a spasm
+
+    // And it is gone in well under a second, with no sign of winding up.
+    for (int i = 0; i < 120; ++i)
+    {
+        WeaponSim::Step(definition, input, state, kMuzzle, kForward, kTick, shots);
+        REQUIRE(std::abs(state.shakePitch) < peak * 1.05f);
+    }
+    INFO("two seconds later it sits at " << state.shakePitch);
+    CHECK(std::abs(state.shakePitch) < 0.02f);
+    CHECK(std::abs(state.shakeVelocityPitch) < 1.0f);
+}

@@ -260,12 +260,22 @@ void RelayCarrier::Poll(float dt)
             const bool loopback = m_settings.relayHost == "127.0.0.1" ||
                                   m_settings.relayHost == "localhost" ||
                                   m_settings.relayHost == "::1";
-            m_message = loopback
-                            ? "No relay is running on this machine. Start PredationRelay.exe, which "
-                              "is in the folder next to the game, or point net.relay_host at one "
-                              "somewhere your friends can reach."
-                            : "No answer from " + m_settings.relayHost +
-                                  ". Check the address and that a relay is running there.";
+            // Says what it actually tried, because the two things that go wrong here are the
+            // address and the port, and a message that names neither sends people to look at the
+            // wrong one. It also stops short of insisting no relay is running: pointing at this
+            // machine while the relay is on somebody else's looks identical from in here.
+            const std::string where = m_settings.relayHost + ":" + std::to_string(m_settings.relayPort);
+            m_message =
+                loopback
+                    ? "Nothing answered at " + where +
+                          ". Either PredationRelay.exe is not running on this machine -- it is in "
+                          "the folder next to the game -- or the relay is on somebody else's, in "
+                          "which case net.relay_host has to point at them rather than at 127.0.0.1. "
+                          "Only one of you needs to run it."
+                    : "Nothing answered at " + where +
+                          ". Check the address and the port, that a relay is running there, and "
+                          "that UDP " + std::to_string(m_settings.relayPort) +
+                          " reaches it through their router.";
             return;
         }
         // Asked again while waiting, in case the first request was lost. The relay repeats what it

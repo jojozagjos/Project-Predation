@@ -170,6 +170,18 @@ void Step(const WeaponDefinition& definition, const WeaponInput& input, WeaponSt
         const float side = (state.shotCount % 2u) == 0u ? 1.0f : -1.0f;
         state.recoilPitch += definition.recoilPitch * (1.0f - state.aim * 0.35f);
         state.recoilYaw += definition.recoilYaw * side * (1.0f - state.aim * 0.35f);
+        // And the shove, as a kick to the spring's velocity rather than to its position: a hit, not
+        // a displacement. Sighted it is halved -- a shouldered weapon is braced against a shoulder.
+        // Scaled so that `shakeAmount` is the peak of the shove in degrees, which is a number
+        // somebody can reason about. A spring struck with velocity v peaks at about v divided by its
+        // damped frequency, so the velocity to ask for is the peak times that frequency.
+        const float damped =
+            std::sqrt(std::max(definition.shakeStiffness -
+                                   definition.shakeDamping * definition.shakeDamping * 0.25f,
+                               1.0f));
+        const float shove = definition.shakeAmount * (1.0f - state.aim * 0.5f) * damped;
+        state.shakeVelocityPitch += shove;
+        state.shakeVelocityYaw += shove * side * 0.4f;
 
         if (state.burstRemaining > 0)
         {
@@ -183,6 +195,18 @@ void Step(const WeaponDefinition& definition, const WeaponInput& input, WeaponSt
     // Nothing is taken back. What the view is given, it keeps: that is what makes this something to
     // fight rather than something to watch. The instalments are what make it a shove rather than a
     // cut -- most of a round's kick arrives inside a tenth of a second, and none of it in one frame.
+    // The shove settles, as a spring. Integrated semi-implicitly -- velocity first, then position --
+    // because the explicit order gains energy at these stiffnesses and a camera that slowly winds
+    // itself up is the one failure here nobody would guess at.
+    {
+        const float k = std::max(definition.shakeStiffness, 1.0f);
+        const float c = std::max(definition.shakeDamping, 0.0f);
+        state.shakeVelocityPitch += (-k * state.shakePitch - c * state.shakeVelocityPitch) * dt;
+        state.shakeVelocityYaw += (-k * state.shakeYaw - c * state.shakeVelocityYaw) * dt;
+        state.shakePitch += state.shakeVelocityPitch * dt;
+        state.shakeYaw += state.shakeVelocityYaw * dt;
+    }
+
     const float paid = 1.0f - std::exp(-std::max(definition.recoilRise, 1.0f) * dt);
     state.kickPitch = state.recoilPitch * paid;
     state.kickYaw = state.recoilYaw * paid;

@@ -1363,6 +1363,8 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
             holdPitch = glm::mix(eased, holdPitch, aim);
         }
     }
+    m_holdTrace.holdPitchDeg = glm::degrees(holdPitch);
+    m_holdTrace.carryPitchDeg = glm::degrees(carryPitch);
     const float hp = std::cos(holdPitch);
     const glm::vec3 holdForward{std::sin(view.yaw) * hp, std::sin(holdPitch), -std::cos(view.yaw) * hp};
     const glm::vec3 holdRight = carryRight;
@@ -1577,6 +1579,9 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
     // that what they measure is the weapon as it will actually be drawn: a tipped weapon reaches
     // less far forward and its stock sits higher, and both of those change how far back the floors
     // below will let it come.
+    m_holdTrace.tipDeg = 0.0f;
+    m_holdTrace.tipDropM = 0.0f;
+    m_holdTrace.groundLiftM = 0.0f;
     const float tipApplied = m_mantleFade <= 0.001f ? m_muzzleTip : 0.0f;
     if (tipApplied > 1e-4f)
     {
@@ -1977,7 +1982,10 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
         const glm::vec3 rearFromGrip = m_weaponVisual.rearPoint - holdPoint;
         const float rose = glm::dot(m_weaponTransform.rotation * rearFromGrip - untipped * rearFromGrip,
                                     holdUp);
-        m_weaponTransform.position -= holdUp * (m_config.weaponWallTipDrop * std::max(rose, 0.0f));
+        const float drop = m_config.weaponWallTipDrop * std::max(rose, 0.0f);
+        m_weaponTransform.position -= holdUp * drop;
+        m_holdTrace.tipDeg = glm::degrees(m_muzzleTip);
+        m_holdTrace.tipDropM = drop;
         rotation = m_weaponTransform.rotation;
     }
     else
@@ -1985,26 +1993,68 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
         m_muzzleTip = 0.0f;
     }
 
-    // And the muzzle out of the ground, which is the one direction none of the above can help with.
+    // And the muzzle out of the ground, by raising the barrel rather than the whole weapon.
     //
-    // Everything before this moves the weapon back or turns it down, and the ground is underneath:
-    // pulling in does not lift it and dropping the muzzle drives it further in. So the last word is
-    // a trace straight down from the muzzle, and whatever it finds above the muzzle the whole weapon
-    // rises by. Bounded, because a weapon standing over a hole in the floor would otherwise be
-    // lifted by however deep the hole is.
+    // This is where the gun was going over the player's head, and it was two corrections fighting.
+    // The muzzle correction turns the barrel nose-down to keep it out of a wall -- up to sixty-seven
+    // degrees, which is most of a right angle -- and that drives the muzzle into the floor. This
+    // then lifted the *whole weapon* to get it back out, hands included, by up to forty-five
+    // centimetres. Measured against a tall wall it was pinned at its maximum at every look angle,
+    // and it was the only thing that differed from standing in the open: the grip went from four
+    // centimetres below the eye to four above. A longer barrel tipped that far puts its muzzle
+    // further down and needs more lift, which is why it was always worse with the long guns.
+    //
+    // The barrel came down too far, so the barrel goes back up. Un-tipping raises the muzzle about
+    // the grip, which is where the hand is, so the hands do not move at all -- and it is the honest
+    // correction anyway: a person whose muzzle is about to touch the floor lifts the muzzle.
+    //
+    // A small lift is kept as a last resort, for the case un-tipping cannot reach: a weapon held
+    // level on a steep slope, where the floor rises into the barrel no matter what angle it is at.
     if (m_mantleFade <= 0.001f)
     {
-        const glm::vec3 muzzle =
-            m_weaponTransform.position + m_weaponTransform.rotation * m_weaponVisual.muzzle;
+        const glm::vec3 grip = m_weaponTransform.position + m_weaponTransform.rotation * holdPoint;
+        glm::vec3 muzzle = m_weaponTransform.position + m_weaponTransform.rotation * m_weaponVisual.muzzle;
         constexpr float kLook = 0.45f;
         const RayHit ground = physics.RayCast(muzzle + glm::vec3(0.0f, kLook, 0.0f),
                                               glm::vec3(0.0f, -1.0f, 0.0f), kLook * 2.0f);
-        if (ground)
+        // Only something that is actually a floor.
+        //
+        // The trace starts above the muzzle so it can see a floor the muzzle has gone under, and
+        // pressed against a wall that start point is inside the wall. A ray beginning inside a solid
+        // reports a hit at its own origin, so this read "the ground is forty-five centimetres above
+        // the muzzle" and lifted the weapon by the whole clamp, at every look angle -- which is the
+        // gun over the head. A floor faces up; a wall, and a back face hit from the inside of one,
+        // does not.
+        if (ground && ground.normal.y > 0.5f)
         {
             const float under = ground.position.y + m_config.muzzleClearance - muzzle.y;
             if (under > 0.0f)
             {
-                m_weaponTransform.position.y += std::min(under, kLook);
+                // How far the muzzle sits from the hand, which is the arm this turns about.
+                const float arm = glm::length(muzzle - grip);
+                if (m_muzzleTip > 1e-4f && arm > 0.05f)
+                {
+                    // The turn that raises the muzzle by `under`, never past level and never more
+                    // than the tip that is actually there to give back.
+                    const float rise = std::min(under / arm, 1.0f);
+                    const float relax = std::min(std::asin(rise), m_muzzleTip);
+                    m_muzzleTip -= relax;
+                    m_weaponTransform.rotation =
+                        m_weaponTransform.rotation * glm::angleAxis(-relax, glm::vec3(1.0f, 0.0f, 0.0f));
+                    m_weaponTransform.position = grip - m_weaponTransform.rotation * holdPoint;
+                    muzzle = m_weaponTransform.position +
+                             m_weaponTransform.rotation * m_weaponVisual.muzzle;
+                    m_holdTrace.tipDeg = glm::degrees(m_muzzleTip);
+                }
+
+                // Whatever is still in the floor after that, and only a little of it.
+                const float left = ground.position.y + m_config.muzzleClearance - muzzle.y;
+                if (left > 0.0f)
+                {
+                    const float lift = std::min(left, m_config.weaponGroundLiftMax);
+                    m_weaponTransform.position.y += lift;
+                    m_holdTrace.groundLiftM = lift;
+                }
             }
         }
     }
@@ -2012,6 +2062,7 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
     // Recorded after every correction, so what is measured is where the hold ended up rather than
     // where it was asked to go.
     m_weaponHold = m_weaponTransform.position + m_weaponTransform.rotation * holdPoint;
+    m_holdTrace.holdAboveEyeM = m_weaponHold.y - view.eyePosition.y;
 
     // Every part rides the weapon's frame. A model authored in the editor can carry its own clip
     // for a reload, in which case that is what moves its parts; otherwise the built-in magazine

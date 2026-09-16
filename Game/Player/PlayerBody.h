@@ -195,7 +195,7 @@ public:
         // towards the cap, which is the angle at which the hands sit level with the eye rather than
         // over the head. See where these are used for the measurements.
         float weaponHoldPitchKnee = 20.0f;
-        float weaponHoldPitchMaxUp = 21.0f;
+        float weaponHoldPitchMaxUp = 40.0f;
         // The weapon lags a turn and then catches up, which is what gives it weight.
         float weaponSwayAmount = 0.34f;   // how far a turn drags the weapon behind the view
         float weaponSwayRecover = 11.0f;  // how fast it catches up again
@@ -278,6 +278,10 @@ public:
         // almost straight up, where keeping the weapon still on screen would otherwise put it over
         // the head: see where this is used.
         float weaponHoldEyeMargin = 0.06f;
+        // The most the whole weapon may be lifted to get its muzzle out of the floor, after un-tipping
+        // has done what it can. Small on purpose: this moves the hands, and it used to be 0.45 m,
+        // which is where the gun ending up over the player.s head came from.
+        float weaponGroundLiftMax = 0.10f;
         float weaponWallTipSpeed = 13.0f;
         // How much barrel may be inside something before the drop starts, and over how much more it
         // comes fully in. Both in metres. See the note where they are used: the drop is a
@@ -744,6 +748,23 @@ private:
     float m_lastViewPitch = 0.0f;
     glm::vec2 m_viewRate{0.0f}; // radians per second, so sway does not depend on the frame rate
     float m_swayClock = 0.0f;   // drives the breathing movement
+    // What each stage of the weapon hold did this frame, in degrees and metres. Written every frame
+    // and read by nothing in the game: it exists so a diagnostic can say which correction moved the
+    // weapon, rather than somebody guessing from a screenshot of where it ended up.
+public:
+    struct HoldTrace
+    {
+        float holdPitchDeg = 0.0f;   // the frame the weapon is positioned in
+        float carryPitchDeg = 0.0f;  // the frame it points along
+        float tipDeg = 0.0f;         // muzzle correction at a wall
+        float tipDropM = 0.0f;       // how far the hands came down with it
+        float groundLiftM = 0.0f;    // how far the whole weapon was lifted out of the floor
+        float holdAboveEyeM = 0.0f;  // where the grip ended up
+    };
+    const HoldTrace& LastHoldTrace() const { return m_holdTrace; }
+
+private:
+    HoldTrace m_holdTrace;
     // Which way the ground under the player faces, eased. Only prone reads it: see BodyRotation.
     glm::vec3 m_groundNormal{0.0f, 1.0f, 0.0f};
     std::array<FootState, 2> m_feet;

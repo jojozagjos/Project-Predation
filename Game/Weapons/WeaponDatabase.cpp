@@ -150,6 +150,9 @@ bool WeaponDatabase::LoadFromFile(const std::filesystem::path& file)
         ReadField(node, "recoil_yaw", definition.recoilYaw);
         ReadField(node, "recoil_recover", definition.recoilRecover);
         ReadField(node, "recoil_rise", definition.recoilRise);
+        ReadField(node, "shake_amount", definition.shakeAmount);
+        ReadField(node, "shake_stiffness", definition.shakeStiffness);
+        ReadField(node, "shake_damping", definition.shakeDamping);
         ReadField(node, "aim_seconds", definition.aimSeconds);
         ReadField(node, "aim_speed_scale", definition.aimSpeedScale);
         ReadField(node, "muzzle_forward", definition.muzzleForward);
