@@ -352,6 +352,7 @@ void PredationGame::UpdateCreatures(float dt)
         me.height = BodyHeight(local.stance);
         me.alive = local.alive;
         me.hidden = m_hidingSpot >= 0;
+        me.hidingPlace = m_hidingSpot;
         me.light = LightAt(local.position, m_torchOn);
         me.forward = m_player.View().Forward();
         players.push_back(me);
@@ -374,12 +375,32 @@ void PredationGame::UpdateCreatures(float dt)
             other.light = LightAt(remote.position, remote.torchOn);
             other.forward = glm::vec3(std::sin(remote.yaw) * std::cos(remote.pitch), std::sin(remote.pitch),
                                       -std::cos(remote.yaw) * std::cos(remote.pitch));
-            for (const WorldObjects::HidingSpot& spot : m_world.HidingSpots())
+            for (size_t i = 0; i < m_world.HidingSpots().size(); ++i)
             {
-                other.hidden = other.hidden || (spot.occupied && spot.occupant == remote.id);
+                const WorldObjects::HidingSpot& spot = m_world.HidingSpots()[i];
+                if (spot.occupied && spot.occupant == remote.id)
+                {
+                    other.hidden = true;
+                    other.hidingPlace = static_cast<int>(i);
+                }
             }
             players.push_back(other);
         }
+    }
+
+    // The lockers: where to stand to open one -- a step further out than where somebody climbing out
+    // stands, so whoever is dragged out is not dropped on top of it -- and whether each is shut.
+    std::vector<HidingPlace> places;
+    for (const WorldObjects::HidingSpot& spot : m_world.HidingSpots())
+    {
+        HidingPlace place;
+        glm::vec3 out = spot.exitPosition - spot.insidePosition;
+        out.y = 0.0f;
+        out = glm::length(out) > 1e-3f ? glm::normalize(out) : glm::vec3(0.0f, 0.0f, 1.0f);
+        place.front = spot.exitPosition + out * 0.9f;
+        place.inside = spot.insidePosition;
+        place.shut = spot.occupied;
+        places.push_back(place);
     }
 
     PhysicsWorld& physics = m_app->GetPhysics();
@@ -409,7 +430,35 @@ void PredationGame::UpdateCreatures(float dt)
             return !physics.RayCast(from, along / length, length - 0.35f, self);
         };
         senses.lightAt = [this](const glm::vec3& at) { return LightAt(at, false); };
+        senses.hidingPlaces = places;
+        for (const std::unique_ptr<Creature>& other : m_creatures)
+        {
+            if (other.get() != creature.get())
+            {
+                senses.others.push_back(other->Position());
+            }
+        }
         creature->Update(std::move(senses), m_creatureClock, dt);
+
+        // A locker pulled open. Whoever is inside comes out by the same path as climbing out -- so the
+        // door, the sound, and everybody else's machines all follow -- and the creature, which knows
+        // now, is already going for them.
+        if (const int opened = creature->Brain().Intent().openHidingPlace; opened >= 0)
+        {
+            if (const WorldObjects::HidingSpot* spot = m_world.GetHidingSpot(opened); spot != nullptr)
+            {
+                if (spot->occupied)
+                {
+                    const uint8_t occupant = spot->occupant;
+                    PRED_LOG_INFO(AI, "Creature pulled player {} out of locker {}", occupant, opened);
+                    PerformInteraction(InteractionKind::HidingSpot, opened, occupant);
+                }
+                else
+                {
+                    PlaySound(m_sounds.locker.Pick(), spot->insidePosition, 0.7f, 0.9f);
+                }
+            }
+        }
 
         // A strike landing. Checked again here rather than trusted: somebody who stepped back
         // during the wind-up is out of reach now, and that is the whole reason there is one.
@@ -633,6 +682,37 @@ void PredationGame::DrawCreatureOverlays(DebugDraw& draw)
                 marker(brain.Interest().position + glm::vec3(0.0f, 0.3f, 0.0f), 0.3f, Color::kCyan, 10);
             }
 
+            // Its search, as a chain from where it is through the places still to look, lockers marked.
+            if (brain.Current() == Behavior::Search)
+            {
+                glm::vec3 chain = creature->Position() + glm::vec3(0.0f, 0.3f, 0.0f);
+                for (size_t i = brain.SearchStep(); i < brain.SearchPlan().size(); ++i)
+                {
+                    const CreatureBrain::SearchStop& stop = brain.SearchPlan()[i];
+                    const glm::vec3 to = stop.point + glm::vec3(0.0f, 0.3f, 0.0f);
+                    draw.Line(chain, to, Color::kYellow);
+                    marker(to, stop.place >= 0 ? 0.35f : 0.2f, stop.place >= 0 ? Color::kRed : Color::kYellow, 8);
+                    chain = to;
+                }
+            }
+
+            // Where it expects people: a square on the ground for each warm cell, redder for warmer.
+            for (const CreatureBrain::HeatCell& cell : brain.Heat())
+            {
+                const float x0 = static_cast<float>(cell.x) * CreatureBrain::kHeatCell;
+                const float z0 = static_cast<float>(cell.z) * CreatureBrain::kHeatCell;
+                const float x1 = x0 + CreatureBrain::kHeatCell;
+                const float z1 = z0 + CreatureBrain::kHeatCell;
+                const float y = creature->Position().y + 0.05f;
+                const float warm = std::clamp(cell.heat / 5.0f, 0.1f, 1.0f);
+                const uint32_t colour =
+                    Color::RGBA(255, static_cast<uint8_t>(200 - 160 * warm), 60, static_cast<uint8_t>(60 + 150 * warm));
+                draw.Line({x0, y, z0}, {x1, y, z0}, colour);
+                draw.Line({x1, y, z0}, {x1, y, z1}, colour);
+                draw.Line({x1, y, z1}, {x0, y, z1}, colour);
+                draw.Line({x0, y, z1}, {x0, y, z0}, colour);
+            }
+
             // The cover it last weighed while stalking: a post at each candidate, as tall as it scored,
             // purple where a player could see it and orange where none could, and the one it chose
             // ringed. Why it waits where it waits, at a glance.
@@ -787,6 +867,30 @@ void PredationGame::DrawBrainInspector()
         ImGui::Text("Interested in %s, %.0f%%", brain.Interest().what.c_str(), brain.Interest().strength * 100.0f);
     }
 
+    // What it believes about the places people hide, and what it has learnt about them this match.
+    if (!brain.Places().empty())
+    {
+        ImGui::SeparatorText("Lockers");
+        ImGui::TextDisabled("found %d hiding; a shut door means somebody %.0f%%", brain.FoundHiding(),
+                            brain.ShutMeansSomebody() * 100.0f);
+        for (size_t i = 0; i < brain.Places().size(); ++i)
+        {
+            const CreatureBrain::PlaceMemory& place = brain.Places()[i];
+            char label[64];
+            std::snprintf(label, sizeof(label), "#%zu%s%s", i, place.seenShut ? " shut" : "",
+                          place.suspect >= 0 ? " (has somebody in mind)" : "");
+            ImGui::ProgressBar(place.suspicion, ImVec2(-1.0f, 0.0f), label);
+        }
+    }
+    if (brain.Current() == Behavior::Search)
+    {
+        ImGui::Text("Searching: place %zu of %zu", brain.SearchStep() + 1, brain.SearchPlan().size());
+    }
+    if (!brain.Heat().empty())
+    {
+        ImGui::TextDisabled("Remembers %zu places where people have been", brain.Heat().size());
+    }
+
     ImGui::SeparatorText("Timeline");
     // Newest first, with how long ago.
     ImGui::BeginChild("##timeline", ImVec2(0.0f, 180.0f), true);
@@ -810,7 +914,7 @@ void PredationGame::RegisterCreatureCommands()
 #if PRED_DEV_TOOLS
     Console& console = m_app->GetConsole();
     console.RegisterCommand(
-        "spawn_creature", "Make a creature, far from you, or a few metres in front with 'ahead'",
+        "spawn_creature", "Make a creature, far from you, or in front of you with 'ahead' (7 m, or the distance given)",
         [this](const std::vector<std::string>& args)
         {
             if (!IsAuthority())
@@ -825,7 +929,8 @@ void PredationGame::RegisterCreatureCommands()
             const PlayerView& view = m_player.View();
             const glm::vec3 flat = glm::normalize(glm::vec3(view.Forward().x, 0.0f, view.Forward().z) +
                                                   glm::vec3(0.0f, 0.0f, 1e-4f));
-            const glm::vec3 inFront = m_player.State().position + flat * 7.0f;
+            const float howFar = args.size() >= 4 ? std::clamp(std::strtof(args[3].c_str(), nullptr), 1.5f, 40.0f) : 7.0f;
+            const glm::vec3 inFront = m_player.State().position + flat * howFar;
             if (SpawnCreature(seed, m_player.State().position, ahead ? &inFront : nullptr))
             {
                 // The one just made is the one somebody wants to watch.
@@ -846,7 +951,61 @@ void PredationGame::RegisterCreatureCommands()
                                                std::to_string(kMaxCreatures) + ".");
             }
         },
-        "spawn_creature [seed] [ahead]");
+        "spawn_creature [seed] [ahead [metres]]");
+    console.RegisterCommand(
+        "hide", "Get into a locker, or out of the one you are in, as pressing interact at it does: hide [index]",
+        [this](const std::vector<std::string>& args)
+        {
+            const int index = m_hidingSpot >= 0 ? m_hidingSpot
+                                                : (args.size() >= 2 ? std::atoi(args[1].c_str()) : 0);
+            if (m_world.GetHidingSpot(index) == nullptr)
+            {
+                m_app->GetConsole().PrintError("No locker " + std::to_string(index));
+                return;
+            }
+            // The real interaction, so everything that follows from using a locker follows: the door,
+            // the sound, the noise the creature hears, and everybody else being told. A client asks the
+            // host, exactly as pressing the key does.
+            if (m_sessionMode == SessionMode::Client)
+            {
+                m_client.SendInteract(static_cast<uint8_t>(InteractionKind::HidingSpot), static_cast<uint8_t>(index));
+                return;
+            }
+            if (!PerformInteraction(InteractionKind::HidingSpot, index, LocalPlayerId()))
+            {
+                m_app->GetConsole().PrintError("Somebody else is in that one.");
+            }
+        },
+        "hide [index]");
+    console.RegisterCommand(
+        "creature_mind", "Print the inspected creature's timeline and what it is weighing, to the console and the log",
+        [this](const std::vector<std::string>&)
+        {
+            if (m_creatures.empty())
+            {
+                return;
+            }
+            const int which = std::clamp(m_inspectedCreature, 0, static_cast<int>(m_creatures.size()) - 1);
+            const CreatureBrain& brain = m_creatures[static_cast<size_t>(which)]->Brain();
+            const auto say = [this](const std::string& line)
+            {
+                m_app->GetConsole().Print(line);
+                PRED_LOG_INFO(AI, "{}", line);
+            };
+            say(std::string("mind: ") + BehaviorName(brain.Current()) + " -- " + brain.CurrentGoal());
+            for (const CreatureBrain::TimelineEntry& entry : brain.Timeline())
+            {
+                char line[256];
+                std::snprintf(line, sizeof(line), "  %7.2f  %s", entry.time, entry.what.c_str());
+                say(line);
+            }
+            for (const CreatureBrain::Option& option : brain.Options())
+            {
+                char line[160];
+                std::snprintf(line, sizeof(line), "  option %-28s %.2f", option.label.c_str(), option.score);
+                say(line);
+            }
+        });
     console.RegisterCommand("creature_pose", "Where each creature is, how it is lying, and where it is drawn",
                             [this](const std::vector<std::string>&)
                             {

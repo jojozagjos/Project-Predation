@@ -37,6 +37,19 @@ struct SensedPlayer
     // Which way they are looking. It is how the creature knows whether it is being watched, which is
     // the difference between an opening and a mistake.
     glm::vec3 forward{0.0f, 0.0f, -1.0f};
+    // Which hiding place they are in, -1 when none. The brain is not allowed to look at this except
+    // at the moment it opens that very place: nobody can see through a locker door.
+    int hidingPlace = -1;
+};
+
+// Somewhere a player can hide -- a locker. Where to stand to open it, where the person inside would
+// be, and whether its door is shut, which is the one thing about it anybody can see from outside: an
+// empty locker stands open.
+struct HidingPlace
+{
+    glm::vec3 front{0.0f};
+    glm::vec3 inside{0.0f};
+    bool shut = false;
 };
 
 // Everything the brain gets to know this tick.
@@ -55,6 +68,11 @@ struct CreatureSenses
     // How lit a point is, 0 to 1, for choosing somewhere dark to wait. Optional: without it every
     // place is as good as every other.
     std::function<float(const glm::vec3&)> lightAt;
+    // Every hiding place in the level. Where they are is no secret -- they are furniture.
+    std::vector<HidingPlace> hidingPlaces;
+    // Where the other creatures are, standing or fallen. The body keeps its distance from them; a pack
+    // that shares what it sees would start here.
+    std::vector<glm::vec3> others;
     const NavMesh* nav = nullptr;
 };
 
@@ -76,6 +94,8 @@ struct CreatureIntent
     float crouch = 0.0f;
     // Lying still as if dead. The body shows it exactly as it shows a death.
     bool down = false;
+    // Set on the one tick it pulls open a hiding place. The game drags out whoever is inside.
+    int openHidingPlace = -1;
 };
 
 enum class Behavior : uint8_t
@@ -88,7 +108,11 @@ enum class Behavior : uint8_t
     // Shadowing somebody from out of their sight, waiting for them to look away or be alone.
     Stalk,
     // Lying still as if dead, badly hurt, until somebody comes close enough or turns their back.
-    PlayDead
+    PlayDead,
+    // Going through the places somebody it lost could have gone, lockers among them.
+    Search,
+    // Curious, not hungry: following somebody at a distance, openly, to watch them.
+    Observe
 };
 
 const char* BehaviorName(Behavior behavior);
@@ -177,6 +201,8 @@ public:
         float isolation = 99.0f;
         // Seconds it has spent stalking them, which is what its patience is measured against.
         float stalked = 0.0f;
+        // Seconds it has spent just watching them. Curiosity wears off: this is what it wears off against.
+        float observed = 0.0f;
     };
     const std::vector<Track>& Tracks() const { return m_tracks; }
 
@@ -226,6 +252,40 @@ public:
         bool hidden = false; // out of every known player's sight
     };
     const std::vector<CoverCandidate>& Cover() const { return m_cover; }
+
+    // What it believes about each hiding place, from what it has heard, seen and found.
+    struct PlaceMemory
+    {
+        float suspicion = 0.0f; // 0 to 1: how likely it thinks it is that somebody is inside
+        int suspect = -1;       // who, when it has a particular person in mind
+        float checkedAt = -1.0e9f;
+        bool seenShut = false;
+    };
+    const std::vector<PlaceMemory>& Places() const { return m_places; }
+    // What it has learnt this match about lockers: how much a shut door means somebody behind it, 0
+    // to 1. Nothing, until it has opened a shut one and found somebody.
+    float ShutMeansSomebody() const { return m_shutMeansSomebody; }
+    int FoundHiding() const { return m_foundHiding; }
+    // Where it is going to look, in order, while searching.
+    struct SearchStop
+    {
+        glm::vec3 point{0.0f};
+        int place = -1; // a hiding place to open, or -1 for somewhere to stand and look around
+    };
+    const std::vector<SearchStop>& SearchPlan() const { return m_searchPlan; }
+    size_t SearchStep() const { return m_searchStep; }
+
+    // Where it has come to expect players: the ground in four-metre squares, each warmed by seeing or
+    // hearing somebody there and cooling over a few minutes. Wandering drifts towards the warm ones,
+    // so a creature left alone patrols where people go rather than where nobody does.
+    static constexpr float kHeatCell = 4.0f;
+    struct HeatCell
+    {
+        int x = 0;
+        int z = 0;
+        float heat = 0.0f;
+    };
+    const std::vector<HeatCell>& Heat() const { return m_heat; }
     bool HasCoverPoint() const { return m_haveStalkPoint; }
     const glm::vec3& CoverPoint() const { return m_stalkPoint; }
 
@@ -257,6 +317,20 @@ private:
     float Opening(const Track& track, float distance) const;
     // Playing dead: whether to get up now, and what for.
     void UpdatePlayingDead(const CreatureSenses& senses);
+    // Hiding places: what it can see of them, and suspicion fading.
+    void PerceivePlaces(const CreatureSenses& senses, float dt);
+    // Something happened at or near a hiding place: raise its suspicion, perhaps with a name on it.
+    void Suspect(int place, float suspicion, int who);
+    // The places to go through for somebody lost: likely lockers first, then where they were heading.
+    void PlanSearch(const CreatureSenses& senses, const Track& track);
+    // Going to a hiding place and pulling it open. True while still at it; false once it is done.
+    bool OpenPlace(const CreatureSenses& senses, int place);
+    // How much it has come to expect people to hide, 0 to 1, from lockers heard and people found.
+    float HidingHabit() const;
+    // Somebody was here: warm the square.
+    void Warm(const glm::vec3& where, float amount);
+    // Somewhere warm to wander towards, chosen with a weight on how warm; false when nowhere is.
+    bool PickWarmPlace(const CreatureSenses& senses, glm::vec3& out);
 
     CreatureTraits m_traits;
     SeededRandom m_random;
@@ -326,6 +400,19 @@ private:
     bool m_hurtWhileDown = false;
     // Until when it sees through what it has started rather than weighing it again.
     float m_committedUntil = 0.0f;
+
+    // Hiding places and searching.
+    std::vector<PlaceMemory> m_places;
+    float m_shutMeansSomebody = 0.0f;
+    int m_foundHiding = 0;
+    int m_lockersHeard = 0;
+    std::vector<SearchStop> m_searchPlan;
+    size_t m_searchStep = 0;
+    // The hiding place it is going to or opening, and when it took hold of the door.
+    int m_opening = -1;
+    float m_openStarted = -1.0f;
+
+    std::vector<HeatCell> m_heat;
 
     bool m_dead = false;
 };

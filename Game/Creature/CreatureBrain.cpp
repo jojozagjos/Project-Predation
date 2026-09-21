@@ -79,6 +79,10 @@ const char* BehaviorName(Behavior behavior)
         return "Stalk";
     case Behavior::PlayDead:
         return "PlayDead";
+    case Behavior::Search:
+        return "Search";
+    case Behavior::Observe:
+        return "Observe";
     }
     return "?";
 }
@@ -198,6 +202,9 @@ void CreatureBrain::Update(const CreatureSenses& senses, float dt)
     }
     m_lastTime = senses.time;
     m_intent.strikeTarget = -1;
+    m_intent.openHidingPlace = -1;
+    // One memory per hiding place, before anything reads them.
+    m_places.resize(senses.hidingPlaces.size());
     m_pendingNoises.insert(m_pendingNoises.end(), senses.noises.begin(), senses.noises.end());
 
     m_perceiveTimer += dt;
@@ -224,9 +231,11 @@ void CreatureBrain::Perceive(const CreatureSenses& senses, float dt)
     flatForward = glm::length(flatForward) > 1e-4f ? glm::normalize(flatForward) : glm::vec3(0, 0, -1);
 
     // --- Sight --------------------------------------------------------------------------------
+
     for (const SensedPlayer& player : senses.players)
     {
         Track& track = TrackFor(player);
+        const bool wasVisible = track.visible;
         float visibility = 0.0f;
         if (player.alive && !player.hidden)
         {
@@ -309,6 +318,7 @@ void CreatureBrain::Perceive(const CreatureSenses& senses, float dt)
             }
             track.lastVelocity = player.velocity;
             track.lastSeen = senses.time;
+            Warm(player.feet, dt);
             m_state.arousal = std::min(m_state.arousal + 0.2f * dt * 10.0f, 1.0f);
         }
         else if (track.exposure >= kSuspicion && visibility > 0.001f)
@@ -334,6 +344,24 @@ void CreatureBrain::Perceive(const CreatureSenses& senses, float dt)
             const bool stalkingThem = m_behavior == Behavior::Stalk && m_target == track.id;
             track.confidence =
                 std::max(track.confidence - dt / m_traits.persistence * (stalkingThem ? 0.5f : 1.0f), 0.0f);
+        }
+
+        // Gone from sight just now, beside a hiding place: the place is where they might have gone.
+        // Right at the door -- it watched them step up to it -- is as good as seeing them get in.
+        if (wasVisible && !track.visible)
+        {
+            for (size_t i = 0; i < senses.hidingPlaces.size(); ++i)
+            {
+                const float distance = Horizontal(track.lastKnown, senses.hidingPlaces[i].inside);
+                if (distance < 1.5f)
+                {
+                    Suspect(static_cast<int>(i), 0.9f, track.id);
+                }
+                else if (distance < 3.5f)
+                {
+                    Suspect(static_cast<int>(i), 0.35f + 0.35f * HidingHabit(), track.id);
+                }
+            }
         }
     }
 
@@ -402,6 +430,10 @@ void CreatureBrain::Perceive(const CreatureSenses& senses, float dt)
         // Straight-line falloff scored exactly that, too faint to be worth getting up for.
         const float strength = std::clamp(std::sqrt(1.0f - distance / reach), 0.05f, 1.0f);
         m_heard.push_back({noise, strength, senses.time});
+        if (noise.player >= 0)
+        {
+            Warm(noise.position, 0.3f * strength);
+        }
         m_state.arousal = std::min(m_state.arousal + strength * 0.3f, 1.0f);
 
         // Whose it was, when it was somebody's: a footstep puts them roughly there.
@@ -429,6 +461,24 @@ void CreatureBrain::Perceive(const CreatureSenses& senses, float dt)
                 }
             }
         }
+        // A locker door, heard and not seen: somebody has just got into it, or out. It cannot tell
+        // which, so it suspects it -- and if the person was in plain sight, it saw where they went and
+        // needs no noise to tell it.
+        if (noise.kind == NoiseKind::Door)
+        {
+            const Track* source = noise.player >= 0 ? FindTrack(noise.player) : nullptr;
+            const bool seen = source != nullptr && source->visible;
+            for (size_t i = 0; i < senses.hidingPlaces.size() && !seen; ++i)
+            {
+                if (glm::distance(noise.position, senses.hidingPlaces[i].inside) < 1.5f)
+                {
+                    Suspect(static_cast<int>(i), 0.9f, noise.player);
+                    ++m_lockersHeard;
+                    Log(senses.time, "heard a locker door");
+                }
+            }
+        }
+
         if (knownSource)
         {
             ResolveInterestNear(noise.position);
@@ -460,6 +510,15 @@ void CreatureBrain::Perceive(const CreatureSenses& senses, float dt)
     {
         m_heard.pop_front();
     }
+
+    PerceivePlaces(senses, dt);
+
+    // Where people go, cooling: a place nobody has been seen in for a few minutes is forgotten.
+    for (HeatCell& cell : m_heat)
+    {
+        cell.heat -= cell.heat * dt / 150.0f;
+    }
+    std::erase_if(m_heat, [](const HeatCell& cell) { return cell.heat < 0.02f; });
 
     // --- Feelings -----------------------------------------------------------------------------
     m_state.pain = std::max(m_state.pain - 0.06f * dt, 0.0f);
@@ -525,7 +584,8 @@ void CreatureBrain::Decide(const CreatureSenses& senses)
     for (const Track& track : m_tracks)
     {
         const SensedPlayer* player = FindPlayer(senses, track.id);
-        if (player == nullptr || !player->alive || track.confidence <= 0.05f)
+        const bool searchingThem = m_behavior == Behavior::Search && m_target == track.id;
+        if (player == nullptr || !player->alive || (track.confidence <= 0.05f && !searchingThem))
         {
             continue;
         }
@@ -562,11 +622,44 @@ void CreatureBrain::Decide(const CreatureSenses& senses)
                  {"waiting for a chance", 1.0f - 0.8f * opening}});
         }
 
+        // Watching them, out of curiosity rather than hunger: a creature that has never seen one of
+        // these before and is not sure yet what it is. Somebody who has hurt it is not a curiosity.
+        // Wears off with watching -- sooner for a less curious one -- and what it does next is
+        // whatever else was scoring underneath.
+        // Somebody it is already watching stays watched through a glance away: losing sight for a
+        // moment is not a reason to stop, and without this it dropped them every time it turned.
+        const bool watchingThem = m_behavior == Behavior::Observe && m_target == track.id &&
+                                  now - track.lastSeen < 3.0f;
+        if ((track.visible || watchingThem) && track.harm <= 0.0f)
+        {
+            add(Behavior::Observe, track.id, "Watch " + track.name,
+                {{"curious", 0.3f + 0.7f * m_traits.curiosity},
+                 {"not hungry", 0.2f + 0.8f * (1.0f - m_traits.aggression)},
+                 {"not afraid", 0.3f + 0.7f * calm},
+                 {"still new", std::clamp(1.0f - track.observed / m_traits.BoredomSeconds(), 0.0f, 1.0f)}});
+        }
+
+        // Searching for them: somebody it had, and lost. As sure-where fades, going to where they
+        // were stops being enough and going through where they could have gone takes over.
+        // Once it has started, it is not a question of how sure it still is -- that is what searching
+        // is for -- but of how long ago it had them, which its persistence decides.
+        if (!track.visible && track.lastSeen >= 0.0f &&
+            ((track.confidence > 0.05f && track.confidence < 0.65f) || searchingThem))
+        {
+            const float since = now - std::max(track.lastSeen, track.lastHeard);
+            add(Behavior::Search, track.id, "Search for " + track.name,
+                {{"lost them", std::max(1.0f - track.confidence, 0.5f)},
+                 {"persistent", 0.4f + 0.6f * std::min(m_traits.persistence / 24.0f, 1.0f)},
+                 {"wants them", 0.5f + 0.5f * m_traits.aggression},
+                 {"not afraid", 0.3f + 0.7f * calm},
+                 {"fresh", std::clamp(1.0f - since / (m_traits.persistence * 3.0f), 0.0f, 1.0f)}});
+        }
+
         if (track.visible && Horizontal(senses.position, player->feet) < kStrikeReach + 0.4f)
         {
             add(Behavior::Attack, track.id, "Attack " + track.name,
                 {{"in reach", 1.0f},
-                 {"aggression", 0.55f + 0.45f * m_traits.aggression},
+                 {"aggression", 0.3f + 0.7f * m_traits.aggression},
                  {"not afraid", 0.2f + 0.8f * calm}});
         }
     }
@@ -650,6 +743,10 @@ void CreatureBrain::Switch(Behavior behavior, int target, const std::string& rea
     m_arrived = false;
     m_windupStarted = -1.0f;
     m_haveRoamPoint = false;
+    m_opening = -1;
+    m_openStarted = -1.0f;
+    m_searchPlan.clear();
+    m_searchStep = 0;
     m_lookAroundUntil = 0.0f;
     if (behavior == Behavior::Retreat)
     {
@@ -884,6 +981,256 @@ bool CreatureBrain::FindCover(const CreatureSenses& senses, const Track& target,
     return found;
 }
 
+void CreatureBrain::Warm(const glm::vec3& where, float amount)
+{
+    const int x = static_cast<int>(std::floor(where.x / kHeatCell));
+    const int z = static_cast<int>(std::floor(where.z / kHeatCell));
+    for (HeatCell& cell : m_heat)
+    {
+        if (cell.x == x && cell.z == z)
+        {
+            cell.heat = std::min(cell.heat + amount, 10.0f);
+            return;
+        }
+    }
+    // Bounded: a match is not long enough to fill it, but a bug that warmed every square should not
+    // turn into memory it cannot give back.
+    if (m_heat.size() < 512)
+    {
+        m_heat.push_back({x, z, std::min(amount, 10.0f)});
+    }
+}
+
+bool CreatureBrain::PickWarmPlace(const CreatureSenses& senses, glm::vec3& out)
+{
+    if (senses.nav == nullptr)
+    {
+        return false;
+    }
+    // Weighted by warmth, among the squares within reach and warm enough to mean something.
+    float total = 0.0f;
+    for (const HeatCell& cell : m_heat)
+    {
+        const glm::vec3 centre{(static_cast<float>(cell.x) + 0.5f) * kHeatCell, senses.position.y,
+                               (static_cast<float>(cell.z) + 0.5f) * kHeatCell};
+        if (cell.heat > 0.3f && Horizontal(centre, senses.position) < 45.0f)
+        {
+            total += cell.heat;
+        }
+    }
+    if (total <= 0.0f)
+    {
+        return false;
+    }
+    float pick = m_random.Unit() * total;
+    for (const HeatCell& cell : m_heat)
+    {
+        const glm::vec3 centre{(static_cast<float>(cell.x) + 0.5f) * kHeatCell, senses.position.y,
+                               (static_cast<float>(cell.z) + 0.5f) * kHeatCell};
+        if (cell.heat <= 0.3f || Horizontal(centre, senses.position) >= 45.0f)
+        {
+            continue;
+        }
+        pick -= cell.heat;
+        if (pick <= 0.0f)
+        {
+            uint32_t seed = static_cast<uint32_t>(m_random.Next());
+            return senses.nav->RandomPointNear(centre, kHeatCell * 0.6f, seed, out);
+        }
+    }
+    return false;
+}
+
+float CreatureBrain::HidingHabit() const
+{
+    // Everybody it has pulled out of a locker, and every locker door it has heard, teaches it that
+    // people hide. Learnt over one match and forgotten with it.
+    return std::min(1.0f, 0.25f * static_cast<float>(m_foundHiding) + 0.1f * static_cast<float>(m_lockersHeard));
+}
+
+void CreatureBrain::Suspect(int place, float suspicion, int who)
+{
+    if (place < 0 || static_cast<size_t>(place) >= m_places.size())
+    {
+        return;
+    }
+    PlaceMemory& memory = m_places[static_cast<size_t>(place)];
+    if (suspicion > memory.suspicion)
+    {
+        memory.suspicion = suspicion;
+        if (who >= 0)
+        {
+            memory.suspect = who;
+        }
+    }
+}
+
+void CreatureBrain::PerceivePlaces(const CreatureSenses& senses, float dt)
+{
+    for (size_t i = 0; i < senses.hidingPlaces.size(); ++i)
+    {
+        const HidingPlace& place = senses.hidingPlaces[i];
+        PlaceMemory& memory = m_places[i];
+        // Suspicion fades over a minute or so: whoever got in has as likely got out again.
+        memory.suspicion = std::max(memory.suspicion - 0.012f * dt, 0.0f);
+
+        // What it can see of it: the door, open or shut, from where it stands.
+        const glm::vec3 door = place.front + glm::vec3(0.0f, 1.0f, 0.0f);
+        if (glm::distance(senses.eye, door) > 18.0f || !senses.clearLine || !senses.clearLine(senses.eye, door))
+        {
+            continue;
+        }
+        if (!place.shut)
+        {
+            // Standing open: nobody is in there, whatever it thought.
+            memory.suspicion = 0.0f;
+            memory.suspect = -1;
+            memory.seenShut = false;
+            continue;
+        }
+        // Shut. What that means is something it has to learn: nothing much, until the first time it
+        // opens a shut one and finds somebody inside, after which a shut locker is a question it asks.
+        if (!memory.seenShut)
+        {
+            memory.seenShut = true;
+            if (m_shutMeansSomebody > 0.3f)
+            {
+                Log(senses.time, "sees a shut locker");
+            }
+        }
+        Suspect(static_cast<int>(i), 0.1f + 0.8f * m_shutMeansSomebody, -1);
+    }
+}
+
+void CreatureBrain::PlanSearch(const CreatureSenses& senses, const Track& track)
+{
+    m_searchPlan.clear();
+    m_searchStep = 0;
+
+    // Lockers first, the likeliest first: ones it has reason to suspect, and, the more it has learnt
+    // that people hide, any near where they vanished.
+    std::vector<std::pair<float, int>> places;
+    const float habit = HidingHabit();
+    for (size_t i = 0; i < senses.hidingPlaces.size(); ++i)
+    {
+        const PlaceMemory& memory = m_places[i];
+        const float distance = Horizontal(senses.hidingPlaces[i].front, track.lastKnown);
+        if (distance > 15.0f)
+        {
+            continue;
+        }
+        float likely = memory.suspicion;
+        if (memory.suspect == track.id)
+        {
+            likely += 0.3f;
+        }
+        if (distance < 6.0f && m_random.Unit() < 0.15f + 0.6f * habit)
+        {
+            likely = std::max(likely, 0.3f);
+        }
+        if (likely > 0.25f)
+        {
+            places.push_back({likely - distance * 0.02f, static_cast<int>(i)});
+        }
+    }
+    std::sort(places.begin(), places.end(), [](const auto& a, const auto& b) { return a.first > b.first; });
+    for (const auto& [likely, place] : places)
+    {
+        m_searchPlan.push_back({senses.hidingPlaces[static_cast<size_t>(place)].front, place});
+    }
+
+    // Then the ground they could have covered: a few places spread round where they were heading.
+    if (senses.nav != nullptr)
+    {
+        const glm::vec3 heading = track.lastKnown + track.lastVelocity * 2.0f;
+        glm::vec3 centre = track.lastKnown;
+        senses.nav->NearestPoint(heading, 3.0f, centre);
+        uint32_t seed = static_cast<uint32_t>(m_random.Next());
+        for (int i = 0; i < 12 && m_searchPlan.size() < places.size() + 3; ++i)
+        {
+            glm::vec3 point;
+            if (!senses.nav->RandomPointNear(centre, 9.0f, seed, point))
+            {
+                continue;
+            }
+            // Spread out: somewhere already on the list, or where it already is, is not a new place.
+            bool spread = Horizontal(point, senses.position) > 3.0f;
+            for (const SearchStop& stop : m_searchPlan)
+            {
+                spread = spread && Horizontal(point, stop.point) > 4.0f;
+            }
+            if (spread)
+            {
+                m_searchPlan.push_back({point, -1});
+            }
+        }
+    }
+    Log(senses.time, "searching for " + track.name + Format(": %.0f places, ", static_cast<float>(m_searchPlan.size())) +
+                         Format("%.0f of them lockers", static_cast<float>(places.size())));
+}
+
+bool CreatureBrain::OpenPlace(const CreatureSenses& senses, int place)
+{
+    if (place < 0 || static_cast<size_t>(place) >= senses.hidingPlaces.size())
+    {
+        return false;
+    }
+    const float now = senses.time;
+    const HidingPlace& hidingPlace = senses.hidingPlaces[static_cast<size_t>(place)];
+    m_goal = "going to check a locker";
+    if (Horizontal(senses.position, hidingPlace.front) > 0.9f)
+    {
+        m_openStarted = -1.0f;
+        m_intent.move = true;
+        m_intent.destination = hidingPlace.front;
+        m_intent.speed = m_traits.walkSpeed * 1.6f;
+        return true;
+    }
+
+    // At the door: it takes hold of it -- the same drawing back a strike has, a beat to see coming
+    // from inside -- and pulls.
+    m_goal = "opening a locker";
+    m_intent.face = true;
+    m_intent.facePoint = hidingPlace.inside;
+    if (m_openStarted < 0.0f)
+    {
+        m_openStarted = now;
+    }
+    m_intent.windup = std::clamp((now - m_openStarted) / 0.6f, 0.0f, 1.0f);
+    if (now - m_openStarted < 0.6f)
+    {
+        return true;
+    }
+    m_openStarted = -1.0f;
+    m_intent.openHidingPlace = place;
+    PlaceMemory& memory = m_places[static_cast<size_t>(place)];
+    memory.suspicion = 0.0f;
+    memory.suspect = -1;
+    memory.checkedAt = now;
+
+    // Only now, with the door open, does it know who is inside.
+    for (const SensedPlayer& player : senses.players)
+    {
+        if (player.hidden && player.hidingPlace == place && player.alive)
+        {
+            ++m_foundHiding;
+            if (hidingPlace.shut)
+            {
+                // The lesson: a shut locker had somebody in it.
+                m_shutMeansSomebody = std::min(1.0f, m_shutMeansSomebody + 0.6f);
+            }
+            Track& track = TrackFor(player);
+            track.confidence = 1.0f;
+            track.lastKnown = hidingPlace.front;
+            Switch(Behavior::Attack, player.id, "pulls " + player.name + " out of the locker", now);
+            m_committedUntil = now + 1.5f;
+            return false;
+        }
+    }
+    Log(now, "opens a locker: empty");
+    return false;
+}
+
 void CreatureBrain::UpdatePlayingDead(const CreatureSenses& senses)
 {
     const float now = senses.time;
@@ -971,9 +1318,19 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
     {
         if (!m_haveRoamPoint && now >= m_pauseUntil && senses.nav != nullptr)
         {
-            uint32_t seed = static_cast<uint32_t>(m_random.Next());
-            m_haveRoamPoint = senses.nav->RandomPointNear(senses.position, 14.0f, seed, m_roamPoint);
-            m_goal = "wandering";
+            // More often than not, towards somewhere it has found people before: prowling rather than
+            // wandering. Not always, or it would wear a path between two rooms and never find a third.
+            if (m_random.Unit() < 0.6f && PickWarmPlace(senses, m_roamPoint))
+            {
+                m_haveRoamPoint = true;
+                m_goal = "prowling where people go";
+            }
+            else
+            {
+                uint32_t seed = static_cast<uint32_t>(m_random.Next());
+                m_haveRoamPoint = senses.nav->RandomPointNear(senses.position, 14.0f, seed, m_roamPoint);
+                m_goal = "wandering";
+            }
         }
         if (m_haveRoamPoint)
         {
@@ -1002,7 +1359,27 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
             m_lookAroundUntil = now + 3.0f;
             Log(now, "arrived at the " + m_interest.what + ", looking around");
         }
-        if (m_arrived)
+        if (m_arrived && m_opening == -1)
+        {
+            // Come to look at a noise that was a locker door: the thing to look into is the locker.
+            for (size_t i = 0; i < senses.hidingPlaces.size() && m_opening == -1; ++i)
+            {
+                if (m_places[i].suspicion > 0.3f &&
+                    Horizontal(senses.hidingPlaces[i].front, m_interest.position) < 2.5f)
+                {
+                    m_opening = static_cast<int>(i);
+                }
+            }
+        }
+        if (m_arrived && m_opening >= 0)
+        {
+            if (!OpenPlace(senses, m_opening))
+            {
+                m_opening = -2; // done with it, whatever it found
+                m_lookAroundUntil = now + 2.0f;
+            }
+        }
+        else if (m_arrived)
         {
             m_goal = "looking around";
             if (!lookAround(m_lookAroundUntil))
@@ -1059,6 +1436,9 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
                 m_arrived = true;
                 m_lookAroundUntil = now + 2.5f;
                 track->lastVelocity = glm::vec3(0.0f);
+                // They are not here. That is news, and it lowers how sure it is of where they are --
+                // which is what hands over to searching the places they could have gone instead.
+                track->confidence = std::min(track->confidence, 0.45f);
                 Log(now, "lost " + track->name + ", searching");
             }
             if (m_arrived)
@@ -1258,6 +1638,111 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
     case Behavior::PlayDead:
         UpdatePlayingDead(senses);
         break;
+
+    case Behavior::Observe:
+    {
+        Track* track = FindTrack(m_target);
+        const SensedPlayer* player = FindPlayer(senses, m_target);
+        if (track == nullptr || player == nullptr)
+        {
+            break;
+        }
+        track->observed += dt;
+        const float distance = Horizontal(senses.position, player->feet);
+        m_intent.face = true;
+        m_intent.facePoint = player->feet;
+        // Near enough to see them well, not so near it has to decide anything. Closer than that and it
+        // gives ground; further, and it follows.
+        if (distance < 5.0f && senses.nav != nullptr)
+        {
+            m_goal = "backing away from " + track->name;
+            glm::vec3 away = senses.position - player->feet;
+            away.y = 0.0f;
+            away = glm::length(away) > 1e-3f ? glm::normalize(away) : glm::vec3(0.0f, 0.0f, 1.0f);
+            glm::vec3 back;
+            // Backwards, still facing them: a wary animal does not turn its back on what it is wary of.
+            if (senses.nav->NearestPoint(senses.position + away * 3.0f, 2.0f, back))
+            {
+                m_intent.move = true;
+                m_intent.destination = back;
+                m_intent.speed = m_traits.walkSpeed * 1.3f;
+            }
+        }
+        else if (distance > 10.0f)
+        {
+            m_goal = "following " + track->name + ", watching";
+            m_intent.move = true;
+            m_intent.destination = player->feet;
+            m_intent.speed = m_traits.walkSpeed;
+            m_intent.face = false;
+        }
+        else
+        {
+            m_goal = "watching " + track->name;
+        }
+        break;
+    }
+
+    case Behavior::Search:
+    {
+        Track* track = FindTrack(m_target);
+        if (track == nullptr)
+        {
+            break;
+        }
+        if (m_searchPlan.empty() && m_searchStep == 0)
+        {
+            PlanSearch(senses, *track);
+            if (m_searchPlan.empty())
+            {
+                m_searchStep = 1; // nowhere to look; falls through to giving up below
+            }
+        }
+        if (m_searchStep >= m_searchPlan.size())
+        {
+            // Everywhere it could think of, and nothing. It lets them go -- for now: a sound or a
+            // glimpse brings them straight back.
+            Log(now, "gives up looking for " + track->name);
+            track->confidence = 0.0f;
+            Switch(Behavior::Roam, -1, "nothing found", now);
+            break;
+        }
+        const SearchStop& stop = m_searchPlan[m_searchStep];
+        if (stop.place >= 0)
+        {
+            if (!OpenPlace(senses, stop.place))
+            {
+                if (m_behavior != Behavior::Search)
+                {
+                    break; // it found somebody, and is going for them
+                }
+                ++m_searchStep;
+                m_arrived = false;
+            }
+            break;
+        }
+        m_goal = "searching for " + track->name;
+        if (!m_arrived && Horizontal(senses.position, stop.point) < 1.2f)
+        {
+            m_arrived = true;
+            m_lookAroundUntil = now + 1.6f;
+        }
+        if (m_arrived)
+        {
+            if (!lookAround(m_lookAroundUntil))
+            {
+                ++m_searchStep;
+                m_arrived = false;
+            }
+        }
+        else
+        {
+            m_intent.move = true;
+            m_intent.destination = stop.point;
+            m_intent.speed = m_traits.walkSpeed * 1.6f;
+        }
+        break;
+    }
     }
 
     // The orienting response, over whatever it was doing if that was only wandering or looking into a

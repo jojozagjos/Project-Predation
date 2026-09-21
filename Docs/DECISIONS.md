@@ -1385,3 +1385,32 @@ the strike standing, to be applied every tick from a corpse.
 Also settled here: a game starts without its creature. It arrives about forty seconds in, varied by
 seed, somewhere twenty metres or more from everybody and out of every player's line of sight, so
 nobody ever watches it appear.
+
+## ADR-066: A creature learns what a shut locker means; searching finishes its round
+
+Two things from finishing Milestone 9.
+
+**What it knows about lockers, and what it has to learn.** A locker door is shut when somebody is inside
+and open when nobody is, so a creature that knew that from the start would open every shut locker it
+saw and hiding would be pointless. A creature that never learnt it would make hiding a guaranteed
+escape. So it starts not knowing: a shut door is a hundredth of a reason. The first time it opens a
+shut locker and finds somebody, what a shut door means jumps -- and from then on, for the rest of the
+match, it checks them. Hiding works the first time and gets riskier the more a group leans on it,
+which is the game we want. It also suspects lockers for the reasons anybody would: a locker door heard
+and not seen, somebody vanishing right beside one. It never knows who is inside until it opens the door;
+the brain is handed which locker each player is in, and is only allowed to read it at that moment, the
+same honesty rule as reading a gaze only while it can see a face.
+
+**Searching is a round, not a mood.** The first version made searching an option weighed like any other,
+scored on how unsure it was of where somebody had gone -- and since that uncertainty only grows, the
+option fell off the bottom of the list mid-search and the creature wandered away between two lockers.
+Now a search plans a round (suspected lockers first, then places spread round where they were heading)
+and finishes it, however its confidence changes on the way; what ends it is running out of places or
+the search going stale by its persistence, or a sound or a glimpse that makes something else score
+higher. And arriving where somebody was and finding nobody is itself news: it lowers how sure the
+creature is, which is what hands over from going to where they were to looking where they went.
+
+Also settled: a creature watching somebody out of curiosity keeps facing them when it backs off. Turning
+away lost sight of them, which dropped the watching, which made it hunt, which turned it back -- the same
+flip-flop that stalking had between cover and gaze, and the same cure: know what you are doing
+through a glance away.

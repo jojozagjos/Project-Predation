@@ -9,8 +9,10 @@
 #include <catch2/generators/catch_generators.hpp>
 
 #include <glm/geometric.hpp>
+#include <glm/vec2.hpp>
 #include <glm/gtc/constants.hpp>
 
+#include <chrono>
 #include <cmath>
 #include <memory>
 
@@ -64,8 +66,12 @@ struct CreatureHarness
         senses.players = players;
         senses.noises = noises;
         senses.clearLine = [this](const glm::vec3& a, const glm::vec3& b) { return Clear(a, b); };
+        senses.hidingPlaces = places;
         return senses;
     }
+
+    // Lockers, as the game describes them. The test map has none of its own.
+    std::vector<HidingPlace> places;
 
     // Runs for a while at the game's tick. The noises are made on the first tick only; `watch` sees
     // every tick, so a test can notice a moment that does not last -- a strike -- as it happens.
@@ -775,4 +781,382 @@ TEST_CASE("The same seed in the same situation makes the same creature, decision
     CHECK(minds[0] == minds[1]);
     CHECK(glm::distance(ends[0], ends[1]) < 1e-4f);
     CHECK(minds[0].size() > 20); // it did something worth comparing
+}
+
+namespace
+{
+
+// Distance across the ground, ignoring height.
+float Horizontal(const glm::vec3& a, const glm::vec3& b)
+{
+    return glm::length(glm::vec2(b.x - a.x, b.z - a.z));
+}
+
+// A locker standing on open ground at `front`, its back to the direction `away` points. What the game
+// hands the brain for a real one.
+HidingPlace LockerAt(const glm::vec3& front, const glm::vec3& away, bool shut)
+{
+    HidingPlace place;
+    place.front = front;
+    place.inside = front + glm::normalize(glm::vec3(away.x, 0.0f, away.z)) * 1.4f;
+    place.shut = shut;
+    return place;
+}
+
+// Somebody inside locker `index`: out of sight, where the locker is.
+SensedPlayer InLocker(int id, const HidingPlace& place, int index)
+{
+    SensedPlayer player = Somebody(id, place.inside);
+    player.hidden = true;
+    player.hidingPlace = index;
+    return player;
+}
+
+} // namespace
+
+TEST_CASE("It loses somebody, searches where they could have gone, and in the end gives up", "[creature][search]")
+{
+    const uint32_t seed = SeedWhere([](const CreatureTraits& t)
+                                    { return t.stealth < 0.4f && t.aggression > 0.5f && t.fear < 0.6f; });
+    REQUIRE(seed != 0);
+    INFO("seed " << seed << ": " << CreatureTraits::FromSeed(seed).Describe());
+    CreatureHarness harness(seed);
+    glm::vec3 at;
+    glm::vec3 player;
+    REQUIRE(OpenView(harness, 12.0f, at, player));
+
+    // Seen, then gone -- somewhere far out of sight, nowhere it could know about.
+    harness.Run(1.5f, {Somebody(1, player)});
+    REQUIRE(harness.TrackOf(1)->lastSeen >= 0.0f);
+    const std::vector<SensedPlayer> gone{Somebody(1, glm::vec3(40.0f, 0.0f, 40.0f))};
+
+    bool searched = false;
+    size_t furthestStep = 0;
+    bool gaveUp = false;
+    harness.Run(60.0f, gone, {},
+                [&](const Creature& creature)
+                {
+                    if (creature.Brain().Current() == Behavior::Search)
+                    {
+                        searched = true;
+                        furthestStep = std::max(furthestStep, creature.Brain().SearchStep());
+                    }
+                    else if (searched && creature.Brain().Current() == Behavior::Roam)
+                    {
+                        gaveUp = true;
+                    }
+                });
+    INFO("its mind:" << MindOf(*harness.creature));
+    CHECK(searched);
+    CHECK(furthestStep >= 2); // went through more than one place, not only where they were last
+    CHECK(gaveUp);
+}
+
+TEST_CASE("It hears a locker door, goes to it, and pulls out whoever is inside", "[creature][search][locker]")
+{
+    CreatureHarness harness(5);
+    glm::vec3 at;
+    glm::vec3 near;
+    REQUIRE(OpenView(harness, 7.0f, at, near));
+    harness.places = {LockerAt(near, near - at, true)};
+
+    bool pulledOut = false;
+    bool opened = false;
+    bool wentForThem = false;
+    Noise slam;
+    slam.kind = NoiseKind::Door;
+    slam.reach = NoiseReach::kDoor * 0.7f;
+    slam.position = harness.places[0].inside;
+    slam.player = 1;
+    // Somebody it never saw, getting into a locker it can hear. Once the door is pulled open they are
+    // out, standing in front of it, as the game would leave them.
+    harness.Run(0.1f, {InLocker(1, harness.places[0], 0)}, {slam});
+    harness.RunLive(
+        12.0f,
+        [&](const Creature&)
+        {
+            return pulledOut ? std::vector<SensedPlayer>{Somebody(1, harness.places[0].front)}
+                             : std::vector<SensedPlayer>{InLocker(1, harness.places[0], 0)};
+        },
+        [&](const Creature& creature)
+        {
+            if (creature.Brain().Intent().openHidingPlace == 0)
+            {
+                opened = true;
+                pulledOut = true;
+            }
+            wentForThem = wentForThem || (pulledOut && creature.Brain().Current() == Behavior::Attack &&
+                                          creature.Brain().CurrentTarget() == 1);
+        });
+    INFO("its mind:" << MindOf(*harness.creature));
+    CHECK(opened);
+    CHECK(wentForThem);
+    CHECK(harness.creature->Brain().FoundHiding() == 1);
+}
+
+TEST_CASE("Seen stepping up to a locker and vanishing, it checks that locker first", "[creature][search][locker]")
+{
+    const uint32_t seed = SeedWhere([](const CreatureTraits& t)
+                                    { return t.stealth < 0.4f && t.aggression > 0.5f && t.fear < 0.6f; });
+    REQUIRE(seed != 0);
+    CreatureHarness harness(seed);
+    glm::vec3 at;
+    glm::vec3 player;
+    REQUIRE(OpenView(harness, 12.0f, at, player));
+    harness.places = {LockerAt(player, player - at, false)};
+
+    // In plain sight, standing at the locker; then inside it, and the door shut.
+    harness.Run(1.2f, {Somebody(1, player)});
+    harness.places[0].shut = true;
+    int firstOpened = -1;
+    bool pulledOut = false;
+    harness.RunLive(
+        20.0f,
+        [&](const Creature&)
+        {
+            return pulledOut ? std::vector<SensedPlayer>{Somebody(1, harness.places[0].front)}
+                             : std::vector<SensedPlayer>{InLocker(1, harness.places[0], 0)};
+        },
+        [&](const Creature& creature)
+        {
+            if (firstOpened < 0 && creature.Brain().Intent().openHidingPlace >= 0)
+            {
+                firstOpened = creature.Brain().Intent().openHidingPlace;
+                pulledOut = true;
+            }
+        });
+    INFO("its mind:" << MindOf(*harness.creature));
+    CHECK(firstOpened == 0);
+    CHECK(harness.creature->Brain().FoundHiding() == 1);
+}
+
+TEST_CASE("A shut locker means little to it -- until it has found somebody in one", "[creature][locker][learn]")
+{
+    // Two lockers in view, both shut. Before it has ever found anybody hiding, a shut door is barely
+    // worth a thought; after pulling somebody out of one, every shut door is a question.
+    CreatureHarness harness(5);
+    glm::vec3 at;
+    glm::vec3 near;
+    REQUIRE(OpenView(harness, 7.0f, at, near));
+    const glm::vec3 across{near.z - at.z, 0.0f, at.x - near.x}; // sideways from the line between them
+    glm::vec3 other;
+    REQUIRE(harness.nav.NearestPoint(near + glm::normalize(across) * 3.0f, 1.0f, other));
+    harness.places = {LockerAt(near, near - at, true), LockerAt(other, near - at, true)};
+
+    harness.Run(1.0f, {});
+    const float before = harness.creature->Brain().Places()[1].suspicion;
+    CHECK(harness.creature->Brain().ShutMeansSomebody() == 0.0f);
+
+    // A slam at the first; it finds somebody in it.
+    Noise slam;
+    slam.kind = NoiseKind::Door;
+    slam.reach = NoiseReach::kDoor * 0.7f;
+    slam.position = harness.places[0].inside;
+    slam.player = 1;
+    bool pulledOut = false;
+    harness.Run(0.1f, {InLocker(1, harness.places[0], 0)}, {slam});
+    harness.RunLive(
+        12.0f,
+        [&](const Creature&)
+        {
+            return pulledOut ? std::vector<SensedPlayer>{Somebody(1, harness.places[0].front)}
+                             : std::vector<SensedPlayer>{InLocker(1, harness.places[0], 0)};
+        },
+        [&](const Creature& creature) { pulledOut = pulledOut || creature.Brain().Intent().openHidingPlace == 0; });
+    REQUIRE(harness.creature->Brain().FoundHiding() == 1);
+    harness.Run(0.5f, {});
+    const float after = harness.creature->Brain().Places()[1].suspicion;
+    INFO("the other shut locker: suspicion " << before << " before, " << after << " after; a shut door means "
+                                             << harness.creature->Brain().ShutMeansSomebody());
+    INFO("its mind:" << MindOf(*harness.creature));
+    CHECK(before < 0.2f);
+    CHECK(after > 0.5f);
+}
+
+TEST_CASE("A curious, gentle creature watches from a distance, gives ground, and in time gets bored",
+          "[creature][curiosity]")
+{
+    const uint32_t seed = SeedWhere([](const CreatureTraits& t)
+                                    { return t.curiosity > 0.8f && t.aggression < 0.4f && t.fear < 0.6f; });
+    REQUIRE(seed != 0);
+    const CreatureTraits traits = CreatureTraits::FromSeed(seed);
+    INFO("seed " << seed << ": " << traits.Describe());
+    CreatureHarness harness(seed);
+    glm::vec3 at;
+    glm::vec3 player;
+    REQUIRE(OpenView(harness, 14.0f, at, player));
+
+    // Somebody standing in the open. It comes to look, and it does not come for them.
+    bool watched = false;
+    bool attacked = false;
+    harness.Run(10.0f, {Somebody(1, player)}, {},
+                [&](const Creature& creature)
+                {
+                    watched = watched || creature.Brain().Current() == Behavior::Observe;
+                    attacked = attacked || creature.Brain().Current() == Behavior::Attack ||
+                               creature.Brain().Current() == Behavior::Hunt;
+                });
+    const float watching = Horizontal(harness.creature->Position(), player);
+    INFO("its mind:" << MindOf(*harness.creature));
+    INFO("watching from " << watching << " m");
+    CHECK(watched);
+    CHECK_FALSE(attacked);
+    CHECK(watching > 4.0f);
+    CHECK(watching < 12.0f);
+
+    // They walk right up to it: it gives ground rather than meeting them.
+    glm::vec3 toward = harness.creature->Position() - player;
+    toward.y = 0.0f;
+    glm::vec3 close;
+    REQUIRE(harness.nav.NearestPoint(harness.creature->Position() - glm::normalize(toward) * 2.5f, 1.0f, close));
+    harness.Run(2.5f, {Somebody(1, close)});
+    const float afterApproach = Horizontal(harness.creature->Position(), close);
+    INFO("walked up to within 2.5 m; two and a half seconds later it was " << afterApproach << " m off");
+    INFO("after they walked up:" << MindOf(*harness.creature));
+    CHECK(afterApproach > 3.5f);
+
+    // And in the end it has seen enough.
+    bool stoppedWatching = false;
+    harness.Run(traits.BoredomSeconds() + 5.0f, {Somebody(1, close)}, {},
+                [&](const Creature& creature)
+                { stoppedWatching = stoppedWatching || creature.Brain().Current() != Behavior::Observe; });
+    CHECK(stoppedWatching);
+}
+
+TEST_CASE("It remembers where it found people, prowls back there, and forgets in time", "[creature][memory]")
+{
+    const uint32_t seed = SeedWhere([](const CreatureTraits& t)
+                                    { return t.stealth < 0.4f && t.aggression > 0.5f && t.fear < 0.6f; });
+    REQUIRE(seed != 0);
+    INFO("seed " << seed << ": " << CreatureTraits::FromSeed(seed).Describe());
+    CreatureHarness harness(seed);
+    glm::vec3 at;
+    glm::vec3 player;
+    REQUIRE(OpenView(harness, 14.0f, at, player));
+
+    const auto heatAt = [&](const glm::vec3& where)
+    {
+        const int x = static_cast<int>(std::floor(where.x / CreatureBrain::kHeatCell));
+        const int z = static_cast<int>(std::floor(where.z / CreatureBrain::kHeatCell));
+        for (const CreatureBrain::HeatCell& cell : harness.creature->Brain().Heat())
+        {
+            if (cell.x == x && cell.z == z)
+            {
+                return cell.heat;
+            }
+        }
+        return 0.0f;
+    };
+
+    // Somebody in view for a few seconds, then gone somewhere it cannot know about.
+    harness.Run(3.0f, {Somebody(1, player)});
+    const float warmth = heatAt(player);
+    INFO("warmth where they stood: " << warmth);
+    CHECK(warmth > 1.0f);
+
+    // Searched for and given up on, it goes back to prowling -- and some of that is back where they were.
+    const std::vector<SensedPlayer> gone{Somebody(1, glm::vec3(40.0f, 0.0f, 40.0f))};
+    int prowls = 0;
+    bool prowledThere = false;
+    glm::vec3 lastDestination{1.0e9f};
+    harness.Run(90.0f, gone, {},
+                [&](const Creature& creature)
+                {
+                    const CreatureIntent& intent = creature.Brain().Intent();
+                    if (creature.Brain().Current() == Behavior::Roam && intent.move &&
+                        creature.Brain().CurrentGoal() == "prowling where people go" &&
+                        glm::distance(intent.destination, lastDestination) > 0.5f)
+                    {
+                        lastDestination = intent.destination;
+                        ++prowls;
+                        prowledThere = prowledThere || Horizontal(intent.destination, player) < 6.0f;
+                    }
+                });
+    INFO("its mind:" << MindOf(*harness.creature));
+    INFO(prowls << " prowls");
+    CHECK(prowledThere);
+
+    // Left alone long enough, the memory fades.
+    harness.Run(400.0f, gone);
+    CHECK(heatAt(player) < warmth * 0.25f);
+}
+
+TEST_CASE("Eight creatures at once keep out of each other, all keep thinking, and cost little",
+          "[creature][pack]")
+{
+    // The most there can be, all made on one spot, all given the same person to go for.
+    PhysicsWorld physics;
+    PhysicsWorld::Settings settings;
+    settings.workerThreads = 1;
+    REQUIRE(physics.Init(settings));
+    Scene scene;
+    MeshLibrary meshes;
+    meshes.SetHeadless(true);
+    BuildTestMap(scene, meshes, &physics);
+    NavMesh nav;
+    REQUIRE(nav.Build(physics.StaticTriangles(), NavSettings{}));
+    glm::vec3 spot;
+    glm::vec3 player;
+    REQUIRE(nav.NearestPoint({-6.0f, 0.0f, 5.0f}, 1.0f, spot));
+    REQUIRE(nav.NearestPoint({-6.0f, 0.0f, -7.0f}, 1.0f, player));
+
+    std::vector<std::unique_ptr<Creature>> pack;
+    for (uint8_t i = 0; i < 8; ++i)
+    {
+        pack.push_back(std::make_unique<Creature>(scene, meshes, physics, &nav, CreatureTraits::FromSeed(100u + i), spot));
+        pack.back()->SetNetId(i);
+    }
+
+    const std::vector<SensedPlayer> players{Somebody(1, player)};
+    constexpr float dt = 1.0f / 60.0f;
+    float time = 0.0f;
+    double spent = 0.0;
+    int ticks = 0;
+    for (; time < 6.0f; time += dt, ++ticks)
+    {
+        const auto start = std::chrono::steady_clock::now();
+        for (const std::unique_ptr<Creature>& creature : pack)
+        {
+            CreatureSenses senses;
+            senses.players = players;
+            const BodyHandle self = creature->Body();
+            senses.clearLine = [&physics, self](const glm::vec3& a, const glm::vec3& b)
+            {
+                const glm::vec3 along = b - a;
+                const float length = glm::length(along);
+                return length < 0.4f || !physics.RayCast(a, along / length, length - 0.35f, self);
+            };
+            for (const std::unique_ptr<Creature>& other : pack)
+            {
+                if (other.get() != creature.get())
+                {
+                    senses.others.push_back(other->Position());
+                }
+            }
+            creature->Update(std::move(senses), time, dt);
+        }
+        spent += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+    }
+
+    float closest = 1.0e9f;
+    int moved = 0;
+    int noticed = 0;
+    for (size_t i = 0; i < pack.size(); ++i)
+    {
+        moved += Horizontal(pack[i]->Position(), spot) > 1.0f ? 1 : 0;
+        noticed += pack[i]->Brain().Current() != Behavior::Roam ? 1 : 0;
+        for (size_t j = i + 1; j < pack.size(); ++j)
+        {
+            closest = std::min(closest, Horizontal(pack[i]->Position(), pack[j]->Position()));
+        }
+    }
+    const double perTick = spent / static_cast<double>(ticks);
+    INFO("closest pair " << closest << " m apart; " << moved << " moved off the spot; " << noticed
+                         << " doing something about the player; " << perTick << " ms a tick for all eight");
+    CHECK(closest > 1.0f);
+    CHECK(moved == 8);
+    // Not all of them: packed together, some cannot see past the others' bodies, which is right.
+    CHECK(noticed >= 4);
+    // A frame at sixty is 16.7 ms. Eight creatures thinking should be a small part of it.
+    CHECK(perTick < 3.0);
 }

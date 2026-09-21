@@ -32,6 +32,8 @@ struct CreatureTraits
     // How fast it runs and walks, in metres per second.
     float runSpeed = 5.2f;
     float walkSpeed = 1.6f;
+    // How long something new holds its interest before it has seen enough, in seconds.
+    float BoredomSeconds() const { return 15.0f + 45.0f * curiosity; }
     // How long it will shadow somebody before it stops waiting for a better moment. Scales a wait of
     // between about ten seconds and forty.
     float patience = 0.5f;

@@ -1,10 +1,10 @@
 # Creature AI
 
-**Status**: Milestone 8 prototype built; Milestone 9 in progress (stalking, peeking, playing dead,
-seed reproducibility done). What exists now is listed first, and the rest of this document is the
-design it is heading towards.
+**Status**: Milestones 8 and 9 built -- the prototype, then the AI architecture: stalking, searching,
+hiding places, curiosity, memory of places, learning over a match, and reproducibility from seed.
+What exists now is listed first, and the rest of this document is the design it is heading towards.
 
-## What exists (Milestones 8 and 9 so far)
+## What exists (Milestones 8 and 9)
 
 | Piece | Where |
 | --- | --- |
@@ -30,7 +30,7 @@ design it is heading towards.
   persistence, exposure, how much they have hurt it) and one open question -- the thing it is going to
   look into.
 - **Feelings**: pain, fear and arousal.
-- **Behaviours**: Roam, Investigate, Hunt, Attack, Retreat, Stalk and PlayDead, scored per target as
+- **Behaviours**: Roam, Investigate, Hunt, Attack, Retreat, Stalk, PlayDead, Search and Observe, scored per target as
   products of named considerations with a commitment bonus for the current one. A strike already being
   wound up, and a spring from playing dead, are seen through rather than weighed again.
 - **Stalking**: a stealthy creature that has been seen does not charge. Hunting carries a "the moment"
@@ -62,14 +62,38 @@ design it is heading towards.
 - **Networking**: the host runs every mind; clients are sent each creature's seed and body state and
   draw a copy (ADR-064).
 
-Developer commands: `spawn_creature [seed] [ahead]`, `creature_clear`, `creature_hurt [amount]`,
-`creature_pose` and `ai_brain`, plus the `ai.creatures`, `ai.seed` and `ai.arrival_seconds` settings.
+- **Searching**: arriving where somebody was and finding nobody lowers how sure it is, which hands
+  over to Search. It plans a round: suspected lockers first, likeliest first, then a few places spread
+  round where they were heading, and goes through them, looking round at each. It finishes the round
+  whatever its confidence does (that is what searching is for), then gives them up -- until a sound or
+  a glimpse.
+- **Lockers**: it knows where every locker is (they are furniture), never who is in one until it pulls
+  the door. It suspects one from a locker door heard and not seen, from somebody vanishing right
+  beside it (0.9 when they vanished at the door), and from seeing it shut -- but a shut door means only
+  what it has learnt: next to nothing until the first time it opens a shut one and finds somebody,
+  after which a shut locker is a question it goes and asks. Seeing one standing open clears it. Found,
+  the person is dragged out by the same path as climbing out, and it goes straight for them.
+- **Curiosity (Observe)**: a curious, not very aggressive creature that has not been hurt by somebody
+  follows them openly at six to ten metres and watches, backs away if they come close -- facing them,
+  not turning its back -- and gets bored after 15 to 60 seconds depending on its curiosity. What it does
+  then is whatever else was scoring underneath. Attacking now weighs aggression heavily, so a gentle
+  creature that somebody walks up to gives ground rather than lashing out.
+- **Memory of places**: the ground in four-metre squares, warmed by seeing or hearing somebody there
+  and cooling over a few minutes. Wandering drifts towards the warm squares more often than not, so a
+  creature left alone prowls where people go.
+- **Learning over a match**: how much a shut locker means somebody behind it, and a hiding habit from
+  people found and locker doors heard, which widens how many lockers a search takes in. Forgotten when
+  the match ends.
+- **Several at once**: up to eight, each with its own mind, all replicated. Each is told where the others
+  are and keeps its own length from them, so a group arriving together spreads out instead of standing
+  inside one another. Eight together cost about two hundredths of a millisecond a tick. Hunting as a
+  pack -- one that has seen you telling the others -- would start from knowing where the others are,
+  which each already does; it is not built.
+
+Developer commands: `spawn_creature [seed] [ahead [metres]]`, `creature_clear`, `creature_hurt [amount]`,
+`creature_pose`, `creature_mind`, `hide [locker]` and `ai_brain`, plus the `ai.creatures`, `ai.seed` and `ai.arrival_seconds` settings.
 The AI, Perception and Navigation debug categories draw the overlays; while stalking, the cover it
 weighed is drawn as posts (orange hidden, purple seen, taller for better) with the chosen spot ringed.
-
-Still to come in Milestone 9: searching properly for somebody lost, checking lockers it has seen used
-or heard slam, a curious creature that follows and watches without attacking, spatial memory (a
-heatmap of where players go, used for ambushes), and adaptation over a match.
 
 ### Vents and other hiding places
 

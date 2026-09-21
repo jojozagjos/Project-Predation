@@ -242,11 +242,11 @@ void Creature::Update(CreatureSenses senses, float time, float dt)
     m_windup = intent.windup;
     m_down = intent.down;
     m_crouchTarget = intent.crouch;
-    Move(intent, dt);
+    Move(intent, senses.others, dt);
     SyncBody(dt);
 }
 
-void Creature::Move(const CreatureIntent& intent, float dt)
+void Creature::Move(const CreatureIntent& intent, const std::vector<glm::vec3>& others, float dt)
 {
     m_routeAge += dt;
     glm::vec3 heading{0.0f};
@@ -310,6 +310,37 @@ void Creature::Move(const CreatureIntent& intent, float dt)
             moved = m_position + step;
         }
         m_stride += Horizontal(m_position, moved) * kStridePerMetre;
+        m_position = moved;
+    }
+
+    // Room for each other. Two creatures on the same errand take the same route and would end up
+    // standing inside one another, because nothing but this keeps them apart: their bodies are moved,
+    // not pushed, and the navigation mesh knows nothing of either. So each eases away from any other
+    // closer than its own length, along the walkable surface, and a pack stays a pack of bodies.
+    constexpr float kPersonalSpace = 1.8f;
+    glm::vec3 push{0.0f};
+    for (const glm::vec3& other : others)
+    {
+        glm::vec3 apart{m_position.x - other.x, 0.0f, m_position.z - other.z};
+        const float distance = glm::length(apart);
+        if (distance >= kPersonalSpace)
+        {
+            continue;
+        }
+        // Exactly on top of each other -- made at one spot -- there is no "away"; each takes a side of
+        // its own, by its number, so the two do not both step the same way.
+        const float angle = static_cast<float>(m_netId) * 2.39996f;
+        apart = distance > 1e-3f ? apart / distance : glm::vec3(std::cos(angle), 0.0f, std::sin(angle));
+        push += apart * (kPersonalSpace - distance);
+    }
+    if (glm::length(push) > 1e-4f)
+    {
+        const glm::vec3 step = push * std::min(3.0f * dt, 1.0f);
+        glm::vec3 moved = m_position + step;
+        if (m_nav == nullptr || !m_nav->MoveAlongSurface(m_position, m_position + step, moved))
+        {
+            moved = m_position + step;
+        }
         m_position = moved;
     }
 }

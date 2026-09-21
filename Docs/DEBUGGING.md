@@ -57,13 +57,15 @@ The creature (developer builds only):
 
 | Command | Does |
 | --- | --- |
-| `spawn_creature [seed] [ahead]` | Make one far from you, or with `ahead` seven metres in front; no seed picks one at random |
+| `spawn_creature [seed] [ahead [metres]]` | Make one far from you, or with `ahead` in front of you and facing you (seven metres unless given); no seed picks one at random |
 | `creature_clear` | Remove every creature |
 | `creature_hurt [amount]` | Hurt the first creature as if you had shot it, 30 by default |
 | `ai_brain` | Open or close the brain inspector |
 | `ai.creatures`, `ai.seed` | How many a new game starts with, and the seed (0 for a new one each game) |
 | `ai.arrival_seconds` | Roughly how long into a game it arrives, out of everybody's sight; 0 for straight away |
 | `creature_pose` | Where each creature is, whether it is up, lying still or dead, how far it has fallen, and where its torso is drawn |
+| `creature_mind` | The inspected creature's whole timeline and what it is weighing now, to the console and the log -- the brain window without a window |
+| `hide [locker]` | Get into a locker, or out of the one you are in, through the real interaction (door, sound, the noise it hears) |
 | `tracer_report` | How far the last tracer started from the eye and from the drawn barrel, and where the round was traced from |
 
 Every sound the game plays is logged at debug level with its name (`--log-level debug`), which is how

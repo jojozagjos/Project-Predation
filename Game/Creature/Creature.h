@@ -87,7 +87,7 @@ public:
     void Destroy();
 
 private:
-    void Move(const CreatureIntent& intent, float dt);
+    void Move(const CreatureIntent& intent, const std::vector<glm::vec3>& others, float dt);
     void BuildVisual(MeshLibrary& meshes);
     void SyncBody(float dt);
 
