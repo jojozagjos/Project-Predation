@@ -30,7 +30,10 @@ public:
         Idle,
         Connecting, // the relay has been asked to open or join and has not answered
         Ready,      // in a lobby
-        Failed
+        Failed,
+        // Asking the relay what is open, without being in anything. The carrier half is unused in
+        // this state: nothing is being relayed, so there are no links and nothing to send.
+        Browsing
     };
 
     struct Settings
@@ -49,10 +52,16 @@ public:
     RelayCarrier(const RelayCarrier&) = delete;
     RelayCarrier& operator=(const RelayCarrier&) = delete;
 
-    // Opens a lobby. The code arrives a moment later; Code() is zero until it does.
-    bool Host(const Settings& settings);
+    // Opens a lobby. The code arrives a moment later; Code() is zero until it does. The name is
+    // what the lobby is called in everybody else's browser: cosmetic, clamped and stripped by the
+    // relay, and not how anybody joins -- that is still the code.
+    bool Host(const Settings& settings, const std::string& name = {});
     // Joins one.
     bool Join(const Settings& settings, uint32_t code);
+    // Asks what is open, without joining anything. Its own entry point rather than a flag on Join,
+    // because browsing is what somebody does before they have a code and the two share nothing past
+    // the socket.
+    bool Browse(const Settings& settings);
     void Close();
 
     // Must be called regularly: this is where the socket is read and the keep-alive is sent.
@@ -63,6 +72,10 @@ public:
     std::string CodeText() const;
     uint8_t Slot() const;
     RelayRejection Rejection() const;
+    // What the relay last said is open. Returned by value: the socket is drained under a lock from
+    // whoever is polling, and handing out a reference into it is how a list being drawn gets
+    // reallocated underneath the drawing.
+    std::vector<RelayLobbyInfo> Lobbies() const;
     const std::string& Message() const { return m_message; }
 
     // --- DatagramCarrier -------------------------------------------------------------------------
@@ -97,6 +110,17 @@ private:
     float m_keepAliveTimer = 0.0f;
     float m_connectTimer = 0.0f;
     bool m_hosting = false;
+    // Browsing rather than playing. Kept apart from the state so a browse that has heard nothing
+    // yet stays in the browsing state and keeps asking, instead of becoming a dead socket the way
+    // a failed join does.
+    bool m_browsing = false;
+    std::string m_lobbyName;
+    std::vector<RelayLobbyInfo> m_lobbies;
+    // When to ask again, and how long since the relay last answered. A browser that has heard
+    // nothing says so, because an empty list looks exactly like "nobody is playing" and those are
+    // very different things to be told.
+    float m_listTimer = 0.0f;
+    float m_listSilence = 0.0f;
     // Whether this carrier holds a reference to the socket system, so Close releases exactly the
     // ones Join took.
     bool m_socketSystem = false;

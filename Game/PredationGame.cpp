@@ -2483,162 +2483,386 @@ void ResetSettingsToDefaults()
 }
 
 } // namespace
+// --- Finding games ------------------------------------------------------------------------------
+//
+// Two ways a game can be reachable, and the player is asked about neither of them.
+//
+// What used to be here was four pages of questions: over the internet or by address, and if by
+// address then which address, and what port, and had the router agreed to forward it. All of that
+// is true and none of it is the player's problem. A game on your own network announces itself and
+// is simply in the list; a game over the internet is in the relay's list, because the relay is
+// already the thing that opens and closes lobbies. Joining is clicking the row.
+//
+// The typed box has not gone away, because a code sent to one person is still the way to run a
+// game that is not on a list. It is just no longer the first thing anybody sees.
 
-
-void PredationGame::DrawTitleOpen()
+std::string PredationGame::LobbyName() const
 {
-    // Two ways to open a game, and one screen each.
-    //
-    // This page used to do both at once: a paragraph about codes, a button for them, a separator, a
-    // port box, a list of addresses, a line about the router, and a second start button. All of it
-    // was on screen whichever one you had come to do, so whichever you wanted you read past the
-    // other one first. A player opening a game has already decided who they are playing with, and
-    // that decision picks the screen.
-    const ImVec2 wide{-1.0f, 34.0f};
-    ImGui::TextDisabled("Open a game");
-    ImGui::Spacing();
-
-    if (ImGui::Button("Over the internet", wide))
+    if (m_lobbyName[0] != '\0')
     {
-        StartLobby(true, 0);
+        return m_lobbyName;
     }
-    Caption("Anywhere. Swap a code.",
-            "Everybody connects outwards to a relay that passes messages between you, so there is "
-            "nothing to forward on anybody's router and it works the same on every network. You "
-            "send each person the six-character code the next screen gives you.");
+    // Named after whoever is hosting, so an unnamed game in a list is still the one thing anybody
+    // needs to tell it apart: whose it is.
+    return PlayerName() + "'s game";
+}
 
-    ImGui::Spacing();
-    if (ImGui::Button("By address", wide))
+void PredationGame::StartBrowsing()
+{
+    // Both lists at once, always, rather than whichever tab is showing. A beacon listener costs a
+    // socket and nothing else, and the relay answers in well under a second, so by the time
+    // somebody clicks the other tab the list behind it is already filled in instead of starting
+    // empty and filling in while they look at it.
+    if (!m_browser.Running() && !m_browser.Start() && m_titleStatus.empty())
     {
-        m_titlePage = TitlePage::OpenLocal;
-        m_titleStatus.clear();
+        m_titleStatus = m_browser.Message();
     }
-    Caption("Same building, or an address you can give out.",
-            "People connect straight to this machine, so they need an address that reaches it. On "
-            "your own network that is automatic. From further away it needs a port forwarded on "
-            "your router, or a tunnel such as playit.gg pointed at UDP 27015.");
-
-    if (!m_titleStatus.empty())
+    if (m_browseRelay == nullptr)
     {
-        ImGui::Spacing();
-        ImGui::PushTextWrapPos(0.0f);
-        ImGui::TextColored({0.90f, 0.55f, 0.35f, 1.0f}, "%s", m_titleStatus.c_str());
-        ImGui::PopTextWrapPos();
+        m_browseRelay = std::make_shared<RelayCarrier>();
+        RelayCarrier::Settings settings;
+        settings.relayHost = cv_relayHost.Get();
+        settings.relayPort = static_cast<uint16_t>(std::clamp(cv_relayPort.Get(), 1, 65535));
+        m_browseRelay->Browse(settings);
     }
 }
 
-void PredationGame::DrawTitleOpenLocal()
+void PredationGame::StopBrowsing()
+{
+    m_browser.Stop();
+    if (m_browseRelay != nullptr)
+    {
+        m_browseRelay->Close();
+        m_browseRelay.reset();
+    }
+}
+
+void PredationGame::UpdateDiscovery(float frameDeltaSeconds)
+{
+    // Every frame, wherever the player is. Browsing stops when the menu is left, but the beacon
+    // does not: people join a game that is already running, and a host that stopped announcing
+    // itself the moment it went in would be a game nobody can find for exactly as long as it is
+    // worth finding.
+    m_browser.Tick(frameDeltaSeconds);
+
+    // Said out loud when the list changes, not every frame.
+    //
+    // The relay learned this lesson the hard way: its only output was a line printed when the
+    // number of lobbies changed, so a second player joining an existing lobby printed nothing, and
+    // "did my friend reach it at all" could not be answered from its own console. A list on a
+    // screen has the same problem from the other end -- when somebody says their game is not
+    // showing up, the question is whether the beacon never arrived or arrived and was rejected,
+    // and only the log can tell those apart.
+    for (const LanLobby& lobby : m_browser.Lobbies())
+    {
+        const std::string where = lobby.address + ":" + std::to_string(lobby.port);
+        if (std::find(m_seenOnLan.begin(), m_seenOnLan.end(), where) == m_seenOnLan.end())
+        {
+            m_seenOnLan.push_back(where);
+            PRED_LOG_INFO(Network, "Found a game on this network: {} at {} ({}/{}, protocol {})",
+                          lobby.name, where, lobby.players, lobby.maxPlayers, lobby.protocol);
+        }
+    }
+    m_seenOnLan.erase(std::remove_if(m_seenOnLan.begin(), m_seenOnLan.end(),
+                                     [this](const std::string& where)
+                                     {
+                                         for (const LanLobby& lobby : m_browser.Lobbies())
+                                         {
+                                             if (where == lobby.address + ":" +
+                                                              std::to_string(lobby.port))
+                                             {
+                                                 return false;
+                                             }
+                                         }
+                                         PRED_LOG_INFO(Network, "That game is gone: {}", where);
+                                         return true;
+                                     }),
+                      m_seenOnLan.end());
+
+    if (m_browseRelay != nullptr)
+    {
+        m_browseRelay->Poll(frameDeltaSeconds);
+    }
+    if (m_beacon.Running())
+    {
+        const int players =
+            1 + (m_sessionMode == SessionMode::Host ? static_cast<int>(m_host.ConnectedCount()) : 0);
+        LanLobby mine;
+        mine.name = LobbyName();
+        mine.port = static_cast<uint16_t>(m_hostPort);
+        mine.players = static_cast<uint8_t>(std::min(players, 15));
+        mine.maxPlayers = kMaxPlayers;
+        mine.started = m_screen == Screen::Playing;
+        mine.protocol = kProtocolVersion;
+        m_beacon.Describe(mine);
+        m_beacon.Tick(frameDeltaSeconds);
+    }
+}
+
+void PredationGame::StartHostLocal()
+{
+    StopSession();
+    StopLobby();
+    NetHost::Config config;
+    config.port = static_cast<uint16_t>(m_hostPort);
+    config.name = PlayerName();
+    auto transport = CreateUdpTransport();
+    transport->SetConditions(m_simulatedConditions);
+    if (!m_host.Start(std::move(transport), config, m_app->GetPhysics(), m_player.Config(),
+                      m_spawnPoint))
+    {
+        m_titleStatus = "Could not open port " + std::to_string(m_hostPort) +
+                        ". Something else on this machine is probably already using it.";
+        return;
+    }
+    m_sessionMode = SessionMode::Host;
+
+    // And announce it, which is the whole of the invitation on a local network. Not fatal: the
+    // game runs either way and anybody who types the address still gets in, so a beacon that could
+    // not open is a warning in the log rather than a refusal to start.
+    if (!m_beacon.Start())
+    {
+        PRED_LOG_WARN(Network, "Not announcing the game on the network: {}", m_beacon.Message());
+    }
+
+    // Straight in. There is nothing to hand out and nobody to wait for -- the beacon is the
+    // invitation, and it keeps going while the game runs.
+    StopBrowsing();
+    EnterWorld();
+}
+
+bool PredationGame::JoinAddress(const std::string& address, int port)
+{
+    if (address.empty())
+    {
+        m_titleStatus = "Nothing to join.";
+        return false;
+    }
+    StopSession();
+    StopLobby();
+
+    auto transport = CreateUdpTransport();
+    transport->SetConditions(m_simulatedConditions);
+    NetClient::Config config;
+    if (!m_client.Connect(std::move(transport), address, static_cast<uint16_t>(port), PlayerName(),
+                          config))
+    {
+        m_titleStatus = "Could not reach " + address + ":" + std::to_string(port) +
+                        ". Check they are still hosting and that their firewall is letting the "
+                        "game through.";
+        return false;
+    }
+
+    std::snprintf(m_joinAddress, sizeof(m_joinAddress), "%s", address.c_str());
+    m_joinPort = port;
+    cv_lastAddress.Set(m_joinAddress);
+    cv_lastPort.Set(m_joinPort);
+    m_sessionMode = SessionMode::Client;
+    // A client predicts where it will be, never whether it is alive.
+    m_player.SetDecidesDamage(false);
+    m_titleStatus.clear();
+    StopBrowsing();
+    return true;
+}
+
+bool PredationGame::JoinTyped(const std::string& text)
+{
+    // One box, and the game works out which of the two it was handed. A lobby code is six
+    // characters of a known alphabet and nothing else looks like one, so there is nothing to ask
+    // the player about.
+    uint32_t lobby = 0;
+    if (EncodeRelayCode(text, lobby))
+    {
+        StopBrowsing();
+        StartLobby(false, lobby);
+        return true;
+    }
+
+    // An address, then, with the port on the end of it if there is one. That is how anybody writes
+    // one down and how the host page hands them out.
+    std::string address = text;
+    int port = m_joinPort;
+    if (const size_t colon = address.rfind(':'); colon != std::string::npos)
+    {
+        const int typed = std::atoi(address.c_str() + colon + 1);
+        if (typed >= 1024 && typed <= 65535)
+        {
+            port = typed;
+        }
+        address = address.substr(0, colon);
+    }
+    if (address.empty())
+    {
+        m_titleStatus = "Nothing to join. Paste the code or address they sent you.";
+        return false;
+    }
+    return JoinAddress(address, port);
+}
+
+void PredationGame::DrawTitleBrowse()
 {
     const ImVec2 wide{-1.0f, 34.0f};
-    ImGui::TextDisabled("By address");
+    StartBrowsing();
+
+    // Which list, as a tab rather than a question. Both are already filled in behind it.
+    if (ImGui::BeginTabBar("##where"))
+    {
+        if (ImGui::BeginTabItem("On your network"))
+        {
+            m_online = false;
+            ImGui::EndTabItem();
+        }
+        if (ImGui::BeginTabItem("Over the internet"))
+        {
+            m_online = true;
+            ImGui::EndTabItem();
+        }
+        ImGui::EndTabBar();
+    }
     ImGui::Spacing();
 
-    // The address, not the advice to go and find one. Told to look up "your address", the obvious
-    // answer is the public one, which belongs to the router and not to this machine, and a friend
-    // on the same network cannot reach it.
-    //
-    // Machines that develop software have adapters nobody else can reach: WSL and Docker each
-    // install a virtual switch with an address that looks exactly like a LAN address in a list.
-    // Those are filtered out where the list is built, by whether the adapter has a default gateway,
-    // so what appears here is what somebody can actually type in.
-    static const std::vector<std::string> addresses = LocalNetworkAddresses();
-    if (addresses.empty())
+    // A fixed-height list, so the window does not jump about every time somebody opens or closes a
+    // game while it is being read.
+    int shown = 0;
+    ImGui::BeginChild("##games", {0.0f, 168.0f}, true);
+    if (!m_online)
     {
-        ImGui::TextDisabled("  no network address found");
-    }
-    for (const std::string& address : addresses)
-    {
-        ImGui::TextColored({0.70f, 0.80f, 0.95f, 1.0f}, "  %s:%d", address.c_str(), m_hostPort);
-        if (ImGui::IsItemClicked())
+        const std::vector<LanLobby>& found = m_browser.Lobbies();
+        for (size_t i = 0; i < found.size(); ++i)
         {
-            ImGui::SetClipboardText((address + ":" + std::to_string(m_hostPort)).c_str());
-        }
-    }
-    Caption("  click to copy",
-            "This address reaches people on your own network. From further away somebody needs one "
-            "that reaches this machine from outside: a port forwarded on your router, or a tunnel "
-            "such as playit.gg pointed at UDP 27015. Whatever that gives you goes in their Join "
-            "box.");
-
-    ImGui::Spacing();
-    if (ImGui::Button("Start", wide))
-    {
-        StopSession();
-        NetHost::Config config;
-        config.port = static_cast<uint16_t>(m_hostPort);
-        config.name = PlayerName();
-        auto transport = CreateUdpTransport();
-        transport->SetConditions(m_simulatedConditions);
-        if (m_host.Start(std::move(transport), config, m_app->GetPhysics(), m_player.Config(),
-                         m_spawnPoint))
-        {
-            m_sessionMode = SessionMode::Host;
-            EnterWorld();
-        }
-        else
-        {
-            m_titleStatus = "Could not open port " + std::to_string(m_hostPort);
-        }
-    }
-    ImGui::PushTextWrapPos(0.0f);
-    Caption("Windows will ask once. Say yes to both.",
-            "The first time the game opens a port, Windows Firewall asks whether to allow it on "
-            "private and on public networks. Saying no to either is the most common reason a game "
-            "nobody can join looks like it started correctly.");
-    ImGui::PopTextWrapPos();
-
-    // The port, and the router, below the thing everybody needs. Both are here because sometimes
-    // they matter and neither is the first question.
-    ImGui::Spacing();
-    if (ImGui::TreeNode("If that does not work"))
-    {
-        ImGui::AlignTextToFramePadding();
-        ImGui::TextUnformatted("Port");
-        ImGui::SameLine(86.0f);
-        ImGui::SetNextItemWidth(110.0f);
-        ImGui::InputInt("##hostport", &m_hostPort, 0, 0);
-        m_hostPort = std::clamp(m_hostPort, 1024, 65535);
-        ImGui::PushTextWrapPos(0.0f);
-        ImGui::TextDisabled("Change this only if something else already has the port.");
-        ImGui::SetItemTooltip("%s", "Any port from 1024 to 65535 will do. Everybody has to use the "
-                              "same one, so if you change it, tell them.");
-        ImGui::PopTextWrapPos();
-
-        // And the address from outside, if the router agreed to forward the port. It often will
-        // not, which is why the code swap exists and is offered first.
-        switch (m_ports.Status())
-        {
-        case PortMapper::State::Working:
-            ImGui::TextDisabled("Asking the router about the outside world...");
-            break;
-        case PortMapper::State::Open:
-        {
-            const std::string outside = m_ports.ExternalAddress();
-            if (!outside.empty())
+            const LanLobby& lobby = found[i];
+            ImGui::PushID(static_cast<int>(i));
+            // A different build is listed and greyed rather than hidden. "Their game is not showing
+            // up" is a far worse thing to be left with than "their game says it is a different
+            // version", and only one of the two says what to do about it.
+            const bool sameBuild = lobby.protocol == kProtocolVersion;
+            const bool full = lobby.players >= lobby.maxPlayers;
+            ImGui::BeginDisabled(!sameBuild || full);
+            if (ImGui::Button("Join", {64.0f, 0.0f}))
             {
-                ImGui::TextColored({0.70f, 0.95f, 0.75f, 1.0f}, "  %s:%d  (from anywhere)",
-                                   outside.c_str(), m_hostPort);
-                if (ImGui::IsItemClicked())
-                {
-                    ImGui::SetClipboardText((outside + ":" + std::to_string(m_hostPort)).c_str());
-                }
+                JoinAddress(lobby.address, lobby.port);
+                ImGui::EndDisabled();
+                ImGui::PopID();
+                ImGui::EndChild();
+                return;
+            }
+            ImGui::EndDisabled();
+            ImGui::SameLine();
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextUnformatted(lobby.name.c_str());
+            ImGui::SameLine(0.0f, 12.0f);
+            ImGui::TextDisabled("%d/%d", static_cast<int>(lobby.players),
+                                static_cast<int>(lobby.maxPlayers));
+            ImGui::SameLine(0.0f, 12.0f);
+            if (!sameBuild)
+            {
+                ImGui::TextColored({0.90f, 0.55f, 0.35f, 1.0f}, "different version");
+            }
+            else if (full)
+            {
+                ImGui::TextDisabled("full");
             }
             else
             {
+                ImGui::TextDisabled(lobby.started ? "in progress" : "waiting");
+            }
+            ImGui::PopID();
+            ++shown;
+        }
+        if (shown == 0)
+        {
+            ImGui::TextDisabled("  Looking for games on this network...");
+            if (!m_browser.Running())
+            {
                 ImGui::PushTextWrapPos(0.0f);
-                ImGui::TextDisabled("%s", m_ports.Message().c_str());
+                ImGui::TextColored({0.90f, 0.55f, 0.35f, 1.0f}, "  %s", m_browser.Message().c_str());
                 ImGui::PopTextWrapPos();
             }
-            break;
         }
-        case PortMapper::State::Failed:
-            ImGui::PushTextWrapPos(0.0f);
-            ImGui::TextDisabled("%s", m_ports.Message().c_str());
-            ImGui::PopTextWrapPos();
-            break;
-        case PortMapper::State::Idle:
-        default:
-            break;
+    }
+    else
+    {
+        const std::vector<RelayLobbyInfo> open =
+            m_browseRelay != nullptr ? m_browseRelay->Lobbies() : std::vector<RelayLobbyInfo>{};
+        for (size_t i = 0; i < open.size(); ++i)
+        {
+            const RelayLobbyInfo& lobby = open[i];
+            ImGui::PushID(static_cast<int>(i));
+            const bool full = lobby.players >= kMaxPlayers;
+            ImGui::BeginDisabled(full);
+            if (ImGui::Button("Join", {64.0f, 0.0f}))
+            {
+                const uint32_t code = lobby.code;
+                ImGui::EndDisabled();
+                ImGui::PopID();
+                ImGui::EndChild();
+                StopBrowsing();
+                StartLobby(false, code);
+                return;
+            }
+            ImGui::EndDisabled();
+            ImGui::SameLine();
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextUnformatted(lobby.name.empty() ? "a game" : lobby.name.c_str());
+            ImGui::SameLine(0.0f, 12.0f);
+            ImGui::TextDisabled("%d/%d", static_cast<int>(lobby.players),
+                                static_cast<int>(kMaxPlayers));
+            ImGui::SameLine(0.0f, 12.0f);
+            ImGui::TextDisabled("%s", full ? "full" : (lobby.started ? "in progress" : "waiting"));
+            ImGui::PopID();
+            ++shown;
+        }
+        if (shown == 0)
+        {
+            const std::string trouble =
+                m_browseRelay != nullptr ? m_browseRelay->Message() : std::string();
+            if (trouble.empty())
+            {
+                ImGui::TextDisabled("  Nobody has a game open.");
+            }
+            else
+            {
+                // Two very different things that look identical as an empty list, and only one of
+                // them is worth going and fixing.
+                ImGui::PushTextWrapPos(0.0f);
+                ImGui::TextColored({0.90f, 0.55f, 0.35f, 1.0f}, "  %s", trouble.c_str());
+                ImGui::PopTextWrapPos();
+            }
+        }
+    }
+    ImGui::EndChild();
+
+    ImGui::Spacing();
+    if (ImGui::Button("Host a game", wide))
+    {
+        m_titlePage = TitlePage::Host;
+        m_titleStatus.clear();
+    }
+
+    // Still here, because a code sent to one person is how you run a game that is not on a list,
+    // and because somebody behind a network that eats broadcast traffic needs a way in. Folded
+    // away, because it is no longer the first thing anybody needs.
+    ImGui::Spacing();
+    if (ImGui::TreeNode("Join with a code or an address"))
+    {
+        ImGui::SetNextItemWidth(-1.0f);
+        const bool entered = ImGui::InputText("##joinwhatever", m_joinInput, sizeof(m_joinInput),
+                                              ImGuiInputTextFlags_EnterReturnsTrue);
+        if (ImGui::Button("Paste", {96.0f, 0.0f}))
+        {
+            if (const char* clip = ImGui::GetClipboardText(); clip != nullptr)
+            {
+                std::snprintf(m_joinInput, sizeof(m_joinInput), "%s", clip);
+            }
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Join", {96.0f, 0.0f}) || entered)
+        {
+            if (JoinTyped(m_joinInput))
+            {
+                ImGui::TreePop();
+                return;
+            }
         }
         ImGui::TreePop();
     }
@@ -2652,85 +2876,103 @@ void PredationGame::DrawTitleOpenLocal()
     }
 }
 
-void PredationGame::DrawTitleJoin()
+void PredationGame::DrawTitleHost()
 {
     const ImVec2 wide{-1.0f, 34.0f};
-    ImGui::TextDisabled("Join a game");
+    ImGui::TextDisabled("Host a game");
     ImGui::Spacing();
-    ImGui::PushTextWrapPos(0.0f);
-    ImGui::TextUnformatted("Paste whatever they sent you: a code, or an address if you are both on "
-                           "the same network.");
-    ImGui::PopTextWrapPos();
 
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted("Called");
+    ImGui::SameLine(86.0f);
     ImGui::SetNextItemWidth(-1.0f);
-    ImGui::InputText("##joinwhatever", m_joinInput, sizeof(m_joinInput));
-    if (ImGui::Button("Paste from the clipboard", wide))
+    ImGui::InputTextWithHint("##lobbyname", LobbyName().c_str(), m_lobbyName, sizeof(m_lobbyName));
+    ImGui::Spacing();
+
+    // The same two, from the other end. Which one somebody wants is a fact about who they are
+    // playing with, and it is the only thing on this page that changes anything.
+    if (ImGui::RadioButton("On your network", !m_online))
     {
-        if (const char* clip = ImGui::GetClipboardText(); clip != nullptr)
-        {
-            std::snprintf(m_joinInput, sizeof(m_joinInput), "%s", clip);
-        }
+        m_online = false;
     }
-
-    if (ImGui::Button("Join", wide))
+    Caption("  Same house, same wifi. Nothing to set up.",
+            "Your game announces itself on the network and appears in their list by itself. No "
+            "code, no address, no router. This is the right one whenever everybody is in the same "
+            "building.");
+    if (ImGui::RadioButton("Over the internet", m_online))
     {
-        // One box, and the game works out which of the two it was handed. A lobby code is six
-        // characters of a known alphabet and nothing else looks like one, so there is nothing to
-        // ask the player about.
-        uint32_t lobby = 0;
-        if (EncodeRelayCode(m_joinInput, lobby))
-        {
-            StartLobby(false, lobby);
-            return;
-        }
+        m_online = true;
+    }
+    Caption("  Anywhere. Everyone connects out to a relay.",
+            "Both ends connect outwards to a relay that passes messages between them, so there is "
+            "nothing to forward on anybody's router and it works the same on every network. Your "
+            "game appears in the relay's list, and you also get a code to send to one person.");
 
-        // An address, then, with the port on the end of it if there is one. The panel that hands
-        // these out writes them that way, because that is how anybody writes one down.
-        std::string address = m_joinInput;
-        int port = m_joinPort;
-        if (const size_t colon = address.rfind(':'); colon != std::string::npos)
+    ImGui::Spacing();
+    if (ImGui::Button("Start", wide))
+    {
+        m_titleStatus.clear();
+        if (m_online)
         {
-            const int typed = std::atoi(address.c_str() + colon + 1);
-            if (typed >= 1024 && typed <= 65535)
-            {
-                port = typed;
-            }
-            address = address.substr(0, colon);
-        }
-        if (address.empty())
-        {
-            m_titleStatus = "Nothing to join. Paste what they sent you.";
-            return;
-        }
-
-        std::snprintf(m_joinAddress, sizeof(m_joinAddress), "%s", address.c_str());
-        m_joinPort = port;
-        cv_lastAddress.Set(m_joinAddress);
-        cv_lastPort.Set(m_joinPort);
-        StopSession();
-        auto transport = CreateUdpTransport();
-        transport->SetConditions(m_simulatedConditions);
-        NetClient::Config config;
-        if (m_client.Connect(std::move(transport), m_joinAddress, static_cast<uint16_t>(m_joinPort),
-                             PlayerName(), config))
-        {
-            m_sessionMode = SessionMode::Client;
-            // A client predicts where it will be, never whether it is alive.
-            m_player.SetDecidesDamage(false);
-            m_titleStatus.clear();
+            StopBrowsing();
+            StartLobby(true, 0);
         }
         else
         {
-            m_titleStatus = std::string("Could not reach ") + m_joinAddress + ":" +
-                            std::to_string(m_joinPort) +
-                            ". Check they are hosting, that this is their address on this network "
-                            "rather than their public one, and that their firewall is letting the "
-                            "game through.";
+            StartHostLocal();
+        }
+        return;
+    }
+
+    if (!m_online)
+    {
+        ImGui::PushTextWrapPos(0.0f);
+        Caption("Windows will ask once. Say yes to both.",
+                "The first time the game opens a port, Windows Firewall asks whether to allow it "
+                "on private and on public networks. Saying no to either is the most common reason "
+                "a game nobody can find looks like it started correctly.");
+        ImGui::PopTextWrapPos();
+
+        // The address, and the port, for a network that eats broadcast traffic -- some office and
+        // campus networks do, and a few routers with client isolation on. Folded away, because it
+        // is the exception rather than the thing to read first.
+        ImGui::Spacing();
+        if (ImGui::TreeNode("If your game does not appear in their list"))
+        {
+            ImGui::PushTextWrapPos(0.0f);
+            ImGui::TextDisabled("Send them one of these and they can type it in.");
+            ImGui::PopTextWrapPos();
+            static const std::vector<std::string> addresses = LocalNetworkAddresses();
+            if (addresses.empty())
+            {
+                ImGui::TextDisabled("  no network address found");
+            }
+            for (const std::string& address : addresses)
+            {
+                ImGui::TextColored({0.70f, 0.80f, 0.95f, 1.0f}, "  %s:%d", address.c_str(),
+                                   m_hostPort);
+                if (ImGui::IsItemClicked())
+                {
+                    ImGui::SetClipboardText((address + ":" + std::to_string(m_hostPort)).c_str());
+                }
+            }
+            ImGui::TextDisabled("  click to copy");
+
+            ImGui::Spacing();
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextUnformatted("Port");
+            ImGui::SameLine(86.0f);
+            ImGui::SetNextItemWidth(110.0f);
+            ImGui::InputInt("##hostport", &m_hostPort, 0, 0);
+            m_hostPort = std::clamp(m_hostPort, 1024, 65535);
+            ImGui::TextDisabled("Change this only if something else already has the port.");
+            ImGui::TreePop();
         }
     }
 
     if (!m_titleStatus.empty())
     {
+        ImGui::Spacing();
         ImGui::PushTextWrapPos(0.0f);
         ImGui::TextColored({0.90f, 0.55f, 0.35f, 1.0f}, "%s", m_titleStatus.c_str());
         ImGui::PopTextWrapPos();
@@ -2752,7 +2994,8 @@ void PredationGame::StartLobby(bool asHost, uint32_t code)
     settings.relayPort = static_cast<uint16_t>(std::clamp(cv_relayPort.Get(), 1, 65535));
     PRED_LOG_INFO(Network, "Lobby: {} through relay {}:{}", asHost ? "hosting" : "joining",
                   settings.relayHost, settings.relayPort);
-    const bool started = asHost ? m_relay->Host(settings) : m_relay->Join(settings, code);
+    const bool started =
+        asHost ? m_relay->Host(settings, LobbyName()) : m_relay->Join(settings, code);
     if (!started)
     {
         PRED_LOG_WARN(Network, "Lobby failed to start: {}", m_relay->Message());
@@ -3707,36 +3950,28 @@ void PredationGame::DrawTitleScreen()
     }
     ImGui::Spacing();
 
-    if (m_titlePage == TitlePage::Open || m_titlePage == TitlePage::OpenLocal)
+    if (m_titlePage == TitlePage::Browse || m_titlePage == TitlePage::Host)
     {
-        const bool local = m_titlePage == TitlePage::OpenLocal;
-        if (local)
+        const bool hosting = m_titlePage == TitlePage::Host;
+        if (hosting)
         {
-            DrawTitleOpenLocal();
+            DrawTitleHost();
         }
         else
         {
-            DrawTitleOpen();
+            DrawTitleBrowse();
         }
         ImGui::Spacing();
         if (ImGui::Button("Back", wide))
         {
-            // One step back, not all the way out: the local page is inside Open.
-            m_titlePage = local ? TitlePage::Open : TitlePage::Root;
-            m_titleStatus.clear();
-        }
-        ImGui::Spacing();
-        ImGui::Separator();
-        ImGui::TextDisabled("by jojozagjos  |  v" PRED_VERSION_STRING);
-        return;
-    }
-    if (m_titlePage == TitlePage::Join)
-    {
-        DrawTitleJoin();
-        ImGui::Spacing();
-        if (ImGui::Button("Back", wide))
-        {
-            m_titlePage = TitlePage::Root;
+            // One step back, not all the way out: the host page is reached from the list.
+            m_titlePage = hosting ? TitlePage::Browse : TitlePage::Root;
+            if (!hosting)
+            {
+                // Nothing to listen for from the root menu. The beacon is a different thing and
+                // keeps going, because it belongs to a game rather than to this screen.
+                StopBrowsing();
+            }
             m_titleStatus.clear();
         }
         ImGui::Spacing();
@@ -3745,15 +3980,11 @@ void PredationGame::DrawTitleScreen()
         return;
     }
 
-    if (ImGui::Button("Open a game", wide))
+    // One button, because there is now one thing to do: look at the games. Hosting is on that
+    // screen, next to the list of what hosting produces.
+    if (ImGui::Button("Play", wide))
     {
-        m_titlePage = TitlePage::Open;
-        m_titleStatus.clear();
-    }
-    ImGui::Spacing();
-    if (ImGui::Button("Join a game", wide))
-    {
-        m_titlePage = TitlePage::Join;
+        m_titlePage = TitlePage::Browse;
         m_titleStatus.clear();
     }
 
@@ -4581,6 +4812,9 @@ void PredationGame::StopSession()
     {
         m_client.Disconnect();
     }
+    // Stop announcing, whichever end this was. A beacon still going for a game that has ended is a
+    // row in everybody's list that fails when it is clicked, which is worse than not being there.
+    m_beacon.Stop();
     for (auto& avatar : m_avatars)
     {
         avatar->body.Destroy(m_scene);
@@ -4898,7 +5132,7 @@ void PredationGame::RegisterNetCommands()
         [this](const std::vector<std::string>&) { m_torchOn = !m_torchOn; });
 
     console.RegisterCommand(
-        "menu", "Show a page of the title screen: menu <root|open|local|join|settings>",
+        "menu", "Show a page of the title screen: menu <root|browse|host|settings>",
         [this](const std::vector<std::string>& args)
         {
             // So a menu page can be looked at without clicking through to it, which is what makes
@@ -4909,31 +5143,88 @@ void PredationGame::RegisterNetCommands()
             {
                 m_titlePage = TitlePage::Root;
             }
-            else if (page == "open")
+            else if (page == "browse")
             {
-                m_titlePage = TitlePage::Open;
+                m_titlePage = TitlePage::Browse;
             }
-            else if (page == "local")
+            else if (page == "host")
             {
-                m_titlePage = TitlePage::OpenLocal;
+                m_titlePage = TitlePage::Host;
             }
             else if (page == "settings")
             {
                 m_settingsOpen = true;
             }
-            else if (page == "join")
-            {
-                m_titlePage = TitlePage::Join;
-            }
             else
             {
-                m_app->GetConsole().PrintError("Unknown page. Try root, open, local or join.");
+                m_app->GetConsole().PrintError("Unknown page. Try root, browse, host or settings.");
                 return;
             }
             m_screen = Screen::Title;
             m_titleStatus.clear();
         },
-        "menu <root|open|local|join|settings>");
+        "menu <root|browse|host|settings>");
+
+    console.RegisterCommand(
+        "host_lan", "Open a game on this network and go in, as the host page's Start button does",
+        [this](const std::vector<std::string>& args)
+        {
+            if (args.size() >= 2)
+            {
+                // Everything after the command, not just the first word: a game called "kitchen pc"
+                // is two arguments and one name.
+                std::string name = args[1];
+                for (size_t i = 2; i < args.size(); ++i)
+                {
+                    name += " " + args[i];
+                }
+                std::snprintf(m_lobbyName, sizeof(m_lobbyName), "%s", name.c_str());
+            }
+            StartHostLocal();
+            if (m_sessionMode != SessionMode::Host)
+            {
+                m_app->GetConsole().PrintError(m_titleStatus);
+                return;
+            }
+            m_app->GetConsole().Print("Hosting \"" + LobbyName() + "\" on port " +
+                                      std::to_string(m_hostPort) +
+                                      (m_beacon.Running() ? ", announced on this network"
+                                                          : ", NOT announced: " + m_beacon.Message()));
+            // The console's own output does not reach the log file, and this is a command whose
+            // whole purpose is to be checked from a headless run.
+            PRED_LOG_INFO(Network, "host_lan: hosting \"{}\" on {}, announcing {}", LobbyName(),
+                          m_hostPort, m_beacon.Running());
+        },
+        "host_lan [name]");
+
+    console.RegisterCommand(
+        "games", "List the games this machine can currently see",
+        [this](const std::vector<std::string>&)
+        {
+            StartBrowsing();
+            Console& out = m_app->GetConsole();
+            const std::vector<LanLobby>& local = m_browser.Lobbies();
+            out.Print("On this network: " + std::to_string(local.size()));
+            for (const LanLobby& lobby : local)
+            {
+                const std::string line = "  " + lobby.name + "  " + lobby.address + ":" +
+                                         std::to_string(lobby.port) + "  " +
+                                         std::to_string(lobby.players) + "/" +
+                                         std::to_string(lobby.maxPlayers);
+                out.Print(line);
+                PRED_LOG_INFO(Network, "games lan:{}", line);
+            }
+            const std::vector<RelayLobbyInfo> open =
+                m_browseRelay != nullptr ? m_browseRelay->Lobbies() : std::vector<RelayLobbyInfo>{};
+            out.Print("Over the internet: " + std::to_string(open.size()));
+            for (const RelayLobbyInfo& lobby : open)
+            {
+                const std::string line = "  " + lobby.name + "  " + DecodeRelayCode(lobby.code) +
+                                         "  " + std::to_string(lobby.players);
+                out.Print(line);
+                PRED_LOG_INFO(Network, "games relay:{}", line);
+            }
+        });
 
     console.RegisterCommand(
         "snd", "Play a sound by name, to hear one without making it happen: snd <name> [gain]",
@@ -7376,6 +7667,10 @@ void PredationGame::OnUpdate(double dt, double alpha)
     AgeTracers(deltaSeconds);
     // Marks left on anything the physics moves go where it goes.
     FollowBulletHoles();
+    // Beacons, out and in. Here rather than on the browser screen because the outgoing half belongs
+    // to a running game: somebody hosting has to stay findable after they go in, which is exactly
+    // when the screen that would have ticked it has stopped being drawn.
+    UpdateDiscovery(deltaSeconds);
     // The relay carrier owns a socket and has to be read. Done here rather than inside the lobby
     // screen because the lobby screen stops being drawn the moment the game starts, and the socket
     // carries the game.

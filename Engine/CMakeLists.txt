@@ -101,6 +101,8 @@ set(PRED_ENGINE_SOURCES
     Net/RelayCarrier.cpp
     Net/PortMapper.h
     Net/PortMapper.cpp
+    Net/LanDiscovery.h
+    Net/LanDiscovery.cpp
 
     Assets/MeshImport.h
     Assets/MeshImport.cpp

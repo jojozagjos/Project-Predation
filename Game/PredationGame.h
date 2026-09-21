@@ -14,6 +14,7 @@
 #include "Engine/Net/RelayCarrier.h"
 #include "Game/Net/NetSession.h"
 #include "Engine/Net/PortMapper.h"
+#include "Engine/Net/LanDiscovery.h"
 #include "Game/Player/PlayerBody.h"
 #include "Game/Player/PlayerController.h"
 #include "Game/Weapons/ShotResolver.h"
@@ -213,10 +214,26 @@ private:
     // player back exactly where they were. In a session nothing stops simulating, because a shared
     // world cannot be paused by one person in it.
     // The settings panel, drawn inside the menu and inside the pause screen alike.
-    // The two things anybody came to the menu to do, each on its own page.
-    void DrawTitleOpen();
-    void DrawTitleOpenLocal();
-    void DrawTitleJoin();
+
+    // The browser: a list of games you can actually join, rather than a page of questions about
+    // ports and addresses. Everything about how a game is reached belongs to the two lists it can
+    // be in, not to the player.
+    void DrawTitleBrowse();
+    void DrawTitleHost();
+    // What this machine's game is called in everybody else's list. Falls back to the player's own
+    // name, because an unnamed row still needs the one thing that tells it apart: whose it is.
+    std::string LobbyName() const;
+    // Finding games. On your own network that is a beacon and costs nothing; over the internet it
+    // is a question to the relay, which already knows.
+    void StartBrowsing();
+    void StopBrowsing();
+    void UpdateDiscovery(float frameDeltaSeconds);
+    // Starting one. LAN goes straight into the world -- there is nothing to hand out, because the
+    // beacon is the invitation -- and Online goes to the lobby screen for the code.
+    void StartHostLocal();
+    // Joining one. Both take whatever the row or the box gave them and say why if it did not work.
+    bool JoinAddress(const std::string& address, int port);
+    bool JoinTyped(const std::string& text);
     // The lobby, over a relay. One code, and anybody who types it joins: there is nothing to swap
     // and nothing that goes stale while somebody reads it out.
     void StartLobby(bool asHost, uint32_t code);
@@ -547,16 +564,32 @@ private:
     // Whether the settings panel is showing, on whichever screen is up. One flag, because only one
     // of those screens is ever on at a time.
     bool m_settingsOpen = false;
-    // Swapping codes with the other player, and the connection it is trying to make.
-    // Which page of the menu is showing. The first one is two buttons and a name.
+    // Which page of the menu is showing. There used to be four, one per way of reaching a game,
+    // and the player had to know which of them their situation was before they could look at
+    // anything. Now there are two: a list of games, and the page for making one.
     enum class TitlePage : uint8_t
     {
         Root,
-        Open,
-        OpenLocal,
-        Join
+        Browse,
+        Host
     };
     TitlePage m_titlePage = TitlePage::Root;
+    // Which list is showing, and which kind of game the host page will open. One flag for both,
+    // because they are the same question asked from either end: your own network, or the internet.
+    bool m_online = false;
+    // Finding games on this network, and the beacon that puts this machine in everybody else's
+    // list while it is hosting one.
+    LanListener m_browser;
+    LanBeacon m_beacon;
+    // A second carrier, only ever used to ask the relay what is open. Separate from m_relay
+    // because that one carries the game: browsing has to work before there is a game and has to
+    // stop the moment there is one.
+    std::shared_ptr<RelayCarrier> m_browseRelay;
+    // What this machine's game is called in other people's lists.
+    char m_lobbyName[24] = "";
+    // Which games on the network have already been mentioned in the log, so appearing and going
+    // are each said once rather than every frame.
+    std::vector<std::string> m_seenOnLan;
     // Whether the lobby screen is up, and whether this machine opened the lobby or joined one.
     bool m_inLobby = false;
     bool m_hostingLobby = false;

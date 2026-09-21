@@ -131,6 +131,10 @@ void RelayCarrier::Close()
     m_slots.clear();
     m_incoming.clear();
     m_relayAddress.clear();
+    m_browsing = false;
+    m_lobbies.clear();
+    m_listTimer = 0.0f;
+    m_listSilence = 0.0f;
     if (m_socketSystem)
     {
         SocketSystem::Release();
@@ -138,7 +142,7 @@ void RelayCarrier::Close()
     }
 }
 
-bool RelayCarrier::Host(const Settings& settings)
+bool RelayCarrier::Host(const Settings& settings, const std::string& name)
 {
     if (!Join(settings, 0))
     {
@@ -146,8 +150,31 @@ bool RelayCarrier::Host(const Settings& settings)
     }
     std::lock_guard<std::mutex> lock(m_mutex);
     m_hosting = true;
+    m_lobbyName = name;
     RelayPacket request;
     request.kind = RelayMessage::Host;
+    request.name = name;
+    SendToRelay(request);
+    return true;
+}
+
+bool RelayCarrier::Browse(const Settings& settings)
+{
+    // Join with no code opens the socket and sends nothing, which is exactly what browsing needs.
+    if (!Join(settings, 0))
+    {
+        return false;
+    }
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_browsing = true;
+    // Not Connecting. That state gives up after a timeout, which is right for joining a particular
+    // lobby and wrong here: a browser that has heard nothing should keep asking, because the answer
+    // may simply be that the relay was restarted or the list was empty a second ago.
+    m_state = State::Browsing;
+    m_listTimer = 0.0f;
+    m_listSilence = 0.0f;
+    RelayPacket request;
+    request.kind = RelayMessage::ListLobbies;
     SendToRelay(request);
     return true;
 }
@@ -287,10 +314,34 @@ void RelayCarrier::Poll(float dt)
             RelayPacket again;
             again.kind = m_hosting ? RelayMessage::Host : RelayMessage::Join;
             again.code = m_code;
+            again.name = m_lobbyName;
             if (m_hosting || m_code != 0)
             {
                 SendToRelay(again);
             }
+        }
+    }
+    else if (m_state == State::Browsing)
+    {
+        // Asked again on a timer rather than once, because the answer changes: lobbies open and
+        // close while somebody is reading the list. It also covers a lost request, which for a
+        // browser is invisible otherwise -- the list would simply stay empty for ever.
+        m_listTimer += dt;
+        m_listSilence += dt;
+        if (m_listTimer >= 1.0f)
+        {
+            m_listTimer = 0.0f;
+            RelayPacket request;
+            request.kind = RelayMessage::ListLobbies;
+            SendToRelay(request);
+        }
+        // Silence is reported without giving up. "Nobody is playing" and "the relay is not there"
+        // are the same empty list, and only one of them is worth going and fixing.
+        if (m_listSilence > m_settings.connectTimeoutSeconds && m_message.empty())
+        {
+            m_message = "No answer from the relay at " + m_settings.relayHost + ":" +
+                        std::to_string(m_settings.relayPort) +
+                        ". Games on your own network are found without it.";
         }
     }
     else if (m_state == State::Ready)
@@ -337,6 +388,12 @@ void RelayCarrier::Poll(float dt)
 
         switch (packet.kind)
         {
+        case RelayMessage::LobbyList:
+            m_lobbies = packet.lobbies;
+            m_listSilence = 0.0f;
+            m_message.clear();
+            break;
+
         case RelayMessage::Hosted:
             m_code = packet.code;
             m_slot = packet.slot;
@@ -426,6 +483,12 @@ RelayRejection RelayCarrier::Rejection() const
 {
     std::lock_guard<std::mutex> lock(m_mutex);
     return m_rejection;
+}
+
+std::vector<RelayLobbyInfo> RelayCarrier::Lobbies() const
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    return m_lobbies;
 }
 
 size_t RelayCarrier::Links() const
