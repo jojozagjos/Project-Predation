@@ -15,6 +15,9 @@
 #include "Game/Net/NetSession.h"
 #include "Engine/Net/LanDiscovery.h"
 #include "Engine/Net/PortMapper.h"
+#include "Engine/Navigation/NavMesh.h"
+#include "Game/Creature/Creature.h"
+#include "Game/Creature/Noise.h"
 #include "Game/Player/PlayerBody.h"
 #include "Game/Player/PlayerController.h"
 #include "Game/Weapons/BulletHole.h"
@@ -88,6 +91,39 @@ private:
     void DrawDebugOverlays();
     // What F3 adds in the public build: ping, or everybody's ping when hosting.
     void DrawConnectionReadout();
+
+    // --- The creature --------------------------------------------------------------------------
+    //
+    // In PredationGameCreatures.cpp. Only the authority -- the host, or a game played alone -- runs a
+    // creature's mind; everybody else is shown where it is.
+    NavMesh m_nav;
+    std::vector<std::unique_ptr<Creature>> m_creatures;
+    // Sounds made since the creatures last listened. Reported by whatever made them, drained each
+    // tick by the creatures' hearing.
+    std::vector<Noise> m_noises;
+    float m_creatureClock = 0.0f;
+    bool m_showBrain = false;
+    int m_inspectedCreature = 0;
+    // When each player last made a voice noise, so talking is a sound every half second rather than
+    // fifty times a second.
+    std::map<int, float> m_lastVoiceNoise;
+    void BuildNavigation();
+    void SpawnCreatures();
+    // Somewhere far from `awayFrom`, or, when `exactly` is given, on the walkable surface nearest it.
+    bool SpawnCreature(uint32_t seed, const glm::vec3& awayFrom, const glm::vec3* exactly = nullptr);
+    void ClearCreatures();
+    void UpdateCreatures(float dt);
+    void UpdateCreatureVisuals(float dt);
+    void MakeNoise(NoiseKind kind, const glm::vec3& at, float reach, int player);
+    // After the authority has worked out what a round hit: the creature hears the shot and the
+    // impact, and takes the damage if it was what was hit -- in which case the result stops being a
+    // surface, so no bullet hole is left on it. True when it struck a creature.
+    bool OnShotResolved(ShotResult& result, const glm::vec3& origin, int shooter);
+    float LightAt(const glm::vec3& feet, bool torchOn) const;
+    Creature* CreatureForBody(BodyHandle body);
+    void DrawBrainInspector();
+    void DrawCreatureOverlays(DebugDraw& draw);
+    void RegisterCreatureCommands();
     void SyncDynamicProps();
     void SpawnProp(bool sphere, float impulse);
     void ClearProps();

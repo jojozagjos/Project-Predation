@@ -143,9 +143,22 @@ void CreatureBrain::OnDamaged(float amount, int byPlayer, const glm::vec3& from,
         track->harm += amount / 100.0f;
         track->confidence = 1.0f;
         track->lastKnown = from;
+        ResolveInterestNear(from);
     }
     Log(time, Format("hurt for %.0f", amount) +
                   (FindTrack(byPlayer) != nullptr ? " by " + FindTrack(byPlayer)->name : ""));
+}
+
+void CreatureBrain::ResolveInterestNear(const glm::vec3& where)
+{
+    // Something it was going to look into has been explained: it was whoever is at `where`. The
+    // question was "what was that", and now it knows. Left open, the question went on competing with
+    // hunting the answer -- a creature missed and then hit by the same shooter kept walking over to
+    // look at the first shot.
+    if (!m_interest.resolved && glm::distance(m_interest.position, where) < 6.0f)
+    {
+        m_interest.resolved = true;
+    }
 }
 
 void CreatureBrain::Update(const CreatureSenses& senses, float dt)
@@ -308,14 +321,34 @@ void CreatureBrain::Perceive(const CreatureSenses& senses, float dt)
         m_state.arousal = std::min(m_state.arousal + strength * 0.3f, 1.0f);
 
         // Whose it was, when it was somebody's: a footstep puts them roughly there.
+        bool knownSource = false;
         if (noise.player >= 0)
         {
-            if (Track* track = FindTrack(noise.player); track != nullptr && !track->visible)
+            if (Track* track = FindTrack(noise.player); track != nullptr)
             {
-                track->lastKnown = noise.position;
-                track->lastHeard = senses.time;
-                track->confidence = std::max(track->confidence, 0.3f + 0.4f * strength);
+                // It knows who that was when it can see them, or when they are the one who hurt it.
+                // Then the sound is not a question to go and answer; it is where they are, and
+                // hunting them is already an option. Left as a question of its own, the two competed,
+                // and a creature shot in the back walked off to "investigate the gunshot" rather than
+                // going for the person it knew had fired it.
+                knownSource = track->visible || track->harm > 0.0f;
+                if (!track->visible)
+                {
+                    track->lastKnown = noise.position;
+                    track->lastHeard = senses.time;
+                    const float floor = knownSource ? 0.5f + 0.5f * strength : 0.3f + 0.4f * strength;
+                    track->confidence = std::max(track->confidence, floor);
+                }
+                if (knownSource && noise.kind == NoiseKind::Gunshot)
+                {
+                    Log(senses.time, "heard " + track->name + " fire" + Format(" (%.0f%%)", strength * 100.0f));
+                }
             }
+        }
+        if (knownSource)
+        {
+            ResolveInterestNear(noise.position);
+            continue;
         }
 
         // A gunshot or a door is worth more than a footstep at the same loudness: it is the sound of

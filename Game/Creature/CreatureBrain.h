@@ -200,6 +200,8 @@ private:
     void Log(float time, std::string what);
     void Switch(Behavior behavior, int target, const std::string& reason, float time);
     bool PickFleePoint(const CreatureSenses& senses, glm::vec3& out);
+    // Closes whatever it was going to look into near `where`, now that it knows who was there.
+    void ResolveInterestNear(const glm::vec3& where);
 
     CreatureTraits m_traits;
     SeededRandom m_random;

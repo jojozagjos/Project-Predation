@@ -437,6 +437,10 @@ bool PredationGame::OnInit(Application& app)
     m_world.SetTextures(app.GetTextures());
     m_world.Build(m_scene, app.GetMeshes(), app.GetPhysics(), m_interactions, m_items, &m_weaponData);
     app.GetPhysics().OptimizeBroadPhase();
+    // The walkable surface the creature moves over, worked out from the level's solid geometry.
+    // Once, here: the level does not change shape, and building it takes a noticeable fraction of
+    // a second.
+    BuildNavigation();
 
     // Checked once the whole level exists, so a piece placed on top of another is caught here
     // rather than by walking into it. 10 mm is below anything anyone would notice.
@@ -455,6 +459,7 @@ bool PredationGame::OnInit(Application& app)
 
     RegisterCommands();
     RegisterNetCommands();
+    RegisterCreatureCommands();
     // The game opens at the menu, with the world already built behind it.
     std::snprintf(m_joinAddress, sizeof(m_joinAddress), "%s", cv_lastAddress.Get().c_str());
     std::snprintf(m_playerName, sizeof(m_playerName), "%s", cv_playerName.Get().c_str());
@@ -1281,6 +1286,7 @@ bool PredationGame::PerformInteraction(InteractionKind kind, int index, uint8_t 
         if (const WorldObjects::Door* opened = m_world.GetDoor(index); opened != nullptr)
         {
             PlaySound(m_sounds.door.Pick(), opened->hinge, 0.8f);
+            MakeNoise(NoiseKind::Door, opened->hinge, NoiseReach::kDoor, player);
         }
         if (m_sessionMode == SessionMode::Host)
         {
@@ -1329,6 +1335,7 @@ bool PredationGame::PerformInteraction(InteractionKind kind, int index, uint8_t 
         {
             const ItemId taken = pickup->item;
             PlaySound(m_sounds.pickup.Pick(), pickupAt, 0.6f);
+            MakeNoise(NoiseKind::Item, pickupAt, NoiseReach::kItem * 0.5f, player);
             m_world.ConsumePickup(index, m_scene, m_app->GetPhysics(), m_interactions);
             if (m_sessionMode == SessionMode::Host)
             {
@@ -1378,6 +1385,8 @@ bool PredationGame::PerformInteraction(InteractionKind kind, int index, uint8_t 
             return false; // somebody else is in there
         }
         PlaySound(m_sounds.locker.Pick(), spot->insidePosition, 0.8f);
+        // A locker door is a door. Getting in where it can hear is how to be found in there.
+        MakeNoise(NoiseKind::Door, spot->insidePosition, NoiseReach::kDoor * 0.7f, player);
 
         if (leaving)
         {
@@ -1497,6 +1506,7 @@ void PredationGame::ServeClientRequests()
         // Rewound to the moment this client says it was looking at, clamped by the host to what a
         // playable connection could justify.
         ResolvePlayerHits(shot, request.player, result, m_host.PosesAt(request.shot.renderTick));
+        OnShotResolved(result, shot.origin, request.player);
 
         WorldEventMessage event;
         event.kind = WorldEventKind::ShotFired;
@@ -2308,6 +2318,9 @@ void PredationGame::EnterWorld()
     m_titleStatus.clear();
     SetCameraMode(CameraMode::FirstPerson);
     m_wantMouseCaptured = true;
+    // Made after the players are placed, so it can be put somewhere far from them. Only by
+    // whoever runs the game; a client is shown the host's.
+    SpawnCreatures();
 }
 
 float PredationGame::ReloadProgress() const
@@ -3963,6 +3976,7 @@ void PredationGame::ReturnToTitle()
 {
     PRED_LOG_INFO(Gameplay, "Back to the title screen");
     StopSession();
+    ClearCreatures();
     // Back to the two buttons, not to whichever page somebody was last on. Coming out of a game
     // onto a half-filled join box is a screen nobody asked for.
     StopLobby();
@@ -4431,6 +4445,8 @@ void PredationGame::UpdateVoice(float dt)
             if (m_sessionMode == SessionMode::Host)
             {
                 m_host.SendVoice(m_voiceSequence, packet, m_player.State().position);
+                // Proximity chat is proximity for everything with ears. Talking near it is heard.
+                MakeNoise(NoiseKind::Voice, m_player.State().position, NoiseReach::kVoice, LocalPlayerId());
             }
             else
             {
@@ -4451,6 +4467,7 @@ void PredationGame::UpdateVoice(float dt)
         for (NetHost::VoiceHeard& heard : m_host.TakeVoice())
         {
             HearVoice(heard.speaker, heard.frame, positionOf(heard.speaker));
+            MakeNoise(NoiseKind::Voice, positionOf(heard.speaker), NoiseReach::kVoice, heard.speaker);
         }
     }
     else if (m_sessionMode == SessionMode::Client)
@@ -4846,8 +4863,29 @@ void PredationGame::UpdateSounds(float dt)
     // of steps, and a foot lands as it passes nought and a half. Reading that is the only way the
     // sound and the foot arrive together, and a footstep that lands a tenth of a second from the
     // foot is worse than none.
+    // How far a step carries, for the creature, which is not how loud it is in anybody's ears: a
+    // creature listening for prey hears a sprint across the building and a crawl from arm's length.
+    const auto stepReach = [](PlayerStance stance, const glm::vec3& velocity)
+    {
+        const float speed = glm::length(glm::vec2(velocity.x, velocity.z));
+        if (stance == PlayerStance::Prone)
+        {
+            return NoiseReach::kFootstepProne;
+        }
+        if (stance == PlayerStance::Crouching)
+        {
+            return NoiseReach::kFootstepCrouch;
+        }
+        if (speed > 4.5f)
+        {
+            return NoiseReach::kFootstepSprint;
+        }
+        // Walking slowly on purpose is most of the way to crouching.
+        return speed < 2.2f ? NoiseReach::kFootstepCrouch + 0.5f : NoiseReach::kFootstepWalk;
+    };
+
     const auto footfalls = [&](float phase, float& previous, const glm::vec3& where, bool moving,
-                               float gain, bool positioned)
+                               float gain, bool positioned, int player, float reach)
     {
         if (!moving)
         {
@@ -4865,6 +4903,7 @@ void PredationGame::UpdateSounds(float dt)
             const SoundId clip = PickFootstep(loudness, SurfaceIndexAt(where));
             const float wobble = 0.96f + 0.08f * std::fmod(std::abs(phase) * 7.13f, 1.0f);
             PlaySound(clip, where, loudness, wobble, positioned);
+            MakeNoise(NoiseKind::Footstep, where, reach, player);
         }
         previous = phase;
     };
@@ -4875,7 +4914,8 @@ void PredationGame::UpdateSounds(float dt)
     // Your own steps are not placed in the world either: they come from under you, and panning
     // them puts your own feet in one ear.
     footfalls(local.stridePhase, m_lastStridePhase, local.position, localMoving,
-              0.30f * StanceLoudness(local.stance), false);
+              0.30f * StanceLoudness(local.stance), false, LocalPlayerId(),
+              stepReach(local.stance, local.velocity));
 
     for (const std::unique_ptr<RemoteAvatar>& avatar : m_avatars)
     {
@@ -4883,7 +4923,8 @@ void PredationGame::UpdateSounds(float dt)
                             glm::length(glm::vec2(avatar->state.velocity.x,
                                                   avatar->state.velocity.z)) > 0.8f;
         footfalls(avatar->state.stridePhase, avatar->lastStridePhase, avatar->drawn, moving,
-                  0.75f * StanceLoudness(avatar->state.stance), true);
+                  0.75f * StanceLoudness(avatar->state.stance), true, avatar->id,
+                  stepReach(avatar->state.stance, avatar->state.velocity));
     }
 
     // And landing, which is an event rather than a phase.
@@ -4891,6 +4932,7 @@ void PredationGame::UpdateSounds(float dt)
     {
         const float force = std::clamp(local.fallPeakSpeed / 9.0f, 0.2f, 1.0f);
         PlaySound(m_sounds.land.Pick(), local.position, force * 0.7f, 1.0f, false);
+        MakeNoise(NoiseKind::Impact, local.position, NoiseReach::kImpact * force, LocalPlayerId());
     }
 
     (void)dt;
@@ -6092,6 +6134,7 @@ void PredationGame::ResolveShots()
 
         ShotResult result = ResolveShot(physics, shot);
         ResolvePlayerHits(shot, LocalPlayerId(), result, PosesNow());
+        const bool struckCreature = OnShotResolved(result, shot.origin, LocalPlayerId());
 
         Tracer tracer;
         tracer.from = MuzzlePosition();
@@ -6120,10 +6163,9 @@ void PredationGame::ResolveShots()
         {
             continue;
         }
-        // Nothing in the level has health yet, so for now a hit shows itself by shoving whatever it
-        // struck. When creatures arrive this is where their damage is applied, and it stays on the
-        // authority's side of the line.
-        if (physics.IsValid(result.body))
+        // Anything loose is shoved by what hit it. The creature has already taken its damage, and is
+        // not something a round pushes about.
+        if (!struckCreature && physics.IsValid(result.body))
         {
             physics.AddImpulse(result.body, shot.direction * (result.damage * 0.35f));
         }
@@ -6979,6 +7021,7 @@ void PredationGame::DropIntoWorld(ItemId item, int count, int rounds, int reserv
     const int index =
         m_world.SpawnPickup(m_scene, m_app->GetMeshes(), m_app->GetPhysics(), m_interactions, m_items,
                             item, count, origin, velocity, rounds, reserve);
+    MakeNoise(NoiseKind::Item, origin, NoiseReach::kItem, -1);
 
     // Everyone else has to see it land, and it has to be there to pick up. The throw is sent too,
     // so it arcs on their screen rather than appearing on the floor.
@@ -7152,6 +7195,7 @@ void PredationGame::OnFixedUpdate(double fixedDt)
 
     UpdateHostMigration(dt);
     UpdateRespawns(dt);
+    UpdateCreatures(dt);
 
     // The toggles mirror the stance the body is actually in, every tick, not just when a change is
     // refused. They are a request, and the body is the answer; a request that has been answered is
@@ -7960,6 +8004,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
     UpdateMicrophoneTest(deltaSeconds);
     UpdateSounds(deltaSeconds);
     SyncDynamicProps();
+    UpdateCreatureVisuals(deltaSeconds);
     app.GetSceneRenderer().SetWireframe(cv_wireframe.Get());
 
     // Occlusion settings, pushed every frame rather than when they change, so the console and the
@@ -8284,6 +8329,9 @@ void PredationGame::DrawDebugOverlays()
         m_editor.DrawOverlays(draw);
         return;
     }
+
+    // What the creature sees, hears and means to do, and the surface it walks on.
+    DrawCreatureOverlays(draw);
 
     // A round is drawn as something that travels, with a short lit section and a mark where it
     // arrives. Lighting the whole line at once, which is what this used to do, draws a diagram of
@@ -9082,6 +9130,9 @@ void PredationGame::OnImGui()
     {
         DrawPauseMenu();
     }
+
+    // Outside the overlay's switch, because it is asked for by name and read while playing.
+    DrawBrainInspector();
 
     if (!m_app->IsOverlayVisible())
     {

@@ -266,6 +266,62 @@ TEST_CASE("A gunshot draws it to look", "[creature][hearing]")
     CHECK(after < before - 4.0f);
 }
 
+TEST_CASE("Shot in the back, it goes for the shooter rather than the sound", "[creature][hearing]")
+{
+    // What happened the first time it was shot in the game: hurt by somebody behind it, it heard the
+    // gunshot as well, and went to "investigate the gunshot" at a walk -- the sound of the person
+    // it already knew had shot it, and was already scoring a hunt for.
+    //
+    // And the same when the first round missed, which is what the second time in the game was: the
+    // miss is a gunshot from nobody in particular and rightly starts it looking, and the hit that
+    // follows says who that was -- so the looking is over.
+    const uint32_t seed = GENERATE(1u, 5u, 7u, 23u, 42u, 99u);
+    const bool missedFirst = GENERATE(false, true);
+    INFO("seed " << seed << ": " << CreatureTraits::FromSeed(seed).Describe()
+                 << (missedFirst ? ", first round missed" : ""));
+    CreatureHarness harness(seed);
+    glm::vec3 at;
+    glm::vec3 player;
+    REQUIRE(OpenView(harness, 8.0f, at, player));
+    // Turned round, so the shooter is behind it and it has not seen them.
+    harness.creature->SetShownState(at, glm::pi<float>(), 0.0f, 0.0f, true);
+    const std::vector<SensedPlayer> players{Somebody(1, player)};
+    harness.Run(0.3f, players);
+    REQUIRE(harness.TrackOf(1)->exposure == 0.0f);
+
+    const glm::vec3 muzzle = player + glm::vec3(0.0f, 1.5f, 0.0f);
+    Noise shot;
+    shot.kind = NoiseKind::Gunshot;
+    shot.reach = NoiseReach::kGunshot;
+    shot.position = muzzle;
+    shot.player = 1;
+    if (missedFirst)
+    {
+        harness.Run(0.25f, players, {shot});
+    }
+    harness.creature->TakeDamage(21.0f, 1, muzzle, harness.time);
+
+    // Given a decision's worth of time to change its mind, since after a miss it was, rightly,
+    // already on its way to look.
+    const float hitAt = harness.time;
+    bool investigated = false;
+    harness.Run(1.0f, players, {shot},
+                [&](const Creature& creature)
+                {
+                    investigated = investigated || (harness.time > hitAt + 0.25f &&
+                                                    creature.Brain().Current() == Behavior::Investigate);
+                });
+    std::string mind;
+    for (const CreatureBrain::TimelineEntry& entry : harness.creature->Brain().Timeline())
+    {
+        mind += "\n  " + std::to_string(entry.time).substr(0, 5) + "  " + entry.what;
+    }
+    INFO("its mind:" << mind);
+    CHECK_FALSE(investigated);
+    const Behavior now = harness.creature->Brain().Current();
+    CHECK((now == Behavior::Hunt || now == Behavior::Attack || now == Behavior::Retreat));
+}
+
 TEST_CASE("It hunts somebody it sees and strikes when it reaches them", "[creature][attack]")
 {
     const uint32_t seed = GENERATE(1u, 5u, 11u, 23u, 42u, 99u);
