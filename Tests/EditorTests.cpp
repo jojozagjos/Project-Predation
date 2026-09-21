@@ -1,4 +1,5 @@
 #include "Engine/Assets/ModelAsset.h"
+#include "Engine/Core/Paths.h"
 #include "Tools/ModelEditor/ModelEditor.h"
 
 #include <catch2/catch_approx.hpp>
@@ -240,3 +241,54 @@ TEST_CASE("The selection outline follows the part rather than its nominal size",
     CHECK((boxBounds.max - boxBounds.min).y == Catch::Approx(0.3f).margin(0.001));
 }
 
+
+TEST_CASE("The editor takes a model file dropped on the window", "[editor][import]")
+{
+    // Importing used to mean finding the file in Explorer, copying its path, switching to the
+    // game, opening the editor, pasting the path into a box and pressing a button. That is five
+    // steps too many for something a window can simply be handed.
+    Paths::Init(nullptr, std::filesystem::path(PRED_SOURCE_DIR) / "Assets");
+
+    SECTION("only files it can actually read")
+    {
+        CHECK(ModelEditor::IsImportableModel("weapon.glb"));
+        CHECK(ModelEditor::IsImportableModel("weapon.obj"));
+        CHECK(ModelEditor::IsImportableModel("weapon.gltf"));
+        // Case comes from whatever the exporter wrote, which is not something to be strict about.
+        CHECK(ModelEditor::IsImportableModel("WEAPON.GLB"));
+        CHECK(ModelEditor::IsImportableModel("Weapon.Obj"));
+        // And a refusal for everything else, so the caller can say so rather than swallowing it.
+        CHECK_FALSE(ModelEditor::IsImportableModel("notes.txt"));
+        CHECK_FALSE(ModelEditor::IsImportableModel("texture.png"));
+        CHECK_FALSE(ModelEditor::IsImportableModel("model.json"));
+        CHECK_FALSE(ModelEditor::IsImportableModel("no_extension"));
+    }
+
+    SECTION("a dropped model arrives with its parts and its name")
+    {
+        const std::filesystem::path source =
+            std::filesystem::path(PRED_SOURCE_DIR) / "Assets" / "Models" / "Source" / "Weapons" /
+            "g17_pistol.glb";
+        REQUIRE(std::filesystem::exists(source));
+
+        ModelEditor editor;
+        REQUIRE(editor.DropFile(source.string()));
+        CHECK_FALSE(editor.Model().parts.empty());
+        // Named after the file, because that is nearly always what somebody meant when they
+        // dragged it in.
+        CHECK(editor.Model().name == "g17_pistol");
+
+        // Already inside the assets tree, so nothing was copied. Re-importing from in there must
+        // not copy a file onto itself, which on Windows truncates it.
+        CHECK(editor.LastImportSource().empty());
+        CHECK(std::filesystem::file_size(source) > 1000);
+    }
+
+    SECTION("something that is not a model is refused rather than swallowed")
+    {
+        ModelEditor editor;
+        CHECK_FALSE(editor.DropFile(
+            (std::filesystem::path(PRED_SOURCE_DIR) / "README.md").string()));
+        CHECK(editor.Model().parts.empty());
+    }
+}

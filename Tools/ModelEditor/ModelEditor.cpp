@@ -349,6 +349,18 @@ void ModelEditor::DrawFilePanel(Scene& scene, MeshLibrary& meshes)
         m_saveName = buffer;
     }
 
+    // Which folder a new model is filed under. One that already exists is rewritten where it is,
+    // so this only decides where new ones land -- moving somebody's file because they saved it is
+    // the kind of helpfulness nobody asked for.
+    char folderBuffer[64];
+    std::snprintf(folderBuffer, sizeof(folderBuffer), "%s", m_folder.c_str());
+    if (ImGui::InputText("Folder", folderBuffer, sizeof(folderBuffer)))
+    {
+        m_folder = folderBuffer;
+    }
+    ImGui::SetItemTooltip("%s", "Under Assets/Models. A model is found by its name whatever folder "
+                                "it is in, so this is only about keeping the tree tidy.");
+
     // Undo where it can be seen, as well as on the keys. A tool whose undo is invisible is one
     // people do not trust enough to experiment in, which is most of what an editor is for.
     ImGui::BeginDisabled(!CanUndo());
@@ -416,20 +428,34 @@ void ModelEditor::DrawFilePanel(Scene& scene, MeshLibrary& meshes)
         ImGui::EndCombo();
     }
 
-    // Importing is by path rather than a file dialog: the engine has no native dialog yet, and a
-    // path pasted from a download folder is what actually happens in practice.
-    char importBuffer[512];
-    std::snprintf(importBuffer, sizeof(importBuffer), "%s", m_importPath.c_str());
-    if (ImGui::InputText("Import path", importBuffer, sizeof(importBuffer)))
+    // Dropping the file on the window, which is the whole of importing for the common case.
+    // Pasting a path still works and is now the fallback rather than the only way.
+    ImGui::Spacing();
+    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.70f, 0.85f, 0.95f, 1.0f));
+    ImGui::TextUnformatted("Drag an OBJ or GLB onto this window to import it.");
+    ImGui::PopStyleColor();
+    ImGui::TextDisabled("The file is copied into Assets/Models/Source, so the import can be "
+                        "repeated without going to find the download again.");
+    if (!m_lastImportSource.empty())
     {
-        m_importPath = importBuffer;
+        ImGui::TextDisabled("Kept at %s", m_lastImportSource.c_str());
     }
-    ImGui::SameLine();
-    if (ImGui::Button("Import"))
+
+    if (ImGui::TreeNode("Import from a path instead"))
     {
-        ImportMesh(m_importPath);
+        char importBuffer[512];
+        std::snprintf(importBuffer, sizeof(importBuffer), "%s", m_importPath.c_str());
+        if (ImGui::InputText("Path", importBuffer, sizeof(importBuffer)))
+        {
+            m_importPath = importBuffer;
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Import"))
+        {
+            ImportMesh(m_importPath);
+        }
+        ImGui::TreePop();
     }
-    ImGui::TextDisabled("OBJ or GLB. Paste a path, including one from a Sketchfab download.");
 
     // How a download is turned into something the game can hold. All four are wanted before the
     // first look rather than after it: a model that arrives a hundred times too large and facing
@@ -1143,15 +1169,81 @@ void ModelEditor::DrawAnimationPanel()
     ImGui::TextDisabled("Offsets are from the part's rest pose, so editing the model keeps the clip.");
 }
 
+bool ModelEditor::IsImportableModel(const std::filesystem::path& file)
+{
+    std::string extension = file.extension().string();
+    for (char& c : extension)
+    {
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
+    return extension == ".glb" || extension == ".gltf" || extension == ".obj";
+}
+
+bool ModelEditor::DropFile(const std::string& path)
+{
+    const std::filesystem::path file = path;
+    if (!IsImportableModel(file))
+    {
+        return false;
+    }
+    // A dropped file with nothing open yet names the model, because that is nearly always what
+    // somebody meant: they dragged m4_carbine.glb in to make m4_carbine.
+    if (m_model.parts.empty() && m_saveName == "new_model")
+    {
+        m_saveName = file.stem().string();
+    }
+    ImportMesh(path);
+    return true;
+}
+
+// Puts a download inside the project, beside the model it produced.
+//
+// Otherwise an imported model's only tie to the art it came from is a path into somebody's
+// Downloads folder, which is not in the repository, is not on anybody else's machine, and will be
+// cleared out one day. Copying it costs a megabyte and means the import can be repeated when the
+// importer improves or when the original needs re-cutting.
+std::string ModelEditor::KeepSource(const std::filesystem::path& file)
+{
+    std::error_code ec;
+    const std::filesystem::path sourceRoot = ModelDirectory() / "Source" /
+                                             (m_folder.empty() ? std::string("Weapons") : m_folder);
+
+    // Already ours. Re-importing from inside the assets tree must not copy a file onto itself,
+    // which on Windows truncates it.
+    const std::filesystem::path canonicalFile = std::filesystem::weakly_canonical(file, ec);
+    const std::filesystem::path canonicalRoot =
+        std::filesystem::weakly_canonical(ModelDirectory(), ec);
+    if (!canonicalRoot.empty() &&
+        canonicalFile.string().rfind(canonicalRoot.string(), 0) == 0)
+    {
+        return {};
+    }
+
+    std::filesystem::create_directories(sourceRoot, ec);
+    // Named after the model rather than after the download, because a download is called
+    // "low-poly_colt_m5_scw.glb" and the thing it became is called something else entirely.
+    const std::filesystem::path kept =
+        sourceRoot / (m_saveName + file.extension().string());
+    std::filesystem::copy_file(file, kept, std::filesystem::copy_options::overwrite_existing, ec);
+    if (ec)
+    {
+        PRED_LOG_WARN(Asset, "Could not keep a copy of {}: {}", file.string(), ec.message());
+        return {};
+    }
+    PRED_LOG_INFO(Asset, "Kept the source art at {}", kept.string());
+    return kept.string();
+}
+
 void ModelEditor::ImportMesh(const std::string& file)
 {
     if (file.empty())
     {
-        m_status = "Nothing to import: paste a path first";
+        m_status = "Nothing to import: drop a file on the window, or paste a path";
         return;
     }
 
     const std::filesystem::path path = file;
+    m_lastImportSource.clear();
 
     // A glTF file describes a whole model rather than one lump of geometry, so it arrives as a set
     // of parts. That is the difference that matters for a weapon: a magazine has to be a part of
@@ -1195,6 +1287,7 @@ void ModelEditor::ImportMesh(const std::string& file)
         m_frameRequested = true;
         m_dirty = true;
         m_previewChanged = true;
+        m_lastImportSource = KeepSource(path);
         m_status = "Imported " + std::to_string(imported.parts.size()) + " parts from " +
                    path.filename().string();
         return;
@@ -1219,7 +1312,8 @@ void ModelEditor::ImportMesh(const std::string& file)
     m_dirty = true;
     m_previewChanged = true;
     m_geometryChanged = true;
-    m_status = "Imported " + file;
+    m_lastImportSource = KeepSource(path);
+    m_status = "Imported " + path.filename().string();
 }
 
 

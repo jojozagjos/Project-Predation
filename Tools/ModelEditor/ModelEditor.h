@@ -5,6 +5,7 @@
 #include "Engine/Render/Camera.h"
 #include "Engine/Scene/Scene.h"
 
+#include <filesystem>
 #include <string>
 #include <functional>
 #include <utility>
@@ -51,6 +52,23 @@ public:
 
     bool Load(const std::string& modelName);
     bool Save();
+
+    // --- Dropping a file on the window ----------------------------------------------------------
+    //
+    // The whole of adding an asset, for the common case. Importing used to mean finding the file in
+    // Explorer, copying its path, switching to the game, pasting it into a box and pressing a
+    // button, and that is five steps too many for something a window can simply be given.
+    //
+    // A model file dropped on the window is imported; a model file dropped when the editor is not
+    // open opens the editor on it. The source file is copied into the assets tree beside the model
+    // it produced, so the import can be repeated later without going looking for the download.
+    static bool IsImportableModel(const std::filesystem::path& file);
+    // Returns false when the file is not one of ours, so the caller can say so rather than
+    // swallowing it.
+    bool DropFile(const std::string& path);
+    // Where the source art was copied to, empty when nothing was copied. Reported so a person can
+    // see their download is now part of the project rather than wondering.
+    const std::string& LastImportSource() const { return m_lastImportSource; }
 
     // What is selected. One thing at a time, part or socket, because everything that acts on a
     // selection acts on one thing and a list of one is a list.
@@ -155,6 +173,9 @@ private:
     void NewModel();
     void AddPart(const char* name, PartShape shape);
     void ImportMesh(const std::string& file);
+    // Copies a dropped or pasted source file into the assets tree beside the model it produced,
+    // and returns where it went. Empty when the file was already ours or could not be copied.
+    std::string KeepSource(const std::filesystem::path& file);
     void DrawModelPanel();
     void DrawPartList();
     void DrawPartInspector();
@@ -238,6 +259,8 @@ private:
     // rewritten where it is, so this only decides where new ones land.
     std::string m_folder = "Weapons";
     std::string m_importPath;
+    // Where the last import copied its source file to, for the status line.
+    std::string m_lastImportSource;
     // How a download is turned into something a person can hold: the size it is fitted to, the turn
     // that puts the barrel down +Z, whether the origin is moved to the middle, and whether an
     // import replaces the parts or adds to them. Replacing keeps sockets and clips, because getting

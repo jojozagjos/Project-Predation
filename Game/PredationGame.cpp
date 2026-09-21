@@ -5460,6 +5460,19 @@ void PredationGame::OnEvent(const SDL_Event& event)
             m_wantMouseCaptured = true;
         }
         break;
+    case SDL_EVENT_DROP_FILE:
+        // Adding an asset, in one gesture.
+        //
+        // It used to mean finding the file in Explorer, copying its path, switching to the game,
+        // opening the editor, pasting the path into a box and pressing a button. The window can
+        // simply be handed the file. Dropped with the editor closed it opens the editor on it,
+        // because somebody dragging a model at the title screen has said what they want clearly
+        // enough.
+        if (event.drop.data != nullptr)
+        {
+            OnFileDropped(event.drop.data);
+        }
+        break;
     case SDL_EVENT_WINDOW_FOCUS_LOST:
         m_windowFocused = false;
         break;
@@ -6535,6 +6548,37 @@ void PredationGame::UpdateEditorBody(float frameDeltaSeconds)
 
     m_editorBody.Update(m_editorScene, m_editorState, m_editorView, config, m_app->GetPhysics(),
                         frameDeltaSeconds);
+}
+
+void PredationGame::OnFileDropped(const std::string& path)
+{
+#if PRED_DEV_TOOLS
+    const std::filesystem::path file = path;
+    if (!ModelEditor::IsImportableModel(file))
+    {
+        // Said rather than swallowed. A file that simply vanishes when you drop it on a window is
+        // worse than one that is refused, because there is nothing to conclude from it.
+        PRED_LOG_INFO(Asset, "Dropped {}, which is not a model the editor reads (OBJ, GLB or GLTF)",
+                      file.filename().string());
+        m_titleStatus = file.filename().string() + " is not an OBJ, GLB or GLTF.";
+        return;
+    }
+
+    // Dropped anywhere but the editor, the editor is what was meant. Somebody dragging a model
+    // onto the title screen has said what they want clearly enough to not be asked again.
+    if (m_screen != Screen::Editor)
+    {
+        EnterEditor(std::string());
+    }
+    if (m_editor.DropFile(path))
+    {
+        PRED_LOG_INFO(Asset, "Imported {} by dropping it on the window", file.filename().string());
+    }
+#else
+    // A shipped build has no editor to drop things into, and importing art at runtime is not a
+    // thing a player does. Named in the log so a dropped file is not simply silence.
+    PRED_LOG_INFO(Asset, "Ignoring dropped file {}: this build has no editor", path);
+#endif
 }
 
 void PredationGame::EnterEditor(const std::string& modelName)

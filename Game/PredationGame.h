@@ -252,6 +252,10 @@ private:
     void DrawTitleScreen();
     void EnterWorld();
     void EnterEditor(const std::string& modelName);
+    // A file dragged onto the window. A model opens the editor on itself; anything else says so
+    // rather than being quietly ignored, because a file that vanishes when you drop it is worse
+    // than one that is refused.
+    void OnFileDropped(const std::string& path);
     void ReturnToTitle();
     // Slowly circles the camera around the spawn area behind the menu.
     void UpdateTitleCamera(float frameDeltaSeconds);
