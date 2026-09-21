@@ -1,82 +1,207 @@
 {
   "_comment": "Item definitions. 'key' is the stable identity used by maps and save data; ids are assigned at load and are only valid within a run. Shapes and colours are placeholders until there are real meshes.",
-
   "items": [
     {
+      "color": [
+        0.42,
+        0.58,
+        0.44
+      ],
+      "emissive": 0.15,
+      "hold_offset": [
+        -0.10599999874830246,
+        0.0,
+        0.0
+      ],
+      "hold_rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
       "key": "sample_container",
-      "name": "Sample Container",
-      "max_stack": 1,
       "mass": 2.5,
-      "shape": "cylinder",
-      "size": [ 0.16, 0.26, 0.16 ],
-      "color": [ 0.42, 0.58, 0.44 ],
+      "max_stack": 1,
+      "name": "Sample Container",
       "roughness": 0.35,
-      "emissive": 0.15
+      "shape": "cylinder",
+      "size": [
+        0.16,
+        0.26,
+        0.16
+      ]
     },
     {
+      "color": [
+        0.62,
+        0.22,
+        0.2
+      ],
+      "hold_offset": [
+        -0.17000000178813934,
+        0.0,
+        0.0
+      ],
+      "hold_rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
       "key": "medkit",
-      "name": "Medical Kit",
-      "max_stack": 2,
       "mass": 1.8,
+      "max_stack": 2,
+      "name": "Medical Kit",
+      "roughness": 0.6,
       "shape": "box",
-      "size": [ 0.26, 0.14, 0.18 ],
-      "color": [ 0.62, 0.22, 0.20 ],
-      "roughness": 0.6
+      "size": [
+        0.26,
+        0.14,
+        0.18
+      ]
     },
     {
+      "color": [
+        0.58,
+        0.52,
+        0.2
+      ],
+      "hold_offset": [
+        -0.07000000029802322,
+        0.0,
+        0.0
+      ],
+      "hold_rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
       "key": "battery",
-      "name": "Battery Cell",
-      "max_stack": 6,
       "mass": 0.5,
-      "shape": "cylinder",
-      "size": [ 0.09, 0.18, 0.09 ],
-      "color": [ 0.58, 0.52, 0.20 ],
+      "max_stack": 6,
+      "metallic": 0.6,
+      "name": "Battery Cell",
       "roughness": 0.4,
-      "metallic": 0.6
-    },
-    {
-      "key": "keycard",
-      "name": "Access Keycard",
-      "max_stack": 4,
-      "mass": 0.05,
-      "shape": "box",
-      "size": [ 0.10, 0.015, 0.07 ],
-      "color": [ 0.25, 0.45, 0.70 ],
-      "roughness": 0.3,
-      "emissive": 0.1
-    },
-    {
-      "key": "flare",
-      "name": "Signal Flare",
-      "max_stack": 4,
-      "mass": 0.3,
       "shape": "cylinder",
-      "size": [ 0.05, 0.22, 0.05 ],
-      "color": [ 0.85, 0.35, 0.15 ],
+      "size": [
+        0.09,
+        0.18,
+        0.09
+      ]
+    },
+    {
+      "color": [
+        0.25,
+        0.45,
+        0.7
+      ],
+      "emissive": 0.1,
+      "hold_offset": [
+        -0.07800000160932541,
+        -0.00800000037997961,
+        -0.05400000140070915
+      ],
+      "hold_rotation": [
+        48.0,
+        12.0,
+        0.0
+      ],
+      "key": "keycard",
+      "mass": 0.05,
+      "max_stack": 4,
+      "name": "Access Keycard",
+      "roughness": 0.3,
+      "shape": "box",
+      "size": [
+        0.1,
+        0.015,
+        0.07
+      ]
+    },
+    {
+      "color": [
+        0.85,
+        0.35,
+        0.15
+      ],
+      "emissive": 0.4,
+      "hold_offset": [
+        -0.05400000140070915,
+        0.0,
+        0.0
+      ],
+      "hold_rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "key": "flare",
+      "mass": 0.3,
+      "max_stack": 4,
+      "name": "Signal Flare",
       "roughness": 0.7,
-      "emissive": 0.4
+      "shape": "cylinder",
+      "size": [
+        0.05,
+        0.22,
+        0.05
+      ]
     },
     {
+      "color": [
+        0.15,
+        0.16,
+        0.18
+      ],
+      "hold_offset": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "hold_rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
       "key": "sidearm",
-      "name": "ACRD Sidearm",
-      "max_stack": 1,
       "mass": 0.9,
-      "shape": "box",
-      "size": [ 0.05, 0.14, 0.24 ],
-      "color": [ 0.15, 0.16, 0.18 ],
+      "max_stack": 1,
+      "metallic": 0.5,
+      "name": "ACRD Sidearm",
       "roughness": 0.45,
-      "metallic": 0.5
+      "shape": "box",
+      "size": [
+        0.05,
+        0.14,
+        0.24
+      ]
     },
     {
+      "color": [
+        0.17,
+        0.18,
+        0.2
+      ],
+      "hold_offset": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "hold_rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
       "key": "carbine",
-      "name": "ACRD Carbine",
-      "max_stack": 1,
       "mass": 3.2,
-      "shape": "box",
-      "size": [ 0.06, 0.16, 0.62 ],
-      "color": [ 0.17, 0.18, 0.20 ],
+      "max_stack": 1,
+      "metallic": 0.5,
+      "name": "ACRD Carbine",
       "roughness": 0.45,
-      "metallic": 0.5
+      "shape": "box",
+      "size": [
+        0.06,
+        0.16,
+        0.62
+      ]
     }
   ]
 }
