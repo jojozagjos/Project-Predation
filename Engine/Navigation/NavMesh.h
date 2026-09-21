@@ -68,6 +68,11 @@ public:
     // cheap question a creature asks before bothering with a whole route.
     bool StraightWalk(const glm::vec3& from, const glm::vec3& to) const;
 
+    // Where a body at `from` ends up trying to walk to `to` this tick: slid along the walls rather
+    // than through them, and at the height of the floor where it arrives, so stairs and ramps are
+    // walked up rather than through. False when `from` is nowhere near the mesh.
+    bool MoveAlongSurface(const glm::vec3& from, const glm::vec3& to, glm::vec3& out) const;
+
     // A random point on the mesh within `radius` of `centre` that can be walked to from it. For
     // wandering. `seed` is advanced, so the same seed gives the same wander.
     bool RandomPointNear(const glm::vec3& centre, float radius, uint32_t& seed, glm::vec3& out) const;

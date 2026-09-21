@@ -33,6 +33,13 @@ set(PRED_GAME_SOURCES
     Weapons/WeaponSystem.cpp
     Weapons/ShotResolver.h
     Weapons/ShotResolver.cpp
+    Creature/Noise.h
+    Creature/CreatureTraits.h
+    Creature/CreatureTraits.cpp
+    Creature/CreatureBrain.h
+    Creature/CreatureBrain.cpp
+    Creature/Creature.h
+    Creature/Creature.cpp
     Weapons/BulletHole.h
     Weapons/BulletHole.cpp
 

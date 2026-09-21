@@ -401,6 +401,39 @@ bool NavMesh::StraightWalk(const glm::vec3& from, const glm::vec3& to) const
     return hit > 1.0f;
 }
 
+bool NavMesh::MoveAlongSurface(const glm::vec3& from, const glm::vec3& to, glm::vec3& out) const
+{
+    if (!Valid())
+    {
+        return false;
+    }
+    dtPolyRef startRef = 0;
+    float start[3];
+    if (!m_impl->Nearest(from, 1.0f, startRef, start))
+    {
+        return false;
+    }
+    const float end[3] = {to.x, to.y, to.z};
+    float result[3];
+    dtPolyRef visited[16];
+    int visitedCount = 0;
+    if (dtStatusFailed(m_impl->query->moveAlongSurface(startRef, start, end, &m_impl->filter, result,
+                                                       visited, &visitedCount, 16)) ||
+        visitedCount == 0)
+    {
+        return false;
+    }
+    // The surface move keeps its height from where it started; the floor under where it arrived
+    // is asked for separately, which is what carries it up a staircase.
+    float height = result[1];
+    if (dtStatusSucceed(m_impl->query->getPolyHeight(visited[visitedCount - 1], result, &height)))
+    {
+        result[1] = height;
+    }
+    out = {result[0], result[1], result[2]};
+    return true;
+}
+
 bool NavMesh::RandomPointNear(const glm::vec3& centre, float radius, uint32_t& seed,
                               glm::vec3& out) const
 {

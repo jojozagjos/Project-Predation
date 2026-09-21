@@ -672,6 +672,12 @@ bool PhysicsWorld::IsActive(BodyHandle body) const
 
 RayHit PhysicsWorld::RayCast(const glm::vec3& origin, const glm::vec3& direction, float maxDistance) const
 {
+    return RayCast(origin, direction, maxDistance, BodyHandle{});
+}
+
+RayHit PhysicsWorld::RayCast(const glm::vec3& origin, const glm::vec3& direction, float maxDistance,
+                             BodyHandle ignore) const
+{
     RayHit hit;
     const Impl& impl = *m_impl;
     if (!impl.initialized || maxDistance <= 0.0f)
@@ -688,7 +694,8 @@ RayHit PhysicsWorld::RayCast(const glm::vec3& origin, const glm::vec3& direction
 
     const JPH::RRayCast ray(ToJoltR(origin), ToJolt(normalized * maxDistance));
     JPH::RayCastResult result;
-    if (!impl.system->GetNarrowPhaseQuery().CastRay(ray, result))
+    const JPH::IgnoreSingleBodyFilter skip(ignore.IsValid() ? JPH::BodyID(ignore.id) : JPH::BodyID());
+    if (!impl.system->GetNarrowPhaseQuery().CastRay(ray, result, {}, {}, skip))
     {
         return hit;
     }

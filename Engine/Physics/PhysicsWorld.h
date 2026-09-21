@@ -125,6 +125,11 @@ public:
     // --- Queries --------------------------------------------------------------------------------
     // `direction` need not be normalized; `maxDistance` is measured along the normalized direction.
     RayHit RayCast(const glm::vec3& origin, const glm::vec3& direction, float maxDistance) const;
+    // The same, passing straight through one body. For looking out from inside something: a ray
+    // that starts inside a solid reports hitting it at once, so a creature tracing its sight lines
+    // from its own eyes would otherwise see nothing but itself.
+    RayHit RayCast(const glm::vec3& origin, const glm::vec3& direction, float maxDistance,
+                   BodyHandle ignore) const;
 
     // A pair of non-moving solids that intersect. Level geometry built out of overlapping pieces
     // looks wrong from the inside and can shove or trap the player, so the build checks itself
