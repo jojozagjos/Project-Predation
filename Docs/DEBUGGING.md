@@ -65,6 +65,24 @@ The creature (developer builds only):
 
 `debug.ai`, `debug.perception` and `debug.navigation` draw its route, its senses and the walkable surface.
 
+Reproducing input problems without hands:
+
+| Command | Does |
+| --- | --- |
+| `lean [amount\|off]` | Hold a lean (-1 to 1) or let go; with no argument, report the lean, the camera roll, how far out the eye is, whether keys are reaching the game, and whether the mouse is captured |
+| `sim_input key <name> <down\|up>` | Put a real key event on the queue (developer builds) |
+| `sim_input mouse <x> <y>`, `sim_input button <left\|right> <down\|up>` | The same for the pointer and its buttons |
+| `sim_input focus` | Tell the game its window has focus, so it captures the mouse as in play |
+
+These go through everything a real key does -- the UI, the input system, the game -- which `lean 1`
+does not. The lean-while-firing bug only showed up that way. Its replay, which should report the lean
+at 1.00 throughout:
+
+    ProjectPredation.exe --frames 1500 --exec play --exec "give_weapon carbine" --exec ai_brain
+      --exec "sim_input focus" --exec "wait 20" --exec "sim_input key E down" --exec "wait 300"
+      --exec lean --exec "sim_input mouse 1300 300" --exec "sim_input button left down"
+      --exec "wait 200" --exec lean --exec "sim_input button left up"
+
 Still planned from the brief: `spawn_player`, `freeze_ai`, `show_animation`, `god`, `noclip`,
 `reload_assets`. They arrive with the systems they control.
 

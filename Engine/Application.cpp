@@ -559,6 +559,9 @@ void Application::RunExecQueue()
 void Application::PumpEvents(Game& game)
 {
     m_input.BeginFrame();
+    // A captured mouse belongs to the game, and the UI is told so before it sees any of this frame's
+    // events (see ImGuiLayer::SetMouseIgnored for what went wrong when it was not).
+    m_imgui.SetMouseIgnored(m_window.IsRelativeMouse());
 
     SDL_Event event;
     while (SDL_PollEvent(&event))

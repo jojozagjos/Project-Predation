@@ -6,6 +6,7 @@
 #include <string>
 
 union SDL_Event;
+struct SDL_Window;
 struct ImDrawData;
 struct ImTextureData;
 
@@ -28,6 +29,13 @@ public:
     void BeginFrame();
     void EndFrame();
 
+    // While the game has the mouse captured, the UI gets none of it: no pointer, no buttons, no
+    // wheel. The pointer is hidden then, but the UI went on tracking an invisible one that drifted
+    // as the player turned, and a shot fired while it happened to rest over a window was a press
+    // on that window -- which hands the UI the keyboard for as long as the button is held, so every
+    // held key, a lean among them, let go mid-burst.
+    void SetMouseIgnored(bool ignored);
+
     bool WantCaptureKeyboard() const;
     bool WantCaptureMouse() const;
     bool WantTextInput() const;
@@ -46,7 +54,9 @@ private:
     bgfx::ProgramHandle m_program = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_textureUniform = BGFX_INVALID_HANDLE;
     std::string m_iniPath;
+    SDL_Window* m_window = nullptr;
     bool m_initialized = false;
+    bool m_mouseIgnored = false;
     bool m_warnedOverflow = false;
 };
 

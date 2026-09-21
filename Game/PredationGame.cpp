@@ -626,6 +626,90 @@ void PredationGame::RegisterCommands()
         "stance <stand|crouch|prone|auto>");
 
     console.RegisterCommand(
+        "lean", "Hold a lean for testing (-1 left, 1 right, 'off' to let go), or report it: lean [amount|off]",
+        [this](const std::vector<std::string>& args)
+        {
+            if (args.size() > 1)
+            {
+                m_forceLeanOn = args[1] != "off";
+                m_forceLean = m_forceLeanOn ? std::clamp(std::strtof(args[1].c_str(), nullptr), -1.0f, 1.0f) : 0.0f;
+            }
+            // How far the eye actually sits out to the side of the body, which is what a lean is for.
+            const PlayerView& view = m_player.View();
+            const glm::vec3 fromBody = view.eyePosition - m_player.View().renderPosition;
+            const float sideways = glm::dot(fromBody, view.Right());
+            char line[200];
+            std::snprintf(line, sizeof(line),
+                          "lean %.2f  roll %.1f deg  eye %.3f m to the side%s  keys to the game: %s  mouse captured: %s",
+                          m_player.State().leanAmount, glm::degrees(view.leanRoll), sideways,
+                          m_forceLeanOn ? "  (held)" : "", m_app->IsUiCapturingKeyboard() ? "no" : "yes",
+                          m_app->GetWindow().IsRelativeMouse() ? "yes" : "no");
+            m_app->GetConsole().Print(line);
+            PRED_LOG_INFO(Gameplay, "{}", line);
+        },
+        "lean [amount|off]");
+
+#if PRED_DEV_TOOLS
+    // Real input events, put on the queue exactly as the operating system would, so a problem that
+    // only happens with a key and a mouse button held together can be reproduced without hands.
+    // Everything downstream -- the UI, the input system, the game -- sees them as the real thing.
+    console.RegisterCommand(
+        "sim_input",
+        "Inject input: sim_input key <name> <down|up> | mouse <x> <y> | button <left|right> <down|up> | focus",
+        [this](const std::vector<std::string>& args)
+        {
+            const SDL_WindowID window = SDL_GetWindowID(m_app->GetWindow().Handle());
+            SDL_Event event{};
+            if (args.size() >= 4 && args[1] == "key")
+            {
+                const SDL_Scancode code = SDL_GetScancodeFromName(args[2].c_str());
+                if (code == SDL_SCANCODE_UNKNOWN)
+                {
+                    m_app->GetConsole().PrintError("No key called " + args[2]);
+                    return;
+                }
+                const bool down = args[3] == "down";
+                event.type = down ? SDL_EVENT_KEY_DOWN : SDL_EVENT_KEY_UP;
+                event.key.windowID = window;
+                event.key.scancode = code;
+                event.key.key = SDL_GetKeyFromScancode(code, SDL_KMOD_NONE, false);
+                event.key.down = down;
+            }
+            else if (args.size() >= 2 && args[1] == "focus")
+            {
+                // The window being clicked into, which is what lets the game capture the mouse.
+                event.type = SDL_EVENT_WINDOW_FOCUS_GAINED;
+                event.window.windowID = window;
+            }
+            else if (args.size() >= 4 && args[1] == "mouse")
+            {
+                event.type = SDL_EVENT_MOUSE_MOTION;
+                event.motion.windowID = window;
+                event.motion.x = std::strtof(args[2].c_str(), nullptr);
+                event.motion.y = std::strtof(args[3].c_str(), nullptr);
+            }
+            else if (args.size() >= 4 && args[1] == "button")
+            {
+                const bool down = args[3] == "down";
+                event.type = down ? SDL_EVENT_MOUSE_BUTTON_DOWN : SDL_EVENT_MOUSE_BUTTON_UP;
+                event.button.windowID = window;
+                event.button.button = args[2] == "right" ? SDL_BUTTON_RIGHT : SDL_BUTTON_LEFT;
+                event.button.down = down;
+                event.button.clicks = 1;
+                SDL_GetMouseState(&event.button.x, &event.button.y);
+            }
+            else
+            {
+                m_app->GetConsole().PrintError(
+                    "usage: sim_input key <name> <down|up> | mouse <x> <y> | button <left|right> <down|up>");
+                return;
+            }
+            SDL_PushEvent(&event);
+        },
+        "sim_input key <name> <down|up> | mouse <x> <y> | button <left|right> <down|up>");
+#endif
+
+    console.RegisterCommand(
         "player_yaw", "Face the player in a given direction, for inspection: player_yaw <degrees>",
         [this](const std::vector<std::string>& args)
         {
@@ -5891,6 +5975,11 @@ PlayerInput PredationGame::BuildPlayerInput()
 
     result.lean = (input.IsActionDown("lean_right") ? 1.0f : 0.0f) -
                   (input.IsActionDown("lean_left") ? 1.0f : 0.0f);
+
+    if (m_forceLeanOn)
+    {
+        result.lean = m_forceLean;
+    }
 
     // Debug override from the `stance` console command.
     result.crouchHeld = result.crouchHeld || m_forceCrouch;

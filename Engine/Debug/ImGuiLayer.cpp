@@ -13,6 +13,7 @@
 #include <imgui_impl_sdl3.h>
 
 #include <algorithm>
+#include <cfloat>
 #include <cstring>
 
 namespace pred
@@ -65,6 +66,7 @@ bool ImGuiLayer::Init(Window& window, Renderer& renderer, ShaderLibrary& shaders
         PRED_LOG_ERROR(Debug, "ImGui_ImplSDL3_InitForOther failed");
         return false;
     }
+    m_window = window.Handle();
 
     m_layout.begin()
         .add(bgfx::Attrib::Position, 2, bgfx::AttribType::Float)
@@ -119,15 +121,61 @@ void ImGuiLayer::Shutdown()
 
 void ImGuiLayer::ProcessEvent(const SDL_Event& event)
 {
-    if (m_initialized)
+    if (!m_initialized)
     {
-        ImGui_ImplSDL3_ProcessEvent(&event);
+        return;
     }
+    if (m_mouseIgnored)
+    {
+        switch (event.type)
+        {
+        case SDL_EVENT_MOUSE_MOTION:
+        case SDL_EVENT_MOUSE_BUTTON_DOWN:
+        case SDL_EVENT_MOUSE_BUTTON_UP:
+        case SDL_EVENT_MOUSE_WHEEL:
+            return;
+        default:
+            break;
+        }
+    }
+    ImGui_ImplSDL3_ProcessEvent(&event);
+}
+
+void ImGuiLayer::SetMouseIgnored(bool ignored)
+{
+    if (!m_initialized || ignored == m_mouseIgnored)
+    {
+        return;
+    }
+    if (ignored && m_window != nullptr)
+    {
+        // Let go of every button first, through the backend so its own record of what is held
+        // agrees. The click that captured the mouse went down while the UI could still see it, and
+        // its release will now never arrive: without this the UI would hold that button, and the
+        // keyboard with it, until the mouse was next freed.
+        for (const int button : {SDL_BUTTON_LEFT, SDL_BUTTON_RIGHT, SDL_BUTTON_MIDDLE, SDL_BUTTON_X1, SDL_BUTTON_X2})
+        {
+            SDL_Event release{};
+            release.type = SDL_EVENT_MOUSE_BUTTON_UP;
+            release.button.windowID = SDL_GetWindowID(m_window);
+            release.button.button = static_cast<Uint8>(button);
+            release.button.down = false;
+            ImGui_ImplSDL3_ProcessEvent(&release);
+        }
+        ImGui::GetIO().AddMousePosEvent(-FLT_MAX, -FLT_MAX);
+    }
+    m_mouseIgnored = ignored;
 }
 
 void ImGuiLayer::BeginFrame()
 {
     ImGui_ImplSDL3_NewFrame();
+    // The backend reads the operating system's pointer position each frame on its own, which would
+    // put the invisible pointer back over whatever window it is under. Last word goes to this.
+    if (m_mouseIgnored)
+    {
+        ImGui::GetIO().AddMousePosEvent(-FLT_MAX, -FLT_MAX);
+    }
     ImGui::NewFrame();
 }
 

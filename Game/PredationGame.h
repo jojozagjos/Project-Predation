@@ -590,6 +590,9 @@ private:
     bool m_editorLooking = false;
     bool m_forceCrouch = false;
     bool m_forceProne = false;
+    // A lean held from the console, for testing without a keyboard. Off unless `lean` set it.
+    bool m_forceLeanOn = false;
+    float m_forceLean = 0.0f;
     bool m_crouchToggleState = false;
     bool m_proneToggleState = false;
     bool m_sprintToggleState = false;
