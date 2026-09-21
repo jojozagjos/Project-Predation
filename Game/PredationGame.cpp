@@ -5690,6 +5690,11 @@ void PredationGame::OnShutdown()
     }
     m_itemIcons.Shutdown();
     ClearProps();
+    // Here, while the scene still exists. Left to the destructor, they went after it: members are
+    // destroyed in the reverse of the order they are declared, m_creatures is declared long before
+    // m_scene, and each creature then took its pieces out of a scene that had already been freed.
+    // Every run with a creature in it crashed on the way out.
+    ClearCreatures();
     m_body.Destroy(m_scene);
     m_player.Shutdown();
     m_scene.Clear();

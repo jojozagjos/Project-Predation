@@ -97,6 +97,8 @@ private:
     // In PredationGameCreatures.cpp. Only the authority -- the host, or a game played alone -- runs a
     // creature's mind; everybody else is shown where it is.
     NavMesh m_nav;
+    // Each one holds a reference to m_scene, which is declared further down and so is destroyed
+    // first. OnShutdown clears these before that can matter.
     std::vector<std::unique_ptr<Creature>> m_creatures;
     // Sounds made since the creatures last listened. Reported by whatever made them, drained each
     // tick by the creatures' hearing.
