@@ -168,6 +168,19 @@ struct BodyHarness
 // and its sockets wherever the person who modelled it put them. Corrections that look right against
 // the first can be wrong against the second, and one of them was: the sweep said the muzzle drops
 // at a wall while the player was watching it stand on end.
+// A weapon of a given size, with no file behind it, for the many tests that are about how a weapon
+// is held rather than about any particular weapon.
+//
+// This shape used to arrive by itself: a weapon whose model would not load wore a procedurally
+// built one. That is gone from the game, because a stand-in that looks like a gun is a stand-in
+// nobody notices when an asset stops loading. It is still exactly right as a test fixture, so the
+// tests now ask for it by name instead of relying on a fallback.
+void EquipSynthetic(BodyHarness& harness, const WeaponDefinition& weapon)
+{
+    const ModelAsset model = StarterWeaponModel(weapon);
+    harness.body.SetWeaponModelForSimulation(weapon, model);
+}
+
 bool LoadShippedCarbine(BodyHarness& harness, WeaponDefinition& definition, ModelAsset& model)
 {
     WeaponDatabase weapons;
@@ -816,7 +829,7 @@ TEST_CASE("The trigger hand keeps hold of the weapon while crawling", "[body][po
 
     harness.SetStance(PlayerStance::Prone);
     harness.Settle(240);
-    harness.body.SetWeaponForSimulation(&weapon);
+    EquipSynthetic(harness, weapon);
     harness.SetTravel(glm::vec3(0.0f, 0.0f, -1.0f));
     harness.Settle(180);
 
@@ -938,7 +951,7 @@ TEST_CASE("The trigger hand stays on the weapon through a reload", "[body][pose]
     weapon.id = 1;
     weapon.key = "test_carbine";
     weapon.size = {0.06f, 0.16f, 0.62f};
-    harness.body.SetWeaponForSimulation(&weapon);
+    EquipSynthetic(harness, weapon);
     harness.Settle(120);
 
     float worst = 0.0f;
@@ -1305,7 +1318,7 @@ TEST_CASE("A held weapon stops at a wall it is looking sideways at", "[body][pos
     weapon.id = 1;
     weapon.key = "test_rifle";
     weapon.size = {0.06f, 0.16f, 0.62f};
-    harness.body.SetWeaponForSimulation(&weapon);
+    EquipSynthetic(harness, weapon);
 
     // A wall across the player's front. CreateBox takes half extents, so the face is the centre
     // plus the half depth: this one faces the player at z = -0.32, exactly a capsule radius away.
@@ -1565,7 +1578,7 @@ TEST_CASE("A weapon stays in the hand beside a wall", "[body][pose]")
     weapon.id = 1;
     weapon.key = "test_rifle";
     weapon.size = {0.06f, 0.16f, 0.62f};
-    harness.body.SetWeaponForSimulation(&weapon);
+    EquipSynthetic(harness, weapon);
 
     // A crate directly in front, chest high, its top well within a probe's reach of the muzzle.
     harness.physics.CreateBox({1.5f, 0.6f, 0.5f}, Transform{{0.0f, 0.6f, -0.85f}}, BodyMotion::Static);
@@ -1616,7 +1629,7 @@ TEST_CASE("Aiming puts the sights on the view axis, whatever the pitch", "[body]
     weapon.id = 1;
     weapon.key = "test_rifle";
     weapon.size = {0.06f, 0.16f, 0.62f};
-    harness.body.SetWeaponForSimulation(&weapon);
+    EquipSynthetic(harness, weapon);
 
     PlayerBody::WeaponPose pose;
     pose.aim = 1.0f;
@@ -1660,7 +1673,7 @@ TEST_CASE("A weapon against a wall comes back rather than into the camera", "[bo
     weapon.id = 1;
     weapon.key = "test_rifle";
     weapon.size = {0.06f, 0.16f, 0.62f};
-    harness.body.SetWeaponForSimulation(&weapon);
+    EquipSynthetic(harness, weapon);
 
     harness.physics.CreateBox({4.0f, 3.0f, 0.5f}, Transform{{0.0f, 1.5f, -0.82f}}, BodyMotion::Static);
     harness.physics.OptimizeBroadPhase();
@@ -1904,7 +1917,7 @@ TEST_CASE("Sighted, the whole weapon stays in front of the near plane", "[body][
     weapon.id = 1;
     weapon.key = "test_rifle";
     weapon.size = {0.06f, 0.16f, 0.62f};
-    harness.body.SetWeaponForSimulation(&weapon);
+    EquipSynthetic(harness, weapon);
 
     PlayerBody::WeaponPose pose;
     pose.aim = 1.0f;
@@ -1975,6 +1988,7 @@ TEST_CASE("Turning the grip socket turns the weapon in the hand", "[body][pose][
         BodyHarness harness;
         harness.SetStance(PlayerStance::Standing);
         harness.Settle(120);
+        // Named on disk, so this one wants the file loaded rather than a synthetic shape.
         harness.body.SetWeaponForSimulation(&weapon);
         harness.Settle(120);
 
@@ -2020,7 +2034,7 @@ TEST_CASE("Aiming and turning does not make the hold jitter", "[body][pose][weap
     weapon.id = 1;
     weapon.key = "test_rifle";
     weapon.size = {0.06f, 0.16f, 0.62f};
-    harness.body.SetWeaponForSimulation(&weapon);
+    EquipSynthetic(harness, weapon);
 
     PlayerBody::WeaponPose pose;
     pose.aim = 1.0f;
@@ -2078,7 +2092,7 @@ TEST_CASE("The support hand comes back onto the weapon rather than snapping to i
     weapon.key = "test_rifle";
     weapon.size = {0.06f, 0.16f, 0.62f};
     weapon.reloadSeconds = 2.2f;
-    harness.body.SetWeaponForSimulation(&weapon);
+    EquipSynthetic(harness, weapon);
     harness.Settle(120);
 
     // Through a whole reload and out the far side, watching how far the hand moves each tick.
@@ -2128,7 +2142,7 @@ TEST_CASE("Aiming does not pull the weapon back towards the eye", "[body][pose][
     weapon.id = 1;
     weapon.key = "test_rifle";
     weapon.size = {0.06f, 0.16f, 0.62f};
-    harness.body.SetWeaponForSimulation(&weapon);
+    EquipSynthetic(harness, weapon);
 
     const auto settleAt = [&](float aim)
     {
@@ -2248,6 +2262,7 @@ TEST_CASE("The carry socket moves the weapon and the grip socket moves the hand"
     BodyHarness harness;
     harness.SetStance(PlayerStance::Standing);
     harness.Settle(90);
+    // Named on disk, so this one wants the file loaded rather than a synthetic shape.
     harness.body.SetWeaponForSimulation(&weapon);
     harness.Settle(90);
 
@@ -2308,7 +2323,7 @@ TEST_CASE("A hand on a weapon keeps the same grip on it while the player turns",
     weapon.id = 1;
     weapon.key = "test_rifle";
     weapon.size = {0.06f, 0.16f, 0.62f};
-    harness.body.SetWeaponForSimulation(&weapon);
+    EquipSynthetic(harness, weapon);
     harness.Settle(150);
 
     // How the hand is turned relative to the weapon. If the hand belongs to the weapon this is the
@@ -2361,7 +2376,7 @@ TEST_CASE("Reloading while turning keeps the hand on the magazine well", "[body]
     weapon.key = "test_rifle";
     weapon.size = {0.06f, 0.16f, 0.62f};
     weapon.reloadSeconds = 2.2f;
-    harness.body.SetWeaponForSimulation(&weapon);
+    EquipSynthetic(harness, weapon);
     harness.Settle(120);
 
     // Into a reload, past the point where the hand has fetched a magazine and is bringing it back to
@@ -2433,7 +2448,7 @@ TEST_CASE("The support hand does not spin as it comes back from a reload",
     weapon.key = "test_rifle";
     weapon.size = {0.06f, 0.16f, 0.62f};
     weapon.reloadSeconds = 2.2f;
-    harness.body.SetWeaponForSimulation(&weapon);
+    EquipSynthetic(harness, weapon);
     harness.Settle(120);
 
     PlayerBody::WeaponPose pose;
@@ -2474,7 +2489,7 @@ TEST_CASE("A prone reload puts the arm back on the floor rather than through it"
     weapon.key = "test_rifle";
     weapon.size = {0.06f, 0.16f, 0.62f};
     weapon.reloadSeconds = 2.2f;
-    harness.body.SetWeaponForSimulation(&weapon);
+    EquipSynthetic(harness, weapon);
     harness.SetStance(PlayerStance::Prone);
     harness.Settle(240);
 
@@ -2527,7 +2542,7 @@ TEST_CASE("Walking into a wall keeps the barrel out of it", "[body][pose][weapon
     weapon.id = 1;
     weapon.key = "test_rifle";
     weapon.size = {0.06f, 0.16f, 0.62f};
-    harness.body.SetWeaponForSimulation(&weapon);
+    EquipSynthetic(harness, weapon);
 
     const float wallZ = -0.32f;
     harness.physics.CreateBox({8.0f, 3.0f, 1.0f}, Transform{{0.0f, 1.5f, wallZ - 1.0f}},
@@ -2565,7 +2580,7 @@ TEST_CASE("The sights do not come up against a wall", "[body][pose][weapons][wal
     weapon.id = 1;
     weapon.key = "test_rifle";
     weapon.size = {0.06f, 0.16f, 0.62f};
-    harness.body.SetWeaponForSimulation(&weapon);
+    EquipSynthetic(harness, weapon);
 
     const float wallZ = -0.32f;
     harness.physics.CreateBox({8.0f, 3.0f, 1.0f}, Transform{{0.0f, 1.5f, wallZ - 1.0f}},
@@ -2617,7 +2632,7 @@ TEST_CASE("Walking up to a wall does not make the weapon hunt", "[body][pose][we
     weapon.id = 1;
     weapon.key = "test_rifle";
     weapon.size = {0.06f, 0.16f, 0.62f};
-    harness.body.SetWeaponForSimulation(&weapon);
+    EquipSynthetic(harness, weapon);
 
     harness.physics.CreateBox({8.0f, 3.0f, 1.0f}, Transform{{0.0f, 1.5f, -1.32f}}, BodyMotion::Static);
     harness.physics.OptimizeBroadPhase();
@@ -2908,7 +2923,7 @@ TEST_CASE("Lying down and looking at the floor keeps the barrel out of it",
     weapon.id = 1;
     weapon.key = "test_rifle";
     weapon.size = {0.06f, 0.16f, 0.62f};
-    harness.body.SetWeaponForSimulation(&weapon);
+    EquipSynthetic(harness, weapon);
 
     harness.SetStance(PlayerStance::Prone);
     harness.Settle(240);
@@ -3145,7 +3160,7 @@ TEST_CASE("Reloading on your front keeps both hands above the floor", "[body][po
     weapon.id = 1;
     weapon.key = "test_carbine";
     weapon.size = {0.06f, 0.16f, 0.62f};
-    harness.body.SetWeaponForSimulation(&weapon);
+    EquipSynthetic(harness, weapon);
     harness.SetStance(PlayerStance::Prone);
     harness.Settle(300);
     REQUIRE(harness.State().stance == PlayerStance::Prone);
@@ -3642,7 +3657,7 @@ TEST_CASE("Walking into a wall leaves the weapon in front of the player", "[body
     weapon.id = 1;
     weapon.key = "test_rifle";
     weapon.size = {0.06f, 0.16f, 0.62f};
-    harness.body.SetWeaponForSimulation(&weapon);
+    EquipSynthetic(harness, weapon);
     harness.Settle(120);
 
     // A crate, chest high, right where the player is walking.

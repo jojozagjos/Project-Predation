@@ -32,9 +32,66 @@ ModelPart MakePart(const char* name, const glm::vec3& size, const glm::vec3& cen
     return part;
 }
 
-// Builds the model a weapon has when nobody has authored one for it. Expressed as a ModelAsset
-// rather than as raw geometry so the same code can both draw it and write it out for editing.
-ModelAsset ProceduralModel(const WeaponDefinition& definition)
+// What is drawn when a weapon's model is missing or will not load.
+//
+// This used to be a rather good little gun built out of boxes, and that was the problem. A stand-in
+// that looks like a weapon is a stand-in nobody notices: the model silently did not load, the game
+// carried on, and the only way to find out was to wonder for a while why an edit to the file was
+// not showing up. A missing asset has to be louder than the thing it replaces, so this is a
+// magenta marker that is not shaped like anything and glows in the dark.
+//
+// The sockets are still here and still in sensible places. That is deliberate -- the hands should
+// hold the marker properly rather than flail at it, because an arm bug on top of a missing model
+// is two problems to read at once.
+ModelAsset MissingModel(const WeaponDefinition& definition)
+{
+    ModelAsset model;
+    model.name = "missing";
+
+    const float length = std::max(definition.size.z, 0.12f);
+    const float height = std::max(definition.size.y, 0.06f);
+    const float width = std::max(definition.size.x, 0.03f);
+    constexpr glm::vec3 kMagenta{1.0f, 0.0f, 0.8f};
+
+    // An upright bar and a block under it: an exclamation mark, near enough, and nothing anybody
+    // would mistake for a firearm at any angle.
+    ModelPart bar = MakePart("missing_bar", {width * 0.5f, height * 1.6f, length * 0.10f},
+                             {0.0f, height * 0.9f, 0.0f}, kMagenta);
+    bar.emissive = 0.6f;
+    bar.metallic = 0.0f;
+    bar.roughness = 1.0f;
+    model.parts.push_back(std::move(bar));
+
+    ModelPart dot = MakePart("missing_dot", {width * 0.5f, height * 0.35f, length * 0.10f},
+                             {0.0f, -height * 0.25f, 0.0f}, kMagenta);
+    dot.emissive = 0.6f;
+    dot.metallic = 0.0f;
+    dot.roughness = 1.0f;
+    model.parts.push_back(std::move(dot));
+
+    ModelSocket grip;
+    grip.name = "grip";
+    model.sockets.push_back(grip);
+
+    ModelSocket support;
+    support.name = "support";
+    support.position = {0.0f, height * 0.16f, length * 0.30f};
+    model.sockets.push_back(support);
+
+    ModelSocket muzzle;
+    muzzle.name = "muzzle";
+    muzzle.position = {0.0f, height * 0.32f, length * 0.5f};
+    model.sockets.push_back(muzzle);
+
+    ModelSocket sight;
+    sight.name = "sight";
+    sight.position = {0.0f, height * 0.6f, 0.0f};
+    model.sockets.push_back(sight);
+
+    return model;
+}
+
+ModelAsset StarterModelImpl(const WeaponDefinition& definition)
 {
     ModelAsset model;
     model.name = definition.key;
@@ -270,39 +327,70 @@ WeaponVisual BuildWeaponVisualFrom(const ModelAsset& model, const WeaponDefiniti
     return FromModel(model, definition, nullptr, textures);
 }
 
-WeaponVisual BuildWeaponVisual(const WeaponDefinition& definition, TextureLibrary* textures)
+std::vector<std::string> MissingWeaponSockets(const ModelAsset& model)
 {
-    if (!definition.model.empty())
+    // The sockets a weapon cannot be held or fired without. `carry` and `magazine` are not here
+    // because each has a real answer when it is absent -- carry is the grip, and a weapon with no
+    // magazine part has no magazine well -- rather than a guess standing in for an oversight.
+    static constexpr const char* kRequired[] = {"grip", "support", "muzzle", "sight"};
+    std::vector<std::string> missing;
+    for (const char* name : kRequired)
     {
-        auto& cache = ModelCache();
-        auto found = cache.find(definition.model);
-        if (found == cache.end())
+        if (model.FindSocket(name) == nullptr)
         {
-            auto loaded = std::make_shared<ModelAsset>();
-            if (loaded->LoadFromFile(ModelDirectory() / (definition.model + ".json")))
-            {
-                found = cache.emplace(definition.model, std::move(loaded)).first;
-            }
-            else
-            {
-                PRED_LOG_WARN(Gameplay, "Weapon '{}' names model '{}', which did not load; using the "
-                                        "built-in shape instead",
-                              definition.key, definition.model);
-            }
-        }
-        if (found != cache.end() && found->second != nullptr)
-        {
-            return FromModel(*found->second, definition, found->second, textures);
+            missing.emplace_back(name);
         }
     }
+    return missing;
+}
 
-    const ModelAsset model = ProceduralModel(definition);
-    return FromModel(model, definition, nullptr, textures);
+WeaponVisual BuildWeaponVisual(const WeaponDefinition& definition, TextureLibrary* textures)
+{
+    // No quiet substitutions in here. A weapon whose model is missing draws the marker and says so
+    // as an error, because the alternative -- a plausible shape in your hands and a line in the log
+    // nobody reads -- is how an afternoon goes on an asset that was never loading in the first
+    // place.
+    if (definition.model.empty())
+    {
+        PRED_LOG_ERROR(Gameplay, "Weapon '{}' names no model. Add \"model\" to it in weapons.json.",
+                       definition.key);
+        const ModelAsset marker = MissingModel(definition);
+        return FromModel(marker, definition, nullptr, textures);
+    }
+
+    auto& cache = ModelCache();
+    auto found = cache.find(definition.model);
+    if (found == cache.end())
+    {
+        auto loaded = std::make_shared<ModelAsset>();
+        const std::filesystem::path file = ModelDirectory() / (definition.model + ".json");
+        if (!loaded->LoadFromFile(file))
+        {
+            PRED_LOG_ERROR(Gameplay, "Weapon '{}' names model '{}', which did not load from {}",
+                           definition.key, definition.model, file.string());
+            const ModelAsset marker = MissingModel(definition);
+            return FromModel(marker, definition, nullptr, textures);
+        }
+        // Checked once, when it is read, rather than every time it is drawn.
+        const std::vector<std::string> missing = MissingWeaponSockets(*loaded);
+        for (const std::string& socket : missing)
+        {
+            PRED_LOG_ERROR(Gameplay, "Model '{}' has no '{}' socket; the weapon will be held wrong",
+                           definition.model, socket);
+        }
+        found = cache.emplace(definition.model, std::move(loaded)).first;
+    }
+    return FromModel(*found->second, definition, found->second, textures);
+}
+
+ModelAsset StarterWeaponModel(const WeaponDefinition& definition)
+{
+    return StarterModelImpl(definition);
 }
 
 bool ExportWeaponModel(const WeaponDefinition& definition, const std::string& modelName)
 {
-    ModelAsset model = ProceduralModel(definition);
+    ModelAsset model = StarterModelImpl(definition);
     model.name = modelName;
     return model.SaveToFile(ModelDirectory() / (modelName + ".json"));
 }

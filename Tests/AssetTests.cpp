@@ -210,6 +210,9 @@ TEST_CASE("The shipped weapon models are the size of the weapons they belong to"
     REQUIRE(weapons.LoadFromFile(std::filesystem::path(PRED_SOURCE_DIR) / "Assets" / "Data" /
                                  "weapons.json"));
     REQUIRE_FALSE(weapons.All().empty());
+    // All() no longer hands out the "no weapon" placeholder, so every entry here is a real weapon
+    // that has to have a real model. It used to, and the missing-model fallback gave the empty one
+    // a plausible shape, which is how a weapon with no key and no model passed a size check.
 
     for (const WeaponDefinition& definition : weapons.All())
     {
@@ -382,4 +385,60 @@ TEST_CASE("A dropped weapon keeps the pieces it was made of", "[assets][weapons]
     // separate and each has a material of its own to carry one.
     CHECK(named == 0);
     CHECK(visual.Combined().vertices.size() > visual.parts.front().mesh.vertices.size());
+}
+
+TEST_CASE("A weapon whose model is missing is unmistakable about it", "[assets][weapon]")
+{
+    // There used to be a rather good little gun built out of boxes here, drawn whenever a model
+    // would not load. That was the problem: a stand-in that looks like a weapon is a stand-in
+    // nobody notices, and the only symptom of an asset that was never loading was wondering for a
+    // while why an edit to the file was not showing up.
+    Paths::Init(nullptr, std::filesystem::path(PRED_SOURCE_DIR) / "Assets");
+
+    WeaponDefinition broken;
+    broken.key = "test_broken";
+    broken.model = "no_such_model_exists_anywhere";
+    broken.size = {0.06f, 0.14f, 0.60f};
+
+    const WeaponVisual visual = BuildWeaponVisual(broken);
+    REQUIRE_FALSE(visual.parts.empty());
+    for (const WeaponVisual::Part& part : visual.parts)
+    {
+        INFO("part " << part.name);
+        // Magenta, glowing, and not shaped like anything. Nothing in the game is this colour.
+        CHECK(part.material.baseColor.r > 0.9f);
+        CHECK(part.material.baseColor.g < 0.1f);
+        CHECK(part.material.baseColor.b > 0.5f);
+        CHECK(glm::length(part.material.emissive) > 0.1f);
+    }
+
+    // Still held properly. An arm bug on top of a missing model is two problems to read at once.
+    CHECK(visual.muzzle.z > visual.triggerGrip.z);
+}
+
+TEST_CASE("The sockets a weapon cannot do without are named when they are absent", "[assets][weapon]")
+{
+    ModelAsset bare;
+    bare.name = "bare";
+    const std::vector<std::string> missing = MissingWeaponSockets(bare);
+    // Not carry and not magazine: each of those has a real answer when it is absent rather than a
+    // guess standing in for an oversight.
+    CHECK(missing.size() == 4);
+
+    Paths::Init(nullptr, std::filesystem::path(PRED_SOURCE_DIR) / "Assets");
+    for (const char* name : {"m4_carbine", "g17_pistol"})
+    {
+        ModelAsset shipped;
+        REQUIRE(shipped.LoadFromFile(ModelDirectory() / (std::string(name) + ".json")));
+        INFO("shipped model " << name << " is missing: " << [&]
+             {
+                 std::string all;
+                 for (const std::string& one : MissingWeaponSockets(shipped))
+                 {
+                     all += one + " ";
+                 }
+                 return all;
+             }());
+        CHECK(MissingWeaponSockets(shipped).empty());
+    }
 }

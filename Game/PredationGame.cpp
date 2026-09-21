@@ -6162,15 +6162,15 @@ void PredationGame::DrawWeaponBench()
 
     ImGui::Separator();
     ImGui::TextDisabled("The weapon this model is worn by, for the game:");
-    // Index zero is the database's "no weapon" placeholder: no key, no name. It has no business in
-    // a list of weapons to assign a model to, and offering it crashed the game outright, because a
-    // row with an empty name is a row with an empty id, and an empty id at the root of a popup is
-    // the one thing ImGui refuses outright. Every row also carries its own id, so two weapons that
-    // happen to share a name cannot collide either.
-    const std::vector<WeaponDefinition>& weapons = m_weaponData.All();
-    if (weapons.size() > 1)
+    // Every row carries its own id, so two weapons that happen to share a name cannot collide.
+    // The database's "no weapon" placeholder used to be in this list and had to be skipped by hand
+    // here -- offering it crashed the game outright, because a row with an empty name is a row with
+    // an empty id, and an empty id at the root of a popup is the one thing ImGui refuses. All()
+    // no longer hands it out, so there is nothing to remember.
+    const std::span<const WeaponDefinition> weapons = m_weaponData.All();
+    if (!weapons.empty())
     {
-        m_benchWeapon = std::clamp(m_benchWeapon, 1, static_cast<int>(weapons.size()) - 1);
+        m_benchWeapon = std::clamp(m_benchWeapon, 0, static_cast<int>(weapons.size()) - 1);
         const auto label = [&](int index)
         {
             const WeaponDefinition& weapon = weapons[static_cast<size_t>(index)];
@@ -6178,7 +6178,7 @@ void PredationGame::DrawWeaponBench()
         };
         if (ImGui::BeginCombo("Weapon", label(m_benchWeapon).c_str()))
         {
-            for (int i = 1; i < static_cast<int>(weapons.size()); ++i)
+            for (int i = 0; i < static_cast<int>(weapons.size()); ++i)
             {
                 ImGui::PushID(i);
                 if (ImGui::Selectable(label(i).c_str(), i == m_benchWeapon))

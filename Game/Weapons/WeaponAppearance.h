@@ -94,8 +94,22 @@ WeaponVisual BuildWeaponVisual(const WeaponDefinition& definition, TextureLibrar
 WeaponVisual BuildWeaponVisualFrom(const ModelAsset& model, const WeaponDefinition& definition,
                                    TextureLibrary* textures = nullptr);
 
-// Writes a procedurally built weapon out as an editable model file, so the editor has something to
-// start from rather than a blank page.
+// Which of the sockets a weapon cannot be held or fired without are absent from a model. Empty
+// when the model is complete. The editor shows this while a model is being built, and loading one
+// for the game reports it as an error.
+std::vector<std::string> MissingWeaponSockets(const ModelAsset& model);
+
+// A rough weapon shape built from a definition's dimensions: a receiver, a grip, sights, a
+// magazine, and a stock and barrel if it is long enough to have them.
+//
+// This used to be what a weapon wore when its model would not load, and that was the whole trouble
+// -- it looked enough like a gun that a missing asset went unnoticed. It is still useful, but only
+// where somebody asked for it: as the starting point `model_export` writes out, and as a stand-in
+// in tests that are about how a weapon is held rather than about any particular weapon.
+ModelAsset StarterWeaponModel(const WeaponDefinition& definition);
+
+// Writes that out as an editable model file, so making a new one starts from a rough shape rather
+// than a blank page.
 bool ExportWeaponModel(const WeaponDefinition& definition, const std::string& modelName);
 
 // Forgets every model read from disk, so the next weapon built picks up what was just saved.
