@@ -135,6 +135,7 @@ void RelayCarrier::Close()
     m_lobbies.clear();
     m_listTimer = 0.0f;
     m_listSilence = 0.0f;
+    m_heard = false;
     if (m_socketSystem)
     {
         SocketSystem::Release();
@@ -297,7 +298,7 @@ void RelayCarrier::Poll(float dt)
                     ? "Nothing answered at " + where +
                           ". Either PredationRelay.exe is not running on this machine -- it is in "
                           "the folder next to the game -- or the relay is on somebody else's, in "
-                          "which case net.relay_host has to point at them rather than at 127.0.0.1. "
+                          "which case net.relay_server has to point at them rather than at 127.0.0.1. "
                           "Only one of you needs to run it."
                     : "Nothing answered at " + where +
                           ". Check the address and the port, that a relay is running there, and "
@@ -391,6 +392,7 @@ void RelayCarrier::Poll(float dt)
         case RelayMessage::LobbyList:
             m_lobbies = packet.lobbies;
             m_listSilence = 0.0f;
+            m_heard = true;
             m_message.clear();
             break;
 
@@ -483,6 +485,12 @@ RelayRejection RelayCarrier::Rejection() const
 {
     std::lock_guard<std::mutex> lock(m_mutex);
     return m_rejection;
+}
+
+bool RelayCarrier::Heard() const
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    return m_heard;
 }
 
 std::vector<RelayLobbyInfo> RelayCarrier::Lobbies() const

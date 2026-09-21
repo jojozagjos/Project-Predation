@@ -659,6 +659,11 @@ bool LoadGlbModel(const std::filesystem::path& file, const GltfImportOptions& op
                 continue;
             }
             part.name = PartName(document, node, i, material);
+            if (std::find(options.skipParts.begin(), options.skipParts.end(), part.name) !=
+                options.skipParts.end())
+            {
+                continue;
+            }
             ApplyMaterial(document, material, part);
             part.texture =
                 ExtractBaseColorTexture(document, binary, material, options, writtenTextures);

@@ -151,7 +151,7 @@ std::filesystem::path ModelDirectory();
 // Every model under it, by name, whatever folder it is in.
 //
 // The folders are for people, not for the game. A model is named by its file and found wherever it
-// sits, so Models/Weapons/m4_carbine.json is still "m4_carbine" and moving it into a folder
+// sits, so Models/Weapons/m5_carbine.json is still "m5_carbine" and moving it into a folder
 // tomorrow does not rewrite weapons.json, the editor's list, or anybody's saved data. Adding an
 // asset is then genuinely dropping a file in.
 //

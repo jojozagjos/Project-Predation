@@ -1,4 +1,4 @@
-{
+﻿{
   "_comment": "Weapon definitions. 'key' is the stable identity used by data files and network messages; ids are assigned at load and are only valid within a run. 'item' links the weapon to the inventory entry that carries it. Angles are degrees, times are seconds, ranges are metres.",
 
   "weapons": [
@@ -6,7 +6,7 @@
       "key": "sidearm",
       "name": "ACRD Sidearm",
       "item": "sidearm",
-      "model": "g17_pistol",
+      "model": "m9_pistol",
       "fire_mode": "single",
       "rounds_per_minute": 340,
       "magazine": 12,
@@ -34,7 +34,7 @@
       "key": "carbine",
       "name": "ACRD Carbine",
       "item": "carbine",
-      "model": "m4_carbine",
+      "model": "m5_carbine",
       "fire_mode": "auto",
       "rounds_per_minute": 620,
       "magazine": 30,

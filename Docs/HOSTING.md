@@ -1,30 +1,59 @@
 # Hosting
 
-Two ways to play together, and only one of them needs a machine somewhere.
+Three ways to play together. Only the last one needs a machine of your own somewhere.
 
-| | On your network | Over the internet |
-|---|---|---|
-| Who it is for | same house, same wifi, a LAN party | anybody, anywhere |
-| What you have to run | nothing | a relay |
-| What it costs | nothing | a machine and its transfer allowance |
-| What a player does | picks your game out of a list | picks your game out of a list, or types a code |
+| | Same wifi | Over the internet | Over the internet, with a relay |
+|---|---|---|---|
+| What the host does | Host → On your network | Host → Over the internet | same button |
+| What a friend does | picks the game from the list | pastes the address the host sends | picks the game from the list |
+| What has to be true | nothing | the host's router lets people in (or Tailscale) | somebody runs a relay |
+| Cost | nothing | nothing | a small server |
 
-## On your network: nothing to set up
+## Same wifi: nothing to set up
 
 A host announces itself four times a second on UDP 27016, which every machine on the network
-hears. Anybody who opens the browser sees the game and clicks Join. There is no code, no address,
-no router setting and no server of any kind.
+hears. Anybody who opens Play sees the game and clicks Join.
 
-The only thing that stops this working is something eating broadcast traffic: a few office and
-campus networks do, and some routers have client isolation switched on. The host page has the
-machine's address folded away under "If your game does not appear in their list" for exactly that
-case — the other player types it into the join box and everything else is the same.
+The only thing that stops this is something eating broadcast traffic: a few office and campus
+networks do, and some routers have client isolation switched on. Then the host sends their address
+from the host page instead and the friend pastes it into the join box.
 
 Windows Firewall asks once, the first time the game opens a port. Saying no to either the private
 or the public box is by far the most common reason a game nobody can find looks like it started
 correctly.
 
-## Over the internet: the relay
+## Over the internet: the host's router lets people in
+
+Your router has one address on the internet and hands out private ones inside the house. A friend
+out on the internet can only reach the router, and the router has to be told which PC in the house
+the game is on. That is the whole problem, and only the **host** has it — a friend joining needs
+nothing opened.
+
+When somebody hosts "Over the internet" with no relay set up, the game asks the router to do that
+itself (UPnP), then shows the host an address with a Copy button. The friend pastes it into the box
+under the list on the Play screen. The address is in the pause menu too.
+
+When the router says no, the screen says so and lists the ways round it:
+
+- **Let a friend host instead.** Only the host needs an open door, so whoever has an ordinary home
+  router with UPnP on should host.
+- **Tailscale.** Both install it (free) and sign in, and share the host's machine with the friend.
+  It makes the two PCs behave as if they were on one network, so the host picks "On your network"
+  and the friend pastes the host's Tailscale address (it starts `100.`) with `:27015` on the end.
+  Nothing is opened on any router, and the traffic goes PC to PC, so there is no server and no
+  bandwidth bill.
+- **Turn on UPnP** in the router's settings page, then host again.
+- **Forward the port by hand:** UDP 27015 to the host PC's own address (the screen shows it). Then
+  send friends your public address — search "what is my IP" — with `:27015` on the end.
+
+Two things cannot be fixed from a router you are sitting behind: a network somebody else runs (a
+flat, a dorm, an office), and an internet provider that shares one address between many homes
+(CGNAT; the screen detects this and says so). Both are what Tailscale is for.
+
+Testing tip: you usually cannot join your own public address from inside your own house, even when
+it works for everybody else. Test with a friend, not with a second copy on your own PC.
+
+## Over the internet, with a relay
 
 Two machines behind different routers cannot reach each other. Both of them *can* reach a third
 machine that is publicly addressable, and that is all a relay is: everybody connects outwards to
@@ -38,7 +67,7 @@ need to be fast, or have a disk, or run anything else.
 PredationRelay.exe --port 27020 --budget-gb 200
 ```
 
-Then every player sets `net.relay_host` to that machine's address. Only one of you runs it.
+Then every player puts that machine's address in Settings → Multiplayer → Relay server. Only one of you runs it. With a relay answering, "Over the internet" hosting goes through it by itself, which works through every kind of router and puts games in everybody's list.
 
 The relay also answers the "what games are open" question, so the Over-the-internet tab of the
 browser is filled in by the same machine. There is no second service, no database and no website.
@@ -101,4 +130,4 @@ only shape that works.
 If everybody is in the same building, use the network option. It is instant, it needs nothing, it
 has lower latency than any relay can, and there is no machine anywhere that can be suspended.
 
-Use the relay when people are not in the same building. That is the only reason it exists.
+Over the internet, try the host's router first, then Tailscale. A relay is for when a group wants games to just appear in a list without anybody sending an address, or when nobody in the group can open a door.

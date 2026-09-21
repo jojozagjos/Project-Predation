@@ -268,7 +268,7 @@ TEST_CASE("The editor takes a model file dropped on the window", "[editor][impor
     {
         const std::filesystem::path source =
             std::filesystem::path(PRED_SOURCE_DIR) / "Assets" / "Models" / "Source" / "Weapons" /
-            "g17_pistol.glb";
+            "m9_pistol.glb";
         REQUIRE(std::filesystem::exists(source));
 
         ModelEditor editor;
@@ -276,7 +276,7 @@ TEST_CASE("The editor takes a model file dropped on the window", "[editor][impor
         CHECK_FALSE(editor.Model().parts.empty());
         // Named after the file, because that is nearly always what somebody meant when they
         // dragged it in.
-        CHECK(editor.Model().name == "g17_pistol");
+        CHECK(editor.Model().name == "m9_pistol");
 
         // Already inside the assets tree, so nothing was copied. Re-importing from in there must
         // not copy a file onto itself, which on Windows truncates it.

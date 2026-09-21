@@ -228,7 +228,7 @@ It links no renderer and no physics, so it builds and runs on a headless box. Po
 from the console, and the setting is remembered:
 
 ```
-net.relay_host relay.example.com
+net.relay_server relay.example.com
 net.relay_port 27020
 ```
 

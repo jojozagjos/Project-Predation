@@ -76,6 +76,11 @@ public:
     // whoever is polling, and handing out a reference into it is how a list being drawn gets
     // reallocated underneath the drawing.
     std::vector<RelayLobbyInfo> Lobbies() const;
+    // Whether the relay has answered a listing at least once since browsing began. The game uses a
+    // relay only when one is really there: hosting "over the internet" with none answering falls
+    // back to asking the router to let people in directly, rather than opening a lobby on a
+    // machine that does not exist.
+    bool Heard() const;
     const std::string& Message() const { return m_message; }
 
     // --- DatagramCarrier -------------------------------------------------------------------------
@@ -121,6 +126,7 @@ private:
     // very different things to be told.
     float m_listTimer = 0.0f;
     float m_listSilence = 0.0f;
+    bool m_heard = false;
     // Whether this carrier holds a reference to the socket system, so Close releases exactly the
     // ones Join took.
     bool m_socketSystem = false;

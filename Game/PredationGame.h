@@ -14,6 +14,7 @@
 #include "Engine/Net/RelayCarrier.h"
 #include "Game/Net/NetSession.h"
 #include "Engine/Net/LanDiscovery.h"
+#include "Engine/Net/PortMapper.h"
 #include "Game/Player/PlayerBody.h"
 #include "Game/Player/PlayerController.h"
 #include "Game/Weapons/BulletHole.h"
@@ -230,7 +231,15 @@ private:
     void UpdateDiscovery(float frameDeltaSeconds);
     // Starting one. LAN goes straight into the world -- there is nothing to hand out, because the
     // beacon is the invitation -- and Online goes to the lobby screen for the code.
-    void StartHostLocal();
+    void StartHostLocal(bool overInternet);
+    // Over the internet: through the relay when one is set up and answering, otherwise straight to
+    // this machine with the router asked to let people in. The player does not choose between them.
+    void StartHostOnline();
+    bool RelayConfigured() const;
+    // The address to send friends and whether the router has let them in, for the screen between
+    // Start and going in and for the pause menu.
+    void DrawShareAddress();
+    void DrawOpenGame();
     // Joining one. Both take whatever the row or the box gave them and say why if it did not work.
     bool JoinAddress(const std::string& address, int port);
     bool JoinTyped(const std::string& text);
@@ -601,6 +610,8 @@ private:
     // Which list is showing, and which kind of game the host page will open. One flag for both,
     // because they are the same question asked from either end: your own network, or the internet.
     bool m_online = false;
+    // Which of the two the tab bar showed last frame, so a change made elsewhere can be pushed to it.
+    bool m_onlineShown = false;
     // Finding games on this network, and the beacon that puts this machine in everybody else's
     // list while it is hosting one.
     LanListener m_browser;
@@ -614,6 +625,11 @@ private:
     // Which games on the network have already been mentioned in the log, so appearing and going
     // are each said once rather than every frame.
     std::vector<std::string> m_seenOnLan;
+    // Asks the router to let people outside the house in, when hosting over the internet without a
+    // relay. Best effort, and the screen says what happened.
+    PortMapper m_ports;
+    // The "your game is open, send them this" screen, between Start and going in.
+    bool m_openScreen = false;
     // Whether the lobby screen is up, and whether this machine opened the lobby or joined one.
     bool m_inLobby = false;
     bool m_hostingLobby = false;

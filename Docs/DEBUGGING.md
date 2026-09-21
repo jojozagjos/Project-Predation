@@ -232,5 +232,5 @@ equipped and no body has been posed.
 
 ```
 ProjectPredation.exe --frames 300 --exec "solo" --exec "give carbine" --exec "slot 1" --exec "hold_report 200"
-ProjectPredation.exe --frames 300 --exec "editor m4_carbine" --exec "hold_report 200"
+ProjectPredation.exe --frames 300 --exec "editor m5_carbine" --exec "hold_report 200"
 ```

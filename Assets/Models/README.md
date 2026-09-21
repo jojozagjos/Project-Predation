@@ -1,7 +1,7 @@
 # Models
 
 One folder per kind of thing, and a model is found by its file name wherever it sits. Nothing
-outside this folder spells out a path: `weapons.json` says `"model": "m4_carbine"`, and moving that
+outside this folder spells out a path: `weapons.json` says `"model": "m5_carbine"`, and moving that
 file into a different folder tomorrow changes nothing anywhere else.
 
 ```

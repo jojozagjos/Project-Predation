@@ -3314,8 +3314,14 @@ TEST_CASE("Looking near straight up lowers the weapon rather than raising the ha
     // Level, and at the top of the range.
     const float atLevel = heightAboveEye(0.0f);
     const float atSteep = heightAboveEye(85.0f);
+    // Which hand, because the fix is different for each: the trigger hand is placed by the grip and
+    // carry sockets, the support hand by the support socket or, past arm's reach, by the arm.
+    const float eyeNow = harness.View().eyePosition.y;
     INFO("hands sat " << atLevel * 100.0f << " cm above the eye level, and " << atSteep * 100.0f
-                      << " cm looking up 85 degrees");
+                      << " cm looking up 85 degrees (trigger hand "
+                      << (harness.Bone(harness.Rig().hand[0]).y - eyeNow) * 100.0f
+                      << ", support hand "
+                      << (harness.Bone(harness.Rig().hand[1]).y - eyeNow) * 100.0f << ")");
     CHECK(atLevel < 0.0f);
     // Below the top of the head, not below the eye.
     //

@@ -28,13 +28,13 @@ std::filesystem::path SourceModel(const char* name)
 
 TEST_CASE("A downloaded weapon imports as separable parts", "[assets][gltf]")
 {
-    const std::filesystem::path file = SourceModel("m4_carbine.glb");
+    const std::filesystem::path file = SourceModel("m5_carbine.glb");
     INFO("reading " << file.string());
     REQUIRE(std::filesystem::exists(file));
     REQUIRE(IsGltfFile(file));
 
     GltfImportOptions options;
-    options.targetSize = 0.86f; // a carbine, near enough
+    options.targetSize = 0.72f; // a short carbine, near enough
     std::string error;
     ModelAsset model;
     REQUIRE(LoadGlbModel(file, options, model, &error));
@@ -69,7 +69,7 @@ TEST_CASE("An imported model is scaled to something a person can hold", "[assets
 {
     // Downloads arrive in wildly different units. A model a hundred times too large is
     // indistinguishable from one that failed to load, because both fill the screen with nothing.
-    for (const char* name : {"m4_carbine.glb", "g17_pistol.glb"})
+    for (const char* name : {"m5_carbine.glb", "m9_pistol.glb"})
     {
         const std::filesystem::path file = SourceModel(name);
         REQUIRE(std::filesystem::exists(file));
@@ -106,7 +106,7 @@ TEST_CASE("The importer turns a model when asked", "[assets][gltf]")
 {
     // glTF has no idea which way a weapon points, and the game wants the barrel down +Z. Turning it
     // once at import beats turning every part by hand afterwards.
-    const std::filesystem::path file = SourceModel("g17_pistol.glb");
+    const std::filesystem::path file = SourceModel("m9_pistol.glb");
     REQUIRE(std::filesystem::exists(file));
 
     GltfImportOptions upright;
@@ -159,7 +159,7 @@ TEST_CASE("An imported model survives a trip through the model file", "[assets][
 {
     // The importer is only half of it. What the editor opens and what the game holds is the saved
     // model file, so a mesh that imports and then does not round-trip through JSON is no use.
-    const std::filesystem::path file = SourceModel("g17_pistol.glb");
+    const std::filesystem::path file = SourceModel("m9_pistol.glb");
     REQUIRE(std::filesystem::exists(file));
 
     GltfImportOptions options;
@@ -205,7 +205,7 @@ TEST_CASE("The shipped weapon models are the size of the weapons they belong to"
     // pointed at explicitly. Without this the weapons fall back to their built-in shapes and the
     // test measures the thing it was written to stop being used.
     Paths::Init(nullptr, std::filesystem::path(PRED_SOURCE_DIR) / "Assets");
-    REQUIRE_FALSE(ModelPath("m4_carbine").empty());
+    REQUIRE_FALSE(ModelPath("m5_carbine").empty());
 
     WeaponDatabase weapons;
     REQUIRE(weapons.LoadFromFile(std::filesystem::path(PRED_SOURCE_DIR) / "Assets" / "Data" /
@@ -267,31 +267,32 @@ TEST_CASE("A textured model keeps its textures through the model file", "[assets
     // The images are written out beside the model and named from it, so what has to survive is the
     // name. A model that loads with its texture field empty draws flat grey, which is exactly what
     // a model with no texture does, so nothing about it says anything went wrong.
-    Paths::Init(nullptr, std::filesystem::path(PRED_SOURCE_DIR) / "Assets");
-
+    //
+    // Its own model rather than a shipped one: the weapons in the game now take their colours from
+    // their materials and carry no images at all, and a test that needs a textured weapon to exist
+    // would have nothing to check the moment the art changed.
     ModelAsset model;
-    REQUIRE(model.LoadFromFile(ModelPath("m4_carbine")));
-    REQUIRE_FALSE(model.parts.empty());
+    model.name = "texture_round_trip";
+    ModelPart plain;
+    plain.name = "plain";
+    model.parts.push_back(plain);
+    ModelPart painted;
+    painted.name = "painted";
+    painted.texture = "Models/Textures/texture_round_trip_0.png";
+    model.parts.push_back(painted);
 
-    int textured = 0;
-    for (const ModelPart& part : model.parts)
-    {
-        if (part.texture.empty())
-        {
-            continue;
-        }
-        ++textured;
-        INFO("part " << part.name << " names " << part.texture);
-        // Named relative to the assets root, so a model file does not carry the paths of the
-        // machine it was imported on.
-        CHECK(part.texture.rfind("Models/Textures/", 0) == 0);
-        // And the file is really there, which is the half of it a name alone does not prove.
-        const auto resolved = Paths::Resolve(part.texture);
-        REQUIRE(resolved.has_value());
-        CHECK(std::filesystem::exists(*resolved));
-    }
-    INFO("of " << model.parts.size() << " parts, " << textured << " are textured");
-    CHECK(textured > 0);
+    const std::filesystem::path file =
+        std::filesystem::temp_directory_path() / "pred_texture_round_trip.json";
+    REQUIRE(model.SaveToFile(file));
+    ModelAsset reopened;
+    REQUIRE(reopened.LoadFromFile(file));
+    std::filesystem::remove(file);
+
+    REQUIRE(reopened.parts.size() == 2);
+    CHECK(reopened.parts[0].texture.empty());
+    // Named relative to the assets root, so a model file does not carry the paths of the machine
+    // it was imported on.
+    CHECK(reopened.parts[1].texture == "Models/Textures/texture_round_trip_0.png");
 }
 
 TEST_CASE("The shipped weapons are not facing backwards", "[assets][weapons]")
@@ -303,7 +304,7 @@ TEST_CASE("The shipped weapons are not facing backwards", "[assets][weapons]")
     // the wrong way.
     Paths::Init(nullptr, std::filesystem::path(PRED_SOURCE_DIR) / "Assets");
 
-    for (const char* name : {"m4_carbine", "g17_pistol"})
+    for (const char* name : {"m5_carbine", "m9_pistol"})
     {
         ModelAsset model;
         REQUIRE(model.LoadFromFile(ModelPath(name)));
@@ -427,7 +428,7 @@ TEST_CASE("The sockets a weapon cannot do without are named when they are absent
     CHECK(missing.size() == 4);
 
     Paths::Init(nullptr, std::filesystem::path(PRED_SOURCE_DIR) / "Assets");
-    for (const char* name : {"m4_carbine", "g17_pistol"})
+    for (const char* name : {"m5_carbine", "m9_pistol"})
     {
         ModelAsset shipped;
         REQUIRE(shipped.LoadFromFile(ModelPath(name)));
@@ -451,7 +452,7 @@ TEST_CASE("A model is found by name wherever its folder is", "[assets][models]")
     // else's reference to it -- which is what makes adding an asset a matter of dropping a file in.
     Paths::Init(nullptr, std::filesystem::path(PRED_SOURCE_DIR) / "Assets");
 
-    const std::filesystem::path carbine = ModelPath("m4_carbine");
+    const std::filesystem::path carbine = ModelPath("m5_carbine");
     REQUIRE_FALSE(carbine.empty());
     CHECK(std::filesystem::exists(carbine));
     // It is not at the top of the folder any more, which is the point.
@@ -459,8 +460,8 @@ TEST_CASE("A model is found by name wherever its folder is", "[assets][models]")
 
     // And the list of what exists finds it there.
     const std::vector<std::string> all = ListModels();
-    CHECK(std::find(all.begin(), all.end(), "m4_carbine") != all.end());
-    CHECK(std::find(all.begin(), all.end(), "g17_pistol") != all.end());
+    CHECK(std::find(all.begin(), all.end(), "m5_carbine") != all.end());
+    CHECK(std::find(all.begin(), all.end(), "m9_pistol") != all.end());
 
     // A name nothing answers to is empty rather than a path that does not exist, so a caller has
     // to notice.
@@ -492,4 +493,37 @@ TEST_CASE("Saving a model makes it findable at once", "[assets][models]")
     std::filesystem::remove(file);
     RescanModels();
     CHECK(ModelPath("index_freshness_test").empty());
+}
+
+TEST_CASE("List the parts of a downloaded model", "[.][parts]")
+{
+    // Hidden. For sorting out a download before it becomes a weapon: which parts are the gun and
+    // which are the display props an artist left beside it, and which way it faces.
+    //   PredationTests.exe "[parts]"   with PRED_GLB set to the file
+    const char* path = std::getenv("PRED_GLB");
+    REQUIRE(path != nullptr);
+    GltfImportOptions options;
+    options.targetSize = 1.0f;
+    ModelAsset model;
+    std::string error;
+    REQUIRE(LoadGlbModel(path, options, model, &error));
+    std::string table = "\n";
+    for (const ModelPart& part : model.parts)
+    {
+        glm::vec3 low{1e9f};
+        glm::vec3 high{-1e9f};
+        const glm::mat4 rest = part.LocalMatrix();
+        for (const MeshVertex& vertex : part.mesh.vertices)
+        {
+            const glm::vec3 at = glm::vec3(rest * glm::vec4(vertex.position, 1.0f));
+            low = glm::min(low, at);
+            high = glm::max(high, at);
+        }
+        char row[256];
+        std::snprintf(row, sizeof(row), "%-28s x %6.3f..%6.3f  y %6.3f..%6.3f  z %6.3f..%6.3f  v %zu\n",
+                      part.name.c_str(), low.x, high.x, low.y, high.y, low.z, high.z,
+                      part.mesh.vertices.size());
+        table += row;
+    }
+    WARN(table);
 }

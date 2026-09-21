@@ -15,6 +15,7 @@ add_executable(PredationTests
     RelayTests.cpp
     LanDiscoveryTests.cpp
     BulletHoleTests.cpp
+    PortMapperTests.cpp
     PhysicsTests.cpp
     AssetTests.cpp
     EditorTests.cpp

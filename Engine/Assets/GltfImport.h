@@ -4,6 +4,7 @@
 
 #include <filesystem>
 #include <string>
+#include <vector>
 
 namespace pred
 {
@@ -39,6 +40,13 @@ struct GltfImportOptions
     // megabytes. Leave the directory empty to skip textures altogether.
     std::filesystem::path textureDirectory;
     std::string texturePrefix;
+    // Parts to leave out, by name, before the model is scaled and centred.
+    //
+    // Downloads are often display pieces: a gun with a spare magazine lying beside it and a couple of
+    // cartridges stood on end. Left in, they float next to the weapon in the player's hands, and
+    // because the whole file is fitted to one size they also shrink the weapon itself to make room
+    // for them. Removing them afterwards fixes the first and not the second.
+    std::vector<std::string> skipParts;
 };
 
 // Returns false and leaves `out` untouched when the file cannot be read or holds no triangles.

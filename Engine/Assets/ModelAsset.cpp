@@ -420,10 +420,16 @@ bool ModelAsset::SaveToFile(const std::filesystem::path& file) const
         node["metallic"] = part.metallic;
         node["emissive"] = part.emissive;
         node["visible"] = part.visible;
+        // Any part can wear an image, not only an imported one. This used to be written inside the
+        // imported-mesh block below, so a texture put on a box or a cylinder in the editor was simply
+        // not saved, and came back as a plain grey part the next time the model was opened.
+        if (!part.texture.empty())
+        {
+            node["texture"] = part.texture;
+        }
         if (part.shape == PartShape::Mesh && !part.mesh.vertices.empty())
         {
             node["source"] = part.sourceFile;
-            node["texture"] = part.texture;
             nlohmann::json positions = nlohmann::json::array();
             nlohmann::json normals = nlohmann::json::array();
             for (const MeshVertex& vertex : part.mesh.vertices)

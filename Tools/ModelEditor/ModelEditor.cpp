@@ -1187,7 +1187,7 @@ bool ModelEditor::DropFile(const std::string& path)
         return false;
     }
     // A dropped file with nothing open yet names the model, because that is nearly always what
-    // somebody meant: they dragged m4_carbine.glb in to make m4_carbine.
+    // somebody meant: they dragged m5_carbine.glb in to make m5_carbine.
     if (m_model.parts.empty() && m_saveName == "new_model")
     {
         m_saveName = file.stem().string();
