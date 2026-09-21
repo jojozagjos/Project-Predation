@@ -99,8 +99,6 @@ set(PRED_ENGINE_SOURCES
     Net/RelayServer.cpp
     Net/RelayCarrier.h
     Net/RelayCarrier.cpp
-    Net/PortMapper.h
-    Net/PortMapper.cpp
     Net/LanDiscovery.h
     Net/LanDiscovery.cpp
 

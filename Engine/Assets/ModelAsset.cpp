@@ -515,20 +515,28 @@ struct Index
 {
     std::map<std::string, std::filesystem::path> byName;
     bool built = false;
+    // Which folder it was built for.
+    //
+    // The index holds whole paths, so it belongs to one assets root. Anything that moves the root
+    // underneath it -- a tool pointed at a different tree, and every test that calls Paths::Init --
+    // leaves it holding paths into the old one, and the symptom is a model that exists and cannot
+    // be found, depending on what ran first.
+    std::filesystem::path root;
 };
 
 Index& ModelIndex()
 {
     static Index index;
-    if (index.built)
+    const std::filesystem::path root = ModelDirectory();
+    if (index.built && index.root == root)
     {
         return index;
     }
     index.built = true;
+    index.root = root;
     index.byName.clear();
 
     std::error_code ec;
-    const std::filesystem::path root = ModelDirectory();
     for (auto entry = std::filesystem::recursive_directory_iterator(root, ec);
          entry != std::filesystem::recursive_directory_iterator(); entry.increment(ec))
     {

@@ -183,6 +183,12 @@ void EquipSynthetic(BodyHarness& harness, const WeaponDefinition& weapon)
 
 bool LoadShippedCarbine(BodyHarness& harness, WeaponDefinition& definition, ModelAsset& model)
 {
+    // The model is found by name rather than by a path spelled out here, and finding it by name
+    // needs to know where the assets are. Done here rather than expected of every caller: a test
+    // that happens to run after one that set this up passed and the same test run first did not,
+    // which is the kind of failure that gets blamed on the wrong change.
+    Paths::Init(nullptr, std::filesystem::path(PRED_SOURCE_DIR) / "Assets");
+
     WeaponDatabase weapons;
     const std::filesystem::path weaponFile =
         std::filesystem::path(PRED_SOURCE_DIR) / "Assets" / "Data" / "weapons.json";

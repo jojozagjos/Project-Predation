@@ -4806,9 +4806,6 @@ void PredationGame::StopSession()
     if (m_sessionMode == SessionMode::Host)
     {
         m_host.Stop();
-        // And take the forwarding down. A door left open onto a machine that is no longer
-        // listening is worse than no door.
-        m_ports.Close();
     }
     else if (m_sessionMode == SessionMode::Client)
     {
@@ -5270,7 +5267,6 @@ void PredationGame::RegisterNetCommands()
                 return;
             }
             m_sessionMode = SessionMode::Host;
-            m_ports.Open(config.port);
             // Hosting from the console at the menu should put you in the game, the same as the
             // button does. Joining does not, because it is not a game until the host answers.
             EnterWorld();
