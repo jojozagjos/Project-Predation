@@ -235,8 +235,19 @@ std::filesystem::path PlayerConfigPath()
 //
 // Falls back to facing the round, which is right for a flat surface hit square on and near enough
 // for anything the trace misses.
-glm::vec3 SurfaceNormalAt(PhysicsWorld& physics, const glm::vec3& from, const glm::vec3& at)
+// Which way the surface a round arrived at faces, and what it belongs to.
+//
+// The body comes back as well as the normal because somebody else's round reaches this machine as a
+// position and nothing more: the shot was resolved elsewhere. A mark left on a crate has to know it
+// is on that crate, and this trace is already being done for the normal, so it is the one place that
+// can say so without a second one.
+glm::vec3 SurfaceNormalAt(PhysicsWorld& physics, const glm::vec3& from, const glm::vec3& at,
+                          BodyHandle* hitBody = nullptr)
 {
+    if (hitBody != nullptr)
+    {
+        *hitBody = BodyHandle{};
+    }
     const glm::vec3 along = at - from;
     const float distance = glm::length(along);
     if (distance < 1e-4f)
@@ -246,6 +257,10 @@ glm::vec3 SurfaceNormalAt(PhysicsWorld& physics, const glm::vec3& from, const gl
     const glm::vec3 direction = along / distance;
     // Started a little short of the impact so the trace has something to run into.
     const RayHit hit = physics.RayCast(at - direction * 0.25f, direction, 0.5f);
+    if (hit && hitBody != nullptr)
+    {
+        *hitBody = hit.body;
+    }
     return hit ? hit.normal : -direction;
 }
 } // namespace
@@ -356,34 +371,77 @@ bool PredationGame::OnInit(Application& app)
         // A fan of sixteen triangles is round enough at five centimetres across.
         MeshData holeMesh;
         {
-            constexpr int kSides = 16;
-            constexpr float kRadius = 0.028f;
-            MeshVertex centre;
-            centre.position = {0.0f, 0.0f, 0.0f};
-            centre.normal = {0.0f, 1.0f, 0.0f};
-            centre.uv = {0.5f, 0.5f};
-            holeMesh.vertices.push_back(centre);
+            // A crater, not a disc.
+            //
+            // It was one flat fan of triangles all facing straight out of the wall, so every hole
+            // was a black circle of exactly the same shade as every other, whatever the light was
+            // doing. What makes a real one read as a hole is that it is not flat: the rim catches
+            // the light and the pit does not, and which part is which changes as you move.
+            //
+            // So there are three rings. A lip that stands a millimetre proud of the surface and
+            // faces slightly outwards, a wall that turns down into the surface, and a floor sunk
+            // five millimetres with its own normal pointing back up the way the round came in. One
+            // material and one colour still, because the shape is doing the work -- the shading
+            // comes from the normals rather than from a texture nobody has painted.
+            constexpr int kSides = 20;
+            constexpr float kLip = 0.026f;    // the outer edge, on the surface
+            constexpr float kMouth = 0.017f;  // where it turns down
+            constexpr float kFloor = 0.008f;  // the pit
+            constexpr float kProud = 0.0012f; // how far the lip stands out
+            constexpr float kDeep = 0.005f;   // and how far the floor is sunk
+
+            const auto ring = [&](float radius, float height, const glm::vec3& normal)
+            {
+                for (int i = 0; i < kSides; ++i)
+                {
+                    const float angle = glm::two_pi<float>() * static_cast<float>(i) / kSides;
+                    const float c = std::cos(angle);
+                    const float s = std::sin(angle);
+                    MeshVertex vertex;
+                    vertex.position = {c * radius, height, s * radius};
+                    // Turned outwards with the ring, so the lip lights up on the side facing a lamp
+                    // and stays dark on the other -- which is the whole point of it being raised.
+                    vertex.normal = glm::normalize(glm::vec3(c * normal.x, normal.y, s * normal.x));
+                    vertex.uv = {0.5f + 0.5f * c, 0.5f + 0.5f * s};
+                    holeMesh.vertices.push_back(vertex);
+                }
+            };
+
+            MeshVertex pit;
+            pit.position = {0.0f, -kDeep, 0.0f};
+            pit.normal = {0.0f, 1.0f, 0.0f};
+            pit.uv = {0.5f, 0.5f};
+            holeMesh.vertices.push_back(pit); // 0
+
+            ring(kFloor, -kDeep, {0.0f, 1.0f, 0.0f});         // 1
+            ring(kMouth, -kDeep * 0.35f, {0.75f, 0.66f, 0.0f}); // 1 + kSides
+            ring(kLip, kProud, {0.35f, 0.94f, 0.0f});           // 1 + 2 * kSides
+
+            // Wound so every face points along +Y, which is the way the placement code expects: it
+            // turns +Y onto the surface normal.
             for (int i = 0; i < kSides; ++i)
             {
-                const float angle = glm::two_pi<float>() * static_cast<float>(i) / kSides;
-                MeshVertex rim;
-                rim.position = {std::cos(angle) * kRadius, 0.0f, std::sin(angle) * kRadius};
-                rim.normal = {0.0f, 1.0f, 0.0f};
-                rim.uv = {0.5f + 0.5f * std::cos(angle), 0.5f + 0.5f * std::sin(angle)};
-                holeMesh.vertices.push_back(rim);
-            }
-            for (int i = 0; i < kSides; ++i)
-            {
-                // Wound so the face points along +Y, which is the way the plane primitive faces and
-                // the way the placement code expects: it turns +Y onto the surface normal.
+                const uint32_t next = static_cast<uint32_t>((i + 1) % kSides);
                 holeMesh.indices.push_back(0);
-                holeMesh.indices.push_back(static_cast<uint32_t>(1 + (i + 1) % kSides));
+                holeMesh.indices.push_back(1 + next);
                 holeMesh.indices.push_back(static_cast<uint32_t>(1 + i));
+                for (int band = 0; band < 2; ++band)
+                {
+                    const auto inner = static_cast<uint32_t>(1 + band * kSides);
+                    const auto outer = static_cast<uint32_t>(1 + (band + 1) * kSides);
+                    holeMesh.indices.push_back(inner + static_cast<uint32_t>(i));
+                    holeMesh.indices.push_back(inner + next);
+                    holeMesh.indices.push_back(outer + next);
+                    holeMesh.indices.push_back(inner + static_cast<uint32_t>(i));
+                    holeMesh.indices.push_back(outer + next);
+                    holeMesh.indices.push_back(outer + static_cast<uint32_t>(i));
+                }
             }
         }
         m_bulletHoleMesh = app.GetMeshes().Upload(holeMesh, "bullet_hole");
         const Material holeMaterial = Material::Diffuse({0.05f, 0.045f, 0.04f}, 0.95f);
         m_bulletHoles.reserve(kMaxBulletHoles);
+        m_bulletHoleAttachments.assign(kMaxBulletHoles, HoleAttachment{});
         for (size_t i = 0; i < kMaxBulletHoles; ++i)
         {
             const Entity hole = m_scene.CreateMeshEntity("bullet_hole", Transform{},
@@ -1486,7 +1544,7 @@ void PredationGame::ServeClientRequests()
         tracer.to = event.direction;
         tracer.hit = event.flag;
         tracer.surface = event.flag2;
-        tracer.normal = SurfaceNormalAt(m_app->GetPhysics(), tracer.origin, tracer.to);
+        tracer.normal = SurfaceNormalAt(m_app->GetPhysics(), tracer.origin, tracer.to, &tracer.body);
         m_tracers.push_back(tracer);
 
         // The host draws the shooter too, so their weapon has to kick here as well. The event goes
@@ -1738,7 +1796,7 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
             tracer.to = event.direction;
             tracer.hit = event.flag;
             tracer.surface = event.flag2;
-            tracer.normal = SurfaceNormalAt(m_app->GetPhysics(), tracer.origin, tracer.to);
+            tracer.normal = SurfaceNormalAt(m_app->GetPhysics(), tracer.origin, tracer.to, &tracer.body);
             m_tracers.push_back(tracer);
             // And it is heard where it was fired from, which is most of what tells a player there
             // is somebody else in the building and roughly where.
@@ -2253,6 +2311,7 @@ void PredationGame::ResetWorld()
     m_body.ClearHeldItem(m_scene);
     m_hidingSpot = -1;
     m_tracers.clear();
+    ClearBulletHoles();
     m_remoteRespawnTimers.clear();
     m_respawnTimer = 0.0f;
     m_spectating = -1;
@@ -5514,6 +5573,7 @@ void PredationGame::ResolveShots()
             tracer.to = predicted ? predicted.position : shot.origin + shot.direction * shot.range;
             tracer.hit = predicted.hit;
             tracer.surface = predicted.surface;
+            tracer.body = predicted.body;
             tracer.normal = predicted.normal;
             m_tracers.push_back(tracer);
             continue;
@@ -5528,6 +5588,7 @@ void PredationGame::ResolveShots()
         tracer.to = result ? result.position : shot.origin + shot.direction * shot.range;
         tracer.hit = result.hit;
         tracer.surface = result.surface;
+        tracer.body = result.body;
         tracer.normal = result.normal;
         m_tracers.push_back(tracer);
 
@@ -7313,6 +7374,8 @@ void PredationGame::OnUpdate(double dt, double alpha)
     }
 
     AgeTracers(deltaSeconds);
+    // Marks left on anything the physics moves go where it goes.
+    FollowBulletHoles();
     // The relay carrier owns a socket and has to be read. Done here rather than inside the lobby
     // screen because the lobby screen stops being drawn the moment the game starts, and the socket
     // carries the game.
@@ -7364,7 +7427,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
     app.SetEntityCount(m_scene.EntityCount());
 }
 
-void PredationGame::PlaceBulletHole(const glm::vec3& at, const glm::vec3& normal)
+void PredationGame::PlaceBulletHole(const glm::vec3& at, const glm::vec3& normal, BodyHandle on)
 {
     // Laid on the surface it hit, facing out of it.
     //
@@ -7381,7 +7444,8 @@ void PredationGame::PlaceBulletHole(const glm::vec3& at, const glm::vec3& normal
         return;
     }
 
-    const Entity hole = m_bulletHoles[m_nextBulletHole];
+    const size_t slot = m_nextBulletHole;
+    const Entity hole = m_bulletHoles[slot];
     m_nextBulletHole = (m_nextBulletHole + 1) % m_bulletHoles.size();
 
     Transform* transform = m_scene.GetTransform(hole);
@@ -7411,6 +7475,75 @@ void PredationGame::PlaceBulletHole(const glm::vec3& at, const glm::vec3& normal
     const float size = 0.85f + 0.3f * static_cast<float>(std::rand()) / static_cast<float>(RAND_MAX);
     transform->scale = glm::vec3(size);
     renderer->visible = true;
+
+    // And what it is stuck to, so it goes where that goes.
+    //
+    // A wall never moves and needs nothing. A crate, a dropped weapon or anything else the physics
+    // simulates does, and a mark left at the world position the round arrived at simply hangs there
+    // once the thing slides out from under it. Kept in the body's own frame, so following it is a
+    // multiply rather than a running correction.
+    HoleAttachment& attachment = m_bulletHoleAttachments[slot];
+    attachment = HoleAttachment{};
+    if (on.IsValid() && m_app->GetPhysics().MotionOf(on) != BodyMotion::Static)
+    {
+        const Transform body = m_app->GetPhysics().GetTransform(on);
+        const glm::quat inverse = glm::inverse(body.rotation);
+        attachment.body = on;
+        attachment.localPosition = inverse * (transform->position - body.position);
+        attachment.localRotation = inverse * transform->rotation;
+    }
+}
+
+// Every hole that is stuck to something, moved to where that something is now.
+//
+// Run every frame rather than on a change, because a physics body does not announce that it has
+// moved. Ninety-six transforms is nothing next to the draw that follows it, and the alternative --
+// asking each body whether it has settled -- costs more than doing the work.
+void PredationGame::FollowBulletHoles()
+{
+    const PhysicsWorld& physics = m_app->GetPhysics();
+    for (size_t i = 0; i < m_bulletHoles.size() && i < m_bulletHoleAttachments.size(); ++i)
+    {
+        HoleAttachment& attachment = m_bulletHoleAttachments[i];
+        if (!attachment.body.IsValid())
+        {
+            continue;
+        }
+        MeshRenderer* renderer = m_scene.GetMeshRenderer(m_bulletHoles[i]);
+        Transform* transform = m_scene.GetTransform(m_bulletHoles[i]);
+        if (renderer == nullptr || transform == nullptr || !renderer->visible)
+        {
+            continue;
+        }
+        // The thing it was on has been destroyed -- a pickup taken, a prop cleared. The mark goes
+        // with it rather than being left behind in the air, which is the same fault by another road.
+        if (!physics.IsValid(attachment.body))
+        {
+            renderer->visible = false;
+            attachment = HoleAttachment{};
+            continue;
+        }
+        const Transform body = physics.GetTransform(attachment.body);
+        transform->position = body.position + body.rotation * attachment.localPosition;
+        transform->rotation = body.rotation * attachment.localRotation;
+    }
+}
+
+// Every hole gone, for a new game.
+//
+// The pool is made once and reused, so nothing about starting a game touched it and a fresh match
+// opened with the last one's gunfire still written on the walls.
+void PredationGame::ClearBulletHoles()
+{
+    for (const Entity hole : m_bulletHoles)
+    {
+        if (MeshRenderer* renderer = m_scene.GetMeshRenderer(hole))
+        {
+            renderer->visible = false;
+        }
+    }
+    m_bulletHoleAttachments.assign(m_bulletHoles.size(), HoleAttachment{});
+    m_nextBulletHole = 0;
 }
 
 void PredationGame::SpawnProp(bool sphere, float impulse)
@@ -7581,7 +7714,7 @@ void PredationGame::DrawDebugOverlays()
             // `marked` rather than a test on the age, so it happens on the one frame the round
             // arrives rather than on every frame the tracer survives afterwards.
             const_cast<Tracer&>(tracer).marked = true;
-            PlaceBulletHole(tracer.to, tracer.normal);
+            PlaceBulletHole(tracer.to, tracer.normal, tracer.body);
         }
     }
 

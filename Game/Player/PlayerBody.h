@@ -195,7 +195,7 @@ public:
         // towards the cap, which is the angle at which the hands sit level with the eye rather than
         // over the head. See where these are used for the measurements.
         float weaponHoldPitchKnee = 20.0f;
-        float weaponHoldPitchMaxUp = 40.0f;
+        float weaponHoldPitchMaxUp = 30.0f;
         // The weapon lags a turn and then catches up, which is what gives it weight.
         float weaponSwayAmount = 0.34f;   // how far a turn drags the weapon behind the view
         float weaponSwayRecover = 11.0f;  // how fast it catches up again

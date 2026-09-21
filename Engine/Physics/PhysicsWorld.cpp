@@ -581,6 +581,19 @@ bool PhysicsWorld::IsValid(BodyHandle body) const
     return m_impl->initialized && body.IsValid() && m_impl->records.contains(body.id);
 }
 
+BodyMotion PhysicsWorld::MotionOf(BodyHandle body) const
+{
+    // What kind of body this is, which callers need in order to decide whether anything they leave
+    // on it will stay where they put it. A decal on a crate has to move with the crate; one on a
+    // wall never moves at all, and the two are only distinguishable from here.
+    if (!IsValid(body))
+    {
+        return BodyMotion::Static;
+    }
+    const auto found = m_impl->records.find(body.id);
+    return found == m_impl->records.end() ? BodyMotion::Static : found->second.motion;
+}
+
 Transform PhysicsWorld::GetTransform(BodyHandle body) const
 {
     Transform transform;

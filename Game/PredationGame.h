@@ -374,6 +374,9 @@ private:
         // Whether what it struck was a fixed surface. A round that stops in a person leaves no
         // hole: they walk away and it would hang in the air where they were standing.
         bool surface = false;
+        // What it struck, so a mark left on something that moves can move with it. Invalid when the
+        // round landed on the level itself, which needs no following.
+        BodyHandle body;
         // Set once the round has arrived and its hole has been placed, so it is placed once rather
         // than every frame for as long as the tracer lives.
         bool marked = false;
@@ -388,9 +391,25 @@ private:
     // oldest is reused, so a wall somebody empties a magazine into keeps the last of them.
     static constexpr size_t kMaxBulletHoles = 96;
     std::vector<Entity> m_bulletHoles;
+    // What each hole is stuck to, and where on it.
+    //
+    // A hole on a wall never moves, and for a long time every hole was treated that way. Shoot a
+    // crate or a dropped weapon and the mark stayed at the point in the world where the round
+    // arrived while the thing it hit slid out from under it -- a black disc hanging in the air. So a
+    // hole now remembers the body it landed on and where it sits in that body's own frame, and rides
+    // it. An invalid handle means it landed on the level itself and needs no further thought.
+    struct HoleAttachment
+    {
+        BodyHandle body;
+        glm::vec3 localPosition{0.0f};
+        glm::quat localRotation{1.0f, 0.0f, 0.0f, 0.0f};
+    };
+    std::vector<HoleAttachment> m_bulletHoleAttachments;
     size_t m_nextBulletHole = 0;
     MeshHandle m_bulletHoleMesh;
-    void PlaceBulletHole(const glm::vec3& at, const glm::vec3& normal);
+    void PlaceBulletHole(const glm::vec3& at, const glm::vec3& normal, BodyHandle on = {});
+    void ClearBulletHoles();
+    void FollowBulletHoles();
     InteractionSystem m_interactions;
     WorldObjects m_world;
     // -1 when not hidden. While hidden the player holds still inside the locker.

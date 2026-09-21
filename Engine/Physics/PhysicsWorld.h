@@ -108,6 +108,9 @@ public:
 
     // --- Body state -----------------------------------------------------------------------------
     bool IsValid(BodyHandle body) const;
+    // Whether this body never moves, is moved by code, or is simulated. Needed by anything that
+    // leaves a mark on a body and has to know whether the mark can stay where it was put.
+    BodyMotion MotionOf(BodyHandle body) const;
     Transform GetTransform(BodyHandle body) const;
     void SetTransform(BodyHandle body, const Transform& transform);
     // Drives a kinematic body towards a transform over one step, giving it a real velocity so it
