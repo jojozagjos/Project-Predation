@@ -71,7 +71,8 @@ const char* CommandLine::Usage()
            "  --log-level <level>   trace | debug | info | warn | error | critical | off\n"
            "  --set <cvar>=<value>  Override a cvar (repeatable)\n"
            "  +<cvar> <value>       Same as --set\n"
-           "  --exec \"<command>\"    Run a console command at startup (repeatable)\n"
+           "  --exec \"<command>\"    Run a console command at startup (repeatable).\n"
+           "                        \"wait <frames>\" holds the ones after it that long\n"
            "  --help                Show this text\n";
 }
 
@@ -226,11 +227,10 @@ int Application::Run(Game& game, int argc, char** argv)
         return 1;
     }
 
-    for (const std::string& command : m_commandLine.execCommands)
-    {
-        PRED_LOG_INFO(Engine, "--exec: {}", command);
-        m_console.Execute(command);
-    }
+    m_execQueue = m_commandLine.execCommands;
+    m_execNext = 0;
+    m_execWait = 0;
+    RunExecQueue();
 
     PRED_LOG_INFO(Engine, "Entering main loop");
     FrameStats& stats = FrameStats::Instance();
@@ -240,6 +240,7 @@ int Application::Run(Game& game, int argc, char** argv)
     {
         stats.BeginFrame();
         const double dt = m_clock.Tick();
+        RunExecQueue();
 
         {
             PRED_PROFILE_SCOPE("Events");
@@ -528,6 +529,31 @@ void Application::ShutdownSubsystems()
         m_sdlInitialized = false;
     }
     m_subsystemsInitialized = false;
+}
+
+void Application::RunExecQueue()
+{
+    if (m_execWait > 0)
+    {
+        --m_execWait;
+        return;
+    }
+    while (m_execNext < m_execQueue.size())
+    {
+        const std::string& command = m_execQueue[m_execNext++];
+        // Not a console command, so a typo in it is not "unknown command" in the middle of a run
+        // but simply a number of frames.
+        if (command.rfind("wait", 0) == 0 && (command.size() == 4 || command[4] == ' '))
+        {
+            const int frames = command.size() > 5 ? std::atoi(command.c_str() + 5) : 1;
+            m_execWait = std::max(frames, 1);
+            PRED_LOG_INFO(Engine, "--exec: waiting {} frames", m_execWait);
+            --m_execWait;
+            return;
+        }
+        PRED_LOG_INFO(Engine, "--exec: {}", command);
+        m_console.Execute(command);
+    }
 }
 
 void Application::PumpEvents(Game& game)

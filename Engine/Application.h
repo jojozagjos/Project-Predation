@@ -137,6 +137,17 @@ private:
     FrameClock m_clock;
     FixedStepAccumulator m_fixedStep;
     CommandLine m_commandLine;
+    // The --exec commands not yet run, and how many frames until the next one may be.
+    //
+    // `wait <frames>` in the list holds everything after it, so a headless run can be a little
+    // script: drop a ball, let it land, then shoot it. Without it every command ran before the
+    // first frame, which is before the view has turned, before a weapon is in the hand and before
+    // anything has had a physics step -- so nothing that depends on the world having moved could
+    // be checked without a person at the keyboard.
+    std::vector<std::string> m_execQueue;
+    size_t m_execNext = 0;
+    int m_execWait = 0;
+    void RunExecQueue();
     std::filesystem::path m_userSettingsFile;
 
     uint64_t m_frameIndex = 0;

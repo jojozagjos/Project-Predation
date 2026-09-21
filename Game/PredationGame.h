@@ -16,6 +16,7 @@
 #include "Engine/Net/LanDiscovery.h"
 #include "Game/Player/PlayerBody.h"
 #include "Game/Player/PlayerController.h"
+#include "Game/Weapons/BulletHole.h"
 #include "Game/Weapons/ShotResolver.h"
 #include "Game/Weapons/WeaponDatabase.h"
 #include "Game/Weapons/WeaponSystem.h"
@@ -400,7 +401,20 @@ private:
         // Set once the round has arrived and its hole has been placed, so it is placed once rather
         // than every frame for as long as the tracer lives.
         bool marked = false;
+        // Where on the body it struck, in that body's own frame at the moment of the shot.
+        //
+        // The hole goes down when the drawn round arrives, which is a few frames after the shot was
+        // resolved -- and the shove from the hit is applied at once. A ball struck by a round has
+        // already rolled away by the time its hole is placed, and a hole placed at the world point
+        // where the ball used to be hangs beside it for the rest of its life. Kept in the body's
+        // frame, the point goes wherever the body went.
+        bool anchored = false;
+        glm::vec3 localTo{0.0f};
+        glm::vec3 localNormal{0.0f, 1.0f, 0.0f};
     };
+    // Records where a tracer's round struck in the frame of the body it struck, if that body moves.
+    // Called as a tracer is made, before anything has had a chance to shove the body.
+    void AnchorTracer(Tracer& tracer) const;
     std::vector<Tracer> m_tracers;
 
     // Bullet holes, as a ring of entities that are moved rather than created and destroyed.
@@ -426,7 +440,14 @@ private:
     };
     std::vector<HoleAttachment> m_bulletHoleAttachments;
     size_t m_nextBulletHole = 0;
-    MeshHandle m_bulletHoleMesh;
+    // The crater every hole starts from, and one mesh per slot in the ring.
+    //
+    // One shared mesh used to do for all of them, because every hole was the same flat disc. A hole
+    // that wraps what it landed on is a different shape on every surface, so each slot owns its own
+    // and it is rewritten when the slot is reused -- sixty-one vertices, a few times a second at
+    // most, against a ring that never grows.
+    MeshData m_bulletHoleShape;
+    std::vector<MeshHandle> m_bulletHoleMeshes;
     void PlaceBulletHole(const glm::vec3& at, const glm::vec3& normal, BodyHandle on = {});
     void ClearBulletHoles();
     void FollowBulletHoles();

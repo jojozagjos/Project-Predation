@@ -228,6 +228,19 @@ MeshHandle MeshLibrary::Upload(const MeshData& data, std::string name)
     return MeshHandle{handleIndex};
 }
 
+MeshHandle MeshLibrary::Replace(MeshHandle handle, const MeshData& data)
+{
+    if (!handle.IsValid() || handle.index >= m_meshes.size())
+    {
+        return MeshHandle{};
+    }
+    // A fingerprint that cannot match, so Upload replaces the buffers rather than deciding this is
+    // the mesh it already has. Same slot, same name, so every handle already out keeps working.
+    Mesh& existing = m_meshes[handle.index];
+    existing.fingerprint = MeshFingerprintImpl(data) ^ 1u;
+    return Upload(data, existing.name);
+}
+
 const Mesh* MeshLibrary::Get(MeshHandle handle) const
 {
     if (!handle.IsValid() || handle.index >= m_meshes.size())

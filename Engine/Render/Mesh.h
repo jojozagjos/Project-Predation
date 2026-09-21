@@ -77,6 +77,14 @@ public:
     ~MeshLibrary();
 
     MeshHandle Upload(const MeshData& data, std::string name);
+    // New geometry for a mesh that already exists, always.
+    //
+    // Upload skips a mesh whose vertex count and bounds match what is already there, which is right
+    // for the editor asking for the same part forty times a second and wrong for geometry that is
+    // genuinely rebuilt each time: two different bullet holes wrapped round the same pillar can
+    // have the same count and near enough the same bounds, and the second would silently keep the
+    // first one's shape. This says "it has changed" rather than asking.
+    MeshHandle Replace(MeshHandle handle, const MeshData& data);
     const Mesh* Get(MeshHandle handle) const;
     size_t Count() const { return m_meshes.size(); }
     const std::vector<Mesh>& All() const { return m_meshes; }

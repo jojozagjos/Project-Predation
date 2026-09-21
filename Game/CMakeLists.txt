@@ -33,6 +33,8 @@ set(PRED_GAME_SOURCES
     Weapons/WeaponSystem.cpp
     Weapons/ShotResolver.h
     Weapons/ShotResolver.cpp
+    Weapons/BulletHole.h
+    Weapons/BulletHole.cpp
 
     Net/Protocol.h
     Net/Protocol.cpp
