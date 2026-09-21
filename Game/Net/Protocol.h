@@ -24,7 +24,7 @@ namespace pred
 
 // Bumped whenever the wire changes shape. Two ends that disagree are refused at the door rather
 // than left to misread each other, which is what a wire mismatch actually looks like from inside.
-inline constexpr uint16_t kProtocolVersion = 4;
+inline constexpr uint16_t kProtocolVersion = 5;
 // How many bits name a message type. Five, so there is room to add one.
 inline constexpr uint32_t kMessageTypeBits = 5;
 inline constexpr uint8_t kMaxPlayers = 4;
@@ -76,6 +76,9 @@ enum class MessageType : uint8_t
     // resend would arrive after the word it belonged to, and the codec fills a gap better than a
     // late packet would anyway.
     Voice,
+    // Host to client, unreliable, at the world-state rate: where each creature is and what its body
+    // is doing. Its mind runs on the host alone.
+    Creatures,
     Count
 };
 
@@ -205,6 +208,37 @@ struct WorldStateMessage
 {
     uint8_t count = 0;
     std::array<DynamicBodyState, kMaxDynamicBodies> bodies{};
+};
+
+// The creatures, as the host's simulation has them.
+//
+// State rather than events, like the loose bodies: a creature is only shown on every machine but
+// the host's, so all anybody else needs is where it is and what its body is doing, and a lost packet
+// is replaced a thirtieth of a second later. Sent even when there are none, so that a creature the
+// host has removed disappears everywhere else too.
+inline constexpr uint8_t kMaxCreatures = 8;
+
+struct CreatureSnapshot
+{
+    uint8_t id = 0;
+    // What it was made from, so every machine builds the same animal. In every packet rather than
+    // once: something sent once can be missed, and a late joiner never had the chance to receive it.
+    uint32_t seed = 0;
+    glm::vec3 position{0.0f}; // at its feet
+    float yaw = 0.0f;
+    float speed = 0.0f;        // metres a second, for the walk cycle and for guessing ahead
+    float windup = 0.0f;       // 0 to 1 through a strike's wind-up
+    float health = 1.0f;       // as a fraction
+    bool alive = true;
+};
+
+struct CreatureStateMessage
+{
+    // Counts up with every message, so a packet that arrives after a newer one is recognised as old
+    // and ignored instead of pulling the creature back to where it was.
+    uint16_t sequence = 0;
+    uint8_t count = 0;
+    std::array<CreatureSnapshot, kMaxCreatures> creatures{};
 };
 
 const char* MessageTypeName(MessageType type);
@@ -355,6 +389,7 @@ void WriteWorldState(BitWriter& writer, const WorldStateMessage& message);
 void WriteDrop(BitWriter& writer, const DropMessage& message);
 void WritePeerList(BitWriter& writer, const PeerListMessage& message);
 void WriteVoice(BitWriter& writer, const VoiceMessage& message);
+void WriteCreatureState(BitWriter& writer, const CreatureStateMessage& message);
 
 // --- Reading -----------------------------------------------------------------------------------
 //
@@ -374,5 +409,6 @@ bool ReadWorldState(BitReader& reader, WorldStateMessage& out);
 bool ReadDrop(BitReader& reader, DropMessage& out);
 bool ReadPeerList(BitReader& reader, PeerListMessage& out);
 bool ReadVoice(BitReader& reader, VoiceMessage& out);
+bool ReadCreatureState(BitReader& reader, CreatureStateMessage& out);
 
 } // namespace pred

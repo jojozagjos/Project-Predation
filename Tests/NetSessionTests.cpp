@@ -520,6 +520,56 @@ TEST_CASE("Loose objects are replicated as state", "[net][session]")
     CHECK(got.bodies[2].position.x == Catch::Approx(4.0f).margin(0.002));
 }
 
+TEST_CASE("The host's creatures reach a client, and an old packet does not pull one back", "[net][session][creature]")
+{
+    NetConditions laggy;
+    laggy.latencyMs = 30.0f;
+    laggy.lossPercent = 15.0f;
+    Link link(41015, laggy);
+    link.Run(40, PlayerInput{});
+    REQUIRE(link.client.Connected());
+
+    CreatureStateMessage state;
+    state.sequence = 10;
+    state.count = 1;
+    state.creatures[0].id = 3;
+    state.creatures[0].seed = 777;
+    state.creatures[0].position = {4.0f, 0.0f, -6.0f};
+    state.creatures[0].alive = true;
+    for (int i = 0; i < 100 && link.client.CreatureStatesReceived() == 0; ++i)
+    {
+        link.host.SendCreatureState(state);
+        link.Run(1, PlayerInput{});
+    }
+    REQUIRE(link.client.CreatureStatesReceived() > 0);
+    CHECK(link.client.LatestCreatureState().creatures[0].seed == 777);
+    CHECK(link.client.LatestCreatureState().creatures[0].position.x == Catch::Approx(4.0f).margin(0.002));
+
+    // One that left the host before the one already here, arriving after it: overtaken on the way,
+    // and ignored, or the creature would jump back to where it was a moment ago.
+    const uint32_t before = link.client.CreatureStatesReceived();
+    CreatureStateMessage stale = state;
+    stale.sequence = 9;
+    stale.creatures[0].position = {-30.0f, 0.0f, 0.0f};
+    for (int i = 0; i < 20; ++i)
+    {
+        link.host.SendCreatureState(stale);
+        link.Run(1, PlayerInput{});
+    }
+    CHECK(link.client.CreatureStatesReceived() == before);
+    CHECK(link.client.LatestCreatureState().creatures[0].position.x == Catch::Approx(4.0f).margin(0.002));
+
+    // And when the host has none left, the client is told so: that is how it knows to remove its own.
+    CreatureStateMessage gone;
+    gone.sequence = 11;
+    for (int i = 0; i < 100 && link.client.LatestCreatureState().count != 0; ++i)
+    {
+        link.host.SendCreatureState(gone);
+        link.Run(1, PlayerInput{});
+    }
+    CHECK(link.client.LatestCreatureState().count == 0);
+}
+
 TEST_CASE("The host can rewind to where a client was looking", "[net][session][lag]")
 {
     // A client draws everyone else a fixed delay behind the newest snapshot, and that snapshot took

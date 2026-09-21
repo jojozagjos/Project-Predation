@@ -184,6 +184,7 @@ public:
     void BroadcastPeerList();
     void SendTo(uint8_t playerId, const WorldEventMessage& event);
     void SendWorldState(const WorldStateMessage& state);
+    void SendCreatureState(const CreatureStateMessage& state);
 
     // What a client is holding and doing with it, so everyone sees the right thing in their hands.
     void SetPlayerHeld(uint8_t playerId, uint8_t heldItem, float aim, bool reloading, float progress);
@@ -194,7 +195,8 @@ public:
     // Damage a client. The host owns their body, so this is where their health actually changes:
     // the published view is rebuilt from the controller every tick, so writing to that changed
     // nothing and health came back the moment it was read again.
-    void ApplyDamageTo(uint8_t playerId, float amount);
+    // `cause` is for the log: what did it, in a word.
+    void ApplyDamageTo(uint8_t playerId, float amount, const char* cause = "gunfire");
     void RespawnPlayer(uint8_t playerId, const glm::vec3& position);
     float HealthOf(uint8_t playerId) const;
 
@@ -345,6 +347,10 @@ public:
     std::vector<WorldEventMessage> TakeWorldEvents() { return std::exchange(m_worldEvents, {}); }
     const WorldStateMessage& LatestWorldState() const { return m_worldState; }
     bool HasWorldState() const { return m_hasWorldState; }
+    // The newest creature state, and a count of how many have arrived, so the game can tell a new
+    // one from the one it has already applied.
+    const CreatureStateMessage& LatestCreatureState() const { return m_creatureState; }
+    uint32_t CreatureStatesReceived() const { return m_creatureStatesReceived; }
 
     void SendInteract(uint8_t kind, uint8_t index);
     // Sent once, after this machine has built its world: only then can the host tell it what has
@@ -397,6 +403,8 @@ private:
     std::vector<WorldEventMessage> m_worldEvents;
     std::vector<VoiceHeard> m_voiceIn;
     WorldStateMessage m_worldState;
+    CreatureStateMessage m_creatureState;
+    uint32_t m_creatureStatesReceived = 0;
     PredictionBuffer m_history;
     Config m_config;
     ReconciliationResult m_lastReconciliation;

@@ -519,13 +519,13 @@ std::vector<NetHost::PlayerPose> NetHost::PosesAt(uint32_t tick) const
     return best->poses;
 }
 
-void NetHost::ApplyDamageTo(uint8_t playerId, float amount)
+void NetHost::ApplyDamageTo(uint8_t playerId, float amount, const char* cause)
 {
     for (auto& client : m_clients)
     {
         if (client->playerId == playerId)
         {
-            client->controller.ApplyDamage(amount, "gunfire");
+            client->controller.ApplyDamage(amount, cause);
             return;
         }
     }
@@ -681,6 +681,26 @@ void NetHost::SendTo(uint8_t playerId, const WorldEventMessage& event)
             const std::vector<uint8_t>& bytes = writer.Finish();
             m_transport->Send(client->peer, Channel::Reliable, bytes.data(), bytes.size());
             return;
+        }
+    }
+}
+
+void NetHost::SendCreatureState(const CreatureStateMessage& state)
+{
+    // Even with none: an empty message is how a client learns the last one has gone.
+    if (m_transport == nullptr)
+    {
+        return;
+    }
+    BitWriter writer;
+    WriteMessageHeader(writer, MessageType::Creatures);
+    WriteCreatureState(writer, state);
+    const std::vector<uint8_t>& bytes = writer.Finish();
+    for (const auto& client : m_clients)
+    {
+        if (client->welcomed)
+        {
+            m_transport->Send(client->peer, Channel::Unreliable, bytes.data(), bytes.size());
         }
     }
 }
@@ -978,6 +998,9 @@ bool NetClient::Connect(std::unique_ptr<Transport> transport, const std::string&
     m_snapshots.clear();
     m_views.clear();
     m_joinTimer = 0.0f;
+    // The last session's creatures are not this one's, and its sequence numbers mean nothing here.
+    m_creatureState = CreatureStateMessage{};
+    m_creatureStatesReceived = 0;
 
     // The join is not sent here. Reaching a host takes a handshake of its own first, and a message
     // handed to a transport that has no connection yet goes nowhere: it is sent from Tick once the
@@ -1117,6 +1140,24 @@ void NetClient::HandlePacket(const NetPacket& packet)
         {
             m_worldState = state;
             m_hasWorldState = true;
+        }
+        break;
+    }
+
+    case MessageType::Creatures:
+    {
+        CreatureStateMessage state;
+        if (!ReadCreatureState(reader, state))
+        {
+            break;
+        }
+        // Older than the one already held means it was overtaken on the way. The difference is
+        // taken as signed so the count wrapping round from 65535 to 0 still reads as newer.
+        const auto ahead = static_cast<int16_t>(static_cast<uint16_t>(state.sequence - m_creatureState.sequence));
+        if (m_creatureStatesReceived == 0 || ahead > 0)
+        {
+            m_creatureState = state;
+            ++m_creatureStatesReceived;
         }
         break;
     }

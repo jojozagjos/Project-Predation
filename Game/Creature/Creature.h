@@ -60,6 +60,19 @@ public:
     // Set from outside, for a creature this machine only shows.
     void SetShownState(const glm::vec3& position, float yaw, float speed, float windup, bool alive);
 
+    // Which creature this is on the wire. The host numbers them as it makes them; a client's copy
+    // carries the number it was sent.
+    uint8_t NetId() const { return m_netId; }
+    void SetNetId(uint8_t id) { m_netId = id; }
+
+    // On a machine that is only shown it: the newest state the host sent, and, each frame, easing
+    // the body towards it. A little ahead of it, too, by the speed it was going, because the state
+    // is already a few hundredths of a second old when it arrives and a creature drawn where it was
+    // is drawn behind where it is.
+    void Receive(const glm::vec3& position, float yaw, float speed, float windup, float healthFraction,
+                 bool alive);
+    void FollowReceived(float dt);
+
     void Destroy();
 
 private:
@@ -81,7 +94,11 @@ private:
     // How far the legs have gone through their cycle, advanced by distance rather than time so a
     // creature that is not moving is not treading water.
     float m_stride = 0.0f;
+    // When it died, on the clock the visuals keep. Not the brain's clock, which only runs where the
+    // brain does: on a machine that is only shown the creature it never moves, and the death roll
+    // measured against it never played.
     float m_deathTime = -1.0f;
+    float m_shownTime = 0.0f;
     float m_time = 0.0f;
 
     // The route and when it was worked out. Replanned when the destination moves or on a timer,
@@ -90,6 +107,20 @@ private:
     std::vector<glm::vec3> m_route;
     glm::vec3 m_routeGoal{0.0f};
     float m_routeAge = 1.0e9f;
+
+    uint8_t m_netId = 0;
+    struct Received
+    {
+        glm::vec3 position{0.0f};
+        float yaw = 0.0f;
+        float speed = 0.0f;
+        float windup = 0.0f;
+        bool alive = true;
+    };
+    Received m_received;
+    float m_receivedAge = 0.0f;
+    bool m_hasReceived = false;
+    bool m_followedOnce = false;
 
     BodyHandle m_body;
     struct Piece

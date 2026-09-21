@@ -107,6 +107,13 @@ private:
     // When each player last made a voice noise, so talking is a sound every half second rather than
     // fifty times a second.
     std::map<int, float> m_lastVoiceNoise;
+    // The wire: the number the next creature the host makes will go by, the count its messages
+    // carry, and which of the client's received messages has been applied.
+    uint8_t m_nextCreatureId = 0;
+    uint16_t m_creatureSequence = 0;
+    uint32_t m_appliedCreatureStates = 0;
+    void SendCreatureState();
+    void ApplyCreatureState(const CreatureStateMessage& state);
     void BuildNavigation();
     void SpawnCreatures();
     // Somewhere far from `awayFrom`, or, when `exactly` is given, on the walkable surface nearest it.
@@ -347,7 +354,10 @@ private:
     // moment and for the host is now.
     void ResolvePlayerHits(const FireEvent& shot, uint8_t shooter, ShotResult& worldHit,
                            const std::vector<NetHost::PlayerPose>& poses);
-    void ApplyPlayerDamage(uint8_t player, float amount, uint8_t killer, const glm::vec3& direction);
+    // `killer` is a player id, or kNoKiller when it was not a player. `cause` is for the log.
+    static constexpr uint8_t kNoKiller = 0xFF;
+    void ApplyPlayerDamage(uint8_t player, float amount, uint8_t killer, const glm::vec3& direction,
+                           const char* cause = "gunfire");
     void KillPlayer(uint8_t player, const glm::vec3& direction);
     // Death is a pause. The authority runs the clock and says when somebody comes back.
     // The host left. Whoever is left elects a successor and the rest follow it.

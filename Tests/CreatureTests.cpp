@@ -397,3 +397,55 @@ TEST_CASE("Badly hurt, it gets away from whoever hurt it", "[creature][retreat]"
     }
     CHECK(logged);
 }
+
+TEST_CASE("A creature shown from the host's state keeps up smoothly, and dies there too", "[creature][net]")
+{
+    // The host's creature hunting somebody, and a second one standing in for a client's copy of it,
+    // told where the first is thirty times a second as the wire does.
+    CreatureHarness harness(5);
+    glm::vec3 at;
+    glm::vec3 player;
+    REQUIRE(OpenView(harness, 12.0f, at, player));
+    Creature shown(harness.scene, harness.meshes, harness.physics, &harness.nav, CreatureTraits::FromSeed(5), at);
+    const std::vector<SensedPlayer> players{Somebody(1, player)};
+
+    constexpr float dt = 1.0f / 60.0f;
+    int tick = 0;
+    float furthestBehind = 0.0f;
+    float biggestStep = 0.0f;
+    float fastest = 0.0f;
+    glm::vec3 last = shown.Position();
+    const auto follow = [&](const Creature& host)
+    {
+        if (tick++ % 2 == 0)
+        {
+            shown.Receive(host.Position(), host.Yaw(), host.Speed(), host.Brain().Intent().windup,
+                          host.Health() / host.MaxHealth(), host.Alive());
+        }
+        shown.FollowReceived(dt);
+        shown.UpdateVisual(dt);
+        fastest = std::max(fastest, host.Speed());
+        if (tick > 30)
+        {
+            furthestBehind = std::max(furthestBehind, glm::distance(shown.Position(), host.Position()));
+            biggestStep = std::max(biggestStep, glm::distance(shown.Position(), last));
+        }
+        last = shown.Position();
+    };
+    harness.Run(3.0f, players, {}, follow);
+
+    INFO("host creature up to " << fastest << " m/s; the copy was at most " << furthestBehind
+                                << " m off and moved at most " << biggestStep << " m in a frame");
+    REQUIRE(fastest > 3.0f); // it did run, or this proves nothing
+    // Close enough that a round aimed at the copy hits the host's creature: its body is a metre and
+    // a half long.
+    CHECK(furthestBehind < 0.4f);
+    // And no frame jumps further than running for a frame and a bit would carry it.
+    CHECK(biggestStep < fastest * dt * 1.6f);
+
+    // Killed on the host, and the copy goes down with it.
+    harness.creature->TakeDamage(1000.0f, 1, player, harness.time);
+    harness.Run(1.0f, players, {}, follow);
+    CHECK_FALSE(shown.Alive());
+    CHECK(shown.Health() == 0.0f);
+}

@@ -776,6 +776,91 @@ TEST_CASE("Loose objects are sent as state, and stay small", "[net][protocol]")
     }
 }
 
+TEST_CASE("Creatures are sent as state: what they are, where, and what their body is doing", "[net][protocol][creature]")
+{
+    CreatureStateMessage sent;
+    sent.sequence = 65530;
+    sent.count = kMaxCreatures;
+    for (uint8_t i = 0; i < sent.count; ++i)
+    {
+        CreatureSnapshot& c = sent.creatures[i];
+        c.id = static_cast<uint8_t>(200 + i);
+        c.seed = 0x9E3779B9u + i;
+        c.position = {static_cast<float>(i) * 3.0f - 10.0f, 0.06f * i, -20.0f + i};
+        c.yaw = -3.0f + 0.7f * static_cast<float>(i);
+        c.speed = 0.6f * static_cast<float>(i);
+        c.windup = static_cast<float>(i) / 7.0f;
+        c.health = 1.0f - static_cast<float>(i) / 8.0f;
+        c.alive = i != 5;
+    }
+    // A body that has turned round twice and a bit: the yaw is not bounded, and has to arrive as the
+    // direction it faces rather than clamped to the end of the range.
+    sent.creatures[7].yaw = 7.0f;
+
+    BitWriter writer;
+    WriteCreatureState(writer, sent);
+    const std::vector<uint8_t>& bytes = writer.Finish();
+    // Eight creatures in under 140 bytes, thirty times a second, is about 4 KB/s per client: less
+    // than the players' own snapshots.
+    CHECK(bytes.size() < 140);
+
+    BitReader reader(bytes.data(), bytes.size());
+    CreatureStateMessage received;
+    REQUIRE(ReadCreatureState(reader, received));
+    CHECK(received.sequence == 65530);
+    REQUIRE(received.count == kMaxCreatures);
+    for (uint8_t i = 0; i < kMaxCreatures; ++i)
+    {
+        const CreatureSnapshot& a = sent.creatures[i];
+        const CreatureSnapshot& b = received.creatures[i];
+        INFO("creature " << static_cast<int>(i));
+        CHECK(b.id == a.id);
+        CHECK(b.seed == a.seed);
+        CHECK(glm::distance(b.position, a.position) < 0.003f);
+        CHECK(b.speed == Catch::Approx(a.speed).margin(0.07));
+        CHECK(b.windup == Catch::Approx(a.windup).margin(0.02));
+        CHECK(b.health == Catch::Approx(a.health).margin(0.005));
+        CHECK(b.alive == a.alive);
+    }
+    for (uint8_t i = 0; i < 7; ++i)
+    {
+        CHECK(received.creatures[i].yaw == Catch::Approx(sent.creatures[i].yaw).margin(0.001));
+    }
+    const float facing = std::remainder(7.0f, glm::two_pi<float>());
+    CHECK(received.creatures[7].yaw == Catch::Approx(facing).margin(0.001));
+
+    SECTION("none at all is a message too")
+    {
+        CreatureStateMessage empty;
+        empty.sequence = 3;
+        BitWriter emptyWriter;
+        WriteCreatureState(emptyWriter, empty);
+        const std::vector<uint8_t>& emptyBytes = emptyWriter.Finish();
+        BitReader emptyReader(emptyBytes.data(), emptyBytes.size());
+        CreatureStateMessage got;
+        got.count = 4;
+        REQUIRE(ReadCreatureState(emptyReader, got));
+        CHECK(got.count == 0);
+        CHECK(got.sequence == 3);
+    }
+    SECTION("a truncated one is refused")
+    {
+        BitReader half(bytes.data(), bytes.size() / 2);
+        CreatureStateMessage got;
+        CHECK_FALSE(ReadCreatureState(half, got));
+    }
+    SECTION("more creatures than there can be is refused")
+    {
+        BitWriter liar;
+        liar.WriteBits(1u, 16);
+        liar.WriteBits(kMaxCreatures + 3u, 4);
+        const std::vector<uint8_t>& lie = liar.Finish();
+        BitReader lieReader(lie.data(), lie.size());
+        CreatureStateMessage got;
+        CHECK_FALSE(ReadCreatureState(lieReader, got));
+    }
+}
+
 TEST_CASE("Whether a torch is lit reaches everybody else", "[net][protocol]")
 {
     // Nothing else in the protocol implies this: it is a key somebody pressed. Without it a torch is

@@ -1,6 +1,7 @@
 #include "Game/Net/Protocol.h"
 
 #include <algorithm>
+#include <cmath>
 #include <glm/geometric.hpp>
 #include <glm/gtc/constants.hpp>
 
@@ -140,6 +141,8 @@ const char* MessageTypeName(MessageType type)
     case MessageType::WorldState: return "WorldState";
     case MessageType::Drop: return "Drop";
     case MessageType::Ready: return "Ready";
+    case MessageType::Voice: return "Voice";
+    case MessageType::Creatures: return "Creatures";
     case MessageType::Count: break;
     }
     return "Unknown";
@@ -682,6 +685,61 @@ bool ReadVoice(BitReader& reader, VoiceMessage& out)
     for (uint32_t i = 0; i < length; ++i)
     {
         out.frame[i] = reader.ReadByte();
+    }
+    return !reader.Overran();
+}
+
+namespace
+{
+// A creature runs at six metres a second at most; eight leaves room without spending a bit on it.
+constexpr float kCreatureSpeedMax = 8.0f;
+constexpr int kCreatureSpeedBits = 7;
+constexpr int kCreatureCountBits = 4;
+} // namespace
+
+void WriteCreatureState(BitWriter& writer, const CreatureStateMessage& message)
+{
+    writer.WriteBits(message.sequence, 16);
+    const uint8_t count = std::min<uint8_t>(message.count, kMaxCreatures);
+    writer.WriteBits(count, kCreatureCountBits);
+    for (uint8_t i = 0; i < count; ++i)
+    {
+        const CreatureSnapshot& creature = message.creatures[i];
+        writer.WriteByte(creature.id);
+        writer.WriteUInt(creature.seed);
+        WritePosition(writer, creature.position);
+        // Wrapped into [-pi, pi] first: the yaw a body turns through is not bounded, and a value
+        // outside the range would be clamped to its end -- a creature that had turned round twice
+        // would be drawn facing somewhere it was not.
+        writer.WriteQuantised(std::remainder(creature.yaw, glm::two_pi<float>()), -glm::pi<float>(),
+                              glm::pi<float>(), kYawBits);
+        writer.WriteQuantised(creature.speed, 0.0f, kCreatureSpeedMax, kCreatureSpeedBits);
+        writer.WriteQuantised(creature.windup, 0.0f, 1.0f, 5);
+        writer.WriteQuantised(creature.health, 0.0f, 1.0f, 7);
+        writer.WriteBool(creature.alive);
+    }
+}
+
+bool ReadCreatureState(BitReader& reader, CreatureStateMessage& out)
+{
+    out.sequence = static_cast<uint16_t>(reader.ReadBits(16));
+    const uint32_t count = reader.ReadBits(kCreatureCountBits);
+    if (count > kMaxCreatures)
+    {
+        return false;
+    }
+    out.count = static_cast<uint8_t>(count);
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        CreatureSnapshot& creature = out.creatures[i];
+        creature.id = reader.ReadByte();
+        creature.seed = reader.ReadUInt();
+        creature.position = ReadPosition(reader);
+        creature.yaw = reader.ReadQuantised(-glm::pi<float>(), glm::pi<float>(), kYawBits);
+        creature.speed = reader.ReadQuantised(0.0f, kCreatureSpeedMax, kCreatureSpeedBits);
+        creature.windup = reader.ReadQuantised(0.0f, 1.0f, 5);
+        creature.health = reader.ReadQuantised(0.0f, 1.0f, 7);
+        creature.alive = reader.ReadBool();
     }
     return !reader.Overran();
 }

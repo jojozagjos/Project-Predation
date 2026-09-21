@@ -1870,6 +1870,9 @@ void PredationGame::SendDynamicBodies()
     }
 
     m_host.SendWorldState(state);
+    // The creatures go at the same rate, for the same reason: they are shown on every other
+    // machine, and the showing is only as smooth as what it is shown from.
+    SendCreatureState();
 }
 
 void PredationGame::ApplyDynamicBodies(const WorldStateMessage& state)
@@ -2209,7 +2212,7 @@ void PredationGame::ResolvePlayerHits(const FireEvent& shot, uint8_t shooter, Sh
 }
 
 void PredationGame::ApplyPlayerDamage(uint8_t player, float amount, uint8_t killer,
-                                      const glm::vec3& direction)
+                                      const glm::vec3& direction, const char* cause)
 {
     if (m_sessionMode == SessionMode::Client)
     {
@@ -2219,7 +2222,7 @@ void PredationGame::ApplyPlayerDamage(uint8_t player, float amount, uint8_t kill
     float remaining = 0.0f;
     if (player == 0)
     {
-        m_player.ApplyDamage(amount, "gunfire");
+        m_player.ApplyDamage(amount, cause);
         remaining = m_player.State().health;
     }
     else
@@ -2228,7 +2231,7 @@ void PredationGame::ApplyPlayerDamage(uint8_t player, float amount, uint8_t kill
         // that controller every tick, so subtracting from the view changed nothing and their health
         // came back the moment it was read again: nobody could be killed by anything short of a
         // single fatal round, and the two machines then disagreed about who was alive.
-        m_host.ApplyDamageTo(player, amount);
+        m_host.ApplyDamageTo(player, amount, cause);
         remaining = m_host.HealthOf(player);
     }
 
@@ -5096,6 +5099,11 @@ bool PredationGame::StepSession(const PlayerInput& input, float dt)
         {
             ApplyDynamicBodies(m_client.LatestWorldState());
         }
+        if (m_client.CreatureStatesReceived() != m_appliedCreatureStates)
+        {
+            m_appliedCreatureStates = m_client.CreatureStatesReceived();
+            ApplyCreatureState(m_client.LatestCreatureState());
+        }
         return true;
     }
 
@@ -6115,7 +6123,13 @@ void PredationGame::ResolveShots()
             message.renderTick = m_client.RenderTick();
             m_client.SendShot(message);
 
-            const ShotResult predicted = ResolveShot(physics, shot);
+            ShotResult predicted = ResolveShot(physics, shot);
+            // A creature here is only shown, but it is where the host's is, so a round that finds
+            // it has found flesh: no hole, the same as the host will decide.
+            if (CreatureForBody(predicted.body) != nullptr)
+            {
+                predicted.surface = false;
+            }
             Tracer tracer;
             // Traced from the eye so that what is under the crosshair is hit, drawn from the muzzle
             // so it looks like it came out of the gun. Those are different points and the round is

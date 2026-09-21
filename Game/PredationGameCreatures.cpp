@@ -115,9 +115,14 @@ bool PredationGame::SpawnCreature(uint32_t seed, const glm::vec3& awayFrom, cons
             return false;
         }
     }
+    if (m_creatures.size() >= kMaxCreatures)
+    {
+        return false;
+    }
     const CreatureTraits traits = CreatureTraits::FromSeed(seed);
     m_creatures.push_back(std::make_unique<Creature>(m_scene, m_app->GetMeshes(), m_app->GetPhysics(),
                                                      &m_nav, traits, best));
+    m_creatures.back()->SetNetId(m_nextCreatureId++);
     PRED_LOG_INFO(AI, "Creature spawned {:.0f} m away at {:.1f} {:.1f} {:.1f}: {}", bestDistance, best.x,
                   best.y, best.z, traits.Describe());
     return true;
@@ -131,7 +136,7 @@ void PredationGame::SpawnCreatures()
     {
         return;
     }
-    const int count = std::clamp(cv_aiCreatures.Get(), 0, 8);
+    const int count = std::clamp(cv_aiCreatures.Get(), 0, static_cast<int>(kMaxCreatures));
     // A fixed seed when one is set, so a strange behaviour can be had again; otherwise the clock, so
     // every game is a different animal.
     uint32_t seed = static_cast<uint32_t>(cv_aiSeed.Get());
@@ -321,19 +326,19 @@ void PredationGame::UpdateCreatures(float dt)
             const float rise = std::abs(creature->Position().y - player.feet.y);
             if (reach > kStrikeLands || rise > 1.5f)
             {
-                PRED_LOG_INFO(AI, "Strike at {} missed: {:.1f} m away", player.name, reach);
+                PRED_LOG_INFO(AI, "Strike at {} (player {}) missed: {:.1f} m away", player.name, player.id, reach);
                 break;
             }
-            if (player.id == LocalPlayerId())
-            {
-                m_player.ApplyDamage(kStrikeDamage, "creature");
-            }
-            else if (m_sessionMode == SessionMode::Host)
-            {
-                m_host.ApplyDamageTo(static_cast<uint8_t>(player.id), kStrikeDamage);
-            }
+            // Through the same door as a bullet, so everything that follows from being hurt follows
+            // from this too: the victim is told (their health bar, their hurt sound), and a blow that
+            // kills them kills them properly -- ragdoll, dropped kit, respawn. Taking health off
+            // directly did none of that, and a client struck by it never saw their health fall.
+            glm::vec3 blow = player.feet - creature->Position();
+            blow.y = 0.0f;
+            blow = glm::length(blow) > 1e-3f ? glm::normalize(blow) : creature->Forward();
+            ApplyPlayerDamage(static_cast<uint8_t>(player.id), kStrikeDamage, kNoKiller, blow, "creature");
             PlaySound(m_sounds.hurt.Pick(), player.feet + glm::vec3(0.0f, 1.2f, 0.0f), 0.9f, 0.85f);
-            PRED_LOG_INFO(AI, "Strike at {} landed", player.name);
+            PRED_LOG_INFO(AI, "Strike at {} (player {}) landed", player.name, player.id);
             break;
         }
     }
@@ -342,9 +347,84 @@ void PredationGame::UpdateCreatures(float dt)
 
 void PredationGame::UpdateCreatureVisuals(float dt)
 {
+    // A client's creatures have no mind here. They are eased towards what the host last said.
+    const bool shownOnly = !IsAuthority();
     for (const std::unique_ptr<Creature>& creature : m_creatures)
     {
+        if (shownOnly)
+        {
+            creature->FollowReceived(dt);
+        }
         creature->UpdateVisual(dt);
+    }
+}
+
+void PredationGame::SendCreatureState()
+{
+    CreatureStateMessage state;
+    state.sequence = ++m_creatureSequence;
+    for (const std::unique_ptr<Creature>& creature : m_creatures)
+    {
+        if (state.count >= kMaxCreatures)
+        {
+            break;
+        }
+        CreatureSnapshot& entry = state.creatures[state.count++];
+        entry.id = creature->NetId();
+        entry.seed = creature->Brain().Traits().seed;
+        entry.position = creature->Position();
+        entry.yaw = creature->Yaw();
+        entry.speed = creature->Speed();
+        entry.windup = creature->Brain().Intent().windup;
+        entry.health = creature->Health() / creature->MaxHealth();
+        entry.alive = creature->Alive();
+    }
+    m_host.SendCreatureState(state);
+}
+
+void PredationGame::ApplyCreatureState(const CreatureStateMessage& state)
+{
+    // Whatever the host no longer has goes. Matched on the seed as well as the number, because the
+    // host numbers creatures from nought again each game: the same number with a different seed is a
+    // different animal, and has to be built as one.
+    std::erase_if(m_creatures,
+                  [&](const std::unique_ptr<Creature>& creature)
+                  {
+                      for (uint8_t i = 0; i < state.count; ++i)
+                      {
+                          if (state.creatures[i].id == creature->NetId() &&
+                              state.creatures[i].seed == creature->Brain().Traits().seed)
+                          {
+                              return false;
+                          }
+                      }
+                      return true;
+                  });
+
+    for (uint8_t i = 0; i < state.count; ++i)
+    {
+        const CreatureSnapshot& shown = state.creatures[i];
+        Creature* creature = nullptr;
+        for (const std::unique_ptr<Creature>& existing : m_creatures)
+        {
+            if (existing->NetId() == shown.id)
+            {
+                creature = existing.get();
+                break;
+            }
+        }
+        if (creature == nullptr)
+        {
+            // Built from the same seed, so it is the same animal the host has -- which matters more
+            // once its body is generated from that seed rather than from boxes.
+            m_creatures.push_back(std::make_unique<Creature>(m_scene, m_app->GetMeshes(), m_app->GetPhysics(),
+                                                             &m_nav, CreatureTraits::FromSeed(shown.seed),
+                                                             shown.position));
+            creature = m_creatures.back().get();
+            creature->SetNetId(shown.id);
+            PRED_LOG_INFO(AI, "Shown the host's creature {} (seed {})", shown.id, shown.seed);
+        }
+        creature->Receive(shown.position, shown.yaw, shown.speed, shown.windup, shown.health, shown.alive);
     }
 }
 
@@ -472,10 +552,24 @@ void PredationGame::DrawBrainInspector()
         ImGui::End();
         return;
     }
+    if (!IsAuthority())
+    {
+        // The copies here have a brain object, but it never runs: showing it would be showing a mind
+        // that is not thinking. What this machine does know is what it is being shown.
+        ImGui::TextWrapped("The host runs the creatures; their minds are on the host's machine. This one "
+                           "is only shown where they are.");
+        for (const std::unique_ptr<Creature>& creature : m_creatures)
+        {
+            ImGui::Text("#%u  seed %u  %s  %.1f m/s", creature->NetId(), creature->Brain().Traits().seed,
+                        creature->Alive() ? "alive" : "dead", creature->Speed());
+            ImGui::ProgressBar(creature->Health() / creature->MaxHealth(), ImVec2(-1.0f, 0.0f), "health");
+        }
+        ImGui::End();
+        return;
+    }
     if (m_creatures.empty())
     {
-        ImGui::TextDisabled("%s", IsAuthority() ? "No creature. spawn_creature [seed] makes one."
-                                                : "The host runs the creature; its mind is on their machine.");
+        ImGui::TextDisabled("No creature. spawn_creature [seed] makes one.");
         ImGui::End();
         return;
     }
@@ -598,7 +692,8 @@ void PredationGame::RegisterCreatureCommands()
             }
             else
             {
-                m_app->GetConsole().PrintError("No navigation mesh to put it on.");
+                m_app->GetConsole().PrintError("Could not place one: no walkable ground there, or there are already " +
+                                               std::to_string(kMaxCreatures) + ".");
             }
         },
         "spawn_creature [seed] [ahead]");

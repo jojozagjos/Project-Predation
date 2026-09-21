@@ -152,7 +152,7 @@ void Creature::TakeDamage(float amount, int byPlayer, const glm::vec3& from, flo
     m_brain.OnDamaged(amount, byPlayer, from, time);
     if (!Alive())
     {
-        m_deathTime = time;
+        m_deathTime = m_shownTime;
         m_speed = 0.0f;
     }
 }
@@ -167,9 +167,51 @@ void Creature::SetShownState(const glm::vec3& position, float yaw, float speed, 
     if (!alive && Alive())
     {
         m_health = 0.0f;
-        m_deathTime = m_time;
+        m_deathTime = m_shownTime;
     }
     SyncBody(0.0f);
+}
+
+void Creature::Receive(const glm::vec3& position, float yaw, float speed, float windup, float healthFraction,
+                       bool alive)
+{
+    m_received = {position, yaw, speed, windup, alive};
+    m_receivedAge = 0.0f;
+    m_hasReceived = true;
+    // Health follows the host's, for anything that shows it. Not when it has died: dying is left to
+    // SetShownState, which only notices a death while the body is still alive to have one.
+    if (alive)
+    {
+        m_health = std::max(healthFraction * m_maxHealth, 0.01f);
+    }
+}
+
+void Creature::FollowReceived(float dt)
+{
+    if (!m_hasReceived)
+    {
+        return;
+    }
+    m_receivedAge += dt;
+    // Guessed forward by what it was doing, for no longer than a few packets: past that a guess is
+    // worse than waiting to be told.
+    const float lead = m_received.alive ? std::min(m_receivedAge, 0.1f) : 0.0f;
+    const glm::vec3 heading{std::sin(m_received.yaw), 0.0f, -std::cos(m_received.yaw)};
+    const glm::vec3 goal = m_received.position + heading * (m_received.speed * lead);
+
+    // Eased rather than set, or thirty updates a second would draw as thirty small jumps. Too far
+    // off to ease -- the first packet, or a creature that has been somewhere else entirely -- it is
+    // simply put there.
+    const float blend = 1.0f - std::exp(-15.0f * dt);
+    glm::vec3 position = goal;
+    float yaw = m_received.yaw;
+    if (m_followedOnce && glm::distance(m_position, goal) < 3.0f)
+    {
+        position = m_position + (goal - m_position) * blend;
+        yaw = m_yaw + std::remainder(m_received.yaw - m_yaw, glm::two_pi<float>()) * blend;
+    }
+    m_followedOnce = true;
+    SetShownState(position, yaw, m_received.speed, m_received.windup, m_received.alive);
 }
 
 void Creature::Update(CreatureSenses senses, float time, float dt)
@@ -282,7 +324,7 @@ void Creature::SyncBody(float dt)
 
 void Creature::UpdateVisual(float dt)
 {
-    (void)dt;
+    m_shownTime += dt;
     const glm::quat facing = YawRotation(m_yaw);
     const float pace = std::clamp(m_speed / 5.0f, 0.0f, 1.0f);
 
@@ -290,7 +332,7 @@ void Creature::UpdateVisual(float dt)
     float collapse = 0.0f;
     if (!Alive() && m_deathTime >= 0.0f)
     {
-        collapse = std::clamp((m_time - m_deathTime) / 0.6f, 0.0f, 1.0f);
+        collapse = std::clamp((m_shownTime - m_deathTime) / 0.6f, 0.0f, 1.0f);
     }
     const glm::quat roll = glm::angleAxis(collapse * glm::radians(84.0f), glm::vec3(0.0f, 0.0f, 1.0f));
     const glm::vec3 sink{0.0f, -0.42f * collapse, 0.0f};
