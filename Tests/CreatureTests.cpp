@@ -87,6 +87,20 @@ struct CreatureHarness
         Run(seconds, players, std::move(noises), [](const Creature&) {});
     }
 
+    // The same, with the players worked out afresh every tick from where the creature is -- for
+    // somebody who turns to keep it in view, as anybody watching something move would.
+    template <typename Players, typename Watch>
+    void RunLive(float seconds, Players&& players, Watch&& watch)
+    {
+        constexpr float dt = 1.0f / 60.0f;
+        for (float t = 0.0f; t < seconds; t += dt)
+        {
+            time += dt;
+            creature->Update(Senses(players(*creature)), time, dt);
+            watch(*creature);
+        }
+    }
+
     const CreatureBrain::Track* TrackOf(int id) const
     {
         for (const CreatureBrain::Track& track : creature->Brain().Tracks())
@@ -448,4 +462,317 @@ TEST_CASE("A creature shown from the host's state keeps up smoothly, and dies th
     harness.Run(1.0f, players, {}, follow);
     CHECK_FALSE(shown.Alive());
     CHECK(shown.Health() == 0.0f);
+}
+
+namespace
+{
+
+// The first seed whose temperament passes a test, so a test can ask for "a stealthy one" rather than
+// for a number that means stealthy only until somebody changes how traits are drawn.
+template <typename Want>
+uint32_t SeedWhere(Want&& want)
+{
+    for (uint32_t seed = 1; seed < 5000; ++seed)
+    {
+        if (want(CreatureTraits::FromSeed(seed)))
+        {
+            return seed;
+        }
+    }
+    return 0;
+}
+
+// Somebody standing at `feet` and looking at `at`.
+SensedPlayer Watching(int id, const glm::vec3& feet, const glm::vec3& at)
+{
+    SensedPlayer player = Somebody(id, feet);
+    const glm::vec3 eye = feet + glm::vec3(0.0f, 1.67f, 0.0f);
+    player.forward = glm::normalize(at + glm::vec3(0.0f, 0.7f, 0.0f) - eye);
+    return player;
+}
+
+std::string MindOf(const Creature& creature)
+{
+    std::string mind;
+    for (const CreatureBrain::TimelineEntry& entry : creature.Brain().Timeline())
+    {
+        mind += "\n  " + std::to_string(entry.time).substr(0, 5) + "  " + entry.what;
+    }
+    for (const CreatureBrain::Option& option : creature.Brain().Options())
+    {
+        mind += "\n  option " + option.label + " " + std::to_string(option.score).substr(0, 5);
+    }
+    int hidden = 0;
+    for (const CreatureBrain::CoverCandidate& candidate : creature.Brain().Cover())
+    {
+        hidden += candidate.hidden ? 1 : 0;
+    }
+    mind += "\n  cover weighed: " + std::to_string(creature.Brain().Cover().size()) + ", of which hidden " +
+            std::to_string(hidden);
+    mind += "\n  goal: " + creature.Brain().CurrentGoal();
+    if (creature.Brain().HasCoverPoint())
+    {
+        const glm::vec3 point = creature.Brain().CoverPoint();
+        mind += "\n  cover point " + std::to_string(point.x) + ", " + std::to_string(point.z) + ", " +
+                std::to_string(glm::distance(point, creature.Position())) + " m away; at " +
+                std::to_string(creature.Position().x) + ", " + std::to_string(creature.Position().z);
+    }
+    return mind;
+}
+
+// Cunning beating timid by a clear margin is what makes lying still win over running.
+uint32_t CunningSeed()
+{
+    return SeedWhere(
+        [](const CreatureTraits& t)
+        {
+            const float cunning = 0.3f + 0.45f * t.stealth + 0.45f * t.patience;
+            const float timid = 0.6f + 0.6f * t.fear;
+            return cunning > timid + 0.15f && t.aggression > 0.5f;
+        });
+}
+
+} // namespace
+
+TEST_CASE("Dead is dead: its mind stops, and a strike it was winding up never lands", "[creature][death]")
+{
+    CreatureHarness harness(5);
+    glm::vec3 at;
+    glm::vec3 player;
+    REQUIRE(OpenView(harness, 1.8f, at, player));
+    const std::vector<SensedPlayer> players{Somebody(1, player)};
+
+    // Until it is part way through a wind-up: the moment a strike is on its way.
+    bool windingUp = false;
+    for (int i = 0; i < 600 && !windingUp; ++i)
+    {
+        harness.Run(1.0f / 60.0f, players);
+        windingUp = harness.creature->Brain().Intent().windup > 0.3f;
+    }
+    REQUIRE(windingUp);
+
+    harness.creature->TakeDamage(1000.0f, 1, player, harness.time);
+    REQUIRE_FALSE(harness.creature->Alive());
+    CHECK(harness.creature->Brain().Dead());
+    const size_t timeline = harness.creature->Brain().Timeline().size();
+    const glm::vec3 where = harness.creature->Position();
+    const Behavior doing = harness.creature->Brain().Current();
+
+    bool struck = false;
+    bool moved = false;
+    Noise shot;
+    shot.kind = NoiseKind::Gunshot;
+    shot.reach = NoiseReach::kGunshot;
+    shot.position = player;
+    shot.player = 1;
+    harness.Run(3.0f, players, {shot},
+                [&](const Creature& creature)
+                {
+                    struck = struck || creature.Brain().Intent().strikeTarget >= 0;
+                    moved = moved || creature.Brain().Intent().move;
+                });
+    INFO("its mind:" << MindOf(*harness.creature));
+    CHECK_FALSE(struck);
+    CHECK_FALSE(moved);
+    CHECK(harness.creature->Brain().Timeline().size() == timeline);
+    CHECK(harness.creature->Brain().Current() == doing);
+    CHECK(glm::distance(harness.creature->Position(), where) < 1e-4f);
+    CHECK(harness.creature->Down());
+}
+
+TEST_CASE("A stealthy creature being watched stalks from cover, and comes when they look away",
+          "[creature][stalk]")
+{
+    const uint32_t seed = SeedWhere([](const CreatureTraits& t)
+                                    { return t.stealth > 0.85f && t.aggression > 0.5f && t.fear < 0.6f; });
+    REQUIRE(seed != 0);
+    INFO("seed " << seed << ": " << CreatureTraits::FromSeed(seed).Describe());
+    CreatureHarness harness(seed);
+    glm::vec3 at;
+    glm::vec3 player;
+    REQUIRE(OpenView(harness, 14.0f, at, player));
+
+    // Somebody standing in the open looking straight at it.
+    bool charged = false;
+    bool stalked = false;
+    harness.RunLive(8.0f, [&](const Creature& c) { return std::vector<SensedPlayer>{Watching(1, player, c.Position())}; },
+                [&](const Creature& creature)
+                {
+                    const Behavior now = creature.Brain().Current();
+                    charged = charged || now == Behavior::Hunt || now == Behavior::Attack;
+                    stalked = stalked || now == Behavior::Stalk;
+                });
+    const glm::vec3 eye = player + glm::vec3(0.0f, 1.67f, 0.0f);
+    const bool inTheirSight = harness.Clear(eye, harness.creature->Position() + glm::vec3(0.0f, 0.7f, 0.0f));
+    INFO("its mind:" << MindOf(*harness.creature));
+    INFO("ended " << glm::distance(harness.creature->Position(), player) << " m from them, "
+                  << (inTheirSight ? "in their sight" : "out of their sight"));
+    CHECK(stalked);
+    CHECK_FALSE(charged);
+    CHECK_FALSE(inTheirSight);
+    CHECK(harness.creature->Brain().Intent().crouch > 0.5f);
+
+    // They turn their back.
+    SensedPlayer away = Somebody(1, player);
+    away.forward = glm::normalize(player - at);
+    bool came = false;
+    harness.Run(6.0f, {away}, {},
+                [&](const Creature& creature)
+                {
+                    const Behavior now = creature.Brain().Current();
+                    came = came || now == Behavior::Hunt || now == Behavior::Attack;
+                });
+    INFO("after they looked away:" << MindOf(*harness.creature));
+    CHECK(came);
+}
+
+TEST_CASE("A brazen creature comes whether it is watched or not", "[creature][stalk]")
+{
+    const uint32_t seed = SeedWhere([](const CreatureTraits& t)
+                                    { return t.stealth < 0.2f && t.aggression > 0.5f && t.fear < 0.6f; });
+    REQUIRE(seed != 0);
+    INFO("seed " << seed << ": " << CreatureTraits::FromSeed(seed).Describe());
+    CreatureHarness harness(seed);
+    glm::vec3 at;
+    glm::vec3 player;
+    REQUIRE(OpenView(harness, 12.0f, at, player));
+    bool came = false;
+    harness.RunLive(3.0f, [&](const Creature& c) { return std::vector<SensedPlayer>{Watching(1, player, c.Position())}; },
+                [&](const Creature& creature)
+                {
+                    const Behavior now = creature.Brain().Current();
+                    came = came || now == Behavior::Hunt || now == Behavior::Attack;
+                });
+    INFO("its mind:" << MindOf(*harness.creature));
+    CHECK(came);
+}
+
+TEST_CASE("A stalker's patience runs out, and then any moment will do", "[creature][stalk]")
+{
+    const uint32_t seed = SeedWhere([](const CreatureTraits& t)
+                                    { return t.stealth > 0.8f && t.patience < 0.3f && t.aggression > 0.5f &&
+                                             t.fear < 0.6f; });
+    REQUIRE(seed != 0);
+    const CreatureTraits traits = CreatureTraits::FromSeed(seed);
+    INFO("seed " << seed << ": " << traits.Describe());
+    CreatureHarness harness(seed);
+    glm::vec3 at;
+    glm::vec3 player;
+    REQUIRE(OpenView(harness, 14.0f, at, player));
+
+    // Watched the whole time: it never gets the opening it wants.
+    float firstCame = -1.0f;
+    harness.RunLive(traits.StalkPatienceSeconds() + 8.0f, [&](const Creature& c) { return std::vector<SensedPlayer>{Watching(1, player, c.Position())}; },
+                [&](const Creature& creature)
+                {
+                    const Behavior now = creature.Brain().Current();
+                    if (firstCame < 0.0f && (now == Behavior::Hunt || now == Behavior::Attack))
+                    {
+                        firstCame = harness.time;
+                    }
+                });
+    INFO("its mind:" << MindOf(*harness.creature));
+    INFO("patience " << traits.StalkPatienceSeconds() << " s; first came at " << firstCame << " s");
+    REQUIRE(firstCame > 0.0f);
+    // Not straight away -- it waited -- and not long after its patience was spent.
+    CHECK(firstCame > 3.0f);
+    CHECK(firstCame < traits.StalkPatienceSeconds() + 8.0f);
+}
+
+TEST_CASE("Badly hurt, a cunning creature plays dead -- alive underneath -- and springs when they come close",
+          "[creature][playdead]")
+{
+    const uint32_t seed = CunningSeed();
+    REQUIRE(seed != 0);
+    INFO("seed " << seed << ": " << CreatureTraits::FromSeed(seed).Describe());
+    CreatureHarness harness(seed);
+    glm::vec3 at;
+    glm::vec3 player;
+    REQUIRE(OpenView(harness, 6.0f, at, player));
+    harness.Run(1.0f, {Somebody(1, player)});
+
+    harness.creature->TakeDamage(85.0f, 1, player + glm::vec3(0.0f, 1.5f, 0.0f), harness.time);
+    harness.Run(0.5f, {Somebody(1, player)});
+    INFO("its mind:" << MindOf(*harness.creature));
+    REQUIRE(harness.creature->Brain().Current() == Behavior::PlayDead);
+    CHECK(harness.creature->Alive());
+    CHECK(harness.creature->Down());
+    CHECK_FALSE(harness.creature->Brain().Dead());
+
+    // Lying there while they stand off watching: it stays down.
+    harness.Run(3.0f, {Watching(1, player, at)});
+    CHECK(harness.creature->Brain().Current() == Behavior::PlayDead);
+
+    // They walk up to it.
+    const glm::vec3 close =
+        harness.creature->Position() + glm::normalize(player - harness.creature->Position()) * 1.6f;
+    bool sprang = false;
+    bool struck = false;
+    harness.Run(3.0f, {Watching(1, close, harness.creature->Position())}, {},
+                [&](const Creature& creature)
+                {
+                    sprang = sprang || creature.Brain().Current() == Behavior::Attack;
+                    struck = struck || creature.Brain().Intent().strikeTarget == 1;
+                });
+    INFO("after they came close:" << MindOf(*harness.creature));
+    CHECK(sprang);
+    CHECK(struck);
+    CHECK_FALSE(harness.creature->Down());
+}
+
+TEST_CASE("Shot while playing dead, it gives up the act and runs", "[creature][playdead]")
+{
+    const uint32_t seed = CunningSeed();
+    REQUIRE(seed != 0);
+    CreatureHarness harness(seed);
+    glm::vec3 at;
+    glm::vec3 player;
+    REQUIRE(OpenView(harness, 7.0f, at, player));
+    harness.Run(1.0f, {Somebody(1, player)});
+    harness.creature->TakeDamage(85.0f, 1, player + glm::vec3(0.0f, 1.5f, 0.0f), harness.time);
+    harness.Run(0.5f, {Somebody(1, player)});
+    REQUIRE(harness.creature->Brain().Current() == Behavior::PlayDead);
+
+    harness.creature->TakeDamage(10.0f, 1, player + glm::vec3(0.0f, 1.5f, 0.0f), harness.time);
+    harness.Run(0.5f, {Watching(1, player, at)});
+    INFO("its mind:" << MindOf(*harness.creature));
+    CHECK(harness.creature->Brain().Current() == Behavior::Retreat);
+    CHECK(harness.creature->Alive());
+}
+
+TEST_CASE("The same seed in the same situation makes the same creature, decision for decision",
+          "[creature][seed]")
+{
+    // The exit criterion for Milestone 9: reproducible from seed. Two creatures from one seed, given
+    // the same world and the same things happening, think the same thoughts at the same moments and
+    // end up in the same place.
+    const uint32_t seed = GENERATE(3u, 17u, 256u);
+    std::vector<std::string> minds;
+    std::vector<glm::vec3> ends;
+    for (int run = 0; run < 2; ++run)
+    {
+        CreatureHarness harness(seed);
+        glm::vec3 at;
+        glm::vec3 player;
+        REQUIRE(OpenView(harness, 12.0f, at, player));
+        Noise shot;
+        shot.kind = NoiseKind::Gunshot;
+        shot.reach = NoiseReach::kGunshot;
+        shot.position = player + glm::vec3(4.0f, 0.5f, -3.0f);
+        harness.Run(3.0f, {}, {shot});
+        harness.Run(6.0f, {Watching(1, player, at)});
+        harness.creature->TakeDamage(40.0f, 1, player, harness.time);
+        harness.Run(4.0f, {Somebody(1, player)});
+        std::string mind;
+        for (const CreatureBrain::TimelineEntry& entry : harness.creature->Brain().Timeline())
+        {
+            mind += std::to_string(entry.time) + " " + entry.what + "\n";
+        }
+        minds.push_back(mind);
+        ends.push_back(harness.creature->Position());
+    }
+    INFO("seed " << seed << "\nfirst run:\n" << minds[0] << "\nsecond run:\n" << minds[1]);
+    CHECK(minds[0] == minds[1]);
+    CHECK(glm::distance(ends[0], ends[1]) < 1e-4f);
+    CHECK(minds[0].size() > 20); // it did something worth comparing
 }

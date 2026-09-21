@@ -62,6 +62,12 @@ The creature (developer builds only):
 | `creature_hurt [amount]` | Hurt the first creature as if you had shot it, 30 by default |
 | `ai_brain` | Open or close the brain inspector |
 | `ai.creatures`, `ai.seed` | How many a new game starts with, and the seed (0 for a new one each game) |
+| `ai.arrival_seconds` | Roughly how long into a game it arrives, out of everybody's sight; 0 for straight away |
+| `creature_pose` | Where each creature is, whether it is up, lying still or dead, how far it has fallen, and where its torso is drawn |
+| `tracer_report` | How far the last tracer started from the eye and from the drawn barrel, and where the round was traced from |
+
+Every sound the game plays is logged at debug level with its name (`--log-level debug`), which is how
+the burst of door and drop sounds on joining a game was found.
 
 `debug.ai`, `debug.perception` and `debug.navigation` draw its route, its senses and the walkable surface.
 

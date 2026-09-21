@@ -114,6 +114,15 @@ private:
     uint8_t m_nextCreatureId = 0;
     uint16_t m_creatureSequence = 0;
     uint32_t m_appliedCreatureStates = 0;
+    // A game starts without its creature; it arrives a while later, somewhere nobody is looking.
+    // How many are still to come, when, and the seed the first is made from.
+    int m_arrivalsPending = 0;
+    float m_arrivalAt = 0.0f;
+    uint32_t m_arrivalSeed = 0;
+    void UpdateArrivals();
+    // A point on the walkable surface that no player can see and none is near, for something to
+    // appear at without anybody watching it appear.
+    bool FindUnseenPoint(uint32_t seed, glm::vec3& out) const;
     void SendCreatureState();
     void ApplyCreatureState(const CreatureStateMessage& state);
     void BuildNavigation();
@@ -210,8 +219,11 @@ private:
     // Fades the drawn tracers. Presentation only.
     void AgeTracers(float dt);
     const WeaponDefinition* EquippedWeapon() const;
-    // Where the barrel is and which way it points, including recoil.
+    // Where a round starts: just in front of the eye, so what is under the crosshair is what is hit.
+    // Not where the barrel is drawn -- see DrawnMuzzle.
     glm::vec3 MuzzlePosition() const;
+    // Where the barrel is drawn, which is where a tracer and anybody else's view of the shot start.
+    glm::vec3 DrawnMuzzle() const;
     glm::vec2 AimAngles() const;
     void ApplyRecoilToView();
     glm::vec3 AimDirection() const;

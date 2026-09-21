@@ -6,6 +6,7 @@
 
 #include <glm/vec3.hpp>
 
+#include <string>
 #include <vector>
 
 namespace pred
@@ -58,7 +59,14 @@ public:
     float Speed() const { return m_speed; }
 
     // Set from outside, for a creature this machine only shows.
-    void SetShownState(const glm::vec3& position, float yaw, float speed, float windup, bool alive);
+    void SetShownState(const glm::vec3& position, float yaw, float speed, float windup, bool alive,
+                       bool down = false, float crouch = 0.0f);
+
+    // Lying as if dead -- really dead, or playing it. The two look the same from outside, which is
+    // the point of playing it.
+    bool Down() const { return !Alive() || m_down; }
+    // How low it is carrying itself, 0 to 1.
+    float Crouch() const { return m_crouchTarget; }
 
     // Which creature this is on the wire. The host numbers them as it makes them; a client's copy
     // carries the number it was sent.
@@ -70,8 +78,11 @@ public:
     // is already a few hundredths of a second old when it arrives and a creature drawn where it was
     // is drawn behind where it is.
     void Receive(const glm::vec3& position, float yaw, float speed, float windup, float healthFraction,
-                 bool alive);
+                 bool alive, bool down = false, float crouch = 0.0f);
     void FollowReceived(float dt);
+
+    // Where it is and how it is lying, with where its torso is drawn, for the console.
+    std::string DescribePose() const;
 
     void Destroy();
 
@@ -94,10 +105,15 @@ private:
     // How far the legs have gone through their cycle, advanced by distance rather than time so a
     // creature that is not moving is not treading water.
     float m_stride = 0.0f;
-    // When it died, on the clock the visuals keep. Not the brain's clock, which only runs where the
-    // brain does: on a machine that is only shown the creature it never moves, and the death roll
-    // measured against it never played.
-    float m_deathTime = -1.0f;
+    // How far over it is, 0 standing to 1 lying on its side, eased both ways: down when it dies or
+    // plays dead, back up when it gets up. On the visuals' own clock rather than the brain's, which
+    // only runs where the brain does -- on a machine that is only shown the creature it never moves,
+    // and a death roll timed against it never played.
+    float m_collapse = 0.0f;
+    float m_fallSide = 1.0f; // which side it goes over onto: 1 its left, -1 its right
+    bool m_down = false;
+    float m_crouch = 0.0f;
+    float m_crouchTarget = 0.0f;
     float m_shownTime = 0.0f;
     float m_time = 0.0f;
 
@@ -116,6 +132,8 @@ private:
         float speed = 0.0f;
         float windup = 0.0f;
         bool alive = true;
+        bool down = false;
+        float crouch = 0.0f;
     };
     Received m_received;
     float m_receivedAge = 0.0f;
@@ -129,6 +147,8 @@ private:
         // Where it sits on the body when the body stands still, and the joint it swings about.
         glm::vec3 offset{0.0f};
         int leg = -1; // which leg, for the walk cycle; -1 when it is not one
+        // How brightly it glows when the creature is up and alive: the eyes, which go out as it falls.
+        glm::vec3 glow{0.0f};
     };
     std::vector<Piece> m_pieces;
 };

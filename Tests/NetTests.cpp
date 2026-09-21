@@ -648,8 +648,9 @@ TEST_CASE("World events carry only what their kind needs", "[net][protocol]")
         BitWriter writer;
         WriteMessageHeader(writer, MessageType::WorldEvent);
         WriteWorldEvent(writer, sent);
-        // Five bits of message type, four of event kind, six of index and one flag.
-        CHECK(writer.BitsWritten() == 16);
+        // Five bits of message type, four of event kind, one saying whether it is a catch-up to be
+        // applied without a sound, six of index and one flag.
+        CHECK(writer.BitsWritten() == 17);
 
         const std::vector<uint8_t>& bytes = writer.Finish();
         BitReader reader(bytes.data(), bytes.size());
@@ -718,6 +719,7 @@ TEST_CASE("World events carry only what their kind needs", "[net][protocol]")
     {
         BitWriter writer;
         writer.WriteBits(static_cast<uint32_t>(WorldEventKind::PlayerDied), 4);
+        writer.WriteBool(false); // not a catch-up
         writer.WriteBits(7u, 3); // player seven in a four-player game
         writer.WriteBits(0u, 3);
         writer.WriteBits(0u, 36);
@@ -792,6 +794,8 @@ TEST_CASE("Creatures are sent as state: what they are, where, and what their bod
         c.windup = static_cast<float>(i) / 7.0f;
         c.health = 1.0f - static_cast<float>(i) / 8.0f;
         c.alive = i != 5;
+        c.down = i == 3; // lying there, alive: playing dead
+        c.crouch = (i % 2) == 0 ? 1.0f : 0.0f;
     }
     // A body that has turned round twice and a bit: the yaw is not bounded, and has to arrive as the
     // direction it faces rather than clamped to the end of the range.
@@ -800,9 +804,9 @@ TEST_CASE("Creatures are sent as state: what they are, where, and what their bod
     BitWriter writer;
     WriteCreatureState(writer, sent);
     const std::vector<uint8_t>& bytes = writer.Finish();
-    // Eight creatures in under 140 bytes, thirty times a second, is about 4 KB/s per client: less
-    // than the players' own snapshots.
-    CHECK(bytes.size() < 140);
+    // Eight creatures in 140 bytes -- 137 bits each -- thirty times a second, is about 4 KB/s per
+    // client: less than the players' own snapshots.
+    CHECK(bytes.size() <= 140);
 
     BitReader reader(bytes.data(), bytes.size());
     CreatureStateMessage received;
@@ -821,6 +825,8 @@ TEST_CASE("Creatures are sent as state: what they are, where, and what their bod
         CHECK(b.windup == Catch::Approx(a.windup).margin(0.02));
         CHECK(b.health == Catch::Approx(a.health).margin(0.005));
         CHECK(b.alive == a.alive);
+        CHECK(b.down == a.down);
+        CHECK(b.crouch == Catch::Approx(a.crouch).margin(0.08));
     }
     for (uint8_t i = 0; i < 7; ++i)
     {
@@ -1086,4 +1092,28 @@ TEST_CASE("A forged voice packet is refused rather than believed", "[net][protoc
     const std::vector<uint8_t>& more = second.Finish();
     BitReader secondReader(more.data(), more.size());
     CHECK_FALSE(ReadVoice(secondReader, out));
+}
+
+TEST_CASE("A catch-up event arrives marked quiet, and a live one does not", "[net][protocol]")
+{
+    // Joining a game used to play a burst of every door and dropped item at once, because the
+    // catch-up was indistinguishable from things happening now.
+    for (const bool quiet : {false, true})
+    {
+        WorldEventMessage sent;
+        sent.kind = WorldEventKind::PickupSpawned;
+        sent.index = 4;
+        sent.item = 2;
+        sent.other = 1;
+        sent.quiet = quiet;
+
+        BitWriter writer;
+        WriteWorldEvent(writer, sent);
+        const std::vector<uint8_t>& bytes = writer.Finish();
+        BitReader reader(bytes.data(), bytes.size());
+        WorldEventMessage received;
+        REQUIRE(ReadWorldEvent(reader, received));
+        CHECK(received.quiet == quiet);
+        CHECK(received.index == 4);
+    }
 }

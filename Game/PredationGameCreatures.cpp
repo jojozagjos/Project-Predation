@@ -30,6 +30,8 @@ namespace
 CVar<int> cv_aiCreatures{"ai.creatures", 1, "How many creatures a new game starts with"};
 CVar<int> cv_aiSeed{"ai.seed", 0,
                     "The seed a new game's creature is made from; 0 picks a different one each game"};
+CVar<float> cv_aiArrival{"ai.arrival_seconds", 40.0f,
+                         "Roughly how long into a game the creature arrives; 0 for straight away"};
 
 // A strike's reach as the game checks it when the blow lands. A little longer than the brain's own
 // reach, because the brain decided to swing when somebody was in reach and they get this much room to
@@ -71,6 +73,7 @@ void PredationGame::BuildNavigation()
 void PredationGame::ClearCreatures()
 {
     m_creatures.clear();
+    m_arrivalsPending = 0;
     m_noises.clear();
     m_lastVoiceNoise.clear();
 }
@@ -136,19 +139,102 @@ void PredationGame::SpawnCreatures()
     {
         return;
     }
-    const int count = std::clamp(cv_aiCreatures.Get(), 0, static_cast<int>(kMaxCreatures));
+    m_arrivalsPending = std::clamp(cv_aiCreatures.Get(), 0, static_cast<int>(kMaxCreatures));
     // A fixed seed when one is set, so a strange behaviour can be had again; otherwise the clock, so
     // every game is a different animal.
-    uint32_t seed = static_cast<uint32_t>(cv_aiSeed.Get());
-    if (seed == 0)
+    m_arrivalSeed = static_cast<uint32_t>(cv_aiSeed.Get());
+    if (m_arrivalSeed == 0)
     {
-        seed = static_cast<uint32_t>(
+        m_arrivalSeed = static_cast<uint32_t>(
             std::chrono::steady_clock::now().time_since_epoch().count() & 0x7FFFFFFF);
     }
-    for (int i = 0; i < count; ++i)
+    // Not yet. A creature standing in the level when the game begins has always been there, and so
+    // has nothing to arrive from; one that turns up later, from somewhere, is a thing that happened
+    // to the players. When is varied a little from the seed so it cannot be timed.
+    SeededRandom jitter(m_arrivalSeed ^ 0xA5A5A5A5u);
+    m_arrivalAt = std::max(cv_aiArrival.Get(), 0.0f) * jitter.Range(0.75f, 1.25f);
+    if (m_arrivalsPending > 0)
     {
-        SpawnCreature(seed + static_cast<uint32_t>(i) * 7919u, m_player.State().position);
+        PRED_LOG_INFO(AI, "{} creature(s) to arrive in about {:.0f} s", m_arrivalsPending, m_arrivalAt);
     }
+}
+
+bool PredationGame::FindUnseenPoint(uint32_t seed, glm::vec3& out) const
+{
+    if (!m_nav.Valid())
+    {
+        return false;
+    }
+    // Everybody it has to stay out of sight of.
+    std::vector<glm::vec3> eyes;
+    eyes.push_back(m_player.View().eyePosition);
+    if (m_sessionMode == SessionMode::Host)
+    {
+        for (const RemotePlayerView& remote : m_host.Remotes())
+        {
+            if (remote.alive)
+            {
+                eyes.push_back(remote.position + glm::vec3(0.0f, 1.6f, 0.0f));
+            }
+        }
+    }
+
+    const PhysicsWorld& physics = m_app->GetPhysics();
+    uint32_t pick = seed * 2654435761u + 97u;
+    bool found = false;
+    float best = -1.0e9f;
+    for (int i = 0; i < 64; ++i)
+    {
+        glm::vec3 candidate;
+        if (!m_nav.RandomPointNear(eyes.front(), 55.0f, pick, candidate))
+        {
+            continue;
+        }
+        float nearest = 1.0e9f;
+        bool seen = false;
+        const glm::vec3 body = candidate + glm::vec3(0.0f, 0.7f, 0.0f);
+        for (const glm::vec3& eye : eyes)
+        {
+            nearest = std::min(nearest, Horizontal(candidate, eye));
+            const glm::vec3 along = body - eye;
+            const float length = glm::length(along);
+            if (length > 1e-3f && !physics.RayCast(eye, along / length, length))
+            {
+                seen = true;
+            }
+        }
+        if (nearest < 20.0f)
+        {
+            continue;
+        }
+        // Out of sight above everything, then about thirty metres off: far enough to have come from
+        // somewhere, near enough that it arrives into the game rather than into an empty corner.
+        const float score = (seen ? 0.0f : 100.0f) - std::abs(nearest - 30.0f);
+        if (score > best)
+        {
+            best = score;
+            out = candidate;
+            found = true;
+        }
+    }
+    return found;
+}
+
+void PredationGame::UpdateArrivals()
+{
+    if (m_arrivalsPending <= 0 || m_creatureClock < m_arrivalAt)
+    {
+        return;
+    }
+    const uint32_t seed = m_arrivalSeed + static_cast<uint32_t>(m_creatures.size()) * 7919u;
+    glm::vec3 at;
+    if (FindUnseenPoint(seed, at) && SpawnCreature(seed, m_player.State().position, &at))
+    {
+        PRED_LOG_INFO(AI, "A creature has arrived, out of everybody's sight");
+    }
+    // Once, whether or not somewhere was found: a level with nowhere unseen is not going to grow one.
+    --m_arrivalsPending;
+    m_arrivalAt = m_creatureClock + 5.0f;
 }
 
 Creature* PredationGame::CreatureForBody(BodyHandle body)
@@ -241,12 +327,18 @@ void PredationGame::UpdateCreatures(float dt)
     // it cannot -- but a game played alone is nobody else's, and being eaten in the settings menu is
     // not a thing that should happen to anybody.
     const bool pausedAlone = m_paused && m_sessionMode == SessionMode::Offline;
-    if (!IsAuthority() || m_screen != Screen::Playing || m_creatures.empty() || pausedAlone)
+    if (!IsAuthority() || m_screen != Screen::Playing || pausedAlone)
     {
         m_noises.clear();
         return;
     }
     m_creatureClock += dt;
+    UpdateArrivals();
+    if (m_creatures.empty())
+    {
+        m_noises.clear();
+        return;
+    }
 
     // Everybody it could see or hear: this machine's player, and, when hosting, everybody else.
     std::vector<SensedPlayer> players;
@@ -261,6 +353,7 @@ void PredationGame::UpdateCreatures(float dt)
         me.alive = local.alive;
         me.hidden = m_hidingSpot >= 0;
         me.light = LightAt(local.position, m_torchOn);
+        me.forward = m_player.View().Forward();
         players.push_back(me);
     }
     if (m_sessionMode == SessionMode::Host)
@@ -279,6 +372,8 @@ void PredationGame::UpdateCreatures(float dt)
             other.height = BodyHeight(remote.stance);
             other.alive = remote.alive;
             other.light = LightAt(remote.position, remote.torchOn);
+            other.forward = glm::vec3(std::sin(remote.yaw) * std::cos(remote.pitch), std::sin(remote.pitch),
+                                      -std::cos(remote.yaw) * std::cos(remote.pitch));
             for (const WorldObjects::HidingSpot& spot : m_world.HidingSpots())
             {
                 other.hidden = other.hidden || (spot.occupied && spot.occupant == remote.id);
@@ -290,6 +385,12 @@ void PredationGame::UpdateCreatures(float dt)
     PhysicsWorld& physics = m_app->GetPhysics();
     for (const std::unique_ptr<Creature>& creature : m_creatures)
     {
+        // Dead is dead: no senses, no thoughts, no strikes. (Lying still on purpose is a different
+        // thing, and is still alive -- its brain runs, watching.)
+        if (!creature->Alive())
+        {
+            continue;
+        }
         CreatureSenses senses;
         senses.players = players;
         senses.noises = m_noises;
@@ -307,6 +408,7 @@ void PredationGame::UpdateCreatures(float dt)
             }
             return !physics.RayCast(from, along / length, length - 0.35f, self);
         };
+        senses.lightAt = [this](const glm::vec3& at) { return LightAt(at, false); };
         creature->Update(std::move(senses), m_creatureClock, dt);
 
         // A strike landing. Checked again here rather than trusted: somebody who stepped back
@@ -378,6 +480,10 @@ void PredationGame::SendCreatureState()
         entry.windup = creature->Brain().Intent().windup;
         entry.health = creature->Health() / creature->MaxHealth();
         entry.alive = creature->Alive();
+        // Whether it is really dead is not sent separately from whether it is lying there: a client
+        // draws both the same, and that is the trick.
+        entry.down = creature->Down() && creature->Alive();
+        entry.crouch = creature->Crouch();
     }
     m_host.SendCreatureState(state);
 }
@@ -424,7 +530,8 @@ void PredationGame::ApplyCreatureState(const CreatureStateMessage& state)
             creature->SetNetId(shown.id);
             PRED_LOG_INFO(AI, "Shown the host's creature {} (seed {})", shown.id, shown.seed);
         }
-        creature->Receive(shown.position, shown.yaw, shown.speed, shown.windup, shown.health, shown.alive);
+        creature->Receive(shown.position, shown.yaw, shown.speed, shown.windup, shown.health, shown.alive,
+                          shown.down, shown.crouch);
     }
 }
 
@@ -525,6 +632,24 @@ void PredationGame::DrawCreatureOverlays(DebugDraw& draw)
             {
                 marker(brain.Interest().position + glm::vec3(0.0f, 0.3f, 0.0f), 0.3f, Color::kCyan, 10);
             }
+
+            // The cover it last weighed while stalking: a post at each candidate, as tall as it scored,
+            // purple where a player could see it and orange where none could, and the one it chose
+            // ringed. Why it waits where it waits, at a glance.
+            if (brain.Current() == Behavior::Stalk)
+            {
+                for (const CreatureBrain::CoverCandidate& candidate : brain.Cover())
+                {
+                    const uint32_t colour =
+                        candidate.hidden ? Color::RGBA(240, 150, 60, 220) : Color::RGBA(150, 90, 200, 160);
+                    draw.Line(candidate.position, candidate.position + glm::vec3(0.0f, 0.2f + 2.0f * candidate.score, 0.0f),
+                              colour);
+                }
+                if (brain.HasCoverPoint())
+                {
+                    marker(brain.CoverPoint() + glm::vec3(0.0f, 0.2f, 0.0f), 0.45f, Color::kYellow, 12);
+                }
+            }
         }
     }
 }
@@ -569,7 +694,12 @@ void PredationGame::DrawBrainInspector()
     }
     if (m_creatures.empty())
     {
-        ImGui::TextDisabled("No creature. spawn_creature [seed] makes one.");
+        if (m_arrivalsPending > 0)
+        {
+            ImGui::Text("Arrives in %.0f s, somewhere nobody is looking.",
+                        std::max(m_arrivalAt - m_creatureClock, 0.0f));
+        }
+        ImGui::TextDisabled("spawn_creature [seed] [ahead] makes one now.");
         ImGui::End();
         return;
     }
@@ -586,6 +716,14 @@ void PredationGame::DrawBrainInspector()
     ImGui::PopTextWrapPos();
     ImGui::ProgressBar(creature.Health() / creature.MaxHealth(), ImVec2(-1.0f, 0.0f),
                        creature.Alive() ? "health" : "dead");
+    if (brain.Dead())
+    {
+        ImGui::TextColored(ImVec4(0.95f, 0.5f, 0.4f, 1.0f), "Dead. Its mind has stopped; nothing below changes.");
+    }
+    else if (creature.Down())
+    {
+        ImGui::TextColored(ImVec4(0.95f, 0.8f, 0.4f, 1.0f), "Playing dead. Alive, watching, and waiting.");
+    }
 
     ImGui::SeparatorText("Now");
     ImGui::Text("%s", BehaviorName(brain.Current()));
@@ -638,6 +776,11 @@ void PredationGame::DrawBrainInspector()
             ImGui::SameLine();
             ImGui::TextColored(ImVec4(0.95f, 0.5f, 0.4f, 1.0f), "hurt it %.0f", track.harm * 100.0f);
         }
+        // What stalking weighs: whether they are looking at it, whether they have company, and how
+        // much of its patience they have used up.
+        ImGui::TextDisabled("%s  %s  stalked %.0f of %.0f s", track.watching ? "WATCHING IT" : "not looking",
+                            track.isolation > 10.0f ? "alone" : "with company", track.stalked,
+                            brain.Traits().StalkPatienceSeconds());
     }
     if (!brain.Interest().resolved)
     {
@@ -687,6 +830,13 @@ void PredationGame::RegisterCreatureCommands()
             {
                 // The one just made is the one somebody wants to watch.
                 m_inspectedCreature = static_cast<int>(m_creatures.size()) - 1;
+                if (ahead)
+                {
+                    // Facing you: one put in front of you to be looked at is there to look back.
+                    Creature& made = *m_creatures.back();
+                    const glm::vec3 toYou = m_player.State().position - made.Position();
+                    made.SetShownState(made.Position(), std::atan2(toYou.x, -toYou.z), 0.0f, 0.0f, true);
+                }
                 m_app->GetConsole().Print("Creature " + std::to_string(seed) + ": " +
                                           m_creatures.back()->Brain().Traits().Describe());
             }
@@ -697,6 +847,17 @@ void PredationGame::RegisterCreatureCommands()
             }
         },
         "spawn_creature [seed] [ahead]");
+    console.RegisterCommand("creature_pose", "Where each creature is, how it is lying, and where it is drawn",
+                            [this](const std::vector<std::string>&)
+                            {
+                                for (const std::unique_ptr<Creature>& creature : m_creatures)
+                                {
+                                    const std::string line = "creature " + std::to_string(creature->NetId()) +
+                                                             ": " + creature->DescribePose();
+                                    m_app->GetConsole().Print(line);
+                                    PRED_LOG_INFO(AI, "{}", line);
+                                }
+                            });
     console.RegisterCommand("creature_clear", "Remove every creature",
                             [this](const std::vector<std::string>&) { ClearCreatures(); });
     console.RegisterCommand("ai_brain", "Show or hide the creature brain inspector",

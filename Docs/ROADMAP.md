@@ -33,7 +33,7 @@ Still missing:
 - **Reconnecting.** A player who drops is gone for the round. Host migration covers the host
   leaving, but not anybody else coming back.
 
-## The creature (Milestone 8: prototype built)
+## The creature (Milestone 8 built, Milestone 9 in progress)
 
 Built: a navigation mesh from the level (Recast/Detour); a creature made from a seed; sight with a
 field of view, occlusion, light and a glimpse-is-not-a-sighting exposure; hearing of footsteps,
@@ -42,14 +42,21 @@ utility scoring over Roam, Investigate, Hunt, Attack and Retreat; strikes that h
 rounds that hurt it; the brain inspector and overlays; and replication, so everybody in a game sees
 the host's creature. See [AI.md](AI.md).
 
+Milestone 9 so far: stalking from cover with peeking, playing dead, a real death that stops the
+brain, the creature arriving out of sight rather than starting in the level, and a test that the same
+seed makes the same decisions.
+
 Still missing, roughly in order:
 
-- **Its body.** A placeholder of boxes. The procedural anatomy generated from the seed is the next
-  phase, and replication already carries the seed for it.
+- **The rest of Milestone 9.** Searching, checking lockers, curiosity without attack, spatial memory,
+  adaptation.
+- **Its body (Milestone 10).** A placeholder of boxes. The procedural anatomy generated from the seed,
+  and replication already carries the seed for it.
+- **Procedural animation and traversal (Milestone 11).** A generated gait for whatever body the seed
+  makes -- legs placed by IK on the real ground, not swung on a timer -- climbing, ceilings, and vents
+  it can hide and move in if its body fits (see AI.md, "Vents and other hiding places").
 - **Its sound.** It makes none: no footfalls, no breathing, no call. For a creature that is found
   by listening, this is the largest gap it has.
-- **The rest of its behaviours.** Stalk, Ambush, Hide, Search, Observe, checking hiding spots, and
-  the tactical point queries they are built from.
 - **Doors.** It walks through closed ones: the navigation mesh is built from the fixed level, and a
   door is not part of it.
 - **Capture and the lair.**

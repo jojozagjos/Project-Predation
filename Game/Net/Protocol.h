@@ -24,7 +24,7 @@ namespace pred
 
 // Bumped whenever the wire changes shape. Two ends that disagree are refused at the door rather
 // than left to misread each other, which is what a wire mismatch actually looks like from inside.
-inline constexpr uint16_t kProtocolVersion = 5;
+inline constexpr uint16_t kProtocolVersion = 6;
 // How many bits name a message type. Five, so there is room to add one.
 inline constexpr uint32_t kMessageTypeBits = 5;
 inline constexpr uint8_t kMaxPlayers = 4;
@@ -114,6 +114,10 @@ struct WorldEventMessage
     // somebody is left hanging in the air the moment they move, so this decides whether one is left
     // at all. Separate from `flag` because a round that hits a player has still hit something.
     bool flag2 = false;
+    // Something that already happened, sent to catch a newcomer up rather than happening now. Applied
+    // the same and heard not at all: a player joining a game used to arrive to the sound of every door
+    // that had been opened and every item that had been dropped, all at once.
+    bool quiet = false;
     float amount = 0.0f;  // damage, or remaining health
     glm::vec3 position{0.0f};
     glm::vec3 direction{0.0f};
@@ -230,6 +234,9 @@ struct CreatureSnapshot
     float windup = 0.0f;       // 0 to 1 through a strike's wind-up
     float health = 1.0f;       // as a fraction
     bool alive = true;
+    // Lying as if dead while alive -- playing it. Drawn exactly as a death.
+    bool down = false;
+    float crouch = 0.0f;       // 0 to 1, how low it is creeping
 };
 
 struct CreatureStateMessage

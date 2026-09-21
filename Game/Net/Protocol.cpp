@@ -398,6 +398,7 @@ bool ReadSnapshot(BitReader& reader, SnapshotMessage& out)
 void WriteWorldEvent(BitWriter& writer, const WorldEventMessage& message)
 {
     writer.WriteBits(static_cast<uint32_t>(message.kind), 4);
+    writer.WriteBool(message.quiet);
     switch (message.kind)
     {
     case WorldEventKind::DoorMoved:
@@ -470,6 +471,7 @@ bool ReadWorldEvent(BitReader& reader, WorldEventMessage& out)
         return false;
     }
     out.kind = static_cast<WorldEventKind>(kind);
+    out.quiet = reader.ReadBool();
 
     switch (out.kind)
     {
@@ -717,6 +719,8 @@ void WriteCreatureState(BitWriter& writer, const CreatureStateMessage& message)
         writer.WriteQuantised(creature.windup, 0.0f, 1.0f, 5);
         writer.WriteQuantised(creature.health, 0.0f, 1.0f, 7);
         writer.WriteBool(creature.alive);
+        writer.WriteBool(creature.down);
+        writer.WriteQuantised(creature.crouch, 0.0f, 1.0f, 3);
     }
 }
 
@@ -740,6 +744,8 @@ bool ReadCreatureState(BitReader& reader, CreatureStateMessage& out)
         creature.windup = reader.ReadQuantised(0.0f, 1.0f, 5);
         creature.health = reader.ReadQuantised(0.0f, 1.0f, 7);
         creature.alive = reader.ReadBool();
+        creature.down = reader.ReadBool();
+        creature.crouch = reader.ReadQuantised(0.0f, 1.0f, 3);
     }
     return !reader.Overran();
 }

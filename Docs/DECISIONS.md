@@ -1346,3 +1346,42 @@ creature.
 What a client cannot do is look inside the creature's head. Its copy has a brain object that never
 runs, and the inspector says so rather than displaying a mind that is not thinking. Streaming the
 inspector's snapshots from the host is in the design (AI.md) and not built.
+
+## ADR-065: Stalking reads gaze, playing dead is a real fall, and death stops the brain
+
+Three decisions from Milestone 9's first steps, each made after watching the wrong version happen.
+
+**The opening is where they are looking, not whether they can see it.** A stealthy creature waits for
+a moment to strike: somebody alone, looking away, or its own patience running out. The first version
+counted "they cannot see me" as "they are not looking", and the creature, crouched behind a wall with
+the player staring at that wall, took the wall as its opening and stepped out into their view. Being
+out of sight is what cover is for; the opening is a gaze turned elsewhere. And it only knows where
+somebody is looking while it can see them -- after that it believes the last look for four seconds, and
+then does not know, which is half an opening. Cover that hides it also blinds it, so it peeks: every
+few seconds it leans out to a spot with a view, looks, and slips back. A peek that finds them turned
+away is how the stalk ends.
+
+**Cover is a query, not a list.** Points on the navigation mesh round the target and round the creature
+itself, each scored as a product of named reasons like the behaviours are: hidden from every player it
+knows about (a spot that is not scores a hundredth, so no combination of the others lifts it over one
+that is), about eleven metres off, dark, behind them, near, and not reached by walking past their nose
+-- the version without that last one picked excellent cover on the far side of the player and walked
+slowly at them to reach it. A dark corner, a gap behind a crate, and in time a vent, are all used
+without being named.
+
+**Playing dead is the same fall as dying.** From outside the two must be identical or the trick does not
+work: the same roll onto its side, the eyes going out, the body falling to whichever side has room, the
+physics box lying down with it so it can be shot where it lies. On the wire it is one bit, separate from
+alive, so a client draws it and cannot tell. Underneath, the brain runs, and the act has rules: only
+straight after a bad wound with somebody close, only for a creature more cunning than timid, at most
+twice, never again once it has been shot while down. It springs at anybody who comes within reach, and
+that spring is seen through rather than reweighed -- the version that reweighed it stood up in front of
+somebody, found its fear, and ran.
+
+**Death stops the brain, and clears what it meant to do.** Nothing after it perceives, decides or moves.
+The game reads the brain's intent every tick, and a creature killed on the tick a strike was due left
+the strike standing, to be applied every tick from a corpse.
+
+Also settled here: a game starts without its creature. It arrives about forty seconds in, varied by
+seed, somewhere twenty metres or more from everybody and out of every player's line of sight, so
+nobody ever watches it appear.

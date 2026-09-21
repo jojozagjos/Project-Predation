@@ -1,9 +1,10 @@
 # Creature AI
 
-**Status**: Milestone 8 prototype built; the full architecture below lands in Milestone 9. What
-exists now is listed first, and the rest of this document is the design it is heading towards.
+**Status**: Milestone 8 prototype built; Milestone 9 in progress (stalking, peeking, playing dead,
+seed reproducibility done). What exists now is listed first, and the rest of this document is the
+design it is heading towards.
 
-## What exists (Milestone 8)
+## What exists (Milestones 8 and 9 so far)
 
 | Piece | Where |
 | --- | --- |
@@ -14,7 +15,9 @@ exists now is listed first, and the rest of this document is the design it is he
 | The body: route following, turning, a physics box, a placeholder visual | `Game/Creature/Creature.h` |
 | Spawning, senses, noises, strikes, shots, the inspector and overlays | `Game/PredationGameCreatures.cpp` |
 
-- **Traits**: aggression, fear, curiosity, persistence, perception, run and walk speed.
+- **Traits**: aggression, fear, curiosity, persistence, perception, run and walk speed; and from
+  Milestone 9, patience, stealth and a preference for loners. New traits are always drawn after the
+  old ones, so a seed keeps meaning the same temperament.
 - **Sight**: a 130 degree cone to 26 m (scaled by perception), three occlusion rays at head, chest and
   hips, scaled by distance, how tall the target is standing, how fast they are moving and the light
   where they stand (under a roof is dark; a lit torch is bright anywhere). Exposure has to fill before
@@ -27,8 +30,31 @@ exists now is listed first, and the rest of this document is the design it is he
   persistence, exposure, how much they have hurt it) and one open question -- the thing it is going to
   look into.
 - **Feelings**: pain, fear and arousal.
-- **Behaviours**: Roam, Investigate, Hunt, Attack and Retreat, scored per target as products of named
-  considerations with a commitment bonus for the current one.
+- **Behaviours**: Roam, Investigate, Hunt, Attack, Retreat, Stalk and PlayDead, scored per target as
+  products of named considerations with a commitment bonus for the current one. A strike already being
+  wound up, and a spring from playing dead, are seen through rather than weighed again.
+- **Stalking**: a stealthy creature that has been seen does not charge. Hunting carries a "the moment"
+  consideration -- 1 for a brazen creature, and for a stealthy one only as good as the opening: somebody
+  looking the other way, on their own, or past the end of its patience. Stalking scores the other way
+  round. It waits in cover found by a query: points scattered round the target and round itself,
+  scored on being out of every known player's line of sight, about eleven metres off, dark, behind
+  them, not far to walk, and not reached by walking past their nose. Exposed, it hurries to cover;
+  hidden, it creeps, and every few seconds it leans out to a spot with a view to look -- which is how
+  it learns they have turned away.
+- **Watched, and gaze versus sight**: whether a player is looking its way is read from their gaze, and
+  only while it can see them; it is believed for four seconds after, then not known, which counts as
+  half an opening. Being hidden from them is not the same as them looking away -- confusing the two made
+  it step out of cover straight into their view.
+- **Playing dead**: straight after a wound that leaves it badly hurt, with somebody close, a creature
+  more cunning (stealth and patience) than timid drops as if dead. It looks exactly like a death -- the
+  same fall, eyes going dark, the body falling to whichever side has room -- but its brain runs. It
+  springs at anybody who comes within reach, gets up and slips away when nobody is looking, and if shot
+  while down gives up the act and runs, and is not believed again. At most twice a life.
+- **Dead is dead**: on death the brain stops for good. Nothing afterwards perceives, decides or moves,
+  and the intent is cleared -- a creature killed mid-strike used to leave the strike standing.
+- **Arrival**: a game starts without the creature. About forty seconds in (`ai.arrival_seconds`, varied
+  a little by seed) it appears somewhere at least twenty metres from everybody and out of every
+  player's line of sight.
 - **One rule worth knowing**: a noise made by somebody it can see, or somebody who has hurt it, is not
   a question to go and answer. It updates where they are, and closes any open question near them.
   Without it a creature shot in the back walked off to "investigate the gunshot" instead of turning on
@@ -36,9 +62,29 @@ exists now is listed first, and the rest of this document is the design it is he
 - **Networking**: the host runs every mind; clients are sent each creature's seed and body state and
   draw a copy (ADR-064).
 
-Developer commands: `spawn_creature [seed] [ahead]`, `creature_clear`, `creature_hurt [amount]` and
-`ai_brain`, plus the `ai.creatures` and `ai.seed` settings. The AI, Perception and Navigation debug
-categories draw the overlays.
+Developer commands: `spawn_creature [seed] [ahead]`, `creature_clear`, `creature_hurt [amount]`,
+`creature_pose` and `ai_brain`, plus the `ai.creatures`, `ai.seed` and `ai.arrival_seconds` settings.
+The AI, Perception and Navigation debug categories draw the overlays; while stalking, the cover it
+weighed is drawn as posts (orange hidden, purple seen, taller for better) with the chosen spot ringed.
+
+Still to come in Milestone 9: searching properly for somebody lost, checking lockers it has seen used
+or heard slam, a curious creature that follows and watches without attacking, spatial memory (a
+heatmap of where players go, used for ambushes), and adaptation over a match.
+
+### Vents and other hiding places
+
+Hiding is already a query rather than a list: cover is wherever scores well on "nobody can see me
+there", so a dark corner or a gap behind a crate added to a map is used without being named. Vents go
+further because they are somewhere only some bodies fit. The plan, for when the first map has them
+(Milestone 11, alongside climbing and ceilings):
+
+- Vent runs are marked in the level as walkable volumes of a given size, joined to the floor by
+  off-mesh links at their grilles, and built into their own navigation mesh per body size.
+- A creature's generated anatomy decides whether it fits: its width and height against the vent's.
+- The cover query takes vent spots as candidates like any other, and they score highest of all for
+  hiding and ambush -- out of every line of sight, and able to move unseen. Retreat and playing-dead
+  recovery prefer them too.
+- Noises from inside a vent carry through the ducts, so players can hear something moving above them.
 
 ## Goal
 

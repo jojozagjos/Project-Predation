@@ -129,6 +129,19 @@ SoundId AudioEngine::Find(const std::string& name) const
     return found == m_byName.end() ? kInvalidSound : found->second;
 }
 
+std::string AudioEngine::NameOf(SoundId id) const
+{
+    std::lock_guard lock(m_mutex);
+    for (const auto& [name, known] : m_byName)
+    {
+        if (known == id)
+        {
+            return name;
+        }
+    }
+    return "?";
+}
+
 int AudioEngine::AddRecipes(const std::string& jsonText)
 {
     const std::vector<SoundLibraryEntry> entries = LoadSoundRecipes(jsonText);

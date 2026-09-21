@@ -34,6 +34,9 @@ struct SensedPlayer
     // How lit they are where they stand, 0 to 1. A torch that is on makes this high whatever the
     // room is doing: a light in the dark is the most visible thing in it.
     float light = 1.0f;
+    // Which way they are looking. It is how the creature knows whether it is being watched, which is
+    // the difference between an opening and a mistake.
+    glm::vec3 forward{0.0f, 0.0f, -1.0f};
 };
 
 // Everything the brain gets to know this tick.
@@ -49,6 +52,9 @@ struct CreatureSenses
     std::vector<Noise> noises;
     // Whether anything solid is between two points. The game answers it with the physics world.
     std::function<bool(const glm::vec3&, const glm::vec3&)> clearLine;
+    // How lit a point is, 0 to 1, for choosing somewhere dark to wait. Optional: without it every
+    // place is as good as every other.
+    std::function<float(const glm::vec3&)> lightAt;
     const NavMesh* nav = nullptr;
 };
 
@@ -66,6 +72,10 @@ struct CreatureIntent
     int strikeTarget = -1;
     // How far through the wind-up of a strike it is, 0 when not striking. For the body to show.
     float windup = 0.0f;
+    // How low it carries itself, 0 to 1: stalking, it creeps.
+    float crouch = 0.0f;
+    // Lying still as if dead. The body shows it exactly as it shows a death.
+    bool down = false;
 };
 
 enum class Behavior : uint8_t
@@ -74,7 +84,11 @@ enum class Behavior : uint8_t
     Investigate,
     Hunt,
     Attack,
-    Retreat
+    Retreat,
+    // Shadowing somebody from out of their sight, waiting for them to look away or be alone.
+    Stalk,
+    // Lying still as if dead, badly hurt, until somebody comes close enough or turns their back.
+    PlayDead
 };
 
 const char* BehaviorName(Behavior behavior);
@@ -103,6 +117,10 @@ public:
 
     // Somebody hurt it. `byPlayer` is -1 when nobody in particular did.
     void OnDamaged(float amount, int byPlayer, const glm::vec3& from, float time);
+    // It is dead, really. The mind stops here: nothing after this perceives, decides or moves, and
+    // what it wanted to do is forgotten -- a strike it was in the middle of does not land later.
+    void OnDied(float time);
+    bool Dead() const { return m_dead; }
 
     const CreatureIntent& Intent() const { return m_intent; }
     const CreatureTraits& Traits() const { return m_traits; }
@@ -146,6 +164,19 @@ public:
         bool visible = false;
         // How much they have hurt it. Something that has been shot is wary of whoever shot it.
         float harm = 0.0f;
+        // Whether they are looking at it, with nothing in the way -- as far as it knows. `watchKnown`
+        // is whether it has seen them recently enough to know at all; when it has not, it cannot
+        // tell an opening from a trap.
+        bool watching = false;
+        bool watchKnown = false;
+        // Whether it can make them out at all at this moment, however faintly.
+        bool inView = false;
+        float lookedAt = -1.0e9f;
+        bool lookedLooking = false;
+        // How far they are from the nearest other living player, in metres; large when alone.
+        float isolation = 99.0f;
+        // Seconds it has spent stalking them, which is what its patience is measured against.
+        float stalked = 0.0f;
     };
     const std::vector<Track>& Tracks() const { return m_tracks; }
 
@@ -185,6 +216,19 @@ public:
     };
     const std::deque<TimelineEntry>& Timeline() const { return m_timeline; }
 
+    // The places it last weighed as cover, scored, for the overlay: which it chose, and why the rest
+    // were worse. Stalking, ambushing and hiding come from queries like this rather than from lists
+    // of hiding places, so a vent or a dark corner added to a map is used without being named.
+    struct CoverCandidate
+    {
+        glm::vec3 position{0.0f};
+        float score = 0.0f;
+        bool hidden = false; // out of every known player's sight
+    };
+    const std::vector<CoverCandidate>& Cover() const { return m_cover; }
+    bool HasCoverPoint() const { return m_haveStalkPoint; }
+    const glm::vec3& CoverPoint() const { return m_stalkPoint; }
+
     // Where the body is being sent and the route there, filled in by the body, for the overlay.
     std::vector<glm::vec3>& Route() { return m_route; }
     const std::vector<glm::vec3>& Route() const { return m_route; }
@@ -202,6 +246,17 @@ private:
     bool PickFleePoint(const CreatureSenses& senses, glm::vec3& out);
     // Closes whatever it was going to look into near `where`, now that it knows who was there.
     void ResolveInterestNear(const glm::vec3& where);
+    // Somewhere near `target` that none of the players it knows about can see, a stalking distance
+    // from them, preferably dark and behind them. Fills m_cover with every candidate it weighed.
+    bool FindCover(const CreatureSenses& senses, const Track& target, const SensedPlayer* player,
+                   glm::vec3& out);
+    // Whether any player it knows about has a clear line to this point at body height.
+    bool SeenFrom(const CreatureSenses& senses, const glm::vec3& point) const;
+    // How good a moment it is to go for somebody, 0 to 1: alone, looking away, or already so close
+    // there is no use waiting, and past the end of its patience any moment will do.
+    float Opening(const Track& track, float distance) const;
+    // Playing dead: whether to get up now, and what for.
+    void UpdatePlayingDead(const CreatureSenses& senses);
 
     CreatureTraits m_traits;
     SeededRandom m_random;
@@ -250,6 +305,29 @@ private:
     float m_retreatCooldownUntil = 0.0f;
     float m_attackCooldownUntil = 0.0f;
     float m_windupStarted = -1.0f;
+
+    // Stalking: the cover it is going to or waiting in, and when to check that it still is cover.
+    glm::vec3 m_stalkPoint{0.0f};
+    bool m_haveStalkPoint = false;
+    float m_stalkCheckAt = 0.0f;
+    bool m_stalkExposed = false; // in sight of somebody it knows about, where it stands
+    // Leaning out of cover to look: where to, until when, and when next.
+    bool m_peeking = false;
+    glm::vec3 m_peekPoint{0.0f};
+    float m_peekUntil = -1.0f;
+    float m_nextPeekAt = 0.0f;
+    std::vector<CoverCandidate> m_cover;
+
+    // Playing dead: until when at the longest, how often it has, and whether it has been hurt while
+    // lying there -- which ends the act.
+    float m_lastHurt = -1.0e9f;
+    float m_playDeadUntil = 0.0f;
+    int m_playDeadCount = 0;
+    bool m_hurtWhileDown = false;
+    // Until when it sees through what it has started rather than weighing it again.
+    float m_committedUntil = 0.0f;
+
+    bool m_dead = false;
 };
 
 } // namespace pred

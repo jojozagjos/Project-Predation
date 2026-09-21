@@ -51,7 +51,8 @@ everyone at low bandwidth. The anatomy seed goes with every update, so a client 
 misses a packet still builds the same body (ADR-064).
 
 Built in Milestone 8: the `Creatures` message carries, per creature, an id, the seed, position,
-facing, speed, strike wind-up, health and whether it is alive, at the world-state rate. Posture and
+facing, speed, strike wind-up, health, whether it is alive, whether it is lying down (dead or playing
+it, drawn the same) and how low it is crouching, at the world-state rate. Posture and
 contact targets arrive with the procedural anatomy.
 
 ## Capture and grabs
@@ -90,7 +91,8 @@ Network overlay (RTT, loss, bandwidth per channel), replication log, and the sim
 
 **Status**: built through Milestone 8. Two machines connect over UDP, the host simulates everyone, clients
 predict their own movement and interpolate everyone else, and shots, voice, spectating, host migration and
-the creature all cross the wire. Protocol version 5.
+the creature all cross the wire. Protocol version 6: world events carry a "quiet" bit, set on the
+catch-up a joining player is sent, so what already happened is applied without being heard.
 
 ## What exists
 
@@ -119,9 +121,9 @@ has needed, how far off the last one was, and sliders for the simulated conditio
 
 A four-player snapshot is 85 bytes: 152 bits per player plus a 71-bit header. At the 30 Hz send rate that is
 2.6 kB/s to each client, so a host with three of them spends under 8 kB/s upstream. An input packet carries
-three ticks of input in under 32 bytes and goes out at 60 Hz. A creature costs 133 bits in the `Creatures`
+three ticks of input in under 32 bytes and goes out at 60 Hz. A creature costs 137 bits in the `Creatures`
 message, also at 30 Hz: one creature is about half a kilobyte a second to each client, and the most there
-can be, eight, is under 140 bytes a packet.
+can be, eight, is 140 bytes a packet.
 
 Positions are quantised to about a millimetre over a kilometre, angles to a twentieth of a degree, velocity to
 three centimetres a second. A value outside a field's range has no encoding at all, so a modified client

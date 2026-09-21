@@ -872,6 +872,28 @@ void PredationGame::RegisterCommands()
         [this](const std::vector<std::string>& args)
         { m_debugTriggerTicks = args.size() >= 2 ? std::atoi(args[1].c_str()) : 1; }, "fire [ticks]");
 
+    console.RegisterCommand(
+        "tracer_report", "Where the last tracer was drawn from, against the eye and the drawn barrel",
+        [this](const std::vector<std::string>&)
+        {
+            if (m_tracers.empty())
+            {
+                m_app->GetConsole().Print("No tracers");
+                return;
+            }
+            const Tracer& last = m_tracers.back();
+            const glm::vec3 eye = m_player.View().eyePosition;
+            const glm::vec3 barrel = m_body.HasWeapon() ? m_body.MuzzlePoint() : eye;
+            char line[200];
+            std::snprintf(line, sizeof(line),
+                          "tracer starts %.3f m from the eye and %.3f m from the drawn barrel; the round "
+                          "was traced from %.3f m from the eye",
+                          glm::distance(last.from, eye), glm::distance(last.from, barrel),
+                          glm::distance(last.origin, eye));
+            m_app->GetConsole().Print(line);
+            PRED_LOG_INFO(Gameplay, "{}", line);
+        });
+
     console.RegisterCommand("weapon_state", "Print the equipped weapon's simulation state",
                             [this](const std::vector<std::string>&)
                             {
@@ -1694,6 +1716,7 @@ void PredationGame::SendWorldToPlayer(uint8_t player)
         event.kind = WorldEventKind::DoorMoved;
         event.index = static_cast<uint8_t>(i);
         event.flag = true;
+        event.quiet = true;
         m_host.SendTo(player, event);
     }
 
@@ -1711,6 +1734,7 @@ void PredationGame::SendWorldToPlayer(uint8_t player)
         event.kind = WorldEventKind::PickupTaken;
         event.index = static_cast<uint8_t>(i);
         event.player = 0;
+        event.quiet = true;
         m_host.SendTo(player, event);
     }
 
@@ -1731,6 +1755,7 @@ void PredationGame::SendWorldToPlayer(uint8_t player)
         event.position = m_app->GetPhysics().IsValid(pickup.body)
                              ? m_app->GetPhysics().GetTransform(pickup.body).position
                              : pickup.netPosition;
+        event.quiet = true;
         m_host.SendTo(player, event);
     }
 
@@ -1745,6 +1770,7 @@ void PredationGame::SendWorldToPlayer(uint8_t player)
         event.index = static_cast<uint8_t>(i);
         event.player = 0;
         event.flag = true;
+        event.quiet = true;
         m_host.SendTo(player, event);
     }
 }
@@ -1768,7 +1794,7 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
         m_world.SetDoorOpen(event.index, event.flag, m_interactions);
         // Heard where the door is rather than where the player is, which is the point of a door
         // opening somewhere else in the building.
-        if (const WorldObjects::Door* moved = m_world.GetDoor(event.index); moved != nullptr)
+        if (const WorldObjects::Door* moved = m_world.GetDoor(event.index); moved != nullptr && !event.quiet)
         {
             PlaySound(m_sounds.door.Pick(), moved->hinge, 0.8f);
         }
@@ -1800,7 +1826,10 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
                 PRED_LOG_WARN(Gameplay, "Only had room for {} of {}", stored, pickup->count);
             }
         }
-        PlaySound(m_sounds.pickup.Pick(), event.position, 0.6f, 1.0f, event.player != LocalPlayerId());
+        if (!event.quiet)
+        {
+            PlaySound(m_sounds.pickup.Pick(), event.position, 0.6f, 1.0f, event.player != LocalPlayerId());
+        }
         m_world.ConsumePickup(event.index, m_scene, m_app->GetPhysics(), m_interactions);
         break;
     }
@@ -1812,7 +1841,10 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
                             static_cast<ItemId>(event.item), static_cast<int>(event.other),
                             event.position, event.direction, LoadFromWire(event.rounds),
                             LoadFromWire(event.reserve), static_cast<int>(event.index));
-        PlaySound(m_sounds.drop.Pick(), event.position, 0.7f);
+        if (!event.quiet)
+        {
+            PlaySound(m_sounds.drop.Pick(), event.position, 0.7f);
+        }
         break;
 
     case WorldEventKind::LockerUsed:
@@ -4885,6 +4917,14 @@ void PredationGame::PlaySound(SoundId sound, const glm::vec3& at, float gain, fl
     {
         return;
     }
+    // Every sound, by name, at debug level: sound is the one thing with nothing to look at, and "what
+    // is that noise" is otherwise a question with no way to answer it. Checked first, because the
+    // name lookup walks a table.
+    if (Log::Get(LogCategory::Audio).should_log(spdlog::level::debug))
+    {
+        PRED_LOG_DEBUG(Audio, "Sound '{}' gain {:.2f} pitch {:.2f}{}", m_app->GetAudio().NameOf(sound), gain,
+                       pitch, positioned ? "" : " (not placed)");
+    }
     AudioEngine::PlayDesc desc;
     desc.sound = sound;
     desc.position = at;
@@ -6171,6 +6211,19 @@ glm::vec3 PredationGame::MuzzlePosition() const
     return eye + AimDirection() * (definition->muzzleForward * 0.5f);
 }
 
+glm::vec3 PredationGame::DrawnMuzzle() const
+{
+    // The tracer used MuzzlePosition, the round's starting point a few centimetres in front of the
+    // eye -- so a shot was drawn coming out of the player's face, most plainly with the weapon held
+    // low or to the side, and everybody else saw the host's rounds leave the host's head. The comment
+    // at every tracer said "drawn from the muzzle"; this is the muzzle.
+    if (m_hidingSpot < 0 && m_body.HasWeapon())
+    {
+        return m_body.MuzzlePoint();
+    }
+    return MuzzlePosition();
+}
+
 void PredationGame::AgeTracers(float dt)
 {
     for (Tracer& tracer : m_tracers)
@@ -6228,7 +6281,7 @@ void PredationGame::ResolveShots()
             // Traced from the eye so that what is under the crosshair is hit, drawn from the muzzle
             // so it looks like it came out of the gun. Those are different points and the round is
             // entitled to both.
-            tracer.from = MuzzlePosition();
+            tracer.from = DrawnMuzzle();
             tracer.origin = shot.origin;
             tracer.to = predicted ? predicted.position : shot.origin + shot.direction * shot.range;
             tracer.hit = predicted.hit;
@@ -6245,7 +6298,7 @@ void PredationGame::ResolveShots()
         const bool struckCreature = OnShotResolved(result, shot.origin, LocalPlayerId());
 
         Tracer tracer;
-        tracer.from = MuzzlePosition();
+        tracer.from = DrawnMuzzle();
         tracer.origin = shot.origin;
         tracer.to = result ? result.position : shot.origin + shot.direction * shot.range;
         tracer.hit = result.hit;
@@ -6260,7 +6313,7 @@ void PredationGame::ResolveShots()
             WorldEventMessage event;
             event.kind = WorldEventKind::ShotFired;
             event.player = 0;
-            event.position = MuzzlePosition();
+            event.position = DrawnMuzzle();
             event.direction = tracer.to;
             event.flag = tracer.hit;
             event.flag2 = tracer.surface;

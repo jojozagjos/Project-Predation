@@ -90,6 +90,8 @@ public:
     // --- Sounds ---------------------------------------------------------------------------------
     SoundId Add(const std::string& name, SoundData data);
     SoundId Find(const std::string& name) const;
+    // The name a sound was added under, for logs. Walks the table, so not for anything per sample.
+    std::string NameOf(SoundId id) const;
     // Builds every recipe in the text and adds it under its own name. Returns how many.
     int AddRecipes(const std::string& jsonText);
 

@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 
 namespace pred
 {
@@ -122,6 +123,7 @@ void Creature::BuildVisual(MeshLibrary& meshes)
         piece.entity = m_scene.CreateMeshEntity(std::string("creature_") + name, Transform{}, mesh, material);
         piece.offset = offset;
         piece.leg = leg;
+        piece.glow = material.emissive;
         if (MeshRenderer* renderer = m_scene.GetMeshRenderer(piece.entity))
         {
             renderer->castsShadow = true;
@@ -152,30 +154,36 @@ void Creature::TakeDamage(float amount, int byPlayer, const glm::vec3& from, flo
     m_brain.OnDamaged(amount, byPlayer, from, time);
     if (!Alive())
     {
-        m_deathTime = m_shownTime;
+        // Dead for real. The mind stops with it -- nothing after this perceives or decides -- which
+        // is what makes lying still as a trick a different thing from this.
+        m_brain.OnDied(time);
         m_speed = 0.0f;
+        m_windup = 0.0f;
+        m_crouchTarget = 0.0f;
     }
 }
 
-void Creature::SetShownState(const glm::vec3& position, float yaw, float speed, float windup, bool alive)
+void Creature::SetShownState(const glm::vec3& position, float yaw, float speed, float windup, bool alive,
+                             bool down, float crouch)
 {
     m_stride += Horizontal(m_position, position) * kStridePerMetre;
     m_position = position;
     m_yaw = yaw;
     m_speed = speed;
     m_windup = windup;
+    m_down = down;
+    m_crouchTarget = crouch;
     if (!alive && Alive())
     {
         m_health = 0.0f;
-        m_deathTime = m_shownTime;
     }
     SyncBody(0.0f);
 }
 
 void Creature::Receive(const glm::vec3& position, float yaw, float speed, float windup, float healthFraction,
-                       bool alive)
+                       bool alive, bool down, float crouch)
 {
-    m_received = {position, yaw, speed, windup, alive};
+    m_received = {position, yaw, speed, windup, alive, down, crouch};
     m_receivedAge = 0.0f;
     m_hasReceived = true;
     // Health follows the host's, for anything that shows it. Not when it has died: dying is left to
@@ -211,7 +219,8 @@ void Creature::FollowReceived(float dt)
         yaw = m_yaw + std::remainder(m_received.yaw - m_yaw, glm::two_pi<float>()) * blend;
     }
     m_followedOnce = true;
-    SetShownState(position, yaw, m_received.speed, m_received.windup, m_received.alive);
+    SetShownState(position, yaw, m_received.speed, m_received.windup, m_received.alive, m_received.down,
+                  m_received.crouch);
 }
 
 void Creature::Update(CreatureSenses senses, float time, float dt)
@@ -231,6 +240,8 @@ void Creature::Update(CreatureSenses senses, float time, float dt)
     m_brain.Update(senses, dt);
     const CreatureIntent& intent = m_brain.Intent();
     m_windup = intent.windup;
+    m_down = intent.down;
+    m_crouchTarget = intent.crouch;
     Move(intent, dt);
     SyncBody(dt);
 }
@@ -309,9 +320,12 @@ void Creature::SyncBody(float dt)
     {
         return;
     }
+    // Lying down with the drawing, so a round aimed at a body on the floor finds it there -- and
+    // a creature only playing dead can be shot where it lies.
+    const glm::quat facing = YawRotation(m_yaw);
     Transform body;
-    body.rotation = YawRotation(m_yaw);
-    body.position = m_position + body.rotation * kBodyCentre;
+    body.rotation = facing * glm::angleAxis(m_collapse * glm::radians(84.0f) * m_fallSide, glm::vec3(0.0f, 0.0f, 1.0f));
+    body.position = m_position + facing * (kBodyCentre + glm::vec3(0.0f, -0.27f * m_collapse, 0.0f));
     if (dt > 0.0f)
     {
         m_physics.MoveKinematic(m_body, body, dt);
@@ -328,14 +342,46 @@ void Creature::UpdateVisual(float dt)
     const glm::quat facing = YawRotation(m_yaw);
     const float pace = std::clamp(m_speed / 5.0f, 0.0f, 1.0f);
 
-    // Dead, it rolls onto its side and sinks to the floor over half a second.
-    float collapse = 0.0f;
-    if (!Alive() && m_deathTime >= 0.0f)
+    // Going down rolls it onto its side and sinks it to the floor in a little over half a second;
+    // getting up takes a little longer. Dead and playing dead are the same fall, deliberately.
+    const float lying = Down() ? 1.0f : 0.0f;
+    if (lying > 0.5f && m_collapse <= 0.0f)
     {
-        collapse = std::clamp((m_shownTime - m_deathTime) / 0.6f, 0.0f, 1.0f);
+        // Which way to go over, decided as it starts to: towards whichever side has the more room. A
+        // body that fell into the wall or the ramp beside it was drawn inside it, and a creature
+        // playing dead that could not be seen was not playing anything.
+        const glm::quat turned = YawRotation(m_yaw);
+        const glm::vec3 from = m_position + glm::vec3(0.0f, 0.4f, 0.0f);
+        const glm::vec3 left = turned * glm::vec3(-1.0f, 0.0f, 0.0f);
+        const auto room = [&](const glm::vec3& side)
+        {
+            const RayHit hit = m_physics.RayCast(from, side, 1.4f, m_body);
+            return hit ? hit.distance : 1.4f;
+        };
+        // A positive roll takes it over onto its left side.
+        m_fallSide = room(left) >= room(-left) ? 1.0f : -1.0f;
     }
-    const glm::quat roll = glm::angleAxis(collapse * glm::radians(84.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-    const glm::vec3 sink{0.0f, -0.42f * collapse, 0.0f};
+    const float wasLying = m_collapse;
+    const float rate = lying > m_collapse ? 1.0f / 0.55f : 1.0f / 0.8f;
+    m_collapse += std::clamp(lying - m_collapse, -rate * dt, rate * dt);
+    if (m_collapse != wasLying)
+    {
+        SyncBody(0.0f);
+    }
+    // Eased so the fall starts slowly and lands hard, which is how a weight goes over.
+    const float collapse = m_collapse * m_collapse * (3.0f - 2.0f * m_collapse);
+
+    // Stalking, it creeps: legs splayed out front and back and the body let down between them, the
+    // head lowest of all. The drop is exactly what the splay takes off the legs' height, so the feet
+    // stay on the floor.
+    m_crouch += (m_crouchTarget - m_crouch) * (1.0f - std::exp(-6.0f * dt));
+    const float splay = 0.6f * m_crouch * (1.0f - collapse);
+    const float drop = kLegLength * (1.0f - std::cos(splay));
+    const glm::quat roll = glm::angleAxis(collapse * glm::radians(84.0f) * m_fallSide, glm::vec3(0.0f, 0.0f, 1.0f));
+    // Rolled about a point at the middle of its body, hip height, not about its feet: rolled about the
+    // feet, what had been its back ended up at the height of its ankles and a sink on top of that put it
+    // through the floor -- every death, and every body playing dead, was drawn under the ground.
+    const glm::vec3 pivot{0.0f, 0.35f, 0.0f};
 
     // Before a strike it draws back and up, which is the thing a player watching it learns to read.
     const glm::vec3 rear{0.0f, 0.08f * m_windup, 0.22f * m_windup};
@@ -355,21 +401,55 @@ void Creature::UpdateVisual(float dt)
             // Hanging from its hip and swinging about it.
             const float swing =
                 std::sin(m_stride + kLegPhase[piece.leg]) * kLegSwing * pace * (1.0f - collapse);
-            localTurn = glm::angleAxis(swing, glm::vec3(1.0f, 0.0f, 0.0f));
-            local = piece.offset + localTurn * glm::vec3(0.0f, -kLegLength * 0.5f, 0.0f);
+            // Front legs reach forward and back legs back, so a crouch spreads it out rather than
+            // folding it up.
+            const float spread = piece.offset.z < 0.0f ? splay : -splay;
+            localTurn = glm::angleAxis(swing + spread, glm::vec3(1.0f, 0.0f, 0.0f));
+            local = piece.offset + glm::vec3(0.0f, -drop, 0.0f) +
+                    localTurn * glm::vec3(0.0f, -kLegLength * 0.5f, 0.0f);
         }
         else
         {
-            local += glm::vec3(0.0f, bob, 0.0f);
+            local += glm::vec3(0.0f, bob - drop, 0.0f);
             if (piece.offset.z < -0.3f)
             {
                 local += rear; // the front end: shoulders, head, jaw, eyes
+                local.y -= 0.06f * m_crouch * (1.0f - collapse);
             }
         }
-        const glm::vec3 posed = roll * local + sink;
+        const glm::vec3 posed = pivot + roll * (local - pivot);
+        // The eyes go out as it goes down, and come back on as it gets up. Dead or pretending, the
+        // same: a body lying there with its eyes lit is not dead, and the players should not be able
+        // to tell which it is.
+        if (piece.glow != glm::vec3(0.0f))
+        {
+            if (MeshRenderer* renderer = m_scene.GetMeshRenderer(piece.entity))
+            {
+                renderer->material.emissive = piece.glow * (1.0f - collapse);
+            }
+        }
         transform->position = m_position + facing * posed;
         transform->rotation = facing * roll * localTurn;
     }
+}
+
+std::string Creature::DescribePose() const
+{
+    glm::vec3 torso{0.0f};
+    if (!m_pieces.empty())
+    {
+        if (const Transform* transform = m_scene.GetTransform(m_pieces.front().entity))
+        {
+            torso = transform->position;
+        }
+    }
+    char line[256];
+    std::snprintf(line, sizeof(line),
+                  "at %.2f %.2f %.2f yaw %.0f deg  %s  fallen %.2f  crouch %.2f  torso drawn at %.2f %.2f %.2f",
+                  m_position.x, m_position.y, m_position.z, glm::degrees(m_yaw),
+                  !Alive() ? "dead" : (m_down ? "lying still" : "up"), m_collapse, m_crouch, torso.x, torso.y,
+                  torso.z);
+    return line;
 }
 
 } // namespace pred

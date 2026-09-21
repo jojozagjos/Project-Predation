@@ -56,16 +56,22 @@ CreatureTraits CreatureTraits::FromSeed(uint32_t seed)
     traits.perception = random.Range(0.8f, 1.25f);
     traits.runSpeed = random.Range(4.4f, 6.0f);
     traits.walkSpeed = random.Range(1.3f, 2.0f);
+    // Milestone 9. After everything above, so each creature seeded before keeps its temperament and
+    // only gains these.
+    traits.patience = random.Range(0.1f, 1.0f);
+    traits.stealth = random.Range(0.1f, 1.0f);
+    traits.isolationPreference = random.Range(0.2f, 1.0f);
     return traits;
 }
 
 std::string CreatureTraits::Describe() const
 {
-    char line[256];
+    char line[320];
     std::snprintf(line, sizeof(line),
                   "seed %u  aggression %.2f  fear %.2f  curiosity %.2f  persistence %.0fs  "
-                  "senses x%.2f  run %.1f m/s",
-                  seed, aggression, fear, curiosity, persistence, perception, runSpeed);
+                  "senses x%.2f  run %.1f m/s  patience %.2f  stealth %.2f  prefers loners %.2f",
+                  seed, aggression, fear, curiosity, persistence, perception, runSpeed, patience, stealth,
+                  isolationPreference);
     return line;
 }
 

@@ -32,6 +32,17 @@ struct CreatureTraits
     // How fast it runs and walks, in metres per second.
     float runSpeed = 5.2f;
     float walkSpeed = 1.6f;
+    // How long it will shadow somebody before it stops waiting for a better moment. Scales a wait of
+    // between about ten seconds and forty.
+    float patience = 0.5f;
+    // How much it prefers not to be seen: a stealthy one stalks from cover and waits for an opening,
+    // a brazen one simply comes.
+    float stealth = 0.5f;
+    // How much more it wants somebody on their own than somebody with company.
+    float isolationPreference = 0.5f;
+
+    // Seconds it will stalk one person before patience runs out.
+    float StalkPatienceSeconds() const { return 10.0f + 30.0f * patience; }
 
     static CreatureTraits FromSeed(uint32_t seed);
 
