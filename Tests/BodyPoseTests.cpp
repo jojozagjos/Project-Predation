@@ -198,7 +198,7 @@ bool LoadShippedCarbine(BodyHarness& harness, WeaponDefinition& definition, Mode
     definition = *found;
 
     const std::filesystem::path modelFile =
-        std::filesystem::path(PRED_SOURCE_DIR) / "Assets" / "Models" / (definition.model + ".json");
+        ModelPath(definition.model);
     if (!model.LoadFromFile(modelFile))
     {
         return false;

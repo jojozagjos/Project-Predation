@@ -147,6 +147,29 @@ public:
 
 // Where authored models live, so nothing has to spell the path out.
 std::filesystem::path ModelDirectory();
+
+// Every model under it, by name, whatever folder it is in.
+//
+// The folders are for people, not for the game. A model is named by its file and found wherever it
+// sits, so Models/Weapons/m4_carbine.json is still "m4_carbine" and moving it into a folder
+// tomorrow does not rewrite weapons.json, the editor's list, or anybody's saved data. Adding an
+// asset is then genuinely dropping a file in.
+//
+// The price is that two models cannot share a name in different folders. That is worth paying and
+// it is not silent: ModelPath says which one it picked and reports the clash.
 std::vector<std::string> ListModels();
+
+// The file a model name refers to, or an empty path when there is none. Reported rather than
+// guessed: a name that matches nothing is a mistake, and so is a name that matches twice.
+std::filesystem::path ModelPath(const std::string& name);
+
+// Where a model of a given kind should be written. Used when something new is created -- an import,
+// an export from the editor -- so new files land in the right folder by themselves rather than
+// piling up at the top and being tidied later.
+std::filesystem::path ModelPathFor(const std::string& name, const std::string& folder);
+
+// Forgets where the models are, so a file added while the game is running is found. Called after
+// anything writes one.
+void RescanModels();
 
 } // namespace pred

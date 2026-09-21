@@ -234,6 +234,9 @@ private:
 
     std::string m_status;
     std::string m_saveName = "new_model";
+    // Which folder under Models a newly named model is filed in. A model that already exists is
+    // rewritten where it is, so this only decides where new ones land.
+    std::string m_folder = "Weapons";
     std::string m_importPath;
     // How a download is turned into something a person can hold: the size it is fitted to, the turn
     // that puts the barrel down +Z, whether the origin is moved to the middle, and whether an

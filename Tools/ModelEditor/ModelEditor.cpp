@@ -122,7 +122,8 @@ void ModelEditor::AddPart(const char* name, PartShape shape)
 bool ModelEditor::Load(const std::string& modelName)
 {
     ModelAsset loaded;
-    if (!loaded.LoadFromFile(ModelDirectory() / (modelName + ".json")))
+    const std::filesystem::path file = ModelPath(modelName);
+    if (file.empty() || !loaded.LoadFromFile(file))
     {
         m_status = "Could not load " + modelName;
         return false;
@@ -144,11 +145,14 @@ bool ModelEditor::Load(const std::string& modelName)
 bool ModelEditor::Save()
 {
     m_model.name = m_saveName;
-    if (!m_model.SaveToFile(ModelDirectory() / (m_saveName + ".json")))
+    // Rewritten where it already is, or put in the folder the editor is filing new models under.
+    if (!m_model.SaveToFile(ModelPathFor(m_saveName, m_folder)))
     {
         m_status = "Could not save " + m_saveName;
         return false;
     }
+    // So a model saved under a new name is findable by name at once, without a restart.
+    RescanModels();
     m_status = "Saved " + m_saveName;
     return true;
 }

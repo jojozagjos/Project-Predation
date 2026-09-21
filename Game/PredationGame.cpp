@@ -952,12 +952,13 @@ void PredationGame::RegisterCommands()
                 return;
             }
             imported.name = args[2];
-            if (!imported.SaveToFile(ModelDirectory() / (args[2] + ".json")))
+            if (!imported.SaveToFile(ModelPathFor(args[2], "Weapons")))
             {
                 m_app->GetConsole().PrintError("could not write the model");
                 return;
             }
             ForgetWeaponModels();
+            RescanModels();
             m_app->GetConsole().Print("Imported " + std::to_string(imported.parts.size()) +
                                       " parts as " + args[2] +
                                       ". Open it with: editor " + args[2]);
@@ -978,7 +979,8 @@ void PredationGame::RegisterCommands()
                 return;
             }
             ModelAsset model;
-            if (!model.LoadFromFile(ModelDirectory() / (args[1] + ".json")))
+            const std::filesystem::path file = ModelPath(args[1]);
+            if (file.empty() || !model.LoadFromFile(file))
             {
                 out.PrintError("no model called " + args[1]);
                 return;

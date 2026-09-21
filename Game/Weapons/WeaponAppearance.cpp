@@ -363,8 +363,8 @@ WeaponVisual BuildWeaponVisual(const WeaponDefinition& definition, TextureLibrar
     if (found == cache.end())
     {
         auto loaded = std::make_shared<ModelAsset>();
-        const std::filesystem::path file = ModelDirectory() / (definition.model + ".json");
-        if (!loaded->LoadFromFile(file))
+        const std::filesystem::path file = ModelPath(definition.model);
+        if (file.empty() || !loaded->LoadFromFile(file))
         {
             PRED_LOG_ERROR(Gameplay, "Weapon '{}' names model '{}', which did not load from {}",
                            definition.key, definition.model, file.string());
@@ -392,7 +392,7 @@ bool ExportWeaponModel(const WeaponDefinition& definition, const std::string& mo
 {
     ModelAsset model = StarterModelImpl(definition);
     model.name = modelName;
-    return model.SaveToFile(ModelDirectory() / (modelName + ".json"));
+    return model.SaveToFile(ModelPathFor(modelName, "Weapons"));
 }
 
 } // namespace pred

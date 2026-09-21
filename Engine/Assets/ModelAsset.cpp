@@ -10,6 +10,7 @@
 #include <glm/gtc/quaternion.hpp>
 
 #include <algorithm>
+#include <map>
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtx/quaternion.hpp>
 #include <fstream>
@@ -486,6 +487,10 @@ bool ModelAsset::SaveToFile(const std::filesystem::path& file) const
     }
     stream << json.dump(2) << '\n';
     PRED_LOG_INFO(Asset, "Saved model '{}' to {}", name, file.string());
+    // The name-to-file index is now out of date by exactly this one file. Done here rather than by
+    // every caller, because "remember to rescan after you save" is a rule that gets forgotten and
+    // whose symptom is a model that exists on disk and cannot be found by name.
+    RescanModels();
     return true;
 }
 
@@ -494,17 +499,115 @@ std::filesystem::path ModelDirectory()
     return Paths::AssetsRoot() / "Models";
 }
 
+namespace
+{
+
+// Name to file, for every model under the models folder whatever folder that is.
+//
+// The folders are for people, not for the game. A model is named by its file and found wherever it
+// sits, so moving one into a subfolder does not rewrite weapons.json, the editor's list or anybody
+// else's reference to it, and adding an asset is genuinely dropping a file in.
+//
+// Built once and thrown away when something writes a model, rather than kept live: the alternative
+// is walking the asset tree every time a weapon is drawn, and models are read far more often than
+// they are added.
+struct Index
+{
+    std::map<std::string, std::filesystem::path> byName;
+    bool built = false;
+};
+
+Index& ModelIndex()
+{
+    static Index index;
+    if (index.built)
+    {
+        return index;
+    }
+    index.built = true;
+    index.byName.clear();
+
+    std::error_code ec;
+    const std::filesystem::path root = ModelDirectory();
+    for (auto entry = std::filesystem::recursive_directory_iterator(root, ec);
+         entry != std::filesystem::recursive_directory_iterator(); entry.increment(ec))
+    {
+        if (ec)
+        {
+            break;
+        }
+        if (!entry->is_regular_file(ec) || entry->path().extension() != ".json")
+        {
+            continue;
+        }
+        // Source art and textures are not models. They live under here so everything about a model
+        // is in one place, and a .json among them belongs to an exporter or a texture pack.
+        const std::filesystem::path relative = std::filesystem::relative(entry->path(), root, ec);
+        if (!relative.empty())
+        {
+            const std::string top = relative.begin()->string();
+            if (top == "Source" || top == "Textures")
+            {
+                continue;
+            }
+        }
+
+        const std::string name = entry->path().stem().string();
+        const auto [existing, added] = index.byName.emplace(name, entry->path());
+        if (!added)
+        {
+            // Said out loud rather than settled by whichever the directory walk reached first. Two
+            // models with one name is a mistake somebody made a minute ago and would otherwise
+            // spend an hour on, because the symptom is that edits to one of them do nothing.
+            PRED_LOG_ERROR(Asset, "Two models are called '{}': {} and {}. Using the first.", name,
+                           existing->second.string(), entry->path().string());
+        }
+    }
+    return index;
+}
+
+} // namespace
+
+void RescanModels()
+{
+    ModelIndex().built = false;
+}
+
+std::filesystem::path ModelPath(const std::string& name)
+{
+    const Index& index = ModelIndex();
+    const auto found = index.byName.find(name);
+    return found == index.byName.end() ? std::filesystem::path{} : found->second;
+}
+
+std::filesystem::path ModelPathFor(const std::string& name, const std::string& folder)
+{
+    // An existing model is rewritten where it already is. Moving somebody's file because they
+    // saved it is the kind of helpfulness nobody asked for.
+    if (const std::filesystem::path existing = ModelPath(name); !existing.empty())
+    {
+        return existing;
+    }
+    std::filesystem::path directory = ModelDirectory();
+    if (!folder.empty())
+    {
+        directory /= folder;
+    }
+    std::error_code ec;
+    std::filesystem::create_directories(directory, ec);
+    return directory / (name + ".json");
+}
+
+
 std::vector<std::string> ListModels()
 {
     std::vector<std::string> names;
-    std::error_code ec;
-    for (const auto& entry : std::filesystem::directory_iterator(ModelDirectory(), ec))
+    for (const auto& [name, file] : ModelIndex().byName)
     {
-        if (entry.is_regular_file(ec) && entry.path().extension() == ".json")
-        {
-            names.push_back(entry.path().stem().string());
-        }
+        names.push_back(name);
     }
+    // Already in order -- a std::map is sorted by key -- but said rather than relied on, because
+    // the container is an implementation detail and this list is drawn on a screen.
     std::sort(names.begin(), names.end());
     return names;
 }

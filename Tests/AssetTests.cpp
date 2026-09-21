@@ -20,7 +20,8 @@ namespace
 
 std::filesystem::path SourceModel(const char* name)
 {
-    return std::filesystem::path(PRED_SOURCE_DIR) / "Assets" / "Models" / "Source" / name;
+    // Source art lives beside the models it produced, in the same folders.
+    return std::filesystem::path(PRED_SOURCE_DIR) / "Assets" / "Models" / "Source" / "Weapons" / name;
 }
 
 } // namespace
@@ -204,7 +205,7 @@ TEST_CASE("The shipped weapon models are the size of the weapons they belong to"
     // pointed at explicitly. Without this the weapons fall back to their built-in shapes and the
     // test measures the thing it was written to stop being used.
     Paths::Init(nullptr, std::filesystem::path(PRED_SOURCE_DIR) / "Assets");
-    REQUIRE(std::filesystem::exists(ModelDirectory() / "m4_carbine.json"));
+    REQUIRE_FALSE(ModelPath("m4_carbine").empty());
 
     WeaponDatabase weapons;
     REQUIRE(weapons.LoadFromFile(std::filesystem::path(PRED_SOURCE_DIR) / "Assets" / "Data" /
@@ -269,7 +270,7 @@ TEST_CASE("A textured model keeps its textures through the model file", "[assets
     Paths::Init(nullptr, std::filesystem::path(PRED_SOURCE_DIR) / "Assets");
 
     ModelAsset model;
-    REQUIRE(model.LoadFromFile(ModelDirectory() / "m4_carbine.json"));
+    REQUIRE(model.LoadFromFile(ModelPath("m4_carbine")));
     REQUIRE_FALSE(model.parts.empty());
 
     int textured = 0;
@@ -305,7 +306,7 @@ TEST_CASE("The shipped weapons are not facing backwards", "[assets][weapons]")
     for (const char* name : {"m4_carbine", "g17_pistol"})
     {
         ModelAsset model;
-        REQUIRE(model.LoadFromFile(ModelDirectory() / (std::string(name) + ".json")));
+        REQUIRE(model.LoadFromFile(ModelPath(name)));
 
         glm::vec3 low{1e9f};
         glm::vec3 high{-1e9f};
@@ -429,7 +430,7 @@ TEST_CASE("The sockets a weapon cannot do without are named when they are absent
     for (const char* name : {"m4_carbine", "g17_pistol"})
     {
         ModelAsset shipped;
-        REQUIRE(shipped.LoadFromFile(ModelDirectory() / (std::string(name) + ".json")));
+        REQUIRE(shipped.LoadFromFile(ModelPath(name)));
         INFO("shipped model " << name << " is missing: " << [&]
              {
                  std::string all;
@@ -441,4 +442,54 @@ TEST_CASE("The sockets a weapon cannot do without are named when they are absent
              }());
         CHECK(MissingWeaponSockets(shipped).empty());
     }
+}
+
+TEST_CASE("A model is found by name wherever its folder is", "[assets][models]")
+{
+    // The folders under Models are for people, not for the game. A model is named by its file, so
+    // moving one into a subfolder does not rewrite weapons.json, the editor's list, or anybody
+    // else's reference to it -- which is what makes adding an asset a matter of dropping a file in.
+    Paths::Init(nullptr, std::filesystem::path(PRED_SOURCE_DIR) / "Assets");
+
+    const std::filesystem::path carbine = ModelPath("m4_carbine");
+    REQUIRE_FALSE(carbine.empty());
+    CHECK(std::filesystem::exists(carbine));
+    // It is not at the top of the folder any more, which is the point.
+    CHECK(carbine.parent_path() != ModelDirectory());
+
+    // And the list of what exists finds it there.
+    const std::vector<std::string> all = ListModels();
+    CHECK(std::find(all.begin(), all.end(), "m4_carbine") != all.end());
+    CHECK(std::find(all.begin(), all.end(), "g17_pistol") != all.end());
+
+    // A name nothing answers to is empty rather than a path that does not exist, so a caller has
+    // to notice.
+    CHECK(ModelPath("no_model_is_called_this").empty());
+}
+
+TEST_CASE("Saving a model makes it findable at once", "[assets][models]")
+{
+    // "Remember to rescan after you save" is a rule that gets forgotten, and its symptom is a
+    // model that is on the disk and cannot be found by name until the game is restarted. So the
+    // save does it.
+    Paths::Init(nullptr, std::filesystem::path(PRED_SOURCE_DIR) / "Assets");
+    REQUIRE(ModelPath("index_freshness_test").empty());
+
+    ModelAsset model;
+    model.name = "index_freshness_test";
+    ModelPart part;
+    part.name = "body";
+    part.shape = PartShape::Box;
+    part.size = {0.1f, 0.1f, 0.1f};
+    model.parts.push_back(part);
+
+    const std::filesystem::path file = ModelPathFor("index_freshness_test", "Weapons");
+    // A folder was chosen for it rather than the top of the tree.
+    CHECK(file.parent_path().filename() == "Weapons");
+    REQUIRE(model.SaveToFile(file));
+
+    CHECK(ModelPath("index_freshness_test") == file);
+    std::filesystem::remove(file);
+    RescanModels();
+    CHECK(ModelPath("index_freshness_test").empty());
 }
