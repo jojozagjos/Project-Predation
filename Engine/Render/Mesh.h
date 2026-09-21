@@ -77,6 +77,10 @@ public:
     ~MeshLibrary();
 
     MeshHandle Upload(const MeshData& data, std::string name);
+    // No graphics card behind it: meshes are recorded, with their bounds, and nothing is uploaded.
+    // For building a level where nothing will be drawn -- a test that needs the whole map to walk a
+    // creature across, and one day a host with no screen.
+    void SetHeadless(bool headless) { m_headless = headless; }
     // New geometry for a mesh that already exists, always.
     //
     // Upload skips a mesh whose vertex count and bounds match what is already there, which is right
@@ -96,6 +100,7 @@ private:
     // Uploads are keyed by name, so asking twice gives back the same buffers rather than another
     // pair. Without it the editor exhausted the renderer in a couple of minutes of dragging.
     std::unordered_map<std::string, uint16_t> m_byName;
+    bool m_headless = false;
 };
 
 } // namespace pred

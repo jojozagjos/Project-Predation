@@ -181,6 +181,27 @@ MeshHandle MeshLibrary::Upload(const MeshData& data, std::string name)
         return MeshHandle{};
     }
 
+    if (m_headless)
+    {
+        // A record with no buffers: the handle is real, the bounds are right, and nothing is ever
+        // drawn from it because nothing is ever drawn.
+        Mesh record;
+        record.bounds = data.ComputeBounds();
+        record.vertexCount = static_cast<uint32_t>(data.vertices.size());
+        record.indexCount = static_cast<uint32_t>(data.indices.size());
+        record.fingerprint = fingerprint;
+        record.name = name;
+        if (const auto found = m_byName.find(name); found != m_byName.end())
+        {
+            m_meshes[found->second] = std::move(record);
+            return MeshHandle{found->second};
+        }
+        const auto index = static_cast<uint16_t>(m_meshes.size());
+        m_byName.emplace(name, index);
+        m_meshes.push_back(std::move(record));
+        return MeshHandle{index};
+    }
+
     const bgfx::Memory* vertexMemory =
         bgfx::copy(data.vertices.data(), static_cast<uint32_t>(data.vertices.size() * sizeof(MeshVertex)));
     const bgfx::Memory* indexMemory =

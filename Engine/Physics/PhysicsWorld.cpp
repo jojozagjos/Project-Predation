@@ -24,6 +24,7 @@
 #include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
 #include <Jolt/Physics/Collision/Shape/MeshShape.h>
 #include <Jolt/Physics/Collision/Shape/SphereShape.h>
+#include <Jolt/Physics/Collision/TransformedShape.h>
 #include <Jolt/Physics/PhysicsSettings.h>
 #include <Jolt/Physics/PhysicsSystem.h>
 #include <Jolt/RegisterTypes.h>
@@ -705,6 +706,47 @@ RayHit PhysicsWorld::RayCast(const glm::vec3& origin, const glm::vec3& direction
         hit.normal = FromJolt(lock.GetBody().GetWorldSpaceSurfaceNormal(result.mSubShapeID2, ToJoltR(hit.position)));
     }
     return hit;
+}
+
+std::vector<glm::vec3> PhysicsWorld::StaticTriangles() const
+{
+    std::vector<glm::vec3> triangles;
+    const Impl& impl = *m_impl;
+    if (!impl.initialized)
+    {
+        return triangles;
+    }
+
+    const JPH::BodyInterface& bodies = impl.system->GetBodyInterface();
+    // Everything, however far away: the level is small and a navigation build wants all of it.
+    const JPH::AABox everywhere(JPH::Vec3::sReplicate(-1.0e5f), JPH::Vec3::sReplicate(1.0e5f));
+    constexpr int kBatch = 256; // comfortably over Jolt's minimum request of 32
+    std::vector<JPH::Float3> corners(static_cast<size_t>(kBatch) * 3);
+
+    for (const auto& [rawId, record] : impl.records)
+    {
+        if (record.motion != BodyMotion::Static)
+        {
+            continue;
+        }
+        const JPH::TransformedShape shape = bodies.GetTransformedShape(JPH::BodyID(rawId));
+        JPH::TransformedShape::GetTrianglesContext context;
+        shape.GetTrianglesStart(context, everywhere, JPH::RVec3::sZero());
+        for (;;)
+        {
+            const int found = shape.GetTrianglesNext(context, kBatch, corners.data());
+            if (found <= 0)
+            {
+                break;
+            }
+            for (int i = 0; i < found * 3; ++i)
+            {
+                const JPH::Float3& corner = corners[static_cast<size_t>(i)];
+                triangles.emplace_back(corner.x, corner.y, corner.z);
+            }
+        }
+    }
+    return triangles;
 }
 
 std::vector<PhysicsWorld::StaticOverlap> PhysicsWorld::FindStaticOverlaps(float minPenetration) const

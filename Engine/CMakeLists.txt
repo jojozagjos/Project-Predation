@@ -6,6 +6,7 @@ find_package(spdlog CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(glm CONFIG REQUIRED)
 find_package(Opus CONFIG REQUIRED)
+find_package(recastnavigation CONFIG REQUIRED)
 find_path(STB_INCLUDE_DIRS "stb_image_write.h" REQUIRED)
 
 set(PRED_ENGINE_SOURCES
@@ -99,6 +100,8 @@ set(PRED_ENGINE_SOURCES
     Net/RelayServer.cpp
     Net/RelayCarrier.h
     Net/RelayCarrier.cpp
+    Navigation/NavMesh.h
+    Navigation/NavMesh.cpp
     Net/PortMapper.h
     Net/PortMapper.cpp
     Net/LanDiscovery.h
@@ -138,6 +141,10 @@ target_link_libraries(PredationEngine
         glm::glm
         Opus::opus
 )
+
+# Navigation, private: its headers include one called DebugDraw.h, and nothing outside the one file
+# that builds and queries the navmesh should be able to reach them by accident.
+target_link_libraries(PredationEngine PRIVATE RecastNavigation::Recast RecastNavigation::Detour)
 
 if(WIN32)
     target_link_libraries(PredationEngine PUBLIC psapi ws2_32 iphlpapi)

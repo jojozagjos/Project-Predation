@@ -373,17 +373,17 @@ void RelayServer::Receive(const std::string& from, const uint8_t* data, size_t b
         // never tells anybody where its players are.
         RelayPacket list;
         list.kind = RelayMessage::LobbyList;
-        for (const Lobby& lobby : m_lobbies)
+        for (const Lobby& open : m_lobbies)
         {
             if (list.lobbies.size() >= kRelayMaxListed)
             {
                 break;
             }
             RelayLobbyInfo info;
-            info.code = lobby.code;
-            info.players = static_cast<uint8_t>(std::min<size_t>(lobby.members.size(), 7));
-            info.started = lobby.started;
-            info.name = lobby.name;
+            info.code = open.code;
+            info.players = static_cast<uint8_t>(std::min<size_t>(open.members.size(), 7));
+            info.started = open.started;
+            info.name = open.name;
             list.lobbies.push_back(std::move(info));
         }
         Send(out, from, list);

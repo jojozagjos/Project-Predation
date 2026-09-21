@@ -142,6 +142,16 @@ public:
     // ramps are only tested against convex shapes. Bodies merely touching are not a penetration.
     std::vector<StaticOverlap> FindStaticOverlaps(float minPenetration = 0.01f) const;
 
+    // Every triangle of every static body, in world space, three corners per triangle.
+    //
+    // What navigation is built from. Taken from the physics world rather than from the drawn meshes
+    // or from the level description, because the physics world is what a creature actually walks on
+    // and collides with: built from anything else, the map of where it can go and the shapes it
+    // bumps into would be two different things that agree only until somebody changes one.
+    // Kinematic and dynamic bodies are left out -- a door or a crate that moves is not somewhere to
+    // plan a route across.
+    std::vector<glm::vec3> StaticTriangles() const;
+
     // --- Debug ----------------------------------------------------------------------------------
     void DebugDraw(class DebugDraw& draw) const;
     const Stats& GetStats() const;
