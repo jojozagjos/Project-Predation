@@ -780,3 +780,152 @@ TEST_CASE("A lobby name cannot put control characters on somebody's screen", "[r
     }
     CHECK(back.name.substr(0, 2) == "ok");
 }
+
+TEST_CASE("The relay stops opening lobbies before it blows its transfer allowance", "[relay][budget]")
+{
+    // The thing that ends a hosted relay is not load, it is the bill. Hosting is sold with a
+    // monthly transfer allowance, and going past it does not slow anything down -- the provider
+    // suspends the machine, and the month has to run out before it works again.
+    //
+    // So the relay counts what it carries and stops short. Games already running are never cut
+    // off: ending somebody's evening to save a few pennies of transfer is the wrong trade, and the
+    // overshoot from letting four players finish is small next to a month of nothing working.
+    RelayServer::Settings settings;
+    settings.budgetBytes = 4096;
+    settings.budgetHeadroom = 1.0f;
+    RelayHarness relay(settings);
+
+    RelayPacket host;
+    host.kind = RelayMessage::Host;
+    relay.Send("early", host);
+    RelayPacket hosted;
+    REQUIRE(relay.First("early", RelayMessage::Hosted, hosted));
+    const uint32_t code = hosted.code;
+    CHECK_FALSE(relay.server.OverBudget());
+    relay.Clear();
+
+    // Traffic, until the allowance is gone. Counted on the way in as well as out, because a relay
+    // pays for every byte that reaches its network card.
+    RelayPacket data;
+    data.kind = RelayMessage::Data;
+    data.slot = kRelayHostSlot;
+    data.payload.assign(512, 0xAB);
+    for (int i = 0; i < 20 && !relay.server.OverBudget(); ++i)
+    {
+        relay.Send("early", data);
+        relay.Clear();
+    }
+    REQUIRE(relay.server.OverBudget());
+    CHECK(relay.server.BytesCarried() >= settings.budgetBytes);
+
+    // The game that was already running is untouched: people can still join it and its traffic
+    // still goes through.
+    const uint8_t friendSlot = relay.JoinLobby("friend", code);
+    REQUIRE(friendSlot != kRelayNoSlot);
+    relay.Clear();
+    data.slot = friendSlot;
+    relay.Send("early", data);
+    RelayPacket relayed;
+    CHECK(relay.First("friend", RelayMessage::Relayed, relayed));
+    relay.Clear();
+
+    // But nothing new opens, and it is refused the same way as a full relay -- from the player's
+    // side those are the same fact: this relay cannot take their game.
+    RelayPacket late;
+    late.kind = RelayMessage::Host;
+    relay.Send("latecomer", late);
+    RelayPacket answer;
+    CHECK_FALSE(relay.First("latecomer", RelayMessage::Hosted, answer));
+    REQUIRE(relay.First("latecomer", RelayMessage::Rejected, answer));
+    CHECK(answer.reason == RelayRejection::RelayFull);
+}
+
+TEST_CASE("A relay with no budget set never refuses on one", "[relay][budget]")
+{
+    // Zero means no limit, and that is the default: somebody running this on a spare machine at
+    // home has no quota to blow and should not have to think about one.
+    RelayHarness relay;
+    RelayPacket data;
+    data.kind = RelayMessage::Data;
+    data.slot = kRelayHostSlot;
+    data.payload.assign(1024, 0x11);
+
+    RelayPacket host;
+    host.kind = RelayMessage::Host;
+    relay.Send("host", host);
+    relay.Clear();
+    for (int i = 0; i < 200; ++i)
+    {
+        relay.Send("host", data);
+        relay.Clear();
+    }
+    CHECK(relay.server.BytesCarried() > 100000);
+    CHECK_FALSE(relay.server.OverBudget());
+}
+
+TEST_CASE("What a relayed game actually costs to carry", "[relay][budget][cost]")
+{
+    // Not a pass-or-fail so much as a number that stays true.
+    //
+    // "How much bandwidth does a relay need" is the question that decides where one can be run and
+    // whether it will be suspended halfway through a month, and it is exactly the sort of number
+    // that gets estimated once, written into a document, and then quietly stops being right. So it
+    // is measured here, from the real protocol sizes, and the bound below is loose enough to be
+    // about the shape of the traffic rather than about any one field.
+    RelayServer::Settings settings;
+    RelayHarness relay(settings);
+
+    const uint32_t code = relay.OpenLobby("host");
+    std::vector<uint8_t> slots;
+    for (int i = 1; i < 4; ++i)
+    {
+        slots.push_back(relay.JoinLobby("client" + std::to_string(i), code));
+    }
+    relay.Clear();
+    const uint64_t before = relay.server.BytesCarried();
+
+    // One second of a four-player game, as the protocol actually sends it: every client's input at
+    // sixty a second, and a snapshot to each of them at thirty.
+    constexpr int kInputHz = 60;
+    constexpr int kSnapshotHz = 30;
+    constexpr size_t kInputBytes = 33;   // measured in the protocol tests
+    constexpr size_t kSnapshotBytes = 89;
+
+    for (int tick = 0; tick < kInputHz; ++tick)
+    {
+        for (int i = 1; i < 4; ++i)
+        {
+            RelayPacket input;
+            input.kind = RelayMessage::Data;
+            input.slot = kRelayHostSlot;
+            input.payload.assign(kInputBytes, 0x5A);
+            relay.Send("client" + std::to_string(i), input);
+        }
+        if (tick % (kInputHz / kSnapshotHz) == 0)
+        {
+            for (const uint8_t slot : slots)
+            {
+                RelayPacket snapshot;
+                snapshot.kind = RelayMessage::Data;
+                snapshot.slot = slot;
+                snapshot.payload.assign(kSnapshotBytes, 0x5A);
+                relay.Send("host", snapshot);
+            }
+        }
+        relay.Clear();
+    }
+
+    const uint64_t perSecond = relay.server.BytesCarried() - before;
+    // Every datagram also carries a UDP and IP header the relay never sees but the bill does.
+    constexpr uint64_t kHeaderBytes = 28;
+    const uint64_t datagrams = (kInputHz * 3 + kSnapshotHz * 3) * 2; // each one arrives and leaves
+    const double perHourGb =
+        static_cast<double>(perSecond + datagrams * kHeaderBytes) * 3600.0 / (1024.0 * 1024.0 * 1024.0);
+
+    WARN("A four-player game costs the relay about " << perHourGb
+                                                     << " GB an hour, both directions, before voice.");
+    // Under a gigabyte an hour is the claim the hosting advice rests on. If this ever fails, that
+    // advice is wrong and somebody's machine is going to be suspended mid-month.
+    CHECK(perHourGb < 1.0);
+    CHECK(perHourGb > 0.01);
+}

@@ -103,11 +103,18 @@ std::vector<std::string> LocalAddresses()
     return found;
 }
 
+// Bytes as the number somebody actually has a quota in.
+double GigabytesOf(uint64_t bytes)
+{
+    return static_cast<double>(bytes) / (1024.0 * 1024.0 * 1024.0);
+}
+
 } // namespace
 
 int main(int argc, char** argv)
 {
     uint16_t port = 27020;
+    double budgetGb = 0.0;
     for (int i = 1; i < argc; ++i)
     {
         const std::string argument = argv[i];
@@ -115,10 +122,25 @@ int main(int argc, char** argv)
         {
             port = static_cast<uint16_t>(std::atoi(argv[++i]));
         }
+        else if ((argument == "--budget-gb" || argument == "-b") && i + 1 < argc)
+        {
+            budgetGb = std::atof(argv[++i]);
+        }
         else if (argument == "--help" || argument == "-h")
         {
-            std::printf("Project Predation relay\n"
-                        "  --port <n>   which UDP port to listen on (default 27020)\n");
+            std::printf(
+                "Project Predation relay\n"
+                "  --port <n>        which UDP port to listen on (default 27020)\n"
+                "  --budget-gb <n>   stop opening new lobbies after this much traffic\n"
+                "                    (default: no limit)\n"
+                "\n"
+                "A relay carries every byte of every game through it, and hosting is usually\n"
+                "sold with a monthly transfer allowance. Going past that allowance does not\n"
+                "slow anything down: the provider suspends the machine, and the month has to\n"
+                "run out before it works again. Set --budget-gb a little under your allowance\n"
+                "and restart the relay each month.\n"
+                "\n"
+                "Games already running are never cut off. Only new lobbies are refused.\n");
             return 0;
         }
     }
@@ -169,6 +191,7 @@ int main(int argc, char** argv)
 #endif
 
     RelayServer::Settings settings;
+    settings.budgetBytes = static_cast<uint64_t>(budgetGb * 1024.0 * 1024.0 * 1024.0);
     RelayServer relay(settings);
     PRED_LOG_INFO(Network, "Relay listening on UDP {}", port);
     for (const std::string& address : LocalAddresses())
@@ -179,6 +202,17 @@ int main(int argc, char** argv)
                   "  players on this machine use 127.0.0.1:{}; players elsewhere on the internet "
                   "need this machine's public address and UDP {} forwarded to it",
                   port, port);
+    if (settings.budgetBytes > 0)
+    {
+        PRED_LOG_INFO(Network,
+                      "  budget {:.1f} GB: new lobbies stop at {:.1f} GB carried, and games "
+                      "already running are never cut off",
+                      budgetGb, budgetGb * settings.budgetHeadroom);
+    }
+    else
+    {
+        PRED_LOG_INFO(Network, "  no transfer budget set. See --help if this machine has a quota.");
+    }
 
     std::array<uint8_t, 1400> buffer{};
     std::vector<RelayServer::Outgoing> outgoing;
@@ -189,6 +223,8 @@ int main(int argc, char** argv)
     auto previous = std::chrono::steady_clock::now();
     size_t lastLobbies = 0;
     size_t lastClients = 0;
+    bool saidOverBudget = false;
+
     // Stray traffic is noted per datagram and logged per address, because a port scanner can send
     // thousands and the useful information is "this address is talking to us and it is not the
     // game", which is one line however many datagrams it took.
@@ -301,7 +337,19 @@ int main(int argc, char** argv)
         {
             lastLobbies = relay.LobbyCount();
             lastClients = relay.ClientCount();
-            PRED_LOG_INFO(Network, "{} lobbies, {} clients", lastLobbies, lastClients);
+            PRED_LOG_INFO(Network, "{} lobbies, {} clients, {:.2f} GB carried", lastLobbies,
+                          lastClients, GigabytesOf(relay.BytesCarried()));
+        }
+
+        // And a word the moment the budget stops taking new games, once. Without it the symptom is
+        // that the relay is plainly running and nobody can open a lobby on it.
+        if (relay.OverBudget() && !saidOverBudget)
+        {
+            saidOverBudget = true;
+            PRED_LOG_WARN(Network,
+                          "{:.2f} GB carried, which is the budget. No new lobbies until this is "
+                          "restarted. Games already running carry on.",
+                          GigabytesOf(relay.BytesCarried()));
         }
 
         // A relay is not a game: it has nothing to do between datagrams, and spinning would burn a

@@ -15,6 +15,17 @@ RelayServer::RelayServer(const Settings& settings) : m_settings(settings), m_ran
     }
 }
 
+bool RelayServer::OverBudget() const
+{
+    if (m_settings.budgetBytes == 0)
+    {
+        return false;
+    }
+    const double allowed =
+        static_cast<double>(m_settings.budgetBytes) * static_cast<double>(m_settings.budgetHeadroom);
+    return static_cast<double>(m_bytesCarried) >= allowed;
+}
+
 size_t RelayServer::ClientCount() const
 {
     size_t total = 0;
@@ -86,13 +97,15 @@ uint32_t RelayServer::NextCode()
 }
 
 void RelayServer::Send(std::vector<Outgoing>& out, const std::string& to,
-                       const RelayPacket& packet) const
+                       const RelayPacket& packet)
 {
-    out.push_back({to, EncodeRelay(packet)});
+    std::vector<uint8_t> datagram = EncodeRelay(packet);
+    m_bytesCarried += datagram.size();
+    out.push_back({to, std::move(datagram)});
 }
 
 void RelayServer::Reject(std::vector<Outgoing>& out, const std::string& to,
-                         RelayRejection reason) const
+                         RelayRejection reason)
 {
     RelayPacket packet;
     packet.kind = RelayMessage::Rejected;
@@ -142,6 +155,11 @@ void RelayServer::RemoveMember(Lobby& lobby, uint8_t slot, std::vector<Outgoing>
 void RelayServer::Receive(const std::string& from, const uint8_t* data, size_t bytes,
                           std::vector<Outgoing>& out)
 {
+    // Counted before anything decides whether it is ours. A relay pays for every byte that arrives
+    // at its network card, including the scans and the noise, so a budget measured on only the
+    // traffic it liked would be a budget that does not match the bill.
+    m_bytesCarried += bytes;
+
     RelayPacket packet;
     if (!DecodeRelay(data, bytes, packet))
     {
@@ -184,8 +202,13 @@ void RelayServer::Receive(const std::string& from, const uint8_t* data, size_t b
             Send(out, from, hosted);
             return;
         }
-        if (m_lobbies.size() >= m_settings.maxLobbies || ClientCount() >= m_settings.maxClients)
+        if (m_lobbies.size() >= m_settings.maxLobbies || ClientCount() >= m_settings.maxClients ||
+            OverBudget())
         {
+            // Over budget is refused the same way as full, and for the same reason from the
+            // player's side: this relay cannot take their game. Games already running are never
+            // cut off -- ending somebody's evening to save a few pennies of transfer is the wrong
+            // trade -- but nothing new opens, which is what stops the total running away.
             Reject(out, from, RelayRejection::RelayFull);
             return;
         }

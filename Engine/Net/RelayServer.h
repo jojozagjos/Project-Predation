@@ -37,7 +37,29 @@ public:
         float messagesPerSecond = 600.0f;
         // Where the codes come from. Fixed so a test gets the same lobby code every run.
         uint32_t seed = 0x9E3779B9u;
+
+        // How much traffic this relay may carry before it stops taking new lobbies, in bytes.
+        // Zero for no limit, which is the default.
+        //
+        // A relay carries every byte of every game through it, and hosting is usually sold with a
+        // monthly transfer allowance. Going past that allowance does not slow anything down: the
+        // provider suspends the machine, and the first anybody knows is that nothing works and the
+        // month has to run out before it does again.
+        //
+        // So the relay is told what its allowance is and stops short of it. Games already running
+        // are never cut off -- ending somebody's evening to save a few pennies of transfer is the
+        // wrong trade, and the overshoot from letting four players finish is small -- but no new
+        // lobby opens, and that is what keeps the total from running away while nobody is watching.
+        uint64_t budgetBytes = 0;
+        // What fraction of the budget to stop at. A little under, because a lobby that opens at
+        // 99% still runs for an hour afterwards.
+        float budgetHeadroom = 0.95f;
     };
+
+    // What this relay has carried since it started, both ways, including its own bookkeeping.
+    uint64_t BytesCarried() const { return m_bytesCarried; }
+    // True once the budget says no more lobbies. Games already in progress carry on.
+    bool OverBudget() const;
 
     // One datagram to send, addressed by the key the caller gave for that client.
     struct Outgoing
@@ -122,8 +144,10 @@ private:
     Lobby* FindLobby(uint32_t code);
     Lobby* LobbyOf(const std::string& client, Member** outMember);
     uint32_t NextCode();
-    void Send(std::vector<Outgoing>& out, const std::string& to, const RelayPacket& packet) const;
-    void Reject(std::vector<Outgoing>& out, const std::string& to, RelayRejection reason) const;
+    // Not const: these are where the byte count is kept, because every reply the relay makes goes
+    // through one of them and counting at the socket instead would mean a test measures nothing.
+    void Send(std::vector<Outgoing>& out, const std::string& to, const RelayPacket& packet);
+    void Reject(std::vector<Outgoing>& out, const std::string& to, RelayRejection reason);
     void RemoveMember(Lobby& lobby, uint8_t slot, std::vector<Outgoing>& out, bool timedOut);
     void AddNote(Note::Kind kind, const std::string& client, uint32_t code, uint8_t slot,
                RelayRejection reason = RelayRejection::None, bool timedOut = false);
@@ -131,6 +155,9 @@ private:
     Settings m_settings;
     std::vector<Lobby> m_lobbies;
     uint32_t m_random = 0;
+    // Every byte in and every byte out. Counted here rather than at the socket so it is the same
+    // number in a test as in the executable, and so the thing that decides on it can see it.
+    uint64_t m_bytesCarried = 0;
     std::vector<Note> m_notes;
 };
 
