@@ -12,7 +12,15 @@ namespace pred
 
 void DebugOverlay::Draw(const Info& info)
 {
+#if PRED_DEV_TOOLS
     ImGui::SetNextWindowPos(ImVec2(8.0f, 8.0f), ImGuiCond_Always);
+#else
+    // Top right in the public build, where a frame counter usually is: the top left is where the
+    // voice meter goes in a multiplayer game, and the two drew through each other.
+    const ImGuiViewport* viewport = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + viewport->WorkSize.x - 8.0f, 8.0f),
+                            ImGuiCond_Always, ImVec2(1.0f, 0.0f));
+#endif
     ImGui::SetNextWindowBgAlpha(0.65f);
     const ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize |
                                    ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing |
@@ -25,6 +33,22 @@ void DebugOverlay::Draw(const Info& info)
 
     const FrameStats* stats = info.stats;
     const Renderer* renderer = info.renderer;
+
+#if !PRED_DEV_TOOLS
+    (void)renderer;
+    // The public build shows what a player can act on and nothing else: how fast the game is
+    // running, and a graph that makes a stutter visible as a spike. Draw calls, memory, physics
+    // bodies and the debug toggles are questions only somebody working on the game can answer, and
+    // shown to a player they read as a wall of numbers with something wrong in it somewhere. The
+    // game adds the connection underneath when there is one.
+    if (stats != nullptr)
+    {
+        ImGui::Text("%.0f FPS   %.1f ms", stats->Fps(), stats->AverageFrameMs());
+        ImGui::PlotLines("##FrameHistory", stats->History().data(),
+                         static_cast<int>(stats->History().size()), stats->HistoryOffset(), nullptr,
+                         0.0f, 33.3f, ImVec2(220.0f, 36.0f));
+    }
+#else
 
     ImGui::TextUnformatted("PROJECT PREDATION  " PRED_VERSION_STRING "  [F3 overlay, ` console]");
     ImGui::Separator();
@@ -79,6 +103,7 @@ void DebugOverlay::Draw(const Info& info)
     ImGui::Separator();
     ImGui::TextUnformatted("Debug categories");
     DebugCategories::DrawImGui();
+#endif
 
     ImGui::End();
 }

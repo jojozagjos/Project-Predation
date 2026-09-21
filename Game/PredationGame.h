@@ -86,6 +86,8 @@ private:
 
     void RegisterCommands();
     void DrawDebugOverlays();
+    // What F3 adds in the public build: ping, or everybody's ping when hosting.
+    void DrawConnectionReadout();
     void SyncDynamicProps();
     void SpawnProp(bool sphere, float impulse);
     void ClearProps();
@@ -597,6 +599,8 @@ private:
     // Whether the settings panel is showing, on whichever screen is up. One flag, because only one
     // of those screens is ever on at a time.
     bool m_settingsOpen = false;
+    // A settings tab asked for from outside, pushed into the tab bar once. Empty when none is.
+    std::string m_settingsTab;
     // Which page of the menu is showing. There used to be four, one per way of reaching a game,
     // and the player had to know which of them their situation was before they could look at
     // anything. Now there are two: a list of games, and the page for making one.
