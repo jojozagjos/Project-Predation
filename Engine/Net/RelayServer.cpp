@@ -197,6 +197,7 @@ void RelayServer::Receive(const std::string& from, const uint8_t* data, size_t b
         }
         Lobby fresh;
         fresh.code = code;
+        fresh.name = packet.name;
         Member host;
         host.key = from;
         host.slot = kRelayHostSlot;
@@ -335,6 +336,34 @@ void RelayServer::Receive(const std::string& from, const uint8_t* data, size_t b
             m_lobbies.erase(m_lobbies.begin() +
                             static_cast<ptrdiff_t>(lobby - m_lobbies.data()));
         }
+        return;
+    }
+
+    case RelayMessage::ListLobbies:
+    {
+        // What is open, to anybody who asks.
+        //
+        // Answered without being in a lobby, and without being in one first: browsing is the thing
+        // somebody does *before* they have a code, so requiring membership would make the feature
+        // impossible. It is also why this is the one message a stranger can send freely, and why
+        // the reply carries codes and names and nothing else -- no addresses, so listing a lobby
+        // never tells anybody where its players are.
+        RelayPacket list;
+        list.kind = RelayMessage::LobbyList;
+        for (const Lobby& lobby : m_lobbies)
+        {
+            if (list.lobbies.size() >= kRelayMaxListed)
+            {
+                break;
+            }
+            RelayLobbyInfo info;
+            info.code = lobby.code;
+            info.players = static_cast<uint8_t>(std::min<size_t>(lobby.members.size(), 7));
+            info.started = lobby.started;
+            info.name = lobby.name;
+            list.lobbies.push_back(std::move(info));
+        }
+        Send(out, from, list);
         return;
     }
 

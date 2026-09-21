@@ -704,3 +704,79 @@ TEST_CASE("Two carriers meet through a relay on a real socket", "[relay][carrier
     REQUIRE(arrived);
     CHECK(std::string(heard.begin(), heard.end()) == reply);
 }
+
+TEST_CASE("The relay can say what lobbies are open", "[relay][browser]")
+{
+    // A lobby browser needs no second service, no database and no website: the relay is the thing
+    // that opens and closes lobbies, so it already knows. This is one more question it can answer.
+    RelayHarness relay;
+
+    RelayPacket host;
+    host.kind = RelayMessage::Host;
+    host.name = "Joe's game";
+    relay.Send("host", host);
+    RelayPacket hosted;
+    REQUIRE(relay.First("host", RelayMessage::Hosted, hosted));
+    const uint32_t code = hosted.code;
+    relay.Clear();
+
+    relay.JoinLobby("guest", code);
+    relay.Clear();
+
+    // Asked by somebody who is in no lobby at all, which is the whole point: browsing is what you
+    // do before you have a code, so it cannot require membership.
+    RelayPacket ask;
+    ask.kind = RelayMessage::ListLobbies;
+    relay.Send("stranger", ask);
+
+    RelayPacket list;
+    REQUIRE(relay.First("stranger", RelayMessage::LobbyList, list));
+    REQUIRE(list.lobbies.size() == 1);
+    CHECK(list.lobbies[0].code == code);
+    CHECK(list.lobbies[0].players == 2);
+    CHECK(list.lobbies[0].name == "Joe's game");
+    CHECK_FALSE(list.lobbies[0].started);
+
+    // And it survives the wire, which is where a list of variable-length things usually goes wrong.
+    RelayPacket sent;
+    sent.kind = RelayMessage::LobbyList;
+    for (int i = 0; i < 3; ++i)
+    {
+        RelayLobbyInfo info;
+        info.code = 1000u + static_cast<uint32_t>(i);
+        info.players = static_cast<uint8_t>(i + 1);
+        info.started = (i % 2) == 1;
+        info.name = i == 1 ? std::string("a much longer name than fits") : std::string("short");
+        sent.lobbies.push_back(info);
+    }
+    const std::vector<uint8_t> bytes = EncodeRelay(sent);
+    RelayPacket back;
+    REQUIRE(DecodeRelay(bytes.data(), bytes.size(), back));
+    REQUIRE(back.lobbies.size() == 3);
+    CHECK(back.lobbies[0].code == 1000u);
+    CHECK(back.lobbies[1].players == 2);
+    CHECK(back.lobbies[1].started);
+    // Clamped rather than refused: a name is cosmetic and a lobby that would not open because
+    // somebody typed a long one is a worse answer than a trimmed one.
+    CHECK(back.lobbies[1].name.size() == kRelayMaxNameLength);
+    CHECK(back.lobbies[2].name == "short");
+}
+
+TEST_CASE("A lobby name cannot put control characters on somebody's screen", "[relay][security]")
+{
+    // The name is drawn in a list by everybody who asks the relay what is open, and it is whatever
+    // a stranger typed. Anything unprintable is replaced rather than passed along.
+    RelayPacket host;
+    host.kind = RelayMessage::Host;
+    host.name = std::string("ok\x01\x1b[31m\x7f", 10);
+
+    const std::vector<uint8_t> bytes = EncodeRelay(host);
+    RelayPacket back;
+    REQUIRE(DecodeRelay(bytes.data(), bytes.size(), back));
+    for (const char c : back.name)
+    {
+        CHECK(c >= 0x20);
+        CHECK(c < 0x7F);
+    }
+    CHECK(back.name.substr(0, 2) == "ok");
+}

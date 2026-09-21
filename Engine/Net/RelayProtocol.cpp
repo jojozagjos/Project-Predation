@@ -103,6 +103,34 @@ std::string DecodeRelayCode(uint32_t value)
     return text;
 }
 
+// A short name, length first. Clamped rather than rejected: a name is cosmetic, and a lobby that
+// refused to open because somebody typed a long one would be a worse answer than a trimmed one.
+void WriteName(BitWriter& writer, const std::string& name)
+{
+    const auto length = static_cast<uint32_t>(std::min(name.size(), kRelayMaxNameLength));
+    writer.WriteBits(length, 5);
+    for (uint32_t i = 0; i < length; ++i)
+    {
+        writer.WriteByte(static_cast<uint8_t>(name[i]));
+    }
+}
+
+std::string ReadName(BitReader& reader)
+{
+    const uint32_t length =
+        std::min<uint32_t>(reader.ReadBits(5), static_cast<uint32_t>(kRelayMaxNameLength));
+    std::string name;
+    name.reserve(length);
+    for (uint32_t i = 0; i < length; ++i)
+    {
+        const auto c = static_cast<char>(reader.ReadByte());
+        // Printable ASCII only. This is drawn in a list by everybody who asks the relay what is
+        // open, so a stranger does not get to put control characters on their screen.
+        name.push_back(c >= 0x20 && c < 0x7F ? c : '?');
+    }
+    return name;
+}
+
 std::vector<uint8_t> EncodeRelay(const RelayPacket& packet)
 {
     BitWriter writer(packet.payload.size() + 16);
@@ -111,10 +139,27 @@ std::vector<uint8_t> EncodeRelay(const RelayPacket& packet)
 
     switch (packet.kind)
     {
-    case RelayMessage::Host:
     case RelayMessage::Leave:
     case RelayMessage::KeepAlive:
+    case RelayMessage::ListLobbies:
         break;
+    case RelayMessage::Host:
+        WriteName(writer, packet.name);
+        break;
+    case RelayMessage::LobbyList:
+    {
+        const auto count = static_cast<uint32_t>(std::min(packet.lobbies.size(), kRelayMaxListed));
+        writer.WriteBits(count, 5);
+        for (uint32_t i = 0; i < count; ++i)
+        {
+            const RelayLobbyInfo& lobby = packet.lobbies[i];
+            writer.WriteBits(lobby.code, kAlphabetBits * kRelayCodeLength);
+            writer.WriteBits(lobby.players, 3);
+            writer.WriteBool(lobby.started);
+            WriteName(writer, lobby.name);
+        }
+        break;
+    }
     case RelayMessage::Join:
         writer.WriteBits(packet.code, kAlphabetBits * kRelayCodeLength);
         break;
@@ -163,10 +208,30 @@ bool DecodeRelay(const uint8_t* data, size_t bytes, RelayPacket& out)
 
     switch (out.kind)
     {
-    case RelayMessage::Host:
     case RelayMessage::Leave:
     case RelayMessage::KeepAlive:
+    case RelayMessage::ListLobbies:
         break;
+    case RelayMessage::Host:
+        out.name = ReadName(reader);
+        break;
+    case RelayMessage::LobbyList:
+    {
+        const uint32_t count = std::min<uint32_t>(reader.ReadBits(5),
+                                                  static_cast<uint32_t>(kRelayMaxListed));
+        out.lobbies.clear();
+        out.lobbies.reserve(count);
+        for (uint32_t i = 0; i < count && !reader.Overran(); ++i)
+        {
+            RelayLobbyInfo lobby;
+            lobby.code = reader.ReadBits(kAlphabetBits * kRelayCodeLength);
+            lobby.players = static_cast<uint8_t>(reader.ReadBits(3));
+            lobby.started = reader.ReadBool();
+            lobby.name = ReadName(reader);
+            out.lobbies.push_back(std::move(lobby));
+        }
+        break;
+    }
     case RelayMessage::Join:
         out.code = reader.ReadBits(kAlphabetBits * kRelayCodeLength);
         break;

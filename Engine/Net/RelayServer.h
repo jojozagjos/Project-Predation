@@ -109,6 +109,13 @@ private:
     struct Lobby
     {
         uint32_t code = 0;
+        // What the host called it, for the browser. Cosmetic and untrusted: it is whatever a
+        // stranger typed, so it is clamped and stripped of anything unprintable on the way in.
+        std::string name;
+        // Whether they have gone in. A lobby somebody is already playing in can still be joined --
+        // the game allows it -- but a browser that does not say so is hiding the one thing anybody
+        // wants to know before clicking.
+        bool started = false;
         std::vector<Member> members;
     };
 

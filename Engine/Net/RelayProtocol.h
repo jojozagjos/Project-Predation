@@ -55,6 +55,7 @@ enum class RelayMessage : uint8_t
     Data,          // forward this to a slot in my lobby
     Leave,         //
     KeepAlive,     // so the router's hole and the relay's idea of me both stay alive
+    ListLobbies,   // what is open? -- the whole of a lobby browser
 
     // Relay to client.
     Hosted = 8,    // your lobby is open, here is its code
@@ -62,8 +63,30 @@ enum class RelayMessage : uint8_t
     Rejected,      // and why
     Relayed,       // something from another slot
     PeerJoined,    // somebody arrived
-    PeerLeft       // somebody went
+    PeerLeft,      // somebody went
+    LobbyList      // and here is what is open
 };
+
+// One row of a lobby browser.
+//
+// The relay already knows every lobby that exists -- it is the thing that opens and closes them --
+// so a browser needs no second service, no database and no website. It is one more question the
+// relay can already answer, and the answer is a few hundred bytes.
+struct RelayLobbyInfo
+{
+    uint32_t code = 0;
+    uint8_t players = 0;
+    bool started = false; // already playing, as opposed to waiting in the lobby
+    std::string name;     // whatever the host called it
+};
+
+// How long a lobby name may be. Short on purpose: it is a row in a list, it crosses the wire
+// unbounded otherwise, and anything longer is a paragraph nobody reads.
+inline constexpr size_t kRelayMaxNameLength = 24;
+// And how many rows fit in one answer. Sixteen rows of thirty bytes sits far inside the smallest
+// path MTU, so the reply is never fragmented; a relay with more than that open lists the first
+// sixteen rather than sending a second datagram nobody asked for.
+inline constexpr size_t kRelayMaxListed = 16;
 
 enum class RelayRejection : uint8_t
 {
@@ -86,6 +109,8 @@ struct RelayPacket
     uint8_t slot = kRelayNoSlot;      // Data (to), Relayed (from), Joined/Hosted (yours), Peer*
     RelayRejection reason = RelayRejection::None;
     std::vector<uint8_t> payload;     // Data, Relayed
+    std::string name;                 // Host: what to call this lobby in a list
+    std::vector<RelayLobbyInfo> lobbies; // LobbyList
 };
 
 // The most a relayed payload may be. Under the smallest path MTU once the relay's own header is on
