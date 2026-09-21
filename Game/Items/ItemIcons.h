@@ -5,6 +5,7 @@
 
 #include <bgfx/bgfx.h>
 #include <glm/vec2.hpp>
+#include <glm/mat4x4.hpp>
 #include <glm/vec3.hpp>
 
 #include <vector>
@@ -40,7 +41,7 @@ public:
 
     // Uploads a mesh per item and creates the render target. Safe to call again after a reload.
     bool Build(const ItemDatabase& items, MeshLibrary& meshes, const Renderer& renderer,
-               const WeaponDatabase* weapons = nullptr,
+               const WeaponDatabase* weapons = nullptr, TextureLibrary* textures = nullptr,
                int cellPixels = 128);
     void Shutdown();
     void Invalidate() { m_rendered = false; }
@@ -58,8 +59,16 @@ private:
     struct Entry
     {
         ItemId item = kInvalidItem;
-        MeshHandle mesh;
-        Material material;
+        // What is drawn, part by part. A weapon is several parts with a material each -- metal,
+        // polymer, and a texture when the model has one -- and merging them into one mesh with one
+        // flat colour is what made every icon look untextured next to the same weapon in the hand.
+        struct Part
+        {
+            MeshHandle mesh;
+            Material material;
+            glm::mat4 transform{1.0f};
+        };
+        std::vector<Part> parts;
         // Where the camera sits and what it looks at, worked out from the mesh bounds so items of
         // very different sizes all fill their cell.
         glm::vec3 eye{0.0f};

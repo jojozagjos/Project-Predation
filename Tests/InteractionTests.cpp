@@ -3,6 +3,8 @@
 #include "Game/Interaction/InteractionSystem.h"
 #include "Game/Items/Inventory.h"
 #include "Game/Items/ItemDatabase.h"
+#include "Game/World/WorldObjects.h"
+#include "Engine/Render/Mesh.h"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -302,4 +304,56 @@ TEST_CASE("A weapon keeps its magazine through a slot and back", "[items][invent
     REQUIRE(inventory.Add(database, id, 1, 7, 60) == 1);
     REQUIRE(inventory.At(0).rounds == 7);
     REQUIRE(inventory.At(0).reserve == 60);
+}
+
+TEST_CASE("Dropping the same thing twice does not land it the same way", "[interaction][drop]")
+{
+    // Reported as: a dropped item is always the same orientation.
+    //
+    // The landing turn came from a seed made of the pickup's slot and the item. Slots are reused --
+    // a picked-up slot is the first the next drop takes -- so picking something up and dropping it
+    // again gave the same seed and the same landing every time. Everything here is held equal except
+    // the one thing that really is different: that it is a second drop.
+    PhysicsWorld physics;
+    PhysicsWorld::Settings settings;
+    settings.workerThreads = 1;
+    REQUIRE(physics.Init(settings));
+    Scene scene;
+    MeshLibrary meshes;
+    meshes.SetHeadless(true);
+    InteractionSystem interactions;
+    ItemDatabase items;
+    REQUIRE(items.LoadFromFile(std::filesystem::path(PRED_SOURCE_DIR) / "Assets" / "Data" / "items.json"));
+    REQUIRE(items.All().size() > 1);
+    const ItemId item = items.All()[1].id;
+
+    WorldObjects world;
+    const glm::vec3 where{0.0f, 1.0f, 0.0f};
+    const glm::vec3 thrown{0.0f, 1.0f, -2.5f};
+    const auto landing = [&]()
+    {
+        const int index =
+            world.SpawnPickup(scene, meshes, physics, interactions, items, item, 1, where, thrown, -1, -1, 0);
+        REQUIRE(index == 0);
+        const Transform* transform = scene.GetTransform(world.Pickups()[0].entity);
+        REQUIRE(transform != nullptr);
+        return transform->rotation;
+    };
+
+    const glm::quat first = landing();
+    const glm::quat second = landing();
+    const glm::quat third = landing();
+    const auto degreesBetween = [](const glm::quat& a, const glm::quat& b)
+    { return glm::degrees(2.0f * std::acos(std::min(std::abs(glm::dot(a, b)), 1.0f))); };
+    INFO("turned " << degreesBetween(first, second) << " and " << degreesBetween(second, third)
+                   << " degrees between drops");
+    CHECK(degreesBetween(first, second) > 3.0f);
+    CHECK(degreesBetween(second, third) > 3.0f);
+
+    // And roughly the way it was thrown: never more than a quarter turn off the throw's heading, so
+    // what lies on the floor still says which way it was going.
+    const glm::vec3 along = third * glm::vec3(0.0f, 0.0f, 1.0f);
+    const glm::vec2 facing = glm::normalize(glm::vec2(along.x, along.z));
+    const glm::vec2 heading = glm::normalize(glm::vec2(thrown.x, thrown.z));
+    CHECK(glm::dot(facing, heading) > std::cos(glm::radians(95.0f)));
 }

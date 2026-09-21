@@ -433,7 +433,7 @@ bool PredationGame::OnInit(Application& app)
     // Weapons load before the icons, because a weapon item draws its icon from the weapon's own
     // model and would otherwise fall back to the placeholder block.
     m_weaponData.LoadFromFile(Paths::AssetsRoot() / "Data" / "weapons.json");
-    m_itemIcons.Build(m_items, app.GetMeshes(), app.GetRenderer(), &m_weaponData);
+    m_itemIcons.Build(m_items, app.GetMeshes(), app.GetRenderer(), &m_weaponData, &app.GetTextures());
     m_world.SetTextures(app.GetTextures());
     m_world.Build(m_scene, app.GetMeshes(), app.GetPhysics(), m_interactions, m_items, &m_weaponData);
     app.GetPhysics().OptimizeBroadPhase();
@@ -8906,6 +8906,14 @@ void PredationGame::DrawItemIcon(ItemId item, float boxSize) const
     // Inset a little, so the render's own framing does not touch the slot border.
     const float inset = boxSize * 0.06f;
     const ImVec2 origin = ImGui::GetCursorScreenPos();
+
+    // A pale backing, lighter at the top like a lit shelf, so a dark object has something to stand
+    // against. The weapons are near-black metal and polymer, which is right for them and made them
+    // black shapes on a black slot: the icon was there, in its real colours, and could not be seen.
+    ImGui::GetWindowDrawList()->AddRectFilledMultiColor(
+        {origin.x + 2.0f, origin.y + 2.0f}, {origin.x + boxSize - 2.0f, origin.y + boxSize - 2.0f},
+        IM_COL32(128, 134, 144, 150), IM_COL32(128, 134, 144, 150), IM_COL32(74, 78, 88, 150),
+        IM_COL32(74, 78, 88, 150));
     ImGui::GetWindowDrawList()->AddImage(static_cast<ImTextureID>(ImGuiLayer::TextureId(m_itemIcons.Texture())),
                                         {origin.x + inset, origin.y + inset},
                                         {origin.x + boxSize - inset, origin.y + boxSize - inset},

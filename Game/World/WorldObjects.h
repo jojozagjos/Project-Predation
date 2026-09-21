@@ -156,6 +156,8 @@ private:
 
     std::vector<Door> m_doors;
     std::vector<Pickup> m_pickups;
+    // Every pickup ever spawned, counted, so a reused slot does not land the same way twice.
+    uint32_t m_dropSerial = 0;
     std::vector<HidingSpot> m_hidingSpots;
     std::vector<AmmoCrate> m_ammoCrates;
     // Held only so pickups can be built with the real weapon models. Appearance, never behaviour.

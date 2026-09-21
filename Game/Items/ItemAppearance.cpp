@@ -33,6 +33,30 @@ MeshData ItemMesh(const ItemDefinition& definition, const WeaponDatabase* weapon
     }
 }
 
+std::vector<ItemPart> ItemParts(const ItemDefinition& definition, const WeaponDatabase* weapons,
+                                TextureLibrary* textures)
+{
+    std::vector<ItemPart> parts;
+    if (weapons != nullptr)
+    {
+        if (const WeaponDefinition* weapon = weapons->Get(weapons->ForItem(definition.key)))
+        {
+            WeaponVisual visual = BuildWeaponVisual(*weapon, textures);
+            parts.reserve(visual.parts.size());
+            for (WeaponVisual::Part& part : visual.parts)
+            {
+                parts.push_back({std::move(part.mesh), part.material, part.rest});
+            }
+            if (!parts.empty())
+            {
+                return parts;
+            }
+        }
+    }
+    parts.push_back({ItemMesh(definition, nullptr), ItemMaterial(definition), glm::mat4(1.0f)});
+    return parts;
+}
+
 Material ItemMaterial(const ItemDefinition& definition)
 {
     Material material;

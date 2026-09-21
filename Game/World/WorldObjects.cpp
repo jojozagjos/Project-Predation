@@ -338,12 +338,19 @@ int WorldObjects::SpawnPickup(Scene& scene, MeshLibrary& meshes, PhysicsWorld& p
 
     Transform transform;
     transform.position = position;
-    // Dropped facing whichever way it left the hand, and tumbling, rather than all of them lying in
-    // the same direction like stock on a shelf. The seed is the index and the item, so the two
-    // machines that both spawn this pickup agree about how it landed.
+    // Dropped roughly facing the way it was thrown, and turned a different amount each time, rather
+    // than all of them lying in the same direction like stock on a shelf.
+    //
+    // The seed used to be the pickup's index and the item alone. Indices are reused -- a slot that
+    // has been picked up is the first one the next drop takes -- so picking something up and
+    // dropping it again put it in the same slot with the same seed, and it landed exactly the same
+    // way every time. A count of every drop goes in as well now. Two machines need not agree on it:
+    // the host sends every loose object's position and rotation to everybody, so whichever way a
+    // client guesses, the host's answer replaces it within a frame.
     {
-        const uint32_t seed =
-            static_cast<uint32_t>(atIndex + 1) * 2654435761u + static_cast<uint32_t>(item) * 40503u;
+        ++m_dropSerial;
+        const uint32_t seed = static_cast<uint32_t>(atIndex + 1) * 2654435761u +
+                              static_cast<uint32_t>(item) * 40503u + m_dropSerial * 0x85EBCA6Bu;
         const auto unit = [seed](int which)
         {
             const uint32_t mixed = (seed + static_cast<uint32_t>(which) * 0x9E3779B9u) * 1103515245u;
@@ -354,8 +361,15 @@ int WorldObjects::SpawnPickup(Scene& scene, MeshLibrary& meshes, PhysicsWorld& p
         // is not what dropping something looks like: things land flat and face whichever way they
         // happened to be going. The tip is what keeps it from reading as stock on a shelf.
         constexpr float kMaxTiltDegrees = 14.0f;
+        // The heading it left the hand on, when it was thrown rather than set down, with up to a
+        // quarter turn either way on top: the direction a dropped thing points says which way it
+        // was going, and never pointing exactly that way says nobody placed it.
+        const glm::vec2 flat{velocity.x, velocity.z};
+        const float heading = glm::length(flat) > 0.1f ? std::atan2(flat.x, flat.y)
+                                                        : unit(3) * glm::two_pi<float>();
+        const float spin = heading + (unit(0) - 0.5f) * glm::pi<float>();
         transform.rotation =
-            glm::angleAxis(unit(0) * glm::two_pi<float>(), glm::vec3(0.0f, 1.0f, 0.0f)) *
+            glm::angleAxis(spin, glm::vec3(0.0f, 1.0f, 0.0f)) *
             glm::angleAxis(glm::radians((unit(1) - 0.5f) * 2.0f * kMaxTiltDegrees),
                            glm::vec3(1.0f, 0.0f, 0.0f)) *
             glm::angleAxis(glm::radians((unit(2) - 0.5f) * 2.0f * kMaxTiltDegrees),

@@ -5,6 +5,7 @@
 #include "Engine/Render/Renderer.h"
 #include "Engine/Render/SceneRenderer.h"
 #include "Engine/Scene/Scene.h"
+#include "Game/Weapons/WeaponDatabase.h"
 
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -45,8 +46,7 @@ ItemIcons::~ItemIcons()
 }
 
 bool ItemIcons::Build(const ItemDatabase& items, MeshLibrary& meshes, const Renderer& renderer,
-                      const WeaponDatabase* weapons,
-                      int cellPixels)
+                      const WeaponDatabase* weapons, TextureLibrary* textures, int cellPixels)
 {
     Shutdown();
 
@@ -60,25 +60,64 @@ bool ItemIcons::Build(const ItemDatabase& items, MeshLibrary& meshes, const Rend
             continue; // index 0 is the placeholder for "no item"
         }
 
-        const MeshData data = ItemMesh(definition, weapons);
-        if (data.indices.empty())
+        std::vector<ItemPart> parts = ItemParts(definition, weapons, textures);
+        Entry entry;
+        entry.item = definition.id;
+        MeshData whole;
+        for (size_t i = 0; i < parts.size(); ++i)
+        {
+            if (parts[i].mesh.indices.empty())
+            {
+                continue;
+            }
+            whole.Append(parts[i].mesh, parts[i].transform);
+            Entry::Part part;
+            part.mesh = meshes.Upload(parts[i].mesh, "icon_" + definition.key + "_" + std::to_string(i));
+            part.material = parts[i].material;
+            part.transform = parts[i].transform;
+            entry.parts.push_back(part);
+        }
+        if (entry.parts.empty())
         {
             continue;
         }
 
-        Entry entry;
-        entry.item = definition.id;
-        entry.mesh = meshes.Upload(data, "icon_" + definition.key);
-        entry.material = ItemMaterial(definition);
+        // Seen from the side when it is a weapon or anything long, the way a weapon is always shown:
+        // from three-quarters a rifle is foreshortened into something a third of its length, a small
+        // dark smudge in the corner of its cell. Barrel to the right, a little from above -- every
+        // weapon model has its barrel down +Z, so one view suits them all. Anything else keeps the
+        // three-quarter view, which is what makes a box read as a box.
+        const AABB bounds = whole.ComputeBounds();
+        const glm::vec3 size = bounds.max - bounds.min;
+        const bool weapon = weapons != nullptr && weapons->Get(weapons->ForItem(definition.key)) != nullptr;
+        const bool longways = weapon || size.z > 2.0f * std::max(size.x, size.y);
+        const glm::vec3 direction =
+            longways ? glm::normalize(glm::vec3(-1.0f, 0.28f, 0.18f)) : kViewDirection;
 
-        // Frame the item's bounding sphere, so a keycard and a crate both fill their cell.
-        const AABB bounds = data.ComputeBounds();
+        // Framed to what the camera actually sees rather than to a sphere round the item. The
+        // sphere of a long thin thing is mostly empty, and fitting that left every weapon at a third
+        // of its cell. The box's corners are projected onto the view and the widest of them fills
+        // the frame.
         const glm::vec3 centre = (bounds.min + bounds.max) * 0.5f;
-        const float radius = std::max(glm::length(bounds.max - bounds.min) * 0.5f, 1e-3f);
-        const float distance = radius / std::tan(kVerticalFov * 0.5f) * 1.25f;
+        const glm::vec3 right = glm::normalize(glm::cross(-direction, glm::vec3(0.0f, 1.0f, 0.0f)));
+        const glm::vec3 up = glm::cross(right, -direction);
+        float halfWidth = 1e-3f;
+        float halfDepth = 1e-3f;
+        for (int corner = 0; corner < 8; ++corner)
+        {
+            const glm::vec3 point{(corner & 1) ? bounds.max.x : bounds.min.x,
+                                  (corner & 2) ? bounds.max.y : bounds.min.y,
+                                  (corner & 4) ? bounds.max.z : bounds.min.z};
+            const glm::vec3 offset = point - centre;
+            halfWidth = std::max({halfWidth, std::abs(glm::dot(offset, right)),
+                                 std::abs(glm::dot(offset, up))});
+            halfDepth = std::max(halfDepth, std::abs(glm::dot(offset, direction)));
+        }
+        const float radius = std::max(glm::length(size) * 0.5f, 1e-3f);
+        const float distance = halfWidth / std::tan(kVerticalFov * 0.5f) * 1.12f + halfDepth;
 
         entry.focus = centre;
-        entry.eye = centre + kViewDirection * distance;
+        entry.eye = centre + direction * distance;
         entry.nearPlane = std::max(distance - radius * 2.0f, radius * 0.01f);
         entry.farPlane = distance + radius * 2.0f;
         m_entries.push_back(entry);
@@ -167,11 +206,6 @@ void ItemIcons::Render(SceneRenderer& sceneRenderer, const MeshLibrary& meshes)
     for (size_t i = 0; i < m_entries.size(); ++i)
     {
         const Entry& entry = m_entries[i];
-        const Mesh* mesh = meshes.Get(entry.mesh);
-        if (mesh == nullptr || !mesh->IsValid())
-        {
-            continue;
-        }
 
         const auto view = static_cast<bgfx::ViewId>(Renderer::kViewOffscreenFirst + i);
         const auto column = static_cast<uint16_t>(i % static_cast<size_t>(m_columns));
@@ -190,7 +224,15 @@ void ItemIcons::Render(SceneRenderer& sceneRenderer, const MeshLibrary& meshes)
                 : glm::perspectiveRH_ZO(kVerticalFov, 1.0f, entry.nearPlane, entry.farPlane);
         bgfx::setViewTransform(view, glm::value_ptr(viewMatrix), glm::value_ptr(projection));
 
-        sceneRenderer.DrawOne(view, *mesh, entry.material, glm::mat4(1.0f), environment, entry.eye);
+        for (const Entry::Part& part : entry.parts)
+        {
+            const Mesh* mesh = meshes.Get(part.mesh);
+            if (mesh != nullptr && mesh->IsValid())
+            {
+                sceneRenderer.DrawOne(view, *mesh, part.material, part.transform, environment,
+                                      entry.eye);
+            }
+        }
     }
 
     m_rendered = true;
