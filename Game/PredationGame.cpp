@@ -907,6 +907,65 @@ void PredationGame::RegisterCommands()
         "model_import <file.glb> <name> [size] [turn x y z]");
 
     console.RegisterCommand(
+        "model_info", "Print a model's extents and sockets: model_info <name>",
+        [this](const std::vector<std::string>& args)
+        {
+            // Placing a socket needs to know where the geometry actually is, and an imported model
+            // arrives in whatever frame its author used. This says: how big it is, which way the
+            // long axis runs, and what sockets it already has.
+            Console& out = m_app->GetConsole();
+            if (args.size() < 2)
+            {
+                out.PrintError("usage: model_info <name>");
+                return;
+            }
+            ModelAsset model;
+            if (!model.LoadFromFile(ModelDirectory() / (args[1] + ".json")))
+            {
+                out.PrintError("no model called " + args[1]);
+                return;
+            }
+            glm::vec3 low{std::numeric_limits<float>::max()};
+            glm::vec3 high{std::numeric_limits<float>::lowest()};
+            size_t vertices = 0;
+            for (const ModelPart& part : model.parts)
+            {
+                const glm::mat4 rest = part.LocalMatrix();
+                for (const MeshVertex& vertex : part.mesh.vertices)
+                {
+                    const glm::vec3 at = glm::vec3(rest * glm::vec4(vertex.position, 1.0f));
+                    low = glm::min(low, at);
+                    high = glm::max(high, at);
+                    ++vertices;
+                }
+            }
+            char buffer[220];
+            if (vertices == 0)
+            {
+                out.Print("no geometry");
+            }
+            else
+            {
+                std::snprintf(buffer, sizeof(buffer),
+                              "%zu parts, %zu vertices, extents x %.3f..%.3f  y %.3f..%.3f  z "
+                              "%.3f..%.3f  (size %.3f x %.3f x %.3f)",
+                              model.parts.size(), vertices, low.x, high.x, low.y, high.y, low.z,
+                              high.z, high.x - low.x, high.y - low.y, high.z - low.z);
+                out.Print(buffer);
+                PRED_LOG_INFO(Asset, "{}: {}", args[1], buffer);
+            }
+            for (const ModelSocket& socket : model.sockets)
+            {
+                std::snprintf(buffer, sizeof(buffer), "  socket %-10s %7.3f %7.3f %7.3f",
+                              socket.name.c_str(), socket.position.x, socket.position.y,
+                              socket.position.z);
+                out.Print(buffer);
+                PRED_LOG_INFO(Asset, "{}", buffer);
+            }
+        },
+        "model_info <name>");
+
+    console.RegisterCommand(
         "model_export",
         "Write a weapon's built-in shape out as an editable model: model_export <weapon> [model name]",
         [this](const std::vector<std::string>& args)
