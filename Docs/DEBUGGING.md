@@ -53,8 +53,19 @@ Built-in commands:
 | `cam_reset`, `cam_pos [x y z]` | Fly camera helpers (game) |
 | `quit` | Exit |
 
-Planned game commands from the brief: `spawn_creature <seed>`, `spawn_creature_random`, `spawn_player`,
-`kill_creature`, `freeze_ai`, `show_ai`, `show_nav`, `show_animation`, `god`, `noclip`, `teleport`,
+The creature (developer builds only):
+
+| Command | Does |
+| --- | --- |
+| `spawn_creature [seed] [ahead]` | Make one far from you, or with `ahead` seven metres in front; no seed picks one at random |
+| `creature_clear` | Remove every creature |
+| `creature_hurt [amount]` | Hurt the first creature as if you had shot it, 30 by default |
+| `ai_brain` | Open or close the brain inspector |
+| `ai.creatures`, `ai.seed` | How many a new game starts with, and the seed (0 for a new one each game) |
+
+`debug.ai`, `debug.perception` and `debug.navigation` draw its route, its senses and the walkable surface.
+
+Still planned from the brief: `spawn_player`, `freeze_ai`, `show_animation`, `god`, `noclip`,
 `reload_assets`. They arrive with the systems they control.
 
 ## CVars

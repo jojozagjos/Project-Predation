@@ -1,6 +1,44 @@
 # Creature AI
 
-**Status**: design. The creature prototype starts in Milestone 8; the full architecture lands in Milestone 9.
+**Status**: Milestone 8 prototype built; the full architecture below lands in Milestone 9. What
+exists now is listed first, and the rest of this document is the design it is heading towards.
+
+## What exists (Milestone 8)
+
+| Piece | Where |
+| --- | --- |
+| Navigation mesh, paths, random points, moving along the surface | `Engine/Navigation/NavMesh.h` |
+| Traits from a seed | `Game/Creature/CreatureTraits.h` |
+| Sounds the creature can hear, and how far each carries | `Game/Creature/Noise.h` |
+| Perception, memory, feelings, utility scoring, behaviours | `Game/Creature/CreatureBrain.h` |
+| The body: route following, turning, a physics box, a placeholder visual | `Game/Creature/Creature.h` |
+| Spawning, senses, noises, strikes, shots, the inspector and overlays | `Game/PredationGameCreatures.cpp` |
+
+- **Traits**: aggression, fear, curiosity, persistence, perception, run and walk speed.
+- **Sight**: a 130 degree cone to 26 m (scaled by perception), three occlusion rays at head, chest and
+  hips, scaled by distance, how tall the target is standing, how fast they are moving and the light
+  where they stand (under a roof is dark; a lit torch is bright anywhere). Exposure has to fill before
+  a player counts as seen; in the meantime the creature stops and turns to what caught its eye.
+- **Hearing**: every noise has a reach; loudness falls off as a square root of distance over reach, and
+  through a wall the reach is halved. Footsteps carry 1.5 m prone to 14 m sprinting; a gunshot 70 m.
+  Voice is a fixed-reach noise every half second while somebody is transmitting, not yet scaled by
+  microphone level.
+- **Memory**: a track per player (last known place, confidence that fades over the creature's
+  persistence, exposure, how much they have hurt it) and one open question -- the thing it is going to
+  look into.
+- **Feelings**: pain, fear and arousal.
+- **Behaviours**: Roam, Investigate, Hunt, Attack and Retreat, scored per target as products of named
+  considerations with a commitment bonus for the current one.
+- **One rule worth knowing**: a noise made by somebody it can see, or somebody who has hurt it, is not
+  a question to go and answer. It updates where they are, and closes any open question near them.
+  Without it a creature shot in the back walked off to "investigate the gunshot" instead of turning on
+  the shooter.
+- **Networking**: the host runs every mind; clients are sent each creature's seed and body state and
+  draw a copy (ADR-064).
+
+Developer commands: `spawn_creature [seed] [ahead]`, `creature_clear`, `creature_hurt [amount]` and
+`ai_brain`, plus the `ai.creatures` and `ai.seed` settings. The AI, Perception and Navigation debug
+categories draw the overlays.
 
 ## Goal
 

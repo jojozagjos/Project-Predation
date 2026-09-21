@@ -47,7 +47,12 @@ interpolation delay (about 200 ms max) for hit tests, and applies damage. Client
 
 AI runs on the host only. Clients receive position, orientation, gait parameters, posture, and contact targets
 at the send rate, then run the same procedural animation locally. A creature on the ceiling looks identical to
-everyone at low bandwidth. The anatomy seed is sent once at spawn so clients build the same body.
+everyone at low bandwidth. The anatomy seed goes with every update, so a client that joins late or
+misses a packet still builds the same body (ADR-064).
+
+Built in Milestone 8: the `Creatures` message carries, per creature, an id, the seed, position,
+facing, speed, strike wind-up, health and whether it is alive, at the world-state rate. Posture and
+contact targets arrive with the procedural anatomy.
 
 ## Capture and grabs
 
@@ -83,8 +88,9 @@ Network overlay (RTT, loss, bandwidth per channel), replication log, and the sim
 
 # Implementation notes
 
-**Status**: Milestone 6 built. Two machines connect over UDP, the host simulates everyone, clients predict
-their own movement and interpolate everyone else. Creature replication, voice and spectating are still design.
+**Status**: built through Milestone 8. Two machines connect over UDP, the host simulates everyone, clients
+predict their own movement and interpolate everyone else, and shots, voice, spectating, host migration and
+the creature all cross the wire. Protocol version 5.
 
 ## What exists
 
@@ -113,7 +119,9 @@ has needed, how far off the last one was, and sliders for the simulated conditio
 
 A four-player snapshot is 85 bytes: 152 bits per player plus a 71-bit header. At the 30 Hz send rate that is
 2.6 kB/s to each client, so a host with three of them spends under 8 kB/s upstream. An input packet carries
-three ticks of input in under 32 bytes and goes out at 60 Hz.
+three ticks of input in under 32 bytes and goes out at 60 Hz. A creature costs 133 bits in the `Creatures`
+message, also at 30 Hz: one creature is about half a kilobyte a second to each client, and the most there
+can be, eight, is under 140 bytes a packet.
 
 Positions are quantised to about a millimetre over a kilometre, angles to a twentieth of a degree, velocity to
 three centimetres a second. A value outside a field's range has no encoding at all, so a modified client
@@ -133,8 +141,8 @@ perfect connection where nothing has time to disagree.
 
 ## Not yet
 
-Creature replication, weapon events over the wire, voice, spectating, late join, host migration, and NAT
-traversal. Weapons already produce host-authoritative `FireEvent`s (ADR-014); they are not yet sent.
+Reconnecting a player who dropped, per-player weapon state on the host, and NAT hole punching: getting
+through a router is done by UPnP or the optional relay instead (see HOSTING.md).
 
 ## Getting into a game
 

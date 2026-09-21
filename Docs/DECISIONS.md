@@ -1307,3 +1307,42 @@ And a mirror is not the camera. `hiddenFromCamera` -- the player's own head in f
 with the camera's set, anybody looking in a mirror is decapitated, which is the same bug the head
 has already had once in its shadow. There are now three renderable sets rather than two, and a test
 that says what each of them leaves out.
+
+## ADR-064: A creature is thought on the host and shown everywhere else
+
+The creature's mind runs on the host and nowhere else. Every other machine is sent what its body is
+doing -- where it is, which way it faces, how fast it is going, how far into a strike's wind-up it
+is, its health and whether it is alive -- thirty times a second, and draws a copy of it.
+
+The alternative that sounds cheaper is to run the same brain on every machine from the same seed and
+send nothing. It does not work, and not for a subtle reason: a brain is only deterministic given
+identical inputs, and its inputs are what each machine can see and hear, which differ by a round trip
+of latency and by every player's prediction. Two copies would disagree within a second about whether
+somebody had been seen, and nothing would ever bring them back together. Sending the mind's state
+instead of the body's -- tracks, scores, the timeline -- was the other option, and is several times
+the size to send things no player can see.
+
+Four details, each of which is there because leaving it out breaks something:
+
+- **The seed goes in every packet**, not once at spawn. Something sent once can be lost, and a player
+  who joins late was never there to receive it. It is 32 bits a creature, and it is what lets a client
+  build the same animal -- which matters little while the body is boxes and entirely once it is
+  generated from the seed.
+- **Every message carries a sequence number**, and a client ignores one older than what it has.
+  Unreliable packets can overtake each other, and an old one applied after a new one pulls the
+  creature back to where it was a moment ago.
+- **An empty message is still sent.** It is how a client learns that the last creature has gone;
+  sending nothing when there is nothing would leave the client drawing the last one it heard about.
+- **The copy is drawn a little ahead.** Each update is already a few hundredths of a second old when
+  it arrives, so the copy is eased towards where the creature was plus a tenth of a second of its
+  speed at most. At a run it stays within about 0.2 m of the host's, measured -- close enough that
+  a round aimed at the copy finds the host's creature, whose body is a metre and a half long.
+
+A client's copy has a physics body where the host's creature is, so its own prediction of a shot
+finds it and leaves no bullet hole, which is what the host will decide. The host's answer is still
+the one that counts: a client's round is re-run against the host's world, which contains the real
+creature.
+
+What a client cannot do is look inside the creature's head. Its copy has a brain object that never
+runs, and the inspector says so rather than displaying a mind that is not thinking. Streaming the
+inspector's snapshots from the host is in the design (AI.md) and not built.
