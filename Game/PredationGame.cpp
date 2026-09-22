@@ -1614,6 +1614,17 @@ bool PredationGame::PerformInteraction(InteractionKind kind, int index, uint8_t 
         return true;
     }
 
+    case InteractionKind::Cocoon:
+    {
+        // Cutting somebody out of a cocoon: only the host has cocoons to cut, and the payload is who.
+        if (!IsAuthority())
+        {
+            return false;
+        }
+        FreeFromCocoon(static_cast<uint8_t>(index), player);
+        return true;
+    }
+
     case InteractionKind::AmmoCrate:
     {
         if (player == LocalPlayerId())
@@ -7336,6 +7347,7 @@ void PredationGame::OnFixedUpdate(double fixedDt)
         input.yaw = m_player.State().yaw;
         input.pitch = m_player.State().pitch;
     }
+    m_lastInput = input;
     // Dead counts as restrained: a body on the floor does not fire, aim or reload.
     const bool restrained =
         m_hidingSpot >= 0 || m_cameraMode == CameraMode::Fly || !m_player.State().alive;

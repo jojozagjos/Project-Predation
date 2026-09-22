@@ -177,6 +177,10 @@ struct CreatureCapabilities
     float strikeReach = 2.3f;     // from its feet to where a blow lands
     bool fitsVents = false;       // for the vents of Milestone 11
     bool climbs = false;          // likewise, for walls and ceilings
+    // How high it can get up onto something, jumping or climbing, and how high above its feet it can
+    // strike, rearing up. Somebody on a crate is safe from one that can do neither, for a while.
+    float jump = 1.0f;
+    float verticalReach = 1.5f;
 
     // The box rounds hit, in the creature's own frame (forward -Z), from the ground to its back.
     glm::vec3 bodyHalfExtents{0.3f, 0.5f, 0.85f};

@@ -77,6 +77,14 @@ public:
     float Health() const { return m_health; }
     float MaxHealth() const { return m_maxHealth; }
     bool Alive() const { return m_health > 0.0f; }
+    // Back to health, a little at a time, at its nest.
+    void Heal(float amount)
+    {
+        if (Alive())
+        {
+            m_health = std::min(m_health + amount, m_maxHealth);
+        }
+    }
     float Speed() const { return m_speed; }
     const CreatureAnatomy& Anatomy() const { return m_anatomy; }
     const CreatureCapabilities& Capabilities() const { return m_caps; }
@@ -178,6 +186,20 @@ private:
     std::vector<glm::vec3> m_route;
     glm::vec3 m_routeGoal{0.0f};
     float m_routeAge = 1.0e9f;
+    // Which corners of the route are the take-off of a jump, and whether the route gets all the way.
+    std::vector<uint8_t> m_routeJumps;
+    bool m_routeReached = true;
+    // A jump in progress: from where, to where, how far through, how long it takes.
+    bool m_jumping = false;
+    glm::vec3 m_jumpFrom{0.0f};
+    glm::vec3 m_jumpTo{0.0f};
+    float m_jumpTime = 0.0f;
+    float m_jumpDuration = 0.5f;
+    // How long its calls and its blows against a door go on being shown.
+    float m_roarUntil = -1.0f;
+    float m_bashStarted = -1.0f;
+    // The jumps its body can make, as the navigation mesh names them.
+    uint16_t m_jumps = 0;
 
     uint8_t m_netId = 0;
     struct Received

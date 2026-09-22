@@ -52,6 +52,10 @@ struct RemotePlayerView
     bool reloadEmpty = false;
     bool torchOn = false;
 
+    // Held by a creature, or wrapped up at its nest.
+    uint8_t heldBy = kNotHeld;
+    bool cocooned = false;
+
     // Climbing, so a remote player is seen hauling themselves over a ledge rather than sliding up
     // a wall.
     bool mantling = false;
@@ -197,6 +201,11 @@ public:
     // when a key is pressed rather than every frame, and because nothing else in the protocol
     // implies it: without this, a torch is visible only to the player holding it.
     void SetPlayerTorch(uint8_t playerId, bool on);
+    // A creature has hold of a player, or has let go (`by` kNotHeld): the host pins them where the
+    // creature has them, every tick, and says so in the snapshot so their own machine does too.
+    void SetPlayerGrabbed(uint8_t playerId, uint8_t by, bool cocooned, const glm::vec3& feet, float yaw);
+    // What a client last pressed, for anything the host decides from it: struggling in a grip.
+    PlayerInput LastInputOf(uint8_t playerId) const;
     // Damage a client. The host owns their body, so this is where their health actually changes:
     // the published view is rebuilt from the controller every tick, so writing to that changed
     // nothing and health came back the moment it was read again.
@@ -268,6 +277,8 @@ private:
     float m_localReloadProgress = 0.0f;
     bool m_localReloadEmpty = false;
     bool m_localTorch = false;
+    uint8_t m_localHeldBy = kNotHeld;
+    bool m_localCocooned = false;
     bool m_running = false;
 };
 
@@ -282,6 +293,8 @@ private:
 class NetClient
 {
 public:
+    // Whether a creature has hold of this player, as the host last said.
+    bool HeldByHost() const { return m_heldByHost; }
     struct Config
     {
         // Two snapshot intervals at 30 Hz. Enough that the next snapshot has almost always arrived
@@ -417,6 +430,7 @@ private:
     CreatureStateMessage m_creatureState;
     uint32_t m_creatureStatesReceived = 0;
     PredictionBuffer m_history;
+    bool m_heldByHost = false;
     Config m_config;
     ReconciliationResult m_lastReconciliation;
     glm::vec3 m_visualError{0.0f};

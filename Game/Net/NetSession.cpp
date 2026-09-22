@@ -82,6 +82,8 @@ void ApplySnapshot(RemotePlayerView& view, const PlayerSnapshot& snapshot)
     view.mantlePhase = snapshot.mantlePhase;
     view.mantleEdge = snapshot.mantleEdge;
     view.pingMs = snapshot.pingMs;
+    view.heldBy = snapshot.heldBy;
+    view.cocooned = snapshot.cocooned;
 }
 
 void SendPacket(Transport& transport, PeerId peer, Channel channel, BitWriter& writer)
@@ -127,6 +129,8 @@ struct NetHost::Client
     float reloadProgress = 0.0f;
     bool reloadEmpty = false;
     bool torchOn = false;
+    uint8_t heldBy = kNotHeld;
+    bool cocooned = false;
     // What this client has taken out of the world. The host does not model their bag, only what it
     // handed them, which is enough to refuse a drop of something they never picked up.
     std::map<uint16_t, int> carried;
@@ -782,6 +786,47 @@ void NetHost::SetPlayerTorch(uint8_t playerId, bool on)
     }
 }
 
+void NetHost::SetPlayerGrabbed(uint8_t playerId, uint8_t by, bool cocooned, const glm::vec3& feet, float yaw)
+{
+    if (playerId == 0)
+    {
+        m_localHeldBy = by;
+        m_localCocooned = cocooned && by != kNotHeld;
+        return;
+    }
+    for (auto& client : m_clients)
+    {
+        if (client->playerId != playerId)
+        {
+            continue;
+        }
+        const bool wasHeld = client->heldBy != kNotHeld;
+        client->heldBy = by;
+        client->cocooned = cocooned && by != kNotHeld;
+        if (by != kNotHeld)
+        {
+            client->controller.Attach(feet, yaw);
+        }
+        else if (wasHeld)
+        {
+            client->controller.Detach(feet);
+        }
+        return;
+    }
+}
+
+PlayerInput NetHost::LastInputOf(uint8_t playerId) const
+{
+    for (const auto& client : m_clients)
+    {
+        if (client->playerId == playerId)
+        {
+            return client->lastInput;
+        }
+    }
+    return PlayerInput{};
+}
+
 void NetHost::RemoveClient(PeerId peer)
 {
     const auto found = std::find_if(m_clients.begin(), m_clients.end(),
@@ -930,6 +975,8 @@ void NetHost::BuildViews(const PlayerState& localState)
         // screen: the muzzle is looked up from the weapon being drawn for them, and there was none.
         view.heldItem = client->heldItem;
         view.torchOn = client->torchOn;
+        view.heldBy = client->heldBy;
+        view.cocooned = client->cocooned;
         view.aim = client->aim;
         view.reloading = client->reloading;
         view.reloadProgress = client->reloadProgress;
@@ -950,6 +997,8 @@ void NetHost::SendSnapshots(uint32_t tick, const PlayerState& localState)
     snapshot.players[0].reloadProgress = m_localReloadProgress;
     snapshot.players[0].reloadEmpty = m_localReloadEmpty;
     snapshot.players[0].torchOn = m_localTorch;
+    snapshot.players[0].heldBy = m_localHeldBy;
+    snapshot.players[0].cocooned = m_localCocooned;
     snapshot.count = 1;
     for (const auto& client : m_clients)
     {
@@ -963,6 +1012,8 @@ void NetHost::SendSnapshots(uint32_t tick, const PlayerState& localState)
             entry.reloadProgress = client->reloadProgress;
             entry.reloadEmpty = client->reloadEmpty;
             entry.torchOn = client->torchOn;
+            entry.heldBy = client->heldBy;
+            entry.cocooned = client->cocooned;
             entry.pingMs = static_cast<uint16_t>(std::lround(client->pingMs));
         }
     }
@@ -1446,6 +1497,34 @@ void NetClient::SendInput()
 void NetClient::Reconcile(const SnapshotMessage& snapshot, PlayerController& local, float dt)
 {
     m_lastReconciliation = ReconciliationResult{};
+
+    // Held by a creature: the host has them, and says where they are. There is nothing to guess -- their
+    // legs are not taking them anywhere -- so the guessing stops until they are let go.
+    for (uint8_t i = 0; i < snapshot.count; ++i)
+    {
+        const PlayerSnapshot& entry = snapshot.players[i];
+        if (entry.playerId != m_playerId)
+        {
+            continue;
+        }
+        if (entry.heldBy != kNotHeld)
+        {
+            local.Attach(entry.position, entry.yaw);
+            m_heldByHost = true;
+            m_history.Clear();
+            m_lastAcknowledged = std::max(m_lastAcknowledged, snapshot.lastProcessedInput);
+            return;
+        }
+        if (m_heldByHost)
+        {
+            m_heldByHost = false;
+            local.Detach(entry.position);
+            m_history.Clear();
+            m_lastAcknowledged = std::max(m_lastAcknowledged, snapshot.lastProcessedInput);
+            return;
+        }
+        break;
+    }
 
     if (snapshot.lastProcessedInput <= m_lastAcknowledged)
     {

@@ -403,6 +403,9 @@ CreatureCapabilities CreatureCapabilities::From(const CreatureAnatomy& a)
     }
     c.fitsVents = c.size == SizeClass::Small;
     c.climbs = a.plan == BodyPlan::Hexapod || c.mass < 100.0f;
+    // Anything that climbs gets up nearly three metres; the rest jump as high as their legs throw them.
+    c.jump = c.climbs ? 2.7f : std::clamp(0.5f + legLength * 0.95f, 0.8f, 1.95f);
+    c.verticalReach = std::clamp(height * 0.75f + 0.45f + (a.plan == BodyPlan::Crawler ? 0.35f : 0.0f), 1.2f, 2.8f);
 
     // The box rounds hit: from the ground to the top of its back, as wide as the body, from the tip of
     // its head to its rump. The legs are inside it, so a round at a leg is a round that hits.

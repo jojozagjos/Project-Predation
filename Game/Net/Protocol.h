@@ -24,7 +24,7 @@ namespace pred
 
 // Bumped whenever the wire changes shape. Two ends that disagree are refused at the door rather
 // than left to misread each other, which is what a wire mismatch actually looks like from inside.
-inline constexpr uint16_t kProtocolVersion = 8;
+inline constexpr uint16_t kProtocolVersion = 9;
 // How many bits name a message type. Five, so there is room to add one.
 inline constexpr uint32_t kMessageTypeBits = 5;
 inline constexpr uint8_t kMaxPlayers = 4;
@@ -224,6 +224,8 @@ struct WorldStateMessage
 // is replaced a thirtieth of a second later. Sent even when there are none, so that a creature the
 // host has removed disappears everywhere else too.
 inline constexpr uint8_t kMaxCreatures = 8;
+// Nobody has hold of this player.
+inline constexpr uint8_t kNotHeld = 0xFF;
 
 struct CreatureSnapshot
 {
@@ -240,6 +242,17 @@ struct CreatureSnapshot
     // Lying as if dead while alive -- playing it. Drawn exactly as a death.
     bool down = false;
     float crouch = 0.0f;       // 0 to 1, how low it is creeping
+    // What it is doing with its limbs and head: a blow, a grab, carrying somebody, a call, a door. Which,
+    // how far through, which arm, and aimed where. Sent only when it is doing one.
+    uint8_t action = 0;
+    float actionPhase = 0.0f;
+    int8_t actionSide = 1;
+    glm::vec3 actionTarget{0.0f};
+    // How far through a jump it is, 0 on the ground.
+    float airborne = 0.0f;
+    // What its head is turned to, when anything.
+    bool look = false;
+    glm::vec3 lookAt{0.0f};
 };
 
 struct CreatureStateMessage
@@ -373,6 +386,11 @@ struct PlayerSnapshot
     // rather than only for whoever is being written to, because a player list shows the whole
     // table: nobody else can measure a third party's connection, so the host has to say.
     uint16_t pingMs = 0;
+
+    // Held by a creature -- being dragged off -- or wrapped up at its nest, and which creature. The host
+    // pins them where it says; their own machine has to stop guessing where their legs are taking them.
+    uint8_t heldBy = kNotHeld;
+    bool cocooned = false;
 };
 
 struct SnapshotMessage

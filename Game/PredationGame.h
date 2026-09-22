@@ -139,6 +139,56 @@ private:
     bool OnShotResolved(ShotResult& result, const glm::vec3& origin, int shooter);
     float LightAt(const glm::vec3& feet, bool torchOn) const;
     Creature* CreatureForBody(BodyHandle body);
+    Creature* CreatureById(uint8_t id);
+
+    // Creatures with hold of players: who has whom, and how hard each is struggling.
+    struct Grip
+    {
+        uint8_t creature = 0;
+        float struggle = 0.0f;
+        bool jumpWasDown = false;
+    };
+    std::map<uint8_t, Grip> m_grips;
+    // What the player pressed this tick, for struggling in a grip.
+    PlayerInput m_lastInput;
+    // Players wrapped up at a nest, alive, until somebody cuts them free or it kills them.
+    struct Cocoon
+    {
+        uint8_t player = 0;
+        glm::vec3 feet{0.0f};
+        float yaw = 0.0f;
+        float owed = 0.0f; // damage owed, paid a point at a time
+    };
+    std::vector<Cocoon> m_cocoons;
+    // Blows each locked door has taken from a creature breaking it down.
+    std::map<int, int> m_doorBlows;
+    // Creatures calling to each other: made this tick, heard by the others the next.
+    struct Call
+    {
+        glm::vec3 at{0.0f};
+        uint8_t by = 0;
+    };
+    std::vector<Call> m_calls;
+    std::vector<Call> m_callsHeard;
+    // The nests, where creatures take what they catch and go back to heal.
+    std::vector<glm::vec3> m_hives;
+    // What is drawn round each cocooned player, on every machine, and what somebody uses to cut them out.
+    std::map<uint8_t, Entity> m_cocoonEntities;
+    MeshHandle m_cocoonMesh;
+    // Where a creature holds somebody it has hold of, and which way they face.
+    glm::vec3 GripPoint(const Creature& creature, float& yaw) const;
+    // Pins (or lets go, `by` kNotHeld) a player where a creature has them, whoever's machine they are on.
+    void PinPlayer(uint8_t player, uint8_t by, bool cocooned, const glm::vec3& feet, float yaw);
+    void TryGrab(Creature& creature, int target, const std::vector<SensedPlayer>& players);
+    void ReleaseGrip(uint8_t player, const char* why);
+    void UpdateGrips(float dt);
+    void WrapInCocoon(uint8_t player, const Creature& creature);
+    void UpdateCocoons(float dt);
+    void FreeFromCocoon(uint8_t player, uint8_t helper);
+    // The cocoons, drawn round whoever is in one and offered to everybody else to cut open.
+    void ShowCocoons();
+    void OpenDoorForCreature(int door);
+    void BashDoor(int door, const Creature& creature);
     void DrawBrainInspector();
     void DrawCreatureOverlays(DebugDraw& draw);
     void RegisterCreatureCommands();

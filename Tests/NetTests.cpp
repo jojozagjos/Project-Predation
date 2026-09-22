@@ -251,11 +251,11 @@ TEST_CASE("A snapshot round-trips and stays small enough to send at 30 Hz", "[ne
     WriteSnapshot(writer, sent);
     const std::vector<uint8_t>& bytes = writer.Finish();
 
-    // A full four-player snapshot is 89 bytes: 160 bits per player plus a 71-bit header, the last
-    // eight of those being what is in their hands. At the 30 Hz send rate that is 2.7 kB/s to each
-    // client, so a host with three of them spends under 8 kB/s upstream. The bound is here to catch
-    // a field being added carelessly, not to be tight.
-    CHECK(bytes.size() <= 96);
+    // A full four-player snapshot is 90 bytes: 161 bits per player plus a 71-bit header, the last
+    // eight of those being what is in their hands and one whether a creature has hold of them. At the
+    // 30 Hz send rate that is 2.7 kB/s to each client, so a host with three of them spends under 8 kB/s
+    // upstream. The bound is here to catch a field being added carelessly, not to be tight.
+    CHECK(bytes.size() <= 100);
 
     BitReader reader(bytes.data(), bytes.size());
     MessageType type = MessageType::Count;
@@ -804,9 +804,10 @@ TEST_CASE("Creatures are sent as state: what they are, where, and what their bod
     BitWriter writer;
     WriteCreatureState(writer, sent);
     const std::vector<uint8_t>& bytes = writer.Finish();
-    // Eight creatures in 140 bytes -- 137 bits each -- thirty times a second, is about 4 KB/s per
-    // client: less than the players' own snapshots.
-    CHECK(bytes.size() <= 140);
+    // Eight creatures in 150 bytes -- 147 bits each, ten of them what the body is doing when it is doing
+    // nothing in particular -- thirty times a second, is about 4.5 KB/s per client: about the players' own
+    // snapshots. A creature mid-blow, looking at somebody, costs about a hundred bits more.
+    CHECK(bytes.size() <= 155);
 
     BitReader reader(bytes.data(), bytes.size());
     CreatureStateMessage received;
@@ -1116,4 +1117,56 @@ TEST_CASE("A catch-up event arrives marked quiet, and a live one does not", "[ne
         CHECK(received.quiet == quiet);
         CHECK(received.index == 4);
     }
+}
+
+TEST_CASE("What a creature is doing, and who it has hold of, go across with it", "[net][creature]")
+{
+    CreatureStateMessage sent;
+    sent.sequence = 9;
+    sent.count = 2;
+    CreatureSnapshot& swiping = sent.creatures[0];
+    swiping.id = 1;
+    swiping.action = 1; // a swipe
+    swiping.actionPhase = 0.4f;
+    swiping.actionSide = -1;
+    swiping.actionTarget = {3.0f, 1.2f, -4.0f};
+    swiping.look = true;
+    swiping.lookAt = {3.0f, 1.6f, -4.0f};
+    CreatureSnapshot& leaping = sent.creatures[1];
+    leaping.id = 2;
+    leaping.airborne = 0.5f;
+
+    BitWriter writer;
+    WriteCreatureState(writer, sent);
+    const std::vector<uint8_t>& bytes = writer.Finish();
+    BitReader reader(bytes.data(), bytes.size());
+    CreatureStateMessage received;
+    REQUIRE(ReadCreatureState(reader, received));
+    REQUIRE(received.count == 2);
+    CHECK(received.creatures[0].action == 1);
+    CHECK(received.creatures[0].actionPhase == Catch::Approx(0.4f).margin(0.02));
+    CHECK(received.creatures[0].actionSide == -1);
+    CHECK(glm::distance(received.creatures[0].actionTarget, swiping.actionTarget) < 0.01f);
+    CHECK(received.creatures[0].look);
+    CHECK(glm::distance(received.creatures[0].lookAt, swiping.lookAt) < 0.01f);
+    CHECK(received.creatures[1].action == 0);
+    CHECK_FALSE(received.creatures[1].look);
+    CHECK(received.creatures[1].airborne == Catch::Approx(0.5f).margin(0.02));
+
+    SnapshotMessage players;
+    players.count = 2;
+    players.players[0].playerId = 0;
+    players.players[1].playerId = 1;
+    players.players[1].heldBy = 3;
+    players.players[1].cocooned = true;
+    BitWriter playerWriter;
+    WriteSnapshot(playerWriter, players);
+    const std::vector<uint8_t>& playerBytes = playerWriter.Finish();
+    BitReader playerReader(playerBytes.data(), playerBytes.size());
+    SnapshotMessage got;
+    REQUIRE(ReadSnapshot(playerReader, got));
+    CHECK(got.players[0].heldBy == kNotHeld);
+    CHECK_FALSE(got.players[0].cocooned);
+    CHECK(got.players[1].heldBy == 3);
+    CHECK(got.players[1].cocooned);
 }

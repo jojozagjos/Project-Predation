@@ -20,7 +20,8 @@ enum class NoiseKind : uint8_t
     Impact, // where a round landed
     Door,
     Item,   // something dropped
-    Voice
+    Voice,
+    Call    // another creature calling the rest of the brood to it
 };
 
 const char* NoiseKindName(NoiseKind kind);
@@ -49,6 +50,7 @@ inline constexpr float kImpact = 12.0f;
 inline constexpr float kDoor = 14.0f;
 inline constexpr float kItem = 8.0f;
 inline constexpr float kVoice = 10.0f;
+inline constexpr float kCall = 45.0f;
 } // namespace NoiseReach
 
 } // namespace pred

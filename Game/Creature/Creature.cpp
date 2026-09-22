@@ -435,12 +435,74 @@ void Creature::Update(CreatureSenses senses, float time, float dt)
     senses.forward = Forward();
     senses.healthFraction = m_health / m_maxHealth;
     senses.nav = m_nav;
+    senses.routeReached = m_routeReached;
+    senses.verticalReach = m_caps.verticalReach;
 
     m_brain.Update(senses, dt);
     const CreatureIntent& intent = m_brain.Intent();
     m_windup = intent.windup;
     m_down = intent.down;
     m_crouchTarget = intent.crouch;
+    m_look = intent.look;
+    m_lookAt = intent.lookAt;
+
+    // What the body shows of what it is doing, beyond walking.
+    if (intent.roar)
+    {
+        m_roarUntil = time + 1.3f;
+    }
+    if (intent.bashing && m_bashStarted < 0.0f)
+    {
+        m_bashStarted = time;
+    }
+    else if (!intent.bashing)
+    {
+        m_bashStarted = -1.0f;
+    }
+    Action action;
+    switch (intent.attack)
+    {
+    case AttackKind::Swipe:
+        action.kind = RigAction::Swipe;
+        break;
+    case AttackKind::Bite:
+        action.kind = RigAction::Bite;
+        break;
+    case AttackKind::Lunge:
+        action.kind = RigAction::Lunge;
+        break;
+    case AttackKind::Grab:
+        action.kind = RigAction::Grab;
+        break;
+    case AttackKind::None:
+        break;
+    }
+    if (action.kind != RigAction::None)
+    {
+        action.phase = intent.attackPhase;
+        action.side = intent.attackSide;
+        action.target = intent.attackAt;
+    }
+    else if (intent.holding >= 0)
+    {
+        action.kind = RigAction::Carry;
+        action.phase = 0.5f;
+        action.target = m_position + Forward() * (m_anatomy.length * 0.6f) + glm::vec3(0.0f, m_anatomy.hipHeight, 0.0f);
+    }
+    else if (m_bashStarted >= 0.0f)
+    {
+        action.kind = RigAction::Bash;
+        action.phase = std::fmod((time - m_bashStarted) / 0.9f, 1.0f);
+        action.target = m_position + Forward();
+    }
+    else if (time < m_roarUntil)
+    {
+        action.kind = RigAction::Roar;
+        action.phase = 1.0f - (m_roarUntil - time) / 1.3f;
+        action.target = m_position + Forward();
+    }
+    m_action = action;
+
     Move(intent, senses.others, dt);
     SyncBody(dt);
 }
@@ -448,21 +510,84 @@ void Creature::Update(CreatureSenses senses, float time, float dt)
 void Creature::Move(const CreatureIntent& intent, const std::vector<glm::vec3>& others, float dt)
 {
     m_routeAge += dt;
+    if (m_jumps == 0)
+    {
+        // The jumps its body can make, as the navigation mesh names them. A drop it can always take.
+        m_jumps = NavMesh::kDrop;
+        if (m_caps.jump >= 0.9f)
+        {
+            m_jumps |= NavMesh::kJumpLow;
+        }
+        if (m_caps.jump >= 1.75f)
+        {
+            m_jumps |= NavMesh::kJumpMid;
+        }
+        if (m_caps.jump >= 2.6f)
+        {
+            m_jumps |= NavMesh::kJumpHigh;
+        }
+    }
+
+    // In the air: carried along the arc from where it left the ground to where it lands, the feet
+    // tucked up, and nothing else to decide until it is down.
+    if (m_jumping)
+    {
+        m_jumpTime += dt;
+        const float t = std::clamp(m_jumpTime / m_jumpDuration, 0.0f, 1.0f);
+        const float rise = std::max(m_jumpTo.y - m_jumpFrom.y, 0.0f);
+        const float arc = 0.35f + rise * 0.35f;
+        m_position = glm::mix(m_jumpFrom, m_jumpTo, t) + glm::vec3(0.0f, arc * 4.0f * t * (1.0f - t), 0.0f);
+        const glm::vec3 along{m_jumpTo.x - m_jumpFrom.x, 0.0f, m_jumpTo.z - m_jumpFrom.z};
+        if (glm::length(along) > 0.05f)
+        {
+            const float target = std::atan2(along.x, -along.z);
+            m_yaw = WrapAngle(m_yaw + std::clamp(WrapAngle(target - m_yaw), -8.0f * dt, 8.0f * dt));
+        }
+        m_airborne = t < 1.0f ? std::max(t, 0.01f) : 0.0f;
+        if (t >= 1.0f)
+        {
+            m_jumping = false;
+            m_position = m_jumpTo;
+            m_routeAge = 1.0e9f; // a fresh route from the new floor
+        }
+        m_brain.Route() = m_route;
+        return;
+    }
+    m_airborne = 0.0f;
+
     glm::vec3 heading{0.0f};
     float wanted = 0.0f;
-
     if (intent.move && m_nav != nullptr)
     {
         if (m_route.empty() || m_routeAge > 0.6f || Horizontal(m_routeGoal, intent.destination) > 0.8f)
         {
-            m_nav->FindPath(m_position, intent.destination, m_route);
+            m_nav->FindPath(m_position, intent.destination, m_route, &m_routeReached, &m_routeJumps, m_jumps);
             m_routeAge = 0.0f;
             m_routeGoal = intent.destination;
         }
-        // Corners already reached are behind it, including the first, which is where it stands.
+        // Corners already reached are behind it, including the first, which is where it stands. A corner
+        // that is the take-off of a jump is not passed but jumped from.
         while (!m_route.empty() && Horizontal(m_route.front(), m_position) < 0.35f)
         {
+            const bool takeOff = !m_routeJumps.empty() && m_routeJumps.front() != 0 && m_route.size() >= 2;
+            if (takeOff)
+            {
+                m_jumping = true;
+                m_jumpFrom = m_position;
+                m_jumpTo = m_route[1];
+                m_jumpTime = 0.0f;
+                const float gap = glm::distance(m_jumpFrom, m_jumpTo);
+                m_jumpDuration = std::clamp(0.3f + gap * 0.12f + std::max(m_jumpTo.y - m_jumpFrom.y, 0.0f) * 0.08f, 0.35f, 0.9f);
+                m_route.erase(m_route.begin(), m_route.begin() + 2);
+                m_routeJumps.erase(m_routeJumps.begin(), m_routeJumps.begin() + std::min<size_t>(2, m_routeJumps.size()));
+                m_brain.Route() = m_route;
+                return;
+            }
             m_route.erase(m_route.begin());
+            if (!m_routeJumps.empty())
+            {
+                m_routeJumps.erase(m_routeJumps.begin());
+            }
         }
         const glm::vec3 next = m_route.empty() ? intent.destination : m_route.front();
         const glm::vec3 toward{next.x - m_position.x, 0.0f, next.z - m_position.z};
@@ -475,6 +600,7 @@ void Creature::Move(const CreatureIntent& intent, const std::vector<glm::vec3>& 
     else
     {
         m_route.clear();
+        m_routeJumps.clear();
     }
     m_brain.Route() = m_route;
 
@@ -484,17 +610,33 @@ void Creature::Move(const CreatureIntent& intent, const std::vector<glm::vec3>& 
     m_speed += std::clamp(wanted - m_speed, -rate * dt, rate * dt);
 
     // Turning: towards whatever it is looking at, or else the way it is going.
+    //
+    // Not towards anything right on top of it -- the direction to a point under its own nose swings all
+    // the way round with every centimetre either of them moves, and it spun on the spot chasing it -- and,
+    // standing still, not for a small turn at all: its head does that. Turning on the spot is also slower
+    // than turning on the run, the way a body has to step itself round.
     glm::vec3 lookAlong = heading;
+    bool faceTarget = false;
     if (intent.face)
     {
-        lookAlong = glm::vec3(intent.facePoint.x - m_position.x, 0.0f, intent.facePoint.z - m_position.z);
+        const glm::vec3 toFace{intent.facePoint.x - m_position.x, 0.0f, intent.facePoint.z - m_position.z};
+        if (glm::length(toFace) > 0.6f)
+        {
+            lookAlong = toFace;
+            faceTarget = true;
+        }
     }
     if (glm::length(lookAlong) > 0.05f)
     {
         lookAlong = glm::normalize(lookAlong);
         const float target = std::atan2(lookAlong.x, -lookAlong.z);
         const float turn = WrapAngle(target - m_yaw);
-        m_yaw = WrapAngle(m_yaw + std::clamp(turn, -kTurnRate * dt, kTurnRate * dt));
+        const bool standing = m_speed < 0.3f;
+        if (!(standing && faceTarget && std::abs(turn) < 0.3f))
+        {
+            const float limit = (standing ? 3.2f : kTurnRate) * dt;
+            m_yaw = WrapAngle(m_yaw + std::clamp(turn, -limit, limit));
+        }
     }
 
     if (m_speed > 0.01f && glm::length(heading) > 0.5f)

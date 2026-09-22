@@ -52,6 +52,30 @@ struct HidingPlace
     bool shut = false;
 };
 
+// A door as the brain knows it: where its panel stands when shut, and whether it is shut and locked. A
+// shut door is a wall across its route -- the navigation mesh runs straight through it -- so a creature
+// that meets one pulls it open, or breaks it down.
+struct DoorSense
+{
+    int index = -1;
+    glm::vec3 a{0.0f}; // one end of the shut panel, at the floor
+    glm::vec3 b{0.0f}; // the other end
+    bool shut = false;
+    bool locked = false;
+};
+
+// The ways it has of hurting somebody.
+enum class AttackKind : uint8_t
+{
+    None,
+    Swipe, // a claw raked across: quick, from close
+    Bite,  // the jaws: slower, and worse
+    Lunge, // thrown at somebody from a few metres off, knocking them flat
+    Grab   // hold of them, to drag them away from the others
+};
+
+const char* AttackKindName(AttackKind kind);
+
 // Everything the brain gets to know this tick.
 struct CreatureSenses
 {
@@ -74,6 +98,16 @@ struct CreatureSenses
     // that shares what it sees would start here.
     std::vector<glm::vec3> others;
     const NavMesh* nav = nullptr;
+    // The doors in the level, shut or open.
+    std::vector<DoorSense> doors;
+    // Where its nest is, when it has one: where it takes what it catches, and goes back to heal.
+    bool hasHive = false;
+    glm::vec3 hive{0.0f};
+    // Whether the last route it was sent along gets all the way there. False when somebody is up
+    // somewhere it cannot follow.
+    bool routeReached = true;
+    // How far above its own feet it can strike, rearing up.
+    float verticalReach = 1.5f;
 };
 
 // What the brain wants its body to do.
@@ -96,6 +130,29 @@ struct CreatureIntent
     bool down = false;
     // Set on the one tick it pulls open a hiding place. The game drags out whoever is inside.
     int openHidingPlace = -1;
+    // Where its head is turned, whatever the body is doing. Searching is a head going from side to
+    // side, not a body spinning on the spot.
+    bool look = false;
+    glm::vec3 lookAt{0.0f};
+    // The blow it is in the middle of: which, how far through (0 to 1), which arm, and aimed where.
+    AttackKind attack = AttackKind::None;
+    float attackPhase = 0.0f;
+    int attackSide = 1;
+    glm::vec3 attackAt{0.0f};
+    // What kind of blow `strikeTarget` is, on the tick it lands.
+    AttackKind strikeKind = AttackKind::None;
+    // Set on the one tick it closes its hands on somebody. The game decides whether it has them.
+    int grabTarget = -1;
+    // Who it is holding, while it holds them. The game carries them along with it.
+    int holding = -1;
+    // Set on the one tick it wraps somebody up at its nest. The game makes the cocoon.
+    int cocoonTarget = -1;
+    // Calling to the others, on the tick it does.
+    bool roar = false;
+    // A door: set on the tick it pulls one open, and on each blow against one that is locked.
+    int openDoor = -1;
+    int bashDoor = -1;
+    bool bashing = false;
 };
 
 enum class Behavior : uint8_t
@@ -112,7 +169,9 @@ enum class Behavior : uint8_t
     // Going through the places somebody it lost could have gone, lockers among them.
     Search,
     // Curious, not hungry: following somebody at a distance, openly, to watch them.
-    Observe
+    Observe,
+    // Carrying somebody it has hold of away from the others, to kill them, or to its nest.
+    Drag
 };
 
 const char* BehaviorName(Behavior behavior);
@@ -147,6 +206,12 @@ public:
     // what it wanted to do is forgotten -- a strike it was in the middle of does not land later.
     void OnDied(float time);
     bool Dead() const { return m_dead; }
+    // The game closed its hands on somebody for it: it has them, and carries them off.
+    void OnGrabbed(int player, float time);
+    // It lost hold of them: shot off them, struggled free, or they died.
+    void OnReleased(float time, const std::string& why);
+    int Holding() const { return m_holding; }
+    AttackKind CurrentAttack() const { return m_attack; }
 
     const CreatureIntent& Intent() const { return m_intent; }
     const CreatureTraits& Traits() const { return m_traits; }
@@ -419,6 +484,37 @@ private:
     float m_openStarted = -1.0f;
 
     std::vector<HeatCell> m_heat;
+    // Attacking: which blow, when it started, whether it has landed, and which arm.
+    void StartAttack(AttackKind kind, const glm::vec3& at, float time);
+    AttackKind m_attack = AttackKind::None;
+    float m_attackStarted = -1.0f;
+    bool m_attackLanded = false;
+    int m_attackSide = 1;
+    float m_lungeReadyAt = 0.0f;
+    // Holding somebody: who, how much it has been hurt since, where it is taking them, and when it next
+    // bites.
+    int m_holding = -1;
+    float m_holdDamage = 0.0f;
+    float m_holdStarted = 0.0f;
+    glm::vec3 m_dragPoint{0.0f};
+    bool m_haveDragPoint = false;
+    bool m_dragArrived = false;
+    float m_nextBite = 0.0f;
+    bool PickDragPoint(const CreatureSenses& senses, int victim, glm::vec3& out);
+    // Looking round: the way it was facing when it started, which the head swings either side of.
+    glm::vec3 m_lookBase{0.0f, 0.0f, -1.0f};
+    bool m_lookBaseSet = false;
+    // Somebody up out of reach: since when, where it paces below them, and when it next calls.
+    float m_unreachableSince = -1.0f;
+    float m_nextPaceAt = 0.0f;
+    glm::vec3 m_pacePoint{0.0f};
+    float m_nextRoarAt = 0.0f;
+    // A door in the way: which, and when it started on it.
+    int m_door = -1;
+    float m_doorStarted = -1.0f;
+    float m_nextBash = 0.0f;
+    // Whether a door stands between it and the next corner of its route; fills `door`.
+    bool DoorInTheWay(const CreatureSenses& senses, DoorSense& door) const;
 
     bool m_dead = false;
 };

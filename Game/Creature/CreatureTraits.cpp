@@ -23,6 +23,8 @@ const char* NoiseKindName(NoiseKind kind)
         return "item";
     case NoiseKind::Voice:
         return "voice";
+    case NoiseKind::Call:
+        return "call";
     }
     return "noise";
 }

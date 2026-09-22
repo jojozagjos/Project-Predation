@@ -40,6 +40,14 @@ struct NavSettings
 class NavMesh
 {
 public:
+    // Jumps across a ledge, by how high: what a body can make is a question for the body. A route is
+    // only ever found through the ones a caller says it can take.
+    static constexpr uint16_t kJumpLow = 0x02;  // up or down a metre or so
+    static constexpr uint16_t kJumpMid = 0x04;  // up to nearly two metres
+    static constexpr uint16_t kJumpHigh = 0x08; // up to two and three quarters: climbing, really
+    static constexpr uint16_t kDrop = 0x10;     // down from somewhere too high to get back up
+    static constexpr uint16_t kAllJumps = kJumpLow | kJumpMid | kJumpHigh | kDrop;
+
     NavMesh();
     ~NavMesh();
     NavMesh(const NavMesh&) = delete;
@@ -61,8 +69,14 @@ public:
     // nearest `from`. When `to` cannot be reached the route ends at the nearest place that can be,
     // and `reached` is false -- a creature that cannot get somewhere should still go as far as it
     // can rather than stand still.
+    //
+    // `jumps`, when given, is filled with one entry per corner: true where that corner is the take-off of
+    // a jump that lands on the next one. `allowed` is which jumps the route may use.
     bool FindPath(const glm::vec3& from, const glm::vec3& to, std::vector<glm::vec3>& corners,
-                  bool* reached = nullptr) const;
+                  bool* reached = nullptr, std::vector<uint8_t>* jumps = nullptr, uint16_t allowed = kAllJumps) const;
+
+    // How many jumps were found across ledges when it was built, for the log and the tests.
+    size_t JumpCount() const;
 
     // Whether walking in a straight line from `from` to `to` stays on the mesh the whole way. The
     // cheap question a creature asks before bothering with a whole route.

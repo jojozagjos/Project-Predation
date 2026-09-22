@@ -389,13 +389,19 @@ TEST_CASE("It hunts somebody it sees and strikes when it reaches them", "[creatu
     const std::vector<SensedPlayer> players{Somebody(1, player)};
 
     bool hunted = false;
+    bool huntedFromAfar = false;
+    float nearestEye = 1.0e9f;
     bool attacked = false;
     bool struck = false;
     float closest = 1.0e9f;
     harness.Run(10.0f, players, {},
                 [&](const Creature& creature)
                 {
-                    hunted = hunted || creature.Brain().Current() == Behavior::Hunt;
+                    const bool hunting = creature.Brain().Current() == Behavior::Hunt;
+                    hunted = hunted || hunting;
+                    nearestEye = std::min(nearestEye, glm::distance(creature.Eye(), player + glm::vec3(0.0f, 1.08f, 0.0f)));
+                    huntedFromAfar = huntedFromAfar ||
+                                     (hunting && nearestEye > CreatureBrain::CloseSense() + 0.3f);
                     attacked = attacked || creature.Brain().Current() == Behavior::Attack;
                     struck = struck || creature.Brain().Intent().strikeTarget == 1;
                     closest = std::min(closest, glm::distance(creature.Position(), player));
@@ -404,8 +410,8 @@ TEST_CASE("It hunts somebody it sees and strikes when it reaches them", "[creatu
     if (harness.creature->Anatomy().eyes == 0)
     {
         // A body with no eyes cannot see somebody standing still seven metres away, which is the whole
-        // point of it: it has to hear them, or bump into them.
-        CHECK_FALSE(hunted);
+        // point of it: it has to hear them, or bump into them -- which, wandering, it may.
+        CHECK_FALSE(huntedFromAfar);
         return;
     }
     CHECK(hunted);
@@ -426,9 +432,13 @@ TEST_CASE("A creature with no eyes hears what it cannot see", "[creature][senses
     glm::vec3 player;
     REQUIRE(OpenView(harness, 7.0f, at, player));
     const std::vector<SensedPlayer> players{Somebody(1, player)};
-    harness.Run(3.0f, players);
+    // Not seen from where it stands. (It may wander into them, and knows somebody is there when it does.)
+    float closest = 1.0e9f;
+    harness.Run(3.0f, players, {},
+                [&](const Creature& creature)
+                { closest = std::min(closest, glm::distance(creature.Eye(), player + glm::vec3(0.0f, 1.08f, 0.0f))); });
     const CreatureBrain::Track* track = harness.TrackOf(1);
-    CHECK((track == nullptr || track->lastSeen < 0.0f));
+    CHECK((track == nullptr || track->lastSeen < 0.0f || closest < CreatureBrain::CloseSense() + 0.5f));
 
     Noise step;
     step.kind = NoiseKind::Footstep;

@@ -347,6 +347,12 @@ void WriteSnapshot(BitWriter& writer, const SnapshotMessage& message)
         // Ten bits, so anything past a second reads as a second. A connection worse than that is
         // unplayable and the exact figure stops being worth a bit.
         writer.WriteBits(std::min<uint16_t>(player.pingMs, kMaxPingMs) / kPingStepMs, kPingBits);
+        writer.WriteBool(player.heldBy != kNotHeld);
+        if (player.heldBy != kNotHeld)
+        {
+            writer.WriteBits(player.heldBy, 4);
+            writer.WriteBool(player.cocooned);
+        }
     }
 }
 
@@ -384,6 +390,13 @@ bool ReadSnapshot(BitReader& reader, SnapshotMessage& out)
         player.mantlePhase = player.mantling ? reader.ReadQuantised(0.0f, 1.0f, 6) : 0.0f;
         player.mantleEdge = player.mantling ? ReadPosition(reader) : glm::vec3(0.0f);
         player.pingMs = static_cast<uint16_t>(reader.ReadBits(kPingBits) * kPingStepMs);
+        player.heldBy = kNotHeld;
+        player.cocooned = false;
+        if (reader.ReadBool())
+        {
+            player.heldBy = static_cast<uint8_t>(reader.ReadBits(4));
+            player.cocooned = reader.ReadBool();
+        }
 
         if (player.playerId >= kMaxPlayers || stance > static_cast<uint32_t>(PlayerStance::Prone))
         {
@@ -728,6 +741,19 @@ void WriteCreatureState(BitWriter& writer, const CreatureStateMessage& message)
         writer.WriteBool(creature.alive);
         writer.WriteBool(creature.down);
         writer.WriteQuantised(creature.crouch, 0.0f, 1.0f, 3);
+        writer.WriteBits(creature.action, 3);
+        if (creature.action != 0)
+        {
+            writer.WriteQuantised(creature.actionPhase, 0.0f, 1.0f, 6);
+            writer.WriteBool(creature.actionSide > 0);
+            WritePosition(writer, creature.actionTarget);
+        }
+        writer.WriteQuantised(creature.airborne, 0.0f, 1.0f, 6);
+        writer.WriteBool(creature.look);
+        if (creature.look)
+        {
+            WritePosition(writer, creature.lookAt);
+        }
     }
 }
 
@@ -753,6 +779,19 @@ bool ReadCreatureState(BitReader& reader, CreatureStateMessage& out)
         creature.alive = reader.ReadBool();
         creature.down = reader.ReadBool();
         creature.crouch = reader.ReadQuantised(0.0f, 1.0f, 3);
+        creature.action = static_cast<uint8_t>(reader.ReadBits(3));
+        if (creature.action != 0)
+        {
+            creature.actionPhase = reader.ReadQuantised(0.0f, 1.0f, 6);
+            creature.actionSide = reader.ReadBool() ? 1 : -1;
+            creature.actionTarget = ReadPosition(reader);
+        }
+        creature.airborne = reader.ReadQuantised(0.0f, 1.0f, 6);
+        creature.look = reader.ReadBool();
+        if (creature.look)
+        {
+            creature.lookAt = ReadPosition(reader);
+        }
     }
     return !reader.Overran();
 }

@@ -7,6 +7,8 @@
 
 #include "Game/PredationGame.h"
 
+#include "Engine/Render/Primitives.h"
+
 #include "Engine/Core/CVar.h"
 #include "Engine/Core/Log.h"
 #include "Engine/Debug/DebugCategories.h"
@@ -76,6 +78,19 @@ void PredationGame::BuildNavigation()
 
 void PredationGame::ClearCreatures()
 {
+    // Nobody is left held by something that is not there any more, or wrapped up at its nest.
+    while (!m_grips.empty())
+    {
+        ReleaseGrip(m_grips.begin()->first, "gone");
+    }
+    for (const Cocoon& cocoon : m_cocoons)
+    {
+        PinPlayer(cocoon.player, kNotHeld, false, cocoon.feet, cocoon.yaw);
+    }
+    m_cocoons.clear();
+    m_calls.clear();
+    m_callsHeard.clear();
+    m_doorBlows.clear();
     m_creatures.clear();
     m_arrivalsPending = 0;
     m_noises.clear();
@@ -342,6 +357,7 @@ void PredationGame::UpdateCreatures(float dt)
     if (m_creatures.empty())
     {
         m_noises.clear();
+        UpdateCocoons(dt);
         return;
     }
 
@@ -408,6 +424,29 @@ void PredationGame::UpdateCreatures(float dt)
         places.push_back(place);
     }
 
+    // The doors, as a creature knows them: where each stands shut, whether it is, and whether it is
+    // locked. Not the lockers' doors, which are inside lockers and in nobody's way.
+    std::vector<DoorSense> doors;
+    for (size_t d = 0; d < m_world.Doors().size(); ++d)
+    {
+        const bool locker = std::any_of(m_world.HidingSpots().begin(), m_world.HidingSpots().end(),
+                                        [&](const WorldObjects::HidingSpot& spot) { return spot.doorIndex == static_cast<int>(d); });
+        if (locker)
+        {
+            continue;
+        }
+        const WorldObjects::Door& door = m_world.Doors()[d];
+        const glm::quat closed = glm::angleAxis(door.closedYaw, glm::vec3(0.0f, 1.0f, 0.0f));
+        const glm::vec3 across = closed * glm::vec3(door.panelOffset.x * 2.0f, 0.0f, door.panelOffset.z * 2.0f);
+        DoorSense sense;
+        sense.index = static_cast<int>(d);
+        sense.a = {door.hinge.x, door.hinge.y, door.hinge.z};
+        sense.b = sense.a + glm::vec3(across.x, 0.0f, across.z);
+        sense.shut = std::abs(door.angle - door.closedYaw) < 0.35f;
+        sense.locked = door.locked;
+        doors.push_back(sense);
+    }
+
     PhysicsWorld& physics = m_app->GetPhysics();
     for (const std::unique_ptr<Creature>& creature : m_creatures)
     {
@@ -420,6 +459,29 @@ void PredationGame::UpdateCreatures(float dt)
         CreatureSenses senses;
         senses.players = players;
         senses.noises = m_noises;
+        senses.doors = doors;
+        // Its nest, when there is one near enough to be its own.
+        for (const glm::vec3& hive : m_hives)
+        {
+            if (glm::distance(hive, creature->Position()) < 70.0f &&
+                (!senses.hasHive || glm::distance(hive, creature->Position()) < glm::distance(senses.hive, creature->Position())))
+            {
+                senses.hasHive = true;
+                senses.hive = hive;
+            }
+        }
+        // The others calling. Not its own call, which it knows it made.
+        for (const Call& call : m_callsHeard)
+        {
+            if (call.by != creature->NetId())
+            {
+                Noise noise;
+                noise.kind = NoiseKind::Call;
+                noise.position = call.at;
+                noise.reach = NoiseReach::kCall;
+                senses.noises.push_back(noise);
+            }
+        }
         const BodyHandle self = creature->Body();
         // Whether anything solid is between two points, stopping a little short of the far end, which
         // is usually somebody with a shape of their own.
@@ -491,6 +553,41 @@ void PredationGame::UpdateCreatures(float dt)
             }
         }
 
+        const CreatureIntent& intent = creature->Brain().Intent();
+        // Calling the others: heard by them next tick.
+        if (intent.roar)
+        {
+            m_calls.push_back({creature->Position(), creature->NetId()});
+            PlaySound(m_sounds.death.Pick(), creature->Eye(), 1.0f, 0.55f);
+        }
+        if (intent.openDoor >= 0)
+        {
+            OpenDoorForCreature(intent.openDoor);
+        }
+        if (intent.bashDoor >= 0)
+        {
+            BashDoor(intent.bashDoor, *creature);
+        }
+        if (intent.grabTarget >= 0)
+        {
+            TryGrab(*creature, intent.grabTarget, players);
+        }
+        if (intent.cocoonTarget >= 0)
+        {
+            WrapInCocoon(static_cast<uint8_t>(intent.cocoonTarget), *creature);
+        }
+        // Licking its wounds at the nest.
+        if (creature->Brain().Current() == Behavior::Retreat)
+        {
+            for (const glm::vec3& hive : m_hives)
+            {
+                if (Horizontal(hive, creature->Position()) < 3.5f)
+                {
+                    creature->Heal(creature->MaxHealth() * 0.03f * dt);
+                }
+            }
+        }
+
         // A strike landing. Checked again here rather than trusted: somebody who stepped back
         // during the wind-up is out of reach now, and that is the whole reason there is one.
         const int target = creature->Brain().Intent().strikeTarget;
@@ -504,9 +601,14 @@ void PredationGame::UpdateCreatures(float dt)
             {
                 continue;
             }
+            // Somebody it has hold of is in reach whatever the numbers say. A lunge carries it further; up
+            // on something, it can reach as high as it can rear.
+            const bool holdingThem = creature->Brain().Holding() == player.id;
             const float reach = Horizontal(creature->Position(), player.feet);
-            const float rise = std::abs(creature->Position().y - player.feet.y);
-            if (reach > creature->Capabilities().strikeReach + kStrikeGrace || rise > 1.5f)
+            const float rise = player.feet.y - creature->Position().y;
+            const float reachLimit = creature->Capabilities().strikeReach + kStrikeGrace +
+                                     (intent.strikeKind == AttackKind::Lunge ? 0.8f : 0.0f);
+            if (!holdingThem && (reach > reachLimit || rise > creature->Capabilities().verticalReach || rise < -1.6f))
             {
                 PRED_LOG_INFO(AI, "Strike at {} (player {}) missed: {:.1f} m away", player.name, player.id, reach);
                 break;
@@ -518,18 +620,38 @@ void PredationGame::UpdateCreatures(float dt)
             glm::vec3 blow = player.feet - creature->Position();
             blow.y = 0.0f;
             blow = glm::length(blow) > 1e-3f ? glm::normalize(blow) : creature->Forward();
-            ApplyPlayerDamage(static_cast<uint8_t>(player.id), creature->Capabilities().strikeDamage, kNoKiller, blow,
-                              "creature");
+            // Claws are quicker than teeth and do less; teeth into somebody it is holding down do most.
+            float damage = creature->Capabilities().strikeDamage;
+            switch (intent.strikeKind)
+            {
+            case AttackKind::Swipe:
+                damage *= 0.75f;
+                break;
+            case AttackKind::Bite:
+                damage *= holdingThem ? 1.5f : 1.15f;
+                break;
+            case AttackKind::Lunge:
+                damage *= 1.05f;
+                break;
+            default:
+                break;
+            }
+            ApplyPlayerDamage(static_cast<uint8_t>(player.id), damage, kNoKiller, blow, "creature");
             PlaySound(m_sounds.hurt.Pick(), player.feet + glm::vec3(0.0f, 1.2f, 0.0f), 0.9f, 0.85f);
             PRED_LOG_INFO(AI, "Strike at {} (player {}) landed", player.name, player.id);
             break;
         }
     }
     m_noises.clear();
+    m_callsHeard = std::move(m_calls);
+    m_calls.clear();
+    UpdateGrips(dt);
+    UpdateCocoons(dt);
 }
 
 void PredationGame::UpdateCreatureVisuals(float dt)
 {
+    ShowCocoons();
     // A client's creatures have no mind here. They are eased towards what the host last said.
     const bool shownOnly = !IsAuthority();
     for (const std::unique_ptr<Creature>& creature : m_creatures)
@@ -565,6 +687,14 @@ void PredationGame::SendCreatureState()
         // draws both the same, and that is the trick.
         entry.down = creature->Down() && creature->Alive();
         entry.crouch = creature->Crouch();
+        const Creature::Action& action = creature->CurrentAction();
+        entry.action = static_cast<uint8_t>(action.kind);
+        entry.actionPhase = action.phase;
+        entry.actionSide = static_cast<int8_t>(action.side > 0 ? 1 : -1);
+        entry.actionTarget = action.target;
+        entry.airborne = creature->Airborne();
+        entry.look = creature->Looking();
+        entry.lookAt = creature->LookingAt();
     }
     m_host.SendCreatureState(state);
 }
@@ -613,6 +743,12 @@ void PredationGame::ApplyCreatureState(const CreatureStateMessage& state)
         }
         creature->Receive(shown.position, shown.yaw, shown.speed, shown.windup, shown.health, shown.alive,
                           shown.down, shown.crouch);
+        Creature::Action action;
+        action.kind = shown.action < 8 ? static_cast<RigAction>(shown.action) : RigAction::None;
+        action.phase = shown.actionPhase;
+        action.side = shown.actionSide;
+        action.target = shown.actionTarget;
+        creature->SetShownAction(action, shown.airborne, shown.look, shown.lookAt);
     }
 }
 
@@ -1069,6 +1205,382 @@ void PredationGame::RegisterCreatureCommands()
         },
         "creature_hurt [amount]");
 #endif
+}
+
+
+// --- Held, dragged and wrapped up --------------------------------------------------------------------
+
+Creature* PredationGame::CreatureById(uint8_t id)
+{
+    for (const std::unique_ptr<Creature>& creature : m_creatures)
+    {
+        if (creature->NetId() == id)
+        {
+            return creature.get();
+        }
+    }
+    return nullptr;
+}
+
+glm::vec3 PredationGame::GripPoint(const Creature& creature, float& yaw) const
+{
+    // Dragged along the floor in front of it, by the jaws or the hands, facing it: the last thing a
+    // person being taken sees is what is taking them.
+    const CreatureAnatomy& a = creature.Anatomy();
+    const float ahead = a.length * 0.5f + a.neckLength + a.headLength * 0.7f + 0.2f;
+    glm::vec3 feet = creature.Position() + creature.Forward() * ahead;
+    glm::vec3 onMesh;
+    if (m_nav.NearestPoint(feet, 1.0f, onMesh) && std::abs(onMesh.y - feet.y) < 0.6f)
+    {
+        feet.y = onMesh.y;
+    }
+    yaw = creature.Yaw() + glm::pi<float>();
+    return feet;
+}
+
+void PredationGame::PinPlayer(uint8_t player, uint8_t by, bool cocooned, const glm::vec3& feet, float yaw)
+{
+    const bool release = by == kNotHeld;
+    if (player == LocalPlayerId())
+    {
+        if (release)
+        {
+            if (m_player.IsAttached() && m_hidingSpot < 0)
+            {
+                m_player.Detach(feet);
+            }
+        }
+        else
+        {
+            m_player.Attach(feet, yaw);
+        }
+    }
+    if (m_sessionMode == SessionMode::Host)
+    {
+        m_host.SetPlayerGrabbed(player, by, cocooned, feet, yaw);
+    }
+}
+
+void PredationGame::TryGrab(Creature& creature, int target, const std::vector<SensedPlayer>& players)
+{
+    for (const SensedPlayer& player : players)
+    {
+        if (player.id != target || !player.alive || player.hidden)
+        {
+            continue;
+        }
+        const uint8_t id = static_cast<uint8_t>(player.id);
+        const float reach = Horizontal(creature.Position(), player.feet);
+        const float rise = player.feet.y - creature.Position().y;
+        const bool taken = m_grips.count(id) != 0 ||
+                           std::any_of(m_cocoons.begin(), m_cocoons.end(), [&](const Cocoon& c) { return c.player == id; });
+        if (taken || reach > creature.Capabilities().strikeReach + kStrikeGrace || std::abs(rise) > 1.0f)
+        {
+            PRED_LOG_INFO(AI, "Grab at {} (player {}) missed: {:.1f} m away", player.name, player.id, reach);
+            return;
+        }
+        m_grips[id] = Grip{creature.NetId(), 0.0f, false};
+        creature.Brain().OnGrabbed(player.id, m_creatureClock);
+        PlaySound(m_sounds.hurt.Pick(), player.feet + glm::vec3(0.0f, 1.2f, 0.0f), 0.9f, 0.7f);
+        PRED_LOG_INFO(AI, "Creature {} has hold of {} (player {})", creature.NetId(), player.name, player.id);
+        if (id == LocalPlayerId())
+        {
+            m_app->GetConsole().Print("Something has you. Struggle -- jump, over and over -- or hope somebody shoots it.");
+        }
+        return;
+    }
+}
+
+void PredationGame::ReleaseGrip(uint8_t player, const char* why)
+{
+    const auto found = m_grips.find(player);
+    if (found == m_grips.end())
+    {
+        return;
+    }
+    Creature* creature = CreatureById(found->second.creature);
+    glm::vec3 feet = m_player.State().position;
+    float yaw = 0.0f;
+    if (creature != nullptr)
+    {
+        feet = GripPoint(*creature, yaw);
+        creature->Brain().OnReleased(m_creatureClock, why);
+    }
+    for (const RemotePlayerView& remote : RemotePlayers())
+    {
+        if (remote.id == player)
+        {
+            feet = remote.position;
+        }
+    }
+    if (player == LocalPlayerId())
+    {
+        feet = m_player.State().position;
+    }
+    m_grips.erase(found);
+    PinPlayer(player, kNotHeld, false, feet, yaw);
+    PRED_LOG_INFO(AI, "Player {} let go: {}", player, why);
+}
+
+void PredationGame::UpdateGrips(float dt)
+{
+    (void)dt;
+    std::vector<uint8_t> letGo;
+    std::vector<const char*> reasons;
+    for (auto& [player, grip] : m_grips)
+    {
+        Creature* creature = CreatureById(grip.creature);
+        bool alive = true;
+        if (player == LocalPlayerId())
+        {
+            alive = m_player.State().alive;
+        }
+        for (const RemotePlayerView& remote : RemotePlayers())
+        {
+            if (remote.id == player)
+            {
+                alive = remote.alive;
+            }
+        }
+        if (creature == nullptr || !creature->Alive() || creature->Down() || creature->Brain().Holding() != player || !alive)
+        {
+            letGo.push_back(player);
+            reasons.push_back(!alive ? "they died" : "it let go");
+            continue;
+        }
+        // Struggling: every fresh press of jump works a hand free a little. Enough of them, quickly, and
+        // they are out of its grip -- which is worth knowing, and worth being told.
+        bool jump = false;
+        if (player == LocalPlayerId())
+        {
+            jump = m_lastInput.jump;
+        }
+        else if (m_sessionMode == SessionMode::Host)
+        {
+            jump = m_host.LastInputOf(player).jump;
+        }
+        if (jump && !grip.jumpWasDown)
+        {
+            grip.struggle += 0.09f;
+        }
+        grip.jumpWasDown = jump;
+        grip.struggle = std::max(grip.struggle - 0.05f * dt, 0.0f);
+        if (grip.struggle >= 1.0f)
+        {
+            letGo.push_back(player);
+            reasons.push_back("struggled free");
+            continue;
+        }
+        float yaw = 0.0f;
+        const glm::vec3 feet = GripPoint(*creature, yaw);
+        PinPlayer(player, grip.creature, false, feet, yaw);
+    }
+    for (size_t i = 0; i < letGo.size(); ++i)
+    {
+        ReleaseGrip(letGo[i], reasons[i]);
+    }
+}
+
+void PredationGame::WrapInCocoon(uint8_t player, const Creature& creature)
+{
+    m_grips.erase(player);
+    // Against the side of the nest, one place round it for each person already there.
+    glm::vec3 nest = creature.Position();
+    float best = 1.0e9f;
+    for (const glm::vec3& hive : m_hives)
+    {
+        if (glm::distance(hive, creature.Position()) < best)
+        {
+            best = glm::distance(hive, creature.Position());
+            nest = hive;
+        }
+    }
+    const float angle = static_cast<float>(m_cocoons.size()) * 1.3f + 0.4f;
+    glm::vec3 feet = nest + glm::vec3(std::cos(angle), 0.0f, std::sin(angle)) * 2.2f;
+    glm::vec3 onMesh;
+    if (m_nav.NearestPoint(feet, 2.0f, onMesh))
+    {
+        feet = onMesh;
+    }
+    const float yaw = std::atan2(feet.x - nest.x, -(feet.z - nest.z));
+    m_cocoons.push_back({player, feet, yaw, 0.0f});
+    PinPlayer(player, creature.NetId(), true, feet, yaw);
+    PRED_LOG_INFO(AI, "Player {} wrapped up at the nest", player);
+    if (player == LocalPlayerId())
+    {
+        m_app->GetConsole().Print("You are wrapped up at its nest. Somebody can cut you free -- before it kills you.");
+    }
+}
+
+void PredationGame::UpdateCocoons(float dt)
+{
+    // Slowly: long enough for somebody to come, and not so long that there is no hurry.
+    constexpr float kBleed = 4.0f; // health a second
+    for (size_t i = 0; i < m_cocoons.size();)
+    {
+        Cocoon& cocoon = m_cocoons[i];
+        bool alive = true;
+        if (cocoon.player == LocalPlayerId())
+        {
+            alive = m_player.State().alive;
+        }
+        for (const RemotePlayerView& remote : RemotePlayers())
+        {
+            if (remote.id == cocoon.player)
+            {
+                alive = remote.alive;
+            }
+        }
+        if (!alive)
+        {
+            PinPlayer(cocoon.player, kNotHeld, false, cocoon.feet, cocoon.yaw);
+            m_cocoons.erase(m_cocoons.begin() + static_cast<std::ptrdiff_t>(i));
+            continue;
+        }
+        PinPlayer(cocoon.player, 0, true, cocoon.feet, cocoon.yaw);
+        cocoon.owed += kBleed * dt;
+        if (cocoon.owed >= 1.0f)
+        {
+            const float amount = std::floor(cocoon.owed);
+            cocoon.owed -= amount;
+            ApplyPlayerDamage(cocoon.player, amount, kNoKiller, glm::vec3(0.0f, -1.0f, 0.0f), "cocoon");
+        }
+        ++i;
+    }
+}
+
+void PredationGame::FreeFromCocoon(uint8_t player, uint8_t helper)
+{
+    const auto found = std::find_if(m_cocoons.begin(), m_cocoons.end(), [&](const Cocoon& c) { return c.player == player; });
+    if (found == m_cocoons.end())
+    {
+        return;
+    }
+    const Cocoon cocoon = *found;
+    m_cocoons.erase(found);
+    PinPlayer(player, kNotHeld, false, cocoon.feet + glm::vec3(0.0f, 0.1f, 0.0f), cocoon.yaw);
+    PlaySound(m_sounds.locker.Pick(), cocoon.feet + glm::vec3(0.0f, 1.0f, 0.0f), 0.8f, 0.6f);
+    MakeNoise(NoiseKind::Door, cocoon.feet, NoiseReach::kDoor, helper);
+    PRED_LOG_INFO(AI, "Player {} cut free by player {}", player, helper);
+}
+
+void PredationGame::ShowCocoons()
+{
+    // Who is wrapped up, as this machine knows it: the host from its own list, anybody else from what
+    // the host says about everybody.
+    std::map<uint8_t, std::pair<glm::vec3, float>> wrapped;
+    if (IsAuthority())
+    {
+        for (const Cocoon& cocoon : m_cocoons)
+        {
+            wrapped[cocoon.player] = {cocoon.feet, cocoon.yaw};
+        }
+    }
+    else
+    {
+        for (const RemotePlayerView& remote : RemotePlayers())
+        {
+            if (remote.cocooned)
+            {
+                wrapped[remote.id] = {remote.position, remote.yaw};
+            }
+        }
+    }
+    if (!m_cocoonMesh.IsValid() && !wrapped.empty())
+    {
+        // A husk of dried flesh and sinew the size of a person, lumpy, glistening where it is fresh.
+        MeshData husk;
+        const glm::mat4 identity(1.0f);
+        husk.Append(Primitives::Ellipsoid({0.42f, 1.0f, 0.36f}, 18, 12), glm::translate(identity, {0.0f, 0.95f, 0.0f}));
+        for (int k = 0; k < 9; ++k)
+        {
+            const float a = static_cast<float>(k) * 2.4f;
+            const float y = 0.3f + 0.17f * static_cast<float>(k);
+            husk.Append(Primitives::Ellipsoid({0.22f, 0.16f, 0.2f}, 10, 7),
+                        glm::translate(identity, {std::cos(a) * 0.3f, y, std::sin(a) * 0.26f}));
+        }
+        for (MeshVertex& vertex : husk.vertices)
+        {
+            const float shade = 0.55f + 0.45f * std::abs(std::sin(vertex.position.y * 17.0f + vertex.position.x * 9.0f));
+            const glm::vec3 colour = glm::vec3(0.34f, 0.27f, 0.22f) * shade;
+            const auto channel = [](float v) { return static_cast<uint32_t>(std::clamp(v, 0.0f, 1.0f) * 255.0f); };
+            vertex.color = channel(colour.r) | (channel(colour.g) << 8) | (channel(colour.b) << 16) | (channel(0.5f) << 24);
+        }
+        m_cocoonMesh = m_app->GetMeshes().Upload(husk, "cocoon_husk");
+    }
+    // Gone ones taken away.
+    for (auto it = m_cocoonEntities.begin(); it != m_cocoonEntities.end();)
+    {
+        if (wrapped.count(it->first) == 0)
+        {
+            m_interactions.Unregister(it->second);
+            m_scene.Destroy(it->second);
+            it = m_cocoonEntities.erase(it);
+        }
+        else
+        {
+            ++it;
+        }
+    }
+    for (const auto& [player, place] : wrapped)
+    {
+        auto found = m_cocoonEntities.find(player);
+        if (found == m_cocoonEntities.end())
+        {
+            Transform transform;
+            const Entity entity = m_scene.CreateMeshEntity("cocoon", transform, m_cocoonMesh, Material::Diffuse(glm::vec3(1.0f), 0.55f));
+            if (player != LocalPlayerId())
+            {
+                Interactable interactable;
+                interactable.entity = entity;
+                interactable.kind = InteractionKind::Cocoon;
+                interactable.verb = "Cut free";
+                interactable.name = "Cocoon";
+                interactable.payload = player;
+                interactable.range = 2.2f;
+                interactable.focusOffset = {0.0f, 1.0f, 0.0f};
+                m_interactions.Register(interactable);
+            }
+            found = m_cocoonEntities.emplace(player, entity).first;
+        }
+        if (Transform* transform = m_scene.GetTransform(found->second))
+        {
+            transform->position = place.first;
+            transform->rotation = glm::angleAxis(-place.second, glm::vec3(0.0f, 1.0f, 0.0f));
+        }
+    }
+}
+
+void PredationGame::OpenDoorForCreature(int door)
+{
+    const WorldObjects::Door* found = m_world.GetDoor(door);
+    if (found == nullptr || found->IsOpen() || found->locked)
+    {
+        return;
+    }
+    // Through the same door as a player opening it, so the sound, the noise and the message to everybody
+    // else all follow.
+    PerformInteraction(InteractionKind::Door, door, kNoKiller);
+}
+
+void PredationGame::BashDoor(int door, const Creature& creature)
+{
+    WorldObjects::Door* found = m_world.GetDoor(door);
+    if (found == nullptr)
+    {
+        return;
+    }
+    PlaySound(m_sounds.door.Pick(), found->hinge + glm::vec3(0.0f, 1.0f, 0.0f), 1.0f, 0.55f);
+    MakeNoise(NoiseKind::Door, found->hinge, NoiseReach::kDoor * 1.8f, kNoKiller);
+    // Heavier things break it sooner.
+    const int needed = std::clamp(static_cast<int>(6.0f - creature.Capabilities().mass / 60.0f), 2, 6);
+    if (++m_doorBlows[door] >= needed)
+    {
+        found->locked = false;
+        m_doorBlows.erase(door);
+        PRED_LOG_INFO(AI, "Creature {} broke door {} open", creature.NetId(), door);
+        PerformInteraction(InteractionKind::Door, door, kNoKiller);
+    }
 }
 
 } // namespace pred
