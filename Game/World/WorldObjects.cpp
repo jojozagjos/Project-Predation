@@ -607,13 +607,17 @@ void WorldObjects::Update(Scene& scene, PhysicsWorld& physics, InteractionSystem
 
         if (Transform* transform = scene.GetTransform(crate.lidEntity))
         {
-            // Hinged along the back edge, so it swings up and back rather than turning about its
-            // own middle and sinking half of itself into the crate.
+            // Hinged along the back edge, so it swings up and back rather than turning about its own
+            // middle and sinking half of itself into the crate.
+            //
+            // The panel turns about the hinge, so its middle travels round it: up by the sine and back
+            // by the cosine. The two used to disagree in sign -- it turned one way and slid the other --
+            // which is what made the lid look broken and left it standing where it was.
             constexpr float kHalfDepth = 0.23f;
             const float lift = std::sin(crate.lidAngle) * kHalfDepth;
-            const float pull = (1.0f - std::cos(crate.lidAngle)) * kHalfDepth;
+            const float back = (1.0f - std::cos(crate.lidAngle)) * kHalfDepth;
             transform->rotation = glm::angleAxis(-crate.lidAngle, glm::vec3(1.0f, 0.0f, 0.0f));
-            transform->position = crate.lidRest + glm::vec3(0.0f, lift, pull);
+            transform->position = crate.lidRest + glm::vec3(0.0f, lift, -back);
         }
     }
 

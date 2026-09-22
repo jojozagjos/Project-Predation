@@ -104,7 +104,7 @@ CVar<bool> cv_sunShadows{"r.shadows", true, "Whether the sun is stopped by anyth
                          CVarFlags::Archive};
 CVar<bool> cv_skyShadows{"r.sky_occlusion", true, "Whether a roof keeps the sky out of a room",
                          CVarFlags::Archive};
-CVar<float> cv_shadowDistance{"r.shadow_distance", 32.0f,
+CVar<float> cv_shadowDistance{"r.shadow_distance", 64.0f,
                               "How far from the player occlusion is worked out, in metres",
                               CVarFlags::Archive};
 // The torch's own depth map. Without it a light that has a place has no occlusion at all and shines
@@ -1595,6 +1595,10 @@ bool PredationGame::PerformInteraction(InteractionKind kind, int index, uint8_t 
             {
                 LeaveHidingSpot();
             }
+            else if (m_sessionMode == SessionMode::Host)
+            {
+                m_host.PinPlayer(player, false, spot->exitPosition, spot->insideYaw);
+            }
         }
         else if (player == LocalPlayerId())
         {
@@ -1603,11 +1607,17 @@ bool PredationGame::PerformInteraction(InteractionKind kind, int index, uint8_t 
         }
         else
         {
-            // Somebody else got in. Their body is drawn from their replicated position anyway, so
-            // all this machine has to do is swing the door and mark the locker taken.
+            // Somebody else got in. The door swings and the locker is taken -- and, on the host, their
+            // body is pinned inside it, because the host is what decides where they are. Without that
+            // the host went on walking them about outside a locker everybody could see was shut, and
+            // their own machine was pulled back out of it a moment later.
             spot->occupied = true;
             spot->occupant = player;
             m_world.SetDoorOpen(spot->doorIndex, false, m_interactions);
+            if (m_sessionMode == SessionMode::Host)
+            {
+                m_host.PinPlayer(player, true, spot->insidePosition, spot->insideYaw);
+            }
         }
 
         if (m_sessionMode == SessionMode::Host)
@@ -1981,9 +1991,14 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
         break;
 
     case WorldEventKind::AmmoTaken:
-        if (event.player != LocalPlayerId())
+        // The crate goes down by one wherever it is drawn from. When it was this machine's player who
+        // asked, this is also the answer to their request: they only get the rounds here. Without that a
+        // client could use a crate all day and never gain a single round -- the host took them out of
+        // the crate and nobody put them in the weapon.
+        m_world.DrawFromAmmoCrate(event.index, m_interactions);
+        if (event.player == LocalPlayerId())
         {
-            m_world.DrawFromAmmoCrate(event.index, m_interactions);
+            GiveAmmunition(event.index);
         }
         break;
 
@@ -7206,6 +7221,13 @@ void PredationGame::TryInteract()
                 return;
             }
         }
+        // And the same for a crate: asking when the weapon is already full spends the crate for nothing.
+        if (focus.kind == InteractionKind::AmmoCrate && !CanTakeAmmunition())
+        {
+            m_app->GetConsole().Print(EquippedWeapon() == nullptr ? "Nothing to load"
+                                                                  : "Already carrying full spare magazines");
+            return;
+        }
         m_client.SendInteract(static_cast<uint8_t>(focus.kind), static_cast<uint8_t>(focus.payload));
         return;
     }
@@ -7215,13 +7237,12 @@ void PredationGame::TryInteract()
 
 void PredationGame::TakeAmmunition(int crateIndex)
 {
-    const WeaponDefinition* definition = EquippedWeapon();
-    if (definition == nullptr)
+    if (EquippedWeapon() == nullptr)
     {
         m_app->GetConsole().Print("Nothing to load");
         return;
     }
-    if (m_weapon.reserve >= definition->reserveOnPickup)
+    if (!CanTakeAmmunition())
     {
         m_app->GetConsole().Print("Already carrying full spare magazines");
         return;
@@ -7229,6 +7250,26 @@ void PredationGame::TakeAmmunition(int crateIndex)
     if (!m_world.DrawFromAmmoCrate(crateIndex, m_interactions))
     {
         m_app->GetConsole().Print("The crate is empty");
+        return;
+    }
+    GiveAmmunition(crateIndex);
+}
+
+// Whether this player could take anything from a crate at all, which is worth knowing before asking the
+// host for some: a client that asks when it is already full spends a crate's worth of nothing.
+bool PredationGame::CanTakeAmmunition() const
+{
+    const WeaponDefinition* definition = EquippedWeapon();
+    return definition != nullptr && m_weapon.reserve < definition->reserveOnPickup;
+}
+
+// The rounds themselves, once whoever decides has decided. On the host this follows straight on from
+// taking them; on a client it happens when the host says so.
+void PredationGame::GiveAmmunition(int crateIndex)
+{
+    const WeaponDefinition* definition = EquippedWeapon();
+    if (definition == nullptr || m_weapon.reserve >= definition->reserveOnPickup)
+    {
         return;
     }
 
@@ -7929,6 +7970,12 @@ void PredationGame::OnUpdate(double dt, double alpha)
     }
     }
 
+    // Where the picture is actually taken from this frame -- the eye, the free camera, or, dead, the
+    // teammate being watched. Everything drawn from the camera reads this rather than working it out
+    // again: the shadow maps used to be fitted round the local player's own eye, so spectating somebody
+    // across the map left them standing in a place with no shadows at all.
+    m_renderEye = viewPosition;
+
     // What is in the player's hands has to be settled before the body is posed, not after. Deciding
     // it afterwards left a newly equipped weapon sitting at the world origin for one frame, which
     // reads as the gun flying in from the middle of the map.
@@ -8135,8 +8182,11 @@ void PredationGame::OnUpdate(double dt, double alpha)
     // very bright, because for the moment it exists it is the brightest thing in the level.
     {
         PunctualLight& flash = environment.lights[1];
+        // Only while there is somebody alive holding a weapon to flash. A player killed in the moment
+        // after firing left the flash at whatever brightness it had reached, and it stayed there for
+        // good -- a light burning on the floor where the weapon fell.
         const float strength = m_body.MuzzleFlashStrength();
-        if (strength > 0.001f && m_screen == Screen::Playing)
+        if (strength > 0.001f && m_screen == Screen::Playing && m_player.State().alive && m_body.HasWeapon())
         {
             flash.position = m_body.MuzzlePoint();
             flash.direction = glm::vec3(0.0f, -1.0f, 0.0f);
@@ -8213,7 +8263,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
             }
 
             const float strength = avatar->body.MuzzleFlashStrength();
-            if (strength > 0.001f)
+            if (strength > 0.001f && avatar->body.HasWeapon())
             {
                 PunctualLight flash;
                 flash.position = avatar->body.MuzzlePoint();
@@ -8280,7 +8330,13 @@ void PredationGame::OnUpdate(double dt, double alpha)
     ShadowSettings& shadows = app.GetSceneRenderer().Shadows();
     shadows.sunEnabled = cv_sunShadows.Get();
     shadows.skyEnabled = cv_skyShadows.Get();
-    shadows.distance = std::clamp(cv_shadowDistance.Get(), 10.0f, 120.0f);
+    // Anything saved from before the map was made bigger comes up to the new distance: 24 m of shadow in
+    // a level you can see a hundred metres across reads as shadows simply not working.
+    if (cv_shadowDistance.Get() < 40.0f)
+    {
+        cv_shadowDistance.Set(64.0f);
+    }
+    shadows.distance = std::clamp(cv_shadowDistance.Get(), 10.0f, 160.0f);
     shadows.indoorLight = std::clamp(cv_indoorLight.Get(), 0.0f, 1.0f);
     shadows.sunBias = cv_sunShadowBias.Get();
     shadows.sunNormalOffset = cv_sunShadowOffset.Get();
@@ -8512,7 +8568,7 @@ void PredationGame::OnRender()
         return;
     }
 
-    const glm::vec3 viewPosition = m_cameraMode == CameraMode::Fly ? m_camera.position : m_player.View().eyePosition;
+    const glm::vec3 viewPosition = m_renderEye;
     // Depth from the sun and depth from overhead, both fitted around the eye, before anything is
     // shaded. This is where a room with a roof on it becomes dark: nothing declares it dark, the
     // roof is simply between it and the sky.

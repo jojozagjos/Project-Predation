@@ -50,7 +50,7 @@ constexpr uint16_t kSunShadowSize = 4096;
 // centimetres clears a crate, a bench and a wall, and is still nothing against a room four metres
 // across. Over a forty metre map that is a hundred and twenty-eight texels, which sounds absurd for
 // a shadow map and is exactly right for this one.
-constexpr uint16_t kSkyShadowSize = 256;
+constexpr uint16_t kSkyShadowSize = 512;
 // The torch's. Smaller than the sun's, because a cone covers far less world: a 70 degree beam at 14
 // metres is about 20 m across at the far end, so 1024 texels is 2 cm there and finer everywhere
 // nearer. It is also redrawn every frame from a light that moves with the player's head, so it is

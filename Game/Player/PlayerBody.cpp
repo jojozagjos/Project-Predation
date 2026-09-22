@@ -969,6 +969,9 @@ void PlayerBody::SetWeaponForSimulation(const WeaponDefinition* definition)
         m_weaponVisual = WeaponVisual{};
         m_weaponId = kInvalidWeapon;
         m_hasWeapon = false;
+        // Nothing in its hands is nothing flashing: a weapon put away in the middle of a shot used to
+        // leave the flash where it was.
+        m_muzzleFlashTransform.scale = glm::vec3(0.0f);
         return;
     }
     if (definition->id == m_weaponId && m_hasWeapon)

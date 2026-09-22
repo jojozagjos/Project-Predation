@@ -204,6 +204,9 @@ public:
     // A creature has hold of a player, or has let go (`by` kNotHeld): the host pins them where the
     // creature has them, every tick, and says so in the snapshot so their own machine does too.
     void SetPlayerGrabbed(uint8_t playerId, uint8_t by, bool cocooned, const glm::vec3& feet, float yaw);
+    // Pins a client where the world says they are -- inside a locker -- or lets them go again. Without
+    // this the host went on simulating them walking about outside the locker they had climbed into.
+    void PinPlayer(uint8_t playerId, bool pinned, const glm::vec3& feet, float yaw);
     // What a client last pressed, for anything the host decides from it: struggling in a grip.
     PlayerInput LastInputOf(uint8_t playerId) const;
     // Damage a client. The host owns their body, so this is where their health actually changes:

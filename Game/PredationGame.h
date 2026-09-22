@@ -323,6 +323,10 @@ private:
     void DropEverything();
     // Refills the spare rounds for the equipped weapon from a crate in the world.
     void TakeAmmunition(int crateIndex);
+    // Whether there is any point asking for more: false when the weapon is already carrying full spares.
+    bool CanTakeAmmunition() const;
+    // Puts the rounds in, once whoever decides has decided.
+    void GiveAmmunition(int crateIndex);
     void EnterHidingSpot(int index);
     void LeaveHidingSpot();
     // Health and stamina, bottom left. Bars rather than numbers: both are things to glance at.
@@ -528,6 +532,8 @@ private:
     PlayerController m_player;
     PlayerBody m_body;
     glm::vec3 m_spawnPoint{0.0f, 0.5f, TestMapSpec::kSpawnZ};
+    // Where this frame is drawn from: the eye, the free camera, or whoever is being spectated.
+    glm::vec3 m_renderEye{0.0f};
 
     ItemDatabase m_items;
     ItemIcons m_itemIcons;

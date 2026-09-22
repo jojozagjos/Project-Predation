@@ -786,6 +786,30 @@ void NetHost::SetPlayerTorch(uint8_t playerId, bool on)
     }
 }
 
+void NetHost::PinPlayer(uint8_t playerId, bool pinned, const glm::vec3& feet, float yaw)
+{
+    if (playerId == 0)
+    {
+        return; // the host pins its own player through its own controller
+    }
+    for (auto& client : m_clients)
+    {
+        if (client->playerId != playerId)
+        {
+            continue;
+        }
+        if (pinned)
+        {
+            client->controller.Attach(feet, yaw);
+        }
+        else if (client->controller.IsAttached())
+        {
+            client->controller.Detach(feet);
+        }
+        return;
+    }
+}
+
 void NetHost::SetPlayerGrabbed(uint8_t playerId, uint8_t by, bool cocooned, const glm::vec3& feet, float yaw)
 {
     if (playerId == 0)
