@@ -10,27 +10,23 @@ echo [%~n0] finished with code %errorlevel%. Press any key to close this window.
 pause >nul
 exit /b %errorlevel%
 :body
-rem Builds a shipping release and lays out a folder somebody else can run, then zips it.
+rem Builds the game and lays out a folder somebody else can run, then zips it.
+rem
+rem Two of them by default. The shipping build is what you hand to somebody who wants to play; the
+rem dev build is the same game with the console, the model editor and the debug commands still in
+rem it, which is what you want when the person you are sending it to is going to tell you what went
+rem wrong. They are separate builds in separate folders because the developer tools are a cached
+rem CMake variable: one folder cannot hold both answers, and on the day it seems to, one of the two
+rem is stale.
 rem
 rem The game finds its assets in an "Assets" folder next to the executable, so packaging is a copy
 rem rather than a build step: the exe, the data files, and the shaders the build compiled.
 rem
-rem This builds the windows-shipping preset, which has its own build folder. That matters: the
-rem developer tools are a cached CMake variable, so building a shipping exe inside the same folder
-rem as the everyday one used to leave that folder without its tools until somebody noticed.
-rem
-rem Usage: Scripts\Windows\package.cmd [preset]      default preset: windows-shipping
+rem Usage: Scripts\Windows\package.cmd [preset]
+rem        no preset  -- both, windows-shipping and then windows-relwithdebinfo
 setlocal EnableDelayedExpansion
 
-set "PRESET=%~1"
-if "%PRESET%"=="" set "PRESET=windows-shipping"
-
-rem The staged folder and the zip go in dist, not in build. build holds the dependencies
-rem and one folder per preset, and the thing you send somebody is not another build.
 set "ROOT=%~dp0..\.."
-set "BUILD_DIR=%ROOT%\build\%PRESET%"
-set "STAGE=%ROOT%\dist\ProjectPredation"
-set "ZIP=%ROOT%\dist\ProjectPredation-%PRESET%.zip"
 
 rem Run from the repository root, because cmake --preset reads CMakePresets.json out of the working
 rem directory and nothing else. Every path below is absolute, so this is only about that lookup --
@@ -47,21 +43,52 @@ if errorlevel 1 (
     exit /b 1
 )
 
-echo [package] Building %PRESET%...
+if not "%~1"=="" (
+    call :one "%~1"
+    exit /b !errorlevel!
+)
+
+call :one windows-shipping
+if errorlevel 1 exit /b 1
+call :one windows-relwithdebinfo
+if errorlevel 1 exit /b 1
+exit /b 0
+
+
+rem --- One preset, from configure to zip ----------------------------------------------------------
+:one
+set "PRESET=%~1"
+set "BUILD_DIR=%ROOT%\build\%PRESET%"
+
+rem What the folder inside the zip is called. The plain name is the one to hand out; anything with
+rem the developer tools in it says so on the tin, so the two cannot be mixed up on somebody else's
+rem desktop.
+if /i "%PRESET%"=="windows-shipping" (
+    set "NAME=ProjectPredation"
+    set "WANT_TOOLS=OFF"
+) else (
+    set "NAME=ProjectPredation-dev"
+    set "WANT_TOOLS=ON"
+)
+set "STAGE=%ROOT%\dist\!NAME!"
+set "ZIP=%ROOT%\dist\!NAME!.zip"
+
+echo.
+echo [package] === %PRESET% ===
 cmake --preset %PRESET%
 if errorlevel 1 (
     echo [package] FAIL: configure failed
     exit /b 1
 )
 
-rem What gets handed out must not have the model editor in its menu or the editor commands in its
-rem console: they are for building the game, not for playing it. The preset asks for that; this
-rem checks it actually happened, because a stale cache is silent and a leaked editor is not obvious
-rem from the outside.
-"%SystemRoot%\System32\find.exe" "PRED_DEV_TOOLS:BOOL=OFF" "%BUILD_DIR%\CMakeCache.txt" >nul
+rem What gets handed out must have the tools its preset asked for and no others: no model editor in
+rem the menu and no editor commands in the console for the shipping build, and the console still
+rem there in the dev one. The preset says which; this checks it actually happened, because a stale
+rem cache is silent and neither a leaked editor nor a missing console shows from the outside.
+"%SystemRoot%\System32\find.exe" "PRED_DEV_TOOLS:BOOL=!WANT_TOOLS!" "%BUILD_DIR%\CMakeCache.txt" >nul
 if errorlevel 1 (
-    echo [package] FAIL: %PRESET% still has the developer tools switched on.
-    echo [package]       Package the windows-shipping preset, or delete %BUILD_DIR% and retry.
+    echo [package] FAIL: %PRESET% does not have PRED_DEV_TOOLS=!WANT_TOOLS!.
+    echo [package]       Delete %BUILD_DIR% and run this again.
     exit /b 1
 )
 
@@ -76,27 +103,32 @@ if not exist "%BUILD_DIR%\bin\ProjectPredation.exe" (
     exit /b 1
 )
 
-echo [package] Laying out %STAGE%...
-if exist "%STAGE%" rmdir /s /q "%STAGE%"
-mkdir "%STAGE%" 2>nul
+echo [package] Laying out !STAGE!...
+if exist "!STAGE!" rmdir /s /q "!STAGE!"
+mkdir "!STAGE!" 2>nul
 
 rem The executable and anything the build deployed beside it.
-copy /y "%BUILD_DIR%\bin\ProjectPredation.exe" "%STAGE%\" >nul
-for %%F in ("%BUILD_DIR%\bin\*.dll") do copy /y "%%F" "%STAGE%\" >nul 2>nul
+copy /y "%BUILD_DIR%\bin\ProjectPredation.exe" "!STAGE!\" >nul
+for %%F in ("%BUILD_DIR%\bin\*.dll") do copy /y "%%F" "!STAGE!\" >nul 2>nul
+
+rem Not the .pdb, in either build. It is forty-five megabytes of symbol names, it makes the dev zip
+rem ten times the size of the game, and nothing in the build reads it: there is no crash handler
+rem writing a dump for it to name the frames of. What a tester sends back is the log. The symbols
+rem stay in the build folder, where a debugger attached here can find them.
 
 rem The data files, and then the compiled shaders on top of them. Both end up under Assets, which
 rem is the first place the game looks, so the folder runs anywhere without the build tree.
-xcopy /e /i /q /y "%ROOT%\Assets" "%STAGE%\Assets" >nul
+xcopy /e /i /q /y "%ROOT%\Assets" "!STAGE!\Assets" >nul
 rem The raw downloads the model editor imports from are tens of megabytes and no use without it.
-if exist "%STAGE%\Assets\Models\Source" rmdir /s /q "%STAGE%\Assets\Models\Source"
+if exist "!STAGE!\Assets\Models\Source" rmdir /s /q "!STAGE!\Assets\Models\Source"
 if exist "%BUILD_DIR%\GeneratedAssets\Shaders" (
-    xcopy /e /i /q /y "%BUILD_DIR%\GeneratedAssets\Shaders" "%STAGE%\Assets\Shaders" >nul
+    xcopy /e /i /q /y "%BUILD_DIR%\GeneratedAssets\Shaders" "!STAGE!\Assets\Shaders" >nul
 ) else (
     echo [package] FAIL: no compiled shaders in %BUILD_DIR%\GeneratedAssets\Shaders
     exit /b 1
 )
 
-> "%STAGE%\README.txt" (
+> "!STAGE!\README.txt" (
     echo PROJECT PREDATION
     echo ACRD // Anomalous Containment ^& Research Directorate
     echo.
@@ -133,16 +165,44 @@ if exist "%BUILD_DIR%\GeneratedAssets\Shaders" (
     echo on the pause menu and on the title screen.
 )
 
+if /i not "!WANT_TOOLS!"=="OFF" (
+    >> "!STAGE!\README.txt" (
+        echo.
+        echo.
+        echo THIS IS THE DEVELOPER BUILD
+        echo.
+        echo The same game with the tools left in. It is a little slower than the one
+        echo people play and it writes a great deal more to its log.
+        echo.
+        echo   The key left of 1 opens the console. Type help.
+        echo   F3   frame time, ping and network counters
+        echo   F4   the debug windows: AI, audio, physics, rendering
+        echo.
+        echo Console commands worth knowing:
+        echo.
+        echo   spawn_creature       one creature in front of you
+        echo   lab                  the test map: lockers, doors, a balcony, a crawlspace
+        echo   testmap              back to the ordinary map
+        echo   ai.freeze 1          stop every creature where it stands
+        echo   debug.navigation 1   draw where creatures can walk and jump
+        echo   creature_mind        what the creature you are looking at is thinking
+        echo   net_host, net_join   open a game, or join one at an address
+        echo.
+        echo The log is at %%APPDATA%%\ACRD\ProjectPredation\Logs\predation.log. Send that
+        echo with any report: it is the whole session rather than only the crash.
+    )
+)
+
 echo [package] Zipping...
-if exist "%ZIP%" del /q "%ZIP%"
-powershell -NoProfile -Command "Compress-Archive -Path '%STAGE%' -DestinationPath '%ZIP%' -Force"
+if exist "!ZIP!" del /q "!ZIP!"
+powershell -NoProfile -Command "Compress-Archive -Path '!STAGE!' -DestinationPath '!ZIP!' -Force"
 if errorlevel 1 (
     echo [package] FAIL: could not create the zip
     exit /b 1
 )
 
-for %%F in ("%ZIP%") do set "ZIPSIZE=%%~zF"
-echo [package] PASS
-echo [package]   folder: %STAGE%
-echo [package]   zip:    %ZIP% ^(!ZIPSIZE! bytes^)
+for %%F in ("!ZIP!") do set "ZIPSIZE=%%~zF"
+echo [package] PASS %PRESET%
+echo [package]   folder: !STAGE!
+echo [package]   zip:    !ZIP! ^(!ZIPSIZE! bytes^)
 exit /b 0

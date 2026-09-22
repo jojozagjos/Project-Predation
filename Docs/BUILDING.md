@@ -199,15 +199,29 @@ a download.
 Scripts\Windows\package.cmd
 ```
 
-Builds `windows-shipping`, lays out `dist\ProjectPredation` and zips it. The folder holds
-the executable, the data files, and the shaders the build compiled, all under an `Assets` folder
-beside the exe, which is the first place the game looks. It runs from anywhere with nothing else
-installed except the Microsoft Visual C++ Redistributable for x64. A `README.txt` goes in the folder
-with the controls and how to connect.
+Builds two of them:
 
-The script checks the CMake cache actually says `PRED_DEV_TOOLS:BOOL=OFF` before it stages
-anything, and stops if it does not. A stale cache is silent, and an editor that leaked into
-somebody else's copy is not visible from the outside.
+| Zip | Built from | What is in it |
+|---|---|---|
+| `dist\ProjectPredation.zip` | `windows-shipping` | The game. No console, no model editor, no debug commands. |
+| `dist\ProjectPredation-dev.zip` | `windows-relwithdebinfo` | The same game with the console, the debug windows and the editor still in it. |
+
+Each folder holds the executable, the data files, and the shaders the build compiled, all under an
+`Assets` folder beside the exe, which is the first place the game looks. It runs from anywhere with
+nothing else installed except the Microsoft Visual C++ Redistributable for x64. A `README.txt` goes
+in the folder with the controls and how to connect; the dev one also lists the console commands
+worth knowing and says where the log is.
+
+`package.cmd windows-shipping` or `package.cmd windows-relwithdebinfo` does one of them on its own.
+
+The script checks the CMake cache actually says what the preset asked for -- `PRED_DEV_TOOLS:BOOL=OFF`
+for the shipping build, `ON` for the dev one -- before it stages anything, and stops if it does not.
+A stale cache is silent, and neither an editor that leaked into somebody else's copy nor a dev build
+with no console in it is visible from the outside.
+
+Neither zip carries the `.pdb`. It is forty-five megabytes, it makes the dev zip ten times the size
+of the game, and nothing reads it: there is no crash handler writing a dump for it to name the
+frames of. What a tester sends back is the log.
 
 To play over the internet, the host presses **Play → Host a game → Start** and sends the code the
 lobby shows; the other person types it into the box at the top of **Play**. That needs a lobby

@@ -15,7 +15,7 @@ desktops eventually, and when that work starts it gets a folder beside this one.
 | `test.cmd [preset]` | Runs the unit tests through CTest. |
 | `run.cmd [preset] [args]` | Starts an already built game. |
 | `smoke.cmd [preset]` | Headless 60-frame run. Requires a screenshot out the other side and fails on any logged error. |
-| `package.cmd [preset]` | Builds the shipping preset, lays out a folder and zips it. Default preset `windows-shipping`. |
+| `package.cmd [preset]` | Lays out a folder and zips it. With no preset it does two: the shipping build as `ProjectPredation.zip`, and `windows-relwithdebinfo` as `ProjectPredation-dev.zip`, which keeps the console and the debug tools. |
 | `clean.cmd [all]` | Clears vcpkg working trees. `all` also deletes every preset's compiled output, keeping the shared dependency tree. |
 | `vsenv.cmd` | Finds MSVC through `vswhere` and sets up the x64 environment. The others call it; you do not. |
 
