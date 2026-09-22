@@ -1446,20 +1446,28 @@ uint8_t PredationGame::LocalPlayerId() const
     return m_sessionMode == SessionMode::Client ? m_client.PlayerId() : 0;
 }
 
-glm::vec3 PredationGame::PlayerPosition(uint8_t player) const
+bool PredationGame::PlayerPositionIfKnown(uint8_t player, glm::vec3& out) const
 {
     if (player == LocalPlayerId())
     {
-        return m_player.State().position;
+        out = m_player.State().position;
+        return true;
     }
     for (const RemotePlayerView& remote : RemotePlayers())
     {
         if (remote.id == player)
         {
-            return remote.position;
+            out = remote.position;
+            return true;
         }
     }
-    return m_player.State().position;
+    return false;
+}
+
+glm::vec3 PredationGame::PlayerPosition(uint8_t player) const
+{
+    glm::vec3 where{0.0f};
+    return PlayerPositionIfKnown(player, where) ? where : m_player.State().position;
 }
 
 bool PredationGame::PerformInteraction(InteractionKind kind, int index, uint8_t player)
@@ -1809,7 +1817,50 @@ void PredationGame::ServeClientRequests()
             event.position = departure.position + glm::vec3(0.0f, 0.4f, 0.0f);
             m_host.Broadcast(event);
         }
+        ForgetPlayer(departure.player);
+    }
+}
 
+// Everything the world was still holding on that player's behalf, let go of.
+//
+// A body that leaves takes nothing with it, but the world keeps things on its side of the line: a
+// locker with their name on it, a creature with them in its jaws, a cocoon at a nest. None of it
+// has an owner any more. The locker is the one that mattered: a player who quit while hidden left
+// the spot occupied for the rest of the match, and if they came back they were usually given the
+// same player number, so every creature went on believing they were inside a locker across the map
+// and looked straight through them for good.
+void PredationGame::ForgetPlayer(uint8_t player)
+{
+    ReleaseGrip(player, "left the game");
+    m_grabImmunity.erase(player);
+    const auto wrapped = std::find_if(m_cocoons.begin(), m_cocoons.end(),
+                                      [&](const Cocoon& cocoon) { return cocoon.player == player; });
+    if (wrapped != m_cocoons.end())
+    {
+        m_cocoons.erase(wrapped);
+    }
+
+    for (size_t i = 0; i < m_world.HidingSpots().size(); ++i)
+    {
+        WorldObjects::HidingSpot* spot = m_world.GetHidingSpot(static_cast<int>(i));
+        if (spot == nullptr || !spot->occupied || spot->occupant != player)
+        {
+            continue;
+        }
+        spot->occupied = false;
+        spot->occupant = 0;
+        m_world.SetDoorOpen(spot->doorIndex, true, m_interactions);
+        m_interactions.SetVerb(spot->entity, "Hide in");
+        PRED_LOG_INFO(Gameplay, "Player {} left locker {} behind them", player, i);
+        if (m_sessionMode == SessionMode::Host)
+        {
+            WorldEventMessage event;
+            event.kind = WorldEventKind::LockerUsed;
+            event.index = static_cast<uint8_t>(i);
+            event.player = player;
+            event.flag = false;
+            m_host.Broadcast(event);
+        }
     }
 }
 
@@ -4717,21 +4768,26 @@ void PredationGame::UpdateVoice(float dt)
     //
     // Where a speaker is standing decides where their voice comes from, so it goes through exactly
     // the machinery a footstep does: the same attenuation, the same panning, the same distance cut.
-    const auto positionOf = [&](uint8_t speaker) { return PlayerPosition(speaker); };
-
     if (m_sessionMode == SessionMode::Host)
     {
         for (NetHost::VoiceHeard& heard : m_host.TakeVoice())
         {
-            HearVoice(heard.speaker, heard.frame, positionOf(heard.speaker));
-            MakeNoise(NoiseKind::Voice, positionOf(heard.speaker), NoiseReach::kVoice, heard.speaker);
+            HearVoice(heard.speaker, heard.frame);
+            // Talking beside something with ears is heard by it, but only when we actually know
+            // where the speaker is standing. A noise made at our own feet for somebody else's voice
+            // would walk every creature on the map towards us.
+            glm::vec3 where{0.0f};
+            if (PlayerPositionIfKnown(heard.speaker, where))
+            {
+                MakeNoise(NoiseKind::Voice, where, NoiseReach::kVoice, heard.speaker);
+            }
         }
     }
     else if (m_sessionMode == SessionMode::Client)
     {
         for (NetClient::VoiceHeard& heard : m_client.TakeVoice())
         {
-            HearVoice(heard.speaker, heard.frame, positionOf(heard.speaker));
+            HearVoice(heard.speaker, heard.frame);
         }
     }
 
@@ -4751,13 +4807,40 @@ void PredationGame::UpdateVoice(float dt)
         }
         if (speaker.voice != kInvalidVoice)
         {
-            audio.SetVoicePosition(speaker.voice, positionOf(speaker.id));
+            audio.SetVoicePosition(speaker.voice, SpeakerPosition(speaker));
         }
         ++i;
     }
 }
 
-void PredationGame::HearVoice(uint8_t speaker, const std::vector<uint8_t>& frame, const glm::vec3& at)
+// Where a voice comes from.
+//
+// Never from our own head. Answering "I do not know where they are" with the listener's own
+// position is the same as answering "right here", and right here is the one place in the world
+// where nothing is attenuated: it turned every voice the game could not place -- a player whose
+// snapshot was a moment late, somebody who had just left -- into a whisper in the ear at full
+// volume, which is how proximity chat stops being proximity chat.
+glm::vec3 PredationGame::SpeakerPosition(Speaker& speaker) const
+{
+    glm::vec3 where{0.0f};
+    if (PlayerPositionIfKnown(speaker.id, where))
+    {
+        speaker.at = where;
+        speaker.located = true;
+        return where;
+    }
+    if (speaker.located)
+    {
+        // Lost for a moment. They go on speaking from the last place we had them, which for a
+        // dropped snapshot or two is within a step of where they really are.
+        return speaker.at;
+    }
+    // Somebody we have never been able to put anywhere. They are placed at the far end of the
+    // range, where the falloff is nought, so they are heard as silence until we know better.
+    return m_player.State().position + glm::vec3(0.0f, 0.0f, kVoiceRange * 2.0f);
+}
+
+void PredationGame::HearVoice(uint8_t speaker, const std::vector<uint8_t>& frame)
 {
     AudioEngine& audio = m_app->GetAudio();
 
@@ -4786,7 +4869,7 @@ void PredationGame::HearVoice(uint8_t speaker, const std::vector<uint8_t>& frame
         }
         AudioEngine::PlayDesc desc;
         desc.stream = fresh->stream;
-        desc.position = at;
+        desc.position = SpeakerPosition(*fresh);
         desc.positioned = true;
         // Their volume, which is a setting and was not being read: the slider moved and nothing
         // happened. A voice at full gain on top of the game is also most of the way to the mix

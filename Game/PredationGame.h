@@ -208,6 +208,8 @@ private:
     void PinPlayer(uint8_t player, uint8_t by, bool cocooned, const glm::vec3& feet, float yaw);
     void TryGrab(Creature& creature, int target, const std::vector<SensedPlayer>& players);
     void ReleaseGrip(uint8_t player, const char* why);
+    // A player who has gone: whatever the world was holding for them is let go of.
+    void ForgetPlayer(uint8_t player);
     // Whether a creature has hold of this machine's player, or has them wrapped up: no shooting, no
     // reloading, no using anything while something has you.
     bool HeldLocally() const;
@@ -450,6 +452,9 @@ private:
 
     // Where a player is, for checking they are close enough to what they are asking for.
     glm::vec3 PlayerPosition(uint8_t player) const;
+    // The same question asked honestly: false when there is nobody here by that number, rather than
+    // quietly answering with our own position.
+    bool PlayerPositionIfKnown(uint8_t player, glm::vec3& out) const;
     // Everyone, where they are this instant.
     // Where a player's weapon is being drawn here, for the line a round leaves along.
     glm::vec3 MuzzleOf(uint8_t player, const glm::vec3& eye, const glm::vec3& direction) const;
@@ -508,7 +513,7 @@ private:
     void UpdateMicrophoneTest(float dt);
     void StopTalking();
     // Plays or updates a speaker's stream. `at` is where they are, in the world.
-    void HearVoice(uint8_t speaker, const std::vector<uint8_t>& frame, const glm::vec3& at);
+    void HearVoice(uint8_t speaker, const std::vector<uint8_t>& frame);
     // One clip from the given surface, and that surface's loudness folded into `gain`.
     SoundId PickFootstep(float& gain, int surfaceIndex) const;
     // Which surface a position is standing on. The test map has a row of them; everywhere else
@@ -919,8 +924,14 @@ private:
         uint16_t lastSequence = 0;
         bool started = false;
         float silentFor = 0.0f;
+        // Where their body was the last time we could find it. A speaker we cannot place must not be
+        // played at our own head, which is the loudest place there is: see SpeakerPosition.
+        glm::vec3 at{0.0f};
+        bool located = false;
     };
     std::vector<std::unique_ptr<Speaker>> m_speakers;
+    // Where to play a speaker from, remembering the last place we could put them.
+    glm::vec3 SpeakerPosition(Speaker& speaker) const;
 
     // Where the walk cycle had got to last frame, so a footfall is heard as the foot passes rather
     // than on a clock of its own.

@@ -2,6 +2,7 @@
 #include "Engine/Physics/PhysicsWorld.h"
 #include "Game/Net/NetSession.h"
 #include "Game/Net/Prediction.h"
+#include "Game/Net/Protocol.h"
 #include "Game/Player/PlayerController.h"
 
 #include <catch2/catch_approx.hpp>
@@ -58,6 +59,13 @@ PlayerInput WalkForward()
 {
     PlayerInput input;
     input.move = {0.0f, 1.0f};
+    return input;
+}
+
+PlayerInput WalkBackward()
+{
+    PlayerInput input;
+    input.move = {0.0f, -1.0f};
     return input;
 }
 
@@ -928,4 +936,143 @@ TEST_CASE("Hosting on your own costs nothing per tick", "[net][session]")
 
     // And the socket is still listening, which is the one thing hosting alone has to keep doing.
     CHECK(host.Running());
+}
+
+// --- Proximity voice ---------------------------------------------------------------------------
+
+TEST_CASE("Voice reaches the people near the speaker and nobody else", "[net][session][voice]")
+{
+    // Proximity chat is decided by the host, because the host is the only machine that knows where
+    // everybody really is. The other arrangement -- forward the lot, let each listener turn down
+    // what it should not hear -- puts the whole conversation on every machine, and a player who is
+    // not meant to hear something is then one edited client away from hearing it.
+    Machine hostMachine;
+    Machine closeMachine({2.0f, 0.05f, 0.0f});
+    Machine walkerMachine({4.0f, 0.05f, 0.0f});
+    NetHost host;
+    NetClient beside;
+    NetClient walker;
+
+    NetHost::Config hostConfig;
+    hostConfig.port = 41032;
+    REQUIRE(host.Start(CreateLoopbackTransport(11u), hostConfig, hostMachine.physics, hostMachine.config,
+                       {0.0f, 0.05f, 0.0f}));
+    NetClient::Config clientConfig;
+    REQUIRE(beside.Connect(CreateLoopbackTransport(22u), "loopback", hostConfig.port, "beside", clientConfig));
+    REQUIRE(walker.Connect(CreateLoopbackTransport(33u), "loopback", hostConfig.port, "walker", clientConfig));
+
+    uint32_t tick = 0;
+    const auto run = [&](int ticks, const PlayerInput& walkerInput)
+    {
+        for (int i = 0; i < ticks; ++i)
+        {
+            ++tick;
+            hostMachine.Step(PlayerInput{});
+            host.Tick(tick, hostMachine.player.State(), kTick);
+
+            closeMachine.physics.Step(kTick);
+            beside.Tick(PlayerInput{}, closeMachine.player, kTick);
+            beside.UpdateInterpolation(kTick);
+
+            walkerMachine.physics.Step(kTick);
+            walker.Tick(walkerInput, walkerMachine.player, kTick);
+            walker.UpdateInterpolation(kTick);
+        }
+    };
+
+    run(40, PlayerInput{});
+    REQUIRE(beside.Connected());
+    REQUIRE(walker.Connected());
+    const uint8_t besideId = beside.PlayerId();
+    const uint8_t walkerId = walker.PlayerId();
+
+    // How far the host has the walker from itself, which is the distance every decision below is
+    // made on.
+    const auto walkerRange = [&]()
+    {
+        for (const RemotePlayerView& remote : host.Remotes())
+        {
+            if (remote.id == walkerId)
+            {
+                return glm::length(remote.position - hostMachine.player.State().position);
+            }
+        }
+        return 0.0f;
+    };
+
+    const std::vector<uint8_t> frame(48, 0xA5);
+    const auto heardBy = [&](NetClient& client)
+    {
+        std::vector<uint8_t> speakers;
+        for (const NetClient::VoiceHeard& heard : client.TakeVoice())
+        {
+            speakers.push_back(heard.speaker);
+        }
+        return speakers;
+    };
+    const auto heardByHost = [&]()
+    {
+        std::vector<uint8_t> speakers;
+        for (const NetHost::VoiceHeard& heard : host.TakeVoice())
+        {
+            speakers.push_back(heard.speaker);
+        }
+        return speakers;
+    };
+
+    // Everybody is standing together, so everybody hears everybody.
+    host.SendVoice(1, frame, hostMachine.player.State().position);
+    beside.SendVoice(1, frame);
+    walker.SendVoice(1, frame);
+    run(20, PlayerInput{});
+    REQUIRE(walkerRange() < kVoiceRange);
+    CHECK(heardByHost().size() == 2);
+    CHECK(heardBy(beside).size() == 2);
+    CHECK(heardBy(walker).size() == 2);
+
+    // One of them walks off until the host has it well out of earshot.
+    for (int guard = 0; guard < 20 && walkerRange() < kVoiceRange + 6.0f; ++guard)
+    {
+        run(60, WalkForward());
+    }
+    INFO("the walker is " << walkerRange() << " m from the host");
+    REQUIRE(walkerRange() > kVoiceRange);
+    heardBy(beside);
+    heardBy(walker);
+    heardByHost();
+
+    // The host speaks. The player beside it hears; the one across the map does not.
+    host.SendVoice(2, frame, hostMachine.player.State().position);
+    run(20, PlayerInput{});
+    CHECK(heardBy(beside) == std::vector<uint8_t>{0});
+    CHECK(heardBy(walker).empty());
+
+    // The player beside the host speaks, and is heard by the host and by nobody else.
+    beside.SendVoice(2, frame);
+    run(20, PlayerInput{});
+    CHECK(heardByHost() == std::vector<uint8_t>{besideId});
+    CHECK(heardBy(walker).empty());
+    CHECK(heardBy(beside).empty()); // and never your own voice back
+
+    // The one across the map speaks and is heard by nobody at all.
+    walker.SendVoice(2, frame);
+    run(20, PlayerInput{});
+    CHECK(heardByHost().empty());
+    CHECK(heardBy(beside).empty());
+
+    // And once it has walked back, the same words arrive.
+    for (int guard = 0; guard < 20 && walkerRange() > 6.0f; ++guard)
+    {
+        run(60, WalkBackward());
+    }
+    REQUIRE(walkerRange() < kVoiceRange);
+    heardBy(beside);
+    heardBy(walker);
+    heardByHost();
+    beside.SendVoice(3, frame);
+    walker.SendVoice(3, frame);
+    run(20, PlayerInput{});
+    CHECK(heardByHost().size() == 2);
+    CHECK(heardBy(beside) == std::vector<uint8_t>{walkerId});
+    CHECK(heardBy(walker) == std::vector<uint8_t>{besideId});
 }

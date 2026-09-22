@@ -419,7 +419,11 @@ void PredationGame::UpdateCreatures(float dt)
             for (size_t i = 0; i < m_world.HidingSpots().size(); ++i)
             {
                 const WorldObjects::HidingSpot& spot = m_world.HidingSpots()[i];
-                if (spot.occupied && spot.occupant == remote.id)
+                // Their name on the locker is not enough: their body has to be in it. A record that
+                // says somebody is hidden while they are walking about in the open is a player
+                // nothing can ever see, which is worse than a player nothing should see being seen.
+                if (spot.occupied && spot.occupant == remote.id &&
+                    glm::distance(remote.position, spot.insidePosition) < 1.5f)
                 {
                     other.hidden = true;
                     other.hidingPlace = static_cast<int>(i);
@@ -1528,7 +1532,6 @@ void PredationGame::ReleaseGrip(uint8_t player, const char* why)
     m_grips.erase(found);
     // A few seconds where nothing can take them again: long enough to run, or to be pulled up.
     m_grabImmunity[player] = m_creatureClock + 7.0f;
-    m_grips.erase(found);
     PinPlayer(player, kNotHeld, false, feet, yaw);
     PRED_LOG_INFO(AI, "Player {} let go: {}", player, why);
 }
