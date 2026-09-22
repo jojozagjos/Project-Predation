@@ -35,7 +35,7 @@ constexpr float kExposureDecay = 0.6f;
 constexpr float kSuspicion = 0.35f;
 
 // Striking.
-constexpr float kStrikeReach = 2.3f;
+
 constexpr float kWindupSeconds = 0.45f;
 constexpr float kStrikeCooldown = 1.3f;
 
@@ -225,7 +225,11 @@ void CreatureBrain::Update(const CreatureSenses& senses, float dt)
 
 void CreatureBrain::Perceive(const CreatureSenses& senses, float dt)
 {
-    const float sightRange = kSightRange * m_traits.perception;
+    // Its eyes decide how far it sees; one with none sees nothing at all, but still knows by touch and
+    // smell when somebody is right beside it.
+    const bool hasEyes = m_traits.sight > 0.0f;
+    const float sightRange = SightRange();
+    const float senseRange = std::max(sightRange, kCloseSense);
     const float cosHalfField = std::cos(glm::radians(kHalfFieldDegrees));
     glm::vec3 flatForward{senses.forward.x, 0.0f, senses.forward.z};
     flatForward = glm::length(flatForward) > 1e-4f ? glm::normalize(flatForward) : glm::vec3(0, 0, -1);
@@ -242,19 +246,20 @@ void CreatureBrain::Perceive(const CreatureSenses& senses, float dt)
             const glm::vec3 chest = player.feet + glm::vec3(0.0f, player.height * 0.6f, 0.0f);
             const glm::vec3 toward = chest - senses.eye;
             const float distance = glm::length(toward);
-            if (distance < sightRange && distance > 1e-3f)
+            if (distance < senseRange && distance > 1e-3f)
             {
                 glm::vec3 flat{toward.x, 0.0f, toward.z};
                 const float flatLength = glm::length(flat);
                 const float facing = flatLength > 1e-4f ? glm::dot(flat / flatLength, flatForward) : 1.0f;
                 float field = 0.0f;
-                if (facing >= cosHalfField)
+                if (hasEyes && distance < sightRange && facing >= cosHalfField)
                 {
                     // Full in the middle of the view, falling to the edge value at the rim.
                     const float across = (1.0f - facing) / (1.0f - cosHalfField);
                     field = 1.0f - (1.0f - kEdgeOfView) * across;
                 }
-                if (distance < kCloseSense)
+                const bool touching = distance < kCloseSense;
+                if (touching)
                 {
                     field = 1.0f;
                 }
@@ -273,11 +278,13 @@ void CreatureBrain::Perceive(const CreatureSenses& senses, float dt)
                         }
                     }
                     const float exposed = static_cast<float>(clear) / 3.0f;
-                    const float nearness = 1.0f - (distance / sightRange) * (distance / sightRange);
+                    const float nearness =
+                        touching ? 1.0f : 1.0f - (distance / sightRange) * (distance / sightRange);
                     const float size = std::clamp(player.height / 1.8f, 0.25f, 1.0f);
                     const float speed = glm::length(glm::vec3(player.velocity.x, 0.0f, player.velocity.z));
                     const float motion = std::clamp(0.7f + speed * 0.12f, 0.7f, 1.3f);
-                    const float light = std::clamp(player.light, 0.08f, 1.0f);
+                    // Touch and smell do not care how dark it is.
+                    const float light = hasEyes ? std::clamp(player.light, 0.08f, 1.0f) : 1.0f;
                     visibility = field * exposed * nearness * size * motion * light;
                 }
             }
@@ -413,7 +420,7 @@ void CreatureBrain::Perceive(const CreatureSenses& senses, float dt)
     // --- Hearing ------------------------------------------------------------------------------
     for (const Noise& noise : m_pendingNoises)
     {
-        float reach = noise.reach * m_traits.perception;
+        float reach = noise.reach * m_traits.perception * m_traits.hearing;
         const glm::vec3 ear = senses.eye;
         if (senses.clearLine && !senses.clearLine(noise.position + glm::vec3(0.0f, 0.3f, 0.0f), ear))
         {
@@ -593,7 +600,7 @@ void CreatureBrain::Decide(const CreatureSenses& senses)
         // Closing the distance is what hunting is. Once they are within reach there is nothing left to
         // close, and hunting scores low -- otherwise a creature standing on top of somebody went on
         // "hunting" them, because for an aggressive one the two scored within the commitment margin.
-        const float closeness = distance < kStrikeReach ? 0.5f : std::clamp(1.2f - distance / 30.0f, 0.4f, 1.0f);
+        const float closeness = distance < m_traits.strikeReach ? 0.5f : std::clamp(1.2f - distance / 30.0f, 0.4f, 1.0f);
         const float grudge = std::min(1.0f + track.harm * 0.5f, 1.5f);
         // How much it cares that this is a good moment. A brazen creature comes regardless; a
         // stealthy one comes when they are alone, looking away, or out of its patience.
@@ -610,7 +617,7 @@ void CreatureBrain::Decide(const CreatureSenses& senses)
         // Shadowing them from cover instead. Only somebody it has actually seen: somebody it has
         // only heard is a question to go and answer, not a person to follow.
         if (!player->hidden && track.lastSeen >= 0.0f && track.confidence > 0.3f && distance < 35.0f &&
-            distance > kStrikeReach + 0.4f)
+            distance > m_traits.strikeReach + 0.4f)
         {
             const float patienceLeft =
                 std::clamp(1.0f - track.stalked / m_traits.StalkPatienceSeconds(), 0.05f, 1.0f);
@@ -655,7 +662,7 @@ void CreatureBrain::Decide(const CreatureSenses& senses)
                  {"fresh", std::clamp(1.0f - since / (m_traits.persistence * 3.0f), 0.0f, 1.0f)}});
         }
 
-        if (track.visible && Horizontal(senses.position, player->feet) < kStrikeReach + 0.4f)
+        if (track.visible && Horizontal(senses.position, player->feet) < m_traits.strikeReach + 0.4f)
         {
             add(Behavior::Attack, track.id, "Attack " + track.name,
                 {{"in reach", 1.0f},
@@ -823,6 +830,16 @@ bool CreatureBrain::PickFleePoint(const CreatureSenses& senses, glm::vec3& out)
         }
     }
     return found;
+}
+
+float CreatureBrain::SightRange() const
+{
+    return kSightRange * m_traits.perception * std::max(m_traits.sight, 0.0f);
+}
+
+float CreatureBrain::CloseSense()
+{
+    return kCloseSense;
 }
 
 float CreatureBrain::Opening(const Track& track, float distance) const
@@ -1474,7 +1491,7 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
             m_intent.destination = player->feet;
             m_intent.speed = m_traits.runSpeed;
         }
-        if (m_windupStarted < 0.0f && now >= m_attackCooldownUntil && distance < kStrikeReach)
+        if (m_windupStarted < 0.0f && now >= m_attackCooldownUntil && distance < m_traits.strikeReach)
         {
             m_windupStarted = now;
         }

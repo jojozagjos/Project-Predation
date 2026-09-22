@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <vector>
 
 namespace pred::Primitives
 {
@@ -161,6 +162,159 @@ MeshData Sphere(float radius, int segments, int rings)
             if (ring != rings - 1)
             {
                 mesh.indices.insert(mesh.indices.end(), {i0 + 1, i1, i1 + 1});
+            }
+        }
+    }
+    return mesh;
+}
+
+namespace
+{
+
+// A closed surface of rings stacked from the +Y pole to the -Y pole: each ring a height, a radius
+// scale and a latitude for its normal, swept round Y. Spheres, ellipsoids and capsules are all this
+// with different rings, which is why they share it.
+struct Ring
+{
+    float y = 0.0f;
+    float sinPhi = 0.0f; // how far from the axis, 0 at a pole and 1 at the equator
+    float cosPhi = 1.0f; // how far up, 1 at the top pole and -1 at the bottom
+};
+
+MeshData Sweep(const std::vector<Ring>& rings, const glm::vec3& radii, int segments)
+{
+    MeshData mesh;
+    const int stride = segments + 1;
+    for (size_t r = 0; r < rings.size(); ++r)
+    {
+        const Ring& ring = rings[r];
+        const float v = static_cast<float>(r) / static_cast<float>(rings.size() - 1);
+        for (int segment = 0; segment <= segments; ++segment)
+        {
+            const float u = static_cast<float>(segment) / static_cast<float>(segments);
+            const float theta = u * glm::two_pi<float>();
+            const glm::vec3 unit{ring.sinPhi * std::sin(theta), ring.cosPhi, ring.sinPhi * std::cos(theta)};
+            const glm::vec3 position{unit.x * radii.x, ring.y + unit.y * radii.y, unit.z * radii.z};
+            // An ellipsoid's normal leans towards its short axes: the gradient of x^2/a^2 + ..., which is
+            // the unit direction divided by the radii.
+            const glm::vec3 normal = glm::normalize(unit / radii);
+            mesh.vertices.push_back(MeshVertex{position, normal, {u, v}});
+        }
+    }
+    for (size_t r = 0; r + 1 < rings.size(); ++r)
+    {
+        for (int segment = 0; segment < segments; ++segment)
+        {
+            const auto i0 = static_cast<uint32_t>(r * stride + segment);
+            const auto i1 = static_cast<uint32_t>(i0 + stride);
+            // Collapsed at a pole, where one triangle of each quad has no area.
+            if (rings[r].sinPhi > 0.0f)
+            {
+                mesh.indices.insert(mesh.indices.end(), {i0, i1, i0 + 1});
+            }
+            if (rings[r + 1].sinPhi > 0.0f)
+            {
+                mesh.indices.insert(mesh.indices.end(), {i0 + 1, i1, i1 + 1});
+            }
+        }
+    }
+    return mesh;
+}
+
+// `count` rings over the latitudes from `phiFrom` to `phiTo` (0 is the top pole, pi the bottom),
+// lifted by `y`.
+void AddRings(std::vector<Ring>& rings, int count, float phiFrom, float phiTo, float y)
+{
+    for (int i = 0; i <= count; ++i)
+    {
+        const float phi = phiFrom + (phiTo - phiFrom) * static_cast<float>(i) / static_cast<float>(count);
+        const bool top = std::abs(phi) < 1e-6f;
+        const bool bottom = std::abs(phi - glm::pi<float>()) < 1e-6f;
+        rings.push_back({y, (top || bottom) ? 0.0f : std::sin(phi), top ? 1.0f : (bottom ? -1.0f : std::cos(phi))});
+    }
+}
+
+} // namespace
+
+MeshData Ellipsoid(const glm::vec3& radii, int segments, int rings)
+{
+    segments = std::max(3, segments);
+    rings = std::max(2, rings);
+    std::vector<Ring> sweep;
+    AddRings(sweep, rings, 0.0f, glm::pi<float>(), 0.0f);
+    return Sweep(sweep, radii, segments);
+}
+
+MeshData Capsule(float radius, float length, int segments, int rings)
+{
+    segments = std::max(3, segments);
+    rings = std::max(2, rings + (rings % 2)); // an even count, so the equator is a ring of its own
+    // Two hemispheres pushed apart by the straight part between them. The equator ring appears once
+    // at the top of the straight part and once at the bottom, which is what makes the sides straight.
+    const float straight = std::max(length - 2.0f * radius, 0.0f) * 0.5f;
+    std::vector<Ring> sweep;
+    AddRings(sweep, rings / 2, 0.0f, glm::half_pi<float>(), straight);
+    AddRings(sweep, rings / 2, glm::half_pi<float>(), glm::pi<float>(), -straight);
+    return Sweep(sweep, glm::vec3(radius), segments);
+}
+
+MeshData Frustum(float bottomRadius, float topRadius, float height, int segments)
+{
+    segments = std::max(3, segments);
+    const float halfHeight = height * 0.5f;
+    MeshData mesh;
+
+    // The side leans in by the difference of the radii over the height, and the normal leans out by
+    // the same amount, so a cone's light falls on it like a cone's rather than like a cylinder's.
+    const float lean = (bottomRadius - topRadius) / std::max(height, 1e-4f);
+    for (int segment = 0; segment < segments; ++segment)
+    {
+        const float t0 = static_cast<float>(segment) / static_cast<float>(segments);
+        const float t1 = static_cast<float>(segment + 1) / static_cast<float>(segments);
+        const float a0 = t0 * glm::two_pi<float>();
+        const float a1 = t1 * glm::two_pi<float>();
+        const glm::vec3 d0{std::sin(a0), 0.0f, std::cos(a0)};
+        const glm::vec3 d1{std::sin(a1), 0.0f, std::cos(a1)};
+        const glm::vec3 n0 = glm::normalize(d0 + glm::vec3(0.0f, lean, 0.0f));
+        const glm::vec3 n1 = glm::normalize(d1 + glm::vec3(0.0f, lean, 0.0f));
+
+        const auto base = static_cast<uint32_t>(mesh.vertices.size());
+        mesh.vertices.push_back({d0 * bottomRadius - glm::vec3(0.0f, halfHeight, 0.0f), n0, {t0, 0.0f}});
+        mesh.vertices.push_back({d1 * bottomRadius - glm::vec3(0.0f, halfHeight, 0.0f), n1, {t1, 0.0f}});
+        mesh.vertices.push_back({d1 * topRadius + glm::vec3(0.0f, halfHeight, 0.0f), n1, {t1, 1.0f}});
+        mesh.vertices.push_back({d0 * topRadius + glm::vec3(0.0f, halfHeight, 0.0f), n0, {t0, 1.0f}});
+        mesh.indices.insert(mesh.indices.end(), {base, base + 1, base + 2, base, base + 2, base + 3});
+    }
+
+    // A cap only where there is something to cap: a cone's point has none.
+    for (int cap = 0; cap < 2; ++cap)
+    {
+        const bool top = cap == 0;
+        const float radius = top ? topRadius : bottomRadius;
+        if (radius < 1e-4f)
+        {
+            continue;
+        }
+        const glm::vec3 normal{0.0f, top ? 1.0f : -1.0f, 0.0f};
+        const float y = top ? halfHeight : -halfHeight;
+        const auto center = static_cast<uint32_t>(mesh.vertices.size());
+        mesh.vertices.push_back({{0.0f, y, 0.0f}, normal, {0.5f, 0.5f}});
+        for (int segment = 0; segment <= segments; ++segment)
+        {
+            const float angle = static_cast<float>(segment) / static_cast<float>(segments) * glm::two_pi<float>();
+            mesh.vertices.push_back({{std::sin(angle) * radius, y, std::cos(angle) * radius}, normal, {0.5f, 0.5f}});
+        }
+        for (int segment = 0; segment < segments; ++segment)
+        {
+            const auto i0 = static_cast<uint32_t>(center + 1 + segment);
+            const auto i1 = static_cast<uint32_t>(center + 2 + segment);
+            if (top)
+            {
+                mesh.indices.insert(mesh.indices.end(), {center, i0, i1});
+            }
+            else
+            {
+                mesh.indices.insert(mesh.indices.end(), {center, i1, i0});
             }
         }
     }

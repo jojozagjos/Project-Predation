@@ -46,6 +46,12 @@ struct CreatureTraits
     // Seconds it will stalk one person before patience runs out.
     float StalkPatienceSeconds() const { return 10.0f + 30.0f * patience; }
 
+    // Set by its body rather than drawn here (see CreatureAnatomy): how well its eyes and ears work, on
+    // top of how sharp it is, and how far a blow reaches. Sight 0 is a creature with no eyes at all.
+    float sight = 1.0f;
+    float hearing = 1.0f;
+    float strikeReach = 2.3f;
+
     static CreatureTraits FromSeed(uint32_t seed);
 
     // One line, for the inspector and the log.

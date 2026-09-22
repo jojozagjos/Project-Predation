@@ -453,6 +453,41 @@ TEST_CASE("Primitive builders produce closed, correctly sized geometry", "[rende
         }
     }
 
+    SECTION("ellipsoid, capsule and frustum are the size asked for, with normals facing out")
+    {
+        const auto outward = [](const MeshData& mesh)
+        {
+            // Every normal points away from the middle: no inside-out shading.
+            for (const MeshVertex& vertex : mesh.vertices)
+            {
+                if (glm::length(vertex.position) > 1e-4f && glm::dot(vertex.normal, vertex.position) < -1e-4f)
+                {
+                    return false;
+                }
+            }
+            return true;
+        };
+
+        const MeshData ellipsoid = Primitives::Ellipsoid({0.5f, 0.3f, 0.9f});
+        const AABB e = ellipsoid.ComputeBounds();
+        CHECK(e.Size().x == Catch::Approx(1.0f).epsilon(0.02));
+        CHECK(e.Size().y == Catch::Approx(0.6f).epsilon(0.02));
+        CHECK(e.Size().z == Catch::Approx(1.8f).epsilon(0.02));
+        CHECK(outward(ellipsoid));
+
+        const MeshData capsule = Primitives::Capsule(0.1f, 0.8f);
+        const AABB c = capsule.ComputeBounds();
+        CHECK(c.Size().y == Catch::Approx(0.8f).epsilon(0.01));
+        CHECK(c.Size().x == Catch::Approx(0.2f).epsilon(0.03));
+        CHECK(outward(capsule));
+
+        const MeshData cone = Primitives::Frustum(0.2f, 0.0f, 1.0f);
+        const AABB f = cone.ComputeBounds();
+        CHECK(f.Size().y == Catch::Approx(1.0f));
+        CHECK(f.Size().x == Catch::Approx(0.4f).epsilon(0.03));
+        CHECK(cone.TriangleCount() > 0);
+    }
+
     SECTION("stairs climb to the expected height")
     {
         const MeshData stairs = Primitives::Stairs(10, 2.0f, 0.2f, 0.3f);
@@ -545,6 +580,14 @@ TEST_CASE("Primitive faces wind outwards and agree with their normals", "[render
     cases.push_back({"stairs", Primitives::Stairs(10, 2.0f, 0.2f, 0.3f), 6.6});
     cases.push_back({"sphere", Primitives::Sphere(2.0f, 32, 24), -1.0});
     cases.push_back({"cylinder", Primitives::Cylinder(1.0f, 2.0f, 32), -1.0});
+    // Volumes checked against the formulas, to a few percent for the facets.
+    cases.push_back({"ellipsoid", Primitives::Ellipsoid({1.0f, 0.5f, 2.0f}, 48, 32),
+                     4.0 / 3.0 * 3.14159265 * 1.0 * 0.5 * 2.0});
+    cases.push_back({"capsule", Primitives::Capsule(0.5f, 3.0f, 48, 32),
+                     3.14159265 * 0.25 * 2.0 + 4.0 / 3.0 * 3.14159265 * 0.125});
+    cases.push_back({"frustum", Primitives::Frustum(1.0f, 0.5f, 2.0f, 48),
+                     3.14159265 * 2.0 / 3.0 * (1.0 + 0.5 + 0.25)});
+    cases.push_back({"cone", Primitives::Frustum(1.0f, 0.0f, 3.0f, 48), 3.14159265 * 3.0 / 3.0});
 
     for (const Case& testCase : cases)
     {

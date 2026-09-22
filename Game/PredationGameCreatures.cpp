@@ -618,7 +618,7 @@ void PredationGame::DrawCreatureOverlays(DebugDraw& draw)
         if (senses)
         {
             // The field of view: its two edges and an arc at the range it sees to, level with its eye.
-            const float range = 26.0f * brain.Traits().perception;
+            const float range = std::max(brain.SightRange(), CreatureBrain::CloseSense());
             const float half = glm::radians(65.0f);
             const float yaw = creature->Yaw();
             const auto along = [&](float angle)

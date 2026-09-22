@@ -148,6 +148,10 @@ public:
 
     const CreatureIntent& Intent() const { return m_intent; }
     const CreatureTraits& Traits() const { return m_traits; }
+    // How far its eyes reach, in metres: 0 for one with none. Within touching distance it knows
+    // somebody is there whatever its eyes, which is CloseSense().
+    float SightRange() const;
+    static float CloseSense();
     Behavior Current() const { return m_behavior; }
     int CurrentTarget() const { return m_target; }
     const std::string& CurrentGoal() const { return m_goal; }

@@ -39,6 +39,8 @@ set(PRED_GAME_SOURCES
     Creature/CreatureTraits.cpp
     Creature/CreatureBrain.h
     Creature/CreatureBrain.cpp
+    Creature/CreatureAnatomy.h
+    Creature/CreatureAnatomy.cpp
     Creature/Creature.h
     Creature/Creature.cpp
     Weapons/BulletHole.h
