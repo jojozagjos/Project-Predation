@@ -295,6 +295,7 @@ class NetClient
 public:
     // Whether a creature has hold of this player, as the host last said.
     bool HeldByHost() const { return m_heldByHost; }
+    bool CocoonedByHost() const { return m_cocoonedByHost; }
     struct Config
     {
         // Two snapshot intervals at 30 Hz. Enough that the next snapshot has almost always arrived
@@ -431,6 +432,7 @@ private:
     uint32_t m_creatureStatesReceived = 0;
     PredictionBuffer m_history;
     bool m_heldByHost = false;
+    bool m_cocoonedByHost = false;
     Config m_config;
     ReconciliationResult m_lastReconciliation;
     glm::vec3 m_visualError{0.0f};

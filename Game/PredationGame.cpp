@@ -8972,6 +8972,48 @@ void PredationGame::DrawHud()
         draw->AddText({viewport->Pos.x + 10.0f, viewport->Pos.y + viewport->Size.y - size.y - 8.0f},
                       IM_COL32(180, 190, 200, 90), version);
     }
+    // Held by a creature, or wrapped up at its nest: what is happening, and what to do about it.
+    if (m_screen == Screen::Playing && m_player.State().alive)
+    {
+        bool held = false;
+        bool cocooned = false;
+        float struggle = -1.0f;
+        if (IsAuthority())
+        {
+            if (const auto grip = m_grips.find(LocalPlayerId()); grip != m_grips.end())
+            {
+                held = true;
+                struggle = grip->second.struggle;
+            }
+            cocooned = std::any_of(m_cocoons.begin(), m_cocoons.end(),
+                                   [&](const Cocoon& cocoon) { return cocoon.player == LocalPlayerId(); });
+        }
+        else if (m_sessionMode == SessionMode::Client)
+        {
+            cocooned = m_client.CocoonedByHost();
+            held = m_client.HeldByHost() && !cocooned;
+        }
+        if (held || cocooned)
+        {
+            const char* line = cocooned ? "WRAPPED UP AT ITS NEST -- somebody has to cut you free"
+                                        : "SOMETHING HAS YOU -- press jump, again and again, to break free";
+            const ImVec2 size = ImGui::CalcTextSize(line);
+            const ImVec2 at{centre.x - size.x * 0.5f, viewport->Pos.y + viewport->Size.y * 0.72f};
+            draw->AddRectFilled({at.x - 12.0f, at.y - 8.0f}, {at.x + size.x + 12.0f, at.y + size.y + 18.0f},
+                                IM_COL32(20, 6, 6, 190), 3.0f);
+            draw->AddText(at, IM_COL32(235, 90, 80, 255), line);
+            if (held && struggle >= 0.0f)
+            {
+                const float width = size.x;
+                draw->AddRectFilled({at.x, at.y + size.y + 6.0f}, {at.x + width, at.y + size.y + 12.0f},
+                                    IM_COL32(60, 30, 30, 220), 2.0f);
+                draw->AddRectFilled({at.x, at.y + size.y + 6.0f},
+                                    {at.x + width * std::clamp(struggle, 0.0f, 1.0f), at.y + size.y + 12.0f},
+                                    IM_COL32(235, 180, 90, 240), 2.0f);
+            }
+        }
+    }
+
     const ImU32 reticleColor = IM_COL32(230, 230, 235, 150);
     float gap = 2.0f;
     if (const WeaponDefinition* weapon = EquippedWeapon())

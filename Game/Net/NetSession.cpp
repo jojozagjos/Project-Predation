@@ -1511,6 +1511,7 @@ void NetClient::Reconcile(const SnapshotMessage& snapshot, PlayerController& loc
         {
             local.Attach(entry.position, entry.yaw);
             m_heldByHost = true;
+            m_cocoonedByHost = entry.cocooned;
             m_history.Clear();
             m_lastAcknowledged = std::max(m_lastAcknowledged, snapshot.lastProcessedInput);
             return;
@@ -1519,6 +1520,7 @@ void NetClient::Reconcile(const SnapshotMessage& snapshot, PlayerController& loc
         {
             m_heldByHost = false;
             local.Detach(entry.position);
+            m_cocoonedByHost = false;
             m_history.Clear();
             m_lastAcknowledged = std::max(m_lastAcknowledged, snapshot.lastProcessedInput);
             return;
