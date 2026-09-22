@@ -1,11 +1,13 @@
 #include "Game/Creature/Creature.h"
 
+#include "Engine/Animation/IK.h"
 #include "Engine/Navigation/NavMesh.h"
 #include "Engine/Render/Mesh.h"
 #include "Engine/Render/Primitives.h"
 
 #include <glm/geometric.hpp>
 #include <glm/gtc/constants.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
 
 #include <algorithm>
@@ -17,15 +19,6 @@ namespace pred
 namespace
 {
 
-// The box rounds hit, in the creature's own frame: forward is -Z, as it is for everything else.
-constexpr glm::vec3 kBodyHalfExtents{0.3f, 0.5f, 0.85f};
-constexpr glm::vec3 kBodyCentre{0.0f, 0.62f, -0.1f};
-constexpr glm::vec3 kEye{0.0f, 1.0f, -1.08f};
-
-// The walk: how many radians of leg swing per metre covered, and how far a leg swings at a run.
-constexpr float kStridePerMetre = 3.6f;
-constexpr float kLegSwing = 0.55f;
-constexpr float kLegLength = 0.75f;
 constexpr float kTurnRate = 5.0f;
 
 glm::quat YawRotation(float yaw)
@@ -53,27 +46,75 @@ float Horizontal(const glm::vec3& a, const glm::vec3& b)
     return std::sqrt(d.x * d.x + d.z * d.z);
 }
 
-// Where each leg hangs from, and when in the cycle it swings: the diagonal pairs move together,
-// which is how four legs walk.
-constexpr glm::vec3 kHips[4] = {
-    {-0.22f, 0.76f, -0.38f}, {0.22f, 0.76f, -0.38f}, {-0.22f, 0.72f, 0.45f}, {0.22f, 0.72f, 0.45f}};
-constexpr float kLegPhase[4] = {0.0f, glm::pi<float>(), glm::pi<float>(), 0.0f};
+// The shortest turn that points `from` along `to`, both unit length.
+glm::quat TurnBetween(const glm::vec3& from, const glm::vec3& to)
+{
+    const float cosine = glm::dot(from, to);
+    if (cosine < -0.9999f)
+    {
+        // Exactly opposite: any half turn about something square to it.
+        const glm::vec3 axis = std::abs(from.x) < 0.9f ? glm::vec3(1.0f, 0.0f, 0.0f) : glm::vec3(0.0f, 0.0f, 1.0f);
+        return glm::angleAxis(glm::pi<float>(), glm::normalize(glm::cross(from, axis)));
+    }
+    const glm::vec3 axis = glm::cross(from, to);
+    return glm::normalize(glm::quat(1.0f + cosine, axis.x, axis.y, axis.z));
+}
+
+// A piece that runs from `a` to `b`, drawn from a mesh that runs along Y and is centred on its middle.
+glm::mat4 Between(const glm::vec3& a, const glm::vec3& b)
+{
+    const glm::vec3 along = b - a;
+    const float length = glm::length(along);
+    const glm::quat turn = length > 1e-5f ? TurnBetween(glm::vec3(0.0f, 1.0f, 0.0f), along / length)
+                                          : glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
+    return glm::translate(glm::mat4(1.0f), (a + b) * 0.5f) * glm::mat4_cast(turn);
+}
 
 } // namespace
 
-Creature::Creature(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, const NavMesh* nav,
-                   const CreatureTraits& traits, const glm::vec3& spawn)
-    : m_scene(scene), m_physics(physics), m_nav(nav), m_brain(traits), m_position(spawn)
+CreatureTraits Creature::WithBody(CreatureTraits traits, const CreatureCapabilities& caps)
 {
+    // The temperament is the seed's; everything physical is the body's. A heavy thing does not run as
+    // fast as a light one because it has decided not to.
+    traits.runSpeed = caps.runSpeed;
+    traits.walkSpeed = caps.walkSpeed;
+    traits.sight = caps.sight;
+    traits.hearing = caps.hearing;
+    traits.strikeReach = caps.strikeReach;
+    traits.eyeHeight = caps.eye.y;
+    traits.bodyMiddle = caps.bodyCentre.y;
+    return traits;
+}
+
+Creature::Creature(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, const NavMesh* nav,
+                   const CreatureTraits& traits, const glm::vec3& spawn, float healthScale)
+    : m_scene(scene), m_physics(physics), m_nav(nav), m_anatomy(CreatureAnatomy::FromSeed(traits.seed)),
+      m_caps(CreatureCapabilities::From(m_anatomy)), m_rest(m_anatomy.Rest()),
+      m_brain(WithBody(traits, m_caps)), m_position(spawn)
+{
+    m_maxHealth = std::max(m_caps.health * std::max(healthScale, 0.01f), 1.0f);
+    m_health = m_maxHealth;
+
+    // The legs' swing: half a stride is about a third of the leg's length, and a foot on the ground
+    // moves backwards exactly as fast as the body moves forwards, which is what stops it sliding. A
+    // stride of amplitude A needs 1/A radians of the cycle per metre for that to be true.
+    float legLength = 0.0f;
+    for (const LegPair& pair : m_anatomy.legs)
+    {
+        legLength += pair.upper + pair.lower;
+    }
+    legLength /= static_cast<float>(std::max<size_t>(m_anatomy.legs.size(), 1));
+    m_strideRate = 1.0f / std::max(legLength * 0.32f, 0.05f);
+
     glm::vec3 onMesh;
     if (m_nav != nullptr && m_nav->NearestPoint(spawn, 3.0f, onMesh))
     {
         m_position = onMesh;
     }
     Transform body;
-    body.position = m_position + YawRotation(m_yaw) * kBodyCentre;
+    body.position = m_position + YawRotation(m_yaw) * m_caps.bodyCentre;
     body.rotation = YawRotation(m_yaw);
-    m_body = m_physics.CreateBox(kBodyHalfExtents, body, BodyMotion::Kinematic);
+    m_body = m_physics.CreateBox(m_caps.bodyHalfExtents, body, BodyMotion::Kinematic);
     BuildVisual(meshes);
     UpdateVisual(0.0f);
 }
@@ -104,24 +145,33 @@ glm::vec3 Creature::Forward() const
 
 glm::vec3 Creature::Eye() const
 {
-    return m_position + YawRotation(m_yaw) * kEye;
+    return m_position + YawRotation(m_yaw) * m_caps.eye;
 }
 
 void Creature::BuildVisual(MeshLibrary& meshes)
 {
-    Material skin = Material::Diffuse({0.40f, 0.42f, 0.38f}, 0.72f);
-    Material dark = Material::Diffuse({0.24f, 0.25f, 0.23f}, 0.8f);
+    const CreatureAnatomy& a = m_anatomy;
+    const CreatureAnatomy::RestPose& pose = m_rest;
+    const Material skin = Material::Diffuse(a.skin, a.roughness);
+    const Material under = Material::Diffuse(a.underside, std::min(a.roughness + 0.1f, 1.0f));
+    Material plate = Material::Diffuse(a.skin * 0.75f, 0.45f);
     Material eyes = Material::Diffuse({1.0f, 0.3f, 0.2f}, 0.4f);
     // Faint. Enough to find it by in a dark room, not enough to light the room.
-    eyes.emissive = {2.4f, 0.5f, 0.35f};
+    eyes.emissive = a.eyeGlow;
 
-    const auto add = [&](const char* name, const MeshData& data, const glm::vec3& offset,
-                         const Material& material, int leg = -1)
+    // Every mesh is named for this creature's seed: two creatures are two different bodies, and a
+    // shared name would hand the second the first one's legs.
+    const std::string prefix = "creature_" + std::to_string(a.seed) + "_";
+    int count = 0;
+    const auto add = [&](const MeshData& data, const Material& material, PieceKind kind, const glm::mat4& local,
+                         int leg = -1)
     {
-        const MeshHandle mesh = meshes.Upload(data, std::string("creature_") + name);
+        const std::string name = prefix + std::to_string(count++);
+        const MeshHandle mesh = meshes.Upload(data, name);
         Piece piece;
-        piece.entity = m_scene.CreateMeshEntity(std::string("creature_") + name, Transform{}, mesh, material);
-        piece.offset = offset;
+        piece.entity = m_scene.CreateMeshEntity(name, Transform{}, mesh, material);
+        piece.kind = kind;
+        piece.local = local;
         piece.leg = leg;
         piece.glow = material.emissive;
         if (MeshRenderer* renderer = m_scene.GetMeshRenderer(piece.entity))
@@ -131,16 +181,94 @@ void Creature::BuildVisual(MeshLibrary& meshes)
         m_pieces.push_back(piece);
     };
 
-    add("torso", Primitives::Box({0.55f, 0.45f, 1.15f}), {0.0f, 0.86f, 0.05f}, skin);
-    add("shoulders", Primitives::Box({0.62f, 0.36f, 0.45f}), {0.0f, 1.06f, -0.35f}, skin);
-    add("head", Primitives::Box({0.34f, 0.30f, 0.50f}), {0.0f, 0.97f, -0.82f}, skin);
-    add("jaw", Primitives::Box({0.26f, 0.10f, 0.36f}), {0.0f, 0.79f, -0.90f}, dark);
-    add("eye_l", Primitives::Sphere(0.035f, 8, 6), {-0.09f, 1.03f, -1.08f}, eyes);
-    add("eye_r", Primitives::Sphere(0.035f, 8, 6), {0.09f, 1.03f, -1.08f}, eyes);
-    add("tail", Primitives::Box({0.10f, 0.10f, 0.65f}), {0.0f, 0.9f, 0.9f}, dark);
-    for (int leg = 0; leg < 4; ++leg)
+    // The body: a row of overlapping ellipsoids from shoulders to rump, narrowing towards the back, laid
+    // along the line between them so a hunched back slopes.
+    const glm::vec3 spineDirection = glm::normalize(pose.rump - pose.shoulders);
+    const glm::quat alongSpine = TurnBetween(glm::vec3(0.0f, 0.0f, 1.0f), spineDirection);
+    const float segmentLength = a.length / static_cast<float>(std::max(a.segments, 1));
+    for (size_t i = 0; i < pose.spine.size(); ++i)
     {
-        add("leg", Primitives::Cylinder(0.07f, kLegLength, 8), kHips[leg], dark, leg);
+        const float t = pose.spine.size() > 1 ? static_cast<float>(i) / static_cast<float>(pose.spine.size() - 1) : 0.0f;
+        const glm::vec3 radii{pose.spineRadius[i], a.depth * 0.5f * (1.0f - 0.18f * t), segmentLength * 0.8f};
+        add(Primitives::Ellipsoid(radii, 14, 9), skin, PieceKind::Body,
+            glm::translate(glm::mat4(1.0f), pose.spine[i]) * glm::mat4_cast(alongSpine));
+    }
+
+    // Plates along the top of the back, and spines along the ridge.
+    for (int p = 0; p < a.plates; ++p)
+    {
+        const float t = 0.15f + 0.7f * (static_cast<float>(p) + 0.5f) / static_cast<float>(a.plates);
+        const glm::vec3 at = pose.shoulders + (pose.rump - pose.shoulders) * t + glm::vec3(0.0f, a.depth * 0.42f, 0.0f);
+        const glm::vec3 radii{a.width * 0.36f, 0.035f, a.length / static_cast<float>(a.plates) * 0.5f};
+        add(Primitives::Ellipsoid(radii, 12, 6), plate, PieceKind::Body,
+            glm::translate(glm::mat4(1.0f), at) * glm::mat4_cast(alongSpine));
+    }
+    for (int s = 0; s < a.spines; ++s)
+    {
+        const float t = 0.05f + 0.9f * (static_cast<float>(s) + 0.5f) / static_cast<float>(a.spines);
+        const glm::vec3 base = pose.shoulders + (pose.rump - pose.shoulders) * t + glm::vec3(0.0f, a.depth * 0.45f, 0.0f);
+        // Raked back, the way a spine on an animal that moves forwards is.
+        const glm::vec3 tip = base + glm::normalize(glm::vec3(0.0f, 1.0f, 0.45f)) * a.spineLength;
+        add(Primitives::Frustum(a.spineLength * 0.16f, 0.0f, a.spineLength, 8), plate, PieceKind::Body,
+            Between(base, tip));
+    }
+
+    // The neck, the head and its jaw, the eyes and the frills: the front end, which rears back before
+    // it strikes.
+    const glm::vec3 headBack = pose.head + glm::vec3(0.0f, 0.0f, a.headLength * 0.35f);
+    add(Primitives::Capsule(a.neckThickness * 0.5f, glm::distance(pose.neckBase, headBack) + a.neckThickness, 10, 6),
+        skin, PieceKind::Front, Between(pose.neckBase, headBack));
+    add(Primitives::Ellipsoid({a.headWidth * 0.5f, a.headDepth * 0.5f, a.headLength * 0.5f}, 14, 9), skin,
+        PieceKind::Front, glm::translate(glm::mat4(1.0f), pose.head));
+    add(Primitives::Ellipsoid({a.headWidth * 0.38f, a.headDepth * 0.2f, a.jawLength * 0.5f}, 12, 7), under,
+        PieceKind::Front, glm::translate(glm::mat4(1.0f), pose.jaw));
+    for (const glm::vec3& eye : pose.eyes)
+    {
+        // A little proud of the head, so the head does not swallow them.
+        const glm::vec3 out = pose.head + (eye - pose.head) * 1.05f;
+        add(Primitives::Sphere(a.eyeSize * 0.8f, 8, 6), eyes, PieceKind::Front, glm::translate(glm::mat4(1.0f), out));
+    }
+    if (a.frills > 0.05f)
+    {
+        for (const float side : {-1.0f, 1.0f})
+        {
+            const glm::vec3 at = pose.head + glm::vec3(side * a.headWidth * 0.55f, a.headDepth * 0.1f, a.headLength * 0.15f);
+            const glm::vec3 radii{0.012f, 0.03f + a.headDepth * 0.7f * a.frills, 0.03f + a.headLength * 0.5f * a.frills};
+            add(Primitives::Ellipsoid(radii, 10, 6), under, PieceKind::Front,
+                glm::translate(glm::mat4(1.0f), at) *
+                    glm::mat4_cast(glm::angleAxis(side * glm::radians(-25.0f), glm::vec3(0.0f, 0.0f, 1.0f))));
+        }
+    }
+
+    // The tail, in tapering sections, drooping more the further it goes.
+    if (a.tailLength > 0.05f)
+    {
+        const float section = a.tailLength / static_cast<float>(std::max(a.tailSegments, 1));
+        glm::vec3 from = pose.tailBase;
+        glm::vec3 direction = pose.tailDirection;
+        for (int s = 0; s < a.tailSegments; ++s)
+        {
+            const float t0 = static_cast<float>(s) / static_cast<float>(a.tailSegments);
+            const float t1 = static_cast<float>(s + 1) / static_cast<float>(a.tailSegments);
+            const glm::vec3 to = from + direction * section;
+            add(Primitives::Frustum(a.tailThickness * (1.0f - 0.8f * t0), a.tailThickness * (1.0f - 0.8f * t1), section * 1.08f, 10),
+                skin, PieceKind::Body, Between(from, to));
+            from = to;
+            direction = glm::normalize(direction + glm::vec3(0.0f, -0.07f, 0.0f));
+        }
+    }
+
+    // Legs: three pieces each, placed every frame by solving the leg to where its foot should be.
+    for (size_t i = 0; i < pose.legs.size(); ++i)
+    {
+        const LegPair& pair = *pose.legs[i].pair;
+        const int leg = static_cast<int>(i);
+        add(Primitives::Capsule(pair.thickness, pair.upper + pair.thickness, 10, 6), skin, PieceKind::LegUpper,
+            glm::mat4(1.0f), leg);
+        add(Primitives::Capsule(pair.thickness * 0.8f, pair.lower + pair.thickness * 0.8f, 10, 6), under,
+            PieceKind::LegLower, glm::mat4(1.0f), leg);
+        add(Primitives::Capsule(pair.thickness * 0.7f, pair.foot + pair.thickness * 0.7f, 8, 5), under,
+            PieceKind::LegFoot, glm::mat4(1.0f), leg);
     }
 }
 
@@ -150,8 +278,10 @@ void Creature::TakeDamage(float amount, int byPlayer, const glm::vec3& from, flo
     {
         return;
     }
+    // Plates stop part of every round.
+    amount *= 1.0f - m_caps.armour;
     m_health = std::max(m_health - amount, 0.0f);
-    m_brain.OnDamaged(amount, byPlayer, from, time);
+    m_brain.OnDamaged(amount, byPlayer, from, time, m_maxHealth);
     if (!Alive())
     {
         // Dead for real. The mind stops with it -- nothing after this perceives or decides -- which
@@ -166,7 +296,7 @@ void Creature::TakeDamage(float amount, int byPlayer, const glm::vec3& from, flo
 void Creature::SetShownState(const glm::vec3& position, float yaw, float speed, float windup, bool alive,
                              bool down, float crouch)
 {
-    m_stride += Horizontal(m_position, position) * kStridePerMetre;
+    m_stride += Horizontal(m_position, position) * m_strideRate;
     m_position = position;
     m_yaw = yaw;
     m_speed = speed;
@@ -309,7 +439,7 @@ void Creature::Move(const CreatureIntent& intent, const std::vector<glm::vec3>& 
         {
             moved = m_position + step;
         }
-        m_stride += Horizontal(m_position, moved) * kStridePerMetre;
+        m_stride += Horizontal(m_position, moved) * m_strideRate;
         m_position = moved;
     }
 
@@ -356,7 +486,8 @@ void Creature::SyncBody(float dt)
     const glm::quat facing = YawRotation(m_yaw);
     Transform body;
     body.rotation = facing * glm::angleAxis(m_collapse * glm::radians(84.0f) * m_fallSide, glm::vec3(0.0f, 0.0f, 1.0f));
-    body.position = m_position + facing * (kBodyCentre + glm::vec3(0.0f, -0.27f * m_collapse, 0.0f));
+    const float sink = m_caps.bodyHalfExtents.y * 0.5f * m_collapse;
+    body.position = m_position + facing * (m_caps.bodyCentre + glm::vec3(0.0f, -sink, 0.0f));
     if (dt > 0.0f)
     {
         m_physics.MoveKinematic(m_body, body, dt);
@@ -371,9 +502,10 @@ void Creature::UpdateVisual(float dt)
 {
     m_shownTime += dt;
     const glm::quat facing = YawRotation(m_yaw);
-    const float pace = std::clamp(m_speed / 5.0f, 0.0f, 1.0f);
+    // How much it is striding: nothing standing still, all of it at a walk and above.
+    const float pace = std::clamp(m_speed / std::max(m_caps.walkSpeed, 0.1f), 0.0f, 1.0f);
 
-    // Going down rolls it onto its side and sinks it to the floor in a little over half a second;
+    // Going down rolls it onto its side and lets it down to the floor in a little over half a second;
     // getting up takes a little longer. Dead and playing dead are the same fall, deliberately.
     const float lying = Down() ? 1.0f : 0.0f;
     if (lying > 0.5f && m_collapse <= 0.0f)
@@ -382,12 +514,13 @@ void Creature::UpdateVisual(float dt)
         // body that fell into the wall or the ramp beside it was drawn inside it, and a creature
         // playing dead that could not be seen was not playing anything.
         const glm::quat turned = YawRotation(m_yaw);
-        const glm::vec3 from = m_position + glm::vec3(0.0f, 0.4f, 0.0f);
+        const glm::vec3 from = m_position + glm::vec3(0.0f, m_anatomy.hipHeight * 0.6f, 0.0f);
         const glm::vec3 left = turned * glm::vec3(-1.0f, 0.0f, 0.0f);
+        const float reach = std::max(m_anatomy.hipHeight + m_anatomy.depth, 0.8f) * 1.4f;
         const auto room = [&](const glm::vec3& side)
         {
-            const RayHit hit = m_physics.RayCast(from, side, 1.4f, m_body);
-            return hit ? hit.distance : 1.4f;
+            const RayHit hit = m_physics.RayCast(from, side, reach, m_body);
+            return hit ? hit.distance : reach;
         };
         // A positive roll takes it over onto its left side.
         m_fallSide = room(left) >= room(-left) ? 1.0f : -1.0f;
@@ -401,22 +534,68 @@ void Creature::UpdateVisual(float dt)
     }
     // Eased so the fall starts slowly and lands hard, which is how a weight goes over.
     const float collapse = m_collapse * m_collapse * (3.0f - 2.0f * m_collapse);
+    const float standing = 1.0f - collapse;
 
-    // Stalking, it creeps: legs splayed out front and back and the body let down between them, the
-    // head lowest of all. The drop is exactly what the splay takes off the legs' height, so the feet
-    // stay on the floor.
+    // Stalking, it creeps: the body let down towards the floor, which the legs take up by bending --
+    // they are solved to the ground below, so lowering the body is the whole of a crouch.
     m_crouch += (m_crouchTarget - m_crouch) * (1.0f - std::exp(-6.0f * dt));
-    const float splay = 0.6f * m_crouch * (1.0f - collapse);
-    const float drop = kLegLength * (1.0f - std::cos(splay));
-    const glm::quat roll = glm::angleAxis(collapse * glm::radians(84.0f) * m_fallSide, glm::vec3(0.0f, 0.0f, 1.0f));
-    // Rolled about a point at the middle of its body, hip height, not about its feet: rolled about the
-    // feet, what had been its back ended up at the height of its ankles and a sink on top of that put it
-    // through the floor -- every death, and every body playing dead, was drawn under the ground.
-    const glm::vec3 pivot{0.0f, 0.35f, 0.0f};
-
+    const float drop = m_anatomy.hipHeight * 0.35f * m_crouch * standing;
+    // A step lifts the body a little, twice a stride.
+    const float bob = std::abs(std::sin(m_stride)) * 0.025f * m_anatomy.hipHeight * pace * standing;
+    const glm::vec3 lift{0.0f, bob - drop, 0.0f};
     // Before a strike it draws back and up, which is the thing a player watching it learns to read.
-    const glm::vec3 rear{0.0f, 0.08f * m_windup, 0.22f * m_windup};
-    const float bob = std::abs(std::sin(m_stride)) * 0.035f * pace;
+    const glm::vec3 rear = glm::vec3(0.0f, 0.1f, 0.25f) * m_windup * std::max(m_anatomy.headLength * 2.0f, 0.6f);
+
+    // Rolled about a point in the middle of its body, not about its feet: rolled about the feet, what
+    // had been its back ended up at ankle height and the body went through the floor.
+    const glm::vec3 pivot{0.0f, m_anatomy.hipHeight * 0.55f, 0.0f};
+    const glm::quat roll = glm::angleAxis(collapse * glm::radians(84.0f) * m_fallSide, glm::vec3(0.0f, 0.0f, 1.0f));
+    const glm::mat4 toWorld = glm::translate(glm::mat4(1.0f), m_position) * glm::mat4_cast(facing) *
+                              glm::translate(glm::mat4(1.0f), pivot) * glm::mat4_cast(roll) *
+                              glm::translate(glm::mat4(1.0f), -pivot);
+
+    // Where each leg's joints are, in the body's frame. The feet stay on the ground while the body is
+    // up; lying down, they hang where they rest, and the whole thing goes over together.
+    struct Joints
+    {
+        glm::vec3 hip{0.0f};
+        glm::vec3 knee{0.0f};
+        glm::vec3 ankle{0.0f};
+        glm::vec3 toe{0.0f};
+    };
+    std::vector<Joints> legs(m_rest.legs.size());
+    for (size_t i = 0; i < m_rest.legs.size(); ++i)
+    {
+        const CreatureAnatomy::Leg& leg = m_rest.legs[i];
+        const LegPair& pair = *leg.pair;
+        // Which half of the cycle this leg is in. Every body walks the same rule: a pair's two legs are
+        // opposite, and each pair is opposite the one in front of it -- a four-legged walk is diagonal,
+        // six legs make two tripods, two legs alternate.
+        const int pairIndex = static_cast<int>(i / 2);
+        const int sideIndex = leg.side > 0.0f ? 1 : 0;
+        const float phase = m_stride + static_cast<float>((pairIndex + sideIndex) % 2) * glm::pi<float>();
+        // Half a stride either way of where the foot rests, backwards while it is down and forwards
+        // while it is lifted.
+        const float amplitude = standing * pace / m_strideRate;
+        const float raise = std::max(0.0f, -std::cos(phase)) * (pair.upper + pair.lower) * 0.14f * pace * standing;
+
+        Joints& joints = legs[i];
+        joints.hip = leg.hip + lift;
+        const glm::vec3 foot = leg.foot + glm::vec3(0.0f, raise, amplitude * std::sin(phase));
+        const glm::vec3 ankleTarget = foot + glm::vec3(0.0f, pair.thickness, 0.0f);
+
+        // Which way the knee goes: forwards like a person's, backwards like a dog's hind leg, or -- six
+        // legs splayed wide -- up and out.
+        glm::vec3 pole = pair.backwardKnee ? glm::vec3(0.0f, 0.2f, 1.0f) : glm::vec3(0.0f, 0.2f, -1.0f);
+        if (m_anatomy.plan == BodyPlan::Hexapod)
+        {
+            pole = glm::vec3(leg.side, 1.0f, 0.0f);
+        }
+        const TwoBoneIKResult ik = SolveTwoBoneIK(joints.hip, ankleTarget, glm::normalize(pole), pair.upper, pair.lower);
+        joints.knee = ik.jointPosition;
+        joints.ankle = ik.endPosition;
+        joints.toe = joints.ankle + glm::vec3(0.0f, -pair.thickness * 0.5f, -pair.foot);
+    }
 
     for (const Piece& piece : m_pieces)
     {
@@ -425,30 +604,29 @@ void Creature::UpdateVisual(float dt)
         {
             continue;
         }
-        glm::vec3 local = piece.offset;
-        glm::quat localTurn{1.0f, 0.0f, 0.0f, 0.0f};
-        if (piece.leg >= 0)
+        glm::mat4 local = piece.local;
+        switch (piece.kind)
         {
-            // Hanging from its hip and swinging about it.
-            const float swing =
-                std::sin(m_stride + kLegPhase[piece.leg]) * kLegSwing * pace * (1.0f - collapse);
-            // Front legs reach forward and back legs back, so a crouch spreads it out rather than
-            // folding it up.
-            const float spread = piece.offset.z < 0.0f ? splay : -splay;
-            localTurn = glm::angleAxis(swing + spread, glm::vec3(1.0f, 0.0f, 0.0f));
-            local = piece.offset + glm::vec3(0.0f, -drop, 0.0f) +
-                    localTurn * glm::vec3(0.0f, -kLegLength * 0.5f, 0.0f);
+        case PieceKind::Body:
+            local = glm::translate(glm::mat4(1.0f), lift) * local;
+            break;
+        case PieceKind::Front:
+            // The head end hangs lower still while it creeps.
+            local = glm::translate(glm::mat4(1.0f), lift + rear +
+                                                        glm::vec3(0.0f, -0.06f * m_crouch * standing, 0.0f)) *
+                    local;
+            break;
+        case PieceKind::LegUpper:
+            local = Between(legs[static_cast<size_t>(piece.leg)].hip, legs[static_cast<size_t>(piece.leg)].knee);
+            break;
+        case PieceKind::LegLower:
+            local = Between(legs[static_cast<size_t>(piece.leg)].knee, legs[static_cast<size_t>(piece.leg)].ankle);
+            break;
+        case PieceKind::LegFoot:
+            local = Between(legs[static_cast<size_t>(piece.leg)].ankle, legs[static_cast<size_t>(piece.leg)].toe);
+            break;
         }
-        else
-        {
-            local += glm::vec3(0.0f, bob - drop, 0.0f);
-            if (piece.offset.z < -0.3f)
-            {
-                local += rear; // the front end: shoulders, head, jaw, eyes
-                local.y -= 0.06f * m_crouch * (1.0f - collapse);
-            }
-        }
-        const glm::vec3 posed = pivot + roll * (local - pivot);
+        const glm::mat4 world = toWorld * local;
         // The eyes go out as it goes down, and come back on as it gets up. Dead or pretending, the
         // same: a body lying there with its eyes lit is not dead, and the players should not be able
         // to tell which it is.
@@ -456,11 +634,11 @@ void Creature::UpdateVisual(float dt)
         {
             if (MeshRenderer* renderer = m_scene.GetMeshRenderer(piece.entity))
             {
-                renderer->material.emissive = piece.glow * (1.0f - collapse);
+                renderer->material.emissive = piece.glow * standing;
             }
         }
-        transform->position = m_position + facing * posed;
-        transform->rotation = facing * roll * localTurn;
+        transform->position = glm::vec3(world[3]);
+        transform->rotation = glm::quat_cast(glm::mat3(world));
     }
 }
 
@@ -474,12 +652,13 @@ std::string Creature::DescribePose() const
             torso = transform->position;
         }
     }
-    char line[256];
+    char line[320];
     std::snprintf(line, sizeof(line),
-                  "at %.2f %.2f %.2f yaw %.0f deg  %s  fallen %.2f  crouch %.2f  torso drawn at %.2f %.2f %.2f",
+                  "at %.2f %.2f %.2f yaw %.0f deg  %s  fallen %.2f  crouch %.2f  torso drawn at %.2f %.2f %.2f  "
+                  "(%s, %.0f of %.0f health)",
                   m_position.x, m_position.y, m_position.z, glm::degrees(m_yaw),
                   !Alive() ? "dead" : (m_down ? "lying still" : "up"), m_collapse, m_crouch, torso.x, torso.y,
-                  torso.z);
+                  torso.z, BodyPlanName(m_anatomy.plan), m_health, m_maxHealth);
     return line;
 }
 

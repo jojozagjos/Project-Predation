@@ -33,11 +33,13 @@ CVar<int> cv_aiSeed{"ai.seed", 0,
 CVar<float> cv_aiArrival{"ai.arrival_seconds", 40.0f,
                          "Roughly how long into a game the creature arrives; 0 for straight away"};
 
-// A strike's reach as the game checks it when the blow lands. A little longer than the brain's own
-// reach, because the brain decided to swing when somebody was in reach and they get this much room to
-// have stepped back during the wind-up before it misses.
-constexpr float kStrikeLands = 2.6f;
-constexpr float kStrikeDamage = 28.0f;
+CVar<float> cv_aiHealthScale{"ai.health_scale", 1.0f,
+                             "Multiplies how much health a creature's body gives it, for tuning"};
+
+// A strike's reach as the game checks it when the blow lands: the body's own reach and a little more,
+// because the brain decided to swing when somebody was in reach and they get this much room to have
+// stepped back during the wind-up before it misses. How hard it hits is the body's too.
+constexpr float kStrikeGrace = 0.3f;
 
 float BodyHeight(PlayerStance stance)
 {
@@ -124,10 +126,11 @@ bool PredationGame::SpawnCreature(uint32_t seed, const glm::vec3& awayFrom, cons
     }
     const CreatureTraits traits = CreatureTraits::FromSeed(seed);
     m_creatures.push_back(std::make_unique<Creature>(m_scene, m_app->GetMeshes(), m_app->GetPhysics(),
-                                                     &m_nav, traits, best));
+                                                     &m_nav, traits, best, cv_aiHealthScale.Get()));
     m_creatures.back()->SetNetId(m_nextCreatureId++);
-    PRED_LOG_INFO(AI, "Creature spawned {:.0f} m away at {:.1f} {:.1f} {:.1f}: {}", bestDistance, best.x,
-                  best.y, best.z, traits.Describe());
+    PRED_LOG_INFO(AI, "Creature spawned {:.0f} m away at {:.1f} {:.1f} {:.1f}: {}; {}; {}", bestDistance, best.x,
+                  best.y, best.z, traits.Describe(), m_creatures.back()->Anatomy().Describe(),
+                  m_creatures.back()->Capabilities().Describe());
     return true;
 }
 
@@ -416,10 +419,13 @@ void PredationGame::UpdateCreatures(float dt)
         senses.players = players;
         senses.noises = m_noises;
         const BodyHandle self = creature->Body();
-        // Whether anything solid is between two points, ignoring the creature's own body -- its eyes
-        // are inside it -- and stopping a little short of the far end, which is usually somebody
-        // with a shape of their own.
-        senses.clearLine = [&physics, self](const glm::vec3& from, const glm::vec3& to)
+        // Whether anything solid is between two points, stopping a little short of the far end, which
+        // is usually somebody with a shape of their own.
+        //
+        // Creatures do not block it, its own body or any other. Its eyes are inside its own box, and
+        // two big bodies of a pack standing close put one's head inside the other's box -- which, with
+        // a ray that starts inside something counting as a hit, blinded it completely.
+        senses.clearLine = [this, &physics, self](const glm::vec3& from, const glm::vec3& to)
         {
             const glm::vec3 along = to - from;
             const float length = glm::length(along);
@@ -427,7 +433,26 @@ void PredationGame::UpdateCreatures(float dt)
             {
                 return true;
             }
-            return !physics.RayCast(from, along / length, length - 0.35f, self);
+            const glm::vec3 direction = along / length;
+            glm::vec3 start = from;
+            float left = length - 0.35f;
+            for (int pass = 0; pass < 4 && left > 0.0f; ++pass)
+            {
+                const RayHit hit = physics.RayCast(start, direction, left, self);
+                if (!hit)
+                {
+                    return true;
+                }
+                if (CreatureForBody(hit.body) == nullptr)
+                {
+                    return false;
+                }
+                // Through the creature and on from the other side of it.
+                const float past = hit.distance + 0.05f;
+                start += direction * past;
+                left -= past;
+            }
+            return true;
         };
         senses.lightAt = [this](const glm::vec3& at) { return LightAt(at, false); };
         senses.hidingPlaces = places;
@@ -475,7 +500,7 @@ void PredationGame::UpdateCreatures(float dt)
             }
             const float reach = Horizontal(creature->Position(), player.feet);
             const float rise = std::abs(creature->Position().y - player.feet.y);
-            if (reach > kStrikeLands || rise > 1.5f)
+            if (reach > creature->Capabilities().strikeReach + kStrikeGrace || rise > 1.5f)
             {
                 PRED_LOG_INFO(AI, "Strike at {} (player {}) missed: {:.1f} m away", player.name, player.id, reach);
                 break;
@@ -487,7 +512,8 @@ void PredationGame::UpdateCreatures(float dt)
             glm::vec3 blow = player.feet - creature->Position();
             blow.y = 0.0f;
             blow = glm::length(blow) > 1e-3f ? glm::normalize(blow) : creature->Forward();
-            ApplyPlayerDamage(static_cast<uint8_t>(player.id), kStrikeDamage, kNoKiller, blow, "creature");
+            ApplyPlayerDamage(static_cast<uint8_t>(player.id), creature->Capabilities().strikeDamage, kNoKiller, blow,
+                              "creature");
             PlaySound(m_sounds.hurt.Pick(), player.feet + glm::vec3(0.0f, 1.2f, 0.0f), 0.9f, 0.85f);
             PRED_LOG_INFO(AI, "Strike at {} (player {}) landed", player.name, player.id);
             break;
@@ -574,7 +600,7 @@ void PredationGame::ApplyCreatureState(const CreatureStateMessage& state)
             // once its body is generated from that seed rather than from boxes.
             m_creatures.push_back(std::make_unique<Creature>(m_scene, m_app->GetMeshes(), m_app->GetPhysics(),
                                                              &m_nav, CreatureTraits::FromSeed(shown.seed),
-                                                             shown.position));
+                                                             shown.position, cv_aiHealthScale.Get()));
             creature = m_creatures.back().get();
             creature->SetNetId(shown.id);
             PRED_LOG_INFO(AI, "Shown the host's creature {} (seed {})", shown.id, shown.seed);

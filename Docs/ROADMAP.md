@@ -50,8 +50,12 @@ the same seed makes the same decisions.
 
 Still missing, roughly in order:
 
-- **Its body (Milestone 10, next).** A placeholder of boxes. The procedural anatomy generated from the seed,
-  and replication already carries the seed for it.
+- **Its body (Milestone 10, most of it built).** Every seed is a body -- four, six or two legs, however
+  long and heavy, 0 to 6 eyes, frills, tail, plates, spines, never wings -- built from parts and posed
+  each frame with its legs solved to the ground. What the body can do comes from it: speed, sight,
+  hearing, reach, how hard it hits, and a lot of health (700 to 4000; `ai.health_scale` tunes it).
+  Still to do: a walkable surface per body size, so a large one cannot squeeze where it does not fit,
+  and a seed inspector for browsing bodies side by side.
 - **Procedural animation and traversal (Milestone 11).** A generated gait for whatever body the seed
   makes -- legs placed by IK on the real ground, not swung on a timer -- climbing, ceilings, and vents
   it can hide and move in if its body fits (see AI.md, "Vents and other hiding places").

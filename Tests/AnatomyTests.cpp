@@ -125,8 +125,8 @@ TEST_CASE("What a body can do follows from the body", "[anatomy]")
         const CreatureCapabilities c = CreatureCapabilities::From(a);
         INFO("seed " << seed << ": " << a.Describe() << " / " << c.Describe());
         // In range, every one.
-        CHECK(c.health >= 100.0f);
-        CHECK(c.health <= 320.0f);
+        CHECK(c.health >= 700.0f);
+        CHECK(c.health <= 4000.0f);
         CHECK(c.runSpeed >= 3.6f);
         CHECK(c.runSpeed <= 6.8f);
         CHECK(c.walkSpeed < c.runSpeed);

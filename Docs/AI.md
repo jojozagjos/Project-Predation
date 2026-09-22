@@ -4,10 +4,11 @@
 hiding places, curiosity, memory of places, learning over a match, and reproducibility from seed.
 What exists now is listed first, and the rest of this document is the design it is heading towards.
 
-## What exists (Milestones 8 and 9)
+## What exists (Milestones 8, 9 and most of 10)
 
 | Piece | Where |
 | --- | --- |
+| A body from the seed, and what it can do | `Game/Creature/CreatureAnatomy.h` |
 | Navigation mesh, paths, random points, moving along the surface | `Engine/Navigation/NavMesh.h` |
 | Traits from a seed | `Game/Creature/CreatureTraits.h` |
 | Sounds the creature can hear, and how far each carries | `Game/Creature/Noise.h` |
@@ -94,6 +95,28 @@ Developer commands: `spawn_creature [seed] [ahead [metres]]`, `creature_clear`, 
 `creature_pose`, `creature_mind`, `hide [locker]` and `ai_brain`, plus the `ai.creatures`, `ai.seed` and `ai.arrival_seconds` settings.
 The AI, Perception and Navigation debug categories draw the overlays; while stalking, the cover it
 weighed is drawn as posts (orange hidden, purple seen, taller for better) with the chosen spot ringed.
+
+### Bodies
+
+A seed makes a body as well as a temperament, from a random stream of its own so no seed's temperament
+changed when bodies arrived (`CreatureAnatomy`): four legs (half of all seeds), six splayed legs, or two
+under a body balanced by a tail; a segmented body, neck, head and jaw; none, two, four or six eyes;
+sound-catching frills; a tail; armour plates and spines. Every limb is a leg that stands on the ground,
+so none can be a wing.
+
+What the body can do is worked out from it (`CreatureCapabilities`) and handed to the brain as it is
+made: run and walk speed from leg length and weight; sight from its eyes (none at all without them,
+though it still knows somebody touching distance away); hearing from its frills, and best of all when it
+has no eyes; reach from its neck and head; how hard it hits from its weight and jaw; its health from its
+bulk -- a lot of it, 700 to 4000, so a medium body takes two or three carbine magazines -- and armour from
+its plates, which stop up to 30% of every round. Pain is measured against that health, so a round hurts a
+big body less than a small one.
+
+It is drawn from those parts every frame. Its legs are solved to where each foot should be, stepping in
+the rhythm its body walks in -- diagonal pairs on four legs, two tripods on six, alternating on two --
+with each planted foot moving back exactly as fast as the body moves forward, so feet do not slide. A
+crouch lowers the body and the legs bend to it. Sight passes through creatures, its own body and any
+other, so two big bodies of a pack standing close do not blind each other.
 
 ### Vents and other hiding places
 

@@ -141,7 +141,7 @@ const SensedPlayer* CreatureBrain::FindPlayer(const CreatureSenses& senses, int 
     return nullptr;
 }
 
-void CreatureBrain::OnDamaged(float amount, int byPlayer, const glm::vec3& from, float time)
+void CreatureBrain::OnDamaged(float amount, int byPlayer, const glm::vec3& from, float time, float maxHealth)
 {
     if (m_dead)
     {
@@ -152,13 +152,14 @@ void CreatureBrain::OnDamaged(float amount, int byPlayer, const glm::vec3& from,
     {
         m_hurtWhileDown = true;
     }
-    m_state.pain = std::min(m_state.pain + amount / 60.0f, 2.0f);
+    const float scale = 160.0f / std::max(maxHealth, 1.0f);
+    m_state.pain = std::min(m_state.pain + amount * scale / 60.0f, 2.0f);
     m_state.arousal = std::min(m_state.arousal + 0.5f, 1.0f);
     m_threat = from;
     if (Track* track = FindTrack(byPlayer))
     {
         // Being shot says exactly where the shooter is, and makes them somebody to be wary of.
-        track->harm += amount / 100.0f;
+        track->harm += amount * scale / 100.0f;
         track->confidence = 1.0f;
         track->lastKnown = from;
         ResolveInterestNear(from);
@@ -378,7 +379,7 @@ void CreatureBrain::Perceive(const CreatureSenses& senses, float dt)
     // reads a face turned towards it, and a face it cannot see tells it nothing. And how far each
     // one is from the nearest other living player, because somebody on their own is an opening in
     // a way that somebody with company is not.
-    const glm::vec3 body = senses.position + glm::vec3(0.0f, 0.7f, 0.0f);
+    const glm::vec3 body = senses.position + glm::vec3(0.0f, m_traits.bodyMiddle, 0.0f);
     const float cosWatched = std::cos(glm::radians(50.0f));
     for (const SensedPlayer& player : senses.players)
     {
@@ -877,7 +878,7 @@ bool CreatureBrain::SeenFrom(const CreatureSenses& senses, const glm::vec3& poin
     }
     // From where it believes each of them is, not where they are: it can only hide from what it
     // knows about.
-    const glm::vec3 body = point + glm::vec3(0.0f, 0.7f, 0.0f);
+    const glm::vec3 body = point + glm::vec3(0.0f, m_traits.bodyMiddle, 0.0f);
     for (const Track& track : m_tracks)
     {
         if (track.confidence < 0.2f)
@@ -1584,7 +1585,7 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
             {
                 glm::vec3 spot;
                 if (senses.nav->RandomPointNear(m_stalkPoint, 3.0f, seed, spot) &&
-                    senses.clearLine(spot + glm::vec3(0.0f, 1.0f, 0.0f), theirEye) &&
+                    senses.clearLine(spot + glm::vec3(0.0f, m_traits.eyeHeight, 0.0f), theirEye) &&
                     Horizontal(spot, m_stalkPoint) < nearest)
                 {
                     nearest = Horizontal(spot, m_stalkPoint);

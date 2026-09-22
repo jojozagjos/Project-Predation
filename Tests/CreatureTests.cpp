@@ -12,6 +12,7 @@
 #include <glm/vec2.hpp>
 #include <glm/gtc/constants.hpp>
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <memory>
@@ -49,6 +50,10 @@ struct CreatureHarness
 
     // The same question the game answers: is anything solid between two points. Stopping a little
     // short of the far end, because the far end is usually a body with a shape of its own.
+    //
+    // And seeing through creatures, its own body and any other, as the game does: its eyes are inside
+    // its own box, and a second creature standing in the same place -- the copy a client is shown --
+    // would otherwise blind it.
     bool Clear(const glm::vec3& from, const glm::vec3& to) const
     {
         const glm::vec3 along = to - from;
@@ -57,8 +62,28 @@ struct CreatureHarness
         {
             return true;
         }
-        return !physics.RayCast(from, along / length, length - 0.35f, creature->Body());
+        const glm::vec3 direction = along / length;
+        glm::vec3 start = from;
+        float left = length - 0.35f;
+        for (int pass = 0; pass < 4 && left > 0.0f; ++pass)
+        {
+            const RayHit hit = physics.RayCast(start, direction, left, creature->Body());
+            if (!hit)
+            {
+                return true;
+            }
+            if (std::find(seeThrough.begin(), seeThrough.end(), hit.body) == seeThrough.end())
+            {
+                return false;
+            }
+            const float past = hit.distance + 0.05f;
+            start += direction * past;
+            left -= past;
+        }
+        return true;
     }
+    // Other creatures' bodies, which sight passes through.
+    std::vector<BodyHandle> seeThrough;
 
     CreatureSenses Senses(const std::vector<SensedPlayer>& players, const std::vector<Noise>& noises = {})
     {
@@ -119,6 +144,14 @@ struct CreatureHarness
         return nullptr;
     }
 };
+
+// Damage as a share of what this creature can take, after its plates. The tests were written against
+// one body with 160 health; a body from a seed can take anything from 700 to 4000, and "a round" or
+// "badly hurt" has to mean the same thing to every one of them.
+float Share(const Creature& creature, float oldAmount)
+{
+    return oldAmount / 160.0f * creature.MaxHealth() / std::max(1.0f - creature.Capabilities().armour, 0.1f);
+}
 
 SensedPlayer Somebody(int id, const glm::vec3& feet, float height = 1.8f, float light = 1.0f)
 {
@@ -319,7 +352,7 @@ TEST_CASE("Shot in the back, it goes for the shooter rather than the sound", "[c
     {
         harness.Run(0.25f, players, {shot});
     }
-    harness.creature->TakeDamage(21.0f, 1, muzzle, harness.time);
+    harness.creature->TakeDamage(Share(*harness.creature, 21.0f), 1, muzzle, harness.time);
 
     // Given a decision's worth of time to change its mind, since after a miss it was, rightly,
     // already on its way to look.
@@ -365,10 +398,48 @@ TEST_CASE("It hunts somebody it sees and strikes when it reaches them", "[creatu
                     closest = std::min(closest, glm::distance(creature.Position(), player));
                 });
     INFO("got within " << closest << " m");
+    if (harness.creature->Anatomy().eyes == 0)
+    {
+        // A body with no eyes cannot see somebody standing still seven metres away, which is the whole
+        // point of it: it has to hear them, or bump into them.
+        CHECK_FALSE(hunted);
+        return;
+    }
     CHECK(hunted);
     CHECK(attacked);
     CHECK(struck);
-    CHECK(closest < 2.4f);
+    // Within its own reach, which its neck and head decide.
+    CHECK(closest < harness.creature->Capabilities().strikeReach + 0.2f);
+}
+
+TEST_CASE("A creature with no eyes hears what it cannot see", "[creature][senses]")
+{
+    // Seed 99 is two-legged and eyeless. It does not see somebody standing in plain view, but a
+    // footstep from them is enough.
+    CreatureHarness harness(99);
+    REQUIRE(harness.creature->Anatomy().eyes == 0);
+    REQUIRE(harness.creature->Capabilities().hearing > 1.5f);
+    glm::vec3 at;
+    glm::vec3 player;
+    REQUIRE(OpenView(harness, 7.0f, at, player));
+    const std::vector<SensedPlayer> players{Somebody(1, player)};
+    harness.Run(3.0f, players);
+    const CreatureBrain::Track* track = harness.TrackOf(1);
+    CHECK((track == nullptr || track->lastSeen < 0.0f));
+
+    Noise step;
+    step.kind = NoiseKind::Footstep;
+    step.position = player;
+    step.reach = 9.0f;
+    step.player = 1;
+    bool heard = false;
+    harness.Run(2.0f, players, {step},
+                [&](const Creature& creature)
+                {
+                    heard = heard || creature.Brain().Current() == Behavior::Investigate ||
+                            creature.Brain().Current() == Behavior::Hunt;
+                });
+    CHECK(heard);
 }
 
 TEST_CASE("Badly hurt, it gets away from whoever hurt it", "[creature][retreat]")
@@ -394,7 +465,7 @@ TEST_CASE("Badly hurt, it gets away from whoever hurt it", "[creature][retreat]"
     harness.Run(1.0f, players);
     for (int i = 0; i < 3; ++i)
     {
-        harness.creature->TakeDamage(30.0f, 1, player + glm::vec3(0.0f, 1.5f, 0.0f), harness.time);
+        harness.creature->TakeDamage(Share(*harness.creature, 30.0f), 1, player + glm::vec3(0.0f, 1.5f, 0.0f), harness.time);
         harness.Run(0.2f, players);
     }
     const float before = glm::distance(harness.creature->Position(), player);
@@ -427,6 +498,7 @@ TEST_CASE("A creature shown from the host's state keeps up smoothly, and dies th
     glm::vec3 player;
     REQUIRE(OpenView(harness, 12.0f, at, player));
     Creature shown(harness.scene, harness.meshes, harness.physics, &harness.nav, CreatureTraits::FromSeed(5), at);
+    harness.seeThrough.push_back(shown.Body());
     const std::vector<SensedPlayer> players{Somebody(1, player)};
 
     constexpr float dt = 1.0f / 60.0f;
@@ -464,7 +536,7 @@ TEST_CASE("A creature shown from the host's state keeps up smoothly, and dies th
     CHECK(biggestStep < fastest * dt * 1.6f);
 
     // Killed on the host, and the copy goes down with it.
-    harness.creature->TakeDamage(1000.0f, 1, player, harness.time);
+    harness.creature->TakeDamage(Share(*harness.creature, 1000.0f), 1, player, harness.time);
     harness.Run(1.0f, players, {}, follow);
     CHECK_FALSE(shown.Alive());
     CHECK(shown.Health() == 0.0f);
@@ -475,12 +547,14 @@ namespace
 
 // The first seed whose temperament passes a test, so a test can ask for "a stealthy one" rather than
 // for a number that means stealthy only until somebody changes how traits are drawn.
+// Only seeds whose bodies have eyes: these tests are about what a creature does with what it sees. An
+// eyeless one hunts by sound and has a test of its own.
 template <typename Want>
 uint32_t SeedWhere(Want&& want)
 {
     for (uint32_t seed = 1; seed < 5000; ++seed)
     {
-        if (want(CreatureTraits::FromSeed(seed)))
+        if (want(CreatureTraits::FromSeed(seed)) && CreatureAnatomy::FromSeed(seed).eyes > 0)
         {
             return seed;
         }
@@ -557,7 +631,7 @@ TEST_CASE("Dead is dead: its mind stops, and a strike it was winding up never la
     }
     REQUIRE(windingUp);
 
-    harness.creature->TakeDamage(1000.0f, 1, player, harness.time);
+    harness.creature->TakeDamage(Share(*harness.creature, 1000.0f), 1, player, harness.time);
     REQUIRE_FALSE(harness.creature->Alive());
     CHECK(harness.creature->Brain().Dead());
     const size_t timeline = harness.creature->Brain().Timeline().size();
@@ -609,7 +683,8 @@ TEST_CASE("A stealthy creature being watched stalks from cover, and comes when t
                     stalked = stalked || now == Behavior::Stalk;
                 });
     const glm::vec3 eye = player + glm::vec3(0.0f, 1.67f, 0.0f);
-    const bool inTheirSight = harness.Clear(eye, harness.creature->Position() + glm::vec3(0.0f, 0.7f, 0.0f));
+    const bool inTheirSight =
+        harness.Clear(eye, harness.creature->Position() + glm::vec3(0.0f, harness.creature->Brain().Traits().bodyMiddle, 0.0f));
     INFO("its mind:" << MindOf(*harness.creature));
     INFO("ended " << glm::distance(harness.creature->Position(), player) << " m from them, "
                   << (inTheirSight ? "in their sight" : "out of their sight"));
@@ -697,7 +772,7 @@ TEST_CASE("Badly hurt, a cunning creature plays dead -- alive underneath -- and 
     REQUIRE(OpenView(harness, 6.0f, at, player));
     harness.Run(1.0f, {Somebody(1, player)});
 
-    harness.creature->TakeDamage(85.0f, 1, player + glm::vec3(0.0f, 1.5f, 0.0f), harness.time);
+    harness.creature->TakeDamage(Share(*harness.creature, 85.0f), 1, player + glm::vec3(0.0f, 1.5f, 0.0f), harness.time);
     harness.Run(0.5f, {Somebody(1, player)});
     INFO("its mind:" << MindOf(*harness.creature));
     REQUIRE(harness.creature->Brain().Current() == Behavior::PlayDead);
@@ -735,11 +810,11 @@ TEST_CASE("Shot while playing dead, it gives up the act and runs", "[creature][p
     glm::vec3 player;
     REQUIRE(OpenView(harness, 7.0f, at, player));
     harness.Run(1.0f, {Somebody(1, player)});
-    harness.creature->TakeDamage(85.0f, 1, player + glm::vec3(0.0f, 1.5f, 0.0f), harness.time);
+    harness.creature->TakeDamage(Share(*harness.creature, 85.0f), 1, player + glm::vec3(0.0f, 1.5f, 0.0f), harness.time);
     harness.Run(0.5f, {Somebody(1, player)});
     REQUIRE(harness.creature->Brain().Current() == Behavior::PlayDead);
 
-    harness.creature->TakeDamage(10.0f, 1, player + glm::vec3(0.0f, 1.5f, 0.0f), harness.time);
+    harness.creature->TakeDamage(Share(*harness.creature, 10.0f), 1, player + glm::vec3(0.0f, 1.5f, 0.0f), harness.time);
     harness.Run(0.5f, {Watching(1, player, at)});
     INFO("its mind:" << MindOf(*harness.creature));
     CHECK(harness.creature->Brain().Current() == Behavior::Retreat);
@@ -767,7 +842,7 @@ TEST_CASE("The same seed in the same situation makes the same creature, decision
         shot.position = player + glm::vec3(4.0f, 0.5f, -3.0f);
         harness.Run(3.0f, {}, {shot});
         harness.Run(6.0f, {Watching(1, player, at)});
-        harness.creature->TakeDamage(40.0f, 1, player, harness.time);
+        harness.creature->TakeDamage(Share(*harness.creature, 40.0f), 1, player, harness.time);
         harness.Run(4.0f, {Somebody(1, player)});
         std::string mind;
         for (const CreatureBrain::TimelineEntry& entry : harness.creature->Brain().Timeline())

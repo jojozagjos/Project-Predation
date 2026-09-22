@@ -1521,3 +1521,28 @@ bit so everybody else sees the right one (protocol version 8).
 Templates make a reload that already moves -- including a double-magazine flip whose shape is the same
 after the roll, so the clip can end with every part at rest -- because shaping something is far easier
 than starting from an empty timeline. The carbine ships with its templates as its reloads.
+
+## ADR-070: What a creature can do comes from its body
+
+**Status**: accepted, 2026-09-21
+
+Speed, sight, hearing and reach used to be drawn from the seed as numbers beside the temperament. Now
+the seed makes a body and those follow from it: legs set the speed, eyes the sight, frills the hearing,
+neck and head the reach, bulk the health. A creature that is fast because its legs are long reads as
+one thing; a creature that is fast because a number said so, while it waddles on stubby legs, reads as
+a bug. It also makes every seed consistent across machines for free, because the body is rebuilt from
+the seed everywhere.
+
+The body's rest pose is worked out once, in one place, and everything that needs to know where a part
+is -- the drawing, the box rounds hit, where it sees from -- asks it, so they cannot disagree.
+
+Health is large on purpose. A predator that drops to a burst is a target, so a medium body takes two or
+three carbine magazines and the biggest far more. Because the brain's pain and harm were written against
+160 health, they are now measured against the body's own: the same round hurts a big body less. A
+cvar scales it all for tuning.
+
+Two things moved with the body. The brain's assumptions about height -- eyes at a metre, a body
+middle at 0.7 m -- were right for one body and wrong for a 0.5 m six-legged one, which then could not
+peek over the cover it chose; they come from the body now. And sight passes through creatures: its eyes
+are inside its own box, and with rays that count a start inside something as a hit, a second creature's
+box around its head blinded it outright.

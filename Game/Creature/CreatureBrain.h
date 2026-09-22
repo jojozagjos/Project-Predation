@@ -140,7 +140,9 @@ public:
     void Update(const CreatureSenses& senses, float dt);
 
     // Somebody hurt it. `byPlayer` is -1 when nobody in particular did.
-    void OnDamaged(float amount, int byPlayer, const glm::vec3& from, float time);
+    // `maxHealth` is what the body can take in all, so a round hurts a big body less than a small one:
+    // pain and harm are measured against it, as they were against the 160 every creature once had.
+    void OnDamaged(float amount, int byPlayer, const glm::vec3& from, float time, float maxHealth = 160.0f);
     // It is dead, really. The mind stops here: nothing after this perceives, decides or moves, and
     // what it wanted to do is forgotten -- a strike it was in the middle of does not land later.
     void OnDied(float time);

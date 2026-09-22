@@ -2,8 +2,10 @@
 
 #include "Engine/Physics/PhysicsWorld.h"
 #include "Engine/Scene/Scene.h"
+#include "Game/Creature/CreatureAnatomy.h"
 #include "Game/Creature/CreatureBrain.h"
 
+#include <glm/mat4x4.hpp>
 #include <glm/vec3.hpp>
 
 #include <string>
@@ -20,17 +22,21 @@ class NavMesh;
 // The brain decides; this carries it out. It follows a route over the navigation mesh, sliding along
 // the surface so it can never step off the walkable area, turns towards where it is going or what it
 // is looking at, and moves a physics box with it so rounds hit it and loose objects are pushed out of
-// its way. What it looks like is a placeholder built from primitives -- a hunched four-legged shape
-// with a head held low and two faint points of light for eyes -- because the real anatomy is
-// generated from the seed in a later phase, and a body is only worth drawing properly once it is
-// decided what the body is.
+// its way.
+//
+// The body is the one its seed makes (CreatureAnatomy): four, six or two legs, however long and heavy,
+// with however many eyes. What that body can do -- how fast it runs, how far it sees and hears, how
+// hard it hits, how much killing it takes -- comes from it too, and is handed to the brain as it is
+// made. Its legs are placed each frame by solving each one to where its foot should be, so a crouch
+// bends the knees and a stride is a stride of the legs it actually has.
 //
 // Only the authority runs one of these. Everybody else is shown where it is.
 class Creature
 {
 public:
+    // `healthScale` multiplies the health its body gives it, for tuning without touching the body.
     Creature(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, const NavMesh* nav,
-             const CreatureTraits& traits, const glm::vec3& spawn);
+             const CreatureTraits& traits, const glm::vec3& spawn, float healthScale = 1.0f);
     ~Creature();
     Creature(const Creature&) = delete;
     Creature& operator=(const Creature&) = delete;
@@ -57,6 +63,8 @@ public:
     float MaxHealth() const { return m_maxHealth; }
     bool Alive() const { return m_health > 0.0f; }
     float Speed() const { return m_speed; }
+    const CreatureAnatomy& Anatomy() const { return m_anatomy; }
+    const CreatureCapabilities& Capabilities() const { return m_caps; }
 
     // Set from outside, for a creature this machine only shows.
     void SetShownState(const glm::vec3& position, float yaw, float speed, float windup, bool alive,
@@ -89,12 +97,20 @@ public:
 private:
     void Move(const CreatureIntent& intent, const std::vector<glm::vec3>& others, float dt);
     void BuildVisual(MeshLibrary& meshes);
+    // The traits it was made with, with what its body decides written over them: speeds, senses, reach.
+    static CreatureTraits WithBody(CreatureTraits traits, const CreatureCapabilities& caps);
     void SyncBody(float dt);
 
     Scene& m_scene;
     PhysicsWorld& m_physics;
     const NavMesh* m_nav = nullptr;
+    // Declared before the brain, which is made from what these decide.
+    CreatureAnatomy m_anatomy;
+    CreatureCapabilities m_caps;
+    CreatureAnatomy::RestPose m_rest;
     CreatureBrain m_brain;
+    // Radians of stride per metre covered: one full step cycle is two strides of the legs it has.
+    float m_strideRate = 3.6f;
 
     glm::vec3 m_position{0.0f};
     float m_yaw = 0.0f;
@@ -141,12 +157,21 @@ private:
     bool m_followedOnce = false;
 
     BodyHandle m_body;
+    enum class PieceKind : uint8_t
+    {
+        Body,     // fixed to the body
+        Front,    // the head end: moves back and up when it gathers itself to strike
+        LegUpper, // hip to knee
+        LegLower, // knee to ankle
+        LegFoot   // ankle to toe
+    };
     struct Piece
     {
         Entity entity;
-        // Where it sits on the body when the body stands still, and the joint it swings about.
-        glm::vec3 offset{0.0f};
-        int leg = -1; // which leg, for the walk cycle; -1 when it is not one
+        PieceKind kind = PieceKind::Body;
+        // Where it sits on the body, in the body's own frame. Legs are placed each frame instead.
+        glm::mat4 local{1.0f};
+        int leg = -1; // which of the rest pose's legs
         // How brightly it glows when the creature is up and alive: the eyes, which go out as it falls.
         glm::vec3 glow{0.0f};
     };

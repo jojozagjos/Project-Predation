@@ -269,7 +269,10 @@ CreatureCapabilities CreatureCapabilities::From(const CreatureAnatomy& a)
     // flesh; and whatever the plates weigh on top.
     const float body = glm::pi<float>() / 6.0f * a.length * a.width * a.depth;
     c.mass = body * 1.25f * 950.0f + static_cast<float>(a.plates) * 8.0f;
-    c.health = std::clamp(60.0f + c.mass * 0.55f, 100.0f, 320.0f);
+    // A lot of it. Something that hunts a team of armed people and only dies to two or three magazines
+    // is a predator; one that drops to a burst is a target. A medium body, about 170 kg, takes about
+    // 1600 -- some seventy-five carbine rounds -- and the biggest take far more.
+    c.health = std::clamp(400.0f + c.mass * 7.0f, 700.0f, 4000.0f);
     c.armour = std::min(static_cast<float>(a.plates) * 0.05f, 0.3f);
 
     // Speed from its legs, and a little less for the weight they carry.
@@ -287,7 +290,8 @@ CreatureCapabilities CreatureCapabilities::From(const CreatureAnatomy& a)
     c.sight = a.eyes == 0 ? 0.0f
                           : (a.eyes == 2 ? 1.0f : (a.eyes == 4 ? 1.1f : 1.18f)) *
                                 (0.9f + std::min(a.eyeSize / 0.05f, 1.0f) * 0.2f);
-    c.hearing = a.eyes == 0 ? 1.6f : 0.9f + 0.35f * a.frills;
+    // Ordinary ears hear as well as every creature did before bodies; frills that catch sound do better.
+    c.hearing = a.eyes == 0 ? 1.6f : 1.0f + 0.25f * a.frills;
 
     // The blow: weight behind it and jaws to do it with, reaching as far as neck and head let it.
     c.strikeDamage = std::clamp(14.0f + c.mass * 0.06f + a.jawLength * 18.0f, 18.0f, 45.0f);
