@@ -198,6 +198,10 @@ private:
     std::string KeepSource(const std::filesystem::path& file);
     void DrawModelPanel();
     void DrawPartList();
+    // Grouping: which parts move with which, and joining several parts into one for good.
+    bool IsInside(const std::string& part, const std::string& group) const;
+    void RenamePart(ModelPart& part, const std::string& name);
+    void JoinParts(int into, const std::vector<int>& others);
     void DrawPartInspector();
     void DrawSocketPanel();
     void DrawAnimationPanel();
@@ -299,6 +303,8 @@ private:
     std::vector<AnimationKey> m_liveOffsets;
     // The model as it was last frame, to notice any change however it was made.
     size_t m_lastFingerprint = 0;
+    // Which parts are ticked in the Join popup.
+    std::vector<bool> m_joinPicks;
 };
 
 } // namespace pred

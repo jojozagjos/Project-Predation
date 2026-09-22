@@ -534,6 +534,61 @@ TEST_CASE("Hand tracks and who holds what survive saving", "[clip]")
     CHECK(back->tracks[1].keys[1].position.z == Catch::Approx(0.03f));
 }
 
+TEST_CASE("A part grouped with another goes where that one goes, and rests where it rests", "[clip][group]")
+{
+    ModelAsset model = HeldPartModel();
+    ModelPart base;
+    base.name = "magazine_base";
+    base.position = {0.0f, -0.12f, 0.1f};
+    base.parent = "magazine";
+    model.parts.push_back(base);
+
+    // At rest, and with no clip, grouping moves nothing.
+    CHECK(glm::distance(glm::vec3(model.PartMatrixAt(model.parts[1], nullptr, 0.0f)[3]), base.position) < 1e-5f);
+
+    AnimationClip clip;
+    clip.duration = 1.0f;
+    clip.tracks.push_back({"magazine", {KeyAt(0.0f, glm::vec3(0.0f)), KeyAt(1.0f, {0.0f, -0.3f, 0.0f})}});
+    AnimationKey hidden = KeyAt(1.0f, {0.0f, -0.3f, 0.0f});
+    hidden.visible = 0.0f;
+    clip.tracks[0].keys.push_back(hidden);
+    clip.tracks[0].keys[1].time = 0.5f;
+
+    // The magazine drops 0.3 by the half-way key and the base comes with it, keeping its gap.
+    float visible = 1.0f;
+    const glm::vec3 moved = glm::vec3(model.PartMatrixAt(model.parts[1], &clip, 0.5f, &visible)[3]);
+    CHECK(moved.y == Catch::Approx(-0.42f).margin(1e-4));
+    CHECK(moved.z == Catch::Approx(0.1f).margin(1e-4));
+    CHECK(visible > 0.5f);
+    // Hiding the magazine hides what moves with it.
+    model.PartMatrixAt(model.parts[1], &clip, 1.0f, &visible);
+    CHECK(visible < 0.5f);
+
+    // A loop -- each moving with the other -- is survived rather than followed for ever.
+    model.parts[0].parent = "magazine_base";
+    const glm::mat4 looped = model.PartMatrixAt(model.parts[1], &clip, 0.5f);
+    CHECK(std::isfinite(looped[3].y));
+}
+
+TEST_CASE("Which part a part moves with survives saving", "[clip][group]")
+{
+    ModelAsset model = HeldPartModel();
+    model.name = "group_round_trip_test";
+    ModelPart base;
+    base.name = "magazine_base";
+    base.parent = "magazine";
+    model.parts.push_back(base);
+
+    const std::filesystem::path file = std::filesystem::temp_directory_path() / "group_round_trip_test.json";
+    REQUIRE(model.SaveToFile(file));
+    ModelAsset loaded;
+    REQUIRE(loaded.LoadFromFile(file));
+    std::filesystem::remove(file);
+    REQUIRE(loaded.parts.size() == 2);
+    CHECK(loaded.parts[0].parent.empty());
+    CHECK(loaded.parts[1].parent == "magazine");
+}
+
 TEST_CASE("Turns in the editor's order go to a matrix and back", "[clip]")
 {
     for (const glm::vec3 degrees : {glm::vec3(10.0f, 20.0f, 30.0f), glm::vec3(-45.0f, 5.0f, 170.0f), glm::vec3(0.0f, 0.0f, 90.0f)})
@@ -568,4 +623,25 @@ TEST_CASE("The carbine's reload takes the magazine out in the hand and puts it b
     CHECK(glm::distance(where(0.75f), seated) > 0.1f);
     CHECK(glm::distance(where(1.4f), seated) > 0.05f);
     CHECK(glm::distance(where(reload->duration), seated) < 1e-3f);
+}
+
+TEST_CASE("The carbine's magazine window leaves with the magazine", "[clip][reload][group]")
+{
+    Paths::Init(nullptr, std::filesystem::path(PRED_SOURCE_DIR) / "Assets");
+    ModelAsset model;
+    REQUIRE(model.LoadFromFile(ModelPath("m5_carbine")));
+    const AnimationClip* reload = model.FindClip("reload");
+    const ModelPart* magazine = model.FindPart("magazine");
+    const ModelPart* window = model.FindPart("Object_48_polycarbonate");
+    REQUIRE(reload != nullptr);
+    REQUIRE(magazine != nullptr);
+    REQUIRE(window != nullptr);
+    for (float time = 0.0f; time <= reload->duration; time += 0.1f)
+    {
+        // However the magazine is moved, the window keeps the same place on it.
+        const glm::mat4 a = model.PartMatrixAt(*magazine, reload, time);
+        const glm::mat4 b = model.PartMatrixAt(*window, reload, time);
+        const glm::mat4 relative = glm::inverse(a) * b;
+        CHECK(glm::length(glm::vec3(relative[3])) < 1e-3f);
+    }
 }

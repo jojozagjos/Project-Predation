@@ -507,6 +507,101 @@ void ModelEditor::DrawFilePanel(Scene& scene, MeshLibrary& meshes)
     }
 }
 
+bool ModelEditor::IsInside(const std::string& part, const std::string& group) const
+{
+    // Whether `part` is `group` or moves with it, however many steps down: what may not become its
+    // parent, or the two would each move with the other.
+    std::string at = part;
+    for (int depth = 0; depth < 16 && !at.empty(); ++depth)
+    {
+        if (at == group)
+        {
+            return true;
+        }
+        const ModelPart* found = m_model.FindPart(at);
+        at = found != nullptr ? found->parent : std::string();
+    }
+    return false;
+}
+
+void ModelEditor::RenamePart(ModelPart& part, const std::string& name)
+{
+    // Everything that names it by name follows the new one: the parts that move with it, and its
+    // tracks in every clip. A rename used to leave the animation behind on the old name.
+    const std::string old = part.name;
+    part.name = name;
+    for (ModelPart& other : m_model.parts)
+    {
+        if (other.parent == old)
+        {
+            other.parent = name;
+        }
+    }
+    for (AnimationClip& clip : m_model.clips)
+    {
+        for (AnimationTrack& track : clip.tracks)
+        {
+            if (track.part == old)
+            {
+                track.part = name;
+            }
+        }
+    }
+}
+
+void ModelEditor::JoinParts(int into, const std::vector<int>& others)
+{
+    if (into < 0 || into >= static_cast<int>(m_model.parts.size()) || others.empty())
+    {
+        return;
+    }
+    PushUndo("joining parts");
+    // One mesh, in the frame of the part everything is joined into, at the size it is drawn at.
+    ModelPart& target = m_model.parts[static_cast<size_t>(into)];
+    MeshData joined = m_model.BuildPartMesh(target);
+    const glm::mat4 intoTarget = glm::inverse(target.LocalMatrix());
+    std::vector<std::string> gone;
+    for (const int index : others)
+    {
+        if (index == into || index < 0 || index >= static_cast<int>(m_model.parts.size()))
+        {
+            continue;
+        }
+        const ModelPart& part = m_model.parts[static_cast<size_t>(index)];
+        joined.Append(m_model.BuildPartMesh(part), intoTarget * part.LocalMatrix());
+        gone.push_back(part.name);
+    }
+    target.shape = PartShape::Mesh;
+    target.mesh = std::move(joined);
+    target.size = glm::vec3(1.0f);
+    const std::string targetName = target.name;
+
+    // The joined parts go, and anything that moved with one of them moves with the joined part now.
+    m_model.parts.erase(std::remove_if(m_model.parts.begin(), m_model.parts.end(),
+                                       [&](const ModelPart& part)
+                                       { return std::find(gone.begin(), gone.end(), part.name) != gone.end(); }),
+                        m_model.parts.end());
+    for (ModelPart& part : m_model.parts)
+    {
+        if (std::find(gone.begin(), gone.end(), part.parent) != gone.end())
+        {
+            part.parent = targetName;
+        }
+    }
+    for (int i = 0; i < static_cast<int>(m_model.parts.size()); ++i)
+    {
+        if (m_model.parts[static_cast<size_t>(i)].name == targetName)
+        {
+            m_selectedPart = i;
+        }
+    }
+    m_status = "Joined " + std::to_string(gone.size()) + " part(s) into " + targetName +
+               ". It takes its colour and texture; the others' are gone with them.";
+    m_dirty = true;
+    m_previewChanged = true;
+    m_geometryChanged = true;
+}
+
 void ModelEditor::DrawPartList()
 {
     if (ImGui::Button("Box"))
@@ -524,8 +619,10 @@ void ModelEditor::DrawPartList()
         AddPart("part", PartShape::Sphere);
     }
 
+    // Parts that move with another are listed under it, indented, so a magazine made of six pieces
+    // reads as one magazine.
     ImGui::BeginChild("##parts", {0.0f, 150.0f}, ImGuiChildFlags_Borders);
-    for (int i = 0; i < static_cast<int>(m_model.parts.size()); ++i)
+    const auto row = [&](int i, int depth, const auto& self) -> void
     {
         ModelPart& part = m_model.parts[static_cast<size_t>(i)];
         ImGui::PushID(i);
@@ -534,40 +631,154 @@ void ModelEditor::DrawPartList()
         {
             part.visible = visible;
         }
-        ImGui::SameLine();
-        if (ImGui::Selectable(part.name.c_str(), m_selectedPart == i))
+        ImGui::SameLine(0.0f, 4.0f + 16.0f * static_cast<float>(depth));
+        if (ImGui::Selectable(part.name.empty() ? "(unnamed part)" : part.name.c_str(), m_selectedPart == i))
         {
             m_selectedPart = i;
             m_pick = Pick::Part;
         }
         ImGui::PopID();
+        const std::string name = part.name;
+        for (int j = 0; j < static_cast<int>(m_model.parts.size()) && depth < 8; ++j)
+        {
+            if (j != i && m_model.parts[static_cast<size_t>(j)].parent == name && !name.empty())
+            {
+                self(j, depth + 1, self);
+            }
+        }
+    };
+    for (int i = 0; i < static_cast<int>(m_model.parts.size()); ++i)
+    {
+        const ModelPart& part = m_model.parts[static_cast<size_t>(i)];
+        // Top-level ones here; the rest are drawn under their parent. A part whose parent has gone
+        // is top-level again rather than lost from the list.
+        if (part.parent.empty() || m_model.FindPart(part.parent) == nullptr || part.parent == part.name)
+        {
+            row(i, 0, row);
+        }
     }
     ImGui::EndChild();
 
-    if (m_selectedPart >= 0 && m_selectedPart < static_cast<int>(m_model.parts.size()))
+    if (m_selectedPart < 0 || m_selectedPart >= static_cast<int>(m_model.parts.size()))
     {
-        if (ImGui::Button("Duplicate"))
+        return;
+    }
+    if (ImGui::Button("Duplicate"))
+    {
+        PushUndo("a duplicate");
+        ModelPart copy = m_model.parts[static_cast<size_t>(m_selectedPart)];
+        copy.name += "_copy";
+        m_model.parts.push_back(std::move(copy));
+        m_selectedPart = static_cast<int>(m_model.parts.size()) - 1;
+        m_pick = Pick::Part;
+        m_dirty = true;
+        m_previewChanged = true;
+        m_geometryChanged = true;
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Delete"))
+    {
+        PushUndo("a delete");
+        const std::string gone = m_model.parts[static_cast<size_t>(m_selectedPart)].name;
+        m_model.parts.erase(m_model.parts.begin() + m_selectedPart);
+        // Anything that moved with it moves with what it moved with, rather than with nothing.
+        for (ModelPart& part : m_model.parts)
         {
-            PushUndo("a duplicate");
-            ModelPart copy = m_model.parts[static_cast<size_t>(m_selectedPart)];
-            copy.name += "_copy";
-            m_model.parts.push_back(std::move(copy));
-            m_selectedPart = static_cast<int>(m_model.parts.size()) - 1;
-            m_pick = Pick::Part;
-            m_dirty = true;
-    m_previewChanged = true;
-    m_geometryChanged = true;
+            if (part.parent == gone)
+            {
+                part.parent.clear();
+            }
         }
-        ImGui::SameLine();
-        if (ImGui::Button("Delete"))
+        m_selectedPart = std::min(m_selectedPart, static_cast<int>(m_model.parts.size()) - 1);
+        m_dirty = true;
+        m_previewChanged = true;
+        m_geometryChanged = true;
+        return;
+    }
+
+    // Grouping: tick the parts that move with this one. Nothing moves when you tick one -- a part in a
+    // group rests where it rests -- but from then on, whatever animates this part carries them too.
+    ImGui::SameLine();
+    if (ImGui::Button("Group..."))
+    {
+        ImGui::OpenPopup("##group");
+    }
+    ImGui::SetItemTooltip("%s", "Tick the parts that move with this one: the pieces of a magazine, a bolt "
+                                "and its handle. Animate this part and they come with it.");
+    if (ImGui::BeginPopup("##group"))
+    {
+        const std::string group = m_model.parts[static_cast<size_t>(m_selectedPart)].name;
+        ImGui::TextDisabled("Moves with %s:", group.c_str());
+        ImGui::BeginChild("##groupparts", {280.0f, 220.0f}, ImGuiChildFlags_Borders);
+        for (int i = 0; i < static_cast<int>(m_model.parts.size()); ++i)
         {
-            PushUndo("a delete");
-            m_model.parts.erase(m_model.parts.begin() + m_selectedPart);
-            m_selectedPart = std::min(m_selectedPart, static_cast<int>(m_model.parts.size()) - 1);
-            m_dirty = true;
-    m_previewChanged = true;
-    m_geometryChanged = true;
+            ModelPart& part = m_model.parts[static_cast<size_t>(i)];
+            // Not itself, and not anything this part already moves with: that would be a loop.
+            if (i == m_selectedPart || IsInside(group, part.name))
+            {
+                continue;
+            }
+            ImGui::PushID(i);
+            bool inGroup = part.parent == group;
+            if (ImGui::Checkbox(part.name.empty() ? "(unnamed part)" : part.name.c_str(), &inGroup))
+            {
+                PushUndo("grouping");
+                part.parent = inGroup ? group : std::string();
+                m_dirty = true;
+                m_dirty = true;
+                m_previewChanged = true;
+            }
+            ImGui::PopID();
         }
+        ImGui::EndChild();
+        ImGui::EndPopup();
+    }
+
+    // Joining: several parts become this one, for good. For pieces that never move apart, a downloaded
+    // model split into twenty meshes being the usual case.
+    ImGui::SameLine();
+    if (ImGui::Button("Join..."))
+    {
+        m_joinPicks.assign(m_model.parts.size(), false);
+        ImGui::OpenPopup("##join");
+    }
+    ImGui::SetItemTooltip("%s", "Merge other parts into this one, as one piece. For pieces that never move "
+                                "apart. Undo brings them back.");
+    if (ImGui::BeginPopup("##join"))
+    {
+        m_joinPicks.resize(m_model.parts.size(), false);
+        ImGui::TextDisabled("Join into %s:", m_model.parts[static_cast<size_t>(m_selectedPart)].name.c_str());
+        ImGui::BeginChild("##joinparts", {280.0f, 220.0f}, ImGuiChildFlags_Borders);
+        for (int i = 0; i < static_cast<int>(m_model.parts.size()); ++i)
+        {
+            if (i == m_selectedPart)
+            {
+                continue;
+            }
+            ImGui::PushID(i);
+            bool picked = m_joinPicks[static_cast<size_t>(i)];
+            const std::string& name = m_model.parts[static_cast<size_t>(i)].name;
+            if (ImGui::Checkbox(name.empty() ? "(unnamed part)" : name.c_str(), &picked))
+            {
+                m_joinPicks[static_cast<size_t>(i)] = picked;
+            }
+            ImGui::PopID();
+        }
+        ImGui::EndChild();
+        if (ImGui::Button("Join them"))
+        {
+            std::vector<int> picked;
+            for (int i = 0; i < static_cast<int>(m_joinPicks.size()); ++i)
+            {
+                if (m_joinPicks[static_cast<size_t>(i)])
+                {
+                    picked.push_back(i);
+                }
+            }
+            JoinParts(m_selectedPart, picked);
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
     }
 }
 
@@ -584,8 +795,42 @@ void ModelEditor::DrawPartInspector()
     std::snprintf(nameBuffer, sizeof(nameBuffer), "%s", part.name.c_str());
     if (ImGui::InputText("Part name", nameBuffer, sizeof(nameBuffer)))
     {
-        part.name = nameBuffer;
+        RenamePart(part, nameBuffer);
+        m_dirty = true;
     }
+
+    // Which part this one is carried by when that part is animated.
+    const char* movesWith = part.parent.empty() ? "(nothing)" : part.parent.c_str();
+    if (ImGui::BeginCombo("Moves with", movesWith))
+    {
+        if (ImGui::Selectable("(nothing)", part.parent.empty()))
+        {
+            PushUndo("grouping");
+            part.parent.clear();
+            m_previewChanged = true;
+            m_dirty = true;
+            m_dirty = true;
+        }
+        for (const ModelPart& other : m_model.parts)
+        {
+            // Not itself, and not a part that already moves with this one.
+            if (&other == &part || other.name.empty() || IsInside(other.name, part.name))
+            {
+                continue;
+            }
+            if (ImGui::Selectable(other.name.c_str(), other.name == part.parent))
+            {
+                PushUndo("grouping");
+                part.parent = other.name;
+                m_previewChanged = true;
+                m_dirty = true;
+                m_dirty = true;
+            }
+        }
+        ImGui::EndCombo();
+    }
+    ImGui::SetItemTooltip("%s", "When that part is animated, this one goes with it. A part that is held in "
+                                "a hand follows the hand instead.");
 
     ImGui::TextDisabled("Shape: %s", PartShapeName(part.shape));
 

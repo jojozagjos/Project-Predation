@@ -49,6 +49,11 @@ struct ModelPart
 
     bool visible = true;
 
+    // The part this one moves with, by name; empty for none. A magazine made of several pieces moves
+    // as one when the pieces move with the one that is animated. Where a part rests is still its own:
+    // the parent only carries it when the parent moves, so grouping never shifts anything at rest.
+    std::string parent;
+
     // Only for PartShape::Mesh. Kept with the part rather than referenced by path so a model is one
     // self-contained file, which matters when the thing it came from was a download.
     MeshData mesh;
@@ -186,7 +191,7 @@ public:
     // `handRest` is where the two hands rest on the weapon (left, then right), for parts a hand is
     // holding. Without it the model's own `support` and `grip` sockets are used.
     glm::mat4 PartMatrixAt(const ModelPart& part, const AnimationClip* clip, float time,
-                           float* visibility = nullptr, const glm::vec3* handRest = nullptr) const;
+                           float* visibility = nullptr, const glm::vec3* handRest = nullptr, int depth = 0) const;
 
     // Where the two hands rest on the weapon, from the sockets: `support` for the left, `grip` for
     // the right. The origin when there is no such socket.

@@ -63,6 +63,27 @@ An imported mesh becomes a part like any other, so it can be moved, scaled and a
 primitives. Its vertices are stored inside the model file rather than referenced by path, so a model
 is one self-contained thing.
 
+## Grouping and joining parts
+
+A downloaded model often arrives in many pieces. A magazine might be a body, a see-through window and
+a base plate. Animate only the body and the other pieces stay in the gun. Two buttons under the part
+list deal with this:
+
+- **Group...** ticks the parts that move with the selected one. Grouped parts are listed under it,
+  indented. You can set the same thing one part at a time with **Moves with** in the part inspector.
+  Grouping never moves anything by itself: each part stays where it was placed. From then on, whatever
+  moves the group's main part carries the others along, including a hand holding it. Hiding the main
+  part hides the whole group. A part with its own hand key follows that hand instead.
+- **Join...** merges the ticked parts into the selected one for good, as a single mesh. Use it for
+  pieces that never come apart. The joined part keeps its own colour and texture. Undo splits them
+  again.
+
+Renaming a part keeps its group and its animation tracks attached to the new name. Deleting a part
+releases anything grouped under it.
+
+The carbine's magazine window (`Object_48_polycarbonate`) is grouped with `magazine`, so it now
+leaves with the magazine during a reload.
+
 ## Animating
 
 1. Make a clip and name it, or start from a template (below).

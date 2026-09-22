@@ -296,43 +296,65 @@ glm::mat4 ModelAsset::HandFrameAt(const AnimationClip* clip, int side, float tim
 }
 
 glm::mat4 ModelAsset::PartMatrixAt(const ModelPart& part, const AnimationClip* clip, float time,
-                                   float* visibility, const glm::vec3* handRest) const
+                                   float* visibility, const glm::vec3* handRest, int depth) const
 {
     if (visibility != nullptr)
     {
         *visibility = part.visible ? 1.0f : 0.0f;
     }
-    if (clip == nullptr || clip->tracks.empty())
+
+    // Its own movement first: where its own track puts it, or where it rests.
+    glm::mat4 own = part.LocalMatrix();
+    bool ownHand = false;
+    if (clip != nullptr && !clip->tracks.empty())
     {
-        return part.LocalMatrix();
+        const auto track = std::find_if(clip->tracks.begin(), clip->tracks.end(),
+                                        [&](const AnimationTrack& candidate) { return candidate.part == part.name; });
+        if (track != clip->tracks.end() && !track->keys.empty())
+        {
+            const TrackSample sample = SampleTrack(*track, time);
+            if (visibility != nullptr)
+            {
+                *visibility = part.visible ? sample.visible : 0.0f;
+            }
+            if (sample.holder != PartHolder::Weapon)
+            {
+                // In a hand: wherever the hand is, and where the part sits in it.
+                const int side = sample.holder == PartHolder::LeftHand ? 0 : 1;
+                const glm::vec3 rest = handRest != nullptr ? handRest[side] : HandRest(side);
+                own = HandFrameAt(clip, side, time, rest) * glm::translate(glm::mat4(1.0f), sample.position) *
+                      EulerMatrix(sample.euler);
+                ownHand = true;
+            }
+            else
+            {
+                // In the weapon: offsets from the rest pose, so editing the model does not invalidate a
+                // clip that was authored against it.
+                own = glm::translate(glm::mat4(1.0f), part.position + sample.position) *
+                      EulerMatrix(part.rotation + sample.euler);
+            }
+        }
     }
 
-    const auto track = std::find_if(clip->tracks.begin(), clip->tracks.end(),
-                                    [&](const AnimationTrack& candidate)
-                                    { return candidate.part == part.name; });
-    if (track == clip->tracks.end() || track->keys.empty())
+    // Then the part it moves with, if any: carried by however far that one has moved from where it
+    // rests. At rest that is no movement at all, which is why grouping never shifts anything. A part a
+    // hand is holding answers to the hand, not to its group. Bounded, so a loop of parts that each move
+    // with the next cannot hang the game.
+    if (!part.parent.empty() && !ownHand && depth < 8)
     {
-        return part.LocalMatrix();
+        if (const ModelPart* parent = FindPart(part.parent); parent != nullptr && parent != &part)
+        {
+            float parentVisible = 1.0f;
+            const glm::mat4 moved = PartMatrixAt(*parent, clip, time, &parentVisible, handRest, depth + 1);
+            own = moved * glm::inverse(parent->LocalMatrix()) * own;
+            // A magazine gone into a pouch takes its pieces with it.
+            if (visibility != nullptr)
+            {
+                *visibility = std::min(*visibility, parentVisible);
+            }
+        }
     }
-
-    const TrackSample sample = SampleTrack(*track, time);
-    if (visibility != nullptr)
-    {
-        *visibility = part.visible ? sample.visible : 0.0f;
-    }
-
-    // In a hand: wherever the hand is, and where the part sits in it.
-    if (sample.holder != PartHolder::Weapon)
-    {
-        const int side = sample.holder == PartHolder::LeftHand ? 0 : 1;
-        const glm::vec3 rest = handRest != nullptr ? handRest[side] : HandRest(side);
-        return HandFrameAt(clip, side, time, rest) * glm::translate(glm::mat4(1.0f), sample.position) *
-               EulerMatrix(sample.euler);
-    }
-    // In the weapon: offsets from the rest pose, so editing the model does not invalidate a clip that
-    // was authored against it.
-    return glm::translate(glm::mat4(1.0f), part.position + sample.position) *
-           EulerMatrix(part.rotation + sample.euler);
+    return own;
 }
 
 bool ModelAsset::LoadFromFile(const std::filesystem::path& file)
@@ -392,6 +414,7 @@ bool ModelAsset::LoadFromFile(const std::filesystem::path& file)
             ReadField(node, "visible", part.visible);
             ReadField(node, "source", part.sourceFile);
             ReadField(node, "texture", part.texture);
+            ReadField(node, "parent", part.parent);
 
             // An imported mesh is stored inline, as flat arrays, so the model stays one file.
             if (const auto field = node.find("mesh"); field != node.end() && field->is_object())
@@ -523,6 +546,10 @@ bool ModelAsset::SaveToFile(const std::filesystem::path& file) const
         node["metallic"] = part.metallic;
         node["emissive"] = part.emissive;
         node["visible"] = part.visible;
+        if (!part.parent.empty())
+        {
+            node["parent"] = part.parent;
+        }
         // Any part can wear an image, not only an imported one. This used to be written inside the
         // imported-mesh block below, so a texture put on a box or a cylinder in the editor was simply
         // not saved, and came back as a plain grey part the next time the model was opened.

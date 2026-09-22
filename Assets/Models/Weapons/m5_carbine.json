@@ -307987,6 +307987,7 @@
       },
       "metallic": 0.0,
       "name": "Object_48_polycarbonate",
+      "parent": "magazine",
       "position": [
         0.0,
         0.0,
