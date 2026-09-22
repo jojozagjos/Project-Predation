@@ -174,11 +174,17 @@ CVar<bool> cv_micMeter{"audio.mic_meter", true,
 CVar<int> cv_voiceDevice{"audio.voice_device", 0, "Which microphone to record from, 0 for default",
                          CVarFlags::Archive};
 // The lobby server: hands out codes and introduces players, so they can connect straight to each
-// other (Engine/Net/LobbyProtocol.h). Set by whoever runs one -- Docs/SERVER.md sets one up on a free
-// cloud machine -- and put here as the default once it exists, so nobody else has to type it.
-// Empty means none: games are then found on your own network, or joined by address.
-CVar<std::string> cv_lobbyServer{"net.lobby_server", "", "Web address of the lobby server that hands out codes",
+// other (Engine/Net/LobbyProtocol.h, Docs/SERVER.md). The game's own is a free Cloudflare Worker that
+// redeploys itself from this repository; it is built in so nobody has to type it.
+constexpr const char* kDefaultLobbyServer = "https://project-predation.josephgslade.workers.dev";
+// A different one, for anybody running their own. Empty -- which every settings file saved before the
+// server existed has -- means the built-in one: an empty saved value would otherwise hide the default.
+CVar<std::string> cv_lobbyServer{"net.lobby_server", "", "Web address of a lobby server of your own; empty for the game's",
                                  CVarFlags::Archive};
+std::string LobbyServerAddress()
+{
+    return cv_lobbyServer.Get().empty() ? std::string(kDefaultLobbyServer) : cv_lobbyServer.Get();
+}
 // A lobby server, and a STUN server, for this run only, from lobby_use: never saved, so testing
 // against the local server on one machine does not leave the game pointing at it afterwards.
 std::string g_lobbyOverride;
@@ -2755,7 +2761,7 @@ namespace
 LobbyClient::Settings LobbySettings()
 {
     LobbyClient::Settings settings;
-    settings.server = g_lobbyOverride.empty() ? cv_lobbyServer.Get() : g_lobbyOverride;
+    settings.server = g_lobbyOverride.empty() ? LobbyServerAddress() : g_lobbyOverride;
     if (!g_stunOverride.empty())
     {
         settings.stunServers = {g_stunOverride};
@@ -2786,7 +2792,7 @@ const ImVec4 kCodeColour{0.70f, 0.95f, 0.75f, 1.0f};
 
 bool PredationGame::LobbyServerConfigured() const
 {
-    return !cv_lobbyServer.Get().empty() || !g_lobbyOverride.empty();
+    return !LobbyServerAddress().empty() || !g_lobbyOverride.empty();
 }
 
 void PredationGame::StartBrowsing()
@@ -4010,7 +4016,7 @@ void PredationGame::DrawSettings()
             std::snprintf(lobbyServer, sizeof(lobbyServer), "%s", cv_lobbyServer.Get().c_str());
         }
         ImGui::SetNextItemWidth(-1.0f);
-        if (ImGui::InputTextWithHint("##lobbyserver", "https://predation-lobby.you.workers.dev", lobbyServer,
+        if (ImGui::InputTextWithHint("##lobbyserver", kDefaultLobbyServer, lobbyServer,
                                      sizeof(lobbyServer)))
         {
             // Trimmed as it is typed, because an address pasted from a message usually brings a
@@ -4022,7 +4028,7 @@ void PredationGame::DrawSettings()
             // A new server is asked afresh, rather than the list going on showing the old one's games.
             StopBrowsing();
         }
-        Caption("What hands out codes, so friends anywhere can join you.",
+        Caption("Leave it empty to use the game's own. Only for running a server of your own.",
                 "The lobby server introduces players to each other and then gets out of the way: the "
                 "game itself goes straight from one PC to the other, never through it. It is a free "
                 "Cloudflare Worker (Docs/SERVER.md). Without one, games on your own network still show "

@@ -63,10 +63,10 @@ About five minutes, once.
    `https://predation-lobby.yourname.workers.dev`. Opening it in a browser should show
    `{"ok":true,"lobbies":0}`.
 
-4. **Give it to the game.** In the game: **Settings → Multiplayer → Lobby server**, paste the address.
-   Everybody needs the same one, so the easiest thing is to have it built into the game as the
-   default: it is `net.lobby_server` near the top of `Game/PredationGame.cpp`. Send it over and it goes
-   in.
+4. **Build it into the game.** The game's own is `https://project-predation.josephgslade.workers.dev`,
+   set as `kDefaultLobbyServer` near the top of `Game/PredationGame.cpp`, so nobody has to type
+   anything. **Settings → Multiplayer → Lobby server** is only for running a different one; empty means
+   the built-in one.
 
 That is all. There is no port to open anywhere and nothing to keep running.
 

@@ -392,3 +392,55 @@ TEST_CASE("The public list comes from the lobby server, and a host it forgot ope
     CHECK(server.lobbies.count("K7X2QM") == 1);
     CHECK(lobby.CodeText() == "K7X2QM");
 }
+
+// Against the game's real lobby server on Cloudflare and the real public STUN servers, so it needs the
+// internet and is hidden by default ("[.]"). Run it by its tag: PredationTests "[live]".
+TEST_CASE("Two games find each other through the real lobby server", "[.][live]")
+{
+    LobbyClient::Settings settings;
+    settings.server = "https://project-predation.josephgslade.workers.dev";
+    settings.version = 7;
+
+    std::unique_ptr<Transport> host = CreateUdpTransport(11u);
+    REQUIRE(host->Listen(47941));
+    LobbyClient hostLobby;
+    REQUIRE(hostLobby.Host(settings, "live test", false, 4, 47941));
+    const auto step = [&](std::vector<Game> games)
+    {
+        std::vector<NetPacket> packets;
+        for (Game& game : games)
+        {
+            if (game.transport != nullptr)
+            {
+                game.transport->Poll(1.0f / 60.0f, packets);
+            }
+            game.lobby->Poll(1.0f / 60.0f, game.transport);
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(16));
+    };
+    for (int i = 0; i < 900 && hostLobby.Status() != LobbyClient::State::Open &&
+                    hostLobby.Status() != LobbyClient::State::Failed;
+         ++i)
+    {
+        step({{host.get(), &hostLobby}});
+    }
+    INFO(hostLobby.Message());
+    REQUIRE(hostLobby.Status() == LobbyClient::State::Open);
+    INFO("code " << hostLobby.CodeText() << ", seen from outside as " << hostLobby.SeenAs().ToString());
+    CHECK(hostLobby.SeenAs().Valid());
+
+    std::unique_ptr<Transport> guest = CreateUdpTransport(12u);
+    REQUIRE(guest->Open(0));
+    LobbyClient guestLobby;
+    REQUIRE(guestLobby.Join(settings, hostLobby.Code(), guest->LocalPort()));
+    for (int i = 0; i < 1200 && guestLobby.Status() != LobbyClient::State::Reached &&
+                    guestLobby.Status() != LobbyClient::State::Failed;
+         ++i)
+    {
+        step({{host.get(), &hostLobby}, {guest.get(), &guestLobby}});
+    }
+    INFO(guestLobby.Message());
+    REQUIRE(guestLobby.Status() == LobbyClient::State::Reached);
+    CHECK(guestLobby.LobbyName() == "live test");
+    hostLobby.Close();
+}
