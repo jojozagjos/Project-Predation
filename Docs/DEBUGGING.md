@@ -59,6 +59,8 @@ The creature (developer builds only):
 | --- | --- |
 | `spawn_creature [seed] [ahead [metres [degrees]]]` | Make one far from you, or with `ahead` in front of you and facing you (seven metres unless given), turned by `degrees` for a side view; no seed picks one at random |
 | `ai.freeze 1` | Every creature stands where it is and does nothing, for looking at bodies |
+| `lab` / `testmap` | Take everybody to the creature lab, with creatures coming out of its nest, or back to the test map |
+| `debug.navigation 1` | The walkable surface, with the jumps across ledges drawn as orange arcs |
 | `creature_clear` | Remove every creature |
 | `creature_hurt [amount]` | Hurt the first creature as if you had shot it, 30 by default |
 | `ai_brain` | Open or close the brain inspector |

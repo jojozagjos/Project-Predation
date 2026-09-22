@@ -123,31 +123,132 @@ jaw; its health from its bulk -- a lot of it, 700 to 4000, so a medium body take
 magazines -- and armour from its plates, which stop up to 30% of every round. Pain is measured against
 that health, so a round hurts a big body less than a small one.
 
-It is drawn to look like one animal rather than a kit of parts:
+It is drawn as **one skinned mesh over a skeleton**, not a kit of parts (`CreatureSkin`):
 
-- The torso is **one continuous skin** lofted from the pelvis to the shoulders. It has a waist, a
-  ribcage whose ribs stand out as far as the seed's `ribs` says, a knobbed spine down the back, and, on
-  a crawler, shoulder blades and hip bones.
-- **Limbs are tapered and meet in knobbly joint balls**, so a knee or an elbow at any angle is one
-  rounded joint rather than two capsule ends. Arms end in long fingers, legs in toes, both with dark
-  claws that hook down to the floor.
-- **The head is a skull.** It has a cranium, a frowning brow ridge over each eye, cheekbones, a nose
-  hole and a row of teeth. Its lower jaw hangs open on a hinge and gapes wider as it gathers itself to
-  strike.
-- **The eyes are dark hollows** sunk into the skull's surface, each with a dim pinprick of light deep
-  inside. The pinpricks go out when it falls.
-- The skin is pale, sickly and slightly wet-looking, or nearly black; the skull and teeth are yellowed
-  bone.
+- Its bones, muscle, ribs, spine, shoulder blades, hip bones, skull and joints are described as shapes
+  -- rounded cones and ellipsoids -- blended smoothly into one another, with the eye sockets, nostrils,
+  sunken temples and the mouth carved out of them. One surface is drawn over the lot (a signed distance
+  field turned into triangles by surface nets), the way clay covers an armature, then simplified with
+  meshoptimizer to 7,000 to 16,000 triangles. A knee is where the thigh and the shin are the same
+  surface; the neck grows out of the shoulders; the ribs stand out of the chest as far as the seed's
+  `ribs` says.
+- Every vertex is **painted**: skin, yellowed bone where the skin is thin (skull, knuckles), black in the
+  sockets and nostrils, dark red gums, teeth, claws, bruise-coloured blotches, veins, darker undersides
+  and dirty hands and feet, and darker in every crease -- between ribs, in the armpits, deep in the
+  sockets -- from how much of the body is close round it. Gums and teeth are wetter than skin.
+- Teeth, claws, fingers and spines are too fine to sculpt, so they are built as they were and fixed to
+  their bone, painted to match. Each eye socket has a dim pinprick of light deep inside it.
+- Every vertex is weighted to up to four bones by how near it is to each, so the skin stretches across a
+  joint rather than creasing at it. A skin takes 30 to 100 ms to build, on every core, and is kept by
+  seed, so a creature made again costs nothing.
 
-Its legs are solved to where each foot should be every frame, stepping in the rhythm its body walks in:
-diagonal pairs on four limbs, two tripods on six, alternating on two. Each planted foot moves back
-exactly as fast as the body moves forward, so feet do not slide. A crawler's elbows stand up and out
-above its back; its knees point forward. A crouch lowers the body and the legs bend to it. Sight passes
-through creatures, its own body and any other, so two big bodies of a pack standing close do not blind
-each other.
+Every frame a **procedural rig** poses the skeleton (`CreatureRig`), with nothing authored:
+
+- **Feet are planted in the world.** A foot stays where it was put down while the body moves over it,
+  and steps -- lifted, carried and put down again on the ground found by a ray -- only once the body has
+  moved far enough from it, and only while the feet it walks in step with are down: diagonal pairs on
+  four limbs, two tripods on six, alternating on two. That one rule makes a walk, a run, a turn on the
+  spot (stepping round, not spinning on planted feet) and a scramble up stairs.
+- The body rides at the height of the ground under its feet and tips to the slope between its front
+  and back feet. It bobs and sways with the stride, and its spine bends into a turn.
+- The head follows what it is looking at, within what a neck can do, spread over both neck bones and
+  the skull, and twitches every few seconds: a quick jerk that settles. The jaw hangs as open as this
+  one's does, works as it breathes, and gapes to strike and to call. The chest breathes, faster when it
+  is excited. The tail swings on springs and drags on the floor rather than through it.
+- Blows are poses of their own: a **swipe** draws one arm up and back and rakes it across; a **bite**
+  draws the head back and snaps it forward; a **lunge** gathers, then throws the whole body forward with
+  both arms reaching; a **grab** closes both hands on somebody; it **carries** them against its chest; a
+  **call** throws the head back; it **shoulders** into a door. A round makes it **flinch** away from the
+  hit and settle back.
+- In the air, its feet tuck up under it; it pitches nose-up leaving the ground and nose-down landing.
+
+It dies -- or plays dead -- as a **ragdoll** (`CreatureRagdoll`): a Jolt capsule for every bone with
+swing-and-twist limits for a spine, a neck, a shoulder and a knee, falling from the pose it was in, the
+way it was moving, and pushed by the round that brought it down. Every machine runs its own. Playing
+dead is the same fall, and it gets up by easing every bone from where it lies to standing over a second.
+
+Rounds find it through **a capsule on every bone** (the hit zones, on a physics layer that touches
+nothing), so where it is hit matters: the head takes 2.2 times the damage, the neck 1.5, the body 1, an
+upper limb 0.75, a lower one 0.6, a hand, a foot or the tail 0.45. A box round its torso is what players
+bump into. Lying as a ragdoll, its pieces are what rounds find.
+
+Sight passes through creatures, its own body and any other, so two big bodies of a pack standing close
+do not blind each other.
 
 To look at one: `ai.freeze 1` stops every creature where it stands, and `spawn_creature <seed> ahead
 <metres> <degrees>` puts one in front of you, turned by that many degrees (90 for a side view).
+
+### Attacks
+
+It has four ways of hurting somebody, each with its own quick timing, and barely a pause between them
+for something that means it (the more aggressive, the shorter the blows and the pauses):
+
+| Blow | Lands after | From | Damage |
+|---|---|---|---|
+| Swipe | 0.25 s | within reach | 0.75 of its strike |
+| Bite | 0.31 s | within reach | 1.15, and 1.5 into somebody it holds |
+| Lunge | 0.52 s | 2.6 to 7 m, facing them, nothing in the way | 1.05, from further than it could reach |
+| Grab | 0.3 s | within reach | none: it has hold of them |
+
+Close in, it rakes and bites in turn. From a few metres off, facing somebody, it throws itself at them.
+Somebody on their own -- more than six metres from anybody else -- is who it grabs, the more so the more
+it prefers loners. The game checks every blow again when it lands: somebody who got out of the way is not
+hit, and seeing it coming is what the wind-up is for. It can strike up at somebody on something as high
+as it can rear (`verticalReach`, from its height).
+
+### Grabbed, dragged and wrapped up
+
+Grabbed, a player is carried along in front of it, facing it, pinned where it has them on every
+machine. It takes them away from the others: to its nest when it has one, or else as far from everybody
+else as it can get, out of their sight. There it kills them, bite by bite -- or, at its nest, wraps them
+in a cocoon against the side of the hive and leaves them there, alive, bleeding four health a second,
+until they die or somebody cuts them free (use the cocoon).
+
+Getting free:
+
+- **Struggle.** Every fresh press of jump works a hand loose; enough of them, quickly, and they are out.
+- **Be shot free.** A creature that takes six percent of its health while it holds somebody lets go of
+  them, frightened.
+- **Shoot it yourself.** Nothing stops somebody being dragged from firing, and its head is right there.
+
+### Getting at people
+
+- **Jumping and climbing.** The navigation mesh finds every ledge a body could jump across -- from the
+  lip of a crate or a platform, out and down to floor within four and a half metres, clear of the level
+  all the way -- and bakes them in as links, flagged by height. Each creature routes only through the
+  jumps its body can make: those that climb (six legs, or light) get up 2.7 m; the rest as high as
+  their legs throw them, between 0.8 and 1.95 m. A drop too high to jump back up is one way. It jumps
+  along an arc with its feet tucked.
+- **Somebody out of reach** -- up where no jump or climb gets it, and higher than it can rear -- is paced
+  under, looked up at, and called about, every few seconds, for twelve seconds; then it goes to wait in
+  cover somewhere they will have to come down to.
+- **Doors.** A shut door across its route is a wall the navigation mesh runs straight through, so it
+  stops at one, pulls it open, and goes on. A locked one it throws itself at until it gives -- two to
+  six blows, fewer for a heavier body. Every blow is loud.
+- **Calls.** Somebody it cannot reach, it calls about. Every creature within 45 metres hears a call and
+  comes at a run.
+- **The nest.** Where there is a hive, the creatures come out of it, take what they catch to it, and go
+  back to it to heal when they are hurt -- three percent of their health a second.
+- **Turning.** Looking round is its head, swung either side of the way it was facing when it began, not
+  its body. It does not turn towards anything right under its nose, turns on the spot only for more than
+  a small turn, and slower than on the run. (It used to swing its look relative to the way it was facing
+  at that moment, which chased its own nose round in circles.)
+
+### The creature lab
+
+`lab` takes everybody in the game to the creature lab and restarts the creatures from its nest; `testmap`
+goes back. It is built into the same world as the test map, 170 metres east, and has somewhere to try
+everything above (see `Game/World/LabMap.h` for the layout):
+
+- **the crate yard**: blocks 0.5, 1.0, 1.5, 2.0, 2.6 and 3.4 m high, for what can jump onto what, and a
+  watchtower up a stair too narrow for anything but a person, which nothing can reach;
+- **the crawlspace**: a tunnel 1.3 m high a person can crawl into and no creature follows;
+- **the corridor of doors**: an ordinary door, a room of four lockers, and a locked store room;
+- **the balcony**: up a ramp, with a 2.4 m drop off it;
+- **the pillar forest**: roofed and dark, for being stalked in;
+- **the nest**: a dark chamber with the hive in it.
+
+There is a carbine, a pistol, medical kits and an ammunition crate at the spawn.
 
 ### Vents and other hiding places
 

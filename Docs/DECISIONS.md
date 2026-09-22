@@ -1570,3 +1570,61 @@ you have seen before is a monster you know. Each kind turns up about as often as
 set of per-seed details (snout, gape, teeth, ribs, fingers, claws, brow, skull) makes two of a kind
 differ. Adding the crawler changed every seed's body once; the draws were reordered freely because no
 save data or network message depends on them.
+
+## ADR-072: A creature is one skinned mesh sculpted from a distance field
+
+**Status**: accepted, 2026-09-22
+
+Blending separate primitives (ADR-071) still read as parts: every shape was its own mesh, and the eye
+finds the seams. A creature is now one mesh on a skeleton.
+
+- **The shape** is a signed distance field. Bones, muscle, ribs, vertebrae, shoulder blades, the skull
+  and the joints are rounded cones and ellipsoids joined with a smooth union; the sockets, nostrils, mouth
+  and temples are carved out with a smooth subtraction. That is what gives joints, a neck growing out of
+  the shoulders and ribs standing out of the chest, rather than tubes pushed into balls.
+- **The mesh** comes from sampling the field on a grid and running surface nets over it. Surface nets
+  gives smoother results than marching cubes for the same grid, and has no special cases. The grid is
+  sampled exactly only near the surface and blended elsewhere, and the work is spread over every core.
+  meshoptimizer's attribute-aware simplifier then cuts the triangle count by about two thirds, keeping
+  normals and paint. That is the one new dependency.
+- **The paint** is a vertex colour. The engine's single vertex format gained an RGBA8 colour, white by
+  default: the mesh shader multiplies it into the albedo, and its alpha scales roughness. One mesh can
+  then be skin, bone, gums, sockets and claws, with a crease-shadow term baked in. A texture atlas would
+  have needed unwrapping a procedural mesh for no gain at this resolution.
+- **Skinning** is on the processor into a dynamic vertex buffer, up to four bones a vertex, weighted by
+  distance to each bone's shapes. Eight creatures of 10,000 vertices is well under two milliseconds, and
+  there is no second shader or vertex format to maintain. GPU skinning remains the path if creature
+  counts grow.
+- **Animation** is procedural (`CreatureRig`): world-planted feet that step when the body has moved on,
+  ground by ray, spine bend, head look, a spring tail and poses for each action. There are no authored
+  clips because every seed is a different body.
+- **Death** is a Jolt ragdoll built from the same bones. It needed swing-twist joints and two physics
+  layers: ragdoll pieces, which touch the level and loose items but not people; and hit zones, which
+  touch nothing and are found only by rays. Every machine simulates its own fall, since nobody acts on
+  where a corpse's hand is.
+
+Skins are built from the seed, so every machine builds the same one, and they are cached by seed.
+
+## ADR-073: Attacks, grabs and the nest; jumps baked into the navigation mesh
+
+**Status**: accepted, 2026-09-22
+
+One slow blow with a long cooldown made the creature easy to dance round. It now has four blows: a swipe
+landing a quarter of a second after it starts, a bite, a lunge from a few metres, and a grab. The next can
+follow almost at once. A grab is the creature's answer to a team: it takes the one on their own away from
+the others, to kill them or to wrap them in a cocoon at its nest. The team answers by shooting it off them,
+cutting them free, or the victim struggling. A held player is pinned by the host, which says so in the
+snapshot, and their own machine stops predicting until they are let go (protocol 9).
+
+Reaching somebody up on something is a navigation question, not an animation one. So jumps are found
+when the mesh is built, across every open edge down to floor within four and a half metres with the way
+clear, and baked in as Detour off-mesh links flagged by height. A creature's body decides which flags it
+may route through. That answers "can it get up there" the same way everywhere, including in the tests.
+
+Doors are kinematic and the mesh runs through them, so the brain checks the next leg of its route against
+shut doors and opens or breaks them. Letting the mesh be cut by doors would have meant rebuilding it
+whenever one moved.
+
+The creature lab is part of the test map's world rather than a second map, because the whole game assumes
+one world built behind the menu. Moving everybody there is a respawn at a different spawn point, which
+every part of the network already handles.

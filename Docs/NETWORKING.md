@@ -91,8 +91,12 @@ Network overlay (RTT, loss, bandwidth per channel), replication log, and the sim
 
 **Status**: built through Milestone 8. Two machines connect over UDP, the host simulates everyone, clients
 predict their own movement and interpolate everyone else, and shots, voice, spectating, host migration and
-the creature all cross the wire. Protocol version 7: the roster says whether the host has started the
-game (a guest waits in the lobby until it has), and a death carries how many seconds until the player
+the creature all cross the wire. Protocol version 9: every player in the snapshot carries whether a
+creature has hold of them (and which) or has wrapped them in a cocoon, which the host pins and their own
+machine obeys instead of predicting; every creature carries what its limbs and head are doing (a blow, a
+grab, carrying somebody, a call, a door, and how far through), how far through a jump it is, and what it is
+looking at. Version 8 put a reload from empty on the wire. Version 7: the roster says whether the host has
+started the game (a guest waits in the lobby until it has), and a death carries how many seconds until the player
 is back, so their screen can count it down. Version 6 added the "quiet" bit on world events, set on the
 catch-up a joining player is sent, so what already happened is applied without being heard.
 
