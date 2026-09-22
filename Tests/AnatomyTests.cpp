@@ -63,12 +63,15 @@ TEST_CASE("Across many seeds, every kind of body turns up", "[anatomy]")
         plated += a.plates > 0 ? 1 : 0;
         tailless += a.tailLength < 0.05f ? 1 : 0;
     }
-    INFO("four " << plans[0] << ", six " << plans[1] << ", two " << plans[2] << "; small " << sizes[0]
+    INFO("four " << plans[0] << ", six " << plans[1] << ", two " << plans[2] << ", crawling " << plans[3] << "; small " << sizes[0]
                  << ", medium " << sizes[1] << ", large " << sizes[2] << "; eyeless " << eyes[0]);
     // Roughly the shares it is drawn with, and every kind present in a useful number.
-    CHECK(plans[0] > kSeeds * 0.4);
-    CHECK(plans[1] > kSeeds * 0.18);
-    CHECK(plans[2] > kSeeds * 0.18);
+    // No one kind is most of them: the next one could be anything.
+    for (const int plan : plans)
+    {
+        CHECK(plan > kSeeds * 0.15);
+        CHECK(plan < kSeeds * 0.4);
+    }
     for (const int count : sizes)
     {
         CHECK(count > kSeeds / 20);
@@ -90,8 +93,21 @@ TEST_CASE("Every body can stand: legs reach the ground with the knee bent, and t
         const CreatureAnatomy::RestPose pose = a.Rest();
         INFO("seed " << seed << ": " << a.Describe());
         const size_t pairs = a.plan == BodyPlan::Hexapod ? 3 : (a.plan == BodyPlan::Quadruped ? 2 : 1);
-        REQUIRE(a.legs.size() == pairs);
-        REQUIRE(pose.legs.size() == pairs * 2);
+        // A crawler has arms and legs, and sometimes a second pair of arms.
+        const size_t limbs = a.legs.size();
+        if (a.plan == BodyPlan::Crawler)
+        {
+            REQUIRE((limbs == 2 || limbs == 3));
+            CHECK(a.legs.front().arm);
+            CHECK_FALSE(a.legs.back().arm);
+            CHECK(a.tailLength == 0.0f);
+        }
+        else
+        {
+            REQUIRE(limbs == pairs);
+        }
+        const size_t pairsDrawn = limbs;
+        REQUIRE(pose.legs.size() == pairsDrawn * 2);
         for (const CreatureAnatomy::Leg& leg : pose.legs)
         {
             // Every limb there is is a leg, and every leg stands on the ground. There is no such thing

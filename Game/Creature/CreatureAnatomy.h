@@ -24,6 +24,7 @@ enum class BodyPlan : uint8_t
     Quadruped, // four legs under a horizontal body
     Hexapod,   // six legs splayed out wide, knees high, low to the ground
     Biped,     // two legs under the middle, the body balanced over them by a long tail
+    Crawler,   // a gaunt, human-like thing on all fours: long arms in front, legs behind, no tail
     Count
 };
 
@@ -44,6 +45,10 @@ struct LegPair
     float thickness = 0.07f;
     // Knee bending backwards, as a dog's hind leg does; otherwise forwards, as a person's does.
     bool backwardKnee = false;
+    // How far ahead of the hip the foot rests: a crawler reaches its hands out in front of it.
+    float footForward = 0.0f;
+    // Arms rather than legs: a crawler's front pair, which bend at the elbow and end in long fingers.
+    bool arm = false;
 };
 
 struct CreatureAnatomy
@@ -92,6 +97,18 @@ struct CreatureAnatomy
     glm::vec3 skin{0.40f, 0.42f, 0.38f};
     glm::vec3 underside{0.26f, 0.27f, 0.25f};
     float roughness = 0.72f;
+
+    // The face and the details that make each one itself. Every kind of body draws these, so two of the
+    // same kind can still look nothing alike.
+    float snout = 1.0f;       // how far the face juts: 0.6 flat, like a person's; 1.8 a long muzzle
+    float gape = 0.4f;        // how far the jaw hangs open at rest: 0 shut, 1 unhinged
+    int teeth = 10;           // along each jaw
+    float toothLength = 1.0f; // on how long teeth are for a head that size
+    float ribs = 0.5f;        // how plainly the ribs and spine show: 0 well fed, 1 starved
+    int fingers = 4;          // on each hand or foot
+    float clawLength = 1.0f;
+    float brow = 0.5f;        // how heavy the ridge over the eyes is
+    float cranium = 1.0f;     // how swollen the back of the skull is
 
     static CreatureAnatomy FromSeed(uint32_t seed);
     std::string Describe() const;

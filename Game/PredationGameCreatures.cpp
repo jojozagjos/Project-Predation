@@ -35,6 +35,8 @@ CVar<float> cv_aiArrival{"ai.arrival_seconds", 40.0f,
 
 CVar<float> cv_aiHealthScale{"ai.health_scale", 1.0f,
                              "Multiplies how much health a creature's body gives it, for tuning"};
+CVar<bool> cv_aiFreeze{"ai.freeze", false,
+                        "Creatures stand where they are and do nothing, for looking at them: ai.freeze 1"};
 
 // A strike's reach as the game checks it when the blow lands: the body's own reach and a little more,
 // because the brain decided to swing when somebody was in reach and they get this much room to have
@@ -462,6 +464,10 @@ void PredationGame::UpdateCreatures(float dt)
             {
                 senses.others.push_back(other->Position());
             }
+        }
+        if (cv_aiFreeze.Get())
+        {
+            continue;
         }
         creature->Update(std::move(senses), m_creatureClock, dt);
 
@@ -966,7 +972,9 @@ void PredationGame::RegisterCreatureCommands()
                     // Facing you: one put in front of you to be looked at is there to look back.
                     Creature& made = *m_creatures.back();
                     const glm::vec3 toYou = m_player.State().position - made.Position();
-                    made.SetShownState(made.Position(), std::atan2(toYou.x, -toYou.z), 0.0f, 0.0f, true);
+                    // Or turned by however many degrees are asked for, to see it from the side.
+                    const float turn = args.size() >= 5 ? glm::radians(std::strtof(args[4].c_str(), nullptr)) : 0.0f;
+                    made.SetShownState(made.Position(), std::atan2(toYou.x, -toYou.z) + turn, 0.0f, 0.0f, true);
                 }
                 m_app->GetConsole().Print("Creature " + std::to_string(seed) + ": " +
                                           m_creatures.back()->Brain().Traits().Describe());
@@ -977,7 +985,7 @@ void PredationGame::RegisterCreatureCommands()
                                                std::to_string(kMaxCreatures) + ".");
             }
         },
-        "spawn_creature [seed] [ahead [metres]]");
+        "spawn_creature [seed] [ahead [metres [turn degrees]]]");
     console.RegisterCommand(
         "hide", "Get into a locker, or out of the one you are in, as pressing interact at it does: hide [index]",
         [this](const std::vector<std::string>& args)

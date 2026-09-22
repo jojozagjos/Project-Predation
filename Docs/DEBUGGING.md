@@ -57,7 +57,8 @@ The creature (developer builds only):
 
 | Command | Does |
 | --- | --- |
-| `spawn_creature [seed] [ahead [metres]]` | Make one far from you, or with `ahead` in front of you and facing you (seven metres unless given); no seed picks one at random |
+| `spawn_creature [seed] [ahead [metres [degrees]]]` | Make one far from you, or with `ahead` in front of you and facing you (seven metres unless given), turned by `degrees` for a side view; no seed picks one at random |
+| `ai.freeze 1` | Every creature stands where it is and does nothing, for looking at bodies |
 | `creature_clear` | Remove every creature |
 | `creature_hurt [amount]` | Hurt the first creature as if you had shot it, 30 by default |
 | `ai_brain` | Open or close the brain inspector |

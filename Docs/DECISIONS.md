@@ -1546,3 +1546,27 @@ middle at 0.7 m -- were right for one body and wrong for a 0.5 m six-legged one,
 peek over the cover it chose; they come from the body now. And sight passes through creatures: its eyes
 are inside its own box, and with rays that count a start inside something as a hit, a second creature's
 box around its head blinded it outright.
+
+## ADR-071: Creatures are skinned as one body, and a crawler is one of four kinds
+
+**Status**: accepted, 2026-09-22
+
+Bodies built from separate ellipsoids and capsules looked assembled: every joint showed two ends, the
+body was a row of beads, and big glowing spheres for eyes read as a toy. Horror comes from something
+that looks like it could be alive. So a creature is now drawn as:
+
+- one lofted skin for the torso, with ribs and a spine pushed out of the surface;
+- limbs of tapered segments that meet inside a shared joint ball, so they bend as one limb;
+- a skull with a hinged jaw and teeth;
+- eyes as sunken hollows with a dim point of light, placed on the skull's own surface so they cannot
+  float off it however many there are.
+
+All of it is still built from the seed at spawn. Nothing is streamed or authored, so every machine
+builds the same animal.
+
+The crawler, a gaunt human-like thing on all fours, was added as a fourth kind of body rather than
+replacing the others. For a moment it was made most of them, and that was the wrong call: a monster
+you have seen before is a monster you know. Each kind turns up about as often as the others, and a
+set of per-seed details (snout, gape, teeth, ribs, fingers, claws, brow, skull) makes two of a kind
+differ. Adding the crawler changed every seed's body once; the draws were reordered freely because no
+save data or network message depends on them.

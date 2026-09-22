@@ -163,7 +163,9 @@ private:
         Front,    // the head end: moves back and up when it gathers itself to strike
         LegUpper, // hip to knee
         LegLower, // knee to ankle
-        LegFoot   // ankle to toe
+        LegFoot,  // ankle to toe
+        Hand,     // the fingers or toes and their claws, carried at the toe
+        Jaw       // the lower jaw, hinged under the skull, hanging open and gaping wider to strike
     };
     struct Piece
     {

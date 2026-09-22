@@ -99,24 +99,55 @@ weighed is drawn as posts (orange hidden, purple seen, taller for better) with t
 ### Bodies
 
 A seed makes a body as well as a temperament, from a random stream of its own so no seed's temperament
-changed when bodies arrived (`CreatureAnatomy`): four legs (half of all seeds), six splayed legs, or two
-under a body balanced by a tail; a segmented body, neck, head and jaw; none, two, four or six eyes;
-sound-catching frills; a tail; armour plates and spines. Every limb is a leg that stands on the ground,
-so none can be a wing.
+changed when bodies arrived (`CreatureAnatomy`). There are four kinds, each about as common as the others,
+so the next one could be anything:
+
+- a **crawler**: gaunt and shaped too much like a person, on long arms and bent legs, with no tail and
+  sometimes a second, smaller pair of arms;
+- **four legs** under a long body;
+- **six legs** splayed wide, low to the floor;
+- **two legs** under a body balanced by a tail.
+
+Each body has a neck, a head and a jaw; none, two, four or six eyes; sound-catching frills; a tail;
+armour plates and spines. Every limb stands on the ground, so none can be a wing.
+
+On top of the kind, every seed draws its own details: how far the face juts, how far the jaw hangs open,
+how many teeth and how long, how plainly the ribs and spine show, how many fingers, how long the claws
+are, how heavy the brow, how swollen the skull. Two creatures of the same kind rarely look alike.
 
 What the body can do is worked out from it (`CreatureCapabilities`) and handed to the brain as it is
 made: run and walk speed from leg length and weight; sight from its eyes (none at all without them,
 though it still knows somebody touching distance away); hearing from its frills, and best of all when it
-has no eyes; reach from its neck and head; how hard it hits from its weight and jaw; its health from its
-bulk -- a lot of it, 700 to 4000, so a medium body takes two or three carbine magazines -- and armour from
-its plates, which stop up to 30% of every round. Pain is measured against that health, so a round hurts a
-big body less than a small one.
+has no eyes; reach from its neck and head (and a crawler's arms); how hard it hits from its weight and
+jaw; its health from its bulk -- a lot of it, 700 to 4000, so a medium body takes two or three carbine
+magazines -- and armour from its plates, which stop up to 30% of every round. Pain is measured against
+that health, so a round hurts a big body less than a small one.
 
-It is drawn from those parts every frame. Its legs are solved to where each foot should be, stepping in
-the rhythm its body walks in -- diagonal pairs on four legs, two tripods on six, alternating on two --
-with each planted foot moving back exactly as fast as the body moves forward, so feet do not slide. A
-crouch lowers the body and the legs bend to it. Sight passes through creatures, its own body and any
-other, so two big bodies of a pack standing close do not blind each other.
+It is drawn to look like one animal rather than a kit of parts:
+
+- The torso is **one continuous skin** lofted from the pelvis to the shoulders. It has a waist, a
+  ribcage whose ribs stand out as far as the seed's `ribs` says, a knobbed spine down the back, and, on
+  a crawler, shoulder blades and hip bones.
+- **Limbs are tapered and meet in knobbly joint balls**, so a knee or an elbow at any angle is one
+  rounded joint rather than two capsule ends. Arms end in long fingers, legs in toes, both with dark
+  claws that hook down to the floor.
+- **The head is a skull.** It has a cranium, a frowning brow ridge over each eye, cheekbones, a nose
+  hole and a row of teeth. Its lower jaw hangs open on a hinge and gapes wider as it gathers itself to
+  strike.
+- **The eyes are dark hollows** sunk into the skull's surface, each with a dim pinprick of light deep
+  inside. The pinpricks go out when it falls.
+- The skin is pale, sickly and slightly wet-looking, or nearly black; the skull and teeth are yellowed
+  bone.
+
+Its legs are solved to where each foot should be every frame, stepping in the rhythm its body walks in:
+diagonal pairs on four limbs, two tripods on six, alternating on two. Each planted foot moves back
+exactly as fast as the body moves forward, so feet do not slide. A crawler's elbows stand up and out
+above its back; its knees point forward. A crouch lowers the body and the legs bend to it. Sight passes
+through creatures, its own body and any other, so two big bodies of a pack standing close do not blind
+each other.
+
+To look at one: `ai.freeze 1` stops every creature where it stands, and `spawn_creature <seed> ahead
+<metres> <degrees>` puts one in front of you, turned by that many degrees (90 for a side view).
 
 ### Vents and other hiding places
 
