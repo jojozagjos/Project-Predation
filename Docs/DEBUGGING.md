@@ -86,6 +86,14 @@ the first copy's log says the code after "open as"):
     ProjectPredation.exe --exec "lobby_use http://127.0.0.1:8787 127.0.0.1:3478" --exec "lobby_host kitchen" --exec "wait 4000" --exec lobby_start
     ProjectPredation.exe --exec "lobby_use http://127.0.0.1:8787 127.0.0.1:3478" --exec "lobby_join 3Z6PHF" --exec "wait 1500" --exec lobby_state
 
+Weapon animation, with the editor open on a model (developer builds):
+
+| Command | Does |
+| --- | --- |
+| `editor_reload <reload\|empty\|double> [seconds]` | Make a reload from a template, and put the playhead somewhere |
+| `editor_save` | Save the model, as the Save button does |
+| `reload`, `fire [ticks]` | In the game: start a reload, or hold the trigger to empty some of the magazine first |
+
 Every sound the game plays is logged at debug level with its name (`--log-level debug`), which is how
 the burst of door and drop sounds on joining a game was found.
 

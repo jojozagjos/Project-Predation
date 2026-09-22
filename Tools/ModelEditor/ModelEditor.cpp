@@ -250,6 +250,15 @@ void ModelEditor::Update(Scene& scene, MeshLibrary& meshes, float dt)
         Rebuild(scene, meshes);
     }
 
+    // Anything about the model changed this frame -- a key typed into, a key dragged -- and whatever is
+    // holding it in the first-person preview is told, so it plays what is on the timeline now. Cheap:
+    // the fingerprint reads numbers, not meshes.
+    if (const size_t fingerprint = Fingerprint(); fingerprint != m_lastFingerprint)
+    {
+        m_lastFingerprint = fingerprint;
+        m_previewChanged = true;
+    }
+
     const AnimationClip* clip = m_selectedClip >= 0 && m_selectedClip < static_cast<int>(m_model.clips.size())
                                     ? &m_model.clips[static_cast<size_t>(m_selectedClip)]
                                     : nullptr;
@@ -307,8 +316,10 @@ void ModelEditor::DrawOverlays(DebugDraw& draw) const
         const AABB bounds = PartBounds(part);
         const glm::vec3 centre = (bounds.min + bounds.max) * 0.5f;
         const glm::vec3 half = glm::max((bounds.max - bounds.min) * 0.5f, glm::vec3(0.002f));
-        draw.BoxOriented(part.LocalMatrix() * glm::translate(glm::mat4(1.0f), centre), half,
-                         Color::kYellow);
+        // Where it is at the playhead when a clip is open, so the outline stays on the part as it moves.
+        const AnimationClip* playing = SelectedClip();
+        const glm::mat4 placed = playing != nullptr ? m_model.PartMatrixAt(part, playing, m_playhead) : part.LocalMatrix();
+        draw.BoxOriented(placed * glm::translate(glm::mat4(1.0f), centre), half, Color::kYellow);
     }
 
     for (size_t i = 0; i < m_model.sockets.size(); ++i)
@@ -319,6 +330,28 @@ void ModelEditor::DrawOverlays(DebugDraw& draw) const
         if (selected)
         {
             draw.Sphere(socket.position, 0.022f, Color::kYellow, 10);
+        }
+    }
+
+    // The hands, where the clip puts them at the playhead: a box for each palm and its axes, so a
+    // reload can be posed against the weapon without switching to the first-person view. Left is
+    // blue and right is orange, and a hand is only drawn when the clip moves it.
+    if (const AnimationClip* clip = SelectedClip())
+    {
+        for (int side = 0; side < 2; ++side)
+        {
+            glm::vec3 offset{0.0f};
+            glm::quat turn{1.0f, 0.0f, 0.0f, 0.0f};
+            if (!m_model.HandAt(clip, side, m_playhead, offset, turn))
+            {
+                continue;
+            }
+            const glm::mat4 hand = m_model.HandFrameAt(clip, side, m_playhead, m_model.HandRest(side));
+            const uint32_t colour = side == 0 ? Color::RGBA(110, 170, 240, 255) : Color::RGBA(240, 160, 90, 255);
+            draw.BoxOriented(hand, glm::vec3(0.022f, 0.045f, 0.05f), colour);
+            draw.Axes(hand, 0.05f);
+            // And a line back to the socket it rests on, so where it has gone from is never a guess.
+            draw.Line(m_model.HandRest(side), glm::vec3(hand[3]), colour);
         }
     }
 
@@ -764,27 +797,18 @@ AnimationKey& ModelEditor::AddOrGetKey(AnimationTrack& track, float time)
     {
         return *existing;
     }
-    // A new key starts from where the track already is at this moment, so adding one never moves
-    // anything: it pins down what is already on screen and then you change it.
+    // A new key starts from where the track already is at this moment -- held by the same thing, at
+    // the same place, turned the same way -- so adding one never moves anything: it pins down what is
+    // already on screen and then you change it.
     AnimationKey key;
     key.time = time;
     if (!track.keys.empty())
     {
-        const ModelPart* part = nullptr;
-        for (const ModelPart& candidate : m_model.parts)
-        {
-            if (candidate.name == track.part)
-            {
-                part = &candidate;
-                break;
-            }
-        }
-        if (part != nullptr && m_selectedClip >= 0)
-        {
-            const AnimationClip& clip = m_model.clips[static_cast<size_t>(m_selectedClip)];
-            const glm::mat4 local = m_model.PartMatrixAt(*part, &clip, time, &key.visible);
-            key.position = glm::vec3(local[3]) - part->position;
-        }
+        const TrackSample sample = SampleTrack(track, time);
+        key.position = sample.position;
+        key.rotation = sample.euler;
+        key.visible = sample.visible;
+        key.holder = sample.holder;
     }
     track.keys.push_back(key);
     std::sort(track.keys.begin(), track.keys.end(),
@@ -804,7 +828,323 @@ void ModelEditor::KeyAllParts()
         AnimationKey& key = AddOrGetKey(TrackFor(*clip, part.name), m_playhead);
         key.visible = part.visible ? 1.0f : 0.0f;
     }
+    // And the hands, when the clip moves them: a pose is the parts and the hands together.
+    for (AnimationTrack& track : clip->tracks)
+    {
+        if (track.part == kLeftHandTrack || track.part == kRightHandTrack)
+        {
+            AddOrGetKey(track, m_playhead);
+        }
+    }
     m_status = "Keyed every part";
+}
+
+const AnimationClip* ModelEditor::SelectedClip() const
+{
+    if (m_selectedClip < 0 || m_selectedClip >= static_cast<int>(m_model.clips.size()))
+    {
+        return nullptr;
+    }
+    return &m_model.clips[static_cast<size_t>(m_selectedClip)];
+}
+
+void ModelEditor::SetHolder(AnimationClip& clip, AnimationTrack& track, AnimationKey& key, PartHolder holder)
+{
+    if (key.holder == holder)
+    {
+        return;
+    }
+    const ModelPart* part = m_model.FindPart(track.part);
+    if (part == nullptr)
+    {
+        key.holder = holder;
+        return;
+    }
+    // Where the part is at this key before anything changes, and then the numbers that put it in the
+    // same place in its new holder's frame. Handing a magazine to a hand is then a change of who is
+    // carrying it and nothing else: it does not jump.
+    const glm::mat4 now = m_model.PartMatrixAt(*part, &clip, key.time);
+    key.holder = holder;
+    if (holder == PartHolder::Weapon)
+    {
+        key.position = glm::vec3(now[3]) - part->position;
+        key.rotation = EulerDegreesFromMatrix(now) - part->rotation;
+    }
+    else
+    {
+        const int side = holder == PartHolder::LeftHand ? 0 : 1;
+        const glm::mat4 inHand =
+            glm::inverse(m_model.HandFrameAt(&clip, side, key.time, m_model.HandRest(side))) * now;
+        key.position = glm::vec3(inHand[3]);
+        key.rotation = EulerDegreesFromMatrix(inHand);
+    }
+    m_dirty = true;
+    m_previewChanged = true;
+}
+
+bool ModelEditor::KeyPosition(glm::vec3& out) const
+{
+    const AnimationClip* clip = SelectedClip();
+    if (clip == nullptr || m_selectedTrack < 0 || m_selectedTrack >= static_cast<int>(clip->tracks.size()))
+    {
+        return false;
+    }
+    const AnimationTrack& track = clip->tracks[static_cast<size_t>(m_selectedTrack)];
+    const bool keyed = std::any_of(track.keys.begin(), track.keys.end(), [&](const AnimationKey& key)
+                                   { return std::abs(key.time - m_playhead) < 1e-3f; });
+    if (!keyed)
+    {
+        return false;
+    }
+    if (track.part == kLeftHandTrack || track.part == kRightHandTrack)
+    {
+        const int side = track.part == kLeftHandTrack ? 0 : 1;
+        out = glm::vec3(m_model.HandFrameAt(clip, side, m_playhead, m_model.HandRest(side))[3]);
+        return true;
+    }
+    const ModelPart* part = m_model.FindPart(track.part);
+    if (part == nullptr)
+    {
+        return false;
+    }
+    out = glm::vec3(m_model.PartMatrixAt(*part, clip, m_playhead)[3]);
+    return true;
+}
+
+void ModelEditor::MoveKey(const glm::vec3& delta)
+{
+    AnimationClip* clip = CurrentClip();
+    AnimationTrack* track = SelectedTrack();
+    AnimationKey* key = track != nullptr ? KeyAt(*track, m_playhead) : nullptr;
+    if (clip == nullptr || key == nullptr)
+    {
+        return;
+    }
+    if (key->holder == PartHolder::Weapon || track->part == kLeftHandTrack || track->part == kRightHandTrack)
+    {
+        // An offset in the weapon's frame, which is the frame the handles are drawn in.
+        key->position += delta;
+    }
+    else
+    {
+        // A place in a hand, whose frame may be turned: the drag is turned into it.
+        const int side = key->holder == PartHolder::LeftHand ? 0 : 1;
+        const glm::mat3 hand = glm::mat3(m_model.HandFrameAt(clip, side, m_playhead, m_model.HandRest(side)));
+        key->position += glm::transpose(hand) * delta;
+    }
+    m_dirty = true;
+    m_previewChanged = true;
+}
+
+void ModelEditor::MakeReloadTemplate(ReloadTemplate kind)
+{
+    // Everything is measured from the model: where the support hand rests, where the magazine sits and
+    // how tall it is. The numbers only have to be a good start -- the point of a template is that it
+    // already moves, so shaping it is changing keys rather than inventing them.
+    if (m_model.FindPart("magazine") == nullptr)
+    {
+        m_status = "A reload template needs a part called 'magazine'. Rename the part that is one.";
+        return;
+    }
+    PushUndo("a reload template");
+
+    if (kind == ReloadTemplate::DoubleMagazine && m_model.FindPart("magazine_2") == nullptr)
+    {
+        // The second magazine, taped alongside the first and upside down: the first turned half over
+        // about the barrel's axis, around a point beside it. That shape is the same after being rolled
+        // over as before, which is what lets the reload end with the model exactly as it started.
+        ModelPart second = *m_model.FindPart("magazine");
+        const AABB bounds = PartBounds(second);
+        const float spacing = std::max(bounds.max.x - bounds.min.x, 0.02f) + 0.004f;
+        second.name = "magazine_2";
+        second.position.x += spacing;
+        second.rotation.z += 180.0f;
+        m_model.parts.push_back(std::move(second));
+        m_dirty = true;
+        m_geometryChanged = true;
+    }
+
+    const char* name = kind == ReloadTemplate::Empty ? "reload_empty" : "reload";
+    const float duration =
+        kind == ReloadTemplate::Tactical ? 2.2f : (kind == ReloadTemplate::Empty ? 2.6f : 2.4f);
+    const auto existing = std::find_if(m_model.clips.begin(), m_model.clips.end(),
+                                       [&](const AnimationClip& candidate) { return candidate.name == name; });
+    if (existing != m_model.clips.end())
+    {
+        m_model.clips.erase(existing);
+    }
+    AnimationClip fresh;
+    fresh.name = name;
+    fresh.duration = duration;
+    m_model.clips.push_back(std::move(fresh));
+    AnimationClip& clip = m_model.clips.back();
+
+    const ModelPart magazine = *m_model.FindPart("magazine");
+    const AABB magazineBounds = PartBounds(magazine);
+    const float magazineHeight = std::max(magazineBounds.max.y - magazineBounds.min.y, 0.05f);
+    const glm::vec3 support = m_model.HandRest(0);
+    // Where the palm closes on the magazine: a little up from its bottom end.
+    const glm::vec3 grab = magazine.position + glm::vec3(0.0f, -magazineHeight * 0.3f, 0.0f);
+    const glm::vec3 toMagazine = grab - support;
+    // A pouch on the belt, from the support hand: down, out to the left, and back towards the body.
+    const glm::vec3 toPouch{-0.10f, -0.32f, -0.28f};
+    const glm::vec3 pulled = toMagazine + glm::vec3(0.0f, -0.16f, 0.0f);
+
+    const auto addKey = [&](const std::string& track, float time, const glm::vec3& offset, const glm::vec3& turn)
+    {
+        AnimationKey key;
+        key.time = time;
+        key.position = offset;
+        key.rotation = turn;
+        TrackFor(clip, track).keys.push_back(key);
+    };
+    const auto handKey = [&](float time, const glm::vec3& offset, const glm::vec3& turn = glm::vec3(0.0f))
+    { addKey(kLeftHandTrack, time, offset, turn); };
+    const auto rootKey = [&](float time, const glm::vec3& turn, const glm::vec3& offset = glm::vec3(0.0f))
+    { addKey("root", time, offset, turn); };
+    const auto sortAll = [&]()
+    {
+        for (AnimationTrack& track : clip.tracks)
+        {
+            std::sort(track.keys.begin(), track.keys.end(),
+                      [](const AnimationKey& a, const AnimationKey& b) { return a.time < b.time; });
+        }
+    };
+    // A key that puts a part in the left hand exactly where it rests, worked out once the hand's own
+    // keys are in place.
+    const auto inHand = [&](const std::string& part, float time)
+    {
+        const ModelPart* found = m_model.FindPart(part);
+        const glm::mat4 rest = found != nullptr ? found->LocalMatrix() : glm::mat4(1.0f);
+        const glm::mat4 local = glm::inverse(m_model.HandFrameAt(&clip, 0, time, support)) * rest;
+        AnimationKey key;
+        key.time = time;
+        key.position = glm::vec3(local[3]);
+        key.rotation = EulerDegreesFromMatrix(local);
+        key.holder = PartHolder::LeftHand;
+        return key;
+    };
+    const auto inWeapon = [](float time)
+    {
+        AnimationKey key;
+        key.time = time;
+        return key;
+    };
+
+    if (kind == ReloadTemplate::DoubleMagazine)
+    {
+        // Out, roll the pair over, in. The pair is rolled about its own middle rather than about the
+        // hand, so the hand travels while it turns: its offsets at the half and the whole turn are
+        // worked out to keep the middle of the pair where it is.
+        rootKey(0.0f, glm::vec3(0.0f));
+        rootKey(0.3f, glm::vec3(8.0f, 0.0f, 22.0f), glm::vec3(-0.03f, 0.03f, 0.0f));
+        rootKey(2.0f, glm::vec3(8.0f, 0.0f, 22.0f), glm::vec3(-0.03f, 0.03f, 0.0f));
+        rootKey(2.4f, glm::vec3(0.0f));
+        handKey(0.0f, glm::vec3(0.0f));
+        handKey(0.35f, toMagazine);
+        handKey(0.45f, toMagazine);
+        handKey(0.75f, pulled);
+
+        const ModelPart second = *m_model.FindPart("magazine_2");
+        const glm::vec3 middle = (magazine.position + second.position) * 0.5f + glm::vec3(0.0f, -0.16f, 0.0f);
+        const glm::vec3 middleInHand = middle - (support + pulled);
+        const auto rolled = [&](float degrees)
+        {
+            const glm::mat3 turn = glm::mat3(EulerDegreesMatrix(glm::vec3(0.0f, 0.0f, degrees)));
+            return middle - support - turn * middleInHand;
+        };
+        handKey(1.0f, rolled(90.0f), glm::vec3(0.0f, 0.0f, 90.0f));
+        handKey(1.25f, rolled(180.0f), glm::vec3(0.0f, 0.0f, 180.0f));
+        handKey(1.6f, rolled(180.0f) + glm::vec3(0.0f, 0.16f, 0.0f), glm::vec3(0.0f, 0.0f, 180.0f));
+        handKey(1.75f, rolled(180.0f) + glm::vec3(0.0f, 0.16f, 0.0f), glm::vec3(0.0f, 0.0f, 180.0f));
+        handKey(2.05f, glm::vec3(-0.04f, -0.05f, 0.0f), glm::vec3(0.0f, 0.0f, 90.0f));
+        handKey(2.4f, glm::vec3(0.0f));
+        sortAll();
+
+        for (const char* part : {"magazine", "magazine_2"})
+        {
+            AnimationTrack& track = TrackFor(clip, part);
+            track.keys.push_back(inWeapon(0.0f));
+            track.keys.push_back(inHand(part, 0.45f));
+            // Seated again, the other way up. The pair looks exactly as it did before, so each part is
+            // simply put back where it rests.
+            track.keys.push_back(inWeapon(1.6f));
+        }
+        m_status = "Made a double-magazine reload: out, roll the pair over, in. Shape it from here.";
+    }
+    else
+    {
+        const bool empty = kind == ReloadTemplate::Empty;
+        rootKey(0.0f, glm::vec3(0.0f));
+        // Up a little, towards the middle, and rolled so the magazine well faces the eyes: a reload is
+        // looked at, and a weapon held as it is for shooting hides everything below it.
+        const glm::vec3 lift{-0.03f, 0.03f, 0.0f};
+        const glm::vec3 roll{8.0f, 0.0f, 22.0f};
+        rootKey(0.3f, roll, lift);
+        rootKey(empty ? 2.0f : 1.85f, roll, lift);
+        handKey(0.0f, glm::vec3(0.0f));
+        handKey(0.35f, toMagazine);
+        handKey(0.45f, toMagazine);
+        handKey(0.75f, pulled);
+        handKey(1.05f, toPouch, glm::vec3(0.0f, 0.0f, -25.0f));
+        handKey(1.25f, toPouch, glm::vec3(0.0f, 0.0f, -25.0f));
+        handKey(1.6f, toMagazine + glm::vec3(0.0f, -0.08f, 0.0f));
+        handKey(1.75f, toMagazine);
+        if (empty)
+        {
+            // Then the bolt catch, on the side of the receiver above the magazine, and the weapon
+            // jolting as the bolt goes home.
+            const glm::vec3 boltCatch = toMagazine + glm::vec3(-0.035f, magazineHeight * 0.55f, 0.03f);
+            handKey(2.0f, boltCatch);
+            handKey(2.1f, boltCatch + glm::vec3(0.012f, 0.0f, 0.0f));
+            rootKey(2.1f, roll + glm::vec3(-4.0f, 0.0f, -6.0f), lift + glm::vec3(0.0f, 0.0f, -0.01f));
+            rootKey(2.3f, roll * 0.5f, lift * 0.5f);
+            rootKey(2.6f, glm::vec3(0.0f));
+            handKey(2.6f, glm::vec3(0.0f));
+        }
+        else
+        {
+            rootKey(2.2f, glm::vec3(0.0f));
+            handKey(2.2f, glm::vec3(0.0f));
+        }
+        sortAll();
+
+        AnimationTrack& track = TrackFor(clip, "magazine");
+        track.keys.push_back(inWeapon(0.0f));
+        AnimationKey held = inHand("magazine", 0.45f);
+        track.keys.push_back(held);
+        // Into the pouch, and a full one out of it: the same part, gone for a moment.
+        held.time = 1.05f;
+        held.visible = 0.0f;
+        track.keys.push_back(held);
+        held.time = 1.25f;
+        held.visible = 1.0f;
+        track.keys.push_back(held);
+        // Seated the moment the hand is back at the magazine well, which is where the hand put it.
+        track.keys.push_back(inWeapon(1.75f));
+
+        // A bolt, if the model has one: locked back while the magazine is empty, forward when the
+        // catch is hit.
+        if (empty && m_model.FindPart("bolt") != nullptr)
+        {
+            AnimationKey back = inWeapon(0.0f);
+            back.position = glm::vec3(0.0f, 0.0f, -0.04f);
+            back.ease = KeyEase::Step;
+            TrackFor(clip, "bolt").keys.push_back(back);
+            back.time = 2.1f;
+            TrackFor(clip, "bolt").keys.push_back(back);
+            TrackFor(clip, "bolt").keys.push_back(inWeapon(2.12f));
+        }
+        m_status = empty ? "Made a reload from empty, ending with the bolt released. Shape it from here."
+                         : "Made a reload: magazine out, a fresh one from the belt, in. Shape it from here.";
+    }
+    sortAll();
+
+    m_selectedClip = static_cast<int>(m_model.clips.size()) - 1;
+    m_selectedTrack = 0;
+    m_playhead = 0.0f;
+    m_dirty = true;
+    m_previewChanged = true;
 }
 
 void ModelEditor::DrawTimeline(AnimationClip& clip)
@@ -834,6 +1174,7 @@ void ModelEditor::DrawTimeline(AnimationClip& clip)
         if (ImGui::Selectable(track.part.c_str(), isSelected, 0, {kLabelWidth, kRowHeight}))
         {
             m_selectedTrack = static_cast<int>(t);
+            m_pick = Pick::Key;
         }
         ImGui::SameLine(kLabelWidth + 8.0f);
 
@@ -870,6 +1211,7 @@ void ModelEditor::DrawTimeline(AnimationClip& clip)
         if (ImGui::IsItemActivated())
         {
             m_selectedTrack = static_cast<int>(t);
+            m_pick = Pick::Key;
             m_playing = false;
             // Grabbing a key takes hold of it; grabbing anywhere else moves the playhead. Either
             // way the playhead ends up on the key, so the inspector below is showing the one being
@@ -981,9 +1323,38 @@ void ModelEditor::DrawAnimationPanel()
     {
         newClip(("clip_" + std::to_string(m_model.clips.size() + 1)).c_str(), 1.5f);
     }
-    ImGui::TextDisabled("The game plays reload, equip and fire at the right moments. Anything else "
-                        "is yours to play from the Hold it panel. A clip replaces the built-in "
-                        "movement of the same name rather than adding to it.");
+    ImGui::SameLine();
+    if (ImGui::Button("Empty reload clip"))
+    {
+        newClip("reload_empty", 2.6f);
+    }
+    ImGui::TextDisabled("The game plays reload, reload_empty (when the magazine ran dry), equip and fire "
+                        "at the right moments, and a reload takes exactly as long as its clip. Anything "
+                        "else is yours to play from the Hold it panel.");
+
+    // Reloads that already move, to shape rather than build from nothing: the hands, the magazine
+    // held and handed over, and the weapon tilting to meet them.
+    ImGui::TextUnformatted("Start a reload from a template:");
+    if (ImGui::Button("Reload"))
+    {
+        MakeReloadTemplate(ReloadTemplate::Tactical);
+    }
+    ImGui::SetItemTooltip("%s", "Magazine out, a fresh one from the belt, in. Replaces the clip called reload.");
+    ImGui::SameLine();
+    if (ImGui::Button("Reload from empty"))
+    {
+        MakeReloadTemplate(ReloadTemplate::Empty);
+    }
+    ImGui::SetItemTooltip("%s", "The same, then the hand hits the bolt catch. Replaces the clip called "
+                                "reload_empty, and moves a part called bolt if there is one.");
+    ImGui::SameLine();
+    if (ImGui::Button("Double magazine"))
+    {
+        MakeReloadTemplate(ReloadTemplate::DoubleMagazine);
+    }
+    ImGui::SetItemTooltip("%s", "Two magazines taped side by side, one upside down: out, roll the pair "
+                                "over, in. Adds magazine_2 beside the magazine if there is none. "
+                                "Replaces the clip called reload.");
 
     for (int i = 0; i < static_cast<int>(m_model.clips.size()); ++i)
     {
@@ -1051,13 +1422,36 @@ void ModelEditor::DrawAnimationPanel()
     }
 
     // --- Adding tracks and keys --------------------------------------------------------------
+    // Adds the track if it is new, and selects it either way.
+    const auto selectTrack = [&](const std::string& name)
+    {
+        TrackFor(*clip, name);
+        for (size_t t = 0; t < clip->tracks.size(); ++t)
+        {
+            if (clip->tracks[t].part == name)
+            {
+                m_selectedTrack = static_cast<int>(t);
+            }
+        }
+    };
     if (ImGui::BeginCombo("Animate part", "add a track"))
     {
         // "root" moves the whole weapon rather than one part, which is what an equip needs.
         if (ImGui::Selectable("root (the whole model)"))
         {
-            TrackFor(*clip, "root");
-            m_selectedTrack = static_cast<int>(clip->tracks.size()) - 1;
+            selectTrack("root");
+        }
+        // The hands. A clip with one of these takes that hand over while it plays: where it goes and
+        // how it turns are all in the keys.
+        if (ImGui::Selectable("hand_left (the left hand)"))
+        {
+            selectTrack(kLeftHandTrack);
+            m_pick = Pick::Key;
+        }
+        if (ImGui::Selectable("hand_right (the right hand)"))
+        {
+            selectTrack(kRightHandTrack);
+            m_pick = Pick::Key;
         }
         // Each row carries its own id. A part whose name has been cleared would otherwise be a row
         // with an empty id at the root of a popup, which ImGui refuses by aborting the process.
@@ -1067,8 +1461,7 @@ void ModelEditor::DrawAnimationPanel()
             ImGui::PushID(static_cast<int>(p));
             if (ImGui::Selectable(part.name.empty() ? "(unnamed part)" : part.name.c_str()))
             {
-                TrackFor(*clip, part.name);
-                m_selectedTrack = static_cast<int>(clip->tracks.size()) - 1;
+                selectTrack(part.name);
             }
             ImGui::PopID();
         }
@@ -1159,6 +1552,22 @@ void ModelEditor::DrawAnimationPanel()
     // A boolean, drawn as one. It was a slider from zero to one and it is not a fade: the renderer
     // treats anything above a hundredth as present, and the sampler holds a key's value until the
     // next one, so every value in between meant the same as one of the ends.
+    const bool isHand = track->part == kLeftHandTrack || track->part == kRightHandTrack;
+    if (isHand)
+    {
+        ImGui::TextDisabled("How far the hand has moved from its socket (%s), in the weapon's frame, and "
+                            "how the wrist is turned. Zero is the hand on the gun, so start and end there. "
+                            "Drag the handles in the view to move it.",
+                            track->part == kLeftHandTrack ? "support" : "grip");
+        return;
+    }
+    if (track->part == "root")
+    {
+        ImGui::TextDisabled("Moves the whole weapon in the hands: a tilt towards the magazine, a jolt as "
+                            "the bolt goes home.");
+        return;
+    }
+
     bool visible = key->visible > 0.5f;
     if (ImGui::Checkbox("Part is there", &visible))
     {
@@ -1166,7 +1575,20 @@ void ModelEditor::DrawAnimationPanel()
         m_dirty = true;
         m_previewChanged = true;
     }
-    ImGui::TextDisabled("Offsets are from the part's rest pose, so editing the model keeps the clip.");
+
+    // Who is carrying the part from this key on. Changing it keeps the part exactly where it is, so a
+    // magazine is taken by the hand without jumping, and put back in the weapon the same way.
+    int holder = static_cast<int>(key->holder);
+    if (ImGui::Combo("Held by", &holder, "The weapon\0The left hand\0The right hand\0"))
+    {
+        SetHolder(*clip, *track, *key, static_cast<PartHolder>(std::clamp(holder, 0, 2)));
+    }
+    ImGui::SetItemTooltip(
+        "%s", "In a hand, the part goes wherever that hand goes until a later key gives it back. Hand it "
+              "over at the moment the hand is on it, and back when the hand has put it where it rests.");
+    ImGui::TextDisabled(key->holder == PartHolder::Weapon
+                            ? "Offsets are from the part's rest pose, so editing the model keeps the clip."
+                            : "Where the part sits in the hand. It moves with the hand from here.");
 }
 
 bool ModelEditor::IsImportableModel(const std::filesystem::path& file)
@@ -1415,6 +1837,8 @@ size_t ModelEditor::Fingerprint() const
             {
                 mixFloat(key.time);
                 mixFloat(key.visible);
+                mix(static_cast<size_t>(key.holder));
+                mix(static_cast<size_t>(key.ease));
                 for (int axis = 0; axis < 3; ++axis)
                 {
                     mixFloat(key.position[axis]);
@@ -1471,6 +1895,10 @@ bool ModelEditor::Redo()
 
 bool ModelEditor::SelectionPosition(glm::vec3& out) const
 {
+    if (m_pick == Pick::Key)
+    {
+        return KeyPosition(out);
+    }
     if (m_pick == Pick::Part && m_selectedPart >= 0 &&
         m_selectedPart < static_cast<int>(m_model.parts.size()))
     {
@@ -1488,6 +1916,11 @@ bool ModelEditor::SelectionPosition(glm::vec3& out) const
 
 void ModelEditor::MoveSelection(const glm::vec3& delta)
 {
+    if (m_pick == Pick::Key)
+    {
+        MoveKey(delta);
+        return;
+    }
     if (m_pick == Pick::Part && m_selectedPart >= 0 &&
         m_selectedPart < static_cast<int>(m_model.parts.size()))
     {

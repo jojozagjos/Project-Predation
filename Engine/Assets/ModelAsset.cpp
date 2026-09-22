@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <map>
 #include <glm/gtc/quaternion.hpp>
+#include <glm/gtx/euler_angles.hpp>
 #include <glm/gtx/quaternion.hpp>
 #include <fstream>
 
@@ -52,6 +53,21 @@ glm::mat4 EulerMatrix(const glm::vec3& degrees)
 }
 
 } // namespace
+
+glm::mat4 EulerDegreesMatrix(const glm::vec3& degrees)
+{
+    return EulerMatrix(degrees);
+}
+
+glm::vec3 EulerDegreesFromMatrix(const glm::mat4& matrix)
+{
+    // The matrix above is Z times Y times X, which is exactly what this takes apart.
+    float z = 0.0f;
+    float y = 0.0f;
+    float x = 0.0f;
+    glm::extractEulerAngleZYX(matrix, z, y, x);
+    return glm::degrees(glm::vec3(x, y, z));
+}
 
 const char* PartShapeName(PartShape shape)
 {
@@ -163,8 +179,124 @@ const ModelPart* ModelAsset::FindPart(const std::string& partName) const
     return it == parts.end() ? nullptr : &*it;
 }
 
+TrackSample SampleTrack(const AnimationTrack& track, float time)
+{
+    TrackSample sample;
+    if (track.keys.empty())
+    {
+        return sample;
+    }
+    const std::vector<AnimationKey>& keys = track.keys;
+    const auto take = [&](const AnimationKey& key)
+    {
+        sample.position = key.position;
+        sample.euler = key.rotation;
+        sample.rotation = glm::quat(glm::radians(key.rotation));
+        sample.visible = key.visible;
+        sample.holder = key.holder;
+    };
+    if (time <= keys.front().time)
+    {
+        take(keys.front());
+        return sample;
+    }
+    if (time >= keys.back().time)
+    {
+        take(keys.back());
+        return sample;
+    }
+    for (size_t i = 1; i < keys.size(); ++i)
+    {
+        // The first key after `time`, strictly. Exactly on a key, that key is the one being left, so
+        // a key that hands a part to something else takes effect at its own moment and not a hair
+        // after it -- which is what lets the editor ask where a part is at a key and get that key.
+        if (time >= keys[i].time)
+        {
+            continue;
+        }
+        const AnimationKey& a = keys[i - 1];
+        const AnimationKey& b = keys[i];
+        take(a);
+        // A part that changes hands does so at the key, all at once. Its two keys are in different
+        // frames -- one an offset in the weapon, the other a place in a hand -- and a blend between
+        // them would be a blend between two different questions.
+        if (a.holder != b.holder)
+        {
+            return sample;
+        }
+        const float span = std::max(b.time - a.time, 1e-5f);
+        const float raw = std::clamp((time - a.time) / span, 0.0f, 1.0f);
+        // How the gap is crossed is a property of the key being left, not the one being arrived at:
+        // a key says how it hands over.
+        const float t = a.ease == KeyEase::Step      ? 0.0f
+                        : a.ease == KeyEase::Linear ? raw
+                                                    : raw * raw * (3.0f - 2.0f * raw);
+        sample.position = glm::mix(a.position, b.position, t);
+
+        // Rotation goes the short way round, as a rotation rather than as three numbers.
+        //
+        // Mixing Euler triples is not interpolating a rotation, it is interpolating the notation. Two
+        // turns a hundred and eighty degrees apart average to something that is neither; a part
+        // crossing the wrap from 179 to -179 degrees takes the long way round the whole circle rather
+        // than the two degrees it actually moved; and near the poles the three numbers stop being
+        // independent at all. Converting each key to a rotation and taking the shortest arc between
+        // them does none of that, and for the small turns most keys hold it agrees with the old way to
+        // within a rounding error.
+        const glm::quat from = glm::quat(glm::radians(a.rotation));
+        const glm::quat to = glm::quat(glm::radians(b.rotation));
+        sample.rotation = glm::slerp(from, to, t);
+        sample.euler = glm::degrees(glm::eulerAngles(sample.rotation));
+
+        // Visibility does not fade: a magazine is in the weapon or it is not. Mixed, the value only
+        // crosses the threshold the renderer tests against right at the far key, so a part keyed away
+        // at one moment and back at another stayed on screen for essentially the whole gap.
+        sample.visible = a.visible;
+        return sample;
+    }
+    take(keys.back());
+    return sample;
+}
+
+glm::vec3 ModelAsset::HandRest(int side) const
+{
+    const ModelSocket* socket = FindSocket(side == 0 ? "support" : "grip");
+    return socket != nullptr ? socket->position : glm::vec3(0.0f);
+}
+
+bool ModelAsset::HandAt(const AnimationClip* clip, int side, float time, glm::vec3& offset, glm::quat& turn) const
+{
+    offset = glm::vec3(0.0f);
+    turn = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
+    if (clip == nullptr)
+    {
+        return false;
+    }
+    const std::string trackName = side == 0 ? kLeftHandTrack : kRightHandTrack;
+    for (const AnimationTrack& track : clip->tracks)
+    {
+        if (track.part == trackName && !track.keys.empty())
+        {
+            const TrackSample sample = SampleTrack(track, time);
+            offset = sample.position;
+            // The same order of turns the editor's fields and the parts use, so a hand turned by the
+            // numbers in the editor turns the way a part given the same numbers would.
+            turn = glm::quat_cast(EulerMatrix(sample.euler));
+            return true;
+        }
+    }
+    return false;
+}
+
+glm::mat4 ModelAsset::HandFrameAt(const AnimationClip* clip, int side, float time, const glm::vec3& rest) const
+{
+    glm::vec3 offset{0.0f};
+    glm::quat turn{1.0f, 0.0f, 0.0f, 0.0f};
+    HandAt(clip, side, time, offset, turn);
+    return glm::translate(glm::mat4(1.0f), rest + offset) * glm::mat4_cast(turn);
+}
+
 glm::mat4 ModelAsset::PartMatrixAt(const ModelPart& part, const AnimationClip* clip, float time,
-                                   float* visibility) const
+                                   float* visibility, const glm::vec3* handRest) const
 {
     if (visibility != nullptr)
     {
@@ -183,60 +315,24 @@ glm::mat4 ModelAsset::PartMatrixAt(const ModelPart& part, const AnimationClip* c
         return part.LocalMatrix();
     }
 
-    // Between the two keys either side of `time`, holding the ends. Offsets are relative to the rest
-    // pose, so editing the model does not invalidate a clip that was authored against it.
-    const std::vector<AnimationKey>& keys = track->keys;
-    AnimationKey blended = keys.front();
-    if (time >= keys.back().time)
-    {
-        blended = keys.back();
-    }
-    else
-    {
-        for (size_t i = 1; i < keys.size(); ++i)
-        {
-            if (time <= keys[i].time)
-            {
-                const AnimationKey& a = keys[i - 1];
-                const AnimationKey& b = keys[i];
-                const float span = std::max(b.time - a.time, 1e-5f);
-                const float raw = std::clamp((time - a.time) / span, 0.0f, 1.0f);
-                // How the gap is crossed is a property of the key being left, not the one being
-                // arrived at: a key says how it hands over.
-                const float t = a.ease == KeyEase::Step      ? 0.0f
-                                : a.ease == KeyEase::Linear ? raw
-                                                            : raw * raw * (3.0f - 2.0f * raw);
-                blended.position = glm::mix(a.position, b.position, t);
-
-                // Rotation goes the short way round, as a rotation rather than as three numbers.
-                //
-                // Mixing Euler triples is not interpolating a rotation, it is interpolating the
-                // notation. Two turns a hundred and eighty degrees apart average to something that
-                // is neither; a part crossing the wrap from 179 to -179 degrees takes the long way
-                // round the whole circle rather than the two degrees it actually moved; and near the
-                // poles the three numbers stop being independent at all. Converting each key to a
-                // rotation and taking the shortest arc between them does none of that, and for the
-                // small turns most keys hold it agrees with the old way to within a rounding error.
-                const glm::quat from = glm::quat(glm::radians(a.rotation));
-                const glm::quat to = glm::quat(glm::radians(b.rotation));
-                blended.rotation = glm::degrees(glm::eulerAngles(glm::slerp(from, to, t)));
-
-                // Visibility does not fade: a magazine is in the weapon or it is not. Mixed, the
-                // value only crosses the threshold the renderer tests against right at the far key,
-                // so a part keyed away at one moment and back at another stayed on screen for
-                // essentially the whole gap.
-                blended.visible = a.visible;
-                break;
-            }
-        }
-    }
-
+    const TrackSample sample = SampleTrack(*track, time);
     if (visibility != nullptr)
     {
-        *visibility = part.visible ? blended.visible : 0.0f;
+        *visibility = part.visible ? sample.visible : 0.0f;
     }
-    return glm::translate(glm::mat4(1.0f), part.position + blended.position) *
-           EulerMatrix(part.rotation + blended.rotation);
+
+    // In a hand: wherever the hand is, and where the part sits in it.
+    if (sample.holder != PartHolder::Weapon)
+    {
+        const int side = sample.holder == PartHolder::LeftHand ? 0 : 1;
+        const glm::vec3 rest = handRest != nullptr ? handRest[side] : HandRest(side);
+        return HandFrameAt(clip, side, time, rest) * glm::translate(glm::mat4(1.0f), sample.position) *
+               EulerMatrix(sample.euler);
+    }
+    // In the weapon: offsets from the rest pose, so editing the model does not invalidate a clip that
+    // was authored against it.
+    return glm::translate(glm::mat4(1.0f), part.position + sample.position) *
+           EulerMatrix(part.rotation + sample.euler);
 }
 
 bool ModelAsset::LoadFromFile(const std::filesystem::path& file)
@@ -383,6 +479,13 @@ bool ModelAsset::LoadFromFile(const std::filesystem::path& file)
                             key.ease = ease == "step"     ? KeyEase::Step
                                        : ease == "smooth" ? KeyEase::Smooth
                                                           : KeyEase::Linear;
+                            // Absent means the weapon, which is every key written before a hand
+                            // could hold anything.
+                            std::string held = "weapon";
+                            ReadField(keyNode, "held", held);
+                            key.holder = held == "left"    ? PartHolder::LeftHand
+                                         : held == "right" ? PartHolder::RightHand
+                                                           : PartHolder::Weapon;
                             track.keys.push_back(key);
                         }
                         std::sort(track.keys.begin(), track.keys.end(),
@@ -473,6 +576,10 @@ bool ModelAsset::SaveToFile(const std::filesystem::path& file) const
                                 {"rotation", WriteVec3(key.rotation)},
                                 {"visible", key.visible},
                                 {"ease", ease}});
+                if (key.holder != PartHolder::Weapon)
+                {
+                    keys.back()["held"] = key.holder == PartHolder::LeftHand ? "left" : "right";
+                }
             }
             tracks.push_back({{"part", track.part}, {"keys", std::move(keys)}});
         }

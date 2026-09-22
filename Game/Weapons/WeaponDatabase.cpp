@@ -139,6 +139,7 @@ bool WeaponDatabase::LoadFromFile(const std::filesystem::path& file)
         ReadField(node, "magazine", definition.magazineSize);
         ReadField(node, "reserve", definition.reserveOnPickup);
         ReadField(node, "reload_seconds", definition.reloadSeconds);
+        ReadField(node, "reload_empty_seconds", definition.reloadEmptySeconds);
         ReadField(node, "damage", definition.damage);
         ReadField(node, "range", definition.range);
         ReadField(node, "spread_hip", definition.spreadHip);

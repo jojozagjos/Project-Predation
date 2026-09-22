@@ -311,6 +311,47 @@ void ForgetWeaponModels()
     ModelCache().clear();
 }
 
+std::shared_ptr<const ModelAsset> LoadWeaponModel(const std::string& name)
+{
+    if (name.empty())
+    {
+        return nullptr;
+    }
+    auto& cache = ModelCache();
+    if (const auto found = cache.find(name); found != cache.end())
+    {
+        return found->second;
+    }
+    auto loaded = std::make_shared<ModelAsset>();
+    const std::filesystem::path file = ModelPath(name);
+    if (file.empty() || !loaded->LoadFromFile(file))
+    {
+        return nullptr;
+    }
+    // Checked once, when it is read, rather than every time it is drawn.
+    for (const std::string& socket : MissingWeaponSockets(*loaded))
+    {
+        PRED_LOG_ERROR(Gameplay, "Model '{}' has no '{}' socket; the weapon will be held wrong", name, socket);
+    }
+    return cache.emplace(name, std::move(loaded)).first->second;
+}
+
+bool ApplyClipTimings(WeaponDefinition& definition, const ModelAsset& model)
+{
+    bool changed = false;
+    if (const AnimationClip* reload = model.FindClip("reload"); reload != nullptr && reload->duration > 0.05f)
+    {
+        changed = changed || definition.reloadSeconds != reload->duration;
+        definition.reloadSeconds = reload->duration;
+    }
+    if (const AnimationClip* empty = model.FindClip("reload_empty"); empty != nullptr && empty->duration > 0.05f)
+    {
+        changed = changed || definition.reloadEmptySeconds != empty->duration;
+        definition.reloadEmptySeconds = empty->duration;
+    }
+    return changed;
+}
+
 MeshData WeaponVisual::Combined() const
 {
     MeshData combined;
@@ -321,10 +362,30 @@ MeshData WeaponVisual::Combined() const
     return combined;
 }
 
+std::shared_ptr<const ModelAsset> AnimationCopy(const ModelAsset& model)
+{
+    // Everything a clip needs -- where each part rests, the sockets, the clips themselves -- and none
+    // of the imported geometry, which is megabytes and is already in the meshes.
+    auto copy = std::make_shared<ModelAsset>();
+    copy->name = model.name;
+    copy->sockets = model.sockets;
+    copy->clips = model.clips;
+    copy->parts.reserve(model.parts.size());
+    for (const ModelPart& part : model.parts)
+    {
+        ModelPart light = part;
+        light.mesh = MeshData{};
+        copy->parts.push_back(std::move(light));
+    }
+    return copy;
+}
+
 WeaponVisual BuildWeaponVisualFrom(const ModelAsset& model, const WeaponDefinition& definition,
                                    TextureLibrary* textures)
 {
-    return FromModel(model, definition, nullptr, textures);
+    // With its clips. A model held straight from memory -- the one open in the editor -- used to be
+    // built with none, so the preview could not play the very animations being made in front of it.
+    return FromModel(model, definition, AnimationCopy(model), textures);
 }
 
 std::vector<std::string> MissingWeaponSockets(const ModelAsset& model)
@@ -358,29 +419,15 @@ WeaponVisual BuildWeaponVisual(const WeaponDefinition& definition, TextureLibrar
         return FromModel(marker, definition, nullptr, textures);
     }
 
-    auto& cache = ModelCache();
-    auto found = cache.find(definition.model);
-    if (found == cache.end())
+    const std::shared_ptr<const ModelAsset> model = LoadWeaponModel(definition.model);
+    if (model == nullptr)
     {
-        auto loaded = std::make_shared<ModelAsset>();
-        const std::filesystem::path file = ModelPath(definition.model);
-        if (file.empty() || !loaded->LoadFromFile(file))
-        {
-            PRED_LOG_ERROR(Gameplay, "Weapon '{}' names model '{}', which did not load from {}",
-                           definition.key, definition.model, file.string());
-            const ModelAsset marker = MissingModel(definition);
-            return FromModel(marker, definition, nullptr, textures);
-        }
-        // Checked once, when it is read, rather than every time it is drawn.
-        const std::vector<std::string> missing = MissingWeaponSockets(*loaded);
-        for (const std::string& socket : missing)
-        {
-            PRED_LOG_ERROR(Gameplay, "Model '{}' has no '{}' socket; the weapon will be held wrong",
-                           definition.model, socket);
-        }
-        found = cache.emplace(definition.model, std::move(loaded)).first;
+        PRED_LOG_ERROR(Gameplay, "Weapon '{}' names model '{}', which did not load from {}", definition.key,
+                       definition.model, ModelPath(definition.model).string());
+        const ModelAsset marker = MissingModel(definition);
+        return FromModel(marker, definition, nullptr, textures);
     }
-    return FromModel(*found->second, definition, found->second, textures);
+    return FromModel(*model, definition, model, textures);
 }
 
 ModelAsset StarterWeaponModel(const WeaponDefinition& definition)

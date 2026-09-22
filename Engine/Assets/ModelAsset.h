@@ -92,13 +92,29 @@ enum class KeyEase : uint8_t
     Smooth
 };
 
+// What a part is carried by from a key until the next one.
+//
+// A magazine is part of the weapon until a hand takes hold of it, rides in that hand while it is
+// dropped or fetched or flipped, and is part of the weapon again once it is seated. Held by a hand, a
+// part's key is where it sits in that hand rather than an offset from where it rests in the weapon,
+// and it follows the hand wherever the hand's own track takes it.
+enum class PartHolder : uint8_t
+{
+    Weapon,
+    LeftHand,
+    RightHand
+};
+
 struct AnimationKey
 {
     float time = 0.0f; // seconds from the start of the clip
+    // Held by the weapon: an offset from the part's rest pose. Held by a hand: where the part sits in
+    // that hand's frame. For a hand's own track: how far the hand has moved from its socket.
     glm::vec3 position{0.0f};
     glm::vec3 rotation{0.0f}; // euler degrees
     float visible = 1.0f;     // 0 hides the part, for a magazine that has left the weapon
     KeyEase ease = KeyEase::Smooth;
+    PartHolder holder = PartHolder::Weapon;
 };
 
 // The animation of one part through a clip.
@@ -107,6 +123,31 @@ struct AnimationTrack
     std::string part;
     std::vector<AnimationKey> keys;
 };
+
+// The two tracks that move hands rather than parts. A hand's key is how far it has moved from the
+// socket it rests on -- `support` for the left, `grip` for the right -- in the weapon's frame, and how
+// it is turned. A clip with a hand track takes that hand over completely for as long as it plays: a
+// reload made in the editor is the reload, with nothing written into the game guessing at it.
+inline constexpr const char* kLeftHandTrack = "hand_left";
+inline constexpr const char* kRightHandTrack = "hand_right";
+
+// A track's value at a moment, between the keys either side of it.
+struct TrackSample
+{
+    glm::vec3 position{0.0f};
+    glm::quat rotation{1.0f, 0.0f, 0.0f, 0.0f};
+    glm::vec3 euler{0.0f};
+    float visible = 1.0f;
+    PartHolder holder = PartHolder::Weapon;
+};
+// Holding the ends. A part changes holder at a key, all at once: two keys held by different things
+// are in different frames, and there is nothing meaningful between them.
+TrackSample SampleTrack(const AnimationTrack& track, float time);
+
+// Turns written the way the editor's fields read them -- X, then Y, then Z, in degrees -- to a matrix
+// and back. The editor uses the second to turn a place on screen back into the numbers on a key.
+glm::mat4 EulerDegreesMatrix(const glm::vec3& degrees);
+glm::vec3 EulerDegreesFromMatrix(const glm::mat4& matrix);
 
 // A named animation: reload, equip, fire and so on. Offsets are relative to the part's rest pose,
 // so a clip keeps working when the model is edited underneath it.
@@ -141,8 +182,21 @@ public:
 
     // Where a part sits at a moment in a clip, as a matrix in the model's frame. Falls back to the
     // rest pose when the clip does not touch that part.
+    //
+    // `handRest` is where the two hands rest on the weapon (left, then right), for parts a hand is
+    // holding. Without it the model's own `support` and `grip` sockets are used.
     glm::mat4 PartMatrixAt(const ModelPart& part, const AnimationClip* clip, float time,
-                           float* visibility = nullptr) const;
+                           float* visibility = nullptr, const glm::vec3* handRest = nullptr) const;
+
+    // Where the two hands rest on the weapon, from the sockets: `support` for the left, `grip` for
+    // the right. The origin when there is no such socket.
+    glm::vec3 HandRest(int side) const;
+    // Whether a clip moves a hand, and if so how far from where it rests and how it is turned.
+    // `side` is 0 for the left hand, 1 for the right.
+    bool HandAt(const AnimationClip* clip, int side, float time, glm::vec3& offset, glm::quat& turn) const;
+    // The frame a held part is carried in: where the hand is, turned the way it is, in the model's
+    // frame. Placed from `rest`, the point that hand rests on.
+    glm::mat4 HandFrameAt(const AnimationClip* clip, int side, float time, const glm::vec3& rest) const;
 };
 
 // Where authored models live, so nothing has to spell the path out.

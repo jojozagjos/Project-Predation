@@ -137,7 +137,9 @@ void Step(const WeaponDefinition& definition, const WeaponInput& input, WeaponSt
     const bool wantReload = input.reload || (input.trigger && state.rounds <= 0);
     if (mayFire && wantReload && state.reserve > 0 && state.rounds < definition.magazineSize)
     {
-        state.reloadRemaining = definition.reloadSeconds;
+        state.reloadFromEmpty = state.rounds <= 0;
+        state.reloadTotal = std::max(definition.ReloadSecondsFrom(state.reloadFromEmpty), 0.01f);
+        state.reloadRemaining = state.reloadTotal;
         state.burstRemaining = 0;
         mayFire = false;
     }

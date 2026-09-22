@@ -433,6 +433,7 @@ bool PredationGame::OnInit(Application& app)
     // Weapons load before the icons, because a weapon item draws its icon from the weapon's own
     // model and would otherwise fall back to the placeholder block.
     m_weaponData.LoadFromFile(Paths::AssetsRoot() / "Data" / "weapons.json");
+    ApplyWeaponClipTimings();
     m_itemIcons.Build(m_items, app.GetMeshes(), app.GetRenderer(), &m_weaponData, &app.GetTextures());
     m_world.SetTextures(app.GetTextures());
     m_world.Build(m_scene, app.GetMeshes(), app.GetPhysics(), m_interactions, m_items, &m_weaponData);
@@ -929,6 +930,36 @@ void PredationGame::RegisterCommands()
             EnterEditor(args.size() >= 2 ? args[1] : std::string());
         },
         "editor [model]");
+
+    console.RegisterCommand(
+        "editor_reload",
+        "Make a reload from a template in the open model, and put the playhead somewhere: "
+        "editor_reload <reload|empty|double> [seconds]",
+        [this](const std::vector<std::string>& args)
+        {
+            if (!m_editor.IsOpen() || args.size() < 2)
+            {
+                m_app->GetConsole().PrintError("Open a model in the editor first: editor_reload <reload|empty|double> [seconds]");
+                return;
+            }
+            const ModelEditor::ReloadTemplate kind = args[1] == "empty"    ? ModelEditor::ReloadTemplate::Empty
+                                                     : args[1] == "double" ? ModelEditor::ReloadTemplate::DoubleMagazine
+                                                                           : ModelEditor::ReloadTemplate::Tactical;
+            m_editor.MakeReloadTemplate(kind);
+            if (args.size() > 2)
+            {
+                m_editor.SetPlayhead(static_cast<float>(std::atof(args[2].c_str())));
+            }
+            PRED_LOG_INFO(Asset, "editor_reload {}: {}", args[1], m_editor.Status());
+        },
+        "editor_reload <reload|empty|double> [seconds]");
+
+    console.RegisterCommand("editor_save", "Save the model open in the editor, as its Save button does",
+                            [this](const std::vector<std::string>&)
+                            {
+                                const bool saved = m_editor.IsOpen() && m_editor.Save();
+                                PRED_LOG_INFO(Asset, "editor_save: {}", saved ? "saved" : "nothing saved");
+                            });
 
     console.RegisterCommand(
         "bench_weapon",
@@ -2516,6 +2547,20 @@ void PredationGame::EnterWorld()
     SpawnCreatures();
 }
 
+void PredationGame::ApplyWeaponClipTimings()
+{
+    for (const WeaponDefinition& weapon : m_weaponData.All())
+    {
+        WeaponDefinition* editable = m_weaponData.Mutable(weapon.id);
+        const std::shared_ptr<const ModelAsset> model = LoadWeaponModel(weapon.model);
+        if (editable != nullptr && model != nullptr && ApplyClipTimings(*editable, *model))
+        {
+            PRED_LOG_INFO(Gameplay, "{} reloads in {:.2f} s ({:.2f} s from empty), from its model's clips",
+                          editable->key, editable->reloadSeconds, editable->ReloadSecondsFrom(true));
+        }
+    }
+}
+
 float PredationGame::ReloadProgress() const
 {
     // 0 at the start of a reload, 1 at the end. One function, because there were two: the pose used
@@ -2527,8 +2572,9 @@ float PredationGame::ReloadProgress() const
     {
         return 0.0f;
     }
-    const WeaponDefinition* weapon = EquippedWeapon();
-    const float seconds = weapon != nullptr ? std::max(weapon->reloadSeconds, 0.01f) : 1.0f;
+    // Against how long this particular reload takes, which the state knows: an empty magazine can take
+    // longer than a half-full one.
+    const float seconds = std::max(m_weapon.reloadTotal, 0.01f);
     return glm::clamp(1.0f - m_weapon.reloadRemaining / seconds, 0.0f, 1.0f);
 }
 
@@ -4111,6 +4157,10 @@ void PredationGame::ReturnToTitle()
     if (m_editor.IsOpen())
     {
         m_editor.SetOpen(m_editorScene, false);
+        // Whatever was saved in there is what the game uses now: the models are read again, and the
+        // reload times follow the reload clips.
+        ForgetWeaponModels();
+        ApplyWeaponClipTimings();
     }
     m_screen = Screen::Title;
     m_paused = false;
@@ -5199,7 +5249,7 @@ bool PredationGame::StepSession(const PlayerInput& input, float dt)
 
     if (m_sessionMode == SessionMode::Host)
     {
-        m_host.SetPlayerHeld(0, heldId, m_weapon.aim, m_weapon.IsReloading(), reloadPlay);
+        m_host.SetPlayerHeld(0, heldId, m_weapon.aim, m_weapon.IsReloading(), reloadPlay, m_weapon.reloadFromEmpty);
         m_host.SetPlayerTorch(0, m_torchOn);
 
         // The host is a player too: it steps itself first, then runs everyone else from what they
@@ -5219,7 +5269,7 @@ bool PredationGame::StepSession(const PlayerInput& input, float dt)
         // which is a fraction only for a reload that takes exactly one second: with a 2.2 second
         // one it stayed at zero until the last second and then ran the whole movement in it, so
         // everyone else saw the reload start when it was nearly over and play at twice the speed.
-        m_client.SetHeld(heldId, m_weapon.aim, m_weapon.IsReloading(), reloadPlay);
+        m_client.SetHeld(heldId, m_weapon.aim, m_weapon.IsReloading(), reloadPlay, m_weapon.reloadFromEmpty);
         m_client.SetTorch(m_torchOn);
 
         // The client's step happens inside prediction, so the same call is used for the first guess
@@ -5431,6 +5481,7 @@ void PredationGame::SyncRemoteAvatars(float frameDeltaSeconds)
         weaponPose.aim = remote.aim;
         weaponPose.reloading = remote.reloading;
         weaponPose.reload = remote.reloadProgress;
+        weaponPose.reloadEmpty = remote.reloadEmpty;
         weaponPose.kick = avatar->weaponKick;
         weaponPose.draw = avatar->weaponDraw;
         avatar->body.SetWeaponPose(weaponPose);
@@ -6427,10 +6478,20 @@ void PredationGame::DrawWeaponBench()
     ImGui::Combo("Stance", &m_editorStance, stances, 3);
     ImGui::Checkbox("Walk on the spot", &m_editorWalking);
     ImGui::SliderFloat("Sights", &m_editorAim, 0.0f, 1.0f, "%.2f");
+    ImGui::Checkbox("Follow the timeline", &m_benchFollowTimeline);
+    ImGui::SetItemTooltip("%s", "Plays the clip open in the Animation panel at its playhead, so scrubbing "
+                                "the timeline moves the hands in front of you.");
 
     if (ImGui::Button("Reload"))
     {
         m_editorReload = 0.0f;
+        m_editorReloadEmpty = false;
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Reload from empty"))
+    {
+        m_editorReload = 0.0f;
+        m_editorReloadEmpty = true;
     }
     ImGui::SameLine();
     if (ImGui::Button("Draw"))
@@ -6770,6 +6831,7 @@ void PredationGame::AssignModelToWeapon(WeaponId weapon)
     // Anything already built from the old model file is now wrong, so the cache goes and the next
     // weapon built reads the file again.
     ForgetWeaponModels();
+    ApplyWeaponClipTimings();
     m_app->GetConsole().Print(chosen->name + " now wears " + name);
 }
 
@@ -6880,6 +6942,7 @@ void PredationGame::UpdateEditorBody(float frameDeltaSeconds)
             m_editorPreviewWeapon.model = model.name;
             m_editorPreviewWeapon.reloadSeconds = 2.2f;
             m_editorPreviewWeapon.magazineSize = 30;
+            ApplyClipTimings(m_editorPreviewWeapon, model);
             ForgetWeaponModels();
             m_editorBody.SetWeaponFromModel(m_editorScene, m_app->GetMeshes(), m_editorPreviewWeapon,
                                             model);
@@ -6909,8 +6972,19 @@ void PredationGame::UpdateEditorBody(float frameDeltaSeconds)
     pose.kick = m_editorKick;
     pose.reloading = m_editorReload >= 0.0f;
     pose.reload = m_editorReload;
+    pose.reloadEmpty = m_editorReloadEmpty;
     pose.clip = m_editorClip;
     pose.clipProgress = m_editorClipTime;
+    // What the timeline has open, at the playhead, unless a clip or a movement is being played from
+    // here. Scrubbing the timeline then scrubs the hands in front of you.
+    if (m_benchFollowTimeline && m_editorClip.empty() && m_editorReload < 0.0f)
+    {
+        if (const AnimationClip* editing = m_editor.SelectedClip())
+        {
+            pose.clip = editing->name;
+            pose.clipProgress = editing->duration > 0.0f ? m_editor.Playhead() / editing->duration : 0.0f;
+        }
+    }
     pose.holster = m_editorHolster;
     m_editorBody.SetWeaponPose(pose);
 
@@ -6930,7 +7004,8 @@ void PredationGame::UpdateEditorBody(float frameDeltaSeconds)
     m_editorKick = std::max(m_editorKick - frameDeltaSeconds * 7.0f, 0.0f);
     if (m_editorReload >= 0.0f)
     {
-        m_editorReload += frameDeltaSeconds / 2.2f;
+        // As long as the game would take: the clip's own length when the model has one.
+        m_editorReload += frameDeltaSeconds / std::max(m_editorPreviewWeapon.ReloadSecondsFrom(m_editorReloadEmpty), 0.1f);
         if (m_editorReload > 1.0f)
         {
             m_editorReload = -1.0f;
@@ -7800,6 +7875,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
         PlayerBody::WeaponPose pose;
         pose.aim = m_weapon.aim;
         pose.reloading = m_weapon.IsReloading();
+        pose.reloadEmpty = m_weapon.reloadFromEmpty;
         // Runs 0 at the start of the reload to 1 at the end, so the animation does not have to know
         // how long any particular weapon takes.
         pose.reload = pose.reloading ? ReloadProgress() : -1.0f;

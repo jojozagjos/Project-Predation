@@ -38,6 +38,15 @@ struct WeaponDefinition
     int magazineSize = 12;
     int reserveOnPickup = 36;
     float reloadSeconds = 1.9f;
+    // Reloading a magazine that ran dry: usually longer, because the bolt has to go forward as well.
+    // Zero means the same as an ordinary reload. When the weapon's model has a "reload" or
+    // "reload_empty" clip, that clip's length is what these become (ApplyClipTimings), so an
+    // animation made in the editor takes exactly as long in the game as it does in the editor.
+    float reloadEmptySeconds = 0.0f;
+    float ReloadSecondsFrom(bool empty) const
+    {
+        return empty && reloadEmptySeconds > 0.0f ? reloadEmptySeconds : reloadSeconds;
+    }
 
     float damage = 24.0f;
     float range = 60.0f;
@@ -96,6 +105,10 @@ struct WeaponState
 
     float fireCooldown = 0.0f;    // seconds until the next round may leave the barrel
     float reloadRemaining = 0.0f; // > 0 while reloading
+    // How long this reload takes in all, and whether the magazine was empty when it began, which
+    // decides both of those and which animation plays.
+    float reloadTotal = 0.0f;
+    bool reloadFromEmpty = false;
     float aim = 0.0f;             // 0 hip, 1 fully aimed
     float bloom = 0.0f;           // extra spread from sustained fire, degrees
 

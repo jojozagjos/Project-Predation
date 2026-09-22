@@ -45,6 +45,23 @@ public:
 
     // Where the editor camera is looking. The game hands this to the renderer while the editor owns
     // the view.
+    // The clip open in the timeline and where the playhead is, so the first-person preview can play
+    // exactly what is being edited, at exactly that moment.
+    const AnimationClip* SelectedClip() const;
+    float Playhead() const { return m_playhead; }
+    void SetPlayhead(float seconds) { m_playhead = seconds; m_playing = false; }
+    const std::string& Status() const { return m_status; }
+
+    // Starting points for a reload: a clip with the hands and the magazine already moving, shaped by
+    // hand from there rather than started from nothing.
+    enum class ReloadTemplate : uint8_t
+    {
+        Tactical,       // magazine out, a fresh one from the belt, in
+        Empty,          // the same, then the bolt released
+        DoubleMagazine  // two magazines taped side by side: out, roll the pair over, in
+    };
+    void MakeReloadTemplate(ReloadTemplate kind);
+
     const FlyCamera& Camera() const { return m_camera; }
     FlyCamera& Camera() { return m_camera; }
 
@@ -76,7 +93,10 @@ public:
     {
         None,
         Part,
-        Socket
+        Socket,
+        // The key under the playhead on the selected track: the handles move that key, so a hand or a
+        // part can be posed by dragging it where it should be at that moment.
+        Key
     };
 
     // Selects whatever a ray runs through, and returns true if that changed anything. Clicking
@@ -191,6 +211,12 @@ private:
     AnimationKey* KeyAt(AnimationTrack& track, float time);
     AnimationKey& AddOrGetKey(AnimationTrack& track, float time);
     AnimationTrack* SelectedTrack();
+    // Changes what holds a part from a key on, keeping the part exactly where it is on the screen.
+    void SetHolder(AnimationClip& clip, AnimationTrack& track, AnimationKey& key, PartHolder holder);
+    // Where the selected track is at the playhead, in the model's frame, and how a move there turns
+    // into a change to its key.
+    bool KeyPosition(glm::vec3& out) const;
+    void MoveKey(const glm::vec3& delta);
 
     Application* m_app = nullptr;
     ModelAsset m_model;
@@ -271,6 +297,8 @@ private:
     bool m_importReplace = true;
     // Offsets being edited at the playhead, before they are committed as keys.
     std::vector<AnimationKey> m_liveOffsets;
+    // The model as it was last frame, to notice any change however it was made.
+    size_t m_lastFingerprint = 0;
 };
 
 } // namespace pred

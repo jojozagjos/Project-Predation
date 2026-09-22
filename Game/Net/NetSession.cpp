@@ -77,6 +77,7 @@ void ApplySnapshot(RemotePlayerView& view, const PlayerSnapshot& snapshot)
     view.aim = snapshot.aim;
     view.reloading = snapshot.reloading;
     view.reloadProgress = snapshot.reloadProgress;
+    view.reloadEmpty = snapshot.reloadEmpty;
     view.mantling = snapshot.mantling;
     view.mantlePhase = snapshot.mantlePhase;
     view.mantleEdge = snapshot.mantleEdge;
@@ -124,6 +125,7 @@ struct NetHost::Client
     float aim = 0.0f;
     bool reloading = false;
     float reloadProgress = 0.0f;
+    bool reloadEmpty = false;
     bool torchOn = false;
     // What this client has taken out of the world. The host does not model their bag, only what it
     // handed them, which is enough to refuse a drop of something they never picked up.
@@ -360,7 +362,7 @@ void NetHost::HandlePacket(const NetPacket& packet)
         // What they are holding rides along with the input, so the host knows without asking.
         SetPlayerTorch(client->playerId, message.torchOn);
         SetPlayerHeld(client->playerId, message.heldItem, message.aim, message.reloading,
-                      message.reloadProgress);
+                      message.reloadProgress, message.reloadEmpty);
 
         // And their round trip, from the tick they echoed back. Unsigned subtraction on sixteen
         // bits gives the right answer across the wrap without being told about it. An echo from a
@@ -737,7 +739,7 @@ void NetHost::SendWorldState(const WorldStateMessage& state)
 }
 
 void NetHost::SetPlayerHeld(uint8_t playerId, uint8_t heldItem, float aim, bool reloading,
-                            float progress)
+                            float progress, bool reloadEmpty)
 {
     if (playerId == 0)
     {
@@ -746,6 +748,7 @@ void NetHost::SetPlayerHeld(uint8_t playerId, uint8_t heldItem, float aim, bool 
         m_localAim = aim;
         m_localReloading = reloading;
         m_localReloadProgress = progress;
+        m_localReloadEmpty = reloadEmpty;
         return;
     }
     for (auto& client : m_clients)
@@ -756,6 +759,7 @@ void NetHost::SetPlayerHeld(uint8_t playerId, uint8_t heldItem, float aim, bool 
             client->aim = aim;
             client->reloading = reloading;
             client->reloadProgress = progress;
+            client->reloadEmpty = reloadEmpty;
             return;
         }
     }
@@ -929,6 +933,7 @@ void NetHost::BuildViews(const PlayerState& localState)
         view.aim = client->aim;
         view.reloading = client->reloading;
         view.reloadProgress = client->reloadProgress;
+        view.reloadEmpty = client->reloadEmpty;
         view.pingMs = static_cast<uint16_t>(std::lround(client->pingMs));
         m_views.push_back(std::move(view));
     }
@@ -943,6 +948,7 @@ void NetHost::SendSnapshots(uint32_t tick, const PlayerState& localState)
     snapshot.players[0].aim = m_localAim;
     snapshot.players[0].reloading = m_localReloading;
     snapshot.players[0].reloadProgress = m_localReloadProgress;
+    snapshot.players[0].reloadEmpty = m_localReloadEmpty;
     snapshot.players[0].torchOn = m_localTorch;
     snapshot.count = 1;
     for (const auto& client : m_clients)
@@ -955,6 +961,7 @@ void NetHost::SendSnapshots(uint32_t tick, const PlayerState& localState)
             entry.aim = client->aim;
             entry.reloading = client->reloading;
             entry.reloadProgress = client->reloadProgress;
+            entry.reloadEmpty = client->reloadEmpty;
             entry.torchOn = client->torchOn;
             entry.pingMs = static_cast<uint16_t>(std::lround(client->pingMs));
         }
@@ -1394,12 +1401,13 @@ void NetClient::SetTorch(bool on)
     m_torchOn = on;
 }
 
-void NetClient::SetHeld(uint8_t heldItem, float aim, bool reloading, float progress)
+void NetClient::SetHeld(uint8_t heldItem, float aim, bool reloading, float progress, bool reloadEmpty)
 {
     m_heldItem = heldItem;
     m_heldAim = aim;
     m_heldReloading = reloading;
     m_heldReloadProgress = progress;
+    m_heldReloadEmpty = reloadEmpty;
 }
 
 void NetClient::SendInput()
@@ -1423,6 +1431,7 @@ void NetClient::SendInput()
     message.aim = m_heldAim;
     message.reloading = m_heldReloading;
     message.reloadProgress = m_heldReloadProgress;
+    message.reloadEmpty = m_heldReloadEmpty;
     message.torchOn = m_torchOn;
     // The last host tick this machine has seen, handed straight back so the host can time the round
     // trip against its own tick counter. Nothing here has to know what the time is.

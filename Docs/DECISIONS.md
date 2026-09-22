@@ -1490,3 +1490,34 @@ firewall open to be hosting at all, so nothing new is asked of anybody.
 Networks built to keep devices apart (schools, offices, hotels, client isolation on mesh wifi) still
 stop it, and nothing inside a game can fix those. The empty list now says so, and codes go out through
 the internet and back, which those networks allow.
+
+## ADR-069: A reload is animated by hand, hands and all
+
+**Status**: accepted, 2026-09-21
+
+A reload used to be half authored and half written in: a model's clip could move the weapon's parts,
+but the support hand followed rules in `PlayerBody` -- to the magazine well at one fraction of the
+reload, the belt at another, back at a third. None of that could be tuned without code, and a reload
+that is not a simple swap, such as flipping a pair of taped magazines, could not be made at all.
+
+Now a clip can carry tracks for the hands. A hand's key is its offset from the socket it rests on, in
+the weapon's frame, and its wrist turn; while the clip plays, that hand goes exactly there, through the
+same arm solver the ordinary hold uses. The written-in reload remains only for models whose clip has
+no hand in it.
+
+Parts can be held. Each key says what carries the part from that moment -- the weapon, the left hand or
+the right -- and a part in a hand is placed in that hand's frame, so it goes wherever the hand goes. A
+part changes holder all at once, at its key: the keys either side are in different frames and a blend
+between them means nothing. The editor's *Held by* recomputes the key so the part stays where it is on
+screen, which makes "the hand takes the magazine" one change rather than two numbers to line up.
+
+The clip is the reload's length. A weapon whose model has a `reload` (or `reload_empty`) clip reloads
+in exactly that clip's duration. Otherwise the two could disagree -- the gun ready to fire while the
+magazine is still in the hand, or the hand stood waiting at a finished reload -- and the only fix would
+be to keep two numbers in two files the same by hand. A reload from an empty magazine is its own clip
+and its own length, chosen by the simulation when the reload starts, and it crosses the wire as one
+bit so everybody else sees the right one (protocol version 8).
+
+Templates make a reload that already moves -- including a double-magazine flip whose shape is the same
+after the roll, so the clip can end with every part at rest -- because shaping something is far easier
+than starting from an empty timeline. The carbine ships with its templates as its reloads.

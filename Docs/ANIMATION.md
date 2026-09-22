@@ -1,8 +1,10 @@
 # Animation
 
 **Status**: the foundation is built. `Engine/Animation` has the skeleton, pose and IK solvers, and
-`Game/Player/PlayerBody` drives a fully procedural first-person body with them. Authored clips,
-stride warping, weapon poses and creature gaits are still design, marked **(planned)** below.
+`Game/Player/PlayerBody` drives a procedural first-person body with them. Weapons carry authored clips
+made in the editor (EDITOR.md): a reload is animated by hand, hands and magazine included, and the
+hands follow the clip through the same arm solver as the ordinary hold (ADR-069). Stride warping and
+creature gaits are still design, marked **(planned)** below.
 
 ## What exists
 

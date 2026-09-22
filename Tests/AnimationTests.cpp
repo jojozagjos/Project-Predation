@@ -1,4 +1,5 @@
 #include "Engine/Animation/IK.h"
+#include "Engine/Core/Paths.h"
 #include "Engine/Assets/ModelAsset.h"
 #include "Engine/Animation/Skeleton.h"
 
@@ -7,6 +8,9 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 #include <cmath>
+#include <filesystem>
+
+#include <glm/geometric.hpp>
 
 using namespace pred;
 
@@ -426,4 +430,142 @@ TEST_CASE("Rotation between two keys takes the short way round", "[animation][cl
     INFO("halfway the part faces " << facing.x << ", " << facing.y << ", " << facing.z);
     // Turned about 180 from its rest facing of -Z, so it should now face +Z.
     CHECK(facing.z > 0.9f);
+}
+
+namespace
+{
+
+// A weapon with its support socket half a metre out and a magazine under it.
+ModelAsset HeldPartModel()
+{
+    ModelAsset model;
+    ModelSocket support;
+    support.name = "support";
+    support.position = {0.0f, 0.0f, 0.3f};
+    model.sockets.push_back(support);
+    ModelPart magazine;
+    magazine.name = "magazine";
+    magazine.position = {0.0f, -0.05f, 0.1f};
+    model.parts.push_back(magazine);
+    return model;
+}
+
+AnimationKey KeyAt(float time, const glm::vec3& position, PartHolder holder = PartHolder::Weapon)
+{
+    AnimationKey key;
+    key.time = time;
+    key.position = position;
+    key.holder = holder;
+    key.ease = KeyEase::Linear;
+    return key;
+}
+
+} // namespace
+
+TEST_CASE("A hand track moves the hand from its socket, and nothing moves it otherwise", "[clip]")
+{
+    const ModelAsset model = HeldPartModel();
+    AnimationClip clip;
+    clip.duration = 2.0f;
+    clip.tracks.push_back({kLeftHandTrack, {KeyAt(0.0f, glm::vec3(0.0f)), KeyAt(1.0f, {0.0f, -0.2f, -0.2f})}});
+
+    glm::vec3 offset{0.0f};
+    glm::quat turn{1.0f, 0.0f, 0.0f, 0.0f};
+    REQUIRE(model.HandAt(&clip, 0, 0.5f, offset, turn));
+    CHECK(offset.y == Catch::Approx(-0.1f));
+    CHECK_FALSE(model.HandAt(&clip, 1, 0.5f, offset, turn)); // no right hand in this clip
+    const glm::mat4 frame = model.HandFrameAt(&clip, 0, 1.0f, model.HandRest(0));
+    CHECK(frame[3].y == Catch::Approx(-0.2f));
+    CHECK(frame[3].z == Catch::Approx(0.1f));
+}
+
+TEST_CASE("A part in a hand goes where the hand goes, and changes hands exactly at its key", "[clip]")
+{
+    const ModelAsset model = HeldPartModel();
+    AnimationClip clip;
+    clip.duration = 2.0f;
+    clip.tracks.push_back(
+        {kLeftHandTrack, {KeyAt(0.0f, glm::vec3(0.0f)), KeyAt(0.5f, {0.0f, -0.05f, -0.2f}), KeyAt(1.5f, {0.0f, -0.35f, -0.2f})}});
+
+    // Taken at 0.5, where the hand is on it: in the hand's frame, exactly where it rests.
+    const glm::mat4 hand = model.HandFrameAt(&clip, 0, 0.5f, model.HandRest(0));
+    const glm::vec3 inHand = glm::vec3(glm::inverse(hand) * glm::vec4(model.parts[0].position, 1.0f));
+    clip.tracks.push_back({"magazine", {KeyAt(0.0f, glm::vec3(0.0f)), KeyAt(0.5f, inHand, PartHolder::LeftHand),
+                                        KeyAt(1.5f, inHand, PartHolder::LeftHand)}});
+
+    const auto at = [&](float time) { return glm::vec3(model.PartMatrixAt(model.parts[0], &clip, time)[3]); };
+    // Before and at the handover, where it rests: taking it does not make it jump.
+    CHECK(glm::distance(at(0.25f), model.parts[0].position) < 1e-4f);
+    CHECK(glm::distance(at(0.5f), model.parts[0].position) < 1e-4f);
+    // Then with the hand, all the way down.
+    CHECK(at(1.5f).y == Catch::Approx(-0.35f).margin(1e-4));
+    CHECK(at(1.0f).y == Catch::Approx(-0.2f).margin(1e-4));
+
+    // Exactly on a key is that key: what the editor reads back is what was set.
+    const TrackSample sample = SampleTrack(clip.tracks[1], 0.5f);
+    CHECK(sample.holder == PartHolder::LeftHand);
+    // And between keys held by different things, it holds the earlier one rather than blending two
+    // different frames.
+    CHECK(SampleTrack(clip.tracks[1], 0.49f).holder == PartHolder::Weapon);
+}
+
+TEST_CASE("Hand tracks and who holds what survive saving", "[clip]")
+{
+    ModelAsset model = HeldPartModel();
+    model.name = "clip_round_trip_test";
+    AnimationClip clip;
+    clip.name = "reload";
+    clip.duration = 2.0f;
+    clip.tracks.push_back({kLeftHandTrack, {KeyAt(0.0f, glm::vec3(0.0f)), KeyAt(1.0f, {0.0f, -0.2f, 0.0f})}});
+    clip.tracks.push_back({"magazine", {KeyAt(0.0f, glm::vec3(0.0f)), KeyAt(0.5f, {0.01f, 0.02f, 0.03f}, PartHolder::RightHand)}});
+    model.clips.push_back(clip);
+
+    const std::filesystem::path file = std::filesystem::temp_directory_path() / "clip_round_trip_test.json";
+    REQUIRE(model.SaveToFile(file));
+    ModelAsset loaded;
+    REQUIRE(loaded.LoadFromFile(file));
+    std::filesystem::remove(file);
+    const AnimationClip* back = loaded.FindClip("reload");
+    REQUIRE(back != nullptr);
+    REQUIRE(back->tracks.size() == 2);
+    CHECK(back->tracks[0].part == kLeftHandTrack);
+    CHECK(back->tracks[1].keys[0].holder == PartHolder::Weapon);
+    CHECK(back->tracks[1].keys[1].holder == PartHolder::RightHand);
+    CHECK(back->tracks[1].keys[1].position.z == Catch::Approx(0.03f));
+}
+
+TEST_CASE("Turns in the editor's order go to a matrix and back", "[clip]")
+{
+    for (const glm::vec3 degrees : {glm::vec3(10.0f, 20.0f, 30.0f), glm::vec3(-45.0f, 5.0f, 170.0f), glm::vec3(0.0f, 0.0f, 90.0f)})
+    {
+        const glm::vec3 back = EulerDegreesFromMatrix(EulerDegreesMatrix(degrees));
+        const glm::mat4 again = EulerDegreesMatrix(back);
+        const glm::mat4 original = EulerDegreesMatrix(degrees);
+        for (int column = 0; column < 3; ++column)
+        {
+            CHECK(glm::distance(glm::vec3(again[column]), glm::vec3(original[column])) < 1e-4f);
+        }
+    }
+}
+
+TEST_CASE("The carbine's reload takes the magazine out in the hand and puts it back", "[clip][reload]")
+{
+    Paths::Init(nullptr, std::filesystem::path(PRED_SOURCE_DIR) / "Assets");
+    ModelAsset model;
+    REQUIRE(model.LoadFromFile(ModelPath("m5_carbine")));
+    const AnimationClip* reload = model.FindClip("reload");
+    REQUIRE(reload != nullptr);
+    const ModelPart* magazine = model.FindPart("magazine");
+    REQUIRE(magazine != nullptr);
+
+    const auto where = [&](float time) { return glm::vec3(model.PartMatrixAt(*magazine, reload, time)[3]); };
+    const glm::vec3 seated = glm::vec3(magazine->LocalMatrix()[3]);
+    INFO("seated " << seated.x << " " << seated.y << " " << seated.z << "; at 0.75 s "
+                   << where(0.75f).x << " " << where(0.75f).y << " " << where(0.75f).z);
+    // In the weapon at the start, pulled well clear of it by the time the hand is down, and seated
+    // again at the end.
+    CHECK(glm::distance(where(0.0f), seated) < 1e-3f);
+    CHECK(glm::distance(where(0.75f), seated) > 0.1f);
+    CHECK(glm::distance(where(1.4f), seated) > 0.05f);
+    CHECK(glm::distance(where(reload->duration), seated) < 1e-3f);
 }

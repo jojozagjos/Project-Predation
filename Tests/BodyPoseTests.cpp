@@ -4336,3 +4336,60 @@ TEST_CASE("A crawling arm never locks straight", "[body][pose][prone]")
     // And no frame in which it jumps, which is what being pinned and then released looks like.
     CHECK(biggestStep < 12.0f);
 }
+
+TEST_CASE("A reload clip with a hand in it moves that hand, and gives it back at the end", "[body][pose][reload]")
+{
+    // A reload made in the editor is the reload: the hand goes where the clip says, and nothing
+    // written into the game second-guesses it. At the clip's ends the hand is on the gun again.
+    BodyHarness harness;
+    WeaponDefinition weapon;
+    weapon.id = 1;
+    weapon.key = "test_rifle";
+    weapon.size = {0.06f, 0.16f, 0.62f};
+    ModelAsset model = StarterWeaponModel(weapon);
+    AnimationClip clip;
+    clip.name = "reload";
+    clip.duration = 2.0f;
+    AnimationTrack hand;
+    hand.part = kLeftHandTrack;
+    for (const auto& [time, offset] : {std::pair{0.0f, glm::vec3(0.0f)}, std::pair{1.0f, glm::vec3(0.0f, -0.25f, -0.1f)},
+                                       std::pair{2.0f, glm::vec3(0.0f)}})
+    {
+        AnimationKey key;
+        key.time = time;
+        key.position = offset;
+        hand.keys.push_back(key);
+    }
+    clip.tracks.push_back(hand);
+    model.clips.push_back(clip);
+    harness.body.SetWeaponModelForSimulation(weapon, model);
+
+    PlayerBody::WeaponPose pose;
+    harness.body.SetWeaponPose(pose);
+    harness.Settle(40);
+    const glm::vec3 left = harness.Bone(harness.Rig().hand[0]);
+    const glm::vec3 right = harness.Bone(harness.Rig().hand[1]);
+
+    // Half way through the reload is a second into the clip: the hand a quarter metre down.
+    pose.reloading = true;
+    pose.reload = 0.5f;
+    for (int i = 0; i < 10; ++i)
+    {
+        harness.body.SetWeaponPose(pose);
+        harness.Settle(2);
+    }
+    const glm::vec3 reaching = harness.Bone(harness.Rig().hand[0]);
+    INFO("left hand from " << left.y << " to " << reaching.y);
+    CHECK(reaching.y < left.y - 0.12f);
+    // The trigger hand has no track, so it stays on the grip.
+    CHECK(glm::distance(harness.Bone(harness.Rig().hand[1]), right) < 0.04f);
+
+    // And at the end, back on the gun.
+    pose.reload = 1.0f;
+    for (int i = 0; i < 10; ++i)
+    {
+        harness.body.SetWeaponPose(pose);
+        harness.Settle(2);
+    }
+    CHECK(glm::distance(harness.Bone(harness.Rig().hand[0]), left) < 0.04f);
+}

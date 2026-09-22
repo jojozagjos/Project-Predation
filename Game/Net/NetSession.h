@@ -49,6 +49,7 @@ struct RemotePlayerView
     float aim = 0.0f;
     bool reloading = false;
     float reloadProgress = 0.0f;
+    bool reloadEmpty = false;
     bool torchOn = false;
 
     // Climbing, so a remote player is seen hauling themselves over a ledge rather than sliding up
@@ -190,7 +191,8 @@ public:
     void SendCreatureState(const CreatureStateMessage& state);
 
     // What a client is holding and doing with it, so everyone sees the right thing in their hands.
-    void SetPlayerHeld(uint8_t playerId, uint8_t heldItem, float aim, bool reloading, float progress);
+    void SetPlayerHeld(uint8_t playerId, uint8_t heldItem, float aim, bool reloading, float progress,
+                       bool reloadEmpty = false);
     // And whether their torch is lit. Separate from the hands because it is one bit that changes
     // when a key is pressed rather than every frame, and because nothing else in the protocol
     // implies it: without this, a torch is visible only to the player holding it.
@@ -264,6 +266,7 @@ private:
     float m_localAim = 0.0f;
     bool m_localReloading = false;
     float m_localReloadProgress = 0.0f;
+    bool m_localReloadEmpty = false;
     bool m_localTorch = false;
     bool m_running = false;
 };
@@ -305,7 +308,7 @@ public:
     // any correction the host has sent back.
     // What this client has in its hands, sent up with the next input. The host cannot see inside
     // another machine, so unless this is set nobody else ever sees you holding anything.
-    void SetHeld(uint8_t heldItem, float aim, bool reloading, float progress);
+    void SetHeld(uint8_t heldItem, float aim, bool reloading, float progress, bool reloadEmpty = false);
     // Whether this machine.s torch is lit, so the host can put it in everybody else.s scene.
     void SetTorch(bool on);
 
@@ -427,6 +430,7 @@ private:
     float m_heldAim = 0.0f;
     bool m_heldReloading = false;
     float m_heldReloadProgress = 0.0f;
+    bool m_heldReloadEmpty = false;
     bool m_torchOn = false;
     uint32_t m_renderTick = 0;
     // The newest host tick this machine has seen, echoed back with every input so the host can time

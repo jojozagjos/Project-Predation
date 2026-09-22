@@ -1,5 +1,6 @@
 #include "Engine/Core/Paths.h"
 #include "Game/Weapons/ShotResolver.h"
+#include "Game/Weapons/WeaponAppearance.h"
 #include "Game/Weapons/WeaponDatabase.h"
 #include "Game/Weapons/WeaponSystem.h"
 
@@ -468,4 +469,49 @@ TEST_CASE("The aim stops moving when the shooting stops", "[weapon][recoil]")
     }
     INFO("two seconds after release the aim moved a further " << afterwards);
     CHECK(afterwards < 0.01f);
+}
+
+TEST_CASE("A reload from empty takes its own time, and a reload clip sets both", "[weapon][reload]")
+{
+    WeaponDefinition definition = TestWeapon(FireMode::Auto);
+    definition.reloadSeconds = 1.0f;
+    definition.reloadEmptySeconds = 2.0f;
+    WeaponState state;
+    WeaponSim::Equip(definition, state);
+
+    // Half a magazine: the ordinary reload.
+    state.rounds = 2;
+    WeaponInput reload;
+    reload.reload = true;
+    Run(definition, state, reload, 1);
+    CHECK_FALSE(state.reloadFromEmpty);
+    CHECK(state.reloadTotal == Catch::Approx(1.0f));
+    Run(definition, state, WeaponInput{}, 70);
+    CHECK_FALSE(state.IsReloading());
+
+    // Dry: the longer one, and it says so, which is what picks the animation.
+    state.rounds = 0;
+    Run(definition, state, reload, 1);
+    CHECK(state.reloadFromEmpty);
+    CHECK(state.reloadTotal == Catch::Approx(2.0f));
+    Run(definition, state, WeaponInput{}, 70);
+    CHECK(state.IsReloading());
+    Run(definition, state, WeaponInput{}, 60);
+    CHECK_FALSE(state.IsReloading());
+    CHECK(state.rounds == definition.magazineSize);
+
+    // A model's clips are the reloads: as long as they are, so the animation made in the editor and
+    // the reload in the game can never disagree about when the magazine is in.
+    ModelAsset model;
+    AnimationClip clip;
+    clip.name = "reload";
+    clip.duration = 2.4f;
+    model.clips.push_back(clip);
+    clip.name = "reload_empty";
+    clip.duration = 3.1f;
+    model.clips.push_back(clip);
+    CHECK(ApplyClipTimings(definition, model));
+    CHECK(definition.ReloadSecondsFrom(false) == Catch::Approx(2.4f));
+    CHECK(definition.ReloadSecondsFrom(true) == Catch::Approx(3.1f));
+    CHECK_FALSE(ApplyClipTimings(definition, model));
 }

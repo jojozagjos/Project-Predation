@@ -149,6 +149,9 @@ private:
     void SampleLook(float dt);
     PlayerInput BuildPlayerInput();
     void TryInteract();
+    // Every weapon's reload times from its model's reload clips, so an animation made in the editor
+    // takes as long in the game as it does in the editor. At start, and after the editor saves.
+    void ApplyWeaponClipTimings();
     // Opens or closes the model editor and hands the view and the mouse over to it.
     // The editor's own scene. Nothing of the game is in it: a model is looked at against an empty
     // floor rather than against whatever happens to be at the spawn point.
@@ -171,6 +174,10 @@ private:
     float m_editorHolster = 1.0f;
     bool m_editorHolstering = false;
     float m_editorReload = -1.0f; // negative when not reloading, matching WeaponPose
+    bool m_editorReloadEmpty = false;
+    // The first-person preview plays whatever clip the timeline has open, at the playhead, so a key
+    // can be judged from the eyes it will be seen through while it is being set.
+    bool m_benchFollowTimeline = true;
     // A clip being watched on demand, and where in it. Empty means the built-in movements play,
     // which is what happens in the game.
     std::string m_editorClip;

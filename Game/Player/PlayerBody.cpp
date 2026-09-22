@@ -1012,6 +1012,9 @@ void PlayerBody::RefreshWeaponSockets(const WeaponDefinition& definition, const 
         return;
     }
     ApplyWeaponSockets(m_weaponVisual, model, definition);
+    // And the clips, which change without anything drawn changing: a key moved in the editor is the
+    // hand moving in the preview on the same frame.
+    m_weaponVisual.asset = AnimationCopy(model);
 }
 
 void PlayerBody::SetWeapon(Scene& scene, MeshLibrary& meshes, const WeaponDefinition* definition)
@@ -2086,7 +2089,12 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
         }
         else if (m_reloadRunning)
         {
-            clip = m_weaponVisual.asset->FindClip("reload");
+            // From empty, its own clip when the model has one: that is where the bolt goes forward.
+            clip = m_weaponPose.reloadEmpty ? m_weaponVisual.asset->FindClip("reload_empty") : nullptr;
+            if (clip == nullptr)
+            {
+                clip = m_weaponVisual.asset->FindClip("reload");
+            }
             clipProgress = glm::clamp(m_reloadPlay, 0.0f, 1.0f);
         }
         else if (m_weaponPose.holster < 1.0f)
@@ -2158,7 +2166,10 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
                                             { return candidate.name == part.name; });
             if (found != modelParts.end())
             {
-                local = m_weaponVisual.asset->PartMatrixAt(*found, clip, clipTime, &visible);
+                // Where the hands rest, so a part a hand is holding is carried from the same place the
+                // hand itself is drawn from.
+                const glm::vec3 handRest[2] = {m_weaponVisual.supportGrip, m_weaponVisual.triggerGrip};
+                local = m_weaponVisual.asset->PartMatrixAt(*found, clip, clipTime, &visible, handRest);
             }
         }
 
@@ -2294,14 +2305,34 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
         }
     }
 
+    // A clip that moves a hand moves it from here, in the weapon's frame, and takes it over for as long
+    // as it plays. A reload made in the editor is the reload: where the hand goes, when, and how it is
+    // turned are all in the clip, and nothing below second-guesses it. At the clip's ends the hand is
+    // back on its socket, so it hands over to the ordinary hold without a jump.
+    bool handAuthored[2] = {false, false};
+    glm::quat handTurn[2] = {glm::quat(1.0f, 0.0f, 0.0f, 0.0f), glm::quat(1.0f, 0.0f, 0.0f, 0.0f)};
+    if (clip != nullptr && m_weaponVisual.asset != nullptr)
+    {
+        for (int side = kLeft; side <= kRight; ++side)
+        {
+            glm::vec3 handOffset{0.0f};
+            if (m_weaponVisual.asset->HandAt(clip, side == kLeft ? 0 : 1, clipTime, handOffset, handTurn[side]))
+            {
+                handAuthored[side] = true;
+                gripPoints[side] += rotation * handOffset;
+            }
+        }
+    }
+
     // Crawling, the support hand lets go and reaches for the ground; only the trigger hand stays on
-    // the weapon, which is how anyone actually low-crawls with a rifle.
-    const int firstSide = flat ? kRight : kLeft;
-    // The support hand also comes off the gun while the magazine is being changed.
-    // Driven by the movement rather than by the reload, so the hand comes back to the handguard as
-    // part of finishing rather than the instant the weapon becomes usable again.
+    // the weapon, which is how anyone actually low-crawls with a rifle. Unless a clip has it.
+    const int firstSide = flat && !handAuthored[kLeft] ? kRight : kLeft;
+    // The support hand also comes off the gun while the magazine is being changed, when the model has
+    // no hand of its own in its reload clip: then the movement written here is what a reload looks
+    // like. Driven by the movement rather than by the reload, so the hand comes back to the handguard
+    // as part of finishing rather than the instant the weapon becomes usable again.
     const bool supportHandFree =
-        flat || (m_reloadRunning && m_reloadPlay > 0.10f && m_reloadPlay < 0.94f);
+        !handAuthored[kLeft] && (flat || (m_reloadRunning && m_reloadPlay > 0.10f && m_reloadPlay < 0.94f));
 
     // How far back onto the weapon the support hand has got since it let go.
     //
@@ -2454,6 +2485,13 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
             wanted = glm::mix(hand.position, wanted, glm::smoothstep(0.0f, 1.0f, m_supportRejoin));
         }
         hand.position = wanted;
+        // A clip can send a hand to a pouch on the belt, which lying down is under the floor. The
+        // clip is right about where the hand goes relative to the weapon; the floor is right about
+        // where it can go at all.
+        if (handAuthored[side])
+        {
+            hand.position.y = std::max(hand.position.y, view.renderPosition.y + 0.06f);
+        }
         // And never further out than the arm goes. The slide above works from the pose as it was
         // before the spine and shoulders were written this frame, so the shoulder has usually moved
         // a couple of centimetres by the time the arm is solved, and a couple of centimetres is the
@@ -2501,9 +2539,17 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
             const glm::vec3 onward = ik.endPosition + (ik.endPosition - ik.jointPosition);
             fingers = glm::mix(onward, fingers, glm::smoothstep(0.0f, 1.0f, m_supportRejoin));
         }
-        m_pose.SetGlobal(m_skeleton, m_rig.hand[side],
-                         SegmentFrame(m_rig.hand[side], ik.endPosition, fingers,
-                                      weaponRoll(fingers - ik.endPosition)));
+        glm::mat4 handFrame =
+            SegmentFrame(m_rig.hand[side], ik.endPosition, fingers, weaponRoll(fingers - ik.endPosition));
+        if (handAuthored[side])
+        {
+            // The clip's turn of the wrist, which is in the weapon's frame: turned there and brought
+            // back, about the wrist, so the hand turns in place rather than swinging round the origin.
+            const glm::quat worldTurn = rotation * handTurn[side] * glm::inverse(rotation);
+            handFrame = glm::translate(glm::mat4(1.0f), ik.endPosition) * glm::mat4_cast(worldTurn) *
+                        glm::translate(glm::mat4(1.0f), -ik.endPosition) * handFrame;
+        }
+        m_pose.SetGlobal(m_skeleton, m_rig.hand[side], handFrame);
     }
 
     return true;

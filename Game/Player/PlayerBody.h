@@ -521,6 +521,9 @@ public:
         // because a weapon leaving the hands the way it arrived beats one that vanishes.
         float holster = 1.0f;
         bool reloading = false;
+        // The magazine was empty when this reload began, which plays the model's "reload_empty" clip
+        // when it has one.
+        bool reloadEmpty = false;
 
         // A clip to play by name, and how far through it is. Only the editor sets these: in the
         // game, what plays is decided by what the weapon is doing. An animation nobody can watch

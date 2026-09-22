@@ -117,4 +117,17 @@ bool ExportWeaponModel(const WeaponDefinition& definition, const std::string& mo
 // is the whole difficulty with placing a grip: it is placed by looking at where the hand lands.
 void ForgetWeaponModels();
 
+// A copy of a model for playing its clips: the parts' places, the sockets and the clips, without the
+// geometry.
+std::shared_ptr<const ModelAsset> AnimationCopy(const ModelAsset& model);
+
+// A weapon's model, read once and shared; nothing when it will not load.
+std::shared_ptr<const ModelAsset> LoadWeaponModel(const std::string& name);
+
+// Sets how long a weapon's reloads take from its model's "reload" and "reload_empty" clips, when it
+// has them. An animation made in the editor is the reload, so it has to be as long as the reload: made
+// shorter than the simulation, the hands stood waiting; made longer, the gun fired with the magazine
+// still out. True when anything changed.
+bool ApplyClipTimings(WeaponDefinition& definition, const ModelAsset& model);
+
 } // namespace pred

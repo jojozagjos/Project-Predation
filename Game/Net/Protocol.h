@@ -24,7 +24,7 @@ namespace pred
 
 // Bumped whenever the wire changes shape. Two ends that disagree are refused at the door rather
 // than left to misread each other, which is what a wire mismatch actually looks like from inside.
-inline constexpr uint16_t kProtocolVersion = 7;
+inline constexpr uint16_t kProtocolVersion = 8;
 // How many bits name a message type. Five, so there is room to add one.
 inline constexpr uint32_t kMessageTypeBits = 5;
 inline constexpr uint8_t kMaxPlayers = 4;
@@ -316,6 +316,7 @@ struct InputMessage
     float aim = 0.0f;
     bool reloading = false;
     float reloadProgress = 0.0f;
+    bool reloadEmpty = false; // from an empty magazine, which has its own animation
     // Whether their torch is lit, which the host cannot work out for itself: it is a key this
     // client pressed and nothing else in the protocol implies it. Without it everybody's torch is
     // visible only to themselves, so two players standing in the same dark room see two different
@@ -356,6 +357,7 @@ struct PlayerSnapshot
     float aim = 0.0f;
     bool reloading = false;
     float reloadProgress = 0.0f;
+    bool reloadEmpty = false; // from an empty magazine, which has its own animation
     // And whether their torch is lit, so the light it throws is in everybody's scene rather than
     // only in its owner's.
     bool torchOn = false;
