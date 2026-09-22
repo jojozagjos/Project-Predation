@@ -32,13 +32,20 @@ jobs:
             Engine/Net
             Tools/LobbyServer
 
+      # Every warning and error becomes an annotation on the run, which anybody can read without
+      # signing in, unlike the log. Warnings fail the build as well, so they get fixed.
       - name: Build
         run: |
-          g++ -std=c++20 -O2 -Wall -Wextra -Werror -I. \
+          set +e
+          g++ -std=c++20 -O2 -Wall -Wextra -I. \
               Tools/LobbyServer/main.cpp \
               Engine/Net/LobbyServer.cpp Engine/Net/LobbyDirectory.cpp Engine/Net/LobbyProtocol.cpp \
               Engine/Net/SocketSystem.cpp \
-              -o predation-lobby-server
+              -o predation-lobby-server > build.log 2>&1
+          status=$?
+          cat build.log
+          sed -nE 's/^([^:]+):([0-9]+):[0-9]+: (warning|error): (.*)$/::\3 file=\1,line=\2::\4/p' build.log
+          if [ $status -ne 0 ] || grep -qE ': (warning|error): ' build.log; then exit 1; fi
 
       - name: Starts and answers
         run: |
