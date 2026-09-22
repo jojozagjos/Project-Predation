@@ -17,6 +17,8 @@ constexpr size_t kMaxSenders = 65536;
 
 } // namespace
 
+LobbyDirectory::LobbyDirectory() : LobbyDirectory(Settings{}) {}
+
 LobbyDirectory::LobbyDirectory(const Settings& settings) : m_settings(settings), m_random(settings.seed) {}
 
 void LobbyDirectory::Say(const std::string& line) const

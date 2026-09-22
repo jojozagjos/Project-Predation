@@ -55,7 +55,10 @@ public:
         uint64_t introductions = 0;
     };
 
-    explicit LobbyDirectory(const Settings& settings = Settings{});
+    // Two constructors rather than a default argument: GCC will not take a default built from a
+    // struct declared inside the same class, which the Linux server build found.
+    LobbyDirectory();
+    explicit LobbyDirectory(const Settings& settings);
 
     // One datagram, from `from`, at `now` seconds. Anything to send back is appended to `out`.
     void Handle(const uint8_t* data, size_t bytes, const LobbyEndpoint& from, double now,
