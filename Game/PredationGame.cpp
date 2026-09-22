@@ -361,7 +361,7 @@ bool PredationGame::OnInit(Application& app)
     BuildTestMap(m_scene, app.GetMeshes(), &app.GetPhysics());
     // And the creature lab, far off to the east in the same world, with its nest.
     BuildLabMap(m_scene, app.GetMeshes(), &app.GetPhysics());
-    m_hives = {LabSpec::kHive};
+
 
     m_propSphereMesh = app.GetMeshes().Upload(Primitives::Sphere(kPropRadius, 20, 14), "prop_sphere");
     m_propBoxMesh = app.GetMeshes().Upload(Primitives::Box(glm::vec3(kPropSize)), "prop_box");
@@ -2034,6 +2034,11 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
             m_deathImpulse = event.direction;
             PlaySound(m_sounds.death.Pick(), m_player.State().position, 1.0f, 1.0f, false);
         }
+        break;
+
+    case WorldEventKind::NestBuilt:
+        // Something built a nest over there: it is solid and it is drawn, on every machine.
+        BuildNest(event.position, event.item, event.index, false);
         break;
 
     case WorldEventKind::PlayerRespawned:
@@ -7396,8 +7401,8 @@ void PredationGame::OnFixedUpdate(double fixedDt)
     }
     m_lastInput = input;
     // Dead counts as restrained: a body on the floor does not fire, aim or reload.
-    const bool restrained =
-        m_hidingSpot >= 0 || m_cameraMode == CameraMode::Fly || !m_player.State().alive;
+    const bool restrained = m_hidingSpot >= 0 || m_cameraMode == CameraMode::Fly || !m_player.State().alive ||
+                            HeldLocally();
 
     // The weapon runs before the movement, because aiming down the sights slows the player and the
     // controller needs that this tick rather than next.
@@ -7478,6 +7483,9 @@ void PredationGame::OnFixedUpdate(double fixedDt)
 
     UpdateHostMigration(dt);
     UpdateRespawns(dt);
+    // A navigation rebuild finished on a worker thread goes in here, between ticks, before anything
+    // plans a route this tick.
+    FinishNavRebuild();
     UpdateCreatures(dt);
 
     // The toggles mirror the stance the body is actually in, every tick, not just when a change is

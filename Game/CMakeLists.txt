@@ -64,6 +64,8 @@ set(PRED_GAME_SOURCES
     World/MapBuilder.h
     World/LabMap.h
     World/LabMap.cpp
+    World/HiveMesh.h
+    World/HiveMesh.cpp
     World/WorldObjects.h
     World/WorldObjects.cpp
 )

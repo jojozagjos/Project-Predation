@@ -78,6 +78,10 @@ public:
     // How many jumps were found across ledges when it was built, for the log and the tests.
     size_t JumpCount() const;
 
+    // Takes the other mesh's data, and gives it this one's. For rebuilding on a worker thread and
+    // putting the result in place between ticks, so nothing holding a pointer to this mesh has to know.
+    void Swap(NavMesh& other);
+
     // Whether walking in a straight line from `from` to `to` stays on the mesh the whole way. The
     // cheap question a creature asks before bothering with a whole route.
     bool StraightWalk(const glm::vec3& from, const glm::vec3& to) const;

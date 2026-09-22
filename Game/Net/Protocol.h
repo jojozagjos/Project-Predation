@@ -96,6 +96,7 @@ enum class WorldEventKind : uint8_t
     PlayerDamaged,   // health changed, and by whose hand
     PlayerDied,      // with the direction of the blow, for the ragdoll
     PlayerRespawned,
+    NestBuilt,       // a creature has finished building a nest somewhere
     Count
 };
 

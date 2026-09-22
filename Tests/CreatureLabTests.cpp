@@ -189,41 +189,61 @@ TEST_CASE("A creature opens a shut door in its way, and breaks down a locked one
     }
 }
 
-TEST_CASE("Holding somebody, a creature takes them to its nest and wraps them up there", "[creature][lab][hive]")
+TEST_CASE("Holding somebody, a creature takes them off: to its nest, or somewhere to kill them", "[creature][lab][hive]")
 {
     Lab lab;
-    const glm::vec3 start = lab.At(0.0f, -4.0f);
-    Creature creature(lab.scene, lab.meshes, lab.physics, &lab.nav, CreatureTraits::FromSeed(13), start);
     glm::vec3 stand;
     REQUIRE(lab.nav.NearestPoint(LabSpec::kHive, 4.0f, stand));
 
-    SensedPlayer victim;
-    victim.id = 2;
-    victim.name = "Caught";
-    constexpr float dt = 1.0f / 60.0f;
-    float time = 0.0f;
-    creature.Brain().OnGrabbed(victim.id, time);
-    REQUIRE(creature.Brain().Current() == Behavior::Drag);
-
-    bool cocooned = false;
-    float nearest = 1.0e9f;
-    for (int tick = 0; tick < 60 * 25 && !cocooned; ++tick)
+    // Which of the two it does is its own choice each time it takes hold of somebody, so several goes:
+    // both happen, and the nest is the rarer.
+    int wrapped = 0;
+    int killedElsewhere = 0;
+    for (int attempt = 0; attempt < 14; ++attempt)
     {
-        time += dt;
-        // Carried along in front of it, as the game carries them.
-        victim.feet = creature.Position() + creature.Forward() * 1.2f;
-        CreatureSenses senses;
-        senses.players = {victim};
-        senses.hasHive = true;
-        senses.hive = stand;
-        creature.Update(senses, time, dt);
-        cocooned = creature.Brain().Intent().cocoonTarget == victim.id;
-        nearest = std::min(nearest, glm::distance(creature.Position(), stand));
-        CHECK((creature.Brain().Intent().holding == victim.id || cocooned));
+        // A different creature each time: one creature always makes the same choice, because its mind is
+        // its seed.
+        const glm::vec3 start = lab.At(0.0f, -4.0f + static_cast<float>(attempt) * 0.2f);
+        Creature creature(lab.scene, lab.meshes, lab.physics, &lab.nav, CreatureTraits::FromSeed(13 + attempt * 7), start);
+        SensedPlayer victim;
+        victim.id = 2;
+        victim.name = "Caught";
+        constexpr float dt = 1.0f / 60.0f;
+        float time = 0.0f;
+        creature.Brain().OnGrabbed(victim.id, time);
+        REQUIRE(creature.Brain().Current() == Behavior::Drag);
+
+        bool cocooned = false;
+        bool fed = false;
+        for (int tick = 0; tick < 60 * 30 && !cocooned && !fed; ++tick)
+        {
+            time += dt;
+            // Carried along in front of it, as the game carries them.
+            victim.feet = creature.Position() + creature.Forward() * 1.2f;
+            CreatureSenses senses;
+            senses.players = {victim};
+            senses.hasHive = true;
+            senses.hive = stand;
+            creature.Update(senses, time, dt);
+            cocooned = creature.Brain().Intent().cocoonTarget == victim.id;
+            // Biting into somebody it is holding, well away from the nest: killing them where it stopped.
+            fed = creature.Brain().Intent().strikeTarget == victim.id &&
+                  glm::distance(creature.Position(), stand) > 6.0f;
+            CHECK((creature.Brain().Intent().holding == victim.id || cocooned));
+        }
+        INFO("attempt " << attempt << "; its mind:" << MindOf(creature));
+        CHECK((cocooned || fed));
+        wrapped += cocooned ? 1 : 0;
+        killedElsewhere += fed ? 1 : 0;
+        if (cocooned)
+        {
+            CHECK(creature.Brain().Holding() < 0);
+        }
     }
-    INFO("got within " << nearest << " m of the nest; its mind:" << MindOf(creature));
-    CHECK(cocooned);
-    CHECK(creature.Brain().Holding() < 0);
+    INFO(wrapped << " taken to the nest, " << killedElsewhere << " killed where they were dragged");
+    CHECK(wrapped >= 1);
+    CHECK(killedElsewhere >= 1);
+    CHECK(killedElsewhere > wrapped);
 }
 
 TEST_CASE("Shot enough while it holds somebody, a creature lets go", "[creature][hive]")
@@ -238,4 +258,71 @@ TEST_CASE("Shot enough while it holds somebody, a creature lets go", "[creature]
     creature.TakeDamage(creature.MaxHealth() * 0.06f, 1, creature.Position() + glm::vec3(0.0f, 1.0f, 5.0f), 0.2f);
     CHECK(creature.Brain().Holding() < 0);
     CHECK(creature.Brain().Current() != Behavior::Drag);
+}
+
+TEST_CASE("A creature that nests builds one, somewhere dark and out of the way", "[creature][lab][hive]")
+{
+    Lab lab;
+    // One that builds. Most do not.
+    uint32_t seed = 0;
+    for (uint32_t candidate = 1; candidate < 400 && seed == 0; ++candidate)
+    {
+        const CreatureTraits traits = CreatureTraits::FromSeed(candidate);
+        if (traits.Nests() && traits.fear < 0.6f)
+        {
+            seed = candidate;
+        }
+    }
+    REQUIRE(seed != 0);
+    REQUIRE(CreatureTraits::FromSeed(seed).Nests());
+    Creature creature(lab.scene, lab.meshes, lab.physics, &lab.nav, CreatureTraits::FromSeed(seed), lab.At(0.0f, 20.0f));
+
+    constexpr float dt = 1.0f / 60.0f;
+    float time = 0.0f;
+    bool built = false;
+    glm::vec3 where{0.0f};
+    for (int tick = 0; tick < 60 * 90 && !built; ++tick)
+    {
+        time += dt;
+        CreatureSenses senses;
+        // The nest chamber across the north end is dark; the rest of the lab is under the sky.
+        senses.lightAt = [](const glm::vec3& at) { return at.z < LabSpec::kZ - 12.0f ? 0.05f : 1.0f; };
+        creature.Update(senses, time, dt);
+        if (creature.Brain().Intent().buildHive)
+        {
+            built = true;
+            where = creature.Brain().Intent().hiveAt;
+        }
+    }
+    INFO("its mind:" << MindOf(creature));
+    REQUIRE(built);
+    // In the dark, which is what it was looking for.
+    CHECK(where.z < LabSpec::kZ - 12.0f);
+    // And nothing builds a second one on top of the first.
+    CHECK(creature.Brain().Current() != Behavior::Nest);
+}
+
+TEST_CASE("A creature that does not nest never builds one", "[creature][hive]")
+{
+    Lab lab;
+    uint32_t seed = 0;
+    for (uint32_t candidate = 1; candidate < 200 && seed == 0; ++candidate)
+    {
+        if (!CreatureTraits::FromSeed(candidate).Nests())
+        {
+            seed = candidate;
+        }
+    }
+    REQUIRE(seed != 0);
+    Creature creature(lab.scene, lab.meshes, lab.physics, &lab.nav, CreatureTraits::FromSeed(seed), lab.At(0.0f, 20.0f));
+    constexpr float dt = 1.0f / 60.0f;
+    float time = 0.0f;
+    for (int tick = 0; tick < 60 * 60; ++tick)
+    {
+        time += dt;
+        CreatureSenses senses;
+        creature.Update(senses, time, dt);
+        REQUIRE_FALSE(creature.Brain().Intent().buildHive);
+        REQUIRE(creature.Brain().Current() != Behavior::Nest);
+    }
 }

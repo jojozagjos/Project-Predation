@@ -477,6 +477,12 @@ void WriteWorldEvent(BitWriter& writer, const WorldEventMessage& message)
         WritePosition(writer, message.position);
         break;
 
+    case WorldEventKind::NestBuilt:
+        writer.WriteBits(message.index, 4);
+        writer.WriteBits(message.item, 16);
+        WritePosition(writer, message.position);
+        break;
+
     case WorldEventKind::Count:
         break;
     }
@@ -548,6 +554,12 @@ bool ReadWorldEvent(BitReader& reader, WorldEventMessage& out)
 
     case WorldEventKind::PlayerRespawned:
         out.player = static_cast<uint8_t>(reader.ReadBits(3));
+        out.position = ReadPosition(reader);
+        break;
+
+    case WorldEventKind::NestBuilt:
+        out.index = static_cast<uint8_t>(reader.ReadBits(4));
+        out.item = static_cast<uint16_t>(reader.ReadBits(16));
         out.position = ReadPosition(reader);
         break;
 

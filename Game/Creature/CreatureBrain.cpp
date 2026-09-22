@@ -125,6 +125,8 @@ const char* BehaviorName(Behavior behavior)
         return "Observe";
     case Behavior::Drag:
         return "Drag";
+    case Behavior::Nest:
+        return "Nest";
     }
     return "?";
 }
@@ -263,8 +265,9 @@ void CreatureBrain::StartAttack(AttackKind kind, const glm::vec3& at, float time
 
 bool CreatureBrain::PickDragPoint(const CreatureSenses& senses, int victim, glm::vec3& out)
 {
-    // Home, when it has one.
-    if (senses.hasHive)
+    // Home, sometimes. Not every time: a creature that always went home made the nest the only thing
+    // that ever happened, and being dragged into a dark corner and eaten there is worse.
+    if (senses.hasHive && m_random.Unit() < 0.4f)
     {
         out = senses.hive;
         return true;
@@ -305,6 +308,59 @@ bool CreatureBrain::PickDragPoint(const CreatureSenses& senses, int victim, glm:
             }
         }
         const float score = nearestOther - far * 0.3f + (seen ? 0.0f : 10.0f);
+        if (score > bestScore)
+        {
+            bestScore = score;
+            out = candidate;
+            found = true;
+        }
+    }
+    return found;
+}
+
+bool CreatureBrain::PickNestSite(const CreatureSenses& senses, glm::vec3& out)
+{
+    if (senses.nav == nullptr)
+    {
+        return false;
+    }
+    // Somewhere dark, out of everybody's sight, away from where it has found people, and far enough from
+    // here that it is somewhere rather than under its feet.
+    float bestScore = -1.0e9f;
+    bool found = false;
+    uint32_t seed = static_cast<uint32_t>(m_random.Next());
+    for (int i = 0; i < 24; ++i)
+    {
+        glm::vec3 candidate;
+        if (!senses.nav->RandomPointNear(senses.position, 34.0f, seed, candidate))
+        {
+            continue;
+        }
+        const float away = Horizontal(candidate, senses.position);
+        if (away < 8.0f)
+        {
+            continue;
+        }
+        float score = away * 0.2f;
+        // Dark is what it wants most.
+        if (senses.lightAt)
+        {
+            score += (1.0f - std::clamp(senses.lightAt(candidate), 0.0f, 1.0f)) * 14.0f;
+        }
+        // Not where people go, and not where anybody can see.
+        for (const HeatCell& cell : m_heat)
+        {
+            const glm::vec3 warm{(static_cast<float>(cell.x) + 0.5f) * kHeatCell, candidate.y,
+                                 (static_cast<float>(cell.z) + 0.5f) * kHeatCell};
+            if (Horizontal(warm, candidate) < kHeatCell)
+            {
+                score -= cell.heat * 8.0f;
+            }
+        }
+        if (!SeenFrom(senses, candidate))
+        {
+            score += 8.0f;
+        }
         if (score > bestScore)
         {
             bestScore = score;
@@ -749,6 +805,11 @@ void CreatureBrain::Decide(const CreatureSenses& senses)
     {
         return;
     }
+    // Nor building: a nest half dug is no nest at all.
+    if (m_behavior == Behavior::Nest && m_nestWorkStarted >= 0.0f)
+    {
+        return;
+    }
     m_options.clear();
     const float now = senses.time;
     const auto add = [this](Behavior behavior, int target, std::string label,
@@ -875,6 +936,20 @@ void CreatureBrain::Decide(const CreatureSenses& senses)
         }
     }
 
+    // Building a nest: what the sort that nests does when nothing is happening.
+    if (m_traits.Nests() && !senses.hasHive)
+    {
+        float quiet = 1.0f;
+        for (const Track& track : m_tracks)
+        {
+            quiet = std::min(quiet, 1.0f - track.confidence);
+        }
+        add(Behavior::Nest, -1, "Build a nest",
+            {{"a nester", m_traits.nesting},
+             {"nothing else about", quiet},
+             {"not afraid", 0.3f + 0.7f * calm}});
+    }
+
     // Getting away. Once it has decided to, it keeps going for a while rather than turning back the
     // moment the pain fades a little -- a wounded animal does not stop running at the first corner.
     const bool retreating = m_behavior == Behavior::Retreat && now < m_retreatUntil;
@@ -961,6 +1036,7 @@ void CreatureBrain::Switch(Behavior behavior, int target, const std::string& rea
     m_lookAroundUntil = 0.0f;
     m_attack = AttackKind::None;
     m_lookBaseSet = false;
+    m_nestWorkStarted = -1.0f;
     m_unreachableSince = -1.0f;
     m_door = -1;
     if (behavior == Behavior::Retreat)
@@ -1530,6 +1606,7 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
     m_intent.grabTarget = -1;
     m_intent.cocoonTarget = -1;
     m_intent.roar = false;
+    m_intent.buildHive = false;
     m_intent.openDoor = -1;
     m_intent.bashDoor = -1;
     m_intent.bashing = false;
@@ -1927,6 +2004,59 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
             m_intent.strikeTarget = m_holding;
             m_intent.strikeKind = AttackKind::Bite;
             m_nextBite = now + cycle;
+        }
+        break;
+    }
+
+    case Behavior::Nest:
+    {
+        if (senses.hasHive)
+        {
+            Switch(Behavior::Roam, -1, "it has a nest already", now);
+            break;
+        }
+        if (!m_haveNestSite && now >= m_nestThoughtAt)
+        {
+            m_haveNestSite = PickNestSite(senses, m_nestSite);
+            m_nestThoughtAt = now + 8.0f;
+            if (m_haveNestSite)
+            {
+                Log(now, Format("has somewhere in mind for a nest, %.0f m away",
+                                Horizontal(senses.position, m_nestSite)));
+            }
+        }
+        if (!m_haveNestSite)
+        {
+            m_goal = "looking for somewhere to build";
+            break;
+        }
+        if (Horizontal(senses.position, m_nestSite) > 1.2f)
+        {
+            m_goal = "going somewhere to build";
+            m_intent.move = true;
+            m_intent.destination = m_nestSite;
+            m_intent.speed = m_traits.walkSpeed * 1.3f;
+            break;
+        }
+        // Working at it: hunched over, hands at the floor, for a good while.
+        if (m_nestWorkStarted < 0.0f)
+        {
+            m_nestWorkStarted = now;
+            Log(now, "starts building a nest");
+        }
+        m_goal = "building a nest";
+        m_intent.crouch = 1.0f;
+        m_intent.bashing = true;
+        m_intent.look = true;
+        m_intent.lookAt = senses.position + senses.forward * 0.8f;
+        if (now - m_nestWorkStarted > 14.0f)
+        {
+            m_intent.buildHive = true;
+            m_intent.hiveAt = senses.position;
+            m_nestWorkStarted = -1.0f;
+            m_haveNestSite = false;
+            Log(now, "its nest is built");
+            Switch(Behavior::Roam, -1, "the nest is built", now);
         }
         break;
     }

@@ -642,9 +642,11 @@ void CreatureRig::Update(const RigInput& input)
             case RigAction::Grab:
             case RigAction::Carry:
             {
+                // Each hand on its own side of what it is holding. With the sides the other way round it
+                // carried people with its arms crossed over them, which is not how anything carries anything.
                 const glm::vec3 hold = input.action == RigAction::Carry
-                                           ? shoulder + glm::vec3(-side * span * 0.3f, -span * 0.25f, -span * 0.55f)
-                                           : target + glm::vec3(side * 0.16f, 0.1f, 0.0f);
+                                           ? shoulder + glm::vec3(side * span * 0.16f, -span * 0.3f, -span * 0.6f)
+                                           : target + glm::vec3(side * 0.18f, 0.05f, 0.0f);
                 reachTo = glm::mix(foot, hold, input.action == RigAction::Carry ? 1.0f : Smooth(phase / 0.35f));
                 reach = 1.0f;
                 break;

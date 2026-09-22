@@ -8,6 +8,7 @@
 #include "Game/PredationGame.h"
 
 #include "Engine/Render/Primitives.h"
+#include "Game/World/HiveMesh.h"
 
 #include "Engine/Core/CVar.h"
 #include "Engine/Core/Log.h"
@@ -74,16 +75,15 @@ void PredationGame::BuildNavigation()
     {
         PRED_LOG_ERROR(AI, "No navigation mesh, so no creature can move: {}", error);
     }
-    // Where a creature stands at each nest: the walkable floor nearest the middle of the mound.
-    m_hiveStands.clear();
-    for (const glm::vec3& hive : m_hives)
+    // Where a creature stands at each nest it has built: the walkable floor nearest the mound.
+    for (Nest& nest : m_nests)
     {
-        glm::vec3 stand = hive;
-        if (!m_nav.NearestPoint(hive, 4.0f, stand))
+        glm::vec3 stand = nest.at;
+        if (!m_nav.NearestPoint(nest.at, 4.0f, stand))
         {
-            stand = hive;
+            stand = nest.at;
         }
-        m_hiveStands.push_back(stand);
+        nest.stand = stand;
     }
 }
 
@@ -102,6 +102,7 @@ void PredationGame::ClearCreatures()
     m_calls.clear();
     m_callsHeard.clear();
     m_doorBlows.clear();
+    ClearNests();
     m_creatures.clear();
     m_arrivalsPending = 0;
     m_noises.clear();
@@ -259,12 +260,12 @@ void PredationGame::UpdateArrivals()
     }
     const uint32_t seed = m_arrivalSeed + static_cast<uint32_t>(m_creatures.size()) * 7919u;
     glm::vec3 at;
-    // In the lab, out of the nest: that is where they live.
+    // Where there is a nest, the next one comes out of it: that is what a nest is for.
     bool fromNest = false;
-    if (InLab(m_player.State().position) && !m_hives.empty())
+    if (const Nest* nest = NestNear(m_player.State().position, 90.0f); nest != nullptr)
     {
         const float angle = static_cast<float>(seed % 628u) * 0.01f;
-        at = m_hives.front() + glm::vec3(std::cos(angle), 0.0f, std::sin(angle)) * (LabSpec::kHiveRadius + 1.6f);
+        at = nest->at + glm::vec3(std::cos(angle), 0.0f, std::sin(angle)) * 2.6f;
         fromNest = true;
     }
     if ((fromNest || FindUnseenPoint(seed, at)) && SpawnCreature(seed, m_player.State().position, &at))
@@ -479,14 +480,23 @@ void PredationGame::UpdateCreatures(float dt)
         senses.players = players;
         senses.noises = m_noises;
         senses.doors = doors;
-        // Its nest, when there is one near enough to be its own.
-        for (const glm::vec3& hive : m_hiveStands)
+        // Its own nest, or one of the brood's it has come across.
+        for (const Nest& nest : m_nests)
         {
-            if (glm::distance(hive, creature->Position()) < 70.0f &&
-                (!senses.hasHive || glm::distance(hive, creature->Position()) < glm::distance(senses.hive, creature->Position())))
+            const bool mine = nest.owner == creature->NetId();
+            const float away = Horizontal(nest.at, creature->Position());
+            if (!mine && away > 45.0f)
+            {
+                continue;
+            }
+            if (!senses.hasHive || mine || away < Horizontal(senses.hive, creature->Position()))
             {
                 senses.hasHive = true;
-                senses.hive = hive;
+                senses.hive = nest.stand;
+            }
+            if (mine)
+            {
+                break;
             }
         }
         // The others calling. Not its own call, which it knows it made.
@@ -595,15 +605,16 @@ void PredationGame::UpdateCreatures(float dt)
         {
             WrapInCocoon(static_cast<uint8_t>(intent.cocoonTarget), *creature);
         }
+        if (intent.buildHive)
+        {
+            BuildNest(intent.hiveAt, static_cast<uint16_t>(creature->Brain().Traits().seed & 0xFFFFu), creature->NetId(), true);
+        }
         // Licking its wounds at the nest.
         if (creature->Brain().Current() == Behavior::Retreat)
         {
-            for (const glm::vec3& hive : m_hives)
+            if (NestNear(creature->Position(), 3.5f) != nullptr)
             {
-                if (Horizontal(hive, creature->Position()) < 3.5f)
-                {
-                    creature->Heal(creature->MaxHealth() * 0.03f * dt);
-                }
+                creature->Heal(creature->MaxHealth() * 0.03f * dt);
             }
         }
 
@@ -1208,6 +1219,17 @@ void PredationGame::RegisterCreatureCommands()
                             });
     console.RegisterCommand("creature_clear", "Remove every creature",
                             [this](const std::vector<std::string>&) { ClearCreatures(); });
+    console.RegisterCommand("nest_here", "Build a nest where you stand, as a creature would, to look at one",
+                            [this](const std::vector<std::string>&)
+                            {
+                                if (!IsAuthority())
+                                {
+                                    m_app->GetConsole().PrintError("Only the host has nests.");
+                                    return;
+                                }
+                                const uint16_t seed = static_cast<uint16_t>(std::rand() & 0xFFFF);
+                                BuildNest(m_player.State().position, seed, 0, true);
+                            });
     console.RegisterCommand("ai_brain", "Show or hide the creature brain inspector",
                             [this](const std::vector<std::string>&) { m_showBrain = !m_showBrain; });
     console.RegisterCommand(
@@ -1226,6 +1248,152 @@ void PredationGame::RegisterCreatureCommands()
 #endif
 }
 
+
+
+// --- Nests --------------------------------------------------------------------------------------
+//
+// A nest is not part of a map. It is there because a creature that builds them found somewhere dark and
+// out of the way and spent a while working at it. Everybody gets told when one appears, so it is solid
+// and visible on every machine; only the host rebuilds the walkable surface round it, because only the
+// host has anything that walks by it.
+
+const PredationGame::Nest* PredationGame::NestNear(const glm::vec3& point, float reach) const
+{
+    const Nest* best = nullptr;
+    float nearest = reach;
+    for (const Nest& nest : m_nests)
+    {
+        const float away = Horizontal(nest.at, point);
+        if (away <= nearest)
+        {
+            nearest = away;
+            best = &nest;
+        }
+    }
+    return best;
+}
+
+void PredationGame::BuildNest(const glm::vec3& at, uint16_t seed, uint8_t owner, bool announce)
+{
+    if (m_nests.size() >= 8 || NestNear(at, 6.0f) != nullptr)
+    {
+        return;
+    }
+    Nest nest;
+    nest.at = at;
+    nest.stand = at;
+    nest.owner = owner;
+    nest.seed = seed;
+    constexpr float kRadius = 1.7f;
+    const MeshData mound = BuildHiveMesh(seed, kRadius, 4.5f);
+    if (!mound.vertices.empty())
+    {
+        nest.mesh = m_app->GetMeshes().Upload(mound, "nest_" + std::to_string(seed) + "_" + std::to_string(m_nests.size()));
+        Transform where;
+        where.position = at;
+        nest.entity = m_scene.CreateMeshEntity("nest", where, nest.mesh, Material::Diffuse(glm::vec3(1.0f), 0.5f));
+    }
+    // Solid: people walk round it, not through it.
+    Transform solid;
+    solid.position = at + glm::vec3(0.0f, 0.9f, 0.0f);
+    nest.body = m_app->GetPhysics().CreateBox({kRadius * 0.75f, 0.9f, kRadius * 0.75f}, solid, BodyMotion::Static);
+    m_nests.push_back(nest);
+
+    PlaySound(m_sounds.locker.Pick(), at + glm::vec3(0.0f, 1.0f, 0.0f), 1.0f, 0.5f);
+    PRED_LOG_INFO(AI, "Creature {} built a nest at {:.1f} {:.1f} {:.1f}", owner, at.x, at.y, at.z);
+
+    if (announce)
+    {
+        // The floor beside it, for anything that wants to stand there, and a mesh that goes round it.
+        RequestNavRebuild();
+        if (m_sessionMode == SessionMode::Host)
+        {
+            WorldEventMessage event;
+            event.kind = WorldEventKind::NestBuilt;
+            event.index = static_cast<uint8_t>(m_nests.size() - 1);
+            event.item = seed;
+            event.position = at;
+            m_host.Broadcast(event);
+        }
+    }
+}
+
+void PredationGame::ClearNests()
+{
+    for (Nest& nest : m_nests)
+    {
+        if (nest.entity.IsValid())
+        {
+            m_scene.Destroy(nest.entity);
+        }
+        if (nest.body.IsValid())
+        {
+            m_app->GetPhysics().DestroyBody(nest.body);
+        }
+        m_app->GetMeshes().Release(nest.mesh);
+    }
+    const bool had = !m_nests.empty();
+    m_nests.clear();
+    if (had)
+    {
+        RequestNavRebuild();
+    }
+}
+
+void PredationGame::RequestNavRebuild()
+{
+    if (m_navRebuilding)
+    {
+        return; // one at a time; the next one picks up whatever the level looks like then
+    }
+    // The level's shape as it is now, taken here rather than on the worker: the physics world is the
+    // main thread's.
+    std::vector<glm::vec3> triangles = m_app->GetPhysics().StaticTriangles();
+    m_navSpare = std::make_unique<NavMesh>();
+    m_navRebuilding = true;
+    NavMesh* spare = m_navSpare.get();
+    m_navRebuild = std::async(std::launch::async,
+                              [spare, triangles = std::move(triangles)]()
+                              {
+                                  std::string error;
+                                  if (!spare->Build(triangles, NavSettings{}, &error))
+                                  {
+                                      PRED_LOG_ERROR(AI, "Could not rebuild navigation: {}", error);
+                                  }
+                              });
+}
+
+void PredationGame::FinishNavRebuild()
+{
+    if (!m_navRebuilding || !m_navRebuild.valid() ||
+        m_navRebuild.wait_for(std::chrono::seconds(0)) != std::future_status::ready)
+    {
+        return;
+    }
+    m_navRebuild.get();
+    m_navRebuilding = false;
+    if (m_navSpare && m_navSpare->Valid())
+    {
+        // Put in place between ticks. Everything holds a pointer to m_nav itself, which does not move.
+        m_nav.Swap(*m_navSpare);
+        for (const std::unique_ptr<Creature>& creature : m_creatures)
+        {
+            creature->SetNav(&m_nav);
+        }
+        // Where a creature stands at each nest: the floor beside the mound.
+        for (Nest& nest : m_nests)
+        {
+            glm::vec3 stand = nest.at;
+            if (!m_nav.NearestPoint(nest.at, 4.0f, stand))
+            {
+                stand = nest.at;
+            }
+            nest.stand = stand;
+        }
+        PRED_LOG_INFO(AI, "Navigation rebuilt round {} nest(s)", m_nests.size());
+    }
+    m_navSpare.reset();
+}
 
 // --- Held, dragged and wrapped up --------------------------------------------------------------------
 
@@ -1280,6 +1448,20 @@ void PredationGame::PinPlayer(uint8_t player, uint8_t by, bool cocooned, const g
     }
 }
 
+bool PredationGame::HeldLocally() const
+{
+    if (m_sessionMode == SessionMode::Client)
+    {
+        return m_client.HeldByHost();
+    }
+    if (m_grips.count(LocalPlayerId()) != 0)
+    {
+        return true;
+    }
+    return std::any_of(m_cocoons.begin(), m_cocoons.end(),
+                       [this](const Cocoon& cocoon) { return cocoon.player == LocalPlayerId(); });
+}
+
 void PredationGame::TryGrab(Creature& creature, int target, const std::vector<SensedPlayer>& players)
 {
     for (const SensedPlayer& player : players)
@@ -1291,9 +1473,16 @@ void PredationGame::TryGrab(Creature& creature, int target, const std::vector<Se
         const uint8_t id = static_cast<uint8_t>(player.id);
         const float reach = Horizontal(creature.Position(), player.feet);
         const float rise = player.feet.y - creature.Position().y;
+        // One at a time, and not somebody who has just got free: being taken again the instant you break
+        // loose is not a fight, it is a cutscene.
         const bool taken = m_grips.count(id) != 0 ||
                            std::any_of(m_cocoons.begin(), m_cocoons.end(), [&](const Cocoon& c) { return c.player == id; });
-        if (taken || reach > creature.Capabilities().strikeReach + kStrikeGrace || std::abs(rise) > 1.0f)
+        const bool busy = std::any_of(m_grips.begin(), m_grips.end(),
+                                      [&](const auto& entry) { return entry.second.creature == creature.NetId(); });
+        const auto safe = m_grabImmunity.find(id);
+        const bool justFree = safe != m_grabImmunity.end() && m_creatureClock < safe->second;
+        if (taken || busy || justFree || reach > creature.Capabilities().strikeReach + kStrikeGrace ||
+            std::abs(rise) > 1.0f)
         {
             PRED_LOG_INFO(AI, "Grab at {} (player {}) missed: {:.1f} m away", player.name, player.id, reach);
             return;
@@ -1336,6 +1525,9 @@ void PredationGame::ReleaseGrip(uint8_t player, const char* why)
     {
         feet = m_player.State().position;
     }
+    m_grips.erase(found);
+    // A few seconds where nothing can take them again: long enough to run, or to be pulled up.
+    m_grabImmunity[player] = m_creatureClock + 7.0f;
     m_grips.erase(found);
     PinPlayer(player, kNotHeld, false, feet, yaw);
     PRED_LOG_INFO(AI, "Player {} let go: {}", player, why);
@@ -1405,17 +1597,12 @@ void PredationGame::WrapInCocoon(uint8_t player, const Creature& creature)
     m_grips.erase(player);
     // Against the side of the nest, one place round it for each person already there.
     glm::vec3 nest = creature.Position();
-    float best = 1.0e9f;
-    for (const glm::vec3& hive : m_hives)
+    if (const Nest* nearest = NestNear(creature.Position(), 12.0f); nearest != nullptr)
     {
-        if (glm::distance(hive, creature.Position()) < best)
-        {
-            best = glm::distance(hive, creature.Position());
-            nest = hive;
-        }
+        nest = nearest->at;
     }
     const float angle = static_cast<float>(m_cocoons.size()) * 1.3f + 0.4f;
-    glm::vec3 feet = nest + glm::vec3(std::cos(angle), 0.0f, std::sin(angle)) * (LabSpec::kHiveRadius + 1.3f);
+    glm::vec3 feet = nest + glm::vec3(std::cos(angle), 0.0f, std::sin(angle)) * 3.0f;
     glm::vec3 onMesh;
     if (m_nav.NearestPoint(feet, 2.0f, onMesh))
     {
@@ -1434,7 +1621,9 @@ void PredationGame::WrapInCocoon(uint8_t player, const Creature& creature)
 void PredationGame::UpdateCocoons(float dt)
 {
     // Slowly: long enough for somebody to come, and not so long that there is no hurry.
-    constexpr float kBleed = 4.0f; // health a second
+    // Slowly. Long enough for the others to fight their way to the nest and cut somebody out, which is
+    // the whole point of leaving them alive in there.
+    constexpr float kBleed = 1.1f; // health a second: about a minute and a half from full
     for (size_t i = 0; i < m_cocoons.size();)
     {
         Cocoon& cocoon = m_cocoons[i];

@@ -42,6 +42,10 @@ struct CreatureTraits
     float stealth = 0.5f;
     // How much more it wants somebody on their own than somebody with company.
     float isolationPreference = 0.5f;
+    // How much of a nest-builder it is. Past two thirds it makes one somewhere dark and out of the way,
+    // takes what it catches there, and goes back to it to heal; the rest never build anything.
+    float nesting = 0.0f;
+    bool Nests() const { return nesting > 0.66f; }
 
     // Seconds it will stalk one person before patience runs out.
     float StalkPatienceSeconds() const { return 10.0f + 30.0f * patience; }

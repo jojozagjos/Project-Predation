@@ -63,6 +63,9 @@ CreatureTraits CreatureTraits::FromSeed(uint32_t seed)
     traits.patience = random.Range(0.1f, 1.0f);
     traits.stealth = random.Range(0.1f, 1.0f);
     traits.isolationPreference = random.Range(0.2f, 1.0f);
+    // Drawn last, so every seed keeps the temperament it had: how much of a nest-builder it is. Most are
+    // not; the ones that are take what they catch home.
+    traits.nesting = random.Range(0.0f, 1.0f);
     return traits;
 }
 
@@ -71,9 +74,9 @@ std::string CreatureTraits::Describe() const
     char line[320];
     std::snprintf(line, sizeof(line),
                   "seed %u  aggression %.2f  fear %.2f  curiosity %.2f  persistence %.0fs  "
-                  "senses x%.2f  run %.1f m/s  patience %.2f  stealth %.2f  prefers loners %.2f",
+                  "senses x%.2f  run %.1f m/s  patience %.2f  stealth %.2f  prefers loners %.2f%s",
                   seed, aggression, fear, curiosity, persistence, perception, runSpeed, patience, stealth,
-                  isolationPreference);
+                  isolationPreference, Nests() ? "  nests" : "");
     return line;
 }
 

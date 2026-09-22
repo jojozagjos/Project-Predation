@@ -149,6 +149,9 @@ struct CreatureIntent
     int cocoonTarget = -1;
     // Calling to the others, on the tick it does.
     bool roar = false;
+    // Set on the one tick it finishes a nest, and where. The game builds it there.
+    bool buildHive = false;
+    glm::vec3 hiveAt{0.0f};
     // A door: set on the tick it pulls one open, and on each blow against one that is locked.
     int openDoor = -1;
     int bashDoor = -1;
@@ -171,7 +174,9 @@ enum class Behavior : uint8_t
     // Curious, not hungry: following somebody at a distance, openly, to watch them.
     Observe,
     // Carrying somebody it has hold of away from the others, to kill them, or to its nest.
-    Drag
+    Drag,
+    // Making a nest somewhere dark and out of the way: what it takes its catches back to.
+    Nest
 };
 
 const char* BehaviorName(Behavior behavior);
@@ -501,6 +506,13 @@ private:
     bool m_dragArrived = false;
     float m_nextBite = 0.0f;
     bool PickDragPoint(const CreatureSenses& senses, int victim, glm::vec3& out);
+    // Somewhere to build: dark, out of the way, and nowhere anybody walks.
+    bool PickNestSite(const CreatureSenses& senses, glm::vec3& out);
+    // Building: where, and when it started work.
+    glm::vec3 m_nestSite{0.0f};
+    bool m_haveNestSite = false;
+    float m_nestWorkStarted = -1.0f;
+    float m_nestThoughtAt = 0.0f;
     // Looking round: the way it was facing when it started, which the head swings either side of.
     glm::vec3 m_lookBase{0.0f, 0.0f, -1.0f};
     bool m_lookBaseSet = false;

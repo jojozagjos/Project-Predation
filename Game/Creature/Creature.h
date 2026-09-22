@@ -125,6 +125,9 @@ public:
     // carries the number it was sent.
     uint8_t NetId() const { return m_netId; }
     void SetNetId(uint8_t id) { m_netId = id; }
+    // The walkable surface it plans over. Given again when the level changes shape and the mesh is
+    // rebuilt into a different object.
+    void SetNav(const NavMesh* nav) { m_nav = nav; }
 
     // On a machine that is only shown it: the newest state the host sent, and, each frame, easing
     // the body towards it. A little ahead of it, too, by the speed it was going, because the state

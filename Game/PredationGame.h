@@ -32,6 +32,7 @@
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
 
+#include <future>
 #include <map>
 #include <memory>
 #include <random>
@@ -150,6 +151,8 @@ private:
         bool jumpWasDown = false;
     };
     std::map<uint8_t, Grip> m_grips;
+    // Until when each player cannot be grabbed again, having just got free of something.
+    std::map<uint8_t, float> m_grabImmunity;
     // What the player pressed this tick, for struggling in a grip.
     PlayerInput m_lastInput;
     // Players wrapped up at a nest, alive, until somebody cuts them free or it kills them.
@@ -171,10 +174,31 @@ private:
     };
     std::vector<Call> m_calls;
     std::vector<Call> m_callsHeard;
-    // The nests, where creatures take what they catch and go back to heal.
-    std::vector<glm::vec3> m_hives;
-    // Where a creature stands at each: the floor nearest the middle of the mound.
-    std::vector<glm::vec3> m_hiveStands;
+    // The nests creatures have built: where each is, where one stands beside it, which creature made it
+    // and what it looks like. Nothing is here at the start of a game: a nest exists only because
+    // something built it.
+    struct Nest
+    {
+        glm::vec3 at{0.0f};
+        glm::vec3 stand{0.0f};
+        uint8_t owner = 0;
+        uint16_t seed = 0;
+        Entity entity;
+        MeshHandle mesh;
+        BodyHandle body;
+    };
+    std::vector<Nest> m_nests;
+    void BuildNest(const glm::vec3& at, uint16_t seed, uint8_t owner, bool announce);
+    void ClearNests();
+    // The nest nearest a point, when there is one within `reach`.
+    const Nest* NestNear(const glm::vec3& point, float reach) const;
+    // Rebuilding the walkable surface on a worker thread after the level has changed shape, and putting
+    // it in place once it is ready.
+    void RequestNavRebuild();
+    void FinishNavRebuild();
+    std::future<void> m_navRebuild;
+    std::unique_ptr<NavMesh> m_navSpare;
+    bool m_navRebuilding = false;
     // What is drawn round each cocooned player, on every machine, and what somebody uses to cut them out.
     std::map<uint8_t, Entity> m_cocoonEntities;
     MeshHandle m_cocoonMesh;
@@ -184,6 +208,9 @@ private:
     void PinPlayer(uint8_t player, uint8_t by, bool cocooned, const glm::vec3& feet, float yaw);
     void TryGrab(Creature& creature, int target, const std::vector<SensedPlayer>& players);
     void ReleaseGrip(uint8_t player, const char* why);
+    // Whether a creature has hold of this machine's player, or has them wrapped up: no shooting, no
+    // reloading, no using anything while something has you.
+    bool HeldLocally() const;
     void UpdateGrips(float dt);
     void WrapInCocoon(uint8_t player, const Creature& creature);
     void UpdateCocoons(float dt);

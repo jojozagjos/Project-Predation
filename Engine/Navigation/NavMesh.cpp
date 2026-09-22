@@ -579,6 +579,12 @@ size_t NavMesh::JumpCount() const
     return m_impl != nullptr ? m_impl->jumps : 0;
 }
 
+void NavMesh::Swap(NavMesh& other)
+{
+    std::swap(m_impl, other.m_impl);
+    std::swap(m_settings, other.m_settings);
+}
+
 bool NavMesh::FindPath(const glm::vec3& from, const glm::vec3& to, std::vector<glm::vec3>& corners,
                        bool* reached, std::vector<uint8_t>* jumps, uint16_t allowed) const
 {
