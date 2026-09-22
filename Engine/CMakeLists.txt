@@ -96,10 +96,8 @@ set(PRED_ENGINE_SOURCES
     Net/SocketSystem.cpp
     Net/LobbyProtocol.h
     Net/LobbyProtocol.cpp
-    Net/LobbyDirectory.h
-    Net/LobbyDirectory.cpp
-    Net/LobbyServer.h
-    Net/LobbyServer.cpp
+    Net/Http.h
+    Net/Http.cpp
     Net/LobbyClient.h
     Net/LobbyClient.cpp
     Navigation/NavMesh.h
@@ -149,7 +147,7 @@ target_link_libraries(PredationEngine
 target_link_libraries(PredationEngine PRIVATE RecastNavigation::Recast RecastNavigation::Detour)
 
 if(WIN32)
-    target_link_libraries(PredationEngine PUBLIC psapi ws2_32 iphlpapi)
+    target_link_libraries(PredationEngine PUBLIC psapi ws2_32 iphlpapi winhttp)
 else()
     # Sockets are in libc here, so there is no equivalent of ws2_32 to name. Threads and the dynamic
     # loader are: bgfx opens its graphics driver at run time rather than linking against one, which

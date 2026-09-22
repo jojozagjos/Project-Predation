@@ -1,0 +1,37 @@
+# Runs the lobby server's tests whenever its code changes. The server is a Cloudflare Worker
+# (Tools/LobbyWorker, Docs/SERVER.md); its decisions are plain JavaScript that Node can test with
+# nothing installed. Free for a public repository.
+name: Lobby server tests
+
+on:
+  push:
+    paths:
+      - "Tools/LobbyWorker/**"
+      - ".github/workflows/lobby-worker.yml"
+  pull_request:
+    paths:
+      - "Tools/LobbyWorker/**"
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: Tools/LobbyWorker
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Test
+        working-directory: Tools/LobbyWorker
+        run: node --test "test/*.test.js"
+      - name: The local server starts and answers
+        working-directory: Tools/LobbyWorker
+        run: |
+          node local-server.js 8787 3478 &
+          PID=$!
+          sleep 1
+          curl -fsS http://127.0.0.1:8787/ | tee answer.json
+          kill $PID
+          grep -q '"ok":true' answer.json

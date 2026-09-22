@@ -1425,42 +1425,50 @@ monthly allowance switches the machine off when it runs out. This project has al
 for a month that way, on another game.
 
 So the server only makes introductions. A host asks it for a code; a guest asks to be introduced to
-that code; the server tells each where the other is — the outside address it saw each one come from,
-plus the addresses each reports inside its own network — and both then send to every address of the
+that code; the server tells each where the other might be, and both then send to every address of the
 other at once. Each router sees its own machine's packet go out first, takes the other's for the
-reply, and lets it in. An open lobby costs sixty bytes every two seconds; a join, a handful of
-datagrams once.
+reply, and lets it in. That is hole punching, and the game then runs PC to PC.
 
-This is hole punching, which ADR-058 retired, and what went wrong then does not happen now. The two
-failures were that the players swapped the descriptions by hand, and that ICE decided which end was
-in charge from the order things happened in, so the pasting raced and both ends kept claiming the
-same role. Here the server carries the descriptions, and there are no roles to agree: the host is the
-host, it answers probes, and the guest connects to whichever of its addresses answered first. No ICE
-and no library — it is a token, a probe and a reply, over the game's own socket.
+It is hole punching again, which ADR-058 retired, but neither of the things that went wrong then can
+happen now. The players swapped descriptions by hand, and now the server carries them. ICE decided
+which end was in charge from the order things happened, so the pasting raced and both ends claimed the
+same role; now there are no roles to agree -- the host answers probes and the guest connects to
+whichever of its addresses answered first. No ICE and no library: a token, a probe and a reply, over
+the game's own socket.
 
-That last point is load-bearing. A hole a router opens is for one socket talking to one address, so
-the lobby conversation and the probes have to go through the socket the game then plays over. The
-transport gained a side door for that (`Open`, `SendUnframed`, `TakeUnframed`): anything arriving that
-is not the game's is kept for whoever asks, bounded, and the lobby client asks. The guest's transport
-is opened before there is a game on it, used for the introduction, and then handed to the session to
-connect over, holes and all.
+The server is a Cloudflare Worker (`Tools/LobbyWorker`), not a machine. That was chosen over running
+the same thing as a UDP program on a free virtual machine, which was built first and worked: a Worker
+needs no card, no machine to keep patched and nothing opened on any firewall, cannot be reclaimed for
+sitting idle, is deployed from GitHub with a button, and Cloudflare does not charge for bandwidth at
+all. Its free plan's limit is requests per day, which resets daily rather than shutting anything off
+for a month; an evening of play is about fifteen hundred.
 
-What it cannot do is get through a router that changes its outside port for every destination. The
-host also asks its own router to forward the game port (UPnP) and offers that address as one more
-candidate, which covers a guest behind the strict router; a pair where both are strict fails with a
-message that says so and what to try. A relay fallback on the same server, capped and used only for
-those pairs, is the obvious next step if that turns out to matter.
+A Worker only speaks HTTP, so it cannot see what a game's UDP socket looks like from outside. Public
+STUN servers answer exactly that question (Cloudflare's and Google's, both free); the game asks two of
+them through its own socket, and if they see different outside ports the router is one that makes a
+new hole for every destination, which punching cannot pass -- the host is warned in its lobby. The
+Worker adds one guess of its own: the address the web request came from with the game's port, which
+most home routers keep. The host's router is also asked (UPnP) to let people straight in, as one more
+address to offer.
 
-The server is four portable files and a main, no database, all state in memory. A host whose server
-restarted is told its code is unknown on its next update and asks again for the same one, which it
-gets if nobody else has taken it. It runs on Oracle Cloud's free tier (10 TB a month outbound) and is
-built there from source by a script; GitHub builds it on Linux, on both kinds of processor, whenever
-its files change. Nothing about it is built into the game's package.
+Everything that has to reach another player goes through the game's own socket, because a hole a
+router opens is for one socket only -- the STUN answer too, which is only true of the socket that
+asked. The transport gained a side door for that (`Open`, `SendUnframed`, `TakeUnframed`): anything
+arriving that is not the game's is kept, bounded, for the lobby client. The guest's transport is
+opened before there is a game on it, used for STUN, the introduction and the probes, and then handed
+to the session to connect over, holes and all.
 
 The lobby itself is a screen, not a server feature: the host's session runs from the moment it hosts,
-guests connect and wait, and the roster the host already sends carries one more bit — started. A guest
-goes into the world when that bit is set, so everybody goes in together when the host presses Start,
-and anybody who joins later goes straight in.
+guests connect and wait, and the roster the host already sends carries one more bit -- started. Guests
+go into the world when it is set, so everybody goes in together, and anybody later goes straight in.
+
+The Worker keeps its lobbies in memory in one Durable Object. If Cloudflare restarts it, each host is
+told on its next check-in that its code is unknown and asks again for the same one, which it gets
+back. The lobby logic is one plain JavaScript file run three ways -- by the Worker, by a local Node
+server for testing on one PC, and by its tests, which GitHub runs.
+
+What it cannot do is connect two players whose routers are both strict. A relay for just those pairs
+is the obvious next step if it turns out to matter.
 
 ## ADR-068: A game on the same network is asked for, not only listened for
 

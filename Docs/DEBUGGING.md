@@ -76,16 +76,15 @@ Multiplayer, from the console or `--exec`:
 | `lobby_join <code>` | Join by code, as the join box does |
 | `lobby_start` | Leave the lobby for the game, as the host's Start button does |
 | `lobby_state` | Role, state, code, how the lobby server sees this PC, and whether the game has started |
-| `lobby_use <address> [port]` | Use a lobby server for this run only, without saving it |
-| `lobby_server_local [port]` | Run a lobby server inside this game and use it (developer builds) |
+| `lobby_use <web address> [stun host:port]` | Use a lobby server (and STUN server) for this run only, without saving it |
 | `host_lan [name]` | Host and go straight in, skipping the lobby |
 | `games` | What this PC can see: games on its network, and public ones |
 
-Two copies on one PC, joining by code, with no server anywhere (the first copy's log says the code
-after "open as"):
+Two copies on one PC, joining by code through the local lobby server (`node Tools/LobbyWorker/local-server.js`;
+the first copy's log says the code after "open as"):
 
-    ProjectPredation.exe --exec lobby_server_local --exec "lobby_host kitchen" --exec "wait 4000" --exec lobby_start
-    ProjectPredation.exe --exec "lobby_use 127.0.0.1" --exec "lobby_join BYHHZT" --exec "wait 1500" --exec lobby_state
+    ProjectPredation.exe --exec "lobby_use http://127.0.0.1:8787 127.0.0.1:3478" --exec "lobby_host kitchen" --exec "wait 4000" --exec lobby_start
+    ProjectPredation.exe --exec "lobby_use http://127.0.0.1:8787 127.0.0.1:3478" --exec "lobby_join 3Z6PHF" --exec "wait 1500" --exec lobby_state
 
 Every sound the game plays is logged at debug level with its name (`--log-level debug`), which is how
 the burst of door and drop sounds on joining a game was found.

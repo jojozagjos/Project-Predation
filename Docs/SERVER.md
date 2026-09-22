@@ -4,144 +4,104 @@ The lobby server is what makes codes work. A host asks it for a code; a friend t
 server tells each of them where the other is; and then the two games connect **straight to each
 other**. The game itself never goes through the server.
 
-That last part is why it is cheap to run. The old relay passed every byte of every game through
-itself, which is exactly the kind of thing that runs out of bandwidth and gets a server switched off
-for the month. The lobby server only makes introductions:
+It runs free on **Cloudflare Workers**, set up from your GitHub in a couple of minutes, with no card,
+no machine to look after, and nothing that can be switched off for using too much bandwidth.
 
-| | Traffic |
-|---|---|
-| An open lobby | about 60 bytes every 2 seconds |
-| Somebody joining | a handful of messages, once |
-| A full evening of four-player games | well under a megabyte |
+## Why this and not a machine somewhere
 
-Oracle Cloud's free tier includes 10 TB of outgoing traffic a month. You will never get near it.
+| | Cloudflare Worker (this) | A virtual machine (Oracle, Google...) |
+|---|---|---|
+| Setup | sign in, press Deploy | make a machine, open ports, install, keep it updated |
+| Card needed | no | yes |
+| Bandwidth bill | none: Cloudflare does not charge for it | free allowance, then billed |
+| Can be switched off | no; a daily request limit resets at midnight UTC | idle machines get reclaimed |
+| Looked after by | Cloudflare | you |
 
-## What is running where
+The free plan allows 100,000 requests a day. A host in its lobby checks in every 2.5 seconds and every
+5 seconds once playing, so a two-hour evening is about 1,500 requests: dozens of evenings a day before
+the limit is anywhere near. If it were ever reached, codes would stop working until midnight UTC and
+games already running would carry on, because they do not use the server.
+
+## How it works
 
 ```
-   Host's PC  ──── "give me a code" ────►  Lobby server  ◄──── "join ABC123" ────  Friend's PC
-       │                                   (introduces)                               │
-       └──────────────── the game itself, directly, PC to PC ─────────────────────────┘
+   Host's PC ──── "give me a code" ─────►  Lobby server  ◄──── "join ABC123" ──── Friend's PC
+       │                                  (introduces)                              │
+       │   ◄── "what do I look like from outside?" ──►  public STUN servers  ◄──►   │
+       └──────────────── the game itself, directly, PC to PC ────────────────────────┘
 ```
 
-The server is one small program (`Tools/LobbyServer/main.cpp` plus four files in `Engine/Net`). It
-keeps everything in memory, has no database, and needs no maintenance. If it restarts, hosts ask
-again by themselves and get their old codes back.
+1. Each game asks a free public **STUN** server (Cloudflare's and Google's) what its connection looks
+   like from outside: its router's address and the port the router gave it.
+2. The host tells the lobby server that, and gets a code.
+3. A friend types the code. The server gives the friend the host's addresses, and gives the host the
+   friend's on its next check-in.
+4. Both games send to each other at once, which opens both routers (hole punching), and connect.
 
-## Setting it up on Oracle Cloud, free
+The server's code is in `Tools/LobbyWorker`. It keeps everything in memory and needs no database. If
+Cloudflare ever restarts it, hosts find out on their next check-in and get their codes back.
 
-About twenty minutes, once. You need an email address and a card. Oracle checks the card is real but
-does not charge anything for the free machines.
+## Setting it up
 
-### 1. Make the account
+About five minutes, once.
 
-1. Go to <https://www.oracle.com/cloud/free/> and press **Start for free**.
-2. Pick a **home region** near where you and your friends live. It cannot be changed later.
-3. Finish signing up. It can take a few minutes for the account to be ready.
+1. **Make a Cloudflare account** at <https://dash.cloudflare.com/sign-up>. It is free and asks for no
+   card. (Signing in with Google or GitHub works if you would rather not make a password.)
 
-### 2. Make the machine
+2. **Deploy it**, one of two ways:
 
-1. In the Oracle Cloud console, open the menu (top left) → **Compute** → **Instances** →
-   **Create instance**.
-2. Name it anything, for example `predation-lobby`.
-3. **Image**: press *Change image* and pick **Ubuntu** (the newest version listed).
-4. **Shape**: press *Change shape*. Either of these is free and is far more than the server needs:
-   - **Ampere** → `VM.Standard.A1.Flex` with 1 OCPU and 6 GB of memory, or
-   - **AMD** → `VM.Standard.E2.1.Micro`.
+   - **The button** (quickest). Open <https://github.com/jojozagjos/Project-Predation/tree/main/Tools/LobbyWorker>
+     and press **Deploy to Cloudflare**. It asks to connect your GitHub, makes a small copy of the
+     server in a new repository of yours, and deploys it. Changes made to the game's copy later do not
+     reach that one; press the button again to pick them up.
+   - **Straight from this repository** (updates itself). In the Cloudflare dashboard: **Workers &
+     Pages → Create → Import a repository**, connect GitHub, pick **Project-Predation**, and set the
+     **root directory** to `Tools/LobbyWorker`. Press Deploy. From then on, every push that changes the
+     server redeploys it by itself.
 
-   Both are marked *Always Free-eligible*. If Oracle says it is **out of capacity** for one, try the
-   other, or try again later.
-5. **Networking**: leave it creating a new network, and make sure **Assign a public IPv4 address** is
-   on.
-6. **SSH keys**: choose **Generate a key pair for me** and press **Save private key**. Keep that file
-   somewhere safe: it is how you get into the machine.
-7. Press **Create**. After a minute it says *Running*. Note the **Public IP address** on its page.
+3. **Copy its address.** When it finishes, Cloudflare shows the Worker's address, like
+   `https://predation-lobby.yourname.workers.dev`. Opening it in a browser should show
+   `{"ok":true,"lobbies":0}`.
 
-### 3. Open the door in Oracle's network
+4. **Give it to the game.** In the game: **Settings → Multiplayer → Lobby server**, paste the address.
+   Everybody needs the same one, so the easiest thing is to have it built into the game as the
+   default: it is `net.lobby_server` near the top of `Game/PredationGame.cpp`. Send it over and it goes
+   in.
 
-Oracle blocks everything except SSH until you say otherwise.
+That is all. There is no port to open anywhere and nothing to keep running.
 
-1. On the instance's page, click the **subnet** link (under *Primary VNIC*).
-2. Open its **Security Lists**, then the **Default Security List**.
-3. Press **Add Ingress Rules** and fill in:
-   - **Source CIDR**: `0.0.0.0/0`
-   - **IP Protocol**: `UDP`
-   - **Destination Port Range**: `27020`
-4. Press **Add Ingress Rules**.
+## Watching it
 
-### 4. Log in and install the server
-
-On your PC, open **PowerShell** and type (with your key file's real path and the machine's IP):
-
-```powershell
-ssh -i C:\Users\you\Downloads\ssh-key.key ubuntu@123.45.67.89
-```
-
-If it says the key's permissions are too open, run this once and try again:
-
-```powershell
-icacls C:\Users\you\Downloads\ssh-key.key /inheritance:r /grant:r "$($env:USERNAME):R"
-```
-
-Once you are in (the prompt changes to `ubuntu@...`), paste this and press Enter:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/jojozagjos/Project-Predation/main/Tools/LobbyServer/setup-linux.sh | bash
-```
-
-It installs a compiler, downloads just the server's source, builds it, sets it up to start whenever
-the machine starts, and opens port 27020 in the machine's own firewall. At the end it prints the
-server's address.
-
-### 5. Stop Oracle switching it off
-
-Oracle stops free machines that look idle for a week, and a lobby server is idle nearly all the time.
-To prevent that, upgrade the account to **Pay As You Go** (console → your profile → *Upgrade and
-Manage Payment*). Free resources stay free: you are only charged for going past the Always Free
-limits, and this server comes nowhere near them. If you would rather not, the machine is *stopped*,
-not deleted, and pressing **Start** on its page brings it back.
-
-### 6. Point the game at it
-
-In the game: **Settings → Multiplayer → Lobby server**, and type the machine's public IP. Everybody
-who plays needs the same address there. Once it is working, the address can be built into the game as
-the default so nobody has to type it: it is the `net.lobby_server` setting near the top of
-`Game/PredationGame.cpp`.
-
-## Looking after it
-
-| To | Run on the server |
-|---|---|
-| Watch what it is doing | `sudo journalctl -u predation-lobby -f` |
-| See whether it is running | `sudo systemctl status predation-lobby` |
-| Restart it | `sudo systemctl restart predation-lobby` |
-| Update it to the newest code | run the same `curl ... | bash` line again |
-
-The log shows each lobby opening and closing and each introduction, with the addresses involved, and
-an hourly summary.
+In the Cloudflare dashboard, open the Worker, then **Logs**: each lobby opening, each introduction and
+each close is a line. **Metrics** shows requests per day against the free limit.
 
 ## When a friend cannot connect
 
 The game says what went wrong in words. The usual ones:
 
 - **"There is no game with that code."** Typo, or the host has closed the game.
-- **"The lobby server is not answering."** The server is down, the address in Settings is wrong, or
-  port 27020 is not open (step 3 above). `sudo systemctl status predation-lobby` on the server tells
-  you which.
-- **"Found the game, but could not connect to the host directly."** Both routers were introduced, but
-  one of them will not let the connection through. This happens with some phone hotspots and office
-  networks. Let the other person host, or both install Tailscale and join by address (see
-  HOSTING.md).
+- **"The lobby server is not answering."** The address in Settings is wrong, or there is no internet.
+  Opening the address in a browser tells you which.
+- **"Your router is strict"** (shown to a host) or **"could not connect to the host directly"** (shown
+  to a friend). One of the routers makes a new outside port for every destination, which hole punching
+  cannot get through. Some phone hotspots and office networks do this. Let the other person host, or
+  both install Tailscale and join by address (see HOSTING.md).
 
-## Testing without a server
+## Testing on one PC
 
-With developer tools on, the console command `lobby_server_local` runs a lobby server inside that copy
-of the game, and `lobby_use 127.0.0.1` points another copy at it. Neither is saved, so testing leaves
-the settings as they were. The automated tests (`PredationTests "[lobby]"`) do the same with a real
-server and two real games on this PC.
+`node Tools/LobbyWorker/local-server.js` runs the same server locally (plain Node, nothing to install),
+with a STUN responder standing in for the public ones. Then in each copy of the game's console:
 
-## Running it somewhere else
+```
+lobby_use http://127.0.0.1:8787 127.0.0.1:3478
+```
 
-Any Linux machine with a public address works; `setup-linux.sh` is written for Ubuntu and Debian. The
-server can also be built on Windows (`cmake --preset windows-release -DPRED_BUILD_LOBBY_SERVER=ON`) and
-run on a PC with UDP 27020 forwarded to it, but a machine that is always on is the point of it.
+`lobby_use` is for that run only and is not saved. The server's own tests are
+`node --test "Tools/LobbyWorker/test/*.test.js"`, and GitHub runs them on every change to the server.
+The game's side is tested in `Tests/LobbyTests.cpp` with a stand-in server and real sockets.
+
+## Later: a server of our own
+
+If the game ever needs a dedicated server, this stays useful: introductions are a separate job from
+running a game. The lobby logic is one small file (`src/lobbies.js`) that runs the same under Node, so
+moving it onto any machine is a matter of wrapping it in `local-server.js`.

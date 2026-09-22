@@ -1,11 +1,14 @@
 #include "Engine/Net/LobbyClient.h"
 
 #include "Engine/Core/Log.h"
-#include "Engine/Net/SocketSystem.h"
 #include "Engine/Net/Transport.h"
+
+#include <nlohmann/json.hpp>
 
 #include <algorithm>
 #include <chrono>
+#include <random>
+#include <thread>
 
 #if defined(_WIN32)
 #    include <winsock2.h>
@@ -22,17 +25,21 @@ namespace pred
 namespace
 {
 
-// How often to ask the server while it has not answered, to tell it a lobby is still open, to try
-// the next address of a player, and to ask what is open.
+// How often to ask the lobby server while waiting on it, how often a host checks in (and hears who
+// is coming), how often to try the next address of a player, and how often to ask what is open.
+//
+// A host in its lobby checks in every two and a half seconds, because a guest waits that long at
+// most to be let in. Once the game has started, every five, which is plenty for somebody joining
+// late and halves what an evening costs the server.
 constexpr float kAskSeconds = 1.0f;
-constexpr float kUpdateSeconds = 2.0f;
+constexpr float kLobbyUpdateSeconds = 2.5f;
+constexpr float kGameUpdateSeconds = 5.0f;
 constexpr float kProbeSeconds = 0.2f;
-constexpr float kListSeconds = 2.0f;
-// A host that hears nothing back from its updates for this long says so, and keeps trying.
-constexpr float kServerSilenceSeconds = 10.0f;
-// And a host whose server has gone asks again this often, rather than giving up for good: a wifi
-// blip should cost a lobby a few seconds, not the evening.
+constexpr float kListSeconds = 3.0f;
 constexpr float kRetrySeconds = 5.0f;
+// STUN: how often to ask each server, and how long to wait for them before going on without.
+constexpr float kStunResendSeconds = 0.4f;
+constexpr float kStunSeconds = 2.0f;
 
 // A name looked up away from the frame. Offline, a lookup can take seconds to fail, and the game
 // would sit frozen for all of them.
@@ -51,32 +58,77 @@ uint32_t Resolve(const std::string& name)
     return address;
 }
 
+// A future from std::async waits for its work to finish when it is destroyed. Dropping one for a
+// request still out on the network would freeze the game until the request timed out, so an
+// unwanted one is handed to a thread that waits for it instead.
+template <typename T>
+void Abandon(std::future<T>& future)
+{
+    if (future.valid())
+    {
+        std::thread([pending = std::move(future)]() mutable { pending.wait(); }).detach();
+    }
+}
+
+std::string BaseUrl(std::string server)
+{
+    while (!server.empty() && (server.back() == '/' || server.back() == ' '))
+    {
+        server.pop_back();
+    }
+    server.erase(0, server.find_first_not_of(' '));
+    if (server.find("://") == std::string::npos)
+    {
+        server = "https://" + server;
+    }
+    return server;
+}
+
+uint32_t TokenFrom(const nlohmann::json& value)
+{
+    if (!value.is_string())
+    {
+        return 0;
+    }
+    try
+    {
+        return static_cast<uint32_t>(std::stoul(value.get<std::string>(), nullptr, 16));
+    }
+    catch (...)
+    {
+        return 0;
+    }
+}
+
+std::vector<LobbyEndpoint> EndpointsFrom(const nlohmann::json& value)
+{
+    std::vector<LobbyEndpoint> out;
+    if (!value.is_array())
+    {
+        return out;
+    }
+    for (const nlohmann::json& item : value)
+    {
+        LobbyEndpoint endpoint;
+        if (item.is_string() && LobbyEndpoint::ParseWithPort(item.get<std::string>(), endpoint) &&
+            out.size() < kLobbyMaxCandidates * 2)
+        {
+            out.push_back(endpoint);
+        }
+    }
+    return out;
+}
+
 } // namespace
 
 LobbyClient::~LobbyClient()
 {
-    Close(nullptr);
-}
-
-std::vector<LobbyEndpoint> LobbyClient::InsideCandidates(uint16_t port) const
-{
-    // Every address this machine has on a network, for somebody in the same house: two PCs behind
-    // one router usually cannot reach each other through its outside address, but can directly.
-    std::vector<LobbyEndpoint> found;
-    for (const std::string& address : LocalNetworkAddresses())
-    {
-        LobbyEndpoint endpoint;
-        if (LobbyEndpoint::Parse(address, port, endpoint) && found.size() < kLobbyMaxCandidates - 1)
-        {
-            found.push_back(endpoint);
-        }
-    }
-    return found;
+    Close();
 }
 
 bool LobbyClient::Begin(Role role, const Settings& settings)
 {
-    Close(nullptr);
+    Close();
     if (settings.server.empty())
     {
         m_message = "No lobby server is set.";
@@ -85,28 +137,101 @@ bool LobbyClient::Begin(Role role, const Settings& settings)
     }
     m_role = role;
     m_settings = settings;
+    m_settings.server = BaseUrl(settings.server);
+    if (!m_settings.request)
+    {
+        m_settings.request = [](const std::string& method, const std::string& url, const std::string& body)
+        { return HttpRequest(method, url, body); };
+    }
     m_elapsed = 0.0f;
     m_sendTimer = 0.0f;
+    m_failures = 0;
     m_message.clear();
-    m_server = LobbyEndpoint{};
-
-    LobbyEndpoint dotted;
-    if (LobbyEndpoint::Parse(settings.server, settings.serverPort, dotted))
-    {
-        m_server = dotted;
-        m_state = State::Contacting;
-        return true;
-    }
-    // A name, such as a free dynamic-DNS one pointing at the server. Looked up on another thread.
-    if (!SocketSystem::Acquire())
-    {
-        Fail("Networking could not be started on this machine.");
-        return false;
-    }
-    m_socketSystem = true;
-    m_resolving = std::async(std::launch::async, Resolve, settings.server);
-    m_state = State::Resolving;
     return true;
+}
+
+void LobbyClient::StartDiscovery()
+{
+    // Asked first, before the lobby server: the answer is the address other players most need.
+    m_stun.clear();
+    m_stunElapsed = 0.0f;
+    m_discovering = true;
+    m_state = State::Resolving;
+    std::random_device entropy;
+    for (const std::string& entry : m_settings.stunServers)
+    {
+        StunQuery query;
+        const size_t colon = entry.rfind(':');
+        query.host = colon == std::string::npos ? entry : entry.substr(0, colon);
+        query.port = static_cast<uint16_t>(colon == std::string::npos ? 3478 : std::atoi(entry.c_str() + colon + 1));
+        for (uint8_t& byte : query.transaction)
+        {
+            byte = static_cast<uint8_t>(entropy() & 0xFFu);
+        }
+        if (!LobbyEndpoint::Parse(query.host, query.port, query.server))
+        {
+            query.resolving = std::async(std::launch::async, Resolve, query.host);
+        }
+        m_stun.push_back(std::move(query));
+    }
+}
+
+void LobbyClient::UpdateDiscovery(float dt, Transport* transport)
+{
+    m_stunElapsed += dt;
+    int answered = 0;
+    for (StunQuery& query : m_stun)
+    {
+        if (query.resolving.valid() &&
+            query.resolving.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
+        {
+            query.server = LobbyEndpoint{query.resolving.get(), query.port};
+        }
+        answered += query.answered ? 1 : 0;
+        if (query.answered || !query.server.Valid() || transport == nullptr)
+        {
+            continue;
+        }
+        query.sendTimer -= dt;
+        if (query.sendTimer <= 0.0f)
+        {
+            query.sendTimer = kStunResendSeconds;
+            const std::vector<uint8_t> request = EncodeStunRequest(query.transaction);
+            transport->SendUnframed(query.server.AddressText(), query.server.port, request.data(), request.size());
+        }
+    }
+
+    if (answered < static_cast<int>(m_stun.size()) && m_stunElapsed < kStunSeconds)
+    {
+        return;
+    }
+
+    // Done: every server answered, or it is time to go on with what there is.
+    m_discovering = false;
+    for (StunQuery& query : m_stun)
+    {
+        Abandon(query.resolving);
+    }
+    std::vector<LobbyEndpoint> seen;
+    for (const StunQuery& query : m_stun)
+    {
+        if (query.answered)
+        {
+            seen.push_back(query.mapped);
+        }
+    }
+    if (!seen.empty())
+    {
+        m_seenAs = seen.front();
+    }
+    // Two servers, two different outside ports for the same socket: this router makes a new hole for
+    // every destination, and a hole made for the STUN server is no use to anybody else.
+    m_strictRouter = seen.size() >= 2 && seen[0].port != seen[1].port;
+    PRED_LOG_INFO(Network, "Lobby: seen from outside as {}{}", m_seenAs.Valid() ? m_seenAs.ToString() : "(no answer)",
+                  m_strictRouter ? " -- a strict router, which may not let other players through" : "");
+    m_state = State::Contacting;
+    m_sendTimer = 0.0f;
+    m_elapsed = 0.0f;
 }
 
 bool LobbyClient::Host(const Settings& settings, const std::string& name, bool listed, uint8_t maxPlayers,
@@ -120,8 +245,8 @@ bool LobbyClient::Host(const Settings& settings, const std::string& name, bool l
     m_listed = listed;
     m_maxPlayers = maxPlayers;
     m_gamePort = gamePort;
-    PRED_LOG_INFO(Network, "Lobby: opening \"{}\" at {}:{}{}", name, settings.server, settings.serverPort,
-                  listed ? ", public" : "");
+    StartDiscovery();
+    PRED_LOG_INFO(Network, "Lobby: opening \"{}\" at {}{}", name, m_settings.server, listed ? ", public" : "");
     return true;
 }
 
@@ -133,44 +258,46 @@ bool LobbyClient::Join(const Settings& settings, uint32_t code, uint16_t localPo
     }
     m_joinCode = code;
     m_localPort = localPort;
-    PRED_LOG_INFO(Network, "Lobby: asking {}:{} for {}", settings.server, settings.serverPort,
-                  DecodeLobbyCode(code));
+    StartDiscovery();
+    PRED_LOG_INFO(Network, "Lobby: asking {} for {}", m_settings.server, DecodeLobbyCode(code));
     return true;
 }
 
 bool LobbyClient::Browse(const Settings& settings)
 {
-    return Begin(Role::Browser, settings);
+    if (!Begin(Role::Browser, settings))
+    {
+        return false;
+    }
+    m_state = State::Contacting;
+    return true;
 }
 
-void LobbyClient::Close(Transport* transport)
+void LobbyClient::Close()
 {
-    if (m_role == Role::Host && m_code != 0 && transport != nullptr && m_server.Valid())
+    if (m_role == Role::Host && m_code != 0 && m_settings.request)
     {
-        LobbyPacket close;
-        close.kind = LobbyMessage::Close;
-        close.code = m_code;
-        close.secret = m_secret;
-        SendToServer(transport, close);
+        // Said, and not waited for: the code stops working at once rather than when the server
+        // notices the host has gone quiet. On a thread of its own, because leaving a game must not
+        // wait on a web request.
+        nlohmann::json body{{"code", DecodeLobbyCode(m_code)}, {"secret", m_secret}};
+        std::future<HttpResult> closing = m_settings.request("POST", m_settings.server + "/close", body.dump());
+        Abandon(closing);
         PRED_LOG_INFO(Network, "Lobby: closed {}", CodeText());
     }
-    if (m_resolving.valid())
+    Abandon(m_pending);
+    for (StunQuery& query : m_stun)
     {
-        // A lookup cannot be cancelled. Waited for rather than abandoned, because a future from
-        // std::async waits in its destructor anyway, and doing it here says so.
-        m_resolving.wait();
-        m_resolving = {};
+        Abandon(query.resolving);
     }
-    if (m_socketSystem)
-    {
-        SocketSystem::Release();
-        m_socketSystem = false;
-    }
+    m_stun.clear();
+    m_discovering = false;
     m_role = Role::None;
     m_state = State::Idle;
     m_code = 0;
-    m_secret = 0;
+    m_secret.clear();
     m_seenAs = LobbyEndpoint{};
+    m_strictRouter = false;
     m_extraCandidates.clear();
     m_punches.clear();
     m_joinCode = 0;
@@ -219,9 +346,54 @@ int LobbyClient::Arriving() const
     return arriving;
 }
 
-void LobbyClient::SendToServer(Transport* transport, const LobbyPacket& packet)
+std::vector<std::string> LobbyClient::Candidates(uint16_t port) const
 {
-    SendTo(transport, m_server, packet);
+    // How the outside world sees this socket first, because it is the address that works from
+    // anywhere; then every address this machine has on a network, for somebody in the same house --
+    // two PCs behind one router usually cannot reach each other through its outside address.
+    std::vector<std::string> out;
+    const auto add = [&](const LobbyEndpoint& endpoint)
+    {
+        const std::string text = endpoint.ToString();
+        if (endpoint.Valid() && std::find(out.begin(), out.end(), text) == out.end() &&
+            out.size() < kLobbyMaxCandidates - 1)
+        {
+            out.push_back(text);
+        }
+    };
+    add(m_seenAs);
+    for (const std::string& address : LocalNetworkAddresses())
+    {
+        LobbyEndpoint inside;
+        if (LobbyEndpoint::Parse(address, port, inside))
+        {
+            add(inside);
+        }
+    }
+    for (const LobbyEndpoint& extra : m_extraCandidates)
+    {
+        add(extra);
+    }
+    return out;
+}
+
+std::string LobbyClient::HostBody() const
+{
+    nlohmann::json body{{"version", m_settings.version}, {"name", m_name},       {"listed", m_listed},
+                        {"started", m_started},          {"players", m_players}, {"maxPlayers", m_maxPlayers},
+                        {"localPort", m_gamePort},       {"candidates", Candidates(m_gamePort)}};
+    if (m_code != 0)
+    {
+        body["code"] = DecodeLobbyCode(m_code);
+        body["secret"] = m_secret;
+    }
+    return body.dump();
+}
+
+void LobbyClient::Ask(const std::string& method, const std::string& path, const std::string& body)
+{
+    m_pendingWhat = path;
+    m_pending = m_settings.request(method, m_settings.server + path, body);
 }
 
 void LobbyClient::SendTo(Transport* transport, const LobbyEndpoint& to, const LobbyPacket& packet)
@@ -234,29 +406,6 @@ void LobbyClient::SendTo(Transport* transport, const LobbyEndpoint& to, const Lo
     transport->SendUnframed(to.AddressText(), to.port, bytes.data(), bytes.size());
 }
 
-LobbyPacket LobbyClient::HostPacket(LobbyMessage kind) const
-{
-    LobbyPacket packet;
-    packet.kind = kind;
-    packet.version = m_settings.version;
-    packet.code = m_code;
-    packet.secret = m_secret;
-    packet.players = m_players;
-    packet.maxPlayers = m_maxPlayers;
-    packet.started = m_started;
-    packet.listed = m_listed;
-    packet.name = m_name;
-    packet.candidates = InsideCandidates(m_gamePort);
-    for (const LobbyEndpoint& extra : m_extraCandidates)
-    {
-        if (packet.candidates.size() < kLobbyMaxCandidates)
-        {
-            packet.candidates.push_back(extra);
-        }
-    }
-    return packet;
-}
-
 void LobbyClient::Poll(float dt, Transport* transport)
 {
     if (m_role == Role::None)
@@ -264,71 +413,71 @@ void LobbyClient::Poll(float dt, Transport* transport)
         return;
     }
 
-    if (m_state == State::Resolving)
+    // What arrived on the game's socket that was not the game's: STUN answers and other players'
+    // probes.
+    if (transport != nullptr)
     {
-        if (m_resolving.wait_for(std::chrono::seconds(0)) != std::future_status::ready)
+        for (Transport::UnframedDatagram& datagram : transport->TakeUnframed())
         {
-            return;
+            LobbyEndpoint from;
+            if (!LobbyEndpoint::Parse(datagram.address, datagram.port, from))
+            {
+                continue;
+            }
+            const uint8_t* data = datagram.bytes.data();
+            const size_t bytes = datagram.bytes.size();
+            if (IsStunDatagram(data, bytes))
+            {
+                for (StunQuery& query : m_stun)
+                {
+                    LobbyEndpoint mapped;
+                    if (!query.answered && DecodeStunResponse(data, bytes, query.transaction, mapped))
+                    {
+                        query.answered = true;
+                        query.mapped = mapped;
+                    }
+                }
+                continue;
+            }
+            LobbyPacket packet;
+            if (DecodeLobby(data, bytes, packet))
+            {
+                HandlePeer(transport, packet, from);
+            }
         }
-        const uint32_t address = m_resolving.get();
-        m_resolving = {};
-        if (address == 0)
-        {
-            Fail("Could not find the lobby server (" + m_settings.server +
-                 "). Check your internet connection.");
-            return;
-        }
-        m_server.address = address;
-        m_server.port = m_settings.serverPort;
-        m_state = State::Contacting;
-        m_sendTimer = 0.0f;
-        m_elapsed = 0.0f;
-    }
-    if (transport == nullptr || !m_server.Valid())
-    {
-        return;
     }
 
-    // What arrived.
-    for (Transport::UnframedDatagram& datagram : transport->TakeUnframed())
+    if (m_discovering)
     {
-        LobbyPacket packet;
-        LobbyEndpoint from;
-        if (!LobbyEndpoint::Parse(datagram.address, datagram.port, from) ||
-            !DecodeLobby(datagram.bytes.data(), datagram.bytes.size(), packet))
+        UpdateDiscovery(dt, transport);
+        if (m_discovering)
         {
-            continue;
+            return;
         }
-        if (from == m_server)
-        {
-            HandleServer(transport, packet);
-        }
-        else
-        {
-            HandlePeer(transport, packet, from);
-        }
+    }
+
+    // The lobby server's answer, when it comes.
+    if (m_pending.valid() && m_pending.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
+    {
+        HandleAnswer(m_pending.get());
     }
 
     m_elapsed += dt;
     m_sendTimer -= dt;
+    const bool idle = !m_pending.valid();
 
     switch (m_role)
     {
     case Role::Host:
     {
-        const bool open = m_state == State::Open;
-        if (m_sendTimer <= 0.0f)
+        if (idle && m_sendTimer <= 0.0f)
         {
-            // Asking for a code, or saying the lobby is still here. After a server has gone quiet,
-            // asked less often, and for the same code back if it can have it.
-            m_sendTimer = open ? kUpdateSeconds : (m_state == State::Failed ? kRetrySeconds : kAskSeconds);
-            SendToServer(transport, HostPacket(open ? LobbyMessage::Update : LobbyMessage::Host));
+            const bool open = m_state == State::Open;
+            m_sendTimer = open ? (m_started ? kGameUpdateSeconds : kLobbyUpdateSeconds)
+                               : (m_state == State::Failed ? kRetrySeconds : kAskSeconds);
+            Ask("POST", open ? "/update" : "/host", HostBody());
         }
-        if (open && m_elapsed > kServerSilenceSeconds)
-        {
-            Fail("Lost touch with the lobby server. Still trying. People already here can stay.");
-        }
-        else if (m_state == State::Contacting && m_elapsed > m_settings.answerSeconds)
+        if (m_state == State::Contacting && m_elapsed > m_settings.answerSeconds)
         {
             Fail("The lobby server is not answering, so there is no code to share. People on your "
                  "network can still join from their list.");
@@ -365,18 +514,17 @@ void LobbyClient::Poll(float dt, Transport* transport)
         {
             break;
         }
-        if (m_sendTimer <= 0.0f)
+        if (idle && m_sendTimer <= 0.0f)
         {
-            // Asked again even once introduced, less often: if the host never heard about this guest,
-            // it is not sending, and without its half nothing gets through its router. Asking again
-            // tells it again.
-            m_sendTimer = m_state == State::Punching ? 1.5f : kAskSeconds;
-            LobbyPacket join;
-            join.kind = LobbyMessage::Join;
-            join.version = m_settings.version;
-            join.code = m_joinCode;
-            join.candidates = InsideCandidates(m_localPort);
-            SendToServer(transport, join);
+            // Asked again even once introduced, less often: if the host has not heard about this guest
+            // yet it is not sending, and without its half nothing gets through its router. Asking
+            // again tells it again.
+            m_sendTimer = m_state == State::Punching ? 2.0f : kAskSeconds;
+            nlohmann::json body{{"version", m_settings.version},
+                                {"code", DecodeLobbyCode(m_joinCode)},
+                                {"localPort", m_localPort},
+                                {"candidates", Candidates(m_localPort)}};
+            Ask("POST", "/join", body.dump());
         }
         if (m_state == State::Contacting && m_elapsed > m_settings.answerSeconds)
         {
@@ -398,24 +546,25 @@ void LobbyClient::Poll(float dt, Transport* transport)
                     SendTo(transport, candidate, probe);
                 }
             }
-            if (m_elapsed > m_settings.punchSeconds)
+            m_punchElapsed += dt;
+            if (m_punchElapsed > m_settings.punchSeconds)
             {
-                Fail("Found the game, but could not connect to the host directly: one of your routers "
-                     "blocks it. Try having somebody else host, or both use Tailscale and join by "
-                     "address.");
+                Fail(m_strictRouter
+                         ? "Found the game, but your router will not let a direct connection through. "
+                           "Try having somebody else host, or both use Tailscale and join by address."
+                         : "Found the game, but could not connect to the host directly: one of your "
+                           "routers blocks it. Try having somebody else host, or both use Tailscale and "
+                           "join by address.");
             }
         }
         break;
     }
 
     case Role::Browser:
-        if (m_sendTimer <= 0.0f)
+        if (idle && m_sendTimer <= 0.0f)
         {
             m_sendTimer = kListSeconds;
-            LobbyPacket list;
-            list.kind = LobbyMessage::List;
-            list.version = m_settings.version;
-            SendToServer(transport, list);
+            Ask("GET", "/list?version=" + std::to_string(m_settings.version), {});
         }
         if (m_elapsed > m_settings.answerSeconds)
         {
@@ -430,109 +579,158 @@ void LobbyClient::Poll(float dt, Transport* transport)
     }
 }
 
-void LobbyClient::HandleServer(Transport* transport, const LobbyPacket& packet)
+void LobbyClient::HandleAnswer(const HttpResult& answer)
 {
-    switch (packet.kind)
+    const std::string what = m_pendingWhat;
+    if (answer.status == 0)
     {
-    case LobbyMessage::Hosted:
+        // No answer at all. Counted, and the timers above decide when that becomes worth saying.
+        ++m_failures;
+        if (m_role == Role::Host && m_state == State::Open && m_failures >= 3)
+        {
+            Fail("Lost touch with the lobby server (" + answer.error +
+                 "). Still trying. People already here can stay.");
+        }
+        return;
+    }
+    m_failures = 0;
+    m_elapsed = 0.0f;
+
+    nlohmann::json body = nlohmann::json::parse(answer.body, nullptr, false);
+    if (body.is_discarded() || !body.is_object())
+    {
+        Fail("The lobby server's answer made no sense. Is the address in Settings right?");
+        return;
+    }
+    const std::string error = body.value("error", std::string());
+
+    if (what == "/host" || what == "/update")
+    {
         if (m_role != Role::Host)
         {
-            break;
+            return;
         }
-        if (m_state != State::Open || m_code != packet.code)
+        if (what == "/update" && error == "no-such-lobby")
         {
-            PRED_LOG_INFO(Network, "Lobby: open as {}, seen from outside as {}", DecodeLobbyCode(packet.code),
-                          packet.seenAs.ToString());
+            // The server has forgotten this lobby: it restarted, or it did not hear from us for too
+            // long. Asked again, for the same code -- it hands it back if nobody else has it -- so
+            // anybody already holding the code can still use it.
+            PRED_LOG_WARN(Network, "Lobby: the server forgot {}; opening it again", CodeText());
+            m_state = State::Contacting;
+            m_sendTimer = 0.0f;
+            return;
         }
-        m_code = packet.code;
-        m_secret = packet.secret;
-        m_seenAs = packet.seenAs;
+        if (!error.empty())
+        {
+            Fail(Describe(RejectionFromText(error)));
+            return;
+        }
+        if (what == "/host")
+        {
+            uint32_t code = 0;
+            if (!EncodeLobbyCode(body.value("code", std::string()), code))
+            {
+                Fail("The lobby server's answer made no sense. Is the address in Settings right?");
+                return;
+            }
+            if (m_code != code)
+            {
+                PRED_LOG_INFO(Network, "Lobby: open as {}", DecodeLobbyCode(code));
+            }
+            m_code = code;
+            m_secret = body.value("secret", std::string());
+            m_message.clear();
+            m_state = State::Open;
+            m_sendTimer = kLobbyUpdateSeconds;
+            return;
+        }
         m_state = State::Open;
         m_message.clear();
-        m_elapsed = 0.0f;
-        break;
-
-    case LobbyMessage::Introduce:
-        if (m_role == Role::Host && packet.toHost)
+        // Guests on their way. Already sending to one? Then this is the server repeating itself.
+        if (body.contains("guests") && body["guests"].is_array())
         {
-            // A guest on the way. Already sending to them? Then this is the server repeating itself.
-            for (Punch& punch : m_punches)
+            for (const nlohmann::json& guest : body["guests"])
             {
-                if (punch.token == packet.token)
+                const uint32_t token = TokenFrom(guest.value("token", nlohmann::json()));
+                if (token == 0)
                 {
-                    return;
+                    continue;
                 }
+                const auto known = std::find_if(m_punches.begin(), m_punches.end(),
+                                                [&](const Punch& punch) { return punch.token == token; });
+                // Decided before anything is added: adding moves the end of the list, and asking
+                // afterwards whether this was the end compares against the wrong one.
+                const bool fresh = known == m_punches.end();
+                Punch& punch = fresh ? m_punches.emplace_back() : *known;
+                if (fresh)
+                {
+                    punch.token = token;
+                    PRED_LOG_INFO(Network, "Lobby: somebody is joining; sending to {} address(es)",
+                                  guest.contains("candidates") ? guest["candidates"].size() : 0);
+                }
+                punch.candidates = EndpointsFrom(guest.value("candidates", nlohmann::json::array()));
+                punch.remaining = m_settings.punchSeconds;
+                punch.reached = false;
             }
-            Punch punch;
-            punch.token = packet.token;
-            punch.candidates = packet.candidates;
-            punch.remaining = m_settings.punchSeconds;
-            m_punches.push_back(std::move(punch));
-            PRED_LOG_INFO(Network, "Lobby: somebody is joining from {}, sending to {} address(es)",
-                          packet.candidates.empty() ? std::string("?") : packet.candidates.front().ToString(),
-                          packet.candidates.size());
         }
-        else if (m_role == Role::Guest && !packet.toHost && m_state == State::Contacting)
+        return;
+    }
+
+    if (what == "/join")
+    {
+        if (m_role != Role::Guest || m_state == State::Reached)
         {
-            m_token = packet.token;
-            m_hostCandidates = packet.candidates;
-            m_lobbyName = packet.name;
-            m_seenAs = packet.seenAs;
+            return;
+        }
+        if (!error.empty())
+        {
+            Fail(Describe(RejectionFromText(error)));
+            return;
+        }
+        m_token = TokenFrom(body.value("token", nlohmann::json()));
+        m_hostCandidates = EndpointsFrom(body.value("candidates", nlohmann::json::array()));
+        m_lobbyName = body.value("name", std::string());
+        if (m_state != State::Punching)
+        {
             m_state = State::Punching;
-            m_elapsed = 0.0f;
+            m_punchElapsed = 0.0f;
             std::string where;
             for (const LobbyEndpoint& candidate : m_hostCandidates)
             {
                 where += (where.empty() ? "" : ", ") + candidate.ToString();
             }
-            PRED_LOG_INFO(Network, "Lobby: found \"{}\"; trying {}", packet.name, where);
+            PRED_LOG_INFO(Network, "Lobby: found \"{}\"; trying {}", m_lobbyName, where);
         }
-        break;
+        return;
+    }
 
-    case LobbyMessage::Rejected:
-        if (m_role == Role::Host && m_state == State::Open && packet.reason == LobbyRejection::NoSuchLobby)
+    if (what.rfind("/list", 0) == 0 && m_role == Role::Browser)
+    {
+        m_lobbies.clear();
+        if (body.contains("lobbies") && body["lobbies"].is_array())
         {
-            // The server has forgotten this lobby: it restarted, or it did not hear from us for too
-            // long. Ask again, for the same code -- it hands it back if nobody else has it -- so
-            // anybody already holding the code can still use it.
-            PRED_LOG_WARN(Network, "Lobby: the server forgot {}; opening it again", CodeText());
-            m_state = State::Contacting;
-            m_elapsed = 0.0f;
-            m_sendTimer = 0.0f;
-            (void)transport;
+            for (const nlohmann::json& row : body["lobbies"])
+            {
+                LobbyListing listing;
+                if (!EncodeLobbyCode(row.value("code", std::string()), listing.code))
+                {
+                    continue;
+                }
+                listing.name = row.value("name", std::string()).substr(0, kLobbyMaxNameLength);
+                listing.players = static_cast<uint8_t>(std::clamp(row.value("players", 0), 0, 15));
+                listing.maxPlayers = static_cast<uint8_t>(std::clamp(row.value("maxPlayers", 4), 1, 15));
+                listing.started = row.value("started", false);
+                m_lobbies.push_back(std::move(listing));
+            }
         }
-        else if (m_role == Role::Guest && m_state == State::Contacting)
-        {
-            Fail(Describe(packet.reason));
-        }
-        else if (m_role == Role::Host && m_state != State::Open)
-        {
-            Fail(Describe(packet.reason));
-        }
-        break;
-
-    case LobbyMessage::Listing:
-        if (m_role == Role::Browser)
-        {
-            m_lobbies = packet.lobbies;
-            m_heard = true;
-            m_message.clear();
-            m_state = State::Open;
-            m_elapsed = 0.0f;
-        }
-        break;
-
-    default:
-        break;
+        m_heard = true;
+        m_message.clear();
+        m_state = State::Open;
     }
 }
 
 void LobbyClient::HandlePeer(Transport* transport, const LobbyPacket& packet, const LobbyEndpoint& from)
 {
-    if (packet.kind != LobbyMessage::Probe && packet.kind != LobbyMessage::ProbeReply)
-    {
-        return;
-    }
     if (m_role == Role::Host)
     {
         for (Punch& punch : m_punches)
@@ -559,13 +757,13 @@ void LobbyClient::HandlePeer(Transport* transport, const LobbyPacket& packet, co
         }
         return;
     }
-    if (m_role == Role::Guest && m_state == State::Punching && packet.token == m_token)
+    if (m_role == Role::Guest && m_state == State::Punching && packet.token == m_token && m_token != 0)
     {
         // Whichever of the host's addresses answered first -- or the host's own probe arriving,
         // which proves the same thing. Either way, that is the one to connect to.
         m_reached = from;
         m_state = State::Reached;
-        PRED_LOG_INFO(Network, "Lobby: reached the host at {} after {:.1f} s", from.ToString(), m_elapsed);
+        PRED_LOG_INFO(Network, "Lobby: reached the host at {} after {:.1f} s", from.ToString(), m_punchElapsed);
         if (packet.kind == LobbyMessage::Probe)
         {
             LobbyPacket reply;

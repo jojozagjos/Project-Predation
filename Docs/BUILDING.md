@@ -216,18 +216,14 @@ SERVER.md). On one network the game appears in the list without one.
 
 ## The lobby server
 
-It is not built with the game: it runs on a Linux machine somewhere, and is built there from five
-source files by `Tools/LobbyServer/setup-linux.sh` (SERVER.md walks through it on Oracle Cloud's
-free tier). GitHub builds it on Linux after every change to those files, so a change that would
-break it there shows up as a failed check.
+It is not part of the game's build: it is a Cloudflare Worker in `Tools/LobbyWorker`, a few hundred
+lines of JavaScript, deployed from GitHub (SERVER.md walks through it). GitHub runs its tests after
+every change to it.
 
-To build it on this PC for testing:
+To run it on this PC for testing -- plain Node, nothing to install:
 
 ```
-cmake --preset windows-release -DPRED_BUILD_LOBBY_SERVER=ON
-cmake --build --preset windows-release --target PredationLobbyServer
-build\windows-release\bin\PredationLobbyServer.exe --port 27020
+node Tools/LobbyWorker/local-server.js
 ```
 
-With the developer tools on, `lobby_server_local` in the game's console does the same inside the
-game, and `lobby_use 127.0.0.1` points a second copy at it.
+and in each copy of the game's console, `lobby_use http://127.0.0.1:8787 127.0.0.1:3478`.

@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
 
 namespace pred
 {
@@ -10,9 +12,16 @@ namespace
 {
 
 // 'PLBY'. Different from the game's own and from the network beacon's, so a datagram that reaches
-// the wrong one of the three is dropped rather than half understood.
+// the wrong one is dropped rather than half understood.
 constexpr uint32_t kLobbyMagic = 0x50424C59u;
 constexpr int kAlphabetBits = 5;
+constexpr size_t kProbeBytes = 9;
+
+constexpr uint32_t kStunCookie = 0x2112A442u;
+constexpr uint16_t kStunBindingRequest = 0x0001;
+constexpr uint16_t kStunBindingSuccess = 0x0101;
+constexpr uint16_t kStunMappedAddress = 0x0001;
+constexpr uint16_t kStunXorMappedAddress = 0x0020;
 
 int SymbolIndex(char c)
 {
@@ -27,134 +36,41 @@ int SymbolIndex(char c)
     return -1;
 }
 
-// Plain bytes, little-endian, rather than the game's bit stream: this file is built on its own for the
-// server, and every byte of a lobby message is spent once a second at most.
-class Writer
+void PutU32(uint8_t* at, uint32_t value)
 {
-public:
-    void U8(uint8_t value) { m_bytes.push_back(value); }
-    void U16(uint16_t value)
-    {
-        U8(static_cast<uint8_t>(value & 0xFFu));
-        U8(static_cast<uint8_t>(value >> 8));
-    }
-    void U32(uint32_t value)
-    {
-        U16(static_cast<uint16_t>(value & 0xFFFFu));
-        U16(static_cast<uint16_t>(value >> 16));
-    }
-    void Text(const std::string& text)
-    {
-        const size_t length = std::min(text.size(), kLobbyMaxNameLength);
-        U8(static_cast<uint8_t>(length));
-        m_bytes.insert(m_bytes.end(), text.begin(), text.begin() + static_cast<std::ptrdiff_t>(length));
-    }
-    void Endpoint(const LobbyEndpoint& endpoint)
-    {
-        U32(endpoint.address);
-        U16(endpoint.port);
-    }
-    std::vector<uint8_t> Take() { return std::move(m_bytes); }
-
-private:
-    std::vector<uint8_t> m_bytes;
-};
-
-class Reader
-{
-public:
-    Reader(const uint8_t* data, size_t bytes) : m_data(data), m_bytes(bytes) {}
-    bool Overran() const { return m_overran; }
-    bool AtEnd() const { return m_at == m_bytes; }
-
-    uint8_t U8()
-    {
-        if (m_at >= m_bytes)
-        {
-            m_overran = true;
-            return 0;
-        }
-        return m_data[m_at++];
-    }
-    uint16_t U16()
-    {
-        const uint16_t low = U8();
-        return static_cast<uint16_t>(low | (static_cast<uint16_t>(U8()) << 8));
-    }
-    uint32_t U32()
-    {
-        const uint32_t low = U16();
-        return low | (static_cast<uint32_t>(U16()) << 16);
-    }
-    std::string Text()
-    {
-        const size_t length = U8();
-        if (length > kLobbyMaxNameLength)
-        {
-            m_overran = true;
-            return {};
-        }
-        std::string text;
-        for (size_t i = 0; i < length; ++i)
-        {
-            const auto c = static_cast<char>(U8());
-            // Printable only. A lobby name is drawn on the screen of everybody who browses, and
-            // anybody at all can open a lobby, so it does not get to carry control characters.
-            text.push_back(c >= 0x20 && c < 0x7F ? c : '?');
-        }
-        return text;
-    }
-    LobbyEndpoint Endpoint()
-    {
-        LobbyEndpoint endpoint;
-        endpoint.address = U32();
-        endpoint.port = U16();
-        return endpoint;
-    }
-
-private:
-    const uint8_t* m_data = nullptr;
-    size_t m_bytes = 0;
-    size_t m_at = 0;
-    bool m_overran = false;
-};
-
-void WriteCandidates(Writer& writer, const std::vector<LobbyEndpoint>& candidates)
-{
-    const size_t count = std::min(candidates.size(), kLobbyMaxCandidates);
-    writer.U8(static_cast<uint8_t>(count));
-    for (size_t i = 0; i < count; ++i)
-    {
-        writer.Endpoint(candidates[i]);
-    }
+    at[0] = static_cast<uint8_t>(value & 0xFFu);
+    at[1] = static_cast<uint8_t>((value >> 8) & 0xFFu);
+    at[2] = static_cast<uint8_t>((value >> 16) & 0xFFu);
+    at[3] = static_cast<uint8_t>((value >> 24) & 0xFFu);
 }
 
-bool ReadCandidates(Reader& reader, std::vector<LobbyEndpoint>& out)
+uint32_t GetU32(const uint8_t* at)
 {
-    const size_t count = reader.U8();
-    if (count > kLobbyMaxCandidates)
-    {
-        return false;
-    }
-    out.clear();
-    for (size_t i = 0; i < count; ++i)
-    {
-        out.push_back(reader.Endpoint());
-    }
-    return !reader.Overran();
+    return static_cast<uint32_t>(at[0]) | (static_cast<uint32_t>(at[1]) << 8) |
+           (static_cast<uint32_t>(at[2]) << 16) | (static_cast<uint32_t>(at[3]) << 24);
 }
 
-uint8_t Flags(const LobbyPacket& packet)
+// STUN is big-endian, unlike everything else of ours.
+void PutBig16(std::vector<uint8_t>& out, uint16_t value)
 {
-    return static_cast<uint8_t>((packet.started ? 1u : 0u) | (packet.listed ? 2u : 0u) |
-                                (packet.toHost ? 4u : 0u));
+    out.push_back(static_cast<uint8_t>(value >> 8));
+    out.push_back(static_cast<uint8_t>(value & 0xFFu));
 }
 
-void ApplyFlags(uint8_t flags, LobbyPacket& packet)
+void PutBig32(std::vector<uint8_t>& out, uint32_t value)
 {
-    packet.started = (flags & 1u) != 0;
-    packet.listed = (flags & 2u) != 0;
-    packet.toHost = (flags & 4u) != 0;
+    PutBig16(out, static_cast<uint16_t>(value >> 16));
+    PutBig16(out, static_cast<uint16_t>(value & 0xFFFFu));
+}
+
+uint16_t GetBig16(const uint8_t* at)
+{
+    return static_cast<uint16_t>((static_cast<uint16_t>(at[0]) << 8) | at[1]);
+}
+
+uint32_t GetBig32(const uint8_t* at)
+{
+    return (static_cast<uint32_t>(GetBig16(at)) << 16) | GetBig16(at + 2);
 }
 
 } // namespace
@@ -234,6 +150,21 @@ bool LobbyEndpoint::Parse(const std::string& text, uint16_t port, LobbyEndpoint&
     return true;
 }
 
+bool LobbyEndpoint::ParseWithPort(const std::string& text, LobbyEndpoint& out)
+{
+    const size_t colon = text.rfind(':');
+    if (colon == std::string::npos)
+    {
+        return false;
+    }
+    const int port = std::atoi(text.c_str() + colon + 1);
+    if (port <= 0 || port > 65535)
+    {
+        return false;
+    }
+    return Parse(text.substr(0, colon), static_cast<uint16_t>(port), out);
+}
+
 const char* Describe(LobbyRejection reason)
 {
     switch (reason)
@@ -257,92 +188,45 @@ const char* Describe(LobbyRejection reason)
     }
 }
 
+LobbyRejection RejectionFromText(const std::string& error)
+{
+    if (error == "no-such-lobby")
+    {
+        return LobbyRejection::NoSuchLobby;
+    }
+    if (error == "full")
+    {
+        return LobbyRejection::LobbyFull;
+    }
+    if (error == "wrong-version")
+    {
+        return LobbyRejection::WrongVersion;
+    }
+    if (error == "server-full")
+    {
+        return LobbyRejection::ServerFull;
+    }
+    if (error == "too-fast")
+    {
+        return LobbyRejection::TooFast;
+    }
+    return LobbyRejection::Malformed;
+}
+
+// --- Probes ------------------------------------------------------------------------------------
+
 std::vector<uint8_t> EncodeLobby(const LobbyPacket& packet)
 {
-    Writer writer;
-    writer.U32(kLobbyMagic);
-    writer.U8(static_cast<uint8_t>(packet.kind));
-    switch (packet.kind)
-    {
-    case LobbyMessage::Host:
-    case LobbyMessage::Update:
-        writer.U16(packet.version);
-        writer.U32(packet.code);
-        writer.U32(packet.secret);
-        writer.U8(packet.players);
-        writer.U8(packet.maxPlayers);
-        writer.U8(Flags(packet));
-        writer.Text(packet.name);
-        WriteCandidates(writer, packet.candidates);
-        break;
-
-    case LobbyMessage::Close:
-        writer.U32(packet.code);
-        writer.U32(packet.secret);
-        break;
-
-    case LobbyMessage::Join:
-        writer.U16(packet.version);
-        writer.U32(packet.code);
-        WriteCandidates(writer, packet.candidates);
-        break;
-
-    case LobbyMessage::List:
-        writer.U16(packet.version);
-        break;
-
-    case LobbyMessage::Hosted:
-        writer.U32(packet.code);
-        writer.U32(packet.secret);
-        writer.Endpoint(packet.seenAs);
-        break;
-
-    case LobbyMessage::Introduce:
-        writer.U32(packet.code);
-        writer.U32(packet.token);
-        writer.U8(Flags(packet));
-        writer.Text(packet.name);
-        writer.Endpoint(packet.seenAs);
-        WriteCandidates(writer, packet.candidates);
-        break;
-
-    case LobbyMessage::Rejected:
-        writer.U32(packet.code);
-        writer.U8(static_cast<uint8_t>(packet.reason));
-        break;
-
-    case LobbyMessage::Listing:
-    {
-        const size_t count = std::min(packet.lobbies.size(), kLobbyMaxListed);
-        writer.U8(static_cast<uint8_t>(count));
-        for (size_t i = 0; i < count; ++i)
-        {
-            const LobbyListing& row = packet.lobbies[i];
-            writer.U32(row.code);
-            writer.U8(row.players);
-            writer.U8(row.maxPlayers);
-            writer.U8(row.started ? 1 : 0);
-            writer.Text(row.name);
-        }
-        break;
-    }
-
-    case LobbyMessage::Probe:
-    case LobbyMessage::ProbeReply:
-        writer.U32(packet.token);
-        break;
-    }
-    return writer.Take();
+    std::vector<uint8_t> bytes(kProbeBytes);
+    PutU32(bytes.data(), kLobbyMagic);
+    bytes[4] = static_cast<uint8_t>(packet.kind);
+    PutU32(bytes.data() + 5, packet.token);
+    return bytes;
 }
 
 bool IsLobbyDatagram(const uint8_t* data, size_t bytes)
 {
-    if (data == nullptr || bytes < 5 || bytes > kLobbyMaxDatagram)
-    {
-        return false;
-    }
-    Reader reader(data, bytes);
-    return reader.U32() == kLobbyMagic;
+    return data != nullptr && bytes == kProbeBytes && GetU32(data) == kLobbyMagic;
 }
 
 bool DecodeLobby(const uint8_t* data, size_t bytes, LobbyPacket& out)
@@ -351,105 +235,109 @@ bool DecodeLobby(const uint8_t* data, size_t bytes, LobbyPacket& out)
     {
         return false;
     }
-    Reader reader(data, bytes);
-    reader.U32();
-    out = LobbyPacket{};
-    out.kind = static_cast<LobbyMessage>(reader.U8());
-    switch (out.kind)
+    const uint8_t kind = data[4];
+    if (kind != static_cast<uint8_t>(LobbyMessage::Probe) && kind != static_cast<uint8_t>(LobbyMessage::ProbeReply))
     {
-    case LobbyMessage::Host:
-    case LobbyMessage::Update:
-        out.version = reader.U16();
-        out.code = reader.U32();
-        out.secret = reader.U32();
-        out.players = reader.U8();
-        out.maxPlayers = reader.U8();
-        ApplyFlags(reader.U8(), out);
-        out.name = reader.Text();
-        if (!ReadCandidates(reader, out.candidates))
-        {
-            return false;
-        }
-        break;
-
-    case LobbyMessage::Close:
-        out.code = reader.U32();
-        out.secret = reader.U32();
-        break;
-
-    case LobbyMessage::Join:
-        out.version = reader.U16();
-        out.code = reader.U32();
-        if (!ReadCandidates(reader, out.candidates))
-        {
-            return false;
-        }
-        break;
-
-    case LobbyMessage::List:
-        out.version = reader.U16();
-        break;
-
-    case LobbyMessage::Hosted:
-        out.code = reader.U32();
-        out.secret = reader.U32();
-        out.seenAs = reader.Endpoint();
-        break;
-
-    case LobbyMessage::Introduce:
-        out.code = reader.U32();
-        out.token = reader.U32();
-        ApplyFlags(reader.U8(), out);
-        out.name = reader.Text();
-        out.seenAs = reader.Endpoint();
-        if (!ReadCandidates(reader, out.candidates))
-        {
-            return false;
-        }
-        break;
-
-    case LobbyMessage::Rejected:
-    {
-        out.code = reader.U32();
-        const uint8_t reason = reader.U8();
-        if (reason > static_cast<uint8_t>(LobbyRejection::Malformed))
-        {
-            return false;
-        }
-        out.reason = static_cast<LobbyRejection>(reason);
-        break;
-    }
-
-    case LobbyMessage::Listing:
-    {
-        const size_t count = reader.U8();
-        if (count > kLobbyMaxListed)
-        {
-            return false;
-        }
-        for (size_t i = 0; i < count && !reader.Overran(); ++i)
-        {
-            LobbyListing row;
-            row.code = reader.U32();
-            row.players = reader.U8();
-            row.maxPlayers = reader.U8();
-            row.started = (reader.U8() & 1u) != 0;
-            row.name = reader.Text();
-            out.lobbies.push_back(std::move(row));
-        }
-        break;
-    }
-
-    case LobbyMessage::Probe:
-    case LobbyMessage::ProbeReply:
-        out.token = reader.U32();
-        break;
-
-    default:
         return false;
     }
-    // Exactly the length it should be. Trailing bytes are somebody else's message, or a mistake.
-    return !reader.Overran() && reader.AtEnd();
+    out.kind = static_cast<LobbyMessage>(kind);
+    out.token = GetU32(data + 5);
+    return true;
+}
+
+// --- STUN --------------------------------------------------------------------------------------
+
+std::vector<uint8_t> EncodeStunRequest(const StunTransaction& transaction)
+{
+    std::vector<uint8_t> out;
+    out.reserve(20);
+    PutBig16(out, kStunBindingRequest);
+    PutBig16(out, 0); // no attributes
+    PutBig32(out, kStunCookie);
+    out.insert(out.end(), transaction.begin(), transaction.end());
+    return out;
+}
+
+bool IsStunDatagram(const uint8_t* data, size_t bytes)
+{
+    // The top two bits of every STUN message are zero and the cookie is always in the same place,
+    // which is how STUN is told apart from anything else arriving on the same socket.
+    return data != nullptr && bytes >= 20 && bytes <= 1024 && (data[0] & 0xC0u) == 0 && GetBig32(data + 4) == kStunCookie;
+}
+
+bool DecodeStunRequest(const uint8_t* data, size_t bytes, StunTransaction& transaction)
+{
+    if (!IsStunDatagram(data, bytes) || GetBig16(data) != kStunBindingRequest)
+    {
+        return false;
+    }
+    std::memcpy(transaction.data(), data + 8, transaction.size());
+    return true;
+}
+
+bool DecodeStunResponse(const uint8_t* data, size_t bytes, const StunTransaction& transaction,
+                        LobbyEndpoint& mapped)
+{
+    if (!IsStunDatagram(data, bytes) || GetBig16(data) != kStunBindingSuccess ||
+        std::memcmp(transaction.data(), data + 8, transaction.size()) != 0)
+    {
+        return false;
+    }
+    const size_t length = GetBig16(data + 2);
+    if (20 + length > bytes)
+    {
+        return false;
+    }
+    // Attributes, each four-byte aligned. XOR-MAPPED-ADDRESS is what every modern server sends; plain
+    // MAPPED-ADDRESS is the old spelling of the same answer, kept for servers that still use it.
+    LobbyEndpoint plain;
+    for (size_t at = 20; at + 4 <= 20 + length;)
+    {
+        const uint16_t type = GetBig16(data + at);
+        const uint16_t size = GetBig16(data + at + 2);
+        const uint8_t* value = data + at + 4;
+        if (at + 4 + size > 20 + length)
+        {
+            return false;
+        }
+        if ((type == kStunXorMappedAddress || type == kStunMappedAddress) && size >= 8 && value[1] == 0x01)
+        {
+            uint16_t port = GetBig16(value + 2);
+            uint32_t address = GetBig32(value + 4);
+            if (type == kStunXorMappedAddress)
+            {
+                port = static_cast<uint16_t>(port ^ (kStunCookie >> 16));
+                address ^= kStunCookie;
+                mapped = LobbyEndpoint{address, port};
+                return mapped.Valid();
+            }
+            plain = LobbyEndpoint{address, port};
+        }
+        at += 4 + ((static_cast<size_t>(size) + 3u) & ~static_cast<size_t>(3u));
+    }
+    if (plain.Valid())
+    {
+        mapped = plain;
+        return true;
+    }
+    return false;
+}
+
+std::vector<uint8_t> EncodeStunResponse(const StunTransaction& transaction, const LobbyEndpoint& mapped)
+{
+    std::vector<uint8_t> out;
+    out.reserve(32);
+    PutBig16(out, kStunBindingSuccess);
+    PutBig16(out, 12);
+    PutBig32(out, kStunCookie);
+    out.insert(out.end(), transaction.begin(), transaction.end());
+    PutBig16(out, kStunXorMappedAddress);
+    PutBig16(out, 8);
+    out.push_back(0);
+    out.push_back(0x01);
+    PutBig16(out, static_cast<uint16_t>(mapped.port ^ (kStunCookie >> 16)));
+    PutBig32(out, mapped.address ^ kStunCookie);
+    return out;
 }
 
 } // namespace pred

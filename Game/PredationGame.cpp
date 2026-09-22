@@ -177,14 +177,12 @@ CVar<int> cv_voiceDevice{"audio.voice_device", 0, "Which microphone to record fr
 // other (Engine/Net/LobbyProtocol.h). Set by whoever runs one -- Docs/SERVER.md sets one up on a free
 // cloud machine -- and put here as the default once it exists, so nobody else has to type it.
 // Empty means none: games are then found on your own network, or joined by address.
-CVar<std::string> cv_lobbyServer{"net.lobby_server", "", "Address of the lobby server that hands out codes",
+CVar<std::string> cv_lobbyServer{"net.lobby_server", "", "Web address of the lobby server that hands out codes",
                                  CVarFlags::Archive};
-CVar<int> cv_lobbyPort{"net.lobby_port", kLobbyServerPort, "UDP port the lobby server listens on",
-                       CVarFlags::Archive};
-// A lobby server for this run only, from lobby_server_local: never saved, so testing on one machine
-// does not leave the game pointing at itself afterwards.
+// A lobby server, and a STUN server, for this run only, from lobby_use: never saved, so testing
+// against the local server on one machine does not leave the game pointing at it afterwards.
 std::string g_lobbyOverride;
-uint16_t g_lobbyOverridePort = 0;
+std::string g_stunOverride;
 // Remembered between runs, so rejoining the same friend does not mean typing the address again.
 CVar<std::string> cv_lastAddress{"net.last_address", "127.0.0.1", "Address the join box opens with",
                                  CVarFlags::Archive};
@@ -1334,8 +1332,11 @@ void PredationGame::RegisterCommands()
             PRED_LOG_INFO(Network, "{}", line);
         });
 
+    // A lobby server, and a STUN server, for this run only and without saving them. Testing on one PC
+    // runs Tools/LobbyWorker/local-server.js, which is both, and points each copy of the game at it:
+    // lobby_use http://127.0.0.1:8787 127.0.0.1:3478
     console.RegisterCommand(
-        "lobby_use", "Use a lobby server for this run only, without saving it: lobby_use <address> [port]",
+        "lobby_use", "Use a lobby server for this run only, without saving it: lobby_use <web address> [stun host:port]",
         [](const std::vector<std::string>& args)
         {
             if (args.size() < 2)
@@ -1343,35 +1344,11 @@ void PredationGame::RegisterCommands()
                 return;
             }
             g_lobbyOverride = args[1];
-            g_lobbyOverridePort =
-                static_cast<uint16_t>(args.size() > 2 ? std::atoi(args[2].c_str()) : kLobbyServerPort);
-            PRED_LOG_INFO(Network, "lobby_use: {}:{}", g_lobbyOverride, g_lobbyOverridePort);
+            g_stunOverride = args.size() > 2 ? args[2] : std::string();
+            PRED_LOG_INFO(Network, "lobby_use: {} (STUN {})", g_lobbyOverride,
+                          g_stunOverride.empty() ? std::string("the public ones") : g_stunOverride);
         },
-        "lobby_use <address> [port]");
-
-#if PRED_DEV_TOOLS
-    // A lobby server inside this copy of the game, for testing codes on one machine without one on
-    // the internet. Everything else is exactly as it would be: the games talk to it over UDP.
-    console.RegisterCommand(
-        "lobby_server_local", "Run a lobby server inside this game and point the game at it: lobby_server_local [port]",
-        [this](const std::vector<std::string>& args)
-        {
-            const int port = args.size() > 1 ? std::atoi(args[1].c_str()) : kLobbyServerPort;
-            m_localLobbyServer = std::make_unique<LobbyServer>();
-            if (!m_localLobbyServer->Start(static_cast<uint16_t>(port)))
-            {
-                m_app->GetConsole().PrintError(m_localLobbyServer->Message());
-                m_localLobbyServer.reset();
-                return;
-            }
-            m_localLobbyServer->Directory().log = [](const std::string& line)
-            { PRED_LOG_INFO(Network, "lobby server: {}", line); };
-            g_lobbyOverride = "127.0.0.1";
-            g_lobbyOverridePort = m_localLobbyServer->Port();
-            PRED_LOG_INFO(Network, "lobby_server_local: listening on {}", m_localLobbyServer->Port());
-        },
-        "lobby_server_local [port]");
-#endif
+        "lobby_use <web address> [stun host:port]");
 
     console.RegisterCommand("scene_stats", "Print scene and mesh statistics",
                             [this](const std::vector<std::string>&)
@@ -2733,9 +2710,10 @@ LobbyClient::Settings LobbySettings()
 {
     LobbyClient::Settings settings;
     settings.server = g_lobbyOverride.empty() ? cv_lobbyServer.Get() : g_lobbyOverride;
-    settings.serverPort = g_lobbyOverride.empty()
-                              ? static_cast<uint16_t>(std::clamp(cv_lobbyPort.Get(), 1, 65535))
-                              : g_lobbyOverridePort;
+    if (!g_stunOverride.empty())
+    {
+        settings.stunServers = {g_stunOverride};
+    }
     settings.version = kProtocolVersion;
     return settings;
 }
@@ -2773,25 +2751,16 @@ void PredationGame::StartBrowsing()
     {
         m_titleStatus = m_browser.Message();
     }
-    if (m_browseTransport == nullptr && LobbyServerConfigured())
+    if (!m_lobbyBrowser.Active() && LobbyServerConfigured())
     {
-        m_browseTransport = CreateUdpTransport();
-        if (m_browseTransport->Open(0))
-        {
-            m_lobbyBrowser.Browse(LobbySettings());
-        }
-        else
-        {
-            m_browseTransport.reset();
-        }
+        m_lobbyBrowser.Browse(LobbySettings());
     }
 }
 
 void PredationGame::StopBrowsing()
 {
     m_browser.Stop();
-    m_lobbyBrowser.Close(nullptr);
-    m_browseTransport.reset();
+    m_lobbyBrowser.Close();
 }
 
 void PredationGame::UpdateDiscovery(float frameDeltaSeconds)
@@ -2829,20 +2798,8 @@ void PredationGame::UpdateDiscovery(float frameDeltaSeconds)
                                      }),
                       m_seenOnLan.end());
 
-    // A lobby server run inside this game for testing, answered before anybody asks it anything.
-    if (m_localLobbyServer != nullptr)
-    {
-        m_localLobbyClock += frameDeltaSeconds;
-        m_localLobbyServer->Poll(m_localLobbyClock);
-    }
-
-    // The public list. Its transport has no game on it, so nothing else polls it.
-    if (m_browseTransport != nullptr)
-    {
-        std::vector<NetPacket> none;
-        m_browseTransport->Poll(frameDeltaSeconds, none);
-        m_lobbyBrowser.Poll(frameDeltaSeconds, m_browseTransport.get());
-    }
+    // The public list: web requests only, no socket.
+    m_lobbyBrowser.Poll(frameDeltaSeconds, nullptr);
 
     UpdateJoining(frameDeltaSeconds);
 
@@ -3323,6 +3280,12 @@ void PredationGame::DrawInvite()
             if (m_lobby.Arriving() > 0)
             {
                 ImGui::TextColored({0.90f, 0.80f, 0.45f, 1.0f}, "Somebody is connecting...");
+            }
+            // Said up front rather than discovered by a friend who cannot get in.
+            if (m_lobby.StrictRouter() && m_ports.Status() != PortMapper::State::Open)
+            {
+                ImGui::TextColored(kWarning, "Your router is strict, so some friends may not get "
+                                             "through to you. If they cannot, let one of them host.");
             }
         }
     }
@@ -3993,17 +3956,19 @@ void PredationGame::DrawSettings()
 
         ImGui::Spacing();
         ImGui::SeparatorText("Lobby server");
-        static char lobbyServer[128] = "";
+        static char lobbyServer[160] = "";
         static bool lobbyServerRead = false;
         if (!lobbyServerRead)
         {
             lobbyServerRead = true;
             std::snprintf(lobbyServer, sizeof(lobbyServer), "%s", cv_lobbyServer.Get().c_str());
         }
-        if (ImGui::InputText("Address", lobbyServer, sizeof(lobbyServer)))
+        ImGui::SetNextItemWidth(-1.0f);
+        if (ImGui::InputTextWithHint("##lobbyserver", "https://predation-lobby.you.workers.dev", lobbyServer,
+                                     sizeof(lobbyServer)))
         {
             // Trimmed as it is typed, because an address pasted from a message usually brings a
-            // space with it and " 1.2.3.4" is not an address.
+            // space with it.
             std::string text = lobbyServer;
             text.erase(0, text.find_first_not_of(" \t\r\n"));
             text.erase(text.find_last_not_of(" \t\r\n") + 1);
@@ -4011,20 +3976,10 @@ void PredationGame::DrawSettings()
             // A new server is asked afresh, rather than the list going on showing the old one's games.
             StopBrowsing();
         }
-        // The port only once there is an address for it to belong to.
-        if (!cv_lobbyServer.Get().empty())
-        {
-            int lobbyPort = cv_lobbyPort.Get();
-            if (ImGui::InputInt("Port", &lobbyPort, 0, 0))
-            {
-                SetSetting("net.lobby_port", std::to_string(std::clamp(lobbyPort, 1024, 65535)));
-                StopBrowsing();
-            }
-        }
         Caption("What hands out codes, so friends anywhere can join you.",
                 "The lobby server introduces players to each other and then gets out of the way: the "
-                "game itself goes straight from one PC to the other, never through it. Whoever runs "
-                "one gives everybody its address. Without one, games on your own network still show "
+                "game itself goes straight from one PC to the other, never through it. It is a free "
+                "Cloudflare Worker (Docs/SERVER.md). Without one, games on your own network still show "
                 "up in the list, and anybody can join by address.");
         ImGui::EndTabItem();
     }
@@ -5202,7 +5157,7 @@ void PredationGame::StopSession()
     // The lobby first, while the host's transport still exists to tell the server the code is done.
     // A code that went on working for fifteen seconds after its game closed would send whoever typed
     // it to nothing.
-    m_lobby.Close(m_sessionMode == SessionMode::Host ? m_host.GetTransport() : nullptr);
+    m_lobby.Close();
     m_joinTransport.reset();
     m_inLobby = false;
     if (m_sessionMode == SessionMode::Host)

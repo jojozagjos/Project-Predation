@@ -12,7 +12,6 @@
 #include "Engine/Audio/VoiceCapture.h"
 #include "Engine/Audio/VoiceCodec.h"
 #include "Engine/Net/LobbyClient.h"
-#include "Engine/Net/LobbyServer.h"
 #include "Game/Net/NetSession.h"
 #include "Engine/Net/LanDiscovery.h"
 #include "Engine/Net/PortMapper.h"
@@ -684,19 +683,15 @@ private:
     // list while it is hosting one.
     LanListener m_browser;
     LanBeacon m_beacon;
-    // Asking the lobby server what public games are open, over a socket of its own: browsing has
-    // to work before there is a game, and stops the moment there is one.
+    // Asking the lobby server what public games are open. Web requests only: browsing has to work
+    // before there is a game, and stops the moment there is one.
     LobbyClient m_lobbyBrowser;
-    std::unique_ptr<Transport> m_browseTransport;
     // This machine's lobby: the host's registration and introductions, or a guest's way in.
     LobbyClient m_lobby;
     // A guest's transport while it is still finding the host, before the game has it. The lobby
     // server has seen this socket and the holes are punched for it, so it is this one the game
     // connects over, not a new one.
     std::unique_ptr<Transport> m_joinTransport;
-    // A lobby server running inside this game, for testing codes on one machine (lobby_server_local).
-    std::unique_ptr<LobbyServer> m_localLobbyServer;
-    double m_localLobbyClock = 0.0;
     // What this machine's game is called in other people's lists, and whether it is in the public
     // one or only reachable by its code.
     char m_lobbyName[24] = "";

@@ -27,8 +27,10 @@ so strangers can join without a code. Off by default.
 
 ## By code: how it works
 
-The lobby server introduces the two PCs, and then they connect **directly**. The server never carries
-the game, which is why it is free to run (SERVER.md has the numbers and the setup).
+The lobby server -- a free Cloudflare Worker -- introduces the two PCs, and then they connect
+**directly**. The server never carries the game, which is why it is free to run (SERVER.md has the
+numbers and the setup). Each game first asks a public STUN server what its connection looks like from
+outside, because that outside address is the one the other PC needs.
 
 The trick is called hole punching. A home router only lets in replies to things that went out. So once
 the server has told each PC where the other is, both send to each other at the same moment. Each
@@ -39,8 +41,9 @@ house find each other directly too.
 
 It works through nearly every home router, with nothing forwarded and nothing configured. What it
 cannot get through is a router that changes its outside port for every destination (some phone
-hotspots and office networks do). The game says so in words — "could not connect to the host
-directly" — and the fixes are to let the other person host, or use Tailscale. The host's router is
+hotspots and office networks do). The game notices it from the STUN answers and says so in
+words -- the host sees "your router is strict", a friend "could not connect to the host
+directly" -- and the fixes are to let the other person host, or use Tailscale. The host's router is
 also asked (by UPnP) to let people straight in, which covers a friend whose own router is the strict
 one.
 

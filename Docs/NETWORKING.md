@@ -96,11 +96,12 @@ game (a guest waits in the lobby until it has), and a death carries how many sec
 is back, so their screen can count it down. Version 6 added the "quiet" bit on world events, set on the
 catch-up a joining player is sent, so what already happened is applied without being heard.
 
-Finding each other over the internet is the lobby server's job (`Engine/Net/LobbyProtocol.h`,
-`Engine/Net/LobbyDirectory.h`, `Engine/Net/LobbyClient.h`; ADR-067): it hands out codes and introduces
-two machines, which then punch through their routers to each other and play directly. Its messages
-travel through the game's own socket, by the transport's side door (`Transport::SendUnframed` and
-`TakeUnframed`), because a hole punched through a router only opens for the socket that punched it.
+Finding each other over the internet is the lobby server's job (`Tools/LobbyWorker`, a Cloudflare Worker;
+`Engine/Net/LobbyClient.h`; ADR-067): it hands out codes and introduces two machines over HTTPS, which
+then punch through their routers to each other and play directly. What each machine looks like from
+outside comes from public STUN servers, asked through the game's own socket by the transport's side
+door (`Transport::SendUnframed` and `TakeUnframed`), as are the probes that punch through: a hole in a
+router only opens for the socket that made it.
 
 ## What exists
 
