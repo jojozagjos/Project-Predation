@@ -182,6 +182,9 @@ public:
     // Who is here and where. Sent when the roster changes, so that if this machine goes the players
     // left know where to find each other.
     void BroadcastPeerList();
+    // Into the game from the lobby, or back. Everybody is told at once, by the roster.
+    void SetStarted(bool started);
+    bool Started() const { return m_started; }
     void SendTo(uint8_t playerId, const WorldEventMessage& event);
     void SendWorldState(const WorldStateMessage& state);
     void SendCreatureState(const CreatureStateMessage& state);
@@ -255,6 +258,8 @@ private:
     glm::vec3 m_spawn{0.0f};
     float m_snapshotTimer = 0.0f;
     uint32_t m_starvedTicks = 0;
+    // Whether the game has started or everybody is still in the lobby.
+    bool m_started = false;
     uint8_t m_localHeldItem = 0;
     float m_localAim = 0.0f;
     bool m_localReloading = false;
@@ -331,6 +336,8 @@ public:
         std::string address;
     };
     const std::vector<KnownPeer>& Peers() const { return m_peers; }
+    // Whether the host has started the game. Until it has, this client waits in the lobby.
+    bool HostStarted() const { return m_hostStarted; }
     // What to call a player, from the roster. Falls back to their number while a roster is in
     // flight.
     std::string NameOf(uint8_t id) const;
@@ -400,6 +407,7 @@ private:
     std::vector<SnapshotRecord> m_snapshots;
     std::vector<RemotePlayerView> m_views;
     std::vector<KnownPeer> m_peers;
+    bool m_hostStarted = false;
     std::vector<WorldEventMessage> m_worldEvents;
     std::vector<VoiceHeard> m_voiceIn;
     WorldStateMessage m_worldState;

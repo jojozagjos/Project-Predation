@@ -116,4 +116,10 @@ bool DecodeLanBeacon(const uint8_t* data, size_t bytes, LanLobby& out);
 void MergeLanLobby(std::vector<LanLobby>& lobbies, const LanLobby& heard);
 void AgeLanLobbies(std::vector<LanLobby>& lobbies, float dt);
 
+// "Is anybody hosting?" A browser asks this once a second as well as listening, and every host
+// answers it straight back with its beacon. The answer is a reply to something the browsing machine
+// sent, so its firewall lets it in even where it throws away announcements nobody asked for.
+std::vector<uint8_t> EncodeLanQuery();
+bool IsLanQuery(const uint8_t* data, size_t bytes);
+
 } // namespace pred

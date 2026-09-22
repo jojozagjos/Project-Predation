@@ -94,12 +94,14 @@ set(PRED_ENGINE_SOURCES
     Net/LoopbackTransport.cpp
     Net/SocketSystem.h
     Net/SocketSystem.cpp
-    Net/RelayProtocol.h
-    Net/RelayProtocol.cpp
-    Net/RelayServer.h
-    Net/RelayServer.cpp
-    Net/RelayCarrier.h
-    Net/RelayCarrier.cpp
+    Net/LobbyProtocol.h
+    Net/LobbyProtocol.cpp
+    Net/LobbyDirectory.h
+    Net/LobbyDirectory.cpp
+    Net/LobbyServer.h
+    Net/LobbyServer.cpp
+    Net/LobbyClient.h
+    Net/LobbyClient.cpp
     Navigation/NavMesh.h
     Navigation/NavMesh.cpp
     Net/PortMapper.h

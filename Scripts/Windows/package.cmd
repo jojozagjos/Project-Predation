@@ -83,9 +83,6 @@ mkdir "%STAGE%" 2>nul
 rem The executable and anything the build deployed beside it.
 copy /y "%BUILD_DIR%\bin\ProjectPredation.exe" "%STAGE%\" >nul
 for %%F in ("%BUILD_DIR%\bin\*.dll") do copy /y "%%F" "%STAGE%\" >nul 2>nul
-rem And the relay, which is not for players but is for whoever is going to run one. A quarter of a
-rem megabyte, and the alternative is a second download nobody can find when they need it.
-if exist "%BUILD_DIR%\bin\PredationRelay.exe" copy /y "%BUILD_DIR%\bin\PredationRelay.exe" "%STAGE%\" >nul
 
 rem The data files, and then the compiled shaders on top of them. Both end up under Assets, which
 rem is the first place the game looks, so the folder runs anywhere without the build tree.
@@ -108,32 +105,16 @@ if exist "%BUILD_DIR%\GeneratedAssets\Shaders" (
     echo If it will not start, install the Microsoft Visual C++ Redistributable for x64.
     echo.
     echo.
-    echo PLAYING TOGETHER, OVER THE INTERNET
+    echo PLAYING TOGETHER
     echo.
-    echo Neither of you has to forward a port or change a router setting. One of you
-    echo gets a six character code and everybody else types it in.
+    echo   1. One of you presses Play, then "Host a game", then Start.
+    echo   2. The lobby shows a six character code like 7KMQX3. Send it to the others.
+    echo   3. They press Play, type the code into the box at the top, and press Join.
+    echo   4. When everybody is in the lobby, the host presses "Start the game".
     echo.
-    echo   1. One of you presses "Open a game", then "Over the internet".
-    echo   2. That gives a code like 7KMQX3. Send it to the others.
-    echo   3. They press "Join a game", type it in, and press Join.
-    echo.
-    echo People can join at any time, before or after the host goes in.
-    echo.
-    echo This needs a relay: one machine both of you can reach, which forwards
-    echo between you. PredationRelay.exe in this folder is it. Whoever is running it
-    echo needs a machine the others can reach - a cheap virtual server, a free tier,
-    echo or a home machine with UDP forwarded to it - and everybody else points the
-    echo game at it from the console with:
-    echo.
-    echo   net.relay_host your.relay.address
-    echo.
-    echo That is remembered, so it only has to be typed once.
-    echo.
-    echo PLAYING TOGETHER, SAME HOUSE
-    echo.
-    echo   The host presses "Open a game", then "On this network", and reads
-    echo   out the address shown, something like 192.168.1.20:27015.
-    echo   Everyone else types that into "Join a game".
+    echo Nobody has to forward a port or change a router setting. The code works from
+    echo anywhere, and on the same wifi the game also shows up in "On your network".
+    echo People can still join after the game has started.
     echo.
     echo Windows will ask once whether to let the game through the firewall. Say yes
     echo to both boxes.

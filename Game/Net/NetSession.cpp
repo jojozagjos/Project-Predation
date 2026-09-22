@@ -162,6 +162,7 @@ bool NetHost::Start(std::unique_ptr<Transport> transport, const Config& config, 
     m_spawn = spawn;
     m_snapshotTimer = 0.0f;
     m_starvedTicks = 0;
+    m_started = false;
     m_running = true;
     PRED_LOG_INFO(Network, "Hosting on port {} at {} Hz snapshots", config.port, config.snapshotHz);
     return true;
@@ -613,6 +614,7 @@ void NetHost::BroadcastPeerList()
     // Sent whenever the roster changes, and only then. It is what lets the players left find each
     // other if this machine goes: by that point there is nobody to ask.
     PeerListMessage list;
+    list.started = m_started;
     // The host goes in first, with no address. Everybody already knows how to reach this machine,
     // so the entry is there for the name rather than for the address: without it a player list on
     // a client has a row it cannot put a name to, which is the row belonging to whoever is running
@@ -644,6 +646,16 @@ void NetHost::BroadcastPeerList()
             m_transport->Send(client->peer, Channel::Reliable, bytes.data(), bytes.size());
         }
     }
+}
+
+void NetHost::SetStarted(bool started)
+{
+    if (m_started == started)
+    {
+        return;
+    }
+    m_started = started;
+    BroadcastPeerList();
 }
 
 void NetHost::Broadcast(const WorldEventMessage& event)
@@ -993,6 +1005,7 @@ bool NetClient::Connect(std::unique_ptr<Transport> transport, const std::string&
     m_sessionPort = port;
     m_hostLost = false;
     m_peers.clear();
+    m_hostStarted = false;
     m_visualError = glm::vec3(0.0f);
     m_history.Clear();
     m_snapshots.clear();
@@ -1112,6 +1125,7 @@ void NetClient::HandlePacket(const NetPacket& packet)
         PeerListMessage list;
         if (ReadPeerList(reader, list))
         {
+            m_hostStarted = list.started;
             m_peers.clear();
             for (uint8_t i = 0; i < list.count; ++i)
             {

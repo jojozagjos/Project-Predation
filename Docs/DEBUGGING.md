@@ -68,6 +68,25 @@ The creature (developer builds only):
 | `hide [locker]` | Get into a locker, or out of the one you are in, through the real interaction (door, sound, the noise it hears) |
 | `tracer_report` | How far the last tracer started from the eye and from the drawn barrel, and where the round was traced from |
 
+Multiplayer, from the console or `--exec`:
+
+| Command | Does |
+| --- | --- |
+| `lobby_host [name]` | Host and open the lobby, as the Start button does |
+| `lobby_join <code>` | Join by code, as the join box does |
+| `lobby_start` | Leave the lobby for the game, as the host's Start button does |
+| `lobby_state` | Role, state, code, how the lobby server sees this PC, and whether the game has started |
+| `lobby_use <address> [port]` | Use a lobby server for this run only, without saving it |
+| `lobby_server_local [port]` | Run a lobby server inside this game and use it (developer builds) |
+| `host_lan [name]` | Host and go straight in, skipping the lobby |
+| `games` | What this PC can see: games on its network, and public ones |
+
+Two copies on one PC, joining by code, with no server anywhere (the first copy's log says the code
+after "open as"):
+
+    ProjectPredation.exe --exec lobby_server_local --exec "lobby_host kitchen" --exec "wait 4000" --exec lobby_start
+    ProjectPredation.exe --exec "lobby_use 127.0.0.1" --exec "lobby_join BYHHZT" --exec "wait 1500" --exec lobby_state
+
 Every sound the game plays is logged at debug level with its name (`--log-level debug`), which is how
 the burst of door and drop sounds on joining a game was found.
 

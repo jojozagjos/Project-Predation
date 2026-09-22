@@ -19,8 +19,9 @@ Still missing:
 
 Built: UDP with its own reliability, host authority, client prediction with replay, interpolated
 remote players, lag compensation, host migration, doors, lockers, pickups, ammunition crates, loose
-objects, shots, friendly fire, damage, death, spectating, proximity voice, a LAN game browser, an
-optional relay, UPnP port opening, and the creature (see below).
+objects, shots, friendly fire, damage, death, automatic respawn, spectating, proximity voice, a
+lobby with join codes (a free lobby server introduces players and they connect directly; SERVER.md),
+a LAN game browser that asks as well as listens, UPnP port opening, and the creature (see below).
 
 Still missing:
 

@@ -84,6 +84,43 @@ public:
 
     virtual std::vector<PeerId> Peers() const = 0;
     virtual bool IsListening() const = 0;
+
+    // --- The side door -------------------------------------------------------------------------
+    //
+    // Datagrams that are not the game's, in and out of the game's own socket.
+    //
+    // Hole punching only works through the socket the game then plays over: the hole a router opens
+    // is for this port talking to that address, and a second socket would have a hole of its own that
+    // the game could not use. So the conversation with the lobby server, and the probes two players
+    // send each other, go through here, and anything arriving that is not the game's is kept for
+    // whoever asks. A transport with no socket of its own -- the in-process one -- has no side door.
+    struct UnframedDatagram
+    {
+        std::string address; // "a.b.c.d"
+        uint16_t port = 0;
+        std::vector<uint8_t> bytes;
+    };
+    // Opens the socket on `port` (0 for any free one) without listening or connecting, so the side
+    // door works before either. Listen and Connect then use the socket this opened.
+    virtual bool Open(uint16_t port)
+    {
+        (void)port;
+        return false;
+    }
+    // To a dotted address; names are not looked up here.
+    virtual bool SendUnframed(const std::string& address, uint16_t port, const uint8_t* data, size_t bytes)
+    {
+        (void)address;
+        (void)port;
+        (void)data;
+        (void)bytes;
+        return false;
+    }
+    // Everything that arrived that was not the game's since the last call. Bounded: a stranger can
+    // send anything to an open port, and nobody may be asking.
+    virtual std::vector<UnframedDatagram> TakeUnframed() { return {}; }
+    // Which port the socket is on, or 0 when there is none.
+    virtual uint16_t LocalPort() const { return 0; }
 };
 
 // A transport with no network under it: a host and up to three clients in one process, wired

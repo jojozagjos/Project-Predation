@@ -91,8 +91,16 @@ Network overlay (RTT, loss, bandwidth per channel), replication log, and the sim
 
 **Status**: built through Milestone 8. Two machines connect over UDP, the host simulates everyone, clients
 predict their own movement and interpolate everyone else, and shots, voice, spectating, host migration and
-the creature all cross the wire. Protocol version 6: world events carry a "quiet" bit, set on the
+the creature all cross the wire. Protocol version 7: the roster says whether the host has started the
+game (a guest waits in the lobby until it has), and a death carries how many seconds until the player
+is back, so their screen can count it down. Version 6 added the "quiet" bit on world events, set on the
 catch-up a joining player is sent, so what already happened is applied without being heard.
+
+Finding each other over the internet is the lobby server's job (`Engine/Net/LobbyProtocol.h`,
+`Engine/Net/LobbyDirectory.h`, `Engine/Net/LobbyClient.h`; ADR-067): it hands out codes and introduces
+two machines, which then punch through their routers to each other and play directly. Its messages
+travel through the game's own socket, by the transport's side door (`Transport::SendUnframed` and
+`TakeUnframed`), because a hole punched through a router only opens for the socket that punched it.
 
 ## What exists
 
@@ -143,8 +151,8 @@ perfect connection where nothing has time to disagree.
 
 ## Not yet
 
-Reconnecting a player who dropped, per-player weapon state on the host, and NAT hole punching: getting
-through a router is done by UPnP or the optional relay instead (see HOSTING.md).
+Reconnecting a player who dropped, per-player weapon state on the host, and a way through for the few
+routers hole punching cannot pass (a relay fallback on the lobby server would be it; see ADR-067).
 
 ## Getting into a game
 
@@ -199,9 +207,8 @@ the rule back, run from an administrator command prompt with the path to the exe
 netsh advfirewall firewall add rule name="Project Predation" dir=in action=allow protocol=UDP localport=7777 program="C:\path\to\ProjectPredation.exe"
 ```
 
-Playing across the internet is a different problem and is not solved yet: it needs the host's router
-to forward the port, or a relay. That is what Steam networking is for, and it is why the transport
-is behind an interface.
+Playing across the internet is a different problem: see HOSTING.md for codes and the lobby server,
+and below for the router being asked to let people straight in.
 
 ## Playing across the internet
 

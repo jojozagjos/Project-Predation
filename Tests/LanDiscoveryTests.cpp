@@ -1,8 +1,11 @@
 #include "Engine/Net/LanDiscovery.h"
+#include "Engine/Net/Transport.h"
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <chrono>
 #include <string>
+#include <thread>
 #include <vector>
 
 using namespace pred;
@@ -145,4 +148,47 @@ TEST_CASE("A roomful of beacons cannot grow the list without bound", "[lan][secu
         MergeLanLobby(list, lobby);
     }
     CHECK(list.size() <= 32);
+}
+
+TEST_CASE("A question is not a beacon, and a beacon is not a question", "[lan]")
+{
+    const std::vector<uint8_t> query = EncodeLanQuery();
+    CHECK(IsLanQuery(query.data(), query.size()));
+    LanLobby out;
+    CHECK_FALSE(DecodeLanBeacon(query.data(), query.size(), out));
+    const std::vector<uint8_t> beacon = EncodeLanBeacon(Beacon("kitchen", 27015));
+    CHECK_FALSE(IsLanQuery(beacon.data(), beacon.size()));
+}
+
+TEST_CASE("A host answers somebody who asks, straight back to them", "[lan][udp]")
+{
+    // The answer is what gets through a firewall that drops announcements nobody asked for, so it
+    // has to arrive at exactly the socket that asked.
+    LanBeacon beacon;
+    REQUIRE(beacon.Start());
+    LanLobby mine = Beacon("kitchen", 27015);
+    mine.protocol = 7;
+    beacon.Describe(mine);
+
+    std::unique_ptr<Transport> asker = CreateUdpTransport(5u);
+    REQUIRE(asker->Open(0));
+    const std::vector<uint8_t> query = EncodeLanQuery();
+    REQUIRE(asker->SendUnframed("127.0.0.1", kLanDiscoveryPort, query.data(), query.size()));
+
+    LanLobby heard;
+    bool answered = false;
+    std::vector<NetPacket> none;
+    for (int i = 0; i < 200 && !answered; ++i)
+    {
+        beacon.Tick(0.01f);
+        asker->Poll(0.01f, none);
+        for (const Transport::UnframedDatagram& datagram : asker->TakeUnframed())
+        {
+            answered = answered || DecodeLanBeacon(datagram.bytes.data(), datagram.bytes.size(), heard);
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
+    REQUIRE(answered);
+    CHECK(heard.name == "kitchen");
+    CHECK(heard.port == 27015);
 }

@@ -209,32 +209,25 @@ The script checks the CMake cache actually says `PRED_DEV_TOOLS:BOOL=OFF` before
 anything, and stops if it does not. A stale cache is silent, and an editor that leaked into
 somebody else's copy is not visible from the outside.
 
-To play over the internet, the host takes a code from "Open a game" and sends it; the other person
-pastes it into "Join a game" and sends the code they get back. Both machines dial at once and the
-routers open a hole between them (ADR-048). Nothing needs forwarding. On one network there is still
-the plain address route, which is simpler when it applies.
+To play over the internet, the host presses **Play → Host a game → Start** and sends the code the
+lobby shows; the other person types it into the box at the top of **Play**. That needs a lobby
+server, which introduces the two PCs so they can connect straight to each other (HOSTING.md,
+SERVER.md). On one network the game appears in the list without one.
 
-## Running a relay
+## The lobby server
 
-Playing over the internet needs one, and it has to be somewhere both players can reach: a cheap
-virtual machine, a free tier, or any machine with a forwarded UDP port. It is not needed for a game
-on one network.
+It is not built with the game: it runs on a Linux machine somewhere, and is built there from five
+source files by `Tools/LobbyServer/setup-linux.sh` (SERVER.md walks through it on Oracle Cloud's
+free tier). GitHub builds it on Linux after every change to those files, so a change that would
+break it there shows up as a failed check.
 
-```
-PredationRelay.exe --port 27020
-```
-
-It links no renderer and no physics, so it builds and runs on a headless box. Point the game at it
-from the console, and the setting is remembered:
+To build it on this PC for testing:
 
 ```
-net.relay_server relay.example.com
-net.relay_port 27020
+cmake --preset windows-release -DPRED_BUILD_LOBBY_SERVER=ON
+cmake --build --preset windows-release --target PredationLobbyServer
+build\windows-release\bin\PredationLobbyServer.exe --port 27020
 ```
 
-Then **Open a game → Over the internet** gives a six character code, and anybody who types that code
-into **Join a game** is in — before or after the game has started.
-
-How much it costs to run: a four player snapshot is 89 bytes at 30 Hz and a voice frame is 82 bytes
-every twenty milliseconds, so a full game with everybody talking is roughly two hundred kilobits a
-second in each direction. A free tier will not notice.
+With the developer tools on, `lobby_server_local` in the game's console does the same inside the
+game, and `lobby_use 127.0.0.1` points a second copy at it.

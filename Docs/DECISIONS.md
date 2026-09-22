@@ -1091,7 +1091,7 @@ flat, and the stride went from 0.52 m to 0.61 m. Nothing is at full stretch any 
 
 ## ADR-058: A relay, not hole punching
 
-**Status**: accepted, 2026-09-14. Supersedes ADR-048 and ADR-053.
+**Status**: superseded by ADR-067, 2026-09-21. Originally accepted, 2026-09-14, superseding ADR-048 and ADR-053
 
 Hole punching was a mistake, and the way it failed says why. Two machines behind home routers cannot
 reach each other, so both dial at once and hope the routers open. That needs each end to describe
@@ -1414,3 +1414,71 @@ Also settled: a creature watching somebody out of curiosity keeps facing them wh
 away lost sight of them, which dropped the watching, which made it hunt, which turned it back -- the same
 flip-flop that stalking had between cover and gaze, and the same cure: know what you are doing
 through a glance away.
+
+## ADR-067: A lobby server introduces players, and they play directly
+
+**Status**: accepted, 2026-09-21. Supersedes ADR-058.
+
+The relay worked everywhere because every byte of every game went through it, and that is exactly
+what made it the wrong thing to depend on: whoever runs it pays for the traffic, and a host with a
+monthly allowance switches the machine off when it runs out. This project has already lost a server
+for a month that way, on another game.
+
+So the server only makes introductions. A host asks it for a code; a guest asks to be introduced to
+that code; the server tells each where the other is — the outside address it saw each one come from,
+plus the addresses each reports inside its own network — and both then send to every address of the
+other at once. Each router sees its own machine's packet go out first, takes the other's for the
+reply, and lets it in. An open lobby costs sixty bytes every two seconds; a join, a handful of
+datagrams once.
+
+This is hole punching, which ADR-058 retired, and what went wrong then does not happen now. The two
+failures were that the players swapped the descriptions by hand, and that ICE decided which end was
+in charge from the order things happened in, so the pasting raced and both ends kept claiming the
+same role. Here the server carries the descriptions, and there are no roles to agree: the host is the
+host, it answers probes, and the guest connects to whichever of its addresses answered first. No ICE
+and no library — it is a token, a probe and a reply, over the game's own socket.
+
+That last point is load-bearing. A hole a router opens is for one socket talking to one address, so
+the lobby conversation and the probes have to go through the socket the game then plays over. The
+transport gained a side door for that (`Open`, `SendUnframed`, `TakeUnframed`): anything arriving that
+is not the game's is kept for whoever asks, bounded, and the lobby client asks. The guest's transport
+is opened before there is a game on it, used for the introduction, and then handed to the session to
+connect over, holes and all.
+
+What it cannot do is get through a router that changes its outside port for every destination. The
+host also asks its own router to forward the game port (UPnP) and offers that address as one more
+candidate, which covers a guest behind the strict router; a pair where both are strict fails with a
+message that says so and what to try. A relay fallback on the same server, capped and used only for
+those pairs, is the obvious next step if that turns out to matter.
+
+The server is four portable files and a main, no database, all state in memory. A host whose server
+restarted is told its code is unknown on its next update and asks again for the same one, which it
+gets if nobody else has taken it. It runs on Oracle Cloud's free tier (10 TB a month outbound) and is
+built there from source by a script; GitHub builds it on Linux, on both kinds of processor, whenever
+its files change. Nothing about it is built into the game's package.
+
+The lobby itself is a screen, not a server feature: the host's session runs from the moment it hosts,
+guests connect and wait, and the roster the host already sends carries one more bit — started. A guest
+goes into the world when that bit is set, so everybody goes in together when the host presses Start,
+and anybody who joins later goes straight in.
+
+## ADR-068: A game on the same network is asked for, not only listened for
+
+**Status**: accepted, 2026-09-21
+
+Two copies of the game on one PC found each other at once, and two PCs in the same room often did not.
+Both causes were on the browsing side, and neither showed up in testing on one machine.
+
+Windows sends a datagram to 255.255.255.255 out of one network adapter only, whichever it considers the
+default. A PC with a VPN, a virtual switch for WSL or Docker, or wired and wifi both up announced itself
+into the wrong one. Every adapter has its own broadcast address, which does go out of that adapter, so
+the beacon now sends to all of them as well.
+
+And Windows Firewall, on a network it treats as public, drops announcements nobody asked for — but lets
+in a reply to a broadcast this machine sent, for a few seconds. So a browser now asks "is anybody
+hosting?" once a second, and every host answers it directly with its beacon. The host needs its
+firewall open to be hosting at all, so nothing new is asked of anybody.
+
+Networks built to keep devices apart (schools, offices, hotels, client isolation on mesh wifi) still
+stop it, and nothing inside a game can fix those. The empty list now says so, and codes go out through
+the internet and back, which those networks allow.

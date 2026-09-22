@@ -11,7 +11,8 @@
 #include "Engine/Audio/AudioEngine.h"
 #include "Engine/Audio/VoiceCapture.h"
 #include "Engine/Audio/VoiceCodec.h"
-#include "Engine/Net/RelayCarrier.h"
+#include "Engine/Net/LobbyClient.h"
+#include "Engine/Net/LobbyServer.h"
 #include "Game/Net/NetSession.h"
 #include "Engine/Net/LanDiscovery.h"
 #include "Engine/Net/PortMapper.h"
@@ -283,30 +284,31 @@ private:
     // What this machine's game is called in everybody else's list. Falls back to the player's own
     // name, because an unnamed row still needs the one thing that tells it apart: whose it is.
     std::string LobbyName() const;
-    // Finding games. On your own network that is a beacon and costs nothing; over the internet it
-    // is a question to the relay, which already knows.
+    // Finding games. On your own network that is a beacon and costs nothing; everywhere else it is
+    // a question to the lobby server, which knows every public game.
     void StartBrowsing();
     void StopBrowsing();
     void UpdateDiscovery(float frameDeltaSeconds);
-    // Starting one. LAN goes straight into the world -- there is nothing to hand out, because the
-    // beacon is the invitation -- and Online goes to the lobby screen for the code.
-    void StartHostLocal(bool overInternet);
-    // Over the internet: through the relay when one is set up and answering, otherwise straight to
-    // this machine with the router asked to let people in. The player does not choose between them.
-    void StartHostOnline();
-    bool RelayConfigured() const;
-    // The address to send friends and whether the router has let them in, for the screen between
-    // Start and going in and for the pause menu.
-    void DrawShareAddress();
-    void DrawOpenGame();
-    // Joining one. Both take whatever the row or the box gave them and say why if it did not work.
+    // Hosting. One button, and every way in at once: the network beacon, a code from the lobby
+    // server, and the router asked to let people straight in. Goes to the lobby, where the host
+    // waits for everybody and then starts the game.
+    void StartHosting();
+    bool LobbyServerConfigured() const;
+    // Joining. By address, by code, or whichever of those was typed into the box; each says why if
+    // it did not work.
     bool JoinAddress(const std::string& address, int port);
+    bool JoinCode(uint32_t code);
     bool JoinTyped(const std::string& text);
-    // The lobby, over a relay. One code, and anybody who types it joins: there is nothing to swap
-    // and nothing that goes stale while somebody reads it out.
-    void StartLobby(bool asHost, uint32_t code);
-    void StopLobby();
+    // A join by code, while it is still finding its way to the host: the lobby server introduces
+    // this machine, and then the two punch through to each other before the game connects.
+    void UpdateJoining(float frameDeltaSeconds);
+    // Everybody together before the game: the code, who is here, and the host's Start button.
     void DrawLobby();
+    void DrawLobbyPlayers();
+    // The code and the other ways in, for the lobby and the pause menu.
+    void DrawInvite();
+    // Leaving the lobby for the game, for the host and everybody with it.
+    void StartTheGame();
     void DrawSettings();
     void DrawKeyBindings();
     void UpdateRebinding();
@@ -674,8 +676,7 @@ private:
         Host
     };
     TitlePage m_titlePage = TitlePage::Root;
-    // Which list is showing, and which kind of game the host page will open. One flag for both,
-    // because they are the same question asked from either end: your own network, or the internet.
+    // Which list is showing: public games from the lobby server, or games on this network.
     bool m_online = false;
     // Which of the two the tab bar showed last frame, so a change made elsewhere can be pushed to it.
     bool m_onlineShown = false;
@@ -683,25 +684,32 @@ private:
     // list while it is hosting one.
     LanListener m_browser;
     LanBeacon m_beacon;
-    // A second carrier, only ever used to ask the relay what is open. Separate from m_relay
-    // because that one carries the game: browsing has to work before there is a game and has to
-    // stop the moment there is one.
-    std::shared_ptr<RelayCarrier> m_browseRelay;
-    // What this machine's game is called in other people's lists.
+    // Asking the lobby server what public games are open, over a socket of its own: browsing has
+    // to work before there is a game, and stops the moment there is one.
+    LobbyClient m_lobbyBrowser;
+    std::unique_ptr<Transport> m_browseTransport;
+    // This machine's lobby: the host's registration and introductions, or a guest's way in.
+    LobbyClient m_lobby;
+    // A guest's transport while it is still finding the host, before the game has it. The lobby
+    // server has seen this socket and the holes are punched for it, so it is this one the game
+    // connects over, not a new one.
+    std::unique_ptr<Transport> m_joinTransport;
+    // A lobby server running inside this game, for testing codes on one machine (lobby_server_local).
+    std::unique_ptr<LobbyServer> m_localLobbyServer;
+    double m_localLobbyClock = 0.0;
+    // What this machine's game is called in other people's lists, and whether it is in the public
+    // one or only reachable by its code.
     char m_lobbyName[24] = "";
+    bool m_listPublicly = false;
     // Which games on the network have already been mentioned in the log, so appearing and going
     // are each said once rather than every frame.
     std::vector<std::string> m_seenOnLan;
-    // Asks the router to let people outside the house in, when hosting over the internet without a
-    // relay. Best effort, and the screen says what happened.
+    // Asks the router to let people straight in, as one more way to reach a host whose router
+    // cannot be punched through. Best effort and silent: the code is the way in either way.
     PortMapper m_ports;
-    // The "your game is open, send them this" screen, between Start and going in.
-    bool m_openScreen = false;
-    // Whether the lobby screen is up, and whether this machine opened the lobby or joined one.
+    bool m_portsAnnounced = false;
+    // The host is in the lobby, waiting for everybody, and has not started the game.
     bool m_inLobby = false;
-    bool m_hostingLobby = false;
-    // Whether the relay has already been reported as gone, so it is said once and not every frame.
-    bool m_relayFailed = false;
     // The flashlight, and where its beam is currently pointing -- which is not quite where the
     // player is looking, because it trails the view and catches up. `m_torchAimed` is false until
     // the first frame it is on, so switching it on snaps the beam to the view instead of sweeping
@@ -730,9 +738,6 @@ private:
     bool m_torchAimed = false;
     glm::vec3 m_torchAim{0.0f, 0.0f, -1.0f};
 
-    // The relay connection, when playing over the internet. One socket, outwards, and one link per
-    // other person: see Engine/Net/RelayCarrier.h for why that replaced hole punching.
-    std::shared_ptr<RelayCarrier> m_relay;
     // What was pasted into the join box: a lobby code, or an address for a game on this network.
     char m_joinInput[1400] = "";
     // Frames left before a deferred hold report. Commands from --exec all run before the first

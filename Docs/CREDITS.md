@@ -26,8 +26,8 @@ Dependencies are declared in `vcpkg.json` and their licences are the ones vcpkg 
 are permissive. The one worth naming is **Opus** (BSD three-clause), which compresses voice: it is
 the codec every voice application uses and there is no obligation beyond keeping the notice.
 
-**libjuice** (MPL-2.0) was here and is gone. It did the hole punching, which a relay replaced, so
-the only copyleft obligation in the project went with it.
+**libjuice** (MPL-2.0) was here and is gone. It did hole punching; the game now does its own, simpler
+kind through the lobby server (ADR-067), so the only copyleft obligation in the project went with it.
 
 ## Everything else
 

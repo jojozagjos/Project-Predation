@@ -451,6 +451,8 @@ void WriteWorldEvent(BitWriter& writer, const WorldEventMessage& message)
         writer.WriteBits(message.player, 3);
         writer.WriteBits(message.other, 3);
         WriteVelocity(writer, message.direction);
+        // How long until they are back, in whole seconds, so their screen can count it down.
+        writer.WriteBits(std::min<uint32_t>(static_cast<uint32_t>(std::max(message.amount, 0.0f) + 0.5f), 63), 6);
         break;
 
     case WorldEventKind::PlayerRespawned:
@@ -524,6 +526,7 @@ bool ReadWorldEvent(BitReader& reader, WorldEventMessage& out)
         out.player = static_cast<uint8_t>(reader.ReadBits(3));
         out.other = static_cast<uint8_t>(reader.ReadBits(3));
         out.direction = ReadVelocity(reader);
+        out.amount = static_cast<float>(reader.ReadBits(6));
         break;
 
     case WorldEventKind::PlayerRespawned:
@@ -754,6 +757,7 @@ void WritePeerList(BitWriter& writer, const PeerListMessage& message)
 {
     const uint8_t count = std::min<uint8_t>(message.count, kMaxPlayers);
     writer.WriteBits(count, 3);
+    writer.WriteBool(message.started);
     for (uint8_t i = 0; i < count; ++i)
     {
         writer.WriteBits(message.peers[i].id, 3);
@@ -770,6 +774,7 @@ bool ReadPeerList(BitReader& reader, PeerListMessage& out)
         return false;
     }
     out.count = static_cast<uint8_t>(count);
+    out.started = reader.ReadBool();
     for (uint32_t i = 0; i < count; ++i)
     {
         out.peers[i].id = static_cast<uint8_t>(reader.ReadBits(3));

@@ -234,6 +234,11 @@ public:
     std::string AddressOf(PeerId peer) const override;
     bool IsListening() const override { return m_listening; }
 
+    bool Open(uint16_t port) override;
+    bool SendUnframed(const std::string& address, uint16_t port, const uint8_t* data, size_t bytes) override;
+    std::vector<UnframedDatagram> TakeUnframed() override { return std::exchange(m_unframed, {}); }
+    uint16_t LocalPort() const override;
+
 private:
     struct Outgoing // waiting for an acknowledgement
     {
@@ -300,6 +305,8 @@ private:
     float m_connectElapsed = 0.0f;
     // Where the datagrams go when they are not going out of a socket of this transport.s own.
     std::shared_ptr<DatagramCarrier> m_carrier;
+    // Datagrams that were not the game's, kept for the side door.
+    std::vector<UnframedDatagram> m_unframed;
     bool m_peersFullReported = false;
     bool m_listening = false;
     bool m_connecting = false;
@@ -354,6 +361,15 @@ bool UdpTransport::OpenSocket(uint16_t port)
         m_socket = kInvalidSocket;
         return false;
     }
+#if defined(_WIN32)
+    // Windows reports "nothing was listening there" for a datagram this socket sent earlier as an
+    // error on the next receive, which ended that frame's reading early. Punching through to a
+    // player sends to several of their addresses at once, most of which answer exactly that.
+    BOOL report = FALSE;
+    DWORD returned = 0;
+    WSAIoctl(m_socket, _WSAIOW(IOC_VENDOR, 12) /* SIO_UDP_CONNRESET */, &report, sizeof(report), nullptr, 0,
+             &returned, nullptr, nullptr);
+#endif
     return true;
 }
 
@@ -368,7 +384,9 @@ bool UdpTransport::Listen(uint16_t port)
         PRED_LOG_INFO(Network, "Listening on a punched connection");
         return true;
     }
-    if (!OpenSocket(port))
+    // Opened already, through the side door, for a lobby: that socket is the one to listen on,
+    // because it is the one the lobby server has seen and the one the holes were punched for.
+    if (m_socket == kInvalidSocket && !OpenSocket(port))
     {
         return false;
     }
@@ -396,7 +414,7 @@ bool UdpTransport::Connect(const std::string& address, uint16_t port)
         return true;
     }
 
-    if (!OpenSocket(0)) // any free local port
+    if (m_socket == kInvalidSocket && !OpenSocket(0)) // any free local port, unless already open
     {
         return false;
     }
@@ -518,6 +536,51 @@ std::string UdpTransport::AddressOf(PeerId peer) const
         }
     }
     return {};
+}
+
+bool UdpTransport::Open(uint16_t port)
+{
+    if (m_carrier != nullptr)
+    {
+        return false;
+    }
+    return m_socket != kInvalidSocket || OpenSocket(port);
+}
+
+bool UdpTransport::SendUnframed(const std::string& address, uint16_t port, const uint8_t* data, size_t bytes)
+{
+    if (m_socket == kInvalidSocket || data == nullptr || bytes == 0 || bytes > kMaxDatagram)
+    {
+        return false;
+    }
+    sockaddr_in to{};
+    to.sin_family = AF_INET;
+    to.sin_port = htons(port);
+    if (inet_pton(AF_INET, address.c_str(), &to.sin_addr) != 1)
+    {
+        return false;
+    }
+    return sendto(m_socket, reinterpret_cast<const char*>(data), static_cast<int>(bytes), 0,
+                  reinterpret_cast<const sockaddr*>(&to), sizeof(to)) == static_cast<int>(bytes);
+}
+
+uint16_t UdpTransport::LocalPort() const
+{
+    if (m_socket == kInvalidSocket)
+    {
+        return 0;
+    }
+    sockaddr_in bound{};
+#if defined(_WIN32)
+    int length = static_cast<int>(sizeof(bound));
+#else
+    socklen_t length = sizeof(bound);
+#endif
+    if (getsockname(m_socket, reinterpret_cast<sockaddr*>(&bound), &length) != 0)
+    {
+        return 0;
+    }
+    return ntohs(bound.sin_port);
 }
 
 float UdpTransport::DrawDelay()
@@ -729,7 +792,20 @@ void UdpTransport::HandleDatagram(const uint8_t* data, size_t bytes, const socka
 {
     if (bytes < kHeaderBytes || ReadU32(data) != kMagic)
     {
-        return; // not ours. Any open UDP port collects scanner traffic.
+        // Not the game's. Kept for the side door -- a lobby server answering, a player probing for a
+        // way through -- up to a bound, because any open UDP port also collects scanner traffic and
+        // nothing may be asking. Never on a carrier, whose far ends are only ever the game.
+        if (m_carrier == nullptr && bytes > 0 && m_unframed.size() < 64)
+        {
+            char text[INET_ADDRSTRLEN] = {};
+            inet_ntop(AF_INET, &from.sin_addr, text, sizeof(text));
+            UnframedDatagram kept;
+            kept.address = text;
+            kept.port = ntohs(from.sin_port);
+            kept.bytes.assign(data, data + bytes);
+            m_unframed.push_back(std::move(kept));
+        }
+        return;
     }
 
     const auto kind = static_cast<PacketKind>(data[4]);

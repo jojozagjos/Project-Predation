@@ -11,11 +11,14 @@
 #if defined(_WIN32)
 #    include <winsock2.h>
 #    include <ws2tcpip.h>
+#    include <iphlpapi.h>
 using SocketHandle = SOCKET;
 constexpr SocketHandle kInvalidSocket = INVALID_SOCKET;
 #else
 #    include <arpa/inet.h>
 #    include <fcntl.h>
+#    include <ifaddrs.h>
+#    include <net/if.h>
 #    include <netinet/in.h>
 #    include <sys/socket.h>
 #    include <unistd.h>
@@ -62,7 +65,125 @@ bool SetNonBlocking(SocketHandle handle)
 #endif
 }
 
+// 'PLAQ': "is anybody hosting?", from somebody browsing. Its own magic, so a host can tell it from the
+// beacons it also hears on the same port.
+constexpr uint32_t kLanQueryMagic = 0x504C4151u;
+// How often a browser asks, and how often the list of places to shout is looked up again. Adapters
+// come and go -- a VPN connects, wifi changes -- but not every quarter of a second.
+constexpr float kQueryInterval = 1.0f;
+constexpr float kTargetRefreshSeconds = 5.0f;
+
+// Where to shout, in network byte order: everywhere at once, and each network adapter's own
+// broadcast address.
+//
+// Windows sends the first of those -- 255.255.255.255 -- out of one adapter only, whichever it thinks
+// is the default. A PC with a VPN, a virtual switch for WSL or Docker, or wired and wifi both
+// connected was shouting into the wrong one, and the PC across the room never heard it. An adapter's
+// own broadcast address (192.168.1.255 for 192.168.1.20/24) goes out of that adapter, so sending to
+// each of them reaches every network this PC is on.
+std::vector<uint32_t> BroadcastTargets()
+{
+    std::vector<uint32_t> targets{htonl(INADDR_BROADCAST)};
+    const auto add = [&](uint32_t address, uint32_t mask)
+    {
+        // Host byte order in, network order out. Link-local and loopback are nowhere to shout.
+        if ((address >> 24) == 127 || (address >> 16) == 0xA9FEu || mask == 0 || mask == 0xFFFFFFFFu)
+        {
+            return;
+        }
+        const uint32_t broadcast = htonl((address & mask) | ~mask);
+        if (std::find(targets.begin(), targets.end(), broadcast) == targets.end() && targets.size() < 16)
+        {
+            targets.push_back(broadcast);
+        }
+    };
+#if defined(_WIN32)
+    ULONG size = 16 * 1024;
+    std::vector<unsigned char> buffer(size);
+    constexpr ULONG kFlags = GAA_FLAG_SKIP_ANYCAST | GAA_FLAG_SKIP_MULTICAST | GAA_FLAG_SKIP_DNS_SERVER;
+    ULONG result = GetAdaptersAddresses(AF_INET, kFlags, nullptr,
+                                        reinterpret_cast<IP_ADAPTER_ADDRESSES*>(buffer.data()), &size);
+    if (result == ERROR_BUFFER_OVERFLOW)
+    {
+        buffer.resize(size);
+        result = GetAdaptersAddresses(AF_INET, kFlags, nullptr,
+                                      reinterpret_cast<IP_ADAPTER_ADDRESSES*>(buffer.data()), &size);
+    }
+    if (result == NO_ERROR)
+    {
+        for (auto* adapter = reinterpret_cast<IP_ADAPTER_ADDRESSES*>(buffer.data()); adapter != nullptr;
+             adapter = adapter->Next)
+        {
+            if (adapter->OperStatus != IfOperStatusUp || adapter->IfType == IF_TYPE_SOFTWARE_LOOPBACK)
+            {
+                continue;
+            }
+            for (auto* unicast = adapter->FirstUnicastAddress; unicast != nullptr; unicast = unicast->Next)
+            {
+                if (unicast->Address.lpSockaddr == nullptr || unicast->Address.lpSockaddr->sa_family != AF_INET)
+                {
+                    continue;
+                }
+                const auto* in = reinterpret_cast<const sockaddr_in*>(unicast->Address.lpSockaddr);
+                const ULONG prefix = unicast->OnLinkPrefixLength;
+                const uint32_t mask = prefix == 0 || prefix > 32 ? 0u : (0xFFFFFFFFu << (32u - prefix));
+                add(ntohl(in->sin_addr.s_addr), mask);
+            }
+        }
+    }
+#else
+    ifaddrs* list = nullptr;
+    if (getifaddrs(&list) == 0)
+    {
+        for (const ifaddrs* entry = list; entry != nullptr; entry = entry->ifa_next)
+        {
+            if (entry->ifa_addr == nullptr || entry->ifa_netmask == nullptr ||
+                entry->ifa_addr->sa_family != AF_INET || (entry->ifa_flags & IFF_BROADCAST) == 0)
+            {
+                continue;
+            }
+            add(ntohl(reinterpret_cast<const sockaddr_in*>(entry->ifa_addr)->sin_addr.s_addr),
+                ntohl(reinterpret_cast<const sockaddr_in*>(entry->ifa_netmask)->sin_addr.s_addr));
+        }
+        freeifaddrs(list);
+    }
+#endif
+    return targets;
+}
+
+void SendToAll(SocketHandle handle, const std::vector<uint32_t>& targets, const std::vector<uint8_t>& datagram)
+{
+    for (const uint32_t target : targets)
+    {
+        sockaddr_in to{};
+        to.sin_family = AF_INET;
+        to.sin_port = htons(kLanDiscoveryPort);
+        to.sin_addr.s_addr = target;
+        // Results ignored on purpose: an adapter that refuses broadcast -- a VPN, a virtual switch --
+        // fails on its own address and the others still go.
+        sendto(handle, reinterpret_cast<const char*>(datagram.data()), static_cast<int>(datagram.size()), 0,
+               reinterpret_cast<const sockaddr*>(&to), sizeof(to));
+    }
+}
+
 } // namespace
+
+std::vector<uint8_t> EncodeLanQuery()
+{
+    BitWriter writer(8);
+    writer.WriteUInt(kLanQueryMagic);
+    return writer.Finish();
+}
+
+bool IsLanQuery(const uint8_t* data, size_t bytes)
+{
+    if (data == nullptr || bytes != 4)
+    {
+        return false;
+    }
+    BitReader reader(data, bytes);
+    return reader.ReadUInt() == kLanQueryMagic;
+}
 
 // --- The wire ----------------------------------------------------------------------------------
 
@@ -160,6 +281,10 @@ struct LanBeacon::Impl
     LanLobby lobby;
     float timer = 0.0f;
     bool acquired = false;
+    // Bound to the discovery port, so it hears browsers asking and can answer them.
+    bool answering = false;
+    std::vector<uint32_t> targets;
+    float targetAge = 1.0e9f;
 };
 
 LanBeacon::LanBeacon() = default;
@@ -199,10 +324,18 @@ bool LanBeacon::Start()
     }
     SetNonBlocking(impl->handle);
 
-    // Deliberately not bound. An unbound socket takes an ephemeral port on the way out, which is
-    // all a beacon needs: nothing ever replies to it. Binding the discovery port here would fight
-    // the listener in the same process, which is the ordinary case of somebody hosting while their
-    // own browser is still open.
+    // Bound to the discovery port, shared, so it also hears browsers asking who is there and can
+    // answer each one directly. That answer is what gets through when the browsing PC's firewall
+    // throws away announcements nobody asked for: Windows lets a reply to its own broadcast back in
+    // for a few seconds, even on a network it treats as public. Shared with the listener in the same
+    // process, and not fatal if it cannot be had -- the beacon still announces.
+    int reuse = 1;
+    setsockopt(impl->handle, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char*>(&reuse), sizeof(reuse));
+    sockaddr_in local{};
+    local.sin_family = AF_INET;
+    local.sin_port = htons(kLanDiscoveryPort);
+    local.sin_addr.s_addr = htonl(INADDR_ANY);
+    impl->answering = bind(impl->handle, reinterpret_cast<const sockaddr*>(&local), sizeof(local)) == 0;
     m_impl = impl.release();
     m_message.clear();
     return true;
@@ -245,25 +378,52 @@ void LanBeacon::Tick(float dt)
     {
         return;
     }
+    const std::vector<uint8_t> datagram = EncodeLanBeacon(m_impl->lobby);
+
+    // Anybody asking who is there is answered straight back, to exactly where they asked from. It is
+    // a reply to their own question, so their firewall lets it in. Bounded, like everything else a
+    // stranger on the network can make this do.
+    if (m_impl->answering)
+    {
+        std::array<uint8_t, kMaxBeaconBytes> buffer{};
+        for (int i = 0; i < 32; ++i)
+        {
+            sockaddr_in from{};
+#if defined(_WIN32)
+            int fromLength = sizeof(from);
+#else
+            socklen_t fromLength = sizeof(from);
+#endif
+            const int received = recvfrom(m_impl->handle, reinterpret_cast<char*>(buffer.data()),
+                                          static_cast<int>(buffer.size()), 0, reinterpret_cast<sockaddr*>(&from),
+                                          &fromLength);
+            if (received <= 0)
+            {
+                break;
+            }
+            if (IsLanQuery(buffer.data(), static_cast<size_t>(received)))
+            {
+                sendto(m_impl->handle, reinterpret_cast<const char*>(datagram.data()),
+                       static_cast<int>(datagram.size()), 0, reinterpret_cast<const sockaddr*>(&from),
+                       sizeof(from));
+            }
+        }
+    }
+
+    m_impl->targetAge += dt;
+    if (m_impl->targetAge >= kTargetRefreshSeconds)
+    {
+        m_impl->targetAge = 0.0f;
+        m_impl->targets = BroadcastTargets();
+    }
     m_impl->timer += dt;
     if (m_impl->timer < kBeaconInterval)
     {
         return;
     }
     m_impl->timer = 0.0f;
-
-    const std::vector<uint8_t> datagram = EncodeLanBeacon(m_impl->lobby);
-    sockaddr_in to{};
-    to.sin_family = AF_INET;
-    to.sin_port = htons(kLanDiscoveryPort);
-    to.sin_addr.s_addr = htonl(INADDR_BROADCAST);
-    // The result is ignored on purpose. A machine with an adapter that refuses broadcast -- a VPN
-    // up, a virtual switch -- fails on that one send and succeeds on the next, and a beacon that
-    // gave up because one datagram did not go would be a game that stops appearing in the list for
-    // no reason the player can see.
-    sendto(m_impl->handle, reinterpret_cast<const char*>(datagram.data()),
-           static_cast<int>(datagram.size()), 0, reinterpret_cast<const sockaddr*>(&to),
-           sizeof(to));
+    // Out of every network adapter, not only the one Windows picks for the all-networks address.
+    SendToAll(m_impl->handle, m_impl->targets, datagram);
 }
 
 // --- The listener ------------------------------------------------------------------------------
@@ -272,6 +432,10 @@ struct LanListener::Impl
 {
     SocketHandle handle = kInvalidSocket;
     bool acquired = false;
+    // Asking, as well as listening: see Tick.
+    float queryTimer = 0.0f;
+    float targetAge = 1.0e9f;
+    std::vector<uint32_t> targets;
 };
 
 LanListener::LanListener() = default;
@@ -306,6 +470,10 @@ bool LanListener::Start()
     int reuse = 1;
     setsockopt(impl->handle, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char*>(&reuse),
                sizeof(reuse));
+    // And allowed to shout, because it asks as well as listens.
+    int broadcast = 1;
+    setsockopt(impl->handle, SOL_SOCKET, SO_BROADCAST, reinterpret_cast<const char*>(&broadcast),
+               sizeof(broadcast));
 
     sockaddr_in address{};
     address.sin_family = AF_INET;
@@ -352,6 +520,22 @@ void LanListener::Tick(float dt)
     if (m_impl == nullptr)
     {
         return;
+    }
+
+    // Asking who is there, once a second, out of every adapter. Hosts answer straight back, and an
+    // answer to a question this machine asked gets through its firewall even where announcements
+    // nobody asked for do not -- which is the usual reason a game on the same wifi never showed up.
+    m_impl->targetAge += dt;
+    if (m_impl->targetAge >= kTargetRefreshSeconds)
+    {
+        m_impl->targetAge = 0.0f;
+        m_impl->targets = BroadcastTargets();
+    }
+    m_impl->queryTimer -= dt;
+    if (m_impl->queryTimer <= 0.0f)
+    {
+        m_impl->queryTimer = kQueryInterval;
+        SendToAll(m_impl->handle, m_impl->targets, EncodeLanQuery());
     }
 
     std::array<uint8_t, kMaxBeaconBytes> buffer{};
