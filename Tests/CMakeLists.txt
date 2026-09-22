@@ -18,6 +18,7 @@ add_executable(PredationTests
     NavigationTests.cpp
     CreatureTests.cpp
     AnatomyTests.cpp
+    CreatureBodyTests.cpp
     LobbyTests.cpp
     PhysicsTests.cpp
     AssetTests.cpp

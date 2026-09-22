@@ -28,7 +28,11 @@ enum class PhysicsLayer : uint8_t
     Static = 0,
     Moving = 1,
     // Loose items. Falls and settles like anything else, but characters walk through it.
-    Debris = 2
+    Debris = 2,
+    // A body gone limp: lands on the level, passes through people and through itself.
+    Ragdoll = 3,
+    // Where a creature can be hit. Touches nothing; only rays find it.
+    Hitbox = 4
 };
 
 struct BodyHandle
@@ -95,7 +99,17 @@ public:
                             float density = 1000.0f);
     // Capsule total height is 2 * (halfHeight + radius). This is the player/creature body shape.
     BodyHandle CreateCapsule(float halfHeight, float radius, const Transform& transform, BodyMotion motion,
-                             float density = 1000.0f);
+                             float density = 1000.0f, PhysicsLayer layer = PhysicsLayer::Moving);
+
+    // --- Joints ---------------------------------------------------------------------------------
+    // A joint that lets two bodies swing about a point within a cone, and twist about an axis within a
+    // range, as a shoulder, a hip or a neck does. Everything in world space, where the two bodies are
+    // now: `twistAxis` runs along the child limb, `planeAxis` is square to it. Angles in radians.
+    // Returns an id for RemoveJoint; destroying either body removes its joints too.
+    uint32_t AddSwingTwistJoint(BodyHandle parent, BodyHandle child, const glm::vec3& pivot,
+                                const glm::vec3& twistAxis, const glm::vec3& planeAxis, float normalHalfCone,
+                                float planeHalfCone, float twistMin, float twistMax);
+    void RemoveJoint(uint32_t joint);
     // Triangle mesh, static only. Used for level geometry that boxes cannot represent.
     BodyHandle CreateMeshBody(const MeshData& mesh, const Transform& transform);
 
@@ -130,6 +144,8 @@ public:
     // from its own eyes would otherwise see nothing but itself.
     RayHit RayCast(const glm::vec3& origin, const glm::vec3& direction, float maxDistance,
                    BodyHandle ignore) const;
+    // Against the level alone: never anything that moves, lies loose, or is a creature. For where feet go.
+    RayHit RayCastStatic(const glm::vec3& origin, const glm::vec3& direction, float maxDistance) const;
 
     // A pair of non-moving solids that intersect. Level geometry built out of overlapping pieces
     // looks wrong from the inside and can shove or trap the player, so the build checks itself

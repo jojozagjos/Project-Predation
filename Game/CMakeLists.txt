@@ -41,6 +41,12 @@ set(PRED_GAME_SOURCES
     Creature/CreatureBrain.cpp
     Creature/CreatureAnatomy.h
     Creature/CreatureAnatomy.cpp
+    Creature/CreatureSkin.h
+    Creature/CreatureSkin.cpp
+    Creature/CreatureRig.h
+    Creature/CreatureRig.cpp
+    Creature/CreatureRagdoll.h
+    Creature/CreatureRagdoll.cpp
     Creature/Creature.h
     Creature/Creature.cpp
     Weapons/BulletHole.h

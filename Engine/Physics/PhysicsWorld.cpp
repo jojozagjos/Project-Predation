@@ -25,6 +25,7 @@
 #include <Jolt/Physics/Collision/Shape/MeshShape.h>
 #include <Jolt/Physics/Collision/Shape/SphereShape.h>
 #include <Jolt/Physics/Collision/TransformedShape.h>
+#include <Jolt/Physics/Constraints/SwingTwistConstraint.h>
 #include <Jolt/Physics/PhysicsSettings.h>
 #include <Jolt/Physics/PhysicsSystem.h>
 #include <Jolt/RegisterTypes.h>
@@ -52,6 +53,8 @@ namespace Layers
 constexpr JPH::ObjectLayer kNonMoving = PhysicsLayers::kNonMoving;
 constexpr JPH::ObjectLayer kMoving = PhysicsLayers::kMoving;
 constexpr JPH::ObjectLayer kDebris = PhysicsLayers::kDebris;
+constexpr JPH::ObjectLayer kRagdoll = PhysicsLayers::kRagdoll;
+constexpr JPH::ObjectLayer kHitbox = PhysicsLayers::kHitbox;
 constexpr JPH::ObjectLayer kCount = PhysicsLayers::kCount;
 } // namespace Layers
 
@@ -72,6 +75,8 @@ public:
         // Debris moves, so it shares the moving broad phase; what it does not do is touch
         // characters, and that is decided in the narrow phase below.
         m_objectToBroadPhase[Layers::kDebris] = BroadPhaseLayers::kMoving;
+        m_objectToBroadPhase[Layers::kRagdoll] = BroadPhaseLayers::kMoving;
+        m_objectToBroadPhase[Layers::kHitbox] = BroadPhaseLayers::kMoving;
     }
 
     JPH::uint GetNumBroadPhaseLayers() const override { return BroadPhaseLayers::kCount; }
@@ -120,6 +125,19 @@ public:
         if (layer1 == Layers::kNonMoving && layer2 == Layers::kNonMoving)
         {
             return false;
+        }
+        // A hit zone touches nothing at all: it is there to be found by rays, and a round is a ray.
+        if (layer1 == Layers::kHitbox || layer2 == Layers::kHitbox)
+        {
+            return false;
+        }
+        // A body gone limp lands on the level and on loose things, and on nothing else: not on the
+        // people walking past, which would trip them, and not on itself, whose joints already keep
+        // its pieces apart.
+        if (layer1 == Layers::kRagdoll || layer2 == Layers::kRagdoll)
+        {
+            const JPH::ObjectLayer other = layer1 == Layers::kRagdoll ? layer2 : layer1;
+            return other == Layers::kNonMoving || other == Layers::kDebris;
         }
         // And characters walk through anything lying on the floor.
         if ((layer1 == Layers::kDebris && layer2 == Layers::kMoving) ||
@@ -182,7 +200,17 @@ JPH::ObjectLayer ToJoltLayer(BodyMotion motion, PhysicsLayer layer = PhysicsLaye
     {
         return Layers::kNonMoving;
     }
-    return layer == PhysicsLayer::Debris ? Layers::kDebris : Layers::kMoving;
+    switch (layer)
+    {
+    case PhysicsLayer::Debris:
+        return Layers::kDebris;
+    case PhysicsLayer::Ragdoll:
+        return Layers::kRagdoll;
+    case PhysicsLayer::Hitbox:
+        return Layers::kHitbox;
+    default:
+        return Layers::kMoving;
+    }
 }
 
 // --- Jolt diagnostics into our log --------------------------------------------------------------
@@ -277,6 +305,17 @@ struct PhysicsWorld::Impl
     ObjectLayerPairFilterImpl objectLayerPairFilter;
 
     std::unordered_map<uint32_t, BodyRecord> records;
+    // Joints by id, and which two bodies each holds, so a body going takes its joints with it: Jolt
+    // keeps pointers to both bodies in a joint and a body destroyed under one is a crash later.
+    struct JointRecord
+    {
+        JPH::Ref<JPH::Constraint> constraint;
+        uint32_t a = 0;
+        uint32_t b = 0;
+    };
+    std::unordered_map<uint32_t, JointRecord> joints;
+    uint32_t nextJoint = 1;
+    void RemoveJointsOf(uint32_t body);
     Stats stats;
 
     JPH::BodyInterface& Bodies() { return system->GetBodyInterface(); }
@@ -390,6 +429,15 @@ BodyHandle PhysicsWorld::Impl::AddBody(const JPH::ShapeRefC& shape, const Transf
     {
         creation.mMotionQuality = JPH::EMotionQuality::LinearCast;
     }
+    // A limp body: swept, so a forearm does not end up through the floor, and damped enough that it
+    // settles into a heap rather than twitching on the ground for a minute.
+    if (layer == PhysicsLayer::Ragdoll && motion == BodyMotion::Dynamic)
+    {
+        creation.mMotionQuality = JPH::EMotionQuality::LinearCast;
+        creation.mLinearDamping = 0.25f;
+        creation.mAngularDamping = 0.6f;
+        creation.mFriction = 0.9f;
+    }
 
     const JPH::BodyID id = Bodies().CreateAndAddBody(
         creation, motion == BodyMotion::Static ? JPH::EActivation::DontActivate : JPH::EActivation::Activate);
@@ -464,7 +512,7 @@ BodyHandle PhysicsWorld::CreateSphere(float radius, const Transform& transform, 
 }
 
 BodyHandle PhysicsWorld::CreateCapsule(float halfHeight, float radius, const Transform& transform,
-                                       BodyMotion motion, float density)
+                                       BodyMotion motion, float density, PhysicsLayer layer)
 {
     Impl& impl = *m_impl;
     if (!impl.initialized)
@@ -490,7 +538,7 @@ BodyHandle PhysicsWorld::CreateCapsule(float halfHeight, float radius, const Tra
     record.motion = motion;
     record.radius = safeRadius;
     record.halfHeight = safeHalfHeight;
-    return impl.AddBody(result.Get(), transform, motion, PhysicsLayer::Moving, record);
+    return impl.AddBody(result.Get(), transform, motion, layer, record);
 }
 
 BodyHandle PhysicsWorld::CreateMeshBody(const MeshData& mesh, const Transform& transform)
@@ -545,6 +593,7 @@ void PhysicsWorld::DestroyBody(BodyHandle body)
     {
         return;
     }
+    impl.RemoveJointsOf(body.id);
     const JPH::BodyID id(body.id);
     impl.Bodies().RemoveBody(id);
     impl.Bodies().DestroyBody(id);
@@ -559,6 +608,11 @@ void PhysicsWorld::DestroyAllBodies()
     {
         return;
     }
+    for (auto& [jointId, joint] : impl.joints)
+    {
+        impl.system->RemoveConstraint(joint.constraint);
+    }
+    impl.joints.clear();
     for (const auto& [rawId, record] : impl.records)
     {
         const JPH::BodyID id(rawId);
@@ -567,6 +621,73 @@ void PhysicsWorld::DestroyAllBodies()
     }
     impl.records.clear();
     impl.stats.bodyCount = 0;
+}
+
+void PhysicsWorld::Impl::RemoveJointsOf(uint32_t body)
+{
+    for (auto it = joints.begin(); it != joints.end();)
+    {
+        if (it->second.a == body || it->second.b == body)
+        {
+            system->RemoveConstraint(it->second.constraint);
+            it = joints.erase(it);
+        }
+        else
+        {
+            ++it;
+        }
+    }
+}
+
+uint32_t PhysicsWorld::AddSwingTwistJoint(BodyHandle parent, BodyHandle child, const glm::vec3& pivot,
+                                          const glm::vec3& twistAxis, const glm::vec3& planeAxis,
+                                          float normalHalfCone, float planeHalfCone, float twistMin, float twistMax)
+{
+    Impl& impl = *m_impl;
+    if (!impl.initialized || !parent.IsValid() || !child.IsValid())
+    {
+        return 0;
+    }
+    JPH::SwingTwistConstraintSettings settings;
+    settings.mSpace = JPH::EConstraintSpace::WorldSpace;
+    settings.mPosition1 = settings.mPosition2 = ToJoltR(pivot);
+    const glm::vec3 twist = glm::normalize(twistAxis);
+    // The plane axis has to be exactly square to the twist axis, or Jolt asserts.
+    glm::vec3 plane = planeAxis - twist * glm::dot(planeAxis, twist);
+    plane = glm::length(plane) > 1e-4f ? glm::normalize(plane)
+                                       : glm::normalize(glm::cross(twist, std::abs(twist.y) < 0.9f
+                                                                              ? glm::vec3(0.0f, 1.0f, 0.0f)
+                                                                              : glm::vec3(1.0f, 0.0f, 0.0f)));
+    settings.mTwistAxis1 = settings.mTwistAxis2 = ToJolt(twist);
+    settings.mPlaneAxis1 = settings.mPlaneAxis2 = ToJolt(plane);
+    settings.mNormalHalfConeAngle = normalHalfCone;
+    settings.mPlaneHalfConeAngle = planeHalfCone;
+    settings.mTwistMinAngle = twistMin;
+    settings.mTwistMaxAngle = twistMax;
+    JPH::TwoBodyConstraint* constraint =
+        impl.Bodies().CreateConstraint(&settings, JPH::BodyID(parent.id), JPH::BodyID(child.id));
+    if (constraint == nullptr)
+    {
+        return 0;
+    }
+    impl.system->AddConstraint(constraint);
+    const uint32_t id = impl.nextJoint++;
+    impl.joints[id] = Impl::JointRecord{constraint, parent.id, child.id};
+    return id;
+}
+
+void PhysicsWorld::RemoveJoint(uint32_t joint)
+{
+    Impl& impl = *m_impl;
+    if (!impl.initialized)
+    {
+        return;
+    }
+    if (const auto found = impl.joints.find(joint); found != impl.joints.end())
+    {
+        impl.system->RemoveConstraint(found->second.constraint);
+        impl.joints.erase(found);
+    }
 }
 
 void PhysicsWorld::OptimizeBroadPhase()
@@ -708,6 +829,36 @@ RayHit PhysicsWorld::RayCast(const glm::vec3& origin, const glm::vec3& direction
     // The surface normal needs the body itself, which requires a read lock.
     const JPH::BodyLockInterfaceLocking& lockInterface = impl.system->GetBodyLockInterface();
     const JPH::BodyLockRead lock(lockInterface, result.mBodyID);
+    if (lock.Succeeded())
+    {
+        hit.normal = FromJolt(lock.GetBody().GetWorldSpaceSurfaceNormal(result.mSubShapeID2, ToJoltR(hit.position)));
+    }
+    return hit;
+}
+
+RayHit PhysicsWorld::RayCastStatic(const glm::vec3& origin, const glm::vec3& direction, float maxDistance) const
+{
+    RayHit hit;
+    const Impl& impl = *m_impl;
+    const float length = glm::length(direction);
+    if (!impl.initialized || maxDistance <= 0.0f || length < 1e-6f)
+    {
+        return hit;
+    }
+    const glm::vec3 normalized = direction / length;
+    const JPH::RRayCast ray(ToJoltR(origin), ToJolt(normalized * maxDistance));
+    JPH::RayCastResult result;
+    const JPH::SpecifiedBroadPhaseLayerFilter broadPhase(BroadPhaseLayers::kNonMoving);
+    const JPH::SpecifiedObjectLayerFilter objects(Layers::kNonMoving);
+    if (!impl.system->GetNarrowPhaseQuery().CastRay(ray, result, broadPhase, objects))
+    {
+        return hit;
+    }
+    hit.hit = true;
+    hit.distance = result.mFraction * maxDistance;
+    hit.position = origin + normalized * hit.distance;
+    hit.body = BodyHandle{result.mBodyID.GetIndexAndSequenceNumber()};
+    const JPH::BodyLockRead lock(impl.system->GetBodyLockInterface(), result.mBodyID);
     if (lock.Succeeded())
     {
         hit.normal = FromJolt(lock.GetBody().GetWorldSpaceSurfaceNormal(result.mSubShapeID2, ToJoltR(hit.position)));

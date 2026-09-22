@@ -23,6 +23,7 @@
     "stb",
     "catch2",
     "opus",
-    "recastnavigation"
+    "recastnavigation",
+    "meshoptimizer"
   ]
 }

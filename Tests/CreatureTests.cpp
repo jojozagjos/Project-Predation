@@ -72,7 +72,10 @@ struct CreatureHarness
             {
                 return true;
             }
-            if (std::find(seeThrough.begin(), seeThrough.end(), hit.body) == seeThrough.end())
+            const bool creatureBody = creature->Owns(hit.body) ||
+                                      std::any_of(seeThrough.begin(), seeThrough.end(),
+                                                  [&](const Creature* other) { return other->Owns(hit.body); });
+            if (!creatureBody)
             {
                 return false;
             }
@@ -82,8 +85,8 @@ struct CreatureHarness
         }
         return true;
     }
-    // Other creatures' bodies, which sight passes through.
-    std::vector<BodyHandle> seeThrough;
+    // Other creatures, whose bodies sight passes through, as its own.
+    std::vector<const Creature*> seeThrough;
 
     CreatureSenses Senses(const std::vector<SensedPlayer>& players, const std::vector<Noise>& noises = {})
     {
@@ -498,7 +501,7 @@ TEST_CASE("A creature shown from the host's state keeps up smoothly, and dies th
     glm::vec3 player;
     REQUIRE(OpenView(harness, 12.0f, at, player));
     Creature shown(harness.scene, harness.meshes, harness.physics, &harness.nav, CreatureTraits::FromSeed(5), at);
-    harness.seeThrough.push_back(shown.Body());
+    harness.seeThrough.push_back(&shown);
     const std::vector<SensedPlayer> players{Somebody(1, player)};
 
     constexpr float dt = 1.0f / 60.0f;
@@ -1194,12 +1197,34 @@ TEST_CASE("Eight creatures at once keep out of each other, all keep thinking, an
         {
             CreatureSenses senses;
             senses.players = players;
-            const BodyHandle self = creature->Body();
-            senses.clearLine = [&physics, self](const glm::vec3& a, const glm::vec3& b)
+            senses.clearLine = [&physics, &pack](const glm::vec3& a, const glm::vec3& b)
             {
+                // Through creatures, as the game sees: only the level blocks sight.
                 const glm::vec3 along = b - a;
                 const float length = glm::length(along);
-                return length < 0.4f || !physics.RayCast(a, along / length, length - 0.35f, self);
+                if (length < 0.4f)
+                {
+                    return true;
+                }
+                glm::vec3 start = a;
+                float left = length - 0.35f;
+                for (int pass = 0; pass < 8 && left > 0.0f; ++pass)
+                {
+                    const RayHit hit = physics.RayCast(start, along / length, left);
+                    if (!hit)
+                    {
+                        return true;
+                    }
+                    const bool creatureBody = std::any_of(pack.begin(), pack.end(), [&](const std::unique_ptr<Creature>& c)
+                                                          { return c->Owns(hit.body); });
+                    if (!creatureBody)
+                    {
+                        return false;
+                    }
+                    start += along / length * (hit.distance + 0.05f);
+                    left -= hit.distance + 0.05f;
+                }
+                return true;
             };
             for (const std::unique_ptr<Creature>& other : pack)
             {

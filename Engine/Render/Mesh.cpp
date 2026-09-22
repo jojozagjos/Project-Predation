@@ -26,6 +26,7 @@ void MeshVertex::InitLayout()
         .add(bgfx::Attrib::Position, 3, bgfx::AttribType::Float)
         .add(bgfx::Attrib::Normal, 3, bgfx::AttribType::Float)
         .add(bgfx::Attrib::TexCoord0, 2, bgfx::AttribType::Float)
+        .add(bgfx::Attrib::Color0, 4, bgfx::AttribType::Uint8, true)
         .end();
     g_meshLayoutInitialized = true;
 }
@@ -262,6 +263,121 @@ MeshHandle MeshLibrary::Replace(MeshHandle handle, const MeshData& data)
     return Upload(data, existing.name);
 }
 
+MeshHandle MeshLibrary::CreateDynamic(const MeshData& data, std::string name)
+{
+    if (data.vertices.empty() || data.indices.empty())
+    {
+        PRED_LOG_ERROR(Render, "Dynamic mesh '{}' has no geometry", name);
+        return MeshHandle{};
+    }
+    // Made again under a name it already has: the old buffers go first, whatever they were.
+    if (const auto found = m_byName.find(name); found != m_byName.end())
+    {
+        Release(MeshHandle{found->second});
+    }
+
+    Mesh mesh;
+    mesh.indexCount = static_cast<uint32_t>(data.indices.size());
+    mesh.vertexCount = static_cast<uint32_t>(data.vertices.size());
+    mesh.bounds = data.ComputeBounds();
+    mesh.name = name;
+    mesh.fingerprint = MeshFingerprintImpl(data);
+    if (!m_headless)
+    {
+        const bgfx::Memory* vertexMemory =
+            bgfx::copy(data.vertices.data(), static_cast<uint32_t>(data.vertices.size() * sizeof(MeshVertex)));
+        const bgfx::Memory* indexMemory =
+            bgfx::copy(data.indices.data(), static_cast<uint32_t>(data.indices.size() * sizeof(uint32_t)));
+        mesh.dynamicVertexBuffer = bgfx::createDynamicVertexBuffer(vertexMemory, MeshVertex::Layout());
+        mesh.indexBuffer = bgfx::createIndexBuffer(indexMemory, BGFX_BUFFER_INDEX32);
+        if (!mesh.IsValid())
+        {
+            PRED_LOG_ERROR(Render, "bgfx rejected buffers for dynamic mesh '{}'", name);
+            if (bgfx::isValid(mesh.dynamicVertexBuffer))
+            {
+                bgfx::destroy(mesh.dynamicVertexBuffer);
+            }
+            if (bgfx::isValid(mesh.indexBuffer))
+            {
+                bgfx::destroy(mesh.indexBuffer);
+            }
+            return MeshHandle{};
+        }
+    }
+
+    uint16_t index = 0;
+    if (!m_free.empty())
+    {
+        index = m_free.back();
+        m_free.pop_back();
+        m_meshes[index] = std::move(mesh);
+    }
+    else
+    {
+        if (m_meshes.size() >= MeshHandle::kInvalid)
+        {
+            PRED_LOG_ERROR(Render, "Mesh library is full, cannot make '{}'", name);
+            return MeshHandle{};
+        }
+        index = static_cast<uint16_t>(m_meshes.size());
+        m_meshes.push_back(std::move(mesh));
+    }
+    m_byName[name] = index;
+    return MeshHandle{index};
+}
+
+bool MeshLibrary::UpdateDynamic(MeshHandle handle, const std::vector<MeshVertex>& vertices, const AABB& bounds)
+{
+    if (!handle.IsValid() || handle.index >= m_meshes.size())
+    {
+        return false;
+    }
+    Mesh& mesh = m_meshes[handle.index];
+    if (vertices.size() != mesh.vertexCount)
+    {
+        return false;
+    }
+    mesh.bounds = bounds;
+    if (m_headless)
+    {
+        return true;
+    }
+    if (!mesh.IsDynamic())
+    {
+        return false;
+    }
+    bgfx::update(mesh.dynamicVertexBuffer, 0,
+                 bgfx::copy(vertices.data(), static_cast<uint32_t>(vertices.size() * sizeof(MeshVertex))));
+    return true;
+}
+
+void MeshLibrary::Release(MeshHandle handle)
+{
+    if (!handle.IsValid() || handle.index >= m_meshes.size())
+    {
+        return;
+    }
+    Mesh& mesh = m_meshes[handle.index];
+    if (bgfx::isValid(mesh.vertexBuffer))
+    {
+        bgfx::destroy(mesh.vertexBuffer);
+    }
+    if (bgfx::isValid(mesh.dynamicVertexBuffer))
+    {
+        bgfx::destroy(mesh.dynamicVertexBuffer);
+    }
+    if (bgfx::isValid(mesh.indexBuffer))
+    {
+        bgfx::destroy(mesh.indexBuffer);
+    }
+    if (const auto found = m_byName.find(mesh.name); found != m_byName.end() && found->second == handle.index)
+    {
+        m_byName.erase(found);
+    }
+    mesh = Mesh{};
+    m_free.push_back(handle.index);
+}
+
 const Mesh* MeshLibrary::Get(MeshHandle handle) const
 {
     if (!handle.IsValid() || handle.index >= m_meshes.size())
@@ -280,6 +396,11 @@ void MeshLibrary::Shutdown()
             bgfx::destroy(mesh.vertexBuffer);
             mesh.vertexBuffer = BGFX_INVALID_HANDLE;
         }
+        if (bgfx::isValid(mesh.dynamicVertexBuffer))
+        {
+            bgfx::destroy(mesh.dynamicVertexBuffer);
+            mesh.dynamicVertexBuffer = BGFX_INVALID_HANDLE;
+        }
         if (bgfx::isValid(mesh.indexBuffer))
         {
             bgfx::destroy(mesh.indexBuffer);
@@ -288,6 +409,7 @@ void MeshLibrary::Shutdown()
     }
     m_meshes.clear();
     m_byName.clear();
+    m_free.clear();
 }
 
 } // namespace pred

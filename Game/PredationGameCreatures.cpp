@@ -250,7 +250,7 @@ Creature* PredationGame::CreatureForBody(BodyHandle body)
     }
     for (const std::unique_ptr<Creature>& creature : m_creatures)
     {
-        if (creature->Body() == body)
+        if (creature->Owns(body))
         {
             return creature.get();
         }
@@ -309,7 +309,7 @@ bool PredationGame::OnShotResolved(ShotResult& result, const glm::vec3& origin, 
     }
     if (IsAuthority())
     {
-        creature->TakeDamage(result.damage, shooter, origin, m_creatureClock);
+        creature->TakeDamage(result.damage, shooter, origin, m_creatureClock, result.body);
     }
     result.surface = false;
     return true;

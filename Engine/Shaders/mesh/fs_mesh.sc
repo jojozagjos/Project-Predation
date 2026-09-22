@@ -1,4 +1,4 @@
-$input v_worldPos, v_normal, v_texcoord0
+$input v_worldPos, v_normal, v_texcoord0, v_color0
 
 #include <bgfx_shader.sh>
 
@@ -290,10 +290,12 @@ void main()
 	// colour washes everything out. Decoded here rather than by asking bgfx for an sRGB format,
 	// because that would have to be decided at upload for every image the game will ever load.
 	textured = pow(textured, vec3_splat(2.2));
-	vec3 albedo = u_baseColor.rgb * textured;
+	// And the colour painted on each vertex, white for nearly everything. A creature is one mesh with
+	// its skin, bone, gums and eye sockets painted on it this way, already in linear space.
+	vec3 albedo = u_baseColor.rgb * textured * v_color0.rgb;
 	float metallic = clamp(u_materialParams.x, 0.0, 1.0);
 	// Clamp roughness away from zero: perfectly smooth surfaces alias badly with a single light.
-	float roughness = clamp(u_materialParams.y, 0.045, 1.0);
+	float roughness = clamp(u_materialParams.y * v_color0.a, 0.045, 1.0);
 
 	vec3 diffuseColor = albedo * (1.0 - metallic);
 	vec3 f0 = mix(vec3_splat(0.04), albedo, metallic);

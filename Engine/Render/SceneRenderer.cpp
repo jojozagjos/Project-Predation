@@ -345,7 +345,14 @@ void SceneRenderer::SubmitMesh(bgfx::ViewId view, const Mesh& mesh, const Materi
     }
 
     bgfx::setTransform(glm::value_ptr(model));
-    bgfx::setVertexBuffer(0, mesh.vertexBuffer);
+    if (mesh.IsDynamic())
+    {
+        bgfx::setVertexBuffer(0, mesh.dynamicVertexBuffer);
+    }
+    else
+    {
+        bgfx::setVertexBuffer(0, mesh.vertexBuffer);
+    }
     bgfx::setIndexBuffer(mesh.indexBuffer);
     bgfx::setState(state);
     bgfx::submit(view, m_program);
@@ -361,7 +368,14 @@ void SceneRenderer::SubmitDepth(bgfx::ViewId view, const Mesh& mesh, const glm::
     // and captured at submit, so it cannot be set once when the view starts: see ShadowMap::BindRange.
     map.BindRange();
     bgfx::setTransform(glm::value_ptr(model));
-    bgfx::setVertexBuffer(0, mesh.vertexBuffer);
+    if (mesh.IsDynamic())
+    {
+        bgfx::setVertexBuffer(0, mesh.dynamicVertexBuffer);
+    }
+    else
+    {
+        bgfx::setVertexBuffer(0, mesh.vertexBuffer);
+    }
     bgfx::setIndexBuffer(mesh.indexBuffer);
     // Red and depth only: no colour to blend, no alpha, and the same winding discarded as the main
     // pass so a light sees the same faces the camera does. Wireframe is deliberately not honoured

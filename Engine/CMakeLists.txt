@@ -7,6 +7,7 @@ find_package(nlohmann_json CONFIG REQUIRED)
 find_package(glm CONFIG REQUIRED)
 find_package(Opus CONFIG REQUIRED)
 find_package(recastnavigation CONFIG REQUIRED)
+find_package(meshoptimizer CONFIG REQUIRED)
 find_path(STB_INCLUDE_DIRS "stb_image_write.h" REQUIRED)
 
 set(PRED_ENGINE_SOURCES
@@ -67,7 +68,12 @@ set(PRED_ENGINE_SOURCES
     Render/Mesh.h
     Render/Mesh.cpp
     Render/Primitives.h
+    Render/SurfaceNets.h
     Render/Primitives.cpp
+    Render/SurfaceNets.cpp
+    Render/MeshSimplify.h
+    Render/MeshSimplify.cpp
+    Core/ParallelFor.h
     Render/SceneRenderer.h
     Render/SceneRenderer.cpp
     Render/SkyRenderer.h
@@ -144,7 +150,7 @@ target_link_libraries(PredationEngine
 
 # Navigation, private: its headers include one called DebugDraw.h, and nothing outside the one file
 # that builds and queries the navmesh should be able to reach them by accident.
-target_link_libraries(PredationEngine PRIVATE RecastNavigation::Recast RecastNavigation::Detour)
+target_link_libraries(PredationEngine PRIVATE RecastNavigation::Recast RecastNavigation::Detour meshoptimizer::meshoptimizer)
 
 if(WIN32)
     target_link_libraries(PredationEngine PUBLIC psapi ws2_32 iphlpapi winhttp)

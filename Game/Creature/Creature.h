@@ -4,10 +4,14 @@
 #include "Engine/Scene/Scene.h"
 #include "Game/Creature/CreatureAnatomy.h"
 #include "Game/Creature/CreatureBrain.h"
+#include "Game/Creature/CreatureRagdoll.h"
+#include "Game/Creature/CreatureRig.h"
+#include "Game/Creature/CreatureSkin.h"
 
 #include <glm/mat4x4.hpp>
 #include <glm/vec3.hpp>
 
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -20,15 +24,18 @@ class NavMesh;
 // The creature in the world: a body that walks where its brain sends it.
 //
 // The brain decides; this carries it out. It follows a route over the navigation mesh, sliding along
-// the surface so it can never step off the walkable area, turns towards where it is going or what it
-// is looking at, and moves a physics box with it so rounds hit it and loose objects are pushed out of
-// its way.
+// the surface so it can never step off the walkable area, and turns towards where it is going or what
+// it is looking at.
 //
-// The body is the one its seed makes (CreatureAnatomy): four, six or two legs, however long and heavy,
-// with however many eyes. What that body can do -- how fast it runs, how far it sees and hears, how
-// hard it hits, how much killing it takes -- comes from it too, and is handed to the brain as it is
-// made. Its legs are placed each frame by solving each one to where its foot should be, so a crouch
-// bends the knees and a stride is a stride of the legs it actually has.
+// The body is the one its seed makes (CreatureAnatomy), drawn as one skin over a skeleton
+// (CreatureSkin), posed every frame by procedural animation (CreatureRig): feet planted and stepping,
+// spine bending, head tracking, jaw working, tail swinging. It dies -- or plays dead -- as a ragdoll
+// (CreatureRagdoll), and gets back up out of one by easing from where it lies to standing. Rounds find it
+// through a capsule on every bone, so a head is a head and a hand is a hand; a box round its torso is
+// what the players bump into.
+//
+// What that body can do -- how fast it runs, how far it sees and hears, how hard it hits, how much
+// killing it takes -- comes from it too, and is handed to the brain as it is made.
 //
 // Only the authority runs one of these. Everybody else is shown where it is.
 class Creature
@@ -48,8 +55,16 @@ public:
     // set the state it was sent and draw that.
     void UpdateVisual(float dt);
 
-    // Shot, or otherwise hurt. `byPlayer` is -1 when nobody in particular.
-    void TakeDamage(float amount, int byPlayer, const glm::vec3& from, float time);
+    // Shot, or otherwise hurt. `byPlayer` is -1 when nobody in particular. `hit` is what the round
+    // found, when it was one of this creature's bones: a head takes more than a hand.
+    void TakeDamage(float amount, int byPlayer, const glm::vec3& from, float time, BodyHandle hit = {});
+    // How much a round that found `body` counts for: more for the head, less for a hand or a tail.
+    float DamageScale(BodyHandle body) const;
+    // Which bone a body is, -1 for none of them.
+    int BoneOf(BodyHandle body) const;
+    // Whether a physics body is part of this creature: the box round its torso, a bone's capsule, or a
+    // piece of it lying on the floor.
+    bool Owns(BodyHandle body) const;
 
     // For the game, which applies strikes and runs the inspector.
     const CreatureBrain& Brain() const { return m_brain; }
@@ -65,10 +80,32 @@ public:
     float Speed() const { return m_speed; }
     const CreatureAnatomy& Anatomy() const { return m_anatomy; }
     const CreatureCapabilities& Capabilities() const { return m_caps; }
+    const CreatureSkin& Skin() const { return *m_skin; }
+    const CreatureRig& Rig() const { return m_rig; }
+    bool Ragdolled() const { return m_ragdoll.Active(); }
+    // Where a bone is in the world right now, drawn or lying.
+    glm::mat4 BoneWorld(int bone) const;
+
+    // What the body is doing beyond walking, for everybody else to be shown.
+    struct Action
+    {
+        RigAction kind = RigAction::None;
+        float phase = 0.0f;
+        int side = 1;
+        glm::vec3 target{0.0f};
+    };
+    const Action& CurrentAction() const { return m_action; }
+    // How far through a jump it is, 0 on the ground.
+    float Airborne() const { return m_airborne; }
+    // What its head is turned towards, when anything.
+    bool Looking() const { return m_look; }
+    const glm::vec3& LookingAt() const { return m_lookAt; }
 
     // Set from outside, for a creature this machine only shows.
     void SetShownState(const glm::vec3& position, float yaw, float speed, float windup, bool alive,
                        bool down = false, float crouch = 0.0f);
+    // And what it is doing with its limbs and head, and whether it is in the air.
+    void SetShownAction(const Action& action, float airborne, bool look, const glm::vec3& lookAt);
 
     // Lying as if dead -- really dead, or playing it. The two look the same from outside, which is
     // the point of playing it.
@@ -100,38 +137,40 @@ private:
     // The traits it was made with, with what its body decides written over them: speeds, senses, reach.
     static CreatureTraits WithBody(CreatureTraits traits, const CreatureCapabilities& caps);
     void SyncBody(float dt);
+    // Falling limp, and getting up again.
+    void GoLimp();
+    void GetUp();
+    // The capsules rounds find, onto the bones, or out of the way when it is lying as a ragdoll.
+    void PlaceHitboxes(const std::vector<glm::mat4>& local, bool away);
 
     Scene& m_scene;
     PhysicsWorld& m_physics;
+    MeshLibrary* m_meshes = nullptr;
     const NavMesh* m_nav = nullptr;
     // Declared before the brain, which is made from what these decide.
     CreatureAnatomy m_anatomy;
     CreatureCapabilities m_caps;
     CreatureAnatomy::RestPose m_rest;
     CreatureBrain m_brain;
-    // Radians of stride per metre covered: one full step cycle is two strides of the legs it has.
-    float m_strideRate = 3.6f;
 
     glm::vec3 m_position{0.0f};
     float m_yaw = 0.0f;
     float m_speed = 0.0f;
+    glm::vec3 m_velocity{0.0f}; // as drawn: how fast the body is actually moving, for the feet
+    glm::vec3 m_lastShown{0.0f};
+    bool m_shownOnce = false;
     float m_health = 160.0f;
     float m_maxHealth = 160.0f;
     float m_windup = 0.0f;
-    // How far the legs have gone through their cycle, advanced by distance rather than time so a
-    // creature that is not moving is not treading water.
-    float m_stride = 0.0f;
-    // How far over it is, 0 standing to 1 lying on its side, eased both ways: down when it dies or
-    // plays dead, back up when it gets up. On the visuals' own clock rather than the brain's, which
-    // only runs where the brain does -- on a machine that is only shown the creature it never moves,
-    // and a death roll timed against it never played.
-    float m_collapse = 0.0f;
-    float m_fallSide = 1.0f; // which side it goes over onto: 1 its left, -1 its right
     bool m_down = false;
     float m_crouch = 0.0f;
     float m_crouchTarget = 0.0f;
     float m_shownTime = 0.0f;
     float m_time = 0.0f;
+    Action m_action;
+    float m_airborne = 0.0f;
+    bool m_look = false;
+    glm::vec3 m_lookAt{0.0f};
 
     // The route and when it was worked out. Replanned when the destination moves or on a timer,
     // not every tick: a route across the map is cheap, but not free, and it does not change much
@@ -156,28 +195,37 @@ private:
     bool m_hasReceived = false;
     bool m_followedOnce = false;
 
+    // What the players bump into: a box round the torso. Rounds find the bones' capsules instead, which
+    // stand out of it wherever there is a limb or a head.
     BodyHandle m_body;
-    enum class PieceKind : uint8_t
+    glm::vec3 m_bodyHalfExtents{0.2f};
+    glm::vec3 m_bodyCentre{0.0f};
+    struct Hitbox
     {
-        Body,     // fixed to the body
-        Front,    // the head end: moves back and up when it gathers itself to strike
-        LegUpper, // hip to knee
-        LegLower, // knee to ankle
-        LegFoot,  // ankle to toe
-        Hand,     // the fingers or toes and their claws, carried at the toe
-        Jaw       // the lower jaw, hinged under the skull, hanging open and gaping wider to strike
+        BodyHandle body;
+        int bone = -1;
+        float halfLength = 0.0f;
     };
-    struct Piece
-    {
-        Entity entity;
-        PieceKind kind = PieceKind::Body;
-        // Where it sits on the body, in the body's own frame. Legs are placed each frame instead.
-        glm::mat4 local{1.0f};
-        int leg = -1; // which of the rest pose's legs
-        // How brightly it glows when the creature is up and alive: the eyes, which go out as it falls.
-        glm::vec3 glow{0.0f};
-    };
-    std::vector<Piece> m_pieces;
+    std::vector<Hitbox> m_hitboxes;
+
+    // The body: one skin, shared between every creature of the same seed, bent by the rig or lying as a
+    // ragdoll.
+    std::shared_ptr<const CreatureSkin> m_skin;
+    CreatureRig m_rig;
+    CreatureRagdoll m_ragdoll;
+    Entity m_skinEntity;
+    Entity m_glintEntity;
+    MeshHandle m_skinMesh;
+    MeshHandle m_glintMesh;
+    glm::vec3 m_glow{0.0f};
+    std::vector<MeshVertex> m_skinned;
+    std::vector<glm::mat4> m_pose; // each bone in the creature's own frame, as last drawn
+    // Getting up out of a heap: where each bone lay in the world, and how far it is through standing.
+    std::vector<glm::mat4> m_fallen;
+    float m_getUp = 0.0f;
+    // The push the last hit gave it, for which way it falls.
+    int m_lastHitBone = -1;
+    glm::vec3 m_lastHitPush{0.0f};
 };
 
 } // namespace pred
