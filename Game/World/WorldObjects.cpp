@@ -8,6 +8,7 @@
 #include "Game/Weapons/WeaponAppearance.h"
 #include "Game/Weapons/WeaponDatabase.h"
 #include "Game/World/TestMap.h"
+#include "Game/World/LabMap.h"
 
 #include <glm/gtc/constants.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -114,6 +115,20 @@ void WorldObjects::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physic
             {kInteractionBayX + 1.55f + 0.55f, 0.0f, doorFrameZ}, glm::radians(180.0f),
             glm::radians(80.0f), {1.10f, 2.05f, 0.09f}, "door_b", true);
 
+    // --- The creature lab's doors: the corridor's own, swinging in, and one into each room off it -- the
+    // store's locked, for a creature to break down.
+    {
+        using namespace LabSpec;
+        AddDoor(scene, meshes, physics, interactions, {kCorridorDoorX - kDoorWidth * 0.5f + 0.05f, 0.0f, kCorridorSouth + 0.15f},
+                0.0f, glm::radians(100.0f), {kDoorWidth - 0.1f, 2.05f, 0.09f}, "lab_door_corridor", true);
+        AddDoor(scene, meshes, physics, interactions, {kCorridorEast + 0.15f, 0.0f, kLockerDoorZ + kDoorWidth * 0.5f - 0.05f},
+                glm::radians(90.0f), glm::radians(-10.0f), {kDoorWidth - 0.1f, 2.05f, 0.09f}, "lab_door_lockers", true);
+        const int store = AddDoor(scene, meshes, physics, interactions,
+                                  {kCorridorEast + 0.15f, 0.0f, kStoreDoorZ + kDoorWidth * 0.5f - 0.05f}, glm::radians(90.0f),
+                                  glm::radians(-10.0f), {kDoorWidth - 0.1f, 2.05f, 0.09f}, "lab_door_store", true);
+        m_doors[static_cast<size_t>(store)].locked = true;
+    }
+
     // --- Lockers to hide in. The panel is a door in its own right so it swings when used.
     //
     // Wide enough that a person fits. The old shell had a 0.61 m interior and the player capsule is
@@ -151,7 +166,9 @@ void WorldObjects::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physic
 
     // Against the back of the interaction bay, opening towards the plaza.
     const glm::vec3 lockerPositions[] = {{kInteractionBayX - 1.3f, 0.0f, kBayZ + 0.9f},
-                                         {kInteractionBayX + 1.3f, 0.0f, kBayZ + 0.9f}};
+                                         {kInteractionBayX + 1.3f, 0.0f, kBayZ + 0.9f},
+                                         LabSpec::kLockers[0], LabSpec::kLockers[1], LabSpec::kLockers[2],
+                                         LabSpec::kLockers[3]};
     for (const glm::vec3& position : lockerPositions)
     {
         HidingSpot spot;
@@ -232,7 +249,7 @@ void WorldObjects::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physic
         // and a crate standing inside it is exactly what the level's own overlap check exists to
         // catch.
         const glm::vec3 cratePositions[] = {{kEquipmentBayX - 1.5f, 0.0f, kBayZ + 0.3f},
-                                            {kEquipmentBayX + 1.5f, 0.0f, kBayZ + 0.3f}};
+                                            {kEquipmentBayX + 1.5f, 0.0f, kBayZ + 0.3f}, LabSpec::kAmmo};
 
         for (const glm::vec3& position : cratePositions)
         {
@@ -296,6 +313,21 @@ void WorldObjects::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physic
         SpawnPickup(scene, meshes, physics, interactions, items, id, placement.count,
                     {x, kBenchTop + definition->size.y * 0.5f + 0.005f, kBayZ + 1.3f}, glm::vec3(0.0f));
         x += kSpacing;
+    }
+
+    // The creature lab's bench, by its spawn: something to shoot with and something to patch up with.
+    const Placement labPlacements[] = {{"carbine", 1}, {"sidearm", 1}, {"medkit", 2}};
+    float labX = LabSpec::kBench.x - 0.9f;
+    for (const Placement& placement : labPlacements)
+    {
+        const ItemId id = items.IdOf(placement.key);
+        const ItemDefinition* definition = items.Get(id);
+        if (id != kInvalidItem && definition != nullptr)
+        {
+            SpawnPickup(scene, meshes, physics, interactions, items, id, placement.count,
+                        {labX, LabSpec::kBenchTop + definition->size.y * 0.5f + 0.005f, LabSpec::kBench.z}, glm::vec3(0.0f));
+        }
+        labX += 0.9f;
     }
 
     PRED_LOG_INFO(Gameplay, "World objects: {} doors, {} pickups, {} hiding spots", m_doors.size(),

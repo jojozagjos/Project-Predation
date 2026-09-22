@@ -74,6 +74,17 @@ void PredationGame::BuildNavigation()
     {
         PRED_LOG_ERROR(AI, "No navigation mesh, so no creature can move: {}", error);
     }
+    // Where a creature stands at each nest: the walkable floor nearest the middle of the mound.
+    m_hiveStands.clear();
+    for (const glm::vec3& hive : m_hives)
+    {
+        glm::vec3 stand = hive;
+        if (!m_nav.NearestPoint(hive, 4.0f, stand))
+        {
+            stand = hive;
+        }
+        m_hiveStands.push_back(stand);
+    }
 }
 
 void PredationGame::ClearCreatures()
@@ -248,7 +259,15 @@ void PredationGame::UpdateArrivals()
     }
     const uint32_t seed = m_arrivalSeed + static_cast<uint32_t>(m_creatures.size()) * 7919u;
     glm::vec3 at;
-    if (FindUnseenPoint(seed, at) && SpawnCreature(seed, m_player.State().position, &at))
+    // In the lab, out of the nest: that is where they live.
+    bool fromNest = false;
+    if (InLab(m_player.State().position) && !m_hives.empty())
+    {
+        const float angle = static_cast<float>(seed % 628u) * 0.01f;
+        at = m_hives.front() + glm::vec3(std::cos(angle), 0.0f, std::sin(angle)) * (LabSpec::kHiveRadius + 1.6f);
+        fromNest = true;
+    }
+    if ((fromNest || FindUnseenPoint(seed, at)) && SpawnCreature(seed, m_player.State().position, &at))
     {
         PRED_LOG_INFO(AI, "A creature has arrived, out of everybody's sight");
     }
@@ -461,7 +480,7 @@ void PredationGame::UpdateCreatures(float dt)
         senses.noises = m_noises;
         senses.doors = doors;
         // Its nest, when there is one near enough to be its own.
-        for (const glm::vec3& hive : m_hives)
+        for (const glm::vec3& hive : m_hiveStands)
         {
             if (glm::distance(hive, creature->Position()) < 70.0f &&
                 (!senses.hasHive || glm::distance(hive, creature->Position()) < glm::distance(senses.hive, creature->Position())))
@@ -1396,7 +1415,7 @@ void PredationGame::WrapInCocoon(uint8_t player, const Creature& creature)
         }
     }
     const float angle = static_cast<float>(m_cocoons.size()) * 1.3f + 0.4f;
-    glm::vec3 feet = nest + glm::vec3(std::cos(angle), 0.0f, std::sin(angle)) * 2.2f;
+    glm::vec3 feet = nest + glm::vec3(std::cos(angle), 0.0f, std::sin(angle)) * (LabSpec::kHiveRadius + 1.3f);
     glm::vec3 onMesh;
     if (m_nav.NearestPoint(feet, 2.0f, onMesh))
     {

@@ -25,6 +25,7 @@
 #include "Game/Weapons/WeaponDatabase.h"
 #include "Game/Weapons/WeaponSystem.h"
 #include "Game/World/TestMap.h"
+#include "Game/World/LabMap.h"
 #include "Tools/ModelEditor/ModelEditor.h"
 #include "Game/World/WorldObjects.h"
 
@@ -172,6 +173,8 @@ private:
     std::vector<Call> m_callsHeard;
     // The nests, where creatures take what they catch and go back to heal.
     std::vector<glm::vec3> m_hives;
+    // Where a creature stands at each: the floor nearest the middle of the mound.
+    std::vector<glm::vec3> m_hiveStands;
     // What is drawn round each cocooned player, on every machine, and what somebody uses to cut them out.
     std::map<uint8_t, Entity> m_cocoonEntities;
     MeshHandle m_cocoonMesh;
@@ -377,6 +380,8 @@ private:
     float ReloadProgress() const;
     void DrawTitleScreen();
     void EnterWorld();
+    // Takes the game to the creature lab, or back to the test map.
+    void GoToMap(bool lab);
     void EnterEditor(const std::string& modelName);
     // A file dragged onto the window. A model opens the editor on itself; anything else says so
     // rather than being quietly ignored, because a file that vanishes when you drop it is worse

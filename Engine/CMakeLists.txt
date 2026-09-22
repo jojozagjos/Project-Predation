@@ -69,6 +69,7 @@ set(PRED_ENGINE_SOURCES
     Render/Mesh.cpp
     Render/Primitives.h
     Render/SurfaceNets.h
+    Render/Sdf.h
     Render/Primitives.cpp
     Render/SurfaceNets.cpp
     Render/MeshSimplify.h

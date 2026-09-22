@@ -359,6 +359,9 @@ bool PredationGame::OnInit(Application& app)
     m_app = &app;
 
     BuildTestMap(m_scene, app.GetMeshes(), &app.GetPhysics());
+    // And the creature lab, far off to the east in the same world, with its nest.
+    BuildLabMap(m_scene, app.GetMeshes(), &app.GetPhysics());
+    m_hives = {LabSpec::kHive};
 
     m_propSphereMesh = app.GetMeshes().Upload(Primitives::Sphere(kPropRadius, 20, 14), "prop_sphere");
     m_propBoxMesh = app.GetMeshes().Upload(Primitives::Box(glm::vec3(kPropSize)), "prop_box");
@@ -995,6 +998,11 @@ void PredationGame::RegisterCommands()
             }
             ReportHold();
         });
+
+    console.RegisterCommand("lab", "Go to the creature lab: everybody in the game, and the creatures from its nest",
+                            [this](const std::vector<std::string>&) { GoToMap(true); });
+    console.RegisterCommand("testmap", "Back to the test map from the creature lab",
+                            [this](const std::vector<std::string>&) { GoToMap(false); });
 
     console.RegisterCommand("solo", "Leave the title screen and start a game on your own",
                             [this](const std::vector<std::string>&)
@@ -2546,6 +2554,45 @@ void PredationGame::ResetWorld()
     m_body.Revive();
     RespawnLocalPlayer(m_spawnPoint);
     PRED_LOG_INFO(Gameplay, "World reset");
+}
+
+void PredationGame::GoToMap(bool lab)
+{
+    m_spawnPoint = lab ? LabSpec::kSpawn : glm::vec3(0.0f, 0.5f, TestMapSpec::kSpawnZ);
+    if (m_screen != Screen::Playing)
+    {
+        // From the menu: a game of your own, there.
+        StopSession();
+        m_sessionMode = SessionMode::Offline;
+        EnterWorld();
+        m_lookYaw = lab ? 0.0f : glm::pi<float>();
+        m_player.State().yaw = m_lookYaw;
+        return;
+    }
+    if (!IsAuthority())
+    {
+        m_app->GetConsole().PrintError("Only the host can take everybody somewhere else.");
+        return;
+    }
+    // Everybody goes, and the creatures start again from wherever creatures come from there.
+    SpawnCreatures();
+    RespawnLocalPlayer(m_spawnPoint);
+    // Facing into it: north into the lab, south across the test map.
+    m_lookYaw = lab ? 0.0f : glm::pi<float>();
+    m_player.State().yaw = m_lookYaw;
+    if (m_sessionMode == SessionMode::Host)
+    {
+        for (const RemotePlayerView& remote : m_host.Remotes())
+        {
+            m_host.RespawnPlayer(remote.id, m_spawnPoint);
+            WorldEventMessage event;
+            event.kind = WorldEventKind::PlayerRespawned;
+            event.player = remote.id;
+            event.position = m_spawnPoint;
+            m_host.Broadcast(event);
+        }
+    }
+    m_app->GetConsole().Print(lab ? "In the creature lab. The nest is to the north." : "Back on the test map.");
 }
 
 void PredationGame::EnterWorld()
