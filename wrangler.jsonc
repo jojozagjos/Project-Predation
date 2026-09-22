@@ -1,0 +1,16 @@
+// The lobby server's Cloudflare configuration, at the top of the repository so that Cloudflare's
+// "Import a repository" deploys it with its default settings. The server itself lives in
+// Tools/LobbyWorker (see Docs/SERVER.md), which has its own copy of this file for the
+// "Deploy to Cloudflare" button; keep the two the same.
+//
+// Only introductions go through it. The game runs directly between the players' PCs.
+{
+  "name": "predation-lobby",
+  "main": "Tools/LobbyWorker/src/index.js",
+  "compatibility_date": "2025-09-01",
+  "durable_objects": {
+    "bindings": [{ "name": "LOBBIES", "class_name": "LobbyDirectory" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["LobbyDirectory"] }],
+  "observability": { "enabled": true }
+}

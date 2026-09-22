@@ -55,9 +55,9 @@ About five minutes, once.
      server in a new repository of yours, and deploys it. Changes made to the game's copy later do not
      reach that one; press the button again to pick them up.
    - **Straight from this repository** (updates itself). In the Cloudflare dashboard: **Workers &
-     Pages → Create → Import a repository**, connect GitHub, pick **Project-Predation**, and set the
-     **root directory** to `Tools/LobbyWorker`. Press Deploy. From then on, every push that changes the
-     server redeploys it by itself.
+     Pages → Create → Import a repository**, connect GitHub, pick **Project-Predation**, and press
+     Deploy with the settings as they are: `wrangler.jsonc` at the top of the repository tells
+     Cloudflare where the server is. From then on, every push redeploys it by itself.
 
 3. **Copy its address.** When it finishes, Cloudflare shows the Worker's address, like
    `https://predation-lobby.yourname.workers.dev`. Opening it in a browser should show
