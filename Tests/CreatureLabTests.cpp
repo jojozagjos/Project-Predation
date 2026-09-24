@@ -205,7 +205,7 @@ TEST_CASE("A creature opens a shut door in its way, and breaks down a locked one
     }
 }
 
-TEST_CASE("Holding somebody, a creature takes them off: to its nest, or somewhere to kill them", "[creature][lab][hive]")
+TEST_CASE("Holding somebody, a creature takes them off: to its nest, or away from the others to throw them down", "[creature][lab][hive]")
 {
     Lab lab;
     glm::vec3 stand;
@@ -242,10 +242,11 @@ TEST_CASE("Holding somebody, a creature takes them off: to its nest, or somewher
             senses.hive = stand;
             creature.Update(senses, time, dt);
             cocooned = creature.Brain().Intent().cocoonTarget == victim.id;
-            // Biting into somebody it is holding, well away from the nest: killing them where it stopped.
-            fed = creature.Brain().Intent().strikeTarget == victim.id &&
+            // Well away from the nest, let go and turned on them: it never kills anybody it is holding.
+            fed = creature.Brain().Holding() < 0 && creature.Brain().Current() == Behavior::Attack &&
                   glm::distance(creature.Position(), stand) > 6.0f;
-            CHECK((creature.Brain().Intent().holding == victim.id || cocooned));
+            CHECK((creature.Brain().Intent().holding == victim.id || cocooned || fed));
+            CHECK((creature.Brain().Intent().strikeTarget != victim.id || fed));
         }
         INFO("attempt " << attempt << "; its mind:" << MindOf(creature));
         CHECK((cocooned || fed));

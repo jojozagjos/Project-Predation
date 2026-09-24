@@ -115,6 +115,8 @@ struct CreatureSenses
     // Where its nest is, when it has one: where it takes what it catches, and goes back to heal.
     bool hasHive = false;
     glm::vec3 hive{0.0f};
+    // Whether a nest may be built now: there is only ever one, and not straight after one has died.
+    bool mayBuildNest = true;
     // Whether the last route it was sent along gets all the way there. False when somebody is up
     // somewhere it cannot follow.
     bool routeReached = true;
@@ -648,7 +650,6 @@ private:
     glm::vec3 m_dragPoint{0.0f};
     bool m_haveDragPoint = false;
     bool m_dragArrived = false;
-    float m_nextBite = 0.0f;
     bool PickDragPoint(const CreatureSenses& senses, int victim, glm::vec3& out);
     // Somewhere to build: dark, out of the way, and nowhere anybody walks.
     bool PickNestSite(const CreatureSenses& senses, glm::vec3& out);

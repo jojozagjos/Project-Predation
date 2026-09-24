@@ -224,8 +224,14 @@ public:
     // Pins a client where the world says they are -- inside a locker -- or lets them go again. Without
     // this the host went on simulating them walking about outside the locker they had climbed into.
     void PinPlayer(uint8_t playerId, bool pinned, const glm::vec3& feet, float yaw);
-    // What a client last pressed, for anything the host decides from it: struggling in a grip.
+    // What a client last pressed, for anything the host decides from it.
     PlayerInput LastInputOf(uint8_t playerId) const;
+    // How many times a client has pressed jump since this was last asked: struggling in a grip. Counted
+    // input by input, because several of a client's inputs can run between two of the host's frames and
+    // a press in the middle of them would otherwise never be seen.
+    int TakeJumpPresses(uint8_t playerId);
+    // How close a held player is to working free, sent to them for their bar.
+    void SetStruggle(uint8_t playerId, float struggle);
     // Damage a client. The host owns their body, so this is where their health actually changes:
     // the published view is rebuilt from the controller every tick, so writing to that changed
     // nothing and health came back the moment it was read again.
@@ -317,6 +323,7 @@ public:
     // Whether a creature has hold of this player, as the host last said.
     bool HeldByHost() const { return m_heldByHost; }
     bool CocoonedByHost() const { return m_cocoonedByHost; }
+    float StruggleFromHost() const { return m_struggleFromHost; }
     struct Config
     {
         // Two snapshot intervals at 30 Hz. Enough that the next snapshot has almost always arrived
@@ -459,6 +466,7 @@ private:
     PredictionBuffer m_history;
     bool m_heldByHost = false;
     bool m_cocoonedByHost = false;
+    float m_struggleFromHost = 0.0f;
     Config m_config;
     ReconciliationResult m_lastReconciliation;
     glm::vec3 m_visualError{0.0f};

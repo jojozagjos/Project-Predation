@@ -226,6 +226,10 @@ private:
         float health = 0.0f;
         bool dead = false;
         float deadFor = 0.0f;
+        // Rotted away to nothing: drawn no more, kept only so every machine numbers nests alike.
+        bool gone = false;
+        // How much of their full spread the roots on the wall have room for.
+        float rootScale = 1.0f;
         float beat = 0.0f;        // where it is in its beat, 0 to 1
         float flinch = 0.0f;      // how hard it was last struck, fading
         std::vector<NestPatch> patches;
@@ -241,6 +245,10 @@ private:
     std::vector<Nest> m_nests;
     void BuildNest(const glm::vec3& at, uint16_t seed, uint8_t owner, bool announce, int index = -1, float age = 0.0f);
     void ClearNests();
+    // Everything drawn and solid of one nest taken out of the world.
+    void ReleaseNest(Nest& nest);
+    // When the last nest died, on the creature clock: another is not built straight away.
+    float m_nestDiedAt = -1.0e9f;
     // The living nest nearest a point, when there is one within `reach`.
     const Nest* NestNear(const glm::vec3& point, float reach) const;
     // Which nest's heart a body is, or -1.

@@ -445,9 +445,10 @@ void PredationGame::UpdateAmbience(float dt)
 {
     // The building: a hum under everything, the air moving in the ducts, and now and then something
     // settling or falling somewhere out of sight. Each machine has its own -- none of it is anything
-    // happening, it is the place -- and it goes on behind the menu too.
+    // happening, it is the place. Only in a game: the title screen is quiet until it has music of its own.
     AudioEngine& audio = m_app->GetAudio();
     const float level = std::clamp(cv_ambienceVolume.Get(), 0.0f, 2.0f);
+    const float inGame = m_screen == Screen::Playing ? 1.0f : 0.0f;
     // Where the ears are, a few times a second. Under a roof is inside; a roof within a couple of metres
     // of the floor is somewhere tight -- a vent, the crawlspace; and a nest near enough is heard, and
     // smelt, before it is seen. The loops fade across as you move, over about a second, so walking out
@@ -479,11 +480,16 @@ void PredationGame::UpdateAmbience(float dt)
         m_zoneTight,                                                      // inside the vent itself
         m_zoneNest,                                                       // the nest
     };
+    float faded[5];
+    for (int i = 0; i < 5; ++i)
+    {
+        faded[i] = targets[i] * inGame;
+    }
     const float ease = 1.0f - std::exp(-1.6f * dt);
     for (int i = 0; i < 5; ++i)
     {
         AmbienceLoop& loop = m_ambienceLoops[i];
-        loop.weight += (targets[i] - loop.weight) * ease;
+        loop.weight += (faded[i] - loop.weight) * ease;
         if (loop.voice != kInvalidVoice && !audio.IsPlaying(loop.voice))
         {
             loop.voice = kInvalidVoice;
@@ -547,7 +553,7 @@ void PredationGame::UpdateAmbience(float dt)
         {
             audio.SetVoicePosition(m_buzz, buzzing->position);
         }
-        audio.SetVoiceGain(m_buzz, buzzing != nullptr ? 0.5f * buzzing->level * level : 0.0f);
+        audio.SetVoiceGain(m_buzz, buzzing != nullptr ? 0.5f * buzzing->level * level * inGame : 0.0f);
     }
 
     m_ambienceClock += dt;

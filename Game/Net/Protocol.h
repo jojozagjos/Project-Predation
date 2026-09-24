@@ -104,6 +104,7 @@ enum class WorldEventKind : uint8_t
     ItemUsed,        // somebody started, finished or stopped using what they are holding
     FlareThrown,     // a lit flare left somebody's hand: where, how fast, how long it has left
     DoorUnlocked,    // a locked door, opened with a keycard
+    NestsCleared,    // every nest gone at once: the creatures cleared, or a new round
     Count
 };
 
@@ -430,6 +431,8 @@ struct PlayerSnapshot
     // pins them where it says; their own machine has to stop guessing where their legs are taking them.
     uint8_t heldBy = kNotHeld;
     bool cocooned = false;
+    // How close they are to working free of its grip, 0 to 1: the bar on their own screen.
+    float struggle = 0.0f;
 };
 
 struct SnapshotMessage

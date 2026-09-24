@@ -1259,7 +1259,7 @@ void CreatureBrain::Decide(const CreatureSenses& senses)
     }
 
     // Building a nest: what the sort that nests does when nothing is happening.
-    if (m_traits.Nests() && !senses.hasHive)
+    if (m_traits.Nests() && !senses.hasHive && senses.mayBuildNest)
     {
         float quiet = 1.0f;
         for (const Track& track : m_tracks)
@@ -2408,7 +2408,6 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
         if (!m_dragArrived && (Horizontal(senses.position, m_dragPoint) < 1.3f || now - m_holdStarted > 16.0f))
         {
             m_dragArrived = true;
-            m_nextBite = now + 0.5f;
             Log(now, "arrived with " + victim->name);
         }
         if (!m_dragArrived)
@@ -2430,30 +2429,26 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
             Switch(Behavior::Roam, -1, "left its catch at the nest", now);
             break;
         }
-        // Nowhere to take them: it feeds where it stands.
-        m_goal = "killing " + victim->name;
-        m_intent.face = true;
-        m_intent.facePoint = victim->feet;
-        m_intent.look = true;
-        m_intent.lookAt = victim->feet + glm::vec3(0.0f, 0.4f, 0.0f);
-        const float cycle = 0.75f;
-        m_intent.attack = AttackKind::Bite;
-        m_intent.attackPhase = std::clamp(1.0f - (m_nextBite - now) / cycle, 0.0f, 1.0f);
-        m_intent.attackAt = victim->feet + glm::vec3(0.0f, 0.4f, 0.0f);
-        if (now >= m_nextBite)
+        // Nowhere to take them: away from the others, it throws them down and lets go, and it is a
+        // fight again -- with nobody near to help. It never kills anybody while it has hold of them.
         {
-            m_intent.strikeTarget = m_holding;
-            m_intent.strikeKind = AttackKind::Bite;
-            m_nextBite = now + cycle;
+            const int was = m_holding;
+            m_holding = -1;
+            m_intent.holding = -1;
+            Log(now, "throws " + victim->name + " down");
+            m_attackCooldownUntil = now + 0.9f;
+            Switch(Behavior::Attack, was, "threw them down", now);
         }
         break;
     }
 
     case Behavior::Nest:
     {
-        if (senses.hasHive)
+        if (senses.hasHive || !senses.mayBuildNest)
         {
-            Switch(Behavior::Roam, -1, "it has a nest already", now);
+            m_haveNestSite = false;
+            m_nestWorkStarted = -1.0f;
+            Switch(Behavior::Roam, -1, "there is a nest already", now);
             break;
         }
         if (!m_haveNestSite && now >= m_nestThoughtAt)
@@ -2535,7 +2530,7 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
             lookAround(1.0e9f);
             // Only its nest mends it. Anywhere else a wound stays a wound, which is what makes hurting
             // one worth something -- and what makes the nest worth finding.
-            m_intent.recover = atNest ? 0.03f : 0.0f;
+            m_intent.recover = atNest ? 0.004f : 0.0f;
             // And at the nest it stays to mend while it is badly hurt and nothing is near, up to a
             // point: an animal that has gone to ground comes back out.
             if (atNest && senses.healthFraction < 0.5f && !m_threatened && now - m_behaviorStarted < 40.0f)

@@ -2364,6 +2364,10 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
         SetNestHealth(event.index, event.amount, event.quiet);
         break;
 
+    case WorldEventKind::NestsCleared:
+        ClearNests();
+        break;
+
     case WorldEventKind::ItemUsed:
         OnItemUsedEvent(event);
         break;
@@ -9861,6 +9865,7 @@ void PredationGame::DrawHud()
         {
             cocooned = m_client.CocoonedByHost();
             held = m_client.HeldByHost() && !cocooned;
+            struggle = held ? m_client.StruggleFromHost() : -1.0f;
         }
         if (held || cocooned)
         {

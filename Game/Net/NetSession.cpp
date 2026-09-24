@@ -131,6 +131,8 @@ struct NetHost::Client
     bool torchOn = false;
     uint8_t heldBy = kNotHeld;
     bool cocooned = false;
+    float struggle = 0.0f;
+    int jumpPresses = 0;
     // What this client has taken out of the world. The host does not model their bag, only what it
     // handed them, which is enough to refuse a drop of something they never picked up.
     std::map<uint16_t, int> carried;
@@ -884,6 +886,31 @@ void NetHost::SetPlayerGrabbed(uint8_t playerId, uint8_t by, bool cocooned, cons
     }
 }
 
+int NetHost::TakeJumpPresses(uint8_t playerId)
+{
+    for (auto& client : m_clients)
+    {
+        if (client->playerId == playerId)
+        {
+            const int presses = client->jumpPresses;
+            client->jumpPresses = 0;
+            return presses;
+        }
+    }
+    return 0;
+}
+
+void NetHost::SetStruggle(uint8_t playerId, float struggle)
+{
+    for (auto& client : m_clients)
+    {
+        if (client->playerId == playerId)
+        {
+            client->struggle = struggle;
+        }
+    }
+}
+
 PlayerInput NetHost::LastInputOf(uint8_t playerId) const
 {
     for (const auto& client : m_clients)
@@ -978,6 +1005,10 @@ void NetHost::Tick(uint32_t tick, const PlayerState& localState, float dt)
                 const InputCommand command = client->pending.front();
                 client->pending.erase(client->pending.begin());
                 client->lastProcessed = command.sequence;
+                if (command.input.jump && !client->lastInput.jump)
+                {
+                    ++client->jumpPresses;
+                }
                 client->lastInput = command.input;
                 client->controller.Step(command.input, dt);
             }
@@ -1100,6 +1131,7 @@ void NetHost::SendSnapshots(uint32_t tick, const PlayerState& localState)
             entry.torchOn = client->torchOn;
             entry.heldBy = client->heldBy;
             entry.cocooned = client->cocooned;
+            entry.struggle = client->struggle;
             entry.pingMs = static_cast<uint16_t>(std::lround(client->pingMs));
         }
     }
@@ -1611,6 +1643,7 @@ void NetClient::Reconcile(const SnapshotMessage& snapshot, PlayerController& loc
             local.Attach(entry.position, entry.yaw);
             m_heldByHost = true;
             m_cocoonedByHost = entry.cocooned;
+            m_struggleFromHost = entry.struggle;
             m_history.Clear();
             m_lastAcknowledged = std::max(m_lastAcknowledged, snapshot.lastProcessedInput);
             return;

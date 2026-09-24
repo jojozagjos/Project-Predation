@@ -354,6 +354,10 @@ void WriteSnapshot(BitWriter& writer, const SnapshotMessage& message)
         {
             writer.WriteBits(player.heldBy, 4);
             writer.WriteBool(player.cocooned);
+            if (!player.cocooned)
+            {
+                writer.WriteQuantised(player.struggle, 0.0f, 1.0f, 6);
+            }
         }
     }
 }
@@ -398,6 +402,7 @@ bool ReadSnapshot(BitReader& reader, SnapshotMessage& out)
         {
             player.heldBy = static_cast<uint8_t>(reader.ReadBits(4));
             player.cocooned = reader.ReadBool();
+            player.struggle = player.cocooned ? 0.0f : reader.ReadQuantised(0.0f, 1.0f, 6);
         }
 
         if (player.playerId >= kMaxPlayers || stance > static_cast<uint32_t>(PlayerStance::Prone))
@@ -520,6 +525,9 @@ void WriteWorldEvent(BitWriter& writer, const WorldEventMessage& message)
         WritePosition(writer, message.position);
         break;
 
+    case WorldEventKind::NestsCleared:
+        break; // nothing more to say
+
     case WorldEventKind::Count:
         break;
     }
@@ -636,6 +644,9 @@ bool ReadWorldEvent(BitReader& reader, WorldEventMessage& out)
         out.item = static_cast<uint16_t>(reader.ReadBits(16));
         out.amount = reader.ReadQuantised(0.0f, 2.0f, 6);
         out.position = ReadPosition(reader);
+        break;
+
+    case WorldEventKind::NestsCleared:
         break;
 
     case WorldEventKind::Count:
