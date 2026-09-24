@@ -357,3 +357,39 @@ TEST_CASE("Dropping the same thing twice does not land it the same way", "[inter
     const glm::vec2 heading = glm::normalize(glm::vec2(thrown.x, thrown.z));
     CHECK(glm::dot(facing, heading) > std::cos(glm::radians(95.0f)));
 }
+
+TEST_CASE("Dragging one slot onto another swaps them or tops up a stack, and the hand keeps what it held", "[items][inventory]")
+{
+    const ItemDatabase database = MakeDatabase();
+    const ItemId medkit = database.IdOf("medkit");
+    const ItemId battery = database.IdOf("battery");
+    Inventory inventory(4);
+    inventory.Add(database, medkit, 1);   // slot 0
+    inventory.Add(database, battery, 4);  // slot 1
+    inventory.SelectSlot(0);
+
+    // Onto an empty slot: it moves, and the medical kit in the hand is still the one selected.
+    REQUIRE(inventory.Move(database, 0, 3));
+    CHECK(inventory.At(0).IsEmpty());
+    CHECK(inventory.At(3).item == medkit);
+    CHECK(inventory.SelectedSlot() == 3);
+
+    // Onto something else: they change places.
+    REQUIRE(inventory.Move(database, 1, 3));
+    CHECK(inventory.At(1).item == medkit);
+    CHECK(inventory.At(3).item == battery);
+    CHECK(inventory.SelectedSlot() == 1);
+
+    // Onto the same thing with room: as much as fits joins it, the rest stays.
+    Inventory split(4);
+    split.Add(database, battery, 6);
+    split.Add(database, battery, 5); // slot 1 holds 5
+    split.RemoveFromSlot(0, 3);      // slot 0 holds 3
+    REQUIRE(split.Move(database, 1, 0));
+    CHECK(split.At(0).count == 6);
+    CHECK(split.At(1).count == 2);
+
+    // Nothing to drag, or dragged onto itself: nothing happens.
+    CHECK_FALSE(inventory.Move(database, 2, 1));
+    CHECK_FALSE(inventory.Move(database, 1, 1));
+}

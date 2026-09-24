@@ -1644,18 +1644,9 @@ bool PredationGame::PerformInteraction(InteractionKind kind, int index, uint8_t 
     {
         if (!m_world.ToggleDoor(index, m_interactions))
         {
+            // Locked: only a keycard in the hand, swiped at it, opens it (StartItemUse).
             if (const WorldObjects::Door* locked = m_world.GetDoor(index); locked != nullptr && locked->locked)
             {
-                const ItemId keycard = m_items.IdOf("keycard");
-                const bool hasKey = player == LocalPlayerId()
-                                        ? m_inventory.CountOf(keycard) > 0
-                                        : m_sessionMode == SessionMode::Host &&
-                                              m_host.CarriedCount(player, static_cast<uint16_t>(keycard)) > 0;
-                if (hasKey)
-                {
-                    UnlockDoor(index, player);
-                    return true;
-                }
                 ShareSound("World/door_locked", locked->hinge + glm::vec3(0.0f, 1.0f, 0.0f), 0.8f);
             }
             return false;
@@ -8778,7 +8769,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
     UpdateMantleStow();
     SyncEquippedWeapon();
     UpdateItemUse(m_lastFrameSeconds);
-    m_world.SetHaveKeycard(m_inventory.CountOf(m_items.IdOf("keycard")) > 0);
+    m_world.SetHaveKeycard(m_heldItem != kInvalidItem && m_heldItem == m_items.IdOf("keycard"));
     // Inside a locker there is nowhere to hold a rifle: it is stowed rather than drawn, because a
     // metre of barrel held in front of the chest goes straight through the door.
     const WeaponDefinition* weapon = m_hidingSpot >= 0 ? nullptr : EquippedWeapon();
@@ -9955,7 +9946,11 @@ void PredationGame::DrawHud()
             }
         }
         // A key in a box, then what it does: the look of every prompt, so the eye learns it once.
-        const std::string key = KeyFor(m_app->GetInput(), "interact");
+        // A locked door with the keycard in hand is opened by swiping it: the fire button, not interact.
+        const bool swipe = m_hidingSpot < 0 && focus.kind == InteractionKind::Door && m_heldItem != kInvalidItem &&
+                           m_heldItem == m_items.IdOf("keycard") && m_world.GetDoor(focus.payload) != nullptr &&
+                           m_world.GetDoor(focus.payload)->locked;
+        const std::string key = KeyFor(m_app->GetInput(), swipe ? "fire" : "interact");
         const ImVec2 keySize = ImGui::CalcTextSize(key.c_str());
         const ImVec2 textSize = ImGui::CalcTextSize(prompt.c_str());
         const float pad = 6.0f;
@@ -10212,6 +10207,27 @@ void PredationGame::DrawItemIcon(ItemId item, float boxSize) const
                                         {icon->uv0.x, icon->uv0.y}, {icon->uv1.x, icon->uv1.y});
 }
 
+void PredationGame::MoveInventorySlot(int from, int to)
+{
+    // What is in the hands is written back first, so its magazine goes with it to the new slot.
+    if (m_ammoSlot != Inventory::kNoSlot && m_weapon.HasWeapon())
+    {
+        m_inventory.SetSlotAmmo(m_ammoSlot, m_weapon.rounds, m_weapon.reserve);
+    }
+    if (!m_inventory.Move(m_items, from, to))
+    {
+        return;
+    }
+    if (m_ammoSlot == from)
+    {
+        m_ammoSlot = to;
+    }
+    else if (m_ammoSlot == to)
+    {
+        m_ammoSlot = from;
+    }
+}
+
 void PredationGame::DrawInventoryPanel()
 {
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
@@ -10262,7 +10278,23 @@ void PredationGame::DrawInventoryPanel()
 
             // An invisible button over the slot makes it clickable for selecting.
             ImGui::InvisibleButton(("##slot" + std::to_string(i)).c_str(), {kSlotSize, kSlotSize});
-            if (ImGui::IsItemClicked())
+            // Dragged somewhere else: the slot goes where it is dropped. Selecting waits for the
+            // button to come up without having moved, so starting a drag does not draw the thing.
+            if (definition != nullptr && ImGui::BeginDragDropSource())
+            {
+                ImGui::SetDragDropPayload("PRED_SLOT", &i, sizeof(int));
+                ImGui::TextUnformatted(definition->name.c_str());
+                ImGui::EndDragDropSource();
+            }
+            if (ImGui::BeginDragDropTarget())
+            {
+                if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("PRED_SLOT"))
+                {
+                    MoveInventorySlot(*static_cast<const int*>(payload->Data), i);
+                }
+                ImGui::EndDragDropTarget();
+            }
+            if (ImGui::IsItemDeactivated() && ImGui::GetIO().MouseDragMaxDistanceSqr[0] < 36.0f)
             {
                 // Clicking what is already out puts it away, the same as pressing its number, and
                 // like the number it does nothing while a climb has the hands.

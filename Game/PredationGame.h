@@ -415,6 +415,8 @@ private:
     // Who else is in the game, down the side: name, connection and whether they are still up.
     void DrawPlayerList();
     void DrawInventoryPanel();
+    // Dragging one slot of the bag onto another, with a weapon in the hands keeping its magazine.
+    void MoveInventorySlot(int from, int to);
     // Draws the item as it actually looks, from the offscreen atlas. Falls back to nothing rather
     // than a stand-in shape: an icon that disagrees with the object is worse than no icon.
     void DrawItemIcon(ItemId item, float boxSize) const;

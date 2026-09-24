@@ -51,6 +51,11 @@ public:
 
     void Clear();
 
+    // Dragging one slot onto another: onto the same thing with room, as much as fits joins it;
+    // otherwise the two change places. Whatever was in the hand stays in the hand, wherever it
+    // ends up. False when nothing moved.
+    bool Move(const ItemDatabase& database, int from, int to);
+
     // Nothing in the hands. A real state rather than a special slot, so pressing the key for what
     // you are already holding can put it away.
     static constexpr int kNoSlot = -1;

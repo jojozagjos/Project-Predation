@@ -109,7 +109,7 @@ public:
     void Update(Scene& scene, PhysicsWorld& physics, InteractionSystem& interactions, float dt);
 
     bool ToggleDoor(int index, InteractionSystem& interactions);
-    // Whether the player here carries a keycard, so a locked door says it can be unlocked.
+    // Whether the player here has a keycard in hand, so a locked door says it can be unlocked.
     void SetHaveKeycard(bool have) { m_haveKeycard = have; }
     void SetDoorOpen(int index, bool open, InteractionSystem& interactions);
 

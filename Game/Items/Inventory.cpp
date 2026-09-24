@@ -161,6 +161,46 @@ void Inventory::SetSlotAmmo(int index, int rounds, int reserve)
     }
 }
 
+bool Inventory::Move(const ItemDatabase& database, int from, int to)
+{
+    if (from == to || from < 0 || to < 0 || from >= SlotCount() || to >= SlotCount() || At(from).IsEmpty())
+    {
+        return false;
+    }
+    Slot& source = m_slots[static_cast<size_t>(from)];
+    Slot& target = m_slots[static_cast<size_t>(to)];
+    const ItemDefinition* definition = database.Get(source.item);
+    if (!target.IsEmpty() && target.item == source.item && definition != nullptr && definition->maxStack > 1)
+    {
+        const int moved = std::min(source.count, definition->maxStack - target.count);
+        if (moved <= 0)
+        {
+            return false;
+        }
+        target.count += moved;
+        source.count -= moved;
+        if (source.count <= 0)
+        {
+            source = Slot{};
+            if (m_selected == from)
+            {
+                m_selected = to;
+            }
+        }
+        return true;
+    }
+    std::swap(source, target);
+    if (m_selected == from)
+    {
+        m_selected = to;
+    }
+    else if (m_selected == to)
+    {
+        m_selected = from;
+    }
+    return true;
+}
+
 void Inventory::SelectSlot(int index)
 {
     if (index == kNoSlot || (index >= 0 && index < SlotCount()))
