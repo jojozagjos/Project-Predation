@@ -194,42 +194,8 @@ void SceneRenderer::SetEnvironmentUniforms(const Environment& environment,
                             withShadows ? static_cast<float>(m_shadowSettings.debugView) : 0.0f};
     bgfx::setUniform(m_uGrade, grade);
 
-    // Four vec4 per light, uploaded as one array. An unlit slot still costs its place in the
-    // shader's loop, so there is nothing to gain by sending fewer, and a partial upload would leave
-    // whatever the last frame happened to put there.
-    float lights[kMaxPunctualLights * 4 * 4] = {};
-    for (size_t i = 0; i < kMaxPunctualLights; ++i)
-    {
-        const PunctualLight& light = environment.lights[i];
-        const bool on = light.intensity > 0.0f && light.range > 0.0f;
-        const glm::vec3 direction = glm::length(light.direction) > 1e-4f
-                                        ? glm::normalize(light.direction)
-                                        : glm::vec3(0.0f, -1.0f, 0.0f);
-        // Cones are authored in degrees from the axis and compared as cosines, so the conversion
-        // happens once here rather than per pixel. The outer is forced a shade wider than the
-        // inner, or the divide between them in the shader is by zero.
-        const float inner = std::cos(glm::radians(std::clamp(light.innerAngle, 0.0f, 180.0f)));
-        const float outer = std::cos(glm::radians(
-            std::clamp(std::max(light.outerAngle, light.innerAngle + 0.5f), 0.0f, 180.0f)));
-
-        float* entry = lights + i * 16;
-        entry[0] = light.position.x;
-        entry[1] = light.position.y;
-        entry[2] = light.position.z;
-        entry[3] = light.range;
-        entry[4] = light.color.r;
-        entry[5] = light.color.g;
-        entry[6] = light.color.b;
-        entry[7] = light.intensity;
-        entry[8] = direction.x;
-        entry[9] = direction.y;
-        entry[10] = direction.z;
-        entry[11] = inner;
-        entry[12] = outer;
-        entry[13] = on ? 1.0f : 0.0f;
-        entry[14] = std::max(light.sourceRadius, 0.01f);
-    }
-    bgfx::setUniform(m_uLights, lights, static_cast<uint16_t>(kMaxPunctualLights * 4));
+    // The lights are chosen per surface rather than here: see UploadLightsFor.
+    PackLights(environment);
 
     // The occlusion maps. Both samplers are bound whatever happens: a sampler a shader declares and
     // nobody fills reads whatever was last in that slot, which is a picture that changes depending
@@ -344,6 +310,7 @@ void SceneRenderer::SubmitMesh(bgfx::ViewId view, const Mesh& mesh, const Materi
                          bgfx::isValid(m_reflectionTexture) ? m_reflectionTexture : white);
     }
 
+    UploadLightsFor(mesh, model);
     bgfx::setTransform(glm::value_ptr(model));
     if (mesh.IsDynamic())
     {
@@ -584,6 +551,112 @@ void SceneRenderer::RenderReflection(bgfx::ViewId skyView, bgfx::ViewId worldVie
     // see, and doubling them because the scene was drawn twice makes the number mean nothing.
     m_stats = Stats{};
     m_reflectionReady = true;
+}
+
+void SceneRenderer::PackLights(const Environment& environment)
+{
+    m_packed.clear();
+    const auto pack = [this](const PunctualLight& light, bool pinned)
+    {
+        if (light.intensity <= 0.0f || light.range <= 0.0f)
+        {
+            return;
+        }
+        PackedLight packed;
+        const glm::vec3 direction = glm::length(light.direction) > 1e-4f ? glm::normalize(light.direction)
+                                                                         : glm::vec3(0.0f, -1.0f, 0.0f);
+        // Cones are authored in degrees from the axis and compared as cosines, so the conversion happens
+        // once here rather than per pixel. The outer is forced a shade wider than the inner, or the divide
+        // between them in the shader is by zero.
+        const float inner = std::cos(glm::radians(std::clamp(light.innerAngle, 0.0f, 180.0f)));
+        const float outer =
+            std::cos(glm::radians(std::clamp(std::max(light.outerAngle, light.innerAngle + 0.5f), 0.0f, 180.0f)));
+        float* entry = packed.data;
+        entry[0] = light.position.x;
+        entry[1] = light.position.y;
+        entry[2] = light.position.z;
+        entry[3] = light.range;
+        entry[4] = light.color.r;
+        entry[5] = light.color.g;
+        entry[6] = light.color.b;
+        entry[7] = light.intensity;
+        entry[8] = direction.x;
+        entry[9] = direction.y;
+        entry[10] = direction.z;
+        entry[11] = inner;
+        entry[12] = outer;
+        entry[13] = 1.0f;
+        entry[14] = std::max(light.sourceRadius, 0.01f);
+        packed.position = light.position;
+        packed.range = light.range;
+        packed.intensity = light.intensity;
+        packed.pinned = pinned;
+        m_packed.push_back(packed);
+    };
+    for (size_t i = 0; i < kMaxPunctualLights; ++i)
+    {
+        pack(environment.lights[i], i == 0);
+    }
+    for (const PunctualLight& light : environment.sceneLights)
+    {
+        pack(light, false);
+    }
+}
+
+void SceneRenderer::UploadLightsFor(const Mesh& mesh, const glm::mat4& model)
+{
+    // The surface as a sphere in the world: its box's middle and the distance to its farthest corner,
+    // grown by however much the transform scales it.
+    glm::vec3 centre = glm::vec3(model[3]);
+    float radius = 1.0e6f;
+    if (mesh.bounds.IsValid())
+    {
+        const glm::vec3 local = (mesh.bounds.min + mesh.bounds.max) * 0.5f;
+        centre = glm::vec3(model * glm::vec4(local, 1.0f));
+        const float scale = std::max({glm::length(glm::vec3(model[0])), glm::length(glm::vec3(model[1])),
+                                      glm::length(glm::vec3(model[2]))});
+        radius = glm::length(mesh.bounds.max - mesh.bounds.min) * 0.5f * scale;
+    }
+
+    // Whatever reaches it, strongest at its nearest point first. The shadowed slot keeps its place: its
+    // shadow map was drawn for it, and only slot nought reads one.
+    m_choice.clear();
+    int pinned = -1;
+    for (size_t i = 0; i < m_packed.size(); ++i)
+    {
+        const PackedLight& light = m_packed[i];
+        const float gap = glm::length(light.position - centre) - radius;
+        if (gap > light.range)
+        {
+            continue;
+        }
+        if (light.pinned)
+        {
+            pinned = static_cast<int>(i);
+            continue;
+        }
+        const float near = std::max(gap, 0.5f);
+        m_choice.emplace_back(light.intensity / (near * near), i);
+    }
+    const size_t room = kMaxPunctualLights - 1;
+    if (m_choice.size() > room)
+    {
+        std::partial_sort(m_choice.begin(), m_choice.begin() + static_cast<ptrdiff_t>(room), m_choice.end(),
+                          [](const auto& a, const auto& b) { return a.first > b.first; });
+        m_choice.resize(room);
+    }
+
+    float lights[kMaxPunctualLights * 16] = {};
+    if (pinned >= 0)
+    {
+        std::copy(m_packed[static_cast<size_t>(pinned)].data, m_packed[static_cast<size_t>(pinned)].data + 16, lights);
+    }
+    for (size_t slot = 0; slot < m_choice.size(); ++slot)
+    {
+        const float* data = m_packed[m_choice[slot].second].data;
+        std::copy(data, data + 16, lights + (slot + 1) * 16);
+    }
+    bgfx::setUniform(m_uLights, lights, static_cast<uint16_t>(kMaxPunctualLights * 4));
 }
 
 void SceneRenderer::Draw(bgfx::ViewId view, const Scene& scene, const MeshLibrary& meshes,

@@ -7,6 +7,8 @@
 #include "Engine/Render/Primitives.h"
 #include "Engine/Scene/Scene.h"
 
+#include <algorithm>
+#include <cmath>
 #include <string>
 #include <utility>
 
@@ -17,6 +19,9 @@ namespace pred
 class MapBuilder
 {
 public:
+    // How big a drawn piece of a box may be across, in metres. See AddBox.
+    static constexpr float kTile = 8.0f;
+
     // `prefix` goes on the front of every mesh name, so two maps built into one world do not share each
     // other's numbered meshes.
     MapBuilder(Scene& scene, MeshLibrary& meshes, PhysicsWorld* physics, std::string prefix = {})
@@ -38,9 +43,26 @@ public:
         // reaching their walls. Numbered by build order rather than made unique some other way,
         // because the map is rebuilt for every new game and a name that changes each time would
         // upload the whole level again.
+        //
+        // Drawn in tiles of at most eight metres across when it is bigger than that, and collided as one.
+        // Each drawn piece is lit by the lamps nearest it, up to a handful; a wall the length of the
+        // building as one piece would be lit by the handful nearest its middle and dark at both ends.
+        const int across = std::max(1, static_cast<int>(std::ceil(size.x / kTile)));
+        const int deep = std::max(1, static_cast<int>(std::ceil(size.z / kTile)));
+        const glm::vec3 tile{size.x / static_cast<float>(across), size.y, size.z / static_cast<float>(deep)};
         const std::string meshName = m_prefix + name + "#" + std::to_string(m_boxCount++);
-        const MeshHandle mesh = m_meshes.Upload(Primitives::Box(size), meshName);
-        m_scene.CreateMeshEntity(name, transform, mesh, material);
+        const MeshHandle mesh = m_meshes.Upload(Primitives::Box(tile), meshName);
+        for (int i = 0; i < across; ++i)
+        {
+            for (int k = 0; k < deep; ++k)
+            {
+                const glm::vec3 offset{(static_cast<float>(i) + 0.5f) * tile.x - size.x * 0.5f, 0.0f,
+                                       (static_cast<float>(k) + 0.5f) * tile.z - size.z * 0.5f};
+                Transform piece = transform;
+                piece.position = transform.position + transform.rotation * offset;
+                m_scene.CreateMeshEntity(name, piece, mesh, material);
+            }
+        }
         if (m_physics != nullptr)
         {
             m_physics->CreateBox(size * 0.5f, transform, BodyMotion::Static);

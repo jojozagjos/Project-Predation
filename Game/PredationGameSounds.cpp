@@ -454,6 +454,49 @@ void PredationGame::UpdateAmbience(float dt)
     keep(m_ambienceTone, "amb_room_tone", 0.22f);
     keep(m_ambienceVent, "amb_vent", 0.12f);
 
+    // A failing lamp buzzes, and the buzz stutters with it: the nearest one within earshot, from where
+    // it hangs, as loud as it is lit.
+    m_lightClock += dt;
+    const LevelLights::Light* buzzing = nullptr;
+    float nearest = 10.0f;
+    for (const LevelLights::Light& light : m_levelLights.Lights())
+    {
+        const bool unsteady = light.mood == LightMood::Failing || light.mood == LightMood::Flicker;
+        const float away = glm::distance(light.position, m_camera.position);
+        if (unsteady && away < nearest)
+        {
+            nearest = away;
+            buzzing = &light;
+        }
+    }
+    if (m_buzz != kInvalidVoice && !audio.IsPlaying(m_buzz))
+    {
+        m_buzz = kInvalidVoice;
+    }
+    if (buzzing != nullptr && m_buzz == kInvalidVoice)
+    {
+        AudioEngine::PlayDesc desc;
+        desc.sound = Sounds("amb_electric").Pick();
+        desc.loop = true;
+        desc.positioned = true;
+        desc.position = buzzing->position;
+        desc.gain = 0.0f;
+        desc.nearDistance = 1.5f;
+        desc.farDistance = 10.0f;
+        if (desc.sound != kInvalidSound)
+        {
+            m_buzz = audio.Play(desc);
+        }
+    }
+    if (m_buzz != kInvalidVoice)
+    {
+        if (buzzing != nullptr)
+        {
+            audio.SetVoicePosition(m_buzz, buzzing->position);
+        }
+        audio.SetVoiceGain(m_buzz, buzzing != nullptr ? 0.5f * buzzing->level * level : 0.0f);
+    }
+
     m_ambienceClock += dt;
     if (m_screen != Screen::Playing || m_ambienceClock < m_ambienceNext || level <= 0.0f)
     {

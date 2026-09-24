@@ -10,6 +10,7 @@ add_executable(PredationTests
     WeaponTests.cpp
     AudioTests.cpp
     SoundDesignTests.cpp
+    LightTests.cpp
     NetTests.cpp
     NetSessionTests.cpp
     NetUdpTests.cpp

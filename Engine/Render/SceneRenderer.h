@@ -9,6 +9,8 @@
 #include <glm/vec4.hpp>
 
 #include <cstddef>
+#include <utility>
+#include <vector>
 
 namespace pred
 {
@@ -189,6 +191,21 @@ private:
     SkyRenderer* m_sky = nullptr;
     ShadowSettings m_shadowSettings;
     bool m_shadowsReady = false;
+
+    // Every light that could reach something this pass, packed as the shader wants it, and chosen from
+    // for each surface in SubmitMesh.
+    struct PackedLight
+    {
+        float data[16] = {};
+        glm::vec3 position{0.0f};
+        float range = 0.0f;
+        float intensity = 0.0f;
+        bool pinned = false; // the shadowed slot: always first, whatever else is near
+    };
+    std::vector<PackedLight> m_packed;
+    std::vector<std::pair<float, size_t>> m_choice;
+    void PackLights(const Environment& environment);
+    void UploadLightsFor(const Mesh& mesh, const glm::mat4& model);
 };
 
 } // namespace pred

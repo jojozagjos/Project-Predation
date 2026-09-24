@@ -1651,3 +1651,32 @@ own. Three decisions followed from it, each asked and answered rather than assum
 The temperament is drawn after every other trait, so each seed keeps the body and senses it had.
 Hunting tests pin their creatures to predators, since a timid one would pass a test of hunting by keeping
 out of the way; the temperaments have tests of their own.
+
+## ADR-075: Lamps that belong to the place, lit per surface
+
+**Status**: accepted, 2026-09-23
+
+The levels had no lights of their own. Everything was the sky, a little ambient, and whatever torches and
+muzzle flashes were about, four of them for the whole frame. A building needs a lamp in most rooms.
+
+Each surface now chooses its own lights: of every lamp in the level and every light of the moment, the
+ones that reach its bounding sphere, strongest at its nearest point first, up to eight. The first slot is
+still kept for the one light with a shadow map -- the local torch whenever it is lit -- because only that
+slot reads one. This is the forward renderer's standard answer and costs nothing on the GPU that four
+slots did not; the price is on the CPU, a few thousand distance checks a frame. The one thing it needs
+from a level is that a surface is not enormous: a floor the size of the building is lit by the handful of
+lamps nearest its middle and dark at its ends. So MapBuilder draws any box wider than eight metres as
+tiles, collided as one piece, and the lab's floor is laid as tiles.
+
+Clustered shading -- a grid of the view, each cell holding its own light list, read per pixel -- was the
+alternative, and would take hundreds of lights without tiling anything. It is a larger change to the
+renderer and to every shader that lights, and the levels do not yet have enough lamps to need it. It is
+the next step if a generated facility does.
+
+Lamps (Game/World/LevelLights) are a kind -- ceiling strip, caged wall lamp, battery emergency lamp,
+floodlight -- and a mood -- steady, flickering, failing, dead, or pulsing. Moods are worked out from each
+lamp's seed and the time, so every machine shows the same sort of flicker with nothing sent. Lamps are on
+circuits that can lose their power; emergency lamps ignore that and are what is left in a building with
+the power out. What a creature can see counts the lamps with a clear line to the player, and the nearest
+failing lamp buzzes and stutters with its light. `r.lamp_scale` scales them all; `light_report` lists
+those near you.

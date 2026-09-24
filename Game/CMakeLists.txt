@@ -66,6 +66,8 @@ set(PRED_GAME_SOURCES
     World/LabMap.h
     World/LabMap.cpp
     World/HiveMesh.h
+    World/LevelLights.h
+    World/LevelLights.cpp
     World/HiveMesh.cpp
     World/WorldObjects.h
     World/WorldObjects.cpp

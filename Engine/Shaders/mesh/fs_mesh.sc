@@ -20,7 +20,7 @@ uniform vec4 u_grade;           // x = exposure, y = contrast, z = light where t
 // Lights that have a place. Four vec4 each: position and range, colour and intensity, direction and
 // the cosine of the inner cone, then the cosine of the outer cone, whether it is on at all, and how
 // big the source is.
-#define MAX_LIGHTS 4
+#define MAX_LIGHTS 8
 uniform vec4 u_lights[MAX_LIGHTS * 4];
 
 // The two depth maps, and what turns a world position into a lookup in each.

@@ -372,7 +372,34 @@ float PredationGame::LightAt(const glm::vec3& feet, bool torchOn) const
     // on makes whoever carries it the brightest thing in any room.
     const RayHit roof = m_app->GetPhysics().RayCast(feet + glm::vec3(0.0f, 1.7f, 0.0f),
                                                     glm::vec3(0.0f, 1.0f, 0.0f), 40.0f);
-    const float light = roof ? 0.18f : 1.0f;
+    float light = roof ? 0.18f : 1.0f;
+    // And the lamps: somebody standing under a working light is lit, whatever the roof says. Only the
+    // ones with a clear line to them -- a lamp on the far side of a wall lights nothing here.
+    const glm::vec3 chest = feet + glm::vec3(0.0f, 1.2f, 0.0f);
+    for (const LevelLights::Light& lamp : m_levelLights.Lights())
+    {
+        if (lamp.level <= 0.05f || light >= 1.0f)
+        {
+            continue;
+        }
+        const glm::vec3 toward = chest - lamp.position;
+        const float distance = glm::length(toward);
+        if (distance >= lamp.range || distance < 1e-3f)
+        {
+            continue;
+        }
+        const float window = 1.0f - (distance / lamp.range) * (distance / lamp.range);
+        const float strength = lamp.intensity * lamp.level / std::max(distance * distance, 1.0f) * 0.5f * window;
+        if (strength <= light)
+        {
+            continue;
+        }
+        const RayHit blocked = m_app->GetPhysics().RayCastStatic(lamp.position, toward / distance, distance - 0.3f);
+        if (!blocked)
+        {
+            light = std::min(strength, 1.0f);
+        }
+    }
     return torchOn ? std::max(light, 0.95f) : light;
 }
 

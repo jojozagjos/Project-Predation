@@ -1,0 +1,94 @@
+#pragma once
+
+#include "Engine/Render/Material.h"
+#include "Engine/Render/Mesh.h"
+#include "Engine/Scene/Scene.h"
+
+#include <glm/vec3.hpp>
+
+#include <cstdint>
+#include <vector>
+
+namespace pred
+{
+
+// What kind of lamp it is, which decides its colour, how far it reaches and which way it shines.
+enum class LightKind : uint8_t
+{
+    Ceiling,   // a strip light under a ceiling: cold, wide, down
+    Wall,      // a caged lamp on a wall: warm, low, out and down
+    Emergency, // a red lamp on its own battery: on whatever the power is doing
+    Flood,     // a floodlight on a pole or a roof: a long, bright cone
+};
+
+// How it is behaving, which is most of what makes a building feel looked after or abandoned.
+enum class LightMood : uint8_t
+{
+    Steady,
+    Flicker, // on, with a dip now and then
+    Failing, // mostly off, stuttering back on for a moment and dying again
+    Dead,    // off; the fitting is there and nothing more
+    Pulse,   // rising and falling, as an emergency beacon does
+};
+
+const char* LightKindName(LightKind kind);
+const char* LightMoodName(LightMood mood);
+
+// The lights that belong to a place.
+//
+// Each is a punctual light for the renderer and a fitting in the scene -- the lamp itself -- that
+// glows while it is lit and goes dark when it is not. They are grouped into circuits, so a part of a
+// building can lose its power and have its lights go out together, and restoring it brings them back.
+// Emergency lights are on their own batteries and stay lit through anything: in a building with the
+// power out they are what there is.
+//
+// How a light flickers or fails is worked out from its seed and the time, so every machine shows the
+// same kind of flicker without anything being sent; only whether a circuit has power would need to be.
+class LevelLights
+{
+public:
+    struct Light
+    {
+        LightKind kind = LightKind::Ceiling;
+        LightMood mood = LightMood::Steady;
+        glm::vec3 position{0.0f};
+        glm::vec3 direction{0.0f, -1.0f, 0.0f};
+        glm::vec3 color{1.0f};
+        float intensity = 8.0f;
+        float range = 9.0f;
+        float innerAngle = 180.0f;
+        float outerAngle = 180.0f;
+        float sourceRadius = 0.4f;
+        int circuit = 0;
+        uint32_t seed = 0;
+        Entity fitting;
+        glm::vec3 glow{0.0f}; // the fitting's own light when fully lit
+        float level = 1.0f;   // how lit it is this moment, 0 to 1
+    };
+
+    // A light and its fitting. `direction` is where the fitting faces: down for a ceiling light, out
+    // from the wall for a wall lamp, along the beam for a flood.
+    int Add(Scene& scene, MeshLibrary& meshes, LightKind kind, LightMood mood, const glm::vec3& at,
+            const glm::vec3& direction, int circuit = 0, uint32_t seed = 0);
+    void Clear(Scene& scene);
+
+    void SetPowered(int circuit, bool powered);
+    bool Powered(int circuit) const;
+
+    // Flicker, failure and power, applied: each light's level, and its fitting's glow.
+    void Update(Scene& scene, float time);
+    // Every light lit at all, as the renderer wants them.
+    void Gather(std::vector<PunctualLight>& out) const;
+
+    const std::vector<Light>& Lights() const { return m_lights; }
+
+    // How lit a light of this mood and seed is at a moment, 0 to 1. Exposed for the tests.
+    static float MoodLevel(LightMood mood, uint32_t seed, float time);
+
+private:
+    std::vector<Light> m_lights;
+    std::vector<int> m_unpowered;
+    MeshHandle m_fittingMeshes[4] = {};
+};
+
+} // namespace pred

@@ -2,6 +2,7 @@
 
 #include "Engine/Core/Log.h"
 #include "Engine/Render/Primitives.h"
+#include "Game/World/LevelLights.h"
 #include "Game/World/MapBuilder.h"
 
 #include <glm/gtc/constants.hpp>
@@ -61,14 +62,26 @@ bool InLab(const glm::vec3& point)
     return std::abs(point.x - kX) < kHalf + 2.0f && std::abs(point.z - kZ) < kHalf + 2.0f;
 }
 
-void BuildLabMap(Scene& scene, MeshLibrary& meshes, PhysicsWorld* physics)
+void BuildLabMap(Scene& scene, MeshLibrary& meshes, PhysicsWorld* physics, LevelLights* lights)
 {
     MapBuilder builder(scene, meshes, physics, "lab_");
     const float h = kWallHeight;
 
-    // The floor, drawn as a plane and collided as a slab with its top at nought.
-    const MeshHandle floor = meshes.Upload(Primitives::Plane({kHalf * 2.0f, kHalf * 2.0f}, 32), "lab_floor");
-    scene.CreateMeshEntity("lab_floor", At(0.0f, 0.0f, 0.0f), floor, kLabFloor);
+    // The floor, drawn as a grid of eight-metre tiles and collided as one slab with its top at nought.
+    // In tiles so each is lit by the lamps above it: see MapBuilder::kTile.
+    const int tiles = static_cast<int>(std::ceil(kHalf * 2.0f / MapBuilder::kTile));
+    const float tileSize = kHalf * 2.0f / static_cast<float>(tiles);
+    const MeshHandle floor = meshes.Upload(Primitives::Plane({tileSize, tileSize}, 4), "lab_floor_tile");
+    for (int i = 0; i < tiles; ++i)
+    {
+        for (int k = 0; k < tiles; ++k)
+        {
+            scene.CreateMeshEntity("lab_floor",
+                                   At(-kHalf + (static_cast<float>(i) + 0.5f) * tileSize, 0.0f,
+                                      -kHalf + (static_cast<float>(k) + 0.5f) * tileSize),
+                                   floor, kLabFloor);
+        }
+    }
     if (physics != nullptr)
     {
         physics->CreateBox({kHalf, 0.5f, kHalf}, At(0.0f, -0.5f, 0.0f), BodyMotion::Static);
@@ -181,6 +194,41 @@ void BuildLabMap(Scene& scene, MeshLibrary& meshes, PhysicsWorld* physics)
 
         // Nothing is built here: a nest exists only where a creature has made one, and this chamber is
         // somewhere dark and enclosed that one is likely to choose.
+    }
+
+    // --- The lamps. A building that has been looked after has its lights on; this one has not been,
+    // entirely. Circuits: 1 the corridor and its rooms, 2 the pillar forest, 3 the nest chamber.
+    if (lights != nullptr)
+    {
+        const glm::vec3 down{0.0f, -1.0f, 0.0f};
+        const auto ceiling = [&](float lx, float roof, float lz, LightMood mood, int circuit)
+        { lights->Add(scene, meshes, LightKind::Ceiling, mood, glm::vec3(kX + lx, roof - 0.04f, kZ + lz), down, circuit); };
+        const auto wall = [&](LightKind kind, float lx, float y, float lz, const glm::vec3& facing, LightMood mood, int circuit)
+        { lights->Add(scene, meshes, kind, mood, glm::vec3(kX + lx, y, kZ + lz), facing, circuit); };
+
+        // The corridor: one good, one flickering, and the one by the locked store failing.
+        const float corridor = (kCorridorWest + kCorridorEast) * 0.5f - kX;
+        ceiling(corridor, 3.0f, 15.0f, LightMood::Steady, 1);
+        ceiling(corridor, 3.0f, 9.5f, LightMood::Flicker, 1);
+        ceiling(corridor, 3.0f, 3.5f, LightMood::Failing, 1);
+        // A caged lamp over the way in.
+        wall(LightKind::Wall, kCorridorDoorX - kX, 2.6f, kCorridorSouth - kZ + 0.45f, {0.0f, -0.35f, 1.0f}, LightMood::Steady, 1);
+        // The locker room: lit, just about.
+        ceiling(18.0f, 3.0f, 14.0f, LightMood::Steady, 1);
+        ceiling(25.0f, 3.0f, 14.0f, LightMood::Flicker, 1);
+        // The store: its strip light long dead, and an emergency lamp breathing red on the far wall.
+        ceiling(21.5f, 3.0f, 5.0f, LightMood::Dead, 1);
+        wall(LightKind::Emergency, kRoomEast - kX - 0.25f, 2.3f, 5.0f, {-1.0f, -0.2f, 0.0f}, LightMood::Pulse, 1);
+
+        // The pillar forest: one failing, one dead. Dark on purpose: it is for being stalked in.
+        ceiling(19.5f, 4.5f, -6.0f, LightMood::Failing, 2);
+        ceiling(27.0f, 4.5f, -4.0f, LightMood::Dead, 2);
+
+        // The nest chamber: the strip lights dead, and a red emergency lamp inside each way in.
+        ceiling(-6.0f, kWallHeight, -22.0f, LightMood::Dead, 3);
+        ceiling(6.0f, kWallHeight, -22.0f, LightMood::Dead, 3);
+        wall(LightKind::Emergency, -8.0f, 3.4f, -12.6f, {0.0f, -0.3f, -1.0f}, LightMood::Pulse, 3);
+        wall(LightKind::Emergency, 8.0f, 3.4f, -12.6f, {0.0f, -0.3f, -1.0f}, LightMood::Pulse, 3);
     }
 }
 

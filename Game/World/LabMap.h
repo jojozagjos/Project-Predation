@@ -8,6 +8,7 @@ namespace pred
 class Scene;
 class MeshLibrary;
 class PhysicsWorld;
+class LevelLights;
 
 // The creature lab: a map for watching creatures do everything they can do, and for trying to survive
 // them while they do it.
@@ -83,7 +84,7 @@ inline constexpr float kBalconySouth = kZ + 2.0f;
 
 // Builds the lab's level: floors, walls, rooms, the crate yard and the nest. The doors, lockers and
 // the things on the bench are WorldObjects', which reads the same numbers.
-void BuildLabMap(Scene& scene, MeshLibrary& meshes, PhysicsWorld* physics);
+void BuildLabMap(Scene& scene, MeshLibrary& meshes, PhysicsWorld* physics, LevelLights* lights = nullptr);
 
 // Whether a point is in the lab rather than the test map.
 bool InLab(const glm::vec3& point);

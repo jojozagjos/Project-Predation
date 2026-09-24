@@ -70,7 +70,7 @@ struct PunctualLight
     float sourceRadius = 0.6f;
 };
 
-inline constexpr size_t kMaxPunctualLights = 4;
+inline constexpr size_t kMaxPunctualLights = 8;
 
 struct Environment
 {
@@ -85,7 +85,13 @@ struct Environment
     float fogStart = 12.0f;
     float fogEnd = 90.0f;
 
+    // The lights of the moment -- a torch, a muzzle flash -- which every surface considers. The first
+    // is the one with a shadow map, and the game puts whichever matters most at the eye there.
     std::array<PunctualLight, kMaxPunctualLights> lights{};
+    // And the lights that belong to the place: lamps, fittings, the red of an emergency light. Any
+    // number of them. Each surface is lit by the ones that reach it, the strongest first, up to the
+    // slots left after the lights above -- which is what lets a building have a lamp in every room.
+    std::vector<PunctualLight> sceneLights;
 
     // How the picture is developed, rather than what is in it.
     //

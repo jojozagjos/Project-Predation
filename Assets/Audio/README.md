@@ -95,7 +95,7 @@ A small creature is played higher and a large one lower, from the same files.
 |---|---|
 | `amb_room_tone`, `amb_vent` | Always, looped, under everything (`audio.ambience` sets how loud) |
 | `amb_groan`, `amb_distant_bang`, `amb_drip` | Every twenty to fifty seconds, somewhere out of sight |
-| `amb_electric` | A failing light's buzz. Made, and not yet placed anywhere: it waits for lights that fail |
+| `amb_electric` | The nearest failing or flickering lamp, from where it hangs, stuttering with its light |
 
 **Menus**
 

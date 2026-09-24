@@ -168,6 +168,8 @@ CVar<float> cv_headBob{"cam.head_bob", 1.0f, "How much the view rises and falls 
                        CVarFlags::Archive};
 CVar<float> cv_aimSensitivity{"input.aim_sensitivity", 0.75f,
                               "Mouse sensitivity with the sights up, as a share of the ordinary one", CVarFlags::Archive};
+// How bright the level's own lamps are, all together: a knob for the look of the place.
+CVar<float> cv_lampScale{"r.lamp_scale", 1.0f, "Multiplies the brightness of every lamp in the level"};
 CVar<bool> cv_crosshair{"hud.crosshair", true, "Draw the crosshair", CVarFlags::Archive};
 CVar<bool> cv_showFps{"hud.show_fps", false, "Show the frame rate in the corner", CVarFlags::Archive};
 CVar<bool> cv_voiceEnabled{"audio.voice", true, "Send and hear proximity voice", CVarFlags::Archive};
@@ -377,7 +379,7 @@ bool PredationGame::OnInit(Application& app)
 
     BuildTestMap(m_scene, app.GetMeshes(), &app.GetPhysics());
     // And the creature lab, far off to the east in the same world, with its nest.
-    BuildLabMap(m_scene, app.GetMeshes(), &app.GetPhysics());
+    BuildLabMap(m_scene, app.GetMeshes(), &app.GetPhysics(), &m_levelLights);
 
 
     m_propSphereMesh = app.GetMeshes().Upload(Primitives::Sphere(kPropRadius, 20, 14), "prop_sphere");
@@ -906,6 +908,33 @@ void PredationGame::RegisterCommands()
             m_app->GetConsole().Print("Equipped " + weapon->name);
         },
         "give_weapon <key>");
+
+    console.RegisterCommand(
+        "light_report", "List the level's lamps near you: what kind, how lit, how far",
+        [this](const std::vector<std::string>&)
+        {
+            Console& out = m_app->GetConsole();
+            const glm::vec3 me = m_player.State().position;
+            int shown = 0;
+            for (const LevelLights::Light& light : m_levelLights.Lights())
+            {
+                const float away = glm::distance(light.position, me);
+                if (away > 25.0f)
+                {
+                    continue;
+                }
+                char line[160];
+                std::snprintf(line, sizeof(line), "%-9s %-8s circuit %d  lit %.2f  %.1f m  at %.1f %.1f %.1f",
+                              LightKindName(light.kind), LightMoodName(light.mood), light.circuit, light.level, away,
+                              light.position.x, light.position.y, light.position.z);
+                out.Print(line);
+                PRED_LOG_INFO(Render, "{}", line);
+                ++shown;
+            }
+            out.Print(std::to_string(shown) + " lamp(s) within 25 m, " +
+                      std::to_string(m_scene.GetEnvironment().sceneLights.size()) + " lit this frame in all");
+            PRED_LOG_INFO(Render, "{} lamp(s) within 25 m, {} lit this frame", shown, m_scene.GetEnvironment().sceneLights.size());
+        });
 
     console.RegisterCommand(
         "weapon_rounds", "Set how many rounds are in the magazine, for trying the empty states: weapon_rounds <n> [reserve]",
@@ -8883,6 +8912,15 @@ void PredationGame::OnUpdate(double dt, double alpha)
 
         std::sort(candidates.begin(), candidates.end(),
                   [](const Candidate& a, const Candidate& b) { return a.score > b.score; });
+
+        // And the level's own lamps, lit or flickering or not at all, for each surface to choose from.
+        m_levelLights.Update(m_scene, m_lightClock);
+        environment.sceneLights.clear();
+        m_levelLights.Gather(environment.sceneLights);
+        for (PunctualLight& lamp : environment.sceneLights)
+        {
+            lamp.intensity *= std::max(cv_lampScale.Get(), 0.0f);
+        }
         for (size_t i = 0; i < kMaxPunctualLights; ++i)
         {
             if (i < candidates.size())

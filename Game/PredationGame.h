@@ -24,6 +24,7 @@
 #include "Game/Weapons/ShotResolver.h"
 #include "Game/Weapons/WeaponDatabase.h"
 #include "Game/Weapons/WeaponSystem.h"
+#include "Game/World/LevelLights.h"
 #include "Game/World/TestMap.h"
 #include "Game/World/LabMap.h"
 #include "Tools/ModelEditor/ModelEditor.h"
@@ -961,6 +962,10 @@ private:
     };
     std::map<uint8_t, HeardCreature> m_heardCreatures;
     std::vector<float> m_crateLids;
+    // The level's own lamps, and the buzz of the nearest failing one.
+    LevelLights m_levelLights;
+    float m_lightClock = 0.0f;
+    VoiceId m_buzz = kInvalidVoice;
     VoiceId m_ambienceTone = kInvalidVoice;
     VoiceId m_ambienceVent = kInvalidVoice;
     float m_ambienceClock = 0.0f;
