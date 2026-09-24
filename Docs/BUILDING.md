@@ -116,10 +116,10 @@ build\windows-debug\bin\ProjectPredation.exe --frames 30 --screenshot build\shot
 
 | What | Where |
 |---|---|
-| Logs | `%APPDATA%\ACRD\ProjectPredation\Logs\predation.log` |
-| User settings (archived cvars) | `%APPDATA%\ACRD\ProjectPredation\settings.json` |
-| Screenshots (F12 or `screenshot`) | `%APPDATA%\ACRD\ProjectPredation\Screenshots\` |
-| ImGui layout | `%APPDATA%\ACRD\ProjectPredation\imgui.ini` |
+| Logs | `%APPDATA%\CIRRA\ProjectPredation\Logs\predation.log` |
+| User settings (archived cvars) | `%APPDATA%\CIRRA\ProjectPredation\settings.json` |
+| Screenshots (F12 or `screenshot`) | `%APPDATA%\CIRRA\ProjectPredation\Screenshots\` |
+| ImGui layout | `%APPDATA%\CIRRA\ProjectPredation\imgui.ini` |
 
 ## 8. Troubleshooting
 

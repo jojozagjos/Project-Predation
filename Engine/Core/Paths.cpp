@@ -90,7 +90,7 @@ std::filesystem::path DiscoverUserDataDir(const std::filesystem::path& executabl
 #ifdef _WIN32
     if (const char* appData = std::getenv("APPDATA"); appData != nullptr && *appData != '\0')
     {
-        return std::filesystem::path(appData) / "ACRD" / "ProjectPredation";
+        return std::filesystem::path(appData) / "CIRRA" / "ProjectPredation";
     }
 #else
     if (const char* home = std::getenv("HOME"); home != nullptr && *home != '\0')
@@ -112,6 +112,24 @@ void Paths::Init(const char* argv0, const std::filesystem::path& assetsOverride)
     state.userDataDir = DiscoverUserDataDir(state.executableDir);
 
     std::error_code ec;
+#ifdef _WIN32
+    // The folder used to be named after ACRD, the organisation's old name. The first run under the
+    // new name copies everything across -- settings, key bindings, window layout, screenshots, logs
+    // -- so nobody loses their settings to a rename. Copied, not moved: the old folder stays until
+    // whoever owns it deletes it, and a copy that fails half way loses nothing.
+    if (const char* appData = std::getenv("APPDATA"); appData != nullptr && *appData != '\0')
+    {
+        const std::filesystem::path old = std::filesystem::path(appData) / "ACRD" / "ProjectPredation";
+        if (!std::filesystem::exists(state.userDataDir, ec) && std::filesystem::is_directory(old, ec))
+        {
+            std::filesystem::create_directories(state.userDataDir, ec);
+            std::filesystem::copy(old, state.userDataDir,
+                                  std::filesystem::copy_options::recursive |
+                                      std::filesystem::copy_options::skip_existing,
+                                  ec);
+        }
+    }
+#endif
     std::filesystem::create_directories(state.userDataDir, ec);
 
     state.searchRoots.clear();

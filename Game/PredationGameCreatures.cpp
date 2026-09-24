@@ -21,6 +21,7 @@
 #include <glm/gtc/constants.hpp>
 
 #include <algorithm>
+#include <cctype>
 #include <cfloat>
 #include <chrono>
 #include <cmath>
@@ -34,6 +35,10 @@ namespace
 // None, for now: a game starts empty and a creature is made on purpose with spawn_creature. Set this
 // to have them arrive on their own again, the way a real round will.
 CVar<int> cv_aiCreatures{"ai.creatures", 0, "How many creatures arrive on their own in a new game (0: none, use spawn_creature)"};
+// For trying each kind out: every new creature is made this temperament, whatever its seed would give.
+CVar<std::string> cv_aiTemperament{"ai.temperament", "",
+                                   "Make every new creature predator, territorial, timid or curious whatever its seed says; "
+                                   "empty for the seed's own"};
 CVar<int> cv_aiSeed{"ai.seed", 0,
                     "The seed a new game's creature is made from; 0 picks a different one each game"};
 CVar<float> cv_aiArrival{"ai.arrival_seconds", 40.0f,
@@ -156,7 +161,14 @@ bool PredationGame::SpawnCreature(uint32_t seed, const glm::vec3& awayFrom, cons
     {
         return false;
     }
-    const CreatureTraits traits = CreatureTraits::FromSeed(seed);
+    CreatureTraits traits = CreatureTraits::FromSeed(seed);
+    for (int i = 0; i < static_cast<int>(Temperament::Count); ++i)
+    {
+        if (cv_aiTemperament.Get() == TemperamentName(static_cast<Temperament>(i)))
+        {
+            traits.temperament = static_cast<Temperament>(i);
+        }
+    }
     m_creatures.push_back(std::make_unique<Creature>(m_scene, m_app->GetMeshes(), m_app->GetPhysics(),
                                                      &m_nav, traits, best, cv_aiHealthScale.Get()));
     m_creatures.back()->SetNetId(m_nextCreatureId++);
@@ -1100,7 +1112,8 @@ void PredationGame::DrawBrainInspector()
     const auto labelOf = [&](const Creature& c)
     {
         char label[128];
-        std::snprintf(label, sizeof(label), "#%u  %s %s  %.0f m  %s%s", c.NetId(), SizeClassName(c.Capabilities().size),
+        std::snprintf(label, sizeof(label), "#%u  %s %s %s  %.0f m  %s%s", c.NetId(),
+                      TemperamentName(c.Brain().Traits().temperament), SizeClassName(c.Capabilities().size),
                       BodyPlanName(c.Anatomy().plan), glm::distance(c.Position(), me), BehaviorName(c.Brain().Current()),
                       c.Alive() ? "" : "  (dead)");
         return std::string(label);
@@ -1200,6 +1213,21 @@ void PredationGame::DrawBrainInspector()
         ImGui::ProgressBar(fraction, ImVec2(-1.0f, 0.0f), health);
         ImGui::PopStyleColor();
 
+        {
+            // What sort of animal it is, before anything about what it is doing.
+            const Temperament temperament = brain.Traits().temperament;
+            char kind[48];
+            std::snprintf(kind, sizeof(kind), "%s%s", TemperamentName(temperament),
+                          brain.Traits().Nests() ? ", nests" : brain.Traits().Captures() ? ", takes people" : "");
+            for (char* c = kind; *c != '\0'; ++c)
+            {
+                *c = static_cast<char>(std::toupper(static_cast<unsigned char>(*c)));
+            }
+            Chip(kind, temperament == Temperament::Predator ? kDanger
+                       : temperament == Temperament::Territorial ? ImVec4(0.96f, 0.64f, 0.38f, 1.0f)
+                       : temperament == Temperament::Timid ? ImVec4(0.62f, 0.70f, 0.98f, 1.0f)
+                                                            : kUnsure);
+        }
         if (brain.Dead())
         {
             Chip("DEAD", kDanger);
@@ -1343,6 +1371,15 @@ void PredationGame::DrawBrainInspector()
             ImGui::PopStyleColor();
             ImGui::SameLine();
             ImGui::TextDisabled("%.1f m", sight.distance);
+            ImGui::SameLine();
+            if (track.hostile)
+            {
+                ImGui::TextColored(kDanger, "  means them harm");
+            }
+            else
+            {
+                ImGui::TextDisabled("  leaves them be");
+            }
             if (track.harm > 0.0f)
             {
                 ImGui::SameLine();

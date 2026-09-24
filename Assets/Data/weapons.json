@@ -4,7 +4,7 @@
   "weapons": [
     {
       "key": "sidearm",
-      "name": "ACRD Sidearm",
+      "name": "CIRRA Sidearm",
       "item": "sidearm",
       "model": "m9_pistol",
       "fire_mode": "single",
@@ -32,7 +32,7 @@
     },
     {
       "key": "carbine",
-      "name": "ACRD Carbine",
+      "name": "CIRRA Carbine",
       "item": "carbine",
       "model": "m5_carbine",
       "fire_mode": "auto",

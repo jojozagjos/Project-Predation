@@ -26,6 +26,16 @@ using namespace pred::TestMapSpec;
 namespace
 {
 
+// A hunter from this seed, whatever temperament the seed itself would give it. Most of these tests are
+// about how a creature hunts, and a timid one would pass them by keeping out of the way; the
+// temperaments have tests of their own.
+CreatureTraits Hunter(uint32_t seed)
+{
+    CreatureTraits traits = CreatureTraits::FromSeed(seed);
+    traits.temperament = Temperament::Predator;
+    return traits;
+}
+
 struct CreatureHarness
 {
     PhysicsWorld physics;
@@ -36,6 +46,10 @@ struct CreatureHarness
     float time = 0.0f;
 
     explicit CreatureHarness(uint32_t seed = 7, glm::vec3 spawn = {0.0f, 0.0f, 0.0f}, float yaw = 0.0f)
+        : CreatureHarness(Hunter(seed), spawn, yaw)
+    {
+    }
+    explicit CreatureHarness(const CreatureTraits& traits, glm::vec3 spawn = {0.0f, 0.0f, 0.0f}, float yaw = 0.0f)
     {
         PhysicsWorld::Settings settings;
         settings.workerThreads = 1;
@@ -43,8 +57,7 @@ struct CreatureHarness
         meshes.SetHeadless(true);
         BuildTestMap(scene, meshes, &physics);
         REQUIRE(nav.Build(physics.StaticTriangles(), NavSettings{}));
-        creature = std::make_unique<Creature>(scene, meshes, physics, &nav, CreatureTraits::FromSeed(seed),
-                                              spawn);
+        creature = std::make_unique<Creature>(scene, meshes, physics, &nav, traits, spawn);
         creature->SetShownState(creature->Position(), yaw, 0.0f, 0.0f, true);
     }
 
@@ -292,7 +305,7 @@ TEST_CASE("A gunshot draws it to look", "[creature][hearing]")
     // Across temperaments: a gunshot is the loudest thing that happens, and even an incurious
     // creature goes to see.
     const uint32_t seed = GENERATE(1u, 5u, 7u, 23u, 42u, 99u);
-    INFO("seed " << seed << ": " << CreatureTraits::FromSeed(seed).Describe());
+    INFO("seed " << seed << ": " << Hunter(seed).Describe());
     CreatureHarness harness(seed);
     const glm::vec3 start = harness.creature->Position();
     // Somewhere it cannot see, far enough that it has to walk.
@@ -333,7 +346,7 @@ TEST_CASE("Shot in the back, it goes for the shooter rather than the sound", "[c
     // follows says who that was -- so the looking is over.
     const uint32_t seed = GENERATE(1u, 5u, 7u, 23u, 42u, 99u);
     const bool missedFirst = GENERATE(false, true);
-    INFO("seed " << seed << ": " << CreatureTraits::FromSeed(seed).Describe()
+    INFO("seed " << seed << ": " << Hunter(seed).Describe()
                  << (missedFirst ? ", first round missed" : ""));
     CreatureHarness harness(seed);
     glm::vec3 at;
@@ -381,7 +394,7 @@ TEST_CASE("Shot in the back, it goes for the shooter rather than the sound", "[c
 TEST_CASE("It hunts somebody it sees and strikes when it reaches them", "[creature][attack]")
 {
     const uint32_t seed = GENERATE(1u, 5u, 11u, 23u, 42u, 99u);
-    INFO("seed " << seed << ": " << CreatureTraits::FromSeed(seed).Describe());
+    INFO("seed " << seed << ": " << Hunter(seed).Describe());
     CreatureHarness harness(seed);
     glm::vec3 at;
     glm::vec3 player;
@@ -461,7 +474,7 @@ TEST_CASE("Badly hurt, it gets away from whoever hurt it", "[creature][retreat]"
     uint32_t seed = 0;
     for (uint32_t candidate = 1; candidate < 500; ++candidate)
     {
-        if (CreatureTraits::FromSeed(candidate).fear > 0.75f)
+        if (Hunter(candidate).fear > 0.75f)
         {
             seed = candidate;
             break;
@@ -510,7 +523,7 @@ TEST_CASE("A creature shown from the host's state keeps up smoothly, and dies th
     glm::vec3 at;
     glm::vec3 player;
     REQUIRE(OpenView(harness, 12.0f, at, player));
-    Creature shown(harness.scene, harness.meshes, harness.physics, &harness.nav, CreatureTraits::FromSeed(5), at);
+    Creature shown(harness.scene, harness.meshes, harness.physics, &harness.nav, Hunter(5), at);
     harness.seeThrough.push_back(&shown);
     const std::vector<SensedPlayer> players{Somebody(1, player)};
 
@@ -567,7 +580,7 @@ uint32_t SeedWhere(Want&& want)
 {
     for (uint32_t seed = 1; seed < 5000; ++seed)
     {
-        if (want(CreatureTraits::FromSeed(seed)) && CreatureAnatomy::FromSeed(seed).eyes > 0)
+        if (want(Hunter(seed)) && CreatureAnatomy::FromSeed(seed).eyes > 0)
         {
             return seed;
         }
@@ -679,7 +692,7 @@ TEST_CASE("A stealthy creature being watched stalks from cover, and comes when t
     const uint32_t seed = SeedWhere([](const CreatureTraits& t)
                                     { return t.stealth > 0.85f && t.aggression > 0.5f && t.fear < 0.6f; });
     REQUIRE(seed != 0);
-    INFO("seed " << seed << ": " << CreatureTraits::FromSeed(seed).Describe());
+    INFO("seed " << seed << ": " << Hunter(seed).Describe());
     CreatureHarness harness(seed);
     glm::vec3 at;
     glm::vec3 player;
@@ -725,7 +738,7 @@ TEST_CASE("A brazen creature comes whether it is watched or not", "[creature][st
     const uint32_t seed = SeedWhere([](const CreatureTraits& t)
                                     { return t.stealth < 0.2f && t.aggression > 0.5f && t.fear < 0.6f; });
     REQUIRE(seed != 0);
-    INFO("seed " << seed << ": " << CreatureTraits::FromSeed(seed).Describe());
+    INFO("seed " << seed << ": " << Hunter(seed).Describe());
     CreatureHarness harness(seed);
     glm::vec3 at;
     glm::vec3 player;
@@ -747,7 +760,7 @@ TEST_CASE("A stalker's patience runs out, and then any moment will do", "[creatu
                                     { return t.stealth > 0.8f && t.patience < 0.3f && t.aggression > 0.5f &&
                                              t.fear < 0.6f; });
     REQUIRE(seed != 0);
-    const CreatureTraits traits = CreatureTraits::FromSeed(seed);
+    const CreatureTraits traits = Hunter(seed);
     INFO("seed " << seed << ": " << traits.Describe());
     CreatureHarness harness(seed);
     glm::vec3 at;
@@ -778,7 +791,7 @@ TEST_CASE("Badly hurt, a cunning creature plays dead -- alive underneath -- and 
 {
     const uint32_t seed = CunningSeed();
     REQUIRE(seed != 0);
-    INFO("seed " << seed << ": " << CreatureTraits::FromSeed(seed).Describe());
+    INFO("seed " << seed << ": " << Hunter(seed).Describe());
     CreatureHarness harness(seed);
     glm::vec3 at;
     glm::vec3 player;
@@ -907,7 +920,7 @@ TEST_CASE("It loses somebody, searches where they could have gone, and in the en
     const uint32_t seed = SeedWhere([](const CreatureTraits& t)
                                     { return t.stealth < 0.4f && t.aggression > 0.5f && t.fear < 0.6f; });
     REQUIRE(seed != 0);
-    INFO("seed " << seed << ": " << CreatureTraits::FromSeed(seed).Describe());
+    INFO("seed " << seed << ": " << Hunter(seed).Describe());
     CreatureHarness harness(seed);
     glm::vec3 at;
     glm::vec3 player;
@@ -1067,7 +1080,7 @@ TEST_CASE("A curious, gentle creature watches from a distance, gives ground, and
     const uint32_t seed = SeedWhere([](const CreatureTraits& t)
                                     { return t.curiosity > 0.8f && t.aggression < 0.4f && t.fear < 0.6f; });
     REQUIRE(seed != 0);
-    const CreatureTraits traits = CreatureTraits::FromSeed(seed);
+    const CreatureTraits traits = Hunter(seed);
     INFO("seed " << seed << ": " << traits.Describe());
     CreatureHarness harness(seed);
     glm::vec3 at;
@@ -1116,7 +1129,7 @@ TEST_CASE("It remembers where it found people, prowls back there, and forgets in
     const uint32_t seed = SeedWhere([](const CreatureTraits& t)
                                     { return t.stealth < 0.4f && t.aggression > 0.5f && t.fear < 0.6f; });
     REQUIRE(seed != 0);
-    INFO("seed " << seed << ": " << CreatureTraits::FromSeed(seed).Describe());
+    INFO("seed " << seed << ": " << Hunter(seed).Describe());
     CreatureHarness harness(seed);
     glm::vec3 at;
     glm::vec3 player;
@@ -1191,7 +1204,7 @@ TEST_CASE("Eight creatures at once keep out of each other, all keep thinking, an
     std::vector<std::unique_ptr<Creature>> pack;
     for (uint8_t i = 0; i < 8; ++i)
     {
-        pack.push_back(std::make_unique<Creature>(scene, meshes, physics, &nav, CreatureTraits::FromSeed(100u + i), spot));
+        pack.push_back(std::make_unique<Creature>(scene, meshes, physics, &nav, Hunter(100u + i), spot));
         pack.back()->SetNetId(i);
     }
 
@@ -1280,7 +1293,7 @@ TEST_CASE("A creature that ran away comes back out rather than running for ever"
     for (uint32_t candidate = 1; candidate < 500; ++candidate)
     {
         // Very timid, and not the sort to lie down and pretend instead.
-        const CreatureTraits traits = CreatureTraits::FromSeed(candidate);
+        const CreatureTraits traits = Hunter(candidate);
         if (traits.fear > 0.85f && traits.stealth < 0.5f && traits.patience < 0.5f)
         {
             seed = candidate;
@@ -1329,4 +1342,252 @@ TEST_CASE("A creature that ran away comes back out rather than running for ever"
     CHECK(mended);
     CHECK(retreatingLate < late * 0.25f);
     CHECK(harness.creature->Brain().Current() != Behavior::Retreat);
+}
+
+// --- Temperament -------------------------------------------------------------------------------------
+//
+// Dangerous is not the same as malicious. Most of them hunt; the rest hold ground, keep away, or watch,
+// and any of them turns on somebody who hurts it.
+
+namespace
+{
+
+CreatureTraits WithTemperament(uint32_t seed, Temperament temperament)
+{
+    CreatureTraits traits = Hunter(seed);
+    traits.temperament = temperament;
+    return traits;
+}
+
+bool GoingFor(const Creature& creature)
+{
+    const Behavior now = creature.Brain().Current();
+    return now == Behavior::Hunt || now == Behavior::Attack || now == Behavior::Stalk || now == Behavior::Search ||
+           creature.Brain().Intent().strikeTarget >= 0;
+}
+
+} // namespace
+
+TEST_CASE("Most creatures hunt, and the rest are a spread of the other temperaments", "[creature][temperament]")
+{
+    int counts[static_cast<int>(Temperament::Count)] = {};
+    constexpr int kSeeds = 4000;
+    for (uint32_t seed = 1; seed <= kSeeds; ++seed)
+    {
+        ++counts[static_cast<int>(CreatureTraits::FromSeed(seed).temperament)];
+    }
+    INFO("predator " << counts[0] << ", territorial " << counts[1] << ", timid " << counts[2] << ", curious "
+                     << counts[3]);
+    CHECK(counts[0] > kSeeds * 0.45f);
+    CHECK(counts[0] < kSeeds * 0.72f);
+    for (int i = 1; i < 4; ++i)
+    {
+        CHECK(counts[i] > kSeeds * 0.05f);
+    }
+    // And the timid ones are the frightened ones.
+    float timidFear = 0.0f;
+    float otherFear = 0.0f;
+    for (uint32_t seed = 1; seed <= kSeeds; ++seed)
+    {
+        const CreatureTraits traits = CreatureTraits::FromSeed(seed);
+        (traits.temperament == Temperament::Timid ? timidFear : otherFear) += traits.fear;
+    }
+    CHECK(timidFear / counts[2] > otherFear / (kSeeds - counts[2]) + 0.05f);
+}
+
+TEST_CASE("A timid creature keeps its distance and never goes for somebody who leaves it be",
+          "[creature][temperament]")
+{
+    const uint32_t seed = SeedWhere([](const CreatureTraits& t) { return t.fear > 0.5f; });
+    REQUIRE(seed != 0);
+    CreatureHarness harness(WithTemperament(seed, Temperament::Timid));
+    glm::vec3 at;
+    glm::vec3 player;
+    REQUIRE(OpenView(harness, 8.0f, at, player));
+
+    bool kept = false;
+    bool went = false;
+    harness.Run(20.0f, {Somebody(1, player)}, {},
+                [&](const Creature& creature)
+                {
+                    kept = kept || creature.Brain().Current() == Behavior::Avoid;
+                    went = went || GoingFor(creature);
+                });
+    const float after = glm::distance(harness.creature->Position(), player);
+    INFO("its mind:" << MindOf(*harness.creature));
+    INFO("ended " << after << " m away, having started 8 m away");
+    CHECK(kept);
+    CHECK_FALSE(went);
+    CHECK(after > 10.0f);
+}
+
+TEST_CASE("A timid creature hurt and followed closely enough turns and fights", "[creature][temperament]")
+{
+    const uint32_t seed = SeedWhere([](const CreatureTraits& t) { return t.fear > 0.5f; });
+    REQUIRE(seed != 0);
+    CreatureHarness harness(WithTemperament(seed, Temperament::Timid));
+    glm::vec3 at;
+    glm::vec3 player;
+    REQUIRE(OpenView(harness, 4.0f, at, player));
+    harness.Run(0.6f, {Somebody(1, player)});
+    harness.creature->TakeDamage(Share(*harness.creature, 12.0f), 1, player + glm::vec3(0.0f, 1.5f, 0.0f),
+                                 harness.time);
+
+    // Whoever shot it stays on top of it, wherever it goes.
+    bool struck = false;
+    harness.RunLive(
+        6.0f,
+        [&](const Creature& creature)
+        {
+            const glm::vec3 close = creature.Position() + creature.Forward() * 1.3f;
+            return std::vector<SensedPlayer>{Watching(1, close, creature.Position())};
+        },
+        [&](const Creature& creature) { struck = struck || creature.Brain().Intent().strikeTarget == 1; });
+    INFO("its mind:" << MindOf(*harness.creature));
+    CHECK(struck);
+}
+
+TEST_CASE("A curious creature watches, and turns only on somebody who hurts it", "[creature][temperament]")
+{
+    const uint32_t seed = SeedWhere([](const CreatureTraits& t) { return t.curiosity > 0.7f && t.fear < 0.6f; });
+    REQUIRE(seed != 0);
+    CreatureHarness harness(WithTemperament(seed, Temperament::Curious));
+    glm::vec3 at;
+    glm::vec3 player;
+    REQUIRE(OpenView(harness, 8.0f, at, player));
+
+    bool watched = false;
+    bool went = false;
+    harness.Run(20.0f, {Somebody(1, player)}, {},
+                [&](const Creature& creature)
+                {
+                    watched = watched || creature.Brain().Current() == Behavior::Observe;
+                    went = went || GoingFor(creature);
+                });
+    INFO("its mind:" << MindOf(*harness.creature));
+    CHECK(watched);
+    CHECK_FALSE(went);
+
+    // Shot, it is somebody else's animal.
+    harness.creature->TakeDamage(Share(*harness.creature, 15.0f), 1, player + glm::vec3(0.0f, 1.5f, 0.0f),
+                                 harness.time);
+    bool turned = false;
+    harness.Run(6.0f, {Somebody(1, player)}, {},
+                [&](const Creature& creature) { turned = turned || GoingFor(creature); });
+    CHECK(turned);
+}
+
+TEST_CASE("A territorial creature warns somebody off its ground before it fights them", "[creature][temperament]")
+{
+    const uint32_t seed = SeedWhere([](const CreatureTraits& t) { return t.fear < 0.6f; });
+    REQUIRE(seed != 0);
+    CreatureHarness harness(WithTemperament(seed, Temperament::Territorial));
+    glm::vec3 at;
+    glm::vec3 player;
+    REQUIRE(OpenView(harness, 9.0f, at, player));
+
+    float warnedAt = -1.0f;
+    float wentAt = -1.0f;
+    bool displayed = false;
+    harness.Run(14.0f, {Somebody(1, player)}, {},
+                [&](const Creature& creature)
+                {
+                    if (warnedAt < 0.0f && creature.Brain().Current() == Behavior::Warn)
+                    {
+                        warnedAt = harness.time;
+                    }
+                    displayed = displayed || creature.Brain().Intent().display;
+                    if (wentAt < 0.0f && GoingFor(creature))
+                    {
+                        wentAt = harness.time;
+                    }
+                });
+    INFO("its mind:" << MindOf(*harness.creature));
+    INFO("warned at " << warnedAt << ", went for them at " << wentAt);
+    REQUIRE(warnedAt >= 0.0f);
+    CHECK(displayed);
+    // It fought, in the end, for somebody who would not leave -- but not before it had said so.
+    REQUIRE(wentAt >= 0.0f);
+    CHECK(wentAt > warnedAt + 2.0f);
+}
+
+TEST_CASE("A territorial creature leaves alone somebody who is not on its ground", "[creature][temperament]")
+{
+    const uint32_t seed = SeedWhere([](const CreatureTraits& t) { return t.fear < 0.6f; });
+    REQUIRE(seed != 0);
+    CreatureHarness harness(WithTemperament(seed, Temperament::Territorial));
+
+    // Its ground is well away from where the two of them are about to be.
+    glm::vec3 home;
+    bool found = false;
+    uint32_t pick = 99u;
+    for (int i = 0; i < 200 && !found; ++i)
+    {
+        found = harness.nav.RandomPointNear({0.0f, 0.0f, 0.0f}, 60.0f, pick, home) &&
+                glm::length(glm::vec2(home.x, home.z)) > CreatureBrain::kTerritory + 14.0f;
+    }
+    REQUIRE(found);
+    harness.creature->SetShownState(home, 0.0f, 0.0f, 0.0f, true);
+    harness.Run(0.2f, {});
+    REQUIRE(glm::distance(harness.creature->Brain().Home(), home) < 1.0f);
+
+    glm::vec3 at;
+    glm::vec3 player;
+    REQUIRE(OpenView(harness, 7.0f, at, player));
+    bool went = false;
+    bool warned = false;
+    harness.Run(12.0f, {Somebody(1, player)}, {},
+                [&](const Creature& creature)
+                {
+                    went = went || GoingFor(creature);
+                    warned = warned || creature.Brain().Current() == Behavior::Warn;
+                });
+    INFO("its mind:" << MindOf(*harness.creature));
+    CHECK_FALSE(went);
+    CHECK_FALSE(warned);
+}
+
+TEST_CASE("Only some creatures take people; the rest only fight", "[creature][temperament][grab]")
+{
+    const auto grabsIn = [](uint32_t seed)
+    {
+        CreatureHarness harness(seed);
+        glm::vec3 at;
+        glm::vec3 player;
+        REQUIRE(OpenView(harness, 3.0f, at, player));
+        int grabs = 0;
+        AttackKind last = AttackKind::None;
+        harness.RunLive(
+            25.0f,
+            [&](const Creature& creature)
+            {
+                const glm::vec3 close = creature.Position() + creature.Forward() * 1.2f;
+                return std::vector<SensedPlayer>{Somebody(1, close)};
+            },
+            [&](const Creature& creature)
+            {
+                const AttackKind now = creature.Brain().CurrentAttack();
+                if (now == AttackKind::Grab && last != AttackKind::Grab)
+                {
+                    ++grabs;
+                }
+                last = now;
+            });
+        return grabs;
+    };
+    const uint32_t taker = SeedWhere([](const CreatureTraits& t) { return t.Captures() && t.aggression > 0.6f; });
+    const uint32_t fighter = SeedWhere([](const CreatureTraits& t) { return !t.Captures() && t.aggression > 0.6f; });
+    REQUIRE(taker != 0);
+    REQUIRE(fighter != 0);
+    CHECK(grabsIn(taker) > 0);
+    CHECK(grabsIn(fighter) == 0);
+    // And nests are only ever built by ones that take people, which is what a nest is for.
+    for (uint32_t seed = 1; seed < 2000; ++seed)
+    {
+        const CreatureTraits traits = CreatureTraits::FromSeed(seed);
+        if (traits.Nests())
+        {
+            REQUIRE(traits.Captures());
+        }
+    }
 }

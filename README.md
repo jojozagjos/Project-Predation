@@ -2,12 +2,14 @@
 
 A first-person, 1 to 4 player survival horror extraction game built on a custom C++ engine.
 
-Players are field teams of the **Anomalous Containment & Research Directorate (ACRD)**, deployed into
+Players are field teams of **CIRRA**, the Critical Incident Response & Research Agency, deployed into
 facilities that contain a single alien organism. Each organism is generated from a seed: its anatomy,
 capabilities, senses, and temperament are reproducible, but its behavior drifts with what it experiences
 during a mission.
 
-The design brief and the approved plan live in [Docs/DESIGN_PLAN.md](Docs/DESIGN_PLAN.md).
+The design brief and the approved plan live in [Docs/DESIGN_PLAN.md](Docs/DESIGN_PLAN.md). The world, the
+organisation and the organisms are described in [Docs/Project_Predation_Lore_Reference.md](Docs/Project_Predation_Lore_Reference.md),
+which is the source of truth for anything the game says about them.
 
 ## Status
 

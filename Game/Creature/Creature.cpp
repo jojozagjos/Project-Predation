@@ -447,7 +447,8 @@ void Creature::Update(CreatureSenses senses, float time, float dt)
     m_lookAt = intent.lookAt;
 
     // What the body shows of what it is doing, beyond walking.
-    if (intent.roar)
+    // A call to the others and a threat display at somebody are the same rearing-up to look at.
+    if (intent.roar || intent.display)
     {
         m_roarUntil = time + 1.3f;
     }

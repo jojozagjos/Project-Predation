@@ -189,7 +189,7 @@ void WeaponDatabase::AddBuiltinDefaults()
     }
     WeaponDefinition sidearm;
     sidearm.key = "sidearm";
-    sidearm.name = "ACRD Sidearm";
+    sidearm.name = "CIRRA Sidearm";
     sidearm.item = "sidearm";
     Add(std::move(sidearm));
 }

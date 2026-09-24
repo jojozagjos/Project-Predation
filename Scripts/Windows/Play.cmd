@@ -41,6 +41,6 @@ echo [play] Starting.
 set "RC=%errorlevel%"
 if not "%RC%"=="0" (
     echo [play] The game exited with code %RC%. The log is in:
-    echo [play]   %%APPDATA%%\ACRD\ProjectPredation\Logs\predation.log
+    echo [play]   %%APPDATA%%\CIRRA\ProjectPredation\Logs\predation.log
 )
 endlocal & exit /b %RC%

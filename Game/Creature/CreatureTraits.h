@@ -6,6 +6,23 @@
 namespace pred
 {
 
+// How it takes to people at all.
+//
+// These are animals, not monsters: dangerous is not the same as malicious, and not every one of them
+// wants anything to do with a person. Most hunt. Some hold ground and warn before they fight for it;
+// some keep away and fight only when there is no way out; some just watch. What they all share is that
+// one that has been hurt by somebody is dangerous to that somebody.
+enum class Temperament : uint8_t
+{
+    Predator,    // hunts people
+    Territorial, // keeps its ground: warns anybody who comes onto it, and fights if they stay
+    Timid,       // keeps away; lashes out only when cornered or hurt at close quarters
+    Curious,     // watches and follows; turns only on somebody who hurts it
+    Count
+};
+
+const char* TemperamentName(Temperament temperament);
+
 // What kind of animal this one is. Fixed for its life, and made entirely from its seed.
 //
 // The same seed always makes the same creature: the same temperament, the same senses, the same
@@ -45,7 +62,16 @@ struct CreatureTraits
     // How much of a nest-builder it is. Past two thirds it makes one somewhere dark and out of the way,
     // takes what it catches there, and goes back to it to heal; the rest never build anything.
     float nesting = 0.0f;
-    bool Nests() const { return nesting > 0.66f; }
+    // How it takes to people, drawn from the seed and weighted by the rest of its temperament: a timid
+    // one is one that was already fearful and not very aggressive.
+    Temperament temperament = Temperament::Predator;
+    // Whether it takes people at all -- a grab, carried off -- rather than only fighting them. Only
+    // some do, and only ones that fight at all. Those that build a nest take their catches there.
+    bool Captures() const
+    {
+        return (temperament == Temperament::Predator || temperament == Temperament::Territorial) && nesting > 0.5f;
+    }
+    bool Nests() const { return Captures() && nesting > 0.66f; }
 
     // Seconds it will stalk one person before patience runs out.
     float StalkPatienceSeconds() const { return 10.0f + 30.0f * patience; }

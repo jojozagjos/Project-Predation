@@ -66,17 +66,57 @@ CreatureTraits CreatureTraits::FromSeed(uint32_t seed)
     // Drawn last, so every seed keeps the temperament it had: how much of a nest-builder it is. Most are
     // not; the ones that are take what they catch home.
     traits.nesting = random.Range(0.0f, 1.0f);
+    // And last of all, how it takes to people. Weighted by what it already is, so the timid ones are
+    // the fearful, unaggressive ones and the curious ones the curious, unaggressive ones -- about six in
+    // ten hunt, two hold ground, and the rest keep away or watch.
+    {
+        const float weights[] = {
+            0.55f * (0.5f + traits.aggression),
+            0.22f * (1.5f - traits.stealth),
+            0.20f * (0.1f + 2.2f * traits.fear * traits.fear) * (1.3f - traits.aggression),
+            0.12f * (0.3f + 1.4f * traits.curiosity) * (1.3f - traits.aggression),
+        };
+        float total = 0.0f;
+        for (const float weight : weights)
+        {
+            total += weight;
+        }
+        float roll = random.Unit() * total;
+        traits.temperament = Temperament::Curious;
+        for (int i = 0; i < 4; ++i)
+        {
+            if (roll < weights[i])
+            {
+                traits.temperament = static_cast<Temperament>(i);
+                break;
+            }
+            roll -= weights[i];
+        }
+    }
     return traits;
+}
+
+const char* TemperamentName(Temperament temperament)
+{
+    switch (temperament)
+    {
+    case Temperament::Predator: return "predator";
+    case Temperament::Territorial: return "territorial";
+    case Temperament::Timid: return "timid";
+    case Temperament::Curious: return "curious";
+    case Temperament::Count: break;
+    }
+    return "?";
 }
 
 std::string CreatureTraits::Describe() const
 {
-    char line[320];
+    char line[360];
     std::snprintf(line, sizeof(line),
-                  "seed %u  aggression %.2f  fear %.2f  curiosity %.2f  persistence %.0fs  "
-                  "senses x%.2f  run %.1f m/s  patience %.2f  stealth %.2f  prefers loners %.2f%s",
-                  seed, aggression, fear, curiosity, persistence, perception, runSpeed, patience, stealth,
-                  isolationPreference, Nests() ? "  nests" : "");
+                  "seed %u  %s  aggression %.2f  fear %.2f  curiosity %.2f  persistence %.0fs  "
+                  "senses x%.2f  run %.1f m/s  patience %.2f  stealth %.2f  prefers loners %.2f%s%s",
+                  seed, TemperamentName(temperament), aggression, fear, curiosity, persistence, perception, runSpeed,
+                  patience, stealth, isolationPreference, Captures() ? "  captures" : "", Nests() ? "  nests" : "");
     return line;
 }
 

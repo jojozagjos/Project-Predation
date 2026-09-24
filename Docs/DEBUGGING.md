@@ -127,7 +127,7 @@ Still planned from the brief: `spawn_player`, `freeze_ai`, `show_animation`, `go
 
 CVars are typed named values. Flags:
 
-- **Archive**: saved to `%APPDATA%\ACRD\ProjectPredation\settings.json` on exit and loaded on start
+- **Archive**: saved to `%APPDATA%\CIRRA\ProjectPredation\settings.json` on exit and loaded on start
 - **ReadOnly**: cannot be changed from console or config
 - **Cheat**: only settable in developer mode (enforcement arrives with multiplayer)
 - **Hidden**: not listed by default
@@ -167,7 +167,7 @@ once is how you tell a mismatch from a miss.
 
 Categories: ENGINE, PLATFORM, RENDER, AUDIO, NETWORK, AI, ANIMATION, PHYSICS, GAMEPLAY, ASSET, DEBUG.
 Use the macros `PRED_LOG_INFO(Category, "fmt {}", value)` and friends. Output goes to the terminal, to
-`%APPDATA%\ACRD\ProjectPredation\Logs\predation.log`, and to the in-game console.
+`%APPDATA%\CIRRA\ProjectPredation\Logs\predation.log`, and to the in-game console.
 
 Set verbosity with `--log-level` on the command line or `log_level` in the console.
 
@@ -284,7 +284,7 @@ muzzle where its stock was. The grip's turn moves nothing but the hold.
 ### When the game aborts
 
 A window saying `abort() has been called` is a renderer fatal, and it is written to the log before
-the process goes. The log is at `%APPDATA%/ACRD/ProjectPredation/Logs/predation.log`, and the run
+the process goes. The log is at `%APPDATA%/CIRRA/ProjectPredation/Logs/predation.log`, and the run
 before it is kept beside it as `predation.prev.log`, which is the one to look at after a restart.
 Search for `critical`.
 

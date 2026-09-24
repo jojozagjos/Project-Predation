@@ -1628,3 +1628,26 @@ whenever one moved.
 The creature lab is part of the test map's world rather than a second map, because the whole game assumes
 one world built behind the menu. Moving everybody there is a respawn at a different spawn point, which
 every part of the network already handles.
+
+## ADR-074: CIRRA, and creatures that are not all hunters
+
+**Status**: accepted, 2026-09-23
+
+The world, the organisation and the organisms are now described in
+[Project_Predation_Lore_Reference.md](Project_Predation_Lore_Reference.md), written by the project's owner.
+It is the source of truth for anything the game says about them, and nothing in the code writes lore of its
+own. Three decisions followed from it, each asked and answered rather than assumed:
+
+- **The organisation is CIRRA**, the Critical Incident Response & Research Agency, replacing ACRD. That is
+  every name a player reads and the settings folder: `%APPDATA%\CIRRA\ProjectPredation`. The first run under
+  the new name copies the old folder across, so nobody loses settings to a rename; the old one is left
+  where it is.
+- **A creature has a temperament** -- predator, territorial, timid or curious -- because the lore is clear
+  that these are animals and not monsters: a frightened one, a wary one and a watching one are as much
+  what they are as a hunting one. Most still hunt. Any of them is dangerous to somebody who hurts it.
+- **Only some take people.** Grabbing, carrying off, nests and cocoons belong to predators and territorial
+  ones with a strong nesting trait; the rest fight or keep away.
+
+The temperament is drawn after every other trait, so each seed keeps the body and senses it had.
+Hunting tests pin their creatures to predators, since a timid one would pass a test of hunting by keeping
+out of the way; the temperaments have tests of their own.

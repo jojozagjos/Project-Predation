@@ -149,6 +149,9 @@ struct CreatureIntent
     int cocoonTarget = -1;
     // Calling to the others, on the tick it does.
     bool roar = false;
+    // A threat display at somebody, on the tick it starts one: the same rearing-up as a call, meant
+    // for them rather than for the others, so nothing else comes running.
+    bool display = false;
     // Set on the one tick it finishes a nest, and where. The game builds it there.
     bool buildHive = false;
     glm::vec3 hiveAt{0.0f};
@@ -179,7 +182,12 @@ enum class Behavior : uint8_t
     // Carrying somebody it has hold of away from the others, to kill them, or to its nest.
     Drag,
     // Making a nest somewhere dark and out of the way: what it takes its catches back to.
-    Nest
+    Nest,
+    // Keeping its distance from somebody it wants nothing to do with: the timid ones.
+    Avoid,
+    // Standing its ground and showing it, at somebody on its ground: the territorial ones, before
+    // they fight.
+    Warn
 };
 
 const char* BehaviorName(Behavior behavior);
@@ -282,6 +290,14 @@ public:
         float stalked = 0.0f;
         // Seconds it has spent just watching them. Curiosity wears off: this is what it wears off against.
         float observed = 0.0f;
+        // Whether it means them harm, which for most is always and for the rest depends: see
+        // UpdateHostility. What hunting, stalking and attacking anybody at all requires.
+        bool hostile = false;
+        // When they last hurt it, which turns anything against them for a while.
+        float provokedAt = -1.0e9f;
+        // When it last warned them off its ground, and how long they have stayed on it since.
+        float warnedAt = -1.0e9f;
+        float trespass = 0.0f;
 
         // Why it can or cannot see them at this moment, factor by factor. The visibility is these
         // multiplied together, so when the question is "why does it not see me" the answer is
@@ -389,8 +405,15 @@ public:
     std::vector<glm::vec3>& Route() { return m_route; }
     const std::vector<glm::vec3>& Route() const { return m_route; }
 
+public:
+    // How far its ground reaches, for the territorial ones, in metres from its home.
+    static constexpr float kTerritory = 16.0f;
+    const glm::vec3& Home() const { return m_home; }
+
 private:
     void Perceive(const CreatureSenses& senses, float dt);
+    // Who it means harm, from its temperament and what each person has done: see Track::hostile.
+    void UpdateHostility(const CreatureSenses& senses, float dt);
     void Decide(const CreatureSenses& senses);
     void Act(const CreatureSenses& senses, float dt);
 
@@ -470,6 +493,11 @@ private:
     bool m_arrived = false;
     glm::vec3 m_fleePoint{0.0f};
     bool m_haveFleePoint = false;
+    // Its ground, for the territorial ones: where it first found itself, or its nest once it has one.
+    glm::vec3 m_home{0.0f};
+    bool m_haveHome = false;
+    // Seconds spent keeping away from somebody who keeps coming: a timid one with nowhere left to go.
+    float m_cornered = 0.0f;
     glm::vec3 m_threat{0.0f};
     float m_retreatUntil = 0.0f;
     float m_retreatCooldownUntil = 0.0f;

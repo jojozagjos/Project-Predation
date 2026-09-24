@@ -130,7 +130,7 @@ if exist "%BUILD_DIR%\GeneratedAssets\Shaders" (
 
 > "!STAGE!\README.txt" (
     echo PROJECT PREDATION
-    echo ACRD // Anomalous Containment ^& Research Directorate
+    echo CIRRA // Critical Incident Response ^& Research Agency
     echo.
     echo Run ProjectPredation.exe.
     echo.
@@ -188,7 +188,7 @@ if /i not "!WANT_TOOLS!"=="OFF" (
         echo   creature_mind        what the creature you are looking at is thinking
         echo   net_host, net_join   open a game, or join one at an address
         echo.
-        echo The log is at %%APPDATA%%\ACRD\ProjectPredation\Logs\predation.log. Send that
+        echo The log is at %%APPDATA%%\CIRRA\ProjectPredation\Logs\predation.log. Send that
         echo with any report: it is the whole session rather than only the crash.
     )
 )

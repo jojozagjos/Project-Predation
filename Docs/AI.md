@@ -179,6 +179,28 @@ do not blind each other.
 To look at one: `ai.freeze 1` stops every creature where it stands, and `spawn_creature <seed> ahead
 <metres> <degrees>` puts one in front of you, turned by that many degrees (90 for a side view).
 
+### Temperament
+
+Dangerous is not the same as malicious, and not every creature wants anything to do with a person. Each
+seed is one of four temperaments, drawn last from the seed and weighted by the rest of what it is:
+
+| Temperament | Share | What it does about people |
+|---|---|---|
+| Predator | about 58% | Hunts them. Everything below this table is about predators unless it says otherwise. |
+| Territorial | about 20% | Has ground -- sixteen metres round where it first found itself, or round its nest. Somebody on it gets a threat display (it rears up, as for a call, but nothing else comes). Staying on it five seconds after being warned, or coming within five metres, and it fights. It chases a little way off its ground and no further, and walks only its own ground when it wanders. |
+| Timid | about 12% | Keeps away: somebody in sight within eighteen metres is somebody to get away from, out of their sight. It only fights at arm's length, and only once it has been hurt by them or has been cornered -- somebody staying within three metres of it for two and a half seconds while it tries to get away. |
+| Curious | about 10% | Watches and follows (Observe). |
+
+Whatever the temperament, somebody who has hurt it in the last minute is somebody it means harm to. The
+timid ones are the fearful, unaggressive seeds; the curious ones the curious, unaggressive ones.
+
+Only some creatures take people. A grab, and everything after it -- being carried off, the nest, the
+cocoon -- is for predators and territorial ones with a nesting trait above a half. Those above two thirds
+build a nest to take their catches to. The rest fight and kill, or keep away.
+
+`ai.temperament predator|territorial|timid|curious` makes every new creature that temperament, to try one
+out. The brain inspector shows it on a tag at the top, and for each player whether it means them harm.
+
 ### Attacks
 
 It has four ways of hurting somebody, each with its own quick timing, and barely a pause between them
@@ -193,7 +215,7 @@ for something that means it (the more aggressive, the shorter the blows and the 
 
 Close in, it rakes and bites in turn. From a few metres off, facing somebody, it throws itself at them.
 Somebody on their own -- more than six metres from anybody else -- is who it grabs, the more so the more
-it prefers loners. The game checks every blow again when it lands: somebody who got out of the way is not
+it prefers loners -- if it is one of the ones that takes people at all (see Temperament). The game checks every blow again when it lands: somebody who got out of the way is not
 hit, and seeing it coming is what the wind-up is for. It can strike up at somebody on something as high
 as it can rear (`verticalReach`, from its height).
 

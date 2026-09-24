@@ -19,8 +19,13 @@ game. Every system is inspectable, data-driven, and small enough to understand.
 
 ## 2. Organization
 
-**ACRD: Anomalous Containment & Research Directorate.** In-world shorthand: "the Directorate". Field units:
-Recovery Teams.
+**CIRRA: Critical Incident Response & Research Agency**, known as "the Company". The organisation, its
+image and what it knows are set out in [Project_Predation_Lore_Reference.md](Project_Predation_Lore_Reference.md),
+which replaced what follows on 2026-09-23 (ADR-074). Nothing in the game describes the organisation beyond
+what that document says.
+
+The earlier choice, kept for the record: **ACRD: Anomalous Containment & Research Directorate.** In-world
+shorthand: "the Directorate". Field units: Recovery Teams.
 
 Why: "Directorate" implies orders from above with no explanation. "Anomalous" never says "alien". "Containment &
 Research" tells the player the organization wants the organism alive, which is a gameplay hook and quietly

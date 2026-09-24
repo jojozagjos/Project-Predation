@@ -127,6 +127,10 @@ const char* BehaviorName(Behavior behavior)
         return "Drag";
     case Behavior::Nest:
         return "Nest";
+    case Behavior::Avoid:
+        return "Avoid";
+    case Behavior::Warn:
+        return "Warn";
     }
     return "?";
 }
@@ -204,6 +208,7 @@ void CreatureBrain::OnDamaged(float amount, int byPlayer, const glm::vec3& from,
     {
         // Being shot says exactly where the shooter is, and makes them somebody to be wary of.
         track->harm += amount * scale / 100.0f;
+        track->provokedAt = time;
         track->confidence = 1.0f;
         track->lastKnown = from;
         ResolveInterestNear(from);
@@ -455,10 +460,18 @@ void CreatureBrain::Update(const CreatureSenses& senses, float dt)
     m_places.resize(senses.hidingPlaces.size());
     m_pendingNoises.insert(m_pendingNoises.end(), senses.noises.begin(), senses.noises.end());
 
+    // Its ground is wherever it first found itself, until it has a nest: then the nest is.
+    if (!m_haveHome || senses.hasHive)
+    {
+        m_home = senses.hasHive ? senses.hive : senses.position;
+        m_haveHome = true;
+    }
+
     m_perceiveTimer += dt;
     if (m_perceiveTimer >= kPerceiveInterval)
     {
         Perceive(senses, m_perceiveTimer);
+        UpdateHostility(senses, m_perceiveTimer);
         m_perceiveTimer = 0.0f;
         m_pendingNoises.clear();
     }
@@ -817,6 +830,65 @@ void CreatureBrain::Perceive(const CreatureSenses& senses, float dt)
     m_state.fear = std::clamp(m_state.pain * (0.4f + m_traits.fear) + woundFear, 0.0f, 1.0f);
 }
 
+void CreatureBrain::UpdateHostility(const CreatureSenses& senses, float dt)
+{
+    const float now = senses.time;
+    for (Track& track : m_tracks)
+    {
+        const SensedPlayer* player = FindPlayer(senses, track.id);
+        const bool was = track.hostile;
+        if (player == nullptr || !player->alive)
+        {
+            track.hostile = false;
+            continue;
+        }
+        const glm::vec3 them = track.visible ? player->feet : track.lastKnown;
+        const float distance = Horizontal(senses.position, them);
+        // Hurt by them in the last minute: whatever it is, it is dangerous to them now.
+        const bool provoked = now - track.provokedAt < 60.0f;
+        bool hostile = true;
+        switch (m_traits.temperament)
+        {
+        case Temperament::Predator:
+            hostile = true;
+            break;
+        case Temperament::Curious:
+            hostile = provoked;
+            break;
+        case Temperament::Timid:
+            // Only at arm's length, and only once it has been hurt by them or has run out of room.
+            hostile = distance < m_traits.strikeReach + 0.8f && (provoked || m_cornered > 2.5f);
+            break;
+        case Temperament::Territorial:
+        {
+            // On its ground after being warned off it, the time they stay counts against them; off
+            // it, the count wears away. Coming right up to it is the same as staying.
+            const bool onGround = Horizontal(them, m_home) < kTerritory;
+            if (onGround && track.visible && now - track.warnedAt < 30.0f)
+            {
+                track.trespass += dt;
+            }
+            else if (!onGround)
+            {
+                track.trespass = std::max(track.trespass - dt * 0.5f, 0.0f);
+            }
+            const bool pressing = onGround && (distance < 5.0f || track.trespass > 5.0f);
+            // Chased off its ground and a little beyond it, but not across the map.
+            const bool nearGround = Horizontal(them, m_home) < kTerritory + 12.0f;
+            hostile = provoked || pressing || (was && nearGround);
+            break;
+        }
+        case Temperament::Count:
+            break;
+        }
+        track.hostile = hostile;
+        if (hostile != was)
+        {
+            Log(now, hostile ? track.name + " is a threat to it" : "leaves " + track.name + " be");
+        }
+    }
+}
+
 void CreatureBrain::Decide(const CreatureSenses& senses)
 {
     // Lying still is not weighed tick by tick against everything else: an act abandoned the moment
@@ -889,6 +961,29 @@ void CreatureBrain::Decide(const CreatureSenses& senses)
             continue;
         }
         const float distance = Horizontal(senses.position, track.visible ? player->feet : track.lastKnown);
+
+        // Keeping away from them: what a timid one does about anybody near, until it has no room left.
+        if (m_traits.temperament == Temperament::Timid && !track.hostile && distance < 18.0f &&
+            (track.visible || (track.confidence > 0.6f && distance < 10.0f)))
+        {
+            add(Behavior::Avoid, track.id, "Keep away from " + track.name,
+                {{"timid", 0.6f + 0.4f * m_traits.fear},
+                 {"too close", std::clamp(1.3f - distance / 18.0f, 0.3f, 1.0f)}});
+        }
+        // Warning them off: a territorial one, at somebody on its ground it has not yet decided to fight.
+        if (m_traits.temperament == Temperament::Territorial && !track.hostile && track.visible &&
+            distance < 14.0f && Horizontal(player->feet, m_home) < kTerritory)
+        {
+            add(Behavior::Warn, track.id, "Warn off " + track.name,
+                {{"on its ground", 1.0f},
+                 {"close", std::clamp(1.2f - distance / 14.0f, 0.4f, 1.0f)},
+                 {"not afraid", 0.4f + 0.6f * calm}});
+        }
+
+        // Nothing below is for somebody it does not mean harm to, apart from watching them. A timid one
+        // that does mean them harm only ever means it at arm's length: it does not chase.
+        const bool chases = track.hostile && m_traits.temperament != Temperament::Timid;
+
         // Closing the distance is what hunting is. Once they are within reach there is nothing left to
         // close, and hunting scores low -- otherwise a creature standing on top of somebody went on
         // "hunting" them, because for an aggressive one the two scored within the commitment margin.
@@ -898,17 +993,20 @@ void CreatureBrain::Decide(const CreatureSenses& senses)
         // stealthy one comes when they are alone, looking away, or out of its patience.
         const float opening = Opening(track, distance);
         const float timing = 1.0f - m_traits.stealth * (1.0f - opening);
-        add(Behavior::Hunt, track.id, "Hunt " + track.name,
-            {{"sure where", track.confidence},
-             {"aggression", 0.35f + 0.65f * m_traits.aggression},
-             {"not afraid", calm},
-             {"still to close", closeness},
-             {"grudge", grudge},
-             {"the moment", timing}});
+        if (chases)
+        {
+            add(Behavior::Hunt, track.id, "Hunt " + track.name,
+                {{"sure where", track.confidence},
+                 {"aggression", 0.35f + 0.65f * m_traits.aggression},
+                 {"not afraid", calm},
+                 {"still to close", closeness},
+                 {"grudge", grudge},
+                 {"the moment", timing}});
+        }
 
         // Shadowing them from cover instead. Only somebody it has actually seen: somebody it has
         // only heard is a question to go and answer, not a person to follow.
-        if (!player->hidden && track.lastSeen >= 0.0f && track.confidence > 0.3f && distance < 35.0f &&
+        if (chases && !player->hidden && track.lastSeen >= 0.0f && track.confidence > 0.3f && distance < 35.0f &&
             distance > m_traits.strikeReach + 0.4f)
         {
             const float patienceLeft =
@@ -942,7 +1040,7 @@ void CreatureBrain::Decide(const CreatureSenses& senses)
         // were stops being enough and going through where they could have gone takes over.
         // Once it has started, it is not a question of how sure it still is -- that is what searching
         // is for -- but of how long ago it had them, which its persistence decides.
-        if (!track.visible && track.lastSeen >= 0.0f &&
+        if (chases && !track.visible && track.lastSeen >= 0.0f &&
             ((track.confidence > 0.05f && track.confidence < 0.65f) || searchingThem))
         {
             const float since = now - std::max(track.lastSeen, track.lastHeard);
@@ -961,7 +1059,7 @@ void CreatureBrain::Decide(const CreatureSenses& senses)
         const float gap = Horizontal(senses.position, player->feet);
         const bool inReach = gap < m_traits.strikeReach + 0.4f;
         const bool pounce = gap > 2.6f && gap < 7.0f && std::abs(rise) < 0.8f && now >= m_lungeReadyAt;
-        if (track.visible && canRise && (inReach || pounce))
+        if (track.hostile && track.visible && canRise && (inReach || (pounce && chases)))
         {
             add(Behavior::Attack, track.id, "Attack " + track.name,
                 {{inReach ? "in reach" : "pounce", inReach ? 1.0f : 0.55f + 0.4f * m_traits.aggression},
@@ -1648,6 +1746,7 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
     m_intent.grabTarget = -1;
     m_intent.cocoonTarget = -1;
     m_intent.roar = false;
+    m_intent.display = false;
     m_intent.buildHive = false;
     m_intent.openDoor = -1;
     m_intent.bashDoor = -1;
@@ -1687,7 +1786,17 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
         {
             // More often than not, towards somewhere it has found people before: prowling rather than
             // wandering. Not always, or it would wear a path between two rooms and never find a third.
-            if (m_random.Unit() < 0.6f && PickWarmPlace(senses, m_roamPoint))
+            // Where it wanders depends on what it is. A territorial one walks its own ground and
+            // nowhere else; a timid one keeps clear of where people have been; the rest prowl there.
+            const Temperament temperament = m_traits.temperament;
+            const bool prowls = temperament == Temperament::Predator || temperament == Temperament::Curious;
+            if (temperament == Temperament::Territorial && m_haveHome)
+            {
+                uint32_t seed = static_cast<uint32_t>(m_random.Next());
+                m_haveRoamPoint = senses.nav->RandomPointNear(m_home, kTerritory * 0.75f, seed, m_roamPoint);
+                m_goal = "walking its ground";
+            }
+            else if (prowls && m_random.Unit() < 0.6f && PickWarmPlace(senses, m_roamPoint))
             {
                 m_haveRoamPoint = true;
                 m_goal = "prowling where people go";
@@ -1954,7 +2063,7 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
                 const bool alone = track != nullptr && track->isolation > 6.0f;
                 const float grabChance = (alone ? 0.35f : 0.08f) * (0.5f + m_traits.isolationPreference) *
                                          (player->feet.y - senses.position.y < 0.6f ? 1.0f : 0.0f);
-                if (m_holding < 0 && !player->hidden && m_random.Unit() < grabChance)
+                if (m_traits.Captures() && m_holding < 0 && !player->hidden && m_random.Unit() < grabChance)
                 {
                     StartAttack(AttackKind::Grab, player->feet, now);
                 }
@@ -2312,6 +2421,72 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
         else
         {
             m_goal = "watching " + track->name;
+        }
+        break;
+    }
+
+    case Behavior::Avoid:
+    {
+        Track* track = FindTrack(m_target);
+        const SensedPlayer* player = FindPlayer(senses, m_target);
+        if (track == nullptr || player == nullptr)
+        {
+            break;
+        }
+        const glm::vec3 them = track->visible ? player->feet : track->lastKnown;
+        const float distance = Horizontal(senses.position, them);
+        m_threat = them;
+        // Somewhere away from them and out of their sight, picked again whenever the old place is no
+        // longer away from them, or it has got there and they are still close.
+        const bool stale = m_haveFleePoint && (Horizontal(m_fleePoint, them) < distance + 2.0f ||
+                                               (Horizontal(senses.position, m_fleePoint) < 1.0f && distance < 12.0f));
+        if (!m_haveFleePoint || stale)
+        {
+            m_haveFleePoint = PickFleePoint(senses, m_fleePoint);
+        }
+        if (distance < 12.0f && m_haveFleePoint)
+        {
+            m_goal = "keeping away from " + track->name;
+            m_intent.move = true;
+            m_intent.destination = m_fleePoint;
+            m_intent.speed = distance < 6.0f ? m_traits.runSpeed : m_traits.walkSpeed * 1.4f;
+        }
+        else
+        {
+            // Far enough. It stops and watches them, ready to go again.
+            m_goal = "watching " + track->name + " from a distance";
+            watch(*player);
+            m_intent.face = true;
+            m_intent.facePoint = them;
+        }
+        // Cornered: they are close and staying close, and it is getting nowhere. That is what turns a
+        // timid animal round (UpdateHostility).
+        m_cornered = distance < 3.0f ? m_cornered + dt : std::max(m_cornered - dt, 0.0f);
+        break;
+    }
+
+    case Behavior::Warn:
+    {
+        Track* track = FindTrack(m_target);
+        const SensedPlayer* player = FindPlayer(senses, m_target);
+        if (track == nullptr || player == nullptr)
+        {
+            break;
+        }
+        // Up on its legs, facing them, holding its ground -- and every few seconds, showing it.
+        m_goal = "warning " + track->name + " off its ground";
+        watch(*player);
+        m_intent.face = true;
+        m_intent.facePoint = player->feet;
+        m_intent.crouch = 0.0f;
+        if (now - track->warnedAt > 3.5f)
+        {
+            if (now - track->warnedAt > 30.0f)
+            {
+                Log(now, "warns " + track->name + " off its ground");
+            }
+            track->warnedAt = now;
+            m_intent.display = true;
         }
         break;
     }

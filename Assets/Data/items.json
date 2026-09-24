@@ -165,7 +165,7 @@
       "mass": 0.9,
       "max_stack": 1,
       "metallic": 0.5,
-      "name": "ACRD Sidearm",
+      "name": "CIRRA Sidearm",
       "roughness": 0.45,
       "shape": "box",
       "size": [
@@ -194,7 +194,7 @@
       "mass": 3.2,
       "max_stack": 1,
       "metallic": 0.5,
-      "name": "ACRD Carbine",
+      "name": "CIRRA Carbine",
       "roughness": 0.45,
       "shape": "box",
       "size": [

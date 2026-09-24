@@ -19,6 +19,16 @@ using namespace pred;
 namespace
 {
 
+// A hunter from this seed, whatever temperament the seed itself would give it. Most of these tests are
+// about how a creature hunts, and a timid one would pass them by keeping out of the way; the
+// temperaments have tests of their own.
+CreatureTraits Hunter(uint32_t seed)
+{
+    CreatureTraits traits = CreatureTraits::FromSeed(seed);
+    traits.temperament = Temperament::Predator;
+    return traits;
+}
+
 struct Lab
 {
     PhysicsWorld physics;
@@ -99,7 +109,7 @@ TEST_CASE("A creature jumps up onto a block to get at somebody standing on it", 
     {
         const CreatureAnatomy anatomy = CreatureAnatomy::FromSeed(candidate);
         const CreatureCapabilities caps = CreatureCapabilities::From(anatomy);
-        const CreatureTraits traits = CreatureTraits::FromSeed(candidate);
+        const CreatureTraits traits = Hunter(candidate);
         if (caps.jump >= 2.6f && anatomy.eyes > 0 && traits.aggression > 0.6f && traits.fear < 0.5f)
         {
             seed = candidate;
@@ -108,7 +118,7 @@ TEST_CASE("A creature jumps up onto a block to get at somebody standing on it", 
     REQUIRE(seed != 0);
     const glm::vec3 blockTop{LabSpec::kBlockRowX + LabSpec::kBlockSpacing * 3.0f, LabSpec::kBlockHeights[3], LabSpec::kBlockRowZ};
     const glm::vec3 start = lab.At(-17.2f, 20.0f);
-    Creature creature(lab.scene, lab.meshes, lab.physics, &lab.nav, CreatureTraits::FromSeed(seed), start);
+    Creature creature(lab.scene, lab.meshes, lab.physics, &lab.nav, Hunter(seed), start);
     SensedPlayer player;
     player.id = 1;
     player.name = "Up There";
@@ -151,7 +161,7 @@ TEST_CASE("A creature opens a shut door in its way, and breaks down a locked one
         INFO((locked ? "locked" : "not locked"));
         door.locked = locked;
         const glm::vec3 outside = lab.At(LabSpec::kCorridorDoorX - LabSpec::kX, LabSpec::kCorridorSouth - LabSpec::kZ + 2.5f);
-        Creature creature(lab.scene, lab.meshes, lab.physics, &lab.nav, CreatureTraits::FromSeed(5), outside);
+        Creature creature(lab.scene, lab.meshes, lab.physics, &lab.nav, Hunter(5), outside);
         // Somebody heard inside: something to go and look at, through the door.
         Noise noise;
         noise.kind = NoiseKind::Gunshot;
@@ -204,7 +214,7 @@ TEST_CASE("Holding somebody, a creature takes them off: to its nest, or somewher
         // A different creature each time: one creature always makes the same choice, because its mind is
         // its seed.
         const glm::vec3 start = lab.At(0.0f, -4.0f + static_cast<float>(attempt) * 0.2f);
-        Creature creature(lab.scene, lab.meshes, lab.physics, &lab.nav, CreatureTraits::FromSeed(13 + attempt * 7), start);
+        Creature creature(lab.scene, lab.meshes, lab.physics, &lab.nav, Hunter(13 + attempt * 7), start);
         SensedPlayer victim;
         victim.id = 2;
         victim.name = "Caught";
@@ -249,7 +259,7 @@ TEST_CASE("Holding somebody, a creature takes them off: to its nest, or somewher
 TEST_CASE("Shot enough while it holds somebody, a creature lets go", "[creature][hive]")
 {
     Lab lab;
-    Creature creature(lab.scene, lab.meshes, lab.physics, &lab.nav, CreatureTraits::FromSeed(13), lab.At(0.0f, 0.0f));
+    Creature creature(lab.scene, lab.meshes, lab.physics, &lab.nav, Hunter(13), lab.At(0.0f, 0.0f));
     creature.Brain().OnGrabbed(2, 0.0f);
     REQUIRE(creature.Brain().Holding() == 2);
     // A few rounds is not enough; a burst from the others is.
@@ -267,15 +277,15 @@ TEST_CASE("A creature that nests builds one, somewhere dark and out of the way",
     uint32_t seed = 0;
     for (uint32_t candidate = 1; candidate < 400 && seed == 0; ++candidate)
     {
-        const CreatureTraits traits = CreatureTraits::FromSeed(candidate);
+        const CreatureTraits traits = Hunter(candidate);
         if (traits.Nests() && traits.fear < 0.6f)
         {
             seed = candidate;
         }
     }
     REQUIRE(seed != 0);
-    REQUIRE(CreatureTraits::FromSeed(seed).Nests());
-    Creature creature(lab.scene, lab.meshes, lab.physics, &lab.nav, CreatureTraits::FromSeed(seed), lab.At(0.0f, 20.0f));
+    REQUIRE(Hunter(seed).Nests());
+    Creature creature(lab.scene, lab.meshes, lab.physics, &lab.nav, Hunter(seed), lab.At(0.0f, 20.0f));
 
     constexpr float dt = 1.0f / 60.0f;
     float time = 0.0f;
@@ -308,13 +318,13 @@ TEST_CASE("A creature that does not nest never builds one", "[creature][hive]")
     uint32_t seed = 0;
     for (uint32_t candidate = 1; candidate < 200 && seed == 0; ++candidate)
     {
-        if (!CreatureTraits::FromSeed(candidate).Nests())
+        if (!Hunter(candidate).Nests())
         {
             seed = candidate;
         }
     }
     REQUIRE(seed != 0);
-    Creature creature(lab.scene, lab.meshes, lab.physics, &lab.nav, CreatureTraits::FromSeed(seed), lab.At(0.0f, 20.0f));
+    Creature creature(lab.scene, lab.meshes, lab.physics, &lab.nav, Hunter(seed), lab.At(0.0f, 20.0f));
     constexpr float dt = 1.0f / 60.0f;
     float time = 0.0f;
     for (int tick = 0; tick < 60 * 60; ++tick)
