@@ -44,6 +44,8 @@ set(PRED_GAME_SOURCES
     Creature/CreatureTactics.cpp
     Creature/VoiceMemory.h
     Creature/VoiceMemory.cpp
+    Creature/CreatureTuning.h
+    Creature/CreatureTuning.cpp
     Creature/CreatureAnatomy.h
     Creature/CreatureAnatomy.cpp
     Creature/CreatureSkin.h

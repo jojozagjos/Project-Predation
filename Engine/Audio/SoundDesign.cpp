@@ -1,4 +1,9 @@
 #include "Engine/Audio/SoundDesign.h"
+#include <iterator>
+#include <fstream>
+#include <filesystem>
+
+#include "Engine/Core/JsonText.h"
 
 #include <nlohmann/json.hpp>
 
@@ -362,7 +367,8 @@ int ColorFrom(const nlohmann::json& value)
 
 } // namespace
 
-std::vector<SoundPatch> LoadSoundPatches(const std::string& jsonText, std::vector<std::string>* errors)
+std::vector<SoundPatch> LoadSoundPatches(const std::string& jsonText, std::vector<std::string>* errors,
+                                         const std::string& category)
 {
     std::vector<SoundPatch> patches;
     const nlohmann::json root = nlohmann::json::parse(jsonText, nullptr, false, true);
@@ -382,7 +388,15 @@ std::vector<SoundPatch> LoadSoundPatches(const std::string& jsonText, std::vecto
         }
         const nlohmann::json& p = it.value();
         SoundPatch patch;
-        patch.name = it.key();
+        patch.name = category.empty() ? it.key() : category + "/" + it.key();
+        if (errors != nullptr)
+        {
+            for (const std::string& key :
+                 UnknownKeys(p, {"seconds", "variants", "vary", "gain", "loop", "room", "room_size", "seed", "layers"}))
+            {
+                errors->push_back(patch.name + ": a key nothing reads, '" + key + "'");
+            }
+        }
         patch.seconds = p.value("seconds", patch.seconds);
         patch.variants = std::clamp(p.value("variants", patch.variants), 1, 12);
         patch.vary = p.value("vary", patch.vary);
@@ -401,6 +415,18 @@ std::vector<SoundPatch> LoadSoundPatches(const std::string& jsonText, std::vecto
         }
         for (const nlohmann::json& l : p["layers"])
         {
+            if (errors != nullptr)
+            {
+                for (const std::string& key :
+                     UnknownKeys(l, {"source", "start", "length", "gain", "attack", "hold", "decay", "sustain", "hz", "hz_end",
+                                     "curve", "vibrato_hz", "vibrato_depth", "jitter", "color", "filter", "cutoff",
+                                     "cutoff_end", "q", "fm_ratio", "fm_index", "fm_index_end", "formants", "formant_width",
+                                     "breath", "am_hz", "am_depth", "drive", "repeats", "interval", "interval_jitter",
+                                     "repeat_gain", "repeat_pitch"}))
+                {
+                    errors->push_back(patch.name + ": a layer key nothing reads, '" + key + "'");
+                }
+            }
             SoundLayer layer;
             layer.source = SourceFrom(l.value("source", std::string("noise")));
             layer.start = l.value("start", layer.start);
@@ -537,6 +563,60 @@ SoundData RenderPatch(const SoundPatch& patch, int take, int sampleRate)
     }
     data.samples = std::move(mix);
     return data;
+}
+
+} // namespace pred
+
+namespace pred
+{
+
+std::vector<SoundPatch> LoadSoundLibrary(const std::string& folder, std::vector<std::string>* errors)
+{
+    std::vector<SoundPatch> library;
+    std::error_code ec;
+    std::vector<std::filesystem::path> files;
+    for (const auto& entry : std::filesystem::directory_iterator(folder, ec))
+    {
+        if (entry.is_regular_file() && entry.path().extension() == ".json")
+        {
+            files.push_back(entry.path());
+        }
+    }
+    // In a known order, so the library is the same list on every machine.
+    std::sort(files.begin(), files.end());
+    for (const std::filesystem::path& path : files)
+    {
+        std::ifstream file(path);
+        const std::string text((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+        std::vector<std::string> problems;
+        std::vector<SoundPatch> patches = LoadSoundPatches(text, &problems, path.stem().string());
+        for (const std::string& problem : problems)
+        {
+            if (errors != nullptr)
+            {
+                errors->push_back(path.filename().string() + ": " + problem);
+            }
+        }
+        for (SoundPatch& patch : patches)
+        {
+            const bool again = std::any_of(library.begin(), library.end(),
+                                           [&](const SoundPatch& other) { return other.name == patch.name; });
+            if (again)
+            {
+                if (errors != nullptr)
+                {
+                    errors->push_back(path.filename().string() + ": " + patch.name + " is designed twice");
+                }
+                continue;
+            }
+            library.push_back(std::move(patch));
+        }
+    }
+    if (files.empty() && errors != nullptr)
+    {
+        errors->push_back("no sound designs in " + folder);
+    }
+    return library;
 }
 
 } // namespace pred

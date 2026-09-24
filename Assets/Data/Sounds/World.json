@@ -1,0 +1,397 @@
+{
+  "_comment": "The placeholder sounds of World: each entry is Assets/Audio/World/<name>/, rendered by sound_bake. See Assets/Audio/README.md and Engine/Audio/SoundDesign.h for every field.",
+  "door": {
+    "seconds": 1.1,
+    "variants": 3,
+    "vary": 0.05,
+    "room": 0.3,
+    "room_size": 0.5,
+    "seed": 4409,
+    "layers": [
+      {
+        "source": "saw",
+        "hz": 180,
+        "hz_end": 230,
+        "jitter": 0.25,
+        "filter": "bandpass",
+        "cutoff": 850,
+        "q": 5,
+        "am_hz": 24,
+        "am_depth": 0.7,
+        "attack": 0.08,
+        "hold": 0.3,
+        "decay": 0.25,
+        "length": 0.8,
+        "gain": 0.6
+      },
+      {
+        "source": "click",
+        "filter": "bandpass",
+        "cutoff": 1600,
+        "q": 4,
+        "start": 0.82,
+        "decay": 0.02,
+        "length": 0.08,
+        "gain": 1
+      },
+      {
+        "source": "sine",
+        "hz": 110,
+        "hz_end": 70,
+        "start": 0.82,
+        "decay": 0.06,
+        "length": 0.2,
+        "gain": 0.6
+      }
+    ]
+  },
+  "door_slam": {
+    "seconds": 1.3,
+    "variants": 3,
+    "vary": 0.05,
+    "room": 0.4,
+    "room_size": 0.6,
+    "seed": 4419,
+    "layers": [
+      {
+        "source": "sine",
+        "hz": 75,
+        "hz_end": 40,
+        "decay": 0.15,
+        "length": 0.5,
+        "drive": 0.25,
+        "gain": 1
+      },
+      {
+        "source": "noise",
+        "color": "pink",
+        "filter": "lowpass",
+        "cutoff": 2200,
+        "cutoff_end": 500,
+        "decay": 0.1,
+        "length": 0.4,
+        "gain": 0.8
+      },
+      {
+        "source": "fm",
+        "hz": 420,
+        "fm_ratio": 2.41,
+        "fm_index": 2.5,
+        "fm_index_end": 0.4,
+        "decay": 0.4,
+        "length": 1.2,
+        "gain": 0.35
+      }
+    ]
+  },
+  "door_bash": {
+    "seconds": 1.4,
+    "variants": 4,
+    "vary": 0.06,
+    "room": 0.45,
+    "room_size": 0.7,
+    "seed": 4429,
+    "layers": [
+      {
+        "source": "sine",
+        "hz": 65,
+        "hz_end": 35,
+        "decay": 0.18,
+        "length": 0.6,
+        "drive": 0.35,
+        "gain": 1
+      },
+      {
+        "source": "noise",
+        "color": "brown",
+        "filter": "lowpass",
+        "cutoff": 1500,
+        "cutoff_end": 300,
+        "decay": 0.15,
+        "length": 0.6,
+        "gain": 0.8
+      },
+      {
+        "source": "fm",
+        "hz": 310,
+        "fm_ratio": 2.73,
+        "fm_index": 4,
+        "fm_index_end": 0.5,
+        "decay": 0.5,
+        "length": 1.3,
+        "gain": 0.45
+      },
+      {
+        "source": "click",
+        "filter": "bandpass",
+        "cutoff": 2000,
+        "q": 3,
+        "start": 0.05,
+        "decay": 0.01,
+        "length": 0.03,
+        "gain": 0.3,
+        "repeats": 6,
+        "interval": 0.04,
+        "interval_jitter": 0.5,
+        "repeat_gain": 0.75,
+        "repeat_pitch": 3
+      }
+    ]
+  },
+  "door_locked": {
+    "seconds": 0.45,
+    "variants": 3,
+    "vary": 0.06,
+    "room": 0.2,
+    "seed": 4439,
+    "layers": [
+      {
+        "source": "click",
+        "filter": "bandpass",
+        "cutoff": 1800,
+        "q": 4,
+        "decay": 0.015,
+        "length": 0.05,
+        "gain": 1,
+        "repeats": 4,
+        "interval": 0.07,
+        "interval_jitter": 0.3,
+        "repeat_gain": 0.8,
+        "repeat_pitch": 1.5
+      },
+      {
+        "source": "noise",
+        "filter": "bandpass",
+        "cutoff": 1100,
+        "q": 2,
+        "attack": 0.01,
+        "decay": 0.12,
+        "length": 0.35,
+        "gain": 0.3
+      }
+    ]
+  },
+  "locker": {
+    "seconds": 0.7,
+    "variants": 3,
+    "vary": 0.05,
+    "room": 0.25,
+    "room_size": 0.4,
+    "seed": 1777,
+    "layers": [
+      {
+        "source": "click",
+        "filter": "bandpass",
+        "cutoff": 2100,
+        "q": 5,
+        "decay": 0.015,
+        "length": 0.05,
+        "gain": 0.6
+      },
+      {
+        "source": "fm",
+        "hz": 520,
+        "fm_ratio": 2.1,
+        "fm_index": 3,
+        "fm_index_end": 0.4,
+        "start": 0.03,
+        "decay": 0.22,
+        "length": 0.6,
+        "gain": 0.5
+      },
+      {
+        "source": "sine",
+        "hz": 130,
+        "hz_end": 80,
+        "start": 0.03,
+        "decay": 0.05,
+        "length": 0.15,
+        "gain": 0.8
+      },
+      {
+        "source": "noise",
+        "filter": "bandpass",
+        "cutoff": 1600,
+        "q": 1.4,
+        "start": 0.03,
+        "decay": 0.04,
+        "length": 0.15,
+        "gain": 0.5
+      }
+    ]
+  },
+  "pickup": {
+    "seconds": 0.22,
+    "variants": 3,
+    "vary": 0.06,
+    "seed": 6101,
+    "layers": [
+      {
+        "source": "noise",
+        "color": "pink",
+        "filter": "bandpass",
+        "cutoff": 2000,
+        "q": 1,
+        "attack": 0.01,
+        "decay": 0.05,
+        "length": 0.16,
+        "gain": 0.7
+      },
+      {
+        "source": "click",
+        "filter": "bandpass",
+        "cutoff": 3000,
+        "q": 5,
+        "start": 0.05,
+        "decay": 0.01,
+        "length": 0.04,
+        "gain": 0.6
+      }
+    ]
+  },
+  "drop": {
+    "seconds": 0.4,
+    "variants": 3,
+    "vary": 0.06,
+    "seed": 2749,
+    "layers": [
+      {
+        "source": "sine",
+        "hz": 125,
+        "hz_end": 60,
+        "decay": 0.04,
+        "length": 0.14,
+        "gain": 1
+      },
+      {
+        "source": "noise",
+        "filter": "lowpass",
+        "cutoff": 1600,
+        "decay": 0.03,
+        "length": 0.12,
+        "gain": 0.7
+      },
+      {
+        "source": "sine",
+        "hz": 140,
+        "hz_end": 80,
+        "start": 0.16,
+        "decay": 0.03,
+        "length": 0.1,
+        "gain": 0.35
+      }
+    ]
+  },
+  "crate_open": {
+    "seconds": 0.75,
+    "variants": 3,
+    "vary": 0.05,
+    "room": 0.2,
+    "seed": 4501,
+    "layers": [
+      {
+        "source": "click",
+        "filter": "bandpass",
+        "cutoff": 2300,
+        "q": 5,
+        "decay": 0.012,
+        "length": 0.04,
+        "gain": 0.8
+      },
+      {
+        "source": "saw",
+        "hz": 260,
+        "hz_end": 300,
+        "jitter": 0.3,
+        "filter": "bandpass",
+        "cutoff": 1100,
+        "q": 4,
+        "am_hz": 30,
+        "am_depth": 0.7,
+        "start": 0.05,
+        "attack": 0.04,
+        "decay": 0.2,
+        "length": 0.4,
+        "gain": 0.45
+      },
+      {
+        "source": "sine",
+        "hz": 110,
+        "hz_end": 70,
+        "start": 0.5,
+        "decay": 0.05,
+        "length": 0.18,
+        "gain": 0.6
+      }
+    ]
+  },
+  "crate_close": {
+    "seconds": 0.5,
+    "variants": 3,
+    "vary": 0.05,
+    "room": 0.2,
+    "seed": 4511,
+    "layers": [
+      {
+        "source": "sine",
+        "hz": 105,
+        "hz_end": 55,
+        "decay": 0.06,
+        "length": 0.22,
+        "drive": 0.1,
+        "gain": 1
+      },
+      {
+        "source": "noise",
+        "color": "pink",
+        "filter": "lowpass",
+        "cutoff": 1800,
+        "decay": 0.04,
+        "length": 0.14,
+        "gain": 0.6
+      },
+      {
+        "source": "click",
+        "filter": "bandpass",
+        "cutoff": 2400,
+        "q": 5,
+        "start": 0.06,
+        "decay": 0.012,
+        "length": 0.04,
+        "gain": 0.7
+      }
+    ]
+  },
+  "ammo_take": {
+    "seconds": 0.5,
+    "variants": 3,
+    "vary": 0.06,
+    "seed": 4521,
+    "layers": [
+      {
+        "source": "click",
+        "filter": "bandpass",
+        "cutoff": 3600,
+        "q": 4,
+        "decay": 0.008,
+        "length": 0.03,
+        "gain": 0.8,
+        "repeats": 9,
+        "interval": 0.022,
+        "interval_jitter": 0.6,
+        "repeat_gain": 0.93,
+        "repeat_pitch": 2
+      },
+      {
+        "source": "noise",
+        "filter": "bandpass",
+        "cutoff": 1400,
+        "q": 1.5,
+        "attack": 0.02,
+        "decay": 0.15,
+        "length": 0.35,
+        "gain": 0.35
+      }
+    ]
+  }
+}

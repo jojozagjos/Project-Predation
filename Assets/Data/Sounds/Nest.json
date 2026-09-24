@@ -1,0 +1,255 @@
+{
+  "_comment": "The placeholder sounds of Nest: each entry is Assets/Audio/Nest/<name>/, rendered by sound_bake. See Assets/Audio/README.md and Engine/Audio/SoundDesign.h for every field.",
+  "grow": {
+    "seconds": 1.5,
+    "variants": 3,
+    "vary": 0.07,
+    "room": 0.2,
+    "seed": 4531,
+    "layers": [
+      {
+        "source": "noise",
+        "filter": "bandpass",
+        "cutoff": 420,
+        "cutoff_end": 260,
+        "q": 4,
+        "am_hz": 7,
+        "am_depth": 0.8,
+        "attack": 0.1,
+        "hold": 0.6,
+        "decay": 0.4,
+        "length": 1.4,
+        "gain": 0.8
+      },
+      {
+        "source": "noise",
+        "color": "brown",
+        "filter": "lowpass",
+        "cutoff": 320,
+        "attack": 0.1,
+        "hold": 0.6,
+        "decay": 0.4,
+        "length": 1.4,
+        "gain": 0.5
+      },
+      {
+        "source": "noise",
+        "filter": "bandpass",
+        "cutoff": 950,
+        "q": 5,
+        "decay": 0.05,
+        "length": 0.14,
+        "gain": 0.6,
+        "repeats": 5,
+        "interval": 0.22,
+        "interval_jitter": 0.5,
+        "repeat_gain": 0.9,
+        "repeat_pitch": 3
+      }
+    ]
+  },
+  "cocoon_wrap": {
+    "seconds": 1.1,
+    "variants": 3,
+    "vary": 0.07,
+    "seed": 4541,
+    "layers": [
+      {
+        "source": "noise",
+        "filter": "bandpass",
+        "cutoff": 600,
+        "cutoff_end": 1400,
+        "q": 3,
+        "am_hz": 12,
+        "am_depth": 0.6,
+        "attack": 0.1,
+        "decay": 0.4,
+        "length": 0.9,
+        "gain": 0.8
+      },
+      {
+        "source": "noise",
+        "filter": "bandpass",
+        "cutoff": 900,
+        "q": 5,
+        "start": 0.2,
+        "decay": 0.05,
+        "length": 0.15,
+        "gain": 0.5,
+        "repeats": 3,
+        "interval": 0.25,
+        "interval_jitter": 0.3,
+        "repeat_gain": 0.8,
+        "repeat_pitch": 2
+      }
+    ]
+  },
+  "cocoon_cut": {
+    "seconds": 0.8,
+    "variants": 3,
+    "vary": 0.07,
+    "seed": 4551,
+    "layers": [
+      {
+        "source": "noise",
+        "filter": "highpass",
+        "cutoff": 1500,
+        "am_hz": 32,
+        "am_depth": 0.9,
+        "attack": 0.02,
+        "decay": 0.25,
+        "length": 0.6,
+        "gain": 0.7
+      },
+      {
+        "source": "click",
+        "filter": "bandpass",
+        "cutoff": 1800,
+        "q": 3,
+        "start": 0.1,
+        "decay": 0.01,
+        "length": 0.03,
+        "gain": 0.6,
+        "repeats": 4,
+        "interval": 0.12,
+        "interval_jitter": 0.4,
+        "repeat_gain": 0.9,
+        "repeat_pitch": 2
+      }
+    ]
+  },
+  "heartbeat": {
+    "seconds": 0.9,
+    "variants": 3,
+    "vary": 0.05,
+    "room": 0.2,
+    "seed": 4601,
+    "layers": [
+      {
+        "source": "sine",
+        "hz": 58,
+        "hz_end": 40,
+        "decay": 0.08,
+        "length": 0.25,
+        "drive": 0.15,
+        "gain": 1
+      },
+      {
+        "source": "noise",
+        "color": "brown",
+        "filter": "lowpass",
+        "cutoff": 240,
+        "decay": 0.06,
+        "length": 0.2,
+        "gain": 0.6
+      },
+      {
+        "source": "sine",
+        "hz": 52,
+        "hz_end": 38,
+        "start": 0.28,
+        "decay": 0.07,
+        "length": 0.22,
+        "gain": 0.7
+      },
+      {
+        "source": "noise",
+        "filter": "bandpass",
+        "cutoff": 500,
+        "q": 4,
+        "start": 0.05,
+        "decay": 0.1,
+        "length": 0.3,
+        "gain": 0.2
+      }
+    ]
+  },
+  "heart_hurt": {
+    "seconds": 0.7,
+    "variants": 3,
+    "vary": 0.07,
+    "room": 0.2,
+    "seed": 4611,
+    "layers": [
+      {
+        "source": "noise",
+        "filter": "bandpass",
+        "cutoff": 800,
+        "cutoff_end": 400,
+        "q": 3,
+        "decay": 0.12,
+        "length": 0.4,
+        "gain": 0.9
+      },
+      {
+        "source": "voice",
+        "hz": 260,
+        "hz_end": 150,
+        "formants": [700, 1400, 2600],
+        "breath": 0.5,
+        "jitter": 0.7,
+        "attack": 0.02,
+        "decay": 0.2,
+        "length": 0.5,
+        "gain": 0.6
+      }
+    ]
+  },
+  "heart_burst": {
+    "seconds": 2.2,
+    "variants": 2,
+    "vary": 0.05,
+    "room": 0.4,
+    "room_size": 0.6,
+    "seed": 4621,
+    "layers": [
+      {
+        "source": "sine",
+        "hz": 80,
+        "hz_end": 35,
+        "decay": 0.2,
+        "length": 0.7,
+        "drive": 0.2,
+        "gain": 1
+      },
+      {
+        "source": "noise",
+        "color": "pink",
+        "filter": "lowpass",
+        "cutoff": 1800,
+        "cutoff_end": 300,
+        "decay": 0.3,
+        "length": 1.2,
+        "gain": 0.9
+      },
+      {
+        "source": "noise",
+        "filter": "bandpass",
+        "cutoff": 600,
+        "q": 5,
+        "start": 0.1,
+        "decay": 0.06,
+        "length": 0.2,
+        "gain": 0.5,
+        "repeats": 8,
+        "interval": 0.12,
+        "interval_jitter": 0.6,
+        "repeat_gain": 0.8,
+        "repeat_pitch": 4
+      },
+      {
+        "source": "voice",
+        "hz": 180,
+        "hz_end": 45,
+        "curve": 0.6,
+        "formants": [500, 1000, 2400],
+        "breath": 0.5,
+        "jitter": 0.8,
+        "attack": 0.05,
+        "decay": 0.6,
+        "length": 1.6,
+        "gain": 0.6
+      }
+    ]
+  }
+}

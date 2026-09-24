@@ -119,6 +119,33 @@ void Write(const nlohmann::json& value, int decimals, int depth, std::string& ou
 
 } // namespace
 
+std::vector<std::string> UnknownKeys(const nlohmann::json& object, std::initializer_list<const char*> known)
+{
+    std::vector<std::string> unknown;
+    if (!object.is_object())
+    {
+        return unknown;
+    }
+    for (auto it = object.begin(); it != object.end(); ++it)
+    {
+        const std::string& key = it.key();
+        if (key.empty() || key[0] == '_')
+        {
+            continue;
+        }
+        bool found = false;
+        for (const char* name : known)
+        {
+            found = found || key == name;
+        }
+        if (!found)
+        {
+            unknown.push_back(key);
+        }
+    }
+    return unknown;
+}
+
 std::string JsonText(const nlohmann::json& value, int decimals)
 {
     std::string out;

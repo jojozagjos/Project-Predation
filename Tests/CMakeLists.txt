@@ -29,6 +29,7 @@ add_executable(PredationTests
     NestTests.cpp
     MimicTests.cpp
     ItemUseTests.cpp
+    DataFileTests.cpp
 )
 pred_set_warnings(PredationTests)
 target_link_libraries(PredationTests PRIVATE Predation::GameLib Catch2::Catch2WithMain)

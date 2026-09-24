@@ -2,7 +2,9 @@
 
 #include <nlohmann/json.hpp>
 
+#include <initializer_list>
 #include <string>
+#include <vector>
 
 namespace pred
 {
@@ -18,5 +20,11 @@ namespace pred
 // nothing but numbers (and not too many of them) kept on one line. Everything else is laid out as
 // dump(2) would. Keys keep the order the object gives them.
 std::string JsonText(const nlohmann::json& value, int decimals = 4);
+
+// The keys of an object that are not among `known` -- almost always a typo. A misspelled key in a data
+// file is otherwise simply ignored, and whatever it was meant to set silently keeps its default, which
+// is the hardest kind of mistake to see. Keys starting with an underscore are comments and are never
+// reported.
+std::vector<std::string> UnknownKeys(const nlohmann::json& object, std::initializer_list<const char*> known);
 
 } // namespace pred

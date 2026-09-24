@@ -1,0 +1,346 @@
+{
+  "_comment": "The placeholder sounds of Items: each entry is Assets/Audio/Items/<name>/, rendered by sound_bake. See Assets/Audio/README.md and Engine/Audio/SoundDesign.h for every field.",
+  "medkit_open": {
+    "seconds": 0.6,
+    "variants": 3,
+    "vary": 0.06,
+    "room": 0.15,
+    "seed": 12101,
+    "layers": [
+      {
+        "source": "click",
+        "filter": "bandpass",
+        "cutoff": 2600,
+        "q": 5,
+        "decay": 0.01,
+        "length": 0.04,
+        "gain": 0.8
+      },
+      {
+        "source": "noise",
+        "color": "pink",
+        "filter": "bandpass",
+        "cutoff": 3200,
+        "cutoff_end": 1800,
+        "q": 1.2,
+        "am_hz": 55,
+        "am_depth": 0.8,
+        "start": 0.05,
+        "attack": 0.02,
+        "decay": 0.3,
+        "sustain": 0.4,
+        "length": 0.45,
+        "gain": 0.55
+      }
+    ]
+  },
+  "medkit_apply": {
+    "seconds": 0.8,
+    "variants": 3,
+    "vary": 0.06,
+    "room": 0.15,
+    "seed": 12102,
+    "layers": [
+      {
+        "source": "noise",
+        "color": "white",
+        "filter": "bandpass",
+        "cutoff": 1800,
+        "cutoff_end": 900,
+        "q": 1.5,
+        "attack": 0.01,
+        "decay": 0.08,
+        "length": 0.12,
+        "gain": 0.5,
+        "repeats": 4,
+        "interval": 0.11,
+        "interval_jitter": 0.3,
+        "repeat_gain": 0.8
+      },
+      {
+        "source": "sine",
+        "hz": 120,
+        "hz_end": 70,
+        "start": 0.55,
+        "decay": 0.06,
+        "length": 0.2,
+        "gain": 0.5
+      }
+    ]
+  },
+  "battery_out": {
+    "seconds": 0.4,
+    "variants": 3,
+    "vary": 0.05,
+    "seed": 12103,
+    "layers": [
+      {
+        "source": "click",
+        "filter": "bandpass",
+        "cutoff": 2100,
+        "q": 6,
+        "decay": 0.01,
+        "length": 0.04,
+        "gain": 0.9
+      },
+      {
+        "source": "noise",
+        "filter": "bandpass",
+        "cutoff": 2600,
+        "cutoff_end": 1500,
+        "q": 2,
+        "start": 0.05,
+        "attack": 0.02,
+        "decay": 0.12,
+        "length": 0.25,
+        "gain": 0.35
+      }
+    ]
+  },
+  "battery_in": {
+    "seconds": 0.5,
+    "variants": 3,
+    "vary": 0.05,
+    "seed": 12104,
+    "layers": [
+      {
+        "source": "noise",
+        "filter": "bandpass",
+        "cutoff": 1500,
+        "cutoff_end": 2600,
+        "q": 2,
+        "attack": 0.02,
+        "decay": 0.08,
+        "length": 0.16,
+        "gain": 0.35
+      },
+      {
+        "source": "click",
+        "filter": "bandpass",
+        "cutoff": 1700,
+        "q": 5,
+        "start": 0.16,
+        "decay": 0.015,
+        "length": 0.06,
+        "gain": 1
+      },
+      {
+        "source": "sine",
+        "hz": 3900,
+        "hz_end": 4200,
+        "start": 0.2,
+        "attack": 0.03,
+        "decay": 0.12,
+        "length": 0.25,
+        "gain": 0.08
+      }
+    ]
+  },
+  "keycard_swipe": {
+    "seconds": 0.3,
+    "variants": 3,
+    "vary": 0.08,
+    "seed": 12105,
+    "layers": [
+      {
+        "source": "noise",
+        "color": "white",
+        "filter": "highpass",
+        "cutoff": 2500,
+        "cutoff_end": 4500,
+        "q": 0.8,
+        "attack": 0.03,
+        "decay": 0.1,
+        "length": 0.22,
+        "gain": 0.45
+      }
+    ]
+  },
+  "keycard_accept": {
+    "seconds": 0.65,
+    "variants": 2,
+    "vary": 0.02,
+    "room": 0.2,
+    "seed": 12106,
+    "layers": [
+      {
+        "source": "square",
+        "hz": 1760,
+        "filter": "lowpass",
+        "cutoff": 4000,
+        "attack": 0.005,
+        "hold": 0.07,
+        "decay": 0.02,
+        "length": 0.1,
+        "gain": 0.25
+      },
+      {
+        "source": "square",
+        "hz": 2350,
+        "filter": "lowpass",
+        "cutoff": 4500,
+        "start": 0.12,
+        "attack": 0.005,
+        "hold": 0.1,
+        "decay": 0.03,
+        "length": 0.14,
+        "gain": 0.25
+      },
+      {
+        "source": "click",
+        "filter": "bandpass",
+        "cutoff": 900,
+        "q": 3,
+        "start": 0.3,
+        "decay": 0.03,
+        "length": 0.1,
+        "gain": 1
+      },
+      {
+        "source": "sine",
+        "hz": 95,
+        "hz_end": 60,
+        "start": 0.3,
+        "decay": 0.07,
+        "length": 0.25,
+        "gain": 0.6
+      }
+    ]
+  },
+  "flare_strike": {
+    "seconds": 1,
+    "variants": 3,
+    "vary": 0.07,
+    "room": 0.25,
+    "seed": 12107,
+    "layers": [
+      {
+        "source": "noise",
+        "color": "white",
+        "filter": "bandpass",
+        "cutoff": 3500,
+        "q": 1.5,
+        "attack": 0.01,
+        "decay": 0.08,
+        "length": 0.15,
+        "gain": 0.7
+      },
+      {
+        "source": "noise",
+        "color": "pink",
+        "filter": "lowpass",
+        "cutoff": 600,
+        "cutoff_end": 3000,
+        "q": 0.8,
+        "start": 0.12,
+        "attack": 0.08,
+        "decay": 0.4,
+        "sustain": 0.5,
+        "length": 0.85,
+        "gain": 0.7
+      },
+      {
+        "source": "click",
+        "filter": "highpass",
+        "cutoff": 2000,
+        "q": 1,
+        "start": 0.2,
+        "decay": 0.01,
+        "length": 0.03,
+        "gain": 0.4,
+        "repeats": 8,
+        "interval": 0.07,
+        "interval_jitter": 0.6,
+        "repeat_gain": 0.85
+      }
+    ]
+  },
+  "flare_burn": {
+    "seconds": 2,
+    "variants": 2,
+    "vary": 0.04,
+    "loop": true,
+    "seed": 12108,
+    "layers": [
+      {
+        "source": "noise",
+        "color": "pink",
+        "filter": "bandpass",
+        "cutoff": 2300,
+        "q": 0.7,
+        "am_hz": 11,
+        "am_depth": 0.35,
+        "attack": 0.002,
+        "sustain": 1,
+        "decay": 0.2,
+        "length": 2.6,
+        "gain": 0.55
+      },
+      {
+        "source": "click",
+        "filter": "highpass",
+        "cutoff": 1800,
+        "q": 1,
+        "decay": 0.008,
+        "length": 0.02,
+        "gain": 0.5,
+        "repeats": 42,
+        "interval": 0.07,
+        "interval_jitter": 0.8,
+        "repeat_gain": 1
+      }
+    ]
+  },
+  "flare_throw": {
+    "seconds": 0.45,
+    "variants": 3,
+    "vary": 0.08,
+    "seed": 12109,
+    "layers": [
+      {
+        "source": "noise",
+        "color": "pink",
+        "filter": "bandpass",
+        "cutoff": 500,
+        "cutoff_end": 1900,
+        "q": 1.2,
+        "attack": 0.1,
+        "decay": 0.12,
+        "length": 0.4,
+        "gain": 0.6
+      }
+    ]
+  },
+  "inspect": {
+    "seconds": 0.55,
+    "variants": 3,
+    "vary": 0.06,
+    "room": 0.1,
+    "seed": 12110,
+    "layers": [
+      {
+        "source": "click",
+        "filter": "bandpass",
+        "cutoff": 1300,
+        "q": 4,
+        "decay": 0.015,
+        "length": 0.05,
+        "gain": 0.7
+      },
+      {
+        "source": "sine",
+        "hz": 300,
+        "hz_end": 260,
+        "vibrato_hz": 7,
+        "vibrato_depth": 1.5,
+        "filter": "lowpass",
+        "cutoff": 900,
+        "start": 0.08,
+        "attack": 0.05,
+        "decay": 0.2,
+        "length": 0.4,
+        "gain": 0.25
+      }
+    ]
+  }
+}

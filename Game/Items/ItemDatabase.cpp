@@ -198,6 +198,23 @@ bool ItemDatabase::LoadFromFile(const std::filesystem::path& file)
 
         ItemDefinition definition;
         definition.key = entry["key"].get<std::string>();
+        for (const std::string& key :
+             UnknownKeys(entry, {"key", "name", "max_stack", "mass", "shape", "size", "color", "roughness", "metallic",
+                                 "emissive", "hold_offset", "hold_rotation", "use", "bench_count"}))
+        {
+            m_warnings.push_back(definition.key + ": " + key);
+            PRED_LOG_WARN(Gameplay, "items.json: '{}' has a key nothing reads, '{}' -- a typo?", definition.key, key);
+        }
+        if (const auto use = entry.find("use"); use != entry.end())
+        {
+            for (const std::string& key :
+                 UnknownKeys(*use, {"kind", "seconds", "amount", "consumed", "start_sound", "done_sound", "motion",
+                                    "second_seconds", "second_motion", "second_sound"}))
+            {
+                m_warnings.push_back(definition.key + ".use: " + key);
+                PRED_LOG_WARN(Gameplay, "items.json: '{}' use has a key nothing reads, '{}' -- a typo?", definition.key, key);
+            }
+        }
         definition.name = entry.value("name", definition.key);
         definition.maxStack = std::max(1, entry.value("max_stack", 1));
         definition.mass = entry.value("mass", 1.0f);

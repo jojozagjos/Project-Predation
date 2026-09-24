@@ -357,6 +357,14 @@ is not -- or, alone, in their own. Then it waits for whoever comes to look, and 
 hiding. The frames are sent unchanged, as the creature's own voice, and played from its mouth on every
 machine. `ai.mimic 0` stops it on the host.
 
+### Tuning
+
+The numbers every creature shares -- how far it sees, how wide, how fast a glimpse becomes a sighting,
+how far sound carries through a wall, how much better a new plan has to score before it drops the old
+one, how long it waits in cover or in ambush, how often it tries a voice -- are in
+`Assets/Data/creatures.json`, and editing that file while the game runs applies at once. What makes one
+creature different from another is its seed, not this file.
+
 ### Tactics
 
 Where it hides, waits and comes from are questions about places, answered from the navigation mesh and

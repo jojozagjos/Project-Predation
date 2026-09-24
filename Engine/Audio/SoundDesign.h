@@ -13,7 +13,7 @@ namespace pred
 //
 // Every sound the game plays is a wav in Assets/Audio, and a recording always beats what is made here.
 // Until there are recordings, this is what makes the files: a sound described as layers in
-// Assets/Data/sound_design.json, rendered offline by the `sound_bake` console command, several takes of
+// Assets/Data/Sounds/<Category>.json, rendered offline by the `sound_bake` console command, several takes of
 // each so nothing repeats. The game never runs any of this -- it reads the files.
 //
 // A layer is one source -- noise, an oscillator, a voice, a click -- shaped by an envelope, a pitch that
@@ -100,8 +100,16 @@ struct SoundPatch
     std::vector<SoundLayer> layers;
 };
 
-// Reads every patch in a sound_design.json. Anything malformed is skipped and named in `errors`.
-std::vector<SoundPatch> LoadSoundPatches(const std::string& jsonText, std::vector<std::string>* errors = nullptr);
+// Reads every patch in one file of the library. Anything malformed is skipped and named in `errors`.
+// `category`, when given, is put in front of every name: the file Weapons.json holding "shot" is the
+// patch "Weapons/shot".
+std::vector<SoundPatch> LoadSoundPatches(const std::string& jsonText, std::vector<std::string>* errors = nullptr,
+                                         const std::string& category = {});
+
+// The whole library: every .json in a folder -- Assets/Data/Sounds, one file per category, named for it
+// -- read with its file's name as the category. Problems are named with the file they are in; two
+// patches with the same name are one of them.
+std::vector<SoundPatch> LoadSoundLibrary(const std::string& folder, std::vector<std::string>* errors = nullptr);
 
 // One take of a patch. The same patch, take and rate always give the same samples.
 SoundData RenderPatch(const SoundPatch& patch, int take, int sampleRate);

@@ -1,4 +1,5 @@
 #include "Game/PredationGame.h"
+#include "Game/Creature/CreatureTuning.h"
 
 #include "Engine/Core/CVar.h"
 #include "Engine/Core/Log.h"
@@ -516,6 +517,21 @@ bool PredationGame::OnInit(Application& app)
     // Editing player.json on disk applies immediately, without a rebuild or a restart.
     app.GetFileWatcher().Watch(PlayerConfigPath(),
                                [this](const std::filesystem::path&) { ReloadPlayerConfig(); });
+    // And creatures.json: what every creature's mind shares, tuned while watching one.
+    {
+        const std::filesystem::path tuningFile = Paths::AssetsRoot() / "Data" / "creatures.json";
+        const auto reloadTuning = [tuningFile](const std::filesystem::path&)
+        {
+            CreatureTuning tuning;
+            if (LoadCreatureTuning(tuningFile, tuning))
+            {
+                SetTuning(tuning);
+                PRED_LOG_INFO(AI, "Creature tuning read from {}", tuningFile.string());
+            }
+        };
+        reloadTuning(tuningFile);
+        app.GetFileWatcher().Watch(tuningFile, reloadTuning);
+    }
 
     // Yaw 0 looks down -Z, which is where the test map is from the spawn point.
     m_lookYaw = 0.0f;
@@ -1361,7 +1377,7 @@ void PredationGame::RegisterCommands()
 
     console.RegisterCommand(
         "sound_bake",
-        "Render the placeholder sound library (Assets/Data/sound_design.json) into wavs in Assets/Audio: sound_bake [name]",
+        "Render the placeholder sound library (Assets/Data/Sounds) into wavs in Assets/Audio: sound_bake [name]",
         [this](const std::vector<std::string>& args)
         {
             // Turns the designed sounds into files somebody can replace.
@@ -1374,19 +1390,12 @@ void PredationGame::RegisterCommands()
             // A command rather than a build step because it is run when the design changes, which is
             // rarely, and baking on every build would rewrite a hundred files nobody asked about.
             Console& out = m_app->GetConsole();
-            const std::filesystem::path design = Paths::AssetsRoot() / "Data" / "sound_design.json";
-            std::ifstream file(design);
-            if (!file)
-            {
-                out.PrintError("No " + design.string());
-                return;
-            }
-            const std::string text((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+            const std::filesystem::path design = Paths::AssetsRoot() / "Data" / "Sounds";
             std::vector<std::string> problems;
-            const std::vector<SoundPatch> patches = LoadSoundPatches(text, &problems);
+            const std::vector<SoundPatch> patches = LoadSoundLibrary(design.string(), &problems);
             for (const std::string& problem : problems)
             {
-                out.PrintError(design.filename().string() + ": " + problem);
+                out.PrintError(problem);
             }
             const std::string only = args.size() >= 2 ? args[1] : std::string();
 

@@ -43,8 +43,11 @@ public:
     // weapons.json. What is changed here is not written back: the bench has a button for that.
     WeaponDefinition* Mutable(WeaponId id);
     size_t Count() const { return m_weapons.size(); }
+    // Keys in the file this loader does not know, as "weapon: key": typos, which are otherwise ignored.
+    const std::vector<std::string>& Warnings() const { return m_warnings; }
 
 private:
+    std::vector<std::string> m_warnings;
     WeaponId Add(WeaponDefinition definition);
 
     std::vector<WeaponDefinition> m_weapons; // index 0 is a placeholder for kInvalidWeapon

@@ -18,7 +18,7 @@ and record them here, including whether attribution is required and in what form
 
 If the terms turn out not to allow it, this is a small thing to undo: the clips are named in
 `Assets/Data/footsteps.json` and nothing else refers to them, and the synthesised footstep they
-replaced is still in `Assets/Data/sound_design.json` as `step_hard` and still works.
+replaced is still in `Assets/Data/Sounds/Player.json` as `step` and still works.
 
 ## Code
 

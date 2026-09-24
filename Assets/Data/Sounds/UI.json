@@ -1,0 +1,91 @@
+{
+  "_comment": "The placeholder sounds of UI: each entry is Assets/Audio/UI/<name>/, rendered by sound_bake. See Assets/Audio/README.md and Engine/Audio/SoundDesign.h for every field.",
+  "hover": {
+    "seconds": 0.05,
+    "variants": 1,
+    "gain": 0.5,
+    "seed": 9001,
+    "layers": [
+      {
+        "source": "sine",
+        "hz": 1800,
+        "decay": 0.012,
+        "length": 0.04,
+        "gain": 0.5
+      },
+      {
+        "source": "click",
+        "filter": "bandpass",
+        "cutoff": 4000,
+        "q": 3,
+        "decay": 0.004,
+        "length": 0.02,
+        "gain": 0.4
+      }
+    ]
+  },
+  "click": {
+    "seconds": 0.09,
+    "variants": 1,
+    "gain": 0.6,
+    "seed": 9011,
+    "layers": [
+      {
+        "source": "click",
+        "filter": "bandpass",
+        "cutoff": 2400,
+        "q": 4,
+        "decay": 0.01,
+        "length": 0.04,
+        "gain": 0.8
+      },
+      {
+        "source": "sine",
+        "hz": 900,
+        "hz_end": 700,
+        "decay": 0.03,
+        "length": 0.08,
+        "gain": 0.6
+      }
+    ]
+  },
+  "back": {
+    "seconds": 0.09,
+    "variants": 1,
+    "gain": 0.55,
+    "seed": 9021,
+    "layers": [
+      {
+        "source": "sine",
+        "hz": 700,
+        "hz_end": 480,
+        "decay": 0.04,
+        "length": 0.09,
+        "gain": 1
+      }
+    ]
+  },
+  "confirm": {
+    "seconds": 0.24,
+    "variants": 1,
+    "gain": 0.6,
+    "seed": 9031,
+    "layers": [
+      {
+        "source": "sine",
+        "hz": 880,
+        "decay": 0.05,
+        "length": 0.1,
+        "gain": 0.8
+      },
+      {
+        "source": "sine",
+        "hz": 1320,
+        "start": 0.08,
+        "decay": 0.07,
+        "length": 0.15,
+        "gain": 0.8
+      }
+    ]
+  }
+}

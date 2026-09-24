@@ -18,7 +18,7 @@ Sounds are sorted by what makes them, one folder per category and one folder per
 The game knows a sound by its category and name together -- `Creature/growl` is
 `Assets/Audio/Creature/growl/` -- so two categories can each have a `hurt` and never be confused.
 
-The files here are **placeholders**, rendered from `Assets/Data/sound_design.json` (see below). They
+The files here are **placeholders**, rendered from the designs in `Assets/Data/Sounds` (see below). They
 are a stand-in until there are recordings, and every one of them can be replaced without building
 anything.
 
@@ -39,7 +39,7 @@ folder is the registration, so somebody who does not build the game can still ch
 
 ## Regenerating the placeholders
 
-Each placeholder is designed in `Assets/Data/sound_design.json` as a few layers -- noise, a tone, a
+Each placeholder is designed in `Assets/Data/Sounds/<Category>.json` -- one file for each folder here, `Weapons.json` for `Weapons/` and so on, each sound under its own name -- as a few layers -- noise, a tone, a
 voice, a click -- each with its own envelope, moving pitch, moving filter and repeats, summed and given
 a room. `sound_bake` in the console renders every one into `Category/sound/sound_<take>.wav`, three or
 four takes each; `sound_bake Creature/growl` does one. Only files named that way are overwritten, so a

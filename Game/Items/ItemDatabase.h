@@ -108,6 +108,8 @@ public:
     ItemId IdOf(const std::string& key) const;
 
     const std::vector<ItemDefinition>& All() const { return m_items; }
+    // Keys in the file this loader does not know, as "item: key": typos, which are otherwise ignored.
+    const std::vector<std::string>& Warnings() const { return m_warnings; }
     // Mutable, so the editor can place an item in the hand and see it move as it does.
     ItemDefinition* Mutable(ItemId id);
     size_t Count() const { return m_items.size(); }
@@ -117,6 +119,7 @@ private:
 
     std::vector<ItemDefinition> m_items; // index 0 is a placeholder for kInvalidItem
     std::unordered_map<std::string, ItemId> m_byKey;
+    std::vector<std::string> m_warnings;
 };
 
 } // namespace pred

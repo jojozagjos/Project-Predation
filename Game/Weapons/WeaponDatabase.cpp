@@ -1,5 +1,7 @@
 #include "Game/Weapons/WeaponDatabase.h"
 
+#include "Engine/Core/JsonText.h"
+
 #include "Engine/Core/Log.h"
 
 #include <nlohmann/json.hpp>
@@ -122,6 +124,17 @@ bool WeaponDatabase::LoadFromFile(const std::filesystem::path& file)
     {
         WeaponDefinition definition;
         ReadField(node, "key", definition.key);
+        for (const std::string& key :
+             UnknownKeys(node, {"key", "name", "item", "model", "fire_mode", "burst_count", "rounds_per_minute", "magazine",
+                                "reserve", "reload_seconds", "reload_empty_seconds", "reload_sounds", "reload_empty_sounds",
+                                "damage", "range", "spread_hip", "spread_aim", "spread_per_shot", "spread_max",
+                                "spread_recover", "recoil_pitch", "recoil_yaw", "recoil_recover", "recoil_rise",
+                                "shake_amount", "shake_damping", "shake_stiffness", "aim_seconds", "aim_speed_scale", "size",
+                                "color", "muzzle_forward"}))
+        {
+            m_warnings.push_back(definition.key + ": " + key);
+            PRED_LOG_WARN(Gameplay, "weapons.json: '{}' has a key nothing reads, '{}' -- a typo?", definition.key, key);
+        }
         ReadField(node, "name", definition.name);
         ReadField(node, "item", definition.item);
         ReadField(node, "model", definition.model);

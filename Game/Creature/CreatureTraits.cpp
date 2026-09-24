@@ -1,4 +1,5 @@
 #include "Game/Creature/CreatureTraits.h"
+#include "Game/Creature/CreatureTuning.h"
 
 #include "Game/Creature/Noise.h"
 
@@ -118,6 +119,16 @@ std::string CreatureTraits::Describe() const
                   seed, TemperamentName(temperament), aggression, fear, curiosity, persistence, perception, runSpeed,
                   patience, stealth, isolationPreference, Captures() ? "  captures" : "", Nests() ? "  nests" : "");
     return line;
+}
+
+} // namespace pred
+
+namespace pred
+{
+
+float CreatureTraits::StalkPatienceSeconds() const
+{
+    return Tuning().stalkPatience + Tuning().stalkPatienceRange * patience;
 }
 
 } // namespace pred

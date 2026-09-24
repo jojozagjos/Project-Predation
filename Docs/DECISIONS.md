@@ -1788,3 +1788,26 @@ four places, arrays of numbers on one line. items.json saved by the editor used 
 -0.10599999874830246 and every number of a colour on a line of its own.
 
 Protocol version 14: an ItemUse message, three world events, and five bits of event kind.
+
+## ADR-081: Data files written tidily, typos named, sounds split by category, creature tuning as data
+
+**Status**: accepted, 2026-09-24
+
+Four changes to how Assets/Data works, all so the files can be edited by hand with confidence:
+
+- **Written as a person would write them.** Everything the game saves -- items, models, the player
+  tuning, input bindings, settings -- goes through JsonText: numbers rounded to four places with the
+  trailing zeros off, arrays of numbers on one line. A file the game has saved is no harder to read
+  than one somebody typed.
+- **Typos are named.** The item, weapon and sound loaders compare every key against the keys they
+  read and log the rest -- "items.json: 'medkit' has a key nothing reads, 'max_stak' -- a typo?" -- and
+  a test holds the shipped files to having none. A misspelled key used to be silently ignored, and the
+  setting it was meant to change kept its default.
+- **The sound library is one file per category**, Assets/Data/Sounds/<Category>.json, matching the
+  folders in Assets/Audio, each sound under its short name; the file's name is the category. One
+  36 KB file of seventy-odd entries was hard to find anything in.
+- **What every creature's mind shares is data**: Assets/Data/creatures.json -- sight range and field,
+  how fast somebody is made out, how far sound carries through walls, how much better a new plan has
+  to be, how long stalkers and ambushers wait, how often a voice is used. Read at start and again
+  whenever the file changes. What makes one creature different from another stays in its seed. The
+  shipped values are the ones the code had as constants, and a test says so.

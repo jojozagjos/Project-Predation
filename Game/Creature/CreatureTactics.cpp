@@ -7,6 +7,7 @@
 // map names. A doorway, a crawlspace or a corner added to a level is used without being told about.
 
 #include "Game/Creature/CreatureBrain.h"
+#include "Game/Creature/CreatureTuning.h"
 
 #include "Engine/Navigation/NavMesh.h"
 
@@ -379,7 +380,7 @@ void CreatureBrain::ActAmbush(const CreatureSenses& senses, float dt)
         m_intent.climb = ceiling > 2.2f && ceiling < 4.8f;
     }
     // Longer for a patient one, and never for ever.
-    const float patience = 15.0f + 35.0f * m_traits.patience;
+    const float patience = Tuning().ambushPatience + Tuning().ambushPatienceRange * m_traits.patience;
     const bool movedOn = track != nullptr && !track->visible && track->confidence > 0.3f &&
                          Horizontal(track->lastKnown, m_ambush.watch) > 26.0f;
     if (now - m_ambushSince > patience || movedOn)

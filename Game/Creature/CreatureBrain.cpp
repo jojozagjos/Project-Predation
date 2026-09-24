@@ -1,4 +1,5 @@
 #include "Game/Creature/CreatureBrain.h"
+#include "Game/Creature/CreatureTuning.h"
 
 #include "Engine/Navigation/NavMesh.h"
 
@@ -21,18 +22,11 @@ constexpr float kDecideInterval = 1.0f / 10.0f;
 
 // Sight. The cone is wide because an animal's is; the edge of it sees poorly, which is what makes
 // creeping along a wall at the side of its view worth doing.
-constexpr float kSightRange = 26.0f;
-constexpr float kHalfFieldDegrees = 65.0f;
-constexpr float kEdgeOfView = 0.35f;
 // Anything right beside it is noticed whichever way it is facing: close enough to touch is close
 // enough to smell, and a creature that could be walked round in a circle would be a joke.
-constexpr float kCloseSense = 1.6f;
 // How fast watching somebody fills the exposure meter, and how fast looking away empties it. At full
 // visibility a little under half a second is a sighting; a dim, crouched, distant figure takes many
 // seconds, and a glance across a lit doorway is only a glance.
-constexpr float kExposureGain = 2.4f;
-constexpr float kExposureDecay = 0.6f;
-constexpr float kSuspicion = 0.35f;
 
 // Striking.
 
@@ -63,7 +57,6 @@ AttackTiming TimingOf(AttackKind kind)
 
 // A decision already being carried out needs this much of a lead to be abandoned. Without it two
 // options scoring 0.50 and 0.51 in turn make a creature that twitches between them.
-constexpr float kCommitment = 0.12f;
 
 constexpr size_t kTimelineLength = 64;
 constexpr float kHeardMemorySeconds = 12.0f;
@@ -535,8 +528,8 @@ void CreatureBrain::Perceive(const CreatureSenses& senses, float dt)
     // smell when somebody is right beside it.
     const bool hasEyes = m_traits.sight > 0.0f;
     const float sightRange = SightRange();
-    const float senseRange = std::max(sightRange, kCloseSense);
-    const float cosHalfField = std::cos(glm::radians(kHalfFieldDegrees));
+    const float senseRange = std::max(sightRange, Tuning().closeSense);
+    const float cosHalfField = std::cos(glm::radians(Tuning().halfFieldDegrees));
     glm::vec3 flatForward{senses.forward.x, 0.0f, senses.forward.z};
     flatForward = glm::length(flatForward) > 1e-4f ? glm::normalize(flatForward) : glm::vec3(0, 0, -1);
 
@@ -566,9 +559,9 @@ void CreatureBrain::Perceive(const CreatureSenses& senses, float dt)
                 {
                     // Full in the middle of the view, falling to the edge value at the rim.
                     const float across = (1.0f - facing) / (1.0f - cosHalfField);
-                    field = 1.0f - (1.0f - kEdgeOfView) * across;
+                    field = 1.0f - (1.0f - Tuning().edgeOfView) * across;
                 }
-                const bool touching = distance < kCloseSense;
+                const bool touching = distance < Tuning().closeSense;
                 if (touching)
                 {
                     field = 1.0f;
@@ -615,7 +608,7 @@ void CreatureBrain::Perceive(const CreatureSenses& senses, float dt)
         track.inView = visibility > 0.001f;
         if (visibility > 0.001f)
         {
-            track.exposure = std::min(track.exposure + visibility * kExposureGain * dt, 1.0f);
+            track.exposure = std::min(track.exposure + visibility * Tuning().exposureGain * dt, 1.0f);
             if (track.exposure < 1.0f)
             {
                 // Not made out yet, but something is there: stop and look at it.
@@ -625,7 +618,7 @@ void CreatureBrain::Perceive(const CreatureSenses& senses, float dt)
         }
         else
         {
-            track.exposure = std::max(track.exposure - kExposureDecay * dt, 0.0f);
+            track.exposure = std::max(track.exposure - Tuning().exposureDecay * dt, 0.0f);
         }
 
         if (visibility > 0.001f)
@@ -655,7 +648,7 @@ void CreatureBrain::Perceive(const CreatureSenses& senses, float dt)
             Warm(player.feet, dt);
             m_state.arousal = std::min(m_state.arousal + 0.2f * dt * 10.0f, 1.0f);
         }
-        else if (track.exposure >= kSuspicion && visibility > 0.001f)
+        else if (track.exposure >= Tuning().suspicion && visibility > 0.001f)
         {
             // Not sure yet. Worth going to look, which is how a glimpse turns into a hunt -- or into
             // nothing, if it arrives and finds the place empty.
@@ -758,7 +751,7 @@ void CreatureBrain::Perceive(const CreatureSenses& senses, float dt)
         if (senses.clearLine && !senses.clearLine(noise.position + glm::vec3(0.0f, 0.3f, 0.0f), ear))
         {
             // Through a wall: still heard, not as far.
-            reach *= 0.5f;
+            reach *= Tuning().throughWalls;
         }
         const float distance = glm::distance(noise.position, ear);
         if (distance >= reach)
@@ -1162,7 +1155,7 @@ void CreatureBrain::Decide(const CreatureSenses& senses)
                      {"patient", 0.4f + 0.6f * m_traits.patience},
                      {"a way they must come", std::max(m_ambush.quality, 0.3f)},
                      {"not afraid", 0.3f + 0.7f * calm},
-                     {"still waiting", std::clamp(1.0f - waited / (15.0f + 35.0f * m_traits.patience), 0.1f, 1.0f)}});
+                     {"still waiting", std::clamp(1.0f - waited / (Tuning().ambushPatience + Tuning().ambushPatienceRange * m_traits.patience), 0.1f, 1.0f)}});
             }
         }
 
@@ -1170,7 +1163,7 @@ void CreatureBrain::Decide(const CreatureSenses& senses)
         // good way off, once in a while -- a trick used every minute is a trick everybody knows.
         const bool luring = m_behavior == Behavior::Lure && m_target == track.id;
         if (chases && m_traits.Mimics() && !beyond && track.lastSeen >= 0.0f &&
-            (luring || ((!track.visible || distance > 14.0f) && now - m_lastLureAt > 50.0f)))
+            (luring || ((!track.visible || distance > 14.0f) && now - m_lastLureAt > Tuning().lureEvery)))
         {
             const int voice = luring ? m_lureVoice : VoiceFor(senses, track.id);
             if (voice >= 0)
@@ -1348,7 +1341,7 @@ void CreatureBrain::Decide(const CreatureSenses& senses)
     const Option& best = m_options.front();
     // No head start for wandering: the margin is there to stop two real plans taking turns, and
     // wandering is not a plan worth holding on to against anything at all.
-    const float commitment = m_behavior == Behavior::Roam ? 0.0f : kCommitment;
+    const float commitment = m_behavior == Behavior::Roam ? 0.0f : Tuning().commitment;
     if (current != nullptr && (current == &best || best.score < current->score + commitment))
     {
         return;
@@ -1494,12 +1487,12 @@ bool CreatureBrain::PickFleePoint(const CreatureSenses& senses, glm::vec3& out)
 
 float CreatureBrain::SightRange() const
 {
-    return kSightRange * m_traits.perception * std::max(m_traits.sight, 0.0f);
+    return Tuning().sightRange * m_traits.perception * std::max(m_traits.sight, 0.0f);
 }
 
 float CreatureBrain::CloseSense()
 {
-    return kCloseSense;
+    return Tuning().closeSense;
 }
 
 float CreatureBrain::Opening(const Track& track, float distance) const

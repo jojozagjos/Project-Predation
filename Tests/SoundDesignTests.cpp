@@ -17,12 +17,9 @@ namespace
 
 std::vector<SoundPatch> TheLibrary()
 {
-    const std::filesystem::path path = std::filesystem::path(PRED_SOURCE_DIR) / "Assets" / "Data" / "sound_design.json";
-    std::ifstream file(path);
-    REQUIRE(file);
-    const std::string text((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    const std::filesystem::path path = std::filesystem::path(PRED_SOURCE_DIR) / "Assets" / "Data" / "Sounds";
     std::vector<std::string> problems;
-    std::vector<SoundPatch> patches = LoadSoundPatches(text, &problems);
+    std::vector<SoundPatch> patches = LoadSoundLibrary(path.string(), &problems);
     INFO((problems.empty() ? std::string() : problems.front()));
     CHECK(problems.empty());
     return patches;
