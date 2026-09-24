@@ -1761,3 +1761,30 @@ it does written on it, and ai.mimic turns the behaviour off for a whole game.
 
 Voice frames gain a creature bit (with an eight-bit creature number in place of the three-bit player)
 and the consent bit; protocol version 13.
+
+## ADR-080: Items are used by fire, as data, with the host deciding what a use did
+
+**Status**: accepted, 2026-09-24
+
+The items other than the weapons could be picked up, carried and dropped, and did nothing. Each now has
+a use, written in items.json as a kind, a length, an amount, sounds, and a motion -- keys of where the
+hand has the item how far through -- rather than as code per item. The kinds are few and each is a real
+mechanic: heal, recharge (a torch cell that now runs down), unlock, flare (struck, then thrown, burning
+as a light in the world) and inspect.
+
+The motion moves the one-handed carry the body already had, in the view's frame, so it looks the same
+for any item and on anybody's body: the host tells everybody when somebody starts, finishes or stops,
+and each machine plays the same keys on that player's hand. The alternative, an authored model with
+parts and clips per item as the weapons have, is where items go when they have real meshes; the keys
+here would then drive the whole item as a weapon clip's root track does.
+
+A client's use is a request, like everything else. The host checks the client carries one, applies the
+effect (health through the controller it simulates for them, a door through the world it owns, a flare
+it puts in the world and announces), and takes a used-up item off its tally of what the client carries.
+The torch cell is the one thing a client keeps to itself: it is only ever its own torch.
+
+Data files the game writes are now written as a person would write them (JsonText): numbers rounded to
+four places, arrays of numbers on one line. items.json saved by the editor used to come back with
+-0.10599999874830246 and every number of a colour on a line of its own.
+
+Protocol version 14: an ItemUse message, three world events, and five bits of event kind.

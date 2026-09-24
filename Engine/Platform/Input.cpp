@@ -1,4 +1,5 @@
 #include "Engine/Platform/Input.h"
+#include "Engine/Core/JsonText.h"
 
 #include "Engine/Core/Log.h"
 
@@ -254,7 +255,7 @@ bool Input::SaveBindings(const std::filesystem::path& file,
         PRED_LOG_ERROR(Platform, "Could not write input bindings to {}", file.string());
         return false;
     }
-    stream << root.dump(2) << '\n';
+    stream << JsonText(root);
     PRED_LOG_INFO(Platform, "Saved {} rebound action(s) to {}", root["actions"].size(), file.string());
     return true;
 }

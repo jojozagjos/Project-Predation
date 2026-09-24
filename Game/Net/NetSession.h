@@ -152,10 +152,20 @@ public:
     std::vector<InteractRequest> TakeInteractRequests() { return std::exchange(m_interactRequests, {}); }
     std::vector<ShotRequest> TakeShotRequests() { return std::exchange(m_shotRequests, {}); }
     std::vector<DropRequest> TakeDropRequests() { return std::exchange(m_dropRequests, {}); }
+    // Somebody using what is in their hand, with who they are filled in by the host.
+    struct ItemUseRequest
+    {
+        uint8_t player = 0;
+        ItemUseMessage use;
+    };
+    std::vector<ItemUseRequest> TakeItemUses() { return std::exchange(m_itemUses, {}); }
+    // Health back, into the controller the host simulates for them.
+    void HealPlayer(uint8_t playerId, float amount);
     // The host keeps a tally of what each client has picked up, so a client cannot put down
     // something it never had. Without it, dropping is a way to make items out of nothing.
     void NoteCarried(uint8_t player, uint16_t item, int count);
     bool TakeCarried(uint8_t player, uint16_t item, int count);
+    int CarriedCount(uint8_t player, uint16_t item) const;
     // Players who have just been let in. The game sends them the state of the world.
     std::vector<uint8_t> TakeJoined() { return std::exchange(m_joined, {}); }
 
@@ -252,6 +262,7 @@ private:
     std::vector<ShotRequest> m_shotRequests;
     std::vector<DropRequest> m_dropRequests;
     std::vector<VoiceHeard> m_voiceHeard;
+    std::vector<ItemUseRequest> m_itemUses;
     // Where the host itself is, kept each tick, so a voice arriving between ticks can be told
     // whether the host is near enough to hear it without the caller having to pass it in.
     glm::vec3 m_localPosition{0.0f};
@@ -392,6 +403,7 @@ public:
     // already happened without the answer being thrown away by the build.
     void SendReady();
     void SendDrop(const DropMessage& drop);
+    void SendItemUse(const ItemUseMessage& use);
     // My microphone, on its way to the host, which decides who is close enough to hear it.
     void SendVoice(uint16_t sequence, const std::vector<uint8_t>& frame, bool mayMimic = false);
     // Voice from other people, waiting to be played. Taken rather than read: each frame is played

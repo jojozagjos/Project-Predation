@@ -452,6 +452,9 @@ public:
         float plannedAt = -1.0e9f;
     };
     const AmbushPlan& Ambush() const { return m_ambush; }
+    // Where it would wait for somebody at `them`, beside the doorway nearest them on the far side from
+    // them. Public so a test can ask it about a place without playing a whole chase out.
+    bool PlanDoorAmbushNear(const CreatureSenses& senses, const glm::vec3& them, AmbushPlan& out) const;
     // Where it is going round to, before going in to look at shooting.
     bool HasFlankPoint() const { return m_flankStage >= 1 && m_flankStage <= 2; }
     const glm::vec3& FlankPoint() const { return m_flankPoint; }
@@ -524,8 +527,6 @@ private:
     // Somewhere to lie in wait for somebody: beside a door they will have to come through, or the mouth
     // of the crawlspace they are in. False when there is nowhere worth it.
     bool PlanAmbush(const CreatureSenses& senses, const Track& track, const SensedPlayer* player, AmbushPlan& out) const;
-    // The same, beside the doorway nearest a place, for somebody it has only heard.
-    bool PlanDoorAmbushNear(const CreatureSenses& senses, const glm::vec3& them, AmbushPlan& out) const;
     // Somewhere off to one side of where shots came from, out of sight of it, to go to before going in.
     bool PickFlankPoint(const CreatureSenses& senses, const glm::vec3& source, glm::vec3& out);
     // Somewhere out of everybody's sight and against something, a little way off, for a creature with

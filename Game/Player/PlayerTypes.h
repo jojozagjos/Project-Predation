@@ -77,7 +77,8 @@ struct PlayerState
     bool landedThisTick = false;
     float landingImpactSpeed = 0.0f; // downward speed at the moment of landing
 
-    float health = 100.0f;
+    static constexpr float kMaxHealth = 100.0f;
+    float health = kMaxHealth;
     bool alive = true;
 
     // How much running is left, 0 to 1. Sprinting spends it and standing still gets it back, after

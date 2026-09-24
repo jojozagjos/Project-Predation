@@ -348,6 +348,11 @@ private:
     // pair of hands holds one thing.
     int m_benchItem = -1;
     bool m_benchItemHeld = false;
+    // Its use, shaped on the bench: playing (seconds in, or negative when not), which half of it, and
+    // where the scrubber stands when it is not playing.
+    float m_benchUseTime = -1.0f;
+    bool m_benchUseSecond = false;
+    float m_benchUseScrub = 0.0f;
 
     // A first-person window onto the editor's own body.
     //
@@ -720,6 +725,71 @@ private:
     // -1 when not hidden. While hidden the player holds still inside the locker.
     // What is carried in the hand when it is not a weapon.
     ItemId m_heldItem = kInvalidItem;
+
+    // --- Using what is in the hand (PredationGameItems.cpp) -------------------------------------
+    //
+    // Fire, with an item in the hand rather than a weapon, uses it: a medical kit patches you up, a
+    // battery goes into the torch, a keycard opens a locked door, a flare is struck and then thrown,
+    // and a sample container is turned over and looked at. Each use takes a while and moves the hand,
+    // which everybody sees; what it does is the host's to decide.
+    struct ItemUseState
+    {
+        bool active = false;
+        ItemId item = kInvalidItem;
+        bool second = false;   // the second half of a use: a lit flare being thrown
+        bool released = false; // the flare has left the hand
+        float time = 0.0f;
+        float seconds = 1.0f;
+        uint8_t target = 0xFF; // who is being patched up, 0xFF for yourself
+        uint8_t door = 0xFF;   // which door is being opened
+    };
+    ItemUseState m_itemUse;
+    void UpdateItemUse(float dt);
+    void StartItemUse(const ItemDefinition& item);
+    void FinishItemUse();
+    void StopItemUse();
+    // The host deciding what a use did, for anybody: patching somebody up, opening a door, a flare
+    // lit or thrown, one of something used up.
+    void HandleItemUse(uint8_t player, const ItemUseMessage& use);
+    void ApplyHeal(uint8_t user, uint8_t target, float amount);
+    void UnlockDoor(int door, uint8_t player);
+    void OnItemUsedEvent(const WorldEventMessage& event);
+    void TellItemUse(uint8_t phase, const ItemDefinition& item, float amount = 0.0f);
+    // Other people's uses in progress, for their hands, and who is holding a lit flare and for how long.
+    struct RemoteUse
+    {
+        ItemId item = kInvalidItem;
+        bool second = false;
+        float time = 0.0f;
+        float seconds = 1.0f;
+    };
+    std::map<uint8_t, RemoteUse> m_remoteUses;
+    std::map<uint8_t, float> m_flareHeldBy;
+    void UpdateRemoteItemUse(RemoteAvatar& avatar, uint8_t id, float dt);
+    // The torch's cell: 1 full, 0 flat. It runs down while the torch is on, dims as it goes, and a
+    // battery fills it again.
+    float m_torchCharge = 1.0f;
+    float TorchStrength() const;
+    // Seconds left on the flare burning in this player's own hand, 0 when there is none.
+    float m_flareBurn = 0.0f;
+    // Flares burning where they were thrown, on every machine.
+    struct BurningFlare
+    {
+        Entity entity;
+        BodyHandle body;
+        float burn = 0.0f;
+        float spent = 0.0f;
+        float noiseIn = 0.8f;
+        VoiceId hiss = kInvalidVoice;
+    };
+    std::vector<BurningFlare> m_burningFlares;
+    MeshHandle m_flareMesh;
+    void ThrowFlare(uint8_t player, const glm::vec3& from, const glm::vec3& velocity, float burn, bool announce);
+    void UpdateFlares(float dt);
+    void ClearFlares();
+    void GatherItemLights(std::vector<PunctualLight>& lights) const;
+    // How lit a point is by flares, burning or held, 0 to 1: what a creature sees by.
+    float FlareLightAt(const glm::vec3& point) const;
     int m_hidingSpot = -1;
     bool m_inventoryOpen = false;
 

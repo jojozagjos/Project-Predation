@@ -891,6 +891,60 @@ void PredationGame::RegisterCommands()
         "give <key> [count]");
 
     console.RegisterCommand(
+        "hold", "Take an item from the inventory into the hand: hold <key>",
+        [this](const std::vector<std::string>& args)
+        {
+            const ItemId id = args.size() >= 2 ? m_items.IdOf(args[1]) : kInvalidItem;
+            for (int slot = 0; slot < m_inventory.SlotCount(); ++slot)
+            {
+                if (!m_inventory.At(slot).IsEmpty() && m_inventory.At(slot).item == id)
+                {
+                    m_inventory.SelectSlot(slot);
+                    return;
+                }
+            }
+            m_app->GetConsole().PrintError("not carrying that");
+        },
+        "hold <key>");
+    console.RegisterCommand(
+        "use_item", "Use what is in the hand, as fire would: use_item",
+        [this](const std::vector<std::string>&)
+        {
+            const ItemDefinition* held = m_items.Get(m_heldItem);
+            if (held == nullptr || held->use.kind == ItemUseKind::None || m_itemUse.active)
+            {
+                m_app->GetConsole().PrintError("nothing in the hand to use");
+                return;
+            }
+            StartItemUse(*held);
+        });
+    console.RegisterCommand(
+        "item_state", "What the hands and the torch are doing: item_state",
+        [this](const std::vector<std::string>&)
+        {
+            char line[200];
+            std::snprintf(line, sizeof(line), "held %s, using %s %.2f/%.2f s, torch %.0f%%, flare %.1f s, %zu burning",
+                          m_items.Get(m_heldItem) != nullptr ? m_items.Get(m_heldItem)->key.c_str() : "nothing",
+                          m_itemUse.active ? "yes" : "no", m_itemUse.time, m_itemUse.seconds, m_torchCharge * 100.0f,
+                          m_flareBurn, m_burningFlares.size());
+            m_app->GetConsole().Print(line);
+            PRED_LOG_INFO(Gameplay, "{} (health {:.0f})", line, m_player.State().health);
+        });
+    console.RegisterCommand(
+        "hurt_me", "Take some damage, to try something that mends it: hurt_me [amount]",
+        [this](const std::vector<std::string>& args)
+        {
+            const float amount = args.size() >= 2 ? std::strtof(args[1].c_str(), nullptr) : 40.0f;
+            ApplyPlayerDamage(LocalPlayerId(), amount, kNoKiller, glm::vec3(0.0f, 0.0f, 1.0f), "console");
+        });
+    console.RegisterCommand(
+        "torch_charge", "Set the torch's cell, 0 to 1: torch_charge <fraction>",
+        [this](const std::vector<std::string>& args)
+        {
+            m_torchCharge = args.size() >= 2 ? std::clamp(std::strtof(args[1].c_str(), nullptr), 0.0f, 1.0f) : 1.0f;
+        });
+
+    console.RegisterCommand(
         "move", "Drive the player from the console, for inspecting animation: move <x> <y> (-1..1)",
         [this](const std::vector<std::string>& args)
         {
@@ -1590,6 +1644,16 @@ bool PredationGame::PerformInteraction(InteractionKind kind, int index, uint8_t 
         {
             if (const WorldObjects::Door* locked = m_world.GetDoor(index); locked != nullptr && locked->locked)
             {
+                const ItemId keycard = m_items.IdOf("keycard");
+                const bool hasKey = player == LocalPlayerId()
+                                        ? m_inventory.CountOf(keycard) > 0
+                                        : m_sessionMode == SessionMode::Host &&
+                                              m_host.CarriedCount(player, static_cast<uint16_t>(keycard)) > 0;
+                if (hasKey)
+                {
+                    UnlockDoor(index, player);
+                    return true;
+                }
                 ShareSound("World/door_locked", locked->hinge + glm::vec3(0.0f, 1.0f, 0.0f), 0.8f);
             }
             return false;
@@ -1910,6 +1974,11 @@ void PredationGame::ServeClientRequests()
                                             request.drop.velocity));
     }
 
+    for (const NetHost::ItemUseRequest& request : m_host.TakeItemUses())
+    {
+        HandleItemUse(request.player, request.use);
+    }
+
     for (const uint8_t player : m_host.TakeJoined())
     {
         SendWorldToPlayer(player);
@@ -2058,6 +2127,41 @@ void PredationGame::SendWorldToPlayer(uint8_t player)
         event.flag = true;
         event.quiet = true;
         m_host.SendTo(player, event);
+    }
+    for (size_t i = 0; i < m_world.Doors().size(); ++i)
+    {
+        if (!m_world.Doors()[i].locked && !m_world.Doors()[i].IsOpen())
+        {
+            WorldEventMessage unlocked;
+            unlocked.kind = WorldEventKind::DoorUnlocked;
+            unlocked.index = static_cast<uint8_t>(i);
+            unlocked.quiet = true;
+            m_host.SendTo(player, unlocked);
+        }
+    }
+    for (const BurningFlare& flare : m_burningFlares)
+    {
+        if (flare.burn > 0.0f)
+        {
+            WorldEventMessage burning;
+            burning.kind = WorldEventKind::FlareThrown;
+            burning.player = 0;
+            burning.position = m_app->GetPhysics().GetTransform(flare.body).position + glm::vec3(0.0f, 0.1f, 0.0f);
+            burning.amount = flare.burn;
+            burning.quiet = true;
+            m_host.SendTo(player, burning);
+        }
+    }
+    for (const auto& [holder, left] : m_flareHeldBy)
+    {
+        WorldEventMessage lit;
+        lit.kind = WorldEventKind::ItemUsed;
+        lit.player = holder;
+        lit.item = static_cast<uint16_t>(m_items.IdOf("flare"));
+        lit.index = ItemUseMessage::Finish;
+        lit.amount = left;
+        lit.quiet = true;
+        m_host.SendTo(player, lit);
     }
     // Every nest, as old as it is, and how hurt.
     for (size_t i = 0; i < m_nests.size(); ++i)
@@ -2265,6 +2369,33 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
 
     case WorldEventKind::NestWounded:
         SetNestHealth(event.index, event.amount, event.quiet);
+        break;
+
+    case WorldEventKind::ItemUsed:
+        OnItemUsedEvent(event);
+        break;
+
+    case WorldEventKind::FlareThrown:
+        // Our own was put in the world the moment it left the hand; this is the host's copy of it.
+        if (event.player != LocalPlayerId() || event.quiet)
+        {
+            ThrowFlare(event.player, event.position, event.direction, event.amount, false);
+            if (!event.quiet)
+            {
+                PlayerSound(event.player, "Items/flare_throw", 0.7f);
+            }
+        }
+        break;
+
+    case WorldEventKind::DoorUnlocked:
+        if (WorldObjects::Door* door = m_world.GetDoor(event.index); door != nullptr)
+        {
+            door->locked = false;
+            if (!event.quiet)
+            {
+                PlayNamed("Items/keycard_accept", door->hinge + glm::vec3(0.0f, 1.2f, 0.0f), 0.8f);
+            }
+        }
         break;
 
     case WorldEventKind::PlayerRespawned:
@@ -2783,6 +2914,8 @@ void PredationGame::ResetWorld()
     m_world.Clear(m_scene, m_app->GetPhysics(), m_interactions);
     m_world.Build(m_scene, m_app->GetMeshes(), m_app->GetPhysics(), m_interactions, m_items,
                   &m_weaponData);
+    ClearFlares();
+    m_torchCharge = 1.0f;
 
     m_inventory.Clear();
     m_weapon = WeaponState{};
@@ -6214,6 +6347,7 @@ void PredationGame::SyncRemoteAvatars(float frameDeltaSeconds)
         // so it arrives through the shot message and fades from there; without it, everybody else's
         // weapon fired with no flash and no recoil, which is why shots from other players read as
         // coming from nowhere.
+        UpdateRemoteItemUse(*avatar, remote.id, frameDeltaSeconds);
         avatar->weaponKick = std::max(avatar->weaponKick - frameDeltaSeconds * 7.0f, 0.0f);
         avatar->weaponDraw = std::min(avatar->weaponDraw + frameDeltaSeconds * 3.2f, 1.0f);
 
@@ -7255,6 +7389,70 @@ void PredationGame::DrawWeaponBench()
                 }
                 ImGui::TextDisabled("The offset is from the fingers and the turn is in the hand's "
                                     "own frame, so both follow the arm wherever it goes.");
+
+                // Its use: what it does, how long it takes, and the hand's movement through it, as
+                // keys that can be played, scrubbed, changed and added to here, and written back.
+                ItemUse& use = editable->use;
+                if (use.kind != ItemUseKind::None &&
+                    ImGui::CollapsingHeader((std::string("Use: ") + ItemUseKindName(use.kind)).c_str(), ImGuiTreeNodeFlags_DefaultOpen))
+                {
+                    const bool twoHalves = !use.secondMotion.empty();
+                    if (twoHalves)
+                    {
+                        ImGui::Checkbox("The second half (thrown)", &m_benchUseSecond);
+                    }
+                    else
+                    {
+                        m_benchUseSecond = false;
+                    }
+                    float& seconds = m_benchUseSecond ? use.secondSeconds : use.seconds;
+                    std::vector<ItemMotionKey>& keys = m_benchUseSecond ? use.secondMotion : use.motion;
+                    ImGui::SliderFloat("Takes", &seconds, 0.1f, 5.0f, "%.2f s");
+                    if (ImGui::Button(m_benchUseTime >= 0.0f ? "Playing..." : "Play"))
+                    {
+                        m_benchUseTime = 0.0f;
+                    }
+                    ImGui::SameLine();
+                    ImGui::SetNextItemWidth(-1.0f);
+                    if (ImGui::SliderFloat("##scrub", &m_benchUseScrub, 0.0f, 1.0f, "at %.2f"))
+                    {
+                        m_benchUseTime = -1.0f;
+                    }
+                    int remove = -1;
+                    for (size_t k = 0; k < keys.size(); ++k)
+                    {
+                        ImGui::PushID(static_cast<int>(k) + 1000);
+                        ImGui::SetNextItemWidth(60.0f);
+                        ImGui::DragFloat("##t", &keys[k].t, 0.005f, 0.0f, 1.0f, "%.2f");
+                        ImGui::SameLine();
+                        if (ImGui::SmallButton("go"))
+                        {
+                            m_benchUseScrub = keys[k].t;
+                            m_benchUseTime = -1.0f;
+                        }
+                        ImGui::SameLine();
+                        if (ImGui::SmallButton("x"))
+                        {
+                            remove = static_cast<int>(k);
+                        }
+                        ImGui::DragFloat3("move", &keys[k].offset.x, 0.002f, -0.6f, 0.6f, "%.3f");
+                        ImGui::DragFloat3("turn", &keys[k].turn.x, 0.5f, -180.0f, 180.0f, "%.0f");
+                        ImGui::PopID();
+                    }
+                    if (remove >= 0)
+                    {
+                        keys.erase(keys.begin() + remove);
+                    }
+                    if (ImGui::Button("Add a key where the scrubber is"))
+                    {
+                        ItemMotionKey key = SampleMotion(keys, m_benchUseScrub);
+                        key.t = m_benchUseScrub;
+                        keys.push_back(key);
+                    }
+                    std::sort(keys.begin(), keys.end(), [](const ItemMotionKey& a, const ItemMotionKey& b) { return a.t < b.t; });
+                    ImGui::TextDisabled("Each key is where the hand has the item that far through the use: metres "
+                                        "right, up and forward of the view, and a turn. Written with the button above.");
+                }
             }
         }
     }
@@ -7713,6 +7911,23 @@ void PredationGame::UpdateEditorBody(float frameDeltaSeconds)
             m_editorBody.SetHeldItemPlacement(item->holdOffset, item->holdRotation);
             m_benchItemHeld = true;
         }
+        // Its use, playing or scrubbed.
+        const ItemDefinition* item = holdable[static_cast<size_t>(itemIndex)];
+        const bool second = m_benchUseSecond && !item->use.secondMotion.empty();
+        const float seconds = std::max(second ? item->use.secondSeconds : item->use.seconds, 0.05f);
+        float at = m_benchUseScrub;
+        if (m_benchUseTime >= 0.0f)
+        {
+            m_benchUseTime += frameDeltaSeconds;
+            at = m_benchUseTime / seconds;
+            m_benchUseScrub = std::min(at, 1.0f);
+            if (at >= 1.0f)
+            {
+                m_benchUseTime = -1.0f;
+            }
+        }
+        const ItemMotionKey pose = SampleMotion(second ? item->use.secondMotion : item->use.motion, at);
+        m_editorBody.SetHeldItemMotion(pose.offset, pose.turn);
     }
     else
     {
@@ -8512,7 +8727,12 @@ void PredationGame::OnUpdate(double dt, double alpha)
                                                                     : CameraMode::FirstPerson);
         }
 #endif
-        if (input.WasActionPressed("flashlight"))
+        if (input.WasActionPressed("flashlight") && !m_torchOn && m_torchCharge <= 0.0f)
+        {
+            PlayNamed("Player/torch_off", m_player.State().position, 0.45f, 0.8f, false);
+            m_app->GetConsole().Print("The torch cell is flat. It needs a fresh battery.");
+        }
+        else if (input.WasActionPressed("flashlight"))
         {
             m_torchOn = !m_torchOn;
             PlayNamed(m_torchOn ? "Player/torch_on" : "Player/torch_off", m_player.State().position, 0.45f, 1.0f, false);
@@ -8718,6 +8938,8 @@ void PredationGame::OnUpdate(double dt, double alpha)
     // the slot rather than a frame after it.
     UpdateMantleStow();
     SyncEquippedWeapon();
+    UpdateItemUse(m_lastFrameSeconds);
+    m_world.SetHaveKeycard(m_inventory.CountOf(m_items.IdOf("keycard")) > 0);
     // Inside a locker there is nowhere to hold a rifle: it is stowed rather than drawn, because a
     // metre of barrel held in front of the chest goes straight through the door.
     const WeaponDefinition* weapon = m_hidingSpot >= 0 ? nullptr : EquippedWeapon();
@@ -8890,7 +9112,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
                              glm::vec3(0.0f, 0.10f, 0.0f);
             torch.direction = m_torchAim;
             torch.color = glm::vec3(1.0f, 0.97f, 0.88f);
-            torch.intensity = cv_torchIntensity.Get();
+            torch.intensity = cv_torchIntensity.Get() * TorchStrength();
             torch.range = cv_torchRange.Get();
             torch.innerAngle = cv_torchInner.Get();
             torch.outerAngle = cv_torchOuter.Get();
@@ -9025,6 +9247,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
             lamp.intensity *= std::max(cv_lampScale.Get(), 0.0f);
         }
         GatherNestLights(environment.sceneLights);
+        GatherItemLights(environment.sceneLights);
         for (size_t i = 0; i < kMaxPunctualLights; ++i)
         {
             if (i < candidates.size())
@@ -9068,6 +9291,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
     UpdateSounds(deltaSeconds);
     SyncDynamicProps();
     UpdateCreatureVisuals(deltaSeconds);
+    UpdateFlares(deltaSeconds);
     app.GetSceneRenderer().SetWireframe(cv_wireframe.Get());
 
     // Occlusion settings, pushed every frame rather than when they change, so the console and the
@@ -9701,6 +9925,12 @@ void PredationGame::DrawCondition()
         const ImU32 staminaColour =
             state.winded ? IM_COL32(200, 120, 90, 220) : IM_COL32(140, 165, 195, 200);
         bar(bottom - kHeight * 2.0f - kGap, state.stamina, staminaColour);
+    }
+    // The torch's cell, while it is on and whenever it is getting low.
+    if (m_torchOn || m_torchCharge < 0.5f)
+    {
+        const ImU32 torchColour = m_torchCharge > 0.2f ? IM_COL32(215, 200, 130, 200) : IM_COL32(215, 120, 80, 225);
+        bar(bottom - kHeight * 3.0f - kGap * 2.0f, m_torchCharge, torchColour);
     }
 }
 

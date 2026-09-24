@@ -461,12 +461,36 @@ void NetHost::HandlePacket(const NetPacket& packet)
         break;
     }
 
+    case MessageType::ItemUse:
+    {
+        const Client* client = FindClient(packet.peer);
+        ItemUseMessage message;
+        if (client == nullptr || !client->welcomed || !ReadItemUse(reader, message))
+        {
+            return;
+        }
+        m_itemUses.push_back({client->playerId, message});
+        break;
+    }
+
     case MessageType::Leave:
         RemoveClient(packet.peer);
         break;
 
     default:
         break;
+    }
+}
+
+void NetHost::HealPlayer(uint8_t playerId, float amount)
+{
+    for (auto& client : m_clients)
+    {
+        if (client->playerId == playerId)
+        {
+            client->controller.Heal(amount);
+            return;
+        }
     }
 }
 
@@ -480,6 +504,19 @@ void NetHost::NoteCarried(uint8_t player, uint16_t item, int count)
             return;
         }
     }
+}
+
+int NetHost::CarriedCount(uint8_t player, uint16_t item) const
+{
+    for (const auto& client : m_clients)
+    {
+        if (client->playerId == player)
+        {
+            const auto found = client->carried.find(item);
+            return found != client->carried.end() ? found->second : 0;
+        }
+    }
+    return 0;
 }
 
 bool NetHost::TakeCarried(uint8_t player, uint16_t item, int count)
@@ -1363,6 +1400,18 @@ void NetClient::SendVoice(uint16_t sequence, const std::vector<uint8_t>& frame, 
 std::vector<NetClient::VoiceHeard> NetClient::TakeVoice()
 {
     return std::exchange(m_voiceIn, {});
+}
+
+void NetClient::SendItemUse(const ItemUseMessage& use)
+{
+    if (m_transport == nullptr || !m_welcomed)
+    {
+        return;
+    }
+    BitWriter writer;
+    WriteMessageHeader(writer, MessageType::ItemUse);
+    WriteItemUse(writer, use);
+    SendPacket(*m_transport, kHostPeer, Channel::Reliable, writer);
 }
 
 void NetClient::SendDrop(const DropMessage& drop)

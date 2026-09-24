@@ -675,9 +675,15 @@ void CreatureBrain::Perceive(const CreatureSenses& senses, float dt)
             // Half as fast for somebody it is stalking: it put the wall between them itself, and knows
             // they were there a moment ago. Without this a patient stalker, waiting behind cover it
             // could not see out of, simply forgot who it was waiting for and wandered off.
+            //
+            // And a quarter as fast for somebody it is lying in wait for: it chose the spot because they
+            // have to come past it, and waiting is the whole of what it is doing. A creature at the mouth
+            // of a crawlspace forgot the person in it after fifteen seconds and wandered off, when there
+            // was nowhere they could have gone but past it.
             const bool stalkingThem = m_behavior == Behavior::Stalk && m_target == track.id;
-            track.confidence =
-                std::max(track.confidence - dt / m_traits.persistence * (stalkingThem ? 0.5f : 1.0f), 0.0f);
+            const bool waitingForThem = m_behavior == Behavior::Ambush && m_target == track.id;
+            track.confidence = std::max(
+                track.confidence - dt / m_traits.persistence * (waitingForThem ? 0.25f : stalkingThem ? 0.5f : 1.0f), 0.0f);
         }
 
         // Gone from sight just now, beside a hiding place: the place is where they might have gone.
@@ -1067,7 +1073,8 @@ void CreatureBrain::Decide(const CreatureSenses& senses)
     {
         const SensedPlayer* player = FindPlayer(senses, track.id);
         const bool searchingThem = m_behavior == Behavior::Search && m_target == track.id;
-        if (player == nullptr || !player->alive || (track.confidence <= 0.05f && !searchingThem))
+        const bool ambushingThem = m_behavior == Behavior::Ambush && m_target == track.id;
+        if (player == nullptr || !player->alive || (track.confidence <= 0.05f && !searchingThem && !ambushingThem))
         {
             continue;
         }
@@ -1194,7 +1201,9 @@ void CreatureBrain::Decide(const CreatureSenses& senses)
                  {"can follow", beyond ? 0.3f : 1.0f},
                  // Shadowing is for somebody it can see. Out of sight for a while, lying in wait where they
                  // will come is the better use of patience.
-                 {"in sight", track.visible || now - track.lastSeen < 2.0f ? 1.0f : 0.7f}});
+                 {"in sight", track.visible || now - track.lastSeen < 2.0f || !m_ambush.valid || m_ambush.target != track.id
+                                  ? 1.0f
+                                  : std::max(0.35f, 1.0f - 0.13f * (now - track.lastSeen - 2.0f))}});
         }
 
         // Watching them, out of curiosity rather than hunger: a creature that has never seen one of
@@ -2119,7 +2128,7 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
         else if (m_arrived)
         {
             m_goal = "looking around";
-            if (!lookAround(m_lookAroundUntil))
+            if (!lookAround(m_lookAroundUntil) && !m_interest.resolved)
             {
                 m_interest.resolved = true;
                 m_interest.strength = 0.0f;

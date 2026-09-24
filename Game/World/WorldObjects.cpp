@@ -280,55 +280,36 @@ void WorldObjects::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physic
         }
     }
 
-    // --- Loose items, laid out along the equipment bench in one row.
+    // --- Loose items, laid out along both equipment benches in one row each.
     //
-    // Every item the game knows about appears here, weapons included, in the order they are defined.
-    // Scattering a few of them across the map meant a weapon could not be found without knowing
-    // where to look, and adding an item to items.json left it nowhere in the world at all.
-    struct Placement
+    // Every item the game knows about appears on both -- the test map's and the creature lab's -- in
+    // the order items.json defines them, as many of each as its bench_count says. Listing them here by
+    // hand meant an item added to items.json was on neither, and the lab's bench had three of seven.
+    const auto layOut = [&](float centreX, float top, float z)
     {
-        const char* key;
-        int count;
-    };
-    const Placement placements[] = {
-        {"sidearm", 1},  {"carbine", 1},  {"medkit", 2}, {"battery", 4},
-        {"keycard", 1},  {"flare", 2},    {"sample_container", 1},
-    };
-
-    constexpr float kSpacing = 0.62f;
-    const float rowWidth = kSpacing * static_cast<float>(std::size(placements) - 1);
-    float x = kEquipmentBayX - rowWidth * 0.5f;
-    for (const Placement& placement : placements)
-    {
-        const ItemId id = items.IdOf(placement.key);
-        const ItemDefinition* definition = items.Get(id);
-        if (id == kInvalidItem || definition == nullptr)
+        constexpr float kSpacing = 0.62f;
+        int laid = 0;
+        for (const ItemDefinition& definition : items.All())
         {
-            PRED_LOG_WARN(Gameplay, "Test map references unknown item '{}'", placement.key);
-            continue;
+            laid += definition.id != kInvalidItem && definition.benchCount > 0 ? 1 : 0;
         }
-        // Standing on the bench, not dropped onto it. A pickup's position is the centre of its box,
-        // so a fixed clearance buried the tall ones in the surface, and the separation impulse
-        // flipped them onto their ends.
-        SpawnPickup(scene, meshes, physics, interactions, items, id, placement.count,
-                    {x, kBenchTop + definition->size.y * 0.5f + 0.005f, kBayZ + 1.3f}, glm::vec3(0.0f));
-        x += kSpacing;
-    }
-
-    // The creature lab's bench, by its spawn: something to shoot with and something to patch up with.
-    const Placement labPlacements[] = {{"carbine", 1}, {"sidearm", 1}, {"medkit", 2}};
-    float labX = LabSpec::kBench.x - 0.9f;
-    for (const Placement& placement : labPlacements)
-    {
-        const ItemId id = items.IdOf(placement.key);
-        const ItemDefinition* definition = items.Get(id);
-        if (id != kInvalidItem && definition != nullptr)
+        float x = centreX - kSpacing * static_cast<float>(std::max(laid - 1, 0)) * 0.5f;
+        for (const ItemDefinition& definition : items.All())
         {
-            SpawnPickup(scene, meshes, physics, interactions, items, id, placement.count,
-                        {labX, LabSpec::kBenchTop + definition->size.y * 0.5f + 0.005f, LabSpec::kBench.z}, glm::vec3(0.0f));
+            if (definition.id == kInvalidItem || definition.benchCount <= 0)
+            {
+                continue;
+            }
+            // Standing on the bench, not dropped onto it. A pickup's position is the centre of its box,
+            // so a fixed clearance buried the tall ones in the surface, and the separation impulse
+            // flipped them onto their ends.
+            SpawnPickup(scene, meshes, physics, interactions, items, definition.id, definition.benchCount,
+                        {x, top + definition.size.y * 0.5f + 0.005f, z}, glm::vec3(0.0f));
+            x += kSpacing;
         }
-        labX += 0.9f;
-    }
+    };
+    layOut(kEquipmentBayX, kBenchTop, kBayZ + 1.3f);
+    layOut(LabSpec::kBench.x, LabSpec::kBenchTop, LabSpec::kBench.z);
 
     PRED_LOG_INFO(Gameplay, "World objects: {} doors, {} pickups, {} hiding spots", m_doors.size(),
                   m_pickups.size(), m_hidingSpots.size());
@@ -663,7 +644,7 @@ void WorldObjects::Update(Scene& scene, PhysicsWorld& physics, InteractionSystem
         const Door& door = m_doors[i];
         if (Interactable* interactable = interactions.Find(door.entity))
         {
-            interactable->verb = door.locked ? "Locked" : (door.IsOpen() ? "Close" : "Open");
+            interactable->verb = door.locked ? (m_haveKeycard ? "Unlock" : "Locked") : (door.IsOpen() ? "Close" : "Open");
         }
     }
 }

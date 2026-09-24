@@ -109,6 +109,8 @@ public:
     void Update(Scene& scene, PhysicsWorld& physics, InteractionSystem& interactions, float dt);
 
     bool ToggleDoor(int index, InteractionSystem& interactions);
+    // Whether the player here carries a keycard, so a locked door says it can be unlocked.
+    void SetHaveKeycard(bool have) { m_haveKeycard = have; }
     void SetDoorOpen(int index, bool open, InteractionSystem& interactions);
 
     Door* GetDoor(int index);
@@ -155,6 +157,7 @@ private:
     void Despawn(Pickup& pickup, Scene& scene, PhysicsWorld& physics, InteractionSystem& interactions);
 
     std::vector<Door> m_doors;
+    bool m_haveKeycard = false;
     std::vector<Pickup> m_pickups;
     // Every pickup ever spawned, counted, so a reused slot does not land the same way twice.
     uint32_t m_dropSerial = 0;

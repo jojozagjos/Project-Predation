@@ -490,7 +490,7 @@ TEST_CASE("A patient creature that loses somebody through a door waits beside it
     SensedPlayer player;
     player.id = 1;
     player.name = "Through The Door";
-    player.feet = {doorX, 0.0f, doorZ + 1.3f}; // just outside, in view
+    player.feet = {doorX, 0.0f, doorZ - 2.0f}; // just inside, seen through the doorway
     player.forward = {0.0f, 0.0f, 1.0f};        // backing in, watching the way it would come
     constexpr float dt = 1.0f / 60.0f;
     float time = 0.0f;
@@ -510,15 +510,9 @@ TEST_CASE("A patient creature that loses somebody through a door waits beside it
     for (tick = 0; tick < 60 * 20; ++tick)
     {
         time += dt;
-        // Seen walking in through the door for a second and a half, then up the corridor out of sight.
-        if (tick < 90)
+        // Seen through the doorway for a second and a half, then gone further in, out of its sight.
+        if (tick == 90)
         {
-            player.velocity = {0.0f, 0.0f, -2.2f};
-            player.feet += player.velocity * dt;
-        }
-        else if (tick == 90)
-        {
-            player.velocity = glm::vec3(0.0f);
             player.feet = {doorX, 0.0f, LabSpec::kCorridorSouth - 6.0f};
         }
         CreatureSenses senses;
@@ -537,6 +531,15 @@ TEST_CASE("A patient creature that loses somebody through a door waits beside it
             CHECK(std::abs(plan.point.x - doorX) > 0.7f);
         }
     }
+    std::string options;
+    for (const CreatureBrain::Option& option : creature.Brain().Options())
+    {
+        options += "\n  " + option.label + " " + std::to_string(option.score);
+    }
+    INFO("it ended at " << creature.Position().x << ", " << creature.Position().z << "; the door is at " << doorX
+                        << ", " << doorZ);
+    INFO("options at the end:" << options << "\n ambush plan " << creature.Brain().Ambush().valid << " at "
+                               << creature.Brain().Ambush().point.x << ", " << creature.Brain().Ambush().point.z);
     INFO("its mind:" << MindOf(creature));
     CHECK(waited);
 }
@@ -589,4 +592,41 @@ TEST_CASE("A creature that climbs goes up a pillar onto the ceiling, upside down
     CHECK(std::abs(creature.Position().y - start.y) < 0.3f);
     const glm::vec3 upright = creature.Orientation() * glm::vec3(0.0f, 1.0f, 0.0f);
     CHECK(upright.y > 0.9f);
+}
+
+TEST_CASE("Beside a doorway, on the far side from somebody in the room, is where it would wait", "[creature][lab][ambush]")
+{
+    Lab lab;
+    const float doorX = LabSpec::kCorridorDoorX;
+    const float doorZ = LabSpec::kCorridorSouth + 0.15f;
+    DoorSense door;
+    door.index = 3;
+    door.a = {doorX - 0.55f, 0.0f, doorZ};
+    door.b = {doorX + 0.55f, 0.0f, doorZ};
+    const glm::vec3 outside = lab.At(LabSpec::kCorridorDoorX - LabSpec::kX - 1.0f, LabSpec::kCorridorSouth - LabSpec::kZ + 7.0f);
+    Creature creature(lab.scene, lab.meshes, lab.physics, &lab.nav, Hunter(5), outside);
+    CreatureSenses senses;
+    senses.position = outside;
+    senses.nav = &lab.nav;
+    senses.doors = {door};
+    senses.clearLine = [&](const glm::vec3& from, const glm::vec3& to)
+    {
+        const glm::vec3 along = to - from;
+        const float length = glm::length(along);
+        return length < 0.4f || !lab.physics.RayCastStatic(from, along / length, length - 0.3f);
+    };
+    // Somebody two metres into the corridor.
+    const glm::vec3 them{doorX, 0.0f, doorZ - 2.0f};
+    CreatureBrain::AmbushPlan plan;
+    REQUIRE(creature.Brain().PlanDoorAmbushNear(senses, them, plan));
+    INFO("waits at " << plan.point.x << ", " << plan.point.z);
+    CHECK(plan.point.z > doorZ + 0.3f);
+    CHECK(std::abs(plan.point.x - doorX) > 0.7f);
+    CHECK(glm::distance(plan.watch, (door.a + door.b) * 0.5f) < 0.1f);
+
+    // From inside with them, it would have to go out past them: no.
+    senses.position = glm::vec3(doorX, 0.0f, doorZ - 4.0f);
+    const glm::vec3 nearDoor{doorX, 0.0f, doorZ - 1.0f};
+    CreatureBrain::AmbushPlan inside;
+    CHECK_FALSE(creature.Brain().PlanDoorAmbushNear(senses, nearDoor, inside));
 }

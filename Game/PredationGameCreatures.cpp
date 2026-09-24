@@ -493,6 +493,7 @@ float PredationGame::LightAt(const glm::vec3& feet, bool torchOn) const
             light = std::min(strength, 1.0f);
         }
     }
+    light = std::max(light, FlareLightAt(chest));
     return torchOn ? std::max(light, 0.95f) : light;
 }
 
@@ -529,7 +530,7 @@ void PredationGame::UpdateCreatures(float dt)
         me.alive = local.alive;
         me.hidden = m_hidingSpot >= 0;
         me.hidingPlace = m_hidingSpot;
-        me.light = LightAt(local.position, m_torchOn);
+        me.light = LightAt(local.position, m_torchOn || m_flareBurn > 0.0f);
         me.forward = m_player.View().Forward();
         players.push_back(me);
     }
@@ -548,7 +549,7 @@ void PredationGame::UpdateCreatures(float dt)
             other.velocity = remote.velocity;
             other.height = BodyHeight(remote.stance);
             other.alive = remote.alive;
-            other.light = LightAt(remote.position, remote.torchOn);
+            other.light = LightAt(remote.position, remote.torchOn || m_flareHeldBy.count(remote.id) != 0);
             other.forward = glm::vec3(std::sin(remote.yaw) * std::cos(remote.pitch), std::sin(remote.pitch),
                                       -std::cos(remote.yaw) * std::cos(remote.pitch));
             for (size_t i = 0; i < m_world.HidingSpots().size(); ++i)

@@ -1,4 +1,5 @@
 #include "Engine/Core/Config.h"
+#include "Engine/Core/JsonText.h"
 
 #include "Engine/Core/CVar.h"
 #include "Engine/Core/Log.h"
@@ -182,7 +183,7 @@ bool Config::SaveArchive(const std::filesystem::path& file)
         PRED_LOG_ERROR(Engine, "Cannot write settings file: {}", file.string());
         return false;
     }
-    stream << ArchiveToJson().dump(2) << '\n';
+    stream << JsonText(ArchiveToJson());
     PRED_LOG_INFO(Engine, "Saved settings to {}", file.string());
     return true;
 }

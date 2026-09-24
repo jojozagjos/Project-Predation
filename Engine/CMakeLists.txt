@@ -19,7 +19,9 @@ set(PRED_ENGINE_SOURCES
     Core/CVar.h
     Core/CVar.cpp
     Core/Config.h
+    Core/JsonText.h
     Core/Config.cpp
+    Core/JsonText.cpp
     Core/Time.h
     Core/Paths.h
     Core/Paths.cpp

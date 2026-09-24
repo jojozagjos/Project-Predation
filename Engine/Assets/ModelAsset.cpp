@@ -1,4 +1,5 @@
 #include "Engine/Assets/ModelAsset.h"
+#include "Engine/Core/JsonText.h"
 
 #include "Engine/Core/Log.h"
 #include "Engine/Core/Paths.h"
@@ -625,7 +626,7 @@ bool ModelAsset::SaveToFile(const std::filesystem::path& file) const
         PRED_LOG_ERROR(Asset, "Could not write model to {}", file.string());
         return false;
     }
-    stream << json.dump(2) << '\n';
+    stream << JsonText(json);
     PRED_LOG_INFO(Asset, "Saved model '{}' to {}", name, file.string());
     // The name-to-file index is now out of date by exactly this one file. Done here rather than by
     // every caller, because "remember to rescan after you save" is a rule that gets forgotten and

@@ -1,9 +1,11 @@
 #include "Game/Items/ItemDatabase.h"
+#include "Engine/Core/JsonText.h"
 
 #include "Engine/Core/Log.h"
 
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
 #include <fstream>
 
 namespace pred
@@ -62,6 +64,108 @@ ItemId ItemDatabase::Add(ItemDefinition definition)
     return m_items.back().id;
 }
 
+namespace
+{
+
+// A motion as it is written: one array per key, [t, right, up, forward, turn x, turn y, turn z].
+std::vector<ItemMotionKey> ReadMotion(const nlohmann::json& keys)
+{
+    std::vector<ItemMotionKey> motion;
+    if (!keys.is_array())
+    {
+        return motion;
+    }
+    for (const nlohmann::json& key : keys)
+    {
+        if (!key.is_array() || key.size() < 7)
+        {
+            continue;
+        }
+        ItemMotionKey read;
+        read.t = std::clamp(key[0].get<float>(), 0.0f, 1.0f);
+        read.offset = {key[1].get<float>(), key[2].get<float>(), key[3].get<float>()};
+        read.turn = {key[4].get<float>(), key[5].get<float>(), key[6].get<float>()};
+        motion.push_back(read);
+    }
+    std::sort(motion.begin(), motion.end(), [](const ItemMotionKey& a, const ItemMotionKey& b) { return a.t < b.t; });
+    return motion;
+}
+
+nlohmann::json WriteMotion(const std::vector<ItemMotionKey>& motion)
+{
+    nlohmann::json keys = nlohmann::json::array();
+    for (const ItemMotionKey& key : motion)
+    {
+        keys.push_back({key.t, key.offset.x, key.offset.y, key.offset.z, key.turn.x, key.turn.y, key.turn.z});
+    }
+    return keys;
+}
+
+} // namespace
+
+const char* ItemUseKindName(ItemUseKind kind)
+{
+    switch (kind)
+    {
+    case ItemUseKind::Heal:
+        return "heal";
+    case ItemUseKind::Recharge:
+        return "recharge";
+    case ItemUseKind::Unlock:
+        return "unlock";
+    case ItemUseKind::Flare:
+        return "flare";
+    case ItemUseKind::Inspect:
+        return "inspect";
+    case ItemUseKind::None:
+        break;
+    }
+    return "none";
+}
+
+ItemUseKind ItemUseKindFromString(const std::string& name)
+{
+    for (const ItemUseKind kind : {ItemUseKind::Heal, ItemUseKind::Recharge, ItemUseKind::Unlock, ItemUseKind::Flare,
+                                   ItemUseKind::Inspect})
+    {
+        if (name == ItemUseKindName(kind))
+        {
+            return kind;
+        }
+    }
+    return ItemUseKind::None;
+}
+
+ItemMotionKey SampleMotion(const std::vector<ItemMotionKey>& keys, float t)
+{
+    if (keys.empty())
+    {
+        return ItemMotionKey{};
+    }
+    t = std::clamp(t, 0.0f, 1.0f);
+    if (t <= keys.front().t)
+    {
+        return keys.front();
+    }
+    for (size_t i = 1; i < keys.size(); ++i)
+    {
+        if (t <= keys[i].t)
+        {
+            const ItemMotionKey& a = keys[i - 1];
+            const ItemMotionKey& b = keys[i];
+            const float span = std::max(b.t - a.t, 1e-4f);
+            float u = (t - a.t) / span;
+            u = u * u * (3.0f - 2.0f * u);
+            ItemMotionKey out;
+            out.t = t;
+            out.offset = a.offset + (b.offset - a.offset) * u;
+            out.turn = a.turn + (b.turn - a.turn) * u;
+            return out;
+        }
+    }
+    return keys.back();
+}
+
 bool ItemDatabase::LoadFromFile(const std::filesystem::path& file)
 {
     std::ifstream stream(file);
@@ -117,6 +221,26 @@ bool ItemDatabase::LoadFromFile(const std::filesystem::path& file)
         if (entry.contains("hold_rotation"))
         {
             definition.holdRotation = ReadVec3(entry["hold_rotation"], definition.holdRotation);
+        }
+        definition.benchCount = std::max(0, entry.value("bench_count", 1));
+        if (const auto use = entry.find("use"); use != entry.end() && use->is_object())
+        {
+            ItemUse& out = definition.use;
+            out.kind = ItemUseKindFromString(use->value("kind", std::string("none")));
+            out.seconds = std::max(use->value("seconds", 1.0f), 0.05f);
+            out.amount = use->value("amount", 0.0f);
+            out.consumed = use->value("consumed", false);
+            out.startSound = use->value("start_sound", std::string());
+            out.doneSound = use->value("done_sound", std::string());
+            out.secondSeconds = std::max(use->value("second_seconds", 0.5f), 0.05f);
+            out.secondSound = use->value("second_sound", std::string());
+            out.motion = ReadMotion(use->value("motion", nlohmann::json::array()));
+            out.secondMotion = ReadMotion(use->value("second_motion", nlohmann::json::array()));
+            if (out.kind == ItemUseKind::None && use->contains("kind"))
+            {
+                PRED_LOG_WARN(Gameplay, "Item '{}' has a use of a kind nothing knows: '{}'", definition.key,
+                              use->value("kind", std::string()));
+            }
         }
         Add(std::move(definition));
     }
@@ -200,6 +324,17 @@ bool ItemDatabase::SaveHoldPlacements(const std::filesystem::path& file) const
         }
         write(entry, "hold_offset", definition->holdOffset);
         write(entry, "hold_rotation", definition->holdRotation);
+        if (definition->use.kind != ItemUseKind::None && entry.contains("use"))
+        {
+            nlohmann::json& use = entry["use"];
+            use["seconds"] = definition->use.seconds;
+            use["motion"] = WriteMotion(definition->use.motion);
+            if (!definition->use.secondMotion.empty())
+            {
+                use["second_seconds"] = definition->use.secondSeconds;
+                use["second_motion"] = WriteMotion(definition->use.secondMotion);
+            }
+        }
     }
 
     std::ofstream out(file);
@@ -208,7 +343,7 @@ bool ItemDatabase::SaveHoldPlacements(const std::filesystem::path& file) const
         PRED_LOG_ERROR(Gameplay, "Cannot write {}", file.string());
         return false;
     }
-    out << json.dump(2) << '\n';
+    out << JsonText(json);
     PRED_LOG_INFO(Gameplay, "Wrote hold placements to {}", file.string());
     return true;
 }

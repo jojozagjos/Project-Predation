@@ -24,7 +24,7 @@ namespace pred
 
 // Bumped whenever the wire changes shape. Two ends that disagree are refused at the door rather
 // than left to misread each other, which is what a wire mismatch actually looks like from inside.
-inline constexpr uint16_t kProtocolVersion = 13;
+inline constexpr uint16_t kProtocolVersion = 14;
 // How many bits name a message type. Five, so there is room to add one.
 inline constexpr uint32_t kMessageTypeBits = 5;
 inline constexpr uint8_t kMaxPlayers = 4;
@@ -79,6 +79,8 @@ enum class MessageType : uint8_t
     // Host to client, unreliable, at the world-state rate: where each creature is and what its body
     // is doing. Its mind runs on the host alone.
     Creatures,
+    // Client to host, reliable: I have started using what is in my hand, finished, or stopped.
+    ItemUse,
     Count
 };
 
@@ -99,6 +101,9 @@ enum class WorldEventKind : uint8_t
     NestBuilt,       // a creature has finished building a nest somewhere, and how long ago
     Sound,           // a sound somewhere, by the key of its name, for what nothing else carries
     NestWounded,     // a nest's heart shot: how much of it is left, and none when it has burst
+    ItemUsed,        // somebody started, finished or stopped using what they are holding
+    FlareThrown,     // a lit flare left somebody's hand: where, how fast, how long it has left
+    DoorUnlocked,    // a locked door, opened with a keycard
     Count
 };
 
@@ -125,6 +130,28 @@ struct WorldEventMessage
     glm::vec3 position{0.0f};
     glm::vec3 direction{0.0f};
 };
+
+// Using what is in the hand: started, finished or stopped, on what (the item), and on whom or what --
+// the person being patched up, the door being opened. The host checks all of it before anything happens.
+struct ItemUseMessage
+{
+    enum Phase : uint8_t
+    {
+        Start = 0,
+        Finish = 1,
+        Stop = 2,
+        // The second half of a use that has one: a lit flare, thrown.
+        Throw = 3
+    };
+    uint8_t phase = Start;
+    uint16_t item = 0;
+    uint8_t target = 0xFF; // a player, or 0xFF for yourself
+    uint8_t door = 0xFF;   // a door, or 0xFF for none
+    glm::vec3 position{0.0f}; // where a thrown flare leaves the hand
+    glm::vec3 velocity{0.0f}; // and how fast
+};
+void WriteItemUse(BitWriter& writer, const ItemUseMessage& message);
+bool ReadItemUse(BitReader& reader, ItemUseMessage& out);
 
 // What a client asks the host to do. It is a request: the host checks the player is close enough
 // and that the thing is still there before anything happens.

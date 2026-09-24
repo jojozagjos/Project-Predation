@@ -71,6 +71,8 @@ public:
     bool IsAttached() const { return m_attached; }
     void Respawn(const glm::vec3& footPosition);
     void ApplyDamage(float amount, const char* cause);
+    // Health back, up to full, for somebody alive. Like damage, only where this controller decides it.
+    void Heal(float amount);
     // Whether this controller is allowed to hurt the player it is simulating.
     //
     // Off on a client, whose own controller is a prediction of what the host will do rather than

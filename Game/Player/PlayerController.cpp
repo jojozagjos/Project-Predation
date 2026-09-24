@@ -820,6 +820,16 @@ void PlayerController::ApplyDamage(float amount, const char* cause)
     }
 }
 
+void PlayerController::Heal(float amount)
+{
+    if (!m_decidesDamage || !m_state.alive || amount <= 0.0f)
+    {
+        return;
+    }
+    m_state.health = std::min(m_state.health + amount, PlayerState::kMaxHealth);
+    PRED_LOG_INFO(Gameplay, "Player healed {:.0f} ({:.0f} health)", amount, m_state.health);
+}
+
 void PlayerController::DebugDraw(class DebugDraw& draw) const
 {
     if (!m_initialized)

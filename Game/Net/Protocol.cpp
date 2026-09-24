@@ -416,7 +416,7 @@ bool ReadSnapshot(BitReader& reader, SnapshotMessage& out)
 
 void WriteWorldEvent(BitWriter& writer, const WorldEventMessage& message)
 {
-    writer.WriteBits(static_cast<uint32_t>(message.kind), 4);
+    writer.WriteBits(static_cast<uint32_t>(message.kind), 5);
     writer.WriteBool(message.quiet);
     switch (message.kind)
     {
@@ -493,6 +493,27 @@ void WriteWorldEvent(BitWriter& writer, const WorldEventMessage& message)
         writer.WriteQuantised(message.amount, 0.0f, 1.0f, 8);
         break;
 
+    case WorldEventKind::ItemUsed:
+        // Who, what, which phase (in `index`), on whom, and by how much it took effect.
+        writer.WriteBits(message.player, 3);
+        writer.WriteBits(message.item, 10);
+        writer.WriteBits(message.index, 2);
+        writer.WriteBits(message.other, 8);
+        writer.WriteQuantised(message.amount, 0.0f, 128.0f, 10);
+        break;
+
+    case WorldEventKind::FlareThrown:
+        writer.WriteBits(message.player, 3);
+        WritePosition(writer, message.position);
+        WriteVelocity(writer, message.direction);
+        writer.WriteQuantised(message.amount, 0.0f, 128.0f, 10);
+        break;
+
+    case WorldEventKind::DoorUnlocked:
+        writer.WriteBits(message.index, 6);
+        writer.WriteBits(message.player, 3);
+        break;
+
     case WorldEventKind::Sound:
         writer.WriteBits(message.item, 16);
         writer.WriteQuantised(message.amount, 0.0f, 2.0f, 6);
@@ -506,7 +527,7 @@ void WriteWorldEvent(BitWriter& writer, const WorldEventMessage& message)
 
 bool ReadWorldEvent(BitReader& reader, WorldEventMessage& out)
 {
-    const uint32_t kind = reader.ReadBits(4);
+    const uint32_t kind = reader.ReadBits(5);
     if (kind == 0 || kind >= static_cast<uint32_t>(WorldEventKind::Count))
     {
         return false;
@@ -580,6 +601,26 @@ bool ReadWorldEvent(BitReader& reader, WorldEventMessage& out)
         out.amount = static_cast<float>(reader.ReadBits(12));
         break;
 
+    case WorldEventKind::ItemUsed:
+        out.player = static_cast<uint8_t>(reader.ReadBits(3));
+        out.item = static_cast<uint16_t>(reader.ReadBits(10));
+        out.index = static_cast<uint8_t>(reader.ReadBits(2));
+        out.other = static_cast<uint8_t>(reader.ReadBits(8));
+        out.amount = reader.ReadQuantised(0.0f, 128.0f, 10);
+        break;
+
+    case WorldEventKind::FlareThrown:
+        out.player = static_cast<uint8_t>(reader.ReadBits(3));
+        out.position = ReadPosition(reader);
+        out.direction = ReadVelocity(reader);
+        out.amount = reader.ReadQuantised(0.0f, 128.0f, 10);
+        break;
+
+    case WorldEventKind::DoorUnlocked:
+        out.index = static_cast<uint8_t>(reader.ReadBits(6));
+        out.player = static_cast<uint8_t>(reader.ReadBits(3));
+        break;
+
     case WorldEventKind::NestWounded:
         out.index = static_cast<uint8_t>(reader.ReadBits(4));
         out.player = static_cast<uint8_t>(reader.ReadBits(3));
@@ -602,6 +643,33 @@ bool ReadWorldEvent(BitReader& reader, WorldEventMessage& out)
     }
 
     return !reader.Overran() && out.player < kMaxPlayers;
+}
+
+void WriteItemUse(BitWriter& writer, const ItemUseMessage& message)
+{
+    writer.WriteBits(message.phase, 2);
+    writer.WriteBits(message.item, 10);
+    writer.WriteByte(message.target);
+    writer.WriteByte(message.door);
+    if (message.phase == ItemUseMessage::Throw)
+    {
+        WritePosition(writer, message.position);
+        WriteVelocity(writer, message.velocity);
+    }
+}
+
+bool ReadItemUse(BitReader& reader, ItemUseMessage& out)
+{
+    out.phase = static_cast<uint8_t>(reader.ReadBits(2));
+    out.item = static_cast<uint16_t>(reader.ReadBits(10));
+    out.target = reader.ReadByte();
+    out.door = reader.ReadByte();
+    if (out.phase == ItemUseMessage::Throw)
+    {
+        out.position = ReadPosition(reader);
+        out.velocity = ReadVelocity(reader);
+    }
+    return !reader.Overran() && (out.target == 0xFF || out.target < kMaxPlayers);
 }
 
 void WriteInteract(BitWriter& writer, const InteractMessage& message)

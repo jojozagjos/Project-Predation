@@ -161,6 +161,18 @@ reload's tilt towards the magazine, the jolt as the bolt goes home, an equip.
 A model with no clip of a given name falls back to movement written in code, so a weapon works before
 anything has been authored for it.
 
+## Items in the hand
+
+The *Hold it* panel holds anything, not only the model open in the editor: choose an item from **In
+the hands** and the body holds it the way the game will. **Offset** and **Turn** place it in the hand.
+
+An item that can be used has a **Use** section: **Play** runs the use through at its real speed, the
+scrubber beside it stands the hand anywhere in it, and each key -- how far through, where the hand has
+the item, and how it is turned -- can be dragged, jumped to with **go**, or removed with **x**. **Add a
+key where the scrubber is** puts a new one at the scrubber, starting from wherever the hand already is
+there. A flare has a second half, the throw, behind **The second half (thrown)**. **Write to
+items.json** saves the placement and the motions; see [ITEMS.md](ITEMS.md) for what the numbers mean.
+
 ## Not yet
 
 Turning with a handle in the viewport rather than by typing numbers; a dropped magazine that falls

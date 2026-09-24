@@ -1,4 +1,5 @@
 #include "Game/Player/PlayerTypes.h"
+#include "Engine/Core/JsonText.h"
 
 #include "Engine/Core/Log.h"
 
@@ -248,7 +249,7 @@ bool PlayerConfig::SaveToFile(const std::filesystem::path& file) const
         PRED_LOG_ERROR(Gameplay, "Cannot write player config: {}", file.string());
         return false;
     }
-    stream << json.dump(2) << '\n';
+    stream << JsonText(json);
     PRED_LOG_INFO(Gameplay, "Saved player config to {}", file.string());
     return true;
 }

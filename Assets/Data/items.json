@@ -2,78 +2,69 @@
   "_comment": "Item definitions. 'key' is the stable identity used by maps and save data; ids are assigned at load and are only valid within a run. Shapes and colours are placeholders until there are real meshes.",
   "items": [
     {
-      "color": [
-        0.42,
-        0.58,
-        0.44
-      ],
+      "bench_count": 1,
+      "color": [0.42, 0.58, 0.44],
       "emissive": 0.15,
-      "hold_offset": [
-        -0.10599999874830246,
-        0.0,
-        0.0
-      ],
-      "hold_rotation": [
-        0.0,
-        0.0,
-        0.0
-      ],
+      "hold_offset": [-0.106, 0, 0],
+      "hold_rotation": [0, 0, 0],
       "key": "sample_container",
       "mass": 2.5,
       "max_stack": 1,
       "name": "Sample Container",
       "roughness": 0.35,
       "shape": "cylinder",
-      "size": [
-        0.16,
-        0.26,
-        0.16
-      ]
+      "size": [0.16, 0.26, 0.16],
+      "use": {
+        "amount": 0,
+        "consumed": false,
+        "done_sound": "",
+        "kind": "inspect",
+        "motion": [
+          [0, 0, 0, 0, 0, 0, 0],
+          [0.25, -0.12, 0.19, -0.04, 0, 60, 0],
+          [0.55, -0.12, 0.2, -0.04, 20, -60, 15],
+          [0.8, -0.1, 0.15, -0.03, 0, 0, 0],
+          [1, 0, 0, 0, 0, 0, 0]
+        ],
+        "seconds": 2,
+        "start_sound": "Items/inspect"
+      }
     },
     {
-      "color": [
-        0.62,
-        0.22,
-        0.2
-      ],
-      "hold_offset": [
-        -0.17000000178813934,
-        0.0,
-        0.0
-      ],
-      "hold_rotation": [
-        0.0,
-        0.0,
-        0.0
-      ],
+      "bench_count": 2,
+      "color": [0.62, 0.22, 0.2],
+      "hold_offset": [-0.17, 0, 0],
+      "hold_rotation": [0, 0, 0],
       "key": "medkit",
       "mass": 1.8,
       "max_stack": 2,
       "name": "Medical Kit",
       "roughness": 0.6,
       "shape": "box",
-      "size": [
-        0.26,
-        0.14,
-        0.18
-      ]
+      "size": [0.26, 0.14, 0.18],
+      "use": {
+        "amount": 45,
+        "consumed": true,
+        "done_sound": "Items/medkit_apply",
+        "kind": "heal",
+        "motion": [
+          [0, 0, 0, 0, 0, 0, 0],
+          [0.18, -0.1, 0.17, -0.02, 25, 0, -15],
+          [0.4, -0.18, 0.21, -0.07, 45, 0, -25],
+          [0.55, -0.19, 0.2, -0.09, 50, 12, -25],
+          [0.72, -0.19, 0.2, -0.09, 46, -10, -24],
+          [0.88, -0.1, 0.12, -0.04, 20, 0, -10],
+          [1, 0, 0, 0, 0, 0, 0]
+        ],
+        "seconds": 2.4,
+        "start_sound": "Items/medkit_open"
+      }
     },
     {
-      "color": [
-        0.58,
-        0.52,
-        0.2
-      ],
-      "hold_offset": [
-        -0.07000000029802322,
-        0.0,
-        0.0
-      ],
-      "hold_rotation": [
-        0.0,
-        0.0,
-        0.0
-      ],
+      "bench_count": 3,
+      "color": [0.58, 0.52, 0.2],
+      "hold_offset": [-0.07, 0, 0],
+      "hold_rotation": [0, 0, 0],
       "key": "battery",
       "mass": 0.5,
       "max_stack": 6,
@@ -81,86 +72,94 @@
       "name": "Battery Cell",
       "roughness": 0.4,
       "shape": "cylinder",
-      "size": [
-        0.09,
-        0.18,
-        0.09
-      ]
+      "size": [0.09, 0.18, 0.09],
+      "use": {
+        "amount": 1,
+        "consumed": true,
+        "done_sound": "Items/battery_in",
+        "kind": "recharge",
+        "motion": [
+          [0, 0, 0, 0, 0, 0, 0],
+          [0.25, -0.08, 0.22, -0.12, -35, 0, 10],
+          [0.5, -0.1, 0.3, -0.16, -50, 0, 15],
+          [0.62, -0.1, 0.34, -0.16, -50, 0, 15],
+          [0.8, -0.08, 0.24, -0.12, -30, 0, 8],
+          [1, 0, 0, 0, 0, 0, 0]
+        ],
+        "seconds": 1.6,
+        "start_sound": "Items/battery_out"
+      }
     },
     {
-      "color": [
-        0.25,
-        0.45,
-        0.7
-      ],
+      "bench_count": 1,
+      "color": [0.25, 0.45, 0.7],
       "emissive": 0.1,
-      "hold_offset": [
-        -0.07800000160932541,
-        -0.00800000037997961,
-        -0.05400000140070915
-      ],
-      "hold_rotation": [
-        48.0,
-        12.0,
-        0.0
-      ],
+      "hold_offset": [-0.078, -0.008, -0.054],
+      "hold_rotation": [48, 12, 0],
       "key": "keycard",
       "mass": 0.05,
       "max_stack": 4,
       "name": "Access Keycard",
       "roughness": 0.3,
       "shape": "box",
-      "size": [
-        0.1,
-        0.015,
-        0.07
-      ]
+      "size": [0.1, 0.015, 0.07],
+      "use": {
+        "amount": 0,
+        "consumed": false,
+        "done_sound": "Items/keycard_accept",
+        "kind": "unlock",
+        "motion": [
+          [0, 0, 0, 0, 0, 0, 0],
+          [0.3, 0, 0.19, 0.1, 0, 0, -12],
+          [0.6, -0.18, 0.19, 0.12, 0, 0, -12],
+          [1, 0, 0, 0, 0, 0, 0]
+        ],
+        "seconds": 1,
+        "start_sound": "Items/keycard_swipe"
+      }
     },
     {
-      "color": [
-        0.85,
-        0.35,
-        0.15
-      ],
+      "bench_count": 2,
+      "color": [0.85, 0.35, 0.15],
       "emissive": 0.4,
-      "hold_offset": [
-        -0.05400000140070915,
-        0.0,
-        0.0
-      ],
-      "hold_rotation": [
-        0.0,
-        0.0,
-        0.0
-      ],
+      "hold_offset": [-0.054, 0, 0],
+      "hold_rotation": [0, 0, 0],
       "key": "flare",
       "mass": 0.3,
       "max_stack": 4,
       "name": "Signal Flare",
       "roughness": 0.7,
       "shape": "cylinder",
-      "size": [
-        0.05,
-        0.22,
-        0.05
-      ]
+      "size": [0.05, 0.22, 0.05],
+      "use": {
+        "amount": 60,
+        "consumed": true,
+        "done_sound": "",
+        "kind": "flare",
+        "motion": [
+          [0, 0, 0, 0, 0, 0, 0],
+          [0.3, -0.06, 0.14, 0.05, -60, 0, 0],
+          [0.55, -0.06, 0.17, 0.08, -60, 80, 0],
+          [0.75, -0.05, 0.16, 0.07, -45, 0, 0],
+          [1, -0.05, 0.15, 0.06, -20, 0, 0]
+        ],
+        "second_motion": [
+          [0, -0.05, 0.15, 0.06, -20, 0, 0],
+          [0.45, 0.08, 0.28, -0.15, 40, 0, 0],
+          [0.7, 0.02, 0.15, 0.35, -50, 0, 0],
+          [1, 0, -0.05, 0.3, -40, 0, 0]
+        ],
+        "second_seconds": 0.55,
+        "second_sound": "Items/flare_throw",
+        "seconds": 1.1,
+        "start_sound": "Items/flare_strike"
+      }
     },
     {
-      "color": [
-        0.15,
-        0.16,
-        0.18
-      ],
-      "hold_offset": [
-        0.0,
-        0.0,
-        0.0
-      ],
-      "hold_rotation": [
-        0.0,
-        0.0,
-        0.0
-      ],
+      "bench_count": 1,
+      "color": [0.15, 0.16, 0.18],
+      "hold_offset": [0, 0, 0],
+      "hold_rotation": [0, 0, 0],
       "key": "sidearm",
       "mass": 0.9,
       "max_stack": 1,
@@ -168,28 +167,13 @@
       "name": "CIRRA Sidearm",
       "roughness": 0.45,
       "shape": "box",
-      "size": [
-        0.05,
-        0.14,
-        0.24
-      ]
+      "size": [0.05, 0.14, 0.24]
     },
     {
-      "color": [
-        0.17,
-        0.18,
-        0.2
-      ],
-      "hold_offset": [
-        0.0,
-        0.0,
-        0.0
-      ],
-      "hold_rotation": [
-        0.0,
-        0.0,
-        0.0
-      ],
+      "bench_count": 1,
+      "color": [0.17, 0.18, 0.2],
+      "hold_offset": [0, 0, 0],
+      "hold_rotation": [0, 0, 0],
       "key": "carbine",
       "mass": 3.2,
       "max_stack": 1,
@@ -197,11 +181,7 @@
       "name": "CIRRA Carbine",
       "roughness": 0.45,
       "shape": "box",
-      "size": [
-        0.06,
-        0.16,
-        0.62
-      ]
+      "size": [0.06, 0.16, 0.62]
     }
   ]
 }

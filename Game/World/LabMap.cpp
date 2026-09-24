@@ -97,7 +97,7 @@ void BuildLabMap(Scene& scene, MeshLibrary& meshes, PhysicsWorld* physics, Level
     Block(builder, "lab_wall_e", kHalf, 0.0f, -kHalf, kHalf + 0.5f, h, kHalf, kLabWall);
 
     // --- The spawn's bench, for the weapons WorldObjects lays on it.
-    Block(builder, "lab_bench", kBench.x - kX - 1.3f, 0.0f, kBench.z - kZ - 0.32f, kBench.x - kX + 1.3f, kBenchTop,
+    Block(builder, "lab_bench", kBench.x - kX - 2.4f, 0.0f, kBench.z - kZ - 0.32f, kBench.x - kX + 2.4f, kBenchTop,
           kBench.z - kZ + 0.32f, kLabConcrete);
 
     // --- The crate yard: a row of blocks, each higher than the last, and a watchtower up a stair too

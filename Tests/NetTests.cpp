@@ -648,9 +648,9 @@ TEST_CASE("World events carry only what their kind needs", "[net][protocol]")
         BitWriter writer;
         WriteMessageHeader(writer, MessageType::WorldEvent);
         WriteWorldEvent(writer, sent);
-        // Five bits of message type, four of event kind, one saying whether it is a catch-up to be
+        // Five bits of message type, five of event kind, one saying whether it is a catch-up to be
         // applied without a sound, six of index and one flag.
-        CHECK(writer.BitsWritten() == 17);
+        CHECK(writer.BitsWritten() == 18);
 
         const std::vector<uint8_t>& bytes = writer.Finish();
         BitReader reader(bytes.data(), bytes.size());

@@ -8,6 +8,7 @@ Sounds are sorted by what makes them, one folder per category and one folder per
       Weapons/     shots, magazines, casings, impacts
       Player/      steps, landings, breath, pain
       World/       doors, lockers, crates, things picked up and dropped
+      Items/       using what is in your hand: a medical kit, a battery, a keycard, a flare
       Nest/        a nest growing, its heart, cocoons
       Creature/    everything the creature does with its feet, lungs and throat
       Ambience/    the building itself: loops for each kind of place, and things heard far off
@@ -79,6 +80,17 @@ field.
 | `locker` | Somebody gets into or out of a locker |
 | `pickup`, `drop` | An item taken, or put down |
 | `crate_open`, `ammo_take`, `crate_close` | An ammunition crate opened and drawn from, and its lid falling shut |
+
+**Items**
+
+| Folder | When it plays |
+|---|---|
+| `medkit_open`, `medkit_apply` | A medical kit opened, and put to use |
+| `battery_out`, `battery_in` | The old cell out of the torch, and the new one in |
+| `keycard_swipe`, `keycard_accept` | A keycard swiped, and a locked door accepting it |
+| `flare_strike`, `flare_throw` | A flare struck, and thrown |
+| `flare_burn` | A thrown flare burning where it lies, looping until it is spent |
+| `inspect` | A sample container turned over in the hands |
 
 **Nest**
 

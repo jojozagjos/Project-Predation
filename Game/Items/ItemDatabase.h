@@ -21,6 +21,46 @@ enum class ItemShape : uint8_t
     Sphere
 };
 
+// What using an item does. Each is a whole mechanic, not a flag for one: see Docs/ITEMS.md.
+enum class ItemUseKind : uint8_t
+{
+    None,
+    Heal,     // patch up yourself, or the person right in front of you, by `amount`
+    Recharge, // a fresh cell in the torch
+    Unlock,   // open the locked door in front of you
+    Flare,    // strike it; then throw it, and it burns for `amount` seconds
+    Inspect   // turn it over in your hands and look at it
+};
+const char* ItemUseKindName(ItemUseKind kind);
+ItemUseKind ItemUseKindFromString(const std::string& name);
+
+// A moment in a use, as far through it as `t` (0 to 1): where the item is then, relative to where it is
+// carried -- metres right, up and forward of the way you are looking -- and how it is turned, in degrees.
+struct ItemMotionKey
+{
+    float t = 0.0f;
+    glm::vec3 offset{0.0f};
+    glm::vec3 turn{0.0f};
+};
+// Where a motion has got to at `t`, eased from one key to the next. At rest, with no keys.
+ItemMotionKey SampleMotion(const std::vector<ItemMotionKey>& keys, float t);
+
+// Using an item: what it does, how long it takes, and how the hand moves while it does it.
+struct ItemUse
+{
+    ItemUseKind kind = ItemUseKind::None;
+    float seconds = 1.0f;
+    float amount = 0.0f;   // health healed, share of a torch recharged, seconds a flare burns
+    bool consumed = false; // gone once the use is done
+    std::vector<ItemMotionKey> motion;
+    std::string startSound; // as it starts, by name, "Items/medkit_open"
+    std::string doneSound;  // as it finishes
+    // The second half of a use that has two, as a flare does: struck, then thrown.
+    float secondSeconds = 0.5f;
+    std::vector<ItemMotionKey> secondMotion;
+    std::string secondSound;
+};
+
 // What an item is, independent of any particular copy of it in the world or in a bag.
 struct ItemDefinition
 {
@@ -42,6 +82,9 @@ struct ItemDefinition
     // something any rule about its box could work out.
     glm::vec3 holdOffset{0.0f};
     glm::vec3 holdRotation{0.0f}; // euler degrees, X then Y then Z
+    ItemUse use;
+    // How many are laid out on each equipment bench.
+    int benchCount = 1;
 };
 
 // Item definitions loaded from Assets/Data/items.json.
@@ -56,6 +99,7 @@ public:
     // alone. The editor places an item in the hand by eye and this is how that survives a restart;
     // rewriting the whole file from these structs would throw away every field this loader does not
     // happen to read.
+    // The use motions too, which the editor also shapes by eye.
     bool SaveHoldPlacements(const std::filesystem::path& file) const;
     void AddBuiltinDefaults();
 

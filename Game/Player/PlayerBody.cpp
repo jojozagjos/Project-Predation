@@ -2660,6 +2660,18 @@ void PlayerBody::SetHeldItem(Scene& scene, MeshLibrary& meshes, const std::strin
     m_hasHeldItem = true;
 }
 
+void PlayerBody::SetHeldItemGlow(Scene& scene, const glm::vec3& emissive)
+{
+    if (!m_hasHeldItem)
+    {
+        return;
+    }
+    if (MeshRenderer* renderer = scene.GetMeshRenderer(m_heldItemEntity))
+    {
+        renderer->material.emissive = emissive;
+    }
+}
+
 void PlayerBody::ClearHeldItem(Scene& scene)
 {
     if (m_hasHeldItem)
@@ -2684,6 +2696,8 @@ void PlayerBody::UpdateHeldItem(const PlayerState& state, const PlayerView& view
     const float crowded = 1.0f - m_wallClearance;
     glm::vec3 target = view.eyePosition + forward * glm::mix(0.52f, 0.26f, crowded) +
                        yawRight * 0.26f + up * -0.34f;
+    // And wherever a use has taken it.
+    target += yawRight * m_heldItemMotionOffset.x + up * m_heldItemMotionOffset.y + forward * m_heldItemMotionOffset.z;
 
     // Out of the wall in front and off the floor below, the same as a weapon is. The soft pull-back
     // above only knows what is straight ahead; this knows where the item actually is, which is what
@@ -2738,7 +2752,7 @@ void PlayerBody::UpdateHeldItem(const PlayerState& state, const PlayerView& view
     // a keycard is held or which way up a flare goes, so each item carries its own offset and turn,
     // placed by eye in the editor and written into items.json.
     const glm::quat itemTurn = glm::quat(glm::radians(m_heldItemRotation));
-    m_heldItemTransform.rotation = rotation * itemTurn;
+    m_heldItemTransform.rotation = rotation * glm::quat(glm::radians(m_heldItemMotionTurn)) * itemTurn;
     m_heldItemTransform.position = ik.endPosition + palm * (Ratio::kHand * m_rig.height * 0.45f) +
                                    m_heldItemTransform.rotation * m_heldItemOffset;
 
