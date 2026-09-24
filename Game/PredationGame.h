@@ -19,6 +19,7 @@
 #include "Game/Creature/Creature.h"
 #include "Game/Creature/Noise.h"
 #include "Game/Creature/VoiceMemory.h"
+#include "Game/Creature/TacticLearner.h"
 #include "Game/Player/PlayerBody.h"
 #include "Game/Player/PlayerController.h"
 #include "Game/Weapons/BulletHole.h"
@@ -160,6 +161,10 @@ private:
     // the ones close to the players to give them room when the pressure has gone on long enough.
     void UpdateDirector(float dt, const std::vector<SensedPlayer>& players);
     float m_menace = 0.0f;          // how hard the players have been pressed lately, 0 to 1
+    // What the brood has learnt this match about which tactics work against these players.
+    TacticLearner m_learned;
+    // Credit or blame for whatever the creature was doing when it happened.
+    void LearnFrom(const Creature& creature, float reward, const char* what);
     float m_lastContact = 0.0f;     // on the creature clock
     float m_directorHintAt = 40.0f;
     float m_directorAskAt = 0.0f;

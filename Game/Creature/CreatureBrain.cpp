@@ -1,4 +1,5 @@
 #include "Game/Creature/CreatureBrain.h"
+#include "Game/Creature/TacticLearner.h"
 #include "Game/Creature/CreatureTuning.h"
 
 #include "Engine/Navigation/NavMesh.h"
@@ -154,6 +155,19 @@ void CreatureBrain::Log(float time, std::string what)
     {
         m_timeline.pop_front();
     }
+}
+
+Behavior CreatureBrain::RecentTactic(float time) const
+{
+    if (TacticLearner::Of(m_behavior) != TacticLearner::Count)
+    {
+        return m_behavior;
+    }
+    if (time - m_leftAt < 4.0f && TacticLearner::Of(m_leftBehavior) != TacticLearner::Count)
+    {
+        return m_leftBehavior;
+    }
+    return Behavior::Roam;
 }
 
 bool CreatureBrain::TargetKnownAt(glm::vec3& out) const
@@ -1475,6 +1489,20 @@ void CreatureBrain::Decide(const CreatureSenses& senses)
              {"cunning", 0.3f + 0.45f * m_traits.stealth + 0.45f * m_traits.patience},
              {"badly hurt", std::clamp(1.5f - senses.healthFraction, 0.5f, 1.0f)},
              {"cannot outrun them", nearest < 8.0f ? 1.0f : 0.6f}});
+    }
+
+    // What the brood has learnt works against these people, and what has cost it.
+    if (senses.learned != nullptr)
+    {
+        for (Option& option : m_options)
+        {
+            const float lean = senses.learned->Weight(TacticLearner::Of(option.behavior));
+            if (std::abs(lean - 1.0f) > 0.01f)
+            {
+                option.considerations.push_back({"what the brood has learnt", lean});
+                option.score *= lean;
+            }
+        }
     }
 
     // Going straight back to what it has only just given up needs a better reason than it had for giving

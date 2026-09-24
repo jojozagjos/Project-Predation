@@ -180,6 +180,7 @@ void PredationGame::ClearCreatures()
     m_lastVoiceNoise.clear();
     m_mimicry.clear();
     m_voiceMemory.Clear();
+    m_learned.Reset();
 }
 
 // --- Saying back what it heard ------------------------------------------------------------------
@@ -491,7 +492,14 @@ bool PredationGame::OnShotResolved(ShotResult& result, const glm::vec3& origin, 
     }
     if (IsAuthority())
     {
+        const bool wasAlive = creature->Alive();
         creature->TakeDamage(result.damage, shooter, origin, m_creatureClock, result.body);
+        // Shot while going about somebody some way: that way costs. Killed at it, it costs a great deal.
+        if (wasAlive)
+        {
+            LearnFrom(*creature, !creature->Alive() ? -2.0f : -std::min(result.damage / std::max(creature->MaxHealth(), 1.0f) * 6.0f, 1.0f),
+                      !creature->Alive() ? "killed" : "shot");
+        }
     }
     result.surface = false;
     return true;
@@ -736,6 +744,7 @@ void PredationGame::UpdateCreatures(float dt)
             return roof ? roof.distance + 0.4f : 0.0f;
         };
         senses.hidingPlaces = places;
+        senses.learned = &m_learned;
         for (const std::unique_ptr<Creature>& other : m_creatures)
         {
             if (other.get() != creature.get())
@@ -900,6 +909,7 @@ void PredationGame::UpdateCreatures(float dt)
             }
             ApplyPlayerDamage(static_cast<uint8_t>(player.id), damage, kNoKiller, blow, "creature");
             m_menace = std::min(m_menace + 0.15f, 1.0f);
+            LearnFrom(*creature, 1.0f, "landed a blow");
             PlaySound(m_sounds.hurt.Pick(), player.feet + glm::vec3(0.0f, 1.2f, 0.0f), 0.9f, 0.85f);
             PRED_LOG_INFO(AI, "Strike at {} (player {}) landed", player.name, player.id);
             break;
@@ -911,6 +921,17 @@ void PredationGame::UpdateCreatures(float dt)
     m_calls.clear();
     UpdateGrips(dt);
     UpdateCocoons(dt);
+}
+
+void PredationGame::LearnFrom(const Creature& creature, float reward, const char* what)
+{
+    const TacticLearner::Tactic tactic = TacticLearner::Of(creature.Brain().RecentTactic(m_creatureClock));
+    if (tactic == TacticLearner::Count)
+    {
+        return;
+    }
+    m_learned.Reward(tactic, reward);
+    PRED_LOG_INFO(AI, "The brood learns: {} {} ({:+.1f}); now {}", TacticLearner::Name(tactic), what, reward, m_learned.Describe());
 }
 
 void PredationGame::UpdateDirector(float dt, const std::vector<SensedPlayer>& players)
@@ -2899,6 +2920,7 @@ void PredationGame::TryGrab(Creature& creature, int target, const std::vector<Se
         creature.Brain().OnGrabbed(player.id, m_creatureClock);
         PlaySound(m_sounds.hurt.Pick(), player.feet + glm::vec3(0.0f, 1.2f, 0.0f), 0.9f, 0.7f);
         PRED_LOG_INFO(AI, "Creature {} has hold of {} (player {})", creature.NetId(), player.name, player.id);
+        LearnFrom(creature, 1.5f, "took somebody");
         if (id == LocalPlayerId())
         {
             m_app->GetConsole().Print("Something has you. Struggle -- jump, over and over -- or hope somebody shoots it.");

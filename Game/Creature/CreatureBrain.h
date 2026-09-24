@@ -15,6 +15,7 @@ namespace pred
 {
 
 class NavMesh;
+class TacticLearner;
 // What a creature is doing; spelled out further down.
 enum class Behavior : uint8_t;
 
@@ -121,6 +122,8 @@ struct CreatureSenses
         glm::vec3 targetAt{0.0f};
     };
     std::vector<Kin> kin;
+    // What the brood has learnt this match about which ways of getting at these people work.
+    const TacticLearner* learned = nullptr;
     const NavMesh* nav = nullptr;
     // The doors in the level, shut or open.
     std::vector<DoorSense> doors;
@@ -282,6 +285,9 @@ public:
     bool Withdrawing(float time) const { return time < m_withdrawUntil; }
     // Whether being shot has taught it to be careful of people.
     bool Wary() const { return m_wary; }
+    // The way of going about somebody it is using, or used within the last few seconds: what gets the
+    // credit, or the blame, for what happens now.
+    Behavior RecentTactic(float time) const;
     // It lost hold of them: shot off them, struggled free, or they died.
     void OnReleased(float time, const std::string& why);
     int Holding() const { return m_holding; }

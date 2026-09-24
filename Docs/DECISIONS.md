@@ -1811,3 +1811,17 @@ Four changes to how Assets/Data works, all so the files can be edited by hand wi
   to be, how long stalkers and ambushers wait, how often a voice is used. Read at start and again
   whenever the file changes. What makes one creature different from another stays in its seed. The
   shipped values are the ones the code had as constants, and a test says so.
+
+## ADR-082: A director over the creatures, and learning by reinforcement
+
+- **Two minds, as the best-known example of this kind of game has it:** the creatures, which know only
+  what they perceive, and a director, which knows where everybody is and uses it only to pace -- a
+  nudge towards somewhere near the players when it has been quiet, and a request to give them room when
+  the pressure has gone on. Neither ever hands a creature a position. A creature busy with somebody
+  refuses the request, so nothing walks away from a sound it has not looked into.
+- **Machine learning, deliberately small.** A multi-armed bandit over five tactics, shared by the brood,
+  rewarded by blows and grabs and punished by wounds and deaths, reset each match. No trained model:
+  one would need data we do not have and would behave in ways nobody could tune or explain. A bandit
+  learns within a match from a handful of encounters, is a few lines, shows its reasoning in the log,
+  and only tilts choices, so no tactic is ever written off or forced.
+- **No killing while held.** A grab ends at a cocoon or a throw, never a death in its arms.

@@ -400,6 +400,62 @@ a stride and a half long). None of it is a list a map provides.
   A timid one used to go from keeping away from somebody to looking into their footsteps and back,
   every few seconds, for as long as they stood there.
 
+### Glimpses, creeping and copying
+
+- **A glimpse** -- somebody it cannot quite make out, dim or far or at the edge of its eye -- stops it
+  dead to stare, for two or three seconds. Then it goes to see what it was, low and slow. It used to
+  stand staring for as long as it could not make them out, which in a dark room was half a minute of
+  standing still.
+- **Creeping up behind.** Stalking, it prefers cover behind the way somebody was last facing. Somebody
+  in sight with their back to it and not looking its way, it creeps straight at, crouched and silent,
+  until it is close enough that running is quicker than being heard. If they turn round it freezes,
+  and then either it is close enough to go for them or it goes back to cover. The stealthy ones do not
+  leap at somebody who is staring straight at them.
+- **Copying.** A curious one watching somebody it does not understand does what they do: gets down when
+  they get down, steps the way they step, stands with its head on one side when they stand still, and
+  makes back the sounds they make -- a door, something dropped, a knock.
+
+### The brood
+
+- **Reading each other.** One that can see another of its kind going for somebody, or crouched watching
+  them, knows where that somebody is without having seen them.
+- **Driving and waiting.** When another is already going straight at somebody, and is nearer them, the
+  rest do better to go round, lie in wait where they will run, or shadow them -- so they do.
+- **Spreading out.** Wandering, one does not go where another already is.
+- **Everybody in the room.** The nearest person it means harm to counts for more than whoever it picked
+  first, and in a fight it feels anybody coming up at its back from three or four metres.
+
+### The director
+
+Over the creatures' heads, a director paces the match (`ai.director`). It knows where everybody is and
+never tells a creature. Pressure builds while creatures are close to the players or busy with them, and
+drains when nothing is near. When it has gone on long enough, the creatures near the players are asked
+to give them room for half a minute to a minute -- to get out of sight, back to the nest if there is
+one. Anything that matters still pulls one back out: a gunshot, somebody walking into it. When it has
+been quiet for a minute (`ai.director_quiet_seconds`), one creature with nothing to do is sent to
+somewhere about twelve metres from somebody. It has a feeling about the place; it still has to find
+them with its own eyes and ears.
+
+**Commitment.** A creature looking into something, stalking, searching, lying in wait, luring or
+fighting says no when asked to leave. It finishes with what it heard before it goes.
+
+### Learning
+
+Two kinds, both only for the match.
+
+- **Each creature.** Shot in three separate encounters, it has learnt to be careful: it charges less and
+  stalks and waits more, and on its way out of a fight it takes one swing at whoever is in reach. Searching
+  the same place a second and third time, it searches it closer and more thoroughly, not less. The more
+  lockers it hears people use, the more it checks them.
+- **The brood.** Every way of going about somebody -- charging, stalking, lying in wait, going round,
+  luring -- has a value the whole brood shares (`TacticLearner`). A blow landed is a reward to whatever
+  way the creature was going about it; a grab more; being shot at it a cost, and being killed at it a big
+  one. It is reinforcement learning of the simplest kind that works -- a multi-armed bandit, each arm an
+  exponentially weighted average of what happened -- and it tilts every creature's choice by up to 40%
+  either way. Against people who shoot whatever charges, charging stops being chosen; against people who
+  never look behind them, stalking wins more and more; and when they change, it follows. The log says
+  what was learnt and from what.
+
 The overlay (`ai_debug`) shows each: the ambush spot in red with a line to what it watches, the flank
 point in blue from the shooting, a dim red ring round every place it is keeping clear of, and the mouths
 of the crawlspaces in pink.
