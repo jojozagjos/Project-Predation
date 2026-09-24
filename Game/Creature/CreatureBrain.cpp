@@ -74,6 +74,13 @@ float Horizontal(const glm::vec3& a, const glm::vec3& b)
     return std::sqrt(d.x * d.x + d.z * d.z);
 }
 
+glm::vec3 Flat(const glm::vec3& v)
+{
+    const glm::vec3 flat{v.x, 0.0f, v.z};
+    const float length = glm::length(flat);
+    return length > 1e-4f ? flat / length : glm::vec3(0.0f);
+}
+
 std::string Format(const char* pattern, float a, float b = 0.0f)
 {
     char line[160];
@@ -131,6 +138,10 @@ const char* BehaviorName(Behavior behavior)
         return "Avoid";
     case Behavior::Warn:
         return "Warn";
+    case Behavior::Ambush:
+        return "Ambush";
+    case Behavior::Flank:
+        return "Flank";
     }
     return "?";
 }
@@ -817,6 +828,15 @@ void CreatureBrain::Perceive(const CreatureSenses& senses, float dt)
                                   ? 0.0f
                                   : m_interest.strength *
                                         std::max(0.0f, 1.0f - (senses.time - m_interest.time) * 0.05f);
+        const bool gunshot = noise.kind == NoiseKind::Gunshot;
+        if (gunshot && (m_traits.temperament == Temperament::Timid || m_traits.fear > 0.7f))
+        {
+            // Somewhere with shooting in it is somewhere the fearful keep away from for a while.
+            RememberDanger(noise.position, senses.time + 40.0f);
+        }
+        // The same shooting again: another shot from about the same place.
+        const bool again = !m_interest.resolved && m_interest.gunfire && gunshot &&
+                           Horizontal(m_interest.position, noise.position) < 8.0f && senses.time - m_interest.time < 8.0f;
         if (pull > current)
         {
             if (m_interest.resolved || pull > current + 0.2f)
@@ -824,7 +844,13 @@ void CreatureBrain::Perceive(const CreatureSenses& senses, float dt)
                 Log(senses.time, std::string("heard a ") + NoiseKindName(noise.kind) +
                                      Format(" (%.0f%%)", pull * 100.0f));
             }
-            m_interest = {noise.position, pull, senses.time, NoiseKindName(noise.kind), false};
+            m_interest = {noise.position, pull, senses.time, NoiseKindName(noise.kind), false, gunshot,
+                          again ? m_interest.shots + 1 : 0};
+        }
+        else if (again)
+        {
+            ++m_interest.shots;
+            m_interest.time = senses.time;
         }
     }
     while (!m_heard.empty() && senses.time - m_heard.front().time > kHeardMemorySeconds)
@@ -991,12 +1017,38 @@ void CreatureBrain::Decide(const CreatureSenses& senses)
                 }
             }
         }
-        add(Behavior::Investigate, -1, "Investigate " + m_interest.what,
-            {{"how strong", m_interest.strength},
-             {"curiosity", 0.4f + 0.6f * m_traits.curiosity},
-             {"not afraid", 0.3f + 0.7f * calm},
-             {"recent", recent},
-             {"not them again", wary}});
+        // Anywhere it has lately been frightened -- by somebody it kept away from, or by shooting.
+        if (NearDanger(m_interest.position, 14.0f, now))
+        {
+            wary = std::min(wary, m_traits.temperament == Temperament::Timid ? 0.1f : 0.5f);
+        }
+        // Shooting is not walked straight at by anything with sense: it goes round, out of sight, and
+        // listens before it goes in. Only the brazen come straight, and anything already close.
+        const float caution = std::max(m_traits.stealth, 0.8f * m_traits.fear + 0.3f * (1.0f - m_traits.aggression));
+        const bool goRound = m_interest.gunfire && caution > 0.3f &&
+                             (Horizontal(senses.position, m_interest.position) > 9.0f || m_behavior == Behavior::Flank);
+        // A lot of it is a fight, which the fearful keep out of.
+        const float fight = m_interest.shots >= 2 ? 1.0f - 0.6f * m_traits.fear : 1.0f;
+        if (goRound)
+        {
+            add(Behavior::Flank, -1, "Go round to the " + m_interest.what,
+                {{"how strong", m_interest.strength},
+                 {"wants to know", 0.45f + 0.55f * std::max(m_traits.curiosity, m_traits.aggression)},
+                 {"not afraid", 0.3f + 0.7f * calm},
+                 {"recent", std::max(recent, m_behavior == Behavior::Flank ? 0.6f : 0.0f)},
+                 {"not them again", wary},
+                 {"a fight", fight}});
+        }
+        else
+        {
+            add(Behavior::Investigate, -1, "Investigate " + m_interest.what,
+                {{"how strong", m_interest.strength},
+                 {"curiosity", 0.4f + 0.6f * m_traits.curiosity},
+                 {"not afraid", 0.3f + 0.7f * calm},
+                 {"recent", recent},
+                 {"not them again", wary},
+                 {"a fight", fight}});
+        }
     }
 
     // Each person it knows of, separately: hunting one and ignoring another is a real choice.
@@ -1044,6 +1096,9 @@ void CreatureBrain::Decide(const CreatureSenses& senses)
         // stealthy one comes when they are alone, looking away, or out of its patience.
         const float opening = Opening(track, distance);
         const float timing = 1.0f - m_traits.stealth * (1.0f - opening);
+        // In a crawlspace too small for it: going after them only puts it on the roof of the thing.
+        const bool beyond = OutOfItsReach(senses, *player);
+        const float follow = beyond ? 0.15f : 1.0f;
         if (chases)
         {
             add(Behavior::Hunt, track.id, "Hunt " + track.name,
@@ -1052,7 +1107,45 @@ void CreatureBrain::Decide(const CreatureSenses& senses)
                  {"not afraid", calm},
                  {"still to close", closeness},
                  {"grudge", grudge},
-                 {"the moment", timing}});
+                 {"the moment", timing},
+                 {"can follow", follow}});
+        }
+
+        // Lying in wait for them, where they will have to come: the mouth of the crawlspace it cannot
+        // follow them into, or -- for the patient -- the far side of a door from them, once they are out
+        // of sight. Planned a couple of times a second at most, and kept while it is waiting.
+        const bool waitingForThem = m_behavior == Behavior::Ambush && m_ambush.valid && m_ambush.target == track.id;
+        if (chases && !player->hidden && (beyond || (!track.visible && track.lastSeen >= 0.0f && now - track.lastSeen > 1.5f &&
+                                                     track.confidence > 0.3f && m_traits.stealth > 0.35f) ||
+                                          waitingForThem))
+        {
+            if (!waitingForThem && now - m_ambush.plannedAt > 1.5f)
+            {
+                AmbushPlan plan;
+                if (PlanAmbush(senses, track, player, plan))
+                {
+                    plan.plannedAt = now;
+                    m_ambush = plan;
+                }
+                else
+                {
+                    m_ambush.valid = false;
+                    m_ambush.plannedAt = now;
+                }
+            }
+            if (m_ambush.valid && m_ambush.target == track.id)
+            {
+                const float waited = waitingForThem && m_ambushArrived ? now - m_ambushSince : 0.0f;
+                add(Behavior::Ambush, track.id, std::string(m_ambush.kind == AmbushKind::Crawlspace ? "Wait at the crawlspace for "
+                                                                                                    : "Wait by the door for ") +
+                                                    track.name,
+                    {{"sure where", std::max(track.confidence, beyond ? 0.9f : 0.0f)},
+                     {beyond ? "cannot follow" : "stealthy", beyond ? 1.0f : 0.35f + 0.65f * m_traits.stealth},
+                     {"patient", 0.4f + 0.6f * m_traits.patience},
+                     {"a way they must come", std::max(m_ambush.quality, 0.3f)},
+                     {"not afraid", 0.3f + 0.7f * calm},
+                     {"still waiting", std::clamp(1.0f - waited / (15.0f + 35.0f * m_traits.patience), 0.1f, 1.0f)}});
+            }
         }
 
         // Shadowing them from cover instead. Only somebody it has actually seen: somebody it has
@@ -1067,7 +1160,11 @@ void CreatureBrain::Decide(const CreatureSenses& senses)
                  {"stealthy", 0.2f + 0.8f * m_traits.stealth},
                  {"not afraid", 0.3f + 0.7f * calm},
                  {"patience left", patienceLeft},
-                 {"waiting for a chance", 1.0f - 0.8f * opening}});
+                 {"waiting for a chance", 1.0f - 0.8f * opening},
+                 {"can follow", beyond ? 0.3f : 1.0f},
+                 // Shadowing is for somebody it can see. Out of sight for a while, lying in wait where they
+                 // will come is the better use of patience.
+                 {"in sight", track.visible || now - track.lastSeen < 2.0f ? 1.0f : 0.7f}});
         }
 
         // Watching them, out of curiosity rather than hunger: a creature that has never seen one of
@@ -1096,7 +1193,8 @@ void CreatureBrain::Decide(const CreatureSenses& senses)
         {
             const float since = now - std::max(track.lastSeen, track.lastHeard);
             add(Behavior::Search, track.id, "Search for " + track.name,
-                {{"lost them", std::max(1.0f - track.confidence, 0.5f)},
+                {{"can follow", follow},
+                 {"lost them", std::max(1.0f - track.confidence, 0.5f)},
                  {"persistent", 0.4f + 0.6f * std::min(m_traits.persistence / 24.0f, 1.0f)},
                  {"wants them", 0.5f + 0.5f * m_traits.aggression},
                  {"not afraid", 0.3f + 0.7f * calm},
@@ -1109,13 +1207,16 @@ void CreatureBrain::Decide(const CreatureSenses& senses)
         const bool canRise = rise < senses.verticalReach && rise > -1.6f;
         const float gap = Horizontal(senses.position, player->feet);
         const bool inReach = gap < m_traits.strikeReach + 0.4f;
-        const bool pounce = gap > 2.6f && gap < 7.0f && std::abs(rise) < 0.8f && now >= m_lungeReadyAt;
+        // Not into a crawlspace it cannot follow them into: a swipe in at arm's length is all it has there.
+        const bool pounce = gap > 2.6f && gap < 7.0f && std::abs(rise) < 0.8f && now >= m_lungeReadyAt && !beyond;
         if (track.hostile && track.visible && canRise && (inReach || (pounce && chases)))
         {
             add(Behavior::Attack, track.id, "Attack " + track.name,
                 {{inReach ? "in reach" : "pounce", inReach ? 1.0f : 0.55f + 0.4f * m_traits.aggression},
                  {"aggression", 0.3f + 0.7f * m_traits.aggression},
-                 {"not afraid", 0.2f + 0.8f * calm}});
+                 {"not afraid", 0.2f + 0.8f * calm},
+                 // Out of hiding at somebody who has walked into it: the moment all the waiting was for.
+                 {"from hiding", m_behavior == Behavior::Ambush || m_behavior == Behavior::Stalk ? 1.4f : 1.0f}});
         }
     }
 
@@ -1172,6 +1273,23 @@ void CreatureBrain::Decide(const CreatureSenses& senses)
              {"cannot outrun them", nearest < 8.0f ? 1.0f : 0.6f}});
     }
 
+    // Going straight back to what it has only just given up needs a better reason than it had for giving
+    // it up, fading over eight seconds. Striking is never held back like this, nor wandering.
+    const float sinceLeft = now - m_leftAt;
+    if (sinceLeft < 8.0f && m_leftBehavior != m_behavior && m_leftBehavior != Behavior::Attack &&
+        m_leftBehavior != Behavior::Roam)
+    {
+        for (Option& option : m_options)
+        {
+            if (option.behavior == m_leftBehavior && option.target == m_leftTarget)
+            {
+                const float settle = 0.6f + 0.4f * sinceLeft / 8.0f;
+                option.considerations.push_back({"only just gave it up", settle});
+                option.score *= settle;
+            }
+        }
+    }
+
     std::sort(m_options.begin(), m_options.end(),
               [](const Option& a, const Option& b) { return a.score > b.score; });
 
@@ -1214,6 +1332,12 @@ void CreatureBrain::Decide(const CreatureSenses& senses)
 void CreatureBrain::Switch(Behavior behavior, int target, const std::string& reason, float time)
 {
     const Behavior previous = m_behavior;
+    if (previous != behavior || m_target != target)
+    {
+        m_leftBehavior = previous;
+        m_leftTarget = m_target;
+        m_leftAt = time;
+    }
     m_behavior = behavior;
     m_target = target;
     m_behaviorStarted = time;
@@ -1249,6 +1373,14 @@ void CreatureBrain::Switch(Behavior behavior, int target, const std::string& rea
         {
             track->stalked = 0.0f;
         }
+    }
+    if (behavior == Behavior::Ambush && previous != Behavior::Ambush)
+    {
+        m_ambushArrived = false;
+    }
+    if (behavior == Behavior::Flank)
+    {
+        m_flankStage = 0;
     }
     if (behavior == Behavior::PlayDead)
     {
@@ -1297,6 +1429,7 @@ bool CreatureBrain::PickFleePoint(const CreatureSenses& senses, glm::vec3& out)
         {
             score += 12.0f;
         }
+        score += 8.0f * ShelterOf(senses, candidate);
         if (score > bestScore)
         {
             bestScore = score;
@@ -1376,7 +1509,18 @@ bool CreatureBrain::FindCover(const CreatureSenses& senses, const Track& target,
     {
         return false;
     }
-    const glm::vec3 centre = target.visible && player != nullptr ? player->feet : target.lastKnown;
+    // Where they will be in a moment, not where they are: it is following somebody who is moving.
+    glm::vec3 centre = target.visible && player != nullptr ? player->feet : target.lastKnown;
+    const glm::vec3 moving{target.lastVelocity.x, 0.0f, target.lastVelocity.z};
+    const float pace = glm::length(moving);
+    if (target.visible && pace > 0.5f)
+    {
+        glm::vec3 ahead;
+        if (senses.nav->NearestPoint(centre + moving * 1.5f, 2.0f, ahead))
+        {
+            centre = ahead;
+        }
+    }
     glm::vec3 facing{0.0f};
     if (player != nullptr && target.visible)
     {
@@ -1441,6 +1585,19 @@ bool CreatureBrain::FindCover(const CreatureSenses& senses, const Track& target,
         }
         // Not on the far side of the map: somewhere forty metres away is a journey, not cover.
         score *= 1.0f - std::min(Horizontal(candidate, senses.position) / 40.0f, 0.6f);
+        // Against something. Out of their sight in the middle of an empty floor is not hiding, it is
+        // standing where they happen not to be looking from -- a step to either side and it is in plain
+        // view -- and it is what it did, over and over. Behind a wall between it and them is best.
+        score *= 0.2f + 0.8f * ShelterOf(senses, candidate);
+        if (TightCover(senses, candidate, centre))
+        {
+            score *= 1.6f;
+        }
+        // The patient wait ahead of somebody on the move, where they are going; the rest follow on.
+        if (pace > 1.0f && m_traits.patience > 0.55f)
+        {
+            score *= 0.8f + 0.4f * std::max(glm::dot(moving / pace, Flat(candidate - centre)), 0.0f);
+        }
         // And not on the far side of them. The best hiding place in the world is no use if the way to
         // it is straight past their nose -- which is what it did, walking slowly at somebody watching
         // it to reach cover behind them. Measured by how close the straight line there passes them.
@@ -1803,6 +1960,8 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
     m_intent.bashDoor = -1;
     m_intent.bashing = false;
     m_intent.holding = m_holding;
+    m_intent.climb = false;
+    m_intent.drop = false;
 
     const glm::vec3 eye = senses.eye;
     const auto lookAround = [&](float until)
@@ -2127,7 +2286,7 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
             }
             const glm::vec3 toward = player->feet - senses.position;
             const bool facing = glm::dot(glm::normalize(glm::vec3(toward.x, 0.0f, toward.z)), senses.forward) > 0.8f;
-            if (gap > 2.6f && gap < 7.0f && now >= m_lungeReadyAt && std::abs(rise) < 0.8f && facing &&
+            if (gap > 2.6f && gap < 7.0f && now >= m_lungeReadyAt && std::abs(rise) < 0.8f && facing && !OutOfItsReach(senses, *player) &&
                 (!senses.clearLine || senses.clearLine(eye, player->feet + glm::vec3(0.0f, 1.0f, 0.0f))))
             {
                 StartAttack(AttackKind::Lunge, player->feet, now);
@@ -2417,18 +2576,47 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
                 m_intent.speed = m_traits.walkSpeed * 1.3f;
             }
         }
+        else if (!m_haveStalkPoint && m_stalkExposed)
+        {
+            // No cover anywhere near them, and in their sight where it stands: it backs off somewhere
+            // out of it, against something, rather than standing in the open to be looked at.
+            glm::vec3 spot;
+            if (now >= m_stalkCheckAt - 0.35f && PickHidingSpot(senses, them, spot))
+            {
+                m_stalkPoint = spot;
+                m_haveStalkPoint = true;
+                Log(now, "no cover near " + track->name + "; backs off out of sight");
+            }
+            m_goal = "no cover near " + track->name + ", backing off";
+            m_intent.face = true;
+            m_intent.facePoint = them;
+        }
         else
         {
             m_goal = m_haveStalkPoint ? "watching " + track->name + " from cover"
-                                      : "no cover, holding still, watching " + track->name;
+                                      : "holding still out of sight, watching " + track->name;
             m_intent.face = true;
             m_intent.facePoint = them;
+            // One that climbs watches from overhead where it can, where nobody looks.
+            if (m_traits.climbs && senses.ceilingAt && m_haveStalkPoint)
+            {
+                const float ceiling = senses.ceilingAt(senses.position);
+                m_intent.climb = ceiling > 2.2f && ceiling < 4.8f;
+            }
         }
         break;
     }
 
     case Behavior::PlayDead:
         UpdatePlayingDead(senses);
+        break;
+
+    case Behavior::Ambush:
+        ActAmbush(senses, dt);
+        break;
+
+    case Behavior::Flank:
+        ActFlank(senses, dt);
         break;
 
     case Behavior::Observe:
@@ -2487,6 +2675,9 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
         const glm::vec3 them = track->visible ? player->feet : track->lastKnown;
         const float distance = Horizontal(senses.position, them);
         m_threat = them;
+        // Wherever they are is somewhere to keep clear of for a while after: not somewhere to go back to
+        // and look into the moment it has got away.
+        RememberDanger(them, now + 45.0f);
         // Somewhere away from them and out of their sight, picked again whenever the old place is no
         // longer away from them, or it has got there and they are still close.
         const bool stale = m_haveFleePoint && (Horizontal(m_fleePoint, them) < distance + 2.0f ||

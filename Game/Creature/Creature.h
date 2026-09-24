@@ -122,8 +122,9 @@ public:
     // Lying as if dead -- really dead, or playing it. The two look the same from outside, which is
     // the point of playing it.
     bool Down() const { return !Alive() || m_down; }
-    // How low it is carrying itself, 0 to 1.
+    // How low it is carrying itself, 0 to 1, and how flat to its belly, 0 to 1, to fit a crawlspace.
     float Crouch() const { return m_crouchTarget; }
+    float Squeeze() const { return m_squeeze; }
 
     // Which creature this is on the wire. The host numbers them as it makes them; a client's copy
     // carries the number it was sent.
@@ -205,8 +206,12 @@ private:
     // How long its calls and its blows against a door go on being shown.
     float m_roarUntil = -1.0f;
     float m_bashStarted = -1.0f;
-    // The jumps its body can make, as the navigation mesh names them.
+    // The jumps its body can make, as the navigation mesh names them, and crawlspaces when it fits them.
     uint16_t m_jumps = 0;
+    // Whether it is in a crawlspace now, when it was last asked, and how flat it is lying to fit.
+    bool m_inCrawlspace = false;
+    float m_crawlCheck = 0.0f;
+    float m_squeeze = 0.0f;
 
     uint8_t m_netId = 0;
     struct Received

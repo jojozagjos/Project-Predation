@@ -1703,3 +1703,23 @@ and wounds. Protocol version 11.
 
 Sculpting a heart and its growth takes around 40 ms, so it is done on a worker when the nest is built
 and put in the scene when it is ready.
+
+## ADR-077: Crawlspaces in the navigation mesh, and tactics as place queries
+
+**Status**: accepted, 2026-09-24
+
+A creature too big for the crawlspace hunted somebody lying in it by climbing onto its roof: the roof
+was the standing floor nearest them, the route to it counted as reaching them, and it stayed there.
+
+The navigation mesh is now built for a crawling body (a metre of headroom) with floor lower than a
+standing body marked as crawlspace (a Recast area of its own, a Detour flag, `NavMesh::kCrawl`). Every
+query takes the same `allowed` flags a route already did for jumps, so a body that does not fit never
+sees crawlspace floor at all and one that does is routed along it. The alternative, a second mesh per
+body size, costs a second build and a second copy of every query for one flag's worth of difference.
+A route that ends at a different height from where it was asked to go no longer counts as arriving.
+
+What a creature does about somebody it cannot follow, and the rest of its new tactics -- cover against
+something rather than merely out of sight, ambushes beside doors and crawlspace mouths, going round to
+gunfire rather than straight at it -- are queries over places scored like its options, in
+CreatureTactics.cpp. Two new behaviours carry them, Ambush and Flank; the protocol's four bits of
+behaviour still hold them.

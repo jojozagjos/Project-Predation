@@ -137,6 +137,8 @@ CreatureTraits Creature::WithBody(CreatureTraits traits, const CreatureCapabilit
     traits.strikeReach = caps.strikeReach;
     traits.eyeHeight = caps.eye.y;
     traits.bodyMiddle = caps.bodyCentre.y;
+    traits.fitsVents = caps.fitsVents;
+    traits.climbs = caps.climbs;
     return traits;
 }
 
@@ -150,7 +152,7 @@ Creature::Creature(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, con
     m_health = m_maxHealth;
 
     glm::vec3 onMesh;
-    if (m_nav != nullptr && m_nav->NearestPoint(spawn, 3.0f, onMesh))
+    if (m_nav != nullptr && m_nav->NearestPoint(spawn, 3.0f, onMesh, m_caps.fitsVents ? NavMesh::kCrawl : 0))
     {
         m_position = onMesh;
     }
@@ -527,7 +529,13 @@ void Creature::Move(const CreatureIntent& intent, const std::vector<glm::vec3>& 
         {
             m_jumps |= NavMesh::kJumpHigh;
         }
+        // And along crawlspaces, when it is small enough to get into one.
+        if (m_caps.fitsVents)
+        {
+            m_jumps |= NavMesh::kCrawl;
+        }
     }
+    const uint16_t crawl = m_jumps & NavMesh::kCrawl;
 
     // In the air: carried along the arc from where it left the ground to where it lands, the feet
     // tucked up, and nothing else to decide until it is down.
@@ -645,9 +653,11 @@ void Creature::Move(const CreatureIntent& intent, const std::vector<glm::vec3>& 
         // Slower while it is still turning to face the way it is going, so it turns and then runs
         // rather than running sideways.
         const float aligned = std::clamp(glm::dot(Forward(), heading), 0.3f, 1.0f);
-        const glm::vec3 step = heading * m_speed * aligned * dt;
+        // On its belly it goes no faster than a crawl.
+        const float crawling = m_squeeze > 0.5f ? std::min(m_speed, m_caps.walkSpeed * 1.2f) : m_speed;
+        const glm::vec3 step = heading * crawling * aligned * dt;
         glm::vec3 moved = m_position + step;
-        if (m_nav == nullptr || !m_nav->MoveAlongSurface(m_position, m_position + step, moved))
+        if (m_nav == nullptr || !m_nav->MoveAlongSurface(m_position, m_position + step, moved, crawl))
         {
             moved = m_position + step;
         }
@@ -678,7 +688,7 @@ void Creature::Move(const CreatureIntent& intent, const std::vector<glm::vec3>& 
     {
         const glm::vec3 step = push * std::min(4.0f * dt, 1.0f);
         glm::vec3 moved = m_position + step;
-        if (m_nav == nullptr || !m_nav->MoveAlongSurface(m_position, m_position + step, moved))
+        if (m_nav == nullptr || !m_nav->MoveAlongSurface(m_position, m_position + step, moved, crawl))
         {
             moved = m_position + step;
         }
@@ -849,7 +859,17 @@ void Creature::UpdateVisual(float dt)
         input.position = m_position;
         input.yaw = m_yaw;
         input.velocity = m_velocity;
+        // In a crawlspace: flat to its belly while it is in one, eased in and out at either end. Worked
+        // out here, where it is drawn, so a machine that is only shown it lays it down in there too.
+        m_crawlCheck -= dt;
+        if (m_caps.fitsVents && m_nav != nullptr && m_crawlCheck <= 0.0f)
+        {
+            m_crawlCheck = 0.2f;
+            m_inCrawlspace = m_nav->InCrawlspace(m_position);
+        }
+        m_squeeze += ((m_inCrawlspace ? 1.0f : 0.0f) - m_squeeze) * std::min(6.0f * dt, 1.0f);
         input.crouch = m_crouch;
+        input.squeeze = m_squeeze;
         input.windup = m_windup;
         input.action = m_action.kind;
         input.actionPhase = m_action.phase;

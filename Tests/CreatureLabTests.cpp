@@ -8,6 +8,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <glm/geometric.hpp>
+#include <glm/vec2.hpp>
 
 #include <memory>
 #include <string>
@@ -64,6 +65,11 @@ struct Lab
         return reached && !corners.empty() && std::abs(corners.back().y - top.y) < 0.3f;
     }
 };
+
+float Horizontal2(const glm::vec3& a, const glm::vec3& b)
+{
+    return glm::length(glm::vec2(a.x - b.x, a.z - b.z));
+}
 
 std::string MindOf(const Creature& creature)
 {
@@ -335,4 +341,202 @@ TEST_CASE("A creature that does not nest never builds one", "[creature][hive]")
         REQUIRE_FALSE(creature.Brain().Intent().buildHive);
         REQUIRE(creature.Brain().Current() != Behavior::Nest);
     }
+}
+
+TEST_CASE("A crawlspace is in the mesh, marked, and only a body that fits is routed along it", "[creature][lab][navigation][crawl]")
+{
+    Lab lab;
+    // The crawlspace runs north to south down the middle of the lab, 1.3 m high, 2.4 m wide.
+    const glm::vec3 inside{LabSpec::kX, 0.0f, LabSpec::kZ + 11.0f};
+    const glm::vec3 onRoof{LabSpec::kX, 1.9f, LabSpec::kZ + 11.0f};
+    CHECK(lab.nav.InCrawlspace(inside));
+    CHECK_FALSE(lab.nav.InCrawlspace(onRoof));
+    CHECK_FALSE(lab.nav.InCrawlspace(lab.At(6.0f, 11.0f)));
+
+    // Its two ends are openings onto standing floor.
+    int ends = 0;
+    for (const glm::vec3& mouth : lab.nav.CrawlMouths())
+    {
+        if (std::abs(mouth.x - LabSpec::kX) < 1.5f &&
+            (std::abs(mouth.z - (LabSpec::kZ + 6.0f)) < 1.2f || std::abs(mouth.z - (LabSpec::kZ + 16.0f)) < 1.2f))
+        {
+            ++ends;
+        }
+    }
+    INFO(lab.nav.CrawlMouths().size() << " openings in all");
+    CHECK(ends >= 2);
+
+    // Something that cannot crawl gets no nearer than the mouth -- or the roof -- and knows it.
+    const glm::vec3 outside = lab.At(0.0f, 2.0f);
+    std::vector<glm::vec3> route;
+    bool reached = true;
+    lab.nav.FindPath(outside, inside, route, &reached, nullptr, NavMesh::kAllJumps);
+    CHECK_FALSE(reached);
+    // Something that can goes all the way in.
+    lab.nav.FindPath(outside, inside, route, &reached, nullptr, NavMesh::kAllJumps | NavMesh::kCrawl);
+    CHECK(reached);
+    REQUIRE_FALSE(route.empty());
+    CHECK(glm::distance(route.back(), inside) < 0.6f);
+    // And moving along the floor in there works for it.
+    glm::vec3 moved;
+    glm::vec3 crawlStart;
+    REQUIRE(lab.nav.NearestPoint(inside, 1.0f, crawlStart, NavMesh::kCrawl));
+    CHECK(lab.nav.MoveAlongSurface(crawlStart, crawlStart + glm::vec3(0.0f, 0.0f, 0.5f), moved, NavMesh::kCrawl));
+}
+
+namespace
+{
+
+// Somebody lying in the middle of the crawlspace, and a creature from the seed that `fits` picks,
+// hunting them from outside for a while. Where it got to, and whether it was ever up on the roof.
+struct CrawlChase
+{
+    uint32_t seed = 0;
+    glm::vec3 end{0.0f};
+    bool onRoof = false;
+    Behavior doing = Behavior::Roam;
+    std::string mind;
+};
+
+CrawlChase ChaseIntoCrawlspace(bool fits)
+{
+    Lab lab;
+    uint32_t seed = 0;
+    for (uint32_t candidate = 1; candidate < 600 && seed == 0; ++candidate)
+    {
+        const CreatureAnatomy anatomy = CreatureAnatomy::FromSeed(candidate);
+        const CreatureCapabilities caps = CreatureCapabilities::From(anatomy);
+        const CreatureTraits traits = Hunter(candidate);
+        if (caps.fitsVents == fits && anatomy.eyes > 0 && traits.aggression > 0.55f && traits.fear < 0.5f)
+        {
+            seed = candidate;
+        }
+    }
+    REQUIRE(seed != 0);
+    // South of it, facing north up the tunnel at them.
+    const glm::vec3 start = lab.At(-3.0f, 21.0f);
+    Creature creature(lab.scene, lab.meshes, lab.physics, &lab.nav, Hunter(seed), start);
+    SensedPlayer player;
+    player.id = 1;
+    player.name = "Crawling";
+    player.feet = {LabSpec::kX, 0.0f, LabSpec::kZ + 11.0f};
+    player.height = 0.45f;
+
+    CrawlChase result;
+    result.seed = seed;
+    constexpr float dt = 1.0f / 60.0f;
+    float time = 0.0f;
+    for (int tick = 0; tick < 60 * 20; ++tick)
+    {
+        time += dt;
+        CreatureSenses senses;
+        senses.players = {player};
+        creature.Update(senses, time, dt);
+        creature.UpdateVisual(dt);
+        const glm::vec3 at = creature.Position();
+        const bool overTunnel = std::abs(at.x - LabSpec::kX) < 1.5f && at.z > LabSpec::kZ + 6.2f && at.z < LabSpec::kZ + 15.8f;
+        result.onRoof = result.onRoof || (overTunnel && at.y > 1.0f);
+    }
+    result.end = creature.Position();
+    result.doing = creature.Brain().Current();
+    result.mind = MindOf(creature);
+    return result;
+}
+
+} // namespace
+
+TEST_CASE("Something too big for the crawlspace waits at its mouth rather than climbing on top of it",
+          "[creature][lab][crawl]")
+{
+    const CrawlChase chase = ChaseIntoCrawlspace(false);
+    INFO("seed " << chase.seed << " ended at " << chase.end.x << ", " << chase.end.y << ", " << chase.end.z << chase.mind);
+    CHECK_FALSE(chase.onRoof);
+    CHECK(chase.doing == Behavior::Ambush);
+    // Beside one of the two ends.
+    const float north = glm::length(glm::vec2(chase.end.x - LabSpec::kX, chase.end.z - (LabSpec::kZ + 6.0f)));
+    const float south = glm::length(glm::vec2(chase.end.x - LabSpec::kX, chase.end.z - (LabSpec::kZ + 16.0f)));
+    CHECK(std::min(north, south) < 3.5f);
+}
+
+TEST_CASE("Something small enough crawls into the crawlspace after them", "[creature][lab][crawl]")
+{
+    const CrawlChase chase = ChaseIntoCrawlspace(true);
+    INFO("seed " << chase.seed << " ended at " << chase.end.x << ", " << chase.end.y << ", " << chase.end.z << chase.mind);
+    CHECK_FALSE(chase.onRoof);
+    const float gap = glm::length(glm::vec2(chase.end.x - LabSpec::kX, chase.end.z - (LabSpec::kZ + 11.0f)));
+    CHECK(gap < 3.0f);
+}
+
+TEST_CASE("A patient creature that loses somebody through a door waits beside it, on the far side from them",
+          "[creature][lab][ambush]")
+{
+    Lab lab;
+    const float doorX = LabSpec::kCorridorDoorX;
+    const float doorZ = LabSpec::kCorridorSouth + 0.15f;
+    DoorSense door;
+    door.index = 3;
+    door.a = {doorX - 0.55f, 0.0f, doorZ};
+    door.b = {doorX + 0.55f, 0.0f, doorZ};
+    door.shut = false;
+
+    CreatureTraits traits = Hunter(5);
+    traits.stealth = 0.9f;
+    traits.patience = 0.9f;
+    traits.aggression = 0.5f;
+    traits.fear = 0.2f;
+    const glm::vec3 outside = lab.At(LabSpec::kCorridorDoorX - LabSpec::kX - 1.0f, LabSpec::kCorridorSouth - LabSpec::kZ + 7.0f);
+    Creature creature(lab.scene, lab.meshes, lab.physics, &lab.nav, traits, outside);
+
+    SensedPlayer player;
+    player.id = 1;
+    player.name = "Through The Door";
+    player.feet = {doorX, 0.0f, doorZ + 1.3f}; // just outside, in view
+    player.forward = {0.0f, 0.0f, 1.0f};        // backing in, watching the way it would come
+    constexpr float dt = 1.0f / 60.0f;
+    float time = 0.0f;
+    int tick = 0;
+    const auto clear = [&](const glm::vec3& from, const glm::vec3& to)
+    {
+        // Out of its sight, once they are in there, from wherever it is.
+        if (tick >= 90 && glm::distance(glm::vec2(to.x, to.z), glm::vec2(player.feet.x, player.feet.z)) < 0.6f)
+        {
+            return false;
+        }
+        const glm::vec3 along = to - from;
+        const float length = glm::length(along);
+        return length < 0.4f || !lab.physics.RayCastStatic(from, along / length, length - 0.3f);
+    };
+    bool waited = false;
+    for (tick = 0; tick < 60 * 20; ++tick)
+    {
+        time += dt;
+        // Seen walking in through the door for a second and a half, then up the corridor out of sight.
+        if (tick < 90)
+        {
+            player.velocity = {0.0f, 0.0f, -2.2f};
+            player.feet += player.velocity * dt;
+        }
+        else if (tick == 90)
+        {
+            player.velocity = glm::vec3(0.0f);
+            player.feet = {doorX, 0.0f, LabSpec::kCorridorSouth - 6.0f};
+        }
+        CreatureSenses senses;
+        senses.players = {player};
+        senses.doors = {door};
+        senses.clearLine = clear;
+        creature.Update(senses, time, dt);
+        creature.UpdateVisual(dt);
+        const CreatureBrain::AmbushPlan& plan = creature.Brain().Ambush();
+        if (creature.Brain().Current() == Behavior::Ambush && plan.valid && plan.kind == CreatureBrain::AmbushKind::Door &&
+            Horizontal2(creature.Position(), plan.point) < 0.8f)
+        {
+            waited = true;
+            // Beside the doorway, on its own side of it: outside the corridor.
+            CHECK(plan.point.z > doorZ + 0.3f);
+            CHECK(std::abs(plan.point.x - doorX) > 0.7f);
+        }
+    }
+    INFO("its mind:" << MindOf(creature));
+    CHECK(waited);
 }

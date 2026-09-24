@@ -303,7 +303,7 @@ TEST_CASE("Crouched in the dark is harder to see than standing in the light", "[
 TEST_CASE("A gunshot draws it to look", "[creature][hearing]")
 {
     // Across temperaments: a gunshot is the loudest thing that happens, and even an incurious
-    // creature goes to see.
+    // creature goes to see -- straight there if it is brazen, round the side if it has any sense.
     const uint32_t seed = GENERATE(1u, 5u, 7u, 23u, 42u, 99u);
     INFO("seed " << seed << ": " << Hunter(seed).Describe());
     CreatureHarness harness(seed);
@@ -326,7 +326,8 @@ TEST_CASE("A gunshot draws it to look", "[creature][hearing]")
         mind += "\n  option " + option.label + " " + std::to_string(option.score).substr(0, 5);
     }
     INFO("its mind:" << mind);
-    CHECK(harness.creature->Brain().Current() == Behavior::Investigate);
+    const Behavior doing = harness.creature->Brain().Current();
+    CHECK((doing == Behavior::Investigate || doing == Behavior::Flank));
     CHECK_FALSE(harness.creature->Brain().Interest().resolved);
 
     harness.Run(5.0f, {});
@@ -1608,4 +1609,85 @@ TEST_CASE("Its nest attacked, it leaves whatever it was doing and goes back to i
     CHECK(glm::distance(harness.creature->Brain().Interest().position, nest) < 1.5f);
     harness.Run(5.0f, {});
     CHECK(glm::distance(harness.creature->Position(), nest) < before - 3.0f);
+}
+
+
+TEST_CASE("A careful creature goes round to shooting, out of sight of it, rather than straight at it", "[creature][hearing][flank]")
+{
+    CreatureTraits traits = Hunter(23);
+    traits.stealth = 0.8f;
+    traits.aggression = 0.45f;
+    traits.patience = 0.3f; // goes in after listening, rather than waiting by a door
+    CreatureHarness harness(traits);
+    const glm::vec3 start = harness.creature->Position();
+    Noise shot;
+    shot.kind = NoiseKind::Gunshot;
+    shot.reach = NoiseReach::kGunshot;
+    shot.position = {kDarkRoomX, 0.5f, kDarkRoomZ};
+    harness.Run(0.5f, {}, {shot});
+    INFO(MindOf(*harness.creature));
+    REQUIRE(harness.creature->Brain().Current() == Behavior::Flank);
+    REQUIRE(harness.creature->Brain().HasFlankPoint());
+    const glm::vec3 flank = harness.creature->Brain().FlankPoint();
+    // Off to the side of the way straight in: not on the line from where it was to the shot.
+    const glm::vec2 straight = glm::normalize(glm::vec2(start.x - shot.position.x, start.z - shot.position.z));
+    const glm::vec2 round = glm::normalize(glm::vec2(flank.x - shot.position.x, flank.z - shot.position.z));
+    INFO("flank point " << flank.x << ", " << flank.z << "; " << glm::dot(straight, round) << " along the way in");
+    CHECK(glm::dot(straight, round) < 0.85f);
+    const float away = glm::length(glm::vec2(flank.x - shot.position.x, flank.z - shot.position.z));
+    CHECK(away > 5.5f);
+    CHECK(away < 14.5f);
+
+    // In the end it does go in, having listened first.
+    harness.Run(30.0f, {});
+    INFO("after: " << MindOf(*harness.creature) << " at " << harness.creature->Position().x << ", " << harness.creature->Position().z);
+    bool listened = false;
+    for (const CreatureBrain::TimelineEntry& entry : harness.creature->Brain().Timeline())
+    {
+        listened = listened || entry.what.find("listen") != std::string::npos;
+    }
+    CHECK(listened);
+}
+
+TEST_CASE("It does not go straight back to what it has only just given up", "[creature][decide]")
+{
+    // A timid one near somebody: it keeps away, and a noise they make right after is not a reason to walk
+    // straight back to them. It used to flip between the two every few seconds.
+    CreatureTraits traits = CreatureTraits::FromSeed(11);
+    traits.temperament = Temperament::Timid;
+    traits.fear = 0.8f;
+    traits.curiosity = 0.9f;
+    CreatureHarness harness(traits);
+    const glm::vec3 at = harness.creature->Position();
+    SensedPlayer player;
+    player.id = 1;
+    player.name = "Near";
+    player.feet = at + glm::vec3(0.0f, 0.0f, -7.0f);
+    player.light = 1.0f;
+    player.forward = {0.0f, 0.0f, 1.0f};
+    std::vector<Behavior> seen;
+    Noise step;
+    step.kind = NoiseKind::Footstep;
+    step.reach = NoiseReach::kFootstepSprint;
+    step.player = 1;
+    for (int second = 0; second < 30; ++second)
+    {
+        step.position = player.feet;
+        // Visible for the first few seconds, then only heard.
+        std::vector<SensedPlayer> players{player};
+        if (second > 4)
+        {
+            players.front().feet = player.feet;
+            players.front().hidden = false;
+        }
+        harness.Run(1.0f, second <= 4 ? players : std::vector<SensedPlayer>{player}, {step});
+        seen.push_back(harness.creature->Brain().Current());
+    }
+    int changes = 0;
+    for (size_t i = 1; i < seen.size(); ++i)
+    {
+        changes += seen[i] != seen[i - 1] ? 1 : 0;
+    }
+    INFO(MindOf(*harness.creature));
+    CHECK(changes <= 6);
 }

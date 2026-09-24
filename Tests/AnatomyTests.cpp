@@ -164,8 +164,9 @@ TEST_CASE("What a body can do follows from the body", "[anatomy]")
         // Plates stop rounds; no plates, nothing stopped.
         CHECK((c.armour > 0.0f) == (a.plates > 0));
         CHECK(c.armour <= 0.3f);
-        // Only a small body fits a vent.
-        CHECK(c.fitsVents == (c.size == SizeClass::Small));
+        // Only a small body fits a vent, or a middling one low enough to squeeze along on its belly.
+        CHECK(c.fitsVents == (c.size == SizeClass::Small || (c.size == SizeClass::Medium && a.TopHeight() < 1.35f)));
+        CHECK_FALSE((c.size == SizeClass::Large && c.fitsVents));
 
         // The box rounds hit holds the whole body: head, rump and the top of its back.
         const CreatureAnatomy::RestPose pose = a.Rest();

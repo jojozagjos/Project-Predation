@@ -401,7 +401,9 @@ CreatureCapabilities CreatureCapabilities::From(const CreatureAnatomy& a)
     {
         c.size = SizeClass::Medium;
     }
-    c.fitsVents = c.size == SizeClass::Small;
+    // Squeezed down on its belly a body loses about two thirds of its hips' height: anything small, and
+    // the lower of the middling ones, gets through a crawlspace a person has to crawl along.
+    c.fitsVents = c.size == SizeClass::Small || (c.size == SizeClass::Medium && height < 1.35f);
     c.climbs = a.plan == BodyPlan::Hexapod || c.mass < 100.0f;
     // Anything that climbs gets up nearly three metres; the rest jump as high as their legs throw them.
     c.jump = c.climbs ? 2.7f : std::clamp(0.5f + legLength * 0.95f, 0.8f, 1.95f);

@@ -85,6 +85,9 @@ struct CreatureTraits
     // picks a spot to peek from, and what a player would have to see to see it.
     float eyeHeight = 1.0f;
     float bodyMiddle = 0.7f;
+    // Whether its body goes where a person has to crawl, and up walls and across ceilings.
+    bool fitsVents = false;
+    bool climbs = false;
 
     static CreatureTraits FromSeed(uint32_t seed);
 

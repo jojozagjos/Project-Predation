@@ -64,6 +64,24 @@ constexpr size_t kMaxNests = 8;
 // stepped back during the wind-up before it misses. How hard it hits is the body's too.
 constexpr float kStrikeGrace = 0.3f;
 
+// How closely a point is walled in, 0 to 1: of eight directions round it at the height of a body, how
+// many meet something solid within a stride and a half. Against a wall is about three eighths, in a
+// corner about a half, in a doorway or a narrow gap more; in the middle of an empty floor, nothing.
+float ShelterAt(const PhysicsWorld& physics, const glm::vec3& at)
+{
+    const glm::vec3 from = at + glm::vec3(0.0f, 0.8f, 0.0f);
+    int blocked = 0;
+    for (int i = 0; i < 8; ++i)
+    {
+        const float angle = static_cast<float>(i) * (glm::two_pi<float>() / 8.0f);
+        if (physics.RayCastStatic(from, glm::vec3(std::cos(angle), 0.0f, std::sin(angle)), 1.5f))
+        {
+            ++blocked;
+        }
+    }
+    return std::min(static_cast<float>(blocked) / 5.0f, 1.0f);
+}
+
 float BodyHeight(PlayerStance stance)
 {
     switch (stance)
@@ -608,6 +626,12 @@ void PredationGame::UpdateCreatures(float dt)
             return true;
         };
         senses.lightAt = [this](const glm::vec3& at) { return LightAt(at, false); };
+        senses.shelterAt = [&physics](const glm::vec3& at) { return ShelterAt(physics, at); };
+        senses.ceilingAt = [&physics](const glm::vec3& at)
+        {
+            const RayHit roof = physics.RayCastStatic(at + glm::vec3(0.0f, 0.4f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f), 6.0f);
+            return roof ? roof.distance + 0.4f : 0.0f;
+        };
         senses.hidingPlaces = places;
         for (const std::unique_ptr<Creature>& other : m_creatures)
         {
@@ -838,7 +862,7 @@ void PredationGame::ApplyCreatureState(const CreatureStateMessage& state)
         action.side = shown.actionSide;
         action.target = shown.actionTarget;
         creature->SetShownAction(action, shown.airborne, shown.look, shown.lookAt);
-        creature->SetShownBehavior(shown.behavior <= static_cast<uint8_t>(Behavior::Warn) ? static_cast<Behavior>(shown.behavior)
+        creature->SetShownBehavior(shown.behavior <= static_cast<uint8_t>(Behavior::Flank) ? static_cast<Behavior>(shown.behavior)
                                                                                          : Behavior::Roam);
     }
 }
@@ -989,6 +1013,35 @@ void PredationGame::DrawCreatureOverlays(DebugDraw& draw)
                     marker(brain.CoverPoint() + glm::vec3(0.0f, 0.2f, 0.0f), 0.45f, Color::kYellow, 12);
                 }
             }
+            // Where it means to lie in wait, and what it will be watching: a red ring and a line to the
+            // doorway or the opening.
+            if (brain.Current() == Behavior::Ambush && brain.Ambush().valid)
+            {
+                const CreatureBrain::AmbushPlan& plan = brain.Ambush();
+                marker(plan.point + glm::vec3(0.0f, 0.15f, 0.0f), 0.5f, Color::RGBA(255, 70, 60, 230), 14);
+                draw.Line(plan.point + glm::vec3(0.0f, 0.4f, 0.0f), plan.watch + glm::vec3(0.0f, 0.4f, 0.0f),
+                          Color::RGBA(255, 120, 90, 200));
+            }
+            // Where it is going round to, from where the shooting was.
+            if (brain.Current() == Behavior::Flank && brain.HasFlankPoint())
+            {
+                marker(brain.FlankPoint() + glm::vec3(0.0f, 0.15f, 0.0f), 0.45f, Color::RGBA(120, 200, 255, 230), 12);
+                draw.Line(brain.Interest().position + glm::vec3(0.0f, 0.3f, 0.0f),
+                          brain.FlankPoint() + glm::vec3(0.0f, 0.3f, 0.0f), Color::RGBA(120, 200, 255, 140));
+            }
+            // Where it is keeping clear of: a dim red ring round each place it was frightened.
+            for (const CreatureBrain::Danger& danger : brain.Dangers())
+            {
+                if (danger.until > m_creatureClock)
+                {
+                    marker(danger.at + glm::vec3(0.0f, 0.1f, 0.0f), 3.0f, Color::RGBA(200, 60, 60, 110), 20);
+                }
+            }
+        }
+        // The mouths of the crawlspaces, where something too big to follow waits.
+        for (const glm::vec3& mouth : m_nav.CrawlMouths())
+        {
+            marker(mouth + glm::vec3(0.0f, 0.05f, 0.0f), 0.3f, Color::RGBA(255, 120, 220, 200), 8);
         }
     }
 }
@@ -1019,6 +1072,10 @@ ImVec4 BehaviorColour(Behavior behavior)
     case Behavior::Retreat:
     case Behavior::PlayDead: return ImVec4(0.62f, 0.70f, 0.98f, 1.0f);
     case Behavior::Nest: return ImVec4(0.78f, 0.62f, 0.90f, 1.0f);
+    case Behavior::Ambush:
+    case Behavior::Flank: return ImVec4(0.96f, 0.64f, 0.38f, 1.0f);
+    case Behavior::Avoid:
+    case Behavior::Warn: return kUnsure;
     case Behavior::Roam: break;
     }
     return kQuiet;

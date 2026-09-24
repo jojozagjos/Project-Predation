@@ -92,6 +92,15 @@ struct CreatureSenses
     // How lit a point is, 0 to 1, for choosing somewhere dark to wait. Optional: without it every
     // place is as good as every other.
     std::function<float(const glm::vec3&)> lightAt;
+    // How closely a point is walled in, 0 to 1: how much of the way round it something solid stands
+    // within a stride. Cover is something to be behind, not only somewhere nobody happens to be looking
+    // from. Optional: without it everywhere is half sheltered.
+    std::function<float(const glm::vec3&)> shelterAt;
+    // How far above a point the ceiling is, or 0 where there is none it could reach. For the ones that
+    // climb, choosing somewhere overhead to wait.
+    std::function<float(const glm::vec3&)> ceilingAt;
+    // Whether it is up on the ceiling now.
+    bool onCeiling = false;
     // Every hiding place in the level. Where they are is no secret -- they are furniture.
     std::vector<HidingPlace> hidingPlaces;
     // Where the other creatures are, standing or fallen. The body keeps its distance from them; a pack
@@ -162,6 +171,11 @@ struct CreatureIntent
     // Mending, as a fraction of its whole health a second, while it has gone to ground. The game
     // gives it the health.
     float recover = 0.0f;
+    // Up the nearest wall and onto the ceiling, for one that climbs; false to come down. `drop` lets go
+    // of the ceiling at once, onto `dropAt` -- on top of somebody, when that is where it is.
+    bool climb = false;
+    bool drop = false;
+    glm::vec3 dropAt{0.0f};
 };
 
 enum class Behavior : uint8_t
@@ -187,7 +201,13 @@ enum class Behavior : uint8_t
     Avoid,
     // Standing its ground and showing it, at somebody on its ground: the territorial ones, before
     // they fight.
-    Warn
+    Warn,
+    // Lying in wait somewhere they will have to come past: beside a door on the far side from them, at
+    // the mouth of a crawlspace it cannot follow them into, up on a ceiling.
+    Ambush,
+    // Going round to where shooting came from, out of sight of it, and listening before it goes in --
+    // not straight at the noise.
+    Flank
 };
 
 const char* BehaviorName(Behavior behavior);
@@ -329,6 +349,10 @@ public:
         float time = -1.0f;
         std::string what;
         bool resolved = true;
+        // What made it, when it was heard: shooting is gone round to, not walked straight at.
+        bool gunfire = false;
+        // How many more shots it has heard from about the same place since.
+        int shots = 0;
     };
     const Stimulus& Interest() const { return m_interest; }
 
@@ -401,6 +425,35 @@ public:
         float heat = 0.0f;
     };
     const std::vector<HeatCell>& Heat() const { return m_heat; }
+
+    // Where it means to lie in wait, and for whom, for the inspector and the overlay.
+    enum class AmbushKind : uint8_t
+    {
+        Door,      // beside a doorway, on the far side from them
+        Crawlspace // beside the mouth of a crawlspace they are in and it cannot follow them into
+    };
+    struct AmbushPlan
+    {
+        bool valid = false;
+        AmbushKind kind = AmbushKind::Door;
+        glm::vec3 point{0.0f}; // where it waits
+        glm::vec3 watch{0.0f}; // what it watches: the doorway, the mouth
+        int door = -1;
+        int target = -1;
+        float quality = 0.0f;  // 0 to 1: how sure it is they will come this way, and how hidden it is
+        float plannedAt = -1.0e9f;
+    };
+    const AmbushPlan& Ambush() const { return m_ambush; }
+    // Where it is going round to, before going in to look at shooting.
+    bool HasFlankPoint() const { return m_flankStage >= 1 && m_flankStage <= 2; }
+    const glm::vec3& FlankPoint() const { return m_flankPoint; }
+    // Places it has recently found somebody it wants nothing to do with, and keeps clear of for a while.
+    struct Danger
+    {
+        glm::vec3 at{0.0f};
+        float until = 0.0f;
+    };
+    const std::vector<Danger>& Dangers() const { return m_dangers; }
     bool HasCoverPoint() const { return m_haveStalkPoint; }
     const glm::vec3& CoverPoint() const { return m_stalkPoint; }
 
@@ -454,6 +507,29 @@ private:
     // Somewhere warm to wander towards, chosen with a weight on how warm; false when nowhere is.
     bool PickWarmPlace(const CreatureSenses& senses, glm::vec3& out);
 
+    // --- Tactics (CreatureTactics.cpp) ---------------------------------------------------------
+    // How walled in a point is, 0 to 1.
+    float ShelterOf(const CreatureSenses& senses, const glm::vec3& point) const;
+    // Whether something solid stands between a point and `from`, close to the point: behind a wall
+    // rather than merely a long way off round a corner.
+    bool TightCover(const CreatureSenses& senses, const glm::vec3& point, const glm::vec3& from) const;
+    // Somewhere to lie in wait for somebody: beside a door they will have to come through, or the mouth
+    // of the crawlspace they are in. False when there is nowhere worth it.
+    bool PlanAmbush(const CreatureSenses& senses, const Track& track, const SensedPlayer* player, AmbushPlan& out) const;
+    // The same, beside the doorway nearest a place, for somebody it has only heard.
+    bool PlanDoorAmbushNear(const CreatureSenses& senses, const glm::vec3& them, AmbushPlan& out) const;
+    // Somewhere off to one side of where shots came from, out of sight of it, to go to before going in.
+    bool PickFlankPoint(const CreatureSenses& senses, const glm::vec3& source, glm::vec3& out);
+    // Somewhere out of everybody's sight and against something, a little way off, for a creature with
+    // no cover near the person it is following.
+    bool PickHidingSpot(const CreatureSenses& senses, const glm::vec3& awayFrom, glm::vec3& out);
+    void ActAmbush(const CreatureSenses& senses, float dt);
+    void ActFlank(const CreatureSenses& senses, float dt);
+    // A place to keep clear of for a while.
+    void RememberDanger(const glm::vec3& at, float until);
+    bool NearDanger(const glm::vec3& point, float within, float now) const;
+    // Whether somebody is where it cannot follow them: in a crawlspace, too big to crawl.
+    bool OutOfItsReach(const CreatureSenses& senses, const SensedPlayer& player) const;
     CreatureTraits m_traits;
     SeededRandom m_random;
     CreatureIntent m_intent;
@@ -581,6 +657,23 @@ private:
     // Whether a door stands between it and the next corner of its route; fills `door`.
     bool DoorInTheWay(const CreatureSenses& senses, DoorSense& door) const;
 
+    // What it last gave up doing, for whom, and when: going straight back to it needs a better reason
+    // than it had for stopping. Without this a timid one went from keeping away to looking into a noise
+    // and back again, every few seconds, for as long as anybody stood near.
+    Behavior m_leftBehavior = Behavior::Roam;
+    int m_leftTarget = -1;
+    float m_leftAt = -1.0e9f;
+    std::vector<Danger> m_dangers;
+    // Lying in wait.
+    AmbushPlan m_ambush;
+    bool m_ambushArrived = false;
+    float m_ambushSince = 0.0f;
+    // Going round to shooting: 0 choosing where, 1 going there, 2 listening, 3 creeping in, 4 looking round.
+    int m_flankStage = 0;
+    glm::vec3 m_flankPoint{0.0f};
+    glm::vec3 m_flankSource{0.0f};
+    float m_flankUntil = 0.0f;
+    float m_flankHeard = 0.0f;
     // When its nest was last attacked, and by whom: what brings it home whatever it was doing.
     float m_nestAttackedAt = -1.0e9f;
     int m_nestAttacker = -1;

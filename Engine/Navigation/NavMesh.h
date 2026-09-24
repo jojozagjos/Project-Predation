@@ -29,6 +29,9 @@ struct NavSettings
     // person may not fit something twice as wide, and the later phases build one per size class.
     float agentHeight = 1.5f;
     float agentRadius = 0.35f;
+    // Floor with at least this much room above it, but less than `agentHeight`, is a crawlspace: in the
+    // mesh, and marked, so only a body small enough to crawl is routed through it. Nought leaves it out.
+    float crawlHeight = 1.0f;
     // The tallest step it can walk up without climbing, and the steepest slope it can walk.
     float agentMaxClimb = 0.45f;
     float agentMaxSlopeDegrees = 46.0f;
@@ -47,6 +50,9 @@ public:
     static constexpr uint16_t kJumpHigh = 0x08; // up to two and three quarters: climbing, really
     static constexpr uint16_t kDrop = 0x10;     // down from somewhere too high to get back up
     static constexpr uint16_t kAllJumps = kJumpLow | kJumpMid | kJumpHigh | kDrop;
+    // Floor too low to stand on, only to crawl along: a crawlspace, a vent, under something. Allowed the
+    // same way as a jump, by a body that fits.
+    static constexpr uint16_t kCrawl = 0x20;
 
     NavMesh();
     ~NavMesh();
@@ -63,7 +69,8 @@ public:
 
     // The nearest point on the mesh to `near`, looking no further than `reach` sideways and twice
     // that up and down. False when there is nothing that close.
-    bool NearestPoint(const glm::vec3& near, float reach, glm::vec3& out) const;
+    // `allowed` adds kCrawl for a body that fits one; anything else in it is ignored.
+    bool NearestPoint(const glm::vec3& near, float reach, glm::vec3& out, uint16_t allowed = 0) const;
 
     // A route from `from` to `to`, as the corners to walk between, starting at the mesh point
     // nearest `from`. When `to` cannot be reached the route ends at the nearest place that can be,
@@ -89,11 +96,19 @@ public:
     // Where a body at `from` ends up trying to walk to `to` this tick: slid along the walls rather
     // than through them, and at the height of the floor where it arrives, so stairs and ramps are
     // walked up rather than through. False when `from` is nowhere near the mesh.
-    bool MoveAlongSurface(const glm::vec3& from, const glm::vec3& to, glm::vec3& out) const;
+    bool MoveAlongSurface(const glm::vec3& from, const glm::vec3& to, glm::vec3& out, uint16_t allowed = 0) const;
 
     // A random point on the mesh within `radius` of `centre` that can be walked to from it. For
     // wandering. `seed` is advanced, so the same seed gives the same wander.
-    bool RandomPointNear(const glm::vec3& centre, float radius, uint32_t& seed, glm::vec3& out) const;
+    bool RandomPointNear(const glm::vec3& centre, float radius, uint32_t& seed, glm::vec3& out,
+                         uint16_t allowed = 0) const;
+
+    // Whether a point is on crawlspace floor: somewhere a person has to be on their belly, and only a
+    // small body can follow.
+    bool InCrawlspace(const glm::vec3& point) const;
+    // Where the crawlspaces open onto floor that can be stood on: the middle of each opening, just
+    // outside it. What anything too big to follow somebody in waits beside.
+    const std::vector<glm::vec3>& CrawlMouths() const;
 
     // The mesh as lines, for the navigation debug view.
     void Draw(DebugDraw& draw) const;

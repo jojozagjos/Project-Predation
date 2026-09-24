@@ -36,6 +36,7 @@ struct RigInput
     float yaw = 0.0f;         // radians; forward is -Z at 0, turning right as it grows
     glm::vec3 velocity{0.0f}; // metres a second, in the world
     float crouch = 0.0f;      // 0 to 1: how low it is creeping
+    float squeeze = 0.0f;     // 0 to 1: flattened to its belly, to fit along a crawlspace
     float windup = 0.0f;      // 0 to 1: gathering itself to strike
     RigAction action = RigAction::None;
     float actionPhase = 0.0f;   // 0 to 1 through the action

@@ -26,6 +26,10 @@ namespace
 // Every walkable polygon carries this flag, and every query includes it. One flag for now; the later
 // phases add others for doors, vents and ledges, which is what flags are for.
 constexpr unsigned short kWalkFlag = 0x01;
+constexpr unsigned short kCrawlFlag = NavMesh::kCrawl;
+// Recast's own area for floor that can be stood on is RC_WALKABLE_AREA; this is the one for floor that
+// can only be crawled along.
+constexpr unsigned char kCrawlArea = 2;
 // Jumps: joined across a ledge by a link rather than by floor, flagged by how high the top is above the
 // bottom, so each creature takes only the ones its body can make.
 constexpr unsigned short kJumpLowFlag = NavMesh::kJumpLow;
@@ -296,6 +300,77 @@ JumpLinks FindJumps(const dtNavMesh& mesh, const dtNavMeshQuery& query, const st
     return links;
 }
 
+// Every edge where crawlspace floor meets floor that can be stood on: the middle of the opening, pushed a
+// little out onto the standing side. Openings that are really one wide mouth come out as several edges,
+// so edges near one another are merged.
+std::vector<glm::vec3> FindCrawlMouths(const dtNavMesh& mesh)
+{
+    std::vector<glm::vec3> mouths;
+    std::vector<int> merged;
+    for (int t = 0; t < mesh.getMaxTiles(); ++t)
+    {
+        const dtMeshTile* tile = mesh.getTile(t);
+        if (tile == nullptr || tile->header == nullptr)
+        {
+            continue;
+        }
+        for (int p = 0; p < tile->header->polyCount; ++p)
+        {
+            const dtPoly& poly = tile->polys[p];
+            if (poly.getType() != DT_POLYTYPE_GROUND || (poly.flags & kWalkFlag) == 0)
+            {
+                continue;
+            }
+            for (int v = 0; v < poly.vertCount; ++v)
+            {
+                const unsigned short across = poly.neis[v];
+                if (across == 0 || (across & DT_EXT_LINK) != 0)
+                {
+                    continue;
+                }
+                const dtPoly& other = tile->polys[across - 1];
+                if ((other.flags & kCrawlFlag) == 0)
+                {
+                    continue;
+                }
+                const float* a = &tile->verts[poly.verts[v] * 3];
+                const float* b = &tile->verts[poly.verts[(v + 1) % poly.vertCount] * 3];
+                glm::vec3 middle{(a[0] + b[0]) * 0.5f, (a[1] + b[1]) * 0.5f, (a[2] + b[2]) * 0.5f};
+                // Out onto the standing floor, towards the middle of this polygon.
+                glm::vec3 centre{0.0f};
+                for (int k = 0; k < poly.vertCount; ++k)
+                {
+                    const float* at = &tile->verts[poly.verts[k] * 3];
+                    centre += glm::vec3(at[0], at[1], at[2]);
+                }
+                centre /= static_cast<float>(poly.vertCount);
+                glm::vec3 out{centre.x - middle.x, 0.0f, centre.z - middle.z};
+                if (glm::length(out) > 1e-3f)
+                {
+                    middle += glm::normalize(out) * std::min(0.4f, glm::length(out));
+                }
+                bool near = false;
+                for (size_t k = 0; k < mouths.size() && !near; ++k)
+                {
+                    if (glm::distance(mouths[k], middle) < 2.5f)
+                    {
+                        // One opening: kept at the average of its pieces.
+                        mouths[k] = (mouths[k] * static_cast<float>(merged[k]) + middle) / static_cast<float>(merged[k] + 1);
+                        ++merged[k];
+                        near = true;
+                    }
+                }
+                if (!near)
+                {
+                    mouths.push_back(middle);
+                    merged.push_back(1);
+                }
+            }
+        }
+    }
+    return mouths;
+}
+
 } // namespace
 
 struct NavMesh::Impl
@@ -305,6 +380,7 @@ struct NavMesh::Impl
     dtQueryFilter filter;
     size_t polygons = 0;
     size_t jumps = 0;
+    std::vector<glm::vec3> mouths;
 
     ~Impl()
     {
@@ -321,13 +397,22 @@ struct NavMesh::Impl
         out[2] = reach;
     }
 
-    bool Nearest(const glm::vec3& point, float reach, dtPolyRef& ref, float out[3]) const
+    bool Nearest(const glm::vec3& point, float reach, dtPolyRef& ref, float out[3], uint16_t allowed = 0) const
     {
         float extents[3];
         Extents(reach, extents);
         ref = 0;
-        const dtStatus status = query->findNearestPoly(&point.x, extents, &filter, &ref, out);
+        const dtQueryFilter chosen = With(allowed & kCrawlFlag);
+        const dtStatus status = query->findNearestPoly(&point.x, extents, &chosen, &ref, out);
         return dtStatusSucceed(status) && ref != 0;
+    }
+
+    // The filter, with more kinds of floor or link allowed on it.
+    dtQueryFilter With(uint16_t allowed) const
+    {
+        dtQueryFilter widened = filter;
+        widened.setIncludeFlags(static_cast<unsigned short>(filter.getIncludeFlags() | allowed));
+        return widened;
     }
 };
 
@@ -383,7 +468,12 @@ bool NavMesh::Build(const std::vector<glm::vec3>& triangles, const NavSettings& 
     config.cs = settings.cellSize;
     config.ch = settings.cellHeight;
     config.walkableSlopeAngle = settings.agentMaxSlopeDegrees;
-    config.walkableHeight = static_cast<int>(std::ceil(settings.agentHeight / config.ch));
+    // Built for the lowest body that uses it -- one crawling -- with the floor too low to stand on marked
+    // below, so that a body standing up is never routed along it.
+    const bool crawlspaces = settings.crawlHeight > 0.0f && settings.crawlHeight < settings.agentHeight;
+    const float lowest = crawlspaces ? settings.crawlHeight : settings.agentHeight;
+    config.walkableHeight = static_cast<int>(std::ceil(lowest / config.ch));
+    const int standingCells = static_cast<int>(std::ceil(settings.agentHeight / config.ch));
     config.walkableClimb = static_cast<int>(std::floor(settings.agentMaxClimb / config.ch));
     config.walkableRadius = static_cast<int>(std::ceil(settings.agentRadius / config.cs));
     config.maxEdgeLen = static_cast<int>(12.0f / config.cs);
@@ -429,6 +519,24 @@ bool NavMesh::Build(const std::vector<glm::vec3>& triangles, const NavSettings& 
     }
     solid.reset();
 
+    if (crawlspaces)
+    {
+        for (int y = 0; y < compact->height; ++y)
+        {
+            for (int x = 0; x < compact->width; ++x)
+            {
+                const rcCompactCell& cell = compact->cells[x + y * compact->width];
+                for (unsigned i = cell.index, end = cell.index + cell.count; i < end; ++i)
+                {
+                    if (compact->areas[i] != RC_NULL_AREA && compact->spans[i].h < standingCells)
+                    {
+                        compact->areas[i] = kCrawlArea;
+                    }
+                }
+            }
+        }
+    }
+
     // Shrunk away from the walls by the body's radius, so a route along the mesh is a route the
     // whole body fits along rather than one its centre fits along.
     if (!rcErodeWalkableArea(&context, config.walkableRadius, *compact) ||
@@ -466,6 +574,10 @@ bool NavMesh::Build(const std::vector<glm::vec3>& triangles, const NavSettings& 
         if (polys->areas[i] == RC_WALKABLE_AREA)
         {
             polys->flags[i] = kWalkFlag;
+        }
+        else if (polys->areas[i] == kCrawlArea)
+        {
+            polys->flags[i] = kCrawlFlag;
         }
     }
 
@@ -549,16 +661,17 @@ bool NavMesh::Build(const std::vector<glm::vec3>& triangles, const NavSettings& 
         }
     }
     impl->polygons = static_cast<size_t>(polys->npolys);
+    impl->mouths = FindCrawlMouths(*impl->mesh);
     m_impl = std::move(impl);
 
     const float milliseconds =
         std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - started).count();
-    PRED_LOG_INFO(AI, "Navigation mesh built: {} polygons and {} jumps from {} triangles in {:.1f} ms",
-                  m_impl->polygons, m_impl->jumps, triangleCount, milliseconds);
+    PRED_LOG_INFO(AI, "Navigation mesh built: {} polygons, {} jumps and {} crawlspace openings from {} triangles in {:.1f} ms",
+                  m_impl->polygons, m_impl->jumps, m_impl->mouths.size(), triangleCount, milliseconds);
     return true;
 }
 
-bool NavMesh::NearestPoint(const glm::vec3& near, float reach, glm::vec3& out) const
+bool NavMesh::NearestPoint(const glm::vec3& near, float reach, glm::vec3& out, uint16_t allowed) const
 {
     if (!Valid())
     {
@@ -566,7 +679,7 @@ bool NavMesh::NearestPoint(const glm::vec3& near, float reach, glm::vec3& out) c
     }
     dtPolyRef ref = 0;
     float point[3];
-    if (!m_impl->Nearest(near, reach, ref, point))
+    if (!m_impl->Nearest(near, reach, ref, point, allowed))
     {
         return false;
     }
@@ -577,6 +690,30 @@ bool NavMesh::NearestPoint(const glm::vec3& near, float reach, glm::vec3& out) c
 size_t NavMesh::JumpCount() const
 {
     return m_impl != nullptr ? m_impl->jumps : 0;
+}
+
+bool NavMesh::InCrawlspace(const glm::vec3& point) const
+{
+    if (!Valid())
+    {
+        return false;
+    }
+    // The nearest floor of either kind: crawlspace floor is only the answer when it is nearer than
+    // standing floor, which rules out the roof of a tunnel for somebody standing on it.
+    dtPolyRef ref = 0;
+    float at[3];
+    if (!m_impl->Nearest(point, 0.8f, ref, at, kCrawlFlag))
+    {
+        return false;
+    }
+    unsigned short flags = 0;
+    return dtStatusSucceed(m_impl->mesh->getPolyFlags(ref, &flags)) && (flags & kCrawlFlag) != 0;
+}
+
+const std::vector<glm::vec3>& NavMesh::CrawlMouths() const
+{
+    static const std::vector<glm::vec3> none;
+    return m_impl != nullptr ? m_impl->mouths : none;
 }
 
 void NavMesh::Swap(NavMesh& other)
@@ -606,13 +743,13 @@ bool NavMesh::FindPath(const glm::vec3& from, const glm::vec3& to, std::vector<g
     dtPolyRef endRef = 0;
     float start[3];
     float end[3];
-    if (!m_impl->Nearest(from, 2.0f, startRef, start))
+    if (!m_impl->Nearest(from, 2.0f, startRef, start, allowed))
     {
         return false;
     }
     // The destination is allowed to be further off the mesh than the start: a sound heard on the
     // far side of a crate is still worth walking towards, as far as the crate.
-    if (!m_impl->Nearest(to, 4.0f, endRef, end))
+    if (!m_impl->Nearest(to, 4.0f, endRef, end, allowed))
     {
         return false;
     }
@@ -631,7 +768,10 @@ bool NavMesh::FindPath(const glm::vec3& from, const glm::vec3& to, std::vector<g
 
     // A partial route -- the destination is somewhere not joined to here -- ends at the nearest
     // point of the last polygon it did reach.
-    const bool whole = route[routeCount - 1] == endRef;
+    // Nor is it the whole way when the floor nearest the destination is a floor above or below it: the
+    // roof of a crawlspace is the standing floor nearest somebody lying in it, and a creature that took
+    // reaching the roof for reaching them climbed on top of the tunnel and stayed there.
+    const bool whole = route[routeCount - 1] == endRef && std::abs(end[1] - to.y) < 1.2f;
     if (!whole)
     {
         float closest[3];
@@ -693,7 +833,7 @@ bool NavMesh::StraightWalk(const glm::vec3& from, const glm::vec3& to) const
     return hit > 1.0f;
 }
 
-bool NavMesh::MoveAlongSurface(const glm::vec3& from, const glm::vec3& to, glm::vec3& out) const
+bool NavMesh::MoveAlongSurface(const glm::vec3& from, const glm::vec3& to, glm::vec3& out, uint16_t allowed) const
 {
     if (!Valid())
     {
@@ -701,15 +841,16 @@ bool NavMesh::MoveAlongSurface(const glm::vec3& from, const glm::vec3& to, glm::
     }
     dtPolyRef startRef = 0;
     float start[3];
-    if (!m_impl->Nearest(from, 1.0f, startRef, start))
+    if (!m_impl->Nearest(from, 1.0f, startRef, start, allowed))
     {
         return false;
     }
+    const dtQueryFilter filter = m_impl->With(allowed & kCrawlFlag);
     const float end[3] = {to.x, to.y, to.z};
     float result[3];
     dtPolyRef visited[16];
     int visitedCount = 0;
-    if (dtStatusFailed(m_impl->query->moveAlongSurface(startRef, start, end, &m_impl->filter, result,
+    if (dtStatusFailed(m_impl->query->moveAlongSurface(startRef, start, end, &filter, result,
                                                        visited, &visitedCount, 16)) ||
         visitedCount == 0)
     {
@@ -727,7 +868,7 @@ bool NavMesh::MoveAlongSurface(const glm::vec3& from, const glm::vec3& to, glm::
 }
 
 bool NavMesh::RandomPointNear(const glm::vec3& centre, float radius, uint32_t& seed,
-                              glm::vec3& out) const
+                              glm::vec3& out, uint16_t allowed) const
 {
     if (!Valid())
     {
@@ -735,15 +876,16 @@ bool NavMesh::RandomPointNear(const glm::vec3& centre, float radius, uint32_t& s
     }
     dtPolyRef startRef = 0;
     float start[3];
-    if (!m_impl->Nearest(centre, 2.0f, startRef, start))
+    if (!m_impl->Nearest(centre, 2.0f, startRef, start, allowed))
     {
         return false;
     }
+    const dtQueryFilter filter = m_impl->With(allowed & kCrawlFlag);
     t_randomState = seed != 0 ? seed : 0x9E3779B9u;
     dtPolyRef ref = 0;
     float point[3];
     const dtStatus status = m_impl->query->findRandomPointAroundCircle(
-        startRef, start, radius, &m_impl->filter, &DetourRandom, &ref, point);
+        startRef, start, radius, &filter, &DetourRandom, &ref, point);
     seed = t_randomState;
     if (dtStatusFailed(status) || ref == 0)
     {
@@ -797,8 +939,10 @@ void NavMesh::Draw(DebugDraw& draw) const
                 // Outer edges, the ones with nothing across them, drawn brighter: those are the
                 // limits of where the creature can go, which is the thing worth reading.
                 const bool edge = poly.neis[v] == 0;
+                const bool crawl = (poly.flags & kCrawlFlag) != 0;
                 draw.Line(glm::vec3(a[0], a[1], a[2]) + lift, glm::vec3(b[0], b[1], b[2]) + lift,
-                          edge ? Color::RGBA(90, 230, 255, 230) : Color::RGBA(40, 110, 140, 120));
+                          crawl ? (edge ? Color::RGBA(255, 120, 220, 230) : Color::RGBA(150, 60, 130, 120))
+                                : (edge ? Color::RGBA(90, 230, 255, 230) : Color::RGBA(40, 110, 140, 120)));
             }
         }
     }

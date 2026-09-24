@@ -359,7 +359,7 @@ void CreatureRig::Update(const RigInput& input)
     // The body's own motion on top of that.
     const float stepLength = std::max(legScale * 0.6f, 0.2f);
     const float bob = std::abs(std::sin(m_stride * glm::pi<float>() / stepLength)) * 0.03f * a.hipHeight * pace;
-    const float crouchDrop = a.hipHeight * 0.35f * input.crouch;
+    const float crouchDrop = a.hipHeight * (0.35f * input.crouch + 0.32f * input.squeeze);
     const float draw = std::max(a.headLength * 2.0f, 0.6f);
     float forward = -0.25f * input.windup * draw * 0.4f; // drawn back before a strike
     float rise = 0.1f * input.windup * draw * 0.4f;

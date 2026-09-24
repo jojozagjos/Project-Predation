@@ -303,20 +303,53 @@ everything above (see `Game/World/LabMap.h` for the layout):
 
 There is a carbine, a pistol, medical kits and an ammunition crate at the spawn.
 
-### Vents and other hiding places
+### Crawlspaces
 
-Hiding is already a query rather than a list: cover is wherever scores well on "nobody can see me
-there", so a dark corner or a gap behind a crate added to a map is used without being named. Vents go
-further because they are somewhere only some bodies fit. The plan, for when the first map has them
-(Milestone 11, alongside climbing and ceilings):
+The navigation mesh is built for a body crawling -- a metre of headroom -- and floor with less than a
+standing body's height over it is marked as crawlspace. Only a body that fits is routed along it: every
+small creature, and the lower of the middling ones (`fitsVents`, from its anatomy). One that fits
+follows somebody in, flattened to its belly and no faster than a crawl, on every machine.
 
-- Vent runs are marked in the level as walkable volumes of a given size, joined to the floor by
-  off-mesh links at their grilles, and built into their own navigation mesh per body size.
-- A creature's generated anatomy decides whether it fits: its width and height against the vent's.
-- The cover query takes vent spots as candidates like any other, and they score highest of all for
-  hiding and ambush -- out of every line of sight, and able to move unseen. Retreat and playing-dead
-  recovery prefer them too.
-- Noises from inside a vent carry through the ducts, so players can hear something moving above them.
+One that does not fit no longer takes the roof of the tunnel for the person lying in it. A route only
+counts as reaching somewhere when it ends at the same height, so the roof is "as near as it gets", and
+hunting, searching or stalking somebody it cannot follow scores almost nothing. What it does instead is
+wait beside the mouth they are nearest or heading for, out of the line of the tunnel, and take them as
+they come out -- a swipe in at arm's length if they come close to the opening, never a lunge into it.
+The mouths are found when the mesh is built, where crawlspace floor meets standing floor.
+
+### Tactics
+
+Where it hides, waits and comes from are questions about places, answered from the navigation mesh and
+two questions the game answers: is a line clear, and how walled in is a point (eight rays at body height,
+a stride and a half long). None of it is a list a map provides.
+
+- **Cover is something to be behind.** A place out of every player's sight scores nearly everything, as
+  before, but now only as much as it is walled in, and half again when something solid stands between
+  it and them within a couple of strides. Out of sight in the middle of an empty floor -- where they
+  happen not to be looking from -- was where it kept choosing to hide. With nowhere near them worth
+  it, it backs off out of their sight rather than standing in the open.
+- **Following.** A stalker picks cover round where they will be in a second and a half, not where they
+  are; the patient ones prefer cover ahead of somebody on the move, where they are going.
+- **Ambush.** Somebody who has gone out of its sight through a door, with the door between them, is
+  waited for on the far side of it, flat against the wall beside the frame -- by the stealthy and
+  patient, for fifteen to fifty seconds, until they come through or are heard somewhere else. The
+  `from hiding` consideration makes striking out of an ambush or a stalk more likely. One that climbs
+  waits up on the ceiling where there is one.
+- **Shooting.** Gunfire it cannot put a person to is not walked straight at, unless the creature is
+  brazen or close. It goes round: to somewhere six to fourteen metres off the source, off to the side
+  of the way straight in, out of sight of it and not reached by passing it. There it stops and
+  listens, longer if it is patient, and waits for more shooting to stop. Then it creeps in -- or, if it
+  is the patient sort, waits by the nearest way out of there instead. A lot of shooting is a fight,
+  which the fearful keep out of.
+- **Changing its mind.** Going straight back to what it has only just given up now needs a better
+  reason than it had for stopping, fading over eight seconds; and a place where it was frightened --
+  somebody it kept away from, or shooting -- is somewhere it does not go and look into for a while.
+  A timid one used to go from keeping away from somebody to looking into their footsteps and back,
+  every few seconds, for as long as they stood there.
+
+The overlay (`ai_debug`) shows each: the ambush spot in red with a line to what it watches, the flank
+point in blue from the shooting, a dim red ring round every place it is keeping clear of, and the mouths
+of the crawlspaces in pink.
 
 ## Goal
 
