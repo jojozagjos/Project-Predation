@@ -1,75 +1,76 @@
 # What is left
 
-Ordered by the phase plan, with what is actually built as of Milestone 8. This is deliberately a
-list of gaps rather than a list of achievements: it is for deciding what to do next.
+A list of gaps rather than achievements, for deciding what to do next. Updated 2026-09-24.
 
-## Player controller and embodiment
+## Where things stand
 
-Built: walking, running, sprinting with stamina, crouching, prone, mantling, injury, jumping, leaning, stairs
-and slopes, fall damage, a full procedural body with IK, weapon holding, items held in the hand,
-ragdolls on death, a torch, and sound: recorded footsteps per surface, synthesised weapon and world
-sounds, and positional mixing.
+- **The player** walks, runs, sprints, crouches, crawls, leans, mantles, falls, gets hurt, dies as a
+  ragdoll and spectates; carries two weapons with authored reloads and six items that each do
+  something (see [ITEMS.md](ITEMS.md)); and has a torch whose cell runs down.
+- **Multiplayer** is host-authoritative over UDP with prediction, lag compensation, host migration, a
+  lobby with join codes, LAN discovery, UPnP, proximity voice, and everything in the world replicated
+  -- doors, lockers, items and their uses, flares, nests, creatures and what they are doing.
+- **The creatures** are bodies grown from seeds, never winged, posed procedurally, with sight,
+  hearing and memory; temperaments; stalking from cover, ambushes at doors and crawlspace mouths,
+  going round gunfire, crawling into crawlspaces or waiting at them, climbing walls and hanging from
+  ceilings, grabbing and dragging, cocooning at nests they grow on walls, and saying back what they
+  heard players say. See [AI.md](AI.md).
+- **The world** is the test map and the creature lab, lit lamp by lamp, with ambience that follows
+  where you are, a placeholder sound for everything (Assets/Audio), and an in-game model editor.
 
-Still missing:
+## Still missing from what exists
 
-- **Melee or shoving.** There is no answer to something being close except shooting it, which now
-  matters: the creature is close more often than anything else in the game.
+- **Melee or shoving.** Nothing to do about something close except shoot it.
+- **Nameplates.** You cannot tell who anybody is at a distance.
+- **Reconnecting.** A player who drops is gone for the round; migration covers only the host.
+- **Real sounds.** Every sound is a synthesised placeholder, meant to be replaced by dropping
+  recordings into its folder. Recordings have to be cleared for use (Docs/CREDITS.md); downloading any
+  is a decision to make one at a time.
+- **Real models for items.** Items are coloured shapes; weapons are authored. Items can move to the
+  same authored models once there are any, and their use motions would drive them.
+- **Creature bodies by size.** One navigation mesh with crawlspaces marked serves every body; a very
+  wide one can still squeeze through a gap it should not. Walls are climbed straight up to a ceiling,
+  never along; ceilings are crossed above the floor's route.
+- **Pack hunting.** Creatures call each other to somebody they cannot reach, but do not yet plan
+  together -- one driving somebody towards another lying in wait.
 
-## Multiplayer
+## The next phases
 
-Built: UDP with its own reliability, host authority, client prediction with replay, interpolated
-remote players, lag compensation, host migration, doors, lockers, pickups, ammunition crates, loose
-objects, shots, friendly fire, damage, death, automatic respawn, spectating, proximity voice, a
-lobby with join codes (a free lobby server introduces players and they connect directly; SERVER.md),
-a LAN game browser that asks as well as listens, UPnP port opening, and the creature (see below).
+In the order the brief puts them, each building on the last. None is started.
 
-Still missing:
+### 1. The round
 
-- **A round structure.** Death and respawn work and you spectate a teammate while dead, but there
-  is nothing to respawn into: no extraction, no objective, no end.
-- **Nameplates.** You cannot tell who anybody is.
-- **Weapon state per player.** The host passes on what a client says it is holding but does not
-  simulate their ammunition, so a client is trusted about its own magazine. Related: when a client
-  fires, the host resolves the round with the host's own equipped weapon's range and damage.
-- **Reconnecting.** A player who drops is gone for the round. Host migration covers the host
-  leaving, but not anybody else coming back.
+Lobby, everybody ready, then a briefing: the objective, what is known about the site, and sometimes
+a map of the generated location -- sometimes not, when there is none to give. An arrival sequence for
+each kind of location. The mission, then extraction, an extraction sequence, and back to the lobby.
 
-## The creature (Milestones 8 and 9 built)
+The mission framework comes first and is built to be extended: an objective is a list of steps, each
+a thing to find, reach, use or carry, with the first mission finding the black box or its data and
+getting it out. The sample container is the stand-in for what is carried.
 
-Built: a navigation mesh from the level (Recast/Detour); a creature made from a seed; sight with a
-field of view, occlusion, light and a glimpse-is-not-a-sighting exposure; hearing of footsteps,
-landings, gunshots, impacts, doors, lockers, pickups, drops and voice; memory of each player;
-utility scoring over Roam, Investigate, Hunt, Attack and Retreat; strikes that hurt and kill;
-rounds that hurt it; the brain inspector and overlays; and replication, so everybody in a game sees
-the host's creature. See [AI.md](AI.md).
+### 2. Generated facilities
 
-Milestone 9: stalking from cover with peeking, playing dead, a real death that stops the brain,
-arrival out of sight, searching, checking lockers and learning that shut ones hide people,
-curiosity, a memory of where players go, several creatures at once keeping apart, and a test that
-the same seed makes the same decisions.
+Sites generated from a seed, like the creatures: non-linear, with loops rather than corridors, several
+floors, height to use, outside ground and more than one building. Vents that run through the walls
+and ceilings as a network creatures move and hide in. Flooding as real geometry -- water you wade and
+swim through, that hides what is under it. Blocked areas and the tasks that open them, restoring power
+first; and modifiers on a whole mission, the power out to begin with. The lamps, circuits and doors
+already built are what these are made of.
 
-Still missing, roughly in order:
+### 3. Dead, but not gone
 
-- **Its body (Milestone 10, most of it built).** Every seed is a body -- four, six or two legs, however
-  long and heavy, 0 to 6 eyes, frills, tail, plates, spines, never wings -- built from parts and posed
-  each frame with its legs solved to the ground. What the body can do comes from it: speed, sight,
-  hearing, reach, how hard it hits, and a lot of health (700 to 4000; `ai.health_scale` tunes it).
-  Still to do: a walkable surface per body size, so a large one cannot squeeze where it does not fit,
-  and a seed inspector for browsing bodies side by side.
-- **Procedural animation and traversal (Milestone 11).** A generated gait for whatever body the seed
-  makes -- legs placed by IK on the real ground, not swung on a timer -- climbing, ceilings, and vents
-  it can hide and move in if its body fits (see AI.md, "Vents and other hiding places").
-- **Its sound.** It makes none: no footfalls, no breathing, no call. For a creature that is found
-  by listening, this is the largest gap it has.
-- **Doors.** It walks through closed ones: the navigation mesh is built from the fixed level, and a
-  door is not part of it.
-- **Capture and the lair.**
-- **Hunting as a pack.** Several creatures already run at once and keep apart; sharing what one has
-  seen with the others -- a call, a converging hunt -- is not built. Each already knows where the others
-  are, which is where it would start.
+A player who dies comes back as a CIRRA support drone: limited, slow to recharge, able to be knocked
+down and disabled by a creature, and rebooting afterwards. What it can do for the living is the
+design question -- lighting the way, marking things, opening something -- and it should never be
+better than being alive.
 
-## Not started
+### 4. Feel
 
-Procedural anatomy, capture and the lair, and the first real map. These are the phases after this
-one and should stay in that order: a creature's behaviour is worth tuning once it has the body it
-will actually have.
+Interaction animations for everything a hand does in the world -- doors, lockers, crates, cocoons,
+panels -- and the handful of cinematic moments the round needs. A handheld map, fuzzy and incomplete,
+that shows the generated site as far as it has been seen, and nothing about where anything is.
+
+## Keeping the lore in mind
+
+Docs/Project_Predation_Lore_Reference.md shapes these choices. Nothing here writes lore, and any
+design choice the lore influences is asked about first.
