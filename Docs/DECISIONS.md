@@ -1744,3 +1744,20 @@ and the tail on the floor -- and they are measured against the surface now.
 The brain plans from the floor point under it, sees from its eyes, and knows it is up there. Its body,
 hitboxes and eyes follow what is drawn. Clients are sent what it is clinging to and which way the wall
 faces; protocol version 12.
+
+## ADR-079: Mimicry sends the frames that were heard, with each player's leave
+
+**Status**: accepted, 2026-09-24
+
+Creatures that mimic say back phrases players said. The host keeps each player's recent phrases as the
+Opus frames that arrived and, to mimic one, sends those frames again as the creature's voice. Nothing is
+decoded, altered or re-encoded; nothing is stored anywhere but the host's memory, for the match.
+
+Consent is per player and per frame: every voice frame a client sends carries its player's own
+"may be mimicked" bit, and the host keeps phrases only from frames that have it and forgets a player
+entirely on the first frame that does not. The host's own player is under the same setting. It is on by
+default, which differs from the design plan's "opt in"; the setting is in the voice settings with what
+it does written on it, and ai.mimic turns the behaviour off for a whole game.
+
+Voice frames gain a creature bit (with an eight-bit creature number in place of the three-bit player)
+and the consent bit; protocol version 13.

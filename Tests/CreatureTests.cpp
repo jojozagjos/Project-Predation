@@ -1691,3 +1691,50 @@ TEST_CASE("It does not go straight back to what it has only just given up", "[cr
     INFO(MindOf(*harness.creature));
     CHECK(changes <= 6);
 }
+
+TEST_CASE("A creature that mimics hides near somebody and calls them in a friend's voice", "[creature][mimic]")
+{
+    // A cunning one that has heard the friend talking, hunting somebody who has just gone out of its sight.
+    CreatureTraits traits = Hunter(9);
+    traits.stealth = 0.85f;
+    traits.curiosity = 0.8f;
+    traits.patience = 0.8f;
+    traits.fear = 0.2f;
+    REQUIRE(traits.Mimics());
+    CreatureHarness harness(traits);
+    const glm::vec3 at = harness.creature->Position();
+
+    SensedPlayer target;
+    target.id = 1;
+    target.name = "Target";
+    target.feet = at + glm::vec3(0.0f, 0.0f, -10.0f);
+    target.forward = {0.0f, 0.0f, 1.0f};
+    SensedPlayer friendOf;
+    friendOf.id = 2;
+    friendOf.name = "Friend";
+    friendOf.feet = at + glm::vec3(6.0f, 0.0f, 4.0f);
+    friendOf.hidden = true; // out of the way, talking
+
+    Noise talking;
+    talking.kind = NoiseKind::Voice;
+    talking.reach = 40.0f;
+    talking.player = 2;
+    talking.position = friendOf.feet;
+
+    int mimicked = -1;
+    constexpr float dt = 1.0f / 60.0f;
+    for (int tick = 0; tick < 60 * 40 && mimicked < 0; ++tick)
+    {
+        harness.time += dt;
+        // Seen for a moment, then out of its sight behind the others.
+        std::vector<SensedPlayer> players{target, friendOf};
+        players[0].hidden = tick > 150;
+        CreatureSenses senses = harness.Senses(players, tick == 5 ? std::vector<Noise>{talking} : std::vector<Noise>{});
+        senses.voices = {1, 2};
+        harness.creature->Update(senses, harness.time, dt);
+        mimicked = harness.creature->Brain().Intent().mimic;
+    }
+    INFO(MindOf(*harness.creature));
+    // It used the friend's voice, not the target's own.
+    CHECK(mimicked == 2);
+}

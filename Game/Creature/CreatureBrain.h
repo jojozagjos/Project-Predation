@@ -101,6 +101,9 @@ struct CreatureSenses
     std::function<float(const glm::vec3&)> ceilingAt;
     // Whether it is up on the ceiling now.
     bool onCeiling = false;
+    // Whose voices there is something of to say back: the players who allow it and have said
+    // anything. What it can use is only those it has heard itself.
+    std::vector<int> voices;
     // Every hiding place in the level. Where they are is no secret -- they are furniture.
     std::vector<HidingPlace> hidingPlaces;
     // Where the other creatures are, standing or fallen. The body keeps its distance from them; a pack
@@ -176,6 +179,8 @@ struct CreatureIntent
     bool climb = false;
     bool drop = false;
     glm::vec3 dropAt{0.0f};
+    // Set on the tick it says something back in somebody's voice: whose. The game says it.
+    int mimic = -1;
 };
 
 enum class Behavior : uint8_t
@@ -207,7 +212,10 @@ enum class Behavior : uint8_t
     Ambush,
     // Going round to where shooting came from, out of sight of it, and listening before it goes in --
     // not straight at the noise.
-    Flank
+    Flank,
+    // Hidden near somebody, saying something back in the voice of somebody they know, and waiting for
+    // whoever comes to look.
+    Lure
 };
 
 const char* BehaviorName(Behavior behavior);
@@ -524,6 +532,12 @@ private:
     // no cover near the person it is following.
     bool PickHidingSpot(const CreatureSenses& senses, const glm::vec3& awayFrom, glm::vec3& out);
     void ActAmbush(const CreatureSenses& senses, float dt);
+    void ActLure(const CreatureSenses& senses, float dt);
+    // Whose voice to use on somebody: one of their friends it has heard, not near them, or failing that
+    // their own. -1 when it has heard nobody it can say anything of.
+    int VoiceFor(const CreatureSenses& senses, int target) const;
+    // Somewhere close to them and out of their sight, to be heard from.
+    bool PickLureSpot(const CreatureSenses& senses, const glm::vec3& them, glm::vec3& out);
     void ActFlank(const CreatureSenses& senses, float dt);
     // A place to keep clear of for a while.
     void RememberDanger(const glm::vec3& at, float until);
@@ -679,6 +693,19 @@ private:
     int m_nestAttacker = -1;
     // Letting go of the ceiling onto somebody, once: logged as it starts.
     bool m_dropping = false;
+    // Whose voices it has heard, and luring: where from, whose voice, how many times it has spoken, when
+    // next, and when it last tried it.
+    std::vector<int> m_voicesHeard;
+    glm::vec3 m_lureSpot{0.0f};
+    bool m_haveLureSpot = false;
+    int m_lureVoice = -1;
+    int m_lureSpoken = 0;
+    float m_nextMimicAt = 0.0f;
+    float m_lastLureAt = -1.0e9f;
+public:
+    const std::vector<int>& VoicesHeard() const { return m_voicesHeard; }
+    int LureVoice() const { return m_lureVoice; }
+private:
 
     bool m_dead = false;
 };

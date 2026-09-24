@@ -142,6 +142,8 @@ const char* BehaviorName(Behavior behavior)
         return "Ambush";
     case Behavior::Flank:
         return "Flank";
+    case Behavior::Lure:
+        return "Lure";
     }
     return "?";
 }
@@ -762,6 +764,15 @@ void CreatureBrain::Perceive(const CreatureSenses& senses, float dt)
         // Straight-line falloff scored exactly that, too faint to be worth getting up for.
         const float strength = std::clamp(std::sqrt(1.0f - distance / reach), 0.05f, 1.0f);
         m_heard.push_back({noise, strength, senses.time});
+        if (noise.kind == NoiseKind::Voice && noise.player >= 0 &&
+            std::find(m_voicesHeard.begin(), m_voicesHeard.end(), noise.player) == m_voicesHeard.end())
+        {
+            m_voicesHeard.push_back(noise.player);
+            if (m_traits.Mimics())
+            {
+                Log(senses.time, "listens to somebody talking");
+            }
+        }
         if (noise.player >= 0)
         {
             Warm(noise.position, 0.3f * strength);
@@ -1148,6 +1159,25 @@ void CreatureBrain::Decide(const CreatureSenses& senses)
             }
         }
 
+        // Drawing them to it with a voice they know: the cunning ones, at somebody not in its sight or a
+        // good way off, once in a while -- a trick used every minute is a trick everybody knows.
+        const bool luring = m_behavior == Behavior::Lure && m_target == track.id;
+        if (chases && m_traits.Mimics() && !beyond && track.lastSeen >= 0.0f &&
+            (luring || ((!track.visible || distance > 14.0f) && now - m_lastLureAt > 50.0f)))
+        {
+            const int voice = luring ? m_lureVoice : VoiceFor(senses, track.id);
+            if (voice >= 0)
+            {
+                add(Behavior::Lure, track.id, "Lure " + track.name,
+                    {{"sure where", std::max(track.confidence, 0.4f)},
+                     {"cunning", 0.4f + 0.6f * m_traits.stealth},
+                     {"a voice they know", voice != track.id ? 1.0f : 0.6f},
+                     {"patient", 0.5f + 0.5f * m_traits.patience},
+                     {"not afraid", 0.3f + 0.7f * calm},
+                     {"still at it", luring ? std::clamp(1.0f - static_cast<float>(m_lureSpoken) / 5.0f, 0.2f, 1.0f) : 1.0f}});
+            }
+        }
+
         // Shadowing them from cover instead. Only somebody it has actually seen: somebody it has
         // only heard is a question to go and answer, not a person to follow.
         if (chases && !player->hidden && track.lastSeen >= 0.0f && track.confidence > 0.3f && distance < 35.0f &&
@@ -1216,7 +1246,10 @@ void CreatureBrain::Decide(const CreatureSenses& senses)
                  {"aggression", 0.3f + 0.7f * m_traits.aggression},
                  {"not afraid", 0.2f + 0.8f * calm},
                  // Out of hiding at somebody who has walked into it: the moment all the waiting was for.
-                 {"from hiding", m_behavior == Behavior::Ambush || m_behavior == Behavior::Stalk ? 1.4f : 1.0f}});
+                 {"from hiding", m_behavior == Behavior::Ambush || m_behavior == Behavior::Stalk ||
+                                         m_behavior == Behavior::Lure
+                                     ? 1.4f
+                                     : 1.0f}});
         }
     }
 
@@ -1381,6 +1414,16 @@ void CreatureBrain::Switch(Behavior behavior, int target, const std::string& rea
     if (behavior == Behavior::Flank)
     {
         m_flankStage = 0;
+    }
+    if (behavior == Behavior::Lure && previous != Behavior::Lure)
+    {
+        m_haveLureSpot = false;
+        m_lureSpoken = 0;
+        m_lureVoice = -1;
+    }
+    if (previous == Behavior::Lure && behavior != Behavior::Lure)
+    {
+        m_lastLureAt = time;
     }
     if (behavior == Behavior::PlayDead)
     {
@@ -1962,6 +2005,7 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
     m_intent.holding = m_holding;
     m_intent.climb = false;
     m_intent.drop = false;
+    m_intent.mimic = -1;
 
     const glm::vec3 eye = senses.eye;
     const auto lookAround = [&](float until)
@@ -2656,6 +2700,10 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
 
     case Behavior::Flank:
         ActFlank(senses, dt);
+        break;
+
+    case Behavior::Lure:
+        ActLure(senses, dt);
         break;
 
     case Behavior::Observe:

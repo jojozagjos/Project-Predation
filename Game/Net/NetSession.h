@@ -172,16 +172,24 @@ public:
 
     // Voice heard from somebody else, waiting to be played. Taken rather than read, because each
     // frame is played once and holding them would be a growing buffer of old speech.
+    //
+    // Every frame a client sends comes through here, whether the host is near enough to hear it or not:
+    // `audible` says whether it is, and `mayMimic` whether its speaker lets the creatures learn it.
     struct VoiceHeard
     {
         uint8_t speaker = 0;
         uint16_t sequence = 0;
         std::vector<uint8_t> frame;
+        bool audible = true;
+        bool mayMimic = false;
     };
     std::vector<VoiceHeard> TakeVoice();
 
     // The host talking. Goes to everybody within earshot of `from`.
     void SendVoice(uint16_t sequence, const std::vector<uint8_t>& frame, const glm::vec3& from);
+    // A creature saying back something it heard, from where it is. Goes to everybody within earshot,
+    // marked as the creature's, so it is played from its mouth.
+    void SendCreatureVoice(uint8_t creature, uint16_t sequence, const std::vector<uint8_t>& frame, const glm::vec3& from);
 
     void Broadcast(const WorldEventMessage& event);
     // Who is here and where. Sent when the roster changes, so that if this machine goes the players
@@ -249,7 +257,7 @@ private:
     glm::vec3 m_localPosition{0.0f};
     // One place that decides who hears a frame and sends it to them, used by a client relaying
     // through and by the host talking itself.
-    void ForwardVoice(uint8_t speaker, uint16_t sequence, const std::vector<uint8_t>& frame,
+    void ForwardVoice(uint8_t speaker, bool creature, uint16_t sequence, const std::vector<uint8_t>& frame,
                       const glm::vec3& from);
     struct HistoryEntry
     {
@@ -385,14 +393,16 @@ public:
     void SendReady();
     void SendDrop(const DropMessage& drop);
     // My microphone, on its way to the host, which decides who is close enough to hear it.
-    void SendVoice(uint16_t sequence, const std::vector<uint8_t>& frame);
+    void SendVoice(uint16_t sequence, const std::vector<uint8_t>& frame, bool mayMimic = false);
     // Voice from other people, waiting to be played. Taken rather than read: each frame is played
-    // once, and holding them would be a growing buffer of old speech.
+    // once, and holding them would be a growing buffer of old speech. `creature` when it is a creature
+    // saying something back, and `speaker` is then the creature's number.
     struct VoiceHeard
     {
         uint8_t speaker = 0;
         uint16_t sequence = 0;
         std::vector<uint8_t> frame;
+        bool creature = false;
     };
     std::vector<VoiceHeard> TakeVoice();
     void SendShot(const ShotMessage& shot);

@@ -724,7 +724,9 @@ constexpr size_t kMaxVoiceBytes = 320;
 
 void WriteVoice(BitWriter& writer, const VoiceMessage& message)
 {
-    writer.WriteBits(message.speaker, 3);
+    writer.WriteBool(message.creature);
+    writer.WriteBits(message.speaker, message.creature ? 8 : 3);
+    writer.WriteBool(message.mayMimic);
     writer.WriteBits(message.sequence, 16);
     const auto length = static_cast<uint32_t>(std::min(message.frame.size(), kMaxVoiceBytes));
     writer.WriteBits(length, 9); // 511, comfortably over the cap
@@ -736,10 +738,12 @@ void WriteVoice(BitWriter& writer, const VoiceMessage& message)
 
 bool ReadVoice(BitReader& reader, VoiceMessage& out)
 {
-    out.speaker = static_cast<uint8_t>(reader.ReadBits(3));
+    out.creature = reader.ReadBool();
+    out.speaker = static_cast<uint8_t>(reader.ReadBits(out.creature ? 8 : 3));
+    out.mayMimic = reader.ReadBool();
     out.sequence = static_cast<uint16_t>(reader.ReadBits(16));
     const uint32_t length = reader.ReadBits(9);
-    if (out.speaker >= kMaxPlayers || length > kMaxVoiceBytes)
+    if ((!out.creature && out.speaker >= kMaxPlayers) || length > kMaxVoiceBytes)
     {
         return false;
     }

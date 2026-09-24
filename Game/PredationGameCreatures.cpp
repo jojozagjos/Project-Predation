@@ -50,6 +50,7 @@ CVar<float> cv_aiHealthScale{"ai.health_scale", 1.0f,
                              "Multiplies how much health a creature's body gives it, for tuning"};
 CVar<bool> cv_aiFreeze{"ai.freeze", false,
                         "Creatures stand where they are and do nothing, for looking at them: ai.freeze 1"};
+CVar<bool> cv_aiMimic{"ai.mimic", true, "Creatures that can may say back what they have heard players say"};
 CVar<float> cv_nestHealth{"ai.nest_health", 200.0f, "How much a nest's heart takes before it bursts"};
 CVar<float> cv_nestGrowth{"ai.nest_growth_seconds", 300.0f,
                           "How long a nest takes to spread as far as it ever will from its heart"};
@@ -138,6 +139,70 @@ void PredationGame::ClearCreatures()
     m_arrivalsPending = 0;
     m_noises.clear();
     m_lastVoiceNoise.clear();
+    m_mimicry.clear();
+    m_voiceMemory.Clear();
+}
+
+// --- Saying back what it heard ------------------------------------------------------------------
+//
+// A creature that mimics says a phrase it heard in somebody's voice by sending the very frames that
+// arrived, at the pace they were spoken, as its own voice: every machine decodes them and plays them
+// from its mouth. Nothing is changed in them. The uncanny part is where they come from.
+
+void PredationGame::StartMimicry(const Creature& creature, int player)
+{
+    if (player < 0 || std::any_of(m_mimicry.begin(), m_mimicry.end(),
+                                  [&](const Mimicry& saying) { return saying.creature == creature.NetId(); }))
+    {
+        return;
+    }
+    const VoiceMemory::Phrase* phrase =
+        m_voiceMemory.Pick(static_cast<uint8_t>(player), static_cast<uint32_t>(std::rand()));
+    if (phrase == nullptr)
+    {
+        return;
+    }
+    Mimicry saying;
+    saying.creature = creature.NetId();
+    saying.frames = phrase->frames;
+    m_mimicry.push_back(std::move(saying));
+    PRED_LOG_INFO(AI, "Creature {} says something back in player {}'s voice ({:.1f} s)", creature.NetId(), player,
+                  static_cast<float>(phrase->frames.size()) * 0.02f);
+}
+
+void PredationGame::UpdateMimicry(float dt)
+{
+    for (size_t i = 0; i < m_mimicry.size();)
+    {
+        Mimicry& saying = m_mimicry[i];
+        const Creature* speaker = nullptr;
+        for (const std::unique_ptr<Creature>& creature : m_creatures)
+        {
+            if (creature->NetId() == saying.creature)
+            {
+                speaker = creature.get();
+            }
+        }
+        // Dead in the middle of a sentence, it stops in the middle of it.
+        if (speaker == nullptr || !speaker->Alive() || saying.next >= saying.frames.size())
+        {
+            m_mimicry.erase(m_mimicry.begin() + static_cast<std::ptrdiff_t>(i));
+            continue;
+        }
+        // Twenty milliseconds a frame, as it was said. A long frame waits for more than one to be due.
+        saying.clock += dt;
+        for (int guard = 0; guard < 8 && saying.clock >= 0.02f && saying.next < saying.frames.size(); ++guard)
+        {
+            saying.clock -= 0.02f;
+            const std::vector<uint8_t>& frame = saying.frames[saying.next++];
+            HearVoice(static_cast<uint8_t>(kCreatureSpeaker + saying.creature), frame);
+            if (m_sessionMode == SessionMode::Host)
+            {
+                m_host.SendCreatureVoice(saying.creature, ++m_mimicSequence, frame, speaker->Eye());
+            }
+        }
+        ++i;
+    }
 }
 
 bool PredationGame::SpawnCreature(uint32_t seed, const glm::vec3& awayFrom, const glm::vec3* exactly)
@@ -626,6 +691,16 @@ void PredationGame::UpdateCreatures(float dt)
             return true;
         };
         senses.lightAt = [this](const glm::vec3& at) { return LightAt(at, false); };
+        if (cv_aiMimic.Get())
+        {
+            for (const SensedPlayer& player : players)
+            {
+                if (m_voiceMemory.Has(static_cast<uint8_t>(player.id)))
+                {
+                    senses.voices.push_back(player.id);
+                }
+            }
+        }
         senses.shelterAt = [&physics](const glm::vec3& at) { return ShelterAt(physics, at); };
         senses.ceilingAt = [&physics](const glm::vec3& at)
         {
@@ -688,6 +763,10 @@ void PredationGame::UpdateCreatures(float dt)
         if (intent.cocoonTarget >= 0)
         {
             WrapInCocoon(static_cast<uint8_t>(intent.cocoonTarget), *creature);
+        }
+        if (intent.mimic >= 0 && cv_aiMimic.Get())
+        {
+            StartMimicry(*creature, intent.mimic);
         }
         if (intent.buildHive)
         {
@@ -865,7 +944,7 @@ void PredationGame::ApplyCreatureState(const CreatureStateMessage& state)
         action.target = shown.actionTarget;
         creature->SetShownAction(action, shown.airborne, shown.look, shown.lookAt);
         creature->SetShownCling(static_cast<Creature::Cling>(std::min<uint8_t>(shown.cling, 3)), shown.wallYaw);
-        creature->SetShownBehavior(shown.behavior <= static_cast<uint8_t>(Behavior::Flank) ? static_cast<Behavior>(shown.behavior)
+        creature->SetShownBehavior(shown.behavior <= static_cast<uint8_t>(Behavior::Lure) ? static_cast<Behavior>(shown.behavior)
                                                                                          : Behavior::Roam);
     }
 }

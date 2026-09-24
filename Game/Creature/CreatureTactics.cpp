@@ -396,6 +396,152 @@ void CreatureBrain::ActAmbush(const CreatureSenses& senses, float dt)
     }
 }
 
+int CreatureBrain::VoiceFor(const CreatureSenses& senses, int target) const
+{
+    const auto usable = [&](int player)
+    {
+        return std::find(m_voicesHeard.begin(), m_voicesHeard.end(), player) != m_voicesHeard.end() &&
+               std::find(senses.voices.begin(), senses.voices.end(), player) != senses.voices.end();
+    };
+    const SensedPlayer* them = FindPlayer(senses, target);
+    // A friend of theirs, best of all one who is not beside them: a voice from over there that they
+    // know is somewhere else is a reason to go and look.
+    int best = -1;
+    float furthest = -1.0f;
+    for (const SensedPlayer& player : senses.players)
+    {
+        if (player.id == target || !usable(player.id))
+        {
+            continue;
+        }
+        const float away = them != nullptr ? Horizontal(player.feet, them->feet) : 10.0f;
+        if (away > furthest)
+        {
+            furthest = away;
+            best = player.id;
+        }
+    }
+    if (best >= 0)
+    {
+        return best;
+    }
+    // Alone, or only ever heard them: their own voice, out of the dark.
+    return usable(target) ? target : -1;
+}
+
+bool CreatureBrain::PickLureSpot(const CreatureSenses& senses, const glm::vec3& them, glm::vec3& out)
+{
+    if (senses.nav == nullptr)
+    {
+        return false;
+    }
+    float best = 0.0f;
+    bool found = false;
+    uint32_t seed = static_cast<uint32_t>(m_random.Next());
+    for (int i = 0; i < 28; ++i)
+    {
+        glm::vec3 candidate;
+        if (!senses.nav->RandomPointNear(them, 15.0f, seed, candidate))
+        {
+            continue;
+        }
+        const float distance = Horizontal(candidate, them);
+        if (distance < 6.0f || distance > 15.0f)
+        {
+            continue;
+        }
+        // Heard, not seen: round a corner from them, against something, in the dark.
+        float score = SeenFrom(senses, candidate) ? 0.05f : 1.0f;
+        score *= 0.3f + 0.7f * ShelterOf(senses, candidate);
+        if (TightCover(senses, candidate, them))
+        {
+            score *= 1.4f;
+        }
+        if (senses.lightAt)
+        {
+            score *= 1.1f - 0.5f * std::clamp(senses.lightAt(candidate + glm::vec3(0.0f, 0.5f, 0.0f)), 0.0f, 1.0f);
+        }
+        score *= 1.0f - std::min(Horizontal(candidate, senses.position) / 45.0f, 0.6f);
+        if (Passes(senses.position, candidate, them) < 4.0f && Horizontal(senses.position, them) > 4.0f)
+        {
+            score *= 0.2f;
+        }
+        if (score > best)
+        {
+            best = score;
+            out = candidate;
+            found = true;
+        }
+    }
+    return found && best > 0.15f;
+}
+
+void CreatureBrain::ActLure(const CreatureSenses& senses, float dt)
+{
+    (void)dt;
+    const float now = senses.time;
+    Track* track = FindTrack(m_target);
+    const SensedPlayer* player = FindPlayer(senses, m_target);
+    if (track == nullptr || player == nullptr)
+    {
+        Switch(Behavior::Roam, -1, "nobody to lure", now);
+        return;
+    }
+    const glm::vec3 them = track->visible ? player->feet : track->lastKnown;
+    if (m_lureVoice < 0)
+    {
+        m_lureVoice = VoiceFor(senses, m_target);
+        if (m_lureVoice < 0)
+        {
+            Switch(Behavior::Stalk, m_target, "has no voice to use", now);
+            return;
+        }
+    }
+    if (!m_haveLureSpot)
+    {
+        m_haveLureSpot = PickLureSpot(senses, them, m_lureSpot);
+        if (!m_haveLureSpot)
+        {
+            Switch(Behavior::Stalk, m_target, "nowhere to call from", now);
+            return;
+        }
+        Log(now, Format("goes somewhere out of sight %.0f m from ", Horizontal(m_lureSpot, them)) + track->name + " to call");
+        m_nextMimicAt = now;
+    }
+    if (Horizontal(senses.position, m_lureSpot) > 0.8f)
+    {
+        m_goal = "creeping somewhere to call " + track->name + " from";
+        m_intent.move = true;
+        m_intent.destination = m_lureSpot;
+        const bool close = Horizontal(senses.position, them) < 16.0f;
+        m_intent.speed = close ? m_traits.walkSpeed * 1.3f : m_traits.runSpeed * 0.8f;
+        m_intent.crouch = close ? 0.8f : 0.2f;
+        return;
+    }
+    // There: low, still, facing the way they will come, and every so often, a voice they know.
+    m_goal = "calling " + track->name + " in a voice they know";
+    m_intent.crouch = 1.0f;
+    m_intent.face = true;
+    m_intent.facePoint = them;
+    if (m_traits.climbs && senses.ceilingAt)
+    {
+        const float ceiling = senses.ceilingAt(senses.position);
+        m_intent.climb = ceiling > 2.2f && ceiling < 4.8f;
+    }
+    if (now >= m_nextMimicAt && m_lureSpoken < 4)
+    {
+        m_intent.mimic = m_lureVoice;
+        ++m_lureSpoken;
+        m_nextMimicAt = now + m_random.Range(6.0f, 13.0f);
+        Log(now, "speaks in " + (m_lureVoice == m_target ? track->name + "'s own voice" : std::string("a friend's voice")));
+    }
+    // Four times, and a while to see whether anybody comes. Then it gives it up for now.
+    if (m_lureSpoken >= 4 && now >= m_nextMimicAt + 6.0f)
+    {
+        Switch(Behavior::Stalk, m_target, "nobody came", now);
+    }
+}
+
 void CreatureBrain::ActFlank(const CreatureSenses& senses, float dt)
 {
     (void)dt;

@@ -24,7 +24,7 @@ namespace pred
 
 // Bumped whenever the wire changes shape. Two ends that disagree are refused at the door rather
 // than left to misread each other, which is what a wire mismatch actually looks like from inside.
-inline constexpr uint16_t kProtocolVersion = 12;
+inline constexpr uint16_t kProtocolVersion = 13;
 // How many bits name a message type. Five, so there is room to add one.
 inline constexpr uint32_t kMessageTypeBits = 5;
 inline constexpr uint8_t kMaxPlayers = 4;
@@ -294,9 +294,15 @@ enum class JoinRejection : uint8_t
 // to invent the gap rather than play a stale frame out of order.
 struct VoiceMessage
 {
+    // A player's number, or -- when `creature` is set -- a creature's: one saying back something it heard.
     uint8_t speaker = 0;
+    bool creature = false;
     uint16_t sequence = 0;
     std::vector<uint8_t> frame;
+    // From a client: whether its player lets the creatures learn what they say. Their own setting, on
+    // every frame, so the host keeps only what it has been allowed to and changing it takes effect at
+    // once.
+    bool mayMimic = false;
 };
 
 struct JoinMessage

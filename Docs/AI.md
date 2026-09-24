@@ -336,6 +336,27 @@ Every machine is told what it is clinging to, and which way the wall faces, in t
 for the wall, and eases its body round to match. `creature_climb up|down|auto` sends every creature that
 can climb up, or down, or back to its own mind.
 
+### Voices
+
+Some creatures say back what they have heard people say: the cunning ones among the hunters and the
+watchers (`Mimics()`: stealthy and curious enough to have listened, about one in five). A creature only
+uses the voice of somebody it has itself heard talking.
+
+The host keeps the last dozen phrases each player said -- the runs of voice frames between pauses, half
+a second to three and a half seconds long -- as the encoded frames that arrived, in memory only, for
+the match only, and only from players whose own setting allows it (**Creatures can learn your voice**,
+`audio.voice_allow_mimic`, on by default). That setting travels with every frame they send, so turning
+it off takes effect at once, and what was kept of them is forgotten the moment a frame arrives without
+it, or they leave.
+
+Luring (the Lure behaviour) is for somebody it is hunting who is out of its sight or a good way off, no
+more than once a minute. It creeps somewhere six to fifteen metres from them, out of their sight and
+against something, and from there, every six to thirteen seconds, four times, it says something in the
+voice of one of their friends -- the one furthest from them, so the voice comes from where that friend
+is not -- or, alone, in their own. Then it waits for whoever comes to look, and goes for them from
+hiding. The frames are sent unchanged, as the creature's own voice, and played from its mouth on every
+machine. `ai.mimic 0` stops it on the host.
+
 ### Tactics
 
 Where it hides, waits and comes from are questions about places, answered from the navigation mesh and

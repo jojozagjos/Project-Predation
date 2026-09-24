@@ -183,6 +183,13 @@ CVar<bool> cv_voiceOpenMic{"audio.voice_open_mic", false,
 CVar<float> cv_voiceThreshold{"audio.voice_threshold", 0.04f,
                               "How loud you have to be before open mic transmits",
                               CVarFlags::Archive};
+// Whether the creatures may learn what this player says, to say it back to lure the others. The
+// player's own choice, sent with every frame of their voice; the host keeps phrases only in memory and
+// only for the match.
+CVar<bool> cv_allowMimic{"audio.voice_allow_mimic", true,
+                         "Let creatures learn short phrases you say and use them to lure the others (kept in the "
+                         "host's memory for the match only)",
+                         CVarFlags::Archive};
 // How long the meter goes on saying "sending" after the last packet. Longer than the gap between
 // them, so the label holds steady instead of strobing between two states at twelve to one.
 constexpr float kVoiceSendingHold = 0.20f;
@@ -1947,6 +1954,7 @@ void PredationGame::ServeClientRequests()
 void PredationGame::ForgetPlayer(uint8_t player)
 {
     ReleaseGrip(player, "left the game");
+    m_voiceMemory.Forget(player);
     m_grabImmunity.erase(player);
     const auto wrapped = std::find_if(m_cocoons.begin(), m_cocoons.end(),
                                       [&](const Cocoon& cocoon) { return cocoon.player == player; });
@@ -4443,6 +4451,17 @@ void PredationGame::DrawSettings()
             }
             ImGui::PopID();
 
+            ImGui::PushID("allowmimic");
+            SettingsRow("Creatures can learn your voice",
+                        "Some creatures repeat short things they have heard you say, to lure the others. Nothing is "
+                        "saved: the host keeps them in memory for the match only. Off, your voice is never kept.");
+            bool allowMimic = cv_allowMimic.Get();
+            if (ImGui::Checkbox("##v", &allowMimic))
+            {
+                SetSetting("audio.voice_allow_mimic", allowMimic ? "true" : "false");
+            }
+            ImGui::PopID();
+
             ImGui::PushID("openmic");
             const std::string talkKey = KeyFor(m_app->GetInput(), "voice");
             const std::string openMicHelp = "Off, hold " + talkKey + " to talk. On, it sends whenever you speak.";
@@ -5268,10 +5287,14 @@ void PredationGame::UpdateVoice(float dt)
                 m_host.SendVoice(m_voiceSequence, packet, m_player.State().position);
                 // Proximity chat is proximity for everything with ears. Talking near it is heard.
                 MakeNoise(NoiseKind::Voice, m_player.State().position, NoiseReach::kVoice, LocalPlayerId());
+                if (cv_allowMimic.Get())
+                {
+                    m_voiceMemory.Heard(LocalPlayerId(), packet, static_cast<float>(m_time));
+                }
             }
             else
             {
-                m_client.SendVoice(m_voiceSequence, packet);
+                m_client.SendVoice(m_voiceSequence, packet, cv_allowMimic.Get());
             }
         }
         m_voiceLevel = m_microphone.LastLevel();
@@ -5283,9 +5306,22 @@ void PredationGame::UpdateVoice(float dt)
     // the machinery a footstep does: the same attenuation, the same panning, the same distance cut.
     if (m_sessionMode == SessionMode::Host)
     {
+        // The host's own phrases go the moment it says they may not be kept.
+        if (!cv_allowMimic.Get())
+        {
+            m_voiceMemory.Forget(LocalPlayerId());
+        }
         for (NetHost::VoiceHeard& heard : m_host.TakeVoice())
         {
-            HearVoice(heard.speaker, heard.frame);
+            // Kept for the creatures only with the speaker's leave, and forgotten the moment it is not given.
+            if (heard.mayMimic)
+            {
+                m_voiceMemory.Heard(heard.speaker, heard.frame, static_cast<float>(m_time));
+            }
+            else
+            {
+                m_voiceMemory.Forget(heard.speaker);
+            }
             // Talking beside something with ears is heard by it, but only when we actually know
             // where the speaker is standing. A noise made at our own feet for somebody else's voice
             // would walk every creature on the map towards us.
@@ -5294,13 +5330,18 @@ void PredationGame::UpdateVoice(float dt)
             {
                 MakeNoise(NoiseKind::Voice, where, NoiseReach::kVoice, heard.speaker);
             }
+            if (heard.audible)
+            {
+                HearVoice(heard.speaker, heard.frame);
+            }
         }
+        UpdateMimicry(dt);
     }
     else if (m_sessionMode == SessionMode::Client)
     {
         for (NetClient::VoiceHeard& heard : m_client.TakeVoice())
         {
-            HearVoice(heard.speaker, heard.frame);
+            HearVoice(heard.creature ? static_cast<uint8_t>(kCreatureSpeaker + heard.speaker) : heard.speaker, heard.frame);
         }
     }
 
@@ -5336,7 +5377,20 @@ void PredationGame::UpdateVoice(float dt)
 glm::vec3 PredationGame::SpeakerPosition(Speaker& speaker) const
 {
     glm::vec3 where{0.0f};
-    if (PlayerPositionIfKnown(speaker.id, where))
+    // A creature saying something back: from its mouth, wherever it has got to.
+    if (speaker.id >= kCreatureSpeaker)
+    {
+        for (const std::unique_ptr<Creature>& creature : m_creatures)
+        {
+            if (creature->NetId() == speaker.id - kCreatureSpeaker)
+            {
+                speaker.at = creature->Eye();
+                speaker.located = true;
+                return speaker.at;
+            }
+        }
+    }
+    else if (PlayerPositionIfKnown(speaker.id, where))
     {
         speaker.at = where;
         speaker.located = true;

@@ -72,6 +72,13 @@ struct CreatureTraits
         return (temperament == Temperament::Predator || temperament == Temperament::Territorial) && nesting > 0.5f;
     }
     bool Nests() const { return Captures() && nesting > 0.66f; }
+    // Whether it says back what it has heard people say, to draw them to it: the cunning ones among the
+    // hunters and the watchers -- stealthy, and curious enough to have listened.
+    bool Mimics() const
+    {
+        return (temperament == Temperament::Predator || temperament == Temperament::Curious) && stealth > 0.5f &&
+               curiosity > 0.45f;
+    }
 
     // Seconds it will stalk one person before patience runs out.
     float StalkPatienceSeconds() const { return 10.0f + 30.0f * patience; }

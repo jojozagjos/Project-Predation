@@ -18,6 +18,7 @@
 #include "Engine/Navigation/NavMesh.h"
 #include "Game/Creature/Creature.h"
 #include "Game/Creature/Noise.h"
+#include "Game/Creature/VoiceMemory.h"
 #include "Game/Player/PlayerBody.h"
 #include "Game/Player/PlayerController.h"
 #include "Game/Weapons/BulletHole.h"
@@ -117,6 +118,21 @@ private:
     // When each player last made a voice noise, so talking is a sound every half second rather than
     // fifty times a second.
     std::map<int, float> m_lastVoiceNoise;
+    // What the creatures have heard people say, on the host, and what they are saying back now: which
+    // creature, the frames, how far through, and the clock that paces them at the speed they were said.
+    VoiceMemory m_voiceMemory;
+    struct Mimicry
+    {
+        uint8_t creature = 0;
+        std::vector<std::vector<uint8_t>> frames;
+        size_t next = 0;
+        float clock = 0.0f;
+    };
+    std::vector<Mimicry> m_mimicry;
+    uint16_t m_mimicSequence = 0;
+    // A creature says something back in `player`'s voice, from where it is.
+    void StartMimicry(const Creature& creature, int player);
+    void UpdateMimicry(float dt);
     // The wire: the number the next creature the host makes will go by, the count its messages
     // carry, and which of the client's received messages has been applied.
     uint8_t m_nextCreatureId = 0;
@@ -1088,6 +1104,9 @@ private:
     std::vector<std::unique_ptr<Speaker>> m_speakers;
     // Where to play a speaker from, remembering the last place we could put them.
     glm::vec3 SpeakerPosition(Speaker& speaker) const;
+    // Speakers from this number up are creatures saying back what they heard: the creature's own number
+    // added to it. Players are under it.
+    static constexpr uint8_t kCreatureSpeaker = 32;
 
     // Where the walk cycle had got to last frame, so a footfall is heard as the foot passes rather
     // than on a clock of its own.

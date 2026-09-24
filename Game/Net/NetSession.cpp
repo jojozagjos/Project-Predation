@@ -320,14 +320,18 @@ void NetHost::HandlePacket(const NetPacket& packet)
         // Whose voice it is, is the host's to say. A client fills in nothing here and could not be
         // believed if it did: taking its word would let anybody speak as anybody.
         const glm::vec3 from = client->controller.State().position;
-        ForwardVoice(client->playerId, message.sequence, message.frame, from);
-        // And the host's own ears, if it is close enough to hear it.
-        if (glm::distance(m_localPosition, from) <= kVoiceRange)
+        ForwardVoice(client->playerId, false, message.sequence, message.frame, from);
+        // And the host's own ears, if it is close enough to hear it -- and the creatures', which learn
+        // from anybody who lets them wherever they are.
+        const bool audible = glm::distance(m_localPosition, from) <= kVoiceRange;
+        if (audible || message.mayMimic)
         {
             VoiceHeard heard;
             heard.speaker = client->playerId;
             heard.sequence = message.sequence;
             heard.frame = std::move(message.frame);
+            heard.audible = audible;
+            heard.mayMimic = message.mayMimic;
             m_voiceHeard.push_back(std::move(heard));
         }
         return;
@@ -568,7 +572,7 @@ std::vector<NetHost::VoiceHeard> NetHost::TakeVoice()
     return std::exchange(m_voiceHeard, {});
 }
 
-void NetHost::ForwardVoice(uint8_t speaker, uint16_t sequence, const std::vector<uint8_t>& frame,
+void NetHost::ForwardVoice(uint8_t speaker, bool creature, uint16_t sequence, const std::vector<uint8_t>& frame,
                            const glm::vec3& from)
 {
     if (frame.empty())
@@ -577,6 +581,7 @@ void NetHost::ForwardVoice(uint8_t speaker, uint16_t sequence, const std::vector
     }
     VoiceMessage message;
     message.speaker = speaker;
+    message.creature = creature;
     message.sequence = sequence;
     message.frame = frame;
 
@@ -587,7 +592,7 @@ void NetHost::ForwardVoice(uint8_t speaker, uint16_t sequence, const std::vector
 
     for (const std::unique_ptr<Client>& client : m_clients)
     {
-        if (!client->welcomed || client->playerId == speaker)
+        if (!client->welcomed || (!creature && client->playerId == speaker))
         {
             continue;
         }
@@ -608,7 +613,15 @@ void NetHost::SendVoice(uint16_t sequence, const std::vector<uint8_t>& frame, co
 {
     // Player zero is the host. It never sends to itself: it hears its own microphone directly, and
     // hearing yourself a network round trip later is the classic way to make somebody stop talking.
-    ForwardVoice(0, sequence, frame, from);
+    ForwardVoice(0, false, sequence, frame, from);
+}
+
+void NetHost::SendCreatureVoice(uint8_t creature, uint16_t sequence, const std::vector<uint8_t>& frame,
+                                const glm::vec3& from)
+{
+    // To everybody in earshot of it -- including whoever it is imitating, who hears their own voice
+    // coming out of the dark, which is the point.
+    ForwardVoice(creature, true, sequence, frame, from);
 }
 
 void NetHost::BroadcastPeerList()
@@ -1278,7 +1291,7 @@ void NetClient::HandlePacket(const NetPacket& packet)
     case MessageType::Voice:
     {
         VoiceMessage message;
-        if (!ReadVoice(reader, message) || message.speaker == m_playerId)
+        if (!ReadVoice(reader, message) || (!message.creature && message.speaker == m_playerId))
         {
             // Never our own voice back. The host does not send it, but a client that played it
             // would hear itself a round trip late, which is the classic way to stop somebody
@@ -1289,6 +1302,7 @@ void NetClient::HandlePacket(const NetPacket& packet)
         heard.speaker = message.speaker;
         heard.sequence = message.sequence;
         heard.frame = std::move(message.frame);
+        heard.creature = message.creature;
         m_voiceIn.push_back(std::move(heard));
         break;
     }
@@ -1327,7 +1341,7 @@ void NetClient::SendReady()
 }
 
 
-void NetClient::SendVoice(uint16_t sequence, const std::vector<uint8_t>& frame)
+void NetClient::SendVoice(uint16_t sequence, const std::vector<uint8_t>& frame, bool mayMimic)
 {
     if (m_transport == nullptr || !Connected() || frame.empty())
     {
@@ -1338,6 +1352,7 @@ void NetClient::SendVoice(uint16_t sequence, const std::vector<uint8_t>& frame)
     // because a client that could name the speaker could name somebody else.
     message.sequence = sequence;
     message.frame = frame;
+    message.mayMimic = mayMimic;
 
     BitWriter writer(frame.size() + 8);
     WriteMessageHeader(writer, MessageType::Voice);
