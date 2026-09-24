@@ -441,12 +441,30 @@ bool PredationGame::OnInit(Application& app)
     // thing that makes the placeholder, not in the thing that ships.
     {
         AudioEngine& audio = app.GetAudio();
-        // Every folder in Assets/Audio, by its name, so a new sound is a new folder and nothing else.
+        // Every folder in Assets/Audio holding wavs is a sound, named by where it is: Creature/growl is
+        // Assets/Audio/Creature/growl/. A new sound is a new folder and nothing else. The footsteps are
+        // their own thing, listed in footsteps.json by surface.
         std::error_code ec;
-        for (const auto& entry : std::filesystem::directory_iterator(Paths::AssetsRoot() / "Audio", ec))
+        const std::filesystem::path root = Paths::AssetsRoot() / "Audio";
+        for (auto it = std::filesystem::recursive_directory_iterator(root, ec);
+             it != std::filesystem::recursive_directory_iterator(); it.increment(ec))
         {
-            const std::string name = entry.path().filename().string();
-            if (!entry.is_directory() || name == "Footsteps" || m_soundBank.count(name) != 0)
+            if (ec || !it->is_directory())
+            {
+                continue;
+            }
+            const std::string name = std::filesystem::relative(it->path(), root, ec).generic_string();
+            if (name.rfind("Footsteps", 0) == 0)
+            {
+                it.disable_recursion_pending();
+                continue;
+            }
+            bool holdsSound = false;
+            for (const auto& file : std::filesystem::directory_iterator(it->path(), ec))
+            {
+                holdsSound = holdsSound || (file.is_regular_file() && file.path().extension() == ".wav");
+            }
+            if (!holdsSound || m_soundBank.count(name) != 0)
             {
                 continue;
             }
@@ -454,18 +472,18 @@ bool PredationGame::OnInit(Application& app)
             m_soundKeys[SoundKey(name)] = name;
         }
         // And the handful reached for every frame, by name once here rather than looked up each time.
-        m_sounds.gunshot = Sounds("gunshot");
-        m_sounds.dryFire = Sounds("dry_fire");
-        m_sounds.reloadOut = Sounds("reload_out");
-        m_sounds.reloadIn = Sounds("reload_in");
-        m_sounds.step = Sounds("step_hard");
-        m_sounds.land = Sounds("land");
-        m_sounds.door = Sounds("door");
-        m_sounds.locker = Sounds("locker");
-        m_sounds.pickup = Sounds("pickup");
-        m_sounds.drop = Sounds("drop");
-        m_sounds.hurt = Sounds("hurt");
-        m_sounds.death = Sounds("death");
+        m_sounds.gunshot = Sounds("Weapons/shot");
+        m_sounds.dryFire = Sounds("Weapons/dry_fire");
+        m_sounds.reloadOut = Sounds("Weapons/mag_out");
+        m_sounds.reloadIn = Sounds("Weapons/mag_in");
+        m_sounds.step = Sounds("Player/step");
+        m_sounds.land = Sounds("Player/land");
+        m_sounds.door = Sounds("World/door");
+        m_sounds.locker = Sounds("World/locker");
+        m_sounds.pickup = Sounds("World/pickup");
+        m_sounds.drop = Sounds("World/drop");
+        m_sounds.hurt = Sounds("Player/hurt");
+        m_sounds.death = Sounds("Player/death");
     }
 
     LoadFootsteps(app.GetAudio());
@@ -1324,7 +1342,9 @@ void PredationGame::RegisterCommands()
                 std::filesystem::create_directories(folder, ec);
                 for (int take = 0; take < 12; ++take)
                 {
-                    const std::filesystem::path target = folder / (patch.name + "_" + std::to_string(take + 1) + ".wav");
+                    // Named for the sound itself, not its category: Creature/growl/growl_1.wav.
+                    const std::string leaf = patch.name.substr(patch.name.find_last_of('/') + 1);
+                    const std::filesystem::path target = folder / (leaf + "_" + std::to_string(take + 1) + ".wav");
                     if (take >= patch.variants)
                     {
                         // A take the design no longer asks for, from a bake when it asked for more.
@@ -1563,7 +1583,7 @@ bool PredationGame::PerformInteraction(InteractionKind kind, int index, uint8_t 
         {
             if (const WorldObjects::Door* locked = m_world.GetDoor(index); locked != nullptr && locked->locked)
             {
-                ShareSound("door_locked", locked->hinge + glm::vec3(0.0f, 1.0f, 0.0f), 0.8f);
+                ShareSound("World/door_locked", locked->hinge + glm::vec3(0.0f, 1.0f, 0.0f), 0.8f);
             }
             return false;
         }
@@ -1850,7 +1870,7 @@ void PredationGame::ServeClientRequests()
         // sent its own broadcast, and so for as long as there has been multiplayer the host has
         // watched other people fire in silence.
         PlaySound(GunshotFor(definition).Pick(), event.position, 1.0f, 1.0f, true);
-        QueueSound(0.4f, "shell_casing", PlayerPosition(request.player) + glm::vec3(0.0f, 0.05f, 0.0f), 0.4f);
+        QueueSound(0.4f, "Weapons/casing", PlayerPosition(request.player) + glm::vec3(0.0f, 0.05f, 0.0f), 0.4f);
 
         // The host draws the shooter too, so their weapon has to kick here as well. The event goes
         // out to everybody else; nobody sends it back to the machine that made it.
@@ -2166,7 +2186,7 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
             // And it is heard where it was fired from, which is most of what tells a player there
             // is somebody else in the building and roughly where.
             PlaySound(GunshotFor(WeaponHeldBy(event.player)).Pick(), event.position, 1.0f, 1.0f, true);
-            QueueSound(0.4f, "shell_casing", PlayerPosition(event.player) + glm::vec3(0.0f, 0.05f, 0.0f), 0.4f);
+            QueueSound(0.4f, "Weapons/casing", PlayerPosition(event.player) + glm::vec3(0.0f, 0.05f, 0.0f), 0.4f);
 
             // And their weapon kicks and flashes. A snapshot cannot carry this: firing happens on
             // one frame and snapshots go out on others, so the moment would be missed most times.
@@ -2188,7 +2208,7 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
         }
         else
         {
-            PlayerSound(event.player, "hurt", 0.8f);
+            PlayerSound(event.player, "Player/hurt", 0.8f);
         }
         break;
 
@@ -2203,7 +2223,7 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
         }
         else
         {
-            PlayerSound(event.player, "death", 1.0f);
+            PlayerSound(event.player, "Player/death", 1.0f);
         }
         break;
 
@@ -2673,7 +2693,7 @@ void PredationGame::ApplyPlayerDamage(uint8_t player, float amount, uint8_t kill
     // why a host, or anybody playing alone, never heard themselves or anybody else being hurt.
     if (remaining > 0.0f)
     {
-        PlayerSound(player, "hurt", 0.8f);
+        PlayerSound(player, "Player/hurt", 0.8f);
     }
 
     if (remaining <= 0.0f)
@@ -2708,7 +2728,7 @@ void PredationGame::KillPlayer(uint8_t player, const glm::vec3& direction)
     }
     if (m_sessionMode != SessionMode::Client)
     {
-        PlayerSound(player, "death", 1.0f);
+        PlayerSound(player, "Player/death", 1.0f);
     }
     PRED_LOG_INFO(Gameplay, "Player {} died", player);
 }
@@ -6744,11 +6764,11 @@ const SoundVariants& PredationGame::Sounds(const std::string& name) const
 
 const SoundVariants& PredationGame::GunshotFor(const WeaponDefinition* weapon) const
 {
-    // Each weapon its own report, from Assets/Audio/gunshot_<key>/, so a pistol and a carbine can be
+    // Each weapon its own report, from Assets/Audio/Weapons/<key>_shot/, so a pistol and a carbine can be
     // told apart through a wall. A weapon with no folder of its own sounds like every other gun.
     if (weapon != nullptr)
     {
-        const SoundVariants& own = Sounds("gunshot_" + weapon->key);
+        const SoundVariants& own = Sounds("Weapons/" + weapon->key + "_shot");
         if (!own.ids.empty())
         {
             return own;
@@ -6969,7 +6989,7 @@ void PredationGame::ResolveShots()
     {
         PlaySound(GunshotFor(EquippedWeapon()).Pick(), MuzzlePosition(), 0.85f, 1.0f, false);
         // And the brass, a moment later, at your feet.
-        QueueSound(0.35f + 0.3f * static_cast<float>(std::rand()) / static_cast<float>(RAND_MAX), "shell_casing",
+        QueueSound(0.35f + 0.3f * static_cast<float>(std::rand()) / static_cast<float>(RAND_MAX), "Weapons/casing",
                    m_player.State().position + glm::vec3(0.35f, 0.05f, 0.0f), 0.35f);
     }
 
@@ -8087,7 +8107,7 @@ void PredationGame::OnFixedUpdate(double fixedDt)
     if (weaponInput.trigger && !m_dryTriggerWas && EquippedWeapon() != nullptr && m_weapon.rounds <= 0 &&
         m_weapon.reserve <= 0 && !m_weapon.IsReloading())
     {
-        PlayNamed("dry_fire", MuzzlePosition(), 0.6f, 1.0f, false);
+        PlayNamed("Weapons/dry_fire", MuzzlePosition(), 0.6f, 1.0f, false);
     }
     m_dryTriggerWas = weaponInput.trigger;
 
@@ -8414,7 +8434,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
         if (input.WasActionPressed("flashlight"))
         {
             m_torchOn = !m_torchOn;
-            PlayNamed(m_torchOn ? "torch_on" : "torch_off", m_player.State().position, 0.45f, 1.0f, false);
+            PlayNamed(m_torchOn ? "Player/torch_on" : "Player/torch_off", m_player.State().position, 0.45f, 1.0f, false);
         }
 #if PRED_DEV_TOOLS
         if (input.WasActionPressed("respawn"))
@@ -8707,6 +8727,8 @@ void PredationGame::OnUpdate(double dt, double alpha)
                                      ? glm::perspectiveRH_NO(verticalFov, aspect, 0.05f, 500.0f)
                                      : glm::perspectiveRH_ZO(verticalFov, aspect, 0.05f, 500.0f);
     renderer.SetCamera(view, projection);
+    // Kept for the HUD, which puts some of what it says on things in the world.
+    m_viewProjection = projection * view;
 
     // Where the eye actually is and which way it faces, whichever camera is driving.
     //
@@ -9755,13 +9777,49 @@ void PredationGame::DrawHud()
     const std::string prompt = m_hidingSpot >= 0 ? std::string("Leave Locker") : focus.prompt;
     if (!prompt.empty())
     {
-        const std::string line = "[" + KeyFor(m_app->GetInput(), "interact") + "]  " + prompt;
-        ImGui::SetNextWindowPos({centre.x, centre.y + 42.0f}, ImGuiCond_Always, {0.5f, 0.0f});
-        if (ImGui::Begin("##Prompt", nullptr, kHudFlags))
+        // On the thing itself: the door, the locker, the crate. A prompt under the crosshair says what
+        // can be done and leaves the player to work out to what; one sitting on the handle says both.
+        // Under the crosshair still when the thing has no place on screen -- leaving a locker from the
+        // inside, or something at the very edge of the view.
+        ImVec2 at{centre.x, centre.y + 42.0f};
+        if (m_hidingSpot < 0)
         {
-            ImGui::TextUnformatted(line.c_str());
+            const Interactable* target = m_interactions.Find(focus.entity);
+            const Transform* where = m_scene.GetTransform(focus.entity);
+            if (target != nullptr && where != nullptr)
+            {
+                const glm::vec4 clip = m_viewProjection * glm::vec4(where->position + target->focusOffset, 1.0f);
+                if (clip.w > 0.05f)
+                {
+                    const glm::vec2 ndc = glm::vec2(clip) / clip.w;
+                    const ImVec2 screen{viewport->Pos.x + (ndc.x * 0.5f + 0.5f) * viewport->Size.x,
+                                        viewport->Pos.y + (0.5f - ndc.y * 0.5f) * viewport->Size.y};
+                    const float margin = 80.0f;
+                    if (screen.x > viewport->Pos.x + margin && screen.x < viewport->Pos.x + viewport->Size.x - margin &&
+                        screen.y > viewport->Pos.y + margin && screen.y < viewport->Pos.y + viewport->Size.y - margin)
+                    {
+                        at = screen;
+                    }
+                }
+            }
         }
-        ImGui::End();
+        // A key in a box, then what it does: the look of every prompt, so the eye learns it once.
+        const std::string key = KeyFor(m_app->GetInput(), "interact");
+        const ImVec2 keySize = ImGui::CalcTextSize(key.c_str());
+        const ImVec2 textSize = ImGui::CalcTextSize(prompt.c_str());
+        const float pad = 6.0f;
+        const float keyBox = std::max(keySize.x, keySize.y) + pad * 2.0f;
+        const float width = keyBox + pad + textSize.x + pad * 2.0f;
+        const float height = keyBox;
+        const ImVec2 corner{at.x - width * 0.5f, at.y - height * 0.5f};
+        ImDrawList* list = ImGui::GetForegroundDrawList();
+        list->AddRectFilled(corner, {corner.x + width, corner.y + height}, IM_COL32(12, 14, 18, 185), 4.0f);
+        list->AddRectFilled({corner.x + 2.0f, corner.y + 2.0f}, {corner.x + keyBox - 2.0f, corner.y + height - 2.0f},
+                            IM_COL32(225, 205, 150, 235), 3.0f);
+        list->AddText({corner.x + (keyBox - keySize.x) * 0.5f, corner.y + (height - keySize.y) * 0.5f},
+                      IM_COL32(20, 20, 24, 255), key.c_str());
+        list->AddText({corner.x + keyBox + pad, corner.y + (height - textSize.y) * 0.5f},
+                      IM_COL32(236, 236, 240, 240), prompt.c_str());
     }
 
     // Hotbar: one icon per slot, with the selected one picked out and stack counts in the corner.

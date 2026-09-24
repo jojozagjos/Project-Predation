@@ -1,38 +1,38 @@
 {
-  "_comment": "The placeholder sound library. Nothing here is read by the game: the sound_bake console command renders each entry into Assets/Audio/<name>/<name>_<take>.wav, several takes each, and the game plays the files. Replace any of them with a recording by dropping wavs into that folder. See Engine/Audio/SoundDesign.h for what every field does. Times are seconds, pitches and cutoffs hertz.",
+  "_comment": "The placeholder sound library. Nothing here is read by the game: the sound_bake console command renders each entry, named Category/sound, into Assets/Audio/Category/sound/sound_<take>.wav, several takes each, and the game plays the files. Replace any of them with a recording by dropping wavs into that folder. See Engine/Audio/SoundDesign.h for what every field does. Times are seconds, pitches and cutoffs hertz.",
 
   "_weapons": "--- Weapons ------------------------------------------------------------------------------",
 
-  "gunshot": {
+  "Weapons/shot": {
     "seconds": 1.2, "variants": 3, "vary": 0.04, "room": 0.3, "room_size": 0.5, "seed": 7411,
     "layers": [
       { "source": "noise", "filter": "highpass", "cutoff": 1800, "cutoff_end": 1200, "attack": 0.0002, "decay": 0.012, "length": 0.06, "gain": 1.0 },
-      { "source": "sine", "hz": 150, "hz_end": 55, "curve": 0.5, "attack": 0.0005, "decay": 0.06, "length": 0.25, "drive": 0.4, "gain": 0.9 },
+      { "source": "sine", "hz": 150, "hz_end": 55, "curve": 0.5, "attack": 0.0005, "decay": 0.06, "length": 0.25, "drive": 0.20, "gain": 0.9 },
       { "source": "noise", "color": "pink", "filter": "lowpass", "cutoff": 3500, "cutoff_end": 600, "attack": 0.0003, "decay": 0.05, "length": 0.35, "gain": 0.8 },
       { "source": "noise", "color": "brown", "filter": "lowpass", "cutoff": 900, "cutoff_end": 300, "start": 0.02, "attack": 0.01, "decay": 0.35, "length": 1.1, "gain": 0.35 }
     ]
   },
-  "gunshot_sidearm": {
+  "Weapons/sidearm_shot": {
     "seconds": 1.2, "variants": 4, "vary": 0.04, "room": 0.32, "room_size": 0.5, "seed": 7412,
     "layers": [
       { "source": "noise", "filter": "highpass", "cutoff": 2200, "cutoff_end": 1400, "attack": 0.0002, "decay": 0.010, "length": 0.05, "gain": 1.0 },
-      { "source": "sine", "hz": 170, "hz_end": 60, "curve": 0.5, "attack": 0.0005, "decay": 0.05, "length": 0.22, "drive": 0.35, "gain": 0.8 },
+      { "source": "sine", "hz": 170, "hz_end": 60, "curve": 0.5, "attack": 0.0005, "decay": 0.05, "length": 0.22, "drive": 0.17, "gain": 0.8 },
       { "source": "noise", "color": "pink", "filter": "lowpass", "cutoff": 4200, "cutoff_end": 700, "attack": 0.0003, "decay": 0.045, "length": 0.3, "gain": 0.8 },
       { "source": "click", "filter": "bandpass", "cutoff": 3200, "q": 6, "start": 0.012, "decay": 0.02, "length": 0.06, "gain": 0.35 },
       { "source": "noise", "color": "brown", "filter": "lowpass", "cutoff": 1000, "cutoff_end": 320, "start": 0.02, "attack": 0.01, "decay": 0.3, "length": 1.0, "gain": 0.3 }
     ]
   },
-  "gunshot_carbine": {
+  "Weapons/carbine_shot": {
     "seconds": 1.7, "variants": 4, "vary": 0.035, "room": 0.38, "room_size": 0.6, "seed": 7413,
     "layers": [
       { "source": "noise", "filter": "highpass", "cutoff": 2600, "cutoff_end": 1500, "attack": 0.0002, "decay": 0.008, "length": 0.04, "gain": 1.0 },
-      { "source": "sine", "hz": 125, "hz_end": 45, "curve": 0.5, "attack": 0.0005, "decay": 0.09, "length": 0.35, "drive": 0.55, "gain": 1.0 },
+      { "source": "sine", "hz": 125, "hz_end": 45, "curve": 0.5, "attack": 0.0005, "decay": 0.09, "length": 0.35, "drive": 0.28, "gain": 1.0 },
       { "source": "noise", "color": "pink", "filter": "lowpass", "cutoff": 5200, "cutoff_end": 500, "attack": 0.0003, "decay": 0.07, "length": 0.45, "gain": 0.9 },
       { "source": "click", "filter": "bandpass", "cutoff": 2600, "q": 5, "start": 0.015, "decay": 0.025, "length": 0.07, "gain": 0.3 },
       { "source": "noise", "color": "brown", "filter": "lowpass", "cutoff": 750, "cutoff_end": 200, "start": 0.03, "attack": 0.015, "decay": 0.55, "length": 1.6, "gain": 0.45 }
     ]
   },
-  "dry_fire": {
+  "Weapons/dry_fire": {
     "seconds": 0.12, "variants": 3, "vary": 0.05, "seed": 991,
     "layers": [
       { "source": "click", "filter": "bandpass", "cutoff": 3000, "q": 8, "decay": 0.008, "length": 0.03, "gain": 0.7 },
@@ -40,7 +40,7 @@
       { "source": "noise", "filter": "bandpass", "cutoff": 4000, "q": 2, "start": 0.035, "decay": 0.006, "length": 0.03, "gain": 0.3 }
     ]
   },
-  "reload_out": {
+  "Weapons/mag_out": {
     "seconds": 0.32, "variants": 3, "vary": 0.05, "seed": 2213,
     "layers": [
       { "source": "click", "filter": "bandpass", "cutoff": 2400, "q": 6, "decay": 0.012, "length": 0.04, "gain": 0.8 },
@@ -48,7 +48,7 @@
       { "source": "fm", "hz": 1800, "fm_ratio": 1.41, "fm_index": 2.0, "fm_index_end": 0.3, "start": 0.05, "decay": 0.07, "length": 0.2, "gain": 0.25 }
     ]
   },
-  "reload_in": {
+  "Weapons/mag_in": {
     "seconds": 0.32, "variants": 3, "vary": 0.05, "seed": 5507,
     "layers": [
       { "source": "noise", "filter": "bandpass", "cutoff": 1200, "cutoff_end": 2200, "q": 1.5, "attack": 0.02, "decay": 0.05, "length": 0.08, "gain": 0.45 },
@@ -57,7 +57,7 @@
       { "source": "fm", "hz": 2300, "fm_ratio": 2.2, "fm_index": 1.5, "start": 0.08, "decay": 0.06, "length": 0.18, "gain": 0.2 }
     ]
   },
-  "slide_rack": {
+  "Weapons/slide": {
     "seconds": 0.38, "variants": 3, "vary": 0.05, "seed": 6601,
     "layers": [
       { "source": "noise", "filter": "bandpass", "cutoff": 900, "cutoff_end": 2500, "q": 2, "attack": 0.03, "decay": 0.06, "length": 0.11, "gain": 0.55 },
@@ -66,7 +66,7 @@
       { "source": "sine", "hz": 150, "hz_end": 90, "start": 0.1, "decay": 0.03, "length": 0.1, "gain": 0.5 }
     ]
   },
-  "weapon_draw": {
+  "Weapons/draw": {
     "seconds": 0.36, "variants": 3, "vary": 0.06, "seed": 6611,
     "layers": [
       { "source": "noise", "color": "pink", "filter": "bandpass", "cutoff": 1200, "cutoff_end": 2400, "q": 0.8, "attack": 0.04, "decay": 0.09, "length": 0.28, "gain": 0.6 },
@@ -74,14 +74,14 @@
       { "source": "fm", "hz": 3100, "fm_ratio": 2.4, "fm_index": 1.2, "start": 0.2, "decay": 0.05, "length": 0.14, "gain": 0.15 }
     ]
   },
-  "weapon_holster": {
+  "Weapons/holster": {
     "seconds": 0.32, "variants": 3, "vary": 0.06, "seed": 6612,
     "layers": [
       { "source": "click", "filter": "bandpass", "cutoff": 3200, "q": 5, "decay": 0.012, "length": 0.04, "gain": 0.4 },
       { "source": "noise", "color": "pink", "filter": "bandpass", "cutoff": 2200, "cutoff_end": 900, "q": 0.8, "start": 0.02, "attack": 0.02, "decay": 0.1, "length": 0.28, "gain": 0.6 }
     ]
   },
-  "shell_casing": {
+  "Weapons/casing": {
     "seconds": 0.55, "variants": 5, "vary": 0.08, "seed": 6621,
     "layers": [
       { "source": "fm", "hz": 3300, "fm_ratio": 2.76, "fm_index": 3.0, "fm_index_end": 0.5, "decay": 0.035, "length": 0.09, "gain": 0.9,
@@ -90,7 +90,7 @@
         "repeats": 4, "interval": 0.085, "interval_jitter": 0.45, "repeat_gain": 0.55 }
     ]
   },
-  "impact_hard": {
+  "Weapons/impact_hard": {
     "seconds": 0.4, "variants": 5, "vary": 0.08, "room": 0.2, "room_size": 0.4, "seed": 6631,
     "layers": [
       { "source": "noise", "filter": "highpass", "cutoff": 2000, "decay": 0.006, "length": 0.03, "gain": 1.0 },
@@ -99,10 +99,10 @@
         "repeats": 5, "interval": 0.03, "interval_jitter": 0.6, "repeat_gain": 0.7, "repeat_pitch": 3 }
     ]
   },
-  "impact_flesh": {
+  "Weapons/impact_flesh": {
     "seconds": 0.32, "variants": 5, "vary": 0.08, "seed": 6641,
     "layers": [
-      { "source": "sine", "hz": 110, "hz_end": 60, "decay": 0.05, "length": 0.15, "drive": 0.3, "gain": 0.9 },
+      { "source": "sine", "hz": 110, "hz_end": 60, "decay": 0.05, "length": 0.15, "drive": 0.15, "gain": 0.9 },
       { "source": "noise", "color": "pink", "filter": "lowpass", "cutoff": 1400, "decay": 0.05, "length": 0.15, "gain": 0.7 },
       { "source": "noise", "filter": "bandpass", "cutoff": 750, "cutoff_end": 300, "q": 3, "start": 0.01, "decay": 0.08, "length": 0.25, "gain": 0.6 }
     ]
@@ -110,37 +110,37 @@
 
   "_player": "--- The player ---------------------------------------------------------------------------",
 
-  "step_hard": {
+  "Player/step": {
     "seconds": 0.16, "variants": 4, "vary": 0.08, "seed": 3121,
     "layers": [
       { "source": "noise", "filter": "lowpass", "cutoff": 1400, "cutoff_end": 700, "decay": 0.03, "length": 0.14, "gain": 1.0 },
       { "source": "sine", "hz": 110, "hz_end": 60, "decay": 0.025, "length": 0.08, "gain": 0.5 }
     ]
   },
-  "land": {
+  "Player/land": {
     "seconds": 0.38, "variants": 3, "vary": 0.06, "seed": 8663,
     "layers": [
-      { "source": "sine", "hz": 90, "hz_end": 45, "decay": 0.05, "length": 0.2, "drive": 0.2, "gain": 1.0 },
+      { "source": "sine", "hz": 90, "hz_end": 45, "decay": 0.05, "length": 0.2, "drive": 0.10, "gain": 1.0 },
       { "source": "noise", "color": "pink", "filter": "lowpass", "cutoff": 900, "decay": 0.04, "length": 0.15, "gain": 0.8 },
       { "source": "click", "filter": "bandpass", "cutoff": 2200, "q": 3, "start": 0.03, "decay": 0.008, "length": 0.03, "gain": 0.3,
         "repeats": 4, "interval": 0.025, "interval_jitter": 0.5, "repeat_gain": 0.7, "repeat_pitch": 2 }
     ]
   },
-  "jump": {
+  "Player/jump": {
     "seconds": 0.26, "variants": 3, "vary": 0.06, "seed": 8671,
     "layers": [
       { "source": "noise", "color": "pink", "filter": "bandpass", "cutoff": 1500, "q": 1.2, "attack": 0.02, "decay": 0.07, "length": 0.2, "gain": 0.6 },
       { "source": "noise", "color": "pink", "filter": "bandpass", "cutoff": 2400, "cutoff_end": 1400, "q": 0.9, "attack": 0.03, "decay": 0.08, "length": 0.24, "gain": 0.4 }
     ]
   },
-  "hurt": {
+  "Player/hurt": {
     "seconds": 0.42, "variants": 4, "vary": 0.06, "seed": 9311,
     "layers": [
       { "source": "voice", "hz": 150, "hz_end": 110, "formants": [700, 1150, 2600], "formant_width": 110, "breath": 0.35, "jitter": 0.3, "attack": 0.01, "decay": 0.12, "length": 0.36, "gain": 1.0 },
       { "source": "noise", "color": "pink", "filter": "bandpass", "cutoff": 1500, "q": 1, "attack": 0.005, "decay": 0.1, "length": 0.3, "gain": 0.3 }
     ]
   },
-  "death": {
+  "Player/death": {
     "seconds": 1.3, "variants": 3, "vary": 0.05, "seed": 6547,
     "layers": [
       { "source": "voice", "hz": 150, "hz_end": 80, "curve": 0.7, "formants": [650, 1080, 2500], "formant_width": 120, "breath": 0.45, "jitter": 0.4, "attack": 0.02, "decay": 0.4, "length": 1.0, "gain": 1.0 },
@@ -148,28 +148,28 @@
       { "source": "noise", "color": "pink", "filter": "lowpass", "cutoff": 1200, "start": 0.7, "decay": 0.08, "length": 0.3, "gain": 0.4 }
     ]
   },
-  "breath_exhausted": {
+  "Player/out_of_breath": {
     "seconds": 1.2, "variants": 4, "vary": 0.07, "seed": 9321,
     "layers": [
       { "source": "noise", "color": "pink", "filter": "bandpass", "cutoff": 1700, "cutoff_end": 2100, "q": 1.1, "attack": 0.15, "decay": 0.3, "length": 0.48, "gain": 0.6 },
       { "source": "voice", "hz": 120, "formants": [900, 1400, 2800], "breath": 0.92, "start": 0.52, "attack": 0.05, "decay": 0.3, "length": 0.6, "gain": 0.9 }
     ]
   },
-  "struggle": {
+  "Player/struggle": {
     "seconds": 0.6, "variants": 4, "vary": 0.07, "seed": 9331,
     "layers": [
-      { "source": "voice", "hz": 175, "hz_end": 150, "formants": [600, 1000, 2400], "breath": 0.5, "jitter": 0.6, "drive": 0.2, "attack": 0.05, "decay": 0.3, "length": 0.55, "gain": 1.0 },
+      { "source": "voice", "hz": 175, "hz_end": 150, "formants": [600, 1000, 2400], "breath": 0.5, "jitter": 0.6, "drive": 0.10, "attack": 0.05, "decay": 0.3, "length": 0.55, "gain": 1.0 },
       { "source": "noise", "color": "pink", "filter": "bandpass", "cutoff": 900, "q": 0.8, "attack": 0.05, "decay": 0.2, "length": 0.5, "gain": 0.4 }
     ]
   },
-  "torch_on": {
+  "Player/torch_on": {
     "seconds": 0.08, "variants": 2, "vary": 0.03, "seed": 9341,
     "layers": [
       { "source": "click", "filter": "bandpass", "cutoff": 2900, "q": 6, "decay": 0.008, "length": 0.03, "gain": 1.0 },
       { "source": "click", "filter": "bandpass", "cutoff": 4200, "q": 5, "start": 0.012, "decay": 0.006, "length": 0.03, "gain": 0.6 }
     ]
   },
-  "torch_off": {
+  "Player/torch_off": {
     "seconds": 0.08, "variants": 2, "vary": 0.03, "seed": 9342,
     "layers": [
       { "source": "click", "filter": "bandpass", "cutoff": 3800, "q": 5, "decay": 0.006, "length": 0.03, "gain": 0.6 },
@@ -179,7 +179,7 @@
 
   "_world": "--- The world ----------------------------------------------------------------------------",
 
-  "door": {
+  "World/door": {
     "seconds": 1.1, "variants": 3, "vary": 0.05, "room": 0.3, "room_size": 0.5, "seed": 4409,
     "layers": [
       { "source": "saw", "hz": 180, "hz_end": 230, "jitter": 0.25, "filter": "bandpass", "cutoff": 850, "q": 5, "am_hz": 24, "am_depth": 0.7, "attack": 0.08, "hold": 0.3, "decay": 0.25, "length": 0.8, "gain": 0.6 },
@@ -187,25 +187,25 @@
       { "source": "sine", "hz": 110, "hz_end": 70, "start": 0.82, "decay": 0.06, "length": 0.2, "gain": 0.6 }
     ]
   },
-  "door_slam": {
+  "World/door_slam": {
     "seconds": 1.3, "variants": 3, "vary": 0.05, "room": 0.4, "room_size": 0.6, "seed": 4419,
     "layers": [
-      { "source": "sine", "hz": 75, "hz_end": 40, "decay": 0.15, "length": 0.5, "drive": 0.5, "gain": 1.0 },
+      { "source": "sine", "hz": 75, "hz_end": 40, "decay": 0.15, "length": 0.5, "drive": 0.25, "gain": 1.0 },
       { "source": "noise", "color": "pink", "filter": "lowpass", "cutoff": 2200, "cutoff_end": 500, "decay": 0.1, "length": 0.4, "gain": 0.8 },
       { "source": "fm", "hz": 420, "fm_ratio": 2.41, "fm_index": 2.5, "fm_index_end": 0.4, "decay": 0.4, "length": 1.2, "gain": 0.35 }
     ]
   },
-  "door_bash": {
+  "World/door_bash": {
     "seconds": 1.4, "variants": 4, "vary": 0.06, "room": 0.45, "room_size": 0.7, "seed": 4429,
     "layers": [
-      { "source": "sine", "hz": 65, "hz_end": 35, "decay": 0.18, "length": 0.6, "drive": 0.7, "gain": 1.0 },
+      { "source": "sine", "hz": 65, "hz_end": 35, "decay": 0.18, "length": 0.6, "drive": 0.35, "gain": 1.0 },
       { "source": "noise", "color": "brown", "filter": "lowpass", "cutoff": 1500, "cutoff_end": 300, "decay": 0.15, "length": 0.6, "gain": 0.8 },
       { "source": "fm", "hz": 310, "fm_ratio": 2.73, "fm_index": 4.0, "fm_index_end": 0.5, "decay": 0.5, "length": 1.3, "gain": 0.45 },
       { "source": "click", "filter": "bandpass", "cutoff": 2000, "q": 3, "start": 0.05, "decay": 0.01, "length": 0.03, "gain": 0.3,
         "repeats": 6, "interval": 0.04, "interval_jitter": 0.5, "repeat_gain": 0.75, "repeat_pitch": 3 }
     ]
   },
-  "door_locked": {
+  "World/door_locked": {
     "seconds": 0.45, "variants": 3, "vary": 0.06, "room": 0.2, "seed": 4439,
     "layers": [
       { "source": "click", "filter": "bandpass", "cutoff": 1800, "q": 4, "decay": 0.015, "length": 0.05, "gain": 1.0,
@@ -213,7 +213,7 @@
       { "source": "noise", "filter": "bandpass", "cutoff": 1100, "q": 2, "attack": 0.01, "decay": 0.12, "length": 0.35, "gain": 0.3 }
     ]
   },
-  "locker": {
+  "World/locker": {
     "seconds": 0.7, "variants": 3, "vary": 0.05, "room": 0.25, "room_size": 0.4, "seed": 1777,
     "layers": [
       { "source": "click", "filter": "bandpass", "cutoff": 2100, "q": 5, "decay": 0.015, "length": 0.05, "gain": 0.6 },
@@ -222,14 +222,14 @@
       { "source": "noise", "filter": "bandpass", "cutoff": 1600, "q": 1.4, "start": 0.03, "decay": 0.04, "length": 0.15, "gain": 0.5 }
     ]
   },
-  "pickup": {
+  "World/pickup": {
     "seconds": 0.22, "variants": 3, "vary": 0.06, "seed": 6101,
     "layers": [
       { "source": "noise", "color": "pink", "filter": "bandpass", "cutoff": 2000, "q": 1, "attack": 0.01, "decay": 0.05, "length": 0.16, "gain": 0.7 },
       { "source": "click", "filter": "bandpass", "cutoff": 3000, "q": 5, "start": 0.05, "decay": 0.01, "length": 0.04, "gain": 0.6 }
     ]
   },
-  "drop": {
+  "World/drop": {
     "seconds": 0.4, "variants": 3, "vary": 0.06, "seed": 2749,
     "layers": [
       { "source": "sine", "hz": 125, "hz_end": 60, "decay": 0.04, "length": 0.14, "gain": 1.0 },
@@ -237,7 +237,7 @@
       { "source": "sine", "hz": 140, "hz_end": 80, "start": 0.16, "decay": 0.03, "length": 0.1, "gain": 0.35 }
     ]
   },
-  "crate_open": {
+  "World/crate_open": {
     "seconds": 0.75, "variants": 3, "vary": 0.05, "room": 0.2, "seed": 4501,
     "layers": [
       { "source": "click", "filter": "bandpass", "cutoff": 2300, "q": 5, "decay": 0.012, "length": 0.04, "gain": 0.8 },
@@ -245,15 +245,15 @@
       { "source": "sine", "hz": 110, "hz_end": 70, "start": 0.5, "decay": 0.05, "length": 0.18, "gain": 0.6 }
     ]
   },
-  "crate_close": {
+  "World/crate_close": {
     "seconds": 0.5, "variants": 3, "vary": 0.05, "room": 0.2, "seed": 4511,
     "layers": [
-      { "source": "sine", "hz": 105, "hz_end": 55, "decay": 0.06, "length": 0.22, "drive": 0.2, "gain": 1.0 },
+      { "source": "sine", "hz": 105, "hz_end": 55, "decay": 0.06, "length": 0.22, "drive": 0.10, "gain": 1.0 },
       { "source": "noise", "color": "pink", "filter": "lowpass", "cutoff": 1800, "decay": 0.04, "length": 0.14, "gain": 0.6 },
       { "source": "click", "filter": "bandpass", "cutoff": 2400, "q": 5, "start": 0.06, "decay": 0.012, "length": 0.04, "gain": 0.7 }
     ]
   },
-  "ammo_take": {
+  "World/ammo_take": {
     "seconds": 0.5, "variants": 3, "vary": 0.06, "seed": 4521,
     "layers": [
       { "source": "click", "filter": "bandpass", "cutoff": 3600, "q": 4, "decay": 0.008, "length": 0.03, "gain": 0.8,
@@ -261,7 +261,7 @@
       { "source": "noise", "filter": "bandpass", "cutoff": 1400, "q": 1.5, "attack": 0.02, "decay": 0.15, "length": 0.35, "gain": 0.35 }
     ]
   },
-  "nest_build": {
+  "Nest/grow": {
     "seconds": 1.5, "variants": 3, "vary": 0.07, "room": 0.2, "seed": 4531,
     "layers": [
       { "source": "noise", "filter": "bandpass", "cutoff": 420, "cutoff_end": 260, "q": 4, "am_hz": 7, "am_depth": 0.8, "attack": 0.1, "hold": 0.6, "decay": 0.4, "length": 1.4, "gain": 0.8 },
@@ -270,7 +270,7 @@
         "repeats": 5, "interval": 0.22, "interval_jitter": 0.5, "repeat_gain": 0.9, "repeat_pitch": 3 }
     ]
   },
-  "cocoon_wrap": {
+  "Nest/cocoon_wrap": {
     "seconds": 1.1, "variants": 3, "vary": 0.07, "seed": 4541,
     "layers": [
       { "source": "noise", "filter": "bandpass", "cutoff": 600, "cutoff_end": 1400, "q": 3, "am_hz": 12, "am_depth": 0.6, "attack": 0.1, "decay": 0.4, "length": 0.9, "gain": 0.8 },
@@ -278,7 +278,7 @@
         "repeats": 3, "interval": 0.25, "interval_jitter": 0.3, "repeat_gain": 0.8, "repeat_pitch": 2 }
     ]
   },
-  "cocoon_cut": {
+  "Nest/cocoon_cut": {
     "seconds": 0.8, "variants": 3, "vary": 0.07, "seed": 4551,
     "layers": [
       { "source": "noise", "filter": "highpass", "cutoff": 1500, "am_hz": 32, "am_depth": 0.9, "attack": 0.02, "decay": 0.25, "length": 0.6, "gain": 0.7 },
@@ -289,22 +289,22 @@
 
   "_creature": "--- The creature -------------------------------------------------------------------------",
 
-  "creature_step_light": {
+  "Creature/step_light": {
     "seconds": 0.16, "variants": 6, "vary": 0.1, "seed": 7001,
     "layers": [
       { "source": "noise", "color": "pink", "filter": "lowpass", "cutoff": 800, "decay": 0.03, "length": 0.12, "gain": 1.0 },
       { "source": "click", "filter": "bandpass", "cutoff": 2800, "q": 3, "start": 0.005, "decay": 0.006, "length": 0.03, "gain": 0.45 }
     ]
   },
-  "creature_step_heavy": {
+  "Creature/step_heavy": {
     "seconds": 0.32, "variants": 6, "vary": 0.1, "seed": 7011,
     "layers": [
-      { "source": "sine", "hz": 70, "hz_end": 42, "decay": 0.07, "length": 0.28, "drive": 0.3, "gain": 1.0 },
+      { "source": "sine", "hz": 70, "hz_end": 42, "decay": 0.07, "length": 0.28, "drive": 0.15, "gain": 1.0 },
       { "source": "noise", "color": "brown", "filter": "lowpass", "cutoff": 450, "decay": 0.06, "length": 0.25, "gain": 0.8 },
       { "source": "noise", "filter": "bandpass", "cutoff": 1800, "q": 2, "start": 0.01, "decay": 0.04, "length": 0.12, "gain": 0.3 }
     ]
   },
-  "creature_breath": {
+  "Creature/breath": {
     "seconds": 2.8, "variants": 4, "vary": 0.08, "room": 0.2, "room_size": 0.4, "seed": 7021,
     "layers": [
       { "source": "voice", "hz": 55, "formants": [350, 900, 2200], "formant_width": 140, "breath": 0.85, "jitter": 0.5, "attack": 0.45, "hold": 0.2, "decay": 0.4, "length": 1.3, "gain": 0.6 },
@@ -312,31 +312,31 @@
       { "source": "noise", "filter": "bandpass", "cutoff": 500, "q": 6, "am_hz": 9, "am_depth": 0.9, "start": 1.4, "attack": 0.2, "decay": 0.4, "length": 1.0, "gain": 0.3 }
     ]
   },
-  "creature_growl": {
+  "Creature/growl": {
     "seconds": 1.7, "variants": 4, "vary": 0.08, "room": 0.25, "room_size": 0.5, "seed": 7031,
     "layers": [
-      { "source": "voice", "hz": 72, "hz_end": 58, "formants": [420, 950, 2400], "formant_width": 150, "breath": 0.35, "jitter": 0.9, "drive": 0.5, "am_hz": 28, "am_depth": 0.5, "attack": 0.15, "decay": 0.8, "sustain": 0.35, "length": 1.5, "gain": 1.0 },
+      { "source": "voice", "hz": 72, "hz_end": 58, "formants": [420, 950, 2400], "formant_width": 150, "breath": 0.35, "jitter": 0.9, "drive": 0.25, "am_hz": 28, "am_depth": 0.5, "attack": 0.15, "decay": 0.8, "sustain": 0.35, "length": 1.5, "gain": 1.0 },
       { "source": "sine", "hz": 45, "hz_end": 38, "jitter": 0.5, "attack": 0.2, "decay": 0.9, "length": 1.5, "gain": 0.5 }
     ]
   },
-  "creature_call": {
+  "Creature/call": {
     "seconds": 2.6, "variants": 3, "vary": 0.06, "room": 0.5, "room_size": 0.85, "seed": 7041,
     "layers": [
-      { "source": "voice", "hz": 180, "hz_end": 105, "curve": 0.7, "formants": [650, 1200, 2800], "formant_width": 160, "breath": 0.3, "jitter": 0.7, "drive": 0.7, "attack": 0.08, "hold": 0.5, "decay": 0.6, "length": 1.8, "gain": 1.0 },
-      { "source": "voice", "hz": 90, "hz_end": 55, "curve": 0.7, "formants": [380, 800, 2200], "formant_width": 140, "breath": 0.4, "jitter": 0.8, "drive": 0.5, "attack": 0.1, "hold": 0.5, "decay": 0.6, "length": 1.8, "gain": 0.6 },
+      { "source": "voice", "hz": 180, "hz_end": 105, "curve": 0.7, "formants": [650, 1200, 2800], "formant_width": 160, "breath": 0.3, "jitter": 0.7, "drive": 0.35, "attack": 0.08, "hold": 0.5, "decay": 0.6, "length": 1.8, "gain": 1.0 },
+      { "source": "voice", "hz": 90, "hz_end": 55, "curve": 0.7, "formants": [380, 800, 2200], "formant_width": 140, "breath": 0.4, "jitter": 0.8, "drive": 0.25, "attack": 0.1, "hold": 0.5, "decay": 0.6, "length": 1.8, "gain": 0.6 },
       { "source": "noise", "filter": "highpass", "cutoff": 2500, "am_hz": 40, "am_depth": 0.6, "attack": 0.08, "hold": 0.4, "decay": 0.4, "length": 1.4, "gain": 0.25 }
     ]
   },
-  "creature_display": {
+  "Creature/warning": {
     "seconds": 1.5, "variants": 3, "vary": 0.07, "room": 0.25, "seed": 7051,
     "layers": [
       { "source": "noise", "filter": "highpass", "cutoff": 3200, "cutoff_end": 2000, "am_hz": 18, "am_depth": 0.4, "attack": 0.05, "hold": 0.45, "decay": 0.3, "length": 1.3, "gain": 0.7 },
       { "source": "click", "filter": "bandpass", "cutoff": 2500, "q": 6, "decay": 0.008, "length": 0.03, "gain": 0.6,
         "repeats": 14, "interval": 0.035, "interval_jitter": 0.3, "repeat_gain": 0.97, "repeat_pitch": 1 },
-      { "source": "voice", "hz": 62, "formants": [380, 900, 2300], "breath": 0.5, "jitter": 0.8, "drive": 0.4, "attack": 0.2, "decay": 0.6, "length": 1.3, "gain": 0.6 }
+      { "source": "voice", "hz": 62, "formants": [380, 900, 2300], "breath": 0.5, "jitter": 0.8, "drive": 0.20, "attack": 0.2, "decay": 0.6, "length": 1.3, "gain": 0.6 }
     ]
   },
-  "creature_chitter": {
+  "Creature/chitter": {
     "seconds": 0.75, "variants": 4, "vary": 0.08, "room": 0.15, "seed": 7061,
     "layers": [
       { "source": "click", "filter": "bandpass", "cutoff": 3000, "cutoff_end": 2200, "q": 8, "decay": 0.01, "length": 0.03, "gain": 0.9,
@@ -344,14 +344,14 @@
       { "source": "voice", "hz": 900, "hz_end": 1150, "formants": [1200, 2600, 3400], "breath": 0.5, "start": 0.25, "attack": 0.03, "decay": 0.08, "length": 0.2, "gain": 0.25 }
     ]
   },
-  "creature_swipe": {
+  "Creature/swipe": {
     "seconds": 0.32, "variants": 4, "vary": 0.08, "seed": 7071,
     "layers": [
       { "source": "noise", "color": "pink", "filter": "bandpass", "cutoff": 500, "cutoff_end": 2400, "curve": 0.6, "q": 1.2, "attack": 0.08, "decay": 0.07, "length": 0.25, "gain": 1.0 },
       { "source": "voice", "hz": 95, "formants": [500, 1000], "breath": 0.8, "jitter": 0.6, "attack": 0.02, "decay": 0.12, "length": 0.25, "gain": 0.4 }
     ]
   },
-  "creature_bite": {
+  "Creature/bite": {
     "seconds": 0.34, "variants": 4, "vary": 0.08, "seed": 7081,
     "layers": [
       { "source": "click", "filter": "bandpass", "cutoff": 1800, "q": 3, "decay": 0.012, "length": 0.05, "gain": 1.0 },
@@ -360,40 +360,40 @@
       { "source": "sine", "hz": 190, "hz_end": 100, "decay": 0.03, "length": 0.1, "gain": 0.5 }
     ]
   },
-  "creature_lunge": {
+  "Creature/lunge": {
     "seconds": 0.55, "variants": 4, "vary": 0.08, "room": 0.2, "seed": 7091,
     "layers": [
-      { "source": "voice", "hz": 140, "hz_end": 90, "formants": [600, 1100, 2500], "breath": 0.3, "jitter": 0.8, "drive": 0.7, "attack": 0.02, "decay": 0.2, "length": 0.45, "gain": 1.0 },
+      { "source": "voice", "hz": 140, "hz_end": 90, "formants": [600, 1100, 2500], "breath": 0.3, "jitter": 0.8, "drive": 0.35, "attack": 0.02, "decay": 0.2, "length": 0.45, "gain": 1.0 },
       { "source": "noise", "color": "pink", "filter": "bandpass", "cutoff": 400, "cutoff_end": 1800, "q": 1, "attack": 0.1, "decay": 0.1, "length": 0.35, "gain": 0.5 }
     ]
   },
-  "creature_grab": {
+  "Creature/grab": {
     "seconds": 0.5, "variants": 3, "vary": 0.07, "seed": 7101,
     "layers": [
       { "source": "noise", "color": "pink", "filter": "bandpass", "cutoff": 600, "cutoff_end": 2000, "q": 1, "attack": 0.05, "decay": 0.06, "length": 0.18, "gain": 0.8 },
-      { "source": "sine", "hz": 100, "hz_end": 55, "start": 0.15, "decay": 0.06, "length": 0.2, "drive": 0.3, "gain": 1.0 },
-      { "source": "voice", "hz": 85, "formants": [450, 950, 2300], "breath": 0.4, "jitter": 0.8, "drive": 0.5, "start": 0.15, "attack": 0.03, "decay": 0.2, "length": 0.34, "gain": 0.7 }
+      { "source": "sine", "hz": 100, "hz_end": 55, "start": 0.15, "decay": 0.06, "length": 0.2, "drive": 0.15, "gain": 1.0 },
+      { "source": "voice", "hz": 85, "formants": [450, 950, 2300], "breath": 0.4, "jitter": 0.8, "drive": 0.25, "start": 0.15, "attack": 0.03, "decay": 0.2, "length": 0.34, "gain": 0.7 }
     ]
   },
-  "creature_hurt": {
+  "Creature/hurt": {
     "seconds": 0.55, "variants": 4, "vary": 0.07, "room": 0.2, "seed": 7111,
     "layers": [
-      { "source": "voice", "hz": 420, "hz_end": 260, "formants": [900, 1700, 3000], "formant_width": 160, "breath": 0.25, "jitter": 0.6, "drive": 0.4, "attack": 0.01, "decay": 0.18, "length": 0.48, "gain": 1.0 },
+      { "source": "voice", "hz": 420, "hz_end": 260, "formants": [900, 1700, 3000], "formant_width": 160, "breath": 0.25, "jitter": 0.6, "drive": 0.20, "attack": 0.01, "decay": 0.18, "length": 0.48, "gain": 1.0 },
       { "source": "voice", "hz": 140, "hz_end": 100, "formants": [500, 1000], "breath": 0.5, "jitter": 0.8, "attack": 0.02, "decay": 0.2, "length": 0.45, "gain": 0.45 }
     ]
   },
-  "creature_death": {
+  "Creature/death": {
     "seconds": 2.9, "variants": 3, "vary": 0.06, "room": 0.3, "room_size": 0.6, "seed": 7121,
     "layers": [
-      { "source": "voice", "hz": 230, "hz_end": 55, "curve": 0.6, "formants": [600, 1000, 2500], "formant_width": 150, "breath": 0.4, "jitter": 0.8, "drive": 0.3, "attack": 0.02, "decay": 1.0, "length": 2.2, "gain": 1.0 },
+      { "source": "voice", "hz": 230, "hz_end": 55, "curve": 0.6, "formants": [600, 1000, 2500], "formant_width": 150, "breath": 0.4, "jitter": 0.8, "drive": 0.15, "attack": 0.02, "decay": 1.0, "length": 2.2, "gain": 1.0 },
       { "source": "noise", "filter": "bandpass", "cutoff": 400, "q": 6, "am_hz": 9, "am_depth": 0.9, "start": 1.2, "attack": 0.1, "decay": 0.5, "length": 1.1, "gain": 0.45 },
-      { "source": "sine", "hz": 70, "hz_end": 40, "start": 1.9, "decay": 0.12, "length": 0.4, "drive": 0.3, "gain": 0.7 }
+      { "source": "sine", "hz": 70, "hz_end": 40, "start": 1.9, "decay": 0.12, "length": 0.4, "drive": 0.15, "gain": 0.7 }
     ]
   },
 
   "_ambience": "--- Ambience: loops play underneath everything, one-shots are dropped in now and then ------",
 
-  "amb_room_tone": {
+  "Ambience/room_tone": {
     "seconds": 8.0, "variants": 1, "loop": true, "gain": 0.5, "seed": 8001,
     "layers": [
       { "source": "sine", "hz": 60, "attack": 0.5, "sustain": 1.0, "decay": 1.0, "gain": 0.4 },
@@ -403,7 +403,7 @@
       { "source": "noise", "color": "pink", "filter": "bandpass", "cutoff": 900, "q": 0.5, "am_hz": 0.125, "am_depth": 0.5, "attack": 0.5, "sustain": 1.0, "decay": 1.0, "gain": 0.08 }
     ]
   },
-  "amb_vent": {
+  "Ambience/vent": {
     "seconds": 10.0, "variants": 1, "loop": true, "gain": 0.45, "seed": 8011,
     "layers": [
       { "source": "noise", "color": "pink", "filter": "lowpass", "cutoff": 1400, "am_hz": 0.7, "am_depth": 0.15, "attack": 0.5, "sustain": 1.0, "decay": 1.0, "gain": 0.7 },
@@ -411,31 +411,31 @@
       { "source": "noise", "filter": "bandpass", "cutoff": 620, "q": 3, "am_hz": 11, "am_depth": 0.3, "attack": 0.5, "sustain": 1.0, "decay": 1.0, "gain": 0.2 }
     ]
   },
-  "amb_electric": {
+  "Ambience/buzz": {
     "seconds": 4.0, "variants": 1, "loop": true, "gain": 0.35, "seed": 8021,
     "layers": [
       { "source": "saw", "hz": 100, "jitter": 0.1, "filter": "bandpass", "cutoff": 2400, "q": 1, "am_hz": 7, "am_depth": 0.5, "attack": 0.2, "sustain": 1.0, "decay": 1.0, "gain": 0.6 },
       { "source": "sine", "hz": 100, "attack": 0.2, "sustain": 1.0, "decay": 1.0, "gain": 0.3 }
     ]
   },
-  "amb_groan": {
+  "Ambience/groan": {
     "seconds": 4.5, "variants": 4, "vary": 0.1, "room": 0.8, "room_size": 1.0, "gain": 0.7, "seed": 8031,
     "layers": [
       { "source": "saw", "hz": 72, "hz_end": 54, "jitter": 0.3, "filter": "bandpass", "cutoff": 300, "q": 6, "am_hz": 6, "am_depth": 0.6, "attack": 0.8, "decay": 1.5, "length": 3.0, "gain": 1.0 },
       { "source": "fm", "hz": 180, "fm_ratio": 2.73, "fm_index": 1.5, "fm_index_end": 0.2, "start": 0.5, "attack": 0.3, "decay": 2.0, "length": 3.0, "gain": 0.3 }
     ]
   },
-  "amb_drip": {
+  "Ambience/drip": {
     "seconds": 0.9, "variants": 5, "vary": 0.12, "room": 0.6, "room_size": 0.6, "gain": 0.6, "seed": 8041,
     "layers": [
       { "source": "click", "filter": "bandpass", "cutoff": 1800, "cutoff_end": 2600, "q": 12, "decay": 0.03, "length": 0.1, "gain": 1.0 },
       { "source": "sine", "hz": 1400, "hz_end": 2300, "decay": 0.02, "length": 0.06, "gain": 0.4 }
     ]
   },
-  "amb_distant_bang": {
+  "Ambience/distant_bang": {
     "seconds": 3.2, "variants": 3, "vary": 0.1, "room": 0.85, "room_size": 1.0, "gain": 0.7, "seed": 8051,
     "layers": [
-      { "source": "sine", "hz": 60, "hz_end": 38, "decay": 0.2, "length": 0.7, "drive": 0.3, "gain": 1.0 },
+      { "source": "sine", "hz": 60, "hz_end": 38, "decay": 0.2, "length": 0.7, "drive": 0.15, "gain": 1.0 },
       { "source": "noise", "color": "brown", "filter": "lowpass", "cutoff": 450, "decay": 0.3, "length": 0.9, "gain": 0.8 },
       { "source": "fm", "hz": 300, "fm_ratio": 1.93, "fm_index": 2.0, "fm_index_end": 0.2, "decay": 1.2, "length": 2.6, "gain": 0.3 }
     ]
@@ -443,31 +443,98 @@
 
   "_ui": "--- Menus --------------------------------------------------------------------------------",
 
-  "ui_hover": {
+  "UI/hover": {
     "seconds": 0.05, "variants": 1, "gain": 0.5, "seed": 9001,
     "layers": [
       { "source": "sine", "hz": 1800, "decay": 0.012, "length": 0.04, "gain": 0.5 },
       { "source": "click", "filter": "bandpass", "cutoff": 4000, "q": 3, "decay": 0.004, "length": 0.02, "gain": 0.4 }
     ]
   },
-  "ui_click": {
+  "UI/click": {
     "seconds": 0.09, "variants": 1, "gain": 0.6, "seed": 9011,
     "layers": [
       { "source": "click", "filter": "bandpass", "cutoff": 2400, "q": 4, "decay": 0.01, "length": 0.04, "gain": 0.8 },
       { "source": "sine", "hz": 900, "hz_end": 700, "decay": 0.03, "length": 0.08, "gain": 0.6 }
     ]
   },
-  "ui_back": {
+  "UI/back": {
     "seconds": 0.09, "variants": 1, "gain": 0.55, "seed": 9021,
     "layers": [
       { "source": "sine", "hz": 700, "hz_end": 480, "decay": 0.04, "length": 0.09, "gain": 1.0 }
     ]
   },
-  "ui_confirm": {
+  "UI/confirm": {
     "seconds": 0.24, "variants": 1, "gain": 0.6, "seed": 9031,
     "layers": [
       { "source": "sine", "hz": 880, "decay": 0.05, "length": 0.1, "gain": 0.8 },
       { "source": "sine", "hz": 1320, "start": 0.08, "decay": 0.07, "length": 0.15, "gain": 0.8 }
     ]
+  },
+
+  "_zones": "--- Where you are: the loops that change as you move from room to vent to outside --------",
+
+  "Ambience/wind": {
+    "seconds": 12.0, "variants": 1, "loop": true, "gain": 0.55, "seed": 8101,
+    "layers": [
+      { "source": "noise", "color": "brown", "filter": "lowpass", "cutoff": 520, "am_hz": 0.16, "am_depth": 0.6, "attack": 0.5, "sustain": 1.0, "decay": 1.0, "gain": 1.0 },
+      { "source": "noise", "color": "pink", "filter": "bandpass", "cutoff": 900, "cutoff_end": 1400, "q": 2.5, "am_hz": 0.083, "am_depth": 0.8, "attack": 0.5, "sustain": 1.0, "decay": 1.0, "gain": 0.25 }
+    ]
+  },
+  "Ambience/vent_close": {
+    "seconds": 8.0, "variants": 1, "loop": true, "gain": 0.5, "seed": 8111,
+    "layers": [
+      { "source": "saw", "hz": 55, "filter": "lowpass", "cutoff": 260, "attack": 0.3, "sustain": 1.0, "decay": 1.0, "gain": 0.45 },
+      { "source": "noise", "color": "pink", "filter": "lowpass", "cutoff": 900, "am_hz": 9.0, "am_depth": 0.2, "attack": 0.3, "sustain": 1.0, "decay": 1.0, "gain": 0.7 },
+      { "source": "click", "filter": "bandpass", "cutoff": 1900, "q": 6, "start": 0.7, "decay": 0.01, "length": 0.04, "gain": 0.15,
+        "repeats": 4, "interval": 1.9, "interval_jitter": 0.5, "repeat_pitch": 2 }
+    ]
+  },
+  "Ambience/nest": {
+    "seconds": 10.0, "variants": 1, "loop": true, "gain": 0.55, "seed": 8121,
+    "layers": [
+      { "source": "noise", "color": "brown", "filter": "lowpass", "cutoff": 260, "am_hz": 0.5, "am_depth": 0.5, "attack": 0.4, "sustain": 1.0, "decay": 1.0, "gain": 0.8 },
+      { "source": "voice", "hz": 42, "formants": [300, 700], "breath": 0.9, "jitter": 0.6, "am_hz": 0.2, "am_depth": 0.7, "attack": 0.6, "sustain": 1.0, "decay": 1.0, "gain": 0.35 },
+      { "source": "noise", "filter": "bandpass", "cutoff": 700, "q": 6, "start": 0.4, "decay": 0.08, "length": 0.25, "gain": 0.4,
+        "repeats": 6, "interval": 1.4, "interval_jitter": 0.6, "repeat_gain": 0.9, "repeat_pitch": 4 }
+    ]
+  },
+
+  "_nest": "--- The nest's heart -------------------------------------------------------------------",
+
+  "Nest/heartbeat": {
+    "seconds": 0.9, "variants": 3, "vary": 0.05, "room": 0.2, "seed": 4601,
+    "layers": [
+      { "source": "sine", "hz": 58, "hz_end": 40, "decay": 0.08, "length": 0.25, "drive": 0.15, "gain": 1.0 },
+      { "source": "noise", "color": "brown", "filter": "lowpass", "cutoff": 240, "decay": 0.06, "length": 0.2, "gain": 0.6 },
+      { "source": "sine", "hz": 52, "hz_end": 38, "start": 0.28, "decay": 0.07, "length": 0.22, "gain": 0.7 },
+      { "source": "noise", "filter": "bandpass", "cutoff": 500, "q": 4, "start": 0.05, "decay": 0.1, "length": 0.3, "gain": 0.2 }
+    ]
+  },
+  "Nest/heart_hurt": {
+    "seconds": 0.7, "variants": 3, "vary": 0.07, "room": 0.2, "seed": 4611,
+    "layers": [
+      { "source": "noise", "filter": "bandpass", "cutoff": 800, "cutoff_end": 400, "q": 3, "decay": 0.12, "length": 0.4, "gain": 0.9 },
+      { "source": "voice", "hz": 260, "hz_end": 150, "formants": [700, 1400, 2600], "breath": 0.5, "jitter": 0.7, "attack": 0.02, "decay": 0.2, "length": 0.5, "gain": 0.6 }
+    ]
+  },
+  "Nest/heart_burst": {
+    "seconds": 2.2, "variants": 2, "vary": 0.05, "room": 0.4, "room_size": 0.6, "seed": 4621,
+    "layers": [
+      { "source": "sine", "hz": 80, "hz_end": 35, "decay": 0.2, "length": 0.7, "drive": 0.2, "gain": 1.0 },
+      { "source": "noise", "color": "pink", "filter": "lowpass", "cutoff": 1800, "cutoff_end": 300, "decay": 0.3, "length": 1.2, "gain": 0.9 },
+      { "source": "noise", "filter": "bandpass", "cutoff": 600, "q": 5, "start": 0.1, "decay": 0.06, "length": 0.2, "gain": 0.5,
+        "repeats": 8, "interval": 0.12, "interval_jitter": 0.6, "repeat_gain": 0.8, "repeat_pitch": 4 },
+      { "source": "voice", "hz": 180, "hz_end": 45, "curve": 0.6, "formants": [500, 1000, 2400], "breath": 0.5, "jitter": 0.8, "attack": 0.05, "decay": 0.6, "length": 1.6, "gain": 0.6 }
+    ]
+  },
+
+  "Creature/climb": {
+    "seconds": 0.45, "variants": 5, "vary": 0.1, "seed": 7131,
+    "layers": [
+      { "source": "click", "filter": "bandpass", "cutoff": 2600, "q": 3, "decay": 0.008, "length": 0.03, "gain": 0.8,
+        "repeats": 6, "interval": 0.05, "interval_jitter": 0.5, "repeat_gain": 0.85, "repeat_pitch": 3 },
+      { "source": "noise", "filter": "bandpass", "cutoff": 1800, "cutoff_end": 1200, "q": 1.5, "attack": 0.02, "decay": 0.12, "length": 0.35, "gain": 0.5 }
+    ]
   }
 }
+

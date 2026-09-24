@@ -88,7 +88,7 @@ TEST_CASE("A sound gets quieter as you walk away from it", "[audio]")
     // Inside the near distance nothing is taken off by distance at all. A centred sound is 0.707 in
     // each ear rather than 1, which is the same energy in the pair: that is what constant power
     // means and it is what stops a sound dipping as it crosses in front of you.
-    CHECK(close == Catch::Approx(0.7071f).margin(0.02));
+    CHECK(close == Catch::Approx(0.7071f * AudioEngine::kHeadroom).margin(0.02));
     // And past the far one there is nothing to hear.
     CHECK(beyond == Catch::Approx(0.0f).margin(0.001));
 }

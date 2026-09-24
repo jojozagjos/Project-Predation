@@ -92,7 +92,7 @@ struct SoundPatch
     float seconds = 1.0f;
     int variants = 3;    // takes written, each a little different
     float vary = 0.05f;  // how different: pitch and timing, as a fraction
-    float gain = 0.85f;  // the peak each take is brought to
+    float gain = 0.8f;   // the peak each take is brought to
     bool loop = false;   // crossfaded end into start, for something that plays continuously
     float room = 0.0f;   // how much of the room is heard, 0 to 1
     float roomSize = 0.5f; // 0 a cupboard, 1 a hangar

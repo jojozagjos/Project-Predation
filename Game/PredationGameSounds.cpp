@@ -122,7 +122,7 @@ void PredationGame::PlayImpact(const Tracer& tracer)
     }
     // Where it landed. A round into a wall across the room says where somebody is shooting at, and a
     // round that found flesh says it found flesh.
-    PlayNamed(tracer.surface ? "impact_hard" : "impact_flesh", tracer.to, tracer.surface ? 0.65f : 0.9f,
+    PlayNamed(tracer.surface ? "Weapons/impact_hard" : "Weapons/impact_flesh", tracer.to, tracer.surface ? 0.65f : 0.9f,
               0.92f + 0.16f * Random01());
 }
 
@@ -171,7 +171,7 @@ void PredationGame::UpdateWorldSounds(float dt)
         // Brought up, or put away. Not on the first frame of a game, when nothing was in hand to change.
         if (m_soundWeapon != kInvalidWeapon || m_weapon.weapon != kInvalidWeapon)
         {
-            PlayNamed(m_weapon.weapon != kInvalidWeapon ? "weapon_draw" : "weapon_holster", local.position, 0.45f, 1.0f,
+            PlayNamed(m_weapon.weapon != kInvalidWeapon ? "Weapons/draw" : "Weapons/holster", local.position, 0.45f, 1.0f,
                       false);
         }
         m_soundWeapon = m_weapon.weapon;
@@ -191,7 +191,7 @@ void PredationGame::UpdateWorldSounds(float dt)
     // Off the ground on purpose: the effort of it, quietly.
     if (m_soundGrounded && !local.grounded && local.velocity.y > 1.5f && local.alive)
     {
-        PlayNamed("jump", local.position, 0.3f, 0.95f + 0.1f * Random01(), false);
+        PlayNamed("Player/jump", local.position, 0.3f, 0.95f + 0.1f * Random01(), false);
     }
     m_soundGrounded = local.grounded;
     // Run until there is nothing left and it is heard, until there is something again.
@@ -205,7 +205,7 @@ void PredationGame::UpdateWorldSounds(float dt)
     }
     if (m_exhausted && m_soundClock >= m_breathAt)
     {
-        PlayNamed("breath_exhausted", local.position, 0.45f, 0.95f + 0.1f * Random01(), false);
+        PlayNamed("Player/out_of_breath", local.position, 0.45f, 0.95f + 0.1f * Random01(), false);
         m_breathAt = m_soundClock + 1.15f + 0.2f * Random01();
     }
 
@@ -235,13 +235,13 @@ void PredationGame::UpdateWorldSounds(float dt)
         {
             if (WeaponHeldBy(remote.id) != nullptr)
             {
-                PlayNamed("weapon_draw", chest, 0.5f);
+                PlayNamed("Weapons/draw", chest, 0.5f);
             }
             heard.held = remote.heldItem;
         }
         if (remote.torchOn != heard.torch)
         {
-            PlayNamed(remote.torchOn ? "torch_on" : "torch_off", chest, 0.35f);
+            PlayNamed(remote.torchOn ? "Player/torch_on" : "Player/torch_off", chest, 0.35f);
             heard.torch = remote.torchOn;
         }
         if (!remote.grounded)
@@ -250,13 +250,13 @@ void PredationGame::UpdateWorldSounds(float dt)
         }
         if (heard.grounded && !remote.grounded && remote.velocity.y > 1.5f && remote.alive)
         {
-            PlayNamed("jump", chest, 0.35f);
+            PlayNamed("Player/jump", chest, 0.35f);
         }
         if (!heard.grounded && remote.grounded)
         {
             if (heard.fall > 3.0f)
             {
-                PlayNamed("land", remote.position, std::clamp(heard.fall / 9.0f, 0.25f, 1.0f) * 0.8f);
+                PlayNamed("Player/land", remote.position, std::clamp(heard.fall / 9.0f, 0.25f, 1.0f) * 0.8f);
             }
             heard.fall = 0.0f;
         }
@@ -281,12 +281,12 @@ void PredationGame::UpdateWorldSounds(float dt)
         const float now = crates[i].lidAngle;
         if (was < 0.02f && now >= 0.02f)
         {
-            PlayNamed("crate_open", crates[i].lidRest, 0.7f);
-            PlayNamed("ammo_take", crates[i].lidRest + glm::vec3(0.0f, 0.2f, 0.0f), 0.6f);
+            PlayNamed("World/crate_open", crates[i].lidRest, 0.7f);
+            PlayNamed("World/ammo_take", crates[i].lidRest + glm::vec3(0.0f, 0.2f, 0.0f), 0.6f);
         }
         else if (was >= 0.02f && now < 0.02f)
         {
-            PlayNamed("crate_close", crates[i].lidRest, 0.7f);
+            PlayNamed("World/crate_close", crates[i].lidRest, 0.7f);
         }
         m_crateLids[i] = now;
     }
@@ -323,7 +323,7 @@ void PredationGame::UpdateCreatureSounds(float dt)
         const float stepGain = std::clamp(0.25f + mass / 450.0f, 0.25f, 0.95f) * creep;
         for (size_t i = 0; i < footfalls.size() && i < 2; ++i)
         {
-            PlayNamed(heavy ? "creature_step_heavy" : "creature_step_light", footfalls[i], stepGain,
+            PlayNamed(heavy ? "Creature/step_heavy" : "Creature/step_light", footfalls[i], stepGain,
                       pitch * (0.93f + 0.14f * Random01()));
         }
 
@@ -333,13 +333,13 @@ void PredationGame::UpdateCreatureSounds(float dt)
         {
             switch (action)
             {
-            case RigAction::Swipe: PlayNamed("creature_swipe", head, 0.8f, pitch); break;
-            case RigAction::Bite: PlayNamed("creature_bite", head, 0.9f, pitch); break;
-            case RigAction::Lunge: PlayNamed("creature_lunge", head, 1.0f, pitch); break;
-            case RigAction::Grab: PlayNamed("creature_grab", head, 0.9f, pitch); break;
+            case RigAction::Swipe: PlayNamed("Creature/swipe", head, 0.8f, pitch); break;
+            case RigAction::Bite: PlayNamed("Creature/bite", head, 0.9f, pitch); break;
+            case RigAction::Lunge: PlayNamed("Creature/lunge", head, 1.0f, pitch); break;
+            case RigAction::Grab: PlayNamed("Creature/grab", head, 0.9f, pitch); break;
             case RigAction::Roar:
                 // Rearing up is two different things: calling the others, and warning somebody off.
-                PlayNamed(creature.Doing() == Behavior::Warn ? "creature_display" : "creature_call", head, 1.0f, pitch);
+                PlayNamed(creature.Doing() == Behavior::Warn ? "Creature/warning" : "Creature/call", head, 1.0f, pitch);
                 break;
             default: break;
             }
@@ -350,13 +350,13 @@ void PredationGame::UpdateCreatureSounds(float dt)
         const float health = creature.Health() / std::max(creature.MaxHealth(), 1.0f);
         if (creature.Alive() && health < heard.health - 0.004f && m_soundClock - heard.hurtAt > 0.6f)
         {
-            PlayNamed("creature_hurt", head, 0.9f, pitch * (0.94f + 0.12f * Random01()));
+            PlayNamed("Creature/hurt", head, 0.9f, pitch * (0.94f + 0.12f * Random01()));
             heard.hurtAt = m_soundClock;
         }
         heard.health = health;
         if (heard.alive && !creature.Alive())
         {
-            PlayNamed("creature_death", head, 1.0f, pitch);
+            PlayNamed("Creature/death", head, 1.0f, pitch);
         }
         heard.alive = creature.Alive();
         if (!creature.Alive() || creature.Down())
@@ -371,7 +371,7 @@ void PredationGame::UpdateCreatureSounds(float dt)
         const bool stalking = doing == Behavior::Stalk;
         if (m_soundClock >= heard.breathAt)
         {
-            PlayNamed("creature_breath", head, stalking ? 0.18f : 0.38f, pitch * (0.95f + 0.1f * Random01()));
+            PlayNamed("Creature/breath", head, stalking ? 0.18f : 0.38f, pitch * (0.95f + 0.1f * Random01()));
             const float pace = creature.Speed() > 3.0f ? 0.55f : 1.0f;
             heard.breathAt = m_soundClock + (2.6f + 2.2f * Random01()) * pace;
         }
@@ -389,16 +389,16 @@ void PredationGame::UpdateCreatureSounds(float dt)
             case Behavior::Attack:
             case Behavior::Drag:
             case Behavior::Search:
-                voice = "creature_growl";
+                voice = "Creature/growl";
                 break;
             case Behavior::Investigate:
             case Behavior::Observe:
             case Behavior::Roam:
-                voice = "creature_chitter";
+                voice = "Creature/chitter";
                 gain = 0.55f;
                 break;
             case Behavior::Warn:
-                voice = "creature_growl";
+                voice = "Creature/growl";
                 gain = 0.6f;
                 break;
             default:
@@ -427,32 +427,61 @@ void PredationGame::UpdateAmbience(float dt)
     // happening, it is the place -- and it goes on behind the menu too.
     AudioEngine& audio = m_app->GetAudio();
     const float level = std::clamp(cv_ambienceVolume.Get(), 0.0f, 2.0f);
-    const auto keep = [&](VoiceId& voice, const char* name, float gain)
+    // Where the ears are, a few times a second. Under a roof is inside; a roof within a couple of metres
+    // of the floor is somewhere tight -- a vent, the crawlspace; and a nest near enough is heard, and
+    // smelt, before it is seen. The loops fade across as you move, over about a second, so walking out
+    // of a door is the room tone giving way to the wind rather than one switching off.
+    m_zoneProbeAt -= dt;
+    if (m_zoneProbeAt <= 0.0f)
     {
-        if (voice != kInvalidVoice && !audio.IsPlaying(voice))
+        m_zoneProbeAt = 0.25f;
+        const glm::vec3 ear = m_camera.position;
+        const RayHit roof = m_app->GetPhysics().RayCastStatic(ear, glm::vec3(0.0f, 1.0f, 0.0f), 30.0f);
+        const RayHit floor = m_app->GetPhysics().RayCastStatic(ear, glm::vec3(0.0f, -1.0f, 0.0f), 4.0f);
+        const float headroom = roof && floor ? roof.distance + floor.distance : 99.0f;
+        m_zoneIndoor = roof ? 1.0f : 0.0f;
+        m_zoneTight = headroom < 2.2f ? 1.0f : 0.0f;
+        float nest = 0.0f;
+        for (const Nest& built : m_nests)
         {
-            voice = kInvalidVoice;
+            nest = std::max(nest, std::clamp(1.0f - (glm::distance(built.at, ear) - 4.0f) / 14.0f, 0.0f, 1.0f));
         }
-        if (voice == kInvalidVoice)
+        m_zoneNest = nest;
+    }
+    const float targets[5] = {
+        m_zoneIndoor * (1.0f - m_zoneTight) * (1.0f - 0.6f * m_zoneNest), // the room
+        m_zoneIndoor * (1.0f - m_zoneTight) * 0.8f + 0.1f,                // air in the ducts, faint outside
+        (1.0f - m_zoneIndoor) + 0.08f * m_zoneIndoor,                     // wind, a breath of it indoors
+        m_zoneTight,                                                      // inside the vent itself
+        m_zoneNest,                                                       // the nest
+    };
+    const float ease = 1.0f - std::exp(-1.6f * dt);
+    for (int i = 0; i < 5; ++i)
+    {
+        AmbienceLoop& loop = m_ambienceLoops[i];
+        loop.weight += (targets[i] - loop.weight) * ease;
+        if (loop.voice != kInvalidVoice && !audio.IsPlaying(loop.voice))
+        {
+            loop.voice = kInvalidVoice;
+        }
+        if (loop.voice == kInvalidVoice)
         {
             AudioEngine::PlayDesc desc;
-            desc.sound = Sounds(name).Pick();
+            desc.sound = Sounds(loop.name).Pick();
             if (desc.sound == kInvalidSound)
             {
-                return;
+                continue;
             }
             desc.loop = true;
             desc.positioned = false;
-            desc.gain = gain * level;
-            voice = audio.Play(desc);
+            desc.gain = 0.0f;
+            loop.voice = audio.Play(desc);
         }
-        else
+        if (loop.voice != kInvalidVoice)
         {
-            audio.SetVoiceGain(voice, gain * level);
+            audio.SetVoiceGain(loop.voice, loop.gain * loop.weight * level);
         }
-    };
-    keep(m_ambienceTone, "amb_room_tone", 0.22f);
-    keep(m_ambienceVent, "amb_vent", 0.12f);
+    }
 
     // A failing lamp buzzes, and the buzz stutters with it: the nearest one within earshot, from where
     // it hangs, as loud as it is lit.
@@ -476,7 +505,7 @@ void PredationGame::UpdateAmbience(float dt)
     if (buzzing != nullptr && m_buzz == kInvalidVoice)
     {
         AudioEngine::PlayDesc desc;
-        desc.sound = Sounds("amb_electric").Pick();
+        desc.sound = Sounds("Ambience/buzz").Pick();
         desc.loop = true;
         desc.positioned = true;
         desc.position = buzzing->position;
@@ -502,8 +531,15 @@ void PredationGame::UpdateAmbience(float dt)
     {
         return;
     }
-    static const char* const kDistant[] = {"amb_groan", "amb_groan", "amb_distant_bang", "amb_drip", "amb_drip"};
-    const char* name = kDistant[std::rand() % 5];
+    static const char* const kDistant[] = {"Ambience/groan", "Ambience/groan", "Ambience/distant_bang", "Ambience/drip", "Ambience/drip"};
+    // A building's noises, heard as a building's: outside only something falling far off, and nothing at
+    // all from inside a vent, where the fan covers it.
+    const char* name = m_zoneIndoor > 0.5f ? kDistant[std::rand() % 5] : "Ambience/distant_bang";
+    if (m_zoneTight > 0.5f)
+    {
+        m_ambienceNext = m_ambienceClock + 10.0f;
+        return;
+    }
     const float angle = glm::two_pi<float>() * Random01();
     const float distance = 18.0f + 25.0f * Random01();
     AudioEngine::PlayDesc desc;
@@ -526,11 +562,11 @@ void PredationGame::MenuSounds()
     const ImGuiID hovered = ImGui::GetCurrentContext() != nullptr ? ImGui::GetCurrentContext()->HoveredId : 0;
     if (menu && hovered != 0 && hovered != m_menuHovered)
     {
-        PlayNamed("ui_hover", m_camera.position, 0.45f, 1.0f, false);
+        PlayNamed("UI/hover", m_camera.position, 0.45f, 1.0f, false);
     }
     if (menu && hovered != 0 && ImGui::GetIO().MouseClicked[0])
     {
-        PlayNamed("ui_click", m_camera.position, 0.6f, 1.0f, false);
+        PlayNamed("UI/click", m_camera.position, 0.6f, 1.0f, false);
     }
     m_menuHovered = hovered;
 
@@ -538,11 +574,11 @@ void PredationGame::MenuSounds()
     const int screen = static_cast<int>(m_screen);
     if (m_menuWasScreen >= 0 && screen != m_menuWasScreen && m_screen == Screen::Playing)
     {
-        PlayNamed("ui_confirm", m_camera.position, 0.6f, 1.0f, false);
+        PlayNamed("UI/confirm", m_camera.position, 0.6f, 1.0f, false);
     }
     else if (m_paused != m_menuWasPaused && m_screen == Screen::Playing)
     {
-        PlayNamed(m_paused ? "ui_click" : "ui_back", m_camera.position, 0.55f, 1.0f, false);
+        PlayNamed(m_paused ? "UI/click" : "UI/back", m_camera.position, 0.55f, 1.0f, false);
     }
     m_menuWasScreen = screen;
     m_menuWasPaused = m_paused;

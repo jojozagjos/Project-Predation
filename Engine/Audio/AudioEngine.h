@@ -36,6 +36,9 @@ inline constexpr StreamId kInvalidStream = 0xFFFF;
 class AudioEngine
 {
 public:
+    // What the whole mix is scaled by before the limiter, so ordinary scenes stay well under the top.
+    static constexpr float kHeadroom = 0.8f;
+
     struct Settings
     {
         int sampleRate = 48000;
@@ -197,6 +200,8 @@ private:
     glm::vec3 m_listenerForward{0.0f, 0.0f, -1.0f};
     glm::vec3 m_listenerRight{1.0f, 0.0f, 0.0f};
     float m_masterGain = 1.0f;
+    // The master limiter's gain, one when nothing is being held down: see MixLocked.
+    float m_limiterGain = 1.0f;
     bool m_muted = false;
     VoiceId m_nextVoice = 1;
     Stats m_stats;

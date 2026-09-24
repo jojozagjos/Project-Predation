@@ -179,11 +179,11 @@ bool WeaponDatabase::LoadFromFile(const std::filesystem::path& file)
         readCues("reload_empty_sounds", definition.reloadEmptySounds);
         if (definition.reloadSounds.empty())
         {
-            definition.reloadSounds = {{0.18f, "reload_out"}, {0.72f, "reload_in"}};
+            definition.reloadSounds = {{0.18f, "Weapons/mag_out"}, {0.72f, "Weapons/mag_in"}};
         }
         if (definition.reloadEmptySounds.empty())
         {
-            definition.reloadEmptySounds = {{0.16f, "reload_out"}, {0.62f, "reload_in"}, {0.84f, "slide_rack"}};
+            definition.reloadEmptySounds = {{0.16f, "Weapons/mag_out"}, {0.62f, "Weapons/mag_in"}, {0.84f, "Weapons/slide"}};
         }
 
         if (const auto it = node.find("size"); it != node.end())

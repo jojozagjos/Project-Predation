@@ -319,7 +319,7 @@ void AddRoom(std::vector<float>& samples, int rate, float mix, float size)
             allpassAt[i] = (allpassAt[i] + 1) % buffer.size();
             wet = out;
         }
-        sample = sample + wet * mix * 2.5f;
+        sample = sample + wet * mix * 1.6f;
     }
 }
 

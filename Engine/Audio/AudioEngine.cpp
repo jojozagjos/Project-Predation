@@ -591,32 +591,35 @@ void AudioEngine::MixLocked(float* out, int frames)
         }
     }
 
-    // And nothing leaves here outside what a speaker can take.
+    // And nothing leaves here outside what a speaker can take -- by turning the whole mix down for a
+    // moment, not by bending the waveform.
     //
-    // Squashed rather than chopped. Four gunshots at once really do add up past one, and what a
-    // sound card does with a sample past one is not a louder gunshot -- but clamping is not much
-    // better: it flattens the tops of the waveform into straight lines, which is a square wave, and
-    // a square wave is harmonics that were never in the sound. A whole mix run through that comes
-    // back sounding coarse and grainy, and it does not recover when the loud thing stops, because
-    // every sample above the line is still being flattened. It was reported as everything sounding
-    // bit crushed after somebody used the voice chat.
+    // This used to be a soft clipper: every sample over 0.7 run through a curve. That keeps a sample
+    // under one, and it is distortion -- a waveform bent at the top is harmonics that were never in the
+    // sound -- starting three decibels below full scale, where a gunshot, or two sounds on top of the
+    // ambience, spend most of their time. It was heard as everything sounding compressed and wrong.
     //
-    // Below the knee nothing is touched at all, so quiet material passes through exactly as it was.
-    // Above it the curve bends over and approaches one without reaching it, so a loud moment loses
-    // some of its peak instead of gaining a buzz.
-    constexpr float kKnee = 0.70f;
-    for (int i = 0; i < frames * 2; ++i)
+    // Now: some headroom, so ordinary scenes never get near the top, and a limiter above it. Any frame
+    // that would pass the ceiling pulls the gain down to exactly what fits, at once; the gain then
+    // recovers over about a tenth of a second. A loud moment gets a little quieter, briefly, and
+    // nothing is ever reshaped.
+    constexpr float kCeiling = 0.97f;
+    const float release = 1.0f - std::exp(-1.0f / (0.12f * static_cast<float>(m_settings.sampleRate)));
+    for (int frame = 0; frame < frames; ++frame)
     {
-        const float sample = out[i];
-        const float magnitude = std::abs(sample);
-        if (magnitude <= kKnee)
+        float& left = out[frame * 2];
+        float& right = out[frame * 2 + 1];
+        left *= kHeadroom;
+        right *= kHeadroom;
+        m_limiterGain += (1.0f - m_limiterGain) * release;
+        const float peak = std::max(std::abs(left), std::abs(right)) * m_limiterGain;
+        if (peak > kCeiling)
         {
-            continue;
+            m_limiterGain *= kCeiling / peak;
+            ++m_stats.clipped;
         }
-        const float over = (magnitude - kKnee) / (1.0f - kKnee);
-        const float squashed = kKnee + (1.0f - kKnee) * std::tanh(over);
-        out[i] = std::copysign(squashed, sample);
-        ++m_stats.clipped;
+        left *= m_limiterGain;
+        right *= m_limiterGain;
     }
 }
 

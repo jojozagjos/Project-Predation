@@ -1754,7 +1754,7 @@ void PredationGame::RegisterCreatureCommands()
             m_showBrain = !m_showBrain;
         });
     console.RegisterCommand(
-        "creature_hurt", "Hurt the first creature as though you had shot it: creature_hurt [amount]",
+        "Creature/hurt", "Hurt the first creature as though you had shot it: creature_hurt [amount]",
         [this](const std::vector<std::string>& args)
         {
             if (m_creatures.empty())
@@ -1820,7 +1820,7 @@ void PredationGame::BuildNest(const glm::vec3& at, uint16_t seed, uint8_t owner,
     nest.body = m_app->GetPhysics().CreateBox({kRadius * 0.75f, 0.9f, kRadius * 0.75f}, solid, BodyMotion::Static);
     m_nests.push_back(nest);
 
-    PlayNamed("nest_build", at + glm::vec3(0.0f, 0.8f, 0.0f), 1.0f);
+    PlayNamed("Nest/grow", at + glm::vec3(0.0f, 0.8f, 0.0f), 1.0f);
     PRED_LOG_INFO(AI, "Creature {} built a nest at {:.1f} {:.1f} {:.1f}", owner, at.x, at.y, at.z);
 
     if (announce)
@@ -2100,7 +2100,7 @@ void PredationGame::UpdateGrips(float dt)
                 glm::vec3 at;
                 if (PlayerPositionIfKnown(player, at))
                 {
-                    ShareSound("struggle", at + glm::vec3(0.0f, 1.4f, 0.0f), 0.8f);
+                    ShareSound("Player/struggle", at + glm::vec3(0.0f, 1.4f, 0.0f), 0.8f);
                 }
             }
         }
@@ -2141,7 +2141,7 @@ void PredationGame::WrapInCocoon(uint8_t player, const Creature& creature)
     const float yaw = std::atan2(feet.x - nest.x, -(feet.z - nest.z));
     m_cocoons.push_back({player, feet, yaw, 0.0f});
     PinPlayer(player, creature.NetId(), true, feet, yaw);
-    ShareSound("cocoon_wrap", feet + glm::vec3(0.0f, 1.0f, 0.0f), 0.9f);
+    ShareSound("Nest/cocoon_wrap", feet + glm::vec3(0.0f, 1.0f, 0.0f), 0.9f);
     PRED_LOG_INFO(AI, "Player {} wrapped up at the nest", player);
     if (player == LocalPlayerId())
     {
@@ -2198,7 +2198,7 @@ void PredationGame::FreeFromCocoon(uint8_t player, uint8_t helper)
     const Cocoon cocoon = *found;
     m_cocoons.erase(found);
     PinPlayer(player, kNotHeld, false, cocoon.feet + glm::vec3(0.0f, 0.1f, 0.0f), cocoon.yaw);
-    ShareSound("cocoon_cut", cocoon.feet + glm::vec3(0.0f, 1.0f, 0.0f), 0.9f);
+    ShareSound("Nest/cocoon_cut", cocoon.feet + glm::vec3(0.0f, 1.0f, 0.0f), 0.9f);
     MakeNoise(NoiseKind::Door, cocoon.feet, NoiseReach::kDoor, helper);
     PRED_LOG_INFO(AI, "Player {} cut free by player {}", player, helper);
 }
@@ -2310,7 +2310,7 @@ void PredationGame::BashDoor(int door, const Creature& creature)
         return;
     }
     // Heard by everybody, as it is heard through the building: that is the point of it.
-    ShareSound("door_bash", found->hinge + glm::vec3(0.0f, 1.0f, 0.0f), 1.0f);
+    ShareSound("World/door_bash", found->hinge + glm::vec3(0.0f, 1.0f, 0.0f), 1.0f);
     MakeNoise(NoiseKind::Door, found->hinge, NoiseReach::kDoor * 1.8f, kNoKiller);
     // Heavier things break it sooner.
     const int needed = std::clamp(static_cast<int>(6.0f - creature.Capabilities().mass / 60.0f), 2, 6);
@@ -2319,7 +2319,7 @@ void PredationGame::BashDoor(int door, const Creature& creature)
         found->locked = false;
         m_doorBlows.erase(door);
         PRED_LOG_INFO(AI, "Creature {} broke door {} open", creature.NetId(), door);
-        ShareSound("door_slam", found->hinge + glm::vec3(0.0f, 1.0f, 0.0f), 1.0f);
+        ShareSound("World/door_slam", found->hinge + glm::vec3(0.0f, 1.0f, 0.0f), 1.0f);
         PerformInteraction(InteractionKind::Door, door, kNoKiller);
     }
 }

@@ -965,9 +965,29 @@ private:
     // The level's own lamps, and the buzz of the nearest failing one.
     LevelLights m_levelLights;
     float m_lightClock = 0.0f;
+    // The main camera's view and projection, last frame: for putting HUD text on things in the world.
+    glm::mat4 m_viewProjection{1.0f};
     VoiceId m_buzz = kInvalidVoice;
-    VoiceId m_ambienceTone = kInvalidVoice;
-    VoiceId m_ambienceVent = kInvalidVoice;
+    // The loops that make up where you are, each faded in by how much you are there: a room, the air in
+    // its ducts, the open air, the inside of a vent, a nest. See UpdateAmbience.
+    struct AmbienceLoop
+    {
+        const char* name;
+        float gain;          // at full strength
+        VoiceId voice = kInvalidVoice;
+        float weight = 0.0f; // how much of it is heard now, eased
+    };
+    AmbienceLoop m_ambienceLoops[5] = {{"Ambience/room_tone", 0.22f},
+                                       {"Ambience/vent", 0.12f},
+                                       {"Ambience/wind", 0.3f},
+                                       {"Ambience/vent_close", 0.32f},
+                                       {"Ambience/nest", 0.45f}};
+    // Where the listener is, measured a few times a second: under a roof, in somewhere tight, how near a
+    // nest.
+    float m_zoneProbeAt = 0.0f;
+    float m_zoneIndoor = 1.0f;
+    float m_zoneTight = 0.0f;
+    float m_zoneNest = 0.0f;
     float m_ambienceClock = 0.0f;
     float m_ambienceNext = 25.0f;
     unsigned int m_menuHovered = 0;
