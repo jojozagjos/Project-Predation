@@ -184,13 +184,6 @@ CVar<bool> cv_voiceOpenMic{"audio.voice_open_mic", false,
 CVar<float> cv_voiceThreshold{"audio.voice_threshold", 0.04f,
                               "How loud you have to be before open mic transmits",
                               CVarFlags::Archive};
-// Whether the creatures may learn what this player says, to say it back to lure the others. The
-// player's own choice, sent with every frame of their voice; the host keeps phrases only in memory and
-// only for the match.
-CVar<bool> cv_allowMimic{"audio.voice_allow_mimic", true,
-                         "Let creatures learn short phrases you say and use them to lure the others (kept in the "
-                         "host's memory for the match only)",
-                         CVarFlags::Archive};
 // How long the meter goes on saying "sending" after the last packet. Longer than the gap between
 // them, so the label holds steady instead of strobing between two states at twelve to one.
 constexpr float kVoiceSendingHold = 0.20f;
@@ -3112,38 +3105,6 @@ void SetSetting(const char* name, const std::string& value)
     CVarRegistry::Instance().Set(name, value);
 }
 
-// A line of explanation, shortened, with the rest of it on hover.
-//
-// Every one of these replaced a paragraph. A menu that explains itself in full, on screen, all the
-// time, is a menu nobody reads: the prose crowds the buttons down the page and the one line that
-// matters is somewhere in the middle of it. What somebody needs in order to choose is a few words,
-// and what they need when the choice goes wrong is a paragraph -- so the few words stay and the
-// paragraph moves into a tooltip, a hover away and costing nothing until it is wanted.
-//
-// The marker is part of the same text item rather than a separate one placed beside it. Put beside
-// it with SameLine, a "(?)" following a line that already reaches the right-hand edge has nowhere to
-// go and breaks apart down the margin, one character per line. As part of the text it wraps with the
-// text, and the whole line is the thing you hover.
-void Caption(const char* line, const char* detail = nullptr)
-{
-    ImGui::PushTextWrapPos(0.0f);
-    if (detail == nullptr)
-    {
-        ImGui::TextDisabled("%s", line);
-        ImGui::PopTextWrapPos();
-        return;
-    }
-    ImGui::TextDisabled("%s  (?)", line);
-    ImGui::PopTextWrapPos();
-    if (ImGui::BeginItemTooltip())
-    {
-        ImGui::PushTextWrapPos(ImGui::GetFontSize() * 26.0f);
-        ImGui::TextUnformatted(detail);
-        ImGui::PopTextWrapPos();
-        ImGui::EndTooltip();
-    }
-}
-
 // The key an action is on, as the player has it bound, for putting in a sentence.
 //
 // Text that names a key has to name the one the player actually pressed. "[F] Open" after
@@ -3536,7 +3497,6 @@ void PredationGame::DrawTitleBrowse()
         return;
     }
     ImGui::EndDisabled();
-    ImGui::TextDisabled("An address like 192.168.1.20 works here too.");
     ImGui::Spacing();
 
     // Which list, as a tab rather than a question. Both are already filled in behind it.
@@ -3624,10 +3584,6 @@ void PredationGame::DrawTitleBrowse()
             {
                 ImGui::TextColored(kWarning, "%s", m_browser.Message().c_str());
             }
-            // The one thing a person staring at an empty list needs: what else to try. School,
-            // office and hotel networks usually stop computers finding each other like this.
-            ImGui::TextDisabled("Not showing up? Some networks (schools, offices, hotels) block this. "
-                                "Use a code, or type the host's address into the box above.");
             ImGui::PopTextWrapPos();
         }
     }
@@ -3635,8 +3591,6 @@ void PredationGame::DrawTitleBrowse()
     {
         ImGui::PushTextWrapPos(0.0f);
         ImGui::TextUnformatted("Public games need a lobby server, and none is set.");
-        ImGui::TextDisabled("Whoever runs one gives you its address to put in Settings. Games on "
-                            "your network, and joining by address, work without one.");
         ImGui::PopTextWrapPos();
     }
     else
@@ -3712,8 +3666,6 @@ void PredationGame::DrawTitleHost()
     ImGui::BeginDisabled(!LobbyServerConfigured());
     ImGui::Checkbox("Show it in Public games", &m_listPublicly);
     ImGui::EndDisabled();
-    ImGui::TextDisabled(m_listPublicly ? "    Anybody can find it and join."
-                                       : "    Only people with the code, and people on your network.");
 
     ImGui::Spacing();
     if (ImGui::Button("Start", wide))
@@ -3721,12 +3673,6 @@ void PredationGame::DrawTitleHost()
         StartHosting();
         return;
     }
-    ImGui::PushTextWrapPos(0.0f);
-    Caption("Windows may ask to allow the game. Say yes to both boxes.",
-            "The first time the game opens a port, Windows Firewall asks whether to allow it on "
-            "private and on public networks. Saying no to either is the most common reason a game "
-            "nobody can find looks like it started correctly.");
-    ImGui::PopTextWrapPos();
 
     if (!m_titleStatus.empty())
     {
@@ -3744,8 +3690,6 @@ void PredationGame::DrawInvite()
     if (!LobbyServerConfigured())
     {
         ImGui::TextUnformatted("People on your network see this game in their list.");
-        ImGui::TextDisabled("There is no code, because no lobby server is set. Set one in Settings to "
-                            "play with people anywhere.");
     }
     else
     {
@@ -3773,7 +3717,6 @@ void PredationGame::DrawInvite()
             {
                 ImGui::SetClipboardText(m_lobby.CodeText().c_str());
             }
-            ImGui::TextDisabled("They press Play, type it in the box at the top, and press Join.");
             if (m_lobby.Arriving() > 0)
             {
                 ImGui::TextColored({0.90f, 0.80f, 0.45f, 1.0f}, "Somebody is connecting...");
@@ -3912,7 +3855,6 @@ void PredationGame::DrawLobby()
             StartTheGame();
             return;
         }
-        ImGui::TextDisabled("People can still join after you start.");
         ImGui::Spacing();
         if (ImGui::Button("Close the lobby", wide))
         {
@@ -4200,24 +4142,12 @@ bool BeginSettingsTable(const char* id)
     return true;
 }
 
-void SettingsRow(const char* name, const char* tooltip = nullptr)
+void SettingsRow(const char* name)
 {
     ImGui::TableNextRow();
     ImGui::TableNextColumn();
     ImGui::AlignTextToFramePadding();
-    ImGui::BeginGroup();
     ImGui::TextUnformatted(name);
-    if (tooltip != nullptr)
-    {
-        // A mark that there is more to say, so nobody has to find the tooltips by accident.
-        ImGui::SameLine();
-        ImGui::TextDisabled("(?)");
-    }
-    ImGui::EndGroup();
-    if (tooltip != nullptr && ImGui::IsItemHovered())
-    {
-        ImGui::SetTooltip("%s", tooltip);
-    }
     ImGui::TableNextColumn();
     ImGui::SetNextItemWidth(-1.0f);
 }
@@ -4300,8 +4230,7 @@ void PredationGame::DrawSettings()
         if (BeginSettingsTable("##displaytable"))
         {
             ImGui::PushID("mode");
-            SettingsRow("Window", "Borderless fullscreen covers the screen at its own resolution and switches "
-                                  "instantly. Windowed can be any size and dragged about.");
+            SettingsRow("Window");
             const bool fullscreen = GetSettingBool("r.fullscreen", false);
             if (ImGui::BeginCombo("##v", fullscreen ? "Borderless fullscreen" : "Windowed"))
             {
@@ -4318,7 +4247,7 @@ void PredationGame::DrawSettings()
             ImGui::PopID();
 
             ImGui::PushID("size");
-            SettingsRow("Window size", "The window's size while it is a window. Fullscreen always uses the screen's own.");
+            SettingsRow("Window size");
             ImGui::BeginDisabled(fullscreen);
             const int width = GetSettingInt("r.width", 1600);
             const int height = GetSettingInt("r.height", 900);
@@ -4342,14 +4271,12 @@ void PredationGame::DrawSettings()
             ImGui::PopID();
 
             ImGui::PushID("vsync");
-            SettingsRow("V-Sync", "On, the picture never tears and the frame rate follows the screen. Off, the "
-                                  "game answers a touch quicker; set a frame limit below with it.");
+            SettingsRow("V-Sync");
             check("r.vsync", GetSettingBool("r.vsync", true));
             ImGui::PopID();
 
             ImGui::PushID("fps");
-            SettingsRow("Frame limit", "The most frames a second, so the machine is not run flat out drawing "
-                                       "frames the screen cannot show. Unlimited with v-sync on is fine.");
+            SettingsRow("Frame limit");
             {
                 static const int kLimits[] = {0, 30, 60, 90, 120, 144, 165, 240};
                 const int cap = GetSettingInt("r.max_fps", 0);
@@ -4370,8 +4297,7 @@ void PredationGame::DrawSettings()
             ImGui::PopID();
 
             ImGui::PushID("fov");
-            SettingsRow("Field of view", "How wide the view is, measured top to bottom. Wider shows more and "
-                                         "makes everything look further away.");
+            SettingsRow("Field of view");
             float fov = cv_fov.Get();
             if (ImGui::SliderFloat("##v", &fov, 70.0f, 120.0f, "%.0f deg"))
             {
@@ -4380,8 +4306,7 @@ void PredationGame::DrawSettings()
             ImGui::PopID();
 
             ImGui::PushID("brightness");
-            SettingsRow("Brightness", "Turn it up until you can just make out the darkest corner of a room, and no "
-                                      "further. Being able to see everything is not the game.");
+            SettingsRow("Brightness");
             float exposure = cv_exposure.Get();
             if (ImGui::SliderFloat("##v", &exposure, 0.4f, 2.5f, "%.2f"))
             {
@@ -4390,7 +4315,7 @@ void PredationGame::DrawSettings()
             ImGui::PopID();
 
             ImGui::PushID("contrast");
-            SettingsRow("Contrast", "For a monitor that crushes its low end or washes it out.");
+            SettingsRow("Contrast");
             float contrast = cv_contrast.Get();
             if (ImGui::SliderFloat("##v", &contrast, 0.6f, 1.8f, "%.2f"))
             {
@@ -4430,7 +4355,7 @@ void PredationGame::DrawSettings()
         if (BeginSettingsTable("##graphicstable"))
         {
             ImGui::PushID("preset");
-            SettingsRow("Quality", "Sets everything below at once. Change any of them afterwards and it says Custom.");
+            SettingsRow("Quality");
             if (ImGui::BeginCombo("##v", presetName))
             {
                 for (const QualityPreset& preset : kPresets)
@@ -4451,36 +4376,17 @@ void PredationGame::DrawSettings()
             ImGui::PopID();
 
             ImGui::PushID("shadows");
-            SettingsRow("Shadows", "Shadows from the lights in the level. Off is much quicker and much flatter.");
+            SettingsRow("Shadows");
             check("r.shadows", shadows);
             ImGui::PopID();
 
-            ImGui::PushID("shadowdistance");
-            SettingsRow("Shadow distance", "How far away things still cast shadows. The biggest single cost after "
-                                           "shadows themselves.");
-            ImGui::BeginDisabled(!shadows);
-            float distance = shadowDistance;
-            if (ImGui::SliderFloat("##v", &distance, 16.0f, 128.0f, "%.0f m"))
-            {
-                SetSetting("r.shadow_distance", std::to_string(distance));
-            }
-            ImGui::EndDisabled();
-            ImGui::PopID();
-
             ImGui::PushID("torchshadows");
-            SettingsRow("Torch shadows", "The torch throws shadows of what it lights. In a dark building, most of "
-                                         "what you see is lit by it.");
+            SettingsRow("Torch shadows");
             check("r.torch_shadows", torchShadows);
             ImGui::PopID();
 
-            ImGui::PushID("sky");
-            SettingsRow("Indoor darkness", "Rooms keep out the light from outside. Off, every room is lit as if it "
-                                           "had no roof.");
-            check("r.sky_occlusion", skyOcclusion);
-            ImGui::PopID();
-
             ImGui::PushID("msaa");
-            SettingsRow("Anti-aliasing", "Smooths jagged edges. Each step up costs more.");
+            SettingsRow("Anti-aliasing");
             {
                 const std::string shown = msaa <= 0 ? std::string("Off") : std::to_string(msaa) + "x MSAA";
                 if (ImGui::BeginCombo("##v", shown.c_str()))
@@ -4499,21 +4405,10 @@ void PredationGame::DrawSettings()
             ImGui::PopID();
 
             ImGui::PushID("reflections");
-            SettingsRow("Mirror reflections", "A mirror is the whole world drawn a second time, so this is about half "
-                                              "as much again while you stand in front of one.");
+            SettingsRow("Mirror reflections");
             check("r.reflections", reflections);
             ImGui::PopID();
 
-            ImGui::PushID("reflectiondistance");
-            SettingsRow("Mirror distance", "Where a mirror stops being drawn. Lower this before turning them off.");
-            ImGui::BeginDisabled(!reflections);
-            float mirror = reflectionDistance;
-            if (ImGui::SliderFloat("##v", &mirror, 5.0f, 60.0f, "%.0f m"))
-            {
-                SetSetting("r.reflection_distance", std::to_string(mirror));
-            }
-            ImGui::EndDisabled();
-            ImGui::PopID();
             ImGui::EndTable();
         }
         ImGui::EndChild();
@@ -4538,7 +4433,7 @@ void PredationGame::DrawSettings()
             ImGui::PopID();
 
             ImGui::PushID("effects");
-            SettingsRow("Effects", "Everything that happens: weapons, footsteps, doors, the creature.");
+            SettingsRow("Effects");
             float effects = GetSettingFloat("audio.effects", 1.0f);
             if (ImGui::SliderFloat("##v", &effects, 0.0f, 1.5f, "%.2f"))
             {
@@ -4547,7 +4442,7 @@ void PredationGame::DrawSettings()
             ImGui::PopID();
 
             ImGui::PushID("ambience");
-            SettingsRow("Ambience", "The building itself: the hum, the air in the ducts, things settling out of sight.");
+            SettingsRow("Ambience");
             float ambience = GetSettingFloat("audio.ambience", 1.0f);
             if (ImGui::SliderFloat("##v", &ambience, 0.0f, 2.0f, "%.2f"))
             {
@@ -4556,7 +4451,7 @@ void PredationGame::DrawSettings()
             ImGui::PopID();
 
             ImGui::PushID("unfocused");
-            SettingsRow("Mute in background", "Silent while the game's window is behind another one.");
+            SettingsRow("Mute in background");
             check("audio.mute_unfocused", GetSettingBool("audio.mute_unfocused", false));
             ImGui::PopID();
             ImGui::EndTable();
@@ -4572,7 +4467,7 @@ void PredationGame::DrawSettings()
         if (BeginSettingsTable("##voicetable"))
         {
             ImGui::PushID("voice");
-            SettingsRow("Proximity voice", "Talk to, and hear, anybody close enough.");
+            SettingsRow("Proximity voice");
             if (ImGui::Checkbox("##v", &voice))
             {
                 SetSetting("audio.voice", voice ? "true" : "false");
@@ -4585,7 +4480,7 @@ void PredationGame::DrawSettings()
 
             ImGui::BeginDisabled(!voice);
             ImGui::PushID("voicevolume");
-            SettingsRow("Voice volume", "How loud other people are.");
+            SettingsRow("Voice volume");
             float voiceVolume = cv_voiceVolume.Get();
             if (ImGui::SliderFloat("##v", &voiceVolume, 0.0f, 2.0f, "%.2f"))
             {
@@ -4593,21 +4488,8 @@ void PredationGame::DrawSettings()
             }
             ImGui::PopID();
 
-            ImGui::PushID("allowmimic");
-            SettingsRow("Creatures can learn your voice",
-                        "Some creatures repeat short things they have heard you say, to lure the others. Nothing is "
-                        "saved: the host keeps them in memory for the match only. Off, your voice is never kept.");
-            bool allowMimic = cv_allowMimic.Get();
-            if (ImGui::Checkbox("##v", &allowMimic))
-            {
-                SetSetting("audio.voice_allow_mimic", allowMimic ? "true" : "false");
-            }
-            ImGui::PopID();
-
             ImGui::PushID("openmic");
-            const std::string talkKey = KeyFor(m_app->GetInput(), "voice");
-            const std::string openMicHelp = "Off, hold " + talkKey + " to talk. On, it sends whenever you speak.";
-            SettingsRow("Open mic", openMicHelp.c_str());
+            SettingsRow("Open mic");
             bool openMic = cv_voiceOpenMic.Get();
             if (ImGui::Checkbox("##v", &openMic))
             {
@@ -4616,8 +4498,7 @@ void PredationGame::DrawSettings()
             ImGui::PopID();
 
             ImGui::PushID("threshold");
-            SettingsRow("Open mic sensitivity", "How loud you have to be before it sends. The line on the meter below "
-                                                "is where it is.");
+            SettingsRow("Open mic sensitivity");
             ImGui::BeginDisabled(!openMic);
             float threshold = cv_voiceThreshold.Get();
             if (ImGui::SliderFloat("##v", &threshold, 0.005f, 0.30f, "%.3f"))
@@ -4677,17 +4558,10 @@ void PredationGame::DrawSettings()
             const float x = bar.x + (far.x - bar.x) * std::clamp(cv_voiceThreshold.Get(), 0.0f, 1.0f);
             ImGui::GetWindowDrawList()->AddLine({x, bar.y}, {x, far.y}, IM_COL32(240, 200, 120, 255), 2.0f);
         }
-        ImGui::TextDisabled(!m_microphone.Running() ? "Microphone off until you talk or test it."
-                            : m_voiceSending        ? "Sending."
-                                                    : "Listening, too quiet to send.");
         if (ImGui::Button(m_micTest ? "Stop test" : "Test microphone", {-1.0f, 0.0f}))
         {
             m_micTest = !m_micTest;
         }
-        Caption(m_micTest ? "Speak. You should hear yourself." : "Hear what the others would hear.",
-                "Your microphone is played back out of your own speakers, through the same gate and the "
-                "same codec the game sends through -- so what you are judging is what would actually reach "
-                "the others. Use headphones, or the speakers feed straight back into the microphone.");
         ImGui::EndDisabled();
         ImGui::EndChild();
         ImGui::EndTabItem();
@@ -4709,8 +4583,7 @@ void PredationGame::DrawSettings()
             ImGui::PopID();
 
             ImGui::PushID("aimsensitivity");
-            SettingsRow("Aiming sensitivity", "How much slower the view turns with the sights up, as a share of the "
-                                              "sensitivity above. Lower makes small corrections easier.");
+            SettingsRow("Aiming sensitivity");
             float aimSensitivity = GetSettingFloat("input.aim_sensitivity", 0.75f);
             if (ImGui::SliderFloat("##v", &aimSensitivity, 0.2f, 1.5f, "x%.2f"))
             {
@@ -4724,12 +4597,12 @@ void PredationGame::DrawSettings()
             ImGui::PopID();
 
             ImGui::PushID("crouch");
-            SettingsRow("Toggle crouch and prone", "On, press once to crouch and again to stand. Off, hold the key.");
+            SettingsRow("Toggle crouch and prone");
             check("input.crouch_toggle", cv_crouchToggle.Get());
             ImGui::PopID();
 
             ImGui::PushID("sprint");
-            SettingsRow("Toggle sprint", "On, press once to sprint and again to stop. Off, hold the key.");
+            SettingsRow("Toggle sprint");
             check("input.sprint_toggle", cv_sprintToggle.Get());
             ImGui::PopID();
             ImGui::EndTable();
@@ -4750,8 +4623,7 @@ void PredationGame::DrawSettings()
         if (BeginSettingsTable("##gameplaytable"))
         {
             ImGui::PushID("shake");
-            SettingsRow("Camera shake", "How much the view is jolted by your own shots and hard landings. Your aim "
-                                        "is never moved by it either way.");
+            SettingsRow("Camera shake");
             float shake = GetSettingFloat("cam.shake", 1.0f);
             if (ImGui::SliderFloat("##v", &shake, 0.0f, 1.0f, "%.2f"))
             {
@@ -4760,8 +4632,7 @@ void PredationGame::DrawSettings()
             ImGui::PopID();
 
             ImGui::PushID("bob");
-            SettingsRow("Head bob", "How much the view rises and falls with each step. Lower it if walking makes "
-                                    "you feel ill; your character still walks the same.");
+            SettingsRow("Head bob");
             float bob = GetSettingFloat("cam.head_bob", 1.0f);
             if (ImGui::SliderFloat("##v", &bob, 0.0f, 1.0f, "%.2f"))
             {
@@ -4770,13 +4641,12 @@ void PredationGame::DrawSettings()
             ImGui::PopID();
 
             ImGui::PushID("crosshair");
-            SettingsRow("Crosshair", "The marks at the middle of the screen, which open up to show how far your "
-                                     "rounds could stray.");
+            SettingsRow("Crosshair");
             check("hud.crosshair", GetSettingBool("hud.crosshair", true));
             ImGui::PopID();
 
             ImGui::PushID("fps");
-            SettingsRow("Show frame rate", "A small counter in the corner.");
+            SettingsRow("Show frame rate");
             check("hud.show_fps", GetSettingBool("hud.show_fps", false));
             ImGui::PopID();
             ImGui::EndTable();
@@ -4795,7 +4665,7 @@ void PredationGame::DrawSettings()
         if (BeginSettingsTable("##multiplayertable"))
         {
             ImGui::PushID("name");
-            SettingsRow("Your name", "What everybody else sees you called.");
+            SettingsRow("Your name");
             ImGui::BeginDisabled(inSession);
             if (ImGui::InputText("##v", m_playerName, sizeof(m_playerName)))
             {
@@ -4805,36 +4675,7 @@ void PredationGame::DrawSettings()
             ImGui::PopID();
             ImGui::EndTable();
         }
-        if (inSession)
-        {
-            ImGui::TextDisabled("Leave the game to change your name.");
-        }
-
-        ImGui::Spacing();
-        ImGui::SeparatorText("Lobby server");
-        static char lobbyServer[160] = "";
-        static bool lobbyServerRead = false;
-        if (!lobbyServerRead)
-        {
-            lobbyServerRead = true;
-            std::snprintf(lobbyServer, sizeof(lobbyServer), "%s", cv_lobbyServer.Get().c_str());
-        }
-        ImGui::SetNextItemWidth(-1.0f);
-        if (ImGui::InputTextWithHint("##lobbyserver", kDefaultLobbyServer, lobbyServer, sizeof(lobbyServer)))
-        {
-            // Trimmed as it is typed, because an address pasted from a message usually brings a space.
-            std::string text = lobbyServer;
-            text.erase(0, text.find_first_not_of(" \t\r\n"));
-            text.erase(text.find_last_not_of(" \t\r\n") + 1);
-            SetSetting("net.lobby_server", text);
-            // A new server is asked afresh, rather than the list going on showing the old one's games.
-            StopBrowsing();
-        }
-        Caption("Leave it empty to use the game's own. Only for running a server of your own.",
-                "The lobby server introduces players to each other and then gets out of the way: the game "
-                "itself goes straight from one PC to the other, never through it. It is a free Cloudflare "
-                "Worker (Docs/SERVER.md). Without one, games on your own network still show up in the list, "
-                "and anybody can join by address.");
+        // The lobby server is net.lobby_server, from the console: only somebody running their own needs it.
         ImGui::EndChild();
         ImGui::EndTabItem();
     }
@@ -4851,9 +4692,6 @@ void PredationGame::DrawSettings()
                                ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar))
     {
         ImGui::TextUnformatted("Put every setting back the way it shipped?");
-        Caption("Display, graphics, audio, controls, gameplay and your name.",
-                "Only the settings on this screen. Anything set from the console that is not on it keeps "
-                "whatever you gave it.");
         ImGui::Spacing();
         if (ImGui::Button("Reset", {120.0f, 0.0f}))
         {
@@ -4869,8 +4707,6 @@ void PredationGame::DrawSettings()
         }
         ImGui::EndPopup();
     }
-    ImGui::SameLine();
-    Caption("Changes apply and are saved as you make them.");
 }
 
 void PredationGame::DrawPauseMenu()
@@ -5119,10 +4955,6 @@ void PredationGame::DrawTitleScreen()
         cv_playerName.Set(m_playerName);
     }
     ImGui::EndDisabled();
-    if (inSession)
-    {
-        ImGui::TextDisabled("Leave the game to change your name.");
-    }
     ImGui::Spacing();
 
     if (m_titlePage == TitlePage::Browse || m_titlePage == TitlePage::Host)
@@ -5429,14 +5261,11 @@ void PredationGame::UpdateVoice(float dt)
                 m_host.SendVoice(m_voiceSequence, packet, m_player.State().position);
                 // Proximity chat is proximity for everything with ears. Talking near it is heard.
                 MakeNoise(NoiseKind::Voice, m_player.State().position, NoiseReach::kVoice, LocalPlayerId());
-                if (cv_allowMimic.Get())
-                {
-                    m_voiceMemory.Heard(LocalPlayerId(), packet, static_cast<float>(m_time));
-                }
+                m_voiceMemory.Heard(LocalPlayerId(), packet, static_cast<float>(m_time));
             }
             else
             {
-                m_client.SendVoice(m_voiceSequence, packet, cv_allowMimic.Get());
+                m_client.SendVoice(m_voiceSequence, packet);
             }
         }
         m_voiceLevel = m_microphone.LastLevel();
@@ -5448,22 +5277,10 @@ void PredationGame::UpdateVoice(float dt)
     // the machinery a footstep does: the same attenuation, the same panning, the same distance cut.
     if (m_sessionMode == SessionMode::Host)
     {
-        // The host's own phrases go the moment it says they may not be kept.
-        if (!cv_allowMimic.Get())
-        {
-            m_voiceMemory.Forget(LocalPlayerId());
-        }
         for (NetHost::VoiceHeard& heard : m_host.TakeVoice())
         {
-            // Kept for the creatures only with the speaker's leave, and forgotten the moment it is not given.
-            if (heard.mayMimic)
-            {
-                m_voiceMemory.Heard(heard.speaker, heard.frame, static_cast<float>(m_time));
-            }
-            else
-            {
-                m_voiceMemory.Forget(heard.speaker);
-            }
+            // Kept, for the match only, for the creatures that say things back.
+            m_voiceMemory.Heard(heard.speaker, heard.frame, static_cast<float>(m_time));
             // Talking beside something with ears is heard by it, but only when we actually know
             // where the speaker is standing. A noise made at our own feet for somebody else's voice
             // would walk every creature on the map towards us.
@@ -5583,10 +5400,12 @@ void PredationGame::HearVoice(uint8_t speaker, const std::vector<uint8_t>& frame
         // Their volume, which is a setting and was not being read: the slider moved and nothing
         // happened. A voice at full gain on top of the game is also most of the way to the mix
         // clipping on its own.
-        desc.gain = std::clamp(cv_voiceVolume.Get(), 0.0f, 2.0f);
+        // With make-up gain: speech through the codec arrives well below everything else in the mix, and
+        // at a slider of one people were hard to hear from across a room.
+        desc.gain = std::clamp(cv_voiceVolume.Get(), 0.0f, 2.0f) * 2.8f;
         // A voice carries further than a footstep and falls off gently: the point of proximity chat
         // is knowing roughly where somebody is, and a hard cut turns that into a switch.
-        desc.nearDistance = 2.5f;
+        desc.nearDistance = 5.0f;
         desc.farDistance = kVoiceRange;
         fresh->voice = audio.Play(desc);
         m_speakers.push_back(std::move(fresh));
@@ -5893,7 +5712,7 @@ void PredationGame::UpdateSounds(float dt)
 
     // Where the ears are. The camera rather than the body, because the camera is what the player is
     // looking through: spectating a teammate, their ears are the ones that matter.
-    audio.SetListener(m_camera.position, m_camera.Forward(), glm::vec3(0.0f, 1.0f, 0.0f));
+    audio.SetListener(m_renderEye, m_renderForward, glm::vec3(0.0f, 1.0f, 0.0f));
 
     // Walking on the spot for the sound panel. Above the check below on purpose, so it keeps going
     // while the game is paused: judging a footstep means listening to it and not to the game.
@@ -6963,6 +6782,13 @@ const char* PredationGame::CameraModeName() const
 
 void PredationGame::SetCameraMode(CameraMode mode)
 {
+    // The free camera starts where you are, looking where you look, not wherever it was last left.
+    if (mode == CameraMode::Fly && m_cameraMode != CameraMode::Fly && m_screen != Screen::Title)
+    {
+        m_camera.position = m_renderEye;
+        m_camera.yaw = m_lookYaw;
+        m_camera.pitch = m_lookPitch;
+    }
     m_cameraMode = mode;
     // Orbit is an inspection tool, not a persistent state; entering third person starts behind the
     // character rather than wherever it was last left.
@@ -8936,6 +8762,10 @@ void PredationGame::OnUpdate(double dt, double alpha)
     // again: the shadow maps used to be fitted round the local player's own eye, so spectating somebody
     // across the map left them standing in a place with no shadows at all.
     m_renderEye = viewPosition;
+    // Out of the view itself, whichever camera made it. The ears were on the fly camera, which in first
+    // person is left wherever it was last used -- at the spawn, facing north -- so every sound was heard
+    // from there: from one side, whichever way the player turned.
+    m_renderForward = -glm::vec3(glm::inverse(view)[2]);
 
     // What is in the player's hands has to be settled before the body is posed, not after. Deciding
     // it afterwards left a newly equipped weapon sitting at the world origin for one frame, which

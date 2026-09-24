@@ -1015,7 +1015,11 @@ TEST_CASE("Voice reaches the people near the speaker and nobody else", "[net][se
         std::vector<uint8_t> speakers;
         for (const NetHost::VoiceHeard& heard : host.TakeVoice())
         {
-            speakers.push_back(heard.speaker);
+            // What the host plays out loud; the rest is only for the creatures to learn.
+            if (heard.audible)
+            {
+                speakers.push_back(heard.speaker);
+            }
         }
         return speakers;
     };

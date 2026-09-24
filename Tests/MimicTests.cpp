@@ -80,14 +80,13 @@ TEST_CASE("Somebody who takes back their leave, or leaves, is forgotten", "[mimi
     CHECK(memory.Pick(4, 1) == nullptr);
 }
 
-TEST_CASE("A voice frame says whose it is: a player's, with their leave, or a creature's", "[mimic][net][protocol]")
+TEST_CASE("A voice frame says whose it is: a player's or a creature's", "[mimic][net][protocol]")
 {
     for (const bool creature : {false, true})
     {
         VoiceMessage sent;
         sent.creature = creature;
         sent.speaker = creature ? 200 : 3;
-        sent.mayMimic = !creature;
         sent.sequence = 777;
         sent.frame = {1, 2, 3, 4, 5};
         BitWriter writer;
@@ -101,7 +100,6 @@ TEST_CASE("A voice frame says whose it is: a player's, with their leave, or a cr
         REQUIRE(ReadVoice(reader, received));
         CHECK(received.creature == creature);
         CHECK(received.speaker == sent.speaker);
-        CHECK(received.mayMimic == sent.mayMimic);
         CHECK(received.sequence == 777);
         CHECK(received.frame == sent.frame);
     }

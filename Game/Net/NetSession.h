@@ -184,14 +184,13 @@ public:
     // frame is played once and holding them would be a growing buffer of old speech.
     //
     // Every frame a client sends comes through here, whether the host is near enough to hear it or not:
-    // `audible` says whether it is, and `mayMimic` whether its speaker lets the creatures learn it.
+    // `audible` says whether it is; the creatures learn from all of them.
     struct VoiceHeard
     {
         uint8_t speaker = 0;
         uint16_t sequence = 0;
         std::vector<uint8_t> frame;
         bool audible = true;
-        bool mayMimic = false;
     };
     std::vector<VoiceHeard> TakeVoice();
 
@@ -405,7 +404,7 @@ public:
     void SendDrop(const DropMessage& drop);
     void SendItemUse(const ItemUseMessage& use);
     // My microphone, on its way to the host, which decides who is close enough to hear it.
-    void SendVoice(uint16_t sequence, const std::vector<uint8_t>& frame, bool mayMimic = false);
+    void SendVoice(uint16_t sequence, const std::vector<uint8_t>& frame);
     // Voice from other people, waiting to be played. Taken rather than read: each frame is played
     // once, and holding them would be a growing buffer of old speech. `creature` when it is a creature
     // saying something back, and `speaker` is then the creature's number.

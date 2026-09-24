@@ -323,7 +323,7 @@ void PredationGame::UpdateCreatureSounds(float dt)
         const Behavior intent = creature.Doing();
         const bool sneaking = intent == Behavior::Stalk || intent == Behavior::Ambush || intent == Behavior::Lure ||
                               intent == Behavior::Flank || intent == Behavior::Search;
-        const float listenerAway = glm::distance(m_camera.position, head);
+        const float listenerAway = glm::distance(m_renderEye, head);
 
         // Its feet, as they come down. Creeping is quieter, which is what creeping is for.
         std::vector<glm::vec3> footfalls = creature.TakeFootfalls();
@@ -392,8 +392,8 @@ void PredationGame::UpdateCreatureSounds(float dt)
         if (m_soundClock >= heard.breathAt && !heldBreath)
         {
             PlayNamed("Creature/breath", head, stalking || sneaking ? 0.22f : 0.3f, pitch * (0.95f + 0.1f * Random01()));
-            const float pace = creature.Speed() > 3.0f ? 0.55f : 1.0f;
-            heard.breathAt = m_soundClock + (2.6f + 2.2f * Random01()) * pace;
+            const float breathPace = creature.Speed() > 3.0f ? 0.55f : 1.0f;
+            heard.breathAt = m_soundClock + (2.6f + 2.2f * Random01()) * breathPace;
         }
 
         // And what it has in mind, now and then: a growl when it means somebody harm, chittering when it
@@ -456,7 +456,7 @@ void PredationGame::UpdateAmbience(float dt)
     if (m_zoneProbeAt <= 0.0f)
     {
         m_zoneProbeAt = 0.25f;
-        const glm::vec3 ear = m_camera.position;
+        const glm::vec3 ear = m_renderEye;
         const RayHit roof = m_app->GetPhysics().RayCastStatic(ear, glm::vec3(0.0f, 1.0f, 0.0f), 30.0f);
         const RayHit floor = m_app->GetPhysics().RayCastStatic(ear, glm::vec3(0.0f, -1.0f, 0.0f), 4.0f);
         const float headroom = roof && floor ? roof.distance + floor.distance : 99.0f;
@@ -515,7 +515,7 @@ void PredationGame::UpdateAmbience(float dt)
     for (const LevelLights::Light& light : m_levelLights.Lights())
     {
         const bool unsteady = light.mood == LightMood::Failing || light.mood == LightMood::Flicker;
-        const float away = glm::distance(light.position, m_camera.position);
+        const float away = glm::distance(light.position, m_renderEye);
         if (unsteady && away < nearest)
         {
             nearest = away;
@@ -568,7 +568,7 @@ void PredationGame::UpdateAmbience(float dt)
     const float distance = 18.0f + 25.0f * Random01();
     AudioEngine::PlayDesc desc;
     desc.sound = Sounds(name).Pick();
-    desc.position = m_camera.position + glm::vec3(std::cos(angle) * distance, 2.0f + 3.0f * Random01(), std::sin(angle) * distance);
+    desc.position = m_renderEye + glm::vec3(std::cos(angle) * distance, 2.0f + 3.0f * Random01(), std::sin(angle) * distance);
     desc.positioned = true;
     desc.gain = 0.55f * level;
     desc.pitch = 0.9f + 0.2f * Random01();
@@ -586,11 +586,11 @@ void PredationGame::MenuSounds()
     const ImGuiID hovered = ImGui::GetCurrentContext() != nullptr ? ImGui::GetCurrentContext()->HoveredId : 0;
     if (menu && hovered != 0 && hovered != m_menuHovered)
     {
-        PlayNamed("UI/hover", m_camera.position, 0.45f, 1.0f, false);
+        PlayNamed("UI/hover", m_renderEye, 0.45f, 1.0f, false);
     }
     if (menu && hovered != 0 && ImGui::GetIO().MouseClicked[0])
     {
-        PlayNamed("UI/click", m_camera.position, 0.6f, 1.0f, false);
+        PlayNamed("UI/click", m_renderEye, 0.6f, 1.0f, false);
     }
     m_menuHovered = hovered;
 
@@ -598,11 +598,11 @@ void PredationGame::MenuSounds()
     const int screen = static_cast<int>(m_screen);
     if (m_menuWasScreen >= 0 && screen != m_menuWasScreen && m_screen == Screen::Playing)
     {
-        PlayNamed("UI/confirm", m_camera.position, 0.6f, 1.0f, false);
+        PlayNamed("UI/confirm", m_renderEye, 0.6f, 1.0f, false);
     }
     else if (m_paused != m_menuWasPaused && m_screen == Screen::Playing)
     {
-        PlayNamed(m_paused ? "UI/click" : "UI/back", m_camera.position, 0.55f, 1.0f, false);
+        PlayNamed(m_paused ? "UI/click" : "UI/back", m_renderEye, 0.55f, 1.0f, false);
     }
     m_menuWasScreen = screen;
     m_menuWasPaused = m_paused;

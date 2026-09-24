@@ -344,10 +344,8 @@ uses the voice of somebody it has itself heard talking.
 
 The host keeps the last dozen phrases each player said -- the runs of voice frames between pauses, half
 a second to three and a half seconds long -- as the encoded frames that arrived, in memory only, for
-the match only, and only from players whose own setting allows it (**Creatures can learn your voice**,
-`audio.voice_allow_mimic`, on by default). That setting travels with every frame they send, so turning
-it off takes effect at once, and what was kept of them is forgotten the moment a frame arrives without
-it, or they leave.
+the match only, and forgets a player the moment they leave. There is no setting for it: it is part of
+what the creatures are.
 
 Luring (the Lure behaviour) is for somebody it is hunting who is out of its sight or a good way off, no
 more than once a minute. It creeps somewhere six to fifteen metres from them, out of their sight and

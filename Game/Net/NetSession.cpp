@@ -322,18 +322,13 @@ void NetHost::HandlePacket(const NetPacket& packet)
         const glm::vec3 from = client->controller.State().position;
         ForwardVoice(client->playerId, false, message.sequence, message.frame, from);
         // And the host's own ears, if it is close enough to hear it -- and the creatures', which learn
-        // from anybody who lets them wherever they are.
-        const bool audible = glm::distance(m_localPosition, from) <= kVoiceRange;
-        if (audible || message.mayMimic)
-        {
-            VoiceHeard heard;
-            heard.speaker = client->playerId;
-            heard.sequence = message.sequence;
-            heard.frame = std::move(message.frame);
-            heard.audible = audible;
-            heard.mayMimic = message.mayMimic;
-            m_voiceHeard.push_back(std::move(heard));
-        }
+        // from anybody wherever they are.
+        VoiceHeard heard;
+        heard.speaker = client->playerId;
+        heard.sequence = message.sequence;
+        heard.frame = std::move(message.frame);
+        heard.audible = glm::distance(m_localPosition, from) <= kVoiceRange;
+        m_voiceHeard.push_back(std::move(heard));
         return;
     }
 
@@ -1378,7 +1373,7 @@ void NetClient::SendReady()
 }
 
 
-void NetClient::SendVoice(uint16_t sequence, const std::vector<uint8_t>& frame, bool mayMimic)
+void NetClient::SendVoice(uint16_t sequence, const std::vector<uint8_t>& frame)
 {
     if (m_transport == nullptr || !Connected() || frame.empty())
     {
@@ -1389,7 +1384,6 @@ void NetClient::SendVoice(uint16_t sequence, const std::vector<uint8_t>& frame, 
     // because a client that could name the speaker could name somebody else.
     message.sequence = sequence;
     message.frame = frame;
-    message.mayMimic = mayMimic;
 
     BitWriter writer(frame.size() + 8);
     WriteMessageHeader(writer, MessageType::Voice);

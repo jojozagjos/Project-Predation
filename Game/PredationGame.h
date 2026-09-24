@@ -634,6 +634,8 @@ private:
     glm::vec3 m_spawnPoint{0.0f, 0.5f, TestMapSpec::kSpawnZ};
     // Where this frame is drawn from: the eye, the free camera, or whoever is being spectated.
     glm::vec3 m_renderEye{0.0f};
+    // And which way the picture looks: where the ears face.
+    glm::vec3 m_renderForward{0.0f, 0.0f, -1.0f};
 
     ItemDatabase m_items;
     ItemIcons m_itemIcons;
