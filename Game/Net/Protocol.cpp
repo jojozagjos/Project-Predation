@@ -483,6 +483,14 @@ void WriteWorldEvent(BitWriter& writer, const WorldEventMessage& message)
         writer.WriteBits(message.index, 4);
         writer.WriteBits(message.item, 16);
         WritePosition(writer, message.position);
+        // Its age, in whole seconds: a newcomer sees it grown as far as everybody else does.
+        writer.WriteBits(std::min<uint32_t>(static_cast<uint32_t>(std::max(message.amount, 0.0f) + 0.5f), 4095), 12);
+        break;
+
+    case WorldEventKind::NestWounded:
+        writer.WriteBits(message.index, 4);
+        writer.WriteBits(message.player, 3);
+        writer.WriteQuantised(message.amount, 0.0f, 1.0f, 8);
         break;
 
     case WorldEventKind::Sound:
@@ -569,6 +577,18 @@ bool ReadWorldEvent(BitReader& reader, WorldEventMessage& out)
         out.index = static_cast<uint8_t>(reader.ReadBits(4));
         out.item = static_cast<uint16_t>(reader.ReadBits(16));
         out.position = ReadPosition(reader);
+        out.amount = static_cast<float>(reader.ReadBits(12));
+        break;
+
+    case WorldEventKind::NestWounded:
+        out.index = static_cast<uint8_t>(reader.ReadBits(4));
+        out.player = static_cast<uint8_t>(reader.ReadBits(3));
+        out.amount = reader.ReadQuantised(0.0f, 1.0f, 8);
+        // Quantised, a heart nearly gone could read as gone: only nought itself is.
+        if (out.amount < 0.5f / 255.0f)
+        {
+            out.amount = 0.0f;
+        }
         break;
 
     case WorldEventKind::Sound:

@@ -30,6 +30,7 @@
 #include "Tools/ModelEditor/ModelEditor.h"
 #include "Game/World/WorldObjects.h"
 
+#include <glm/gtc/quaternion.hpp>
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
 
@@ -180,24 +181,67 @@ private:
     };
     std::vector<Call> m_calls;
     std::vector<Call> m_callsHeard;
-    // The nests creatures have built: where each is, where one stands beside it, which creature made it
-    // and what it looks like. Nothing is here at the start of a game: a nest exists only because
-    // something built it.
-    struct Nest
+    // The nests creatures have built. Nothing is here at the start of a game: a nest exists only
+    // because something built it. A nest is a heart on a wall, beating, and growth that spreads from it
+    // across the floor, the walls and the ceiling for as long as it lives. None of it is solid -- a
+    // creature once built itself into its own nest and never got out -- and the heart can be shot.
+    struct NestPatch
     {
         glm::vec3 at{0.0f};
-        glm::vec3 stand{0.0f};
+        glm::vec3 normal{0.0f, 1.0f, 0.0f};
+        float size = 1.0f;     // how far it reaches from its middle, in metres, grown
+        float appears = 0.0f;  // how old the nest is when it starts to show
+        float spin = 0.0f;     // turned about its surface, so no two look alike
+        float fromHeart = 0.0f;
+        int variant = 0;
+        Entity entity;
+    };
+    struct Nest
+    {
+        glm::vec3 at{0.0f};       // the floor where it was built
+        glm::vec3 stand{0.0f};    // where a creature stands at it, in front of the heart
+        glm::vec3 heart{0.0f};    // the middle of the heart
+        glm::vec3 wall{0.0f};     // where the heart is rooted
+        glm::vec3 normal{0.0f, 0.0f, 1.0f}; // out of the surface it is rooted in
+        glm::quat facing{1.0f, 0.0f, 0.0f, 0.0f};
         uint8_t owner = 0;
         uint16_t seed = 0;
-        Entity entity;
-        MeshHandle mesh;
-        BodyHandle body;
+        float age = 0.0f;         // seconds since it was built
+        float health = 0.0f;
+        bool dead = false;
+        float deadFor = 0.0f;
+        float beat = 0.0f;        // where it is in its beat, 0 to 1
+        float flinch = 0.0f;      // how hard it was last struck, fading
+        std::vector<NestPatch> patches;
+        // Built on a worker: sculpting a heart takes longer than a frame should.
+        std::future<std::vector<MeshData>> building;
+        MeshHandle heartMesh;
+        MeshHandle rootsMesh;
+        std::vector<MeshHandle> growthMeshes;
+        Entity heartEntity;
+        Entity rootsEntity;
+        BodyHandle heartBody;
     };
     std::vector<Nest> m_nests;
-    void BuildNest(const glm::vec3& at, uint16_t seed, uint8_t owner, bool announce);
+    void BuildNest(const glm::vec3& at, uint16_t seed, uint8_t owner, bool announce, int index = -1, float age = 0.0f);
     void ClearNests();
-    // The nest nearest a point, when there is one within `reach`.
+    // The living nest nearest a point, when there is one within `reach`.
     const Nest* NestNear(const glm::vec3& point, float reach) const;
+    // Which nest's heart a body is, or -1.
+    int NestForBody(BodyHandle body) const;
+    // Where a creature stands at a nest, and where the nest will spread to and when.
+    void PlaceNestStand(Nest& nest) const;
+    void PlanNestGrowth(Nest& nest) const;
+    // The heart shot, on the host: down to nothing and the whole nest dies.
+    void HurtNest(int index, float damage, int by);
+    // What the host said about a heart: how much of it is left, and whether that was news.
+    void SetNestHealth(int index, float fraction, bool quiet);
+    // Every nest growing, beating and withering, on every machine.
+    void UpdateNests(float dt);
+    // The glow of each living heart, for the lights of the frame.
+    void GatherNestLights(std::vector<PunctualLight>& lights) const;
+    // How much a heart can take, whole.
+    float NestWholeHealth() const;
     // Rebuilding the walkable surface on a worker thread after the level has changed shape, and putting
     // it in place once it is ready.
     void RequestNavRebuild();

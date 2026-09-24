@@ -2051,6 +2051,28 @@ void PredationGame::SendWorldToPlayer(uint8_t player)
         event.quiet = true;
         m_host.SendTo(player, event);
     }
+    // Every nest, as old as it is, and how hurt.
+    for (size_t i = 0; i < m_nests.size(); ++i)
+    {
+        const Nest& nest = m_nests[i];
+        WorldEventMessage built;
+        built.kind = WorldEventKind::NestBuilt;
+        built.index = static_cast<uint8_t>(i);
+        built.item = nest.seed;
+        built.position = nest.at;
+        built.amount = nest.age;
+        built.quiet = true;
+        m_host.SendTo(player, built);
+        if (nest.dead || nest.health < NestWholeHealth())
+        {
+            WorldEventMessage wounded;
+            wounded.kind = WorldEventKind::NestWounded;
+            wounded.index = static_cast<uint8_t>(i);
+            wounded.amount = nest.dead ? 0.0f : nest.health / NestWholeHealth();
+            wounded.quiet = true;
+            m_host.SendTo(player, wounded);
+        }
+    }
 }
 
 PredationGame::RemoteAvatar* PredationGame::AvatarFor(uint8_t id)
@@ -2228,8 +2250,13 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
         break;
 
     case WorldEventKind::NestBuilt:
-        // Something built a nest over there: it is solid and it is drawn, on every machine.
-        BuildNest(event.position, event.item, event.index, false);
+        // Something built a nest over there. Every machine grows it from the same place on the same
+        // clock, so this is all that is ever said about it until somebody shoots it.
+        BuildNest(event.position, event.item, 0, false, event.index, event.amount);
+        break;
+
+    case WorldEventKind::NestWounded:
+        SetNestHealth(event.index, event.amount, event.quiet);
         break;
 
     case WorldEventKind::PlayerRespawned:
@@ -7011,7 +7038,7 @@ void PredationGame::ResolveShots()
             ShotResult predicted = ResolveShot(physics, shot);
             // A creature here is only shown, but it is where the host's is, so a round that finds
             // it has found flesh: no hole, the same as the host will decide.
-            if (CreatureForBody(predicted.body) != nullptr)
+            if (CreatureForBody(predicted.body) != nullptr || NestForBody(predicted.body) >= 0)
             {
                 predicted.surface = false;
             }
@@ -8943,6 +8970,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
         {
             lamp.intensity *= std::max(cv_lampScale.Get(), 0.0f);
         }
+        GatherNestLights(environment.sceneLights);
         for (size_t i = 0; i < kMaxPunctualLights; ++i)
         {
             if (i < candidates.size())

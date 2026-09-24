@@ -1591,3 +1591,21 @@ TEST_CASE("Only some creatures take people; the rest only fight", "[creature][te
         }
     }
 }
+
+TEST_CASE("Its nest attacked, it leaves whatever it was doing and goes back to it", "[creature][nest]")
+{
+    // Whatever its temperament: even a timid one does not leave its brood to whoever is shooting it.
+    CreatureTraits traits = CreatureTraits::FromSeed(11);
+    traits.temperament = GENERATE(Temperament::Timid, Temperament::Predator, Temperament::Curious);
+    CreatureHarness harness(traits);
+    harness.Run(1.0f, {});
+    const glm::vec3 nest{kDarkRoomX, 0.0f, kDarkRoomZ};
+    const float before = glm::distance(harness.creature->Position(), nest);
+    harness.creature->Brain().OnNestAttacked(1, nest + glm::vec3(0.0f, 1.2f, 0.0f), harness.time, false);
+    harness.Run(0.5f, {});
+    INFO("temperament " << TemperamentName(traits.temperament) << ", " << MindOf(*harness.creature));
+    CHECK_FALSE(harness.creature->Brain().Interest().resolved);
+    CHECK(glm::distance(harness.creature->Brain().Interest().position, nest) < 1.5f);
+    harness.Run(5.0f, {});
+    CHECK(glm::distance(harness.creature->Position(), nest) < before - 3.0f);
+}

@@ -224,7 +224,7 @@ as it can rear (`verticalReach`, from its height).
 Grabbed, a player is carried along in front of it, facing it, pinned where it has them on every
 machine. It takes them away from the others: to its nest when it has one, or else as far from everybody
 else as it can get, out of their sight. There it kills them, bite by bite -- or, at its nest, wraps them
-in a cocoon against the side of the hive and leaves them there, alive, bleeding four health a second,
+in a cocoon against the wall beside its heart and leaves them there, alive, bleeding four health a second,
 until they die or somebody cuts them free (use the cocoon).
 
 Getting free:
@@ -250,12 +250,42 @@ Getting free:
   six blows, fewer for a heavier body. Every blow is loud.
 - **Calls.** Somebody it cannot reach, it calls about. Every creature within 45 metres hears a call and
   comes at a run.
-- **The nest.** Where there is a hive, the creatures come out of it, take what they catch to it, and go
-  back to it to heal when they are hurt -- three percent of their health a second.
+- **The nest.** Where there is a nest, the creatures come out of it, take what they catch to it, and go
+  back to it to heal when they are hurt -- three percent of their health a second. Nowhere else do they
+  heal at all. Somebody shooting its heart brings its builder back whatever it was doing, afraid or not,
+  and turns it on whoever did it; see The nest, below.
 - **Turning.** Looking round is its head, swung either side of the way it was facing when it began, not
   its body. It does not turn towards anything right under its nose, turns on the spot only for more than
   a small turn, and slower than on the run. (It used to swing its look relative to the way it was facing
   at that moment, which chased its own nose round in circles.)
+
+### The nest
+
+A nest is a living thing rooted in a wall, not a heap on the floor. The creature that builds one works at
+a spot for fourteen seconds; then a heart the size of a person's chest appears on the nearest broad wall
+(the edge of a doorway does not count), at about chest height, lower under a low roof. With no wall near
+it hangs from the roof, and in the open with nothing overhead it lies on the ground. Vessels root it
+into the wall round about.
+
+From the heart it spreads. Lines are cast out from the heart in every direction, and wherever each first
+meets the level -- the wall it is on, the floor, the ceiling, the wall across the room -- is a patch of
+growth that comes up in its turn: near surfaces within the first minute, the furthest, seven metres off,
+at about five (`ai.nest_growth_seconds`). Every machine casts the same lines at the same level and grows
+it on the same clock from the same seed, so nothing about the growth is ever sent: the host says where a
+nest was built and how old it is, and a newcomer sees it grown as far as everybody else does.
+
+None of it is solid. The first nests were a mound with a box round it, and the creature that built one
+stood inside it while it did, so the box went up round the creature and it never got out. Nothing about
+a nest blocks feet or changes the navigation mesh now.
+
+The heart beats -- slowly, quicker with somebody near and quicker again as it is hurt -- and is heard, and
+glows faintly red through its skin with each beat, enough to find it by in the dark. It can be shot
+(`ai.nest_health`, 200): the round finds it as it finds a creature, and each hit is sent to everybody.
+When it bursts the growth withers and darkens, anybody wrapped up at it comes loose, the creature has
+no home to heal at or bring anybody back to, and it knows who did it.
+
+`nest_here` builds one where you stand, `nest_grow 120` ages every nest two minutes, and `nest_hurt 50`
+shoots the nearest heart.
 
 ### The creature lab
 
@@ -269,7 +299,7 @@ everything above (see `Game/World/LabMap.h` for the layout):
 - **the corridor of doors**: an ordinary door, a room of four lockers, and a locked store room;
 - **the balcony**: up a ramp, with a 2.4 m drop off it;
 - **the pillar forest**: roofed and dark, for being stalked in;
-- **the nest**: a dark chamber with the hive in it.
+- **the nest chamber**: dark, enclosed, and empty until something builds there.
 
 There is a carbine, a pistol, medical kits and an ammunition crate at the spawn.
 

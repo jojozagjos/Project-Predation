@@ -228,6 +228,38 @@ void CreatureBrain::OnDamaged(float amount, int byPlayer, const glm::vec3& from,
     }
 }
 
+void CreatureBrain::OnNestAttacked(int byPlayer, const glm::vec3& where, float time, bool destroyed)
+{
+    if (m_dead)
+    {
+        return;
+    }
+    // Its brood. Whatever it was afraid of matters less than this, and whoever is doing it has made an
+    // enemy of it whatever its temperament.
+    m_state.arousal = 1.0f;
+    m_state.fear = std::max(m_state.fear - (destroyed ? 0.6f : 0.3f), 0.0f);
+    m_retreatUntil = 0.0f;
+    m_committedUntil = 0.0f;
+    if (Track* track = FindTrack(byPlayer))
+    {
+        track->provokedAt = time;
+        if (!track->visible)
+        {
+            // Not seen, but somebody shooting a heart is standing in sight of it.
+            track->lastKnown = where;
+            track->confidence = std::max(track->confidence, 0.75f);
+        }
+    }
+    m_interest.position = where;
+    m_interest.strength = 1.0f;
+    m_interest.time = time;
+    m_interest.what = destroyed ? "its nest, destroyed" : "its nest, under attack";
+    m_interest.resolved = false;
+    m_nestAttackedAt = time;
+    m_nestAttacker = byPlayer;
+    Log(time, destroyed ? "its nest has been destroyed" : "something is at its nest");
+}
+
 void CreatureBrain::OnGrabbed(int player, float time)
 {
     if (m_dead)

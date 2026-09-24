@@ -218,6 +218,9 @@ public:
     // `maxHealth` is what the body can take in all, so a round hurts a big body less than a small one:
     // pain and harm are measured against it, as they were against the 160 every creature once had.
     void OnDamaged(float amount, int byPlayer, const glm::vec3& from, float time, float maxHealth = 160.0f);
+    // Somebody is shooting its nest's heart, at `where`; or has killed it. `byPlayer` is -1 when nobody
+    // in particular did. Whatever it was doing, it comes back for them.
+    void OnNestAttacked(int byPlayer, const glm::vec3& where, float time, bool destroyed);
     // It is dead, really. The mind stops here: nothing after this perceives, decides or moves, and
     // what it wanted to do is forgotten -- a strike it was in the middle of does not land later.
     void OnDied(float time);
@@ -577,6 +580,10 @@ private:
     float m_nextBash = 0.0f;
     // Whether a door stands between it and the next corner of its route; fills `door`.
     bool DoorInTheWay(const CreatureSenses& senses, DoorSense& door) const;
+
+    // When its nest was last attacked, and by whom: what brings it home whatever it was doing.
+    float m_nestAttackedAt = -1.0e9f;
+    int m_nestAttacker = -1;
 
     bool m_dead = false;
 };

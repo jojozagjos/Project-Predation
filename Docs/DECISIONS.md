@@ -1680,3 +1680,26 @@ circuits that can lose their power; emergency lamps ignore that and are what is 
 the power out. What a creature can see counts the lamps with a clear line to the player, and the nearest
 failing lamp buzzes and stutters with its light. `r.lamp_scale` scales them all; `light_report` lists
 those near you.
+
+## ADR-076: A nest is a heart on a wall and growth that is not solid
+
+**Status**: accepted, 2026-09-24
+
+A nest was a sculpted mound on the floor with a static box round it, so that people walked round it.
+The creature that built it was standing on that spot while it built, and the box was made round it:
+every nesting creature trapped itself in its own nest. Rebuilding the navigation mesh round the box
+also took a worker thread and a swap each time.
+
+A nest is now a heart hung on the nearest broad wall and patches of growth cast out from it onto
+whatever surfaces surround it, appearing over five minutes from nearest to furthest. None of it
+collides with anything; the heart has a hitbox on the layer rounds find and nothing else does. The
+navigation mesh never changes for a nest.
+
+What is sent is only what cannot be worked out: where it was built, its seed and its age (NestBuilt,
+with twelve bits of age added), and each wound to its heart (NestWounded, the fraction left, nought
+when it bursts). Each machine finds the same wall and the same surfaces with the same rays against the
+same static level, so the growth itself is never sent, and a newcomer is told every nest with its age
+and wounds. Protocol version 11.
+
+Sculpting a heart and its growth takes around 40 ms, so it is done on a worker when the nest is built
+and put in the scene when it is ready.

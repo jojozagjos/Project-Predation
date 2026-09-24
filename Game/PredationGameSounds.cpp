@@ -444,7 +444,10 @@ void PredationGame::UpdateAmbience(float dt)
         float nest = 0.0f;
         for (const Nest& built : m_nests)
         {
-            nest = std::max(nest, std::clamp(1.0f - (glm::distance(built.at, ear) - 4.0f) / 14.0f, 0.0f, 1.0f));
+            if (!built.dead)
+            {
+                nest = std::max(nest, std::clamp(1.0f - (glm::distance(built.heart, ear) - 4.0f) / 14.0f, 0.0f, 1.0f));
+            }
         }
         m_zoneNest = nest;
     }

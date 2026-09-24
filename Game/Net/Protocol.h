@@ -24,7 +24,7 @@ namespace pred
 
 // Bumped whenever the wire changes shape. Two ends that disagree are refused at the door rather
 // than left to misread each other, which is what a wire mismatch actually looks like from inside.
-inline constexpr uint16_t kProtocolVersion = 10;
+inline constexpr uint16_t kProtocolVersion = 11;
 // How many bits name a message type. Five, so there is room to add one.
 inline constexpr uint32_t kMessageTypeBits = 5;
 inline constexpr uint8_t kMaxPlayers = 4;
@@ -96,8 +96,9 @@ enum class WorldEventKind : uint8_t
     PlayerDamaged,   // health changed, and by whose hand
     PlayerDied,      // with the direction of the blow, for the ragdoll
     PlayerRespawned,
-    NestBuilt,       // a creature has finished building a nest somewhere
+    NestBuilt,       // a creature has finished building a nest somewhere, and how long ago
     Sound,           // a sound somewhere, by the key of its name, for what nothing else carries
+    NestWounded,     // a nest's heart shot: how much of it is left, and none when it has burst
     Count
 };
 

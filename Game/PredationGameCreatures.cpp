@@ -8,6 +8,7 @@
 #include "Game/PredationGame.h"
 
 #include "Engine/Render/Primitives.h"
+#include "Engine/Render/Sdf.h"
 #include "Game/World/HiveMesh.h"
 
 #include "Engine/Core/CVar.h"
@@ -19,6 +20,7 @@
 
 #include <glm/geometric.hpp>
 #include <glm/gtc/constants.hpp>
+#include <glm/gtx/quaternion.hpp>
 
 #include <algorithm>
 #include <cctype>
@@ -48,6 +50,14 @@ CVar<float> cv_aiHealthScale{"ai.health_scale", 1.0f,
                              "Multiplies how much health a creature's body gives it, for tuning"};
 CVar<bool> cv_aiFreeze{"ai.freeze", false,
                         "Creatures stand where they are and do nothing, for looking at them: ai.freeze 1"};
+CVar<float> cv_nestHealth{"ai.nest_health", 200.0f, "How much a nest's heart takes before it bursts"};
+CVar<float> cv_nestGrowth{"ai.nest_growth_seconds", 300.0f,
+                          "How long a nest takes to spread as far as it ever will from its heart"};
+// How far from its heart a nest spreads, how long one patch of it takes to come up, and how many nests
+// there can be at once.
+constexpr float kNestReach = 7.0f;
+constexpr float kPatchGrowIn = 9.0f;
+constexpr size_t kMaxNests = 8;
 
 // A strike's reach as the game checks it when the blow lands: the body's own reach and a little more,
 // because the brain decided to swing when somebody was in reach and they get this much room to have
@@ -83,15 +93,10 @@ void PredationGame::BuildNavigation()
     {
         PRED_LOG_ERROR(AI, "No navigation mesh, so no creature can move: {}", error);
     }
-    // Where a creature stands at each nest it has built: the walkable floor nearest the mound.
+    // Where a creature stands at each nest it has built: the floor in front of the heart.
     for (Nest& nest : m_nests)
     {
-        glm::vec3 stand = nest.at;
-        if (!m_nav.NearestPoint(nest.at, 4.0f, stand))
-        {
-            stand = nest.at;
-        }
-        nest.stand = stand;
+        PlaceNestStand(nest);
     }
 }
 
@@ -279,8 +284,7 @@ void PredationGame::UpdateArrivals()
     bool fromNest = false;
     if (const Nest* nest = NestNear(m_player.State().position, 90.0f); nest != nullptr)
     {
-        const float angle = static_cast<float>(seed % 628u) * 0.01f;
-        at = nest->at + glm::vec3(std::cos(angle), 0.0f, std::sin(angle)) * 2.6f;
+        at = nest->stand;
         fromNest = true;
     }
     if ((fromNest || FindUnseenPoint(seed, at)) && SpawnCreature(seed, m_player.State().position, &at))
@@ -345,6 +349,12 @@ bool PredationGame::OnShotResolved(ShotResult& result, const glm::vec3& origin, 
     if (!result)
     {
         return false;
+    }
+    if (const int nest = NestForBody(result.body); nest >= 0)
+    {
+        HurtNest(nest, result.damage, shooter);
+        result.surface = false;
+        return true;
     }
     Creature* creature = CreatureForBody(result.body);
     if (creature == nullptr)
@@ -529,6 +539,10 @@ void PredationGame::UpdateCreatures(float dt)
         // Its own nest, or one of the brood's it has come across.
         for (const Nest& nest : m_nests)
         {
+            if (nest.dead)
+            {
+                continue;
+            }
             const bool mine = nest.owner == creature->NetId();
             const float away = Horizontal(nest.at, creature->Position());
             if (!mine && away > 45.0f)
@@ -725,6 +739,7 @@ void PredationGame::UpdateCreatures(float dt)
 void PredationGame::UpdateCreatureVisuals(float dt)
 {
     ShowCocoons();
+    UpdateNests(dt);
     // A client's creatures have no mind here. They are eased towards what the host last said.
     const bool shownOnly = !IsAuthority();
     for (const std::unique_ptr<Creature>& creature : m_creatures)
@@ -1741,6 +1756,31 @@ void PredationGame::RegisterCreatureCommands()
                                 const uint16_t seed = static_cast<uint16_t>(std::rand() & 0xFFFF);
                                 BuildNest(m_player.State().position, seed, 0, true);
                             });
+    console.RegisterCommand("nest_grow", "Age every nest by some seconds, to see it grown: nest_grow <seconds>",
+                            [this](const std::vector<std::string>& args)
+                            {
+                                const float seconds = args.size() >= 2 ? std::strtof(args[1].c_str(), nullptr) : 60.0f;
+                                for (Nest& nest : m_nests)
+                                {
+                                    nest.age += std::max(seconds, 0.0f);
+                                }
+                                m_app->GetConsole().Print("Nests aged " + std::to_string(static_cast<int>(seconds)) + " s");
+                            });
+    console.RegisterCommand("nest_hurt", "Shoot the nearest nest's heart for some damage, as the host: nest_hurt [amount]",
+                            [this](const std::vector<std::string>& args)
+                            {
+                                const float amount = args.size() >= 2 ? std::strtof(args[1].c_str(), nullptr) : 50.0f;
+                                int nearest = -1;
+                                for (size_t i = 0; i < m_nests.size(); ++i)
+                                {
+                                    if (!m_nests[i].dead && (nearest < 0 || glm::distance(m_nests[i].heart, m_player.State().position) <
+                                                                                 glm::distance(m_nests[nearest].heart, m_player.State().position)))
+                                    {
+                                        nearest = static_cast<int>(i);
+                                    }
+                                }
+                                HurtNest(nearest, amount, LocalPlayerId());
+                            });
     console.RegisterCommand(
         "ai_brain", "Show or hide the creature brain inspector, or open it at a tab: ai_brain [thinking|senses|memory|body|timeline]",
         [this](const std::vector<std::string>& args)
@@ -1774,9 +1814,10 @@ void PredationGame::RegisterCreatureCommands()
 // --- Nests --------------------------------------------------------------------------------------
 //
 // A nest is not part of a map. It is there because a creature that builds them found somewhere dark and
-// out of the way and spent a while working at it. Everybody gets told when one appears, so it is solid
-// and visible on every machine; only the host rebuilds the walkable surface round it, because only the
-// host has anything that walks by it.
+// out of the way and spent a while working at it. Everybody is told when one appears, where, and how
+// old it is; each machine then finds the same wall for its heart and the same surfaces for its growth,
+// because they all have the same level, and grows it on the same clock. What cannot be worked out that
+// way is sent: the heart being hurt, and dying.
 
 const PredationGame::Nest* PredationGame::NestNear(const glm::vec3& point, float reach) const
 {
@@ -1784,6 +1825,10 @@ const PredationGame::Nest* PredationGame::NestNear(const glm::vec3& point, float
     float nearest = reach;
     for (const Nest& nest : m_nests)
     {
+        if (nest.dead)
+        {
+            continue;
+        }
         const float away = Horizontal(nest.at, point);
         if (away <= nearest)
         {
@@ -1794,48 +1839,200 @@ const PredationGame::Nest* PredationGame::NestNear(const glm::vec3& point, float
     return best;
 }
 
-void PredationGame::BuildNest(const glm::vec3& at, uint16_t seed, uint8_t owner, bool announce)
+int PredationGame::NestForBody(BodyHandle body) const
 {
-    if (m_nests.size() >= 8 || NestNear(at, 6.0f) != nullptr)
+    if (!body.IsValid())
+    {
+        return -1;
+    }
+    for (size_t i = 0; i < m_nests.size(); ++i)
+    {
+        if (m_nests[i].heartBody == body)
+        {
+            return static_cast<int>(i);
+        }
+    }
+    return -1;
+}
+
+void PredationGame::PlaceNestStand(Nest& nest) const
+{
+    // On the floor in front of the heart, a stride out from the wall: where it stands to tend it, and
+    // where it brings what it catches.
+    glm::vec3 wanted = nest.at;
+    if (std::abs(nest.normal.y) < 0.5f)
+    {
+        wanted = glm::vec3(nest.wall.x, nest.at.y, nest.wall.z) + nest.normal * 1.2f;
+    }
+    glm::vec3 stand;
+    nest.stand = m_nav.Valid() && m_nav.NearestPoint(wanted, 3.0f, stand) ? stand : nest.at;
+}
+
+void PredationGame::PlanNestGrowth(Nest& nest) const
+{
+    // Out from the heart in every direction, onto whatever each line meets first: the wall it is on,
+    // the floor, the ceiling, the wall across the way. Near surfaces are grown over soon and far ones
+    // late, so it spreads outward from the heart the way something alive would.
+    const PhysicsWorld& physics = m_app->GetPhysics();
+    const float growth = std::max(cv_nestGrowth.Get(), 10.0f);
+    const uint32_t seed = static_cast<uint32_t>(nest.seed) * 2654435761u + 3u;
+    constexpr int kRays = 180;
+    const glm::vec3 from = nest.heart + nest.normal * 0.15f;
+    const float turn = Sdf::Hash(nest.seed, 0, 0, 7u) * glm::two_pi<float>();
+    nest.patches.clear();
+    for (int i = 0; i < kRays; ++i)
+    {
+        const float y = 1.0f - 2.0f * (static_cast<float>(i) + 0.5f) / static_cast<float>(kRays);
+        const float ring = std::sqrt(std::max(1.0f - y * y, 0.0f));
+        const float phi = static_cast<float>(i) * 2.39996f + turn;
+        const glm::vec3 direction{std::cos(phi) * ring, y, std::sin(phi) * ring};
+        const RayHit hit = physics.RayCastStatic(from, direction, kNestReach);
+        if (!hit)
+        {
+            continue;
+        }
+        NestPatch patch;
+        patch.at = hit.position;
+        patch.normal = glm::normalize(hit.normal);
+        patch.fromHeart = glm::distance(nest.heart, hit.position);
+        patch.size = std::clamp(0.5f + 0.17f * patch.fromHeart, 0.5f, 1.6f) * (0.85f + 0.3f * Sdf::Hash(i, 1, 0, seed));
+        patch.appears = growth * std::pow(std::min(patch.fromHeart / kNestReach, 1.0f), 1.3f) *
+                        (0.8f + 0.4f * Sdf::Hash(i, 2, 0, seed));
+        patch.spin = Sdf::Hash(i, 3, 0, seed) * glm::two_pi<float>();
+        patch.variant = i % 3;
+        const bool crowded = std::any_of(nest.patches.begin(), nest.patches.end(), [&](const NestPatch& other) {
+            return glm::dot(other.normal, patch.normal) > 0.7f &&
+                   glm::distance(other.at, patch.at) < 0.55f * std::min(other.size, patch.size);
+        });
+        if (!crowded)
+        {
+            nest.patches.push_back(patch);
+        }
+    }
+    std::sort(nest.patches.begin(), nest.patches.end(),
+              [](const NestPatch& a, const NestPatch& b) { return a.appears < b.appears; });
+}
+
+void PredationGame::BuildNest(const glm::vec3& at, uint16_t seed, uint8_t owner, bool announce, int index, float age)
+{
+    if (index >= 0)
+    {
+        // Told about by the host, in its place in the list. Heard twice -- a newcomer's catch-up crossing
+        // the news itself -- it is built once.
+        if (index < static_cast<int>(m_nests.size()))
+        {
+            return;
+        }
+    }
+    else if (m_nests.size() >= kMaxNests || NestNear(at, 6.0f) != nullptr)
     {
         return;
     }
+    const PhysicsWorld& physics = m_app->GetPhysics();
     Nest nest;
     nest.at = at;
-    nest.stand = at;
     nest.owner = owner;
     nest.seed = seed;
-    constexpr float kRadius = 1.7f;
-    const MeshData mound = BuildHiveMesh(seed, kRadius, 4.5f);
-    if (!mound.vertices.empty())
-    {
-        nest.mesh = m_app->GetMeshes().Upload(mound, "nest_" + std::to_string(seed) + "_" + std::to_string(m_nests.size()));
-        Transform where;
-        where.position = at;
-        nest.entity = m_scene.CreateMeshEntity("nest", where, nest.mesh, Material::Diffuse(glm::vec3(1.0f), 0.5f));
-    }
-    // Solid: people walk round it, not through it.
-    Transform solid;
-    solid.position = at + glm::vec3(0.0f, 0.9f, 0.0f);
-    nest.body = m_app->GetPhysics().CreateBox({kRadius * 0.75f, 0.9f, kRadius * 0.75f}, solid, BodyMotion::Static);
-    m_nests.push_back(nest);
+    nest.age = std::max(age, 0.0f);
+    nest.health = cv_nestHealth.Get();
 
-    PlayNamed("Nest/grow", at + glm::vec3(0.0f, 0.8f, 0.0f), 1.0f);
-    PRED_LOG_INFO(AI, "Creature {} built a nest at {:.1f} {:.1f} {:.1f}", owner, at.x, at.y, at.z);
-
-    if (announce)
+    // The heart goes on the nearest wall, at about chest height -- lower where the roof is low. With no
+    // wall near it hangs from the roof, and out in the open with nothing overhead either it lies on the
+    // ground.
+    const RayHit roof = physics.RayCastStatic(at + glm::vec3(0.0f, 0.3f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f), 8.0f);
+    const float headroom = roof ? roof.distance + 0.3f : 8.0f;
+    const float height = std::clamp(headroom * 0.55f, 0.45f, 1.35f);
+    // A wall broad enough to hold it: the same flat surface a good way either side of where the line
+    // met it. The edge of a doorway is nearer than any wall from somebody standing in it, and a heart
+    // hung on a door jamb is a heart hanging in the air.
+    const glm::vec3 eye = at + glm::vec3(0.0f, height, 0.0f);
+    const auto broad = [&](const glm::vec3& direction, const RayHit& hit)
     {
-        // The floor beside it, for anything that wants to stand there, and a mesh that goes round it.
-        RequestNavRebuild();
-        if (m_sessionMode == SessionMode::Host)
+        const glm::vec3 side = glm::normalize(glm::cross(glm::vec3(0.0f, 1.0f, 0.0f), hit.normal));
+        for (const float offset : {-0.8f, 0.8f})
         {
-            WorldEventMessage event;
-            event.kind = WorldEventKind::NestBuilt;
-            event.index = static_cast<uint8_t>(m_nests.size() - 1);
-            event.item = seed;
-            event.position = at;
-            m_host.Broadcast(event);
+            const RayHit beside = physics.RayCastStatic(eye + side * offset, direction, hit.distance + 1.0f);
+            if (!beside || glm::dot(beside.normal, hit.normal) < 0.95f ||
+                std::abs(glm::dot(beside.position - hit.position, hit.normal)) > 0.1f)
+            {
+                return false;
+            }
         }
+        return true;
+    };
+    RayHit wall;
+    for (int i = 0; i < 24; ++i)
+    {
+        const float angle = static_cast<float>(i) * (glm::two_pi<float>() / 24.0f);
+        const glm::vec3 direction{std::cos(angle), 0.0f, std::sin(angle)};
+        const RayHit hit = physics.RayCastStatic(eye, direction, 5.0f);
+        if (hit && std::abs(hit.normal.y) < 0.4f && (!wall || hit.distance < wall.distance) && broad(direction, hit))
+        {
+            wall = hit;
+        }
+    }
+    if (wall)
+    {
+        nest.normal = glm::normalize(glm::vec3(wall.normal.x, 0.0f, wall.normal.z));
+        nest.wall = wall.position;
+    }
+    else if (roof && roof.distance < 5.0f)
+    {
+        nest.normal = glm::vec3(0.0f, -1.0f, 0.0f);
+        nest.wall = roof.position;
+    }
+    else
+    {
+        nest.normal = glm::vec3(0.0f, 1.0f, 0.0f);
+        nest.wall = at;
+    }
+    // The heart's own frame: out of the surface, and as near upright as it can be.
+    const glm::vec3 out = nest.normal;
+    const float lean = static_cast<float>(seed) * 0.01f;
+    const glm::vec3 up = std::abs(out.y) < 0.9f ? glm::vec3(0.0f, 1.0f, 0.0f) : glm::vec3(std::cos(lean), 0.0f, std::sin(lean));
+    const glm::vec3 across = glm::normalize(glm::cross(up, out));
+    nest.facing = glm::quat_cast(glm::mat3(across, glm::cross(out, across), out));
+    nest.heart = nest.wall + nest.facing * glm::vec3(0.0f, kNestHeartUp, kNestHeartOut);
+    PlaceNestStand(nest);
+    PlanNestGrowth(nest);
+
+    // The heart, to be shot at. It moves nothing and blocks nobody: rounds find it, feet do not.
+    Transform body;
+    body.position = nest.heart;
+    body.rotation = nest.facing;
+    nest.heartBody = m_app->GetPhysics().CreateBox({0.3f, 0.42f, 0.27f}, body, BodyMotion::Kinematic, 1000.0f,
+                                                   PhysicsLayer::Hitbox);
+    nest.building = std::async(std::launch::async, [seed]() {
+        std::vector<MeshData> meshes;
+        NestHeartMeshes heart = BuildNestHeart(seed);
+        meshes.push_back(std::move(heart.heart));
+        meshes.push_back(std::move(heart.roots));
+        for (int variant = 0; variant < 3; ++variant)
+        {
+            meshes.push_back(BuildNestGrowth(seed, variant));
+        }
+        return meshes;
+    });
+    m_nests.push_back(std::move(nest));
+    const Nest& built = m_nests.back();
+
+    if (age <= 1.0f)
+    {
+        PlayNamed("Nest/grow", built.heart, 1.0f);
+    }
+    PRED_LOG_INFO(AI, "Creature {} built a nest at {:.1f} {:.1f} {:.1f}, its heart {} at {:.1f} {:.1f} {:.1f}, {} patches to grow",
+                  owner, at.x, at.y, at.z, wall ? "on a wall" : (built.normal.y < 0.0f ? "under the roof" : "on the ground"),
+                  built.heart.x, built.heart.y, built.heart.z, built.patches.size());
+
+    if (announce && m_sessionMode == SessionMode::Host)
+    {
+        WorldEventMessage event;
+        event.kind = WorldEventKind::NestBuilt;
+        event.index = static_cast<uint8_t>(m_nests.size() - 1);
+        event.item = seed;
+        event.position = at;
+        event.amount = 0.0f;
+        m_host.Broadcast(event);
     }
 }
 
@@ -1843,21 +2040,289 @@ void PredationGame::ClearNests()
 {
     for (Nest& nest : m_nests)
     {
-        if (nest.entity.IsValid())
+        if (nest.building.valid())
         {
-            m_scene.Destroy(nest.entity);
+            nest.building.wait();
         }
-        if (nest.body.IsValid())
+        for (NestPatch& patch : nest.patches)
         {
-            m_app->GetPhysics().DestroyBody(nest.body);
+            if (patch.entity.IsValid())
+            {
+                m_scene.Destroy(patch.entity);
+            }
         }
-        m_app->GetMeshes().Release(nest.mesh);
+        for (const Entity entity : {nest.heartEntity, nest.rootsEntity})
+        {
+            if (entity.IsValid())
+            {
+                m_scene.Destroy(entity);
+            }
+        }
+        if (nest.heartBody.IsValid())
+        {
+            m_app->GetPhysics().DestroyBody(nest.heartBody);
+        }
+        m_app->GetMeshes().Release(nest.heartMesh);
+        m_app->GetMeshes().Release(nest.rootsMesh);
+        for (const MeshHandle mesh : nest.growthMeshes)
+        {
+            m_app->GetMeshes().Release(mesh);
+        }
     }
-    const bool had = !m_nests.empty();
     m_nests.clear();
-    if (had)
+}
+
+float PredationGame::NestWholeHealth() const
+{
+    return std::max(cv_nestHealth.Get(), 1.0f);
+}
+
+void PredationGame::HurtNest(int index, float damage, int by)
+{
+    if (!IsAuthority() || index < 0 || index >= static_cast<int>(m_nests.size()) || m_nests[index].dead)
     {
-        RequestNavRebuild();
+        return;
+    }
+    const Nest& nest = m_nests[index];
+    const float whole = std::max(cv_nestHealth.Get(), 1.0f);
+    const float left = std::max(nest.health - damage, 0.0f);
+    const bool destroyed = left <= 0.0f;
+    // Whatever built it knows, wherever it is -- and so does anything of the brood near enough to hear.
+    for (const std::unique_ptr<Creature>& creature : m_creatures)
+    {
+        if (creature->Alive() &&
+            (creature->NetId() == nest.owner || glm::distance(creature->Position(), nest.heart) < 30.0f))
+        {
+            creature->Brain().OnNestAttacked(by, nest.heart, m_creatureClock, destroyed);
+        }
+    }
+    MakeNoise(NoiseKind::Impact, nest.heart, destroyed ? 45.0f : NoiseReach::kImpact * 1.5f, by);
+    const glm::vec3 heart = nest.heart;
+    const glm::vec3 stand = nest.stand;
+    SetNestHealth(index, left / whole, false);
+    if (destroyed)
+    {
+        // Anybody wrapped up at it comes loose as it dies.
+        std::vector<uint8_t> freed;
+        for (const Cocoon& cocoon : m_cocoons)
+        {
+            if (glm::distance(cocoon.feet, stand) < 8.0f || glm::distance(cocoon.feet, heart) < 8.0f)
+            {
+                freed.push_back(cocoon.player);
+            }
+        }
+        for (const uint8_t player : freed)
+        {
+            FreeFromCocoon(player, static_cast<uint8_t>(std::max(by, 0)));
+        }
+        PRED_LOG_INFO(AI, "Nest {} destroyed by player {}", index, by);
+    }
+    if (m_sessionMode == SessionMode::Host)
+    {
+        WorldEventMessage event;
+        event.kind = WorldEventKind::NestWounded;
+        event.index = static_cast<uint8_t>(index);
+        event.player = static_cast<uint8_t>(std::clamp(by, 0, static_cast<int>(kMaxPlayers) - 1));
+        event.amount = left / whole;
+        m_host.Broadcast(event);
+    }
+}
+
+void PredationGame::SetNestHealth(int index, float fraction, bool quiet)
+{
+    if (index < 0 || index >= static_cast<int>(m_nests.size()) || m_nests[index].dead)
+    {
+        return;
+    }
+    Nest& nest = m_nests[index];
+    const float was = nest.health;
+    nest.health = std::clamp(fraction, 0.0f, 1.0f) * std::max(cv_nestHealth.Get(), 1.0f);
+    if (fraction <= 0.0f)
+    {
+        nest.dead = true;
+        // Heard about late, it is already a husk.
+        nest.deadFor = quiet ? 60.0f : 0.0f;
+        if (!quiet)
+        {
+            PlayNamed("Nest/heart_burst", nest.heart, 1.0f);
+        }
+        if (nest.heartBody.IsValid())
+        {
+            m_app->GetPhysics().DestroyBody(nest.heartBody);
+            nest.heartBody = BodyHandle{};
+        }
+        return;
+    }
+    if (!quiet && nest.health < was)
+    {
+        nest.flinch = 1.0f;
+        PlayNamed("Nest/heart_hurt", nest.heart, 0.9f, 0.9f + 0.2f * static_cast<float>(std::rand()) / static_cast<float>(RAND_MAX));
+    }
+}
+
+namespace
+{
+
+// The shape of one beat, 0 to 1 through it: a hard contraction and a smaller one straight after, and
+// then rest -- lub, dub.
+float HeartPulse(float beat)
+{
+    const auto bump = [](float t, float at, float width)
+    {
+        const float x = (t - at) / width;
+        return x > 0.0f && x < 1.0f ? std::sin(x * glm::pi<float>()) : 0.0f;
+    };
+    return bump(beat, 0.0f, 0.14f) + 0.6f * bump(beat, 0.2f, 0.12f);
+}
+
+float Smooth(float x)
+{
+    x = std::clamp(x, 0.0f, 1.0f);
+    return x * x * (3.0f - 2.0f * x);
+}
+
+} // namespace
+
+void PredationGame::UpdateNests(float dt)
+{
+    const glm::vec3 listener = m_player.View().eyePosition;
+    const float growth = std::max(cv_nestGrowth.Get(), 10.0f);
+    const float whole = std::max(cv_nestHealth.Get(), 1.0f);
+    for (size_t n = 0; n < m_nests.size(); ++n)
+    {
+        Nest& nest = m_nests[n];
+        if (nest.building.valid() && nest.building.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
+        {
+            std::vector<MeshData> meshes = nest.building.get();
+            const std::string name = "nest_" + std::to_string(n) + "_";
+            MeshLibrary& library = m_app->GetMeshes();
+            nest.heartMesh = library.Upload(meshes[0], name + "heart");
+            nest.rootsMesh = library.Upload(meshes[1], name + "roots");
+            for (size_t v = 2; v < meshes.size(); ++v)
+            {
+                nest.growthMeshes.push_back(library.Upload(meshes[v], name + "growth_" + std::to_string(v - 2)));
+            }
+            Transform where;
+            where.position = nest.wall;
+            where.rotation = nest.facing;
+            nest.rootsEntity = m_scene.CreateMeshEntity("nest roots", where, nest.rootsMesh, Material::Diffuse(glm::vec3(1.0f), 0.4f));
+            nest.heartEntity = m_scene.CreateMeshEntity("nest heart", where, nest.heartMesh, Material::Diffuse(glm::vec3(1.0f), 0.25f));
+        }
+
+        if (nest.dead)
+        {
+            nest.deadFor += dt;
+        }
+        else
+        {
+            nest.age += dt;
+        }
+        nest.flinch = std::max(nest.flinch - dt * 2.5f, 0.0f);
+        const float wither = nest.dead ? Smooth(nest.deadFor / 5.0f) : 0.0f;
+
+        // Its beat: slow at rest, quicker with somebody close, and quicker again as it is hurt.
+        float pulse = 0.0f;
+        if (!nest.dead)
+        {
+            const float hurt = 1.0f - nest.health / whole;
+            const float near = glm::distance(listener, nest.heart);
+            const float rate = 0.75f + 0.7f * hurt + (near < 8.0f ? 0.35f * (1.0f - near / 8.0f) : 0.0f);
+            nest.beat += dt * rate;
+            if (nest.beat >= 1.0f)
+            {
+                nest.beat -= std::floor(nest.beat);
+                PlayNamed("Nest/heartbeat", nest.heart, 0.7f, 0.95f + 0.1f * hurt);
+            }
+            pulse = HeartPulse(nest.beat);
+        }
+
+        const float grown = 0.6f + 0.4f * Smooth(nest.age / (growth * 0.5f));
+        if (Transform* transform = m_scene.GetTransform(nest.heartEntity))
+        {
+            glm::vec3 scale(grown * (1.0f + 0.07f * pulse + 0.12f * nest.flinch));
+            // Burst, it slumps against the wall and empties.
+            scale *= glm::mix(glm::vec3(1.0f), glm::vec3(0.85f, 0.55f, 0.45f), wither);
+            transform->scale = scale;
+        }
+        if (MeshRenderer* renderer = m_scene.GetMeshRenderer(nest.heartEntity))
+        {
+            renderer->material.emissive = glm::vec3(0.16f, 0.01f, 0.015f) * (0.15f + pulse) * (1.0f - wither);
+            renderer->material.baseColor = glm::vec3(glm::mix(1.0f, 0.4f, wither));
+        }
+        if (Transform* transform = m_scene.GetTransform(nest.rootsEntity))
+        {
+            transform->scale = glm::vec3(grown, grown, 1.0f);
+        }
+        if (MeshRenderer* renderer = m_scene.GetMeshRenderer(nest.rootsEntity))
+        {
+            renderer->material.baseColor = glm::vec3(glm::mix(1.0f, 0.5f, wither));
+        }
+
+        if (nest.growthMeshes.empty())
+        {
+            continue;
+        }
+        for (NestPatch& patch : nest.patches)
+        {
+            const float since = nest.age - patch.appears;
+            if (since <= 0.0f)
+            {
+                break; // in the order they appear: none after this one has either
+            }
+            if (!patch.entity.IsValid())
+            {
+                Transform where;
+                where.position = patch.at;
+                where.rotation = glm::rotation(glm::vec3(0.0f, 1.0f, 0.0f), patch.normal) *
+                                 glm::angleAxis(patch.spin, glm::vec3(0.0f, 1.0f, 0.0f));
+                where.scale = glm::vec3(0.01f);
+                const MeshHandle mesh = nest.growthMeshes[static_cast<size_t>(patch.variant) % nest.growthMeshes.size()];
+                patch.entity = m_scene.CreateMeshEntity("nest growth", where, mesh, Material::Diffuse(glm::vec3(1.0f), 0.4f));
+                // Flat against whatever it is on: it has no shadow worth the drawing.
+                if (MeshRenderer* renderer = m_scene.GetMeshRenderer(patch.entity))
+                {
+                    renderer->castsShadow = false;
+                }
+            }
+            float shown = Smooth(since / kPatchGrowIn) * glm::mix(1.0f, 0.55f, wither);
+            if (patch.fromHeart < 3.0f)
+            {
+                shown *= 1.0f + 0.04f * pulse * (1.0f - patch.fromHeart / 3.0f);
+            }
+            if (Transform* transform = m_scene.GetTransform(patch.entity))
+            {
+                transform->scale = glm::vec3(patch.size, std::min(patch.size, 1.0f) * 0.6f, patch.size) * std::max(shown, 0.01f);
+            }
+            if (nest.dead && nest.deadFor < 6.0f)
+            {
+                if (MeshRenderer* renderer = m_scene.GetMeshRenderer(patch.entity))
+                {
+                    renderer->material.baseColor = glm::vec3(glm::mix(1.0f, 0.5f, wither));
+                }
+            }
+        }
+    }
+}
+
+void PredationGame::GatherNestLights(std::vector<PunctualLight>& lights) const
+{
+    // Each living heart glows faintly through its skin with its beat: enough to find it by in the
+    // dark, and to see the room round it breathe.
+    for (const Nest& nest : m_nests)
+    {
+        if (nest.dead || !nest.heartEntity.IsValid())
+        {
+            continue;
+        }
+        PunctualLight glow;
+        glow.position = nest.heart + nest.normal * 0.45f;
+        glow.color = glm::vec3(1.0f, 0.16f, 0.1f);
+        glow.intensity = 0.35f + 0.9f * HeartPulse(nest.beat);
+        glow.range = 4.5f;
+        glow.innerAngle = 180.0f;
+        glow.outerAngle = 180.0f;
+        glow.sourceRadius = 0.4f;
+        lights.push_back(glow);
     }
 }
 
@@ -1901,17 +2366,11 @@ void PredationGame::FinishNavRebuild()
         {
             creature->SetNav(&m_nav);
         }
-        // Where a creature stands at each nest: the floor beside the mound.
         for (Nest& nest : m_nests)
         {
-            glm::vec3 stand = nest.at;
-            if (!m_nav.NearestPoint(nest.at, 4.0f, stand))
-            {
-                stand = nest.at;
-            }
-            nest.stand = stand;
+            PlaceNestStand(nest);
         }
-        PRED_LOG_INFO(AI, "Navigation rebuilt round {} nest(s)", m_nests.size());
+        PRED_LOG_INFO(AI, "Navigation rebuilt");
     }
     m_navSpare.reset();
 }
@@ -2125,20 +2584,33 @@ void PredationGame::UpdateGrips(float dt)
 void PredationGame::WrapInCocoon(uint8_t player, const Creature& creature)
 {
     m_grips.erase(player);
-    // Against the side of the nest, one place round it for each person already there.
-    glm::vec3 nest = creature.Position();
+    // Against the wall either side of the heart, one place further along for each person already there,
+    // facing out into the room.
+    glm::vec3 feet = creature.Position();
+    glm::vec3 facing = creature.Forward();
     if (const Nest* nearest = NestNear(creature.Position(), 12.0f); nearest != nullptr)
     {
-        nest = nearest->at;
+        const int slot = static_cast<int>(m_cocoons.size());
+        const float along = (slot % 2 == 0 ? 1.0f : -1.0f) * (1.3f + 0.9f * static_cast<float>(slot / 2));
+        if (std::abs(nearest->normal.y) < 0.5f)
+        {
+            const glm::vec3 side = glm::normalize(glm::cross(glm::vec3(0.0f, 1.0f, 0.0f), nearest->normal));
+            feet = glm::vec3(nearest->wall.x, nearest->at.y, nearest->wall.z) + side * along + nearest->normal * 0.45f;
+            facing = nearest->normal;
+        }
+        else
+        {
+            const float angle = static_cast<float>(slot) * 1.3f + 0.4f;
+            facing = glm::vec3(std::cos(angle), 0.0f, std::sin(angle));
+            feet = nearest->at + facing * 2.0f;
+        }
     }
-    const float angle = static_cast<float>(m_cocoons.size()) * 1.3f + 0.4f;
-    glm::vec3 feet = nest + glm::vec3(std::cos(angle), 0.0f, std::sin(angle)) * 3.0f;
     glm::vec3 onMesh;
     if (m_nav.NearestPoint(feet, 2.0f, onMesh))
     {
         feet = onMesh;
     }
-    const float yaw = std::atan2(feet.x - nest.x, -(feet.z - nest.z));
+    const float yaw = std::atan2(facing.x, -facing.z);
     m_cocoons.push_back({player, feet, yaw, 0.0f});
     PinPlayer(player, creature.NetId(), true, feet, yaw);
     ShareSound("Nest/cocoon_wrap", feet + glm::vec3(0.0f, 1.0f, 0.0f), 0.9f);
