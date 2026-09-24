@@ -156,6 +156,19 @@ void CreatureBrain::Log(float time, std::string what)
     }
 }
 
+bool CreatureBrain::TargetKnownAt(glm::vec3& out) const
+{
+    for (const Track& track : m_tracks)
+    {
+        if (track.id == m_target && track.confidence > 0.3f)
+        {
+            out = track.lastKnown;
+            return true;
+        }
+    }
+    return false;
+}
+
 CreatureBrain::Track* CreatureBrain::FindTrack(int id)
 {
     for (Track& track : m_tracks)
@@ -528,7 +541,11 @@ void CreatureBrain::Perceive(const CreatureSenses& senses, float dt)
     // smell when somebody is right beside it.
     const bool hasEyes = m_traits.sight > 0.0f;
     const float sightRange = SightRange();
-    const float senseRange = std::max(sightRange, Tuning().closeSense);
+    // In a fight it is keyed up, and feels somebody coming up at its back well before they touch it: the
+    // one it is busy with is not the only one in the room.
+    const bool fighting = m_behavior == Behavior::Hunt || m_behavior == Behavior::Attack || m_behavior == Behavior::Drag;
+    const float closeSense = Tuning().closeSense * (fighting ? 2.8f : 1.0f);
+    const float senseRange = std::max(sightRange, closeSense);
     const float cosHalfField = std::cos(glm::radians(Tuning().halfFieldDegrees));
     glm::vec3 flatForward{senses.forward.x, 0.0f, senses.forward.z};
     flatForward = glm::length(flatForward) > 1e-4f ? glm::normalize(flatForward) : glm::vec3(0, 0, -1);
@@ -561,7 +578,7 @@ void CreatureBrain::Perceive(const CreatureSenses& senses, float dt)
                     const float across = (1.0f - facing) / (1.0f - cosHalfField);
                     field = 1.0f - (1.0f - Tuning().edgeOfView) * across;
                 }
-                const bool touching = distance < Tuning().closeSense;
+                const bool touching = distance < closeSense;
                 if (touching)
                 {
                     field = 1.0f;
@@ -609,10 +626,15 @@ void CreatureBrain::Perceive(const CreatureSenses& senses, float dt)
         if (visibility > 0.001f)
         {
             track.exposure = std::min(track.exposure + visibility * Tuning().exposureGain * dt, 1.0f);
-            if (track.exposure < 1.0f)
+            if (track.exposure < 1.0f && senses.time >= m_alertIgnoreUntil)
             {
                 // Not made out yet, but something is there: stop and look at it.
+                if (senses.time > m_alertUntil)
+                {
+                    m_alertStarted = senses.time;
+                }
                 m_alertPoint = player.feet + glm::vec3(0.0f, player.height * 0.6f, 0.0f);
+                m_alertFeet = player.feet;
                 m_alertUntil = senses.time + 0.6f;
             }
         }
@@ -644,6 +666,7 @@ void CreatureBrain::Perceive(const CreatureSenses& senses, float dt)
                 m_interest.resolved = true;
             }
             track.lastVelocity = player.velocity;
+            track.lastForward = player.forward;
             track.lastSeen = senses.time;
             Warm(player.feet, dt);
             m_state.arousal = std::min(m_state.arousal + 0.2f * dt * 10.0f, 1.0f);
@@ -868,6 +891,43 @@ void CreatureBrain::Perceive(const CreatureSenses& senses, float dt)
         m_heard.pop_front();
     }
 
+    // --- The others of its kind --------------------------------------------------------------
+    //
+    // One it can see running at somebody, or crouched watching somebody, is telling it where that
+    // somebody is. It does not need to have seen them itself.
+    for (const CreatureSenses::Kin& other : senses.kin)
+    {
+        const bool onToSomebody = other.target >= 0 && other.knowsWhere &&
+                                  (other.doing == Behavior::Hunt || other.doing == Behavior::Attack ||
+                                   other.doing == Behavior::Stalk || other.doing == Behavior::Drag);
+        if (!onToSomebody || glm::distance(other.position, senses.position) > 30.0f ||
+            (senses.clearLine && !senses.clearLine(senses.eye, other.position + glm::vec3(0.0f, 0.5f, 0.0f))))
+        {
+            continue;
+        }
+        const SensedPlayer* player = FindPlayer(senses, other.target);
+        if (player == nullptr || !player->alive)
+        {
+            continue;
+        }
+        Track& track = TrackFor(*player);
+        if (!track.visible && track.confidence < 0.55f)
+        {
+            if (track.confidence < 0.2f)
+            {
+                Log(senses.time, "sees another of its kind after " + track.name);
+            }
+            track.lastKnown = other.targetAt;
+            track.lastHeard = senses.time;
+            track.confidence = 0.55f;
+            if (track.lastSeen < 0.0f)
+            {
+                // Enough to go after them as if it had glimpsed them itself.
+                track.lastSeen = senses.time - 5.0f;
+            }
+        }
+    }
+
     PerceivePlaces(senses, dt);
 
     // Where people go, cooling: a place nobody has been seen in for a few minutes is forgotten.
@@ -1061,6 +1121,17 @@ void CreatureBrain::Decide(const CreatureSenses& senses)
         }
     }
 
+    // The nearest of everybody it means harm to and knows where to find: the others are not ignored for
+    // the one it happened to pick first.
+    float nearestThreat = 1.0e9f;
+    for (const Track& track : m_tracks)
+    {
+        if (track.hostile && track.confidence > 0.3f)
+        {
+            nearestThreat = std::min(nearestThreat, Horizontal(senses.position, track.lastKnown));
+        }
+    }
+
     // Each person it knows of, separately: hunting one and ignoring another is a real choice.
     for (const Track& track : m_tracks)
     {
@@ -1110,6 +1181,19 @@ void CreatureBrain::Decide(const CreatureSenses& senses)
         // In a crawlspace too small for it: going after them only puts it on the roof of the thing.
         const bool beyond = OutOfItsReach(senses, *player);
         const float follow = beyond ? 0.15f : 1.0f;
+        // Somebody nearer than them is the more pressing: every one of them in the room counts.
+        const float nearer = std::clamp(0.55f + 0.45f * (nearestThreat + 1.0f) / (distance + 1.0f), 0.55f, 1.0f);
+        // Another of its kind already going straight at them, and closer: that one drives them, and this
+        // one does better to go round, wait where they will run, or shadow them -- not pile in behind.
+        bool driven = false;
+        for (const CreatureSenses::Kin& other : senses.kin)
+        {
+            if (other.target == track.id && (other.doing == Behavior::Hunt || other.doing == Behavior::Attack) &&
+                Horizontal(other.position, player->feet) + 1.0f < distance && distance > 6.0f)
+            {
+                driven = true;
+            }
+        }
         if (chases)
         {
             add(Behavior::Hunt, track.id, "Hunt " + track.name,
@@ -1119,7 +1203,12 @@ void CreatureBrain::Decide(const CreatureSenses& senses)
                  {"still to close", closeness},
                  {"grudge", grudge},
                  {"the moment", timing},
-                 {"can follow", follow}});
+                 {"can follow", follow},
+                 {"nearest of them", nearer},
+                 {"another drives them", driven ? 0.55f : 1.0f},
+                 // Not while it is creeping up on them from behind: it goes on creeping until it is close
+                 // enough that running is quicker than being heard.
+                 {"creeping instead", m_creeping && m_behavior == Behavior::Stalk && m_target == track.id && distance > 4.5f ? 0.35f : 1.0f}});
         }
 
         // Lying in wait for them, where they will have to come: the mouth of the crawlspace it cannot
@@ -1153,6 +1242,7 @@ void CreatureBrain::Decide(const CreatureSenses& senses)
                     {{"sure where", std::max(track.confidence, beyond ? 0.9f : 0.0f)},
                      {beyond ? "cannot follow" : "stealthy", beyond ? 1.0f : 0.35f + 0.65f * m_traits.stealth},
                      {"patient", 0.4f + 0.6f * m_traits.patience},
+                     {"the others drive them to it", driven ? 1.4f : 1.0f},
                      {"a way they must come", std::max(m_ambush.quality, 0.3f)},
                      {"not afraid", 0.3f + 0.7f * calm},
                      {"still waiting", std::clamp(1.0f - waited / (Tuning().ambushPatience + Tuning().ambushPatienceRange * m_traits.patience), 0.1f, 1.0f)}});
@@ -1185,8 +1275,11 @@ void CreatureBrain::Decide(const CreatureSenses& senses)
         {
             const float patienceLeft =
                 std::clamp(1.0f - track.stalked / m_traits.StalkPatienceSeconds(), 0.05f, 1.0f);
+            const bool creepingOnThem = m_creeping && m_behavior == Behavior::Stalk && m_target == track.id;
             add(Behavior::Stalk, track.id, "Stalk " + track.name,
-                {{"sure where", track.confidence},
+                {{"creeping up on them", creepingOnThem ? 1.6f : 1.0f},
+                 {"the others drive them", driven ? 1.3f : 1.0f},
+                 {"sure where", track.confidence},
                  {"stealthy", 0.2f + 0.8f * m_traits.stealth},
                  {"not afraid", 0.3f + 0.7f * calm},
                  {"patience left", patienceLeft},
@@ -1248,6 +1341,10 @@ void CreatureBrain::Decide(const CreatureSenses& senses)
         {
             add(Behavior::Attack, track.id, "Attack " + track.name,
                 {{inReach ? "in reach" : "pounce", inReach ? 1.0f : 0.55f + 0.4f * m_traits.aggression},
+                 {"nearest of them", inReach ? 1.0f : nearer},
+                 // Leaping at somebody staring straight at it is what the brazen do; the stealthy wait for
+                 // them to look away, or for them to come the last step themselves.
+                 {"not while watched", inReach || !track.watching ? 1.0f : 1.0f - 0.6f * m_traits.stealth},
                  {"aggression", 0.3f + 0.7f * m_traits.aggression},
                  {"not afraid", 0.2f + 0.8f * calm},
                  // Out of hiding at somebody who has walked into it: the moment all the waiting was for.
@@ -1379,6 +1476,7 @@ void CreatureBrain::Switch(Behavior behavior, int target, const std::string& rea
     m_behavior = behavior;
     m_target = target;
     m_behaviorStarted = time;
+    m_creeping = false;
     m_arrived = false;
     m_windupStarted = -1.0f;
     m_haveRoamPoint = false;
@@ -1587,6 +1685,10 @@ bool CreatureBrain::FindCover(const CreatureSenses& senses, const Track& target,
     {
         facing = glm::vec3(player->forward.x, 0.0f, player->forward.z);
     }
+    else if (senses.time - target.lastSeen < 8.0f)
+    {
+        facing = glm::vec3(target.lastForward.x, 0.0f, target.lastForward.z);
+    }
     if (glm::length(facing) > 1e-3f)
     {
         facing = glm::normalize(facing);
@@ -1642,7 +1744,8 @@ bool CreatureBrain::FindCover(const CreatureSenses& senses, const Track& target,
         if (glm::length(facing) > 1e-3f)
         {
             const glm::vec3 away = glm::normalize(glm::vec3(candidate.x - centre.x, 0.0f, candidate.z - centre.z));
-            score *= 0.75f - 0.25f * glm::dot(facing, away);
+            // Well behind them is worth a good deal more than somewhere in front: that is the way it will come.
+            score *= 0.65f - 0.35f * glm::dot(facing, away);
         }
         // Not on the far side of the map: somewhere forty metres away is a journey, not cover.
         score *= 1.0f - std::min(Horizontal(candidate, senses.position) / 40.0f, 0.6f);
@@ -1670,9 +1773,10 @@ bool CreatureBrain::FindCover(const CreatureSenses& senses, const Track& target,
             const float length2 = glm::dot(along, along);
             const float t = length2 > 1e-4f ? std::clamp(glm::dot(them - from, along) / length2, 0.0f, 1.0f) : 0.0f;
             const float passes = glm::length(from + along * t - them);
-            if (passes < 6.0f)
+            if (passes < 8.0f)
             {
-                score *= 0.1f + 0.9f * passes / 6.0f;
+                const float share = passes / 8.0f;
+                score *= 0.02f + 0.98f * share * share;
             }
         }
         if (m_haveStalkPoint && Horizontal(candidate, m_stalkPoint) < 0.5f)
@@ -2079,6 +2183,19 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
                 m_haveRoamPoint = senses.nav->RandomPointNear(senses.position, 14.0f, seed, m_roamPoint);
                 m_goal = "wandering";
             }
+            // Somewhere another of its kind already is, it leaves to that one: a brood spreads out.
+            for (int attempt = 0; m_haveRoamPoint && attempt < 4; ++attempt)
+            {
+                const bool crowded = std::any_of(senses.kin.begin(), senses.kin.end(), [&](const CreatureSenses::Kin& other) {
+                    return Horizontal(other.position, m_roamPoint) < 7.0f;
+                });
+                if (!crowded)
+                {
+                    break;
+                }
+                uint32_t seed = static_cast<uint32_t>(m_random.Next());
+                m_haveRoamPoint = senses.nav->RandomPointNear(senses.position, 18.0f, seed, m_roamPoint);
+            }
         }
         if (m_haveRoamPoint)
         {
@@ -2150,6 +2267,12 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
             m_intent.destination = m_interest.position;
             // A call from one of its own is answered at a run.
             m_intent.speed = m_interest.what == "call" ? m_traits.runSpeed * 0.9f : m_traits.walkSpeed * 1.6f;
+            if (m_interest.what == "a glimpse")
+            {
+                m_goal = "creeping over to what it glimpsed";
+                m_intent.speed = m_traits.walkSpeed * 0.85f;
+                m_intent.crouch = 0.6f;
+            }
             m_intent.look = true;
             m_intent.lookAt = m_interest.position + glm::vec3(0.0f, 0.8f, 0.0f);
         }
@@ -2415,7 +2538,8 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
             m_goal = "dragging " + victim->name + " away";
             m_intent.move = true;
             m_intent.destination = m_dragPoint;
-            m_intent.speed = m_traits.walkSpeed * 1.7f;
+            // At a run: it has what it came for and wants it away from the others before they react.
+            m_intent.speed = m_traits.runSpeed * 0.9f;
             break;
         }
         if (atHive)
@@ -2607,6 +2731,49 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
                 m_intent.crouch = 0.3f;
                 m_intent.face = true;
                 m_intent.facePoint = them;
+                watch(*player);
+                break;
+            }
+        }
+
+        // Creeping up behind them. Somebody in sight with their back to it, not looking its way, is the
+        // chance the waiting was for: it comes straight at them, low and slow and silent. If they turn it
+        // stops dead -- and then either it is close enough to go for them, or it goes back to cover.
+        {
+            const glm::vec3 fromThem = Flat(senses.position - them);
+            const float gap = glm::length(fromThem);
+            const glm::vec3 theirFacing = Flat(player->forward);
+            const float behindness = gap > 1e-3f && glm::length(theirFacing) > 1e-3f
+                                         ? glm::dot(glm::normalize(theirFacing), fromThem / gap)
+                                         : 1.0f;
+            const bool canCreep = track->visible && !track->watching && behindness < -0.25f && gap < 16.0f &&
+                                  gap > m_traits.strikeReach && !senses.onCeiling && !OutOfItsReach(senses, *player);
+            if (m_creeping && (!track->visible || track->watching || behindness > 0.15f))
+            {
+                m_creeping = false;
+                m_nextCreepAt = now + m_random.Range(2.0f, 4.0f);
+                if (track->watching)
+                {
+                    // Caught in the open: it freezes, and whatever it does next it does from stillness.
+                    m_stareUntil = now + m_random.Range(0.6f, 1.4f);
+                    m_haveStalkPoint = false;
+                    m_stalkCheckAt = now;
+                    Log(now, track->name + " turns round; it freezes");
+                }
+            }
+            else if (!m_creeping && canCreep && now >= m_nextCreepAt && now - m_behaviorStarted > 1.0f)
+            {
+                m_creeping = true;
+                m_peeking = false;
+                Log(now, "creeps up behind " + track->name);
+            }
+            if (m_creeping)
+            {
+                m_goal = "creeping up behind " + track->name;
+                m_intent.move = true;
+                m_intent.destination = them;
+                m_intent.speed = m_traits.walkSpeed * (gap > 7.0f ? 1.15f : 0.8f);
+                m_intent.crouch = 1.0f;
                 watch(*player);
                 break;
             }
@@ -2946,6 +3113,18 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
     // noise: something moved at the edge of its view, so it stops and looks at it -- turning its head,
     // and its body only when the thing is well round to the side -- until it has made it out or it has
     // gone. Not while hunting, attacking or running, which already have somewhere to look.
+    // Stared at long enough without making it out: it goes to see what it is, low and slow.
+    if ((m_behavior == Behavior::Roam || m_behavior == Behavior::Investigate) && now < m_alertUntil &&
+        now - m_alertStarted > 1.6f + 1.4f * m_traits.patience)
+    {
+        m_alertUntil = -1.0f;
+        m_alertIgnoreUntil = now + 10.0f;
+        if (m_interest.resolved || m_interest.strength < 0.6f)
+        {
+            m_interest = {m_alertFeet, 0.6f, now, "a glimpse", false};
+            Log(now, "cannot make it out; goes to look");
+        }
+    }
     if ((m_behavior == Behavior::Roam || m_behavior == Behavior::Investigate) && now < m_alertUntil)
     {
         m_intent.move = false;

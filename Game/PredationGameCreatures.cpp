@@ -50,6 +50,9 @@ CVar<float> cv_aiHealthScale{"ai.health_scale", 1.0f,
                              "Multiplies how much health a creature's body gives it, for tuning"};
 CVar<bool> cv_aiFreeze{"ai.freeze", false,
                         "Creatures stand where they are and do nothing, for looking at them: ai.freeze 1"};
+CVar<bool> cv_debugGod{"debug.god", false, "Creatures cannot hurt the players, for watching them at length"};
+CVar<float> cv_aiReportStill{"ai.report_still", 10.0f,
+                             "Log a creature that has stood in one place this many seconds, with what it was doing (0: never)"};
 CVar<bool> cv_aiMimic{"ai.mimic", true, "Creatures that can may say back what they have heard players say"};
 CVar<float> cv_nestHealth{"ai.nest_health", 200.0f, "How much a nest's heart takes before it bursts"};
 CVar<float> cv_nestGrowth{"ai.nest_growth_seconds", 300.0f,
@@ -734,6 +737,15 @@ void PredationGame::UpdateCreatures(float dt)
             if (other.get() != creature.get())
             {
                 senses.others.push_back(other->Position());
+                if (other->Alive() && !other->Down())
+                {
+                    CreatureSenses::Kin kin;
+                    kin.position = other->Position();
+                    kin.doing = other->Brain().Current();
+                    kin.target = other->Brain().CurrentTarget();
+                    kin.knowsWhere = other->Brain().TargetKnownAt(kin.targetAt);
+                    senses.kin.push_back(kin);
+                }
             }
         }
         if (cv_aiFreeze.Get())
@@ -741,6 +753,29 @@ void PredationGame::UpdateCreatures(float dt)
             continue;
         }
         creature->Update(std::move(senses), m_creatureClock, dt);
+
+        // Standing in one place for a long while, outside the things that are about standing still: worth
+        // a line in the log, with what it was doing, because it is what a stuck creature looks like.
+        {
+            Stillness& still = m_stillness[creature->NetId()];
+            if (glm::distance(still.at, creature->Position()) > 1.0f)
+            {
+                still.at = creature->Position();
+                still.since = m_creatureClock;
+                still.reported = false;
+            }
+            const Behavior doing = creature->Brain().Current();
+            const bool meantToBeStill = doing == Behavior::PlayDead || doing == Behavior::Ambush || doing == Behavior::Nest ||
+                                        doing == Behavior::Observe || doing == Behavior::Warn;
+            const float limit = cv_aiReportStill.Get();
+            if (limit > 0.0f && !still.reported && !meantToBeStill && m_creatureClock - still.since > limit)
+            {
+                still.reported = true;
+                PRED_LOG_WARN(AI, "Creature {} has stood still {:.0f} s: {} -- {}{}", creature->NetId(), m_creatureClock - still.since,
+                              BehaviorName(doing), creature->Brain().CurrentGoal(),
+                              creature->Brain().Intent().move ? " (trying to move)" : "");
+            }
+        }
 
         // A locker pulled open. Whoever is inside comes out by the same path as climbing out -- so the
         // door, the sound, and everybody else's machines all follow -- and the creature, which knows
@@ -815,6 +850,11 @@ void PredationGame::UpdateCreatures(float dt)
             // Somebody it has hold of is in reach whatever the numbers say. A lunge carries it further; up
             // on something, it can reach as high as it can rear.
             const bool holdingThem = creature->Brain().Holding() == player.id;
+            // Nobody is hurt while it has hold of them: that is what the nest, or letting go, is for.
+            if (holdingThem || cv_debugGod.Get())
+            {
+                break;
+            }
             const float reach = Horizontal(creature->Position(), player.feet);
             const float rise = player.feet.y - creature->Position().y;
             const float reachLimit = creature->Capabilities().strikeReach + kStrikeGrace +

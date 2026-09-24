@@ -15,6 +15,8 @@ namespace pred
 {
 
 class NavMesh;
+// What a creature is doing; spelled out further down.
+enum class Behavior : uint8_t;
 
 // A player, as the creature's senses are given them each tick. Built by the game from whatever it
 // knows -- the local player, everybody the host is simulating -- so the brain never reaches into
@@ -106,9 +108,19 @@ struct CreatureSenses
     std::vector<int> voices;
     // Every hiding place in the level. Where they are is no secret -- they are furniture.
     std::vector<HidingPlace> hidingPlaces;
-    // Where the other creatures are, standing or fallen. The body keeps its distance from them; a pack
-    // that shares what it sees would start here.
+    // Where the other creatures are, standing or fallen. The body keeps its distance from them.
     std::vector<glm::vec3> others;
+    // And what the living ones are doing, as another of its kind would read it from their bearing: who
+    // they are after, and where they think that somebody is. How a brood hunts together without a word.
+    struct Kin
+    {
+        glm::vec3 position{0.0f};
+        Behavior doing{}; // Roam
+        int target = -1;
+        bool knowsWhere = false;
+        glm::vec3 targetAt{0.0f};
+    };
+    std::vector<Kin> kin;
     const NavMesh* nav = nullptr;
     // The doors in the level, shut or open.
     std::vector<DoorSense> doors;
@@ -270,6 +282,8 @@ public:
     static float CloseSense();
     Behavior Current() const { return m_behavior; }
     int CurrentTarget() const { return m_target; }
+    // Where it believes whoever it is after to be, when it has any idea.
+    bool TargetKnownAt(glm::vec3& out) const;
     const std::string& CurrentGoal() const { return m_goal; }
 
     // --- What the inspector reads -------------------------------------------------------------
@@ -297,6 +311,8 @@ public:
         std::string name;
         glm::vec3 lastKnown{0.0f};
         glm::vec3 lastVelocity{0.0f};
+        // Which way they were last seen facing, for getting round behind them.
+        glm::vec3 lastForward{0.0f};
         // How sure it is they are still near the last known place. Rises to 1 on seeing them and
         // fades with time; hearing them brings it partly back.
         float confidence = 0.0f;
@@ -580,6 +596,12 @@ private:
     // wandered on regardless would lose every glimpse before it became a sighting.
     glm::vec3 m_alertPoint{0.0f};
     float m_alertUntil = -1.0f;
+    // When the stare at the current glimpse began, and until when a glimpse no longer stops it dead: it
+    // stares for a moment and then goes to look, rather than standing staring at something it cannot
+    // quite make out for as long as it cannot.
+    float m_alertStarted = -1.0f;
+    float m_alertIgnoreUntil = -1.0f;
+    glm::vec3 m_alertFeet{0.0f};
 
     // Behaviour-specific working state.
     glm::vec3 m_roamPoint{0.0f};
@@ -699,6 +721,10 @@ private:
     bool m_avoidFleeing = false;
     // Staring back at somebody who has spotted it, until when; and whether it was seen last time it looked.
     float m_stareUntil = -1.0f;
+    // Creeping up behind somebody turned away from it, and when it may try that again after they
+    // turned round on it.
+    bool m_creeping = false;
+    float m_nextCreepAt = 0.0f;
     bool m_stareWasExposed = false;
     int m_avoidPushed = 0;
     float m_avoidLastAt = -1.0e9f;

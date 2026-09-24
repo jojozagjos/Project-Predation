@@ -189,6 +189,14 @@ private:
     std::vector<Cocoon> m_cocoons;
     // Blows each locked door has taken from a creature breaking it down.
     std::map<int, int> m_doorBlows;
+    // Each creature, where it last moved from and since when: for noticing one that has stood still too long.
+    struct Stillness
+    {
+        glm::vec3 at{0.0f};
+        float since = 0.0f;
+        bool reported = false;
+    };
+    std::map<uint16_t, Stillness> m_stillness;
     // Creatures calling to each other: made this tick, heard by the others the next.
     struct Call
     {
