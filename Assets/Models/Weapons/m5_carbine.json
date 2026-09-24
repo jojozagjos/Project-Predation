@@ -649,6 +649,105 @@
           "part": "magazine"
         }
       ]
+    },
+    {
+      "duration": 0.55,
+      "loop": false,
+      "name": "equip",
+      "tracks": [
+        {
+          "keys": [
+            {
+              "ease": "smooth",
+              "position": [
+                0.02,
+                -0.18,
+                -0.12
+              ],
+              "rotation": [
+                -35.0,
+                0.0,
+                35.0
+              ],
+              "time": 0.0,
+              "visible": 1.0
+            },
+            {
+              "ease": "smooth",
+              "position": [
+                0.0,
+                0.01,
+                0.0
+              ],
+              "rotation": [
+                3.0,
+                0.0,
+                -2.0
+              ],
+              "time": 0.38,
+              "visible": 1.0
+            },
+            {
+              "ease": "smooth",
+              "position": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "rotation": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "time": 0.55,
+              "visible": 1.0
+            }
+          ],
+          "part": "root"
+        }
+      ]
+    },
+    {
+      "duration": 0.4,
+      "loop": false,
+      "name": "unequip",
+      "tracks": [
+        {
+          "keys": [
+            {
+              "ease": "smooth",
+              "position": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "rotation": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "time": 0.0,
+              "visible": 1.0
+            },
+            {
+              "ease": "smooth",
+              "position": [
+                0.03,
+                -0.2,
+                -0.1
+              ],
+              "rotation": [
+                -40.0,
+                0.0,
+                38.0
+              ],
+              "time": 0.4,
+              "visible": 1.0
+            }
+          ],
+          "part": "root"
+        }
+      ]
     }
   ],
   "name": "m5_carbine",

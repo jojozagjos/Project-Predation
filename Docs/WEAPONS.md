@@ -90,8 +90,37 @@ all it takes to be holding it. Angles are degrees, times are seconds, ranges are
 - The reticle's gap is the real cone, converted through the same projection the world is drawn with,
   so it says where rounds can actually go rather than always promising the centre of the screen.
 
+## Animation clips
+
+A weapon's model can carry clips, made in the editor or written into its file, and the body plays them
+by name from what the weapon is doing. Every one is optional; a weapon without one falls back to the
+built-in movement.
+
+| Clip | Plays | Progress from |
+|---|---|---|
+| `reload` | A reload with rounds still in the magazine | the reload's own timer |
+| `reload_empty` | A reload from empty: where a slide or bolt goes forward | the reload's own timer |
+| `equip`, `unequip` | Bringing it up, putting it away (`equip` backwards when there is no `unequip`) | the draw and holster |
+| `fire` | Each shot, on top of the procedural kick: a slide cycling, a trigger | the kick decaying |
+| `empty` | Run dry and not reloading: held at its end, a slide locked back | always its end |
+
+A track named `root` moves the whole weapon; `hand_left` and `hand_right` move the hands from their
+sockets; anything else is a part by name, and a part's children -- pieces whose `parent` is it -- move
+with it. The pistol's parts are named `slide`, `magazine` and `trigger` for this; the carbine's
+`magazine`. The reload's length comes from its clip, so a clip is never stretched to fit a number in
+`weapons.json`.
+
+Whether a magazine is empty rides every player snapshot as one bit, so a slide locked back is locked
+back on everybody's screen.
+
+## Sound
+
+Each weapon has its own report (`Assets/Audio/gunshot_<key>`), a casing that lands a moment after each
+shot, a click on an empty trigger, and a reload in parts timed by `reload_sounds` and
+`reload_empty_sounds` in `weapons.json`: each a sound and a fraction of the way through. Everybody near
+hears somebody else's reload from the progress already in their snapshot. See `Assets/Audio/README.md`.
+
 ## Not yet
 
-Projectile travel time and drop, penetration, weapon-specific reload and fire animations, shell
-ejection, muzzle flash, audio, damage falloff over range, and hit zones. Creature damage arrives with
-the creature.
+Projectile travel time and drop, penetration, and damage falloff over range. `weapon_rounds <n>` sets the
+magazine, for trying the empty states.

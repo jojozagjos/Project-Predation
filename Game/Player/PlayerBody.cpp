@@ -2118,6 +2118,14 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
             clip = m_weaponVisual.asset->FindClip("equip");
             clipProgress = draw;
         }
+        // Run dry, the slide or bolt stays back until a reload lets it go: the model's "empty" clip,
+        // held at its end. Ahead of firing, so the last round leaves the slide back rather than
+        // cycling it forward and then snapping it back again.
+        if (clip == nullptr && m_weaponPose.emptyHold)
+        {
+            clip = m_weaponVisual.asset->FindClip("empty");
+            clipProgress = 1.0f;
+        }
         // Firing is the one that layers. The kick below is the whole weapon moving in a hold, which
         // every weapon does and nobody should have to author; a "fire" clip is the bolt cycling,
         // which only this weapon does and nothing here could guess at. So the clip runs on top of a

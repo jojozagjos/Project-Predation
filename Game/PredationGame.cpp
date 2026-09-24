@@ -894,6 +894,22 @@ void PredationGame::RegisterCommands()
         "give_weapon <key>");
 
     console.RegisterCommand(
+        "weapon_rounds", "Set how many rounds are in the magazine, for trying the empty states: weapon_rounds <n> [reserve]",
+        [this](const std::vector<std::string>& args)
+        {
+            if (args.size() >= 2)
+            {
+                m_weapon.rounds = std::max(std::atoi(args[1].c_str()), 0);
+            }
+            if (args.size() >= 3)
+            {
+                m_weapon.reserve = std::max(std::atoi(args[2].c_str()), 0);
+            }
+            m_app->GetConsole().Print("rounds " + std::to_string(m_weapon.rounds) + ", reserve " + std::to_string(m_weapon.reserve));
+        },
+        "weapon_rounds <n> [reserve]");
+
+    console.RegisterCommand(
         "fire", "Hold the trigger for a number of ticks, for testing without a mouse: fire [ticks]",
         [this](const std::vector<std::string>& args)
         { m_debugTriggerTicks = args.size() >= 2 ? std::atoi(args[1].c_str()) : 1; }, "fire [ticks]");
@@ -5475,10 +5491,14 @@ bool PredationGame::StepSession(const PlayerInput& input, float dt)
     // A fraction of the reload, not the seconds left of it. See the note on the client's copy of
     // this below: the two were wrong in the same way and for the same reason.
     const float reloadPlay = ReloadProgress();
+    // During a reload, whether it began from empty; otherwise whether the magazine is empty now, which
+    // is what holds a slide back on everybody else's screen.
+    const bool emptyNow = m_weapon.IsReloading() ? m_weapon.reloadFromEmpty
+                                                 : (m_weapon.rounds <= 0 && EquippedWeapon() != nullptr);
 
     if (m_sessionMode == SessionMode::Host)
     {
-        m_host.SetPlayerHeld(0, heldId, m_weapon.aim, m_weapon.IsReloading(), reloadPlay, m_weapon.reloadFromEmpty);
+        m_host.SetPlayerHeld(0, heldId, m_weapon.aim, m_weapon.IsReloading(), reloadPlay, emptyNow);
         m_host.SetPlayerTorch(0, m_torchOn);
 
         // The host is a player too: it steps itself first, then runs everyone else from what they
@@ -5498,7 +5518,7 @@ bool PredationGame::StepSession(const PlayerInput& input, float dt)
         // which is a fraction only for a reload that takes exactly one second: with a 2.2 second
         // one it stayed at zero until the last second and then ran the whole movement in it, so
         // everyone else saw the reload start when it was nearly over and play at twice the speed.
-        m_client.SetHeld(heldId, m_weapon.aim, m_weapon.IsReloading(), reloadPlay, m_weapon.reloadFromEmpty);
+        m_client.SetHeld(heldId, m_weapon.aim, m_weapon.IsReloading(), reloadPlay, emptyNow);
         m_client.SetTorch(m_torchOn);
 
         // The client's step happens inside prediction, so the same call is used for the first guess
@@ -5711,6 +5731,7 @@ void PredationGame::SyncRemoteAvatars(float frameDeltaSeconds)
         weaponPose.reloading = remote.reloading;
         weaponPose.reload = remote.reloadProgress;
         weaponPose.reloadEmpty = remote.reloadEmpty;
+        weaponPose.emptyHold = !remote.reloading && remote.reloadEmpty;
         weaponPose.kick = avatar->weaponKick;
         weaponPose.draw = avatar->weaponDraw;
         avatar->body.SetWeaponPose(weaponPose);
@@ -8207,6 +8228,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
         pose.aim = m_weapon.aim;
         pose.reloading = m_weapon.IsReloading();
         pose.reloadEmpty = m_weapon.reloadFromEmpty;
+        pose.emptyHold = !m_weapon.IsReloading() && m_weapon.rounds <= 0 && EquippedWeapon() != nullptr;
         // Runs 0 at the start of the reload to 1 at the end, so the animation does not have to know
         // how long any particular weapon takes.
         pose.reload = pose.reloading ? ReloadProgress() : -1.0f;

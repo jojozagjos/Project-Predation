@@ -272,8 +272,10 @@ void WriteInput(BitWriter& writer, const InputMessage& message)
     if (message.reloading)
     {
         writer.WriteQuantised(message.reloadProgress, 0.0f, 1.0f, 6);
-        writer.WriteBool(message.reloadEmpty);
     }
+    // Always, for one bit: during a reload, whether it started from empty; outside one, whether the
+    // magazine is empty now -- which is when a slide stays back.
+    writer.WriteBool(message.reloadEmpty);
     writer.WriteBool(message.torchOn);
     writer.WriteBits(message.ackTick & 0xFFFu, kAckTickBits);
 }
@@ -302,7 +304,7 @@ bool ReadInput(BitReader& reader, InputMessage& out)
     out.aim = reader.ReadQuantised(0.0f, 1.0f, 5);
     out.reloading = reader.ReadBool();
     out.reloadProgress = out.reloading ? reader.ReadQuantised(0.0f, 1.0f, 6) : 0.0f;
-    out.reloadEmpty = out.reloading && reader.ReadBool();
+    out.reloadEmpty = reader.ReadBool();
     out.torchOn = reader.ReadBool();
     out.ackTick = static_cast<uint16_t>(reader.ReadBits(kAckTickBits));
     return !reader.Overran();
@@ -335,8 +337,8 @@ void WriteSnapshot(BitWriter& writer, const SnapshotMessage& message)
         if (player.reloading)
         {
             writer.WriteQuantised(player.reloadProgress, 0.0f, 1.0f, 6);
-            writer.WriteBool(player.reloadEmpty);
         }
+        writer.WriteBool(player.reloadEmpty); // from empty, or empty now: see the input's
         writer.WriteBool(player.torchOn);
         writer.WriteBool(player.mantling);
         if (player.mantling)
@@ -384,7 +386,7 @@ bool ReadSnapshot(BitReader& reader, SnapshotMessage& out)
         player.aim = reader.ReadQuantised(0.0f, 1.0f, 5);
         player.reloading = reader.ReadBool();
         player.reloadProgress = player.reloading ? reader.ReadQuantised(0.0f, 1.0f, 6) : 0.0f;
-        player.reloadEmpty = player.reloading && reader.ReadBool();
+        player.reloadEmpty = reader.ReadBool();
         player.torchOn = reader.ReadBool();
         player.mantling = reader.ReadBool();
         player.mantlePhase = player.mantling ? reader.ReadQuantised(0.0f, 1.0f, 6) : 0.0f;
