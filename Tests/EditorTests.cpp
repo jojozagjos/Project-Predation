@@ -292,3 +292,81 @@ TEST_CASE("The editor takes a model file dropped on the window", "[editor][impor
         CHECK(editor.Model().parts.empty());
     }
 }
+
+TEST_CASE("A part is turned by dragging round a ring", "[editor]")
+{
+    // Turning used to be typing numbers. The rings round the selection turn it about their axis, in
+    // five-degree steps with snapping on.
+    ModelEditor editor = MakeEditorWithParts();
+    // From the side, at the first box, clear of the socket, which would win the click.
+    REQUIRE(editor.SelectUnderRay({2.0f, 0.0f, 0.0f}, {-1.0f, 0.0f, 0.0f}));
+    glm::vec3 at{0.0f};
+    REQUIRE(editor.SelectionPosition(at));
+    // Whichever part the ray found first: the nearest of the three.
+    size_t chosen = 0;
+    for (size_t i = 0; i < editor.Model().parts.size(); ++i)
+    {
+        if (glm::distance(editor.Model().parts[i].position, at) < 1e-4f)
+        {
+            chosen = i;
+        }
+    }
+    const glm::vec3 before = editor.Model().parts[chosen].rotation;
+
+    // The Y ring lies flat, in the plane of X and Z. Grab it on its +Z side from above.
+    const float r = ModelEditor::kRingRadius;
+    const glm::vec3 down{0.0f, -1.0f, 0.0f};
+    REQUIRE(editor.BeginDrag(at + glm::vec3(0.0f, 1.0f, r), down));
+    CHECK(editor.Dragging());
+    // A quarter of the way round, to +X: from Z towards X is a positive turn about Y.
+    editor.UpdateDrag(at + glm::vec3(r * std::sin(0.5f), 1.0f, r * std::cos(0.5f)), down);
+    editor.UpdateDrag(at + glm::vec3(r, 1.0f, 0.0f), down);
+    editor.EndDrag();
+    const glm::vec3 after = editor.Model().parts[chosen].rotation;
+    INFO("turned from " << before.y << " to " << after.y);
+    CHECK(std::abs(std::abs(after.y - before.y) - 90.0f) < 0.5f);
+    CHECK(std::abs(after.x) < 0.5f);
+    CHECK(std::abs(after.z) < 0.5f);
+    REQUIRE(editor.Undo());
+    CHECK(std::abs(editor.Model().parts[chosen].rotation.y - before.y) < 0.01f);
+}
+
+TEST_CASE("A clip's hands can be swapped over, mirrored", "[editor]")
+{
+    ModelEditor editor = MakeEditorWithParts();
+    ModelAsset model = editor.Model();
+    AnimationClip clip;
+    clip.name = "reload";
+    clip.duration = 1.0f;
+    AnimationTrack left;
+    left.part = kLeftHandTrack;
+    AnimationKey reach;
+    reach.time = 0.5f;
+    reach.position = {-0.1f, -0.05f, 0.02f};
+    reach.rotation = {10.0f, 20.0f, 30.0f};
+    left.keys.push_back(reach);
+    clip.tracks.push_back(left);
+    AnimationTrack magazine;
+    magazine.part = "part1";
+    AnimationKey held;
+    held.time = 0.5f;
+    held.holder = PartHolder::LeftHand;
+    held.position = {0.03f, 0.0f, 0.0f};
+    magazine.keys.push_back(held);
+    clip.tracks.push_back(magazine);
+    model.clips.push_back(clip);
+    editor.SetModelForTesting(model);
+
+    REQUIRE(editor.MirrorHands());
+    const AnimationClip& mirrored = editor.Model().clips[0];
+    CHECK(mirrored.tracks[0].part == std::string(kRightHandTrack));
+    CHECK(mirrored.tracks[0].keys[0].position.x == Catch::Approx(0.1f));
+    CHECK(mirrored.tracks[0].keys[0].position.y == Catch::Approx(-0.05f));
+    CHECK(mirrored.tracks[0].keys[0].rotation.x == Catch::Approx(10.0f));
+    CHECK(mirrored.tracks[0].keys[0].rotation.y == Catch::Approx(-20.0f));
+    CHECK(mirrored.tracks[1].keys[0].holder == PartHolder::RightHand);
+    CHECK(mirrored.tracks[1].keys[0].position.x == Catch::Approx(-0.03f));
+    // And it is one undo.
+    REQUIRE(editor.Undo());
+    CHECK(editor.Model().clips[0].tracks[0].part == std::string(kLeftHandTrack));
+}

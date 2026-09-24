@@ -119,6 +119,16 @@ public:
     bool Dragging() const { return m_dragAxis >= 0; }
     // How long the handles are drawn, in metres. Also how far out they can be grabbed.
     static constexpr float kHandleLength = 0.11f;
+    // The turning rings round the selection: one round each axis, out beyond the move handles so the two
+    // never overlap. Dragged round, they turn
+    // what is selected about that axis, in five-degree steps with snapping on.
+    static constexpr float kRingRadius = 0.14f;
+    // Turns what is selected about a world axis, by `radians`: a part, a socket or a key.
+    void RotateSelection(const glm::vec3& axis, float radians);
+    // The open clip with its hands swapped and mirrored across the weapon: what the left hand did the
+    // right does, reflected, and every part a hand held goes to the other. For a clip made for one
+    // hand that the other should do.
+    bool MirrorHands();
 
     // --- Undo -----------------------------------------------------------------------------------
     // Records the state before a change, so it can be gone back to. Called by everything that edits
@@ -163,6 +173,7 @@ public:
     {
         m_model = std::move(model);
         m_selectedPart = m_model.parts.empty() ? -1 : 0;
+        m_selectedClip = m_model.clips.empty() ? -1 : 0;
         m_dirty = true;
         m_previewChanged = true;
     }
@@ -265,8 +276,13 @@ private:
     // Which axis handle is being dragged, or -1. The grab offset is kept so the thing does not jump
     // to the pointer the instant it is grabbed, which is the difference between dragging something
     // and throwing it.
-    int m_dragAxis = -1;
+    int m_dragAxis = -1; // 0 to 2 a move handle, 3 to 5 a turning ring
     float m_dragGrab = 0.0f;
+    // A ring being turned: the angle the pointer was at last, how far it has turned in all, and how
+    // much of that has been applied (the difference is what snapping is holding back).
+    float m_ringAngle = 0.0f;
+    float m_ringTurned = 0.0f;
+    float m_ringApplied = 0.0f;
     int m_selectedClip = -1;
     int m_selectedTrack = -1;
     // The key being dragged along its lane, if any. A key is a moment in time and dragging it is

@@ -173,8 +173,18 @@ key where the scrubber is** puts a new one at the scrubber, starting from wherev
 there. A flare has a second half, the throw, behind **The second half (thrown)**. **Write to
 items.json** saves the placement and the motions; see [ITEMS.md](ITEMS.md) for what the numbers mean.
 
+## Turning and mirroring
+
+Around whatever is selected -- a part, a socket, or a key under the playhead -- are three rings as well
+as the three move handles, one round each axis in the same colours, out beyond the handles so the two
+never get in each other's way. Drag round a ring and the selection turns about that axis, in five-degree
+steps while snapping is on. A key held in a hand is turned in that hand's frame, as it is moved. Each
+turn is one undo.
+
+**Mirror hands**, beside **Key all parts**, swaps the hands in the open clip and reflects them across
+the weapon: what the left hand did the right does, and every part a hand held goes to the other hand.
+One undo takes it back.
+
 ## Not yet
 
-Turning with a handle in the viewport rather than by typing numbers; a dropped magazine that falls
-to the floor as a real object rather than disappearing into a pouch; and mirroring a clip from one
-hand to the other.
+A dropped magazine that falls to the floor as a real object rather than disappearing into a pouch.

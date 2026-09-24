@@ -10,7 +10,9 @@
 
 #include <imgui.h>
 
+#include <glm/gtc/constants.hpp>
 #include <glm/gtc/matrix_inverse.hpp>
+#include <glm/gtc/quaternion.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
@@ -369,6 +371,24 @@ void ModelEditor::DrawOverlays(DebugDraw& draw) const
             draw.Line(at, at + unit * kHandleLength, colour);
             // A head on the end, so there is something with size to aim at rather than a line.
             draw.Sphere(at + unit * kHandleLength, 0.009f, colour, 8);
+        }
+        // And the turning rings, one round each axis in the same colours.
+        for (int axis = 0; axis < 3; ++axis)
+        {
+            const uint32_t colour = axis + 3 == m_dragAxis ? Color::kYellow : colours[axis];
+            glm::vec3 u{0.0f};
+            glm::vec3 v{0.0f};
+            u[(axis + 1) % 3] = 1.0f;
+            v[(axis + 2) % 3] = 1.0f;
+            constexpr int kSegments = 40;
+            glm::vec3 last = at + u * kRingRadius;
+            for (int i = 1; i <= kSegments; ++i)
+            {
+                const float angle = glm::two_pi<float>() * static_cast<float>(i) / static_cast<float>(kSegments);
+                const glm::vec3 next = at + (u * std::cos(angle) + v * std::sin(angle)) * kRingRadius;
+                draw.Line(last, next, colour);
+                last = next;
+            }
         }
     }
 }
@@ -1726,6 +1746,13 @@ void ModelEditor::DrawAnimationPanel()
         KeyAllParts();
     }
     ImGui::SameLine();
+    if (ImGui::Button("Mirror hands"))
+    {
+        MirrorHands();
+    }
+    ImGui::SetItemTooltip("%s", "Swap the hands in this clip, reflected across the weapon: what the left hand "
+                                "did the right does, and every part a hand held goes to the other.");
+    ImGui::SameLine();
     if (ImGui::Button("Delete key"))
     {
         if (AnimationTrack* track = SelectedTrack())
@@ -2253,14 +2280,134 @@ bool ModelEditor::BeginDrag(const glm::vec3& origin, const glm::vec3& direction)
         grabbed = hit.along;
     }
 
+    if (best >= 0)
+    {
+        PushUndo("a move");
+        m_dragAxis = best;
+        m_dragGrab = grabbed;
+        return true;
+    }
+
+    // Or a ring: where the pointer's ray crosses each ring's plane, and how near that is to the ring.
+    float nearestRing = 0.012f;
+    for (int axis = 0; axis < 3; ++axis)
+    {
+        glm::vec3 normal{0.0f};
+        normal[axis] = 1.0f;
+        const float facing = glm::dot(direction, normal);
+        if (std::abs(facing) < 1e-3f)
+        {
+            continue;
+        }
+        const float t = glm::dot(at - origin, normal) / facing;
+        if (t <= 0.0f)
+        {
+            continue;
+        }
+        const glm::vec3 hit = origin + direction * t;
+        const float off = std::abs(glm::distance(hit, at) - kRingRadius);
+        if (off < nearestRing)
+        {
+            nearestRing = off;
+            best = axis;
+        }
+    }
     if (best < 0)
     {
         return false;
     }
+    PushUndo("a turn");
+    m_dragAxis = best + 3;
+    m_ringTurned = 0.0f;
+    m_ringApplied = 0.0f;
+    m_ringAngle = std::numeric_limits<float>::max();
+    UpdateDrag(origin, direction);
+    return true;
+}
 
-    PushUndo("a move");
-    m_dragAxis = best;
-    m_dragGrab = grabbed;
+void ModelEditor::RotateSelection(const glm::vec3& axis, float radians)
+{
+    glm::vec3* euler = nullptr;
+    glm::vec3 about = axis;
+    if (m_pick == Pick::Key)
+    {
+        AnimationClip* clip = CurrentClip();
+        AnimationTrack* track = SelectedTrack();
+        AnimationKey* key = track != nullptr ? KeyAt(*track, m_playhead) : nullptr;
+        if (clip == nullptr || key == nullptr)
+        {
+            return;
+        }
+        if (key->holder != PartHolder::Weapon && track->part != kLeftHandTrack && track->part != kRightHandTrack)
+        {
+            // Held in a hand whose frame may be turned: the axis turned into it, as a move is.
+            const int side = key->holder == PartHolder::LeftHand ? 0 : 1;
+            const glm::mat3 hand = glm::mat3(m_model.HandFrameAt(clip, side, m_playhead, m_model.HandRest(side)));
+            about = glm::transpose(hand) * axis;
+        }
+        euler = &key->rotation;
+    }
+    else if (m_pick == Pick::Part && m_selectedPart >= 0 && m_selectedPart < static_cast<int>(m_model.parts.size()))
+    {
+        euler = &m_model.parts[static_cast<size_t>(m_selectedPart)].rotation;
+        m_geometryChanged = true;
+    }
+    else if (m_pick == Pick::Socket && m_selectedSocket >= 0 &&
+             m_selectedSocket < static_cast<int>(m_model.sockets.size()))
+    {
+        euler = &m_model.sockets[static_cast<size_t>(m_selectedSocket)].rotation;
+    }
+    if (euler == nullptr)
+    {
+        return;
+    }
+    // The same convention every rotation in a model is kept in: X, then Y, then Z.
+    const glm::quat turned = glm::angleAxis(radians, glm::normalize(about)) * glm::quat(glm::radians(*euler));
+    *euler = glm::degrees(glm::eulerAngles(turned));
+    m_dirty = true;
+    m_previewChanged = true;
+}
+
+bool ModelEditor::MirrorHands()
+{
+    AnimationClip* clip = CurrentClip();
+    if (clip == nullptr)
+    {
+        return false;
+    }
+    PushUndo("mirroring the hands");
+    // Reflected across the weapon's own middle, the plane its barrel and its up lie in: across x.
+    const auto mirror = [](AnimationKey& key)
+    {
+        key.position.x = -key.position.x;
+        key.rotation.y = -key.rotation.y;
+        key.rotation.z = -key.rotation.z;
+    };
+    for (AnimationTrack& track : clip->tracks)
+    {
+        const bool left = track.part == kLeftHandTrack;
+        const bool right = track.part == kRightHandTrack;
+        if (left || right)
+        {
+            track.part = left ? kRightHandTrack : kLeftHandTrack;
+            for (AnimationKey& key : track.keys)
+            {
+                mirror(key);
+            }
+            continue;
+        }
+        for (AnimationKey& key : track.keys)
+        {
+            if (key.holder == PartHolder::LeftHand || key.holder == PartHolder::RightHand)
+            {
+                key.holder = key.holder == PartHolder::LeftHand ? PartHolder::RightHand : PartHolder::LeftHand;
+                mirror(key);
+            }
+        }
+    }
+    m_dirty = true;
+    m_previewChanged = true;
+    m_status = "Mirrored the hands in '" + clip->name + "'.";
     return true;
 }
 
@@ -2274,6 +2421,42 @@ void ModelEditor::UpdateDrag(const glm::vec3& origin, const glm::vec3& direction
     if (!SelectionPosition(at))
     {
         EndDrag();
+        return;
+    }
+
+    if (m_dragAxis >= 3)
+    {
+        // Round a ring: the angle of where the pointer crosses the ring's plane, and how far it has come
+        // round since last time. Whole turns are followed, because the difference is taken each frame.
+        const int axis = m_dragAxis - 3;
+        glm::vec3 normal{0.0f};
+        normal[axis] = 1.0f;
+        const float facing = glm::dot(direction, normal);
+        if (std::abs(facing) < 1e-3f)
+        {
+            return;
+        }
+        const glm::vec3 hit = origin + direction * (glm::dot(at - origin, normal) / facing);
+        glm::vec3 u{0.0f};
+        glm::vec3 v{0.0f};
+        u[(axis + 1) % 3] = 1.0f;
+        v[(axis + 2) % 3] = 1.0f;
+        const glm::vec3 across = hit - at;
+        const float angle = std::atan2(glm::dot(across, v), glm::dot(across, u));
+        if (m_ringAngle == std::numeric_limits<float>::max())
+        {
+            m_ringAngle = angle;
+            return;
+        }
+        m_ringTurned += std::remainder(angle - m_ringAngle, glm::two_pi<float>());
+        m_ringAngle = angle;
+        const float step = glm::radians(5.0f);
+        const float wanted = m_snapEnabled ? std::round(m_ringTurned / step) * step : m_ringTurned;
+        if (wanted != m_ringApplied)
+        {
+            RotateSelection(normal, wanted - m_ringApplied);
+            m_ringApplied = wanted;
+        }
         return;
     }
 
