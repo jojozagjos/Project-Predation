@@ -195,6 +195,9 @@ struct CreatureIntent
     glm::vec3 dropAt{0.0f};
     // Set on the tick it says something back in somebody's voice: whose. The game says it.
     int mimic = -1;
+    // A sound it heard somebody make, made back at them from where it is -- a curious one copying.
+    // The name of the sound; empty when it is making none.
+    std::string echo;
 };
 
 enum class Behavior : uint8_t
@@ -269,6 +272,16 @@ public:
     bool Dead() const { return m_dead; }
     // The game closed its hands on somebody for it: it has them, and carries them off.
     void OnGrabbed(int player, float time);
+    // The director's nudge: somewhere about where the players are, not where they are. It goes and
+    // has a look, and has to find them itself.
+    void DirectorHint(const glm::vec3& where, float time);
+    // The director asking it to give the players some room for a while. It will not while it is busy
+    // with something that matters -- looking into something, stalking, searching, fighting -- and says
+    // so by refusing.
+    bool AskToWithdraw(float seconds, float time);
+    bool Withdrawing(float time) const { return time < m_withdrawUntil; }
+    // Whether being shot has taught it to be careful of people.
+    bool Wary() const { return m_wary; }
     // It lost hold of them: shot off them, struggled free, or they died.
     void OnReleased(float time, const std::string& why);
     int Holding() const { return m_holding; }
@@ -725,6 +738,21 @@ private:
     // turned round on it.
     bool m_creeping = false;
     float m_nextCreepAt = 0.0f;
+    // Giving the players room, until then, because the director asked.
+    float m_withdrawUntil = -1.0f;
+    // Hit and run: one blow on the way out of a fight, and back to running.
+    bool m_hitAndRunReady = false;
+    bool m_strikeThenFlee = false;
+    // What it has learnt. Shot in three separate encounters, it stops coming straight at people.
+    int m_timesShot = 0;
+    float m_lastShotAt = -100.0f;
+    bool m_wary = false;
+    // Searching the same place again, it searches it closer: something was there.
+    glm::vec3 m_lastSearchCentre{0.0f};
+    float m_lastSearchAt = -1.0e9f;
+    int m_searchRound = 0;
+    // Copying somebody it is curious about: the last of their sounds it made back.
+    float m_lastEchoAt = -100.0f;
     bool m_stareWasExposed = false;
     int m_avoidPushed = 0;
     float m_avoidLastAt = -1.0e9f;

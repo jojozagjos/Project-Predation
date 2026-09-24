@@ -234,6 +234,21 @@ void CreatureBrain::OnDamaged(float amount, int byPlayer, const glm::vec3& from,
     }
     Log(time, Format("hurt for %.0f", amount) +
                   (FindTrack(byPlayer) != nullptr ? " by " + FindTrack(byPlayer)->name : ""));
+    // Shot in one encounter after another, it learns. Not machine learning: a thing it now knows, which
+    // opens other ways of going about people -- round the side, from hiding, one blow and away.
+    if (byPlayer >= 0)
+    {
+        if (time - m_lastShotAt > 30.0f)
+        {
+            ++m_timesShot;
+            if (m_timesShot >= 3 && !m_wary)
+            {
+                m_wary = true;
+                Log(time, "has learnt to be careful of them");
+            }
+        }
+        m_lastShotAt = time;
+    }
 
     // Shot off whoever it has hold of: enough of that, from the others coming to help, and it lets go.
     if (m_holding >= 0)
@@ -292,6 +307,50 @@ void CreatureBrain::OnGrabbed(int player, float time)
     m_dragArrived = false;
     const Track* track = FindTrack(player);
     Switch(Behavior::Drag, player, "has hold of " + (track != nullptr ? track->name : std::string("somebody")), time);
+}
+
+void CreatureBrain::DirectorHint(const glm::vec3& where, float time)
+{
+    if (!m_interest.resolved && m_interest.strength > 0.45f)
+    {
+        return; // it has something better to go on
+    }
+    m_interest = {where, 0.45f, time, "a feeling", false};
+    Log(time, "has a feeling about somewhere");
+}
+
+bool CreatureBrain::AskToWithdraw(float seconds, float time)
+{
+    // Commitment. Whatever it is in the middle of that is about somebody, it finishes first: a creature
+    // that heard something and then wandered off before looking would not seem to have heard it at all.
+    bool busy = false;
+    switch (m_behavior)
+    {
+    case Behavior::Investigate:
+    case Behavior::Stalk:
+    case Behavior::Search:
+    case Behavior::Attack:
+    case Behavior::Drag:
+    case Behavior::Ambush:
+    case Behavior::Flank:
+    case Behavior::Lure:
+    case Behavior::PlayDead:
+    case Behavior::Nest:
+        busy = true;
+        break;
+    case Behavior::Hunt:
+        busy = std::any_of(m_tracks.begin(), m_tracks.end(), [&](const Track& track) { return track.id == m_target && track.visible; });
+        break;
+    default:
+        break;
+    }
+    if (busy || m_dead)
+    {
+        return false;
+    }
+    m_withdrawUntil = time + seconds;
+    Log(time, Format("slips away out of sight for %.0f s", seconds));
+    return true;
 }
 
 void CreatureBrain::OnReleased(float time, const std::string& why)
@@ -1206,6 +1265,7 @@ void CreatureBrain::Decide(const CreatureSenses& senses)
                  {"can follow", follow},
                  {"nearest of them", nearer},
                  {"another drives them", driven ? 0.55f : 1.0f},
+                 {"learnt to be careful", m_wary ? 0.7f : 1.0f},
                  // Not while it is creeping up on them from behind: it goes on creeping until it is close
                  // enough that running is quicker than being heard.
                  {"creeping instead", m_creeping && m_behavior == Behavior::Stalk && m_target == track.id && distance > 4.5f ? 0.35f : 1.0f}});
@@ -1243,6 +1303,7 @@ void CreatureBrain::Decide(const CreatureSenses& senses)
                      {beyond ? "cannot follow" : "stealthy", beyond ? 1.0f : 0.35f + 0.65f * m_traits.stealth},
                      {"patient", 0.4f + 0.6f * m_traits.patience},
                      {"the others drive them to it", driven ? 1.4f : 1.0f},
+                     {"learnt to be careful", m_wary ? 1.25f : 1.0f},
                      {"a way they must come", std::max(m_ambush.quality, 0.3f)},
                      {"not afraid", 0.3f + 0.7f * calm},
                      {"still waiting", std::clamp(1.0f - waited / (Tuning().ambushPatience + Tuning().ambushPatienceRange * m_traits.patience), 0.1f, 1.0f)}});
@@ -1279,6 +1340,7 @@ void CreatureBrain::Decide(const CreatureSenses& senses)
             add(Behavior::Stalk, track.id, "Stalk " + track.name,
                 {{"creeping up on them", creepingOnThem ? 1.6f : 1.0f},
                  {"the others drive them", driven ? 1.3f : 1.0f},
+                 {"learnt to be careful", m_wary ? 1.25f : 1.0f},
                  {"sure where", track.confidence},
                  {"stealthy", 0.2f + 0.8f * m_traits.stealth},
                  {"not afraid", 0.3f + 0.7f * calm},
@@ -1387,6 +1449,13 @@ void CreatureBrain::Decide(const CreatureSenses& senses)
              {"timid", 0.6f + 0.6f * m_traits.fear}});
     }
 
+    // Giving them room, because the director asked: it goes somewhere out of sight and stays there. Anything
+    // that matters -- a gunshot, somebody walking into it -- still scores above it.
+    if (now < m_withdrawUntil)
+    {
+        add(Behavior::Retreat, -1, "Withdraw", {{"giving them room", 0.5f}});
+    }
+
     // Dropping as if dead, instead of running: the other answer an animal has to something it cannot
     // outrun. Only straight after a wound that has left it badly hurt, with somebody close -- a
     // creature that lay down at random would be found out -- and not more than twice, because the
@@ -1493,7 +1562,10 @@ void CreatureBrain::Switch(Behavior behavior, int target, const std::string& rea
     if (behavior == Behavior::Retreat)
     {
         m_haveFleePoint = false;
-        m_retreatUntil = time + 6.0f + 6.0f * m_traits.fear;
+        m_retreatUntil = std::max(time + 6.0f + 6.0f * m_traits.fear, m_withdrawUntil);
+        // Going, it may take one swing at whoever is in reach on the way: the bold, and the ones that
+        // have learnt that running with nothing to show for it only brings them back to be shot again.
+        m_hitAndRunReady = previous != Behavior::Attack && (m_wary || m_traits.aggression > 0.55f);
     }
     if (behavior == Behavior::Stalk)
     {
@@ -1959,19 +2031,27 @@ void CreatureBrain::PlanSearch(const CreatureSenses& senses, const Track& track)
         const glm::vec3 heading = track.lastKnown + track.lastVelocity * 2.0f;
         glm::vec3 centre = track.lastKnown;
         senses.nav->NearestPoint(heading, 3.0f, centre);
+        // Back searching the same place, it searches it closer and more thoroughly, not less: it was
+        // sure there was something here, and it has not found it yet.
+        const bool again = Horizontal(centre, m_lastSearchCentre) < 8.0f && senses.time - m_lastSearchAt < 120.0f;
+        m_searchRound = again ? std::min(m_searchRound + 1, 3) : 0;
+        m_lastSearchCentre = centre;
+        m_lastSearchAt = senses.time;
+        const float radius = 9.0f / (1.0f + 0.6f * static_cast<float>(m_searchRound));
+        const float apart = std::max(4.0f / (1.0f + 0.4f * static_cast<float>(m_searchRound)), 2.0f);
         uint32_t seed = static_cast<uint32_t>(m_random.Next());
-        for (int i = 0; i < 12 && m_searchPlan.size() < places.size() + 3; ++i)
+        for (int i = 0; i < 16 && m_searchPlan.size() < places.size() + 3 + static_cast<size_t>(m_searchRound); ++i)
         {
             glm::vec3 point;
-            if (!senses.nav->RandomPointNear(centre, 9.0f, seed, point))
+            if (!senses.nav->RandomPointNear(centre, radius, seed, point))
             {
                 continue;
             }
             // Spread out: somewhere already on the list, or where it already is, is not a new place.
-            bool spread = Horizontal(point, senses.position) > 3.0f;
+            bool spread = Horizontal(point, senses.position) > apart * 0.75f;
             for (const SearchStop& stop : m_searchPlan)
             {
-                spread = spread && Horizontal(point, stop.point) > 4.0f;
+                spread = spread && Horizontal(point, stop.point) > apart;
             }
             if (spread)
             {
@@ -2128,6 +2208,7 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
     m_intent.climb = false;
     m_intent.drop = false;
     m_intent.mimic = -1;
+    m_intent.echo.clear();
 
     const glm::vec3 eye = senses.eye;
     const auto lookAround = [&](float until)
@@ -2463,6 +2544,11 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
                 // Barely a pause between blows for something that means it.
                 m_attackCooldownUntil = now + (m_attack == AttackKind::Lunge ? 0.5f : 0.12f + 0.35f * (1.0f - m_traits.aggression));
                 m_attack = AttackKind::None;
+                if (m_strikeThenFlee)
+                {
+                    m_strikeThenFlee = false;
+                    Switch(Behavior::Retreat, -1, "and away", now);
+                }
             }
             break;
         }
@@ -2623,6 +2709,31 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
 
     case Behavior::Retreat:
     {
+        if (m_hitAndRunReady && now - m_behaviorStarted < 2.5f)
+        {
+            for (const Track& track : m_tracks)
+            {
+                const SensedPlayer* player = FindPlayer(senses, track.id);
+                if (player == nullptr || !player->alive || !track.visible || !track.hostile ||
+                    Horizontal(senses.position, player->feet) > m_traits.strikeReach + 0.3f ||
+                    (senses.clearLine && !senses.clearLine(senses.eye, player->feet + glm::vec3(0.0f, 1.0f, 0.0f))))
+                {
+                    continue;
+                }
+                m_hitAndRunReady = false;
+                m_strikeThenFlee = true;
+                const int who = track.id;
+                const glm::vec3 feet = player->feet;
+                Switch(Behavior::Attack, who, "one blow on the way out", now);
+                StartAttack(AttackKind::Swipe, feet, now);
+                m_committedUntil = now + TimingOf(AttackKind::Swipe).duration;
+                break;
+            }
+            if (m_behavior != Behavior::Retreat)
+            {
+                break;
+            }
+        }
         if (!m_haveFleePoint)
         {
             // Back to the nest, when it has one, to lick its wounds.
@@ -2952,7 +3063,53 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
         }
         else
         {
+            // Copying them. A curious one watching something it does not understand does what it does:
+            // gets down when they get down, steps the way they step, stands still when they stand still
+            // -- with its head on one side -- and makes back the noises they make.
             m_goal = "watching " + track->name;
+            const bool copies = m_traits.curiosity > 0.45f;
+            if (copies)
+            {
+                if (player->height < 1.35f)
+                {
+                    m_intent.crouch = 1.0f;
+                    m_goal = "getting down as " + track->name + " does";
+                }
+                const glm::vec3 pace = Flat(player->velocity);
+                const float speed = glm::length(pace);
+                glm::vec3 step;
+                if (speed > 0.6f && senses.nav != nullptr && senses.nav->NearestPoint(senses.position + pace * 0.8f, 1.5f, step))
+                {
+                    m_intent.move = true;
+                    m_intent.destination = step;
+                    m_intent.speed = std::min(speed, m_traits.walkSpeed * 1.4f);
+                    m_goal = "moving as " + track->name + " moves";
+                }
+                else if (speed < 0.2f)
+                {
+                    // Head on one side.
+                    const glm::vec3 across = glm::cross(Flat(player->feet - senses.position), glm::vec3(0.0f, 1.0f, 0.0f));
+                    if (glm::length(across) > 1e-3f)
+                    {
+                        m_intent.lookAt += glm::normalize(across) * 0.35f * std::sin(now * 0.7f);
+                    }
+                }
+                for (const Heard& heard : m_heard)
+                {
+                    if (heard.noise.player == track->id && heard.time > m_lastEchoAt + 0.5f && now - heard.time > 0.8f &&
+                        now - heard.time < 2.5f && now - m_lastEchoAt > 6.0f &&
+                        (heard.noise.kind == NoiseKind::Door || heard.noise.kind == NoiseKind::Item ||
+                         heard.noise.kind == NoiseKind::Impact))
+                    {
+                        m_intent.echo = heard.noise.kind == NoiseKind::Door   ? "World/door_slam"
+                                        : heard.noise.kind == NoiseKind::Item ? "World/drop"
+                                                                              : "World/door_bash";
+                        m_lastEchoAt = now;
+                        Log(now, "makes back the sound " + track->name + " made");
+                        break;
+                    }
+                }
+            }
         }
         break;
     }
@@ -3065,6 +3222,16 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
         {
             // Everywhere it could think of, and nothing. It lets them go -- for now: a sound or a
             // glimpse brings them straight back.
+            // The persistent go round once more, closer, before they let it go.
+            if (m_searchRound < 2 && m_traits.persistence > 16.0f && !m_searchPlan.empty())
+            {
+                Log(now, "not satisfied; looks again, closer");
+                PlanSearch(senses, *track);
+                if (!m_searchPlan.empty())
+                {
+                    break;
+                }
+            }
             Log(now, "gives up looking for " + track->name);
             track->confidence = 0.0f;
             Switch(Behavior::Roam, -1, "nothing found", now);

@@ -155,6 +155,14 @@ private:
     bool SpawnCreature(uint32_t seed, const glm::vec3& awayFrom, const glm::vec3* exactly = nullptr);
     void ClearCreatures();
     void UpdateCreatures(float dt);
+    // The director: pacing, over the creatures' heads. It knows where everybody is, and never tells a
+    // creature -- only nudges one about where to look when nothing has happened for a while, and asks
+    // the ones close to the players to give them room when the pressure has gone on long enough.
+    void UpdateDirector(float dt, const std::vector<SensedPlayer>& players);
+    float m_menace = 0.0f;          // how hard the players have been pressed lately, 0 to 1
+    float m_lastContact = 0.0f;     // on the creature clock
+    float m_directorHintAt = 40.0f;
+    float m_directorAskAt = 0.0f;
     void UpdateCreatureVisuals(float dt);
     void MakeNoise(NoiseKind kind, const glm::vec3& at, float reach, int player);
     // After the authority has worked out what a round hit: the creature hears the shot and the

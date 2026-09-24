@@ -53,6 +53,10 @@ CVar<bool> cv_aiFreeze{"ai.freeze", false,
 CVar<bool> cv_debugGod{"debug.god", false, "Creatures cannot hurt the players, for watching them at length"};
 CVar<float> cv_aiReportStill{"ai.report_still", 10.0f,
                              "Log a creature that has stood in one place this many seconds, with what it was doing (0: never)"};
+CVar<bool> cv_aiDirector{"ai.director", true,
+                          "Pace the creatures: nudge them towards the players' area when it is quiet, ease them off after a lot of pressure"};
+CVar<float> cv_aiDirectorQuiet{"ai.director_quiet_seconds", 60.0f,
+                               "How long without any contact before a creature is nudged towards where the players are"};
 CVar<bool> cv_aiMimic{"ai.mimic", true, "Creatures that can may say back what they have heard players say"};
 CVar<float> cv_nestHealth{"ai.nest_health", 200.0f, "How much a nest's heart takes before it bursts"};
 CVar<float> cv_nestGrowth{"ai.nest_growth_seconds", 300.0f,
@@ -798,6 +802,12 @@ void PredationGame::UpdateCreatures(float dt)
         }
 
         const CreatureIntent& intent = creature->Brain().Intent();
+        // Making back a sound somebody made, from where it is. Not a noise to the others: it is only
+        // copying.
+        if (!intent.echo.empty())
+        {
+            ShareSound(intent.echo, creature->Position() + glm::vec3(0.0f, 0.6f, 0.0f), 0.75f);
+        }
         // Calling the others: heard by them next tick.
         if (intent.roar)
         {
@@ -889,16 +899,132 @@ void PredationGame::UpdateCreatures(float dt)
                 break;
             }
             ApplyPlayerDamage(static_cast<uint8_t>(player.id), damage, kNoKiller, blow, "creature");
+            m_menace = std::min(m_menace + 0.15f, 1.0f);
             PlaySound(m_sounds.hurt.Pick(), player.feet + glm::vec3(0.0f, 1.2f, 0.0f), 0.9f, 0.85f);
             PRED_LOG_INFO(AI, "Strike at {} (player {}) landed", player.name, player.id);
             break;
         }
     }
+    UpdateDirector(dt, players);
     m_noises.clear();
     m_callsHeard = std::move(m_calls);
     m_calls.clear();
     UpdateGrips(dt);
     UpdateCocoons(dt);
+}
+
+void PredationGame::UpdateDirector(float dt, const std::vector<SensedPlayer>& players)
+{
+    if (!cv_aiDirector.Get())
+    {
+        return;
+    }
+    // Pressure: something close to somebody, and anything busy with somebody. It builds over a minute or
+    // two of that and drains away over a couple of quiet minutes.
+    float close = 0.0f;
+    bool contact = false;
+    for (const std::unique_ptr<Creature>& creature : m_creatures)
+    {
+        if (!creature->Alive() || creature->Down())
+        {
+            continue;
+        }
+        for (const SensedPlayer& player : players)
+        {
+            if (player.alive)
+            {
+                close = std::max(close, 1.0f - glm::distance(creature->Position(), player.feet) / 12.0f);
+            }
+        }
+        switch (creature->Brain().Current())
+        {
+        case Behavior::Hunt:
+        case Behavior::Attack:
+        case Behavior::Stalk:
+        case Behavior::Drag:
+        case Behavior::Ambush:
+        case Behavior::Flank:
+        case Behavior::Lure:
+            contact = true;
+            break;
+        default:
+            break;
+        }
+    }
+    if (contact || close > 0.3f)
+    {
+        m_lastContact = m_creatureClock;
+    }
+    if (close > 0.05f || contact)
+    {
+        m_menace = std::min(m_menace + dt * (0.012f * close + (contact ? 0.006f : 0.0f)), 1.0f);
+    }
+    else
+    {
+        m_menace = std::max(m_menace - dt * 0.008f, 0.0f);
+    }
+
+    // Enough: the ones near the players are asked to give them room. Only those not in the middle of
+    // something about somebody say yes; the rest are asked again in a moment.
+    if (m_menace >= 1.0f && m_creatureClock >= m_directorAskAt)
+    {
+        m_directorAskAt = m_creatureClock + 2.0f;
+        bool eased = false;
+        for (const std::unique_ptr<Creature>& creature : m_creatures)
+        {
+            bool near = false;
+            for (const SensedPlayer& player : players)
+            {
+                near = near || (player.alive && glm::distance(creature->Position(), player.feet) < 25.0f);
+            }
+            if (near && creature->Alive() && !creature->Down() &&
+                creature->Brain().AskToWithdraw(35.0f + 25.0f * (static_cast<float>(std::rand()) / static_cast<float>(RAND_MAX)), m_creatureClock))
+            {
+                eased = true;
+            }
+        }
+        if (eased)
+        {
+            m_menace = 0.35f;
+            PRED_LOG_INFO(AI, "Director: the players have been pressed long enough; easing off");
+        }
+    }
+
+    // Too quiet: one creature with nothing to do is sent about where somebody is -- somewhere near them,
+    // not them. It has to find them itself, with its own eyes and ears.
+    if (m_creatureClock - m_lastContact > cv_aiDirectorQuiet.Get() && m_creatureClock >= m_directorHintAt && m_nav.Valid())
+    {
+        m_directorHintAt = m_creatureClock + 45.0f + 30.0f * (static_cast<float>(std::rand()) / static_cast<float>(RAND_MAX));
+        std::vector<const SensedPlayer*> living;
+        for (const SensedPlayer& player : players)
+        {
+            if (player.alive)
+            {
+                living.push_back(&player);
+            }
+        }
+        Creature* idle = nullptr;
+        for (const std::unique_ptr<Creature>& creature : m_creatures)
+        {
+            if (creature->Alive() && !creature->Down() && creature->Brain().Current() == Behavior::Roam &&
+                !creature->Brain().Withdrawing(m_creatureClock))
+            {
+                idle = creature.get();
+                break;
+            }
+        }
+        if (idle != nullptr && !living.empty())
+        {
+            const SensedPlayer& who = *living[static_cast<size_t>((static_cast<float>(std::rand()) / static_cast<float>(RAND_MAX)) * static_cast<float>(living.size())) % living.size()];
+            glm::vec3 near;
+            uint32_t seed = static_cast<uint32_t>(m_creatureClock * 1000.0f);
+            if (m_nav.RandomPointNear(who.feet, 12.0f, seed, near))
+            {
+                idle->Brain().DirectorHint(near, m_creatureClock);
+                PRED_LOG_INFO(AI, "Director: creature {} nudged towards {}'s area", idle->NetId(), who.name);
+            }
+        }
+    }
 }
 
 void PredationGame::UpdateCreatureVisuals(float dt)
