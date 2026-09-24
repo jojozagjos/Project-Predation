@@ -53,9 +53,10 @@ What exists now is listed first, and the rest of this document is the design it 
   while down gives up the act and runs, and is not believed again. At most twice a life.
 - **Dead is dead**: on death the brain stops for good. Nothing afterwards perceives, decides or moves,
   and the intent is cleared -- a creature killed mid-strike used to leave the strike standing.
-- **Arrival**: a game starts without the creature. About forty seconds in (`ai.arrival_seconds`, varied
-  a little by seed) it appears somewhere at least twenty metres from everybody and out of every
-  player's line of sight.
+- **Arrival**: a game starts without the creature. With `ai.creatures` above nought -- it is nought for
+  now, and creatures are made with `spawn_creature` -- about forty seconds in (`ai.arrival_seconds`,
+  varied a little by seed) one appears somewhere at least twenty metres from everybody and out of
+  every player's line of sight.
 - **One rule worth knowing**: a noise made by somebody it can see, or somebody who has hurt it, is not
   a question to go and answer. It updates where they are, and closes any open question near them.
   Without it a creature shot in the back walked off to "investigate the gunshot" instead of turning on

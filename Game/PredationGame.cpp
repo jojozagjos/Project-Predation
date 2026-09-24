@@ -434,6 +434,20 @@ bool PredationGame::OnInit(Application& app)
         m_sounds.drop = LoadSoundVariants(audio, "drop");
         m_sounds.hurt = LoadSoundVariants(audio, "hurt");
         m_sounds.death = LoadSoundVariants(audio, "death");
+
+        // And everything else, by the name of its folder. The fixed set above is the handful the
+        // game reaches for every frame; the rest -- one gunshot per weapon, the creature, the
+        // ambience -- is looked up by name, so a new sound is a new folder and nothing else.
+        std::error_code ec;
+        for (const auto& entry : std::filesystem::directory_iterator(Paths::AssetsRoot() / "Audio", ec))
+        {
+            const std::string name = entry.path().filename().string();
+            if (!entry.is_directory() || name == "Footsteps" || m_soundBank.count(name) != 0)
+            {
+                continue;
+            }
+            m_soundBank.emplace(name, LoadSoundVariants(audio, name.c_str()));
+        }
     }
 
     LoadFootsteps(app.GetAudio());
@@ -1719,8 +1733,10 @@ void PredationGame::ServeClientRequests()
 
     for (const NetHost::ShotRequest& request : m_host.TakeShotRequests())
     {
-        // The client has already played the shot for itself. The host decides what it hit.
-        const WeaponDefinition* definition = EquippedWeapon();
+        // The client has already played the shot for itself. The host decides what it hit, with the
+        // weapon the client is holding -- not the host's own, which is what it used to use: a client
+        // with a carbine fired pistol rounds whenever the host had a pistol out.
+        const WeaponDefinition* definition = WeaponHeldBy(request.player);
         FireEvent shot;
         shot.origin = request.shot.origin;
         shot.direction = glm::normalize(request.shot.direction);
@@ -1756,6 +1772,10 @@ void PredationGame::ServeClientRequests()
         tracer.normal = SurfaceNormalAt(m_app->GetPhysics(), tracer.origin, tracer.to, &tracer.body);
         AnchorTracer(tracer);
         m_tracers.push_back(tracer);
+        // And heard. Every other machine plays this when the event reaches it, but the host is not
+        // sent its own broadcast, and so for as long as there has been multiplayer the host has
+        // watched other people fire in silence.
+        PlaySound(GunshotFor(definition).Pick(), event.position, 1.0f, 1.0f, true);
 
         // The host draws the shooter too, so their weapon has to kick here as well. The event goes
         // out to everybody else; nobody sends it back to the machine that made it.
@@ -2069,7 +2089,7 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
             m_tracers.push_back(tracer);
             // And it is heard where it was fired from, which is most of what tells a player there
             // is somebody else in the building and roughly where.
-            PlaySound(m_sounds.gunshot.Pick(), event.position, 1.0f, 1.0f, true);
+            PlaySound(GunshotFor(WeaponHeldBy(event.player)).Pick(), event.position, 1.0f, 1.0f, true);
 
             // And their weapon kicks and flashes. A snapshot cannot carry this: firing happens on
             // one frame and snapshots go out on others, so the moment would be missed most times.
@@ -6259,6 +6279,45 @@ const WeaponDefinition* PredationGame::EquippedWeapon() const
     return m_weaponData.Get(m_weapon.weapon);
 }
 
+const SoundVariants& PredationGame::Sounds(const std::string& name) const
+{
+    static const SoundVariants kSilence;
+    const auto found = m_soundBank.find(name);
+    return found != m_soundBank.end() ? found->second : kSilence;
+}
+
+const SoundVariants& PredationGame::GunshotFor(const WeaponDefinition* weapon) const
+{
+    // Each weapon its own report, from Assets/Audio/gunshot_<key>/, so a pistol and a carbine can be
+    // told apart through a wall. A weapon with no folder of its own sounds like every other gun.
+    if (weapon != nullptr)
+    {
+        const SoundVariants& own = Sounds("gunshot_" + weapon->key);
+        if (!own.ids.empty())
+        {
+            return own;
+        }
+    }
+    return m_sounds.gunshot;
+}
+
+const WeaponDefinition* PredationGame::WeaponHeldBy(uint8_t player) const
+{
+    if (player == LocalPlayerId())
+    {
+        return EquippedWeapon();
+    }
+    for (const RemotePlayerView& remote : RemotePlayers())
+    {
+        if (remote.id == player)
+        {
+            const ItemDefinition* item = m_items.Get(static_cast<ItemId>(remote.heldItem));
+            return item != nullptr ? m_weaponData.Get(m_weaponData.ForItem(item->key)) : nullptr;
+        }
+    }
+    return nullptr;
+}
+
 void PredationGame::SyncEquippedWeapon()
 {
     // The selected slot decides what is in your hands. Keeping it that way means there is no second
@@ -6452,7 +6511,7 @@ void PredationGame::ResolveShots()
     // side the barrel is on, which is both wrong and the most obvious way a mix sounds broken.
     for (size_t i = 0; i < m_shots.size(); ++i)
     {
-        PlaySound(m_sounds.gunshot.Pick(), MuzzlePosition(), 0.85f, 1.0f, false);
+        PlaySound(GunshotFor(EquippedWeapon()).Pick(), MuzzlePosition(), 0.85f, 1.0f, false);
     }
 
     for (const FireEvent& shot : m_shots)
@@ -7534,17 +7593,21 @@ void PredationGame::OnFixedUpdate(double fixedDt)
     if (!restrained && !m_inventoryOpen)
     {
         Input& raw = m_app->GetInput();
-        weaponInput.trigger = raw.IsActionDown("fire") || m_debugTriggerTicks > 0;
+        // Held, or pressed since the last tick: a click that goes down and up between two ticks
+        // is still a shot.
+        weaponInput.trigger = raw.IsActionDown("fire") || m_firePressLatch || m_debugTriggerTicks > 0;
         // And only where the sights would mean anything. Against a wall the body refuses to raise
         // them, so the simulation refuses too: otherwise the player would be walking at aiming
         // pace and shooting at aiming accuracy while looking at a weapon held at their hip.
         weaponInput.aim = (raw.IsActionDown("aim") || m_debugAim) && m_body.AimHasRoom();
-        if (raw.WasActionPressed("reload"))
-        {
-            m_reloadLatch = 30;
-        }
+        // The press itself is noticed in OnUpdate, once per frame, and held here. Asking "was it
+        // pressed" from inside a fixed tick only works on the frames that have a tick in them, and
+        // at a couple of hundred frames a second most do not: the key went down on a frame with no
+        // tick, the frame after no longer counted it as pressed, and so three presses in four did
+        // nothing at all.
         weaponInput.reload = m_reloadLatch > 0;
     }
+    m_firePressLatch = false;
     m_debugTriggerTicks = std::max(m_debugTriggerTicks - 1, 0);
 
     m_shots.clear();
@@ -7797,6 +7860,17 @@ void PredationGame::OnUpdate(double dt, double alpha)
         if (input.WasActionPressed("jump"))
         {
             m_jumpLatch = true;
+        }
+        // The same for the weapon. Reload is held for half a second so a press part way through a
+        // shot still takes once the weapon can accept it; a fire press only until the next tick.
+        if (input.WasActionPressed("reload"))
+        {
+            m_reloadLatch = 30;
+        }
+        // Not a click that was aimed at a menu: the one that pressed Resume must not also fire.
+        if (input.WasActionPressed("fire") && !m_paused && !m_inventoryOpen && !ImGui::GetIO().WantCaptureMouse)
+        {
+            m_firePressLatch = true;
         }
         // Latched rather than applied here, for the same reason a jump is. Fixed updates run before
         // this function every frame, so a stance toggled here was not seen by the simulation until

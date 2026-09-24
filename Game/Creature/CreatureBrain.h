@@ -156,6 +156,9 @@ struct CreatureIntent
     int openDoor = -1;
     int bashDoor = -1;
     bool bashing = false;
+    // Mending, as a fraction of its whole health a second, while it has gone to ground. The game
+    // gives it the health.
+    float recover = 0.0f;
 };
 
 enum class Behavior : uint8_t
@@ -279,6 +282,23 @@ public:
         float stalked = 0.0f;
         // Seconds it has spent just watching them. Curiosity wears off: this is what it wears off against.
         float observed = 0.0f;
+
+        // Why it can or cannot see them at this moment, factor by factor. The visibility is these
+        // multiplied together, so when the question is "why does it not see me" the answer is
+        // whichever of them is nought -- and the verdict says which, in words.
+        struct SightCheck
+        {
+            const char* verdict = "not looked for yet";
+            float distance = 0.0f;
+            float field = 0.0f;    // 1 dead ahead, down to the edge value at the rim of its view
+            int clear = 0;         // of three lines to them -- head, chest, hips -- how many are open
+            float nearness = 0.0f; // 1 close, 0 at the limit of its sight
+            float size = 0.0f;     // standing is 1; crouched and prone are smaller
+            float motion = 0.0f;   // moving catches the eye
+            float light = 0.0f;    // how lit they are, to eyes that need light
+            float visibility = 0.0f;
+        };
+        SightCheck sight;
     };
     const std::vector<Track>& Tracks() const { return m_tracks; }
 
@@ -453,6 +473,8 @@ private:
     glm::vec3 m_threat{0.0f};
     float m_retreatUntil = 0.0f;
     float m_retreatCooldownUntil = 0.0f;
+    // Somebody close enough, or recent enough, that its wounds are something to be afraid about.
+    bool m_threatened = false;
     float m_attackCooldownUntil = 0.0f;
     float m_windupStarted = -1.0f;
 

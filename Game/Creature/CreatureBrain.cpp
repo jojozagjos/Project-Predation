@@ -489,11 +489,15 @@ void CreatureBrain::Perceive(const CreatureSenses& senses, float dt)
         Track& track = TrackFor(player);
         const bool wasVisible = track.visible;
         float visibility = 0.0f;
+        Track::SightCheck check;
+        check.verdict = !player.alive ? "dead" : "hidden in a locker";
         if (player.alive && !player.hidden)
         {
             const glm::vec3 chest = player.feet + glm::vec3(0.0f, player.height * 0.6f, 0.0f);
             const glm::vec3 toward = chest - senses.eye;
             const float distance = glm::length(toward);
+            check.distance = distance;
+            check.verdict = "too far away";
             if (distance < senseRange && distance > 1e-3f)
             {
                 glm::vec3 flat{toward.x, 0.0f, toward.z};
@@ -511,6 +515,10 @@ void CreatureBrain::Perceive(const CreatureSenses& senses, float dt)
                 {
                     field = 1.0f;
                 }
+                check.field = field;
+                check.verdict = !hasEyes ? "no eyes, and not close enough to touch"
+                                : distance >= sightRange ? "beyond what its eyes can reach"
+                                                         : "outside its field of view";
 
                 if (field > 0.0f)
                 {
@@ -534,9 +542,16 @@ void CreatureBrain::Perceive(const CreatureSenses& senses, float dt)
                     // Touch and smell do not care how dark it is.
                     const float light = hasEyes ? std::clamp(player.light, 0.08f, 1.0f) : 1.0f;
                     visibility = field * exposed * nearness * size * motion * light;
+                    check.clear = clear;
+                    check.nearness = nearness;
+                    check.size = size;
+                    check.motion = motion;
+                    check.light = light;
+                    check.verdict = clear == 0 ? "something solid in the way" : "in view";
                 }
             }
         }
+        check.visibility = visibility;
 
         track.visible = false;
         track.inView = visibility > 0.001f;
@@ -554,6 +569,12 @@ void CreatureBrain::Perceive(const CreatureSenses& senses, float dt)
         {
             track.exposure = std::max(track.exposure - kExposureDecay * dt, 0.0f);
         }
+
+        if (visibility > 0.001f)
+        {
+            check.verdict = track.exposure >= 1.0f ? "seen" : "making them out";
+        }
+        track.sight = check;
 
         if (track.exposure >= 1.0f && visibility > 0.001f)
         {
@@ -779,8 +800,21 @@ void CreatureBrain::Perceive(const CreatureSenses& senses, float dt)
     m_state.pain = std::max(m_state.pain - 0.06f * dt, 0.0f);
     m_state.arousal = std::max(m_state.arousal - 0.1f * dt, 0.0f);
     const float injury = 1.0f - std::clamp(senses.healthFraction, 0.0f, 1.0f);
-    m_state.fear = std::clamp(m_state.pain * (0.4f + m_traits.fear) + injury * 0.5f * m_traits.fear,
-                              0.0f, 1.0f);
+    // A wound frightens it while whatever gave it the wound is about: somebody in sight and close,
+    // or a round in the last twenty seconds. Alone in the dark it is still hurt, and much less
+    // afraid. Fear that came from the wound alone never went away -- nothing mends a creature that
+    // has no nest -- so a timid one shot badly enough spent the rest of the match running from
+    // nobody, back and forth between a hiding place and the next hiding place.
+    m_threatened = senses.time - m_lastHurt < 20.0f;
+    for (const Track& track : m_tracks)
+    {
+        if (track.visible && Horizontal(senses.position, track.lastKnown) < 14.0f)
+        {
+            m_threatened = true;
+        }
+    }
+    const float woundFear = injury * m_traits.fear * (m_threatened ? 0.5f : 0.12f);
+    m_state.fear = std::clamp(m_state.pain * (0.4f + m_traits.fear) + woundFear, 0.0f, 1.0f);
 }
 
 void CreatureBrain::Decide(const CreatureSenses& senses)
@@ -953,6 +987,14 @@ void CreatureBrain::Decide(const CreatureSenses& senses)
     // Getting away. Once it has decided to, it keeps going for a while rather than turning back the
     // moment the pain fades a little -- a wounded animal does not stop running at the first corner.
     const bool retreating = m_behavior == Behavior::Retreat && now < m_retreatUntil;
+    if (m_behavior == Behavior::Retreat && !retreating && now >= m_retreatCooldownUntil)
+    {
+        // It has run for as long as it meant to. Running is then off the table for a while, even
+        // afraid: left on it, the same fear that started the retreat chose it again the moment it
+        // ended, and the creature never came back. What it does instead is up to everything else --
+        // a frightened one will still prefer to keep its distance, just not by fleeing from nothing.
+        m_retreatCooldownUntil = now + 12.0f;
+    }
     if (retreating || (m_state.fear > 0.3f && now >= m_retreatCooldownUntil))
     {
         add(Behavior::Retreat, -1, "Retreat",
@@ -2089,8 +2131,18 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
         }
         else
         {
-            m_goal = senses.hasHive ? "at the nest, healing" : "hiding, recovering";
+            const bool atNest = senses.hasHive && Horizontal(senses.position, senses.hive) < 3.5f;
+            m_goal = atNest ? "at the nest, healing" : "hiding, recovering";
             lookAround(1.0e9f);
+            // Gone to ground, it mends: slowly anywhere, three times as fast at its own nest.
+            m_intent.recover = atNest ? 0.03f : 0.01f;
+            // And it stays down while it is badly hurt and nothing is near, up to a point: an
+            // animal that has gone to ground comes back out, and the players should get to find
+            // out what it does when it does.
+            if (senses.healthFraction < 0.5f && !m_threatened && now - m_behaviorStarted < 40.0f)
+            {
+                m_retreatUntil = std::max(m_retreatUntil, now + 1.0f);
+            }
         }
         break;
     }

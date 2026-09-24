@@ -1270,3 +1270,63 @@ TEST_CASE("Eight creatures at once keep out of each other, all keep thinking, an
     // A frame at sixty is 16.7 ms. Eight creatures thinking should be a small part of it.
     CHECK(perTick < 3.0);
 }
+
+TEST_CASE("A creature that ran away comes back out rather than running for ever", "[creature][retreat]")
+{
+    // Reported as "they go retreat and get stuck retreating". Its fear was made partly of its wound,
+    // and nothing mends a creature without a nest, so a timid one shot badly enough was afraid for
+    // the rest of the match and chose running every time it was asked.
+    uint32_t seed = 0;
+    for (uint32_t candidate = 1; candidate < 500; ++candidate)
+    {
+        // Very timid, and not the sort to lie down and pretend instead.
+        const CreatureTraits traits = CreatureTraits::FromSeed(candidate);
+        if (traits.fear > 0.85f && traits.stealth < 0.5f && traits.patience < 0.5f)
+        {
+            seed = candidate;
+            break;
+        }
+    }
+    REQUIRE(seed != 0);
+    CreatureHarness harness(seed);
+    glm::vec3 at;
+    glm::vec3 player;
+    REQUIRE(OpenView(harness, 9.0f, at, player));
+    const std::vector<SensedPlayer> players{Somebody(1, player)};
+    harness.Run(1.0f, players);
+    // Down to an eighth of its health: hurt enough that the wound alone used to keep it afraid.
+    for (int i = 0; i < 4; ++i)
+    {
+        harness.creature->TakeDamage(Share(*harness.creature, 35.0f), 1, player + glm::vec3(0.0f, 1.5f, 0.0f),
+                                     harness.time);
+        harness.Run(0.2f, players);
+    }
+    harness.Run(4.0f, players);
+    REQUIRE(harness.creature->Brain().Current() == Behavior::Retreat);
+
+    // Then the shooter goes. Given the rest of a couple of minutes on its own, it mends while it
+    // hides and then does something other than hide.
+    bool mended = false;
+    float retreatingLate = 0.0f;
+    float late = 0.0f;
+    const float start = harness.time;
+    harness.Run(150.0f, {}, {},
+                [&](const Creature& creature)
+                {
+                    mended = mended || creature.Brain().Intent().recover > 0.0f;
+                    if (harness.time - start > 90.0f)
+                    {
+                        late += 1.0f / 60.0f;
+                        if (creature.Brain().Current() == Behavior::Retreat)
+                        {
+                            retreatingLate += 1.0f / 60.0f;
+                        }
+                    }
+                });
+    INFO("its mind:" << MindOf(*harness.creature));
+    INFO("fear " << harness.creature->Brain().Feelings().fear << ", retreating for " << retreatingLate
+                 << " s of the last " << late << " s");
+    CHECK(mended);
+    CHECK(retreatingLate < late * 0.25f);
+    CHECK(harness.creature->Brain().Current() != Behavior::Retreat);
+}

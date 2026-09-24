@@ -64,7 +64,7 @@ The creature (developer builds only):
 | `creature_clear` | Remove every creature |
 | `creature_hurt [amount]` | Hurt the first creature as if you had shot it, 30 by default |
 | `ai_brain` | Open or close the brain inspector |
-| `ai.creatures`, `ai.seed` | How many a new game starts with, and the seed (0 for a new one each game) |
+| `ai.creatures`, `ai.seed` | How many arrive on their own in a new game -- 0 by default for now, so they are made with `spawn_creature` -- and the seed (0 for a new one each game) |
 | `ai.arrival_seconds` | Roughly how long into a game it arrives, out of everybody's sight; 0 for straight away |
 | `creature_pose` | Where each creature is, whether it is up, lying still or dead, how far it has fallen, and where its torso is drawn |
 | `creature_mind` | The inspected creature's whole timeline and what it is weighing now, to the console and the log -- the brain window without a window |

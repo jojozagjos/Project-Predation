@@ -108,6 +108,10 @@ private:
     float m_creatureClock = 0.0f;
     bool m_showBrain = false;
     int m_inspectedCreature = 0;
+    // The inspector: keep it on whichever creature is nearest, and what its timeline is filtered by.
+    bool m_brainFollowNearest = false;
+    char m_brainFilter[64] = {};
+    std::string m_brainTab;
     // When each player last made a voice noise, so talking is a sound every half second rather than
     // fifty times a second.
     std::map<int, float> m_lastVoiceNoise;
@@ -308,6 +312,12 @@ private:
     // Fades the drawn tracers. Presentation only.
     void AgeTracers(float dt);
     const WeaponDefinition* EquippedWeapon() const;
+    // What somebody is holding, as this machine knows it: our own weapon, or the one the host was
+    // told a remote player has out. Null for an empty hand or somebody we cannot find.
+    const WeaponDefinition* WeaponHeldBy(uint8_t player) const;
+    // A sound by the name of its folder in Assets/Audio; silence for one that is not there.
+    const SoundVariants& Sounds(const std::string& name) const;
+    const SoundVariants& GunshotFor(const WeaponDefinition* weapon) const;
     // Where a round starts: just in front of the eye, so what is under the crosshair is what is hit.
     // Not where the barrel is drawn -- see DrawnMuzzle.
     glm::vec3 MuzzlePosition() const;
@@ -680,6 +690,8 @@ private:
     // A reload request holds for a moment rather than a single tick, so pressing it while the
     // trigger is down or mid-shot still reloads as soon as the weapon can accept it.
     int m_reloadLatch = 0;
+    // A fire press seen by the frame, held until the next fixed tick has used it.
+    bool m_firePressLatch = false;
     // Console-driven trigger, so firing can be exercised in a headless capture.
     int m_debugTriggerTicks = 0;
     // Visual recoil: one on the frame a round leaves, decaying away. Separate from the weapon's own
@@ -881,6 +893,8 @@ private:
         SoundVariants death;
     };
     SoundSet m_sounds;
+    // Every other folder in Assets/Audio, by its name.
+    std::map<std::string, SoundVariants> m_soundBank;
 
     // Recorded footsteps, one group of clips per surface.
     //

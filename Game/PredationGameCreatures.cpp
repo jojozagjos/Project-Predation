@@ -21,6 +21,7 @@
 #include <glm/gtc/constants.hpp>
 
 #include <algorithm>
+#include <cfloat>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -30,7 +31,9 @@ namespace pred
 namespace
 {
 
-CVar<int> cv_aiCreatures{"ai.creatures", 1, "How many creatures a new game starts with"};
+// None, for now: a game starts empty and a creature is made on purpose with spawn_creature. Set this
+// to have them arrive on their own again, the way a real round will.
+CVar<int> cv_aiCreatures{"ai.creatures", 0, "How many creatures arrive on their own in a new game (0: none, use spawn_creature)"};
 CVar<int> cv_aiSeed{"ai.seed", 0,
                     "The seed a new game's creature is made from; 0 picks a different one each game"};
 CVar<float> cv_aiArrival{"ai.arrival_seconds", 40.0f,
@@ -613,13 +616,10 @@ void PredationGame::UpdateCreatures(float dt)
         {
             BuildNest(intent.hiveAt, static_cast<uint16_t>(creature->Brain().Traits().seed & 0xFFFFu), creature->NetId(), true);
         }
-        // Licking its wounds at the nest.
-        if (creature->Brain().Current() == Behavior::Retreat)
+        // Licking its wounds, wherever it has gone to ground.
+        if (intent.recover > 0.0f && creature->Alive())
         {
-            if (NestNear(creature->Position(), 3.5f) != nullptr)
-            {
-                creature->Heal(creature->MaxHealth() * 0.03f * dt);
-            }
+            creature->Heal(creature->MaxHealth() * intent.recover * dt);
         }
 
         // A strike landing. Checked again here rather than trusted: somebody who stepped back
@@ -936,6 +936,81 @@ void PredationGame::DrawCreatureOverlays(DebugDraw& draw)
     }
 }
 
+#if PRED_DEV_TOOLS
+namespace
+{
+
+// The colours the inspector speaks in. One meaning each, used everywhere, so a glance at a colour is
+// already half the reading: green is what it chose or can see, amber is uncertain, red is danger or
+// damage, grey is detail.
+const ImVec4 kChosen{0.50f, 0.92f, 0.56f, 1.0f};
+const ImVec4 kUnsure{0.98f, 0.78f, 0.36f, 1.0f};
+const ImVec4 kDanger{0.96f, 0.46f, 0.40f, 1.0f};
+const ImVec4 kQuiet{0.58f, 0.60f, 0.64f, 1.0f};
+
+ImVec4 BehaviorColour(Behavior behavior)
+{
+    switch (behavior)
+    {
+    case Behavior::Attack:
+    case Behavior::Drag: return kDanger;
+    case Behavior::Hunt:
+    case Behavior::Stalk:
+    case Behavior::Search: return ImVec4(0.96f, 0.64f, 0.38f, 1.0f);
+    case Behavior::Investigate:
+    case Behavior::Observe: return kUnsure;
+    case Behavior::Retreat:
+    case Behavior::PlayDead: return ImVec4(0.62f, 0.70f, 0.98f, 1.0f);
+    case Behavior::Nest: return ImVec4(0.78f, 0.62f, 0.90f, 1.0f);
+    case Behavior::Roam: break;
+    }
+    return kQuiet;
+}
+
+// A bar with its number written on it and a colour of its own, so three feelings side by side are
+// three things rather than three identical grey strips.
+void Meter(const char* label, float value, const ImVec4& colour, float width = -1.0f)
+{
+    char text[64];
+    std::snprintf(text, sizeof(text), "%s %.2f", label, value);
+    ImGui::PushStyleColor(ImGuiCol_PlotHistogram, colour);
+    ImGui::ProgressBar(std::clamp(value, 0.0f, 1.0f), ImVec2(width, 0.0f), text);
+    ImGui::PopStyleColor();
+}
+
+// A small coloured tag for a state that matters more than a line of text does.
+void Chip(const char* text, const ImVec4& colour)
+{
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(colour.x * 0.35f, colour.y * 0.35f, colour.z * 0.35f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(colour.x * 0.35f, colour.y * 0.35f, colour.z * 0.35f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(colour.x * 0.35f, colour.y * 0.35f, colour.z * 0.35f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_Text, colour);
+    ImGui::SmallButton(text);
+    ImGui::PopStyleColor(4);
+    ImGui::SameLine();
+}
+
+std::string Ago(float seconds)
+{
+    if (seconds < 0.0f || seconds > 1.0e8f)
+    {
+        return "never";
+    }
+    char text[32];
+    if (seconds < 60.0f)
+    {
+        std::snprintf(text, sizeof(text), "%.1fs ago", seconds);
+    }
+    else
+    {
+        std::snprintf(text, sizeof(text), "%dm %02ds ago", static_cast<int>(seconds) / 60, static_cast<int>(seconds) % 60);
+    }
+    return text;
+}
+
+} // namespace
+#endif
+
 void PredationGame::DrawBrainInspector()
 {
 #if PRED_DEV_TOOLS
@@ -945,8 +1020,9 @@ void PredationGame::DrawBrainInspector()
     {
         return;
     }
-    ImGui::SetNextWindowPos(ImVec2(ImGui::GetMainViewport()->WorkSize.x - 470.0f, 60.0f), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize(ImVec2(460.0f, 640.0f), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowPos(ImVec2(ImGui::GetMainViewport()->WorkSize.x - 560.0f, 60.0f), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(540.0f, 720.0f), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSizeConstraints(ImVec2(420.0f, 300.0f), ImVec2(FLT_MAX, FLT_MAX));
     bool open = true;
     const bool shown = ImGui::Begin("Creature brain", &open);
     if (!open)
@@ -967,8 +1043,9 @@ void PredationGame::DrawBrainInspector()
                            "is only shown where they are.");
         for (const std::unique_ptr<Creature>& creature : m_creatures)
         {
-            ImGui::Text("#%u  seed %u  %s  %.1f m/s", creature->NetId(), creature->Brain().Traits().seed,
-                        creature->Alive() ? "alive" : "dead", creature->Speed());
+            ImGui::Text("#%u  seed %u  %s  %.1f m/s  %s", creature->NetId(), creature->Brain().Traits().seed,
+                        creature->Alive() ? "alive" : "dead", creature->Speed(),
+                        RigActionName(creature->CurrentAction().kind));
             ImGui::ProgressBar(creature->Health() / creature->MaxHealth(), ImVec2(-1.0f, 0.0f), "health");
         }
         ImGui::End();
@@ -981,132 +1058,495 @@ void PredationGame::DrawBrainInspector()
             ImGui::Text("Arrives in %.0f s, somewhere nobody is looking.",
                         std::max(m_arrivalAt - m_creatureClock, 0.0f));
         }
-        ImGui::TextDisabled("spawn_creature [seed] [ahead] makes one now.");
+        else
+        {
+            ImGui::TextUnformatted("No creatures. None arrive on their own (ai.creatures is 0).");
+        }
+        if (ImGui::Button("Make one in front of me"))
+        {
+            m_app->GetConsole().Execute("spawn_creature 0 ahead");
+        }
+        ImGui::SameLine();
+        ImGui::TextDisabled("spawn_creature [seed] [ahead]");
         ImGui::End();
         return;
     }
-    m_inspectedCreature = std::clamp(m_inspectedCreature, 0, static_cast<int>(m_creatures.size()) - 1);
-    if (m_creatures.size() > 1)
-    {
-        ImGui::SliderInt("Creature", &m_inspectedCreature, 0, static_cast<int>(m_creatures.size()) - 1);
-    }
-    const Creature& creature = *m_creatures[static_cast<size_t>(m_inspectedCreature)];
-    const CreatureBrain& brain = creature.Brain();
 
-    ImGui::PushTextWrapPos(0.0f);
-    ImGui::TextDisabled("%s", brain.Traits().Describe().c_str());
-    ImGui::PopTextWrapPos();
-    ImGui::ProgressBar(creature.Health() / creature.MaxHealth(), ImVec2(-1.0f, 0.0f),
-                       creature.Alive() ? "health" : "dead");
-    if (brain.Dead())
+    // --- Which one --------------------------------------------------------------------------------
+    //
+    // By what it is and what it is doing, not by an index: "#3 crawler, 12 m, Hunt" is a creature you
+    // can find on the screen, and "2" is not.
+    const glm::vec3 me = m_player.State().position;
+    const auto nearestTo = [&](const glm::vec3& point)
     {
-        ImGui::TextColored(ImVec4(0.95f, 0.5f, 0.4f, 1.0f), "Dead. Its mind has stopped; nothing below changes.");
-    }
-    else if (creature.Down())
-    {
-        ImGui::TextColored(ImVec4(0.95f, 0.8f, 0.4f, 1.0f), "Playing dead. Alive, watching, and waiting.");
-    }
-
-    ImGui::SeparatorText("Now");
-    ImGui::Text("%s", BehaviorName(brain.Current()));
-    ImGui::SameLine();
-    ImGui::TextDisabled("-- %s", brain.CurrentGoal().c_str());
-    const CreatureBrain::State& feelings = brain.Feelings();
-    ImGui::ProgressBar(std::min(feelings.pain, 1.0f), ImVec2(140.0f, 0.0f), "pain");
-    ImGui::SameLine();
-    ImGui::ProgressBar(feelings.fear, ImVec2(140.0f, 0.0f), "fear");
-    ImGui::SameLine();
-    ImGui::ProgressBar(feelings.arousal, ImVec2(140.0f, 0.0f), "arousal");
-
-    ImGui::SeparatorText("What it weighed");
-    // Best first, with every consideration behind each score, because the number alone never says
-    // why.
-    for (const CreatureBrain::Option& option : brain.Options())
-    {
-        const bool chosen = option.behavior == brain.Current() && option.target == brain.CurrentTarget();
-        char header[160];
-        std::snprintf(header, sizeof(header), "%-28s %.2f###%s", option.label.c_str(), option.score,
-                      option.label.c_str());
-        if (chosen)
+        int best = 0;
+        float bestDistance = 1.0e9f;
+        for (size_t i = 0; i < m_creatures.size(); ++i)
         {
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.55f, 0.95f, 0.6f, 1.0f));
+            const float away = glm::distance(m_creatures[i]->Position(), point);
+            if (m_creatures[i]->Alive() && away < bestDistance)
+            {
+                bestDistance = away;
+                best = static_cast<int>(i);
+            }
         }
-        const bool expanded = ImGui::TreeNode(header);
-        if (chosen)
+        return best;
+    };
+    if (m_brainFollowNearest)
+    {
+        m_inspectedCreature = nearestTo(me);
+    }
+    m_inspectedCreature = std::clamp(m_inspectedCreature, 0, static_cast<int>(m_creatures.size()) - 1);
+    const auto labelOf = [&](const Creature& c)
+    {
+        char label[128];
+        std::snprintf(label, sizeof(label), "#%u  %s %s  %.0f m  %s%s", c.NetId(), SizeClassName(c.Capabilities().size),
+                      BodyPlanName(c.Anatomy().plan), glm::distance(c.Position(), me), BehaviorName(c.Brain().Current()),
+                      c.Alive() ? "" : "  (dead)");
+        return std::string(label);
+    };
+    ImGui::SetNextItemWidth(-1.0f);
+    if (ImGui::BeginCombo("##which", labelOf(*m_creatures[static_cast<size_t>(m_inspectedCreature)]).c_str()))
+    {
+        for (size_t i = 0; i < m_creatures.size(); ++i)
         {
+            const bool selected = static_cast<int>(i) == m_inspectedCreature;
+            ImGui::PushStyleColor(ImGuiCol_Text, BehaviorColour(m_creatures[i]->Brain().Current()));
+            if (ImGui::Selectable(labelOf(*m_creatures[i]).c_str(), selected))
+            {
+                m_inspectedCreature = static_cast<int>(i);
+                m_brainFollowNearest = false;
+            }
             ImGui::PopStyleColor();
         }
-        if (expanded)
+        ImGui::EndCombo();
+    }
+    if (ImGui::Button("Nearest"))
+    {
+        m_inspectedCreature = nearestTo(me);
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Looked at"))
+    {
+        // Whichever is nearest the middle of the screen, within a cone: the one you are pointing at.
+        const glm::vec3 from = m_camera.position;
+        const glm::vec3 forward = m_camera.Forward();
+        float best = std::cos(glm::radians(14.0f));
+        for (size_t i = 0; i < m_creatures.size(); ++i)
         {
-            for (const CreatureBrain::Consideration& c : option.considerations)
+            const glm::vec3 to = m_creatures[i]->Eye() - from;
+            const float length = glm::length(to);
+            const float along = length > 1e-3f ? glm::dot(to / length, forward) : 0.0f;
+            if (along > best)
             {
-                ImGui::Text("%-16s %.2f", c.name, c.value);
+                best = along;
+                m_inspectedCreature = static_cast<int>(i);
+                m_brainFollowNearest = false;
             }
-            ImGui::TreePop();
         }
     }
-
-    ImGui::SeparatorText("Who it knows about");
-    for (const CreatureBrain::Track& track : brain.Tracks())
+    ImGui::SameLine();
+    ImGui::Checkbox("Follow", &m_brainFollowNearest);
+    if (ImGui::IsItemHovered())
     {
-        ImGui::Text("%s%s", track.name.c_str(), track.visible ? "  (in sight)" : "");
-        ImGui::ProgressBar(track.exposure, ImVec2(150.0f, 0.0f), "seen");
-        ImGui::SameLine();
-        ImGui::ProgressBar(track.confidence, ImVec2(150.0f, 0.0f), "sure where");
-        if (track.harm > 0.0f)
+        ImGui::SetTooltip("Always show whichever living creature is nearest you.");
+    }
+
+    Creature& creature = *m_creatures[static_cast<size_t>(m_inspectedCreature)];
+    const CreatureBrain& brain = creature.Brain();
+
+    // --- Hands on -----------------------------------------------------------------------------------
+    bool frozen = cv_aiFreeze.Get();
+    ImGui::SameLine();
+    if (ImGui::Checkbox("Freeze all", &frozen))
+    {
+        cv_aiFreeze.Set(frozen);
+    }
+    if (ImGui::SmallButton("Heal"))
+    {
+        creature.Heal(creature.MaxHealth());
+    }
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Hurt 25%"))
+    {
+        creature.TakeDamage(creature.MaxHealth() * 0.25f / std::max(1.0f - creature.Capabilities().armour, 0.1f),
+                            LocalPlayerId(), me + glm::vec3(0.0f, 1.5f, 0.0f), m_creatureClock);
+    }
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Kill"))
+    {
+        creature.TakeDamage(creature.MaxHealth() * 50.0f, LocalPlayerId(), me + glm::vec3(0.0f, 1.5f, 0.0f), m_creatureClock);
+    }
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Go to it"))
+    {
+        // Behind it, a few metres off, rather than inside it.
+        m_player.Teleport(creature.Position() - creature.Forward() * 4.0f + glm::vec3(0.0f, 0.2f, 0.0f));
+    }
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Log mind"))
+    {
+        m_app->GetConsole().Execute("creature_mind");
+    }
+
+    ImGui::Separator();
+
+    // --- At a glance --------------------------------------------------------------------------------
+    {
+        char health[64];
+        std::snprintf(health, sizeof(health), "%.0f / %.0f", creature.Health(), creature.MaxHealth());
+        const float fraction = creature.Health() / std::max(creature.MaxHealth(), 1.0f);
+        ImGui::PushStyleColor(ImGuiCol_PlotHistogram, fraction > 0.5f ? kChosen : fraction > 0.25f ? kUnsure : kDanger);
+        ImGui::ProgressBar(fraction, ImVec2(-1.0f, 0.0f), health);
+        ImGui::PopStyleColor();
+
+        if (brain.Dead())
         {
-            ImGui::SameLine();
-            ImGui::TextColored(ImVec4(0.95f, 0.5f, 0.4f, 1.0f), "hurt it %.0f", track.harm * 100.0f);
+            Chip("DEAD", kDanger);
         }
-        // What stalking weighs: whether they are looking at it, whether they have company, and how
-        // much of its patience they have used up.
-        ImGui::TextDisabled("%s  %s  stalked %.0f of %.0f s", track.watching ? "WATCHING IT" : "not looking",
-                            track.isolation > 10.0f ? "alone" : "with company", track.stalked,
-                            brain.Traits().StalkPatienceSeconds());
-    }
-    if (!brain.Interest().resolved)
-    {
-        ImGui::Text("Interested in %s, %.0f%%", brain.Interest().what.c_str(), brain.Interest().strength * 100.0f);
-    }
-
-    // What it believes about the places people hide, and what it has learnt about them this match.
-    if (!brain.Places().empty())
-    {
-        ImGui::SeparatorText("Lockers");
-        ImGui::TextDisabled("found %d hiding; a shut door means somebody %.0f%%", brain.FoundHiding(),
-                            brain.ShutMeansSomebody() * 100.0f);
-        for (size_t i = 0; i < brain.Places().size(); ++i)
+        else if (creature.Down())
         {
-            const CreatureBrain::PlaceMemory& place = brain.Places()[i];
-            char label[64];
-            std::snprintf(label, sizeof(label), "#%zu%s%s", i, place.seenShut ? " shut" : "",
-                          place.suspect >= 0 ? " (has somebody in mind)" : "");
-            ImGui::ProgressBar(place.suspicion, ImVec2(-1.0f, 0.0f), label);
+            Chip("PLAYING DEAD", ImVec4(0.62f, 0.70f, 0.98f, 1.0f));
         }
-    }
-    if (brain.Current() == Behavior::Search)
-    {
-        ImGui::Text("Searching: place %zu of %zu", brain.SearchStep() + 1, brain.SearchPlan().size());
-    }
-    if (!brain.Heat().empty())
-    {
-        ImGui::TextDisabled("Remembers %zu places where people have been", brain.Heat().size());
+        if (creature.Ragdolled())
+        {
+            Chip("RAGDOLL", kQuiet);
+        }
+        if (creature.Airborne() > 0.0f)
+        {
+            Chip("JUMPING", kUnsure);
+        }
+        if (brain.Holding() >= 0)
+        {
+            char holding[48];
+            std::snprintf(holding, sizeof(holding), "HOLDING PLAYER %d", brain.Holding());
+            Chip(holding, kDanger);
+        }
+        if (frozen)
+        {
+            Chip("FROZEN", ImVec4(0.55f, 0.80f, 0.98f, 1.0f));
+        }
+        ImGui::TextDisabled("%.1f m/s, %.0f m from you", creature.Speed(), glm::distance(creature.Position(), me));
+
+        // What it is doing, in its own colour, with who at and what for.
+        ImGui::PushStyleColor(ImGuiCol_Text, BehaviorColour(brain.Current()));
+        ImGui::SetWindowFontScale(1.25f);
+        ImGui::TextUnformatted(BehaviorName(brain.Current()));
+        ImGui::SetWindowFontScale(1.0f);
+        ImGui::PopStyleColor();
+        ImGui::SameLine();
+        std::string target;
+        for (const CreatureBrain::Track& track : brain.Tracks())
+        {
+            if (track.id == brain.CurrentTarget())
+            {
+                target = " -> " + track.name;
+            }
+        }
+        ImGui::AlignTextToFramePadding();
+        ImGui::Text("%s  %s", target.c_str(), brain.CurrentGoal().c_str());
+        const Creature::Action& action = creature.CurrentAction();
+        if (action.kind != RigAction::None)
+        {
+            char phase[64];
+            std::snprintf(phase, sizeof(phase), "%s%s%s", RigActionName(action.kind),
+                          brain.CurrentAttack() != AttackKind::None ? ": " : "",
+                          brain.CurrentAttack() != AttackKind::None ? AttackKindName(brain.CurrentAttack()) : "");
+            ImGui::PushStyleColor(ImGuiCol_PlotHistogram, kDanger);
+            ImGui::ProgressBar(action.phase, ImVec2(-1.0f, 0.0f), phase);
+            ImGui::PopStyleColor();
+        }
+
+        const CreatureBrain::State& feelings = brain.Feelings();
+        const float third = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x * 2.0f) / 3.0f;
+        Meter("pain", std::min(feelings.pain, 1.0f), kDanger, third);
+        ImGui::SameLine();
+        Meter("fear", feelings.fear, ImVec4(0.62f, 0.70f, 0.98f, 1.0f), third);
+        ImGui::SameLine();
+        Meter("arousal", feelings.arousal, ImVec4(0.96f, 0.64f, 0.38f, 1.0f), third);
     }
 
-    ImGui::SeparatorText("Timeline");
-    // Newest first, with how long ago.
-    ImGui::BeginChild("##timeline", ImVec2(0.0f, 180.0f), true);
-    const auto& timeline = brain.Timeline();
-    for (auto it = timeline.rbegin(); it != timeline.rend(); ++it)
+    if (!ImGui::BeginTabBar("##brain"))
     {
-        ImGui::TextDisabled("%5.1fs ago", m_creatureClock - it->time);
-        ImGui::SameLine();
+        ImGui::End();
+        return;
+    }
+    // A tab asked for from the console is selected once, and then left to the mouse.
+    const std::string wantedTab = std::exchange(m_brainTab, std::string());
+    const auto TabFlags = [&](const char* key)
+    { return wantedTab == key ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None; };
+
+    // --- Thinking: every option it weighed, best first, and why -------------------------------------
+    if (ImGui::BeginTabItem("Thinking", nullptr, TabFlags("thinking")))
+    {
         ImGui::PushTextWrapPos(0.0f);
-        ImGui::TextUnformatted(it->what.c_str());
+        ImGui::TextDisabled("Each score is its considerations multiplied together. Open a row to see them.");
         ImGui::PopTextWrapPos();
+        if (ImGui::BeginTable("##options", 2, ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp))
+        {
+            ImGui::TableSetupColumn("option", ImGuiTableColumnFlags_WidthStretch, 0.55f);
+            ImGui::TableSetupColumn("score", ImGuiTableColumnFlags_WidthStretch, 0.45f);
+            const float top = brain.Options().empty() ? 1.0f : std::max(brain.Options().front().score, 0.01f);
+            for (const CreatureBrain::Option& option : brain.Options())
+            {
+                const bool chosen = option.behavior == brain.Current() && option.target == brain.CurrentTarget();
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                ImGui::PushID(&option);
+                ImGui::PushStyleColor(ImGuiCol_Text, chosen ? kChosen : BehaviorColour(option.behavior));
+                const bool expanded = ImGui::TreeNodeEx(option.label.c_str(), ImGuiTreeNodeFlags_SpanFullWidth);
+                ImGui::PopStyleColor();
+                ImGui::TableNextColumn();
+                char score[32];
+                std::snprintf(score, sizeof(score), "%.3f%s", option.score, chosen ? "  chosen" : "");
+                ImGui::PushStyleColor(ImGuiCol_PlotHistogram, chosen ? kChosen : kQuiet);
+                ImGui::ProgressBar(option.score / top, ImVec2(-1.0f, 0.0f), score);
+                ImGui::PopStyleColor();
+                if (expanded)
+                {
+                    for (const CreatureBrain::Consideration& c : option.considerations)
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableNextColumn();
+                        ImGui::Indent();
+                        ImGui::TextDisabled("x %s", c.name);
+                        ImGui::Unindent();
+                        ImGui::TableNextColumn();
+                        Meter("", c.value, c.value < 0.3f ? kDanger : c.value < 0.7f ? kUnsure : kChosen);
+                    }
+                    ImGui::TreePop();
+                }
+                ImGui::PopID();
+            }
+            ImGui::EndTable();
+        }
+        ImGui::EndTabItem();
     }
-    ImGui::EndChild();
-    ImGui::TextDisabled("Overlays: the AI and Perception debug categories, or this window open.");
+
+    // --- Senses: who it can see and hear, and why not ----------------------------------------------
+    if (ImGui::BeginTabItem("Senses", nullptr, TabFlags("senses")))
+    {
+        ImGui::PushTextWrapPos(0.0f);
+        ImGui::TextDisabled("Sees %.0f m, hears x%.2f. Somebody counts as seen once \"made out\" fills; the six "
+                            "factors are multiplied, so any one at nought is why it cannot see them.",
+                            brain.SightRange(), brain.Traits().hearing);
+        ImGui::PopTextWrapPos();
+        for (const CreatureBrain::Track& track : brain.Tracks())
+        {
+            ImGui::PushID(track.id);
+            ImGui::SeparatorText(track.name.c_str());
+            const CreatureBrain::Track::SightCheck& sight = track.sight;
+            const bool seen = track.visible;
+            const bool blind = sight.visibility <= 0.001f;
+            ImGui::PushStyleColor(ImGuiCol_Text, seen ? kChosen : blind ? kDanger : kUnsure);
+            ImGui::Text("%s", sight.verdict);
+            ImGui::PopStyleColor();
+            ImGui::SameLine();
+            ImGui::TextDisabled("%.1f m", sight.distance);
+            if (track.harm > 0.0f)
+            {
+                ImGui::SameLine();
+                ImGui::TextColored(kDanger, "  hurt it %.0f", track.harm * 100.0f);
+            }
+
+            // The factors, each of which can zero the whole thing.
+            if (ImGui::BeginTable("##factors", 6, ImGuiTableFlags_SizingStretchSame | ImGuiTableFlags_BordersInnerV))
+            {
+                const char* names[] = {"view", "lines", "near", "size", "moving", "light"};
+                const float values[] = {sight.field, static_cast<float>(sight.clear) / 3.0f, sight.nearness, sight.size,
+                                        sight.motion / 1.3f, sight.light};
+                for (int i = 0; i < 6; ++i)
+                {
+                    ImGui::TableNextColumn();
+                    ImGui::TextDisabled("%s", names[i]);
+                }
+                for (int i = 0; i < 6; ++i)
+                {
+                    ImGui::TableNextColumn();
+                    // Nothing past the view is measured for somebody outside it: a dash, not a nought
+                    // that would read as the reason.
+                    if (i > 0 && sight.field <= 0.0f)
+                    {
+                        ImGui::TextDisabled("-");
+                        continue;
+                    }
+                    const float v = values[i];
+                    ImGui::TextColored(v <= 0.001f ? kDanger : v < 0.35f ? kUnsure : kChosen,
+                                       i == 1 ? "%.0f/3" : "%.2f", i == 1 ? static_cast<float>(sight.clear) : v);
+                }
+                ImGui::EndTable();
+            }
+            const float half = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) * 0.5f;
+            Meter("made out", track.exposure, seen ? kChosen : kUnsure, half);
+            ImGui::SameLine();
+            Meter("sure where", track.confidence, kQuiet, half);
+            ImGui::TextDisabled("seen %s, heard %s. %s, %s, stalked %.0f of %.0f s", Ago(m_creatureClock - track.lastSeen).c_str(),
+                                Ago(m_creatureClock - track.lastHeard).c_str(),
+                                track.watching ? "WATCHING IT" : "not looking at it",
+                                track.isolation > 10.0f ? "alone" : "with company", track.stalked,
+                                brain.Traits().StalkPatienceSeconds());
+            ImGui::PopID();
+        }
+
+        ImGui::SeparatorText("Heard");
+        if (brain.RecentNoises().empty())
+        {
+            ImGui::TextDisabled("Nothing lately.");
+        }
+        for (auto it = brain.RecentNoises().rbegin(); it != brain.RecentNoises().rend(); ++it)
+        {
+            ImGui::Text("%-10s", NoiseKindName(it->noise.kind));
+            ImGui::SameLine();
+            Meter("", it->strength, kUnsure, 120.0f);
+            ImGui::SameLine();
+            ImGui::TextDisabled("%s%s", Ago(m_creatureClock - it->time).c_str(),
+                                it->noise.player >= 0 ? (", player " + std::to_string(it->noise.player)).c_str() : "");
+        }
+        if (!brain.Interest().resolved)
+        {
+            ImGui::TextColored(kUnsure, "Wants to look into %s (%.0f%%)", brain.Interest().what.c_str(),
+                               brain.Interest().strength * 100.0f);
+        }
+        ImGui::EndTabItem();
+    }
+
+    // --- Memory: lockers, searching, where people go ------------------------------------------------
+    if (ImGui::BeginTabItem("Memory", nullptr, TabFlags("memory")))
+    {
+        if (brain.Current() == Behavior::Search)
+        {
+            ImGui::Text("Searching: stop %zu of %zu", brain.SearchStep() + 1, brain.SearchPlan().size());
+        }
+        ImGui::Text("Remembers %zu places where people have been.", brain.Heat().size());
+        if (!brain.Places().empty())
+        {
+            ImGui::SeparatorText("Lockers");
+            ImGui::TextDisabled("Found %d people hiding. A shut door means somebody: %.0f%%", brain.FoundHiding(),
+                                brain.ShutMeansSomebody() * 100.0f);
+            for (size_t i = 0; i < brain.Places().size(); ++i)
+            {
+                const CreatureBrain::PlaceMemory& place = brain.Places()[i];
+                char label[96];
+                std::snprintf(label, sizeof(label), "#%zu%s%s  %.0f%%", i, place.seenShut ? "  shut" : "",
+                              place.suspect >= 0 ? "  (somebody in mind)" : "", place.suspicion * 100.0f);
+                Meter(label, place.suspicion, place.suspicion > 0.5f ? kDanger : kUnsure);
+            }
+        }
+        if (brain.Traits().Nests())
+        {
+            ImGui::SeparatorText("Nest");
+            const Nest* nest = nullptr;
+            for (const Nest& candidate : m_nests)
+            {
+                if (candidate.owner == creature.NetId())
+                {
+                    nest = &candidate;
+                }
+            }
+            if (nest != nullptr)
+            {
+                ImGui::Text("Built at %.0f, %.0f, %.0f m from it", nest->at.x, nest->at.z,
+                            glm::distance(nest->at, creature.Position()));
+            }
+            else
+            {
+                ImGui::TextDisabled("A nester, without a nest yet.");
+            }
+        }
+        ImGui::EndTabItem();
+    }
+
+    // --- Body: what it is, and what that lets it do -------------------------------------------------
+    if (ImGui::BeginTabItem("Body", nullptr, TabFlags("body")))
+    {
+        const CreatureCapabilities& caps = creature.Capabilities();
+        const CreatureTraits& traits = brain.Traits();
+        ImGui::Text("Seed %u: %s %s, %d eyes", traits.seed, SizeClassName(caps.size), BodyPlanName(creature.Anatomy().plan),
+                    creature.Anatomy().eyes);
+        if (ImGui::BeginTable("##caps", 4, ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchSame))
+        {
+            const auto row = [](const char* name, const char* format, float value)
+            {
+                ImGui::TableNextColumn();
+                ImGui::TextDisabled("%s", name);
+                ImGui::TableNextColumn();
+                ImGui::Text(format, value);
+            };
+            row("run", "%.1f m/s", caps.runSpeed);
+            row("walk", "%.1f m/s", caps.walkSpeed);
+            row("mass", "%.0f kg", caps.mass);
+            row("armour", "%.0f%%", caps.armour * 100.0f);
+            row("strike", "%.0f dmg", caps.strikeDamage);
+            row("reach", "%.1f m", caps.strikeReach);
+            row("sight", "x%.2f", caps.sight);
+            row("hearing", "x%.2f", caps.hearing);
+            row("jump", "x%.2f", caps.jump);
+            row("climbs to", "%.1f m", caps.verticalReach);
+            ImGui::TableNextColumn();
+            ImGui::TextDisabled("vents");
+            ImGui::TableNextColumn();
+            ImGui::TextUnformatted(caps.fitsVents ? "fits" : "no");
+            ImGui::EndTable();
+        }
+        ImGui::SeparatorText("Temperament");
+        const float half = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) * 0.5f;
+        Meter("aggression", traits.aggression, kDanger, half);
+        ImGui::SameLine();
+        Meter("fear", traits.fear, ImVec4(0.62f, 0.70f, 0.98f, 1.0f), half);
+        Meter("curiosity", traits.curiosity, kUnsure, half);
+        ImGui::SameLine();
+        Meter("patience", traits.patience, kQuiet, half);
+        Meter("stealth", traits.stealth, kQuiet, half);
+        ImGui::SameLine();
+        Meter("nesting", traits.nesting, ImVec4(0.78f, 0.62f, 0.90f, 1.0f), half);
+        ImGui::PushTextWrapPos(0.0f);
+        ImGui::TextDisabled("%s", traits.Describe().c_str());
+        ImGui::PopTextWrapPos();
+        ImGui::EndTabItem();
+    }
+
+    // --- Timeline: every change of mind, with the reason --------------------------------------------
+    if (ImGui::BeginTabItem("Timeline", nullptr, TabFlags("timeline")))
+    {
+        ImGui::SetNextItemWidth(-1.0f);
+        ImGui::InputTextWithHint("##filter", "filter, e.g. Hunt or sees", m_brainFilter, sizeof(m_brainFilter));
+        const std::string filter = m_brainFilter;
+        if (ImGui::BeginTable("##timeline", 2,
+                              ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingFixedFit,
+                              ImVec2(0.0f, ImGui::GetContentRegionAvail().y)))
+        {
+            ImGui::TableSetupColumn("when", ImGuiTableColumnFlags_WidthFixed, 90.0f);
+            ImGui::TableSetupColumn("what", ImGuiTableColumnFlags_WidthStretch);
+            const auto& timeline = brain.Timeline();
+            for (auto it = timeline.rbegin(); it != timeline.rend(); ++it)
+            {
+                if (!filter.empty() && it->what.find(filter) == std::string::npos)
+                {
+                    continue;
+                }
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                ImGui::TextDisabled("%s", Ago(m_creatureClock - it->time).c_str());
+                ImGui::TableNextColumn();
+                // A change of behaviour is the line that matters; everything else is what led to it.
+                const bool change = it->what.find(" -> ") != std::string::npos;
+                ImGui::PushTextWrapPos(0.0f);
+                if (change)
+                {
+                    ImGui::TextColored(kChosen, "%s", it->what.c_str());
+                }
+                else
+                {
+                    ImGui::TextUnformatted(it->what.c_str());
+                }
+                ImGui::PopTextWrapPos();
+            }
+            ImGui::EndTable();
+        }
+        ImGui::EndTabItem();
+    }
+
+    ImGui::EndTabBar();
     ImGui::End();
 #endif
 }
@@ -1234,8 +1674,18 @@ void PredationGame::RegisterCreatureCommands()
                                 const uint16_t seed = static_cast<uint16_t>(std::rand() & 0xFFFF);
                                 BuildNest(m_player.State().position, seed, 0, true);
                             });
-    console.RegisterCommand("ai_brain", "Show or hide the creature brain inspector",
-                            [this](const std::vector<std::string>&) { m_showBrain = !m_showBrain; });
+    console.RegisterCommand(
+        "ai_brain", "Show or hide the creature brain inspector, or open it at a tab: ai_brain [thinking|senses|memory|body|timeline]",
+        [this](const std::vector<std::string>& args)
+        {
+            if (args.size() >= 2)
+            {
+                m_showBrain = true;
+                m_brainTab = args[1];
+                return;
+            }
+            m_showBrain = !m_showBrain;
+        });
     console.RegisterCommand(
         "creature_hurt", "Hurt the first creature as though you had shot it: creature_hurt [amount]",
         [this](const std::vector<std::string>& args)
