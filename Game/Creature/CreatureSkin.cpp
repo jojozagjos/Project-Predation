@@ -655,7 +655,9 @@ CreatureSkin CreatureSkin::Build(const CreatureAnatomy& a)
     const glm::vec3 muzzleCentre = pose.head + glm::vec3(0.0f, -hd * 0.17f, -hl * 0.3f * snout);
     const glm::vec3 muzzleRadii{hw * 0.3f, hd * 0.2f, hl * 0.3f * snout};
     const float skullBlend = 0.03f * std::sqrt(scale);
-    blob(craniumCentre, craniumRadii, noTurn, skin.head, skullBlend, Zone::Bone);
+    // Skin over the dome of it: a bare white skull on a dark body read as a mask, not as a head. The
+    // bone shows where bone is nearest the surface -- the brow, the cheeks, the face and the jaw.
+    blob(craniumCentre, craniumRadii, noTurn, skin.head, skullBlend, Zone::Skin);
     blob(muzzleCentre, muzzleRadii, noTurn, skin.head, skullBlend, Zone::Bone);
     // The point on the cranium in the direction of `wanted`, and which way the skull faces there.
     struct Seat
@@ -732,10 +734,12 @@ CreatureSkin CreatureSkin::Build(const CreatureAnatomy& a)
     {
         for (const float side : {-1.0f, 1.0f})
         {
-            const glm::vec3 root = pose.head + glm::vec3(side * hw * 0.42f, hd * 0.12f, hl * 0.12f);
-            const glm::quat swept = glm::angleAxis(side * glm::radians(-30.0f), glm::vec3(0.0f, 0.0f, 1.0f)) *
-                                    glm::angleAxis(glm::radians(-25.0f), glm::vec3(1.0f, 0.0f, 0.0f));
-            const glm::vec3 size{skin.cell * 1.1f, 0.02f + hd * 0.45f * a.frills, 0.03f + hl * 0.4f * a.frills};
+            const glm::vec3 root = pose.head + glm::vec3(side * hw * 0.44f, hd * 0.02f, hl * 0.25f);
+            // Laid back along the side of the neck, like gill flaps: stood up from the skull they read as a
+            // mouse's ears, and no amount of sweeping them back changed that.
+            const glm::quat swept = glm::angleAxis(side * glm::radians(-12.0f), glm::vec3(0.0f, 0.0f, 1.0f)) *
+                                    glm::angleAxis(glm::radians(72.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+            const glm::vec3 size{skin.cell * 1.1f, 0.02f + hd * 0.2f * a.frills, 0.05f + hl * 0.6f * a.frills};
             blob(root + swept * glm::vec3(0.0f, size.y * 0.6f, size.z * 0.5f), size, swept, skin.head, skin.cell * 1.5f,
                  Zone::Membrane);
             for (int rib = 0; rib < 3; ++rib)
@@ -760,7 +764,7 @@ CreatureSkin CreatureSkin::Build(const CreatureAnatomy& a)
         cone(shape.knee, shape.ankle, shape.radius.y, shape.radius.z, limb.lower, skin.cell * 1.5f);
         blob(shape.ankle, glm::vec3(shape.radius.z * 1.1f), noTurn, limb.end, skin.cell * 1.2f);
         cone(shape.ankle, shape.toe, shape.radius.z, shape.radius.w, limb.end, skin.cell * 1.5f);
-        const float meat = crawler ? (arm ? 0.0f : 0.55f) : 1.0f - 0.5f * ribs;
+        const float meat = crawler ? (arm ? 0.35f : 0.55f) : 1.0f - 0.5f * ribs;
         if (meat > 0.05f)
         {
             const glm::vec3 thigh = glm::mix(shape.hip, shape.knee, 0.4f);
@@ -800,7 +804,7 @@ CreatureSkin CreatureSkin::Build(const CreatureAnatomy& a)
 
     // The colours it is painted in, before shading.
     const glm::vec3 skinColour = a.skin;
-    const glm::vec3 boneColour = glm::mix(a.skin, glm::vec3(0.74f, 0.70f, 0.60f), 0.55f + 0.3f * ribs);
+    const glm::vec3 boneColour = glm::mix(a.skin, glm::vec3(0.72f, 0.68f, 0.58f), 0.3f + 0.25f * ribs);
     std::array<glm::vec3, static_cast<size_t>(Zone::Count)> palette{};
     palette[static_cast<size_t>(Zone::Skin)] = skinColour;
     palette[static_cast<size_t>(Zone::Bone)] = boneColour;
@@ -935,8 +939,15 @@ CreatureSkin CreatureSkin::Build(const CreatureAnatomy& a)
         colour = glm::mix(colour, bruise * (0.6f + glm::length(skinColour)), blotch * 0.45f * skinShare);
         const float veinNoise = 1.0f - std::abs(Fbm(p * 11.0f + glm::vec3(5.0f), a.seed + 7u, 3) * 2.0f - 1.0f);
         colour = glm::mix(colour, vein * glm::length(skinColour), std::pow(veinNoise, 14.0f) * 0.55f * skinShare);
-        // Darker underneath and at the extremities, which are dirty from the floor.
-        colour *= 1.0f - 0.22f * std::clamp(-normal.y, 0.0f, 1.0f);
+        // Darker along the back, as nearly every animal is, broken into faint bands across it; paler
+        // under the belly, and darker still where it drags on the floor.
+        const float dorsal = std::clamp(normal.y, 0.0f, 1.0f) * skinShare;
+        const float bands = std::clamp((Fbm(glm::vec3(p.x * 2.0f, p.y * 2.0f, p.z * 9.0f), a.seed + 13u, 2) - 0.45f) * 4.0f, 0.0f, 1.0f);
+        colour *= 1.0f - dorsal * (0.16f + 0.18f * bands);
+        colour = glm::mix(colour, colour * glm::vec3(1.12f, 1.06f, 1.0f), std::clamp(-normal.y, 0.0f, 1.0f) * 0.35f * skinShare);
+        colour *= 1.0f - 0.12f * std::clamp(-normal.y - 0.6f, 0.0f, 1.0f);
+        // Wet in patches, drier in others: an even gloss all over is plastic.
+        wet *= 0.65f + 0.45f * Fbm(p * 5.0f + glm::vec3(31.0f), a.seed + 17u, 2);
         float endWeight = 0.0f;
         for (size_t k = 0; k < 4; ++k)
         {
@@ -1025,7 +1036,9 @@ CreatureSkin CreatureSkin::Build(const CreatureAnatomy& a)
         MeshData claws;
         const int digits = std::max(a.fingers - (pair.arm ? 0 : 1), 2);
         const float groundBelow = shape.toe.y;
-        const float fingerLength = pair.arm ? pair.foot * 0.75f : (crawler ? pair.foot * 0.4f : pair.foot * 0.15f);
+        // Long enough on a foot to read as toes: at a sixth of the foot they were lost in the sole, and
+        // every foot looked like a club.
+        const float fingerLength = pair.arm ? pair.foot * 0.75f : (crawler ? pair.foot * 0.4f : pair.foot * 0.32f);
         const float clawLength = pair.foot * (pair.arm ? 0.35f : 0.3f) * a.clawLength;
         const float fingerRadius = std::max(shape.radius.w * (pair.arm ? 0.42f : 0.5f), 0.005f);
         for (int f = 0; f < digits; ++f)
