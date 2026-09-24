@@ -12,6 +12,8 @@
 
 #include <algorithm>
 #include <chrono>
+#include <thread>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -30,7 +32,12 @@ CVar<int> cv_width{"r.width", 1600, "Window width", CVarFlags::Archive};
 CVar<int> cv_height{"r.height", 900, "Window height", CVarFlags::Archive};
 CVar<bool> cv_fullscreen{"r.fullscreen", false, "Fullscreen window (applied at startup)", CVarFlags::Archive};
 CVar<bool> cv_vsync{"r.vsync", true, "Vertical sync", CVarFlags::Archive};
-CVar<int> cv_msaa{"r.msaa", 0, "MSAA samples: 0, 2, 4, 8, 16 (applied at startup)", CVarFlags::Archive};
+CVar<int> cv_msaa{"r.msaa", 0, "MSAA samples: 0, 2, 4, 8, 16", CVarFlags::Archive};
+// A cap on the frame rate, 0 for none. With v-sync off an uncapped game renders as fast as it can, which
+// is a hot, loud machine drawing frames nobody's screen can show.
+CVar<int> cv_maxFps{"r.max_fps", 0, "Most frames a second, 0 for no limit", CVarFlags::Archive};
+CVar<bool> cv_muteUnfocused{"audio.mute_unfocused", false, "Silence the game while its window is behind another",
+                            CVarFlags::Archive};
 CVar<std::string> cv_backend{"r.backend", "auto", "Render backend: auto, dx11, dx12, vulkan, opengl",
                              CVarFlags::Archive};
 CVar<bool> cv_renderDebug{"r.debug", false, "Enable graphics API validation (slow, applied at startup)"};
@@ -324,6 +331,27 @@ int Application::Run(Game& game, int argc, char** argv)
         }
 
         m_fileWatcher.Poll(m_clock.ElapsedSeconds());
+
+        // Held to the cap, if there is one: slept most of the way and waited out the last millisecond,
+        // because a sleep on Windows can overshoot by that much and a cap that misses by a millisecond
+        // every frame is a stutter.
+        if (const int cap = cv_maxFps.Get(); cap > 0 && m_commandLine.execCommands.empty())
+        {
+            const double frame = 1.0 / static_cast<double>(cap);
+            const double target = m_frameStart + frame;
+            double now = m_clock.ElapsedSeconds();
+            if (target - now > 0.002)
+            {
+                std::this_thread::sleep_for(std::chrono::duration<double>(target - now - 0.0015));
+            }
+            while (m_clock.ElapsedSeconds() < target)
+            {
+                std::this_thread::yield();
+            }
+            now = m_clock.ElapsedSeconds();
+        }
+        m_frameStart = m_clock.ElapsedSeconds();
+
         stats.EndFrame();
         ++m_frameIndex;
 
@@ -427,6 +455,12 @@ bool Application::InitSubsystems(const CommandLine& commandLine)
     }
     m_renderer.SetBgfxStatsOverlay(cv_bgfxStats.Get());
     cv_vsync.OnChange([this](CVarBase&) { m_renderer.SetVSync(cv_vsync.Get()); });
+    // The display, as it is changed rather than at the next start: a setting that only applies after a
+    // restart is a setting nobody can judge.
+    cv_msaa.OnChange([this](CVarBase&) { m_renderer.SetMsaa(cv_msaa.Get()); });
+    cv_fullscreen.OnChange([this](CVarBase&) { m_window.SetFullscreen(cv_fullscreen.Get()); });
+    cv_width.OnChange([this](CVarBase&) { m_window.SetSize(cv_width.Get(), cv_height.Get()); });
+    cv_height.OnChange([this](CVarBase&) { m_window.SetSize(cv_width.Get(), cv_height.Get()); });
     cv_bgfxStats.OnChange([this](CVarBase&) { m_renderer.SetBgfxStatsOverlay(cv_bgfxStats.Get()); });
 
     m_shaders.Init(m_renderer.ShaderProfileDir());
@@ -503,6 +537,10 @@ void Application::ShutdownSubsystems()
         Config::SaveArchive(m_userSettingsFile);
     }
     cv_vsync.ClearOnChange();
+    cv_msaa.ClearOnChange();
+    cv_fullscreen.ClearOnChange();
+    cv_width.ClearOnChange();
+    cv_height.ClearOnChange();
     cv_bgfxStats.ClearOnChange();
     cv_audioVolume.ClearOnChange();
     // First of everything, and before SDL is shut down. The audio device runs a thread of its own
@@ -574,6 +612,12 @@ void Application::PumpEvents(Game& game)
             break;
         case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
             m_renderer.Resize(event.window.data1, event.window.data2);
+            break;
+        case SDL_EVENT_WINDOW_FOCUS_LOST:
+            m_audio.SetMuted(cv_muteUnfocused.Get());
+            break;
+        case SDL_EVENT_WINDOW_FOCUS_GAINED:
+            m_audio.SetMuted(false);
             break;
         default:
             break;

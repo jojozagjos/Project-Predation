@@ -4,6 +4,8 @@
 
 #include <SDL3/SDL.h>
 
+#include <algorithm>
+
 namespace pred
 {
 
@@ -39,6 +41,59 @@ bool Window::Create(const WindowDesc& desc)
     PRED_LOG_INFO(Platform, "Window created: {}x{} logical, {}x{} pixels", desc.width, desc.height, pixelWidth,
                   pixelHeight);
     return true;
+}
+
+void Window::SetFullscreen(bool fullscreen)
+{
+    if (m_window == nullptr)
+    {
+        return;
+    }
+    // No particular mode: SDL's desktop fullscreen, the borderless kind.
+    SDL_SetWindowFullscreenMode(m_window, nullptr);
+    if (!SDL_SetWindowFullscreen(m_window, fullscreen))
+    {
+        PRED_LOG_WARN(Platform, "Could not {} fullscreen: {}", fullscreen ? "go" : "leave", SDL_GetError());
+    }
+}
+
+bool Window::IsFullscreen() const
+{
+    return m_window != nullptr && (SDL_GetWindowFlags(m_window) & SDL_WINDOW_FULLSCREEN) != 0;
+}
+
+void Window::SetSize(int width, int height)
+{
+    if (m_window == nullptr)
+    {
+        return;
+    }
+    SDL_SetWindowSize(m_window, std::max(width, 320), std::max(height, 240));
+    // Centred again, so a window made larger does not hang off the bottom of the screen.
+    SDL_SetWindowPosition(m_window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+}
+
+std::vector<std::pair<int, int>> Window::DisplaySizes()
+{
+    std::vector<std::pair<int, int>> sizes;
+    const SDL_DisplayID display = SDL_GetPrimaryDisplay();
+    int count = 0;
+    SDL_DisplayMode** modes = SDL_GetFullscreenDisplayModes(display, &count);
+    if (modes != nullptr)
+    {
+        for (int i = 0; i < count; ++i)
+        {
+            const std::pair<int, int> size{modes[i]->w, modes[i]->h};
+            if (std::find(sizes.begin(), sizes.end(), size) == sizes.end())
+            {
+                sizes.push_back(size);
+            }
+        }
+        SDL_free(modes);
+    }
+    std::sort(sizes.begin(), sizes.end(), [](const auto& a, const auto& b)
+              { return a.first * a.second > b.first * b.second; });
+    return sizes;
 }
 
 void Window::Destroy()

@@ -125,6 +125,8 @@ public:
 
     void SetListener(const glm::vec3& position, const glm::vec3& forward, const glm::vec3& up);
     void SetMasterGain(float gain);
+    // Silence without forgetting the volume: for when the window is behind something else.
+    void SetMuted(bool muted);
     float MasterGain() const;
 
     // Mixes `frames` of interleaved stereo into `out`, which is overwritten rather than added to.
@@ -195,6 +197,7 @@ private:
     glm::vec3 m_listenerForward{0.0f, 0.0f, -1.0f};
     glm::vec3 m_listenerRight{1.0f, 0.0f, 0.0f};
     float m_masterGain = 1.0f;
+    bool m_muted = false;
     VoiceId m_nextVoice = 1;
     Stats m_stats;
 };

@@ -687,6 +687,13 @@ void WorldObjects::SetDoorOpen(int index, bool open, InteractionSystem& interact
         return;
     }
     door->target = open ? door->openYaw : door->closedYaw;
+    // A door that is open is not locked, whoever opened it. The host unlocks one a creature breaks down;
+    // everybody else only hears that it opened, and a client promoted to host later must not find it
+    // still locked in its copy of the world.
+    if (open)
+    {
+        door->locked = false;
+    }
     if (Interactable* interactable = interactions.Find(door->entity))
     {
         interactable->verb = open ? "Close" : "Open";

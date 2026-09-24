@@ -151,6 +151,7 @@ private:
     std::filesystem::path m_userSettingsFile;
 
     uint64_t m_frameIndex = 0;
+    double m_frameStart = 0.0; // when the last frame's cap let go, for the next one's
     size_t m_entityCount = 0;
     int m_fixedStepsLastFrame = 0;
     bool m_quitRequested = false;

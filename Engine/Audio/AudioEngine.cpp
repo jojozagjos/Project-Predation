@@ -379,6 +379,12 @@ void AudioEngine::SetMasterGain(float gain)
     m_masterGain = std::clamp(gain, 0.0f, 4.0f);
 }
 
+void AudioEngine::SetMuted(bool muted)
+{
+    std::lock_guard lock(m_mutex);
+    m_muted = muted;
+}
+
 float AudioEngine::MasterGain() const
 {
     std::lock_guard lock(m_mutex);
@@ -445,7 +451,7 @@ void AudioEngine::MixLocked(float* out, int frames)
         // deafening at two metres or inaudible at twenty, and a game needs the same footstep to be
         // audible across a room and not overwhelming beside you. Two distances and a straight line
         // between them is a thing a person can tune by walking away from a sound.
-        float left = voice.gain * m_masterGain;
+        float left = voice.gain * (m_muted ? 0.0f : m_masterGain);
         float right = left;
         if (voice.positioned)
         {

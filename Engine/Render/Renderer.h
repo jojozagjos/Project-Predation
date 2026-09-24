@@ -72,6 +72,8 @@ public:
 
     void Resize(int width, int height);
     void SetVSync(bool enabled);
+    // Multisampling, 0 for none: 2, 4, 8 or 16. Applied at once.
+    void SetMsaa(int samples);
     void SetClearColor(uint32_t rgba);
     void SetCamera(const glm::mat4& view, const glm::mat4& projection);
     // What was last set, for passes that need the camera again after it was handed over -- the sky

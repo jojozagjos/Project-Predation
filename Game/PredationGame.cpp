@@ -11,6 +11,8 @@
 #include "Game/Weapons/WeaponAppearance.h"
 #include "Game/World/TestMap.h"
 #include "Engine/Audio/Sound.h"
+#include "Engine/Debug/FrameStats.h"
+#include "Engine/Platform/Window.h"
 #include "Engine/Audio/SoundDesign.h"
 
 #include <SDL3/SDL_events.h>
@@ -21,6 +23,7 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <cmath>
@@ -156,6 +159,17 @@ CVar<float> cv_thirdDistance{"cam.third_distance", 3.2f, "How far the third-pers
                              CVarFlags::Archive};
 // Proximity voice. Everything about it is a setting because everything about it is personal: whose
 // microphone is too quiet, whose room is too loud, and who does not want to be heard at all.
+// Everything that happens, as against the building's own sound and other people's voices.
+CVar<float> cv_effectsVolume{"audio.effects", 1.0f, "How loud weapons, footsteps, doors and the creature are",
+                             CVarFlags::Archive};
+// Comfort, and taste: how much the view is thrown about by the things that throw it.
+CVar<float> cv_cameraShake{"cam.shake", 1.0f, "How much shots and landings jolt the view, 0 to 1", CVarFlags::Archive};
+CVar<float> cv_headBob{"cam.head_bob", 1.0f, "How much the view rises and falls with each step, 0 to 1",
+                       CVarFlags::Archive};
+CVar<float> cv_aimSensitivity{"input.aim_sensitivity", 0.75f,
+                              "Mouse sensitivity with the sights up, as a share of the ordinary one", CVarFlags::Archive};
+CVar<bool> cv_crosshair{"hud.crosshair", true, "Draw the crosshair", CVarFlags::Archive};
+CVar<bool> cv_showFps{"hud.show_fps", false, "Show the frame rate in the corner", CVarFlags::Archive};
 CVar<bool> cv_voiceEnabled{"audio.voice", true, "Send and hear proximity voice", CVarFlags::Archive};
 CVar<float> cv_voiceVolume{"audio.voice_volume", 1.0f, "How loud other people's voices are",
                            CVarFlags::Archive};
@@ -3943,28 +3957,90 @@ std::vector<std::string> PredationGame::ChangedActions() const
     return changed;
 }
 
+namespace
+{
+
+// A settings row: the name on the left, the control filling the right, in a two-column table so every
+// control in a tab starts at the same place. A list of controls each with its own label trailing off
+// its right-hand end reads as a form nobody laid out.
+bool BeginSettingsTable(const char* id)
+{
+    if (!ImGui::BeginTable(id, 2, ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_PadOuterX))
+    {
+        return false;
+    }
+    ImGui::TableSetupColumn("name", ImGuiTableColumnFlags_WidthStretch, 0.42f);
+    ImGui::TableSetupColumn("control", ImGuiTableColumnFlags_WidthStretch, 0.58f);
+    return true;
+}
+
+void SettingsRow(const char* name, const char* tooltip = nullptr)
+{
+    ImGui::TableNextRow();
+    ImGui::TableNextColumn();
+    ImGui::AlignTextToFramePadding();
+    ImGui::BeginGroup();
+    ImGui::TextUnformatted(name);
+    if (tooltip != nullptr)
+    {
+        // A mark that there is more to say, so nobody has to find the tooltips by accident.
+        ImGui::SameLine();
+        ImGui::TextDisabled("(?)");
+    }
+    ImGui::EndGroup();
+    if (tooltip != nullptr && ImGui::IsItemHovered())
+    {
+        ImGui::SetTooltip("%s", tooltip);
+    }
+    ImGui::TableNextColumn();
+    ImGui::SetNextItemWidth(-1.0f);
+}
+
+struct QualityPreset
+{
+    const char* name;
+    bool shadows;
+    float shadowDistance;
+    bool torchShadows;
+    bool skyOcclusion;
+    bool reflections;
+    float reflectionDistance;
+    int msaa;
+};
+
+// What each word means, in the settings it sets. Anything that does not match one of these exactly is
+// "Custom", which is what somebody who has moved one slider has.
+constexpr QualityPreset kPresets[] = {
+    {"Low", false, 24.0f, false, false, false, 10.0f, 0},
+    {"Medium", true, 40.0f, false, true, true, 18.0f, 0},
+    {"High", true, 64.0f, true, true, true, 30.0f, 0},
+    {"Ultra", true, 96.0f, true, true, true, 50.0f, 4},
+};
+
+int GetSettingInt(const char* name, int fallback)
+{
+    return static_cast<int>(GetSettingFloat(name, static_cast<float>(fallback)));
+}
+
+} // namespace
+
 void PredationGame::DrawSettings()
 {
     // One panel, drawn from the menu and from the pause screen alike.
     //
     // Everything here is a cvar, which means the console already reaches all of it and the archived
     // ones are already remembered between runs. What this adds is a place to find them: a setting
-    // nobody can find is a setting nobody has.
-    //
-    // In tabs rather than one list, because the list had grown past a screen and the thing somebody
-    // came to change was always below the fold.
+    // nobody can find is a setting nobody has. Every change applies at once -- a setting that waits
+    // for a restart cannot be judged by looking at it.
     ImGui::SetWindowFontScale(1.2f);
     ImGui::TextUnformatted("Settings");
     ImGui::SetWindowFontScale(1.0f);
     ImGui::Separator();
     ImGui::Spacing();
 
-    // Every tab gets the same height, whether or not it has that much in it.
-    //
-    // Sized to its contents, the panel was a different height on every tab: choosing Audio after
-    // Controls shrank the window by half, which moved Back and Reset out from under the cursor and
-    // made the whole thing jump about while being read. A settings screen should sit still.
-    ImGui::BeginChild("##settingsbody", {0.0f, 360.0f}, ImGuiChildFlags_None);
+    // Every tab the same height, and scrolling inside it rather than growing: a panel that changed size
+    // with its tab moved Back and Reset out from under the cursor.
+    ImGui::BeginChild("##settingsbody", {0.0f, 430.0f}, ImGuiChildFlags_None);
     if (!ImGui::BeginTabBar("##settings"))
     {
         ImGui::EndChild();
@@ -3982,50 +4058,282 @@ void PredationGame::DrawSettings()
         }
         return ImGui::BeginTabItem(name, nullptr, wanted ? ImGuiTabItemFlags_SetSelected : 0);
     };
-
-    if (tab("Controls"))
+    const auto check = [](const char* setting, bool value)
     {
-        float sensitivity = cv_mouseSensitivity.Get();
-        if (ImGui::SliderFloat("Mouse sensitivity", &sensitivity, 0.02f, 0.60f, "%.3f"))
+        bool changed = value;
+        if (ImGui::Checkbox("##v", &changed))
         {
-            SetSetting("input.mouse_sensitivity", std::to_string(sensitivity));
+            SetSetting(setting, changed ? "true" : "false");
         }
-        bool invert = cv_invertY.Get();
-        if (ImGui::Checkbox("Invert up and down", &invert))
-        {
-            SetSetting("input.invert_y", invert ? "true" : "false");
-        }
+    };
 
-        ImGui::Spacing();
-        bool crouchToggle = cv_crouchToggle.Get();
-        if (ImGui::Checkbox("Toggle crouch and prone", &crouchToggle))
+    // --- Display ------------------------------------------------------------------------------------
+    if (tab("Display"))
+    {
+        ImGui::BeginChild("##display");
+        if (BeginSettingsTable("##displaytable"))
         {
-            SetSetting("input.crouch_toggle", crouchToggle ? "true" : "false");
-        }
-        ImGui::SetItemTooltip("On, press once to crouch and again to stand. Off, hold the key.");
-        bool sprintToggle = cv_sprintToggle.Get();
-        if (ImGui::Checkbox("Toggle sprint", &sprintToggle))
-        {
-            SetSetting("input.sprint_toggle", sprintToggle ? "true" : "false");
-        }
-        ImGui::SetItemTooltip("On, press once to sprint and again to stop. Off, hold the key.");
+            ImGui::PushID("mode");
+            SettingsRow("Window", "Borderless fullscreen covers the screen at its own resolution and switches "
+                                  "instantly. Windowed can be any size and dragged about.");
+            const bool fullscreen = GetSettingBool("r.fullscreen", false);
+            if (ImGui::BeginCombo("##v", fullscreen ? "Borderless fullscreen" : "Windowed"))
+            {
+                if (ImGui::Selectable("Borderless fullscreen", fullscreen))
+                {
+                    SetSetting("r.fullscreen", "true");
+                }
+                if (ImGui::Selectable("Windowed", !fullscreen))
+                {
+                    SetSetting("r.fullscreen", "false");
+                }
+                ImGui::EndCombo();
+            }
+            ImGui::PopID();
 
-        ImGui::Spacing();
-        ImGui::SeparatorText("Keys");
-        // A table rather than a paragraph. Twenty bindings written as prose is a sentence nobody
-        // finishes, and the one key somebody came to look up is in the middle of it.
-        DrawKeyBindings();
+            ImGui::PushID("size");
+            SettingsRow("Window size", "The window's size while it is a window. Fullscreen always uses the screen's own.");
+            ImGui::BeginDisabled(fullscreen);
+            const int width = GetSettingInt("r.width", 1600);
+            const int height = GetSettingInt("r.height", 900);
+            char current[32];
+            std::snprintf(current, sizeof(current), "%d x %d", width, height);
+            if (ImGui::BeginCombo("##v", current))
+            {
+                for (const auto& [w, h] : Window::DisplaySizes())
+                {
+                    char label[32];
+                    std::snprintf(label, sizeof(label), "%d x %d", w, h);
+                    if (ImGui::Selectable(label, w == width && h == height))
+                    {
+                        SetSetting("r.width", std::to_string(w));
+                        SetSetting("r.height", std::to_string(h));
+                    }
+                }
+                ImGui::EndCombo();
+            }
+            ImGui::EndDisabled();
+            ImGui::PopID();
+
+            ImGui::PushID("vsync");
+            SettingsRow("V-Sync", "On, the picture never tears and the frame rate follows the screen. Off, the "
+                                  "game answers a touch quicker; set a frame limit below with it.");
+            check("r.vsync", GetSettingBool("r.vsync", true));
+            ImGui::PopID();
+
+            ImGui::PushID("fps");
+            SettingsRow("Frame limit", "The most frames a second, so the machine is not run flat out drawing "
+                                       "frames the screen cannot show. Unlimited with v-sync on is fine.");
+            {
+                static const int kLimits[] = {0, 30, 60, 90, 120, 144, 165, 240};
+                const int cap = GetSettingInt("r.max_fps", 0);
+                const std::string shown = cap <= 0 ? std::string("Unlimited") : std::to_string(cap) + " fps";
+                if (ImGui::BeginCombo("##v", shown.c_str()))
+                {
+                    for (const int limit : kLimits)
+                    {
+                        const std::string label = limit == 0 ? std::string("Unlimited") : std::to_string(limit) + " fps";
+                        if (ImGui::Selectable(label.c_str(), limit == cap))
+                        {
+                            SetSetting("r.max_fps", std::to_string(limit));
+                        }
+                    }
+                    ImGui::EndCombo();
+                }
+            }
+            ImGui::PopID();
+
+            ImGui::PushID("fov");
+            SettingsRow("Field of view", "How wide the view is, measured top to bottom. Wider shows more and "
+                                         "makes everything look further away.");
+            float fov = cv_fov.Get();
+            if (ImGui::SliderFloat("##v", &fov, 70.0f, 120.0f, "%.0f deg"))
+            {
+                SetSetting("r.fov", std::to_string(fov));
+            }
+            ImGui::PopID();
+
+            ImGui::PushID("brightness");
+            SettingsRow("Brightness", "Turn it up until you can just make out the darkest corner of a room, and no "
+                                      "further. Being able to see everything is not the game.");
+            float exposure = cv_exposure.Get();
+            if (ImGui::SliderFloat("##v", &exposure, 0.4f, 2.5f, "%.2f"))
+            {
+                SetSetting("r.exposure", std::to_string(exposure));
+            }
+            ImGui::PopID();
+
+            ImGui::PushID("contrast");
+            SettingsRow("Contrast", "For a monitor that crushes its low end or washes it out.");
+            float contrast = cv_contrast.Get();
+            if (ImGui::SliderFloat("##v", &contrast, 0.6f, 1.8f, "%.2f"))
+            {
+                SetSetting("r.contrast", std::to_string(contrast));
+            }
+            ImGui::PopID();
+            ImGui::EndTable();
+        }
+        ImGui::EndChild();
         ImGui::EndTabItem();
     }
 
+    // --- Graphics -----------------------------------------------------------------------------------
+    if (tab("Graphics"))
+    {
+        ImGui::BeginChild("##graphics");
+        const bool shadows = GetSettingBool("r.shadows", true);
+        const float shadowDistance = GetSettingFloat("r.shadow_distance", 64.0f);
+        const bool torchShadows = GetSettingBool("r.torch_shadows", true);
+        const bool skyOcclusion = GetSettingBool("r.sky_occlusion", true);
+        const bool reflections = GetSettingBool("r.reflections", true);
+        const float reflectionDistance = GetSettingFloat("r.reflection_distance", 30.0f);
+        const int msaa = GetSettingInt("r.msaa", 0);
+
+        // The preset the settings amount to right now, or Custom.
+        const char* presetName = "Custom";
+        for (const QualityPreset& preset : kPresets)
+        {
+            if (preset.shadows == shadows && std::abs(preset.shadowDistance - shadowDistance) < 0.5f &&
+                preset.torchShadows == torchShadows && preset.skyOcclusion == skyOcclusion &&
+                preset.reflections == reflections && std::abs(preset.reflectionDistance - reflectionDistance) < 0.5f &&
+                preset.msaa == msaa)
+            {
+                presetName = preset.name;
+            }
+        }
+        if (BeginSettingsTable("##graphicstable"))
+        {
+            ImGui::PushID("preset");
+            SettingsRow("Quality", "Sets everything below at once. Change any of them afterwards and it says Custom.");
+            if (ImGui::BeginCombo("##v", presetName))
+            {
+                for (const QualityPreset& preset : kPresets)
+                {
+                    if (ImGui::Selectable(preset.name, std::strcmp(preset.name, presetName) == 0))
+                    {
+                        SetSetting("r.shadows", preset.shadows ? "true" : "false");
+                        SetSetting("r.shadow_distance", std::to_string(preset.shadowDistance));
+                        SetSetting("r.torch_shadows", preset.torchShadows ? "true" : "false");
+                        SetSetting("r.sky_occlusion", preset.skyOcclusion ? "true" : "false");
+                        SetSetting("r.reflections", preset.reflections ? "1" : "0");
+                        SetSetting("r.reflection_distance", std::to_string(preset.reflectionDistance));
+                        SetSetting("r.msaa", std::to_string(preset.msaa));
+                    }
+                }
+                ImGui::EndCombo();
+            }
+            ImGui::PopID();
+
+            ImGui::PushID("shadows");
+            SettingsRow("Shadows", "Shadows from the lights in the level. Off is much quicker and much flatter.");
+            check("r.shadows", shadows);
+            ImGui::PopID();
+
+            ImGui::PushID("shadowdistance");
+            SettingsRow("Shadow distance", "How far away things still cast shadows. The biggest single cost after "
+                                           "shadows themselves.");
+            ImGui::BeginDisabled(!shadows);
+            float distance = shadowDistance;
+            if (ImGui::SliderFloat("##v", &distance, 16.0f, 128.0f, "%.0f m"))
+            {
+                SetSetting("r.shadow_distance", std::to_string(distance));
+            }
+            ImGui::EndDisabled();
+            ImGui::PopID();
+
+            ImGui::PushID("torchshadows");
+            SettingsRow("Torch shadows", "The torch throws shadows of what it lights. In a dark building, most of "
+                                         "what you see is lit by it.");
+            check("r.torch_shadows", torchShadows);
+            ImGui::PopID();
+
+            ImGui::PushID("sky");
+            SettingsRow("Indoor darkness", "Rooms keep out the light from outside. Off, every room is lit as if it "
+                                           "had no roof.");
+            check("r.sky_occlusion", skyOcclusion);
+            ImGui::PopID();
+
+            ImGui::PushID("msaa");
+            SettingsRow("Anti-aliasing", "Smooths jagged edges. Each step up costs more.");
+            {
+                const std::string shown = msaa <= 0 ? std::string("Off") : std::to_string(msaa) + "x MSAA";
+                if (ImGui::BeginCombo("##v", shown.c_str()))
+                {
+                    for (const int samples : {0, 2, 4, 8})
+                    {
+                        const std::string label = samples == 0 ? std::string("Off") : std::to_string(samples) + "x MSAA";
+                        if (ImGui::Selectable(label.c_str(), samples == msaa))
+                        {
+                            SetSetting("r.msaa", std::to_string(samples));
+                        }
+                    }
+                    ImGui::EndCombo();
+                }
+            }
+            ImGui::PopID();
+
+            ImGui::PushID("reflections");
+            SettingsRow("Mirror reflections", "A mirror is the whole world drawn a second time, so this is about half "
+                                              "as much again while you stand in front of one.");
+            check("r.reflections", reflections);
+            ImGui::PopID();
+
+            ImGui::PushID("reflectiondistance");
+            SettingsRow("Mirror distance", "Where a mirror stops being drawn. Lower this before turning them off.");
+            ImGui::BeginDisabled(!reflections);
+            float mirror = reflectionDistance;
+            if (ImGui::SliderFloat("##v", &mirror, 5.0f, 60.0f, "%.0f m"))
+            {
+                SetSetting("r.reflection_distance", std::to_string(mirror));
+            }
+            ImGui::EndDisabled();
+            ImGui::PopID();
+            ImGui::EndTable();
+        }
+        ImGui::EndChild();
+        ImGui::EndTabItem();
+    }
+
+    // --- Audio --------------------------------------------------------------------------------------
     if (tab("Audio"))
     {
+        ImGui::BeginChild("##audio");
         AudioEngine& audio = m_app->GetAudio();
-        float volume = audio.MasterGain();
-        if (ImGui::SliderFloat("Volume", &volume, 0.0f, 1.5f, "%.2f"))
+        if (BeginSettingsTable("##audiotable"))
         {
-            audio.SetMasterGain(volume);
-            SetSetting("audio.volume", std::to_string(volume));
+            ImGui::PushID("master");
+            SettingsRow("Master volume");
+            float volume = audio.MasterGain();
+            if (ImGui::SliderFloat("##v", &volume, 0.0f, 1.5f, "%.2f"))
+            {
+                audio.SetMasterGain(volume);
+                SetSetting("audio.volume", std::to_string(volume));
+            }
+            ImGui::PopID();
+
+            ImGui::PushID("effects");
+            SettingsRow("Effects", "Everything that happens: weapons, footsteps, doors, the creature.");
+            float effects = GetSettingFloat("audio.effects", 1.0f);
+            if (ImGui::SliderFloat("##v", &effects, 0.0f, 1.5f, "%.2f"))
+            {
+                SetSetting("audio.effects", std::to_string(effects));
+            }
+            ImGui::PopID();
+
+            ImGui::PushID("ambience");
+            SettingsRow("Ambience", "The building itself: the hum, the air in the ducts, things settling out of sight.");
+            float ambience = GetSettingFloat("audio.ambience", 1.0f);
+            if (ImGui::SliderFloat("##v", &ambience, 0.0f, 2.0f, "%.2f"))
+            {
+                SetSetting("audio.ambience", std::to_string(ambience));
+            }
+            ImGui::PopID();
+
+            ImGui::PushID("unfocused");
+            SettingsRow("Mute in background", "Silent while the game's window is behind another one.");
+            check("audio.mute_unfocused", GetSettingBool("audio.mute_unfocused", false));
+            ImGui::PopID();
+            ImGui::EndTable();
         }
         if (!audio.HasDevice())
         {
@@ -4035,177 +4343,231 @@ void PredationGame::DrawSettings()
         ImGui::Spacing();
         ImGui::SeparatorText("Voice");
         bool voice = cv_voiceEnabled.Get();
-        if (ImGui::Checkbox("Proximity voice", &voice))
+        if (BeginSettingsTable("##voicetable"))
         {
-            SetSetting("audio.voice", voice ? "true" : "false");
-            if (!voice)
+            ImGui::PushID("voice");
+            SettingsRow("Proximity voice", "Talk to, and hear, anybody close enough.");
+            if (ImGui::Checkbox("##v", &voice))
             {
-                StopTalking();
+                SetSetting("audio.voice", voice ? "true" : "false");
+                if (!voice)
+                {
+                    StopTalking();
+                }
             }
+            ImGui::PopID();
+
+            ImGui::BeginDisabled(!voice);
+            ImGui::PushID("voicevolume");
+            SettingsRow("Voice volume", "How loud other people are.");
+            float voiceVolume = cv_voiceVolume.Get();
+            if (ImGui::SliderFloat("##v", &voiceVolume, 0.0f, 2.0f, "%.2f"))
+            {
+                SetSetting("audio.voice_volume", std::to_string(voiceVolume));
+            }
+            ImGui::PopID();
+
+            ImGui::PushID("openmic");
+            const std::string talkKey = KeyFor(m_app->GetInput(), "voice");
+            const std::string openMicHelp = "Off, hold " + talkKey + " to talk. On, it sends whenever you speak.";
+            SettingsRow("Open mic", openMicHelp.c_str());
+            bool openMic = cv_voiceOpenMic.Get();
+            if (ImGui::Checkbox("##v", &openMic))
+            {
+                SetSetting("audio.voice_open_mic", openMic ? "true" : "false");
+            }
+            ImGui::PopID();
+
+            ImGui::PushID("threshold");
+            SettingsRow("Open mic sensitivity", "How loud you have to be before it sends. The line on the meter below "
+                                                "is where it is.");
+            ImGui::BeginDisabled(!openMic);
+            float threshold = cv_voiceThreshold.Get();
+            if (ImGui::SliderFloat("##v", &threshold, 0.005f, 0.30f, "%.3f"))
+            {
+                SetSetting("audio.voice_threshold", std::to_string(threshold));
+            }
+            ImGui::EndDisabled();
+            ImGui::PopID();
+
+            // Which microphone, listed fresh rather than remembered: devices come and go while the game
+            // is running, and a list of what was plugged in at startup is worse than no list.
+            ImGui::PushID("device");
+            SettingsRow("Microphone");
+            const std::vector<VoiceCapture::Device> devices = VoiceCapture::Devices();
+            const int chosen = cv_voiceDevice.Get();
+            std::string current = "System default";
+            for (const VoiceCapture::Device& device : devices)
+            {
+                if (static_cast<int>(device.id) == chosen)
+                {
+                    current = device.name;
+                }
+            }
+            if (ImGui::BeginCombo("##v", current.c_str()))
+            {
+                if (ImGui::Selectable("System default", chosen == 0))
+                {
+                    SetSetting("audio.voice_device", "0");
+                }
+                for (const VoiceCapture::Device& device : devices)
+                {
+                    if (ImGui::Selectable(device.name.c_str(), static_cast<int>(device.id) == chosen))
+                    {
+                        SetSetting("audio.voice_device", std::to_string(device.id));
+                    }
+                }
+                ImGui::EndCombo();
+            }
+            if (devices.empty())
+            {
+                ImGui::TextDisabled("no microphone found");
+            }
+            ImGui::PopID();
+            ImGui::EndDisabled();
+            ImGui::EndTable();
         }
-        ImGui::BeginDisabled(!voice);
-        float voiceVolume = cv_voiceVolume.Get();
-        if (ImGui::SliderFloat("Voice volume", &voiceVolume, 0.0f, 2.0f, "%.2f"))
-        {
-            SetSetting("audio.voice_volume", std::to_string(voiceVolume));
-        }
-        bool openMic = cv_voiceOpenMic.Get();
-        if (ImGui::Checkbox("Open mic", &openMic))
-        {
-            SetSetting("audio.voice_open_mic", openMic ? "true" : "false");
-        }
-        ImGui::SetItemTooltip("Off, hold %s to talk. On, it sends whenever you speak.",
-                              KeyFor(m_app->GetInput(), "voice").c_str());
-        ImGui::BeginDisabled(!openMic);
-        float threshold = cv_voiceThreshold.Get();
-        if (ImGui::SliderFloat("Open mic sensitivity", &threshold, 0.005f, 0.30f, "%.3f"))
-        {
-            SetSetting("audio.voice_threshold", std::to_string(threshold));
-        }
-        ImGui::SetItemTooltip("How loud you have to be before it sends. Lower picks up quieter speech, "
-                              "and more of the room. The line on the meter below is where it is.");
-        ImGui::EndDisabled();
 
         // The level meter, with the threshold drawn on it. Setting a threshold blind is guesswork;
-        // watching your own voice cross a line is not.
-        ImGui::TextUnformatted("Your microphone");
-        // Clamped. LastLevel is a peak sample and a loud voice really does exceed one; a progress
-        // bar handed a fraction above one draws past its own frame, which is what "the bar freaks
-        // out and breaks" was.
+        // watching your own voice cross a line is not. Clamped: a loud voice's peak exceeds one, and a
+        // bar handed more than one draws past its own frame.
+        ImGui::BeginDisabled(!voice);
         ImGui::ProgressBar(std::clamp(m_voiceLevel, 0.0f, 1.0f), ImVec2(-1.0f, 12.0f), "");
-        if (openMic)
+        if (cv_voiceOpenMic.Get())
         {
             const ImVec2 bar = ImGui::GetItemRectMin();
             const ImVec2 far = ImGui::GetItemRectMax();
-            const float x = bar.x + (far.x - bar.x) * std::clamp(threshold, 0.0f, 1.0f);
-            ImGui::GetWindowDrawList()->AddLine({x, bar.y}, {x, far.y}, IM_COL32(240, 200, 120, 255),
-                                                2.0f);
+            const float x = bar.x + (far.x - bar.x) * std::clamp(cv_voiceThreshold.Get(), 0.0f, 1.0f);
+            ImGui::GetWindowDrawList()->AddLine({x, bar.y}, {x, far.y}, IM_COL32(240, 200, 120, 255), 2.0f);
         }
-        // Three states, not two. "Not sending" while the microphone is shut and while the gate is
-        // holding it back mean quite different things, and showing one word for both is why this
-        // only ever said "not sending".
-        ImGui::TextDisabled(!m_microphone.Running() ? "  off until you talk or test it"
-                            : m_voiceSending        ? "  sending"
-                                                    : "  listening, too quiet to send");
-
-        // Which microphone, listed fresh rather than remembered: devices come and go while the game
-        // is running, and a list of what was plugged in at startup is worse than no list.
-        ImGui::Spacing();
-        const std::vector<VoiceCapture::Device> devices = VoiceCapture::Devices();
-        const int chosen = cv_voiceDevice.Get();
-        std::string current = "System default";
-        for (const VoiceCapture::Device& device : devices)
-        {
-            if (static_cast<int>(device.id) == chosen)
-            {
-                current = device.name;
-            }
-        }
-        if (ImGui::BeginCombo("Input device", current.c_str()))
-        {
-            if (ImGui::Selectable("System default", chosen == 0))
-            {
-                SetSetting("audio.voice_device", "0");
-            }
-            for (const VoiceCapture::Device& device : devices)
-            {
-                if (ImGui::Selectable(device.name.c_str(), static_cast<int>(device.id) == chosen))
-                {
-                    SetSetting("audio.voice_device", std::to_string(device.id));
-                }
-            }
-            ImGui::EndCombo();
-        }
-        if (devices.empty())
-        {
-            ImGui::TextDisabled("  no microphone found");
-        }
-
-        // And a way to hear yourself, because every one of these settings is otherwise invisible
-        // until somebody else says whether they could hear you.
+        ImGui::TextDisabled(!m_microphone.Running() ? "Microphone off until you talk or test it."
+                            : m_voiceSending        ? "Sending."
+                                                    : "Listening, too quiet to send.");
         if (ImGui::Button(m_micTest ? "Stop test" : "Test microphone", {-1.0f, 0.0f}))
         {
             m_micTest = !m_micTest;
         }
         Caption(m_micTest ? "Speak. You should hear yourself." : "Hear what the others would hear.",
-                "Your microphone is played back out of your own speakers, through the same gate and "
-                "the same codec the game sends through -- so what you are judging is what would "
-                "actually reach the others, not a cleaner version of it. Use headphones, or the "
-                "speakers feed straight back into the microphone.");
+                "Your microphone is played back out of your own speakers, through the same gate and the "
+                "same codec the game sends through -- so what you are judging is what would actually reach "
+                "the others. Use headphones, or the speakers feed straight back into the microphone.");
         ImGui::EndDisabled();
+        ImGui::EndChild();
         ImGui::EndTabItem();
     }
 
-    if (tab("Graphics"))
+    // --- Controls -----------------------------------------------------------------------------------
+    if (tab("Controls"))
     {
-        float fov = cv_fov.Get();
-        if (ImGui::SliderFloat("Field of view", &fov, 70.0f, 120.0f, "%.0f deg"))
+        ImGui::BeginChild("##controls");
+        if (BeginSettingsTable("##controlstable"))
         {
-            SetSetting("r.fov", std::to_string(fov));
-        }
+            ImGui::PushID("sensitivity");
+            SettingsRow("Mouse sensitivity");
+            float sensitivity = cv_mouseSensitivity.Get();
+            if (ImGui::SliderFloat("##v", &sensitivity, 0.02f, 0.60f, "%.3f"))
+            {
+                SetSetting("input.mouse_sensitivity", std::to_string(sensitivity));
+            }
+            ImGui::PopID();
 
-        bool vsync = GetSettingBool("r.vsync", true);
-        if (ImGui::Checkbox("V-Sync", &vsync))
-        {
-            SetSetting("r.vsync", vsync ? "true" : "false");
-        }
-        ImGui::SetItemTooltip("On, the picture never tears. Off, the game responds a little quicker.");
+            ImGui::PushID("aimsensitivity");
+            SettingsRow("Aiming sensitivity", "How much slower the view turns with the sights up, as a share of the "
+                                              "sensitivity above. Lower makes small corrections easier.");
+            float aimSensitivity = GetSettingFloat("input.aim_sensitivity", 0.75f);
+            if (ImGui::SliderFloat("##v", &aimSensitivity, 0.2f, 1.5f, "x%.2f"))
+            {
+                SetSetting("input.aim_sensitivity", std::to_string(aimSensitivity));
+            }
+            ImGui::PopID();
 
+            ImGui::PushID("invert");
+            SettingsRow("Invert up and down");
+            check("input.invert_y", cv_invertY.Get());
+            ImGui::PopID();
+
+            ImGui::PushID("crouch");
+            SettingsRow("Toggle crouch and prone", "On, press once to crouch and again to stand. Off, hold the key.");
+            check("input.crouch_toggle", cv_crouchToggle.Get());
+            ImGui::PopID();
+
+            ImGui::PushID("sprint");
+            SettingsRow("Toggle sprint", "On, press once to sprint and again to stop. Off, hold the key.");
+            check("input.sprint_toggle", cv_sprintToggle.Get());
+            ImGui::PopID();
+            ImGui::EndTable();
+        }
         ImGui::Spacing();
-        ImGui::SeparatorText("Light");
-        // Brightness and contrast rather than gamma, because those are the words on a television.
-        // They are also the two that matter in a game played in the dark: somebody whose monitor
-        // crushes the low end cannot see anything the lighting is doing, and the answer to that is
-        // not to make the game brighter for everybody.
-        float exposure = cv_exposure.Get();
-        if (ImGui::SliderFloat("Brightness", &exposure, 0.4f, 2.5f, "%.2f"))
-        {
-            SetSetting("r.exposure", std::to_string(exposure));
-        }
-        float contrast = cv_contrast.Get();
-        if (ImGui::SliderFloat("Contrast", &contrast, 0.6f, 1.8f, "%.2f"))
-        {
-            SetSetting("r.contrast", std::to_string(contrast));
-        }
-        Caption("Set these by the darkest corner, not the brightest wall.",
-                "Turn brightness up until you can just make out the darkest corner of a room, and "
-                "no further. A monitor that crushes its low end makes a dark game unplayable, "
-                "which is what these are for -- being able to see everything is not the game.");
-
-        ImGui::Spacing();
-        ImGui::SeparatorText("Mirrors");
-        bool reflections = cv_reflections.Get();
-        if (ImGui::Checkbox("Mirror reflections", &reflections))
-        {
-            SetSetting("r.reflections", reflections ? "1" : "0");
-        }
-        ImGui::BeginDisabled(!reflections);
-        float reflectionDistance = cv_reflectionDistance.Get();
-        if (ImGui::SliderFloat("Mirror distance", &reflectionDistance, 5.0f, 60.0f, "%.0f m"))
-        {
-            SetSetting("r.reflection_distance", std::to_string(reflectionDistance));
-        }
-        ImGui::EndDisabled();
-        Caption("If the game runs slowly, lower the distance first.",
-                "A mirror is the whole world drawn a second time from behind it, so this costs "
-                "about half again as much as an ordinary frame while you are standing in front of "
-                "one. The distance is where it stops being drawn at all -- lower it before turning "
-                "it off, because a mirror going flat as you walk away is much less noticeable than "
-                "one that was never there.");
+        ImGui::SeparatorText("Keys");
+        // A table rather than a paragraph. Twenty bindings written as prose is a sentence nobody
+        // finishes, and the one key somebody came to look up is in the middle of it.
+        DrawKeyBindings();
+        ImGui::EndChild();
         ImGui::EndTabItem();
     }
 
+    // --- Gameplay -----------------------------------------------------------------------------------
+    if (tab("Gameplay"))
+    {
+        ImGui::BeginChild("##gameplay");
+        if (BeginSettingsTable("##gameplaytable"))
+        {
+            ImGui::PushID("shake");
+            SettingsRow("Camera shake", "How much the view is jolted by your own shots and hard landings. Your aim "
+                                        "is never moved by it either way.");
+            float shake = GetSettingFloat("cam.shake", 1.0f);
+            if (ImGui::SliderFloat("##v", &shake, 0.0f, 1.0f, "%.2f"))
+            {
+                SetSetting("cam.shake", std::to_string(shake));
+            }
+            ImGui::PopID();
+
+            ImGui::PushID("bob");
+            SettingsRow("Head bob", "How much the view rises and falls with each step. Lower it if walking makes "
+                                    "you feel ill; your character still walks the same.");
+            float bob = GetSettingFloat("cam.head_bob", 1.0f);
+            if (ImGui::SliderFloat("##v", &bob, 0.0f, 1.0f, "%.2f"))
+            {
+                SetSetting("cam.head_bob", std::to_string(bob));
+            }
+            ImGui::PopID();
+
+            ImGui::PushID("crosshair");
+            SettingsRow("Crosshair", "The marks at the middle of the screen, which open up to show how far your "
+                                     "rounds could stray.");
+            check("hud.crosshair", GetSettingBool("hud.crosshair", true));
+            ImGui::PopID();
+
+            ImGui::PushID("fps");
+            SettingsRow("Show frame rate", "A small counter in the corner.");
+            check("hud.show_fps", GetSettingBool("hud.show_fps", false));
+            ImGui::PopID();
+            ImGui::EndTable();
+        }
+        ImGui::EndChild();
+        ImGui::EndTabItem();
+    }
+
+    // --- Multiplayer --------------------------------------------------------------------------------
     if (tab("Multiplayer"))
     {
-        // Not once a game is running, for the same reason the title screen refuses: everybody else
-        // was told this name when the connection was made and nothing re-tells them.
+        ImGui::BeginChild("##multiplayer");
+        // Not once a game is running, for the same reason the title screen refuses: everybody else was
+        // told this name when the connection was made and nothing re-tells them.
         const bool inSession = m_sessionMode != SessionMode::Offline;
-        ImGui::BeginDisabled(inSession);
-        if (ImGui::InputText("Name", m_playerName, sizeof(m_playerName)))
+        if (BeginSettingsTable("##multiplayertable"))
         {
-            cv_playerName.Set(m_playerName);
+            ImGui::PushID("name");
+            SettingsRow("Your name", "What everybody else sees you called.");
+            ImGui::BeginDisabled(inSession);
+            if (ImGui::InputText("##v", m_playerName, sizeof(m_playerName)))
+            {
+                cv_playerName.Set(m_playerName);
+            }
+            ImGui::EndDisabled();
+            ImGui::PopID();
+            ImGui::EndTable();
         }
-        ImGui::EndDisabled();
         if (inSession)
         {
             ImGui::TextDisabled("Leave the game to change your name.");
@@ -4221,11 +4583,9 @@ void PredationGame::DrawSettings()
             std::snprintf(lobbyServer, sizeof(lobbyServer), "%s", cv_lobbyServer.Get().c_str());
         }
         ImGui::SetNextItemWidth(-1.0f);
-        if (ImGui::InputTextWithHint("##lobbyserver", kDefaultLobbyServer, lobbyServer,
-                                     sizeof(lobbyServer)))
+        if (ImGui::InputTextWithHint("##lobbyserver", kDefaultLobbyServer, lobbyServer, sizeof(lobbyServer)))
         {
-            // Trimmed as it is typed, because an address pasted from a message usually brings a
-            // space with it.
+            // Trimmed as it is typed, because an address pasted from a message usually brings a space.
             std::string text = lobbyServer;
             text.erase(0, text.find_first_not_of(" \t\r\n"));
             text.erase(text.find_last_not_of(" \t\r\n") + 1);
@@ -4234,10 +4594,11 @@ void PredationGame::DrawSettings()
             StopBrowsing();
         }
         Caption("Leave it empty to use the game's own. Only for running a server of your own.",
-                "The lobby server introduces players to each other and then gets out of the way: the "
-                "game itself goes straight from one PC to the other, never through it. It is a free "
-                "Cloudflare Worker (Docs/SERVER.md). Without one, games on your own network still show "
-                "up in the list, and anybody can join by address.");
+                "The lobby server introduces players to each other and then gets out of the way: the game "
+                "itself goes straight from one PC to the other, never through it. It is a free Cloudflare "
+                "Worker (Docs/SERVER.md). Without one, games on your own network still show up in the list, "
+                "and anybody can join by address.");
+        ImGui::EndChild();
         ImGui::EndTabItem();
     }
 
@@ -4253,9 +4614,9 @@ void PredationGame::DrawSettings()
                                ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar))
     {
         ImGui::TextUnformatted("Put every setting back the way it shipped?");
-        Caption("Controls, audio, graphics and your name.",
-                "Only the settings on this screen. Anything set from the console that is not on it "
-                "keeps whatever you gave it.");
+        Caption("Display, graphics, audio, controls, gameplay and your name.",
+                "Only the settings on this screen. Anything set from the console that is not on it keeps "
+                "whatever you gave it.");
         ImGui::Spacing();
         if (ImGui::Button("Reset", {120.0f, 0.0f}))
         {
@@ -4272,7 +4633,7 @@ void PredationGame::DrawSettings()
         ImGui::EndPopup();
     }
     ImGui::SameLine();
-    Caption("Changes are saved as you make them.");
+    Caption("Changes apply and are saved as you make them.");
 }
 
 void PredationGame::DrawPauseMenu()
@@ -4283,7 +4644,7 @@ void PredationGame::DrawPauseMenu()
     ImGui::SetNextWindowPos(centre, ImGuiCond_Always, {0.5f, 0.5f});
     // The settings panel keeps one size whichever tab is showing. Sized to the tab, the whole window
     // jumped between Controls and Audio and the buttons under it moved out from under the cursor.
-    ImGui::SetNextWindowSize({m_settingsOpen ? 440.0f : 320.0f, m_settingsOpen ? 520.0f : 0.0f},
+    ImGui::SetNextWindowSize({m_settingsOpen ? 700.0f : 320.0f, m_settingsOpen ? 580.0f : 0.0f},
                              ImGuiCond_Always);
     ImGui::SetNextWindowBgAlpha(0.92f);
     constexpr ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
@@ -4433,7 +4794,7 @@ void PredationGame::DrawTitleScreen()
 
     ImGui::SetNextWindowPos({viewport->WorkPos.x + size.x * 0.5f, viewport->WorkPos.y + size.y * 0.5f},
                             ImGuiCond_Always, {0.5f, 0.5f});
-    ImGui::SetNextWindowSize({460.0f, 0.0f}, ImGuiCond_Always);
+    ImGui::SetNextWindowSize({m_settingsOpen ? 700.0f : 460.0f, 0.0f}, ImGuiCond_Always);
 
     constexpr ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
                                        ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse |
@@ -5226,7 +5587,7 @@ void PredationGame::PlaySound(SoundId sound, const glm::vec3& at, float gain, fl
     desc.sound = sound;
     desc.position = at;
     desc.positioned = positioned;
-    desc.gain = gain;
+    desc.gain = gain * std::clamp(cv_effectsVolume.Get(), 0.0f, 2.0f);
     desc.pitch = pitch;
     m_app->GetAudio().Play(desc);
 }
@@ -6194,7 +6555,10 @@ void PredationGame::SampleLook(float /*dt*/)
         m_discardNextMouseDelta = false;
         return;
     }
-    const float sensitivity = glm::radians(cv_mouseSensitivity.Get());
+    // Slower with the sights up, by as much as the player asked: a small correction at a distance is
+    // a small movement of the hand, and at full sensitivity it overshoots.
+    const float sighted = glm::mix(1.0f, std::clamp(cv_aimSensitivity.Get(), 0.1f, 2.0f), m_weapon.aim);
+    const float sensitivity = glm::radians(cv_mouseSensitivity.Get()) * sighted;
     const float vertical = (cv_invertY.Get() ? delta.y : -delta.y) * sensitivity;
     const float limit = glm::radians(m_player.Config().maxPitchDegrees);
     // Lying down, the eye is a third of a metre off the floor and there is a body in the way.
@@ -8192,8 +8556,14 @@ void PredationGame::OnUpdate(double dt, double alpha)
             // cannot fight them for the mouse: rounds still go exactly where the crosshair was. It
             // is the jolt a shot gives the head, and it is over in a fraction of a second.
             PlayerView shaken = m_player.View();
-            shaken.pitch += glm::radians(m_weapon.shakePitch);
-            shaken.yaw += glm::radians(m_weapon.shakeYaw);
+            const float shake = std::clamp(cv_cameraShake.Get(), 0.0f, 1.0f);
+            shaken.pitch += glm::radians(m_weapon.shakePitch) * shake;
+            shaken.yaw += glm::radians(m_weapon.shakeYaw) * shake;
+            // The step's dip and a landing's drop are taken back out of the picture as far as the
+            // player asked -- the picture only. The body still anchors itself to the real eye, which is
+            // what lowers the hips far enough for a leg to reach its next step.
+            const float bob = std::clamp(cv_headBob.Get(), 0.0f, 1.0f);
+            shaken.eyePosition.y -= shaken.bobOffset * (1.0f - bob) + shaken.landingDip * (1.0f - shake);
             view = shaken.ViewMatrix();
         }
             viewPosition = m_player.View().eyePosition;
@@ -9325,10 +9695,23 @@ void PredationGame::DrawHud()
         gap = std::min(gap, viewport->Size.y * 0.25f);
     }
     const float tick = 5.0f;
-    draw->AddLine({centre.x - gap - tick, centre.y}, {centre.x - gap, centre.y}, reticleColor, 1.5f);
-    draw->AddLine({centre.x + gap, centre.y}, {centre.x + gap + tick, centre.y}, reticleColor, 1.5f);
-    draw->AddLine({centre.x, centre.y - gap - tick}, {centre.x, centre.y - gap}, reticleColor, 1.5f);
-    draw->AddLine({centre.x, centre.y + gap}, {centre.x, centre.y + gap + tick}, reticleColor, 1.5f);
+    if (cv_crosshair.Get())
+    {
+        draw->AddLine({centre.x - gap - tick, centre.y}, {centre.x - gap, centre.y}, reticleColor, 1.5f);
+        draw->AddLine({centre.x + gap, centre.y}, {centre.x + gap + tick, centre.y}, reticleColor, 1.5f);
+        draw->AddLine({centre.x, centre.y - gap - tick}, {centre.x, centre.y - gap}, reticleColor, 1.5f);
+        draw->AddLine({centre.x, centre.y + gap}, {centre.x, centre.y + gap + tick}, reticleColor, 1.5f);
+    }
+    if (cv_showFps.Get())
+    {
+        // Averaged, so it can be read: a number that changes every frame is a blur.
+        const float ms = FrameStats::Instance().AverageFrameMs();
+        char fps[32];
+        std::snprintf(fps, sizeof(fps), "%.0f fps", ms > 0.0f ? 1000.0f / ms : 0.0f);
+        const ImVec2 size = ImGui::CalcTextSize(fps);
+        draw->AddText({viewport->Pos.x + viewport->Size.x - size.x - 12.0f, viewport->Pos.y + 10.0f},
+                      IM_COL32(220, 220, 225, 170), fps);
+    }
     // Interaction prompt, just below the reticle.
     const InteractionSystem::Focus& focus = m_interactions.CurrentFocus();
     const std::string prompt = m_hidingSpot >= 0 ? std::string("Leave Locker") : focus.prompt;

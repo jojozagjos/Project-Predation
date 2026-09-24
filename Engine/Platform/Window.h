@@ -1,6 +1,8 @@
 #pragma once
 
 #include <string>
+#include <utility>
+#include <vector>
 
 struct SDL_Window;
 
@@ -38,6 +40,15 @@ public:
 
     void GetSize(int& width, int& height) const;
     void GetSizeInPixels(int& width, int& height) const;
+
+    // Fullscreen at the desktop's own resolution, without a border: what "fullscreen" means for almost
+    // every game now, and the only kind that switches without the screen going black for a second.
+    void SetFullscreen(bool fullscreen);
+    bool IsFullscreen() const;
+    // The window's size while it is a window, kept on screen.
+    void SetSize(int width, int height);
+    // The sizes the main display offers, largest first, without repeats.
+    static std::vector<std::pair<int, int>> DisplaySizes();
 
     void SetTitle(const std::string& title);
     void SetRelativeMouse(bool enabled);

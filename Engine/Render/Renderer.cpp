@@ -272,6 +272,20 @@ void Renderer::SetVSync(bool enabled)
     }
 }
 
+void Renderer::SetMsaa(int samples)
+{
+    Impl& impl = *m_impl;
+    if (impl.msaa == samples)
+    {
+        return;
+    }
+    impl.msaa = samples;
+    if (impl.initialized)
+    {
+        bgfx::reset(static_cast<uint32_t>(impl.width), static_cast<uint32_t>(impl.height), impl.ResetFlags());
+    }
+}
+
 void Renderer::SetClearColor(uint32_t rgba)
 {
     m_impl->clearColor = rgba;
