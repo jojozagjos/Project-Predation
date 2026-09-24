@@ -60,6 +60,11 @@ SAMPLER2D(s_spotShadow, 3);
 // approximation: the reflected image was rendered with the same projection from the mirrored camera,
 // so for any point lying in the mirror's plane the two line up exactly.
 SAMPLER2D(s_reflection, 4);
+// The near sun map: see sunReaching.
+uniform mat4 u_sunNearShadowMtx;
+uniform vec4 u_sunNearShadowAxis;
+uniform vec4 u_sunNearShadowParams;
+SAMPLER2D(s_sunNearShadow, 5);
 // xyz = the plane's normal, w = its offset. Fragments behind it are thrown away while the reflection
 // is being drawn, or the mirror shows the things standing behind it. Zero means no clipping, which
 // is what the ordinary pass uses.
@@ -227,8 +232,27 @@ float shadowSlack(float base, float NoL, float mostSlope, float texelWorld, floa
 // a clean limit rather than a thing that pops.
 float sunReaching(vec3 P, vec3 N, float NoL)
 {
-	return lightReachesSharp(s_sunShadow, u_sunShadowMtx, u_sunShadowAxis, u_sunShadowParams, P, N,
-	                        shadowSlack(u_sunShadowParams.y, NoL, 6.0, u_shadowTexelWorld.x, 2.0));
+	// Two maps of the same sun: a fine one over the dozen metres round the player, and a coarse one
+	// out to the shadow distance. Whichever covers the point, and a blend across the band where the
+	// fine one runs out, so no line is ever seen where one hands over to the other.
+	vec4 nearProjected = mul(u_sunNearShadowMtx, vec4(P, 1.0));
+	vec2 nearUv = nearProjected.xy / nearProjected.w;
+	vec2 fromEdge = min(nearUv, vec2_splat(1.0) - nearUv);
+	float nearWeight = clamp((min(fromEdge.x, fromEdge.y) - 0.07) / 0.08, 0.0, 1.0);
+
+	float near = 1.0;
+	if (nearWeight > 0.0)
+	{
+		near = lightReachesSharp(s_sunNearShadow, u_sunNearShadowMtx, u_sunNearShadowAxis, u_sunNearShadowParams, P,
+		                         N, shadowSlack(u_sunNearShadowParams.y, NoL, 6.0, u_shadowTexelWorld.w, 2.0));
+		if (nearWeight >= 1.0)
+		{
+			return near;
+		}
+	}
+	float far = lightReachesSharp(s_sunShadow, u_sunShadowMtx, u_sunShadowAxis, u_sunShadowParams, P, N,
+	                              shadowSlack(u_sunShadowParams.y, NoL, 6.0, u_shadowTexelWorld.x, 2.0));
+	return mix(far, near, nearWeight);
 }
 
 // GGX / Trowbridge-Reitz normal distribution.

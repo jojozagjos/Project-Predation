@@ -30,6 +30,9 @@ const Material kLabConcrete = Material::Diffuse({0.35f, 0.34f, 0.32f}, 0.9f);
 const Material kLabPillar = Material::Metal({0.45f, 0.45f, 0.48f}, 0.5f);
 const Material kLabNestWall = Material::Diffuse({0.16f, 0.12f, 0.11f}, 0.8f);
 
+// How thick a roof is: see the crawlspace.
+constexpr float kRoof = 0.6f;
+
 Transform At(float lx, float y, float lz)
 {
     Transform transform;
@@ -117,7 +120,11 @@ void BuildLabMap(Scene& scene, MeshLibrary& meshes, PhysicsWorld* physics, Level
     // --- The crawlspace: a tunnel a person can crawl into and nothing bigger can follow them down.
     Block(builder, "lab_crawl_w", -1.5f, 0.0f, 6.0f, -1.2f, 1.3f, 16.0f, kLabConcrete);
     Block(builder, "lab_crawl_e", 1.2f, 0.0f, 6.0f, 1.5f, 1.3f, 16.0f, kLabConcrete);
-    Block(builder, "lab_crawl_roof", -1.5f, 1.3f, 6.0f, 1.5f, 1.6f, 16.0f, kLabConcrete);
+    // Roofs are thick throughout -- sixty centimetres -- and not for the look of it. A shadow map reads a
+    // surface as lit if it is within a few centimetres of the nearest thing over it, and a roof thinner
+    // than that let the top of every inside wall read as under the open sky: the band of daylight along the
+    // top of each room. See kRoof.
+    Block(builder, "lab_crawl_roof", -1.5f, 1.3f, 6.0f, 1.5f, 1.3f + kRoof, 16.0f, kLabConcrete);
 
     // --- The corridor of doors, roofed, with a room of lockers and a locked store off it.
     {
@@ -145,7 +152,7 @@ void BuildLabMap(Scene& scene, MeshLibrary& meshes, PhysicsWorld* physics, Level
         Block(builder, "lab_corridor_e_lockers", east, kDoorHeight, lockerZ - half, east + t, top, lockerZ + half, kLabWall);
         Block(builder, "lab_room_split", east + t, 0.0f, split - 0.15f, room, top, split + 0.15f, kLabWall);
         Block(builder, "lab_room_e", room, 0.0f, north, room + t, top, south, kLabWall);
-        Block(builder, "lab_wing_roof", west - t, top, north - t, room + t, top + 0.2f, south + t, kLabRoof);
+        Block(builder, "lab_wing_roof", west - t, top, north - t, room + t, top + kRoof, south + t, kLabRoof);
     }
 
     // --- The balcony, up a ramp from the south, with a drop off its east and north edges.
@@ -176,7 +183,7 @@ void BuildLabMap(Scene& scene, MeshLibrary& meshes, PhysicsWorld* physics, Level
             Block(builder, "lab_pillar", x - 0.3f, 0.0f, z - 0.3f, x + 0.3f, 4.5f, z + 0.3f, kLabPillar);
         }
     }
-    Block(builder, "lab_pillar_roof", 15.5f, 4.5f, -11.0f, 31.0f, 4.8f, -1.0f, kLabRoof);
+    Block(builder, "lab_pillar_roof", 15.5f, 4.5f, -11.0f, 31.0f, 4.5f + kRoof, -1.0f, kLabRoof);
 
     // --- The nest: a dark chamber across the north end, two ways in, and the hive in the middle of it.
     {
@@ -190,7 +197,7 @@ void BuildLabMap(Scene& scene, MeshLibrary& meshes, PhysicsWorld* physics, Level
         Block(builder, "lab_nest_s_c", 9.5f, 0.0f, south, 16.0f + t, h, south + t, kLabNestWall);
         Block(builder, "lab_nest_lintel_w", -9.5f, doorHigh, south, -6.5f, h, south + t, kLabNestWall);
         Block(builder, "lab_nest_lintel_e", 6.5f, doorHigh, south, 9.5f, h, south + t, kLabNestWall);
-        Block(builder, "lab_nest_roof", -16.0f - t, h, -kHalf - 0.5f, 16.0f + t, h + 0.3f, south + t, kLabRoof);
+        Block(builder, "lab_nest_roof", -16.0f - t, h, -kHalf - 0.5f, 16.0f + t, h + kRoof, south + t, kLabRoof);
 
         // Nothing is built here: a nest exists only where a creature has made one, and this chamber is
         // somewhere dark and enclosed that one is likely to choose.

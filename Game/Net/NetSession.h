@@ -403,6 +403,8 @@ public:
     // diverging, which is the first thing to look at when movement starts to feel rubbery.
     uint32_t CorrectionCount() const { return m_corrections; }
     uint32_t Sequence() const { return m_sequence; }
+    // The newest of this client's inputs the host says it has run.
+    uint32_t LastAcknowledged() const { return m_lastAcknowledged; }
     // The host tick this client is drawing everyone else at. A shot carries it so the host can
     // rewind to the moment the shot was actually aimed.
     uint32_t RenderTick() const { return m_renderTick; }

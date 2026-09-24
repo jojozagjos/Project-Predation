@@ -9213,7 +9213,7 @@ void PredationGame::OnRender()
     // Depth from the sun and depth from overhead, both fitted around the eye, before anything is
     // shaded. This is where a room with a roof on it becomes dark: nothing declares it dark, the
     // roof is simply between it and the sky.
-    app.GetSceneRenderer().RenderShadows(Renderer::kViewSunShadow, Renderer::kViewSkyShadow,
+    app.GetSceneRenderer().RenderShadows(Renderer::kViewSunShadow, Renderer::kViewSunNearShadow, Renderer::kViewSkyShadow,
                                          Renderer::kViewSpotShadow, m_scene, app.GetMeshes(),
                                          viewPosition);
 

@@ -914,11 +914,28 @@ void NetHost::Tick(uint32_t tick, const PlayerState& localState, float dt)
 
         if (client->started && !client->pending.empty())
         {
-            const InputCommand command = client->pending.front();
-            client->pending.erase(client->pending.begin());
-            client->lastProcessed = command.sequence;
-            client->lastInput = command.input;
-            client->controller.Step(command.input, dt);
+            // One input a tick, and more when the queue has grown past what it is meant to hold.
+            //
+            // Exactly one a tick meant the queue could only ever grow: a burst of packets, or a few
+            // ticks filled in with a repeated input while nothing arrived, and every input after that
+            // ran that much later for the rest of the game. On the host that player fell behind and
+            // stayed behind -- their body walking a beat after their own screen, further after every
+            // hiccup -- while nothing on their own machine looked wrong. Two extra at most a tick, so
+            // catching up is quick without being a jump.
+            int steps = 1;
+            const size_t target = static_cast<size_t>(m_config.inputBufferTicks) + 1;
+            if (client->pending.size() > target)
+            {
+                steps += std::min<int>(2, static_cast<int>(client->pending.size() - target));
+            }
+            for (int i = 0; i < steps && !client->pending.empty(); ++i)
+            {
+                const InputCommand command = client->pending.front();
+                client->pending.erase(client->pending.begin());
+                client->lastProcessed = command.sequence;
+                client->lastInput = command.input;
+                client->controller.Step(command.input, dt);
+            }
         }
         else if (client->started)
         {

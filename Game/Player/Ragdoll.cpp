@@ -276,8 +276,20 @@ void Ragdoll::Step(PhysicsWorld& physics, float dt)
         const glm::vec3 flat{m_positions[i].x, 0.0f, m_positions[i].z};
         if (glm::distance(flat, m_groundSampledAt[i]) > 0.15f || m_groundHeight[i] < -900.0f)
         {
-            const glm::vec3 from = m_positions[i] + glm::vec3(0.0f, 1.0f, 0.0f);
-            const RayHit hit = physics.RayCast(from, glm::vec3(0.0f, -1.0f, 0.0f), 3.0f);
+            // From just under whatever is over it, not from a metre above it. A body that died
+            // under a table, in a crawlspace or in a locker has the underside of something within
+            // that metre, and a trace started above it found the top of the thing and called that
+            // the floor -- which is the corpse rising slowly up through the table.
+            glm::vec3 from = m_positions[i] + glm::vec3(0.0f, 1.0f, 0.0f);
+            const RayHit over = physics.RayCast(m_positions[i], glm::vec3(0.0f, 1.0f, 0.0f), 1.0f);
+            // A hit at no distance is a joint already inside something, and for that the old way is
+            // right: the top of what it is inside is where it has to go.
+            if (over && over.distance > 0.02f)
+            {
+                from = over.position - glm::vec3(0.0f, 0.02f, 0.0f);
+            }
+            const RayHit hit =
+                physics.RayCast(from, glm::vec3(0.0f, -1.0f, 0.0f), from.y - m_positions[i].y + 2.0f);
             m_groundTarget[i] = hit ? hit.position.y : -1000.0f;
             m_groundSampledAt[i] = flat;
             if (m_groundHeight[i] < -900.0f)

@@ -4393,3 +4393,28 @@ TEST_CASE("A reload clip with a hand in it moves that hand, and gives it back at
     }
     CHECK(glm::distance(harness.Bone(harness.Rig().hand[0]), left) < 0.04f);
 }
+
+TEST_CASE("A body that dies under something stays under it", "[body][ragdoll]")
+{
+    // Dying under a table, in a crawlspace or in a locker, the body used to rise slowly up through
+    // whatever was over it: the floor under each joint was traced from a metre above the joint, which
+    // under a table starts inside or on top of the table, and the top of the table was taken for the
+    // floor.
+    BodyHarness harness;
+    harness.SetStance(PlayerStance::Prone);
+    harness.Settle(240);
+    // A slab over them at a metre, the height of a table top or a crawlspace roof.
+    harness.physics.CreateBox({2.0f, 0.05f, 2.0f}, Transform{{0.0f, 1.05f, 0.0f}}, BodyMotion::Static);
+    harness.physics.OptimizeBroadPhase();
+    harness.body.Collapse(glm::vec3(0.0f, 0.5f, -1.0f));
+    for (int i = 0; i < 480; ++i)
+    {
+        harness.Tick();
+    }
+    const HumanoidRig& rig = harness.Rig();
+    for (const BoneIndex bone : {rig.pelvis, rig.chest, rig.head, rig.hand[0], rig.hand[1], rig.foot[0]})
+    {
+        INFO("bone at " << harness.Bone(bone).y);
+        CHECK(harness.Bone(bone).y < 1.0f);
+    }
+}

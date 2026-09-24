@@ -1317,8 +1317,8 @@ TEST_CASE("A creature that ran away comes back out rather than running for ever"
     harness.Run(4.0f, players);
     REQUIRE(harness.creature->Brain().Current() == Behavior::Retreat);
 
-    // Then the shooter goes. Given the rest of a couple of minutes on its own, it mends while it
-    // hides and then does something other than hide.
+    // Then the shooter goes. Given the rest of a couple of minutes on its own it does something other
+    // than hide -- still hurt: with no nest, nothing mends it.
     bool mended = false;
     float retreatingLate = 0.0f;
     float late = 0.0f;
@@ -1339,7 +1339,7 @@ TEST_CASE("A creature that ran away comes back out rather than running for ever"
     INFO("its mind:" << MindOf(*harness.creature));
     INFO("fear " << harness.creature->Brain().Feelings().fear << ", retreating for " << retreatingLate
                  << " s of the last " << late << " s");
-    CHECK(mended);
+    CHECK_FALSE(mended);
     CHECK(retreatingLate < late * 0.25f);
     CHECK(harness.creature->Brain().Current() != Behavior::Retreat);
 }

@@ -229,8 +229,12 @@ void BuildTestMap(Scene& scene, MeshLibrary& meshes, PhysicsWorld* physics)
         // A wall that does not meet its neighbour is a window.
         builder.AddBox("dark_floor", AtPosition(kDarkRoomX, 0.03f, kDarkRoomZ),
                        {kDarkRoomWidth - t, 0.06f, kDarkRoomDepth - t}, kDarkWall);
-        builder.AddBox("dark_roof", AtPosition(kDarkRoomX, h + t * 0.5f, kDarkRoomZ),
-                       {kDarkRoomWidth + t * 2.0f, t, kDarkRoomDepth + t * 2.0f}, kDarkWall);
+        // Thick, so the top of the walls inside is not read as under the open sky: a shadow map counts a
+        // surface as lit within a few centimetres of whatever is over it, and a thin roof let daylight
+        // along the top of every wall.
+        constexpr float kRoof = 0.6f;
+        builder.AddBox("dark_roof", AtPosition(kDarkRoomX, h + kRoof * 0.5f, kDarkRoomZ),
+                       {kDarkRoomWidth + t * 2.0f, kRoof, kDarkRoomDepth + t * 2.0f}, kDarkWall);
 
         // Back and sides. The west wall runs the full outer depth and the other two stop against
         // its inside face, so the corner is closed by one of them rather than by neither.

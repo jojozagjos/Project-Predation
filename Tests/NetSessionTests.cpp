@@ -1076,3 +1076,34 @@ TEST_CASE("Voice reaches the people near the speaker and nobody else", "[net][se
     CHECK(heardBy(beside) == std::vector<uint8_t>{walkerId});
     CHECK(heardBy(walker) == std::vector<uint8_t>{besideId});
 }
+
+TEST_CASE("The host does not fall further behind a client with every hiccup", "[net][session]")
+{
+    // The host ran one input a tick, so its queue of a client's inputs could only grow: a hiccup on the
+    // host that stalls for half a second finds half a second of inputs waiting, and that player then ran
+    // half a second late on the host for the rest of the game. How far behind the host is running a client's inputs has to come
+    // back down after a hiccup, not stay up.
+    NetConditions steady;
+    steady.latencyMs = 40.0f;
+    steady.jitterMs = 10.0f;
+    Link link(41033, steady);
+    link.Run(40, PlayerInput{});
+    REQUIRE(link.client.Connected());
+    link.Run(180, WalkForward());
+    const auto unrun = [&] { return static_cast<int>(link.client.Sequence() - link.client.LastAcknowledged()); };
+    const int before = unrun();
+
+    // The host stalls for half a second -- a navigation rebuild, a body being built -- and loses that
+    // time rather than running thirty ticks at once to make it up, while the client goes on sending.
+    for (int i = 0; i < 30; ++i)
+    {
+        link.clientMachine.physics.Step(kTick);
+        link.client.Tick(WalkForward(), link.clientMachine.player, kTick);
+        link.client.UpdateInterpolation(kTick);
+    }
+    link.Run(300, WalkForward());
+    const int after = unrun();
+
+    INFO("inputs not yet run by the host: " << before << " before the hiccup, " << after << " five seconds after");
+    CHECK(after <= before + 3);
+}

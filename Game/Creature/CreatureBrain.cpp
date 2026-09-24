@@ -944,11 +944,27 @@ void CreatureBrain::Decide(const CreatureSenses& senses)
     {
         const float age = now - m_interest.time;
         const float recent = std::clamp(1.0f - age / 20.0f, 0.0f, 1.0f);
+        // Not towards somebody it has just been keeping away from. A noise near a person a timid one
+        // saw a moment ago is that person, and going to look is walking back to them: it did, saw them,
+        // backed off, heard them, and went to look again, over and over.
+        float wary = 1.0f;
+        if (m_traits.temperament == Temperament::Timid)
+        {
+            for (const Track& track : m_tracks)
+            {
+                if (track.lastSeen >= 0.0f && now - track.lastSeen < 25.0f &&
+                    Horizontal(track.lastKnown, m_interest.position) < 12.0f)
+                {
+                    wary = 0.1f;
+                }
+            }
+        }
         add(Behavior::Investigate, -1, "Investigate " + m_interest.what,
             {{"how strong", m_interest.strength},
              {"curiosity", 0.4f + 0.6f * m_traits.curiosity},
              {"not afraid", 0.3f + 0.7f * calm},
-             {"recent", recent}});
+             {"recent", recent},
+             {"not them again", wary}});
     }
 
     // Each person it knows of, separately: hunting one and ignoring another is a real choice.
@@ -963,8 +979,11 @@ void CreatureBrain::Decide(const CreatureSenses& senses)
         const float distance = Horizontal(senses.position, track.visible ? player->feet : track.lastKnown);
 
         // Keeping away from them: what a timid one does about anybody near, until it has no room left.
+        // Kept up for a while after it loses sight of them, rather than dropped the moment they are out
+        // of view: out of view is where it was trying to get to, not a reason to turn round.
+        const bool keptAway = m_behavior == Behavior::Avoid && m_target == track.id && now - track.lastSeen < 12.0f;
         if (m_traits.temperament == Temperament::Timid && !track.hostile && distance < 18.0f &&
-            (track.visible || (track.confidence > 0.6f && distance < 10.0f)))
+            (track.visible || keptAway || (track.confidence > 0.6f && distance < 10.0f)))
         {
             add(Behavior::Avoid, track.id, "Keep away from " + track.name,
                 {{"timid", 0.6f + 0.4f * m_traits.fear},
@@ -2241,14 +2260,14 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
         else
         {
             const bool atNest = senses.hasHive && Horizontal(senses.position, senses.hive) < 3.5f;
-            m_goal = atNest ? "at the nest, healing" : "hiding, recovering";
+            m_goal = atNest ? "at the nest, healing" : "hiding";
             lookAround(1.0e9f);
-            // Gone to ground, it mends: slowly anywhere, three times as fast at its own nest.
-            m_intent.recover = atNest ? 0.03f : 0.01f;
-            // And it stays down while it is badly hurt and nothing is near, up to a point: an
-            // animal that has gone to ground comes back out, and the players should get to find
-            // out what it does when it does.
-            if (senses.healthFraction < 0.5f && !m_threatened && now - m_behaviorStarted < 40.0f)
+            // Only its nest mends it. Anywhere else a wound stays a wound, which is what makes hurting
+            // one worth something -- and what makes the nest worth finding.
+            m_intent.recover = atNest ? 0.03f : 0.0f;
+            // And at the nest it stays to mend while it is badly hurt and nothing is near, up to a
+            // point: an animal that has gone to ground comes back out.
+            if (atNest && senses.healthFraction < 0.5f && !m_threatened && now - m_behaviorStarted < 40.0f)
             {
                 m_retreatUntil = std::max(m_retreatUntil, now + 1.0f);
             }

@@ -77,7 +77,7 @@ public:
 
     // Renders both depth maps, fitted around `focus`. Has to run before Draw, into lower view ids,
     // because bgfx submits views in the order of their ids and Draw reads what this writes.
-    void RenderShadows(bgfx::ViewId sunView, bgfx::ViewId skyView, bgfx::ViewId spotView,
+    void RenderShadows(bgfx::ViewId sunView, bgfx::ViewId sunNearView, bgfx::ViewId skyView, bgfx::ViewId spotView,
                        const Scene& scene, const MeshLibrary& meshes, const glm::vec3& focus);
 
     // Renders the world again from a camera reflected across `plane`, into a texture the mirror
@@ -159,6 +159,10 @@ private:
     bgfx::UniformHandle m_uSpotShadowParams = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uShadowTexelWorld = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_sSunShadow = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uSunNearShadowMtx = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uSunNearShadowAxis = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uSunNearShadowParams = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_sSunNearShadow = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_sSkyShadow = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_sSpotShadow = BGFX_INVALID_HANDLE;
     // The base colour texture. Always bound, because a material with none samples the library's
@@ -172,6 +176,7 @@ private:
     // The two depth maps, and whether they could be created at all. A machine that cannot render to
     // a float target still gets a picture; it gets one with no occlusion in it.
     ShadowMap m_sunShadow;
+    ShadowMap m_sunNearShadow;
     ShadowMap m_skyShadow;
     // And one for the brightest cone light there is, which in this game is the torch. Without it a
     // punctual light has no occlusion at all and shines through walls.
