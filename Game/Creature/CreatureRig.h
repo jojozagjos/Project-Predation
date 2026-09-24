@@ -8,6 +8,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <utility>
 #include <vector>
 
 namespace pred
@@ -90,6 +91,8 @@ public:
         bool reaching = false;  // lifted off the floor by an action, not walking
     };
     const std::vector<Foot>& Feet() const { return m_feet; }
+    // Where a foot has come down since the last time anybody asked: what the game hears as a step.
+    std::vector<glm::vec3> TakeFootfalls() { return std::exchange(m_footfalls, {}); }
     // How far the head is turned from straight ahead, in radians, for the inspector.
     float HeadTurn() const { return m_headYaw; }
 
@@ -103,6 +106,7 @@ private:
     std::vector<glm::mat4> m_skinning;
     glm::mat4 m_root{1.0f};
     std::vector<Foot> m_feet;
+    std::vector<glm::vec3> m_footfalls;
     float m_lastYaw = 0.0f;
     float m_turnRate = 0.0f;  // radians a second, smoothed
     float m_bend = 0.0f;      // how far the spine is bent into a turn

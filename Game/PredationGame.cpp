@@ -11,6 +11,7 @@
 #include "Game/Weapons/WeaponAppearance.h"
 #include "Game/World/TestMap.h"
 #include "Engine/Audio/Sound.h"
+#include "Engine/Audio/SoundDesign.h"
 
 #include <SDL3/SDL_events.h>
 #include <glm/gtc/matrix_transform.hpp>
@@ -31,6 +32,8 @@
 
 namespace pred
 {
+
+extern CVar<float> cv_ambienceVolume;
 namespace
 {
 
@@ -422,22 +425,7 @@ bool PredationGame::OnInit(Application& app)
     // thing that makes the placeholder, not in the thing that ships.
     {
         AudioEngine& audio = app.GetAudio();
-        m_sounds.gunshot = LoadSoundVariants(audio, "gunshot");
-        m_sounds.dryFire = LoadSoundVariants(audio, "dry_fire");
-        m_sounds.reloadOut = LoadSoundVariants(audio, "reload_out");
-        m_sounds.reloadIn = LoadSoundVariants(audio, "reload_in");
-        m_sounds.step = LoadSoundVariants(audio, "step_hard");
-        m_sounds.land = LoadSoundVariants(audio, "land");
-        m_sounds.door = LoadSoundVariants(audio, "door");
-        m_sounds.locker = LoadSoundVariants(audio, "locker");
-        m_sounds.pickup = LoadSoundVariants(audio, "pickup");
-        m_sounds.drop = LoadSoundVariants(audio, "drop");
-        m_sounds.hurt = LoadSoundVariants(audio, "hurt");
-        m_sounds.death = LoadSoundVariants(audio, "death");
-
-        // And everything else, by the name of its folder. The fixed set above is the handful the
-        // game reaches for every frame; the rest -- one gunshot per weapon, the creature, the
-        // ambience -- is looked up by name, so a new sound is a new folder and nothing else.
+        // Every folder in Assets/Audio, by its name, so a new sound is a new folder and nothing else.
         std::error_code ec;
         for (const auto& entry : std::filesystem::directory_iterator(Paths::AssetsRoot() / "Audio", ec))
         {
@@ -447,7 +435,21 @@ bool PredationGame::OnInit(Application& app)
                 continue;
             }
             m_soundBank.emplace(name, LoadSoundVariants(audio, name.c_str()));
+            m_soundKeys[SoundKey(name)] = name;
         }
+        // And the handful reached for every frame, by name once here rather than looked up each time.
+        m_sounds.gunshot = Sounds("gunshot");
+        m_sounds.dryFire = Sounds("dry_fire");
+        m_sounds.reloadOut = Sounds("reload_out");
+        m_sounds.reloadIn = Sounds("reload_in");
+        m_sounds.step = Sounds("step_hard");
+        m_sounds.land = Sounds("land");
+        m_sounds.door = Sounds("door");
+        m_sounds.locker = Sounds("locker");
+        m_sounds.pickup = Sounds("pickup");
+        m_sounds.drop = Sounds("drop");
+        m_sounds.hurt = Sounds("hurt");
+        m_sounds.death = Sounds("death");
     }
 
     LoadFootsteps(app.GetAudio());
@@ -1221,61 +1223,69 @@ void PredationGame::RegisterCommands()
 
     console.RegisterCommand(
         "sound_bake",
-        "Write every sound recipe out as a wav in Assets/Audio, for replacing by hand",
-        [this](const std::vector<std::string>&)
+        "Render the placeholder sound library (Assets/Data/sound_design.json) into wavs in Assets/Audio: sound_bake [name]",
+        [this](const std::vector<std::string>& args)
         {
-            // Turns the generated sounds into files somebody can replace.
+            // Turns the designed sounds into files somebody can replace.
             //
-            // A recipe in a JSON file is a fine placeholder while there is nobody to record
-            // anything and a dead end the moment there is: it cannot be opened in an editor, sent
-            // to anybody, or swapped without learning what `bite` means. This writes each one into
-            // the folder the game already prefers recordings from, so replacing a sound is dropping
-            // a file on top of another file.
+            // Nothing in the game reads the design: it plays wavs. This renders each sound into the
+            // folder the game loads it from, several takes of each so nothing repeats, and replacing
+            // one is dropping a recording on top. Only files named <sound>_<take>.wav are touched, so
+            // a recording somebody has put in the folder under any other name is left alone.
             //
-            // A command rather than a build step because it is run when the recipes change, which
-            // is rarely, and baking on every build would rewrite twelve files nobody asked about.
+            // A command rather than a build step because it is run when the design changes, which is
+            // rarely, and baking on every build would rewrite a hundred files nobody asked about.
             Console& out = m_app->GetConsole();
-            const std::filesystem::path recipes = Paths::AssetsRoot() / "Data" / "sounds.json";
-            std::ifstream file(recipes);
+            const std::filesystem::path design = Paths::AssetsRoot() / "Data" / "sound_design.json";
+            std::ifstream file(design);
             if (!file)
             {
-                out.PrintError("No " + recipes.string());
+                out.PrintError("No " + design.string());
                 return;
             }
-            const std::string text((std::istreambuf_iterator<char>(file)),
-                                   std::istreambuf_iterator<char>());
-            const std::vector<SoundLibraryEntry> entries = LoadSoundRecipes(text);
-            if (entries.empty())
+            const std::string text((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+            std::vector<std::string> problems;
+            const std::vector<SoundPatch> patches = LoadSoundPatches(text, &problems);
+            for (const std::string& problem : problems)
             {
-                out.PrintError("No recipes in " + recipes.filename().string());
-                return;
+                out.PrintError(design.filename().string() + ": " + problem);
             }
+            const std::string only = args.size() >= 2 ? args[1] : std::string();
 
-            int written = 0;
-            for (const SoundLibraryEntry& entry : entries)
+            int sounds = 0;
+            int takes = 0;
+            for (const SoundPatch& patch : patches)
             {
-                const SoundData data = Synthesise(entry.recipe, 48000);
-                const std::vector<uint8_t> bytes = SaveWav(data);
-                const std::filesystem::path folder = Paths::AssetsRoot() / "Audio" / entry.name;
-                std::error_code ec;
-                std::filesystem::create_directories(folder, ec);
-                // Named for the sound and numbered, because the loader takes every wav in the
-                // folder as a variant and picks between them. One now; drop in _2 and _3 and the
-                // game alternates without being told.
-                const std::filesystem::path target = folder / (entry.name + "_1.wav");
-                std::ofstream wav(target, std::ios::binary | std::ios::trunc);
-                if (!wav)
+                if (!only.empty() && patch.name != only)
                 {
-                    out.PrintError("Could not write " + target.string());
                     continue;
                 }
-                wav.write(reinterpret_cast<const char*>(bytes.data()),
-                          static_cast<std::streamsize>(bytes.size()));
-                ++written;
+                const std::filesystem::path folder = Paths::AssetsRoot() / "Audio" / patch.name;
+                std::error_code ec;
+                std::filesystem::create_directories(folder, ec);
+                for (int take = 0; take < 12; ++take)
+                {
+                    const std::filesystem::path target = folder / (patch.name + "_" + std::to_string(take + 1) + ".wav");
+                    if (take >= patch.variants)
+                    {
+                        // A take the design no longer asks for, from a bake when it asked for more.
+                        std::filesystem::remove(target, ec);
+                        continue;
+                    }
+                    const std::vector<uint8_t> bytes = SaveWav(RenderPatch(patch, take, 48000));
+                    std::ofstream wav(target, std::ios::binary | std::ios::trunc);
+                    if (!wav)
+                    {
+                        out.PrintError("Could not write " + target.string());
+                        continue;
+                    }
+                    wav.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+                    ++takes;
+                }
+                ++sounds;
             }
-            char buffer[160];
-            std::snprintf(buffer, sizeof(buffer), "%d sound(s) written to Assets/Audio", written);
-            out.Print(buffer);
+            out.Print(std::to_string(sounds) + " sound(s), " + std::to_string(takes) +
+                      " take(s) written to Assets/Audio. They are loaded at the next start.");
         });
 
     console.RegisterCommand(
@@ -1492,6 +1502,10 @@ bool PredationGame::PerformInteraction(InteractionKind kind, int index, uint8_t 
     {
         if (!m_world.ToggleDoor(index, m_interactions))
         {
+            if (const WorldObjects::Door* locked = m_world.GetDoor(index); locked != nullptr && locked->locked)
+            {
+                ShareSound("door_locked", locked->hinge + glm::vec3(0.0f, 1.0f, 0.0f), 0.8f);
+            }
             return false;
         }
         // Heard by whoever did it, which is where every interaction sound in this function was
@@ -1772,10 +1786,12 @@ void PredationGame::ServeClientRequests()
         tracer.normal = SurfaceNormalAt(m_app->GetPhysics(), tracer.origin, tracer.to, &tracer.body);
         AnchorTracer(tracer);
         m_tracers.push_back(tracer);
+        PlayImpact(tracer);
         // And heard. Every other machine plays this when the event reaches it, but the host is not
         // sent its own broadcast, and so for as long as there has been multiplayer the host has
         // watched other people fire in silence.
         PlaySound(GunshotFor(definition).Pick(), event.position, 1.0f, 1.0f, true);
+        QueueSound(0.4f, "shell_casing", PlayerPosition(request.player) + glm::vec3(0.0f, 0.05f, 0.0f), 0.4f);
 
         // The host draws the shooter too, so their weapon has to kick here as well. The event goes
         // out to everybody else; nobody sends it back to the machine that made it.
@@ -2087,9 +2103,11 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
             tracer.normal = SurfaceNormalAt(m_app->GetPhysics(), tracer.origin, tracer.to, &tracer.body);
             AnchorTracer(tracer);
             m_tracers.push_back(tracer);
+            PlayImpact(tracer);
             // And it is heard where it was fired from, which is most of what tells a player there
             // is somebody else in the building and roughly where.
             PlaySound(GunshotFor(WeaponHeldBy(event.player)).Pick(), event.position, 1.0f, 1.0f, true);
+            QueueSound(0.4f, "shell_casing", PlayerPosition(event.player) + glm::vec3(0.0f, 0.05f, 0.0f), 0.4f);
 
             // And their weapon kicks and flashes. A snapshot cannot carry this: firing happens on
             // one frame and snapshots go out on others, so the moment would be missed most times.
@@ -2109,6 +2127,10 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
             m_player.State().health = std::max(m_player.State().health - event.amount, 0.0f);
             PlaySound(m_sounds.hurt.Pick(), m_player.State().position, 0.8f, 1.0f, false);
         }
+        else
+        {
+            PlayerSound(event.player, "hurt", 0.8f);
+        }
         break;
 
     case WorldEventKind::PlayerDied:
@@ -2119,6 +2141,10 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
             m_respawnTimer = event.amount;
             m_deathImpulse = event.direction;
             PlaySound(m_sounds.death.Pick(), m_player.State().position, 1.0f, 1.0f, false);
+        }
+        else
+        {
+            PlayerSound(event.player, "death", 1.0f);
         }
         break;
 
@@ -2132,6 +2158,10 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
         {
             RespawnLocalPlayer(event.position);
         }
+        break;
+
+    case WorldEventKind::Sound:
+        HearSharedSound(event);
         break;
 
     case WorldEventKind::Count:
@@ -2580,6 +2610,12 @@ void PredationGame::ApplyPlayerDamage(uint8_t player, float amount, uint8_t kill
         event.amount = amount;
         m_host.Broadcast(event);
     }
+    // Heard here. Everybody else hears it from the event; this machine is not sent its own, which is
+    // why a host, or anybody playing alone, never heard themselves or anybody else being hurt.
+    if (remaining > 0.0f)
+    {
+        PlayerSound(player, "hurt", 0.8f);
+    }
 
     if (remaining <= 0.0f)
     {
@@ -2610,6 +2646,10 @@ void PredationGame::KillPlayer(uint8_t player, const glm::vec3& direction)
     {
         // The host runs the clock for everybody, because the host is what decides they are dead.
         m_remoteRespawnTimers[player] = cv_respawnSeconds.Get();
+    }
+    if (m_sessionMode != SessionMode::Client)
+    {
+        PlayerSound(player, "death", 1.0f);
     }
     PRED_LOG_INFO(Gameplay, "Player {} died", player);
 }
@@ -5220,10 +5260,12 @@ void PredationGame::UpdateSounds(float dt)
         }
     }
 
+    UpdateAmbience(dt);
     if (m_screen != Screen::Playing)
     {
         return;
     }
+    UpdateWorldSounds(dt);
 
     // Footsteps, from the stride the body is already walking to.
     //
@@ -6512,6 +6554,9 @@ void PredationGame::ResolveShots()
     for (size_t i = 0; i < m_shots.size(); ++i)
     {
         PlaySound(GunshotFor(EquippedWeapon()).Pick(), MuzzlePosition(), 0.85f, 1.0f, false);
+        // And the brass, a moment later, at your feet.
+        QueueSound(0.35f + 0.3f * static_cast<float>(std::rand()) / static_cast<float>(RAND_MAX), "shell_casing",
+                   m_player.State().position + glm::vec3(0.35f, 0.05f, 0.0f), 0.35f);
     }
 
     for (const FireEvent& shot : m_shots)
@@ -6549,6 +6594,7 @@ void PredationGame::ResolveShots()
             tracer.normal = predicted.normal;
             AnchorTracer(tracer);
             m_tracers.push_back(tracer);
+            PlayImpact(tracer);
             continue;
         }
 
@@ -6566,6 +6612,7 @@ void PredationGame::ResolveShots()
         tracer.normal = result.normal;
         AnchorTracer(tracer);
         m_tracers.push_back(tracer);
+        PlayImpact(tracer);
 
         if (m_sessionMode == SessionMode::Host)
         {
@@ -7622,6 +7669,14 @@ void PredationGame::OnFixedUpdate(double fixedDt)
                         m_shots);
     }
 
+    // A click, and nothing: the trigger pulled with no rounds in it and none to put in.
+    if (weaponInput.trigger && !m_dryTriggerWas && EquippedWeapon() != nullptr && m_weapon.rounds <= 0 &&
+        m_weapon.reserve <= 0 && !m_weapon.IsReloading())
+    {
+        PlayNamed("dry_fire", MuzzlePosition(), 0.6f, 1.0f, false);
+    }
+    m_dryTriggerWas = weaponInput.trigger;
+
     // Whatever the weapon just kicked goes into the player's own aim, where it stays for them to
     // pull back down. Straight after the step, so the same tick that fires is the tick that moves.
     ApplyRecoilToView();
@@ -7945,8 +8000,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
         if (input.WasActionPressed("flashlight"))
         {
             m_torchOn = !m_torchOn;
-            PlaySound((m_torchOn ? m_sounds.pickup : m_sounds.drop).Pick(), m_player.State().position, 0.25f,
-                      m_torchOn ? 1.6f : 1.4f, false);
+            PlayNamed(m_torchOn ? "torch_on" : "torch_off", m_player.State().position, 0.45f, 1.0f, false);
         }
 #if PRED_DEV_TOOLS
         if (input.WasActionPressed("respawn"))
@@ -9652,6 +9706,7 @@ void PredationGame::OnImGui()
         return;
     }
 
+    MenuSounds();
     if (m_screen == Screen::Title)
     {
         DrawTitleScreen();

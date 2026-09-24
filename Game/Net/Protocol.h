@@ -24,7 +24,7 @@ namespace pred
 
 // Bumped whenever the wire changes shape. Two ends that disagree are refused at the door rather
 // than left to misread each other, which is what a wire mismatch actually looks like from inside.
-inline constexpr uint16_t kProtocolVersion = 9;
+inline constexpr uint16_t kProtocolVersion = 10;
 // How many bits name a message type. Five, so there is room to add one.
 inline constexpr uint32_t kMessageTypeBits = 5;
 inline constexpr uint8_t kMaxPlayers = 4;
@@ -97,6 +97,7 @@ enum class WorldEventKind : uint8_t
     PlayerDied,      // with the direction of the blow, for the ragdoll
     PlayerRespawned,
     NestBuilt,       // a creature has finished building a nest somewhere
+    Sound,           // a sound somewhere, by the key of its name, for what nothing else carries
     Count
 };
 
@@ -243,6 +244,9 @@ struct CreatureSnapshot
     // Lying as if dead while alive -- playing it. Drawn exactly as a death.
     bool down = false;
     float crouch = 0.0f;       // 0 to 1, how low it is creeping
+    // What it has in mind, as the brain's Behavior. Only the host has a brain that runs; everybody else
+    // needs this to make the sounds that go with it -- a growl while it hunts, a chitter while it looks.
+    uint8_t behavior = 0;
     // What it is doing with its limbs and head: a blow, a grab, carrying somebody, a call, a door. Which,
     // how far through, which arm, and aimed where. Sent only when it is doing one.
     uint8_t action = 0;

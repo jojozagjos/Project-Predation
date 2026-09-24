@@ -483,6 +483,12 @@ void WriteWorldEvent(BitWriter& writer, const WorldEventMessage& message)
         WritePosition(writer, message.position);
         break;
 
+    case WorldEventKind::Sound:
+        writer.WriteBits(message.item, 16);
+        writer.WriteQuantised(message.amount, 0.0f, 2.0f, 6);
+        WritePosition(writer, message.position);
+        break;
+
     case WorldEventKind::Count:
         break;
     }
@@ -560,6 +566,12 @@ bool ReadWorldEvent(BitReader& reader, WorldEventMessage& out)
     case WorldEventKind::NestBuilt:
         out.index = static_cast<uint8_t>(reader.ReadBits(4));
         out.item = static_cast<uint16_t>(reader.ReadBits(16));
+        out.position = ReadPosition(reader);
+        break;
+
+    case WorldEventKind::Sound:
+        out.item = static_cast<uint16_t>(reader.ReadBits(16));
+        out.amount = reader.ReadQuantised(0.0f, 2.0f, 6);
         out.position = ReadPosition(reader);
         break;
 
@@ -753,6 +765,7 @@ void WriteCreatureState(BitWriter& writer, const CreatureStateMessage& message)
         writer.WriteBool(creature.alive);
         writer.WriteBool(creature.down);
         writer.WriteQuantised(creature.crouch, 0.0f, 1.0f, 3);
+        writer.WriteBits(creature.behavior, 4);
         writer.WriteBits(creature.action, 3);
         if (creature.action != 0)
         {
@@ -791,6 +804,7 @@ bool ReadCreatureState(BitReader& reader, CreatureStateMessage& out)
         creature.alive = reader.ReadBool();
         creature.down = reader.ReadBool();
         creature.crouch = reader.ReadQuantised(0.0f, 1.0f, 3);
+        creature.behavior = static_cast<uint8_t>(reader.ReadBits(4));
         creature.action = static_cast<uint8_t>(reader.ReadBits(3));
         if (creature.action != 0)
         {

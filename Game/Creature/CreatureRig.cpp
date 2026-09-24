@@ -236,6 +236,11 @@ void CreatureRig::PlaceFeet(const RigInput& input, float legScale)
             {
                 foot.stepping = false;
                 foot.planted = foot.to;
+                // Kept for whoever listens, and only so many: nothing asks in a test.
+                if (m_footfalls.size() < 16)
+                {
+                    m_footfalls.push_back(foot.to);
+                }
                 foot.yaw = foot.toYaw;
                 --steppingGroup[foot.group];
             }

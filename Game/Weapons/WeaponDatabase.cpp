@@ -158,6 +158,34 @@ bool WeaponDatabase::LoadFromFile(const std::filesystem::path& file)
         ReadField(node, "aim_speed_scale", definition.aimSpeedScale);
         ReadField(node, "muzzle_forward", definition.muzzleForward);
 
+        // The reload's sounds, each at a fraction of the way through it.
+        const auto readCues = [&](const char* field, std::vector<WeaponSoundCue>& cues)
+        {
+            if (const auto it = node.find(field); it != node.end() && it->is_array())
+            {
+                for (const auto& cue : *it)
+                {
+                    WeaponSoundCue read;
+                    ReadField(cue, "at", read.at);
+                    ReadField(cue, "sound", read.sound);
+                    if (!read.sound.empty())
+                    {
+                        cues.push_back(read);
+                    }
+                }
+            }
+        };
+        readCues("reload_sounds", definition.reloadSounds);
+        readCues("reload_empty_sounds", definition.reloadEmptySounds);
+        if (definition.reloadSounds.empty())
+        {
+            definition.reloadSounds = {{0.18f, "reload_out"}, {0.72f, "reload_in"}};
+        }
+        if (definition.reloadEmptySounds.empty())
+        {
+            definition.reloadEmptySounds = {{0.16f, "reload_out"}, {0.62f, "reload_in"}, {0.84f, "slide_rack"}};
+        }
+
         if (const auto it = node.find("size"); it != node.end())
         {
             definition.size = ReadVec3(*it, definition.size);

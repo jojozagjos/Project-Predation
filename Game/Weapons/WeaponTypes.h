@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace pred
 {
@@ -22,6 +23,15 @@ const char* FireModeName(FireMode mode);
 FireMode FireModeFromString(const std::string& name);
 
 // A weapon's tuning, loaded from weapons.json. Nothing here changes at runtime.
+// A sound at a moment in a reload: the magazine coming out, going in, the slide going forward. `at` is
+// a fraction of the reload, so the same cue lands in the same place of the movement however long the
+// reload is.
+struct WeaponSoundCue
+{
+    float at = 0.0f;
+    std::string sound; // a folder in Assets/Audio
+};
+
 struct WeaponDefinition
 {
     WeaponId id = kInvalidWeapon;
@@ -46,6 +56,14 @@ struct WeaponDefinition
     float ReloadSecondsFrom(bool empty) const
     {
         return empty && reloadEmptySeconds > 0.0f ? reloadEmptySeconds : reloadSeconds;
+    }
+    // What is heard during each reload, from "reload_sounds" and "reload_empty_sounds". A weapon that
+    // names none gets the magazine out near the start and in near the end, and a slide after an empty one.
+    std::vector<WeaponSoundCue> reloadSounds;
+    std::vector<WeaponSoundCue> reloadEmptySounds;
+    const std::vector<WeaponSoundCue>& ReloadSoundsFrom(bool empty) const
+    {
+        return empty && !reloadEmptySounds.empty() ? reloadEmptySounds : reloadSounds;
     }
 
     float damage = 24.0f;

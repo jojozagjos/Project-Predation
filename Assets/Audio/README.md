@@ -29,26 +29,79 @@ the point being that somebody who does not build the game can still change its a
 
 ## Regenerating the placeholders
 
-`sounds.json` and the synthesiser are still in the engine, reached only by the `sound_bake` console
-command. Run it and every recipe is written back out as `<name>/<name>_1.wav`, overwriting what is
-there. That is the only thing that still reads those recipes; the game itself never does.
+The placeholders are designed in `Assets/Data/sound_design.json`: each sound is a few layers -- noise,
+a tone, a voice, a click -- each with its own envelope, pitch that moves, filter that moves, and
+repeats, summed and given a room. `sound_bake` in the console renders every one into
+`<name>/<name>_<take>.wav`, three or four takes each so nothing repeats; `sound_bake <name>` does one.
+Only files named that way are overwritten, so a recording dropped in under any other name survives a
+bake. The game never reads the design, only the files. See `Engine/Audio/SoundDesign.h` for every field.
 
 ## What goes where
 
-| Folder      | When it plays                                          |
-|-------------|--------------------------------------------------------|
-| `gunshot`   | A round leaves the barrel                              |
-| `dry_fire`  | The trigger is pulled on an empty weapon               |
-| `reload_out`| The magazine leaves the weapon                         |
-| `reload_in` | The fresh magazine seats                               |
-| `step_hard` | A footstep, where the surface has no clips of its own  |
-| `land`      | Landing from a fall, louder the harder the landing     |
-| `door`      | A door swings                                          |
-| `locker`    | Somebody gets into or out of a locker                  |
-| `pickup`    | An item is taken                                       |
-| `drop`      | An item is put down                                    |
-| `hurt`      | The player takes damage                                |
-| `death`     | The player dies                                        |
+Every folder is a sound, by its name. The game plays a different file from the folder each time.
+
+**Weapons**
+
+| Folder | When it plays |
+|---|---|
+| `gunshot_sidearm`, `gunshot_carbine` | A round leaves that weapon: `gunshot_<weapon key>` from `weapons.json` |
+| `gunshot` | A round leaves a weapon with no folder of its own |
+| `dry_fire` | The trigger pulled with nothing in the magazine and nothing to reload |
+| `reload_out`, `reload_in`, `slide_rack` | Through a reload, at the moments `reload_sounds` in `weapons.json` names |
+| `weapon_draw`, `weapon_holster` | A weapon brought up, or put away |
+| `shell_casing` | The brass hitting the floor, a moment after each shot |
+| `impact_hard`, `impact_flesh` | Where a round lands: on something solid, or in something alive |
+
+**Players**
+
+| Folder | When it plays |
+|---|---|
+| `step_hard` | A footstep, where the surface has no clips of its own |
+| `jump`, `land` | Leaving the ground on purpose, and hitting it again from a height |
+| `hurt`, `death` | Anybody taking damage, and dying: in your own head when it is you |
+| `breath_exhausted` | Out of breath after running until there is nothing left |
+| `struggle` | Fighting a creature's grip |
+| `torch_on`, `torch_off` | The torch switched |
+
+**The world**
+
+| Folder | When it plays |
+|---|---|
+| `door`, `door_locked` | A door swings; a locked one is tried |
+| `door_bash`, `door_slam` | A creature throwing itself at a locked door, and the door giving way |
+| `locker` | Somebody gets into or out of a locker |
+| `pickup`, `drop` | An item taken, or put down |
+| `crate_open`, `ammo_take`, `crate_close` | An ammunition crate opened and drawn from, and its lid falling shut |
+| `nest_build`, `cocoon_wrap`, `cocoon_cut` | A nest finished; somebody wrapped up at one; somebody cut free |
+
+**The creature**
+
+| Folder | When it plays |
+|---|---|
+| `creature_step_light`, `creature_step_heavy` | Each foot as it comes down, heavy for anything over 170 kg |
+| `creature_breath` | Every few seconds while alive and not playing dead; quicker after running |
+| `creature_growl` | Now and then while it means somebody harm |
+| `creature_chitter` | Now and then while it is looking into something, or wandering |
+| `creature_call` | Rearing up to call the others |
+| `creature_display` | Rearing up to warn somebody off its ground |
+| `creature_swipe`, `creature_bite`, `creature_lunge`, `creature_grab` | Each blow, as it starts |
+| `creature_hurt`, `creature_death` | Wounded, and killed |
+
+A small creature is played higher and a large one lower, from the same files.
+
+**The building**
+
+| Folder | When it plays |
+|---|---|
+| `amb_room_tone`, `amb_vent` | Always, looped, under everything (`audio.ambience` sets how loud) |
+| `amb_groan`, `amb_distant_bang`, `amb_drip` | Every twenty to fifty seconds, somewhere out of sight |
+| `amb_electric` | A failing light's buzz. Made, and not yet placed anywhere: it waits for lights that fail |
+
+**Menus**
+
+| Folder | When it plays |
+|---|---|
+| `ui_hover`, `ui_click`, `ui_back`, `ui_confirm` | The front end |
 
 Footsteps are the exception and already work this way: `Assets/Audio/Footsteps/` holds a set per
 surface, listed in `Assets/Data/footsteps.json`, because which surface is underfoot decides which

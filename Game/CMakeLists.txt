@@ -2,6 +2,7 @@ set(PRED_GAME_SOURCES
     PredationGame.h
     PredationGame.cpp
     PredationGameCreatures.cpp
+    PredationGameSounds.cpp
 
     Player/PlayerTypes.h
     Player/PlayerConfig.cpp

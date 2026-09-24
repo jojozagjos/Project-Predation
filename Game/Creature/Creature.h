@@ -90,6 +90,7 @@ public:
     const CreatureCapabilities& Capabilities() const { return m_caps; }
     const CreatureSkin& Skin() const { return *m_skin; }
     const CreatureRig& Rig() const { return m_rig; }
+    std::vector<glm::vec3> TakeFootfalls() { return m_rig.TakeFootfalls(); }
     bool Ragdolled() const { return m_ragdoll.Active(); }
     // Where a bone is in the world right now, drawn or lying.
     glm::mat4 BoneWorld(int bone) const;
@@ -114,6 +115,9 @@ public:
                        bool down = false, float crouch = 0.0f);
     // And what it is doing with its limbs and head, and whether it is in the air.
     void SetShownAction(const Action& action, float airborne, bool look, const glm::vec3& lookAt);
+    // What it has in mind: the brain's own answer where the brain runs, the host's where it is only shown.
+    Behavior Doing() const { return m_hasReceived ? m_shownBehavior : m_brain.Current(); }
+    void SetShownBehavior(Behavior behavior) { m_shownBehavior = behavior; }
 
     // Lying as if dead -- really dead, or playing it. The two look the same from outside, which is
     // the point of playing it.
@@ -219,6 +223,7 @@ private:
     float m_receivedAge = 0.0f;
     bool m_hasReceived = false;
     bool m_followedOnce = false;
+    Behavior m_shownBehavior = Behavior::Roam;
 
     // What the players bump into: a box round the torso. Rounds find the bones' capsules instead, which
     // stand out of it wherever there is a limb or a head.

@@ -796,6 +796,7 @@ TEST_CASE("Creatures are sent as state: what they are, where, and what their bod
         c.alive = i != 5;
         c.down = i == 3; // lying there, alive: playing dead
         c.crouch = (i % 2) == 0 ? 1.0f : 0.0f;
+        c.behavior = static_cast<uint8_t>(i % 13); // Roam to Warn
     }
     // A body that has turned round twice and a bit: the yaw is not bounded, and has to arrive as the
     // direction it faces rather than clamped to the end of the range.
@@ -804,7 +805,7 @@ TEST_CASE("Creatures are sent as state: what they are, where, and what their bod
     BitWriter writer;
     WriteCreatureState(writer, sent);
     const std::vector<uint8_t>& bytes = writer.Finish();
-    // Eight creatures in 150 bytes -- 147 bits each, ten of them what the body is doing when it is doing
+    // Eight creatures in 154 bytes -- 151 bits each, fourteen of them what the body is doing when it is doing
     // nothing in particular -- thirty times a second, is about 4.5 KB/s per client: about the players' own
     // snapshots. A creature mid-blow, looking at somebody, costs about a hundred bits more.
     CHECK(bytes.size() <= 155);
@@ -828,6 +829,7 @@ TEST_CASE("Creatures are sent as state: what they are, where, and what their bod
         CHECK(b.alive == a.alive);
         CHECK(b.down == a.down);
         CHECK(b.crouch == Catch::Approx(a.crouch).margin(0.08));
+        CHECK(b.behavior == a.behavior);
     }
     for (uint8_t i = 0; i < 7; ++i)
     {
@@ -1169,4 +1171,32 @@ TEST_CASE("What a creature is doing, and who it has hold of, go across with it",
     CHECK_FALSE(got.players[0].cocooned);
     CHECK(got.players[1].heldBy == 3);
     CHECK(got.players[1].cocooned);
+}
+
+TEST_CASE("A sound the host shares arrives by the key of its name, where it was made", "[net][protocol][audio]")
+{
+    // For the sounds nothing else carries -- a locked door rattled, a door being broken down, somebody
+    // struggling in a grip. The name travels as a sixteen-bit key rather than an index into a list, so
+    // two machines whose Assets/Audio differ by a folder still agree about every other sound.
+    WorldEventMessage sent;
+    sent.kind = WorldEventKind::Sound;
+    sent.item = 0xBEEF;
+    sent.amount = 0.8f;
+    sent.position = {12.5f, 1.0f, -40.25f};
+
+    BitWriter writer;
+    WriteMessageHeader(writer, MessageType::WorldEvent);
+    WriteWorldEvent(writer, sent);
+    const std::vector<uint8_t>& bytes = writer.Finish();
+    CHECK(bytes.size() <= 16);
+
+    BitReader reader(bytes.data(), bytes.size());
+    MessageType type = MessageType::Count;
+    REQUIRE(ReadMessageHeader(reader, type));
+    WorldEventMessage received;
+    REQUIRE(ReadWorldEvent(reader, received));
+    CHECK(received.kind == WorldEventKind::Sound);
+    CHECK(received.item == 0xBEEF);
+    CHECK(received.amount == Catch::Approx(0.8f).margin(0.02));
+    CHECK(glm::distance(received.position, sent.position) < 0.01f);
 }

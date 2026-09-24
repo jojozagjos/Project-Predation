@@ -1357,15 +1357,15 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
     // Aiming is exempt, as everywhere else: sighted, the weapon has to lie on the view axis.
     float holdPitch = holdPitchRaw * glm::mix(m_config.weaponCarryRise, 1.0f, aim);
     {
-        const float knee = glm::radians(m_config.weaponHoldPitchKnee);
+        const float holdKnee = glm::radians(m_config.weaponHoldPitchKnee);
         // The cap is above the knee by construction: easing towards something below where the ease
         // starts has no room to work in and collapses to a hard stop at the knee.
         const float cap = glm::radians(std::max(m_config.weaponHoldPitchMaxUp,
                                                 m_config.weaponHoldPitchKnee + 1.0f));
-        if (holdPitch > knee)
+        if (holdPitch > holdKnee)
         {
-            const float room = std::max(cap - knee, 1e-4f);
-            const float eased = knee + room * (1.0f - std::exp(-(holdPitch - knee) / room));
+            const float room = std::max(cap - holdKnee, 1e-4f);
+            const float eased = holdKnee + room * (1.0f - std::exp(-(holdPitch - holdKnee) / room));
             holdPitch = glm::mix(eased, holdPitch, aim);
         }
     }

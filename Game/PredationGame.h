@@ -153,6 +153,7 @@ private:
         uint8_t creature = 0;
         float struggle = 0.0f;
         bool jumpWasDown = false;
+        float struggleHeardAt = -10.0f;
     };
     std::map<uint8_t, Grip> m_grips;
     // Until when each player cannot be grabbed again, having just got free of something.
@@ -504,6 +505,24 @@ private:
     // Puts what is in the hands away for a climb and takes it back out at the top.
     // Footsteps, landings and where the ears are. Called once a frame.
     void UpdateSounds(float dt);
+
+    // --- The sounds of things happening (PredationGameSounds.cpp) -------------------------------------
+    static uint16_t SoundKey(const std::string& name);
+    void PlayNamed(const std::string& name, const glm::vec3& at, float gain = 1.0f, float pitch = 1.0f,
+                   bool positioned = true);
+    // Heard here and, when hosting, by everybody else: for the sounds nothing else already carries.
+    void ShareSound(const std::string& name, const glm::vec3& at, float gain = 1.0f);
+    void HearSharedSound(const WorldEventMessage& event);
+    // A sound from a player: in your own head when it is yours, from their body when it is not.
+    void PlayerSound(uint8_t player, const std::string& name, float gain);
+    void QueueSound(float delay, const std::string& name, const glm::vec3& at, float gain, bool positioned = true);
+    void PlayReloadCues(const WeaponDefinition* weapon, bool empty, float from, float to, const glm::vec3& at,
+                        bool positioned, float gain, int player);
+    void UpdateWorldSounds(float dt);
+    void UpdateCreatureSounds(float dt);
+    void UpdateAmbience(float dt);
+    // The front end's small sounds: the pointer finding a button, a press, a menu opening and closing.
+    void MenuSounds();
     void PlaySound(SoundId sound, const glm::vec3& at, float gain = 1.0f, float pitch = 1.0f,
                    bool positioned = true);
     // Reads Data/footsteps.json and the clips it names. Missing or broken leaves the synthesised
@@ -598,6 +617,8 @@ private:
     // Called as a tracer is made, before anything has had a chance to shove the body.
     void AnchorTracer(Tracer& tracer) const;
     std::vector<Tracer> m_tracers;
+    // Heard where a round landed: stone and steel, or flesh.
+    void PlayImpact(const Tracer& tracer);
 
     // Bullet holes, as a ring of entities that are moved rather than created and destroyed.
     //
@@ -895,6 +916,58 @@ private:
     SoundSet m_sounds;
     // Every other folder in Assets/Audio, by its name.
     std::map<std::string, SoundVariants> m_soundBank;
+    // The same names by the key a Sound event carries.
+    std::map<uint16_t, std::string> m_soundKeys;
+    struct QueuedSound
+    {
+        float at = 0.0f;
+        std::string name;
+        glm::vec3 position{0.0f};
+        float gain = 1.0f;
+        bool positioned = true;
+    };
+    std::vector<QueuedSound> m_queuedSounds;
+    float m_soundClock = 0.0f;
+    // What each other player was doing last frame, so the sounds of it changing can be made here.
+    struct HeardPlayer
+    {
+        bool known = false;
+        bool reloading = false;
+        float reload = 0.0f;
+        uint8_t held = 0;
+        bool torch = false;
+        bool grounded = true;
+        float fall = 0.0f;
+    };
+    std::map<uint8_t, HeardPlayer> m_heardPlayers;
+    // And the same for this player's own hands and lungs.
+    WeaponId m_soundWeapon = kInvalidWeapon;
+    bool m_soundReloading = false;
+    float m_soundReload = 0.0f;
+    bool m_soundGrounded = true;
+    bool m_exhausted = false;
+    float m_breathAt = 0.0f;
+    bool m_dryTriggerWas = false;
+    // Each creature as it was last heard: what its body was doing, how hurt, and when it next breathes.
+    struct HeardCreature
+    {
+        bool known = false;
+        RigAction action = RigAction::None;
+        float health = 1.0f;
+        bool alive = true;
+        float breathAt = 0.0f;
+        float voiceAt = 0.0f;
+        float hurtAt = -10.0f;
+    };
+    std::map<uint8_t, HeardCreature> m_heardCreatures;
+    std::vector<float> m_crateLids;
+    VoiceId m_ambienceTone = kInvalidVoice;
+    VoiceId m_ambienceVent = kInvalidVoice;
+    float m_ambienceClock = 0.0f;
+    float m_ambienceNext = 25.0f;
+    unsigned int m_menuHovered = 0;
+    bool m_menuWasPaused = false;
+    int m_menuWasScreen = -1;
 
     // Recorded footsteps, one group of clips per surface.
     //

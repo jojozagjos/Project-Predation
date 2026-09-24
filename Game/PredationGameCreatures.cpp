@@ -733,6 +733,7 @@ void PredationGame::SendCreatureState()
         // draws both the same, and that is the trick.
         entry.down = creature->Down() && creature->Alive();
         entry.crouch = creature->Crouch();
+        entry.behavior = static_cast<uint8_t>(creature->Brain().Current());
         const Creature::Action& action = creature->CurrentAction();
         entry.action = static_cast<uint8_t>(action.kind);
         entry.actionPhase = action.phase;
@@ -795,6 +796,8 @@ void PredationGame::ApplyCreatureState(const CreatureStateMessage& state)
         action.side = shown.actionSide;
         action.target = shown.actionTarget;
         creature->SetShownAction(action, shown.airborne, shown.look, shown.lookAt);
+        creature->SetShownBehavior(shown.behavior <= static_cast<uint8_t>(Behavior::Warn) ? static_cast<Behavior>(shown.behavior)
+                                                                                         : Behavior::Roam);
     }
 }
 
@@ -1790,7 +1793,7 @@ void PredationGame::BuildNest(const glm::vec3& at, uint16_t seed, uint8_t owner,
     nest.body = m_app->GetPhysics().CreateBox({kRadius * 0.75f, 0.9f, kRadius * 0.75f}, solid, BodyMotion::Static);
     m_nests.push_back(nest);
 
-    PlaySound(m_sounds.locker.Pick(), at + glm::vec3(0.0f, 1.0f, 0.0f), 1.0f, 0.5f);
+    PlayNamed("nest_build", at + glm::vec3(0.0f, 0.8f, 0.0f), 1.0f);
     PRED_LOG_INFO(AI, "Creature {} built a nest at {:.1f} {:.1f} {:.1f}", owner, at.x, at.y, at.z);
 
     if (announce)
@@ -2063,6 +2066,16 @@ void PredationGame::UpdateGrips(float dt)
         if (jump && !grip.jumpWasDown)
         {
             grip.struggle += 0.09f;
+            // Heard, now and then: a struggle is a noise.
+            if (m_soundClock - grip.struggleHeardAt > 0.45f)
+            {
+                grip.struggleHeardAt = m_soundClock;
+                glm::vec3 at;
+                if (PlayerPositionIfKnown(player, at))
+                {
+                    ShareSound("struggle", at + glm::vec3(0.0f, 1.4f, 0.0f), 0.8f);
+                }
+            }
         }
         grip.jumpWasDown = jump;
         grip.struggle = std::max(grip.struggle - 0.05f * dt, 0.0f);
@@ -2101,6 +2114,7 @@ void PredationGame::WrapInCocoon(uint8_t player, const Creature& creature)
     const float yaw = std::atan2(feet.x - nest.x, -(feet.z - nest.z));
     m_cocoons.push_back({player, feet, yaw, 0.0f});
     PinPlayer(player, creature.NetId(), true, feet, yaw);
+    ShareSound("cocoon_wrap", feet + glm::vec3(0.0f, 1.0f, 0.0f), 0.9f);
     PRED_LOG_INFO(AI, "Player {} wrapped up at the nest", player);
     if (player == LocalPlayerId())
     {
@@ -2157,7 +2171,7 @@ void PredationGame::FreeFromCocoon(uint8_t player, uint8_t helper)
     const Cocoon cocoon = *found;
     m_cocoons.erase(found);
     PinPlayer(player, kNotHeld, false, cocoon.feet + glm::vec3(0.0f, 0.1f, 0.0f), cocoon.yaw);
-    PlaySound(m_sounds.locker.Pick(), cocoon.feet + glm::vec3(0.0f, 1.0f, 0.0f), 0.8f, 0.6f);
+    ShareSound("cocoon_cut", cocoon.feet + glm::vec3(0.0f, 1.0f, 0.0f), 0.9f);
     MakeNoise(NoiseKind::Door, cocoon.feet, NoiseReach::kDoor, helper);
     PRED_LOG_INFO(AI, "Player {} cut free by player {}", player, helper);
 }
@@ -2268,7 +2282,8 @@ void PredationGame::BashDoor(int door, const Creature& creature)
     {
         return;
     }
-    PlaySound(m_sounds.door.Pick(), found->hinge + glm::vec3(0.0f, 1.0f, 0.0f), 1.0f, 0.55f);
+    // Heard by everybody, as it is heard through the building: that is the point of it.
+    ShareSound("door_bash", found->hinge + glm::vec3(0.0f, 1.0f, 0.0f), 1.0f);
     MakeNoise(NoiseKind::Door, found->hinge, NoiseReach::kDoor * 1.8f, kNoKiller);
     // Heavier things break it sooner.
     const int needed = std::clamp(static_cast<int>(6.0f - creature.Capabilities().mass / 60.0f), 2, 6);
@@ -2277,6 +2292,7 @@ void PredationGame::BashDoor(int door, const Creature& creature)
         found->locked = false;
         m_doorBlows.erase(door);
         PRED_LOG_INFO(AI, "Creature {} broke door {} open", creature.NetId(), door);
+        ShareSound("door_slam", found->hinge + glm::vec3(0.0f, 1.0f, 0.0f), 1.0f);
         PerformInteraction(InteractionKind::Door, door, kNoKiller);
     }
 }
