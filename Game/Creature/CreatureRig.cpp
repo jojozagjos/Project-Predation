@@ -161,7 +161,12 @@ void CreatureRig::Flinch(int bone, const glm::vec3& direction, float strength)
 void CreatureRig::PlaceFeet(const RigInput& input, float legScale)
 {
     const float dt = std::max(input.dt, 0.0f);
-    const glm::vec3 flatVelocity{input.velocity.x, 0.0f, input.velocity.z};
+    // Up, for the body: the world's up on the floor, out of the wall or down from the ceiling otherwise.
+    // Everything about feet -- how far one is from where it should be, how high a step lifts it -- is
+    // measured against this rather than against the world.
+    const glm::vec3 surfaceUp = input.surface * glm::vec3(0.0f, 1.0f, 0.0f);
+    const bool onFloor = surfaceUp.y > 0.95f;
+    const glm::vec3 flatVelocity = input.velocity - surfaceUp * glm::dot(input.velocity, surfaceUp);
     const float speed = glm::length(flatVelocity);
     const glm::mat4 rootInverse = glm::inverse(m_root);
     const glm::vec3 localVelocity = glm::vec3(rootInverse * glm::vec4(flatVelocity, 0.0f));
@@ -189,7 +194,18 @@ void CreatureRig::PlaceFeet(const RigInput& input, float legScale)
         Foot& foot = m_feet[i];
         const CreatureAnatomy::Leg& leg = m_rest.legs[i];
         glm::vec3 desired = Apply(m_root, glm::vec3(leg.foot.x, 0.0f, leg.foot.z) + lead);
-        if (input.ground)
+        if (!onFloor)
+        {
+            // On a wall or a ceiling: wherever that surface actually is under the foot, and otherwise
+            // the plane through its feet, which is where the root already put it.
+            glm::vec3 hit;
+            if (input.probe && input.probe(desired + surfaceUp * (m_anatomy->hipHeight + 0.3f), -surfaceUp,
+                                           m_anatomy->hipHeight * 2.5f + 0.6f, hit))
+            {
+                desired = hit;
+            }
+        }
+        else if (input.ground)
         {
             float height = 0.0f;
             if (input.ground(desired + glm::vec3(0.0f, m_anatomy->hipHeight + 0.3f, 0.0f), m_anatomy->hipHeight * 2.5f + 0.6f,
@@ -246,9 +262,12 @@ void CreatureRig::PlaceFeet(const RigInput& input, float legScale)
             }
             continue;
         }
-        const float distance = glm::length(glm::vec2(desired.x - foot.planted.x, desired.z - foot.planted.z));
+        glm::vec3 apart = desired - foot.planted;
+        const float heightApart = glm::dot(apart, surfaceUp);
+        apart -= surfaceUp * heightApart;
+        const float distance = glm::length(apart);
         const float twist = std::abs(Wrap(input.yaw - foot.yaw));
-        const bool wants = distance > threshold || twist > 0.55f || std::abs(desired.y - foot.planted.y) > legScale * 0.35f;
+        const bool wants = distance > threshold || twist > 0.55f || std::abs(heightApart) > legScale * 0.35f;
         const bool mustNow = distance > threshold * 2.4f || twist > 1.2f;
         const bool otherDown = steppingGroup[1 - foot.group] == 0;
         if ((wants && otherDown) || mustNow)
@@ -275,7 +294,8 @@ void CreatureRig::Update(const RigInput& input)
     const CreatureSkin& skin = *m_skin;
     const float dt = std::max(input.dt, 0.0f);
     const glm::vec3 up{0.0f, 1.0f, 0.0f};
-    m_root = glm::translate(glm::mat4(1.0f), input.position) * glm::mat4_cast(glm::angleAxis(-input.yaw, up));
+    const glm::vec3 surfaceUp = input.surface * up;
+    m_root = glm::translate(glm::mat4(1.0f), input.position) * glm::mat4_cast(input.surface * glm::angleAxis(-input.yaw, up));
     const glm::mat4 rootInverse = glm::inverse(m_root);
 
     float legScale = 0.0f;
@@ -284,7 +304,7 @@ void CreatureRig::Update(const RigInput& input)
         legScale += pair.upper + pair.lower;
     }
     legScale /= static_cast<float>(std::max<size_t>(a.legs.size(), 1));
-    const glm::vec3 flatVelocity{input.velocity.x, 0.0f, input.velocity.z};
+    const glm::vec3 flatVelocity = input.velocity - surfaceUp * glm::dot(input.velocity, surfaceUp);
     const float speed = glm::length(flatVelocity);
     const float pace = std::clamp(speed / 1.2f, 0.0f, 1.0f);
 
@@ -308,7 +328,7 @@ void CreatureRig::Update(const RigInput& input)
         {
             const float s = Smooth(foot.progress);
             const float lift = legScale * 0.13f + 0.02f + (a.legs.empty() ? 0.0f : 0.0f);
-            footWorld[i] = glm::mix(foot.from, foot.to, s) + glm::vec3(0.0f, lift * std::sin(glm::pi<float>() * std::clamp(foot.progress, 0.0f, 1.0f)), 0.0f);
+            footWorld[i] = glm::mix(foot.from, foot.to, s) + surfaceUp * (lift * std::sin(glm::pi<float>() * std::clamp(foot.progress, 0.0f, 1.0f)));
             footYaw[i] = foot.fromYaw + Wrap(foot.toYaw - foot.fromYaw) * s;
         }
         else
@@ -332,8 +352,8 @@ void CreatureRig::Update(const RigInput& input)
         {
             continue;
         }
-        const float height = (m_feet[i].stepping ? glm::mix(m_feet[i].from.y, m_feet[i].to.y, Smooth(m_feet[i].progress)) : footWorld[i].y) -
-                             input.position.y;
+        const glm::vec3 footAt = m_feet[i].stepping ? glm::mix(m_feet[i].from, m_feet[i].to, Smooth(m_feet[i].progress)) : footWorld[i];
+        const float height = glm::dot(footAt - input.position, surfaceUp);
         footHeight += height;
         ++counted;
         if (m_rest.legs[i].pair->along < 0.5f)
@@ -572,8 +592,12 @@ void CreatureRig::Update(const RigInput& input)
             const glm::vec3 along = m_tailPoints[k] - m_tailPoints[k - 1];
             const float have = glm::length(along);
             m_tailPoints[k] = m_tailPoints[k - 1] + (have > 1e-5f ? along / have : glm::normalize(target[k] - target[k - 1])) * length;
-            // Dragged on the floor rather than through it.
-            m_tailPoints[k].y = std::max(m_tailPoints[k].y, input.position.y + bone.radius * 0.8f);
+            // Dragged along whatever it is on rather than through it.
+            const float above = glm::dot(m_tailPoints[k] - input.position, surfaceUp);
+            if (above < bone.radius * 0.8f)
+            {
+                m_tailPoints[k] += surfaceUp * (bone.radius * 0.8f - above);
+            }
             if (glm::distance(m_tailPoints[k], target[k]) > a.tailLength * 1.5f)
             {
                 m_tailPoints[k] = target[k];

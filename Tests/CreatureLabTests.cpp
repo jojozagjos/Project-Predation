@@ -540,3 +540,53 @@ TEST_CASE("A patient creature that loses somebody through a door waits beside it
     INFO("its mind:" << MindOf(creature));
     CHECK(waited);
 }
+
+TEST_CASE("A creature that climbs goes up a pillar onto the ceiling, upside down, and drops back down",
+          "[creature][lab][climb]")
+{
+    Lab lab;
+    uint32_t seed = 0;
+    for (uint32_t candidate = 1; candidate < 600 && seed == 0; ++candidate)
+    {
+        if (CreatureCapabilities::From(CreatureAnatomy::FromSeed(candidate)).climbs)
+        {
+            seed = candidate;
+        }
+    }
+    REQUIRE(seed != 0);
+    // Among the pillars, under the pillar forest's roof, four and a half metres up.
+    const glm::vec3 start = lab.At(19.5f, -6.0f);
+    Creature creature(lab.scene, lab.meshes, lab.physics, &lab.nav, Hunter(seed), start);
+    creature.SetClimbOverride(1);
+    constexpr float dt = 1.0f / 60.0f;
+    float time = 0.0f;
+    bool wentUpAWall = false;
+    bool hung = false;
+    for (int tick = 0; tick < 60 * 6 && !hung; ++tick)
+    {
+        time += dt;
+        creature.Update(CreatureSenses{}, time, dt);
+        creature.UpdateVisual(dt);
+        wentUpAWall = wentUpAWall || creature.Clinging() == Creature::Cling::Wall;
+        // Settled on the ceiling: up there, upside down under it, planning from the floor, and seeing
+        // from under the ceiling rather than from the floor.
+        const glm::vec3 up = creature.Orientation() * glm::vec3(0.0f, 1.0f, 0.0f);
+        hung = creature.Clinging() == Creature::Cling::Ceiling && creature.Position().y > start.y + 4.0f && up.y < -0.9f &&
+               std::abs(creature.Anchor().y - start.y) < 0.3f && creature.Eye().y > start.y + 2.5f;
+    }
+    INFO("seed " << seed << ", at " << creature.Position().x << ", " << creature.Position().y << ", " << creature.Position().z);
+    CHECK(wentUpAWall);
+    REQUIRE(hung);
+
+    creature.SetClimbOverride(0);
+    for (int tick = 0; tick < 60 * 2; ++tick)
+    {
+        time += dt;
+        creature.Update(CreatureSenses{}, time, dt);
+        creature.UpdateVisual(dt);
+    }
+    CHECK(creature.Clinging() == Creature::Cling::Floor);
+    CHECK(std::abs(creature.Position().y - start.y) < 0.3f);
+    const glm::vec3 upright = creature.Orientation() * glm::vec3(0.0f, 1.0f, 0.0f);
+    CHECK(upright.y > 0.9f);
+}

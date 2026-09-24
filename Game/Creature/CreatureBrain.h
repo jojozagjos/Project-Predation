@@ -677,6 +677,8 @@ private:
     // When its nest was last attacked, and by whom: what brings it home whatever it was doing.
     float m_nestAttackedAt = -1.0e9f;
     int m_nestAttacker = -1;
+    // Letting go of the ceiling onto somebody, once: logged as it starts.
+    bool m_dropping = false;
 
     bool m_dead = false;
 };

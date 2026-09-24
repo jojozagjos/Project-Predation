@@ -703,7 +703,7 @@ void CreatureBrain::Perceive(const CreatureSenses& senses, float dt)
     // reads a face turned towards it, and a face it cannot see tells it nothing. And how far each
     // one is from the nearest other living player, because somebody on their own is an opening in
     // a way that somebody with company is not.
-    const glm::vec3 body = senses.position + glm::vec3(0.0f, m_traits.bodyMiddle, 0.0f);
+    const glm::vec3 body = senses.onCeiling ? senses.eye : senses.position + glm::vec3(0.0f, m_traits.bodyMiddle, 0.0f);
     const float cosWatched = std::cos(glm::radians(50.0f));
     for (const SensedPlayer& player : senses.players)
     {
@@ -2212,6 +2212,21 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
         const float rise = player->feet.y - senses.position.y;
         m_goal = std::string(m_attack == AttackKind::None ? "going for " : "attacking ") + player->name;
         watch(*player);
+        if (senses.onCeiling)
+        {
+            // Up on the ceiling, going for somebody is letting go on top of them.
+            m_goal = "dropping onto " + player->name;
+            m_intent.climb = true;
+            m_intent.drop = true;
+            m_intent.dropAt = player->feet;
+            if (!m_dropping)
+            {
+                Log(now, "drops from the ceiling onto " + player->name);
+                m_dropping = true;
+            }
+            break;
+        }
+        m_dropping = false;
         if (gap > 0.6f)
         {
             m_intent.face = true;
@@ -2487,7 +2502,17 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
         if (now >= m_stalkCheckAt)
         {
             m_stalkCheckAt = now + 0.7f;
-            m_stalkExposed = SeenFrom(senses, senses.position);
+            if (senses.onCeiling)
+            {
+                // Overhead, nobody sees it who is not looking up at it.
+                m_stalkExposed = std::any_of(m_tracks.begin(), m_tracks.end(), [&](const Track& other) {
+                    return other.watching && Horizontal(other.lastKnown, senses.position) < 25.0f;
+                });
+            }
+            else
+            {
+                m_stalkExposed = SeenFrom(senses, senses.position);
+            }
             const float fromThem = m_haveStalkPoint ? Horizontal(m_stalkPoint, them) : 0.0f;
             if (!m_haveStalkPoint || fromThem < 5.0f || fromThem > 22.0f || SeenFrom(senses, m_stalkPoint))
             {
@@ -2508,7 +2533,22 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
         // leans out -- to a spot beside it with a view of them -- takes a look, and slips back. A look
         // that finds them turned away is the opening it has been waiting for.
         const bool inCover = m_haveStalkPoint && Horizontal(senses.position, m_stalkPoint) <= 0.8f;
-        if (!m_peeking && inCover && !m_stalkExposed && now >= m_nextPeekAt && senses.nav != nullptr &&
+        // Up on the ceiling it can see them from where it is: it has no need to lean out. And it goes on
+        // across the ceiling to cover that has one over it, rather than coming down to walk there.
+        const auto overhead = [&](const glm::vec3& point)
+        {
+            if (!m_traits.climbs || !senses.ceilingAt)
+            {
+                return false;
+            }
+            const float ceiling = senses.ceilingAt(point);
+            return ceiling > 2.2f && ceiling < 4.8f;
+        };
+        if (senses.onCeiling && m_haveStalkPoint && overhead(m_stalkPoint))
+        {
+            m_intent.climb = true;
+        }
+        if (!m_peeking && inCover && !senses.onCeiling && !m_stalkExposed && now >= m_nextPeekAt && senses.nav != nullptr &&
             senses.clearLine)
         {
             const glm::vec3 theirEye = them + glm::vec3(0.0f, 1.6f, 0.0f);
@@ -2598,10 +2638,9 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
             m_intent.face = true;
             m_intent.facePoint = them;
             // One that climbs watches from overhead where it can, where nobody looks.
-            if (m_traits.climbs && senses.ceilingAt && m_haveStalkPoint)
+            if (m_haveStalkPoint && overhead(senses.position))
             {
-                const float ceiling = senses.ceilingAt(senses.position);
-                m_intent.climb = ceiling > 2.2f && ceiling < 4.8f;
+                m_intent.climb = true;
             }
         }
         break;

@@ -8,6 +8,7 @@
 #include "Game/Creature/CreatureRig.h"
 #include "Game/Creature/CreatureSkin.h"
 
+#include <glm/gtc/quaternion.hpp>
 #include <glm/mat4x4.hpp>
 #include <glm/vec3.hpp>
 
@@ -122,6 +123,28 @@ public:
     // Lying as if dead -- really dead, or playing it. The two look the same from outside, which is
     // the point of playing it.
     bool Down() const { return !Alive() || m_down; }
+    // Where it is clinging: the floor, a wall on its way up, the ceiling, or falling from it.
+    enum class Cling : uint8_t
+    {
+        Floor,
+        Wall,
+        Ceiling,
+        Dropping
+    };
+    Cling Clinging() const { return m_cling; }
+    // The floor under it, on the navigation mesh: where it is when it is on the floor, and the floor it
+    // is over when it is up a wall or across a ceiling. What its brain plans from.
+    const glm::vec3& Anchor() const { return m_anchor; }
+    // The wall it is on, as the way the wall faces, in the same sense as a yaw.
+    float WallYaw() const { return std::atan2(m_wallNormal.x, -m_wallNormal.z); }
+    // For a creature this machine only shows: what the host says it is clinging to.
+    void SetShownCling(Cling cling, float wallYaw);
+    // The turn from the world to its body as drawn: its heading, about the up of whatever it is on.
+    glm::quat Orientation() const;
+    // For looking at climbing and for its tests: up onto the ceiling whatever its brain wants (1), down off
+    // it (0), or as its brain decides (-1).
+    void SetClimbOverride(int climb) { m_climbOverride = climb; }
+
     // How low it is carrying itself, 0 to 1, and how flat to its belly, 0 to 1, to fit a crawlspace.
     float Crouch() const { return m_crouchTarget; }
     float Squeeze() const { return m_squeeze; }
@@ -148,7 +171,17 @@ public:
     void Destroy();
 
 private:
-    void Move(const CreatureIntent& intent, const std::vector<glm::vec3>& others, float dt);
+    void Move(const CreatureIntent& asked, const std::vector<glm::vec3>& others, float dt);
+    // Up a wall, across a ceiling, or dropping from it, for one that climbs.
+    void MoveClinging(const CreatureIntent& intent, float dt);
+    // The nearest wall it can go up from here to a ceiling it can hang from; fills m_wall*.
+    bool FindWall();
+    // Letting go of the wall or the ceiling, to land on the floor at `onto` or as near it as it can.
+    void StartDrop(const glm::vec3& onto);
+    // How high the ceiling is over a point on the floor, or 0 where there is none within six metres.
+    float CeilingAbove(const glm::vec3& floor) const;
+    // Its heading about the up of whatever it is on, for the rig.
+    float SurfaceYaw() const;
     void BuildVisual(MeshLibrary& meshes);
     // The traits it was made with, with what its body decides written over them: speeds, senses, reach.
     static CreatureTraits WithBody(CreatureTraits traits, const CreatureCapabilities& caps);
@@ -208,6 +241,29 @@ private:
     float m_bashStarted = -1.0f;
     // The jumps its body can make, as the navigation mesh names them, and crawlspaces when it fits them.
     uint16_t m_jumps = 0;
+    // Climbing. What it is on, the floor it is over, and the wall it went up: where at the foot of it,
+    // which way the wall faces, how far the wall is from that foot, and how high the ceiling is there.
+    Cling m_cling = Cling::Floor;
+    glm::vec3 m_anchor{0.0f};
+    glm::vec3 m_wallFoot{0.0f};
+    glm::vec3 m_wallNormal{0.0f, 0.0f, 1.0f};
+    float m_wallDepth = 0.4f;
+    float m_wallTop = 0.0f;
+    bool m_haveWall = false;
+    float m_wallSearchAt = 0.0f;
+    // How far up the wall, or down through the drop, 0 to 1, and the drop's ends and length.
+    float m_climbT = 0.0f;
+    glm::vec3 m_dropFrom{0.0f};
+    glm::vec3 m_dropTo{0.0f};
+    float m_dropDuration = 0.5f;
+    // The ceiling's height over where it is, checked now and then.
+    float m_ceilingHeight = 0.0f;
+    float m_ceilingCheck = 0.0f;
+    // Its body turned to what it is on, eased towards `m_surfaceUp` rather than snapped to it.
+    glm::quat m_surface{1.0f, 0.0f, 0.0f, 0.0f};
+    glm::vec3 m_surfaceUp{0.0f, 1.0f, 0.0f};
+    mutable float m_lastSurfaceYaw = 0.0f;
+    int m_climbOverride = -1;
     // Whether it is in a crawlspace now, when it was last asked, and how flat it is lying to fit.
     bool m_inCrawlspace = false;
     float m_crawlCheck = 0.0f;

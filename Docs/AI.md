@@ -317,6 +317,25 @@ wait beside the mouth they are nearest or heading for, out of the line of the tu
 they come out -- a swipe in at arm's length if they come close to the opening, never a lunge into it.
 The mouths are found when the mesh is built, where crawlspace floor meets standing floor.
 
+### Walls and ceilings
+
+A creature whose body climbs (six legs, or light) can go up a wall and across a ceiling. It goes to the
+foot of the nearest wall that reaches a ceiling between 2.2 and 5 metres up, climbs it facing it, turns
+over onto the ceiling, and moves across it over the route it would walk on the floor below -- the
+navigation mesh is still what it plans on, and what its brain is told is where it is. Where the ceiling
+ends, or gets too high or too low, it lets go. Its whole body is drawn in the frame of what it is on,
+legs bent and body flat to it, and its feet find the wall or the ceiling as they find the floor.
+
+It climbs to wait: stalking from cover, or lying in wait, where there is a ceiling, it goes up. Up there
+it is seen only by somebody looking up at it, it does not lean out to look -- it can see from where it
+is -- and it follows across the ceiling to new cover that has one over it. Going for somebody from up
+there is letting go on top of them: it drops, turning over as it falls, and lands beside them. Anything
+else it wants to do, it comes down for.
+
+Every machine is told what it is clinging to, and which way the wall faces, in two bits and seven more
+for the wall, and eases its body round to match. `creature_climb up|down|auto` sends every creature that
+can climb up, or down, or back to its own mind.
+
 ### Tactics
 
 Where it hides, waits and comes from are questions about places, answered from the navigation mesh and

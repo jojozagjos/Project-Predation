@@ -532,9 +532,16 @@ bool Application::InitSubsystems(const CommandLine& commandLine)
 
 void Application::ShutdownSubsystems()
 {
-    if (m_subsystemsInitialized)
+    // Not from a scripted run: a test that turns the exposure up to see something in the dark should not
+    // leave the player's own game four times too bright. Only a game somebody played saves what they set.
+    const bool scripted = !m_commandLine.execCommands.empty() || m_commandLine.maxFrames.has_value();
+    if (m_subsystemsInitialized && !scripted)
     {
         Config::SaveArchive(m_userSettingsFile);
+    }
+    else if (m_subsystemsInitialized)
+    {
+        PRED_LOG_INFO(Engine, "A scripted run: settings left as they were");
     }
     cv_vsync.ClearOnChange();
     cv_msaa.ClearOnChange();

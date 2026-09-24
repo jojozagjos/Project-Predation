@@ -808,6 +808,8 @@ void PredationGame::SendCreatureState()
         entry.airborne = creature->Airborne();
         entry.look = creature->Looking();
         entry.lookAt = creature->LookingAt();
+        entry.cling = static_cast<uint8_t>(creature->Clinging());
+        entry.wallYaw = creature->WallYaw();
     }
     m_host.SendCreatureState(state);
 }
@@ -862,6 +864,7 @@ void PredationGame::ApplyCreatureState(const CreatureStateMessage& state)
         action.side = shown.actionSide;
         action.target = shown.actionTarget;
         creature->SetShownAction(action, shown.airborne, shown.look, shown.lookAt);
+        creature->SetShownCling(static_cast<Creature::Cling>(std::min<uint8_t>(shown.cling, 3)), shown.wallYaw);
         creature->SetShownBehavior(shown.behavior <= static_cast<uint8_t>(Behavior::Flank) ? static_cast<Behavior>(shown.behavior)
                                                                                          : Behavior::Roam);
     }
@@ -1812,6 +1815,22 @@ void PredationGame::RegisterCreatureCommands()
                                 }
                                 const uint16_t seed = static_cast<uint16_t>(std::rand() & 0xFFFF);
                                 BuildNest(m_player.State().position, seed, 0, true);
+                            });
+    console.RegisterCommand("creature_climb",
+                            "Send every creature that climbs up onto the ceiling, or down, or back to its own mind: "
+                            "creature_climb [up|down|auto]",
+                            [this](const std::vector<std::string>& args)
+                            {
+                                const std::string how = args.size() >= 2 ? args[1] : "up";
+                                const int climb = how == "down" ? 0 : (how == "auto" ? -1 : 1);
+                                int climbers = 0;
+                                for (const std::unique_ptr<Creature>& creature : m_creatures)
+                                {
+                                    creature->SetClimbOverride(climb);
+                                    climbers += creature->Capabilities().climbs ? 1 : 0;
+                                }
+                                m_app->GetConsole().Print(std::to_string(climbers) + " of " + std::to_string(m_creatures.size()) +
+                                                          " creature(s) can climb");
                             });
     console.RegisterCommand("nest_grow", "Age every nest by some seconds, to see it grown: nest_grow <seconds>",
                             [this](const std::vector<std::string>& args)

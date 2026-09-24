@@ -805,10 +805,11 @@ TEST_CASE("Creatures are sent as state: what they are, where, and what their bod
     BitWriter writer;
     WriteCreatureState(writer, sent);
     const std::vector<uint8_t>& bytes = writer.Finish();
-    // Eight creatures in 154 bytes -- 151 bits each, fourteen of them what the body is doing when it is doing
-    // nothing in particular -- thirty times a second, is about 4.5 KB/s per client: about the players' own
-    // snapshots. A creature mid-blow, looking at somebody, costs about a hundred bits more.
-    CHECK(bytes.size() <= 155);
+    // Eight creatures in 156 bytes -- 153 bits each, sixteen of them what the body is doing when it is doing
+    // nothing in particular, two what it is clinging to -- thirty times a second, is about 4.5 KB/s per
+    // client: about the players' own snapshots. A creature mid-blow, looking at somebody, costs about a
+    // hundred bits more, and one up a wall seven more.
+    CHECK(bytes.size() <= 157);
 
     BitReader reader(bytes.data(), bytes.size());
     CreatureStateMessage received;
@@ -1199,4 +1200,25 @@ TEST_CASE("A sound the host shares arrives by the key of its name, where it was 
     CHECK(received.item == 0xBEEF);
     CHECK(received.amount == Catch::Approx(0.8f).margin(0.02));
     CHECK(glm::distance(received.position, sent.position) < 0.01f);
+}
+
+TEST_CASE("A creature up a wall or on the ceiling arrives as one", "[net][protocol][creature]")
+{
+    CreatureStateMessage sent;
+    sent.count = 3;
+    sent.creatures[0].cling = 0;
+    sent.creatures[1].cling = 1;
+    sent.creatures[1].wallYaw = 1.2f;
+    sent.creatures[2].cling = 2;
+    BitWriter writer;
+    WriteCreatureState(writer, sent);
+    const std::vector<uint8_t>& bytes = writer.Finish();
+    BitReader reader(bytes.data(), bytes.size());
+    CreatureStateMessage received;
+    REQUIRE(ReadCreatureState(reader, received));
+    REQUIRE(received.count == 3);
+    CHECK(received.creatures[0].cling == 0);
+    CHECK(received.creatures[1].cling == 1);
+    CHECK(received.creatures[1].wallYaw == Catch::Approx(1.2f).margin(0.05f));
+    CHECK(received.creatures[2].cling == 2);
 }

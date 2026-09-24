@@ -801,6 +801,11 @@ void WriteCreatureState(BitWriter& writer, const CreatureStateMessage& message)
         {
             WritePosition(writer, creature.lookAt);
         }
+        writer.WriteBits(creature.cling, 2);
+        if (creature.cling == 1)
+        {
+            writer.WriteQuantised(std::remainder(creature.wallYaw, glm::two_pi<float>()), -glm::pi<float>(), glm::pi<float>(), 7);
+        }
     }
 }
 
@@ -839,6 +844,11 @@ bool ReadCreatureState(BitReader& reader, CreatureStateMessage& out)
         if (creature.look)
         {
             creature.lookAt = ReadPosition(reader);
+        }
+        creature.cling = static_cast<uint8_t>(reader.ReadBits(2));
+        if (creature.cling == 1)
+        {
+            creature.wallYaw = reader.ReadQuantised(-glm::pi<float>(), glm::pi<float>(), 7);
         }
     }
     return !reader.Overran();

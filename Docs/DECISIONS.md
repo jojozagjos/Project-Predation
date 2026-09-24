@@ -1723,3 +1723,24 @@ something rather than merely out of sight, ambushes beside doors and crawlspace 
 gunfire rather than straight at it -- are queries over places scored like its options, in
 CreatureTactics.cpp. Two new behaviours carry them, Ambush and Flank; the protocol's four bits of
 behaviour still hold them.
+
+## ADR-078: Climbing over the floor's navigation, drawn in the surface's frame
+
+**Status**: accepted, 2026-09-24
+
+Creatures that climb go up walls and across ceilings. The choices were a navigation mesh for every
+surface -- walls and ceilings voxelised as floors in their own frames, joined at their edges -- or the
+floor's mesh with the creature drawn somewhere else. The second is what is built: a creature on the
+ceiling is over a point on the floor, its route is the floor's route, and its body is drawn on the
+ceiling above the point it is at. Ceilings in these levels are flat and cover the floor they are over,
+which is when that is exactly right; where they stop it lets go. Walls are only climbed up, from the
+floor to a ceiling, never along.
+
+The rig takes a surface rotation, and draws the whole body in that frame; its feet find the surface with
+a probe along the body's own down. Only five things in it were measured against the world's up -- how
+far a foot is from where it wants to be, how high a step lifts, how high the body rides over its feet,
+and the tail on the floor -- and they are measured against the surface now.
+
+The brain plans from the floor point under it, sees from its eyes, and knows it is up there. Its body,
+hitboxes and eyes follow what is drawn. Clients are sent what it is clinging to and which way the wall
+faces; protocol version 12.

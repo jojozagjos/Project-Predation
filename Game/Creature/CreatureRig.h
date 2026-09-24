@@ -3,6 +3,7 @@
 #include "Game/Creature/CreatureAnatomy.h"
 #include "Game/Creature/CreatureSkin.h"
 
+#include <glm/gtc/quaternion.hpp>
 #include <glm/mat4x4.hpp>
 #include <glm/vec3.hpp>
 
@@ -33,7 +34,11 @@ const char* RigActionName(RigAction action);
 struct RigInput
 {
     glm::vec3 position{0.0f}; // its feet, in the world
-    float yaw = 0.0f;         // radians; forward is -Z at 0, turning right as it grows
+    float yaw = 0.0f;         // radians; forward is -Z at 0, turning right as it grows, about its own up
+    // What it is standing on, as the turn from the world's up to its own: nothing on the floor, a quarter
+    // turn up a wall, upside down on a ceiling. Its whole body is drawn in that frame, and its feet find
+    // whatever it is clinging to along it.
+    glm::quat surface{1.0f, 0.0f, 0.0f, 0.0f};
     glm::vec3 velocity{0.0f}; // metres a second, in the world
     float crouch = 0.0f;      // 0 to 1: how low it is creeping
     float squeeze = 0.0f;     // 0 to 1: flattened to its belly, to fit along a crawlspace
@@ -51,6 +56,9 @@ struct RigInput
     // The height of the ground under a point, looking down from `from` no further than `drop`. False
     // where there is none. Without it the ground is flat at the height of its feet.
     std::function<bool(const glm::vec3& from, float drop, float& height)> ground;
+    // The same, along any line, for a body on a wall or a ceiling: where the line from `from` along
+    // `direction` meets something within `reach`. Without it that surface is flat through its feet.
+    std::function<bool(const glm::vec3& from, const glm::vec3& direction, float reach, glm::vec3& hit)> probe;
 };
 
 // The body's procedural animation: every bone placed every frame from what the creature is doing, with
