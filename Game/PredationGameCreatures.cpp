@@ -65,6 +65,25 @@ constexpr size_t kMaxNests = 8;
 // stepped back during the wind-up before it misses. How hard it hits is the body's too.
 constexpr float kStrikeGrace = 0.3f;
 
+// Whether a blow from this creature could reach this person at all: something solid between its head and
+// every part of them stops it. Reach alone let it hit somebody lying in a crawlspace through the roof of
+// the thing, standing on top of it.
+bool SolidBetween(const PhysicsWorld& physics, const Creature& creature, const SensedPlayer& player)
+{
+    const glm::vec3 from = creature.Eye();
+    for (const float at : {0.3f, 0.6f, 0.92f})
+    {
+        const glm::vec3 to = player.feet + glm::vec3(0.0f, player.height * at, 0.0f);
+        const glm::vec3 along = to - from;
+        const float length = glm::length(along);
+        if (length < 0.2f || !physics.RayCastStatic(from, along / length, length - 0.1f))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
 // How closely a point is walled in, 0 to 1: of eight directions round it at the height of a body, how
 // many meet something solid within a stride and a half. Against a wall is about three eighths, in a
 // corner about a half, in a doorway or a narrow gap more; in the middle of an empty floor, nothing.
@@ -799,7 +818,8 @@ void PredationGame::UpdateCreatures(float dt)
             const float rise = player.feet.y - creature->Position().y;
             const float reachLimit = creature->Capabilities().strikeReach + kStrikeGrace +
                                      (intent.strikeKind == AttackKind::Lunge ? 0.8f : 0.0f);
-            if (!holdingThem && (reach > reachLimit || rise > creature->Capabilities().verticalReach || rise < -1.6f))
+            if (!holdingThem && (reach > reachLimit || rise > creature->Capabilities().verticalReach || rise < -1.6f ||
+                                 SolidBetween(m_app->GetPhysics(), *creature, player)))
             {
                 PRED_LOG_INFO(AI, "Strike at {} (player {}) missed: {:.1f} m away", player.name, player.id, reach);
                 break;
@@ -2618,7 +2638,7 @@ void PredationGame::TryGrab(Creature& creature, int target, const std::vector<Se
         const auto safe = m_grabImmunity.find(id);
         const bool justFree = safe != m_grabImmunity.end() && m_creatureClock < safe->second;
         if (taken || busy || justFree || reach > creature.Capabilities().strikeReach + kStrikeGrace ||
-            std::abs(rise) > 1.0f)
+            std::abs(rise) > 1.0f || SolidBetween(m_app->GetPhysics(), creature, player))
         {
             PRED_LOG_INFO(AI, "Grab at {} (player {}) missed: {:.1f} m away", player.name, player.id, reach);
             return;

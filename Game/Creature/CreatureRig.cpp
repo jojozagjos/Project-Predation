@@ -172,7 +172,12 @@ void CreatureRig::PlaceFeet(const RigInput& input, float legScale)
     const glm::vec3 localVelocity = glm::vec3(rootInverse * glm::vec4(flatVelocity, 0.0f));
     // A quicker step the faster it goes, and further ahead of the hip, so it runs rather than
     // shuffling fast.
-    const float stepTime = std::clamp(0.34f * legScale / (0.35f + speed * 0.5f), 0.11f, 0.36f);
+    // Quicker steps while it turns, too: a body swinging round on feet that step at a walking pace leaves
+    // them behind, twisted under it, which is what turning looked like.
+    const float turning = std::abs(m_turnRate);
+    const float stepTime = std::clamp(0.34f * legScale / (0.35f + speed * 0.5f + turning * 0.35f), 0.1f, 0.36f);
+    // And put down where the body is turning to, not where it is: half a step ahead through the turn.
+    const glm::quat turnAhead = glm::angleAxis(-m_turnRate * stepTime * 0.6f, glm::vec3(0.0f, 1.0f, 0.0f));
     glm::vec3 lead = localVelocity * stepTime * 0.9f;
     if (glm::length(lead) > legScale * 0.55f)
     {
@@ -193,7 +198,7 @@ void CreatureRig::PlaceFeet(const RigInput& input, float legScale)
     {
         Foot& foot = m_feet[i];
         const CreatureAnatomy::Leg& leg = m_rest.legs[i];
-        glm::vec3 desired = Apply(m_root, glm::vec3(leg.foot.x, 0.0f, leg.foot.z) + lead);
+        glm::vec3 desired = Apply(m_root, turnAhead * glm::vec3(leg.foot.x, 0.0f, leg.foot.z) + lead);
         if (!onFloor)
         {
             // On a wall or a ceiling: wherever that surface actually is under the foot, and otherwise
@@ -267,8 +272,8 @@ void CreatureRig::PlaceFeet(const RigInput& input, float legScale)
         apart -= surfaceUp * heightApart;
         const float distance = glm::length(apart);
         const float twist = std::abs(Wrap(input.yaw - foot.yaw));
-        const bool wants = distance > threshold || twist > 0.55f || std::abs(heightApart) > legScale * 0.35f;
-        const bool mustNow = distance > threshold * 2.4f || twist > 1.2f;
+        const bool wants = distance > threshold || twist > 0.35f || std::abs(heightApart) > legScale * 0.35f;
+        const bool mustNow = distance > threshold * 2.0f || twist > 0.8f;
         const bool otherDown = steppingGroup[1 - foot.group] == 0;
         if ((wants && otherDown) || mustNow)
         {

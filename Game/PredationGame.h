@@ -1089,6 +1089,7 @@ private:
         float breathAt = 0.0f;
         float voiceAt = 0.0f;
         float hurtAt = -10.0f;
+        Behavior doing = Behavior::Roam;
     };
     std::map<uint8_t, HeardCreature> m_heardCreatures;
     std::vector<float> m_crateLids;

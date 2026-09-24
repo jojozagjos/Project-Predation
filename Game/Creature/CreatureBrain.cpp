@@ -1238,9 +1238,12 @@ void CreatureBrain::Decide(const CreatureSenses& senses)
         const float rise = player->feet.y - senses.position.y;
         const bool canRise = rise < senses.verticalReach && rise > -1.6f;
         const float gap = Horizontal(senses.position, player->feet);
-        const bool inReach = gap < m_traits.strikeReach + 0.4f;
+        // And nothing solid between: in reach through a wall, or through the roof of a crawlspace, is not in reach.
+        const bool clearToThem = !senses.clearLine ||
+                                 senses.clearLine(senses.eye, player->feet + glm::vec3(0.0f, player->height * 0.6f, 0.0f));
+        const bool inReach = gap < m_traits.strikeReach + 0.4f && clearToThem;
         // Not into a crawlspace it cannot follow them into: a swipe in at arm's length is all it has there.
-        const bool pounce = gap > 2.6f && gap < 7.0f && std::abs(rise) < 0.8f && now >= m_lungeReadyAt && !beyond;
+        const bool pounce = gap > 2.6f && gap < 7.0f && std::abs(rise) < 0.8f && now >= m_lungeReadyAt && !beyond && clearToThem;
         if (track.hostile && track.visible && canRise && (inReach || (pounce && chases)))
         {
             add(Behavior::Attack, track.id, "Attack " + track.name,
@@ -1416,6 +1419,19 @@ void CreatureBrain::Switch(Behavior behavior, int target, const std::string& rea
     if (behavior == Behavior::Flank)
     {
         m_flankStage = 0;
+    }
+    if (behavior == Behavior::Avoid && previous != Behavior::Avoid)
+    {
+        m_avoidFleeing = false;
+        // A while since it last had to, it is willing to stand and watch again.
+        if (time - m_avoidLastAt > 60.0f)
+        {
+            m_avoidPushed = 0;
+        }
+    }
+    if (previous == Behavior::Avoid)
+    {
+        m_avoidLastAt = time;
     }
     if (behavior == Behavior::Lure && previous != Behavior::Lure)
     {
@@ -2194,12 +2210,15 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
                 break;
             }
             m_unreachableSince = -1.0f;
-            // Up to them, not onto them: it stops at striking distance.
+            // Up to them, not onto them: it stops at striking distance. Out of hiding it comes in a burst,
+            // faster than it can keep up: the moment it stops waiting is the moment it is on you.
+            const bool charging = (m_leftBehavior == Behavior::Stalk || m_leftBehavior == Behavior::Ambush ||
+                                   m_leftBehavior == Behavior::Lure) && now - m_behaviorStarted < 2.5f;
             if (gap > m_traits.strikeReach * 0.8f)
             {
                 m_intent.move = true;
                 m_intent.destination = player->feet;
-                m_intent.speed = m_traits.runSpeed;
+                m_intent.speed = m_traits.runSpeed * (charging ? 1.3f : 1.0f);
             }
             if (gap < 6.0f)
             {
@@ -2575,6 +2594,29 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
             }
         }
 
+        // Seen, a good way off, the stealthy ones do not bolt at once: they stop dead and stare back for a
+        // moment first, and then they are gone. Being looked at by something that knows it has been seen
+        // and is in no hurry is worse than seeing something run.
+        {
+            const float away = Horizontal(senses.position, them);
+            if (m_stalkExposed && !m_stareWasExposed && track->visible && away > 8.0f && now - m_behaviorStarted > 3.0f &&
+                m_random.Unit() < 0.35f + 0.5f * m_traits.stealth)
+            {
+                m_stareUntil = now + m_random.Range(1.2f, 2.8f);
+                Log(now, "stares back at " + track->name);
+            }
+            m_stareWasExposed = m_stalkExposed;
+            if (now < m_stareUntil)
+            {
+                m_goal = "staring at " + track->name;
+                m_intent.crouch = 0.3f;
+                m_intent.face = true;
+                m_intent.facePoint = them;
+                watch(*player);
+                break;
+            }
+        }
+
         // Peeking. Cover it cannot be seen from is cover it cannot see out of, so every few seconds it
         // leans out -- to a spot beside it with a view of them -- takes a look, and slips back. A look
         // that finds them turned away is the opening it has been waiting for.
@@ -2769,15 +2811,35 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
         RememberDanger(them, now + 45.0f);
         // Somewhere away from them and out of their sight, picked again whenever the old place is no
         // longer away from them, or it has got there and they are still close.
+        //
+        // Moving off once they come within ten metres, and not stopping until they are eighteen away or out of
+        // sight: one line for both had it walking off, turning to look, being too close again, and walking
+        // off, over and over. And pushed three times it stops trying to watch and leaves.
+        if (!m_avoidFleeing && distance < 10.0f)
+        {
+            m_avoidFleeing = true;
+            m_haveFleePoint = false;
+            ++m_avoidPushed;
+            if (m_avoidPushed == 3)
+            {
+                Log(now, "has had enough of " + track->name + " and leaves");
+                RememberDanger(them, now + 120.0f);
+            }
+        }
+        else if (m_avoidFleeing && (distance > 18.0f || (!track->visible && distance > 12.0f)))
+        {
+            m_avoidFleeing = false;
+        }
+        const bool leaving = m_avoidPushed >= 3;
         const bool stale = m_haveFleePoint && (Horizontal(m_fleePoint, them) < distance + 2.0f ||
-                                               (Horizontal(senses.position, m_fleePoint) < 1.0f && distance < 12.0f));
-        if (!m_haveFleePoint || stale)
+                                               Horizontal(senses.position, m_fleePoint) < 1.0f);
+        if ((m_avoidFleeing || leaving) && (!m_haveFleePoint || stale))
         {
             m_haveFleePoint = PickFleePoint(senses, m_fleePoint);
         }
-        if (distance < 12.0f && m_haveFleePoint)
+        if ((m_avoidFleeing || leaving) && m_haveFleePoint)
         {
-            m_goal = "keeping away from " + track->name;
+            m_goal = leaving ? "leaving, away from " + track->name : "keeping away from " + track->name;
             m_intent.move = true;
             m_intent.destination = m_fleePoint;
             m_intent.speed = distance < 6.0f ? m_traits.runSpeed : m_traits.walkSpeed * 1.4f;

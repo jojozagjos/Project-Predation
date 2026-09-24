@@ -41,8 +41,7 @@ TEST_CASE("Every item that is not a weapon has a use, and the use says what it d
     const std::map<std::string, ItemUseKind> expected{{"medkit", ItemUseKind::Heal},
                                                       {"battery", ItemUseKind::Recharge},
                                                       {"keycard", ItemUseKind::Unlock},
-                                                      {"flare", ItemUseKind::Flare},
-                                                      {"sample_container", ItemUseKind::Inspect}};
+                                                      {"flare", ItemUseKind::Flare}};
     for (const auto& [key, kind] : expected)
     {
         const ItemDefinition* item = items.Find(key);

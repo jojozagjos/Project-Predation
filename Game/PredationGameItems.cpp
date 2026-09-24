@@ -188,7 +188,9 @@ void PredationGame::StartItemUse(const ItemDefinition& item)
             const glm::vec3 chest = remote.position + glm::vec3(0.0f, 1.1f, 0.0f);
             const glm::vec3 toward = chest - view.eyePosition;
             const float distance = glm::length(toward);
-            if (!remote.alive || distance > best || distance < 1e-3f || glm::dot(toward / distance, view.Forward()) < 0.75f)
+            // Only somebody who actually needs it: a kit is not spent on somebody at full health.
+            if (!remote.alive || remote.health >= PlayerState::kMaxHealth - 0.5f || distance > best || distance < 1e-3f ||
+                glm::dot(toward / distance, view.Forward()) < 0.75f)
             {
                 continue;
             }
@@ -220,6 +222,12 @@ void PredationGame::StartItemUse(const ItemDefinition& item)
             {
                 use.door = static_cast<uint8_t>(focus.payload);
             }
+        }
+        // Nothing locked in front of you: nothing happens, not even the swipe.
+        if (use.door == 0xFF)
+        {
+            m_app->GetConsole().Print("There is no locked door here to use it on.");
+            return;
         }
         break;
     }
@@ -411,6 +419,13 @@ void PredationGame::HandleItemUse(uint8_t player, const ItemUseMessage& use)
             if (target != player && (!PlayerPositionIfKnown(target, them) || !placed || glm::distance(them, at) > kHealReach + 1.0f))
             {
                 target = player;
+            }
+            const float health = target == LocalPlayerId() ? m_player.State().health
+                                 : m_sessionMode == SessionMode::Host ? m_host.HealthOf(target)
+                                                                     : PlayerState::kMaxHealth;
+            if (health >= PlayerState::kMaxHealth - 0.5f)
+            {
+                return; // nobody hurt: nothing done, nothing used
             }
             ApplyHeal(player, target, item->use.amount);
             event.other = target;

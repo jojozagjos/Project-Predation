@@ -9,8 +9,8 @@
   "suspicion": 0.35,
   "through_walls": 0.5,
   "commitment": 0.12,
-  "stalk_patience": 10.0,
-  "stalk_patience_range": 30.0,
+  "stalk_patience": 6.0,
+  "stalk_patience_range": 18.0,
   "ambush_patience": 15.0,
   "ambush_patience_range": 35.0,
   "lure_every": 50.0

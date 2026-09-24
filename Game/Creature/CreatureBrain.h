@@ -694,6 +694,13 @@ private:
     int m_nestAttacker = -1;
     // Letting go of the ceiling onto somebody, once: logged as it starts.
     bool m_dropping = false;
+    // Keeping away: whether it is moving off now, how many times it has been pushed off, and when it last was.
+    bool m_avoidFleeing = false;
+    // Staring back at somebody who has spotted it, until when; and whether it was seen last time it looked.
+    float m_stareUntil = -1.0f;
+    bool m_stareWasExposed = false;
+    int m_avoidPushed = 0;
+    float m_avoidLastAt = -1.0e9f;
     // Whose voices it has heard, and luring: where from, whose voice, how many times it has spoken, when
     // next, and when it last tried it.
     std::vector<int> m_voicesHeard;

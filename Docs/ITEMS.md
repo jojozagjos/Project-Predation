@@ -15,11 +15,11 @@ use actually does is decided by the host, like everything else that changes the 
 
 | Item | What using it does |
 |---|---|
-| **Medical Kit** | Patches up 45 health: on whoever is right in front of you and close enough to reach (2.2 m), or else on you. Refused when you are not hurt and nobody is there. Used up. |
+| **Medical Kit** | Patches up 45 health: on whoever is right in front of you and close enough to reach (2.2 m) if they are hurt, or else on you if you are. With nobody hurt, nothing happens -- no animation, and the kit is kept. Used up. |
 | **Battery Cell** | A fresh cell in your torch. Used up. |
-| **Access Keycard** | Opens the locked door you are looking at, if you are close enough, and unlocks it for good. Not used up. You do not have to hold it: pressing **use** on a locked door with a keycard anywhere in your bag does the same, and the door says **Unlock** instead of **Locked** when you have one. |
+| **Access Keycard** | Opens the locked door you are looking at, if you are close enough -- and does nothing at all, not even the swipe, when you are not looking at one -- and unlocks it for good. Not used up. You do not have to hold it: pressing **use** on a locked door with a keycard anywhere in your bag does the same, and the door says **Unlock** instead of **Locked** when you have one. |
 | **Signal Flare** | Strikes it. It burns red in your hand for a minute, held up in front of you. Fire again throws it; it lands, rolls, and burns on where it lies, lighting the room, until it is spent. Put away still burning, it is dropped at your feet and burns there. Used up when it leaves your hand. |
-| **Sample Container** | Turned over in your hands and looked at. The thing the mission will be about. |
+| **Sample Container** | Carried, for now. The thing the mission will be about. |
 
 ## The torch
 

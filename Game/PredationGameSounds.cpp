@@ -317,10 +317,19 @@ void PredationGame::UpdateCreatureSounds(float dt)
             heard.voiceAt = m_soundClock + 4.0f + 6.0f * Random01();
         }
 
+        // What it has in mind decides how much of it is heard. Something stalking, lying in wait, going round
+        // to shooting or luring somebody is all but silent -- a stalker that could be heard across the room
+        // could not stalk anybody -- and only something running flat out is loud.
+        const Behavior intent = creature.Doing();
+        const bool sneaking = intent == Behavior::Stalk || intent == Behavior::Ambush || intent == Behavior::Lure ||
+                              intent == Behavior::Flank || intent == Behavior::Search;
+        const float listenerAway = glm::distance(m_camera.position, head);
+
         // Its feet, as they come down. Creeping is quieter, which is what creeping is for.
         std::vector<glm::vec3> footfalls = creature.TakeFootfalls();
         const float creep = 1.0f - 0.6f * creature.Crouch();
-        const float stepGain = std::clamp(0.25f + mass / 450.0f, 0.25f, 0.95f) * creep;
+        const float pace = std::clamp(creature.Speed() / 4.5f, 0.35f, 1.0f);
+        const float stepGain = std::clamp(0.2f + mass / 500.0f, 0.2f, 0.8f) * creep * pace * (sneaking ? 0.15f : 1.0f);
         for (size_t i = 0; i < footfalls.size() && i < 2; ++i)
         {
             // Up a wall or across a ceiling, what is heard is claws on it.
@@ -371,9 +380,18 @@ void PredationGame::UpdateCreatureSounds(float dt)
         // is exactly when it should be.
         const Behavior doing = creature.Doing();
         const bool stalking = doing == Behavior::Stalk;
-        if (m_soundClock >= heard.breathAt)
+        // Sneaking, it holds its breath -- until it is close enough to be heard breathing right behind you.
+        const bool heldBreath = sneaking && listenerAway > 3.5f;
+        // Breaking cover to go for somebody: a shriek, the first thing about it anybody hears.
+        const bool wasHiding = heard.doing == Behavior::Stalk || heard.doing == Behavior::Ambush || heard.doing == Behavior::Lure;
+        if (wasHiding && (intent == Behavior::Hunt || intent == Behavior::Attack))
         {
-            PlayNamed("Creature/breath", head, stalking ? 0.18f : 0.38f, pitch * (0.95f + 0.1f * Random01()));
+            PlayNamed("Creature/call", head, 1.0f, pitch * 1.15f);
+        }
+        heard.doing = intent;
+        if (m_soundClock >= heard.breathAt && !heldBreath)
+        {
+            PlayNamed("Creature/breath", head, stalking || sneaking ? 0.22f : 0.3f, pitch * (0.95f + 0.1f * Random01()));
             const float pace = creature.Speed() > 3.0f ? 0.55f : 1.0f;
             heard.breathAt = m_soundClock + (2.6f + 2.2f * Random01()) * pace;
         }
@@ -390,14 +408,15 @@ void PredationGame::UpdateCreatureSounds(float dt)
             case Behavior::Hunt:
             case Behavior::Attack:
             case Behavior::Drag:
-            case Behavior::Search:
                 voice = "Creature/growl";
                 break;
             case Behavior::Investigate:
             case Behavior::Observe:
             case Behavior::Roam:
+                // Low, and only now and then: something that chatters to itself all the time is
+                // never where you did not expect it.
                 voice = "Creature/chitter";
-                gain = 0.55f;
+                gain = 0.3f;
                 break;
             case Behavior::Warn:
                 voice = "Creature/growl";
