@@ -1793,3 +1793,62 @@ TEST_CASE("Left to itself a creature does more than wander: it listens, noses ab
     INFO("it did: " << seen << purposeful << " trips somewhere in particular" << MindOf(*harness.creature));
     CHECK(pastimes.size() >= 3);
 }
+
+TEST_CASE("Playing dead, a patient one takes one small shot without a twitch, and runs from the next",
+          "[creature][playdead]")
+{
+    const uint32_t seed = SeedWhere([](const CreatureTraits& t)
+                                    {
+                                        const float cunning = 0.3f + 0.45f * t.stealth + 0.45f * t.patience;
+                                        return cunning > 0.6f + 0.6f * t.fear + 0.15f && t.aggression > 0.5f &&
+                                               t.patience + t.stealth > 1.1f;
+                                    });
+    REQUIRE(seed != 0);
+    CreatureHarness harness(seed);
+    glm::vec3 at;
+    glm::vec3 player;
+    REQUIRE(OpenView(harness, 7.0f, at, player));
+    harness.Run(1.0f, {Somebody(1, player)});
+    harness.creature->TakeDamage(Share(*harness.creature, 85.0f), 1, player + glm::vec3(0.0f, 1.5f, 0.0f), harness.time);
+    harness.Run(0.5f, {Somebody(1, player)});
+    REQUIRE(harness.creature->Brain().Current() == Behavior::PlayDead);
+
+    // A round to make sure: small, and it does not so much as twitch.
+    harness.creature->TakeDamage(harness.creature->MaxHealth() * 0.02f, 1, player + glm::vec3(0.0f, 1.5f, 0.0f), harness.time);
+    harness.Run(0.5f, {Watching(1, player, at)});
+    INFO("its mind:" << MindOf(*harness.creature));
+    CHECK(harness.creature->Brain().Current() == Behavior::PlayDead);
+
+    // Another: the act is over.
+    harness.creature->TakeDamage(harness.creature->MaxHealth() * 0.02f, 1, player + glm::vec3(0.0f, 1.5f, 0.0f), harness.time);
+    harness.Run(0.5f, {Watching(1, player, at)});
+    CHECK(harness.creature->Brain().Current() == Behavior::Retreat);
+}
+
+TEST_CASE("Playing dead, it waits for everybody to go before it gets up, and then slips away",
+          "[creature][playdead]")
+{
+    const uint32_t seed = CunningSeed();
+    REQUIRE(seed != 0);
+    CreatureHarness harness(seed);
+    glm::vec3 at;
+    glm::vec3 player;
+    REQUIRE(OpenView(harness, 7.0f, at, player));
+    harness.Run(1.0f, {Somebody(1, player)});
+    harness.creature->TakeDamage(Share(*harness.creature, 85.0f), 1, player + glm::vec3(0.0f, 1.5f, 0.0f), harness.time);
+    harness.Run(0.5f, {Somebody(1, player)});
+    REQUIRE(harness.creature->Brain().Current() == Behavior::PlayDead);
+
+    // Watched for a long while, well past what it would lie there for alone: it holds on while it can.
+    harness.Run(10.0f, {Watching(1, player, at)});
+    CHECK(harness.creature->Brain().Current() == Behavior::PlayDead);
+
+    // They go, far away: a few seconds unseen, and it is up and away, low.
+    bool slinking = false;
+    harness.Run(8.0f, {Somebody(1, glm::vec3(60.0f, 0.0f, 60.0f))}, {},
+                [&](const Creature& creature)
+                { slinking = slinking || creature.Brain().CurrentGoal() == "slinking away"; });
+    INFO("its mind:" << MindOf(*harness.creature));
+    CHECK(harness.creature->Brain().Current() != Behavior::PlayDead);
+    CHECK(slinking);
+}

@@ -685,6 +685,14 @@ private:
     float m_playDeadUntil = 0.0f;
     int m_playDeadCount = 0;
     bool m_hurtWhileDown = false;
+    // Lying there: how many times it has been shot, how badly, and by whom; and since when nobody near
+    // has been able to see it, which is when it may get up.
+    int m_downHits = 0;
+    float m_downDamage = 0.0f;
+    int m_downHurtBy = -1;
+    float m_downClearSince = -1.0f;
+    // Up from playing dead unseen: it goes low and quiet, not at a run.
+    bool m_slinking = false;
     // Until when it sees through what it has started rather than weighing it again.
     float m_committedUntil = 0.0f;
 

@@ -341,6 +341,9 @@ void CreatureBrain::OnDamaged(float amount, int byPlayer, const glm::vec3& from,
     if (m_behavior == Behavior::PlayDead)
     {
         m_hurtWhileDown = true;
+        ++m_downHits;
+        m_downDamage += amount / std::max(maxHealth, 1.0f);
+        m_downHurtBy = byPlayer;
     }
     const float scale = 160.0f / std::max(maxHealth, 1.0f);
     m_state.pain = std::min(m_state.pain + amount * scale / 60.0f, 2.0f);
@@ -1760,6 +1763,14 @@ void CreatureBrain::Switch(Behavior behavior, int target, const std::string& rea
         m_playDeadUntil = time + 12.0f + 25.0f * m_traits.patience;
         ++m_playDeadCount;
         m_hurtWhileDown = false;
+        m_downHits = 0;
+        m_downDamage = 0.0f;
+        m_downHurtBy = -1;
+        m_downClearSince = -1.0f;
+    }
+    if (behavior != Behavior::Retreat)
+    {
+        m_slinking = false;
     }
     if (previous == Behavior::Retreat && behavior != Behavior::Retreat)
     {
@@ -2324,19 +2335,11 @@ void CreatureBrain::UpdatePlayingDead(const CreatureSenses& senses)
     m_intent.down = true;
     m_goal = "playing dead";
 
-    if (m_hurtWhileDown)
-    {
-        // Shot while lying there: the act has failed, and staying down is only dying slowly.
-        m_hurtWhileDown = false;
-        m_playDeadCount = 99; // and it will not be believed again
-        Switch(Behavior::Retreat, -1, "hurt again, gives up the act and runs", now);
-        return;
-    }
-
-    // Who is near, and whether any of them is looking.
+    // Who is near, whether any of them is looking, and whether any of them can see it at all.
     const SensedPlayer* closest = nullptr;
     float closestDistance = 1.0e9f;
-    bool anyoneWatching = false;
+    int watching = 0;
+    int near = 0;
     for (const SensedPlayer& player : senses.players)
     {
         if (!player.alive || player.hidden)
@@ -2349,31 +2352,91 @@ void CreatureBrain::UpdatePlayingDead(const CreatureSenses& senses)
             closestDistance = distance;
             closest = &player;
         }
+        if (distance < 20.0f)
+        {
+            ++near;
+        }
         if (const Track* track = FindTrack(player.id); track != nullptr && track->watching && distance < 20.0f)
         {
-            anyoneWatching = true;
+            ++watching;
         }
     }
+    const bool seen = near > 0 && SeenFrom(senses, senses.position + glm::vec3(0.0f, 0.3f, 0.0f));
 
-    // Somebody close enough to touch: the whole point of lying still.
+    // Shot lying there. Somebody making sure: the patient take one small round without a twitch, which
+    // is the one that tells them it really is dead. A second, or a bad one, and the act is over: it goes
+    // for whoever fired if they are right there and it has the nerve, and otherwise it runs.
+    if (m_hurtWhileDown)
+    {
+        m_hurtWhileDown = false;
+        const bool steady = m_traits.patience + m_traits.stealth > 1.0f;
+        if (m_downHits == 1 && m_downDamage < 0.06f && steady)
+        {
+            Log(now, "takes the shot without a twitch");
+            return;
+        }
+        m_playDeadCount = 99; // and it will not be believed again
+        const SensedPlayer* shooter = m_downHurtBy >= 0 ? FindPlayer(senses, m_downHurtBy) : nullptr;
+        if (shooter != nullptr && shooter->alive && Horizontal(senses.position, shooter->feet) < 4.0f && m_traits.aggression > 0.5f)
+        {
+            Switch(Behavior::Attack, shooter->id, "shot again; goes for " + shooter->name, now);
+            m_committedUntil = now + 1.5f;
+            return;
+        }
+        Switch(Behavior::Retreat, -1, "shot again; gives up the act and runs", now);
+        return;
+    }
+
+    // Somebody right over it -- standing on it, prodding it -- gets it at once. Somebody near but with
+    // their back to it gets it too. Somebody near and looking at it, with others about, it holds still
+    // for: springing up in front of a room full of guns is not an ambush.
     if (closest != nullptr && closestDistance < 2.4f)
     {
-        Switch(Behavior::Attack, closest->id, "springs up at " + closest->name, now);
-        m_committedUntil = now + 1.5f;
+        const Track* track = FindTrack(closest->id);
+        const bool looking = track != nullptr && track->watching;
+        const bool others = watching > (looking ? 1 : 0);
+        if (closestDistance < 1.3f || !looking || (!others && m_traits.aggression > 0.4f))
+        {
+            Switch(Behavior::Attack, closest->id, "springs up at " + closest->name, now);
+            m_committedUntil = now + 1.5f;
+            return;
+        }
+        m_goal = "playing dead, somebody standing over it";
+    }
+
+    // Getting up only when nobody can see it, and has not for a few seconds: it waits for them to go.
+    if (seen || watching > 0)
+    {
+        m_downClearSince = -1.0f;
+    }
+    else if (m_downClearSince < 0.0f)
+    {
+        m_downClearSince = now;
+    }
+    const bool clear = m_downClearSince >= 0.0f && now - m_downClearSince > 3.0f;
+    const bool waited = now >= m_playDeadUntil || closestDistance > 25.0f || near == 0;
+    if (clear && (waited || now - m_behaviorStarted > 6.0f))
+    {
+        // Up, and then: somebody on their own with their back turned is somebody to creep up on, for
+        // the bold; for the rest, away, low and quiet.
+        for (const Track& track : m_tracks)
+        {
+            const SensedPlayer* player = FindPlayer(senses, track.id);
+            if (player != nullptr && player->alive && track.hostile && !track.watching && track.isolation > 8.0f &&
+                Horizontal(senses.position, player->feet) < 18.0f && m_traits.aggression > 0.55f && m_traits.fear < 0.6f)
+            {
+                Switch(Behavior::Stalk, track.id, "gets up behind " + track.name, now);
+                return;
+            }
+        }
+        Switch(Behavior::Retreat, -1, "gets up unseen and slips away", now);
+        m_slinking = true;
         return;
     }
-    // Long enough, and nobody looking: it gets up and slips away. With somebody looking it holds on,
-    // up to a limit -- lying there for ever is only waiting to be found out.
-    const bool waitedLongEnough = now >= m_playDeadUntil;
-    if ((waitedLongEnough && !anyoneWatching) || now >= m_playDeadUntil + 15.0f)
+    // Watched for far longer than it can bear: the act will not hold. Up and away at a run.
+    if (now >= m_playDeadUntil + 25.0f)
     {
-        Switch(Behavior::Retreat, -1, "gets up quietly while nobody is looking", now);
-        return;
-    }
-    // Everybody has gone: no reason to keep it up.
-    if (closestDistance > 25.0f && now - m_behaviorStarted > 4.0f)
-    {
-        Switch(Behavior::Retreat, -1, "gets up, they have gone", now);
+        Switch(Behavior::Retreat, -1, "cannot keep it up any longer; bolts", now);
     }
 }
 
@@ -2996,10 +3059,11 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
         }
         if (m_haveFleePoint && Horizontal(senses.position, m_fleePoint) > 1.0f)
         {
-            m_goal = "getting away";
+            m_goal = m_slinking ? "slinking away" : "getting away";
             m_intent.move = true;
             m_intent.destination = m_fleePoint;
-            m_intent.speed = m_traits.runSpeed * 1.1f;
+            m_intent.speed = m_slinking ? m_traits.walkSpeed * 1.1f : m_traits.runSpeed * 1.1f;
+            m_intent.crouch = m_slinking ? 0.8f : 0.0f;
         }
         else
         {
