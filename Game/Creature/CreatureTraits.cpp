@@ -94,7 +94,75 @@ CreatureTraits CreatureTraits::FromSeed(uint32_t seed)
             roll -= weights[i];
         }
     }
+    // Its habits, from a stream of their own so nothing above changes: as many as creatures.json says,
+    // each as likely as it says, never two that contradict each other.
+    {
+        SeededRandom habits(static_cast<uint64_t>(seed) * 0x9E3779B97F4A7C15ull + 0x51ED270Bull);
+        const int count = static_cast<int>(Quirk::Count);
+        const auto clashes = [&](int a, int b)
+        {
+            const auto is = [&](Quirk x, Quirk y)
+            { return (a == static_cast<int>(x) && b == static_cast<int>(y)) || (a == static_cast<int>(y) && b == static_cast<int>(x)); };
+            return is(Quirk::LightChaser, Quirk::LightShy) || is(Quirk::Silent, Quirk::Clicker) ||
+                   is(Quirk::Silent, Quirk::Knocker) || is(Quirk::Silent, Quirk::Shrieker);
+        };
+        const auto& weights = Tuning().quirkWeights;
+        for (int pick = 0; pick < Tuning().quirksPerCreature; ++pick)
+        {
+            float total = 0.0f;
+            for (int q = 0; q < count; ++q)
+            {
+                bool allowed = (traits.quirks & (1u << q)) == 0;
+                for (int other = 0; other < count && allowed; ++other)
+                {
+                    allowed = !((traits.quirks & (1u << other)) != 0 && clashes(q, other));
+                }
+                total += allowed ? weights[static_cast<size_t>(q)] : 0.0f;
+            }
+            if (total <= 0.0f)
+            {
+                break;
+            }
+            float roll = habits.Unit() * total;
+            for (int q = 0; q < count; ++q)
+            {
+                bool allowed = (traits.quirks & (1u << q)) == 0;
+                for (int other = 0; other < count && allowed; ++other)
+                {
+                    allowed = !((traits.quirks & (1u << other)) != 0 && clashes(q, other));
+                }
+                const float weight = allowed ? weights[static_cast<size_t>(q)] : 0.0f;
+                if (weight > 0.0f && roll < weight)
+                {
+                    traits.quirks = static_cast<uint16_t>(traits.quirks | (1u << q));
+                    break;
+                }
+                roll -= weight;
+            }
+        }
+    }
     return traits;
+}
+
+const char* QuirkName(Quirk quirk)
+{
+    switch (quirk)
+    {
+    case Quirk::CeilingDweller: return "goes about on the ceiling";
+    case Quirk::Knocker: return "knocks on the walls";
+    case Quirk::Shrieker: return "shrieks when it sees you";
+    case Quirk::Watcher: return "a patient watcher";
+    case Quirk::HitAndRun: return "hits and runs";
+    case Quirk::LightChaser: return "goes for lights";
+    case Quirk::LightShy: return "afraid of lights";
+    case Quirk::Faker: return "plays dead";
+    case Quirk::Pacer: return "paces";
+    case Quirk::Clicker: return "clicks in the dark";
+    case Quirk::Silent: return "silent";
+    case Quirk::Baiter: return "waits by the dead";
+    case Quirk::Count: break;
+    }
+    return "?";
 }
 
 const char* TemperamentName(Temperament temperament)
@@ -118,7 +186,15 @@ std::string CreatureTraits::Describe() const
                   "senses x%.2f  run %.1f m/s  patience %.2f  stealth %.2f  prefers loners %.2f%s%s",
                   seed, TemperamentName(temperament), aggression, fear, curiosity, persistence, perception, runSpeed,
                   patience, stealth, isolationPreference, Captures() ? "  captures" : "", Nests() ? "  nests" : "");
-    return line;
+    std::string text = line;
+    for (int q = 0; q < static_cast<int>(Quirk::Count); ++q)
+    {
+        if (Has(static_cast<Quirk>(q)))
+        {
+            text += std::string("; ") + QuirkName(static_cast<Quirk>(q));
+        }
+    }
+    return text;
 }
 
 } // namespace pred
@@ -128,7 +204,7 @@ namespace pred
 
 float CreatureTraits::StalkPatienceSeconds() const
 {
-    return Tuning().stalkPatience + Tuning().stalkPatienceRange * patience;
+    return (Tuning().stalkPatience + Tuning().stalkPatienceRange * patience) * (Has(Quirk::Watcher) ? 2.0f : 1.0f);
 }
 
 } // namespace pred

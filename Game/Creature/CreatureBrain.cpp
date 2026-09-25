@@ -250,7 +250,22 @@ void CreatureBrain::StartPastime(const CreatureSenses& senses, float now)
     const bool restless = std::any_of(m_tracks.begin(), m_tracks.end(),
                                       [&](const Track& track) { return track.lastSeen >= 0.0f && now - track.lastSeen < 90.0f; });
     const float rest = restless ? 0.0f : (0.1f + 0.4f * m_traits.patience) * (0.3f + dark);
-    const float watch = somewhere ? 0.6f + 0.6f * m_traits.patience : 0.0f;
+    const float watch = somewhere ? (0.6f + 0.6f * m_traits.patience) * (m_traits.Has(Quirk::Watcher) ? 2.5f : 1.0f) : 0.0f;
+    if (m_traits.Has(Quirk::Pacer) && senses.nav != nullptr && m_random.Unit() < 0.6f)
+    {
+        // Back and forth, back and forth, between here and a few steps away.
+        uint32_t seed = static_cast<uint32_t>(m_random.Next());
+        glm::vec3 other;
+        if (senses.nav->RandomPointNear(senses.position, 3.5f, seed, other) && Horizontal(other, senses.position) > 1.8f)
+        {
+            m_pastime = Pastime::Pace;
+            m_paceFrom = senses.position;
+            m_paceTo = other;
+            m_pauseUntil = now + m_random.Range(8.0f, 16.0f);
+            m_lookAroundUntil = m_pauseUntil;
+            return;
+        }
+    }
     const float look = 0.35f;
     float roll = m_random.Unit() * (listen + sniff + rest + watch + look);
     if ((roll -= watch) < 0.0f)
@@ -701,6 +716,10 @@ void CreatureBrain::Update(const CreatureSenses& senses, float dt)
     {
         return;
     }
+    if (m_traits.Has(Quirk::LightShy))
+    {
+        m_lightShy = true;
+    }
     m_lastTime = senses.time;
     m_intent.strikeTarget = -1;
     m_intent.openHidingPlace = -1;
@@ -853,6 +872,10 @@ void CreatureBrain::Perceive(const CreatureSenses& senses, float dt)
             if (track.lastSeen < 0.0f || senses.time - track.lastSeen > 3.0f)
             {
                 Log(senses.time, "sees " + player.name);
+                if (m_traits.Has(Quirk::Shrieker) && track.hostile)
+                {
+                    m_shriekPending = true;
+                }
             }
             track.visible = true;
             track.confidence = 1.0f;
@@ -1449,7 +1472,8 @@ void CreatureBrain::Decide(const CreatureSenses& senses)
                  {"learnt to be careful", m_wary ? 0.7f : 1.0f},
                  // Somebody shining a light in its face: the bold go for the light; the ones that have
                  // learnt what follows it, do not.
-                 {"into the light", m_litBy == track.id ? (m_lightShy ? 0.5f : (m_traits.aggression > 0.7f ? 1.3f : 1.0f)) : 1.0f},
+                 {"into the light", m_litBy == track.id ? (m_lightShy ? 0.5f : (m_traits.aggression > 0.7f || m_traits.Has(Quirk::LightChaser) ? 1.3f : 1.0f)) : 1.0f},
+                 {"carries a light", m_traits.Has(Quirk::LightChaser) && player->torchOn ? 1.4f : 1.0f},
                  // Not while it is creeping up on them from behind: it goes on creeping until it is close
                  // enough that running is quicker than being heard.
                  {"creeping instead", m_creeping && m_behavior == Behavior::Stalk && m_target == track.id && distance > 4.5f ? 0.35f : 1.0f}});
@@ -1698,10 +1722,12 @@ void CreatureBrain::Decide(const CreatureSenses& senses)
             nearest = std::min(nearest, Horizontal(senses.position, track.lastKnown));
         }
     }
-    if (m_playDeadCount < 2 && now - m_lastHurt < 1.2f && senses.healthFraction < 0.6f && nearest < 15.0f)
+    const bool faker = m_traits.Has(Quirk::Faker);
+    if (m_playDeadCount < (faker ? 4 : 2) && now - m_lastHurt < 1.2f && senses.healthFraction < (faker ? 0.85f : 0.6f) && nearest < 15.0f)
     {
         add(Behavior::PlayDead, -1, "Play dead",
-            {{"afraid", m_state.fear},
+            {{"afraid", faker ? std::max(m_state.fear, 0.7f) : m_state.fear},
+             {"a faker", faker ? 1.5f : 1.0f},
              {"cunning", 0.3f + 0.45f * m_traits.stealth + 0.45f * m_traits.patience},
              {"badly hurt", std::clamp(1.5f - senses.healthFraction, 0.5f, 1.0f)},
              {"cannot outrun them", nearest < 8.0f ? 1.0f : 0.6f}});
@@ -1810,7 +1836,7 @@ void CreatureBrain::Switch(Behavior behavior, int target, const std::string& rea
         m_retreatUntil = std::max(time + 6.0f + 6.0f * m_traits.fear, m_withdrawUntil);
         // Going, it may take one swing at whoever is in reach on the way: the bold, and the ones that
         // have learnt that running with nothing to show for it only brings them back to be shot again.
-        m_hitAndRunReady = previous != Behavior::Attack && (m_wary || m_traits.aggression > 0.55f);
+        m_hitAndRunReady = previous != Behavior::Attack && (m_wary || m_traits.aggression > 0.55f || m_traits.Has(Quirk::HitAndRun));
     }
     if (behavior == Behavior::Stalk)
     {
@@ -2638,6 +2664,8 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
                 m_roamWhy = "somewhere";
                 m_goal = "wandering";
             }
+            // A ceiling-dweller takes most legs of it overhead.
+            m_roamOverhead = m_traits.Has(Quirk::CeilingDweller) && m_random.Unit() < 0.7f;
             // Its own pace for this leg of it: an amble, a steady walk, now and then a brisk trot.
             const float pace = m_random.Unit();
             m_roamPace = pace < 0.35f ? 0.65f : pace < 0.85f ? 1.0f : 1.35f;
@@ -2713,6 +2741,19 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
                 m_goal = "pausing";
                 lookAround(m_pauseUntil);
                 break;
+            case Pastime::Pace:
+            {
+                m_goal = "pacing";
+                const glm::vec3 to = Horizontal(senses.position, m_paceTo) < 0.6f ? m_paceFrom : m_paceTo;
+                if (Horizontal(senses.position, m_paceTo) < 0.6f)
+                {
+                    std::swap(m_paceFrom, m_paceTo);
+                }
+                m_intent.move = true;
+                m_intent.destination = to;
+                m_intent.speed = m_traits.walkSpeed * 0.9f;
+                break;
+            }
             }
         }
         break;
@@ -2962,10 +3003,11 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
                 // Barely a pause between blows for something that means it.
                 m_attackCooldownUntil = now + (m_attack == AttackKind::Lunge ? 0.5f : 0.12f + 0.35f * (1.0f - m_traits.aggression));
                 m_attack = AttackKind::None;
-                if (m_strikeThenFlee)
+                if (m_strikeThenFlee || (m_traits.Has(Quirk::HitAndRun) && m_attackLanded && m_random.Unit() < 0.7f))
                 {
                     m_strikeThenFlee = false;
                     Switch(Behavior::Retreat, -1, "and away", now);
+                    m_retreatUntil = now + m_random.Range(3.0f, 6.0f);
                 }
             }
             break;
@@ -3375,6 +3417,14 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
             }
         }
 
+        // A knocker, hidden, raps on the wall now and then: something is there, and it wants them to know.
+        if (m_traits.Has(Quirk::Knocker) && !m_stalkExposed && !track->visible && now >= m_nextKnockAt)
+        {
+            m_nextKnockAt = now + m_random.Range(10.0f, 20.0f);
+            m_intent.echo = "World/door_bash";
+            Log(now, "knocks on the wall");
+        }
+
         // Peeking. Cover it cannot be seen from is cover it cannot see out of, so every few seconds it
         // leans out -- to a spot beside it with a view of them -- takes a look, and slips back. A look
         // that finds them turned away is the opening it has been waiting for.
@@ -3560,7 +3610,7 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
         {
             // Done. The patient and stealthy do not leave the body: somebody will come for it.
             glm::vec3 spot;
-            if (m_traits.stealth > 0.55f && m_traits.patience > 0.45f && PickHidingSpot(senses, m_meal, spot))
+            if (((m_traits.stealth > 0.55f && m_traits.patience > 0.45f) || m_traits.Has(Quirk::Baiter)) && PickHidingSpot(senses, m_meal, spot))
             {
                 m_baiting = true;
                 m_baitSpot = spot;
@@ -3874,6 +3924,19 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
             m_intent.facePoint = m_alertPoint;
         }
         m_goal = "something caught its eye";
+    }
+
+    // A shrieker, having seen somebody: the scream brings the rest.
+    if (m_shriekPending)
+    {
+        m_shriekPending = false;
+        m_intent.roar = true;
+        Log(now, "shrieks");
+    }
+    // A ceiling-dweller goes about overhead when it wanders.
+    if (m_behavior == Behavior::Roam && m_roamOverhead && m_traits.climbs)
+    {
+        m_intent.climb = true;
     }
 
     // A shut door across its way: it pulls it open, or, locked, throws itself at it until it gives.

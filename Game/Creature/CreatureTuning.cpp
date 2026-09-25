@@ -5,6 +5,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
 #include <fstream>
 
 namespace pred
@@ -15,6 +16,12 @@ namespace
 CreatureTuning g_tuning;
 
 } // namespace
+
+const std::array<const char*, 12>& QuirkKeys()
+{
+    static const std::array<const char*, 12> keys{"ceiling_dweller", "knocker", "shrieker", "watcher", "hit_and_run", "light_chaser", "light_shy", "faker", "pacer", "clicker", "silent", "baiter"};
+    return keys;
+}
 
 const CreatureTuning& Tuning()
 {
@@ -46,7 +53,7 @@ bool LoadCreatureTuning(const std::filesystem::path& file, CreatureTuning& out, 
     for (const std::string& key :
          UnknownKeys(json, {"sight_range", "half_field_degrees", "edge_of_view", "close_sense", "exposure_gain",
                             "exposure_decay", "suspicion", "through_walls", "commitment", "stalk_patience",
-                            "stalk_patience_range", "ambush_patience", "ambush_patience_range", "lure_every", "director"}))
+                            "stalk_patience_range", "ambush_patience", "ambush_patience_range", "lure_every", "director", "quirks"}))
     {
         PRED_LOG_WARN(AI, "creatures.json: a key nothing reads, '{}' -- a typo?", key);
         if (warnings != nullptr)
@@ -94,6 +101,33 @@ bool LoadCreatureTuning(const std::filesystem::path& file, CreatureTuning& out, 
         o.afterEasing = d.value("after_easing", o.afterEasing);
         o.withdrawSeconds = d.value("withdraw_seconds", o.withdrawSeconds);
         o.withdrawSecondsRange = d.value("withdraw_seconds_range", o.withdrawSecondsRange);
+    }
+    if (json.contains("quirks") && json["quirks"].is_object())
+    {
+        const nlohmann::json& q = json["quirks"];
+        out.quirksPerCreature = std::clamp(q.value("per_creature", out.quirksPerCreature), 0, 4);
+        if (q.contains("weights") && q["weights"].is_object())
+        {
+            const nlohmann::json& w = q["weights"];
+            for (const auto& [key, value] : w.items())
+            {
+                (void)value;
+                if (key.rfind("_", 0) == 0 ||
+                    std::any_of(QuirkKeys().begin(), QuirkKeys().end(), [&](const char* known) { return key == known; }))
+                {
+                    continue;
+                }
+                PRED_LOG_WARN(AI, "creatures.json: a habit nothing has, '{}' -- a typo?", key);
+                if (warnings != nullptr)
+                {
+                    warnings->push_back("quirks.weights." + key);
+                }
+            }
+            for (size_t i = 0; i < QuirkKeys().size(); ++i)
+            {
+                out.quirkWeights[i] = std::max(w.value(QuirkKeys()[i], out.quirkWeights[i]), 0.0f);
+            }
+        }
     }
     return true;
 }

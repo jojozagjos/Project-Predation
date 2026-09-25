@@ -655,7 +655,8 @@ private:
         Listen,
         Sniff,
         Rest,
-        Watch
+        Watch,
+        Pace
     };
     Pastime m_pastime = Pastime::LookAround;
     glm::vec3 m_watchPoint{0.0f};
@@ -714,6 +715,13 @@ private:
         Ceiling
     };
     Backstage m_backstage = Backstage::None;
+    // Habits: when it last knocked; whether it has something to scream about; which way it is pacing
+    // and between where; whether this leg of its wandering is across the ceiling.
+    float m_nextKnockAt = 0.0f;
+    bool m_shriekPending = false;
+    glm::vec3 m_paceFrom{0.0f};
+    glm::vec3 m_paceTo{0.0f};
+    bool m_roamOverhead = false;
     float m_backstageMoveAt = 0.0f;
     // Caught in somebody's light: whose, since when, and what it has learnt about it -- lit up and shot
     // straight after, twice over, and it knows the light comes before the rounds.

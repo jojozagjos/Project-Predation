@@ -39,3 +39,41 @@ TEST_CASE("The brood leans towards what has worked and away from what has cost i
     learned.Reset();
     CHECK(learned.Weight(TacticLearner::Charge) == 1.0f);
 }
+
+#include "Game/Creature/CreatureTraits.h"
+#include "Game/Creature/CreatureTuning.h"
+
+#include <bitset>
+#include <map>
+
+TEST_CASE("Every creature has habits of its own, as many and as likely as creatures.json says", "[creature][quirks]")
+{
+    const CreatureTuning original = Tuning();
+    std::map<uint16_t, int> kinds;
+    for (uint32_t seed = 1; seed <= 400; ++seed)
+    {
+        const CreatureTraits traits = CreatureTraits::FromSeed(seed);
+        INFO("seed " << seed);
+        CHECK(std::bitset<16>(traits.quirks).count() == 2);
+        CHECK_FALSE((traits.Has(Quirk::Silent) && traits.Has(Quirk::Clicker)));
+        CHECK_FALSE((traits.Has(Quirk::LightChaser) && traits.Has(Quirk::LightShy)));
+        ++kinds[traits.quirks];
+        // And the same seed, the same habits, every time.
+        CHECK(CreatureTraits::FromSeed(seed).quirks == traits.quirks);
+    }
+    // Plenty of different pairs among four hundred.
+    CHECK(kinds.size() > 30);
+
+    // A habit weighted 0 is had by nobody; one habit each when that is what is asked for.
+    CreatureTuning tuned = original;
+    tuned.quirkWeights[static_cast<size_t>(Quirk::Knocker)] = 0.0f;
+    tuned.quirksPerCreature = 1;
+    SetTuning(tuned);
+    for (uint32_t seed = 1; seed <= 200; ++seed)
+    {
+        const CreatureTraits traits = CreatureTraits::FromSeed(seed);
+        CHECK_FALSE(traits.Has(Quirk::Knocker));
+        CHECK(std::bitset<16>(traits.quirks).count() == 1);
+    }
+    SetTuning(original);
+}

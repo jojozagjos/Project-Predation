@@ -32,6 +32,27 @@ const char* TemperamentName(Temperament temperament);
 //
 // Every value is 0 to 1 unless it says otherwise, and each one is a dial on a response rather than
 // a switch: an aggressive creature does not always attack, it is more willing to.
+// Habits of its own: two for every creature, drawn from its seed, so that two of the same build and
+// temperament are still two different animals somebody can learn to tell apart.
+enum class Quirk : uint8_t
+{
+    CeilingDweller, // a climber that goes about overhead
+    Knocker,        // taps on the walls while it stalks, unseen
+    Shrieker,       // screams the moment it sees somebody, and brings the others
+    Watcher,        // stalks twice as patiently; loves a doorway to watch
+    HitAndRun,      // one blow and away, and back again
+    LightChaser,    // goes for whoever carries a light
+    LightShy,       // afraid of lights from the first
+    Faker,          // plays dead readily, and more than once
+    Pacer,          // paces back and forth when it has nothing to do
+    Clicker,        // clicks to itself in the dark
+    Silent,         // makes no sound it does not have to
+    Baiter,         // always waits by a body for whoever comes
+    Count
+};
+
+const char* QuirkName(Quirk quirk);
+
 struct CreatureTraits
 {
     uint32_t seed = 0;
@@ -95,6 +116,10 @@ struct CreatureTraits
     // Whether its body goes where a person has to crawl, and up walls and across ceilings.
     bool fitsVents = false;
     bool climbs = false;
+
+    // Its two habits, as bits.
+    uint16_t quirks = 0;
+    bool Has(Quirk quirk) const { return (quirks & (1u << static_cast<unsigned>(quirk))) != 0; }
 
     static CreatureTraits FromSeed(uint32_t seed);
 

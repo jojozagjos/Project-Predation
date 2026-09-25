@@ -439,6 +439,62 @@ them with its own eyes and ears.
 **Commitment.** A creature looking into something, stalking, searching, lying in wait, luring or
 fighting says no when asked to leave. It finishes with what it heard before it goes.
 
+### Every one different
+
+Besides its body and its temperament, every creature has two habits of its own from its seed (the
+`quirks` block of Assets/Data/creatures.json says how many, and how likely each is -- 0 for never):
+
+| Habit | What it does |
+|---|---|
+| goes about on the ceiling | a climber that takes most of its wandering overhead |
+| knocks on the walls | stalking, hidden, it raps on the wall every ten to twenty seconds |
+| shrieks when it sees you | screams at a first sighting, and the scream brings the others |
+| a patient watcher | stalks twice as long before its patience runs out; loves watching a doorway |
+| hits and runs | one blow landed, and away for a few seconds, and back |
+| goes for lights | hunts whoever carries a torch or a flare before anybody else |
+| afraid of lights | as if it had already learnt what comes after a light |
+| plays dead | readily, when only somewhat hurt, and up to four times |
+| paces | back and forth, back and forth, when it has nothing to do |
+| clicks in the dark | a dry run of clicks every few seconds, unless it is sneaking |
+| silent | no breathing, no growling -- only its feet and its attack |
+| waits by the dead | always lies in wait by a body after feeding |
+
+Never two that contradict each other: nothing is both silent and a clicker, or afraid of lights and
+drawn to them.
+
+### Playing dead
+
+It only gets up once nobody near can see it, and has not for a few seconds -- it waits for them to go --
+and then slinks off low and quiet, or, the bold ones, creeps up on somebody left on their own with
+their back to it. A patient one lies still through one small round fired to make sure; another round,
+or a heavy one, and the act is over: it goes for the shooter if they are right there and it has the
+nerve, and otherwise it runs. Somebody standing right over it gets it at once; so does somebody near
+with their back turned. In front of a room full of people looking at it, it holds still. Watched far
+longer than it can bear, it bolts.
+
+### Lights
+
+A torch or a flare pointed at it within fourteen metres, with nothing in between, is felt. The nervous
+get out of the beam; a stalker counts it as being seen and moves; the bold go for the light; a curious
+one stares into it. Lit up and shot soon after, twice, a creature learns the light is what comes before
+the shooting: after that lights frighten it and it will not charge one.
+
+### The dead
+
+A player who dies leaves their body where it fell when they come back (the last six stay; each machine
+keeps its own copy). A hungry predator or territorial one with a body within thirty metres and nobody
+in sight goes to it and feeds for twenty to forty seconds, head down, looking up now and then. Feeding,
+it sees half as far and hears half as well: it can be crept past, or up on. Afterwards the patient,
+stealthy ones -- and any that waits by the dead -- lie low near the body for whoever comes to find their
+friend.
+
+### Backstage
+
+Asked by the director to give the players room, and not badly hurt, a creature whose body fits the
+crawlspaces goes down the nearest one, and one that climbs goes up onto the ceiling somewhere out of the
+way. It moves about there every so often, and claws scraping in a crawlspace or across a ceiling are
+heard through the wall or the roof.
+
 ### Learning
 
 Two kinds, both only for the match.

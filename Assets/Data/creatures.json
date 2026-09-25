@@ -28,5 +28,23 @@
     "after_easing": 0.35,
     "withdraw_seconds": 35.0,
     "withdraw_seconds_range": 25.0
+  },
+  "quirks": {
+    "_comment": "Habits of their own, drawn from each creature's seed: how many each has, and how likely each habit is (0 for never). See Docs/AI.md, Every one different.",
+    "per_creature": 2,
+    "weights": {
+      "ceiling_dweller": 1.0,
+      "knocker": 1.0,
+      "shrieker": 1.0,
+      "watcher": 1.0,
+      "hit_and_run": 1.0,
+      "light_chaser": 1.0,
+      "light_shy": 1.0,
+      "faker": 1.0,
+      "pacer": 1.0,
+      "clicker": 1.0,
+      "silent": 1.0,
+      "baiter": 1.0
+    }
   }
 }

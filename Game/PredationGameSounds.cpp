@@ -392,7 +392,15 @@ void PredationGame::UpdateCreatureSounds(float dt)
             PlayNamed("Creature/call", head, 1.0f, pitch * 1.15f);
         }
         heard.doing = intent;
-        if (m_soundClock >= heard.breathAt && !heldBreath)
+        const CreatureTraits& habits = creature.Brain().Traits();
+        const bool silent = habits.Has(Quirk::Silent);
+        // A clicker, in the dark or looking for something, clicks: a dry, quick run of it every few seconds.
+        if (habits.Has(Quirk::Clicker) && !sneaking && m_soundClock >= heard.clickAt)
+        {
+            PlayNamed("Creature/chitter", head, 0.45f, pitch * 1.6f);
+            heard.clickAt = m_soundClock + 2.0f + 3.0f * Random01();
+        }
+        if (m_soundClock >= heard.breathAt && !heldBreath && !silent)
         {
             PlayNamed("Creature/breath", head, stalking || sneaking ? 0.22f : 0.3f, pitch * (0.95f + 0.1f * Random01()));
             const float breathPace = creature.Speed() > 3.0f ? 0.55f : 1.0f;
@@ -428,7 +436,7 @@ void PredationGame::UpdateCreatureSounds(float dt)
             default:
                 break;
             }
-            if (!voice.empty())
+            if (!voice.empty() && !(silent && doing != Behavior::Attack))
             {
                 PlayNamed(voice, head, gain, pitch * (0.95f + 0.1f * Random01()));
             }

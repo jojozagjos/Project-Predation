@@ -1132,6 +1132,7 @@ private:
         float health = 1.0f;
         bool alive = true;
         float breathAt = 0.0f;
+        float clickAt = 0.0f;
         float voiceAt = 0.0f;
         float hurtAt = -10.0f;
         Behavior doing = Behavior::Roam;

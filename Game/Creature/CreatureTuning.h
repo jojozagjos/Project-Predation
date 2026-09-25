@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -56,7 +57,15 @@ struct CreatureTuning
         float withdrawSecondsRange = 25.0f;
     };
     Director director;
+
+    // Habits (CreatureTraits, Quirk): how many each creature has, and how likely each is -- 0 for never.
+    // In the order of the Quirk enumeration. The host's file decides what the creatures do.
+    int quirksPerCreature = 2;
+    std::array<float, 12> quirkWeights{1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
 };
+
+// The names habits have in creatures.json, in the order of the Quirk enumeration.
+const std::array<const char*, 12>& QuirkKeys();
 
 // What the creatures use now.
 const CreatureTuning& Tuning();
