@@ -1,6 +1,6 @@
 # What is left
 
-A list of gaps rather than achievements, for deciding what to do next. Updated 2026-09-24.
+A list of gaps rather than achievements, for deciding what to do next. Updated 2026-09-24, evening.
 
 ## Where things stand
 
@@ -10,11 +10,13 @@ A list of gaps rather than achievements, for deciding what to do next. Updated 2
 - **Multiplayer** is host-authoritative over UDP with prediction, lag compensation, host migration, a
   lobby with join codes, LAN discovery, UPnP, proximity voice, and everything in the world replicated
   -- doors, lockers, items and their uses, flares, nests, creatures and what they are doing.
-- **The creatures** are bodies grown from seeds, never winged, posed procedurally, with sight,
-  hearing and memory; temperaments; stalking from cover, ambushes at doors and crawlspace mouths,
-  going round gunfire, crawling into crawlspaces or waiting at them, climbing walls and hanging from
-  ceilings, grabbing and dragging, cocooning at nests they grow on walls, and saying back what they
-  heard players say. See [AI.md](AI.md).
+- **The creatures** are bodies grown from seeds -- four plans, six builds, five kinds of head,
+  markings and growths, runts to brutes -- never winged, sculpted as bone under muscle and posed
+  procedurally, with sight, hearing and memory; temperaments; stalking from cover and creeping up
+  behind, ambushes at doors and crawlspace mouths, going round gunfire, searching down vents or
+  waiting at them, walking walls and ceilings, grabbing and carrying off, cocooning at the one nest,
+  saying back what they heard players say, reading each other, copying the curious way, a director
+  pacing them, and learning over a match which tactics work. See [AI.md](AI.md).
 - **The world** is the test map and the creature lab, lit lamp by lamp, with ambience that follows
   where you are, a placeholder sound for everything (Assets/Audio), and an in-game model editor.
 
@@ -29,10 +31,10 @@ A list of gaps rather than achievements, for deciding what to do next. Updated 2
 - **Real models for items.** Items are coloured shapes; weapons are authored. Items can move to the
   same authored models once there are any, and their use motions would drive them.
 - **Creature bodies by size.** One navigation mesh with crawlspaces marked serves every body; a very
-  wide one can still squeeze through a gap it should not. Walls are climbed straight up to a ceiling,
-  never along; ceilings are crossed above the floor's route.
-- **Pack hunting.** Creatures call each other to somebody they cannot reach, but do not yet plan
-  together -- one driving somebody towards another lying in wait.
+  wide one can still squeeze through a gap it should not. Ceilings are crossed above the floor's route,
+  and a wall is walked only as far along as the one it went up.
+- **Pack hunting, planned.** Creatures read each other -- one going for somebody tells the rest where
+  they are, and the rest go round or wait rather than pile in -- but none plans a drive for another.
 
 ## The next phases
 

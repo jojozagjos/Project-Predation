@@ -1825,3 +1825,15 @@ Four changes to how Assets/Data works, all so the files can be edited by hand wi
   learns within a match from a handful of encounters, is a few lines, shows its reasoning in the log,
   and only tilts choices, so no tactic is ever written off or forced.
 - **No killing while held.** A grab ends at a cocoon or a throw, never a death in its arms.
+
+## ADR-083: Creature bodies reworked, and variety from a stream of its own
+
+- **Limbs are anatomy, not tubes.** Each segment is a bone with muscle over it; a joint is knuckles and
+  a point on the outside of the bend; the far segment thins to tendons; the root is a shoulder or
+  haunch grown out of the torso. The one sculpture system is kept -- it was the right base.
+- **Variety is drawn from a second random stream** (build, head, markings, growths, and a runt or
+  brute now and then), so adding it did not reshuffle what the first stream draws. The build bends the
+  body's measurements before the legs are fitted to them, so every build still stands.
+- **Jaws are fitted, not drawn.** The lower jaw's length comes from where the upper face ends; the
+  jaw is narrower than the upper row of teeth and the lower teeth sit inside and between them, with
+  lengths capped to the room the mouth has.
