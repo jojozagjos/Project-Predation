@@ -25,7 +25,8 @@ enum class RigAction : uint8_t
     Grab,   // both hands closing on something and holding it
     Carry,  // holding something against its chest while it moves
     Roar,   // head up, jaw wide: calling to the others
-    Bash    // shouldering into something in front of it, a door
+    Bash,   // shouldering into something in front of it, a door
+    Feed    // head down at something on the floor, tearing at it, forefeet pinning it
 };
 
 const char* RigActionName(RigAction action);

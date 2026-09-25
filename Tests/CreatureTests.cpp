@@ -115,7 +115,7 @@ struct CreatureHarness
 
     // Lockers, as the game describes them. The test map has none of its own.
     std::vector<HidingPlace> places;
-    std::vector<glm::vec3> bodies;
+    std::vector<BodySense> bodies;
 
     // Runs for a while at the game's tick. The noises are made on the first tick only; `watch` sees
     // every tick, so a test can notice a moment that does not last -- a strike -- as it happens.
@@ -2145,4 +2145,111 @@ TEST_CASE("With no eyes it hunts by ear: stops to listen, creeps nearer, and goe
     INFO("after the close step:" << MindOf(*harness.creature) << " interest " << harness.creature->Brain().Interest().what
          << " at " << glm::distance(harness.creature->Brain().Interest().position, close) << " from the step");
     CHECK(lunged);
+}
+
+namespace
+{
+
+// The game's part in feeding, for a creature on its own: the body goes as it is eaten and moves with the
+// jaws it is in, and eating mends.
+void TendBodies(CreatureHarness& harness, float dt)
+{
+    const CreatureIntent& intent = harness.creature->Brain().Intent();
+    const int self = harness.creature->NetId();
+    for (BodySense& body : harness.bodies)
+    {
+        if (intent.eat == body.id)
+        {
+            body.meat = std::max(body.meat - dt / 30.0f, 0.0f);
+        }
+        if (intent.carry == body.id)
+        {
+            body.carriedBy = self;
+            body.at = harness.creature->Position() + harness.creature->Forward() * 1.0f;
+        }
+        else if (body.carriedBy == self)
+        {
+            body.carriedBy = -1;
+        }
+    }
+    if (intent.recover > 0.0f)
+    {
+        harness.creature->Heal(harness.creature->MaxHealth() * intent.recover * dt);
+    }
+}
+
+template <typename Watch>
+void RunFeeding(CreatureHarness& harness, float seconds, const std::vector<SensedPlayer>& players, Watch&& watch)
+{
+    constexpr float dt = 1.0f / 60.0f;
+    for (float t = 0.0f; t < seconds; t += dt)
+    {
+        harness.time += dt;
+        harness.creature->Update(harness.Senses(players), harness.time, dt);
+        TendBodies(harness, dt);
+        watch(*harness.creature);
+    }
+}
+
+} // namespace
+
+TEST_CASE("Eating a body mends it and uses the body up, and one picked clean is left alone", "[creature][corpse]")
+{
+    const uint32_t seed = SeedWhere([](const CreatureTraits& t)
+                                    { return t.temperament == Temperament::Predator && t.aggression > 0.6f && t.fear < 0.5f; });
+    REQUIRE(seed != 0);
+    CreatureHarness harness(seed);
+    glm::vec3 at;
+    glm::vec3 where;
+    REQUIRE(OpenView(harness, 6.0f, at, where));
+    harness.creature->TakeDamage(Share(*harness.creature, 50.0f), -1, where, harness.time);
+    const float hurt = harness.creature->Health();
+    BodySense body(where);
+    body.id = 7;
+    harness.bodies = {body};
+
+    bool ate = false;
+    RunFeeding(harness, 70.0f, {}, [&](const Creature& creature) { ate = ate || creature.Brain().Intent().eat == 7; });
+    INFO("its mind:" << MindOf(*harness.creature));
+    CHECK(ate);
+    CHECK(harness.creature->Health() > hurt + harness.creature->MaxHealth() * 0.1f);
+    CHECK(harness.bodies[0].meat < 0.3f);
+
+    // Picked over, it is not gone back to.
+    bool again = false;
+    RunFeeding(harness, 20.0f, {}, [&](const Creature& creature) { again = again || creature.Brain().Intent().eat == 7; });
+    CHECK_FALSE(again);
+}
+
+TEST_CASE("Feeding, and somebody turns up a way off: it drags the body away out of their sight", "[creature][corpse]")
+{
+    const uint32_t seed = SeedWhere([](const CreatureTraits& t)
+                                    { return t.temperament == Temperament::Predator && t.aggression > 0.6f && t.fear < 0.5f; });
+    REQUIRE(seed != 0);
+    CreatureHarness harness(seed);
+    glm::vec3 at;
+    glm::vec3 where;
+    REQUIRE(OpenView(harness, 6.0f, at, where));
+    BodySense body(where);
+    body.id = 3;
+    harness.bodies = {body};
+    RunFeeding(harness, 8.0f, {}, [](const Creature&) {});
+    REQUIRE(harness.creature->Brain().Feeding());
+
+    // Somebody ten metres off, heard, looking elsewhere.
+    glm::vec3 them;
+    REQUIRE(harness.nav.NearestPoint(where + glm::vec3(0.0f, 0.0f, -10.0f), 3.0f, them));
+    SensedPlayer somebody = Somebody(1, them);
+    somebody.forward = glm::vec3(0.0f, 0.0f, -1.0f);
+    Noise step;
+    step.kind = NoiseKind::Footstep;
+    step.reach = 20.0f;
+    step.position = them;
+    step.player = 1;
+    harness.Run(0.1f, {somebody}, {step});
+    bool carried = false;
+    RunFeeding(harness, 10.0f, {somebody}, [&](const Creature& creature) { carried = carried || creature.Brain().Intent().carry == 3; });
+    INFO("its mind:" << MindOf(*harness.creature));
+    CHECK(carried);
+    CHECK(glm::length(glm::vec2(harness.bodies[0].at.x - where.x, harness.bodies[0].at.z - where.z)) > 3.0f);
 }

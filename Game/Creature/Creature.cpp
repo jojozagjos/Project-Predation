@@ -821,6 +821,7 @@ void Creature::Update(CreatureSenses senses, float time, float dt)
     senses.nav = m_nav;
     senses.crawl = m_caps.fitsVents ? NavMesh::kCrawl : 0;
     senses.routeReached = m_routeReached;
+    senses.selfId = m_netId;
     senses.verticalReach = m_caps.verticalReach;
 
     m_brain.Update(senses, dt);
@@ -882,6 +883,20 @@ void Creature::Update(CreatureSenses senses, float time, float dt)
         action.phase = intent.attackPhase;
         action.side = intent.attackSide;
         action.target = intent.attackAt;
+    }
+    else if (intent.eat >= 0)
+    {
+        // Tearing at a body: the head down in it, a pull every second or so.
+        action.kind = RigAction::Feed;
+        action.phase = std::fmod(time * 0.85f, 1.0f);
+        action.target = intent.attackAt;
+    }
+    else if (intent.carry >= 0)
+    {
+        // A body in its jaws, dragged along in front of it.
+        action.kind = RigAction::Carry;
+        action.phase = 0.5f;
+        action.target = m_position + Forward() * (m_anatomy.length * 0.6f) + glm::vec3(0.0f, m_anatomy.hipHeight * 0.4f, 0.0f);
     }
     else if (intent.holding >= 0)
     {

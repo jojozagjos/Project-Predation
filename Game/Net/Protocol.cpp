@@ -532,6 +532,13 @@ void WriteWorldEvent(BitWriter& writer, const WorldEventMessage& message)
         writer.WriteBits(message.item, 16);
         break;
 
+    case WorldEventKind::CorpseCarried:
+    case WorldEventKind::CorpseDropped:
+        writer.WriteByte(message.index);
+        WritePosition(writer, message.position);
+        break;
+
+
     case WorldEventKind::Count:
         break;
     }
@@ -656,6 +663,13 @@ bool ReadWorldEvent(BitReader& reader, WorldEventMessage& out)
     case WorldEventKind::FacilityChanged:
         out.item = static_cast<uint16_t>(reader.ReadBits(16));
         break;
+
+    case WorldEventKind::CorpseCarried:
+    case WorldEventKind::CorpseDropped:
+        out.index = reader.ReadByte();
+        out.position = ReadPosition(reader);
+        break;
+
 
     case WorldEventKind::Count:
         return false;
@@ -877,7 +891,7 @@ void WriteCreatureState(BitWriter& writer, const CreatureStateMessage& message)
         writer.WriteBool(creature.down);
         writer.WriteQuantised(creature.crouch, 0.0f, 1.0f, 3);
         writer.WriteBits(creature.behavior, 5);
-        writer.WriteBits(creature.action, 3);
+        writer.WriteBits(creature.action, 4);
         if (creature.action != 0)
         {
             writer.WriteQuantised(creature.actionPhase, 0.0f, 1.0f, 6);
@@ -921,7 +935,7 @@ bool ReadCreatureState(BitReader& reader, CreatureStateMessage& out)
         creature.down = reader.ReadBool();
         creature.crouch = reader.ReadQuantised(0.0f, 1.0f, 3);
         creature.behavior = static_cast<uint8_t>(reader.ReadBits(5));
-        creature.action = static_cast<uint8_t>(reader.ReadBits(3));
+        creature.action = static_cast<uint8_t>(reader.ReadBits(4));
         if (creature.action != 0)
         {
             creature.actionPhase = reader.ReadQuantised(0.0f, 1.0f, 6);

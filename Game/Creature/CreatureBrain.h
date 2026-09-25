@@ -69,6 +69,19 @@ struct DoorSense
     bool locked = false;
 };
 
+// A body lying somewhere, as a creature knows it: where, how much of it is left to eat (1 whole, 0
+// nothing), which one, and whose jaws it is in when it is being carried off.
+struct BodySense
+{
+    glm::vec3 at{0.0f};
+    float meat = 1.0f;
+    int id = -1;
+    int carriedBy = -1; // a creature's net id, or -1
+    BodySense() = default;
+    // A body is mostly where it is.
+    BodySense(const glm::vec3& where) : at(where) {} // NOLINT(google-explicit-constructor)
+};
+
 // The ways it has of hurting somebody.
 enum class AttackKind : uint8_t
 {
@@ -126,8 +139,10 @@ struct CreatureSenses
     std::vector<Kin> kin;
     // What the brood has learnt this match about which ways of getting at these people work.
     const TacticLearner* learned = nullptr;
-    // Where the dead lie.
-    std::vector<glm::vec3> bodies;
+    // Where the dead lie, and how much of each is left.
+    std::vector<BodySense> bodies;
+    // Its own net id, to tell a body in its own jaws from one in another's.
+    int selfId = -1;
     const NavMesh* nav = nullptr;
     // NavMesh::kCrawl when its body fits the crawlspaces, so the places it thinks of include them.
     uint16_t crawl = 0;
@@ -207,6 +222,9 @@ struct CreatureIntent
     // A sound it heard somebody make, made back at them from where it is -- a curious one copying.
     // The name of the sound; empty when it is making none.
     std::string echo;
+    // Eating a body this tick, which one, head down at `attackAt`; and carrying one off in its jaws.
+    int eat = -1;
+    int carry = -1;
 };
 
 enum class Behavior : uint8_t
@@ -756,6 +774,17 @@ private:
     // straight after, twice over, and it knows the light comes before the rounds.
     // Feeding: which body, since when, and when it will want to again.
     glm::vec3 m_meal{0.0f};
+    int m_mealId = -1;
+    // Where it is taking the body before it eats: out of their sight, or to the others of its kind. Once
+    // it has put it down there it eats it there.
+    bool m_carryingBody = false;
+    bool m_bodyPlaced = false;
+    bool m_bodyShareDecided = false;
+    bool m_toFriends = false;
+    glm::vec3 m_bodyTo{0.0f};
+    // Where on the body its head is down, and when it last changed: it moves about the body as it eats.
+    glm::vec3 m_biteAt{0.0f};
+    float m_biteMovedAt = -1.0e9f;
     float m_fedUntil = -1.0e9f;
     float m_feedStarted = -1.0f;
     bool m_baiting = false;

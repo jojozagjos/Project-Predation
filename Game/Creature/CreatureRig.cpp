@@ -94,6 +94,8 @@ const char* RigActionName(RigAction action)
         return "roar";
     case RigAction::Bash:
         return "bash";
+    case RigAction::Feed:
+        return "feed";
     }
     return "?";
 }
@@ -408,6 +410,13 @@ void CreatureRig::Update(const RigInput& input)
     case RigAction::Swipe:
         pitchTarget += 0.08f * swing;
         break;
+    case RigAction::Feed:
+        // Down over what it is eating: the whole body low and its front end lowest, so the head gets to the
+        // floor by the body going down to it, not by the neck stretching out.
+        rise -= 0.38f * a.hipHeight;
+        pitchTarget -= 0.55f;
+        forward += 0.08f * a.length;
+        break;
     default:
         break;
     }
@@ -504,7 +513,8 @@ void CreatureRig::Update(const RigInput& input)
         pitchTarget2 += m_twitch.y;
     }
     yawTarget = std::clamp(Wrap(yawTarget), -1.35f, 1.35f);
-    pitchTarget2 = std::clamp(pitchTarget2, -0.8f, 0.85f);
+    // Head down in something on the floor, it can bend a long way further than it ever looks down.
+    pitchTarget2 = std::clamp(pitchTarget2, input.action == RigAction::Feed ? -1.45f : -0.8f, 0.85f);
     const float headRate = input.time < m_twitchUntil ? 30.0f : 9.0f;
     m_headYaw += (yawTarget - m_headYaw) * Ease(headRate, dt);
     m_headPitch += (pitchTarget2 - m_headPitch) * Ease(headRate, dt);
@@ -520,6 +530,16 @@ void CreatureRig::Update(const RigInput& input)
     else if (input.action == RigAction::Roar)
     {
         m_headPitch = glm::mix(m_headPitch, 0.7f, swing);
+    }
+    else if (input.action == RigAction::Feed)
+    {
+        // Head bent down into what it is eating (the look does the bending, the body the lowering) and
+        // tearing at it: a short pull back and up, and a shake from side to side. Never a stretch.
+        const float tear = std::sin(phase * glm::two_pi<float>());
+        const glm::vec3 across = glm::normalize(glm::cross(headAhead, glm::vec3(0.0f, 1.0f, 0.0f)) + glm::vec3(1e-4f, 0.0f, 0.0f));
+        thrust = -headAhead * (0.1f * a.headLength * std::max(tear, 0.0f)) +
+                 across * (0.05f * a.headLength * std::sin(phase * glm::two_pi<float>() * 2.0f)) +
+                 glm::vec3(0.0f, 0.08f * a.headLength * std::max(tear, 0.0f), 0.0f);
     }
     thrust += glm::vec3(0.0f, 0.12f, 0.2f) * input.windup * a.headLength;
     for (size_t k = 1; k < neck.size(); ++k)
@@ -691,6 +711,11 @@ void CreatureRig::Update(const RigInput& input)
             case RigAction::Bash:
                 reachTo = glm::mix(foot, shoulder + glm::vec3(side * 0.1f, -span * 0.2f, -span * 0.75f), swing);
                 reach = swing > 0.1f ? 1.0f : 0.0f;
+                break;
+            case RigAction::Feed:
+                // Forefeet on what it is eating, holding it down.
+                reachTo = target + glm::vec3(side * 0.2f, 0.03f, 0.12f);
+                reach = 1.0f;
                 break;
             default:
                 break;

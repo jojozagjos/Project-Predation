@@ -806,11 +806,12 @@ TEST_CASE("Creatures are sent as state: what they are, where, and what their bod
     BitWriter writer;
     WriteCreatureState(writer, sent);
     const std::vector<uint8_t>& bytes = writer.Finish();
-    // Eight creatures in 156 bytes -- 153 bits each, sixteen of them what the body is doing when it is doing
-    // nothing in particular, two what it is clinging to -- thirty times a second, is about 4.5 KB/s per
-    // client: about the players' own snapshots. A creature mid-blow, looking at somebody, costs about a
-    // hundred bits more, and one up a wall seven more.
-    CHECK(bytes.size() <= 157);
+    // Eight creatures in 157 bytes -- 154 bits each, seventeen of them what the body is doing when it is
+    // doing nothing in particular (four of those which action, since feeding made nine), two what it is
+    // clinging to -- thirty times a second, is about 4.5 KB/s per client: about the players' own
+    // snapshots. A creature mid-blow, looking at somebody, costs about a hundred bits more, and one up a
+    // wall seven more.
+    CHECK(bytes.size() <= 158);
 
     BitReader reader(bytes.data(), bytes.size());
     CreatureStateMessage received;

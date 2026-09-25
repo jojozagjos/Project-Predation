@@ -2423,6 +2423,32 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
         ClearNests();
         break;
 
+    case WorldEventKind::CorpseCarried:
+        // The body lying there is in that creature's jaws now.
+        if (Corpse* corpse = CorpseNear(event.position, 3.0f); corpse != nullptr)
+        {
+            corpse->carriedBy = event.index;
+            for (const std::unique_ptr<Creature>& creature : m_creatures)
+            {
+                if (creature->NetId() == event.index)
+                {
+                    corpse->carryYaw = creature->Yaw();
+                }
+            }
+        }
+        break;
+
+    case WorldEventKind::CorpseDropped:
+        for (Corpse& corpse : m_corpses)
+        {
+            if (corpse.carriedBy == static_cast<int>(event.index))
+            {
+                corpse.carriedBy = -1;
+                PlaceCorpse(corpse, event.position, 0.0f);
+            }
+        }
+        break;
+
     case WorldEventKind::FacilityChanged:
         // The host has built another facility: the same one, here, from the same seed.
         if (event.item != m_facility.Seed())
@@ -6049,6 +6075,17 @@ void PredationGame::LeaveCorpse(const PlayerBody& body, uint8_t player)
     Corpse corpse;
     corpse.player = player;
     corpse.parts = body.LeaveCorpse(m_scene, corpse.at);
+    corpse.id = m_nextCorpseId++;
+    for (const Entity part : corpse.parts)
+    {
+        const Transform* where = m_scene.GetTransform(part);
+        const MeshRenderer* renderer = m_scene.GetMeshRenderer(part);
+        corpse.offsets.push_back(where != nullptr ? where->position - corpse.at : glm::vec3(0.0f));
+        corpse.turns.push_back(where != nullptr ? where->rotation : glm::quat(1.0f, 0.0f, 0.0f, 0.0f));
+        corpse.sizes.push_back(where != nullptr ? where->scale : glm::vec3(1.0f));
+        corpse.looks.push_back(renderer != nullptr ? renderer->material : Material{});
+        corpse.flesh.push_back(1.0f);
+    }
     if (!corpse.parts.empty())
     {
         PRED_LOG_INFO(Gameplay, "Player {} left a body at {:.1f} {:.1f} {:.1f}", player, corpse.at.x, corpse.at.y, corpse.at.z);

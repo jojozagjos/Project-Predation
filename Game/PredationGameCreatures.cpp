@@ -761,7 +761,12 @@ void PredationGame::UpdateCreatures(float dt)
         senses.learned = &m_learned;
         for (const Corpse& corpse : m_corpses)
         {
-            senses.bodies.push_back(corpse.at);
+            BodySense body;
+            body.at = corpse.at;
+            body.meat = corpse.meat;
+            body.id = corpse.id;
+            body.carriedBy = corpse.carriedBy;
+            senses.bodies.push_back(body);
         }
         for (const std::unique_ptr<Creature>& other : m_creatures)
         {
@@ -865,6 +870,7 @@ void PredationGame::UpdateCreatures(float dt)
         {
             BuildNest(intent.hiveAt, static_cast<uint16_t>(creature->Brain().Traits().seed & 0xFFFFu), creature->NetId(), true);
         }
+        HandleCorpseIntents(*creature, intent, dt);
         // Licking its wounds, wherever it has gone to ground.
         if (intent.recover > 0.0f && creature->Alive())
         {
@@ -1067,10 +1073,205 @@ void PredationGame::UpdateDirector(float dt, const std::vector<SensedPlayer>& pl
     }
 }
 
+PredationGame::Corpse* PredationGame::CorpseNear(const glm::vec3& at, float within)
+{
+    Corpse* best = nullptr;
+    for (Corpse& corpse : m_corpses)
+    {
+        const float gap = glm::distance(corpse.at, at);
+        if (gap < within && (best == nullptr || gap < glm::distance(best->at, at)))
+        {
+            best = &corpse;
+        }
+    }
+    return best;
+}
+
+PredationGame::Corpse* PredationGame::CorpseById(int id)
+{
+    for (Corpse& corpse : m_corpses)
+    {
+        if (corpse.id == id)
+        {
+            return &corpse;
+        }
+    }
+    return nullptr;
+}
+
+void PredationGame::PlaceCorpse(Corpse& corpse, const glm::vec3& to, float turn)
+{
+    corpse.at = to;
+    const glm::quat spin = glm::angleAxis(-turn, glm::vec3(0.0f, 1.0f, 0.0f));
+    for (size_t i = 0; i < corpse.parts.size() && i < corpse.offsets.size(); ++i)
+    {
+        if (Transform* where = m_scene.GetTransform(corpse.parts[i]))
+        {
+            where->position = to + spin * corpse.offsets[i];
+            where->rotation = spin * corpse.turns[i];
+        }
+    }
+}
+
+void PredationGame::HandleCorpseIntents(Creature& creature, const CreatureIntent& intent, float dt)
+{
+    (void)dt;
+    const int self = creature.NetId();
+    // Taking one up, and putting it down: whichever it held that it no longer asks for, it has let go of.
+    for (Corpse& corpse : m_corpses)
+    {
+        const bool wanted = corpse.id == intent.carry && creature.Alive() && !creature.Down();
+        if (wanted && corpse.carriedBy < 0)
+        {
+            corpse.carriedBy = self;
+            corpse.carryYaw = creature.Yaw();
+            if (m_sessionMode == SessionMode::Host)
+            {
+                WorldEventMessage event;
+                event.kind = WorldEventKind::CorpseCarried;
+                event.index = static_cast<uint8_t>(self);
+                event.position = corpse.at;
+                m_host.Broadcast(event);
+            }
+        }
+        else if (!wanted && corpse.carriedBy == self)
+        {
+            corpse.carriedBy = -1;
+            glm::vec3 down = corpse.at;
+            glm::vec3 onMesh;
+            if (m_nav.Valid() && m_nav.NearestPoint(down, 1.5f, onMesh))
+            {
+                down.y = onMesh.y;
+            }
+            PlaceCorpse(corpse, down, creature.Yaw() - corpse.carryYaw);
+            corpse.offsets = {};
+            for (const Entity part : corpse.parts)
+            {
+                const Transform* where = m_scene.GetTransform(part);
+                corpse.offsets.push_back(where != nullptr ? where->position - down : glm::vec3(0.0f));
+            }
+            for (size_t i = 0; i < corpse.parts.size() && i < corpse.turns.size(); ++i)
+            {
+                if (const Transform* where = m_scene.GetTransform(corpse.parts[i]))
+                {
+                    corpse.turns[i] = where->rotation;
+                }
+            }
+            if (m_sessionMode == SessionMode::Host)
+            {
+                WorldEventMessage event;
+                event.kind = WorldEventKind::CorpseDropped;
+                event.index = static_cast<uint8_t>(self);
+                event.position = down;
+                m_host.Broadcast(event);
+            }
+        }
+    }
+}
+
+void PredationGame::UpdateCorpses(float dt)
+{
+    // Eaten where the mouth is. Every machine sees every creature's body doing what it does -- the host
+    // from its mind, a client from what it is sent -- so each eats the body away the same way, piece by
+    // piece, with nothing more said: a whole body in about half a minute of tearing.
+    for (const std::unique_ptr<Creature>& creature : m_creatures)
+    {
+        const Creature::Action& action = creature->CurrentAction();
+        if (action.kind != RigAction::Feed || !creature->Alive())
+        {
+            continue;
+        }
+        Corpse* corpse = CorpseNear(action.target, 2.0f);
+        if (corpse == nullptr || corpse->flesh.empty())
+        {
+            continue;
+        }
+        size_t bitten = corpse->flesh.size();
+        float nearest = 1.0e9f;
+        for (size_t i = 0; i < corpse->parts.size() && i < corpse->flesh.size(); ++i)
+        {
+            const Transform* where = m_scene.GetTransform(corpse->parts[i]);
+            if (where == nullptr || corpse->flesh[i] <= 0.0f)
+            {
+                continue;
+            }
+            const float gap = glm::distance(where->position, action.target);
+            if (gap < nearest)
+            {
+                nearest = gap;
+                bitten = i;
+            }
+        }
+        if (bitten < corpse->flesh.size())
+        {
+            corpse->flesh[bitten] = std::max(corpse->flesh[bitten] - dt * static_cast<float>(corpse->flesh.size()) / 30.0f, 0.0f);
+        }
+        float left = 0.0f;
+        for (const float f : corpse->flesh)
+        {
+            left += f;
+        }
+        corpse->meat = left / static_cast<float>(corpse->flesh.size());
+    }
+
+    for (Corpse& corpse : m_corpses)
+    {
+        // In somebody's jaws: dragged along in front of them, turned as they turn.
+        if (corpse.carriedBy >= 0)
+        {
+            const Creature* carrier = nullptr;
+            for (const std::unique_ptr<Creature>& creature : m_creatures)
+            {
+                if (creature->NetId() == corpse.carriedBy)
+                {
+                    carrier = creature.get();
+                }
+            }
+            if (carrier == nullptr || !carrier->Alive())
+            {
+                corpse.carriedBy = -1;
+            }
+            else
+            {
+                const glm::vec3 ahead = carrier->Position() + carrier->Forward() * (carrier->Anatomy().length * 0.55f + 0.45f);
+                PlaceCorpse(corpse, glm::vec3(ahead.x, carrier->Position().y + 0.05f, ahead.z), carrier->Yaw() - corpse.carryYaw);
+            }
+        }
+        // Eaten where it has been: that piece raw and wet and then gone, the pieces against it bloodied, the
+        // rest untouched. A body does not go red all over from being bitten at one end.
+        for (size_t i = 0; i < corpse.parts.size() && i < corpse.flesh.size(); ++i)
+        {
+            float bloodied = 1.0f - corpse.flesh[i];
+            for (size_t k = 0; k < corpse.parts.size() && k < corpse.flesh.size(); ++k)
+            {
+                if (k != i && corpse.flesh[k] < 0.9f &&
+                    glm::distance(corpse.offsets[i], corpse.offsets[k]) < 0.35f)
+                {
+                    bloodied = std::max(bloodied, 0.35f * (1.0f - corpse.flesh[k]));
+                }
+            }
+            if (Transform* where = m_scene.GetTransform(corpse.parts[i]))
+            {
+                where->scale = corpse.flesh[i] <= 0.15f ? glm::vec3(0.0f) : corpse.sizes[i];
+            }
+            if (MeshRenderer* renderer = m_scene.GetMeshRenderer(corpse.parts[i]))
+            {
+                Material look = corpse.looks[i];
+                const float raw = std::min(bloodied * 1.4f, 0.9f);
+                look.baseColor = glm::mix(look.baseColor, glm::vec3(0.22f, 0.02f, 0.02f), raw);
+                look.roughness = glm::mix(look.roughness, 0.3f, raw);
+                look.metallic = glm::mix(look.metallic, 0.0f, raw);
+                renderer->material = look;
+            }
+        }
+    }
+}
+
 void PredationGame::UpdateCreatureVisuals(float dt)
 {
     ShowCocoons();
     UpdateNests(dt);
+    UpdateCorpses(dt);
     // A client's creatures have no mind here. They are eased towards what the host last said.
     const bool shownOnly = !IsAuthority();
     for (const std::unique_ptr<Creature>& creature : m_creatures)

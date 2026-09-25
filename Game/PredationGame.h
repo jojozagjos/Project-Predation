@@ -164,15 +164,40 @@ private:
     void UpdateDirector(float dt, const std::vector<SensedPlayer>& players);
     // The dead, left where they fell when their player came back. Every machine leaves its own copy of
     // the body it was drawing, so nothing about them is sent. The oldest go when there are too many.
+    // A body left where somebody died: the pieces it is drawn as, and what has been done to it since. Eaten,
+    // it is eaten where the mouth is: that piece goes to raw meat and then is gone, the ones against it are
+    // bloodied, and the rest stays as it was. Carried off, it moves with the jaws it is in. Each machine makes
+    // its own when it sees the death, and eats it away from what it sees the creatures doing; the host says
+    // who is carrying it off, by where it lies.
     struct Corpse
     {
         uint8_t player = 0;
         glm::vec3 at{0.0f};
         std::vector<Entity> parts;
+        int id = 0;
+        float meat = 1.0f;           // what is left of it all, 0 to 1
+        std::vector<float> flesh;    // and of each piece
+        int carriedBy = -1;
+        float carryYaw = 0.0f;
+        // Each piece as it was left: where it lies from the middle, which way, and how it looked.
+        std::vector<glm::vec3> offsets;
+        std::vector<glm::quat> turns;
+        std::vector<Material> looks;
+        std::vector<glm::vec3> sizes;
     };
     std::vector<Corpse> m_corpses;
+    int m_nextCorpseId = 1;
     void LeaveCorpse(const PlayerBody& body, uint8_t player);
     void ClearCorpses();
+    // Carried bodies following the jaws they are in, and bodies eaten where creatures are eating them. Every
+    // machine, from what the creatures are seen doing.
+    void UpdateCorpses(float dt);
+    // What the creatures did to the bodies this tick, on the host: taking one up, putting one down.
+    void HandleCorpseIntents(Creature& creature, const CreatureIntent& intent, float dt);
+    Corpse* CorpseNear(const glm::vec3& at, float within);
+    Corpse* CorpseById(int id);
+    // Moves a body, every piece of it, so that its middle is at `to` and it has turned by `turn` since it lay.
+    void PlaceCorpse(Corpse& corpse, const glm::vec3& to, float turn);
     float m_fearShown = 0.0f;       // how afraid the picture looks, eased
     // Being held: the creature doing it, when this machine knows; how long; the red flash at the
     // moment it took hold; the jolt of each struggle; and whether jump was down last frame.

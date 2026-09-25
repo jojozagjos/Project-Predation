@@ -1758,11 +1758,14 @@ void CreatureBrain::Decide(const CreatureSenses& senses)
     // while it is at it; afterwards it is not hungry again for a good while.
     {
         const bool atIt = m_behavior == Behavior::Feed;
-        const glm::vec3* nearest = nullptr;
-        for (const glm::vec3& body : senses.bodies)
+        // Something left on it, and not in another's jaws: a body picked clean is not a meal, and one
+        // being carried off by another of its kind is that one's.
+        const BodySense* nearest = nullptr;
+        for (const BodySense& body : senses.bodies)
         {
-            if (Horizontal(body, senses.position) < 30.0f &&
-                (nearest == nullptr || Horizontal(body, senses.position) < Horizontal(*nearest, senses.position)))
+            if (body.meat > 0.1f && (body.carriedBy < 0 || body.carriedBy == senses.selfId) &&
+                Horizontal(body.at, senses.position) < 30.0f &&
+                (nearest == nullptr || Horizontal(body.at, senses.position) < Horizontal(nearest->at, senses.position)))
             {
                 nearest = &body;
             }
@@ -1795,9 +1798,27 @@ void CreatureBrain::Decide(const CreatureSenses& senses)
             {
                 quiet *= 0.5f;
             }
+            // Already at it, and whoever has turned up is not close: it does not give up its meal, it takes it
+            // somewhere quieter (see the act). Close, and the meal can wait.
+            if (atIt)
+            {
+                float nearestThem = 1.0e9f;
+                for (const Track& track : m_tracks)
+                {
+                    if (track.visible || track.confidence > 0.35f)
+                    {
+                        nearestThem = std::min(nearestThem, Horizontal(track.lastKnown, nearest->at));
+                    }
+                }
+                if (nearestThem > 8.0f)
+                {
+                    quiet = std::max(quiet, 0.5f);
+                }
+            }
             if (!atIt)
             {
-                m_meal = *nearest;
+                m_meal = nearest->at;
+                m_mealId = nearest->id;
             }
             add(Behavior::Feed, -1, "Feed on a body",
                 {{"hungry", 0.35f + 0.5f * m_traits.aggression},
@@ -2117,6 +2138,10 @@ void CreatureBrain::Switch(Behavior behavior, int target, const std::string& rea
     {
         m_feedStarted = -1.0f;
         m_baiting = false;
+        m_carryingBody = false;
+        m_bodyPlaced = false;
+        m_bodyShareDecided = false;
+        m_toFriends = false;
     }
     if (previous == Behavior::Feed && behavior != Behavior::Feed && m_feedStarted >= 0.0f)
     {
@@ -3023,6 +3048,11 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
     m_intent.drop = false;
     m_intent.mimic = -1;
     m_intent.echo.clear();
+    m_intent.eat = -1;
+    m_intent.carry = -1;
+    // Mending is something it does this tick, like everything else here: left set, whatever set it last
+    // went on healing it for good.
+    m_intent.recover = 0.0f;
 
     const glm::vec3 eye = senses.eye;
     const auto lookAround = [&](float until)
@@ -4099,7 +4129,129 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
             }
             break;
         }
-        if (Horizontal(senses.position, m_meal) > 1.1f)
+        // The body as it is now: somebody else's jaws, or eaten down to nothing, and it is no meal.
+        const BodySense* meal = nullptr;
+        for (const BodySense& body : senses.bodies)
+        {
+            if ((m_mealId >= 0 && body.id == m_mealId) || (m_mealId < 0 && Horizontal(body.at, m_meal) < 2.0f))
+            {
+                meal = &body;
+            }
+        }
+        if (meal == nullptr || meal->meat <= 0.06f || (meal->carriedBy >= 0 && meal->carriedBy != senses.selfId))
+        {
+            m_carryingBody = false;
+            const bool gone = meal == nullptr || meal->meat <= 0.06f;
+            if (m_feedStarted >= 0.0f)
+            {
+                m_fedUntil = now + 90.0f;
+            }
+            Switch(Behavior::Roam, -1, gone ? "nothing left of the body" : "another of its kind has taken the body", now);
+            break;
+        }
+        m_meal = meal->at;
+        const bool inMyJaws = meal->carriedBy == senses.selfId && senses.selfId >= 0;
+
+        // Is it safe to eat here? Anybody it knows of about, near the body or watching it.
+        float threatGap = 1.0e9f;
+        glm::vec3 threatAt{0.0f};
+        for (const Track& track : m_tracks)
+        {
+            if (!(track.visible || (track.confidence > 0.35f && now - std::max(track.lastSeen, track.lastHeard) < 15.0f)))
+            {
+                continue;
+            }
+            const float gap = Horizontal(track.lastKnown, m_meal);
+            if (gap < threatGap)
+            {
+                threatGap = gap;
+                threatAt = track.lastKnown;
+            }
+        }
+        const bool unsafe = threatGap < 22.0f;
+
+        // Where to eat it. Once, when it gets to the body: to the others of its kind now and then -- less
+        // often the more of them there are to share with -- and away out of sight whenever it is not safe
+        // where it lies. Its nest, when it has one near, over anywhere.
+        if (!m_carryingBody && !m_bodyPlaced && Horizontal(senses.position, m_meal) < 2.5f)
+        {
+            if (!m_bodyShareDecided)
+            {
+                m_bodyShareDecided = true;
+                const CreatureSenses::Kin* friendNear = nullptr;
+                for (const CreatureSenses::Kin& other : senses.kin)
+                {
+                    if (Horizontal(other.position, m_meal) < 35.0f && Horizontal(other.position, m_meal) > 4.0f &&
+                        (friendNear == nullptr || Horizontal(other.position, m_meal) < Horizontal(friendNear->position, m_meal)))
+                    {
+                        friendNear = &other;
+                    }
+                }
+                const float share = 0.4f / std::sqrt(static_cast<float>(std::max<size_t>(senses.kin.size(), 1)));
+                if (friendNear != nullptr && m_traits.temperament != Temperament::Territorial && m_random.Unit() < share &&
+                    senses.nav != nullptr && senses.nav->NearestPoint(friendNear->position + Flat(m_meal - friendNear->position) * 2.0f, 2.5f, m_bodyTo))
+                {
+                    m_carryingBody = true;
+                    m_toFriends = true;
+                    Log(now, "takes the body to another of its kind");
+                }
+            }
+            if (!m_carryingBody && unsafe)
+            {
+                if (senses.hasHive && Horizontal(senses.hive, m_meal) < 40.0f && Horizontal(senses.hive, threatAt) > 12.0f)
+                {
+                    m_bodyTo = senses.hive;
+                    m_carryingBody = true;
+                    Log(now, "drags the body back to its nest");
+                }
+                else if (PickHidingSpot(senses, threatAt, m_bodyTo))
+                {
+                    m_carryingBody = true;
+                    Log(now, "not safe here; drags the body away out of sight");
+                }
+            }
+        }
+        if (m_carryingBody)
+        {
+            // Somebody right on top of it: it drops the body and deals with them (or not) -- which is the
+            // rest of the mind's business, when feeding stops scoring.
+            if (threatGap < 5.0f && m_feedStarted < 0.0f && !inMyJaws)
+            {
+                m_carryingBody = false;
+            }
+            else if (!inMyJaws && Horizontal(senses.position, m_meal) > 1.3f)
+            {
+                m_goal = "going to a body";
+                m_intent.move = true;
+                m_intent.destination = m_meal;
+                m_intent.speed = m_traits.walkSpeed * 1.5f;
+                break;
+            }
+            else
+            {
+                m_intent.carry = meal->id;
+                m_goal = m_toFriends ? "taking a body to the others" : "dragging a body away";
+                m_intent.move = true;
+                m_intent.destination = m_bodyTo;
+                // It is heavy.
+                m_intent.speed = m_traits.walkSpeed * 1.25f;
+                m_intent.crouch = 0.6f;
+                if (Horizontal(senses.position, m_bodyTo) < 1.4f)
+                {
+                    m_carryingBody = false;
+                    m_bodyPlaced = true;
+                    m_intent.carry = -1; // put down here
+                    m_intent.move = false;
+                    Log(now, "puts the body down");
+                }
+                break;
+            }
+        }
+
+        // Up to it, near enough to get its head down in it: a neck's length off, not standing on it.
+        // Standing over it, near enough that getting its body down puts its mouth on it.
+        const float eatFrom = std::clamp((m_traits.strikeReach - 1.0f) * 0.8f, 0.45f, 1.2f);
+        if (Horizontal(senses.position, m_meal) > eatFrom + 0.2f)
         {
             m_goal = "going to a body";
             m_intent.move = true;
@@ -4110,21 +4262,30 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
         if (m_feedStarted < 0.0f)
         {
             m_feedStarted = now;
+            m_biteMovedAt = -1.0e9f;
             Log(now, "feeds on a body");
         }
-        // Head down in it, tearing, now and then lifting its head to look round.
+        // Head down in it, tearing, moving about the body now and then; lifting its head every few seconds
+        // to look round. Eating mends it: this is what it came for.
+        if (now - m_biteMovedAt > 3.0f)
+        {
+            m_biteMovedAt = now;
+            const float angle = m_random.Unit() * glm::two_pi<float>();
+            m_biteAt = m_meal + glm::vec3(std::cos(angle), 0.0f, std::sin(angle)) * m_random.Range(0.0f, 0.45f);
+        }
         m_goal = "feeding";
         m_intent.crouch = 1.0f;
         m_intent.face = true;
-        m_intent.facePoint = m_meal;
+        m_intent.facePoint = m_biteAt;
         const float cycle = std::fmod(now - m_feedStarted, 6.0f);
         if (cycle < 4.8f)
         {
-            const float bite = std::fmod(now - m_feedStarted, 1.2f) / 1.2f;
-            m_intent.attack = AttackKind::Bite;
-            m_intent.attackPhase = bite;
-            m_intent.attackAt = m_meal + glm::vec3(0.0f, 0.15f, 0.0f);
-            if (bite < 0.05f && std::fmod(now - m_feedStarted, 2.4f) < 1.2f)
+            m_intent.eat = meal->id;
+            m_intent.recover = 0.012f;
+            m_intent.attackAt = m_biteAt + glm::vec3(0.0f, 0.12f, 0.0f);
+            m_intent.look = true;
+            m_intent.lookAt = m_biteAt;
+            if (std::fmod(now - m_feedStarted, 2.4f) < 0.02f)
             {
                 m_intent.echo = "Creature/bite";
             }
@@ -4133,11 +4294,12 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
         {
             lookAround(now + 1.0f);
         }
-        if (now - m_feedStarted > 18.0f + 20.0f * m_traits.aggression)
+        if (now - m_feedStarted > 18.0f + 20.0f * m_traits.aggression || meal->meat <= 0.08f)
         {
             // Done. The patient and stealthy do not leave the body: somebody will come for it.
             glm::vec3 spot;
-            if (((m_traits.stealth > 0.55f && m_traits.patience > 0.45f) || m_traits.Has(Quirk::Baiter)) && PickHidingSpot(senses, m_meal, spot))
+            if (meal->meat > 0.08f && ((m_traits.stealth > 0.55f && m_traits.patience > 0.45f) || m_traits.Has(Quirk::Baiter)) &&
+                PickHidingSpot(senses, m_meal, spot))
             {
                 m_baiting = true;
                 m_baitSpot = spot;
@@ -4146,7 +4308,7 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
             }
             else
             {
-                Switch(Behavior::Roam, -1, "has fed", now);
+                Switch(Behavior::Roam, -1, meal->meat <= 0.08f ? "has picked the body clean" : "has fed", now);
             }
         }
         break;
