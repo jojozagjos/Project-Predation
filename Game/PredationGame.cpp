@@ -5347,6 +5347,8 @@ void PredationGame::UpdateVoice(float dt)
         if (speaker.voice != kInvalidVoice)
         {
             audio.SetVoicePosition(speaker.voice, SpeakerPosition(speaker));
+            // Somebody on the other side of a wall is heard through it: muffled, not cut.
+            audio.SetVoiceOcclusion(speaker.voice, OcclusionAt(SpeakerPosition(speaker)) * 0.8f);
         }
         ++i;
     }
@@ -5706,7 +5708,35 @@ void PredationGame::PlaySound(SoundId sound, const glm::vec3& at, float gain, fl
     desc.positioned = positioned;
     desc.gain = gain * std::clamp(cv_effectsVolume.Get(), 0.0f, 2.0f);
     desc.pitch = pitch;
+    desc.occlusion = positioned ? OcclusionAt(at) : 0.0f;
     m_app->GetAudio().Play(desc);
+}
+
+float PredationGame::OcclusionAt(const glm::vec3& at) const
+{
+    // Straight from the ears, and again from a little above them: a wall between is both lines
+    // blocked, and a crate or a doorframe in the way only one -- round a corner a sound is thinner, not
+    // gone.
+    const PhysicsWorld& physics = m_app->GetPhysics();
+    const auto blocked = [&](const glm::vec3& from, const glm::vec3& to)
+    {
+        const glm::vec3 along = to - from;
+        const float length = glm::length(along);
+        if (length < 1.5f)
+        {
+            return false;
+        }
+        const RayHit hit = physics.RayCastStatic(from, along / length, length - 0.3f);
+        return static_cast<bool>(hit);
+    };
+    const glm::vec3 source = at + glm::vec3(0.0f, 0.3f, 0.0f);
+    const bool straight = blocked(m_renderEye, source);
+    if (!straight)
+    {
+        return 0.0f;
+    }
+    const bool over = blocked(m_renderEye + glm::vec3(0.0f, 0.8f, 0.0f), source + glm::vec3(0.0f, 0.8f, 0.0f));
+    return over ? 1.0f : 0.5f;
 }
 
 // How loud a step is for the stance it is taken in.

@@ -8,6 +8,7 @@
 #include <mutex>
 #include <string>
 #include <unordered_map>
+#include <array>
 #include <vector>
 
 struct SDL_AudioStream;
@@ -68,6 +69,21 @@ public:
         // rather than a curve, because a curve is a thing nobody can tune by ear.
         float nearDistance = 3.0f;
         float farDistance = 55.0f;
+        // How much is in the way between it and the listener, 0 to 1: a wall muffles a sound -- the
+        // top of it goes -- and takes some of its loudness. Set by whoever plays it, who knows the level.
+        float occlusion = 0.0f;
+        // How much of it goes into the room's reverb, 0 to 1; below zero, the default: all of anything
+        // in the world, a little of anything that is not.
+        float reverbSend = -1.0f;
+    };
+
+    // The room the listener is in, as the reverb hears it: how big (0 a cupboard, 1 a hall), how
+    // soft its surfaces are (0 hard and bright, 1 dead), and how much of it is heard.
+    struct Room
+    {
+        float size = 0.4f;
+        float damping = 0.5f;
+        float wet = 0.0f; // dry until the game says what room the listener is in
     };
 
     struct Stats
@@ -120,6 +136,10 @@ public:
     void StopAll();
     void SetVoicePosition(VoiceId voice, const glm::vec3& position);
     void SetVoiceGain(VoiceId voice, float gain);
+    void SetVoiceOcclusion(VoiceId voice, float occlusion);
+    // The room the listener is in; eased towards over about half a second, so walking through a door
+    // is heard as the space opening out and not as a switch.
+    void SetRoom(const Room& room);
     bool IsPlaying(VoiceId voice) const;
 
     void SetListener(const glm::vec3& position, const glm::vec3& forward, const glm::vec3& up);
@@ -166,7 +186,33 @@ private:
         // listener that turns does not step from one gain to another between buffers and click.
         float mixedLeft = -1.0f;
         float mixedRight = -1.0f;
+        float occlusion = 0.0f;
+        float occlusionMixed = -1.0f;
+        float lowpass = 0.0f;   // the one-pole filter's memory
+        bool primed = false;
+        float reverbSend = 1.0f;
     };
+
+    // A Schroeder-Moorer reverb (the Freeverb arrangement): eight damped combs in parallel and four
+    // all-passes after, one set per ear with slightly different lengths so the tail is wide.
+    struct Comb
+    {
+        std::vector<float> buffer;
+        size_t at = 0;
+        float store = 0.0f;
+    };
+    struct AllPass
+    {
+        std::vector<float> buffer;
+        size_t at = 0;
+    };
+    void BuildReverb();
+    void ProcessReverb(const float* send, float* out, int frames);
+    std::array<Comb, 16> m_combs;       // 8 left, 8 right
+    std::array<AllPass, 8> m_allPasses; // 4 left, 4 right
+    std::vector<float> m_send;
+    Room m_room;
+    Room m_roomMixed;
 
     void MixLocked(float* out, int frames);
     Voice* FindVoice(VoiceId id);

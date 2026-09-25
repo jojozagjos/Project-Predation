@@ -483,6 +483,33 @@ void PredationGame::UpdateAmbience(float dt)
             }
         }
         m_zoneNest = nest;
+
+        // The room, as the ears hear it: how far the walls are round about, and the roof. A vent is
+        // small and hard and rings; a big hall is a long tail; outside there is almost nothing to
+        // come back.
+        float sum = 0.0f;
+        for (int i = 0; i < 8; ++i)
+        {
+            const float angle = static_cast<float>(i) * (glm::two_pi<float>() / 8.0f);
+            const RayHit wall = m_app->GetPhysics().RayCastStatic(ear, {std::cos(angle), 0.0f, std::sin(angle)}, 30.0f);
+            sum += wall ? wall.distance : 30.0f;
+        }
+        const float across = sum / 8.0f;
+        AudioEngine::Room room;
+        if (m_zoneTight > 0.5f)
+        {
+            room = {0.2f, 0.15f, 0.32f};
+        }
+        else if (m_zoneIndoor > 0.5f)
+        {
+            const float size = std::clamp((across - 2.0f) / 16.0f + (roof ? std::min(roof.distance, 10.0f) / 40.0f : 0.0f), 0.0f, 1.0f);
+            room = {size, 0.45f - 0.2f * size, 0.14f + 0.22f * size};
+        }
+        else
+        {
+            room = {0.35f, 0.8f, 0.04f};
+        }
+        audio.SetRoom(room);
     }
     const float targets[5] = {
         m_zoneIndoor * (1.0f - m_zoneTight) * (1.0f - 0.6f * m_zoneNest), // the room

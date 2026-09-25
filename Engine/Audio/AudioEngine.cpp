@@ -58,6 +58,7 @@ bool AudioEngine::Init(const Settings& settings)
 {
     Shutdown();
     m_settings = settings;
+    BuildReverb();
     m_settings.sampleRate = std::clamp(settings.sampleRate, 8000, 192000);
     m_settings.maxVoices = std::clamp(settings.maxVoices, 1, 256);
 
@@ -142,6 +143,91 @@ std::string AudioEngine::NameOf(SoundId id) const
     return "?";
 }
 
+void AudioEngine::SetVoiceOcclusion(VoiceId id, float occlusion)
+{
+    std::lock_guard lock(m_mutex);
+    if (Voice* voice = FindVoice(id))
+    {
+        voice->occlusion = std::clamp(occlusion, 0.0f, 1.0f);
+    }
+}
+
+void AudioEngine::SetRoom(const Room& room)
+{
+    std::lock_guard lock(m_mutex);
+    m_room.size = std::clamp(room.size, 0.0f, 1.0f);
+    m_room.damping = std::clamp(room.damping, 0.0f, 1.0f);
+    m_room.wet = std::clamp(room.wet, 0.0f, 1.0f);
+}
+
+void AudioEngine::BuildReverb()
+{
+    // The classic Freeverb lengths, which were tuned at 44.1 kHz, scaled to the rate the mix runs at.
+    static const int kComb[8] = {1116, 1188, 1277, 1356, 1422, 1491, 1557, 1617};
+    static const int kAllPass[4] = {556, 441, 341, 225};
+    constexpr int kSpread = 23;
+    const float scale = static_cast<float>(m_settings.sampleRate) / 44100.0f;
+    for (int ear = 0; ear < 2; ++ear)
+    {
+        for (int i = 0; i < 8; ++i)
+        {
+            Comb& comb = m_combs[static_cast<size_t>(ear * 8 + i)];
+            comb.buffer.assign(static_cast<size_t>(static_cast<float>(kComb[i] + ear * kSpread) * scale) + 1, 0.0f);
+            comb.at = 0;
+            comb.store = 0.0f;
+        }
+        for (int i = 0; i < 4; ++i)
+        {
+            AllPass& pass = m_allPasses[static_cast<size_t>(ear * 4 + i)];
+            pass.buffer.assign(static_cast<size_t>(static_cast<float>(kAllPass[i] + ear * kSpread) * scale) + 1, 0.0f);
+            pass.at = 0;
+        }
+    }
+    m_roomMixed = m_room;
+}
+
+void AudioEngine::ProcessReverb(const float* send, float* out, int frames)
+{
+    if (m_combs[0].buffer.empty())
+    {
+        BuildReverb();
+    }
+    const float ease = 1.0f - std::exp(-static_cast<float>(frames) / (0.5f * static_cast<float>(m_settings.sampleRate)));
+    m_roomMixed.size += (m_room.size - m_roomMixed.size) * ease;
+    m_roomMixed.damping += (m_room.damping - m_roomMixed.damping) * ease;
+    m_roomMixed.wet += (m_room.wet - m_roomMixed.wet) * ease;
+    const float feedback = 0.7f + 0.28f * m_roomMixed.size;
+    const float damp = 0.2f + 0.6f * m_roomMixed.damping;
+    const float wet = m_roomMixed.wet * (m_muted ? 0.0f : 1.0f);
+    for (int frame = 0; frame < frames; ++frame)
+    {
+        const float input = send[frame] * 0.015f;
+        for (int ear = 0; ear < 2; ++ear)
+        {
+            float sum = 0.0f;
+            for (int i = 0; i < 8; ++i)
+            {
+                Comb& comb = m_combs[static_cast<size_t>(ear * 8 + i)];
+                const float delayed = comb.buffer[comb.at];
+                comb.store = delayed * (1.0f - damp) + comb.store * damp;
+                comb.buffer[comb.at] = input + comb.store * feedback;
+                comb.at = (comb.at + 1) % comb.buffer.size();
+                sum += delayed;
+            }
+            for (int i = 0; i < 4; ++i)
+            {
+                AllPass& pass = m_allPasses[static_cast<size_t>(ear * 4 + i)];
+                const float delayed = pass.buffer[pass.at];
+                const float output = -sum + delayed;
+                pass.buffer[pass.at] = sum + delayed * 0.5f;
+                pass.at = (pass.at + 1) % pass.buffer.size();
+                sum = output;
+            }
+            out[static_cast<size_t>(frame) * 2 + static_cast<size_t>(ear)] += sum * wet;
+        }
+    }
+}
+
 VoiceId AudioEngine::Play(const PlayDesc& desc)
 {
     std::lock_guard lock(m_mutex);
@@ -201,6 +287,8 @@ VoiceId AudioEngine::Play(const PlayDesc& desc)
     voice.pitch = std::clamp(desc.pitch, 0.05f, 8.0f);
     voice.nearDistance = std::max(desc.nearDistance, 0.01f);
     voice.farDistance = std::max(desc.farDistance, voice.nearDistance + 0.01f);
+    voice.occlusion = std::clamp(desc.occlusion, 0.0f, 1.0f);
+    voice.reverbSend = desc.reverbSend >= 0.0f ? std::min(desc.reverbSend, 1.0f) : (desc.positioned ? 1.0f : 0.3f);
     m_voices.push_back(voice);
     ++m_stats.started;
     return voice.id;
@@ -406,6 +494,7 @@ void AudioEngine::Mix(float* out, int frames)
 void AudioEngine::MixLocked(float* out, int frames)
 {
     std::fill(out, out + static_cast<size_t>(frames) * 2, 0.0f);
+    m_send.assign(static_cast<size_t>(frames), 0.0f);
 
     for (size_t index = 0; index < m_voices.size();)
     {
@@ -461,10 +550,36 @@ void AudioEngine::MixLocked(float* out, int frames)
             left *= std::cos(angle) * falloff;
             right *= std::sin(angle) * falloff;
         }
+        // Behind something: quieter, and dull -- the top taken off by a one-pole low-pass whose corner
+        // falls from the top of hearing to about seven hundred hertz as the way is blocked. Eased, so a
+        // source walking behind a pillar is heard to go behind it.
+        if (voice.occlusionMixed < 0.0f)
+        {
+            voice.occlusionMixed = voice.occlusion;
+        }
+        voice.occlusionMixed += (voice.occlusion - voice.occlusionMixed) *
+                                (1.0f - std::exp(-static_cast<float>(frames) / (0.08f * static_cast<float>(m_settings.sampleRate))));
+        const float muffle = voice.positioned ? voice.occlusionMixed : 0.0f;
+        const float corner = 18000.0f * std::pow(700.0f / 18000.0f, muffle);
+        const float smooth = std::exp(-2.0f * 3.14159265f * corner / static_cast<float>(m_settings.sampleRate));
+        left *= 1.0f - 0.5f * muffle;
+        right *= 1.0f - 0.5f * muffle;
+        // What goes to the room: as loud as the sound is where it is, not panned -- the room is all round.
+        float send = voice.gain * (m_muted ? 0.0f : m_masterGain) * voice.reverbSend;
+        if (voice.positioned)
+        {
+            const float distance = glm::length(voice.position - m_listenerPosition);
+            // Further off, more of what is heard of it is the room.
+            const float falloff = distance <= voice.nearDistance
+                                      ? 1.0f
+                                      : std::max(1.0f - (distance - voice.nearDistance) / (voice.farDistance - voice.nearDistance), 0.0f);
+            send *= std::sqrt(falloff) * (1.0f - 0.3f * muffle);
+        }
         if (voice.stopping)
         {
             left = 0.0f;
             right = 0.0f;
+            send = 0.0f;
         }
 
         // Started where it is meant to be rather than swept up from silence, or every sound would
@@ -534,6 +649,14 @@ void AudioEngine::MixLocked(float* out, int frames)
             voice.mixedLeft += std::clamp(left - voice.mixedLeft, -kGainStep, kGainStep);
             voice.mixedRight += std::clamp(right - voice.mixedRight, -kGainStep, kGainStep);
 
+            if (!voice.primed)
+            {
+                voice.lowpass = value; // from its first sample, not swept up from silence
+                voice.primed = true;
+            }
+            voice.lowpass = value + (voice.lowpass - value) * smooth;
+            value = voice.lowpass;
+            m_send[static_cast<size_t>(frame)] += value * send;
             out[static_cast<size_t>(frame) * 2] += value * voice.mixedLeft;
             out[static_cast<size_t>(frame) * 2 + 1] += value * voice.mixedRight;
             voice.cursor += rate;
@@ -583,6 +706,9 @@ void AudioEngine::MixLocked(float* out, int frames)
     // that would pass the ceiling pulls the gain down to exactly what fits, at once; the gain then
     // recovers over about a tenth of a second. A loud moment gets a little quieter, briefly, and
     // nothing is ever reshaped.
+    // The room, from everything that was sent to it.
+    ProcessReverb(m_send.data(), out, frames);
+
     constexpr float kCeiling = 0.97f;
     const float release = 1.0f - std::exp(-1.0f / (0.12f * static_cast<float>(m_settings.sampleRate)));
     for (int frame = 0; frame < frames; ++frame)

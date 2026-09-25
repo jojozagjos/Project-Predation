@@ -929,3 +929,70 @@ TEST_CASE("A voice hovering at the threshold does not flicker", "[audio][voice][
     CHECK(changes == 1);
     CHECK(previous);
 }
+
+TEST_CASE("A sound behind a wall is quieter and duller, and a room rings after a sound stops", "[audio][room]")
+{
+    const auto loudest = [](AudioEngine& audio, int buffers)
+    {
+        std::vector<float> out(512 * 2, 0.0f);
+        float peak = 0.0f;
+        for (int b = 0; b < buffers; ++b)
+        {
+            audio.Mix(out.data(), 512);
+            for (const float sample : out)
+            {
+                peak = std::max(peak, std::abs(sample));
+            }
+        }
+        return peak;
+    };
+    // Noise, so there is plenty at the top for a wall to take away.
+    SoundData noise;
+    noise.sampleRate = kRate;
+    uint32_t state = 12345u;
+    for (int i = 0; i < kRate; ++i)
+    {
+        state = state * 1664525u + 1013904223u;
+        noise.samples.push_back(static_cast<float>(state >> 8) / static_cast<float>(1u << 24) * 2.0f - 1.0f);
+    }
+    float clear = 0.0f;
+    float blocked = 0.0f;
+    for (const float occlusion : {0.0f, 1.0f})
+    {
+        AudioEngine audio;
+        audio.SetRoom({0.4f, 0.5f, 0.0f});
+        const SoundId sound = audio.Add("noise", noise);
+        audio.SetListener({0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, -1.0f}, {0.0f, 1.0f, 0.0f});
+        AudioEngine::PlayDesc desc;
+        desc.sound = sound;
+        desc.position = {0.0f, 0.0f, -2.0f};
+        desc.occlusion = occlusion;
+        audio.Play(desc);
+        (occlusion > 0.5f ? blocked : clear) = loudest(audio, 8);
+    }
+    INFO("clear " << clear << ", behind a wall " << blocked);
+    CHECK(blocked < clear * 0.6f);
+
+    // A short click in a big, live room: after the click is over, the room is still sounding. In a
+    // dead one it is not.
+    for (const float wet : {0.0f, 0.6f})
+    {
+        AudioEngine audio;
+        audio.SetRoom({0.9f, 0.2f, wet});
+        SoundData click;
+        click.sampleRate = kRate;
+        click.samples.assign(200, 0.8f);
+        const SoundId sound = audio.Add("click", click);
+        audio.SetListener({0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, -1.0f}, {0.0f, 1.0f, 0.0f});
+        AudioEngine::PlayDesc desc;
+        desc.sound = sound;
+        desc.position = {0.0f, 0.0f, -2.0f};
+        audio.Play(desc);
+        loudest(audio, 60); // the click, and the room settling to what it was asked for
+        audio.Play(desc);
+        loudest(audio, 2);
+        const float tail = loudest(audio, 6);
+        INFO("wet " << wet << ": tail " << tail);
+        CHECK((wet > 0.0f ? tail > 0.0005f : tail < 1e-6f));
+    }
+}

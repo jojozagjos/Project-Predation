@@ -633,6 +633,8 @@ private:
     void UpdateAmbience(float dt);
     // The front end's small sounds: the pointer finding a button, a press, a menu opening and closing.
     void MenuSounds();
+    // How much of the level is between the ears and a sound there, 0 to 1, for muffling it.
+    float OcclusionAt(const glm::vec3& at) const;
     void PlaySound(SoundId sound, const glm::vec3& at, float gain = 1.0f, float pitch = 1.0f,
                    bool positioned = true);
     // Reads Data/footsteps.json and the clips it names. Missing or broken leaves the synthesised
