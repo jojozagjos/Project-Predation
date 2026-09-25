@@ -240,6 +240,11 @@ glm::quat Creature::Orientation() const
 
 void Creature::SetShownCling(Cling cling, float wallYaw)
 {
+    // Onto a wall from the floor it starts up it; from the ceiling, down it.
+    if (cling == Cling::Wall && m_cling != Cling::Wall)
+    {
+        m_wallHeading = m_cling == Cling::Ceiling ? glm::vec3(0.0f, -1.0f, 0.0f) : glm::vec3(0.0f, 1.0f, 0.0f);
+    }
     m_cling = cling;
     m_wallNormal = {std::sin(wallYaw), 0.0f, -std::cos(wallYaw)};
     m_surfaceUp = cling == Cling::Wall      ? m_wallNormal
@@ -779,6 +784,19 @@ void Creature::FollowReceived(float dt)
     {
         position = m_position + (goal - m_position) * blend;
         yaw = m_yaw + std::remainder(m_received.yaw - m_yaw, glm::two_pi<float>()) * blend;
+    }
+    // On a wall, the way it is going across it is the way it faces -- up, down, along or on a slant --
+    // which nothing sends: it is read off how it moves.
+    if (m_cling == Cling::Wall)
+    {
+        glm::vec3 moved = position - m_position;
+        moved -= m_wallNormal * glm::dot(moved, m_wallNormal);
+        if (glm::length(moved) > 0.3f * dt)
+        {
+            const glm::vec3 wanted = glm::normalize(moved);
+            const glm::vec3 eased = m_wallHeading + (wanted - m_wallHeading) * (1.0f - std::exp(-8.0f * dt));
+            m_wallHeading = glm::length(eased) > 1e-3f ? glm::normalize(eased) : wanted;
+        }
     }
     m_followedOnce = true;
     SetShownState(position, yaw, m_received.speed, m_received.windup, m_received.alive, m_received.down,
