@@ -305,6 +305,13 @@ public:
     int CurrentTarget() const { return m_target; }
     // Where it believes whoever it is after to be, when it has any idea.
     bool TargetKnownAt(glm::vec3& out) const;
+
+private:
+    // Somewhere worth going to, wandering, and what to do on getting there.
+    bool PickPlaceOfInterest(const CreatureSenses& senses, glm::vec3& out);
+    void StartPastime(const CreatureSenses& senses, float now);
+
+public:
     const std::string& CurrentGoal() const { return m_goal; }
 
     // --- What the inspector reads -------------------------------------------------------------
@@ -628,6 +635,21 @@ private:
     glm::vec3 m_roamPoint{0.0f};
     bool m_haveRoamPoint = false;
     float m_pauseUntil = 0.0f;
+    // What it does when it stops somewhere, wandering: an animal at a loose end is not idle, it listens,
+    // noses at the floor, settles down low somewhere dark, or watches a way in.
+    enum class Pastime : uint8_t
+    {
+        LookAround,
+        Listen,
+        Sniff,
+        Rest,
+        Watch
+    };
+    Pastime m_pastime = Pastime::LookAround;
+    glm::vec3 m_watchPoint{0.0f};
+    // What the place it is heading for is, for its goal and for what it does on arriving.
+    const char* m_roamWhy = "wandering";
+    float m_roamPace = 1.0f;
     float m_lookAroundUntil = 0.0f;
     bool m_arrived = false;
     glm::vec3 m_fleePoint{0.0f};

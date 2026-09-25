@@ -16,6 +16,7 @@
 #include <chrono>
 #include <cmath>
 #include <memory>
+#include <set>
 
 using namespace pred;
 using namespace pred::TestMapSpec;
@@ -457,7 +458,8 @@ TEST_CASE("A creature with no eyes hears what it cannot see", "[creature][senses
     Noise step;
     step.kind = NoiseKind::Footstep;
     step.position = player;
-    step.reach = 9.0f;
+    // Loud enough to carry wherever it has wandered to in the meantime.
+    step.reach = 16.0f;
     step.player = 1;
     bool heard = false;
     harness.Run(2.0f, players, {step},
@@ -466,6 +468,12 @@ TEST_CASE("A creature with no eyes hears what it cannot see", "[creature][senses
                     heard = heard || creature.Brain().Current() == Behavior::Investigate ||
                             creature.Brain().Current() == Behavior::Hunt;
                 });
+    std::string mind;
+    for (const CreatureBrain::TimelineEntry& entry : harness.creature->Brain().Timeline())
+    {
+        mind += "\n  " + std::to_string(entry.time).substr(0, 5) + "  " + entry.what;
+    }
+    INFO("its mind:" << mind << "\n goal: " << harness.creature->Brain().CurrentGoal());
     CHECK(heard);
 }
 
@@ -516,17 +524,29 @@ TEST_CASE("Badly hurt, it gets away from whoever hurt it", "[creature][retreat]"
     CHECK(logged);
 }
 
+namespace
+{
+std::string MindOf(const Creature& creature);
+}
+
 TEST_CASE("A creature shown from the host's state keeps up smoothly, and dies there too", "[creature][net]")
 {
     // The host's creature hunting somebody, and a second one standing in for a client's copy of it,
-    // told where the first is thirty times a second as the wire does.
-    CreatureHarness harness(5);
+    // told where the first is thirty times a second as the wire does. A bold one, so it comes at a run.
+    CreatureTraits bold = Hunter(5);
+    bold.stealth = 0.05f;
+    bold.fear = 0.1f;
+    bold.aggression = 0.9f;
+    CreatureHarness harness(bold);
     glm::vec3 at;
     glm::vec3 player;
     REQUIRE(OpenView(harness, 12.0f, at, player));
     Creature shown(harness.scene, harness.meshes, harness.physics, &harness.nav, Hunter(5), at);
     harness.seeThrough.push_back(&shown);
     const std::vector<SensedPlayer> players{Somebody(1, player)};
+    // Shot by them, so it knows where they are and comes at a run rather than making up its mind.
+    harness.Run(0.1f, players, {});
+    harness.creature->Brain().OnDamaged(1.0f, 1, player + glm::vec3(0.0f, 1.5f, 0.0f), harness.time);
 
     constexpr float dt = 1.0f / 60.0f;
     int tick = 0;
@@ -555,6 +575,7 @@ TEST_CASE("A creature shown from the host's state keeps up smoothly, and dies th
 
     INFO("host creature up to " << fastest << " m/s; the copy was at most " << furthestBehind
                                 << " m off and moved at most " << biggestStep << " m in a frame");
+    INFO("its mind:" << MindOf(*harness.creature));
     REQUIRE(fastest > 3.0f); // it did run, or this proves nothing
     // Close enough that a round aimed at the copy hits the host's creature: its body is a metre and
     // a half long.
@@ -1052,7 +1073,7 @@ TEST_CASE("A shut locker means little to it -- until it has found somebody in on
     // A slam at the first; it finds somebody in it.
     Noise slam;
     slam.kind = NoiseKind::Door;
-    slam.reach = NoiseReach::kDoor * 0.7f;
+    slam.reach = NoiseReach::kDoor * 1.5f; // heard wherever it has wandered to
     slam.position = harness.places[0].inside;
     slam.player = 1;
     bool pulledOut = false;
@@ -1161,7 +1182,8 @@ TEST_CASE("It remembers where it found people, prowls back there, and forgets in
     int prowls = 0;
     bool prowledThere = false;
     glm::vec3 lastDestination{1.0e9f};
-    harness.Run(90.0f, gone, {},
+    // Long enough to search the place over, closer each time, and give up.
+    harness.Run(150.0f, gone, {},
                 [&](const Creature& creature)
                 {
                     const CreatureIntent& intent = creature.Brain().Intent();
@@ -1737,4 +1759,37 @@ TEST_CASE("A creature that mimics hides near somebody and calls them in a friend
     INFO(MindOf(*harness.creature));
     // It used the friend's voice, not the target's own.
     CHECK(mimicked == 2);
+}
+
+TEST_CASE("Left to itself a creature does more than wander: it listens, noses about, lies low, watches ways in",
+          "[creature][roam]")
+{
+    CreatureHarness harness(7);
+    std::set<std::string> pastimes;
+    int purposeful = 0;
+    std::string lastGoal;
+    harness.Run(240.0f, {}, {},
+                [&](const Creature& creature)
+                {
+                    const std::string& goal = creature.Brain().CurrentGoal();
+                    for (const char* pastime : {"listening", "nosing at the floor", "lying low", "watching", "pausing"})
+                    {
+                        if (goal.rfind(pastime, 0) == 0)
+                        {
+                            pastimes.insert(pastime);
+                        }
+                    }
+                    if (goal != lastGoal && goal.rfind("going to", 0) == 0)
+                    {
+                        ++purposeful;
+                    }
+                    lastGoal = goal;
+                });
+    std::string seen;
+    for (const std::string& pastime : pastimes)
+    {
+        seen += pastime + "; ";
+    }
+    INFO("it did: " << seen << purposeful << " trips somewhere in particular" << MindOf(*harness.creature));
+    CHECK(pastimes.size() >= 3);
 }

@@ -170,6 +170,115 @@ Behavior CreatureBrain::RecentTactic(float time) const
     return Behavior::Roam;
 }
 
+bool CreatureBrain::PickPlaceOfInterest(const CreatureSenses& senses, glm::vec3& out)
+{
+    // Somewhere that means something to a hunting animal: a way in or out of a room, the mouth of a
+    // crawlspace, a locker somebody could be in, its own nest. Not the one it has just come from.
+    if (senses.nav == nullptr)
+    {
+        return false;
+    }
+    struct Place
+    {
+        glm::vec3 at;
+        glm::vec3 watch;
+        const char* what;
+    };
+    std::vector<Place> places;
+    for (const DoorSense& door : senses.doors)
+    {
+        const glm::vec3 middle = (door.a + door.b) * 0.5f;
+        places.push_back({middle, middle, "a doorway"});
+    }
+    for (const glm::vec3& mouth : senses.nav->CrawlMouths())
+    {
+        places.push_back({mouth, mouth, "the mouth of a crawlspace"});
+    }
+    if (HidingHabit() > 0.2f || m_traits.curiosity > 0.6f)
+    {
+        for (const HidingPlace& place : senses.hidingPlaces)
+        {
+            places.push_back({place.front, place.inside, "a locker"});
+        }
+    }
+    if (senses.hasHive)
+    {
+        places.push_back({senses.hive, senses.hive, "the nest"});
+    }
+    // Near enough to be a walk, not a journey, and not where it already is.
+    std::vector<const Place*> near;
+    for (const Place& place : places)
+    {
+        const float away = Horizontal(place.at, senses.position);
+        if (away > 3.0f && away < 26.0f)
+        {
+            near.push_back(&place);
+        }
+    }
+    if (near.empty())
+    {
+        return false;
+    }
+    const Place& chosen = *near[static_cast<size_t>(m_random.Unit() * static_cast<float>(near.size())) % near.size()];
+    // Standing off it a little, facing it: not in the doorway, but where it can see through it.
+    glm::vec3 stand = chosen.at;
+    const glm::vec3 back = Flat(senses.position - chosen.at);
+    if (glm::length(back) > 1e-3f)
+    {
+        stand += glm::normalize(back) * 1.6f;
+    }
+    if (!senses.nav->NearestPoint(stand, 2.0f, out))
+    {
+        return false;
+    }
+    m_watchPoint = chosen.watch;
+    m_roamWhy = chosen.what;
+    return true;
+}
+
+void CreatureBrain::StartPastime(const CreatureSenses& senses, float now)
+{
+    m_lookBaseSet = false;
+    const bool somewhere = std::string(m_roamWhy) != "somewhere";
+    const float dark = senses.lightAt ? 1.0f - std::clamp(senses.lightAt(senses.position + glm::vec3(0.0f, 0.5f, 0.0f)), 0.0f, 1.0f) : 0.5f;
+    // What it does here depends on what it is and where it has got to.
+    const float listen = 0.25f + 0.5f * m_traits.hearing / 1.6f;
+    const float sniff = 0.3f + 0.4f * m_traits.curiosity;
+    // Not straight after it has had somebody and lost them: it is restless then, and keeps moving.
+    const bool restless = std::any_of(m_tracks.begin(), m_tracks.end(),
+                                      [&](const Track& track) { return track.lastSeen >= 0.0f && now - track.lastSeen < 90.0f; });
+    const float rest = restless ? 0.0f : (0.1f + 0.4f * m_traits.patience) * (0.3f + dark);
+    const float watch = somewhere ? 0.6f + 0.6f * m_traits.patience : 0.0f;
+    const float look = 0.35f;
+    float roll = m_random.Unit() * (listen + sniff + rest + watch + look);
+    if ((roll -= watch) < 0.0f)
+    {
+        m_pastime = Pastime::Watch;
+        m_pauseUntil = now + m_random.Range(3.0f, 6.0f + 7.0f * m_traits.patience);
+    }
+    else if ((roll -= rest) < 0.0f)
+    {
+        m_pastime = Pastime::Rest;
+        m_pauseUntil = now + m_random.Range(6.0f, 10.0f + 12.0f * m_traits.patience);
+    }
+    else if ((roll -= listen) < 0.0f)
+    {
+        m_pastime = Pastime::Listen;
+        m_pauseUntil = now + m_random.Range(2.5f, 6.0f);
+    }
+    else if ((roll -= sniff) < 0.0f)
+    {
+        m_pastime = Pastime::Sniff;
+        m_pauseUntil = now + m_random.Range(2.0f, 4.5f);
+    }
+    else
+    {
+        m_pastime = Pastime::LookAround;
+        m_pauseUntil = now + m_random.Range(1.5f, 3.5f);
+    }
+    m_lookAroundUntil = m_pauseUntil;
+}
+
 bool CreatureBrain::TargetKnownAt(glm::vec3& out) const
 {
     for (const Track& track : m_tracks)
@@ -1339,7 +1448,9 @@ void CreatureBrain::Decide(const CreatureSenses& senses)
                      {"a voice they know", voice != track.id ? 1.0f : 0.6f},
                      {"patient", 0.5f + 0.5f * m_traits.patience},
                      {"not afraid", 0.3f + 0.7f * calm},
-                     {"still at it", luring ? std::clamp(1.0f - static_cast<float>(m_lureSpoken) / 5.0f, 0.2f, 1.0f) : 1.0f}});
+                     {"still at it", luring ? std::clamp(1.0f - static_cast<float>(m_lureSpoken) / 5.0f, 0.2f, 1.0f) : 1.0f},
+                     // On its way to somewhere to call from, it sees that through.
+                     {"on its way to call", luring && m_lureSpoken == 0 && m_haveLureSpot ? 1.35f : 1.0f}});
             }
         }
 
@@ -1639,7 +1750,9 @@ void CreatureBrain::Switch(Behavior behavior, int target, const std::string& rea
     }
     if (previous == Behavior::Lure && behavior != Behavior::Lure)
     {
-        m_lastLureAt = time;
+        // A trick used is not used again for a while. One never tried -- nowhere to call from -- can be
+        // tried again soon, from somewhere else.
+        m_lastLureAt = m_lureSpoken > 0 ? time : time - Tuning().lureEvery + 8.0f;
     }
     if (behavior == Behavior::PlayDead)
     {
@@ -2338,12 +2451,21 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
                 m_haveRoamPoint = true;
                 m_goal = "prowling where people go";
             }
+            else if (m_random.Unit() < 0.55f && PickPlaceOfInterest(senses, m_roamPoint))
+            {
+                m_haveRoamPoint = true;
+                m_goal = std::string("going to ") + m_roamWhy;
+            }
             else
             {
                 uint32_t seed = static_cast<uint32_t>(m_random.Next());
                 m_haveRoamPoint = senses.nav->RandomPointNear(senses.position, 14.0f, seed, m_roamPoint);
+                m_roamWhy = "somewhere";
                 m_goal = "wandering";
             }
+            // Its own pace for this leg of it: an amble, a steady walk, now and then a brisk trot.
+            const float pace = m_random.Unit();
+            m_roamPace = pace < 0.35f ? 0.65f : pace < 0.85f ? 1.0f : 1.35f;
             // Somewhere another of its kind already is, it leaves to that one: a brood spreads out.
             for (int attempt = 0; m_haveRoamPoint && attempt < 4; ++attempt)
             {
@@ -2363,21 +2485,60 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
             if (Horizontal(senses.position, m_roamPoint) < 0.8f)
             {
                 m_haveRoamPoint = false;
-                m_pauseUntil = now + m_random.Range(1.5f, 3.5f);
-                m_lookAroundUntil = m_pauseUntil;
-                m_lookBaseSet = false;
-                m_goal = "pausing";
+                StartPastime(senses, now);
             }
             else
             {
                 m_intent.move = true;
                 m_intent.destination = m_roamPoint;
-                m_intent.speed = m_traits.walkSpeed;
+                m_intent.speed = m_traits.walkSpeed * m_roamPace;
+                // Low and quiet on the way, the sneaking sort, even with nobody about.
+                m_intent.crouch = m_traits.stealth > 0.75f ? 0.4f : 0.0f;
             }
         }
-        else if (now < m_lookAroundUntil)
+        else if (now < m_pauseUntil)
         {
-            lookAround(m_lookAroundUntil);
+            switch (m_pastime)
+            {
+            case Pastime::Listen:
+                // Dead still, head up and a little on one side, turning slowly towards nothing.
+                m_goal = "listening";
+                m_intent.look = true;
+                m_intent.lookAt = eye + glm::vec3(senses.forward.x, 0.25f, senses.forward.z) * 4.0f +
+                                  glm::cross(senses.forward, glm::vec3(0.0f, 1.0f, 0.0f)) * (0.8f * std::sin((now - m_behaviorStarted) * 0.35f));
+                break;
+            case Pastime::Sniff:
+            {
+                // Nose to the floor in front of it, working from side to side.
+                m_goal = "nosing at the floor";
+                m_intent.crouch = 0.8f;
+                const glm::vec3 across = glm::cross(senses.forward, glm::vec3(0.0f, 1.0f, 0.0f));
+                m_intent.look = true;
+                m_intent.lookAt = senses.position + senses.forward * 0.9f + across * (0.5f * std::sin((now - m_behaviorStarted) * 2.3f));
+                break;
+            }
+            case Pastime::Rest:
+                // Settled down low somewhere dark, head up now and then.
+                m_goal = "lying low";
+                m_intent.crouch = 1.0f;
+                if (std::fmod(now - m_behaviorStarted, 7.0f) > 5.5f)
+                {
+                    lookAround(m_pauseUntil);
+                }
+                break;
+            case Pastime::Watch:
+                m_goal = std::string("watching ") + m_roamWhy;
+                m_intent.crouch = 0.5f;
+                m_intent.face = true;
+                m_intent.facePoint = m_watchPoint;
+                m_intent.look = true;
+                m_intent.lookAt = m_watchPoint + glm::vec3(0.0f, 1.0f, 0.0f);
+                break;
+            case Pastime::LookAround:
+                m_goal = "pausing";
+                lookAround(m_pauseUntil);
+                break;
+            }
         }
         break;
     }
@@ -3369,7 +3530,11 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
     {
         m_alertUntil = -1.0f;
         m_alertIgnoreUntil = now + 10.0f;
-        if (m_interest.resolved || m_interest.strength < 0.6f)
+        // Not when it already knows who is over there: then it is not a question, it is them.
+        const bool known = std::any_of(m_tracks.begin(), m_tracks.end(), [&](const Track& track) {
+            return track.confidence > 0.5f && Horizontal(track.lastKnown, m_alertFeet) < 5.0f;
+        });
+        if (!known && (m_interest.resolved || m_interest.strength < 0.6f))
         {
             m_interest = {m_alertFeet, 0.6f, now, "a glimpse", false};
             Log(now, "cannot make it out; goes to look");
