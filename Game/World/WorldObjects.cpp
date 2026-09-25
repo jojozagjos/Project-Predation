@@ -192,6 +192,15 @@ void WorldObjects::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physic
                                                              lockerSize.y * 0.5f, 0.0f),
                                         0.0f),
                           BodyMotion::Static);
+        // The roof, between the sides, from behind the door to in front of the back: without it
+        // anything that climbed up there fell straight in.
+        {
+            const float front = -lockerSize.z * 0.5f + 0.07f;
+            const float back = lockerSize.z * 0.5f - panelHalfThickness * 2.0f - 0.005f;
+            physics.CreateBox({lockerInnerHalfWidth - 0.005f, panelHalfThickness, (back - front) * 0.5f},
+                              MakeTransform(position + glm::vec3(0.0f, lockerSize.y - panelHalfThickness, (front + back) * 0.5f), 0.0f),
+                              BodyMotion::Static);
+        }
 
         // Centred in the clear space, which sits slightly forward of the shell's middle because the
         // back panel takes up depth that the door does not.

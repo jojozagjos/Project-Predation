@@ -639,6 +639,16 @@ void PredationGame::RegisterCommands()
                                std::strtof(args[3].c_str(), nullptr)});
         },
         "teleport <x> <y> <z>");
+    console.RegisterCommand("where", "Print where the player's feet are, and whether they are standing on something",
+                            [this](const std::vector<std::string>&)
+                            {
+                                const PlayerState& state = m_player.State();
+                                char line[128];
+                                std::snprintf(line, sizeof(line), "at %.2f %.2f %.2f, %s", state.position.x, state.position.y,
+                                              state.position.z, state.grounded ? "standing" : "in the air");
+                                m_app->GetConsole().Print(line);
+                                PRED_LOG_INFO(Gameplay, "Player {}", line);
+                            });
 
     console.RegisterCommand(
         "camera", "Switch camera: camera <first|third|fly>",
