@@ -13,5 +13,20 @@
   "stalk_patience_range": 18.0,
   "ambush_patience": 15.0,
   "ambush_patience_range": 35.0,
-  "lure_every": 50.0
+  "lure_every": 50.0,
+  "director": {
+    "_comment": "Pacing. Pressure builds while creatures are close to or busy with the players and drains when nothing is near; at full pressure the ones near are asked to give the players room. After a quiet spell, an idle creature is nudged to somewhere near a player.",
+    "quiet_seconds": 60.0,
+    "nudge_every": 45.0,
+    "nudge_every_range": 30.0,
+    "nudge_distance": 12.0,
+    "close_range": 12.0,
+    "build_close": 0.012,
+    "build_busy": 0.006,
+    "drain": 0.008,
+    "per_blow": 0.15,
+    "after_easing": 0.35,
+    "withdraw_seconds": 35.0,
+    "withdraw_seconds_range": 25.0
+  }
 }

@@ -38,6 +38,24 @@ struct CreatureTuning
     float ambushPatienceRange = 35.0f;
     // Seconds between one attempt at luring somebody with a voice and the next.
     float lureEvery = 50.0f;
+
+    // The director: pacing over the creatures' heads (Docs/AI.md, The director).
+    struct Director
+    {
+        float quietSeconds = 60.0f;      // with no contact this long, an idle creature is nudged
+        float nudgeEvery = 45.0f;        // seconds between nudges, plus up to nudgeEveryRange more
+        float nudgeEveryRange = 30.0f;
+        float nudgeDistance = 12.0f;     // how far from the player the place it is nudged to may be
+        float closeRange = 12.0f;        // a creature nearer a player than this presses them
+        float buildClose = 0.012f;       // pressure a second from something close, at its closest
+        float buildBusy = 0.006f;        // and from anything busy with somebody
+        float drain = 0.008f;            // pressure lost a second with nothing near
+        float perBlow = 0.15f;           // pressure from a blow landing
+        float afterEasing = 0.35f;       // what the pressure drops to once creatures give way
+        float withdrawSeconds = 35.0f;   // how long one gives the players room, plus up to the range
+        float withdrawSecondsRange = 25.0f;
+    };
+    Director director;
 };
 
 // What the creatures use now.

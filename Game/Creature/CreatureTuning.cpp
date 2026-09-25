@@ -46,7 +46,7 @@ bool LoadCreatureTuning(const std::filesystem::path& file, CreatureTuning& out, 
     for (const std::string& key :
          UnknownKeys(json, {"sight_range", "half_field_degrees", "edge_of_view", "close_sense", "exposure_gain",
                             "exposure_decay", "suspicion", "through_walls", "commitment", "stalk_patience",
-                            "stalk_patience_range", "ambush_patience", "ambush_patience_range", "lure_every"}))
+                            "stalk_patience_range", "ambush_patience", "ambush_patience_range", "lure_every", "director"}))
     {
         PRED_LOG_WARN(AI, "creatures.json: a key nothing reads, '{}' -- a typo?", key);
         if (warnings != nullptr)
@@ -68,6 +68,33 @@ bool LoadCreatureTuning(const std::filesystem::path& file, CreatureTuning& out, 
     out.ambushPatience = json.value("ambush_patience", out.ambushPatience);
     out.ambushPatienceRange = json.value("ambush_patience_range", out.ambushPatienceRange);
     out.lureEvery = json.value("lure_every", out.lureEvery);
+    if (json.contains("director") && json["director"].is_object())
+    {
+        const nlohmann::json& d = json["director"];
+        for (const std::string& key :
+             UnknownKeys(d, {"quiet_seconds", "nudge_every", "nudge_every_range", "nudge_distance", "close_range", "build_close",
+                             "build_busy", "drain", "per_blow", "after_easing", "withdraw_seconds", "withdraw_seconds_range"}))
+        {
+            PRED_LOG_WARN(AI, "creatures.json: a director key nothing reads, '{}' -- a typo?", key);
+            if (warnings != nullptr)
+            {
+                warnings->push_back("director." + key);
+            }
+        }
+        CreatureTuning::Director& o = out.director;
+        o.quietSeconds = d.value("quiet_seconds", o.quietSeconds);
+        o.nudgeEvery = d.value("nudge_every", o.nudgeEvery);
+        o.nudgeEveryRange = d.value("nudge_every_range", o.nudgeEveryRange);
+        o.nudgeDistance = d.value("nudge_distance", o.nudgeDistance);
+        o.closeRange = d.value("close_range", o.closeRange);
+        o.buildClose = d.value("build_close", o.buildClose);
+        o.buildBusy = d.value("build_busy", o.buildBusy);
+        o.drain = d.value("drain", o.drain);
+        o.perBlow = d.value("per_blow", o.perBlow);
+        o.afterEasing = d.value("after_easing", o.afterEasing);
+        o.withdrawSeconds = d.value("withdraw_seconds", o.withdrawSeconds);
+        o.withdrawSecondsRange = d.value("withdraw_seconds_range", o.withdrawSecondsRange);
+    }
     return true;
 }
 

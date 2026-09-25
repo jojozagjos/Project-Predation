@@ -20,6 +20,7 @@
 #include "Game/Creature/Noise.h"
 #include "Game/Creature/VoiceMemory.h"
 #include "Game/Creature/TacticLearner.h"
+#include "Game/Creature/CreatureTuning.h"
 #include "Game/Player/PlayerBody.h"
 #include "Game/Player/PlayerController.h"
 #include "Game/Weapons/BulletHole.h"

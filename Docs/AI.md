@@ -427,12 +427,12 @@ a stride and a half long). None of it is a list a map provides.
 
 ### The director
 
-Over the creatures' heads, a director paces the match (`ai.director`). It knows where everybody is and
+Over the creatures' heads, a director paces the match (`ai.director`; its numbers are under `director` in Assets/Data/creatures.json). It knows where everybody is and
 never tells a creature. Pressure builds while creatures are close to the players or busy with them, and
 drains when nothing is near. When it has gone on long enough, the creatures near the players are asked
 to give them room for half a minute to a minute -- to get out of sight, back to the nest if there is
 one. Anything that matters still pulls one back out: a gunshot, somebody walking into it. When it has
-been quiet for a minute (`ai.director_quiet_seconds`), one creature with nothing to do is sent to
+been quiet for a minute, one creature with nothing to do is sent to
 somewhere about twelve metres from somebody. It has a feeling about the place; it still has to find
 them with its own eyes and ears.
 
