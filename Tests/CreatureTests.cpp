@@ -303,6 +303,63 @@ TEST_CASE("Crouched in the dark is harder to see than standing in the light", "[
     CHECK(dim < lit * 0.25f);
 }
 
+TEST_CASE("Lying low in the dark a few metres in front of it is harder to see, not invisible", "[creature][senses]")
+{
+    CreatureHarness harness;
+    glm::vec3 at;
+    glm::vec3 player;
+    REQUIRE(OpenView(harness, 6.0f, at, player));
+    // Prone in a dark duct, near enough to touch in a few strides: made out in a few seconds.
+    harness.Run(4.0f, {Somebody(1, player, 0.45f, 0.05f)});
+    INFO("exposure " << harness.TrackOf(1)->exposure << "; " << harness.TrackOf(1)->sight.verdict);
+    CHECK(harness.TrackOf(1)->exposure >= 1.0f);
+}
+
+TEST_CASE("Standing right behind one, out of its view, is felt", "[creature][senses]")
+{
+    CreatureHarness harness;
+    glm::vec3 at;
+    glm::vec3 ahead;
+    REQUIRE(OpenView(harness, 6.0f, at, ahead));
+    // Behind it, two and a half metres back: where its eyes cannot reach, and close enough to hear breathing.
+    glm::vec3 behind;
+    REQUIRE(harness.nav.NearestPoint(at + glm::vec3(0.0f, 0.0f, 2.5f), 0.8f, behind));
+    harness.Run(3.0f, {Somebody(1, behind, 1.8f, 0.1f)});
+    INFO("exposure " << harness.TrackOf(1)->exposure << "; " << harness.TrackOf(1)->sight.verdict);
+    CHECK(harness.TrackOf(1)->exposure >= 1.0f);
+}
+
+TEST_CASE("Somebody it can see stays seen through a moment behind something", "[creature][senses]")
+{
+    CreatureHarness harness;
+    glm::vec3 at;
+    glm::vec3 player;
+    REQUIRE(OpenView(harness, 10.0f, at, player));
+    harness.Run(1.5f, {Somebody(1, player)});
+    REQUIRE(harness.TrackOf(1)->visible);
+    // A pillar between them for a third of a second: the answer to "is anything in the way" is yes.
+    bool lost = false;
+    constexpr float dt = 1.0f / 60.0f;
+    for (float t = 0.0f; t < 0.33f; t += dt)
+    {
+        harness.time += dt;
+        CreatureSenses senses = harness.Senses({Somebody(1, player)});
+        senses.clearLine = [](const glm::vec3&, const glm::vec3&) { return false; };
+        harness.creature->Update(senses, harness.time, dt);
+        lost = lost || !harness.TrackOf(1)->visible;
+    }
+    CHECK_FALSE(lost);
+    // And for long enough, it is gone.
+    for (float t = 0.0f; t < 1.5f; t += dt)
+    {
+        harness.time += dt;
+        CreatureSenses senses = harness.Senses({Somebody(1, player)});
+        senses.clearLine = [](const glm::vec3&, const glm::vec3&) { return false; };
+        harness.creature->Update(senses, harness.time, dt);
+    }
+    CHECK_FALSE(harness.TrackOf(1)->visible);
+}
+
 TEST_CASE("A gunshot draws it to look", "[creature][hearing]")
 {
     // Across temperaments: a gunshot is the loudest thing that happens, and even an incurious
@@ -1923,4 +1980,70 @@ TEST_CASE("A hungry one finds a body and feeds on it, and feeding it sees and he
     harness.Run(1.5f, {Somebody(1, onMesh)});
     const CreatureBrain::Track* track = harness.TrackOf(1);
     CHECK((track == nullptr || track->lastSeen < 0.0f));
+}
+
+TEST_CASE("Chasing somebody who ducks out of sight, it does not stop for a body on the way", "[creature][decide]")
+{
+    const uint32_t seed = SeedWhere([](const CreatureTraits& t) { return t.stealth < 0.4f && t.aggression > 0.6f && t.fear < 0.5f; });
+    REQUIRE(seed != 0);
+    CreatureHarness harness(seed);
+    glm::vec3 at;
+    glm::vec3 player;
+    REQUIRE(OpenView(harness, 12.0f, at, player));
+    // A body a few metres off to one side.
+    glm::vec3 body;
+    REQUIRE(harness.nav.NearestPoint(at + glm::vec3(3.0f, 0.0f, -2.0f), 2.0f, body));
+    // Heard first, so it turns to them whatever it was doing.
+    Noise step;
+    step.kind = NoiseKind::Footstep;
+    step.reach = 20.0f;
+    step.position = player;
+    step.player = 1;
+    harness.Run(3.0f, {Somebody(1, player)}, {step});
+    INFO("start:" << MindOf(*harness.creature) << " exposure " << harness.TrackOf(1)->exposure << " " << harness.TrackOf(1)->sight.verdict << " field " << harness.TrackOf(1)->sight.field << " clear " << harness.TrackOf(1)->sight.clear << " seed " << seed << " " << Hunter(seed).Describe());
+    REQUIRE(harness.TrackOf(1)->visible);
+    harness.bodies = {body};
+
+    // Round a corner: a few metres on, and nothing can be seen of them.
+    const glm::vec3 round = player + glm::vec3(4.0f, 0.0f, 0.0f);
+    bool fed = false;
+    constexpr float dt = 1.0f / 60.0f;
+    for (float t = 0.0f; t < 6.0f; t += dt)
+    {
+        harness.time += dt;
+        CreatureSenses senses = harness.Senses({Somebody(1, round)});
+        senses.clearLine = [](const glm::vec3&, const glm::vec3&) { return false; };
+        harness.creature->Update(senses, harness.time, dt);
+        fed = fed || harness.creature->Brain().Current() == Behavior::Feed;
+    }
+    INFO("its mind:" << MindOf(*harness.creature));
+    CHECK_FALSE(fed);
+}
+
+TEST_CASE("Shot in its cover, a stalker does not stay in it", "[creature][decide][stalk]")
+{
+    const uint32_t seed = SeedWhere([](const CreatureTraits& t) { return t.stealth > 0.85f && t.aggression > 0.5f && t.fear < 0.6f; });
+    REQUIRE(seed != 0);
+    CreatureHarness harness(seed);
+    glm::vec3 at;
+    glm::vec3 player;
+    REQUIRE(OpenView(harness, 14.0f, at, player));
+    const auto watching = [&](const Creature& c) { return std::vector<SensedPlayer>{Watching(1, player, c.Position())}; };
+    harness.RunLive(8.0f, watching, [](const Creature&) {});
+    REQUIRE(harness.creature->Brain().Current() == Behavior::Stalk);
+    const glm::vec3 hidden = harness.creature->Position();
+
+    harness.creature->TakeDamage(Share(*harness.creature, 12.0f), 1, player + glm::vec3(0.0f, 1.5f, 0.0f), harness.time);
+    float furthest = 0.0f;
+    bool answered = false;
+    harness.RunLive(3.0f, watching,
+                    [&](const Creature& creature)
+                    {
+                        furthest = std::max(furthest, glm::length(glm::vec2(creature.Position().x - hidden.x, creature.Position().z - hidden.z)));
+                        const Behavior now = creature.Brain().Current();
+                        answered = answered || now == Behavior::Hunt || now == Behavior::Attack || now == Behavior::Retreat;
+                    });
+    INFO("its mind:" << MindOf(*harness.creature));
+    CHECK(answered);
+    CHECK(furthest > 2.0f);
 }

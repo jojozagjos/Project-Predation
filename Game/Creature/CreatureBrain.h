@@ -275,6 +275,9 @@ public:
     // `maxHealth` is what the body can take in all, so a round hurts a big body less than a small one:
     // pain and harm are measured against it, as they were against the 160 every creature once had.
     void OnDamaged(float amount, int byPlayer, const glm::vec3& from, float time, float maxHealth = 160.0f);
+    // Another of its kind near it was hurt by somebody: it holds it against them, less than if it had been
+    // hurt itself.
+    void OnKinHurt(int byPlayer, float amount, float time, float maxHealth = 160.0f);
     // Somebody is shooting its nest's heart, at `where`; or has killed it. `byPlayer` is -1 when nobody
     // in particular did. Whatever it was doing, it comes back for them.
     void OnNestAttacked(int byPlayer, const glm::vec3& where, float time, bool destroyed);
@@ -362,6 +365,8 @@ public:
         float lastSeen = -1.0f;
         float lastHeard = -1.0f;
         bool visible = false;
+        // Until when it goes on seeing them through a moment of not: see CreatureTuning::sightHold.
+        float heldUntil = -1.0f;
         // How much they have hurt it. Something that has been shot is wary of whoever shot it.
         float harm = 0.0f;
         // Whether they are looking at it, with nothing in the way -- as far as it knows. `watchKnown`
@@ -548,13 +553,16 @@ private:
     void Log(float time, std::string what);
     void Switch(Behavior behavior, int target, const std::string& reason, float time);
     bool PickFleePoint(const CreatureSenses& senses, glm::vec3& out);
+    // Somewhere with a ceiling it can climb onto, out of sight: where a climber goes to be out of the way.
+    bool PickCeilingSpot(const CreatureSenses& senses, glm::vec3& out);
     // Closes whatever it was going to look into near `where`, now that it knows who was there.
     void ResolveInterestNear(const glm::vec3& where);
     // Somewhere near `target` that none of the players it knows about can see, a stalking distance
     // from them, preferably dark and behind them. Fills m_cover with every candidate it weighed.
     bool FindCover(const CreatureSenses& senses, const Track& target, const SensedPlayer* player,
                    glm::vec3& out);
-    // Whether any player it knows about has a clear line to this point at body height.
+    // Whether any player it knows about has a clear line to it standing at this point: to the middle of
+    // its body or to the top of it. A low crate that hides its middle does not hide its back.
     bool SeenFrom(const CreatureSenses& senses, const glm::vec3& point) const;
     // How good a moment it is to go for somebody, 0 to 1: alone, looking away, or already so close
     // there is no use waiting, and past the end of its patience any moment will do.
@@ -625,6 +633,7 @@ private:
     float m_perceiveTimer = 0.0f;
     float m_decideTimer = 0.0f;
     float m_lastTime = 0.0f;
+    glm::vec3 m_lastPosition{0.0f};
 
     // Noises that arrived since perception last ran. It runs fifteen times a second and the game
     // ticks sixty, so a sound made on a tick in between would otherwise simply never be heard --
@@ -822,9 +831,18 @@ private:
     float m_nextCreepAt = 0.0f;
     // Giving the players room, until then, because the director asked.
     float m_withdrawUntil = -1.0f;
-    // Hit and run: one blow on the way out of a fight, and back to running.
+    // Hit and run: one blow on the way out of a fight, and back to running -- out of their sight, and then
+    // round at them again from somewhere else, rather than back the way it went.
     bool m_hitAndRunReady = false;
     bool m_strikeThenFlee = false;
+    int m_comeBackFor = -1;
+    // Shot: when, and in the middle of what. Wherever it was waiting, watching or eating is found out.
+    float m_shotAt = -1.0e9f;
+    Behavior m_shotDuring{};
+    int m_shotBy = -1;
+    // Shot while running from it: how often lately, which is how it knows it is cornered.
+    int m_hitsWhileRunning = 0;
+    float m_firstRunningHit = -1.0e9f;
     // What it has learnt. Shot in three separate encounters, it stops coming straight at people.
     int m_timesShot = 0;
     float m_lastShotAt = -100.0f;

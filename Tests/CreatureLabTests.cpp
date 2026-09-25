@@ -724,6 +724,12 @@ TEST_CASE("Asked to give the players room, it goes backstage: down a crawlspace,
             }
             CreatureSenses senses;
             senses.mayBuildNest = false;
+            // Where the ceilings are, as the game answers it.
+            senses.ceilingAt = [&lab](const glm::vec3& at)
+            {
+                const RayHit roof = lab.physics.RayCastStatic(at + glm::vec3(0.0f, 0.4f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f), 6.0f);
+                return roof ? roof.distance + 0.4f : 0.0f;
+            };
             creature.Update(senses, time, dt);
             creature.UpdateVisual(dt);
             inCrawlspace = inCrawlspace || lab.nav.InCrawlspace(creature.Position());
@@ -743,4 +749,51 @@ TEST_CASE("Asked to give the players room, it goes backstage: down a crawlspace,
     withdrawn(false, true, inCrawlspace, onCeiling, mind);
     INFO("climber:" << mind);
     CHECK(onCeiling);
+}
+
+TEST_CASE("Somebody up on a block it cannot get onto is paced under and called about, not run from", "[creature][lab][decide]")
+{
+    Lab lab;
+    uint32_t seed = 0;
+    for (uint32_t candidate = 1; candidate < 600 && seed == 0; ++candidate)
+    {
+        const CreatureAnatomy anatomy = CreatureAnatomy::FromSeed(candidate);
+        const CreatureCapabilities caps = CreatureCapabilities::From(anatomy);
+        const CreatureTraits traits = Hunter(candidate);
+        if (caps.jump < 1.8f && !caps.climbs && anatomy.eyes > 0 && traits.aggression > 0.6f && traits.fear < 0.5f)
+        {
+            seed = candidate;
+        }
+    }
+    REQUIRE(seed != 0);
+    const glm::vec3 blockTop{LabSpec::kBlockRowX + LabSpec::kBlockSpacing * 4.0f, LabSpec::kBlockHeights[4], LabSpec::kBlockRowZ};
+    const glm::vec3 start = lab.At(-17.2f, 20.0f);
+    Creature creature(lab.scene, lab.meshes, lab.physics, &lab.nav, Hunter(seed), start);
+    SensedPlayer player;
+    player.id = 1;
+    player.name = "Up There";
+    player.feet = blockTop;
+
+    constexpr float dt = 1.0f / 60.0f;
+    float time = 0.0f;
+    bool ran = false;
+    float furthest = 0.0f;
+    for (int tick = 0; tick < 60 * 14; ++tick)
+    {
+        time += dt;
+        CreatureSenses senses;
+        senses.players = {player};
+        creature.Update(senses, time, dt);
+        creature.UpdateVisual(dt);
+        lab.physics.Step(dt);
+        ran = ran || creature.Brain().Current() == Behavior::Retreat;
+        if (time > 6.0f)
+        {
+            furthest = std::max(furthest, Horizontal2(creature.Position(), blockTop));
+        }
+    }
+    INFO("seed " << seed << MindOf(creature));
+    CHECK_FALSE(ran);
+    CHECK(furthest < 7.0f);
+    CHECK(MindOf(creature).find("cannot reach") != std::string::npos);
 }

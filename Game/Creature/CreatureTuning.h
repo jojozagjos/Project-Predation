@@ -22,6 +22,17 @@ struct CreatureTuning
     float halfFieldDegrees = 65.0f; // either side of straight ahead
     float edgeOfView = 0.35f;       // how well it sees at the very edge, against 1 dead ahead
     float closeSense = 1.6f;        // metres: known about whichever way it faces
+    // Nearer than this it feels somebody there whichever way it faces -- breathing, a smell, a floor
+    // that gives -- faster the closer and the more they move. Anybody standing right behind one used to
+    // be able to stay there.
+    float presenceRange = 4.0f;
+    // Seconds it keeps somebody it has made out through a moment of not seeing them: a pillar passing
+    // between, a turn of the head.
+    float sightHold = 0.6f;
+    // The least that darkness and being small take away from how well it sees somebody: they are night
+    // hunters, and somebody crouched in a dark duct is still somebody.
+    float darkSight = 0.22f;
+    float smallSight = 0.45f;
     // Making somebody out: how fast a steady look fills the meter, how fast looking away empties it,
     // and how full it has to be to be worth going to look at.
     float exposureGain = 2.4f;

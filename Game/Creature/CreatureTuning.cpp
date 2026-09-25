@@ -51,7 +51,8 @@ bool LoadCreatureTuning(const std::filesystem::path& file, CreatureTuning& out, 
         return false;
     }
     for (const std::string& key :
-         UnknownKeys(json, {"sight_range", "half_field_degrees", "edge_of_view", "close_sense", "exposure_gain",
+         UnknownKeys(json, {"sight_range", "half_field_degrees", "edge_of_view", "close_sense", "presence_range", "sight_hold",
+                            "dark_sight", "small_sight", "exposure_gain",
                             "exposure_decay", "suspicion", "through_walls", "commitment", "stalk_patience",
                             "stalk_patience_range", "ambush_patience", "ambush_patience_range", "lure_every", "director", "quirks"}))
     {
@@ -65,6 +66,10 @@ bool LoadCreatureTuning(const std::filesystem::path& file, CreatureTuning& out, 
     out.halfFieldDegrees = json.value("half_field_degrees", out.halfFieldDegrees);
     out.edgeOfView = json.value("edge_of_view", out.edgeOfView);
     out.closeSense = json.value("close_sense", out.closeSense);
+    out.presenceRange = json.value("presence_range", out.presenceRange);
+    out.sightHold = json.value("sight_hold", out.sightHold);
+    out.darkSight = json.value("dark_sight", out.darkSight);
+    out.smallSight = json.value("small_sight", out.smallSight);
     out.exposureGain = json.value("exposure_gain", out.exposureGain);
     out.exposureDecay = json.value("exposure_decay", out.exposureDecay);
     out.suspicion = json.value("suspicion", out.suspicion);

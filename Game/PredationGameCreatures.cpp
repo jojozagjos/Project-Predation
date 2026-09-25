@@ -497,6 +497,20 @@ bool PredationGame::OnShotResolved(ShotResult& result, const glm::vec3& origin, 
         {
             LearnFrom(*creature, !creature->Alive() ? -2.0f : -std::min(result.damage / std::max(creature->MaxHealth(), 1.0f) * 6.0f, 1.0f),
                       !creature->Alive() ? "killed" : "shot");
+            // The others near it that could see it happen hold it against whoever did it.
+            for (const std::unique_ptr<Creature>& other : m_creatures)
+            {
+                const float apart = glm::distance(other->Eye(), creature->Eye());
+                if (other.get() == creature || !other->Alive() || apart > 25.0f || apart < 1e-3f)
+                {
+                    continue;
+                }
+                const RayHit wall = m_app->GetPhysics().RayCastStatic(other->Eye(), (creature->Eye() - other->Eye()) / apart, apart);
+                if (!wall)
+                {
+                    other->Brain().OnKinHurt(shooter, result.damage, m_creatureClock, other->MaxHealth());
+                }
+            }
         }
     }
     result.surface = false;
