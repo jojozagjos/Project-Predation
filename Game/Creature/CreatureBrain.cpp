@@ -3132,7 +3132,15 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
                 m_goal = "wandering";
             }
             // A ceiling-dweller takes most legs of it overhead.
-            m_roamOverhead = m_traits.Has(Quirk::CeilingDweller) && m_random.Unit() < 0.7f;
+            // Only a leg with a ceiling over both ends of it: up a wall to cross to a doorway out into the open is a
+            // climb that ends in a fall.
+            const auto roofed = [&](const glm::vec3& at)
+            {
+                const float above = senses.ceilingAt ? senses.ceilingAt(at) : 0.0f;
+                return above > 2.2f && above < 4.8f;
+            };
+            m_roamOverhead = m_traits.Has(Quirk::CeilingDweller) && m_random.Unit() < 0.7f && m_haveRoamPoint &&
+                             roofed(senses.position) && roofed(m_roamPoint);
             // Its own pace for this leg of it: an amble, a steady walk, now and then a brisk trot.
             const float pace = m_random.Unit();
             m_roamPace = pace < 0.35f ? 0.65f : pace < 0.85f ? 1.0f : 1.35f;

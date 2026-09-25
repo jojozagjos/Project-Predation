@@ -218,6 +218,17 @@ private:
     // Lying there and pulling itself along, in jerks, towards here: playing dead, somewhere nobody is
     // looking. Pulled on the ragdoll, host and client alike -- the client towards where the host says it is.
     bool m_crawling = false;
+    // Where it is drawn, less where it is: a jump in where it is -- onto a wall, over onto a ceiling --
+    // is put here and eased away, so the body gets there over a moment instead of in a frame.
+    glm::vec3 m_drawOffset{0.0f};
+    glm::vec3 m_lastDrawn{0.0f};
+    bool m_haveDrawn = false;
+    // Off the ceiling the way it got on: to the nearest wall and down it, head first. False when there is
+    // no wall near enough.
+    bool DescendNearestWall();
+    // Whether the place it is going has a ceiling it could hang from, checked a couple of times a second.
+    bool m_ceilingAhead = true;
+    float m_ceilingAheadCheck = 0.0f;
     glm::vec3 m_crawlTo{0.0f};
     float m_crawlClock = 0.0f;
     float m_crouch = 0.0f;

@@ -214,6 +214,20 @@ void CreatureRig::PlaceFeet(const RigInput& input, float legScale)
         }
         else if (input.ground)
         {
+            // Not on the far side of a wall it is standing against: the step comes up short of it.
+            if (input.probe)
+            {
+                const glm::vec3 middle = input.position + glm::vec3(0.0f, m_anatomy->hipHeight * 0.6f, 0.0f);
+                const glm::vec3 out{desired.x - middle.x, 0.0f, desired.z - middle.z};
+                const float length = glm::length(out);
+                glm::vec3 met;
+                if (length > 0.05f && input.probe(middle, out / length, length + 0.1f, met))
+                {
+                    const float keep = std::max(glm::distance(glm::vec2(met.x, met.z), glm::vec2(middle.x, middle.z)) - 0.12f, 0.0f);
+                    desired.x = middle.x + out.x / length * keep;
+                    desired.z = middle.z + out.z / length * keep;
+                }
+            }
             float height = 0.0f;
             if (input.ground(desired + glm::vec3(0.0f, m_anatomy->hipHeight + 0.3f, 0.0f), m_anatomy->hipHeight * 2.5f + 0.6f,
                              height))
@@ -603,6 +617,26 @@ void CreatureRig::Update(const RigInput& input)
         neck[2] = bentMiddle;
         neck[3] = bentFront;
     }
+    // Its head kept out of walls: a neck reaching past a corner, or a creature standing close to a wall
+    // turning to look along it, is drawn back along itself to where it meets the wall.
+    if (input.probe)
+    {
+        const glm::vec3 base = Apply(m_root, neck[0]);
+        const glm::vec3 tip = Apply(m_root, neck[3]);
+        const glm::vec3 along = tip - base;
+        const float length = glm::length(along);
+        glm::vec3 met;
+        if (length > 0.1f && input.probe(base, along / length, length + 0.08f, met))
+        {
+            const float short_ = length + 0.08f - glm::distance(base, met);
+            const glm::vec3 pullBack = Apply(rootInverse, base) - Apply(rootInverse, base + along / length * short_);
+            neck[1] += pullBack * 0.35f;
+            neck[2] += pullBack * 0.75f;
+            neck[3] += pullBack;
+            hinge += pullBack;
+            chin += pullBack;
+        }
+    }
     m_bones[static_cast<size_t>(skin.neck[0])] = BoneFrame(neck[0], neck[1], headUp);
     m_bones[static_cast<size_t>(skin.neck[1])] = BoneFrame(neck[1], neck[2], headUp);
     m_bones[static_cast<size_t>(skin.head)] = BoneFrame(neck[2], neck[3], headUp);
@@ -831,7 +865,22 @@ void CreatureRig::Update(const RigInput& input)
             m_feet[i].planted = Apply(m_root, glm::vec3(foot.x, foot.y - pair.thickness, foot.z));
         }
 
-        const glm::vec3 ankleTarget = reach > 0.0f || input.airborne > 0.0f ? foot : foot + glm::vec3(0.0f, pair.thickness, 0.0f);
+        glm::vec3 ankleTarget = reach > 0.0f || input.airborne > 0.0f ? foot : foot + glm::vec3(0.0f, pair.thickness, 0.0f);
+        // Nothing through a wall: the straight line from the hip or shoulder to where the foot or hand is going,
+        // and where the level is in the way, the foot or hand on what it met -- on top of the ledge it was
+        // reaching over, against the face of the wall it was reaching into -- instead of inside it.
+        if (input.probe)
+        {
+            const glm::vec3 from = Apply(m_root, hip);
+            const glm::vec3 to = Apply(m_root, ankleTarget);
+            const glm::vec3 along = to - from;
+            const float length = glm::length(along);
+            glm::vec3 met;
+            if (length > 0.1f && input.probe(from, along / length, length, met) && glm::distance(met, to) > 0.06f)
+            {
+                ankleTarget = Apply(rootInverse, met - along / length * (pair.thickness + 0.03f));
+            }
+        }
         // Down over something it is eating, its forelimbs brace with the elbows out to the sides, as a crouched
         // animal holds them, rather than folded up over its back.
         const glm::vec3 pole = forelimb && m_feed > 0.05f
