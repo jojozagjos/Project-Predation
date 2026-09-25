@@ -1,8 +1,16 @@
 #include "Game/World/FacilityLayout.h"
+#include "Game/World/FacilityMap.h"
+#include "Engine/Navigation/NavMesh.h"
+#include "Engine/Render/Primitives.h"
+
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/quaternion.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <cmath>
+#include <string>
 
 using namespace pred;
 
@@ -149,4 +157,174 @@ TEST_CASE("Print a facility, floor by floor", "[.facilitymap]")
         }
     }
     WARN(text);
+}
+
+namespace
+{
+
+struct Solid
+{
+    glm::vec3 lo{0.0f};
+    glm::vec3 hi{0.0f};
+    std::string what;
+};
+
+// The box a thing turned by `yaw` takes up, axis-aligned. Exact for the quarter turns everything against
+// a wall is at; for a crate turned any other way, the box round it, which is only ever bigger.
+Solid Around(const glm::vec3& centre, const glm::vec3& size, float yaw, std::string what)
+{
+    const float c = std::abs(std::cos(yaw));
+    const float s = std::abs(std::sin(yaw));
+    const glm::vec3 half{(size.x * c + size.z * s) * 0.5f, size.y * 0.5f, (size.x * s + size.z * c) * 0.5f};
+    // Quarter turns come out a hair bigger from the sine and cosine; not enough to count.
+    const glm::vec3 slack{0.0005f, 0.0f, 0.0005f};
+    return {centre - half + slack, centre + half - slack, std::move(what)};
+}
+
+bool Overlap(const Solid& a, const Solid& b, float by)
+{
+    return a.hi.x - b.lo.x > by && b.hi.x - a.lo.x > by && a.hi.y - b.lo.y > by && b.hi.y - a.lo.y > by &&
+           a.hi.z - b.lo.z > by && b.hi.z - a.lo.z > by;
+}
+
+std::vector<Solid> SolidsOf(const FacilityMap::Blueprint& blueprint)
+{
+    std::vector<Solid> solids;
+    for (const FacilityMap::Piece& piece : blueprint.pieces)
+    {
+        solids.push_back(Around(piece.centre, piece.size, piece.yaw, "piece " + std::to_string(static_cast<int>(piece.kind))));
+    }
+    for (const FacilityMap::Flight& flight : blueprint.flights)
+    {
+        const float length = FacilityMap::kSteps * FacilityMap::kStepRun;
+        const glm::vec3 along{std::sin(flight.yaw), 0.0f, std::cos(flight.yaw)};
+        const glm::vec3 middle = flight.foot + along * (length * 0.5f) + glm::vec3(0.0f, FacilityLayout::kStorey * 0.5f, 0.0f);
+        solids.push_back(Around(middle, {FacilityMap::kStairWidth, FacilityLayout::kStorey, length}, flight.yaw, "stairs"));
+    }
+    for (const WorldObjects::PlacedThing& locker : blueprint.placements.lockers)
+    {
+        solids.push_back(Around(locker.position + glm::vec3(0.0f, 1.025f, 0.0f), {1.06f, 2.05f, 0.88f}, locker.yaw, "locker"));
+    }
+    for (const WorldObjects::PlacedThing& crate : blueprint.placements.ammoCrates)
+    {
+        solids.push_back(Around(crate.position + glm::vec3(0.0f, 0.22f, 0.0f), {0.72f, 0.44f, 0.46f}, crate.yaw, "ammo crate"));
+    }
+    return solids;
+}
+
+} // namespace
+
+TEST_CASE("A built facility has nothing solid inside anything else", "[facility]")
+{
+    for (uint32_t seed = 1; seed <= 12; ++seed)
+    {
+        INFO("seed " << seed);
+        const FacilityMap::Blueprint blueprint = FacilityMap::Draw(FacilityLayout::Generate(seed));
+        const std::vector<Solid> solids = SolidsOf(blueprint);
+        CHECK(solids.size() > 200);
+        int overlaps = 0;
+        for (size_t i = 0; i < solids.size(); ++i)
+        {
+            for (size_t k = i + 1; k < solids.size(); ++k)
+            {
+                if (Overlap(solids[i], solids[k], 0.002f))
+                {
+                    if (overlaps < 5)
+                    {
+                        UNSCOPED_INFO(solids[i].what << " into " << solids[k].what << " at " << solids[i].lo.x << " "
+                                                     << solids[i].lo.y << " " << solids[i].lo.z);
+                    }
+                    ++overlaps;
+                }
+            }
+        }
+        CHECK(overlaps == 0);
+    }
+}
+
+TEST_CASE("A built facility's way in is clear to stand in, and every door fits its doorway", "[facility]")
+{
+    for (uint32_t seed = 1; seed <= 12; ++seed)
+    {
+        INFO("seed " << seed);
+        const FacilityLayout layout = FacilityLayout::Generate(seed);
+        const FacilityMap::Blueprint blueprint = FacilityMap::Draw(layout);
+        const std::vector<Solid> solids = SolidsOf(blueprint);
+
+        // Somebody standing at the spawn: a column as wide as a person, from their feet to over their head.
+        const glm::vec3 feet = blueprint.spawn - glm::vec3(0.0f, 0.5f, 0.0f);
+        const Solid person{feet + glm::vec3(-0.35f, 0.05f, -0.35f), feet + glm::vec3(0.35f, 1.9f, 0.35f), "person"};
+        for (const Solid& solid : solids)
+        {
+            INFO(solid.what);
+            CHECK_FALSE(Overlap(person, solid, 0.0f));
+        }
+
+        // Every door, shut: its panel in its doorway, touching nothing.
+        for (const WorldObjects::PlacedDoor& door : blueprint.placements.doors)
+        {
+            const glm::vec3 along{std::cos(door.closedYaw), 0.0f, -std::sin(door.closedYaw)};
+            const glm::vec3 middle = door.hinge + along * (door.width * 0.5f) + glm::vec3(0.0f, door.height * 0.5f, 0.0f);
+            const Solid panel = Around(middle, {door.width, door.height, 0.09f}, door.closedYaw, "door");
+            for (const Solid& solid : solids)
+            {
+                INFO(solid.what);
+                CHECK_FALSE(Overlap(panel, solid, 0.0f));
+            }
+        }
+        CHECK(blueprint.placements.doors.size() + 40 < 256); // door numbers go over the network in a byte
+    }
+}
+
+TEST_CASE("Every room of a built facility can be walked to from the way in, up and down its stairs", "[facility][nav]")
+{
+    for (const uint32_t seed : {1u, 7u})
+    {
+        INFO("seed " << seed);
+        const FacilityLayout layout = FacilityLayout::Generate(seed);
+        const FacilityMap::Blueprint blueprint = FacilityMap::Draw(layout);
+
+        // The level as the navigation sees it: every solid piece and every flight, as triangles. The doors
+        // are not in it -- they are moved, not walked round -- so this is the building with them all open.
+        MeshData level;
+        for (const FacilityMap::Piece& piece : blueprint.pieces)
+        {
+            const glm::mat4 transform = glm::translate(glm::mat4(1.0f), piece.centre) *
+                                        glm::mat4_cast(glm::angleAxis(piece.yaw, glm::vec3(0.0f, 1.0f, 0.0f)));
+            level.Append(Primitives::Box(piece.size), transform);
+        }
+        const MeshData stairs = Primitives::Stairs(FacilityMap::kSteps, FacilityMap::kStairWidth,
+                                                   FacilityLayout::kStorey / FacilityMap::kSteps, FacilityMap::kStepRun);
+        for (const FacilityMap::Flight& flight : blueprint.flights)
+        {
+            const glm::mat4 transform = glm::translate(glm::mat4(1.0f), flight.foot) *
+                                        glm::mat4_cast(glm::angleAxis(flight.yaw, glm::vec3(0.0f, 1.0f, 0.0f)));
+            level.Append(stairs, transform);
+        }
+        std::vector<glm::vec3> triangles;
+        for (const uint32_t index : level.indices)
+        {
+            triangles.push_back(level.vertices[index].position);
+        }
+        NavMesh nav;
+        std::string error;
+        REQUIRE(nav.Build(triangles, NavSettings{}, &error));
+
+        int unreachable = 0;
+        for (size_t r = 0; r < layout.rooms.size(); ++r)
+        {
+            const FacilityLayout::Room& room = layout.rooms[r];
+            // A cell of the room with nothing standing in it: its middle, or failing that its corners'.
+            const glm::vec3 target = FacilityMap::ToWorld(room.floor, glm::vec2(room.min) + glm::vec2(0.5f)) + glm::vec3(0.0f, 0.1f, 0.0f);
+            std::vector<glm::vec3> corners;
+            bool reached = false;
+            nav.FindPath(blueprint.spawn, target, corners, &reached, nullptr, 0);
+            if (!reached || corners.empty() || glm::distance(corners.back(), target) > 1.5f)
+            {
+                UNSCOPED_INFO("room " << r << " on floor " << room.floor << " at " << room.min.x << "," << room.min.y);
+                ++unreachable;
+            }
+        }
+        CHECK(unreachable == 0);
+    }
 }

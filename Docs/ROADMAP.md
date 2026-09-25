@@ -59,6 +59,11 @@ swim through, that hides what is under it. Blocked areas and the tasks that open
 first; and modifiers on a whole mission, the power out to begin with. The lamps, circuits and doors
 already built are what these are made of.
 
+Built so far (ADR-085): the seeded layout -- loops, two or three floors and their stairwells, the
+duct network, doors and locked doors with a keycard, lamps with moods, lockers, supplies, clutter, a
+way in and a nest room -- built into the world and sent as a seed. Still to come: power and circuits
+as a task, flooding, outside ground and more than one building, and the round around it.
+
 ### 3. Dead, but not gone
 
 A player who dies comes back as a CIRRA support drone: limited, slow to recharge, able to be knocked

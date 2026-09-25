@@ -7,6 +7,7 @@
 #include <cmath>
 #include <map>
 #include <queue>
+#include <set>
 #include <tuple>
 
 namespace pred
@@ -53,6 +54,9 @@ struct Planner
 {
     FacilityLayout& plan;
     Random random;
+    // Cells something already stands against a wall of: one thing to a cell, or a shelf along one wall
+    // and a bench along the next meet in the corner.
+    std::set<std::tuple<int, int, int>> furnished;
 
     bool InBounds(int x, int z) const { return x >= 0 && z >= 0 && x < plan.width && z < plan.depth; }
     FacilityLayout::Cell& CellAt(int f, int x, int z) { return plan.cells[plan.Index(f, x, z)]; }
@@ -711,14 +715,16 @@ struct Planner
             {
                 continue; // not an edge that way
             }
-            if (ByADoor(room.floor, {x, z}))
+            if (ByADoor(room.floor, {x, z}) || furnished.count({room.floor, x, z}) != 0)
             {
                 continue;
             }
-            // Pushed to the wall, facing away from it.
+            furnished.insert({room.floor, x, z});
+            // Pushed to the wall, facing away from it: a thing faces its own -z, and turned by `yaw` about y
+            // that is (-sin, -cos), which is minus the step towards the wall when yaw = atan2(step).
             at = glm::vec2(static_cast<float>(x) + 0.5f + static_cast<float>(step.x) * 0.3f,
                            static_cast<float>(z) + 0.5f + static_cast<float>(step.y) * 0.3f);
-            yaw = std::atan2(static_cast<float>(step.x), -static_cast<float>(step.y)) + glm::pi<float>();
+            yaw = std::atan2(static_cast<float>(step.x), static_cast<float>(step.y));
             return true;
         }
         return false;
@@ -917,7 +923,7 @@ struct Planner
                 }
                 break;
             case FacilityLayout::RoomKind::Plant:
-                for (int i = 0; i < random.Int(2, 4); ++i)
+                for (int i = 0; i < random.Int(2, 4) && !entrance; ++i)
                 {
                     const int x = random.Int(room.min.x, room.max.x);
                     const int z = random.Int(room.min.y, room.max.y);
@@ -925,11 +931,27 @@ struct Planner
                     {
                         continue;
                     }
+                    // Never next to another, and never where something stands against a wall: with a cell
+                    // between every two there is always a way round them.
+                    bool crowded = false;
+                    for (int dz = -1; dz <= 1; ++dz)
+                    {
+                        for (int dx = -1; dx <= 1; ++dx)
+                        {
+                            crowded = crowded || furnished.count({room.floor, x + dx, z + dz}) != 0;
+                        }
+                    }
+                    if (crowded)
+                    {
+                        continue;
+                    }
+                    furnished.insert({room.floor, x, z});
                     placed.thing = FacilityLayout::Thing::Crate;
                     placed.at = {static_cast<float>(x) + 0.5f, static_cast<float>(z) + 0.5f};
                     placed.yaw = random.Unit() * glm::pi<float>();
-                    placed.size = {random.Unit() * 0.8f + 0.9f, random.Unit() * 0.8f + 0.9f};
-                    placed.height = random.Unit() * 1.0f + 0.8f;
+                    // Small enough to stand clear of the walls however it is turned.
+                    placed.size = {random.Unit() * 0.4f + 0.8f, random.Unit() * 0.4f + 0.8f};
+                    placed.height = random.Unit() * 0.8f + 0.8f;
                     plan.things.push_back(placed);
                 }
                 break;

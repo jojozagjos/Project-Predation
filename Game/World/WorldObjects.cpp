@@ -111,23 +111,23 @@ int WorldObjects::AddLocker(Scene& scene, MeshLibrary& meshes, PhysicsWorld& phy
     spot.entity = scene.CreateMeshEntity("locker", MakeTransform(at({0.0f, lockerSize.y * 0.5f, 0.0f}), yaw), m_lockerMesh,
                                          kLockerMaterial);
     // Back, fitted between the two sides. Every collider below sits exactly where its panel is drawn.
-    physics.CreateBox({lockerInnerHalfWidth, lockerSize.y * 0.5f, panelHalfThickness},
+    spot.bodies.push_back(physics.CreateBox({lockerInnerHalfWidth, lockerSize.y * 0.5f, panelHalfThickness},
                       MakeTransform(at({0.0f, lockerSize.y * 0.5f, lockerSize.z * 0.5f - panelHalfThickness}), yaw),
-                      BodyMotion::Static);
-    physics.CreateBox({panelHalfThickness, lockerSize.y * 0.5f, lockerSize.z * 0.5f},
+                      BodyMotion::Static));
+    spot.bodies.push_back(physics.CreateBox({panelHalfThickness, lockerSize.y * 0.5f, lockerSize.z * 0.5f},
                       MakeTransform(at({-lockerSize.x * 0.5f + panelHalfThickness, lockerSize.y * 0.5f, 0.0f}), yaw),
-                      BodyMotion::Static);
-    physics.CreateBox({panelHalfThickness, lockerSize.y * 0.5f, lockerSize.z * 0.5f},
+                      BodyMotion::Static));
+    spot.bodies.push_back(physics.CreateBox({panelHalfThickness, lockerSize.y * 0.5f, lockerSize.z * 0.5f},
                       MakeTransform(at({lockerSize.x * 0.5f - panelHalfThickness, lockerSize.y * 0.5f, 0.0f}), yaw),
-                      BodyMotion::Static);
+                      BodyMotion::Static));
     // The roof, between the sides, from behind the door to in front of the back: without it anything
     // that climbed up there fell straight in.
     {
         const float front = -lockerSize.z * 0.5f + 0.07f;
         const float back = lockerSize.z * 0.5f - panelHalfThickness * 2.0f - 0.005f;
-        physics.CreateBox({lockerInnerHalfWidth - 0.005f, panelHalfThickness, (back - front) * 0.5f},
+        spot.bodies.push_back(physics.CreateBox({lockerInnerHalfWidth - 0.005f, panelHalfThickness, (back - front) * 0.5f},
                           MakeTransform(at({0.0f, lockerSize.y - panelHalfThickness, (front + back) * 0.5f}), yaw),
-                          BodyMotion::Static);
+                          BodyMotion::Static));
     }
 
     // Centred in the clear space, which sits slightly forward of the shell's middle because the back
@@ -169,7 +169,8 @@ int WorldObjects::AddAmmoCrate(Scene& scene, PhysicsWorld& physics, InteractionS
                                           m_crateMesh, kAmmoCrateMaterial);
     crate.lidRest = position + glm::vec3(0.0f, bodyHeight + lidThickness * 0.5f, 0.0f);
     crate.lidEntity = scene.CreateMeshEntity("ammo_crate_lid", MakeTransform(crate.lidRest, yaw), m_lidMesh, kAmmoLidMaterial);
-    physics.CreateBox({crateSize.x * 0.5f, crateSize.y * 0.5f, crateSize.z * 0.5f},
+    crate.yaw = yaw;
+    crate.body = physics.CreateBox({crateSize.x * 0.5f, crateSize.y * 0.5f, crateSize.z * 0.5f},
                       MakeTransform(position + glm::vec3(0.0f, crateSize.y * 0.5f, 0.0f), yaw), BodyMotion::Static);
 
     const auto index = static_cast<int>(m_ammoCrates.size());
@@ -644,8 +645,9 @@ void WorldObjects::Update(Scene& scene, PhysicsWorld& physics, InteractionSystem
             constexpr float kHalfDepth = 0.23f;
             const float lift = std::sin(crate.lidAngle) * kHalfDepth;
             const float back = (1.0f - std::cos(crate.lidAngle)) * kHalfDepth;
-            transform->rotation = glm::angleAxis(-crate.lidAngle, glm::vec3(1.0f, 0.0f, 0.0f));
-            transform->position = crate.lidRest + glm::vec3(0.0f, lift, -back);
+            const glm::quat turn = glm::angleAxis(crate.yaw, glm::vec3(0.0f, 1.0f, 0.0f));
+            transform->rotation = turn * glm::angleAxis(-crate.lidAngle, glm::vec3(1.0f, 0.0f, 0.0f));
+            transform->position = crate.lidRest + turn * glm::vec3(0.0f, lift, -back);
         }
     }
 
@@ -815,14 +817,21 @@ void WorldObjects::Clear(Scene& scene, PhysicsWorld& physics, InteractionSystem&
             Despawn(pickup, scene, physics, interactions);
         }
     }
+    // With their colliders: these used to stay behind, so every new game stacked another set of lockers
+    // and crates, invisible, on top of the last.
     for (HidingSpot& spot : m_hidingSpots)
     {
         interactions.Unregister(spot.entity);
         scene.Destroy(spot.entity);
+        for (const BodyHandle body : spot.bodies)
+        {
+            physics.DestroyBody(body);
+        }
     }
     for (AmmoCrate& crate : m_ammoCrates)
     {
         interactions.Unregister(crate.entity);
+        physics.DestroyBody(crate.body);
         scene.Destroy(crate.lidEntity);
         scene.Destroy(crate.entity);
     }

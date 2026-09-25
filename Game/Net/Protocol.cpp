@@ -426,7 +426,7 @@ void WriteWorldEvent(BitWriter& writer, const WorldEventMessage& message)
     switch (message.kind)
     {
     case WorldEventKind::DoorMoved:
-        writer.WriteBits(message.index, 6);
+        writer.WriteBits(message.index, 8);
         writer.WriteBool(message.flag);
         break;
 
@@ -447,13 +447,13 @@ void WriteWorldEvent(BitWriter& writer, const WorldEventMessage& message)
         break;
 
     case WorldEventKind::LockerUsed:
-        writer.WriteBits(message.index, 5);
+        writer.WriteBits(message.index, 8);
         writer.WriteBits(message.player, 3);
         writer.WriteBool(message.flag); // getting in, or getting out
         break;
 
     case WorldEventKind::AmmoTaken:
-        writer.WriteBits(message.index, 5);
+        writer.WriteBits(message.index, 8);
         writer.WriteBits(message.player, 3);
         break;
 
@@ -515,7 +515,7 @@ void WriteWorldEvent(BitWriter& writer, const WorldEventMessage& message)
         break;
 
     case WorldEventKind::DoorUnlocked:
-        writer.WriteBits(message.index, 6);
+        writer.WriteBits(message.index, 8);
         writer.WriteBits(message.player, 3);
         break;
 
@@ -527,6 +527,10 @@ void WriteWorldEvent(BitWriter& writer, const WorldEventMessage& message)
 
     case WorldEventKind::NestsCleared:
         break; // nothing more to say
+
+    case WorldEventKind::FacilityChanged:
+        writer.WriteBits(message.item, 16);
+        break;
 
     case WorldEventKind::Count:
         break;
@@ -546,7 +550,7 @@ bool ReadWorldEvent(BitReader& reader, WorldEventMessage& out)
     switch (out.kind)
     {
     case WorldEventKind::DoorMoved:
-        out.index = static_cast<uint8_t>(reader.ReadBits(6));
+        out.index = static_cast<uint8_t>(reader.ReadBits(8));
         out.flag = reader.ReadBool();
         break;
 
@@ -566,13 +570,13 @@ bool ReadWorldEvent(BitReader& reader, WorldEventMessage& out)
         break;
 
     case WorldEventKind::LockerUsed:
-        out.index = static_cast<uint8_t>(reader.ReadBits(5));
+        out.index = static_cast<uint8_t>(reader.ReadBits(8));
         out.player = static_cast<uint8_t>(reader.ReadBits(3));
         out.flag = reader.ReadBool();
         break;
 
     case WorldEventKind::AmmoTaken:
-        out.index = static_cast<uint8_t>(reader.ReadBits(5));
+        out.index = static_cast<uint8_t>(reader.ReadBits(8));
         out.player = static_cast<uint8_t>(reader.ReadBits(3));
         break;
 
@@ -625,7 +629,7 @@ bool ReadWorldEvent(BitReader& reader, WorldEventMessage& out)
         break;
 
     case WorldEventKind::DoorUnlocked:
-        out.index = static_cast<uint8_t>(reader.ReadBits(6));
+        out.index = static_cast<uint8_t>(reader.ReadBits(8));
         out.player = static_cast<uint8_t>(reader.ReadBits(3));
         break;
 
@@ -647,6 +651,10 @@ bool ReadWorldEvent(BitReader& reader, WorldEventMessage& out)
         break;
 
     case WorldEventKind::NestsCleared:
+        break;
+
+    case WorldEventKind::FacilityChanged:
+        out.item = static_cast<uint16_t>(reader.ReadBits(16));
         break;
 
     case WorldEventKind::Count:

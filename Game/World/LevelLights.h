@@ -68,9 +68,15 @@ public:
 
     // A light and its fitting. `direction` is where the fitting faces: down for a ceiling light, out
     // from the wall for a wall lamp, along the beam for a flood.
+    // `range`, when given, is how far it reaches instead of how far its kind does: a building of several
+    // floors needs its lamps to stop short of the floor below, since nothing here casts a lamp's shadow.
     int Add(Scene& scene, MeshLibrary& meshes, LightKind kind, LightMood mood, const glm::vec3& at,
-            const glm::vec3& direction, int circuit = 0, uint32_t seed = 0);
+            const glm::vec3& direction, int circuit = 0, uint32_t seed = 0, float range = 0.0f);
     void Clear(Scene& scene);
+    // Every light from `first` on, taken away: the ones a map added after everything else, when that
+    // map is rebuilt.
+    void RemoveFrom(Scene& scene, size_t first);
+    size_t Count() const { return m_lights.size(); }
 
     void SetPowered(int circuit, bool powered);
     bool Powered(int circuit) const;

@@ -395,9 +395,9 @@ bool PredationGame::FindUnseenPoint(uint32_t seed, glm::vec3& out) const
 
 void PredationGame::UpdateArrivals()
 {
-    if (m_arrivalsPending <= 0 || m_creatureClock < m_arrivalAt)
+    if (m_arrivalsPending <= 0 || m_creatureClock < m_arrivalAt || m_navRebuilding)
     {
-        return;
+        return; // and not onto a walkable surface that is about to be replaced by the one being built
     }
     const uint32_t seed = m_arrivalSeed + static_cast<uint32_t>(m_creatures.size()) * 7919u;
     glm::vec3 at;
@@ -2813,7 +2813,9 @@ void PredationGame::RequestNavRebuild()
 {
     if (m_navRebuilding)
     {
-        return; // one at a time; the next one picks up whatever the level looks like then
+        // One at a time, and another straight after: this one looked at the level before it changed.
+        m_navRebuildAgain = true;
+        return;
     }
     // The level's shape as it is now, taken here rather than on the worker: the physics world is the
     // main thread's.
@@ -2856,6 +2858,11 @@ void PredationGame::FinishNavRebuild()
         PRED_LOG_INFO(AI, "Navigation rebuilt");
     }
     m_navSpare.reset();
+    if (m_navRebuildAgain)
+    {
+        m_navRebuildAgain = false;
+        RequestNavRebuild();
+    }
 }
 
 // --- Held, dragged and wrapped up --------------------------------------------------------------------

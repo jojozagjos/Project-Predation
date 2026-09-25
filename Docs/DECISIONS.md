@@ -1850,3 +1850,27 @@ Four changes to how Assets/Data works, all so the files can be edited by hand wi
 - **Sounds hear the level.** Each is muffled by what lies between it and the ears (two rays, a low-pass
   and a drop in level), and the room the listener stands in is measured and fed to a reverb. Both are
   cheap enough to do for every sound, which is the only way they stay consistent.
+
+## ADR-085: Generated facilities, planned from a seed and built as boxes
+
+- **A plan, then a building.** `FacilityLayout` plans a facility from a seed with no engine at all:
+  a grid of 2.5 m cells, two or three floors of 3.6 m, rooms joined by corridors that loop (a tree of
+  the nearest, then a second way out of nearly half the rooms), stairwells that climb through both
+  floors, locked doors only on dead ends with the keycard somewhere reachable without it, lamps with
+  moods, lockers, supplies, clutter, a way in and a dark room out of the way for a nest.
+  `FacilityMap::Draw` turns the plan into boxes, flights of stairs, lamps and a list of doors, lockers,
+  crates and items, still without an engine, so tests can check that nothing solid is inside anything
+  else, that every door fits its doorway, and that every room can be walked to. `Build` puts it in the
+  world. Only the seed is sent: every machine builds the same one.
+- **Vents are a network.** Crawlspace ducts (1.3 m, too low to stand in, which the navigation marks as
+  crawl) run room to room, room to corridor, and into ducts already dug. Two duct cells that touch are
+  always joined; where one meets a room or a corridor it opens low at the foot of the wall.
+- **Walls without overlaps.** Walls stand on the edges between cells, 0.2 m thick, merged into runs;
+  runs along x own every corner they reach and runs along z stop at their faces, so no solid is inside
+  another, which is what the level's own geometry check looks for.
+- **In the one world.** Between the test map and the lab, where it makes the single navigation mesh no
+  bigger. `facility [seed|new]` goes there (rebuilding it first); the host tells everybody the seed,
+  and a newcomer hears it before anything numbered in it. Door, locker and crate numbers go over the
+  network in a byte now, not six bits (protocol 17).
+- **Lamps stop at the floor.** Nothing casts a lamp's shadow, so the facility's lamps reach 5.4 m rather
+  than their kind's 9 m: far enough to light their room, not far enough to light the one below.

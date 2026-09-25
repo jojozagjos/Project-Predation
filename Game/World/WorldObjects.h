@@ -83,6 +83,8 @@ public:
         int refillsLeft = -1;    // -1 is unlimited
         float lidAngle = 0.0f;
         float lidTarget = 0.0f;
+        float yaw = 0.0f;
+        BodyHandle body;
     };
 
     struct HidingSpot
@@ -98,6 +100,9 @@ public:
         // Without it a locker could only ever be entered, which is why leaving one was never sent
         // to anybody and everybody else saw it shut for the rest of the game.
         uint8_t occupant = 0;
+        // Its shell's colliders, so a new game can take them away with it rather than leaving a second
+        // set on top of the first.
+        std::vector<BodyHandle> bodies;
     };
 
     // `weapons` is optional and only affects appearance: with it, a dropped rifle looks like the

@@ -75,6 +75,8 @@ set(PRED_GAME_SOURCES
     World/LabMap.cpp
     World/FacilityLayout.h
     World/FacilityLayout.cpp
+    World/FacilityMap.h
+    World/FacilityMap.cpp
     World/HiveMesh.h
     World/LevelLights.h
     World/LevelLights.cpp

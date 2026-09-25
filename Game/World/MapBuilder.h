@@ -11,6 +11,7 @@
 #include <cmath>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace pred
 {
@@ -27,6 +28,14 @@ public:
     MapBuilder(Scene& scene, MeshLibrary& meshes, PhysicsWorld* physics, std::string prefix = {})
         : m_scene(scene), m_meshes(meshes), m_physics(physics), m_prefix(std::move(prefix))
     {
+    }
+
+    // Keeps every entity and body made from here on in these lists, so a map that is rebuilt (a
+    // generated facility, from a new seed) can take everything it made away again.
+    void Track(std::vector<Entity>* entities, std::vector<BodyHandle>* bodies)
+    {
+        m_trackedEntities = entities;
+        m_trackedBodies = bodies;
     }
 
     // Box: rendered as a box mesh, collided as a box shape. Cheaper and more robust than a
@@ -60,12 +69,12 @@ public:
                                        (static_cast<float>(k) + 0.5f) * tile.z - size.z * 0.5f};
                 Transform piece = transform;
                 piece.position = transform.position + transform.rotation * offset;
-                m_scene.CreateMeshEntity(name, piece, mesh, material);
+                Keep(m_scene.CreateMeshEntity(name, piece, mesh, material));
             }
         }
         if (m_physics != nullptr)
         {
-            m_physics->CreateBox(size * 0.5f, transform, BodyMotion::Static);
+            Keep(m_physics->CreateBox(size * 0.5f, transform, BodyMotion::Static));
         }
     }
 
@@ -73,10 +82,10 @@ public:
     void AddBoxInstance(const std::string& name, const Transform& transform, MeshHandle mesh,
                         const glm::vec3& size, const Material& material)
     {
-        m_scene.CreateMeshEntity(name, transform, mesh, material);
+        Keep(m_scene.CreateMeshEntity(name, transform, mesh, material));
         if (m_physics != nullptr)
         {
-            m_physics->CreateBox(size * 0.5f, transform, BodyMotion::Static);
+            Keep(m_physics->CreateBox(size * 0.5f, transform, BodyMotion::Static));
         }
     }
 
@@ -87,20 +96,20 @@ public:
         // Numbered like the boxes above, and for the same reason: two stairs of different sizes
         // both called "stairs" would share one mesh and the second would draw as the first.
         const MeshHandle mesh = m_meshes.Upload(data, m_prefix + name + "#" + std::to_string(m_boxCount++));
-        m_scene.CreateMeshEntity(name, transform, mesh, material);
+        Keep(m_scene.CreateMeshEntity(name, transform, mesh, material));
         if (collide && m_physics != nullptr)
         {
-            m_physics->CreateMeshBody(data, transform);
+            Keep(m_physics->CreateMeshBody(data, transform));
         }
     }
 
     void AddMeshInstance(const std::string& name, const Transform& transform, MeshHandle mesh,
                          const MeshData& data, const Material& material, bool collide = true)
     {
-        m_scene.CreateMeshEntity(name, transform, mesh, material);
+        Keep(m_scene.CreateMeshEntity(name, transform, mesh, material));
         if (collide && m_physics != nullptr)
         {
-            m_physics->CreateMeshBody(data, transform);
+            Keep(m_physics->CreateMeshBody(data, transform));
         }
     }
 
@@ -108,10 +117,27 @@ public:
     void AddDecoration(const std::string& name, const Transform& transform, MeshHandle mesh,
                        const Material& material)
     {
-        m_scene.CreateMeshEntity(name, transform, mesh, material);
+        Keep(m_scene.CreateMeshEntity(name, transform, mesh, material));
     }
 
 private:
+    void Keep(Entity entity)
+    {
+        if (m_trackedEntities != nullptr)
+        {
+            m_trackedEntities->push_back(entity);
+        }
+    }
+    void Keep(BodyHandle body)
+    {
+        if (m_trackedBodies != nullptr)
+        {
+            m_trackedBodies->push_back(body);
+        }
+    }
+
+    std::vector<Entity>* m_trackedEntities = nullptr;
+    std::vector<BodyHandle>* m_trackedBodies = nullptr;
     Scene& m_scene;
     MeshLibrary& m_meshes;
     PhysicsWorld* m_physics;

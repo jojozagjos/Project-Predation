@@ -386,6 +386,8 @@ bool PredationGame::OnInit(Application& app)
     BuildTestMap(m_scene, app.GetMeshes(), &app.GetPhysics());
     // And the creature lab, far off to the east in the same world, with its nest.
     BuildLabMap(m_scene, app.GetMeshes(), &app.GetPhysics(), &m_levelLights);
+    // And the generated facility between them, the default one until a host asks for another.
+    m_facility.Build(FacilitySpec::kDefaultSeed, m_scene, app.GetMeshes(), app.GetPhysics(), &m_levelLights);
 
 
     m_propSphereMesh = app.GetMeshes().Upload(Primitives::Sphere(kPropRadius, 20, 14), "prop_sphere");
@@ -1178,9 +1180,39 @@ void PredationGame::RegisterCommands()
         });
 
     console.RegisterCommand("lab", "Go to the creature lab: everybody in the game, and the creatures from its nest",
-                            [this](const std::vector<std::string>&) { GoToMap(true); });
+                            [this](const std::vector<std::string>&) { GoToMap(MapChoice::Lab); });
     console.RegisterCommand("testmap", "Back to the test map from the creature lab",
-                            [this](const std::vector<std::string>&) { GoToMap(false); });
+                            [this](const std::vector<std::string>&) { GoToMap(MapChoice::TestMap); });
+    console.RegisterCommand(
+        "facility",
+        "Go to the generated facility. facility <seed> builds the one planned from that seed first (1 to 65535); "
+        "facility new, a new one",
+        [this](const std::vector<std::string>& args)
+        {
+            if (m_screen == Screen::Playing && !IsAuthority())
+            {
+                m_app->GetConsole().PrintError("Only the host can change the facility.");
+                return;
+            }
+            uint16_t seed = m_facility.Seed();
+            if (args.size() >= 2)
+            {
+                if (args[1] == "new")
+                {
+                    seed = static_cast<uint16_t>(
+                        1 + std::chrono::steady_clock::now().time_since_epoch().count() % 65535);
+                }
+                else
+                {
+                    seed = static_cast<uint16_t>(std::clamp(std::atoi(args[1].c_str()), 1, 65535));
+                }
+            }
+            if (seed != m_facility.Seed())
+            {
+                ChangeFacility(seed);
+            }
+            GoToMap(MapChoice::Facility);
+        });
 
     console.RegisterCommand("solo", "Leave the title screen and start a game on your own",
                             [this](const std::vector<std::string>&)
@@ -2066,6 +2098,15 @@ void PredationGame::ForgetPlayer(uint8_t player)
 
 void PredationGame::SendWorldToPlayer(uint8_t player)
 {
+    // Which facility first: every door, locker and item after this is numbered in it.
+    {
+        WorldEventMessage facility;
+        facility.kind = WorldEventKind::FacilityChanged;
+        facility.item = m_facility.Seed();
+        facility.quiet = true;
+        m_host.SendTo(player, facility);
+    }
+
     // Somebody who has just walked in has to be told what has already happened, or every door that
     // was opened before they arrived is shut on their screen for the rest of the game.
     for (size_t i = 0; i < m_world.Doors().size(); ++i)
@@ -2381,6 +2422,14 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
 
     case WorldEventKind::NestsCleared:
         ClearNests();
+        break;
+
+    case WorldEventKind::FacilityChanged:
+        // The host has built another facility: the same one, here, from the same seed.
+        if (event.item != m_facility.Seed())
+        {
+            ChangeFacility(event.item);
+        }
         break;
 
     case WorldEventKind::ItemUsed:
@@ -2926,6 +2975,8 @@ void PredationGame::ResetWorld()
     m_world.Clear(m_scene, m_app->GetPhysics(), m_interactions);
     m_world.Build(m_scene, m_app->GetMeshes(), m_app->GetPhysics(), m_interactions, m_items,
                   &m_weaponData);
+    m_world.AddFacility(m_scene, m_app->GetMeshes(), m_app->GetPhysics(), m_interactions, m_items,
+                        m_facility.Placements());
     ClearFlares();
     m_torchCharge = 1.0f;
 
@@ -2947,16 +2998,37 @@ void PredationGame::ResetWorld()
     PRED_LOG_INFO(Gameplay, "World reset");
 }
 
-void PredationGame::GoToMap(bool lab)
+void PredationGame::GoToMap(MapChoice map)
 {
-    m_spawnPoint = lab ? LabSpec::kSpawn : glm::vec3(0.0f, 0.5f, TestMapSpec::kSpawnZ);
+    float yaw = 0.0f;
+    std::string arrived;
+    switch (map)
+    {
+    case MapChoice::TestMap:
+        m_spawnPoint = glm::vec3(0.0f, 0.5f, TestMapSpec::kSpawnZ);
+        yaw = glm::pi<float>(); // south, across it
+        arrived = "Back on the test map.";
+        break;
+    case MapChoice::Lab:
+        m_spawnPoint = LabSpec::kSpawn;
+        yaw = 0.0f; // north, into it
+        arrived = "In the creature lab. The nest is to the north.";
+        break;
+    case MapChoice::Facility:
+        m_spawnPoint = m_facility.Spawn();
+        yaw = m_facility.SpawnYaw();
+        arrived = "In the facility planned from seed " + std::to_string(m_facility.Seed()) + ": " +
+                  std::to_string(m_facility.Layout().floors) + " floors, " +
+                  std::to_string(m_facility.Layout().rooms.size()) + " rooms.";
+        break;
+    }
     if (m_screen != Screen::Playing)
     {
         // From the menu: a game of your own, there.
         StopSession();
         m_sessionMode = SessionMode::Offline;
         EnterWorld();
-        m_lookYaw = lab ? 0.0f : glm::pi<float>();
+        m_lookYaw = yaw;
         m_player.State().yaw = m_lookYaw;
         return;
     }
@@ -2968,8 +3040,7 @@ void PredationGame::GoToMap(bool lab)
     // Everybody goes, and the creatures start again from wherever creatures come from there.
     SpawnCreatures();
     RespawnLocalPlayer(m_spawnPoint);
-    // Facing into it: north into the lab, south across the test map.
-    m_lookYaw = lab ? 0.0f : glm::pi<float>();
+    m_lookYaw = yaw;
     m_player.State().yaw = m_lookYaw;
     if (m_sessionMode == SessionMode::Host)
     {
@@ -2983,7 +3054,34 @@ void PredationGame::GoToMap(bool lab)
             m_host.Broadcast(event);
         }
     }
-    m_app->GetConsole().Print(lab ? "In the creature lab. The nest is to the north." : "Back on the test map.");
+    m_app->GetConsole().Print(arrived);
+}
+
+void PredationGame::ChangeFacility(uint16_t seed)
+{
+    if (seed == 0)
+    {
+        seed = 1;
+    }
+    m_facility.Build(seed, m_scene, m_app->GetMeshes(), m_app->GetPhysics(), &m_levelLights);
+    // Its doors, lockers, crates and items went with it; everything that can be used up comes back with
+    // the new one, in the same order on every machine. What people are carrying they keep.
+    m_hidingSpot = -1;
+    m_world.Clear(m_scene, m_app->GetPhysics(), m_interactions);
+    m_world.Build(m_scene, m_app->GetMeshes(), m_app->GetPhysics(), m_interactions, m_items, &m_weaponData);
+    m_world.AddFacility(m_scene, m_app->GetMeshes(), m_app->GetPhysics(), m_interactions, m_items,
+                        m_facility.Placements());
+    ClearBulletHoles();
+    ClearFlares();
+    ClearCorpses();
+    RequestNavRebuild();
+    if (m_sessionMode == SessionMode::Host)
+    {
+        WorldEventMessage event;
+        event.kind = WorldEventKind::FacilityChanged;
+        event.item = seed;
+        m_host.Broadcast(event);
+    }
 }
 
 void PredationGame::EnterWorld()

@@ -30,6 +30,7 @@
 #include "Game/World/LevelLights.h"
 #include "Game/World/TestMap.h"
 #include "Game/World/LabMap.h"
+#include "Game/World/FacilityMap.h"
 #include "Tools/ModelEditor/ModelEditor.h"
 #include "Game/World/WorldObjects.h"
 
@@ -317,6 +318,8 @@ private:
     std::future<void> m_navRebuild;
     std::unique_ptr<NavMesh> m_navSpare;
     bool m_navRebuilding = false;
+    // Asked for again while one was already being built: the level changed after that one looked at it.
+    bool m_navRebuildAgain = false;
     // What is drawn round each cocooned player, on every machine, and what somebody uses to cut them out.
     std::map<uint8_t, Entity> m_cocoonEntities;
     MeshHandle m_cocoonMesh;
@@ -544,8 +547,17 @@ private:
     float ReloadProgress() const;
     void DrawTitleScreen();
     void EnterWorld();
-    // Takes the game to the creature lab, or back to the test map.
-    void GoToMap(bool lab);
+    // Takes the game to one of the places in the world: everybody in it, when it is a game with others.
+    enum class MapChoice : uint8_t
+    {
+        TestMap,
+        Lab,
+        Facility
+    };
+    void GoToMap(MapChoice map);
+    // Rebuilds the generated facility from a new seed, and everything in the world that can be used up
+    // with it: its doors, lockers and items belong to it. The host tells everybody.
+    void ChangeFacility(uint16_t seed);
     void EnterEditor(const std::string& modelName);
     // A file dragged onto the window. A model opens the editor on itself; anything else says so
     // rather than being quietly ignored, because a file that vanishes when you drop it is worse
@@ -1158,6 +1170,8 @@ private:
     // The level's own lamps, and the buzz of the nearest failing one.
     LevelLights m_levelLights;
     float m_lightClock = 0.0f;
+    // The generated facility, between the test map and the lab.
+    FacilityMap m_facility;
     // The main camera's view and projection, last frame: for putting HUD text on things in the world.
     glm::mat4 m_viewProjection{1.0f};
     VoiceId m_buzz = kInvalidVoice;

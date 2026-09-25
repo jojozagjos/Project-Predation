@@ -129,7 +129,7 @@ float LevelLights::MoodLevel(LightMood mood, uint32_t seed, float time)
 }
 
 int LevelLights::Add(Scene& scene, MeshLibrary& meshes, LightKind kind, LightMood mood, const glm::vec3& at,
-                     const glm::vec3& direction, int circuit, uint32_t seed)
+                     const glm::vec3& direction, int circuit, uint32_t seed, float range)
 {
     const KindLook look = LookOf(kind);
     Light light;
@@ -138,7 +138,7 @@ int LevelLights::Add(Scene& scene, MeshLibrary& meshes, LightKind kind, LightMoo
     light.direction = glm::length(direction) > 1e-4f ? glm::normalize(direction) : glm::vec3(0.0f, -1.0f, 0.0f);
     light.color = look.color;
     light.intensity = look.intensity;
-    light.range = look.range;
+    light.range = range > 0.0f ? range : look.range;
     light.innerAngle = look.inner;
     light.outerAngle = look.outer;
     light.sourceRadius = look.sourceRadius;
@@ -190,6 +190,21 @@ void LevelLights::Clear(Scene& scene)
     }
     m_lights.clear();
     m_unpowered.clear();
+}
+
+void LevelLights::RemoveFrom(Scene& scene, size_t first)
+{
+    for (size_t i = first; i < m_lights.size(); ++i)
+    {
+        if (m_lights[i].fitting.IsValid())
+        {
+            scene.Destroy(m_lights[i].fitting);
+        }
+    }
+    if (first < m_lights.size())
+    {
+        m_lights.resize(first);
+    }
 }
 
 void LevelLights::SetPowered(int circuit, bool powered)
