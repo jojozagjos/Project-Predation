@@ -14,7 +14,7 @@ uniform vec4 u_ambientGround;   // rgb = bounce from below
 uniform vec4 u_fogColor;        // rgb
 uniform vec4 u_fogParams;       // x = start distance, y = end distance
 uniform vec4 u_cameraPosition;  // xyz
-uniform vec4 u_output;          // x = 1: write linear light for post-processing to finish; y = grime
+uniform vec4 u_output;          // x = 1: write linear light for post-processing to finish
 uniform vec4 u_grade;           // x = exposure, y = contrast, z = light where the sky cannot reach,
                                 // w = 0 normal, 1 show the sun's occlusion, 2 show the sky's
 
@@ -281,44 +281,6 @@ vec3 fresnelSchlick(vec3 f0, float VoH)
 	return f0 + (vec3_splat(1.0) - f0) * f;
 }
 
-float GrimeHash(vec3 p)
-{
-	p = fract(p * 0.1031);
-	p += dot(p, p.zyx + 31.32);
-	return fract((p.x + p.y) * p.z);
-}
-
-float GrimeNoise(vec3 p)
-{
-	vec3 i = floor(p);
-	vec3 f = fract(p);
-	f = f * f * (3.0 - 2.0 * f);
-	float a = mix(mix(GrimeHash(i), GrimeHash(i + vec3(1.0, 0.0, 0.0)), f.x),
-	              mix(GrimeHash(i + vec3(0.0, 1.0, 0.0)), GrimeHash(i + vec3(1.0, 1.0, 0.0)), f.x), f.y);
-	float b = mix(mix(GrimeHash(i + vec3(0.0, 0.0, 1.0)), GrimeHash(i + vec3(1.0, 0.0, 1.0)), f.x),
-	              mix(GrimeHash(i + vec3(0.0, 1.0, 1.0)), GrimeHash(i + vec3(1.0, 1.0, 1.0)), f.x), f.y);
-	return mix(a, b, f.z);
-}
-
-float GrimeFbm(vec3 p)
-{
-	return GrimeNoise(p) * 0.55 + GrimeNoise(p * 2.13) * 0.3 + GrimeNoise(p * 4.37) * 0.15;
-}
-
-// How dirty a plain surface of the level is here, 0 to about a half: blotches and stains, streaks
-// run down the walls from above, and the bottom of every wall darker where it meets a floor that is
-// walked on and never cleaned. Only on surfaces with nothing painted on them -- the level, not a
-// creature -- and not on anything that glows.
-float Grime(vec3 p, vec3 n)
-{
-	float blotch = smoothstep(0.5, 0.82, GrimeFbm(p * 0.75));
-	float fine = GrimeNoise(p * 7.0) * 0.35;
-	float wall = 1.0 - abs(n.y);
-	float streak = smoothstep(0.62, 0.92, GrimeNoise(vec3((p.x + p.z) * 5.0, p.y * 0.35, (p.x - p.z) * 1.3))) * wall;
-	float skirting = exp(-max(p.y, 0.0) * 2.2) * wall;
-	float floorDirt = smoothstep(0.35, 0.75, GrimeFbm(p * 0.4 + vec3_splat(17.0))) * max(n.y, 0.0);
-	return clamp(blotch * 0.3 + fine * 0.12 + streak * 0.28 + skirting * 0.3 + floorDirt * 0.25, 0.0, 0.55);
-}
 
 void main()
 {
@@ -360,15 +322,6 @@ void main()
 	float metallic = clamp(u_materialParams.x, 0.0, 1.0);
 	// Clamp roughness away from zero: perfectly smooth surfaces alias badly with a single light.
 	float roughness = clamp(u_materialParams.y * v_color0.a, 0.045, 1.0);
-	// Dirt, on the level's plain surfaces.
-	if (u_output.y > 0.0 && min(v_color0.r, min(v_color0.g, v_color0.b)) > 0.99 &&
-	    dot(u_emissive.rgb, vec3_splat(1.0)) < 0.001)
-	{
-		float grime = Grime(v_worldPos, N) * u_output.y;
-		albedo *= (0.93 + 0.14 * GrimeNoise(v_worldPos * 2.7)) * (1.0 - grime);
-		albedo = mix(albedo, albedo * vec3(0.9, 0.84, 0.72), grime);
-		roughness = mix(roughness, 1.0, grime * 0.6);
-	}
 
 	vec3 diffuseColor = albedo * (1.0 - metallic);
 	vec3 f0 = mix(vec3_splat(0.04), albedo, metallic);

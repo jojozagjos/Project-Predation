@@ -2096,6 +2096,31 @@ void PredationGame::RegisterCreatureCommands()
                 say(line);
             }
         });
+    console.RegisterCommand(
+        "view_head",
+        "Put the free camera on the creature being watched, looking at its head: view_head [degrees round from its "
+        "face, 90 its right side] [metres]",
+        [this](const std::vector<std::string>& args)
+        {
+            if (m_creatures.empty())
+            {
+                m_app->GetConsole().PrintError("No creature to look at.");
+                return;
+            }
+            const size_t which = static_cast<size_t>(std::clamp(m_inspectedCreature, 0, static_cast<int>(m_creatures.size()) - 1));
+            const Creature& creature = *m_creatures[which];
+            const float round = args.size() >= 2 ? glm::radians(std::strtof(args[1].c_str(), nullptr)) : 0.0f;
+            const float distance = args.size() >= 3 ? std::clamp(std::strtof(args[2].c_str(), nullptr), 0.2f, 20.0f) : 0.9f;
+            const glm::vec3 head = creature.Eye();
+            const float yaw = creature.Yaw() + round;
+            const glm::vec3 from = head + glm::vec3(std::sin(yaw), 0.0f, -std::cos(yaw)) * distance + glm::vec3(0.0f, 0.06f, 0.0f);
+            const glm::vec3 look = head - from;
+            m_camera.position = from;
+            m_cameraMode = CameraMode::Fly;
+            m_lookYaw = std::atan2(look.x, -look.z);
+            m_lookPitch = std::atan2(look.y, std::max(glm::length(glm::vec2(look.x, look.z)), 1e-4f));
+        },
+        "view_head [degrees] [metres]");
     console.RegisterCommand("creature_pose", "Where each creature is, how it is lying, and where it is drawn",
                             [this](const std::vector<std::string>&)
                             {

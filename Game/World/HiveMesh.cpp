@@ -59,13 +59,6 @@ MeshData Sculpt(const glm::vec3& min, const glm::vec3& max, float cell,
     return SimplifyMesh(surface, triangles, 0.003f, kept);
 }
 
-// How much of a vein a point is on: a thin ridge of noise, 0 almost everywhere and 1 along the lines.
-float Vein(const glm::vec3& p, float scale, uint32_t seed)
-{
-    const float ridge = 1.0f - std::abs(Sdf::Fbm(p * scale, seed, 3) * 2.0f - 1.0f);
-    return std::pow(ridge, 9.0f);
-}
-
 } // namespace
 
 NestHeartMeshes BuildNestHeart(uint32_t seed)
@@ -131,8 +124,6 @@ NestHeartMeshes BuildNestHeart(uint32_t seed)
             colour = glm::vec3(0.36f, 0.12f, 0.12f);
             wet = 0.7f;
         }
-        colour = glm::mix(colour, glm::vec3(0.18f, 0.02f, 0.1f), Vein(p, 6.0f, kSeed + 5u) * 0.85f);
-        colour *= 0.8f + 0.35f * Fbm(p * 4.0f, kSeed + 7u, 2);
         return PackColour(colour, wet);
     };
 
@@ -190,8 +181,6 @@ NestHeartMeshes BuildNestHeart(uint32_t seed)
             colour = glm::vec3(0.27f, 0.05f, 0.08f);
             wet = 0.75f;
         }
-        colour = glm::mix(colour, glm::vec3(0.35f, 0.06f, 0.07f), Vein(p, 5.0f, kSeed + 13u) * 0.7f);
-        colour *= 0.75f + 0.4f * Fbm(p * 2.5f, kSeed + 17u, 2);
         return PackColour(colour, wet);
     };
 
@@ -295,8 +284,6 @@ MeshData BuildNestGrowth(uint32_t seed, int variant)
             colour = glm::vec3(0.12f, 0.05f, 0.05f);
             wet = 0.4f;
         }
-        colour = glm::mix(colour, glm::vec3(0.34f, 0.07f, 0.07f), Vein(p, 4.5f, kSeed + 3u) * 0.75f);
-        colour *= 0.72f + 0.45f * Fbm(p * 2.2f, kSeed + 9u, 2);
         return PackColour(colour, wet);
     };
     return Sculpt({-1.6f, -0.05f, -1.6f}, {1.6f, 0.5f, 1.6f}, 0.045f, distance, paint, 3500);

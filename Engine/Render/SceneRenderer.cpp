@@ -308,7 +308,7 @@ void SceneRenderer::SubmitMesh(bgfx::ViewId view, const Mesh& mesh, const Materi
     bgfx::setUniform(m_uMaterialParams, materialParams);
     bgfx::setUniform(m_uEmissive, emissive);
     const bool onScreen = view < Renderer::kViewOffscreenFirst;
-    const float output[4] = {m_linearOutput && onScreen ? 1.0f : 0.0f, onScreen ? m_grime : 0.0f, 0.0f, 0.0f};
+    const float output[4] = {m_linearOutput && onScreen ? 1.0f : 0.0f, 0.0f, 0.0f, 0.0f};
     bgfx::setUniform(m_uOutput, output);
 
     // Always bound. A material with no texture of its own gets the library's white pixel, so the

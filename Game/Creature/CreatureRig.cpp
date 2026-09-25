@@ -549,7 +549,9 @@ void CreatureRig::Update(const RigInput& input)
     m_bones[static_cast<size_t>(skin.head)] = BoneFrame(neck[2], neck[3], headUp);
 
     // The jaw: hanging as open as this one's hangs, breathing, gaping to strike and to roar.
-    float gape = 6.0f + 26.0f * a.gape + 30.0f * input.windup + std::sin(input.time * 1.9f + static_cast<float>(a.seed % 97u)) * 3.0f;
+    // Shut or nearly at rest, breathing through it; a maw hangs open. Never shut further than shut.
+    float gape = 1.5f + 9.0f * a.gape * a.gape + (a.headShape == HeadShape::Maw ? 10.0f : 0.0f) + 30.0f * input.windup +
+                 std::sin(input.time * 1.9f + static_cast<float>(a.seed % 97u)) * 1.5f;
     switch (input.action)
     {
     case RigAction::Bite:
@@ -566,10 +568,11 @@ void CreatureRig::Update(const RigInput& input)
     default:
         break;
     }
-    const float jawLength = a.jawLength * std::max(a.snout, 0.75f);
+    const float jawLength = glm::distance(jawBone.head, jawBone.tail);
     gape *= std::clamp(0.3f / std::max(jawLength, 0.05f), 0.35f, 1.0f);
+    gape = std::max(gape, 0.0f);
     const glm::vec3 headSide = glm::normalize(glm::vec3(m_bones[static_cast<size_t>(skin.head)][0]));
-    chin = Apply(RotateAbout(hinge, glm::angleAxis(-glm::radians(gape - 9.0f), headSide)), chin);
+    chin = Apply(RotateAbout(hinge, glm::angleAxis(-(glm::radians(gape) - skin.restGape), headSide)), chin);
     m_bones[static_cast<size_t>(skin.jaw)] = BoneFrame(hinge, chin, headUp);
 
     // --- The tail: points in the world swinging after the body on springs.

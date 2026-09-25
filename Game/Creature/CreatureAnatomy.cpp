@@ -377,7 +377,9 @@ CreatureAnatomy CreatureAnatomy::FromSeed(uint32_t seed)
     // The details, drawn last. A crawler's face is flatter and its fingers longer; an animal's face
     // juts. Otherwise anything goes: starved or merely lean, a mouth hanging open or shut, a few long
     // fangs or rows of short ones.
-    a.snout = crawler ? random.Range(0.6f, 1.1f) : random.Range(0.9f, 1.8f);
+    // How far the face juts. Past about one and a half a head is all snout, a crocodile's bill rather than
+    // a face, and the teeth along it no longer read as a mouth.
+    a.snout = crawler ? random.Range(0.6f, 1.1f) : random.Range(0.85f, 1.35f);
     a.gape = random.Range(0.1f, 1.0f);
     a.teeth = RangeInt(random, 5, 14);
     a.toothLength = random.Range(0.6f, 1.7f) * (a.teeth < 8 ? 1.3f : 1.0f);
@@ -395,7 +397,7 @@ CreatureAnatomy CreatureAnatomy::FromSeed(uint32_t seed)
         a.cranium = std::max(a.cranium, 1.1f);
         break;
     case HeadShape::Snout:
-        a.snout = std::max(a.snout, 1.9f);
+        a.snout = std::max(a.snout, 1.4f);
         a.headWidth *= 0.8f;
         a.jawLength *= 1.25f;
         a.teeth = std::max(a.teeth, 12);
