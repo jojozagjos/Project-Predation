@@ -1837,3 +1837,16 @@ Four changes to how Assets/Data works, all so the files can be edited by hand wi
 - **Jaws are fitted, not drawn.** The lower jaw's length comes from where the upper face ends; the
   jaw is narrower than the upper row of teeth and the lower teeth sit inside and between them, with
   lengths capped to the room the mouth has.
+
+## ADR-084: A post-processing pass, and a mixer that hears walls and rooms
+
+- **The picture is finished in a pass of its own.** The scene is drawn in linear light into a
+  half-float target; bloom, exposure, the filmic curve, grading, vignette, grain, a lens fringe and
+  the fear effect happen after. Offscreen views (icons, the editor) still draw finished pictures, so
+  nothing that samples them changed. Multisampling moves from the screen to the target.
+- **Fear is shown, not told.** No meter: the edges of the picture close in, beat and drain of colour,
+  and a drone swells and your heart beats, as something close is after you, has you, or you are badly
+  hurt or hiding with something near. It lets go slowly.
+- **Sounds hear the level.** Each is muffled by what lies between it and the ears (two rays, a low-pass
+  and a drop in level), and the room the listener stands in is measured and fed to a reverb. Both are
+  cheap enough to do for every sound, which is the only way they stay consistent.

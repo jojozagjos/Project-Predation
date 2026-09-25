@@ -391,6 +391,15 @@ void PredationGame::UpdateCreatureSounds(float dt)
         {
             PlayNamed("Creature/call", head, 1.0f, pitch * 1.15f);
         }
+        // Something close turning on you: the sting, in both ears, over everything. Not every time --
+        // a sting that comes with every chase is a sound effect, not a fright.
+        const bool nowAfter = intent == Behavior::Hunt || intent == Behavior::Attack;
+        const bool wasAfter = heard.doing == Behavior::Hunt || heard.doing == Behavior::Attack || heard.doing == Behavior::Drag;
+        if (nowAfter && !wasAfter && listenerAway < 18.0f && m_player.State().alive && m_soundClock >= m_stingReadyAt)
+        {
+            m_stingReadyAt = m_soundClock + 25.0f;
+            PlayNamed("Music/sting", m_renderEye, 0.7f, 1.0f, false);
+        }
         heard.doing = intent;
         const CreatureTraits& habits = creature.Brain().Traits();
         const bool silent = habits.Has(Quirk::Silent);
@@ -449,6 +458,71 @@ void PredationGame::UpdateCreatureSounds(float dt)
         const bool present = std::any_of(m_creatures.begin(), m_creatures.end(),
                                          [&](const std::unique_ptr<Creature>& c) { return c->NetId() == it->first; });
         it = present ? std::next(it) : m_heardCreatures.erase(it);
+    }
+}
+
+void PredationGame::UpdateTension(float dt)
+{
+    AudioEngine& audio = m_app->GetAudio();
+    const bool playing = m_screen == Screen::Playing && m_player.State().alive;
+    // How much danger there is: how afraid the picture is (something close and after you, being held,
+    // badly hurt), and a floor under it while anything is about at all.
+    float danger = playing ? m_fearShown : 0.0f;
+    if (playing)
+    {
+        for (const std::unique_ptr<Creature>& creature : m_creatures)
+        {
+            if (creature->Alive())
+            {
+                danger = std::max(danger, 0.12f * std::clamp(1.0f - glm::distance(creature->Position(), m_renderEye) / 40.0f, 0.0f, 1.0f));
+            }
+        }
+        danger = std::max(danger, m_menace * 0.5f);
+    }
+    const float level = std::clamp(cv_ambienceVolume.Get(), 0.0f, 2.0f);
+
+    // The drone: always there in a game, barely, and swelling as things get worse. It comes up quickly
+    // and goes down slowly, so relief is something that happens over a while.
+    const float target = playing ? 0.03f + 0.55f * danger : 0.0f;
+    const float rate = target > m_droneLevel ? 1.2f : 0.25f;
+    m_droneLevel += (target - m_droneLevel) * (1.0f - std::exp(-rate * dt));
+    if (m_drone != kInvalidVoice && !audio.IsPlaying(m_drone))
+    {
+        m_drone = kInvalidVoice;
+    }
+    if (m_drone == kInvalidVoice && playing)
+    {
+        AudioEngine::PlayDesc desc;
+        desc.sound = Sounds("Music/drone").Pick();
+        desc.loop = true;
+        desc.positioned = false;
+        desc.gain = 0.0f;
+        desc.reverbSend = 0.0f;
+        if (desc.sound != kInvalidSound)
+        {
+            m_drone = audio.Play(desc);
+        }
+    }
+    if (m_drone != kInvalidVoice)
+    {
+        audio.SetVoiceGain(m_drone, m_droneLevel * level);
+    }
+
+    // Your own heart, when you are frightened -- or hidden, with something near. Faster the worse it is.
+    bool hiddenNear = false;
+    if (m_hidingSpot >= 0)
+    {
+        for (const std::unique_ptr<Creature>& creature : m_creatures)
+        {
+            hiddenNear = hiddenNear || (creature->Alive() && glm::distance(creature->Position(), m_renderEye) < 12.0f);
+        }
+    }
+    const float beat = std::max(danger, hiddenNear ? 0.6f : 0.0f);
+    m_heartbeatAt -= dt;
+    if (playing && beat > 0.3f && m_heartbeatAt <= 0.0f)
+    {
+        PlayNamed("Player/heartbeat", m_renderEye, 0.25f + 0.45f * beat, 1.0f, false);
+        m_heartbeatAt = 60.0f / (75.0f + 75.0f * beat);
     }
 }
 

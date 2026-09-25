@@ -631,6 +631,9 @@ private:
     void UpdateWorldSounds(float dt);
     void UpdateCreatureSounds(float dt);
     void UpdateAmbience(float dt);
+    // The tension layer: a drone that rises with the danger, your own heartbeat when you are afraid,
+    // and a sting when something close turns on you.
+    void UpdateTension(float dt);
     // The front end's small sounds: the pointer finding a button, a press, a menu opening and closing.
     void MenuSounds();
     // How much of the level is between the ears and a sound there, 0 to 1, for muffling it.
@@ -1148,6 +1151,10 @@ private:
     // The main camera's view and projection, last frame: for putting HUD text on things in the world.
     glm::mat4 m_viewProjection{1.0f};
     VoiceId m_buzz = kInvalidVoice;
+    VoiceId m_drone = kInvalidVoice;
+    float m_droneLevel = 0.0f;
+    float m_heartbeatAt = 0.0f;
+    float m_stingReadyAt = 0.0f;
     // The loops that make up where you are, each faded in by how much you are there: a room, the air in
     // its ducts, the open air, the inside of a vent, a nest. See UpdateAmbience.
     struct AmbienceLoop

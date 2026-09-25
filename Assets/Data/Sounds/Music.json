@@ -1,0 +1,31 @@
+{
+  "_comment": "The placeholder tension layer: each entry is Assets/Audio/Music/<name>/, rendered by sound_bake. Not music as such -- a drone that rises with the danger, and a sting when something finds you.",
+  "drone": {
+    "seconds": 16,
+    "variants": 1,
+    "loop": true,
+    "gain": 0.6,
+    "seed": 9101,
+    "layers": [
+      {"source": "sine", "hz": 36.7, "attack": 1, "sustain": 1, "decay": 1, "gain": 0.5},
+      {"source": "sine", "hz": 37.3, "attack": 1, "sustain": 1, "decay": 1, "gain": 0.4},
+      {"source": "noise", "color": "brown", "filter": "lowpass", "cutoff": 160, "am_hz": 0.0625, "am_depth": 0.6, "attack": 1, "sustain": 1, "decay": 1, "gain": 0.5},
+      {"source": "sine", "hz": 587, "vibrato_hz": 0.125, "vibrato_depth": 0.01, "am_hz": 0.0625, "am_depth": 0.8, "attack": 1, "sustain": 1, "decay": 1, "gain": 0.035},
+      {"source": "sine", "hz": 622, "am_hz": 0.125, "am_depth": 0.8, "attack": 1, "sustain": 1, "decay": 1, "gain": 0.03},
+      {"source": "noise", "color": "pink", "filter": "bandpass", "cutoff": 2200, "q": 6, "am_hz": 0.1875, "am_depth": 0.9, "attack": 1, "sustain": 1, "decay": 1, "gain": 0.02}
+    ]
+  },
+  "sting": {
+    "seconds": 3,
+    "variants": 3,
+    "vary": 0.05,
+    "room": 0.6,
+    "seed": 9201,
+    "layers": [
+      {"source": "noise", "color": "white", "filter": "bandpass", "cutoff": 3200, "cutoff_end": 500, "q": 2, "attack": 0.005, "decay": 1.2, "gain": 0.7},
+      {"source": "sine", "hz": 740, "hz_end": 370, "fm_ratio": 1.41, "fm_index": 4, "fm_index_end": 0.5, "attack": 0.005, "decay": 1.8, "gain": 0.35},
+      {"source": "sine", "hz": 55, "hz_end": 30, "attack": 0.002, "decay": 0.9, "drive": 0.3, "gain": 0.9},
+      {"source": "sine", "hz": 1244, "attack": 0.3, "decay": 2.2, "vibrato_hz": 6, "vibrato_depth": 0.02, "gain": 0.08}
+    ]
+  }
+}

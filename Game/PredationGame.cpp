@@ -5785,6 +5785,7 @@ void PredationGame::UpdateSounds(float dt)
     }
 
     UpdateAmbience(dt);
+    UpdateTension(dt);
     if (m_screen != Screen::Playing)
     {
         return;

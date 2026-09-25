@@ -107,7 +107,11 @@
         "source": "voice",
         "hz": 150,
         "hz_end": 110,
-        "formants": [700, 1150, 2600],
+        "formants": [
+          700,
+          1150,
+          2600
+        ],
         "formant_width": 110,
         "breath": 0.35,
         "jitter": 0.3,
@@ -140,7 +144,11 @@
         "hz": 150,
         "hz_end": 80,
         "curve": 0.7,
-        "formants": [650, 1080, 2500],
+        "formants": [
+          650,
+          1080,
+          2500
+        ],
         "formant_width": 120,
         "breath": 0.45,
         "jitter": 0.4,
@@ -191,7 +199,11 @@
       {
         "source": "voice",
         "hz": 120,
-        "formants": [900, 1400, 2800],
+        "formants": [
+          900,
+          1400,
+          2800
+        ],
         "breath": 0.92,
         "start": 0.52,
         "attack": 0.05,
@@ -211,7 +223,11 @@
         "source": "voice",
         "hz": 175,
         "hz_end": 150,
-        "formants": [600, 1000, 2400],
+        "formants": [
+          600,
+          1000,
+          2400
+        ],
         "breath": 0.5,
         "jitter": 0.6,
         "drive": 0.1,
@@ -284,6 +300,42 @@
         "decay": 0.008,
         "length": 0.03,
         "gain": 1
+      }
+    ]
+  },
+  "heartbeat": {
+    "seconds": 0.7,
+    "variants": 3,
+    "vary": 0.04,
+    "room": 0,
+    "seed": 9301,
+    "layers": [
+      {
+        "source": "sine",
+        "hz": 48,
+        "hz_end": 34,
+        "decay": 0.07,
+        "length": 0.2,
+        "drive": 0.2,
+        "gain": 1
+      },
+      {
+        "source": "noise",
+        "color": "brown",
+        "filter": "lowpass",
+        "cutoff": 160,
+        "decay": 0.05,
+        "length": 0.16,
+        "gain": 0.5
+      },
+      {
+        "source": "sine",
+        "hz": 44,
+        "hz_end": 32,
+        "start": 0.24,
+        "decay": 0.06,
+        "length": 0.18,
+        "gain": 0.7
       }
     ]
   }
