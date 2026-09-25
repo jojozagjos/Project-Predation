@@ -126,6 +126,8 @@ struct CreatureSenses
     std::vector<Kin> kin;
     // What the brood has learnt this match about which ways of getting at these people work.
     const TacticLearner* learned = nullptr;
+    // Where the dead lie.
+    std::vector<glm::vec3> bodies;
     const NavMesh* nav = nullptr;
     // NavMesh::kCrawl when its body fits the crawlspaces, so the places it thinks of include them.
     uint16_t crawl = 0;
@@ -239,7 +241,10 @@ enum class Behavior : uint8_t
     Flank,
     // Hidden near somebody, saying something back in the voice of somebody they know, and waiting for
     // whoever comes to look.
-    Lure
+    Lure,
+    // At a body: feeding on it, head down and not watching as it should; and after, for the patient,
+    // lying low near it for whoever comes to find their friend.
+    Feed
 };
 
 const char* BehaviorName(Behavior behavior);
@@ -292,6 +297,8 @@ public:
     // Whose light it is standing in, or -1; and whether it has learnt to fear lights.
     int LitBy() const { return m_litBy; }
     bool LightShy() const { return m_lightShy; }
+    // Feeding at a body just now: head down, and much less aware of anything else.
+    bool Feeding() const { return m_behavior == Behavior::Feed && m_feedStarted >= 0.0f && !m_baiting; }
     // The way of going about somebody it is using, or used within the last few seconds: what gets the
     // credit, or the blame, for what happens now.
     Behavior RecentTactic(float time) const;
@@ -700,6 +707,12 @@ private:
     bool m_slinking = false;
     // Caught in somebody's light: whose, since when, and what it has learnt about it -- lit up and shot
     // straight after, twice over, and it knows the light comes before the rounds.
+    // Feeding: which body, since when, and when it will want to again.
+    glm::vec3 m_meal{0.0f};
+    float m_fedUntil = -1.0e9f;
+    float m_feedStarted = -1.0f;
+    bool m_baiting = false;
+    glm::vec3 m_baitSpot{0.0f};
     int m_litBy = -1;
     float m_litAt = -100.0f;
     int m_litThenShot = 0;

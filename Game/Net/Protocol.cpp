@@ -868,7 +868,7 @@ void WriteCreatureState(BitWriter& writer, const CreatureStateMessage& message)
         writer.WriteBool(creature.alive);
         writer.WriteBool(creature.down);
         writer.WriteQuantised(creature.crouch, 0.0f, 1.0f, 3);
-        writer.WriteBits(creature.behavior, 4);
+        writer.WriteBits(creature.behavior, 5);
         writer.WriteBits(creature.action, 3);
         if (creature.action != 0)
         {
@@ -912,7 +912,7 @@ bool ReadCreatureState(BitReader& reader, CreatureStateMessage& out)
         creature.alive = reader.ReadBool();
         creature.down = reader.ReadBool();
         creature.crouch = reader.ReadQuantised(0.0f, 1.0f, 3);
-        creature.behavior = static_cast<uint8_t>(reader.ReadBits(4));
+        creature.behavior = static_cast<uint8_t>(reader.ReadBits(5));
         creature.action = static_cast<uint8_t>(reader.ReadBits(3));
         if (creature.action != 0)
         {

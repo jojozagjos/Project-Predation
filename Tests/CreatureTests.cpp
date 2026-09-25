@@ -109,11 +109,13 @@ struct CreatureHarness
         senses.noises = noises;
         senses.clearLine = [this](const glm::vec3& a, const glm::vec3& b) { return Clear(a, b); };
         senses.hidingPlaces = places;
+        senses.bodies = bodies;
         return senses;
     }
 
     // Lockers, as the game describes them. The test map has none of its own.
     std::vector<HidingPlace> places;
+    std::vector<glm::vec3> bodies;
 
     // Runs for a while at the game's tick. The noises are made on the first tick only; `watch` sees
     // every tick, so a test can notice a moment that does not last -- a strike -- as it happens.
@@ -1894,4 +1896,31 @@ TEST_CASE("Caught in a torch beam, a nervous one gets out of it; lit and shot tw
     }
     INFO("second's mind:" << MindOf(*second.creature));
     CHECK(second.creature->Brain().LightShy());
+}
+
+TEST_CASE("A hungry one finds a body and feeds on it, and feeding it sees and hears much less", "[creature][corpse]")
+{
+    const uint32_t seed = SeedWhere([](const CreatureTraits& t)
+                                    { return t.temperament == Temperament::Predator && t.aggression > 0.6f && t.fear < 0.5f; });
+    REQUIRE(seed != 0);
+    CreatureHarness harness(seed);
+    glm::vec3 at;
+    glm::vec3 body;
+    REQUIRE(OpenView(harness, 6.0f, at, body));
+    harness.bodies = {body};
+
+    bool fed = false;
+    harness.Run(12.0f, {}, {}, [&](const Creature& creature) { fed = fed || creature.Brain().Feeding(); });
+    INFO("its mind:" << MindOf(*harness.creature));
+    REQUIRE(fed);
+    CHECK(Horizontal(harness.creature->Position(), body) < 1.8f);
+
+    // Somebody walking past at eleven metres, lit, in the open: it does not look up.
+    CHECK(harness.creature->Brain().Feeding());
+    const glm::vec3 past = body + glm::vec3(11.0f, 0.0f, 0.0f);
+    glm::vec3 onMesh;
+    REQUIRE(harness.nav.NearestPoint(past, 2.0f, onMesh));
+    harness.Run(1.5f, {Somebody(1, onMesh)});
+    const CreatureBrain::Track* track = harness.TrackOf(1);
+    CHECK((track == nullptr || track->lastSeen < 0.0f));
 }

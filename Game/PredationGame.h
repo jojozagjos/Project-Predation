@@ -161,6 +161,17 @@ private:
     // creature -- only nudges one about where to look when nothing has happened for a while, and asks
     // the ones close to the players to give them room when the pressure has gone on long enough.
     void UpdateDirector(float dt, const std::vector<SensedPlayer>& players);
+    // The dead, left where they fell when their player came back. Every machine leaves its own copy of
+    // the body it was drawing, so nothing about them is sent. The oldest go when there are too many.
+    struct Corpse
+    {
+        uint8_t player = 0;
+        glm::vec3 at{0.0f};
+        std::vector<Entity> parts;
+    };
+    std::vector<Corpse> m_corpses;
+    void LeaveCorpse(const PlayerBody& body, uint8_t player);
+    void ClearCorpses();
     float m_menace = 0.0f;          // how hard the players have been pressed lately, 0 to 1
     // What the brood has learnt this match about which tactics work against these players.
     TacticLearner m_learned;

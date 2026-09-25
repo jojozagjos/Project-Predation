@@ -745,6 +745,10 @@ void PredationGame::UpdateCreatures(float dt)
         };
         senses.hidingPlaces = places;
         senses.learned = &m_learned;
+        for (const Corpse& corpse : m_corpses)
+        {
+            senses.bodies.push_back(corpse.at);
+        }
         for (const std::unique_ptr<Creature>& other : m_creatures)
         {
             if (other.get() != creature.get())
@@ -779,7 +783,7 @@ void PredationGame::UpdateCreatures(float dt)
             }
             const Behavior doing = creature->Brain().Current();
             const bool meantToBeStill = doing == Behavior::PlayDead || doing == Behavior::Ambush || doing == Behavior::Nest ||
-                                        doing == Behavior::Observe || doing == Behavior::Warn;
+                                        doing == Behavior::Observe || doing == Behavior::Warn || doing == Behavior::Feed;
             const float limit = cv_aiReportStill.Get();
             if (limit > 0.0f && !still.reported && !meantToBeStill && m_creatureClock - still.since > limit)
             {
@@ -1154,7 +1158,7 @@ void PredationGame::ApplyCreatureState(const CreatureStateMessage& state)
         action.target = shown.actionTarget;
         creature->SetShownAction(action, shown.airborne, shown.look, shown.lookAt);
         creature->SetShownCling(static_cast<Creature::Cling>(std::min<uint8_t>(shown.cling, 3)), shown.wallYaw);
-        creature->SetShownBehavior(shown.behavior <= static_cast<uint8_t>(Behavior::Lure) ? static_cast<Behavior>(shown.behavior)
+        creature->SetShownBehavior(shown.behavior <= static_cast<uint8_t>(Behavior::Feed) ? static_cast<Behavior>(shown.behavior)
                                                                                          : Behavior::Roam);
     }
 }

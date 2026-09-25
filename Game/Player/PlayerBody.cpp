@@ -3657,6 +3657,29 @@ void PlayerBody::Collapse(const glm::vec3& impulse)
     m_ragdoll.Start(m_skeleton, m_pose, impulse);
 }
 
+std::vector<Entity> PlayerBody::LeaveCorpse(Scene& scene, glm::vec3& middle) const
+{
+    std::vector<Entity> left;
+    glm::vec3 sum{0.0f};
+    for (const Part& part : m_parts)
+    {
+        const Transform* where = scene.GetTransform(part.entity);
+        const MeshRenderer* renderer = scene.GetMeshRenderer(part.entity);
+        if (where == nullptr || renderer == nullptr || !renderer->visible)
+        {
+            continue;
+        }
+        const Transform copy = *where;
+        const MeshHandle mesh = renderer->mesh;
+        const Material material = renderer->material;
+        const Entity piece = scene.CreateMeshEntity("corpse", copy, mesh, material);
+        left.push_back(piece);
+        sum += copy.position;
+    }
+    middle = left.empty() ? glm::vec3(0.0f) : sum / static_cast<float>(left.size());
+    return left;
+}
+
 void PlayerBody::Revive()
 {
     m_ragdoll.Stop();

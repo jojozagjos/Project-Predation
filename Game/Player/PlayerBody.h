@@ -495,6 +495,10 @@ public:
     // points with the bone lengths between them, and everything drawn follows those instead.
     void Collapse(const glm::vec3& impulse);
     void Revive();
+    // A still copy of every drawn piece exactly where it is now -- what is left lying there when the
+    // player comes back somewhere else. The pieces share the body's meshes. Returns them, and the middle
+    // of the lot in `middle`.
+    std::vector<Entity> LeaveCorpse(Scene& scene, glm::vec3& middle) const;
     bool IsCollapsed() const { return m_ragdoll.Active(); }
     const Ragdoll& GetRagdoll() const { return m_ragdoll; }
 

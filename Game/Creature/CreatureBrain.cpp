@@ -138,6 +138,8 @@ const char* BehaviorName(Behavior behavior)
         return "Flank";
     case Behavior::Lure:
         return "Lure";
+    case Behavior::Feed:
+        return "Feed";
     }
     return "?";
 }
@@ -735,7 +737,9 @@ void CreatureBrain::Perceive(const CreatureSenses& senses, float dt)
     // Its eyes decide how far it sees; one with none sees nothing at all, but still knows by touch and
     // smell when somebody is right beside it.
     const bool hasEyes = m_traits.sight > 0.0f;
-    const float sightRange = SightRange();
+    // Head down in a body, it sees and hears a good deal less: somebody can get past it, or up to it.
+    const bool feeding = Feeding();
+    const float sightRange = SightRange() * (feeding ? 0.45f : 1.0f);
     // In a fight it is keyed up, and feels somebody coming up at its back well before they touch it: the
     // one it is busy with is not the only one in the room.
     const bool fighting = m_behavior == Behavior::Hunt || m_behavior == Behavior::Attack || m_behavior == Behavior::Drag;
@@ -964,7 +968,7 @@ void CreatureBrain::Perceive(const CreatureSenses& senses, float dt)
     // --- Hearing ------------------------------------------------------------------------------
     for (const Noise& noise : m_pendingNoises)
     {
-        float reach = noise.reach * m_traits.perception * m_traits.hearing;
+        float reach = noise.reach * m_traits.perception * m_traits.hearing * (feeding ? 0.55f : 1.0f);
         const glm::vec3 ear = senses.eye;
         if (senses.clearLine && !senses.clearLine(noise.position + glm::vec3(0.0f, 0.3f, 0.0f), ear))
         {
@@ -1599,6 +1603,42 @@ void CreatureBrain::Decide(const CreatureSenses& senses)
         }
     }
 
+    // A body: something to eat, for the hungry sort, when nothing else is happening. Feeding it keeps up
+    // while it is at it; afterwards it is not hungry again for a good while.
+    {
+        const bool atIt = m_behavior == Behavior::Feed;
+        const glm::vec3* nearest = nullptr;
+        for (const glm::vec3& body : senses.bodies)
+        {
+            if (Horizontal(body, senses.position) < 30.0f &&
+                (nearest == nullptr || Horizontal(body, senses.position) < Horizontal(*nearest, senses.position)))
+            {
+                nearest = &body;
+            }
+        }
+        const bool eats = m_traits.temperament == Temperament::Predator || m_traits.temperament == Temperament::Territorial;
+        if (nearest != nullptr && eats && (atIt || now >= m_fedUntil))
+        {
+            float quiet = 1.0f;
+            for (const Track& track : m_tracks)
+            {
+                if (track.visible)
+                {
+                    quiet = std::min(quiet, 0.25f);
+                }
+            }
+            if (!atIt)
+            {
+                m_meal = *nearest;
+            }
+            add(Behavior::Feed, -1, "Feed on a body",
+                {{"hungry", 0.35f + 0.5f * m_traits.aggression},
+                 {"nobody in sight", quiet},
+                 {"not afraid", 0.3f + 0.7f * calm},
+                 {"at it", atIt ? 1.3f : 1.0f}});
+        }
+    }
+
     // Building a nest: what the sort that nests does when nothing is happening.
     if (m_traits.Nests() && !senses.hasHive && senses.mayBuildNest)
     {
@@ -1833,6 +1873,15 @@ void CreatureBrain::Switch(Behavior behavior, int target, const std::string& rea
     if (behavior != Behavior::Retreat)
     {
         m_slinking = false;
+    }
+    if (behavior == Behavior::Feed && previous != Behavior::Feed)
+    {
+        m_feedStarted = -1.0f;
+        m_baiting = false;
+    }
+    if (previous == Behavior::Feed && behavior != Behavior::Feed && m_feedStarted >= 0.0f)
+    {
+        m_fedUntil = time + 240.0f;
     }
     if (previous == Behavior::Retreat && behavior != Behavior::Retreat)
     {
@@ -3379,6 +3428,85 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
     case Behavior::PlayDead:
         UpdatePlayingDead(senses);
         break;
+
+    case Behavior::Feed:
+    {
+        if (m_baiting)
+        {
+            // Lying low near the body, watching it: whoever comes for their friend comes to it.
+            m_goal = "lying in wait by a body";
+            m_intent.crouch = 1.0f;
+            if (Horizontal(senses.position, m_baitSpot) > 0.8f)
+            {
+                m_intent.move = true;
+                m_intent.destination = m_baitSpot;
+                m_intent.speed = m_traits.walkSpeed;
+            }
+            else
+            {
+                m_intent.face = true;
+                m_intent.facePoint = m_meal;
+                m_intent.look = true;
+                m_intent.lookAt = m_meal + glm::vec3(0.0f, 0.3f, 0.0f);
+            }
+            if (now - m_feedStarted > 45.0f + 60.0f * m_traits.patience)
+            {
+                Switch(Behavior::Roam, -1, "nobody came for the body", now);
+            }
+            break;
+        }
+        if (Horizontal(senses.position, m_meal) > 1.1f)
+        {
+            m_goal = "going to a body";
+            m_intent.move = true;
+            m_intent.destination = m_meal;
+            m_intent.speed = m_traits.walkSpeed * 1.4f;
+            break;
+        }
+        if (m_feedStarted < 0.0f)
+        {
+            m_feedStarted = now;
+            Log(now, "feeds on a body");
+        }
+        // Head down in it, tearing, now and then lifting its head to look round.
+        m_goal = "feeding";
+        m_intent.crouch = 1.0f;
+        m_intent.face = true;
+        m_intent.facePoint = m_meal;
+        const float cycle = std::fmod(now - m_feedStarted, 6.0f);
+        if (cycle < 4.8f)
+        {
+            const float bite = std::fmod(now - m_feedStarted, 1.2f) / 1.2f;
+            m_intent.attack = AttackKind::Bite;
+            m_intent.attackPhase = bite;
+            m_intent.attackAt = m_meal + glm::vec3(0.0f, 0.15f, 0.0f);
+            if (bite < 0.05f && std::fmod(now - m_feedStarted, 2.4f) < 1.2f)
+            {
+                m_intent.echo = "Creature/bite";
+            }
+        }
+        else
+        {
+            lookAround(now + 1.0f);
+        }
+        if (now - m_feedStarted > 18.0f + 20.0f * m_traits.aggression)
+        {
+            // Done. The patient and stealthy do not leave the body: somebody will come for it.
+            glm::vec3 spot;
+            if (m_traits.stealth > 0.55f && m_traits.patience > 0.45f && PickHidingSpot(senses, m_meal, spot))
+            {
+                m_baiting = true;
+                m_baitSpot = spot;
+                m_feedStarted = now;
+                Log(now, "leaves the body, and lies low near it");
+            }
+            else
+            {
+                Switch(Behavior::Roam, -1, "has fed", now);
+            }
+        }
+        break;
+    }
 
     case Behavior::Ambush:
         ActAmbush(senses, dt);

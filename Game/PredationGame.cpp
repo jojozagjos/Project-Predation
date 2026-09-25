@@ -2933,6 +2933,7 @@ void PredationGame::ResetWorld()
     ClearBulletHoles();
     m_remoteRespawnTimers.clear();
     m_respawnTimer = 0.0f;
+    ClearCorpses();
     m_spectating = -1;
     m_deathImpulse = glm::vec3(0.0f);
     m_localCollapsed = false;
@@ -5875,10 +5876,47 @@ void PredationGame::RespawnLocalPlayer(const glm::vec3& position)
     // its bones stay wherever they fell until something puts them back: coming back to life without
     // clearing it gave the new body its corpse's arms and legs for the first few frames, which is
     // where the legs over the head came from.
+    if (m_localCollapsed)
+    {
+        LeaveCorpse(m_body, LocalPlayerId());
+    }
     m_localCollapsed = false;
     m_body.Revive();
     m_deathImpulse = glm::vec3(0.0f);
     m_spectating = -1;
+}
+
+void PredationGame::LeaveCorpse(const PlayerBody& body, uint8_t player)
+{
+    constexpr size_t kMostCorpses = 6;
+    if (m_corpses.size() >= kMostCorpses)
+    {
+        for (const Entity entity : m_corpses.front().parts)
+        {
+            m_scene.Destroy(entity);
+        }
+        m_corpses.erase(m_corpses.begin());
+    }
+    Corpse corpse;
+    corpse.player = player;
+    corpse.parts = body.LeaveCorpse(m_scene, corpse.at);
+    if (!corpse.parts.empty())
+    {
+        PRED_LOG_INFO(Gameplay, "Player {} left a body at {:.1f} {:.1f} {:.1f}", player, corpse.at.x, corpse.at.y, corpse.at.z);
+        m_corpses.push_back(std::move(corpse));
+    }
+}
+
+void PredationGame::ClearCorpses()
+{
+    for (const Corpse& corpse : m_corpses)
+    {
+        for (const Entity entity : corpse.parts)
+        {
+            m_scene.Destroy(entity);
+        }
+    }
+    m_corpses.clear();
 }
 
 std::string PredationGame::PlayerName() const
@@ -6202,6 +6240,7 @@ void PredationGame::SyncRemoteAvatars(float frameDeltaSeconds)
         }
         else if (remote.alive && avatar->collapsed)
         {
+            LeaveCorpse(avatar->body, remote.id);
             avatar->body.Revive();
             avatar->collapsed = false;
         }
@@ -8832,6 +8871,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
     }
     else if (m_player.State().alive && m_localCollapsed)
     {
+        LeaveCorpse(m_body, LocalPlayerId());
         m_body.Revive();
         m_localCollapsed = false;
     }
