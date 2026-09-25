@@ -1630,6 +1630,7 @@ void NetClient::Reconcile(const SnapshotMessage& snapshot, PlayerController& loc
         {
             local.Attach(entry.position, entry.yaw);
             m_heldByHost = true;
+            m_heldByCreature = entry.heldBy;
             m_cocoonedByHost = entry.cocooned;
             m_struggleFromHost = entry.struggle;
             m_history.Clear();

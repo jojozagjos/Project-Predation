@@ -6727,6 +6727,59 @@ void PredationGame::UpdateMouseCapture()
     }
 }
 
+Creature* PredationGame::CreatureHoldingMe()
+{
+    if (IsAuthority())
+    {
+        const auto grip = m_grips.find(LocalPlayerId());
+        return grip != m_grips.end() ? CreatureById(grip->second.creature) : nullptr;
+    }
+    if (m_sessionMode == SessionMode::Client && m_client.HeldByHost() && !m_client.CocoonedByHost())
+    {
+        return CreatureById(m_client.HeldByCreature());
+    }
+    return nullptr;
+}
+
+void PredationGame::UpdateGrabbedView(float dt)
+{
+    // Held: your head is turned to the thing that has you -- you can still look away a little, and it
+    // pulls you back -- and every struggle jerks the view.
+    Creature* holder = m_player.State().alive ? CreatureHoldingMe() : nullptr;
+    const bool held = holder != nullptr;
+    if (held && !m_wasHeld)
+    {
+        m_grabFlash = 1.0f;
+        m_heldFor = 0.0f;
+    }
+    m_wasHeld = held;
+    m_grabFlash = std::max(m_grabFlash - dt * 1.6f, 0.0f);
+    m_struggleKick = std::max(m_struggleKick - dt * 5.0f, 0.0f);
+    const bool jump = m_app->GetInput().IsActionDown("jump") && !m_paused && !m_app->IsConsoleOpen();
+    if (held && jump && !m_struggleJumpWasDown)
+    {
+        m_struggleKick = 1.0f;
+        m_struggleSide = -m_struggleSide;
+    }
+    m_struggleJumpWasDown = jump;
+    if (!held)
+    {
+        return;
+    }
+    m_heldFor += dt;
+    const glm::vec3 toFace = holder->Eye() - m_player.View().eyePosition;
+    if (glm::length(toFace) < 0.05f)
+    {
+        return;
+    }
+    const glm::vec3 direction = glm::normalize(toFace);
+    const float yaw = std::atan2(direction.x, -direction.z);
+    const float pitch = std::asin(std::clamp(direction.y, -0.99f, 0.99f));
+    const float pull = 1.0f - std::exp(-4.0f * dt);
+    m_lookYaw += std::remainder(yaw - m_lookYaw, glm::two_pi<float>()) * pull;
+    m_lookPitch += (pitch - m_lookPitch) * pull;
+}
+
 void PredationGame::SampleLook(float /*dt*/)
 {
     Input& input = m_app->GetInput();
@@ -8418,6 +8471,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
 
     // --- Input that is sampled per frame, not per tick ------------------------------------------
     SampleLook(deltaSeconds);
+    UpdateGrabbedView(deltaSeconds);
 
     // The editor drives its own camera and hides the world, so nothing below has to know it exists.
     //
@@ -8840,6 +8894,16 @@ void PredationGame::OnUpdate(double dt, double alpha)
             const float shake = std::clamp(cv_cameraShake.Get(), 0.0f, 1.0f);
             shaken.pitch += glm::radians(m_weapon.shakePitch) * shake;
             shaken.yaw += glm::radians(m_weapon.shakeYaw) * shake;
+            // Held: jolted about as it carries you, and jerked with every struggle.
+            if (m_wasHeld)
+            {
+                const float t = static_cast<float>(m_time);
+                const float carried = 0.6f + 0.4f * std::sin(t * 2.1f);
+                shaken.pitch += glm::radians(1.6f * std::sin(t * 11.0f) * carried + 5.0f * m_struggleKick) * shake;
+                shaken.yaw += glm::radians(1.2f * std::sin(t * 7.3f + 1.0f) * carried) * shake;
+                shaken.leanRoll += glm::radians(4.0f * std::sin(t * 3.1f) + 9.0f * m_struggleKick * m_struggleSide) * shake;
+                shaken.eyePosition.y += 0.03f * std::sin(t * 13.0f) * carried * shake;
+            }
             // The step's dip and a landing's drop are taken back out of the picture as far as the
             // player asked -- the picture only. The body still anchors itself to the real eye, which is
             // what lowers the hips far enough for a leg to reach its next step.
@@ -9022,6 +9086,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
         const float rate = fear > m_fearShown ? 3.0f : 0.4f;
         m_fearShown += (fear - m_fearShown) * (1.0f - std::exp(-rate * m_lastFrameSeconds));
         post.fear = m_fearShown;
+        post.flash = m_grabFlash;
     }
 
     // The flashlight, carried at the shoulder rather than screwed to the eye.
@@ -10009,21 +10074,50 @@ void PredationGame::DrawHud()
         }
         if (held || cocooned)
         {
-            const char* line = cocooned ? "WRAPPED UP AT ITS NEST -- somebody has to cut you free"
-                                        : "SOMETHING HAS YOU -- press jump, again and again, to break free";
-            const ImVec2 size = ImGui::CalcTextSize(line);
-            const ImVec2 at{centre.x - size.x * 0.5f, viewport->Pos.y + viewport->Size.y * 0.72f};
-            draw->AddRectFilled({at.x - 12.0f, at.y - 8.0f}, {at.x + size.x + 12.0f, at.y + size.y + 18.0f},
-                                IM_COL32(20, 6, 6, 190), 3.0f);
-            draw->AddText(at, IM_COL32(235, 90, 80, 255), line);
-            if (held && struggle >= 0.0f)
+            const float t = static_cast<float>(m_time);
+            const ImVec2 middle{centre.x, viewport->Pos.y + viewport->Size.y * 0.74f};
+            if (cocooned)
             {
-                const float width = size.x;
-                draw->AddRectFilled({at.x, at.y + size.y + 6.0f}, {at.x + width, at.y + size.y + 12.0f},
-                                    IM_COL32(60, 30, 30, 220), 2.0f);
-                draw->AddRectFilled({at.x, at.y + size.y + 6.0f},
-                                    {at.x + width * std::clamp(struggle, 0.0f, 1.0f), at.y + size.y + 12.0f},
-                                    IM_COL32(235, 180, 90, 240), 2.0f);
+                // Wrapped up: nothing to press. Only the others can help.
+                const char* line = "WRAPPED UP AT THE NEST";
+                const char* hint = "somebody has to cut you free";
+                ImGui::SetWindowFontScale(1.0f);
+                const ImVec2 size = ImGui::CalcTextSize(line);
+                const ImVec2 hintSize = ImGui::CalcTextSize(hint);
+                draw->AddText(ImGui::GetFont(), ImGui::GetFontSize() * 1.6f, {middle.x - size.x * 0.8f, middle.y - 18.0f},
+                              IM_COL32(225, 70, 60, static_cast<int>(200 + 55 * std::sin(t * 3.0f))), line);
+                draw->AddText({middle.x - hintSize.x * 0.5f, middle.y + 18.0f}, IM_COL32(220, 200, 200, 200), hint);
+            }
+            else
+            {
+                // Struggling: the key to hammer in a ring that fills as you work free and drains as you
+                // tire, jerked each time you press it.
+                const float progress = std::clamp(struggle, 0.0f, 1.0f);
+                const float jolt = m_struggleKick;
+                const ImVec2 at{middle.x + m_struggleSide * jolt * 10.0f, middle.y - jolt * 6.0f};
+                const float radius = 44.0f + 6.0f * jolt;
+                const float beat = 0.5f + 0.5f * std::sin(t * 9.0f);
+                draw->AddCircleFilled(at, radius + 10.0f, IM_COL32(10, 4, 4, 170), 48);
+                draw->AddCircle(at, radius, IM_COL32(90, 30, 28, 220), 48, 7.0f);
+                if (progress > 0.001f)
+                {
+                    draw->PathArcTo(at, radius, -glm::half_pi<float>(), -glm::half_pi<float>() + glm::two_pi<float>() * progress, 48);
+                    const int green = static_cast<int>(120 + 120 * progress);
+                    draw->PathStroke(IM_COL32(255, green, static_cast<int>(80 * progress), 255), 0, 7.0f);
+                }
+                const std::string key = KeyFor(m_app->GetInput(), "jump");
+                const float keyScale = 1.8f + 0.25f * jolt + 0.1f * beat;
+                const ImVec2 keySize = ImGui::CalcTextSize(key.c_str());
+                draw->AddText(ImGui::GetFont(), ImGui::GetFontSize() * keyScale,
+                              {at.x - keySize.x * keyScale * 0.5f, at.y - keySize.y * keyScale * 0.5f},
+                              IM_COL32(255, 235, 225, 255), key.c_str());
+                const char* line = "BREAK FREE";
+                const ImVec2 lineSize = ImGui::CalcTextSize(line);
+                draw->AddText(ImGui::GetFont(), ImGui::GetFontSize() * 1.3f, {middle.x - lineSize.x * 0.65f, at.y - radius - 42.0f},
+                              IM_COL32(235, 80, 70, static_cast<int>(180 + 75 * beat)), line);
+                const char* hint = "hammer it -- or somebody can shoot it off you";
+                const ImVec2 hintSize = ImGui::CalcTextSize(hint);
+                draw->AddText({middle.x - hintSize.x * 0.5f, at.y + radius + 18.0f}, IM_COL32(210, 190, 190, 170), hint);
             }
         }
     }

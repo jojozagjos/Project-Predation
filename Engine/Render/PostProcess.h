@@ -34,6 +34,7 @@ public:
         float grain = 0.035f;
         float fringe = 0.004f;
         float fear = 0.0f;           // 0 to 1, set by the game
+        float flash = 0.0f;          // 0 to 1: the picture washed red, for a moment
         float coldShadows = 1.0f;
         float warmHighlights = 1.0f;
     };

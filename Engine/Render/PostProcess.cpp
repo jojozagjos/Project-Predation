@@ -221,7 +221,7 @@ void PostProcess::Apply(float seconds, bool originBottomLeft)
     bgfx::setViewRect(last, 0, 0, static_cast<uint16_t>(m_width), static_cast<uint16_t>(m_height));
     bgfx::setViewClear(last, BGFX_CLEAR_NONE, 0x00000000, 1.0f, 0);
     const float lens[4] = {s.vignette, s.grain, s.fringe, seconds};
-    const float mood[4] = {s.fear, s.coldShadows, s.warmHighlights, 0.0f};
+    const float mood[4] = {s.fear, s.coldShadows, s.warmHighlights, s.flash};
     const float finalTone[4] = {s.exposure, s.contrast, s.bloom, s.saturation};
     bgfx::setUniform(m_uFlip, flip);
     texel(m_width, m_height);

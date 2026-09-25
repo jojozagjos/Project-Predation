@@ -2107,6 +2107,28 @@ void PredationGame::RegisterCreatureCommands()
                                     PRED_LOG_INFO(AI, "{}", line);
                                 }
                             });
+    console.RegisterCommand("grab_me", "The nearest creature takes hold of you, to see what being held is like",
+                            [this](const std::vector<std::string>&)
+                            {
+                                Creature* nearest = nullptr;
+                                float best = 1.0e9f;
+                                for (const std::unique_ptr<Creature>& creature : m_creatures)
+                                {
+                                    const float away = glm::distance(creature->Position(), m_player.State().position);
+                                    if (creature->Alive() && away < best)
+                                    {
+                                        best = away;
+                                        nearest = creature.get();
+                                    }
+                                }
+                                if (nearest == nullptr || !IsAuthority())
+                                {
+                                    m_app->GetConsole().PrintError("No creature to do it (and only the host can).");
+                                    return;
+                                }
+                                m_grips[LocalPlayerId()] = Grip{nearest->NetId(), 0.0f, false};
+                                nearest->Brain().OnGrabbed(LocalPlayerId(), m_creatureClock);
+                            });
     console.RegisterCommand("creature_clear", "Remove every creature",
                             [this](const std::vector<std::string>&) { ClearCreatures(); });
     console.RegisterCommand("nest_here", "Build a nest where you stand, as a creature would, to look at one",
@@ -2935,6 +2957,7 @@ void PredationGame::TryGrab(Creature& creature, int target, const std::vector<Se
         }
         creature.Brain().OnGrabbed(player.id, m_creatureClock);
         PlaySound(m_sounds.hurt.Pick(), player.feet + glm::vec3(0.0f, 1.2f, 0.0f), 0.9f, 0.7f);
+        PlayNamed("Creature/grab", creature.Eye(), 1.0f);
         PRED_LOG_INFO(AI, "Creature {} has hold of {} (player {})", creature.NetId(), player.name, player.id);
         LearnFrom(creature, 1.5f, "took somebody");
         if (id == LocalPlayerId())

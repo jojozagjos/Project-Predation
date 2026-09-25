@@ -7,7 +7,7 @@ SAMPLER2D(s_bloom, 1);
 uniform vec4 u_postTexel; // zw = the screen, in pixels
 uniform vec4 u_postTone;  // x = exposure, y = contrast, z = how much glow, w = saturation
 uniform vec4 u_postLens;  // x = vignette, y = grain, z = colour fringe at the edges, w = seconds
-uniform vec4 u_postMood;  // x = fear, 0 to 1; y = cold in the shadows; z = warmth in the highlights
+uniform vec4 u_postMood;  // x = fear, 0 to 1; y = cold in the shadows; z = warmth in the highlights; w = a red flash
 
 float Hash(vec2 p)
 {
@@ -50,6 +50,9 @@ void main()
 	float vignette = u_postLens.x + fear * (0.35 + 0.2 * pulse);
 	color *= 1.0 - clamp(edge, 0.0, 1.0) * clamp(vignette, 0.0, 0.95);
 	color += vec3(0.045, 0.0, 0.0) * fear * clamp(edge * 1.5 - 0.4, 0.0, 1.0);
+
+	// A red flash -- the moment something takes hold -- strongest at the edges.
+	color = mix(color, vec3(0.55, 0.02, 0.02) * (0.4 + 0.6 * edge), clamp(u_postMood.w, 0.0, 1.0) * (0.35 + 0.4 * edge));
 
 	// Grain, more in the dark than the light, different every frame.
 	float grain = Hash(uv * u_postTexel.zw + vec2_splat(fract(u_postLens.w * 13.37) * 311.0)) - 0.5;

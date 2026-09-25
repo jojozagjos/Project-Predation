@@ -320,6 +320,8 @@ class NetClient
 public:
     // Whether a creature has hold of this player, as the host last said.
     bool HeldByHost() const { return m_heldByHost; }
+    // Which creature, by its network id, while held.
+    uint8_t HeldByCreature() const { return m_heldByCreature; }
     bool CocoonedByHost() const { return m_cocoonedByHost; }
     float StruggleFromHost() const { return m_struggleFromHost; }
     struct Config
@@ -463,6 +465,7 @@ private:
     uint32_t m_creatureStatesReceived = 0;
     PredictionBuffer m_history;
     bool m_heldByHost = false;
+    uint8_t m_heldByCreature = 0xFF;
     bool m_cocoonedByHost = false;
     float m_struggleFromHost = 0.0f;
     Config m_config;

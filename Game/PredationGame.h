@@ -173,6 +173,16 @@ private:
     void LeaveCorpse(const PlayerBody& body, uint8_t player);
     void ClearCorpses();
     float m_fearShown = 0.0f;       // how afraid the picture looks, eased
+    // Being held: the creature doing it, when this machine knows; how long; the red flash at the
+    // moment it took hold; the jolt of each struggle; and whether jump was down last frame.
+    Creature* CreatureHoldingMe();
+    void UpdateGrabbedView(float dt);
+    bool m_wasHeld = false;
+    float m_heldFor = 0.0f;
+    float m_grabFlash = 0.0f;
+    float m_struggleKick = 0.0f;
+    float m_struggleSide = 1.0f;
+    bool m_struggleJumpWasDown = false;
     float m_menace = 0.0f;          // how hard the players have been pressed lately, 0 to 1
     // What the brood has learnt this match about which tactics work against these players.
     TacticLearner m_learned;
