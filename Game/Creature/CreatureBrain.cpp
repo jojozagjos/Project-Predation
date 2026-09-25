@@ -2063,28 +2063,52 @@ void CreatureBrain::PlanSearch(const CreatureSenses& senses, const Track& track)
         // has likely gone down it, and it goes in after them -- first, before the open floor.
         if (senses.crawl != 0)
         {
+            // The mouth nearest where they were, and down it: a stop just inside, then one well in.
+            const glm::vec3* nearestMouth = nullptr;
             for (const glm::vec3& mouth : senses.nav->CrawlMouths())
             {
-                if (Horizontal(mouth, track.lastKnown) > 10.0f)
+                if (Horizontal(mouth, track.lastKnown) < 10.0f &&
+                    (nearestMouth == nullptr || Horizontal(mouth, track.lastKnown) < Horizontal(*nearestMouth, track.lastKnown)))
                 {
-                    continue;
+                    nearestMouth = &mouth;
                 }
-                // A little way in: the mouth is where the floor meets it, and it wants to look down it.
-                glm::vec3 inside = mouth;
-                uint32_t probe = static_cast<uint32_t>(m_random.Next());
-                for (int tries = 0; tries < 8; ++tries)
+            }
+            if (nearestMouth != nullptr)
+            {
+                const glm::vec3 mouth = *nearestMouth;
+                glm::vec3 near = mouth;
+                glm::vec3 deep = mouth;
+                float nearest = 1.0e9f;
+                float furthest = 0.0f;
+                for (int probe = 0; probe < 64; ++probe)
                 {
+                    const float angle = static_cast<float>(probe % 8) * (glm::two_pi<float>() / 8.0f);
+                    const float reach = 1.0f + static_cast<float>(probe / 8);
                     glm::vec3 candidate;
-                    if (senses.nav->RandomPointNear(mouth, 3.0f, probe, candidate, NavMesh::kCrawl) &&
+                    if (senses.nav->NearestPoint(mouth + glm::vec3(std::cos(angle), 0.0f, std::sin(angle)) * reach, 0.8f, candidate,
+                                                 NavMesh::kCrawl) &&
                         senses.nav->InCrawlspace(candidate))
                     {
-                        inside = candidate;
-                        break;
+                        const float in = Horizontal(candidate, mouth);
+                        if (in < nearest)
+                        {
+                            nearest = in;
+                            near = candidate;
+                        }
+                        if (in > furthest)
+                        {
+                            furthest = in;
+                            deep = candidate;
+                        }
                     }
                 }
-                m_searchPlan.insert(m_searchPlan.begin(), SearchStop{inside, -1});
-                Log(senses.time, "means to look down the crawlspace");
-                break;
+                if (furthest > nearest + 2.0f)
+                {
+                    m_searchPlan.insert(m_searchPlan.begin(), SearchStop{deep, -1});
+                }
+                m_searchPlan.insert(m_searchPlan.begin(), SearchStop{near, -1});
+                Log(senses.time, Format("means to look down the crawlspace, %.0f m in", std::max(furthest, nearest)) +
+                                     (senses.nav->InCrawlspace(near) ? "" : " (only the mouth)"));
             }
         }
         // Back searching the same place, it searches it closer and more thoroughly, not less: it was
@@ -2406,9 +2430,11 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
             m_intent.speed = m_interest.what == "call" ? m_traits.runSpeed * 0.9f : m_traits.walkSpeed * 1.6f;
             if (m_interest.what == "a glimpse")
             {
-                m_goal = "creeping over to what it glimpsed";
-                m_intent.speed = m_traits.walkSpeed * 0.85f;
-                m_intent.crouch = 0.6f;
+                // The stealthy creep over to it; the bold just go and see.
+                const bool creeps = m_traits.stealth > 0.45f;
+                m_goal = creeps ? "creeping over to what it glimpsed" : "going to see what it glimpsed";
+                m_intent.speed = m_traits.walkSpeed * (creeps ? 0.85f : 1.5f);
+                m_intent.crouch = creeps ? 0.6f : 0.0f;
             }
             m_intent.look = true;
             m_intent.lookAt = m_interest.position + glm::vec3(0.0f, 0.8f, 0.0f);
@@ -3308,7 +3334,8 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
             break;
         }
         m_goal = "searching for " + track->name;
-        if (!m_arrived && Horizontal(senses.position, stop.point) < 1.2f)
+        // There, and at the same height: on the roof of a crawlspace, over the place, is not in it.
+        if (!m_arrived && Horizontal(senses.position, stop.point) < 1.2f && std::abs(senses.position.y - stop.point.y) < 1.0f)
         {
             m_arrived = true;
             m_lookAroundUntil = now + 1.6f;
@@ -3338,7 +3365,7 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
     // gone. Not while hunting, attacking or running, which already have somewhere to look.
     // Stared at long enough without making it out: it goes to see what it is, low and slow.
     if ((m_behavior == Behavior::Roam || m_behavior == Behavior::Investigate) && now < m_alertUntil &&
-        now - m_alertStarted > 1.6f + 1.4f * m_traits.patience)
+        now - m_alertStarted > 0.5f + 1.2f * m_traits.stealth + 0.9f * m_traits.patience)
     {
         m_alertUntil = -1.0f;
         m_alertIgnoreUntil = now + 10.0f;

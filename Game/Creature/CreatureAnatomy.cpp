@@ -64,6 +64,52 @@ const char* BodyPlanName(BodyPlan plan)
     return "?";
 }
 
+const char* BodyBuildName(BodyBuild build)
+{
+    switch (build)
+    {
+    case BodyBuild::Ordinary:
+        return "ordinary";
+    case BodyBuild::Gaunt:
+        return "gaunt";
+    case BodyBuild::Heavy:
+        return "heavy";
+    case BodyBuild::Stilted:
+        return "stilt-legged";
+    case BodyBuild::Low:
+        return "low-slung";
+    case BodyBuild::Hunched:
+        return "hunched";
+    case BodyBuild::Long:
+        return "long-bodied";
+    case BodyBuild::Count:
+        break;
+    }
+    return "?";
+}
+
+const char* HeadShapeName(HeadShape shape)
+{
+    switch (shape)
+    {
+    case HeadShape::Ordinary:
+        return "ordinary head";
+    case HeadShape::Skull:
+        return "skull";
+    case HeadShape::Snout:
+        return "long snout";
+    case HeadShape::Dome:
+        return "domed head";
+    case HeadShape::Hammer:
+        return "hammer head";
+    case HeadShape::Maw:
+        return "all mouth";
+    case HeadShape::Count:
+        break;
+    }
+    return "?";
+}
+
 const char* SizeClassName(SizeClass size)
 {
     switch (size)
@@ -97,8 +143,87 @@ CreatureAnatomy CreatureAnatomy::FromSeed(uint32_t seed)
              : plan < 0.78f ? BodyPlan::Hexapod
                             : BodyPlan::Biped;
     const bool crawler = a.plan == BodyPlan::Crawler;
+    // The build, the head, the markings and the growths come from a stream of their own, so adding them
+    // left everything drawn from the first stream where it was.
+    SeededRandom look(AnatomyStream(seed) ^ 0x5bd1e9955bd1e995ull);
+    {
+        const float b = look.Unit();
+        if (crawler)
+        {
+            a.build = b < 0.35f ? BodyBuild::Ordinary : b < 0.6f ? BodyBuild::Gaunt : b < 0.75f ? BodyBuild::Heavy
+                    : b < 0.88f ? BodyBuild::Stilted : BodyBuild::Hunched;
+        }
+        else
+        {
+            a.build = b < 0.2f ? BodyBuild::Ordinary : b < 0.34f ? BodyBuild::Gaunt : b < 0.48f ? BodyBuild::Heavy
+                    : b < 0.62f ? BodyBuild::Stilted : b < 0.76f ? BodyBuild::Low : b < 0.88f ? BodyBuild::Hunched
+                    : BodyBuild::Long;
+            // Something that stands on two legs is not built low or long.
+            if (a.plan == BodyPlan::Biped && (a.build == BodyBuild::Low || a.build == BodyBuild::Long))
+            {
+                a.build = a.build == BodyBuild::Low ? BodyBuild::Heavy : BodyBuild::Stilted;
+            }
+        }
+        const float h = look.Unit();
+        if (crawler)
+        {
+            a.headShape = h < 0.55f ? HeadShape::Skull : h < 0.72f ? HeadShape::Maw : h < 0.87f ? HeadShape::Dome : HeadShape::Snout;
+        }
+        else
+        {
+            a.headShape = h < 0.22f ? HeadShape::Ordinary : h < 0.42f ? HeadShape::Snout : h < 0.58f ? HeadShape::Dome
+                        : h < 0.74f ? HeadShape::Hammer : h < 0.9f ? HeadShape::Maw : HeadShape::Skull;
+        }
+        const float p = look.Unit();
+        a.pattern = p < 0.5f ? SkinPattern::Mottled : p < 0.75f ? SkinPattern::Spotted : SkinPattern::Striped;
+        a.growths = look.Unit() < 0.3f ? look.Range(0.3f, 1.0f) : 0.0f;
+    }
+    // How each build bends the body's measurements, and the legs'.
+    glm::vec3 bodyScale{1.0f}; // length, width, depth
+    float legHeight = 1.0f;
+    float legThickness = 1.0f;
+    float extraHunch = 0.0f;
+    switch (a.build)
+    {
+    case BodyBuild::Gaunt:
+        bodyScale = {1.0f, 0.8f, 0.82f};
+        legThickness = 0.72f;
+        legHeight = 1.08f;
+        break;
+    case BodyBuild::Heavy:
+        bodyScale = {1.08f, 1.3f, 1.35f};
+        legThickness = 1.45f;
+        legHeight = 0.88f;
+        break;
+    case BodyBuild::Stilted:
+        bodyScale = {0.85f, 0.85f, 0.85f};
+        legThickness = 0.8f;
+        legHeight = 1.6f;
+        break;
+    case BodyBuild::Low:
+        bodyScale = {1.25f, 1.1f, 0.85f};
+        legThickness = 1.15f;
+        legHeight = 0.55f;
+        break;
+    case BodyBuild::Hunched:
+        bodyScale = {0.95f, 1.1f, 1.05f};
+        legThickness = 1.2f;
+        extraHunch = 0.3f;
+        break;
+    case BodyBuild::Long:
+        bodyScale = {1.7f, 0.85f, 0.8f};
+        legHeight = 0.7f;
+        break;
+    default:
+        break;
+    }
     // Overall scale, weighted towards the middle and away from the largest: a big one is an event.
-    const float s = 0.75f + 0.6f * std::pow(random.Unit(), 1.3f);
+    // Now and then a runt, and now and then a brute: sizes run from a large dog to a bear.
+    float s = 0.62f + 0.8f * std::pow(random.Unit(), 1.35f);
+    if (look.Unit() < 0.1f)
+    {
+        s *= look.Unit() < 0.5f ? 0.78f : 1.25f;
+    }
 
     switch (a.plan)
     {
@@ -134,6 +259,11 @@ CreatureAnatomy CreatureAnatomy::FromSeed(uint32_t seed)
         a.hunch = random.Range(0.0f, 0.1f) * s;
         break;
     }
+    a.length *= bodyScale.x;
+    a.width *= bodyScale.y;
+    a.depth *= bodyScale.z;
+    a.hipHeight = std::max(a.hipHeight * legHeight, 0.26f);
+    a.hunch += extraHunch * s;
     a.segments = RangeInt(random, 3, 6);
     a.taper = random.Range(0.0f, 0.4f);
 
@@ -174,6 +304,7 @@ CreatureAnatomy CreatureAnatomy::FromSeed(uint32_t seed)
                 leg.footForward *= 0.5f;
             }
         }
+        leg.thickness *= legThickness;
         const float drop = a.HipY(leg.along) - leg.thickness;
         const float out = leg.footSpread - leg.hipSpread;
         const float reach = std::sqrt(drop * drop + out * out + leg.footForward * leg.footForward);
@@ -255,6 +386,58 @@ CreatureAnatomy CreatureAnatomy::FromSeed(uint32_t seed)
     a.clawLength = random.Range(0.6f, 1.6f);
     a.brow = random.Range(0.2f, 1.0f);
     a.cranium = random.Range(0.85f, 1.25f);
+
+    // The head's kind, over whatever was drawn for it.
+    switch (a.headShape)
+    {
+    case HeadShape::Skull:
+        a.snout = std::min(a.snout, 0.75f);
+        a.cranium = std::max(a.cranium, 1.1f);
+        break;
+    case HeadShape::Snout:
+        a.snout = std::max(a.snout, 1.9f);
+        a.headWidth *= 0.8f;
+        a.jawLength *= 1.25f;
+        a.teeth = std::max(a.teeth, 12);
+        a.toothLength *= 0.8f;
+        break;
+    case HeadShape::Dome:
+        a.cranium = 1.45f;
+        a.snout = std::min(a.snout, 0.8f);
+        a.brow = 0.15f;
+        if (look.Unit() < 0.6f)
+        {
+            a.eyes = 0;
+        }
+        break;
+    case HeadShape::Hammer:
+        a.headWidth *= 1.9f;
+        a.headLength *= 0.8f;
+        a.snout = std::min(a.snout, 1.0f);
+        break;
+    case HeadShape::Maw:
+        a.headDepth *= 1.3f;
+        a.jawLength *= 1.35f;
+        a.gape = std::max(a.gape, 0.8f);
+        a.toothLength *= 1.35f;
+        a.teeth = std::max(a.teeth, 10);
+        break;
+    default:
+        break;
+    }
+    // And the build's own marks: the gaunt starved, the heavy well fed.
+    if (a.build == BodyBuild::Gaunt)
+    {
+        a.ribs = std::max(a.ribs, 0.85f);
+    }
+    else if (a.build == BodyBuild::Heavy)
+    {
+        a.ribs = std::min(a.ribs, 0.2f);
+    }
+    else if (a.build == BodyBuild::Long)
+    {
+        a.tailLength *= 1.5f;
+    }
     return a;
 }
 CreatureAnatomy::RestPose CreatureAnatomy::Rest() const
@@ -286,7 +469,9 @@ CreatureAnatomy::RestPose CreatureAnatomy::Rest() const
         const float row = static_cast<float>(k);
         for (const float side : {-1.0f, 1.0f})
         {
-            pose.eyes.push_back(pose.head + glm::vec3(side * headWidth * (0.21f + 0.05f * row),
+            // A hammer head carries its eyes out at the ends of it.
+            const float spread = headShape == HeadShape::Hammer ? 0.43f : 0.21f;
+            pose.eyes.push_back(pose.head + glm::vec3(side * headWidth * (spread + 0.05f * row),
                                                       headDepth * (0.1f + 0.13f * row),
                                                       -headLength * (0.3f - 0.1f * row)));
         }
@@ -333,12 +518,12 @@ float CreatureAnatomy::OverallLength() const
 
 std::string CreatureAnatomy::Describe() const
 {
-    char line[320];
+    char line[360];
     std::snprintf(line, sizeof(line),
-                  "%s, %.1f m long overall, %.2f m tall, %d eyes%s, %s%s%s",
-                  BodyPlanName(plan), OverallLength(), TopHeight(), eyes, eyes == 0 ? " (hunts by sound)" : "",
-                  tailLength > 0.05f ? "a tail" : "no tail", plates > 0 ? ", plated" : "",
-                  spines > 0 ? ", spined" : "");
+                  "%s %s, %s, %.1f m long overall, %.2f m tall, %d eyes%s, %s%s%s%s",
+                  BodyBuildName(build), BodyPlanName(plan), HeadShapeName(headShape), OverallLength(), TopHeight(), eyes,
+                  eyes == 0 ? " (hunts by sound)" : "", tailLength > 0.05f ? "a tail" : "no tail", plates > 0 ? ", plated" : "",
+                  spines > 0 ? ", spined" : "", growths > 0.0f ? ", covered in growths" : "");
     return line;
 }
 

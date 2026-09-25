@@ -30,6 +30,44 @@ enum class BodyPlan : uint8_t
 
 const char* BodyPlanName(BodyPlan plan);
 
+// Within a plan, how the body is built: what makes two four-legged things different animals rather
+// than one animal at two sizes.
+enum class BodyBuild : uint8_t
+{
+    Ordinary,
+    Gaunt,   // starved thin, every bone showing, limbs like sticks
+    Heavy,   // deep-chested and thick-limbed, low and broad
+    Stilted, // tall on long thin legs, a small body carried high
+    Low,     // long and flat, belly near the floor, short bowed legs
+    Hunched, // shoulders far above the hips, like something that walks on its knuckles
+    Long,    // a long body, serpentine, on legs that seem too few for it
+    Count
+};
+
+// And its head.
+enum class HeadShape : uint8_t
+{
+    Ordinary,
+    Skull,  // a person's skull, flat-faced
+    Snout,  // a long narrow muzzle full of teeth
+    Dome,   // a smooth swollen dome, eyeless or nearly
+    Hammer, // wide, with the eyes out at the ends
+    Maw,    // mostly mouth: a deep jaw that hangs open
+    Count
+};
+
+const char* BodyBuildName(BodyBuild build);
+const char* HeadShapeName(HeadShape shape);
+
+// Markings on the skin.
+enum class SkinPattern : uint8_t
+{
+    Mottled,
+    Spotted,
+    Striped,
+    Count
+};
+
 // One pair of legs, left and right alike.
 struct LegPair
 {
@@ -109,6 +147,12 @@ struct CreatureAnatomy
     float clawLength = 1.0f;
     float brow = 0.5f;        // how heavy the ridge over the eyes is
     float cranium = 1.0f;     // how swollen the back of the skull is
+
+    BodyBuild build = BodyBuild::Ordinary;
+    HeadShape headShape = HeadShape::Ordinary;
+    SkinPattern pattern = SkinPattern::Mottled;
+    // Growths on the skin: lumps, tumours, blisters -- 0 none, 1 covered.
+    float growths = 0.0f;
 
     static CreatureAnatomy FromSeed(uint32_t seed);
     std::string Describe() const;

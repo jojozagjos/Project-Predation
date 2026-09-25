@@ -412,8 +412,11 @@ CreatureSkin CreatureSkin::Build(const CreatureAnatomy& a)
     skin.head = addBone(BoneKind::Head, neckHigh, headBack, headFront, up, std::max(hw, hd) * 0.5f);
     // The jaw hangs a little open at rest, so the lips of the mouth are two surfaces and not one: the
     // skin can be pulled apart there, and it is sculpted apart.
-    const float jawLength = a.jawLength * std::max(snout, 0.75f);
     const glm::vec3 hinge = pose.head + glm::vec3(0.0f, -hd * 0.2f, hl * 0.08f);
+    // The lower jaw ends just short of the tip of the upper one, as a jaw does: drawn on its own it ran
+    // out past the face on anything long-snouted.
+    const float faceTip = hinge.z - (pose.head.z - hl * 0.3f * snout - hl * 0.3f * snout * 0.82f);
+    const float jawLength = std::min(a.jawLength * std::max(snout, 0.75f), faceTip * 0.88f / 0.92f);
     const float restGape = glm::radians(9.0f);
     const glm::mat4 jawTurn = glm::translate(identity, hinge) *
                               glm::mat4_cast(glm::angleAxis(-restGape, glm::vec3(1.0f, 0.0f, 0.0f))) *
@@ -463,9 +466,11 @@ CreatureSkin CreatureSkin::Build(const CreatureAnatomy& a)
         shape.ankle = ik.endPosition;
         shape.toe = shape.ankle + glm::vec3(0.0f, -pair.thickness * 0.5f, -pair.foot);
         const float t = pair.thickness;
-        shape.radius = pair.arm ? glm::vec4(0.95f, 0.52f, 0.4f, 0.32f) * t
-                       : crawler ? glm::vec4(1.0f, 0.6f, 0.42f, 0.32f) * t
-                                 : glm::vec4(1.0f, 0.72f, 0.55f, 0.42f) * t;
+        // Thick where the muscle is, at the root, and down to sinew and knuckle at the far end: a limb is
+        // not a pipe. These are the bones' own radii; the muscle is sculpted over them below.
+        shape.radius = pair.arm ? glm::vec4(1.05f, 0.5f, 0.36f, 0.3f) * t
+                       : crawler ? glm::vec4(1.15f, 0.56f, 0.38f, 0.3f) * t
+                                 : glm::vec4(1.2f, 0.66f, 0.46f, 0.38f) * t;
         // Never thinner than the skin can be drawn at: a limb finer than two samples across comes out
         // in pieces.
         shape.radius = glm::max(shape.radius, glm::vec4(skin.cell * 1.05f));
@@ -684,7 +689,8 @@ CreatureSkin CreatureSkin::Build(const CreatureAnatomy& a)
              skin.head, skin.cell * 1.5f, Zone::Bone);
     }
     // The jaw, and the muscle at its hinge, which stretches as the mouth opens.
-    blob(onJaw(hinge + glm::vec3(0.0f, -hd * 0.1f, -jawLength * 0.46f)), {hw * 0.27f, hd * 0.11f, jawLength * 0.46f},
+    // Narrower than the row of upper teeth, so they close outside it rather than through it.
+    blob(onJaw(hinge + glm::vec3(0.0f, -hd * 0.1f, -jawLength * 0.46f)), {hw * 0.19f, hd * 0.11f, jawLength * 0.46f},
          glm::angleAxis(-restGape, glm::vec3(1.0f, 0.0f, 0.0f)), skin.jaw, skin.cell * 1.2f, Zone::Bone);
     for (const float side : {-1.0f, 1.0f})
     {
@@ -751,38 +757,143 @@ CreatureSkin CreatureSkin::Build(const CreatureAnatomy& a)
         }
     }
 
-    // The limbs: a rounded cone from joint to joint, each blending into the next through a knobbly
-    // joint, with muscle on the thigh and calf of anything that is not starving.
+    // The limbs. Each segment is a bone with muscle over it: two bellies on the upper segment, front and
+    // back, swelling out of the body at the root; a joint that is two knuckles side by side with a point
+    // on the outside of the bend, where the kneecap or the elbow is; a calf or forearm belly high on the
+    // lower segment that thins to tendons, so the ankle and the wrist are cords over bone; and the root of
+    // the limb grown out of the torso through a mass of shoulder or haunch, not pushed into its side.
     for (size_t i = 0; i < limbShapes.size(); ++i)
     {
         const LimbShape& shape = limbShapes[i];
         const Limb& limb = skin.limbs[i];
         const bool arm = pose.legs[i].pair->arm;
-        const float knob = crawler ? 1.2f : 1.08f;
-        cone(shape.hip, shape.knee, shape.radius.x, shape.radius.y, limb.upper, 0.05f * scale);
-        blob(shape.knee, glm::vec3(shape.radius.y * knob), noTurn, limb.lower, skin.cell * 1.2f);
+        const float t = pose.legs[i].pair->thickness;
+        // How much muscle: a starving one is sinew, but even sinew is shaped.
+        const float meat = std::clamp(crawler ? (arm ? 0.45f : 0.6f) : 1.05f - 0.55f * ribs, 0.35f, 1.05f);
+        const glm::vec3 upperAlong = glm::normalize(shape.knee - shape.hip);
+        const glm::vec3 lowerAlong = glm::normalize(shape.ankle - shape.knee);
+        const float upperLength = glm::distance(shape.hip, shape.knee);
+        const float lowerLength = glm::distance(shape.knee, shape.ankle);
+        // The outside of the bend, where the kneecap or the point of the elbow is, and the axis the joint
+        // hinges on.
+        glm::vec3 outside = upperAlong - lowerAlong;
+        outside = glm::length(outside) > 1e-4f ? glm::normalize(outside) : glm::normalize(glm::cross(limb.bend, upperAlong));
+        const glm::vec3 jointAxis = limb.bend;
+
+        // The bones.
+        cone(shape.hip, shape.knee, shape.radius.x * 0.8f, shape.radius.y, limb.upper, 0.04f * scale);
         cone(shape.knee, shape.ankle, shape.radius.y, shape.radius.z, limb.lower, skin.cell * 1.5f);
-        blob(shape.ankle, glm::vec3(shape.radius.z * 1.1f), noTurn, limb.end, skin.cell * 1.2f);
         cone(shape.ankle, shape.toe, shape.radius.z, shape.radius.w, limb.end, skin.cell * 1.5f);
-        const float meat = crawler ? (arm ? 0.35f : 0.55f) : 1.0f - 0.5f * ribs;
-        if (meat > 0.05f)
+
+        // Shoulder or haunch: a mass from the body over the top of the limb, so the limb comes out of
+        // the torso rather than being stuck onto it.
         {
-            const glm::vec3 thigh = glm::mix(shape.hip, shape.knee, 0.4f);
-            const glm::quat along = TurnBetween(glm::vec3(0.0f, 1.0f, 0.0f), glm::normalize(shape.knee - shape.hip));
-            blob(thigh, {shape.radius.x * (0.85f + 0.2f * meat), glm::distance(shape.hip, shape.knee) * 0.3f,
-                         shape.radius.x * (0.8f + 0.25f * meat)},
-                 along, limb.upper, skin.cell * 2.0f);
-            const glm::vec3 calf = glm::mix(shape.knee, shape.ankle, 0.3f);
-            const glm::quat along2 = TurnBetween(glm::vec3(0.0f, 1.0f, 0.0f), glm::normalize(shape.ankle - shape.knee));
-            blob(calf, {shape.radius.y * (0.9f + 0.2f * meat), glm::distance(shape.knee, shape.ankle) * 0.26f,
-                        shape.radius.y * (0.9f + 0.25f * meat)},
-                 along2, limb.lower, skin.cell * 2.0f);
+            const glm::vec3 root = shape.hip + upperAlong * (upperLength * 0.12f);
+            const glm::vec3 inwards = glm::normalize(glm::vec3(-shape.hip.x, 0.0f, 0.0f) + glm::vec3(0.0f, 0.35f, 0.0f));
+            const glm::quat along = TurnBetween(glm::vec3(0.0f, 1.0f, 0.0f), upperAlong);
+            blob(root + inwards * (t * 0.35f), glm::vec3(t * (1.35f + 0.25f * meat), upperLength * 0.26f, t * (1.25f + 0.2f * meat)),
+                 along, limb.upper, 0.05f * scale);
         }
-        // The palm or the sole: flat, wider than the wrist.
+        // Upper segment: two bellies, the front one fuller, tapering into the joint.
+        const glm::quat upperTurn = TurnBetween(glm::vec3(0.0f, 1.0f, 0.0f), upperAlong);
+        for (const float face : {1.0f, -1.0f})
+        {
+            const float at = face > 0.0f ? 0.36f : 0.44f;
+            const glm::vec3 centre = glm::mix(shape.hip, shape.knee, at) + outside * (face * t * 0.32f);
+            const float girth = t * (face > 0.0f ? 0.78f : 0.66f) * (0.75f + 0.3f * meat);
+            blob(centre, {girth, upperLength * (face > 0.0f ? 0.3f : 0.26f), girth * 0.9f}, upperTurn, limb.upper, skin.cell * 2.2f);
+        }
+        // The joint.
+        for (const float side : {-1.0f, 1.0f})
+        {
+            blob(shape.knee + jointAxis * (side * shape.radius.y * 0.55f) - upperAlong * (shape.radius.y * 0.2f),
+                 glm::vec3(shape.radius.y * 0.62f), noTurn, limb.lower, skin.cell * 1.3f, Zone::Bone);
+        }
+        blob(shape.knee + outside * (shape.radius.y * 0.7f), glm::vec3(shape.radius.y * 0.5f, shape.radius.y * 0.6f, shape.radius.y * 0.5f),
+             upperTurn, limb.lower, skin.cell * 1.2f, Zone::Bone);
+        // Lower segment: a belly high on the inside of the bend, thinning to two tendons at the far joint.
+        const glm::quat lowerTurn = TurnBetween(glm::vec3(0.0f, 1.0f, 0.0f), lowerAlong);
+        {
+            const glm::vec3 belly = glm::mix(shape.knee, shape.ankle, 0.3f) - outside * (t * 0.22f);
+            const float girth = t * 0.6f * (0.7f + 0.35f * meat);
+            blob(belly, {girth, lowerLength * 0.24f, girth * 0.95f}, lowerTurn, limb.lower, skin.cell * 2.2f);
+        }
+        for (const float side : {-1.0f, 1.0f})
+        {
+            const glm::vec3 from = glm::mix(shape.knee, shape.ankle, 0.45f) + jointAxis * (side * t * 0.2f) - outside * (t * 0.12f);
+            const glm::vec3 to = shape.ankle + jointAxis * (side * shape.radius.z * 0.55f) - outside * (shape.radius.z * 0.3f);
+            cone(from, to, std::max(t * 0.14f, skin.cell * 0.9f), std::max(t * 0.1f, skin.cell * 0.85f), limb.lower, skin.cell * 1.1f);
+        }
+        // The far joint: a knuckle of bone either side.
+        for (const float side : {-1.0f, 1.0f})
+        {
+            blob(shape.ankle + jointAxis * (side * shape.radius.z * 0.6f), glm::vec3(shape.radius.z * 0.55f), noTurn, limb.end,
+                 skin.cell * 1.1f, Zone::Bone);
+        }
+        // The palm or the sole: flat, wider than the wrist, the bones of it showing on the back.
         const glm::vec3 palm = glm::mix(shape.ankle, shape.toe, 0.7f) + glm::vec3(0.0f, -shape.radius.w * 0.2f, 0.0f);
         blob(palm, {std::max(shape.radius.w * 2.1f, skin.cell * 1.4f), std::max(shape.radius.w * 0.8f, skin.cell * 1.05f),
                     glm::distance(shape.ankle, shape.toe) * 0.4f},
              noTurn, limb.end, skin.cell * 1.5f);
+        const glm::vec3 toward = glm::normalize(shape.toe - shape.ankle);
+        for (int k = -1; k <= 1; ++k)
+        {
+            const glm::vec3 across = glm::normalize(glm::cross(toward, glm::vec3(0.0f, 1.0f, 0.0f)));
+            const glm::vec3 base = shape.ankle + across * (static_cast<float>(k) * shape.radius.w * 0.7f) + glm::vec3(0.0f, shape.radius.w * 0.35f, 0.0f);
+            cone(base, base + toward * glm::distance(shape.ankle, shape.toe) * 0.8f, std::max(shape.radius.w * 0.28f, skin.cell * 0.85f),
+                 std::max(shape.radius.w * 0.22f, skin.cell * 0.8f), limb.end, skin.cell * 0.9f, Zone::Bone);
+        }
+        (void)arm;
+    }
+
+    // Across the top of the shoulders on a crawler: the muscle from the neck out to each arm, which is
+    // what makes the arms part of the same body as the head.
+    if (crawler)
+    {
+        for (size_t i = 0; i < pose.legs.size(); ++i)
+        {
+            if (pose.legs[i].pair->arm && pose.legs[i].pair->along < 0.1f)
+            {
+                const glm::vec3 shoulder = limbShapes[i].hip + glm::vec3(0.0f, pose.legs[i].pair->thickness * 0.6f, 0.0f);
+                cone(pose.neckBase + glm::vec3(0.0f, neckRoot * 0.2f, neckRoot * 0.3f), shoulder, neckRoot * 0.55f,
+                     pose.legs[i].pair->thickness * 0.9f, skin.chest, 0.05f * scale);
+            }
+        }
+    }
+
+    // Growths: lumps under the skin, clustered, on the body and the tops of the limbs. Some are big.
+    if (a.growths > 0.0f)
+    {
+        const int count = 4 + static_cast<int>(a.growths * 16.0f);
+        for (int g = 0; g < count; ++g)
+        {
+            const float pick = Detail(a.seed, 900u + static_cast<uint32_t>(g) * 4u);
+            const float size = (0.018f + 0.05f * Detail(a.seed, 901u + static_cast<uint32_t>(g) * 4u) * Detail(a.seed, 903u + static_cast<uint32_t>(g) * 4u)) *
+                               scale * (0.6f + 0.6f * a.growths);
+            if (pick < 0.7f || limbShapes.empty())
+            {
+                const float along = 0.12f + 0.8f * Detail(a.seed, 902u + static_cast<uint32_t>(g) * 4u);
+                const float round = (Detail(a.seed, 905u + static_cast<uint32_t>(g) * 4u) - 0.5f) * glm::pi<float>() * 1.6f;
+                blob(onTorso(along, round, 0.97f), glm::vec3(size, size * 0.8f, size), noTurn, spineBoneAt(along), size * 0.6f);
+            }
+            else
+            {
+                const size_t limb = static_cast<size_t>(Detail(a.seed, 906u + static_cast<uint32_t>(g) * 4u) * static_cast<float>(limbShapes.size())) %
+                                    limbShapes.size();
+                const LimbShape& shape = limbShapes[limb];
+                const glm::vec3 at = glm::mix(shape.hip, shape.knee, 0.2f + 0.5f * Detail(a.seed, 907u + static_cast<uint32_t>(g) * 4u));
+                blob(at + glm::vec3(0.0f, shape.radius.x * 0.7f, 0.0f), glm::vec3(size * 0.8f), noTurn, skin.limbs[limb].upper, size * 0.5f);
+            }
+        }
+    }
+    // A hammer head's two ends, swept out either side of the skull to where the eyes are.
+    if (a.headShape == HeadShape::Hammer)
+    {
+        for (const float side : {-1.0f, 1.0f})
+        {
+            blob(pose.head + glm::vec3(side * hw * 0.34f, hd * 0.05f, -hl * 0.15f), {hw * 0.18f, hd * 0.26f, hl * 0.2f}, noTurn, skin.head,
+                 skin.cell * 2.0f);
+        }
     }
 
     // The tail.
@@ -939,6 +1050,18 @@ CreatureSkin CreatureSkin::Build(const CreatureAnatomy& a)
         colour = glm::mix(colour, bruise * (0.6f + glm::length(skinColour)), blotch * 0.45f * skinShare);
         const float veinNoise = 1.0f - std::abs(Fbm(p * 11.0f + glm::vec3(5.0f), a.seed + 7u, 3) * 2.0f - 1.0f);
         colour = glm::mix(colour, vein * glm::length(skinColour), std::pow(veinNoise, 14.0f) * 0.55f * skinShare);
+        // Its markings: spots, or stripes across the body, darker than the skin round them.
+        if (a.pattern == SkinPattern::Spotted)
+        {
+            const float spot = std::clamp((Fbm(p * 8.5f + glm::vec3(3.0f), a.seed + 21u, 2) - 0.6f) * 9.0f, 0.0f, 1.0f);
+            colour = glm::mix(colour, colour * 0.45f, spot * skinShare);
+        }
+        else if (a.pattern == SkinPattern::Striped)
+        {
+            const float wobble = Fbm(p * 3.0f, a.seed + 23u, 2) * 3.0f;
+            const float stripe = std::clamp(std::sin(p.z * 26.0f + wobble) * 2.2f - 1.0f, 0.0f, 1.0f);
+            colour = glm::mix(colour, colour * 0.5f, stripe * skinShare * (0.4f + 0.6f * std::clamp(normal.y + 0.3f, 0.0f, 1.0f)));
+        }
         // Darker along the back, as nearly every animal is, broken into faint bands across it; paler
         // under the belly, and darker still where it drags on the floor.
         const float dorsal = std::clamp(normal.y, 0.0f, 1.0f) * skinShare;
@@ -1003,22 +1126,24 @@ CreatureSkin CreatureSkin::Build(const CreatureAnatomy& a)
             const float u = a.teeth > 1 ? static_cast<float>(t) / static_cast<float>(a.teeth - 1) : 0.5f;
             const float around = (u - 0.5f) * 2.5f;
             const float fang = std::exp(-std::pow((std::abs(around) - 0.75f) / 0.3f, 2.0f));
-            const float length = hd * a.toothLength * (0.1f + 0.09f * Detail(a.seed, static_cast<uint32_t>(t)) + 0.12f * fang);
-            const glm::vec3 root = muzzleCentre + glm::vec3(muzzleRadii.x * 0.8f * std::sin(around), -muzzleRadii.y * 0.55f,
+            const float length = std::min(hd * a.toothLength * (0.1f + 0.09f * Detail(a.seed, static_cast<uint32_t>(t)) + 0.12f * fang), hd * 0.32f);
+            const glm::vec3 root = muzzleCentre + glm::vec3(muzzleRadii.x * 0.95f * std::sin(around), -muzzleRadii.y * 0.55f,
                                                             -muzzleRadii.z * 0.82f * std::cos(around));
             const glm::vec3 tip = root + glm::normalize(glm::vec3(0.0f, -1.0f, -0.12f)) * length;
             upper.Append(Primitives::Frustum(std::max(hw * 0.055f, 0.004f), 0.0f, length, 7), Between(root, tip));
         }
         attach(std::move(upper), skin.head, Zone::Teeth);
         MeshData lower;
+        // Inside the upper row and between its teeth, the way a jaw closes: never in the same place as an
+        // upper tooth, so they meet without passing through each other.
         const int teeth = std::max(a.teeth - 2, 3);
         for (int t = 0; t < teeth; ++t)
         {
-            const float u = static_cast<float>(t) / static_cast<float>(teeth - 1);
-            const float around = (u - 0.5f) * 2.2f;
-            const float length = hd * a.toothLength * (0.08f + 0.1f * Detail(a.seed, 50u + static_cast<uint32_t>(t)));
-            const glm::vec3 root = onJaw(hinge + glm::vec3(hw * 0.2f * std::sin(around), -hd * 0.03f,
-                                                           -jawLength * 0.46f - jawLength * 0.4f * std::cos(around)));
+            const float u = (static_cast<float>(t) + 0.5f) / static_cast<float>(teeth);
+            const float around = (u - 0.5f) * 2.0f;
+            const float length = std::min(hd * a.toothLength * (0.05f + 0.05f * Detail(a.seed, 50u + static_cast<uint32_t>(t))), hd * 0.13f);
+            const glm::vec3 root = onJaw(hinge + glm::vec3(hw * 0.14f * std::sin(around), -hd * 0.03f,
+                                                           -jawLength * 0.44f - jawLength * 0.36f * std::cos(around)));
             const glm::vec3 tip = root + glm::vec3(jawTurn * glm::vec4(0.0f, length, -length * 0.1f, 0.0f));
             lower.Append(Primitives::Frustum(std::max(hw * 0.05f, 0.004f), 0.0f, length, 7), Between(root, tip));
         }
