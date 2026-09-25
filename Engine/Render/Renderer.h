@@ -55,6 +55,10 @@ public:
     static constexpr bgfx::ViewId kViewSky = 6;
     static constexpr bgfx::ViewId kViewMain = 7;
     static constexpr bgfx::ViewId kViewDebug = 8;
+    // Post-processing (PostProcess): the glow's chain of smaller and smaller copies and back, then the
+    // finished picture onto the screen, before the interface.
+    static constexpr bgfx::ViewId kViewPostFirst = 9;
+    static constexpr bgfx::ViewId kViewPost = 18;
     // A block reserved for rendering into offscreen targets, such as the inventory icon atlas.
     // bgfx runs views in id order, so these are finished long before the UI that samples them.
     static constexpr bgfx::ViewId kViewOffscreenFirst = 200;
@@ -77,6 +81,11 @@ public:
     void SetVSync(bool enabled);
     // Multisampling, 0 for none: 2, 4, 8 or 16. Applied at once.
     void SetMsaa(int samples);
+    int Msaa() const;
+    // Where the sky, the world and the debug lines are drawn: a target of post-processing's, or the
+    // screen when there is none. With a target, the screen itself needs no multisampling -- the target
+    // has it.
+    void SetSceneTarget(bgfx::FrameBufferHandle target);
     void SetClearColor(uint32_t rgba);
     void SetCamera(const glm::mat4& view, const glm::mat4& projection);
     // What was last set, for passes that need the camera again after it was handed over -- the sky

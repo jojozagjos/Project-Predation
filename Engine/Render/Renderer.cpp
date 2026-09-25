@@ -175,7 +175,11 @@ struct Renderer::Impl
     std::string pendingScreenshot;
     uint32_t frameNumber = 0;
 
-    uint32_t ResetFlags() const { return (vsync ? BGFX_RESET_VSYNC : BGFX_RESET_NONE) | MsaaFlag(msaa); }
+    bgfx::FrameBufferHandle sceneTarget = BGFX_INVALID_HANDLE;
+    uint32_t ResetFlags() const
+    {
+        return (vsync ? BGFX_RESET_VSYNC : BGFX_RESET_NONE) | (bgfx::isValid(sceneTarget) ? 0u : MsaaFlag(msaa));
+    }
 };
 
 Renderer::Renderer() : m_impl(std::make_unique<Impl>()) {}
@@ -316,9 +320,28 @@ void Renderer::SetBgfxStatsOverlay(bool enabled)
     }
 }
 
+int Renderer::Msaa() const
+{
+    return m_impl->msaa;
+}
+
+void Renderer::SetSceneTarget(bgfx::FrameBufferHandle target)
+{
+    Impl& impl = *m_impl;
+    const bool changed = bgfx::isValid(target) != bgfx::isValid(impl.sceneTarget);
+    impl.sceneTarget = target;
+    if (changed && impl.initialized)
+    {
+        bgfx::reset(static_cast<uint32_t>(impl.width), static_cast<uint32_t>(impl.height), impl.ResetFlags());
+    }
+}
+
 void Renderer::BeginFrame()
 {
     Impl& impl = *m_impl;
+    bgfx::setViewFrameBuffer(kViewSky, impl.sceneTarget);
+    bgfx::setViewFrameBuffer(kViewMain, impl.sceneTarget);
+    bgfx::setViewFrameBuffer(kViewDebug, impl.sceneTarget);
     const auto w = static_cast<uint16_t>(impl.width);
     const auto h = static_cast<uint16_t>(impl.height);
 

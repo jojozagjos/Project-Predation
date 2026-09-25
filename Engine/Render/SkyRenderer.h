@@ -46,9 +46,12 @@ public:
     // How bright the sky is drawn, as a multiplier. The lighting is not changed by it -- this is the
     // backdrop, not the ambient the world is lit by, and the two are separate on purpose.
     void SetBrightness(float brightness) { m_brightness = brightness; }
+    // As the world: linear light for post-processing, on the views that feed the screen.
+    void SetLinearOutput(bool linear) { m_linear = linear; }
 
 private:
     float m_brightness = 1.0f;
+    bool m_linear = false;
 };
 
 } // namespace pred

@@ -1,6 +1,7 @@
 #include "Engine/Render/SkyRenderer.h"
 
 #include "Engine/Core/Log.h"
+#include "Engine/Render/Renderer.h"
 #include "Engine/Render/ShaderLibrary.h"
 #include "Engine/Scene/Scene.h"
 
@@ -96,7 +97,8 @@ void SkyRenderer::Draw(bgfx::ViewId view, const Environment& environment, const 
     bgfx::setUniform(m_uGround, groundDim);
     bgfx::setUniform(m_uSun, sun);
     bgfx::setUniform(m_uSunColor, sunColor);
-    const float grade[4] = {environment.exposure, environment.contrast, 0.0f, 0.0f};
+    const float grade[4] = {environment.exposure, environment.contrast, 0.0f,
+                            m_linear && view < Renderer::kViewOffscreenFirst ? 1.0f : 0.0f};
     bgfx::setUniform(m_uGrade, grade);
 
     bgfx::setVertexBuffer(0, m_triangle);

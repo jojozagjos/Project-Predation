@@ -73,6 +73,10 @@ public:
     };
 
     bool Init(ShaderLibrary& shaders);
+    // Whether the world is drawn as linear light for post-processing to finish, rather than as a
+    // finished picture. Only the views that feed the screen; offscreen ones -- icons, the editor's
+    // panel -- are always finished pictures.
+    void SetLinearOutput(bool linear) { m_linearOutput = linear; }
     void Shutdown();
 
     // Renders both depth maps, fitted around `focus`. Has to run before Draw, into lower view ids,
@@ -147,6 +151,9 @@ private:
     bgfx::UniformHandle m_uFogParams = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uCameraPosition = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uGrade = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uOutput = BGFX_INVALID_HANDLE;
+    bool m_linearOutput = false;
+    bool m_reflectionLinear = false;
     bgfx::UniformHandle m_uLights = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uSunShadowMtx = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uSunShadowAxis = BGFX_INVALID_HANDLE;

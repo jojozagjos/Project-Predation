@@ -3,6 +3,7 @@
 #include "Engine/Core/Log.h"
 #include "Engine/Render/Mesh.h"
 #include "Engine/Render/TextureLibrary.h"
+#include "Engine/Render/Renderer.h"
 #include "Engine/Render/ShaderLibrary.h"
 #include "Engine/Render/SkyRenderer.h"
 #include "Engine/Scene/Scene.h"
@@ -87,6 +88,7 @@ bool SceneRenderer::Init(ShaderLibrary& shaders)
     m_uFogParams = bgfx::createUniform("u_fogParams", bgfx::UniformType::Vec4);
     m_uCameraPosition = bgfx::createUniform("u_cameraPosition", bgfx::UniformType::Vec4);
     m_uGrade = bgfx::createUniform("u_grade", bgfx::UniformType::Vec4);
+    m_uOutput = bgfx::createUniform("u_output", bgfx::UniformType::Vec4);
     m_uLights = bgfx::createUniform("u_lights", bgfx::UniformType::Vec4,
                                     static_cast<uint16_t>(kMaxPunctualLights * 4));
     m_uSunShadowMtx = bgfx::createUniform("u_sunShadowMtx", bgfx::UniformType::Mat4);
@@ -157,6 +159,11 @@ void SceneRenderer::Shutdown()
     m_uLightDirection = m_uLightColor = m_uAmbientSky = m_uAmbientGround = BGFX_INVALID_HANDLE;
     m_uFogColor = m_uFogParams = m_uCameraPosition = BGFX_INVALID_HANDLE;
     m_uGrade = m_uLights = BGFX_INVALID_HANDLE;
+    if (bgfx::isValid(m_uOutput))
+    {
+        bgfx::destroy(m_uOutput);
+    }
+    m_uOutput = BGFX_INVALID_HANDLE;
     m_uSunShadowMtx = m_uSunShadowAxis = m_uSunShadowParams = BGFX_INVALID_HANDLE;
     m_uSkyShadowMtx = m_uSkyShadowAxis = m_uSkyShadowParams = BGFX_INVALID_HANDLE;
     m_sBaseColor = m_sSunShadow = m_sSkyShadow = BGFX_INVALID_HANDLE;
@@ -300,6 +307,8 @@ void SceneRenderer::SubmitMesh(bgfx::ViewId view, const Mesh& mesh, const Materi
     bgfx::setUniform(m_uBaseColor, baseColor);
     bgfx::setUniform(m_uMaterialParams, materialParams);
     bgfx::setUniform(m_uEmissive, emissive);
+    const float output[4] = {m_linearOutput && view < Renderer::kViewOffscreenFirst ? 1.0f : 0.0f, 0.0f, 0.0f, 0.0f};
+    bgfx::setUniform(m_uOutput, output);
 
     // Always bound. A material with no texture of its own gets the library's white pixel, so the
     // shader multiplies by one and there is no second program and no branch per fragment.
@@ -481,14 +490,16 @@ void SceneRenderer::RenderReflection(bgfx::ViewId skyView, bgfx::ViewId worldVie
     const auto wantWidth = static_cast<uint16_t>(std::max<uint32_t>(stats->width / 2, 64));
     const auto wantHeight = static_cast<uint16_t>(std::max<uint32_t>(stats->height / 2, 64));
     if (wantWidth != m_reflectionWidth || wantHeight != m_reflectionHeight ||
-        !bgfx::isValid(m_reflectionTarget))
+        !bgfx::isValid(m_reflectionTarget) || m_reflectionLinear != m_linearOutput)
     {
+        m_reflectionLinear = m_linearOutput;
         if (bgfx::isValid(m_reflectionTarget))
         {
             bgfx::destroy(m_reflectionTarget);
         }
         m_reflectionTexture =
-            bgfx::createTexture2D(wantWidth, wantHeight, false, 1, bgfx::TextureFormat::RGBA8,
+            bgfx::createTexture2D(wantWidth, wantHeight, false, 1,
+                                  m_linearOutput ? bgfx::TextureFormat::RGBA16F : bgfx::TextureFormat::RGBA8,
                                   BGFX_TEXTURE_RT | BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP);
         const bgfx::TextureHandle depth = bgfx::createTexture2D(
             wantWidth, wantHeight, false, 1, bgfx::TextureFormat::D24S8, BGFX_TEXTURE_RT_WRITE_ONLY);

@@ -33,6 +33,13 @@ void main()
 	float core = pow(toSun, max(u_skySun.w, 1.0) * 24.0);
 	color += u_skySunColor.rgb * u_skySunColor.w * (halo * 0.35 + core) * clamp(up * 4.0 + 0.4, 0.0, 1.0);
 
+	// For post-processing to finish, as linear light.
+	if (u_skyGrade.w > 0.5)
+	{
+		gl_FragColor = vec4(color, 1.0);
+		return;
+	}
+
 	// Through the same curve the world goes through, or the sky is the one thing on screen that was
 	// not developed: colours written straight out land far darker than the same numbers do on a
 	// surface, and the horizon reads as a black band where it should be haze.

@@ -171,6 +171,10 @@ CVar<float> cv_aimSensitivity{"input.aim_sensitivity", 0.75f,
                               "Mouse sensitivity with the sights up, as a share of the ordinary one", CVarFlags::Archive};
 // How bright the level's own lamps are, all together: a knob for the look of the place.
 CVar<float> cv_lampScale{"r.lamp_scale", 1.0f, "Multiplies the brightness of every lamp in the level"};
+CVar<bool> cv_post{"r.post", true, "Finish the picture in a pass of its own: glow, grade, vignette, grain", CVarFlags::Archive};
+CVar<float> cv_bloom{"r.bloom", 0.6f, "How much bright things glow", CVarFlags::Archive};
+CVar<bool> cv_grain{"r.film_grain", true, "Film grain over the picture", CVarFlags::Archive};
+CVar<float> cv_vignette{"r.vignette", 0.35f, "How much the edges of the picture darken"};
 CVar<bool> cv_crosshair{"hud.crosshair", true, "Draw the crosshair", CVarFlags::Archive};
 CVar<bool> cv_showFps{"hud.show_fps", false, "Show the frame rate in the corner", CVarFlags::Archive};
 CVar<bool> cv_voiceEnabled{"audio.voice", true, "Send and hear proximity voice", CVarFlags::Archive};
@@ -4408,6 +4412,22 @@ void PredationGame::DrawSettings()
                     ImGui::EndCombo();
                 }
             }
+            ImGui::PopID();
+
+            ImGui::PushID("bloom");
+            SettingsRow("Bloom");
+            {
+                bool bloom = GetSettingFloat("r.bloom", 0.6f) > 0.01f;
+                if (ImGui::Checkbox("##v", &bloom))
+                {
+                    SetSetting("r.bloom", bloom ? "0.6" : "0");
+                }
+            }
+            ImGui::PopID();
+
+            ImGui::PushID("grain");
+            SettingsRow("Film grain");
+            check("r.film_grain", GetSettingBool("r.film_grain", true));
             ImGui::PopID();
 
             ImGui::PushID("reflections");
@@ -8933,6 +8953,43 @@ void PredationGame::OnUpdate(double dt, double alpha)
     environment.sunIntensity = cv_sunIntensity.Get();
     environment.exposure = cv_exposure.Get();
     environment.contrast = cv_contrast.Get();
+
+    // The finishing pass. Fear: something close and after you, or with hold of you, closes the edges
+    // of the picture in and drains it, and it lets go slowly.
+    {
+        PostProcess::Settings& post = app.GetPostProcess().GetSettings();
+        post.enabled = cv_post.Get();
+        post.exposure = environment.exposure;
+        post.contrast = environment.contrast;
+        post.bloom = std::clamp(cv_bloom.Get(), 0.0f, 3.0f);
+        post.grain = cv_grain.Get() ? 0.035f : 0.0f;
+        post.vignette = std::clamp(cv_vignette.Get(), 0.0f, 0.9f);
+        float fear = 0.0f;
+        if (m_player.State().alive && m_screen == Screen::Playing)
+        {
+            const glm::vec3 me = m_player.State().position;
+            for (const std::unique_ptr<Creature>& creature : m_creatures)
+            {
+                if (!creature->Alive() || creature->Down())
+                {
+                    continue;
+                }
+                const Behavior doing = creature->Doing();
+                const bool after = doing == Behavior::Hunt || doing == Behavior::Attack || doing == Behavior::Drag ||
+                                   doing == Behavior::Stalk || doing == Behavior::Search;
+                const float near = std::clamp(1.0f - glm::distance(creature->Position(), me) / 14.0f, 0.0f, 1.0f);
+                fear = std::max(fear, near * (after ? 1.0f : 0.45f));
+            }
+            if (m_grips.count(LocalPlayerId()) != 0 || (m_sessionMode == SessionMode::Client && m_client.HeldByHost()))
+            {
+                fear = 1.0f;
+            }
+            fear = std::max(fear, std::clamp(1.0f - m_player.State().health / 40.0f, 0.0f, 1.0f) * 0.6f);
+        }
+        const float rate = fear > m_fearShown ? 3.0f : 0.4f;
+        m_fearShown += (fear - m_fearShown) * (1.0f - std::exp(-rate * m_lastFrameSeconds));
+        post.fear = m_fearShown;
+    }
 
     // The flashlight, carried at the shoulder rather than screwed to the eye.
     //

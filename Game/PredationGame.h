@@ -172,6 +172,7 @@ private:
     std::vector<Corpse> m_corpses;
     void LeaveCorpse(const PlayerBody& body, uint8_t player);
     void ClearCorpses();
+    float m_fearShown = 0.0f;       // how afraid the picture looks, eased
     float m_menace = 0.0f;          // how hard the players have been pressed lately, 0 to 1
     // What the brood has learnt this match about which tactics work against these players.
     TacticLearner m_learned;

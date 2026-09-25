@@ -14,6 +14,7 @@ uniform vec4 u_ambientGround;   // rgb = bounce from below
 uniform vec4 u_fogColor;        // rgb
 uniform vec4 u_fogParams;       // x = start distance, y = end distance
 uniform vec4 u_cameraPosition;  // xyz
+uniform vec4 u_output;          // x = 1: write linear light for post-processing to finish
 uniform vec4 u_grade;           // x = exposure, y = contrast, z = light where the sky cannot reach,
                                 // w = 0 normal, 1 show the sun's occlusion, 2 show the sky's
 
@@ -496,6 +497,19 @@ void main()
 	float distanceToCamera = length(u_cameraPosition.xyz - v_worldPos);
 	float fogAmount = clamp((distanceToCamera - u_fogParams.x) / max(u_fogParams.y - u_fogParams.x, 1e-4), 0.0, 1.0);
 	color = mix(color, u_fogColor.rgb, fogAmount * mix(0.15, 1.0, skyReaches));
+
+	// Drawn for post-processing: linear light out, the mirror mixed in as light too (its texture is
+	// linear then), and the finishing left to the post pass.
+	if (u_output.x > 0.5 && u_grade.w < 0.5)
+	{
+		if (mirrorAmount > 0.001)
+		{
+			vec2 screenAt = gl_FragCoord.xy / max(u_viewRect.zw, vec2_splat(1.0));
+			color = mix(color, texture2DLod(s_reflection, screenAt, 0.0).rgb, mirrorAmount);
+		}
+		gl_FragColor = vec4(color, 1.0);
+		return;
+	}
 
 	// Exposure, then a filmic curve, then contrast, then gamma.
 	//

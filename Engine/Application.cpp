@@ -290,10 +290,17 @@ int Application::Run(Game& game, int argc, char** argv)
         size_t debugLines = 0;
         {
             PRED_PROFILE_SCOPE("Render");
+            // Into post-processing's target when it has one, and finished onto the screen by it after.
+            const bgfx::FrameBufferHandle sceneTarget =
+                m_postProcess.Prepare(m_renderer.Width(), m_renderer.Height(), m_renderer.Msaa());
+            m_renderer.SetSceneTarget(sceneTarget);
+            m_sceneRenderer.SetLinearOutput(bgfx::isValid(sceneTarget));
+            m_skyRenderer.SetLinearOutput(bgfx::isValid(sceneTarget));
             m_renderer.BeginFrame();
             game.OnRender();
             debugLines = m_debugDraw.PendingLineCount();
             m_debugDraw.Flush(Renderer::kViewDebug);
+            m_postProcess.Apply(static_cast<float>(m_clock.ElapsedSeconds()), m_renderer.OriginBottomLeft());
         }
 
         {
@@ -475,6 +482,7 @@ bool Application::InitSubsystems(const CommandLine& commandLine)
     // Optional: a machine that cannot build it gets the clear colour behind the world, which is what
     // was there before there was a sky at all.
     m_skyRenderer.Init(m_shaders);
+    m_postProcess.Init(m_shaders);
     // Before anything can be drawn: the first entry is the white pixel every untextured material
     // samples, so a draw with no texture of its own still has one bound.
     m_textures.Init();
@@ -560,6 +568,7 @@ void Application::ShutdownSubsystems()
     m_imgui.Shutdown();
     m_debugDraw.Shutdown();
     m_physics.Shutdown();
+    m_postProcess.Shutdown();
     m_skyRenderer.Shutdown();
     m_sceneRenderer.Shutdown();
     // GPU buffers must go before the shader library and the device itself.
