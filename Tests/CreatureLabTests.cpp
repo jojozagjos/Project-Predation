@@ -545,7 +545,7 @@ TEST_CASE("A patient creature that loses somebody through a door waits beside it
     CHECK(waited);
 }
 
-TEST_CASE("A creature that climbs goes up a pillar onto the ceiling, upside down, and drops back down",
+TEST_CASE("A creature that climbs goes up a pillar onto the ceiling, upside down, and climbs back down",
           "[creature][lab][climb]")
 {
     Lab lab;
@@ -582,13 +582,17 @@ TEST_CASE("A creature that climbs goes up a pillar onto the ceiling, upside down
     CHECK(wentUpAWall);
     REQUIRE(hung);
 
+    // Down again: the wall it went up, head first, rather than letting go and falling four metres.
     creature.SetClimbOverride(0);
-    for (int tick = 0; tick < 60 * 2; ++tick)
+    bool climbedDown = false;
+    for (int tick = 0; tick < 60 * 6; ++tick)
     {
         time += dt;
         creature.Update(CreatureSenses{}, time, dt);
         creature.UpdateVisual(dt);
+        climbedDown = climbedDown || creature.Clinging() == Creature::Cling::Wall;
     }
+    CHECK(climbedDown);
     CHECK(creature.Clinging() == Creature::Cling::Floor);
     CHECK(std::abs(creature.Position().y - start.y) < 0.3f);
     const glm::vec3 upright = creature.Orientation() * glm::vec3(0.0f, 1.0f, 0.0f);

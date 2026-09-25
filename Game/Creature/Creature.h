@@ -252,6 +252,12 @@ private:
     glm::vec3 m_wallNormal{0.0f, 0.0f, 1.0f};
     float m_wallDepth = 0.4f;
     float m_wallTop = 0.0f;
+    // Where it is on the wall, sideways from the foot it started at, in metres, and which way it is going
+    // across it -- up, down, along or on a slant. It walks a wall, not only up it.
+    float m_wallAlong = 0.0f;
+    glm::vec3 m_wallHeading{0.0f, 1.0f, 0.0f};
+    // Up at the top where there is no ceiling to go over onto: it goes back along to where there was.
+    bool m_wallBack = false;
     bool m_haveWall = false;
     float m_wallSearchAt = 0.0f;
     // How far up the wall, or down through the drop, 0 to 1, and the drop's ends and length.
