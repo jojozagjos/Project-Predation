@@ -9,6 +9,7 @@
 
 #include <glm/vec3.hpp>
 
+#include <string>
 #include <vector>
 
 namespace pred
@@ -105,6 +106,38 @@ public:
                const ItemDatabase& items, const WeaponDatabase* weapons = nullptr);
     void Clear(Scene& scene, PhysicsWorld& physics, InteractionSystem& interactions);
 
+    // What a generated facility puts in the world, after everything Build does: doors in its doorways,
+    // lockers against its walls, ammunition crates, and items to find.
+    struct PlacedDoor
+    {
+        glm::vec3 hinge{0.0f};
+        float closedYaw = 0.0f;
+        float openYaw = 0.0f;
+        float width = 1.1f;
+        float height = 2.05f;
+        bool locked = false;
+    };
+    struct PlacedThing
+    {
+        glm::vec3 position{0.0f};
+        float yaw = 0.0f; // which way it faces out
+    };
+    struct PlacedItem
+    {
+        std::string key;
+        int count = 1;
+        glm::vec3 position{0.0f}; // where its bottom rests
+    };
+    struct Placements
+    {
+        std::vector<PlacedDoor> doors;
+        std::vector<PlacedThing> lockers;
+        std::vector<PlacedThing> ammoCrates;
+        std::vector<PlacedItem> items;
+    };
+    void AddFacility(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, InteractionSystem& interactions,
+                     const ItemDatabase& items, const Placements& placements);
+
     // Advances door swings. Called from the fixed update, before physics steps.
     void Update(Scene& scene, PhysicsWorld& physics, InteractionSystem& interactions, float dt);
 
@@ -153,6 +186,13 @@ private:
     int AddDoor(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, InteractionSystem& interactions,
                 const glm::vec3& hinge, float closedYaw, float openYaw, const glm::vec3& panelSize,
                 const std::string& name, bool registerInteractable);
+    int AddLocker(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, InteractionSystem& interactions,
+                  const glm::vec3& position, float yaw);
+    int AddAmmoCrate(Scene& scene, PhysicsWorld& physics, InteractionSystem& interactions, const glm::vec3& position,
+                     float yaw);
+    MeshHandle m_lockerMesh;
+    MeshHandle m_crateMesh;
+    MeshHandle m_lidMesh;
     // Removes a pickup from the world, whether it was taken or fell out of the level.
     void Despawn(Pickup& pickup, Scene& scene, PhysicsWorld& physics, InteractionSystem& interactions);
 

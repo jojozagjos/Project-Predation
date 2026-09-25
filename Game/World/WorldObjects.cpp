@@ -96,6 +96,131 @@ int WorldObjects::AddDoor(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physi
     return index;
 }
 
+int WorldObjects::AddLocker(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, InteractionSystem& interactions,
+                            const glm::vec3& position, float yaw)
+{
+    // Its door on its own -Z face; turned by `yaw`, everything about it is turned with it.
+    const glm::vec3 lockerSize{1.06f, 2.05f, 0.88f};
+    constexpr float panelHalfThickness = 0.06f;
+    const float lockerInnerHalfWidth = lockerSize.x * 0.5f - panelHalfThickness * 2.0f;
+    const glm::quat turn = glm::angleAxis(yaw, glm::vec3(0.0f, 1.0f, 0.0f));
+    const auto at = [&](const glm::vec3& local) { return position + turn * local; };
+
+    HidingSpot spot;
+    // The shell is a visual and a collider; the player stands inside it while hidden.
+    spot.entity = scene.CreateMeshEntity("locker", MakeTransform(at({0.0f, lockerSize.y * 0.5f, 0.0f}), yaw), m_lockerMesh,
+                                         kLockerMaterial);
+    // Back, fitted between the two sides. Every collider below sits exactly where its panel is drawn.
+    physics.CreateBox({lockerInnerHalfWidth, lockerSize.y * 0.5f, panelHalfThickness},
+                      MakeTransform(at({0.0f, lockerSize.y * 0.5f, lockerSize.z * 0.5f - panelHalfThickness}), yaw),
+                      BodyMotion::Static);
+    physics.CreateBox({panelHalfThickness, lockerSize.y * 0.5f, lockerSize.z * 0.5f},
+                      MakeTransform(at({-lockerSize.x * 0.5f + panelHalfThickness, lockerSize.y * 0.5f, 0.0f}), yaw),
+                      BodyMotion::Static);
+    physics.CreateBox({panelHalfThickness, lockerSize.y * 0.5f, lockerSize.z * 0.5f},
+                      MakeTransform(at({lockerSize.x * 0.5f - panelHalfThickness, lockerSize.y * 0.5f, 0.0f}), yaw),
+                      BodyMotion::Static);
+    // The roof, between the sides, from behind the door to in front of the back: without it anything
+    // that climbed up there fell straight in.
+    {
+        const float front = -lockerSize.z * 0.5f + 0.07f;
+        const float back = lockerSize.z * 0.5f - panelHalfThickness * 2.0f - 0.005f;
+        physics.CreateBox({lockerInnerHalfWidth - 0.005f, panelHalfThickness, (back - front) * 0.5f},
+                          MakeTransform(at({0.0f, lockerSize.y - panelHalfThickness, (front + back) * 0.5f}), yaw),
+                          BodyMotion::Static);
+    }
+
+    // Centred in the clear space, which sits slightly forward of the shell's middle because the back
+    // panel takes up depth that the door does not; looking out of the door.
+    spot.insidePosition = at({0.0f, 0.0f, -panelHalfThickness * 0.5f});
+    spot.exitPosition = at({0.0f, 0.0f, -1.25f});
+    spot.insideYaw = yaw;
+    // The door fills the clear opening between the sides, and swings out of the locker, not back
+    // through its own side.
+    spot.doorIndex = AddDoor(scene, meshes, physics, interactions, at({-lockerInnerHalfWidth, 0.0f, -lockerSize.z * 0.5f}), yaw,
+                             yaw + glm::radians(105.0f), {lockerInnerHalfWidth * 2.0f, lockerSize.y, 0.06f}, "locker_door", false);
+    spot.doorEntity = m_doors[static_cast<size_t>(spot.doorIndex)].entity;
+    // Standing open to begin with: you have to be able to see a hiding place to decide to run for it.
+    SetDoorOpen(spot.doorIndex, true, interactions);
+
+    const auto index = static_cast<int>(m_hidingSpots.size());
+    m_hidingSpots.push_back(spot);
+
+    Interactable interactable;
+    interactable.entity = spot.entity;
+    interactable.kind = InteractionKind::HidingSpot;
+    interactable.verb = "Hide in";
+    interactable.name = "Locker";
+    interactable.payload = index;
+    interactable.range = 2.4f;
+    interactable.focusOffset = turn * glm::vec3(0.0f, -0.4f, -0.45f);
+    interactions.Register(interactable);
+    return index;
+}
+
+int WorldObjects::AddAmmoCrate(Scene& scene, PhysicsWorld& physics, InteractionSystem& interactions, const glm::vec3& position,
+                               float yaw)
+{
+    constexpr glm::vec3 crateSize{0.72f, 0.44f, 0.46f};
+    constexpr float lidThickness = 0.05f;
+    AmmoCrate crate;
+    const float bodyHeight = crateSize.y - lidThickness;
+    crate.entity = scene.CreateMeshEntity("ammo_crate", MakeTransform(position + glm::vec3(0.0f, bodyHeight * 0.5f, 0.0f), yaw),
+                                          m_crateMesh, kAmmoCrateMaterial);
+    crate.lidRest = position + glm::vec3(0.0f, bodyHeight + lidThickness * 0.5f, 0.0f);
+    crate.lidEntity = scene.CreateMeshEntity("ammo_crate_lid", MakeTransform(crate.lidRest, yaw), m_lidMesh, kAmmoLidMaterial);
+    physics.CreateBox({crateSize.x * 0.5f, crateSize.y * 0.5f, crateSize.z * 0.5f},
+                      MakeTransform(position + glm::vec3(0.0f, crateSize.y * 0.5f, 0.0f), yaw), BodyMotion::Static);
+
+    const auto index = static_cast<int>(m_ammoCrates.size());
+    m_ammoCrates.push_back(crate);
+
+    Interactable interactable;
+    interactable.entity = crate.entity;
+    interactable.kind = InteractionKind::AmmoCrate;
+    interactable.verb = "Take ammunition from";
+    interactable.name = "Ammunition Crate";
+    interactable.payload = index;
+    interactable.range = 2.2f;
+    interactable.focusOffset = {0.0f, crateSize.y * 0.4f, 0.0f};
+    interactions.Register(interactable);
+    return index;
+}
+
+void WorldObjects::AddFacility(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, InteractionSystem& interactions,
+                               const ItemDatabase& items, const Placements& placements)
+{
+    // In the order given, so every machine building the same facility numbers its doors, lockers,
+    // crates and items the same.
+    for (const PlacedDoor& door : placements.doors)
+    {
+        const int index = AddDoor(scene, meshes, physics, interactions, door.hinge, door.closedYaw, door.openYaw,
+                                  {door.width, door.height, 0.09f}, "facility_door", true);
+        m_doors[static_cast<size_t>(index)].locked = door.locked;
+    }
+    for (const PlacedThing& locker : placements.lockers)
+    {
+        AddLocker(scene, meshes, physics, interactions, locker.position, locker.yaw);
+    }
+    for (const PlacedThing& crate : placements.ammoCrates)
+    {
+        AddAmmoCrate(scene, physics, interactions, crate.position, crate.yaw);
+    }
+    for (const PlacedItem& item : placements.items)
+    {
+        const ItemId id = items.IdOf(item.key);
+        const ItemDefinition* definition = items.Get(id);
+        if (definition == nullptr)
+        {
+            continue;
+        }
+        SpawnPickup(scene, meshes, physics, interactions, items, id, item.count,
+                    item.position + glm::vec3(0.0f, definition->size.y * 0.5f + 0.005f, 0.0f), glm::vec3(0.0f));
+    }
+    PRED_LOG_INFO(Gameplay, "Facility objects: {} doors, {} lockers, {} ammunition crates, {} items", placements.doors.size(),
+                  placements.lockers.size(), placements.ammoCrates.size(), placements.items.size());
+}
+
 void WorldObjects::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics,
                          InteractionSystem& interactions, const ItemDatabase& items,
                          const WeaponDatabase* weapons)
@@ -169,76 +294,10 @@ void WorldObjects::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physic
                                          {kInteractionBayX + 1.3f, 0.0f, kBayZ + 0.9f},
                                          LabSpec::kLockers[0], LabSpec::kLockers[1], LabSpec::kLockers[2],
                                          LabSpec::kLockers[3]};
+    m_lockerMesh = lockerMesh;
     for (const glm::vec3& position : lockerPositions)
     {
-        HidingSpot spot;
-        // The shell is a visual and a collider; the player stands inside it while hidden.
-        spot.entity = scene.CreateMeshEntity("locker", MakeTransform(position + glm::vec3(0.0f, lockerSize.y * 0.5f, 0.0f), 0.0f),
-                                             lockerMesh, kLockerMaterial);
-        // Back, fitted between the two sides. Every collider below sits exactly where its panel is
-        // drawn: the shell used to stick a collider out past the model it belonged to.
-        physics.CreateBox({lockerInnerHalfWidth, lockerSize.y * 0.5f, panelHalfThickness},
-                          MakeTransform(position + glm::vec3(0.0f, lockerSize.y * 0.5f,
-                                                             lockerSize.z * 0.5f - panelHalfThickness),
-                                        0.0f),
-                          BodyMotion::Static);
-        physics.CreateBox({panelHalfThickness, lockerSize.y * 0.5f, lockerSize.z * 0.5f},
-                          MakeTransform(position + glm::vec3(-lockerSize.x * 0.5f + panelHalfThickness,
-                                                             lockerSize.y * 0.5f, 0.0f),
-                                        0.0f),
-                          BodyMotion::Static);
-        physics.CreateBox({panelHalfThickness, lockerSize.y * 0.5f, lockerSize.z * 0.5f},
-                          MakeTransform(position + glm::vec3(lockerSize.x * 0.5f - panelHalfThickness,
-                                                             lockerSize.y * 0.5f, 0.0f),
-                                        0.0f),
-                          BodyMotion::Static);
-        // The roof, between the sides, from behind the door to in front of the back: without it
-        // anything that climbed up there fell straight in.
-        {
-            const float front = -lockerSize.z * 0.5f + 0.07f;
-            const float back = lockerSize.z * 0.5f - panelHalfThickness * 2.0f - 0.005f;
-            physics.CreateBox({lockerInnerHalfWidth - 0.005f, panelHalfThickness, (back - front) * 0.5f},
-                              MakeTransform(position + glm::vec3(0.0f, lockerSize.y - panelHalfThickness, (front + back) * 0.5f), 0.0f),
-                              BodyMotion::Static);
-        }
-
-        // Centred in the clear space, which sits slightly forward of the shell's middle because the
-        // back panel takes up depth that the door does not.
-        spot.insidePosition = position - glm::vec3(0.0f, 0.0f, panelHalfThickness * 0.5f);
-        spot.exitPosition = position - glm::vec3(0.0f, 0.0f, 1.25f);
-        // The door is on the -Z face, and yaw 0 faces -Z, so this is looking out of it. It used to
-        // be 180 degrees, which turned the player round to face the back of the locker.
-        spot.insideYaw = 0.0f;
-        // The door fills the clear opening between the sides, so closing it does not drive the panel
-        // into them.
-        //
-        // The open angle is positive, which swings the panel out of the locker. A negative one
-        // swings it the other way, which for a door in a frame is a choice and for a cabinet is the
-        // panel folding back through its own side: that is what left the locker looking broken
-        // after it had been used once.
-        spot.doorIndex = AddDoor(scene, meshes, physics, interactions,
-                                 position + glm::vec3(-lockerInnerHalfWidth, 0.0f, -lockerSize.z * 0.5f),
-                                 0.0f, glm::radians(105.0f),
-                                 {lockerInnerHalfWidth * 2.0f, lockerSize.y, 0.06f}, "locker_door", false);
-        spot.doorEntity = m_doors[static_cast<size_t>(spot.doorIndex)].entity;
-        // Standing open to begin with. A row of shut lockers is a row of cupboards: nothing about
-        // them says they are somewhere to get into, and the first thing a player does with one is
-        // open it. Open, the space inside is visible from across the room, which is the whole point
-        // of a hiding place -- you have to be able to see it to decide to run for it.
-        SetDoorOpen(spot.doorIndex, true, interactions);
-
-        const auto index = static_cast<int>(m_hidingSpots.size());
-        m_hidingSpots.push_back(spot);
-
-        Interactable interactable;
-        interactable.entity = spot.entity;
-        interactable.kind = InteractionKind::HidingSpot;
-        interactable.verb = "Hide in";
-        interactable.name = "Locker";
-        interactable.payload = index;
-        interactable.range = 2.4f;
-        interactable.focusOffset = {0.0f, -0.4f, -0.45f};
-        interactions.Register(interactable);
+        AddLocker(scene, meshes, physics, interactions, position, 0.0f);
     }
 
     // --- Ammunition crates, at either end of the equipment bench.
@@ -260,32 +319,11 @@ void WorldObjects::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physic
         const glm::vec3 cratePositions[] = {{kEquipmentBayX - 1.5f, 0.0f, kBayZ + 0.3f},
                                             {kEquipmentBayX + 1.5f, 0.0f, kBayZ + 0.3f}, LabSpec::kAmmo};
 
+        m_crateMesh = crateMesh;
+        m_lidMesh = lidMesh;
         for (const glm::vec3& position : cratePositions)
         {
-            AmmoCrate crate;
-            const float bodyHeight = crateSize.y - lidThickness;
-            const glm::vec3 bodyCentre = position + glm::vec3(0.0f, bodyHeight * 0.5f, 0.0f);
-            crate.entity = scene.CreateMeshEntity("ammo_crate", MakeTransform(bodyCentre, 0.0f),
-                                                  crateMesh, kAmmoCrateMaterial);
-            crate.lidRest = position + glm::vec3(0.0f, bodyHeight + lidThickness * 0.5f, 0.0f);
-            crate.lidEntity = scene.CreateMeshEntity(
-                "ammo_crate_lid", MakeTransform(crate.lidRest, 0.0f), lidMesh, kAmmoLidMaterial);
-            physics.CreateBox({crateSize.x * 0.5f, crateSize.y * 0.5f, crateSize.z * 0.5f},
-                              MakeTransform(position + glm::vec3(0.0f, crateSize.y * 0.5f, 0.0f), 0.0f),
-                              BodyMotion::Static);
-
-            const auto index = static_cast<int>(m_ammoCrates.size());
-            m_ammoCrates.push_back(crate);
-
-            Interactable interactable;
-            interactable.entity = crate.entity;
-            interactable.kind = InteractionKind::AmmoCrate;
-            interactable.verb = "Take ammunition from";
-            interactable.name = "Ammunition Crate";
-            interactable.payload = index;
-            interactable.range = 2.2f;
-            interactable.focusOffset = {0.0f, crateSize.y * 0.4f, 0.0f};
-            interactions.Register(interactable);
+            AddAmmoCrate(scene, physics, interactions, position, 0.0f);
         }
     }
 
