@@ -188,7 +188,11 @@ private:
         std::vector<Entity> marks;
         std::vector<glm::vec3> markOffsets;
         std::vector<glm::quat> markTurns;
+        std::vector<size_t> markPart; // which piece each is on
         float sinceMark = 0.0f;
+        // Pieces torn off: only the far ends of it -- hands, feet, the ends of limbs -- and only a few.
+        std::vector<bool> gone;
+        int torn = 0;
     };
     std::vector<Corpse> m_corpses;
     int m_nextCorpseId = 1;

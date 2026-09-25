@@ -6089,6 +6089,7 @@ void PredationGame::LeaveCorpse(const PlayerBody& body, uint8_t player)
         corpse.sizes.push_back(where != nullptr ? where->scale : glm::vec3(1.0f));
         corpse.looks.push_back(renderer != nullptr ? renderer->material : Material{});
         corpse.flesh.push_back(1.0f);
+        corpse.gone.push_back(false);
     }
     if (!corpse.parts.empty())
     {

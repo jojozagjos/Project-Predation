@@ -1004,6 +1004,17 @@ void CreatureBrain::Perceive(const CreatureSenses& senses, float dt)
             track.lastVelocity = player.velocity;
             track.lastForward = player.forward;
             track.lastSeen = senses.time;
+            // The way they go, as it watches them go: a step each time they have moved on a stride, or stood
+            // a while, so where they stopped is in it as well as where they walked.
+            if (track.trail.empty() || Horizontal(track.trail.back().at, player.feet) > 0.9f ||
+                senses.time - track.trail.back().time > 1.5f)
+            {
+                track.trail.push_back({player.feet, player.height, senses.time});
+                while (track.trail.size() > 48)
+                {
+                    track.trail.pop_front();
+                }
+            }
             Warm(player.feet, dt);
             m_state.arousal = std::min(m_state.arousal + 0.2f * dt * 10.0f, 1.0f);
         }
@@ -2077,6 +2088,11 @@ void CreatureBrain::Switch(Behavior behavior, int target, const std::string& rea
         m_stalkCheckAt = time;
         m_peeking = false;
         m_nextPeekAt = time + 2.0f;
+    }
+    if (behavior == Behavior::Observe && previous != Behavior::Observe)
+    {
+        m_retracing = false;
+        m_retraceDecided = false;
     }
     if (behavior == Behavior::Attack)
     {
@@ -4369,8 +4385,74 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
                 m_intent.speed = m_traits.walkSpeed * 1.3f;
             }
         }
-        else if (distance > 10.0f)
+        else if (distance > 10.0f || m_retracing)
         {
+            // Gone on ahead: a curious one, now and then, does not simply follow -- it walks where they
+            // walked, step for step, getting down where they got down and standing where they stood, at the
+            // pace they went. Decided once each time it starts watching somebody.
+            if (!m_retraceDecided)
+            {
+                m_retraceDecided = true;
+                m_retracing = m_traits.curiosity > 0.45f && track->trail.size() >= 6 && m_random.Unit() < 0.35f + 0.4f * m_traits.curiosity;
+                if (m_retracing)
+                {
+                    // From the step nearest it, onwards.
+                    m_retraceStep = 0;
+                    float nearest = 1.0e9f;
+                    for (size_t k = 0; k < track->trail.size(); ++k)
+                    {
+                        const float gap = Horizontal(track->trail[k].at, senses.position);
+                        if (gap < nearest)
+                        {
+                            nearest = gap;
+                            m_retraceStep = k;
+                        }
+                    }
+                    m_retraceWaitUntil = -1.0f;
+                    Log(now, "walks where " + track->name + " walked, step for step");
+                }
+            }
+            if (m_retracing && m_retraceStep < track->trail.size() && distance > 4.0f)
+            {
+                const Track::Step& step = track->trail[m_retraceStep];
+                m_goal = "following in " + track->name + "'s footsteps";
+                m_intent.face = false;
+                m_intent.crouch = step.height < 1.35f ? 1.0f : 0.0f;
+                if (now < m_retraceWaitUntil)
+                {
+                    // Stood where they stood, as long as they stood there.
+                    m_goal = "standing where " + track->name + " stood";
+                    watch(*player);
+                    break;
+                }
+                if (Horizontal(senses.position, step.at) < 0.6f)
+                {
+                    // Their pause at this step, if they paused: how long till their next step.
+                    if (m_retraceStep + 1 < track->trail.size())
+                    {
+                        const Track::Step& next = track->trail[m_retraceStep + 1];
+                        if (Horizontal(next.at, step.at) < 0.5f)
+                        {
+                            m_retraceWaitUntil = now + std::min(next.time - step.time, 6.0f);
+                        }
+                    }
+                    ++m_retraceStep;
+                    break;
+                }
+                m_intent.move = true;
+                m_intent.destination = step.at;
+                // As fast as they went between these two steps, as near as it can.
+                float pace = m_traits.walkSpeed;
+                if (m_retraceStep > 0)
+                {
+                    const Track::Step& before = track->trail[m_retraceStep - 1];
+                    const float took = std::max(step.time - before.time, 0.2f);
+                    pace = std::clamp(Horizontal(step.at, before.at) / took, m_traits.walkSpeed * 0.5f, m_traits.runSpeed * 0.7f);
+                }
+                m_intent.speed = pace;
+                break;
+            }
+            m_retracing = false;
             m_goal = "following " + track->name + ", watching";
             m_intent.move = true;
             m_intent.destination = player->feet;
@@ -4391,7 +4473,18 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
                     m_intent.crouch = 1.0f;
                     m_goal = "getting down as " + track->name + " does";
                 }
-                const glm::vec3 pace = Flat(player->velocity);
+                glm::vec3 pace = Flat(player->velocity) * glm::length(glm::vec2(player->velocity.x, player->velocity.z));
+                // Looked at, it is their reflection: across it goes the same way they do, and towards or away
+                // it goes the other way -- they step towards it and it steps towards them.
+                const bool reflection = track->watching;
+                if (reflection)
+                {
+                    const glm::vec3 between = Flat(senses.position - player->feet);
+                    if (glm::length(between) > 1e-3f)
+                    {
+                        pace -= 2.0f * between * glm::dot(pace, between);
+                    }
+                }
                 const float speed = glm::length(pace);
                 glm::vec3 step;
                 if (speed > 0.6f && senses.nav != nullptr && senses.nav->NearestPoint(senses.position + pace * 0.8f, 1.5f, step))
@@ -4399,7 +4492,7 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
                     m_intent.move = true;
                     m_intent.destination = step;
                     m_intent.speed = std::min(speed, m_traits.walkSpeed * 1.4f);
-                    m_goal = "moving as " + track->name + " moves";
+                    m_goal = reflection ? "moving as " + track->name + "'s reflection would" : "moving as " + track->name + " moves";
                 }
                 else if (speed < 0.2f)
                 {

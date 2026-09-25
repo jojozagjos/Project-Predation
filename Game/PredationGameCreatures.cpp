@@ -1180,7 +1180,7 @@ MeshData BiteWound(uint32_t variant)
 
 void PredationGame::MarkBite(Corpse& corpse, size_t part, const glm::vec3& near)
 {
-    const Transform* where = part < corpse.parts.size() ? m_scene.GetTransform(corpse.parts[part]) : nullptr;
+    const Transform* where = part < corpse.parts.size() && !corpse.gone[part] ? m_scene.GetTransform(corpse.parts[part]) : nullptr;
     const MeshRenderer* renderer = part < corpse.parts.size() ? m_scene.GetMeshRenderer(corpse.parts[part]) : nullptr;
     const Mesh* mesh = renderer != nullptr ? m_app->GetMeshes().Get(renderer->mesh) : nullptr;
     if (where == nullptr || mesh == nullptr || !mesh->bounds.IsValid())
@@ -1251,6 +1251,7 @@ void PredationGame::MarkBite(Corpse& corpse, size_t part, const glm::vec3& near)
     corpse.marks.push_back(entity);
     corpse.markOffsets.push_back(mark.position - corpse.at);
     corpse.markTurns.push_back(mark.rotation);
+    corpse.markPart.push_back(part);
 }
 
 PredationGame::Corpse* PredationGame::CorpseById(int id)
@@ -1394,6 +1395,54 @@ void PredationGame::UpdateCorpses(float dt)
             {
                 corpse->sinceMark = 0.0f;
                 MarkBite(*corpse, bitten, action.target);
+            }
+            // Chewed through at the far end of a limb: that piece comes away, and the stump is a wound. Never
+            // more than three, and never the middle of it: the body stays a body.
+            if (corpse->flesh[bitten] <= 0.0f && !corpse->gone[bitten] && corpse->torn < 3)
+            {
+                const float reach = glm::length(glm::vec2(corpse->offsets[bitten].x, corpse->offsets[bitten].z));
+                size_t further = 0;
+                for (const glm::vec3& offset : corpse->offsets)
+                {
+                    further += glm::length(glm::vec2(offset.x, offset.z)) > reach ? 1 : 0;
+                }
+                if (static_cast<float>(further) < static_cast<float>(corpse->offsets.size()) * 0.35f)
+                {
+                    corpse->gone[bitten] = true;
+                    ++corpse->torn;
+                    const Transform* lost = m_scene.GetTransform(corpse->parts[bitten]);
+                    const glm::vec3 where = lost != nullptr ? lost->position : action.target;
+                    size_t stump = corpse->parts.size();
+                    float closest = 1.0e9f;
+                    for (size_t k = 0; k < corpse->parts.size(); ++k)
+                    {
+                        const Transform* other = m_scene.GetTransform(corpse->parts[k]);
+                        if (k != bitten && !corpse->gone[k] && other != nullptr && glm::distance(other->position, where) < closest)
+                        {
+                            closest = glm::distance(other->position, where);
+                            stump = k;
+                        }
+                    }
+                    if (Transform* piece = m_scene.GetTransform(corpse->parts[bitten]))
+                    {
+                        piece->scale = glm::vec3(0.0f);
+                    }
+                    // And whatever wounds were on it went with it.
+                    for (size_t m = 0; m < corpse->marks.size() && m < corpse->markPart.size(); ++m)
+                    {
+                        if (corpse->markPart[m] == bitten)
+                        {
+                            if (Transform* mark = m_scene.GetTransform(corpse->marks[m]))
+                            {
+                                mark->scale = glm::vec3(0.0f);
+                            }
+                        }
+                    }
+                    if (stump < corpse->parts.size())
+                    {
+                        MarkBite(*corpse, stump, where);
+                    }
+                }
             }
         }
         float left = 0.0f;

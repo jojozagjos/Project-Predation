@@ -404,6 +404,15 @@ public:
         float stalked = 0.0f;
         // Seconds it has spent just watching them. Curiosity wears off: this is what it wears off against.
         float observed = 0.0f;
+        // Where it has watched them go, a point every half second or so: where, how tall they were there,
+        // and when. What a curious one walks again after them, step for step.
+        struct Step
+        {
+            glm::vec3 at{0.0f};
+            float height = 1.8f;
+            float time = 0.0f;
+        };
+        std::deque<Step> trail;
         // Whether it means them harm, which for most is always and for the rest depends: see
         // UpdateHostility. What hunting, stalking and attacking anybody at all requires.
         bool hostile = false;
@@ -904,6 +913,12 @@ private:
     int m_searchRound = 0;
     // Copying somebody it is curious about: the last of their sounds it made back.
     float m_lastEchoAt = -100.0f;
+    // Walking the way somebody it watched walked: whose trail, how far along it, since when it has stood at
+    // the step it is on (to stop where they stopped), and whether it has decided to at all this time.
+    bool m_retracing = false;
+    bool m_retraceDecided = false;
+    size_t m_retraceStep = 0;
+    float m_retraceWaitUntil = -1.0f;
     bool m_stareWasExposed = false;
     int m_avoidPushed = 0;
     float m_avoidLastAt = -1.0e9f;
