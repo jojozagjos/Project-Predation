@@ -577,6 +577,7 @@ void PredationGame::UpdateCreatures(float dt)
         me.hidingPlace = m_hidingSpot;
         me.light = LightAt(local.position, m_torchOn || m_flareBurn > 0.0f);
         me.forward = m_player.View().Forward();
+        me.torchOn = m_torchOn || m_flareBurn > 0.0f;
         players.push_back(me);
     }
     if (m_sessionMode == SessionMode::Host)
@@ -595,6 +596,7 @@ void PredationGame::UpdateCreatures(float dt)
             other.height = BodyHeight(remote.stance);
             other.alive = remote.alive;
             other.light = LightAt(remote.position, remote.torchOn || m_flareHeldBy.count(remote.id) != 0);
+            other.torchOn = remote.torchOn || m_flareHeldBy.count(remote.id) != 0;
             other.forward = glm::vec3(std::sin(remote.yaw) * std::cos(remote.pitch), std::sin(remote.pitch),
                                       -std::cos(remote.yaw) * std::cos(remote.pitch));
             for (size_t i = 0; i < m_world.HidingSpots().size(); ++i)

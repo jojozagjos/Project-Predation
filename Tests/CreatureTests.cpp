@@ -1852,3 +1852,46 @@ TEST_CASE("Playing dead, it waits for everybody to go before it gets up, and the
     CHECK(harness.creature->Brain().Current() != Behavior::PlayDead);
     CHECK(slinking);
 }
+
+TEST_CASE("Caught in a torch beam, a nervous one gets out of it; lit and shot twice over, any learns to fear it",
+          "[creature][light]")
+{
+    const uint32_t seed = SeedWhere([](const CreatureTraits& t) { return t.fear > 0.7f && t.aggression > 0.3f; });
+    REQUIRE(seed != 0);
+    CreatureHarness harness(seed);
+    glm::vec3 at;
+    glm::vec3 player;
+    REQUIRE(OpenView(harness, 8.0f, at, player));
+    const auto beam = [&](const Creature& c)
+    {
+        SensedPlayer shining = Watching(1, player, c.Position());
+        shining.torchOn = true;
+        return std::vector<SensedPlayer>{shining};
+    };
+    bool lit = false;
+    bool gotOut = false;
+    harness.RunLive(4.0f, beam,
+                    [&](const Creature& creature)
+                    {
+                        lit = lit || creature.Brain().LitBy() == 1;
+                        gotOut = gotOut || creature.Brain().Current() == Behavior::Retreat;
+                    });
+    INFO("its mind:" << MindOf(*harness.creature));
+    CHECK(lit);
+    CHECK(gotOut);
+
+    // Lit, then shot; twice: it has learnt.
+    const uint32_t bold = SeedWhere([](const CreatureTraits& t) { return t.fear < 0.3f && t.aggression > 0.6f; });
+    REQUIRE(bold != 0);
+    CreatureHarness second(bold);
+    REQUIRE(OpenView(second, 8.0f, at, player));
+    for (int round = 0; round < 2; ++round)
+    {
+        second.RunLive(1.0f, beam, [](const Creature&) {});
+        second.creature->TakeDamage(second.creature->MaxHealth() * 0.02f, 1, player + glm::vec3(0.0f, 1.5f, 0.0f), second.time);
+        second.RunLive(0.2f, beam, [](const Creature&) {});
+        second.Run(1.0f, {Somebody(1, player)}); // the light off a moment, so the next is a fresh one
+    }
+    INFO("second's mind:" << MindOf(*second.creature));
+    CHECK(second.creature->Brain().LightShy());
+}

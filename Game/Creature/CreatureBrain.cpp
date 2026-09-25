@@ -360,6 +360,16 @@ void CreatureBrain::OnDamaged(float amount, int byPlayer, const glm::vec3& from,
     }
     Log(time, Format("hurt for %.0f", amount) +
                   (FindTrack(byPlayer) != nullptr ? " by " + FindTrack(byPlayer)->name : ""));
+    // Lit up and then shot, twice over: the light is what comes before the rounds.
+    if (time - m_lastLitAt < 2.0f && byPlayer >= 0 && !m_litCounted)
+    {
+        m_litCounted = true;
+        if (++m_litThenShot >= 2 && !m_lightShy)
+        {
+            m_lightShy = true;
+            Log(time, "has learnt that the light comes before the shooting");
+        }
+    }
     // Shot in one encounter after another, it learns. Not machine learning: a thing it now knows, which
     // opens other ways of going about people -- round the side, from hiding, one blow and away.
     if (byPlayer >= 0)
@@ -1076,6 +1086,47 @@ void CreatureBrain::Perceive(const CreatureSenses& senses, float dt)
         m_heard.pop_front();
     }
 
+    // --- Being lit ---------------------------------------------------------------------------
+    //
+    // Somebody's torch turned full on it, near enough to matter, with nothing in the way: a thing that
+    // lives in the dark feels that. What it does about it is its own affair (see Decide).
+    {
+        const int was = m_litBy;
+        m_litBy = -1;
+        const glm::vec3 middle = senses.onCeiling ? senses.eye : senses.position + glm::vec3(0.0f, m_traits.bodyMiddle, 0.0f);
+        for (const SensedPlayer& player : senses.players)
+        {
+            if (!player.alive || player.hidden || !player.torchOn || glm::length(player.forward) < 1e-4f)
+            {
+                continue;
+            }
+            const glm::vec3 eye = player.feet + glm::vec3(0.0f, player.height * 0.9f, 0.0f);
+            const glm::vec3 toMe = middle - eye;
+            const float distance = glm::length(toMe);
+            if (distance > 14.0f || distance < 1e-3f ||
+                glm::dot(glm::normalize(player.forward), toMe / distance) < std::cos(glm::radians(22.0f)) ||
+                (senses.clearLine && !senses.clearLine(eye, middle)))
+            {
+                continue;
+            }
+            m_litBy = player.id;
+            m_lastLitAt = senses.time;
+            if (was != player.id)
+            {
+                m_litAt = senses.time;
+                m_litCounted = false;
+                Log(senses.time, "caught in " + player.name + "'s light");
+            }
+            // Its eyes, dazzled; its nerves, if it is the nervous sort or has learnt to be.
+            m_state.arousal = std::min(m_state.arousal + 0.4f * dt, 1.0f);
+            if (m_traits.fear > 0.6f || m_lightShy)
+            {
+                m_state.fear = std::min(m_state.fear + 0.25f * dt, 1.0f);
+            }
+            break;
+        }
+    }
+
     // --- The others of its kind --------------------------------------------------------------
     //
     // One it can see running at somebody, or crouched watching somebody, is telling it where that
@@ -1392,6 +1443,9 @@ void CreatureBrain::Decide(const CreatureSenses& senses)
                  {"nearest of them", nearer},
                  {"another drives them", driven ? 0.55f : 1.0f},
                  {"learnt to be careful", m_wary ? 0.7f : 1.0f},
+                 // Somebody shining a light in its face: the bold go for the light; the ones that have
+                 // learnt what follows it, do not.
+                 {"into the light", m_litBy == track.id ? (m_lightShy ? 0.5f : (m_traits.aggression > 0.7f ? 1.3f : 1.0f)) : 1.0f},
                  // Not while it is creeping up on them from behind: it goes on creeping until it is close
                  // enough that running is quicker than being heard.
                  {"creeping instead", m_creeping && m_behavior == Behavior::Stalk && m_target == track.id && distance > 4.5f ? 0.35f : 1.0f}});
@@ -1582,6 +1636,14 @@ void CreatureBrain::Decide(const CreatureSenses& senses)
     if (now < m_withdrawUntil)
     {
         add(Behavior::Retreat, -1, "Withdraw", {{"giving them room", 0.5f}});
+    }
+
+    // Out of the light: the nervous, and anything that has learnt to fear lights, get out of the beam.
+    if (m_litBy >= 0 && (m_traits.fear > 0.6f || m_lightShy || (m_traits.stealth > 0.7f && m_behavior == Behavior::Stalk)))
+    {
+        add(Behavior::Retreat, -1, "Out of the light",
+            {{"lit up", 0.5f + 0.3f * m_traits.fear + (m_lightShy ? 0.25f : 0.0f)},
+             {"not cornered", m_cornered > 2.5f ? 0.3f : 1.0f}});
     }
 
     // Dropping as if dead, instead of running: the other answer an animal has to something it cannot
@@ -3113,7 +3175,7 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
             }
             else
             {
-                m_stalkExposed = SeenFrom(senses, senses.position);
+                m_stalkExposed = SeenFrom(senses, senses.position) || m_litBy >= 0;
             }
             const float fromThem = m_haveStalkPoint ? Horizontal(m_stalkPoint, them) : 0.0f;
             if (!m_haveStalkPoint || fromThem < 5.0f || fromThem > 22.0f || SeenFrom(senses, m_stalkPoint))
@@ -3373,7 +3435,7 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
             // Copying them. A curious one watching something it does not understand does what it does:
             // gets down when they get down, steps the way they step, stands still when they stand still
             // -- with its head on one side -- and makes back the noises they make.
-            m_goal = "watching " + track->name;
+            m_goal = m_litBy == track->id ? "staring into " + track->name + "'s light" : "watching " + track->name;
             const bool copies = m_traits.curiosity > 0.45f;
             if (copies)
             {

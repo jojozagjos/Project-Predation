@@ -40,6 +40,8 @@ struct SensedPlayer
     // Which way they are looking. It is how the creature knows whether it is being watched, which is
     // the difference between an opening and a mistake.
     glm::vec3 forward{0.0f, 0.0f, -1.0f};
+    // Carrying a light -- a torch that is on, or a burning flare -- which throws a beam the way they look.
+    bool torchOn = false;
     // Which hiding place they are in, -1 when none. The brain is not allowed to look at this except
     // at the moment it opens that very place: nobody can see through a locker door.
     int hidingPlace = -1;
@@ -287,6 +289,9 @@ public:
     bool Withdrawing(float time) const { return time < m_withdrawUntil; }
     // Whether being shot has taught it to be careful of people.
     bool Wary() const { return m_wary; }
+    // Whose light it is standing in, or -1; and whether it has learnt to fear lights.
+    int LitBy() const { return m_litBy; }
+    bool LightShy() const { return m_lightShy; }
     // The way of going about somebody it is using, or used within the last few seconds: what gets the
     // credit, or the blame, for what happens now.
     Behavior RecentTactic(float time) const;
@@ -693,6 +698,14 @@ private:
     float m_downClearSince = -1.0f;
     // Up from playing dead unseen: it goes low and quiet, not at a run.
     bool m_slinking = false;
+    // Caught in somebody's light: whose, since when, and what it has learnt about it -- lit up and shot
+    // straight after, twice over, and it knows the light comes before the rounds.
+    int m_litBy = -1;
+    float m_litAt = -100.0f;
+    int m_litThenShot = 0;
+    float m_lastLitAt = -100.0f;
+    bool m_litCounted = false;
+    bool m_lightShy = false;
     // Until when it sees through what it has started rather than weighing it again.
     float m_committedUntil = 0.0f;
 
