@@ -1806,6 +1806,7 @@ void CreatureBrain::Switch(Behavior behavior, int target, const std::string& rea
     if (behavior == Behavior::Retreat)
     {
         m_haveFleePoint = false;
+        m_backstage = Backstage::None;
         m_retreatUntil = std::max(time + 6.0f + 6.0f * m_traits.fear, m_withdrawUntil);
         // Going, it may take one swing at whoever is in reach on the way: the bold, and the ones that
         // have learnt that running with nothing to show for it only brings them back to be shot again.
@@ -3151,6 +3152,69 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
                 break;
             }
         }
+        // Withdrawing at the director's asking, and whole: it goes backstage -- down a crawlspace if its
+        // body fits one, up on the ceiling if it climbs -- and moves about there, out of reach and out of
+        // sight, where it can still be heard. The wounded go to the nest instead, as always.
+        if (!m_haveFleePoint && now < m_withdrawUntil && senses.healthFraction > 0.5f && senses.nav != nullptr)
+        {
+            m_backstage = Backstage::None;
+            if (senses.crawl != 0)
+            {
+                const glm::vec3* mouth = nullptr;
+                for (const glm::vec3& candidate : senses.nav->CrawlMouths())
+                {
+                    if (Horizontal(candidate, senses.position) < 40.0f &&
+                        (mouth == nullptr || Horizontal(candidate, senses.position) < Horizontal(*mouth, senses.position)))
+                    {
+                        mouth = &candidate;
+                    }
+                }
+                for (int probe = 0; mouth != nullptr && probe < 64 && m_backstage == Backstage::None; ++probe)
+                {
+                    const float angle = static_cast<float>(probe % 8) * (glm::two_pi<float>() / 8.0f);
+                    const float reach = 6.0f - static_cast<float>(probe / 8) * 0.6f;
+                    glm::vec3 inside;
+                    if (senses.nav->NearestPoint(*mouth + glm::vec3(std::cos(angle), 0.0f, std::sin(angle)) * reach, 0.8f, inside,
+                                                 NavMesh::kCrawl) &&
+                        senses.nav->InCrawlspace(inside))
+                    {
+                        m_fleePoint = inside;
+                        m_haveFleePoint = true;
+                        m_backstage = Backstage::Crawlspace;
+                        Log(now, "goes down a crawlspace, out of the way");
+                    }
+                }
+            }
+            if (m_backstage == Backstage::None && m_traits.climbs && PickFleePoint(senses, m_fleePoint))
+            {
+                m_haveFleePoint = true;
+                m_backstage = Backstage::Ceiling;
+                Log(now, "goes up out of the way, onto the ceiling");
+            }
+        }
+        if (now >= m_withdrawUntil)
+        {
+            m_backstage = Backstage::None;
+        }
+        if (m_backstage == Backstage::Ceiling)
+        {
+            m_intent.climb = true;
+        }
+        // Backstage and arrived: it does not sit still up there. Now and then it moves on a little way,
+        // and is heard doing it.
+        if (m_backstage != Backstage::None && m_haveFleePoint && Horizontal(senses.position, m_fleePoint) <= 1.0f &&
+            now >= m_backstageMoveAt && senses.nav != nullptr)
+        {
+            m_backstageMoveAt = now + m_random.Range(6.0f, 14.0f);
+            uint32_t seed = static_cast<uint32_t>(m_random.Next());
+            glm::vec3 next;
+            const uint16_t allowed = m_backstage == Backstage::Crawlspace ? NavMesh::kCrawl : 0;
+            if (senses.nav->RandomPointNear(senses.position, 5.0f, seed, next, allowed) &&
+                (m_backstage != Backstage::Crawlspace || senses.nav->InCrawlspace(next)))
+            {
+                m_fleePoint = next;
+            }
+        }
         if (!m_haveFleePoint)
         {
             // Back to the nest, when it has one, to lick its wounds.
@@ -3170,16 +3234,19 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
         }
         if (m_haveFleePoint && Horizontal(senses.position, m_fleePoint) > 1.0f)
         {
-            m_goal = m_slinking ? "slinking away" : "getting away";
+            m_goal = m_backstage != Backstage::None ? "moving about out of the way" : m_slinking ? "slinking away" : "getting away";
             m_intent.move = true;
             m_intent.destination = m_fleePoint;
-            m_intent.speed = m_slinking ? m_traits.walkSpeed * 1.1f : m_traits.runSpeed * 1.1f;
+            m_intent.speed = m_slinking || now < m_withdrawUntil ? m_traits.walkSpeed * 1.1f : m_traits.runSpeed * 1.1f;
             m_intent.crouch = m_slinking ? 0.8f : 0.0f;
         }
         else
         {
             const bool atNest = senses.hasHive && Horizontal(senses.position, senses.hive) < 3.5f;
-            m_goal = atNest ? "at the nest, healing" : "hiding";
+            m_goal = atNest ? "at the nest, healing"
+                     : m_backstage == Backstage::Crawlspace ? "in the crawlspace, out of the way"
+                     : m_backstage == Backstage::Ceiling    ? "up on the ceiling, out of the way"
+                                                            : "hiding";
             lookAround(1.0e9f);
             // Only its nest mends it. Anywhere else a wound stays a wound, which is what makes hurting
             // one worth something -- and what makes the nest worth finding.

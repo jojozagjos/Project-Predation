@@ -332,10 +332,13 @@ void PredationGame::UpdateCreatureSounds(float dt)
         const float stepGain = std::clamp(0.2f + mass / 500.0f, 0.2f, 0.8f) * creep * pace * (sneaking ? 0.15f : 1.0f);
         for (size_t i = 0; i < footfalls.size() && i < 2; ++i)
         {
-            // Up a wall or across a ceiling, what is heard is claws on it.
+            // Up a wall, across a ceiling or down a crawlspace, what is heard is claws scraping -- and heard
+            // it is, through the wall or the roof: that is how anybody knows it is up there at all.
             const bool clinging = creature.Clinging() != Creature::Cling::Floor;
-            PlayNamed(clinging ? "Creature/climb" : (heavy ? "Creature/step_heavy" : "Creature/step_light"), footfalls[i],
-                      clinging ? stepGain * 0.8f : stepGain, pitch * (0.93f + 0.14f * Random01()));
+            const bool inCrawlspace = m_nav.Valid() && m_nav.InCrawlspace(creature.Position());
+            const bool scraping = clinging || inCrawlspace;
+            PlayNamed(scraping ? "Creature/climb" : (heavy ? "Creature/step_heavy" : "Creature/step_light"), footfalls[i],
+                      scraping ? std::max(stepGain * 0.8f, sneaking ? 0.08f : 0.3f) : stepGain, pitch * (0.93f + 0.14f * Random01()));
         }
 
         // What its body has just started doing.

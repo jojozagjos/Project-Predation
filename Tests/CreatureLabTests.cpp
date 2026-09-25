@@ -695,3 +695,52 @@ TEST_CASE("Something small enough that loses somebody at a crawlspace goes down 
     INFO("seed " << seed << ", closest " << closest << MindOf(creature));
     CHECK(closest < 3.0f);
 }
+
+TEST_CASE("Asked to give the players room, it goes backstage: down a crawlspace, or up on the ceiling",
+          "[creature][lab][director]")
+{
+    Lab lab;
+    const auto withdrawn = [&](bool fits, bool climbs, bool& inCrawlspace, bool& onCeiling, std::string& mind)
+    {
+        uint32_t seed = 0;
+        for (uint32_t candidate = 1; candidate < 800 && seed == 0; ++candidate)
+        {
+            const CreatureCapabilities caps = CreatureCapabilities::From(CreatureAnatomy::FromSeed(candidate));
+            if (caps.fitsVents == fits && caps.climbs == climbs)
+            {
+                seed = candidate;
+            }
+        }
+        REQUIRE(seed != 0);
+        Creature creature(lab.scene, lab.meshes, lab.physics, &lab.nav, Hunter(seed), lab.At(-4.0f, 2.0f));
+        constexpr float dt = 1.0f / 60.0f;
+        float time = 0.0f;
+        for (int tick = 0; tick < 60 * 30; ++tick)
+        {
+            time += dt;
+            if (tick == 30)
+            {
+                REQUIRE(creature.Brain().AskToWithdraw(60.0f, time));
+            }
+            CreatureSenses senses;
+            senses.mayBuildNest = false;
+            creature.Update(senses, time, dt);
+            creature.UpdateVisual(dt);
+            inCrawlspace = inCrawlspace || lab.nav.InCrawlspace(creature.Position());
+            onCeiling = onCeiling || creature.Clinging() == Creature::Cling::Ceiling;
+        }
+        mind = MindOf(creature);
+    };
+    bool inCrawlspace = false;
+    bool onCeiling = false;
+    std::string mind;
+    withdrawn(true, false, inCrawlspace, onCeiling, mind);
+    INFO("small one:" << mind);
+    CHECK(inCrawlspace);
+
+    inCrawlspace = false;
+    onCeiling = false;
+    withdrawn(false, true, inCrawlspace, onCeiling, mind);
+    INFO("climber:" << mind);
+    CHECK(onCeiling);
+}

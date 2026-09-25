@@ -705,6 +705,16 @@ private:
     float m_downClearSince = -1.0f;
     // Up from playing dead unseen: it goes low and quiet, not at a run.
     bool m_slinking = false;
+    // Giving the players room somewhere they cannot go or do not look: down a crawlspace, or up on the
+    // ceiling, moving about there where it can be heard and not seen.
+    enum class Backstage : uint8_t
+    {
+        None,
+        Crawlspace,
+        Ceiling
+    };
+    Backstage m_backstage = Backstage::None;
+    float m_backstageMoveAt = 0.0f;
     // Caught in somebody's light: whose, since when, and what it has learnt about it -- lit up and shot
     // straight after, twice over, and it knows the light comes before the rounds.
     // Feeding: which body, since when, and when it will want to again.
