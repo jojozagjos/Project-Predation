@@ -43,6 +43,8 @@ public:
     int BoneOf(BodyHandle body) const;
     glm::vec3 Centre() const;
     void Push(PhysicsWorld& physics, BodyHandle body, const glm::vec3& impulse);
+    // Adds to how fast the part carrying `bone` is moving: a creature lying there pulling itself along.
+    void Pull(PhysicsWorld& physics, int bone, const glm::vec3& velocity);
 
 private:
     struct Part

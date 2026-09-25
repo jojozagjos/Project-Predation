@@ -215,6 +215,11 @@ private:
     float m_maxHealth = 160.0f;
     float m_windup = 0.0f;
     bool m_down = false;
+    // Lying there and pulling itself along, in jerks, towards here: playing dead, somewhere nobody is
+    // looking. Pulled on the ragdoll, host and client alike -- the client towards where the host says it is.
+    bool m_crawling = false;
+    glm::vec3 m_crawlTo{0.0f};
+    float m_crawlClock = 0.0f;
     float m_crouch = 0.0f;
     float m_crouchTarget = 0.0f;
     float m_shownTime = 0.0f;

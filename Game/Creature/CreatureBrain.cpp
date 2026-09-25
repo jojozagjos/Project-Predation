@@ -1935,7 +1935,7 @@ void CreatureBrain::Decide(const CreatureSenses& senses)
             else if ((option.behavior == Behavior::Hunt || option.behavior == Behavior::Attack) && option.target == m_shotBy &&
                      m_traits.temperament != Temperament::Timid)
             {
-                change = 1.2f + 0.6f * m_traits.aggression;
+                change = senses.healthFraction > 0.6f ? 1.2f + 0.6f * m_traits.aggression : 1.0f;
                 why = "goes for whoever shot it";
             }
             else if (option.behavior == Behavior::Retreat)
@@ -2041,6 +2041,12 @@ void CreatureBrain::Switch(Behavior behavior, int target, const std::string& rea
         // Going, it may take one swing at whoever is in reach on the way: the bold, and the ones that
         // have learnt that running with nothing to show for it only brings them back to be shot again.
         m_hitAndRunReady = previous != Behavior::Attack && (m_wary || m_traits.aggression > 0.55f || m_traits.Has(Quirk::HitAndRun));
+    }
+    if (behavior == Behavior::PlayDead)
+    {
+        m_haveCrawlSpot = false;
+        m_crawlLogged = false;
+        m_downWatched = false;
     }
     if (behavior == Behavior::Stalk)
     {
@@ -2753,24 +2759,35 @@ void CreatureBrain::UpdatePlayingDead(const CreatureSenses& senses)
     // Shot lying there. Somebody making sure: the patient take one small round without a twitch, which
     // is the one that tells them it really is dead. A second, or a bad one, and the act is over: it goes
     // for whoever fired if they are right there and it has the nerve, and otherwise it runs.
+    // Shot lying there: somebody making sure. The cunning take it without a twitch -- one round, two for
+    // the very cunning, three for a born faker -- because that is the round that tells them it really is
+    // dead. Past what it can bear, the act is over: up and at whoever fired, if they are close and it has
+    // the nerve; otherwise away, and for the bold, round and back at them from somewhere else.
     if (m_hurtWhileDown)
     {
         m_hurtWhileDown = false;
-        const bool steady = m_traits.patience + m_traits.stealth > 1.0f;
-        if (m_downHits == 1 && m_downDamage < 0.06f && steady)
+        const float cunning = m_traits.patience + m_traits.stealth;
+        const bool faker = m_traits.Has(Quirk::Faker);
+        const int canTake = (cunning > 0.9f ? 1 : 0) + (cunning > 1.3f ? 1 : 0) + (faker ? 1 : 0);
+        const float canBear = 0.05f + 0.04f * cunning + (faker ? 0.06f : 0.0f);
+        if (m_downHits <= canTake && m_downDamage < canBear)
         {
-            Log(now, "takes the shot without a twitch");
+            Log(now, m_downHits == 1 ? "takes the shot without a twitch" : "takes another without a twitch");
             return;
         }
         m_playDeadCount = 99; // and it will not be believed again
+        m_haveCrawlSpot = false;
         const SensedPlayer* shooter = m_downHurtBy >= 0 ? FindPlayer(senses, m_downHurtBy) : nullptr;
-        if (shooter != nullptr && shooter->alive && Horizontal(senses.position, shooter->feet) < 4.0f && m_traits.aggression > 0.5f)
+        const float gap = shooter != nullptr ? Horizontal(senses.position, shooter->feet) : 1.0e9f;
+        if (shooter != nullptr && shooter->alive && gap < 5.5f && m_traits.aggression > 0.4f)
         {
-            Switch(Behavior::Attack, shooter->id, "shot again; goes for " + shooter->name, now);
+            Switch(Behavior::Attack, shooter->id, "shot again; springs at " + shooter->name, now);
             m_committedUntil = now + 1.5f;
             return;
         }
-        Switch(Behavior::Retreat, -1, "shot again; gives up the act and runs", now);
+        const bool comesBack = shooter != nullptr && (m_traits.aggression > 0.45f || cunning > 1.2f);
+        Switch(Behavior::Retreat, -1, comesBack ? "shot again; bolts, meaning to come back" : "shot again; gives up the act and runs", now);
+        m_comeBackFor = comesBack ? shooter->id : -1;
         return;
     }
 
@@ -2789,6 +2806,78 @@ void CreatureBrain::UpdatePlayingDead(const CreatureSenses& senses)
             return;
         }
         m_goal = "playing dead, somebody standing over it";
+    }
+
+    // Somebody near who was looking at it turned their back on it, and it is quick: up and at them before
+    // they turn round. Only once the act is under way and somebody has been taken in by it.
+    if (watching > 0)
+    {
+        m_downWatched = true;
+    }
+    if (closest != nullptr && closestDistance < 7.0f && m_traits.aggression > 0.5f && watching == 0 && m_downWatched &&
+        now - m_behaviorStarted > 2.0f)
+    {
+        const Track* track = FindTrack(closest->id);
+        if (track != nullptr && track->watchKnown && !track->lookedLooking && track->isolation > 4.0f)
+        {
+            Switch(Behavior::Attack, closest->id, closest->name + " turns their back; it springs", now);
+            m_committedUntil = now + 1.5f;
+            return;
+        }
+    }
+
+    // Seen lying there, but nobody looking at it this moment: the cunning drag themselves a little way
+    // towards somewhere out of sight, and lie still again the moment anybody looks. Whoever looks back
+    // finds the body not quite where it was.
+    // Nobody looking means it has seen each of them looking elsewhere, not that it does not know.
+    bool lookedAway = near > 0;
+    for (const SensedPlayer& player : senses.players)
+    {
+        const Track* track = FindTrack(player.id);
+        if (player.alive && !player.hidden && Horizontal(senses.position, player.feet) < 20.0f &&
+            (track == nullptr || !track->watchKnown || track->lookedLooking))
+        {
+            lookedAway = false;
+        }
+    }
+    const float cunning = m_traits.patience + m_traits.stealth;
+    if (seen && lookedAway && now - m_behaviorStarted > 2.0f && (cunning > 1.0f || m_traits.Has(Quirk::Faker)) &&
+        closestDistance > 3.0f)
+    {
+        if (!m_haveCrawlSpot && closest != nullptr && senses.nav != nullptr)
+        {
+            uint32_t seed = static_cast<uint32_t>(m_random.Next());
+            float best = 0.0f;
+            for (int i = 0; i < 16; ++i)
+            {
+                glm::vec3 spot;
+                if (!senses.nav->RandomPointNear(senses.position, 6.0f, seed, spot))
+                {
+                    continue;
+                }
+                float score = SeenFrom(senses, spot) ? 0.1f : 1.0f;
+                score *= std::clamp(Horizontal(spot, closest->feet) - closestDistance + 1.0f, 0.1f, 4.0f);
+                score *= 0.3f + 0.7f * ShelterOf(senses, spot);
+                if (score > best)
+                {
+                    best = score;
+                    m_crawlSpot = spot;
+                    m_haveCrawlSpot = true;
+                }
+            }
+        }
+        if (m_haveCrawlSpot && Horizontal(senses.position, m_crawlSpot) > 0.6f)
+        {
+            if (!m_crawlLogged)
+            {
+                m_crawlLogged = true;
+                Log(now, "drags itself away while nobody is looking");
+            }
+            m_goal = "playing dead, dragging itself towards cover";
+            m_intent.move = true;
+            m_intent.destination = m_crawlSpot;
+            m_intent.speed = 0.4f;
+        }
     }
 
     // Getting up only when nobody can see it, and has not for a few seconds: it waits for them to go.

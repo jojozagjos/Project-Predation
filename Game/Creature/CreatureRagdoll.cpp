@@ -207,6 +207,16 @@ glm::vec3 CreatureRagdoll::Centre() const
     return glm::vec3(m_world[static_cast<size_t>(m_parts.front().bone)][3]);
 }
 
+void CreatureRagdoll::Pull(PhysicsWorld& physics, int bone, const glm::vec3& velocity)
+{
+    if (bone < 0 || static_cast<size_t>(bone) >= m_partOf.size() || m_partOf[static_cast<size_t>(bone)] < 0)
+    {
+        return;
+    }
+    const BodyHandle body = m_parts[static_cast<size_t>(m_partOf[static_cast<size_t>(bone)])].body;
+    physics.SetLinearVelocity(body, physics.GetLinearVelocity(body) + velocity);
+}
+
 void CreatureRagdoll::Push(PhysicsWorld& physics, BodyHandle body, const glm::vec3& impulse)
 {
     if (Owns(body))

@@ -715,6 +715,12 @@ private:
     float m_downClearSince = -1.0f;
     // Up from playing dead unseen: it goes low and quiet, not at a run.
     bool m_slinking = false;
+    // Lying there, dragging itself towards somewhere out of sight while nobody is looking at it.
+    glm::vec3 m_crawlSpot{0.0f};
+    bool m_haveCrawlSpot = false;
+    bool m_crawlLogged = false;
+    // Whether anybody has stood looking at it lying there: the turned back that follows is the opening.
+    bool m_downWatched = false;
     // Giving the players room somewhere they cannot go or do not look: down a crawlspace, or up on the
     // ceiling, moving about there where it can be heard and not seen.
     enum class Backstage : uint8_t

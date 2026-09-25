@@ -737,6 +737,8 @@ void Creature::SetShownState(const glm::vec3& position, float yaw, float speed, 
     m_speed = speed;
     m_windup = windup;
     m_down = down;
+    m_crawling = down && alive && m_ragdoll.Active() && Horizontal(position, m_ragdoll.Centre()) > 0.5f;
+    m_crawlTo = position;
     m_crouchTarget = crouch;
     if (!alive && Alive())
     {
@@ -825,6 +827,20 @@ void Creature::Update(CreatureSenses senses, float time, float dt)
     const CreatureIntent& intent = m_brain.Intent();
     m_windup = intent.windup;
     m_down = intent.down;
+    // Down and still wanting to go somewhere: it drags itself there, lying as it is.
+    m_crawling = m_down && intent.move;
+    if (m_crawling)
+    {
+        m_crawlTo = intent.destination;
+    }
+    if (m_down && m_ragdoll.Active() && m_nav != nullptr)
+    {
+        glm::vec3 onMesh;
+        if (m_nav->NearestPoint(m_ragdoll.Centre(), 1.5f, onMesh))
+        {
+            m_position = onMesh;
+        }
+    }
     m_crouchTarget = intent.crouch;
     m_look = intent.look;
     m_lookAt = intent.lookAt;
@@ -1004,7 +1020,7 @@ void Creature::Move(const CreatureIntent& asked, const std::vector<glm::vec3>& o
 
     glm::vec3 heading{0.0f};
     float wanted = 0.0f;
-    if (intent.move && m_nav != nullptr)
+    if (intent.move && !m_down && m_nav != nullptr)
     {
         if (m_route.empty() || m_routeAge > 0.6f || Horizontal(m_routeGoal, intent.destination) > 0.8f)
         {
@@ -1320,6 +1336,23 @@ void Creature::UpdateVisual(float dt)
     const size_t count = skin.bones.size();
     std::vector<glm::mat4> skinning(count);
     glm::mat4 placed(1.0f);
+    if (m_ragdoll.Active() && Alive() && m_crawling && m_skin)
+    {
+        // A heave every so often: chest and head thrown forward along the floor, the rest dragged after.
+        m_crawlClock += dt;
+        if (m_crawlClock > 0.8f)
+        {
+            m_crawlClock = 0.0f;
+            glm::vec3 toward = m_crawlTo - m_ragdoll.Centre();
+            toward.y = 0.0f;
+            if (glm::length(toward) > 0.4f)
+            {
+                toward = glm::normalize(toward);
+                m_ragdoll.Pull(m_physics, m_skin->chest, toward * 1.1f + glm::vec3(0.0f, 0.35f, 0.0f));
+                m_ragdoll.Pull(m_physics, m_skin->head, toward * 0.9f + glm::vec3(0.0f, 0.2f, 0.0f));
+            }
+        }
+    }
     if (m_ragdoll.Active())
     {
         m_ragdoll.Update(m_physics);

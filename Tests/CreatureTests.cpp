@@ -908,7 +908,7 @@ TEST_CASE("Badly hurt, a cunning creature plays dead -- alive underneath -- and 
     CHECK_FALSE(harness.creature->Down());
 }
 
-TEST_CASE("Shot while playing dead, it gives up the act and runs", "[creature][playdead]")
+TEST_CASE("Shot again and again while playing dead, it gives up the act and runs", "[creature][playdead]")
 {
     const uint32_t seed = CunningSeed();
     REQUIRE(seed != 0);
@@ -921,8 +921,12 @@ TEST_CASE("Shot while playing dead, it gives up the act and runs", "[creature][p
     harness.Run(0.5f, {Somebody(1, player)});
     REQUIRE(harness.creature->Brain().Current() == Behavior::PlayDead);
 
-    harness.creature->TakeDamage(Share(*harness.creature, 10.0f), 1, player + glm::vec3(0.0f, 1.5f, 0.0f), harness.time);
-    harness.Run(0.5f, {Watching(1, player, at)});
+    // Somebody making sure, round after round: it takes what it can bear without a twitch, and then no more.
+    for (int round = 0; round < 5 && harness.creature->Brain().Current() == Behavior::PlayDead; ++round)
+    {
+        harness.creature->TakeDamage(Share(*harness.creature, 10.0f), 1, player + glm::vec3(0.0f, 1.5f, 0.0f), harness.time);
+        harness.Run(0.5f, {Watching(1, player, at)});
+    }
     INFO("its mind:" << MindOf(*harness.creature));
     CHECK(harness.creature->Brain().Current() == Behavior::Retreat);
     CHECK(harness.creature->Alive());
@@ -1878,9 +1882,12 @@ TEST_CASE("Playing dead, a patient one takes one small shot without a twitch, an
     INFO("its mind:" << MindOf(*harness.creature));
     CHECK(harness.creature->Brain().Current() == Behavior::PlayDead);
 
-    // Another: the act is over.
-    harness.creature->TakeDamage(harness.creature->MaxHealth() * 0.02f, 1, player + glm::vec3(0.0f, 1.5f, 0.0f), harness.time);
-    harness.Run(0.5f, {Watching(1, player, at)});
+    // More: past what it can bear, the act is over.
+    for (int round = 0; round < 4 && harness.creature->Brain().Current() == Behavior::PlayDead; ++round)
+    {
+        harness.creature->TakeDamage(harness.creature->MaxHealth() * 0.02f, 1, player + glm::vec3(0.0f, 1.5f, 0.0f), harness.time);
+        harness.Run(0.5f, {Watching(1, player, at)});
+    }
     CHECK(harness.creature->Brain().Current() == Behavior::Retreat);
 }
 
@@ -2046,4 +2053,49 @@ TEST_CASE("Shot in its cover, a stalker does not stay in it", "[creature][decide
     INFO("its mind:" << MindOf(*harness.creature));
     CHECK(answered);
     CHECK(furthest > 2.0f);
+}
+
+TEST_CASE("Playing dead, a cunning one drags itself towards cover while nobody looks, and freezes when they do",
+          "[creature][playdead]")
+{
+    // Cunning enough to lie down rather than run, and not so bold it springs up the moment a back turns.
+    const uint32_t seed = SeedWhere(
+        [](const CreatureTraits& t)
+        {
+            const float cunning = 0.3f + 0.45f * t.stealth + 0.45f * t.patience;
+            return cunning > 0.6f + 0.6f * t.fear + 0.15f && t.patience + t.stealth > 1.0f && t.aggression <= 0.5f;
+        });
+    REQUIRE(seed != 0);
+    CreatureHarness harness(seed);
+    glm::vec3 at;
+    glm::vec3 player;
+    REQUIRE(OpenView(harness, 7.0f, at, player));
+    harness.Run(1.0f, {Somebody(1, player)});
+    harness.creature->TakeDamage(Share(*harness.creature, 85.0f), 1, player + glm::vec3(0.0f, 1.5f, 0.0f), harness.time);
+    harness.Run(0.5f, {Somebody(1, player)});
+    INFO("its mind:" << MindOf(*harness.creature));
+    REQUIRE(harness.creature->Brain().Current() == Behavior::PlayDead);
+
+    // Looked at for a while: still as the dead.
+    bool movedWatched = false;
+    harness.Run(3.0f, {Watching(1, player, at)}, {},
+                [&](const Creature& creature) { movedWatched = movedWatched || creature.Brain().Intent().move; });
+    CHECK_FALSE(movedWatched);
+
+    // They turn away, standing where they are: it pulls itself along.
+    SensedPlayer away = Watching(1, player, player + (player - at));
+    bool crawled = false;
+    harness.Run(3.0f, {away}, {},
+                [&](const Creature& creature)
+                {
+                    crawled = crawled || (creature.Brain().Intent().move && creature.Brain().Intent().down);
+                });
+    CHECK(crawled);
+
+    // They look back: it is still again.
+    harness.Run(0.5f, {Watching(1, player, at)});
+    bool movedAgain = false;
+    harness.Run(1.5f, {Watching(1, player, at)}, {},
+                [&](const Creature& creature) { movedAgain = movedAgain || creature.Brain().Intent().move; });
+    CHECK_FALSE(movedAgain);
 }
