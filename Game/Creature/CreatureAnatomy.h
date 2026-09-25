@@ -50,7 +50,7 @@ enum class HeadShape : uint8_t
     Ordinary,
     Skull,  // a person's skull, flat-faced
     Snout,  // a long narrow muzzle full of teeth
-    Dome,   // a smooth swollen dome, eyeless or nearly
+    Pitted, // eyeless, the face rows of pits it hears and smells with
     Hammer, // wide, with the eyes out at the ends
     Maw,    // mostly mouth: a deep jaw that hangs open
     Count

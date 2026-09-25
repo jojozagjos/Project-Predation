@@ -98,8 +98,8 @@ const char* HeadShapeName(HeadShape shape)
         return "skull";
     case HeadShape::Snout:
         return "long snout";
-    case HeadShape::Dome:
-        return "domed head";
+    case HeadShape::Pitted:
+        return "pitted, eyeless head";
     case HeadShape::Hammer:
         return "hammer head";
     case HeadShape::Maw:
@@ -167,11 +167,11 @@ CreatureAnatomy CreatureAnatomy::FromSeed(uint32_t seed)
         const float h = look.Unit();
         if (crawler)
         {
-            a.headShape = h < 0.55f ? HeadShape::Skull : h < 0.72f ? HeadShape::Maw : h < 0.87f ? HeadShape::Dome : HeadShape::Snout;
+            a.headShape = h < 0.55f ? HeadShape::Skull : h < 0.72f ? HeadShape::Maw : h < 0.87f ? HeadShape::Pitted : HeadShape::Snout;
         }
         else
         {
-            a.headShape = h < 0.22f ? HeadShape::Ordinary : h < 0.42f ? HeadShape::Snout : h < 0.58f ? HeadShape::Dome
+            a.headShape = h < 0.22f ? HeadShape::Ordinary : h < 0.42f ? HeadShape::Snout : h < 0.58f ? HeadShape::Pitted
                         : h < 0.74f ? HeadShape::Hammer : h < 0.9f ? HeadShape::Maw : HeadShape::Skull;
         }
         const float p = look.Unit();
@@ -401,14 +401,11 @@ CreatureAnatomy CreatureAnatomy::FromSeed(uint32_t seed)
         a.teeth = std::max(a.teeth, 12);
         a.toothLength *= 0.8f;
         break;
-    case HeadShape::Dome:
-        a.cranium = 1.45f;
-        a.snout = std::min(a.snout, 0.8f);
-        a.brow = 0.15f;
-        if (look.Unit() < 0.6f)
-        {
-            a.eyes = 0;
-        }
+    case HeadShape::Pitted:
+        a.cranium = 1.05f;
+        a.snout = std::max(a.snout, 1.2f);
+        a.brow = 0.8f;
+        a.eyes = 0;
         break;
     case HeadShape::Hammer:
         a.headWidth *= 1.9f;

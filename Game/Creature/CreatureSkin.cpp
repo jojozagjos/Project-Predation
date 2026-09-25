@@ -223,6 +223,62 @@ glm::quat TurnBetween(const glm::vec3& from, const glm::vec3& to)
 }
 
 // A piece of fixed geometry, such as a tooth, placed from a mesh built along Y and centred.
+// One tooth, built where it sits: from its root, sunk in the gum, out to its point, bent along the way
+// towards `hook` -- back towards the throat, a little inwards -- as a predator's are, so it holds what it
+// bites. Thickest a little way out from the root, flattened side to side into a blade, and its uv.y runs
+// from 0 at the root to 1 at the point, for the stain at its base.
+MeshData CurvedTooth(const glm::vec3& root, const glm::vec3& tip, const glm::vec3& hook, float radius, float flat)
+{
+    constexpr int kSides = 10;
+    constexpr int kRings = 7;
+    MeshData mesh;
+    const float length = glm::distance(root, tip);
+    const glm::vec3 bend = glm::mix(root, tip, 0.55f) + hook * (length * 0.28f);
+    const auto at = [&](float t)
+    { return (1.0f - t) * (1.0f - t) * root + 2.0f * (1.0f - t) * t * bend + t * t * tip; };
+    const auto along = [&](float t)
+    {
+        const glm::vec3 d = 2.0f * (1.0f - t) * (bend - root) + 2.0f * t * (tip - bend);
+        return glm::length(d) > 1e-6f ? glm::normalize(d) : glm::vec3(0.0f, -1.0f, 0.0f);
+    };
+    // Its frame across: the blade faces the way it hooks.
+    const glm::vec3 first = along(0.0f);
+    glm::vec3 side = glm::cross(first, hook);
+    side = glm::length(side) > 1e-4f ? glm::normalize(side) : glm::normalize(glm::cross(first, glm::vec3(1.0f, 0.0f, 0.0f)));
+    for (int r = 0; r <= kRings; ++r)
+    {
+        const float t = static_cast<float>(r) / static_cast<float>(kRings);
+        const glm::vec3 centre = at(t);
+        const glm::vec3 forward = along(t);
+        const glm::vec3 x = glm::normalize(side - forward * glm::dot(side, forward));
+        const glm::vec3 y = glm::cross(forward, x);
+        const float swell = t < 0.2f ? 0.85f + 0.75f * t : 1.0f - (t - 0.2f) / 0.8f;
+        const float here = radius * std::pow(std::max(swell, 0.0f), 0.85f);
+        for (int k = 0; k < kSides; ++k)
+        {
+            const float angle = static_cast<float>(k) / static_cast<float>(kSides) * glm::two_pi<float>();
+            const glm::vec3 out = x * std::cos(angle) * flat + y * std::sin(angle);
+            MeshVertex vertex;
+            vertex.position = centre + out * here;
+            vertex.normal = glm::normalize(x * std::cos(angle) / std::max(flat, 0.2f) + y * std::sin(angle) + forward * 0.25f);
+            vertex.uv = {static_cast<float>(k) / static_cast<float>(kSides), t};
+            mesh.vertices.push_back(vertex);
+        }
+    }
+    for (int r = 0; r < kRings; ++r)
+    {
+        for (int k = 0; k < kSides; ++k)
+        {
+            const uint32_t a = static_cast<uint32_t>(r * kSides + k);
+            const uint32_t b = static_cast<uint32_t>(r * kSides + (k + 1) % kSides);
+            const uint32_t c = a + kSides;
+            const uint32_t d = b + kSides;
+            mesh.indices.insert(mesh.indices.end(), {a, c, b, b, c, d});
+        }
+    }
+    return mesh;
+}
+
 glm::mat4 Between(const glm::vec3& a, const glm::vec3& b)
 {
     const glm::vec3 along = b - a;
@@ -655,7 +711,9 @@ CreatureSkin CreatureSkin::Build(const CreatureAnatomy& a)
 
     // The skull: a cranium swelling at the back, a frowning brow over each eye, cheekbones, a face that
     // juts as far as its snout does, and the holes: sockets, nostrils, the mouth and sunken temples.
-    const glm::vec3 craniumRadii{hw * 0.46f * a.cranium, hd * 0.44f * a.cranium, hl * 0.48f * a.cranium};
+    // Long and narrow rather than a ball: a round cranium read as a smooth white mask, whatever was
+    // carved into it.
+    const glm::vec3 craniumRadii{hw * 0.4f * a.cranium, hd * 0.4f * a.cranium, hl * 0.52f * a.cranium};
     const glm::vec3 craniumCentre = pose.head + glm::vec3(0.0f, hd * 0.1f, hl * 0.1f + hl * 0.12f * (a.cranium - 1.0f));
     const glm::vec3 muzzleCentre = pose.head + glm::vec3(0.0f, -hd * 0.17f, -hl * 0.3f * snout);
     const glm::vec3 muzzleRadii{hw * 0.3f, hd * 0.2f, hl * 0.3f * snout};
@@ -688,6 +746,50 @@ CreatureSkin CreatureSkin::Build(const CreatureAnatomy& a)
         blob(pose.head + glm::vec3(side * hw * 0.3f, -hd * 0.06f, -hl * 0.22f), {hw * 0.1f, hd * 0.08f, hl * 0.17f}, noTurn,
              skin.head, skin.cell * 1.5f, Zone::Bone);
     }
+    // The bone showing through: a ridge along the top of the skull, a knob at the back of it, a ridge
+    // down the nose, and a cheekbone either side with the cheek hollowed out under it. This is what
+    // makes a head a skull and not a ball.
+    {
+        const glm::vec3 crestFront = craniumCentre + glm::vec3(0.0f, craniumRadii.y * 0.92f, -craniumRadii.z * 0.35f);
+        const glm::vec3 crestBack = craniumCentre + glm::vec3(0.0f, craniumRadii.y * 0.8f, craniumRadii.z * 0.8f);
+        cone(crestFront, crestBack, std::max(hw * 0.035f, skin.cell * 0.9f), std::max(hw * 0.055f, skin.cell * 1.0f), skin.head,
+             skin.cell * 1.4f, Zone::Bone);
+        blob(craniumCentre + glm::vec3(0.0f, craniumRadii.y * 0.1f, craniumRadii.z * 0.95f), {hw * 0.14f, hd * 0.12f, hl * 0.08f}, noTurn,
+             skin.head, skin.cell * 2.0f, Zone::Bone);
+        cone(pose.head + glm::vec3(0.0f, hd * 0.08f, -hl * 0.12f), muzzleCentre + glm::vec3(0.0f, hd * 0.14f, -muzzleRadii.z * 0.8f),
+             std::max(hw * 0.05f, skin.cell * 0.9f), std::max(hw * 0.03f, skin.cell * 0.85f), skin.head, skin.cell * 1.3f, Zone::Bone);
+        for (const float side : {-1.0f, 1.0f})
+        {
+            cone(pose.head + glm::vec3(side * hw * 0.3f, -hd * 0.04f, -hl * 0.26f),
+                 pose.head + glm::vec3(side * hw * 0.4f, -hd * 0.0f, hl * 0.14f), std::max(hw * 0.045f, skin.cell * 0.9f),
+                 std::max(hw * 0.035f, skin.cell * 0.85f), skin.head, skin.cell * 1.2f, Zone::Bone);
+            blob(pose.head + glm::vec3(side * hw * 0.3f, -hd * 0.19f, -hl * 0.06f), {hw * 0.09f, hd * 0.08f, hl * 0.13f}, noTurn,
+                 skin.head, skin.cell * 2.2f, Zone::Skin, true);
+        }
+    }
+    // An eyeless, pitted face: rows of small deep pits down either side of the snout and across the
+    // brow where eyes would be.
+    if (a.headShape == HeadShape::Pitted)
+    {
+        for (const float side : {-1.0f, 1.0f})
+        {
+            for (int row = 0; row < 3; ++row)
+            {
+                for (int k = 0; k < 4; ++k)
+                {
+                    const float along = static_cast<float>(k) / 3.0f;
+                    const glm::vec3 wanted = pose.head + glm::vec3(side * hw * (0.16f + 0.07f * static_cast<float>(row)),
+                                                                   hd * (0.12f - 0.1f * static_cast<float>(row)),
+                                                                   -hl * (0.12f + 0.3f * along * snout));
+                    const Seat seat = onSkull(wanted);
+                    const float size = hw * (0.035f - 0.006f * static_cast<float>(row)) * (1.0f - 0.25f * along);
+                    blob(seat.at - seat.normal * (size * 0.2f), glm::vec3(std::max(size, skin.cell * 0.9f)), noTurn, skin.head,
+                         skin.cell * 0.6f, Zone::Hollow, true);
+                }
+            }
+        }
+    }
+
     // The jaw, and the muscle at its hinge, which stretches as the mouth opens.
     // Narrower than the row of upper teeth, so they close outside it rather than through it.
     blob(onJaw(hinge + glm::vec3(0.0f, -hd * 0.1f, -jawLength * 0.46f)), {hw * 0.19f, hd * 0.11f, jawLength * 0.46f},
@@ -729,6 +831,19 @@ CreatureSkin CreatureSkin::Build(const CreatureAnatomy& a)
              Zone::Hollow, true);
         blob(pose.head + glm::vec3(side * hw * 0.47f, hd * 0.12f, -hl * 0.04f), glm::vec3(hw * 0.12f), noTurn, skin.head,
              skin.cell * 2.0f, Zone::Skin, true);
+    }
+    // Gums: a ridge of wet flesh along the edge of each jaw, which the teeth come out of.
+    {
+        const float gum = std::max(hw * 0.05f, skin.cell * 0.9f);
+        for (int g = 0; g < 9; ++g)
+        {
+            const float around = (static_cast<float>(g) / 8.0f - 0.5f) * 2.5f;
+            blob(muzzleCentre + glm::vec3(muzzleRadii.x * 0.8f * std::sin(around), -muzzleRadii.y * 0.62f, -muzzleRadii.z * 0.7f * std::cos(around)),
+                 glm::vec3(gum, gum * 0.7f, gum), noTurn, skin.head, skin.cell * 0.9f, Zone::Gums);
+            const float low = (static_cast<float>(g) / 8.0f - 0.5f) * 2.0f;
+            blob(onJaw(hinge + glm::vec3(hw * 0.14f * std::sin(low), -hd * 0.04f, -jawLength * 0.44f - jawLength * 0.36f * std::cos(low))),
+                 glm::vec3(gum, gum * 0.8f, gum), noTurn, skin.jaw, skin.cell * 1.1f, Zone::Gums);
+        }
     }
     // The mouth: hollowed out of the underside of the face and the top of the jaw, which is what makes
     // it a mouth rather than a gap.
@@ -1117,35 +1232,59 @@ CreatureSkin CreatureSkin::Build(const CreatureAnatomy& a)
     std::vector<Attached> attached;
     const auto attach = [&](MeshData mesh, int bone, Zone zone) { attached.push_back({std::move(mesh), bone, zone}); };
 
-    // Teeth: an upper row round the edge of the face, longest a little way back where a dog's fangs are,
-    // and a lower row on the jaw.
+    // Teeth: no two alike. An upper row round the edge of the face -- small at the front, a long fang
+    // either side where a dog's are, short broad ones at the back -- each sunk in the gum, set a little
+    // unevenly, hooked back and in; now and then one broken off short. A lower row on the jaw, inside the
+    // upper one and between its teeth, so they close without passing through each other.
     {
+        const glm::vec3 forwardDir{0.0f, 0.0f, -1.0f};
         MeshData upper;
         for (int t = 0; t < a.teeth; ++t)
         {
+            const uint32_t id = static_cast<uint32_t>(t);
             const float u = a.teeth > 1 ? static_cast<float>(t) / static_cast<float>(a.teeth - 1) : 0.5f;
-            const float around = (u - 0.5f) * 2.5f;
-            const float fang = std::exp(-std::pow((std::abs(around) - 0.75f) / 0.3f, 2.0f));
-            const float length = std::min(hd * a.toothLength * (0.1f + 0.09f * Detail(a.seed, static_cast<uint32_t>(t)) + 0.12f * fang), hd * 0.32f);
-            const glm::vec3 root = muzzleCentre + glm::vec3(muzzleRadii.x * 0.95f * std::sin(around), -muzzleRadii.y * 0.55f,
+            const float around = (u - 0.5f) * 2.5f + (Detail(a.seed, 300u + id) - 0.5f) * 0.12f;
+            const float fang = std::exp(-std::pow((std::abs(around) - 0.75f) / 0.28f, 2.0f));
+            const float molar = std::clamp((std::abs(around) - 1.0f) * 3.0f, 0.0f, 1.0f);
+            const float front = std::clamp(1.0f - std::abs(around) / 0.4f, 0.0f, 1.0f);
+            float length = hd * a.toothLength * (0.07f + 0.05f * Detail(a.seed, id) + 0.15f * fang) * (1.0f - 0.45f * molar) * (1.0f - 0.25f * front);
+            if (Detail(a.seed, 320u + id) < 0.12f)
+            {
+                length *= 0.5f; // broken
+            }
+            length = std::min(length, hd * 0.24f);
+            const float radius = std::max(hw * (0.03f + 0.028f * fang + 0.02f * molar), 0.003f);
+            const glm::vec3 edge = muzzleCentre + glm::vec3(muzzleRadii.x * 0.95f * std::sin(around), -muzzleRadii.y * 0.55f,
                                                             -muzzleRadii.z * 0.82f * std::cos(around));
-            const glm::vec3 tip = root + glm::normalize(glm::vec3(0.0f, -1.0f, -0.12f)) * length;
-            upper.Append(Primitives::Frustum(std::max(hw * 0.055f, 0.004f), 0.0f, length, 7), Between(root, tip));
+            const glm::vec3 inwards = glm::normalize(glm::vec3(-std::sin(around), 0.0f, std::cos(around)) + glm::vec3(0.0f, 0.0f, 0.001f));
+            const glm::vec3 down = glm::normalize(glm::vec3(0.0f, -1.0f, 0.0f) + forwardDir * 0.1f +
+                                                  glm::vec3((Detail(a.seed, 340u + id) - 0.5f) * 0.3f, 0.0f, 0.0f));
+            const glm::vec3 root = edge - down * (length * 0.3f);
+            const glm::vec3 tip = edge + down * length;
+            upper.Append(CurvedTooth(root, tip, glm::normalize(inwards * 0.8f + glm::vec3(0.0f, 0.0f, 0.4f)), radius, 0.7f), identity);
         }
         attach(std::move(upper), skin.head, Zone::Teeth);
         MeshData lower;
-        // Inside the upper row and between its teeth, the way a jaw closes: never in the same place as an
-        // upper tooth, so they meet without passing through each other.
         const int teeth = std::max(a.teeth - 2, 3);
         for (int t = 0; t < teeth; ++t)
         {
+            const uint32_t id = static_cast<uint32_t>(t);
             const float u = (static_cast<float>(t) + 0.5f) / static_cast<float>(teeth);
-            const float around = (u - 0.5f) * 2.0f;
-            const float length = std::min(hd * a.toothLength * (0.05f + 0.05f * Detail(a.seed, 50u + static_cast<uint32_t>(t))), hd * 0.13f);
-            const glm::vec3 root = onJaw(hinge + glm::vec3(hw * 0.14f * std::sin(around), -hd * 0.03f,
+            const float around = (u - 0.5f) * 2.0f + (Detail(a.seed, 360u + id) - 0.5f) * 0.1f;
+            const float fang = std::exp(-std::pow((std::abs(around) - 0.6f) / 0.25f, 2.0f));
+            float length = std::min(hd * a.toothLength * (0.045f + 0.04f * Detail(a.seed, 50u + id) + 0.05f * fang), hd * 0.13f);
+            if (Detail(a.seed, 380u + id) < 0.1f)
+            {
+                length *= 0.5f;
+            }
+            const float radius = std::max(hw * (0.026f + 0.02f * fang), 0.003f);
+            const glm::vec3 edge = onJaw(hinge + glm::vec3(hw * 0.14f * std::sin(around), -hd * 0.03f,
                                                            -jawLength * 0.44f - jawLength * 0.36f * std::cos(around)));
-            const glm::vec3 tip = root + glm::vec3(jawTurn * glm::vec4(0.0f, length, -length * 0.1f, 0.0f));
-            lower.Append(Primitives::Frustum(std::max(hw * 0.05f, 0.004f), 0.0f, length, 7), Between(root, tip));
+            const glm::vec3 rise = glm::normalize(glm::vec3(jawTurn * glm::vec4(0.0f, 1.0f, -0.1f, 0.0f)));
+            const glm::vec3 inwards = glm::normalize(glm::vec3(-std::sin(around), 0.0f, std::cos(around)) + glm::vec3(0.0f, 0.0f, 0.001f));
+            const glm::vec3 root = edge - rise * (length * 0.3f);
+            const glm::vec3 tip = edge + rise * length;
+            lower.Append(CurvedTooth(root, tip, glm::normalize(inwards * 0.8f + glm::vec3(0.0f, 0.0f, 0.4f)), radius, 0.7f), identity);
         }
         attach(std::move(lower), skin.jaw, Zone::Teeth);
     }
@@ -1226,8 +1365,11 @@ CreatureSkin CreatureSkin::Build(const CreatureAnatomy& a)
             glm::vec3 colour = base;
             if (piece.zone == Zone::Teeth)
             {
-                // Yellower and darker towards the root.
-                colour *= 0.75f + 0.3f * Fbm(vertex.position * 40.0f, a.seed + 11u, 2);
+                // Stained brown and dark where it comes out of the gum, yellowed along it, pale at the point.
+                const float t = std::clamp(vertex.uv.y, 0.0f, 1.0f);
+                const glm::vec3 stain = base * glm::vec3(0.42f, 0.3f, 0.2f);
+                colour = glm::mix(stain, base * glm::vec3(1.05f, 1.0f, 0.9f), std::sqrt(t));
+                colour *= 0.85f + 0.25f * Fbm(vertex.position * 40.0f, a.seed + 11u, 2);
             }
             else if (piece.zone == Zone::Skin)
             {
