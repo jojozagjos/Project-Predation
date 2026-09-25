@@ -921,6 +921,25 @@ void Creature::Move(const CreatureIntent& asked, const std::vector<glm::vec3>& o
         {
             heading = glm::normalize(toward);
             wanted = intent.speed;
+            // Coming up to a corner it starts round it early, the faster the earlier, so the route is
+            // run as a curve and not as a string of straight lines with a pivot at each end. Not a corner
+            // it jumps from: that it has to reach.
+            const bool takeOffNext = !m_routeJumps.empty() && m_routeJumps.front() != 0;
+            if (m_route.size() >= 2 && !takeOffNext)
+            {
+                const float ahead = 0.6f + m_speed * 0.35f;
+                const float left = glm::length(toward);
+                const glm::vec3 after{m_route[1].x - next.x, 0.0f, m_route[1].z - next.z};
+                if (left < ahead && glm::length(after) > 0.05f)
+                {
+                    const float blend = (1.0f - left / ahead) * 0.6f;
+                    const glm::vec3 rounded = glm::mix(heading, glm::normalize(after), blend);
+                    if (glm::length(rounded) > 0.05f)
+                    {
+                        heading = glm::normalize(rounded);
+                    }
+                }
+            }
         }
     }
     else
@@ -958,12 +977,24 @@ void Creature::Move(const CreatureIntent& asked, const std::vector<glm::vec3>& o
         const float target = std::atan2(lookAlong.x, -lookAlong.z);
         const float turn = WrapAngle(target - m_yaw);
         const bool standing = m_speed < 0.3f;
-        if (!(standing && faceTarget && std::abs(turn) < 0.3f))
+        // How fast it would like to be turning: in proportion to how far it has to go, up to what its
+        // body manages -- less for a big one, less standing than on the move. How fast it gets there is
+        // its weight: it swings into a turn and out of it.
+        const float bulk = std::clamp(1.35f - 0.3f * m_anatomy.length, 0.55f, 1.2f);
+        const float most = (standing ? 2.4f : kTurnRate * 0.8f) * bulk;
+        float desired = std::clamp(turn * 3.5f, -most, most);
+        if (standing && faceTarget && std::abs(turn) < 0.3f)
         {
-            const float limit = (standing ? 3.2f : kTurnRate) * dt;
-            m_yaw = WrapAngle(m_yaw + std::clamp(turn, -limit, limit));
+            desired = 0.0f; // a small turn, standing, is for the head to make
         }
+        const float swing = 9.0f * bulk * dt;
+        m_yawRate += std::clamp(desired - m_yawRate, -swing, swing);
     }
+    else
+    {
+        m_yawRate += std::clamp(-m_yawRate, -9.0f * dt, 9.0f * dt);
+    }
+    m_yaw = WrapAngle(m_yaw + m_yawRate * dt);
 
     if (m_speed > 0.01f && glm::length(heading) > 0.5f)
     {
@@ -972,7 +1003,14 @@ void Creature::Move(const CreatureIntent& asked, const std::vector<glm::vec3>& o
         const float aligned = std::clamp(glm::dot(Forward(), heading), 0.3f, 1.0f);
         // On its belly it goes no faster than a crawl.
         const float crawling = m_squeeze > 0.5f ? std::min(m_speed, m_caps.walkSpeed * 1.2f) : m_speed;
-        const glm::vec3 step = heading * crawling * aligned * dt;
+        // It goes a little the way it faces as well as the way it wants: a body on the move carries
+        // round a turn, it does not slide sideways into the new direction.
+        glm::vec3 going = heading;
+        if (glm::dot(Forward(), heading) > 0.2f)
+        {
+            going = glm::normalize(heading * 0.7f + Forward() * 0.3f);
+        }
+        const glm::vec3 step = going * crawling * aligned * dt;
         glm::vec3 moved = m_position + step;
         if (m_nav == nullptr || !m_nav->MoveAlongSurface(m_position, m_position + step, moved, crawl))
         {

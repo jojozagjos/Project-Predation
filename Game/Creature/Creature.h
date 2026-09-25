@@ -204,6 +204,9 @@ private:
 
     glm::vec3 m_position{0.0f};
     float m_yaw = 0.0f;
+    // How fast it is turning, radians a second: a body turns up to speed and slows out of a turn,
+    // rather than snapping between turning flat out and not at all.
+    float m_yawRate = 0.0f;
     float m_speed = 0.0f;
     glm::vec3 m_velocity{0.0f}; // as drawn: how fast the body is actually moving, for the feet
     glm::vec3 m_lastShown{0.0f};
