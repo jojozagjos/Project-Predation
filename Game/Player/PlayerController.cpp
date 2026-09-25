@@ -727,7 +727,10 @@ void PlayerController::UpdateView(float dt, float alpha)
             // shows what is on the other side.
             constexpr float kNearPlaneRoom = 0.10f;
             const glm::vec3 direction = toEye / distance;
-            const RayHit blocked = m_physics->RayCast(from, direction, distance + kNearPlaneRoom);
+            // Only the level: a creature close enough to be between the chest and the eye -- its head, its
+            // arm, its hit boxes -- used to pull the eye down to the chest, which felt like being shoved
+            // to the floor whenever one came near.
+            const RayHit blocked = m_physics->RayCastStatic(from, direction, distance + kNearPlaneRoom);
             if (blocked)
             {
                 m_view.eyePosition =

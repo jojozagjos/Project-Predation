@@ -64,6 +64,10 @@ public:
         Entity fitting;
         glm::vec3 glow{0.0f}; // the fitting's own light when fully lit
         float level = 1.0f;   // how lit it is this moment, 0 to 1
+        // The room it lights and nothing outside it: see PunctualLight.
+        bool bounded = false;
+        glm::vec3 boundsMin{0.0f};
+        glm::vec3 boundsMax{0.0f};
     };
 
     // A light and its fitting. `direction` is where the fitting faces: down for a ceiling light, out
@@ -76,6 +80,8 @@ public:
     // Every light from `first` on, taken away: the ones a map added after everything else, when that
     // map is rebuilt.
     void RemoveFrom(Scene& scene, size_t first);
+    // Keeps a light to the room it is in: nothing outside the box is lit by it.
+    void Bound(int index, const glm::vec3& min, const glm::vec3& max);
     size_t Count() const { return m_lights.size(); }
 
     void SetPowered(int circuit, bool powered);

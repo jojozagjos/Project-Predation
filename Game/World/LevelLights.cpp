@@ -207,6 +207,20 @@ void LevelLights::RemoveFrom(Scene& scene, size_t first)
     }
 }
 
+void LevelLights::Bound(int index, const glm::vec3& min, const glm::vec3& max)
+{
+    if (index < 0 || static_cast<size_t>(index) >= m_lights.size())
+    {
+        return;
+    }
+    Light& light = m_lights[static_cast<size_t>(index)];
+    light.bounded = true;
+    // A little bigger than asked: a wall face lying exactly on the edge of the box flickers in and out of
+    // it from one pixel to the next, in stripes. Five centimetres is still well inside any wall.
+    light.boundsMin = glm::min(min, max) - glm::vec3(0.05f);
+    light.boundsMax = glm::max(min, max) + glm::vec3(0.05f);
+}
+
 void LevelLights::SetPowered(int circuit, bool powered)
 {
     const auto found = std::find(m_unpowered.begin(), m_unpowered.end(), circuit);
@@ -256,6 +270,9 @@ void LevelLights::Gather(std::vector<PunctualLight>& out) const
         punctual.innerAngle = light.innerAngle;
         punctual.outerAngle = light.outerAngle;
         punctual.sourceRadius = light.sourceRadius;
+        punctual.bounded = light.bounded;
+        punctual.boundsMin = light.boundsMin;
+        punctual.boundsMax = light.boundsMax;
         out.push_back(punctual);
     }
 }

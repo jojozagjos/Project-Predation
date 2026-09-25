@@ -90,7 +90,7 @@ bool SceneRenderer::Init(ShaderLibrary& shaders)
     m_uGrade = bgfx::createUniform("u_grade", bgfx::UniformType::Vec4);
     m_uOutput = bgfx::createUniform("u_output", bgfx::UniformType::Vec4);
     m_uLights = bgfx::createUniform("u_lights", bgfx::UniformType::Vec4,
-                                    static_cast<uint16_t>(kMaxPunctualLights * 4));
+                                    static_cast<uint16_t>(kMaxPunctualLights * kLightStride / 4));
     m_uSunShadowMtx = bgfx::createUniform("u_sunShadowMtx", bgfx::UniformType::Mat4);
     m_uSunShadowAxis = bgfx::createUniform("u_sunShadowAxis", bgfx::UniformType::Vec4);
     m_uSunShadowParams = bgfx::createUniform("u_sunShadowParams", bgfx::UniformType::Vec4);
@@ -622,6 +622,16 @@ void SceneRenderer::PackLights(const Environment& environment)
         entry[12] = outer;
         entry[13] = 1.0f;
         entry[14] = std::max(light.sourceRadius, 0.01f);
+        entry[16] = light.boundsMin.x;
+        entry[17] = light.boundsMin.y;
+        entry[18] = light.boundsMin.z;
+        entry[19] = light.bounded ? 1.0f : 0.0f;
+        entry[20] = light.boundsMax.x;
+        entry[21] = light.boundsMax.y;
+        entry[22] = light.boundsMax.z;
+        packed.bounded = light.bounded;
+        packed.boundsMin = light.boundsMin;
+        packed.boundsMax = light.boundsMax;
         packed.position = light.position;
         packed.range = light.range;
         packed.intensity = light.intensity;
@@ -665,6 +675,16 @@ void SceneRenderer::UploadLightsFor(const Mesh& mesh, const glm::mat4& model)
         {
             continue;
         }
+        // Kept in its room: a surface wholly outside the box cannot be lit by it, and should not spend one
+        // of its few slots on it.
+        if (light.bounded)
+        {
+            const glm::vec3 nearest = glm::clamp(centre, light.boundsMin, light.boundsMax);
+            if (glm::length(nearest - centre) > radius)
+            {
+                continue;
+            }
+        }
         if (light.pinned)
         {
             pinned = static_cast<int>(i);
@@ -681,17 +701,17 @@ void SceneRenderer::UploadLightsFor(const Mesh& mesh, const glm::mat4& model)
         m_choice.resize(room);
     }
 
-    float lights[kMaxPunctualLights * 16] = {};
+    float lights[kMaxPunctualLights * kLightStride] = {};
     if (pinned >= 0)
     {
-        std::copy(m_packed[static_cast<size_t>(pinned)].data, m_packed[static_cast<size_t>(pinned)].data + 16, lights);
+        std::copy(m_packed[static_cast<size_t>(pinned)].data, m_packed[static_cast<size_t>(pinned)].data + kLightStride, lights);
     }
     for (size_t slot = 0; slot < m_choice.size(); ++slot)
     {
         const float* data = m_packed[m_choice[slot].second].data;
-        std::copy(data, data + 16, lights + (slot + 1) * 16);
+        std::copy(data, data + kLightStride, lights + (slot + 1) * kLightStride);
     }
-    bgfx::setUniform(m_uLights, lights, static_cast<uint16_t>(kMaxPunctualLights * 4));
+    bgfx::setUniform(m_uLights, lights, static_cast<uint16_t>(kMaxPunctualLights * kLightStride / 4));
 }
 
 void SceneRenderer::Draw(bgfx::ViewId view, const Scene& scene, const MeshLibrary& meshes,

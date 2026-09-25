@@ -72,6 +72,9 @@ public:
         LightMood mood = LightMood::Steady;
         int circuit = 0;
         float range = 0.0f;
+        // The room it is in, or the straight run of corridor: nothing outside is lit by it.
+        glm::vec3 boundsMin{0.0f};
+        glm::vec3 boundsMax{0.0f};
     };
 
     // Everything the facility is, without an engine: for building it, and for testing that it fits

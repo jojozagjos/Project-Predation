@@ -2065,6 +2065,7 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
     // Which clip plays is decided by what the weapon is doing, and its progress comes from the
     // simulation's own timers, so a clip works at whatever reload or draw time the weapon has.
     const AnimationClip* clip = nullptr;
+    const AnimationClip* emptyHold = nullptr;
     float clipTime = 0.0f;
     float clipProgress = 0.0f;
     if (m_weaponVisual.asset != nullptr)
@@ -2127,6 +2128,17 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
         {
             clipTime = clipProgress * clip->duration;
         }
+        // Empty, and something else playing -- coming out, going away: the slide or bolt is still back.
+        // Every part that clip leaves alone is held where the empty clip leaves it, so a pistol drawn
+        // empty comes out with its slide locked rather than coming out whole and snapping back after.
+        if (m_weaponPose.emptyHold && clip != nullptr)
+        {
+            emptyHold = m_weaponVisual.asset->FindClip("empty");
+            if (emptyHold == clip)
+            {
+                emptyHold = nullptr;
+            }
+        }
     }
 
     // A track named "root" moves the whole weapon rather than one part, in the frame it is carried
@@ -2168,7 +2180,20 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
                 // Where the hands rest, so a part a hand is holding is carried from the same place the
                 // hand itself is drawn from.
                 const glm::vec3 handRest[2] = {m_weaponVisual.supportGrip, m_weaponVisual.triggerGrip};
-                local = m_weaponVisual.asset->PartMatrixAt(*found, clip, clipTime, &visible, handRest);
+                const auto moves = [&](const AnimationClip* candidate)
+                {
+                    return candidate != nullptr &&
+                           std::any_of(candidate->tracks.begin(), candidate->tracks.end(),
+                                       [&](const AnimationTrack& track) { return track.part == part.name && !track.keys.empty(); });
+                };
+                if (emptyHold != nullptr && !moves(clip) && moves(emptyHold))
+                {
+                    local = m_weaponVisual.asset->PartMatrixAt(*found, emptyHold, emptyHold->duration, &visible, handRest);
+                }
+                else
+                {
+                    local = m_weaponVisual.asset->PartMatrixAt(*found, clip, clipTime, &visible, handRest);
+                }
             }
         }
 

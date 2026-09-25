@@ -203,34 +203,60 @@ void BuildLabMap(Scene& scene, MeshLibrary& meshes, PhysicsWorld* physics, Level
     if (lights != nullptr)
     {
         const glm::vec3 down{0.0f, -1.0f, 0.0f};
-        const auto ceiling = [&](float lx, float roof, float lz, LightMood mood, int circuit)
-        { lights->Add(scene, meshes, LightKind::Ceiling, mood, glm::vec3(kX + lx, roof - 0.04f, kZ + lz), down, circuit); };
-        const auto wall = [&](LightKind kind, float lx, float y, float lz, const glm::vec3& facing, LightMood mood, int circuit)
-        { lights->Add(scene, meshes, kind, mood, glm::vec3(kX + lx, y, kZ + lz), facing, circuit); };
+        // Each kept to the room it is in, given in the lab's own coordinates as two corners: lamps cast no
+        // shadows, and the store's red lamp used to light the corridor through its wall.
+        struct Room
+        {
+            glm::vec3 a;
+            glm::vec3 b;
+        };
+        const auto keep = [&](int index, const Room& room)
+        { lights->Bound(index, glm::vec3(kX, 0.0f, kZ) + room.a, glm::vec3(kX, 0.0f, kZ) + room.b); };
+        const auto ceiling = [&](float lx, float roof, float lz, LightMood mood, int circuit, const Room& room)
+        { keep(lights->Add(scene, meshes, LightKind::Ceiling, mood, glm::vec3(kX + lx, roof - 0.04f, kZ + lz), down, circuit), room); };
+        const auto wall = [&](LightKind kind, float lx, float y, float lz, const glm::vec3& facing, LightMood mood, int circuit,
+                              const Room* room)
+        {
+            const int index = lights->Add(scene, meshes, kind, mood, glm::vec3(kX + lx, y, kZ + lz), facing, circuit);
+            if (room != nullptr)
+            {
+                keep(index, *room);
+            }
+        };
+        const float corridorWest = kCorridorWest - kX;
+        const float corridorEast = kCorridorEast - kX;
+        const float roomEast = kRoomEast - kX;
+        const float roomSplit = kRoomSplit - kZ;
+        const Room corridorRoom{{corridorWest, -0.05f, kCorridorNorth - kZ}, {corridorEast, 3.05f, kCorridorSouth - kZ}};
+        const Room lockerRoom{{corridorEast + 0.3f, -0.05f, roomSplit + 0.15f}, {roomEast, 3.05f, kCorridorSouth - kZ}};
+        const Room storeRoom{{corridorEast + 0.3f, -0.05f, kCorridorNorth - kZ}, {roomEast, 3.05f, roomSplit - 0.15f}};
+        const Room forest{{15.5f, -0.05f, -11.0f}, {31.0f, 4.55f, -1.0f}};
+        const Room nestRoom{{-16.0f, -0.05f, -kHalf}, {16.0f, kWallHeight + 0.05f, -12.0f}};
 
         // The corridor: one good, one flickering, and the one by the locked store failing.
         const float corridor = (kCorridorWest + kCorridorEast) * 0.5f - kX;
-        ceiling(corridor, 3.0f, 15.0f, LightMood::Steady, 1);
-        ceiling(corridor, 3.0f, 9.5f, LightMood::Flicker, 1);
-        ceiling(corridor, 3.0f, 3.5f, LightMood::Failing, 1);
-        // A caged lamp over the way in.
-        wall(LightKind::Wall, kCorridorDoorX - kX, 2.6f, kCorridorSouth - kZ + 0.45f, {0.0f, -0.35f, 1.0f}, LightMood::Steady, 1);
+        ceiling(corridor, 3.0f, 15.0f, LightMood::Steady, 1, corridorRoom);
+        ceiling(corridor, 3.0f, 9.5f, LightMood::Flicker, 1, corridorRoom);
+        ceiling(corridor, 3.0f, 3.5f, LightMood::Failing, 1, corridorRoom);
+        // A caged lamp over the way in, outside, lighting the ground in front of it.
+        wall(LightKind::Wall, kCorridorDoorX - kX, 2.6f, kCorridorSouth - kZ + 0.45f, {0.0f, -0.35f, 1.0f}, LightMood::Steady, 1,
+             nullptr);
         // The locker room: lit, just about.
-        ceiling(18.0f, 3.0f, 14.0f, LightMood::Steady, 1);
-        ceiling(25.0f, 3.0f, 14.0f, LightMood::Flicker, 1);
+        ceiling(18.0f, 3.0f, 14.0f, LightMood::Steady, 1, lockerRoom);
+        ceiling(25.0f, 3.0f, 14.0f, LightMood::Flicker, 1, lockerRoom);
         // The store: its strip light long dead, and an emergency lamp breathing red on the far wall.
-        ceiling(21.5f, 3.0f, 5.0f, LightMood::Dead, 1);
-        wall(LightKind::Emergency, kRoomEast - kX - 0.25f, 2.3f, 5.0f, {-1.0f, -0.2f, 0.0f}, LightMood::Pulse, 1);
+        ceiling(21.5f, 3.0f, 5.0f, LightMood::Dead, 1, storeRoom);
+        wall(LightKind::Emergency, kRoomEast - kX - 0.25f, 2.3f, 5.0f, {-1.0f, -0.2f, 0.0f}, LightMood::Pulse, 1, &storeRoom);
 
         // The pillar forest: one failing, one dead. Dark on purpose: it is for being stalked in.
-        ceiling(19.5f, 4.5f, -6.0f, LightMood::Failing, 2);
-        ceiling(27.0f, 4.5f, -4.0f, LightMood::Dead, 2);
+        ceiling(19.5f, 4.5f, -6.0f, LightMood::Failing, 2, forest);
+        ceiling(27.0f, 4.5f, -4.0f, LightMood::Dead, 2, forest);
 
         // The nest chamber: the strip lights dead, and a red emergency lamp inside each way in.
-        ceiling(-6.0f, kWallHeight, -22.0f, LightMood::Dead, 3);
-        ceiling(6.0f, kWallHeight, -22.0f, LightMood::Dead, 3);
-        wall(LightKind::Emergency, -8.0f, 3.4f, -12.6f, {0.0f, -0.3f, -1.0f}, LightMood::Pulse, 3);
-        wall(LightKind::Emergency, 8.0f, 3.4f, -12.6f, {0.0f, -0.3f, -1.0f}, LightMood::Pulse, 3);
+        ceiling(-6.0f, kWallHeight, -22.0f, LightMood::Dead, 3, nestRoom);
+        ceiling(6.0f, kWallHeight, -22.0f, LightMood::Dead, 3, nestRoom);
+        wall(LightKind::Emergency, -8.0f, 3.4f, -12.6f, {0.0f, -0.3f, -1.0f}, LightMood::Pulse, 3, &nestRoom);
+        wall(LightKind::Emergency, 8.0f, 3.4f, -12.6f, {0.0f, -0.3f, -1.0f}, LightMood::Pulse, 3, &nestRoom);
     }
 }
 

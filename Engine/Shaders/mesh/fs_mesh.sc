@@ -22,7 +22,7 @@ uniform vec4 u_grade;           // x = exposure, y = contrast, z = light where t
 // the cosine of the inner cone, then the cosine of the outer cone, whether it is on at all, and how
 // big the source is.
 #define MAX_LIGHTS 8
-uniform vec4 u_lights[MAX_LIGHTS * 4];
+uniform vec4 u_lights[MAX_LIGHTS * 6];
 
 // The two depth maps, and what turns a world position into a lookup in each.
 //
@@ -346,11 +346,18 @@ void main()
 	// inner angle, fading to nothing by the outer one, and a wide-open inner angle makes it a bulb.
 	for (int i = 0; i < MAX_LIGHTS; ++i)
 	{
-		vec4 posRange = u_lights[i * 4 + 0];
-		vec4 colorIntensity = u_lights[i * 4 + 1];
-		vec4 dirInner = u_lights[i * 4 + 2];
-		vec4 outerOn = u_lights[i * 4 + 3];
+		vec4 posRange = u_lights[i * 6 + 0];
+		vec4 colorIntensity = u_lights[i * 6 + 1];
+		vec4 dirInner = u_lights[i * 6 + 2];
+		vec4 outerOn = u_lights[i * 6 + 3];
 		if (outerOn.y < 0.5)
+		{
+			continue;
+		}
+		// Kept in its room, when it has one: the far side of a wall is outside the box.
+		vec4 boxMin = u_lights[i * 6 + 4];
+		vec4 boxMax = u_lights[i * 6 + 5];
+		if (boxMin.w > 0.5 && (any(lessThan(v_worldPos, boxMin.xyz)) || any(greaterThan(v_worldPos, boxMax.xyz))))
 		{
 			continue;
 		}

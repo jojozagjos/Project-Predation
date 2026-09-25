@@ -508,21 +508,15 @@ void PredationGame::UpdateTension(float dt)
         audio.SetVoiceGain(m_drone, m_droneLevel * level);
     }
 
-    // Your own heart, when you are frightened -- or hidden, with something near. Faster the worse it is.
-    bool hiddenNear = false;
-    if (m_hidingSpot >= 0)
-    {
-        for (const std::unique_ptr<Creature>& creature : m_creatures)
-        {
-            hiddenNear = hiddenNear || (creature->Alive() && glm::distance(creature->Position(), m_renderEye) < 12.0f);
-        }
-    }
-    const float beat = std::max(danger, hiddenNear ? 0.6f : 0.0f);
+    // Your own heart, when you are badly hurt: from half your health down it can be heard, slow and faint,
+    // and nearer nothing it is loud and racing. Only how hurt you are: fear has the picture and the drone.
+    const PlayerState& self = m_player.State();
+    const float hurt = self.alive ? std::clamp((0.5f - self.health / PlayerState::kMaxHealth) / 0.45f, 0.0f, 1.0f) : 0.0f;
     m_heartbeatAt -= dt;
-    if (playing && beat > 0.3f && m_heartbeatAt <= 0.0f)
+    if (playing && hurt > 0.0f && m_heartbeatAt <= 0.0f)
     {
-        PlayNamed("Player/heartbeat", m_renderEye, 0.25f + 0.45f * beat, 1.0f, false);
-        m_heartbeatAt = 60.0f / (75.0f + 75.0f * beat);
+        PlayNamed("Player/heartbeat", m_renderEye, 0.2f + 0.55f * hurt, 0.95f + 0.1f * hurt, false);
+        m_heartbeatAt = 60.0f / (62.0f + 78.0f * hurt);
     }
 }
 

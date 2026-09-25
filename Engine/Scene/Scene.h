@@ -68,6 +68,12 @@ struct PunctualLight
     // torch and a flashbulb pressed against whatever is in front of it -- and with the torch on the
     // eye, what is in front of it is the player's own weapon.
     float sourceRadius = 0.6f;
+    // The room it is in, when it has one: nothing outside this box is lit by it. Lamps cast no shadows,
+    // so without it a lamp lights the far side of every wall within its range -- the next room, the
+    // floor above. A box is exact for a room that is a box, which most are.
+    bool bounded = false;
+    glm::vec3 boundsMin{0.0f};
+    glm::vec3 boundsMax{0.0f};
 };
 
 inline constexpr size_t kMaxPunctualLights = 8;

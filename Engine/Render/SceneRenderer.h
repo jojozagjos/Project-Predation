@@ -207,13 +207,18 @@ private:
 
     // Every light that could reach something this pass, packed as the shader wants it, and chosen from
     // for each surface in SubmitMesh.
+    // Floats per light as the shader reads them: six four-vectors.
+    static constexpr size_t kLightStride = 24;
     struct PackedLight
     {
-        float data[16] = {};
+        float data[kLightStride] = {};
         glm::vec3 position{0.0f};
         float range = 0.0f;
         float intensity = 0.0f;
         bool pinned = false; // the shadowed slot: always first, whatever else is near
+        bool bounded = false;
+        glm::vec3 boundsMin{0.0f};
+        glm::vec3 boundsMax{0.0f};
     };
     std::vector<PackedLight> m_packed;
     std::vector<std::pair<float, size_t>> m_choice;

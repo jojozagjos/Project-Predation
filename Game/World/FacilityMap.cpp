@@ -589,6 +589,41 @@ void Lamps(const FacilityLayout& layout, Blueprint& out)
             placed.range = kEmergencyLampRange;
             break;
         }
+        // The box it lights: its room, or the longer straight run of corridor it hangs over.
+        const glm::ivec2 cell{static_cast<int>(std::floor(lamp.at.x)), static_cast<int>(std::floor(lamp.at.y))};
+        glm::ivec2 low = cell;
+        glm::ivec2 high = cell;
+        const int room = layout.RoomAt(lamp.floor, cell.x, cell.y);
+        if (room >= 0)
+        {
+            low = layout.rooms[static_cast<size_t>(room)].min;
+            high = layout.rooms[static_cast<size_t>(room)].max;
+        }
+        else
+        {
+            const auto corridor = [&](int x, int z) { return layout.At(lamp.floor, x, z) == Cell::Corridor; };
+            const auto run = [&](glm::ivec2 step, glm::ivec2& from, glm::ivec2& to)
+            {
+                from = cell;
+                to = cell;
+                while (corridor(from.x - step.x, from.y - step.y))
+                {
+                    from -= step;
+                }
+                while (corridor(to.x + step.x, to.y + step.y))
+                {
+                    to += step;
+                }
+                return std::abs(to.x - from.x) + std::abs(to.y - from.y);
+            };
+            glm::ivec2 xLow, xHigh, zLow, zHigh;
+            const int alongX = run({1, 0}, xLow, xHigh);
+            const int alongZ = run({0, 1}, zLow, zHigh);
+            low = alongX >= alongZ ? xLow : zLow;
+            high = alongX >= alongZ ? xHigh : zHigh;
+        }
+        placed.boundsMin = FacilityMap::ToWorld(lamp.floor, glm::vec2(low)) - glm::vec3(0.0f, 0.02f, 0.0f);
+        placed.boundsMax = FacilityMap::ToWorld(lamp.floor, glm::vec2(high + glm::ivec2(1))) + glm::vec3(0.0f, kClear + 0.02f, 0.0f);
         out.lamps.push_back(placed);
     }
 }
@@ -720,8 +755,9 @@ void FacilityMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, Physic
         for (size_t i = 0; i < blueprint.lamps.size(); ++i)
         {
             const Lamp& lamp = blueprint.lamps[i];
-            lights->Add(scene, meshes, lamp.kind, lamp.mood, lamp.position, down, lamp.circuit,
-                        Mix(seed, static_cast<uint32_t>(i)) | 1u, lamp.range);
+            const int index = lights->Add(scene, meshes, lamp.kind, lamp.mood, lamp.position, down, lamp.circuit,
+                                          Mix(seed, static_cast<uint32_t>(i)) | 1u, lamp.range);
+            lights->Bound(index, lamp.boundsMin, lamp.boundsMax);
         }
     }
 
