@@ -699,6 +699,7 @@ void Creature::Update(CreatureSenses senses, float time, float dt)
     senses.forward = Forward();
     senses.healthFraction = m_health / m_maxHealth;
     senses.nav = m_nav;
+    senses.crawl = m_caps.fitsVents ? NavMesh::kCrawl : 0;
     senses.routeReached = m_routeReached;
     senses.verticalReach = m_caps.verticalReach;
 

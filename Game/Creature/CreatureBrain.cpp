@@ -2058,7 +2058,35 @@ void CreatureBrain::PlanSearch(const CreatureSenses& senses, const Track& track)
     {
         const glm::vec3 heading = track.lastKnown + track.lastVelocity * 2.0f;
         glm::vec3 centre = track.lastKnown;
-        senses.nav->NearestPoint(heading, 3.0f, centre);
+        senses.nav->NearestPoint(heading, 3.0f, centre, senses.crawl);
+        // One that fits the crawlspaces thinks of them too: somebody who vanished near the mouth of one
+        // has likely gone down it, and it goes in after them -- first, before the open floor.
+        if (senses.crawl != 0)
+        {
+            for (const glm::vec3& mouth : senses.nav->CrawlMouths())
+            {
+                if (Horizontal(mouth, track.lastKnown) > 10.0f)
+                {
+                    continue;
+                }
+                // A little way in: the mouth is where the floor meets it, and it wants to look down it.
+                glm::vec3 inside = mouth;
+                uint32_t probe = static_cast<uint32_t>(m_random.Next());
+                for (int tries = 0; tries < 8; ++tries)
+                {
+                    glm::vec3 candidate;
+                    if (senses.nav->RandomPointNear(mouth, 3.0f, probe, candidate, NavMesh::kCrawl) &&
+                        senses.nav->InCrawlspace(candidate))
+                    {
+                        inside = candidate;
+                        break;
+                    }
+                }
+                m_searchPlan.insert(m_searchPlan.begin(), SearchStop{inside, -1});
+                Log(senses.time, "means to look down the crawlspace");
+                break;
+            }
+        }
         // Back searching the same place, it searches it closer and more thoroughly, not less: it was
         // sure there was something here, and it has not found it yet.
         const bool again = Horizontal(centre, m_lastSearchCentre) < 8.0f && senses.time - m_lastSearchAt < 120.0f;
@@ -2071,7 +2099,7 @@ void CreatureBrain::PlanSearch(const CreatureSenses& senses, const Track& track)
         for (int i = 0; i < 16 && m_searchPlan.size() < places.size() + 3 + static_cast<size_t>(m_searchRound); ++i)
         {
             glm::vec3 point;
-            if (!senses.nav->RandomPointNear(centre, radius, seed, point))
+            if (!senses.nav->RandomPointNear(centre, radius, seed, point, senses.crawl))
             {
                 continue;
             }
@@ -2465,7 +2493,7 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
             // always be a step behind.
             glm::vec3 guess = track->lastKnown + track->lastVelocity * 1.0f;
             glm::vec3 onMesh;
-            if (senses.nav != nullptr && senses.nav->NearestPoint(guess, 2.0f, onMesh))
+            if (senses.nav != nullptr && senses.nav->NearestPoint(guess, 2.0f, onMesh, senses.crawl))
             {
                 guess = onMesh;
             }

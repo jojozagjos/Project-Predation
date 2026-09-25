@@ -631,3 +631,63 @@ TEST_CASE("Beside a doorway, on the far side from somebody in the room, is where
     CreatureBrain::AmbushPlan inside;
     CHECK_FALSE(creature.Brain().PlanDoorAmbushNear(senses, nearDoor, inside));
 }
+
+TEST_CASE("Something small enough that loses somebody at a crawlspace goes down it after them", "[creature][lab][crawl]")
+{
+    Lab lab;
+    uint32_t seed = 0;
+    for (uint32_t candidate = 1; candidate < 600 && seed == 0; ++candidate)
+    {
+        const CreatureAnatomy anatomy = CreatureAnatomy::FromSeed(candidate);
+        const CreatureTraits traits = Hunter(candidate);
+        if (CreatureCapabilities::From(anatomy).fitsVents && anatomy.eyes > 0 && traits.aggression > 0.55f &&
+            traits.fear < 0.5f && traits.persistence > 14.0f)
+        {
+            seed = candidate;
+        }
+    }
+    REQUIRE(seed != 0);
+    Creature creature(lab.scene, lab.meshes, lab.physics, &lab.nav, Hunter(seed), lab.At(-2.0f, 0.0f));
+    // They are seen at the north mouth, then crawl in out of its sight.
+    const glm::vec3 mouth{LabSpec::kX, 0.0f, LabSpec::kZ + 5.2f};
+    const glm::vec3 hideout{LabSpec::kX, 0.0f, LabSpec::kZ + 12.0f};
+    SensedPlayer player;
+    player.id = 1;
+    player.name = "Crawling";
+    player.forward = {0.0f, 0.0f, 1.0f};
+    constexpr float dt = 1.0f / 60.0f;
+    float time = 0.0f;
+    float closest = 1.0e9f;
+    for (int tick = 0; tick < 60 * 45; ++tick)
+    {
+        time += dt;
+        const bool gone = time > 4.0f;
+        player.feet = gone ? hideout : mouth;
+        player.height = gone ? 0.45f : 1.8f;
+        CreatureSenses senses;
+        senses.players = {player};
+        senses.mayBuildNest = false;
+        // Heard at the mouth, so it turns and sees them there.
+        if (tick % 30 == 0 && !gone)
+        {
+            Noise step;
+            step.kind = NoiseKind::Footstep;
+            step.reach = 20.0f;
+            step.position = mouth;
+            step.player = 1;
+            senses.noises = {step};
+        }
+        // Nothing sees into the crawlspace from outside it, nor out of it from in.
+        senses.clearLine = [&](const glm::vec3& from, const glm::vec3& to)
+        { return lab.nav.InCrawlspace({from.x, 0.0f, from.z}) == lab.nav.InCrawlspace({to.x, 0.0f, to.z}); };
+        creature.Update(senses, time, dt);
+        creature.UpdateVisual(dt);
+        // In there with them, not on the roof over them.
+        if (gone && lab.nav.InCrawlspace(creature.Position()))
+        {
+            closest = std::min(closest, Horizontal2(creature.Position(), hideout));
+        }
+    }
+    INFO("seed " << seed << ", closest " << closest << MindOf(creature));
+    CHECK(closest < 3.0f);
+}

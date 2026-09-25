@@ -125,6 +125,8 @@ struct CreatureSenses
     // What the brood has learnt this match about which ways of getting at these people work.
     const TacticLearner* learned = nullptr;
     const NavMesh* nav = nullptr;
+    // NavMesh::kCrawl when its body fits the crawlspaces, so the places it thinks of include them.
+    uint16_t crawl = 0;
     // The doors in the level, shut or open.
     std::vector<DoorSense> doors;
     // Where its nest is, when it has one: where it takes what it catches, and goes back to heal.
