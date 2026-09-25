@@ -174,6 +174,7 @@ CVar<float> cv_lampScale{"r.lamp_scale", 1.0f, "Multiplies the brightness of eve
 CVar<bool> cv_post{"r.post", true, "Finish the picture in a pass of its own: glow, grade, vignette, grain", CVarFlags::Archive};
 CVar<float> cv_bloom{"r.bloom", 0.6f, "How much bright things glow", CVarFlags::Archive};
 CVar<bool> cv_grain{"r.film_grain", true, "Film grain over the picture", CVarFlags::Archive};
+CVar<float> cv_grime{"r.grime", 1.0f, "How dirty the level's surfaces look, 0 for clean"};
 CVar<float> cv_vignette{"r.vignette", 0.35f, "How much the edges of the picture darken"};
 CVar<bool> cv_crosshair{"hud.crosshair", true, "Draw the crosshair", CVarFlags::Archive};
 CVar<bool> cv_showFps{"hud.show_fps", false, "Show the frame rate in the corner", CVarFlags::Archive};
@@ -8988,6 +8989,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
     // The finishing pass. Fear: something close and after you, or with hold of you, closes the edges
     // of the picture in and drains it, and it lets go slowly.
     {
+        app.GetSceneRenderer().SetGrime(std::clamp(cv_grime.Get(), 0.0f, 2.0f));
         PostProcess::Settings& post = app.GetPostProcess().GetSettings();
         post.enabled = cv_post.Get();
         post.exposure = environment.exposure;
