@@ -95,8 +95,6 @@ public:
     SoundId Find(const std::string& name) const;
     // The name a sound was added under, for logs. Walks the table, so not for anything per sample.
     std::string NameOf(SoundId id) const;
-    // Builds every recipe in the text and adds it under its own name. Returns how many.
-    int AddRecipes(const std::string& jsonText);
 
     // --- Streams --------------------------------------------------------------------------------
     //
@@ -118,8 +116,6 @@ public:
 
     // --- Playing --------------------------------------------------------------------------------
     VoiceId Play(const PlayDesc& desc);
-    // Convenience for the common case: a one-shot somewhere in the world.
-    VoiceId PlayAt(SoundId sound, const glm::vec3& position, float gain = 1.0f, float pitch = 1.0f);
     void Stop(VoiceId voice);
     void StopAll();
     void SetVoicePosition(VoiceId voice, const glm::vec3& position);

@@ -175,8 +175,6 @@ public:
     bool LoadFromFile(const std::filesystem::path& file);
     bool SaveToFile(const std::filesystem::path& file) const;
 
-    // Bakes every visible part into one mesh, for drawing a model that is not being animated.
-    MeshData BuildMesh() const;
     // The mesh of one part, in the part's own frame.
     MeshData BuildPartMesh(const ModelPart& part) const;
 

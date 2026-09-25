@@ -138,20 +138,6 @@ MeshData ModelAsset::BuildPartMesh(const ModelPart& part) const
     }
 }
 
-MeshData ModelAsset::BuildMesh() const
-{
-    MeshData combined;
-    for (const ModelPart& part : parts)
-    {
-        if (!part.visible)
-        {
-            continue;
-        }
-        combined.Append(BuildPartMesh(part), part.LocalMatrix());
-    }
-    return combined;
-}
-
 const ModelSocket* ModelAsset::FindSocket(const std::string& socketName) const
 {
     const auto it = std::find_if(sockets.begin(), sockets.end(),

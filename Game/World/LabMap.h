@@ -86,7 +86,5 @@ inline constexpr float kBalconySouth = kZ + 2.0f;
 // the things on the bench are WorldObjects', which reads the same numbers.
 void BuildLabMap(Scene& scene, MeshLibrary& meshes, PhysicsWorld* physics, LevelLights* lights = nullptr);
 
-// Whether a point is in the lab rather than the test map.
-bool InLab(const glm::vec3& point);
 
 } // namespace pred

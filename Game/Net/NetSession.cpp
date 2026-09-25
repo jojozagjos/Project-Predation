@@ -911,18 +911,6 @@ void NetHost::SetStruggle(uint8_t playerId, float struggle)
     }
 }
 
-PlayerInput NetHost::LastInputOf(uint8_t playerId) const
-{
-    for (const auto& client : m_clients)
-    {
-        if (client->playerId == playerId)
-        {
-            return client->lastInput;
-        }
-    }
-    return PlayerInput{};
-}
-
 void NetHost::RemoveClient(PeerId peer)
 {
     const auto found = std::find_if(m_clients.begin(), m_clients.end(),

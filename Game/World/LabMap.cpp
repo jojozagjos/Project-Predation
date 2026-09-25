@@ -60,11 +60,6 @@ void Block(MapBuilder& builder, const char* name, float x0, float y0, float z0, 
 
 } // namespace
 
-bool InLab(const glm::vec3& point)
-{
-    return std::abs(point.x - kX) < kHalf + 2.0f && std::abs(point.z - kZ) < kHalf + 2.0f;
-}
-
 void BuildLabMap(Scene& scene, MeshLibrary& meshes, PhysicsWorld* physics, LevelLights* lights)
 {
     MapBuilder builder(scene, meshes, physics, "lab_");

@@ -1848,6 +1848,17 @@ void PredationGame::DrawBrainInspector()
             ImGui::Text("Searching: stop %zu of %zu", brain.SearchStep() + 1, brain.SearchPlan().size());
         }
         ImGui::Text("Remembers %zu places where people have been.", brain.Heat().size());
+        // What it has learnt, and what the brood has.
+        ImGui::SeparatorText("Learnt");
+        ImGui::TextDisabled("%s. Heard %zu people talking%s.", brain.Wary() ? "Careful of people: it has been shot too often"
+                                                                             : "Not yet taught to be careful",
+                            brain.VoicesHeard().size(), brain.LureVoice() >= 0 ? ", and is using one of them" : "");
+        for (int t = 0; t < TacticLearner::Count; ++t)
+        {
+            const auto tactic = static_cast<TacticLearner::Tactic>(t);
+            ImGui::TextDisabled("  %-14s %+.2f  x%.2f  (%d tries)", TacticLearner::Name(tactic), m_learned.Value(tactic),
+                                m_learned.Weight(tactic), m_learned.Tries(tactic));
+        }
         if (!brain.Places().empty())
         {
             ImGui::SeparatorText("Lockers");

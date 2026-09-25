@@ -681,10 +681,6 @@ private:
     // Places the weapon and puts the hands on it. Returns false when there is nothing to hold.
     bool UpdateWeaponHold(const PlayerState& state, const PlayerView& view, PhysicsWorld& physics,
                           float dt);
-    // Where the trigger hand goes during a climb, and how far through the climb it is. Shared by
-    // the arm solve and by whatever is being carried, so the two agree.
-    // Moves the whole drawn weapon, parts and all, after the hold has already been solved.
-    void ShiftWeapon(const glm::vec3& delta);
     // One entity per weapon part, however the visual was arrived at.
     void BuildWeaponEntities(Scene& scene, MeshLibrary& meshes, const WeaponDefinition& definition);
     // Which way a bone's front faces, carried between frames so a limb's roll can never flip.

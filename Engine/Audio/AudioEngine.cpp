@@ -142,16 +142,6 @@ std::string AudioEngine::NameOf(SoundId id) const
     return "?";
 }
 
-int AudioEngine::AddRecipes(const std::string& jsonText)
-{
-    const std::vector<SoundLibraryEntry> entries = LoadSoundRecipes(jsonText);
-    for (const SoundLibraryEntry& entry : entries)
-    {
-        Add(entry.name, Synthesise(entry.recipe, m_settings.sampleRate));
-    }
-    return static_cast<int>(entries.size());
-}
-
 VoiceId AudioEngine::Play(const PlayDesc& desc)
 {
     std::lock_guard lock(m_mutex);
@@ -296,16 +286,6 @@ void AudioEngine::CloseStream(StreamId stream)
     // Marked rather than removed. Whatever has already arrived is still played out, and the voice
     // reading it ends when it reaches the end rather than being cut off mid-word.
     target->open = false;
-}
-
-VoiceId AudioEngine::PlayAt(SoundId sound, const glm::vec3& position, float gain, float pitch)
-{
-    PlayDesc desc;
-    desc.sound = sound;
-    desc.position = position;
-    desc.gain = gain;
-    desc.pitch = pitch;
-    return Play(desc);
 }
 
 void AudioEngine::Stop(VoiceId voice)

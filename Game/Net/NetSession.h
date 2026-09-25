@@ -224,8 +224,6 @@ public:
     // Pins a client where the world says they are -- inside a locker -- or lets them go again. Without
     // this the host went on simulating them walking about outside the locker they had climbed into.
     void PinPlayer(uint8_t playerId, bool pinned, const glm::vec3& feet, float yaw);
-    // What a client last pressed, for anything the host decides from it.
-    PlayerInput LastInputOf(uint8_t playerId) const;
     // How many times a client has pressed jump since this was last asked: struggling in a grip. Counted
     // input by input, because several of a client's inputs can run between two of the host's frames and
     // a press in the middle of them would otherwise never be seen.

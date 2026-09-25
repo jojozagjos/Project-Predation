@@ -1109,18 +1109,6 @@ void PlayerBody::BuildWeaponEntities(Scene& scene, MeshLibrary& meshes,
     }
 }
 
-// Moves the whole drawn weapon, parts and all. The parts carry their own world transforms, worked
-// out when the hold was solved, so moving the weapon afterwards has to move them with it.
-void PlayerBody::ShiftWeapon(const glm::vec3& delta)
-{
-    m_weaponTransform.position += delta;
-    for (Transform& transform : m_weaponPartTransforms)
-    {
-        transform.position += delta;
-    }
-    m_muzzleFlashTransform.position += delta;
-}
-
 glm::vec3 PlayerBody::MuzzlePoint() const
 {
     return m_weaponTransform.position + m_weaponTransform.rotation * m_weaponVisual.muzzle;
