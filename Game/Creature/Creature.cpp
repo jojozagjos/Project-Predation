@@ -890,6 +890,8 @@ void Creature::Update(CreatureSenses senses, float time, float dt)
         action.kind = RigAction::Feed;
         action.phase = std::fmod(time * 0.85f, 1.0f);
         action.target = intent.attackAt;
+        // Which way the side is sent says whether its mouth is in it or it has lifted its head.
+        action.side = intent.eatLifted ? -1 : 1;
     }
     else if (intent.carry >= 0)
     {

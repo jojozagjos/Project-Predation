@@ -165,8 +165,8 @@ private:
     // The dead, left where they fell when their player came back. Every machine leaves its own copy of
     // the body it was drawing, so nothing about them is sent. The oldest go when there are too many.
     // A body left where somebody died: the pieces it is drawn as, and what has been done to it since. Eaten,
-    // it is eaten where the mouth is: that piece goes to raw meat and then is gone, the ones against it are
-    // bloodied, and the rest stays as it was. Carried off, it moves with the jaws it is in. Each machine makes
+    // it is bitten where the mouth is: raw bite marks left in it there, that piece darkened a little, and the
+    // rest as it was. Nothing of it goes; what is used up is what there was to eat. Carried off, it moves with the jaws it is in. Each machine makes
     // its own when it sees the death, and eats it away from what it sees the creatures doing; the host says
     // who is carrying it off, by where it lies.
     struct Corpse
@@ -184,9 +184,18 @@ private:
         std::vector<glm::quat> turns;
         std::vector<Material> looks;
         std::vector<glm::vec3> sizes;
+        // Bite marks, each where it was left on the body.
+        std::vector<Entity> marks;
+        std::vector<glm::vec3> markOffsets;
+        std::vector<glm::quat> markTurns;
+        float sinceMark = 0.0f;
     };
     std::vector<Corpse> m_corpses;
     int m_nextCorpseId = 1;
+    // Bite wounds, a few ragged variations of a torn crater, made on first use.
+    std::vector<MeshHandle> m_biteMeshes;
+    // A bite mark on a body, on the face of `part` that looks most upward, towards `near`.
+    void MarkBite(Corpse& corpse, size_t part, const glm::vec3& near);
     void LeaveCorpse(const PlayerBody& body, uint8_t player);
     void ClearCorpses();
     // Carried bodies following the jaws they are in, and bodies eaten where creatures are eating them. Every

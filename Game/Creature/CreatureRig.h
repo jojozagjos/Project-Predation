@@ -99,6 +99,9 @@ public:
         float toYaw = 0.0f;
         int group = 0;          // feet in the same group step together
         bool reaching = false;  // lifted off the floor by an action, not walking
+        // Placed slowly, as feeding places it: where it is going, in the world, and how far over to it it is.
+        glm::vec3 gentleAt{0.0f};
+        float gentle = 0.0f;
     };
     const std::vector<Foot>& Feet() const { return m_feet; }
     // Where a foot has come down since the last time anybody asked: what the game hears as a step.
@@ -125,6 +128,12 @@ private:
     float m_pitch = 0.0f;     // tipped up a slope or a stair
     float m_headYaw = 0.0f;
     float m_headPitch = 0.0f;
+    // How far down over something it is eating it has got, and how far its mouth is in it: eased, so
+    // settling to eat and lifting its head to look round are movements, not cuts.
+    float m_feed = 0.0f;
+    float m_feedReach = 0.0f;
+    // Where its mouth is going, eased, in the world: the place it bites moves, and the head follows it.
+    glm::vec3 m_feedAt{0.0f};
     float m_twitchAt = 1.0f;
     float m_twitchUntil = 0.0f;
     glm::vec2 m_twitch{0.0f};

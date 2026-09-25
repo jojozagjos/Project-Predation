@@ -410,15 +410,27 @@ void CreatureRig::Update(const RigInput& input)
     case RigAction::Swipe:
         pitchTarget += 0.08f * swing;
         break;
-    case RigAction::Feed:
-        // Down over what it is eating: the whole body low and its front end lowest, so the head gets to the
-        // floor by the body going down to it, not by the neck stretching out.
-        rise -= 0.38f * a.hipHeight;
-        pitchTarget -= 0.55f;
-        forward += 0.08f * a.length;
-        break;
     default:
         break;
+    }
+    // Down over what it is eating: the whole body low and its front end lowest, so the mouth gets to it by
+    // the body going down, not by the neck stretching out -- and staying down while it lifts its head to
+    // look round, rather than standing up between mouthfuls.
+    {
+        const bool eating = input.action == RigAction::Feed;
+        if (eating)
+        {
+            if (m_feed < 0.02f)
+            {
+                m_feedAt = input.actionTarget;
+            }
+            m_feedAt += (input.actionTarget - m_feedAt) * Ease(2.5f, dt);
+        }
+        m_feed += ((eating ? 1.0f : 0.0f) - m_feed) * Ease(eating ? 2.2f : 1.6f, dt);
+        m_feedReach += ((eating && input.actionSide > 0 ? 1.0f : 0.0f) - m_feedReach) * Ease(3.0f, dt);
+        rise -= 0.38f * a.hipHeight * m_feed;
+        pitchTarget -= 0.55f * m_feed;
+        forward += 0.08f * a.length * m_feed;
     }
     if (input.airborne > 0.0f)
     {
@@ -514,7 +526,7 @@ void CreatureRig::Update(const RigInput& input)
     }
     yawTarget = std::clamp(Wrap(yawTarget), -1.35f, 1.35f);
     // Head down in something on the floor, it can bend a long way further than it ever looks down.
-    pitchTarget2 = std::clamp(pitchTarget2, input.action == RigAction::Feed ? -1.45f : -0.8f, 0.85f);
+    pitchTarget2 = std::clamp(pitchTarget2, -0.8f - 0.65f * m_feed, 0.85f);
     const float headRate = input.time < m_twitchUntil ? 30.0f : 9.0f;
     m_headYaw += (yawTarget - m_headYaw) * Ease(headRate, dt);
     m_headPitch += (pitchTarget2 - m_headPitch) * Ease(headRate, dt);
@@ -537,9 +549,10 @@ void CreatureRig::Update(const RigInput& input)
         // tearing at it: a short pull back and up, and a shake from side to side. Never a stretch.
         const float tear = std::sin(phase * glm::two_pi<float>());
         const glm::vec3 across = glm::normalize(glm::cross(headAhead, glm::vec3(0.0f, 1.0f, 0.0f)) + glm::vec3(1e-4f, 0.0f, 0.0f));
-        thrust = -headAhead * (0.1f * a.headLength * std::max(tear, 0.0f)) +
-                 across * (0.05f * a.headLength * std::sin(phase * glm::two_pi<float>() * 2.0f)) +
-                 glm::vec3(0.0f, 0.08f * a.headLength * std::max(tear, 0.0f), 0.0f);
+        thrust = (-headAhead * (0.1f * a.headLength * std::max(tear, 0.0f)) +
+                  across * (0.05f * a.headLength * std::sin(phase * glm::two_pi<float>() * 2.0f)) +
+                  glm::vec3(0.0f, 0.08f * a.headLength * std::max(tear, 0.0f), 0.0f)) *
+                 m_feedReach;
     }
     thrust += glm::vec3(0.0f, 0.12f, 0.2f) * input.windup * a.headLength;
     for (size_t k = 1; k < neck.size(); ++k)
@@ -563,6 +576,32 @@ void CreatureRig::Update(const RigInput& input)
         hinge = Apply(about, hinge);
         chin = Apply(about, chin);
         headUp = glm::normalize(turn * headUp);
+    }
+    // Its mouth in what it is eating: the neck bent, as two lengths that do not change, so that the front of
+    // the face arrives at the place it is biting -- arched up at the middle the way a neck arches, never
+    // stretched. Eased in and out with how far it is into it.
+    if (m_feedReach > 0.01f)
+    {
+        const glm::vec3 mouthAt = Apply(rootInverse, m_feedAt) + glm::vec3(0.0f, 0.04f, 0.0f);
+        const float first = glm::distance(neck[0], neck[2]);
+        const float second = glm::distance(neck[2], neck[3]);
+        const float toMiddle = glm::distance(neck[0], neck[1]);
+        const TwoBoneIKResult bent =
+            SolveTwoBoneIK(neck[0], mouthAt, glm::vec3(0.0f, 1.0f, 0.3f), std::max(first, 0.01f), std::max(second, 0.01f));
+        const glm::vec3 oldHead = neck[3] - neck[2];
+        const glm::vec3 bentMiddle = glm::mix(neck[2], bent.jointPosition, m_feedReach);
+        const glm::vec3 bentFront = glm::mix(neck[3], bent.endPosition, m_feedReach);
+        const glm::vec3 newHead = bentFront - bentMiddle;
+        const glm::quat headTurn = glm::length(oldHead) > 1e-4f && glm::length(newHead) > 1e-4f
+                                       ? RotationBetween(glm::normalize(oldHead), glm::normalize(newHead))
+                                       : glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
+        hinge = bentMiddle + headTurn * (hinge - neck[2]);
+        chin = bentMiddle + headTurn * (chin - neck[2]);
+        headUp = glm::normalize(headTurn * headUp);
+        const glm::vec3 along = bentMiddle - neck[0];
+        neck[1] = neck[0] + (glm::length(along) > 1e-4f ? glm::normalize(along) * toMiddle : neck[1] - neck[0]);
+        neck[2] = bentMiddle;
+        neck[3] = bentFront;
     }
     m_bones[static_cast<size_t>(skin.neck[0])] = BoneFrame(neck[0], neck[1], headUp);
     m_bones[static_cast<size_t>(skin.neck[1])] = BoneFrame(neck[1], neck[2], headUp);
@@ -655,7 +694,7 @@ void CreatureRig::Update(const RigInput& input)
         // An action takes a front limb off the floor. Which ones: a crawler's arms, or anything's front
         // pair.
         const bool forelimb = pair.arm || (pair.along < 0.2f && a.plan != BodyPlan::Biped);
-        const glm::vec3 target = Apply(rootInverse, input.actionTarget);
+        const glm::vec3 target = Apply(rootInverse, input.action == RigAction::Feed ? m_feedAt : input.actionTarget);
         float reach = 0.0f;
         glm::vec3 reachTo = foot;
         if (forelimb && input.action != RigAction::None && input.action != RigAction::Bite && input.action != RigAction::Roar)
@@ -713,12 +752,42 @@ void CreatureRig::Update(const RigInput& input)
                 reach = swing > 0.1f ? 1.0f : 0.0f;
                 break;
             case RigAction::Feed:
-                // Forefeet on what it is eating, holding it down.
-                reachTo = target + glm::vec3(side * 0.2f, 0.03f, 0.12f);
+                // Forefeet planted on the floor under its shoulders and a little towards what it is eating,
+                // holding it down at the near edge: not stretched out to it, and never over its back.
+            {
+                // At a comfortable reach from the shoulder, forward towards it and either side of it: close in
+                // under the shoulder, a long arm folds up with its elbow over its back.
+                const glm::vec3 below{shoulder.x, target.y, shoulder.z};
+                const float height = std::max(shoulder.y - target.y, 0.0f);
+                const float comfortable = span * 0.66f;
+                const float ahead = std::sqrt(std::max(comfortable * comfortable - height * height, 0.04f));
+                // Straight out ahead of its own shoulder, each hand on its own side of the body: aimed at the one
+                // place it was eating, the two long arms crossed over each other.
+                reachTo = glm::vec3(static_cast<float>(side) * (std::max(std::abs(shoulder.x), 0.2f) + 0.2f), target.y + 0.02f,
+                                    shoulder.z - ahead);
                 reach = 1.0f;
                 break;
+            }
             default:
                 break;
+            }
+            // Feeding moves slowly: where each forefoot is going is followed, not jumped to, and it comes off
+            // the floor and back down over a moment rather than in one frame.
+            if (input.action == RigAction::Feed && reach > 0.0f)
+            {
+                Foot& state = m_feet[i];
+                const glm::vec3 wanted = Apply(m_root, clampReach(reachTo));
+                if (state.gentle < 0.01f)
+                {
+                    state.gentleAt = Apply(m_root, foot);
+                }
+                state.gentleAt += (wanted - state.gentleAt) * Ease(4.0f, dt);
+                state.gentle += (1.0f - state.gentle) * Ease(3.0f, dt);
+                reachTo = glm::mix(foot, Apply(rootInverse, state.gentleAt), state.gentle);
+            }
+            else
+            {
+                m_feet[i].gentle = 0.0f;
             }
             if (reach > 0.0f)
             {
@@ -730,6 +799,22 @@ void CreatureRig::Update(const RigInput& input)
                     toeForward = glm::normalize(glm::vec3(toward.x, 0.0f, toward.z));
                 }
                 m_feet[i].reaching = true;
+            }
+        }
+        // Done feeding: each forefoot back to walking over a moment, not in one frame.
+        if (forelimb && input.action == RigAction::None && m_feet[i].gentle > 0.0f && input.airborne <= 0.0f)
+        {
+            Foot& state = m_feet[i];
+            state.gentle -= state.gentle * Ease(3.0f, dt);
+            if (state.gentle < 0.03f)
+            {
+                state.gentle = 0.0f;
+            }
+            else
+            {
+                foot = glm::mix(foot, Apply(rootInverse, state.gentleAt), state.gentle);
+                reach = 1.0f;
+                state.reaching = true;
             }
         }
         if (input.airborne > 0.0f)
@@ -747,7 +832,12 @@ void CreatureRig::Update(const RigInput& input)
         }
 
         const glm::vec3 ankleTarget = reach > 0.0f || input.airborne > 0.0f ? foot : foot + glm::vec3(0.0f, pair.thickness, 0.0f);
-        const TwoBoneIKResult ik = SolveTwoBoneIK(hip, ankleTarget, LimbPole(a, leg), pair.upper, pair.lower);
+        // Down over something it is eating, its forelimbs brace with the elbows out to the sides, as a crouched
+        // animal holds them, rather than folded up over its back.
+        const glm::vec3 pole = forelimb && m_feed > 0.05f
+                                   ? glm::normalize(glm::mix(LimbPole(a, leg), glm::vec3(leg.side, -0.35f, 0.35f), std::min(m_feed * 1.5f, 1.0f)))
+                                   : LimbPole(a, leg);
+        const TwoBoneIKResult ik = SolveTwoBoneIK(hip, ankleTarget, pole, pair.upper, pair.lower);
         const glm::vec3 knee = ik.jointPosition;
         const glm::vec3 ankle = ik.endPosition;
         const glm::vec3 toe = ankle + glm::vec3(0.0f, reach > 0.0f ? 0.0f : -pair.thickness * 0.5f, 0.0f) + toeForward * pair.foot;

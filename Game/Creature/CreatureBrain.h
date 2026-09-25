@@ -225,6 +225,8 @@ struct CreatureIntent
     // Eating a body this tick, which one, head down at `attackAt`; and carrying one off in its jaws.
     int eat = -1;
     int carry = -1;
+    // Still at it, but its head up for a moment to look round: down over the body, not biting.
+    bool eatLifted = false;
 };
 
 enum class Behavior : uint8_t

@@ -12,6 +12,7 @@
 #include "Game/World/HiveMesh.h"
 
 #include "Engine/Core/CVar.h"
+#include "Engine/Animation/IK.h"
 #include "Engine/Core/Log.h"
 #include "Engine/Debug/DebugCategories.h"
 #include "Engine/Render/DebugDraw.h"
@@ -1087,6 +1088,171 @@ PredationGame::Corpse* PredationGame::CorpseNear(const glm::vec3& at, float with
     return best;
 }
 
+namespace
+{
+
+uint32_t WoundColour(const glm::vec3& colour, float wet)
+{
+    const auto channel = [](float v) { return static_cast<uint32_t>(std::clamp(v, 0.0f, 1.0f) * 255.0f + 0.5f); };
+    return channel(colour.r) | (channel(colour.g) << 8) | (channel(colour.b) << 16) | (channel(wet) << 24);
+}
+
+// A bite wound, in its own frame: a crater a unit across lying on y = 0 -- a ragged lip of torn raw flesh
+// standing a little proud, falling away inside to a centre so dark it reads as a hole going in -- and two
+// arcs of punctures round it where the teeth went in. Painted per vertex; the material is white.
+MeshData BiteWound(uint32_t variant)
+{
+    MeshData mesh;
+    constexpr int kAround = 18;
+    // Rings from the middle out: how far out, how high, and what colour.
+    struct Ring
+    {
+        float out;
+        float height;
+        glm::vec3 colour;
+        float wet;
+    };
+    const Ring rings[] = {{0.0f, -0.02f, {0.03f, 0.004f, 0.004f}, 0.25f},
+                          {0.35f, 0.0f, {0.07f, 0.008f, 0.008f}, 0.3f},
+                          {0.62f, 0.06f, {0.28f, 0.03f, 0.03f}, 0.35f},
+                          {0.8f, 0.12f, {0.42f, 0.07f, 0.06f}, 0.45f},
+                          {1.0f, 0.0f, {0.3f, 0.06f, 0.05f}, 0.6f}};
+    const auto ragged = [&](int k, int r)
+    {
+        const float x = static_cast<float>(k * 131 + r * 57 + static_cast<int>(variant) * 311);
+        return 0.78f + 0.44f * (0.5f + 0.5f * std::sin(x * 12.9898f) * std::cos(x * 4.1414f));
+    };
+    for (size_t r = 0; r < std::size(rings); ++r)
+    {
+        for (int k = 0; k < kAround; ++k)
+        {
+            const float angle = static_cast<float>(k) / kAround * glm::two_pi<float>();
+            const float out = rings[r].out * (r == 0 ? 1.0f : ragged(k, static_cast<int>(r)));
+            MeshVertex vertex;
+            vertex.position = {std::cos(angle) * out, rings[r].height * (r >= 2 ? ragged(k, 9) : 1.0f), std::sin(angle) * out * 0.8f};
+            vertex.normal = {0.0f, 1.0f, 0.0f};
+            vertex.color = WoundColour(rings[r].colour, rings[r].wet);
+            mesh.vertices.push_back(vertex);
+        }
+    }
+    for (size_t r = 0; r + 1 < std::size(rings); ++r)
+    {
+        for (int k = 0; k < kAround; ++k)
+        {
+            const uint32_t a = static_cast<uint32_t>(r * kAround + k);
+            const uint32_t b = static_cast<uint32_t>(r * kAround + (k + 1) % kAround);
+            const uint32_t c = static_cast<uint32_t>((r + 1) * kAround + k);
+            const uint32_t d = static_cast<uint32_t>((r + 1) * kAround + (k + 1) % kAround);
+            mesh.indices.insert(mesh.indices.end(), {a, d, c, a, b, d});
+        }
+    }
+    // Tooth punctures: small dark holes in two arcs, the upper jaw's and the lower's.
+    for (int t = 0; t < 10; ++t)
+    {
+        const bool upper = t < 5;
+        const float spread = (static_cast<float>(t % 5) - 2.0f) * 0.32f;
+        const float angle = (upper ? -glm::half_pi<float>() : glm::half_pi<float>()) + spread;
+        const float out = 1.18f + 0.08f * std::sin(static_cast<float>(t * 7 + static_cast<int>(variant) * 3));
+        const glm::vec3 at{std::cos(angle) * out, 0.012f, std::sin(angle) * out * 0.8f};
+        const float size = 0.07f + 0.03f * (t % 3 == 0 ? 1.0f : 0.0f);
+        const uint32_t first = static_cast<uint32_t>(mesh.vertices.size());
+        MeshVertex middle;
+        middle.position = at;
+        middle.color = WoundColour({0.04f, 0.005f, 0.005f}, 0.3f);
+        mesh.vertices.push_back(middle);
+        for (int k = 0; k < 6; ++k)
+        {
+            const float around = static_cast<float>(k) / 6.0f * glm::two_pi<float>();
+            MeshVertex edge;
+            edge.position = at + glm::vec3(std::cos(around) * size, -0.004f, std::sin(around) * size);
+            edge.color = WoundColour({0.3f, 0.05f, 0.05f}, 0.5f);
+            mesh.vertices.push_back(edge);
+        }
+        for (uint32_t k = 0; k < 6; ++k)
+        {
+            mesh.indices.insert(mesh.indices.end(), {first, first + 1 + (k + 1) % 6, first + 1 + k});
+        }
+    }
+    return mesh;
+}
+
+} // namespace
+
+void PredationGame::MarkBite(Corpse& corpse, size_t part, const glm::vec3& near)
+{
+    const Transform* where = part < corpse.parts.size() ? m_scene.GetTransform(corpse.parts[part]) : nullptr;
+    const MeshRenderer* renderer = part < corpse.parts.size() ? m_scene.GetMeshRenderer(corpse.parts[part]) : nullptr;
+    const Mesh* mesh = renderer != nullptr ? m_app->GetMeshes().Get(renderer->mesh) : nullptr;
+    if (where == nullptr || mesh == nullptr || !mesh->bounds.IsValid())
+    {
+        return;
+    }
+    if (m_biteMeshes.empty())
+    {
+        for (uint32_t variant = 0; variant < 4; ++variant)
+        {
+            m_biteMeshes.push_back(m_app->GetMeshes().Upload(BiteWound(variant), "corpse_bite_" + std::to_string(variant)));
+        }
+    }
+    // The face of the piece that looks most upward, as it lies: that is where a mouth gets at it.
+    const glm::vec3 centre = (mesh->bounds.min + mesh->bounds.max) * 0.5f;
+    const glm::vec3 half = (mesh->bounds.max - mesh->bounds.min) * 0.5f * where->scale;
+    const glm::vec3 axes[3] = {{1.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}};
+    int best = 1;
+    float bestUp = -2.0f;
+    float sign = 1.0f;
+    for (int k = 0; k < 3; ++k)
+    {
+        const float up = (where->rotation * axes[k]).y;
+        if (std::abs(up) > bestUp)
+        {
+            bestUp = std::abs(up);
+            best = k;
+            sign = up >= 0.0f ? 1.0f : -1.0f;
+        }
+    }
+    const glm::vec3 normal = where->rotation * (axes[best] * sign);
+    // On that face, towards where it bit, not past its edges.
+    // As big as the face allows, and wholly on it: a wound hanging off the edge of an arm is in the air.
+    float narrowest = 1.0e9f;
+    for (int k = 0; k < 3; ++k)
+    {
+        if (k != best)
+        {
+            narrowest = std::min(narrowest, half[k]);
+        }
+    }
+    const float radius = std::min(0.06f, narrowest * 0.36f);
+    glm::vec3 local = centre * where->scale + axes[best] * (sign * half[best]);
+    const glm::vec3 toward = glm::inverse(where->rotation) * (near - where->position);
+    for (int k = 0; k < 3; ++k)
+    {
+        if (k != best)
+        {
+            const float room = std::max(half[k] - radius * 1.3f, 0.0f);
+            const float jitter = std::sin(static_cast<float>(corpse.marks.size()) * 2.3f + static_cast<float>(k)) * 0.35f;
+            local[k] = std::clamp(toward[k] - centre[k] * where->scale[k] + jitter * half[k], -room, room) + centre[k] * where->scale[k];
+        }
+    }
+    Transform mark;
+    mark.position = where->position + where->rotation * local;
+    mark.rotation = RotationBetween(glm::vec3(0.0f, 1.0f, 0.0f), normal) *
+                    glm::angleAxis(static_cast<float>(corpse.marks.size()) * 1.7f, glm::vec3(0.0f, 1.0f, 0.0f));
+    const float size = 0.8f + 0.4f * std::abs(std::sin(static_cast<float>(corpse.marks.size()) * 3.1f));
+    // Lying just on the surface, a bite across: the crater's lip standing proud of it, its middle sunk.
+    mark.position += normal * 0.003f;
+    mark.scale = glm::vec3(radius) * std::min(size, 1.0f);
+    const MeshHandle wound = m_biteMeshes[corpse.marks.size() % m_biteMeshes.size()];
+    const Entity entity = m_scene.CreateMeshEntity("corpse_bite", mark, wound, Material::Diffuse({1.0f, 1.0f, 1.0f}, 0.6f));
+    if (MeshRenderer* shown = m_scene.GetMeshRenderer(entity))
+    {
+        shown->castsShadow = false;
+    }
+    corpse.marks.push_back(entity);
+    corpse.markOffsets.push_back(mark.position - corpse.at);
+    corpse.markTurns.push_back(mark.rotation);
+}
+
 PredationGame::Corpse* PredationGame::CorpseById(int id)
 {
     for (Corpse& corpse : m_corpses)
@@ -1109,6 +1275,14 @@ void PredationGame::PlaceCorpse(Corpse& corpse, const glm::vec3& to, float turn)
         {
             where->position = to + spin * corpse.offsets[i];
             where->rotation = spin * corpse.turns[i];
+        }
+    }
+    for (size_t i = 0; i < corpse.marks.size(); ++i)
+    {
+        if (Transform* where = m_scene.GetTransform(corpse.marks[i]))
+        {
+            where->position = to + spin * corpse.markOffsets[i];
+            where->rotation = spin * corpse.markTurns[i];
         }
     }
 }
@@ -1157,6 +1331,14 @@ void PredationGame::HandleCorpseIntents(Creature& creature, const CreatureIntent
                     corpse.turns[i] = where->rotation;
                 }
             }
+            for (size_t i = 0; i < corpse.marks.size(); ++i)
+            {
+                if (const Transform* where = m_scene.GetTransform(corpse.marks[i]))
+                {
+                    corpse.markOffsets[i] = where->position - down;
+                    corpse.markTurns[i] = where->rotation;
+                }
+            }
             if (m_sessionMode == SessionMode::Host)
             {
                 WorldEventMessage event;
@@ -1177,7 +1359,7 @@ void PredationGame::UpdateCorpses(float dt)
     for (const std::unique_ptr<Creature>& creature : m_creatures)
     {
         const Creature::Action& action = creature->CurrentAction();
-        if (action.kind != RigAction::Feed || !creature->Alive())
+        if (action.kind != RigAction::Feed || action.side <= 0 || !creature->Alive())
         {
             continue;
         }
@@ -1204,7 +1386,15 @@ void PredationGame::UpdateCorpses(float dt)
         }
         if (bitten < corpse->flesh.size())
         {
-            corpse->flesh[bitten] = std::max(corpse->flesh[bitten] - dt * static_cast<float>(corpse->flesh.size()) / 30.0f, 0.0f);
+            const float taken = std::min(dt * static_cast<float>(corpse->flesh.size()) / 30.0f, corpse->flesh[bitten]);
+            corpse->flesh[bitten] -= taken;
+            // A mark for every mouthful or so, where it bit.
+            corpse->sinceMark += taken;
+            if (corpse->sinceMark > 0.5f && corpse->marks.size() < 18)
+            {
+                corpse->sinceMark = 0.0f;
+                MarkBite(*corpse, bitten, action.target);
+            }
         }
         float left = 0.0f;
         for (const float f : corpse->flesh)
@@ -1237,30 +1427,16 @@ void PredationGame::UpdateCorpses(float dt)
                 PlaceCorpse(corpse, glm::vec3(ahead.x, carrier->Position().y + 0.05f, ahead.z), carrier->Yaw() - corpse.carryYaw);
             }
         }
-        // Eaten where it has been: that piece raw and wet and then gone, the pieces against it bloodied, the
-        // rest untouched. A body does not go red all over from being bitten at one end.
+        // A piece that has been bitten at a good deal is darker and wetter for it, a little; the marks say the
+        // rest. Nothing goes, and nothing untouched changes.
         for (size_t i = 0; i < corpse.parts.size() && i < corpse.flesh.size(); ++i)
         {
-            float bloodied = 1.0f - corpse.flesh[i];
-            for (size_t k = 0; k < corpse.parts.size() && k < corpse.flesh.size(); ++k)
-            {
-                if (k != i && corpse.flesh[k] < 0.9f &&
-                    glm::distance(corpse.offsets[i], corpse.offsets[k]) < 0.35f)
-                {
-                    bloodied = std::max(bloodied, 0.35f * (1.0f - corpse.flesh[k]));
-                }
-            }
-            if (Transform* where = m_scene.GetTransform(corpse.parts[i]))
-            {
-                where->scale = corpse.flesh[i] <= 0.15f ? glm::vec3(0.0f) : corpse.sizes[i];
-            }
             if (MeshRenderer* renderer = m_scene.GetMeshRenderer(corpse.parts[i]))
             {
                 Material look = corpse.looks[i];
-                const float raw = std::min(bloodied * 1.4f, 0.9f);
-                look.baseColor = glm::mix(look.baseColor, glm::vec3(0.22f, 0.02f, 0.02f), raw);
-                look.roughness = glm::mix(look.roughness, 0.3f, raw);
-                look.metallic = glm::mix(look.metallic, 0.0f, raw);
+                const float raw = std::min((1.0f - corpse.flesh[i]) * 0.4f, 0.3f);
+                look.baseColor = glm::mix(look.baseColor, glm::vec3(0.22f, 0.03f, 0.03f), raw);
+                look.roughness = glm::mix(look.roughness, 0.35f, raw);
                 renderer->material = look;
             }
         }

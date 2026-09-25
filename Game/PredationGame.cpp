@@ -6070,6 +6070,10 @@ void PredationGame::LeaveCorpse(const PlayerBody& body, uint8_t player)
         {
             m_scene.Destroy(entity);
         }
+        for (const Entity mark : m_corpses.front().marks)
+        {
+            m_scene.Destroy(mark);
+        }
         m_corpses.erase(m_corpses.begin());
     }
     Corpse corpse;
@@ -6100,6 +6104,10 @@ void PredationGame::ClearCorpses()
         for (const Entity entity : corpse.parts)
         {
             m_scene.Destroy(entity);
+        }
+        for (const Entity mark : corpse.marks)
+        {
+            m_scene.Destroy(mark);
         }
     }
     m_corpses.clear();

@@ -3050,6 +3050,7 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
     m_intent.echo.clear();
     m_intent.eat = -1;
     m_intent.carry = -1;
+    m_intent.eatLifted = false;
     // Mending is something it does this tick, like everything else here: left set, whatever set it last
     // went on healing it for good.
     m_intent.recover = 0.0f;
@@ -4269,20 +4270,31 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
         // to look round. Eating mends it: this is what it came for.
         if (now - m_biteMovedAt > 3.0f)
         {
+            // A little way along from where it was biting, working round the body rather than jumping about it.
+            const bool first = m_biteMovedAt < 0.0f;
             m_biteMovedAt = now;
             const float angle = m_random.Unit() * glm::two_pi<float>();
-            m_biteAt = m_meal + glm::vec3(std::cos(angle), 0.0f, std::sin(angle)) * m_random.Range(0.0f, 0.45f);
+            const glm::vec3 from = first ? m_meal : m_biteAt;
+            glm::vec3 next = from + glm::vec3(std::cos(angle), 0.0f, std::sin(angle)) * m_random.Range(0.1f, 0.25f);
+            const glm::vec3 off = next - m_meal;
+            if (glm::length(glm::vec2(off.x, off.z)) > 0.45f)
+            {
+                next = m_meal + glm::normalize(glm::vec3(off.x, 0.0f, off.z)) * 0.45f;
+            }
+            m_biteAt = glm::vec3(next.x, m_meal.y, next.z);
         }
         m_goal = "feeding";
         m_intent.crouch = 1.0f;
         m_intent.face = true;
         m_intent.facePoint = m_biteAt;
-        const float cycle = std::fmod(now - m_feedStarted, 6.0f);
-        if (cycle < 4.8f)
+        // Mostly head down and tearing; every so often, still down over it, head up to look round and
+        // listen, and then down again.
+        const float cycle = std::fmod(now - m_feedStarted, 7.0f);
+        m_intent.eat = meal->id;
+        m_intent.attackAt = m_biteAt + glm::vec3(0.0f, 0.1f, 0.0f);
+        if (cycle < 5.4f)
         {
-            m_intent.eat = meal->id;
             m_intent.recover = 0.012f;
-            m_intent.attackAt = m_biteAt + glm::vec3(0.0f, 0.12f, 0.0f);
             m_intent.look = true;
             m_intent.lookAt = m_biteAt;
             if (std::fmod(now - m_feedStarted, 2.4f) < 0.02f)
@@ -4292,6 +4304,7 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
         }
         else
         {
+            m_intent.eatLifted = true;
             lookAround(now + 1.0f);
         }
         if (now - m_feedStarted > 18.0f + 20.0f * m_traits.aggression || meal->meat <= 0.08f)
