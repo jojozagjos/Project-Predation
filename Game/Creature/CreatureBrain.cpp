@@ -255,7 +255,8 @@ void CreatureBrain::StartPastime(const CreatureSenses& senses, float now)
     const bool somewhere = std::string(m_roamWhy) != "somewhere";
     const float dark = senses.lightAt ? 1.0f - std::clamp(senses.lightAt(senses.position + glm::vec3(0.0f, 0.5f, 0.0f)), 0.0f, 1.0f) : 0.5f;
     // What it does here depends on what it is and where it has got to.
-    const float listen = 0.25f + 0.5f * m_traits.hearing / 1.6f;
+    // Blind, stopping to listen is most of what it does.
+    const float listen = (0.25f + 0.5f * m_traits.hearing / 1.6f) * (m_traits.sight <= 0.0f ? 3.0f : 1.0f);
     const float sniff = 0.3f + 0.4f * m_traits.curiosity;
     // Not straight after it has had somebody and lost them: it is restless then, and keeps moving.
     const bool restless = std::any_of(m_tracks.begin(), m_tracks.end(),
@@ -935,7 +936,8 @@ void CreatureBrain::Perceive(const CreatureSenses& senses, float dt)
         if (visibility > 0.001f)
         {
             track.exposure = std::min(track.exposure + visibility * Tuning().exposureGain * dt, 1.0f);
-            if (track.exposure < 1.0f && senses.time >= m_alertIgnoreUntil)
+            // With no eyes there is nothing to stop and stare with: it goes on feeling for them instead.
+            if (track.exposure < 1.0f && senses.time >= m_alertIgnoreUntil && hasEyes)
             {
                 // Not made out yet, but something is there: stop and look at it.
                 if (senses.time > m_alertUntil)
@@ -2176,6 +2178,86 @@ bool CreatureBrain::PickFleePoint(const CreatureSenses& senses, glm::vec3& out)
     return found;
 }
 
+bool CreatureBrain::HuntByEar(const CreatureSenses& senses, const glm::vec3& heardAt, float heardAgo, const std::string& who)
+{
+    const float now = senses.time;
+    const float gap = Horizontal(senses.position, heardAt);
+    const glm::vec3 ear = heardAt + glm::vec3(0.0f, 0.6f, 0.0f);
+    // A sound just now, and close: it goes for it, fast, head out towards it.
+    if (heardAgo < 1.5f && gap < 6.0f)
+    {
+        m_goal = "going for the sound of " + who;
+        m_intent.move = true;
+        m_intent.destination = heardAt;
+        m_intent.speed = m_traits.runSpeed * 1.1f;
+        m_intent.look = true;
+        m_intent.lookAt = ear;
+        m_listenUntil = -1.0f;
+        return true;
+    }
+    // Otherwise it stops dead now and again, head up and turned to where it last heard them, and listens;
+    // and between, creeps a few metres nearer, low and quiet so as not to drown out what it is listening for.
+    if (now < m_listenUntil)
+    {
+        m_goal = "listening for " + who;
+        m_intent.crouch = 0.3f;
+        m_intent.look = true;
+        m_intent.lookAt = ear + glm::vec3(0.0f, 0.3f, 0.0f);
+        return true;
+    }
+    if (now >= m_nextListenAt)
+    {
+        m_listenUntil = now + m_random.Range(0.8f, 1.7f);
+        m_nextListenAt = m_listenUntil + m_random.Range(1.5f, 2.8f);
+        m_intent.look = true;
+        m_intent.lookAt = ear;
+        return true;
+    }
+    m_goal = "creeping towards where it heard " + who;
+    m_intent.move = true;
+    m_intent.destination = heardAt;
+    m_intent.speed = m_traits.walkSpeed * 1.25f;
+    m_intent.crouch = 0.4f;
+    m_intent.look = true;
+    m_intent.lookAt = ear;
+    return true;
+}
+
+bool CreatureBrain::FeelAbout(const CreatureSenses& senses, const glm::vec3& centre)
+{
+    // Three places round where the sound was, a stride out, nose down at each: touch and smell. Then done.
+    if (Horizontal(m_sweepCentre, centre) > 1.0f)
+    {
+        m_sweepCentre = centre;
+        m_sweep = 0;
+    }
+    if (m_sweep >= 3 || senses.nav == nullptr)
+    {
+        return false;
+    }
+    const float angle = static_cast<float>(m_sweep) * (glm::two_pi<float>() / 3.0f) + static_cast<float>(m_traits.seed % 7u);
+    const glm::vec3 wanted = centre + glm::vec3(std::cos(angle), 0.0f, std::sin(angle)) * 1.6f;
+    if (!senses.nav->NearestPoint(wanted, 1.0f, m_sweepPoint))
+    {
+        ++m_sweep;
+        return true;
+    }
+    if (Horizontal(senses.position, m_sweepPoint) < 0.5f)
+    {
+        ++m_sweep;
+        return true;
+    }
+    m_goal = "feeling about where the sound was";
+    m_intent.move = true;
+    m_intent.destination = m_sweepPoint;
+    m_intent.speed = m_traits.walkSpeed * 0.8f;
+    m_intent.crouch = 0.8f;
+    const glm::vec3 across = glm::cross(senses.forward, glm::vec3(0.0f, 1.0f, 0.0f));
+    m_intent.look = true;
+    m_intent.lookAt = senses.position + senses.forward * 0.8f + across * (0.4f * std::sin(senses.time * 2.5f));
+    return true;
+}
+
 bool CreatureBrain::PickCeilingSpot(const CreatureSenses& senses, glm::vec3& out)
 {
     // Somewhere with a ceiling it can get up onto, out of everybody's sight, not far. Without a way of
@@ -3007,6 +3089,11 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
             // Its own pace for this leg of it: an amble, a steady walk, now and then a brisk trot.
             const float pace = m_random.Unit();
             m_roamPace = pace < 0.35f ? 0.65f : pace < 0.85f ? 1.0f : 1.35f;
+            // Blind, it goes carefully: never at a trot into what it cannot see.
+            if (m_traits.sight <= 0.0f)
+            {
+                m_roamPace = std::min(m_roamPace, 0.8f);
+            }
             // Somewhere another of its kind already is, it leaves to that one: a brood spreads out.
             for (int attempt = 0; m_haveRoamPoint && attempt < 4; ++attempt)
             {
@@ -3100,12 +3187,24 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
     case Behavior::Investigate:
     {
         m_goal = "going to look at " + m_interest.what;
+        // Something new to look at, somewhere else: it has not got there yet, whatever it had got to before.
+        if (m_arrived && Horizontal(m_interest.position, m_investigated) > 2.0f)
+        {
+            m_arrived = false;
+            m_opening = -1;
+        }
         if (!m_arrived && Horizontal(senses.position, m_interest.position) < 1.4f)
         {
             m_arrived = true;
+            m_investigated = m_interest.position;
             m_lookAroundUntil = now + 3.0f;
             m_lookBaseSet = false;
             Log(now, "arrived at the " + m_interest.what + ", looking around");
+        }
+        // No eyes to look round with: it feels about the place instead.
+        if (m_arrived && m_opening == -1 && m_traits.sight <= 0.0f && FeelAbout(senses, m_interest.position))
+        {
+            break;
         }
         if (m_arrived && m_opening == -1)
         {
@@ -3136,6 +3235,10 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
                 m_interest.strength = 0.0f;
                 Log(now, "found nothing");
             }
+        }
+        else if (m_traits.sight <= 0.0f && m_interest.what != "call")
+        {
+            HuntByEar(senses, m_interest.position, now - m_interest.time, "the " + m_interest.what);
         }
         else
         {
@@ -3241,6 +3344,39 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
             if (senses.nav != nullptr && senses.nav->NearestPoint(guess, 2.0f, onMesh, senses.crawl))
             {
                 guess = onMesh;
+            }
+            const bool blind = m_traits.sight <= 0.0f;
+            // With no eyes, where it heard them last, as it heard it: not a guess pushed along by how they
+            // were moving, which it could only have seen.
+            if (blind)
+            {
+                guess = track->lastKnown;
+                const float heardAgo = now - std::max(track->lastHeard, track->lastSeen);
+                // A new sound from them since it got here: off again after it.
+                if (m_arrived && heardAgo < 1.0f && Horizontal(senses.position, guess) > 1.6f)
+                {
+                    m_arrived = false;
+                }
+                if (!m_arrived && Horizontal(senses.position, guess) >= 1.2f)
+                {
+                    HuntByEar(senses, guess, heardAgo, track->name);
+                    break;
+                }
+                if (!m_arrived)
+                {
+                    m_arrived = true;
+                    m_lookAroundUntil = now + 2.5f;
+                    track->confidence = std::min(track->confidence, 0.5f);
+                    Log(now, "got to where it heard " + track->name + "; feels about");
+                }
+                if (FeelAbout(senses, guess))
+                {
+                    break;
+                }
+                m_goal = "listening for " + track->name;
+                m_intent.look = true;
+                m_intent.lookAt = senses.eye + glm::vec3(senses.forward.x, 0.3f, senses.forward.z) * 3.0f;
+                break;
             }
             if (!m_arrived && Horizontal(senses.position, guess) < 1.2f)
             {

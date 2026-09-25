@@ -674,6 +674,8 @@ private:
     float m_roamPace = 1.0f;
     float m_lookAroundUntil = 0.0f;
     bool m_arrived = false;
+    // What it had got to, investigating: a new thing to look at elsewhere is not somewhere it has been.
+    glm::vec3 m_investigated{0.0f};
     glm::vec3 m_fleePoint{0.0f};
     bool m_haveFleePoint = false;
     // Its ground, for the territorial ones: where it first found itself, or its nest once it has one.
@@ -715,6 +717,18 @@ private:
     float m_downClearSince = -1.0f;
     // Up from playing dead unseen: it goes low and quiet, not at a run.
     bool m_slinking = false;
+    // Hunting by ear, with no eyes: when it next stops dead to listen, until when, and where it is feeling
+    // about with its nose on getting to where a sound was and finding nothing.
+    float m_listenUntil = -1.0f;
+    float m_nextListenAt = 0.0f;
+    int m_sweep = 0;
+    glm::vec3 m_sweepCentre{0.0f};
+    glm::vec3 m_sweepPoint{0.0f};
+    // Goes after a sound it can hear the way a blind thing does: listen, creep towards it, listen again,
+    // and go for it when one comes from close. True when it has set what the body does this tick.
+    bool HuntByEar(const CreatureSenses& senses, const glm::vec3& heardAt, float heardAgo, const std::string& who);
+    // At the place a sound was, with nothing there: round it, low, feeling. True while still at it.
+    bool FeelAbout(const CreatureSenses& senses, const glm::vec3& centre);
     // Lying there, dragging itself towards somewhere out of sight while nobody is looking at it.
     glm::vec3 m_crawlSpot{0.0f};
     bool m_haveCrawlSpot = false;

@@ -2099,3 +2099,50 @@ TEST_CASE("Playing dead, a cunning one drags itself towards cover while nobody l
                 [&](const Creature& creature) { movedAgain = movedAgain || creature.Brain().Intent().move; });
     CHECK_FALSE(movedAgain);
 }
+
+TEST_CASE("With no eyes it hunts by ear: stops to listen, creeps nearer, and goes for a sound close by", "[creature][senses][blind]")
+{
+    CreatureHarness harness(99);
+    REQUIRE(harness.creature->Anatomy().eyes == 0);
+    glm::vec3 at;
+    glm::vec3 player;
+    REQUIRE(OpenView(harness, 14.0f, at, player));
+    const std::vector<SensedPlayer> far{Somebody(1, player)};
+    Noise step;
+    step.kind = NoiseKind::Footstep;
+    step.position = player;
+    step.reach = 30.0f;
+    step.player = 1;
+    bool listened = false;
+    bool crept = false;
+    bool ranFar = false;
+    harness.Run(6.0f, far, {step},
+                [&](const Creature& creature)
+                {
+                    const CreatureIntent& intent = creature.Brain().Intent();
+                    const std::string& goal = creature.Brain().CurrentGoal();
+                    listened = listened || (goal.find("listening") != std::string::npos && !intent.move);
+                    crept = crept || (goal.find("creeping") != std::string::npos && intent.move);
+                    ranFar = ranFar || (intent.move && intent.speed > creature.Brain().Traits().runSpeed * 0.9f &&
+                                        glm::distance(creature.Position(), player) > 7.0f);
+                });
+    INFO("its mind:" << MindOf(*harness.creature));
+    CHECK(listened);
+    CHECK(crept);
+    CHECK_FALSE(ranFar);
+
+    // A step right in front of it: it goes for it at once.
+    const glm::vec3 forward = harness.creature->Brain().Intent().move ? harness.creature->Forward() : harness.creature->Forward();
+    glm::vec3 close;
+    REQUIRE(harness.nav.NearestPoint(harness.creature->Position() + forward * 3.5f, 1.5f, close));
+    step.position = close;
+    bool lunged = false;
+    harness.Run(0.6f, {Somebody(1, close)}, {step},
+                [&](const Creature& creature)
+                {
+                    lunged = lunged || (creature.Brain().Intent().move && creature.Brain().Intent().speed >= creature.Brain().Traits().runSpeed);
+                });
+    INFO("after the close step:" << MindOf(*harness.creature) << " interest " << harness.creature->Brain().Interest().what
+         << " at " << glm::distance(harness.creature->Brain().Interest().position, close) << " from the step");
+    CHECK(lunged);
+}
