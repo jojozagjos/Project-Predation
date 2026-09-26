@@ -450,9 +450,14 @@ void main()
 	// What that did: a roof 0.30 m thick got 0.90 m of slack on its underside, so it could not
 	// shadow itself. The ceiling of a sealed room read as fully lit by the sky, and that lit ceiling
 	// is what was bleeding into the corners of the dark room.
-	float skyReaches =
-		skyReaching(v_worldPos, N,
-		            shadowSlack(u_skyShadowParams.y, abs(N.y), 1.0, u_shadowTexelWorld.y, 1.0));
+	// Capped hard on a wall. Its slack grew with the map's texels, which grow with the shadow distance,
+	// and at the higher settings it came to more than the thickness of the roof: the top half metre of
+	// every wall under it read as open to the sky and lit up in a band along the ceiling -- worse the
+	// higher the graphics were set. A wall is judged by the probes out into the room it faces anyway
+	// (skyReaching), which do not need the slack; only floors and ramps, lying along the map, do.
+	float skySlack = shadowSlack(u_skyShadowParams.y, abs(N.y), 1.0, u_shadowTexelWorld.y, 1.0);
+	skySlack = mix(min(skySlack, 0.2), skySlack, smoothstep(0.3, 0.7, abs(N.y)));
+	float skyReaches = skyReaching(v_worldPos, N, skySlack);
 	ambient *= mix(u_grade.z, 1.0, skyReaches);
 
 	color += diffuseColor * ambient;
