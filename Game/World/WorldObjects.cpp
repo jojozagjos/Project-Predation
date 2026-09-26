@@ -235,23 +235,23 @@ void WorldObjects::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physic
     // --- Doors, hung in the two frames at the front of the interaction bay.
     const float doorFrameZ = kBayZ - 2.1f;
     AddDoor(scene, meshes, physics, interactions,
-            {kInteractionBayX - 1.55f - 0.55f, 0.0f, doorFrameZ}, 0.0f, glm::radians(-100.0f),
-            {1.10f, 2.05f, 0.09f}, "door_a", true);
+            {kInteractionBayX - 1.55f - 0.565f, 0.0f, doorFrameZ}, 0.0f, glm::radians(-100.0f),
+            {1.13f, 2.08f, 0.09f}, "door_a", true);
     AddDoor(scene, meshes, physics, interactions,
-            {kInteractionBayX + 1.55f + 0.55f, 0.0f, doorFrameZ}, glm::radians(180.0f),
-            glm::radians(80.0f), {1.10f, 2.05f, 0.09f}, "door_b", true);
+            {kInteractionBayX + 1.55f + 0.565f, 0.0f, doorFrameZ}, glm::radians(180.0f),
+            glm::radians(80.0f), {1.13f, 2.08f, 0.09f}, "door_b", true);
 
     // --- The creature lab's doors: the corridor's own, swinging in, and one into each room off it -- the
     // store's locked, for a creature to break down.
     {
         using namespace LabSpec;
-        AddDoor(scene, meshes, physics, interactions, {kCorridorDoorX - kDoorWidth * 0.5f + 0.05f, 0.0f, kCorridorSouth + 0.15f},
-                0.0f, glm::radians(100.0f), {kDoorWidth - 0.1f, 2.05f, 0.09f}, "lab_door_corridor", true);
-        AddDoor(scene, meshes, physics, interactions, {kCorridorEast + 0.15f, 0.0f, kLockerDoorZ + kDoorWidth * 0.5f - 0.05f},
-                glm::radians(90.0f), glm::radians(-10.0f), {kDoorWidth - 0.1f, 2.05f, 0.09f}, "lab_door_lockers", true);
+        AddDoor(scene, meshes, physics, interactions, {kCorridorDoorX - kDoorWidth * 0.5f + 0.01f, 0.0f, kCorridorSouth + 0.15f},
+                0.0f, glm::radians(100.0f), {kDoorWidth - 0.02f, LabSpec::kDoorHeight - 0.02f, 0.09f}, "lab_door_corridor", true);
+        AddDoor(scene, meshes, physics, interactions, {kCorridorEast + 0.15f, 0.0f, kLockerDoorZ + kDoorWidth * 0.5f - 0.01f},
+                glm::radians(90.0f), glm::radians(-10.0f), {kDoorWidth - 0.02f, LabSpec::kDoorHeight - 0.02f, 0.09f}, "lab_door_lockers", true);
         const int store = AddDoor(scene, meshes, physics, interactions,
-                                  {kCorridorEast + 0.15f, 0.0f, kStoreDoorZ + kDoorWidth * 0.5f - 0.05f}, glm::radians(90.0f),
-                                  glm::radians(-10.0f), {kDoorWidth - 0.1f, 2.05f, 0.09f}, "lab_door_store", true);
+                                  {kCorridorEast + 0.15f, 0.0f, kStoreDoorZ + kDoorWidth * 0.5f - 0.01f}, glm::radians(90.0f),
+                                  glm::radians(-10.0f), {kDoorWidth - 0.02f, LabSpec::kDoorHeight - 0.02f, 0.09f}, "lab_door_store", true);
         m_doors[static_cast<size_t>(store)].locked = true;
     }
 

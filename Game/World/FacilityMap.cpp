@@ -37,10 +37,13 @@ constexpr float kDoorWidth = 1.2f;
 constexpr float kDoorHeight = 2.2f;
 constexpr float kArchWidth = 1.6f;
 constexpr float kArchHeight = 2.5f;
-constexpr float kMouthWidth = 1.2f;
+constexpr float kMouthWidth = 1.0f;
+// A stairwell's way in and out: as wide and as tall as the corridor lets it be, for stairs this wide.
+constexpr float kStairArchWidth = 2.2f;
+constexpr float kStairArchHeight = 2.7f;
 // The panel in a doorway: a little narrower and lower than the hole, so it swings clear of it.
-constexpr float kPanelWidth = 1.1f;
-constexpr float kPanelHeight = 2.15f;
+constexpr float kPanelWidth = 1.18f;
+constexpr float kPanelHeight = 2.18f;
 // A stairwell, from its low end: a landing this long, then the flight, then the landing of the floor
 // above, which the flight arrives at.
 constexpr float kFoot = 1.0f;
@@ -182,8 +185,9 @@ Openings FindOpenings(const FacilityLayout& layout)
     Openings openings;
     for (const FacilityLayout::Door& door : layout.doors)
     {
+        const bool stairs = door.room < 0;
         openings[{door.floor, door.cell.x, door.cell.y, door.side}] =
-            door.hasDoor ? Opening{kDoorWidth, kDoorHeight} : Opening{kArchWidth, kArchHeight};
+            door.hasDoor ? Opening{kDoorWidth, kDoorHeight} : stairs ? Opening{kStairArchWidth, kStairArchHeight} : Opening{kArchWidth, kArchHeight};
     }
     // A duct's mouth: a hole at the foot of the wall, as high as the crawlspace behind it.
     for (const FacilityLayout::Duct& duct : layout.ducts)
@@ -287,11 +291,58 @@ void Walls(const FacilityLayout& layout, int f, const Openings& openings, Bluepr
 
 // The roofs of the crawlspaces: every duct cell filled from the top of the crawlspace to the ceiling,
 // inside its walls, and bridged to the duct cells beside it.
-void DuctRoofs(const FacilityLayout& layout, int f, Blueprint& out)
+void DuctRoofs(const FacilityLayout& layout, int f, const Openings& openings, Blueprint& out)
 {
     const float y0 = Base(f) + kDuct;
     const float y1 = Base(f) + kClear;
     const auto duct = [&](int x, int z) { return layout.At(f, x, z) == Cell::Duct; };
+    // The sides of the shaft: every duct cell narrowed to the width of one, the walls its own on every side
+    // that is not more duct or a mouth.
+    const float infill = (kCell - 2.0f * kHalfWall - FacilityLayout::kDuctWidth) * 0.5f;
+    const auto mouth = [&](int x, int z, int dx, int dz)
+    {
+        const int lx = dx > 0 ? x : x + dx;
+        const int lz = dz > 0 ? z : z + dz;
+        const auto found = openings.find({f, lx, lz, dx != 0 ? 0 : 1});
+        return found != openings.end() && found->second.height <= kDuct + 0.01f;
+    };
+    for (int z = 0; z < layout.depth; ++z)
+    {
+        for (int x = 0; x < layout.width; ++x)
+        {
+            if (!duct(x, z))
+            {
+                continue;
+            }
+            const bool openW = duct(x - 1, z) || mouth(x, z, -1, 0);
+            const bool openE = duct(x + 1, z) || mouth(x, z, 1, 0);
+            const bool openN = duct(x, z - 1) || mouth(x, z, 0, -1);
+            const bool openS = duct(x, z + 1) || mouth(x, z, 0, 1);
+            const float xlo = WorldX(x) + (duct(x - 1, z) ? 0.0f : kHalfWall);
+            const float xhi = WorldX(x + 1) - (duct(x + 1, z) ? 0.0f : kHalfWall);
+            const float zlo = WorldZ(z) + (duct(x, z - 1) ? 0.0f : kHalfWall);
+            const float zhi = WorldZ(z + 1) - (duct(x, z + 1) ? 0.0f : kHalfWall);
+            const float base = Base(f);
+            if (!openN)
+            {
+                Box(out, Kind::Wall, {xlo, base, zlo}, {xhi, y0, zlo + infill});
+            }
+            if (!openS)
+            {
+                Box(out, Kind::Wall, {xlo, base, zhi - infill}, {xhi, y0, zhi});
+            }
+            const float zfrom = zlo + (openN ? 0.0f : infill);
+            const float zto = zhi - (openS ? 0.0f : infill);
+            if (!openW)
+            {
+                Box(out, Kind::Wall, {xlo, base, zfrom}, {xlo + infill, y0, zto});
+            }
+            if (!openE)
+            {
+                Box(out, Kind::Wall, {xhi - infill, base, zfrom}, {xhi, y0, zto});
+            }
+        }
+    }
     for (int z = 0; z < layout.depth; ++z)
     {
         for (int x = 0; x < layout.width; ++x)
@@ -556,6 +607,32 @@ void Doors(const FacilityLayout& layout, Blueprint& out)
             const bool roomBeyond = layout.RoomAt(door.floor, door.cell.x, door.cell.y + 1) == door.room;
             placed.openYaw = roomBeyond ? -swing : swing;
         }
+        // Two doors that would swing into each other: the second hung from the other side of its doorway.
+        const auto swingsTo = [](const WorldObjects::PlacedDoor& d)
+        { return d.hinge + glm::vec3(std::cos(d.openYaw), 0.0f, -std::sin(d.openYaw)) * (d.width * 0.5f); };
+        const auto clashes = [&](const WorldObjects::PlacedDoor& d)
+        {
+            for (const WorldObjects::PlacedDoor& other : out.placements.doors)
+            {
+                if (std::abs(other.hinge.y - d.hinge.y) < 0.5f && glm::distance(swingsTo(other), swingsTo(d)) < 1.3f)
+                {
+                    return true;
+                }
+            }
+            return false;
+        };
+        if (clashes(placed))
+        {
+            WorldObjects::PlacedDoor flipped = placed;
+            const glm::vec3 along{std::cos(placed.closedYaw), 0.0f, -std::sin(placed.closedYaw)};
+            flipped.hinge = placed.hinge + along * kPanelWidth;
+            flipped.closedYaw = placed.closedYaw + glm::pi<float>();
+            flipped.openYaw = flipped.closedYaw - (placed.openYaw - placed.closedYaw);
+            if (!clashes(flipped))
+            {
+                placed = flipped;
+            }
+        }
         out.placements.doors.push_back(placed);
     }
 }
@@ -625,6 +702,65 @@ void Lamps(const FacilityLayout& layout, Blueprint& out)
         placed.boundsMin = FacilityMap::ToWorld(lamp.floor, glm::vec2(low)) - glm::vec3(0.0f, 0.02f, 0.0f);
         placed.boundsMax = FacilityMap::ToWorld(lamp.floor, glm::vec2(high + glm::ivec2(1))) + glm::vec3(0.0f, kClear + 0.02f, 0.0f);
         out.lamps.push_back(placed);
+    }
+
+    // Through every doorway and archway, each way: the nearest working lamp on one side lights a little way
+    // into the other. Without it a lit room's doorway was a black hole into the corridor, and back.
+    const size_t ownLamps = out.lamps.size();
+    for (const FacilityLayout::Door& door : layout.doors)
+    {
+        const glm::ivec2 other = door.cell + (door.side == 0 ? glm::ivec2(1, 0) : glm::ivec2(0, 1));
+        const glm::vec2 edge = glm::vec2(door.cell) + glm::vec2(0.5f) + (door.side == 0 ? glm::vec2(0.5f, 0.0f) : glm::vec2(0.0f, 0.5f));
+        for (const auto& [from, to] : {std::pair{door.cell, other}, std::pair{other, door.cell}})
+        {
+            const glm::vec3 fromCentre = FacilityMap::ToWorld(door.floor, glm::vec2(from) + glm::vec2(0.5f));
+            int best = -1;
+            float nearest = 7.0f;
+            for (size_t i = 0; i < ownLamps; ++i)
+            {
+                const FacilityMap::Lamp& lamp = out.lamps[i];
+                const bool inside = fromCentre.x >= lamp.boundsMin.x && fromCentre.x <= lamp.boundsMax.x && fromCentre.z >= lamp.boundsMin.z &&
+                                    fromCentre.z <= lamp.boundsMax.z && fromCentre.y >= lamp.boundsMin.y - 0.1f && fromCentre.y <= lamp.boundsMax.y;
+                const float gap = glm::distance(glm::vec2(lamp.position.x, lamp.position.z), glm::vec2(fromCentre.x, fromCentre.z));
+                if (inside && lamp.mood != LightMood::Dead && gap < nearest)
+                {
+                    nearest = gap;
+                    best = static_cast<int>(i);
+                }
+            }
+            if (best < 0)
+            {
+                continue;
+            }
+            const glm::vec2 across = glm::vec2(to - from);
+            FacilityMap::Lamp spill = out.lamps[static_cast<size_t>(best)];
+            spill.spillOf = best;
+            spill.position = FacilityMap::ToWorld(door.floor, edge - across * 0.15f) + glm::vec3(0.0f, 2.1f, 0.0f);
+            spill.direction = glm::normalize(glm::vec3(across.x, -0.35f, across.y));
+            // The cell beyond, and its neighbours along the doorway when they are the same kind of place.
+            glm::ivec2 low = to;
+            glm::ivec2 high = to;
+            const glm::ivec2 along = door.side == 0 ? glm::ivec2(0, 1) : glm::ivec2(1, 0);
+            const auto same = [&](glm::ivec2 c) { return layout.At(door.floor, c.x, c.y) == layout.At(door.floor, to.x, to.y) &&
+                                                         layout.RoomAt(door.floor, c.x, c.y) == layout.RoomAt(door.floor, to.x, to.y); };
+            if (same(to - along))
+            {
+                low -= along;
+            }
+            if (same(to + along))
+            {
+                high += along;
+            }
+            const glm::ivec2 deeper = to + glm::ivec2(across);
+            if (same(deeper))
+            {
+                low = glm::min(low, deeper);
+                high = glm::max(high, deeper);
+            }
+            spill.boundsMin = FacilityMap::ToWorld(door.floor, glm::vec2(low)) - glm::vec3(0.0f, 0.02f, 0.0f);
+            spill.boundsMax = FacilityMap::ToWorld(door.floor, glm::vec2(high + glm::ivec2(1))) + glm::vec3(0.0f, kClear + 0.02f, 0.0f);
+            out.lamps.push_back(spill);
+        }
     }
 }
 
@@ -698,7 +834,7 @@ FacilityMap::Blueprint FacilityMap::Draw(const FacilityLayout& layout)
     for (int f = 0; f < layout.floors; ++f)
     {
         Walls(layout, f, openings, out);
-        DuctRoofs(layout, f, out);
+        DuctRoofs(layout, f, openings, out);
     }
     for (const FacilityLayout::Stairwell& well : layout.stairwells)
     {
@@ -752,12 +888,19 @@ void FacilityMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, Physic
         m_firstLight = lights->Count();
         m_hasLights = true;
         const glm::vec3 down{0.0f, -1.0f, 0.0f};
+        std::vector<int> made(blueprint.lamps.size(), -1);
         for (size_t i = 0; i < blueprint.lamps.size(); ++i)
         {
             const Lamp& lamp = blueprint.lamps[i];
-            const int index = lights->Add(scene, meshes, lamp.kind, lamp.mood, lamp.position, down, lamp.circuit,
-                                          Mix(seed, static_cast<uint32_t>(i)) | 1u, lamp.range);
-            lights->Bound(index, lamp.boundsMin, lamp.boundsMax);
+            if (lamp.spillOf >= 0)
+            {
+                made[i] = lights->AddSpill(made[static_cast<size_t>(lamp.spillOf)], lamp.position, lamp.direction, lamp.boundsMin,
+                                           lamp.boundsMax);
+                continue;
+            }
+            made[i] = lights->Add(scene, meshes, lamp.kind, lamp.mood, lamp.position, down, lamp.circuit,
+                                  Mix(seed, static_cast<uint32_t>(i)) | 1u, lamp.range);
+            lights->Bound(made[i], lamp.boundsMin, lamp.boundsMax);
         }
     }
 

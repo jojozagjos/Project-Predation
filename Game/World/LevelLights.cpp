@@ -207,6 +207,28 @@ void LevelLights::RemoveFrom(Scene& scene, size_t first)
     }
 }
 
+int LevelLights::AddSpill(int source, const glm::vec3& at, const glm::vec3& direction, const glm::vec3& min,
+                          const glm::vec3& max, float share)
+{
+    if (source < 0 || static_cast<size_t>(source) >= m_lights.size())
+    {
+        return -1;
+    }
+    Light spill = m_lights[static_cast<size_t>(source)];
+    spill.fitting = Entity{};
+    spill.position = at;
+    spill.direction = glm::length(direction) > 1e-4f ? glm::normalize(direction) : glm::vec3(0.0f, -1.0f, 0.0f);
+    spill.intensity *= share;
+    spill.range = std::min(spill.range, 5.5f);
+    spill.innerAngle = 50.0f;
+    spill.outerAngle = 95.0f;
+    spill.sourceRadius = 0.6f;
+    m_lights.push_back(spill);
+    const int index = static_cast<int>(m_lights.size()) - 1;
+    Bound(index, min, max);
+    return index;
+}
+
 void LevelLights::Bound(int index, const glm::vec3& min, const glm::vec3& max)
 {
     if (index < 0 || static_cast<size_t>(index) >= m_lights.size())

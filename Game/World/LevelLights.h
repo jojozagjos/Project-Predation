@@ -82,6 +82,11 @@ public:
     void RemoveFrom(Scene& scene, size_t first);
     // Keeps a light to the room it is in: nothing outside the box is lit by it.
     void Bound(int index, const glm::vec3& min, const glm::vec3& max);
+    // The light of `source` coming through a doorway: no fitting of its own, dimmer, lighting only the
+    // box on the far side, and on, flickering and failing exactly as its lamp does. What a lamp kept to its
+    // room gives the room next door.
+    int AddSpill(int source, const glm::vec3& at, const glm::vec3& direction, const glm::vec3& min, const glm::vec3& max,
+                 float share = 0.45f);
     size_t Count() const { return m_lights.size(); }
 
     void SetPowered(int circuit, bool powered);

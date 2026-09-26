@@ -213,7 +213,17 @@ void BuildLabMap(Scene& scene, MeshLibrary& meshes, PhysicsWorld* physics, Level
         const auto keep = [&](int index, const Room& room)
         { lights->Bound(index, glm::vec3(kX, 0.0f, kZ) + room.a, glm::vec3(kX, 0.0f, kZ) + room.b); };
         const auto ceiling = [&](float lx, float roof, float lz, LightMood mood, int circuit, const Room& room)
-        { keep(lights->Add(scene, meshes, LightKind::Ceiling, mood, glm::vec3(kX + lx, roof - 0.04f, kZ + lz), down, circuit), room); };
+        {
+            const int index = lights->Add(scene, meshes, LightKind::Ceiling, mood, glm::vec3(kX + lx, roof - 0.04f, kZ + lz), down, circuit);
+            keep(index, room);
+            return index;
+        };
+        // A lamp's light through a doorway, into the box on the far side.
+        const auto spill = [&](int source, float lx, float lz, const glm::vec3& facing, const Room& beyond)
+        {
+            lights->AddSpill(source, glm::vec3(kX + lx, 2.1f, kZ + lz), facing, glm::vec3(kX, 0.0f, kZ) + beyond.a,
+                             glm::vec3(kX, 0.0f, kZ) + beyond.b);
+        };
         const auto wall = [&](LightKind kind, float lx, float y, float lz, const glm::vec3& facing, LightMood mood, int circuit,
                               const Room* room)
         {
@@ -235,18 +245,31 @@ void BuildLabMap(Scene& scene, MeshLibrary& meshes, PhysicsWorld* physics, Level
 
         // The corridor: one good, one flickering, and the one by the locked store failing.
         const float corridor = (kCorridorWest + kCorridorEast) * 0.5f - kX;
-        ceiling(corridor, 3.0f, 15.0f, LightMood::Steady, 1, corridorRoom);
+        const int corridorSouthLamp = ceiling(corridor, 3.0f, 15.0f, LightMood::Steady, 1, corridorRoom);
         ceiling(corridor, 3.0f, 9.5f, LightMood::Flicker, 1, corridorRoom);
-        ceiling(corridor, 3.0f, 3.5f, LightMood::Failing, 1, corridorRoom);
+        const int corridorNorthLamp = ceiling(corridor, 3.0f, 3.5f, LightMood::Failing, 1, corridorRoom);
         // A caged lamp over the way in, outside, lighting the ground in front of it.
         wall(LightKind::Wall, kCorridorDoorX - kX, 2.6f, kCorridorSouth - kZ + 0.45f, {0.0f, -0.35f, 1.0f}, LightMood::Steady, 1,
              nullptr);
         // The locker room: lit, just about.
-        ceiling(18.0f, 3.0f, 14.0f, LightMood::Steady, 1, lockerRoom);
+        const int lockerLamp = ceiling(18.0f, 3.0f, 14.0f, LightMood::Steady, 1, lockerRoom);
         ceiling(25.0f, 3.0f, 14.0f, LightMood::Flicker, 1, lockerRoom);
         // The store: its strip light long dead, and an emergency lamp breathing red on the far wall.
         ceiling(21.5f, 3.0f, 5.0f, LightMood::Dead, 1, storeRoom);
         wall(LightKind::Emergency, kRoomEast - kX - 0.25f, 2.3f, 5.0f, {-1.0f, -0.2f, 0.0f}, LightMood::Pulse, 1, &storeRoom);
+        const int storeRed = static_cast<int>(lights->Count()) - 1;
+        // Through the two doorways off the corridor, each way: the room's light a little way into the corridor,
+        // the corridor's a little way into the room. Doorways into the dark otherwise looked like holes.
+        const float lockerDoor = kLockerDoorZ - kZ;
+        const float storeDoor = kStoreDoorZ - kZ;
+        const Room corridorByLockers{{corridorWest, -0.05f, lockerDoor - 2.0f}, {corridorEast, 3.05f, lockerDoor + 2.0f}};
+        const Room corridorByStore{{corridorWest, -0.05f, storeDoor - 2.0f}, {corridorEast, 3.05f, storeDoor + 2.0f}};
+        const Room lockersByDoor{{corridorEast + 0.3f, -0.05f, lockerDoor - 2.0f}, {corridorEast + 3.5f, 3.05f, lockerDoor + 2.0f}};
+        const Room storeByDoor{{corridorEast + 0.3f, -0.05f, storeDoor - 2.0f}, {corridorEast + 3.5f, 3.05f, storeDoor + 2.0f}};
+        spill(lockerLamp, corridorEast + 0.4f, lockerDoor, {-1.0f, -0.3f, 0.0f}, corridorByLockers);
+        spill(corridorSouthLamp, corridorEast - 0.4f, lockerDoor, {1.0f, -0.3f, 0.0f}, lockersByDoor);
+        spill(storeRed, corridorEast + 0.4f, storeDoor, {-1.0f, -0.3f, 0.0f}, corridorByStore);
+        spill(corridorNorthLamp, corridorEast - 0.4f, storeDoor, {1.0f, -0.3f, 0.0f}, storeByDoor);
 
         // The pillar forest: one failing, one dead. Dark on purpose: it is for being stalked in.
         ceiling(19.5f, 4.5f, -6.0f, LightMood::Failing, 2, forest);

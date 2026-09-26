@@ -75,6 +75,10 @@ public:
         // The room it is in, or the straight run of corridor: nothing outside is lit by it.
         glm::vec3 boundsMin{0.0f};
         glm::vec3 boundsMax{0.0f};
+        // A doorway's share of another lamp (this one's index in the list), with no fitting: see
+        // LevelLights::AddSpill. -1 for a lamp of its own.
+        int spillOf = -1;
+        glm::vec3 direction{0.0f, -1.0f, 0.0f};
     };
 
     // Everything the facility is, without an engine: for building it, and for testing that it fits
