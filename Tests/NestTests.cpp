@@ -54,7 +54,8 @@ TEST_CASE("Growth lies on its surface and each nest's is its own", "[nest][mesh]
     const AABB bounds = first.ComputeBounds();
     CHECK(bounds.min.y > -0.04f);
     CHECK(bounds.max.y < 0.6f);
-    CHECK(bounds.max.x - bounds.min.x > 1.8f);
+    // A knot of lumps a metre or so across; the roots between patches are separate meshes.
+    CHECK(bounds.max.x - bounds.min.x > 1.0f);
 
     CHECK(MeshFingerprintForTesting(first) == MeshFingerprintForTesting(again));
     CHECK(MeshFingerprintForTesting(first) != MeshFingerprintForTesting(other));
@@ -117,4 +118,15 @@ TEST_CASE("A heart's wounds are sent as how much is left, and only nothing left 
     CHECK(RoundTrip(wounded).amount > 0.0f);
     wounded.amount = 0.0f;
     CHECK(RoundTrip(wounded).amount == 0.0f);
+}
+
+TEST_CASE("A nest's root is a unit long, lies on its surface and tapers", "[nest][mesh]")
+{
+    const MeshData root = BuildNestTendril(77, 0);
+    REQUIRE(root.TriangleCount() > 50);
+    const AABB bounds = root.ComputeBounds();
+    CHECK(bounds.min.z > -0.2f);
+    CHECK(bounds.max.z < 1.2f);
+    CHECK(bounds.min.y > -0.05f); // flat underneath, on the surface
+    CHECK(MeshFingerprintForTesting(root) != MeshFingerprintForTesting(BuildNestTendril(77, 1)));
 }
