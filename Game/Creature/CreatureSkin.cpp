@@ -417,7 +417,9 @@ CreatureSkin CreatureSkin::Build(const CreatureAnatomy& a)
 
     // How big the animal is, for everything whose size is not already a measurement of it.
     const float scale = std::clamp(std::cbrt(a.length * a.width * a.depth / (0.72f * 0.44f * 0.26f)), 0.6f, 2.2f);
-    skin.cell = std::clamp(a.OverallLength() * 0.0095f, 0.011f, 0.022f);
+    // Fine enough for a face: at two centimetres the whole of one was a dozen samples across, and the
+    // brow, the cheek and the line of the mouth all melted into one smooth lump.
+    skin.cell = std::clamp(a.OverallLength() * 0.008f, 0.009f, 0.018f);
 
     // --- The skeleton -----------------------------------------------------------------------------
     const auto addBone = [&](BoneKind kind, int parent, const glm::vec3& from, const glm::vec3& to, const glm::vec3& boneUp,
@@ -495,8 +497,9 @@ CreatureSkin CreatureSkin::Build(const CreatureAnatomy& a)
         float out = 0.0f;
         float radius = 0.0f;
     };
-    const auto upperRod = [&](float t) { return JawRod{hw * (0.05f + 0.11f * t), hd * (0.07f + 0.09f * t)}; };
-    const auto lowerRod = [&](float t) { return JawRod{hw * (0.08f * t), hd * (0.045f + 0.055f * t)}; };
+    // Narrower than it is deep, a muzzle and not a bill: spread wide and flat, the face read as squashed.
+    const auto upperRod = [&](float t) { return JawRod{hw * (0.045f + 0.085f * t), hd * (0.1f + 0.1f * t)}; };
+    const auto lowerRod = [&](float t) { return JawRod{hw * (0.065f * t), hd * (0.05f + 0.06f * t)}; };
     const auto alongFace = [&](float t) { return faceTipZ + (mouthCornerZ - faceTipZ) * t; };
     const float lowerGum = gumLine - jawGap;
 
@@ -731,9 +734,12 @@ CreatureSkin CreatureSkin::Build(const CreatureAnatomy& a)
     // The skull: a long cranium, an upper jaw tapering from under the eyes to the tip of the face with a
     // bridge along the top of it, and a lower jaw as long, hinged below the eyes. Nothing stands out from
     // the sides or the back of it: the flaps, knobs and cheek muscles that used to read as ears.
-    const glm::vec3 craniumRadii{hw * 0.42f * a.cranium, hd * 0.4f * a.cranium, hl * 0.46f * a.cranium};
-    const glm::vec3 craniumCentre = pose.head + glm::vec3(0.0f, hd * 0.12f, hl * 0.12f + hl * 0.1f * (a.cranium - 1.0f));
-    const float skullBlend = 0.03f * std::sqrt(scale);
+    // As tall as it is wide, near enough: a skull flattened to a wedge was what read as squashed.
+    const glm::vec3 craniumRadii{hw * 0.42f * a.cranium, hd * 0.47f * a.cranium, hl * 0.46f * a.cranium};
+    const glm::vec3 craniumCentre = pose.head + glm::vec3(0.0f, hd * 0.16f, hl * 0.12f + hl * 0.1f * (a.cranium - 1.0f));
+    // Joined with a small blend, so the joins show as creases: a blend wider than the jaw itself, as it
+    // was, melted the jaws into the skull and the face into a bean.
+    const float skullBlend = 0.014f * std::sqrt(scale);
     blob(craniumCentre, craniumRadii, noTurn, skin.head, skullBlend, Zone::Skin);
     for (const float side : {-1.0f, 1.0f})
     {
@@ -747,6 +753,19 @@ CreatureSkin CreatureSkin::Build(const CreatureAnatomy& a)
     cone(pose.head + glm::vec3(0.0f, hd * 0.14f, -hl * 0.14f),
          pose.head + glm::vec3(0.0f, gumLine + upperRod(0.0f).radius * 1.6f, faceTipZ + upperRod(0.0f).radius * 1.4f),
          hw * 0.17f, upperRod(0.0f).radius * 0.8f, skin.head, skullBlend * 1.2f, Zone::Skin);
+    // Cheekbones: a bar of bone either side from under the eye back to above the hinge of the jaw, low and
+    // close in along the side of the face -- the plane of the cheek under it, and a line the light catches.
+    for (const float side : {-1.0f, 1.0f})
+    {
+        const JawRod mid = upperRod(0.7f);
+        cone(pose.head + glm::vec3(side * (mid.out + mid.radius * 0.9f), gumLine + mid.radius * 2.1f, alongFace(0.62f)),
+             pose.head + glm::vec3(side * hw * 0.34f, gumLine + hd * 0.2f, hinge.z - pose.head.z - hl * 0.04f), hw * 0.045f, hw * 0.06f,
+             skin.head, skin.cell * 1.2f, Zone::Skin);
+    }
+    // A low crest down the middle of the skull from the brow back, where the jaw muscles meet over it.
+    cone(craniumCentre + glm::vec3(0.0f, craniumRadii.y * 0.9f, -craniumRadii.z * 0.35f),
+         craniumCentre + glm::vec3(0.0f, craniumRadii.y * 0.72f, craniumRadii.z * 0.85f), hw * 0.035f, hw * 0.05f, skin.head,
+         skin.cell * 1.5f, Zone::Skin);
     // The lower jaw: two rods meeting at the chin, a V from below, with a little muscle where it hinges,
     // kept low and inside the line of the head.
     for (const float side : {-1.0f, 1.0f})
@@ -766,6 +785,15 @@ CreatureSkin CreatureSkin::Build(const CreatureAnatomy& a)
     blob(onJaw(pose.head + glm::vec3(0.0f, lowerGum, alongFace(0.6f) + hl * 0.03f)),
          {std::max(lowerRod(0.5f).out, skin.cell * 1.2f), hd * 0.03f, (mouthCornerZ - faceTipZ) * 0.35f}, noTurn, skin.jaw, skin.cell * 0.8f,
          Zone::Gums, true);
+    // The line of the mouth along each side, from the corner forward, cut in between the jaws: shut, the
+    // jaws are still two things, not one lump with teeth stuck on.
+    for (const float side : {-1.0f, 1.0f})
+    {
+        const JawRod mid = upperRod(0.55f);
+        blob(pose.head + glm::vec3(side * (mid.out + mid.radius * 0.8f), (gumLine + lowerGum) * 0.5f, alongFace(0.55f)),
+             {mid.radius * 0.7f, std::max(hd * 0.012f, skin.cell * 0.45f), (mouthCornerZ - faceTipZ) * 0.5f}, noTurn, skin.head,
+             skin.cell * 0.5f, Zone::Hollow, true);
+    }
     // Gums: a ridge of wet flesh along the edge of each jaw, which the teeth come out of.
     for (const float side : {-1.0f, 1.0f})
     {
