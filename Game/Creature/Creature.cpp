@@ -1249,7 +1249,9 @@ void Creature::Move(const CreatureIntent& asked, const std::vector<glm::vec3>& o
     {
         // Slower while it is still turning to face the way it is going, so it turns and then runs
         // rather than running sideways.
-        const float aligned = std::clamp(glm::dot(Forward(), heading), 0.3f, 1.0f);
+        // Stepping back on purpose, still facing what it is backing away from, is not a turn it has not
+        // finished: it goes at a good part of its pace. At a crawl, anybody walking at it caught it.
+        const float aligned = std::clamp(glm::dot(Forward(), heading), intent.face ? 0.65f : 0.3f, 1.0f);
         // On its belly it goes no faster than a crawl.
         const float crawling = m_squeeze > 0.5f ? std::min(m_speed, m_caps.walkSpeed * 1.2f) : m_speed;
         // It goes a little the way it faces as well as the way it wants: a body on the move carries

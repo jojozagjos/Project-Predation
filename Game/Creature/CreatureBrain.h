@@ -623,6 +623,13 @@ private:
     float ShelterOf(const CreatureSenses& senses, const glm::vec3& point) const;
     // Whether something solid stands between a point and `from`, close to the point: behind a wall
     // rather than merely a long way off round a corner.
+    // Which way somebody at `to` will come to `from` from: see the definition.
+    glm::vec3 WayToward(const CreatureSenses& senses, const glm::vec3& from, const glm::vec3& to) const;
+    glm::vec3 m_wayToward{0.0f};
+    // Watching somebody who came right up to it: where it is running off to, and until when.
+    glm::vec3 m_shyTo{0.0f};
+    float m_shyUntil = -1.0f;
+    float m_wayTowardAt = -1.0f;
     bool TightCover(const CreatureSenses& senses, const glm::vec3& point, const glm::vec3& from) const;
     // Somewhere to lie in wait for somebody: beside a door they will have to come through, or the mouth
     // of the crawlspace they are in. False when there is nowhere worth it.

@@ -928,6 +928,12 @@ void CreatureBrain::Perceive(const CreatureSenses& senses, float dt)
                     {
                         visibility = 1.0f;
                     }
+                    // A couple of metres in front of its eyes is seen, however dark and however low: the dark
+                    // hides somebody across a room, not somebody at arm's length.
+                    if (clear > 0 && hasEyes && distance < 2.2f && field > 0.3f)
+                    {
+                        visibility = std::max(visibility, 0.9f);
+                    }
                     check.clear = clear;
                     check.nearness = nearness;
                     check.size = size;
@@ -2522,7 +2528,8 @@ bool CreatureBrain::FindCover(const CreatureSenses& senses, const Track& target,
         // Against something. Out of their sight in the middle of an empty floor is not hiding, it is
         // standing where they happen not to be looking from -- a step to either side and it is in plain
         // view -- and it is what it did, over and over. Behind a wall between it and them is best.
-        score *= 0.2f + 0.8f * ShelterOf(senses, candidate);
+        const float shelter = ShelterOf(senses, candidate);
+        score *= 0.05f + 0.95f * shelter * shelter;
         if (TightCover(senses, candidate, centre))
         {
             score *= 1.6f;
@@ -4145,7 +4152,19 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
             m_goal = m_haveStalkPoint ? "watching " + track->name + " from cover"
                                       : "holding still out of sight, watching " + track->name;
             m_intent.face = true;
-            m_intent.facePoint = them;
+            // Out of their sight, facing the way they would come -- the doorway, the corner -- not
+            // straight at them through the wall between, which was it standing staring at a wall.
+            if (!track->visible && now >= m_wayTowardAt)
+            {
+                m_wayTowardAt = now + 0.5f;
+                m_wayToward = WayToward(senses, senses.position, them);
+            }
+            m_intent.facePoint = track->visible ? them : m_wayToward;
+            if (!track->visible)
+            {
+                m_intent.look = true;
+                m_intent.lookAt = m_intent.facePoint + glm::vec3(0.0f, 1.0f, 0.0f);
+            }
             // One that climbs watches from overhead where it can, where nobody looks.
             if (m_haveStalkPoint && overhead(senses.position))
             {
@@ -4407,6 +4426,45 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
         watch(*player);
         m_intent.face = true;
         m_intent.facePoint = player->feet;
+        // Pressed: they have come right up to it for all its giving ground. It stops watching and decides
+        // -- the bold, or the cornered, turn on them; the rest turn tail and get well away.
+        if (now < m_shyUntil && senses.nav != nullptr)
+        {
+            // Getting away from somebody who pressed it: turned and going, not backing off politely.
+            m_goal = "getting away from " + track->name;
+            m_intent.face = false;
+            m_intent.move = true;
+            m_intent.destination = m_shyTo;
+            m_intent.speed = m_traits.runSpeed * 0.8f;
+            if (Horizontal(senses.position, m_shyTo) < 1.0f)
+            {
+                m_shyUntil = -1.0f;
+            }
+            break;
+        }
+        if (distance < 3.0f && senses.nav != nullptr)
+        {
+            glm::vec3 away = Flat(senses.position - player->feet);
+            away = glm::length(away) > 1e-3f ? glm::normalize(away) : glm::vec3(0.0f, 0.0f, 1.0f);
+            glm::vec3 room;
+            const bool cornered = !senses.nav->NearestPoint(senses.position + away * 4.0f, 1.0f, room) ||
+                                  Horizontal(room, senses.position) < 2.5f;
+            if (m_traits.aggression > 0.5f || cornered)
+            {
+                track->hostile = true;
+                Switch(Behavior::Attack, track->id, track->name + " came too close" + std::string(cornered ? ", and it is cornered" : ""), now);
+                return;
+            }
+            // Well off, on the far side from them, and then it watches again from there.
+            glm::vec3 to;
+            if (senses.nav->NearestPoint(senses.position + away * 8.0f, 3.0f, to))
+            {
+                m_shyTo = to;
+                m_shyUntil = now + 4.0f;
+                Log(now, track->name + " came too close; it gets away");
+            }
+            break;
+        }
         // Near enough to see them well, not so near it has to decide anything. Closer than that and it
         // gives ground; further, and it follows.
         if (distance < 5.0f && senses.nav != nullptr)

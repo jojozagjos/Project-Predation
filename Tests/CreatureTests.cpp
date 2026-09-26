@@ -2253,3 +2253,105 @@ TEST_CASE("Feeding, and somebody turns up a way off: it drags the body away out 
     CHECK(carried);
     CHECK(glm::length(glm::vec2(harness.bodies[0].at.x - where.x, harness.bodies[0].at.z - where.z)) > 3.0f);
 }
+
+TEST_CASE("Somebody walking straight up to one gets a reaction before they are on top of it", "[creature][close]")
+{
+    // Any creature, of any temperament: whatever it makes of them, walking up to arm's length of it is
+    // not something it lets happen while it goes on with what it was doing.
+    // Walking up, running up, and creeping up crouched in the dark -- which is allowed to get closer.
+    const int mode = GENERATE(0, 1, 2);
+    const float pace = mode == 1 ? 5.0f : (mode == 2 ? 0.9f : 1.6f);
+    const float stepReach = mode == 1 ? NoiseReach::kFootstepSprint : (mode == 2 ? NoiseReach::kFootstepCrouch : NoiseReach::kFootstepWalk);
+    const float stepEvery = mode == 1 ? 0.3f : 0.5f;
+    // Creeping up crouched in the dark is what stealth is for, and is allowed nearer.
+    // Sprinting at something that is itself coming to see what the running was, the two close at seven
+    // metres a second: a fraction of a second to react is most of a metre.
+    const float sighted = mode == 2 ? 1.0f : (mode == 1 ? 0.6f : 2.0f);
+    INFO((mode == 0 ? "walking" : (mode == 1 ? "running" : "creeping, crouched in the dark")));
+    int quiet = 0;
+    std::string who;
+    for (uint32_t seed = 1; seed <= 30; ++seed)
+    {
+        CreatureHarness harness(CreatureTraits::FromSeed(seed));
+        glm::vec3 at;
+        glm::vec3 start;
+        if (!OpenView(harness, 12.0f, at, start))
+        {
+            continue;
+        }
+        glm::vec3 feet = start;
+        glm::vec3 creatureWas = harness.creature->Position();
+        bool reacted = false;
+        float reactedAt = 1.0e9f;
+        float closestUnanswered = 1.0e9f;
+        std::string doing;
+        constexpr float dt = 1.0f / 60.0f;
+        float sinceStep = 0.0f;
+        for (float t = 0.0f; t < 12.0f; t += dt)
+        {
+            harness.time += dt;
+            const Creature& creature = *harness.creature;
+            // Walking at it, looking at it, until they are a stride off -- and heard walking, as anybody
+            // walking is: a footstep every half second or so.
+            glm::vec3 toward{creature.Position().x - feet.x, 0.0f, creature.Position().z - feet.z};
+            const float gap = glm::length(toward);
+            SensedPlayer player = mode == 2 ? Somebody(1, feet, 1.1f, 0.25f) : Somebody(1, feet);
+            std::vector<Noise> noises;
+            if (gap > 1.2f && !reacted)
+            {
+                const glm::vec3 step = toward / gap * (pace * dt);
+                feet += step;
+                player.velocity = step / dt;
+                sinceStep += dt;
+                if (sinceStep > stepEvery)
+                {
+                    sinceStep = 0.0f;
+                    Noise footstep;
+                    footstep.kind = NoiseKind::Footstep;
+                    footstep.position = feet;
+                    footstep.reach = stepReach;
+                    footstep.player = 1;
+                    noises.push_back(footstep);
+                }
+            }
+            player.feet = feet;
+            player.forward = gap > 1e-3f ? toward / gap : glm::vec3(0.0f, 0.0f, -1.0f);
+            harness.creature->Update(harness.Senses({player}, noises), harness.time, dt);
+
+            const Behavior now = creature.Brain().Current();
+            const float after = glm::length(glm::vec2(creature.Position().x - feet.x, creature.Position().z - feet.z));
+            const bool moved = glm::distance(creature.Position(), creatureWas) > 0.8f;
+            const bool answering = now == Behavior::Attack || now == Behavior::Hunt || now == Behavior::Retreat ||
+                                   now == Behavior::Avoid || now == Behavior::Warn || creature.Brain().Intent().strikeTarget == 1 ||
+                                   creature.Brain().CurrentGoal().rfind("getting away", 0) == 0 ||
+                                   creature.Brain().CurrentGoal().rfind("backing away", 0) == 0;
+            (void)moved;
+            if (!reacted && answering)
+            {
+                reacted = true;
+                reactedAt = after;
+            }
+            doing = BehaviorName(now);
+            closestUnanswered = reacted ? closestUnanswered : std::min(closestUnanswered, after);
+        }
+        // Something with no eyes finds them by their footsteps and by touch: it comes to them, and strikes
+        // when it bumps into them, which is as close as it can know they are.
+        const float allowed = harness.creature->Anatomy().eyes == 0 ? (mode == 1 ? 0.3f : 0.8f) : sighted;
+        if (closestUnanswered < allowed)
+        {
+            ++quiet;
+            who += "\n  seed " + std::to_string(seed) + " (" + CreatureTraits::FromSeed(seed).Describe() + "): " +
+                   (reacted ? "only at " + std::to_string(reactedAt).substr(0, 4) + " m" : "never, still " + doing);
+            for (const CreatureBrain::TimelineEntry& entry : harness.creature->Brain().Timeline())
+            {
+                who += "\n      " + std::to_string(entry.time).substr(0, 5) + "  " + entry.what;
+            }
+            if (const CreatureBrain::Track* track = harness.TrackOf(1))
+            {
+                who += std::string("\n      sight: ") + track->sight.verdict + " eyes " + std::to_string(harness.creature->Anatomy().eyes);
+            }
+        }
+    }
+    INFO("let them walk right up:" << who);
+    CHECK(quiet == 0);
+}

@@ -66,6 +66,27 @@ float CreatureBrain::ShelterOf(const CreatureSenses& senses, const glm::vec3& po
     return senses.shelterAt ? std::clamp(senses.shelterAt(point), 0.0f, 1.0f) : 0.5f;
 }
 
+glm::vec3 CreatureBrain::WayToward(const CreatureSenses& senses, const glm::vec3& from, const glm::vec3& to) const
+{
+    // The first turn of the way there that is a few steps off: the doorway, the corner, the end of the
+    // corridor -- where somebody coming from there will appear.
+    if (senses.nav == nullptr)
+    {
+        return to;
+    }
+    std::vector<glm::vec3> corners;
+    bool reached = false;
+    senses.nav->FindPath(from, to, corners, &reached);
+    for (const glm::vec3& corner : corners)
+    {
+        if (Horizontal(corner, from) > 1.5f)
+        {
+            return corner;
+        }
+    }
+    return to;
+}
+
 bool CreatureBrain::TightCover(const CreatureSenses& senses, const glm::vec3& point, const glm::vec3& from) const
 {
     if (!senses.clearLine)
@@ -333,7 +354,15 @@ bool CreatureBrain::PickHidingSpot(const CreatureSenses& senses, const glm::vec3
             continue;
         }
         float score = SeenFrom(senses, candidate) ? 0.05f : 1.0f;
-        score *= 0.2f + 0.8f * ShelterOf(senses, candidate);
+        // Up against something -- a wall, a corner, a crate -- not out in the middle of a floor, which is
+        // only somewhere nobody happens to be looking from yet. A corner best, and tucked in behind a wall
+        // between it and them better still.
+        const float shelter = ShelterOf(senses, candidate);
+        score *= 0.05f + 0.95f * shelter * shelter;
+        if (TightCover(senses, candidate, awayFrom))
+        {
+            score *= 1.6f;
+        }
         if (senses.lightAt)
         {
             score *= 1.1f - 0.5f * std::clamp(senses.lightAt(candidate + glm::vec3(0.0f, 0.5f, 0.0f)), 0.0f, 1.0f);
