@@ -882,17 +882,44 @@ bool NavMesh::RandomPointNear(const glm::vec3& centre, float radius, uint32_t& s
     }
     const dtQueryFilter filter = m_impl->With(allowed & kCrawlFlag);
     t_randomState = seed != 0 ? seed : 0x9E3779B9u;
-    dtPolyRef ref = 0;
-    float point[3];
-    const dtStatus status = m_impl->query->findRandomPointAroundCircle(
-        startRef, start, radius, &filter, &DetourRandom, &ref, point);
-    seed = t_randomState;
-    if (dtStatusFailed(status) || ref == 0)
+    // Not on a flight of stairs, if there is anywhere else: a place to wander to, wait at or listen from is
+    // somewhere to stand, and one halfway up a staircase had things standing about on the stairs, or turning
+    // back down them. A stair is a sloping polygon; the floor is level.
+    const auto sloped = [&](dtPolyRef polyRef)
     {
-        return false;
+        const dtMeshTile* tile = nullptr;
+        const dtPoly* poly = nullptr;
+        m_impl->mesh->getTileAndPolyByRefUnsafe(polyRef, &tile, &poly);
+        float low = 1.0e9f;
+        float high = -1.0e9f;
+        for (int v = 0; v < poly->vertCount; ++v)
+        {
+            const float y = tile->verts[poly->verts[v] * 3 + 1];
+            low = std::min(low, y);
+            high = std::max(high, y);
+        }
+        return high - low > 0.4f;
+    };
+    bool found = false;
+    for (int attempt = 0; attempt < 6; ++attempt)
+    {
+        dtPolyRef ref = 0;
+        float point[3];
+        const dtStatus status = m_impl->query->findRandomPointAroundCircle(
+            startRef, start, radius, &filter, &DetourRandom, &ref, point);
+        if (dtStatusFailed(status) || ref == 0)
+        {
+            continue;
+        }
+        out = {point[0], point[1], point[2]};
+        found = true;
+        if (!sloped(ref))
+        {
+            break;
+        }
     }
-    out = {point[0], point[1], point[2]};
-    return true;
+    seed = t_randomState;
+    return found;
 }
 
 void NavMesh::Draw(DebugDraw& draw) const

@@ -62,10 +62,15 @@ AttackTiming TimingOf(AttackKind kind)
 constexpr size_t kTimelineLength = 64;
 constexpr float kHeardMemorySeconds = 12.0f;
 
+// Across the floor, whatever the difference in height of a block or a crouch -- but not between storeys:
+// somebody on the floor above, straight overhead, is a flight of stairs away and not here, and taking them
+// for here is what kept a creature standing under where it wanted to be.
 float Horizontal(const glm::vec3& a, const glm::vec3& b)
 {
     const glm::vec3 d = b - a;
-    return std::sqrt(d.x * d.x + d.z * d.z);
+    const float flat = std::sqrt(d.x * d.x + d.z * d.z);
+    const float rise = std::abs(d.y);
+    return rise > 2.8f ? flat + rise * 2.0f : flat;
 }
 
 // How close the straight line from `from` to `to` passes `past`, on the floor.

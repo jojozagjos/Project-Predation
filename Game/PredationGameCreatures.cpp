@@ -453,7 +453,13 @@ void PredationGame::MakeNoise(NoiseKind kind, const glm::vec3& at, float reach, 
     }
     Noise noise;
     noise.kind = kind;
+    // Heard where it was made, on the floor under it: a shot is fired from the height of somebody's eyes,
+    // and from there, on the floor below, it was a floor away and not straight over their heads.
     noise.position = at;
+    if (const RayHit floor = m_app->GetPhysics().RayCastStatic(at + glm::vec3(0.0f, 0.1f, 0.0f), {0.0f, -1.0f, 0.0f}, 2.6f))
+    {
+        noise.position.y = floor.position.y;
+    }
     noise.reach = reach;
     noise.player = player;
     // Bounded: a flood of noises in one tick is a bug somewhere else, and should not become a stall.

@@ -30,6 +30,7 @@ add_executable(PredationTests
     MimicTests.cpp
     TacticLearnerTests.cpp
     FacilityTests.cpp
+    FacilityCreatureTests.cpp
     ItemUseTests.cpp
     DataFileTests.cpp
 )

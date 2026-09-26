@@ -1083,7 +1083,8 @@ void Creature::Move(const CreatureIntent& asked, const std::vector<glm::vec3>& o
         }
         // Corners already reached are behind it, including the first, which is where it stands. A corner
         // that is the take-off of a jump is not passed but jumped from.
-        while (!m_route.empty() && Horizontal(m_route.front(), m_position) < 0.35f)
+        // Reached is reached on the same floor: a corner of the route on the landing overhead is not.
+        while (!m_route.empty() && Horizontal(m_route.front(), m_position) < 0.35f && std::abs(m_route.front().y - m_position.y) < 1.2f)
         {
             const bool takeOff = !m_routeJumps.empty() && m_routeJumps.front() != 0 && m_route.size() >= 2;
             if (takeOff)

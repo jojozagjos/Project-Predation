@@ -23,10 +23,15 @@ namespace pred
 namespace
 {
 
+// Across the floor, whatever the difference in height of a block or a crouch -- but not between storeys:
+// somebody on the floor above, straight overhead, is a flight of stairs away and not here, and taking them
+// for here is what kept a creature standing under where it wanted to be.
 float Horizontal(const glm::vec3& a, const glm::vec3& b)
 {
     const glm::vec3 d = b - a;
-    return std::sqrt(d.x * d.x + d.z * d.z);
+    const float flat = std::sqrt(d.x * d.x + d.z * d.z);
+    const float rise = std::abs(d.y);
+    return rise > 2.8f ? flat + rise * 2.0f : flat;
 }
 
 glm::vec3 Flat(const glm::vec3& v)
@@ -257,8 +262,9 @@ bool CreatureBrain::PickFlankPoint(const CreatureSenses& senses, const glm::vec3
         {
             continue;
         }
+        // On their floor: round to them is not the floor below them.
         const float distance = Horizontal(candidate, source);
-        if (distance < 6.0f || distance > 14.0f)
+        if (distance < 6.0f || distance > 14.0f || std::abs(candidate.y - source.y) > 1.5f)
         {
             continue;
         }
@@ -281,8 +287,22 @@ bool CreatureBrain::PickFlankPoint(const CreatureSenses& senses, const glm::vec3
         {
             score *= 0.1f + 0.9f * passes / 5.0f;
         }
+        // And near them by walking, not only as the crow flies: a floor above them, or the far side of a
+        // wall with the way round it through a stairwell, is not round to them at all.
         if (score > best)
         {
+            std::vector<glm::vec3> corners;
+            bool reached = false;
+            senses.nav->FindPath(source, candidate, corners, &reached);
+            float walk = 0.0f;
+            for (size_t c = 1; c < corners.size(); ++c)
+            {
+                walk += glm::distance(corners[c - 1], corners[c]);
+            }
+            if (!reached || walk > distance * 1.7f + 4.0f)
+            {
+                continue;
+            }
             best = score;
             out = candidate;
             found = true;
