@@ -297,7 +297,19 @@ private:
         float spin = 0.0f;     // turned about its surface, so no two look alike
         float fromHeart = 0.0f;
         int variant = 0;
+        // What it grew out of: the patch before it, which a root creeps across from to reach it.
+        bool rooted = false;
+        glm::vec3 from{0.0f};
+        glm::vec3 fromNormal{0.0f, 1.0f, 0.0f};
+        float fromHeartThere = 0.0f;
+        float stretch = 1.0f; // lumps are not round: how much longer one way than the other
+        // Into a corner, the root runs along the one surface to the corner and on up the other from it,
+        // rather than straight across the air between.
+        bool bent = false;
+        glm::vec3 bend{0.0f};
         Entity entity;
+        Entity tendril;
+        Entity tendrilOn;
     };
     struct Nest
     {
@@ -325,6 +337,7 @@ private:
         MeshHandle heartMesh;
         MeshHandle rootsMesh;
         std::vector<MeshHandle> growthMeshes;
+        std::vector<MeshHandle> tendrilMeshes;
         Entity heartEntity;
         Entity rootsEntity;
         BodyHandle heartBody;

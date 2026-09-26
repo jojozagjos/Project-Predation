@@ -2879,7 +2879,8 @@ void PredationGame::PlanNestGrowth(Nest& nest) const
             return glm::dot(other.normal, normal) > 0.7f && glm::distance(other.at, at) < 0.8f * std::min(other.size, size);
         });
     };
-    const auto add = [&](const glm::vec3& at, const glm::vec3& normal, float fromHeart)
+    const auto add = [&](const glm::vec3& at, const glm::vec3& normal, float fromHeart, const NestPatch* parent,
+                         const glm::vec3* bend = nullptr)
     {
         ++made;
         NestPatch patch;
@@ -2899,20 +2900,42 @@ void PredationGame::PlanNestGrowth(Nest& nest) const
         patch.appears = growth * std::pow(std::min(fromHeart / kNestSpread, 1.0f), 1.15f) * (0.85f + 0.3f * Sdf::Hash(made, 2, 0, seed));
         patch.spin = Sdf::Hash(made, 3, 0, seed) * glm::two_pi<float>();
         patch.variant = made % 3;
+        patch.stretch = 0.6f + 0.8f * Sdf::Hash(made, 5, 0, seed);
+        if (parent != nullptr)
+        {
+            patch.rooted = true;
+            patch.from = parent->at;
+            patch.fromNormal = parent->normal;
+            patch.fromHeartThere = parent->fromHeart;
+            if (bend != nullptr)
+            {
+                patch.bent = true;
+                patch.bend = *bend;
+            }
+        }
         nest.patches.push_back(patch);
     };
 
     constexpr int kRays = 120;
     const glm::vec3 from = nest.heart + nest.normal * 0.15f;
+    // Those nearest the heart root out of the heart itself.
+    NestPatch heartRoot;
+    heartRoot.at = nest.wall;
+    heartRoot.normal = nest.normal;
+    heartRoot.fromHeart = 0.0f;
     for (int i = 0; i < kRays; ++i)
     {
         const float y = 1.0f - 2.0f * (static_cast<float>(i) + 0.5f) / static_cast<float>(kRays);
         const float ring = std::sqrt(std::max(1.0f - y * y, 0.0f));
         const float phi = static_cast<float>(i) * 2.39996f + turn;
         const glm::vec3 direction{std::cos(phi) * ring, y, std::sin(phi) * ring};
-        if (const RayHit hit = physics.RayCastStatic(from, direction, kNestReach))
+        // Only on the surface the heart is rooted in: everywhere else is reached by creeping over the
+        // surfaces from there. Rooted across the room from the heart, its roots hung through the air.
+        if (const RayHit hit = physics.RayCastStatic(from, direction, kNestReach);
+            hit && glm::dot(glm::normalize(hit.normal), nest.normal) > 0.85f &&
+            std::abs(glm::dot(hit.position - nest.wall, nest.normal)) < 0.25f && glm::distance(hit.position, nest.wall) < 3.0f)
         {
-            add(hit.position, hit.normal, glm::distance(nest.heart, hit.position));
+            add(hit.position, hit.normal, glm::distance(nest.heart, hit.position), &heartRoot);
         }
     }
 
@@ -2938,12 +2961,16 @@ void PredationGame::PlanNestGrowth(Nest& nest) const
             glm::vec3 at{0.0f};
             glm::vec3 normal{0.0f};
             bool found = false;
+            bool cornered = false;
+            glm::vec3 corner{0.0f};
             if (const RayHit ahead = physics.RayCastStatic(lifted, dir, step))
             {
                 // Into a corner: up the next surface.
                 at = ahead.position;
                 normal = ahead.normal;
                 found = true;
+                cornered = true;
+                corner = ahead.position - n * glm::dot(ahead.position - parent.at, n);
             }
             else
             {
@@ -2990,7 +3017,7 @@ void PredationGame::PlanNestGrowth(Nest& nest) const
                     at = settle.position;
                 }
             }
-            add(at, normal, parent.fromHeart + glm::distance(parent.at, at));
+            add(at, normal, parent.fromHeart + glm::distance(parent.at, at), &parent, cornered ? &corner : nullptr);
         }
     }
     std::sort(nest.patches.begin(), nest.patches.end(),
@@ -3097,6 +3124,10 @@ void PredationGame::BuildNest(const glm::vec3& at, uint16_t seed, uint8_t owner,
         {
             meshes.push_back(BuildNestGrowth(seed, variant));
         }
+        for (int variant = 0; variant < 3; ++variant)
+        {
+            meshes.push_back(BuildNestTendril(seed, variant));
+        }
         return meshes;
     });
     m_nests.push_back(std::move(nest));
@@ -3131,10 +3162,13 @@ void PredationGame::ReleaseNest(Nest& nest)
     }
     for (NestPatch& patch : nest.patches)
     {
-        if (patch.entity.IsValid())
+        for (Entity* entity : {&patch.entity, &patch.tendril, &patch.tendrilOn})
         {
-            m_scene.Destroy(patch.entity);
-            patch.entity = Entity{};
+            if (entity->IsValid())
+            {
+                m_scene.Destroy(*entity);
+                *entity = Entity{};
+            }
         }
     }
     for (Entity* entity : {&nest.heartEntity, &nest.rootsEntity})
@@ -3156,6 +3190,11 @@ void PredationGame::ReleaseNest(Nest& nest)
     {
         m_app->GetMeshes().Release(mesh);
     }
+    for (const MeshHandle mesh : nest.tendrilMeshes)
+    {
+        m_app->GetMeshes().Release(mesh);
+    }
+    nest.tendrilMeshes.clear();
     nest.heartMesh = MeshHandle{};
     nest.rootsMesh = MeshHandle{};
     nest.growthMeshes.clear();
@@ -3303,9 +3342,13 @@ void PredationGame::UpdateNests(float dt)
             MeshLibrary& library = m_app->GetMeshes();
             nest.heartMesh = library.Upload(meshes[0], name + "heart");
             nest.rootsMesh = library.Upload(meshes[1], name + "roots");
-            for (size_t v = 2; v < meshes.size(); ++v)
+            for (size_t v = 2; v < 5 && v < meshes.size(); ++v)
             {
                 nest.growthMeshes.push_back(library.Upload(meshes[v], name + "growth_" + std::to_string(v - 2)));
+            }
+            for (size_t v = 5; v < meshes.size(); ++v)
+            {
+                nest.tendrilMeshes.push_back(library.Upload(meshes[v], name + "tendril_" + std::to_string(v - 5)));
             }
             Transform where;
             where.position = nest.wall;
@@ -3381,9 +3424,80 @@ void PredationGame::UpdateNests(float dt)
         for (NestPatch& patch : nest.patches)
         {
             const float since = nest.age - patch.appears;
+            // Its root creeps out to it from the patch it grows from first, and it swells up where the root
+            // arrives: the nest grows as roots feeling their way over the walls, not as circles.
+            const float rootTakes = kPatchGrowIn * 1.3f;
+            if (since <= -rootTakes)
+            {
+                break; // in the order they appear: none after this one has started either
+            }
+            const float edgeHere = std::clamp(patch.fromHeart / kNestSpread, 0.0f, 1.0f);
+            const float diedHere = nest.dead ? nest.deadFor - patch.fromHeart / kNestDeathSpeed : -1.0f;
+            const float slackHere = diedHere > 0.0f ? Smooth(diedHere / kNestWither) : 0.0f;
+            const float rotHere = diedHere > 0.0f ? Smooth((diedHere - kNestWither) / rotFor) : 0.0f;
+            if (patch.rooted && !nest.tendrilMeshes.empty())
+            {
+                const glm::vec3 span = patch.at - patch.from;
+                const float length = glm::length(span);
+                if (!patch.tendril.IsValid() && length > 0.05f)
+                {
+                    const MeshHandle mesh = nest.tendrilMeshes[static_cast<size_t>(patch.variant) % nest.tendrilMeshes.size()];
+                    patch.tendril = m_scene.CreateMeshEntity("nest root", Transform{}, mesh, Material::Diffuse(glm::vec3(1.0f), 0.35f));
+                    if (MeshRenderer* renderer = m_scene.GetMeshRenderer(patch.tendril))
+                    {
+                        renderer->castsShadow = false;
+                    }
+                }
+                if (patch.bent && !patch.tendrilOn.IsValid() && patch.tendril.IsValid())
+                {
+                    const MeshHandle mesh = nest.tendrilMeshes[static_cast<size_t>(patch.variant + 1) % nest.tendrilMeshes.size()];
+                    patch.tendrilOn = m_scene.CreateMeshEntity("nest root", Transform{}, mesh, Material::Diffuse(glm::vec3(1.0f), 0.35f));
+                    if (MeshRenderer* renderer = m_scene.GetMeshRenderer(patch.tendrilOn))
+                    {
+                        renderer->castsShadow = false;
+                    }
+                }
+                // Thick near the heart, a thread at the far edges; thinner as it rots, never gone.
+                const float thick = glm::mix(0.09f, 0.03f, std::clamp(patch.fromHeartThere / kNestSpread, 0.0f, 1.0f)) *
+                                    glm::mix(1.0f, 0.55f, rotHere);
+                const float crept = Smooth((since + rootTakes) / rootTakes);
+                const auto lay = [&](Entity entity, const glm::vec3& a, const glm::vec3& b, const glm::vec3& surface, float grown)
+                {
+                    Transform* transform = m_scene.GetTransform(entity);
+                    const float reach = glm::distance(a, b);
+                    if (transform == nullptr || reach < 1e-3f)
+                    {
+                        return;
+                    }
+                    const glm::vec3 along = (b - a) / reach;
+                    glm::vec3 up = surface - along * glm::dot(surface, along);
+                    up = glm::length(up) > 1e-3f ? glm::normalize(up) : glm::vec3(0.0f, 1.0f, 0.0f);
+                    const glm::vec3 across = glm::normalize(glm::cross(up, along));
+                    transform->position = a + surface * 0.01f;
+                    transform->rotation = glm::quat_cast(glm::mat3(across, up, along));
+                    transform->scale = glm::vec3(thick, thick * 0.7f, std::max(reach * std::clamp(grown, 0.0f, 1.0f), 0.001f));
+                    if (MeshRenderer* renderer = m_scene.GetMeshRenderer(entity))
+                    {
+                        renderer->material.baseColor = glm::mix(glm::vec3(1.0f), kNestDead, slackHere);
+                    }
+                };
+                if (patch.bent)
+                {
+                    const float first = glm::distance(patch.from, patch.bend);
+                    const float second = glm::distance(patch.bend, patch.at);
+                    const float split = first / std::max(first + second, 1e-3f);
+                    lay(patch.tendril, patch.from, patch.bend, patch.fromNormal, crept / std::max(split, 1e-3f));
+                    lay(patch.tendrilOn, patch.bend, patch.at, patch.normal, (crept - split) / std::max(1.0f - split, 1e-3f));
+                }
+                else
+                {
+                    lay(patch.tendril, patch.from, patch.at, patch.fromNormal, crept);
+                }
+            }
+            (void)edgeHere;
             if (since <= 0.0f)
             {
-                break; // in the order they appear: none after this one has either
+                continue;
             }
             if (!patch.entity.IsValid())
             {
@@ -3421,8 +3535,11 @@ void PredationGame::UpdateNests(float dt)
             // and settles as the ring passes, no glow, no flash.
             if (Transform* transform = m_scene.GetTransform(patch.entity))
             {
-                transform->scale = glm::vec3(patch.size * (1.0f + 0.05f * local), std::min(patch.size, 1.0f) * 0.6f * (1.0f + 0.45f * local),
-                                             patch.size * (1.0f + 0.05f * local)) *
+                // A lump where roots meet, smaller than the roots are long and longer one way than the other:
+                // not a disc laid on the wall.
+                const float lump = patch.size * 0.8f;
+                transform->scale = glm::vec3(lump * patch.stretch * (1.0f + 0.05f * local),
+                                             std::min(lump, 0.6f) * 0.7f * (1.0f + 0.45f * local), lump / patch.stretch * (1.0f + 0.05f * local)) *
                                    std::max(shown, 0.01f);
             }
             if (MeshRenderer* renderer = m_scene.GetMeshRenderer(patch.entity))

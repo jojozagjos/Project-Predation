@@ -32,4 +32,9 @@ inline constexpr float kNestHeartUp = 0.05f;
 // out of the far side. `variant` makes the patches of one nest differ; every third carries egg sacs.
 MeshData BuildNestGrowth(uint32_t seed, int variant);
 
+// A root of the nest creeping across a surface from one patch of it to the next: a unit long along +z,
+// a unit thick at its root tapering towards its tip, flattened against the surface under it (+y is out of
+// the surface), wandering a little side to side. Stretched to fit between two patches.
+MeshData BuildNestTendril(uint32_t seed, int variant);
+
 } // namespace pred

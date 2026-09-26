@@ -234,25 +234,24 @@ MeshData BuildNestGrowth(uint32_t seed, int variant)
         }
     }
 
-    const auto mat = [&](const glm::vec3& p)
+    // No disc under it and no spokes round it any more -- the roots between patches are their own meshes
+    // now -- just a knot of lumps of different sizes, run together low and flat, its outline warped so it
+    // is no shape in particular.
+    const auto mat = [&](const glm::vec3& q)
     {
-        float d = Ellipsoid(p, {1.0f, 0.12f, 0.9f});
+        glm::vec3 p = q;
+        p.x += (Fbm(q * 1.7f, kSeed + 11u, 2) - 0.5f) * 0.55f;
+        p.z += (Fbm(q * 1.7f, kSeed + 23u, 2) - 0.5f) * 0.55f;
+        float d = Ellipsoid(p - glm::vec3(0.0f, -0.02f, 0.0f), {0.55f, 0.07f, 0.32f});
         for (const glm::vec4& lump : lumps)
         {
-            d = SmoothUnion(d, glm::length(p - glm::vec3(lump)) - lump.w, 0.18f);
+            const glm::vec3 off = p - glm::vec3(lump);
+            d = SmoothUnion(d, Ellipsoid(off, {lump.w, lump.w * 0.6f, lump.w * 0.85f}), 0.14f);
         }
         return d;
     };
-    const auto strands = [&](const glm::vec3& p)
-    {
-        float d = 1.0e9f;
-        for (const Tendril& tendril : tendrils)
-        {
-            d = std::min(d, RoundCone(p, tendril.a, tendril.b, 0.06f, 0.035f));
-            d = std::min(d, RoundCone(p, tendril.b, tendril.c, 0.035f, 0.014f));
-        }
-        return d;
-    };
+    const auto strands = [&](const glm::vec3&) { return 1.0e9f; };
+    (void)tendrils;
     const auto sacDistance = [&](const glm::vec3& p)
     {
         float d = 1.0e9f;
@@ -287,6 +286,73 @@ MeshData BuildNestGrowth(uint32_t seed, int variant)
         return PackColour(colour, wet);
     };
     return Sculpt({-1.6f, -0.05f, -1.6f}, {1.6f, 0.5f, 1.6f}, 0.045f, distance, paint, 3500);
+}
+
+MeshData BuildNestTendril(uint32_t seed, int variant)
+{
+    using namespace Sdf;
+    const uint32_t kSeed = (seed * 2246822519u) ^ (static_cast<uint32_t>(variant) * 3266489917u + 7u);
+    constexpr int kSides = 7;
+    constexpr int kRings = 10;
+    MeshData mesh;
+    // Where along it the side-to-side wander is, and how thick it is, ring by ring: thick at the root,
+    // swelling here and there where it has knotted, thin at the tip.
+    std::vector<glm::vec3> centres;
+    std::vector<float> radii;
+    const float wander = 0.9f + 0.6f * Hash(0, 1, 0, kSeed);
+    const float phase = Hash(0, 2, 0, kSeed) * 6.2831853f;
+    for (int r = 0; r < kRings; ++r)
+    {
+        const float t = static_cast<float>(r) / static_cast<float>(kRings - 1);
+        const float side = std::sin(t * 3.14159265f * wander + phase) * 0.9f * std::sin(t * 3.14159265f);
+        centres.emplace_back(side, 0.0f, t);
+        const float knot = 1.0f + 0.35f * std::max(0.0f, std::sin(t * 17.0f + phase * 3.0f)) * Hash(r, 3, 0, kSeed);
+        radii.push_back(glm::mix(1.0f, 0.35f, t) * knot);
+    }
+    for (int r = 0; r < kRings; ++r)
+    {
+        const float t = static_cast<float>(r) / static_cast<float>(kRings - 1);
+        for (int k = 0; k < kSides; ++k)
+        {
+            const float angle = static_cast<float>(k) / kSides * 6.2831853f;
+            // Flat underneath, where it lies on the surface; round over the top.
+            const float y = std::max(std::sin(angle), -0.15f);
+            const glm::vec3 offset{std::cos(angle) * radii[static_cast<size_t>(r)], (y + 0.15f) * radii[static_cast<size_t>(r)], 0.0f};
+            MeshVertex vertex;
+            vertex.position = centres[static_cast<size_t>(r)] + offset;
+            vertex.normal = glm::normalize(glm::vec3(std::cos(angle), std::max(std::sin(angle), 0.0f) + 0.2f, 0.0f));
+            vertex.uv = {static_cast<float>(k) / kSides, t};
+            const float vein = 0.5f + 0.5f * std::sin(t * 23.0f + angle * 2.0f + phase);
+            const glm::vec3 colour = glm::mix(glm::vec3(0.1f, 0.035f, 0.035f), glm::vec3(0.2f, 0.07f, 0.06f), vein);
+            vertex.color = PackColour(colour, 0.35f);
+            mesh.vertices.push_back(vertex);
+        }
+    }
+    for (int r = 0; r + 1 < kRings; ++r)
+    {
+        for (int k = 0; k < kSides; ++k)
+        {
+            const uint32_t a = static_cast<uint32_t>(r * kSides + k);
+            const uint32_t b = static_cast<uint32_t>(r * kSides + (k + 1) % kSides);
+            const uint32_t c = static_cast<uint32_t>((r + 1) * kSides + k);
+            const uint32_t d = static_cast<uint32_t>((r + 1) * kSides + (k + 1) % kSides);
+            mesh.indices.insert(mesh.indices.end(), {a, b, c, b, d, c});
+        }
+    }
+    // Capped at the tip, so the end of it is not an open pipe.
+    const uint32_t tip = static_cast<uint32_t>(mesh.vertices.size());
+    MeshVertex end;
+    end.position = centres.back() + glm::vec3(0.0f, 0.2f * radii.back(), 0.1f * radii.back());
+    end.normal = {0.0f, 0.3f, 1.0f};
+    end.color = PackColour(glm::vec3(0.1f, 0.035f, 0.035f), 0.35f);
+    mesh.vertices.push_back(end);
+    for (int k = 0; k < kSides; ++k)
+    {
+        const uint32_t a = static_cast<uint32_t>((kRings - 1) * kSides + k);
+        const uint32_t b = static_cast<uint32_t>((kRings - 1) * kSides + (k + 1) % kSides);
+        mesh.indices.insert(mesh.indices.end(), {a, b, tip});
+    }
+    return mesh;
 }
 
 } // namespace pred
