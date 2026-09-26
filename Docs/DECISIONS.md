@@ -1964,3 +1964,22 @@ Four changes to how Assets/Data works, all so the files can be edited by hand wi
   arrives. Each beat lifts it in a ring moving out at about 4 m/s; nothing flashes.
 - **Voice chat is levelled per speaker** to a strong speaking volume (up to 12×), eased and soft-limited,
   and full volume to 8 m. The microphone test plays the same.
+
+## ADR-094: No blind steps, eyes on this side of walls, sky slack capped on walls
+
+- **A creature never takes a step the navigation cannot.** When the query fails (a mesh still being
+  rebuilt for a level just put in, a creature off the mesh) it stays put or eases back onto floor it can
+  reach without passing through anything. Taking the step straight walked creatures through walls,
+  shuffled them in jerks at doorways and put them outside the building.
+- **It senses from its eyes on this side of a wall.** A long creature's eyes are well out in front of its
+  body; facing a wall close up they were through it.
+- **Open door panels steer, never push.** A creature goes round a panel that has finished opening and
+  ignores one still swinging; it is never shoved by a door it has just opened.
+- **Sky slack on walls is capped at 0.2 m.** It grew with the shadow distance and came to more than a
+  roof's thickness, lighting a band along the top of every wall -- worse on the higher settings.
+- **The facility's lamp boxes have no margin** (their edges lie in the middle of walls), so neighbouring
+  boxes no longer overlap into a double-lit strip, and every lamp adds a little bounce light from all
+  directions so ceilings are not pitch black over a downlight.
+- **The director hints 10-25 m from a player,** and a new creature restarts the quiet it waits for.
+- **Dying, a body goes along the blow with a little lift,** and a ragdoll joint pushed into a ceiling
+  never takes that ceiling's top for its floor.
