@@ -855,6 +855,14 @@ void PredationGame::UpdateCreatures(float dt)
         {
             BashDoor(intent.bashDoor, *creature);
         }
+        if (intent.closeDoor >= 0)
+        {
+            // Pulled to behind it: the same as anybody closing it, so everybody sees and hears it.
+            if (const WorldObjects::Door* found = m_world.GetDoor(intent.closeDoor); found != nullptr && found->IsOpen() && !found->locked)
+            {
+                PerformInteraction(InteractionKind::Door, intent.closeDoor, kNoKiller);
+            }
+        }
         if (intent.grabTarget >= 0)
         {
             TryGrab(*creature, intent.grabTarget, players);

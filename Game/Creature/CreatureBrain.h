@@ -208,6 +208,8 @@ struct CreatureIntent
     // A door: set on the tick it pulls one open, and on each blow against one that is locked.
     int openDoor = -1;
     int bashDoor = -1;
+    // Set on the tick it pulls a door shut behind it, going quietly.
+    int closeDoor = -1;
     bool bashing = false;
     // Mending, as a fraction of its whole health a second, while it has gone to ground. The game
     // gives it the health.
@@ -852,6 +854,10 @@ private:
     float m_nextPaceAt = 0.0f;
     glm::vec3 m_pacePoint{0.0f};
     float m_nextRoarAt = 0.0f;
+    // A door it opened, and which side of it it was on: once through, the careful pull it shut behind them.
+    int m_openedDoor = -1;
+    glm::vec3 m_openedFrom{0.0f};
+    float m_openedAt = -1.0e9f;
     // A door in the way: which, and when it started on it.
     int m_door = -1;
     float m_doorStarted = -1.0f;

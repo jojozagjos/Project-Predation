@@ -322,7 +322,8 @@ void PredationGame::UpdateCreatureSounds(float dt)
         // could not stalk anybody -- and only something running flat out is loud.
         const Behavior intent = creature.Doing();
         const bool sneaking = intent == Behavior::Stalk || intent == Behavior::Ambush || intent == Behavior::Lure ||
-                              intent == Behavior::Flank || intent == Behavior::Search;
+                              intent == Behavior::Flank || intent == Behavior::Search || intent == Behavior::Observe ||
+                              creature.Crouch() > 0.5f;
         const float listenerAway = glm::distance(m_renderEye, head);
 
         // Its feet, as they come down. Creeping is quieter, which is what creeping is for.
@@ -384,7 +385,7 @@ void PredationGame::UpdateCreatureSounds(float dt)
         const Behavior doing = creature.Doing();
         const bool stalking = doing == Behavior::Stalk;
         // Sneaking, it holds its breath -- until it is close enough to be heard breathing right behind you.
-        const bool heldBreath = sneaking && listenerAway > 3.5f;
+        const bool heldBreath = sneaking && listenerAway > 2.2f;
         // Breaking cover to go for somebody: a shriek, the first thing about it anybody hears.
         const bool wasHiding = heard.doing == Behavior::Stalk || heard.doing == Behavior::Ambush || heard.doing == Behavior::Lure;
         if (wasHiding && (intent == Behavior::Hunt || intent == Behavior::Attack))
@@ -411,7 +412,8 @@ void PredationGame::UpdateCreatureSounds(float dt)
         }
         if (m_soundClock >= heard.breathAt && !heldBreath && !silent)
         {
-            PlayNamed("Creature/breath", head, stalking || sneaking ? 0.22f : 0.3f, pitch * (0.95f + 0.1f * Random01()));
+            // Quiet: something breathing is a thing heard close to, and a sneaking one barely at all.
+            PlayNamed("Creature/breath", head, stalking || sneaking ? 0.06f : 0.14f, pitch * (0.95f + 0.1f * Random01()));
             const float breathPace = creature.Speed() > 3.0f ? 0.55f : 1.0f;
             heard.breathAt = m_soundClock + (2.6f + 2.2f * Random01()) * breathPace;
         }

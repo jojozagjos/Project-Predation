@@ -419,6 +419,9 @@ void CreatureBrain::OnDamaged(float amount, int byPlayer, const glm::vec3& from,
     // the spot it was waiting in, the body it was eating are all given up as found.
     m_shotAt = time;
     m_shotDuring = m_behavior;
+    // Shot while it builds, it stops building: a nest half dug can wait, and ignoring the shooting to go
+    // on digging was how it looked as if it did not care.
+    m_nestWorkStarted = -1.0f;
     m_shotBy = byPlayer;
     m_decideTimer = 1.0f;
     if (m_attack == AttackKind::None)
@@ -3057,6 +3060,7 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
     m_intent.display = false;
     m_intent.buildHive = false;
     m_intent.openDoor = -1;
+    m_intent.closeDoor = -1;
     m_intent.bashDoor = -1;
     m_intent.bashing = false;
     m_intent.holding = m_holding;
@@ -4765,6 +4769,9 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
             if (now - m_doorStarted > 0.4f)
             {
                 m_intent.openDoor = door.index;
+                m_openedDoor = door.index;
+                m_openedFrom = senses.position;
+                m_openedAt = now;
                 m_door = -1;
             }
         }
@@ -4782,6 +4789,42 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
     else if (!m_intent.move)
     {
         m_door = -1;
+    }
+
+    // Through a door it opened, going carefully -- after somebody unseen, getting away, lying in wait -- the
+    // stealthy pull it shut behind them: nothing left standing open to say which way they went.
+    if (m_openedDoor >= 0)
+    {
+        const DoorSense* opened = nullptr;
+        for (const DoorSense& candidate : senses.doors)
+        {
+            if (candidate.index == m_openedDoor)
+            {
+                opened = &candidate;
+            }
+        }
+        const bool careful = m_behavior == Behavior::Stalk || m_behavior == Behavior::Retreat || m_behavior == Behavior::Ambush ||
+                             m_behavior == Behavior::Flank || m_behavior == Behavior::Lure || m_behavior == Behavior::Search ||
+                             m_behavior == Behavior::Roam;
+        if (opened == nullptr || now - m_openedAt > 10.0f)
+        {
+            m_openedDoor = -1;
+        }
+        else if (!opened->shut)
+        {
+            const glm::vec3 middle = (opened->a + opened->b) * 0.5f;
+            const bool through = glm::dot(Flat(senses.position - middle), Flat(m_openedFrom - middle)) < 0.0f;
+            const float away = Horizontal(senses.position, middle);
+            if (through && away > 1.7f && away < 4.0f)
+            {
+                if (careful && m_traits.stealth > 0.45f && m_random.Unit() < 0.4f + 0.6f * m_traits.stealth)
+                {
+                    m_intent.closeDoor = m_openedDoor;
+                    Log(now, "pulls the door shut behind it");
+                }
+                m_openedDoor = -1;
+            }
+        }
     }
 
     // Moving again, the next look round starts from wherever it ends up facing.

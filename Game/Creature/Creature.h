@@ -218,6 +218,8 @@ private:
     // Lying there and pulling itself along, in jerks, towards here: playing dead, somewhere nobody is
     // looking. Pulled on the ragdoll, host and client alike -- the client towards where the host says it is.
     bool m_crawling = false;
+    // Where it stood when it went down: getting up, it gets up on this side of any wall from here.
+    glm::vec3 m_limpFrom{0.0f};
     // Where it is drawn, less where it is: a jump in where it is -- onto a wall, over onto a ceiling --
     // is put here and eased away, so the body gets there over a moment instead of in a frame.
     glm::vec3 m_drawOffset{0.0f};

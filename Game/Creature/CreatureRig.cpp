@@ -883,10 +883,41 @@ void CreatureRig::Update(const RigInput& input)
         }
         // Down over something it is eating, its forelimbs brace with the elbows out to the sides, as a crouched
         // animal holds them, rather than folded up over its back.
-        const glm::vec3 pole = forelimb && m_feed > 0.05f
-                                   ? glm::normalize(glm::mix(LimbPole(a, leg), glm::vec3(leg.side, -0.35f, 0.35f), std::min(m_feed * 1.5f, 1.0f)))
-                                   : LimbPole(a, leg);
-        const TwoBoneIKResult ik = SolveTwoBoneIK(hip, ankleTarget, pole, pair.upper, pair.lower);
+        glm::vec3 pole = forelimb && m_feed > 0.05f
+                             ? glm::normalize(glm::mix(LimbPole(a, leg), glm::vec3(leg.side, -0.35f, 0.35f), std::min(m_feed * 1.5f, 1.0f)))
+                             : LimbPole(a, leg);
+        // Striking, grabbing, carrying, bashing: an arm bends at the elbow back and out, the way an arm does,
+        // not whichever way its walking bend happens to leave it -- that flipped the elbow up over the reach.
+        if (forelimb && reach > 0.0f && input.action != RigAction::Feed)
+        {
+            pole = glm::normalize(glm::vec3(leg.side * 0.7f, -0.25f, 0.7f));
+        }
+        TwoBoneIKResult ik = SolveTwoBoneIK(hip, ankleTarget, pole, pair.upper, pair.lower);
+        // An elbow or a knee pushed into a wall bends the other way instead.
+        if (input.probe)
+        {
+            const auto intoWall = [&](const TwoBoneIKResult& solved)
+            {
+                glm::vec3 met;
+                const glm::vec3 from = Apply(m_root, hip);
+                const glm::vec3 joint = Apply(m_root, solved.jointPosition);
+                const glm::vec3 d = joint - from;
+                const float l = glm::length(d);
+                return l > 0.05f && input.probe(from, d / l, l, met);
+            };
+            if (intoWall(ik))
+            {
+                for (const glm::vec3& other : {-pole, glm::normalize(glm::vec3(-leg.side, 0.2f, 0.3f)), glm::vec3(0.0f, 1.0f, 0.0f)})
+                {
+                    const TwoBoneIKResult tried = SolveTwoBoneIK(hip, ankleTarget, other, pair.upper, pair.lower);
+                    if (!intoWall(tried))
+                    {
+                        ik = tried;
+                        break;
+                    }
+                }
+            }
+        }
         const glm::vec3 knee = ik.jointPosition;
         const glm::vec3 ankle = ik.endPosition;
         const glm::vec3 toe = ankle + glm::vec3(0.0f, reach > 0.0f ? 0.0f : -pair.thickness * 0.5f, 0.0f) + toeForward * pair.foot;

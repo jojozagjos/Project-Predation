@@ -855,7 +855,14 @@ void Creature::Update(CreatureSenses senses, float time, float dt)
         glm::vec3 onMesh;
         if (m_nav->NearestPoint(m_ragdoll.Centre(), 1.5f, onMesh))
         {
-            m_position = onMesh;
+            const glm::vec3 from = m_position + glm::vec3(0.0f, 0.3f, 0.0f);
+            const glm::vec3 to = onMesh + glm::vec3(0.0f, 0.3f, 0.0f);
+            const float apart = glm::distance(from, to);
+            if (apart < 0.05f || !m_physics.RayCastStatic(from, (to - from) / apart, apart))
+            {
+                m_position = onMesh;
+                m_limpFrom = onMesh;
+            }
         }
     }
     m_crouchTarget = intent.crouch;
@@ -1291,6 +1298,7 @@ void Creature::PlaceHitboxes(const std::vector<glm::mat4>& local, bool away)
 
 void Creature::GoLimp()
 {
+    m_limpFrom = m_position;
     if (!m_skin)
     {
         return;
@@ -1318,10 +1326,17 @@ void Creature::GetUp()
     const glm::vec3 centre = m_skin ? glm::vec3(m_fallen[static_cast<size_t>(m_skin->pelvis)][3]) : m_position;
     if (!m_hasReceived)
     {
+        // Where the body lies, if it can be got to from where it went down without passing through anything.
+        // A body in a crawlspace, dragged or thrown against its wall, can end up with its middle nearest the
+        // floor on the far side, and getting up there put it out of the level.
         glm::vec3 onMesh;
         if (m_nav != nullptr && m_nav->NearestPoint(centre, 1.5f, onMesh))
         {
-            m_position = onMesh;
+            const glm::vec3 from = m_limpFrom + glm::vec3(0.0f, 0.3f, 0.0f);
+            const glm::vec3 to = onMesh + glm::vec3(0.0f, 0.3f, 0.0f);
+            const float apart = glm::distance(from, to);
+            const bool blocked = apart > 0.05f && static_cast<bool>(m_physics.RayCastStatic(from, (to - from) / apart, apart));
+            m_position = blocked || apart > 4.0f ? m_limpFrom : onMesh;
         }
         // Facing the way its spine lies.
         if (m_skin)
