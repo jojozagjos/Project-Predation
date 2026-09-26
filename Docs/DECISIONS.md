@@ -1922,3 +1922,45 @@ Four changes to how Assets/Data works, all so the files can be edited by hand wi
 - **It dies from the heart outwards, and something stays.** The heart bursts and slumps first; the
   death spreads out at 0.75 m/s; each part darkens, slackens and rots down to a third of its size over
   `ai.nest_rot_seconds`. The husk is never removed.
+
+## ADR-090: Lamps are chosen per piece by nearness, and throw their light down
+
+- **Up to twelve lamps per drawn piece, tied by nearness to its middle.** Each drawn piece of level is
+  lit by the few lamps that reach it. With eight slots and every lamp touching a long wall scoring the
+  same, neighbouring pieces chose different lamps and a hard line ran down the wall between them. Ties
+  now go to the lamp nearest the piece's middle, boxes are drawn in 4 m tiles, and there are 12 slots.
+- **Doorway light only through open doors.** A doorway's share of a lamp sits just through the doorway
+  with a small source, and is let through as far as the door hung there is open.
+- **Corridor lamps light the corridors that turn off their run,** so a corner or junction does not end
+  the light in a line.
+- **Ceiling lamps are downlights** (full within 45° of straight down, gone by 100°): the top of a wall
+  beside one is no longer the brightest thing in the room.
+
+## ADR-091: The host eats; everybody else is told (protocol 19)
+
+- Feeding is decided only on the host. Every bite mark and every piece torn off a body is sent as a
+  `CorpseBitten` event -- where, which part, whether it came away, how much is left -- and applied the
+  same everywhere. Eating separately on every machine from the creature's animation made each screen
+  show a different body.
+
+## ADR-092: What creatures hear is a guess, and what they do up close
+
+- **Heard positions are approximate:** within a tenth of the distance in the open, a quarter through a
+  wall or shut door (at most 5 m). Taken exactly, footsteps let a creature follow somebody through
+  doors as if it could see them.
+- **Nobody walks up to one unanswered.** A watcher backs off at a proper pace; pressed within 3 m it
+  turns on them if bold or cornered, and otherwise runs. Anything with eyes sees somebody within 2.2 m
+  in front of it, however dark. A test walks, runs and creeps up on thirty creatures of every
+  temperament.
+- **Hiding is against something.** Cover and hiding places in the open count for almost nothing; a
+  creature watching from cover faces the doorway or corner the player would come through.
+- **Wall climbing stays inside the building:** no sliding into a wall standing across the way, no
+  climbing beside stairs, down again from a wall that goes nowhere, and never more than 12 s on one.
+
+## ADR-093: Nests grow as roots between lumps; voices are levelled
+
+- **Roots, not circles.** A nest creeps over surfaces patch by patch; each patch has a root that grows
+  to it from the patch before (bent into corners, never across the air), and an irregular lump where it
+  arrives. Each beat lifts it in a ring moving out at about 4 m/s; nothing flashes.
+- **Voice chat is levelled per speaker** to a strong speaking volume (up to 12×), eased and soft-limited,
+  and full volume to 8 m. The microphone test plays the same.
