@@ -221,7 +221,7 @@ void BuildLabMap(Scene& scene, MeshLibrary& meshes, PhysicsWorld* physics, Level
         // A lamp's light through a doorway, into the box on the far side.
         const auto spill = [&](int source, float lx, float lz, const glm::vec3& facing, const Room& beyond)
         {
-            lights->AddSpill(source, glm::vec3(kX + lx, 2.1f, kZ + lz), facing, glm::vec3(kX, 0.0f, kZ) + beyond.a,
+            lights->AddSpill(source, glm::vec3(kX + lx, 1.95f, kZ + lz), facing, glm::vec3(kX, 0.0f, kZ) + beyond.a,
                              glm::vec3(kX, 0.0f, kZ) + beyond.b);
         };
         const auto wall = [&](LightKind kind, float lx, float y, float lz, const glm::vec3& facing, LightMood mood, int circuit,
@@ -266,10 +266,10 @@ void BuildLabMap(Scene& scene, MeshLibrary& meshes, PhysicsWorld* physics, Level
         const Room corridorByStore{{corridorWest, -0.05f, storeDoor - 2.0f}, {corridorEast, 3.05f, storeDoor + 2.0f}};
         const Room lockersByDoor{{corridorEast + 0.3f, -0.05f, lockerDoor - 2.0f}, {corridorEast + 3.5f, 3.05f, lockerDoor + 2.0f}};
         const Room storeByDoor{{corridorEast + 0.3f, -0.05f, storeDoor - 2.0f}, {corridorEast + 3.5f, 3.05f, storeDoor + 2.0f}};
-        spill(lockerLamp, corridorEast + 0.4f, lockerDoor, {-1.0f, -0.3f, 0.0f}, corridorByLockers);
-        spill(corridorSouthLamp, corridorEast - 0.4f, lockerDoor, {1.0f, -0.3f, 0.0f}, lockersByDoor);
-        spill(storeRed, corridorEast + 0.4f, storeDoor, {-1.0f, -0.3f, 0.0f}, corridorByStore);
-        spill(corridorNorthLamp, corridorEast - 0.4f, storeDoor, {1.0f, -0.3f, 0.0f}, storeByDoor);
+        spill(lockerLamp, corridorEast, lockerDoor, {-1.0f, -0.3f, 0.0f}, corridorByLockers);
+        spill(corridorSouthLamp, corridorEast, lockerDoor, {1.0f, -0.3f, 0.0f}, lockersByDoor);
+        spill(storeRed, corridorEast, storeDoor, {-1.0f, -0.3f, 0.0f}, corridorByStore);
+        spill(corridorNorthLamp, corridorEast, storeDoor, {1.0f, -0.3f, 0.0f}, storeByDoor);
 
         // The pillar forest: one failing, one dead. Dark on purpose: it is for being stalked in.
         ceiling(19.5f, 4.5f, -6.0f, LightMood::Failing, 2, forest);

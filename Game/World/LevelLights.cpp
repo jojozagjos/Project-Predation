@@ -1,6 +1,7 @@
 #include "Game/World/LevelLights.h"
 
 #include "Engine/Render/Primitives.h"
+#include "Game/World/WorldObjects.h"
 
 #include <glm/geometric.hpp>
 #include <glm/gtc/quaternion.hpp>
@@ -216,13 +217,19 @@ int LevelLights::AddSpill(int source, const glm::vec3& at, const glm::vec3& dire
     }
     Light spill = m_lights[static_cast<size_t>(source)];
     spill.fitting = Entity{};
-    spill.position = at;
     spill.direction = glm::length(direction) > 1e-4f ? glm::normalize(direction) : glm::vec3(0.0f, -1.0f, 0.0f);
+    // Just through the doorway on the far side, not behind it: from behind, with a source as big as it
+    // had, it lit the door and the wall round the doorway from inside them, and a shut door glowed.
+    glm::vec3 flat{spill.direction.x, 0.0f, spill.direction.z};
+    flat = glm::length(flat) > 1e-4f ? glm::normalize(flat) : glm::vec3(0.0f);
+    spill.doorway = at;
+    spill.position = at + flat * 0.35f;
+    spill.spill = true;
     spill.intensity *= share;
     spill.range = std::min(spill.range, 5.5f);
-    spill.innerAngle = 50.0f;
-    spill.outerAngle = 95.0f;
-    spill.sourceRadius = 0.6f;
+    spill.innerAngle = 40.0f;
+    spill.outerAngle = 85.0f;
+    spill.sourceRadius = 0.12f;
     m_lights.push_back(spill);
     const int index = static_cast<int>(m_lights.size()) - 1;
     Bound(index, min, max);
@@ -275,11 +282,64 @@ void LevelLights::Update(Scene& scene, float time)
     }
 }
 
+int LevelLights::AddCopy(int source, const glm::vec3& min, const glm::vec3& max)
+{
+    if (source < 0 || static_cast<size_t>(source) >= m_lights.size())
+    {
+        return -1;
+    }
+    Light copy = m_lights[static_cast<size_t>(source)];
+    copy.fitting = Entity{};
+    m_lights.push_back(copy);
+    const int index = static_cast<int>(m_lights.size()) - 1;
+    Bound(index, min, max);
+    return index;
+}
+
+void LevelLights::UpdateDoorways(const WorldObjects& world)
+{
+    const std::vector<WorldObjects::Door>& doors = world.Doors();
+    const bool recount = doors.size() != m_doorsSeen;
+    m_doorsSeen = doors.size();
+    for (Light& light : m_lights)
+    {
+        if (!light.spill)
+        {
+            continue;
+        }
+        if (recount || light.door == -2)
+        {
+            // The door whose panel, shut, has its middle nearest the middle of the doorway.
+            light.door = -1;
+            float nearest = 0.8f;
+            for (size_t d = 0; d < doors.size(); ++d)
+            {
+                const WorldObjects::Door& door = doors[d];
+                const glm::vec3 middle = door.hinge + glm::angleAxis(door.closedYaw, glm::vec3(0.0f, 1.0f, 0.0f)) *
+                                                          glm::vec3(door.panelOffset.x, 0.0f, door.panelOffset.z);
+                const float gap = glm::length(glm::vec2(middle.x - light.doorway.x, middle.z - light.doorway.z));
+                if (gap < nearest && std::abs(door.hinge.y - light.doorway.y) < 2.6f)
+                {
+                    nearest = gap;
+                    light.door = static_cast<int>(d);
+                }
+            }
+        }
+        light.gate = 1.0f;
+        if (light.door >= 0 && static_cast<size_t>(light.door) < doors.size())
+        {
+            const WorldObjects::Door& door = doors[static_cast<size_t>(light.door)];
+            const float swing = std::abs(door.openYaw - door.closedYaw);
+            light.gate = swing > 1e-3f ? std::clamp(std::abs(door.angle - door.closedYaw) / (swing * 0.6f), 0.0f, 1.0f) : 1.0f;
+        }
+    }
+}
+
 void LevelLights::Gather(std::vector<PunctualLight>& out) const
 {
     for (const Light& light : m_lights)
     {
-        if (light.level <= 0.01f)
+        if (light.level * light.gate <= 0.01f)
         {
             continue;
         }
@@ -287,7 +347,7 @@ void LevelLights::Gather(std::vector<PunctualLight>& out) const
         punctual.position = light.position;
         punctual.direction = light.direction;
         punctual.color = light.color;
-        punctual.intensity = light.intensity * light.level;
+        punctual.intensity = light.intensity * light.level * light.gate;
         punctual.range = light.range;
         punctual.innerAngle = light.innerAngle;
         punctual.outerAngle = light.outerAngle;

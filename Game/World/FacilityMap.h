@@ -78,6 +78,9 @@ public:
         // A doorway's share of another lamp (this one's index in the list), with no fitting: see
         // LevelLights::AddSpill. -1 for a lamp of its own.
         int spillOf = -1;
+        // The same lamp again, bounded to a corridor that turns off the run it hangs over: -1 for a lamp of
+        // its own. Without it the light stopped in a hard line across the mouth of the side corridor.
+        int copyOf = -1;
         glm::vec3 direction{0.0f, -1.0f, 0.0f};
     };
 

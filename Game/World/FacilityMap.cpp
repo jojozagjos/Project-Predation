@@ -701,7 +701,57 @@ void Lamps(const FacilityLayout& layout, Blueprint& out)
         }
         placed.boundsMin = FacilityMap::ToWorld(lamp.floor, glm::vec2(low)) - glm::vec3(0.0f, 0.02f, 0.0f);
         placed.boundsMax = FacilityMap::ToWorld(lamp.floor, glm::vec2(high + glm::ivec2(1))) + glm::vec3(0.0f, kClear + 0.02f, 0.0f);
+        const int own = static_cast<int>(out.lamps.size());
         out.lamps.push_back(placed);
+        if (room >= 0)
+        {
+            continue;
+        }
+        // Every corridor that turns off this run near the lamp -- the other leg of a corner, a side
+        // corridor at a junction -- lit by it too, down its own length.
+        const auto corridorCell = [&](glm::ivec2 c) { return layout.At(lamp.floor, c.x, c.y) == Cell::Corridor; };
+        const bool runAlongX = high.x != low.x || (high.y == low.y);
+        const glm::ivec2 along = runAlongX ? glm::ivec2(1, 0) : glm::ivec2(0, 1);
+        const glm::ivec2 perpendicular = runAlongX ? glm::ivec2(0, 1) : glm::ivec2(1, 0);
+        std::vector<std::pair<glm::ivec2, glm::ivec2>> made;
+        for (glm::ivec2 c = low;; c += along)
+        {
+            const glm::vec3 centre = FacilityMap::ToWorld(lamp.floor, glm::vec2(c) + glm::vec2(0.5f));
+            if (glm::distance(glm::vec2(centre.x, centre.z), glm::vec2(placed.position.x, placed.position.z)) < 7.0f)
+            {
+                for (const int sign : {-1, 1})
+                {
+                    const glm::ivec2 step = perpendicular * sign;
+                    glm::ivec2 end = c + step;
+                    if (!corridorCell(end))
+                    {
+                        continue;
+                    }
+                    int cells = 1;
+                    while (corridorCell(end + step) && cells < 12)
+                    {
+                        end += step;
+                        ++cells;
+                    }
+                    const glm::ivec2 branchLow = glm::min(c + step, end);
+                    const glm::ivec2 branchHigh = glm::max(c + step, end);
+                    if (std::find(made.begin(), made.end(), std::pair{branchLow, branchHigh}) != made.end())
+                    {
+                        continue;
+                    }
+                    made.emplace_back(branchLow, branchHigh);
+                    FacilityMap::Lamp copy = placed;
+                    copy.copyOf = own;
+                    copy.boundsMin = FacilityMap::ToWorld(lamp.floor, glm::vec2(branchLow)) - glm::vec3(0.0f, 0.02f, 0.0f);
+                    copy.boundsMax = FacilityMap::ToWorld(lamp.floor, glm::vec2(branchHigh + glm::ivec2(1))) + glm::vec3(0.0f, kClear + 0.02f, 0.0f);
+                    out.lamps.push_back(copy);
+                }
+            }
+            if (c == high)
+            {
+                break;
+            }
+        }
     }
 
     // Through every doorway and archway, each way: the nearest working lamp on one side lights a little way
@@ -735,7 +785,8 @@ void Lamps(const FacilityLayout& layout, Blueprint& out)
             const glm::vec2 across = glm::vec2(to - from);
             FacilityMap::Lamp spill = out.lamps[static_cast<size_t>(best)];
             spill.spillOf = best;
-            spill.position = FacilityMap::ToWorld(door.floor, edge - across * 0.15f) + glm::vec3(0.0f, 2.1f, 0.0f);
+            // The middle of the doorway, a little below its top: the light is put just through it, facing on.
+            spill.position = FacilityMap::ToWorld(door.floor, edge) + glm::vec3(0.0f, 1.95f, 0.0f);
             spill.direction = glm::normalize(glm::vec3(across.x, -0.35f, across.y));
             // The cell beyond, and its neighbours along the doorway when they are the same kind of place.
             glm::ivec2 low = to;
@@ -892,6 +943,11 @@ void FacilityMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, Physic
         for (size_t i = 0; i < blueprint.lamps.size(); ++i)
         {
             const Lamp& lamp = blueprint.lamps[i];
+            if (lamp.copyOf >= 0)
+            {
+                made[i] = lights->AddCopy(made[static_cast<size_t>(lamp.copyOf)], lamp.boundsMin, lamp.boundsMax);
+                continue;
+            }
             if (lamp.spillOf >= 0)
             {
                 made[i] = lights->AddSpill(made[static_cast<size_t>(lamp.spillOf)], lamp.position, lamp.direction, lamp.boundsMin,

@@ -9436,6 +9436,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
 
         // And the level's own lamps, lit or flickering or not at all, for each surface to choose from.
         m_levelLights.Update(m_scene, m_lightClock);
+        m_levelLights.UpdateDoorways(m_world);
         environment.sceneLights.clear();
         m_levelLights.Gather(environment.sceneLights);
         for (PunctualLight& lamp : environment.sceneLights)

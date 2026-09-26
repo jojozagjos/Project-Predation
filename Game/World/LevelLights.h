@@ -44,6 +44,8 @@ const char* LightMoodName(LightMood mood);
 //
 // How a light flickers or fails is worked out from its seed and the time, so every machine shows the
 // same kind of flicker without anything being sent; only whether a circuit has power would need to be.
+class WorldObjects;
+
 class LevelLights
 {
 public:
@@ -68,6 +70,13 @@ public:
         bool bounded = false;
         glm::vec3 boundsMin{0.0f};
         glm::vec3 boundsMax{0.0f};
+        // A lamp's light through a doorway (see AddSpill): the middle of the doorway, the door hung in it
+        // (-1 an open archway, -2 not looked for yet), and how open that door is, which is how much of the
+        // light gets through.
+        bool spill = false;
+        glm::vec3 doorway{0.0f};
+        int door = -2;
+        float gate = 1.0f;
     };
 
     // A light and its fitting. `direction` is where the fitting faces: down for a ceiling light, out
@@ -89,6 +98,11 @@ public:
                  float share = 0.45f);
     size_t Count() const { return m_lights.size(); }
 
+    // Each doorway's light let through as far as its door is open: none through a shut one. Called every
+    // frame; which door hangs in which doorway is found again whenever the number of doors changes.
+    void UpdateDoorways(const WorldObjects& world);
+    // Another light exactly like the source, with no fitting, lighting a different box.
+    int AddCopy(int source, const glm::vec3& min, const glm::vec3& max);
     void SetPowered(int circuit, bool powered);
     bool Powered(int circuit) const;
 
@@ -105,6 +119,7 @@ public:
 private:
     std::vector<Light> m_lights;
     std::vector<int> m_unpowered;
+    size_t m_doorsSeen = static_cast<size_t>(-1);
     MeshHandle m_fittingMeshes[4] = {};
 };
 
