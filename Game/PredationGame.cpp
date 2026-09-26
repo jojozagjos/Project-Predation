@@ -182,6 +182,15 @@ CVar<bool> cv_voiceEnabled{"audio.voice", true, "Send and hear proximity voice",
 // Brought up to a strong speaking level whatever the microphone: a quiet one as much as twelve times, a
 // loud one hardly at all. Eased down fast and up slowly, so a shout is not pumped, and rounded off at the
 // top rather than clipped. A fixed boost could never be enough for one person without distorting the next.
+// How a body goes down from the blow that killed it: the way it was struck, mostly along the floor, with
+// only a little lift. Straight along the blow it could go up at six metres a second, into the ceiling.
+glm::vec3 DeathPush(const glm::vec3& direction)
+{
+    glm::vec3 along{direction.x, 0.0f, direction.z};
+    along = glm::length(along) > 1e-3f ? glm::normalize(along) : glm::vec3(0.0f);
+    return along * 3.5f + glm::vec3(0.0f, 0.8f, 0.0f);
+}
+
 void LevelVoice(std::vector<float>& samples, float& level)
 {
     if (samples.empty())
@@ -3008,7 +3017,7 @@ void PredationGame::KillPlayer(uint8_t player, const glm::vec3& direction)
         WorldEventMessage event;
         event.kind = WorldEventKind::PlayerDied;
         event.player = player;
-        event.direction = direction * 6.0f;
+        event.direction = DeathPush(direction);
         event.amount = cv_respawnSeconds.Get();
         m_host.Broadcast(event);
     }
@@ -3016,7 +3025,7 @@ void PredationGame::KillPlayer(uint8_t player, const glm::vec3& direction)
     {
         m_player.State().alive = false;
         m_player.State().health = 0.0f;
-        m_deathImpulse = direction * 6.0f;
+        m_deathImpulse = DeathPush(direction);
         m_respawnTimer = cv_respawnSeconds.Get();
         m_spectating = -1;
     }

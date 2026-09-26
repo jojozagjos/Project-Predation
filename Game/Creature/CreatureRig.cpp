@@ -596,19 +596,39 @@ void CreatureRig::Update(const RigInput& input)
     // stretched. Eased in and out with how far it is into it.
     if (m_feedReach > 0.01f)
     {
-        const glm::vec3 mouthAt = Apply(rootInverse, m_feedAt) + glm::vec3(0.0f, 0.04f, 0.0f);
+        glm::vec3 mouthAt = Apply(rootInverse, m_feedAt) + glm::vec3(0.0f, 0.04f, 0.0f);
         const float first = glm::distance(neck[0], neck[2]);
         const float second = glm::distance(neck[2], neck[3]);
         const float toMiddle = glm::distance(neck[0], neck[1]);
+        // Always somewhere in front of where the neck leaves the body and below it, and straight ahead
+        // more than off to a side: a bite behind or beside the neck's root bent it back on itself, and the
+        // head went round with it.
+        const float reachAll = first + second;
+        mouthAt.z = std::min(mouthAt.z, neck[0].z - 0.35f * reachAll);
+        mouthAt.x = std::clamp(mouthAt.x, neck[0].x - 0.3f * reachAll, neck[0].x + 0.3f * reachAll);
+        mouthAt.y = std::min(mouthAt.y, neck[0].y);
         const TwoBoneIKResult bent =
             SolveTwoBoneIK(neck[0], mouthAt, glm::vec3(0.0f, 1.0f, 0.3f), std::max(first, 0.01f), std::max(second, 0.01f));
         const glm::vec3 oldHead = neck[3] - neck[2];
         const glm::vec3 bentMiddle = glm::mix(neck[2], bent.jointPosition, m_feedReach);
         const glm::vec3 bentFront = glm::mix(neck[3], bent.endPosition, m_feedReach);
         const glm::vec3 newHead = bentFront - bentMiddle;
-        const glm::quat headTurn = glm::length(oldHead) > 1e-4f && glm::length(newHead) > 1e-4f
-                                       ? RotationBetween(glm::normalize(oldHead), glm::normalize(newHead))
-                                       : glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
+        // The head turned from the frame it had to one that keeps the body's own left and right: it tips
+        // down over what it is eating, it does not roll. Turned by the shortest way from where it pointed,
+        // a head pointing steeply down was twisted over onto its side, or right round.
+        glm::quat headTurn(1.0f, 0.0f, 0.0f, 0.0f);
+        if (glm::length(oldHead) > 1e-4f && glm::length(newHead) > 1e-4f)
+        {
+            const glm::vec3 side{1.0f, 0.0f, 0.0f};
+            const auto frame = [&](const glm::vec3& along)
+            {
+                const glm::vec3 forward = glm::normalize(along);
+                glm::vec3 up = glm::cross(side, forward);
+                up = glm::length(up) > 1e-3f ? glm::normalize(up) : glm::vec3(0.0f, 1.0f, 0.0f);
+                return glm::mat3(glm::cross(up, forward), up, forward);
+            };
+            headTurn = glm::normalize(glm::quat_cast(frame(newHead) * glm::transpose(frame(oldHead))));
+        }
         hinge = bentMiddle + headTurn * (hinge - neck[2]);
         chin = bentMiddle + headTurn * (chin - neck[2]);
         headUp = glm::normalize(headTurn * headUp);

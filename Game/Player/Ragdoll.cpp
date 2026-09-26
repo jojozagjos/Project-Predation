@@ -288,8 +288,16 @@ void Ragdoll::Step(PhysicsWorld& physics, float dt)
             {
                 from = over.position - glm::vec3(0.0f, 0.02f, 0.0f);
             }
-            const RayHit hit =
+            RayHit hit =
                 physics.RayCast(from, glm::vec3(0.0f, -1.0f, 0.0f), from.y - m_positions[i].y + 2.0f);
+            // Never a floor well above the joint: that is the top of something it has been pushed into
+            // -- a ceiling it was thrown up against -- and taking it for the floor lifted the whole body
+            // up through the ceiling onto the floor above, where it lay stuck in the wall. A step up is
+            // allowed; anything higher, the floor is looked for from the joint itself, downwards.
+            if (hit && hit.position.y > m_positions[i].y + 0.35f)
+            {
+                hit = physics.RayCast(m_positions[i] + glm::vec3(0.0f, 0.05f, 0.0f), glm::vec3(0.0f, -1.0f, 0.0f), 3.0f);
+            }
             m_groundTarget[i] = hit ? hit.position.y : -1000.0f;
             m_groundSampledAt[i] = flat;
             if (m_groundHeight[i] < -900.0f)

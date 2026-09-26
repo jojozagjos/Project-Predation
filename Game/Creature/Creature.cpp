@@ -884,7 +884,24 @@ void Creature::Update(CreatureSenses senses, float time, float dt)
     senses.time = time;
     senses.position = m_cling == Cling::Floor ? m_position : m_anchor;
     senses.onCeiling = m_cling != Cling::Floor;
-    senses.eye = Eye();
+    // Its eyes, but never on the far side of a wall. On something long the eyes are a good way out in front
+    // of the body, and facing a wall close up they were through it -- seeing the next room, and whoever
+    // was in it, as if the wall were not there. Pulled back to this side of whatever is between its chest
+    // and its head.
+    {
+        const glm::vec3 eye = Eye();
+        const glm::vec3 chest = m_position + Orientation() * glm::vec3(0.0f, m_caps.eye.y * 0.8f, 0.0f);
+        const glm::vec3 reach = eye - chest;
+        const float length = glm::length(reach);
+        senses.eye = eye;
+        if (length > 0.05f)
+        {
+            if (const RayHit wall = m_physics.RayCastStatic(chest, reach / length, length))
+            {
+                senses.eye = chest + reach / length * std::max(wall.distance - 0.1f, 0.0f);
+            }
+        }
+    }
     senses.forward = Forward();
     senses.healthFraction = m_health / m_maxHealth;
     senses.nav = m_nav;
