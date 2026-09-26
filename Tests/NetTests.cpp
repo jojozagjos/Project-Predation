@@ -696,6 +696,30 @@ TEST_CASE("World events carry only what their kind needs", "[net][protocol]")
         CHECK(received.direction.y == Catch::Approx(2.0f).margin(0.05));
     }
 
+    SECTION("a bite carries where on the body, whether the piece came away, and how much is left")
+    {
+        WorldEventMessage sent;
+        sent.kind = WorldEventKind::CorpseBitten;
+        sent.index = 9;
+        sent.flag = true;
+        sent.amount = 0.63f;
+        sent.position = {84.2f, 0.3f, -12.75f};
+
+        BitWriter writer;
+        WriteWorldEvent(writer, sent);
+        const std::vector<uint8_t>& bytes = writer.Finish();
+        BitReader reader(bytes.data(), bytes.size());
+
+        WorldEventMessage received;
+        REQUIRE(ReadWorldEvent(reader, received));
+        CHECK(received.kind == WorldEventKind::CorpseBitten);
+        CHECK(received.index == 9);
+        CHECK(received.flag);
+        CHECK(received.amount == Catch::Approx(0.63f).margin(0.005));
+        CHECK(received.position.x == Catch::Approx(84.2f).margin(0.002));
+        CHECK(received.position.z == Catch::Approx(-12.75f).margin(0.002));
+    }
+
     SECTION("a death carries the direction of the blow")
     {
         WorldEventMessage sent;

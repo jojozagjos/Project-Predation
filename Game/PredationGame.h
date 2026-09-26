@@ -200,6 +200,10 @@ private:
     std::vector<MeshHandle> m_biteMeshes;
     // A bite mark on a body, on the face of `part` that looks most upward, towards `near`.
     void MarkBite(Corpse& corpse, size_t part, const glm::vec3& near);
+    // A piece of it torn away where the mouth was, the stump left a wound; on every machine alike.
+    void TearPart(Corpse& corpse, size_t part, const glm::vec3& near);
+    // On the host: what a bite did, for everybody else to do the same.
+    void SendBite(const Corpse& corpse, size_t part, const glm::vec3& at, bool torn);
     void LeaveCorpse(const PlayerBody& body, uint8_t player);
     void ClearCorpses();
     // Carried bodies following the jaws they are in, and bodies eaten where creatures are eating them. Every

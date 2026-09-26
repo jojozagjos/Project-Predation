@@ -538,6 +538,13 @@ void WriteWorldEvent(BitWriter& writer, const WorldEventMessage& message)
         WritePosition(writer, message.position);
         break;
 
+    case WorldEventKind::CorpseBitten:
+        writer.WriteByte(message.index);
+        writer.WriteBool(message.flag);
+        writer.WriteQuantised(message.amount, 0.0f, 1.0f, 8);
+        WritePosition(writer, message.position);
+        break;
+
 
     case WorldEventKind::Count:
         break;
@@ -667,6 +674,13 @@ bool ReadWorldEvent(BitReader& reader, WorldEventMessage& out)
     case WorldEventKind::CorpseCarried:
     case WorldEventKind::CorpseDropped:
         out.index = reader.ReadByte();
+        out.position = ReadPosition(reader);
+        break;
+
+    case WorldEventKind::CorpseBitten:
+        out.index = reader.ReadByte();
+        out.flag = reader.ReadBool();
+        out.amount = reader.ReadQuantised(0.0f, 1.0f, 8);
         out.position = ReadPosition(reader);
         break;
 

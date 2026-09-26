@@ -2454,6 +2454,22 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
         }
         break;
 
+    case WorldEventKind::CorpseBitten:
+        // The host's creature bit the body there: the same wound here, and the same piece gone.
+        if (Corpse* corpse = CorpseNear(event.position, 2.5f); corpse != nullptr)
+        {
+            if (event.flag)
+            {
+                TearPart(*corpse, event.index, event.position);
+            }
+            else if (corpse->marks.size() < 18)
+            {
+                MarkBite(*corpse, event.index, event.position);
+            }
+            corpse->meat = event.amount;
+        }
+        break;
+
     case WorldEventKind::FacilityChanged:
         // The host has built another facility: the same one, here, from the same seed.
         if (event.item != m_facility.Seed())

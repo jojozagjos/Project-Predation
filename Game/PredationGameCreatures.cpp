@@ -1384,13 +1384,74 @@ void PredationGame::HandleCorpseIntents(Creature& creature, const CreatureIntent
     }
 }
 
+void PredationGame::SendBite(const Corpse& corpse, size_t part, const glm::vec3& at, bool torn)
+{
+    if (m_sessionMode != SessionMode::Host)
+    {
+        return;
+    }
+    WorldEventMessage event;
+    event.kind = WorldEventKind::CorpseBitten;
+    event.index = static_cast<uint8_t>(std::min<size_t>(part, 255));
+    event.flag = torn;
+    event.amount = std::clamp(corpse.meat, 0.0f, 1.0f);
+    event.position = at;
+    m_host.Broadcast(event);
+}
+
+void PredationGame::TearPart(Corpse& corpse, size_t part, const glm::vec3& near)
+{
+    if (part >= corpse.parts.size() || part >= corpse.gone.size() || corpse.gone[part])
+    {
+        return;
+    }
+    corpse.gone[part] = true;
+    ++corpse.torn;
+    const Transform* lost = m_scene.GetTransform(corpse.parts[part]);
+    const glm::vec3 where = lost != nullptr ? lost->position : near;
+    size_t stump = corpse.parts.size();
+    float closest = 1.0e9f;
+    for (size_t k = 0; k < corpse.parts.size(); ++k)
+    {
+        const Transform* other = m_scene.GetTransform(corpse.parts[k]);
+        if (k != part && !corpse.gone[k] && other != nullptr && glm::distance(other->position, where) < closest)
+        {
+            closest = glm::distance(other->position, where);
+            stump = k;
+        }
+    }
+    if (Transform* piece = m_scene.GetTransform(corpse.parts[part]))
+    {
+        piece->scale = glm::vec3(0.0f);
+    }
+    // And whatever wounds were on it went with it.
+    for (size_t m = 0; m < corpse.marks.size() && m < corpse.markPart.size(); ++m)
+    {
+        if (corpse.markPart[m] == part)
+        {
+            if (Transform* mark = m_scene.GetTransform(corpse.marks[m]))
+            {
+                mark->scale = glm::vec3(0.0f);
+            }
+        }
+    }
+    if (stump < corpse.parts.size())
+    {
+        MarkBite(corpse, stump, where);
+    }
+}
+
 void PredationGame::UpdateCorpses(float dt)
 {
-    // Eaten where the mouth is. Every machine sees every creature's body doing what it does -- the host
-    // from its mind, a client from what it is sent -- so each eats the body away the same way, piece by
-    // piece, with nothing more said: a whole body in about half a minute of tearing.
+    // Eaten where the mouth is -- on the host, which decides every mouthful and tells everybody where it
+    // bit, and what came away. Left to each machine to eat the body the same way by itself from what the
+    // creature's body was doing, the bites and the torn-off pieces came out different on every screen.
     for (const std::unique_ptr<Creature>& creature : m_creatures)
     {
+        if (!IsAuthority())
+        {
+            break;
+        }
         const Creature::Action& action = creature->CurrentAction();
         if (action.kind != RigAction::Feed || action.side <= 0 || !creature->Alive())
         {
@@ -1427,6 +1488,7 @@ void PredationGame::UpdateCorpses(float dt)
             {
                 corpse->sinceMark = 0.0f;
                 MarkBite(*corpse, bitten, action.target);
+                SendBite(*corpse, bitten, action.target, false);
             }
             // Chewed through at the far end of a limb: that piece comes away, and the stump is a wound. Never
             // more than three, and never the middle of it: the body stays a body.
@@ -1440,40 +1502,8 @@ void PredationGame::UpdateCorpses(float dt)
                 }
                 if (static_cast<float>(further) < static_cast<float>(corpse->offsets.size()) * 0.35f)
                 {
-                    corpse->gone[bitten] = true;
-                    ++corpse->torn;
-                    const Transform* lost = m_scene.GetTransform(corpse->parts[bitten]);
-                    const glm::vec3 where = lost != nullptr ? lost->position : action.target;
-                    size_t stump = corpse->parts.size();
-                    float closest = 1.0e9f;
-                    for (size_t k = 0; k < corpse->parts.size(); ++k)
-                    {
-                        const Transform* other = m_scene.GetTransform(corpse->parts[k]);
-                        if (k != bitten && !corpse->gone[k] && other != nullptr && glm::distance(other->position, where) < closest)
-                        {
-                            closest = glm::distance(other->position, where);
-                            stump = k;
-                        }
-                    }
-                    if (Transform* piece = m_scene.GetTransform(corpse->parts[bitten]))
-                    {
-                        piece->scale = glm::vec3(0.0f);
-                    }
-                    // And whatever wounds were on it went with it.
-                    for (size_t m = 0; m < corpse->marks.size() && m < corpse->markPart.size(); ++m)
-                    {
-                        if (corpse->markPart[m] == bitten)
-                        {
-                            if (Transform* mark = m_scene.GetTransform(corpse->marks[m]))
-                            {
-                                mark->scale = glm::vec3(0.0f);
-                            }
-                        }
-                    }
-                    if (stump < corpse->parts.size())
-                    {
-                        MarkBite(*corpse, stump, where);
-                    }
+                    TearPart(*corpse, bitten, action.target);
+                    SendBite(*corpse, bitten, action.target, true);
                 }
             }
         }
