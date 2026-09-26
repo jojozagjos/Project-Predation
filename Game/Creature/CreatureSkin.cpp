@@ -479,7 +479,8 @@ CreatureSkin CreatureSkin::Build(const CreatureAnatomy& a)
     const float jawGap = hd * 0.015f;
     const glm::vec3 hinge = pose.head + glm::vec3(0.0f, gumLine + hd * 0.02f, hl * 0.1f);
     const float jawLength = hinge.z - (pose.head.z + faceTipZ + hl * 0.04f);
-    const float restGape = glm::radians(a.headShape == HeadShape::Maw ? 14.0f : 4.0f);
+    // A maw hangs a little open, not slack: gaping wide at rest it looked dim rather than hungry.
+    const float restGape = glm::radians(a.headShape == HeadShape::Maw ? 8.0f : 4.0f);
     skin.restGape = restGape;
     const glm::mat4 jawTurn = glm::translate(identity, hinge) *
                               glm::mat4_cast(glm::angleAxis(-restGape, glm::vec3(1.0f, 0.0f, 0.0f))) *
@@ -735,8 +736,10 @@ CreatureSkin CreatureSkin::Build(const CreatureAnatomy& a)
     // bridge along the top of it, and a lower jaw as long, hinged below the eyes. Nothing stands out from
     // the sides or the back of it: the flaps, knobs and cheek muscles that used to read as ears.
     // As tall as it is wide, near enough: a skull flattened to a wedge was what read as squashed.
-    const glm::vec3 craniumRadii{hw * 0.42f * a.cranium, hd * 0.47f * a.cranium, hl * 0.46f * a.cranium};
-    const glm::vec3 craniumCentre = pose.head + glm::vec3(0.0f, hd * 0.16f, hl * 0.12f + hl * 0.1f * (a.cranium - 1.0f));
+    // The dome kept in proportion to the face: grown large, it was an egg with a face tucked under it.
+    const float domed = std::clamp(a.cranium, 0.85f, 1.05f);
+    const glm::vec3 craniumRadii{hw * 0.4f * domed, hd * 0.45f * domed, hl * 0.46f * domed};
+    const glm::vec3 craniumCentre = pose.head + glm::vec3(0.0f, hd * 0.16f, hl * 0.12f + hl * 0.1f * (domed - 1.0f));
     // Joined with a small blend, so the joins show as creases: a blend wider than the jaw itself, as it
     // was, melted the jaws into the skull and the face into a bean.
     const float skullBlend = 0.014f * std::sqrt(scale);
@@ -753,6 +756,8 @@ CreatureSkin CreatureSkin::Build(const CreatureAnatomy& a)
     cone(pose.head + glm::vec3(0.0f, hd * 0.14f, -hl * 0.14f),
          pose.head + glm::vec3(0.0f, gumLine + upperRod(0.0f).radius * 1.6f, faceTipZ + upperRod(0.0f).radius * 1.4f),
          hw * 0.17f, upperRod(0.0f).radius * 0.8f, skin.head, skullBlend * 1.2f, Zone::Skin);
+    const auto cut = [&](const glm::vec3& centre, const glm::vec3& radii)
+    { blob(centre, radii, noTurn, skin.head, skin.cell * 1.2f, Zone::Skin, true); };
     // Cheekbones: a bar of bone either side from under the eye back to above the hinge of the jaw, low and
     // close in along the side of the face -- the plane of the cheek under it, and a line the light catches.
     for (const float side : {-1.0f, 1.0f})
@@ -761,6 +766,10 @@ CreatureSkin CreatureSkin::Build(const CreatureAnatomy& a)
         cone(pose.head + glm::vec3(side * (mid.out + mid.radius * 0.9f), gumLine + mid.radius * 2.1f, alongFace(0.62f)),
              pose.head + glm::vec3(side * hw * 0.34f, gumLine + hd * 0.2f, hinge.z - pose.head.z - hl * 0.04f), hw * 0.045f, hw * 0.06f,
              skin.head, skin.cell * 1.2f, Zone::Skin);
+        // And the cheek sunk in under it, in front of the hinge: a starved, bony face rather than a full
+        // round one -- the round ones read as dim, not dangerous.
+        cut(pose.head + glm::vec3(side * hw * 0.37f, gumLine + hd * 0.1f, (mouthCornerZ + hinge.z - pose.head.z) * 0.5f),
+            {hw * 0.08f, hd * 0.08f, hl * 0.11f});
     }
     // A low crest down the middle of the skull from the brow back, where the jaw muscles meet over it.
     cone(craniumCentre + glm::vec3(0.0f, craniumRadii.y * 0.9f, -craniumRadii.z * 0.35f),
@@ -871,7 +880,7 @@ CreatureSkin CreatureSkin::Build(const CreatureAnatomy& a)
         const Seat seat = onSkull(pose.eyes[e]);
         const glm::quat facing = TurnBetween(glm::vec3(0.0f, 0.0f, -1.0f), seat.normal) *
                                  glm::angleAxis(side * glm::radians(18.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-        blob(seat.at - seat.normal * (size * 0.35f), {size * 1.1f, size * 0.8f, size}, facing, skin.head, skin.cell * 0.8f,
+        blob(seat.at - seat.normal * (size * 0.22f), {size * 1.1f, size * 0.8f, size}, facing, skin.head, skin.cell * 0.8f,
              Zone::Hollow, true);
         skin.glints.push_back(seat.at - seat.normal * (size * 1.05f));
     }
