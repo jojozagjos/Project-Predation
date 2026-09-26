@@ -58,16 +58,29 @@ CVar<bool> cv_aiDirector{"ai.director", true,
                           "Pace the creatures: nudge them towards the players' area when it is quiet, ease them off after a lot of pressure"};
 CVar<bool> cv_aiMimic{"ai.mimic", true, "Creatures that can may say back what they have heard players say"};
 CVar<float> cv_nestHealth{"ai.nest_health", 200.0f, "How much a nest's heart takes before it bursts"};
-CVar<float> cv_nestGrowth{"ai.nest_growth_seconds", 300.0f,
+CVar<float> cv_nestGrowth{"ai.nest_growth_seconds", 420.0f,
                           "How long a nest takes to spread as far as it ever will from its heart"};
-CVar<float> cv_nestRot{"ai.nest_rot_seconds", 120.0f, "How long a dead nest takes to rot away to nothing"};
+CVar<float> cv_nestRot{"ai.nest_rot_seconds", 90.0f, "How long a dead part of a nest takes to rot down to what is left of it"};
 CVar<float> cv_nestRebuild{"ai.nest_rebuild_seconds", 240.0f,
                            "How long after a nest dies before another may be built"};
 // How far from its heart a nest spreads, how long one patch of it takes to come up, and how long a
 // burst heart takes to slump before it starts to rot.
-constexpr float kNestReach = 7.0f;
+constexpr float kNestReach = 5.0f;
 constexpr float kPatchGrowIn = 9.0f;
 constexpr float kNestWither = 5.0f;
+// How far it creeps over the surfaces from its heart at the most -- along them, round corners and out
+// through doorways, not only where the heart can see -- in steps of about this much, and how many
+// patches of it that makes at the most.
+constexpr float kNestSpread = 17.0f;
+constexpr float kNestStep = 1.5f;
+constexpr size_t kNestMostPatches = 420;
+// Each beat goes out through it from the heart, taking this long to cross a metre; dying, it dies from
+// the heart outwards at this many metres a second; and a dead part rots down to this much of its size.
+constexpr float kBeatDelayPerMetre = 0.045f;
+constexpr float kNestDeathSpeed = 0.75f;
+constexpr float kNestRemains = 0.32f;
+// What a dead nest is darkened to: grey-brown, dry.
+constexpr glm::vec3 kNestDead{0.42f, 0.36f, 0.33f};
 // How far a growth patch reaches from its middle, per unit of its size: its tendrils.
 constexpr float kPatchReach = 1.5f;
 constexpr float kRootReach = 2.4f;
@@ -2759,7 +2772,10 @@ namespace
 // surface's edge or into whatever stands up from it -- the next wall at a corner, a door frame, the
 // far side of a thin wall. Nest growth is sized to this, so none of it hangs in the air or shows
 // through into the next room.
-float RoomOnSurface(const PhysicsWorld& physics, const glm::vec3& at, const glm::vec3& normal, float reach)
+// With `intoCorners`, something standing up in the way -- the wall at the edge of a floor, the floor at
+// the foot of a wall -- does not cut the room short: what grows can run on into the corner and be lost in
+// it. Only an edge the surface falls away from does.
+float RoomOnSurface(const PhysicsWorld& physics, const glm::vec3& at, const glm::vec3& normal, float reach, bool intoCorners = false)
 {
     const glm::vec3 helper = std::abs(normal.y) < 0.9f ? glm::vec3(0.0f, 1.0f, 0.0f) : glm::vec3(1.0f, 0.0f, 0.0f);
     const glm::vec3 across = glm::normalize(glm::cross(helper, normal));
@@ -2771,18 +2787,37 @@ float RoomOnSurface(const PhysicsWorld& physics, const glm::vec3& at, const glm:
         const float angle = static_cast<float>(i) * (glm::two_pi<float>() / 8.0f);
         const glm::vec3 direction = across * std::cos(angle) + along * std::sin(angle);
         // Something standing up in the way.
+        float clear = room;
         if (const RayHit block = physics.RayCastStatic(lifted, direction, room))
         {
-            room = std::min(room, block.distance);
-        }
-        // And the surface still there underneath, out to the edge of what is left.
-        for (const float share : {0.5f, 1.0f})
-        {
-            const glm::vec3 over = lifted + direction * (room * share);
-            const RayHit under = physics.RayCastStatic(over, -normal, 0.2f);
-            if (!under || glm::dot(under.normal, normal) < 0.85f)
+            clear = block.distance;
+            if (!intoCorners)
             {
-                room = std::min(room, room * share * 0.7f);
+                room = std::min(room, block.distance);
+            }
+        }
+        // And the surface still there underneath, out to the edge of what is left -- or to the corner.
+        // Brought in until it is: a narrow face, the side of a door frame, has room for very little.
+        for (int tries = 0; tries < 6 && room > 0.02f; ++tries)
+        {
+            bool under = true;
+            for (const float share : {0.5f, 1.0f})
+            {
+                if (room * share > clear)
+                {
+                    break;
+                }
+                const glm::vec3 over = lifted + direction * (room * share);
+                const RayHit hit = physics.RayCastStatic(over, -normal, 0.2f);
+                if (!hit || glm::dot(hit.normal, normal) < 0.85f)
+                {
+                    room = room * share * 0.7f;
+                    under = false;
+                    break;
+                }
+            }
+            if (under)
+            {
                 break;
             }
         }
@@ -2794,49 +2829,136 @@ float RoomOnSurface(const PhysicsWorld& physics, const glm::vec3& at, const glm:
 
 void PredationGame::PlanNestGrowth(Nest& nest) const
 {
-    // Out from the heart in every direction, onto whatever each line meets first: the wall it is on,
-    // the floor, the ceiling, the wall across the way. Near surfaces are grown over soon and far ones
-    // late, so it spreads outward from the heart the way something alive would.
+    // First what the heart can see close round it, onto whatever each line out from it meets: the wall it
+    // is on, the floor, the ceiling. Then outwards from those over the surfaces themselves, a step at a
+    // time -- across a wall, into the corner and up the next, over the edge of a doorway and round onto
+    // the far side of it -- so it creeps round corners and down corridors the way something growing
+    // would, not only as far as a straight line from the heart reaches. Near surfaces are grown over soon
+    // and far ones late, by how far it is to them along the way it grows.
     const PhysicsWorld& physics = m_app->GetPhysics();
     const float growth = std::max(cv_nestGrowth.Get(), 10.0f);
     const uint32_t seed = static_cast<uint32_t>(nest.seed) * 2654435761u + 3u;
-    constexpr int kRays = 180;
-    const glm::vec3 from = nest.heart + nest.normal * 0.15f;
     const float turn = Sdf::Hash(nest.seed, 0, 0, 7u) * glm::two_pi<float>();
     nest.patches.clear();
+    int made = 0;
+    const auto crowded = [&](const glm::vec3& at, const glm::vec3& normal, float size)
+    {
+        return std::any_of(nest.patches.begin(), nest.patches.end(), [&](const NestPatch& other) {
+            return glm::dot(other.normal, normal) > 0.7f && glm::distance(other.at, at) < 0.8f * std::min(other.size, size);
+        });
+    };
+    const auto add = [&](const glm::vec3& at, const glm::vec3& normal, float fromHeart)
+    {
+        ++made;
+        NestPatch patch;
+        patch.at = at;
+        patch.normal = glm::normalize(normal);
+        patch.fromHeart = fromHeart;
+        patch.size = std::clamp(0.75f + 0.08f * fromHeart, 0.75f, 1.9f) * (0.85f + 0.3f * Sdf::Hash(made, 1, 0, seed));
+        if (crowded(patch.at, patch.normal, patch.size))
+        {
+            return;
+        }
+        patch.size = std::min(patch.size, RoomOnSurface(physics, patch.at, patch.normal, patch.size * kPatchReach, true) / kPatchReach);
+        if (patch.size < 0.2f)
+        {
+            return;
+        }
+        patch.appears = growth * std::pow(std::min(fromHeart / kNestSpread, 1.0f), 1.15f) * (0.85f + 0.3f * Sdf::Hash(made, 2, 0, seed));
+        patch.spin = Sdf::Hash(made, 3, 0, seed) * glm::two_pi<float>();
+        patch.variant = made % 3;
+        nest.patches.push_back(patch);
+    };
+
+    constexpr int kRays = 120;
+    const glm::vec3 from = nest.heart + nest.normal * 0.15f;
     for (int i = 0; i < kRays; ++i)
     {
         const float y = 1.0f - 2.0f * (static_cast<float>(i) + 0.5f) / static_cast<float>(kRays);
         const float ring = std::sqrt(std::max(1.0f - y * y, 0.0f));
         const float phi = static_cast<float>(i) * 2.39996f + turn;
         const glm::vec3 direction{std::cos(phi) * ring, y, std::sin(phi) * ring};
-        const RayHit hit = physics.RayCastStatic(from, direction, kNestReach);
-        if (!hit)
+        if (const RayHit hit = physics.RayCastStatic(from, direction, kNestReach))
+        {
+            add(hit.position, hit.normal, glm::distance(nest.heart, hit.position));
+        }
+    }
+
+    // Out over the surfaces from every patch, in the order they were found: a breadth-first creep.
+    for (size_t p = 0; p < nest.patches.size() && nest.patches.size() < kNestMostPatches; ++p)
+    {
+        const NestPatch parent = nest.patches[p];
+        if (parent.fromHeart + kNestStep > kNestSpread)
         {
             continue;
         }
-        NestPatch patch;
-        patch.at = hit.position;
-        patch.normal = glm::normalize(hit.normal);
-        patch.fromHeart = glm::distance(nest.heart, hit.position);
-        patch.size = std::clamp(0.5f + 0.17f * patch.fromHeart, 0.5f, 1.6f) * (0.85f + 0.3f * Sdf::Hash(i, 1, 0, seed));
-        patch.appears = growth * std::pow(std::min(patch.fromHeart / kNestReach, 1.0f), 1.3f) *
-                        (0.8f + 0.4f * Sdf::Hash(i, 2, 0, seed));
-        // No bigger than the surface has room for.
-        patch.size = std::min(patch.size, RoomOnSurface(physics, patch.at, patch.normal, patch.size * kPatchReach) / kPatchReach);
-        if (patch.size < 0.2f)
+        const glm::vec3 n = parent.normal;
+        const glm::vec3 helper = std::abs(n.y) < 0.9f ? glm::vec3(0.0f, 1.0f, 0.0f) : glm::vec3(1.0f, 0.0f, 0.0f);
+        const glm::vec3 across = glm::normalize(glm::cross(helper, n));
+        const glm::vec3 along = glm::cross(n, across);
+        constexpr int kWays = 6;
+        for (int k = 0; k < kWays && nest.patches.size() < kNestMostPatches; ++k)
         {
-            continue;
-        }
-        patch.spin = Sdf::Hash(i, 3, 0, seed) * glm::two_pi<float>();
-        patch.variant = i % 3;
-        const bool crowded = std::any_of(nest.patches.begin(), nest.patches.end(), [&](const NestPatch& other) {
-            return glm::dot(other.normal, patch.normal) > 0.7f &&
-                   glm::distance(other.at, patch.at) < 0.55f * std::min(other.size, patch.size);
-        });
-        if (!crowded)
-        {
-            nest.patches.push_back(patch);
+            const float angle = parent.spin + static_cast<float>(k) * (glm::two_pi<float>() / kWays);
+            const glm::vec3 dir = across * std::cos(angle) + along * std::sin(angle);
+            const float step = kNestStep * (0.85f + 0.3f * Sdf::Hash(static_cast<int>(p), k, 4, seed));
+            const glm::vec3 lifted = parent.at + n * 0.2f;
+            glm::vec3 at{0.0f};
+            glm::vec3 normal{0.0f};
+            bool found = false;
+            if (const RayHit ahead = physics.RayCastStatic(lifted, dir, step))
+            {
+                // Into a corner: up the next surface.
+                at = ahead.position;
+                normal = ahead.normal;
+                found = true;
+            }
+            else
+            {
+                const glm::vec3 over = lifted + dir * step;
+                const RayHit under = physics.RayCastStatic(over, -n, 0.45f);
+                if (under && glm::dot(under.normal, n) > 0.5f)
+                {
+                    // On along the same surface.
+                    at = under.position;
+                    normal = under.normal;
+                    found = true;
+                }
+                else if (const RayHit round = physics.RayCastStatic(over - n * 0.45f, -dir, step * 0.9f);
+                         round && glm::dot(round.normal, dir) > 0.5f)
+                {
+                    // Over an edge -- a doorway's, the end of a wall -- and round onto the far side of it.
+                    at = round.position;
+                    normal = round.normal;
+                    found = true;
+                }
+            }
+            if (!found)
+            {
+                continue;
+            }
+            // Onto another surface, into a corner or round an edge: a little way on up that one, away from
+            // the corner, or all it has room for there is the corner itself and it never grows up a wall.
+            normal = glm::normalize(normal);
+            if (glm::dot(normal, n) < 0.8f)
+            {
+                glm::vec3 onward = n - normal * glm::dot(n, normal);
+                if (glm::dot(normal, dir) > 0.5f)
+                {
+                    onward = -dir - normal * glm::dot(-dir, normal); // round an edge: on along the far face
+                }
+                if (glm::length(onward) > 1e-3f)
+                {
+                    const glm::vec3 further = at + glm::normalize(onward) * 0.6f + normal * 0.2f;
+                    const RayHit settle = physics.RayCastStatic(further, -normal, 0.4f);
+                    if (!settle || glm::dot(settle.normal, normal) < 0.8f)
+                    {
+                        continue;
+                    }
+                    at = settle.position;
+                }
+            }
+            add(at, normal, parent.fromHeart + glm::distance(parent.at, at));
         }
     }
     std::sort(nest.patches.begin(), nest.patches.end(),
@@ -3169,17 +3291,11 @@ void PredationGame::UpdateNests(float dt)
             nest.age += dt;
         }
         nest.flinch = std::max(nest.flinch - dt * 2.5f, 0.0f);
-        // Dead, it slumps and darkens at once, and then rots: shrinking back into the walls over a
-        // couple of minutes until there is nothing left of it at all.
+        // Dead, the heart slumps and darkens at once, and then rots down -- not to nothing: to a shrunken,
+        // blackened husk on the wall, which stays. The rest of it dies after it, from the heart outwards.
         const float rotFor = std::max(cv_nestRot.Get(), 1.0f);
-        if (nest.dead && nest.deadFor > kNestWither + rotFor && !nest.building.valid())
-        {
-            ReleaseNest(nest);
-            PRED_LOG_INFO(AI, "Nest {} has rotted away", n);
-            continue;
-        }
         const float wither = nest.dead ? Smooth(nest.deadFor / kNestWither) : 0.0f;
-        const float left = nest.dead ? 1.0f - Smooth((nest.deadFor - kNestWither) / rotFor) : 1.0f;
+        const float left = nest.dead ? glm::mix(1.0f, kNestRemains, Smooth((nest.deadFor - kNestWither) / rotFor)) : 1.0f;
 
         // Its beat: slow at rest, quicker with somebody close, and quicker again as it is hurt.
         float pulse = 0.0f;
@@ -3196,6 +3312,12 @@ void PredationGame::UpdateNests(float dt)
             }
             pulse = HeartPulse(nest.beat);
         }
+        else
+        {
+            // Stopped; the beats already on their way out through it still go on out, a moment longer.
+            nest.beat += dt * 0.75f;
+            nest.beat -= std::floor(nest.beat);
+        }
 
         const float grown = 0.6f + 0.4f * Smooth(nest.age / (growth * 0.5f));
         if (Transform* transform = m_scene.GetTransform(nest.heartEntity))
@@ -3208,7 +3330,7 @@ void PredationGame::UpdateNests(float dt)
         if (MeshRenderer* renderer = m_scene.GetMeshRenderer(nest.heartEntity))
         {
             renderer->material.emissive = glm::vec3(0.16f, 0.01f, 0.015f) * (0.15f + pulse) * (1.0f - wither);
-            renderer->material.baseColor = glm::vec3(glm::mix(1.0f, 0.4f, wither));
+            renderer->material.baseColor = glm::mix(glm::vec3(1.0f), kNestDead, wither);
         }
         if (Transform* transform = m_scene.GetTransform(nest.rootsEntity))
         {
@@ -3217,7 +3339,7 @@ void PredationGame::UpdateNests(float dt)
         }
         if (MeshRenderer* renderer = m_scene.GetMeshRenderer(nest.rootsEntity))
         {
-            renderer->material.baseColor = glm::vec3(glm::mix(1.0f, 0.5f, wither) * glm::mix(0.6f, 1.0f, left));
+            renderer->material.baseColor = glm::mix(glm::vec3(1.0f), kNestDead, wither);
         }
 
         if (nest.growthMeshes.empty())
@@ -3246,24 +3368,32 @@ void PredationGame::UpdateNests(float dt)
                     renderer->castsShadow = false;
                 }
             }
-            // The far edges go first as it rots, back towards where the heart was.
-            const float edge = std::clamp(patch.fromHeart / kNestReach, 0.0f, 1.0f);
-            const float kept = nest.dead ? Smooth((left - 0.6f * edge) / 0.4f) : 1.0f;
-            float shown = Smooth(since / kPatchGrowIn) * glm::mix(1.0f, 0.55f, wither) * kept;
-            if (patch.fromHeart < 3.0f)
+            const float edge = std::clamp(patch.fromHeart / kNestSpread, 0.0f, 1.0f);
+            // Dying from the heart outwards: this part goes when the death has come out as far as it, first
+            // dark and slack, then rotting down to what is left.
+            const float diedFor = nest.dead ? nest.deadFor - patch.fromHeart / kNestDeathSpeed : -1.0f;
+            const float slack = diedFor > 0.0f ? Smooth(diedFor / kNestWither) : 0.0f;
+            const float rotted = diedFor > 0.0f ? Smooth((diedFor - kNestWither) / rotFor) : 0.0f;
+            float shown = Smooth(since / kPatchGrowIn) * glm::mix(1.0f, 0.8f, slack) * glm::mix(1.0f, kNestRemains, rotted);
+            // Each beat goes out through the whole of it from the heart, a swell passing over it, weaker
+            // the further it has come -- and after the heart has stopped, the last of them still on its
+            // way out, until the death overtakes it.
+            float local = 0.0f;
+            if (diedFor < 0.0f && (!nest.dead || nest.deadFor < patch.fromHeart * kBeatDelayPerMetre / 0.75f))
             {
-                shown *= 1.0f + 0.04f * pulse * (1.0f - patch.fromHeart / 3.0f);
+                float delayed = nest.beat - patch.fromHeart * kBeatDelayPerMetre;
+                delayed -= std::floor(delayed);
+                local = HeartPulse(delayed) * (1.0f - 0.6f * edge);
+                shown *= 1.0f + 0.06f * local;
             }
             if (Transform* transform = m_scene.GetTransform(patch.entity))
             {
                 transform->scale = glm::vec3(patch.size, std::min(patch.size, 1.0f) * 0.6f, patch.size) * std::max(shown, 0.01f);
             }
-            if (nest.dead && nest.deadFor < kNestWither + 1.0f)
+            if (MeshRenderer* renderer = m_scene.GetMeshRenderer(patch.entity))
             {
-                if (MeshRenderer* renderer = m_scene.GetMeshRenderer(patch.entity))
-                {
-                    renderer->material.baseColor = glm::vec3(glm::mix(1.0f, 0.5f, wither));
-                }
+                renderer->material.emissive = glm::vec3(0.07f, 0.004f, 0.006f) * local;
+                renderer->material.baseColor = glm::mix(glm::vec3(1.0f), kNestDead, slack);
             }
         }
     }
