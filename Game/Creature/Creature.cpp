@@ -1261,12 +1261,7 @@ void Creature::Move(const CreatureIntent& asked, const std::vector<glm::vec3>& o
             going = glm::normalize(heading * 0.7f + Forward() * 0.3f);
         }
         const glm::vec3 step = going * crawling * aligned * dt;
-        glm::vec3 moved = m_position + step;
-        if (m_nav == nullptr || !m_nav->MoveAlongSurface(m_position, m_position + step, moved, crawl))
-        {
-            moved = m_position + step;
-        }
-        m_position = moved;
+        m_position = StepOnFloor(step, crawl);
     }
 
     // Room for each other. Two creatures on the same errand take the same route and would end up
@@ -1292,12 +1287,7 @@ void Creature::Move(const CreatureIntent& asked, const std::vector<glm::vec3>& o
     if (glm::length(push) > 1e-4f)
     {
         const glm::vec3 step = push * std::min(4.0f * dt, 1.0f);
-        glm::vec3 moved = m_position + step;
-        if (m_nav == nullptr || !m_nav->MoveAlongSurface(m_position, m_position + step, moved, crawl))
-        {
-            moved = m_position + step;
-        }
-        m_position = moved;
+        m_position = StepOnFloor(step, crawl);
     }
 }
 
@@ -1358,6 +1348,37 @@ glm::vec3 Creature::AroundDoors(const glm::vec3& heading, const std::vector<Door
         }
     }
     return heading;
+}
+
+glm::vec3 Creature::StepOnFloor(const glm::vec3& step, uint16_t crawl) const
+{
+    // Along the walkable floor, sliding along walls, never through them. With no floor to be had under it
+    // -- the navigation still being rebuilt for a level just put in, or somewhere it should not be -- it
+    // does not move at all, or only back onto the nearest floor it can reach without passing through
+    // anything. It used to take the step straight, walls and all: that walked creatures through walls,
+    // shuffled them in little jerks at doorways, and put them outside the building.
+    if (m_nav == nullptr)
+    {
+        return m_position + step;
+    }
+    glm::vec3 moved;
+    if (m_nav->MoveAlongSurface(m_position, m_position + step, moved, crawl))
+    {
+        return moved;
+    }
+    glm::vec3 floor;
+    if (m_nav->NearestPoint(m_position, 2.5f, floor, crawl))
+    {
+        const glm::vec3 from = m_position + glm::vec3(0.0f, 0.4f, 0.0f);
+        const glm::vec3 to = floor + glm::vec3(0.0f, 0.4f, 0.0f);
+        const float apart = glm::distance(from, to);
+        if (apart < 0.05f || !m_physics.RayCastStatic(from, (to - from) / apart, apart))
+        {
+            // Back on, a little at a time, not in one jump.
+            return m_position + (floor - m_position) * std::min(1.0f, glm::length(step) / std::max(apart, 1e-4f) + 0.1f);
+        }
+    }
+    return m_position;
 }
 
 void Creature::SyncBody(float dt)

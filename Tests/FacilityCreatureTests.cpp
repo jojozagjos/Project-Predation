@@ -321,7 +321,7 @@ TEST_CASE("A creature gets through a facility's shut doors to a noise in another
                 continue;
             }
             ++tried;
-            for (const uint32_t creatureSeed : {5u, 53535u})
+            for (const uint32_t creatureSeed : {5u, 53535u, 42u, 63u})
             {
                 INFO("seed " << seed << " room " << r << " creature " << creatureSeed);
                 DoorSim doors(built.map.Placements());

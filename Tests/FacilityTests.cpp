@@ -350,3 +350,17 @@ TEST_CASE("Print a facility's rooms and lamps", "[.facilitylamps]")
     }
     WARN(text);
 }
+
+TEST_CASE("Print a facility's doorways", "[.facilitydoors]")
+{
+    const FacilityLayout plan = FacilityLayout::Generate(1);
+    std::string text;
+    for (const FacilityLayout::Door& door : plan.doors)
+    {
+        const glm::vec2 edge = glm::vec2(door.cell) + glm::vec2(0.5f) + (door.side == 0 ? glm::vec2(0.5f, 0.0f) : glm::vec2(0.0f, 0.5f));
+        const glm::vec3 at = FacilityMap::ToWorld(door.floor, edge);
+        text += "floor " + std::to_string(door.floor) + " at " + std::to_string(at.x) + "," + std::to_string(at.z) +
+                (door.hasDoor ? " door" : " arch") + (door.locked ? " locked" : "") + " room " + std::to_string(door.room) + "\n";
+    }
+    WARN(text);
+}

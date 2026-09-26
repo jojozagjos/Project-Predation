@@ -174,6 +174,8 @@ private:
     void Move(const CreatureIntent& asked, const std::vector<glm::vec3>& others, const std::vector<DoorSense>& doors, float dt);
     // Out of any door panel standing open across where it is: round it, not through it.
     // The way it is heading, bent round the free edge of any open door panel that way lies across.
+    // Where a step along the floor takes it: see the definition.
+    glm::vec3 StepOnFloor(const glm::vec3& step, uint16_t crawl) const;
     float DoorRadius() const;
     glm::vec3 AroundDoors(const glm::vec3& heading, const std::vector<DoorSense>& doors) const;
     // Up a wall, across a ceiling, or dropping from it, for one that climbs.

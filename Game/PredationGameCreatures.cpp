@@ -314,6 +314,9 @@ bool PredationGame::SpawnCreature(uint32_t seed, const glm::vec3& awayFrom, cons
     m_creatures.push_back(std::make_unique<Creature>(m_scene, m_app->GetMeshes(), m_app->GetPhysics(),
                                                      &m_nav, traits, best, cv_aiHealthScale.Get()));
     m_creatures.back()->SetNetId(m_nextCreatureId++);
+    // A new arrival is contact enough: the quiet the director fills starts again from now, so a creature
+    // just put in the level is not sent straight off towards whoever is there.
+    m_lastContact = m_creatureClock;
     PRED_LOG_INFO(AI, "Creature spawned {:.0f} m away at {:.1f} {:.1f} {:.1f}: {}; {}; {}", bestDistance, best.x,
                   best.y, best.z, traits.Describe(), m_creatures.back()->Anatomy().Describe(),
                   m_creatures.back()->Capabilities().Describe());
@@ -1096,9 +1099,18 @@ void PredationGame::UpdateDirector(float dt, const std::vector<SensedPlayer>& pl
         if (idle != nullptr && !living.empty())
         {
             const SensedPlayer& who = *living[static_cast<size_t>((static_cast<float>(std::rand()) / static_cast<float>(RAND_MAX)) * static_cast<float>(living.size())) % living.size()];
+            // Their part of the building, not them: a point well off from where they stand, so what it is
+            // sent to is somewhere to start looking and not where they are. Near enough to them it found
+            // them straight away, which read as it knowing.
             glm::vec3 near;
+            bool placed = false;
             uint32_t seed = static_cast<uint32_t>(m_creatureClock * 1000.0f);
-            if (m_nav.RandomPointNear(who.feet, tune.nudgeDistance, seed, near))
+            for (int attempt = 0; attempt < 12 && !placed; ++attempt)
+            {
+                placed = m_nav.RandomPointNear(who.feet, tune.nudgeDistance * 2.0f, seed, near) &&
+                         glm::distance(near, who.feet) > std::max(tune.nudgeDistance * 0.8f, 10.0f);
+            }
+            if (placed)
             {
                 idle->Brain().DirectorHint(near, m_creatureClock);
                 PRED_LOG_INFO(AI, "Director: creature {} nudged towards {}'s area", idle->NetId(), who.name);
