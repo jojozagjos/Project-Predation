@@ -642,9 +642,15 @@ void PlayerController::UpdateView(float dt, float alpha)
                                   m_state.groundNormal.y
                             : 0.0f;
     const float slopeCrouch = std::min(slope * m_config.eyeSlopeCrouch, m_config.eyeSlopeCrouchMax);
-    m_view.eyeHeight =
-        SmoothTowards(m_view.eyeHeight, m_config.EyeHeightForStance(m_state.stance) - slopeCrouch,
-                      m_config.eyeTransitionSpeed, dt);
+    // Eased, and no faster than a body can get down: eased alone, going prone from standing dropped the eye
+    // a metre and a quarter at eleven metres a second at the start of it, which was the camera snapping to
+    // the floor. Down to the floor now takes about half a second.
+    {
+        constexpr float kMostEyeSpeed = 2.4f; // metres a second
+        const float eased = SmoothTowards(m_view.eyeHeight, m_config.EyeHeightForStance(m_state.stance) - slopeCrouch,
+                                          m_config.eyeTransitionSpeed, dt);
+        m_view.eyeHeight += std::clamp(eased - m_view.eyeHeight, -kMostEyeSpeed * dt, kMostEyeSpeed * dt);
+    }
 
     // Absorb any stair step recorded by the simulation, then decay the offset away.
     m_view.stepOffset = std::clamp(m_view.stepOffset + m_pendingStepOffset, -m_config.stepSmoothMax,

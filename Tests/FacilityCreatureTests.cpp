@@ -210,3 +210,147 @@ TEST_CASE("A creature goes after somebody it can see up or down a facility's sta
         }
     }
 }
+
+namespace
+{
+
+// The facility's doors, as the game would move them: shut to begin with, swung open when a creature
+// opens one, and broken open by blows when locked. What a creature senses of them each tick.
+struct DoorSim
+{
+    struct State
+    {
+        WorldObjects::PlacedDoor placed;
+        float angle = 0.0f;
+        float target = 0.0f;
+        int blows = 0;
+    };
+    std::vector<State> doors;
+
+    explicit DoorSim(const WorldObjects::Placements& placements)
+    {
+        for (const WorldObjects::PlacedDoor& placed : placements.doors)
+        {
+            doors.push_back({placed, placed.closedYaw, placed.closedYaw, 0});
+        }
+    }
+
+    static glm::vec3 Along(float yaw) { return {std::cos(yaw), 0.0f, -std::sin(yaw)}; }
+
+    std::vector<DoorSense> Senses() const
+    {
+        std::vector<DoorSense> out;
+        for (size_t i = 0; i < doors.size(); ++i)
+        {
+            const State& door = doors[i];
+            DoorSense sense;
+            sense.index = static_cast<int>(i);
+            sense.a = door.placed.hinge;
+            sense.b = door.placed.hinge + Along(door.placed.closedYaw) * door.placed.width;
+            sense.tip = door.placed.hinge + Along(door.angle) * door.placed.width;
+            sense.shut = std::abs(door.angle - door.placed.closedYaw) < 0.35f;
+            sense.locked = door.placed.locked && door.blows < 3;
+            out.push_back(sense);
+        }
+        return out;
+    }
+
+    void Apply(const CreatureIntent& intent, float dt)
+    {
+        const auto valid = [&](int i) { return i >= 0 && static_cast<size_t>(i) < doors.size(); };
+        if (valid(intent.openDoor) && !(doors[static_cast<size_t>(intent.openDoor)].placed.locked &&
+                                        doors[static_cast<size_t>(intent.openDoor)].blows < 3))
+        {
+            doors[static_cast<size_t>(intent.openDoor)].target = doors[static_cast<size_t>(intent.openDoor)].placed.openYaw;
+        }
+        if (valid(intent.bashDoor))
+        {
+            State& door = doors[static_cast<size_t>(intent.bashDoor)];
+            if (++door.blows >= 3)
+            {
+                door.target = door.placed.openYaw;
+            }
+        }
+        if (valid(intent.closeDoor))
+        {
+            doors[static_cast<size_t>(intent.closeDoor)].target = doors[static_cast<size_t>(intent.closeDoor)].placed.closedYaw;
+        }
+        for (State& door : doors)
+        {
+            door.angle += std::clamp(door.target - door.angle, -4.5f * dt, 4.5f * dt);
+        }
+    }
+};
+
+} // namespace
+
+TEST_CASE("A creature gets through a facility's shut doors to a noise in another room", "[creature][facility][door]")
+{
+    for (const uint16_t seed : {1, 7})
+    {
+        Built built(seed);
+        const FacilityLayout& layout = built.map.Layout();
+        int tried = 0;
+        for (size_t r = 0; r < layout.rooms.size() && tried < 8; ++r)
+        {
+            const FacilityLayout::Room& room = layout.rooms[r];
+            glm::vec3 to;
+            if (!built.nav.NearestPoint(FacilityMap::ToWorld(room.floor, glm::vec2(room.min + room.max + glm::ivec2(1)) * 0.5f), 1.5f, to))
+            {
+                continue;
+            }
+            // From the way in, to a room on the same floor a walk away.
+            glm::vec3 from;
+            REQUIRE(built.nav.NearestPoint(built.map.Spawn(), 1.5f, from));
+            if (std::abs(from.y - to.y) > 1.0f || glm::distance(from, to) < 8.0f || glm::distance(from, to) > 30.0f)
+            {
+                continue;
+            }
+            ++tried;
+            for (const uint32_t creatureSeed : {5u, 53535u})
+            {
+                INFO("seed " << seed << " room " << r << " creature " << creatureSeed);
+                DoorSim doors(built.map.Placements());
+                Creature creature(built.scene, built.meshes, built.physics, &built.nav, Hunter(creatureSeed), from);
+                Noise noise;
+                noise.kind = NoiseKind::Gunshot;
+                noise.position = to;
+                noise.reach = 70.0f;
+                constexpr float dt = 1.0f / 60.0f;
+                float time = 0.0f;
+                bool arrived = false;
+                std::ostringstream trace;
+                for (int tick = 0; tick < 60 * 60 && !arrived; ++tick)
+                {
+                    time += dt;
+                    CreatureSenses senses;
+                    senses.mayBuildNest = false;
+                    senses.doors = doors.Senses();
+                    if (tick == 1)
+                    {
+                        senses.noises = {noise};
+                    }
+                    creature.Update(senses, time, dt);
+                    doors.Apply(creature.Brain().Intent(), dt);
+                    const glm::vec3 at = creature.Position();
+                    // Near: a sound is placed by ear, not to the step.
+                    arrived = glm::length(glm::vec2(at.x - to.x, at.z - to.z)) < 4.5f && std::abs(at.y - to.y) < 1.0f;
+                    if (tick % 60 == 0)
+                    {
+                        trace << "\n  " << time << ": " << at.x << "," << at.y << "," << at.z << " " << creature.Brain().CurrentGoal();
+                    }
+                }
+                INFO("from " << from.x << "," << from.z << " to " << to.x << "," << to.z << trace.str() << "\n mind:" << [&] {
+                    std::string mind;
+                    for (const CreatureBrain::TimelineEntry& entry : creature.Brain().Timeline())
+                    {
+                        mind += "\n  " + std::to_string(entry.time).substr(0, 5) + "  " + entry.what;
+                    }
+                    return mind;
+                }());
+                CHECK(arrived);
+            }
+        }
+        CHECK(tried > 0);
+    }
+}

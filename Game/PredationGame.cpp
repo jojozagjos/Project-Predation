@@ -66,6 +66,7 @@ struct WrapText
 CVar<float> cv_fov{"r.fov", 90.0f, "Horizontal field of view in degrees", CVarFlags::Archive};
 CVar<float> cv_mouseSensitivity{"input.mouse_sensitivity", 0.12f, "Mouse look sensitivity in degrees per pixel",
                                 CVarFlags::Archive};
+CVar<bool> cv_eyeLog{"debug.eye_log", false, "Log the eye every frame: its height over the feet, before and after it is kept out of walls"};
 CVar<bool> cv_invertY{"input.invert_y", false, "Invert vertical mouse look", CVarFlags::Archive};
 CVar<bool> cv_crouchToggle{"input.crouch_toggle", true, "Crouch and prone toggle instead of being held",
                            CVarFlags::Archive};
@@ -8454,12 +8455,16 @@ void PredationGame::DropEverything()
 void PredationGame::EnterHidingSpot(int index)
 {
     WorldObjects::HidingSpot* spot = m_world.GetHidingSpot(index);
-    if (spot == nullptr || spot->occupied)
+    // Taken by somebody else, no. Taken by us is how a client hears it: the host said yes, and the news
+    // marks the locker occupied -- by us -- before it gets here. Refusing that as "occupied" was why a
+    // client never really got into a locker: pinned in it by the host, but looking about freely.
+    if (spot == nullptr || (spot->occupied && spot->occupant != LocalPlayerId()))
     {
         return;
     }
 
     spot->occupied = true;
+    spot->occupant = LocalPlayerId();
     m_hidingSpot = index;
     // Attached, not teleported. A locker is barely wider than the player's capsule, so left to
     // simulate normally Jolt pushes them straight back out through the side of it.
@@ -8922,6 +8927,12 @@ void PredationGame::OnUpdate(double dt, double alpha)
     // placed from its interpolated position, so skipping it would leave the body behind at the
     // origin whenever the free camera is active.
     m_player.UpdateView(deltaSeconds, static_cast<float>(alpha));
+    if (cv_eyeLog.Get())
+    {
+        const PlayerView& eye = m_player.View();
+        PRED_LOG_INFO(Gameplay, "eye {:.3f} over feet (wanted {:.3f}), feet y {:.3f} xz {:.2f} {:.2f}", eye.eyePosition.y - eye.renderPosition.y,
+                      eye.eyeHeight + eye.stepOffset + eye.landingDip + eye.bobOffset, eye.renderPosition.y, eye.renderPosition.x, eye.renderPosition.z);
+    }
 
     glm::mat4 view;
     glm::vec3 viewPosition;
@@ -10313,7 +10324,8 @@ void PredationGame::DrawHud()
     }
     // Interaction prompt, just below the reticle.
     const InteractionSystem::Focus& focus = m_interactions.CurrentFocus();
-    const std::string prompt = m_hidingSpot >= 0 ? std::string("Leave Locker") : focus.prompt;
+    // Nothing in the middle of the view from inside a locker: it is the slits you are looking at.
+    const std::string prompt = m_hidingSpot >= 0 ? std::string() : focus.prompt;
     if (!prompt.empty())
     {
         // On the thing itself: the door, the locker, the crate. A prompt under the crosshair says what

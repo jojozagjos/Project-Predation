@@ -603,7 +603,7 @@ void CreatureBrain::ActFlank(const CreatureSenses& senses, float dt)
         if (Horizontal(senses.position, m_flankPoint) < 1.0f)
         {
             m_flankStage = 2;
-            m_flankUntil = now + 2.0f + 3.5f * m_traits.patience;
+            m_flankUntil = now + 2.0f + 3.5f * m_traits.patience + (m_traits.stealth > 0.55f ? 3.0f * m_traits.patience : 0.0f);
             m_lookBaseSet = false;
             Log(now, "stops to listen");
             break;
@@ -628,15 +628,9 @@ void CreatureBrain::ActFlank(const CreatureSenses& senses, float dt)
         {
             break;
         }
-        // The patient sort does not go in at all: it waits by the way out for whoever comes through it.
-        AmbushPlan plan;
-        if (m_traits.stealth > 0.55f && m_traits.patience > 0.45f && PlanDoorAmbushNear(senses, source, plan))
-        {
-            m_ambush = plan;
-            m_ambushArrived = false;
-            Switch(Behavior::Ambush, -1, "waits by the way out of where the shooting was", now);
-            return;
-        }
+        // Then in. (It used to hand over here, for the patient sort, to waiting by the way out -- but with
+        // nobody known to wait for, that was given up the moment after it was chosen, and it wandered off
+        // having never looked. The patient sort listens longer before it goes, instead: see stage 1.)
         m_flankStage = 3;
         Log(now, "goes in");
         break;

@@ -1128,7 +1128,8 @@ void CreatureBrain::Perceive(const CreatureSenses& senses, float dt)
     {
         float reach = noise.reach * m_traits.perception * m_traits.hearing * (feeding ? 0.55f : 1.0f);
         const glm::vec3 ear = senses.eye;
-        if (senses.clearLine && !senses.clearLine(noise.position + glm::vec3(0.0f, 0.3f, 0.0f), ear))
+        const bool walled = senses.clearLine && !senses.clearLine(noise.position + glm::vec3(0.0f, 0.3f, 0.0f), ear);
+        if (walled)
         {
             // Through a wall: still heard, not as far.
             reach *= Tuning().throughWalls;
@@ -1138,11 +1139,32 @@ void CreatureBrain::Perceive(const CreatureSenses& senses, float dt)
         {
             continue;
         }
+        // Where it thinks the sound came from, which is not where it came from: about right in the open,
+        // a guess through a wall or a shut door. Taken as exact, every footstep behind a door told it to
+        // the step where somebody was, and it followed them from room to room as if it could see them.
+        glm::vec3 where = noise.position;
+        {
+            const float spread = std::min(distance * (walled ? 0.25f : 0.1f), walled ? 5.0f : 2.5f);
+            const float angle = m_random.Unit() * glm::two_pi<float>();
+            const float out = spread * std::sqrt(m_random.Unit());
+            where += glm::vec3(std::cos(angle) * out, 0.0f, std::sin(angle) * out);
+            glm::vec3 onFloor;
+            if (senses.nav != nullptr && senses.nav->NearestPoint(where, 2.0f, onFloor) && std::abs(onFloor.y - noise.position.y) < 1.5f)
+            {
+                where = onFloor;
+            }
+            else
+            {
+                where = noise.position;
+            }
+        }
+        Noise heardAs = noise;
+        heardAs.position = where;
         // How loud it seems, which falls off like hearing rather than in a straight line: a gunshot
         // twenty metres off through a wall is still unmistakably a gunshot, not a quarter of one.
         // Straight-line falloff scored exactly that, too faint to be worth getting up for.
         const float strength = std::clamp(std::sqrt(1.0f - distance / reach), 0.05f, 1.0f);
-        m_heard.push_back({noise, strength, senses.time});
+        m_heard.push_back({heardAs, strength, senses.time});
         if (noise.kind == NoiseKind::Voice && noise.player >= 0 &&
             std::find(m_voicesHeard.begin(), m_voicesHeard.end(), noise.player) == m_voicesHeard.end())
         {
@@ -1154,7 +1176,7 @@ void CreatureBrain::Perceive(const CreatureSenses& senses, float dt)
         }
         if (noise.player >= 0)
         {
-            Warm(noise.position, 0.3f * strength);
+            Warm(where, 0.3f * strength);
         }
         m_state.arousal = std::min(m_state.arousal + strength * 0.3f, 1.0f);
 
@@ -1172,7 +1194,7 @@ void CreatureBrain::Perceive(const CreatureSenses& senses, float dt)
                 knownSource = track->visible || track->harm > 0.0f;
                 if (!track->visible)
                 {
-                    track->lastKnown = noise.position;
+                    track->lastKnown = where;
                     track->lastHeard = senses.time;
                     const float floor = knownSource ? 0.5f + 0.5f * strength : 0.3f + 0.4f * strength;
                     track->confidence = std::max(track->confidence, floor);
@@ -1203,7 +1225,7 @@ void CreatureBrain::Perceive(const CreatureSenses& senses, float dt)
 
         if (knownSource)
         {
-            ResolveInterestNear(noise.position);
+            ResolveInterestNear(where);
             continue;
         }
 
@@ -1222,11 +1244,11 @@ void CreatureBrain::Perceive(const CreatureSenses& senses, float dt)
         if (gunshot && (m_traits.temperament == Temperament::Timid || m_traits.fear > 0.7f))
         {
             // Somewhere with shooting in it is somewhere the fearful keep away from for a while.
-            RememberDanger(noise.position, senses.time + 40.0f);
+            RememberDanger(where, senses.time + 40.0f);
         }
         // The same shooting again: another shot from about the same place.
         const bool again = !m_interest.resolved && m_interest.gunfire && gunshot &&
-                           Horizontal(m_interest.position, noise.position) < 8.0f && senses.time - m_interest.time < 8.0f;
+                           Horizontal(m_interest.position, where) < 8.0f && senses.time - m_interest.time < 8.0f;
         if (pull > current)
         {
             if (m_interest.resolved || pull > current + 0.2f)
@@ -1234,7 +1256,7 @@ void CreatureBrain::Perceive(const CreatureSenses& senses, float dt)
                 Log(senses.time, std::string("heard a ") + NoiseKindName(noise.kind) +
                                      Format(" (%.0f%%)", pull * 100.0f));
             }
-            m_interest = {noise.position, pull, senses.time, NoiseKindName(noise.kind), false, gunshot,
+            m_interest = {where, pull, senses.time, NoiseKindName(noise.kind), false, gunshot,
                           again ? m_interest.shots + 1 : 0};
         }
         else if (again)

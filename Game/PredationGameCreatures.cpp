@@ -76,7 +76,9 @@ constexpr float kNestStep = 1.5f;
 constexpr size_t kNestMostPatches = 420;
 // Each beat goes out through it from the heart, taking this long to cross a metre; dying, it dies from
 // the heart outwards at this many metres a second; and a dead part rots down to this much of its size.
-constexpr float kBeatDelayPerMetre = 0.045f;
+// Slow enough to be seen going: about four metres a second at a resting beat, a ring swelling out
+// from the heart across the floor and up the walls.
+constexpr float kBeatDelayPerMetre = 0.18f;
 constexpr float kNestDeathSpeed = 0.75f;
 constexpr float kNestRemains = 0.32f;
 // What a dead nest is darkened to: grey-brown, dry.
@@ -3329,7 +3331,7 @@ void PredationGame::UpdateNests(float dt)
         }
         if (MeshRenderer* renderer = m_scene.GetMeshRenderer(nest.heartEntity))
         {
-            renderer->material.emissive = glm::vec3(0.16f, 0.01f, 0.015f) * (0.15f + pulse) * (1.0f - wither);
+            renderer->material.emissive = glm::vec3(0.16f, 0.01f, 0.015f) * (0.2f + 0.1f * pulse) * (1.0f - wither);
             renderer->material.baseColor = glm::mix(glm::vec3(1.0f), kNestDead, wither);
         }
         if (Transform* transform = m_scene.GetTransform(nest.rootsEntity))
@@ -3383,16 +3385,18 @@ void PredationGame::UpdateNests(float dt)
             {
                 float delayed = nest.beat - patch.fromHeart * kBeatDelayPerMetre;
                 delayed -= std::floor(delayed);
-                local = HeartPulse(delayed) * (1.0f - 0.6f * edge);
-                shown *= 1.0f + 0.06f * local;
+                local = HeartPulse(delayed) * (1.0f - 0.5f * edge);
             }
+            // The swell is a lift of the surface more than a spread of it: the growth rises off the wall
+            // and settles as the ring passes, no glow, no flash.
             if (Transform* transform = m_scene.GetTransform(patch.entity))
             {
-                transform->scale = glm::vec3(patch.size, std::min(patch.size, 1.0f) * 0.6f, patch.size) * std::max(shown, 0.01f);
+                transform->scale = glm::vec3(patch.size * (1.0f + 0.05f * local), std::min(patch.size, 1.0f) * 0.6f * (1.0f + 0.45f * local),
+                                             patch.size * (1.0f + 0.05f * local)) *
+                                   std::max(shown, 0.01f);
             }
             if (MeshRenderer* renderer = m_scene.GetMeshRenderer(patch.entity))
             {
-                renderer->material.emissive = glm::vec3(0.07f, 0.004f, 0.006f) * local;
                 renderer->material.baseColor = glm::mix(glm::vec3(1.0f), kNestDead, slack);
             }
         }
@@ -3412,7 +3416,8 @@ void PredationGame::GatherNestLights(std::vector<PunctualLight>& lights) const
         PunctualLight glow;
         glow.position = nest.heart + nest.normal * 0.45f;
         glow.color = glm::vec3(1.0f, 0.16f, 0.1f);
-        glow.intensity = 0.35f + 0.9f * HeartPulse(nest.beat);
+        // Steady: a light that leapt with every beat flashed the whole room red.
+        glow.intensity = 0.4f + 0.08f * HeartPulse(nest.beat);
         glow.range = 4.5f;
         glow.innerAngle = 180.0f;
         glow.outerAngle = 180.0f;
