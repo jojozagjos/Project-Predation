@@ -21,7 +21,7 @@ class MapBuilder
 {
 public:
     // How big a drawn piece of a box may be across, in metres. See AddBox.
-    static constexpr float kTile = 8.0f;
+    static constexpr float kTile = 4.0f;
 
     // `prefix` goes on the front of every mesh name, so two maps built into one world do not share each
     // other's numbered meshes.
@@ -53,7 +53,7 @@ public:
         // because the map is rebuilt for every new game and a name that changes each time would
         // upload the whole level again.
         //
-        // Drawn in tiles of at most eight metres across when it is bigger than that, and collided as one.
+        // Drawn in tiles of at most four metres across when it is bigger than that, and collided as one.
         // Each drawn piece is lit by the lamps nearest it, up to a handful; a wall the length of the
         // building as one piece would be lit by the handful nearest its middle and dark at both ends.
         const int across = std::max(1, static_cast<int>(std::ceil(size.x / kTile)));

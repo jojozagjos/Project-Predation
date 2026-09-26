@@ -44,8 +44,11 @@ KindLook LookOf(LightKind kind)
     switch (kind)
     {
     case LightKind::Ceiling:
-        // A strip light: cold, a little green, as old fluorescent tubes are.
-        return {{0.86f, 0.95f, 1.0f}, 7.0f, 9.0f, 60.0f, 115.0f, 0.55f, {0.9f, 0.07f, 0.22f}, {0.55f, 0.56f, 0.58f}};
+        // A strip light: cold, a little green, as old fluorescent tubes are. Thrown mostly down, as a
+        // fitting with a reflector over it does: wide enough to wash the walls, but little of it sideways,
+        // or the top of every wall beside a lamp -- the nearest thing to it, square on to it -- was the
+        // brightest thing in the room, lit flat white right up to the ceiling.
+        return {{0.86f, 0.95f, 1.0f}, 7.0f, 9.0f, 45.0f, 100.0f, 0.55f, {0.9f, 0.07f, 0.22f}, {0.55f, 0.56f, 0.58f}};
     case LightKind::Wall:
         // A caged bulb: warm and low, lighting a doorway rather than a room.
         return {{1.0f, 0.74f, 0.46f}, 4.0f, 6.5f, 70.0f, 125.0f, 0.3f, {0.22f, 0.26f, 0.14f}, {0.3f, 0.3f, 0.28f}};

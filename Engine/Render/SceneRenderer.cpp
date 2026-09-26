@@ -690,7 +690,11 @@ void SceneRenderer::UploadLightsFor(const Mesh& mesh, const glm::mat4& model)
             pinned = static_cast<int>(i);
             continue;
         }
-        const float near = std::max(gap, 0.5f);
+        // By how near it is to the surface, and among those touching it by how near to its middle: with
+        // only the first ranking every lamp touching a long wall tied, the choice between them was
+        // arbitrary, and two pieces of one wall side by side chose differently -- a hard line down the
+        // wall where one piece had a lamp the next did not.
+        const float near = std::max(gap, 0.5f) + 0.25f * glm::length(light.position - centre);
         m_choice.emplace_back(light.intensity / (near * near), i);
     }
     const size_t room = kMaxPunctualLights - 1;

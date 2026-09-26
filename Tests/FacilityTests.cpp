@@ -328,3 +328,25 @@ TEST_CASE("Every room of a built facility can be walked to from the way in, up a
         CHECK(unreachable == 0);
     }
 }
+
+TEST_CASE("Print a facility's rooms and lamps", "[.facilitylamps]")
+{
+    const FacilityLayout plan = FacilityLayout::Generate(1);
+    const FacilityMap::Blueprint blueprint = FacilityMap::Draw(plan);
+    std::string text;
+    for (size_t r = 0; r < plan.rooms.size(); ++r)
+    {
+        const FacilityLayout::Room& room = plan.rooms[r];
+        const glm::vec3 a = FacilityMap::ToWorld(room.floor, glm::vec2(room.min));
+        const glm::vec3 b = FacilityMap::ToWorld(room.floor, glm::vec2(room.max + glm::ivec2(1)));
+        text += "room " + std::to_string(r) + " floor " + std::to_string(room.floor) + " x " + std::to_string(a.x) + ".." +
+                std::to_string(b.x) + " z " + std::to_string(a.z) + ".." + std::to_string(b.z) + "\n";
+    }
+    for (const FacilityMap::Lamp& lamp : blueprint.lamps)
+    {
+        text += std::string(lamp.spillOf >= 0 ? "spill" : lamp.copyOf >= 0 ? "copy " : "lamp ") + " at " + std::to_string(lamp.position.x) + "," +
+                std::to_string(lamp.position.y) + "," + std::to_string(lamp.position.z) + " box x " + std::to_string(lamp.boundsMin.x) + ".." +
+                std::to_string(lamp.boundsMax.x) + " z " + std::to_string(lamp.boundsMin.z) + ".." + std::to_string(lamp.boundsMax.z) + "\n";
+    }
+    WARN(text);
+}

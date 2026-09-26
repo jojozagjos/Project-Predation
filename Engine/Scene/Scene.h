@@ -76,7 +76,7 @@ struct PunctualLight
     glm::vec3 boundsMax{0.0f};
 };
 
-inline constexpr size_t kMaxPunctualLights = 8;
+inline constexpr size_t kMaxPunctualLights = 12;
 
 struct Environment
 {
