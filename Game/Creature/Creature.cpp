@@ -1209,7 +1209,19 @@ void Creature::Move(const CreatureIntent& asked, const std::vector<glm::vec3>& o
         m_routeJumps.clear();
     }
     m_brain.Route() = m_route;
-    if (glm::length(heading) > 0.5f)
+    // Round open doors -- unless going round them is getting it nowhere. A second of trying to move and
+    // not getting half a metre, and it gives the panels up for a few seconds and goes straight through:
+    // brushing through the edge of a door looks far less wrong than standing stuck against one.
+    if (intent.move && m_time >= m_progressCheckAt)
+    {
+        if (Horizontal(m_position, m_progressFrom) < 0.4f && m_progressCheckAt > 0.0f)
+        {
+            m_ignoreDoorsUntil = m_time + 3.0f;
+        }
+        m_progressFrom = m_position;
+        m_progressCheckAt = m_time + 1.0f;
+    }
+    if (glm::length(heading) > 0.5f && m_time >= m_ignoreDoorsUntil)
     {
         heading = AroundDoors(heading, doors);
     }

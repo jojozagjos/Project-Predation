@@ -107,6 +107,10 @@ public:
     // Held rather than passed, for the same reason the texture library is.
     void SetSky(SkyRenderer& sky) { m_sky = &sky; }
 
+    // What the next Draw can see, as a projection times a view: anything wholly outside it is not drawn,
+    // and no light that cannot reach inside it is weighed for anything that is. For the next Draw only.
+    void SetCullFrustum(const glm::mat4& viewProjection);
+
     void Draw(bgfx::ViewId view, const Scene& scene, const MeshLibrary& meshes, const glm::vec3& cameraPosition);
 
     // Draws one mesh on its own, with an environment supplied by the caller rather than a scene.
@@ -234,6 +238,10 @@ private:
         glm::vec3 boundsMax{0.0f};
     };
     std::vector<PackedLight> m_packed;
+    // The sides of the view the next Draw culls against (see SetCullFrustum), as planes facing in.
+    glm::vec4 m_cullPlanes[5]{};
+    bool m_cullEnabled = false;
+    bool InView(const glm::vec3& centre, float radius) const;
     std::vector<std::pair<float, size_t>> m_choice;
     void PackLights(const Environment& environment);
     void UploadLightsFor(const Mesh& mesh, const glm::mat4& model);

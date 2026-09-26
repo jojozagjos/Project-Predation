@@ -7031,7 +7031,8 @@ void PredationGame::SampleLook(float /*dt*/)
     // Shut in a locker there is only the door in front of you and the slits in it: the view goes a little
     // way either side and up and down, to look out along them, and no further. Turning round in there
     // to stare at the back of it was never something a body in a locker could do.
-    if (const WorldObjects::HidingSpot* spot = m_hidingSpot >= 0 ? m_world.GetHidingSpot(m_hidingSpot) : nullptr)
+    // Not the free camera, which is not a body in a locker but somebody looking round the level.
+    if (const WorldObjects::HidingSpot* spot = m_hidingSpot >= 0 && m_cameraMode != CameraMode::Fly ? m_world.GetHidingSpot(m_hidingSpot) : nullptr)
     {
         const float across = std::remainder(m_lookYaw - spot->insideYaw, glm::two_pi<float>());
         m_lookYaw = spot->insideYaw + std::clamp(across, -glm::radians(kLockerLookYawDegrees), glm::radians(kLockerLookYawDegrees));
@@ -9853,6 +9854,7 @@ void PredationGame::OnRender()
     // The sky first, into the same view, so the world covers it where there is world.
     app.GetSkyRenderer().Draw(Renderer::kViewSky, m_scene.GetEnvironment(),
                               app.GetRenderer().ViewMatrix(), app.GetRenderer().ProjectionMatrix());
+    app.GetSceneRenderer().SetCullFrustum(app.GetRenderer().ProjectionMatrix() * app.GetRenderer().ViewMatrix());
     app.GetSceneRenderer().Draw(Renderer::kViewMain, m_scene, app.GetMeshes(), viewPosition);
     DrawDebugOverlays();
 }

@@ -177,6 +177,11 @@ private:
     // Where a step along the floor takes it: see the definition.
     glm::vec3 StepOnFloor(const glm::vec3& step, uint16_t crawl) const;
     float DoorRadius() const;
+    // Whether it is getting anywhere: where it was a second ago and when it next looks; and till when it
+    // pays open door panels no attention because going round one had it stuck.
+    glm::vec3 m_progressFrom{0.0f};
+    float m_progressCheckAt = 0.0f;
+    float m_ignoreDoorsUntil = -1.0f;
     glm::vec3 AroundDoors(const glm::vec3& heading, const std::vector<DoorSense>& doors) const;
     // Up a wall, across a ceiling, or dropping from it, for one that climbs.
     void MoveClinging(const CreatureIntent& intent, float dt);

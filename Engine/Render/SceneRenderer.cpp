@@ -66,6 +66,20 @@ constexpr uint16_t kSpotShadowSize = 1024;
 // How far the maps reach along their own axis. Deep enough that nothing in a level stands outside
 // it and gets quietly clipped out of its own shadow.
 constexpr float kShadowDepthRange = 220.0f;
+
+// A mesh as a sphere in the world: its box's middle and the distance to its farthest corner, grown by
+// however much the transform scales it. False when it has no box to go by.
+bool WorldSphere(const Mesh& mesh, const glm::mat4& model, glm::vec3& centre, float& radius)
+{
+    if (!mesh.bounds.IsValid())
+    {
+        return false;
+    }
+    centre = glm::vec3(model * glm::vec4((mesh.bounds.min + mesh.bounds.max) * 0.5f, 1.0f));
+    const float scale = std::max({glm::length(glm::vec3(model[0])), glm::length(glm::vec3(model[1])), glm::length(glm::vec3(model[2]))});
+    radius = glm::length(mesh.bounds.max - mesh.bounds.min) * 0.5f * scale;
+    return true;
+}
 } // namespace
 
 bool SceneRenderer::Init(ShaderLibrary& shaders)
@@ -470,16 +484,26 @@ void SceneRenderer::RenderShadows(bgfx::ViewId sunView, bgfx::ViewId sunNearView
                 return;
             }
             const glm::mat4 model = transform.Matrix();
-            if (settings.sunEnabled)
+            // Each map only what can fall inside it: the sun's and the sky's cover the shadow distance
+            // round the player, the torch's its beam. Everything in the world went into all four.
+            glm::vec3 centre{0.0f};
+            float radius = 1.0e9f;
+            const bool sized = !mesh->IsDynamic() && WorldSphere(*mesh, model, centre, radius);
+            const glm::vec2 flat{centre.x - focus.x, centre.z - focus.z};
+            const bool nearFocus = !sized || glm::length(flat) < settings.distance * 1.5f + radius;
+            if (settings.sunEnabled && nearFocus)
             {
                 SubmitDepth(sunView, *mesh, model, m_sunShadow);
-                SubmitDepth(sunNearView, *mesh, model, m_sunNearShadow);
+                if (!sized || glm::length(flat) < kSunNearDistance * 1.5f + radius)
+                {
+                    SubmitDepth(sunNearView, *mesh, model, m_sunNearShadow);
+                }
             }
-            if (settings.skyEnabled && renderer.blocksSky)
+            if (settings.skyEnabled && renderer.blocksSky && nearFocus)
             {
                 SubmitDepth(skyView, *mesh, model, m_skyShadow);
             }
-            if (m_spotShadowLit)
+            if (m_spotShadowLit && (!sized || glm::distance(centre, first.position) < first.range + radius))
             {
                 SubmitDepth(spotView, *mesh, model, m_spotShadow);
             }
@@ -676,6 +700,14 @@ void SceneRenderer::PackLights(const Environment& environment)
     {
         pack(light, false);
     }
+    // And only lights that can reach something in view: the rest of the level's lamps were weighed for
+    // every piece drawn, hundreds of them, every frame.
+    if (m_cullEnabled)
+    {
+        m_packed.erase(std::remove_if(m_packed.begin(), m_packed.end(),
+                                      [this](const PackedLight& light) { return !light.pinned && !InView(light.position, light.range); }),
+                       m_packed.end());
+    }
 }
 
 void SceneRenderer::UploadLightsFor(const Mesh& mesh, const glm::mat4& model)
@@ -748,18 +780,54 @@ void SceneRenderer::UploadLightsFor(const Mesh& mesh, const glm::mat4& model)
     bgfx::setUniform(m_uLights, lights, static_cast<uint16_t>(kMaxPunctualLights * kLightStride / 4));
 }
 
+void SceneRenderer::SetCullFrustum(const glm::mat4& m)
+{
+    // The four sides and the far end, straight out of the matrix (Gribb and Hartmann). Not the near end,
+    // whose form depends on the backend's depth range, and which culls nothing the sides do not.
+    const glm::vec4 row0{m[0][0], m[1][0], m[2][0], m[3][0]};
+    const glm::vec4 row1{m[0][1], m[1][1], m[2][1], m[3][1]};
+    const glm::vec4 row2{m[0][2], m[1][2], m[2][2], m[3][2]};
+    const glm::vec4 row3{m[0][3], m[1][3], m[2][3], m[3][3]};
+    const glm::vec4 planes[5] = {row3 + row0, row3 - row0, row3 + row1, row3 - row1, row3 - row2};
+    for (int i = 0; i < 5; ++i)
+    {
+        const float length = glm::length(glm::vec3(planes[i]));
+        m_cullPlanes[i] = length > 1e-6f ? planes[i] / length : planes[i];
+    }
+    m_cullEnabled = true;
+}
+
+bool SceneRenderer::InView(const glm::vec3& centre, float radius) const
+{
+    if (!m_cullEnabled)
+    {
+        return true;
+    }
+    for (const glm::vec4& plane : m_cullPlanes)
+    {
+        if (glm::dot(glm::vec3(plane), centre) + plane.w < -radius)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
 void SceneRenderer::Draw(bgfx::ViewId view, const Scene& scene, const MeshLibrary& meshes,
                          const glm::vec3& cameraPosition)
 {
     m_stats = Stats{};
     if (!bgfx::isValid(m_program))
     {
+        m_cullEnabled = false;
         return;
     }
 
     SetEnvironmentUniforms(scene.GetEnvironment(), cameraPosition, true);
     const uint64_t state = DrawState();
 
+    // Only what can be seen. Everything in the world was drawn every frame -- every room of every map,
+    // every patch of a nest behind the player -- and each piece weighed every light in the level.
     scene.ForEachMeshRenderer(
         [&](Entity, const Transform& transform, const MeshRenderer& renderer)
         {
@@ -768,8 +836,17 @@ void SceneRenderer::Draw(bgfx::ViewId view, const Scene& scene, const MeshLibrar
             {
                 return;
             }
-            SubmitMesh(view, *mesh, renderer.material, transform.Matrix(), state);
+            const glm::mat4 model = transform.Matrix();
+            glm::vec3 centre;
+            float radius = 0.0f;
+            // Not a mesh whose vertices move (a skinned body): its box is its rest pose, not where it is.
+            if (m_cullEnabled && !mesh->IsDynamic() && WorldSphere(*mesh, model, centre, radius) && !InView(centre, radius))
+            {
+                return;
+            }
+            SubmitMesh(view, *mesh, renderer.material, model, state);
         });
+    m_cullEnabled = false;
 }
 
 void SceneRenderer::DrawOne(bgfx::ViewId view, const Mesh& mesh, const Material& material,
