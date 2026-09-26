@@ -1225,6 +1225,8 @@ private:
     std::vector<float> m_crateLids;
     // The level's own lamps, and the buzz of the nearest failing one.
     LevelLights m_levelLights;
+    // Which doors were moving last frame: a door that has just stopped has the lamps round it drawn once more.
+    std::vector<bool> m_doorWasMoving;
     float m_lightClock = 0.0f;
     // The generated facility, between the test map and the lab.
     FacilityMap m_facility;

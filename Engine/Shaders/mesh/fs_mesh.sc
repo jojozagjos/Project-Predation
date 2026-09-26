@@ -305,10 +305,13 @@ float lampReaches(float slot, vec3 lamp, float range, vec3 P, vec3 N)
 
 	// A little slack, growing with distance as the texels do.
 	float bias = 0.03 + major * 0.03;
+	// Nine readings a texel apart, averaged: a soft edge a couple of texels wide rather than a staircase.
 	float lit = 0.0;
-	for (int k = 0; k < 4; ++k)
+	for (int k = 0; k < 9; ++k)
 	{
-		vec2 offset = vec2(k == 1 || k == 3 ? 0.5 : -0.5, k >= 2 ? 0.5 : -0.5) * texel;
+		float kx = mod(float(k), 3.0) - 1.0;
+		float ky = floor(float(k) / 3.0) - 1.0;
+		vec2 offset = vec2(kx, ky) * texel;
 		vec2 local = vec2(ndc.x * 0.5 + 0.5, bottomUp ? ndc.y * 0.5 + 0.5 : 0.5 - ndc.y * 0.5) + offset;
 		local = clamp(local, vec2_splat(texel), vec2_splat(1.0 - texel));
 		vec2 uv = vec2((tx + local.x) * norm, bottomUp ? 1.0 - (ty + 1.0 - local.y) * norm : (ty + local.y) * norm);
@@ -316,7 +319,7 @@ float lampReaches(float slot, vec3 lamp, float range, vec3 P, vec3 N)
 		float nearest = range - stored;
 		lit += major <= nearest + bias ? 1.0 : 0.0;
 	}
-	return lit * 0.25;
+	return lit * (1.0 / 9.0);
 }
 
 // GGX / Trowbridge-Reitz normal distribution.

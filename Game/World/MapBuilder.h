@@ -123,6 +123,11 @@ public:
 private:
     void Keep(Entity entity)
     {
+        // Everything a map builds is the level, and is what the lamps' kept shadows are drawn from.
+        if (MeshRenderer* renderer = m_scene.GetMeshRenderer(entity))
+        {
+            renderer->levelGeometry = true;
+        }
         if (m_trackedEntities != nullptr)
         {
             m_trackedEntities->push_back(entity);

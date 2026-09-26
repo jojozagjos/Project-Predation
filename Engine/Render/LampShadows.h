@@ -27,12 +27,12 @@ class MeshLibrary;
 // lit the old way, in its box. Something that does change -- a door swinging -- has the lamps near it
 // drawn again. Only what blocks the sky is drawn into them, which is the level and its doors: people and
 // creatures have the torch to cast their shadows, and a lamp's shadow of somebody who has moved on would
-// be left on the wall.
+// be left on the wall. So only what is marked as part of the level is drawn into them.
 class LampShadows
 {
 public:
     // Six square tiles per lamp, this many texels a side, in an atlas this many tiles across.
-    static constexpr uint16_t kTileSize = 192;
+    static constexpr uint16_t kTileSize = 256;
     static constexpr uint16_t kTilesAcross = 16;
     static constexpr uint16_t kAtlasSize = kTileSize * kTilesAcross;
     static constexpr int kSlots = (kTilesAcross * kTilesAcross) / 6;
@@ -70,6 +70,9 @@ private:
         uint64_t drawnFrame = 0;
         uint64_t usedFrame = 0;
         bool drawn = false;
+        // Wants drawing again -- a door near it has moved -- but the old one is still used till then:
+        // dropped at once, the lamp fell back to its box for a moment every time a door moved.
+        bool dirty = false;
     };
     void Draw(int slot, bgfx::ViewId firstView, const Scene& scene, const MeshLibrary& meshes);
 

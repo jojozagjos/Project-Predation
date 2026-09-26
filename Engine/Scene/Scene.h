@@ -41,6 +41,10 @@ struct MeshRenderer
     // as a fault however defensible it is. Static level geometry blocks the sky; things that walk
     // about do not.
     bool blocksSky = true;
+    // Part of the level: walls, floors, doors, fixtures -- what a lamp's shadow, drawn once and kept, is
+    // drawn from. Not people, creatures, the gun in somebody's hands or anything dropped: their shadows
+    // would be left behind on the floor when they moved on.
+    bool levelGeometry = false;
 };
 
 // A light that has a place, as opposed to the sun, which only has a direction.

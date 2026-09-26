@@ -9508,13 +9508,18 @@ void PredationGame::OnUpdate(double dt, double alpha)
         // And the level's own lamps, lit or flickering or not at all, for each surface to choose from.
         m_levelLights.Update(m_scene, m_lightClock);
         m_levelLights.UpdateDoorways(m_world);
-        // A door swinging changes what the lamps round it can see: theirs are drawn again.
-        for (const WorldObjects::Door& door : m_world.Doors())
+        // A door swinging changes what the lamps round it can see: theirs are drawn again while it moves, and
+        // once more when it has stopped, so the last drawing is of the door where it came to rest.
+        m_doorWasMoving.resize(m_world.Doors().size(), false);
+        for (size_t d = 0; d < m_world.Doors().size(); ++d)
         {
-            if (door.IsMoving())
+            const WorldObjects::Door& door = m_world.Doors()[d];
+            const bool moving = door.IsMoving();
+            if (moving || m_doorWasMoving[d])
             {
                 app.GetSceneRenderer().InvalidateLampShadows(door.hinge, door.panelOffset.x * 2.0f + 0.3f);
             }
+            m_doorWasMoving[d] = moving;
         }
         environment.sceneLights.clear();
         m_levelLights.Gather(environment.sceneLights);

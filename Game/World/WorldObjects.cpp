@@ -49,6 +49,20 @@ bool WorldObjects::Door::IsMoving() const
     return std::abs(target - angle) > 1e-3f;
 }
 
+namespace
+{
+
+// Part of the level, for the lamps' kept shadows (see MeshRenderer::levelGeometry).
+void MarkLevel(Scene& scene, Entity entity)
+{
+    if (MeshRenderer* renderer = scene.GetMeshRenderer(entity))
+    {
+        renderer->levelGeometry = true;
+    }
+}
+
+} // namespace
+
 Transform WorldObjects::DoorPanelTransform(const Door& door) const
 {
     // The panel hangs off the hinge, so rotating about the hinge sweeps it rather than spinning it
@@ -79,6 +93,7 @@ int WorldObjects::AddDoor(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physi
     const MeshHandle mesh = meshes.Upload(shape != nullptr ? *shape : Primitives::Box(panelSize), name + "_panel");
     const Transform transform = DoorPanelTransform(door);
     door.entity = scene.CreateMeshEntity(name, transform, mesh, kDoorMaterial);
+    MarkLevel(scene, door.entity);
     door.body = physics.CreateBox(panelSize * 0.5f, transform, BodyMotion::Kinematic);
 
     const auto index = static_cast<int>(m_doors.size());
@@ -149,6 +164,7 @@ int WorldObjects::AddLocker(Scene& scene, MeshLibrary& meshes, PhysicsWorld& phy
     // The shell is a visual and a collider; the player stands inside it while hidden.
     spot.entity = scene.CreateMeshEntity("locker", MakeTransform(at({0.0f, lockerSize.y * 0.5f, 0.0f}), yaw), m_lockerMesh,
                                          kLockerMaterial);
+    MarkLevel(scene, spot.entity);
     // Back, fitted between the two sides. Every collider below sits exactly where its panel is drawn.
     spot.bodies.push_back(physics.CreateBox({lockerInnerHalfWidth, lockerSize.y * 0.5f, panelHalfThickness},
                       MakeTransform(at({0.0f, lockerSize.y * 0.5f, lockerSize.z * 0.5f - panelHalfThickness}), yaw),
@@ -211,7 +227,9 @@ int WorldObjects::AddAmmoCrate(Scene& scene, PhysicsWorld& physics, InteractionS
     crate.entity = scene.CreateMeshEntity("ammo_crate", MakeTransform(position + glm::vec3(0.0f, bodyHeight * 0.5f, 0.0f), yaw),
                                           m_crateMesh, kAmmoCrateMaterial);
     crate.lidRest = position + glm::vec3(0.0f, bodyHeight + lidThickness * 0.5f, 0.0f);
+    MarkLevel(scene, crate.entity);
     crate.lidEntity = scene.CreateMeshEntity("ammo_crate_lid", MakeTransform(crate.lidRest, yaw), m_lidMesh, kAmmoLidMaterial);
+    MarkLevel(scene, crate.lidEntity);
     crate.yaw = yaw;
     crate.body = physics.CreateBox({crateSize.x * 0.5f, crateSize.y * 0.5f, crateSize.z * 0.5f},
                       MakeTransform(position + glm::vec3(0.0f, crateSize.y * 0.5f, 0.0f), yaw), BodyMotion::Static);

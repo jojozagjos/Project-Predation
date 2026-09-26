@@ -42,16 +42,20 @@ bool LampShadows::Init(bgfx::ProgramHandle depthProgram)
     {
         return false;
     }
-    const uint32_t caps = bgfx::getCaps()->formats[bgfx::TextureFormat::R32F];
-    if ((caps & BGFX_CAPS_FORMAT_TEXTURE_FRAMEBUFFER) == 0)
+    // Half floats when the card can draw into them: a lamp reaches a few metres, which sixteen bits hold to a
+    // few millimetres, at half the memory of a full float.
+    const auto renderable = [](bgfx::TextureFormat::Enum format)
+    { return (bgfx::getCaps()->formats[format] & BGFX_CAPS_FORMAT_TEXTURE_FRAMEBUFFER) != 0; };
+    const bgfx::TextureFormat::Enum format = renderable(bgfx::TextureFormat::R16F) ? bgfx::TextureFormat::R16F : bgfx::TextureFormat::R32F;
+    if (!renderable(format))
     {
-        PRED_LOG_WARN(Render, "LampShadows: this GPU cannot render to R32F; lamps are kept in their rooms by boxes");
+        PRED_LOG_WARN(Render, "LampShadows: this GPU cannot render to a float target; lamps are kept in their rooms by boxes");
         return false;
     }
     m_program = depthProgram;
     m_uRange = bgfx::createUniform("u_shadowRange", bgfx::UniformType::Vec4);
     // Point sampled, clamped: see ShadowMap. The lookup keeps itself inside its own tile.
-    m_texture = bgfx::createTexture2D(kAtlasSize, kAtlasSize, false, 1, bgfx::TextureFormat::R32F,
+    m_texture = bgfx::createTexture2D(kAtlasSize, kAtlasSize, false, 1, format,
                                       BGFX_TEXTURE_RT | BGFX_SAMPLER_MIN_POINT | BGFX_SAMPLER_MAG_POINT |
                                           BGFX_SAMPLER_MIP_POINT | BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP);
     if (!bgfx::isValid(m_texture))
@@ -59,7 +63,7 @@ bool LampShadows::Init(bgfx::ProgramHandle depthProgram)
         return false;
     }
     const bgfx::TextureHandle depth =
-        bgfx::createTexture2D(kAtlasSize, kAtlasSize, false, 1, bgfx::TextureFormat::D24S8, BGFX_TEXTURE_RT_WRITE_ONLY);
+        bgfx::createTexture2D(kAtlasSize, kAtlasSize, false, 1, bgfx::TextureFormat::D16, BGFX_TEXTURE_RT_WRITE_ONLY);
     const bgfx::TextureHandle attachments[] = {m_texture, depth};
     m_frameBuffer = bgfx::createFrameBuffer(2, attachments, true);
     if (!bgfx::isValid(m_frameBuffer))
@@ -112,7 +116,7 @@ void LampShadows::Invalidate(const glm::vec3& at, float radius)
     {
         if (slot.key != 0 && glm::distance(slot.position, at) < slot.range + radius)
         {
-            slot.drawn = false;
+            slot.dirty = true;
         }
     }
 }
@@ -202,13 +206,19 @@ void LampShadows::Update(const std::vector<PunctualLight>& lights, const glm::ve
         {
             chosen.drawn = false;
         }
-        if (!chosen.drawn && drawnThisFrame < kLampsPerFrame)
+        if ((!chosen.drawn || chosen.dirty) && drawnThisFrame < kLampsPerFrame)
         {
             chosen.position = light->position;
             chosen.range = light->range;
             Draw(slot, static_cast<bgfx::ViewId>(firstView + drawnThisFrame * 6), scene, meshes);
+            // A lamp drawn for the first time is used from the next frame; one drawn again keeps being used,
+            // the new drawing replacing the old as it is made.
+            if (!chosen.drawn)
+            {
+                chosen.drawnFrame = m_frame;
+            }
             chosen.drawn = true;
-            chosen.drawnFrame = m_frame;
+            chosen.dirty = false;
             ++drawnThisFrame;
         }
     }
@@ -243,8 +253,9 @@ void LampShadows::Draw(int slotIndex, bgfx::ViewId firstView, const Scene& scene
     scene.ForEachShadowCaster(
         [&](Entity, const Transform& transform, const MeshRenderer& renderer)
         {
-            // The level: what does not walk about. And not the lamp's own fitting, which casts nothing.
-            if (!renderer.castsShadow || !renderer.blocksSky)
+            // The level only: what does not walk about or get picked up. And not the lamp's own fitting, which
+            // casts nothing.
+            if (!renderer.castsShadow || !renderer.levelGeometry)
             {
                 return;
             }
