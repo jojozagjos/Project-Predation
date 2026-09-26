@@ -190,7 +190,7 @@ private:
     Transform DoorPanelTransform(const Door& door) const;
     int AddDoor(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, InteractionSystem& interactions,
                 const glm::vec3& hinge, float closedYaw, float openYaw, const glm::vec3& panelSize,
-                const std::string& name, bool registerInteractable);
+                const std::string& name, bool registerInteractable, const MeshData* shape = nullptr);
     int AddLocker(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, InteractionSystem& interactions,
                   const glm::vec3& position, float yaw);
     int AddAmmoCrate(Scene& scene, PhysicsWorld& physics, InteractionSystem& interactions, const glm::vec3& position,

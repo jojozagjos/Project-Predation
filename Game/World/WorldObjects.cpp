@@ -63,7 +63,7 @@ Transform WorldObjects::DoorPanelTransform(const Door& door) const
 int WorldObjects::AddDoor(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics,
                           InteractionSystem& interactions, const glm::vec3& hinge, float closedYaw,
                           float openYaw, const glm::vec3& panelSize, const std::string& name,
-                          bool registerInteractable)
+                          bool registerInteractable, const MeshData* shape)
 {
     Door door;
     door.hinge = hinge;
@@ -74,7 +74,9 @@ int WorldObjects::AddDoor(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physi
     // Hinge at one edge: the panel's centre sits half a width along its own local X.
     door.panelOffset = glm::vec3(panelSize.x * 0.5f, panelSize.y * 0.5f, 0.0f);
 
-    const MeshHandle mesh = meshes.Upload(Primitives::Box(panelSize), name + "_panel");
+    // Drawn as the shape given, when there is one (a locker's door, with its slits); it still collides as
+    // the plain panel.
+    const MeshHandle mesh = meshes.Upload(shape != nullptr ? *shape : Primitives::Box(panelSize), name + "_panel");
     const Transform transform = DoorPanelTransform(door);
     door.entity = scene.CreateMeshEntity(name, transform, mesh, kDoorMaterial);
     door.body = physics.CreateBox(panelSize * 0.5f, transform, BodyMotion::Kinematic);
@@ -95,6 +97,43 @@ int WorldObjects::AddDoor(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physi
     }
     return index;
 }
+
+namespace
+{
+
+// A locker's door, centred on itself like the plain panel it stands in for: solid, but for a band of
+// narrow slits across it at the height of the eyes of whoever is standing inside, to look out through.
+MeshData LouvredPanel(const glm::vec3& size)
+{
+    constexpr float kBandLow = 1.46f;  // up from the bottom of the door
+    constexpr float kBandHigh = 1.84f;
+    constexpr float kBandWidth = 0.56f;
+    constexpr int kSlits = 8;
+    constexpr float kSlit = 0.024f;
+    MeshData mesh;
+    const float bottom = -size.y * 0.5f;
+    const auto piece = [&](float x0, float x1, float y0, float y1, float depth)
+    {
+        mesh.Append(Primitives::Box({x1 - x0, y1 - y0, depth}),
+                    glm::translate(glm::mat4(1.0f), glm::vec3((x0 + x1) * 0.5f, bottom + (y0 + y1) * 0.5f, 0.0f)));
+    };
+    const float half = size.x * 0.5f;
+    const float band = kBandWidth * 0.5f;
+    piece(-half, half, 0.0f, kBandLow, size.z);
+    piece(-half, half, kBandHigh, size.y, size.z);
+    piece(-half, -band, kBandLow, kBandHigh, size.z);
+    piece(band, half, kBandLow, kBandHigh, size.z);
+    // The slats between the slits: thinner than the door, as pressed louvres are.
+    const float slat = ((kBandHigh - kBandLow) - kSlits * kSlit) / static_cast<float>(kSlits + 1);
+    for (int i = 0; i <= kSlits; ++i)
+    {
+        const float y0 = kBandLow + static_cast<float>(i) * (slat + kSlit);
+        piece(-band, band, y0, y0 + slat, size.z * 0.4f);
+    }
+    return mesh;
+}
+
+} // namespace
 
 int WorldObjects::AddLocker(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, InteractionSystem& interactions,
                             const glm::vec3& position, float yaw)
@@ -137,8 +176,10 @@ int WorldObjects::AddLocker(Scene& scene, MeshLibrary& meshes, PhysicsWorld& phy
     spot.insideYaw = yaw;
     // The door fills the clear opening between the sides, and swings out of the locker, not back
     // through its own side.
+    const glm::vec3 doorSize{lockerInnerHalfWidth * 2.0f, lockerSize.y, 0.06f};
+    const MeshData louvred = LouvredPanel(doorSize);
     spot.doorIndex = AddDoor(scene, meshes, physics, interactions, at({-lockerInnerHalfWidth, 0.0f, -lockerSize.z * 0.5f}), yaw,
-                             yaw + glm::radians(105.0f), {lockerInnerHalfWidth * 2.0f, lockerSize.y, 0.06f}, "locker_door", false);
+                             yaw + glm::radians(105.0f), doorSize, "locker_door", false, &louvred);
     spot.doorEntity = m_doors[static_cast<size_t>(spot.doorIndex)].entity;
     // Standing open to begin with: you have to be able to see a hiding place to decide to run for it.
     SetDoorOpen(spot.doorIndex, true, interactions);
@@ -153,7 +194,9 @@ int WorldObjects::AddLocker(Scene& scene, MeshLibrary& meshes, PhysicsWorld& phy
     interactable.name = "Locker";
     interactable.payload = index;
     interactable.range = 2.4f;
-    interactable.focusOffset = turn * glm::vec3(0.0f, -0.4f, -0.45f);
+    // In the middle of its open doorway, at the height of a look into it: at its foot, as it was, the
+    // prompt only came up for somebody looking at the floor in front of it.
+    interactable.focusOffset = turn * glm::vec3(0.0f, 0.1f, -0.4f);
     interactions.Register(interactable);
     return index;
 }

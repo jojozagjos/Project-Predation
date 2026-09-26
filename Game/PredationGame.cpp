@@ -191,6 +191,10 @@ CVar<float> cv_voiceThreshold{"audio.voice_threshold", 0.04f,
 // How long the meter goes on saying "sending" after the last packet. Longer than the gap between
 // them, so the label holds steady instead of strobing between two states at twelve to one.
 constexpr float kVoiceSendingHold = 0.20f;
+// How far the view goes from straight out of a locker: either side, down and up.
+constexpr float kLockerLookYawDegrees = 28.0f;
+constexpr float kLockerLookDownDegrees = 22.0f;
+constexpr float kLockerLookUpDegrees = 12.0f;
 CVar<bool> cv_micMeter{"audio.mic_meter", true,
                        "Show the microphone level on screen", CVarFlags::Archive};
 // Which microphone, by SDL id, or zero for the system default. An id rather than a name because
@@ -6963,6 +6967,15 @@ void PredationGame::SampleLook(float /*dt*/)
 
     m_lookYaw += delta.x * sensitivity;
     m_lookPitch = std::clamp(m_lookPitch + vertical, -downLimit, limit);
+    // Shut in a locker there is only the door in front of you and the slits in it: the view goes a little
+    // way either side and up and down, to look out along them, and no further. Turning round in there
+    // to stare at the back of it was never something a body in a locker could do.
+    if (const WorldObjects::HidingSpot* spot = m_hidingSpot >= 0 ? m_world.GetHidingSpot(m_hidingSpot) : nullptr)
+    {
+        const float across = std::remainder(m_lookYaw - spot->insideYaw, glm::two_pi<float>());
+        m_lookYaw = spot->insideYaw + std::clamp(across, -glm::radians(kLockerLookYawDegrees), glm::radians(kLockerLookYawDegrees));
+        m_lookPitch = std::clamp(m_lookPitch, -glm::radians(kLockerLookDownDegrees), glm::radians(kLockerLookUpDegrees));
+    }
     if (m_lookYaw > glm::pi<float>())
     {
         m_lookYaw -= glm::two_pi<float>();
@@ -8452,6 +8465,8 @@ void PredationGame::EnterHidingSpot(int index)
     // simulate normally Jolt pushes them straight back out through the side of it.
     m_player.Attach(spot->insidePosition, spot->insideYaw);
     m_lookYaw = spot->insideYaw;
+    // Eyes to the slits.
+    m_lookPitch = 0.0f;
     // The door swings shut behind the player, which is most of what makes hiding feel like hiding.
     m_world.SetDoorOpen(spot->doorIndex, false, m_interactions);
     m_interactions.SetVerb(spot->entity, "Leave");
@@ -10332,21 +10347,26 @@ void PredationGame::DrawHud()
                            m_heldItem == m_items.IdOf("keycard") && m_world.GetDoor(focus.payload) != nullptr &&
                            m_world.GetDoor(focus.payload)->locked;
         const std::string key = KeyFor(m_app->GetInput(), swipe ? "fire" : "interact");
-        const ImVec2 keySize = ImGui::CalcTextSize(key.c_str());
-        const ImVec2 textSize = ImGui::CalcTextSize(prompt.c_str());
-        const float pad = 6.0f;
+        // Larger than the rest of the HUD's text, and on a darker backing with an edge to it: it is read
+        // at a glance, against whatever the thing is -- a grey locker in a grey room was the worst of it.
+        ImFont* font = ImGui::GetFont();
+        const float fontSize = ImGui::GetFontSize() * 1.3f;
+        const ImVec2 keySize = font->CalcTextSizeA(fontSize, FLT_MAX, 0.0f, key.c_str());
+        const ImVec2 textSize = font->CalcTextSizeA(fontSize, FLT_MAX, 0.0f, prompt.c_str());
+        const float pad = 7.0f;
         const float keyBox = std::max(keySize.x, keySize.y) + pad * 2.0f;
         const float width = keyBox + pad + textSize.x + pad * 2.0f;
         const float height = keyBox;
         const ImVec2 corner{at.x - width * 0.5f, at.y - height * 0.5f};
         ImDrawList* list = ImGui::GetForegroundDrawList();
-        list->AddRectFilled(corner, {corner.x + width, corner.y + height}, IM_COL32(12, 14, 18, 185), 4.0f);
+        list->AddRectFilled(corner, {corner.x + width, corner.y + height}, IM_COL32(6, 7, 10, 225), 4.0f);
+        list->AddRect(corner, {corner.x + width, corner.y + height}, IM_COL32(225, 205, 150, 150), 4.0f, 0, 1.5f);
         list->AddRectFilled({corner.x + 2.0f, corner.y + 2.0f}, {corner.x + keyBox - 2.0f, corner.y + height - 2.0f},
-                            IM_COL32(225, 205, 150, 235), 3.0f);
-        list->AddText({corner.x + (keyBox - keySize.x) * 0.5f, corner.y + (height - keySize.y) * 0.5f},
+                            IM_COL32(225, 205, 150, 245), 3.0f);
+        list->AddText(font, fontSize, {corner.x + (keyBox - keySize.x) * 0.5f, corner.y + (height - keySize.y) * 0.5f},
                       IM_COL32(20, 20, 24, 255), key.c_str());
-        list->AddText({corner.x + keyBox + pad, corner.y + (height - textSize.y) * 0.5f},
-                      IM_COL32(236, 236, 240, 240), prompt.c_str());
+        list->AddText(font, fontSize, {corner.x + keyBox + pad, corner.y + (height - textSize.y) * 0.5f},
+                      IM_COL32(245, 245, 248, 255), prompt.c_str());
     }
 
     // Hotbar: one icon per slot, with the selected one picked out and stack counts in the corner.
