@@ -258,6 +258,23 @@ float Creature::CeilingAbove(const glm::vec3& floor) const
     return roof ? roof.distance + 0.3f : 0.0f;
 }
 
+bool Creature::LevelFloorAt(const glm::vec3& at, const glm::vec3& across) const
+{
+    if (m_nav == nullptr)
+    {
+        return false;
+    }
+    for (const float side : {-0.6f, 0.6f})
+    {
+        glm::vec3 floor;
+        if (m_nav->NearestPoint(at + across * side, 0.4f, floor) && std::abs(floor.y - at.y) > 0.12f)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
 bool Creature::FindWall()
 {
     // Round it at the height of its body, the nearest wall with floor at its foot, a ceiling it can
@@ -285,6 +302,11 @@ bool Creature::FindWall()
         const float top = CeilingAbove(onMesh);
         const float depth = glm::dot(onMesh - hit.position, normal);
         if (top < 2.2f || top > 5.0f || depth < 0.05f || depth > 1.2f)
+        {
+            continue;
+        }
+        // Not beside a flight of stairs.
+        if (!LevelFloorAt(onMesh, glm::normalize(glm::cross(glm::vec3(0.0f, 1.0f, 0.0f), normal))))
         {
             continue;
         }
@@ -323,11 +345,15 @@ bool Creature::DescendNearestWall()
     const glm::vec3 normal = glm::normalize(glm::vec3(nearest.normal.x, 0.0f, nearest.normal.z));
     glm::vec3 wanted = nearest.position + normal * 0.45f;
     wanted.y = m_anchor.y;
-    if (!m_nav->NearestPoint(wanted, 0.7f, foot))
+    if (!m_nav->NearestPoint(wanted, 0.7f, foot) ||
+        !LevelFloorAt(foot, glm::normalize(glm::cross(glm::vec3(0.0f, 1.0f, 0.0f), normal))) ||
+        m_physics.RayCastStatic(m_anchor + glm::vec3(0.0f, 0.3f, 0.0f), glm::normalize(foot - m_anchor + glm::vec3(0.0f, 1e-4f, 0.0f)),
+                                glm::distance(foot, m_anchor)))
     {
-        return false;
+        return false; // on stairs, or on the far side of something from under it
     }
     m_cling = Cling::Wall;
+    m_wallSince = m_time;
     m_wallNormal = normal;
     m_wallFoot = foot;
     m_wallDepth = std::max(glm::dot(foot - nearest.position, normal), 0.1f);
@@ -395,7 +421,12 @@ void Creature::MoveClinging(const CreatureIntent& intent, float dt)
         // wall goes, up to the ceiling -- or, wanting the floor, down it head first.
         const glm::vec3 across = glm::normalize(glm::cross(glm::vec3(0.0f, 1.0f, 0.0f), m_wallNormal));
         const float highest = std::max(m_wallTop - 0.25f, 0.3f);
-        const bool down = !intent.climb;
+        // Too long on one wall is stuck on it: down, and not straight back up another.
+        if (m_time - m_wallSince > 12.0f && m_noClimbUntil < m_time)
+        {
+            m_noClimbUntil = m_time + 10.0f;
+        }
+        const bool down = !intent.climb || m_wallBack || m_time < m_noClimbUntil;
         float wantAlong = m_wallBack ? 0.0f : m_wallAlong;
         if (intent.move && !m_wallBack)
         {
@@ -407,17 +438,36 @@ void Creature::MoveClinging(const CreatureIntent& intent, float dt)
         // that to come down to. Where there is not, it goes straight up or down instead.
         if (std::abs(wantAlong - now.x) > 0.05f)
         {
-            const float further = now.x + (wantAlong > now.x ? 0.3f : -0.3f);
+            const float sign = wantAlong > now.x ? 1.0f : -1.0f;
+            const float further = now.x + sign * 0.3f;
             const glm::vec3 probe = m_wallFoot + across * further + glm::vec3(0.0f, now.y + 0.3f, 0.0f);
             const RayHit still = m_physics.RayCastStatic(probe, -m_wallNormal, m_wallDepth + 0.4f);
+            // Nothing standing across the way along the wall: the corner of a room, a wall meeting this one.
+            // Slid on into it, it went through it and out of the building.
+            const glm::vec3 offWall = m_wallFoot - m_wallNormal * (m_wallDepth - 0.3f) + across * now.x + glm::vec3(0.0f, now.y + 0.3f, 0.0f);
+            const RayHit blocked = m_physics.RayCastStatic(offWall, across * sign, 0.3f + m_anatomy.length * 0.5f);
             glm::vec3 floor;
-            if (!still || glm::dot(still.normal, m_wallNormal) < 0.9f || m_nav == nullptr ||
-                !m_nav->NearestPoint(m_wallFoot + across * further, 0.6f, floor))
+            const glm::vec3 wantedFloor = m_wallFoot + across * further;
+            if (!still || glm::dot(still.normal, m_wallNormal) < 0.9f || blocked || m_nav == nullptr ||
+                !m_nav->NearestPoint(wantedFloor, 0.6f, floor) || Horizontal(floor, wantedFloor) > 0.3f ||
+                std::abs(floor.y - m_wallFoot.y) > 0.12f)
             {
                 wantAlong = now.x;
             }
         }
-        const glm::vec2 goal{wantAlong, wantHeight};
+        // Up only while there is wall above to climb: a doorway's opening, the edge of a landing, the top of
+        // a wall that stops short -- it comes back down rather than hang at the top of nothing.
+        if (!down)
+        {
+            const glm::vec3 above = m_wallFoot + across * now.x + glm::vec3(0.0f, now.y + 0.7f, 0.0f);
+            const RayHit wall = m_physics.RayCastStatic(above, -m_wallNormal, m_wallDepth + 0.4f);
+            if (now.y + 0.7f < highest && (!wall || glm::dot(wall.normal, m_wallNormal) < 0.9f))
+            {
+                m_wallBack = true;
+                m_noClimbUntil = m_time + 10.0f;
+            }
+        }
+        const glm::vec2 goal{wantAlong, down ? 0.0f : wantHeight};
         const glm::vec2 gap = goal - now;
         const float length = glm::length(gap);
         const float stride = kClimbSpeed * (down ? 0.8f : 1.0f) * dt;
@@ -450,6 +500,7 @@ void Creature::MoveClinging(const CreatureIntent& intent, float dt)
             m_wallBack = false;
             break;
         }
+        (void)wantHeight;
         // At the top, and either where it meant to be along the wall or unable to get any further along it.
         const bool alongDone = std::abs(next.x - wantAlong) < 0.05f || std::abs(went.x) < 1e-4f;
         if (!down && next.y >= highest - 0.01f && alongDone)
@@ -458,7 +509,9 @@ void Creature::MoveClinging(const CreatureIntent& intent, float dt)
             const float roof = CeilingAbove(m_anchor);
             if (roof < 2.0f || roof > 5.2f)
             {
+                // Nothing to go over onto: back down, and not straight up again.
                 m_wallBack = true;
+                m_noClimbUntil = m_time + 10.0f;
                 break;
             }
             m_wallBack = false;
@@ -1005,7 +1058,7 @@ void Creature::Move(const CreatureIntent& asked, const std::vector<glm::vec3>& o
     {
         intent.climb = false;
     }
-    if (intent.climb && m_caps.climbs && m_squeeze < 0.3f && !m_down && !m_jumping)
+    if (intent.climb && m_caps.climbs && m_squeeze < 0.3f && !m_down && !m_jumping && m_time >= m_noClimbUntil)
     {
         if (!m_haveWall && m_time >= m_wallSearchAt)
         {
@@ -1024,6 +1077,7 @@ void Creature::Move(const CreatureIntent& asked, const std::vector<glm::vec3>& o
             else
             {
                 m_cling = Cling::Wall;
+                m_wallSince = m_time;
                 m_climbT = 0.0f;
                 m_wallAlong = 0.0f;
                 m_wallBack = false;

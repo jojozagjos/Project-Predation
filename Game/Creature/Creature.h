@@ -281,6 +281,13 @@ private:
     glm::vec3 m_wallHeading{0.0f, 1.0f, 0.0f};
     // Up at the top where there is no ceiling to go over onto: it goes back along to where there was.
     bool m_wallBack = false;
+    // Not up another wall before this: after one that went nowhere -- no ceiling at the top, a gap in it --
+    // or after too long on one. And when it went up this one.
+    float m_noClimbUntil = -1.0f;
+    float m_wallSince = 0.0f;
+    // Whether the floor here is flat along a wall running this way: not a flight of stairs, whose steps a
+    // body climbing the wall beside them ends up inside.
+    bool LevelFloorAt(const glm::vec3& at, const glm::vec3& across) const;
     bool m_haveWall = false;
     float m_wallSearchAt = 0.0f;
     // How far up the wall, or down through the drop, 0 to 1, and the drop's ends and length.

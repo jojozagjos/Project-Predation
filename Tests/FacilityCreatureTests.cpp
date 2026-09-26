@@ -72,7 +72,7 @@ CreatureTraits Hunter(uint32_t seed)
 
 TEST_CASE("A creature goes up and down a facility's stairs after a noise without getting stuck", "[creature][facility][stairs]")
 {
-    for (const uint16_t seed : {1, 7, 12})
+    for (const uint16_t seed : {uint16_t{1}, uint16_t{7}, uint16_t{12}})
     {
         Built built(seed);
         const FacilityLayout& layout = built.map.Layout();
@@ -104,6 +104,7 @@ TEST_CASE("A creature goes up and down a facility's stairs after a noise without
                     constexpr float dt = 1.0f / 60.0f;
                     float time = 0.0f;
                     bool arrived = false;
+                    int throughWalls = 0;
                     std::ostringstream trace;
                     for (int tick = 0; tick < 60 * 25 && !arrived; ++tick)
                     {
@@ -117,6 +118,18 @@ TEST_CASE("A creature goes up and down a facility's stairs after a noise without
                         creature.Update(senses, time, dt);
                         const glm::vec3 at = creature.Position();
                         arrived = glm::length(glm::vec2(at.x - to.x, at.z - to.z)) < 3.0f && std::abs(at.y - to.y) < 1.0f;
+                        // On a wall or a ceiling, it is in the same room as the floor it is over: nothing
+                        // solid between the two.
+                        if (creature.Clinging() == Creature::Cling::Wall || creature.Clinging() == Creature::Cling::Ceiling)
+                        {
+                            const glm::vec3 floor = creature.Anchor() + glm::vec3(0.0f, 0.3f, 0.0f);
+                            const glm::vec3 rise = at - floor;
+                            const float reach = glm::length(rise) - 0.15f;
+                            if (reach > 0.1f && built.physics.RayCastStatic(floor, rise / glm::length(rise), reach))
+                            {
+                                ++throughWalls;
+                            }
+                        }
                         if (tick % 30 == 0)
                         {
                             trace << "\n  " << time << ": " << at.x << "," << at.y << "," << at.z << " " << creature.Brain().CurrentGoal();
@@ -134,6 +147,7 @@ TEST_CASE("A creature goes up and down a facility's stairs after a noise without
                                  << " path reached " << reached << path.str());
                     INFO("from " << from.x << "," << from.y << "," << from.z << " to " << to.x << "," << to.y << "," << to.z << trace.str());
                     CHECK(arrived);
+                    CHECK(throughWalls == 0);
                 }
             }
         }
@@ -142,7 +156,7 @@ TEST_CASE("A creature goes up and down a facility's stairs after a noise without
 
 TEST_CASE("A creature goes after somebody it can see up or down a facility's stairs, and gets to them", "[creature][facility][stairs]")
 {
-    for (const uint16_t seed : {1, 7})
+    for (const uint16_t seed : {uint16_t{1}, uint16_t{7}})
     {
         Built built(seed);
         const FacilityLayout& layout = built.map.Layout();
@@ -286,7 +300,7 @@ struct DoorSim
 
 TEST_CASE("A creature gets through a facility's shut doors to a noise in another room", "[creature][facility][door]")
 {
-    for (const uint16_t seed : {1, 7})
+    for (const uint16_t seed : {uint16_t{1}, uint16_t{7}})
     {
         Built built(seed);
         const FacilityLayout& layout = built.map.Layout();
