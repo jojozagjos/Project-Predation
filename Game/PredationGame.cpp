@@ -179,6 +179,32 @@ CVar<float> cv_vignette{"r.vignette", 0.35f, "How much the edges of the picture 
 CVar<bool> cv_crosshair{"hud.crosshair", true, "Draw the crosshair", CVarFlags::Archive};
 CVar<bool> cv_showFps{"hud.show_fps", false, "Show the frame rate in the corner", CVarFlags::Archive};
 CVar<bool> cv_voiceEnabled{"audio.voice", true, "Send and hear proximity voice", CVarFlags::Archive};
+// Brought up to a strong speaking level whatever the microphone: a quiet one as much as twelve times, a
+// loud one hardly at all. Eased down fast and up slowly, so a shout is not pumped, and rounded off at the
+// top rather than clipped. A fixed boost could never be enough for one person without distorting the next.
+void LevelVoice(std::vector<float>& samples, float& level)
+{
+    if (samples.empty())
+    {
+        return;
+    }
+    double sum = 0.0;
+    for (const float sample : samples)
+    {
+        sum += static_cast<double>(sample) * sample;
+    }
+    const float rms = static_cast<float>(std::sqrt(sum / static_cast<double>(samples.size())));
+    if (rms > 0.002f)
+    {
+        const float wanted = std::clamp(0.2f / rms, 1.0f, 12.0f);
+        level += (wanted - level) * (wanted < level ? 0.6f : 0.08f);
+    }
+    for (float& sample : samples)
+    {
+        sample = std::tanh(sample * level);
+    }
+}
+
 CVar<float> cv_voiceVolume{"audio.voice_volume", 1.0f, "How loud other people's voices are",
                            CVarFlags::Archive};
 // Open mic instead of push to talk. Off by default: a game about listening for something in the
@@ -5575,10 +5601,11 @@ void PredationGame::HearVoice(uint8_t speaker, const std::vector<uint8_t>& frame
         // clipping on its own.
         // With make-up gain: speech through the codec arrives well below everything else in the mix, and
         // at a slider of one people were hard to hear from across a room.
-        desc.gain = std::clamp(cv_voiceVolume.Get(), 0.0f, 2.0f) * 2.8f;
+        // The levelling below does the making-up; this is the slider, and a little over.
+        desc.gain = std::clamp(cv_voiceVolume.Get(), 0.0f, 2.0f) * 1.5f;
         // A voice carries further than a footstep and falls off gently: the point of proximity chat
         // is knowing roughly where somebody is, and a hard cut turns that into a switch.
-        desc.nearDistance = 5.0f;
+        desc.nearDistance = 8.0f;
         desc.farDistance = kVoiceRange;
         fresh->voice = audio.Play(desc);
         m_speakers.push_back(std::move(fresh));
@@ -5589,6 +5616,7 @@ void PredationGame::HearVoice(uint8_t speaker, const std::vector<uint8_t>& frame
     std::vector<float> samples;
     if (found->codec.Decode(frame.data(), frame.size(), samples) && !samples.empty())
     {
+        LevelVoice(samples, found->level);
         audio.PushStream(found->stream, samples.data(), samples.size());
     }
 }
@@ -5668,6 +5696,8 @@ void PredationGame::UpdateMicrophoneTest(float dt)
         m_voiceSending = m_voiceSendingFor > 0.0f;
         if (sending)
         {
+            // Levelled as it will be at the other end, so what is heard here is what they hear.
+            LevelVoice(frame, m_micTestLevel);
             audio.PushStream(m_micTestStream, frame.data(), frame.size());
         }
     }

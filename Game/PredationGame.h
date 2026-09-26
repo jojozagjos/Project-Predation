@@ -1121,6 +1121,7 @@ private:
     // cannot go stale if the list is reordered.
     std::string m_rebinding;
     StreamId m_micTestStream = kInvalidStream;
+    float m_micTestLevel = 4.0f;
     bool m_torchOn = false;
     bool m_torchAimed = false;
     glm::vec3 m_torchAim{0.0f, 0.0f, -1.0f};
@@ -1302,6 +1303,8 @@ private:
         uint16_t lastSequence = 0;
         bool started = false;
         float silentFor = 0.0f;
+        // How much their voice is being brought up by, eased: see OnVoiceFrame.
+        float level = 4.0f;
         // Where their body was the last time we could find it. A speaker we cannot place must not be
         // played at our own head, which is the loudest place there is: see SpeakerPosition.
         glm::vec3 at{0.0f};
