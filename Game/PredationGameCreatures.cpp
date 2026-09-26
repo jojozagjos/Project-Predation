@@ -689,6 +689,7 @@ void PredationGame::UpdateCreatures(float dt)
                               glm::vec3(door.panelOffset.x * 2.0f, 0.0f, door.panelOffset.z * 2.0f);
         sense.tip = sense.a + glm::vec3(now.x, 0.0f, now.z);
         sense.shut = std::abs(door.angle - door.closedYaw) < 0.35f;
+        sense.swinging = door.IsMoving();
         sense.locked = door.locked;
         doors.push_back(sense);
     }

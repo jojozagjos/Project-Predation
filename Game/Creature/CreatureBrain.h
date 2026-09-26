@@ -69,6 +69,8 @@ struct DoorSense
     // stands, open or shut -- what a body walking past has to go round.
     glm::vec3 tip{0.0f};
     bool shut = false;
+    // Still opening or closing: not something to steer round yet, it will not stay where it is.
+    bool swinging = false;
     bool locked = false;
 };
 

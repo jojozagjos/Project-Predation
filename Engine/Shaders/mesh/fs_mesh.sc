@@ -378,6 +378,15 @@ void main()
 		float window = clamp(1.0 - pow(distance / posRange.w, 4.0), 0.0, 1.0);
 		attenuation *= window * window;
 
+		// A little of every lamp's light has bounced off the room before it arrives: from every direction,
+		// so it reaches what the fitting does not face -- the ceiling over a downlight, a corner behind
+		// it. Without it a lamp's room was lit to a hard line where the walls met a pitch black ceiling.
+		// Not the torch in the first slot: it is the one light with a shadow, and this has none.
+		if (i > 0)
+		{
+			color += diffuseColor * colorIntensity.rgb * colorIntensity.w * attenuation * 0.05;
+		}
+
 		float cosAngle = dot(-Lp, normalize(dirInner.xyz));
 		float cone = clamp((cosAngle - outerOn.x) / max(dirInner.w - outerOn.x, 1e-4), 0.0, 1.0);
 		// Squared, so the edge of the beam softens rather than ending on a line.

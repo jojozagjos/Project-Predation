@@ -91,6 +91,11 @@ public:
     void RemoveFrom(Scene& scene, size_t first);
     // Keeps a light to the room it is in: nothing outside the box is lit by it.
     void Bound(int index, const glm::vec3& min, const glm::vec3& max);
+    // How much bigger than asked every box is made (see Bound). None for a level whose boxes end in the
+    // middle of its walls, as the facility's do: there the margin only made neighbouring boxes overlap,
+    // and where one lamp's box met another's -- or its own again, round a corner -- a strip of floor and
+    // wall a hand wide was lit twice over, a bright line down the middle of a room.
+    void SetBoundsMargin(float margin) { m_boundsMargin = margin; }
     // The light of `source` coming through a doorway: no fitting of its own, dimmer, lighting only the
     // box on the far side, and on, flickering and failing exactly as its lamp does. What a lamp kept to its
     // room gives the room next door.
@@ -120,6 +125,7 @@ private:
     std::vector<Light> m_lights;
     std::vector<int> m_unpowered;
     size_t m_doorsSeen = static_cast<size_t>(-1);
+    float m_boundsMargin = 0.05f;
     MeshHandle m_fittingMeshes[4] = {};
 };
 

@@ -937,6 +937,8 @@ void FacilityMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, Physic
     if (lights != nullptr)
     {
         m_firstLight = lights->Count();
+        // Every box here ends in the middle of a wall, a tenth of a metre inside it: no margin wanted.
+        lights->SetBoundsMargin(0.0f);
         m_hasLights = true;
         const glm::vec3 down{0.0f, -1.0f, 0.0f};
         std::vector<int> made(blueprint.lamps.size(), -1);
@@ -958,6 +960,7 @@ void FacilityMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, Physic
                                   Mix(seed, static_cast<uint32_t>(i)) | 1u, lamp.range);
             lights->Bound(made[i], lamp.boundsMin, lamp.boundsMax);
         }
+        lights->SetBoundsMargin(0.05f);
     }
 
     m_placements = blueprint.placements;

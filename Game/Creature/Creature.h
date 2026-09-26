@@ -176,7 +176,6 @@ private:
     // The way it is heading, bent round the free edge of any open door panel that way lies across.
     float DoorRadius() const;
     glm::vec3 AroundDoors(const glm::vec3& heading, const std::vector<DoorSense>& doors) const;
-    void KeepOutOfDoors(const glm::vec3& before, const std::vector<DoorSense>& doors, float dt);
     // Up a wall, across a ceiling, or dropping from it, for one that climbs.
     void MoveClinging(const CreatureIntent& intent, float dt);
     // The nearest wall it can go up from here to a ceiling it can hang from; fills m_wall*.

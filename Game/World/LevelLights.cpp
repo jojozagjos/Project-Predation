@@ -249,8 +249,8 @@ void LevelLights::Bound(int index, const glm::vec3& min, const glm::vec3& max)
     light.bounded = true;
     // A little bigger than asked: a wall face lying exactly on the edge of the box flickers in and out of
     // it from one pixel to the next, in stripes. Five centimetres is still well inside any wall.
-    light.boundsMin = glm::min(min, max) - glm::vec3(0.05f);
-    light.boundsMax = glm::max(min, max) + glm::vec3(0.05f);
+    light.boundsMin = glm::min(min, max) - glm::vec3(m_boundsMargin);
+    light.boundsMax = glm::max(min, max) + glm::vec3(m_boundsMargin);
 }
 
 void LevelLights::SetPowered(int circuit, bool powered)
