@@ -912,12 +912,18 @@ void CreatureRig::Update(const RigInput& input)
         {
             pole = glm::normalize(glm::vec3(leg.side * 0.7f, -0.25f, 0.7f));
         }
-        TwoBoneIKResult ik = SolveTwoBoneIK(hip, ankleTarget, pole, pair.upper, pair.lower);
-        // An elbow or a knee pushed into a wall bends the other way instead.
+        // An elbow or a knee that would go into a wall swings round the limb until it clears it -- the least
+        // way round there is, and over a moment, not in a frame. It used to flip straight to bending the other
+        // way, and back as soon as it was clear: an arm snapping inside out every time it passed a doorframe.
+        // Having swung, it stays swung while the wall is there, and comes back once it is gone.
+        Foot& twistState = m_feet[i];
+        const glm::vec3 limbAxis = glm::length(ankleTarget - hip) > 1e-4f ? glm::normalize(ankleTarget - hip) : glm::vec3(0.0f, -1.0f, 0.0f);
+        const auto swungPole = [&](float angle) { return glm::angleAxis(angle, limbAxis) * pole; };
         if (input.probe)
         {
-            const auto intoWall = [&](const TwoBoneIKResult& solved)
+            const auto intoWall = [&](float angle)
             {
+                const TwoBoneIKResult solved = SolveTwoBoneIK(hip, ankleTarget, swungPole(angle), pair.upper, pair.lower);
                 glm::vec3 met;
                 const glm::vec3 from = Apply(m_root, hip);
                 const glm::vec3 joint = Apply(m_root, solved.jointPosition);
@@ -925,19 +931,36 @@ void CreatureRig::Update(const RigInput& input)
                 const float l = glm::length(d);
                 return l > 0.05f && input.probe(from, d / l, l, met);
             };
-            if (intoWall(ik))
+            if (intoWall(twistState.twistWanted))
             {
-                for (const glm::vec3& other : {-pole, glm::normalize(glm::vec3(-leg.side, 0.2f, 0.3f)), glm::vec3(0.0f, 1.0f, 0.0f)})
+                // The nearest clear angle to where it is now, either way round.
+                float best = twistState.twistWanted;
+                bool found = false;
+                for (const float step : {0.6f, 1.2f, 1.8f, 2.6f})
                 {
-                    const TwoBoneIKResult tried = SolveTwoBoneIK(hip, ankleTarget, other, pair.upper, pair.lower);
-                    if (!intoWall(tried))
+                    for (const float sign : {1.0f, -1.0f})
                     {
-                        ik = tried;
-                        break;
+                        const float angle = twistState.twistWanted + sign * step;
+                        if (!found && !intoWall(angle))
+                        {
+                            best = angle;
+                            found = true;
+                        }
                     }
                 }
+                twistState.twistWanted = found ? best : twistState.twistWanted;
+            }
+            else if (std::abs(twistState.twistWanted) > 1e-3f && !intoWall(0.0f))
+            {
+                twistState.twistWanted = 0.0f; // the wall has gone: back to its own bend
             }
         }
+        else
+        {
+            twistState.twistWanted = 0.0f;
+        }
+        twistState.twist += std::clamp(twistState.twistWanted - twistState.twist, -5.0f * dt, 5.0f * dt);
+        TwoBoneIKResult ik = SolveTwoBoneIK(hip, ankleTarget, swungPole(twistState.twist), pair.upper, pair.lower);
         const glm::vec3 knee = ik.jointPosition;
         const glm::vec3 ankle = ik.endPosition;
         const glm::vec3 toe = ankle + glm::vec3(0.0f, reach > 0.0f ? 0.0f : -pair.thickness * 0.5f, 0.0f) + toeForward * pair.foot;

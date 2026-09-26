@@ -102,6 +102,10 @@ public:
         // Placed slowly, as feeding places it: where it is going, in the world, and how far over to it it is.
         glm::vec3 gentleAt{0.0f};
         float gentle = 0.0f;
+        // How far round the limb its elbow or knee has been swung, from its usual bend, to keep it out of a
+        // wall: where it is, eased, and where it is going.
+        float twist = 0.0f;
+        float twistWanted = 0.0f;
     };
     const std::vector<Foot>& Feet() const { return m_feet; }
     // Where a foot has come down since the last time anybody asked: what the game hears as a step.
