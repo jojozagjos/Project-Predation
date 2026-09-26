@@ -943,7 +943,7 @@ void Creature::Update(CreatureSenses senses, float time, float dt)
     }
     m_action = action;
 
-    Move(intent, senses.others, dt);
+    Move(intent, senses.others, senses.doors, dt);
     if (m_cling == Cling::Floor)
     {
         m_anchor = m_position;
@@ -951,8 +951,9 @@ void Creature::Update(CreatureSenses senses, float time, float dt)
     SyncBody(dt);
 }
 
-void Creature::Move(const CreatureIntent& asked, const std::vector<glm::vec3>& others, float dt)
+void Creature::Move(const CreatureIntent& asked, const std::vector<glm::vec3>& others, const std::vector<DoorSense>& doors, float dt)
 {
+    const glm::vec3 before = m_position;
     CreatureIntent intent = asked;
     if (m_climbOverride >= 0)
     {
@@ -1137,6 +1138,10 @@ void Creature::Move(const CreatureIntent& asked, const std::vector<glm::vec3>& o
         m_routeJumps.clear();
     }
     m_brain.Route() = m_route;
+    if (glm::length(heading) > 0.5f)
+    {
+        heading = AroundDoors(heading, doors);
+    }
 
     // Getting up to speed and stopping take a moment, both ways. Faster to stop than to start,
     // because what it stops for is usually something in front of it.
@@ -1237,6 +1242,143 @@ void Creature::Move(const CreatureIntent& asked, const std::vector<glm::vec3>& o
             moved = m_position + step;
         }
         m_position = moved;
+    }
+    KeepOutOfDoors(before, doors, dt);
+}
+
+float Creature::DoorRadius() const
+{
+    return std::clamp(m_anatomy.width * 0.6f, 0.22f, 0.5f);
+}
+
+glm::vec3 Creature::AroundDoors(const glm::vec3& heading, const std::vector<DoorSense>& doors) const
+{
+    // Its route goes through every doorway as if nothing stood in it: an open panel across the way is
+    // walked round by aiming, until it is past it, for a point just beyond the panel's free edge.
+    const float radius = DoorRadius();
+    const glm::vec2 here{m_position.x, m_position.z};
+    const glm::vec2 going{heading.x, heading.z};
+    for (const DoorSense& door : doors)
+    {
+        if (door.shut || std::abs(m_position.y - door.a.y) > 1.5f)
+        {
+            continue;
+        }
+        const glm::vec2 hinge{door.a.x, door.a.z};
+        const glm::vec2 along = glm::vec2(door.tip.x, door.tip.z) - hinge;
+        const float length = glm::length(along);
+        if (length < 0.1f)
+        {
+            continue;
+        }
+        const glm::vec2 dir = along / length;
+        const glm::vec2 normal{-dir.y, dir.x};
+        const float t = glm::dot(here - hinge, dir);
+        const float side = glm::dot(here - hinge, normal);
+        if (t > length + radius * 0.5f || t < -0.5f || std::abs(side) > 2.5f)
+        {
+            continue;
+        }
+        const glm::vec2 probe = here + going * 1.5f;
+        const float probeSide = glm::dot(probe - hinge, normal);
+        const float probeT = glm::dot(probe - hinge, dir);
+        float crossT = 1.0e9f;
+        if (side * probeSide < 0.0f || std::abs(probeSide) < radius)
+        {
+            const float denominator = side - probeSide;
+            const float f = std::abs(denominator) > 1e-4f ? std::clamp(side / denominator, 0.0f, 1.0f) : 0.0f;
+            crossT = t + f * (probeT - t);
+        }
+        if (crossT < -0.1f || crossT > length + radius)
+        {
+            continue;
+        }
+        const float sign = side >= 0.0f ? 1.0f : -1.0f;
+        const glm::vec2 detour = hinge + dir * (length + radius + 0.25f) + normal * (sign * (radius + 0.1f));
+        const glm::vec2 toward = detour - here;
+        if (glm::length(toward) > 0.05f)
+        {
+            const glm::vec2 bent = glm::normalize(toward);
+            return {bent.x, 0.0f, bent.y};
+        }
+    }
+    return heading;
+}
+
+void Creature::KeepOutOfDoors(const glm::vec3& before, const std::vector<DoorSense>& doors, float dt)
+{
+    // The navigation mesh has every doorway open and knows nothing of the panels, so a door stood open
+    // into a room was walked straight through by anything going along that wall. Each panel is a line
+    // on the floor from its hinge to its free edge; a body is kept its own half-width off it, on the
+    // side it came from, and eased along it towards the free edge so that walking square into one it
+    // goes round the end instead of standing pressed against it.
+    const float radius = DoorRadius();
+    for (const DoorSense& door : doors)
+    {
+        if (door.shut)
+        {
+            continue; // shut, it is the wall: the brain opens it or goes another way
+        }
+        if (std::abs(m_position.y - door.a.y) > 1.5f)
+        {
+            continue;
+        }
+        const glm::vec2 hinge{door.a.x, door.a.z};
+        const glm::vec2 tip{door.tip.x, door.tip.z};
+        const glm::vec2 along = tip - hinge;
+        const float length = glm::length(along);
+        if (length < 0.1f)
+        {
+            continue;
+        }
+        const glm::vec2 dir = along / length;
+        const glm::vec2 normal{-dir.y, dir.x};
+        const glm::vec2 here{m_position.x, m_position.z};
+        const float t = glm::dot(here - hinge, dir);
+        if (t < -radius || t > length + radius)
+        {
+            continue;
+        }
+        // Past the free edge: round the end of it, a circle.
+        if (t > length)
+        {
+            const glm::vec2 off = here - tip;
+            const float gap = glm::length(off);
+            if (gap < radius && gap > 1e-4f)
+            {
+                const glm::vec2 out = tip + off / gap * radius;
+                m_position.x = out.x;
+                m_position.z = out.y;
+            }
+            continue;
+        }
+        if (t < 0.0f)
+        {
+            continue; // behind the hinge is the wall itself
+        }
+        const float side = glm::dot(here - hinge, normal);
+        if (std::abs(side) >= radius)
+        {
+            continue;
+        }
+        // Which side: the one it was on before this step, or else the one it is on.
+        const float was = glm::dot(glm::vec2(before.x, before.z) - hinge, normal);
+        const float sign = std::abs(was) > 0.02f ? (was > 0.0f ? 1.0f : -1.0f) : (side >= 0.0f ? 1.0f : -1.0f);
+        glm::vec2 out = hinge + dir * t + normal * (sign * radius);
+        // And along towards the free edge, a little, as long as it is trying to go somewhere.
+        if (m_speed > 0.2f)
+        {
+            out += dir * std::min(m_speed * dt * 0.6f, length + radius - t);
+        }
+        glm::vec3 moved{out.x, m_position.y, out.y};
+        if (m_nav != nullptr && m_nav->MoveAlongSurface(m_position, moved, moved, m_jumps & NavMesh::kCrawl))
+        {
+            m_position = moved;
+        }
+        else
+        {
+            m_position = {out.x, m_position.y, out.y};
+        }
     }
 }
 

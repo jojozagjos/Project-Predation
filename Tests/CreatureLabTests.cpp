@@ -485,7 +485,7 @@ TEST_CASE("A patient creature that loses somebody through a door waits beside it
     traits.patience = 0.9f;
     traits.aggression = 0.5f;
     traits.fear = 0.2f;
-    const glm::vec3 outside = lab.At(LabSpec::kCorridorDoorX - LabSpec::kX - 1.0f, LabSpec::kCorridorSouth - LabSpec::kZ + 7.0f);
+    const glm::vec3 outside = lab.At(LabSpec::kCorridorDoorX - LabSpec::kX - 1.0f, LabSpec::kCorridorSouth - LabSpec::kZ + 12.0f);
     Creature creature(lab.scene, lab.meshes, lab.physics, &lab.nav, traits, outside);
 
     SensedPlayer player;
@@ -608,7 +608,7 @@ TEST_CASE("Beside a doorway, on the far side from somebody in the room, is where
     door.index = 3;
     door.a = {doorX - 0.55f, 0.0f, doorZ};
     door.b = {doorX + 0.55f, 0.0f, doorZ};
-    const glm::vec3 outside = lab.At(LabSpec::kCorridorDoorX - LabSpec::kX - 1.0f, LabSpec::kCorridorSouth - LabSpec::kZ + 7.0f);
+    const glm::vec3 outside = lab.At(LabSpec::kCorridorDoorX - LabSpec::kX - 1.0f, LabSpec::kCorridorSouth - LabSpec::kZ + 12.0f);
     Creature creature(lab.scene, lab.meshes, lab.physics, &lab.nav, Hunter(5), outside);
     CreatureSenses senses;
     senses.position = outside;
@@ -796,4 +796,51 @@ TEST_CASE("Somebody up on a block it cannot get onto is paced under and called a
     CHECK_FALSE(ran);
     CHECK(furthest < 7.0f);
     CHECK(MindOf(creature).find("cannot reach") != std::string::npos);
+}
+
+TEST_CASE("A creature goes round a door standing open in its way, not through it", "[creature][lab][door]")
+{
+    Lab lab;
+    const glm::vec3 start = lab.At(LabSpec::kCorridorDoorX - LabSpec::kX, LabSpec::kCorridorSouth - LabSpec::kZ + 2.5f);
+    const glm::vec3 goal = lab.At(LabSpec::kCorridorDoorX - LabSpec::kX, LabSpec::kCorridorSouth - LabSpec::kZ + 12.0f);
+    // An open panel stood square across the way between them, hinged to one side.
+    const float middleZ = start.z + 2.2f;
+    DoorSense door;
+    door.index = 3;
+    door.a = {start.x - 0.9f, start.y, middleZ};
+    door.b = door.a;
+    door.tip = {start.x + 0.4f, start.y, middleZ};
+    door.shut = false;
+
+    Creature creature(lab.scene, lab.meshes, lab.physics, &lab.nav, Hunter(5), start);
+    Noise noise;
+    noise.kind = NoiseKind::Gunshot;
+    noise.position = goal;
+    noise.reach = 70.0f;
+    constexpr float dt = 1.0f / 60.0f;
+    float time = 0.0f;
+    bool crossed = false;
+    bool past = false;
+    glm::vec3 was = creature.Position();
+    for (int tick = 0; tick < 60 * 12 && !past; ++tick)
+    {
+        time += dt;
+        CreatureSenses senses;
+        senses.doors = {door};
+        if (tick == 1)
+        {
+            senses.noises = {noise};
+        }
+        creature.Update(senses, time, dt);
+        const glm::vec3 now = creature.Position();
+        // Stepped from one side of the panel to the other, somewhere along it.
+        const bool along = now.x > door.a.x && now.x < door.tip.x && was.x > door.a.x && was.x < door.tip.x;
+        crossed = crossed || (along && (was.z - middleZ) * (now.z - middleZ) < 0.0f);
+        past = now.z > middleZ + 1.0f;
+        was = now;
+    }
+    INFO("its mind:" << MindOf(creature));
+    INFO("start " << start.x << "," << start.z << " goal " << goal.x << "," << goal.z << " at " << was.x << "," << was.z);
+    CHECK_FALSE(crossed);
+    CHECK(past);
 }

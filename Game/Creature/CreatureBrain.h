@@ -65,6 +65,9 @@ struct DoorSense
     int index = -1;
     glm::vec3 a{0.0f}; // one end of the shut panel, at the floor
     glm::vec3 b{0.0f}; // the other end
+    // Where the panel's free edge is now, at the floor: from a (the hinge) to here is the panel as it
+    // stands, open or shut -- what a body walking past has to go round.
+    glm::vec3 tip{0.0f};
     bool shut = false;
     bool locked = false;
 };
