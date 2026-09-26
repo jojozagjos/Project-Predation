@@ -74,6 +74,13 @@ struct PunctualLight
     bool bounded = false;
     glm::vec3 boundsMin{0.0f};
     glm::vec3 boundsMax{0.0f};
+    // A lamp that stays where it is, and so can have a shadow of its own drawn once and kept (see
+    // LampShadows): which lamp, as a number that is the same from frame to frame. None is zero. With its
+    // shadow ready, the box above is not needed and is ignored.
+    uint32_t shadowKey = 0;
+    // Light standing in for part of another lamp's -- its share through a doorway, round a corner --
+    // while that lamp has no shadow. Dropped once the lamp it stands in for has one.
+    uint32_t fallbackFor = 0;
 };
 
 inline constexpr size_t kMaxPunctualLights = 12;

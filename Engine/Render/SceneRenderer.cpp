@@ -112,6 +112,8 @@ bool SceneRenderer::Init(ShaderLibrary& shaders)
     m_uClipPlane = bgfx::createUniform("u_clipPlane", bgfx::UniformType::Vec4);
     m_uReflectParams = bgfx::createUniform("u_reflectParams", bgfx::UniformType::Vec4);
     m_sReflection = bgfx::createUniform("s_reflection", bgfx::UniformType::Sampler);
+    m_sLampShadow = bgfx::createUniform("s_lampShadow", bgfx::UniformType::Sampler);
+    m_uLampShadowParams = bgfx::createUniform("u_lampShadowParams", bgfx::UniformType::Vec4);
 
     // Occlusion is not required for a picture. If the depth program or the float target is missing
     // the game still runs, unshadowed, and says so once rather than every frame.
@@ -125,6 +127,7 @@ bool SceneRenderer::Init(ShaderLibrary& shaders)
     {
         PRED_LOG_WARN(Render, "SceneRenderer: no shadow maps; the sun and sky reach everywhere");
     }
+    m_lampShadows.Init(depthProgram);
 
     PRED_LOG_INFO(Render, "SceneRenderer initialized");
     return true;
@@ -132,6 +135,15 @@ bool SceneRenderer::Init(ShaderLibrary& shaders)
 
 void SceneRenderer::Shutdown()
 {
+    m_lampShadows.Shutdown();
+    for (bgfx::UniformHandle* handle : {&m_sLampShadow, &m_uLampShadowParams})
+    {
+        if (bgfx::isValid(*handle))
+        {
+            bgfx::destroy(*handle);
+        }
+        *handle = BGFX_INVALID_HANDLE;
+    }
     m_sunShadow.Shutdown();
     m_sunNearShadow.Shutdown();
     m_skyShadow.Shutdown();
@@ -267,6 +279,8 @@ void SceneRenderer::SetEnvironmentUniforms(const Environment& environment,
     const float texelWorld[4] = {m_sunShadow.TexelSize(), m_skyShadow.TexelSize(), spotFar,
                                  m_sunNearShadow.TexelSize()};
     bgfx::setUniform(m_uShadowTexelWorld, texelWorld);
+    const glm::vec4 lampParams = m_lampShadows.Params();
+    bgfx::setUniform(m_uLampShadowParams, glm::value_ptr(lampParams));
 
     // No clip, and the mirror on if there is one to sample. Both are overridden immediately after
     // this by the reflection pass itself, which needs the opposite of each.
@@ -333,6 +347,7 @@ void SceneRenderer::SubmitMesh(bgfx::ViewId view, const Mesh& mesh, const Materi
         bgfx::setTexture(5, m_sSunNearShadow, m_shadowsReady ? m_sunNearShadow.Texture() : white);
         bgfx::setTexture(2, m_sSkyShadow, m_shadowsReady ? m_skyShadow.Texture() : white);
         bgfx::setTexture(3, m_sSpotShadow, m_shadowsReady ? m_spotShadow.Texture() : white);
+        bgfx::setTexture(6, m_sLampShadow, m_lampShadows.Ready() ? m_lampShadows.Texture() : white);
         // And the mirror, for the same reason: a sampler the shader declares and nobody fills reads
         // whatever was last in that slot.
         bgfx::setTexture(4, m_sReflection,
@@ -434,6 +449,12 @@ void SceneRenderer::RenderShadows(bgfx::ViewId sunView, bgfx::ViewId sunNearView
         m_spotShadow.FitSpot(first.position, first.direction, first.outerAngle, first.range);
         m_spotShadow.Begin(spotView);
         m_spotShadowLit = true;
+    }
+
+    // And the lamps', drawn a few at a time and kept.
+    if (LampShadowsEnabled())
+    {
+        m_lampShadows.Update(environment.sceneLights, focus, Renderer::kViewLampShadowFirst, scene, meshes);
     }
 
     scene.ForEachShadowCaster(
@@ -597,6 +618,11 @@ void SceneRenderer::PackLights(const Environment& environment)
         {
             return;
         }
+        // Standing in for a lamp that has its own shadow now: that lamp does this itself.
+        if (light.fallbackFor != 0 && LampSlot(light.fallbackFor) >= 0)
+        {
+            return;
+        }
         PackedLight packed;
         const glm::vec3 direction = glm::length(light.direction) > 1e-4f ? glm::normalize(light.direction)
                                                                          : glm::vec3(0.0f, -1.0f, 0.0f);
@@ -622,14 +648,18 @@ void SceneRenderer::PackLights(const Environment& environment)
         entry[12] = outer;
         entry[13] = 1.0f;
         entry[14] = std::max(light.sourceRadius, 0.01f);
+        // Its shadow's slot in the lamps' atlas, or -1: with one, it is not kept in its box -- the walls
+        // keep it in its room, and it comes through a doorway as far as it would.
+        const int lampSlot = LampSlot(light.shadowKey);
+        entry[15] = static_cast<float>(lampSlot);
         entry[16] = light.boundsMin.x;
         entry[17] = light.boundsMin.y;
         entry[18] = light.boundsMin.z;
-        entry[19] = light.bounded ? 1.0f : 0.0f;
+        entry[19] = light.bounded && lampSlot < 0 ? 1.0f : 0.0f;
         entry[20] = light.boundsMax.x;
         entry[21] = light.boundsMax.y;
         entry[22] = light.boundsMax.z;
-        packed.bounded = light.bounded;
+        packed.bounded = light.bounded && lampSlot < 0;
         packed.boundsMin = light.boundsMin;
         packed.boundsMax = light.boundsMax;
         packed.position = light.position;

@@ -87,6 +87,7 @@ set(PRED_ENGINE_SOURCES
     Render/PostProcess.cpp
     Render/ShadowMap.h
     Render/ShadowMap.cpp
+    Render/LampShadows.cpp
     Render/StbImpl.cpp
 
     Debug/ImGuiLayer.h

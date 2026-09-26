@@ -74,6 +74,8 @@ public:
         // (-1 an open archway, -2 not looked for yet), and how open that door is, which is how much of the
         // light gets through.
         bool spill = false;
+        // The lamp this stands in for part of (a spill, a copy round a corner), or -1 for a lamp of its own.
+        int parent = -1;
         glm::vec3 doorway{0.0f};
         int door = -2;
         float gate = 1.0f;
@@ -126,6 +128,8 @@ private:
     std::vector<int> m_unpowered;
     size_t m_doorsSeen = static_cast<size_t>(-1);
     float m_boundsMargin = 0.05f;
+    // Counted up whenever lamps are taken away, so a lamp's shadow key is never reused for a different lamp.
+    uint32_t m_generation = 1;
     MeshHandle m_fittingMeshes[4] = {};
 };
 

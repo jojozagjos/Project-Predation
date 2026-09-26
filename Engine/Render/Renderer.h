@@ -59,6 +59,9 @@ public:
     // finished picture onto the screen, before the interface.
     static constexpr bgfx::ViewId kViewPostFirst = 9;
     static constexpr bgfx::ViewId kViewPost = 18;
+    // The lamps' shadows, a few faces a frame into their atlas. After the picture, not before it: what is
+    // drawn here is used from the next frame, which is what a shadow drawn once and kept wants anyway.
+    static constexpr bgfx::ViewId kViewLampShadowFirst = 120;
     // A block reserved for rendering into offscreen targets, such as the inventory icon atlas.
     // bgfx runs views in id order, so these are finished long before the UI that samples them.
     static constexpr bgfx::ViewId kViewOffscreenFirst = 200;

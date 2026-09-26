@@ -193,6 +193,7 @@ void LevelLights::Clear(Scene& scene)
         }
     }
     m_lights.clear();
+    ++m_generation;
     m_unpowered.clear();
 }
 
@@ -208,6 +209,7 @@ void LevelLights::RemoveFrom(Scene& scene, size_t first)
     if (first < m_lights.size())
     {
         m_lights.resize(first);
+        ++m_generation;
     }
 }
 
@@ -228,6 +230,7 @@ int LevelLights::AddSpill(int source, const glm::vec3& at, const glm::vec3& dire
     spill.doorway = at;
     spill.position = at + flat * 0.35f;
     spill.spill = true;
+    spill.parent = source;
     spill.intensity *= share;
     spill.range = std::min(spill.range, 5.5f);
     spill.innerAngle = 40.0f;
@@ -293,6 +296,7 @@ int LevelLights::AddCopy(int source, const glm::vec3& min, const glm::vec3& max)
     }
     Light copy = m_lights[static_cast<size_t>(source)];
     copy.fitting = Entity{};
+    copy.parent = source;
     m_lights.push_back(copy);
     const int index = static_cast<int>(m_lights.size()) - 1;
     Bound(index, min, max);
@@ -358,6 +362,17 @@ void LevelLights::Gather(std::vector<PunctualLight>& out) const
         punctual.bounded = light.bounded;
         punctual.boundsMin = light.boundsMin;
         punctual.boundsMax = light.boundsMax;
+        // A lamp of its own has a shadow of its own; what stands in for part of one gives way to it.
+        const auto keyOf = [this](size_t index) { return (m_generation << 12) + static_cast<uint32_t>(index) + 1u; };
+        const size_t index = static_cast<size_t>(&light - m_lights.data());
+        if (light.parent < 0)
+        {
+            punctual.shadowKey = keyOf(index);
+        }
+        else
+        {
+            punctual.fallbackFor = keyOf(static_cast<size_t>(light.parent));
+        }
         out.push_back(punctual);
     }
 }

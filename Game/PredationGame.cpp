@@ -119,6 +119,11 @@ CVar<float> cv_shadowDistance{"r.shadow_distance", 64.0f,
 // through walls, which in a game about what a beam reaches is the most visible thing on this page.
 CVar<bool> cv_spotShadows{"r.torch_shadows", true, "Whether the flashlight is stopped by walls",
                           CVarFlags::Archive};
+// The lamps' own shadows: walls keep a lamp's light in, and it comes through a doorway as far as it
+// would. Off, each lamp is kept in its room by a box, and doorways are hard edges between one lamp and
+// the next.
+CVar<bool> cv_lampShadows{"r.lamp_shadows", true, "Whether the lamps are stopped by walls (off: kept in their rooms)",
+                          CVarFlags::Archive};
 CVar<int> cv_occlusionDebug{"r.show_occlusion", 0,
                             "Draw occlusion instead of the scene: 1 the sun, 2 the sky"};
 // Mirrors. A second pass over the whole scene, at half the window's width and height, so it is the
@@ -9503,6 +9508,14 @@ void PredationGame::OnUpdate(double dt, double alpha)
         // And the level's own lamps, lit or flickering or not at all, for each surface to choose from.
         m_levelLights.Update(m_scene, m_lightClock);
         m_levelLights.UpdateDoorways(m_world);
+        // A door swinging changes what the lamps round it can see: theirs are drawn again.
+        for (const WorldObjects::Door& door : m_world.Doors())
+        {
+            if (door.IsMoving())
+            {
+                app.GetSceneRenderer().InvalidateLampShadows(door.hinge, door.panelOffset.x * 2.0f + 0.3f);
+            }
+        }
         environment.sceneLights.clear();
         m_levelLights.Gather(environment.sceneLights);
         for (PunctualLight& lamp : environment.sceneLights)
@@ -9562,6 +9575,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
     ShadowSettings& shadows = app.GetSceneRenderer().Shadows();
     shadows.sunEnabled = cv_sunShadows.Get();
     shadows.skyEnabled = cv_skyShadows.Get();
+    app.GetSceneRenderer().SetLampShadowsEnabled(cv_lampShadows.Get());
     // Anything saved from before the map was made bigger comes up to the new distance: 24 m of shadow in
     // a level you can see a hundred metres across reads as shadows simply not working.
     if (cv_shadowDistance.Get() < 40.0f)

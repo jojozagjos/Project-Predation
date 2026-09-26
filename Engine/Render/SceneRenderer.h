@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Engine/Render/LampShadows.h"
 #include "Engine/Render/ShadowMap.h"
 #include "Engine/Render/TextureLibrary.h"
 
@@ -128,6 +129,13 @@ public:
     const ShadowSettings& Shadows() const { return m_shadowSettings; }
     bool ShadowsAvailable() const { return m_shadowsReady; }
 
+    // The lamps' own shadows (see LampShadows): on or off, and what to draw again when something in the
+    // level moves -- a door near a lamp -- or all of it changes.
+    void SetLampShadowsEnabled(bool enabled) { m_lampShadowsEnabled = enabled; }
+    bool LampShadowsEnabled() const { return m_lampShadowsEnabled && m_lampShadows.Ready(); }
+    void InvalidateLampShadows(const glm::vec3& at, float radius) { m_lampShadows.Invalidate(at, radius); }
+    void InvalidateAllLampShadows() { m_lampShadows.InvalidateAll(); }
+
 private:
     // `withShadows` is false for the icon atlas, which draws one mesh with an environment of its
     // own and has no maps fitted to it: leaving them on would light icons through the world.
@@ -190,6 +198,11 @@ private:
     // punctual light has no occlusion at all and shines through walls.
     ShadowMap m_spotShadow;
     bool m_spotShadowLit = false;
+    LampShadows m_lampShadows;
+    bool m_lampShadowsEnabled = true;
+    bgfx::UniformHandle m_sLampShadow = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uLampShadowParams = BGFX_INVALID_HANDLE;
+    int LampSlot(uint32_t key) const { return LampShadowsEnabled() ? m_lampShadows.SlotFor(key) : -1; }
 
     // The planar reflection target, and whether this frame has one in it.
     bgfx::FrameBufferHandle m_reflectionTarget = BGFX_INVALID_HANDLE;

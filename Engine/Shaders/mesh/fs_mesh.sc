@@ -74,6 +74,11 @@ uniform vec4 u_clipPlane;
 // rendered, so a mirror cannot reflect a mirror reflecting a mirror.
 uniform vec4 u_reflectParams;
 
+// The lamps' shadows: six faces a lamp, each a square tile of one atlas (LampShadows). x = one tile's
+// width in the atlas, y = tiles across, z = 1 when textures start at the bottom, w = one texel of a tile.
+uniform vec4 u_lampShadowParams;
+SAMPLER2D(s_lampShadow, 6);
+
 // bgfx gives HLSL a struct for a sampler and GLSL the built-in type, and makes `sampler2D` mean
 // whichever of the two this backend has. So a function can take one, and the lookup below is
 // written once rather than once per map.
@@ -256,6 +261,64 @@ float sunReaching(vec3 P, vec3 N, float NoL)
 	return mix(far, near, nearWeight);
 }
 
+// How much of a lamp reaches a surface, from the lamp's own shadow: which of its six faces looks towards
+// the surface, where the surface falls in that face's tile, and whether anything nearer the lamp was drawn
+// there. The faces are the same table as LampFaceForward / LampFaceUp, and the lookup the same as
+// glm::lookAtRH and a 90 degree perspective, so what was drawn and what is read agree.
+float lampReaches(float slot, vec3 lamp, float range, vec3 P, vec3 N)
+{
+	vec3 v = P + N * 0.04 - lamp;
+	vec3 a = abs(v);
+	float face;
+	vec3 f;
+	vec3 up;
+	if (a.x >= a.y && a.x >= a.z)
+	{
+		face = v.x > 0.0 ? 0.0 : 1.0;
+		f = vec3(v.x > 0.0 ? 1.0 : -1.0, 0.0, 0.0);
+		up = vec3(0.0, 1.0, 0.0);
+	}
+	else if (a.y >= a.z)
+	{
+		face = v.y > 0.0 ? 2.0 : 3.0;
+		f = vec3(0.0, v.y > 0.0 ? 1.0 : -1.0, 0.0);
+		up = vec3(0.0, 0.0, v.y > 0.0 ? 1.0 : -1.0);
+	}
+	else
+	{
+		face = v.z > 0.0 ? 4.0 : 5.0;
+		f = vec3(0.0, 0.0, v.z > 0.0 ? 1.0 : -1.0);
+		up = vec3(0.0, 1.0, 0.0);
+	}
+	vec3 s = normalize(cross(f, up));
+	vec3 u = cross(s, f);
+	float major = max(dot(v, f), 1e-4);
+	vec2 ndc = vec2(dot(v, s), dot(v, u)) / major;
+
+	float tile = slot * 6.0 + face;
+	float across = u_lampShadowParams.y;
+	float ty = floor(tile / across);
+	float tx = tile - ty * across;
+	float norm = u_lampShadowParams.x;
+	float texel = u_lampShadowParams.w;
+	bool bottomUp = u_lampShadowParams.z > 0.5;
+
+	// A little slack, growing with distance as the texels do.
+	float bias = 0.03 + major * 0.03;
+	float lit = 0.0;
+	for (int k = 0; k < 4; ++k)
+	{
+		vec2 offset = vec2(k == 1 || k == 3 ? 0.5 : -0.5, k >= 2 ? 0.5 : -0.5) * texel;
+		vec2 local = vec2(ndc.x * 0.5 + 0.5, bottomUp ? ndc.y * 0.5 + 0.5 : 0.5 - ndc.y * 0.5) + offset;
+		local = clamp(local, vec2_splat(texel), vec2_splat(1.0 - texel));
+		vec2 uv = vec2((tx + local.x) * norm, bottomUp ? 1.0 - (ty + 1.0 - local.y) * norm : (ty + local.y) * norm);
+		float stored = texture2DLod(s_lampShadow, uv, 0.0).x;
+		float nearest = range - stored;
+		lit += major <= nearest + bias ? 1.0 : 0.0;
+	}
+	return lit * 0.25;
+}
+
 // GGX / Trowbridge-Reitz normal distribution.
 float distributionGGX(float NoH, float roughness)
 {
@@ -382,9 +445,16 @@ void main()
 		// so it reaches what the fitting does not face -- the ceiling over a downlight, a corner behind
 		// it. Without it a lamp's room was lit to a hard line where the walls met a pitch black ceiling.
 		// Not the torch in the first slot: it is the one light with a shadow, and this has none.
+		// A lamp with a shadow of its own: whether this surface can see it. Asked here, before the cone,
+		// because the light bounced round its room below is kept in by the same walls.
+		float lampLit = 1.0;
+		if (i > 0 && outerOn.w > -0.5)
+		{
+			lampLit = lampReaches(outerOn.w, posRange.xyz, posRange.w, v_worldPos, N);
+		}
 		if (i > 0)
 		{
-			color += diffuseColor * colorIntensity.rgb * colorIntensity.w * attenuation * 0.05;
+			color += diffuseColor * colorIntensity.rgb * colorIntensity.w * attenuation * 0.05 * lampLit;
 		}
 
 		float cosAngle = dot(-Lp, normalize(dirInner.xyz));
@@ -411,7 +481,7 @@ void main()
 		// most at the eye -- which is the player's own torch whenever it is lit, because it is at
 		// the eye. Every other light still shines through walls, and that is a deliberate limit
 		// rather than an oversight: each one would be another whole pass over the scene.
-		float reaches = 1.0;
+		float reaches = lampLit;
 		if (i == 0)
 		{
 			reaches = lightReachesSpot(s_spotShadow, u_spotShadowMtx, u_spotShadowAxis,
