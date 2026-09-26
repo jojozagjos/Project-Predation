@@ -1874,3 +1874,51 @@ Four changes to how Assets/Data works, all so the files can be edited by hand wi
   network in a byte now, not six bits (protocol 17).
 - **Lamps stop at the floor.** Nothing casts a lamp's shadow, so the facility's lamps reach 5.4 m rather
   than their kind's 9 m: far enough to light their room, not far enough to light the one below.
+
+## ADR-086: Light through doorways, bounded lamps, and doors creatures go round
+
+- **Every lamp is bounded to its room.** A lamp lights only inside a box a little bigger than its room
+  (or its straight run of corridor); the shader drops anything outside it. That stopped light going
+  through walls, and it also stopped light going through doorways. So a doorway gets a weaker copy of
+  the lamp beside it (`LevelLights::AddSpill`): the same flicker and mood, 45% as bright, bounded to the
+  next room, with no fitting of its own.
+- **Doors fill their frames.** Panels are 2 cm narrower and lower than their holes, not 10 cm. Doors
+  whose swings would cross hinge the other way.
+- **An open door is in the way.** The navigation mesh has every doorway open and knows nothing of the
+  panels, so creatures walked through open doors. Each door now reports where its panel stands. A
+  creature heading across an open panel aims for a point past its free edge, and is kept its own
+  half-width off it, on the side it came from.
+
+## ADR-087: Creatures on more than one floor
+
+- **Height counts between storeys.** A creature's sense of "how far" ignores height, which is right
+  for a block or a crouch and wrong for the floor above. More than 2.8 m apart vertically now counts as
+  far (the flat distance plus twice the height). A creature no longer stands under where it wants to be.
+- **Noises are heard on the floor they were made on,** dropped from where they were made (a gun at eye
+  height) to the floor under it.
+- **Nowhere to stand on the stairs.** Random places to wander to, wait at or listen from are not
+  picked on a sloping polygon if anywhere else will do. A place to go round to a noise must be on its
+  floor and near it by walking, not only as the crow flies.
+- Tested by sending creatures up and down every stairwell of three generated facilities, after a
+  noise and after somebody they can see, including one that goes about on ceilings.
+
+## ADR-088: Lockers you look out of
+
+- **Slits, and a fixed view.** A locker door has a band of louvred slits at eye height. Hidden, the view
+  looks straight out through them and turns only 28° either way, 22° down and 12° up: what a body shut
+  in a locker could see, as in Alien: Isolation. The door still collides as a solid panel.
+- **Prompts are for glancing at.** A locker's prompt comes up for somebody looking into its doorway, not
+  at its foot. Every interaction prompt is 30% larger on a darker, edged backing.
+
+## ADR-089: Nests that creep, beat outwards and die from the heart
+
+- **Grown over surfaces, not lines of sight.** After what the heart can see close round it, a nest
+  creeps outwards patch by patch across the surfaces: into a corner and up the next wall, over an edge
+  and round onto its far side. At most 17 m along the way it grows and about 400 patches, over seven
+  minutes (`ai.nest_growth_seconds`). A patch that turns onto a new surface starts a little way up it,
+  and may run into corners but not off edges.
+- **The beat goes all the way out.** Each heartbeat travels out through the whole nest from the heart,
+  a swell and a faint glow, weaker the further it goes.
+- **It dies from the heart outwards, and something stays.** The heart bursts and slumps first; the
+  death spreads out at 0.75 m/s; each part darkens, slackens and rots down to a third of its size over
+  `ai.nest_rot_seconds`. The husk is never removed.
