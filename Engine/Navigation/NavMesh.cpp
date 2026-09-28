@@ -10,7 +10,9 @@
 #include <Recast.h>
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
+#include <thread>
 #include <cmath>
 #include <cstring>
 #include <unordered_map>
@@ -191,7 +193,7 @@ JumpLinks FindJumps(const dtNavMesh& mesh, const dtNavMeshQuery& query, const st
     TriangleGrid grid(triangles);
     dtQueryFilter walk;
     walk.setIncludeFlags(kWalkFlag);
-    constexpr size_t kMaxLinks = 1024;
+    constexpr size_t kMaxLinks = 8192;
     constexpr float kHighest = 4.6f;   // no drop further than this
     constexpr float kLowest = 0.45f;   // anything less is a step, not a jump
     constexpr float kJumpableUp = 2.7f; // higher than this is only ever a drop
@@ -450,224 +452,365 @@ bool NavMesh::Build(const std::vector<glm::vec3>& triangles, const NavSettings& 
     }
     const auto started = std::chrono::steady_clock::now();
 
-    // Recast wants flat arrays: every corner, and three indices per triangle. The soup is already
-    // one corner per entry, so the indices are just counting.
+    // Recast wants flat arrays: every corner, and three indices per triangle. The soup is already one corner
+    // per entry, so the indices are just counting.
     const int vertexCount = static_cast<int>(triangles.size());
     const int triangleCount = vertexCount / 3;
     const float* vertices = &triangles.front().x;
-    std::vector<int> indices(static_cast<size_t>(triangleCount) * 3);
-    for (size_t i = 0; i < indices.size(); ++i)
-    {
-        indices[i] = static_cast<int>(i);
-    }
 
-    // The standard single-mesh build, as Recast's own sample does it. Every number here is in
-    // cells, so the metres the caller gave are converted once, rounding in whichever direction
-    // keeps the creature out of trouble: up for its size, down for what it can climb.
-    rcConfig config{};
-    config.cs = settings.cellSize;
-    config.ch = settings.cellHeight;
-    config.walkableSlopeAngle = settings.agentMaxSlopeDegrees;
+    // Every number here is in cells, so the metres the caller gave are converted once, rounding in whichever
+    // direction keeps the creature out of trouble: up for its size, down for what it can climb.
+    rcConfig base{};
+    base.cs = settings.cellSize;
+    base.ch = settings.cellHeight;
+    base.walkableSlopeAngle = settings.agentMaxSlopeDegrees;
     // Built for the lowest body that uses it -- one crawling -- with the floor too low to stand on marked
     // below, so that a body standing up is never routed along it.
     const bool crawlspaces = settings.crawlHeight > 0.0f && settings.crawlHeight < settings.agentHeight;
     const float lowest = crawlspaces ? settings.crawlHeight : settings.agentHeight;
-    config.walkableHeight = static_cast<int>(std::ceil(lowest / config.ch));
-    const int standingCells = static_cast<int>(std::ceil(settings.agentHeight / config.ch));
-    config.walkableClimb = static_cast<int>(std::floor(settings.agentMaxClimb / config.ch));
-    config.walkableRadius = static_cast<int>(std::ceil(settings.agentRadius / config.cs));
-    config.maxEdgeLen = static_cast<int>(12.0f / config.cs);
-    config.maxSimplificationError = 1.3f;
-    config.minRegionArea = 8 * 8;
-    config.mergeRegionArea = 20 * 20;
-    config.maxVertsPerPoly = 6;
-    config.detailSampleDist = config.cs * 6.0f;
-    config.detailSampleMaxError = config.ch * 1.0f;
-    rcCalcBounds(vertices, vertexCount, config.bmin, config.bmax);
-    rcCalcGridSize(config.bmin, config.bmax, config.cs, &config.width, &config.height);
+    base.walkableHeight = static_cast<int>(std::ceil(lowest / base.ch));
+    const int standingCells = static_cast<int>(std::ceil(settings.agentHeight / base.ch));
+    base.walkableClimb = static_cast<int>(std::floor(settings.agentMaxClimb / base.ch));
+    base.walkableRadius = static_cast<int>(std::ceil(settings.agentRadius / base.cs));
+    base.maxEdgeLen = static_cast<int>(12.0f / base.cs);
+    base.maxSimplificationError = 1.3f;
+    base.minRegionArea = 8 * 8;
+    base.mergeRegionArea = 20 * 20;
+    base.maxVertsPerPoly = 6;
+    base.detailSampleDist = base.cs * 6.0f;
+    base.detailSampleMaxError = base.ch * 1.0f;
+    float boundsMin[3];
+    float boundsMax[3];
+    rcCalcBounds(vertices, vertexCount, boundsMin, boundsMax);
+    int gridWidth = 0;
+    int gridHeight = 0;
+    rcCalcGridSize(boundsMin, boundsMax, base.cs, &gridWidth, &gridHeight);
 
-    rcContext context(false);
+    // In tiles, each built on its own, at once: a level of any size, where one piece the size of a whole site ran
+    // out of room to number its cells and came out with nothing walkable in it. A level small enough for one piece
+    // -- the testing area -- is still built as one: its tiles would only cut its floor into different polygons.
+    constexpr int kOnePieceCells = 1536;
+    const int longest = std::max(gridWidth, gridHeight);
+    const int kTileCells = longest <= kOnePieceCells ? longest : 512;
+    const int tilesX = (gridWidth + kTileCells - 1) / kTileCells;
+    const int tilesY = (gridHeight + kTileCells - 1) / kTileCells;
+    const float tileSize = static_cast<float>(kTileCells) * base.cs;
+    // One piece is exactly the level's own grid, with no border to share with a neighbour it does not have.
+    const bool onePiece = tilesX == 1 && tilesY == 1;
+    base.tileSize = onePiece ? 0 : kTileCells;
+    base.borderSize = onePiece ? 0 : base.walkableRadius + 3;
+    base.width = onePiece ? gridWidth : kTileCells + base.borderSize * 2;
+    base.height = onePiece ? gridHeight : kTileCells + base.borderSize * 2;
+    const float border = static_cast<float>(base.borderSize) * base.cs;
 
-    std::unique_ptr<rcHeightfield, HeightfieldDeleter> solid(rcAllocHeightfield());
-    if (!solid || !rcCreateHeightfield(&context, *solid, config.width, config.height, config.bmin,
-                                       config.bmax, config.cs, config.ch))
+    // Which triangles each tile needs: those reaching into it or its border.
+    const int tileCount = tilesX * tilesY;
+    std::vector<std::vector<int>> tileTriangles(static_cast<size_t>(tileCount));
+    for (int t = 0; t < triangleCount; ++t)
     {
-        return fail("could not allocate the heightfield");
-    }
-
-    // Which triangles are floor rather than wall, then the level drawn into voxels.
-    std::vector<unsigned char> areas(static_cast<size_t>(triangleCount), 0);
-    rcMarkWalkableTriangles(&context, config.walkableSlopeAngle, vertices, vertexCount,
-                            indices.data(), triangleCount, areas.data());
-    if (!rcRasterizeTriangles(&context, vertices, vertexCount, indices.data(), areas.data(),
-                              triangleCount, *solid, config.walkableClimb))
-    {
-        return fail("could not rasterise the level");
-    }
-
-    // Removing what a body cannot use: a kerb it can step onto is kept, the lip of a ledge it would
-    // fall from is not, and anywhere the ceiling is lower than it is tall is not floor at all.
-    rcFilterLowHangingWalkableObstacles(&context, config.walkableClimb, *solid);
-    rcFilterLedgeSpans(&context, config.walkableHeight, config.walkableClimb, *solid);
-    rcFilterWalkableLowHeightSpans(&context, config.walkableHeight, *solid);
-
-    std::unique_ptr<rcCompactHeightfield, CompactDeleter> compact(rcAllocCompactHeightfield());
-    if (!compact || !rcBuildCompactHeightfield(&context, config.walkableHeight, config.walkableClimb,
-                                               *solid, *compact))
-    {
-        return fail("could not compact the heightfield");
-    }
-    solid.reset();
-
-    if (crawlspaces)
-    {
-        for (int y = 0; y < compact->height; ++y)
+        const glm::vec3& a = triangles[static_cast<size_t>(t) * 3];
+        const glm::vec3& b = triangles[static_cast<size_t>(t) * 3 + 1];
+        const glm::vec3& c = triangles[static_cast<size_t>(t) * 3 + 2];
+        const float x0 = std::min({a.x, b.x, c.x}) - border - boundsMin[0];
+        const float x1 = std::max({a.x, b.x, c.x}) + border - boundsMin[0];
+        const float z0 = std::min({a.z, b.z, c.z}) - border - boundsMin[2];
+        const float z1 = std::max({a.z, b.z, c.z}) + border - boundsMin[2];
+        const int tx0 = std::clamp(static_cast<int>(std::floor(x0 / tileSize)), 0, tilesX - 1);
+        const int tx1 = std::clamp(static_cast<int>(std::floor(x1 / tileSize)), 0, tilesX - 1);
+        const int tz0 = std::clamp(static_cast<int>(std::floor(z0 / tileSize)), 0, tilesY - 1);
+        const int tz1 = std::clamp(static_cast<int>(std::floor(z1 / tileSize)), 0, tilesY - 1);
+        for (int tz = tz0; tz <= tz1; ++tz)
         {
-            for (int x = 0; x < compact->width; ++x)
+            for (int tx = tx0; tx <= tx1; ++tx)
             {
-                const rcCompactCell& cell = compact->cells[x + y * compact->width];
-                for (unsigned i = cell.index, end = cell.index + cell.count; i < end; ++i)
+                tileTriangles[static_cast<size_t>(tz * tilesX + tx)].push_back(t);
+            }
+        }
+    }
+
+    struct Tile
+    {
+        std::unique_ptr<rcPolyMesh, PolyMeshDeleter> polys;
+        std::unique_ptr<rcPolyMeshDetail, DetailDeleter> detail;
+        const char* failure = nullptr;
+    };
+    std::vector<Tile> tiles(static_cast<size_t>(tileCount));
+    const auto buildTile = [&](int index)
+    {
+        Tile& tile = tiles[static_cast<size_t>(index)];
+        const std::vector<int>& mine = tileTriangles[static_cast<size_t>(index)];
+        if (mine.empty())
+        {
+            return;
+        }
+        const int tx = index % tilesX;
+        const int tz = index / tilesX;
+        rcConfig config = base;
+        rcVcopy(config.bmin, boundsMin);
+        rcVcopy(config.bmax, boundsMax);
+        if (!onePiece)
+        {
+            config.bmin[0] = boundsMin[0] + static_cast<float>(tx) * tileSize - border;
+            config.bmin[2] = boundsMin[2] + static_cast<float>(tz) * tileSize - border;
+            config.bmax[0] = boundsMin[0] + static_cast<float>(tx + 1) * tileSize + border;
+            config.bmax[2] = boundsMin[2] + static_cast<float>(tz + 1) * tileSize + border;
+        }
+        rcContext context(false);
+
+        std::unique_ptr<rcHeightfield, HeightfieldDeleter> solid(rcAllocHeightfield());
+        if (!solid || !rcCreateHeightfield(&context, *solid, config.width, config.height, config.bmin, config.bmax, config.cs, config.ch))
+        {
+            tile.failure = "could not allocate the heightfield";
+            return;
+        }
+        // Which triangles are floor rather than wall, then the level drawn into voxels.
+        std::vector<int> indices(mine.size() * 3);
+        for (size_t i = 0; i < mine.size(); ++i)
+        {
+            indices[i * 3 + 0] = mine[i] * 3 + 0;
+            indices[i * 3 + 1] = mine[i] * 3 + 1;
+            indices[i * 3 + 2] = mine[i] * 3 + 2;
+        }
+        const int count = static_cast<int>(mine.size());
+        std::vector<unsigned char> areas(mine.size(), 0);
+        rcMarkWalkableTriangles(&context, config.walkableSlopeAngle, vertices, vertexCount, indices.data(), count, areas.data());
+        if (!rcRasterizeTriangles(&context, vertices, vertexCount, indices.data(), areas.data(), count, *solid, config.walkableClimb))
+        {
+            tile.failure = "could not rasterise the level";
+            return;
+        }
+        // Removing what a body cannot use: a kerb it can step onto is kept, the lip of a ledge it would fall from
+        // is not, and anywhere the ceiling is lower than it is tall is not floor at all.
+        rcFilterLowHangingWalkableObstacles(&context, config.walkableClimb, *solid);
+        rcFilterLedgeSpans(&context, config.walkableHeight, config.walkableClimb, *solid);
+        rcFilterWalkableLowHeightSpans(&context, config.walkableHeight, *solid);
+
+        std::unique_ptr<rcCompactHeightfield, CompactDeleter> compact(rcAllocCompactHeightfield());
+        if (!compact || !rcBuildCompactHeightfield(&context, config.walkableHeight, config.walkableClimb, *solid, *compact))
+        {
+            tile.failure = "could not compact the heightfield";
+            return;
+        }
+        solid.reset();
+        if (crawlspaces)
+        {
+            for (int y = 0; y < compact->height; ++y)
+            {
+                for (int x = 0; x < compact->width; ++x)
                 {
-                    if (compact->areas[i] != RC_NULL_AREA && compact->spans[i].h < standingCells)
+                    const rcCompactCell& cell = compact->cells[x + y * compact->width];
+                    for (unsigned i = cell.index, last = cell.index + cell.count; i < last; ++i)
                     {
-                        compact->areas[i] = kCrawlArea;
+                        if (compact->areas[i] != RC_NULL_AREA && compact->spans[i].h < standingCells)
+                        {
+                            compact->areas[i] = kCrawlArea;
+                        }
                     }
                 }
             }
         }
-    }
+        // Shrunk away from the walls by the body's radius, so a route along the mesh is a route the whole body fits
+        // along rather than one its centre fits along.
+        if (!rcErodeWalkableArea(&context, config.walkableRadius, *compact) || !rcBuildDistanceField(&context, *compact) ||
+            !rcBuildRegions(&context, *compact, config.borderSize, config.minRegionArea, config.mergeRegionArea))
+        {
+            tile.failure = "could not divide the floor into regions";
+            return;
+        }
+        std::unique_ptr<rcContourSet, ContourDeleter> contours(rcAllocContourSet());
+        if (!contours || !rcBuildContours(&context, *compact, config.maxSimplificationError, config.maxEdgeLen, *contours))
+        {
+            tile.failure = "could not trace the regions' outlines";
+            return;
+        }
+        if (contours->nconts == 0)
+        {
+            return; // nothing to stand on here
+        }
+        tile.polys.reset(rcAllocPolyMesh());
+        if (!tile.polys || !rcBuildPolyMesh(&context, *contours, config.maxVertsPerPoly, *tile.polys))
+        {
+            tile.failure = "could not build polygons";
+            return;
+        }
+        tile.detail.reset(rcAllocPolyMeshDetail());
+        if (!tile.detail ||
+            !rcBuildPolyMeshDetail(&context, *tile.polys, *compact, config.detailSampleDist, config.detailSampleMaxError, *tile.detail))
+        {
+            tile.failure = "could not build the height detail";
+            return;
+        }
+        for (int i = 0; i < tile.polys->npolys; ++i)
+        {
+            if (tile.polys->areas[i] == RC_WALKABLE_AREA)
+            {
+                tile.polys->flags[i] = kWalkFlag;
+            }
+            else if (tile.polys->areas[i] == kCrawlArea)
+            {
+                tile.polys->flags[i] = kCrawlFlag;
+            }
+        }
+    };
 
-    // Shrunk away from the walls by the body's radius, so a route along the mesh is a route the
-    // whole body fits along rather than one its centre fits along.
-    if (!rcErodeWalkableArea(&context, config.walkableRadius, *compact) ||
-        !rcBuildDistanceField(&context, *compact) ||
-        !rcBuildRegions(&context, *compact, 0, config.minRegionArea, config.mergeRegionArea))
+    // On every core there is, a tile at a time.
     {
-        return fail("could not divide the floor into regions");
+        std::atomic<int> next{0};
+        const unsigned threads = std::clamp(std::thread::hardware_concurrency(), 1u, 8u);
+        std::vector<std::thread> workers;
+        for (unsigned w = 1; w < threads; ++w)
+        {
+            workers.emplace_back([&]() { for (int i = next++; i < tileCount; i = next++) { buildTile(i); } });
+        }
+        for (int i = next++; i < tileCount; i = next++)
+        {
+            buildTile(i);
+        }
+        for (std::thread& worker : workers)
+        {
+            worker.join();
+        }
     }
-
-    std::unique_ptr<rcContourSet, ContourDeleter> contours(rcAllocContourSet());
-    if (!contours || !rcBuildContours(&context, *compact, config.maxSimplificationError,
-                                      config.maxEdgeLen, *contours))
+    size_t polygons = 0;
+    for (const Tile& tile : tiles)
     {
-        return fail("could not trace the regions' outlines");
+        if (tile.failure != nullptr)
+        {
+            return fail(tile.failure);
+        }
+        polygons += tile.polys ? static_cast<size_t>(tile.polys->npolys) : 0;
     }
-
-    std::unique_ptr<rcPolyMesh, PolyMeshDeleter> polys(rcAllocPolyMesh());
-    if (!polys || !rcBuildPolyMesh(&context, *contours, config.maxVertsPerPoly, *polys))
-    {
-        return fail("could not build polygons");
-    }
-    std::unique_ptr<rcPolyMeshDetail, DetailDeleter> detail(rcAllocPolyMeshDetail());
-    if (!detail || !rcBuildPolyMeshDetail(&context, *polys, *compact, config.detailSampleDist,
-                                          config.detailSampleMaxError, *detail))
-    {
-        return fail("could not build the height detail");
-    }
-    if (polys->npolys == 0)
+    if (polygons == 0)
     {
         return fail("nothing in the level is walkable for a body this size");
     }
 
-    for (int i = 0; i < polys->npolys; ++i)
+    // The mesh, the tiles in it, and -- given the jumps each tile's floor starts -- the same again with them in it.
+    int tileBits = 0;
+    while ((1 << tileBits) < tileCount)
     {
-        if (polys->areas[i] == RC_WALKABLE_AREA)
-        {
-            polys->flags[i] = kWalkFlag;
-        }
-        else if (polys->areas[i] == kCrawlArea)
-        {
-            polys->flags[i] = kCrawlFlag;
-        }
+        ++tileBits;
     }
-
-    dtNavMeshCreateParams params{};
-    params.verts = polys->verts;
-    params.vertCount = polys->nverts;
-    params.polys = polys->polys;
-    params.polyAreas = polys->areas;
-    params.polyFlags = polys->flags;
-    params.polyCount = polys->npolys;
-    params.nvp = polys->nvp;
-    params.detailMeshes = detail->meshes;
-    params.detailVerts = detail->verts;
-    params.detailVertsCount = detail->nverts;
-    params.detailTris = detail->tris;
-    params.detailTriCount = detail->ntris;
-    params.walkableHeight = settings.agentHeight;
-    params.walkableRadius = settings.agentRadius;
-    params.walkableClimb = settings.agentMaxClimb;
-    rcVcopy(params.bmin, polys->bmin);
-    rcVcopy(params.bmax, polys->bmax);
-    params.cs = config.cs;
-    params.ch = config.ch;
-    params.buildBvTree = true;
-
-    unsigned char* data = nullptr;
-    int dataSize = 0;
-    if (!dtCreateNavMeshData(&params, &data, &dataSize))
+    tileBits = std::min(tileBits, 14);
+    const int polyBits = 22 - tileBits;
+    dtNavMeshParams meshParams{};
+    rcVcopy(meshParams.orig, boundsMin);
+    meshParams.tileWidth = tileSize;
+    meshParams.tileHeight = tileSize;
+    meshParams.maxTiles = 1 << tileBits;
+    meshParams.maxPolys = 1 << polyBits;
+    const auto assemble = [&](const std::vector<JumpLinks>* links) -> std::unique_ptr<Impl>
     {
-        return fail("could not pack the navigation data");
-    }
-
-    auto impl = std::make_unique<Impl>();
-    impl->mesh = dtAllocNavMesh();
-    if (impl->mesh == nullptr ||
-        dtStatusFailed(impl->mesh->init(data, dataSize, DT_TILE_FREE_DATA)))
+        auto impl = std::make_unique<Impl>();
+        impl->mesh = dtAllocNavMesh();
+        if (impl->mesh == nullptr || dtStatusFailed(impl->mesh->init(&meshParams)))
+        {
+            return nullptr;
+        }
+        for (int index = 0; index < tileCount; ++index)
+        {
+            const Tile& tile = tiles[static_cast<size_t>(index)];
+            if (!tile.polys || tile.polys->npolys == 0)
+            {
+                continue;
+            }
+            dtNavMeshCreateParams params{};
+            params.verts = tile.polys->verts;
+            params.vertCount = tile.polys->nverts;
+            params.polys = tile.polys->polys;
+            params.polyAreas = tile.polys->areas;
+            params.polyFlags = tile.polys->flags;
+            params.polyCount = tile.polys->npolys;
+            params.nvp = tile.polys->nvp;
+            params.detailMeshes = tile.detail->meshes;
+            params.detailVerts = tile.detail->verts;
+            params.detailVertsCount = tile.detail->nverts;
+            params.detailTris = tile.detail->tris;
+            params.detailTriCount = tile.detail->ntris;
+            params.walkableHeight = settings.agentHeight;
+            params.walkableRadius = settings.agentRadius;
+            params.walkableClimb = settings.agentMaxClimb;
+            params.tileX = index % tilesX;
+            params.tileY = index / tilesX;
+            params.tileLayer = 0;
+            rcVcopy(params.bmin, tile.polys->bmin);
+            rcVcopy(params.bmax, tile.polys->bmax);
+            params.cs = base.cs;
+            params.ch = base.ch;
+            params.buildBvTree = true;
+            if (links != nullptr)
+            {
+                const JumpLinks& mine = (*links)[static_cast<size_t>(index)];
+                if (mine.Count() > 0)
+                {
+                    params.offMeshConVerts = mine.verts.data();
+                    params.offMeshConRad = mine.radius.data();
+                    params.offMeshConDir = mine.direction.data();
+                    params.offMeshConAreas = mine.areas.data();
+                    params.offMeshConFlags = mine.flags.data();
+                    params.offMeshConUserID = mine.ids.data();
+                    params.offMeshConCount = static_cast<int>(mine.Count());
+                }
+            }
+            unsigned char* data = nullptr;
+            int dataSize = 0;
+            if (!dtCreateNavMeshData(&params, &data, &dataSize))
+            {
+                continue;
+            }
+            if (dtStatusFailed(impl->mesh->addTile(data, dataSize, DT_TILE_FREE_DATA, 0, nullptr)))
+            {
+                dtFree(data);
+            }
+        }
+        impl->query = dtAllocNavMeshQuery();
+        if (impl->query == nullptr || dtStatusFailed(impl->query->init(impl->mesh, 4096)))
+        {
+            return nullptr;
+        }
+        impl->filter.setIncludeFlags(kWalkFlag);
+        impl->filter.setExcludeFlags(0);
+        return impl;
+    };
+    std::unique_ptr<Impl> impl = assemble(nullptr);
+    if (impl == nullptr)
     {
-        dtFree(data);
         return fail("could not load the navigation data");
     }
-    impl->query = dtAllocNavMeshQuery();
-    if (impl->query == nullptr || dtStatusFailed(impl->query->init(impl->mesh, 2048)))
-    {
-        return fail("could not start a navigation query");
-    }
-    impl->filter.setIncludeFlags(kWalkFlag);
-    impl->filter.setExcludeFlags(0);
 
-    // Jumps between floors, found on the finished mesh, and the mesh made again with them in it.
+    // Jumps between floors, found on the finished mesh, each given to the tile its take-off is in, and the mesh made
+    // again with them in it.
     const JumpLinks links = FindJumps(*impl->mesh, *impl->query, triangles);
     if (links.Count() > 0)
     {
-        params.offMeshConVerts = links.verts.data();
-        params.offMeshConRad = links.radius.data();
-        params.offMeshConDir = links.direction.data();
-        params.offMeshConAreas = links.areas.data();
-        params.offMeshConFlags = links.flags.data();
-        params.offMeshConUserID = links.ids.data();
-        params.offMeshConCount = static_cast<int>(links.Count());
-        unsigned char* linked = nullptr;
-        int linkedSize = 0;
-        if (dtCreateNavMeshData(&params, &linked, &linkedSize))
+        std::vector<JumpLinks> perTile(static_cast<size_t>(tileCount));
+        for (size_t i = 0; i < links.Count(); ++i)
         {
-            auto withLinks = std::make_unique<Impl>();
-            withLinks->mesh = dtAllocNavMesh();
-            if (withLinks->mesh != nullptr && dtStatusSucceed(withLinks->mesh->init(linked, linkedSize, DT_TILE_FREE_DATA)))
-            {
-                withLinks->query = dtAllocNavMeshQuery();
-                if (withLinks->query != nullptr && dtStatusSucceed(withLinks->query->init(withLinks->mesh, 2048)))
-                {
-                    withLinks->filter.setIncludeFlags(kWalkFlag);
-                    withLinks->filter.setExcludeFlags(0);
-                    withLinks->jumps = links.Count();
-                    impl = std::move(withLinks);
-                }
-            }
-            else
-            {
-                dtFree(linked);
-            }
+            const float x = links.verts[i * 6 + 0] - boundsMin[0];
+            const float z = links.verts[i * 6 + 2] - boundsMin[2];
+            const int tx = std::clamp(static_cast<int>(std::floor(x / tileSize)), 0, tilesX - 1);
+            const int tz = std::clamp(static_cast<int>(std::floor(z / tileSize)), 0, tilesY - 1);
+            JumpLinks& into = perTile[static_cast<size_t>(tz * tilesX + tx)];
+            into.verts.insert(into.verts.end(), links.verts.begin() + static_cast<ptrdiff_t>(i * 6), links.verts.begin() + static_cast<ptrdiff_t>(i * 6 + 6));
+            into.radius.push_back(links.radius[i]);
+            into.direction.push_back(links.direction[i]);
+            into.areas.push_back(links.areas[i]);
+            into.flags.push_back(links.flags[i]);
+            into.ids.push_back(links.ids[i]);
+        }
+        if (std::unique_ptr<Impl> withLinks = assemble(&perTile))
+        {
+            withLinks->jumps = links.Count();
+            impl = std::move(withLinks);
         }
     }
-    impl->polygons = static_cast<size_t>(polys->npolys);
+    impl->polygons = polygons;
     impl->mouths = FindCrawlMouths(*impl->mesh);
     m_impl = std::move(impl);
 
-    const float milliseconds =
-        std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - started).count();
-    PRED_LOG_INFO(AI, "Navigation mesh built: {} polygons, {} jumps and {} crawlspace openings from {} triangles in {:.1f} ms",
-                  m_impl->polygons, m_impl->jumps, m_impl->mouths.size(), triangleCount, milliseconds);
+    const float milliseconds = std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - started).count();
+    PRED_LOG_INFO(AI, "Navigation mesh built: {} polygons in {} tiles, {} jumps and {} crawlspace openings from {} triangles in {:.1f} ms",
+                  m_impl->polygons, tileCount, m_impl->jumps, m_impl->mouths.size(), triangleCount, milliseconds);
     return true;
 }
 

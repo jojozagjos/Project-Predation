@@ -26,13 +26,11 @@ namespace pred
 namespace
 {
 
-CVar<bool> cv_permadeath{"game.permadeath", true,
-                         "In the facility, the dead stay dead for the rest of it and drive a support drone. Off, "
-                         "they come back as they do in the testing area"};
 CVar<float> cv_droneSeconds{"game.drone_seconds", 3.0f, "How long after dying the support drone arrives"};
-CVar<float> cv_testingReturnSeconds{"game.testing_return_seconds", 30.0f,
-                                    "In the testing area, how long a dead player drives the drone before coming back "
-                                    "(the interact key comes back sooner)"};
+// For trying the drone on your own: a lone dead player gets one, and nothing ends. Back with the respawn key.
+CVar<bool> cv_droneWhenAlone{"game.drone_when_alone", false,
+                             "Give a player who dies on their own a drone anyway, rather than ending the deployment "
+                             "(for trying the drone; come back with the respawn key)"};
 CVar<float> cv_wipeSeconds{"game.wipe_seconds", 10.0f,
                            "With everybody down for good, how long before the deployment is over and everybody is back"};
 
@@ -75,6 +73,67 @@ void PredationGame::RegisterDroneCommands()
                                 m_perfFrames = 0;
                                 m_perfTimings.clear();
                                 m_perfFrameMs = m_perfWorstMs = m_perfGpuMs = m_perfDraws = 0.0;
+                            });
+    console.RegisterCommand("drone", "Play as a support drone, from where you stand; again to come back where it is",
+                            [this](const std::vector<std::string>&)
+                            {
+                                if (!IsAuthority() || m_screen != Screen::Playing)
+                                {
+                                    m_app->GetConsole().PrintError("Only in a game, and only as the host.");
+                                    return;
+                                }
+                                PhysicsWorld& physics = m_app->GetPhysics();
+                                if (m_supportDrone.Active())
+                                {
+                                    const glm::vec3 at = m_supportDrone.Position() + glm::vec3(0.0f, 0.3f, 0.0f);
+                                    RespawnLocalPlayer(at);
+                                    if (m_sessionMode == SessionMode::Host)
+                                    {
+                                        WorldEventMessage event;
+                                        event.kind = WorldEventKind::PlayerRespawned;
+                                        event.player = LocalPlayerId();
+                                        event.position = at;
+                                        m_host.Broadcast(event);
+                                    }
+                                    return;
+                                }
+                                // Out of the body and into a drone at your feet, straight away, with nothing ending
+                                // because you are down.
+                                m_playingDrone = true;
+                                const glm::vec3 feet = m_player.State().position;
+                                const glm::vec3 ahead{std::sin(m_lookYaw), 0.0f, -std::cos(m_lookYaw)};
+                                const float yaw = m_lookYaw;
+                                if (m_player.State().alive)
+                                {
+                                    KillPlayer(LocalPlayerId(), glm::vec3(0.0f));
+                                }
+                                m_supportDrone.Deploy(m_scene, m_app->GetMeshes(), physics, feet + ahead * 0.8f, yaw);
+                                m_lookYaw = yaw;
+                                m_lookPitch = 0.0f;
+                            });
+    console.RegisterCommand("site_stairs", "Stand at the foot of a stairwell of one of the site's buildings, facing up it: "
+                            "site_stairs <building> <stairwell>",
+                            [this](const std::vector<std::string>& args)
+                            {
+                                const SitePlan& plan = m_facility.Plan();
+                                const size_t b = args.size() >= 2 ? std::strtoul(args[1].c_str(), nullptr, 10) : 0;
+                                const size_t w = args.size() >= 3 ? std::strtoul(args[2].c_str(), nullptr, 10) : 0;
+                                if (b >= plan.buildings.size() || w >= plan.buildings[b].stairwells.size())
+                                {
+                                    m_app->GetConsole().PrintError("No such building or stairwell.");
+                                    return;
+                                }
+                                const FacilityLayout& building = plan.buildings[b];
+                                const FacilityLayout::Stairwell& well = building.stairwells[w];
+                                // The middle of its low end, half a cell in, and which way the flight climbs.
+                                const glm::vec2 low = well.alongX ? glm::vec2(well.rising ? well.min.x : well.max.x + 1, well.min.y + 0.5f)
+                                                                  : glm::vec2(well.min.x + 0.5f, well.rising ? well.min.y : well.max.y + 1);
+                                const glm::vec2 climb = well.alongX ? glm::vec2(well.rising ? 1.0f : -1.0f, 0.0f)
+                                                                    : glm::vec2(0.0f, well.rising ? 1.0f : -1.0f);
+                                const glm::vec3 at = FacilityMap::ToWorld(building, well.floor, low + climb * 0.2f);
+                                m_player.Teleport(at + glm::vec3(0.0f, 0.1f, 0.0f));
+                                m_lookYaw = std::atan2(climb.x, -climb.y);
+                                m_lookPitch = glm::radians(15.0f);
                             });
     console.RegisterCommand("site_room", "Go to the middle of a room of one of the site's buildings: site_room <building> <room>",
                             [this](const std::vector<std::string>& args)
@@ -157,38 +216,20 @@ void PredationGame::UpdatePerfReport()
     size_t lamps = m_scene.GetEnvironment().sceneLights.size();
     size_t entities = m_scene.EntityCount();
     PRED_LOG_INFO(Gameplay, "perf   {} lamps gathered, {} entities", lamps, entities);
+    const SceneRenderer::ClusterStats& clusters = m_app->GetSceneRenderer().LastClusterStats();
+    PRED_LOG_INFO(Gameplay, "perf   clusters: {} lamps, {} references, busiest cell {}{}", clusters.lights, clusters.references,
+                  clusters.busiestCell, clusters.truncated ? ", SOME LEFT OUT" : "");
 }
 
 bool PredationGame::DeathIsPermanent() const
 {
-    return cv_permadeath.Get() && m_map == MapChoice::Facility;
+    // Always: nobody comes back until the deployment is over.
+    return true;
 }
 
 float PredationGame::RespawnSecondsForDeath() const
 {
-    return DeathIsPermanent() ? kForGood : std::max(cv_testingReturnSeconds.Get(), 1.0f);
-}
-
-void PredationGame::ComeBackNow(uint8_t player)
-{
-    if (!IsAuthority())
-    {
-        return;
-    }
-    // Only a death that is a pause: a clock parked for good stays parked.
-    if (player == LocalPlayerId())
-    {
-        if (!m_player.State().alive && !m_deadForGood && m_respawnTimer > 0.0f)
-        {
-            m_respawnTimer = 1.0e-3f;
-        }
-        return;
-    }
-    const auto timer = m_remoteRespawnTimers.find(player);
-    if (timer != m_remoteRespawnTimers.end() && timer->second > 0.0f && timer->second < kForGood * 0.5f)
-    {
-        timer->second = 1.0e-3f;
-    }
+    return kForGood;
 }
 
 void PredationGame::UpdateDrone(const PlayerInput& input, float dt)
@@ -239,6 +280,7 @@ void PredationGame::UpdateDrone(const PlayerInput& input, float dt)
     controls.lookYaw = input.yaw;
     controls.lookPitch = input.pitch;
     controls.rightItself = input.jump;
+    controls.jump = input.jump;
     const bool wasDisabled = m_supportDrone.Disabled();
     m_supportDrone.Step(physics, controls, dt);
     if (wasDisabled && !m_supportDrone.Disabled())
@@ -478,9 +520,9 @@ void PredationGame::UpdateDroneThreats(float dt)
 
 void PredationGame::UpdateWipe(float dt)
 {
-    // Everybody down for good is the end of the deployment. Until the ship is there to go back to, it is
-    // everybody back where they went in.
-    if (!IsAuthority() || m_screen != Screen::Playing || !DeathIsPermanent())
+    // Everybody down is the end of the deployment, and everybody goes back -- to the testing area until
+    // there is a ship to go back to.
+    if (!IsAuthority() || m_screen != Screen::Playing || cv_droneWhenAlone.Get() || m_playingDrone)
     {
         m_wipeTimer = 0.0f;
         return;
@@ -513,12 +555,9 @@ void PredationGame::UpdateWipe(float dt)
         return;
     }
     m_wipeTimer = 0.0f;
-    // Each clock set to run out on the next tick, so everybody comes back the usual way and is told.
-    m_respawnTimer = 1.0e-3f;
-    for (auto& [player, timer] : m_remoteRespawnTimers)
-    {
-        timer = 1.0e-3f;
-    }
+    m_remoteRespawnTimers.clear();
+    m_respawnTimer = 0.0f;
+    GoToMap(MapChoice::TestMap);
 }
 
 bool PredationGame::DroneLamp(PunctualLight& light) const
@@ -633,11 +672,7 @@ void PredationGame::DrawDroneHud()
     {
         hint = "[" + KeyFor(m_app->GetInput(), "jump") + "] right it    " + hint;
     }
-    if (!m_deadForGood && m_respawnTimer > 0.0f)
-    {
-        hint += "    [" + KeyFor(m_app->GetInput(), "interact") + "] come back (" +
-                std::to_string(static_cast<int>(std::ceil(m_respawnTimer))) + ")";
-    }
+
     const ImVec2 hintSize = ImGui::CalcTextSize(hint.c_str());
     draw->AddText({min.x + (width - hintSize.x) * 0.5f, max.y - inset - 24.0f}, IM_COL32(200, 205, 210, 200),
                   hint.c_str());

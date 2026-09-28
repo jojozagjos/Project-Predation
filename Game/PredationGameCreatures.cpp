@@ -37,7 +37,9 @@ namespace
 
 // None, for now: a game starts empty and a creature is made on purpose with spawn_creature. Set this
 // to have them arrive on their own again, the way a real round will.
-CVar<int> cv_aiCreatures{"ai.creatures", 0, "How many creatures arrive on their own in a new game (0: none, use spawn_creature)"};
+CVar<int> cv_aiCreatures{"ai.creatures", 1, "How many creatures arrive on their own in a new game (0: none, use spawn_creature)"};
+CVar<float> cv_aiReturn{"ai.return_seconds", 75.0f,
+                        "After a creature dies, roughly how long before another comes, somewhere nobody is (0: never)"};
 // For trying each kind out: every new creature is made this temperament, whatever its seed would give.
 CVar<std::string> cv_aiTemperament{"ai.temperament", "",
                                    "Make every new creature predator, territorial, timid or curious whatever its seed says; "
@@ -353,6 +355,7 @@ void PredationGame::SpawnCreatures()
 {
     ClearCreatures();
     m_creatureClock = 0.0f;
+    m_creaturePeak = 0;
     if (!IsAuthority())
     {
         return;
@@ -421,13 +424,14 @@ bool PredationGame::FindUnseenPoint(uint32_t seed, glm::vec3& out) const
                 seen = true;
             }
         }
-        if (nearest < 20.0f)
+        if (nearest < 30.0f)
         {
             continue;
         }
-        // Out of sight above everything, then about thirty metres off: far enough to have come from
-        // somewhere, near enough that it arrives into the game rather than into an empty corner.
-        const float score = (seen ? 0.0f : 100.0f) - std::abs(nearest - 30.0f);
+        // Out of sight above everything, then about forty-five metres off: far enough to have come from
+        // somewhere and not to be on top of anybody, near enough that it arrives into the game rather than into
+        // an empty corner.
+        const float score = (seen ? 0.0f : 100.0f) - std::abs(nearest - 45.0f);
         if (score > best)
         {
             best = score;
@@ -440,6 +444,22 @@ bool PredationGame::FindUnseenPoint(uint32_t seed, glm::vec3& out) const
 
 void PredationGame::UpdateArrivals()
 {
+    // The numbers kept up: as many as there have been this game, or as the game wants, whichever is more. One that
+    // dies is made good after a while, arriving somewhere out of everybody's sight and well away from them.
+    int living = 0;
+    for (const std::unique_ptr<Creature>& creature : m_creatures)
+    {
+        living += creature->Alive() ? 1 : 0;
+    }
+    m_creaturePeak = std::max(m_creaturePeak, living);
+    const int wanted = std::max(std::clamp(cv_aiCreatures.Get(), 0, static_cast<int>(kMaxCreatures)), m_creaturePeak);
+    if (m_arrivalsPending <= 0 && living < wanted && cv_aiReturn.Get() > 0.0f)
+    {
+        SeededRandom jitter(m_arrivalSeed ^ static_cast<uint32_t>(m_creatureClock * 10.0f));
+        m_arrivalsPending = wanted - living;
+        m_arrivalAt = m_creatureClock + cv_aiReturn.Get() * jitter.Range(0.8f, 1.25f);
+        PRED_LOG_INFO(AI, "{} creature(s) to come back in about {:.0f} s", m_arrivalsPending, m_arrivalAt - m_creatureClock);
+    }
     if (m_arrivalsPending <= 0 || m_creatureClock < m_arrivalAt || m_navRebuilding)
     {
         return; // and not onto a walkable surface that is about to be replaced by the one being built

@@ -30,6 +30,19 @@ constexpr float kSlab = FacilityLayout::kSlab;
 constexpr float kDuct = FacilityLayout::kDuctHeight;
 // Half a wall's thickness: a wall stands on the edge between two cells, half in each.
 constexpr float kHalfWall = 0.1f;
+// The building's outside wall: thicker than any inside it, outward from where a perimeter room's wall face is, with
+// a skin of cladding over it and a parapet round the roof capped with the same.
+constexpr float kShellThickness = 0.38f;
+constexpr float kCladding = 0.04f;
+constexpr float kParapet = 0.9f;
+constexpr float kCapHeight = 0.08f;
+// How far a way out's sill stands above the floor.
+constexpr float kSill = 0.012f;
+// How far a piece reaches into the one it meets, where it cannot be seen: so a join is never a line with nothing
+// behind it. Only ever into something, never along a face another piece shares, which is z-fighting.
+constexpr float kSink = 0.02f;
+// Outside the building, as a space (see Space).
+constexpr int kOutside = -4;
 // The top of a slab, drawn as floor, over the rest of it, drawn as ceiling.
 constexpr float kFinish = 0.05f;
 // The holes in the walls.
@@ -67,6 +80,8 @@ const Material kShelfMaterial = Material::Metal({0.30f, 0.33f, 0.36f}, 0.55f);
 const Material kBenchMaterial = Material::Diffuse({0.28f, 0.27f, 0.25f}, 0.8f);
 const Material kCrateMaterial = Material::Diffuse({0.38f, 0.30f, 0.22f}, 0.85f);
 const Material kCabinetMaterial = Material::Metal({0.26f, 0.31f, 0.28f}, 0.6f);
+// The outside: weathered panels, darker than anything inside.
+const Material kCladdingMaterial = Material::Diffuse({0.24f, 0.25f, 0.25f}, 0.85f);
 
 // Where the building being drawn stands: the corner of its cell (0, 0), at ground-floor level. Set for the
 // length of a Draw, from the plan; the facility's usual place otherwise.
@@ -124,7 +139,7 @@ int Space(const FacilityLayout& layout, int f, int x, int z)
 {
     if (x < 0 || z < 0 || x >= layout.width || z >= layout.depth)
     {
-        return -4;
+        return kOutside;
     }
     switch (layout.At(f, x, z))
     {
@@ -241,8 +256,14 @@ void Walls(const FacilityLayout& layout, int f, const Openings& openings, Bluepr
 {
     const int w = layout.width;
     const int d = layout.depth;
-    const float y0 = Base(f);
-    const float y1 = y0 + kClear;
+    // A little into the slab under it and the one over it, where nothing sees: a wall that stops exactly at a
+    // floor or a ceiling leaves a hairline of whatever is behind it along the join.
+    const float y0 = Base(f) - kSink;
+    const float y1 = Base(f) + kClear + kSink;
+    // Round a stairwell, the whole storey: its walls go on up past the ceiling to the floor above, so the slab
+    // between is never seen edge on from the stairs.
+    const float tall = Base(f) + kStorey - kSink * 0.5f; // past the next floor's walls, which start kSink under it
+    const auto stair = [&](int x, int z) { return layout.At(f, x, z) == Cell::Stair; };
     std::vector<bool> corner(static_cast<size_t>((w + 1) * (d + 1)), false);
     const auto cornerIndex = [&](int i, int j) { return static_cast<size_t>(j * (w + 1) + i); };
 
@@ -250,55 +271,79 @@ void Walls(const FacilityLayout& layout, int f, const Openings& openings, Bluepr
     for (int j = 0; j <= d; ++j)
     {
         std::vector<Span> solid;
+        std::vector<Span> solidTall;
         std::vector<Span> holes;
         std::vector<std::pair<Span, float>> lintels;
+        std::vector<std::pair<Span, float>> lintelsTall;
         for (int i = 0; i < w; ++i)
         {
-            if (Space(layout, f, i, j - 1) == Space(layout, f, i, j))
+            const int below = Space(layout, f, i, j - 1);
+            const int above = Space(layout, f, i, j);
+            if (below == above)
             {
                 continue;
             }
-            solid.push_back({WorldX(i) - kHalfWall, WorldX(i + 1) + kHalfWall});
             corner[cornerIndex(i, j)] = true;
             corner[cornerIndex(i + 1, j)] = true;
+            // The outside of the building is its shell's (see Shell), not a wall a floor at a time.
+            if (below == kOutside || above == kOutside)
+            {
+                continue;
+            }
+            const bool high = stair(i, j - 1) || stair(i, j);
+            (high ? solidTall : solid).push_back({WorldX(i) - kHalfWall, WorldX(i + 1) + kHalfWall});
             const auto found = openings.find({f, i, j - 1, 1});
             if (found != openings.end())
             {
                 const float mid = WorldX(static_cast<float>(i) + 0.5f);
                 const Span hole{mid - found->second.width * 0.5f, mid + found->second.width * 0.5f};
                 holes.push_back(hole);
-                lintels.emplace_back(hole, found->second.height);
+                (high ? lintelsTall : lintels).emplace_back(hole, found->second.height);
             }
         }
         const float z = WorldZ(j);
-        for (const Span& s : Cut(solid, holes))
+        for (const Span& span : Cut(solid, holes))
         {
-            Box(out, Kind::Wall, {s.a, y0, z - kHalfWall}, {s.b, y1, z + kHalfWall});
+            Box(out, Kind::Wall, {span.a, y0, z - kHalfWall}, {span.b, y1, z + kHalfWall});
         }
+        for (const Span& span : Cut(solidTall, holes))
+        {
+            Box(out, Kind::Wall, {span.a, y0, z - kHalfWall}, {span.b, tall, z + kHalfWall});
+        }
+        // Over each hole, flush with the wall either side.
         for (const auto& [hole, height] : lintels)
         {
-            Box(out, Kind::Wall, {hole.a, y0 + height, z - kHalfWall}, {hole.b, y1, z + kHalfWall});
+            Box(out, Kind::Wall, {hole.a, Base(f) + height, z - kHalfWall}, {hole.b, y1, z + kHalfWall});
+        }
+        for (const auto& [hole, height] : lintelsTall)
+        {
+            Box(out, Kind::Wall, {hole.a, Base(f) + height, z - kHalfWall}, {hole.b, tall, z + kHalfWall});
         }
     }
 
-    // Along z, between column i - 1 and column i, stopping short of every corner a wall along x has.
+    // Along z, between column i - 1 and column i, stopping just inside every wall along x they meet.
     for (int i = 0; i <= w; ++i)
     {
         std::vector<Span> solid;
+        std::vector<Span> solidTall;
         std::vector<Span> holes;
         std::vector<std::pair<Span, float>> lintels;
+        std::vector<std::pair<Span, float>> lintelsTall;
         for (int k = 0; k < d; ++k)
         {
-            if (Space(layout, f, i - 1, k) == Space(layout, f, i, k))
+            const int left = Space(layout, f, i - 1, k);
+            const int right = Space(layout, f, i, k);
+            if (left == right || left == kOutside || right == kOutside)
             {
                 continue;
             }
-            solid.push_back({WorldZ(k) - kHalfWall, WorldZ(k + 1) + kHalfWall});
+            const bool high = stair(i - 1, k) || stair(i, k);
+            (high ? solidTall : solid).push_back({WorldZ(k) - kHalfWall, WorldZ(k + 1) + kHalfWall});
             for (const int v : {k, k + 1})
             {
                 if (corner[cornerIndex(i, v)])
                 {
-                    holes.push_back({WorldZ(v) - kHalfWall, WorldZ(v) + kHalfWall});
+                    holes.push_back({WorldZ(v) - kHalfWall + kSink, WorldZ(v) + kHalfWall - kSink});
                 }
             }
             const auto found = openings.find({f, i - 1, k, 0});
@@ -307,17 +352,136 @@ void Walls(const FacilityLayout& layout, int f, const Openings& openings, Bluepr
                 const float mid = WorldZ(static_cast<float>(k) + 0.5f);
                 const Span hole{mid - found->second.width * 0.5f, mid + found->second.width * 0.5f};
                 holes.push_back(hole);
-                lintels.emplace_back(hole, found->second.height);
+                (high ? lintelsTall : lintels).emplace_back(hole, found->second.height);
             }
         }
         const float x = WorldX(i);
-        for (const Span& s : Cut(solid, holes))
+        for (const Span& span : Cut(solid, holes))
         {
-            Box(out, Kind::Wall, {x - kHalfWall, y0, s.a}, {x + kHalfWall, y1, s.b});
+            Box(out, Kind::Wall, {x - kHalfWall, y0, span.a}, {x + kHalfWall, y1, span.b});
+        }
+        for (const Span& span : Cut(solidTall, holes))
+        {
+            Box(out, Kind::Wall, {x - kHalfWall, y0, span.a}, {x + kHalfWall, tall, span.b});
         }
         for (const auto& [hole, height] : lintels)
         {
-            Box(out, Kind::Wall, {x - kHalfWall, y0 + height, hole.a}, {x + kHalfWall, y1, hole.b});
+            Box(out, Kind::Wall, {x - kHalfWall, Base(f) + height, hole.a}, {x + kHalfWall, y1, hole.b});
+        }
+        for (const auto& [hole, height] : lintelsTall)
+        {
+            Box(out, Kind::Wall, {x - kHalfWall, Base(f) + height, hole.a}, {x + kHalfWall, tall, hole.b});
+        }
+    }
+}
+
+// The building's outside: one wall a face, from under the ground floor to a parapet over the roof, with the ways
+// out cut through it -- the whole building as one thing, not floors with walls stood between them. Its inside face
+// is where every perimeter room's wall face was, and it covers every slab's edge. A skin of cladding over it gives
+// the outside a finish of its own.
+void Shell(const FacilityLayout& layout, Blueprint& out)
+{
+    const float bottom = Base(0) - kSlab;
+    const float top = Base(layout.floors) + kParapet;
+    const float x0 = WorldX(0);
+    const float x1 = WorldX(layout.width);
+    const float z0 = WorldZ(0);
+    const float z1 = WorldZ(layout.depth);
+    struct Hole
+    {
+        Span along;
+        float low = 0.0f;
+        float high = 0.0f;
+    };
+    // A face as a box between two corners, its long side along x or z, less its holes: cut into upright strips
+    // at every hole's edges, and each strip into what is above and below the holes in it.
+    const auto face = [&](bool alongX, float fixedLo, float fixedHi, float from, float to, const std::vector<Hole>& holes,
+                          Kind kind, float faceBottom, float faceTop)
+    {
+        std::vector<float> cuts{from, to};
+        for (const Hole& hole : holes)
+        {
+            cuts.push_back(hole.along.a);
+            cuts.push_back(hole.along.b);
+        }
+        std::sort(cuts.begin(), cuts.end());
+        for (size_t c = 0; c + 1 < cuts.size(); ++c)
+        {
+            const float a = cuts[c];
+            const float b = cuts[c + 1];
+            if (b - a < 0.005f)
+            {
+                continue;
+            }
+            std::vector<Span> solid{{faceBottom, faceTop}};
+            std::vector<Span> gaps;
+            for (const Hole& hole : holes)
+            {
+                if (hole.along.a <= a + 1.0e-4f && hole.along.b >= b - 1.0e-4f)
+                {
+                    gaps.push_back({hole.low, hole.high});
+                }
+            }
+            for (const Span& up : Cut(solid, gaps))
+            {
+                if (alongX)
+                {
+                    Box(out, kind, {a, up.a, fixedLo}, {b, up.b, fixedHi});
+                }
+                else
+                {
+                    Box(out, kind, {fixedLo, up.a, a}, {fixedHi, up.b, b});
+                }
+            }
+        }
+    };
+    // Every corner belongs to the faces along x: they run the whole width, shell, cladding and cap, and the faces
+    // along z stop against them. Two faces both reaching into a corner put two surfaces in the same place, and
+    // the picture flickers between them.
+    const float thick = kShellThickness + kCladding;
+    for (int side = 0; side < 4; ++side)
+    {
+        std::vector<Hole> holes;
+        for (const FacilityLayout::Exit& exit : layout.exits)
+        {
+            if (exit.side != side)
+            {
+                continue;
+            }
+            const float mid = side < 2 ? WorldZ(static_cast<float>(exit.cell.y) + 0.5f) : WorldX(static_cast<float>(exit.cell.x) + 0.5f);
+            holes.push_back({{mid - kDoorWidth * 0.5f, mid + kDoorWidth * 0.5f}, Base(0) + kSill, Base(0) + kDoorHeight});
+        }
+        // Inside face on the line every room's wall face along it was on; outwards from there.
+        const float inner = side == 0 ? x0 + kHalfWall : side == 1 ? x1 - kHalfWall : side == 2 ? z0 + kHalfWall : z1 - kHalfWall;
+        const float outward = (side == 0 || side == 2) ? -1.0f : 1.0f;
+        const float outer = inner + outward * kShellThickness;
+        const float skin = outer + outward * kCladding;
+        const bool alongX = side >= 2;
+        // Along x: the whole width, out to the far side of the cladding round the corners. Along z: between the
+        // inside faces of those.
+        const float shellFrom = alongX ? x0 + kHalfWall - kShellThickness : z0 + kHalfWall - kSink;
+        const float shellTo = alongX ? x1 - kHalfWall + kShellThickness : z1 - kHalfWall + kSink;
+        const float skinFrom = alongX ? x0 + kHalfWall - thick : z0 + kHalfWall - kShellThickness;
+        const float skinTo = alongX ? x1 - kHalfWall + thick : z1 - kHalfWall + kShellThickness;
+        const float capFrom = alongX ? skinFrom : z0 + kHalfWall;
+        const float capTo = alongX ? skinTo : z1 - kHalfWall;
+        face(alongX, std::min(inner, outer), std::max(inner, outer), shellFrom, shellTo, holes, Kind::Wall, bottom, top);
+        face(alongX, std::min(outer, skin), std::max(outer, skin), skinFrom, skinTo, holes, Kind::Cladding, Base(0) - 0.25f, top);
+        face(alongX, std::min(inner, skin), std::max(inner, skin), capFrom, capTo, {}, Kind::Cladding, top, top + kCapHeight);
+        // A sill across each way out, through the whole wall, a little above the floor inside and the ground outside:
+        // the wall under the doorway otherwise ends exactly at the ground's height, and the two flicker.
+        for (const Hole& hole : holes)
+        {
+            const float a = std::min(inner, skin);
+            const float b = std::max(inner, skin);
+            if (alongX)
+            {
+                Box(out, Kind::Cladding, {hole.along.a, Base(0) - 0.12f, a}, {hole.along.b, Base(0) + kSill, b});
+            }
+            else
+            {
+                Box(out, Kind::Cladding, {a, Base(0) - 0.12f, hole.along.a}, {b, Base(0) + kSill, hole.along.b});
+            }
         }
     }
 }
@@ -456,7 +620,7 @@ void Slabs(const FacilityLayout& layout, Blueprint& out)
                     present[static_cast<size_t>(z * w + x)] = false;
                 }
             }
-            Slab(out, top, InWell(well, kFoot + kFlight, 0.0f), InWell(well, 3.0f * kCell, 2.0f * kCell));
+            Slab(out, top, InWell(well, kFoot + kFlight, 0.0f), InWell(well, 3.0f * kCell, kCell));
         }
         // As few rectangles as a row-by-row sweep finds.
         std::vector<bool> used(present.size(), false);
@@ -673,7 +837,7 @@ void Doors(const FacilityLayout& layout, Blueprint& out)
         WorldObjects::PlacedDoor placed;
         placed.width = kPanelWidth;
         placed.height = kPanelHeight;
-        const float y = Base(0) + 0.01f;
+        const float y = Base(0) + kSill + 0.004f; // just clear of its sill
         const auto [floor, lowX, lowZ, alongZ] = ExitKey(exit);
         (void)floor;
         if (alongZ == 0)
@@ -896,6 +1060,8 @@ const Material& MaterialOf(Kind kind)
         return kCrateMaterial;
     case Kind::Cabinet:
         return kCabinetMaterial;
+    case Kind::Cladding:
+        return kCladdingMaterial;
     }
     return kWallMaterial;
 }
@@ -910,6 +1076,8 @@ const char* NameOf(Kind kind)
         return "facility_ceiling";
     case Kind::Wall:
         return "facility_wall";
+    case Kind::Cladding:
+        return "facility_cladding";
     case Kind::Duct:
         return "facility_duct";
     case Kind::Pillar:
@@ -960,14 +1128,15 @@ FacilityMap::Blueprint FacilityMap::Draw(const FacilityLayout& layout)
         Walls(layout, f, openings, out);
         DuctRoofs(layout, f, openings, out);
     }
+    Shell(layout, out);
     for (const FacilityLayout::Stairwell& well : layout.stairwells)
     {
         const float base = Base(well.floor);
-        const glm::vec2 foot = InWell(well, kFoot, kCell);
+        const glm::vec2 foot = InWell(well, kFoot, kCell * 0.5f);
         out.flights.push_back({{foot.x, base, foot.y}, ClimbYaw(well)});
         // Solid under the landing at the top, down to the floor the flight starts from.
         const glm::vec2 a = InWell(well, kFoot + kFlight, kHalfWall);
-        const glm::vec2 b = InWell(well, 3.0f * kCell - kHalfWall, 2.0f * kCell - kHalfWall);
+        const glm::vec2 b = InWell(well, 3.0f * kCell - kHalfWall, kCell - kHalfWall);
         Box(out, Kind::Fill, {a.x, base, a.y}, {b.x, base + kClear, b.y});
     }
     Things(layout, out);

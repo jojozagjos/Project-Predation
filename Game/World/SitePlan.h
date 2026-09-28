@@ -17,7 +17,7 @@ namespace SiteSpec
 // or the lab south of it.
 inline constexpr glm::vec3 kOrigin{70.0f, 0.0f, -110.0f};
 // How much open ground there is inside the rock that closes it in, each way.
-inline constexpr float kSize = 190.0f;
+inline constexpr float kSize = 300.0f;
 // The site every machine builds until the host says otherwise.
 inline constexpr uint16_t kDefaultSeed = 1;
 } // namespace SiteSpec

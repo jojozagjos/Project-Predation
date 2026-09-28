@@ -104,40 +104,64 @@ TEST_CASE("A circuit without power puts its lamps out, and emergency lamps stay 
     CHECK(lit.size() == 3);
 }
 
-TEST_CASE("A lamp is put in the cells of the view its light reaches, and in none behind the camera", "[light][cluster]")
+TEST_CASE("A lamp is put in the cells of the view its light reaches, and in none it does not", "[light][cluster]")
 {
     // Looking down -z from the origin, with a 90 degree view.
     const glm::mat4 view = glm::lookAtRH(glm::vec3(0.0f), glm::vec3(0.0f, 0.0f, -1.0f), glm::vec3(0.0f, 1.0f, 0.0f));
     const glm::mat4 projection = glm::perspectiveRH_ZO(glm::radians(90.0f), 16.0f / 9.0f, 0.1f, 300.0f);
-    const glm::mat4 viewProj = projection * view;
-    const glm::vec3 eye{0.0f};
-    const glm::vec3 forward{0.0f, 0.0f, -1.0f};
-    int x0, x1, y0, y1, s0, s1;
+    constexpr int kAcross = SceneRenderer::kClusterAcross;
+    constexpr int kUp = SceneRenderer::kClusterUp;
+    const auto column = [&](int cell) { return cell % kAcross; };
+    const auto row = [&](int cell) { return (cell / kAcross) % kUp; };
+    const auto slice = [&](int cell) { return cell / (kAcross * kUp); };
+    std::vector<int> cells;
 
     // A small lamp dead ahead, ten metres off: the middle cells, and the slices round ten metres.
-    REQUIRE(SceneRenderer::ClusterRange(viewProj, eye, forward, {-0.5f, -0.5f, -10.5f}, {0.5f, 0.5f, -9.5f}, x0, x1, y0, y1, s0, s1));
-    CHECK(x0 >= SceneRenderer::kClusterAcross / 2 - 1);
-    CHECK(x1 <= SceneRenderer::kClusterAcross / 2);
-    CHECK(y0 >= SceneRenderer::kClusterUp / 2 - 1);
-    CHECK(y1 <= SceneRenderer::kClusterUp / 2 + 1);
+    SceneRenderer::ClusterCells(view, projection, {0.0f, 0.0f, -10.0f}, 0.5f, false, {}, {}, cells);
+    REQUIRE_FALSE(cells.empty());
     const float perLog = static_cast<float>(SceneRenderer::kClusterSlices) / std::log(SceneRenderer::kClusterFar / SceneRenderer::kClusterNear);
     const int tenMetres = static_cast<int>(std::floor(std::log(10.0f / SceneRenderer::kClusterNear) * perLog));
-    CHECK(s0 <= tenMetres);
-    CHECK(s1 >= tenMetres);
-    CHECK(s1 - s0 <= 1);
+    for (const int cell : cells)
+    {
+        CHECK(column(cell) >= kAcross / 2 - 1);
+        CHECK(column(cell) <= kAcross / 2);
+        CHECK(std::abs(slice(cell) - tenMetres) <= 1);
+    }
 
     // Off to the right: the right-hand cells only.
-    REQUIRE(SceneRenderer::ClusterRange(viewProj, eye, forward, {6.0f, -0.5f, -8.5f}, {7.0f, 0.5f, -7.5f}, x0, x1, y0, y1, s0, s1));
-    CHECK(x0 > SceneRenderer::kClusterAcross / 2);
+    SceneRenderer::ClusterCells(view, projection, {6.5f, 0.0f, -8.0f}, 0.5f, false, {}, {}, cells);
+    REQUIRE_FALSE(cells.empty());
+    for (const int cell : cells)
+    {
+        CHECK(column(cell) > kAcross / 2);
+    }
 
     // Wholly behind the camera: nowhere.
-    CHECK_FALSE(SceneRenderer::ClusterRange(viewProj, eye, forward, {-1.0f, -1.0f, 5.0f}, {1.0f, 1.0f, 7.0f}, x0, x1, y0, y1, s0, s1));
+    SceneRenderer::ClusterCells(view, projection, {0.0f, 0.0f, 6.0f}, 1.0f, false, {}, {}, cells);
+    CHECK(cells.empty());
 
-    // Round the camera itself: every cell across and up, from the nearest slice.
-    REQUIRE(SceneRenderer::ClusterRange(viewProj, eye, forward, glm::vec3(-3.0f), glm::vec3(3.0f), x0, x1, y0, y1, s0, s1));
-    CHECK(x0 == 0);
-    CHECK(x1 == SceneRenderer::kClusterAcross - 1);
-    CHECK(y0 == 0);
-    CHECK(y1 == SceneRenderer::kClusterUp - 1);
-    CHECK(s0 == 0);
+    // Round the camera itself: the nearest slice everywhere across and up.
+    SceneRenderer::ClusterCells(view, projection, glm::vec3(0.0f), 3.0f, false, {}, {}, cells);
+    int nearest = 0;
+    for (const int cell : cells)
+    {
+        nearest += slice(cell) == 0 ? 1 : 0;
+    }
+    CHECK(nearest == kAcross * kUp);
+
+    // Beside the camera, a lamp reaches the near cells on its own side and not the far side of the picture:
+    // round, not a box. This is what used to put a lamp in every cell there was.
+    SceneRenderer::ClusterCells(view, projection, {4.0f, 0.0f, -1.0f}, 4.5f, false, {}, {}, cells);
+    REQUIRE_FALSE(cells.empty());
+    int farLeft = 0;
+    for (const int cell : cells)
+    {
+        farLeft += (column(cell) == 0 && slice(cell) > 12) ? 1 : 0;
+    }
+    CHECK(farLeft == 0);
+    CHECK(cells.size() < static_cast<size_t>(kAcross * kUp * SceneRenderer::kClusterSlices / 2));
+
+    // Kept in a box that ends before the view: nowhere.
+    SceneRenderer::ClusterCells(view, projection, {0.0f, 0.0f, -5.0f}, 5.0f, true, {-1.0f, -1.0f, 1.0f}, {1.0f, 1.0f, 3.0f}, cells);
+    CHECK(cells.empty());
 }

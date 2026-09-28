@@ -141,8 +141,10 @@ SitePlan SitePlan::Generate(uint32_t seed)
     const glm::vec2 toCentre = glm::vec2(S * 0.5f) - landingLocal;
     plan.landingYaw = std::atan2(toCentre.x, -toCentre.y);
 
-    // The buildings: two or three, the first the biggest, none too close to another or to the landing.
-    const int count = random.Chance(0.5f) ? 3 : 2;
+    // The buildings: three to five, the first much the biggest -- the one a mission's business is usually in --
+    // none too close to another or to the landing.
+    const float roll = random.Unit();
+    const int count = roll < 0.4f ? 3 : roll < 0.8f ? 4 : 5;
     std::vector<std::pair<glm::vec2, glm::vec2>> taken; // footprints, local
     for (int b = 0; b < count; ++b)
     {
@@ -152,8 +154,8 @@ SitePlan SitePlan::Generate(uint32_t seed)
         for (int attempt = 0; attempt < 400 && !placed; ++attempt)
         {
             const int shrink = attempt / 100; // smaller if nothing fits
-            cells = b == 0 ? glm::ivec2(random.Int(18, 22) - shrink * 2, random.Int(18, 22) - shrink * 2)
-                           : glm::ivec2(random.Int(12, 18) - shrink * 2, random.Int(12, 18) - shrink * 2);
+            cells = b == 0 ? glm::ivec2(random.Int(24, 30) - shrink * 2, random.Int(24, 30) - shrink * 2)
+                           : glm::ivec2(random.Int(12, 20) - shrink * 2, random.Int(12, 20) - shrink * 2);
             const glm::vec2 extent = glm::vec2(cells) * kCell;
             corner = {std::round(random.Range(32.0f, S - 32.0f - extent.x) / kCell) * kCell,
                       std::round(random.Range(32.0f, S - 32.0f - extent.y) / kCell) * kCell};
@@ -185,9 +187,9 @@ SitePlan SitePlan::Generate(uint32_t seed)
         FacilityLayout::Options options;
         options.width = cells.x;
         options.depth = cells.y;
-        options.minFloors = b == 0 ? 2 : 1;
-        options.maxFloors = b == 0 ? 3 : 2;
-        options.exits = b == 0 ? 2 : random.Int(1, 2);
+        options.minFloors = b == 0 ? 3 : 1;
+        options.maxFloors = b == 0 ? 4 : 3;
+        options.exits = b == 0 ? 3 : random.Int(1, 2);
         options.exitSide = std::abs(toLanding.x) > std::abs(toLanding.y) ? (toLanding.x < 0.0f ? 0 : 1) : (toLanding.y < 0.0f ? 2 : 3);
         options.origin = world(corner.x, corner.y);
         plan.buildings.push_back(FacilityLayout::Generate(Mix(seed, static_cast<uint32_t>(b) + 1u), options));

@@ -37,7 +37,9 @@ public:
     static constexpr uint16_t kAtlasSize = kTileSize * kTilesAcross;
     static constexpr int kSlots = (kTilesAcross * kTilesAcross) / 6;
     // How many lamps are drawn in a frame at most, and so how many views that takes.
-    static constexpr int kLampsPerFrame = 2;
+    // Up to this many lamps drawn again a frame, nearest first: a swinging door dirties every lamp round it,
+    // and at two a frame the lamps each caught up with it every few frames, so its shadow stuttered.
+    static constexpr int kLampsPerFrame = 8;
     static constexpr int kViewsNeeded = kLampsPerFrame * 6;
 
     bool Init(bgfx::ProgramHandle depthProgram);

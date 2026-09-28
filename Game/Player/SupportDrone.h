@@ -35,6 +35,8 @@ public:
         float lookYaw = 0.0f;
         float lookPitch = 0.0f;
         bool rightItself = false;
+        // On its tracks: a hop, over a step or a body in the way.
+        bool jump = false;
     };
 
     static constexpr float kMaxHealth = 100.0f;
@@ -116,6 +118,7 @@ private:
     float m_trackTurn = 0.0f;
     float m_shovedFor = 0.0f;
     float m_rightingFor = 0.0f;
+    float m_hopCooldown = 0.0f;
     bool m_onTracks = false;
     // Where its camera points, relative to the chassis: turned and tipped, eased after the driver's look.
     float m_headYaw = 0.0f;

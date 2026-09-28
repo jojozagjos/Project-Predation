@@ -41,6 +41,9 @@ constexpr float kMostPitch = glm::radians(SupportDrone::kMostPitchDegrees);
 constexpr float kRightsItselfAfter = 3.0f;
 constexpr float kRightingEvery = 1.5f;
 constexpr float kRightingSeconds = 0.9f;
+// A hop: about a third of a metre up, and not again straight away.
+constexpr float kHopSpeed = 2.6f;
+constexpr float kHopEvery = 0.9f;
 
 uint32_t Paint(const glm::vec3& colour, float roughness = 1.0f)
 {
@@ -236,6 +239,7 @@ void SupportDrone::Build(Scene& scene, MeshLibrary& meshes, const Transform& tra
     m_trackTurn = 0.0f;
     m_shovedFor = 0.0f;
     m_rightingFor = 0.0f;
+    m_hopCooldown = 0.0f;
     m_onTracks = false;
     m_lookYaw = 0.0f;
     m_lookPitch = 0.0f;
@@ -302,6 +306,7 @@ void SupportDrone::Step(PhysicsWorld& physics, const Controls& controls, float d
         }
     }
     m_rightingCooldown = std::max(m_rightingCooldown - dt, 0.0f);
+    m_hopCooldown = std::max(m_hopCooldown - dt, 0.0f);
 
     const glm::vec3 worldUp{0.0f, 1.0f, 0.0f};
     const glm::vec3 up = m_rotation * worldUp;
@@ -371,6 +376,13 @@ void SupportDrone::Step(PhysicsWorld& physics, const Controls& controls, float d
         m_trackSpeed = 0.0f;
         m_trackTurn = 0.0f;
         return;
+    }
+
+    // A hop, pushed off its tracks: up along its own up, keeping what it was already doing.
+    if (controls.jump && m_hopCooldown <= 0.0f)
+    {
+        velocity += up * kHopSpeed;
+        m_hopCooldown = kHopEvery;
     }
 
     // Driven the way the camera looks, as a person walks: pushed forward it goes where it is looking,

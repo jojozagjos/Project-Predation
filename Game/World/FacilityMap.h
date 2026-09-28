@@ -50,7 +50,8 @@ public:
             Bench,
             Crate,
             Cabinet, // where supplies are left
-            Fill     // solid under the top of a flight of stairs
+            Fill,    // solid under the top of a flight of stairs
+            Cladding // the building's outside finish
         };
         Kind kind = Kind::Wall;
         glm::vec3 centre{0.0f};
@@ -99,7 +100,8 @@ public:
 
     static constexpr int kSteps = 18;
     static constexpr float kStepRun = 0.28f;
-    static constexpr float kStairWidth = 4.78f;
+    // As wide as the stairwell (a cell) inside its walls: as wide as the way in.
+    static constexpr float kStairWidth = FacilityLayout::kCell - 0.22f;
 
     static Blueprint Draw(const FacilityLayout& layout);
 

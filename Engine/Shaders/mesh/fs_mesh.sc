@@ -95,6 +95,8 @@ uniform vec4 u_clusterForward;
 SAMPLER2D(s_lightData, 7);   // six texels a lamp, laid out as u_lights, one lamp a row
 SAMPLER2D(s_clusterGrid, 8); // one texel a cell, a row a slice: x = first of its lamps in the list, y = how many
 SAMPLER2D(s_lightIndex, 9);  // the lamps of every cell, one after another, 256 to a row
+// x = 1: every surface its own colour, lit by nothing and fogged by nothing. For seeing what is where.
+uniform vec4 u_fullbright;
 #define LIGHT_INDEX_ROW 256
 #define MOST_CLUSTER_LIGHTS 48
 
@@ -660,6 +662,11 @@ void main()
 	float distanceToCamera = length(u_cameraPosition.xyz - v_worldPos);
 	float fogAmount = clamp((distanceToCamera - u_fogParams.x) / max(u_fogParams.y - u_fogParams.x, 1e-4), 0.0, 1.0);
 	color = mix(color, u_fogColor.rgb, fogAmount * mix(0.15, 1.0, skyReaches));
+	// Fullbright: the surface's own colour, with a little shading by which way it faces so edges still read.
+	if (u_fullbright.x > 0.5)
+	{
+		color = albedo * (0.55 + 0.45 * abs(dot(N, normalize(vec3(0.3, 0.8, 0.5))))) + u_emissive.rgb;
+	}
 
 	// Drawn for post-processing: linear light out, the mirror mixed in as light too (its texture is
 	// linear then), and the finishing left to the post pass.

@@ -26,7 +26,8 @@ namespace pred
 struct FacilityLayout
 {
     // How big a cell is, and how tall a floor.
-    static constexpr float kCell = 2.5f;
+    // Three metres: a corridor a little under three wide inside its walls, rooms to match.
+    static constexpr float kCell = 3.0f;
     static constexpr float kStorey = 3.6f;     // floor to floor
     static constexpr float kClearHeight = 3.0f; // floor to ceiling
     static constexpr float kSlab = 0.6f;       // floor and roof thickness: see LabMap's kRoof

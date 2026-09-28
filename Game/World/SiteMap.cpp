@@ -226,7 +226,7 @@ void SiteMap::Clear(Scene& scene, PhysicsWorld& physics, LevelLights* lights)
 void SiteMap::Bounds(glm::vec3& min, glm::vec3& max) const
 {
     // The rock reaches some way out past the open ground, and up.
-    constexpr float kRock = 40.0f;
+    constexpr float kRock = 55.0f; // and the ground, which reaches 45 m past the open ground every way
     min = m_plan.origin - glm::vec3(kRock, 5.0f, kRock);
     max = m_plan.origin + glm::vec3(m_plan.size + kRock, 150.0f, m_plan.size + kRock);
 }

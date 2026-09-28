@@ -277,6 +277,8 @@ CVar<bool> cv_wireframe{"r.wireframe", false, "Draw scene meshes as wireframe"};
 CVar<float> cv_fogStart{"r.fog_start", 12.0f, "Fog start distance in meters"};
 CVar<float> cv_fogEnd{"r.fog_end", 90.0f, "Fog end distance in meters"};
 CVar<float> cv_sunIntensity{"r.sun_intensity", 2.2f, "Directional light intensity"};
+CVar<bool> cv_fullbright{"r.fullbright", false, "Every surface its own colour, unlit: for seeing a level rather than its lighting",
+                         CVarFlags::Archive};
 CVar<bool> cv_clusteredLights{"r.clustered_lights", true,
                               "Light the view by clusters: each surface by the lamps that reach where it is. Off, each piece "
                               "of the level by the dozen lamps nearest it"};
@@ -1955,16 +1957,11 @@ void PredationGame::ServeClientRequests()
     {
         // Every kind there is. This stopped at the ammunition crate, which left the cocoon -- added after it --
         // out: a guest could never cut anybody free.
-        if (request.kind > static_cast<uint8_t>(InteractionKind::ComeBack))
+        if (request.kind > static_cast<uint8_t>(InteractionKind::Cocoon))
         {
             continue;
         }
         const auto kind = static_cast<InteractionKind>(request.kind);
-        if (kind == InteractionKind::ComeBack)
-        {
-            ComeBackNow(request.player);
-            continue;
-        }
 
         // A client says what it wants, never where it is. The host checks the distance itself
         // against the position it simulated, so reach cannot be claimed.
@@ -4685,6 +4682,14 @@ void PredationGame::DrawSettings()
             check("r.reflections", reflections);
             ImGui::PopID();
 
+#if PRED_DEV_TOOLS
+            // Development only: a way to look at a level without its lighting in the way.
+            ImGui::PushID("fullbright");
+            SettingsRow("Fullbright (dev)");
+            check("r.fullbright", GetSettingBool("r.fullbright", false));
+            ImGui::PopID();
+#endif
+
             ImGui::EndTable();
         }
         ImGui::EndChild();
@@ -6195,6 +6200,7 @@ void PredationGame::RespawnLocalPlayer(const glm::vec3& position)
     m_spectating = -1;
     m_deadForGood = false;
     m_everybodyDownFor = 0.0f;
+    m_playingDrone = false;
 }
 
 void PredationGame::LeaveCorpse(const PlayerBody& body, uint8_t player)
@@ -8631,19 +8637,7 @@ void PredationGame::PressInteract()
     {
         TryInteract();
     }
-    else if (m_supportDrone.Active() && !m_deadForGood)
-    {
-        // Driving a drone in the testing area: back now, rather than when the clock says.
-        if (m_sessionMode == SessionMode::Client)
-        {
-            m_client.SendInteract(static_cast<uint8_t>(InteractionKind::ComeBack), 0);
-        }
-        else
-        {
-            ComeBackNow(LocalPlayerId());
-        }
-    }
-    else
+    else if (!m_supportDrone.Active())
     {
         m_spectateNext = true;
     }
@@ -10033,6 +10027,11 @@ void PredationGame::OnRender()
     {
         app.GetSceneRenderer().SetClusterCamera(app.GetRenderer().ViewMatrix(), app.GetRenderer().ProjectionMatrix());
     }
+#if PRED_DEV_TOOLS
+    app.GetSceneRenderer().SetFullbright(cv_fullbright.Get());
+#else
+    app.GetSceneRenderer().SetFullbright(false);
+#endif
     app.GetSceneRenderer().Draw(Renderer::kViewMain, m_scene, app.GetMeshes(), viewPosition);
     DrawDebugOverlays();
 }
@@ -10792,7 +10791,9 @@ void PredationGame::DrawPlayerList()
     }
 
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
-    ImGui::SetNextWindowPos({viewport->Pos.x + viewport->Size.x - 16.0f, viewport->Pos.y + 16.0f},
+    // Under the frame counter when there is one, rather than on top of it.
+    const float below = cv_showFps.Get() ? 34.0f : 16.0f;
+    ImGui::SetNextWindowPos({viewport->Pos.x + viewport->Size.x - 16.0f, viewport->Pos.y + below},
                             ImGuiCond_Always, {1.0f, 0.0f});
     ImGui::SetNextWindowBgAlpha(0.35f);
     constexpr ImGuiWindowFlags kFlags =
@@ -11206,6 +11207,12 @@ void PredationGame::OnImGui()
         if (ImGui::Checkbox("Wireframe", &wireframe))
         {
             cv_wireframe.Set(wireframe);
+        }
+        ImGui::SameLine();
+        bool fullbright = cv_fullbright.Get();
+        if (ImGui::Checkbox("Fullbright", &fullbright))
+        {
+            cv_fullbright.Set(fullbright);
         }
     }
     ImGui::End();

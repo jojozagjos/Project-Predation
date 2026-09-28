@@ -143,6 +143,7 @@ bool SceneRenderer::Init(ShaderLibrary& shaders)
     m_uClusterParams = bgfx::createUniform("u_clusterParams", bgfx::UniformType::Vec4);
     m_uClusterDepth = bgfx::createUniform("u_clusterDepth", bgfx::UniformType::Vec4);
     m_uClusterForward = bgfx::createUniform("u_clusterForward", bgfx::UniformType::Vec4);
+    m_uFullbright = bgfx::createUniform("u_fullbright", bgfx::UniformType::Vec4);
     m_cellLights.resize(static_cast<size_t>(kClusterAcross * kClusterUp * kClusterSlices));
 
     // Occlusion is not required for a picture. If the depth program or the float target is missing
@@ -174,7 +175,7 @@ void SceneRenderer::Shutdown()
         }
     }
     for (bgfx::UniformHandle* handle : {&m_sLightData, &m_sClusterGrid, &m_sLightIndex, &m_uClusterParams, &m_uClusterDepth,
-                                        &m_uClusterForward})
+                                        &m_uClusterForward, &m_uFullbright})
     {
         if (bgfx::isValid(*handle))
         {
@@ -278,6 +279,8 @@ void SceneRenderer::SetEnvironmentUniforms(const Environment& environment,
     PackLights(environment);
     const float listed[4] = {static_cast<float>(kClusterAcross), static_cast<float>(kClusterUp), static_cast<float>(kClusterSlices), 0.0f};
     bgfx::setUniform(m_uClusterParams, listed);
+    const float fullbright[4] = {m_fullbright && withShadows ? 1.0f : 0.0f, 0.0f, 0.0f, 0.0f};
+    bgfx::setUniform(m_uFullbright, fullbright);
 
     // The occlusion maps. Both samplers are bound whatever happens: a sampler a shader declares and
     // nobody fills reads whatever was last in that slot, which is a picture that changes depending
@@ -901,7 +904,8 @@ void SceneRenderer::Draw(bgfx::ViewId view, const Scene& scene, const MeshLibrar
 
 void SceneRenderer::SetClusterCamera(const glm::mat4& view, const glm::mat4& projection)
 {
-    m_clusterViewProj = projection * view;
+    m_clusterView = view;
+    m_clusterProjection = projection;
     const glm::mat4 world = glm::inverse(view);
     m_clusterEye = glm::vec3(world[3]);
     m_clusterForward = -glm::normalize(glm::vec3(world[2]));
@@ -921,60 +925,107 @@ void SceneRenderer::BindClusterTextures()
     bgfx::setTexture(9, m_sLightIndex, m_lightIndex);
 }
 
-bool SceneRenderer::ClusterRange(const glm::mat4& viewProj, const glm::vec3& eye, const glm::vec3& forward, const glm::vec3& lo,
-                                 const glm::vec3& hi, int& x0, int& x1, int& y0, int& y1, int& s0, int& s1)
+void SceneRenderer::ClusterCells(const glm::mat4& view, const glm::mat4& projection, const glm::vec3& centre, float radius,
+                                 bool bounded, const glm::vec3& boxLo, const glm::vec3& boxHi, std::vector<int>& cells)
 {
-    // Its depth along the view, from the box's corners.
-    float nearest = 1.0e9f;
-    float farthest = -1.0e9f;
-    glm::vec2 ndcLo{1.0e9f};
-    glm::vec2 ndcHi{-1.0e9f};
-    bool behind = false;
-    for (int corner = 0; corner < 8; ++corner)
+    cells.clear();
+    // In view space the camera looks down -z, and a point's depth is -z.
+    const glm::vec3 c = glm::vec3(view * glm::vec4(centre, 1.0f));
+    glm::vec3 lo = c - glm::vec3(radius);
+    glm::vec3 hi = c + glm::vec3(radius);
+    if (bounded)
     {
-        const glm::vec3 p{(corner & 1) ? hi.x : lo.x, (corner & 2) ? hi.y : lo.y, (corner & 4) ? hi.z : lo.z};
-        const float depth = glm::dot(p - eye, forward);
-        nearest = std::min(nearest, depth);
-        farthest = std::max(farthest, depth);
-        const glm::vec4 clip = viewProj * glm::vec4(p, 1.0f);
-        if (clip.w <= 0.05f)
+        glm::vec3 boxViewLo{1.0e9f};
+        glm::vec3 boxViewHi{-1.0e9f};
+        for (int corner = 0; corner < 8; ++corner)
         {
-            behind = true;
-            continue;
+            const glm::vec3 p{(corner & 1) ? boxHi.x : boxLo.x, (corner & 2) ? boxHi.y : boxLo.y, (corner & 4) ? boxHi.z : boxLo.z};
+            const glm::vec3 v = glm::vec3(view * glm::vec4(p, 1.0f));
+            boxViewLo = glm::min(boxViewLo, v);
+            boxViewHi = glm::max(boxViewHi, v);
         }
-        const glm::vec2 ndc = glm::vec2(clip) / clip.w;
-        ndcLo = glm::min(ndcLo, ndc);
-        ndcHi = glm::max(ndcHi, ndc);
+        lo = glm::max(lo, boxViewLo);
+        hi = glm::min(hi, boxViewHi);
+        if (lo.x > hi.x || lo.y > hi.y || lo.z > hi.z)
+        {
+            return;
+        }
     }
+    float nearest = -hi.z;
+    float farthest = -lo.z;
     if (farthest < kClusterNear || nearest > kClusterFar)
     {
-        return false;
+        return;
     }
-    // A box reaching behind the eye covers the whole picture as far as its corners can say.
-    if (behind)
+    nearest = std::max(nearest, kClusterNear);
+    farthest = std::min(farthest, kClusterFar);
+
+    // Which cells across and up: the box's corners, at its nearest and farthest depth in front of the camera.
+    // A perspective with its middle in the middle: ndc x = fx * x / depth.
+    const float fx = projection[0][0];
+    const float fy = projection[1][1];
+    float ndcLoX = 1.0e9f, ndcHiX = -1.0e9f, ndcLoY = 1.0e9f, ndcHiY = -1.0e9f;
+    for (const float depth : {nearest, farthest})
     {
-        ndcLo = glm::vec2(-1.0f);
-        ndcHi = glm::vec2(1.0f);
+        for (const float x : {lo.x, hi.x})
+        {
+            ndcLoX = std::min(ndcLoX, fx * x / depth);
+            ndcHiX = std::max(ndcHiX, fx * x / depth);
+        }
+        for (const float y : {lo.y, hi.y})
+        {
+            ndcLoY = std::min(ndcLoY, fy * y / depth);
+            ndcHiY = std::max(ndcHiY, fy * y / depth);
+        }
     }
-    if (ndcHi.x < -1.0f || ndcHi.y < -1.0f || ndcLo.x > 1.0f || ndcLo.y > 1.0f)
+    if (ndcHiX < -1.0f || ndcLoX > 1.0f || ndcHiY < -1.0f || ndcLoY > 1.0f)
     {
-        return false;
+        return;
     }
-    const auto cell = [](float ndc, int cells)
+    const auto column = [](float ndc, int cells)
     { return std::clamp(static_cast<int>(std::floor((ndc * 0.5f + 0.5f) * static_cast<float>(cells))), 0, cells - 1); };
-    x0 = cell(ndcLo.x, kClusterAcross);
-    x1 = cell(ndcHi.x, kClusterAcross);
-    y0 = cell(ndcLo.y, kClusterUp);
-    y1 = cell(ndcHi.y, kClusterUp);
     const float perLog = static_cast<float>(kClusterSlices) / std::log(kClusterFar / kClusterNear);
     const auto slice = [&](float depth)
+    { return std::clamp(static_cast<int>(std::floor(std::log(depth / kClusterNear) * perLog)), 0, kClusterSlices - 1); };
+    const auto sliceStart = [&](int index) { return kClusterNear * std::exp(static_cast<float>(index) / perLog); };
+    const int x0 = column(ndcLoX, kClusterAcross), x1 = column(ndcHiX, kClusterAcross);
+    const int y0 = column(ndcLoY, kClusterUp), y1 = column(ndcHiY, kClusterUp);
+    const int s0 = slice(nearest), s1 = slice(farthest);
+
+    // And of those, the ones the sphere itself reaches: the cell as a box in view space, and whether the
+    // nearest point of it to the lamp is within its reach. A sphere is round, and a box round it put a lamp
+    // beside the camera in every cell of the picture.
+    const float reach2 = radius * radius;
+    for (int s = s0; s <= s1; ++s)
     {
-        return std::clamp(static_cast<int>(std::floor(std::log(std::max(depth, kClusterNear) / kClusterNear) * perLog)), 0,
-                          kClusterSlices - 1);
-    };
-    s0 = slice(nearest);
-    s1 = slice(farthest);
-    return true;
+        const float d0 = sliceStart(s);
+        const float d1 = sliceStart(s + 1);
+        for (int y = y0; y <= y1; ++y)
+        {
+            const float ny0 = -1.0f + 2.0f * static_cast<float>(y) / static_cast<float>(kClusterUp);
+            const float ny1 = -1.0f + 2.0f * static_cast<float>(y + 1) / static_cast<float>(kClusterUp);
+            const float cellLoY = std::min(ny0 * d0, ny0 * d1) / fy;
+            const float cellHiY = std::max(ny1 * d0, ny1 * d1) / fy;
+            const float dy = std::max({cellLoY - c.y, 0.0f, c.y - cellHiY});
+            const float dz = std::max({-d1 - c.z, 0.0f, c.z + d0});
+            if (dy * dy + dz * dz > reach2)
+            {
+                continue;
+            }
+            for (int x = x0; x <= x1; ++x)
+            {
+                const float nx0 = -1.0f + 2.0f * static_cast<float>(x) / static_cast<float>(kClusterAcross);
+                const float nx1 = -1.0f + 2.0f * static_cast<float>(x + 1) / static_cast<float>(kClusterAcross);
+                const float cellLoX = std::min(nx0 * d0, nx0 * d1) / fx;
+                const float cellHiX = std::max(nx1 * d0, nx1 * d1) / fx;
+                const float dx = std::max({cellLoX - c.x, 0.0f, c.x - cellHiX});
+                if (dx * dx + dy * dy + dz * dz <= reach2)
+                {
+                    cells.push_back((s * kClusterUp + y) * kClusterAcross + x);
+                }
+            }
+        }
+    }
 }
 
 void SceneRenderer::BuildClusters()
@@ -1013,39 +1064,19 @@ void SceneRenderer::BuildClusters()
     {
         const PackedLight& light = m_packed[order[row]];
         std::copy(light.data, light.data + kLightStride, m_lightRows.begin() + static_cast<ptrdiff_t>(row * kLightStride));
-        // Where it reaches: its sphere, cut to its room's box when it is kept in one.
-        glm::vec3 lo = light.position - glm::vec3(light.range);
-        glm::vec3 hi = light.position + glm::vec3(light.range);
-        if (light.bounded)
+        // Every cell it reaches: its sphere, cut to its room's box when it is kept in one.
+        ClusterCells(m_clusterView, m_clusterProjection, light.position, light.range, light.bounded, light.boundsMin,
+                     light.boundsMax, m_lightCells);
+        for (const int index : m_lightCells)
         {
-            lo = glm::max(lo, light.boundsMin);
-            hi = glm::min(hi, light.boundsMax);
-            if (lo.x > hi.x || lo.y > hi.y || lo.z > hi.z)
+            std::vector<uint16_t>& cell = m_cellLights[static_cast<size_t>(index)];
+            if (cell.size() < static_cast<size_t>(kClusterMostPerCell))
             {
-                continue;
+                cell.push_back(static_cast<uint16_t>(row));
             }
-        }
-        int x0, x1, y0, y1, s0, s1;
-        if (!ClusterRange(m_clusterViewProj, m_clusterEye, m_clusterForward, lo, hi, x0, x1, y0, y1, s0, s1))
-        {
-            continue;
-        }
-        for (int s = s0; s <= s1; ++s)
-        {
-            for (int y = y0; y <= y1; ++y)
+            else
             {
-                for (int x = x0; x <= x1; ++x)
-                {
-                    std::vector<uint16_t>& cell = m_cellLights[static_cast<size_t>((s * kClusterUp + y) * kClusterAcross + x)];
-                    if (cell.size() < static_cast<size_t>(kClusterMostPerCell))
-                    {
-                        cell.push_back(static_cast<uint16_t>(row));
-                    }
-                    else
-                    {
-                        m_clusterStats.truncated = true;
-                    }
-                }
+                m_clusterStats.truncated = true;
             }
         }
     }

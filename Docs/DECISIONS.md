@@ -2064,3 +2064,45 @@ Four changes to how Assets/Data works, all so the files can be edited by hand wi
   a staircase of every shadow edge -- most visibly the edge of light through a doorway.
 - `perf_report [frames]` logs the averaged frame, GPU time, draw calls and timed sections, for measuring
   changes like these.
+
+## ADR-098: Buildings built as one structure; bigger sites; death is for the mission; the drone to play
+
+- **A building is one structure, not floors stacked up.** Its outside is a shell a face at a time, from
+  under the ground floor to a parapet over the roof, thicker than any wall inside and clad, covering every
+  slab's edge; the ways out are cut through it, with a sill across each doorstep. The faces along x own the
+  corners and the faces along z stop at them, and the walls along z stop just inside every wall along x they
+  meet, so no two faces ever lie in one plane (what showed as flicker on the corners and the doorstep).
+  Lintels over doorways are flush with the wall either side.
+- **Stairwells are one cell wide**, the flight as wide as the arch into it, and their walls go on up the
+  whole storey to a hair past where the next floor's walls begin, so the slab between is never seen edge on
+  from the stairs and no line of light shows where the two meet.
+- **Two tests hold the structure to that:** rays from the middle of every stairwell, every four millimetres
+  of the way up to the next floor, must meet the wall's face and nothing behind it; rays from outside, every
+  centimetre of every face from the ground to the roof, must meet one flat face. Put back the old 3 cm gap
+  and the first finds 128 cracks.
+- **Plans make more sense.** A doorway is never put within two cells of another on the same wall; a room's
+  own doors are reused before a new one is cut. A duct must save a real walk -- at least six cells shorter
+  than going round by the doors -- or it is not dug, and no two duct mouths, or a mouth and a doorway, are
+  within three cells of each other.
+- **Bigger sites, wider halls.** Cells are 3 m, not 2.4 m. A site is 300 m across with three to five
+  buildings; the main one 24 to 30 cells a side and three or four floors, the rest 12 to 20 cells and one to
+  three floors. Straight corridors four cells or longer are sometimes widened to two cells, into solid rock
+  only. Getting the data out of one is meant to take a while.
+- **Navigation is built in tiles** when a map is too big for one piece (its compact heightfield indexes
+  cells in 24 bits, and a site at 0.12 m cells overflowed it and came out empty). Tiles of 512 cells are
+  built on up to eight threads and joined; jumps between floors are found after. A map that fits in one
+  piece is built exactly as before. The site's mesh builds in under two seconds.
+- **Death is for the rest of the mission.** Nobody respawns: a player who dies watches, or goes on in the
+  drone. When everybody is down, the mission is over and everybody goes back to the ship (the testing area
+  stands in for it until there is one) and comes back to life there.
+- **The drone hops** (jump, about 0.3 m, not more than about once a second), onto a step or over a cable.
+- **Creatures come back.** A creature killed is replaced, after about 75 seconds (`ai.return_seconds`,
+  with some chance either way), at a point at least 30 m from everybody and out of their sight, preferring
+  45 m, so there are always as many as there have been.
+- **Development:** `drone` drops a drone where you stand and plays it (again to go back to yourself);
+  `r.fullbright` (a setting in development builds) lights everything flat for looking at shapes;
+  `site_room` and `site_stairs` go to a room or a stairwell of a site's building.
+- **Fixes.** The frame timings in the F3 overlay are gathered by name in a fixed order, so the list no
+  longer jumps about. The lamp clusters test each cell against a lamp's sphere exactly and hold four times
+  as many entries, which is what overflowed into black boxes. Eight lamps' shadows are redrawn a frame, not
+  four, so a door opening in front of a lamp no longer leaves its shadow flickering behind.

@@ -179,7 +179,9 @@ TEST_CASE("From where everybody lands, every room of every building on a site ca
     site.Build(3, scene, meshes, physics, nullptr);
     NavMesh nav;
     std::string error;
-    REQUIRE(nav.Build(physics.StaticTriangles(), NavSettings{}, &error));
+    const bool built = nav.Build(physics.StaticTriangles(), NavSettings{}, &error);
+    INFO(error);
+    REQUIRE(built);
 
     const SitePlan& plan = site.Plan();
     int unreachable = 0;

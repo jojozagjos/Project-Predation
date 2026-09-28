@@ -66,12 +66,9 @@ void DebugOverlay::Draw(const Info& info)
         ImGui::PlotLines("##FrameHistory", stats->History().data(), static_cast<int>(stats->History().size()),
                          stats->HistoryOffset(), nullptr, 0.0f, 33.3f, ImVec2(360.0f, 48.0f));
 
-        if (!stats->Timings().empty())
+        for (const FrameStats::Timing& timing : stats->SmoothedTimings())
         {
-            for (const FrameStats::Timing& timing : stats->Timings())
-            {
-                ImGui::Text("  %-14s %6.2f ms", timing.name, timing.milliseconds);
-            }
+            ImGui::Text("  %-22s %6.2f ms", timing.name, timing.milliseconds);
         }
     }
 

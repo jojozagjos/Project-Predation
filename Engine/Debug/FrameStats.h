@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <cstdint>
+#include <string>
 #include <vector>
 
 namespace pred
@@ -32,7 +33,10 @@ public:
 
     const std::vector<float>& History() const { return m_history; }
     int HistoryOffset() const { return m_historyIndex; }
+    // Last frame's, a row a name, the same rows every frame.
     const std::vector<Timing>& Timings() const { return m_previousTimings; }
+    // The same, eased over a few dozen frames, for reading off the overlay.
+    std::vector<Timing> SmoothedTimings() const;
 
 private:
     using Clock = std::chrono::steady_clock;
@@ -46,6 +50,8 @@ private:
     int m_historyIndex = 0;
     std::vector<Timing> m_currentTimings;
     std::vector<Timing> m_previousTimings;
+    std::vector<std::string> m_names;
+    std::vector<double> m_smoothed;
 };
 
 class ScopedTimer

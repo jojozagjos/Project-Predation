@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <set>
 #include <string>
 
 using namespace pred;
@@ -127,7 +128,7 @@ TEST_CASE("Every facility can be walked from the way in, round loops, with nothi
 
 TEST_CASE("Print a facility, floor by floor", "[.facilitymap]")
 {
-    const FacilityLayout plan = FacilityLayout::Generate(7);
+    const FacilityLayout plan = FacilityLayout::Generate(1);
     std::string text;
     for (int f = 0; f < plan.floors; ++f)
     {
@@ -187,12 +188,23 @@ bool Overlap(const Solid& a, const Solid& b, float by)
            a.hi.z - b.lo.z > by && b.hi.z - a.lo.z > by;
 }
 
+// The building itself -- floors, ceilings, walls, its shell -- which is meant to join up: a wall reaches a hair
+// into the slabs over and under it, the shell covers every slab's edge, and none of that is anything being inside
+// anything else. What must never overlap is everything else, with the building or with each other.
+bool Structural(FacilityMap::Piece::Kind kind)
+{
+    using Kind = FacilityMap::Piece::Kind;
+    return kind == Kind::Floor || kind == Kind::Ceiling || kind == Kind::Wall || kind == Kind::Duct || kind == Kind::Fill ||
+           kind == Kind::Cladding;
+}
+
 std::vector<Solid> SolidsOf(const FacilityMap::Blueprint& blueprint)
 {
     std::vector<Solid> solids;
     for (const FacilityMap::Piece& piece : blueprint.pieces)
     {
-        solids.push_back(Around(piece.centre, piece.size, piece.yaw, "piece " + std::to_string(static_cast<int>(piece.kind))));
+        solids.push_back(Around(piece.centre, piece.size, piece.yaw,
+                                (Structural(piece.kind) ? "structure " : "piece ") + std::to_string(static_cast<int>(piece.kind))));
     }
     for (const FacilityMap::Flight& flight : blueprint.flights)
     {
@@ -227,7 +239,8 @@ TEST_CASE("A built facility has nothing solid inside anything else", "[facility]
         {
             for (size_t k = i + 1; k < solids.size(); ++k)
             {
-                if (Overlap(solids[i], solids[k], 0.002f))
+                const bool bothStructure = solids[i].what.rfind("structure", 0) == 0 && solids[k].what.rfind("structure", 0) == 0;
+                if (!bothStructure && Overlap(solids[i], solids[k], 0.002f))
                 {
                     if (overlaps < 5)
                     {
@@ -363,4 +376,219 @@ TEST_CASE("Print a facility's doorways", "[.facilitydoors]")
                 (door.hasDoor ? " door" : " arch") + (door.locked ? " locked" : "") + " room " + std::to_string(door.room) + "\n";
     }
     WARN(text);
+}
+
+TEST_CASE("A stairwell's walls run unbroken from its floor up to the floor over it, with nothing showing between", "[facility]")
+{
+    using Kind = FacilityMap::Piece::Kind;
+    // How far a wall's face is from the middle of the cell it stands round: half a cell, less half the wall.
+    constexpr float kToFace = FacilityLayout::kCell * 0.5f - 0.1f;
+    int edges = 0;
+    int cracks = 0;
+    for (uint32_t seed = 1; seed <= 8; ++seed)
+    {
+        INFO("seed " << seed);
+        const FacilityLayout layout = FacilityLayout::Generate(seed);
+        const FacilityMap::Blueprint blueprint = FacilityMap::Draw(layout);
+        std::vector<Solid> building;
+        for (const FacilityMap::Piece& piece : blueprint.pieces)
+        {
+            if (piece.kind == Kind::Floor || piece.kind == Kind::Ceiling || piece.kind == Kind::Wall || piece.kind == Kind::Fill ||
+                piece.kind == Kind::Cladding)
+            {
+                building.push_back(Around(piece.centre, piece.size, piece.yaw, ""));
+            }
+        }
+        // Every edge with a way through it, by floor, the cell on its low side, and which way it runs.
+        std::set<std::tuple<int, int, int, int>> openings;
+        for (const FacilityLayout::Door& door : layout.doors)
+        {
+            openings.insert({door.floor, door.cell.x, door.cell.y, door.side});
+        }
+        for (const FacilityLayout::Exit& exit : layout.exits)
+        {
+            const int x = exit.side == 0 ? exit.cell.x - 1 : exit.cell.x;
+            const int z = exit.side == 2 ? exit.cell.y - 1 : exit.cell.y;
+            openings.insert({0, x, z, exit.side < 2 ? 0 : 1});
+        }
+        for (const FacilityLayout::Duct& duct : layout.ducts)
+        {
+            for (const FacilityLayout::Mouth& mouth : duct.mouths)
+            {
+                const glm::ivec2 low = glm::min(mouth.duct, mouth.open);
+                openings.insert({duct.floor, low.x, low.y, mouth.duct.x != mouth.open.x ? 0 : 1});
+            }
+        }
+        const glm::ivec2 ways[4] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+        for (int f = 0; f + 1 < layout.floors; ++f)
+        {
+            for (int z = 0; z < layout.depth; ++z)
+            {
+                for (int x = 0; x < layout.width; ++x)
+                {
+                    if (layout.At(f, x, z) != FacilityLayout::Cell::Stair)
+                    {
+                        continue;
+                    }
+                    for (const glm::ivec2 way : ways)
+                    {
+                        const glm::ivec2 next{x + way.x, z + way.y};
+                        const bool inside = next.x >= 0 && next.y >= 0 && next.x < layout.width && next.y < layout.depth;
+                        if (inside && layout.At(f, next.x, next.y) == FacilityLayout::Cell::Stair)
+                        {
+                            continue;
+                        }
+                        const glm::ivec2 low = glm::min(glm::ivec2(x, z), next);
+                        const int side = way.x != 0 ? 0 : 1;
+                        if (openings.contains({f, low.x, low.y, side}) || openings.contains({f + 1, low.x, low.y, side}))
+                        {
+                            continue;
+                        }
+                        ++edges;
+                        // From the middle of the stairwell, straight at the wall, every few millimetres of the way up.
+                        const glm::vec3 middle = FacilityMap::ToWorld(layout, f, glm::vec2(x, z) + glm::vec2(0.5f));
+                        const glm::vec3 along{static_cast<float>(way.x), 0.0f, static_cast<float>(way.y)};
+                        std::vector<const Solid*> near;
+                        const glm::vec3 lo = glm::min(middle, middle + along * 2.0f);
+                        const glm::vec3 hi = glm::max(middle, middle + along * 2.0f) + glm::vec3(0.0f, FacilityLayout::kStorey, 0.0f);
+                        for (const Solid& solid : building)
+                        {
+                            if (solid.lo.x <= hi.x && solid.hi.x >= lo.x && solid.lo.y <= hi.y && solid.hi.y >= lo.y && solid.lo.z <= hi.z &&
+                                solid.hi.z >= lo.z)
+                            {
+                                near.push_back(&solid);
+                            }
+                        }
+                        for (float h = 0.05f; h < FacilityLayout::kStorey - 0.002f; h += 0.004f)
+                        {
+                            const glm::vec3 from = middle + glm::vec3(0.0f, h, 0.0f);
+                            float nearest = 10.0f;
+                            bool buried = false;
+                            for (const Solid* solid : near)
+                            {
+                                if (from.y <= solid->lo.y || from.y >= solid->hi.y)
+                                {
+                                    continue;
+                                }
+                                const float a = way.x != 0 ? from.x : from.z;
+                                const float sLo = way.x != 0 ? solid->lo.x : solid->lo.z;
+                                const float sHi = way.x != 0 ? solid->hi.x : solid->hi.z;
+                                const float across = way.x != 0 ? from.z : from.x;
+                                const float cLo = way.x != 0 ? solid->lo.z : solid->lo.x;
+                                const float cHi = way.x != 0 ? solid->hi.z : solid->hi.x;
+                                if (across <= cLo || across >= cHi)
+                                {
+                                    continue;
+                                }
+                                if (a > sLo && a < sHi)
+                                {
+                                    buried = true; // inside a landing's slab: nothing to see from here
+                                    break;
+                                }
+                                const float distance = (way.x + way.y) > 0 ? sLo - a : a - sHi;
+                                if (distance >= 0.0f)
+                                {
+                                    nearest = std::min(nearest, distance);
+                                }
+                            }
+                            if (!buried && std::abs(nearest - kToFace) > 0.002f)
+                            {
+                                if (cracks < 5)
+                                {
+                                    UNSCOPED_INFO("seed " << seed << " floor " << f << " cell " << x << "," << z << " looking " << way.x << ","
+                                                          << way.y << ": " << h << " up, the wall is " << nearest << " away");
+                                }
+                                ++cracks;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    CHECK(edges > 20);
+    CHECK(cracks == 0);
+}
+
+TEST_CASE("A building's outside is one flat face a side, from the ground to the roof, with no floor showing through it", "[facility]")
+{
+    for (uint32_t seed = 1; seed <= 6; ++seed)
+    {
+        INFO("seed " << seed);
+        FacilityLayout::Options options;
+        options.width = 14;
+        options.depth = 12;
+        options.minFloors = 2;
+        options.maxFloors = 3;
+        options.exits = 2;
+        const FacilityLayout layout = FacilityLayout::Generate(seed, options);
+        const FacilityMap::Blueprint blueprint = FacilityMap::Draw(layout);
+        std::vector<Solid> building;
+        for (const FacilityMap::Piece& piece : blueprint.pieces)
+        {
+            building.push_back(Around(piece.centre, piece.size, piece.yaw, ""));
+        }
+        const glm::vec3 corner = FacilityMap::ToWorld(layout, 0, glm::vec2(0.0f));
+        const float bottom = corner.y + 0.05f;
+        const float top = FacilityMap::ToWorld(layout, layout.floors, glm::vec2(0.0f)).y;
+        const float w = static_cast<float>(layout.width) * FacilityLayout::kCell;
+        const float d = static_cast<float>(layout.depth) * FacilityLayout::kCell;
+        // Each side in turn: the ray comes in from 5 m out, square to it.
+        for (int side = 0; side < 4; ++side)
+        {
+            const bool alongZ = side < 2; // the x sides run along z
+            const float length = alongZ ? d : w;
+            const float out = side == 0 ? corner.x - 5.0f : side == 1 ? corner.x + w + 5.0f : side == 2 ? corner.z - 5.0f : corner.z + d + 5.0f;
+            const float inward = side == 0 || side == 2 ? 1.0f : -1.0f;
+            float face = -1.0f;
+            int dents = 0;
+            for (float t = 0.3f; t < length - 0.3f; t += 0.35f)
+            {
+                // Not where a way out is: that is a hole on purpose.
+                bool atExit = false;
+                for (const FacilityLayout::Exit& exit : layout.exits)
+                {
+                    const float middle = (static_cast<float>(alongZ ? exit.cell.y : exit.cell.x) + 0.5f) * FacilityLayout::kCell;
+                    atExit = atExit || (exit.side == side && std::abs(t - middle) < 1.0f);
+                }
+                if (atExit)
+                {
+                    continue;
+                }
+                for (float y = bottom; y < top; y += 0.01f)
+                {
+                    const float across = (alongZ ? corner.z : corner.x) + t;
+                    float nearest = 100.0f;
+                    for (const Solid& solid : building)
+                    {
+                        const float cLo = alongZ ? solid.lo.z : solid.lo.x;
+                        const float cHi = alongZ ? solid.hi.z : solid.hi.x;
+                        if (y <= solid.lo.y || y >= solid.hi.y || across <= cLo || across >= cHi)
+                        {
+                            continue;
+                        }
+                        const float sLo = alongZ ? solid.lo.x : solid.lo.z;
+                        const float sHi = alongZ ? solid.hi.x : solid.hi.z;
+                        nearest = std::min(nearest, inward > 0.0f ? sLo - out : out - sHi);
+                    }
+                    if (face < 0.0f)
+                    {
+                        face = nearest;
+                    }
+                    if (std::abs(nearest - face) > 0.002f)
+                    {
+                        if (dents < 3)
+                        {
+                            UNSCOPED_INFO("side " << side << ", " << t << " along and " << y - corner.y << " up: the face is " << nearest
+                                                  << " in, not " << face);
+                        }
+                        ++dents;
+                    }
+                }
+            }
+            CHECK(face > 4.0f);
+            CHECK(face < 5.0f);
+            CHECK(dents == 0);
+        }
+    }
 }

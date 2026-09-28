@@ -704,8 +704,6 @@ private:
     void UpdateDroneThreats(float dt);
     // Everybody down for good: the deployment is over.
     void UpdateWipe(float dt);
-    // A dead player asking to come back now, which only a death that is a pause allows.
-    void ComeBackNow(uint8_t player);
     // The interact key, whatever it means at the moment: use something, come back, or watch somebody else.
     void PressInteract();
     void RemoveAllDrones();
@@ -1204,6 +1202,8 @@ private:
     SupportDrone m_supportDrone;
     float m_droneArrivesIn = -1.0f;
     bool m_deadForGood = false;
+    // In a drone by the `drone` command: nothing ends because this player is down.
+    bool m_playingDrone = false;
     // Everybody else's drones, where their machines say they are.
     std::map<uint8_t, SupportDrone> m_remoteDrones;
     // The host's: how long before each drone can be swiped at again, and where each was last heard.
@@ -1296,6 +1296,8 @@ private:
     SiteMap m_facility;
     // Whether the site's own sky is the one in the scene, so it can be put back on leaving.
     bool m_skyAtSite = false;
+    // The most creatures alive at once this game: how many the game keeps coming back to.
+    int m_creaturePeak = 0;
     int m_perfFramesLeft = 0;
     int m_perfFrames = 0;
     std::map<std::string, double> m_perfTimings;

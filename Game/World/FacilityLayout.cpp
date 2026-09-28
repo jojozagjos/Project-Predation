@@ -101,7 +101,8 @@ struct Planner
                 well.floor = f;
                 well.alongX = random.Chance(0.5f);
                 well.rising = random.Chance(0.5f);
-                const glm::ivec2 size = well.alongX ? glm::ivec2(3, 2) : glm::ivec2(2, 3);
+                // One cell wide, three long: a flight as wide as the way in and out of it.
+                const glm::ivec2 size = well.alongX ? glm::ivec2(3, 1) : glm::ivec2(1, 3);
                 // Room at the ends for the way in and the way out.
                 well.min = {random.Int(2, plan.width - size.x - 2), random.Int(2, plan.depth - size.y - 2)};
                 well.max = well.min + size - glm::ivec2(1);
@@ -210,7 +211,7 @@ struct Planner
             Node node;
             node.floor = floor;
             node.well = static_cast<int>(w);
-            const int across = random.Int(0, 1);
+            const int across = 0;
             if (well.alongX)
             {
                 const int x = atMin ? well.min.x : well.max.x;
@@ -258,11 +259,61 @@ struct Planner
         plan.doors.push_back(door);
     }
 
+    // Whether a doorway on the edge between two cells would stand beside one there already is: within a cell and
+    // a half of it, side by side or round a corner. Two doorways together read as a mistake, not a building.
+    bool NearDoorway(int floor, glm::ivec2 a, glm::ivec2 b) const
+    {
+        const glm::vec2 middle = (glm::vec2(a) + glm::vec2(b)) * 0.5f;
+        for (const FacilityLayout::Door& door : plan.doors)
+        {
+            if (door.floor != floor)
+            {
+                continue;
+            }
+            const glm::ivec2 other = door.cell + (door.side == 0 ? glm::ivec2(1, 0) : glm::ivec2(0, 1));
+            const glm::vec2 theirs = (glm::vec2(door.cell) + glm::vec2(other)) * 0.5f;
+            const bool same = (door.cell == a && other == b) || (door.cell == b && other == a);
+            if (!same && glm::length(theirs - middle) < 1.9f)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
     // A way out of a room towards `towards`: a cell on its edge and the cell outside it.
     bool RoomOpening(const FacilityLayout::Room& room, glm::vec2 towards, glm::ivec2& inside, glm::ivec2& outside)
     {
         float best = 1.0e9f;
         bool found = false;
+        const int index = static_cast<int>(&room - plan.rooms.data());
+        // Out through a doorway the room already has, when one faces anything like the right way: a room with a
+        // second door beside its first, into the same corridor, is the look of a plan nobody drew.
+        for (const FacilityLayout::Door& door : plan.doors)
+        {
+            if (door.room != index || door.floor != room.floor)
+            {
+                continue;
+            }
+            const glm::ivec2 other = door.cell + (door.side == 0 ? glm::ivec2(1, 0) : glm::ivec2(0, 1));
+            const bool firstIn = OwnerAt(room.floor, door.cell.x, door.cell.y) == index &&
+                                 CellAt(room.floor, door.cell.x, door.cell.y) == FacilityLayout::Cell::Room;
+            const glm::ivec2 in = firstIn ? door.cell : other;
+            const glm::ivec2 out = firstIn ? other : door.cell;
+            const FacilityLayout::Cell there = CellAt(room.floor, out.x, out.y);
+            if (there != FacilityLayout::Cell::Solid && there != FacilityLayout::Cell::Corridor)
+            {
+                continue;
+            }
+            const float score = glm::length(glm::vec2(out) - towards) - 3.0f + random.Unit() * 1.5f;
+            if (score < best)
+            {
+                best = score;
+                inside = in;
+                outside = out;
+                found = true;
+            }
+        }
         for (int z = room.min.y; z <= room.max.y; ++z)
         {
             for (int x = room.min.x; x <= room.max.x; ++x)
@@ -277,6 +328,10 @@ struct Planner
                     }
                     const FacilityLayout::Cell there = CellAt(room.floor, out.x, out.y);
                     if (there != FacilityLayout::Cell::Solid && there != FacilityLayout::Cell::Corridor)
+                    {
+                        continue;
+                    }
+                    if (NearDoorway(room.floor, glm::ivec2(x, z), out))
                     {
                         continue;
                     }
@@ -525,6 +580,10 @@ struct Planner
             }
             const glm::ivec2 edge = edgeAt(p);
             const FacilityLayout::Cell at = CellAt(0, edge.x, edge.y);
+            if (NearDoorway(0, edge, edge - inward))
+            {
+                continue;
+            }
             if (at == FacilityLayout::Cell::Room || at == FacilityLayout::Cell::Corridor)
             {
                 plan.exits.push_back({edge, side, at == FacilityLayout::Cell::Room ? OwnerAt(0, edge.x, edge.y) : -1});
@@ -623,6 +682,57 @@ struct Planner
         }
     }
 
+    // The long straight runs of corridor, two cells wide now and then: a hall to cross rather than a passage to
+    // squeeze along. A run of four or more is widened to one side where everything along that side is solid rock
+    // or corridor already, so nothing is cut into a room or a stairwell.
+    void WidenCorridors()
+    {
+        for (int f = 0; f < plan.floors; ++f)
+        {
+            for (int axis = 0; axis < 2; ++axis)
+            {
+                const int lines = axis == 0 ? plan.depth : plan.width;
+                const int length = axis == 0 ? plan.width : plan.depth;
+                const auto at = [&](int along, int line) { return axis == 0 ? glm::ivec2(along, line) : glm::ivec2(line, along); };
+                for (int line = 1; line + 1 < lines; ++line)
+                {
+                    int start = -1;
+                    for (int i = 0; i <= length; ++i)
+                    {
+                        const glm::ivec2 c = at(i, line);
+                        const bool corridor = i < length && CellAt(f, c.x, c.y) == FacilityLayout::Cell::Corridor;
+                        if (corridor && start < 0)
+                        {
+                            start = i;
+                        }
+                        if (corridor || start < 0)
+                        {
+                            continue;
+                        }
+                        const int end = i - 1;
+                        if (end - start + 1 >= 4 && random.Chance(0.55f))
+                        {
+                            const int side = random.Chance(0.5f) ? 1 : -1;
+                            bool fits = true;
+                            for (int k = start; k <= end && fits; ++k)
+                            {
+                                const glm::ivec2 n = at(k, line + side);
+                                const FacilityLayout::Cell cell = InBounds(n.x, n.y) ? CellAt(f, n.x, n.y) : FacilityLayout::Cell::Room;
+                                fits = cell == FacilityLayout::Cell::Solid || cell == FacilityLayout::Cell::Corridor;
+                            }
+                            for (int k = start; k <= end && fits; ++k)
+                            {
+                                const glm::ivec2 n = at(k, line + side);
+                                CellAt(f, n.x, n.y) = FacilityLayout::Cell::Corridor;
+                            }
+                        }
+                        start = -1;
+                    }
+                }
+            }
+        }
+    }
+
     // Locks the one door of a few dead-end rooms, so the keycard is worth finding.
     void LockSome()
     {
@@ -693,6 +803,69 @@ struct Planner
         }
     }
 
+    // How many steps it is to walk from one open cell to another on a floor, through doorways only, or -1 when
+    // there is no way on this floor.
+    int WalkDistance(int f, glm::ivec2 from, glm::ivec2 to) const
+    {
+        if (from.x < 0 || to.x < 0)
+        {
+            return -1;
+        }
+        const auto open = [&](glm::ivec2 c)
+        {
+            const FacilityLayout::Cell cell = plan.At(f, c.x, c.y);
+            return cell == FacilityLayout::Cell::Room || cell == FacilityLayout::Cell::Corridor || cell == FacilityLayout::Cell::Stair;
+        };
+        const auto space = [&](glm::ivec2 c)
+        {
+            const FacilityLayout::Cell cell = plan.At(f, c.x, c.y);
+            return cell == FacilityLayout::Cell::Corridor ? -2 : plan.roomOf[plan.Index(f, c.x, c.y)];
+        };
+        std::set<std::tuple<int, int, int>> doorways;
+        for (const FacilityLayout::Door& door : plan.doors)
+        {
+            if (door.floor == f)
+            {
+                doorways.insert({door.cell.x, door.cell.y, door.side});
+            }
+        }
+        const auto through = [&](glm::ivec2 a, glm::ivec2 b)
+        {
+            if (space(a) == space(b))
+            {
+                return true;
+            }
+            const glm::ivec2 low = glm::min(a, b);
+            return doorways.count({low.x, low.y, a.x != b.x ? 0 : 1}) > 0;
+        };
+        std::vector<int> steps(static_cast<size_t>(plan.width * plan.depth), -1);
+        std::queue<glm::ivec2> queue;
+        steps[static_cast<size_t>(from.y * plan.width + from.x)] = 0;
+        queue.push(from);
+        while (!queue.empty())
+        {
+            const glm::ivec2 c = queue.front();
+            queue.pop();
+            const int here = steps[static_cast<size_t>(c.y * plan.width + c.x)];
+            if (c == to)
+            {
+                return here;
+            }
+            const glm::ivec2 around[] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+            for (const glm::ivec2 step : around)
+            {
+                const glm::ivec2 n = c + step;
+                if (!InBounds(n.x, n.y) || !open(n) || steps[static_cast<size_t>(n.y * plan.width + n.x)] >= 0 || !through(c, n))
+                {
+                    continue;
+                }
+                steps[static_cast<size_t>(n.y * plan.width + n.x)] = here + 1;
+                queue.push(n);
+            }
+        }
+        return -1;
+    }
+
     // The first open neighbour of a cell that the test accepts.
     template <typename Want>
     bool Neighbour(glm::ivec2 c, Want&& wanted, glm::ivec2& found)
@@ -710,9 +883,49 @@ struct Planner
         return false;
     }
 
+    // Whether a cell touches a duct already dug, sideways or corner to corner.
+    bool NearDuct(int f, glm::ivec2 c)
+    {
+        for (int dz = -1; dz <= 1; ++dz)
+        {
+            for (int dx = -1; dx <= 1; ++dx)
+            {
+                if (InBounds(c.x + dx, c.y + dz) && CellAt(f, c.x + dx, c.y + dz) == FacilityLayout::Cell::Duct)
+                {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    // Whether a vent's mouth here would be beside another: two vents side by side into one room are one too many.
+    bool NearMouth(int f, glm::ivec2 duct, glm::ivec2 open) const
+    {
+        const glm::vec2 middle = (glm::vec2(duct) + glm::vec2(open)) * 0.5f;
+        for (const FacilityLayout::Duct& other : plan.ducts)
+        {
+            if (other.floor != f)
+            {
+                continue;
+            }
+            for (const FacilityLayout::Mouth& mouth : other.mouths)
+            {
+                if (glm::length((glm::vec2(mouth.duct) + glm::vec2(mouth.open)) * 0.5f - middle) < 2.9f)
+                {
+                    return true;
+                }
+            }
+        }
+        return NearDoorway(f, duct, open);
+    }
+
     bool TryDuct(int f, int a, Goal goal, int b)
     {
         const auto solid = [&](glm::ivec2 c) { return InBounds(c.x, c.y) && CellAt(f, c.x, c.y) == FacilityLayout::Cell::Solid; };
+        // A new duct keeps clear of the ones there are, unless joining one is the point of it: side by side they read
+        // as one wide duct, or two vents where one would do.
+        const auto clear = [&](glm::ivec2 c) { return goal == Goal::Duct || !NearDuct(f, c); };
         const auto inA = [&](glm::ivec2 n) { return CellAt(f, n.x, n.y) == FacilityLayout::Cell::Room && OwnerAt(f, n.x, n.y) == a; };
         const auto arrived = [&](glm::ivec2 n)
         {
@@ -736,7 +949,9 @@ struct Planner
         {
             for (int x = 0; x < plan.width; ++x)
             {
-                if (solid({x, z}) && Neighbour(glm::ivec2(x, z), inA, unused) && random.Chance(0.5f))
+                glm::ivec2 mouthOpen;
+                if (solid({x, z}) && clear({x, z}) && Neighbour(glm::ivec2(x, z), inA, mouthOpen) &&
+                    !NearMouth(f, glm::ivec2(x, z), mouthOpen) && random.Chance(0.5f))
                 {
                     came[static_cast<size_t>(z * plan.width + x)] = -1;
                     open.push({x, z});
@@ -752,7 +967,8 @@ struct Planner
             const int here = c.y * plan.width + c.x;
             // At least two cells long before it may arrive -- a duct a wall thick is only a hole -- and not
             // arriving somewhere still beside the room it set out from.
-            if (depthOf[static_cast<size_t>(here)] >= 1 && Neighbour(c, arrived, endOpen) && !Neighbour(c, inA, unused))
+            if (depthOf[static_cast<size_t>(here)] >= 3 && Neighbour(c, arrived, endOpen) && !Neighbour(c, inA, unused) &&
+                (goal == Goal::Duct || !NearMouth(f, c, endOpen)))
             {
                 end = c;
                 break;
@@ -765,7 +981,7 @@ struct Planner
             for (const glm::ivec2 step : steps)
             {
                 const glm::ivec2 n = c + step;
-                if (solid(n) && came[static_cast<size_t>(n.y * plan.width + n.x)] == -2)
+                if (solid(n) && clear(n) && came[static_cast<size_t>(n.y * plan.width + n.x)] == -2)
                 {
                     came[static_cast<size_t>(n.y * plan.width + n.x)] = here;
                     depthOf[static_cast<size_t>(n.y * plan.width + n.x)] = depthOf[static_cast<size_t>(here)] + 1;
@@ -776,6 +992,28 @@ struct Planner
         if (end.x < 0)
         {
             return false;
+        }
+        // Worth crawling: walking from one end to the other has to be a good deal further than the duct. A duct
+        // between two rooms a door apart is a hole in the wall that nobody would have dug.
+        {
+            int length = 0;
+            for (int at = end.y * plan.width + end.x; at >= 0; at = came[static_cast<size_t>(at)])
+            {
+                ++length;
+            }
+            glm::ivec2 from{-1};
+            for (int at = end.y * plan.width + end.x; at >= 0; at = came[static_cast<size_t>(at)])
+            {
+                if (came[static_cast<size_t>(at)] < 0)
+                {
+                    Neighbour(glm::ivec2(at % plan.width, at / plan.width), inA, from);
+                }
+            }
+            const int walk = WalkDistance(f, from, endOpen);
+            if (walk >= 0 && walk < length + 6)
+            {
+                return false;
+            }
         }
         FacilityLayout::Duct duct;
         duct.floor = f;
@@ -1270,6 +1508,7 @@ FacilityLayout FacilityLayout::Generate(uint32_t seed, const Options& options)
         planner.PlaceRooms();
         planner.Furnish();
         planner.Connect();
+        planner.WidenCorridors();
         if (options.exits > 0)
         {
             planner.AddExits(options.exits, options.exitSide);
