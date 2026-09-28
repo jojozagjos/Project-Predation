@@ -151,10 +151,36 @@ float Horizontal(const glm::vec3& a, const glm::vec3& b)
 
 } // namespace
 
+bool PredationGame::AtSite() const
+{
+    return m_facility.Built() && m_facility.Contains(m_player.State().position);
+}
+
+std::vector<glm::vec3> PredationGame::NavTriangles() const
+{
+    std::vector<glm::vec3> all = m_app->GetPhysics().StaticTriangles();
+    if (!m_facility.Built())
+    {
+        return all;
+    }
+    const bool site = AtSite();
+    std::vector<glm::vec3> kept;
+    kept.reserve(all.size());
+    for (size_t i = 0; i + 2 < all.size(); i += 3)
+    {
+        const glm::vec3 middle = (all[i] + all[i + 1] + all[i + 2]) / 3.0f;
+        if (m_facility.Contains(middle) == site)
+        {
+            kept.insert(kept.end(), {all[i], all[i + 1], all[i + 2]});
+        }
+    }
+    return kept;
+}
+
 void PredationGame::BuildNavigation()
 {
     std::string error;
-    if (!m_nav.Build(m_app->GetPhysics().StaticTriangles(), NavSettings{}, &error))
+    if (!m_nav.Build(NavTriangles(), NavSettings{}, &error))
     {
         PRED_LOG_ERROR(AI, "No navigation mesh, so no creature can move: {}", error);
     }
@@ -3502,7 +3528,7 @@ void PredationGame::RequestNavRebuild()
     }
     // The level's shape as it is now, taken here rather than on the worker: the physics world is the
     // main thread's.
-    std::vector<glm::vec3> triangles = m_app->GetPhysics().StaticTriangles();
+    std::vector<glm::vec3> triangles = NavTriangles();
     m_navSpare = std::make_unique<NavMesh>();
     m_navRebuilding = true;
     NavMesh* spare = m_navSpare.get();

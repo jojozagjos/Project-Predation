@@ -68,17 +68,30 @@ const Material kBenchMaterial = Material::Diffuse({0.28f, 0.27f, 0.25f}, 0.8f);
 const Material kCrateMaterial = Material::Diffuse({0.38f, 0.30f, 0.22f}, 0.85f);
 const Material kCabinetMaterial = Material::Metal({0.26f, 0.31f, 0.28f}, 0.6f);
 
+// Where the building being drawn stands: the corner of its cell (0, 0), at ground-floor level. Set for the
+// length of a Draw, from the plan; the facility's usual place otherwise.
+thread_local glm::vec3 t_origin = FacilitySpec::kOrigin;
+
+struct OriginScope
+{
+    explicit OriginScope(const glm::vec3& origin) : previous(t_origin) { t_origin = origin; }
+    ~OriginScope() { t_origin = previous; }
+    OriginScope(const OriginScope&) = delete;
+    OriginScope& operator=(const OriginScope&) = delete;
+    glm::vec3 previous;
+};
+
 float Base(int floor)
 {
-    return FacilitySpec::kOrigin.y + static_cast<float>(floor) * kStorey;
+    return t_origin.y + static_cast<float>(floor) * kStorey;
 }
 float WorldX(float cells)
 {
-    return FacilitySpec::kOrigin.x + cells * kCell;
+    return t_origin.x + cells * kCell;
 }
 float WorldZ(float cells)
 {
-    return FacilitySpec::kOrigin.z + cells * kCell;
+    return t_origin.z + cells * kCell;
 }
 float WorldX(int cells)
 {
@@ -106,9 +119,13 @@ void Box(Blueprint& out, Kind kind, glm::vec3 lo, glm::vec3 hi)
 }
 
 // Which space a cell is part of. A wall stands between two cells in different ones; -1 is the solid
-// between everything.
+// between everything, and -4 the outside, so the building has an outer wall all the way round.
 int Space(const FacilityLayout& layout, int f, int x, int z)
 {
+    if (x < 0 || z < 0 || x >= layout.width || z >= layout.depth)
+    {
+        return -4;
+    }
     switch (layout.At(f, x, z))
     {
     case Cell::Room:
@@ -180,6 +197,17 @@ struct Opening
 // the cell and the one at +x; 1: the one at +z).
 using Openings = std::map<std::tuple<int, int, int, int>, Opening>;
 
+std::tuple<int, int, int, int> ExitKey(const FacilityLayout::Exit& exit)
+{
+    switch (exit.side)
+    {
+    case 0: return {0, exit.cell.x - 1, exit.cell.y, 0};
+    case 1: return {0, exit.cell.x, exit.cell.y, 0};
+    case 2: return {0, exit.cell.x, exit.cell.y - 1, 1};
+    default: return {0, exit.cell.x, exit.cell.y, 1};
+    }
+}
+
 Openings FindOpenings(const FacilityLayout& layout)
 {
     Openings openings;
@@ -188,6 +216,11 @@ Openings FindOpenings(const FacilityLayout& layout)
         const bool stairs = door.room < 0;
         openings[{door.floor, door.cell.x, door.cell.y, door.side}] =
             door.hasDoor ? Opening{kDoorWidth, kDoorHeight} : stairs ? Opening{kStairArchWidth, kStairArchHeight} : Opening{kArchWidth, kArchHeight};
+    }
+    // The ways out: a door in the outer wall, on the edge between the cell inside and the one beyond it.
+    for (const FacilityLayout::Exit& exit : layout.exits)
+    {
+        openings[ExitKey(exit)] = Opening{kDoorWidth, kDoorHeight};
     }
     // A duct's mouth: a hole at the foot of the wall, as high as the crawlspace behind it.
     for (const FacilityLayout::Duct& duct : layout.ducts)
@@ -635,6 +668,31 @@ void Doors(const FacilityLayout& layout, Blueprint& out)
         }
         out.placements.doors.push_back(placed);
     }
+    for (const FacilityLayout::Exit& exit : layout.exits)
+    {
+        WorldObjects::PlacedDoor placed;
+        placed.width = kPanelWidth;
+        placed.height = kPanelHeight;
+        const float y = Base(0) + 0.01f;
+        const auto [floor, lowX, lowZ, alongZ] = ExitKey(exit);
+        (void)floor;
+        if (alongZ == 0)
+        {
+            const float mid = WorldZ(static_cast<float>(lowZ) + 0.5f);
+            placed.hinge = {WorldX(lowX + 1), y, mid - kPanelWidth * 0.5f};
+            placed.closedYaw = -glm::half_pi<float>();
+            // In, towards the building: +x through the west wall, -x through the east.
+            placed.openYaw = placed.closedYaw + (exit.side == 0 ? swing : -swing);
+        }
+        else
+        {
+            const float mid = WorldX(static_cast<float>(lowX) + 0.5f);
+            placed.hinge = {mid - kPanelWidth * 0.5f, y, WorldZ(lowZ + 1)};
+            placed.closedYaw = 0.0f;
+            placed.openYaw = exit.side == 2 ? -swing : swing;
+        }
+        out.placements.doors.push_back(placed);
+    }
 }
 
 void Lamps(const FacilityLayout& layout, Blueprint& out)
@@ -877,8 +935,23 @@ glm::vec3 FacilityMap::ToWorld(int floor, glm::vec2 cells)
     return {WorldX(cells.x), Base(floor), WorldZ(cells.y)};
 }
 
+glm::vec3 FacilityMap::ToWorld(const FacilityLayout& layout, int floor, glm::vec2 cells)
+{
+    const OriginScope scope(layout.origin);
+    return ToWorld(floor, cells);
+}
+
+glm::vec3 FacilityMap::ExitOutside(const FacilityLayout& layout, const FacilityLayout::Exit& exit, float distance)
+{
+    const glm::vec2 out = exit.side == 0 ? glm::vec2(-1.0f, 0.0f) : exit.side == 1 ? glm::vec2(1.0f, 0.0f)
+                        : exit.side == 2 ? glm::vec2(0.0f, -1.0f) : glm::vec2(0.0f, 1.0f);
+    const glm::vec2 centre = glm::vec2(exit.cell) + glm::vec2(0.5f) + out * (0.5f + distance / kCell);
+    return ToWorld(layout, 0, centre);
+}
+
 FacilityMap::Blueprint FacilityMap::Draw(const FacilityLayout& layout)
 {
+    const OriginScope scope(layout.origin);
     Blueprint out;
     const Openings openings = FindOpenings(layout);
     Slabs(layout, out);
@@ -910,12 +983,18 @@ FacilityMap::Blueprint FacilityMap::Draw(const FacilityLayout& layout)
 
 void FacilityMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, LevelLights* lights)
 {
+    Build(FacilityLayout::Generate(seed), seed, scene, meshes, physics, lights);
+}
+
+void FacilityMap::Build(FacilityLayout layout, uint32_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics,
+                        LevelLights* lights, const std::string& prefix)
+{
     Clear(scene, physics, lights);
-    m_seed = seed;
-    m_layout = FacilityLayout::Generate(seed);
+    m_seed = static_cast<uint16_t>(seed);
+    m_layout = std::move(layout);
     const Blueprint blueprint = Draw(m_layout);
 
-    MapBuilder builder(scene, meshes, &physics);
+    MapBuilder builder(scene, meshes, &physics, prefix);
     builder.Track(&m_entities, &m_bodies);
     for (const Piece& piece : blueprint.pieces)
     {
@@ -957,7 +1036,7 @@ void FacilityMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, Physic
                 continue;
             }
             made[i] = lights->Add(scene, meshes, lamp.kind, lamp.mood, lamp.position, down, lamp.circuit,
-                                  Mix(seed, static_cast<uint32_t>(i)) | 1u, lamp.range);
+                                  Mix(static_cast<uint32_t>(seed), static_cast<uint32_t>(i)) | 1u, lamp.range);
             lights->Bound(made[i], lamp.boundsMin, lamp.boundsMax);
         }
         lights->SetBoundsMargin(0.05f);
@@ -973,7 +1052,7 @@ void FacilityMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, Physic
         locked += door.locked ? 1 : 0;
     }
     PRED_LOG_INFO(Gameplay,
-                  "Facility {}: {} floors, {} rooms, {} doorways ({} locked), {} stairwells, {} ducts, {} lamps; "
+                  "Building {}: {} floors, {} rooms, {} doorways ({} locked), {} stairwells, {} ducts, {} lamps; "
                   "{} solid pieces",
                   seed, m_layout.floors, m_layout.rooms.size(), m_layout.doors.size(), locked, m_layout.stairwells.size(),
                   m_layout.ducts.size(), blueprint.lamps.size(), blueprint.pieces.size() + blueprint.flights.size());

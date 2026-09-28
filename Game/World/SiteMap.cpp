@@ -1,0 +1,241 @@
+#include "Game/World/SiteMap.h"
+
+#include "Engine/Core/Log.h"
+#include "Engine/Render/Mesh.h"
+#include "Engine/Render/Primitives.h"
+#include "Game/World/MapBuilder.h"
+
+#include <glm/gtc/constants.hpp>
+#include <glm/gtc/quaternion.hpp>
+
+#include <cmath>
+#include <string>
+
+namespace pred
+{
+namespace
+{
+
+using Kind = SitePlan::BlockKind;
+
+const Material kGroundMaterial = Material::Diffuse({0.15f, 0.145f, 0.14f}, 0.97f);
+const Material kCliffMaterial = Material::Diffuse({0.19f, 0.18f, 0.17f}, 0.95f);
+const Material kRockMaterial = Material::Diffuse({0.22f, 0.21f, 0.19f}, 0.95f);
+const Material kPadMaterial = Material::Diffuse({0.3f, 0.3f, 0.29f}, 0.85f);
+const Material kPipeMaterial = Material::Metal({0.34f, 0.35f, 0.36f}, 0.5f);
+const Material kSupportMaterial = Material::Metal({0.22f, 0.22f, 0.23f}, 0.6f);
+const Material kTankMaterial = Material::Diffuse({0.5f, 0.5f, 0.47f}, 0.7f);
+const Material kPoleMaterial = Material::Metal({0.25f, 0.25f, 0.26f}, 0.55f);
+// Freight containers come in the colours they always do, faded.
+const Material kContainerMaterials[] = {
+    Material::Diffuse({0.32f, 0.12f, 0.08f}, 0.8f),
+    Material::Diffuse({0.1f, 0.18f, 0.27f}, 0.8f),
+    Material::Diffuse({0.23f, 0.25f, 0.14f}, 0.8f),
+    Material::Diffuse({0.36f, 0.35f, 0.33f}, 0.8f),
+};
+
+// Open ground is drawn in big pieces: few lamps reach it, and there is a great deal of it.
+constexpr float kOutdoorTile = 24.0f;
+
+const char* NameOf(Kind kind)
+{
+    switch (kind)
+    {
+    case Kind::Ground: return "site_ground";
+    case Kind::Cliff: return "site_cliff";
+    case Kind::Rock: return "site_rock";
+    case Kind::Container: return "site_container";
+    case Kind::Pad: return "site_pad";
+    case Kind::PipeX:
+    case Kind::PipeZ: return "site_pipe";
+    case Kind::Support: return "site_support";
+    case Kind::Tank: return "site_tank";
+    }
+    return "site";
+}
+
+LightMood MoodOf(FacilityLayout::LampMood mood)
+{
+    switch (mood)
+    {
+    case FacilityLayout::LampMood::Flicker: return LightMood::Flicker;
+    case FacilityLayout::LampMood::Failing: return LightMood::Failing;
+    case FacilityLayout::LampMood::Dead: return LightMood::Dead;
+    case FacilityLayout::LampMood::Emergency: return LightMood::Pulse;
+    case FacilityLayout::LampMood::Steady: break;
+    }
+    return LightMood::Steady;
+}
+
+uint32_t Mix(uint32_t a, uint32_t b)
+{
+    uint32_t h = a * 0x9E3779B1u ^ (b + 0x7F4A7C15u);
+    h ^= h >> 15;
+    h *= 0x2C1B3C6Du;
+    h ^= h >> 12;
+    return h;
+}
+
+void Append(WorldObjects::Placements& into, const WorldObjects::Placements& from)
+{
+    into.doors.insert(into.doors.end(), from.doors.begin(), from.doors.end());
+    into.lockers.insert(into.lockers.end(), from.lockers.begin(), from.lockers.end());
+    into.ammoCrates.insert(into.ammoCrates.end(), from.ammoCrates.begin(), from.ammoCrates.end());
+    into.items.insert(into.items.end(), from.items.begin(), from.items.end());
+}
+
+} // namespace
+
+void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, LevelLights* lights)
+{
+    Clear(scene, physics, lights);
+    m_seed = seed;
+    m_plan = SitePlan::Generate(seed);
+    if (lights != nullptr)
+    {
+        m_firstLight = lights->Count();
+        m_hasLights = true;
+    }
+
+    // The buildings, each with its own meshes, and everything in them for WorldObjects.
+    for (size_t b = 0; b < m_plan.buildings.size(); ++b)
+    {
+        auto building = std::make_unique<FacilityMap>();
+        building->Build(m_plan.buildings[b], Mix(seed, static_cast<uint32_t>(b) + 1u), scene, meshes, physics, lights,
+                        "site" + std::to_string(b) + "_");
+        Append(m_placements, building->Placements());
+        for (const FacilityLayout::Exit& exit : m_plan.buildings[b].exits)
+        {
+            const glm::vec3 at = FacilityMap::ExitOutside(m_plan.buildings[b], exit, 2.0f);
+            PRED_LOG_INFO(Gameplay, "Site building {}: a way in at {:.1f} {:.1f} {:.1f}, facing {}", b, at.x, at.y, at.z,
+                          exit.side == 0 ? "west" : exit.side == 1 ? "east" : exit.side == 2 ? "north" : "south");
+        }
+        m_buildings.push_back(std::move(building));
+    }
+
+    // Outside.
+    MapBuilder builder(scene, meshes, &physics, "site_");
+    builder.Track(&m_entities, &m_bodies);
+    int containers = 0;
+    for (const SitePlan::Block& block : m_plan.blocks)
+    {
+        Transform transform;
+        transform.position = block.centre;
+        transform.rotation = glm::angleAxis(block.yaw, glm::vec3(0.0f, 1.0f, 0.0f));
+        switch (block.kind)
+        {
+        case Kind::Ground:
+            builder.AddBox(NameOf(block.kind), transform, block.size, kGroundMaterial, kOutdoorTile);
+            break;
+        case Kind::Cliff:
+            builder.AddBox(NameOf(block.kind), transform, block.size, kCliffMaterial, kOutdoorTile);
+            break;
+        case Kind::Rock:
+            builder.AddBox(NameOf(block.kind), transform, block.size, kRockMaterial);
+            break;
+        case Kind::Container:
+            builder.AddBox(NameOf(block.kind), transform, block.size,
+                           kContainerMaterials[static_cast<size_t>(Mix(seed, static_cast<uint32_t>(containers++)) % std::size(kContainerMaterials))]);
+            break;
+        case Kind::Pad:
+            builder.AddBox(NameOf(block.kind), transform, block.size, kPadMaterial, kOutdoorTile);
+            break;
+        case Kind::Support:
+            builder.AddBox(NameOf(block.kind), transform, block.size, kSupportMaterial);
+            break;
+        case Kind::PipeX:
+        case Kind::PipeZ:
+        {
+            // A cylinder stands along y: laid down along the pipe's run.
+            const bool alongX = block.kind == Kind::PipeX;
+            const float length = alongX ? block.size.x : block.size.z;
+            const float radius = block.size.y * 0.5f;
+            transform.rotation = alongX ? glm::angleAxis(glm::half_pi<float>(), glm::vec3(0.0f, 0.0f, 1.0f))
+                                        : glm::angleAxis(glm::half_pi<float>(), glm::vec3(1.0f, 0.0f, 0.0f));
+            builder.AddMesh(NameOf(block.kind), transform, Primitives::Cylinder(radius, length, 14), kPipeMaterial);
+            break;
+        }
+        case Kind::Tank:
+            builder.AddMesh(NameOf(block.kind), transform, Primitives::Cylinder(block.size.x * 0.5f, block.size.y, 20), kTankMaterial);
+            break;
+        }
+    }
+
+    // The lamps outside: floodlights over the doors, and on poles over the ground.
+    for (size_t i = 0; i < m_plan.lamps.size(); ++i)
+    {
+        const SitePlan::Lamp& lamp = m_plan.lamps[i];
+        if (lamp.kind == SitePlan::LampKind::Pole)
+        {
+            // Beside the lamp rather than under it, holding it out on an arm: a lamp inside the top of its own
+            // pole is inside the pole as far as its shadow is concerned, and lights nothing.
+            glm::vec3 back{-lamp.direction.x, 0.0f, -lamp.direction.z};
+            back = glm::length(back) > 0.05f ? glm::normalize(back) : glm::vec3(1.0f, 0.0f, 0.0f);
+            const glm::vec3 foot = glm::vec3(lamp.position.x, m_plan.origin.y, lamp.position.z) + back * 0.6f;
+            const float height = lamp.position.y - m_plan.origin.y + 0.15f;
+            Transform pole;
+            pole.position = foot + glm::vec3(0.0f, height * 0.5f, 0.0f);
+            builder.AddBox("site_pole", pole, {0.18f, height, 0.18f}, kPoleMaterial);
+            Transform arm;
+            arm.position = (foot + glm::vec3(lamp.position.x, 0.0f, lamp.position.z) - glm::vec3(0.0f, m_plan.origin.y, 0.0f)) * 0.5f;
+            arm.position.y = lamp.position.y + 0.12f;
+            arm.rotation = glm::angleAxis(std::atan2(-back.z, back.x), glm::vec3(0.0f, 1.0f, 0.0f));
+            builder.AddBox("site_pole_arm", arm, {0.62f, 0.08f, 0.08f}, kPoleMaterial);
+        }
+        if (lights != nullptr)
+        {
+            lights->Add(scene, meshes, LightKind::Flood, MoodOf(lamp.mood), lamp.position, lamp.direction, 0,
+                        Mix(seed, 0x1A3Bu + static_cast<uint32_t>(i)) | 1u, lamp.range);
+        }
+    }
+    physics.OptimizeBroadPhase();
+
+    m_built = true;
+    PRED_LOG_INFO(Gameplay, "Site {}: {} buildings, {} pieces outside, {} lamps outside, {} doors in all", seed,
+                  m_plan.buildings.size(), m_plan.blocks.size(), m_plan.lamps.size(), m_placements.doors.size());
+}
+
+void SiteMap::Clear(Scene& scene, PhysicsWorld& physics, LevelLights* lights)
+{
+    for (const Entity entity : m_entities)
+    {
+        scene.Destroy(entity);
+    }
+    for (const BodyHandle body : m_bodies)
+    {
+        physics.DestroyBody(body);
+    }
+    m_entities.clear();
+    m_bodies.clear();
+    // The buildings' own, without their lights: the site takes every light it added away at once.
+    for (auto it = m_buildings.rbegin(); it != m_buildings.rend(); ++it)
+    {
+        (*it)->Clear(scene, physics, nullptr);
+    }
+    m_buildings.clear();
+    if (lights != nullptr && m_hasLights)
+    {
+        lights->RemoveFrom(scene, m_firstLight);
+    }
+    m_hasLights = false;
+    m_placements = {};
+    m_built = false;
+}
+
+void SiteMap::Bounds(glm::vec3& min, glm::vec3& max) const
+{
+    // The rock reaches some way out past the open ground, and up.
+    constexpr float kRock = 40.0f;
+    min = m_plan.origin - glm::vec3(kRock, 5.0f, kRock);
+    max = m_plan.origin + glm::vec3(m_plan.size + kRock, 150.0f, m_plan.size + kRock);
+}
+
+bool SiteMap::Contains(const glm::vec3& at) const
+{
+    glm::vec3 min;
+    glm::vec3 max;
+    Bounds(min, max);
+    return at.x >= min.x && at.y >= min.y && at.z >= min.z && at.x <= max.x && at.y <= max.y && at.z <= max.z;
+}
+
+} // namespace pred

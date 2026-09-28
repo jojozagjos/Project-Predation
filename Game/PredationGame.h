@@ -32,6 +32,7 @@
 #include "Game/World/TestMap.h"
 #include "Game/World/LabMap.h"
 #include "Game/World/FacilityMap.h"
+#include "Game/World/SiteMap.h"
 #include "Tools/ModelEditor/ModelEditor.h"
 #include "Game/World/WorldObjects.h"
 
@@ -157,6 +158,13 @@ private:
     void SendCreatureState();
     void ApplyCreatureState(const CreatureStateMessage& state);
     void BuildNavigation();
+    // Whether the players are at the mission site, rather than in the testing area: the host's own player
+    // says, since the host is who runs the creatures.
+    bool AtSite() const;
+    // The level's shape, for navigation: only the part of the world the players are in, the site or the
+    // testing area. The two are far apart and nothing walks between them; a mesh of both took four times
+    // as long to build.
+    std::vector<glm::vec3> NavTriangles() const;
     void SpawnCreatures();
     // Somewhere far from `awayFrom`, or, when `exactly` is given, on the walkable surface nearest it.
     bool SpawnCreature(uint32_t seed, const glm::vec3& awayFrom, const glm::vec3* exactly = nullptr);
@@ -1277,7 +1285,10 @@ private:
     std::vector<bool> m_doorWasMoving;
     float m_lightClock = 0.0f;
     // The generated facility, between the test map and the lab.
-    FacilityMap m_facility;
+    // The mission site: its buildings, the ground between and the rock round it, from a seed.
+    SiteMap m_facility;
+    // Whether the site's own sky is the one in the scene, so it can be put back on leaving.
+    bool m_skyAtSite = false;
     // The main camera's view and projection, last frame: for putting HUD text on things in the world.
     glm::mat4 m_viewProjection{1.0f};
     VoiceId m_buzz = kInvalidVoice;

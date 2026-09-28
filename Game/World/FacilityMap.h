@@ -9,6 +9,7 @@
 #include <glm/vec3.hpp>
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
 namespace pred
@@ -102,11 +103,19 @@ public:
 
     static Blueprint Draw(const FacilityLayout& layout);
 
-    // Where a point given in cells, on a floor, is in the world, at that floor's level.
+    // Where a point given in cells, on a floor, is in the world, at that floor's level: for the facility in its
+    // usual place, or for any building, wherever it stands.
     static glm::vec3 ToWorld(int floor, glm::vec2 cells);
+    static glm::vec3 ToWorld(const FacilityLayout& layout, int floor, glm::vec2 cells);
+    // Just outside one of a building's ways out, `distance` metres beyond its outer wall, at ground level.
+    static glm::vec3 ExitOutside(const FacilityLayout& layout, const FacilityLayout::Exit& exit, float distance);
 
     // Replaces whatever facility was built before with the one planned from `seed`.
     void Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, LevelLights* lights);
+    // Or with a building already planned -- one of a site's -- its meshes named with `prefix` so that two
+    // buildings in one world keep their own.
+    void Build(FacilityLayout layout, uint32_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics,
+               LevelLights* lights, const std::string& prefix = {});
     void Clear(Scene& scene, PhysicsWorld& physics, LevelLights* lights);
 
     bool Built() const { return m_built; }

@@ -40,8 +40,12 @@ public:
 
     // Box: rendered as a box mesh, collided as a box shape. Cheaper and more robust than a
     // triangle mesh, and exact for this shape.
+    //
+    // `tile` is how big a drawn piece may be: kTile indoors, where every room has lamps of its own, and more
+    // out on open ground, where the lamps are few and a ground cut into four-metre squares is thousands of
+    // things to draw.
     void AddBox(const std::string& name, const Transform& transform, const glm::vec3& size,
-                const Material& material)
+                const Material& material, float tile = kTile)
     {
         // The mesh gets a name of its own, numbered in the order the map is built.
         //
@@ -56,20 +60,20 @@ public:
         // Drawn in tiles of at most four metres across when it is bigger than that, and collided as one.
         // Each drawn piece is lit by the lamps nearest it, up to a handful; a wall the length of the
         // building as one piece would be lit by the handful nearest its middle and dark at both ends.
-        const int across = std::max(1, static_cast<int>(std::ceil(size.x / kTile)));
-        const int deep = std::max(1, static_cast<int>(std::ceil(size.z / kTile)));
-        const glm::vec3 tile{size.x / static_cast<float>(across), size.y, size.z / static_cast<float>(deep)};
+        const int across = std::max(1, static_cast<int>(std::ceil(size.x / tile)));
+        const int deep = std::max(1, static_cast<int>(std::ceil(size.z / tile)));
+        const glm::vec3 piece{size.x / static_cast<float>(across), size.y, size.z / static_cast<float>(deep)};
         const std::string meshName = m_prefix + name + "#" + std::to_string(m_boxCount++);
-        const MeshHandle mesh = m_meshes.Upload(Primitives::Box(tile), meshName);
+        const MeshHandle mesh = m_meshes.Upload(Primitives::Box(piece), meshName);
         for (int i = 0; i < across; ++i)
         {
             for (int k = 0; k < deep; ++k)
             {
-                const glm::vec3 offset{(static_cast<float>(i) + 0.5f) * tile.x - size.x * 0.5f, 0.0f,
-                                       (static_cast<float>(k) + 0.5f) * tile.z - size.z * 0.5f};
-                Transform piece = transform;
-                piece.position = transform.position + transform.rotation * offset;
-                Keep(m_scene.CreateMeshEntity(name, piece, mesh, material));
+                const glm::vec3 offset{(static_cast<float>(i) + 0.5f) * piece.x - size.x * 0.5f, 0.0f,
+                                       (static_cast<float>(k) + 0.5f) * piece.z - size.z * 0.5f};
+                Transform placed = transform;
+                placed.position = transform.position + transform.rotation * offset;
+                Keep(m_scene.CreateMeshEntity(name, placed, mesh, material));
             }
         }
         if (m_physics != nullptr)

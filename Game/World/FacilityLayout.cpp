@@ -141,7 +141,8 @@ struct Planner
     {
         for (int f = 0; f < plan.floors; ++f)
         {
-            const int wanted = random.Int(8, 11);
+            const float scale = static_cast<float>(plan.width * plan.depth) / 576.0f;
+            const int wanted = std::max(3, static_cast<int>(std::lround(static_cast<float>(random.Int(8, 11)) * scale)));
             int placed = 0;
             for (int attempt = 0; attempt < 400 && placed < wanted; ++attempt)
             {
@@ -490,6 +491,135 @@ struct Planner
             {
                 Join(nodes[static_cast<size_t>(a)], nodes[static_cast<size_t>(b)]);
             }
+        }
+    }
+
+    // A way out of the building on the ground floor, in the wall facing `side` (0 -x, 1 +x, 2 -z, 3 +z):
+    // straight into a room or a corridor that already reaches the wall, or along a corridor dug in from the
+    // wall to the nearest one.
+    bool AddExit(int side)
+    {
+        const int along = side < 2 ? plan.depth : plan.width;
+        const glm::ivec2 inward = side == 0 ? glm::ivec2(1, 0) : side == 1 ? glm::ivec2(-1, 0) : side == 2 ? glm::ivec2(0, 1) : glm::ivec2(0, -1);
+        const auto edgeAt = [&](int p)
+        {
+            return side == 0 ? glm::ivec2(0, p) : side == 1 ? glm::ivec2(plan.width - 1, p) : side == 2 ? glm::ivec2(p, 0) : glm::ivec2(p, plan.depth - 1);
+        };
+        const auto crowded = [&](int p)
+        {
+            for (const FacilityLayout::Exit& other : plan.exits)
+            {
+                if (other.side == side && std::abs((side < 2 ? other.cell.y : other.cell.x) - p) < 3)
+                {
+                    return true;
+                }
+            }
+            return false;
+        };
+        for (int attempt = 0; attempt < 32; ++attempt)
+        {
+            const int p = random.Int(2, along - 3);
+            if (crowded(p))
+            {
+                continue;
+            }
+            const glm::ivec2 edge = edgeAt(p);
+            const FacilityLayout::Cell at = CellAt(0, edge.x, edge.y);
+            if (at == FacilityLayout::Cell::Room || at == FacilityLayout::Cell::Corridor)
+            {
+                plan.exits.push_back({edge, side, at == FacilityLayout::Cell::Room ? OwnerAt(0, edge.x, edge.y) : -1});
+                return true;
+            }
+            if (at != FacilityLayout::Cell::Solid)
+            {
+                continue;
+            }
+            // Straight in, through solid, until something open.
+            std::vector<glm::ivec2> dug;
+            glm::ivec2 c = edge;
+            bool reached = false;
+            while (InBounds(c.x, c.y) && dug.size() < 12)
+            {
+                const FacilityLayout::Cell cell = CellAt(0, c.x, c.y);
+                if (cell == FacilityLayout::Cell::Solid)
+                {
+                    dug.push_back(c);
+                    c += inward;
+                    continue;
+                }
+                reached = cell == FacilityLayout::Cell::Corridor || cell == FacilityLayout::Cell::Room;
+                break;
+            }
+            if (!reached || dug.empty())
+            {
+                continue;
+            }
+            for (const glm::ivec2 d : dug)
+            {
+                CellAt(0, d.x, d.y) = FacilityLayout::Cell::Corridor;
+            }
+            if (CellAt(0, c.x, c.y) == FacilityLayout::Cell::Room)
+            {
+                AddDoor(0, dug.back(), c, OwnerAt(0, c.x, c.y), random.Chance(0.72f));
+            }
+            plan.exits.push_back({edge, side, -1});
+            return true;
+        }
+        // Nothing straight in: a corridor dug from the wall round to the nearest corridor there is.
+        for (int attempt = 0; attempt < 8; ++attempt)
+        {
+            const int p = random.Int(2, along - 3);
+            const glm::ivec2 edge = edgeAt(p);
+            if (crowded(p) || CellAt(0, edge.x, edge.y) != FacilityLayout::Cell::Solid)
+            {
+                continue;
+            }
+            glm::ivec2 nearest{-1};
+            int best = 1 << 30;
+            for (int z = 0; z < plan.depth; ++z)
+            {
+                for (int x = 0; x < plan.width; ++x)
+                {
+                    const int d = std::abs(x - edge.x) + std::abs(z - edge.y);
+                    if (CellAt(0, x, z) == FacilityLayout::Cell::Corridor && d < best)
+                    {
+                        best = d;
+                        nearest = {x, z};
+                    }
+                }
+            }
+            if (nearest.x >= 0 && Carve(0, edge, nearest))
+            {
+                plan.exits.push_back({edge, side, -1});
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // `count` ways out, the first facing `firstSide` when there is one, each of the rest on another side.
+    void AddExits(int count, int firstSide)
+    {
+        std::vector<int> sides{0, 1, 2, 3};
+        for (int i = 3; i > 0; --i)
+        {
+            std::swap(sides[static_cast<size_t>(i)], sides[static_cast<size_t>(random.Int(0, i))]);
+        }
+        if (firstSide >= 0)
+        {
+            sides.erase(std::find(sides.begin(), sides.end(), firstSide));
+            sides.insert(sides.begin(), firstSide);
+        }
+        size_t next = 0;
+        for (int made = 0; made < count && next < sides.size() * 2; ++next)
+        {
+            made += AddExit(sides[next % sides.size()]) ? 1 : 0;
+        }
+        // Everybody comes in through the first, so that is the room the rest of the plan works out from.
+        if (!plan.exits.empty() && plan.exits.front().room >= 0)
+        {
+            plan.entranceRoom = plan.exits.front().room;
+            plan.rooms[static_cast<size_t>(plan.entranceRoom)].dark = false;
         }
     }
 
@@ -1120,7 +1250,7 @@ std::vector<bool> FacilityLayout::Reachable(bool throughLocked) const
     return reached;
 }
 
-FacilityLayout FacilityLayout::Generate(uint32_t seed)
+FacilityLayout FacilityLayout::Generate(uint32_t seed, const Options& options)
 {
     // Tried again, from the same seed and a counted attempt, until the whole of it can be walked from
     // the way in. Nearly always the first time.
@@ -1129,16 +1259,21 @@ FacilityLayout FacilityLayout::Generate(uint32_t seed)
     {
         FacilityLayout plan;
         plan.seed = seed;
+        plan.origin = options.origin;
         Planner planner{plan, Random((static_cast<uint64_t>(seed) << 8) ^ (attempt * 0x9E3779B9u) ^ 0xFAC11177ull)};
-        plan.floors = planner.random.Int(2, 3);
-        plan.width = 24;
-        plan.depth = 24;
+        plan.floors = planner.random.Int(options.minFloors, std::max(options.minFloors, options.maxFloors));
+        plan.width = std::max(options.width, 10);
+        plan.depth = std::max(options.depth, 10);
         plan.cells.assign(static_cast<size_t>(plan.floors * plan.width * plan.depth), Cell::Solid);
         plan.roomOf.assign(plan.cells.size(), -1);
         planner.PlaceStairwells();
         planner.PlaceRooms();
         planner.Furnish();
         planner.Connect();
+        if (options.exits > 0)
+        {
+            planner.AddExits(options.exits, options.exitSide);
+        }
         // Everything reachable from the way in, through every door, or it is tried again.
         const std::vector<bool> reach = plan.Reachable(true);
         bool whole = !plan.rooms.empty() && plan.entranceRoom >= 0;
@@ -1149,6 +1284,12 @@ FacilityLayout FacilityLayout::Generate(uint32_t seed)
         for (const Stairwell& well : plan.stairwells)
         {
             whole = whole && reach[plan.Index(well.floor, well.min.x, well.min.y)];
+        }
+        // And every way out, as many as were asked for, leads in.
+        whole = whole && (options.exits == 0 || !plan.exits.empty());
+        for (const Exit& exit : plan.exits)
+        {
+            whole = whole && reach[plan.Index(0, exit.cell.x, exit.cell.y)];
         }
         if (!whole)
         {

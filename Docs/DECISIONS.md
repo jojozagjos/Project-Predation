@@ -2017,3 +2017,29 @@ Four changes to how Assets/Data works, all so the files can be edited by hand wi
 - Dead, the hotbar, crosshair and condition bars go; the drone's lamp takes the torch's key and slot.
 - `net_host` now marks the game started, so a player joining a console-hosted game is not left in a
   lobby waiting for a start that has already happened.
+
+## ADR-096: The mission site: several buildings on open ground, closed in by rock
+
+- **A site is planned from a seed** (`Game/World/SitePlan`): two or three buildings, each a
+  `FacilityLayout` of its own size and height, on 190 m of open ground; a pad near one edge where
+  everybody arrives; rock all the way round in two ragged rows, the back one taller, so the edge is a thing
+  you can see and not an invisible wall. Only the seed is sent. `SiteMap` builds it; the game's
+  `facility <seed>` command and map now mean the site.
+- **Buildings are placed anywhere and entered from outside.** A layout has an origin and options (size,
+  floors, ways out). A way out is a doorway in the building's outer wall on the ground floor, straight into
+  a room or corridor that reaches the wall or along a corridor dug in to the nearest one; the first faces
+  the landing. Every building now has an outer wall all the way round (outside the grid is a space of its
+  own), so from outside it is a closed block. The default 24-by-24 facility still plans exactly as before.
+- **Outside is night.** Each site picks a sky -- a low moon, overcast and moonless, or blowing haze -- and
+  the scene takes its sun, ambient and fog while the picture is taken from there, and gives them back on
+  leaving. Floodlights hang over every door and stand on poles round the pad and along the way from it to
+  each building, some flickering, failing or dead. A pole holds its lamp out on an arm: a lamp inside the
+  top of its own pole is inside it as far as its shadow goes, and lit nothing.
+- **Cover and landmarks:** freight containers (some stacked), boulders, fuel tanks by the buildings, and a
+  pipe on supports from one building to the next, high enough to walk under -- something to follow in the
+  dark.
+- **Navigation is of where the players are**, the site or the testing area, never both: they are far
+  apart and nothing walks between them. It is rebuilt when everybody goes somewhere else (creatures wait
+  for it, as they already did). The testing area's mesh builds in half the time it did.
+- Open ground and rock are drawn in 24 m pieces rather than 4 m ones: few lamps reach them, and a ground
+  cut into 4 m squares was thousands of things to draw.

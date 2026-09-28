@@ -431,7 +431,7 @@ bool PredationGame::OnInit(Application& app)
     // And the creature lab, far off to the east in the same world, with its nest.
     BuildLabMap(m_scene, app.GetMeshes(), &app.GetPhysics(), &m_levelLights);
     // And the generated facility between them, the default one until a host asks for another.
-    m_facility.Build(FacilitySpec::kDefaultSeed, m_scene, app.GetMeshes(), app.GetPhysics(), &m_levelLights);
+    m_facility.Build(SiteSpec::kDefaultSeed, m_scene, app.GetMeshes(), app.GetPhysics(), &m_levelLights);
 
 
     m_propSphereMesh = app.GetMeshes().Upload(Primitives::Sphere(kPropRadius, 20, 14), "prop_sphere");
@@ -3145,9 +3145,8 @@ void PredationGame::GoToMap(MapChoice map)
     case MapChoice::Facility:
         m_spawnPoint = m_facility.Spawn();
         yaw = m_facility.SpawnYaw();
-        arrived = "In the facility planned from seed " + std::to_string(m_facility.Seed()) + ": " +
-                  std::to_string(m_facility.Layout().floors) + " floors, " +
-                  std::to_string(m_facility.Layout().rooms.size()) + " rooms.";
+        arrived = "At the site planned from seed " + std::to_string(m_facility.Seed()) + ": " +
+                  std::to_string(m_facility.Plan().buildings.size()) + " buildings.";
         break;
     }
     m_map = map;
@@ -3160,6 +3159,7 @@ void PredationGame::GoToMap(MapChoice map)
         EnterWorld();
         m_lookYaw = yaw;
         m_player.State().yaw = m_lookYaw;
+        RequestNavRebuild();
         return;
     }
     if (!IsAuthority())
@@ -3167,9 +3167,11 @@ void PredationGame::GoToMap(MapChoice map)
         m_app->GetConsole().PrintError("Only the host can take everybody somewhere else.");
         return;
     }
-    // Everybody goes, and the creatures start again from wherever creatures come from there.
+    // Everybody goes, and the creatures start again from wherever creatures come from there -- once there
+    // is a way about the place they have gone to: the navigation is only ever of where the players are.
     SpawnCreatures();
     RespawnLocalPlayer(m_spawnPoint);
+    RequestNavRebuild();
     m_lookYaw = yaw;
     m_player.State().yaw = m_lookYaw;
     if (m_sessionMode == SessionMode::Host)
@@ -9369,6 +9371,32 @@ void PredationGame::OnUpdate(double dt, double alpha)
     environment.fogStart = cv_fogStart.Get();
     environment.fogEnd = cv_fogEnd.Get();
     environment.sunIntensity = cv_sunIntensity.Get();
+    // Out at the site it is night: its own sky, fog and light, while the picture is taken from there.
+    {
+        const bool atSite = m_screen == Screen::Playing && m_facility.Built() && m_facility.Contains(m_renderEye);
+        if (atSite)
+        {
+            const SitePlan::Sky& sky = m_facility.Plan().sky;
+            environment.sunDirection = sky.sunDirection;
+            environment.sunColor = sky.sunColor;
+            environment.sunIntensity = sky.sunIntensity;
+            environment.ambientSky = sky.ambientSky;
+            environment.ambientGround = sky.ambientGround;
+            environment.fogColor = sky.fogColor;
+            environment.fogStart = sky.fogStart;
+            environment.fogEnd = sky.fogEnd;
+        }
+        else if (m_skyAtSite)
+        {
+            const Environment usual;
+            environment.sunDirection = usual.sunDirection;
+            environment.sunColor = usual.sunColor;
+            environment.ambientSky = usual.ambientSky;
+            environment.ambientGround = usual.ambientGround;
+            environment.fogColor = usual.fogColor;
+        }
+        m_skyAtSite = atSite;
+    }
     environment.exposure = cv_exposure.Get();
     environment.contrast = cv_contrast.Get();
 

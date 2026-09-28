@@ -138,7 +138,32 @@ struct FacilityLayout
         float height = 1.0f;
     };
 
+    // A doorway out of the building, in its outer wall on the ground floor: the cell inside it, and which
+    // way out it faces (0 towards -x, 1 +x, 2 -z, 3 +z).
+    struct Exit
+    {
+        glm::ivec2 cell{0};
+        int side = 0;
+        int room = -1; // the room it opens into, or -1 for a corridor
+    };
+
+    // How big a building to plan, and how it meets the outside. The defaults are the facility as it
+    // always was: one building on its own, entered from inside.
+    struct Options
+    {
+        int width = 24;
+        int depth = 24;
+        int minFloors = 2;
+        int maxFloors = 3;
+        // Doorways out of it, and which side the first faces (-1 whichever); the rest are on other sides.
+        int exits = 0;
+        int exitSide = -1;
+        glm::vec3 origin{64.0f, 0.0f, -30.0f};
+    };
+
     uint32_t seed = 0;
+    // Where the corner of cell (0, 0) is, at ground-floor level: a building can be put anywhere.
+    glm::vec3 origin{64.0f, 0.0f, -30.0f};
     int floors = 2;
     int width = 24; // cells along x
     int depth = 24; // cells along z
@@ -150,10 +175,11 @@ struct FacilityLayout
     std::vector<Duct> ducts;
     std::vector<Lamp> lamps;
     std::vector<Placed> things;
+    std::vector<Exit> exits;
     int entranceRoom = -1;   // where everybody comes in
     int nestRoom = -1;       // dark and out of the way: somewhere a creature would build
 
-    static FacilityLayout Generate(uint32_t seed);
+    static FacilityLayout Generate(uint32_t seed, const Options& options = {});
 
     Cell At(int floor, int x, int z) const;
     int RoomAt(int floor, int x, int z) const;
