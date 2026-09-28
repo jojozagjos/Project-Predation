@@ -308,8 +308,8 @@
     {
       "t": 9.5,
       "camera": "ground",
-      "blend": 1.2,
-      "ease": "in_out"
+      "blend": 0,
+      "ease": "linear"
     },
     {
       "t": 19.5,

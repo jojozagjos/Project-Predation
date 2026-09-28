@@ -725,6 +725,77 @@ void Application::RegisterCoreCommands()
         },
         "screenshot [name]");
 
+#if PRED_DEV_TOOLS
+    // A scripted pointer and keys for the UI, for testing panels from --exec with nobody at the machine. Positions are
+    // the UI's, from the top left of the window.
+    m_console.RegisterCommand(
+        "ui_move", "Put the scripted UI pointer somewhere: ui_move <x> <y>",
+        [this](const std::vector<std::string>& args)
+        {
+            if (args.size() >= 3)
+            {
+                m_imgui.ScriptPointer(std::strtof(args[1].c_str(), nullptr), std::strtof(args[2].c_str(), nullptr));
+            }
+        },
+        "ui_move <x> <y>");
+    const auto button = [](const std::vector<std::string>& args) { return args.size() >= 2 ? std::atoi(args[1].c_str()) : 0; };
+    m_console.RegisterCommand(
+        "ui_down", "Press a scripted UI mouse button: ui_down [0 left, 1 right, 2 middle]",
+        [this, button](const std::vector<std::string>& args) { m_imgui.ScriptButton(button(args), true); }, "ui_down [button]");
+    m_console.RegisterCommand(
+        "ui_up", "Let go of a scripted UI mouse button: ui_up [button]",
+        [this, button](const std::vector<std::string>& args) { m_imgui.ScriptButton(button(args), false); }, "ui_up [button]");
+    m_console.RegisterCommand(
+        "ui_click", "Click the scripted UI pointer: ui_click [button] [2 for a double click]",
+        [this, button](const std::vector<std::string>& args)
+        {
+            const int times = args.size() >= 3 ? std::max(std::atoi(args[2].c_str()), 1) : 1;
+            for (int i = 0; i < times; ++i)
+            {
+                m_imgui.ScriptButton(button(args), true);
+                m_imgui.ScriptButton(button(args), false);
+            }
+        },
+        "ui_click [button] [times]");
+    m_console.RegisterCommand(
+        "ui_wheel", "Turn the scripted UI mouse wheel: ui_wheel <y> [x]",
+        [this](const std::vector<std::string>& args)
+        {
+            if (args.size() >= 2)
+            {
+                m_imgui.ScriptWheel(args.size() >= 3 ? std::strtof(args[2].c_str(), nullptr) : 0.0f, std::strtof(args[1].c_str(), nullptr));
+            }
+        },
+        "ui_wheel <y> [x]");
+    m_console.RegisterCommand(
+        "ui_key", "Press a key in the UI by its name: ui_key <name> [ctrl] [shift] [alt]",
+        [this](const std::vector<std::string>& args)
+        {
+            if (args.size() < 2)
+            {
+                return;
+            }
+            const auto has = [&](const char* mod) { return std::find(args.begin() + 2, args.end(), mod) != args.end(); };
+            if (!m_imgui.ScriptKey(args[1], has("ctrl"), has("shift"), has("alt")))
+            {
+                m_console.PrintError("No UI key called " + args[1]);
+            }
+        },
+        "ui_key <name> [ctrl] [shift] [alt]");
+    m_console.RegisterCommand(
+        "ui_text", "Type into the UI field that has the keyboard: ui_text <text>",
+        [this](const std::vector<std::string>& args)
+        {
+            std::string text;
+            for (size_t i = 1; i < args.size(); ++i)
+            {
+                text += (i > 1 ? " " : "") + args[i];
+            }
+            m_imgui.ScriptText(text);
+        },
+        "ui_text <text>");
+#endif
+
     m_console.RegisterCommand(
         "debug", "Toggle a debug category: debug <category> [on|off]",
         [this](const std::vector<std::string>& args)

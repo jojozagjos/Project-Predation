@@ -285,3 +285,29 @@ TEST_CASE("An actor that drives a route and then turns on the spot waits at the 
     CHECK(Near(sampler.Actor("crawler", 9.0f).position, {10.0f, 0.0f, 0.0f}));
     CHECK(Near(sampler.Actor("crawler", 9.0f).rotation * glm::vec3(0.0f, 0.0f, -1.0f), {-1.0f, 0.0f, 0.0f}, 0.02f));
 }
+
+TEST_CASE("A saved cinematic reads as it was laid out, with its numbers as short as they can be", "[cinematic]")
+{
+    // The editor saves over files people have laid out and edited by hand: saving must not reorder them or turn every
+    // number into a float's own digits, or every edit would be a diff of the whole file.
+    Cinematic cinematic;
+    cinematic.name = "layout";
+    cinematic.duration = 12.0f;
+    CameraTrack camera;
+    camera.name = "wide";
+    camera.keys.push_back({0.8f, {0.1f, 6.0f, -2.35f}, {0.0f, 0.0f, 0.0f}, 60.0f, 0.0f, Linear()});
+    cinematic.cameras.push_back(camera);
+    const std::string text = cinematic.ToJsonText();
+    CHECK(text.find("\"name\"") < text.find("\"duration\""));
+    CHECK(text.find("\"duration\"") < text.find("\"cameras\""));
+    CHECK(text.find("\"t\": 0.8,") != std::string::npos);
+    CHECK(text.find("-2.35") != std::string::npos);
+    CHECK(text.find("\"duration\": 12,") != std::string::npos);
+    CHECK(text.find("0000000") == std::string::npos);
+    // And it still reads back as it was.
+    Cinematic back;
+    REQUIRE(back.FromJsonText(text));
+    REQUIRE(back.cameras.size() == 1);
+    CHECK(std::abs(back.cameras[0].keys[0].time - 0.8f) < 1.0e-6f);
+    CHECK(std::abs(back.cameras[0].keys[0].position.z + 2.35f) < 1.0e-6f);
+}

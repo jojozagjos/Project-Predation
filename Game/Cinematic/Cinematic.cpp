@@ -13,7 +13,9 @@
 namespace pred
 {
 
-using nlohmann::json;
+// Kept in the order written -- name first, then how long, then what it has -- so a saved file reads as it was
+// laid out, and an edit changes only the lines it changed.
+using json = nlohmann::ordered_json;
 
 // --- Easing ------------------------------------------------------------------------------------------
 
@@ -537,6 +539,32 @@ std::vector<CinematicHappening> HappeningsBetween(const Cinematic& cinematic, fl
 namespace
 {
 
+// Every number written to a tenth of a millimetre, a ten-thousandth of a second: a float's own digits (0.800000011920929
+// for 0.8) would make every saved file unreadable, and every edit a diff of the whole thing.
+void Rounded(json& j)
+{
+    if (j.is_number_float())
+    {
+        const double value = std::round(j.get<double>() * 10000.0) / 10000.0;
+        // A whole number as one: 6, not 6.0.
+        if (value == std::floor(value) && std::abs(value) < 1.0e9)
+        {
+            j = static_cast<int64_t>(value);
+        }
+        else
+        {
+            j = value;
+        }
+    }
+    else if (j.is_structured())
+    {
+        for (json& item : j)
+        {
+            Rounded(item);
+        }
+    }
+}
+
 json Vec(const glm::vec3& v)
 {
     return json::array({v.x, v.y, v.z});
@@ -843,6 +871,7 @@ std::string Cinematic::ToJsonText() const
     j["letterbox"] = WriteFloats(letterbox);
     j["fog_scale"] = WriteFloats(fogScale);
     j["ambient_scale"] = WriteFloats(ambientScale);
+    Rounded(j);
     return j.dump(2);
 }
 

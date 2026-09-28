@@ -37,6 +37,13 @@ public:
         float flash = 0.0f;          // 0 to 1: the picture washed red, for a moment
         float coldShadows = 1.0f;
         float warmHighlights = 1.0f;
+        // Where on the screen the finished picture goes, in pixels from the top left: all of it when the width is
+        // 0, or a smaller window of it, the whole picture scaled down into it -- an editor's preview, framed exactly
+        // as the game frames it.
+        int outX = 0;
+        int outY = 0;
+        int outWidth = 0;
+        int outHeight = 0;
     };
 
     bool Init(ShaderLibrary& shaders);

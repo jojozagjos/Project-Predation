@@ -218,7 +218,15 @@ void PostProcess::Apply(float seconds, bool originBottomLeft)
     // And the picture, onto the screen.
     const bgfx::ViewId last = Renderer::kViewPost;
     bgfx::setViewFrameBuffer(last, BGFX_INVALID_HANDLE);
-    bgfx::setViewRect(last, 0, 0, static_cast<uint16_t>(m_width), static_cast<uint16_t>(m_height));
+    if (s.outWidth > 0 && s.outHeight > 0)
+    {
+        bgfx::setViewRect(last, static_cast<uint16_t>(std::max(s.outX, 0)), static_cast<uint16_t>(std::max(s.outY, 0)), static_cast<uint16_t>(s.outWidth),
+                          static_cast<uint16_t>(s.outHeight));
+    }
+    else
+    {
+        bgfx::setViewRect(last, 0, 0, static_cast<uint16_t>(m_width), static_cast<uint16_t>(m_height));
+    }
     bgfx::setViewClear(last, BGFX_CLEAR_NONE, 0x00000000, 1.0f, 0);
     const float lens[4] = {s.vignette, s.grain, s.fringe, seconds};
     const float mood[4] = {s.fear, s.coldShadows, s.warmHighlights, s.flash};

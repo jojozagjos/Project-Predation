@@ -19,6 +19,8 @@ set(PRED_GAME_SOURCES
     Cinematic/Cinematic.cpp
     Cinematic/CinematicPlayer.h
     Cinematic/CinematicPlayer.cpp
+    Cinematic/CinematicEditor.h
+    Cinematic/CinematicEditor.cpp
 
     Player/PlayerTypes.h
     Player/PlayerConfig.cpp

@@ -188,3 +188,81 @@ One undo takes it back.
 ## Not yet
 
 A dropped magazine that falls to the floor as a real object rather than disappearing into a pouch.
+
+# Cinematic editor
+
+For the sequences between the parts of a deployment: the shuttle coming down, the crawler driving to the
+building, the title card, the doors opening. What a cinematic is, and why it is written against anchors rather
+than coordinates, is in DECISIONS.md (ADR-103); this is how to edit one. Development builds only.
+
+## Opening it
+
+Be somewhere first -- `facility 1` puts you at a snow site -- then type `cine_edit surface_insertion` (or just
+`cine_edit` to edit whichever is playing, or to be asked which). `cine_edit` again closes it; so does Escape,
+which asks twice if there are changes not saved.
+
+Unlike the model editor it does not open a scene of its own: the cinematic plays **here**, at this site, with the
+real shuttle, the real crawler, the real fog and lamps. The picture is shown top left, scaled down but framed
+exactly as the game frames it, title card and bars included. **H** hides the editor to see it full size.
+
+## The timeline
+
+Along the bottom, a row for everything the cinematic has: the shots (which camera, from when; a wedge where one
+blends into the next), each camera (its keys, and a band where it is the one in the picture), each actor (its keys,
+the paths it drives as bars, its clips as flags), the sounds, the markers, the words, the particles, the lights,
+and the shake, fade, bars, fog and light, each with its value drawn along it.
+
+- **Click** a key or flag to select it; **drag** it along to move it. It snaps to the step chosen in the toolbar
+  and to the playhead; **Shift** while dragging lets it go anywhere. **Alt**-drag leaves a copy behind.
+- **Double-click** an empty place on a row to add a key or event there. A new key takes the value that is already
+  there, so nothing moves until it is changed.
+- **Right-click** for duplicate, copy, paste values, ease, delete, and deleting a whole track.
+- Drag in the ruler to scrub. **Ctrl+wheel** zooms, the wheel over the ruler zooms too, **middle-drag** pans,
+  **F** fits it all in.
+
+## Looking round
+
+**C** switches between the cinematic's own cameras and a free one; holding the **right button** over the picture
+takes hold of the view and looks round from where the cinematic's camera was. WASD flies, Q and E go down and up,
+Shift is faster, Alt slower. In the free camera every camera's path is drawn, the selected one white with its keys
+and the edges of what it sees.
+
+To place a camera: fly to where it should be, select its key, and press **Set from the view** -- the key is
+measured from whatever that camera is anchored to, so it lands in the same place relative to the pad, the crawler
+or the building at every site. **View from it** goes the other way. **K** adds a key on the selected row at the
+playhead; with the free camera, a camera key is what the view sees.
+
+## The inspector
+
+Down the right: whatever is selected, every value of it, and for keys the ease into it -- a named one, or a
+curve whose two handles are dragged by hand (dragging one turns a named ease into a curve starting from it). With
+nothing selected it shows the cinematic itself: its length, its cameras and actors, and what this site supplies
+to measure from, with anything the cinematic names that is not supplied here in orange.
+
+## Keys
+
+| Key | Does |
+|---|---|
+| Space | play and pause |
+| Left / Right | a frame back or on (Shift: a second) |
+| Home / End | the start / the end |
+| , and . | the key before / after, on any row |
+| K | key at the playhead |
+| Delete | delete |
+| Ctrl+D | duplicate at the playhead |
+| Ctrl+C / Ctrl+V | copy / paste values (onto the selected one, or as a new one at the playhead) |
+| Ctrl+Z / Ctrl+Y | undo / redo |
+| Ctrl+S | save |
+| C | free camera / the cinematic's |
+| F | fit the timeline |
+| H | hide the editor |
+
+## Saving
+
+**Save** writes Assets/Cinematics/<name>.json, the file the game plays, in the same layout it was read in, so a
+change shows as the lines it changed. **New / save as** saves a copy under another name or starts an empty one.
+**Revert** goes back to the file, and can itself be undone. Nothing a mission generates is ever written into
+these files.
+
+While editing, markers that would send everybody somewhere (`go_to_ship`) or hold the players do nothing; the
+intercom's lines (`say`) are still heard.

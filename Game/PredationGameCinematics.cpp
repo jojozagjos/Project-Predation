@@ -91,8 +91,10 @@ CinematicBindings PredationGame::CinematicBindingsNow() const
     CinematicBindings bindings;
     // The ship, for now the testing area: where everybody gathers.
     bindings.anchors["ship"] = {{0.0f, 0.0f, TestMapSpec::kSpawnZ}, {}};
-    // This player's own eyes, for a shot that begins or ends in them.
-    bindings.anchors["player"] = {m_renderEye, TurnFromDegrees({glm::degrees(m_lookPitch), glm::degrees(m_lookYaw), 0.0f})};
+    // This player's own eyes, for a shot that begins or ends in them -- theirs even while the editor's camera has the
+    // picture.
+    const glm::vec3 eye = m_cineEditor.IsOpen() ? m_player.View().eyePosition : m_renderEye;
+    bindings.anchors["player"] = {eye, TurnFromDegrees({glm::degrees(m_lookPitch), glm::degrees(m_lookYaw), 0.0f})};
 
     if (!m_facility.Built())
     {
@@ -242,12 +244,13 @@ void PredationGame::StopCinematic(bool handBack)
 
 bool PredationGame::CinematicHoldsPlayers() const
 {
-    return m_cineHolds;
+    // Editing one, nobody moves: the keys are the editor's.
+    return m_cineHolds || m_cineEditor.IsOpen();
 }
 
 bool PredationGame::CinematicHoldsWorld() const
 {
-    return m_cineHolds;
+    return m_cineHolds || m_cineEditor.IsOpen();
 }
 
 void PredationGame::AttachVehicleLamps()
@@ -339,7 +342,15 @@ void PredationGame::UpdateCinematic(float dt)
     m_cineHolds = m_cine.Playing().pausesGameplay;
     if (m_cine.GetState() == CinematicPlayer::State::Finished)
     {
-        StopCinematic(true);
+        if (m_cineEditor.IsOpen())
+        {
+            CinematicEditor::Context context = CinematicEditorContext();
+            m_cineEditor.AtEnd(context);
+        }
+        else
+        {
+            StopCinematic(true);
+        }
     }
 }
 
@@ -347,6 +358,16 @@ bool PredationGame::CinematicCamera(glm::mat4& view, glm::vec3& eye, float dt, f
 {
     m_cineFov = 0.0f;
     m_cineFar = 0.0f;
+    // Editing, looking round freely.
+    if (m_cineEditor.IsOpen() && (!m_cineEditor.ThroughCinematic() || !m_cine.Active()))
+    {
+        const FlyCamera& free = m_cineEditor.View();
+        view = free.View();
+        eye = free.position;
+        m_cineFov = free.fovDegrees;
+        m_cineFar = kCinematicFar;
+        return true;
+    }
     if (m_cine.Active())
     {
         CameraState picture = m_cine.Picture();
@@ -443,6 +464,10 @@ void PredationGame::CineSound(const SoundEvent& sound, const glm::vec3* at)
 void PredationGame::CineMarker(const pred::Marker& marker)
 {
     PRED_LOG_INFO(Gameplay, "Cinematic marker '{}'{}", marker.name, marker.value.empty() ? "" : " " + marker.value);
+    if (m_cineEditor.IsOpen() && marker.name != "say")
+    {
+        return;
+    }
     if (marker.name == "hold")
     {
         m_cineHolds = true;
@@ -549,14 +574,28 @@ void PredationGame::DrawCinematicOverlay()
         return;
     }
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
-    ImDrawList* draw = ImGui::GetForegroundDrawList();
-    const ImVec2 min = viewport->Pos;
-    const ImVec2 max{viewport->Pos.x + viewport->Size.x, viewport->Pos.y + viewport->Size.y};
+    // Where the picture is: the screen, or the editor's preview of it, and how much smaller that is.
+    ImVec2 min = viewport->Pos;
+    ImVec2 max{viewport->Pos.x + viewport->Size.x, viewport->Pos.y + viewport->Size.y};
+    glm::vec2 previewMin;
+    glm::vec2 previewMax;
+    if (m_cineEditor.Preview(previewMin, previewMax))
+    {
+        min = {previewMin.x, previewMin.y};
+        max = {previewMax.x, previewMax.y};
+    }
+    const float scale = (max.x - min.x) / std::max(viewport->Size.x, 1.0f);
+    if (m_cineEditor.IsOpen() && !m_cineEditor.ThroughCinematic())
+    {
+        ImGui::GetForegroundDrawList()->AddText({min.x + 10.0f, min.y + 8.0f}, IM_COL32(255, 210, 120, 255), "FREE CAMERA  (C: through the cinematic's)");
+        return;
+    }
+    ImDrawList* draw = m_cineEditor.IsOpen() ? ImGui::GetBackgroundDrawList() : ImGui::GetForegroundDrawList();
     const CinematicSampler sampler = m_cine.Sampler();
     const float time = m_cine.Time();
 
     // The bars, top and bottom.
-    const float bars = sampler.Letterbox(time) * viewport->Size.y * 0.11f;
+    const float bars = sampler.Letterbox(time) * (max.y - min.y) * 0.11f;
     if (bars > 0.5f)
     {
         draw->AddRectFilled(min, {max.x, min.y + bars}, IM_COL32(0, 0, 0, 255));
@@ -579,21 +618,21 @@ void PredationGame::DrawCinematicOverlay()
             {
                 text += (i > 0 ? "\n" : "") + sampler.Text(item, i, time);
             }
-            const ImVec2 size = ImGui::CalcTextSize(text.c_str());
-            const ImVec2 at{(min.x + max.x - size.x) * 0.5f, max.y - bars - size.y - 36.0f};
-            draw->AddText(at, IM_COL32(230, 232, 236, static_cast<int>(255 * alpha)), text.c_str());
+            const float fontSize = ImGui::GetFontSize() * scale;
+            const ImVec2 size = ImGui::GetFont()->CalcTextSizeA(fontSize, FLT_MAX, 0.0f, text.c_str());
+            const ImVec2 at{(min.x + max.x - size.x) * 0.5f, max.y - bars - size.y - 36.0f * scale};
+            draw->AddText(ImGui::GetFont(), fontSize, at, IM_COL32(230, 232, 236, static_cast<int>(255 * alpha)), text.c_str());
             continue;
         }
         ImFont* font = ImGui::GetFont();
-        float y = max.y - bars - 60.0f - static_cast<float>(item.lines.size()) * 26.0f;
-        const float x = min.x + viewport->Size.x * 0.06f;
+        float y = max.y - bars - (60.0f + static_cast<float>(item.lines.size()) * 26.0f) * scale;
+        const float x = min.x + (max.x - min.x) * 0.06f;
         bool typing = false;
         for (size_t i = 0; i < item.lines.size(); ++i)
         {
             const std::string full = sampler.Fill(item.lines[i]);
             const std::string shown = sampler.Text(item, i, time);
-            const float scale = i == 0 ? 1.45f : 1.0f;
-            const float fontSize = ImGui::GetFontSize() * scale;
+            const float fontSize = ImGui::GetFontSize() * (i == 0 ? 1.45f : 1.0f) * scale;
             const ImU32 colour = i == 0 ? IM_COL32(226, 230, 234, static_cast<int>(255 * alpha)) : IM_COL32(150, 158, 166, static_cast<int>(255 * alpha));
             draw->AddText(font, fontSize, {x, y}, colour, shown.c_str());
             // The cursor, at the end of the line being typed, blinking.
@@ -606,7 +645,7 @@ void PredationGame::DrawCinematicOverlay()
                     draw->AddRectFilled({x + width + 2.0f, y + 2.0f}, {x + width + 2.0f + fontSize * 0.5f, y + fontSize}, colour);
                 }
             }
-            y += fontSize + 8.0f;
+            y += fontSize + 8.0f * scale;
         }
     }
 
@@ -713,19 +752,23 @@ void PredationGame::DrawCinematicDebug()
 
 void PredationGame::DrawCinematicPaths(DebugDraw& draw)
 {
-    if (!m_cineDebug || !m_cine.Active())
+    const bool editing = m_cineEditor.IsOpen() && !m_cineEditor.ThroughCinematic();
+    if ((!m_cineDebug && !editing) || !m_cine.Active())
     {
         return;
     }
     const Cinematic& cinematic = m_cine.Playing();
     const CinematicSampler sampler = m_cine.Sampler();
     const float step = std::max(cinematic.duration / 160.0f, 0.05f);
-    // Every camera's path, and where it is now; the one in the shot brighter.
+    // Every camera's path, and where it is now; the one in the shot brighter, the one selected in the editor brightest,
+    // with its keys and the edges of what it sees.
     std::string shot;
     m_cine.Picture(&shot);
+    const std::string selected = m_cineEditor.IsOpen() ? m_cineEditor.SelectedCamera(cinematic) : std::string();
     for (const CameraTrack& camera : cinematic.cameras)
     {
-        const uint32_t colour = camera.name == shot ? Color::kYellow : Color::kGrey;
+        const bool picked = camera.name == selected;
+        const uint32_t colour = picked ? Color::kWhite : camera.name == shot ? Color::kYellow : Color::kGrey;
         glm::vec3 last = sampler.Camera(camera, 0.0f).position;
         for (float t = step; t <= cinematic.duration; t += step)
         {
@@ -736,6 +779,28 @@ void PredationGame::DrawCinematicPaths(DebugDraw& draw)
         const CameraState state = sampler.Camera(camera, m_cine.Time());
         draw.Sphere(state.position, 0.4f, colour);
         draw.Line(state.position, state.position + state.rotation * glm::vec3(0.0f, 0.0f, -3.0f), colour);
+        if (picked)
+        {
+            for (const CameraKey& key : camera.keys)
+            {
+                draw.Sphere(sampler.Camera(camera, key.time).position, 0.25f, Color::kYellow);
+            }
+            // What it sees, four metres out, at the picture's shape.
+            const float half = std::tan(glm::radians(state.fov) * 0.5f) * 4.0f;
+            const float aspect = static_cast<float>(std::max<int>(m_app->GetRenderer().Width(), 1)) /
+                                 static_cast<float>(std::max<int>(m_app->GetRenderer().Height(), 1));
+            glm::vec3 corners[4];
+            for (int i = 0; i < 4; ++i)
+            {
+                const glm::vec3 local{(i == 0 || i == 3 ? -half : half), (i < 2 ? half : -half) / aspect, -4.0f};
+                corners[i] = state.position + state.rotation * local;
+                draw.Line(state.position, corners[i], Color::kWhite);
+            }
+            for (int i = 0; i < 4; ++i)
+            {
+                draw.Line(corners[i], corners[(i + 1) % 4], Color::kWhite);
+            }
+        }
     }
     // Every actor's, and the paths the game supplied.
     for (const ActorDef& actor : cinematic.actors)
@@ -760,6 +825,211 @@ void PredationGame::DrawCinematicPaths(DebugDraw& draw)
         draw.Line(pose.position, pose.position + glm::vec3(0.0f, 2.0f, 0.0f), Color::kGreen);
         draw.Line(pose.position + glm::vec3(0.0f, 2.0f, 0.0f), pose.position + glm::vec3(0.0f, 2.0f, 0.0f) + pose.rotation * glm::vec3(0.0f, 0.0f, -1.5f),
                   Color::kGreen);
+    }
+}
+
+// --- The editor --------------------------------------------------------------------------------------
+
+void PredationGame::PlayForEditing(const Cinematic& cinematic, float from)
+{
+    m_cine.Play(cinematic, CinematicBindingsNow(), m_scene, m_app->GetMeshes(), *this, from);
+    m_cineHandBack = 0.0f;
+    UpdateVehicleLamps();
+}
+
+CinematicEditor::Context PredationGame::CinematicEditorContext()
+{
+    CinematicEditor::Context context;
+    context.player = &m_cine;
+    context.scene = &m_scene;
+    context.host = this;
+    context.library = &m_cinematics;
+    context.folder = Paths::AssetsRoot() / "Cinematics";
+    for (const auto& [name, variants] : m_soundBank)
+    {
+        context.sounds.push_back(name);
+    }
+    context.replay = [this](const Cinematic& cinematic, float from) { PlayForEditing(cinematic, from); };
+    context.hear = [this](const std::string& sound) { PlayNamed(sound, m_renderEye, 1.0f, 1.0f, false); };
+    context.pick = [this](glm::vec3& at)
+    {
+        const FlyCamera& view = m_cineEditor.View();
+        const RayHit hit = m_app->GetPhysics().RayCastStatic(view.position, view.Forward(), 1000.0f);
+        if (hit)
+        {
+            at = hit.position;
+        }
+        return hit.hit;
+    };
+    context.clipsOf = [this](const std::string& actor)
+    {
+        std::vector<std::string> names;
+        const ActorDef* def = m_cine.Playing().FindActor(actor);
+        if (def == nullptr)
+        {
+            return names;
+        }
+        const ModelAsset* model = nullptr;
+        if (const VehicleProp* vehicle = Bound(def->bind, m_facility, m_missionProps))
+        {
+            model = vehicle->Model();
+        }
+        else if (!def->model.empty())
+        {
+            // Read once, then remembered.
+            const auto known = m_cineClipNames.find(def->model);
+            if (known != m_cineClipNames.end())
+            {
+                return known->second;
+            }
+            ModelAsset loaded;
+            if (loaded.LoadFromFile(ModelPath(def->model)))
+            {
+                for (const AnimationClip& clip : loaded.clips)
+                {
+                    names.push_back(clip.name);
+                }
+            }
+            m_cineClipNames[def->model] = names;
+            return names;
+        }
+        if (model != nullptr)
+        {
+            for (const AnimationClip& clip : model->clips)
+            {
+                names.push_back(clip.name);
+            }
+        }
+        return names;
+    };
+    return context;
+}
+
+void PredationGame::OpenCinematicEditor(const std::string& name)
+{
+    if (m_screen != Screen::Playing)
+    {
+        m_app->GetConsole().PrintError("The cinematic editor works in the world: be somewhere first.");
+        return;
+    }
+    // The one named, or the one playing, from where it has got to; with neither, the editor asks which.
+    const std::string which = !name.empty() ? name : m_cine.Active() ? m_cine.Playing().name : std::string();
+    if (!which.empty())
+    {
+        const auto found = m_cinematics.find(which);
+        if (found == m_cinematics.end())
+        {
+            m_app->GetConsole().PrintError("No cinematic called '" + which + "' (cine_list says which there are).");
+            return;
+        }
+        const float from = m_cine.Active() && m_cine.Playing().name == which ? m_cine.Time() : 0.0f;
+        PlayForEditing(found->second, from);
+        m_cine.SetPaused(true);
+    }
+    // The free camera starts where the eyes are.
+    FlyCamera& view = m_cineEditor.View();
+    view.position = m_renderEye;
+    view.yaw = m_lookYaw;
+    view.pitch = m_lookPitch;
+    view.fovDegrees = 60.0f;
+    m_cineEditor.Open();
+    m_cineEditorLooking = false;
+    m_wantMouseCaptured = false;
+    UpdateMouseCapture();
+}
+
+void PredationGame::CloseCinematicEditor()
+{
+    if (!m_cineEditor.IsOpen())
+    {
+        return;
+    }
+    if (m_cineEditor.Unsaved())
+    {
+        m_app->GetConsole().Print("Cinematic editor closed with changes not saved: they are gone.");
+    }
+    m_cineEditor.Close();
+    m_cineEditorLooking = false;
+    StopCinematic(false);
+    m_wantMouseCaptured = true;
+    UpdateMouseCapture();
+}
+
+void PredationGame::UpdateCinematicEditor(float dt)
+{
+    if (!m_cineEditor.IsOpen())
+    {
+        return;
+    }
+    if (m_screen != Screen::Playing)
+    {
+        m_cineEditor.Close();
+        return;
+    }
+    Input& input = m_app->GetInput();
+    const ImGuiIO& io = ImGui::GetIO();
+    if (!m_app->IsConsoleOpen() && !io.WantTextInput && !m_cineEditorLooking && input.WasActionPressed("quit_capture") && m_cineEditor.MayClose())
+    {
+        CloseCinematicEditor();
+        return;
+    }
+    // As in the model editor: the pointer is free, and holding the right button over the picture takes it to look round
+    // -- taking the view out of the cinematic's camera into a free one where it was.
+    const bool wantLook = input.IsMouseDown(MouseButton::Right) && (m_cineEditorLooking || !m_app->IsUiCapturingMouse());
+    if (wantLook != m_cineEditorLooking)
+    {
+        m_cineEditorLooking = wantLook;
+        m_wantMouseCaptured = wantLook;
+        UpdateMouseCapture();
+        if (wantLook && m_cine.Active())
+        {
+            m_cineEditor.LookFreely(m_cine.Picture());
+        }
+    }
+    FlyCamera& view = m_cineEditor.View();
+    if (m_cineEditorLooking && !m_discardNextMouseDelta)
+    {
+        const glm::vec2 delta = input.MouseDelta();
+        const float sensitivity = glm::radians(view.mouseSensitivity);
+        view.yaw += delta.x * sensitivity;
+        view.pitch = std::clamp(view.pitch - delta.y * sensitivity, glm::radians(-89.0f), glm::radians(89.0f));
+    }
+    m_discardNextMouseDelta = false;
+    // Flying: WASD, Q and E down and up, Shift faster. Not while typing, and not with Ctrl, which is the editor's.
+    if (!m_cineEditor.ThroughCinematic() && !io.WantTextInput && !io.KeyCtrl)
+    {
+        const float speed = 12.0f * (io.KeyShift ? 5.0f : 1.0f) * (io.KeyAlt ? 0.2f : 1.0f);
+        glm::vec3 move{0.0f};
+        move += view.Forward() * ((input.IsActionDown("move_forward") ? 1.0f : 0.0f) - (input.IsActionDown("move_back") ? 1.0f : 0.0f));
+        move += view.Right() * ((input.IsActionDown("move_right") ? 1.0f : 0.0f) - (input.IsActionDown("move_left") ? 1.0f : 0.0f));
+        move.y += (input.IsActionDown("lean_right") ? 1.0f : 0.0f) - (input.IsActionDown("lean_left") ? 1.0f : 0.0f);
+        view.position += move * speed * dt;
+    }
+}
+
+void PredationGame::DrawCinematicEditor()
+{
+    if (!m_cineEditor.IsOpen())
+    {
+        return;
+    }
+    CinematicEditor::Context context = CinematicEditorContext();
+    m_cineEditor.Draw(context);
+    // Black round the preview, under the windows.
+    glm::vec2 min;
+    glm::vec2 max;
+    if (m_cineEditor.Preview(min, max))
+    {
+        const ImGuiViewport* viewport = ImGui::GetMainViewport();
+        ImDrawList* draw = ImGui::GetBackgroundDrawList();
+        const ImVec2 a = viewport->Pos;
+        const ImVec2 b{viewport->Pos.x + viewport->Size.x, viewport->Pos.y + viewport->Size.y};
+        const ImU32 black = IM_COL32(8, 9, 11, 255);
+        draw->AddRectFilled(a, {b.x, min.y}, black);
+        draw->AddRectFilled({a.x, max.y}, b, black);
+        draw->AddRectFilled({a.x, min.y}, {min.x, max.y}, black);
+        draw->AddRectFilled({max.x, min.y}, {b.x, max.y}, black);
+        draw->AddRect({min.x - 1.0f, min.y - 1.0f}, {max.x + 1.0f, max.y + 1.0f}, IM_COL32(70, 74, 82, 255));
     }
 }
 
@@ -833,6 +1103,16 @@ void PredationGame::RegisterCinematicCommands()
                             });
     console.RegisterCommand("cine_debug", "Show or hide the cinematic panel and paths", [this](const std::vector<std::string>&)
                             { m_cineDebug = !m_cineDebug; });
+    console.RegisterCommand("cine_edit", "Open the cinematic editor: cine_edit [name]; again with no name closes it",
+                            [this](const std::vector<std::string>& args)
+                            {
+                                if (m_cineEditor.IsOpen() && args.size() < 2)
+                                {
+                                    CloseCinematicEditor();
+                                    return;
+                                }
+                                OpenCinematicEditor(args.size() >= 2 ? args[1] : std::string());
+                            });
 #endif
 }
 

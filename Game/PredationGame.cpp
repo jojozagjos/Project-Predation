@@ -7048,7 +7048,7 @@ void PredationGame::OnEvent(const SDL_Event& event)
         // pointer vanished, the view started turning, and the menu was still up in front of it.
         // Leaving the pause menu is a thing you do on purpose, with Escape or with Resume.
         if (!m_wantMouseCaptured && !m_paused && !m_app->IsConsoleOpen() &&
-            !m_app->IsUiCapturingMouse())
+            !m_app->IsUiCapturingMouse() && !m_cineEditor.IsOpen())
         {
             m_wantMouseCaptured = true;
         }
@@ -9060,6 +9060,9 @@ void PredationGame::OnUpdate(double dt, double alpha)
         }
     }
 
+    // The cinematic editor has the pointer and the keys while it is open: the players are held meanwhile.
+    UpdateCinematicEditor(deltaSeconds);
+
     // Nothing bound to a game key does anything at the menu. The menu is pointed at and typed into,
     // and a stray W while filling in an address must not make the character walk.
     //
@@ -9590,6 +9593,21 @@ void PredationGame::OnUpdate(double dt, double alpha)
     {
         PostProcess::Settings& post = app.GetPostProcess().GetSettings();
         post.enabled = cv_post.Get();
+        // Editing a cinematic, the picture is in the editor's preview: the whole of it, smaller.
+        glm::vec2 previewMin;
+        glm::vec2 previewMax;
+        if (m_cineEditor.Preview(previewMin, previewMax))
+        {
+            const ImVec2 scale = ImGui::GetIO().DisplayFramebufferScale;
+            post.outX = static_cast<int>(previewMin.x * scale.x);
+            post.outY = static_cast<int>(previewMin.y * scale.y);
+            post.outWidth = static_cast<int>((previewMax.x - previewMin.x) * scale.x);
+            post.outHeight = static_cast<int>((previewMax.y - previewMin.y) * scale.y);
+        }
+        else
+        {
+            post.outWidth = post.outHeight = 0;
+        }
         post.exposure = environment.exposure;
         post.contrast = environment.contrast;
         post.bloom = std::clamp(cv_bloom.Get(), 0.0f, 3.0f);
@@ -11256,6 +11274,7 @@ void PredationGame::OnImGui()
     }
     DrawCinematicOverlay();
     DrawCinematicDebug();
+    DrawCinematicEditor();
 
     if (m_paused)
     {

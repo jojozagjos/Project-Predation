@@ -125,7 +125,7 @@ void ImGuiLayer::ProcessEvent(const SDL_Event& event)
     {
         return;
     }
-    if (m_mouseIgnored)
+    if (m_mouseIgnored || m_scripted)
     {
         switch (event.type)
         {
@@ -176,7 +176,91 @@ void ImGuiLayer::BeginFrame()
     {
         ImGui::GetIO().AddMousePosEvent(-FLT_MAX, -FLT_MAX);
     }
+    // Scripted, the scripted pointer is where the pointer is, and one thing it was asked to do happens each frame.
+    if (m_scripted)
+    {
+        ImGuiIO& io = ImGui::GetIO();
+        io.AddMousePosEvent(m_scriptX, m_scriptY);
+        if (!m_scriptQueue.empty())
+        {
+            const ScriptedInput next = m_scriptQueue.front();
+            m_scriptQueue.erase(m_scriptQueue.begin());
+            switch (next.kind)
+            {
+            case 0: io.AddMouseButtonEvent(next.code, next.down); break;
+            case 1: io.AddKeyEvent(static_cast<ImGuiKey>(next.code), next.down); break;
+            case 3: io.AddInputCharactersUTF8(next.text.c_str()); break;
+            default: io.AddMouseWheelEvent(next.x, next.y); break;
+            }
+        }
+    }
     ImGui::NewFrame();
+}
+
+void ImGuiLayer::ScriptPointer(float x, float y)
+{
+    m_scripted = true;
+    m_scriptX = x;
+    m_scriptY = y;
+}
+
+void ImGuiLayer::ScriptButton(int button, bool down)
+{
+    m_scripted = true;
+    m_scriptQueue.push_back({0, button, down, 0.0f, 0.0f});
+}
+
+void ImGuiLayer::ScriptText(const std::string& text)
+{
+    m_scripted = true;
+    ScriptedInput typed;
+    typed.kind = 3;
+    typed.text = text;
+    m_scriptQueue.push_back(typed);
+}
+
+void ImGuiLayer::ScriptWheel(float x, float y)
+{
+    m_scripted = true;
+    m_scriptQueue.push_back({2, 0, false, x, y});
+}
+
+bool ImGuiLayer::ScriptKey(const std::string& name, bool ctrl, bool shift, bool alt)
+{
+    ImGuiKey found = ImGuiKey_None;
+    for (int key = ImGuiKey_NamedKey_BEGIN; key < ImGuiKey_NamedKey_END; ++key)
+    {
+        const char* keyName = ImGui::GetKeyName(static_cast<ImGuiKey>(key));
+        if (keyName != nullptr && SDL_strcasecmp(keyName, name.c_str()) == 0)
+        {
+            found = static_cast<ImGuiKey>(key);
+            break;
+        }
+    }
+    if (found == ImGuiKey_None)
+    {
+        return false;
+    }
+    m_scripted = true;
+    const auto key = [&](ImGuiKey code, bool down) { m_scriptQueue.push_back({1, static_cast<int>(code), down, 0.0f, 0.0f}); };
+    const ImGuiKey mods[] = {ctrl ? ImGuiMod_Ctrl : ImGuiKey_None, shift ? ImGuiMod_Shift : ImGuiKey_None, alt ? ImGuiMod_Alt : ImGuiKey_None};
+    for (const ImGuiKey mod : mods)
+    {
+        if (mod != ImGuiKey_None)
+        {
+            key(mod, true);
+        }
+    }
+    key(found, true);
+    key(found, false);
+    for (const ImGuiKey mod : mods)
+    {
+        if (mod != ImGuiKey_None)
+        {
+            key(mod, false);
+        }
+    }
+    return true;
 }
 
 void ImGuiLayer::EndFrame()

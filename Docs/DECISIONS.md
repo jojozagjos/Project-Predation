@@ -2238,3 +2238,38 @@ Asked for as a system, not as one-off sequences: see Game/Cinematic/Cinematic.h 
 
 Still to come: the cinematic editor's timeline, the ship and its travel and arrival, the station's docking,
 and short first-person moments for pulling a drive or throwing a breaker.
+
+## ADR-104: The cinematic editor -- a timeline over the world as it is
+
+How to use it: docs/EDITOR.md, "Cinematic editor". Game/Cinematic/CinematicEditor.h.
+
+- **Inside the running game, not a scene of its own.** A cinematic is written against a site's anchors, so it
+  can only be seen as it will be at a site: the editor opens wherever the game is (`cine_edit <name>`), plays
+  the cinematic there with the real vehicles, fog and lamps, and edits the very copy that is playing. Every edit
+  is shown at once, because the player works everything out from the time alone.
+- **The picture in a preview, framed as the game frames it.** The finished picture is drawn, whole and scaled
+  down, into the part of the screen the timeline and inspector leave (a rectangle the final post-processing pass
+  draws into, PostProcess::Settings::out*), at the screen's own shape; the bars and title card are drawn to
+  match. Nothing is cropped or stretched, so a shot framed in the editor is the shot in the game. H hides the
+  editor for the full-size picture.
+- **Keys measured from anchors, placed by looking.** "Set from the view" and K with the free camera take the free
+  camera's place and turn *relative to the camera's anchor at that moment* (the pad, the crawler, the reveal
+  point), which is what makes a key placed at one site right at every other. It is exactly the inverse of how the
+  sampler places the camera (checked: view from a key, set it from the view, and it is unchanged).
+- **One history, of whole files.** Undo keeps the cinematic's text as each change left it, a change being
+  finished when nothing is being dragged or typed into; so a drag or a typed number is one undo, and undo can
+  never disagree with what is saved. Adding, removing or changing an actor starts it playing again from the
+  same moment, since its model has to be put in the world.
+- **Saving keeps the file's layout.** The JSON is written in the order it is laid out (ordered, not sorted) with
+  every number to four places and whole numbers whole, so a hand-written file saved from the editor differs
+  only where it was edited, and hand edits and editor edits can go on side by side.
+- **Nothing for players.** It is compiled only into a development build, like every control that plays, pauses,
+  scrubs or skips a cinematic. While it is open the players and the world are held, and the markers that act on
+  the game (hold, release, go_to_ship) do nothing; the intercom's lines are still heard.
+- **Scripted input for testing panels**: ui_move, ui_down, ui_up, ui_click, ui_wheel, ui_key and ui_text drive
+  the interface from --exec with nobody at the machine (the real mouse is ignored from the first of them). The
+  editor was tested with them: selecting, dragging, undo, the menus, the free camera, copy and paste, the curve
+  handles, duplicating, playing, and saving as another name.
+
+Still to come: the ship and its travel and arrival, the station's docking, and short first-person moments for
+pulling a drive or throwing a breaker.

@@ -27,6 +27,7 @@
 #include "Game/Mission/MissionProps.h"
 #include "Game/Mission/SiteNames.h"
 #include "Game/Cinematic/Cinematic.h"
+#include "Game/Cinematic/CinematicEditor.h"
 #include "Game/Cinematic/CinematicPlayer.h"
 #include "Game/Player/SupportDrone.h"
 #include "Game/Weapons/BulletHole.h"
@@ -774,6 +775,15 @@ private:
     void DrawCinematicOverlay();
     void DrawCinematicDebug();
     void DrawCinematicPaths(DebugDraw& draw);
+    // The cinematic editor (a development build's): one being edited plays here, in the world as it is, and is looked at
+    // through its own cameras or a free one. See Game/Cinematic/CinematicEditor.h.
+    void OpenCinematicEditor(const std::string& name);
+    void CloseCinematicEditor();
+    void UpdateCinematicEditor(float dt);
+    void DrawCinematicEditor();
+    CinematicEditor::Context CinematicEditorContext();
+    // Plays one for editing: nobody else sees it, and it is measured from wherever the game is now.
+    void PlayForEditing(const Cinematic& cinematic, float from);
     // Where a player stands when they arrive at the site: in the crawler, side by side, facing its ramp.
     glm::vec3 MissionArrival(uint8_t player) const;
     // Whether a cinematic of that name is there to be played.
@@ -1334,6 +1344,10 @@ private:
     float m_cineFar = 0.0f;
     bool m_cineDebug = false;
     bool m_cineHolds = false;
+    CinematicEditor m_cineEditor;
+    bool m_cineEditorLooking = false;
+    // The clips each model a cinematic brings has, read once, for the editor to offer.
+    std::map<std::string, std::vector<std::string>> m_cineClipNames;
     // Everybody's bodies hidden while a cinematic has them: they are aboard something the picture is outside of.
     bool m_cineHidBodies = false;
     // The mission's crawler route, from where it waits by the pad to where it parks at the terminal's building; and
