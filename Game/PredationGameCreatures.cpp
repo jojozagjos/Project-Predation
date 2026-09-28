@@ -48,6 +48,8 @@ CVar<int> cv_aiSeed{"ai.seed", 0,
                     "The seed a new game's creature is made from; 0 picks a different one each game"};
 CVar<float> cv_aiArrival{"ai.arrival_seconds", 40.0f,
                          "Roughly how long into a game the creature arrives; 0 for straight away"};
+CVar<float> cv_aiArriveIndoors{"ai.arrive_indoors", 0.75f,
+                               "At a site, how often a creature arriving comes out somewhere inside a building rather than anywhere (0 to 1)"};
 
 CVar<float> cv_aiHealthScale{"ai.health_scale", 1.0f,
                              "Multiplies how much health a creature's body gives it, for tuning"};
@@ -402,12 +404,17 @@ bool PredationGame::FindUnseenPoint(uint32_t seed, glm::vec3& out) const
 
     const PhysicsWorld& physics = m_app->GetPhysics();
     uint32_t pick = seed * 2654435761u + 97u;
+    // At a site, most come out of the buildings -- where the dark is, and where the players have to go -- and the rest
+    // from anywhere, across the open ground included.
+    const bool site = AtSite();
+    SeededRandom where(seed ^ 0x1D00F5u);
+    const bool inside = site && where.Range(0.0f, 1.0f) < cv_aiArriveIndoors.Get();
     bool found = false;
     float best = -1.0e9f;
-    for (int i = 0; i < 64; ++i)
+    for (int i = 0; i < 96; ++i)
     {
         glm::vec3 candidate;
-        if (!m_nav.RandomPointNear(eyes.front(), 55.0f, pick, candidate))
+        if (!m_nav.RandomPointNear(eyes.front(), inside ? 80.0f : 55.0f, pick, candidate))
         {
             continue;
         }
@@ -431,7 +438,9 @@ bool PredationGame::FindUnseenPoint(uint32_t seed, glm::vec3& out) const
         // Out of sight above everything, then about forty-five metres off: far enough to have come from
         // somewhere and not to be on top of anybody, near enough that it arrives into the game rather than into
         // an empty corner.
-        const float score = (seen ? 0.0f : 100.0f) - std::abs(nearest - 45.0f);
+        // Wanted inside, a point indoors comes before any outside that is not badly placed for distance.
+        const float indoors = inside && m_facility.Plan().Indoors(candidate) ? 50.0f : 0.0f;
+        const float score = (seen ? 0.0f : 100.0f) + indoors - std::abs(nearest - 45.0f);
         if (score > best)
         {
             best = score;

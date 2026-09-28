@@ -42,8 +42,11 @@ constexpr float kRightsItselfAfter = 3.0f;
 constexpr float kRightingEvery = 1.5f;
 constexpr float kRightingSeconds = 0.9f;
 // A hop: about a third of a metre up, and not again straight away.
-constexpr float kHopSpeed = 2.6f;
+constexpr float kHopSpeed = 3.4f;
 constexpr float kHopEvery = 0.9f;
+// For how long after a hop it is still driven, through the air: what it was driving at carries it on, up onto the
+// step or the ledge it hopped at, rather than straight up the face of it and back down.
+constexpr float kHopSteerSeconds = 0.75f;
 
 uint32_t Paint(const glm::vec3& colour, float roughness = 1.0f)
 {
@@ -240,7 +243,8 @@ void SupportDrone::Build(Scene& scene, MeshLibrary& meshes, const Transform& tra
     m_shovedFor = 0.0f;
     m_rightingFor = 0.0f;
     m_hopCooldown = 0.0f;
-    m_onTracks = false;
+    m_hopFor = 0.0f;
+    m_friction = -1.0f;
     m_lookYaw = 0.0f;
     m_lookPitch = 0.0f;
     m_headYaw = 0.0f;
@@ -365,24 +369,32 @@ void SupportDrone::Step(PhysicsWorld& physics, const Controls& controls, float d
     // Its tracks do anything only on the ground, and not while it is shut down or still being flung by
     // whatever struck it. Off them it grips like the lump it is; on them it rolls.
     m_shovedFor = std::max(m_shovedFor - dt, 0.0f);
+    m_hopFor = std::max(m_hopFor - dt, 0.0f);
     const bool driving = grounded && !Disabled() && m_shovedFor <= 0.0f;
-    if (driving != m_onTracks)
+    const bool hopping = !grounded && upright && m_hopFor > 0.0f && !Disabled() && m_shovedFor <= 0.0f;
+    const bool driven = driving || hopping;
+    // Hopping, no grip at all: driven at a ledge and gripping its face, the face held it up -- the hop was braked to
+    // a few centimetres, and it hung there on the wall.
+    const float friction = driving ? kTrackFriction : hopping ? 0.0f : kHullFriction;
+    if (friction != m_friction)
     {
-        m_onTracks = driving;
-        physics.SetFriction(m_body, driving ? kTrackFriction : kHullFriction);
+        m_friction = friction;
+        physics.SetFriction(m_body, friction);
     }
-    if (!driving)
+    if (!driven)
     {
         m_trackSpeed = 0.0f;
         m_trackTurn = 0.0f;
+        m_hopFor = 0.0f;
         return;
     }
 
     // A hop, pushed off its tracks: up along its own up, keeping what it was already doing.
-    if (controls.jump && m_hopCooldown <= 0.0f)
+    if (driving && controls.jump && m_hopCooldown <= 0.0f)
     {
         velocity += up * kHopSpeed;
         m_hopCooldown = kHopEvery;
+        m_hopFor = kHopSteerSeconds;
     }
 
     // Driven the way the camera looks, as a person walks: pushed forward it goes where it is looking,

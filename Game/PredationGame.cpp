@@ -8964,12 +8964,38 @@ void PredationGame::OnUpdate(double dt, double alpha)
     // Nothing bound to a game key does anything at the menu. The menu is pointed at and typed into,
     // and a stray W while filling in an address must not make the character walk.
     //
+    // Dead, what is still yours: the pause menu, the drone -- its hop is the jump key, its lamp the torch key --
+    // and, without one, whose view to watch (interact). Everything else waits for a body.
+    const bool dead = !m_player.State().alive;
+    if (!app.IsConsoleOpen() && m_screen == Screen::Playing && dead)
+    {
+        if (input.WasActionPressed("jump"))
+        {
+            m_jumpLatch = true;
+        }
+        if (input.WasActionPressed("flashlight") && m_supportDrone.Active())
+        {
+            m_supportDrone.lightOn = !m_supportDrone.lightOn;
+            PlayNamed(m_supportDrone.lightOn ? "Player/torch_on" : "Player/torch_off", m_supportDrone.Position(), 0.4f, 1.2f, true);
+        }
+        if (input.WasActionPressed("interact") && !m_paused)
+        {
+            PressInteract();
+        }
+#if PRED_DEV_TOOLS
+        if (input.WasActionPressed("respawn"))
+        {
+            RespawnLocalPlayer(m_spawnPoint);
+        }
+#endif
+    }
+
     // Nor does anything while dead. A body on the floor was still picking things up, opening doors,
     // getting into lockers, dropping its inventory and changing what it had in hand: none of the
     // actions asked whether the player was alive, because the camera moves to a teammate and it
     // looked as though nothing was being driven any more. Movement is already refused by the
     // controller; this is everything else.
-    if (!app.IsConsoleOpen() && m_screen == Screen::Playing && m_player.State().alive)
+    if (!app.IsConsoleOpen() && m_screen == Screen::Playing && !dead)
     {
         if (input.WasActionPressed("jump"))
         {
@@ -9046,12 +9072,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
                                                                     : CameraMode::FirstPerson);
         }
 #endif
-        if (input.WasActionPressed("flashlight") && m_supportDrone.Active())
-        {
-            m_supportDrone.lightOn = !m_supportDrone.lightOn;
-            PlayNamed(m_supportDrone.lightOn ? "Player/torch_on" : "Player/torch_off", m_supportDrone.Position(), 0.4f, 1.2f, true);
-        }
-        else if (input.WasActionPressed("flashlight") && !m_torchOn && m_torchCharge <= 0.0f)
+        if (input.WasActionPressed("flashlight") && !m_torchOn && m_torchCharge <= 0.0f)
         {
             PlayNamed("Player/torch_off", m_player.State().position, 0.45f, 0.8f, false);
             m_app->GetConsole().Print("The torch cell is flat. It needs a fresh battery.");
@@ -9067,6 +9088,10 @@ void PredationGame::OnUpdate(double dt, double alpha)
             RespawnLocalPlayer(m_spawnPoint);
         }
 #endif
+    }
+    // Alive or dead.
+    if (!app.IsConsoleOpen() && m_screen == Screen::Playing)
+    {
         if (input.WasActionPressed("quit_capture"))
         {
             // Escape opens the pause menu and frees the pointer; Escape again closes it and takes

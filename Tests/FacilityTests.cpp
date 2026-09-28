@@ -188,23 +188,15 @@ bool Overlap(const Solid& a, const Solid& b, float by)
            a.hi.z - b.lo.z > by && b.hi.z - a.lo.z > by;
 }
 
-// The building itself -- floors, ceilings, walls, its shell -- which is meant to join up: a wall reaches a hair
-// into the slabs over and under it, the shell covers every slab's edge, and none of that is anything being inside
-// anything else. What must never overlap is everything else, with the building or with each other.
-bool Structural(FacilityMap::Piece::Kind kind)
-{
-    using Kind = FacilityMap::Piece::Kind;
-    return kind == Kind::Floor || kind == Kind::Ceiling || kind == Kind::Wall || kind == Kind::Duct || kind == Kind::Fill ||
-           kind == Kind::Cladding;
-}
-
+// The building's structure joining up is not anything being inside anything else (Piece::Structural). What must
+// never overlap is everything else, with the building or with each other.
 std::vector<Solid> SolidsOf(const FacilityMap::Blueprint& blueprint)
 {
     std::vector<Solid> solids;
     for (const FacilityMap::Piece& piece : blueprint.pieces)
     {
         solids.push_back(Around(piece.centre, piece.size, piece.yaw,
-                                (Structural(piece.kind) ? "structure " : "piece ") + std::to_string(static_cast<int>(piece.kind))));
+                                (piece.Structural() ? "structure " : "piece ") + std::to_string(static_cast<int>(piece.kind))));
     }
     for (const FacilityMap::Flight& flight : blueprint.flights)
     {

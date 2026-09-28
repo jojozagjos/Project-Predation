@@ -101,6 +101,35 @@ TEST_CASE("A support drone settles on its tracks and drives where its driver loo
     CHECK(glm::distance(drone.Position(), stopped) < 0.1f);
 }
 
+TEST_CASE("A support drone driven at a ledge stops at it, and hops up onto it", "[drone]")
+{
+    Floor floor;
+    // Knee high to a person, a little over twice the drone's own height, a metre in front of it.
+    Transform ledge;
+    ledge.position = {0.0f, 0.2f, -2.5f};
+    floor.physics.CreateBox({2.0f, 0.2f, 1.5f}, ledge, BodyMotion::Static);
+    SupportDrone drone;
+    drone.Deploy(floor.scene, floor.meshes, floor.physics, {0.0f, 0.0f, 0.0f}, 0.0f);
+    floor.Run(drone, {}, 0.5f);
+
+    SupportDrone::Controls forward;
+    forward.move = {0.0f, 1.0f};
+    floor.Run(drone, forward, 1.5f);
+    INFO("at " << drone.Position().y << " up, " << drone.Position().z);
+    CHECK(drone.Position().z > -1.0f);
+    CHECK(drone.Position().y < 0.2f);
+
+    // Up against it, a hop and still driving: over the edge and onto the top.
+    SupportDrone::Controls hop = forward;
+    hop.jump = true;
+    floor.Run(drone, hop, 0.1f);
+    floor.Run(drone, forward, 1.5f);
+    INFO("then at " << drone.Position().y << " up, " << drone.Position().z);
+    CHECK(drone.Position().y > 0.4f);
+    CHECK(drone.Position().z < -1.5f);
+    CHECK(Upright(drone));
+}
+
 TEST_CASE("A support drone knocked over rights itself, and its picture goes over with it", "[drone]")
 {
     Floor floor;

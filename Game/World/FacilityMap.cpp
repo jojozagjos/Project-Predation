@@ -1156,7 +1156,7 @@ void FacilityMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, Physic
 }
 
 void FacilityMap::Build(FacilityLayout layout, uint32_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics,
-                        LevelLights* lights, const std::string& prefix)
+                        LevelLights* lights, const std::string& prefix, uint32_t structure)
 {
     Clear(scene, physics, lights);
     m_seed = static_cast<uint16_t>(seed);
@@ -1166,13 +1166,19 @@ void FacilityMap::Build(FacilityLayout layout, uint32_t seed, Scene& scene, Mesh
     MapBuilder builder(scene, meshes, &physics, prefix);
     builder.Track(&m_entities, &m_bodies);
     builder.BeginBatching();
+    if (structure == 0)
+    {
+        structure = physics.NewOverlapGroup();
+    }
     for (const Piece& piece : blueprint.pieces)
     {
         Transform transform;
         transform.position = piece.centre;
         transform.rotation = glm::angleAxis(piece.yaw, glm::vec3(0.0f, 1.0f, 0.0f));
+        builder.SetStructure(piece.Structural() ? structure : 0);
         builder.AddBox(NameOf(piece.kind), transform, piece.size, MaterialOf(piece.kind));
     }
+    builder.SetStructure(structure);
     const MeshData stairs = Primitives::Stairs(kSteps, kStairWidth, kStorey / static_cast<float>(kSteps), kStepRun);
     for (const Flight& flight : blueprint.flights)
     {

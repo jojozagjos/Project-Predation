@@ -145,3 +145,32 @@ TEST_CASE("Uploading the same mesh twice does not take twice the buffers", "[ren
     moreTriangles.indices = {0, 1, 2, 0, 1, 2};
     CHECK(MeshFingerprintForTesting(first) != MeshFingerprintForTesting(moreTriangles));
 }
+
+TEST_CASE("The level check says nothing of one structure's pieces reaching into each other, but still of anything in them", "[physics]")
+{
+    PhysicsWorld physics;
+    PhysicsWorld::Settings settings;
+    settings.workerThreads = 1;
+    REQUIRE(physics.Init(settings));
+    const auto at = [](float x, float y, float z)
+    {
+        Transform transform;
+        transform.position = {x, y, z};
+        return transform;
+    };
+    // A floor, and a wall standing 2 cm down into it: one building.
+    const BodyHandle floor = physics.CreateBox({5.0f, 0.3f, 5.0f}, at(0.0f, -0.3f, 0.0f), BodyMotion::Static);
+    const BodyHandle wall = physics.CreateBox({0.1f, 1.5f, 5.0f}, at(0.0f, 1.48f, 0.0f), BodyMotion::Static);
+    REQUIRE(physics.FindStaticOverlaps(0.01f).size() == 1);
+    const uint32_t building = physics.NewOverlapGroup();
+    physics.SetOverlapGroup(floor, building);
+    physics.SetOverlapGroup(wall, building);
+    CHECK(physics.FindStaticOverlaps(0.01f).empty());
+    // A crate put half into the wall is still a mistake.
+    physics.CreateBox({0.4f, 0.4f, 0.4f}, at(0.3f, 0.45f, 0.0f), BodyMotion::Static);
+    CHECK(physics.FindStaticOverlaps(0.01f).size() == 1);
+    // And so is another building's wall, put into this one's floor.
+    const BodyHandle other = physics.CreateBox({0.1f, 1.5f, 1.0f}, at(3.0f, 1.48f, 0.0f), BodyMotion::Static);
+    physics.SetOverlapGroup(other, physics.NewOverlapGroup());
+    CHECK(physics.FindStaticOverlaps(0.01f).size() == 2);
+}

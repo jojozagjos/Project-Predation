@@ -9,7 +9,9 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <glm/geometric.hpp>
+#include <glm/gtc/quaternion.hpp>
 
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -90,6 +92,26 @@ TEST_CASE("A site's buildings stand apart on its ground, each with a way in, cle
     }
 }
 
+TEST_CASE("Inside a site's building is within its walls and under its roof; the ground and the roof are not", "[site]")
+{
+    const SitePlan plan = SitePlan::Generate(1);
+    int rooms = 0;
+    for (const FacilityLayout& building : plan.buildings)
+    {
+        for (const FacilityLayout::Room& room : building.rooms)
+        {
+            const glm::vec3 middle = FacilityMap::ToWorld(building, room.floor, glm::vec2(room.min + room.max + glm::ivec2(1)) * 0.5f);
+            CHECK(plan.Indoors(middle + glm::vec3(0.0f, 0.1f, 0.0f)));
+            ++rooms;
+        }
+        // On the roof is outside.
+        const glm::vec3 roof = FacilityMap::ToWorld(building, building.floors, glm::vec2(building.width, building.depth) * 0.5f);
+        CHECK_FALSE(plan.Indoors(roof + glm::vec3(0.0f, 0.1f, 0.0f)));
+    }
+    CHECK(rooms > 10);
+    CHECK_FALSE(plan.Indoors(plan.landing));
+}
+
 TEST_CASE("A site is planned the same from the same seed, on every machine", "[site]")
 {
     const SitePlan a = SitePlan::Generate(77);
@@ -163,6 +185,62 @@ TEST_CASE("A building planned with ways out has an outer wall all round, with a 
         const glm::vec3 sideways = exit.side < 2 ? glm::vec3(0.0f, 0.0f, 1.0f) : glm::vec3(1.0f, 0.0f, 0.0f);
         const glm::vec3 beside = outside + sideways * 1.6f;
         CHECK(physics.RayCast(beside, along, glm::length(along)).hit);
+    }
+}
+
+// The game checks every level it builds for solids inside one another, and warns of each. A building's own walls
+// and floors are made to reach into each other and are one structure, so say nothing of that; but nothing in it
+// may be inside them, or inside anything else.
+TEST_CASE("Nothing in a site's buildings is inside anything else, as far as the check the game makes on loading goes", "[site][facility]")
+{
+    for (const uint32_t seed : {1u, 3u})
+    {
+        INFO("seed " << seed);
+        const SitePlan plan = SitePlan::Generate(seed);
+        for (size_t b = 0; b < plan.buildings.size(); ++b)
+        {
+            INFO("building " << b);
+            const FacilityMap::Blueprint blueprint = FacilityMap::Draw(plan.buildings[b]);
+            PhysicsWorld physics;
+            PhysicsWorld::Settings settings;
+            settings.workerThreads = 1;
+            REQUIRE(physics.Init(settings));
+            const uint32_t structure = physics.NewOverlapGroup();
+            std::vector<std::pair<BodyHandle, size_t>> bodies;
+            for (size_t p = 0; p < blueprint.pieces.size(); ++p)
+            {
+                const FacilityMap::Piece& piece = blueprint.pieces[p];
+                Transform transform;
+                transform.position = piece.centre;
+                transform.rotation = glm::angleAxis(piece.yaw, glm::vec3(0.0f, 1.0f, 0.0f));
+                const BodyHandle body = physics.CreateBox(piece.size * 0.5f, transform, BodyMotion::Static);
+                physics.SetOverlapGroup(body, piece.Structural() ? structure : 0);
+                bodies.emplace_back(body, p);
+            }
+            const auto describe = [&](BodyHandle body)
+            {
+                for (const auto& [handle, p] : bodies)
+                {
+                    if (handle == body)
+                    {
+                        const FacilityMap::Piece& piece = blueprint.pieces[p];
+                        const glm::vec3 lo = piece.centre - piece.size * 0.5f;
+                        const glm::vec3 hi = piece.centre + piece.size * 0.5f;
+                        std::ostringstream text;
+                        text << "kind " << static_cast<int>(piece.kind) << " from " << lo.x << " " << lo.y << " " << lo.z << " to " << hi.x
+                             << " " << hi.y << " " << hi.z;
+                        return text.str();
+                    }
+                }
+                return std::string("?");
+            };
+            const std::vector<PhysicsWorld::StaticOverlap> overlaps = physics.FindStaticOverlaps(0.01f);
+            for (size_t i = 0; i < overlaps.size() && i < 4; ++i)
+            {
+                UNSCOPED_INFO(describe(overlaps[i].a) << " into " << describe(overlaps[i].b) << ", " << overlaps[i].penetration * 1000.0f << " mm");
+            }
+            CHECK(overlaps.empty());
+        }
     }
 }
 

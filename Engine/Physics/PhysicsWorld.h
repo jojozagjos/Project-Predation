@@ -165,6 +165,12 @@ public:
     // Triangle-mesh pairs are not reported: Jolt has no mesh-against-mesh collision, so stairs and
     // ramps are only tested against convex shapes. Bodies merely touching are not a penetration.
     std::vector<StaticOverlap> FindStaticOverlaps(float minPenetration = 0.01f) const;
+    // Pieces of one structure that are built to reach into one another -- a building's walls a hair into its
+    // floors and ceilings, so no line of light shows where they meet, and round a stairwell right through
+    // them -- go in one group, and FindStaticOverlaps says nothing of two bodies of the same group. Anything
+    // else, put inside one of them, is still reported. A new group per structure; 0 is none.
+    uint32_t NewOverlapGroup();
+    void SetOverlapGroup(BodyHandle body, uint32_t group);
 
     // Every triangle of every static body, in world space, three corners per triangle.
     //

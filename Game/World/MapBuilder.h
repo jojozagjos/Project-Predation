@@ -65,6 +65,11 @@ public:
         m_trackedBodies = bodies;
     }
 
+    // What is added from here on is part of one structure, whose pieces are built to reach into one another
+    // (PhysicsWorld::SetOverlapGroup): a group from PhysicsWorld::NewOverlapGroup, or 0 for things that
+    // have to keep clear of everything.
+    void SetStructure(uint32_t group) { m_overlapGroup = group; }
+
     // Box: rendered as a box mesh, collided as a box shape. Cheaper and more robust than a
     // triangle mesh, and exact for this shape.
     //
@@ -218,6 +223,10 @@ private:
     }
     void Keep(BodyHandle body)
     {
+        if (m_overlapGroup != 0 && m_physics != nullptr)
+        {
+            m_physics->SetOverlapGroup(body, m_overlapGroup);
+        }
         if (m_trackedBodies != nullptr)
         {
             m_trackedBodies->push_back(body);
@@ -233,6 +242,7 @@ private:
     size_t m_boxCount = 0;
     std::string m_prefix;
     float m_batchCell = 0.0f;
+    uint32_t m_overlapGroup = 0;
     std::vector<Batch> m_batches;
 };
 

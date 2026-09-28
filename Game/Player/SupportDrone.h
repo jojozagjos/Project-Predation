@@ -119,7 +119,8 @@ private:
     float m_shovedFor = 0.0f;
     float m_rightingFor = 0.0f;
     float m_hopCooldown = 0.0f;
-    bool m_onTracks = false;
+    float m_hopFor = 0.0f; // still steered through the air after a hop, for this long
+    float m_friction = -1.0f; // how its body grips now: on its tracks, in a hop, or as a lump
     // Where its camera points, relative to the chassis: turned and tipped, eased after the driver's look.
     float m_headYaw = 0.0f;
     float m_headPitch = 0.0f;

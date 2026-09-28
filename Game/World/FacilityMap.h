@@ -57,6 +57,14 @@ public:
         glm::vec3 centre{0.0f};
         glm::vec3 size{1.0f};
         float yaw = 0.0f;
+
+        // The building itself -- floors, ceilings, walls, its shell -- which is meant to join up: a wall reaches a
+        // hair into the slabs over and under it, the shell covers every slab's edge. What is in it has to keep clear.
+        bool Structural() const
+        {
+            return kind == Kind::Floor || kind == Kind::Ceiling || kind == Kind::Wall || kind == Kind::Duct || kind == Kind::Fill ||
+                   kind == Kind::Cladding;
+        }
     };
 
     // A flight of stairs: where the front of its bottom step is, at floor level, and which way it climbs
@@ -115,9 +123,10 @@ public:
     // Replaces whatever facility was built before with the one planned from `seed`.
     void Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, LevelLights* lights);
     // Or with a building already planned -- one of a site's -- its meshes named with `prefix` so that two
-    // buildings in one world keep their own.
+    // buildings in one world keep their own. Its walls and floors are one structure (PhysicsWorld::SetOverlapGroup):
+    // `structure` if given -- a site's ground, which its buildings are set into -- or a group of its own.
     void Build(FacilityLayout layout, uint32_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics,
-               LevelLights* lights, const std::string& prefix = {});
+               LevelLights* lights, const std::string& prefix = {}, uint32_t structure = 0);
     void Clear(Scene& scene, PhysicsWorld& physics, LevelLights* lights);
 
     bool Built() const { return m_built; }

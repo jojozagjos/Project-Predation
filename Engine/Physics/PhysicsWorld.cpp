@@ -291,7 +291,9 @@ struct PhysicsWorld::Impl
         float radius = 0.5f;
         float halfHeight = 0.5f;
         AABB meshBounds;
+        uint32_t overlapGroup = 0;
     };
+    uint32_t nextOverlapGroup = 1;
 
     bool initialized = false;
     Settings settings;
@@ -978,6 +980,14 @@ std::vector<PhysicsWorld::StaticOverlap> PhysicsWorld::FindStaticOverlaps(float 
             {
                 continue;
             }
+            if (record.overlapGroup != 0)
+            {
+                const auto other = impl.records.find(otherId);
+                if (other != impl.records.end() && other->second.overlapGroup == record.overlapGroup)
+                {
+                    continue;
+                }
+            }
 
             const auto pair = std::minmax(id, otherId);
             if (std::find(reported.begin(), reported.end(), std::pair{pair.first, pair.second}) != reported.end())
@@ -999,6 +1009,20 @@ std::vector<PhysicsWorld::StaticOverlap> PhysicsWorld::FindStaticOverlaps(float 
     std::sort(overlaps.begin(), overlaps.end(),
               [](const StaticOverlap& lhs, const StaticOverlap& rhs) { return lhs.penetration > rhs.penetration; });
     return overlaps;
+}
+
+uint32_t PhysicsWorld::NewOverlapGroup()
+{
+    return m_impl->nextOverlapGroup++;
+}
+
+void PhysicsWorld::SetOverlapGroup(BodyHandle body, uint32_t group)
+{
+    const auto it = m_impl->records.find(body.id);
+    if (it != m_impl->records.end())
+    {
+        it->second.overlapGroup = group;
+    }
 }
 
 void PhysicsWorld::DebugDraw(class DebugDraw& draw) const

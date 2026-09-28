@@ -13,9 +13,9 @@ namespace pred
 
 namespace SiteSpec
 {
-// The corner of the site, east of the testing area: none of it reaches the test map (which ends at x = 45)
-// or the lab south of it.
-inline constexpr glm::vec3 kOrigin{70.0f, 0.0f, -110.0f};
+// The corner of the site's open ground, east of the testing area. Its ground reaches 45 m further out every way and
+// its rock about 30 m, so none of it reaches the test map (which ends at x = 45) or the lab beside it.
+inline constexpr glm::vec3 kOrigin{100.0f, 0.0f, -110.0f};
 // How much open ground there is inside the rock that closes it in, each way.
 inline constexpr float kSize = 300.0f;
 // The site every machine builds until the host says otherwise.
@@ -103,6 +103,8 @@ struct SitePlan
     static void Footprint(const FacilityLayout& building, float margin, glm::vec2& min, glm::vec2& max);
     // Whether a point on the ground is under a building, or within `margin` of one.
     bool InBuilding(glm::vec2 xz, float margin) const;
+    // Whether a point is inside one: within its outer wall and under its roof.
+    bool Indoors(const glm::vec3& at) const;
 };
 
 } // namespace pred

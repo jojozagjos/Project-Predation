@@ -97,12 +97,17 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
         m_hasLights = true;
     }
 
+    // The ground, the rock that closes it in and the buildings set into it are one structure, built to reach into
+    // one another: the rock is a ragged wall of blocks run together and sunk into the ground, and so is every
+    // building's outer wall. The level check has nothing to say of that (PhysicsWorld::SetOverlapGroup).
+    const uint32_t ground = physics.NewOverlapGroup();
+
     // The buildings, each with its own meshes, and everything in them for WorldObjects.
     for (size_t b = 0; b < m_plan.buildings.size(); ++b)
     {
         auto building = std::make_unique<FacilityMap>();
         building->Build(m_plan.buildings[b], Mix(seed, static_cast<uint32_t>(b) + 1u), scene, meshes, physics, lights,
-                        "site" + std::to_string(b) + "_");
+                        "site" + std::to_string(b) + "_", ground);
         Append(m_placements, building->Placements());
         for (const FacilityLayout::Exit& exit : m_plan.buildings[b].exits)
         {
@@ -123,6 +128,8 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
         Transform transform;
         transform.position = block.centre;
         transform.rotation = glm::angleAxis(block.yaw, glm::vec3(0.0f, 1.0f, 0.0f));
+        const bool terrain = block.kind == Kind::Ground || block.kind == Kind::Cliff || block.kind == Kind::Rock || block.kind == Kind::Pad;
+        builder.SetStructure(terrain ? ground : 0);
         switch (block.kind)
         {
         case Kind::Ground:
@@ -162,6 +169,8 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
         }
     }
 
+    builder.SetStructure(0);
+
     // The lamps outside: floodlights over the doors, and on poles over the ground.
     for (size_t i = 0; i < m_plan.lamps.size(); ++i)
     {
@@ -176,12 +185,15 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
             const float height = lamp.position.y - m_plan.origin.y + 0.15f;
             Transform pole;
             pole.position = foot + glm::vec3(0.0f, height * 0.5f, 0.0f);
+            // The arm is set into the pole: one thing.
+            builder.SetStructure(physics.NewOverlapGroup());
             builder.AddBox("site_pole", pole, {0.18f, height, 0.18f}, kPoleMaterial);
             Transform arm;
             arm.position = (foot + glm::vec3(lamp.position.x, 0.0f, lamp.position.z) - glm::vec3(0.0f, m_plan.origin.y, 0.0f)) * 0.5f;
             arm.position.y = lamp.position.y + 0.12f;
             arm.rotation = glm::angleAxis(std::atan2(-back.z, back.x), glm::vec3(0.0f, 1.0f, 0.0f));
             builder.AddBox("site_pole_arm", arm, {0.62f, 0.08f, 0.08f}, kPoleMaterial);
+            builder.SetStructure(0);
         }
         if (lights != nullptr)
         {

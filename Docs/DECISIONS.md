@@ -2106,3 +2106,28 @@ Four changes to how Assets/Data works, all so the files can be edited by hand wi
   longer jumps about. The lamp clusters test each cell against a lamp's sphere exactly and hold four times
   as many entries, which is what overflowed into black boxes. Eight lamps' shadows are redrawn a frame, not
   four, so a door opening in front of a lamp no longer leaves its shadow flickering behind.
+
+## ADR-099: Structures the level check leaves alone; the site clear of the testing area; a dead player's keys; the drone's hop
+
+- **Pieces built to join are one structure, and the level check says nothing of them.** A building's walls
+  reach a hair into its floors and ceilings so no hairline shows where they meet, round a stairwell right
+  through them, and the site's rock is blocks run together and sunk into its ground, as its buildings are.
+  The check made on loading reported every one of those, over a thousand warnings. A body can now be put in
+  an overlap group (PhysicsWorld::SetOverlapGroup; MapBuilder::SetStructure for what a map adds), and two
+  bodies of one group are not reported. A building's floors, ceilings, walls and shell are one group; at a
+  site, with its ground, rock and pad; a lamp pole with its arm. Everything else -- a crate, a shelf, another
+  building -- is still reported if it is inside any of them. A test builds every building of two sites as the
+  game does and requires the check to come back empty.
+- **The site is 30 m further east** (its corner at x = 100): its ground reaches 45 m past the open ground and
+  its rock about 30 m, and at x = 70 the rock stood 4 m into the testing area's field and the ground ran
+  under the lab's edge.
+- **Dead, the keys that are still yours work.** Every game key was behind "alive", so a player in the drone
+  could not hop, switch its lamp or pause, and a dead player could not change whose view they watch. Now,
+  dead: jump is the drone's hop, the torch key its lamp, interact the next view (without a drone), and the
+  development respawn key brings you back; Escape pauses alive or dead.
+- **The drone hops onto things.** Higher (about 0.6 m), still driven through the air for three quarters of a
+  second after, and with no grip at all while it is off the ground: driven at a ledge and gripping its face,
+  the face held it up -- the hop was braked to a few centimetres and it hung on the wall. A test drives it at
+  a 0.4 m ledge: it stops there, and hops up onto it.
+- **At a site, creatures mostly arrive indoors**: three in four (`ai.arrive_indoors`) come out somewhere inside
+  a building, within 80 m, still out of everybody's sight and at least 30 m from anybody.
