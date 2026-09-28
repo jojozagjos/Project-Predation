@@ -18,7 +18,12 @@ enum class InteractionKind : uint8_t
     HidingSpot,
     AmmoCrate,
     // Somebody wrapped up at a creature nest. The payload is who.
-    Cocoon
+    Cocoon,
+    // The mission's: the terminal the data is on, a building's breaker panel (the payload is which building), and the
+    // shuttle's launch console.
+    Terminal,
+    Breaker,
+    Launch
 };
 
 const char* InteractionKindName(InteractionKind kind);

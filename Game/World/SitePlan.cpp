@@ -209,6 +209,12 @@ SitePlan SitePlan::Generate(uint32_t seed)
         options.exitSide = std::abs(toLanding.x) > std::abs(toLanding.y) ? (toLanding.x < 0.0f ? 0 : 1) : (toLanding.y < 0.0f ? 2 : 3);
         options.origin = world(corner.x, corner.y);
         plan.buildings.push_back(FacilityLayout::Generate(Mix(seed, static_cast<uint32_t>(b) + 1u), options));
+        // Each building on circuits of its own (a hundred apart), so one losing its power leaves the rest lit.
+        const int circuitBase = 100 * static_cast<int>(plan.buildings.size());
+        for (FacilityLayout::Lamp& lamp : plan.buildings.back().lamps)
+        {
+            lamp.circuit += circuitBase;
+        }
     }
 
     // The ground, a little below the buildings' floors so the two never fight over which is drawn.

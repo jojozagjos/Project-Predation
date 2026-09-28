@@ -2131,3 +2131,42 @@ Four changes to how Assets/Data works, all so the files can be edited by hand wi
   a 0.4 m ledge: it stops there, and hops up onto it.
 - **At a site, creatures mostly arrive indoors**: three in four (`ai.arrive_indoors`) come out somewhere inside
   a building, within 80 m, still out of everybody's sight and at least 30 m from anybody.
+
+## ADR-100: The first mission -- the data, the breaker, the drive and the shuttle
+
+Decided with the user: download the data at a terminal, carry the drive back to the shuttle and extract
+with it; sometimes the power is out, sometimes there is no map; the launch leaves anybody not aboard.
+
+- **Planned from the site, like everything else** (Game/Mission/Mission.h): every machine plans the same
+  mission from the site's seed. The terminal stands on a bench in a room reachable without the keycard
+  and not the nest -- the further from the shuttle, the likelier -- with a download of 35 to 60 seconds.
+  Two in five missions have its building's power out; three in ten come without map data.
+- **Every building has a breaker panel** on a wall: in its plant room if it has one, or a ground-floor
+  room, always reachable without the keycard; planned last, so no building plans any differently for
+  it. Each building's lamps are now on circuits of their own (a hundred apart), so one losing its power
+  leaves the rest lit. With the power out the terminal's screen is dark and it only clicks; its building
+  is lit by its emergency lamps alone until somebody finds the panel -- its lamp red -- and resets it,
+  which is heard well beyond the building.
+- **The download goes on only while somebody alive is at the terminal** (within 4.5 m, on its floor),
+  and the terminal is heard working every seven seconds. When it is done the drive is on the bench in
+  front of it: an ordinary item, carried, dropped by whoever dies with it, on no equipment bench.
+- **The shuttle stands on the pad** (Game/World/Shuttle.h): legs, a cabin with benches, a ramp down
+  towards the site, a lamp in the ceiling and a launch console at the front. Everybody arrives in its
+  cabin. Anybody aboard can launch; it leaves twenty seconds later -- pressing again holds it -- with
+  whoever is in the cabin, and the drive if somebody aboard has it or it is lying in the cabin. The
+  result is shown to everybody (data recovered or not, you aboard or left behind, how many made it) and
+  then everybody is back aboard the ship: the testing area until there is one. The drive is gone from
+  whoever had it. Going back to the site after that puts it back as it was.
+- **The objective is on the screen** while at the site: what to do now, and with map data a bearing to
+  the terminal ("140 m north-east, one floor up") -- a stand-in for the site map, which is next.
+- **The host runs it all** and sends how it stands (a Mission world event: stage, power, progress,
+  launch countdown, result) on every change and twice a second while something counts; a player who
+  joins is told. Protocol 22. Using the terminal, a panel or the console is an interaction like any
+  other, checked by the host.
+- The level check on loading also leaves alone what is built to join the site's structure -- the
+  shuttle, standing on the pad, and the pipework run into the buildings -- and the planner no longer puts
+  anything against a wall beside a way out of a building.
+- Placeholder sounds for all of it, in World.json: the terminal's beep, dead click, working chatter and
+  finishing tones, the breaker, the launch alarm and the shuttle leaving.
+- Development: `mission` says where the terminal is and how it stands; `mission_goto terminal|breaker|
+  shuttle`, and `mission_skip` to finish a download at once.

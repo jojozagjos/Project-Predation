@@ -92,9 +92,12 @@ struct SitePlan
     std::vector<FacilityLayout> buildings;
     std::vector<Block> blocks;
     std::vector<Lamp> lamps;
-    // Where everybody arrives, and which way they face: into the site.
+    // The middle of the landing pad, half a metre over it, and which way the shuttle standing there faces: its ramp
+    // towards the middle of the site.
     glm::vec3 landing{0.0f};
     float landingYaw = 0.0f;
+    // Where the shuttle stands: the middle of the pad, on its surface (see Shuttle).
+    glm::vec3 ShuttleBase() const { return landing - glm::vec3(0.0f, 0.5f, 0.0f); }
     Sky sky;
 
     static SitePlan Generate(uint32_t seed);

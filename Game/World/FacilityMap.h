@@ -117,6 +117,9 @@ public:
     // usual place, or for any building, wherever it stands.
     static glm::vec3 ToWorld(int floor, glm::vec2 cells);
     static glm::vec3 ToWorld(const FacilityLayout& layout, int floor, glm::vec2 cells);
+    // Where something the plan put against a wall stands, at the foot of it: `depth` deep, its back a couple of
+    // centimetres off the wall's face. It faces its own -z turned by the thing's yaw: (-sin, 0, -cos).
+    static glm::vec3 PlacedAgainstWall(const FacilityLayout& layout, const FacilityLayout::Placed& thing, float depth);
     // Just outside one of a building's ways out, `distance` metres beyond its outer wall, at ground level.
     static glm::vec3 ExitOutside(const FacilityLayout& layout, const FacilityLayout::Exit& exit, float distance);
 

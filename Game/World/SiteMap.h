@@ -4,6 +4,7 @@
 #include "Engine/Scene/Scene.h"
 #include "Game/World/FacilityMap.h"
 #include "Game/World/LevelLights.h"
+#include "Game/World/Shuttle.h"
 #include "Game/World/SitePlan.h"
 #include "Game/World/WorldObjects.h"
 
@@ -33,8 +34,11 @@ public:
     uint16_t Seed() const { return m_seed; }
     const SitePlan& Plan() const { return m_plan; }
     const WorldObjects::Placements& Placements() const { return m_placements; }
-    glm::vec3 Spawn() const { return m_plan.landing; }
+    // Where everybody arrives: in the shuttle's cabin, facing down its ramp into the site.
+    glm::vec3 Spawn() const { return Shuttle::Arrival(m_plan.ShuttleBase(), m_plan.landingYaw); }
     float SpawnYaw() const { return m_plan.landingYaw; }
+    // Whether somebody standing there, or something lying there, is aboard the shuttle.
+    bool Aboard(const glm::vec3& at) const { return Shuttle::Aboard(m_plan.ShuttleBase(), m_plan.landingYaw, at); }
     // All of it, rock included: for anything that only needs the part of the world the site is in.
     void Bounds(glm::vec3& min, glm::vec3& max) const;
     // Whether a point is on the site.

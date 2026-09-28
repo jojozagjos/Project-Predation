@@ -48,7 +48,15 @@ each kind of location. The mission, then extraction, an extraction sequence, and
 
 The mission framework comes first and is built to be extended: an objective is a list of steps, each
 a thing to find, reach, use or carry, with the first mission finding the black box or its data and
-getting it out. The sample container is the stand-in for what is carried.
+getting it out.
+
+Built so far (ADR-100): the first mission at a site -- a terminal on a bench somewhere in one of its
+buildings, a download that goes on only while somebody stays with it, the drive it leaves, and the
+shuttle on the pad that everybody arrives in and leaves on. Sometimes the terminal's building has no
+power until its breaker is reset, and sometimes there is no map. The launch counts down and leaves
+anybody not aboard behind; then the result, and back to the ship (the testing area for now). Still to
+come: the site map to carry (the objective gives a bearing when there is map data), the briefing and
+the arrival card, the ship itself, and choosing the next deployment from it.
 
 ### 2. Generated facilities
 

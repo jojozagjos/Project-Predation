@@ -5,6 +5,12 @@ set(PRED_GAME_SOURCES
     PredationGameItems.cpp
     PredationGameSounds.cpp
     PredationGameDrone.cpp
+    PredationGameMission.cpp
+
+    Mission/Mission.h
+    Mission/Mission.cpp
+    Mission/MissionProps.h
+    Mission/MissionProps.cpp
 
     Player/PlayerTypes.h
     Player/PlayerConfig.cpp
@@ -84,6 +90,8 @@ set(PRED_GAME_SOURCES
     World/SitePlan.cpp
     World/SiteMap.h
     World/SiteMap.cpp
+    World/Shuttle.h
+    World/Shuttle.cpp
     World/HiveMesh.h
     World/LevelLights.h
     World/LevelLights.cpp

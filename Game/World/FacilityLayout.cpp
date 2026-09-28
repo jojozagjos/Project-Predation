@@ -1065,6 +1065,14 @@ struct Planner
                 }
             }
         }
+        // And the ways out of the building, on the ground floor.
+        for (const FacilityLayout::Exit& exit : plan.exits)
+        {
+            if (floor == 0 && std::abs(exit.cell.x - c.x) + std::abs(exit.cell.y - c.y) <= 1)
+            {
+                return true;
+            }
+        }
         return false;
     }
 
@@ -1096,6 +1104,91 @@ struct Planner
             return true;
         }
         return false;
+    }
+
+    // The panel the building's power is switched at, on a wall: in the plant room if there is one, or else a room on the
+    // ground floor, or anywhere -- always somewhere that can be reached without the keycard. Planned last, so nothing
+    // planned before it comes out any different for having it.
+    void PlaceBreaker()
+    {
+        const std::vector<bool> reach = plan.Reachable(false);
+        for (int pass = 0; pass < 3; ++pass)
+        {
+            std::vector<size_t> candidates;
+            for (size_t r = 0; r < plan.rooms.size(); ++r)
+            {
+                const FacilityLayout::Room& room = plan.rooms[r];
+                const bool fits = pass == 0 ? room.kind == FacilityLayout::RoomKind::Plant : pass == 1 ? room.floor == 0 : true;
+                if (fits && static_cast<int>(r) != plan.nestRoom && reach[plan.Index(room.floor, room.min.x, room.min.y)])
+                {
+                    candidates.push_back(r);
+                }
+            }
+            const size_t first = candidates.empty() ? 0 : static_cast<size_t>(random.Int(0, static_cast<int>(candidates.size()) - 1));
+            for (size_t i = 0; i < candidates.size(); ++i)
+            {
+                const FacilityLayout::Room& room = plan.rooms[candidates[(first + i) % candidates.size()]];
+                glm::vec2 at;
+                float yaw = 0.0f;
+                if (AgainstWall(room, at, yaw))
+                {
+                    AddBreaker(room.floor, at, yaw);
+                    return;
+                }
+            }
+        }
+        // A building so full, or so small, that no try found a free wall: every wall of every room reachable without the
+        // keycard, in order, until one has nothing against it. A panel is on the wall at the height of a hand, so it only
+        // has to keep clear of what stands against that same wall of that same cell.
+        for (size_t r = 0; r < plan.rooms.size(); ++r)
+        {
+            const FacilityLayout::Room& room = plan.rooms[r];
+            if (!reach[plan.Index(room.floor, room.min.x, room.min.y)])
+            {
+                continue;
+            }
+            for (int z = room.min.y; z <= room.max.y; ++z)
+            {
+                for (int x = room.min.x; x <= room.max.x; ++x)
+                {
+                    if (ByADoor(room.floor, {x, z}))
+                    {
+                        continue;
+                    }
+                    for (const glm::ivec2 step : {glm::ivec2(1, 0), glm::ivec2(-1, 0), glm::ivec2(0, 1), glm::ivec2(0, -1)})
+                    {
+                        const glm::ivec2 out{x + step.x, z + step.y};
+                        if (InBounds(out.x, out.y) && CellAt(room.floor, out.x, out.y) == FacilityLayout::Cell::Room)
+                        {
+                            continue;
+                        }
+                        const float yaw = std::atan2(static_cast<float>(step.x), static_cast<float>(step.y));
+                        const bool taken = std::any_of(plan.things.begin(), plan.things.end(), [&](const FacilityLayout::Placed& thing)
+                        {
+                            return thing.floor == room.floor && static_cast<int>(std::floor(thing.at.x)) == x &&
+                                   static_cast<int>(std::floor(thing.at.y)) == z && std::abs(thing.yaw - yaw) < 0.01f;
+                        });
+                        if (!taken)
+                        {
+                            AddBreaker(room.floor, glm::vec2(static_cast<float>(x) + 0.5f + static_cast<float>(step.x) * 0.3f,
+                                                             static_cast<float>(z) + 0.5f + static_cast<float>(step.y) * 0.3f),
+                                       yaw);
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    void AddBreaker(int floor, glm::vec2 at, float yaw)
+    {
+        FacilityLayout::Placed panel;
+        panel.thing = FacilityLayout::Thing::Breaker;
+        panel.floor = floor;
+        panel.at = at;
+        panel.yaw = yaw;
+        plan.things.push_back(panel);
     }
 
     void Furnish()
@@ -1540,6 +1633,7 @@ FacilityLayout FacilityLayout::Generate(uint32_t seed, const Options& options)
         planner.DigDucts();
         planner.Light();
         planner.Fill();
+        planner.PlaceBreaker();
         return plan;
     }
     return best;

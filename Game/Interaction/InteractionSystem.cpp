@@ -27,6 +27,12 @@ const char* InteractionKindName(InteractionKind kind)
         return "ammo crate";
     case InteractionKind::Cocoon:
         return "cocoon";
+    case InteractionKind::Terminal:
+        return "terminal";
+    case InteractionKind::Breaker:
+        return "breaker";
+    case InteractionKind::Launch:
+        return "launch";
 
     case InteractionKind::Generic:
     default:

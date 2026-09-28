@@ -126,7 +126,8 @@ struct FacilityLayout
         Crate,      // cover: a box on the floor
         Shelf,      // a tall shelf against a wall
         Bench,      // a waist-high bench
-        Pillar
+        Pillar,
+        Breaker     // the panel on a wall the building's power is switched at: one a building
     };
 
     struct Placed

@@ -767,6 +767,8 @@ void Things(const FacilityLayout& layout, Blueprint& out)
         case FacilityLayout::Thing::Crate:
             AddPiece(out, Kind::Crate, FacilityMap::ToWorld(thing.floor, thing.at), {thing.size.x, thing.height, thing.size.y}, thing.yaw);
             break;
+        case FacilityLayout::Thing::Breaker:
+            break; // something to use, not part of the building: the mission puts it up (MissionProps)
         }
     }
 }
@@ -1107,6 +1109,12 @@ glm::vec3 FacilityMap::ToWorld(const FacilityLayout& layout, int floor, glm::vec
 {
     const OriginScope scope(layout.origin);
     return ToWorld(floor, cells);
+}
+
+glm::vec3 FacilityMap::PlacedAgainstWall(const FacilityLayout& layout, const FacilityLayout::Placed& thing, float depth)
+{
+    const OriginScope scope(layout.origin);
+    return AgainstWall(layout, thing, depth);
 }
 
 glm::vec3 FacilityMap::ExitOutside(const FacilityLayout& layout, const FacilityLayout::Exit& exit, float distance)

@@ -23,6 +23,8 @@
 #include "Game/Creature/CreatureTuning.h"
 #include "Game/Player/PlayerBody.h"
 #include "Game/Player/PlayerController.h"
+#include "Game/Mission/Mission.h"
+#include "Game/Mission/MissionProps.h"
 #include "Game/Player/SupportDrone.h"
 #include "Game/Weapons/BulletHole.h"
 #include "Game/Weapons/ShotResolver.h"
@@ -412,6 +414,7 @@ private:
     void DrawCreatureOverlays(DebugDraw& draw);
     void RegisterCreatureCommands();
     void RegisterDroneCommands();
+    void RegisterMissionCommands();
     // perf_report: the frame's timings, draw calls and GPU time added up over some frames, then logged.
     void UpdatePerfReport();
     void SyncDynamicProps();
@@ -718,6 +721,24 @@ private:
     bool DroneLamp(PunctualLight& light) const;
     void DroneLampFor(const SupportDrone& drone, PunctualLight& light) const;
     void DrawDroneHud();
+
+    // --- The mission (PredationGameMission.cpp) --------------------------------------------------
+    //
+    // Planned from the site, run by the host, shown everywhere: see Game/Mission/Mission.h.
+    void ResetMission();
+    void UpdateMission(float dt);
+    // The terminal, a breaker panel or the launch console, used by `player`. The host's to decide.
+    bool PerformMissionInteraction(InteractionKind kind, int index, uint8_t player);
+    // The host telling everybody how the mission stands; and a machine being told.
+    void BroadcastMission(bool quiet = false, int player = -1);
+    void ApplyMissionEvent(const WorldEventMessage& event);
+    // How things stand onto the terminal, the panels, the console and the lamps of the terminal's building.
+    void ShowMission();
+    // The shuttle has gone, here: the drive goes with the Company or is lost, and the result is shown.
+    void OnMissionOver();
+    void DrawMissionHud();
+    // Whether this player is carrying the drive, or `player` is by the host's reckoning.
+    bool CarriesDrive(uint8_t player) const;
     float TorchIntensity() const;
     float TorchRange() const;
     float TorchInnerAngle() const;
@@ -1212,6 +1233,18 @@ private:
     // How long everybody has been down for good, and, on every machine, how long until they are back.
     float m_wipeTimer = 0.0f;
     float m_everybodyDownFor = 0.0f;
+    // The mission: its plan, how it stands, and its things in the world. The host sends how it stands every half second
+    // while something is counting (m_missionSendIn), and the terminal is heard working now and then.
+    MissionPlan m_missionPlan;
+    MissionState m_mission;
+    MissionProps m_missionProps;
+    float m_missionSendIn = 0.0f;
+    float m_missionHumIn = 0.0f;
+    // Once it is over: how long the result has been on screen.
+    float m_missionOverFor = 0.0f;
+    // Somebody here has tried the terminal without power, so the objective says what to do about it.
+    bool m_missionFoundNoPower = false;
+    ItemId m_driveItem = kInvalidItem;
     // Where the players are, and which way they face arriving there.
     MapChoice m_map = MapChoice::TestMap;
     float m_spawnYaw = 3.14159265f;

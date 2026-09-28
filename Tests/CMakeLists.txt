@@ -29,6 +29,7 @@ add_executable(PredationTests
     NestTests.cpp
     SupportDroneTests.cpp
     SiteTests.cpp
+    MissionTests.cpp
     MimicTests.cpp
     TacticLearnerTests.cpp
     FacilityTests.cpp

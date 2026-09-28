@@ -164,7 +164,7 @@ TEST_CASE("Using an item, a flare thrown and a door unlocked travel intact", "[i
     }
 }
 
-TEST_CASE("Every item is on both equipment benches", "[items][world]")
+TEST_CASE("Every item but the mission's drive is on both equipment benches", "[items][world]")
 {
     PhysicsWorld physics;
     PhysicsWorld::Settings settings;
@@ -202,6 +202,13 @@ TEST_CASE("Every item is on both equipment benches", "[items][world]")
             continue;
         }
         INFO(item.key);
+        // Except what is only ever had from somewhere in the world -- the mission's drive, from its terminal.
+        if (item.benchCount == 0)
+        {
+            CHECK(test.count(item.id) == 0);
+            CHECK(lab.count(item.id) == 0);
+            continue;
+        }
         CHECK(test.count(item.id) == 1);
         CHECK(lab.count(item.id) == 1);
         if (lab.count(item.id) == 1)

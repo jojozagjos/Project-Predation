@@ -608,6 +608,15 @@ void WriteWorldEvent(BitWriter& writer, const WorldEventMessage& message)
         writer.WriteQuantised(message.amount, 0.0f, 100.0f, 8);
         break;
 
+    case WorldEventKind::Mission:
+        writer.WriteBits(message.index & 0x7u, 3);
+        writer.WriteBool(message.flag);
+        writer.WriteBool(message.flag2);
+        writer.WriteBool(message.rounds != 0);
+        writer.WriteBits(message.other & 0xFu, 4);
+        writer.WriteQuantised(message.amount, 0.0f, 1.0f, 10);
+        writer.WriteBits(std::min<uint32_t>(message.item, 511), 9);
+        break;
 
     case WorldEventKind::Count:
         break;
@@ -758,6 +767,15 @@ bool ReadWorldEvent(BitReader& reader, WorldEventMessage& out)
         out.amount = reader.ReadQuantised(0.0f, 100.0f, 8);
         break;
 
+    case WorldEventKind::Mission:
+        out.index = static_cast<uint8_t>(reader.ReadBits(3));
+        out.flag = reader.ReadBool();
+        out.flag2 = reader.ReadBool();
+        out.rounds = reader.ReadBool() ? 1 : 0;
+        out.other = static_cast<uint8_t>(reader.ReadBits(4));
+        out.amount = reader.ReadQuantised(0.0f, 1.0f, 10);
+        out.item = static_cast<uint16_t>(reader.ReadBits(9));
+        break;
 
     case WorldEventKind::Count:
         return false;

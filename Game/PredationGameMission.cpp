@@ -1,0 +1,538 @@
+// The mission, as the game runs it: planned from the site whenever the site is built, run by the host -- the terminal,
+// the breaker, the download, the drive, the launch -- and shown on every machine. The plan and the rules are in
+// Game/Mission/Mission.h; the terminal, the panels and the console in the world are MissionProps.
+
+#include "Game/PredationGame.h"
+
+#include "Engine/Core/Log.h"
+
+#include <imgui.h>
+
+#include <glm/geometric.hpp>
+#include <glm/gtc/constants.hpp>
+
+#include <bit>
+#include <cmath>
+#include <cstdio>
+#include <string>
+
+namespace pred
+{
+
+namespace
+{
+
+using Stage = MissionState::Stage;
+
+// While the download goes on, the terminal is heard working now and then: not loud, but a room with something in it
+// hears it.
+constexpr float kHumEvery = 7.0f;
+constexpr float kHumReach = 12.0f;
+// Power coming back to a building is heard well beyond it.
+constexpr float kBreakerReach = 22.0f;
+
+WorldEventMessage MissionEvent(const MissionState& state)
+{
+    WorldEventMessage event;
+    event.kind = WorldEventKind::Mission;
+    event.index = static_cast<uint8_t>(state.stage);
+    event.flag = state.powered;
+    event.flag2 = state.attended;
+    event.amount = state.progress;
+    event.item = state.Launching() ? static_cast<uint16_t>(std::ceil(state.launchIn * 10.0f)) + 1u : 0u;
+    event.rounds = state.recovered ? 1 : 0;
+    event.other = state.aboard;
+    return event;
+}
+
+MissionState MissionFrom(const WorldEventMessage& event)
+{
+    MissionState state;
+    state.stage = static_cast<Stage>(std::min<uint8_t>(event.index, static_cast<uint8_t>(Stage::Over)));
+    state.powered = event.flag;
+    state.attended = event.flag2;
+    state.progress = event.amount;
+    state.launchIn = event.item == 0 ? -1.0f : static_cast<float>(event.item - 1u) * 0.1f;
+    state.recovered = event.rounds != 0;
+    state.aboard = event.other;
+    return state;
+}
+
+// Which way, and how far, as a briefing would put it: "140 m north-east". North is -z.
+std::string Bearing(const glm::vec3& from, const glm::vec3& to)
+{
+    const glm::vec2 offset{to.x - from.x, to.z - from.z};
+    const float distance = glm::length(offset);
+    if (distance < 6.0f)
+    {
+        return "close by";
+    }
+    static const char* const kNames[] = {"north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west"};
+    const float degrees = glm::degrees(std::atan2(offset.x, -offset.y)) + 360.0f + 22.5f;
+    const int sector = static_cast<int>(degrees / 45.0f) % 8;
+    const int rounded = static_cast<int>(std::round(distance / 10.0f)) * 10;
+    return std::to_string(std::max(rounded, 10)) + " m " + kNames[sector];
+}
+
+std::string FloorName(int floor)
+{
+    return floor == 0 ? "on the ground floor" : floor == 1 ? "one floor up" : std::to_string(floor) + " floors up";
+}
+
+} // namespace
+
+void PredationGame::RegisterMissionCommands()
+{
+    Console& console = m_app->GetConsole();
+    console.RegisterCommand("mission", "Say where the mission's terminal is and how the mission stands",
+                            [this](const std::vector<std::string>&)
+                            {
+                                if (!m_missionPlan.Valid())
+                                {
+                                    m_app->GetConsole().Print("No mission: no site, or nowhere on it for a terminal.");
+                                    return;
+                                }
+                                static const char* const kStages[] = {"none", "find the terminal", "downloading", "carry the drive", "over"};
+                                char line[256];
+                                std::snprintf(line, sizeof(line), "Terminal in building %d, %s; power %s; map %s; %.0f s to copy. Now: %s, %.0f%%%s",
+                                              m_missionPlan.building, FloorName(m_missionPlan.floor).c_str(), m_mission.powered ? "on" : "OUT",
+                                              m_missionPlan.mapGiven ? "given" : "NOT given", m_missionPlan.downloadSeconds,
+                                              kStages[static_cast<int>(m_mission.stage)], m_mission.progress * 100.0f,
+                                              m_mission.Launching() ? ", launching" : "");
+                                m_app->GetConsole().Print(line);
+                            });
+#if PRED_DEV_TOOLS
+    console.RegisterCommand("mission_goto", "Stand in front of the mission's terminal, its building's breaker, or the shuttle's console: "
+                            "mission_goto <terminal|breaker|shuttle>",
+                            [this](const std::vector<std::string>& args)
+                            {
+                                const std::string where = args.size() >= 2 ? args[1] : "terminal";
+                                glm::vec3 at{0.0f};
+                                float facing = 0.0f; // as a thing is turned: it faces (-sin, 0, -cos)
+                                float height = 0.0f; // how far its middle is over the floor
+                                if (where == "terminal" && m_missionPlan.Valid())
+                                {
+                                    at = m_missionPlan.terminal;
+                                    facing = m_missionPlan.terminalYaw;
+                                    height = 0.92f + MissionSpec::kTerminalSize.y * 0.5f;
+                                }
+                                else if (where == "breaker" && m_missionPlan.Valid() &&
+                                         BreakerPanel(m_facility.Plan().buildings[static_cast<size_t>(m_missionPlan.building)], at, facing))
+                                {
+                                    height = MissionSpec::kBreakerHeight;
+                                }
+                                else if (where == "shuttle")
+                                {
+                                    const SitePlan& plan = m_facility.Plan();
+                                    at = Shuttle::Console(plan.ShuttleBase(), plan.landingYaw);
+                                    facing = -plan.landingYaw;
+                                    height = Shuttle::ConsoleSize().y * 0.5f;
+                                }
+                                else
+                                {
+                                    m_app->GetConsole().PrintError("usage: mission_goto <terminal|breaker|shuttle>");
+                                    return;
+                                }
+                                const glm::vec3 out{-std::sin(facing), 0.0f, -std::cos(facing)};
+                                m_player.Teleport(at + out * 1.1f - glm::vec3(0.0f, height - 0.1f, 0.0f));
+                                // Looking back at it (the way (sin, -cos) is, for a look), from about eye height.
+                                m_lookYaw = std::atan2(-out.x, out.z);
+                                m_lookPitch = std::atan2(height - 1.6f, 1.1f);
+                            });
+    console.RegisterCommand("mission_skip", "As the host, finish the download at once", [this](const std::vector<std::string>&)
+                            {
+                                if (IsAuthority() && m_mission.stage == Stage::Downloading)
+                                {
+                                    m_mission.progress = 0.999f;
+                                }
+                            });
+#endif
+}
+
+void PredationGame::ResetMission()
+{
+    // The last plan's building lit again first: a circuit left off stays off, whatever is built next.
+    for (const int circuit : m_missionPlan.circuits)
+    {
+        m_levelLights.SetPowered(circuit, true);
+    }
+    m_missionPlan = m_facility.Built() ? MissionPlan::Generate(m_facility.Plan(), m_facility.Seed()) : MissionPlan{};
+    m_mission = MissionRules::Start(m_missionPlan);
+    m_missionProps.Build(m_scene, m_app->GetMeshes(), m_app->GetPhysics(), m_interactions, m_facility.Plan(), m_missionPlan);
+    m_driveItem = m_items.IdOf("data_drive");
+    m_missionSendIn = 0.0f;
+    m_missionHumIn = kHumEvery;
+    m_missionOverFor = 0.0f;
+    m_missionFoundNoPower = false;
+    ShowMission();
+    if (m_missionPlan.Valid())
+    {
+        PRED_LOG_INFO(Gameplay, "Mission: the data is on a terminal in building {}, {}, at {:.1f} {:.1f} {:.1f}{}{}; {:.0f} s to copy",
+                      m_missionPlan.building, FloorName(m_missionPlan.floor), m_missionPlan.terminal.x, m_missionPlan.terminal.y,
+                      m_missionPlan.terminal.z, m_missionPlan.powerOut ? ", its power out" : "", m_missionPlan.mapGiven ? "" : ", no map",
+                      m_missionPlan.downloadSeconds);
+    }
+}
+
+void PredationGame::ShowMission()
+{
+    m_missionProps.Show(m_scene, m_interactions, m_mission, static_cast<float>(m_lightClock));
+    const bool powered = m_mission.powered || m_mission.stage == Stage::None;
+    for (const int circuit : m_missionPlan.circuits)
+    {
+        if (m_levelLights.Powered(circuit) != powered)
+        {
+            m_levelLights.SetPowered(circuit, powered);
+        }
+    }
+}
+
+bool PredationGame::CarriesDrive(uint8_t player) const
+{
+    if (m_driveItem == kInvalidItem)
+    {
+        return false;
+    }
+    if (player == LocalPlayerId())
+    {
+        return m_inventory.CountOf(m_driveItem) > 0;
+    }
+    return m_sessionMode == SessionMode::Host && m_host.CarriedCount(player, static_cast<uint16_t>(m_driveItem)) > 0;
+}
+
+void PredationGame::BroadcastMission(bool quiet, int player)
+{
+    if (m_sessionMode != SessionMode::Host)
+    {
+        return;
+    }
+    WorldEventMessage event = MissionEvent(m_mission);
+    event.quiet = quiet;
+    if (player >= 0)
+    {
+        m_host.SendTo(static_cast<uint8_t>(player), event);
+    }
+    else
+    {
+        m_host.Broadcast(event);
+    }
+}
+
+void PredationGame::ApplyMissionEvent(const WorldEventMessage& event)
+{
+    const MissionState was = m_mission;
+    m_mission = MissionFrom(event);
+    if (!event.quiet)
+    {
+        if (!was.powered && m_mission.powered && m_missionPlan.Valid())
+        {
+            glm::vec3 panel;
+            float yaw = 0.0f;
+            if (BreakerPanel(m_facility.Plan().buildings[static_cast<size_t>(m_missionPlan.building)], panel, yaw))
+            {
+                PlayNamed("World/breaker", panel, 1.0f);
+            }
+        }
+        if (was.stage == Stage::Find && m_mission.stage == Stage::Downloading)
+        {
+            PlayNamed("World/terminal_beep", m_missionPlan.terminal, 0.7f);
+        }
+        if (was.stage == Stage::Downloading && m_mission.stage == Stage::Carry)
+        {
+            PlayNamed("World/terminal_done", m_missionPlan.terminal, 0.8f);
+        }
+        if (!was.Launching() && m_mission.Launching())
+        {
+            PlayNamed("World/shuttle_alarm", Shuttle::Console(m_facility.Plan().ShuttleBase(), m_facility.Plan().landingYaw), 0.9f);
+        }
+    }
+    if (was.stage != Stage::Over && m_mission.stage == Stage::Over)
+    {
+        OnMissionOver();
+    }
+    ShowMission();
+}
+
+void PredationGame::OnMissionOver()
+{
+    m_missionOverFor = 0.0f;
+    // The drive is the Company's now, or lost with the site: nobody still has it.
+    for (int slot = 0; slot < m_inventory.SlotCount(); ++slot)
+    {
+        if (m_inventory.At(slot).item == m_driveItem)
+        {
+            m_inventory.RemoveFromSlot(slot, m_inventory.At(slot).count);
+        }
+    }
+    if (m_sessionMode == SessionMode::Host)
+    {
+        for (const RemotePlayerView& remote : RemotePlayers())
+        {
+            const int carried = m_host.CarriedCount(remote.id, static_cast<uint16_t>(m_driveItem));
+            if (carried > 0)
+            {
+                m_host.TakeCarried(remote.id, static_cast<uint16_t>(m_driveItem), carried);
+            }
+        }
+    }
+    const glm::vec3 base = m_facility.Plan().ShuttleBase();
+    PlayNamed("World/shuttle_launch", base + glm::vec3(0.0f, 2.0f, 0.0f), 1.0f);
+    PRED_LOG_INFO(Gameplay, "The shuttle has gone{}, {} aboard", m_mission.recovered ? " with the data" : " without the data",
+                  std::popcount(static_cast<unsigned>(m_mission.aboard)));
+}
+
+bool PredationGame::PerformMissionInteraction(InteractionKind kind, int index, uint8_t player)
+{
+    if (!IsAuthority())
+    {
+        return false;
+    }
+    switch (kind)
+    {
+    case InteractionKind::Terminal:
+        if (!MissionRules::StartDownload(m_mission))
+        {
+            return false;
+        }
+        PlayNamed("World/terminal_beep", m_missionPlan.terminal, 0.7f);
+        MakeNoise(NoiseKind::Item, m_missionPlan.terminal, kHumReach, player);
+        m_missionHumIn = kHumEvery;
+        PRED_LOG_INFO(Gameplay, "Player {} started the download", player);
+        break;
+
+    case InteractionKind::Breaker:
+    {
+        if (index != m_missionPlan.building || !MissionRules::RestorePower(m_mission))
+        {
+            return false;
+        }
+        glm::vec3 panel;
+        float yaw = 0.0f;
+        if (BreakerPanel(m_facility.Plan().buildings[static_cast<size_t>(index)], panel, yaw))
+        {
+            PlayNamed("World/breaker", panel, 1.0f);
+            MakeNoise(NoiseKind::Door, panel, kBreakerReach, player);
+        }
+        PRED_LOG_INFO(Gameplay, "Player {} reset the breaker: building {} has power", player, index);
+        break;
+    }
+
+    case InteractionKind::Launch:
+        if (!MissionRules::ToggleLaunch(m_mission))
+        {
+            return false;
+        }
+        if (m_mission.Launching())
+        {
+            PlayNamed("World/shuttle_alarm", Shuttle::Console(m_facility.Plan().ShuttleBase(), m_facility.Plan().landingYaw), 0.9f);
+        }
+        PRED_LOG_INFO(Gameplay, "Player {} {} the launch", player, m_mission.Launching() ? "started" : "held");
+        break;
+
+    default:
+        return false;
+    }
+    ShowMission();
+    BroadcastMission();
+    return true;
+}
+
+void PredationGame::UpdateMission(float dt)
+{
+    ShowMission();
+    if (m_mission.stage == Stage::Over)
+    {
+        // The result on screen for a while, and then everybody is back aboard the ship -- the testing area, until
+        // there is a ship.
+        const bool wasShowing = m_missionOverFor < MissionSpec::kResultSeconds;
+        m_missionOverFor += dt;
+        if (wasShowing && m_missionOverFor >= MissionSpec::kResultSeconds && IsAuthority() && m_screen == Screen::Playing &&
+            m_map == MapChoice::Facility)
+        {
+            GoToMap(MapChoice::TestMap);
+        }
+        return;
+    }
+    if (!IsAuthority() || m_mission.stage == Stage::None)
+    {
+        return;
+    }
+
+    // Everybody who is up, and where.
+    std::vector<std::pair<uint8_t, glm::vec3>> living;
+    if (m_player.State().alive)
+    {
+        living.emplace_back(LocalPlayerId(), m_player.State().position);
+    }
+    for (const RemotePlayerView& remote : RemotePlayers())
+    {
+        if (remote.alive)
+        {
+            living.emplace_back(remote.id, remote.position);
+        }
+    }
+
+    bool attended = false;
+    for (const auto& [id, at] : living)
+    {
+        const glm::vec2 apart{at.x - m_missionPlan.terminal.x, at.z - m_missionPlan.terminal.z};
+        attended = attended || (glm::length(apart) < MissionSpec::kAttendReach && std::abs(at.y - m_missionPlan.terminal.y) < 2.2f);
+    }
+    const MissionState was = m_mission;
+    const MissionRules::Ticked ticked = MissionRules::Tick(m_mission, m_missionPlan, dt, attended);
+    bool changed = was.attended != m_mission.attended || was.stage != m_mission.stage;
+
+    if (m_mission.stage == Stage::Downloading && m_mission.attended)
+    {
+        m_missionHumIn -= dt;
+        if (m_missionHumIn <= 0.0f)
+        {
+            m_missionHumIn = kHumEvery;
+            ShareSound("World/terminal_working", m_missionPlan.terminal, 0.6f);
+            MakeNoise(NoiseKind::Item, m_missionPlan.terminal, kHumReach, -1);
+        }
+    }
+    if (ticked.downloaded)
+    {
+        // Out onto the bench in front of it, for whoever is to carry it.
+        PlayNamed("World/terminal_done", m_missionPlan.terminal, 0.8f);
+        DropIntoWorld(m_driveItem, 1, -1, -1, m_missionPlan.driveAt, glm::vec3(0.0f));
+        PRED_LOG_INFO(Gameplay, "The download is done: the drive is on the bench");
+    }
+    if (ticked.launched)
+    {
+        // Who is aboard, and whether the drive is: carried by somebody aboard, or lying in the cabin.
+        uint8_t aboard = 0;
+        bool drive = false;
+        for (const auto& [id, at] : living)
+        {
+            if (m_facility.Aboard(at))
+            {
+                aboard = static_cast<uint8_t>(aboard | (1u << id));
+                drive = drive || CarriesDrive(id);
+            }
+        }
+        for (const WorldObjects::Pickup& pickup : m_world.Pickups())
+        {
+            if (pickup.alive && pickup.item == m_driveItem)
+            {
+                if (const Transform* where = m_scene.GetTransform(pickup.entity); where != nullptr && m_facility.Aboard(where->position))
+                {
+                    drive = true;
+                }
+            }
+        }
+        MissionRules::Finish(m_mission, drive, aboard);
+        changed = true;
+        OnMissionOver();
+    }
+
+    m_missionSendIn -= dt;
+    const bool counting = m_mission.stage == Stage::Downloading || m_mission.Launching();
+    if (changed || (counting && m_missionSendIn <= 0.0f))
+    {
+        BroadcastMission();
+        m_missionSendIn = 0.5f;
+    }
+}
+
+void PredationGame::DrawMissionHud()
+{
+    if (m_screen != Screen::Playing || m_mission.stage == Stage::None)
+    {
+        return;
+    }
+    const bool over = m_mission.stage == Stage::Over;
+    // Over, the result stays up until a little after everybody is back aboard, and then it is gone.
+    if ((!over && !AtSite()) || (over && m_missionOverFor > MissionSpec::kResultSeconds + 5.0f))
+    {
+        return;
+    }
+    constexpr ImGuiWindowFlags kHud = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings |
+                                      ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoInputs |
+                                      ImGuiWindowFlags_NoBackground;
+    const ImGuiViewport* viewport = ImGui::GetMainViewport();
+    const ImVec4 heading{0.62f, 0.66f, 0.7f, 1.0f};
+    const ImVec4 text{0.86f, 0.88f, 0.9f, 1.0f};
+    const ImVec4 warning{0.92f, 0.52f, 0.36f, 1.0f};
+
+    if (over)
+    {
+        const bool mine = (m_mission.aboard >> LocalPlayerId()) & 1u;
+        const int everybody = 1 + static_cast<int>(RemotePlayers().size());
+        ImGui::SetNextWindowPos({viewport->Pos.x + viewport->Size.x * 0.5f, viewport->Pos.y + viewport->Size.y * 0.3f}, ImGuiCond_Always,
+                                {0.5f, 0.5f});
+        if (ImGui::Begin("##MissionOver", nullptr, kHud))
+        {
+            ImGui::SetWindowFontScale(1.6f);
+            ImGui::TextColored(m_mission.recovered ? ImVec4{0.5f, 0.85f, 0.6f, 1.0f} : warning,
+                               m_mission.recovered ? "DATA RECOVERED" : "DATA NOT RECOVERED");
+            ImGui::SetWindowFontScale(1.0f);
+            ImGui::TextColored(text, "%s", mine ? "You made it out." : "You were left behind.");
+            ImGui::TextDisabled("%d of %d aboard", std::popcount(static_cast<unsigned>(m_mission.aboard)), everybody);
+            const float left = MissionSpec::kResultSeconds - m_missionOverFor;
+            if (left > 0.0f)
+            {
+                ImGui::TextDisabled("Back aboard the ship in %d", static_cast<int>(std::ceil(left)));
+            }
+        }
+        ImGui::End();
+        return;
+    }
+
+    // The objective, top left, under the microphone meter when there is one.
+    ImGui::SetNextWindowPos({viewport->Pos.x + 16.0f, viewport->Pos.y + 44.0f}, ImGuiCond_Always);
+    if (ImGui::Begin("##Mission", nullptr, kHud))
+    {
+        ImGui::TextColored(heading, "OBJECTIVE");
+        switch (m_mission.stage)
+        {
+        case Stage::Find:
+            ImGui::TextColored(text, "Download the data from the terminal.");
+            if (m_missionPlan.mapGiven)
+            {
+                ImGui::TextDisabled("The terminal: %s, %s.", Bearing(m_player.State().position, m_missionPlan.terminal).c_str(),
+                                    FloorName(m_missionPlan.floor).c_str());
+            }
+            else
+            {
+                ImGui::TextDisabled("No map data for this site: search the buildings.");
+            }
+            if (!m_mission.powered && m_missionFoundNoPower)
+            {
+                ImGui::TextColored(warning, "No power at the terminal. Reset its building's breaker.");
+            }
+            break;
+        case Stage::Downloading:
+            ImGui::TextColored(text, "Downloading the data: %d%%", static_cast<int>(m_mission.progress * 100.0f));
+            if (m_mission.attended)
+            {
+                ImGui::TextDisabled("Stay with the terminal.");
+            }
+            else
+            {
+                ImGui::TextColored(warning, "Paused: nobody is at the terminal.");
+            }
+            break;
+        case Stage::Carry:
+            ImGui::TextColored(text, "Take the drive to the shuttle.");
+            ImGui::TextDisabled("The shuttle: %s.", Bearing(m_player.State().position, m_facility.Plan().ShuttleBase()).c_str());
+            if (m_driveItem != kInvalidItem && m_inventory.CountOf(m_driveItem) > 0)
+            {
+                ImGui::TextDisabled("You have the drive.");
+            }
+            break;
+        case Stage::None:
+        case Stage::Over:
+            break;
+        }
+        if (m_mission.Launching())
+        {
+            ImGui::TextColored(warning, "The shuttle leaves in %d. Anybody not aboard is left behind.",
+                               static_cast<int>(std::ceil(m_mission.launchIn)));
+        }
+    }
+    ImGui::End();
+}
+
+} // namespace pred

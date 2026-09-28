@@ -393,5 +393,278 @@
         "gain": 0.35
       }
     ]
+  },
+  "terminal_beep": {
+    "seconds": 0.4,
+    "variants": 2,
+    "vary": 0.02,
+    "room": 0.2,
+    "seed": 7101,
+    "layers": [
+      {
+        "source": "square",
+        "hz": 1320,
+        "filter": "lowpass",
+        "cutoff": 3200,
+        "attack": 0.004,
+        "hold": 0.06,
+        "decay": 0.02,
+        "length": 0.09,
+        "gain": 0.18
+      },
+      {
+        "source": "square",
+        "hz": 990,
+        "filter": "lowpass",
+        "cutoff": 3000,
+        "start": 0.12,
+        "attack": 0.004,
+        "hold": 0.08,
+        "decay": 0.03,
+        "length": 0.12,
+        "gain": 0.18
+      }
+    ]
+  },
+  "terminal_dead": {
+    "seconds": 0.3,
+    "variants": 2,
+    "vary": 0.05,
+    "room": 0.2,
+    "seed": 7102,
+    "layers": [
+      {
+        "source": "click",
+        "filter": "bandpass",
+        "cutoff": 1400,
+        "q": 3,
+        "decay": 0.02,
+        "length": 0.06,
+        "gain": 0.9
+      },
+      {
+        "source": "noise",
+        "filter": "bandpass",
+        "cutoff": 600,
+        "q": 2,
+        "attack": 0.005,
+        "decay": 0.05,
+        "length": 0.12,
+        "gain": 0.15
+      }
+    ]
+  },
+  "terminal_working": {
+    "seconds": 1.6,
+    "variants": 3,
+    "vary": 0.08,
+    "room": 0.25,
+    "seed": 7103,
+    "layers": [
+      {
+        "source": "click",
+        "filter": "bandpass",
+        "cutoff": 2600,
+        "q": 5,
+        "decay": 0.008,
+        "length": 0.02,
+        "gain": 0.5,
+        "repeats": 14,
+        "interval": 0.07,
+        "interval_jitter": 0.6,
+        "repeat_gain": 0.97,
+        "repeat_pitch": 1
+      },
+      {
+        "source": "noise",
+        "color": "pink",
+        "filter": "bandpass",
+        "cutoff": 420,
+        "q": 1.5,
+        "attack": 0.2,
+        "sustain": 1,
+        "decay": 0.4,
+        "length": 1.6,
+        "gain": 0.12
+      },
+      {
+        "source": "sine",
+        "hz": 118,
+        "attack": 0.2,
+        "sustain": 1,
+        "decay": 0.4,
+        "length": 1.6,
+        "gain": 0.06
+      }
+    ]
+  },
+  "terminal_done": {
+    "seconds": 0.8,
+    "variants": 1,
+    "vary": 0,
+    "room": 0.25,
+    "seed": 7104,
+    "layers": [
+      {
+        "source": "square",
+        "hz": 880,
+        "filter": "lowpass",
+        "cutoff": 3000,
+        "attack": 0.004,
+        "hold": 0.1,
+        "decay": 0.03,
+        "length": 0.14,
+        "gain": 0.16
+      },
+      {
+        "source": "square",
+        "hz": 1175,
+        "filter": "lowpass",
+        "cutoff": 3200,
+        "start": 0.17,
+        "attack": 0.004,
+        "hold": 0.1,
+        "decay": 0.03,
+        "length": 0.14,
+        "gain": 0.16
+      },
+      {
+        "source": "square",
+        "hz": 1760,
+        "filter": "lowpass",
+        "cutoff": 3600,
+        "start": 0.34,
+        "attack": 0.004,
+        "hold": 0.2,
+        "decay": 0.12,
+        "length": 0.36,
+        "gain": 0.16
+      }
+    ]
+  },
+  "breaker": {
+    "seconds": 2.2,
+    "variants": 2,
+    "vary": 0.04,
+    "room": 0.35,
+    "seed": 7105,
+    "layers": [
+      {
+        "source": "click",
+        "filter": "lowpass",
+        "cutoff": 900,
+        "decay": 0.05,
+        "length": 0.12,
+        "gain": 1
+      },
+      {
+        "source": "sine",
+        "hz": 80,
+        "hz_end": 48,
+        "decay": 0.2,
+        "length": 0.35,
+        "gain": 0.7
+      },
+      {
+        "source": "noise",
+        "filter": "bandpass",
+        "cutoff": 1500,
+        "q": 2,
+        "attack": 0.002,
+        "decay": 0.08,
+        "length": 0.15,
+        "gain": 0.35
+      },
+      {
+        "source": "saw",
+        "hz": 50,
+        "hz_end": 60,
+        "filter": "lowpass",
+        "cutoff": 300,
+        "cutoff_end": 900,
+        "start": 0.25,
+        "attack": 1.2,
+        "sustain": 0.7,
+        "decay": 0.5,
+        "length": 1.9,
+        "gain": 0.12
+      }
+    ]
+  },
+  "shuttle_alarm": {
+    "seconds": 0.9,
+    "variants": 1,
+    "vary": 0,
+    "room": 0.2,
+    "seed": 7106,
+    "layers": [
+      {
+        "source": "square",
+        "hz": 740,
+        "filter": "lowpass",
+        "cutoff": 2400,
+        "attack": 0.01,
+        "hold": 0.3,
+        "decay": 0.05,
+        "length": 0.36,
+        "gain": 0.2
+      },
+      {
+        "source": "square",
+        "hz": 554,
+        "filter": "lowpass",
+        "cutoff": 2200,
+        "start": 0.4,
+        "attack": 0.01,
+        "hold": 0.3,
+        "decay": 0.08,
+        "length": 0.4,
+        "gain": 0.2
+      }
+    ]
+  },
+  "shuttle_launch": {
+    "seconds": 5,
+    "variants": 1,
+    "vary": 0,
+    "room": 0.5,
+    "seed": 7107,
+    "layers": [
+      {
+        "source": "noise",
+        "color": "brown",
+        "filter": "lowpass",
+        "cutoff": 200,
+        "cutoff_end": 2200,
+        "attack": 3,
+        "sustain": 1,
+        "decay": 1.2,
+        "length": 5,
+        "gain": 0.9
+      },
+      {
+        "source": "saw",
+        "hz": 60,
+        "hz_end": 220,
+        "filter": "lowpass",
+        "cutoff": 400,
+        "cutoff_end": 1800,
+        "attack": 3.2,
+        "sustain": 1,
+        "decay": 1,
+        "length": 5,
+        "gain": 0.25
+      },
+      {
+        "source": "sine",
+        "hz": 40,
+        "hz_end": 70,
+        "attack": 2,
+        "sustain": 1,
+        "decay": 1.2,
+        "length": 5,
+        "gain": 0.5
+      }
+    ]
   }
 }

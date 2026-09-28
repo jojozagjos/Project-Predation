@@ -593,6 +593,7 @@ bool PredationGame::OnInit(Application& app)
     RegisterNetCommands();
     RegisterCreatureCommands();
     RegisterDroneCommands();
+    RegisterMissionCommands();
     // The game opens at the menu, with the world already built behind it.
     std::snprintf(m_joinAddress, sizeof(m_joinAddress), "%s", cv_lastAddress.Get().c_str());
     std::snprintf(m_playerName, sizeof(m_playerName), "%s", cv_playerName.Get().c_str());
@@ -1940,6 +1941,11 @@ bool PredationGame::PerformInteraction(InteractionKind kind, int index, uint8_t 
         return true;
     }
 
+    case InteractionKind::Terminal:
+    case InteractionKind::Breaker:
+    case InteractionKind::Launch:
+        return PerformMissionInteraction(kind, index, player);
+
     case InteractionKind::Generic:
     default:
         return false;
@@ -1957,7 +1963,7 @@ void PredationGame::ServeClientRequests()
     {
         // Every kind there is. This stopped at the ammunition crate, which left the cocoon -- added after it --
         // out: a guest could never cut anybody free.
-        if (request.kind > static_cast<uint8_t>(InteractionKind::Cocoon))
+        if (request.kind > static_cast<uint8_t>(InteractionKind::Launch))
         {
             continue;
         }
@@ -2158,6 +2164,8 @@ void PredationGame::SendWorldToPlayer(uint8_t player)
         facility.quiet = true;
         m_host.SendTo(player, facility);
     }
+    // And how the mission stands on it: the power, the download, a launch counting down.
+    BroadcastMission(true, player);
 
     // Somebody who has just walked in has to be told what has already happened, or every door that
     // was opened before they arrived is shut on their screen for the rest of the game.
@@ -2483,6 +2491,10 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
 
     case WorldEventKind::EverybodyDown:
         m_everybodyDownFor = event.amount;
+        break;
+
+    case WorldEventKind::Mission:
+        ApplyMissionEvent(event);
         break;
 
     case WorldEventKind::CorpseCarried:
@@ -3116,6 +3128,7 @@ void PredationGame::ResetWorld()
                   &m_weaponData);
     m_world.AddFacility(m_scene, m_app->GetMeshes(), m_app->GetPhysics(), m_interactions, m_items,
                         m_facility.Placements());
+    ResetMission();
     ClearFlares();
     m_torchCharge = 1.0f;
 
@@ -3154,6 +3167,11 @@ void PredationGame::GoToMap(MapChoice map)
         arrived = "In the creature lab, at the north end of the testing area. The nest is to the north.";
         break;
     case MapChoice::Facility:
+        // A deployment that is over is not gone back to: the site is put back as it was, its data on its terminal.
+        if (m_mission.stage == MissionState::Stage::Over && IsAuthority() && m_screen == Screen::Playing)
+        {
+            ChangeFacility(m_facility.Seed());
+        }
         m_spawnPoint = m_facility.Spawn();
         yaw = m_facility.SpawnYaw();
         arrived = "At the site planned from seed " + std::to_string(m_facility.Seed()) + ": " +
@@ -3214,6 +3232,7 @@ void PredationGame::ChangeFacility(uint16_t seed)
     m_world.Build(m_scene, m_app->GetMeshes(), m_app->GetPhysics(), m_interactions, m_items, &m_weaponData);
     m_world.AddFacility(m_scene, m_app->GetMeshes(), m_app->GetPhysics(), m_interactions, m_items,
                         m_facility.Placements());
+    ResetMission();
     ClearBulletHoles();
     ClearFlares();
     ClearCorpses();
@@ -8414,6 +8433,14 @@ void PredationGame::TryInteract()
     {
         return;
     }
+    // A terminal with no power does nothing, and there is nothing to ask the host: it clicks, and the objective says
+    // what to do about it.
+    if (focus.kind == InteractionKind::Terminal && !m_mission.powered)
+    {
+        m_missionFoundNoPower = true;
+        PlayNamed("World/terminal_dead", m_missionPlan.terminal, 0.7f);
+        return;
+    }
 
     // A client asks; it does not act. Everything in the world belongs to the host, so what happens
     // next arrives as an event and is applied the same way another player's interaction would be.
@@ -8786,6 +8813,7 @@ void PredationGame::OnFixedUpdate(double fixedDt)
     }
     UpdateDroneThreats(dt);
     UpdateWipe(dt);
+    UpdateMission(dt);
 
     // The toggles mirror the stance the body is actually in, every tick, not just when a change is
     // refused. They are a request, and the body is the answer; a request that has been answered is
@@ -10748,6 +10776,7 @@ void PredationGame::DrawHud()
     }
 
     DrawDroneHud();
+    DrawMissionHud();
     DrawPlayerList();
 
     // Whose eyes these are, and how to move to somebody else's. Without it a dead player is looking

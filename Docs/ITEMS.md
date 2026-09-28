@@ -19,7 +19,8 @@ use actually does is decided by the host, like everything else that changes the 
 | **Battery Cell** | A fresh cell in your torch. Used up. |
 | **Access Keycard** | In your hand, **fire** at a locked door close enough to reach swipes it and unlocks it for good. Not looking at one, nothing happens -- not even the swipe. Not used up. A keycard in the bag does nothing: it has to be held, and a locked door says **Unlock** with the fire button only while it is. |
 | **Signal Flare** | Strikes it. It burns red in your hand for a minute, held up in front of you. Fire again throws it; it lands, rolls, and burns on where it lies, lighting the room, until it is spent. Put away still burning, it is dropped at your feet and burns there. Used up when it leaves your hand. |
-| **Sample Container** | Carried, for now. The thing the mission will be about. |
+| **Sample Container** | Carried, for now. |
+| **Data Drive** | The mission's: what the terminal copies the data onto, left on its bench when the download is done. Carried to the shuttle; dropped with everything else by whoever dies carrying it. On no bench. |
 
 ## The torch
 
