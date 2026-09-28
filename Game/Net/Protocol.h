@@ -24,7 +24,7 @@ namespace pred
 
 // Bumped whenever the wire changes shape. Two ends that disagree are refused at the door rather
 // than left to misread each other, which is what a wire mismatch actually looks like from inside.
-inline constexpr uint16_t kProtocolVersion = 19;
+inline constexpr uint16_t kProtocolVersion = 20;
 // How many bits name a message type. Five, so there is room to add one.
 inline constexpr uint32_t kMessageTypeBits = 5;
 inline constexpr uint8_t kMaxPlayers = 4;
@@ -110,6 +110,7 @@ enum class WorldEventKind : uint8_t
     CorpseDropped,   // and put it down, at `position`
     CorpseBitten,    // the body at `position` bitten there, in its part `index` -- torn off, with `flag` -- and
                      // `amount` of it left
+    DroneHit,        // a dead player's (`player`) drone struck: shoved by `direction` (an impulse), hurt by `amount`
     Count
 };
 
@@ -354,6 +355,21 @@ struct RejectedMessage
     uint16_t serverVersion = kProtocolVersion;
 };
 
+// A dead player's support drone, as its owner's machine has it: where it is, which way its camera is
+// looking, and how it is. Its owner simulates it, so it rides with their input to the host and with their
+// snapshot from the host to everybody else. Inactive, it is one bit.
+struct DroneState
+{
+    bool active = false;
+    glm::vec3 position{0.0f};
+    glm::quat rotation{1.0f, 0.0f, 0.0f, 0.0f};
+    float headYaw = 0.0f;
+    float headPitch = 0.0f;
+    float health = 100.0f;
+    float rebootLeft = 0.0f; // shut down while above zero
+    bool lightOn = false;
+};
+
 // One tick of intent, with the tick it belongs to. The host replies with the last sequence it ran,
 // which is how the client knows which of its predicted ticks are settled and which it must replay.
 struct InputCommand
@@ -380,6 +396,8 @@ struct InputMessage
     // visible only to themselves, so two players standing in the same dark room see two different
     // rooms -- one lit, one not.
     bool torchOn = false;
+    // Dead, the drone they are driving.
+    DroneState drone;
     // The low bits of the last host tick this client saw, echoed straight back.
     //
     // That echo is the whole of how a ping is measured. The host knows when it sent every tick
@@ -438,6 +456,9 @@ struct PlayerSnapshot
     bool cocooned = false;
     // How close they are to working free of its grip, 0 to 1: the bar on their own screen.
     float struggle = 0.0f;
+
+    // Dead, the drone they are driving, as their machine last said.
+    DroneState drone;
 };
 
 struct SnapshotMessage

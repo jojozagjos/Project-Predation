@@ -1983,3 +1983,37 @@ Four changes to how Assets/Data works, all so the files can be edited by hand wi
 - **The director hints 10-25 m from a player,** and a new creature restarts the quiet it waits for.
 - **Dying, a body goes along the blow with a little lift,** and a ragdoll joint pushed into a ceiling
   never takes that ceiling's top for its floor.
+
+## ADR-095: The dead drive a CIRRA support drone
+
+- **Dying puts you in a drone, a few seconds later** (`game.drone_seconds`, 4 s), set down at the
+  insertion point -- side by side when several are down. It is a knee-high tracked machine with a camera
+  on a mast (`Game/Player/SupportDrone`): a real body in the physics world, not a free camera. It sees
+  only what its camera sees, and a dead player's voice comes from it.
+- **Driven like a person walks:** the stick is read in the camera's frame; the tracks turn it to face
+  that way and then drive, and pulled back it reverses. The tracks set its velocity along its own
+  forward and its spin about its own up each tick; falling, bumps and tipping stay the physics'. Low
+  friction on its tracks, high on its hull, so it rolls driven and does not skate when knocked over.
+- **It can be knocked over and gets itself back up:** on its side or back and still for 3 s, or when
+  its driver presses jump, it kicks off the floor and is rolled upright by a controller over about a
+  second (a single spin kick overshot onto its other side). The picture tips with it.
+- **It cannot hurt anything, and can be hurt.** 100 health; creatures within 1.6 m swipe it out of
+  their way (34, with a shove and a spin, 1.8 s apart); rounds knock it along and hurt it. At nothing it
+  shuts down for 10 s -- no picture, only static -- and comes back with 60. Its motor is heard a few
+  metres off, anonymously, which is what draws creatures to it.
+- **Its owner simulates it.** Its state (where, which way up, where the camera points, health,
+  reboot, lamp) rides with the owner's input to the host and with their snapshot to everybody else --
+  one bit when there is none. The host decides every blow and sends `DroneHit`; the owner applies it.
+  Protocol 20.
+- **Somebody else's drone is shown, not simulated:** its body is on the hitbox layer and put where it
+  is told, so rounds find it and nothing collides with it. It was first a kinematic body moved once per
+  rendered frame; a kinematic move sets a velocity for the time given, the physics then steps a longer
+  fixed tick, and the overshoot grew every step until it overflowed and closed the game a couple of
+  seconds after a drone arrived. Kinematic moves belong in the fixed update, with the fixed step.
+- **Death is for the rest of the deployment in the facility** (`game.permadeath`), and only a pause in
+  the testing area. `PlayerDied` says which. With everybody down for good the deployment is over:
+  no drone is sent, and after `game.wipe_seconds` everybody comes back at the insertion point -- the
+  stand-in for the craft flying itself home until the ship exists.
+- Dead, the hotbar, crosshair and condition bars go; the drone's lamp takes the torch's key and slot.
+- `net_host` now marks the game started, so a player joining a console-hosted game is not left in a
+  lobby waiting for a start that has already happened.

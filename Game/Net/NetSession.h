@@ -52,6 +52,9 @@ struct RemotePlayerView
     bool reloadEmpty = false;
     bool torchOn = false;
 
+    // Dead, the support drone they are driving, as their machine says it is.
+    DroneState drone;
+
     // Held by a creature, or wrapped up at its nest.
     uint8_t heldBy = kNotHeld;
     bool cocooned = false;
@@ -218,6 +221,8 @@ public:
     // when a key is pressed rather than every frame, and because nothing else in the protocol
     // implies it: without this, a torch is visible only to the player holding it.
     void SetPlayerTorch(uint8_t playerId, bool on);
+    // A dead player's drone, as their machine says (the host's own, as player 0).
+    void SetPlayerDrone(uint8_t playerId, const DroneState& drone);
     // A creature has hold of a player, or has let go (`by` kNotHeld): the host pins them where the
     // creature has them, every tick, and says so in the snapshot so their own machine does too.
     void SetPlayerGrabbed(uint8_t playerId, uint8_t by, bool cocooned, const glm::vec3& feet, float yaw);
@@ -302,6 +307,7 @@ private:
     float m_localReloadProgress = 0.0f;
     bool m_localReloadEmpty = false;
     bool m_localTorch = false;
+    DroneState m_localDrone;
     uint8_t m_localHeldBy = kNotHeld;
     bool m_localCocooned = false;
     bool m_running = false;
@@ -353,6 +359,8 @@ public:
     void SetHeld(uint8_t heldItem, float aim, bool reloading, float progress, bool reloadEmpty = false);
     // Whether this machine.s torch is lit, so the host can put it in everybody else.s scene.
     void SetTorch(bool on);
+    // The drone this player is driving, dead, sent with every input.
+    void SetDrone(const DroneState& drone);
 
     void Tick(const PlayerInput& input, PlayerController& local, float dt);
 
@@ -483,6 +491,7 @@ private:
     float m_heldReloadProgress = 0.0f;
     bool m_heldReloadEmpty = false;
     bool m_torchOn = false;
+    DroneState m_drone;
     uint32_t m_renderTick = 0;
     // The newest host tick this machine has seen, echoed back with every input so the host can time
     // the round trip.

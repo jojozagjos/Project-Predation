@@ -74,6 +74,7 @@ void ApplySnapshot(RemotePlayerView& view, const PlayerSnapshot& snapshot)
     view.alive = snapshot.alive;
     view.heldItem = snapshot.heldItem;
     view.torchOn = snapshot.torchOn;
+    view.drone = snapshot.drone;
     view.aim = snapshot.aim;
     view.reloading = snapshot.reloading;
     view.reloadProgress = snapshot.reloadProgress;
@@ -129,6 +130,7 @@ struct NetHost::Client
     float reloadProgress = 0.0f;
     bool reloadEmpty = false;
     bool torchOn = false;
+    DroneState drone;
     uint8_t heldBy = kNotHeld;
     bool cocooned = false;
     float struggle = 0.0f;
@@ -321,7 +323,8 @@ void NetHost::HandlePacket(const NetPacket& packet)
         }
         // Whose voice it is, is the host's to say. A client fills in nothing here and could not be
         // believed if it did: taking its word would let anybody speak as anybody.
-        const glm::vec3 from = client->controller.State().position;
+        const glm::vec3 from =
+            client->drone.active ? client->drone.position : client->controller.State().position;
         ForwardVoice(client->playerId, false, message.sequence, message.frame, from);
         // And the host's own ears, if it is close enough to hear it -- and the creatures', which learn
         // from anybody wherever they are.
@@ -366,6 +369,7 @@ void NetHost::HandlePacket(const NetPacket& packet)
         }
         // What they are holding rides along with the input, so the host knows without asking.
         SetPlayerTorch(client->playerId, message.torchOn);
+        SetPlayerDrone(client->playerId, message.drone);
         SetPlayerHeld(client->playerId, message.heldItem, message.aim, message.reloading,
                       message.reloadProgress, message.reloadEmpty);
 
@@ -634,7 +638,8 @@ void NetHost::ForwardVoice(uint8_t speaker, bool creature, uint16_t sequence, co
         // is a real distance and not a guess, and a player never receives speech they are not
         // entitled to hear. Forwarding everything and letting each listener attenuate it would work
         // and would also put the whole conversation on every machine.
-        const glm::vec3 to = client->controller.State().position;
+        // Dead, they hear what their drone does.
+        const glm::vec3 to = client->drone.active ? client->drone.position : client->controller.State().position;
         if (glm::distance(to, from) > kVoiceRange)
         {
             continue;
@@ -828,6 +833,23 @@ void NetHost::SetPlayerTorch(uint8_t playerId, bool on)
         if (client->playerId == playerId)
         {
             client->torchOn = on;
+            return;
+        }
+    }
+}
+
+void NetHost::SetPlayerDrone(uint8_t playerId, const DroneState& drone)
+{
+    if (playerId == 0)
+    {
+        m_localDrone = drone;
+        return;
+    }
+    for (auto& client : m_clients)
+    {
+        if (client->playerId == playerId)
+        {
+            client->drone = drone;
             return;
         }
     }
@@ -1080,6 +1102,7 @@ void NetHost::BuildViews(const PlayerState& localState)
         // screen: the muzzle is looked up from the weapon being drawn for them, and there was none.
         view.heldItem = client->heldItem;
         view.torchOn = client->torchOn;
+        view.drone = client->drone;
         view.heldBy = client->heldBy;
         view.cocooned = client->cocooned;
         view.aim = client->aim;
@@ -1102,6 +1125,7 @@ void NetHost::SendSnapshots(uint32_t tick, const PlayerState& localState)
     snapshot.players[0].reloadProgress = m_localReloadProgress;
     snapshot.players[0].reloadEmpty = m_localReloadEmpty;
     snapshot.players[0].torchOn = m_localTorch;
+    snapshot.players[0].drone = m_localDrone;
     snapshot.players[0].heldBy = m_localHeldBy;
     snapshot.players[0].cocooned = m_localCocooned;
     snapshot.count = 1;
@@ -1117,6 +1141,7 @@ void NetHost::SendSnapshots(uint32_t tick, const PlayerState& localState)
             entry.reloadProgress = client->reloadProgress;
             entry.reloadEmpty = client->reloadEmpty;
             entry.torchOn = client->torchOn;
+            entry.drone = client->drone;
             entry.heldBy = client->heldBy;
             entry.cocooned = client->cocooned;
             entry.struggle = client->struggle;
@@ -1571,6 +1596,11 @@ void NetClient::SetTorch(bool on)
     m_torchOn = on;
 }
 
+void NetClient::SetDrone(const DroneState& drone)
+{
+    m_drone = drone;
+}
+
 void NetClient::SetHeld(uint8_t heldItem, float aim, bool reloading, float progress, bool reloadEmpty)
 {
     m_heldItem = heldItem;
@@ -1603,6 +1633,7 @@ void NetClient::SendInput()
     message.reloadProgress = m_heldReloadProgress;
     message.reloadEmpty = m_heldReloadEmpty;
     message.torchOn = m_torchOn;
+    message.drone = m_drone;
     // The last host tick this machine has seen, handed straight back so the host can time the round
     // trip against its own tick counter. Nothing here has to know what the time is.
     message.ackTick = static_cast<uint16_t>(m_lastSnapshotTick & 0xFFFFu);

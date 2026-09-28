@@ -122,6 +122,53 @@ PlayerInput ReadPlayerInput(BitReader& reader)
     return input;
 }
 
+// A drone: a bit for whether there is one, and then where it is and how. Its rotation goes as three parts
+// of a quaternion turned to have a positive fourth, which is worked out again from them.
+void WriteDroneState(BitWriter& writer, const DroneState& drone)
+{
+    writer.WriteBool(drone.active);
+    if (!drone.active)
+    {
+        return;
+    }
+    WritePosition(writer, drone.position);
+    glm::quat rotation = glm::normalize(drone.rotation);
+    if (rotation.w < 0.0f)
+    {
+        rotation = -rotation;
+    }
+    writer.WriteQuantised(rotation.x, -1.0f, 1.0f, 12);
+    writer.WriteQuantised(rotation.y, -1.0f, 1.0f, 12);
+    writer.WriteQuantised(rotation.z, -1.0f, 1.0f, 12);
+    writer.WriteQuantised(drone.headYaw, -glm::pi<float>(), glm::pi<float>(), 9);
+    writer.WriteQuantised(drone.headPitch, -1.4f, 1.4f, 8);
+    writer.WriteQuantised(drone.health, 0.0f, 100.0f, 7);
+    writer.WriteQuantised(drone.rebootLeft, 0.0f, 16.0f, 7);
+    writer.WriteBool(drone.lightOn);
+}
+
+DroneState ReadDroneState(BitReader& reader)
+{
+    DroneState drone;
+    drone.active = reader.ReadBool();
+    if (!drone.active)
+    {
+        return drone;
+    }
+    drone.position = ReadPosition(reader);
+    const float x = reader.ReadQuantised(-1.0f, 1.0f, 12);
+    const float y = reader.ReadQuantised(-1.0f, 1.0f, 12);
+    const float z = reader.ReadQuantised(-1.0f, 1.0f, 12);
+    const float w = std::sqrt(std::max(0.0f, 1.0f - x * x - y * y - z * z));
+    drone.rotation = glm::normalize(glm::quat(w, x, y, z));
+    drone.headYaw = reader.ReadQuantised(-glm::pi<float>(), glm::pi<float>(), 9);
+    drone.headPitch = reader.ReadQuantised(-1.4f, 1.4f, 8);
+    drone.health = reader.ReadQuantised(0.0f, 100.0f, 7);
+    drone.rebootLeft = reader.ReadQuantised(0.0f, 16.0f, 7);
+    drone.lightOn = reader.ReadBool();
+    return drone;
+}
+
 } // namespace
 
 const char* MessageTypeName(MessageType type)
@@ -277,6 +324,7 @@ void WriteInput(BitWriter& writer, const InputMessage& message)
     // magazine is empty now -- which is when a slide stays back.
     writer.WriteBool(message.reloadEmpty);
     writer.WriteBool(message.torchOn);
+    WriteDroneState(writer, message.drone);
     writer.WriteBits(message.ackTick & 0xFFFu, kAckTickBits);
 }
 
@@ -306,6 +354,7 @@ bool ReadInput(BitReader& reader, InputMessage& out)
     out.reloadProgress = out.reloading ? reader.ReadQuantised(0.0f, 1.0f, 6) : 0.0f;
     out.reloadEmpty = reader.ReadBool();
     out.torchOn = reader.ReadBool();
+    out.drone = ReadDroneState(reader);
     out.ackTick = static_cast<uint16_t>(reader.ReadBits(kAckTickBits));
     return !reader.Overran();
 }
@@ -359,6 +408,7 @@ void WriteSnapshot(BitWriter& writer, const SnapshotMessage& message)
                 writer.WriteQuantised(player.struggle, 0.0f, 1.0f, 6);
             }
         }
+        WriteDroneState(writer, player.drone);
     }
 }
 
@@ -404,6 +454,7 @@ bool ReadSnapshot(BitReader& reader, SnapshotMessage& out)
             player.cocooned = reader.ReadBool();
             player.struggle = player.cocooned ? 0.0f : reader.ReadQuantised(0.0f, 1.0f, 6);
         }
+        player.drone = ReadDroneState(reader);
 
         if (player.playerId >= kMaxPlayers || stance > static_cast<uint32_t>(PlayerStance::Prone))
         {
@@ -477,6 +528,8 @@ void WriteWorldEvent(BitWriter& writer, const WorldEventMessage& message)
         WriteVelocity(writer, message.direction);
         // How long until they are back, in whole seconds, so their screen can count it down.
         writer.WriteBits(std::min<uint32_t>(static_cast<uint32_t>(std::max(message.amount, 0.0f) + 0.5f), 63), 6);
+        // Or not coming back at all, this deployment.
+        writer.WriteBool(message.flag);
         break;
 
     case WorldEventKind::PlayerRespawned:
@@ -543,6 +596,12 @@ void WriteWorldEvent(BitWriter& writer, const WorldEventMessage& message)
         writer.WriteBool(message.flag);
         writer.WriteQuantised(message.amount, 0.0f, 1.0f, 8);
         WritePosition(writer, message.position);
+        break;
+
+    case WorldEventKind::DroneHit:
+        writer.WriteBits(message.player, 3);
+        WriteVelocity(writer, message.direction);
+        writer.WriteQuantised(message.amount, 0.0f, 100.0f, 8);
         break;
 
 
@@ -613,6 +672,7 @@ bool ReadWorldEvent(BitReader& reader, WorldEventMessage& out)
         out.other = static_cast<uint8_t>(reader.ReadBits(3));
         out.direction = ReadVelocity(reader);
         out.amount = static_cast<float>(reader.ReadBits(6));
+        out.flag = reader.ReadBool();
         break;
 
     case WorldEventKind::PlayerRespawned:
@@ -682,6 +742,12 @@ bool ReadWorldEvent(BitReader& reader, WorldEventMessage& out)
         out.flag = reader.ReadBool();
         out.amount = reader.ReadQuantised(0.0f, 1.0f, 8);
         out.position = ReadPosition(reader);
+        break;
+
+    case WorldEventKind::DroneHit:
+        out.player = static_cast<uint8_t>(reader.ReadBits(3));
+        out.direction = ReadVelocity(reader);
+        out.amount = reader.ReadQuantised(0.0f, 100.0f, 8);
         break;
 
 

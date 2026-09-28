@@ -778,6 +778,23 @@ void PhysicsWorld::SetAngularVelocity(BodyHandle body, const glm::vec3& velocity
     }
 }
 
+glm::vec3 PhysicsWorld::GetAngularVelocity(BodyHandle body) const
+{
+    if (!IsValid(body))
+    {
+        return glm::vec3(0.0f);
+    }
+    return FromJolt(m_impl->Bodies().GetAngularVelocity(JPH::BodyID(body.id)));
+}
+
+void PhysicsWorld::SetFriction(BodyHandle body, float friction)
+{
+    if (IsValid(body))
+    {
+        m_impl->Bodies().SetFriction(JPH::BodyID(body.id), friction);
+    }
+}
+
 void PhysicsWorld::AddImpulse(BodyHandle body, const glm::vec3& impulse)
 {
     if (IsValid(body))

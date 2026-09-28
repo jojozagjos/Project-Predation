@@ -23,6 +23,7 @@
 #include "Game/Creature/CreatureTuning.h"
 #include "Game/Player/PlayerBody.h"
 #include "Game/Player/PlayerController.h"
+#include "Game/Player/SupportDrone.h"
 #include "Game/Weapons/BulletHole.h"
 #include "Game/Weapons/ShotResolver.h"
 #include "Game/Weapons/WeaponDatabase.h"
@@ -47,6 +48,9 @@
 
 namespace pred
 {
+
+// The key an action is on, as the player has it bound, for putting in a sentence.
+std::string KeyFor(const Input& input, const char* action);
 
 // One sound the game asks for, and every recording of it there happens to be.
 //
@@ -399,6 +403,7 @@ private:
     void DrawBrainInspector();
     void DrawCreatureOverlays(DebugDraw& draw);
     void RegisterCreatureCommands();
+    void RegisterDroneCommands();
     void SyncDynamicProps();
     void SpawnProp(bool sphere, float impulse);
     void ClearProps();
@@ -676,6 +681,35 @@ private:
     // Dead, you watch a teammate through their own eyes. Never a free camera: that would show you
     // where the creature is, which is the one thing being dead must not tell you.
     void UpdateSpectating();
+
+    // --- The support drone (PredationGameDrone.cpp) --------------------------------------------
+    // Dead, a player drives a support drone about the level. In the facility that death is for the
+    // rest of the deployment; in the testing area it lasts only until they come back.
+    bool DeathIsPermanent() const;
+    float RespawnSeconds() const;
+    float RespawnSecondsForDeath() const;
+    void UpdateDrone(const PlayerInput& input, float dt);
+    void UpdateDroneVisuals(float dt);
+    // The host's: creatures swiping drones out of their way, and drones heard moving.
+    void UpdateDroneThreats(float dt);
+    // Everybody down for good: the deployment is over.
+    void UpdateWipe(float dt);
+    void RemoveAllDrones();
+    DroneState LocalDroneState() const;
+    // Whose drone a body is, or -1.
+    int DroneOwnerOf(BodyHandle body) const;
+    // Where a player's drone is looking from, when they are driving one.
+    bool DroneOf(uint8_t player, glm::vec3& eye) const;
+    // The authority's: a drone struck, wherever its owner is.
+    void HitDrone(uint8_t owner, const glm::vec3& impulse, float damage);
+    void OnDroneHitEvent(const WorldEventMessage& event);
+    bool DroneLamp(PunctualLight& light) const;
+    void DroneLampFor(const SupportDrone& drone, PunctualLight& light) const;
+    void DrawDroneHud();
+    float TorchIntensity() const;
+    float TorchRange() const;
+    float TorchInnerAngle() const;
+    float TorchOuterAngle() const;
 
     // --- Multiplayer ---------------------------------------------------------------------------
     void RegisterNetCommands();
@@ -1151,6 +1185,21 @@ private:
     float m_respawnTimer = 0.0f;
     float m_migrationTimer = 0.0f;
     std::map<uint8_t, float> m_remoteRespawnTimers;
+    // Dead, the drone this player drives; how long until it arrives (below zero: not counting); and
+    // whether this death is for the rest of the deployment.
+    SupportDrone m_supportDrone;
+    float m_droneArrivesIn = -1.0f;
+    bool m_deadForGood = false;
+    // Everybody else's drones, where their machines say they are.
+    std::map<uint8_t, SupportDrone> m_remoteDrones;
+    // The host's: how long before each drone can be swiped at again, and where each was last heard.
+    std::map<uint8_t, float> m_droneSwatCooldown;
+    std::map<uint8_t, glm::vec3> m_droneHeardAt;
+    // How long everybody has been down for good.
+    float m_wipeTimer = 0.0f;
+    // Where the players are, and which way they face arriving there.
+    MapChoice m_map = MapChoice::TestMap;
+    float m_spawnYaw = 3.14159265f;
     // Whose eyes we are watching through while dead. -1 when alive or when nobody is left.
     // What was in the hands when a climb started, and whether a climb has hold of them. kNoSlot
     // when there was nothing to put away.

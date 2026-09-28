@@ -133,7 +133,10 @@ public:
     glm::vec3 GetLinearVelocity(BodyHandle body) const;
     void SetLinearVelocity(BodyHandle body, const glm::vec3& velocity);
     void SetAngularVelocity(BodyHandle body, const glm::vec3& velocity);
+    glm::vec3 GetAngularVelocity(BodyHandle body) const;
     void AddImpulse(BodyHandle body, const glm::vec3& impulse);
+    // How much it grips what it rests on: 0 slides like ice, 1 holds like rubber. Bodies start at the default.
+    void SetFriction(BodyHandle body, float friction);
     bool IsActive(BodyHandle body) const;
 
     // --- Queries --------------------------------------------------------------------------------

@@ -4,6 +4,7 @@ set(PRED_GAME_SOURCES
     PredationGameCreatures.cpp
     PredationGameItems.cpp
     PredationGameSounds.cpp
+    PredationGameDrone.cpp
 
     Player/PlayerTypes.h
     Player/PlayerConfig.cpp
@@ -11,6 +12,8 @@ set(PRED_GAME_SOURCES
     Player/PlayerController.cpp
     Player/Ragdoll.h
     Player/Ragdoll.cpp
+    Player/SupportDrone.h
+    Player/SupportDrone.cpp
     Player/PlayerBody.h
     Player/PlayerBody.cpp
 

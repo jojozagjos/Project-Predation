@@ -587,6 +587,7 @@ bool PredationGame::OnInit(Application& app)
     RegisterCommands();
     RegisterNetCommands();
     RegisterCreatureCommands();
+    RegisterDroneCommands();
     // The game opens at the menu, with the world already built behind it.
     std::snprintf(m_joinAddress, sizeof(m_joinAddress), "%s", cv_lastAddress.Get().c_str());
     std::snprintf(m_playerName, sizeof(m_playerName), "%s", cv_playerName.Get().c_str());
@@ -2445,6 +2446,7 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
             m_player.State().health = 0.0f;
             m_player.State().alive = false;
             m_respawnTimer = event.amount;
+            m_deadForGood = event.flag;
             m_deathImpulse = event.direction;
             PlaySound(m_sounds.death.Pick(), m_player.State().position, 1.0f, 1.0f, false);
         }
@@ -2466,6 +2468,10 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
 
     case WorldEventKind::NestsCleared:
         ClearNests();
+        break;
+
+    case WorldEventKind::DroneHit:
+        OnDroneHitEvent(event);
         break;
 
     case WorldEventKind::CorpseCarried:
@@ -2797,6 +2803,12 @@ void PredationGame::UpdateSpectating()
         m_spectateEyeHeight = 0.0f;
         return;
     }
+    // Driving a drone, there is its camera instead.
+    if (m_supportDrone.Active())
+    {
+        m_spectating = -1;
+        return;
+    }
 
     const std::vector<RemotePlayerView>& remotes = RemotePlayers();
     const auto living = [&](int id)
@@ -3015,6 +3027,31 @@ void PredationGame::ApplyPlayerDamage(uint8_t player, float amount, uint8_t kill
     }
 }
 
+float PredationGame::RespawnSeconds() const
+{
+    return cv_respawnSeconds.Get();
+}
+
+float PredationGame::TorchIntensity() const
+{
+    return cv_torchIntensity.Get();
+}
+
+float PredationGame::TorchRange() const
+{
+    return cv_torchRange.Get();
+}
+
+float PredationGame::TorchInnerAngle() const
+{
+    return cv_torchInner.Get();
+}
+
+float PredationGame::TorchOuterAngle() const
+{
+    return cv_torchOuter.Get();
+}
+
 void PredationGame::KillPlayer(uint8_t player, const glm::vec3& direction)
 {
     if (m_sessionMode == SessionMode::Host)
@@ -3023,7 +3060,8 @@ void PredationGame::KillPlayer(uint8_t player, const glm::vec3& direction)
         event.kind = WorldEventKind::PlayerDied;
         event.player = player;
         event.direction = DeathPush(direction);
-        event.amount = cv_respawnSeconds.Get();
+        event.amount = DeathIsPermanent() ? 0.0f : cv_respawnSeconds.Get();
+        event.flag = DeathIsPermanent();
         m_host.Broadcast(event);
     }
     if (player == LocalPlayerId())
@@ -3031,13 +3069,14 @@ void PredationGame::KillPlayer(uint8_t player, const glm::vec3& direction)
         m_player.State().alive = false;
         m_player.State().health = 0.0f;
         m_deathImpulse = DeathPush(direction);
-        m_respawnTimer = cv_respawnSeconds.Get();
+        m_respawnTimer = RespawnSecondsForDeath();
+        m_deadForGood = DeathIsPermanent();
         m_spectating = -1;
     }
     else if (m_sessionMode == SessionMode::Host)
     {
         // The host runs the clock for everybody, because the host is what decides they are dead.
-        m_remoteRespawnTimers[player] = cv_respawnSeconds.Get();
+        m_remoteRespawnTimers[player] = RespawnSecondsForDeath();
     }
     if (m_sessionMode != SessionMode::Client)
     {
@@ -3058,6 +3097,9 @@ void PredationGame::ResetWorld()
     // Everything that can be used up is put back. Starting a game has to start a game: doors shut,
     // lockers empty, crates full, and every item back on the bench, including the ones somebody
     // walked off with last time.
+    RemoveAllDrones();
+    m_deadForGood = false;
+    m_wipeTimer = 0.0f;
     m_world.Clear(m_scene, m_app->GetPhysics(), m_interactions);
     m_world.Build(m_scene, m_app->GetMeshes(), m_app->GetPhysics(), m_interactions, m_items,
                   &m_weaponData);
@@ -3108,6 +3150,8 @@ void PredationGame::GoToMap(MapChoice map)
                   std::to_string(m_facility.Layout().rooms.size()) + " rooms.";
         break;
     }
+    m_map = map;
+    m_spawnYaw = yaw;
     if (m_screen != Screen::Playing)
     {
         // From the menu: a game of your own, there.
@@ -3300,6 +3344,8 @@ void SetSetting(const char* name, const std::string& value)
     CVarRegistry::Instance().Set(name, value);
 }
 
+} // namespace
+
 // The key an action is on, as the player has it bound, for putting in a sentence.
 //
 // Text that names a key has to name the one the player actually pressed. "[F] Open" after
@@ -3314,6 +3360,9 @@ std::string KeyFor(const Input& input, const char* action)
     }
     return Input::BindingName(found->second.front());
 }
+
+namespace
+{
 
 // Puts every setting back the way it shipped.
 //
@@ -5006,6 +5055,7 @@ void PredationGame::ReturnToTitle()
     PRED_LOG_INFO(Gameplay, "Back to the title screen");
     StopSession();
     ClearCreatures();
+    RemoveAllDrones();
     // Back to the two buttons, not to whichever page somebody was last on. Coming out of a game
     // onto a half-filled join box is a screen nobody asked for.
     m_titlePage = TitlePage::Root;
@@ -5469,9 +5519,12 @@ void PredationGame::UpdateVoice(float dt)
             m_voiceSending = true;
             if (m_sessionMode == SessionMode::Host)
             {
-                m_host.SendVoice(m_voiceSequence, packet, m_player.State().position);
+                // From the drone's speaker, when that is all that is left of them.
+                glm::vec3 mouth = m_player.State().position;
+                DroneOf(LocalPlayerId(), mouth);
+                m_host.SendVoice(m_voiceSequence, packet, mouth);
                 // Proximity chat is proximity for everything with ears. Talking near it is heard.
-                MakeNoise(NoiseKind::Voice, m_player.State().position, NoiseReach::kVoice, LocalPlayerId());
+                MakeNoise(NoiseKind::Voice, mouth, NoiseReach::kVoice, LocalPlayerId());
                 m_voiceMemory.Heard(LocalPlayerId(), packet, static_cast<float>(m_time));
             }
             else
@@ -5562,7 +5615,7 @@ glm::vec3 PredationGame::SpeakerPosition(Speaker& speaker) const
             }
         }
     }
-    else if (PlayerPositionIfKnown(speaker.id, where))
+    else if (DroneOf(speaker.id, where) || PlayerPositionIfKnown(speaker.id, where))
     {
         speaker.at = where;
         speaker.located = true;
@@ -6124,6 +6177,7 @@ void PredationGame::RespawnLocalPlayer(const glm::vec3& position)
     m_body.Revive();
     m_deathImpulse = glm::vec3(0.0f);
     m_spectating = -1;
+    m_deadForGood = false;
 }
 
 void PredationGame::LeaveCorpse(const PlayerBody& body, uint8_t player)
@@ -6536,7 +6590,16 @@ void PredationGame::RegisterNetCommands()
 
     console.RegisterCommand(
         "torch", "Switch the flashlight on or off",
-        [this](const std::vector<std::string>&) { m_torchOn = !m_torchOn; });
+        [this](const std::vector<std::string>&)
+        {
+            // Or, dead, the lamp on the drone.
+            if (m_supportDrone.Active())
+            {
+                m_supportDrone.lightOn = !m_supportDrone.lightOn;
+                return;
+            }
+            m_torchOn = !m_torchOn;
+        });
 
     console.RegisterCommand(
         "menu", "Show a page of the title screen: menu <root|browse|host|settings>",
@@ -6691,6 +6754,9 @@ void PredationGame::RegisterNetCommands()
             m_sessionMode = SessionMode::Host;
             // Hosting from the console at the menu should put you in the game, the same as the
             // button does. Joining does not, because it is not a game until the host answers.
+            // Started, then, and said so: without it anybody joining waited in a lobby for a start
+            // that had already happened.
+            m_host.SetStarted(true);
             EnterWorld();
             m_app->GetConsole().Print("Hosting on port " + std::to_string(config.port) + " for up to " +
                                       std::to_string(kMaxPlayers) + " players");
@@ -8660,6 +8726,16 @@ void PredationGame::OnFixedUpdate(double fixedDt)
     {
         m_player.Step(input, dt);
     }
+    // Dead, the same input drives the drone, and its owner tells everybody where it is.
+    UpdateDrone(input, dt);
+    if (m_sessionMode == SessionMode::Host)
+    {
+        m_host.SetPlayerDrone(0, LocalDroneState());
+    }
+    else if (m_sessionMode == SessionMode::Client)
+    {
+        m_client.SetDrone(LocalDroneState());
+    }
 
     UpdateHostMigration(dt);
     UpdateRespawns(dt);
@@ -8667,6 +8743,8 @@ void PredationGame::OnFixedUpdate(double fixedDt)
     // plans a route this tick.
     FinishNavRebuild();
     UpdateCreatures(dt);
+    UpdateDroneThreats(dt);
+    UpdateWipe(dt);
 
     // The toggles mirror the stance the body is actually in, every tick, not just when a change is
     // refused. They are a request, and the body is the answer; a request that has been answered is
@@ -8936,7 +9014,12 @@ void PredationGame::OnUpdate(double dt, double alpha)
                                                                     : CameraMode::FirstPerson);
         }
 #endif
-        if (input.WasActionPressed("flashlight") && !m_torchOn && m_torchCharge <= 0.0f)
+        if (input.WasActionPressed("flashlight") && m_supportDrone.Active())
+        {
+            m_supportDrone.lightOn = !m_supportDrone.lightOn;
+            PlayNamed(m_supportDrone.lightOn ? "Player/torch_on" : "Player/torch_off", m_supportDrone.Position(), 0.4f, 1.2f, true);
+        }
+        else if (input.WasActionPressed("flashlight") && !m_torchOn && m_torchCharge <= 0.0f)
         {
             PlayNamed("Player/torch_off", m_player.State().position, 0.45f, 0.8f, false);
             m_app->GetConsole().Print("The torch cell is flat. It needs a fresh battery.");
@@ -8994,6 +9077,8 @@ void PredationGame::OnUpdate(double dt, double alpha)
         PRED_LOG_INFO(Gameplay, "eye {:.3f} over feet (wanted {:.3f}), feet y {:.3f} xz {:.2f} {:.2f}", eye.eyePosition.y - eye.renderPosition.y,
                       eye.eyeHeight + eye.stepOffset + eye.landingDip + eye.bobOffset, eye.renderPosition.y, eye.renderPosition.x, eye.renderPosition.z);
     }
+
+    UpdateDroneVisuals(deltaSeconds);
 
     glm::mat4 view;
     glm::vec3 viewPosition;
@@ -9056,6 +9141,13 @@ void PredationGame::OnUpdate(double dt, double alpha)
     case CameraMode::FirstPerson:
     default:
     {
+        // Dead and driving a drone: its camera is the only eye left.
+        if (m_supportDrone.Active())
+        {
+            view = m_supportDrone.ViewMatrix();
+            viewPosition = m_supportDrone.Eye();
+            break;
+        }
         // Dead, the camera moves to a living teammate's eyes. Their look angles come from the
         // snapshot, so you see what they see rather than steering a camera of your own.
         const RemotePlayerView* watched = nullptr;
@@ -9344,7 +9436,12 @@ void PredationGame::OnUpdate(double dt, double alpha)
         // when spectating" was. A corpse does not hold a torch.
         const bool torchLit = m_torchOn && m_screen == Screen::Playing &&
                               m_player.State().alive && m_spectating < 0;
-        if (torchLit)
+        if (DroneLamp(torch))
+        {
+            // Dead and driving a drone: the lamp on its mast, in the torch's place.
+            m_torchAimed = false;
+        }
+        else if (torchLit)
         {
             // Straight up or straight down leaves no sideways direction to offset along, and
             // normalising that zero vector would put the torch at NaN and take the whole frame's
@@ -9500,6 +9597,17 @@ void PredationGame::OnUpdate(double dt, double alpha)
                 flash.outerAngle = 180.0f;
                 flash.sourceRadius = 0.35f;
                 consider(flash);
+            }
+        }
+
+        // Everybody else's drone lamps.
+        for (const auto& [owner, proxy] : m_remoteDrones)
+        {
+            if (proxy.Active() && proxy.lightOn && !proxy.Disabled())
+            {
+                PunctualLight lamp;
+                DroneLampFor(proxy, lamp);
+                consider(lamp);
             }
         }
 
@@ -10381,7 +10489,8 @@ void PredationGame::DrawHud()
         gap = std::min(gap, viewport->Size.y * 0.25f);
     }
     const float tick = 5.0f;
-    if (cv_crosshair.Get())
+    // Dead, there is nothing in anybody's hands to aim.
+    if (cv_crosshair.Get() && m_player.State().alive)
     {
         draw->AddLine({centre.x - gap - tick, centre.y}, {centre.x - gap, centre.y}, reticleColor, 1.5f);
         draw->AddLine({centre.x + gap, centre.y}, {centre.x + gap + tick, centre.y}, reticleColor, 1.5f);
@@ -10465,7 +10574,9 @@ void PredationGame::DrawHud()
     ImGui::SetNextWindowPos({centre.x, viewport->Pos.y + viewport->Size.y - 16.0f}, ImGuiCond_Always,
                             {0.5f, 1.0f});
     ImGui::SetNextWindowBgAlpha(0.0f);
-    if (ImGui::Begin("##Hotbar", nullptr, kHudFlags))
+    // Dead, what they carried is on the floor where they fell, and so is the bar that showed it.
+    const bool showHands = m_player.State().alive;
+    if (showHands && ImGui::Begin("##Hotbar", nullptr, kHudFlags))
     {
         ImDrawList* list = ImGui::GetWindowDrawList();
         for (int i = 0; i < m_inventory.SlotCount(); ++i)
@@ -10505,11 +10616,17 @@ void PredationGame::DrawHud()
             ImGui::Dummy({kSlotSize, kSlotSize});
         }
     }
-    ImGui::End();
+    if (showHands)
+    {
+        ImGui::End();
+    }
 
     // How the player is doing. Nothing to do with what is in their hands, which is where this was
     // and why it only appeared when a weapon was out.
-    DrawCondition();
+    if (m_player.State().alive)
+    {
+        DrawCondition();
+    }
 
     // Ammunition, bottom right, away from the hotbar. Reads magazine over reserve, the way a
     // shooter always has, and says so plainly while the magazine is out.
@@ -10536,12 +10653,13 @@ void PredationGame::DrawHud()
         ImGui::End();
     }
 
+    DrawDroneHud();
     DrawPlayerList();
 
     // Whose eyes these are, and how to move to somebody else's. Without it a dead player is looking
     // through a stranger with no way to tell whose view it is or that it can be changed.
     // And when you are back. Nothing to press: it happens on its own, and this says so.
-    if (!m_player.State().alive && m_respawnTimer > 0.0f)
+    if (!m_player.State().alive && (m_respawnTimer > 0.0f || m_deadForGood) && !m_supportDrone.Active())
     {
         ImGui::SetNextWindowPos({centre.x, viewport->Pos.y + viewport->Size.y * 0.32f}, ImGuiCond_Always,
                                 {0.5f, 0.5f});
@@ -10550,7 +10668,10 @@ void PredationGame::DrawHud()
             ImGui::SetWindowFontScale(1.4f);
             ImGui::TextColored({0.88f, 0.42f, 0.36f, 1.0f}, "You died");
             ImGui::SetWindowFontScale(1.0f);
-            ImGui::TextDisabled("Back in %d", static_cast<int>(std::ceil(m_respawnTimer)));
+            if (!m_deadForGood)
+            {
+                ImGui::TextDisabled("Back in %d", static_cast<int>(std::ceil(m_respawnTimer)));
+            }
         }
         ImGui::End();
     }

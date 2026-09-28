@@ -496,6 +496,14 @@ bool PredationGame::OnShotResolved(ShotResult& result, const glm::vec3& origin, 
     {
         return false;
     }
+    // A dead teammate's drone: knocked along the way the round went, and hurt by it.
+    if (const int owner = DroneOwnerOf(result.body); owner >= 0)
+    {
+        const glm::vec3 along = glm::normalize(result.position - origin + glm::vec3(0.0f, 1.0e-4f, 0.0f));
+        HitDrone(static_cast<uint8_t>(owner), along * (result.damage * 0.5f), result.damage * 0.6f);
+        result.surface = false;
+        return true;
+    }
     if (const int nest = NestForBody(result.body); nest >= 0)
     {
         HurtNest(nest, result.damage, shooter);
