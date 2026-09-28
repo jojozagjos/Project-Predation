@@ -1,6 +1,7 @@
 #include "Game/World/Vehicles.h"
 
 #include "Engine/Core/Log.h"
+#include "Engine/Core/Paths.h"
 #include "Engine/Render/Material.h"
 #include "Engine/Render/Mesh.h"
 
@@ -220,7 +221,12 @@ std::shared_ptr<ModelAsset> Load(const std::string& name)
     {
         return nullptr;
     }
-    // Written the first time, so from now on it is a model like any other.
+    // Written the first time, so from now on it is a model like any other -- where the game keeps its models, and
+    // nowhere else: a test, run from somewhere with no models folder, makes it and leaves the disk alone.
+    if (!std::filesystem::exists(Paths::AssetsRoot() / "Models"))
+    {
+        return model;
+    }
     const std::filesystem::path written = ModelPathFor(name, "Vehicles");
     if (model->SaveToFile(written))
     {
