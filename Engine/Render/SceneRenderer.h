@@ -206,6 +206,8 @@ private:
     bool m_lampShadowsEnabled = true;
     bgfx::UniformHandle m_sLampShadow = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uLampShadowParams = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uOrganic = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uOrganicBeat = BGFX_INVALID_HANDLE;
     int LampSlot(uint32_t key) const { return LampShadowsEnabled() ? m_lampShadows.SlotFor(key) : -1; }
 
     // The planar reflection target, and whether this frame has one in it.

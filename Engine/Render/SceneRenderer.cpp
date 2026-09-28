@@ -128,6 +128,8 @@ bool SceneRenderer::Init(ShaderLibrary& shaders)
     m_sReflection = bgfx::createUniform("s_reflection", bgfx::UniformType::Sampler);
     m_sLampShadow = bgfx::createUniform("s_lampShadow", bgfx::UniformType::Sampler);
     m_uLampShadowParams = bgfx::createUniform("u_lampShadowParams", bgfx::UniformType::Vec4);
+    m_uOrganic = bgfx::createUniform("u_organic", bgfx::UniformType::Vec4);
+    m_uOrganicBeat = bgfx::createUniform("u_organicBeat", bgfx::UniformType::Vec4);
 
     // Occlusion is not required for a picture. If the depth program or the float target is missing
     // the game still runs, unshadowed, and says so once rather than every frame.
@@ -150,7 +152,7 @@ bool SceneRenderer::Init(ShaderLibrary& shaders)
 void SceneRenderer::Shutdown()
 {
     m_lampShadows.Shutdown();
-    for (bgfx::UniformHandle* handle : {&m_sLampShadow, &m_uLampShadowParams})
+    for (bgfx::UniformHandle* handle : {&m_sLampShadow, &m_uLampShadowParams, &m_uOrganic, &m_uOrganicBeat})
     {
         if (bgfx::isValid(*handle))
         {
@@ -335,6 +337,8 @@ void SceneRenderer::SubmitMesh(bgfx::ViewId view, const Mesh& mesh, const Materi
     bgfx::setUniform(m_uBaseColor, baseColor);
     bgfx::setUniform(m_uMaterialParams, materialParams);
     bgfx::setUniform(m_uEmissive, emissive);
+    bgfx::setUniform(m_uOrganic, glm::value_ptr(material.organic));
+    bgfx::setUniform(m_uOrganicBeat, glm::value_ptr(material.organicBeat));
     const bool onScreen = view < Renderer::kViewOffscreenFirst;
     const float output[4] = {m_linearOutput && onScreen ? 1.0f : 0.0f, 0.0f, 0.0f, 0.0f};
     bgfx::setUniform(m_uOutput, output);

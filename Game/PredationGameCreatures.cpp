@@ -3128,18 +3128,37 @@ void PredationGame::BuildNest(const glm::vec3& at, uint16_t seed, uint8_t owner,
     body.rotation = nest.facing;
     nest.heartBody = m_app->GetPhysics().CreateBox({0.3f, 0.42f, 0.27f}, body, BodyMotion::Kinematic, 1000.0f,
                                                    PhysicsLayer::Hitbox);
-    nest.building = std::async(std::launch::async, [seed]() {
+    // The skin, planned from where it will grow: a sheet of flesh at every patch, and the roots between
+    // them -- thick near the heart, a thread at the edges, bent into corners along the surfaces.
+    NestSkinPlan plan;
+    plan.seed = seed;
+    for (const NestPatch& patch : nest.patches)
+    {
+        plan.pads.push_back({patch.at, patch.normal, patch.size, patch.fromHeart, patch.stretch, patch.spin});
+        if (!patch.rooted)
+        {
+            continue;
+        }
+        const float thick = glm::mix(0.075f, 0.022f, std::clamp(patch.fromHeartThere / kNestSpread, 0.0f, 1.0f));
+        if (patch.bent)
+        {
+            const float first = glm::distance(patch.from, patch.bend);
+            plan.roots.push_back({patch.from, patch.bend, patch.fromNormal, thick, thick * 0.85f, patch.fromHeartThere, patch.fromHeartThere + first});
+            plan.roots.push_back({patch.bend, patch.at, patch.normal, thick * 0.85f, thick * 0.7f, patch.fromHeartThere + first, patch.fromHeart});
+        }
+        else
+        {
+            plan.roots.push_back({patch.from, patch.at, patch.fromNormal, thick, thick * 0.7f, patch.fromHeartThere, patch.fromHeart});
+        }
+    }
+    nest.building = std::async(std::launch::async, [seed, plan = std::move(plan)]() {
         std::vector<MeshData> meshes;
         NestHeartMeshes heart = BuildNestHeart(seed);
         meshes.push_back(std::move(heart.heart));
         meshes.push_back(std::move(heart.roots));
-        for (int variant = 0; variant < 3; ++variant)
+        for (MeshData& piece : BuildNestSkin(plan))
         {
-            meshes.push_back(BuildNestGrowth(seed, variant));
-        }
-        for (int variant = 0; variant < 3; ++variant)
-        {
-            meshes.push_back(BuildNestTendril(seed, variant));
+            meshes.push_back(std::move(piece));
         }
         return meshes;
     });
@@ -3173,17 +3192,11 @@ void PredationGame::ReleaseNest(Nest& nest)
         nest.building.wait();
         nest.building.get();
     }
-    for (NestPatch& patch : nest.patches)
+    for (const Entity entity : nest.skinEntities)
     {
-        for (Entity* entity : {&patch.entity, &patch.tendril, &patch.tendrilOn})
-        {
-            if (entity->IsValid())
-            {
-                m_scene.Destroy(*entity);
-                *entity = Entity{};
-            }
-        }
+        m_scene.Destroy(entity);
     }
+    nest.skinEntities.clear();
     for (Entity* entity : {&nest.heartEntity, &nest.rootsEntity})
     {
         if (entity->IsValid())
@@ -3199,18 +3212,13 @@ void PredationGame::ReleaseNest(Nest& nest)
     }
     m_app->GetMeshes().Release(nest.heartMesh);
     m_app->GetMeshes().Release(nest.rootsMesh);
-    for (const MeshHandle mesh : nest.growthMeshes)
+    for (const MeshHandle mesh : nest.skinMeshes)
     {
         m_app->GetMeshes().Release(mesh);
     }
-    for (const MeshHandle mesh : nest.tendrilMeshes)
-    {
-        m_app->GetMeshes().Release(mesh);
-    }
-    nest.tendrilMeshes.clear();
+    nest.skinMeshes.clear();
     nest.heartMesh = MeshHandle{};
     nest.rootsMesh = MeshHandle{};
-    nest.growthMeshes.clear();
     nest.patches.clear();
     nest.gone = true;
 }
@@ -3355,13 +3363,20 @@ void PredationGame::UpdateNests(float dt)
             MeshLibrary& library = m_app->GetMeshes();
             nest.heartMesh = library.Upload(meshes[0], name + "heart");
             nest.rootsMesh = library.Upload(meshes[1], name + "roots");
-            for (size_t v = 2; v < 5 && v < meshes.size(); ++v)
+            for (size_t v = 2; v < meshes.size(); ++v)
             {
-                nest.growthMeshes.push_back(library.Upload(meshes[v], name + "growth_" + std::to_string(v - 2)));
-            }
-            for (size_t v = 5; v < meshes.size(); ++v)
-            {
-                nest.tendrilMeshes.push_back(library.Upload(meshes[v], name + "tendril_" + std::to_string(v - 5)));
+                const MeshHandle piece = library.Upload(meshes[v], name + "skin_" + std::to_string(v - 2));
+                nest.skinMeshes.push_back(piece);
+                Material skin = Material::Diffuse(glm::vec3(1.0f), 0.35f);
+                skin.organic.x = 1.0f; // grown from nothing, as UpdateNests says
+                const Entity entity = m_scene.CreateMeshEntity("nest skin", Transform{}, piece, skin);
+                if (MeshRenderer* renderer = m_scene.GetMeshRenderer(entity))
+                {
+                    // Lies on everything; it throws no shadow worth the drawing, and is no roof.
+                    renderer->castsShadow = false;
+                    renderer->blocksSky = false;
+                }
+                nest.skinEntities.push_back(entity);
             }
             Transform where;
             where.position = nest.wall;
@@ -3430,134 +3445,17 @@ void PredationGame::UpdateNests(float dt)
             renderer->material.baseColor = glm::mix(glm::vec3(1.0f), kNestDead, wither);
         }
 
-        if (nest.growthMeshes.empty())
+        // The skin: grown out from the heart as far as its age has taken it (the same curve the patches were
+        // planned to appear on), each beat running out across it, and once the heart is dead the death
+        // following it out, and the rot behind that.
+        const float grownOut = kNestSpread * std::pow(std::clamp(nest.age / growth, 0.0f, 1.0f), 1.0f / 1.15f) + 1.2f;
+        const float deathOut = nest.dead ? nest.deadFor * kNestDeathSpeed : -1.0f;
+        for (const Entity entity : nest.skinEntities)
         {
-            continue;
-        }
-        for (NestPatch& patch : nest.patches)
-        {
-            const float since = nest.age - patch.appears;
-            // Its root creeps out to it from the patch it grows from first, and it swells up where the root
-            // arrives: the nest grows as roots feeling their way over the walls, not as circles.
-            const float rootTakes = kPatchGrowIn * 1.3f;
-            if (since <= -rootTakes)
+            if (MeshRenderer* renderer = m_scene.GetMeshRenderer(entity))
             {
-                break; // in the order they appear: none after this one has started either
-            }
-            const float edgeHere = std::clamp(patch.fromHeart / kNestSpread, 0.0f, 1.0f);
-            const float diedHere = nest.dead ? nest.deadFor - patch.fromHeart / kNestDeathSpeed : -1.0f;
-            const float slackHere = diedHere > 0.0f ? Smooth(diedHere / kNestWither) : 0.0f;
-            const float rotHere = diedHere > 0.0f ? Smooth((diedHere - kNestWither) / rotFor) : 0.0f;
-            if (patch.rooted && !nest.tendrilMeshes.empty())
-            {
-                const glm::vec3 span = patch.at - patch.from;
-                const float length = glm::length(span);
-                if (!patch.tendril.IsValid() && length > 0.05f)
-                {
-                    const MeshHandle mesh = nest.tendrilMeshes[static_cast<size_t>(patch.variant) % nest.tendrilMeshes.size()];
-                    patch.tendril = m_scene.CreateMeshEntity("nest root", Transform{}, mesh, Material::Diffuse(glm::vec3(1.0f), 0.35f));
-                    if (MeshRenderer* renderer = m_scene.GetMeshRenderer(patch.tendril))
-                    {
-                        renderer->castsShadow = false;
-                    }
-                }
-                if (patch.bent && !patch.tendrilOn.IsValid() && patch.tendril.IsValid())
-                {
-                    const MeshHandle mesh = nest.tendrilMeshes[static_cast<size_t>(patch.variant + 1) % nest.tendrilMeshes.size()];
-                    patch.tendrilOn = m_scene.CreateMeshEntity("nest root", Transform{}, mesh, Material::Diffuse(glm::vec3(1.0f), 0.35f));
-                    if (MeshRenderer* renderer = m_scene.GetMeshRenderer(patch.tendrilOn))
-                    {
-                        renderer->castsShadow = false;
-                    }
-                }
-                // Thick near the heart, a thread at the far edges; thinner as it rots, never gone.
-                const float thick = glm::mix(0.09f, 0.03f, std::clamp(patch.fromHeartThere / kNestSpread, 0.0f, 1.0f)) *
-                                    glm::mix(1.0f, 0.55f, rotHere);
-                const float crept = Smooth((since + rootTakes) / rootTakes);
-                const auto lay = [&](Entity entity, const glm::vec3& a, const glm::vec3& b, const glm::vec3& surface, float grown)
-                {
-                    Transform* transform = m_scene.GetTransform(entity);
-                    const float reach = glm::distance(a, b);
-                    if (transform == nullptr || reach < 1e-3f)
-                    {
-                        return;
-                    }
-                    const glm::vec3 along = (b - a) / reach;
-                    glm::vec3 up = surface - along * glm::dot(surface, along);
-                    up = glm::length(up) > 1e-3f ? glm::normalize(up) : glm::vec3(0.0f, 1.0f, 0.0f);
-                    const glm::vec3 across = glm::normalize(glm::cross(up, along));
-                    transform->position = a + surface * 0.01f;
-                    transform->rotation = glm::quat_cast(glm::mat3(across, up, along));
-                    transform->scale = glm::vec3(thick, thick * 0.7f, std::max(reach * std::clamp(grown, 0.0f, 1.0f), 0.001f));
-                    if (MeshRenderer* renderer = m_scene.GetMeshRenderer(entity))
-                    {
-                        renderer->material.baseColor = glm::mix(glm::vec3(1.0f), kNestDead, slackHere);
-                    }
-                };
-                if (patch.bent)
-                {
-                    const float first = glm::distance(patch.from, patch.bend);
-                    const float second = glm::distance(patch.bend, patch.at);
-                    const float split = first / std::max(first + second, 1e-3f);
-                    lay(patch.tendril, patch.from, patch.bend, patch.fromNormal, crept / std::max(split, 1e-3f));
-                    lay(patch.tendrilOn, patch.bend, patch.at, patch.normal, (crept - split) / std::max(1.0f - split, 1e-3f));
-                }
-                else
-                {
-                    lay(patch.tendril, patch.from, patch.at, patch.fromNormal, crept);
-                }
-            }
-            (void)edgeHere;
-            if (since <= 0.0f)
-            {
-                continue;
-            }
-            if (!patch.entity.IsValid())
-            {
-                Transform where;
-                where.position = patch.at;
-                where.rotation = glm::rotation(glm::vec3(0.0f, 1.0f, 0.0f), patch.normal) *
-                                 glm::angleAxis(patch.spin, glm::vec3(0.0f, 1.0f, 0.0f));
-                where.scale = glm::vec3(0.01f);
-                const MeshHandle mesh = nest.growthMeshes[static_cast<size_t>(patch.variant) % nest.growthMeshes.size()];
-                patch.entity = m_scene.CreateMeshEntity("nest growth", where, mesh, Material::Diffuse(glm::vec3(1.0f), 0.4f));
-                // Flat against whatever it is on: it has no shadow worth the drawing.
-                if (MeshRenderer* renderer = m_scene.GetMeshRenderer(patch.entity))
-                {
-                    renderer->castsShadow = false;
-                }
-            }
-            const float edge = std::clamp(patch.fromHeart / kNestSpread, 0.0f, 1.0f);
-            // Dying from the heart outwards: this part goes when the death has come out as far as it, first
-            // dark and slack, then rotting down to what is left.
-            const float diedFor = nest.dead ? nest.deadFor - patch.fromHeart / kNestDeathSpeed : -1.0f;
-            const float slack = diedFor > 0.0f ? Smooth(diedFor / kNestWither) : 0.0f;
-            const float rotted = diedFor > 0.0f ? Smooth((diedFor - kNestWither) / rotFor) : 0.0f;
-            float shown = Smooth(since / kPatchGrowIn) * glm::mix(1.0f, 0.8f, slack) * glm::mix(1.0f, kNestRemains, rotted);
-            // Each beat goes out through the whole of it from the heart, a swell passing over it, weaker
-            // the further it has come -- and after the heart has stopped, the last of them still on its
-            // way out, until the death overtakes it.
-            float local = 0.0f;
-            if (diedFor < 0.0f && (!nest.dead || nest.deadFor < patch.fromHeart * kBeatDelayPerMetre / 0.75f))
-            {
-                float delayed = nest.beat - patch.fromHeart * kBeatDelayPerMetre;
-                delayed -= std::floor(delayed);
-                local = HeartPulse(delayed) * (1.0f - 0.5f * edge);
-            }
-            // The swell is a lift of the surface more than a spread of it: the growth rises off the wall
-            // and settles as the ring passes, no glow, no flash.
-            if (Transform* transform = m_scene.GetTransform(patch.entity))
-            {
-                // A lump where roots meet, smaller than the roots are long and longer one way than the other:
-                // not a disc laid on the wall.
-                const float lump = patch.size * 0.8f;
-                transform->scale = glm::vec3(lump * patch.stretch * (1.0f + 0.05f * local),
-                                             std::min(lump, 0.6f) * 0.7f * (1.0f + 0.45f * local), lump / patch.stretch * (1.0f + 0.05f * local)) *
-                                   std::max(shown, 0.01f);
-            }
-            if (MeshRenderer* renderer = m_scene.GetMeshRenderer(patch.entity))
-            {
-                renderer->material.baseColor = glm::mix(glm::vec3(1.0f), kNestDead, slack);
+                renderer->material.organic = glm::vec4(1.0f, grownOut, deathOut, kNestDeathSpeed * rotFor);
+                renderer->material.organicBeat = glm::vec4(nest.beat, nest.dead ? 0.0f : 1.0f, kBeatDelayPerMetre, 0.0f);
             }
         }
     }

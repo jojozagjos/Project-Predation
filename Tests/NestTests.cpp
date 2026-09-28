@@ -43,25 +43,6 @@ TEST_CASE("A nest's heart stands out from its wall, and its roots spread flat ac
     CHECK(roots.max.y - roots.min.y > 2.4f);
 }
 
-TEST_CASE("Growth lies on its surface and each nest's is its own", "[nest][mesh]")
-{
-    const MeshData first = BuildNestGrowth(77, 0);
-    const MeshData again = BuildNestGrowth(77, 0);
-    const MeshData other = BuildNestGrowth(77, 1);
-    const MeshData elsewhere = BuildNestGrowth(78, 0);
-    REQUIRE(first.TriangleCount() > 200);
-
-    const AABB bounds = first.ComputeBounds();
-    CHECK(bounds.min.y > -0.04f);
-    CHECK(bounds.max.y < 0.6f);
-    // A knot of lumps a metre or so across; the roots between patches are separate meshes.
-    CHECK(bounds.max.x - bounds.min.x > 1.0f);
-
-    CHECK(MeshFingerprintForTesting(first) == MeshFingerprintForTesting(again));
-    CHECK(MeshFingerprintForTesting(first) != MeshFingerprintForTesting(other));
-    CHECK(MeshFingerprintForTesting(first) != MeshFingerprintForTesting(elsewhere));
-}
-
 namespace
 {
 
@@ -120,13 +101,35 @@ TEST_CASE("A heart's wounds are sent as how much is left, and only nothing left 
     CHECK(RoundTrip(wounded).amount == 0.0f);
 }
 
-TEST_CASE("A nest's root is a unit long, lies on its surface and tapers", "[nest][mesh]")
+TEST_CASE("A nest's skin grows over the surfaces it is planned on, and knows how far each part is from the heart",
+          "[nest][mesh]")
 {
-    const MeshData root = BuildNestTendril(77, 0);
-    REQUIRE(root.TriangleCount() > 50);
-    const AABB bounds = root.ComputeBounds();
-    CHECK(bounds.min.z > -0.2f);
-    CHECK(bounds.max.z < 1.2f);
-    CHECK(bounds.min.y > -0.05f); // flat underneath, on the surface
-    CHECK(MeshFingerprintForTesting(root) != MeshFingerprintForTesting(BuildNestTendril(77, 1)));
+    // A floor with the heart's patch at the origin, a patch two metres out, and a root between them.
+    NestSkinPlan plan;
+    plan.seed = 77;
+    plan.pads.push_back({{0.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, 1.0f, 0.0f, 1.0f, 0.0f});
+    plan.pads.push_back({{2.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, 1.0f, 2.0f, 1.2f, 0.5f});
+    plan.roots.push_back({{0.0f, 0.0f, 0.0f}, {2.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, 0.06f, 0.04f, 0.0f, 2.0f});
+    const std::vector<MeshData> pieces = BuildNestSkin(plan);
+    REQUIRE_FALSE(pieces.empty());
+    float nearest = 1.0e9f;
+    float farthest = 0.0f;
+    float highest = 0.0f;
+    for (const MeshData& piece : pieces)
+    {
+        REQUIRE(piece.TriangleCount() > 0);
+        for (const MeshVertex& vertex : piece.vertices)
+        {
+            // Lying on the floor: not far above it.
+            highest = std::max(highest, vertex.position.y);
+            nearest = std::min(nearest, vertex.uv.x);
+            farthest = std::max(farthest, vertex.uv.x);
+            CHECK(vertex.uv.y >= 0.0f);
+        }
+    }
+    CHECK(highest < 0.5f);
+    // How far along from the heart, which the shader grows it by: from none, out to the far patch.
+    CHECK(nearest < 0.3f);
+    CHECK(farthest > 1.7f);
+    CHECK(farthest < 3.0f);
 }

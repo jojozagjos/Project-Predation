@@ -307,9 +307,6 @@ private:
         // rather than straight across the air between.
         bool bent = false;
         glm::vec3 bend{0.0f};
-        Entity entity;
-        Entity tendril;
-        Entity tendrilOn;
     };
     struct Nest
     {
@@ -336,8 +333,10 @@ private:
         std::future<std::vector<MeshData>> building;
         MeshHandle heartMesh;
         MeshHandle rootsMesh;
-        std::vector<MeshHandle> growthMeshes;
-        std::vector<MeshHandle> tendrilMeshes;
+        // The skin that has grown over everything round it: a few pieces of one sculpted surface, grown, beaten
+        // and killed across by the mesh shader (Material::organic), not a thing in the scene per patch.
+        std::vector<MeshHandle> skinMeshes;
+        std::vector<Entity> skinEntities;
         Entity heartEntity;
         Entity rootsEntity;
         BodyHandle heartBody;

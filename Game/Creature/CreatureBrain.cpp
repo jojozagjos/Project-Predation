@@ -3902,10 +3902,10 @@ void CreatureBrain::Act(const CreatureSenses& senses, float dt)
             lookAround(1.0e9f);
             // Only its nest mends it. Anywhere else a wound stays a wound, which is what makes hurting
             // one worth something -- and what makes the nest worth finding.
-            m_intent.recover = atNest ? 0.004f : 0.0f;
+            m_intent.recover = atNest ? 0.012f : 0.0f;
             // And at the nest it stays to mend while it is badly hurt and nothing is near, up to a
             // point: an animal that has gone to ground comes back out.
-            if (atNest && senses.healthFraction < 0.5f && !m_threatened && now - m_behaviorStarted < 40.0f)
+            if (atNest && senses.healthFraction < 0.85f && !m_threatened && now - m_behaviorStarted < 70.0f)
             {
                 m_retreatUntil = std::max(m_retreatUntil, now + 1.0f);
             }

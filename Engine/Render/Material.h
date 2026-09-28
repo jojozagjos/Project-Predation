@@ -3,6 +3,7 @@
 #include "Engine/Render/TextureLibrary.h"
 
 #include <glm/vec3.hpp>
+#include <glm/vec4.hpp>
 
 namespace pred
 {
@@ -27,6 +28,15 @@ struct Material
     // an untextured material is a textured one whose texture happens to be white and the shader
     // needs no branch.
     TextureHandle baseColorTexture;
+
+    // Living tissue that grows, beats and dies across its surface -- a nest's skin -- driven from here and
+    // from each vertex's texture coordinates: x how far along the growth from its source, y how far it
+    // stands off the surface under it. x = on (0 for everything else), y = how far it has grown, z = how
+    // far death has come out (negative: alive), w = how far behind the death it has rotted down.
+    glm::vec4 organic{0.0f};
+    // x = where the beat is (0..1), y = how hard it beats, z = how long the beat takes to cross a metre
+    // (in beats), w unused.
+    glm::vec4 organicBeat{0.0f};
 
     static Material Diffuse(const glm::vec3& color, float roughness = 0.85f)
     {

@@ -1,4 +1,4 @@
-$input v_worldPos, v_normal, v_texcoord0, v_color0
+$input v_worldPos, v_normal, v_texcoord0, v_color0, v_organic
 
 #include <bgfx_shader.sh>
 
@@ -77,6 +77,8 @@ uniform vec4 u_reflectParams;
 // The lamps' shadows: six faces a lamp, each a square tile of one atlas (LampShadows). x = one tile's
 // width in the atlas, y = tiles across, z = 1 when textures start at the bottom, w = one texel of a tile.
 uniform vec4 u_lampShadowParams;
+// Living tissue (Material::organic): not drawn where it has not grown yet, grey and dry where it has died.
+uniform vec4 u_organic;
 SAMPLER2D(s_lampShadow, 6);
 
 // bgfx gives HLSL a struct for a sampler and GLSL the built-in type, and makes `sampler2D` mean
@@ -364,6 +366,10 @@ void main()
 		}
 	}
 
+	if (u_organic.x > 0.5 && v_organic.x < 0.02)
+	{
+		discard;
+	}
 	vec3 N = normalize(v_normal);
 	vec3 V = normalize(u_cameraPosition.xyz - v_worldPos);
 	vec3 L = normalize(u_lightDirection.xyz);
@@ -388,6 +394,11 @@ void main()
 	float metallic = clamp(u_materialParams.x, 0.0, 1.0);
 	// Clamp roughness away from zero: perfectly smooth surfaces alias badly with a single light.
 	float roughness = clamp(u_materialParams.y * v_color0.a, 0.045, 1.0);
+	if (u_organic.x > 0.5)
+	{
+		albedo = mix(albedo, vec3(0.42, 0.36, 0.33) * (0.35 + 0.65 * dot(albedo, vec3_splat(0.8))), v_organic.y);
+		roughness = mix(roughness, 0.9, v_organic.y);
+	}
 
 	vec3 diffuseColor = albedo * (1.0 - metallic);
 	vec3 f0 = mix(vec3_splat(0.04), albedo, metallic);

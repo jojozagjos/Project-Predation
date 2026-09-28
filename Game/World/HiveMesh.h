@@ -2,7 +2,10 @@
 
 #include "Engine/Render/Mesh.h"
 
+#include <glm/vec3.hpp>
+
 #include <cstdint>
+#include <vector>
 
 namespace pred
 {
@@ -26,15 +29,40 @@ NestHeartMeshes BuildNestHeart(uint32_t seed);
 inline constexpr float kNestHeartOut = 0.34f;
 inline constexpr float kNestHeartUp = 0.05f;
 
-// One patch of growth, in the frame of the surface it lies on: +Y out of the surface, the surface
-// itself at y = 0, about a metre from its middle to its edge before it is scaled. Nothing of it goes
-// more than a couple of centimetres behind the surface, so a patch on a thin wall is not seen poking
-// out of the far side. `variant` makes the patches of one nest differ; every third carries egg sacs.
-MeshData BuildNestGrowth(uint32_t seed, int variant);
-
-// A root of the nest creeping across a surface from one patch of it to the next: a unit long along +z,
-// a unit thick at its root tapering towards its tip, flattened against the surface under it (+y is out of
-// the surface), wandering a little side to side. Stretched to fit between two patches.
-MeshData BuildNestTendril(uint32_t seed, int variant);
+// The rest of a nest: one living skin over every surface it has grown on, as a few meshes of a few metres
+// each. Built from the plan of where it grows -- the patches the heart spreads to over the surfaces, and
+// the roots between them -- as one blended shape: a lumpy membrane of flesh coating the floor, walls and
+// ceiling, raised roots over it, egg sacs clustered near the heart, strands hanging from the ceiling.
+//
+// Every vertex carries, in its texture coordinates, how far it is from the heart along the way the nest
+// grows (x) and how far it stands off the surface under it (y). The mesh shader uses those to grow the
+// skin out from the heart, to run each heartbeat out across it as a swell, and to kill it from the heart
+// outwards -- all on the one surface, with nothing in the scene per patch.
+struct NestPad
+{
+    glm::vec3 at{0.0f};
+    glm::vec3 normal{0.0f, 1.0f, 0.0f};
+    float size = 1.0f;
+    float fromHeart = 0.0f;
+    float stretch = 1.0f;
+    float spin = 0.0f;
+};
+struct NestRoot
+{
+    glm::vec3 a{0.0f};
+    glm::vec3 b{0.0f};
+    glm::vec3 normal{0.0f, 1.0f, 0.0f};
+    float radiusA = 0.05f;
+    float radiusB = 0.03f;
+    float fromHeartA = 0.0f;
+    float fromHeartB = 0.0f;
+};
+struct NestSkinPlan
+{
+    uint32_t seed = 0;
+    std::vector<NestPad> pads;
+    std::vector<NestRoot> roots;
+};
+std::vector<MeshData> BuildNestSkin(const NestSkinPlan& plan);
 
 } // namespace pred
