@@ -18,6 +18,20 @@ enum class PlayerStance : uint8_t
 
 const char* PlayerStanceName(PlayerStance stance);
 
+// A ladder fixed to a wall: climbed by facing it and pushing forward, and stepped off at the top onto the
+// floor it reaches -- behind it, over the top of the wall it is on (a roof, the floor round a hatch), or in
+// front, where the climber hangs (the way out of a shaft on the floor above).
+struct Ladder
+{
+    glm::vec3 foot{0.0f};            // the middle of its foot, on the wall's face, at the floor it stands on
+    glm::vec3 out{0.0f, 0.0f, 1.0f}; // flat and unit length: from the wall to where the climber hangs
+    float height = 3.6f;             // from its foot up to the floor it reaches
+    float width = 0.55f;
+    bool topInFront = false;
+    // In front, how far out from the wall the floor at the top is reached.
+    float topOut = 0.8f;
+};
+
 // One tick's worth of intent. Deliberately plain data with no pointers: the same struct will be
 // sent over the network and replayed during prediction, so it must be trivially copyable and must
 // fully describe what the player asked for on that tick.
@@ -72,6 +86,12 @@ struct PlayerState
     // The lip itself: where the wall face meets the top. The hands go here, and it is nowhere near
     // the landing spot, which is a body's depth further on.
     glm::vec3 mantleEdge{0.0f};
+
+    // On a ladder, and which of the level's, and for how long. Moved along it rather than simulated, like a
+    // climb, and in the state for the same reason.
+    bool climbing = false;
+    int ladder = -1;
+    float climbTime = 0.0f;
 
     float fallPeakSpeed = 0.0f;      // fastest downward speed during the current fall
     bool landedThisTick = false;
@@ -215,6 +235,11 @@ struct PlayerConfig
     // better than walking round.
     float mantleSecondsLow = 0.32f;
     float mantleSecondsHigh = 0.85f;
+
+    // --- Ladders ---
+    float climbSpeed = 1.9f;      // up or down, metres per second
+    float ladderStandOff = 0.4f;  // how far from the wall the climber hangs
+    float ladderReach = 0.8f;     // how far out from that a ladder can be taken hold of
 
     // --- Leaning ---
     float leanAngleDegrees = 16.0f; // camera roll at full lean

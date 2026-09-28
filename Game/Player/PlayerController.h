@@ -6,6 +6,8 @@
 #include <glm/mat4x4.hpp>
 #include <glm/vec3.hpp>
 
+#include <vector>
+
 namespace pred
 {
 
@@ -69,6 +71,9 @@ public:
     void Attach(const glm::vec3& footPosition, float yaw);
     void Detach(const glm::vec3& footPosition);
     bool IsAttached() const { return m_attached; }
+    // The level's ladders, to climb: not owned, and the same list on every machine, so a climb replays the
+    // same on a client as it ran on the host.
+    void SetLadders(const std::vector<Ladder>* ladders) { m_ladders = ladders; }
     void Respawn(const glm::vec3& footPosition);
     void ApplyDamage(float amount, const char* cause);
     // Health back, up to full, for somebody alive. Like damage, only where this controller decides it.
@@ -113,6 +118,8 @@ private:
     // same ledge the host did.
     bool FindMantle(const PlayerInput& input, glm::vec3& outTarget, glm::vec3& outEdge) const;
     void StepMantle(float dt);
+    bool TryMountLadder(const PlayerInput& input);
+    void StepClimb(const PlayerInput& input, float dt);
     glm::vec3 ComputeWishDirection(const PlayerInput& input) const;
 
     CharacterController m_character;
@@ -122,6 +129,7 @@ private:
     PlayerView m_view;
     Debug m_debug;
     bool m_attached = false;
+    const std::vector<Ladder>* m_ladders = nullptr;
     glm::vec3 m_attachPosition{0.0f};
 
     // Position at the start of the current tick, for render interpolation.

@@ -296,6 +296,124 @@ void PlayerController::StepMantle(float dt)
     }
 }
 
+bool PlayerController::TryMountLadder(const PlayerInput& input)
+{
+    // Pushing forward into one, at its foot or over its top: nothing else takes hold of a ladder, so walking
+    // past one, or backing into it, does not.
+    if (m_ladders == nullptr || m_ladders->empty() || input.move.y < 0.3f)
+    {
+        return false;
+    }
+    const glm::vec3 wish = ComputeWishDirection(input);
+    glm::vec2 heading{wish.x, wish.z};
+    if (glm::length(heading) < 1.0e-3f)
+    {
+        return false;
+    }
+    heading = glm::normalize(heading);
+    for (size_t i = 0; i < m_ladders->size(); ++i)
+    {
+        const Ladder& ladder = (*m_ladders)[i];
+        const glm::vec2 out{ladder.out.x, ladder.out.z};
+        const glm::vec2 across{-out.y, out.x};
+        const glm::vec2 offset{m_state.position.x - ladder.foot.x, m_state.position.z - ladder.foot.z};
+        const float sideways = glm::dot(offset, across);
+        const float outward = glm::dot(offset, out);
+        if (std::abs(sideways) > ladder.width * 0.5f + 0.3f)
+        {
+            continue;
+        }
+        const float top = ladder.foot.y + ladder.height;
+        const bool atFoot = std::abs(m_state.position.y - ladder.foot.y) < 0.5f && outward > 0.0f &&
+                            outward < m_config.ladderStandOff + m_config.ladderReach && glm::dot(heading, -out) > 0.6f;
+        const bool atTop = std::abs(m_state.position.y - top) < 0.5f &&
+                           (ladder.topInFront ? outward > 0.1f && outward < ladder.topOut && glm::dot(heading, -out) > 0.6f
+                                              : outward > -1.0f && outward < 0.15f && glm::dot(heading, out) > 0.6f);
+        if (!atFoot && !atTop)
+        {
+            continue;
+        }
+        m_state.climbing = true;
+        m_state.ladder = static_cast<int>(i);
+        m_state.climbTime = 0.0f;
+        if (atTop)
+        {
+            // Taken from the top: a little way down it already, so that the step on is not also a step off.
+            m_state.position.y = top - 0.25f;
+        }
+        return true;
+    }
+    return false;
+}
+
+void PlayerController::StepClimb(const PlayerInput& input, float dt)
+{
+    if (m_ladders == nullptr || m_state.ladder < 0 || m_state.ladder >= static_cast<int>(m_ladders->size()))
+    {
+        m_state.climbing = false;
+        m_state.ladder = -1;
+        return;
+    }
+    const Ladder& ladder = (*m_ladders)[static_cast<size_t>(m_state.ladder)];
+    m_state.climbTime += dt;
+    const float top = ladder.foot.y + ladder.height;
+
+    // Let go: pushed off it, backwards, and falling.
+    if (input.jump || !m_state.alive)
+    {
+        m_state.climbing = false;
+        m_state.ladder = -1;
+        const glm::vec3 push = ladder.out * 2.0f + glm::vec3(0.0f, 0.5f, 0.0f);
+        m_character.SetLinearVelocity(push);
+        m_state.velocity = push;
+        return;
+    }
+
+    // Forward is up, and back down -- unless looking down it, when forward is down, as anybody going down a
+    // ladder the way they came would expect.
+    float direction = std::clamp(input.move.y, -1.0f, 1.0f);
+    if (m_state.pitch < glm::radians(-25.0f))
+    {
+        direction = -direction;
+    }
+    const glm::vec3 hang = ladder.foot + ladder.out * m_config.ladderStandOff;
+    glm::vec3 position = m_state.position;
+    const float settle = std::min(dt * 14.0f, 1.0f);
+    position.x += (hang.x - position.x) * settle;
+    position.z += (hang.z - position.z) * settle;
+    position.y = std::clamp(position.y + direction * m_config.climbSpeed * dt, ladder.foot.y, top);
+
+    // Down at its foot and still going down: off, standing on the floor.
+    if (direction < -0.1f && position.y <= ladder.foot.y + 0.001f)
+    {
+        m_state.climbing = false;
+        m_state.ladder = -1;
+    }
+    // Up at its top and still going up: over, onto the floor it reaches, the way a ledge is climbed.
+    else if (direction > 0.1f && position.y >= top - 0.001f && m_state.climbTime > 0.35f)
+    {
+        m_state.climbing = false;
+        m_state.ladder = -1;
+        m_state.mantling = true;
+        m_state.mantleTime = 0.0f;
+        m_state.mantleDuration = 0.6f;
+        m_state.mantleFrom = position;
+        m_state.mantleTo = ladder.topInFront ? ladder.foot + ladder.out * ladder.topOut : ladder.foot - ladder.out * 0.8f;
+        m_state.mantleTo.y = top + 0.02f;
+        m_state.mantleEdge = glm::vec3(ladder.foot.x, top, ladder.foot.z);
+        return;
+    }
+
+    m_prevPosition = m_state.position;
+    m_character.SetPosition(position);
+    m_character.SetLinearVelocity(glm::vec3(0.0f));
+    m_state.position = position;
+    m_state.velocity = dt > 1.0e-5f ? (position - m_prevPosition) / dt : glm::vec3(0.0f);
+    m_state.grounded = !m_state.climbing;
+    m_state.fallPeakSpeed = 0.0f;
+    m_state.timeSinceGrounded = 0.0f;
+}
+
 void PlayerController::Step(const PlayerInput& input, float dt)
 {
     if (!m_initialized || dt <= 0.0f)
@@ -320,6 +438,8 @@ void PlayerController::Step(const PlayerInput& input, float dt)
         living.yaw = input.yaw;
         living.pitch = input.pitch;
         m_state.mantling = false;
+        m_state.climbing = false;
+        m_state.ladder = -1;
     }
     const PlayerInput& effective = living;
 
@@ -347,6 +467,17 @@ void PlayerController::Step(const PlayerInput& input, float dt)
     {
         StepMantle(dt);
         UpdateStance(effective, dt);
+        return;
+    }
+
+    // On a ladder, or taking hold of one: moved along it, standing, and nothing else.
+    if (m_state.climbing || (m_state.alive && TryMountLadder(effective)))
+    {
+        PlayerInput upright = effective;
+        upright.crouchHeld = false;
+        upright.proneHeld = false;
+        UpdateStance(upright, dt);
+        StepClimb(effective, dt);
         return;
     }
 

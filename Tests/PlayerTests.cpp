@@ -4,12 +4,14 @@
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <glm/gtc/constants.hpp>
 #include <glm/gtc/quaternion.hpp>
 
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
+#include <vector>
 
 using namespace pred;
 
@@ -1192,4 +1194,75 @@ TEST_CASE("You cannot lie down in mid air", "[player][stance]")
 
     player.Shutdown();
     physics.Shutdown();
+}
+
+TEST_CASE("A ladder is climbed by walking into it, stepped off at the top, and gone back down", "[player][ladder]")
+{
+    PlayerHarness harness;
+    // A block 3.6 m high with its face at z = 0.1, and a ladder up that face to its top.
+    harness.AddStaticBox({3.0f, 1.8f, 2.5f}, {0.0f, 1.8f, -2.4f});
+    std::vector<Ladder> ladders(1);
+    ladders[0].foot = {0.0f, 0.0f, 0.1f};
+    ladders[0].out = {0.0f, 0.0f, 1.0f};
+    ladders[0].height = 3.6f;
+    harness.player.SetLadders(&ladders);
+    harness.Spawn({0.0f, 0.05f, 1.3f});
+    harness.Settle();
+
+    // Facing it (yaw 0 looks down -z) and pushing forward: onto it, and up.
+    PlayerInput up = ForwardInput();
+    harness.Simulate(up, 30);
+    REQUIRE(harness.State().climbing);
+    CHECK(harness.State().position.y > 0.3f);
+    CHECK(std::abs(harness.State().position.z - (0.1f + harness.config.ladderStandOff)) < 0.1f);
+    // All the way, and over the top onto the block.
+    harness.Simulate(up, 150);
+    CHECK_FALSE(harness.State().climbing);
+    CHECK_FALSE(harness.State().mantling);
+    CHECK(harness.State().position.y > 3.5f);
+    CHECK(harness.State().position.z < 0.0f);
+    harness.Simulate(PlayerInput{}, 30);
+    CHECK(harness.State().position.y > 3.5f); // standing on it, not fallen back off
+
+    // Walking back out over its top takes hold of it again, and looking down it, forward goes down.
+    PlayerInput back = ForwardInput();
+    back.yaw = glm::pi<float>();
+    harness.Simulate(back, 40);
+    REQUIRE(harness.State().climbing);
+    PlayerInput down = back;
+    down.pitch = glm::radians(-50.0f);
+    harness.Simulate(down, 180);
+    CHECK_FALSE(harness.State().climbing);
+    CHECK(harness.State().position.y < 0.2f);
+
+    // Let go of halfway up by jumping: off it, and back on the floor.
+    harness.Simulate(up, 20);
+    harness.Simulate(up, 40);
+    REQUIRE(harness.State().climbing);
+    PlayerInput jump = up;
+    jump.jump = true;
+    harness.Simulate(jump, 1);
+    CHECK_FALSE(harness.State().climbing);
+    harness.Simulate(PlayerInput{}, 120);
+    CHECK(harness.State().grounded);
+    CHECK(harness.State().position.y < 0.2f);
+    CHECK(harness.State().position.z > 0.5f);
+}
+
+TEST_CASE("Walking past a ladder, or backing into it, does not take hold of it", "[player][ladder]")
+{
+    PlayerHarness harness;
+    harness.AddStaticBox({3.0f, 1.8f, 2.5f}, {0.0f, 1.8f, -2.4f});
+    std::vector<Ladder> ladders(1);
+    ladders[0].foot = {0.0f, 0.0f, 0.1f};
+    ladders[0].out = {0.0f, 0.0f, 1.0f};
+    harness.player.SetLadders(&ladders);
+    harness.Spawn({-2.0f, 0.05f, 0.8f});
+    harness.Settle();
+    // Along the wall, across the ladder's foot (yaw a quarter turn: +x).
+    PlayerInput past = ForwardInput();
+    past.yaw = glm::half_pi<float>();
+    harness.Simulate(past, 90);
+    CHECK_FALSE(harness.State().climbing);
+    CHECK(harness.State().position.x > 1.0f);
 }
