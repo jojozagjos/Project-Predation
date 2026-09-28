@@ -2182,3 +2182,19 @@ with it; sometimes the power is out, sometimes there is no map; the launch leave
 - Not shown, on purpose: the breaker (nobody knows the power is out until they try the terminal),
   doors, and where anything else is. It is the Company's plan of the site, not a scan of it.
 - The objective still gives the bearing to the terminal with map data, and names the key.
+
+## ADR-102: What a site is called, what the intercom says, and deploying from the ship
+
+- **Sites have names** (Game/Mission/SiteNames.h), in the style agreed for title cards: the planet as a
+  catalogue lists it ("KEPLER-741 V") and the site as the Company designates it ("POLAR RESEARCH FACILITY
+  06, NORTH CRYOSPHERE"), made from the site's seed so every machine calls it the same. The words are in
+  Assets/Data/sites.json, which holds only the agreed examples: the lists are the user's to fill.
+- **The intercom** says lines from Assets/Data/intercom.json at the mission's moments -- arriving, with or
+  without a map, finding the power out, the download starting and done, the launch, and the result, and
+  being left behind. Each line is a recording in a sound folder (Assets/Audio/Intercom/...) and its
+  subtitle; one of a moment's lines is picked the same on every machine. None are written: they are to be
+  written and recorded. Both files are read again when they change.
+- **Arriving at a site** puts its name up: the planet, then the site, fading in and out.
+- **The deployment console** stands in the testing area (standing in for the ship). The host uses it to open
+  the briefing for the next site: its name, the objective, whether there is a site map on file, and Deploy,
+  Another site or Not yet. Anybody else is told the host chooses. `briefing [seed]` opens it from the console.

@@ -11,6 +11,8 @@ set(PRED_GAME_SOURCES
     Mission/Mission.cpp
     Mission/MissionProps.h
     Mission/MissionProps.cpp
+    Mission/SiteNames.h
+    Mission/SiteNames.cpp
 
     Player/PlayerTypes.h
     Player/PlayerConfig.cpp

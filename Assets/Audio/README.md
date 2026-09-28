@@ -13,6 +13,7 @@ Sounds are sorted by what makes them, one folder per category and one folder per
       Creature/    everything the creature does with its feet, lungs and throat
       Ambience/    the building itself: loops for each kind of place, and things heard far off
       UI/          the menus
+      Intercom/    the ship's intercom: the recordings Assets/Data/intercom.json names
       Footsteps/   recorded steps, one set per surface (listed in Assets/Data/footsteps.json)
 
 The game knows a sound by its category and name together -- `Creature/growl` is

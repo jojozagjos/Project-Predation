@@ -33,6 +33,8 @@ const char* InteractionKindName(InteractionKind kind)
         return "breaker";
     case InteractionKind::Launch:
         return "launch";
+    case InteractionKind::Deploy:
+        return "deploy";
 
     case InteractionKind::Generic:
     default:

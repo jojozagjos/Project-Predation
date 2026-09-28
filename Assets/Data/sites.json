@@ -1,0 +1,14 @@
+{
+  "_comment": "What sites are called on their title cards, made from each site's seed so every machine calls it the same. The planet: a catalogue, a number between the two given, and which planet of that star ('KEPLER-91 IV'). The site: a qualifier, a kind, a two-figure number and the region it is in ('POLAR RESEARCH FACILITY 06, NORTH CRYOSPHERE'). Only the examples agreed so far are listed: add to the lists.",
+  "planet": {
+    "catalogues": ["KEPLER"],
+    "numbers": [10, 999],
+    "planets": ["I", "II", "III", "IV", "V", "VI"]
+  },
+  "site": {
+    "qualifiers": ["POLAR"],
+    "kinds": ["RESEARCH FACILITY"],
+    "numbers": [1, 24],
+    "regions": ["NORTH CRYOSPHERE"]
+  }
+}

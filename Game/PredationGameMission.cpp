@@ -5,6 +5,9 @@
 #include "Game/PredationGame.h"
 
 #include "Engine/Core/Log.h"
+#include "Engine/Core/Paths.h"
+#include "Engine/Render/Primitives.h"
+#include "Game/World/TestMap.h"
 
 #include <imgui.h>
 
@@ -12,6 +15,7 @@
 #include <glm/gtc/constants.hpp>
 
 #include <bit>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <string>
@@ -141,6 +145,20 @@ void PredationGame::RegisterMissionCommands()
                                 m_lookYaw = std::atan2(-out.x, out.z);
                                 m_lookPitch = std::atan2(height - 1.6f, 1.1f);
                             });
+    console.RegisterCommand("briefing", "Stand at the deployment console and open its briefing: briefing [site seed]",
+                            [this](const std::vector<std::string>& args)
+                            {
+                                const Transform* console = m_scene.GetTransform(m_deployConsole);
+                                if (console == nullptr || !IsAuthority())
+                                {
+                                    return;
+                                }
+                                const glm::vec3 front = console->rotation * glm::vec3(0.0f, 0.0f, -1.0f);
+                                m_player.Teleport(glm::vec3(console->position.x, 0.1f, console->position.z) + front * 1.2f);
+                                m_lookYaw = std::atan2(-front.x, front.z);
+                                const int seed = args.size() >= 2 ? std::atoi(args[1].c_str()) : 0;
+                                OpenBriefing(static_cast<uint16_t>(seed > 0 ? seed : 1 + std::chrono::steady_clock::now().time_since_epoch().count() % 65535));
+                            });
     console.RegisterCommand("mission_skip", "As the host, finish the download at once", [this](const std::vector<std::string>&)
                             {
                                 if (IsAuthority() && m_mission.stage == Stage::Downloading)
@@ -166,6 +184,8 @@ void PredationGame::ResetMission()
     m_missionHumIn = kHumEvery;
     m_missionOverFor = 0.0f;
     m_missionFoundNoPower = false;
+    m_missionSeen = m_mission;
+    m_foundNoPowerSeen = false;
     ShowMission();
     if (m_missionPlan.Valid())
     {
@@ -319,6 +339,15 @@ bool PredationGame::PerformMissionInteraction(InteractionKind kind, int index, u
         break;
     }
 
+    case InteractionKind::Deploy:
+        // Choosing where everybody goes is the host's, and it happens on the host's screen.
+        if (player != LocalPlayerId())
+        {
+            return false;
+        }
+        OpenBriefing(static_cast<uint16_t>(1 + std::chrono::steady_clock::now().time_since_epoch().count() % 65535));
+        return true;
+
     case InteractionKind::Launch:
         if (!MissionRules::ToggleLaunch(m_mission))
         {
@@ -341,6 +370,7 @@ bool PredationGame::PerformMissionInteraction(InteractionKind kind, int index, u
 
 void PredationGame::UpdateMission(float dt)
 {
+    UpdateArrivalAndIntercom(dt);
     ShowMission();
     if (m_mission.stage == Stage::Over)
     {
@@ -649,6 +679,292 @@ void PredationGame::DrawMissionHud()
         {
             ImGui::TextColored(warning, "The shuttle leaves in %d. Anybody not aboard is left behind.",
                                static_cast<int>(std::ceil(m_mission.launchIn)));
+        }
+    }
+    ImGui::End();
+}
+
+
+// --- Arriving, the intercom, and deploying -------------------------------------------------------
+
+namespace
+{
+
+// The deployment console in the testing area: a little in front of where everybody arrives there, facing them.
+constexpr glm::vec3 kDeployConsoleAt{2.4f, 0.0f, 13.4f};
+constexpr glm::vec3 kDeployConsoleSize{1.2f, 1.05f, 0.6f};
+
+// The title card: in after a moment, up for a while, and out slowly.
+constexpr float kCardIn = 1.0f;
+constexpr float kCardFade = 1.2f;
+constexpr float kCardHold = 5.0f;
+
+} // namespace
+
+void PredationGame::LoadMissionData()
+{
+    std::string error;
+    const std::filesystem::path sites = Paths::AssetsRoot() / "Data" / "sites.json";
+    if (!m_siteNames.LoadFromFile(sites, &error))
+    {
+        PRED_LOG_WARN(Gameplay, "Site names: {} -- using the examples built in", error);
+    }
+    const std::filesystem::path intercom = Paths::AssetsRoot() / "Data" / "intercom.json";
+    if (!m_intercom.LoadFromFile(intercom, &error))
+    {
+        PRED_LOG_WARN(Gameplay, "Intercom lines: {}", error);
+    }
+    PRED_LOG_INFO(Gameplay, "The intercom has {} line(s)", m_intercom.Count());
+    // Both are written by hand while the game is running, so both are read again when they change.
+    m_app->GetFileWatcher().Watch(sites, [this](const std::filesystem::path& path) { m_siteNames.LoadFromFile(path); });
+    m_app->GetFileWatcher().Watch(intercom, [this](const std::filesystem::path& path)
+                                  {
+                                      m_intercom.LoadFromFile(path);
+                                      PRED_LOG_INFO(Gameplay, "The intercom has {} line(s)", m_intercom.Count());
+                                  });
+}
+
+void PredationGame::BuildDeployConsole()
+{
+    MeshLibrary& meshes = m_app->GetMeshes();
+    const glm::vec3 spawn{0.0f, 0.0f, TestMapSpec::kSpawnZ};
+    const glm::vec2 toward = glm::normalize(glm::vec2(spawn.x - kDeployConsoleAt.x, spawn.z - kDeployConsoleAt.z));
+    // Turned as a thing is, so that its front, (-sin, -cos), is towards where everybody arrives.
+    const float yaw = std::atan2(-toward.x, -toward.y);
+    Transform transform;
+    transform.position = kDeployConsoleAt + glm::vec3(0.0f, kDeployConsoleSize.y * 0.5f, 0.0f);
+    transform.rotation = glm::angleAxis(yaw, glm::vec3(0.0f, 1.0f, 0.0f));
+    m_deployConsole = m_scene.CreateMeshEntity("deploy_console", transform, meshes.Upload(Primitives::Box(kDeployConsoleSize), "deploy_console"),
+                                               Material::Metal({0.22f, 0.23f, 0.25f}, 0.5f));
+    m_deployBody = m_app->GetPhysics().CreateBox(kDeployConsoleSize * 0.5f, transform, BodyMotion::Static);
+    Transform screen = transform;
+    screen.position += transform.rotation * glm::vec3(0.0f, kDeployConsoleSize.y * 0.5f + 0.006f, -0.03f);
+    Material glass = Material::Diffuse({0.03f, 0.035f, 0.04f}, 0.25f);
+    glass.emissive = {0.12f, 0.25f, 0.4f};
+    m_deployScreen = m_scene.CreateMeshEntity("deploy_console_screen", screen,
+                                              meshes.Upload(Primitives::Box({0.9f, 0.01f, 0.4f}), "deploy_console_screen"), glass);
+    Interactable interactable;
+    interactable.entity = m_deployConsole;
+    interactable.kind = InteractionKind::Deploy;
+    interactable.verb = "Use";
+    interactable.name = "deployment console";
+    interactable.focusOffset = transform.rotation * glm::vec3(0.0f, kDeployConsoleSize.y * 0.5f, -0.1f);
+    interactable.range = 2.2f;
+    m_interactions.Register(interactable);
+}
+
+void PredationGame::OpenBriefing(uint16_t seed)
+{
+    m_nextSite = seed == 0 ? 1 : seed;
+    m_nextTitle = m_siteNames.For(m_nextSite);
+    m_nextMapGiven = MissionPlan::Generate(SitePlan::Generate(m_nextSite), m_nextSite).mapGiven;
+    m_briefingOpen = true;
+    m_wantMouseCaptured = false;
+    PlayNamed("UI/click", m_renderEye, 0.5f, 1.0f, false);
+}
+
+void PredationGame::Say(const std::string& moment, float delay)
+{
+    m_intercomQueue.emplace_back(moment, delay);
+}
+
+void PredationGame::UpdateArrivalAndIntercom(float dt)
+{
+    // Arriving: the site the moment this player is on it, whoever brought them.
+    const bool atSite = m_screen == Screen::Playing && m_mission.stage != Stage::None && m_mission.stage != Stage::Over && AtSite();
+    if (atSite && !m_wasAtSite)
+    {
+        m_titleCardFor = 0.0f;
+        Say(m_missionPlan.mapGiven ? "arrival" : "arrival_no_map", kCardIn + kCardFade + 1.0f);
+    }
+    m_wasAtSite = atSite;
+    if (m_titleCardFor >= 0.0f)
+    {
+        m_titleCardFor += dt;
+        if (m_titleCardFor > kCardIn + kCardFade * 2.0f + kCardHold)
+        {
+            m_titleCardFor = -1.0f;
+        }
+    }
+
+    // What has just happened, which the intercom has something to say about. Every machine sees the same changes,
+    // so every machine says the same things.
+    const MissionState& now = m_mission;
+    const MissionState& was = m_missionSeen;
+    if (now.stage != was.stage || now.Launching() != was.Launching())
+    {
+        if (was.stage == Stage::Find && now.stage == Stage::Downloading)
+        {
+            Say("download_started");
+        }
+        if (was.stage == Stage::Downloading && now.stage == Stage::Carry)
+        {
+            Say("download_done", 1.0f);
+        }
+        if (!was.Launching() && now.Launching())
+        {
+            Say("launch", 0.5f);
+        }
+        if (was.stage != Stage::Over && now.stage == Stage::Over)
+        {
+            const bool mine = (now.aboard >> LocalPlayerId()) & 1u;
+            Say(now.recovered ? "recovered" : "not_recovered", 1.5f);
+            if (!mine)
+            {
+                Say("left_behind");
+            }
+        }
+    }
+    if (m_missionFoundNoPower && !m_foundNoPowerSeen)
+    {
+        Say("power_out", 0.5f);
+    }
+    m_foundNoPowerSeen = m_missionFoundNoPower;
+    m_missionSeen = m_mission;
+
+    // One line at a time: the next waits for the last to finish.
+    m_subtitleLeft = std::max(m_subtitleLeft - dt, 0.0f);
+    for (auto& [moment, delay] : m_intercomQueue)
+    {
+        delay -= dt;
+    }
+    if (m_subtitleLeft <= 0.0f && !m_intercomQueue.empty() && m_intercomQueue.front().second <= 0.0f)
+    {
+        const std::string moment = m_intercomQueue.front().first;
+        m_intercomQueue.erase(m_intercomQueue.begin());
+        const IntercomLine* line = m_intercom.Pick(moment, m_missionPlan.seed);
+        if (line == nullptr && moment == "arrival_no_map")
+        {
+            line = m_intercom.Pick("arrival", m_missionPlan.seed);
+        }
+        if (line != nullptr)
+        {
+            if (!line->sound.empty())
+            {
+                PlayNamed(line->sound, m_renderEye, 1.0f, 1.0f, false);
+            }
+            m_subtitle = line->subtitle;
+            m_subtitleLeft = IntercomLines::SecondsFor(*line);
+        }
+    }
+    if (m_screen != Screen::Playing)
+    {
+        m_intercomQueue.clear();
+        m_subtitleLeft = 0.0f;
+    }
+}
+
+void PredationGame::DrawTitleCard()
+{
+    if (m_titleCardFor < 0.0f || m_screen != Screen::Playing)
+    {
+        return;
+    }
+    const float t = m_titleCardFor - kCardIn;
+    const float alpha = t < 0.0f ? 0.0f : t < kCardFade ? t / kCardFade : t < kCardFade + kCardHold ? 1.0f : 1.0f - (t - kCardFade - kCardHold) / kCardFade;
+    if (alpha <= 0.0f)
+    {
+        return;
+    }
+    const SiteTitle title = m_siteNames.For(m_facility.Seed());
+    const ImGuiViewport* viewport = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos({viewport->Pos.x + viewport->Size.x * 0.5f, viewport->Pos.y + viewport->Size.y * 0.62f}, ImGuiCond_Always, {0.5f, 0.5f});
+    // A faint band behind it, so it reads over whatever the site looks like.
+    ImGui::SetNextWindowBgAlpha(0.35f * alpha);
+    constexpr ImGuiWindowFlags kFlags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings |
+                                        ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoInputs;
+    if (ImGui::Begin("##TitleCard", nullptr, kFlags))
+    {
+        const auto centred = [&](const std::string& text, float scale, const ImVec4& colour)
+        {
+            ImGui::SetWindowFontScale(scale);
+            const float width = ImGui::CalcTextSize(text.c_str()).x;
+            ImGui::SetCursorPosX(std::max((ImGui::GetWindowSize().x - width) * 0.5f, 0.0f));
+            ImGui::TextColored(colour, "%s", text.c_str());
+        };
+        centred(title.planet, 1.1f, {0.62f, 0.66f, 0.7f, alpha});
+        centred(title.site, 1.7f, {0.9f, 0.92f, 0.94f, alpha});
+        ImGui::SetWindowFontScale(1.0f);
+    }
+    ImGui::End();
+}
+
+void PredationGame::DrawSubtitle()
+{
+    if (m_subtitleLeft <= 0.0f || m_subtitle.empty() || m_screen != Screen::Playing)
+    {
+        return;
+    }
+    const ImGuiViewport* viewport = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos({viewport->Pos.x + viewport->Size.x * 0.5f, viewport->Pos.y + viewport->Size.y - 150.0f}, ImGuiCond_Always, {0.5f, 1.0f});
+    ImGui::SetNextWindowBgAlpha(0.45f);
+    ImGui::SetNextWindowSizeConstraints({0.0f, 0.0f}, {viewport->Size.x * 0.6f, viewport->Size.y});
+    constexpr ImGuiWindowFlags kFlags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings |
+                                        ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoInputs;
+    if (ImGui::Begin("##Subtitle", nullptr, kFlags))
+    {
+        ImGui::PushTextWrapPos(viewport->Size.x * 0.58f);
+        ImGui::TextColored({0.88f, 0.9f, 0.92f, std::min(m_subtitleLeft * 2.0f, 1.0f)}, "%s", m_subtitle.c_str());
+        ImGui::PopTextWrapPos();
+    }
+    ImGui::End();
+}
+
+void PredationGame::DrawBriefing()
+{
+    if (!m_briefingOpen)
+    {
+        return;
+    }
+    // Walked away from the console, or not in a game any more: closed.
+    const Transform* console = m_scene.GetTransform(m_deployConsole);
+    if (m_screen != Screen::Playing || !IsAuthority() || !m_player.State().alive || console == nullptr ||
+        glm::distance(console->position, m_player.State().position) > 4.0f)
+    {
+        m_briefingOpen = false;
+        m_wantMouseCaptured = m_screen == Screen::Playing;
+        return;
+    }
+    const ImGuiViewport* viewport = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos({viewport->Pos.x + viewport->Size.x * 0.5f, viewport->Pos.y + viewport->Size.y * 0.45f}, ImGuiCond_Always, {0.5f, 0.5f});
+    ImGui::SetNextWindowBgAlpha(0.88f);
+    constexpr ImGuiWindowFlags kFlags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings |
+                                        ImGuiWindowFlags_NoMove;
+    if (ImGui::Begin("##Briefing", nullptr, kFlags))
+    {
+        ImGui::TextColored({0.62f, 0.66f, 0.7f, 1.0f}, "NEXT DEPLOYMENT");
+        ImGui::Spacing();
+        ImGui::TextDisabled("%s", m_nextTitle.planet.c_str());
+        ImGui::SetWindowFontScale(1.3f);
+        ImGui::TextColored({0.9f, 0.92f, 0.94f, 1.0f}, "%s", m_nextTitle.site.c_str());
+        ImGui::SetWindowFontScale(1.0f);
+        ImGui::Spacing();
+        ImGui::TextColored({0.86f, 0.88f, 0.9f, 1.0f}, "Objective: download the data from a terminal on the site,");
+        ImGui::TextColored({0.86f, 0.88f, 0.9f, 1.0f}, "and bring the drive back aboard the shuttle.");
+        ImGui::TextDisabled("Site map: %s", m_nextMapGiven ? "on file" : "none on file");
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+        if (ImGui::Button("Deploy", {120.0f, 0.0f}))
+        {
+            m_briefingOpen = false;
+            m_wantMouseCaptured = true;
+            if (m_nextSite != m_facility.Seed())
+            {
+                ChangeFacility(m_nextSite);
+            }
+            GoToMap(MapChoice::Facility);
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Another site", {120.0f, 0.0f}))
+        {
+            OpenBriefing(static_cast<uint16_t>(1 + (m_nextSite * 40503u + 7919u) % 65535u));
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Not yet", {120.0f, 0.0f}))
+        {
+            m_briefingOpen = false;
+            m_wantMouseCaptured = true;
         }
     }
     ImGui::End();

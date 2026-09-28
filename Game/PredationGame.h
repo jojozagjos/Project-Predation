@@ -25,6 +25,7 @@
 #include "Game/Player/PlayerController.h"
 #include "Game/Mission/Mission.h"
 #include "Game/Mission/MissionProps.h"
+#include "Game/Mission/SiteNames.h"
 #include "Game/Player/SupportDrone.h"
 #include "Game/Weapons/BulletHole.h"
 #include "Game/Weapons/ShotResolver.h"
@@ -739,6 +740,17 @@ private:
     void DrawMissionHud();
     // The site from above, when the briefing came with one: the buildings, the shuttle, everybody, and the data.
     void DrawSiteMap();
+    // Arriving at the site (the title card, the intercom's first line), and the intercom's lines as the mission goes.
+    void UpdateArrivalAndIntercom(float dt);
+    // Queues what the intercom says for a moment (IntercomLines::Moments), after `delay` seconds.
+    void Say(const std::string& moment, float delay = 0.0f);
+    void DrawTitleCard();
+    void DrawSubtitle();
+    // The deployment console in the testing area, and the briefing it opens.
+    void LoadMissionData();
+    void BuildDeployConsole();
+    void OpenBriefing(uint16_t seed);
+    void DrawBriefing();
     // Whether this player is carrying the drive, or `player` is by the host's reckoning.
     bool CarriesDrive(uint8_t player) const;
     float TorchIntensity() const;
@@ -1248,6 +1260,30 @@ private:
     bool m_missionFoundNoPower = false;
     // The site map is open (the map key).
     bool m_mapOpen = false;
+    // What sites are called, and what the ship's intercom says (Assets/Data/sites.json, intercom.json).
+    SiteNames m_siteNames;
+    IntercomLines m_intercom;
+    // The title card: how long since arriving at the site, below zero when it is not up; and whether this player was
+    // at the site last tick, which is what arriving is noticed by.
+    float m_titleCardFor = -1.0f;
+    bool m_wasAtSite = false;
+    // The line the intercom is saying: its subtitle and how long it stays; and the moments waiting to be said, with
+    // how long until each is.
+    std::string m_subtitle;
+    float m_subtitleLeft = 0.0f;
+    std::vector<std::pair<std::string, float>> m_intercomQueue;
+    // How the mission stood last tick, for noticing what has just happened.
+    MissionState m_missionSeen;
+    bool m_foundNoPowerSeen = false;
+    // The deployment console in the testing area, standing in for the ship's; and the briefing it opens (the host's):
+    // the site it would send everybody to.
+    Entity m_deployConsole;
+    Entity m_deployScreen;
+    BodyHandle m_deployBody;
+    bool m_briefingOpen = false;
+    uint16_t m_nextSite = 0;
+    SiteTitle m_nextTitle;
+    bool m_nextMapGiven = true;
     ItemId m_driveItem = kInvalidItem;
     // Where the players are, and which way they face arriving there.
     MapChoice m_map = MapChoice::TestMap;

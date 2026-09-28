@@ -553,6 +553,10 @@ bool PredationGame::OnInit(Application& app)
     m_itemIcons.Build(m_items, app.GetMeshes(), app.GetRenderer(), &m_weaponData, &app.GetTextures());
     m_world.SetTextures(app.GetTextures());
     m_world.Build(m_scene, app.GetMeshes(), app.GetPhysics(), m_interactions, m_items, &m_weaponData);
+    // The ship's deployment console, standing in the testing area until there is a ship -- before the walkable surface is
+    // worked out, which has to go round it -- and what sites are called and what the intercom says.
+    BuildDeployConsole();
+    LoadMissionData();
     app.GetPhysics().OptimizeBroadPhase();
     // The walkable surface the creature moves over, worked out from the level's solid geometry.
     // Once, here: the level does not change shape, and building it takes a noticeable fraction of
@@ -1944,6 +1948,7 @@ bool PredationGame::PerformInteraction(InteractionKind kind, int index, uint8_t 
     case InteractionKind::Terminal:
     case InteractionKind::Breaker:
     case InteractionKind::Launch:
+    case InteractionKind::Deploy:
         return PerformMissionInteraction(kind, index, player);
 
     case InteractionKind::Generic:
@@ -1963,7 +1968,7 @@ void PredationGame::ServeClientRequests()
     {
         // Every kind there is. This stopped at the ammunition crate, which left the cocoon -- added after it --
         // out: a guest could never cut anybody free.
-        if (request.kind > static_cast<uint8_t>(InteractionKind::Launch))
+        if (request.kind > static_cast<uint8_t>(InteractionKind::Deploy))
         {
             continue;
         }
@@ -8436,6 +8441,11 @@ void PredationGame::TryInteract()
     }
     // A terminal with no power does nothing, and there is nothing to ask the host: it clicks, and the objective says
     // what to do about it.
+    if (focus.kind == InteractionKind::Deploy && !IsAuthority())
+    {
+        m_app->GetConsole().Print("The host chooses where everybody goes.");
+        return;
+    }
     if (focus.kind == InteractionKind::Terminal && !m_mission.powered)
     {
         m_missionFoundNoPower = true;
@@ -9135,7 +9145,12 @@ void PredationGame::OnUpdate(double dt, double alpha)
             // Settings is a page inside the pause menu, so Escape there goes back one step rather
             // than all the way out. Escape should undo the last thing you opened, and dropping
             // straight into the game from three levels in is a surprise every time.
-            if (m_paused && m_settingsOpen)
+            if (m_briefingOpen)
+            {
+                m_briefingOpen = false;
+                m_wantMouseCaptured = true;
+            }
+            else if (m_paused && m_settingsOpen)
             {
                 m_settingsOpen = false;
             }
@@ -10637,7 +10652,7 @@ void PredationGame::DrawHud()
     // Interaction prompt, just below the reticle.
     const InteractionSystem::Focus& focus = m_interactions.CurrentFocus();
     // Nothing in the middle of the view from inside a locker: it is the slits you are looking at.
-    const std::string prompt = m_hidingSpot >= 0 ? std::string() : focus.prompt;
+    const std::string prompt = m_hidingSpot >= 0 || m_briefingOpen ? std::string() : focus.prompt;
     if (!prompt.empty())
     {
         // On the thing itself: the door, the locker, the crate. A prompt under the crosshair says what
@@ -10783,6 +10798,9 @@ void PredationGame::DrawHud()
     DrawDroneHud();
     DrawSiteMap();
     DrawMissionHud();
+    DrawTitleCard();
+    DrawSubtitle();
+    DrawBriefing();
     DrawPlayerList();
 
     // Whose eyes these are, and how to move to somebody else's. Without it a dead player is looking

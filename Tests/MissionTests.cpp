@@ -5,6 +5,7 @@
 #include "Game/Interaction/InteractionSystem.h"
 #include "Game/Mission/Mission.h"
 #include "Game/Mission/MissionProps.h"
+#include "Game/Mission/SiteNames.h"
 #include "Game/Net/Protocol.h"
 #include "Game/World/FacilityMap.h"
 #include "Game/World/Shuttle.h"
@@ -16,6 +17,8 @@
 #include <glm/geometric.hpp>
 
 #include <cmath>
+#include <filesystem>
+#include <fstream>
 
 using namespace pred;
 
@@ -296,4 +299,66 @@ TEST_CASE("What the mission puts in the world -- the terminal, the panels, the c
         props.Clear(scene, physics, interactions);
         site.Clear(scene, physics, nullptr);
     }
+}
+
+TEST_CASE("A site is called the same on every machine, in the style of the agreed examples", "[mission]")
+{
+    SiteNames names; // the examples built in
+    const SiteTitle a = names.For(91);
+    const SiteTitle b = names.For(91);
+    CHECK(a.planet == b.planet);
+    CHECK(a.site == b.site);
+    CHECK(a.planet.rfind("KEPLER-", 0) == 0);
+    CHECK(a.site.rfind("POLAR RESEARCH FACILITY ", 0) == 0);
+    CHECK(a.site.find(", NORTH CRYOSPHERE") != std::string::npos);
+    // Different sites, different numbers, mostly.
+    int different = 0;
+    for (uint32_t seed = 1; seed <= 20; ++seed)
+    {
+        different += names.For(seed).planet != a.planet ? 1 : 0;
+    }
+    CHECK(different >= 15);
+    // And the file the game reads is readable.
+    SiteNames fromFile;
+    std::string error;
+    CHECK(fromFile.LoadFromFile(std::filesystem::path(PRED_SOURCE_DIR) / "Assets" / "Data" / "sites.json", &error));
+    INFO(error);
+    CHECK_FALSE(fromFile.catalogues.empty());
+    CHECK_FALSE(fromFile.kinds.empty());
+}
+
+TEST_CASE("The intercom says one of the lines written for a moment, the same one on every machine, and nothing without any", "[mission]")
+{
+    const std::filesystem::path file = std::filesystem::temp_directory_path() / "predation_intercom_test.json";
+    {
+        std::ofstream out(file);
+        out << R"({"lines": {"arrival": [{"sound": "Intercom/a", "subtitle": "One."}, {"sound": "Intercom/b", "subtitle": "Two.", "seconds": 4}],
+                              "launch": []}})";
+    }
+    IntercomLines lines;
+    REQUIRE(lines.LoadFromFile(file));
+    CHECK(lines.Count() == 2);
+    const IntercomLine* first = lines.Pick("arrival", 7);
+    REQUIRE(first != nullptr);
+    CHECK(lines.Pick("arrival", 7) == first);
+    CHECK(lines.Pick("launch", 7) == nullptr);
+    CHECK(lines.Pick("nothing", 7) == nullptr);
+    // Across missions, both get said.
+    bool one = false;
+    bool two = false;
+    for (uint32_t seed = 0; seed < 40; ++seed)
+    {
+        const IntercomLine* line = lines.Pick("arrival", seed);
+        one = one || line->subtitle == "One.";
+        two = two || line->subtitle == "Two.";
+    }
+    CHECK(one);
+    CHECK(two);
+    CHECK(IntercomLines::SecondsFor(*lines.Pick("arrival", 0)) >= 2.5f);
+    std::filesystem::remove(file);
+
+    // The file the game reads is readable, and knows every moment.
+    IntercomLines game;
+    CHECK(game.LoadFromFile(std::filesystem::path(PRED_SOURCE_DIR) / "Assets" / "Data" / "intercom.json"));
+    CHECK(IntercomLines::Moments().size() == 9);
 }
