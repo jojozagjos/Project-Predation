@@ -1,0 +1,498 @@
+{
+  "clips": [
+    {
+      "duration": 0.1,
+      "loop": false,
+      "name": "doors_closed",
+      "tracks": [
+        {
+          "keys": [
+            {
+              "ease": "smooth",
+              "position": [0.0, 0.0, 0.0],
+              "rotation": [0.0, 0.0, 0.0],
+              "time": 0.0,
+              "visible": 1.0
+            },
+            {
+              "ease": "smooth",
+              "position": [0.0, 0.0, 0.0],
+              "rotation": [0.0, 0.0, 0.0],
+              "time": 0.1,
+              "visible": 1.0
+            }
+          ],
+          "part": "fx_hinge_left"
+        },
+        {
+          "keys": [
+            {
+              "ease": "smooth",
+              "position": [0.0, 0.0, 0.0],
+              "rotation": [0.0, 0.0, 0.0],
+              "time": 0.0,
+              "visible": 1.0
+            },
+            {
+              "ease": "smooth",
+              "position": [0.0, 0.0, 0.0],
+              "rotation": [0.0, 0.0, 0.0],
+              "time": 0.1,
+              "visible": 1.0
+            }
+          ],
+          "part": "fx_hinge_right"
+        }
+      ]
+    },
+    {
+      "duration": 3.5,
+      "loop": false,
+      "name": "doors_opening",
+      "tracks": [
+        {
+          "keys": [
+            {
+              "ease": "smooth",
+              "position": [0.0, 0.0, 0.0],
+              "rotation": [0.0, 0.0, 0.0],
+              "time": 0.0,
+              "visible": 1.0
+            },
+            {
+              "ease": "smooth",
+              "position": [0.0, 0.0, 0.0],
+              "rotation": [0.0, 0.0, -100.0],
+              "time": 3.5,
+              "visible": 1.0
+            }
+          ],
+          "part": "fx_hinge_left"
+        },
+        {
+          "keys": [
+            {
+              "ease": "smooth",
+              "position": [0.0, 0.0, 0.0],
+              "rotation": [0.0, 0.0, 0.0],
+              "time": 0.0,
+              "visible": 1.0
+            },
+            {
+              "ease": "smooth",
+              "position": [0.0, 0.0, 0.0],
+              "rotation": [0.0, 0.0, 100.0],
+              "time": 3.5,
+              "visible": 1.0
+            }
+          ],
+          "part": "fx_hinge_right"
+        }
+      ]
+    },
+    {
+      "duration": 0.1,
+      "loop": false,
+      "name": "doors_open",
+      "tracks": [
+        {
+          "keys": [
+            {
+              "ease": "smooth",
+              "position": [0.0, 0.0, 0.0],
+              "rotation": [0.0, 0.0, -100.0],
+              "time": 0.0,
+              "visible": 1.0
+            },
+            {
+              "ease": "smooth",
+              "position": [0.0, 0.0, 0.0],
+              "rotation": [0.0, 0.0, -100.0],
+              "time": 0.1,
+              "visible": 1.0
+            }
+          ],
+          "part": "fx_hinge_left"
+        },
+        {
+          "keys": [
+            {
+              "ease": "smooth",
+              "position": [0.0, 0.0, 0.0],
+              "rotation": [0.0, 0.0, 100.0],
+              "time": 0.0,
+              "visible": 1.0
+            },
+            {
+              "ease": "smooth",
+              "position": [0.0, 0.0, 0.0],
+              "rotation": [0.0, 0.0, 100.0],
+              "time": 0.1,
+              "visible": 1.0
+            }
+          ],
+          "part": "fx_hinge_right"
+        }
+      ]
+    },
+    {
+      "duration": 3.5,
+      "loop": false,
+      "name": "doors_closing",
+      "tracks": [
+        {
+          "keys": [
+            {
+              "ease": "smooth",
+              "position": [0.0, 0.0, 0.0],
+              "rotation": [0.0, 0.0, -100.0],
+              "time": 0.0,
+              "visible": 1.0
+            },
+            {
+              "ease": "smooth",
+              "position": [0.0, 0.0, 0.0],
+              "rotation": [0.0, 0.0, 0.0],
+              "time": 3.5,
+              "visible": 1.0
+            }
+          ],
+          "part": "fx_hinge_left"
+        },
+        {
+          "keys": [
+            {
+              "ease": "smooth",
+              "position": [0.0, 0.0, 0.0],
+              "rotation": [0.0, 0.0, 100.0],
+              "time": 0.0,
+              "visible": 1.0
+            },
+            {
+              "ease": "smooth",
+              "position": [0.0, 0.0, 0.0],
+              "rotation": [0.0, 0.0, 0.0],
+              "time": 3.5,
+              "visible": 1.0
+            }
+          ],
+          "part": "fx_hinge_right"
+        }
+      ]
+    }
+  ],
+  "name": "hangar_doors",
+  "parts": [
+    {
+      "color": [0.24, 0.25, 0.26],
+      "emissive": 0.0,
+      "metallic": 0.0,
+      "name": "fx_hinge_left",
+      "position": [-4.5, -0.15, 0.0],
+      "rotation": [0.0, 0.0, 0.0],
+      "roughness": 0.75,
+      "shape": "box",
+      "size": [0.01, 0.01, 0.01],
+      "visible": true
+    },
+    {
+      "color": [0.24, 0.25, 0.26],
+      "emissive": 0.0,
+      "metallic": 0.5,
+      "name": "door_left",
+      "parent": "fx_hinge_left",
+      "position": [-2.25, -0.15, 0.0],
+      "rotation": [0.0, 0.0, 0.0],
+      "roughness": 0.6,
+      "shape": "box",
+      "size": [4.48, 0.3, 14.0],
+      "visible": true
+    },
+    {
+      "color": [0.72, 0.55, 0.1],
+      "emissive": 0.0,
+      "metallic": 0.0,
+      "name": "fx_stripe_left_0",
+      "parent": "fx_hinge_left",
+      "position": [-0.305, 0.002, -6.3],
+      "rotation": [0.0, 0.0, 0.0],
+      "roughness": 0.7,
+      "shape": "box",
+      "size": [0.59, 0.004, 1.4],
+      "visible": true
+    },
+    {
+      "color": [0.06, 0.06, 0.06],
+      "emissive": 0.0,
+      "metallic": 0.0,
+      "name": "fx_stripe_left_1",
+      "parent": "fx_hinge_left",
+      "position": [-0.305, 0.002, -4.9],
+      "rotation": [0.0, 0.0, 0.0],
+      "roughness": 0.7,
+      "shape": "box",
+      "size": [0.59, 0.004, 1.4],
+      "visible": true
+    },
+    {
+      "color": [0.72, 0.55, 0.1],
+      "emissive": 0.0,
+      "metallic": 0.0,
+      "name": "fx_stripe_left_2",
+      "parent": "fx_hinge_left",
+      "position": [-0.305, 0.002, -3.5],
+      "rotation": [0.0, 0.0, 0.0],
+      "roughness": 0.7,
+      "shape": "box",
+      "size": [0.59, 0.004, 1.4],
+      "visible": true
+    },
+    {
+      "color": [0.06, 0.06, 0.06],
+      "emissive": 0.0,
+      "metallic": 0.0,
+      "name": "fx_stripe_left_3",
+      "parent": "fx_hinge_left",
+      "position": [-0.305, 0.002, -2.1],
+      "rotation": [0.0, 0.0, 0.0],
+      "roughness": 0.7,
+      "shape": "box",
+      "size": [0.59, 0.004, 1.4],
+      "visible": true
+    },
+    {
+      "color": [0.72, 0.55, 0.1],
+      "emissive": 0.0,
+      "metallic": 0.0,
+      "name": "fx_stripe_left_4",
+      "parent": "fx_hinge_left",
+      "position": [-0.305, 0.002, -0.7],
+      "rotation": [0.0, 0.0, 0.0],
+      "roughness": 0.7,
+      "shape": "box",
+      "size": [0.59, 0.004, 1.4],
+      "visible": true
+    },
+    {
+      "color": [0.06, 0.06, 0.06],
+      "emissive": 0.0,
+      "metallic": 0.0,
+      "name": "fx_stripe_left_5",
+      "parent": "fx_hinge_left",
+      "position": [-0.305, 0.002, 0.7],
+      "rotation": [0.0, 0.0, 0.0],
+      "roughness": 0.7,
+      "shape": "box",
+      "size": [0.59, 0.004, 1.4],
+      "visible": true
+    },
+    {
+      "color": [0.72, 0.55, 0.1],
+      "emissive": 0.0,
+      "metallic": 0.0,
+      "name": "fx_stripe_left_6",
+      "parent": "fx_hinge_left",
+      "position": [-0.305, 0.002, 2.1],
+      "rotation": [0.0, 0.0, 0.0],
+      "roughness": 0.7,
+      "shape": "box",
+      "size": [0.59, 0.004, 1.4],
+      "visible": true
+    },
+    {
+      "color": [0.06, 0.06, 0.06],
+      "emissive": 0.0,
+      "metallic": 0.0,
+      "name": "fx_stripe_left_7",
+      "parent": "fx_hinge_left",
+      "position": [-0.305, 0.002, 3.5],
+      "rotation": [0.0, 0.0, 0.0],
+      "roughness": 0.7,
+      "shape": "box",
+      "size": [0.59, 0.004, 1.4],
+      "visible": true
+    },
+    {
+      "color": [0.72, 0.55, 0.1],
+      "emissive": 0.0,
+      "metallic": 0.0,
+      "name": "fx_stripe_left_8",
+      "parent": "fx_hinge_left",
+      "position": [-0.305, 0.002, 4.9],
+      "rotation": [0.0, 0.0, 0.0],
+      "roughness": 0.7,
+      "shape": "box",
+      "size": [0.59, 0.004, 1.4],
+      "visible": true
+    },
+    {
+      "color": [0.06, 0.06, 0.06],
+      "emissive": 0.0,
+      "metallic": 0.0,
+      "name": "fx_stripe_left_9",
+      "parent": "fx_hinge_left",
+      "position": [-0.305, 0.002, 6.3],
+      "rotation": [0.0, 0.0, 0.0],
+      "roughness": 0.7,
+      "shape": "box",
+      "size": [0.59, 0.004, 1.4],
+      "visible": true
+    },
+    {
+      "color": [0.24, 0.25, 0.26],
+      "emissive": 0.0,
+      "metallic": 0.0,
+      "name": "fx_hinge_right",
+      "position": [4.5, -0.15, 0.0],
+      "rotation": [0.0, 0.0, 0.0],
+      "roughness": 0.75,
+      "shape": "box",
+      "size": [0.01, 0.01, 0.01],
+      "visible": true
+    },
+    {
+      "color": [0.24, 0.25, 0.26],
+      "emissive": 0.0,
+      "metallic": 0.5,
+      "name": "door_right",
+      "parent": "fx_hinge_right",
+      "position": [2.25, -0.15, 0.0],
+      "rotation": [0.0, 0.0, 0.0],
+      "roughness": 0.6,
+      "shape": "box",
+      "size": [4.48, 0.3, 14.0],
+      "visible": true
+    },
+    {
+      "color": [0.72, 0.55, 0.1],
+      "emissive": 0.0,
+      "metallic": 0.0,
+      "name": "fx_stripe_right_0",
+      "parent": "fx_hinge_right",
+      "position": [0.305, 0.002, -6.3],
+      "rotation": [0.0, 0.0, 0.0],
+      "roughness": 0.7,
+      "shape": "box",
+      "size": [0.59, 0.004, 1.4],
+      "visible": true
+    },
+    {
+      "color": [0.06, 0.06, 0.06],
+      "emissive": 0.0,
+      "metallic": 0.0,
+      "name": "fx_stripe_right_1",
+      "parent": "fx_hinge_right",
+      "position": [0.305, 0.002, -4.9],
+      "rotation": [0.0, 0.0, 0.0],
+      "roughness": 0.7,
+      "shape": "box",
+      "size": [0.59, 0.004, 1.4],
+      "visible": true
+    },
+    {
+      "color": [0.72, 0.55, 0.1],
+      "emissive": 0.0,
+      "metallic": 0.0,
+      "name": "fx_stripe_right_2",
+      "parent": "fx_hinge_right",
+      "position": [0.305, 0.002, -3.5],
+      "rotation": [0.0, 0.0, 0.0],
+      "roughness": 0.7,
+      "shape": "box",
+      "size": [0.59, 0.004, 1.4],
+      "visible": true
+    },
+    {
+      "color": [0.06, 0.06, 0.06],
+      "emissive": 0.0,
+      "metallic": 0.0,
+      "name": "fx_stripe_right_3",
+      "parent": "fx_hinge_right",
+      "position": [0.305, 0.002, -2.1],
+      "rotation": [0.0, 0.0, 0.0],
+      "roughness": 0.7,
+      "shape": "box",
+      "size": [0.59, 0.004, 1.4],
+      "visible": true
+    },
+    {
+      "color": [0.72, 0.55, 0.1],
+      "emissive": 0.0,
+      "metallic": 0.0,
+      "name": "fx_stripe_right_4",
+      "parent": "fx_hinge_right",
+      "position": [0.305, 0.002, -0.7],
+      "rotation": [0.0, 0.0, 0.0],
+      "roughness": 0.7,
+      "shape": "box",
+      "size": [0.59, 0.004, 1.4],
+      "visible": true
+    },
+    {
+      "color": [0.06, 0.06, 0.06],
+      "emissive": 0.0,
+      "metallic": 0.0,
+      "name": "fx_stripe_right_5",
+      "parent": "fx_hinge_right",
+      "position": [0.305, 0.002, 0.7],
+      "rotation": [0.0, 0.0, 0.0],
+      "roughness": 0.7,
+      "shape": "box",
+      "size": [0.59, 0.004, 1.4],
+      "visible": true
+    },
+    {
+      "color": [0.72, 0.55, 0.1],
+      "emissive": 0.0,
+      "metallic": 0.0,
+      "name": "fx_stripe_right_6",
+      "parent": "fx_hinge_right",
+      "position": [0.305, 0.002, 2.1],
+      "rotation": [0.0, 0.0, 0.0],
+      "roughness": 0.7,
+      "shape": "box",
+      "size": [0.59, 0.004, 1.4],
+      "visible": true
+    },
+    {
+      "color": [0.06, 0.06, 0.06],
+      "emissive": 0.0,
+      "metallic": 0.0,
+      "name": "fx_stripe_right_7",
+      "parent": "fx_hinge_right",
+      "position": [0.305, 0.002, 3.5],
+      "rotation": [0.0, 0.0, 0.0],
+      "roughness": 0.7,
+      "shape": "box",
+      "size": [0.59, 0.004, 1.4],
+      "visible": true
+    },
+    {
+      "color": [0.72, 0.55, 0.1],
+      "emissive": 0.0,
+      "metallic": 0.0,
+      "name": "fx_stripe_right_8",
+      "parent": "fx_hinge_right",
+      "position": [0.305, 0.002, 4.9],
+      "rotation": [0.0, 0.0, 0.0],
+      "roughness": 0.7,
+      "shape": "box",
+      "size": [0.59, 0.004, 1.4],
+      "visible": true
+    },
+    {
+      "color": [0.06, 0.06, 0.06],
+      "emissive": 0.0,
+      "metallic": 0.0,
+      "name": "fx_stripe_right_9",
+      "parent": "fx_hinge_right",
+      "position": [0.305, 0.002, 6.3],
+      "rotation": [0.0, 0.0, 0.0],
+      "roughness": 0.7,
+      "shape": "box",
+      "size": [0.59, 0.004, 1.4],
+      "visible": true
+    }
+  ],
+  "sockets": []
+}

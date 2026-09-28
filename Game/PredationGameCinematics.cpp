@@ -89,8 +89,8 @@ void PredationGame::LoadCinematics()
 CinematicBindings PredationGame::CinematicBindingsNow() const
 {
     CinematicBindings bindings;
-    // The ship, for now the testing area: where everybody gathers.
-    bindings.anchors["ship"] = {{0.0f, 0.0f, TestMapSpec::kSpawnZ}, {}};
+    // The ship: itself, its hangar, its cockpit, its briefing room, its engines.
+    m_ship.Anchors(bindings.anchors);
     // This player's own eyes, for a shot that begins or ends in them -- theirs even while the editor's camera has the
     // picture.
     const glm::vec3 eye = m_cineEditor.IsOpen() ? m_player.View().eyePosition : m_renderEye;
@@ -239,6 +239,12 @@ void PredationGame::StopCinematic(bool handBack)
     {
         m_missionProps.Crawler().GoHome(m_scene);
     }
+    if (m_ship.Built())
+    {
+        m_ship.Shuttle().GoHome(m_scene);
+        m_ship.BayDoors().GoHome(m_scene);
+        m_ship.SetEngines(m_scene, 0.0f);
+    }
     UpdateVehicleLamps();
 }
 
@@ -385,6 +391,11 @@ bool PredationGame::CinematicCamera(glm::mat4& view, glm::vec3& eye, float dt, f
         m_cineFar = kCinematicFar;
         return true;
     }
+    // Eyes somewhere else altogether -- taken aboard the ship as it ended -- are cut to, not swept across the world to.
+    if (m_cineHandBack > 0.0f && glm::distance(m_cineHandBackFrom.position, CameraOf(view, gameplayFov).position) > 40.0f)
+    {
+        m_cineHandBack = 0.0f;
+    }
     if (m_cineHandBack > 0.0f)
     {
         // From the last picture back to the player's eyes, which have been where they are all along.
@@ -407,8 +418,16 @@ namespace
 {
 
 // The vehicles a cinematic can bind to by name.
-VehicleProp* Bound(const std::string& bind, SiteMap& site, MissionProps& props)
+VehicleProp* Bound(const std::string& bind, SiteMap& site, MissionProps& props, ShipMap& ship)
 {
+    if (bind == "ship_shuttle")
+    {
+        return ship.Shuttle().Built() ? &ship.Shuttle() : nullptr;
+    }
+    if (bind == "ship_bay_doors")
+    {
+        return ship.BayDoors().Built() ? &ship.BayDoors() : nullptr;
+    }
     if (bind == "site_shuttle")
     {
         return site.Shuttle().Built() ? &site.Shuttle() : nullptr;
@@ -424,7 +443,7 @@ VehicleProp* Bound(const std::string& bind, SiteMap& site, MissionProps& props)
 
 bool PredationGame::CineFindBound(const std::string& bind, CinePose& where)
 {
-    const VehicleProp* vehicle = Bound(bind, m_facility, m_missionProps);
+    const VehicleProp* vehicle = Bound(bind, m_facility, m_missionProps, m_ship);
     if (vehicle == nullptr)
     {
         return false;
@@ -435,7 +454,7 @@ bool PredationGame::CineFindBound(const std::string& bind, CinePose& where)
 
 void PredationGame::CineMoveBound(const std::string& bind, const CinePose& pose)
 {
-    if (VehicleProp* vehicle = Bound(bind, m_facility, m_missionProps))
+    if (VehicleProp* vehicle = Bound(bind, m_facility, m_missionProps, m_ship))
     {
         vehicle->Show(m_scene, pose);
     }
@@ -443,7 +462,7 @@ void PredationGame::CineMoveBound(const std::string& bind, const CinePose& pose)
 
 void PredationGame::CinePoseBound(const std::string& bind, const std::string& clip, float clipTime)
 {
-    if (VehicleProp* vehicle = Bound(bind, m_facility, m_missionProps))
+    if (VehicleProp* vehicle = Bound(bind, m_facility, m_missionProps, m_ship))
     {
         vehicle->ShowClip(m_scene, clip, clipTime);
     }
@@ -487,7 +506,7 @@ void PredationGame::CineMarker(const pred::Marker& marker)
         m_missionOverFor = 0.0f;
         if (IsAuthority() && m_screen == Screen::Playing && m_map == MapChoice::Facility)
         {
-            GoToMap(MapChoice::TestMap);
+            GoToMap(MapChoice::Ship);
         }
     }
 }
@@ -553,10 +572,11 @@ void PredationGame::UpdateCinematicParticles(float dt)
 
 void PredationGame::CineLight(const std::string& light, float intensity)
 {
-    // The cabin lamps of what a cinematic brings with it are its models' own glow for now; the world's lamps by name
-    // come with the ship.
-    (void)light;
-    (void)intensity;
+    // The ship's engines, burning; the cabin lamps of what a cinematic brings with it are its models' own glow for now.
+    if (light == "ship_engines")
+    {
+        m_ship.SetEngines(m_scene, intensity);
+    }
 }
 
 // --- Over the picture ---------------------------------------------------------------------------------
@@ -870,7 +890,7 @@ CinematicEditor::Context PredationGame::CinematicEditorContext()
             return names;
         }
         const ModelAsset* model = nullptr;
-        if (const VehicleProp* vehicle = Bound(def->bind, m_facility, m_missionProps))
+        if (const VehicleProp* vehicle = Bound(def->bind, m_facility, m_missionProps, m_ship))
         {
             model = vehicle->Model();
         }

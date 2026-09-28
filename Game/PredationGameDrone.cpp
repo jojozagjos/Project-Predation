@@ -578,7 +578,7 @@ void PredationGame::UpdateWipe(float dt)
     m_wipeTimer = 0.0f;
     m_remoteRespawnTimers.clear();
     m_respawnTimer = 0.0f;
-    GoToMap(MapChoice::TestMap);
+    GoToMap(MapChoice::Ship);
 }
 
 bool PredationGame::DroneLamp(PunctualLight& light) const

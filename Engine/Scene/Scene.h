@@ -102,6 +102,16 @@ struct Environment
     float fogStart = 12.0f;
     float fogEnd = 90.0f;
 
+    // Out in space: how many of the stars show (0 none, 1 all), and a planet hung in the sky -- which way its middle
+    // is, how big it looks (radians from its middle to its edge; 0 for none), the colour of its ground seen from
+    // orbit, and how brightly the air round its edge glows. Drawn in the sky, so it is infinitely far away: it never
+    // meets the far plane and nothing can walk towards it.
+    float stars = 0.0f;
+    glm::vec3 planetDirection{0.0f, -1.0f, 0.0f};
+    float planetRadius = 0.0f;
+    glm::vec3 planetColor{0.8f, 0.84f, 0.9f};
+    float planetAir = 0.0f;
+
     // The lights of the moment -- a torch, a muzzle flash -- which every surface considers. The first
     // is the one with a shadow map, and the game puts whichever matters most at the eye there.
     std::array<PunctualLight, kMaxPunctualLights> lights{};

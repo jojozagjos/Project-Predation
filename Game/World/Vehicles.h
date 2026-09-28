@@ -26,11 +26,14 @@ class MeshLibrary;
 //             "lamp"         where its cabin lamp hangs
 //             "light_..."    a lamp that goes with it, shining down its socket's -z: headlights, a landing light
 //   clips     "ramp_closed", "ramp_opening", "ramp_closing"
+// The ship's hangar doors are one of these too: two leaves in the floor, hinged at their outer edges, swinging down --
+// clips "doors_closed", "doors_opening", "doors_open", "doors_closing".
 // Parts whose names begin "fx_" -- glass, lamps, glow -- are drawn and never solid.
 namespace Vehicles
 {
 ModelAsset ShuttleModel();
 ModelAsset CrawlerModel();
+ModelAsset BayDoorsModel();
 // The model by name, from its file, or made and written when there is no file yet. Null for a name it does not know.
 std::shared_ptr<ModelAsset> Load(const std::string& name);
 } // namespace Vehicles

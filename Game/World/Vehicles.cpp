@@ -201,6 +201,66 @@ ModelAsset CrawlerModel()
     return model;
 }
 
+ModelAsset BayDoorsModel()
+{
+    // Nine metres across and fourteen long, their tops flush with the hangar floor at y = 0: two leaves, each hinged
+    // along its outer edge, that swing down and out of the way for the shuttle to drop through.
+    ModelAsset model;
+    model.name = "hangar_doors";
+    Builder b{model};
+    const float half = 4.5f;
+    const float length = 7.0f;
+    const float thickness = 0.3f;
+    const glm::vec3 steel{0.24f, 0.25f, 0.26f};
+    const glm::vec3 yellow{0.72f, 0.55f, 0.1f};
+    const glm::vec3 black{0.06f, 0.06f, 0.06f};
+    for (const float side : {-1.0f, 1.0f})
+    {
+        const std::string name = side < 0.0f ? "left" : "right";
+        const std::string hinge = "fx_hinge_" + name;
+        b.Box(hinge, side * half - 0.005f, side * half + 0.005f, -thickness * 0.5f - 0.005f, -thickness * 0.5f + 0.005f, -0.005f, 0.005f, steel);
+        const float outer = side * (half - 0.01f);
+        const float inner = side * 0.01f;
+        ModelPart& leaf = b.Box("door_" + name, std::min(outer, inner), std::max(outer, inner), -thickness, 0.0f, -length, length, steel, 0.6f, 0.5f);
+        leaf.parent = hinge;
+        // Stripes across its inner edge, where the two meet.
+        for (int stripe = 0; stripe < 10; ++stripe)
+        {
+            const float z0 = -length + static_cast<float>(stripe) * 1.4f;
+            const float edge = side * 0.01f;
+            const float band = side * 0.6f;
+            ModelPart& mark = b.Box("fx_stripe_" + name + "_" + std::to_string(stripe), std::min(edge, band), std::max(edge, band), 0.0f, 0.004f,
+                                    z0, z0 + 1.4f, stripe % 2 == 0 ? yellow : black, 0.7f);
+            mark.parent = hinge;
+        }
+    }
+    const auto clip = [&](const std::string& name, float duration, float from, float to)
+    {
+        AnimationClip animation;
+        animation.name = name;
+        animation.duration = duration;
+        for (const float side : {-1.0f, 1.0f})
+        {
+            AnimationTrack track;
+            track.part = side < 0.0f ? "fx_hinge_left" : "fx_hinge_right";
+            AnimationKey first;
+            first.time = 0.0f;
+            first.rotation = {0.0f, 0.0f, side * from};
+            AnimationKey last;
+            last.time = duration;
+            last.rotation = {0.0f, 0.0f, side * to};
+            track.keys = {first, last};
+            animation.tracks.push_back(track);
+        }
+        model.clips.push_back(animation);
+    };
+    clip("doors_closed", 0.1f, 0.0f, 0.0f);
+    clip("doors_opening", 3.5f, 0.0f, 100.0f);
+    clip("doors_open", 0.1f, 100.0f, 100.0f);
+    clip("doors_closing", 3.5f, 100.0f, 0.0f);
+    return model;
+}
+
 std::shared_ptr<ModelAsset> Load(const std::string& name)
 {
     auto model = std::make_shared<ModelAsset>();
@@ -216,6 +276,10 @@ std::shared_ptr<ModelAsset> Load(const std::string& name)
     else if (name == "snow_crawler")
     {
         *model = CrawlerModel();
+    }
+    else if (name == "hangar_doors")
+    {
+        *model = BayDoorsModel();
     }
     else
     {

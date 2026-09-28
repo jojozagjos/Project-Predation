@@ -8,6 +8,67 @@ uniform vec4 u_skyGround;  // rgb
 uniform vec4 u_skySun;     // xyz = direction towards the sun, w = how sharp the glow is
 uniform vec4 u_skySunColor; // rgb, w = how bright
 uniform vec4 u_skyGrade;    // x = exposure, y = contrast
+uniform vec4 u_skySpace;       // x = stars (0 none, 1 all), y = a planet's radius on the sky (radians; 0 none), z = its air, w = brightness
+uniform vec4 u_skyPlanet;      // xyz = towards the planet's middle
+uniform vec4 u_skyPlanetColor; // rgb = its ground from orbit
+
+// Noise over directions, for the planet's ground and cloud and the faint band of the galaxy.
+float SkyHash(vec3 p)
+{
+	p = fract(p * 0.3183099 + vec3(0.71, 0.113, 0.419));
+	p *= 17.0;
+	return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+}
+
+float SkyNoise(vec3 p)
+{
+	vec3 i = floor(p);
+	vec3 f = fract(p);
+	f = f * f * (vec3_splat(3.0) - f * 2.0);
+	float a = SkyHash(i);
+	float b = SkyHash(i + vec3(1.0, 0.0, 0.0));
+	float c = SkyHash(i + vec3(0.0, 1.0, 0.0));
+	float d = SkyHash(i + vec3(1.0, 1.0, 0.0));
+	float e = SkyHash(i + vec3(0.0, 0.0, 1.0));
+	float g = SkyHash(i + vec3(1.0, 0.0, 1.0));
+	float h = SkyHash(i + vec3(0.0, 1.0, 1.0));
+	float k = SkyHash(i + vec3(1.0, 1.0, 1.0));
+	return mix(mix(mix(a, b, f.x), mix(c, d, f.x), f.y), mix(mix(e, g, f.x), mix(h, k, f.x), f.y), f.z);
+}
+
+float SkyFbm(vec3 p)
+{
+	float value = 0.0;
+	float amount = 0.5;
+	for (int octave = 0; octave < 5; ++octave)
+	{
+		value += amount * SkyNoise(p);
+		p = p * 2.03 + vec3(1.7, 9.2, 3.1);
+		amount *= 0.5;
+	}
+	return value;
+}
+
+// Stars: the sky cut into small cells, a few of which hold one, somewhere in it, of its own brightness and colour.
+vec3 SkyStars(vec3 ray)
+{
+	vec3 p = ray * 180.0;
+	vec3 cell = floor(p);
+	float h = SkyHash(cell);
+	vec3 light = vec3_splat(0.0);
+	if (h > 0.97)
+	{
+		vec3 jitter = vec3(SkyHash(cell + vec3_splat(7.1)), SkyHash(cell + vec3_splat(3.7)), SkyHash(cell + vec3_splat(11.3)));
+		vec3 centre = normalize(cell + vec3_splat(0.5) + (jitter - vec3_splat(0.5)) * 0.6) * 180.0;
+		float bright = (h - 0.97) / 0.03;
+		float star = smoothstep(0.3, 0.0, length(p - centre)) * (0.12 + 3.2 * bright * bright * bright);
+		light = mix(vec3(0.72, 0.8, 1.0), vec3(1.0, 0.86, 0.7), SkyHash(cell + vec3_splat(5.3))) * star;
+	}
+	// And the galaxy, a faint band across it.
+	float across = dot(ray, normalize(vec3(0.35, 0.82, 0.45)));
+	light += vec3(0.5, 0.55, 0.7) * exp(-across * across * 18.0) * SkyFbm(ray * 7.0) * 0.05;
+	return light;
+}
 
 void main()
 {
@@ -31,7 +92,43 @@ void main()
 	float toSun = max(dot(ray, normalize(u_skySun.xyz)), 0.0);
 	float halo = pow(toSun, max(u_skySun.w, 1.0));
 	float core = pow(toSun, max(u_skySun.w, 1.0) * 24.0);
-	color += u_skySunColor.rgb * u_skySunColor.w * (halo * 0.35 + core) * clamp(up * 4.0 + 0.4, 0.0, 1.0);
+	// In space there is no horizon: the dark all round, and the sun wherever it is.
+	float inSpace = step(0.001, u_skySpace.x);
+	color = mix(color, u_skyZenith.rgb * 0.4, inSpace);
+	color += u_skySunColor.rgb * u_skySunColor.w * (halo * 0.35 + core) * mix(clamp(up * 4.0 + 0.4, 0.0, 1.0), 1.0, inSpace);
+
+	// A planet: a sphere one unit away, as big on the sky as it is asked to be, lit by the sun, with ice and cloud
+	// over it, and its air glowing at the edge on the lit side -- and a little beyond the edge.
+	float starsShow = 1.0;
+	if (u_skySpace.y > 0.0)
+	{
+		vec3 toPlanet = normalize(u_skyPlanet.xyz);
+		vec3 towardsSun = normalize(u_skySun.xyz);
+		vec3 air = vec3(0.3, 0.5, 0.95) * u_skySpace.z;
+		float radius = sin(u_skySpace.y);
+		float along = dot(ray, toPlanet);
+		float hit = along * along - (1.0 - radius * radius);
+		if (hit > 0.0 && along > 0.0)
+		{
+			vec3 normal = (ray * (along - sqrt(hit)) - toPlanet) / radius;
+			float lit = dot(normal, towardsSun);
+			float land = SkyFbm(normal * 2.5 + vec3(3.1, 1.7, 5.3));
+			float cloud = smoothstep(0.5, 0.78, SkyFbm(normal * 4.5 + vec3(9.1, 2.2, 4.4)));
+			vec3 ground = mix(u_skyPlanetColor.rgb * (0.55 + 0.7 * land), vec3(0.95, 0.97, 1.0), cloud * 0.8);
+			vec3 planet = ground * smoothstep(-0.05, 0.4, lit) * u_skySunColor.w * 1.6;
+			float edge = pow(1.0 - max(dot(normal, -ray), 0.0), 4.0);
+			planet += air * edge * smoothstep(-0.25, 0.25, lit);
+			color = planet * max(u_skySpace.w, 0.0);
+			starsShow = 0.0;
+		}
+		else
+		{
+			float beyond = max(acos(clamp(along, -1.0, 1.0)) - u_skySpace.y, 0.0) / max(u_skySpace.y * 0.035, 0.0001);
+			vec3 edgeDirection = normalize(ray - toPlanet * along);
+			color += air * exp(-beyond) * 0.6 * max(u_skySpace.w, 0.0) * smoothstep(-0.3, 0.3, dot(edgeDirection, towardsSun));
+		}
+	}
+	color += SkyStars(ray) * u_skySpace.x * starsShow * max(u_skySpace.w, 0.0);
 
 	// For post-processing to finish, as linear light.
 	if (u_skyGrade.w > 0.5)

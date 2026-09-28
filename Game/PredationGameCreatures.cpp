@@ -362,7 +362,8 @@ void PredationGame::SpawnCreatures()
     {
         return;
     }
-    m_arrivalsPending = std::clamp(cv_aiCreatures.Get(), 0, static_cast<int>(kMaxCreatures));
+    // Nothing comes aboard the ship.
+    m_arrivalsPending = m_map == MapChoice::Ship ? 0 : std::clamp(cv_aiCreatures.Get(), 0, static_cast<int>(kMaxCreatures));
     // A fixed seed when one is set, so a strange behaviour can be had again; otherwise the clock, so
     // every game is a different animal.
     m_arrivalSeed = static_cast<uint32_t>(cv_aiSeed.Get());

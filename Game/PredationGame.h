@@ -38,6 +38,7 @@
 #include "Game/World/TestMap.h"
 #include "Game/World/LabMap.h"
 #include "Game/World/FacilityMap.h"
+#include "Game/World/ShipMap.h"
 #include "Game/World/SiteMap.h"
 #include "Tools/ModelEditor/ModelEditor.h"
 #include "Game/World/WorldObjects.h"
@@ -628,7 +629,8 @@ private:
     {
         TestMap,
         Lab,
-        Facility
+        Facility,
+        Ship // where everybody is between deployments
     };
     void GoToMap(MapChoice map);
     // Rebuilds the generated facility from a new seed, and everything in the world that can be used up
@@ -1378,7 +1380,7 @@ private:
     std::vector<CinePuff> m_cinePuffs;
     ItemId m_driveItem = kInvalidItem;
     // Where the players are, and which way they face arriving there.
-    MapChoice m_map = MapChoice::TestMap;
+    MapChoice m_map = MapChoice::Ship;
     float m_spawnYaw = 3.14159265f;
     // Whose eyes we are watching through while dead. -1 when alive or when nobody is left.
     // What was in the hands when a climb started, and whether a climb has hold of them. kNoSlot
@@ -1459,8 +1461,12 @@ private:
     // The generated facility, between the test map and the lab.
     // The mission site: its buildings, the ground between and the rock round it, from a seed.
     SiteMap m_facility;
+    // The ship, and the site whose planet it is over (0: out in space, over none).
+    ShipMap m_ship;
+    uint16_t m_shipOrbiting = 0;
     // Whether the site's own sky is the one in the scene, so it can be put back on leaving.
     bool m_skyAtSite = false;
+    bool m_skyInShip = false;
     // The most creatures alive at once this game: how many the game keeps coming back to.
     int m_creaturePeak = 0;
     int m_perfFramesLeft = 0;

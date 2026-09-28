@@ -2273,3 +2273,31 @@ How to use it: docs/EDITOR.md, "Cinematic editor". Game/Cinematic/CinematicEdito
 
 Still to come: the ship and its travel and arrival, the station's docking, and short first-person moments for
 pulling a drive or throwing a breaker.
+
+## ADR-105: The ship -- where everybody is between deployments
+
+Decided with the user (2026-09-28): a mid-size carrier with a hangar; a briefing room, a gear room, crew quarters
+and a mess, and a cockpit with windows; travel is a long burn with a time skip (no jump); the shuttle leaves from
+the hangar, dropping out through doors in its floor. Game/World/ShipMap.h.
+
+- **Another place in the one world** (ShipSpec::kOrigin, 1.5 km from everything else), like the testing area, the
+  lab and the site: going aboard is being put there. It is where a game starts and where every deployment ends
+  (the extraction's and the wipe's go_to_ship). The testing area is still there (`testmap`), for development.
+- **Two decks and a hangar as tall as both**, walked between by stairs: gear room (lockers, ammunition, every item on
+  the bench as the testing area has them), quarters (bunks, lockers, a table), mess (galley, tables), a gallery
+  looking down into the hangar, the briefing room (the deployment console before a screen), the cockpit.
+  Nothing comes aboard: creatures do not arrive while everybody is on the ship.
+- **The hull is round the rooms**, so the ship seen from outside is the one everybody is standing in: the cockpit's
+  windows are windows in it, and the bay under the parked shuttle opens through its belly (the bay doors are a
+  vehicle model with clips, like the ramps). Its engines have a glow a cinematic turns up (light `ship_engines`),
+  and cinematics can bind its shuttle (`ship_shuttle`) and bay doors (`ship_bay_doors`) and measure from `ship`,
+  `hangar`, `cockpit`, `briefing` and `engines`.
+- **Space is drawn in the sky**, not built: wherever the eye is near the ship the sky is black with stars and a
+  faint band of the galaxy, and -- over a site -- its planet, lit by the sun with ice and cloud on it and its air
+  glowing at the edge. Being in the sky it is infinitely far away: nothing clips it, from the cockpit or from a
+  shot outside.
+- A picture handed back after a cinematic to eyes that are somewhere else entirely -- taken aboard as it ended --
+  is now cut to rather than swept across the world to.
+
+Next: the transit burn and arrival, boarding the shuttle in the hangar and dropping out, the return into the hangar
+and the debrief.

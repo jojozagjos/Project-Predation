@@ -435,6 +435,8 @@ bool PredationGame::OnInit(Application& app)
     BuildTestMap(m_scene, app.GetMeshes(), &app.GetPhysics());
     // And the creature lab, far off to the east in the same world, with its nest.
     BuildLabMap(m_scene, app.GetMeshes(), &app.GetPhysics(), &m_levelLights);
+    // And the ship, off on its own, where everybody is between deployments.
+    m_ship.Build(m_scene, app.GetMeshes(), app.GetPhysics(), &m_levelLights);
     // And the generated facility between them, the default one until a host asks for another.
     m_facility.Build(SiteSpec::kDefaultSeed, m_scene, app.GetMeshes(), app.GetPhysics(), &m_levelLights);
 
@@ -553,6 +555,10 @@ bool PredationGame::OnInit(Application& app)
     m_itemIcons.Build(m_items, app.GetMeshes(), app.GetRenderer(), &m_weaponData, &app.GetTextures());
     m_world.SetTextures(app.GetTextures());
     m_world.Build(m_scene, app.GetMeshes(), app.GetPhysics(), m_interactions, m_items, &m_weaponData);
+    m_ship.LayOutKit(m_items);
+    // A game starts aboard.
+    m_spawnPoint = m_ship.Spawn(0);
+    m_spawnYaw = m_ship.SpawnYaw();
     // The ship's deployment console, standing in the testing area until there is a ship -- before the walkable surface is
     // worked out, which has to go round it -- and what sites are called and what the intercom says.
     BuildDeployConsole();
@@ -1238,8 +1244,15 @@ void PredationGame::RegisterCommands()
 
     console.RegisterCommand("lab", "Go to the creature lab: everybody in the game, and the creatures from its nest",
                             [this](const std::vector<std::string>&) { GoToMap(MapChoice::Lab); });
-    console.RegisterCommand("testmap", "Back to the test map from the creature lab",
+    console.RegisterCommand("testmap", "Go to the testing area: everybody in the game",
                             [this](const std::vector<std::string>&) { GoToMap(MapChoice::TestMap); });
+    console.RegisterCommand("ship", "Go aboard the ship: everybody in the game",
+                            [this](const std::vector<std::string>&) { GoToMap(MapChoice::Ship); });
+#if PRED_DEV_TOOLS
+    console.RegisterCommand("ship_orbit", "Put the ship over a site's planet, or out in space with 0: ship_orbit <seed>",
+                            [this](const std::vector<std::string>& args)
+                            { m_shipOrbiting = static_cast<uint16_t>(args.size() >= 2 ? std::clamp(std::atoi(args[1].c_str()), 0, 65535) : m_facility.Seed()); });
+#endif
     console.RegisterCommand(
         "facility",
         "Go to the generated facility. facility <seed> builds the one planned from that seed first (1 to 65535); "
@@ -3151,6 +3164,7 @@ void PredationGame::ResetWorld()
     m_world.Clear(m_scene, m_app->GetPhysics(), m_interactions);
     m_world.Build(m_scene, m_app->GetMeshes(), m_app->GetPhysics(), m_interactions, m_items,
                   &m_weaponData);
+    m_world.AddFacility(m_scene, m_app->GetMeshes(), m_app->GetPhysics(), m_interactions, m_items, m_ship.Placements());
     m_world.AddFacility(m_scene, m_app->GetMeshes(), m_app->GetPhysics(), m_interactions, m_items,
                         m_facility.Placements());
     ResetMission();
@@ -3191,8 +3205,15 @@ void PredationGame::GoToMap(MapChoice map)
         yaw = 0.0f; // north, into it
         arrived = "In the creature lab, at the north end of the testing area. The nest is to the north.";
         break;
+    case MapChoice::Ship:
+        m_spawnPoint = m_ship.Spawn(LocalPlayerId());
+        yaw = m_ship.SpawnYaw();
+        arrived = "Aboard the ship.";
+        break;
     case MapChoice::Facility:
     {
+        // The ship is over its planet now.
+        m_shipOrbiting = m_facility.Seed();
         // A deployment that is over is not gone back to: the site is put back as it was, its data on its terminal.
         if (m_mission.stage == MissionState::Stage::Over && IsAuthority() && m_screen == Screen::Playing)
         {
@@ -3254,8 +3275,8 @@ void PredationGame::GoToMap(MapChoice map)
     {
         for (const RemotePlayerView& remote : m_host.Remotes())
         {
-            // At the site, each in their own place in the crawler.
-            const glm::vec3 place = map == MapChoice::Facility ? MissionArrival(remote.id) : m_spawnPoint;
+            // At the site, each in their own place in the crawler; aboard, each in their own place in the briefing room.
+            const glm::vec3 place = map == MapChoice::Facility ? MissionArrival(remote.id) : map == MapChoice::Ship ? m_ship.Spawn(remote.id) : m_spawnPoint;
             m_host.RespawnPlayer(remote.id, place);
             WorldEventMessage event;
             event.kind = WorldEventKind::PlayerRespawned;
@@ -3284,6 +3305,7 @@ void PredationGame::ChangeFacility(uint16_t seed)
     m_hidingSpot = -1;
     m_world.Clear(m_scene, m_app->GetPhysics(), m_interactions);
     m_world.Build(m_scene, m_app->GetMeshes(), m_app->GetPhysics(), m_interactions, m_items, &m_weaponData);
+    m_world.AddFacility(m_scene, m_app->GetMeshes(), m_app->GetPhysics(), m_interactions, m_items, m_ship.Placements());
     m_world.AddFacility(m_scene, m_app->GetMeshes(), m_app->GetPhysics(), m_interactions, m_items,
                         m_facility.Placements());
     ResetMission();
@@ -3306,6 +3328,11 @@ void PredationGame::EnterWorld()
     // A new game starts from the beginning. The world has been simulating behind the menu, and
     // whatever was done to it last time is still done.
     ResetWorld();
+    m_lookYaw = m_spawnYaw;
+    m_lookPitch = 0.0f;
+    m_player.State().yaw = m_lookYaw;
+    // Out in space -- unless this game begins by going down to a site, when the ship is over its planet.
+    m_shipOrbiting = m_map == MapChoice::Facility ? m_facility.Seed() : 0;
     m_screen = Screen::Playing;
     m_paused = false;
     m_titleStatus.clear();
@@ -9547,6 +9574,43 @@ void PredationGame::OnUpdate(double dt, double alpha)
     // Out at the site it is night: its own sky, fog and light, while the picture is taken from there.
     {
         const bool atSite = m_screen == Screen::Playing && m_facility.Built() && m_facility.Contains(m_renderEye);
+        const bool inShip = !atSite && m_ship.Contains(m_renderEye);
+        environment.stars = 0.0f;
+        environment.planetRadius = 0.0f;
+        if (inShip)
+        {
+            // Space: black, the stars, a hard sun low off the starboard quarter, and -- over a site -- its planet below
+            // ahead, the colour of its ice. The dark inside is the lamps' to light.
+            const glm::vec3 towardsSun = glm::normalize(glm::vec3(0.8f, 0.18f, 0.55f));
+            environment.sunDirection = -towardsSun;
+            environment.sunColor = {1.0f, 0.95f, 0.88f};
+            environment.sunIntensity = 2.4f;
+            environment.ambientSky = {0.07f, 0.075f, 0.09f};
+            environment.ambientGround = {0.045f, 0.045f, 0.05f};
+            environment.fogColor = {0.0f, 0.0f, 0.0f};
+            environment.fogStart = 5000.0f;
+            environment.fogEnd = 20000.0f;
+            environment.stars = 1.0f;
+            if (m_shipOrbiting != 0)
+            {
+                const uint32_t seed = m_shipOrbiting;
+                const float tint = static_cast<float>((seed * 2654435761u) >> 24) / 255.0f;
+                environment.planetDirection = glm::normalize(glm::vec3(0.12f, -0.42f, -0.9f));
+                environment.planetRadius = 0.6f;
+                environment.planetColor = glm::mix(glm::vec3(0.62f, 0.7f, 0.8f), glm::vec3(0.78f, 0.8f, 0.82f), tint);
+                environment.planetAir = 1.0f;
+            }
+        }
+        else if (m_skyInShip && !atSite)
+        {
+            const Environment usual;
+            environment.sunDirection = usual.sunDirection;
+            environment.sunColor = usual.sunColor;
+            environment.ambientSky = usual.ambientSky;
+            environment.ambientGround = usual.ambientGround;
+            environment.fogColor = usual.fogColor;
+        }
+        m_skyInShip = inShip;
         if (atSite)
         {
             const SitePlan::Sky& sky = m_facility.Plan().sky;

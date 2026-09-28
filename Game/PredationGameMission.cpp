@@ -426,7 +426,7 @@ void PredationGame::UpdateMission(float dt)
         if (wasShowing && m_missionOverFor >= MissionSpec::kResultSeconds && IsAuthority() && m_screen == Screen::Playing &&
             m_map == MapChoice::Facility && !m_missionLeaving && !m_cine.Active())
         {
-            GoToMap(MapChoice::TestMap);
+            GoToMap(MapChoice::Ship);
         }
         return;
     }
@@ -743,8 +743,6 @@ void PredationGame::DrawMissionHud()
 namespace
 {
 
-// The deployment console in the testing area: a little in front of where everybody arrives there, facing them.
-constexpr glm::vec3 kDeployConsoleAt{2.4f, 0.0f, 13.4f};
 constexpr glm::vec3 kDeployConsoleSize{1.2f, 1.05f, 0.6f};
 
 // The title card: in after a moment, up for a while, and out slowly.
@@ -780,13 +778,11 @@ void PredationGame::LoadMissionData()
 void PredationGame::BuildDeployConsole()
 {
     MeshLibrary& meshes = m_app->GetMeshes();
-    const glm::vec3 spawn{0.0f, 0.0f, TestMapSpec::kSpawnZ};
-    const glm::vec2 toward = glm::normalize(glm::vec2(spawn.x - kDeployConsoleAt.x, spawn.z - kDeployConsoleAt.z));
-    // Turned as a thing is, so that its front, (-sin, -cos), is towards where everybody arrives.
-    const float yaw = std::atan2(-toward.x, -toward.y);
+    // In the ship's briefing room, before its screen, its front towards the room.
+    const CinePose at = m_ship.BriefingConsole();
     Transform transform;
-    transform.position = kDeployConsoleAt + glm::vec3(0.0f, kDeployConsoleSize.y * 0.5f, 0.0f);
-    transform.rotation = glm::angleAxis(yaw, glm::vec3(0.0f, 1.0f, 0.0f));
+    transform.position = at.position + glm::vec3(0.0f, kDeployConsoleSize.y * 0.5f, 0.0f);
+    transform.rotation = at.rotation;
     m_deployConsole = m_scene.CreateMeshEntity("deploy_console", transform, meshes.Upload(Primitives::Box(kDeployConsoleSize), "deploy_console"),
                                                Material::Metal({0.22f, 0.23f, 0.25f}, 0.5f));
     m_deployBody = m_app->GetPhysics().CreateBox(kDeployConsoleSize * 0.5f, transform, BodyMotion::Static);
