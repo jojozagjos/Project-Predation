@@ -2170,3 +2170,15 @@ with it; sometimes the power is out, sometimes there is no map; the launch leave
   finishing tones, the breaker, the launch alarm and the shuttle leaving.
 - Development: `mission` says where the terminal is and how it stands; `mission_goto terminal|breaker|
   shuttle`, and `mission_skip` to finish a download at once.
+
+## ADR-101: The site map
+
+- **M opens the site map** (the `map` action, rebindable; `site_map` in the console), over the game rather
+  than pausing it, alive or dead. North is up. With the briefing's map data it shows the open ground, the
+  shuttle, every building a floor at a time -- the floor you are on in the building you are in, the
+  ground floor of the rest -- as its rooms, corridors and stairwells, where the data is (and on which
+  floor, when that is not the one shown), everybody still up, and you, pointing the way you look.
+- **Without map data it shows nothing** but that there is none: the site has to be searched.
+- Not shown, on purpose: the breaker (nobody knows the power is out until they try the terminal),
+  doors, and where anything else is. It is the Company's plan of the site, not a scan of it.
+- The objective still gives the bearing to the terminal with map data, and names the key.

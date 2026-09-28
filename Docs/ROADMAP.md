@@ -55,8 +55,8 @@ buildings, a download that goes on only while somebody stays with it, the drive 
 shuttle on the pad that everybody arrives in and leaves on. Sometimes the terminal's building has no
 power until its breaker is reset, and sometimes there is no map. The launch counts down and leaves
 anybody not aboard behind; then the result, and back to the ship (the testing area for now). Still to
-come: the site map to carry (the objective gives a bearing when there is map data), the briefing and
-the arrival card, the ship itself, and choosing the next deployment from it.
+come: the briefing and the arrival card, the ship itself, and choosing the next deployment from it.
+The site map (ADR-101) is a screen for now; a handheld one is part of Feel, below.
 
 ### 2. Generated facilities
 

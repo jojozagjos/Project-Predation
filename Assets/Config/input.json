@@ -34,6 +34,7 @@
     "toggle_camera": [ "P" ],
     "respawn": [ "F5" ],
     "flashlight": [ "L" ],
+    "map": [ "M" ],
 
     "quit_capture": [ "Escape" ],
     "voice": [ "V" ],

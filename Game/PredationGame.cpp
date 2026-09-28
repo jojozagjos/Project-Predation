@@ -4200,6 +4200,7 @@ void PredationGame::DrawKeyBindings()
         {nullptr, "Other"},
         {"voice", "Talk"},
         {"flashlight", "Flashlight"},
+        {"map", "Site map"},
 #if PRED_DEV_TOOLS
         // Developer keys: a free camera goes through walls and respawning heals, and in a player's
         // hands both are ways round the game rather than parts of it.
@@ -9120,6 +9121,10 @@ void PredationGame::OnUpdate(double dt, double alpha)
     // Alive or dead.
     if (!app.IsConsoleOpen() && m_screen == Screen::Playing)
     {
+        if (input.WasActionPressed("map") && !m_paused)
+        {
+            m_mapOpen = !m_mapOpen;
+        }
         if (input.WasActionPressed("quit_capture"))
         {
             // Escape opens the pause menu and frees the pointer; Escape again closes it and takes
@@ -10776,6 +10781,7 @@ void PredationGame::DrawHud()
     }
 
     DrawDroneHud();
+    DrawSiteMap();
     DrawMissionHud();
     DrawPlayerList();
 

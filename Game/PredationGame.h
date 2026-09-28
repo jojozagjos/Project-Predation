@@ -737,6 +737,8 @@ private:
     // The shuttle has gone, here: the drive goes with the Company or is lost, and the result is shown.
     void OnMissionOver();
     void DrawMissionHud();
+    // The site from above, when the briefing came with one: the buildings, the shuttle, everybody, and the data.
+    void DrawSiteMap();
     // Whether this player is carrying the drive, or `player` is by the host's reckoning.
     bool CarriesDrive(uint8_t player) const;
     float TorchIntensity() const;
@@ -1244,6 +1246,8 @@ private:
     float m_missionOverFor = 0.0f;
     // Somebody here has tried the terminal without power, so the objective says what to do about it.
     bool m_missionFoundNoPower = false;
+    // The site map is open (the map key).
+    bool m_mapOpen = false;
     ItemId m_driveItem = kInvalidItem;
     // Where the players are, and which way they face arriving there.
     MapChoice m_map = MapChoice::TestMap;
