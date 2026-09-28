@@ -618,6 +618,12 @@ void WriteWorldEvent(BitWriter& writer, const WorldEventMessage& message)
         writer.WriteBits(std::min<uint32_t>(message.item, 511), 9);
         break;
 
+    case WorldEventKind::Cinematic:
+        writer.WriteBits(message.item, 16);
+        writer.WriteBool(message.flag);
+        writer.WriteQuantised(message.amount, 0.0f, 600.0f, 16);
+        break;
+
     case WorldEventKind::Count:
         break;
     }
@@ -775,6 +781,12 @@ bool ReadWorldEvent(BitReader& reader, WorldEventMessage& out)
         out.other = static_cast<uint8_t>(reader.ReadBits(4));
         out.amount = reader.ReadQuantised(0.0f, 1.0f, 10);
         out.item = static_cast<uint16_t>(reader.ReadBits(9));
+        break;
+
+    case WorldEventKind::Cinematic:
+        out.item = static_cast<uint16_t>(reader.ReadBits(16));
+        out.flag = reader.ReadBool();
+        out.amount = reader.ReadQuantised(0.0f, 600.0f, 16);
         break;
 
     case WorldEventKind::Count:

@@ -26,6 +26,8 @@
 #include "Game/Mission/Mission.h"
 #include "Game/Mission/MissionProps.h"
 #include "Game/Mission/SiteNames.h"
+#include "Game/Cinematic/Cinematic.h"
+#include "Game/Cinematic/CinematicPlayer.h"
 #include "Game/Player/SupportDrone.h"
 #include "Game/Weapons/BulletHole.h"
 #include "Game/Weapons/ShotResolver.h"
@@ -85,7 +87,7 @@ struct SoundVariants
 
 // Milestone 3 game: a first-person player controller in the developer test map, with a free-flying
 // inspection camera available on a key.
-class PredationGame final : public Game
+class PredationGame final : public Game, public CinematicPlayer::Host
 {
 public:
     bool OnInit(Application& app) override;
@@ -751,6 +753,35 @@ private:
     void BuildDeployConsole();
     void OpenBriefing(uint16_t seed);
     void DrawBriefing();
+
+    // --- Cinematics (PredationGameCinematics.cpp) ------------------------------------------------
+    //
+    // Assets/Cinematics, played by m_cine: see Game/Cinematic/Cinematic.h. The game is its host -- it finds the
+    // things a cinematic binds to, plays its sounds and acts on its markers.
+    void LoadCinematics();
+    void RegisterCinematicCommands();
+    // Everything a cinematic can be measured from, where it is now: the site's, the mission's, the ship's.
+    CinematicBindings CinematicBindingsNow() const;
+    // Plays one, from so many seconds in; the host has everybody else play it too.
+    bool PlayCinematic(const std::string& name, float from = 0.0f);
+    void StopCinematic(bool handBack);
+    void UpdateCinematic(float dt);
+    // The picture while one plays, or while it is handed back to the player's eyes. False when it is not ours.
+    bool CinematicCamera(glm::mat4& view, glm::vec3& eye, float dt, float gameplayFov);
+    // Whether the players are held -- no moving, no looking -- and whether the world is.
+    bool CinematicHoldsPlayers() const;
+    bool CinematicHoldsWorld() const;
+    void DrawCinematicOverlay();
+    void DrawCinematicDebug();
+    void DrawCinematicPaths(DebugDraw& draw);
+    void UpdateCinematicParticles(float dt);
+    bool CineFindBound(const std::string& bind, CinePose& where) override;
+    void CineMoveBound(const std::string& bind, const CinePose& pose) override;
+    void CinePoseBound(const std::string& bind, const std::string& clip, float clipTime) override;
+    void CineSound(const SoundEvent& sound, const glm::vec3* at) override;
+    void CineMarker(const pred::Marker& marker) override;
+    void CineParticle(const ParticleEvent& particle, const glm::vec3& at) override;
+    void CineLight(const std::string& light, float intensity) override;
     // Whether this player is carrying the drive, or `player` is by the host's reckoning.
     bool CarriesDrive(uint8_t player) const;
     float TorchIntensity() const;
@@ -1284,6 +1315,29 @@ private:
     uint16_t m_nextSite = 0;
     SiteTitle m_nextTitle;
     bool m_nextMapGiven = true;
+    // Cinematics: those there are, by name; the one playing; the picture being handed back to the player's eyes after
+    // one (the last picture, and how long is left of the handing back); the field of view and far plane it wants this
+    // frame (0 for the game's own); and whether the debugging panel is up.
+    std::map<std::string, Cinematic> m_cinematics;
+    CinematicPlayer m_cine;
+    CameraState m_cineHandBackFrom;
+    float m_cineHandBack = 0.0f;
+    float m_cineHandBackTotal = 1.0f;
+    float m_cineFov = 0.0f;
+    float m_cineFar = 0.0f;
+    bool m_cineDebug = false;
+    bool m_cineHolds = false;
+    // Puffs a cinematic leaves in the air: exhaust, thrown snow.
+    struct CinePuff
+    {
+        Entity entity;
+        glm::vec3 velocity{0.0f};
+        float age = 0.0f;
+        float life = 1.0f;
+        float from = 0.2f;
+        float to = 1.0f;
+    };
+    std::vector<CinePuff> m_cinePuffs;
     ItemId m_driveItem = kInvalidItem;
     // Where the players are, and which way they face arriving there.
     MapChoice m_map = MapChoice::TestMap;

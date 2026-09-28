@@ -30,6 +30,7 @@ add_executable(PredationTests
     SupportDroneTests.cpp
     SiteTests.cpp
     MissionTests.cpp
+    CinematicTests.cpp
     MimicTests.cpp
     TacticLearnerTests.cpp
     FacilityTests.cpp

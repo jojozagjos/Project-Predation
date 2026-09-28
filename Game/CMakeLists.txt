@@ -6,6 +6,7 @@ set(PRED_GAME_SOURCES
     PredationGameSounds.cpp
     PredationGameDrone.cpp
     PredationGameMission.cpp
+    PredationGameCinematics.cpp
 
     Mission/Mission.h
     Mission/Mission.cpp
@@ -13,6 +14,11 @@ set(PRED_GAME_SOURCES
     Mission/MissionProps.cpp
     Mission/SiteNames.h
     Mission/SiteNames.cpp
+
+    Cinematic/Cinematic.h
+    Cinematic/Cinematic.cpp
+    Cinematic/CinematicPlayer.h
+    Cinematic/CinematicPlayer.cpp
 
     Player/PlayerTypes.h
     Player/PlayerConfig.cpp

@@ -557,6 +557,7 @@ bool PredationGame::OnInit(Application& app)
     // worked out, which has to go round it -- and what sites are called and what the intercom says.
     BuildDeployConsole();
     LoadMissionData();
+    LoadCinematics();
     app.GetPhysics().OptimizeBroadPhase();
     // The walkable surface the creature moves over, worked out from the level's solid geometry.
     // Once, here: the level does not change shape, and building it takes a noticeable fraction of
@@ -598,6 +599,7 @@ bool PredationGame::OnInit(Application& app)
     RegisterCreatureCommands();
     RegisterDroneCommands();
     RegisterMissionCommands();
+    RegisterCinematicCommands();
     // The game opens at the menu, with the world already built behind it.
     std::snprintf(m_joinAddress, sizeof(m_joinAddress), "%s", cv_lastAddress.Get().c_str());
     std::snprintf(m_playerName, sizeof(m_playerName), "%s", cv_playerName.Get().c_str());
@@ -2500,6 +2502,24 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
 
     case WorldEventKind::Mission:
         ApplyMissionEvent(event);
+        break;
+
+    case WorldEventKind::Cinematic:
+        // The host has started one (or stopped it): the same one, from the same moment, here.
+        if (!event.flag)
+        {
+            StopCinematic(true);
+            break;
+        }
+        for (const auto& [name, cinematic] : m_cinematics)
+        {
+            if (SoundKey(name) == event.item)
+            {
+                m_cine.Play(cinematic, CinematicBindingsNow(), m_scene, m_app->GetMeshes(), *this, event.amount);
+                m_cineHandBack = 0.0f;
+                break;
+            }
+        }
         break;
 
     case WorldEventKind::CorpseCarried:
@@ -7105,7 +7125,7 @@ void PredationGame::UpdateGrabbedView(float dt)
 void PredationGame::SampleLook(float /*dt*/)
 {
     Input& input = m_app->GetInput();
-    if (!m_mouseCaptured || m_app->IsConsoleOpen())
+    if (!m_mouseCaptured || m_app->IsConsoleOpen() || CinematicHoldsPlayers())
     {
         return;
     }
@@ -7184,9 +7204,9 @@ PlayerInput PredationGame::BuildPlayerInput()
     result.yaw = aimed.x;
     result.pitch = aimed.y;
 
-    if (m_app->IsConsoleOpen() || m_screen != Screen::Playing)
+    if (m_app->IsConsoleOpen() || m_screen != Screen::Playing || CinematicHoldsPlayers())
     {
-        // Console open, paused, or at the title: keep looking where we are and stop everything else.
+        // Console open, paused, at the title, or held by a cinematic: keep looking where we are and stop everything else.
         //
         // The console case was here already. The paused one was not, and the pause screen is not a
         // screenshot of the game -- it is the game with a window over it, still running, still
@@ -8820,7 +8840,11 @@ void PredationGame::OnFixedUpdate(double fixedDt)
     FinishNavRebuild();
     {
         PRED_PROFILE_SCOPE("Fixed: creatures");
-        UpdateCreatures(dt);
+        // Not while a cinematic holds the world: nobody is in it to be hunted.
+        if (!CinematicHoldsWorld())
+        {
+            UpdateCreatures(dt);
+        }
     }
     UpdateDroneThreats(dt);
     UpdateWipe(dt);
@@ -9184,6 +9208,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
     }
 
     UpdateDroneVisuals(deltaSeconds);
+    UpdateCinematic(deltaSeconds);
 
     glm::mat4 view;
     glm::vec3 viewPosition;
@@ -9344,6 +9369,9 @@ void PredationGame::OnUpdate(double dt, double alpha)
     }
     }
 
+    // A cinematic playing takes the picture, and hands it back to whichever of those it would have been.
+    CinematicCamera(view, viewPosition, deltaSeconds, cv_fov.Get());
+
     // Where the picture is actually taken from this frame -- the eye, the free camera, or, dead, the
     // teammate being watched. Everything drawn from the camera reads this rather than working it out
     // again: the shadow maps used to be fitted round the local player's own eye, so spectating somebody
@@ -9451,11 +9479,14 @@ void PredationGame::OnUpdate(double dt, double alpha)
     const float aspect = renderer.Height() > 0
                              ? static_cast<float>(renderer.Width()) / static_cast<float>(renderer.Height())
                              : 16.0f / 9.0f;
-    const float horizontal = glm::radians(cv_fov.Get());
+    // A cinematic may want its own lens and to see much further: a planet from orbit, a ship coming in from far off.
+    const float horizontal = glm::radians(m_cineFov > 0.0f ? m_cineFov : cv_fov.Get());
     const float verticalFov = 2.0f * std::atan(std::tan(horizontal * 0.5f) / aspect);
+    const float nearPlane = m_cineFar > 0.0f ? 0.25f : 0.05f;
+    const float farPlane = m_cineFar > 0.0f ? m_cineFar : 500.0f;
     const glm::mat4 projection = renderer.HomogeneousDepth()
-                                     ? glm::perspectiveRH_NO(verticalFov, aspect, 0.05f, 500.0f)
-                                     : glm::perspectiveRH_ZO(verticalFov, aspect, 0.05f, 500.0f);
+                                     ? glm::perspectiveRH_NO(verticalFov, aspect, nearPlane, farPlane)
+                                     : glm::perspectiveRH_ZO(verticalFov, aspect, nearPlane, farPlane);
     renderer.SetCamera(view, projection);
     // Kept for the HUD, which puts some of what it says on things in the world.
     m_viewProjection = projection * view;
@@ -10150,6 +10181,7 @@ void PredationGame::DrawConnectionReadout()
 void PredationGame::DrawDebugOverlays()
 {
     DebugDraw& draw = m_app->GetDebugDraw();
+    DrawCinematicPaths(draw);
 
     if (m_editor.IsOpen())
     {
@@ -11161,11 +11193,18 @@ void PredationGame::OnImGui()
         return;
     }
 
-    // The HUD is part of the game, not the debug overlay, so it is always drawn.
-    if (m_cameraMode != CameraMode::Fly)
+    // The HUD is part of the game, not the debug overlay, so it is always drawn -- except while a cinematic has the players,
+    // when there is nothing for it to say but what the intercom does.
+    if (m_cameraMode != CameraMode::Fly && !CinematicHoldsPlayers())
     {
         DrawHud();
     }
+    else if (CinematicHoldsPlayers())
+    {
+        DrawSubtitle();
+    }
+    DrawCinematicOverlay();
+    DrawCinematicDebug();
 
     if (m_paused)
     {
