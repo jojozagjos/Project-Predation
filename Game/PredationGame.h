@@ -774,7 +774,14 @@ private:
     void DrawCinematicOverlay();
     void DrawCinematicDebug();
     void DrawCinematicPaths(DebugDraw& draw);
+    // Where a player stands when they arrive at the site: in the crawler, side by side, facing its ramp.
+    glm::vec3 MissionArrival(uint8_t player) const;
+    // Whether a cinematic of that name is there to be played.
+    bool HasCinematic(const std::string& name) const { return m_cinematics.count(name) != 0; }
     void UpdateCinematicParticles(float dt);
+    // The vehicles' lamps put up (once for each time the site is built) and kept where their vehicles are shown.
+    void AttachVehicleLamps();
+    void UpdateVehicleLamps();
     bool CineFindBound(const std::string& bind, CinePose& where) override;
     void CineMoveBound(const std::string& bind, const CinePose& pose) override;
     void CinePoseBound(const std::string& bind, const std::string& clip, float clipTime) override;
@@ -1327,6 +1334,23 @@ private:
     float m_cineFar = 0.0f;
     bool m_cineDebug = false;
     bool m_cineHolds = false;
+    // Everybody's bodies hidden while a cinematic has them: they are aboard something the picture is outside of.
+    bool m_cineHidBodies = false;
+    // The mission's crawler route, from where it waits by the pad to where it parks at the terminal's building; and
+    // whether the team is on its way out, which the extraction cinematic sees to.
+    std::vector<glm::vec3> m_missionRoute;
+    bool m_missionLeaving = false;
+    // The lamps that go with the vehicles: which vehicle, which of its sockets, and which of the level's lights it is.
+    struct VehicleLamp
+    {
+        std::string vehicle;
+        std::string socket;
+        int light = -1;
+    };
+    std::vector<VehicleLamp> m_vehicleLamps;
+    uint32_t m_vehicleLampsOf = 0; // the level lights' generation they were put up in
+    // After a cinematic that ends in black, the picture coming back up from it.
+    float m_cineFadeIn = 0.0f;
     // Puffs a cinematic leaves in the air: exhaust, thrown snow.
     struct CinePuff
     {

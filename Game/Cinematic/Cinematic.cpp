@@ -247,68 +247,80 @@ CinePose CinematicSampler::Frame(const std::string& anchor, float time) const
 
 CinePose CinematicSampler::Actor(const std::string& actor, float time) const
 {
-    // On a path now.
-    const PathFollow* before = nullptr; // the last one it finished
-    const PathFollow* first = nullptr;  // the first it will start
+    // What moves an actor is a set of spans: each path it follows, from its start to its end, and its keys, from the first
+    // to the last. The one that began most recently owns the moment; before any has begun, the first to begin holds it
+    // where it will start. So a crawler can drive a route and then turn on the spot at the end of it, and wait at the start
+    // of the route until it goes.
+    struct Span
+    {
+        float start = 0.0f;
+        float end = 0.0f;
+        const PathFollow* path = nullptr;
+        const ActorTrack* keys = nullptr;
+    };
+    std::vector<Span> spans;
     for (const PathFollow& follow : m_cinematic.paths)
     {
-        if (follow.actor != actor)
+        if (follow.actor == actor && m_bindings.paths.count(follow.path) != 0)
         {
-            continue;
-        }
-        const auto path = m_bindings.paths.find(follow.path);
-        if (path == m_bindings.paths.end())
-        {
-            continue;
-        }
-        if (time >= follow.start && time <= follow.end)
-        {
-            const float span = std::max(follow.end - follow.start, 1.0e-4f);
-            glm::vec3 heading;
-            const glm::vec3 at = AlongPath(path->second, follow.ease.Apply((time - follow.start) / span), &heading);
-            CinePose pose = Facing(at + glm::vec3(0.0f, follow.lift, 0.0f), follow.face ? glm::vec3(heading.x, 0.0f, heading.z) : glm::vec3(0.0f));
-            if (!follow.face)
-            {
-                pose.rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
-            }
-            return pose;
-        }
-        if (follow.end < time && (before == nullptr || follow.end > before->end))
-        {
-            before = &follow;
-        }
-        if (follow.start > time && (first == nullptr || follow.start < first->start))
-        {
-            first = &follow;
+            spans.push_back({follow.start, follow.end, &follow, nullptr});
         }
     }
-    // Moved by keys.
     for (const ActorTrack& track : m_cinematic.actorTracks)
     {
-        if (track.actor != actor || track.keys.empty() || track.anchor == actor)
+        if (track.actor == actor && !track.keys.empty() && track.anchor != actor)
         {
-            continue;
+            spans.push_back({track.keys.front().time, track.keys.back().time, nullptr, &track});
+            break;
         }
-        size_t from = 0;
-        size_t to = 0;
-        float t = 0.0f;
-        Segment(track.keys, time, from, to, t);
-        const CinePose frame = Frame(track.anchor, time);
-        const glm::vec3 local = glm::mix(track.keys[from].position, track.keys[to].position, t);
-        const glm::vec3 degrees = glm::mix(track.keys[from].rotation, track.keys[to].rotation, t);
-        return {frame.Apply(local), frame.rotation * TurnFromDegrees(degrees)};
     }
-    // Between paths, or before or after them: where the one it finished left it, or where the next will start it.
-    const PathFollow* hold = before != nullptr ? before : first;
-    if (hold != nullptr)
+    if (spans.empty())
     {
-        const auto path = m_bindings.paths.find(hold->path);
-        glm::vec3 heading;
-        const glm::vec3 at = AlongPath(path->second, hold == before ? 1.0f : 0.0f, &heading);
-        return Facing(at + glm::vec3(0.0f, hold->lift, 0.0f), hold->face ? glm::vec3(heading.x, 0.0f, heading.z) : glm::vec3(0.0f));
+        const auto rest = m_bindings.actorRest.find(actor);
+        return rest != m_bindings.actorRest.end() ? rest->second : CinePose{};
     }
-    const auto rest = m_bindings.actorRest.find(actor);
-    return rest != m_bindings.actorRest.end() ? rest->second : CinePose{};
+    const Span* owner = nullptr;
+    for (const Span& span : spans)
+    {
+        if (span.start <= time && (owner == nullptr || span.start >= owner->start))
+        {
+            owner = &span;
+        }
+    }
+    if (owner == nullptr)
+    {
+        for (const Span& span : spans)
+        {
+            if (owner == nullptr || span.start < owner->start)
+            {
+                owner = &span;
+            }
+        }
+    }
+    const float at = std::clamp(time, owner->start, std::max(owner->end, owner->start));
+    if (owner->path != nullptr)
+    {
+        const PathFollow& follow = *owner->path;
+        const std::vector<glm::vec3>& path = m_bindings.paths.at(follow.path);
+        const float span = std::max(follow.end - follow.start, 1.0e-4f);
+        glm::vec3 heading;
+        const glm::vec3 position = AlongPath(path, follow.ease.Apply((at - follow.start) / span), &heading);
+        CinePose pose = Facing(position + glm::vec3(0.0f, follow.lift, 0.0f), glm::vec3(heading.x, 0.0f, heading.z));
+        if (!follow.face)
+        {
+            pose.rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
+        }
+        return pose;
+    }
+    const ActorTrack& track = *owner->keys;
+    size_t from = 0;
+    size_t to = 0;
+    float t = 0.0f;
+    Segment(track.keys, at, from, to, t);
+    const CinePose frame = Frame(track.anchor, time);
+    const glm::vec3 local = glm::mix(track.keys[from].position, track.keys[to].position, t);
+    const glm::vec3 degrees = glm::mix(track.keys[from].rotation, track.keys[to].rotation, t);
+    return {frame.Apply(local), frame.rotation * TurnFromDegrees(degrees)};
 }
 
 CameraState CinematicSampler::Camera(const CameraTrack& camera, float time) const
@@ -416,6 +428,16 @@ float CinematicSampler::Fade(float time) const
 float CinematicSampler::Letterbox(float time) const
 {
     return std::clamp(SampleFloat(m_cinematic.letterbox, time, 0.0f), 0.0f, 1.0f);
+}
+
+float CinematicSampler::FogScale(float time) const
+{
+    return std::max(SampleFloat(m_cinematic.fogScale, time, 1.0f), 0.05f);
+}
+
+float CinematicSampler::AmbientScale(float time) const
+{
+    return std::max(SampleFloat(m_cinematic.ambientScale, time, 1.0f), 0.0f);
 }
 
 float CinematicSampler::LightIntensity(const LightTrack& light, float time) const
@@ -718,6 +740,8 @@ bool Cinematic::FromJsonText(const std::string& text, std::string* error)
     shakeSpeed = ReadFloats(j, "shake_speed");
     fade = ReadFloats(j, "fade");
     letterbox = ReadFloats(j, "letterbox");
+    fogScale = ReadFloats(j, "fog_scale");
+    ambientScale = ReadFloats(j, "ambient_scale");
     Tidy();
     return true;
 }
@@ -817,6 +841,8 @@ std::string Cinematic::ToJsonText() const
     j["shake_speed"] = WriteFloats(shakeSpeed);
     j["fade"] = WriteFloats(fade);
     j["letterbox"] = WriteFloats(letterbox);
+    j["fog_scale"] = WriteFloats(fogScale);
+    j["ambient_scale"] = WriteFloats(ambientScale);
     return j.dump(2);
 }
 
@@ -903,6 +929,8 @@ void Cinematic::Tidy()
     SortByTime(shakeSpeed);
     SortByTime(fade);
     SortByTime(letterbox);
+    SortByTime(fogScale);
+    SortByTime(ambientScale);
     for (const Marker& marker : markers)
     {
         reach(marker.time);

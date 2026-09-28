@@ -79,6 +79,9 @@ public:
         glm::vec3 doorway{0.0f};
         int door = -2;
         float gate = 1.0f;
+        // Moved since it was put up (a vehicle's lamp): it keeps no shadow of its own, since the one drawn would be of
+        // wherever it was.
+        bool moving = false;
     };
 
     // A light and its fitting. `direction` is where the fitting faces: down for a ceiling light, out
@@ -110,6 +113,10 @@ public:
     void UpdateDoorways(const WorldObjects& world);
     // Another light exactly like the source, with no fitting, lighting a different box.
     int AddCopy(int source, const glm::vec3& min, const glm::vec3& max);
+    // Moves a light and its fitting -- a vehicle's lamps going with it -- to shine from `at` towards `direction`.
+    void Place(Scene& scene, int index, const glm::vec3& at, const glm::vec3& direction);
+    // Changed whenever lights are taken away, so an index kept from before is known to be stale.
+    uint32_t Generation() const { return m_generation; }
     void SetPowered(int circuit, bool powered);
     bool Powered(int circuit) const;
 

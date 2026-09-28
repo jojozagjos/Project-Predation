@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <queue>
 
 namespace pred
 {
@@ -217,6 +218,26 @@ SitePlan SitePlan::Generate(uint32_t seed)
         }
     }
 
+    // Where a vehicle waits at each building: out from its first way in, its back to the door and its ramp down to within
+    // a step of it, facing away. And where the crawler waits by the pad for the shuttle, facing into the site.
+    constexpr float kParkOut = 7.6f;
+    for (const FacilityLayout& building : plan.buildings)
+    {
+        Spot spot;
+        if (!building.exits.empty())
+        {
+            const glm::vec2 out = Outward(building.exits.front().side);
+            spot.position = ExitPoint(building, building.exits.front(), kParkOut);
+            spot.yaw = std::atan2(out.x, -out.y);
+        }
+        plan.parking.push_back(spot);
+    }
+    {
+        const glm::vec2 into{std::sin(plan.landingYaw), -std::cos(plan.landingYaw)};
+        plan.crawlerStart.position = world(landingLocal.x + into.x * 16.0f, landingLocal.y + into.y * 16.0f);
+        plan.crawlerStart.yaw = plan.landingYaw;
+    }
+
     // The ground, a little below the buildings' floors so the two never fight over which is drawn.
     plan.blocks.push_back({Kind::Ground, world(S * 0.5f, S * 0.5f) + glm::vec3(0.0f, -0.27f, 0.0f), {S + 90.0f, 0.5f, S + 90.0f}, 0.0f});
 
@@ -290,7 +311,8 @@ SitePlan SitePlan::Generate(uint32_t seed)
         const glm::vec2 dir = (to - from) / std::max(length, 1.0e-3f);
         const glm::vec2 across{-dir.y, dir.x};
         int n = 0;
-        for (float d = 16.0f; d < length - 8.0f; d += random.Range(20.0f, 26.0f), ++n)
+        // Stopping well short of the door, where a vehicle waits.
+        for (float d = 16.0f; d < length - 16.0f; d += random.Range(20.0f, 26.0f), ++n)
         {
             const glm::vec2 at = from + dir * d + across * ((n % 2 == 0) ? 3.5f : -3.5f);
             if (plan.InBuilding(at, 3.0f))
@@ -308,6 +330,18 @@ SitePlan SitePlan::Generate(uint32_t seed)
 
     // Things to get behind, and things to find your way by.
     std::vector<std::pair<glm::vec2, float>> cover; // centre and radius, in the world
+    // Nothing where a vehicle waits, or on its way in to it, or where the crawler waits by the pad.
+    for (size_t b = 0; b < plan.parking.size(); ++b)
+    {
+        if (plan.buildings[b].exits.empty())
+        {
+            continue;
+        }
+        const glm::vec2 out = Outward(plan.buildings[b].exits.front().side);
+        cover.push_back({flat(plan.parking[b].position), 6.5f});
+        cover.push_back({flat(plan.parking[b].position) + out * 12.0f, 6.0f});
+    }
+    cover.push_back({flat(plan.crawlerStart.position), 6.0f});
     const auto clear = [&](glm::vec2 at, float radius)
     {
         const glm::vec2 local = at - flat(O);
@@ -427,6 +461,12 @@ SitePlan SitePlan::Generate(uint32_t seed)
             blocked = blocked || crossesX || crossesZ;
         }
         const glm::vec2 pad = flat(plan.landing);
+        for (const Spot& spot : plan.parking)
+        {
+            const glm::vec2 at = flat(spot.position);
+            blocked = blocked || DistanceTo(at, glm::min(glm::vec2(startX, startZ), corner), glm::max(glm::vec2(startX, startZ), corner)) < 8.0f ||
+                      DistanceTo(at, glm::min(corner, glm::vec2(turnX, endZ)), glm::max(corner, glm::vec2(turnX, endZ))) < 8.0f;
+        }
         blocked = blocked || DistanceTo(pad, glm::min(glm::vec2(startX, startZ), corner), glm::max(glm::vec2(startX, startZ), corner)) < kPadHalf + 3.0f ||
                   DistanceTo(pad, glm::min(corner, glm::vec2(turnX, endZ)), glm::max(corner, glm::vec2(turnX, endZ))) < kPadHalf + 3.0f;
         if (blocked || std::abs(turnX - startX) < 4.0f || std::abs(endZ - startZ) < 4.0f)
@@ -453,6 +493,166 @@ SitePlan SitePlan::Generate(uint32_t seed)
         supports(corner, {turnX, endZ});
     }
     return plan;
+}
+
+
+std::vector<glm::vec3> SitePlan::Route(const glm::vec3& from, const glm::vec3& to) const
+{
+    // A grid over the open ground, three metres a cell, with what is in the way marked: the buildings and a margin round
+    // them, the rock round the edge, the pad the shuttle stands on, and everything standing on the ground -- boulders,
+    // containers, tanks, the pipes and their supports, which a vehicle three and a half metres high does not fit under.
+    // A shortest way through the free cells, and then as few straight legs as follow it without cutting a corner.
+    constexpr float kStep = 3.0f;
+    const int n = static_cast<int>(size / kStep) + 1;
+    const auto centreOf = [&](int i, int k) { return glm::vec2(origin.x + (static_cast<float>(i) + 0.5f) * kStep, origin.z + (static_cast<float>(k) + 0.5f) * kStep); };
+    std::vector<uint8_t> blocked(static_cast<size_t>(n * n), 0);
+    const glm::vec2 pad{landing.x, landing.z};
+    for (int k = 0; k < n; ++k)
+    {
+        for (int i = 0; i < n; ++i)
+        {
+            const glm::vec2 p = centreOf(i, k);
+            const glm::vec2 local = p - glm::vec2(origin.x, origin.z);
+            bool closed = local.x < 8.0f || local.y < 8.0f || local.x > size - 8.0f || local.y > size - 8.0f || InBuilding(p, 4.0f) ||
+                          glm::distance(p, pad) < 9.0f;
+            for (const Block& block : blocks)
+            {
+                if (closed)
+                {
+                    break;
+                }
+                if (block.kind == BlockKind::Ground || block.kind == BlockKind::Cliff || block.kind == BlockKind::Pad)
+                {
+                    continue;
+                }
+                const glm::vec2 half = glm::vec2(block.size.x, block.size.z) * 0.5f;
+                const glm::vec2 centre{block.centre.x, block.centre.z};
+                // Turned things by the circle round them; the pipes, which are long and square to the axes, by their box.
+                const float away = block.kind == BlockKind::PipeX || block.kind == BlockKind::PipeZ ? DistanceTo(p, centre - half, centre + half)
+                                                                                                     : glm::distance(p, centre) - glm::length(half);
+                closed = away < 2.5f;
+            }
+            blocked[static_cast<size_t>(k * n + i)] = closed ? 1 : 0;
+        }
+    }
+    const auto cellOf = [&](const glm::vec3& at)
+    {
+        return glm::ivec2(std::clamp(static_cast<int>((at.x - origin.x) / kStep), 0, n - 1), std::clamp(static_cast<int>((at.z - origin.z) / kStep), 0, n - 1));
+    };
+    const auto free = [&](glm::ivec2 c) { return c.x >= 0 && c.y >= 0 && c.x < n && c.y < n && blocked[static_cast<size_t>(c.y * n + c.x)] == 0; };
+    // The ends themselves may be just inside a margin (the pad, a door): start and finish at the nearest free cell.
+    const auto nearestFree = [&](glm::ivec2 c)
+    {
+        for (int r = 0; r < n; ++r)
+        {
+            for (int dz = -r; dz <= r; ++dz)
+            {
+                for (int dx = -r; dx <= r; ++dx)
+                {
+                    if ((std::abs(dx) == r || std::abs(dz) == r) && free({c.x + dx, c.y + dz}))
+                    {
+                        return glm::ivec2(c.x + dx, c.y + dz);
+                    }
+                }
+            }
+        }
+        return c;
+    };
+    const glm::ivec2 start = nearestFree(cellOf(from));
+    const glm::ivec2 goal = nearestFree(cellOf(to));
+
+    std::vector<float> cost(static_cast<size_t>(n * n), 1.0e30f);
+    std::vector<int> came(static_cast<size_t>(n * n), -1);
+    using Entry = std::pair<float, int>;
+    std::priority_queue<Entry, std::vector<Entry>, std::greater<Entry>> open;
+    const auto index = [&](glm::ivec2 c) { return c.y * n + c.x; };
+    cost[static_cast<size_t>(index(start))] = 0.0f;
+    open.push({0.0f, index(start)});
+    while (!open.empty())
+    {
+        const int current = open.top().second;
+        open.pop();
+        if (current == index(goal))
+        {
+            break;
+        }
+        const glm::ivec2 c{current % n, current / n};
+        for (int dz = -1; dz <= 1; ++dz)
+        {
+            for (int dx = -1; dx <= 1; ++dx)
+            {
+                const glm::ivec2 next{c.x + dx, c.y + dz};
+                if ((dx == 0 && dz == 0) || !free(next))
+                {
+                    continue;
+                }
+                // Not diagonally between two closed cells.
+                if (dx != 0 && dz != 0 && (!free({c.x + dx, c.y}) || !free({c.x, c.y + dz})))
+                {
+                    continue;
+                }
+                const float step = (dx != 0 && dz != 0) ? 1.41421356f : 1.0f;
+                const float reached = cost[static_cast<size_t>(current)] + step;
+                if (reached < cost[static_cast<size_t>(index(next))])
+                {
+                    cost[static_cast<size_t>(index(next))] = reached;
+                    came[static_cast<size_t>(index(next))] = current;
+                    open.push({reached + glm::length(glm::vec2(goal - next)), index(next)});
+                }
+            }
+        }
+    }
+    std::vector<glm::ivec2> cells;
+    for (int at = index(goal); at >= 0; at = came[static_cast<size_t>(at)])
+    {
+        cells.push_back({at % n, at / n});
+        if (at == index(start))
+        {
+            break;
+        }
+    }
+    std::reverse(cells.begin(), cells.end());
+    if (cells.empty() || cells.front() != start)
+    {
+        // No way round: straight there.
+        return {from, to};
+    }
+    // As few straight legs as keep to the free cells.
+    const auto clear = [&](glm::vec2 a, glm::vec2 b)
+    {
+        const float length = glm::distance(a, b);
+        for (float d = 0.0f; d <= length; d += 1.0f)
+        {
+            const glm::vec2 p = a + (b - a) * (length > 0.0f ? d / length : 0.0f);
+            if (!free(cellOf(glm::vec3(p.x, 0.0f, p.y))))
+            {
+                return false;
+            }
+        }
+        return true;
+    };
+    std::vector<glm::vec3> route{from};
+    size_t anchor = 0;
+    while (anchor + 1 < cells.size())
+    {
+        size_t furthest = anchor + 1;
+        for (size_t next = cells.size() - 1; next > anchor + 1; --next)
+        {
+            if (clear(centreOf(cells[anchor].x, cells[anchor].y), centreOf(cells[next].x, cells[next].y)))
+            {
+                furthest = next;
+                break;
+            }
+        }
+        if (furthest + 1 < cells.size())
+        {
+            const glm::vec2 p = centreOf(cells[furthest].x, cells[furthest].y);
+            route.push_back({p.x, origin.y, p.y});
+        }
+        anchor = furthest;
+    }
+    route.push_back(to);
+    return route;
 }
 
 } // namespace pred

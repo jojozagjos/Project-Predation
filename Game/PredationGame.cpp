@@ -3192,16 +3192,22 @@ void PredationGame::GoToMap(MapChoice map)
         arrived = "In the creature lab, at the north end of the testing area. The nest is to the north.";
         break;
     case MapChoice::Facility:
+    {
         // A deployment that is over is not gone back to: the site is put back as it was, its data on its terminal.
         if (m_mission.stage == MissionState::Stage::Over && IsAuthority() && m_screen == Screen::Playing)
         {
             ChangeFacility(m_facility.Seed());
         }
-        m_spawnPoint = m_facility.Spawn();
-        yaw = m_facility.SpawnYaw();
+        // Aboard the crawler, parked at the building, facing its ramp: where the insertion hands everybody control.
+        m_spawnPoint = MissionArrival(LocalPlayerId());
+        CinePose arrival;
+        yaw = m_missionProps.Crawler().Socket("arrival", arrival)
+                  ? std::atan2((arrival.rotation * glm::vec3(0.0f, 0.0f, -1.0f)).x, -(arrival.rotation * glm::vec3(0.0f, 0.0f, -1.0f)).z)
+                  : m_facility.SpawnYaw();
         arrived = "At the site planned from seed " + std::to_string(m_facility.Seed()) + ": " +
                   std::to_string(m_facility.Plan().buildings.size()) + " buildings.";
         break;
+    }
     }
     m_map = map;
     m_spawnYaw = yaw;
@@ -3211,9 +3217,25 @@ void PredationGame::GoToMap(MapChoice map)
         StopSession();
         m_sessionMode = SessionMode::Offline;
         EnterWorld();
+        if (map == MapChoice::Facility)
+        {
+            m_spawnPoint = MissionArrival(LocalPlayerId());
+            RespawnLocalPlayer(m_spawnPoint);
+            CinePose arrival;
+            if (m_missionProps.Crawler().Socket("arrival", arrival))
+            {
+                const glm::vec3 faces = arrival.rotation * glm::vec3(0.0f, 0.0f, -1.0f);
+                yaw = std::atan2(faces.x, -faces.z);
+            }
+        }
         m_lookYaw = yaw;
+        m_lookPitch = 0.0f;
         m_player.State().yaw = m_lookYaw;
         RequestNavRebuild();
+        if (map == MapChoice::Facility && HasCinematic("surface_insertion"))
+        {
+            PlayCinematic("surface_insertion");
+        }
         return;
     }
     if (!IsAuthority())
@@ -3232,15 +3254,22 @@ void PredationGame::GoToMap(MapChoice map)
     {
         for (const RemotePlayerView& remote : m_host.Remotes())
         {
-            m_host.RespawnPlayer(remote.id, m_spawnPoint);
+            // At the site, each in their own place in the crawler.
+            const glm::vec3 place = map == MapChoice::Facility ? MissionArrival(remote.id) : m_spawnPoint;
+            m_host.RespawnPlayer(remote.id, place);
             WorldEventMessage event;
             event.kind = WorldEventKind::PlayerRespawned;
             event.player = remote.id;
-            event.position = m_spawnPoint;
+            event.position = place;
             m_host.Broadcast(event);
         }
     }
     m_app->GetConsole().Print(arrived);
+    // Going in is shown: the shuttle coming down, the crawler out to the building, its ramp down.
+    if (map == MapChoice::Facility && HasCinematic("surface_insertion"))
+    {
+        PlayCinematic("surface_insertion");
+    }
 }
 
 void PredationGame::ChangeFacility(uint16_t seed)
@@ -6978,6 +7007,13 @@ void PredationGame::DrawNetworkPanel()
 
 void PredationGame::OnShutdown()
 {
+    // A navigation rebuild still going on its worker is building into a mesh this game owns, and logs when it is done:
+    // let it finish before any of that goes. Quitting within a second or two of arriving somewhere -- while the site's
+    // navigation was still being built -- crashed on the way out.
+    if (m_navRebuild.valid())
+    {
+        m_navRebuild.wait();
+    }
     StopSession();
     DestroyEditorFirstPerson();
     m_editor.Shutdown(m_editorScene);
@@ -9030,7 +9066,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
     // Dead, what is still yours: the pause menu, the drone -- its hop is the jump key, its lamp the torch key --
     // and, without one, whose view to watch (interact). Everything else waits for a body.
     const bool dead = !m_player.State().alive;
-    if (!app.IsConsoleOpen() && m_screen == Screen::Playing && dead)
+    if (!app.IsConsoleOpen() && m_screen == Screen::Playing && dead && !CinematicHoldsPlayers())
     {
         if (input.WasActionPressed("jump"))
         {
@@ -9058,7 +9094,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
     // actions asked whether the player was alive, because the camera moves to a teammate and it
     // looked as though nothing was being driven any more. Movement is already refused by the
     // controller; this is everything else.
-    if (!app.IsConsoleOpen() && m_screen == Screen::Playing && !dead)
+    if (!app.IsConsoleOpen() && m_screen == Screen::Playing && !dead && !CinematicHoldsPlayers())
     {
         if (input.WasActionPressed("jump"))
         {
@@ -9530,6 +9566,21 @@ void PredationGame::OnUpdate(double dt, double alpha)
             environment.fogColor = usual.fogColor;
         }
         m_skyAtSite = atSite;
+        // A cinematic can see further through the fog, and lift the dark a little at the site, for a shot of the place.
+        if (m_cine.Active())
+        {
+            const CinematicSampler sampler = m_cine.Sampler();
+            const float fog = sampler.FogScale(m_cine.Time());
+            environment.fogStart *= fog;
+            environment.fogEnd *= fog;
+            if (atSite)
+            {
+                const float light = sampler.AmbientScale(m_cine.Time());
+                environment.ambientSky *= light;
+                environment.ambientGround *= light;
+                environment.sunIntensity *= light;
+            }
+        }
     }
     environment.exposure = cv_exposure.Get();
     environment.contrast = cv_contrast.Get();

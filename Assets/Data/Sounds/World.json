@@ -666,5 +666,104 @@
         "gain": 0.5
       }
     ]
+  },
+  "crawler_engine": {
+    "seconds": 6,
+    "variants": 2,
+    "vary": 0.05,
+    "room": 0.45,
+    "seed": 7201,
+    "layers": [
+      {
+        "source": "saw",
+        "hz": 42,
+        "hz_end": 48,
+        "filter": "lowpass",
+        "cutoff": 260,
+        "attack": 0.4,
+        "sustain": 1,
+        "decay": 0.8,
+        "length": 6,
+        "gain": 0.35,
+        "am_hz": 11,
+        "am_depth": 0.45
+      },
+      {
+        "source": "noise",
+        "color": "brown",
+        "filter": "lowpass",
+        "cutoff": 180,
+        "attack": 0.5,
+        "sustain": 1,
+        "decay": 0.8,
+        "length": 6,
+        "gain": 0.5
+      },
+      {
+        "source": "noise",
+        "color": "pink",
+        "filter": "bandpass",
+        "cutoff": 900,
+        "q": 1.2,
+        "attack": 0.6,
+        "sustain": 1,
+        "decay": 0.8,
+        "length": 6,
+        "gain": 0.06,
+        "am_hz": 7,
+        "am_depth": 0.6
+      }
+    ]
+  },
+  "ramp": {
+    "seconds": 3,
+    "variants": 2,
+    "vary": 0.04,
+    "room": 0.35,
+    "seed": 7202,
+    "layers": [
+      {
+        "source": "saw",
+        "hz": 180,
+        "hz_end": 240,
+        "filter": "bandpass",
+        "cutoff": 700,
+        "q": 2,
+        "attack": 0.2,
+        "sustain": 0.8,
+        "decay": 0.3,
+        "length": 2.5,
+        "gain": 0.12
+      },
+      {
+        "source": "noise",
+        "filter": "bandpass",
+        "cutoff": 1400,
+        "q": 1.5,
+        "attack": 0.3,
+        "sustain": 0.6,
+        "decay": 0.3,
+        "length": 2.5,
+        "gain": 0.05
+      },
+      {
+        "source": "click",
+        "filter": "lowpass",
+        "cutoff": 700,
+        "start": 2.45,
+        "decay": 0.06,
+        "length": 0.2,
+        "gain": 1
+      },
+      {
+        "source": "sine",
+        "hz": 70,
+        "hz_end": 45,
+        "start": 2.45,
+        "decay": 0.2,
+        "length": 0.4,
+        "gain": 0.6
+      }
+    ]
   }
 }

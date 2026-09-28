@@ -1,0 +1,109 @@
+{
+  "name": "surface_extraction",
+  "duration": 31.0,
+  "pauses_gameplay": true,
+  "blend_out": 0.0,
+  "loop": false,
+  "actors": [
+    { "name": "shuttle", "bind": "site_shuttle" },
+    { "name": "crawler", "bind": "site_crawler" }
+  ],
+  "cameras": [
+    {
+      "name": "inside", "anchor": "crawler",
+      "keys": [
+        { "t": 0.0, "position": [0.0, 2.72, 0.6], "rotation": [-4.0, 180.0, 0.0], "fov": 70.0, "ease": "linear" },
+        { "t": 4.5, "position": [0.0, 2.72, 0.9], "rotation": [-3.0, 180.0, 0.0], "fov": 66.0, "ease": "in_out" }
+      ]
+    },
+    {
+      "name": "leaving", "anchor": "crawler_park", "look_at": "crawler", "look_offset": [0.0, 1.5, 0.0],
+      "keys": [
+        { "t": 4.5, "position": [1.5, 2.2, 5.0], "rotation": [0.0, 0.0, 0.0], "fov": 45.0, "ease": "linear" },
+        { "t": 11.5, "position": [1.0, 2.8, 6.0], "rotation": [0.0, 0.0, 0.0], "fov": 42.0, "ease": "in_out" }
+      ]
+    },
+    {
+      "name": "rear", "anchor": "crawler",
+      "keys": [
+        { "t": 11.5, "position": [0.0, 4.2, 5.0], "rotation": [-8.0, 180.0, 0.0], "fov": 55.0, "ease": "linear" },
+        { "t": 18.0, "position": [0.0, 4.6, 5.5], "rotation": [-6.0, 180.0, 0.0], "fov": 55.0, "ease": "in_out" }
+      ]
+    },
+    {
+      "name": "pad_view", "anchor": "pad", "look_at": "shuttle", "look_offset": [0.0, 2.0, 0.0],
+      "keys": [
+        { "t": 17.5, "position": [-30.0, 5.0, -20.0], "rotation": [0.0, 0.0, 0.0], "fov": 45.0, "ease": "linear" },
+        { "t": 31.0, "position": [-26.0, 4.0, -17.0], "rotation": [0.0, 0.0, 0.0], "fov": 48.0, "ease": "in_out" }
+      ]
+    }
+  ],
+  "shots": [
+    { "t": 0.0, "camera": "inside", "blend": 0.0, "ease": "linear" },
+    { "t": 4.5, "camera": "leaving", "blend": 0.0, "ease": "linear" },
+    { "t": 11.5, "camera": "rear", "blend": 0.0, "ease": "linear" },
+    { "t": 17.5, "camera": "pad_view", "blend": 0.0, "ease": "linear" }
+  ],
+  "actor_tracks": [
+    {
+      "actor": "shuttle", "anchor": "pad",
+      "keys": [
+        { "t": 21.0, "position": [0.0, 0.0, 0.0], "rotation": [0.0, 180.0, 0.0], "ease": "linear" },
+        { "t": 23.5, "position": [0.0, 8.0, 0.0], "rotation": [0.0, 180.0, 0.0], "ease": "in" },
+        { "t": 25.5, "position": [0.0, 30.0, 20.0], "rotation": [10.0, 180.0, 0.0], "ease": "in_out" },
+        { "t": 28.0, "position": [0.0, 120.0, 180.0], "rotation": [15.0, 180.0, 0.0], "ease": "in" },
+        { "t": 31.0, "position": [0.0, 320.0, 600.0], "rotation": [15.0, 180.0, 0.0], "ease": "linear" }
+      ]
+    }
+  ],
+  "paths": [
+    { "actor": "crawler", "path": "route_back", "start": 4.5, "end": 20.0, "ease": "in_out", "lift": 0.0, "face": true }
+  ],
+  "clips": [
+    { "t": 0.3, "actor": "crawler", "clip": "ramp_closing", "speed": 1.0 },
+    { "t": 19.0, "actor": "shuttle", "clip": "ramp_closing", "speed": 1.0 }
+  ],
+  "sounds": [
+    { "t": 0.3, "sound": "World/ramp", "volume": 0.9, "at": "crawler", "music": false },
+    { "t": 3.5, "sound": "World/crawler_engine", "volume": 0.9, "at": "crawler", "music": false },
+    { "t": 9.5, "sound": "World/crawler_engine", "volume": 0.9, "at": "crawler", "music": false },
+    { "t": 15.5, "sound": "World/crawler_engine", "volume": 0.8, "at": "crawler", "music": false },
+    { "t": 19.0, "sound": "World/ramp", "volume": 0.8, "at": "shuttle", "music": false },
+    { "t": 20.5, "sound": "World/shuttle_launch", "volume": 1.0, "at": "shuttle", "music": false },
+    { "t": 25.0, "sound": "World/shuttle_launch", "volume": 0.8, "at": "shuttle", "music": false }
+  ],
+  "markers": [
+    { "t": 30.6, "name": "go_to_ship", "value": "" }
+  ],
+  "texts": [],
+  "lights": [],
+  "particles": [
+    { "t": 6.0, "effect": "snow", "at": "crawler", "offset": [0.0, 0.3, 3.8], "duration": 1.6 },
+    { "t": 8.5, "effect": "snow", "at": "crawler", "offset": [0.0, 0.3, 3.8], "duration": 1.6 },
+    { "t": 11.0, "effect": "snow", "at": "crawler", "offset": [0.0, 0.3, 3.8], "duration": 1.6 },
+    { "t": 13.5, "effect": "snow", "at": "crawler", "offset": [0.0, 0.3, 3.8], "duration": 1.6 },
+    { "t": 21.0, "effect": "exhaust", "at": "shuttle", "offset": [0.0, 0.8, -3.0], "duration": 1.2 },
+    { "t": 21.5, "effect": "snow", "at": "pad", "offset": [0.0, 0.2, 0.0], "duration": 3.0 },
+    { "t": 23.0, "effect": "exhaust", "at": "shuttle", "offset": [0.0, 0.8, -3.0], "duration": 1.2 }
+  ],
+  "shake": [
+    { "t": 0.0, "value": 0.1, "ease": "linear" },
+    { "t": 3.5, "value": 0.3, "ease": "in_out" },
+    { "t": 17.5, "value": 0.2, "ease": "linear" },
+    { "t": 21.0, "value": 0.9, "ease": "in" },
+    { "t": 24.0, "value": 0.6, "ease": "linear" },
+    { "t": 31.0, "value": 0.0, "ease": "out" }
+  ],
+  "shake_speed": [
+    { "t": 0.0, "value": 16.0, "ease": "linear" }
+  ],
+  "fade": [
+    { "t": 0.0, "value": 0.0, "ease": "linear" },
+    { "t": 28.5, "value": 0.0, "ease": "linear" },
+    { "t": 30.3, "value": 1.0, "ease": "in_out" }
+  ],
+  "letterbox": [
+    { "t": 0.0, "value": 0.0, "ease": "linear" },
+    { "t": 1.5, "value": 1.0, "ease": "in_out" }
+  ]
+}

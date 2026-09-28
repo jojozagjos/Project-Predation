@@ -8,6 +8,7 @@
 #include "Engine/Core/Paths.h"
 #include "Engine/Render/Primitives.h"
 #include "Game/World/TestMap.h"
+#include "Game/World/Vehicles.h"
 
 #include <imgui.h>
 
@@ -27,6 +28,13 @@ namespace
 {
 
 using Stage = MissionState::Stage;
+
+// Where the crawler's console is, to hear its alarm from.
+glm::vec3 ConsoleOf(const VehicleProp& crawler)
+{
+    CinePose console;
+    return crawler.Socket("console", console) ? console.position + glm::vec3(0.0f, 0.9f, 0.0f) : crawler.Home().position;
+}
 
 // While the download goes on, the terminal is heard working now and then: not loud, but a room with something in it
 // hears it.
@@ -108,8 +116,8 @@ void PredationGame::RegisterMissionCommands()
     console.RegisterCommand("site_map", "Open or close the site map, as its key does", [this](const std::vector<std::string>&)
                             { m_mapOpen = !m_mapOpen; });
 #if PRED_DEV_TOOLS
-    console.RegisterCommand("mission_goto", "Stand in front of the mission's terminal, its building's breaker, or the shuttle's console: "
-                            "mission_goto <terminal|breaker|shuttle>",
+    console.RegisterCommand("mission_goto", "Stand in front of the mission's terminal, its building's breaker, or the crawler's console: "
+                            "mission_goto <terminal|breaker|crawler>",
                             [this](const std::vector<std::string>& args)
                             {
                                 const std::string where = args.size() >= 2 ? args[1] : "terminal";
@@ -127,16 +135,22 @@ void PredationGame::RegisterMissionCommands()
                                 {
                                     height = MissionSpec::kBreakerHeight;
                                 }
-                                else if (where == "shuttle")
+                                else if (where == "crawler" || where == "shuttle")
                                 {
-                                    const SitePlan& plan = m_facility.Plan();
-                                    at = Shuttle::Console(plan.ShuttleBase(), plan.landingYaw);
-                                    facing = -plan.landingYaw;
-                                    height = Shuttle::ConsoleSize().y * 0.5f;
+                                    // In the crawler, facing its console, which faces down the cabin.
+                                    CinePose console;
+                                    if (!m_missionProps.Crawler().Socket("console", console))
+                                    {
+                                        return;
+                                    }
+                                    at = console.position + glm::vec3(0.0f, 0.475f, 0.0f);
+                                    const glm::vec3 faces = console.rotation * glm::vec3(0.0f, 0.0f, -1.0f);
+                                    facing = std::atan2(-faces.x, -faces.z);
+                                    height = 0.475f;
                                 }
                                 else
                                 {
-                                    m_app->GetConsole().PrintError("usage: mission_goto <terminal|breaker|shuttle>");
+                                    m_app->GetConsole().PrintError("usage: mission_goto <terminal|breaker|crawler>");
                                     return;
                                 }
                                 const glm::vec3 out{-std::sin(facing), 0.0f, -std::cos(facing)};
@@ -186,6 +200,20 @@ void PredationGame::ResetMission()
     m_missionFoundNoPower = false;
     m_missionSeen = m_mission;
     m_foundNoPowerSeen = false;
+    m_missionLeaving = false;
+    // The crawler's way from the pad to where it parks: round everything, arriving head on to the building so it can turn
+    // on the spot and put its ramp down to the door.
+    m_missionRoute.clear();
+    if (m_missionPlan.Valid() && m_missionProps.Crawler().Built())
+    {
+        const SitePlan& site = m_facility.Plan();
+        const CinePose park = m_missionProps.Crawler().Home();
+        const glm::vec3 away = park.rotation * glm::vec3(0.0f, 0.0f, -1.0f);
+        const glm::vec3 approach = park.position + glm::vec3(away.x, 0.0f, away.z) * 12.0f;
+        m_missionRoute = site.Route(site.crawlerStart.position, approach);
+        m_missionRoute.push_back(park.position);
+    }
+    AttachVehicleLamps();
     ShowMission();
     if (m_missionPlan.Valid())
     {
@@ -194,6 +222,18 @@ void PredationGame::ResetMission()
                       m_missionPlan.terminal.z, m_missionPlan.powerOut ? ", its power out" : "", m_missionPlan.mapGiven ? "" : ", no map",
                       m_missionPlan.downloadSeconds);
     }
+}
+
+glm::vec3 PredationGame::MissionArrival(uint8_t player) const
+{
+    CinePose arrival;
+    if (!m_missionProps.Crawler().Socket("arrival", arrival))
+    {
+        return m_facility.Spawn();
+    }
+    // Side by side across the cabin, so four people do not arrive inside one another.
+    const glm::vec3 across = arrival.rotation * glm::vec3(1.0f, 0.0f, 0.0f);
+    return arrival.position + across * ((static_cast<float>(player) - 1.5f) * 0.55f) + glm::vec3(0.0f, 0.1f, 0.0f);
 }
 
 void PredationGame::ShowMission()
@@ -265,7 +305,7 @@ void PredationGame::ApplyMissionEvent(const WorldEventMessage& event)
         }
         if (!was.Launching() && m_mission.Launching())
         {
-            PlayNamed("World/shuttle_alarm", Shuttle::Console(m_facility.Plan().ShuttleBase(), m_facility.Plan().landingYaw), 0.9f);
+            PlayNamed("World/shuttle_alarm", ConsoleOf(m_missionProps.Crawler()), 0.9f);
         }
     }
     if (was.stage != Stage::Over && m_mission.stage == Stage::Over)
@@ -297,10 +337,15 @@ void PredationGame::OnMissionOver()
             }
         }
     }
-    const glm::vec3 base = m_facility.Plan().ShuttleBase();
-    PlayNamed("World/shuttle_launch", base + glm::vec3(0.0f, 2.0f, 0.0f), 1.0f);
-    PRED_LOG_INFO(Gameplay, "The shuttle has gone{}, {} aboard", m_mission.recovered ? " with the data" : " without the data",
+    PRED_LOG_INFO(Gameplay, "The crawler has gone{}, {} aboard", m_mission.recovered ? " with the data" : " without the data",
                   std::popcount(static_cast<unsigned>(m_mission.aboard)));
+    // And it leaves: the crawler away from the building, back to the shuttle, and the shuttle up. The host starts it, for
+    // everybody; its last marker takes everybody back aboard the ship.
+    if (IsAuthority() && m_map == MapChoice::Facility && HasCinematic("surface_extraction") && !m_missionLeaving)
+    {
+        m_missionLeaving = true;
+        PlayCinematic("surface_extraction");
+    }
 }
 
 bool PredationGame::PerformMissionInteraction(InteractionKind kind, int index, uint8_t player)
@@ -355,7 +400,7 @@ bool PredationGame::PerformMissionInteraction(InteractionKind kind, int index, u
         }
         if (m_mission.Launching())
         {
-            PlayNamed("World/shuttle_alarm", Shuttle::Console(m_facility.Plan().ShuttleBase(), m_facility.Plan().landingYaw), 0.9f);
+            PlayNamed("World/shuttle_alarm", ConsoleOf(m_missionProps.Crawler()), 0.9f);
         }
         PRED_LOG_INFO(Gameplay, "Player {} {} the launch", player, m_mission.Launching() ? "started" : "held");
         break;
@@ -379,7 +424,7 @@ void PredationGame::UpdateMission(float dt)
         const bool wasShowing = m_missionOverFor < MissionSpec::kResultSeconds;
         m_missionOverFor += dt;
         if (wasShowing && m_missionOverFor >= MissionSpec::kResultSeconds && IsAuthority() && m_screen == Screen::Playing &&
-            m_map == MapChoice::Facility)
+            m_map == MapChoice::Facility && !m_missionLeaving && !m_cine.Active())
         {
             GoToMap(MapChoice::TestMap);
         }
@@ -438,7 +483,7 @@ void PredationGame::UpdateMission(float dt)
         bool drive = false;
         for (const auto& [id, at] : living)
         {
-            if (m_facility.Aboard(at))
+            if (m_missionProps.Crawler().Aboard(at))
             {
                 aboard = static_cast<uint8_t>(aboard | (1u << id));
                 drive = drive || CarriesDrive(id);
@@ -448,7 +493,7 @@ void PredationGame::UpdateMission(float dt)
         {
             if (pickup.alive && pickup.item == m_driveItem)
             {
-                if (const Transform* where = m_scene.GetTransform(pickup.entity); where != nullptr && m_facility.Aboard(where->position))
+                if (const Transform* where = m_scene.GetTransform(pickup.entity); where != nullptr && m_missionProps.Crawler().Aboard(where->position))
                 {
                     drive = true;
                 }
@@ -556,6 +601,14 @@ void PredationGame::DrawSiteMap()
         }
     }
 
+    // The crawler, where it is parked.
+    if (m_missionProps.Crawler().Built())
+    {
+        const glm::vec3 parked = m_missionProps.Crawler().Home().position;
+        const ImVec2 mark = at(parked.x, parked.z);
+        draw->AddRectFilled({mark.x - 4.0f, mark.y - 4.0f}, {mark.x + 4.0f, mark.y + 4.0f}, IM_COL32(220, 150, 90, 255));
+        draw->AddText({mark.x + 7.0f, mark.y - 7.0f}, IM_COL32(220, 150, 90, 240), "CRAWLER");
+    }
     // The shuttle.
     const glm::vec3 base = site.ShuttleBase();
     const ImVec2 pad = at(base.x, base.z);
@@ -616,7 +669,7 @@ void PredationGame::DrawMissionHud()
             ImGui::TextColored(text, "%s", mine ? "You made it out." : "You were left behind.");
             ImGui::TextDisabled("%d of %d aboard", std::popcount(static_cast<unsigned>(m_mission.aboard)), everybody);
             const float left = MissionSpec::kResultSeconds - m_missionOverFor;
-            if (left > 0.0f)
+            if (left > 0.0f && !m_missionLeaving)
             {
                 ImGui::TextDisabled("Back aboard the ship in %d", static_cast<int>(std::ceil(left)));
             }
@@ -664,8 +717,8 @@ void PredationGame::DrawMissionHud()
             }
             break;
         case Stage::Carry:
-            ImGui::TextColored(text, "Take the drive to the shuttle.");
-            ImGui::TextDisabled("The shuttle: %s.", Bearing(m_player.State().position, m_facility.Plan().ShuttleBase()).c_str());
+            ImGui::TextColored(text, "Take the drive to the crawler.");
+            ImGui::TextDisabled("The crawler: %s.", Bearing(m_player.State().position, m_missionProps.Crawler().Home().position).c_str());
             if (m_driveItem != kInvalidItem && m_inventory.CountOf(m_driveItem) > 0)
             {
                 ImGui::TextDisabled("You have the drive.");
@@ -677,7 +730,7 @@ void PredationGame::DrawMissionHud()
         }
         if (m_mission.Launching())
         {
-            ImGui::TextColored(warning, "The shuttle leaves in %d. Anybody not aboard is left behind.",
+            ImGui::TextColored(warning, "The crawler leaves in %d. Anybody not aboard is left behind.",
                                static_cast<int>(std::ceil(m_mission.launchIn)));
         }
     }
@@ -772,7 +825,8 @@ void PredationGame::UpdateArrivalAndIntercom(float dt)
 {
     // Arriving: the site the moment this player is on it, whoever brought them.
     const bool atSite = m_screen == Screen::Playing && m_mission.stage != Stage::None && m_mission.stage != Stage::Over && AtSite();
-    if (atSite && !m_wasAtSite)
+    // Arriving without a cinematic to show it (one shows its own title card, and says its own first line).
+    if (atSite && !m_wasAtSite && !m_cine.Active())
     {
         m_titleCardFor = 0.0f;
         Say(m_missionPlan.mapGiven ? "arrival" : "arrival_no_map", kCardIn + kCardFade + 1.0f);
@@ -940,7 +994,7 @@ void PredationGame::DrawBriefing()
         ImGui::SetWindowFontScale(1.0f);
         ImGui::Spacing();
         ImGui::TextColored({0.86f, 0.88f, 0.9f, 1.0f}, "Objective: download the data from a terminal on the site,");
-        ImGui::TextColored({0.86f, 0.88f, 0.9f, 1.0f}, "and bring the drive back aboard the shuttle.");
+        ImGui::TextColored({0.86f, 0.88f, 0.9f, 1.0f}, "and bring the drive back aboard the crawler.");
         ImGui::TextDisabled("Site map: %s", m_nextMapGiven ? "on file" : "none on file");
         ImGui::Spacing();
         ImGui::Separator();

@@ -2198,3 +2198,43 @@ with it; sometimes the power is out, sometimes there is no map; the launch leave
 - **The deployment console** stands in the testing area (standing in for the ship). The host uses it to open
   the briefing for the next site: its name, the objective, whether there is a site map on file, and Deploy,
   Another site or Not yet. Anybody else is told the host chooses. `briefing [seed]` opens it from the console.
+
+## ADR-103: Cinematics -- data on a timeline, played in the world, between every part of a deployment
+
+Asked for as a system, not as one-off sequences: see Game/Cinematic/Cinematic.h and Assets/Cinematics.
+
+- **A cinematic is data** (Assets/Cinematics/<name>.json): cameras, shots that cut or blend, actors moved by
+  keys or along paths, their models' clips (ramps, doors, clamps), sounds, markers for the game to act on,
+  title cards typed out and captions, particles, shake, fade, letterbox, and how far the fog is pushed back and
+  the dark lifted. Keys have eased curves (linear, step, in, out, in-out, or a Bezier of their own).
+- **Written against anchors, not coordinates**: the game supplies where things are for this site -- the pad,
+  the crawler's start and parking place, the building and its way in, a clear viewpoint of it, the shuttle's
+  rest -- and paths (the crawler's route there and back, found round everything on the site). One file fits
+  every generated site, and what is edited by hand in it is never overwritten by what a mission generates: the
+  generated part is only the anchors. A camera can ride an actor or keep one in view.
+- **Played in the world** (CinematicPlayer): its actors are the real things -- the site's shuttle and the
+  mission's crawler are bound by name and moved, and put back where they rest when it ends -- or editor models it
+  brings in. Everything it shows is worked out from its time alone, so scrubbing shows what playing would; what
+  happens (sounds, markers, particles) happens as time passes it. The game takes the picture, lens and far plane,
+  holds the players and the creatures, hides the HUD and everybody's bodies, and at the end hands the picture back
+  to the player's own eyes (or fades up from black when it ended in black). The host starts one for everybody.
+  Nobody playing can skip or pause one; the controls are a development build's.
+- **The vehicles are real** (Game/World/Vehicles.h): the shuttle and a snow crawler are editor models
+  (Assets/Models/Vehicles, written from code the first time and edited from then on), solid where they rest, with
+  sockets for where people stand, the console, the cabin, and lamps that move with them (headlights, a landing
+  light). The crawler is parked at the terminal's building with its ramp down to the door: the team arrives in
+  it, and leaves in it -- the launch console and "aboard" are the crawler's now.
+- **The deployment, shown**: deploying plays surface_insertion (the shuttle out of the dark and down onto the
+  pad, the crawler out along its route, the building revealed with its name typed out, the crawler turning at
+  the door and its ramp coming down, and the picture handed back inside it); launching plays surface_extraction
+  (the ramp up, away from the building, back to the pad, the shuttle up) and its last marker takes everybody back
+  aboard the ship for the debrief; everybody down plays surface_wipe (the empty crawler leaving on its own, the
+  shuttle going, "MISSION FAILED / RETURNING ON AUTOPILOT").
+- Debugging: cine_debug (time, shot, blend, camera, actors, what is coming and what has happened, anchors, and
+  every camera's and actor's path drawn), cine_list/play/restart/skip/seek/pause/resume/speed/stop/reload.
+- Also: nests no longer grow round the end of a wall (a root drawn straight to the far side went through it) nor
+  more than a hand's breadth into a wall they run into; and the game waits for a navigation rebuild before
+  shutting down, which crashed quitting within a moment of arriving somewhere.
+
+Still to come: the cinematic editor's timeline, the ship and its travel and arrival, the station's docking,
+and short first-person moments for pulling a drive or throwing a breaker.

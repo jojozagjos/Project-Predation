@@ -98,8 +98,8 @@ set(PRED_GAME_SOURCES
     World/SitePlan.cpp
     World/SiteMap.h
     World/SiteMap.cpp
-    World/Shuttle.h
-    World/Shuttle.cpp
+    World/Vehicles.h
+    World/Vehicles.cpp
     World/HiveMesh.h
     World/LevelLights.h
     World/LevelLights.cpp

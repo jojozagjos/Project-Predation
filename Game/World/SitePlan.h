@@ -96,8 +96,23 @@ struct SitePlan
     // towards the middle of the site.
     glm::vec3 landing{0.0f};
     float landingYaw = 0.0f;
-    // Where the shuttle stands: the middle of the pad, on its surface (see Shuttle).
+    // Where the shuttle stands: the middle of the pad, on its surface.
     glm::vec3 ShuttleBase() const { return landing - glm::vec3(0.0f, 0.5f, 0.0f); }
+
+    // A place on the ground and which way something standing there faces, turned as a look is: (sin, 0, -cos).
+    struct Spot
+    {
+        glm::vec3 position{0.0f};
+        float yaw = 0.0f;
+    };
+    // Where a vehicle waits at each building, a building apiece: out from its first way in, its back to the door so its
+    // ramp comes down within a step of it, facing away. Kept clear of everything else.
+    std::vector<Spot> parking;
+    // Where the crawler waits by the pad for the shuttle, facing into the site.
+    Spot crawlerStart;
+    // The way over open ground from one point to another: round the buildings, the rock, the pipes and everything
+    // standing about, as a few straight legs, from the first point to the last.
+    std::vector<glm::vec3> Route(const glm::vec3& from, const glm::vec3& to) const;
     Sky sky;
 
     static SitePlan Generate(uint32_t seed);

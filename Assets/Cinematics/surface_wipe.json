@@ -1,0 +1,94 @@
+{
+  "name": "surface_wipe",
+  "duration": 22.0,
+  "pauses_gameplay": true,
+  "blend_out": 0.0,
+  "loop": false,
+  "actors": [
+    { "name": "shuttle", "bind": "site_shuttle" },
+    { "name": "crawler", "bind": "site_crawler" }
+  ],
+  "cameras": [
+    {
+      "name": "empty", "anchor": "crawler_park", "look_at": "crawler", "look_offset": [0.0, 1.6, 0.0],
+      "keys": [
+        { "t": 0.0, "position": [-10.0, 4.0, -12.0], "rotation": [0.0, 0.0, 0.0], "fov": 45.0, "ease": "linear" },
+        { "t": 4.0, "position": [-9.0, 3.8, -11.0], "rotation": [0.0, 0.0, 0.0], "fov": 45.0, "ease": "in_out" }
+      ]
+    },
+    {
+      "name": "leaving", "anchor": "crawler_park", "look_at": "crawler", "look_offset": [0.0, 1.5, 0.0],
+      "keys": [
+        { "t": 4.0, "position": [2.0, 2.0, 6.0], "rotation": [0.0, 0.0, 0.0], "fov": 42.0, "ease": "linear" },
+        { "t": 15.0, "position": [2.0, 2.2, 6.5], "rotation": [0.0, 0.0, 0.0], "fov": 36.0, "ease": "in_out" }
+      ]
+    },
+    {
+      "name": "pad_view", "anchor": "pad", "look_at": "shuttle", "look_offset": [0.0, 2.0, 0.0],
+      "keys": [
+        { "t": 15.0, "position": [-30.0, 5.0, -20.0], "rotation": [0.0, 0.0, 0.0], "fov": 45.0, "ease": "linear" },
+        { "t": 22.0, "position": [-28.0, 4.5, -18.0], "rotation": [0.0, 0.0, 0.0], "fov": 46.0, "ease": "in_out" }
+      ]
+    }
+  ],
+  "shots": [
+    { "t": 0.0, "camera": "empty", "blend": 0.0, "ease": "linear" },
+    { "t": 4.0, "camera": "leaving", "blend": 0.0, "ease": "linear" },
+    { "t": 15.0, "camera": "pad_view", "blend": 0.0, "ease": "linear" }
+  ],
+  "actor_tracks": [
+    {
+      "actor": "shuttle", "anchor": "pad",
+      "keys": [
+        { "t": 17.0, "position": [0.0, 0.0, 0.0], "rotation": [0.0, 180.0, 0.0], "ease": "linear" },
+        { "t": 19.0, "position": [0.0, 8.0, 0.0], "rotation": [0.0, 180.0, 0.0], "ease": "in" },
+        { "t": 20.5, "position": [0.0, 28.0, 18.0], "rotation": [10.0, 180.0, 0.0], "ease": "in_out" },
+        { "t": 22.0, "position": [0.0, 90.0, 130.0], "rotation": [15.0, 180.0, 0.0], "ease": "in" }
+      ]
+    }
+  ],
+  "paths": [
+    { "actor": "crawler", "path": "route_back", "start": 4.0, "end": 17.0, "ease": "in_out", "lift": 0.0, "face": true }
+  ],
+  "clips": [
+    { "t": 1.5, "actor": "crawler", "clip": "ramp_closing", "speed": 1.0 },
+    { "t": 15.5, "actor": "shuttle", "clip": "ramp_closing", "speed": 1.0 }
+  ],
+  "sounds": [
+    { "t": 1.5, "sound": "World/ramp", "volume": 0.8, "at": "crawler", "music": false },
+    { "t": 3.5, "sound": "World/crawler_engine", "volume": 0.8, "at": "crawler", "music": false },
+    { "t": 9.5, "sound": "World/crawler_engine", "volume": 0.7, "at": "crawler", "music": false },
+    { "t": 16.5, "sound": "World/shuttle_launch", "volume": 0.9, "at": "shuttle", "music": false }
+  ],
+  "markers": [
+    { "t": 21.6, "name": "go_to_ship", "value": "" }
+  ],
+  "texts": [
+    { "t": 2.0, "duration": 6.0, "style": "title_card", "type_speed": 24.0, "lines": ["MISSION FAILED", "RETURNING ON AUTOPILOT"] }
+  ],
+  "lights": [],
+  "particles": [
+    { "t": 6.0, "effect": "snow", "at": "crawler", "offset": [0.0, 0.3, 3.8], "duration": 1.6 },
+    { "t": 9.0, "effect": "snow", "at": "crawler", "offset": [0.0, 0.3, 3.8], "duration": 1.6 },
+    { "t": 17.0, "effect": "exhaust", "at": "shuttle", "offset": [0.0, 0.8, -3.0], "duration": 1.2 },
+    { "t": 17.5, "effect": "snow", "at": "pad", "offset": [0.0, 0.2, 0.0], "duration": 3.0 }
+  ],
+  "shake": [
+    { "t": 0.0, "value": 0.0, "ease": "linear" },
+    { "t": 17.0, "value": 0.0, "ease": "linear" },
+    { "t": 18.0, "value": 0.5, "ease": "in" },
+    { "t": 22.0, "value": 0.0, "ease": "out" }
+  ],
+  "shake_speed": [
+    { "t": 0.0, "value": 14.0, "ease": "linear" }
+  ],
+  "fade": [
+    { "t": 0.0, "value": 1.0, "ease": "linear" },
+    { "t": 1.5, "value": 0.0, "ease": "in_out" },
+    { "t": 20.0, "value": 0.0, "ease": "linear" },
+    { "t": 21.5, "value": 1.0, "ease": "in_out" }
+  ],
+  "letterbox": [
+    { "t": 0.0, "value": 1.0, "ease": "linear" }
+  ]
+}

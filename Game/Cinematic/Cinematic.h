@@ -216,6 +216,10 @@ struct Cinematic
     // Over the picture: black (0 none, 1 all) and the bars top and bottom (0 none, 1 full).
     std::vector<FloatKey> fade;
     std::vector<FloatKey> letterbox;
+    // How far the fog is pushed back (1 as it is, 2 twice as far), and how much the dark is lifted (1 as it is), for a
+    // shot that has to show a place the night would otherwise hide.
+    std::vector<FloatKey> fogScale;
+    std::vector<FloatKey> ambientScale;
 
     bool LoadFromFile(const std::filesystem::path& file, std::string* error = nullptr);
     bool SaveToFile(const std::filesystem::path& file) const;
@@ -269,6 +273,8 @@ public:
     float ShakeSpeed(float time) const;
     float Fade(float time) const;
     float Letterbox(float time) const;
+    float FogScale(float time) const;
+    float AmbientScale(float time) const;
     float LightIntensity(const LightTrack& light, float time) const;
     // A line of text with its {words} filled in, typed out as far as it has got by `time`.
     std::string Text(const TextItem& item, size_t line, float time) const;

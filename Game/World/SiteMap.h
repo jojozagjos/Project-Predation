@@ -4,7 +4,7 @@
 #include "Engine/Scene/Scene.h"
 #include "Game/World/FacilityMap.h"
 #include "Game/World/LevelLights.h"
-#include "Game/World/Shuttle.h"
+#include "Game/World/Vehicles.h"
 #include "Game/World/SitePlan.h"
 #include "Game/World/WorldObjects.h"
 
@@ -34,11 +34,13 @@ public:
     uint16_t Seed() const { return m_seed; }
     const SitePlan& Plan() const { return m_plan; }
     const WorldObjects::Placements& Placements() const { return m_placements; }
-    // Where everybody arrives: in the shuttle's cabin, facing down its ramp into the site.
-    glm::vec3 Spawn() const { return Shuttle::Arrival(m_plan.ShuttleBase(), m_plan.landingYaw); }
-    float SpawnYaw() const { return m_plan.landingYaw; }
-    // Whether somebody standing there, or something lying there, is aboard the shuttle.
-    bool Aboard(const glm::vec3& at) const { return Shuttle::Aboard(m_plan.ShuttleBase(), m_plan.landingYaw, at); }
+    // Where somebody put on the site with nothing to bring them stands: by the pad, where the crawler waits, facing in.
+    glm::vec3 Spawn() const { return m_plan.crawlerStart.position + glm::vec3(0.0f, 0.5f, 0.0f); }
+    float SpawnYaw() const { return m_plan.crawlerStart.yaw; }
+    // The shuttle on the pad: where it rests, its back to the site and its ramp down.
+    VehicleProp& Shuttle() { return m_shuttle; }
+    const VehicleProp& Shuttle() const { return m_shuttle; }
+    CinePose ShuttleHome() const;
     // All of it, rock included: for anything that only needs the part of the world the site is in.
     void Bounds(glm::vec3& min, glm::vec3& max) const;
     // Whether a point is on the site.
@@ -47,6 +49,7 @@ public:
 private:
     SitePlan m_plan;
     std::vector<std::unique_ptr<FacilityMap>> m_buildings;
+    VehicleProp m_shuttle;
     WorldObjects::Placements m_placements;
     std::vector<Entity> m_entities;
     std::vector<BodyHandle> m_bodies;

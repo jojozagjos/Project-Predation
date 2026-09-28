@@ -2881,8 +2881,13 @@ namespace
 // far side of a thin wall. Nest growth is sized to this, so none of it hangs in the air or shows
 // through into the next room.
 // With `intoCorners`, something standing up in the way -- the wall at the edge of a floor, the floor at
-// the foot of a wall -- does not cut the room short: what grows can run on into the corner and be lost in
-// it. Only an edge the surface falls away from does.
+// the foot of a wall -- cuts the room short only a hand's breadth past its face: what grows can run a
+// little into the corner and be lost in it, and never on through a wall that is thin -- an inside wall is
+// twenty centimetres, and whatever ran further showed in the next room. An edge the surface falls away
+// from cuts it short where it falls away.
+// How far past the face of a wall it runs into, growing into a corner.
+constexpr float kIntoCorner = 0.1f;
+
 float RoomOnSurface(const PhysicsWorld& physics, const glm::vec3& at, const glm::vec3& normal, float reach, bool intoCorners = false)
 {
     const glm::vec3 helper = std::abs(normal.y) < 0.9f ? glm::vec3(0.0f, 1.0f, 0.0f) : glm::vec3(1.0f, 0.0f, 0.0f);
@@ -2899,10 +2904,7 @@ float RoomOnSurface(const PhysicsWorld& physics, const glm::vec3& at, const glm:
         if (const RayHit block = physics.RayCastStatic(lifted, direction, room))
         {
             clear = block.distance;
-            if (!intoCorners)
-            {
-                room = std::min(room, block.distance);
-            }
+            room = std::min(room, intoCorners ? block.distance + kIntoCorner : block.distance);
         }
         // And the surface still there underneath, out to the edge of what is left -- or to the corner.
         // Brought in until it is: a narrow face, the side of a door frame, has room for very little.
@@ -3052,19 +3054,15 @@ void PredationGame::PlanNestGrowth(Nest& nest) const
             {
                 const glm::vec3 over = lifted + dir * step;
                 const RayHit under = physics.RayCastStatic(over, -n, 0.45f);
-                if (under && glm::dot(under.normal, n) > 0.5f)
+                // On along the same surface -- all the way along, so a root laid straight from one to the other lies
+                // on it rather than across a doorway in the air. Not over an edge and round onto the far side of a
+                // wall: laid straight, that root went through the end of the wall, and a thin one showed it on its
+                // other side. Round a doorway it goes by the floor, which runs on through it.
+                const RayHit halfway = physics.RayCastStatic(lifted + dir * (step * 0.5f), -n, 0.45f);
+                if (under && glm::dot(under.normal, n) > 0.5f && halfway && glm::dot(halfway.normal, n) > 0.5f)
                 {
-                    // On along the same surface.
                     at = under.position;
                     normal = under.normal;
-                    found = true;
-                }
-                else if (const RayHit round = physics.RayCastStatic(over - n * 0.45f, -dir, step * 0.9f);
-                         round && glm::dot(round.normal, dir) > 0.5f)
-                {
-                    // Over an edge -- a doorway's, the end of a wall -- and round onto the far side of it.
-                    at = round.position;
-                    normal = round.normal;
                     found = true;
                 }
             }
@@ -3072,16 +3070,12 @@ void PredationGame::PlanNestGrowth(Nest& nest) const
             {
                 continue;
             }
-            // Onto another surface, into a corner or round an edge: a little way on up that one, away from
+            // Onto another surface, into a corner: a little way on up that one, away from
             // the corner, or all it has room for there is the corner itself and it never grows up a wall.
             normal = glm::normalize(normal);
             if (glm::dot(normal, n) < 0.8f)
             {
-                glm::vec3 onward = n - normal * glm::dot(n, normal);
-                if (glm::dot(normal, dir) > 0.5f)
-                {
-                    onward = -dir - normal * glm::dot(-dir, normal); // round an edge: on along the far face
-                }
+                const glm::vec3 onward = n - normal * glm::dot(n, normal);
                 if (glm::length(onward) > 1e-3f)
                 {
                     const glm::vec3 further = at + glm::normalize(onward) * 0.6f + normal * 0.2f;

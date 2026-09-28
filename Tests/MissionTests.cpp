@@ -8,7 +8,7 @@
 #include "Game/Mission/SiteNames.h"
 #include "Game/Net/Protocol.h"
 #include "Game/World/FacilityMap.h"
-#include "Game/World/Shuttle.h"
+#include "Game/World/Vehicles.h"
 #include "Game/World/SiteMap.h"
 #include "Game/World/SitePlan.h"
 
@@ -226,42 +226,122 @@ TEST_CASE("How the mission stands crosses the wire unchanged", "[mission][net][p
     CHECK(received.other == 0b1010);
 }
 
-TEST_CASE("The shuttle stands on its pad with its ramp down to it, and everybody arrives in its cabin", "[mission][site]")
+TEST_CASE("The crawler has a cabin to stand in, a ramp down to the ground behind it, and clips that close and open it", "[mission][vehicle]")
 {
-    const SitePlan site = SitePlan::Generate(3);
-    const glm::vec3 base = site.ShuttleBase();
-    const float yaw = site.landingYaw;
-    const glm::vec3 arrival = Shuttle::Arrival(base, yaw);
-    CHECK(Shuttle::Aboard(base, yaw, arrival));
-    CHECK_FALSE(Shuttle::Aboard(base, yaw, base + glm::vec3(10.0f, 0.7f, 0.0f)));
-    CHECK_FALSE(Shuttle::Aboard(base, yaw, base));
-    // Down the ramp is the way into the site.
-    const glm::vec3 down{std::sin(yaw), 0.0f, -std::cos(yaw)};
-    CHECK_FALSE(Shuttle::Aboard(base, yaw, arrival + down * 5.0f));
-
-    // As solid as it is drawn: the deck under the arrival, the ramp surface halfway down it, and all of it on the pad.
     PhysicsWorld physics;
     PhysicsWorld::Settings settings;
     settings.workerThreads = 1;
     REQUIRE(physics.Init(settings));
-    for (const Shuttle::Piece& piece : Shuttle::Pieces(base, yaw))
+    Scene scene;
+    MeshLibrary meshes;
+    meshes.SetHeadless(true);
+    // Parked facing +x, somewhere.
+    const CinePose home{{40.0f, 0.0f, -12.0f}, TurnFromDegrees({0.0f, 90.0f, 0.0f})};
+    const auto model = std::make_shared<ModelAsset>(Vehicles::CrawlerModel());
+    VehicleProp crawler;
+    REQUIRE(crawler.Build(scene, meshes, &physics, model, home, physics.NewOverlapGroup(), "test_crawler_"));
+
+    CinePose arrival;
+    REQUIRE(crawler.Socket("arrival", arrival));
+    CHECK(crawler.Aboard(arrival.position + glm::vec3(0.0f, 0.1f, 0.0f)));
+    CHECK_FALSE(crawler.Aboard(home.position + glm::vec3(0.0f, 1.0f, 12.0f)));
+    // A floor under the arrival.
+    const RayHit floor = physics.RayCast(arrival.position + glm::vec3(0.0f, 1.0f, 0.0f), {0.0f, -1.0f, 0.0f}, 3.0f);
+    REQUIRE(floor.hit);
+    CHECK(std::abs(floor.position.y - 1.1f) < 0.02f);
+    // The arrival faces the back, and the back is open at head height all the way out.
+    const glm::vec3 out = arrival.rotation * glm::vec3(0.0f, 0.0f, -1.0f);
+    CHECK(glm::dot(out, home.rotation * glm::vec3(0.0f, 0.0f, 1.0f)) > 0.99f);
+    CHECK_FALSE(physics.RayCast(arrival.position + glm::vec3(0.0f, 1.6f, 0.0f), out, 8.0f).hit);
+    // Down the ramp: the surface falls the whole way from the floor to the ground.
+    float last = 2.0f;
+    for (int step = 0; step <= 14; ++step)
     {
-        Transform transform;
-        transform.position = piece.centre;
-        transform.rotation = piece.rotation;
-        physics.CreateBox(piece.size * 0.5f, transform, BodyMotion::Static);
-        CHECK(glm::distance(glm::vec2(piece.centre.x, piece.centre.z), glm::vec2(base.x, base.z)) < 7.0f);
+        const float along = 3.2f + 0.2f * static_cast<float>(step);
+        const glm::vec3 above = home.Apply({0.0f, 3.0f, along});
+        const RayHit ramp = physics.RayCast(above, {0.0f, -1.0f, 0.0f}, 4.0f);
+        REQUIRE(ramp.hit);
+        CHECK(ramp.position.y <= last + 0.01f);
+        last = ramp.position.y;
     }
-    const RayHit deck = physics.RayCast(arrival, {0.0f, -1.0f, 0.0f}, 2.0f);
+    CHECK(last < 0.25f);
+    // Closed, the ramp stands up behind the cabin.
+    const ModelPart* ramp = model->FindPart("ramp");
+    REQUIRE(ramp != nullptr);
+    const glm::vec3 open = glm::vec3(model->PartMatrixAt(*ramp, nullptr, 0.0f)[3]);
+    const glm::vec3 closed = glm::vec3(model->PartMatrixAt(*ramp, model->FindClip("ramp_closed"), 0.0f)[3]);
+    CHECK(closed.y > open.y + 1.0f);
+    CHECK(model->FindClip("ramp_opening") != nullptr);
+    CHECK(model->FindClip("ramp_closing") != nullptr);
+    // A console to press, in the cabin.
+    CHECK(crawler.Part("console").IsValid());
+    CinePose console;
+    REQUIRE(crawler.Socket("console", console));
+    CHECK(crawler.Aboard(console.position + glm::vec3(0.0f, 0.2f, 0.0f)));
+    crawler.Clear(scene, &physics);
+}
+
+TEST_CASE("The shuttle stands on its legs with its ramp down to the pad", "[mission][vehicle]")
+{
+    PhysicsWorld physics;
+    PhysicsWorld::Settings settings;
+    settings.workerThreads = 1;
+    REQUIRE(physics.Init(settings));
+    Scene scene;
+    MeshLibrary meshes;
+    meshes.SetHeadless(true);
+    const CinePose home{{0.0f, 0.1f, 0.0f}, {}};
+    VehicleProp shuttle;
+    REQUIRE(shuttle.Build(scene, meshes, &physics, std::make_shared<ModelAsset>(Vehicles::ShuttleModel()), home, physics.NewOverlapGroup(), "test_"));
+    CinePose arrival;
+    REQUIRE(shuttle.Socket("arrival", arrival));
+    const RayHit deck = physics.RayCast(arrival.position + glm::vec3(0.0f, 1.0f, 0.0f), {0.0f, -1.0f, 0.0f}, 3.0f);
     REQUIRE(deck.hit);
-    CHECK(std::abs(deck.position.y - (base.y + 0.7f)) < 0.01f);
-    const glm::vec3 halfway = base + down * 3.75f + glm::vec3(0.0f, 2.0f, 0.0f);
-    const RayHit ramp = physics.RayCast(halfway, {0.0f, -1.0f, 0.0f}, 3.0f);
+    CHECK(std::abs(deck.position.y - 0.8f) < 0.02f);
+    // Halfway down the ramp, somewhere between the cabin floor and the pad.
+    const RayHit ramp = physics.RayCast({0.0f, 3.0f, 3.75f}, {0.0f, -1.0f, 0.0f}, 4.0f);
     REQUIRE(ramp.hit);
-    CHECK(std::abs(ramp.position.y - (base.y + 0.35f)) < 0.02f);
-    // And a way out of the cabin: nothing across the open back at head height.
-    const glm::vec3 head = arrival + glm::vec3(0.0f, 1.0f, 0.0f);
-    CHECK_FALSE(physics.RayCast(head, down, 4.0f).hit);
+    CHECK(ramp.position.y > 0.1f + 0.25f);
+    CHECK(ramp.position.y < 0.8f - 0.2f);
+}
+
+TEST_CASE("A site keeps a place for a vehicle at every building, and a way to each from the pad round everything", "[mission][site]")
+{
+    for (uint32_t seed = 1; seed <= 8; ++seed)
+    {
+        INFO("seed " << seed);
+        const SitePlan site = SitePlan::Generate(seed);
+        REQUIRE(site.parking.size() == site.buildings.size());
+        for (size_t b = 0; b < site.buildings.size(); ++b)
+        {
+            INFO("building " << b);
+            const SitePlan::Spot& spot = site.parking[b];
+            const glm::vec2 at{spot.position.x, spot.position.z};
+            // Outside, clear of the building, and nothing put down where it waits.
+            CHECK_FALSE(site.InBuilding(at, 5.0f));
+            for (const SitePlan::Block& block : site.blocks)
+            {
+                if (block.kind == SitePlan::BlockKind::Rock || block.kind == SitePlan::BlockKind::Container || block.kind == SitePlan::BlockKind::Tank)
+                {
+                    CHECK(glm::distance(glm::vec2(block.centre.x, block.centre.z), at) > 5.0f);
+                }
+            }
+            // A way to it from where the crawler waits that never crosses a building.
+            const std::vector<glm::vec3> route = site.Route(site.crawlerStart.position, spot.position);
+            REQUIRE(route.size() >= 2);
+            CHECK(glm::distance(route.front(), site.crawlerStart.position) < 0.01f);
+            CHECK(glm::distance(route.back(), spot.position) < 0.01f);
+            for (size_t i = 1; i < route.size(); ++i)
+            {
+                const float length = glm::distance(route[i - 1], route[i]);
+                for (float d = 0.0f; d < length; d += 1.0f)
+                {
+                    const glm::vec3 p = route[i - 1] + (route[i] - route[i - 1]) * (d / std::max(length, 1.0e-3f));
+                    CHECK_FALSE(site.InBuilding({p.x, p.z}, 0.5f));
+                }
+            }
+        }
+    }
 }
 
 TEST_CASE("What the mission puts in the world -- the terminal, the panels, the console -- is inside nothing", "[mission][site]")

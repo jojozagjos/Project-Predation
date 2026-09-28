@@ -10,6 +10,7 @@
 #include "Engine/Render/DebugDraw.h"
 #include "Engine/Render/Primitives.h"
 #include "Game/World/TestMap.h"
+#include "Game/World/Vehicles.h"
 
 #include <imgui.h>
 
@@ -121,7 +122,58 @@ CinematicBindings PredationGame::CinematicBindingsNow() const
             // From just off the foot of the shuttle's ramp to the way in: the route a vehicle would take.
             const glm::vec3 ramp = site.ShuttleBase() + glm::vec3(std::sin(site.landingYaw), 0.0f, -std::cos(site.landingYaw)) * 8.0f;
             bindings.paths["pad_to_facility"] = {ramp, outside + (ramp - outside) * 0.5f, outside};
+
+            // Somewhere to see the building from, arriving: out from its way in, up high, with nothing between there and the
+            // door -- tried at a few angles, distances and heights, and the first clear one taken. A shot measured from here
+            // shows the place whatever else the site has put about it.
+            const glm::vec3 out = glm::normalize(glm::vec3(outside.x - door.x, 0.0f, outside.z - door.z));
+            const glm::vec3 target = door + glm::vec3(0.0f, 2.0f, 0.0f);
+            const PhysicsWorld& physics = m_app->GetPhysics();
+            glm::vec3 chosen = outside + out * 50.0f + glm::vec3(0.0f, 16.0f, 0.0f);
+            bool found = false;
+            for (const float distance : {55.0f, 45.0f, 65.0f, 38.0f})
+            {
+                for (const float degrees : {25.0f, -25.0f, 40.0f, -40.0f, 10.0f, -10.0f, 55.0f, -55.0f})
+                {
+                    for (const float height : {16.0f, 12.0f, 22.0f})
+                    {
+                        if (found)
+                        {
+                            break;
+                        }
+                        const glm::quat turn = glm::angleAxis(glm::radians(degrees), glm::vec3(0.0f, 1.0f, 0.0f));
+                        const glm::vec3 p = door + (turn * out) * distance + glm::vec3(0.0f, height, 0.0f);
+                        const glm::vec3 to = target - p;
+                        const float length = glm::length(to);
+                        // On the site, over open ground, and a clear line to the door.
+                        const RayHit ground = physics.RayCastStatic(p, {0.0f, -1.0f, 0.0f}, height + 2.0f);
+                        if (!m_facility.Contains(p) || !ground || ground.distance < height - 1.5f ||
+                            physics.RayCastStatic(p, to / length, length - 2.0f).hit)
+                        {
+                            continue;
+                        }
+                        chosen = p;
+                        found = true;
+                    }
+                }
+            }
+            const glm::vec3 look = target - chosen;
+            bindings.anchors["reveal_point"] = {chosen, TurnFromDegrees({glm::degrees(std::asin(std::clamp(look.y / glm::length(look), -1.0f, 1.0f))),
+                                                                         glm::degrees(std::atan2(look.x, -look.z)), 0.0f})};
         }
+    }
+    // The vehicles: where the crawler waits by the pad and where it parks, where the shuttle rests, and the crawler's way
+    // from one to the other.
+    bindings.anchors["crawler_start"] = {site.crawlerStart.position, TurnFromDegrees({0.0f, glm::degrees(site.crawlerStart.yaw), 0.0f})};
+    if (m_missionProps.Crawler().Built())
+    {
+        bindings.anchors["crawler_park"] = m_missionProps.Crawler().Home();
+    }
+    bindings.anchors["shuttle_home"] = m_facility.ShuttleHome();
+    if (m_missionRoute.size() >= 2)
+    {
+        bindings.paths["route"] = m_missionRoute;
+        bindings.paths["route_back"] = std::vector<glm::vec3>(m_missionRoute.rbegin(), m_missionRoute.rend());
     }
     // What a title card fills in.
     const SiteTitle title = m_siteNames.For(m_facility.Seed());
@@ -170,8 +222,22 @@ void PredationGame::StopCinematic(bool handBack)
         m_cineHandBackTotal = std::max(m_cine.Playing().blendOut, 0.0f);
         m_cineHandBack = m_cineHandBackTotal;
     }
+    // Ending in black, the picture comes back up out of it rather than appearing all at once.
+    if (m_cine.Sampler().Fade(m_cine.Time()) > 0.5f)
+    {
+        m_cineFadeIn = 1.0f;
+    }
     m_cine.Stop(m_scene);
     m_cineHolds = false;
+    if (m_facility.Shuttle().Built())
+    {
+        m_facility.Shuttle().GoHome(m_scene);
+    }
+    if (m_missionProps.Crawler().Built())
+    {
+        m_missionProps.Crawler().GoHome(m_scene);
+    }
+    UpdateVehicleLamps();
 }
 
 bool PredationGame::CinematicHoldsPlayers() const
@@ -184,15 +250,92 @@ bool PredationGame::CinematicHoldsWorld() const
     return m_cineHolds;
 }
 
+void PredationGame::AttachVehicleLamps()
+{
+    // Put up again only when the site's lights were: the same lamps are moved to where their vehicles now rest.
+    if (m_vehicleLampsOf != m_levelLights.Generation() || m_vehicleLamps.empty())
+    {
+        m_vehicleLamps.clear();
+        const auto add = [&](const std::string& vehicle, const VehicleProp& prop, LightKind kind, float range)
+        {
+            if (prop.Model() == nullptr)
+            {
+                return;
+            }
+            for (const ModelSocket& socket : prop.Model()->sockets)
+            {
+                const bool cabin = socket.name == "lamp";
+                if (!cabin && socket.name.rfind("light_", 0) != 0)
+                {
+                    continue;
+                }
+                CinePose at;
+                prop.Socket(socket.name, at);
+                const glm::vec3 direction = cabin ? glm::vec3(0.0f, -1.0f, 0.0f) : at.rotation * glm::vec3(0.0f, 0.0f, -1.0f);
+                const int light = m_levelLights.Add(m_scene, m_app->GetMeshes(), cabin ? LightKind::Ceiling : kind, LightMood::Steady, at.position,
+                                                    direction, 0, 0, cabin ? 5.0f : range);
+                m_vehicleLamps.push_back({vehicle, socket.name, light});
+            }
+        };
+        // The shuttle's cabin lamp is the site's own; its landing light and the crawler's lamps are these.
+        if (m_facility.Shuttle().Built())
+        {
+            for (const ModelSocket& socket : m_facility.Shuttle().Model()->sockets)
+            {
+                if (socket.name.rfind("light_", 0) == 0)
+                {
+                    CinePose at;
+                    m_facility.Shuttle().Socket(socket.name, at);
+                    const int light = m_levelLights.Add(m_scene, m_app->GetMeshes(), LightKind::Flood, LightMood::Steady, at.position,
+                                                        at.rotation * glm::vec3(0.0f, 0.0f, -1.0f), 0, 0, 24.0f);
+                    m_vehicleLamps.push_back({"site_shuttle", socket.name, light});
+                }
+            }
+        }
+        add("site_crawler", m_missionProps.Crawler(), LightKind::Flood, 32.0f);
+        m_vehicleLampsOf = m_levelLights.Generation();
+    }
+    UpdateVehicleLamps();
+}
+
+void PredationGame::UpdateVehicleLamps()
+{
+    for (const VehicleLamp& lamp : m_vehicleLamps)
+    {
+        const VehicleProp* vehicle = lamp.vehicle == "site_shuttle" ? &m_facility.Shuttle() : &m_missionProps.Crawler();
+        CinePose at;
+        if (vehicle->Built() && vehicle->SocketShown(lamp.socket, at))
+        {
+            const glm::vec3 direction = lamp.socket == "lamp" ? glm::vec3(0.0f, -1.0f, 0.0f) : at.rotation * glm::vec3(0.0f, 0.0f, -1.0f);
+            m_levelLights.Place(m_scene, lamp.light, at.position, direction);
+        }
+    }
+}
+
 void PredationGame::UpdateCinematic(float dt)
 {
     UpdateCinematicParticles(dt);
+    m_cineFadeIn = std::max(m_cineFadeIn - dt / 1.2f, 0.0f);
+    // Nobody's body is out there while a cinematic has them: they are aboard.
+    if (m_cineHolds != m_cineHidBodies)
+    {
+        m_cineHidBodies = m_cineHolds;
+        m_body.SetVisible(m_scene, !m_cineHidBodies);
+        for (const std::unique_ptr<RemoteAvatar>& avatar : m_avatars)
+        {
+            if (avatar != nullptr && avatar->built)
+            {
+                avatar->body.SetVisible(m_scene, !m_cineHidBodies);
+            }
+        }
+    }
     if (!m_cine.Active())
     {
         m_cineHolds = false;
         return;
     }
     m_cine.Update(dt, m_scene, *this);
+    UpdateVehicleLamps();
     m_cineHolds = m_cine.Playing().pausesGameplay;
     if (m_cine.GetState() == CinematicPlayer::State::Finished)
     {
@@ -239,25 +382,50 @@ bool PredationGame::CinematicCamera(glm::mat4& view, glm::vec3& eye, float dt, f
 
 // --- What happens in one -------------------------------------------------------------------------------
 
+namespace
+{
+
+// The vehicles a cinematic can bind to by name.
+VehicleProp* Bound(const std::string& bind, SiteMap& site, MissionProps& props)
+{
+    if (bind == "site_shuttle")
+    {
+        return site.Shuttle().Built() ? &site.Shuttle() : nullptr;
+    }
+    if (bind == "site_crawler")
+    {
+        return props.Crawler().Built() ? &props.Crawler() : nullptr;
+    }
+    return nullptr;
+}
+
+} // namespace
+
 bool PredationGame::CineFindBound(const std::string& bind, CinePose& where)
 {
-    // Nothing the game has can be moved by a cinematic yet: the site's vehicles come with the insertion.
-    (void)bind;
-    (void)where;
-    return false;
+    const VehicleProp* vehicle = Bound(bind, m_facility, m_missionProps);
+    if (vehicle == nullptr)
+    {
+        return false;
+    }
+    where = vehicle->Home();
+    return true;
 }
 
 void PredationGame::CineMoveBound(const std::string& bind, const CinePose& pose)
 {
-    (void)bind;
-    (void)pose;
+    if (VehicleProp* vehicle = Bound(bind, m_facility, m_missionProps))
+    {
+        vehicle->Show(m_scene, pose);
+    }
 }
 
 void PredationGame::CinePoseBound(const std::string& bind, const std::string& clip, float clipTime)
 {
-    (void)bind;
-    (void)clip;
-    (void)clipTime;
+    if (VehicleProp* vehicle = Bound(bind, m_facility, m_missionProps))
+    {
+        vehicle->ShowClip(m_scene, clip, clipTime);
+    }
 }
 
 void PredationGame::CineSound(const SoundEvent& sound, const glm::vec3* at)
@@ -285,7 +453,17 @@ void PredationGame::CineMarker(const pred::Marker& marker)
     }
     else if (marker.name == "say")
     {
-        Say(marker.value);
+        // "arrival" is whichever arrival there is: with a map or without one.
+        Say(marker.value == "arrival" && !m_missionPlan.mapGiven ? "arrival_no_map" : marker.value);
+    }
+    else if (marker.name == "go_to_ship")
+    {
+        // Everybody back aboard, for the debrief: the host takes them, and the result is up from now.
+        m_missionOverFor = 0.0f;
+        if (IsAuthority() && m_screen == Screen::Playing && m_map == MapChoice::Facility)
+        {
+            GoToMap(MapChoice::TestMap);
+        }
     }
 }
 
@@ -293,28 +471,30 @@ void PredationGame::CineParticle(const ParticleEvent& particle, const glm::vec3&
 {
     // A handful of puffs, by the kind of effect: exhaust glows and rises fast, snow and dust are pale and hang.
     const bool exhaust = particle.effect.find("exhaust") != std::string::npos || particle.effect.find("thrust") != std::string::npos;
-    Material material = Material::Diffuse(exhaust ? glm::vec3(0.9f, 0.55f, 0.25f) : glm::vec3(0.75f, 0.78f, 0.8f), 0.9f);
-    material.emissive = exhaust ? glm::vec3(1.6f, 0.8f, 0.3f) : glm::vec3(0.0f);
+    Material material = Material::Diffuse(exhaust ? glm::vec3(0.9f, 0.55f, 0.25f) : glm::vec3(0.85f, 0.88f, 0.92f), 0.9f);
+    // Snow catches whatever light there is: a little of its own, so it shows against the dark.
+    material.emissive = exhaust ? glm::vec3(2.4f, 1.2f, 0.45f) : glm::vec3(0.12f, 0.13f, 0.14f);
     const MeshHandle mesh = m_app->GetMeshes().Upload(Primitives::Sphere(0.5f, 10, 8), "cine_puff");
-    const int count = exhaust ? 10 : 16;
+    // Many small bits rather than a few big ones: flakes thrown up, sparks blown down.
+    const int count = exhaust ? 36 : 60;
     for (int i = 0; i < count; ++i)
     {
         const float a = static_cast<float>(i) * 2.399963f; // golden angle: spread without clumping
-        const float r = 0.4f + 0.6f * static_cast<float>(i % 5) / 4.0f;
+        const float r = 0.25f + 0.75f * static_cast<float>((i * 7) % 11) / 10.0f;
         CinePuff puff;
         Transform transform;
-        transform.position = at + glm::vec3(std::cos(a) * r * 0.4f, 0.0f, std::sin(a) * r * 0.4f);
-        transform.scale = glm::vec3(0.1f);
+        transform.position = at + glm::vec3(std::cos(a) * r * 0.6f, 0.05f * static_cast<float>(i % 4), std::sin(a) * r * 0.6f);
+        transform.scale = glm::vec3(0.02f);
         puff.entity = m_scene.CreateMeshEntity("cine_puff", transform, mesh, material);
         if (MeshRenderer* renderer = m_scene.GetMeshRenderer(puff.entity))
         {
             renderer->castsShadow = false;
         }
-        puff.velocity = exhaust ? glm::vec3(std::cos(a) * r, -3.0f - r * 2.0f, std::sin(a) * r)
-                                : glm::vec3(std::cos(a) * r * 2.5f, 0.8f + r, std::sin(a) * r * 2.5f);
-        puff.life = std::max(particle.duration, 0.2f) * (0.7f + 0.3f * r);
-        puff.from = exhaust ? 0.3f : 0.2f;
-        puff.to = exhaust ? 1.4f : 2.2f;
+        puff.velocity = exhaust ? glm::vec3(std::cos(a) * r * 1.5f, -4.0f - r * 3.0f, std::sin(a) * r * 1.5f)
+                                : glm::vec3(std::cos(a) * r * 4.0f, 1.0f + r * 2.2f, std::sin(a) * r * 4.0f);
+        puff.life = std::max(particle.duration, 0.2f) * (0.6f + 0.4f * r);
+        puff.from = exhaust ? 0.06f : 0.05f;
+        puff.to = exhaust ? 0.18f : 0.14f;
         m_cinePuffs.push_back(puff);
     }
 }
@@ -327,6 +507,7 @@ void PredationGame::UpdateCinematicParticles(float dt)
         if (Transform* transform = m_scene.GetTransform(puff.entity))
         {
             puff.velocity *= std::exp(-1.2f * dt);
+            puff.velocity.y -= 2.5f * dt; // and settles
             transform->position += puff.velocity * dt;
             const float t = std::clamp(puff.age / puff.life, 0.0f, 1.0f);
             // Grows, and shrinks away at the end rather than blinking out.
@@ -357,6 +538,12 @@ void PredationGame::CineLight(const std::string& light, float intensity)
 
 void PredationGame::DrawCinematicOverlay()
 {
+    if (m_cineFadeIn > 0.0f && !m_cine.Active())
+    {
+        const ImGuiViewport* view = ImGui::GetMainViewport();
+        ImGui::GetForegroundDrawList()->AddRectFilled(view->Pos, {view->Pos.x + view->Size.x, view->Pos.y + view->Size.y},
+                                                       IM_COL32(0, 0, 0, static_cast<int>(255 * m_cineFadeIn)));
+    }
     if (!m_cine.Active() || m_screen != Screen::Playing)
     {
         return;
@@ -591,6 +778,9 @@ void PredationGame::RegisterCinematicCommands()
                                     m_app->GetConsole().Print(line);
                                 }
                             });
+#if PRED_DEV_TOOLS
+    // Nobody playing the game can skip, pause, hurry or start a cinematic: these are for making them, in a development
+    // build. In the game one plays to its end, the same for everybody.
     console.RegisterCommand("cine_play", "Play a cinematic: cine_play <name> [from seconds]", [this](const std::vector<std::string>& args)
                             {
                                 if (args.size() < 2)
@@ -643,6 +833,7 @@ void PredationGame::RegisterCinematicCommands()
                             });
     console.RegisterCommand("cine_debug", "Show or hide the cinematic panel and paths", [this](const std::vector<std::string>&)
                             { m_cineDebug = !m_cineDebug; });
+#endif
 }
 
 } // namespace pred

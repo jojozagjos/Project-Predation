@@ -53,7 +53,7 @@ std::shared_ptr<ModelAsset> CinematicPlayer::LoadModel(const std::string& name)
         return found->second;
     }
     auto model = std::make_shared<ModelAsset>();
-    if (!model->LoadFromFile(Paths::AssetsRoot() / "Models" / (name + ".json")))
+    if (!model->LoadFromFile(ModelPath(name)))
     {
         PRED_LOG_WARN(Gameplay, "Cinematic: no model '{}' in Assets/Models", name);
         model = nullptr;

@@ -150,8 +150,13 @@ void PredationGame::RegisterDroneCommands()
                                 const FacilityLayout::Room& room = building.rooms[r];
                                 const glm::vec3 at = FacilityMap::ToWorld(building, room.floor, glm::vec2(room.min + room.max + glm::ivec2(1)) * 0.5f);
                                 m_player.Teleport(at + glm::vec3(0.0f, 0.1f, 0.0f));
+                                const glm::vec3 lo = FacilityMap::ToWorld(building, room.floor, glm::vec2(room.min));
+                                const glm::vec3 hi = FacilityMap::ToWorld(building, room.floor, glm::vec2(room.max + glm::ivec2(1)));
+                                char corners[96];
+                                std::snprintf(corners, sizeof(corners), ", from %.1f %.1f to %.1f %.1f", lo.x, lo.z, hi.x, hi.z);
                                 m_app->GetConsole().Print("Room " + std::to_string(r) + " of building " + std::to_string(b) + ", floor " +
-                                                          std::to_string(room.floor) + (room.dark ? ", dark" : ""));
+                                                          std::to_string(room.floor) + (room.dark ? ", dark" : "") + corners);
+                                PRED_LOG_INFO(Gameplay, "site_room: building {} room {} floor {}{}", b, r, room.floor, corners);
                             });
     console.RegisterCommand("hurt_player", "As the host, hurt somebody: hurt_player <id> [amount]",
                             [this](const std::vector<std::string>& args)
@@ -535,6 +540,22 @@ void PredationGame::UpdateWipe(float dt)
     if (anybodyUp)
     {
         m_wipeTimer = 0.0f;
+        return;
+    }
+    // At a site, the deployment has failed: the crawler takes itself away, empty, and the shuttle goes, and the end of that
+    // takes everybody back aboard. Not at once -- a moment to see it has happened.
+    if (m_wipeTimer > 2.5f && m_map == MapChoice::Facility && HasCinematic("surface_wipe") && !m_missionLeaving &&
+        m_mission.stage != MissionState::Stage::Over && m_mission.stage != MissionState::Stage::None)
+    {
+        m_missionLeaving = true;
+        MissionRules::Finish(m_mission, false, 0);
+        OnMissionOver();
+        BroadcastMission();
+        PlayCinematic("surface_wipe");
+    }
+    if (m_missionLeaving && m_map == MapChoice::Facility)
+    {
+        m_wipeTimer += 1.0e-3f;
         return;
     }
     if (m_wipeTimer <= 0.0f)

@@ -26,9 +26,6 @@ const Material kPipeMaterial = Material::Metal({0.34f, 0.35f, 0.36f}, 0.5f);
 const Material kSupportMaterial = Material::Metal({0.22f, 0.22f, 0.23f}, 0.6f);
 const Material kTankMaterial = Material::Diffuse({0.5f, 0.5f, 0.47f}, 0.7f);
 const Material kPoleMaterial = Material::Metal({0.25f, 0.25f, 0.26f}, 0.55f);
-// The shuttle: a worn pale hull, and darker metal for its legs, engines, nose and fin.
-const Material kHullMaterial = Material::Diffuse({0.44f, 0.45f, 0.43f}, 0.75f);
-const Material kTrimMaterial = Material::Metal({0.2f, 0.21f, 0.22f}, 0.55f);
 // Freight containers come in the colours they always do, faded.
 const Material kContainerMaterials[] = {
     Material::Diffuse({0.32f, 0.12f, 0.08f}, 0.8f),
@@ -174,21 +171,15 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
         }
     }
 
-    // The shuttle on the pad, standing on it and part of the same structure.
-    builder.SetStructure(ground);
-    for (const Shuttle::Piece& piece : Shuttle::Pieces(m_plan.ShuttleBase(), m_plan.landingYaw))
-    {
-        Transform transform;
-        transform.position = piece.centre;
-        transform.rotation = piece.rotation;
-        builder.AddBox(piece.trim ? "shuttle_trim" : "shuttle_hull", transform, piece.size, piece.trim ? kTrimMaterial : kHullMaterial);
-    }
-    if (lights != nullptr)
-    {
-        lights->Add(scene, meshes, LightKind::Ceiling, LightMood::Steady, Shuttle::CabinLamp(m_plan.ShuttleBase(), m_plan.landingYaw),
-                    glm::vec3(0.0f, -1.0f, 0.0f), 0, Mix(seed, 0x5A77u) | 1u, 6.0f);
-    }
     builder.SetStructure(0);
+
+    // The shuttle on the pad, standing on it and part of the site's structure, a lamp lit in its cabin.
+    m_shuttle.Build(scene, meshes, &physics, Vehicles::Load("shuttle"), ShuttleHome(), ground, "site_shuttle_");
+    CinePose cabinLamp;
+    if (lights != nullptr && m_shuttle.Socket("lamp", cabinLamp))
+    {
+        lights->Add(scene, meshes, LightKind::Ceiling, LightMood::Steady, cabinLamp.position, glm::vec3(0.0f, -1.0f, 0.0f), 0, Mix(seed, 0x5A77u) | 1u, 6.0f);
+    }
 
     // The lamps outside: floodlights over the doors, and on poles over the ground.
     for (size_t i = 0; i < m_plan.lamps.size(); ++i)
@@ -227,8 +218,15 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
                   m_plan.buildings.size(), m_plan.blocks.size(), m_plan.lamps.size(), m_placements.doors.size());
 }
 
+CinePose SiteMap::ShuttleHome() const
+{
+    // Its nose away from the site, so its back and its ramp face into it.
+    return {m_plan.ShuttleBase(), TurnFromDegrees({0.0f, glm::degrees(m_plan.landingYaw) + 180.0f, 0.0f})};
+}
+
 void SiteMap::Clear(Scene& scene, PhysicsWorld& physics, LevelLights* lights)
 {
+    m_shuttle.Clear(scene, &physics);
     for (const Entity entity : m_entities)
     {
         scene.Destroy(entity);

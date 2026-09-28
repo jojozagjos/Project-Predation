@@ -1,0 +1,878 @@
+{
+  "name": "surface_insertion",
+  "duration": 49,
+  "pauses_gameplay": true,
+  "blend_out": 1,
+  "loop": false,
+  "actors": [
+    {
+      "name": "shuttle",
+      "bind": "site_shuttle"
+    },
+    {
+      "name": "crawler",
+      "bind": "site_crawler"
+    }
+  ],
+  "cameras": [
+    {
+      "name": "wide",
+      "anchor": "pad",
+      "look_at": "",
+      "look_offset": [
+        0,
+        1.5,
+        0
+      ],
+      "keys": [
+        {
+          "t": 0,
+          "position": [
+            -55,
+            4,
+            -30
+          ],
+          "rotation": [
+            8,
+            140,
+            0
+          ],
+          "fov": 60,
+          "ease": "linear"
+        },
+        {
+          "t": 10,
+          "position": [
+            -52,
+            4.5,
+            -28
+          ],
+          "rotation": [
+            7,
+            136,
+            0
+          ],
+          "fov": 58,
+          "ease": "in_out"
+        }
+      ]
+    },
+    {
+      "name": "ground",
+      "anchor": "pad",
+      "look_at": "shuttle",
+      "look_offset": [
+        0,
+        2,
+        0
+      ],
+      "keys": [
+        {
+          "t": 9,
+          "position": [
+            12,
+            1.4,
+            -10
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "fov": 55,
+          "ease": "linear"
+        },
+        {
+          "t": 19.5,
+          "position": [
+            10,
+            1.7,
+            -9
+          ],
+          "rotation": [
+            0,
+            0,
+            2
+          ],
+          "fov": 52,
+          "ease": "in_out"
+        }
+      ]
+    },
+    {
+      "name": "transfer",
+      "anchor": "crawler_start",
+      "look_at": "crawler",
+      "look_offset": [
+        0,
+        1.8,
+        0
+      ],
+      "keys": [
+        {
+          "t": 19.5,
+          "position": [
+            -11,
+            3,
+            9
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "fov": 50,
+          "ease": "linear"
+        },
+        {
+          "t": 24.5,
+          "position": [
+            -10,
+            3.2,
+            6
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "fov": 50,
+          "ease": "in_out"
+        }
+      ]
+    },
+    {
+      "name": "chase",
+      "anchor": "crawler",
+      "keys": [
+        {
+          "t": 24.5,
+          "position": [
+            1.2,
+            4.6,
+            11.5
+          ],
+          "rotation": [
+            -14,
+            0,
+            0
+          ],
+          "fov": 60,
+          "ease": "linear"
+        },
+        {
+          "t": 34,
+          "position": [
+            0.8,
+            4.2,
+            10
+          ],
+          "rotation": [
+            -12,
+            0,
+            0
+          ],
+          "fov": 58,
+          "ease": "in_out"
+        }
+      ]
+    },
+    {
+      "name": "reveal",
+      "anchor": "reveal_point",
+      "look_at": "facility",
+      "look_offset": [
+        0,
+        4,
+        0
+      ],
+      "keys": [
+        {
+          "t": 33,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "fov": 52,
+          "ease": "linear"
+        },
+        {
+          "t": 41.5,
+          "position": [
+            0,
+            -2,
+            -9
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "fov": 52,
+          "ease": "in_out"
+        }
+      ]
+    },
+    {
+      "name": "park",
+      "anchor": "crawler_park",
+      "look_at": "crawler",
+      "look_offset": [
+        0,
+        1.5,
+        0
+      ],
+      "keys": [
+        {
+          "t": 41,
+          "position": [
+            -14,
+            4.5,
+            -10
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "fov": 48,
+          "ease": "linear"
+        },
+        {
+          "t": 45.5,
+          "position": [
+            -12.5,
+            4.2,
+            -9
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "fov": 48,
+          "ease": "in_out"
+        }
+      ]
+    },
+    {
+      "name": "inside",
+      "anchor": "crawler",
+      "keys": [
+        {
+          "t": 45,
+          "position": [
+            0,
+            2.72,
+            1.2
+          ],
+          "rotation": [
+            -3,
+            180,
+            0
+          ],
+          "fov": 70,
+          "ease": "linear"
+        },
+        {
+          "t": 49,
+          "position": [
+            0,
+            2.72,
+            1.2
+          ],
+          "rotation": [
+            -5,
+            180,
+            0
+          ],
+          "fov": 72,
+          "ease": "in_out"
+        }
+      ]
+    }
+  ],
+  "shots": [
+    {
+      "t": 0,
+      "camera": "wide",
+      "blend": 0,
+      "ease": "linear"
+    },
+    {
+      "t": 9.5,
+      "camera": "ground",
+      "blend": 1.2,
+      "ease": "in_out"
+    },
+    {
+      "t": 19.5,
+      "camera": "transfer",
+      "blend": 0,
+      "ease": "linear"
+    },
+    {
+      "t": 24.5,
+      "camera": "chase",
+      "blend": 0,
+      "ease": "linear"
+    },
+    {
+      "t": 33.5,
+      "camera": "reveal",
+      "blend": 2,
+      "ease": "in_out"
+    },
+    {
+      "t": 41,
+      "camera": "park",
+      "blend": 0,
+      "ease": "linear"
+    },
+    {
+      "t": 45,
+      "camera": "inside",
+      "blend": 0,
+      "ease": "linear"
+    }
+  ],
+  "actor_tracks": [
+    {
+      "actor": "shuttle",
+      "anchor": "pad",
+      "keys": [
+        {
+          "t": 0,
+          "position": [
+            6,
+            240,
+            520
+          ],
+          "rotation": [
+            -8,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 5.5,
+          "position": [
+            3,
+            90,
+            170
+          ],
+          "rotation": [
+            -12,
+            0,
+            -6
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 9,
+          "position": [
+            0,
+            28,
+            30
+          ],
+          "rotation": [
+            8,
+            0,
+            0
+          ],
+          "ease": "out"
+        },
+        {
+          "t": 12.5,
+          "position": [
+            0,
+            12,
+            2
+          ],
+          "rotation": [
+            2,
+            90,
+            0
+          ],
+          "ease": "in_out"
+        },
+        {
+          "t": 15,
+          "position": [
+            0,
+            5,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "in_out"
+        },
+        {
+          "t": 17.5,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "out"
+        }
+      ]
+    },
+    {
+      "actor": "crawler",
+      "anchor": "crawler_park",
+      "keys": [
+        {
+          "t": 40,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 44,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "ease": "in_out"
+        }
+      ]
+    }
+  ],
+  "paths": [
+    {
+      "actor": "crawler",
+      "path": "route",
+      "start": 24.5,
+      "end": 40,
+      "ease": "in_out",
+      "lift": 0,
+      "face": true
+    }
+  ],
+  "clips": [
+    {
+      "t": 0,
+      "actor": "shuttle",
+      "clip": "ramp_closed",
+      "speed": 1
+    },
+    {
+      "t": 18.5,
+      "actor": "shuttle",
+      "clip": "ramp_opening",
+      "speed": 1
+    },
+    {
+      "t": 21,
+      "actor": "crawler",
+      "clip": "ramp_closing",
+      "speed": 1
+    },
+    {
+      "t": 45.8,
+      "actor": "crawler",
+      "clip": "ramp_opening",
+      "speed": 1
+    }
+  ],
+  "sounds": [
+    {
+      "t": 3,
+      "sound": "World/shuttle_launch",
+      "volume": 1,
+      "at": "shuttle",
+      "music": false
+    },
+    {
+      "t": 8.5,
+      "sound": "World/shuttle_launch",
+      "volume": 0.9,
+      "at": "shuttle",
+      "music": false
+    },
+    {
+      "t": 13,
+      "sound": "World/shuttle_launch",
+      "volume": 0.7,
+      "at": "shuttle",
+      "music": false
+    },
+    {
+      "t": 17.5,
+      "sound": "World/door_slam",
+      "volume": 0.9,
+      "at": "shuttle",
+      "music": false
+    },
+    {
+      "t": 18.5,
+      "sound": "World/ramp",
+      "volume": 0.8,
+      "at": "shuttle",
+      "music": false
+    },
+    {
+      "t": 21,
+      "sound": "World/ramp",
+      "volume": 0.8,
+      "at": "crawler",
+      "music": false
+    },
+    {
+      "t": 23,
+      "sound": "World/crawler_engine",
+      "volume": 0.9,
+      "at": "crawler",
+      "music": false
+    },
+    {
+      "t": 28.5,
+      "sound": "World/crawler_engine",
+      "volume": 0.9,
+      "at": "crawler",
+      "music": false
+    },
+    {
+      "t": 34,
+      "sound": "World/crawler_engine",
+      "volume": 0.9,
+      "at": "crawler",
+      "music": false
+    },
+    {
+      "t": 40,
+      "sound": "World/crawler_engine",
+      "volume": 0.8,
+      "at": "crawler",
+      "music": false
+    },
+    {
+      "t": 45.8,
+      "sound": "World/ramp",
+      "volume": 0.9,
+      "at": "crawler",
+      "music": false
+    }
+  ],
+  "markers": [
+    {
+      "t": 27,
+      "name": "say",
+      "value": "arrival"
+    }
+  ],
+  "texts": [
+    {
+      "t": 35,
+      "duration": 8,
+      "style": "title_card",
+      "type_speed": 30,
+      "lines": [
+        "{site}",
+        "{planet}",
+        "{local_time}    {conditions}"
+      ]
+    }
+  ],
+  "lights": [],
+  "particles": [
+    {
+      "t": 9,
+      "effect": "exhaust",
+      "at": "shuttle",
+      "offset": [
+        0,
+        0.8,
+        -3
+      ],
+      "duration": 1.2
+    },
+    {
+      "t": 12,
+      "effect": "exhaust",
+      "at": "shuttle",
+      "offset": [
+        0,
+        0.8,
+        -3
+      ],
+      "duration": 1.2
+    },
+    {
+      "t": 14.5,
+      "effect": "exhaust",
+      "at": "shuttle",
+      "offset": [
+        0,
+        0.8,
+        -3
+      ],
+      "duration": 1.2
+    },
+    {
+      "t": 15.5,
+      "effect": "snow",
+      "at": "pad",
+      "offset": [
+        0,
+        0.2,
+        0
+      ],
+      "duration": 2.5
+    },
+    {
+      "t": 17.3,
+      "effect": "snow",
+      "at": "pad",
+      "offset": [
+        0,
+        0.2,
+        0
+      ],
+      "duration": 3
+    },
+    {
+      "t": 26,
+      "effect": "snow",
+      "at": "crawler",
+      "offset": [
+        0,
+        0.3,
+        3.8
+      ],
+      "duration": 1.6
+    },
+    {
+      "t": 28.5,
+      "effect": "snow",
+      "at": "crawler",
+      "offset": [
+        0,
+        0.3,
+        3.8
+      ],
+      "duration": 1.6
+    },
+    {
+      "t": 31,
+      "effect": "snow",
+      "at": "crawler",
+      "offset": [
+        0,
+        0.3,
+        3.8
+      ],
+      "duration": 1.6
+    },
+    {
+      "t": 33.5,
+      "effect": "snow",
+      "at": "crawler",
+      "offset": [
+        0,
+        0.3,
+        3.8
+      ],
+      "duration": 1.6
+    },
+    {
+      "t": 36,
+      "effect": "snow",
+      "at": "crawler",
+      "offset": [
+        0,
+        0.3,
+        3.8
+      ],
+      "duration": 1.6
+    },
+    {
+      "t": 38.5,
+      "effect": "snow",
+      "at": "crawler",
+      "offset": [
+        0,
+        0.3,
+        3.8
+      ],
+      "duration": 1.6
+    }
+  ],
+  "shake": [
+    {
+      "t": 0,
+      "value": 0,
+      "ease": "linear"
+    },
+    {
+      "t": 3,
+      "value": 0,
+      "ease": "linear"
+    },
+    {
+      "t": 5.5,
+      "value": 0.35,
+      "ease": "in_out"
+    },
+    {
+      "t": 9,
+      "value": 0.8,
+      "ease": "in_out"
+    },
+    {
+      "t": 16.8,
+      "value": 1.3,
+      "ease": "in_out"
+    },
+    {
+      "t": 17.5,
+      "value": 3,
+      "ease": "in"
+    },
+    {
+      "t": 19,
+      "value": 0.1,
+      "ease": "out"
+    },
+    {
+      "t": 24.5,
+      "value": 0.25,
+      "ease": "linear"
+    },
+    {
+      "t": 40,
+      "value": 0.25,
+      "ease": "linear"
+    },
+    {
+      "t": 44.5,
+      "value": 0.1,
+      "ease": "in_out"
+    },
+    {
+      "t": 49,
+      "value": 0,
+      "ease": "in_out"
+    }
+  ],
+  "shake_speed": [
+    {
+      "t": 0,
+      "value": 16,
+      "ease": "linear"
+    }
+  ],
+  "fade": [
+    {
+      "t": 0,
+      "value": 1,
+      "ease": "linear"
+    },
+    {
+      "t": 2,
+      "value": 0,
+      "ease": "in_out"
+    }
+  ],
+  "letterbox": [
+    {
+      "t": 0,
+      "value": 1,
+      "ease": "linear"
+    },
+    {
+      "t": 45.5,
+      "value": 1,
+      "ease": "linear"
+    },
+    {
+      "t": 48,
+      "value": 0,
+      "ease": "in_out"
+    }
+  ],
+  "fog_scale": [
+    {
+      "t": 0,
+      "value": 1,
+      "ease": "linear"
+    },
+    {
+      "t": 33,
+      "value": 1,
+      "ease": "linear"
+    },
+    {
+      "t": 35,
+      "value": 4,
+      "ease": "in_out"
+    },
+    {
+      "t": 40.5,
+      "value": 4,
+      "ease": "linear"
+    },
+    {
+      "t": 42,
+      "value": 1,
+      "ease": "in_out"
+    }
+  ],
+  "ambient_scale": [
+    {
+      "t": 0,
+      "value": 1,
+      "ease": "linear"
+    },
+    {
+      "t": 33,
+      "value": 1,
+      "ease": "linear"
+    },
+    {
+      "t": 35,
+      "value": 5,
+      "ease": "in_out"
+    },
+    {
+      "t": 40.5,
+      "value": 5,
+      "ease": "linear"
+    },
+    {
+      "t": 42,
+      "value": 1,
+      "ease": "in_out"
+    }
+  ]
+}

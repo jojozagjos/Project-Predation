@@ -256,6 +256,27 @@ void LevelLights::Bound(int index, const glm::vec3& min, const glm::vec3& max)
     light.boundsMax = glm::max(min, max) + glm::vec3(m_boundsMargin);
 }
 
+void LevelLights::Place(Scene& scene, int index, const glm::vec3& at, const glm::vec3& direction)
+{
+    if (index < 0 || static_cast<size_t>(index) >= m_lights.size())
+    {
+        return;
+    }
+    Light& light = m_lights[static_cast<size_t>(index)];
+    light.direction = glm::length(direction) > 1e-4f ? glm::normalize(direction) : glm::vec3(0.0f, -1.0f, 0.0f);
+    light.position = at + light.direction * 0.12f;
+    light.moving = true;
+    if (Transform* fitting = scene.GetTransform(light.fitting))
+    {
+        fitting->position = at;
+        const glm::vec3 down(0.0f, -1.0f, 0.0f);
+        const float along = glm::dot(down, light.direction);
+        fitting->rotation = along > 0.999f  ? glm::quat(1.0f, 0.0f, 0.0f, 0.0f)
+                            : along < -0.999f ? glm::angleAxis(3.14159265f, glm::vec3(1.0f, 0.0f, 0.0f))
+                                              : glm::rotation(down, light.direction);
+    }
+}
+
 void LevelLights::SetPowered(int circuit, bool powered)
 {
     const auto found = std::find(m_unpowered.begin(), m_unpowered.end(), circuit);
@@ -365,7 +386,7 @@ void LevelLights::Gather(std::vector<PunctualLight>& out) const
         // A lamp of its own has a shadow of its own; what stands in for part of one gives way to it.
         const auto keyOf = [this](size_t index) { return (m_generation << 12) + static_cast<uint32_t>(index) + 1u; };
         const size_t index = static_cast<size_t>(&light - m_lights.data());
-        if (light.parent < 0)
+        if (light.parent < 0 && !light.moving)
         {
             punctual.shadowKey = keyOf(index);
         }

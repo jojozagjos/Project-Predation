@@ -4,7 +4,6 @@
 #include "Engine/Render/Mesh.h"
 #include "Engine/Render/Primitives.h"
 #include "Game/Interaction/InteractionSystem.h"
-#include "Game/World/Shuttle.h"
 
 #include <glm/gtc/quaternion.hpp>
 
@@ -17,12 +16,10 @@ namespace
 
 const Material kTerminalMaterial = Material::Diffuse({0.16f, 0.17f, 0.18f}, 0.6f);
 const Material kPanelMaterial = Material::Metal({0.34f, 0.36f, 0.33f}, 0.5f);
-const Material kConsoleMaterial = Material::Metal({0.22f, 0.23f, 0.25f}, 0.5f);
 const Material kGlassMaterial = Material::Diffuse({0.03f, 0.035f, 0.04f}, 0.25f);
 
 constexpr glm::vec3 kScreen{0.44f, 0.28f, 0.01f};
 constexpr glm::vec3 kPanelLamp{0.08f, 0.08f, 0.03f};
-constexpr glm::vec3 kConsoleScreen{1.0f, 0.01f, 0.36f};
 
 glm::quat ThingTurn(float yaw)
 {
@@ -79,8 +76,6 @@ void MissionProps::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physic
     const MeshHandle screenMesh = meshes.Upload(Primitives::Box(kScreen), "mission_terminal_screen");
     const MeshHandle panelMesh = meshes.Upload(Primitives::Box(MissionSpec::kBreakerSize), "mission_breaker");
     const MeshHandle lampMesh = meshes.Upload(Primitives::Box(kPanelLamp), "mission_breaker_lamp");
-    const MeshHandle consoleMesh = meshes.Upload(Primitives::Box(Shuttle::ConsoleSize()), "mission_console");
-    const MeshHandle consoleScreenMesh = meshes.Upload(Primitives::Box(kConsoleScreen), "mission_console_screen");
 
     if (plan.Valid())
     {
@@ -117,18 +112,23 @@ void MissionProps::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physic
         m_breakers.push_back(panel);
     }
 
-    const glm::vec3 base = site.ShuttleBase();
-    const glm::vec3 size = Shuttle::ConsoleSize();
-    const glm::quat turn = Shuttle::Turn(site.landingYaw);
-    // Its screen on top, where somebody standing at it looks down at it.
-    m_console = Make(scene, physics, "mission_console", consoleMesh, kConsoleMaterial, size, Shuttle::Console(base, site.landingYaw), turn,
-                     consoleScreenMesh, {0.0f, size.y * 0.5f + 0.006f, -0.04f});
-    Interactable interactable;
-    interactable.entity = m_console.body;
-    interactable.kind = InteractionKind::Launch;
-    interactable.focusOffset = turn * glm::vec3(0.0f, size.y * 0.5f, -0.1f);
-    interactable.range = 2.2f;
-    interactions.Register(interactable);
+    // The crawler, parked at the terminal's building with its back to the door, and its console to press.
+    if (plan.Valid() && static_cast<size_t>(plan.building) < site.parking.size())
+    {
+        const SitePlan::Spot& spot = site.parking[static_cast<size_t>(plan.building)];
+        const CinePose home{spot.position, TurnFromDegrees({0.0f, glm::degrees(spot.yaw), 0.0f})};
+        m_crawler.Build(scene, meshes, &physics, Vehicles::Load("snow_crawler"), home, physics.NewOverlapGroup(), "mission_crawler_");
+        const Entity console = m_crawler.Part("console");
+        if (console.IsValid())
+        {
+            Interactable interactable;
+            interactable.entity = console;
+            interactable.kind = InteractionKind::Launch;
+            interactable.focusOffset = home.rotation * glm::vec3(0.0f, 0.475f, 0.0f);
+            interactable.range = 2.2f;
+            interactions.Register(interactable);
+        }
+    }
 }
 
 void MissionProps::Clear(Scene& scene, PhysicsWorld& physics, InteractionSystem& interactions)
@@ -156,7 +156,11 @@ void MissionProps::Clear(Scene& scene, PhysicsWorld& physics, InteractionSystem&
         remove(panel);
     }
     m_breakers.clear();
-    remove(m_console);
+    if (const Entity console = m_crawler.Part("console"); console.IsValid())
+    {
+        interactions.Unregister(console);
+    }
+    m_crawler.Clear(scene, &physics);
     m_building = -1;
 }
 
@@ -203,13 +207,13 @@ void MissionProps::Show(Scene& scene, InteractionSystem& interactions, const Mis
         Offer(interactions, panel.body, out && live, "Reset", "breaker");
     }
 
-    // The console: steady, or counting down in red.
-    if (m_console.body.IsValid())
+    // The crawler's console: steady, or counting down in red.
+    if (const Entity console = m_crawler.Part("console"); console.IsValid())
     {
         const glm::vec3 glow = state.Launching() ? glm::vec3(0.8f, 0.1f, 0.06f) * (0.6f + 0.4f * std::abs(std::sin(time * 3.2f)))
                                                  : glm::vec3(0.12f, 0.25f, 0.4f);
-        SetGlow(scene, m_console.face, live ? glow : glm::vec3(0.02f));
-        Offer(interactions, m_console.body, live, state.Launching() ? "Hold" : "Launch", state.Launching() ? "the launch" : "the shuttle");
+        SetGlow(scene, m_crawler.Part("fx_console_screen"), live ? glow : glm::vec3(0.02f));
+        Offer(interactions, console, live, state.Launching() ? "Hold" : "Leave", state.Launching() ? "the departure" : "the site");
     }
 }
 

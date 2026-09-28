@@ -3,6 +3,7 @@
 #include "Engine/Physics/PhysicsWorld.h"
 #include "Engine/Scene/Scene.h"
 #include "Game/Mission/Mission.h"
+#include "Game/World/Vehicles.h"
 
 #include <vector>
 
@@ -13,8 +14,9 @@ class InteractionSystem;
 class MeshLibrary;
 
 // The mission's things in the world: the terminal on its bench, a breaker panel on a wall of every building, and the
-// launch console in the shuttle. Each is something solid, something that shows how things stand -- the terminal's
-// screen, the panel's lamp, the console's -- and something to press.
+// crawler waiting at the terminal's building -- which the team comes in on and leaves on -- with its launch console. Each
+// is something solid, something that shows how things stand -- the terminal's screen, the panel's lamp, the console's --
+// and something to press.
 //
 // Built with the site and taken away with it; Show is told how the mission stands whenever that changes, on every
 // machine, so everybody sees the same screens lit and is offered the same things to do.
@@ -25,6 +27,8 @@ public:
                const MissionPlan& plan);
     void Clear(Scene& scene, PhysicsWorld& physics, InteractionSystem& interactions);
     void Show(Scene& scene, InteractionSystem& interactions, const MissionState& state, float time);
+    VehicleProp& Crawler() { return m_crawler; }
+    const VehicleProp& Crawler() const { return m_crawler; }
 
 private:
     struct Prop
@@ -40,7 +44,7 @@ private:
 
     Prop m_terminal;
     std::vector<Prop> m_breakers;
-    Prop m_console;
+    VehicleProp m_crawler;
     int m_building = -1; // the terminal's
 };
 

@@ -252,3 +252,36 @@ TEST_CASE("A cinematic written to its file and read back is the same cinematic",
         CHECK(std::abs(a.Fade(t) - b.Fade(t)) < 1.0e-4f);
     }
 }
+
+TEST_CASE("An actor that drives a route and then turns on the spot waits at the start, drives, and turns", "[cinematic]")
+{
+    Cinematic cinematic;
+    cinematic.actors.push_back({"crawler", "snow_crawler", ""});
+    PathFollow follow;
+    follow.actor = "crawler";
+    follow.path = "route";
+    follow.start = 2.0f;
+    follow.end = 6.0f;
+    follow.ease = Linear();
+    cinematic.paths.push_back(follow);
+    // At the end of the route, facing along it (+x), it turns round on the spot to face -x.
+    ActorTrack turn;
+    turn.actor = "crawler";
+    turn.anchor = "park";
+    turn.keys.push_back({6.0f, {0.0f, 0.0f, 0.0f}, {0.0f, 180.0f, 0.0f}, Linear()});
+    turn.keys.push_back({8.0f, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, Linear()});
+    cinematic.actorTracks.push_back(turn);
+    CinematicBindings bindings;
+    bindings.paths["route"] = {{0.0f, 0.0f, 0.0f}, {10.0f, 0.0f, 0.0f}};
+    // The park faces -x: turned a quarter to the left.
+    bindings.anchors["park"] = {{10.0f, 0.0f, 0.0f}, TurnFromDegrees({0.0f, -90.0f, 0.0f})};
+    const CinematicSampler sampler(cinematic, bindings);
+    CHECK(Near(sampler.Actor("crawler", 0.0f).position, {0.0f, 0.0f, 0.0f}));
+    CHECK(Near(sampler.Actor("crawler", 4.0f).position, {5.0f, 0.0f, 0.0f}));
+    const glm::vec3 arriving = sampler.Actor("crawler", 5.99f).rotation * glm::vec3(0.0f, 0.0f, -1.0f);
+    const glm::vec3 turning = sampler.Actor("crawler", 6.01f).rotation * glm::vec3(0.0f, 0.0f, -1.0f);
+    CHECK(Near(arriving, {1.0f, 0.0f, 0.0f}, 0.02f));
+    CHECK(Near(turning, {1.0f, 0.0f, 0.0f}, 0.05f));
+    CHECK(Near(sampler.Actor("crawler", 9.0f).position, {10.0f, 0.0f, 0.0f}));
+    CHECK(Near(sampler.Actor("crawler", 9.0f).rotation * glm::vec3(0.0f, 0.0f, -1.0f), {-1.0f, 0.0f, 0.0f}, 0.02f));
+}
