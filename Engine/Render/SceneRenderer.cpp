@@ -1,6 +1,7 @@
 #include "Engine/Render/SceneRenderer.h"
 
 #include "Engine/Core/Log.h"
+#include "Engine/Debug/FrameStats.h"
 #include "Engine/Render/Mesh.h"
 #include "Engine/Render/TextureLibrary.h"
 #include "Engine/Render/Renderer.h"
@@ -472,6 +473,7 @@ void SceneRenderer::RenderShadows(bgfx::ViewId sunView, bgfx::ViewId sunNearView
     // And the lamps', drawn a few at a time and kept.
     if (LampShadowsEnabled())
     {
+        PRED_PROFILE_SCOPE("Render: lamp shadows");
         m_lampShadows.Update(environment.sceneLights, focus, Renderer::kViewLampShadowFirst, scene, meshes);
     }
 

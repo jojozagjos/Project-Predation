@@ -412,6 +412,8 @@ private:
     void DrawCreatureOverlays(DebugDraw& draw);
     void RegisterCreatureCommands();
     void RegisterDroneCommands();
+    // perf_report: the frame's timings, draw calls and GPU time added up over some frames, then logged.
+    void UpdatePerfReport();
     void SyncDynamicProps();
     void SpawnProp(bool sphere, float impulse);
     void ClearProps();
@@ -702,6 +704,10 @@ private:
     void UpdateDroneThreats(float dt);
     // Everybody down for good: the deployment is over.
     void UpdateWipe(float dt);
+    // A dead player asking to come back now, which only a death that is a pause allows.
+    void ComeBackNow(uint8_t player);
+    // The interact key, whatever it means at the moment: use something, come back, or watch somebody else.
+    void PressInteract();
     void RemoveAllDrones();
     DroneState LocalDroneState() const;
     // Whose drone a body is, or -1.
@@ -1203,8 +1209,9 @@ private:
     // The host's: how long before each drone can be swiped at again, and where each was last heard.
     std::map<uint8_t, float> m_droneSwatCooldown;
     std::map<uint8_t, glm::vec3> m_droneHeardAt;
-    // How long everybody has been down for good.
+    // How long everybody has been down for good, and, on every machine, how long until they are back.
     float m_wipeTimer = 0.0f;
+    float m_everybodyDownFor = 0.0f;
     // Where the players are, and which way they face arriving there.
     MapChoice m_map = MapChoice::TestMap;
     float m_spawnYaw = 3.14159265f;
@@ -1289,6 +1296,13 @@ private:
     SiteMap m_facility;
     // Whether the site's own sky is the one in the scene, so it can be put back on leaving.
     bool m_skyAtSite = false;
+    int m_perfFramesLeft = 0;
+    int m_perfFrames = 0;
+    std::map<std::string, double> m_perfTimings;
+    double m_perfFrameMs = 0.0;
+    double m_perfWorstMs = 0.0;
+    double m_perfGpuMs = 0.0;
+    double m_perfDraws = 0.0;
     // The main camera's view and projection, last frame: for putting HUD text on things in the world.
     glm::mat4 m_viewProjection{1.0f};
     VoiceId m_buzz = kInvalidVoice;

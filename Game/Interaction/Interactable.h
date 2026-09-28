@@ -18,7 +18,10 @@ enum class InteractionKind : uint8_t
     HidingSpot,
     AmmoCrate,
     // Somebody wrapped up at a creature nest. The payload is who.
-    Cocoon
+    Cocoon,
+    // Not a thing in the world: a dead player, in the testing area, asking to come back now rather than
+    // when their clock runs out.
+    ComeBack
 };
 
 const char* InteractionKindName(InteractionKind kind);

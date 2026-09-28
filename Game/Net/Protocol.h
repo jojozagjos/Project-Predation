@@ -24,7 +24,7 @@ namespace pred
 
 // Bumped whenever the wire changes shape. Two ends that disagree are refused at the door rather
 // than left to misread each other, which is what a wire mismatch actually looks like from inside.
-inline constexpr uint16_t kProtocolVersion = 20;
+inline constexpr uint16_t kProtocolVersion = 21;
 // How many bits name a message type. Five, so there is room to add one.
 inline constexpr uint32_t kMessageTypeBits = 5;
 inline constexpr uint8_t kMaxPlayers = 4;
@@ -111,6 +111,7 @@ enum class WorldEventKind : uint8_t
     CorpseBitten,    // the body at `position` bitten there, in its part `index` -- torn off, with `flag` -- and
                      // `amount` of it left
     DroneHit,        // a dead player's (`player`) drone struck: shoved by `direction` (an impulse), hurt by `amount`
+    EverybodyDown,   // everybody is down for good: the deployment is over, and everybody is back in `amount` seconds
     Count
 };
 

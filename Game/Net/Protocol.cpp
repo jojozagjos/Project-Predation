@@ -598,6 +598,10 @@ void WriteWorldEvent(BitWriter& writer, const WorldEventMessage& message)
         WritePosition(writer, message.position);
         break;
 
+    case WorldEventKind::EverybodyDown:
+        writer.WriteBits(std::min<uint32_t>(static_cast<uint32_t>(std::max(message.amount, 0.0f) + 0.5f), 63), 6);
+        break;
+
     case WorldEventKind::DroneHit:
         writer.WriteBits(message.player, 3);
         WriteVelocity(writer, message.direction);
@@ -742,6 +746,10 @@ bool ReadWorldEvent(BitReader& reader, WorldEventMessage& out)
         out.flag = reader.ReadBool();
         out.amount = reader.ReadQuantised(0.0f, 1.0f, 8);
         out.position = ReadPosition(reader);
+        break;
+
+    case WorldEventKind::EverybodyDown:
+        out.amount = static_cast<float>(reader.ReadBits(6));
         break;
 
     case WorldEventKind::DroneHit:

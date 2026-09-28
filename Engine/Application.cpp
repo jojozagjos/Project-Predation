@@ -269,6 +269,7 @@ int Application::Run(Game& game, int argc, char** argv)
                 game.OnFixedUpdate(m_fixedStep.Step());
                 if (cv_physicsEnabled.Get())
                 {
+                    PRED_PROFILE_SCOPE("Fixed: physics");
                     m_physics.Step(static_cast<float>(m_fixedStep.Step()));
                 }
             }

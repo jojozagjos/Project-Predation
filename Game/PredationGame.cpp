@@ -1447,8 +1447,8 @@ void PredationGame::RegisterCommands()
         },
         "look <yaw> [pitch]");
 
-    console.RegisterCommand("interact", "Use whatever the player is looking at",
-                            [this](const std::vector<std::string>&) { TryInteract(); });
+    console.RegisterCommand("interact", "Press the interact key: use whatever the player is looking at",
+                            [this](const std::vector<std::string>&) { PressInteract(); });
 
     console.RegisterCommand("drop", "Drop the selected item in front of the player",
                             [this](const std::vector<std::string>&) { DropSelected(); });
@@ -1950,11 +1950,18 @@ void PredationGame::ServeClientRequests()
 
     for (const NetHost::InteractRequest& request : m_host.TakeInteractRequests())
     {
-        if (request.kind >= static_cast<uint8_t>(InteractionKind::AmmoCrate) + 1)
+        // Every kind there is. This stopped at the ammunition crate, which left the cocoon -- added after it --
+        // out: a guest could never cut anybody free.
+        if (request.kind > static_cast<uint8_t>(InteractionKind::ComeBack))
         {
             continue;
         }
         const auto kind = static_cast<InteractionKind>(request.kind);
+        if (kind == InteractionKind::ComeBack)
+        {
+            ComeBackNow(request.player);
+            continue;
+        }
 
         // A client says what it wants, never where it is. The host checks the distance itself
         // against the position it simulated, so reach cannot be claimed.
@@ -2472,6 +2479,10 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
 
     case WorldEventKind::DroneHit:
         OnDroneHitEvent(event);
+        break;
+
+    case WorldEventKind::EverybodyDown:
+        m_everybodyDownFor = event.amount;
         break;
 
     case WorldEventKind::CorpseCarried:
@@ -3060,7 +3071,7 @@ void PredationGame::KillPlayer(uint8_t player, const glm::vec3& direction)
         event.kind = WorldEventKind::PlayerDied;
         event.player = player;
         event.direction = DeathPush(direction);
-        event.amount = DeathIsPermanent() ? 0.0f : cv_respawnSeconds.Get();
+        event.amount = DeathIsPermanent() ? 0.0f : RespawnSecondsForDeath();
         event.flag = DeathIsPermanent();
         m_host.Broadcast(event);
     }
@@ -6180,6 +6191,7 @@ void PredationGame::RespawnLocalPlayer(const glm::vec3& position)
     m_deathImpulse = glm::vec3(0.0f);
     m_spectating = -1;
     m_deadForGood = false;
+    m_everybodyDownFor = 0.0f;
 }
 
 void PredationGame::LeaveCorpse(const PlayerBody& body, uint8_t player)
@@ -8607,6 +8619,33 @@ void PredationGame::EnterHidingSpot(int index)
     m_app->GetConsole().Print("Hidden. Press " + KeyFor(m_app->GetInput(), "interact") + " to leave.");
 }
 
+void PredationGame::PressInteract()
+{
+    // Alive it opens doors; dead it is the only control there is, so it moves you to the next teammate. A
+    // free camera is deliberately not offered: it would show a dead player where the creature is, which is
+    // the one thing being dead should not tell them.
+    if (m_player.State().alive)
+    {
+        TryInteract();
+    }
+    else if (m_supportDrone.Active() && !m_deadForGood)
+    {
+        // Driving a drone in the testing area: back now, rather than when the clock says.
+        if (m_sessionMode == SessionMode::Client)
+        {
+            m_client.SendInteract(static_cast<uint8_t>(InteractionKind::ComeBack), 0);
+        }
+        else
+        {
+            ComeBackNow(LocalPlayerId());
+        }
+    }
+    else
+    {
+        m_spectateNext = true;
+    }
+}
+
 void PredationGame::LeaveHidingSpot()
 {
     WorldObjects::HidingSpot* spot = m_world.GetHidingSpot(m_hidingSpot);
@@ -8744,7 +8783,10 @@ void PredationGame::OnFixedUpdate(double fixedDt)
     // A navigation rebuild finished on a worker thread goes in here, between ticks, before anything
     // plans a route this tick.
     FinishNavRebuild();
-    UpdateCreatures(dt);
+    {
+        PRED_PROFILE_SCOPE("Fixed: creatures");
+        UpdateCreatures(dt);
+    }
     UpdateDroneThreats(dt);
     UpdateWipe(dt);
 
@@ -8767,6 +8809,7 @@ void PredationGame::OnFixedUpdate(double fixedDt)
 void PredationGame::OnUpdate(double dt, double alpha)
 {
     m_time += dt;
+    UpdatePerfReport();
 
     Application& app = *m_app;
     Input& input = app.GetInput();
@@ -8963,17 +9006,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
         }
         if (input.WasActionPressed("interact"))
         {
-            // Alive it opens doors; dead it is the only control there is, so it moves you to the
-            // next teammate. A free camera is deliberately not offered: it would show a dead player
-            // where the creature is, which is the one thing being dead should not tell them.
-            if (m_player.State().alive)
-            {
-                TryInteract();
-            }
-            else
-            {
-                m_spectateNext = true;
-            }
+            PressInteract();
         }
         if (input.WasActionPressed("drop"))
         {
@@ -9659,6 +9692,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
             m_doorWasMoving[d] = moving;
         }
         environment.sceneLights.clear();
+        PRED_PROFILE_SCOPE("Update: gather lamps");
         m_levelLights.Gather(environment.sceneLights);
         for (PunctualLight& lamp : environment.sceneLights)
         {
@@ -9960,6 +9994,7 @@ void PredationGame::OnRender()
     // Depth from the sun and depth from overhead, both fitted around the eye, before anything is
     // shaded. This is where a room with a roof on it becomes dark: nothing declares it dark, the
     // roof is simply between it and the sky.
+    PRED_PROFILE_SCOPE("Render: submit");
     app.GetSceneRenderer().RenderShadows(Renderer::kViewSunShadow, Renderer::kViewSunNearShadow, Renderer::kViewSkyShadow,
                                          Renderer::kViewSpotShadow, m_scene, app.GetMeshes(),
                                          viewPosition);
@@ -10699,6 +10734,10 @@ void PredationGame::DrawHud()
             if (!m_deadForGood)
             {
                 ImGui::TextDisabled("Back in %d", static_cast<int>(std::ceil(m_respawnTimer)));
+            }
+            else if (m_everybodyDownFor > 0.0f)
+            {
+                ImGui::TextDisabled("Everybody is down. Back in %d", static_cast<int>(std::ceil(m_everybodyDownFor)));
             }
         }
         ImGui::End();

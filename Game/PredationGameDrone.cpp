@@ -6,6 +6,9 @@
 
 #include "Engine/Core/CVar.h"
 #include "Engine/Core/Log.h"
+#include "Engine/Debug/FrameStats.h"
+
+#include <bgfx/bgfx.h>
 
 #include <imgui.h>
 
@@ -26,7 +29,10 @@ namespace
 CVar<bool> cv_permadeath{"game.permadeath", true,
                          "In the facility, the dead stay dead for the rest of it and drive a support drone. Off, "
                          "they come back as they do in the testing area"};
-CVar<float> cv_droneSeconds{"game.drone_seconds", 4.0f, "How long after dying the support drone arrives"};
+CVar<float> cv_droneSeconds{"game.drone_seconds", 3.0f, "How long after dying the support drone arrives"};
+CVar<float> cv_testingReturnSeconds{"game.testing_return_seconds", 30.0f,
+                                    "In the testing area, how long a dead player drives the drone before coming back "
+                                    "(the interact key comes back sooner)"};
 CVar<float> cv_wipeSeconds{"game.wipe_seconds", 10.0f,
                            "With everybody down for good, how long before the deployment is over and everybody is back"};
 
@@ -62,6 +68,14 @@ void PredationGame::RegisterDroneCommands()
                                 const glm::vec3 side = m_supportDrone.Rotation() * glm::vec3(1.0f, 0.0f, 0.0f);
                                 HitDrone(LocalPlayerId(), side * shove + glm::vec3(0.0f, shove * 0.5f, 0.0f), damage);
                             });
+    console.RegisterCommand("perf_report", "Average the frame's timings over some frames and log them: perf_report [frames]",
+                            [this](const std::vector<std::string>& args)
+                            {
+                                m_perfFramesLeft = args.size() >= 2 ? std::max(std::atoi(args[1].c_str()), 1) : 300;
+                                m_perfFrames = 0;
+                                m_perfTimings.clear();
+                                m_perfFrameMs = m_perfWorstMs = m_perfGpuMs = m_perfDraws = 0.0;
+                            });
     console.RegisterCommand("hurt_player", "As the host, hurt somebody: hurt_player <id> [amount]",
                             [this](const std::vector<std::string>& args)
                             {
@@ -88,6 +102,45 @@ void PredationGame::RegisterDroneCommands()
 #endif
 }
 
+void PredationGame::UpdatePerfReport()
+{
+    if (m_perfFramesLeft <= 0)
+    {
+        return;
+    }
+    const FrameStats& stats = FrameStats::Instance();
+    for (const FrameStats::Timing& timing : stats.Timings())
+    {
+        m_perfTimings[timing.name] += timing.milliseconds;
+    }
+    m_perfFrameMs += stats.FrameMs();
+    m_perfWorstMs = std::max(m_perfWorstMs, static_cast<double>(stats.FrameMs()));
+    if (const bgfx::Stats* gpu = m_app->GetRenderer().Stats())
+    {
+        m_perfDraws += gpu->numDraw;
+        if (gpu->gpuTimerFreq > 0)
+        {
+            m_perfGpuMs += 1000.0 * static_cast<double>(gpu->gpuTimeEnd - gpu->gpuTimeBegin) / static_cast<double>(gpu->gpuTimerFreq);
+        }
+    }
+    ++m_perfFrames;
+    if (--m_perfFramesLeft > 0)
+    {
+        return;
+    }
+    const double n = std::max(m_perfFrames, 1);
+    PRED_LOG_INFO(Gameplay, "perf over {} frames: {:.2f} ms a frame ({:.0f} fps), worst {:.1f} ms; GPU {:.2f} ms; {:.0f} draw calls",
+                  m_perfFrames, m_perfFrameMs / n, 1000.0 * n / std::max(m_perfFrameMs, 1.0e-3), m_perfWorstMs, m_perfGpuMs / n,
+                  m_perfDraws / n);
+    for (const auto& [name, total] : m_perfTimings)
+    {
+        PRED_LOG_INFO(Gameplay, "perf   {:<24} {:.2f} ms", name, total / n);
+    }
+    size_t lamps = m_scene.GetEnvironment().sceneLights.size();
+    size_t entities = m_scene.EntityCount();
+    PRED_LOG_INFO(Gameplay, "perf   {} lamps gathered, {} entities", lamps, entities);
+}
+
 bool PredationGame::DeathIsPermanent() const
 {
     return cv_permadeath.Get() && m_map == MapChoice::Facility;
@@ -95,12 +148,35 @@ bool PredationGame::DeathIsPermanent() const
 
 float PredationGame::RespawnSecondsForDeath() const
 {
-    return DeathIsPermanent() ? kForGood : RespawnSeconds();
+    return DeathIsPermanent() ? kForGood : std::max(cv_testingReturnSeconds.Get(), 1.0f);
+}
+
+void PredationGame::ComeBackNow(uint8_t player)
+{
+    if (!IsAuthority())
+    {
+        return;
+    }
+    // Only a death that is a pause: a clock parked for good stays parked.
+    if (player == LocalPlayerId())
+    {
+        if (!m_player.State().alive && !m_deadForGood && m_respawnTimer > 0.0f)
+        {
+            m_respawnTimer = 1.0e-3f;
+        }
+        return;
+    }
+    const auto timer = m_remoteRespawnTimers.find(player);
+    if (timer != m_remoteRespawnTimers.end() && timer->second > 0.0f && timer->second < kForGood * 0.5f)
+    {
+        timer->second = 1.0e-3f;
+    }
 }
 
 void PredationGame::UpdateDrone(const PlayerInput& input, float dt)
 {
     PhysicsWorld& physics = m_app->GetPhysics();
+    m_everybodyDownFor = std::max(m_everybodyDownFor - dt, 0.0f);
     const bool dead = m_screen == Screen::Playing && !m_player.State().alive;
     if (!dead)
     {
@@ -403,7 +479,15 @@ void PredationGame::UpdateWipe(float dt)
     }
     if (m_wipeTimer <= 0.0f)
     {
-        m_app->GetConsole().Print("Everybody is down.");
+        // Said to everybody, and on everybody's screen: otherwise the way back looks like any other.
+        m_everybodyDownFor = cv_wipeSeconds.Get();
+        if (m_sessionMode == SessionMode::Host)
+        {
+            WorldEventMessage event;
+            event.kind = WorldEventKind::EverybodyDown;
+            event.amount = m_everybodyDownFor;
+            m_host.Broadcast(event);
+        }
     }
     m_wipeTimer += dt;
     if (m_wipeTimer < cv_wipeSeconds.Get())
@@ -533,7 +617,8 @@ void PredationGame::DrawDroneHud()
     }
     if (!m_deadForGood && m_respawnTimer > 0.0f)
     {
-        hint += "    back in " + std::to_string(static_cast<int>(std::ceil(m_respawnTimer)));
+        hint += "    [" + KeyFor(m_app->GetInput(), "interact") + "] come back (" +
+                std::to_string(static_cast<int>(std::ceil(m_respawnTimer))) + ")";
     }
     const ImVec2 hintSize = ImGui::CalcTextSize(hint.c_str());
     draw->AddText({min.x + (width - hintSize.x) * 0.5f, max.y - inset - 24.0f}, IM_COL32(200, 205, 210, 200),
