@@ -87,7 +87,9 @@ void BuildLabMap(Scene& scene, MeshLibrary& meshes, PhysicsWorld* physics, Level
 
     // The outer walls, meeting edge to edge at the corners.
     Block(builder, "lab_wall_n", -kHalf - 0.5f, 0.0f, -kHalf - 0.5f, kHalf + 0.5f, h, -kHalf, kLabWall);
-    Block(builder, "lab_wall_s", -kHalf - 0.5f, 0.0f, kHalf, kHalf + 0.5f, h, kHalf + 0.5f, kLabWall);
+    // The south wall, either side of the gate onto the test map.
+    Block(builder, "lab_wall_s_w", -kHalf - 0.5f, 0.0f, kHalf, -kGateHalfWidth, h, kHalf + 0.5f, kLabWall);
+    Block(builder, "lab_wall_s_e", kGateHalfWidth, 0.0f, kHalf, kHalf + 0.5f, h, kHalf + 0.5f, kLabWall);
     Block(builder, "lab_wall_w", -kHalf - 0.5f, 0.0f, -kHalf, -kHalf, h, kHalf, kLabWall);
     Block(builder, "lab_wall_e", kHalf, 0.0f, -kHalf, kHalf + 0.5f, h, kHalf, kLabWall);
 

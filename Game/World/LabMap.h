@@ -13,9 +13,9 @@ class LevelLights;
 // The creature lab: a map for watching creatures do everything they can do, and for trying to survive
 // them while they do it.
 //
-// Built into the same world as the test map, well to the east of it, rather than as a map of its own:
-// there is only one world, built behind the menu, and going to the lab is being moved there. Everybody
-// in a game goes together, and dies back to the lab until they leave it.
+// One testing area with the test map: the lab stands against the test map's north edge, and a gate in
+// its south wall opens straight onto the test map's field, so the two are one place to walk about --
+// the movement courses and bays out on the field, the creatures and their nest in here.
 //
 // From the spawn at the south edge, looking north:
 //   south       the spawn, and a bench with a rifle, a pistol and ammunition
@@ -29,8 +29,10 @@ class LevelLights;
 //   north       the nest: a dark chamber with the hive in it, where creatures take what they catch
 namespace LabSpec
 {
-inline constexpr float kX = 170.0f;
-inline constexpr float kZ = 0.0f;
+inline constexpr float kX = 0.0f;
+inline constexpr float kZ = -77.0f; // its south wall on the test map's north edge
+// The gate onto the test map, in the middle of the south wall.
+inline constexpr float kGateHalfWidth = 3.0f;
 inline constexpr float kHalf = 32.0f;
 inline constexpr float kWallHeight = 5.0f;
 

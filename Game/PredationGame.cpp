@@ -3093,12 +3093,12 @@ void PredationGame::GoToMap(MapChoice map)
     case MapChoice::TestMap:
         m_spawnPoint = glm::vec3(0.0f, 0.5f, TestMapSpec::kSpawnZ);
         yaw = glm::pi<float>(); // south, across it
-        arrived = "Back on the test map.";
+        arrived = "In the testing area. The creature lab is through the gate to the north.";
         break;
     case MapChoice::Lab:
         m_spawnPoint = LabSpec::kSpawn;
         yaw = 0.0f; // north, into it
-        arrived = "In the creature lab. The nest is to the north.";
+        arrived = "In the creature lab, at the north end of the testing area. The nest is to the north.";
         break;
     case MapChoice::Facility:
         m_spawnPoint = m_facility.Spawn();
