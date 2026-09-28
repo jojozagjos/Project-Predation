@@ -132,6 +132,19 @@ bool SceneRenderer::Init(ShaderLibrary& shaders)
     m_uOrganic = bgfx::createUniform("u_organic", bgfx::UniformType::Vec4);
     m_uOrganicBeat = bgfx::createUniform("u_organicBeat", bgfx::UniformType::Vec4);
 
+    // The clustered lamps' three textures: read a texel at a time, never filtered.
+    const uint64_t exact = BGFX_SAMPLER_POINT | BGFX_SAMPLER_UVW_CLAMP;
+    m_lightData = bgfx::createTexture2D(6, kClusterMostLights, false, 1, bgfx::TextureFormat::RGBA32F, exact);
+    m_clusterGrid = bgfx::createTexture2D(kClusterAcross * kClusterUp, kClusterSlices, false, 1, bgfx::TextureFormat::RG32F, exact);
+    m_lightIndex = bgfx::createTexture2D(kClusterIndexRow, kClusterIndexRows, false, 1, bgfx::TextureFormat::R32F, exact);
+    m_sLightData = bgfx::createUniform("s_lightData", bgfx::UniformType::Sampler);
+    m_sClusterGrid = bgfx::createUniform("s_clusterGrid", bgfx::UniformType::Sampler);
+    m_sLightIndex = bgfx::createUniform("s_lightIndex", bgfx::UniformType::Sampler);
+    m_uClusterParams = bgfx::createUniform("u_clusterParams", bgfx::UniformType::Vec4);
+    m_uClusterDepth = bgfx::createUniform("u_clusterDepth", bgfx::UniformType::Vec4);
+    m_uClusterForward = bgfx::createUniform("u_clusterForward", bgfx::UniformType::Vec4);
+    m_cellLights.resize(static_cast<size_t>(kClusterAcross * kClusterUp * kClusterSlices));
+
     // Occlusion is not required for a picture. If the depth program or the float target is missing
     // the game still runs, unshadowed, and says so once rather than every frame.
     const bgfx::ProgramHandle depthProgram = shaders.LoadProgram("vs_shadow", "fs_shadow");
@@ -152,6 +165,23 @@ bool SceneRenderer::Init(ShaderLibrary& shaders)
 
 void SceneRenderer::Shutdown()
 {
+    for (bgfx::TextureHandle* texture : {&m_lightData, &m_clusterGrid, &m_lightIndex})
+    {
+        if (bgfx::isValid(*texture))
+        {
+            bgfx::destroy(*texture);
+            *texture = BGFX_INVALID_HANDLE;
+        }
+    }
+    for (bgfx::UniformHandle* handle : {&m_sLightData, &m_sClusterGrid, &m_sLightIndex, &m_uClusterParams, &m_uClusterDepth,
+                                        &m_uClusterForward})
+    {
+        if (bgfx::isValid(*handle))
+        {
+            bgfx::destroy(*handle);
+            *handle = BGFX_INVALID_HANDLE;
+        }
+    }
     m_lampShadows.Shutdown();
     for (bgfx::UniformHandle* handle : {&m_sLampShadow, &m_uLampShadowParams, &m_uOrganic, &m_uOrganicBeat})
     {
@@ -244,8 +274,10 @@ void SceneRenderer::SetEnvironmentUniforms(const Environment& environment,
                             withShadows ? static_cast<float>(m_shadowSettings.debugView) : 0.0f};
     bgfx::setUniform(m_uGrade, grade);
 
-    // The lights are chosen per surface rather than here: see UploadLightsFor.
+    // The lights are chosen per surface rather than here (see UploadLightsFor), unless the Draw is clustered.
     PackLights(environment);
+    const float listed[4] = {static_cast<float>(kClusterAcross), static_cast<float>(kClusterUp), static_cast<float>(kClusterSlices), 0.0f};
+    bgfx::setUniform(m_uClusterParams, listed);
 
     // The occlusion maps. Both samplers are bound whatever happens: a sampler a shader declares and
     // nobody fills reads whatever was last in that slot, which is a picture that changes depending
@@ -373,7 +405,12 @@ void SceneRenderer::SubmitMesh(bgfx::ViewId view, const Mesh& mesh, const Materi
                          bgfx::isValid(m_reflectionTexture) ? m_reflectionTexture : white);
     }
 
-    UploadLightsFor(mesh, model);
+    // Clustered, the lamps are in the textures and only the torch is in the list, set once for the Draw.
+    BindClusterTextures();
+    if (!m_clustered)
+    {
+        UploadLightsFor(mesh, model);
+    }
     bgfx::setTransform(glm::value_ptr(model));
     if (mesh.IsDynamic())
     {
@@ -831,6 +868,12 @@ void SceneRenderer::Draw(bgfx::ViewId view, const Scene& scene, const MeshLibrar
 
     SetEnvironmentUniforms(scene.GetEnvironment(), cameraPosition, true);
     const uint64_t state = DrawState();
+    m_clustered = m_clusterCamera && bgfx::isValid(m_lightData) && bgfx::isValid(m_clusterGrid) && bgfx::isValid(m_lightIndex);
+    m_clusterCamera = false;
+    if (m_clustered)
+    {
+        BuildClusters();
+    }
 
     // Only what can be seen. Everything in the world was drawn every frame -- every room of every map,
     // every patch of a nest behind the player -- and each piece weighed every light in the level.
@@ -853,6 +896,212 @@ void SceneRenderer::Draw(bgfx::ViewId view, const Scene& scene, const MeshLibrar
             SubmitMesh(view, *mesh, renderer.material, model, state);
         });
     m_cullEnabled = false;
+    m_clustered = false;
+}
+
+void SceneRenderer::SetClusterCamera(const glm::mat4& view, const glm::mat4& projection)
+{
+    m_clusterViewProj = projection * view;
+    const glm::mat4 world = glm::inverse(view);
+    m_clusterEye = glm::vec3(world[3]);
+    m_clusterForward = -glm::normalize(glm::vec3(world[2]));
+    m_clusterCamera = true;
+}
+
+void SceneRenderer::BindClusterTextures()
+{
+    if (!bgfx::isValid(m_lightData))
+    {
+        return;
+    }
+    // Bound for every draw, clustered or not: bgfx forgets bindings after a submit, and a sampler the shader
+    // declares and nobody fills reads whatever was last there.
+    bgfx::setTexture(7, m_sLightData, m_lightData);
+    bgfx::setTexture(8, m_sClusterGrid, m_clusterGrid);
+    bgfx::setTexture(9, m_sLightIndex, m_lightIndex);
+}
+
+bool SceneRenderer::ClusterRange(const glm::mat4& viewProj, const glm::vec3& eye, const glm::vec3& forward, const glm::vec3& lo,
+                                 const glm::vec3& hi, int& x0, int& x1, int& y0, int& y1, int& s0, int& s1)
+{
+    // Its depth along the view, from the box's corners.
+    float nearest = 1.0e9f;
+    float farthest = -1.0e9f;
+    glm::vec2 ndcLo{1.0e9f};
+    glm::vec2 ndcHi{-1.0e9f};
+    bool behind = false;
+    for (int corner = 0; corner < 8; ++corner)
+    {
+        const glm::vec3 p{(corner & 1) ? hi.x : lo.x, (corner & 2) ? hi.y : lo.y, (corner & 4) ? hi.z : lo.z};
+        const float depth = glm::dot(p - eye, forward);
+        nearest = std::min(nearest, depth);
+        farthest = std::max(farthest, depth);
+        const glm::vec4 clip = viewProj * glm::vec4(p, 1.0f);
+        if (clip.w <= 0.05f)
+        {
+            behind = true;
+            continue;
+        }
+        const glm::vec2 ndc = glm::vec2(clip) / clip.w;
+        ndcLo = glm::min(ndcLo, ndc);
+        ndcHi = glm::max(ndcHi, ndc);
+    }
+    if (farthest < kClusterNear || nearest > kClusterFar)
+    {
+        return false;
+    }
+    // A box reaching behind the eye covers the whole picture as far as its corners can say.
+    if (behind)
+    {
+        ndcLo = glm::vec2(-1.0f);
+        ndcHi = glm::vec2(1.0f);
+    }
+    if (ndcHi.x < -1.0f || ndcHi.y < -1.0f || ndcLo.x > 1.0f || ndcLo.y > 1.0f)
+    {
+        return false;
+    }
+    const auto cell = [](float ndc, int cells)
+    { return std::clamp(static_cast<int>(std::floor((ndc * 0.5f + 0.5f) * static_cast<float>(cells))), 0, cells - 1); };
+    x0 = cell(ndcLo.x, kClusterAcross);
+    x1 = cell(ndcHi.x, kClusterAcross);
+    y0 = cell(ndcLo.y, kClusterUp);
+    y1 = cell(ndcHi.y, kClusterUp);
+    const float perLog = static_cast<float>(kClusterSlices) / std::log(kClusterFar / kClusterNear);
+    const auto slice = [&](float depth)
+    {
+        return std::clamp(static_cast<int>(std::floor(std::log(std::max(depth, kClusterNear) / kClusterNear) * perLog)), 0,
+                          kClusterSlices - 1);
+    };
+    s0 = slice(nearest);
+    s1 = slice(farthest);
+    return true;
+}
+
+void SceneRenderer::BuildClusters()
+{
+    m_clusterStats = ClusterStats{};
+    for (std::vector<uint16_t>& cell : m_cellLights)
+    {
+        cell.clear();
+    }
+
+    // The lamps, strongest at the eye first, so that if a cell has more than it can take the ones it drops
+    // are the ones that matter least. The torch is not among them: it is in the list, with its shadow.
+    std::vector<size_t> order;
+    order.reserve(m_packed.size());
+    for (size_t i = 0; i < m_packed.size(); ++i)
+    {
+        if (!m_packed[i].pinned)
+        {
+            order.push_back(i);
+        }
+    }
+    const auto weight = [&](size_t i)
+    {
+        const float d = std::max(glm::length(m_packed[i].position - m_clusterEye) - m_packed[i].range * 0.5f, 1.0f);
+        return m_packed[i].intensity / (d * d);
+    };
+    std::sort(order.begin(), order.end(), [&](size_t a, size_t b) { return weight(a) > weight(b); });
+    if (order.size() > static_cast<size_t>(kClusterMostLights))
+    {
+        order.resize(static_cast<size_t>(kClusterMostLights));
+        m_clusterStats.truncated = true;
+    }
+
+    m_lightRows.assign(static_cast<size_t>(kClusterMostLights) * kLightStride, 0.0f);
+    for (size_t row = 0; row < order.size(); ++row)
+    {
+        const PackedLight& light = m_packed[order[row]];
+        std::copy(light.data, light.data + kLightStride, m_lightRows.begin() + static_cast<ptrdiff_t>(row * kLightStride));
+        // Where it reaches: its sphere, cut to its room's box when it is kept in one.
+        glm::vec3 lo = light.position - glm::vec3(light.range);
+        glm::vec3 hi = light.position + glm::vec3(light.range);
+        if (light.bounded)
+        {
+            lo = glm::max(lo, light.boundsMin);
+            hi = glm::min(hi, light.boundsMax);
+            if (lo.x > hi.x || lo.y > hi.y || lo.z > hi.z)
+            {
+                continue;
+            }
+        }
+        int x0, x1, y0, y1, s0, s1;
+        if (!ClusterRange(m_clusterViewProj, m_clusterEye, m_clusterForward, lo, hi, x0, x1, y0, y1, s0, s1))
+        {
+            continue;
+        }
+        for (int s = s0; s <= s1; ++s)
+        {
+            for (int y = y0; y <= y1; ++y)
+            {
+                for (int x = x0; x <= x1; ++x)
+                {
+                    std::vector<uint16_t>& cell = m_cellLights[static_cast<size_t>((s * kClusterUp + y) * kClusterAcross + x)];
+                    if (cell.size() < static_cast<size_t>(kClusterMostPerCell))
+                    {
+                        cell.push_back(static_cast<uint16_t>(row));
+                    }
+                    else
+                    {
+                        m_clusterStats.truncated = true;
+                    }
+                }
+            }
+        }
+    }
+
+    // The cells' lists end to end, and each cell told where its own begins and how long it is.
+    const size_t cells = m_cellLights.size();
+    const size_t most = static_cast<size_t>(kClusterIndexRow) * kClusterIndexRows;
+    m_gridTexels.assign(cells * 2, 0.0f);
+    m_indexTexels.assign(most, 0.0f);
+    size_t next = 0;
+    for (size_t c = 0; c < cells; ++c)
+    {
+        const std::vector<uint16_t>& list = m_cellLights[c];
+        const size_t count = std::min(list.size(), most - next);
+        if (count < list.size())
+        {
+            m_clusterStats.truncated = true;
+        }
+        m_gridTexels[c * 2 + 0] = static_cast<float>(next);
+        m_gridTexels[c * 2 + 1] = static_cast<float>(count);
+        for (size_t k = 0; k < count; ++k)
+        {
+            m_indexTexels[next + k] = static_cast<float>(list[k]);
+        }
+        next += count;
+        m_clusterStats.busiestCell = std::max(m_clusterStats.busiestCell, list.size());
+    }
+    m_clusterStats.lights = order.size();
+    m_clusterStats.references = next;
+
+    const uint16_t rows = static_cast<uint16_t>(std::max<size_t>(order.size(), 1));
+    bgfx::updateTexture2D(m_lightData, 0, 0, 0, 0, 6, rows, bgfx::copy(m_lightRows.data(), static_cast<uint32_t>(rows) * 6u * 16u));
+    bgfx::updateTexture2D(m_clusterGrid, 0, 0, 0, 0, static_cast<uint16_t>(kClusterAcross * kClusterUp),
+                          static_cast<uint16_t>(kClusterSlices), bgfx::copy(m_gridTexels.data(), static_cast<uint32_t>(cells * 2 * 4)));
+    const uint16_t indexRows = static_cast<uint16_t>(std::max<size_t>((next + kClusterIndexRow - 1) / kClusterIndexRow, 1));
+    bgfx::updateTexture2D(m_lightIndex, 0, 0, 0, 0, static_cast<uint16_t>(kClusterIndexRow), indexRows,
+                          bgfx::copy(m_indexTexels.data(), static_cast<uint32_t>(indexRows) * kClusterIndexRow * 4u));
+
+    // The shader told it is clustered, where the slices are, and which way the camera looks; and the list
+    // holding only the torch, once for the whole Draw.
+    const float params[4] = {static_cast<float>(kClusterAcross), static_cast<float>(kClusterUp), static_cast<float>(kClusterSlices), 1.0f};
+    const float depth[4] = {kClusterNear, static_cast<float>(kClusterSlices) / std::log(kClusterFar / kClusterNear), 0.0f, 0.0f};
+    const float forward[4] = {m_clusterForward.x, m_clusterForward.y, m_clusterForward.z, 0.0f};
+    bgfx::setUniform(m_uClusterParams, params);
+    bgfx::setUniform(m_uClusterDepth, depth);
+    bgfx::setUniform(m_uClusterForward, forward);
+    float torch[kMaxPunctualLights * kLightStride] = {};
+    for (const PackedLight& light : m_packed)
+    {
+        if (light.pinned)
+        {
+            std::copy(light.data, light.data + kLightStride, torch);
+            break;
+        }
+    }
+    bgfx::setUniform(m_uLights, torch, static_cast<uint16_t>(kMaxPunctualLights * kLightStride / 4));
 }
 
 void SceneRenderer::DrawOne(bgfx::ViewId view, const Mesh& mesh, const Material& material,

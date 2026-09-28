@@ -81,6 +81,23 @@ uniform vec4 u_lampShadowParams;
 uniform vec4 u_organic;
 SAMPLER2D(s_lampShadow, 6);
 
+// The lamps, clustered (the main view): every lamp that reaches anything on screen, in a texture, and
+// which of them reach each cell of a grid laid over the view -- so a surface is lit by exactly the lamps
+// that reach where it is, rather than by a dozen chosen for the whole piece of level it is part of, which
+// is what put hard lines between two pieces that chose differently.
+//
+// x = cells across, y = cells up, z = depth slices, w = 1 for the clustered lamps, 0 for the list above.
+uniform vec4 u_clusterParams;
+// x = the nearest depth sliced, y = slices / log(far / near).
+uniform vec4 u_clusterDepth;
+// xyz = which way the camera looks.
+uniform vec4 u_clusterForward;
+SAMPLER2D(s_lightData, 7);   // six texels a lamp, laid out as u_lights, one lamp a row
+SAMPLER2D(s_clusterGrid, 8); // one texel a cell, a row a slice: x = first of its lamps in the list, y = how many
+SAMPLER2D(s_lightIndex, 9);  // the lamps of every cell, one after another, 256 to a row
+#define LIGHT_INDEX_ROW 256
+#define MOST_CLUSTER_LIGHTS 48
+
 // bgfx gives HLSL a struct for a sampler and GLSL the built-in type, and makes `sampler2D` mean
 // whichever of the two this backend has. So a function can take one, and the lookup below is
 // written once rather than once per map.
@@ -307,19 +324,26 @@ float lampReaches(float slot, vec3 lamp, float range, vec3 P, vec3 N)
 
 	// A little slack, growing with distance as the texels do.
 	float bias = 0.03 + major * 0.03;
-	// Nine readings a texel apart, averaged: a soft edge a couple of texels wide rather than a staircase.
+	// Sixteen readings, the four-by-four texels round the point, each weighted by how far the point is from
+	// it: a three-texel filter that slides smoothly across the texels rather than stepping from one to the
+	// next. Nine readings a texel apart, as this was, averaged whole texels -- and whole texels are a
+	// staircase, which was every doorway's edge of light.
+	float size = 1.0 / texel;
+	vec2 local = vec2(ndc.x * 0.5 + 0.5, bottomUp ? ndc.y * 0.5 + 0.5 : 0.5 - ndc.y * 0.5);
+	vec2 at = local * size - 0.5;
+	vec2 base = floor(at);
+	vec2 frac = at - base;
 	float lit = 0.0;
-	for (int k = 0; k < 9; ++k)
+	for (int k = 0; k < 16; ++k)
 	{
-		float kx = mod(float(k), 3.0) - 1.0;
-		float ky = floor(float(k) / 3.0) - 1.0;
-		vec2 offset = vec2(kx, ky) * texel;
-		vec2 local = vec2(ndc.x * 0.5 + 0.5, bottomUp ? ndc.y * 0.5 + 0.5 : 0.5 - ndc.y * 0.5) + offset;
-		local = clamp(local, vec2_splat(texel), vec2_splat(1.0 - texel));
-		vec2 uv = vec2((tx + local.x) * norm, bottomUp ? 1.0 - (ty + 1.0 - local.y) * norm : (ty + local.y) * norm);
+		float i = mod(float(k), 4.0);
+		float j = floor(float(k) / 4.0);
+		vec2 centre = clamp((base + vec2(i, j) - 1.0 + 0.5) * texel, vec2_splat(0.5 * texel), vec2_splat(1.0 - 0.5 * texel));
+		vec2 uv = vec2((tx + centre.x) * norm, bottomUp ? 1.0 - (ty + 1.0 - centre.y) * norm : (ty + centre.y) * norm);
 		float stored = texture2DLod(s_lampShadow, uv, 0.0).x;
-		float nearest = range - stored;
-		lit += major <= nearest + bias ? 1.0 : 0.0;
+		float wx = i < 0.5 ? 1.0 - frac.x : (i > 2.5 ? frac.x : 1.0);
+		float wy = j < 0.5 ? 1.0 - frac.y : (j > 2.5 ? frac.y : 1.0);
+		lit += (major <= range - stored + bias ? 1.0 : 0.0) * wx * wy;
 	}
 	return lit * (1.0 / 9.0);
 }
@@ -347,6 +371,114 @@ vec3 fresnelSchlick(vec3 f0, float VoH)
 {
 	float f = pow(1.0 - VoH, 5.0);
 	return f0 + (vec3_splat(1.0) - f0) * f;
+}
+
+// What one light that has a place adds: a torch, a flare, a lamp on a wall.
+//
+// The same shading as the sun, with two things added. Distance, which falls off with the square and is
+// cut off at the light's range so a corridor does not pay for a lamp three rooms away. And the cone, which
+// is the difference between a bulb and a torch: full brightness within the inner angle, fading to nothing
+// by the outer one, and a wide-open inner angle makes it a bulb.
+//
+// `torch`: the one light with the spot shadow (the first of the list, the brightest at the eye).
+vec3 shadeLight(vec4 posRange, vec4 colorIntensity, vec4 dirInner, vec4 outerOn, vec4 boxMin, vec4 boxMax, bool torch,
+                vec3 P, vec3 N, vec3 V, float NoV, float roughness, vec3 f0, vec3 diffuse, vec3 diffuseColor)
+{
+	if (outerOn.y < 0.5)
+	{
+		return vec3_splat(0.0);
+	}
+	// Kept in its room, when it has one: the far side of a wall is outside the box.
+	if (boxMin.w > 0.5 && (any(lessThan(P, boxMin.xyz)) || any(greaterThan(P, boxMax.xyz))))
+	{
+		return vec3_splat(0.0);
+	}
+	vec3 toLight = posRange.xyz - P;
+	float distance = length(toLight);
+	if (distance > posRange.w)
+	{
+		return vec3_splat(0.0);
+	}
+	vec3 Lp = toLight / max(distance, 1e-4);
+
+	// Inverse square, with the singularity at zero removed and a window that reaches exactly nothing at
+	// the range rather than being cut off at some visible brightness. Inside the source radius the
+	// brightness stops climbing: without that a torch on the eye puts a hundred times its own intensity
+	// onto the weapon a hand span in front of it.
+	float attenuation = 1.0 / max(distance * distance, outerOn.z * outerOn.z);
+	float window = clamp(1.0 - pow(distance / posRange.w, 4.0), 0.0, 1.0);
+	attenuation *= window * window;
+
+	// A lamp with a shadow of its own: whether this surface can see it. Asked before the cone, because
+	// the light bounced round its room below is kept in by the same walls.
+	float lampLit = 1.0;
+	if (!torch && outerOn.w > -0.5)
+	{
+		lampLit = lampReaches(outerOn.w, posRange.xyz, posRange.w, P, N);
+	}
+	// A little of every lamp's light has bounced off the room before it arrives: from every direction,
+	// so it reaches what the fitting does not face -- the ceiling over a downlight, a corner behind it.
+	// Not the torch: it is the one light with a shadow of the moment, and this has none.
+	vec3 color = vec3_splat(0.0);
+	if (!torch)
+	{
+		color += diffuseColor * colorIntensity.rgb * colorIntensity.w * attenuation * 0.05 * lampLit;
+	}
+
+	float cosAngle = dot(-Lp, normalize(dirInner.xyz));
+	float cone = clamp((cosAngle - outerOn.x) / max(dirInner.w - outerOn.x, 1e-4), 0.0, 1.0);
+	// Squared, so the edge of the beam softens rather than ending on a line.
+	cone *= cone;
+	if (cone <= 0.0)
+	{
+		return color;
+	}
+
+	vec3 Hp = normalize(Lp + V);
+	float NoLp = max(dot(N, Lp), 0.0);
+	float NoHp = max(dot(N, Hp), 0.0);
+	float VoHp = max(dot(V, Hp), 0.0);
+	float Dp = distributionGGX(NoHp, roughness);
+	float Visp = visibilitySmith(NoV, NoLp, roughness);
+	vec3 Fp = fresnelSchlick(f0, VoHp);
+	float reaches = lampLit;
+	if (torch)
+	{
+		reaches = lightReachesSpot(s_spotShadow, u_spotShadowMtx, u_spotShadowAxis, u_spotShadowParams, P, N,
+		                           shadowSlack(u_spotShadowParams.y, NoLp, 4.0, u_shadowTexelWorld.z, 1.0));
+	}
+	vec3 lightRadiance = colorIntensity.rgb * colorIntensity.w * attenuation * cone * reaches;
+	return color + (diffuse + Dp * Visp * Fp) * lightRadiance * NoLp;
+}
+
+// The lamps that reach this point of the view, from the cluster it falls in.
+vec3 clusteredLights(vec3 P, vec3 N, vec3 V, float NoV, float roughness, vec3 f0, vec3 diffuse, vec3 diffuseColor)
+{
+	vec4 clip = mul(u_viewProj, vec4(P, 1.0));
+	vec2 ndc = clip.xy / max(clip.w, 1e-4);
+	float across = clamp(floor((ndc.x * 0.5 + 0.5) * u_clusterParams.x), 0.0, u_clusterParams.x - 1.0);
+	float up = clamp(floor((ndc.y * 0.5 + 0.5) * u_clusterParams.y), 0.0, u_clusterParams.y - 1.0);
+	float depth = max(dot(P - u_cameraPosition.xyz, u_clusterForward.xyz), u_clusterDepth.x);
+	float slice = clamp(floor(log(depth / u_clusterDepth.x) * u_clusterDepth.y), 0.0, u_clusterParams.z - 1.0);
+	vec4 cell = texelFetch(s_clusterGrid, ivec2(int(across + up * u_clusterParams.x), int(slice)), 0);
+	int first = int(cell.x + 0.5);
+	int count = int(cell.y + 0.5);
+	vec3 color = vec3_splat(0.0);
+	for (int k = 0; k < MOST_CLUSTER_LIGHTS; ++k)
+	{
+		if (k >= count)
+		{
+			break;
+		}
+		int at = first + k;
+		int row = at / LIGHT_INDEX_ROW;
+		int light = int(texelFetch(s_lightIndex, ivec2(at - row * LIGHT_INDEX_ROW, row), 0).x + 0.5);
+		color += shadeLight(texelFetch(s_lightData, ivec2(0, light), 0), texelFetch(s_lightData, ivec2(1, light), 0),
+		                    texelFetch(s_lightData, ivec2(2, light), 0), texelFetch(s_lightData, ivec2(3, light), 0),
+		                    texelFetch(s_lightData, ivec2(4, light), 0), texelFetch(s_lightData, ivec2(5, light), 0), false,
+		                    P, N, V, NoV, roughness, f0, diffuse, diffuseColor);
+	}
+	return color;
 }
 
 
@@ -415,97 +547,22 @@ void main()
 	float sunReaches = sunReaching(v_worldPos, N, NoL);
 	vec3 color = (diffuse + specular) * radiance * NoL * sunReaches;
 
-	// And the lights that have a place: a torch, a flare, a lamp on a wall.
-	//
-	// The same shading as the sun, with two things added. Distance, which falls off with the square
-	// and is cut off at the light's range so a corridor does not pay for a lamp three rooms away.
-	// And the cone, which is the difference between a bulb and a torch: full brightness within the
-	// inner angle, fading to nothing by the outer one, and a wide-open inner angle makes it a bulb.
-	for (int i = 0; i < MAX_LIGHTS; ++i)
+	// And the lights that have a place: the torch first, from the list, with its shadow; then either the
+	// lamps of this point's cluster (the main view) or the rest of the list (a mirror, an icon).
+	if (u_clusterParams.w > 0.5)
 	{
-		vec4 posRange = u_lights[i * 6 + 0];
-		vec4 colorIntensity = u_lights[i * 6 + 1];
-		vec4 dirInner = u_lights[i * 6 + 2];
-		vec4 outerOn = u_lights[i * 6 + 3];
-		if (outerOn.y < 0.5)
+		color += shadeLight(u_lights[0], u_lights[1], u_lights[2], u_lights[3], u_lights[4], u_lights[5], true,
+		                    v_worldPos, N, V, NoV, roughness, f0, diffuse, diffuseColor);
+		color += clusteredLights(v_worldPos, N, V, NoV, roughness, f0, diffuse, diffuseColor);
+	}
+	else
+	{
+		for (int i = 0; i < MAX_LIGHTS; ++i)
 		{
-			continue;
+			color += shadeLight(u_lights[i * 6 + 0], u_lights[i * 6 + 1], u_lights[i * 6 + 2], u_lights[i * 6 + 3],
+			                    u_lights[i * 6 + 4], u_lights[i * 6 + 5], i == 0,
+			                    v_worldPos, N, V, NoV, roughness, f0, diffuse, diffuseColor);
 		}
-		// Kept in its room, when it has one: the far side of a wall is outside the box.
-		vec4 boxMin = u_lights[i * 6 + 4];
-		vec4 boxMax = u_lights[i * 6 + 5];
-		if (boxMin.w > 0.5 && (any(lessThan(v_worldPos, boxMin.xyz)) || any(greaterThan(v_worldPos, boxMax.xyz))))
-		{
-			continue;
-		}
-
-		vec3 toLight = posRange.xyz - v_worldPos;
-		float distance = length(toLight);
-		if (distance > posRange.w)
-		{
-			continue;
-		}
-		vec3 Lp = toLight / max(distance, 1e-4);
-
-		// Inverse square, with the singularity at zero removed and a window that reaches exactly
-		// nothing at the range rather than being cut off at some visible brightness.
-		// Inside the source radius the brightness stops climbing. Without that a torch on the eye
-		// puts a hundred times its own intensity onto the weapon a hand span in front of it.
-		float attenuation = 1.0 / max(distance * distance, outerOn.z * outerOn.z);
-		float window = clamp(1.0 - pow(distance / posRange.w, 4.0), 0.0, 1.0);
-		attenuation *= window * window;
-
-		// A little of every lamp's light has bounced off the room before it arrives: from every direction,
-		// so it reaches what the fitting does not face -- the ceiling over a downlight, a corner behind
-		// it. Without it a lamp's room was lit to a hard line where the walls met a pitch black ceiling.
-		// Not the torch in the first slot: it is the one light with a shadow, and this has none.
-		// A lamp with a shadow of its own: whether this surface can see it. Asked here, before the cone,
-		// because the light bounced round its room below is kept in by the same walls.
-		float lampLit = 1.0;
-		if (i > 0 && outerOn.w > -0.5)
-		{
-			lampLit = lampReaches(outerOn.w, posRange.xyz, posRange.w, v_worldPos, N);
-		}
-		if (i > 0)
-		{
-			color += diffuseColor * colorIntensity.rgb * colorIntensity.w * attenuation * 0.05 * lampLit;
-		}
-
-		float cosAngle = dot(-Lp, normalize(dirInner.xyz));
-		float cone = clamp((cosAngle - outerOn.x) / max(dirInner.w - outerOn.x, 1e-4), 0.0, 1.0);
-		// Squared, so the edge of the beam softens rather than ending on a line.
-		cone *= cone;
-		if (cone <= 0.0)
-		{
-			continue;
-		}
-
-		vec3 Hp = normalize(Lp + V);
-		float NoLp = max(dot(N, Lp), 0.0);
-		float NoHp = max(dot(N, Hp), 0.0);
-		float VoHp = max(dot(V, Hp), 0.0);
-
-		float Dp = distributionGGX(NoHp, roughness);
-		float Visp = visibilitySmith(NoV, NoLp, roughness);
-		vec3 Fp = fresnelSchlick(f0, VoHp);
-		// Whatever is in the way of the torch.
-		//
-		// Only the first slot, because only the first slot has a map: one shadowed punctual light
-		// rather than four, and the game sorts the slots so that the first is whatever contributes
-		// most at the eye -- which is the player's own torch whenever it is lit, because it is at
-		// the eye. Every other light still shines through walls, and that is a deliberate limit
-		// rather than an oversight: each one would be another whole pass over the scene.
-		float reaches = lampLit;
-		if (i == 0)
-		{
-			reaches = lightReachesSpot(s_spotShadow, u_spotShadowMtx, u_spotShadowAxis,
-			                           u_spotShadowParams, v_worldPos, N,
-			                           shadowSlack(u_spotShadowParams.y, NoLp, 4.0,
-			                                       u_shadowTexelWorld.z, 1.0));
-		}
-
-		vec3 lightRadiance = colorIntensity.rgb * colorIntensity.w * attenuation * cone * reaches;
-		color += (diffuse + Dp * Visp * Fp) * lightRadiance * NoLp;
 	}
 
 	// Hemispheric ambient stands in for indirect light until there is a real probe system.

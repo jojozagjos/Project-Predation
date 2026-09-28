@@ -63,6 +63,7 @@ void Block(MapBuilder& builder, const char* name, float x0, float y0, float z0, 
 void BuildLabMap(Scene& scene, MeshLibrary& meshes, PhysicsWorld* physics, LevelLights* lights)
 {
     MapBuilder builder(scene, meshes, physics, "lab_");
+    builder.BeginBatching();
     const float h = kWallHeight;
 
     // The floor, drawn as a grid of eight-metre tiles and collided as one slab with its top at nought.

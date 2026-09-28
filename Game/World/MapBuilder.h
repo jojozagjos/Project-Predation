@@ -29,6 +29,33 @@ public:
         : m_scene(scene), m_meshes(meshes), m_physics(physics), m_prefix(std::move(prefix))
     {
     }
+    ~MapBuilder() { FlushBatches(); }
+    MapBuilder(const MapBuilder&) = delete;
+    MapBuilder& operator=(const MapBuilder&) = delete;
+
+    // Draws what is added from here on in batches: everything of one material within one cell of the world
+    // this big goes into one mesh, drawn as one thing, instead of every box and every four-metre piece of
+    // one being drawn on its own. What collides is not batched -- each box is still its own body.
+    //
+    // Lamps are found per pixel now (SceneRenderer::SetClusterCamera), so how a level is cut up no longer
+    // decides how it is lit, and a building drawn as a few hundred things rather than several thousand is
+    // most of the difference between thirty frames a second and a hundred.
+    void BeginBatching(float cellSize = 16.0f) { m_batchCell = cellSize; }
+    // Uploads what has been batched and puts it in the scene. Called by the destructor if not before.
+    void FlushBatches()
+    {
+        for (Batch& batch : m_batches)
+        {
+            if (batch.mesh.vertices.empty())
+            {
+                continue;
+            }
+            const std::string meshName = m_prefix + batch.name + "_batch#" + std::to_string(m_boxCount++);
+            const MeshHandle mesh = m_meshes.Upload(batch.mesh, meshName);
+            Keep(m_scene.CreateMeshEntity(batch.name, Transform{}, mesh, batch.material));
+        }
+        m_batches.clear();
+    }
 
     // Keeps every entity and body made from here on in these lists, so a map that is rebuilt (a
     // generated facility, from a new seed) can take everything it made away again.
@@ -60,6 +87,15 @@ public:
         // Drawn in tiles of at most four metres across when it is bigger than that, and collided as one.
         // Each drawn piece is lit by the lamps nearest it, up to a handful; a wall the length of the
         // building as one piece would be lit by the handful nearest its middle and dark at both ends.
+        if (m_batchCell > 0.0f)
+        {
+            AddToBatch(name, Primitives::Box(size), transform.Matrix(), transform.position, material);
+            if (m_physics != nullptr)
+            {
+                Keep(m_physics->CreateBox(size * 0.5f, transform, BodyMotion::Static));
+            }
+            return;
+        }
         const int across = std::max(1, static_cast<int>(std::ceil(size.x / tile)));
         const int deep = std::max(1, static_cast<int>(std::ceil(size.z / tile)));
         const glm::vec3 piece{size.x / static_cast<float>(across), size.y, size.z / static_cast<float>(deep)};
@@ -97,10 +133,17 @@ public:
     void AddMesh(const std::string& name, const Transform& transform, const MeshData& data,
                  const Material& material, bool collide = true)
     {
-        // Numbered like the boxes above, and for the same reason: two stairs of different sizes
-        // both called "stairs" would share one mesh and the second would draw as the first.
-        const MeshHandle mesh = m_meshes.Upload(data, m_prefix + name + "#" + std::to_string(m_boxCount++));
-        Keep(m_scene.CreateMeshEntity(name, transform, mesh, material));
+        if (m_batchCell > 0.0f)
+        {
+            AddToBatch(name, data, transform.Matrix(), transform.position, material);
+        }
+        else
+        {
+            // Numbered like the boxes above, and for the same reason: two stairs of different sizes
+            // both called "stairs" would share one mesh and the second would draw as the first.
+            const MeshHandle mesh = m_meshes.Upload(data, m_prefix + name + "#" + std::to_string(m_boxCount++));
+            Keep(m_scene.CreateMeshEntity(name, transform, mesh, material));
+        }
         if (collide && m_physics != nullptr)
         {
             Keep(m_physics->CreateMeshBody(data, transform));
@@ -125,6 +168,42 @@ public:
     }
 
 private:
+    struct Batch
+    {
+        std::string name;
+        Material material;
+        glm::ivec3 cell{0};
+        MeshData mesh;
+    };
+
+    static bool SameMaterial(const Material& a, const Material& b)
+    {
+        return a.baseColor == b.baseColor && a.metallic == b.metallic && a.roughness == b.roughness && a.emissive == b.emissive &&
+               a.reflectivity == b.reflectivity && a.baseColorTexture == b.baseColorTexture && a.organic == b.organic &&
+               a.organicBeat == b.organicBeat;
+    }
+
+    void AddToBatch(const std::string& name, const MeshData& data, const glm::mat4& transform, const glm::vec3& at,
+                    const Material& material)
+    {
+        const glm::ivec3 cell{static_cast<int>(std::floor(at.x / m_batchCell)), static_cast<int>(std::floor(at.y / m_batchCell)),
+                              static_cast<int>(std::floor(at.z / m_batchCell))};
+        for (Batch& batch : m_batches)
+        {
+            if (batch.cell == cell && SameMaterial(batch.material, material))
+            {
+                batch.mesh.Append(data, transform);
+                return;
+            }
+        }
+        Batch batch;
+        batch.name = name;
+        batch.material = material;
+        batch.cell = cell;
+        batch.mesh.Append(data, transform);
+        m_batches.push_back(std::move(batch));
+    }
+
     void Keep(Entity entity)
     {
         // Everything a map builds is the level, and is what the lamps' kept shadows are drawn from.
@@ -153,6 +232,8 @@ private:
     // How many boxes have been added, so each gets a mesh name of its own in a stable order.
     size_t m_boxCount = 0;
     std::string m_prefix;
+    float m_batchCell = 0.0f;
+    std::vector<Batch> m_batches;
 };
 
 } // namespace pred

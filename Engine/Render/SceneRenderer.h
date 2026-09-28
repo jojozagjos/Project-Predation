@@ -110,6 +110,32 @@ public:
     // What the next Draw can see, as a projection times a view: anything wholly outside it is not drawn,
     // and no light that cannot reach inside it is weighed for anything that is. For the next Draw only.
     void SetCullFrustum(const glm::mat4& viewProjection);
+    // And the camera the next Draw is seen from, which lights it with clustered lamps: each surface by
+    // exactly the lamps that reach its part of the view. Without it a Draw lights each piece by the dozen
+    // lamps nearest that piece. For the next Draw only, like the frustum.
+    void SetClusterCamera(const glm::mat4& view, const glm::mat4& projection);
+
+    // How the lamps were shared out the last clustered Draw, for the tests and the overlay.
+    struct ClusterStats
+    {
+        size_t lights = 0;
+        size_t references = 0;
+        size_t busiestCell = 0;
+        bool truncated = false;
+    };
+    const ClusterStats& LastClusterStats() const { return m_clusterStats; }
+
+    // The grid, for the tests: cells across, cells up, depth slices, and where the slices begin and end.
+    static constexpr int kClusterAcross = 16;
+    static constexpr int kClusterUp = 9;
+    static constexpr int kClusterSlices = 24;
+    static constexpr float kClusterNear = 0.1f;
+    static constexpr float kClusterFar = 200.0f;
+    // How many lamps the textures hold, how many references to them, and how many one cell may have.
+    static constexpr int kClusterMostLights = 256;
+    static constexpr int kClusterIndexRow = 256;
+    static constexpr int kClusterIndexRows = 64;
+    static constexpr int kClusterMostPerCell = 48;
 
     void Draw(bgfx::ViewId view, const Scene& scene, const MeshLibrary& meshes, const glm::vec3& cameraPosition);
 
@@ -247,6 +273,37 @@ private:
     std::vector<std::pair<float, size_t>> m_choice;
     void PackLights(const Environment& environment);
     void UploadLightsFor(const Mesh& mesh, const glm::mat4& model);
+
+    // Clustered lamps (see SetClusterCamera): the camera for the next Draw, whether it has one, the three
+    // textures the shader reads them from, and what is built into them each frame.
+    glm::mat4 m_clusterViewProj{1.0f};
+    glm::vec3 m_clusterEye{0.0f};
+    glm::vec3 m_clusterForward{0.0f, 0.0f, -1.0f};
+    bool m_clusterCamera = false;
+    bool m_clustered = false; // the Draw in progress is lit this way
+    bgfx::TextureHandle m_lightData = BGFX_INVALID_HANDLE;
+    bgfx::TextureHandle m_clusterGrid = BGFX_INVALID_HANDLE;
+    bgfx::TextureHandle m_lightIndex = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_sLightData = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_sClusterGrid = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_sLightIndex = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uClusterParams = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uClusterDepth = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uClusterForward = BGFX_INVALID_HANDLE;
+    std::vector<std::vector<uint16_t>> m_cellLights;
+    std::vector<float> m_lightRows;
+    std::vector<float> m_gridTexels;
+    std::vector<float> m_indexTexels;
+    ClusterStats m_clusterStats;
+    // Shares the packed lamps out among the cells of the camera's view, and uploads it.
+    void BuildClusters();
+    void BindClusterTextures();
+
+public:
+    // The cells a lamp reaching this box would be put in, as ranges: for the tests, which check the sharing
+    // out without a graphics card. False when it is nowhere in view.
+    static bool ClusterRange(const glm::mat4& viewProj, const glm::vec3& eye, const glm::vec3& forward, const glm::vec3& lo,
+                             const glm::vec3& hi, int& x0, int& x1, int& y0, int& y1, int& s0, int& s1);
 };
 
 } // namespace pred

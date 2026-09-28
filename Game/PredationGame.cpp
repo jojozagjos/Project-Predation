@@ -277,6 +277,9 @@ CVar<bool> cv_wireframe{"r.wireframe", false, "Draw scene meshes as wireframe"};
 CVar<float> cv_fogStart{"r.fog_start", 12.0f, "Fog start distance in meters"};
 CVar<float> cv_fogEnd{"r.fog_end", 90.0f, "Fog end distance in meters"};
 CVar<float> cv_sunIntensity{"r.sun_intensity", 2.2f, "Directional light intensity"};
+CVar<bool> cv_clusteredLights{"r.clustered_lights", true,
+                              "Light the view by clusters: each surface by the lamps that reach where it is. Off, each piece "
+                              "of the level by the dozen lamps nearest it"};
 
 // How a round is drawn. It travels rather than appearing as a whole lit line, because a line from
 // the muzzle to the wall is a diagram of a shot rather than a shot. Fast enough to be over almost
@@ -10026,6 +10029,10 @@ void PredationGame::OnRender()
     app.GetSkyRenderer().Draw(Renderer::kViewSky, m_scene.GetEnvironment(),
                               app.GetRenderer().ViewMatrix(), app.GetRenderer().ProjectionMatrix());
     app.GetSceneRenderer().SetCullFrustum(app.GetRenderer().ProjectionMatrix() * app.GetRenderer().ViewMatrix());
+    if (cv_clusteredLights.Get())
+    {
+        app.GetSceneRenderer().SetClusterCamera(app.GetRenderer().ViewMatrix(), app.GetRenderer().ProjectionMatrix());
+    }
     app.GetSceneRenderer().Draw(Renderer::kViewMain, m_scene, app.GetMeshes(), viewPosition);
     DrawDebugOverlays();
 }

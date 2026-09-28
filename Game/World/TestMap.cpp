@@ -50,6 +50,7 @@ Transform AtPositionYaw(float x, float y, float z, float yawDegrees)
 void BuildTestMap(Scene& scene, MeshLibrary& meshes, PhysicsWorld* physics)
 {
     MapBuilder builder(scene, meshes, physics);
+    builder.BeginBatching();
 
     // ---------------------------------------------------------------------
     // Ground. Rendered as a subdivided plane, collided as a slab whose top

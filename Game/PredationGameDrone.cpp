@@ -76,6 +76,24 @@ void PredationGame::RegisterDroneCommands()
                                 m_perfTimings.clear();
                                 m_perfFrameMs = m_perfWorstMs = m_perfGpuMs = m_perfDraws = 0.0;
                             });
+    console.RegisterCommand("site_room", "Go to the middle of a room of one of the site's buildings: site_room <building> <room>",
+                            [this](const std::vector<std::string>& args)
+                            {
+                                const SitePlan& plan = m_facility.Plan();
+                                const size_t b = args.size() >= 2 ? std::strtoul(args[1].c_str(), nullptr, 10) : 0;
+                                const size_t r = args.size() >= 3 ? std::strtoul(args[2].c_str(), nullptr, 10) : 0;
+                                if (b >= plan.buildings.size() || r >= plan.buildings[b].rooms.size())
+                                {
+                                    m_app->GetConsole().PrintError("No such building or room.");
+                                    return;
+                                }
+                                const FacilityLayout& building = plan.buildings[b];
+                                const FacilityLayout::Room& room = building.rooms[r];
+                                const glm::vec3 at = FacilityMap::ToWorld(building, room.floor, glm::vec2(room.min + room.max + glm::ivec2(1)) * 0.5f);
+                                m_player.Teleport(at + glm::vec3(0.0f, 0.1f, 0.0f));
+                                m_app->GetConsole().Print("Room " + std::to_string(r) + " of building " + std::to_string(b) + ", floor " +
+                                                          std::to_string(room.floor) + (room.dark ? ", dark" : ""));
+                            });
     console.RegisterCommand("hurt_player", "As the host, hurt somebody: hurt_player <id> [amount]",
                             [this](const std::vector<std::string>& args)
                             {

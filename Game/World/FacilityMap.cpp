@@ -996,6 +996,7 @@ void FacilityMap::Build(FacilityLayout layout, uint32_t seed, Scene& scene, Mesh
 
     MapBuilder builder(scene, meshes, &physics, prefix);
     builder.Track(&m_entities, &m_bodies);
+    builder.BeginBatching();
     for (const Piece& piece : blueprint.pieces)
     {
         Transform transform;

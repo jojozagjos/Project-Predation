@@ -2043,3 +2043,24 @@ Four changes to how Assets/Data works, all so the files can be edited by hand wi
   for it, as they already did). The testing area's mesh builds in half the time it did.
 - Open ground and rock are drawn in 24 m pieces rather than 4 m ones: few lamps reach them, and a ground
   cut into 4 m squares was thousands of things to draw.
+
+## ADR-097: Lamps by clusters, levels drawn in batches, lamp shadows filtered smooth
+
+- **The main view lights by clusters.** Each frame the view is cut into a grid (16 across, 9 up, 24
+  depth slices, exponential out to 200 m); every lamp that reaches something on screen goes into the cells
+  its reach (its sphere, cut to its room's box when it has one) overlaps; three small textures carry the
+  lamps, each cell's list and the lists themselves. A pixel is lit by exactly the lamps of its cell. It
+  replaces choosing the twelve lamps nearest each drawn piece, which is what put hard lines between two
+  pieces that chose differently and forced the level into four-metre pieces so that the choice was local.
+  The torch stays in the list with its shadow; mirrors and item icons still use the list.
+  `r.clustered_lights 0` goes back to the list, for comparison.
+- **Levels are drawn in batches.** With the lighting no longer tied to how the level is cut up, the map
+  builder merges every static piece of one material in one 16 m cell (24 m outside) into one mesh; each box
+  still has its own body. The site went from about 6,000 drawn things and 12,000 draw calls a frame to
+  under 1,000 of each; on the development machine from 60 frames a second to about 350 outside, and from
+  100 to 200 or more inside.
+- **Lamp shadows are filtered smooth**: sixteen readings over the four-by-four texels round a point,
+  weighted by where it falls between them, instead of nine readings a whole texel apart. The nine made
+  a staircase of every shadow edge -- most visibly the edge of light through a doorway.
+- `perf_report [frames]` logs the averaged frame, GPU time, draw calls and timed sections, for measuring
+  changes like these.

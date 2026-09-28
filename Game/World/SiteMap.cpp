@@ -116,6 +116,7 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
     // Outside.
     MapBuilder builder(scene, meshes, &physics, "site_");
     builder.Track(&m_entities, &m_bodies);
+    builder.BeginBatching(24.0f);
     int containers = 0;
     for (const SitePlan::Block& block : m_plan.blocks)
     {
