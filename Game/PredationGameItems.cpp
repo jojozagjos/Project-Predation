@@ -712,6 +712,11 @@ void PredationGame::UpdateFlares(float dt)
                 MakeNoise(NoiseKind::Impact, body.position, NoiseReach::kImpact, -1);
             }
             audio.SetVoicePosition(flare.hiss, body.position);
+            // Spitting sparks as it burns.
+            if (static_cast<float>(std::rand()) / static_cast<float>(RAND_MAX) < dt * 30.0f)
+            {
+                Burst(body.position + glm::vec3(0.0f, 0.03f, 0.0f), {0.0f, 1.0f, 0.0f}, 2, Particles::FlareSparks());
+            }
             if (flare.burn <= 0.0f)
             {
                 audio.Stop(flare.hiss);

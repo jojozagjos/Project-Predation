@@ -18,8 +18,8 @@ class MeshLibrary;
 class Snowfall
 {
 public:
-    // `wind`: metres a second of drift, sideways.
-    void Update(Scene& scene, MeshLibrary& meshes, const glm::vec3& eye, float dt, bool falling, const glm::vec3& wind,
+    // `wind`: metres a second of drift, sideways; `ground`: how high the ground is under the eye, for what blows along it.
+    void Update(Scene& scene, MeshLibrary& meshes, const glm::vec3& eye, float ground, float dt, bool falling, const glm::vec3& wind,
                 const std::function<bool(const glm::vec3&)>& indoors);
     void Clear(Scene& scene);
 
@@ -30,6 +30,11 @@ private:
         glm::vec3 at{0.0f};
         float fall = 1.0f;
         float sway = 0.0f;
+        float size = 0.03f;
+        glm::vec3 spin{0.0f, 1.0f, 0.0f};
+        float spinRate = 2.0f;
+        float height = 0.2f; // spindrift: how far over the ground
+        bool drift = false;
         bool shown = false;
     };
     std::vector<Flake> m_flakes;

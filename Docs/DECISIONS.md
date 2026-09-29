@@ -2574,3 +2574,16 @@ drone stuck on stairs; placeholder audio for the briefing and the intercom.
 - **Placeholder voices**: a silent placeholder.wav, about as long as what it stands for, in every folder the briefing
   (its phrases, the site's words, the numbers) and the intercom (one line per moment) will play, with a README in each of
   Assets/Audio/Briefing and Assets/Audio/Intercom listing what to record where.
+
+## ADR-120: Particles, and better snow
+
+Asked for by the user: better snow, sparks and particle effects.
+
+- **Particles** (Game/World/Particles): a pool of six hundred small boxes, each thrown with a speed and a spread, pulled
+  down, slowed, landing and bouncing on the ground found under its burst (one trace a burst, not one a particle a
+  frame), changing colour and cooling its glow over its life; sparks drawn stretched along the way they go. Looks:
+  sparks and chips where a round hits something hard (darker bits off something alive), a burning flare spitting, an
+  engine's exhaust, snow sprayed up. The cinematics' own puffs are gone for it.
+- **Snow**: flakes of different sizes, flat, turning over as they fall; the wind gusting; and spindrift -- a share of it
+  streaming low along the ground, faster than what falls.
+- Unused code removed: HeldDevice, ObjectiveTarget, Particles::Live.

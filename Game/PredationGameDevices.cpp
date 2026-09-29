@@ -91,18 +91,6 @@ void PredationGame::BuildDeviceFaces()
     }
 }
 
-const std::string& PredationGame::HeldDevice() const
-{
-    static const std::string none;
-    const ItemDefinition* held = m_items.Get(m_heldItem);
-    return held != nullptr && m_player.State().alive ? held->device : none;
-}
-
-bool PredationGame::ObjectiveTarget(glm::vec3& at) const
-{
-    return ObjectiveTargetFrom(m_player.State().position, at);
-}
-
 bool PredationGame::ObjectiveTargetFrom(const glm::vec3& here, glm::vec3& at) const
 {
     // Aboard: the shuttle when it is waiting to go, the console where the next site is chosen otherwise.

@@ -334,7 +334,6 @@ void PredationGame::UpdateVehicleLamps()
 
 void PredationGame::UpdateCinematic(float dt)
 {
-    UpdateCinematicParticles(dt);
     m_cineFadeIn = std::max(m_cineFadeIn - dt / 1.2f, 0.0f);
     // Nobody's body is out there while a cinematic has them: they are aboard.
     if (m_cineHolds != m_cineHidBodies)
@@ -571,61 +570,27 @@ void PredationGame::CineMarker(const pred::Marker& marker)
 
 void PredationGame::CineParticle(const ParticleEvent& particle, const glm::vec3& at)
 {
-    // A handful of puffs, by the kind of effect: exhaust glows and rises fast, snow and dust are pale and hang.
+    // By the kind of effect: an engine's exhaust -- hot, fast, down and back -- or snow thrown up off the ground.
     const bool exhaust = particle.effect.find("exhaust") != std::string::npos || particle.effect.find("thrust") != std::string::npos;
-    Material material = Material::Diffuse(exhaust ? glm::vec3(0.9f, 0.55f, 0.25f) : glm::vec3(0.85f, 0.88f, 0.92f), 0.9f);
-    // Snow catches whatever light there is: a little of its own, so it shows against the dark.
-    material.emissive = exhaust ? glm::vec3(2.4f, 1.2f, 0.45f) : glm::vec3(0.12f, 0.13f, 0.14f);
-    const MeshHandle mesh = m_app->GetMeshes().Upload(Primitives::Sphere(0.5f, 10, 8), "cine_puff");
-    // Many small bits rather than a few big ones: flakes thrown up, sparks blown down.
-    const int count = exhaust ? 36 : 60;
-    for (int i = 0; i < count; ++i)
+    const int bursts = std::max(1, static_cast<int>(particle.duration * 4.0f));
+    if (exhaust)
     {
-        const float a = static_cast<float>(i) * 2.399963f; // golden angle: spread without clumping
-        const float r = 0.25f + 0.75f * static_cast<float>((i * 7) % 11) / 10.0f;
-        CinePuff puff;
-        Transform transform;
-        transform.position = at + glm::vec3(std::cos(a) * r * 0.6f, 0.05f * static_cast<float>(i % 4), std::sin(a) * r * 0.6f);
-        transform.scale = glm::vec3(0.02f);
-        puff.entity = m_scene.CreateMeshEntity("cine_puff", transform, mesh, material);
-        if (MeshRenderer* renderer = m_scene.GetMeshRenderer(puff.entity))
-        {
-            renderer->castsShadow = false;
-        }
-        puff.velocity = exhaust ? glm::vec3(std::cos(a) * r * 1.5f, -4.0f - r * 3.0f, std::sin(a) * r * 1.5f)
-                                : glm::vec3(std::cos(a) * r * 4.0f, 1.0f + r * 2.2f, std::sin(a) * r * 4.0f);
-        puff.life = std::max(particle.duration, 0.2f) * (0.6f + 0.4f * r);
-        puff.from = exhaust ? 0.06f : 0.05f;
-        puff.to = exhaust ? 0.18f : 0.14f;
-        m_cinePuffs.push_back(puff);
+        Burst(at, {0.0f, -1.0f, 0.0f}, 24 * bursts, Particles::Exhaust());
+    }
+    else
+    {
+        Burst(at, {0.0f, 1.0f, 0.0f}, 40 * bursts, Particles::SnowSpray());
     }
 }
 
-void PredationGame::UpdateCinematicParticles(float dt)
+void PredationGame::Burst(const glm::vec3& at, const glm::vec3& direction, int count, const ParticleLook& look)
 {
-    for (CinePuff& puff : m_cinePuffs)
+    float floor = -1.0e9f;
+    if (const RayHit ground = m_app->GetPhysics().RayCastStatic(at + glm::vec3(0.0f, 0.2f, 0.0f), {0.0f, -1.0f, 0.0f}, 30.0f))
     {
-        puff.age += dt;
-        if (Transform* transform = m_scene.GetTransform(puff.entity))
-        {
-            puff.velocity *= std::exp(-1.2f * dt);
-            puff.velocity.y -= 2.5f * dt; // and settles
-            transform->position += puff.velocity * dt;
-            const float t = std::clamp(puff.age / puff.life, 0.0f, 1.0f);
-            // Grows, and shrinks away at the end rather than blinking out.
-            const float size = (puff.from + (puff.to - puff.from) * t) * (t > 0.7f ? 1.0f - (t - 0.7f) / 0.3f : 1.0f);
-            transform->scale = glm::vec3(std::max(size, 0.001f));
-        }
+        floor = ground.position.y + 0.005f;
     }
-    std::erase_if(m_cinePuffs, [&](const CinePuff& puff)
-    {
-        if (puff.age < puff.life)
-        {
-            return false;
-        }
-        m_scene.Destroy(puff.entity);
-        return true;
-    });
+    m_particles.Emit(m_scene, m_app->GetMeshes(), at, direction, count, look, floor);
 }
 
 void PredationGame::CineLight(const std::string& light, float intensity)

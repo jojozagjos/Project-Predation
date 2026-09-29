@@ -24,6 +24,7 @@
 #include "Game/Player/PlayerBody.h"
 #include "Game/Player/PlayerController.h"
 #include "Game/Mission/Briefing.h"
+#include "Game/World/Particles.h"
 #include "Game/World/Snowfall.h"
 #include "Game/Mission/Mission.h"
 #include "Game/Mission/MissionProps.h"
@@ -777,12 +778,8 @@ private:
     // everybody straight down to it).
     void DeployTo(uint16_t site);
     // --- Things carried for finding the way (PredationGameDevices.cpp) ---------------------------------------------
-    // What the held item shows: "map", "tracker", or nothing.
-    const std::string& HeldDevice() const;
-    // Where what is to be done next is: the terminal (or its breaker, found dead), the shuttle with the drive, the
-    // shuttle or the console aboard. False when there is nothing.
-    bool ObjectiveTarget(glm::vec3& at) const;
-    // The same, asked for somebody standing at `here`.
+    // Where what is to be done next is, for somebody standing at `here`: the terminal (or its breaker, found dead),
+    // the shuttle with the drive, the shuttle or the console aboard. False when there is nothing.
     bool ObjectiveTargetFrom(const glm::vec3& here, glm::vec3& at) const;
     // Each device's screen, painted for somebody standing at `here` facing `yaw`: the map (the walls around them, north
     // up) and the tracker (the way to the objective, lit up by its beep as `flash` fades from 1).
@@ -878,7 +875,6 @@ private:
     glm::vec3 MissionArrival(uint8_t player) const;
     // Whether a cinematic of that name is there to be played.
     bool HasCinematic(const std::string& name) const { return m_cinematics.count(name) != 0; }
-    void UpdateCinematicParticles(float dt);
     // The vehicles' lamps put up (once for each time the site is built) and kept where their vehicles are shown.
     void AttachVehicleLamps();
     void UpdateVehicleLamps();
@@ -1454,8 +1450,11 @@ private:
     Entity m_briefingScreens[2];
     TextureHandle m_briefingTextures[2];
     float m_briefingDrawnAt = -10.0f;
-    // Snow, at a site, round whoever is looking.
+    // Snow, at a site, round whoever is looking; and sparks, chips and sprays where things happen.
     Snowfall m_snow;
+    Particles m_particles;
+    // A burst at `at`, the ground under it found for them to land on.
+    void Burst(const glm::vec3& at, const glm::vec3& direction, int count, const ParticleLook& look);
     // Cinematics: those there are, by name; the one playing; the picture being handed back to the player's eyes after
     // one (the last picture, and how long is left of the handing back); the field of view and far plane it wants this
     // frame (0 for the game's own); and whether the debugging panel is up.
@@ -1487,16 +1486,6 @@ private:
     // After a cinematic that ends in black, the picture coming back up from it.
     float m_cineFadeIn = 0.0f;
     // Puffs a cinematic leaves in the air: exhaust, thrown snow.
-    struct CinePuff
-    {
-        Entity entity;
-        glm::vec3 velocity{0.0f};
-        float age = 0.0f;
-        float life = 1.0f;
-        float from = 0.2f;
-        float to = 1.0f;
-    };
-    std::vector<CinePuff> m_cinePuffs;
     ItemId m_driveItem = kInvalidItem;
     // Where the players are, and which way they face arriving there.
     MapChoice m_map = MapChoice::Ship;

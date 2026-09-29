@@ -9542,13 +9542,22 @@ void PredationGame::OnUpdate(double dt, double alpha)
     UpdateDevices(deltaSeconds);
     UpdateShipTravel(deltaSeconds);
     UpdateOrders(deltaSeconds);
+    m_particles.Update(m_scene, deltaSeconds);
     // Snowing at the site, drifting with its wind -- not indoors, and not in the shuttle's cabin.
     {
         const bool falling = m_screen == Screen::Playing && m_facility.Built() && m_facility.Contains(m_renderEye);
         const uint32_t seed = m_facility.Seed();
         const float windAngle = static_cast<float>((seed * 2654435761u) >> 20) / 4096.0f * 6.2831853f;
         const float windSpeed = falling ? static_cast<float>(ConditionsFor(seed, m_facility.Plan().sky.fogEnd).wind) * 0.12f : 0.0f;
-        m_snow.Update(m_scene, m_app->GetMeshes(), m_renderEye, deltaSeconds, falling,
+        float ground = m_renderEye.y - 1.7f;
+        if (falling)
+        {
+            if (const RayHit below = m_app->GetPhysics().RayCastStatic(m_renderEye, {0.0f, -1.0f, 0.0f}, 60.0f))
+            {
+                ground = below.position.y;
+            }
+        }
+        m_snow.Update(m_scene, m_app->GetMeshes(), m_renderEye, ground, deltaSeconds, falling,
                       glm::vec3(std::cos(windAngle), 0.0f, std::sin(windAngle)) * windSpeed,
                       [this](const glm::vec3& at) { return m_facility.Plan().Indoors(at) || m_facility.Shuttle().Aboard(at); });
     }

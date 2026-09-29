@@ -116,6 +116,19 @@ void PredationGame::QueueSound(float delay, const std::string& name, const glm::
 
 void PredationGame::PlayImpact(const Tracer& tracer)
 {
+    if (tracer.hit)
+    {
+        const glm::vec3 off = glm::length(tracer.normal) > 0.5f ? glm::normalize(tracer.normal) : -glm::normalize(tracer.to - tracer.origin);
+        if (tracer.surface)
+        {
+            Burst(tracer.to + off * 0.02f, off, 9, Particles::Sparks());
+            Burst(tracer.to + off * 0.02f, off, 4, Particles::Chips({0.32f, 0.33f, 0.34f}));
+        }
+        else
+        {
+            Burst(tracer.to, off, 6, Particles::Chips({0.22f, 0.06f, 0.05f}));
+        }
+    }
     if (!tracer.hit)
     {
         return;
