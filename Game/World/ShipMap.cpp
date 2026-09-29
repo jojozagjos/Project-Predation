@@ -39,10 +39,7 @@ const Material kTableTop = Material::Diffuse({0.46f, 0.45f, 0.42f}, 0.6f);
 const Material kCushion = Material::Diffuse({0.22f, 0.25f, 0.30f}, 0.95f);
 const Material kMattress = Material::Diffuse({0.52f, 0.52f, 0.49f}, 0.95f);
 const Material kStair = Material::Diffuse({0.26f, 0.27f, 0.28f}, 0.85f);
-const Material kHull = Material::Diffuse({0.40f, 0.41f, 0.41f}, 0.7f);
-const Material kHullPanel = Material::Diffuse({0.31f, 0.32f, 0.33f}, 0.75f);
 const Material kHullDark = Material::Metal({0.17f, 0.18f, 0.19f}, 0.55f);
-const Material kNozzle = Material::Metal({0.12f, 0.12f, 0.13f}, 0.4f);
 
 Material Glow(const glm::vec3& colour, float strength)
 {
@@ -55,7 +52,6 @@ const Material kScreen = Glow({0.06f, 0.16f, 0.26f}, 0.45f);
 const Material kScreenWarm = Glow({0.30f, 0.20f, 0.08f}, 0.45f);
 const Material kScreenBig = Glow({0.03f, 0.07f, 0.12f}, 0.4f);
 const Material kIndicator = Glow({0.2f, 0.9f, 0.4f}, 2.0f);
-const Material kWindowGlow = Glow({0.95f, 0.78f, 0.5f}, 1.4f);
 
 // The ship's frame to the world's.
 Transform At(const glm::vec3& local, float yawDegrees = 0.0f)
@@ -79,25 +75,6 @@ struct Opening
     float bottom = 0.0f;
     float top = 0.0f;
 };
-
-// A quad with its face outward from `centre`, whichever way its corners were given.
-void Quad(MeshData& mesh, const glm::vec3& a, glm::vec3 b, const glm::vec3& c, glm::vec3 d, const glm::vec3& centre)
-{
-    glm::vec3 normal = glm::normalize(glm::cross(b - a, c - a));
-    if (glm::dot(normal, (a + b + c + d) * 0.25f - centre) < 0.0f)
-    {
-        std::swap(b, d);
-        normal = -normal;
-    }
-    const auto base = static_cast<uint32_t>(mesh.vertices.size());
-    const glm::vec3 corners[4] = {a, b, c, d};
-    const glm::vec2 uvs[4] = {{0.0f, 0.0f}, {1.0f, 0.0f}, {1.0f, 1.0f}, {0.0f, 1.0f}};
-    for (int i = 0; i < 4; ++i)
-    {
-        mesh.vertices.push_back(MeshVertex{corners[i], normal, uvs[i]});
-    }
-    mesh.indices.insert(mesh.indices.end(), {base, base + 1, base + 2, base, base + 2, base + 3});
-}
 
 // Everything the ship is built of, in its own frame, into one structure: its pieces are meant to meet.
 class Builder
@@ -191,23 +168,6 @@ private:
     uint32_t m_group = 0;
     std::vector<BodyHandle>& m_bodies;
 };
-
-// A block narrowing from its back face to its front one, both upright rectangles across x, centred on it: the bow.
-MeshData Tapered(float backZ, float backHalf, float backLow, float backHigh, float frontZ, float frontHalf, float frontLow, float frontHigh)
-{
-    const glm::vec3 b0{-backHalf, backLow, backZ}, b1{backHalf, backLow, backZ}, b2{backHalf, backHigh, backZ}, b3{-backHalf, backHigh, backZ};
-    const glm::vec3 f0{-frontHalf, frontLow, frontZ}, f1{frontHalf, frontLow, frontZ}, f2{frontHalf, frontHigh, frontZ},
-        f3{-frontHalf, frontHigh, frontZ};
-    const glm::vec3 centre = (b0 + b1 + b2 + b3 + f0 + f1 + f2 + f3) / 8.0f;
-    MeshData mesh;
-    Quad(mesh, b0, b1, b2, b3, centre);
-    Quad(mesh, f0, f1, f2, f3, centre);
-    Quad(mesh, b0, b1, f1, f0, centre);
-    Quad(mesh, b3, b2, f2, f3, centre);
-    Quad(mesh, b0, b3, f3, f0, centre);
-    Quad(mesh, b1, b2, f2, f1, centre);
-    return mesh;
-}
 
 // The decks, in the ship's frame.
 constexpr float kLower = kLowerDeck;          // lower deck floor
@@ -538,125 +498,6 @@ void BuildRooms(Builder& b)
     b.Decal("ship_hangar_panel", {-11.74f, 1.2f, 16.0f}, {-11.7f, 2.4f, 18.0f}, kScreenWarm);
 }
 
-void BuildHull(Builder& b, std::vector<Entity>& glowOut, std::vector<glm::vec3>& colourOut, Scene& scene, MeshLibrary& meshes)
-{
-    // The skin, outside everything inside: the main body, taller over the hangar.
-    const float out = 13.0f;
-    for (const float side : {-1.0f, 1.0f})
-    {
-        const float x0 = side < 0.0f ? -out : 12.3f;
-        const float x1 = side < 0.0f ? -12.3f : out;
-        b.Shape("ship_skin", {x0, -1.4f, -22.3f}, {x1, 7.6f, 5.85f}, kHull);
-        b.Shape("ship_skin", {x0, -1.4f, 5.85f}, {x1, 9.0f, 34.6f}, kHull);
-        // The hangar's sides stand out from the rest: sponsons, dark, with the bay's machinery in them.
-        b.Shape("ship_sponson", {side < 0.0f ? -out - 1.2f : out, -1.0f, 8.0f}, {side < 0.0f ? -out : out + 1.2f, 6.5f, 32.0f}, kHullDark);
-        b.Shape("ship_sponson_cap", {side < 0.0f ? -out - 1.3f : out, 6.5f, 7.5f}, {side < 0.0f ? -out : out + 1.3f, 6.9f, 32.5f}, kHullPanel);
-        // A darker belt along it at the deck line, and panels proud of it here and there.
-        b.Shape("ship_belt", {side < 0.0f ? -out - 0.05f : out, 2.8f, -22.3f}, {side < 0.0f ? -out : out + 0.05f, 3.4f, 34.6f}, kHullDark);
-        for (float z = -20.0f; z < 33.0f; z += 7.0f)
-        {
-            b.Shape("ship_panel", {side < 0.0f ? -out - 0.04f : out, 4.2f, z}, {side < 0.0f ? -out : out + 0.04f, 6.8f, z + 5.5f}, kHullPanel);
-            b.Shape("ship_panel", {side < 0.0f ? -out - 0.04f : out, -0.8f, z + 1.0f}, {side < 0.0f ? -out : out + 0.04f, 2.2f, z + 4.0f}, kHullPanel);
-        }
-        // Lit windows along it: people aboard.
-        for (float z = -19.0f; z < 4.0f; z += 3.2f)
-        {
-            b.Decal("ship_porthole", {side < 0.0f ? -out - 0.06f : out, 5.0f, z}, {side < 0.0f ? -out : out + 0.06f, 5.5f, z + 0.9f}, kWindowGlow);
-        }
-        // Radiators up off the hangar roof.
-        for (const float x : {7.0f, 10.0f})
-        {
-            b.Shape("ship_radiator", {side * x - 0.06f, 9.0f, 10.0f}, {side * x + 0.06f, 10.8f, 30.0f}, kHullDark);
-        }
-    }
-    b.Shape("ship_skin", {-out, 7.2f, -22.3f}, {out, 7.6f, 5.85f}, kHull);
-    // A spine down the middle of the roof, and plating on the roof either side of it.
-    b.Shape("ship_spine", {-2.2f, 7.6f, -30.0f}, {2.2f, 8.4f, 5.55f}, kHullPanel);
-    b.Shape("ship_spine", {-2.2f, 9.0f, 5.85f}, {2.2f, 9.6f, 33.0f}, kHullPanel);
-    for (float z = -20.0f; z < 4.0f; z += 6.0f)
-    {
-        b.Shape("ship_roof_plate", {-11.5f, 7.6f, z}, {-3.0f, 7.68f, z + 4.8f}, kHullPanel);
-        b.Shape("ship_roof_plate", {3.0f, 7.6f, z + 1.0f}, {11.5f, 7.68f, z + 5.8f}, kHullPanel);
-    }
-    b.Shape("ship_skin", {-out, 8.6f, 5.55f}, {out, 9.0f, 34.6f}, kHull);
-    b.Shape("ship_skin", {-out, 7.6f, 5.55f}, {out, 8.6f, 5.85f}, kHull);
-    b.Shape("ship_skin", {-out, -1.4f, 34.3f}, {out, 9.0f, 34.6f}, kHullDark);
-    // The belly, open under the bay.
-    b.Shape("ship_belly", {-out, -1.4f, -22.3f}, {out, -0.6f, kBayFront}, kHull);
-    b.Shape("ship_belly", {-out, -1.4f, kBayBack}, {out, -0.6f, 34.6f}, kHull);
-    b.Shape("ship_belly", {-out, -1.4f, kBayFront}, {-kBayHalfX - 0.05f, -0.6f, kBayBack}, kHull);
-    b.Shape("ship_belly", {kBayHalfX + 0.05f, -1.4f, kBayFront}, {out, -0.6f, kBayBack}, kHull);
-    // The step down from the main body to the cockpit block.
-    for (const float side : {-1.0f, 1.0f})
-    {
-        b.Shape("ship_skin", {side < 0.0f ? -out : 8.3f, 3.0f, -22.6f}, {side < 0.0f ? -8.3f : out, 7.6f, -22.3f}, kHull);
-    }
-    // The cockpit block, its windows through it.
-    const float cockpit = 9.0f;
-    const Opening side{-38.5f, -31.5f, kUpper + 0.9f, kUpper + 2.5f};
-    b.WallZ("ship_skin", -40.6f, -22.6f, -cockpit, -8.3f, 3.0f, 7.6f, {side}, kHull, false);
-    b.WallZ("ship_skin", -40.6f, -22.6f, 8.3f, cockpit, 3.0f, 7.6f, {side}, kHull, false);
-    b.Shape("ship_skin", {-cockpit, 7.2f, -40.6f}, {cockpit, 7.6f, -22.6f}, kHull);
-    b.WallX("ship_skin", -cockpit, cockpit, -40.6f, -40.3f, 3.0f, 7.6f, {{-6.8f, 6.8f, kUpper + 0.7f, kUpper + 2.7f}}, kHull, false);
-    b.Shape("ship_visor", {-7.4f, kUpper + 2.7f, -40.9f}, {7.4f, kUpper + 3.0f, -40.3f}, kHullDark);
-    // The bow under it, narrowing to a blunt nose ahead of the windows.
-    b.Mesh("ship_bow", Tapered(-22.3f, out, -1.4f, 3.0f, -48.0f, 3.5f, 1.2f, 3.0f), kHull);
-    b.Mesh("ship_bow_deck", Tapered(-22.3f, 8.3f, 3.0f, 3.2f, -46.0f, 3.2f, 3.0f, 3.1f), kHullPanel);
-    // A mast and a dish on the roof.
-    b.Shape("ship_mast", {-0.12f, 7.6f, -12.12f}, {0.12f, 11.8f, -11.88f}, kHullDark);
-    b.Mesh("ship_dish", [] {
-        MeshData dish;
-        dish.Append(Primitives::Cylinder(1.4f, 0.18f, 20),
-                    glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 11.0f, -12.0f)) *
-                        glm::mat4_cast(glm::angleAxis(glm::radians(60.0f), glm::vec3(1.0f, 0.0f, 0.0f))));
-        return dish;
-    }(), kHullPanel);
-
-    // The engines aft: three, their nozzles dark rings round a glow that is turned up for a burn.
-    struct Engine
-    {
-        float x;
-        float y;
-        float half;
-        float length;
-    };
-    for (const Engine& engine : {Engine{0.0f, 3.8f, 2.8f, 10.0f}, Engine{-9.2f, 3.0f, 2.2f, 8.0f}, Engine{9.2f, 3.0f, 2.2f, 8.0f}})
-    {
-        const float z0 = 34.6f;
-        const float z1 = z0 + engine.length;
-        b.Shape("ship_engine", {engine.x - engine.half, engine.y - engine.half, z0}, {engine.x + engine.half, engine.y + engine.half, z1}, kHullPanel);
-        b.Shape("ship_engine_band", {engine.x - engine.half - 0.05f, engine.y - engine.half - 0.05f, z0 + 2.0f},
-                {engine.x + engine.half + 0.05f, engine.y + engine.half + 0.05f, z0 + 2.6f}, kHullDark);
-        b.Mesh("ship_nozzle", [&] {
-            MeshData nozzle;
-            nozzle.Append(Primitives::Cylinder(engine.half * 0.95f, 1.6f, 24),
-                          glm::translate(glm::mat4(1.0f), glm::vec3(engine.x, engine.y, z1 + 0.8f)) *
-                              glm::mat4_cast(glm::angleAxis(glm::half_pi<float>(), glm::vec3(1.0f, 0.0f, 0.0f))));
-            return nozzle;
-        }(), kNozzle);
-        // The glow, just inside the nozzle's mouth: its own thing, so its brightness can be changed.
-        const glm::vec3 colour{0.55f, 0.75f, 1.0f};
-        Material glow = Material::Diffuse(colour, 0.4f);
-        glow.emissive = colour * 0.3f;
-        MeshData disc;
-        disc.Append(Primitives::Cylinder(engine.half * 0.8f, 0.05f, 24),
-                    glm::mat4_cast(glm::angleAxis(glm::half_pi<float>(), glm::vec3(1.0f, 0.0f, 0.0f))));
-        Transform at = At({engine.x, engine.y, z1 + 1.4f});
-        const Entity entity = scene.CreateMeshEntity("ship_engine_glow", at, meshes.Upload(disc, "ship_engine_glow_" + std::to_string(glowOut.size())), glow);
-        if (MeshRenderer* renderer = scene.GetMeshRenderer(entity))
-        {
-            renderer->castsShadow = false;
-        }
-        glowOut.push_back(entity);
-        colourOut.push_back(colour);
-    }
-
-    // Its lights: red to port, green to starboard, white at the tail.
-    b.Decal("ship_nav_port", {-out - 0.2f, 3.0f, -22.0f}, {-out, 3.2f, -21.8f}, Glow({1.0f, 0.1f, 0.08f}, 4.0f));
-    b.Decal("ship_nav_starboard", {out, 3.0f, -22.0f}, {out + 0.2f, 3.2f, -21.8f}, Glow({0.1f, 1.0f, 0.2f}, 4.0f));
-    b.Decal("ship_nav_tail", {-0.1f, 9.0f, 34.2f}, {0.1f, 9.2f, 34.4f}, Glow({1.0f, 1.0f, 1.0f}, 4.0f));
-}
-
 void BuildLamps(Scene& scene, MeshLibrary& meshes, LevelLights& lights)
 {
     const glm::vec3 down{0.0f, -1.0f, 0.0f};
@@ -749,17 +590,21 @@ void ShipMap::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, Le
         Builder b(map, physics, group, m_bodies);
         BuildStructure(b);
         BuildRooms(b);
-        BuildHull(b, m_engineGlow, m_engineGlowColour, scene, meshes);
     }
+    // Its outside: a model (Assets/Models/Vehicles/carrier.json), drawn round the rooms and never solid -- nobody is out
+    // there -- and the same again out on the stage.
+    const std::shared_ptr<ModelAsset> carrier = Vehicles::Load("carrier");
+    m_hull.Build(scene, meshes, nullptr, carrier, Pose(glm::vec3(0.0f)), 0, "ship_hull_");
+    m_stageHull.Build(scene, meshes, nullptr, carrier, {kStage, {1.0f, 0.0f, 0.0f, 0.0f}}, 0, "ship_stage_");
     if (lights != nullptr)
     {
         BuildLamps(scene, meshes, *lights);
     }
 
-    // The bay doors in the hangar floor, and the shuttle standing on them, its ramp down towards the way in.
+    // The bay doors in the hangar floor, and the shuttle standing on them nose forward, its ramp down aft.
     m_bayDoors.Build(scene, meshes, &physics, Vehicles::Load("hangar_doors"), Pose({0.0f, kLower, (kBayFront + kBayBack) * 0.5f}), group,
                      "ship_bay_");
-    m_shuttle.Build(scene, meshes, &physics, Vehicles::Load("shuttle"), Pose(kShuttleHome, 180.0f), group, "ship_shuttle_");
+    m_shuttle.Build(scene, meshes, &physics, Vehicles::Load("shuttle"), Pose(kShuttleHome), group, "ship_shuttle_");
 
     // What WorldObjects puts aboard: lockers down the gear room's hull side and ammunition by its bench (and the kit on
     // the bench: LayOutKit).
@@ -797,7 +642,8 @@ void ShipMap::LayOutKit(const ItemDatabase& items)
 bool ShipMap::Contains(const glm::vec3& point) const
 {
     const glm::vec2 d{point.x - kOrigin.x, point.z - kOrigin.z};
-    return m_built && glm::dot(d, d) < kReach * kReach;
+    const glm::vec2 s{point.x - kStage.x, point.z - kStage.z};
+    return m_built && (glm::dot(d, d) < kReach * kReach || glm::dot(s, s) < kStageReach * kStageReach);
 }
 
 bool ShipMap::InHangar(const glm::vec3& point) const
@@ -827,11 +673,22 @@ CinePose ShipMap::BriefingConsole() const
 void ShipMap::SetEngines(Scene& scene, float burn)
 {
     m_burn = std::clamp(burn, 0.0f, 1.0f);
-    for (size_t i = 0; i < m_engineGlow.size(); ++i)
+    for (VehicleProp* hull : {&m_hull, &m_stageHull})
     {
-        if (MeshRenderer* renderer = scene.GetMeshRenderer(m_engineGlow[i]))
+        if (!hull->Built())
         {
-            renderer->material.emissive = m_engineGlowColour[i] * (0.3f + m_burn * 7.0f);
+            continue;
+        }
+        for (const ModelPart& part : hull->Model()->parts)
+        {
+            if (part.name.rfind("fx_engine_glow", 0) != 0)
+            {
+                continue;
+            }
+            if (MeshRenderer* renderer = scene.GetMeshRenderer(hull->Part(part.name)))
+            {
+                renderer->material.emissive = part.color * (part.emissive + m_burn * 7.0f);
+            }
         }
     }
 }
@@ -848,6 +705,7 @@ void ShipMap::Anchors(std::map<std::string, CinePose>& anchors) const
     anchors["cockpit"] = Pose({0.0f, kUpper, -35.0f});
     anchors["briefing"] = Pose({0.0f, kUpper, -13.0f});
     anchors["engines"] = Pose({0.0f, 3.8f, 46.0f});
+    anchors["stage"] = {kStage, {1.0f, 0.0f, 0.0f, 0.0f}};
 }
 
 } // namespace pred

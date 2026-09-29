@@ -804,7 +804,10 @@ private:
     void ArriveOverSite();
     // Down to the site in the shuttle, everybody aboard: the host's, from its controls.
     bool LaunchFromShip(uint8_t player);
+    // Where a player is put arriving aboard, and facing: the shuttle's cabin, coming back in it; the briefing room else.
+    glm::vec3 ShipArrival(uint8_t player, float& yaw) const;
     void UpdateShip();
+    void RegisterShipCommands();
     void DrawShipHud();
     void RecoverFallen();
     // Where a player stands when they arrive at the site: in the crawler, side by side, facing its ramp.
@@ -1495,6 +1498,10 @@ private:
     // Where a cinematic's marker has sent everybody, done once the cinematic has finished its frame: a marker that starts
     // another cinematic from inside the one playing would pull that one out from under itself.
     std::optional<MapChoice> m_cineGoTo;
+    // And the cinematic of getting there, played on arriving; and whether it is the shuttle coming back with the ones
+    // who made it aboard.
+    std::string m_cineThen;
+    bool m_dockingReturn = false;
     // Whether the site's own sky is the one in the scene, so it can be put back on leaving.
     bool m_skyAtSite = false;
     bool m_skyInShip = false;

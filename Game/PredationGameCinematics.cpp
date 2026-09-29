@@ -263,6 +263,8 @@ void PredationGame::ParkVehicles()
     {
         m_ship.Shuttle().GoHome(m_scene);
         m_ship.BayDoors().GoHome(m_scene);
+        m_ship.Hull().GoHome(m_scene);
+        m_ship.StageHull().GoHome(m_scene);
         m_ship.SetEngines(m_scene, 0.0f);
     }
     UpdateVehicleLamps();
@@ -369,6 +371,17 @@ void PredationGame::UpdateCinematic(float dt)
         const MapChoice map = *m_cineGoTo;
         m_cineGoTo.reset();
         GoToMap(map);
+        m_dockingReturn = false;
+        // And what is seen of getting there.
+        if (!m_cineThen.empty())
+        {
+            const std::string next = m_cineThen;
+            m_cineThen.clear();
+            if (HasCinematic(next))
+            {
+                PlayCinematic(next);
+            }
+        }
         if (!m_cine.Active())
         {
             return;
@@ -458,6 +471,14 @@ VehicleProp* Bound(const std::string& bind, SiteMap& site, MissionProps& props, 
     {
         return ship.BayDoors().Built() ? &ship.BayDoors() : nullptr;
     }
+    if (bind == "ship_hull")
+    {
+        return ship.Hull().Built() ? &ship.Hull() : nullptr;
+    }
+    if (bind == "ship_stage")
+    {
+        return ship.StageHull().Built() ? &ship.StageHull() : nullptr;
+    }
     if (bind == "site_shuttle")
     {
         return site.Shuttle().Built() ? &site.Shuttle() : nullptr;
@@ -536,8 +557,16 @@ void PredationGame::CineMarker(const pred::Marker& marker)
         m_missionOverFor = 0.0f;
         if (IsAuthority() && m_screen == Screen::Playing && m_map == MapChoice::Facility)
         {
+            // The ones who made it aboard come back in the shuttle; the rest are waiting in the briefing room.
             m_cineGoTo = MapChoice::Ship;
+            m_cineThen = "ship_docking";
+            m_dockingReturn = true;
         }
+    }
+    else if (marker.name == "docked")
+    {
+        // Back aboard: the result is up from now, when everybody can see it.
+        m_missionOverFor = 0.0f;
     }
     else if (marker.name == "arrive")
     {

@@ -9,6 +9,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <glm/geometric.hpp>
+#include <glm/vector_relational.hpp>
 
 #include <algorithm>
 #include <filesystem>
@@ -108,5 +109,67 @@ TEST_CASE("The shuttle stands on the closed bay doors, which swing down out of i
         CHECK(open.y < -3.5f);
         // And out of the middle, where the shuttle falls through.
         CHECK(std::abs(open.x) > 3.5f);
+    }
+}
+
+TEST_CASE("No two parts of a vehicle share a surface facing the same way, which would flicker", "[ship][vehicle]")
+{
+    // Two faces in one plane, facing the same way and overlapping, are drawn in whichever order the depth test happens to
+    // pick from pixel to pixel: the flickering seen on the back of the ship. Faces touching back to back are fine.
+    for (const ModelAsset& model : {Vehicles::CarrierModel(), Vehicles::ShuttleModel(), Vehicles::CrawlerModel(), Vehicles::BayDoorsModel()})
+    {
+        INFO(model.name);
+        for (size_t i = 0; i < model.parts.size(); ++i)
+        {
+            const ModelPart& a = model.parts[i];
+            if (a.shape != PartShape::Box || a.rotation != glm::vec3(0.0f) || !a.parent.empty())
+            {
+                continue;
+            }
+            for (size_t j = i + 1; j < model.parts.size(); ++j)
+            {
+                const ModelPart& b = model.parts[j];
+                if (b.shape != PartShape::Box || b.rotation != glm::vec3(0.0f) || !b.parent.empty())
+                {
+                    continue;
+                }
+                for (int axis = 0; axis < 3; ++axis)
+                {
+                    const int u = (axis + 1) % 3;
+                    const int v = (axis + 2) % 3;
+                    const float overlapU = std::min(a.position[u] + a.size[u] * 0.5f, b.position[u] + b.size[u] * 0.5f) -
+                                           std::max(a.position[u] - a.size[u] * 0.5f, b.position[u] - b.size[u] * 0.5f);
+                    const float overlapV = std::min(a.position[v] + a.size[v] * 0.5f, b.position[v] + b.size[v] * 0.5f) -
+                                           std::max(a.position[v] - a.size[v] * 0.5f, b.position[v] - b.size[v] * 0.5f);
+                    if (overlapU < 0.01f || overlapV < 0.01f)
+                    {
+                        continue;
+                    }
+                    for (const float side : {-0.5f, 0.5f})
+                    {
+                        const float faceA = a.position[axis] + a.size[axis] * side;
+                        const float faceB = b.position[axis] + b.size[axis] * side;
+                        if (std::abs(faceA - faceB) > 0.001f)
+                        {
+                            continue;
+                        }
+                        // Buried: just outside the shared face is inside some other part, so neither is ever seen.
+                        glm::vec3 outside;
+                        outside[axis] = faceA + (side > 0.0f ? 0.002f : -0.002f);
+                        outside[u] = (std::max(a.position[u] - a.size[u] * 0.5f, b.position[u] - b.size[u] * 0.5f) +
+                                      std::min(a.position[u] + a.size[u] * 0.5f, b.position[u] + b.size[u] * 0.5f)) * 0.5f;
+                        outside[v] = (std::max(a.position[v] - a.size[v] * 0.5f, b.position[v] - b.size[v] * 0.5f) +
+                                      std::min(a.position[v] + a.size[v] * 0.5f, b.position[v] + b.size[v] * 0.5f)) * 0.5f;
+                        const bool buried = std::any_of(model.parts.begin(), model.parts.end(), [&](const ModelPart& c)
+                        {
+                            return c.shape == PartShape::Box && c.rotation == glm::vec3(0.0f) && c.parent.empty() &&
+                                   glm::all(glm::lessThan(glm::abs(outside - c.position), c.size * 0.5f));
+                        });
+                        INFO(a.name << " and " << b.name << " on axis " << axis);
+                        CHECK(buried);
+                    }
+                }
+            }
+        }
     }
 }

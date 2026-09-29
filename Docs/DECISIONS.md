@@ -2323,3 +2323,26 @@ and the debrief.
 - **The crawler parks well out from the door** (16 m, closer only where another building is in the way), and does not
   turn on the spot: it pulls past, then backs straight in, its ramp to the door (PathFollow::reverse), and every
   corner of its ways is rounded off (SitePlan::Smoothed).
+
+## ADR-107: Aboard the ship, a deployment from start to finish
+
+- **Going out**: the host chooses a site at the briefing console and deploys; the ship's burn is shown from outside
+  only (ship_transit) -- it lights its engines and is gone into the distance, the transit card on black, then it comes
+  in from the horizon straight at the camera and stops over the planet (the "arrive" marker puts the planet in the
+  sky). Everybody then walks to the hangar and boards the shuttle; its controls, at the front of its cabin, launch it
+  only once everybody who is up is aboard -- nobody is left on the ship while the rest are down. ship_launch: the ramp
+  up, the bay doors open under it, the clamps let go and it drops out of the belly and burns away to the planet; then
+  the site's insertion.
+- **Coming back** (the user's choice): the extraction ends with everybody aboard; the ones who made it into the
+  crawler come back in the shuttle, seen climbing into the bay and docking (ship_docking), and are standing in its
+  cabin when it hands back; the dead and the left behind are waiting in the briefing room. A total wipe skips the
+  crawler: straight back aboard, and the shuttle is seen coming home empty on autopilot (ship_return_empty). The
+  mission's result is shown once the docking is over.
+- **The ship's outside is a model** (Assets/Models/Vehicles/carrier.json, written from Vehicles::CarrierModel the
+  first time), edited in the model editor like any other. It is drawn round the rooms, and a second copy stands on a
+  "stage" far out in space for cinematics to fly -- the rooms cannot fly with it, so flying the one round them would
+  leave them floating. Its parts are fitted between one another: two faces in one plane flickered (tested).
+- The shuttle is parked nose forward, so it drops out and goes on the way it faces, towards the planet ahead.
+- A marker that sends everybody somewhere is carried out after the cinematic's frame, not inside it: the next
+  cinematic starting from inside the one playing would pull it out from under itself.
+- Dev: ship_goto shuttle|hangar|briefing|gear|cockpit, ship_orbit <seed>.

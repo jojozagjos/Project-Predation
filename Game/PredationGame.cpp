@@ -607,6 +607,7 @@ bool PredationGame::OnInit(Application& app)
     RegisterDroneCommands();
     RegisterMissionCommands();
     RegisterCinematicCommands();
+    RegisterShipCommands();
     // The game opens at the menu, with the world already built behind it.
     std::snprintf(m_joinAddress, sizeof(m_joinAddress), "%s", cv_lastAddress.Get().c_str());
     std::snprintf(m_playerName, sizeof(m_playerName), "%s", cv_playerName.Get().c_str());
@@ -3211,8 +3212,7 @@ void PredationGame::GoToMap(MapChoice map)
         break;
     case MapChoice::Ship:
         m_shipReady = false;
-        m_spawnPoint = m_ship.Spawn(LocalPlayerId());
-        yaw = m_ship.SpawnYaw();
+        m_spawnPoint = ShipArrival(LocalPlayerId(), yaw);
         arrived = "Aboard the ship.";
         break;
     case MapChoice::Facility:
@@ -3274,6 +3274,10 @@ void PredationGame::GoToMap(MapChoice map)
     }
     // Everybody goes, and the creatures start again from wherever creatures come from there -- once there
     // is a way about the place they have gone to: the navigation is only ever of where the players are.
+    if (map == MapChoice::Ship)
+    {
+        RemoveAllDrones();
+    }
     SpawnCreatures();
     RespawnLocalPlayer(m_spawnPoint);
     RequestNavRebuild();
@@ -3284,7 +3288,8 @@ void PredationGame::GoToMap(MapChoice map)
         for (const RemotePlayerView& remote : m_host.Remotes())
         {
             // At the site, each in their own place in the crawler; aboard, each in their own place in the briefing room.
-            const glm::vec3 place = map == MapChoice::Facility ? MissionArrival(remote.id) : map == MapChoice::Ship ? m_ship.Spawn(remote.id) : m_spawnPoint;
+            float ignored = 0.0f;
+            const glm::vec3 place = map == MapChoice::Facility ? MissionArrival(remote.id) : map == MapChoice::Ship ? ShipArrival(remote.id, ignored) : m_spawnPoint;
             m_host.RespawnPlayer(remote.id, place);
             WorldEventMessage event;
             event.kind = WorldEventKind::PlayerRespawned;

@@ -261,6 +261,194 @@ ModelAsset BayDoorsModel()
     return model;
 }
 
+namespace
+{
+
+// A quad facing out from a centre, and a block narrowing from one upright rectangle across x to another.
+void OutwardQuad(MeshData& mesh, const glm::vec3& a, glm::vec3 b, const glm::vec3& c, glm::vec3 d, const glm::vec3& centre)
+{
+    glm::vec3 normal = glm::normalize(glm::cross(b - a, c - a));
+    if (glm::dot(normal, (a + b + c + d) * 0.25f - centre) < 0.0f)
+    {
+        std::swap(b, d);
+        normal = -normal;
+    }
+    const auto base = static_cast<uint32_t>(mesh.vertices.size());
+    const glm::vec3 corners[4] = {a, b, c, d};
+    const glm::vec2 uvs[4] = {{0.0f, 0.0f}, {1.0f, 0.0f}, {1.0f, 1.0f}, {0.0f, 1.0f}};
+    for (int i = 0; i < 4; ++i)
+    {
+        mesh.vertices.push_back(MeshVertex{corners[i], normal, uvs[i]});
+    }
+    mesh.indices.insert(mesh.indices.end(), {base, base + 1, base + 2, base, base + 2, base + 3});
+}
+
+MeshData Tapered(float backZ, float backHalf, float backLow, float backHigh, float frontZ, float frontHalf, float frontLow, float frontHigh)
+{
+    const glm::vec3 b0{-backHalf, backLow, backZ}, b1{backHalf, backLow, backZ}, b2{backHalf, backHigh, backZ}, b3{-backHalf, backHigh, backZ};
+    const glm::vec3 f0{-frontHalf, frontLow, frontZ}, f1{frontHalf, frontLow, frontZ}, f2{frontHalf, frontHigh, frontZ},
+        f3{-frontHalf, frontHigh, frontZ};
+    const glm::vec3 centre = (b0 + b1 + b2 + b3 + f0 + f1 + f2 + f3) / 8.0f;
+    MeshData mesh;
+    OutwardQuad(mesh, b0, b1, b2, b3, centre);
+    OutwardQuad(mesh, f0, f1, f2, f3, centre);
+    OutwardQuad(mesh, b0, b1, f1, f0, centre);
+    OutwardQuad(mesh, b3, b2, f2, f3, centre);
+    OutwardQuad(mesh, b0, b3, f3, f0, centre);
+    OutwardQuad(mesh, b1, b2, f2, f1, centre);
+    return mesh;
+}
+
+} // namespace
+
+ModelAsset CarrierModel()
+{
+    // In the ship's frame, round its rooms (ShipMap): the lower deck's floor at y = 0, the upper's at 3.6, the hangar
+    // aft to z = 34.3 with its bay in the floor between z = 13 and 27, the cockpit forward at z = -40.
+    ModelAsset model;
+    model.name = "carrier";
+    Builder b{model};
+    int count = 0;
+    const auto name = [&](const char* stem) { return std::string(stem) + "_" + std::to_string(count++); };
+    const glm::vec3 hull{0.40f, 0.41f, 0.41f};
+    const glm::vec3 panel{0.31f, 0.32f, 0.33f};
+    const glm::vec3 dark{0.17f, 0.18f, 0.19f};
+    const glm::vec3 glass{0.95f, 0.78f, 0.5f};
+    const auto skin = [&](const char* stem, float x0, float x1, float y0, float y1, float z0, float z1, const glm::vec3& colour)
+    {
+        const bool metal = colour == dark;
+        b.Box(name(stem), x0, x1, y0, y1, z0, z1, colour, metal ? 0.55f : 0.72f, metal ? 1.0f : 0.0f);
+    };
+    // A wall of skin with a window through it: the pieces round the gap.
+    const auto pierced = [&](float x0, float x1, float y0, float y1, float z0, float z1, bool alongZ, float from, float to, float bottom, float top)
+    {
+        if (alongZ)
+        {
+            skin("skin", x0, x1, y0, y1, z0, from, hull);
+            skin("skin", x0, x1, y0, y1, to, z1, hull);
+            skin("skin", x0, x1, y0, bottom, from, to, hull);
+            skin("skin", x0, x1, top, y1, from, to, hull);
+        }
+        else
+        {
+            skin("skin", x0, from, y0, y1, z0, z1, hull);
+            skin("skin", to, x1, y0, y1, z0, z1, hull);
+            skin("skin", from, to, y0, bottom, z0, z1, hull);
+            skin("skin", from, to, top, y1, z0, z1, hull);
+        }
+    };
+    const float out = 13.0f;
+    const float upper = 3.6f;
+    for (const float side : {-1.0f, 1.0f})
+    {
+        const float x0 = side < 0.0f ? -out : 12.3f;
+        const float x1 = side < 0.0f ? -12.3f : out;
+        const float o0 = side < 0.0f ? -out - 0.05f : out;
+        const float o1 = side < 0.0f ? -out : out + 0.05f;
+        skin("skin", x0, x1, -1.4f, 7.6f, -22.3f, 5.55f, hull);
+        skin("skin", x0, x1, -1.4f, 9.0f, 5.55f, 34.6f, hull);
+        // The hangar's sides stand out from the rest: sponsons, dark, with the bay's machinery in them.
+        skin("sponson", side < 0.0f ? -out - 1.2f : out, side < 0.0f ? -out : out + 1.2f, -1.0f, 6.5f, 8.0f, 32.0f, dark);
+        skin("sponson_cap", side < 0.0f ? -out - 1.3f : out, side < 0.0f ? -out : out + 1.3f, 6.5f, 6.9f, 7.5f, 32.5f, panel);
+        // A darker belt along it at the deck line, and panels proud of it here and there.
+        skin("belt", o0, o1, 2.8f, 3.4f, -22.3f, 34.6f, dark);
+        for (float z = -19.5f; z < 33.0f; z += 7.0f)
+        {
+            skin("panel", side < 0.0f ? -out - 0.04f : out, side < 0.0f ? -out : out + 0.04f, 4.2f, 6.8f, z, z + 5.5f, panel);
+            skin("panel", side < 0.0f ? -out - 0.04f : out, side < 0.0f ? -out : out + 0.04f, -0.8f, 2.2f, z + 1.0f, z + 4.0f, panel);
+        }
+        // Lit windows along it: people aboard.
+        for (float z = -19.0f; z < 4.0f; z += 3.2f)
+        {
+            b.Box(name("fx_porthole"), side < 0.0f ? -out - 0.06f : out, side < 0.0f ? -out : out + 0.06f, 5.0f, 5.5f, z, z + 0.9f, glass, 0.4f, 0.0f, 1.4f);
+        }
+        // Radiators up off the hangar roof.
+        for (const float x : {7.0f, 10.0f})
+        {
+            skin("radiator", side * x - 0.06f, side * x + 0.06f, 9.0f, 10.8f, 10.0f, 30.0f, dark);
+        }
+        // The step down from the main body to the cockpit block.
+        skin("skin", side < 0.0f ? -out : 8.3f, side < 0.0f ? -8.3f : out, 3.0f, 7.6f, -22.6f, -22.3f, hull);
+    }
+    // Roof, belly and back fitted between the sides rather than over them: two faces in one plane fight over which is drawn.
+    const float in = 12.3f;
+    skin("skin", -in, in, 7.2f, 7.6f, -22.3f, 5.85f, hull);
+    // A spine down the middle of the roof, and plating either side of it.
+    skin("spine", -2.2f, 2.2f, 7.6f, 8.4f, -30.0f, 5.55f, panel);
+    skin("spine", -2.2f, 2.2f, 9.0f, 9.6f, 5.85f, 33.0f, panel);
+    for (float z = -20.0f; z < 4.0f; z += 6.0f)
+    {
+        skin("roof_plate", -11.5f, -3.0f, 7.6f, 7.68f, z, z + 4.8f, panel);
+        skin("roof_plate", 3.0f, 11.5f, 7.6f, 7.68f, z + 1.0f, z + 5.8f, panel);
+    }
+    skin("skin", -in, in, 8.6f, 9.0f, 5.55f, 34.6f, hull);
+    skin("skin", -in, in, 7.6f, 8.6f, 5.55f, 5.85f, hull);
+    skin("skin", -in, in, -1.4f, 8.6f, 34.3f, 34.6f, dark);
+    // The belly, open under the bay.
+    skin("belly", -in, in, -1.4f, -0.6f, -22.3f, 13.0f, hull);
+    skin("belly", -in, in, -1.4f, -0.6f, 27.0f, 34.3f, hull);
+    skin("belly", -in, -4.55f, -1.4f, -0.6f, 13.0f, 27.0f, hull);
+    skin("belly", 4.55f, in, -1.4f, -0.6f, 13.0f, 27.0f, hull);
+    // The cockpit block, its windows through it, and a visor over the ones ahead.
+    const float cockpit = 9.0f;
+    pierced(-cockpit, -8.3f, 3.0f, 7.6f, -40.6f, -22.6f, true, -38.5f, -31.5f, upper + 0.9f, upper + 2.5f);
+    pierced(8.3f, cockpit, 3.0f, 7.6f, -40.6f, -22.6f, true, -38.5f, -31.5f, upper + 0.9f, upper + 2.5f);
+    skin("skin", -8.3f, 8.3f, 7.2f, 7.6f, -40.3f, -22.6f, hull);
+    pierced(-8.3f, 8.3f, 3.0f, 7.6f, -40.6f, -40.3f, false, -6.8f, 6.8f, upper + 0.7f, upper + 2.7f);
+    skin("visor", -7.4f, 7.4f, upper + 2.72f, upper + 3.02f, -40.9f, -40.35f, dark);
+    // The bow under it, narrowing to a blunt nose ahead of the windows.
+    const auto meshPart = [&](const char* stem, MeshData mesh, const glm::vec3& colour)
+    {
+        ModelPart part;
+        part.name = name(stem);
+        part.shape = PartShape::Mesh;
+        part.size = glm::vec3(1.0f);
+        part.mesh = std::move(mesh);
+        part.color = colour;
+        part.roughness = 0.72f;
+        model.parts.push_back(part);
+    };
+    meshPart("bow", Tapered(-22.3f, out, -1.4f, 3.0f, -48.0f, 3.5f, 1.2f, 3.0f), hull);
+    meshPart("bow_deck", Tapered(-22.3f, 8.3f, 3.0f, 3.2f, -46.0f, 3.2f, 3.0f, 3.1f), panel);
+    // A mast and a dish on the roof.
+    skin("mast", -0.12f, 0.12f, 7.6f, 11.8f, -12.12f, -11.88f, dark);
+    const auto cylinder = [&](const std::string& partName, const glm::vec3& centre, float diameter, float height, const glm::vec3& rotation,
+                              const glm::vec3& colour, float metallic, float emissive)
+    {
+        ModelPart& part = b.Box(partName, centre.x - diameter * 0.5f, centre.x + diameter * 0.5f, centre.y - height * 0.5f, centre.y + height * 0.5f,
+                                centre.z - diameter * 0.5f, centre.z + diameter * 0.5f, colour, 0.45f, metallic, emissive);
+        part.shape = PartShape::Cylinder;
+        part.rotation = rotation;
+    };
+    cylinder(name("dish"), {0.0f, 11.0f, -12.0f}, 2.8f, 0.18f, {60.0f, 0.0f, 0.0f}, panel, 0.0f, 0.0f);
+    // The engines aft: three, their nozzles dark rings round a glow a burn turns up.
+    struct Engine
+    {
+        float x;
+        float y;
+        float half;
+        float length;
+    };
+    int engineIndex = 0;
+    for (const Engine& engine : {Engine{0.0f, 3.8f, 2.8f, 10.0f}, Engine{-9.2f, 3.0f, 2.2f, 8.0f}, Engine{9.2f, 3.0f, 2.2f, 8.0f}})
+    {
+        const float z0 = 34.6f;
+        const float z1 = z0 + engine.length;
+        skin("engine", engine.x - engine.half, engine.x + engine.half, engine.y - engine.half, engine.y + engine.half, z0, z1, panel);
+        skin("engine_band", engine.x - engine.half - 0.05f, engine.x + engine.half + 0.05f, engine.y - engine.half - 0.05f,
+             engine.y + engine.half + 0.05f, z0 + 2.0f, z0 + 2.6f, dark);
+        cylinder(name("nozzle"), {engine.x, engine.y, z1 + 0.8f}, engine.half * 1.9f, 1.6f, {90.0f, 0.0f, 0.0f}, {0.12f, 0.12f, 0.13f}, 1.0f, 0.0f);
+        // On the nozzle's mouth, just proud of it, where it can be seen.
+        cylinder("fx_engine_glow_" + std::to_string(engineIndex++), {engine.x, engine.y, z1 + 1.625f}, engine.half * 1.6f, 0.02f, {90.0f, 0.0f, 0.0f},
+                 {0.55f, 0.75f, 1.0f}, 0.0f, 0.3f);
+    }
+    // Its lights: red to port, green to starboard, white at the tail.
+    b.Box("fx_nav_port", -out - 0.2f, -out, 3.0f, 3.2f, -22.0f, -21.8f, {1.0f, 0.1f, 0.08f}, 0.4f, 0.0f, 4.0f);
+    b.Box("fx_nav_starboard", out, out + 0.2f, 3.0f, 3.2f, -22.0f, -21.8f, {0.1f, 1.0f, 0.2f}, 0.4f, 0.0f, 4.0f);
+    b.Box("fx_nav_tail", -0.1f, 0.1f, 9.0f, 9.2f, 34.2f, 34.4f, {1.0f, 1.0f, 1.0f}, 0.4f, 0.0f, 4.0f);
+    return model;
+}
+
 std::shared_ptr<ModelAsset> Load(const std::string& name)
 {
     auto model = std::make_shared<ModelAsset>();
@@ -280,6 +468,10 @@ std::shared_ptr<ModelAsset> Load(const std::string& name)
     else if (name == "hangar_doors")
     {
         *model = BayDoorsModel();
+    }
+    else if (name == "carrier")
+    {
+        *model = CarrierModel();
     }
     else
     {

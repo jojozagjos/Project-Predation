@@ -31,6 +31,10 @@ inline constexpr float kLowerDeck = 0.0f;
 inline constexpr float kUpperDeck = 3.6f;
 // Where the shuttle rests in the hangar, on the bay doors, in the ship's own frame.
 inline constexpr glm::vec3 kShuttleHome{0.0f, 0.0f, 20.0f};
+// Where cinematics fly the ship: its outside again, in open space well away from where everybody is standing in it, so
+// it can go off into the distance and come back without leaving anybody's rooms behind in space.
+inline constexpr glm::vec3 kStage{-1500.0f, 300.0f, -2600.0f};
+inline constexpr float kStageReach = 900.0f;
 } // namespace ShipSpec
 
 // The team's carrier between deployments: where everybody is before and after a mission.
@@ -66,6 +70,9 @@ public:
     const VehicleProp& Shuttle() const { return m_shuttle; }
     VehicleProp& BayDoors() { return m_bayDoors; }
     const VehicleProp& BayDoors() const { return m_bayDoors; }
+    // The outside of it, round the rooms; and the same outside on the stage, for cinematics to fly.
+    VehicleProp& Hull() { return m_hull; }
+    VehicleProp& StageHull() { return m_stageHull; }
 
     // The engines' glow: 0 cold, 1 at full burn.
     void SetEngines(Scene& scene, float burn);
@@ -81,8 +88,8 @@ private:
     WorldObjects::Placements m_placements;
     VehicleProp m_shuttle;
     VehicleProp m_bayDoors;
-    std::vector<Entity> m_engineGlow;
-    std::vector<glm::vec3> m_engineGlowColour;
+    VehicleProp m_hull;
+    VehicleProp m_stageHull;
     std::vector<Entity> m_entities;
     std::vector<BodyHandle> m_bodies;
     float m_burn = 0.0f;

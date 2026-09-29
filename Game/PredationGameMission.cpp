@@ -29,6 +29,9 @@ namespace
 
 using Stage = MissionState::Stage;
 
+// The deployment console aboard, across, high and deep.
+constexpr glm::vec3 kDeployConsoleSize{1.2f, 1.05f, 0.6f};
+
 // Where the crawler's console is, to hear its alarm from.
 glm::vec3 ConsoleOf(const VehicleProp& crawler)
 {
@@ -168,7 +171,8 @@ void PredationGame::RegisterMissionCommands()
                                     return;
                                 }
                                 const glm::vec3 front = console->rotation * glm::vec3(0.0f, 0.0f, -1.0f);
-                                m_player.Teleport(glm::vec3(console->position.x, 0.1f, console->position.z) + front * 1.2f);
+                                // On the deck the console stands on.
+                                m_player.Teleport(glm::vec3(console->position.x, console->position.y - kDeployConsoleSize.y * 0.5f + 0.1f, console->position.z) + front * 1.2f);
                                 m_lookYaw = std::atan2(-front.x, front.z);
                                 const int seed = args.size() >= 2 ? std::atoi(args[1].c_str()) : 0;
                                 OpenBriefing(static_cast<uint16_t>(seed > 0 ? seed : 1 + std::chrono::steady_clock::now().time_since_epoch().count() % 65535));
@@ -774,7 +778,6 @@ void PredationGame::DrawMissionHud()
 namespace
 {
 
-constexpr glm::vec3 kDeployConsoleSize{1.2f, 1.05f, 0.6f};
 
 // The title card: in after a moment, up for a while, and out slowly.
 constexpr float kCardIn = 1.0f;

@@ -8,11 +8,55 @@
 
 #include <imgui.h>
 
+#include <glm/gtc/constants.hpp>
+
 #include <cmath>
 #include <string>
 
 namespace pred
 {
+
+void PredationGame::RegisterShipCommands()
+{
+#if PRED_DEV_TOOLS
+    // Somewhere aboard at once, for trying things: ship_goto shuttle|hangar|briefing|gear|cockpit.
+    m_app->GetConsole().RegisterCommand(
+        "ship_goto", "Go straight to somewhere aboard: ship_goto <shuttle|hangar|briefing|gear|cockpit>",
+        [this](const std::vector<std::string>& args)
+        {
+            const std::string where = args.size() >= 2 ? args[1] : "briefing";
+            glm::vec3 at = m_ship.Spawn(LocalPlayerId());
+            float yaw = 0.0f;
+            if (where == "shuttle")
+            {
+                // In its cabin, at the front, facing the controls.
+                at = m_ship.Shuttle().Home().position + m_ship.Shuttle().Home().rotation * glm::vec3(0.0f, 0.8f, -3.6f);
+            }
+            else if (where == "hangar")
+            {
+                at = ShipMap::ToWorld({0.0f, 0.1f, 8.0f});
+                yaw = glm::pi<float>();
+            }
+            else if (where == "gear")
+            {
+                at = ShipMap::ToWorld({-6.0f, 0.1f, 0.0f});
+            }
+            else if (where == "cockpit")
+            {
+                at = ShipMap::ToWorld({0.0f, ShipSpec::kUpperDeck + 0.1f, -34.0f});
+            }
+            if (m_map != MapChoice::Ship)
+            {
+                m_app->GetConsole().PrintError("Only aboard: go aboard with ship first.");
+                return;
+            }
+            m_player.Teleport(at);
+            m_lookYaw = yaw;
+            m_lookPitch = 0.0f;
+            m_player.State().yaw = yaw;
+        });
+#endif
+}
 
 void PredationGame::BuildShipControls()
 {
@@ -52,6 +96,22 @@ void PredationGame::ShuttleAboard(int& aboard, int& everybody) const
     {
         count(remote.alive, remote.position);
     }
+}
+
+glm::vec3 PredationGame::ShipArrival(uint8_t player, float& yaw) const
+{
+    CinePose cabin;
+    const bool cameBack = m_dockingReturn && ((m_mission.aboard >> player) & 1u) != 0;
+    if (cameBack && m_ship.Shuttle().Socket("arrival", cabin))
+    {
+        // Side by side across the cabin, facing its ramp.
+        const glm::vec3 faces = cabin.rotation * glm::vec3(0.0f, 0.0f, -1.0f);
+        yaw = std::atan2(faces.x, -faces.z);
+        const glm::vec3 across = cabin.rotation * glm::vec3(1.0f, 0.0f, 0.0f);
+        return cabin.position + across * ((static_cast<float>(player % 6) - 2.5f) * 0.55f) + glm::vec3(0.0f, 0.1f, 0.0f);
+    }
+    yaw = m_ship.SpawnYaw();
+    return m_ship.Spawn(player);
 }
 
 void PredationGame::BeginTransit()

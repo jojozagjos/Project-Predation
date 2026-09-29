@@ -542,16 +542,22 @@ void PredationGame::UpdateWipe(float dt)
         m_wipeTimer = 0.0f;
         return;
     }
-    // At a site, the deployment has failed: the crawler takes itself away, empty, and the shuttle goes, and the end of that
-    // takes everybody back aboard. Not at once -- a moment to see it has happened.
-    if (m_wipeTimer > 2.5f && m_map == MapChoice::Facility && HasCinematic("surface_wipe") && !m_missionLeaving &&
-        m_mission.stage != MissionState::Stage::Over && m_mission.stage != MissionState::Stage::None)
+    // At a site, the deployment has failed: after a moment to see it has happened, everybody is back aboard -- waiting in
+    // the briefing room -- and what is seen is the shuttle coming home to the ship on its own.
+    if (m_wipeTimer > 2.5f && m_map == MapChoice::Facility && !m_missionLeaving && m_mission.stage != MissionState::Stage::Over &&
+        m_mission.stage != MissionState::Stage::None)
     {
         m_missionLeaving = true;
         MissionRules::Finish(m_mission, false, 0);
         OnMissionOver();
         BroadcastMission();
-        PlayCinematic("surface_wipe");
+        m_wipeTimer = 0.0f;
+        GoToMap(MapChoice::Ship);
+        if (HasCinematic("ship_return_empty"))
+        {
+            PlayCinematic("ship_return_empty");
+        }
+        return;
     }
     if (m_missionLeaving && m_map == MapChoice::Facility)
     {
