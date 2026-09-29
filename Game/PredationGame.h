@@ -681,6 +681,12 @@ private:
     void ApplyDynamicBodies(const WorldStateMessage& state);
     // Everything a player who has just joined needs in order to see the world as it now is.
     void SendWorldToPlayer(uint8_t player);
+    // Where somebody arriving now belongs: in their place aboard, in the crawler at the site, or at the spawn.
+    glm::vec3 ArrivalFor(uint8_t player) const;
+    // The host tells everybody (or one newcomer) the map, the site the ship is over and whether the shuttle is ready:
+    // sent whenever any of it changes, so nobody is left in a different place from everybody else.
+    void SendShipState(int player = -1);
+    uint32_t m_shipStateSent = 0xFFFFFFFFu;
 
     // Where a player is, for checking they are close enough to what they are asking for.
     glm::vec3 PlayerPosition(uint8_t player) const;
@@ -754,6 +760,9 @@ private:
     // The shuttle has gone, here: the drive goes with the Company or is lost, and the result is shown.
     void OnMissionOver();
     void DrawMissionHud();
+    // What the briefing's Deploy does: the site planned from `site`, and the ship on its way there (or, not aboard,
+    // everybody straight down to it).
+    void DeployTo(uint16_t site);
     // --- Things carried for finding the way (PredationGameDevices.cpp) ---------------------------------------------
     // What the held item shows: "map", "tracker", or nothing.
     const std::string& HeldDevice() const;

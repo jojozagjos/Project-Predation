@@ -175,6 +175,35 @@ void PredationGame::RegisterMissionCommands()
                                 const int seed = args.size() >= 2 ? std::atoi(args[1].c_str()) : 0;
                                 OpenBriefing(static_cast<uint16_t>(seed > 0 ? seed : 1 + std::chrono::steady_clock::now().time_since_epoch().count() % 65535));
                             });
+    console.RegisterCommand("deploy", "As the host, press Deploy on a site without the briefing: deploy [site seed]",
+                            [this](const std::vector<std::string>& args)
+                            {
+                                if (!IsAuthority() || m_screen != Screen::Playing)
+                                {
+                                    return;
+                                }
+                                const int seed = args.size() >= 2 ? std::atoi(args[1].c_str()) : 0;
+                                DeployTo(static_cast<uint16_t>(std::clamp(seed > 0 ? seed : static_cast<int>(m_facility.Seed()) + 1, 1, 65535)));
+                            });
+    console.RegisterCommand("mission_finish", "As the host, end the deployment with the drive aboard the crawler: mission_finish [all|host] (who is aboard)",
+                            [this](const std::vector<std::string>& args)
+                            {
+                                if (!IsAuthority() || m_map != MapChoice::Facility || m_mission.stage == Stage::Over || m_mission.stage == Stage::None)
+                                {
+                                    return;
+                                }
+                                uint8_t aboard = static_cast<uint8_t>(1u << LocalPlayerId());
+                                if (args.size() < 2 || args[1] != "host")
+                                {
+                                    for (const RemotePlayerView& remote : RemotePlayers())
+                                    {
+                                        aboard = static_cast<uint8_t>(aboard | (1u << remote.id));
+                                    }
+                                }
+                                MissionRules::Finish(m_mission, true, aboard);
+                                OnMissionOver();
+                                BroadcastMission();
+                            });
     console.RegisterCommand("mission_skip", "As the host, finish the download at once", [this](const std::vector<std::string>&)
                             {
                                 if (IsAuthority() && m_mission.stage == Stage::Downloading)
@@ -254,9 +283,10 @@ glm::vec3 PredationGame::MissionArrival(uint8_t player) const
     {
         return m_facility.Spawn();
     }
-    // Side by side across the cabin, so four people do not arrive inside one another.
+    // Side by side across the cabin, so four people do not arrive inside one another: a body is 0.64 m across, and
+    // four of them this far apart still fit the cabin's 2.8 m.
     const glm::vec3 across = arrival.rotation * glm::vec3(1.0f, 0.0f, 0.0f);
-    return arrival.position + across * ((static_cast<float>(player) - 1.5f) * 0.55f) + glm::vec3(0.0f, 0.1f, 0.0f);
+    return arrival.position + across * ((static_cast<float>(player) - 1.5f) * 0.7f) + glm::vec3(0.0f, 0.1f, 0.0f);
 }
 
 void PredationGame::ShowMission()
@@ -539,6 +569,24 @@ void PredationGame::UpdateMission(float dt)
     }
 }
 
+void PredationGame::DeployTo(uint16_t site)
+{
+    // A site that has been done is gone back to as it was; another is planned.
+    if (site != m_facility.Seed() || m_mission.stage == MissionState::Stage::Over)
+    {
+        ChangeFacility(site);
+    }
+    // Aboard, the ship burns for it; anywhere else (the testing area), straight there.
+    if (m_map == MapChoice::Ship)
+    {
+        BeginTransit();
+    }
+    else
+    {
+        GoToMap(MapChoice::Facility);
+    }
+}
+
 void PredationGame::DrawMissionHud()
 {
     if (m_screen != Screen::Playing || m_mission.stage == Stage::None)
@@ -571,10 +619,11 @@ void PredationGame::DrawMissionHud()
             ImGui::TextColored(m_mission.recovered ? ImVec4{0.5f, 0.85f, 0.6f, 1.0f} : warning,
                                m_mission.recovered ? "DATA RECOVERED" : "DATA NOT RECOVERED");
             ImGui::SetWindowFontScale(1.0f);
-            ImGui::TextColored(text, "%s", mine ? "You made it out." : "You were left behind.");
+            ImGui::TextColored(text, "%s", mine ? "You made it out." : m_mission.aboard == 0 ? "Nobody made it out." : "You were left behind.");
             ImGui::TextDisabled("%d of %d aboard", std::popcount(static_cast<unsigned>(m_mission.aboard)), everybody);
             const float left = MissionSpec::kResultSeconds - m_missionOverFor;
-            if (left > 0.0f && !m_missionLeaving)
+            // Only while still at the site: leaving is known on the host alone, but where everybody is, everybody knows.
+            if (left > 0.0f && !m_missionLeaving && m_map == MapChoice::Facility && !m_cine.Active())
             {
                 ImGui::TextDisabled("Back aboard the ship in %d", static_cast<int>(std::ceil(left)));
             }
@@ -905,20 +954,7 @@ void PredationGame::DrawBriefing()
         {
             m_briefingOpen = false;
             m_wantMouseCaptured = true;
-            // A site that has been done is gone back to as it was; another is planned.
-            if (m_nextSite != m_facility.Seed() || m_mission.stage == MissionState::Stage::Over)
-            {
-                ChangeFacility(m_nextSite);
-            }
-            // Aboard, the ship burns for it; anywhere else (the testing area), straight there.
-            if (m_map == MapChoice::Ship)
-            {
-                BeginTransit();
-            }
-            else
-            {
-                GoToMap(MapChoice::Facility);
-            }
+            DeployTo(m_nextSite);
         }
         ImGui::SameLine();
         if (ImGui::Button("Another site", {120.0f, 0.0f}))

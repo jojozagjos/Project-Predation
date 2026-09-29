@@ -13,9 +13,11 @@ namespace
 // How much precision each field is given. Chosen from what the game can perceive, not from what a
 // float can hold. A consequence worth noticing: a value that will not fit in the range simply has
 // no encoding, so a modified client cannot claim to be ten kilometres away or moving at Mach 3.
-constexpr float kPositionMin = -512.0f;
-constexpr float kPositionMax = 512.0f;
-constexpr int kPositionBits = 20; // about 1 mm across a kilometre
+// The whole world, the ship and the stage its cinematics are filmed on included: the ship is a kilometre and a half
+// out, well beyond the sites, and anything aboard it sent in a smaller range arrived at its edge, in empty space.
+constexpr float kPositionMin = -4096.0f;
+constexpr float kPositionMax = 4096.0f;
+constexpr int kPositionBits = 23; // about 1 mm, the same as before across eight kilometres
 
 constexpr float kVelocityMin = -64.0f;
 constexpr float kVelocityMax = 64.0f;
@@ -624,6 +626,12 @@ void WriteWorldEvent(BitWriter& writer, const WorldEventMessage& message)
         writer.WriteQuantised(message.amount, 0.0f, 600.0f, 16);
         break;
 
+    case WorldEventKind::ShipState:
+        writer.WriteBits(message.index & 0x3u, 2);
+        writer.WriteBits(message.item, 16);
+        writer.WriteBool(message.flag);
+        break;
+
     case WorldEventKind::Count:
         break;
     }
@@ -787,6 +795,12 @@ bool ReadWorldEvent(BitReader& reader, WorldEventMessage& out)
         out.item = static_cast<uint16_t>(reader.ReadBits(16));
         out.flag = reader.ReadBool();
         out.amount = reader.ReadQuantised(0.0f, 600.0f, 16);
+        break;
+
+    case WorldEventKind::ShipState:
+        out.index = static_cast<uint8_t>(reader.ReadBits(2));
+        out.item = static_cast<uint16_t>(reader.ReadBits(16));
+        out.flag = reader.ReadBool();
         break;
 
     case WorldEventKind::Count:

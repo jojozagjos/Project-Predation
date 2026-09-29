@@ -184,7 +184,13 @@ TEST_CASE("A host answers somebody who asks, straight back to them", "[lan][udp]
         asker->Poll(0.01f, none);
         for (const Transport::UnframedDatagram& datagram : asker->TakeUnframed())
         {
-            answered = answered || DecodeLanBeacon(datagram.bytes.data(), datagram.bytes.size(), heard);
+            // Ours, not whichever game happens to be running on this machine too: that one answers the same question.
+            LanLobby lobby;
+            if (!answered && DecodeLanBeacon(datagram.bytes.data(), datagram.bytes.size(), lobby) && lobby.name == "kitchen")
+            {
+                heard = lobby;
+                answered = true;
+            }
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(2));
     }

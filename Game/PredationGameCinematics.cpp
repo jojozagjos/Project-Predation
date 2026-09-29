@@ -237,6 +237,14 @@ void PredationGame::StopCinematic(bool handBack)
     m_cine.Stop(m_scene);
     m_cineHolds = false;
     ParkVehicles();
+    // Stopped here, stopped everywhere: one skipped on the host otherwise went on playing for everybody else.
+    if (m_sessionMode == SessionMode::Host)
+    {
+        WorldEventMessage event;
+        event.kind = WorldEventKind::Cinematic;
+        event.flag = false;
+        m_host.Broadcast(event);
+    }
 }
 
 void PredationGame::CloseOverlays()

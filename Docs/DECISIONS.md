@@ -2399,3 +2399,26 @@ at in your hand -- and that other players can see too.
 - **Held up to be read.** Items can move the hand itself with `hold_hand` (metres right, up and forward of where
   things are usually carried), set in the bench editor next to Offset and Turn. The devices use it to be held up in
   front, screen turned to the eye.
+
+## ADR-111: Multiplayer aboard the ship
+
+Reported by the user: in a lobby, the other player could not see the ship -- there was nothing.
+
+- **The cause: the wire could not say where the ship is.** Positions were sent as -512 to 512 m, and the ship is a
+  kilometre and a half out (its cinematics' stage further still). Every position aboard reached the other machines
+  clamped to the edge of that range, in empty space. Now -4096 to 4096 m in 23 bits: the same millimetre, across the
+  whole world. Protocol version 25, so an older build is refused rather than misread. The bandwidth bounds in the net
+  tests rose by about a tenth to match.
+- **Somebody joining is made where they belong.** The host decided where to put newcomers when hosting started --
+  before it had gone aboard -- so a newcomer was made on top of the host and shoved them. The game now tells the host
+  (`NetHost::SetSpawnFor`): aboard in their own place, in the crawler at the site, or the spawn.
+- **Where everybody is, and how the ship stands, is told** (`WorldEventKind::ShipState`): the map, the site the ship is
+  over and whether the shuttle is ready -- sent to a newcomer and whenever any of it changes. The rest followed the
+  cinematics' markers, which a newcomer has missed and a skipped cinematic never reaches.
+- **A cinematic stopped on the host stops everywhere** (a skip went on playing for everybody else).
+- Arrivals side by side are 0.7 m apart, not 0.55: a body is 0.64 m across, so neighbours arrived inside one another.
+- Checked with a host and a guest on one machine, scripted, each taking pictures: joining aboard; the burn; boarding
+  and the drop; the insertion; the extraction with one left behind (the one aboard back in the shuttle, the other in
+  the briefing room); and everybody down (the empty shuttle home, both in the briefing room). `sleep <seconds>` in
+  --exec waits by the clock, so two machines with different frame rates can be scripted to meet; `deploy`,
+  `mission_finish`, `shuttle_launch` and `ship_goto <place> all` drive a deployment without a person at either.

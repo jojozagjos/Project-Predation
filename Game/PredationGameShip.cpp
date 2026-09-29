@@ -54,7 +54,31 @@ void PredationGame::RegisterShipCommands()
             m_lookYaw = yaw;
             m_lookPitch = 0.0f;
             m_player.State().yaw = yaw;
+            // "all": the host takes everybody, side by side -- a player's place is the host's to say.
+            if (args.size() >= 3 && args[2] == "all" && m_sessionMode == SessionMode::Host)
+            {
+                float side = 0.0f;
+                for (const RemotePlayerView& remote : m_host.Remotes())
+                {
+                    side += 0.8f;
+                    const glm::vec3 place = at + glm::vec3(std::cos(yaw), 0.0f, std::sin(yaw)) * side;
+                    m_host.RespawnPlayer(remote.id, place);
+                    WorldEventMessage event;
+                    event.kind = WorldEventKind::PlayerRespawned;
+                    event.player = remote.id;
+                    event.position = place;
+                    m_host.Broadcast(event);
+                }
+            }
         });
+    m_app->GetConsole().RegisterCommand("shuttle_launch", "As the host, work the shuttle's controls, as boarding does",
+                                        [this](const std::vector<std::string>&)
+                                        {
+                                            if (!LaunchFromShip(LocalPlayerId()))
+                                            {
+                                                m_app->GetConsole().PrintError("Not now: the ship is not over a site, or not everybody is aboard.");
+                                            }
+                                        });
 #endif
 }
 
@@ -108,7 +132,7 @@ glm::vec3 PredationGame::ShipArrival(uint8_t player, float& yaw) const
         const glm::vec3 faces = cabin.rotation * glm::vec3(0.0f, 0.0f, -1.0f);
         yaw = std::atan2(faces.x, -faces.z);
         const glm::vec3 across = cabin.rotation * glm::vec3(1.0f, 0.0f, 0.0f);
-        return cabin.position + across * ((static_cast<float>(player % 6) - 2.5f) * 0.55f) + glm::vec3(0.0f, 0.1f, 0.0f);
+        return cabin.position + across * ((static_cast<float>(player % kMaxPlayers) - 1.5f) * 0.7f) + glm::vec3(0.0f, 0.1f, 0.0f);
     }
     yaw = m_ship.SpawnYaw();
     return m_ship.Spawn(player);
@@ -147,9 +171,45 @@ void PredationGame::RecoverFallen()
     }
 }
 
+glm::vec3 PredationGame::ArrivalFor(uint8_t player) const
+{
+    float ignored = 0.0f;
+    return m_map == MapChoice::Facility ? MissionArrival(player) : m_map == MapChoice::Ship ? ShipArrival(player, ignored) : m_spawnPoint;
+}
+
+void PredationGame::SendShipState(int player)
+{
+    if (m_sessionMode != SessionMode::Host)
+    {
+        return;
+    }
+    WorldEventMessage event;
+    event.kind = WorldEventKind::ShipState;
+    event.index = static_cast<uint8_t>(m_map);
+    event.item = m_shipOrbiting;
+    event.flag = m_shipReady;
+    event.quiet = true;
+    if (player >= 0)
+    {
+        m_host.SendTo(static_cast<uint8_t>(player), event);
+        return;
+    }
+    m_host.Broadcast(event);
+}
+
 void PredationGame::UpdateShip()
 {
     RecoverFallen();
+    // The host says so whenever where everybody is, or how the ship stands, changes.
+    if (m_sessionMode == SessionMode::Host && m_screen == Screen::Playing)
+    {
+        const uint32_t now = static_cast<uint32_t>(m_map) | (static_cast<uint32_t>(m_shipOrbiting) << 2) | (m_shipReady ? 1u << 18 : 0u);
+        if (now != m_shipStateSent)
+        {
+            m_shipStateSent = now;
+            SendShipState();
+        }
+    }
     if (!m_ship.Built())
     {
         return;

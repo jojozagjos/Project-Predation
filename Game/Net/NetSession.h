@@ -7,6 +7,7 @@
 
 #include <glm/vec3.hpp>
 
+#include <functional>
 #include <memory>
 #include <utility>
 #include <string>
@@ -100,6 +101,10 @@ public:
                const PlayerConfig& playerConfig, const glm::vec3& spawn);
     void Stop();
     bool Running() const { return m_running; }
+    // Where the game wants somebody who joins now, by their number: the spawn given to Start is decided when hosting
+    // starts, which can be before the game has gone anywhere, and a body made there lands on top of whoever is
+    // standing on it.
+    void SetSpawnFor(std::function<glm::vec3(uint8_t)> spawnFor) { m_spawnFor = std::move(spawnFor); }
 
     // Once per fixed tick, after the local player has been stepped. The host is also a player.
     void Tick(uint32_t tick, const PlayerState& localState, float dt);
@@ -297,6 +302,7 @@ private:
     PhysicsWorld* m_physics = nullptr;
     PlayerConfig m_playerConfig;
     glm::vec3 m_spawn{0.0f};
+    std::function<glm::vec3(uint8_t)> m_spawnFor;
     float m_snapshotTimer = 0.0f;
     uint32_t m_starvedTicks = 0;
     // Whether the game has started or everybody is still in the lobby.

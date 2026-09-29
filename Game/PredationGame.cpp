@@ -563,6 +563,8 @@ bool PredationGame::OnInit(Application& app)
     // worked out, which has to go round it -- and what sites are called and what the intercom says.
     BuildDeployConsole();
     BuildShipControls();
+    // Somebody joining is made where they belong now: aboard, at the site, or at the spawn.
+    m_host.SetSpawnFor([this](uint8_t player) { return ArrivalFor(player); });
     LoadMissionData();
     LoadCinematics();
     app.GetPhysics().OptimizeBroadPhase();
@@ -927,6 +929,10 @@ void PredationGame::RegisterCommands()
                                               state.HorizontalSpeed(), PlayerStanceName(state.stance),
                                               state.grounded ? "grounded" : "airborne", state.health);
                                 m_app->GetConsole().Print(buffer);
+                                // In the log too, and where the picture is taken from and which map this machine thinks it is on, so a
+                                // scripted run of two machines can say where each one is.
+                                PRED_LOG_INFO(Gameplay, "{}; eye {:.1f} {:.1f} {:.1f}; map {}; aboard {}; camera mode {}", buffer, m_renderEye.x, m_renderEye.y, m_renderEye.z,
+                                              static_cast<int>(m_map), m_ship.Contains(state.position), static_cast<int>(m_cameraMode));
                             });
 
     console.RegisterCommand("cam_reset", "Reset the fly camera",
@@ -2102,6 +2108,15 @@ void PredationGame::ServeClientRequests()
 
     for (const uint8_t player : m_host.TakeJoined())
     {
+        // Put where everybody is now -- the host's idea of where to put a newcomer was decided when it started, which
+        // can be before it went anywhere -- and then told everything else.
+        const glm::vec3 place = ArrivalFor(player);
+        m_host.RespawnPlayer(player, place);
+        WorldEventMessage event;
+        event.kind = WorldEventKind::PlayerRespawned;
+        event.player = player;
+        event.position = place;
+        m_host.SendTo(player, event);
         SendWorldToPlayer(player);
     }
 
@@ -2187,8 +2202,9 @@ void PredationGame::SendWorldToPlayer(uint8_t player)
         facility.quiet = true;
         m_host.SendTo(player, facility);
     }
-    // And how the mission stands on it: the power, the download, a launch counting down.
+    // And how the mission stands on it: the power, the download, a launch counting down. And where everybody is.
     BroadcastMission(true, player);
+    SendShipState(player);
 
     // Somebody who has just walked in has to be told what has already happened, or every door that
     // was opened before they arrived is shut on their screen for the rest of the game.
@@ -2615,6 +2631,12 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
                 PlayNamed("Items/keycard_accept", door->hinge + glm::vec3(0.0f, 1.2f, 0.0f), 0.8f);
             }
         }
+        break;
+
+    case WorldEventKind::ShipState:
+        m_map = static_cast<MapChoice>(event.index);
+        m_shipOrbiting = event.item;
+        m_shipReady = event.flag;
         break;
 
     case WorldEventKind::PlayerRespawned:
@@ -3288,8 +3310,7 @@ void PredationGame::GoToMap(MapChoice map)
         for (const RemotePlayerView& remote : m_host.Remotes())
         {
             // At the site, each in their own place in the crawler; aboard, each in their own place in the briefing room.
-            float ignored = 0.0f;
-            const glm::vec3 place = map == MapChoice::Facility ? MissionArrival(remote.id) : map == MapChoice::Ship ? ShipArrival(remote.id, ignored) : m_spawnPoint;
+            const glm::vec3 place = ArrivalFor(remote.id);
             m_host.RespawnPlayer(remote.id, place);
             WorldEventMessage event;
             event.kind = WorldEventKind::PlayerRespawned;

@@ -150,6 +150,9 @@ private:
     std::vector<std::string> m_execQueue;
     size_t m_execNext = 0;
     int m_execWait = 0;
+    // "sleep <seconds>": a wait by the clock rather than by frames, for two machines run side by side whose frame
+    // rates differ -- a host and a guest scripted to meet at the same moment.
+    double m_execSleepUntil = 0.0;
     void RunExecQueue();
     std::filesystem::path m_userSettingsFile;
 

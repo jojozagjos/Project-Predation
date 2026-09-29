@@ -593,6 +593,11 @@ void Application::RunExecQueue()
         --m_execWait;
         return;
     }
+    const double now = std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+    if (now < m_execSleepUntil)
+    {
+        return;
+    }
     while (m_execNext < m_execQueue.size())
     {
         const std::string& command = m_execQueue[m_execNext++];
@@ -604,6 +609,13 @@ void Application::RunExecQueue()
             m_execWait = std::max(frames, 1);
             PRED_LOG_INFO(Engine, "--exec: waiting {} frames", m_execWait);
             --m_execWait;
+            return;
+        }
+        if (command.rfind("sleep ", 0) == 0)
+        {
+            const double seconds = std::max(std::atof(command.c_str() + 6), 0.0);
+            m_execSleepUntil = now + seconds;
+            PRED_LOG_INFO(Engine, "--exec: sleeping {:.1f} s", seconds);
             return;
         }
         PRED_LOG_INFO(Engine, "--exec: {}", command);

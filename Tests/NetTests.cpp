@@ -251,11 +251,12 @@ TEST_CASE("A snapshot round-trips and stays small enough to send at 30 Hz", "[ne
     WriteSnapshot(writer, sent);
     const std::vector<uint8_t>& bytes = writer.Finish();
 
-    // A full four-player snapshot is 90 bytes: 161 bits per player plus a 71-bit header, the last
-    // eight of those being what is in their hands and one whether a creature has hold of them. At the
-    // 30 Hz send rate that is 2.7 kB/s to each client, so a host with three of them spends under 8 kB/s
-    // upstream. The bound is here to catch a field being added carelessly, not to be tight.
-    CHECK(bytes.size() <= 100);
+    // A full four-player snapshot is 102 bytes: 170 bits per player (positions across the whole world, the ship
+    // a kilometre and a half out included) plus a 71-bit header, the last eight of those being what is in their
+    // hands and one whether a creature has hold of them. At the 30 Hz send rate that is 3.1 kB/s to each client,
+    // so a host with three of them spends under 10 kB/s upstream. The bound is here to catch a field being added
+    // carelessly, not to be tight.
+    CHECK(bytes.size() <= 110);
 
     BitReader reader(bytes.data(), bytes.size());
     MessageType type = MessageType::Count;
@@ -789,8 +790,8 @@ TEST_CASE("Loose objects are sent as state, and stay small", "[net][protocol]")
     BitWriter writer;
     WriteWorldState(writer, sent);
     const std::vector<uint8_t>& bytes = writer.Finish();
-    // Sixteen loose objects in under 200 bytes, at the same rate as a snapshot.
-    CHECK(bytes.size() < 200);
+    // Sixteen loose objects in under 220 bytes, at the same rate as a snapshot.
+    CHECK(bytes.size() < 220);
 
     BitReader reader(bytes.data(), bytes.size());
     WorldStateMessage received;
@@ -830,12 +831,12 @@ TEST_CASE("Creatures are sent as state: what they are, where, and what their bod
     BitWriter writer;
     WriteCreatureState(writer, sent);
     const std::vector<uint8_t>& bytes = writer.Finish();
-    // Eight creatures in 157 bytes -- 154 bits each, seventeen of them what the body is doing when it is
+    // Eight creatures in 166 bytes -- 163 bits each, seventeen of them what the body is doing when it is
     // doing nothing in particular (four of those which action, since feeding made nine), two what it is
     // clinging to -- thirty times a second, is about 4.5 KB/s per client: about the players' own
     // snapshots. A creature mid-blow, looking at somebody, costs about a hundred bits more, and one up a
     // wall seven more.
-    CHECK(bytes.size() <= 158);
+    CHECK(bytes.size() <= 168);
 
     BitReader reader(bytes.data(), bytes.size());
     CreatureStateMessage received;
@@ -1247,4 +1248,55 @@ TEST_CASE("A creature up a wall or on the ceiling arrives as one", "[net][protoc
     CHECK(received.creatures[1].cling == 1);
     CHECK(received.creatures[1].wallYaw == Catch::Approx(1.2f).margin(0.05f));
     CHECK(received.creatures[2].cling == 2);
+}
+
+TEST_CASE("The ship is inside what the wire can say", "[net][protocol]")
+{
+    // Aboard: a kilometre and a half out from the sites. Sent in a range that did not reach it, everybody else
+    // arrived at its edge, in empty space, and saw nothing.
+    SECTION("somebody put aboard arrives aboard")
+    {
+        WorldEventMessage sent;
+        sent.kind = WorldEventKind::PlayerRespawned;
+        sent.player = 1;
+        sent.position = {-1503.5f, 3.6f, -6.5f};
+        BitWriter writer;
+        WriteWorldEvent(writer, sent);
+        const std::vector<uint8_t>& bytes = writer.Finish();
+        BitReader reader(bytes.data(), bytes.size());
+        WorldEventMessage received;
+        REQUIRE(ReadWorldEvent(reader, received));
+        CHECK(glm::distance(received.position, sent.position) < 0.002f);
+    }
+    SECTION("and the stage the ship's cinematics are filmed on")
+    {
+        WorldEventMessage sent;
+        sent.kind = WorldEventKind::PlayerRespawned;
+        sent.position = {-2350.0f, 300.0f, -3450.0f};
+        BitWriter writer;
+        WriteWorldEvent(writer, sent);
+        const std::vector<uint8_t>& bytes = writer.Finish();
+        BitReader reader(bytes.data(), bytes.size());
+        WorldEventMessage received;
+        REQUIRE(ReadWorldEvent(reader, received));
+        CHECK(glm::distance(received.position, sent.position) < 0.002f);
+    }
+    SECTION("where everybody is, and how the ship stands")
+    {
+        WorldEventMessage sent;
+        sent.kind = WorldEventKind::ShipState;
+        sent.index = 3;
+        sent.item = 40321;
+        sent.flag = true;
+        BitWriter writer;
+        WriteWorldEvent(writer, sent);
+        const std::vector<uint8_t>& bytes = writer.Finish();
+        BitReader reader(bytes.data(), bytes.size());
+        WorldEventMessage received;
+        REQUIRE(ReadWorldEvent(reader, received));
+        CHECK(received.kind == WorldEventKind::ShipState);
+        CHECK(received.index == 3);
+        CHECK(received.item == 40321);
+        CHECK(received.flag);
+    }
 }

@@ -270,7 +270,7 @@ void NetHost::HandleJoin(PeerId peer, BitReader& reader)
     client->peer = peer;
     client->playerId = playerId;
     client->name = join.name.empty() ? "operator" : join.name;
-    if (!client->controller.Init(*m_physics, m_playerConfig, m_spawn))
+    if (!client->controller.Init(*m_physics, m_playerConfig, m_spawnFor ? m_spawnFor(playerId) : m_spawn))
     {
         PRED_LOG_ERROR(Network, "Could not create a body for peer {}", peer);
         SendRejection(peer, JoinRejection::ServerFull);
