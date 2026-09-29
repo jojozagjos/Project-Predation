@@ -783,7 +783,9 @@ void ShipMap::UpdateDust(Scene& scene, MeshLibrary& meshes, float speed, float d
         for (int tries = 0; tries < 16; ++tries)
         {
             speck.at = side * glm::mix(-across, across, random()) + up * glm::mix(-over, over, random()) + along * distance;
-            const bool inside = glm::all(glm::greaterThan(speck.at, clearLo)) && glm::all(glm::lessThan(speck.at, clearHi));
+            // Across the ship only: it travels the ship's whole length, so a lane that crosses the hull's outline anywhere
+            // goes straight through the rooms.
+            const bool inside = speck.at.x > clearLo.x && speck.at.x < clearHi.x && speck.at.y > clearLo.y && speck.at.y < clearHi.y;
             if (!inside)
             {
                 return;
