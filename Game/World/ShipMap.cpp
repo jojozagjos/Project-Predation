@@ -8,6 +8,8 @@
 #include <glm/geometric.hpp>
 #include <glm/gtc/constants.hpp>
 #include <glm/gtc/quaternion.hpp>
+#include <glm/gtx/quaternion.hpp>
+#include <glm/vector_relational.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -765,30 +767,36 @@ void ShipMap::UpdateDust(Scene& scene, MeshLibrary& meshes, float speed, float d
     }
     const glm::vec3 clearLo = hull.min - glm::vec3(4.0f);
     const glm::vec3 clearHi = hull.max + glm::vec3(4.0f);
-    constexpr float kAhead = 220.0f;
+    // A frame along the way the ship is going: dust is laid out across it and moves back down it.
+    const glm::vec3 along = glm::normalize(kTravelHeading);
+    const glm::vec3 side = glm::normalize(glm::cross(along, glm::vec3(0.0f, 1.0f, 0.0f)));
+    const glm::vec3 up = glm::cross(side, along);
+    const float reach = std::max(glm::length(hull.min), glm::length(hull.max)) + 220.0f; // how far ahead and behind
+    const float across = std::max(std::abs(clearLo.x), std::abs(clearHi.x)) + 60.0f;
+    const float over = std::max(std::abs(clearLo.y), std::abs(clearHi.y)) + 40.0f;
     const auto random = [this]()
     {
         m_dustSeed = m_dustSeed * 1664525u + 1013904223u;
         return static_cast<float>(m_dustSeed >> 8) / static_cast<float>(1u << 24);
     };
-    const auto place = [&](Speck& speck, float z)
+    const auto place = [&](Speck& speck, float distance)
     {
         for (int tries = 0; tries < 16; ++tries)
         {
-            speck.at = {glm::mix(clearLo.x - 60.0f, clearHi.x + 60.0f, random()), glm::mix(clearLo.y - 40.0f, clearHi.y + 40.0f, random()), z};
-            const bool inside = speck.at.x > clearLo.x && speck.at.x < clearHi.x && speck.at.y > clearLo.y && speck.at.y < clearHi.y;
+            speck.at = side * glm::mix(-across, across, random()) + up * glm::mix(-over, over, random()) + along * distance;
+            const bool inside = glm::all(glm::greaterThan(speck.at, clearLo)) && glm::all(glm::lessThan(speck.at, clearHi));
             if (!inside)
             {
                 return;
             }
         }
-        speck.at.x = clearHi.x + 10.0f;
+        speck.at += side * (across * 2.0f);
     };
     if (m_dust.empty())
     {
         const MeshHandle mesh = meshes.Upload(Primitives::Box({0.05f, 0.05f, 3.2f}), "ship_dust");
         const Material glow = Material::Emissive({0.75f, 0.82f, 1.0f}, 2.6f);
-        for (int i = 0; i < 420; ++i)
+        for (int i = 0; i < 700; ++i)
         {
             Speck speck;
             speck.entity = scene.CreateMeshEntity("ship_dust", Transform{}, mesh, glow);
@@ -798,7 +806,7 @@ void ShipMap::UpdateDust(Scene& scene, MeshLibrary& meshes, float speed, float d
                 renderer->blocksSky = false;
                 renderer->visible = false;
             }
-            place(speck, glm::mix(hull.min.z - kAhead, hull.max.z + kAhead, random()));
+            place(speck, glm::mix(-reach, reach, random()));
             m_dust.push_back(speck);
         }
     }
@@ -818,17 +826,21 @@ void ShipMap::UpdateDust(Scene& scene, MeshLibrary& meshes, float speed, float d
     {
         return;
     }
-    // The ship goes forward, down -z: what it passes goes back, and comes round again ahead of it.
+    // The ship goes towards the planet: what it passes goes back past it, and comes round again ahead of it. Each streak
+    // lies along the way it is going, so they all point back to the planet.
+    const glm::quat lie = glm::rotation(glm::vec3(0.0f, 0.0f, -1.0f), along);
     for (Speck& speck : m_dust)
     {
-        speck.at.z += speed * dt;
-        if (speck.at.z > hull.max.z + kAhead)
+        speck.at -= along * (speed * dt);
+        const float distance = glm::dot(speck.at, along);
+        if (distance < -reach)
         {
-            place(speck, hull.min.z - kAhead + (speck.at.z - hull.max.z - kAhead));
+            place(speck, reach + (distance + reach));
         }
         if (Transform* transform = scene.GetTransform(speck.entity))
         {
             transform->position = kOrigin + speck.at;
+            transform->rotation = lie;
         }
     }
 }

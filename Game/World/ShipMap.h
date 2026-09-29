@@ -32,6 +32,9 @@ inline constexpr float kLowerDeck = 0.0f;
 inline constexpr float kUpperDeck = 3.6f;
 // Where the shuttle rests in the hangar, on the bay doors, in the ship's own frame.
 inline constexpr glm::vec3 kShuttleHome{0.0f, 0.0f, 20.0f};
+// Which way the ship is going when it is under way to a site: at the planet, which comes up ahead and below the bow.
+// Not quite a unit vector; normalise it.
+inline constexpr glm::vec3 kTravelHeading{0.12f, -0.42f, -0.9f};
 // The shuttle's cabin, from its lamp: all its lamp lights, so none of it comes through the roof.
 inline constexpr glm::vec3 kShuttleCabinMin{-1.8f, -2.45f, -3.8f};
 inline constexpr glm::vec3 kShuttleCabinMax{1.8f, 0.05f, 4.0f};
@@ -99,7 +102,8 @@ public:
     void ShowFor(Scene& scene, const glm::vec3& eye);
 
     // Under way: specks of dust going past the windows at `speed` metres a second (0, none), which is how it is seen that
-    // the ship is moving at all -- the stars are too far to.
+    // the ship is moving at all -- the stars are too far to. They come from the way it is going (kTravelHeading), the
+    // planet, and stream out from it.
     void UpdateDust(Scene& scene, MeshLibrary& meshes, float speed, float dt);
 
     // The engines' glow: 0 cold, 1 at full burn.

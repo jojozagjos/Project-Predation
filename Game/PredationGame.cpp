@@ -9913,7 +9913,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
             {
                 const uint32_t seed = planetSeed;
                 const float tint = static_cast<float>((seed * 2654435761u) >> 24) / 255.0f;
-                environment.planetDirection = glm::normalize(glm::vec3(0.12f, -0.42f, -0.9f));
+                environment.planetDirection = glm::normalize(ShipSpec::kTravelHeading);
                 environment.planetRadius = glm::mix(0.01f, 0.6f, nearing * nearing);
                 environment.planetColor = glm::mix(glm::vec3(0.46f, 0.52f, 0.6f), glm::vec3(0.58f, 0.6f, 0.62f), tint);
                 environment.planetAir = 0.7f;
