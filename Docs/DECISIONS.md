@@ -2502,3 +2502,23 @@ looks good and says who made the game.
   left of the picture and the sun just behind its far edge, so what shows is a thin amber crescent and its air glowing
   (a planet's air can now glow warm: `Environment::planetAirWarm`). The name, spaced out, and "Press any key" over its
   dark side; the menu there after a key. The footer says made by Joseph Slade.
+
+## ADR-116: Orders come in, and are briefed on the screen
+
+Decided with the user: missions come at random times, with a video briefing whose voice-over is procedural -- put
+together from recordings so it always matches the site -- and never text-to-speech. Orders are orders: none is refused.
+
+- **Orders**: the host's clock -- 30 s into a new game (`game.first_order_seconds`), and 1 to 3 minutes after getting
+  back aboard (`game.order_seconds_min`/`max`) -- only while there is nothing else going on aboard. They come in with a
+  chime (World/transmission) and the intercom's "orders" moment; the briefing room's two screens ask for them to be
+  played; anybody plays them at the console; once briefed, anybody deploys from it. The state rides with the ship's
+  (`ShipState`, protocol 27), so everybody's screens show the same, and a briefing joined part way through is joined
+  where it is.
+- **The briefing** (Game/Mission/Briefing, Assets/Data/briefing.json): slides -- header, destination, site,
+  conditions, map, objective, end -- each with a line said over it: phrases, and the site's own names, numbers and
+  weather said word by word from recordings (Briefing/Phrases/..., Briefing/Words/<word>, Briefing/Numbers/<n>). A
+  slide lasts as long as what is said in it; a recording not yet made is silent but subtitled and timed as its words
+  would be. The left screen runs the slides (a turning planet, the site typed out, gauges for the weather, the
+  objective's steps); the right shows the site: its plan when a map came with the order, static when not.
+- The old pop-up for choosing a site is gone. `briefing [seed|play]` has orders come in now (and plays them).
+- The screens' drawing is shared (Game/World/ScreenCanvas.h): the devices' and the briefing room's.

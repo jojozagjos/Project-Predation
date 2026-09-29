@@ -17,7 +17,27 @@ struct SiteTitle
 {
     std::string planet;
     std::string site;
+    // And the parts they are made of, for saying them word by word.
+    std::string catalogue;
+    int catalogueNumber = 0;
+    std::string numeral; // which planet of its star, as a Roman numeral; empty for none
+    std::string qualifier;
+    std::string kind;
+    int siteNumber = 0;
+    std::string region;
 };
+
+// A Roman numeral's value (0 for something that is not one).
+int NumeralValue(const std::string& numeral);
+
+// A site's weather, from its seed and how far can be seen there: the same on every machine.
+struct SiteConditions
+{
+    int temperature = -20; // degrees Celsius
+    int wind = 8;          // metres a second
+    std::string visibility = "FAIR"; // POOR, LOW or FAIR
+};
+SiteConditions ConditionsFor(uint32_t seed, float fogEnd);
 
 class SiteNames
 {

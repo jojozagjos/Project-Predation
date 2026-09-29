@@ -109,6 +109,12 @@ void AudioEngine::Shutdown()
     m_streams.clear();
 }
 
+float AudioEngine::SecondsOf(SoundId sound) const
+{
+    std::lock_guard lock(m_mutex);
+    return sound < m_sounds.size() ? m_sounds[sound].Seconds() : 0.0f;
+}
+
 SoundId AudioEngine::Add(const std::string& name, SoundData data)
 {
     std::lock_guard lock(m_mutex);

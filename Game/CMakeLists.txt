@@ -8,6 +8,7 @@ set(PRED_GAME_SOURCES
     PredationGameMission.cpp
     PredationGameCinematics.cpp
     PredationGameShip.cpp
+    PredationGameBriefing.cpp
     PredationGameDevices.cpp
 
     Mission/Mission.h
@@ -16,6 +17,7 @@ set(PRED_GAME_SOURCES
     Mission/MissionProps.cpp
     Mission/SiteNames.h
     Mission/SiteNames.cpp
+    Mission/Briefing.cpp
 
     Cinematic/Cinematic.h
     Cinematic/Cinematic.cpp

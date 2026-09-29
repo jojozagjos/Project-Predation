@@ -2,6 +2,7 @@ find_package(Catch2 3 CONFIG REQUIRED)
 
 add_executable(PredationTests
     CoreTests.cpp
+    BriefingTests.cpp
     PlayerTests.cpp
     AnimationTests.cpp
     BodyPoseTests.cpp

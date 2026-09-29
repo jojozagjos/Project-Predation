@@ -83,7 +83,7 @@ void PredationGame::RegisterShipCommands()
                                             if (IsAuthority() && m_shipTravel > 0.0f && args.size() >= 2)
                                             {
                                                 m_shipTravel = std::max(static_cast<float>(std::atof(args[1].c_str())), 0.01f);
-                                                m_shipStateSent = 0xFFFFFFFFu;
+                                                m_shipStateSent = ~0ull;
                                             }
                                         });
     m_app->GetConsole().RegisterCommand("shuttle_launch", "As the host, work the shuttle's controls, as boarding does",
@@ -260,6 +260,9 @@ void PredationGame::SendShipState(int player)
     event.flag2 = m_shipTravel > 0.0f;
     event.amount = m_shipTravel;
     event.direction.x = m_shipTravelTotal;
+    event.other = static_cast<uint8_t>(m_order);
+    event.rounds = m_orderSite;
+    event.direction.y = m_briefingAt;
     event.quiet = true;
     if (player >= 0)
     {
@@ -276,8 +279,9 @@ void PredationGame::UpdateShip()
     if (m_sessionMode == SessionMode::Host && m_screen == Screen::Playing)
     {
         // Under way counts as a change of its own; the seconds left are counted down on each machine from there.
-        const uint32_t now = static_cast<uint32_t>(m_map) | (static_cast<uint32_t>(m_shipOrbiting) << 2) | (m_shipReady ? 1u << 18 : 0u) |
-                             (m_shipTravel > 0.0f ? 1u << 19 : 0u);
+        const uint64_t now = static_cast<uint64_t>(m_map) | (static_cast<uint64_t>(m_shipOrbiting) << 2) | (m_shipReady ? 1ull << 18 : 0ull) |
+                             (m_shipTravel > 0.0f ? 1ull << 19 : 0ull) | (static_cast<uint64_t>(m_order) << 20) |
+                             (static_cast<uint64_t>(m_orderSite) << 22);
         if (now != m_shipStateSent)
         {
             m_shipStateSent = now;
@@ -363,10 +367,22 @@ void PredationGame::DrawShipHud()
                 ImGui::TextDisabled("Launch from its controls, at the front of its cabin.");
             }
         }
+        else if (m_order == OrderState::Incoming)
+        {
+            ImGui::TextColored(text, "Orders have come in.");
+            ImGui::TextDisabled("Play the briefing at the console in the briefing room.");
+        }
+        else if (m_order == OrderState::Briefing)
+        {
+            ImGui::TextColored(text, "Briefing in the briefing room.");
+        }
+        else if (m_order == OrderState::Ready)
+        {
+            ImGui::TextColored(text, "Deploy from the console in the briefing room.");
+        }
         else
         {
-            ImGui::TextColored(text, IsAuthority() ? "Choose the next deployment at the console in the briefing room."
-                                                   : "The next deployment is chosen at the console in the briefing room.");
+            ImGui::TextColored(text, "Waiting for orders.");
         }
     }
     ImGui::End();

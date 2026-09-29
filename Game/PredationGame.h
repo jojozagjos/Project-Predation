@@ -23,6 +23,7 @@
 #include "Game/Creature/CreatureTuning.h"
 #include "Game/Player/PlayerBody.h"
 #include "Game/Player/PlayerController.h"
+#include "Game/Mission/Briefing.h"
 #include "Game/Mission/Mission.h"
 #include "Game/Mission/MissionProps.h"
 #include "Game/Mission/SiteNames.h"
@@ -686,7 +687,7 @@ private:
     // The host tells everybody (or one newcomer) the map, the site the ship is over and whether the shuttle is ready:
     // sent whenever any of it changes, so nobody is left in a different place from everybody else.
     void SendShipState(int player = -1);
-    uint32_t m_shipStateSent = 0xFFFFFFFFu;
+    uint64_t m_shipStateSent = ~0ull;
     // The journey to a site: the ship leaves (ship_depart), everybody has the run of it for the length of the burn --
     // the dust going past the windows, the planet coming up ahead -- and it arrives (ship_arrive). Seconds left of it (0
     // when not under way) and how long it is, the host's clock, followed everywhere.
@@ -788,11 +789,30 @@ private:
     void Say(const std::string& moment, float delay = 0.0f);
     void DrawTitleCard();
     void DrawSubtitle();
-    // The deployment console in the testing area, and the briefing it opens.
+    // The deployment console.
     void LoadMissionData();
     void BuildDeployConsole();
-    void OpenBriefing(uint16_t seed);
-    void DrawBriefing();
+
+    // --- Orders and the briefing (PredationGameBriefing.cpp) --------------------------------------------------------
+    // A deployment comes in at a random time aboard; anybody plays its briefing at the console, on the briefing room's
+    // screens, with its voice-over; then the console deploys. Orders are orders: none is turned down.
+    enum class OrderState : uint8_t
+    {
+        None,
+        Incoming,
+        Briefing,
+        Ready
+    };
+    void LoadBriefing();
+    void BuildBriefingScreens();
+    // The host: when the next orders come in -- soon at the start of a game, a minute or three after getting back.
+    void ScheduleOrders(bool firstOfGame);
+    void ClearOrders();
+    void IssueOrder(uint16_t site); // 0: a site of its own choosing
+    void StartBriefing();
+    void PrepareBriefing(uint16_t site);
+    void UpdateOrders(float dt);
+    void DrawBriefingScreens();
 
     // --- Cinematics (PredationGameCinematics.cpp) ------------------------------------------------
     //
@@ -1402,15 +1422,27 @@ private:
     // How the mission stood last tick, for noticing what has just happened.
     MissionState m_missionSeen;
     bool m_foundNoPowerSeen = false;
-    // The deployment console in the testing area, standing in for the ship's; and the briefing it opens (the host's):
-    // the site it would send everybody to.
+    // The deployment console in the briefing room.
     Entity m_deployConsole;
     Entity m_deployScreen;
     BodyHandle m_deployBody;
-    bool m_briefingOpen = false;
-    uint16_t m_nextSite = 0;
-    SiteTitle m_nextTitle;
-    bool m_nextMapGiven = true;
+    // Orders: how they stand, for which site, and (the host's) when the next come in; the briefing's place, its script,
+    // what it says about the site and when; and the two screens it plays on.
+    OrderState m_order = OrderState::None;
+    uint16_t m_orderSite = 0;
+    uint16_t m_orderHeard = 0;
+    float m_orderIn = -1.0f;
+    float m_orderClock = 0.0f;
+    float m_briefingAt = 0.0f;
+    size_t m_briefingCue = 0;
+    BriefingScript m_briefingScript;
+    BriefingFacts m_briefingFacts;
+    BriefingTimeline m_briefingTimeline;
+    SitePlan m_briefingPlan;
+    uint16_t m_briefingFor = 0;
+    Entity m_briefingScreens[2];
+    TextureHandle m_briefingTextures[2];
+    float m_briefingDrawnAt = -10.0f;
     // Cinematics: those there are, by name; the one playing; the picture being handed back to the player's eyes after
     // one (the last picture, and how long is left of the handing back); the field of view and far plane it wants this
     // frame (0 for the game's own); and whether the debugging panel is up.

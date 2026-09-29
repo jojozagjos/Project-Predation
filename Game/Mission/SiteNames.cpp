@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 #include <fstream>
 
 namespace pred
@@ -129,13 +130,57 @@ SiteTitle SiteNames::For(uint32_t seed) const
     std::snprintf(site, sizeof(site), "%02d", random.Int(siteLow, siteHigh));
     const std::string& region = random.Of(regions);
     title.site = (qualifier.empty() ? "" : qualifier + " ") + (kind.empty() ? "SITE" : kind) + " " + site + (region.empty() ? "" : ", " + region);
+    title.catalogue = catalogue;
+    title.catalogueNumber = number;
+    title.numeral = planet;
+    title.qualifier = qualifier;
+    title.kind = kind.empty() ? "SITE" : kind;
+    title.siteNumber = std::atoi(site);
+    title.region = region;
     return title;
+}
+
+int NumeralValue(const std::string& numeral)
+{
+    const auto value = [](char c)
+    {
+        switch (c)
+        {
+        case 'I': return 1;
+        case 'V': return 5;
+        case 'X': return 10;
+        case 'L': return 50;
+        case 'C': return 100;
+        default: return 0;
+        }
+    };
+    int total = 0;
+    for (size_t i = 0; i < numeral.size(); ++i)
+    {
+        const int here = value(numeral[i]);
+        if (here == 0)
+        {
+            return 0;
+        }
+        const int next = i + 1 < numeral.size() ? value(numeral[i + 1]) : 0;
+        total += here < next ? -here : here;
+    }
+    return total;
+}
+
+SiteConditions ConditionsFor(uint32_t seed, float fogEnd)
+{
+    SiteConditions conditions;
+    conditions.temperature = -(18 + static_cast<int>(seed % 23u));
+    conditions.wind = 4 + static_cast<int>((seed / 3u) % 19u);
+    conditions.visibility = fogEnd < 45.0f ? "POOR" : fogEnd < 70.0f ? "LOW" : "FAIR";
+    return conditions;
 }
 
 const std::vector<std::string>& IntercomLines::Moments()
 {
     static const std::vector<std::string> kMoments{"arrival",       "arrival_no_map", "power_out",     "download_started", "download_done",
-                                                   "launch",        "recovered",      "not_recovered", "left_behind"};
+                                                   "launch",        "recovered",      "not_recovered", "left_behind", "orders"};
     return kMoments;
 }
 

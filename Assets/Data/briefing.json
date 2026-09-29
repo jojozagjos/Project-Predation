@@ -1,0 +1,16 @@
+{
+  "_comment": "The deployment briefing played on the briefing room's screen: slides, each with a line said over it. A line is phrases (\"clip\": a recording, \"text\": its subtitle) and things of the site's said in their own words (\"say\": planet, site, temperature, wind, visibility, map). Every clip is a recording to be made: phrases at Assets/Audio/<clip>/, and the site's words at Assets/Audio/Briefing/Words/<word>/ (lower case, spaces as underscores) and its numbers at Assets/Audio/Briefing/Numbers/<n>/ (0 to 19, 20, 30 ... 90, and hundred). A clip not yet recorded is silent but still subtitled and timed. The words here are placeholders to be rewritten.",
+  "gap": 0.15,
+  "seconds_per_word": 0.36,
+  "slides": [
+    { "show": "header", "min_seconds": 3, "line": [ { "clip": "Briefing/Phrases/begin", "text": "Deployment briefing." } ] },
+    { "show": "planet", "min_seconds": 5, "line": [ { "clip": "Briefing/Phrases/destination", "text": "Destination:" }, { "say": "planet" } ] },
+    { "show": "site", "min_seconds": 6, "line": [ { "clip": "Briefing/Phrases/site", "text": "Site:" }, { "say": "site" } ] },
+    { "show": "conditions", "min_seconds": 6, "line": [ { "clip": "Briefing/Phrases/conditions", "text": "Surface conditions:" }, { "say": "temperature" }, { "say": "wind" }, { "say": "visibility" } ] },
+    { "show": "map", "min_seconds": 6, "line": [ { "say": "map" } ] },
+    { "show": "objective", "min_seconds": 8, "line": [ { "clip": "Briefing/Phrases/objective", "text": "Objective: locate the terminal, download the data, and bring the drive back to the shuttle." } ] },
+    { "show": "end", "min_seconds": 4, "line": [ { "clip": "Briefing/Phrases/end", "text": "Deploy when ready." } ] }
+  ],
+  "map_given": { "clip": "Briefing/Phrases/map_given", "text": "A map of the site is on file." },
+  "map_missing": { "clip": "Briefing/Phrases/map_missing", "text": "There is no map of the site on file." }
+}

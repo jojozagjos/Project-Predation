@@ -562,6 +562,8 @@ bool PredationGame::OnInit(Application& app)
     // The ship's deployment console, standing in the testing area until there is a ship -- before the walkable surface is
     // worked out, which has to go round it -- and what sites are called and what the intercom says.
     BuildDeployConsole();
+    BuildBriefingScreens();
+    LoadBriefing();
     BuildShipControls();
     // Somebody joining is made where they belong now: aboard, at the site, or at the spawn.
     m_host.SetSpawnFor([this](uint8_t player) { return ArrivalFor(player); });
@@ -2650,6 +2652,23 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
         m_shipReady = event.flag;
         m_shipTravel = event.flag2 ? std::max(event.amount, 0.01f) : 0.0f;
         m_shipTravelTotal = event.flag2 ? std::max(event.direction.x, m_shipTravel) : 0.0f;
+        // The orders as the host has them; a briefing joined part way through is joined where it is.
+        if (static_cast<OrderState>(event.other) != m_order || event.rounds != m_orderSite)
+        {
+            const OrderState was = m_order;
+            m_order = static_cast<OrderState>(event.other);
+            m_orderSite = event.rounds;
+            PrepareBriefing(m_orderSite);
+            if (m_order == OrderState::Briefing && was != OrderState::Briefing)
+            {
+                m_briefingAt = event.direction.y;
+                m_briefingCue = 0;
+                while (m_briefingCue < m_briefingTimeline.cues.size() && m_briefingTimeline.cues[m_briefingCue].at < m_briefingAt - 0.3f)
+                {
+                    ++m_briefingCue;
+                }
+            }
+        }
         break;
 
     case WorldEventKind::PlayerRespawned:
@@ -3312,6 +3331,8 @@ void PredationGame::GoToMap(MapChoice map)
     if (map == MapChoice::Ship)
     {
         RemoveAllDrones();
+        ClearOrders();
+        ScheduleOrders(false);
     }
     SpawnCreatures();
     RespawnLocalPlayer(m_spawnPoint);
@@ -3389,6 +3410,11 @@ void PredationGame::EnterWorld()
     m_shipOrbiting = m_map == MapChoice::Facility ? m_facility.Seed() : 0;
     m_shipReady = false;
     m_cineGoTo.reset();
+    ClearOrders();
+    if (m_map == MapChoice::Ship)
+    {
+        ScheduleOrders(true);
+    }
     m_screen = Screen::Playing;
     m_paused = false;
     m_titleStatus.clear();
@@ -8736,11 +8762,6 @@ void PredationGame::TryInteract()
     }
     // A terminal with no power does nothing, and there is nothing to ask the host: it clicks, and the objective says
     // what to do about it.
-    if (focus.kind == InteractionKind::Deploy && !IsAuthority())
-    {
-        m_app->GetConsole().Print("The host chooses where everybody goes.");
-        return;
-    }
     if (focus.kind == InteractionKind::Terminal && !m_mission.powered)
     {
         m_missionFoundNoPower = true;
@@ -9449,12 +9470,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
             // Settings is a page inside the pause menu, so Escape there goes back one step rather
             // than all the way out. Escape should undo the last thing you opened, and dropping
             // straight into the game from three levels in is a surprise every time.
-            if (m_briefingOpen)
-            {
-                m_briefingOpen = false;
-                m_wantMouseCaptured = true;
-            }
-            else if (m_paused && m_settingsOpen)
+            if (m_paused && m_settingsOpen)
             {
                 m_settingsOpen = false;
             }
@@ -9491,6 +9507,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
     UpdateCinematic(deltaSeconds);
     UpdateDevices(deltaSeconds);
     UpdateShipTravel(deltaSeconds);
+    UpdateOrders(deltaSeconds);
 
     glm::mat4 view;
     glm::vec3 viewPosition;
@@ -11061,7 +11078,7 @@ void PredationGame::DrawHud()
     // Interaction prompt, just below the reticle.
     const InteractionSystem::Focus& focus = m_interactions.CurrentFocus();
     // Nothing in the middle of the view from inside a locker: it is the slits you are looking at.
-    const std::string prompt = m_hidingSpot >= 0 || m_briefingOpen ? std::string() : focus.prompt;
+    const std::string prompt = m_hidingSpot >= 0 ? std::string() : focus.prompt;
     if (!prompt.empty())
     {
         // On the thing itself: the door, the locker, the crate. A prompt under the crosshair says what
@@ -11209,7 +11226,6 @@ void PredationGame::DrawHud()
     DrawShipHud();
     DrawTitleCard();
     DrawSubtitle();
-    DrawBriefing();
     DrawPlayerList();
 
     // Whose eyes these are, and how to move to somebody else's. Without it a dead player is looking

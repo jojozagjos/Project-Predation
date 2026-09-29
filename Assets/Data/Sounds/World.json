@@ -765,5 +765,43 @@
         "gain": 0.6
       }
     ]
+  },
+  "transmission": {
+    "seconds": 1.6,
+    "variants": 1,
+    "vary": 0,
+    "room": 0.35,
+    "seed": 7201,
+    "layers": [
+      {
+        "source": "sine",
+        "hz": 660,
+        "attack": 0.01,
+        "hold": 0.18,
+        "decay": 0.35,
+        "length": 0.55,
+        "gain": 0.22
+      },
+      {
+        "source": "sine",
+        "hz": 990,
+        "start": 0.22,
+        "attack": 0.01,
+        "hold": 0.18,
+        "decay": 0.45,
+        "length": 0.65,
+        "gain": 0.2
+      },
+      {
+        "source": "sine",
+        "hz": 1320,
+        "start": 0.44,
+        "attack": 0.01,
+        "hold": 0.25,
+        "decay": 0.7,
+        "length": 1,
+        "gain": 0.16
+      }
+    ]
   }
 }

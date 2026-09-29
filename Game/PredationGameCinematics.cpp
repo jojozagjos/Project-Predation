@@ -174,8 +174,8 @@ CinematicBindings PredationGame::CinematicBindingsNow() const
     bindings.words["region"] = comma == std::string::npos ? std::string() : title.site.substr(comma + 2);
     const uint32_t seed = m_facility.Seed();
     bindings.words["local_time"] = "LOCAL " + TwoFigures(static_cast<int>((seed * 7u) % 24u)) + ":" + TwoFigures(static_cast<int>((seed * 13u) % 60u));
-    bindings.words["conditions"] = "-" + std::to_string(18 + static_cast<int>(seed % 23u)) + " C  WIND " + std::to_string(4 + static_cast<int>((seed / 3u) % 19u)) +
-                                   " M/S  VISIBILITY " + (site.sky.fogEnd < 45.0f ? "POOR" : site.sky.fogEnd < 70.0f ? "LOW" : "FAIR");
+    const SiteConditions weather = ConditionsFor(seed, site.sky.fogEnd);
+    bindings.words["conditions"] = std::to_string(weather.temperature) + " C  WIND " + std::to_string(weather.wind) + " M/S  VISIBILITY " + weather.visibility;
     return bindings;
 }
 
@@ -239,7 +239,6 @@ void PredationGame::CloseOverlays()
 {
     m_paused = false;
     m_settingsOpen = false;
-    m_briefingOpen = false;
     m_inventoryOpen = false;
     m_wantMouseCaptured = !m_cineEditor.IsOpen();
 }

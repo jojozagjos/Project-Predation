@@ -112,6 +112,8 @@ public:
 
     // --- Sounds ---------------------------------------------------------------------------------
     SoundId Add(const std::string& name, SoundData data);
+    // How long a sound runs, in seconds (0 for none).
+    float SecondsOf(SoundId sound) const;
     SoundId Find(const std::string& name) const;
     // The name a sound was added under, for logs. Walks the table, so not for anything per sample.
     std::string NameOf(SoundId id) const;

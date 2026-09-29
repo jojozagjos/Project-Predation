@@ -160,7 +160,7 @@ void PredationGame::RegisterMissionCommands()
                                 m_lookYaw = std::atan2(-out.x, out.z);
                                 m_lookPitch = std::atan2(height - 1.6f, 1.1f);
                             });
-    console.RegisterCommand("briefing", "Stand at the deployment console and open its briefing: briefing [site seed]",
+    console.RegisterCommand("briefing", "As the host, have orders come in now and stand at the console: briefing [site seed | play]",
                             [this](const std::vector<std::string>& args)
                             {
                                 const Transform* console = m_scene.GetTransform(m_deployConsole);
@@ -172,8 +172,14 @@ void PredationGame::RegisterMissionCommands()
                                 // On the deck the console stands on.
                                 m_player.Teleport(glm::vec3(console->position.x, console->position.y - kDeployConsoleSize.y * 0.5f + 0.1f, console->position.z) + front * 1.2f);
                                 m_lookYaw = std::atan2(-front.x, front.z);
+                                if (args.size() >= 2 && args[1] == "play")
+                                {
+                                    StartBriefing();
+                                    return;
+                                }
                                 const int seed = args.size() >= 2 ? std::atoi(args[1].c_str()) : 0;
-                                OpenBriefing(static_cast<uint16_t>(seed > 0 ? seed : 1 + std::chrono::steady_clock::now().time_since_epoch().count() % 65535));
+                                ClearOrders();
+                                IssueOrder(static_cast<uint16_t>(std::clamp(seed, 0, 65535)));
                             });
     console.RegisterCommand("deploy", "As the host, press Deploy on a site without the briefing: deploy [site seed]",
                             [this](const std::vector<std::string>& args)
@@ -405,14 +411,25 @@ bool PredationGame::PerformMissionInteraction(InteractionKind kind, int index, u
     }
 
     case InteractionKind::Deploy:
-        // Choosing where everybody goes is the host's, and it happens on the host's screen.
-        // And not while under way: the next site is chosen once the ship is somewhere.
-        if (player != LocalPlayerId() || m_shipTravel > 0.0f)
+        // Anybody: orders in are played, and once briefed, everybody goes. Not while under way or over a site already.
+        (void)player;
+        if (m_shipTravel > 0.0f || m_shipReady)
         {
             return false;
         }
-        OpenBriefing(static_cast<uint16_t>(1 + std::chrono::steady_clock::now().time_since_epoch().count() % 65535));
-        return true;
+        if (m_order == OrderState::Incoming)
+        {
+            StartBriefing();
+            return true;
+        }
+        if (m_order == OrderState::Ready)
+        {
+            const uint16_t site = m_orderSite;
+            ClearOrders();
+            DeployTo(site);
+            return true;
+        }
+        return false;
 
     case InteractionKind::Board:
         return LaunchFromShip(player);
@@ -726,16 +743,6 @@ void PredationGame::BuildDeployConsole()
     m_interactions.Register(interactable);
 }
 
-void PredationGame::OpenBriefing(uint16_t seed)
-{
-    m_nextSite = seed == 0 ? 1 : seed;
-    m_nextTitle = m_siteNames.For(m_nextSite);
-    m_nextMapGiven = MissionPlan::Generate(SitePlan::Generate(m_nextSite), m_nextSite).mapGiven;
-    m_briefingOpen = true;
-    m_wantMouseCaptured = false;
-    PlayNamed("UI/click", m_renderEye, 0.5f, 1.0f, false);
-}
-
 void PredationGame::Say(const std::string& moment, float delay)
 {
     m_intercomQueue.emplace_back(moment, delay);
@@ -880,62 +887,6 @@ void PredationGame::DrawSubtitle()
         ImGui::PushTextWrapPos(viewport->Size.x * 0.58f);
         ImGui::TextColored({0.88f, 0.9f, 0.92f, std::min(m_subtitleLeft * 2.0f, 1.0f)}, "%s", m_subtitle.c_str());
         ImGui::PopTextWrapPos();
-    }
-    ImGui::End();
-}
-
-void PredationGame::DrawBriefing()
-{
-    if (!m_briefingOpen)
-    {
-        return;
-    }
-    // Walked away from the console, or not in a game any more: closed.
-    const Transform* console = m_scene.GetTransform(m_deployConsole);
-    if (m_screen != Screen::Playing || !IsAuthority() || !m_player.State().alive || console == nullptr ||
-        glm::distance(console->position, m_player.State().position) > 4.0f)
-    {
-        m_briefingOpen = false;
-        m_wantMouseCaptured = m_screen == Screen::Playing;
-        return;
-    }
-    const ImGuiViewport* viewport = ImGui::GetMainViewport();
-    ImGui::SetNextWindowPos({viewport->Pos.x + viewport->Size.x * 0.5f, viewport->Pos.y + viewport->Size.y * 0.45f}, ImGuiCond_Always, {0.5f, 0.5f});
-    ImGui::SetNextWindowBgAlpha(0.88f);
-    constexpr ImGuiWindowFlags kFlags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings |
-                                        ImGuiWindowFlags_NoMove;
-    if (ImGui::Begin("##Briefing", nullptr, kFlags))
-    {
-        ImGui::TextColored({0.62f, 0.66f, 0.7f, 1.0f}, "NEXT DEPLOYMENT");
-        ImGui::Spacing();
-        ImGui::TextDisabled("%s", m_nextTitle.planet.c_str());
-        ImGui::SetWindowFontScale(1.3f);
-        ImGui::TextColored({0.9f, 0.92f, 0.94f, 1.0f}, "%s", m_nextTitle.site.c_str());
-        ImGui::SetWindowFontScale(1.0f);
-        ImGui::Spacing();
-        ImGui::TextColored({0.86f, 0.88f, 0.9f, 1.0f}, "Objective: download the data from a terminal on the site,");
-        ImGui::TextColored({0.86f, 0.88f, 0.9f, 1.0f}, "and bring the drive back aboard the shuttle.");
-        ImGui::TextDisabled("Site map: %s", m_nextMapGiven ? "on file" : "none on file");
-        ImGui::Spacing();
-        ImGui::Separator();
-        ImGui::Spacing();
-        if (ImGui::Button("Deploy", {120.0f, 0.0f}))
-        {
-            m_briefingOpen = false;
-            m_wantMouseCaptured = true;
-            DeployTo(m_nextSite);
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("Another site", {120.0f, 0.0f}))
-        {
-            OpenBriefing(static_cast<uint16_t>(1 + (m_nextSite * 40503u + 7919u) % 65535u));
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("Not yet", {120.0f, 0.0f}))
-        {
-            m_briefingOpen = false;
-            m_wantMouseCaptured = true;
-        }
     }
     ImGui::End();
 }
