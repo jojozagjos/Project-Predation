@@ -755,7 +755,8 @@ void PredationGame::MenuSounds()
 {
     // Only where there is a menu: the debug windows over a game in progress stay silent.
     const bool menu = m_screen == Screen::Title || m_paused || m_settingsOpen;
-    const ImGuiID hovered = ImGui::GetCurrentContext() != nullptr ? ImGui::GetCurrentContext()->HoveredId : 0;
+    // Last frame's: this runs before anything is drawn this frame, when the new frame has already cleared it.
+    const ImGuiID hovered = ImGui::GetCurrentContext() != nullptr ? ImGui::GetCurrentContext()->HoveredIdPreviousFrame : 0;
     if (menu && hovered != 0 && hovered != m_menuHovered)
     {
         PlayNamed("UI/hover", m_renderEye, 0.6f, 1.0f, false);

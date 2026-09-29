@@ -52,6 +52,11 @@ bool ImGuiLayer::Init(Window& window, Renderer& renderer, ShaderLibrary& shaders
     // active item, which claims the keyboard on its own.
     io.BackendFlags |= ImGuiBackendFlags_RendererHasVtxOffset | ImGuiBackendFlags_RendererHasTextures;
     io.BackendRendererName = "predation_bgfx";
+    // The scalable one, not the pixel font: the title and the cards draw text three times its size, and the pixel font
+    // blown up that far was blocks. This one is drawn fresh at whatever size it is asked for.
+    ImFontConfig fontConfig;
+    fontConfig.SizePixels = 14.0f;
+    io.Fonts->AddFontDefaultVector(&fontConfig);
 
     m_iniPath = (Paths::UserDataDir() / "imgui.ini").string();
     io.IniFilename = m_iniPath.c_str();

@@ -61,7 +61,6 @@ struct TitleStyle
         ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
         ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 0.0f);
         ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.0f);
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(22.0f, 20.0f));
         ImGui::PushStyleColor(ImGuiCol_WindowBg, IM_COL32(6, 8, 10, 255));
         ImGui::PushStyleColor(ImGuiCol_Border, IM_COL32(90, 98, 104, 160));
         ImGui::PushStyleColor(ImGuiCol_Button, IM_COL32(16, 18, 22, 255));
@@ -81,7 +80,7 @@ struct TitleStyle
     ~TitleStyle()
     {
         ImGui::PopStyleColor(15);
-        ImGui::PopStyleVar(5);
+        ImGui::PopStyleVar(4);
     }
     TitleStyle(const TitleStyle&) = delete;
     TitleStyle& operator=(const TitleStyle&) = delete;
@@ -5446,8 +5445,18 @@ void PredationGame::DrawTitleScreen()
     // The planet behind it is the sky's (UpdateTitleCamera): over it, only a darkening down the left, so type reads.
     ImDrawList* backdrop = ImGui::GetBackgroundDrawList();
     const ImVec2 topLeft = viewport->WorkPos;
-    backdrop->AddRectFilledMultiColor(topLeft, {topLeft.x + size.x * 0.42f, topLeft.y + size.y}, IM_COL32(0, 0, 0, 120),
-                                      IM_COL32(0, 0, 0, 0), IM_COL32(0, 0, 0, 0), IM_COL32(0, 0, 0, 120));
+    backdrop->AddRectFilledMultiColor(topLeft, {topLeft.x + size.x * 0.5f, topLeft.y + size.y}, IM_COL32(0, 0, 0, 175),
+                                      IM_COL32(0, 0, 0, 0), IM_COL32(0, 0, 0, 0), IM_COL32(0, 0, 0, 175));
+    // Who made it and which version, in the corner, on every page of it.
+    {
+        std::string foot = "made by jojozagjos  |  v" PRED_VERSION_STRING;
+#if PRED_DEV_TOOLS
+        foot += "  |  developer build";
+#endif
+        const float footSize = ImGui::GetFontSize() * 0.9f;
+        ImGui::GetForegroundDrawList()->AddText(ImGui::GetFont(), footSize, {topLeft.x + 16.0f, topLeft.y + size.y - footSize - 14.0f},
+                                                IM_COL32(150, 158, 164, 255), foot.c_str());
+    }
 
     // First the name and "press any key"; everything else after a key.
     if (!m_titleAwake)
@@ -5482,17 +5491,7 @@ void PredationGame::DrawTitleScreen()
     }
     const WrapText wrap;
 
-    ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(226, 232, 236, 255));
-    ImGui::SetWindowFontScale(1.5f);
-    ImGui::TextUnformatted(Spaced("PROJECT PREDATION").c_str());
-    ImGui::SetWindowFontScale(1.0f);
-    ImGui::PopStyleColor();
-    {
-        // A short amber rule under the name, as on the title's own page.
-        const ImVec2 at = ImGui::GetCursorScreenPos();
-        ImGui::GetWindowDrawList()->AddRectFilled({at.x, at.y + 2.0f}, {at.x + 56.0f, at.y + 4.0f}, IM_COL32(230, 150, 60, 230));
-        ImGui::Dummy({0.0f, 10.0f});
-    }
+
 
     const ImVec2 wide{-1.0f, 34.0f};
 
@@ -5514,9 +5513,6 @@ void PredationGame::DrawTitleScreen()
         {
             m_settingsOpen = false;
         }
-        ImGui::Spacing();
-        ImGui::Separator();
-        ImGui::TextDisabled("made by jojozagjos  |  v" PRED_VERSION_STRING);
         return;
     }
 
@@ -5585,9 +5581,6 @@ void PredationGame::DrawTitleScreen()
             }
             m_titleStatus.clear();
         }
-        ImGui::Spacing();
-        ImGui::Separator();
-        ImGui::TextDisabled("made by jojozagjos  |  v" PRED_VERSION_STRING);
         return;
     }
 
@@ -5771,17 +5764,18 @@ void PredationGame::DrawTitleMenu()
         const std::string text = Spaced(entry.label);
         const ImVec2 extent = font->CalcTextSizeA(entrySize, FLT_MAX, 0.0f, text.c_str());
         ImGui::SetCursorScreenPos({x - 14.0f, y});
-        ImGui::InvisibleButton(entry.label, {extent.x + 60.0f, entrySize + 16.0f});
-        const bool hovered = ImGui::IsItemHovered();
-        if (ImGui::IsItemClicked())
+        if (ImGui::InvisibleButton(entry.label, {extent.x + 60.0f, entrySize + 16.0f}))
         {
             chosen = entry.action;
         }
+        const bool hovered = ImGui::IsItemHovered();
         float& shown = m_titleHover[entry.label];
         shown += ((hovered ? 1.0f : 0.0f) - shown) * std::min(dt * 14.0f, 1.0f);
         const auto mix = [&](int a, int b) { return static_cast<int>(static_cast<float>(a) + static_cast<float>(b - a) * shown); };
         draw->AddRectFilled({x - 14.0f, y + 6.0f}, {x - 11.0f, y + entrySize + 8.0f}, IM_COL32(230, 150, 60, static_cast<int>(230.0f * shown)));
-        draw->AddText(font, entrySize, {x + 12.0f * shown, y + 7.0f}, IM_COL32(mix(140, 244), mix(148, 244), mix(154, 246), 255), text.c_str());
+        // A shadow under each, so it reads over the stars and the lit edge of the planet alike.
+        draw->AddText(font, entrySize, {x + 12.0f * shown + 2.0f, y + 9.0f}, IM_COL32(0, 0, 0, 200), text.c_str());
+        draw->AddText(font, entrySize, {x + 12.0f * shown, y + 7.0f}, IM_COL32(mix(200, 255), mix(206, 250), mix(212, 244), 255), text.c_str());
         y += entrySize + 26.0f;
     }
 
@@ -5806,12 +5800,6 @@ void PredationGame::DrawTitleMenu()
     const float lineY = y + ImGui::GetFrameHeight();
     draw->AddLine({x, lineY}, {x + 276.0f, lineY}, ImGui::IsItemActive() ? IM_COL32(230, 150, 60, 220) : IM_COL32(120, 130, 136, 200));
 
-    // Who made it, at the foot.
-    std::string foot = "made by jojozagjos  |  v" PRED_VERSION_STRING;
-#if PRED_DEV_TOOLS
-    foot += "  |  developer build";
-#endif
-    draw->AddText(font, ImGui::GetFontSize() * 0.85f, {x + 2.0f, origin.y + size.y - 36.0f}, IM_COL32(120, 130, 136, 255), foot.c_str());
     ImGui::End();
 
     switch (chosen)
@@ -5856,8 +5844,7 @@ void PredationGame::DrawTitleSplash()
     const ImVec2 promptExtent = font->CalcTextSizeA(promptSize, FLT_MAX, 0.0f, prompt);
     draw->AddText(font, promptSize, {origin.x + (size.x - promptExtent.x) * 0.5f, origin.y + size.y * 0.8f}, IM_COL32(220, 226, 230, a(appear * breathe)),
                   prompt);
-    draw->AddText(font, ImGui::GetFontSize() * 0.85f, {x + 2.0f, origin.y + size.y - 36.0f}, IM_COL32(120, 130, 136, a(appear)),
-                  "made by jojozagjos  |  v" PRED_VERSION_STRING);
+
     if (m_titleClock > 0.6f && AnyKeyPressed())
     {
         m_titleAwake = true;
