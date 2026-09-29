@@ -102,7 +102,27 @@ void main()
 	// (It was the sky's zenith dimmed, which is the colour of a sky, and read as grey.)
 	float inSpace = step(0.001, u_skySpace.x);
 	color = mix(color, vec3(0.0006, 0.0007, 0.001), inSpace);
-	color += u_skySunColor.rgb * u_skySunColor.w * (halo * mix(0.35, 0.06, inSpace) + core) * mix(clamp(up * 4.0 + 0.4, 0.0, 1.0), 1.0, inSpace);
+	color += u_skySunColor.rgb * u_skySunColor.w * (halo * 0.35 + core) * clamp(up * 4.0 + 0.4, 0.0, 1.0) * (1.0 - inSpace);
+	// In space, with no air to spread it, the sun is a small hard disc, blinding, darker at its rim; a tight corona
+	// round it and a faint wide glow; and the thin rays a lens throws off anything that bright, four long and four short.
+	if (inSpace > 0.5)
+	{
+		vec3 sunDir = normalize(u_skySun.xyz);
+		float angle = acos(clamp(dot(ray, sunDir), -1.0, 1.0));
+		const float kDisc = 0.011;
+		float disc = 1.0 - smoothstep(kDisc * 0.8, kDisc, angle);
+		float limb = mix(0.55, 1.0, sqrt(max(1.0 - (angle / kDisc) * (angle / kDisc), 0.0)));
+		float corona = exp(-angle / 0.018) * 0.9 + exp(-angle / 0.09) * 0.12 + exp(-angle / 0.5) * 0.02;
+		vec3 across = abs(sunDir.y) < 0.95 ? normalize(cross(sunDir, vec3(0.0, 1.0, 0.0))) : vec3(1.0, 0.0, 0.0);
+		vec3 over = cross(across, sunDir);
+		vec2 p = vec2(dot(ray, across), dot(ray, over));
+		float facing = step(0.0, dot(ray, sunDir));
+		vec2 d = vec2(p.x + p.y, p.x - p.y) * 0.7071;
+		float rays = exp(-abs(p.y) * 900.0) * exp(-abs(p.x) * 9.0) + exp(-abs(p.x) * 900.0) * exp(-abs(p.y) * 9.0) +
+					 0.4 * (exp(-abs(d.y) * 900.0) * exp(-abs(d.x) * 22.0) + exp(-abs(d.x) * 900.0) * exp(-abs(d.y) * 22.0));
+		vec3 white = mix(u_skySunColor.rgb, vec3(1.0, 0.98, 0.94), 0.6);
+		color += white * u_skySunColor.w * (disc * limb * 60.0 + corona + rays * 0.8 * facing);
+	}
 
 	// A planet: a sphere one unit away, as big on the sky as it is asked to be, lit by the sun, with ice and cloud
 	// over it, and its air glowing at the edge on the lit side -- and a little beyond the edge.

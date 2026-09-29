@@ -105,7 +105,7 @@ TEST_CASE("The deployment console stands to one side of the briefing screens, fa
     CHECK(std::abs(local.x) > 7.9f);
     // Its front (-z of its own) looks into the room, and there is floor to stand on there with nothing in the way.
     const glm::vec3 front = console.rotation * glm::vec3(0.0f, 0.0f, -1.0f);
-    CHECK(front.x > 0.99f);
+    CHECK(front.z > 0.99f);
     const glm::vec3 standing = console.position + front * 1.2f + glm::vec3(0.0f, 1.0f, 0.0f);
     const RayHit floor = aboard.physics.RayCastStatic(standing, {0.0f, -1.0f, 0.0f}, 2.0f);
     REQUIRE(floor.hit);

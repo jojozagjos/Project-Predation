@@ -39,7 +39,7 @@ constexpr float kRedrawEvery = 1.0f / 12.0f;
 // Where they are, in the ship's frame: either side of the door, on the briefing room's front wall.
 constexpr float kScreenX = 4.65f;
 constexpr float kScreenY = 3.6f + 1.65f;
-constexpr float kScreenZ = -21.86f;
+constexpr float kScreenZ = -21.78f; // well clear of the glass it hangs over, which it fought seen from across the room
 constexpr float kScreenW = 5.5f;
 constexpr float kScreenH = 1.9f;
 // Heard and subtitled within this of the screens.

@@ -943,7 +943,17 @@
       "value": "orbit"
     }
   ],
-  "texts": [],
+  "texts": [
+    {
+      "t": 6.9,
+      "duration": 6.6,
+      "style": "title_card",
+      "type_speed": 30,
+      "lines": [
+        "{planet}"
+      ]
+    }
+  ],
   "lights": [
     {
       "light": "ship_engines",

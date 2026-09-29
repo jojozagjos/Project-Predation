@@ -672,6 +672,8 @@ void PredationGame::DrawCinematicOverlay()
             const std::string shown = sampler.Text(item, i, time);
             const float fontSize = ImGui::GetFontSize() * (i == 0 ? 1.45f : 1.0f) * scale;
             const ImU32 colour = i == 0 ? IM_COL32(226, 230, 234, static_cast<int>(255 * alpha)) : IM_COL32(150, 158, 166, static_cast<int>(255 * alpha));
+            // A shadow under it, so it reads over something bright behind: an engine, a lit cloud.
+            draw->AddText(font, fontSize, {x + 1.5f * scale, y + 1.5f * scale}, IM_COL32(0, 0, 0, static_cast<int>(200 * alpha)), shown.c_str());
             draw->AddText(font, fontSize, {x, y}, colour, shown.c_str());
             // The cursor, at the end of the line being typed, blinking.
             if (!typing && shown.size() < full.size() && !shown.empty())

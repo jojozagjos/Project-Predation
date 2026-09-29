@@ -688,9 +688,9 @@ CinePose ShipMap::LoadoutLocker() const
 
 CinePose ShipMap::BriefingConsole() const
 {
-    // Against the port wall in the forward corner, its front towards the room: near the screens but not in front of
-    // them, and clear of the way forward to the cockpit.
-    return Pose({-11.3f, kUpper, -20.2f}, 90.0f);
+    // Against the forward wall beside the port screen, its front towards the room, like the screens: next to them but
+    // not in front of them.
+    return Pose({-9.0f, kUpper, -21.3f}, 180.0f);
 }
 
 void ShipMap::ShowFor(Scene& scene, const glm::vec3& eye)
@@ -767,8 +767,8 @@ void ShipMap::UpdateDust(Scene& scene, MeshLibrary& meshes, float speed, float d
     }
     const glm::vec3 clearLo = hull.min - glm::vec3(4.0f);
     const glm::vec3 clearHi = hull.max + glm::vec3(4.0f);
-    // A frame along the way the ship is going: dust is laid out across it and moves back down it.
-    const glm::vec3 along = glm::normalize(kTravelHeading);
+    // A frame along the ship, bow first: dust is laid out across it and moves back down it.
+    const glm::vec3 along{0.0f, 0.0f, -1.0f};
     const glm::vec3 side = glm::normalize(glm::cross(along, glm::vec3(0.0f, 1.0f, 0.0f)));
     const glm::vec3 up = glm::cross(side, along);
     const float reach = std::max(glm::length(hull.min), glm::length(hull.max)) + 220.0f; // how far ahead and behind
@@ -826,8 +826,7 @@ void ShipMap::UpdateDust(Scene& scene, MeshLibrary& meshes, float speed, float d
     {
         return;
     }
-    // The ship goes towards the planet: what it passes goes back past it, and comes round again ahead of it. Each streak
-    // lies along the way it is going, so they all point back to the planet.
+    // The ship goes forward: what it passes goes back past it, and comes round again ahead of it.
     const glm::quat lie = glm::rotation(glm::vec3(0.0f, 0.0f, -1.0f), along);
     for (Speck& speck : m_dust)
     {
