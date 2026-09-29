@@ -996,6 +996,7 @@ void PredationGame::RegisterCommands()
                                 m_bootClock = 0.0f;
                                 m_bootCard = 0;
                                 m_titleAwake = false;
+                                m_titleShownFor = 0.0f;
                                 m_titleClock = 0.0f;
                             });
     console.RegisterCommand("cam_reset", "Reset the fly camera",
@@ -5445,8 +5446,12 @@ void PredationGame::DrawTitleScreen()
     // The planet behind it is the sky's (UpdateTitleCamera): over it, only a darkening down the left, so type reads.
     ImDrawList* backdrop = ImGui::GetBackgroundDrawList();
     const ImVec2 topLeft = viewport->WorkPos;
-    backdrop->AddRectFilledMultiColor(topLeft, {topLeft.x + size.x * 0.5f, topLeft.y + size.y}, IM_COL32(0, 0, 0, 175),
-                                      IM_COL32(0, 0, 0, 0), IM_COL32(0, 0, 0, 0), IM_COL32(0, 0, 0, 175));
+    // Everything of the title's own comes up together once the boot cards have gone: the shade, the name, the rest.
+    m_titleShownFor += ImGui::GetIO().DeltaTime;
+    const float titleFade = glm::smoothstep(0.0f, 1.2f, m_titleShownFor);
+    const int shade = static_cast<int>(175.0f * titleFade);
+    backdrop->AddRectFilledMultiColor(topLeft, {topLeft.x + size.x * 0.5f, topLeft.y + size.y}, IM_COL32(0, 0, 0, shade),
+                                      IM_COL32(0, 0, 0, 0), IM_COL32(0, 0, 0, 0), IM_COL32(0, 0, 0, shade));
     // Who made it and which version, in the corner, on every page of it.
     {
         std::string foot = "made by jojozagjos  |  v" PRED_VERSION_STRING;
@@ -5455,7 +5460,7 @@ void PredationGame::DrawTitleScreen()
 #endif
         const float footSize = ImGui::GetFontSize() * 0.9f;
         ImGui::GetForegroundDrawList()->AddText(ImGui::GetFont(), footSize, {topLeft.x + 16.0f, topLeft.y + size.y - footSize - 14.0f},
-                                                IM_COL32(150, 158, 164, 255), foot.c_str());
+                                                IM_COL32(150, 158, 164, static_cast<int>(255.0f * titleFade)), foot.c_str());
     }
 
     // First the name and "press any key"; everything else after a key.
@@ -5645,8 +5650,8 @@ bool PredationGame::DrawBootScreen()
         ++m_bootCard;
         m_bootClock = 0.0f;
     }
-    // After the last card, the black itself lifts off the title, and the name on it glides to where the title has it.
-    constexpr float kLift = 1.6f;
+    // After the last card, the black itself lifts off the planet; the title's own things fade in after (DrawTitleScreen).
+    constexpr float kLift = 1.2f;
     if (m_bootCard >= kCount && m_bootClock >= kLift)
     {
         m_bootDone = true;
@@ -5672,23 +5677,19 @@ bool PredationGame::DrawBootScreen()
     const ImVec2 work = viewport->WorkPos;
     const ImVec2 workSize = viewport->WorkSize;
     const ImVec2 centred{work.x + (workSize.x - nameExtent.x) * 0.5f, work.y + (workSize.y - bigSize * 1.02f - midSize) * 0.5f};
-    // Where the title draws it (DrawTitleSplash, DrawTitleMenu).
-    const ImVec2 resting{work.x + workSize.x * 0.07f, work.y + workSize.y * 0.12f};
 
     const float lifted = m_bootCard >= kCount ? std::clamp(m_bootClock / kLift, 0.0f, 1.0f) : 0.0f;
-    const float black = m_bootCard >= kCount ? 1.0f - glm::smoothstep(0.1f, 1.0f, lifted) : 1.0f;
+    const float black = m_bootCard >= kCount ? 1.0f - glm::smoothstep(0.0f, 1.0f, lifted) : 1.0f;
     draw->AddRectFilled(origin, {origin.x + size.x, origin.y + size.y}, IM_COL32(0, 0, 0, alpha(black)));
     if (m_bootCard >= kCount)
     {
-        const float glide = glm::smoothstep(0.0f, 0.85f, lifted);
-        name({centred.x + (resting.x - centred.x) * glide, centred.y + (resting.y - centred.y) * glide}, 1.0f);
+        m_titleShownFor = 0.0f;
         return true;
     }
     const float t = m_bootClock;
     const float length = kCards[m_bootCard];
-    // Each card up out of the black and back into it -- but the last, the name, stays, to go on to the title.
-    const bool last = m_bootCard == kCount - 1;
-    const float shown = std::min(std::clamp(t / 0.6f, 0.0f, 1.0f), last ? 1.0f : std::clamp((length - t) / 0.6f, 0.0f, 1.0f));
+    // Each card up out of the black and back into it.
+    const float shown = std::min(std::clamp(t / 0.6f, 0.0f, 1.0f), std::clamp((length - t) / 0.6f, 0.0f, 1.0f));
     ImFont* font = ImGui::GetFont();
     const ImVec2 centre{origin.x + size.x * 0.5f, origin.y + size.y * 0.5f};
     const auto text = [&](const std::string& words, float y, float scale, float fade)
@@ -5857,7 +5858,7 @@ void PredationGame::DrawTitleSplash()
     const float y = origin.y + size.y * 0.12f;
     const float big = ImGui::GetFontSize() * 3.2f;
     const float mid = ImGui::GetFontSize() * 1.6f;
-    const float appear = std::clamp(m_titleClock / 1.5f, 0.0f, 1.0f);
+    const float appear = glm::smoothstep(0.0f, 1.2f, m_titleShownFor);
     const auto a = [&](float v) { return static_cast<int>(std::clamp(v, 0.0f, 1.0f) * 255.0f); };
     draw->AddText(font, big, {x, y}, IM_COL32(236, 240, 242, a(appear)), Spaced("PROJECT").c_str());
     draw->AddText(font, mid, {x + 2.0f, y + big * 1.02f}, IM_COL32(200, 208, 212, a(appear)), Spaced("PREDATION").c_str());

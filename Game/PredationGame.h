@@ -1371,6 +1371,7 @@ private:
     int m_holdReportIn = 0;
     float m_titleClock = 0.0f;
     float m_titleStep = 0.0f; // the title camera's even step (UpdateTitleCamera)
+    float m_titleShownFor = 0.0f; // seconds since the title's own things began to fade in, after the boot cards
     // Which way round the ship the title's camera looks from, on average.
     static constexpr float kTitleAngle = 0.6f;
     // The boot screen shown once, when the game starts, and the title's "press any key", which the menu waits behind.
