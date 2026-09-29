@@ -5781,6 +5781,7 @@ void PredationGame::DrawTitleMenu()
     entries.push_back({"QUIT", 3});
 
     const float entrySize = ImGui::GetFontSize() * 1.45f;
+    bool anyHovered = false;
     float y = origin.y + size.y * 0.44f;
     int chosen = -1;
     for (const Entry& entry : entries)
@@ -5793,6 +5794,13 @@ void PredationGame::DrawTitleMenu()
             chosen = entry.action;
         }
         const bool hovered = ImGui::IsItemHovered();
+        // A tick as the pointer comes onto an entry -- once for each one it moves onto, not for anything else on the page.
+        if (hovered && m_titleHoveredEntry != entry.label)
+        {
+            m_titleHoveredEntry = entry.label;
+            PlayNamed("UI/hover", m_renderEye, 0.5f, 1.0f, false);
+        }
+        anyHovered = anyHovered || hovered;
         float& shown = m_titleHover[entry.label];
         shown += ((hovered ? 1.0f : 0.0f) - shown) * std::min(dt * 14.0f, 1.0f);
         const auto mix = [&](int a, int b) { return static_cast<int>(static_cast<float>(a) + static_cast<float>(b - a) * shown); };
@@ -5801,6 +5809,11 @@ void PredationGame::DrawTitleMenu()
         draw->AddText(font, entrySize, {x + 12.0f * shown + 2.0f, y + 9.0f}, IM_COL32(0, 0, 0, 200), text.c_str());
         draw->AddText(font, entrySize, {x + 12.0f * shown, y + 7.0f}, IM_COL32(mix(200, 255), mix(206, 250), mix(212, 244), 255), text.c_str());
         y += entrySize + 26.0f;
+    }
+
+    if (!anyHovered)
+    {
+        m_titleHoveredEntry.clear();
     }
 
     // Your name, a line to write on.

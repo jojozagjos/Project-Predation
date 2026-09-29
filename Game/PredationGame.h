@@ -1386,6 +1386,7 @@ private:
     void DrawTitleMenu();
     // How far each of its entries has come up under the pointer, 0 to 1, for easing it in and out.
     std::map<std::string, float> m_titleHover;
+    std::string m_titleHoveredEntry; // the entry the pointer is on, for its hover sound
     // Kept between visits to the menu so rejoining the same friend does not mean typing the address
     // again. Sized for an address and a port; anything longer is not an address.
     char m_joinAddress[64] = "127.0.0.1";
