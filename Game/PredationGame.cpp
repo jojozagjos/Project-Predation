@@ -952,6 +952,8 @@ void PredationGame::RegisterCommands()
                                               std::strtof(args[2].c_str(), nullptr),
                                               std::strtof(args[3].c_str(), nullptr));
                 m_cameraMode = CameraMode::Fly;
+                // In the editor, its camera is the one the view is taken from.
+                m_editor.Camera().position = m_camera.position;
             }
             if (args.size() >= 6)
             {
@@ -8292,8 +8294,14 @@ void PredationGame::UpdateEditorBody(float frameDeltaSeconds)
     m_editorState.grounded = true;
     m_editorState.alive = true;
     // Aside from the origin, where the model itself is laid out. Standing the two in the same place
-    // means the body is always in front of the thing being edited.
+    // means the body is always in front of the thing being edited. Beside anything bigger, just clear of it, for
+    // its size to be judged against somebody's.
     m_editorState.position = {1.1f, 0.0f, 0.0f};
+    AABB modelBounds;
+    if (!m_editor.IsWeapon() && m_editor.ModelBounds(modelBounds))
+    {
+        m_editorState.position = {modelBounds.max.x + 0.8f, 0.0f, (modelBounds.min.z + modelBounds.max.z) * 0.5f};
+    }
 
     // Walking on the spot. The stride advances but the body does not travel, so the gait can be
     // watched from one place rather than chased across the floor.
@@ -8323,6 +8331,22 @@ void PredationGame::UpdateEditorBody(float frameDeltaSeconds)
     const ModelAsset& model = m_editor.Model();
     const bool geometryChanged = m_editor.TakeGeometryChanged();
     const bool anythingChanged = m_editor.TakePreviewChanged();
+
+    // A vehicle or a prop is not held: empty hands, and nothing of a weapon's played on them.
+    if (!m_editor.IsWeapon())
+    {
+        if (m_editorBody.HasWeapon())
+        {
+            m_editorBody.SetWeapon(m_editorScene, m_app->GetMeshes(), nullptr);
+        }
+        if (m_benchItemHeld)
+        {
+            m_editorBody.ClearHeldItem(m_editorScene);
+            m_benchItemHeld = false;
+        }
+        m_editorBody.Update(m_editorScene, m_editorState, m_editorView, config, m_app->GetPhysics(), frameDeltaSeconds);
+        return;
+    }
 
     // One thing in the hands at a time.
     //
@@ -10446,7 +10470,7 @@ void PredationGame::DrawDebugOverlays()
     // The sockets on the weapon as it is actually held, with a line to the hand that is meant to be
     // at each. Placing a grip is a matter of looking at where the hand lands, and there is nothing
     // else that shows both at once.
-    if (m_screen == Screen::Editor && m_benchSockets && m_editorBodyBuilt)
+    if (m_screen == Screen::Editor && m_benchSockets && m_editorBodyBuilt && m_editorBody.HasWeapon())
     {
         const glm::quat hold = m_editorBody.WeaponRotation();
         const glm::vec3 origin = m_editorBody.WeaponOrigin();
@@ -11363,9 +11387,12 @@ void PredationGame::OnImGui()
     {
         m_editor.DrawUi(m_editorScene, m_app->GetMeshes());
         // Beside it, because it answers the one question the editor cannot: where does the hand end
-        // up.
-        DrawWeaponBench();
-        DrawEditorFirstPerson();
+        // up. Only for something held: a ship has no grip to be placed.
+        if (m_editor.IsWeapon())
+        {
+            DrawWeaponBench();
+            DrawEditorFirstPerson();
+        }
         return;
     }
 

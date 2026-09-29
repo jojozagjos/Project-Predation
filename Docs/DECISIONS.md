@@ -2422,3 +2422,18 @@ Reported by the user: in a lobby, the other player could not see the ship -- the
   the briefing room); and everybody down (the empty shuttle home, both in the briefing room). `sleep <seconds>` in
   --exec waits by the clock, so two machines with different frame rates can be scripted to meet; `deploy`,
   `mission_finish`, `shuttle_launch` and `ship_goto <place> all` drive a deployment without a person at either.
+
+## ADR-112: The model editor knows what it is editing
+
+Reported by the user: the model editor treated everything like a gun, and the ship's model should be editable.
+
+- **A model says what it is**: `"kind"` in its file -- `weapon`, `vehicle` or `prop` -- chosen in the File panel ("What it
+  is") and written on save. A model without one goes by its folder (Vehicles, Props, otherwise a weapon).
+- **Only a weapon is offered a weapon's tools**: the Hold it and First person panels, someone holding it, the grip,
+  carry and magazine socket help, the reload, equip and fire clips and reload templates, the hand tracks and Mirror
+  hands, and the barrel-down-+Z import hint. A vehicle or a prop gets parts, sockets by name (a vehicle's explained:
+  arrival, cabin_min / cabin_max, console, lamps), clips by name, and the person standing beside it for scale.
+- **The tools work at the model's size.** Handles, rings, grab distances, socket markers, the axes and the grid scale
+  with the model (one for anything hand-sized, so a rifle is edited exactly as before); the camera's pace is set from
+  its size when it is opened (and is in the View panel); snapping and the import size default by kind. The carrier,
+  sixty metres long, is as workable as a rifle.

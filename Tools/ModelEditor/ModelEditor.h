@@ -62,6 +62,29 @@ public:
     };
     void MakeReloadTemplate(ReloadTemplate kind);
 
+    // What the open model is. A weapon is held: it has hands, the sockets they are placed by, a magazine and reloads,
+    // and a person to try it in. A vehicle or a prop has none of that, and is not offered any of it.
+    enum class Kind : uint8_t
+    {
+        Weapon,
+        Vehicle,
+        Prop
+    };
+    Kind ModelKind() const { return m_kind; }
+    bool IsWeapon() const { return m_kind == Kind::Weapon; }
+    void SetKind(Kind kind);
+    static const char* KindName(Kind kind);
+    // The kind a folder under Models holds, for a model that does not say: Vehicles, Props, and otherwise weapons.
+    static Kind KindOfFolder(const std::string& folder);
+
+    // How big the open model is along its longest side, and the box round it (false when there is nothing in it).
+    float ModelSize() const { return m_modelSize; }
+    bool ModelBounds(AABB& out) const;
+    // How much bigger than a weapon the tools are drawn and grabbed: the handles, the rings, the socket markers and
+    // the grid. One for anything a hand could hold, so a rifle is edited as it always was; a sixty-metre ship gets
+    // handles it can see.
+    float ToolScale() const { return std::max(1.0f, m_modelSize / 1.2f); }
+
     const FlyCamera& Camera() const { return m_camera; }
     FlyCamera& Camera() { return m_camera; }
 
@@ -172,6 +195,8 @@ public:
     void SetModelForTesting(ModelAsset model)
     {
         m_model = std::move(model);
+        m_kind = m_model.kind == "vehicle" ? Kind::Vehicle : m_model.kind == "prop" ? Kind::Prop : Kind::Weapon;
+        MeasureModel(true);
         m_selectedPart = m_model.parts.empty() ? -1 : 0;
         m_selectedClip = m_model.clips.empty() ? -1 : 0;
         m_dirty = true;
@@ -201,6 +226,8 @@ public:
 
 private:
     void Rebuild(Scene& scene, MeshLibrary& meshes);
+    // Sizes the tools and the camera's pace to the model: after it is opened, made or imported.
+    void MeasureModel(bool setCamera);
     void NewModel();
     void AddPart(const char* name, PartShape shape);
     void ImportMesh(const std::string& file);
@@ -295,6 +322,8 @@ private:
 
     FlyCamera m_camera;
     float m_cameraSpeed = 1.4f;
+    Kind m_kind = Kind::Weapon;
+    float m_modelSize = 0.6f;
     float m_gridSnap = 0.005f;
     bool m_snapEnabled = true;
     bool m_showSockets = true;

@@ -6,9 +6,15 @@ file into a different folder tomorrow changes nothing anywhere else.
 
 ```
 Weapons/        the guns
+Vehicles/       the shuttle, the crawler, the carrier and the hangar doors
+Props/          anything else that is not held
 Source/         the art these were imported from, in the same shape as above
 Textures/       images the models name, shared across all of them
 ```
+
+A model says what it is with `"kind"` (`weapon`, `vehicle` or `prop`), which is what the editor offers it: grips,
+a magazine, reloads and someone to hold it for a weapon; none of that for the rest. One that does not say goes by its
+folder. Vehicles face **-Z** with the origin on the ground under their middle.
 
 Adding a new one is dropping a file in. Two models cannot share a name, even in different folders;
 the game says which two and which it picked rather than quietly using whichever it found first.

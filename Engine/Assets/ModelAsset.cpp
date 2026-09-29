@@ -368,6 +368,8 @@ bool ModelAsset::LoadFromFile(const std::filesystem::path& file)
     clips.clear();
     name = file.stem().string();
     ReadField(json, "name", name);
+    kind.clear();
+    ReadField(json, "kind", kind);
 
     if (const auto it = json.find("parts"); it != json.end() && it->is_array())
     {
@@ -518,6 +520,10 @@ bool ModelAsset::SaveToFile(const std::filesystem::path& file) const
 {
     nlohmann::json json;
     json["name"] = name;
+    if (!kind.empty())
+    {
+        json["kind"] = kind;
+    }
 
     nlohmann::json partArray = nlohmann::json::array();
     for (const ModelPart& part : parts)

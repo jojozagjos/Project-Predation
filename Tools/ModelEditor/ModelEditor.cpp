@@ -40,6 +40,97 @@ float SnapTo(float value, float step)
 
 } // namespace
 
+const char* ModelEditor::KindName(Kind kind)
+{
+    switch (kind)
+    {
+    case Kind::Vehicle: return "vehicle";
+    case Kind::Prop: return "prop";
+    case Kind::Weapon: break;
+    }
+    return "weapon";
+}
+
+ModelEditor::Kind ModelEditor::KindOfFolder(const std::string& folder)
+{
+    if (folder == "Vehicles")
+    {
+        return Kind::Vehicle;
+    }
+    if (folder == "Props")
+    {
+        return Kind::Prop;
+    }
+    return Kind::Weapon;
+}
+
+void ModelEditor::SetKind(Kind kind)
+{
+    const bool defaultFolder = m_folder.empty() || m_folder == "Weapons" || m_folder == "Vehicles" || m_folder == "Props";
+    m_kind = kind;
+    m_model.kind = KindName(kind);
+    // New models of this kind are filed with the others of it, unless somebody has chosen a folder of their own.
+    if (defaultFolder)
+    {
+        m_folder = kind == Kind::Vehicle ? "Vehicles" : kind == Kind::Prop ? "Props" : "Weapons";
+    }
+    // And a download is fitted to the size things of this kind are: a gun, a vehicle, a crate.
+    m_importSize = kind == Kind::Vehicle ? 8.0f : kind == Kind::Prop ? 1.0f : 0.6f;
+    m_gridSnap = kind == Kind::Vehicle ? 0.05f : kind == Kind::Prop ? 0.01f : 0.005f;
+    m_previewChanged = true;
+}
+
+bool ModelEditor::ModelBounds(AABB& out) const
+{
+    bool any = false;
+    for (const ModelPart& part : m_model.parts)
+    {
+        if (!part.visible)
+        {
+            continue;
+        }
+        AABB partBounds;
+        if (part.shape == PartShape::Mesh)
+        {
+            if (part.mesh.vertices.empty())
+            {
+                continue;
+            }
+            partBounds = part.mesh.ComputeBounds();
+        }
+        else
+        {
+            partBounds.min = part.size * -0.5f;
+            partBounds.max = part.size * 0.5f;
+        }
+        const glm::mat4 local = part.LocalMatrix();
+        // The eight corners, because a turned box's bounds are not its bounds turned.
+        for (int corner = 0; corner < 8; ++corner)
+        {
+            const glm::vec3 point{(corner & 1) ? partBounds.max.x : partBounds.min.x,
+                                  (corner & 2) ? partBounds.max.y : partBounds.min.y,
+                                  (corner & 4) ? partBounds.max.z : partBounds.min.z};
+            const glm::vec3 world = glm::vec3(local * glm::vec4(point, 1.0f));
+            out.min = any ? glm::min(out.min, world) : world;
+            out.max = any ? glm::max(out.max, world) : world;
+            any = true;
+        }
+    }
+    return any;
+}
+
+void ModelEditor::MeasureModel(bool setCamera)
+{
+    AABB bounds;
+    const glm::vec3 extent = ModelBounds(bounds) ? bounds.max - bounds.min : glm::vec3(0.6f);
+    m_modelSize = std::max({extent.x, extent.y, extent.z, 0.05f});
+    // Across it in a few seconds whatever its size: a rifle at a walk, a ship at a run.
+    if (setCamera)
+    {
+        m_cameraSpeed = std::max(1.4f, m_modelSize * 0.35f);
+    }
+}
+
 void ModelEditor::Init(Application& app)
 {
     m_app = &app;
@@ -94,7 +185,9 @@ void ModelEditor::NewModel()
     m_dirty = true;
     m_previewChanged = true;
     m_geometryChanged = true;
+    m_model.kind = KindName(m_kind);
     AddPart("body", PartShape::Box);
+    MeasureModel(true);
 }
 
 void ModelEditor::AddPart(const char* name, PartShape shape)
@@ -133,6 +226,16 @@ bool ModelEditor::Load(const std::string& modelName)
     m_model = std::move(loaded);
     m_saveName = modelName;
     m_frameRequested = true;
+    // What it is: as it says, or as its folder says. And it is saved back where it is.
+    const std::string folder = file.parent_path().filename().string();
+    m_folder = folder;
+    m_kind = m_model.kind == "vehicle" ? Kind::Vehicle
+             : m_model.kind == "prop"  ? Kind::Prop
+             : m_model.kind == "weapon" ? Kind::Weapon
+                                        : KindOfFolder(folder);
+    m_gridSnap = m_kind == Kind::Vehicle ? 0.05f : m_kind == Kind::Prop ? 0.01f : 0.005f;
+    m_importSize = m_kind == Kind::Vehicle ? 8.0f : m_kind == Kind::Prop ? 1.0f : 0.6f;
+    MeasureModel(true);
     m_selectedPart = m_model.parts.empty() ? -1 : 0;
     m_pick = m_model.parts.empty() ? Pick::None : Pick::Part;
     m_selectedSocket = -1;
@@ -147,6 +250,8 @@ bool ModelEditor::Load(const std::string& modelName)
 bool ModelEditor::Save()
 {
     m_model.name = m_saveName;
+    // Saying what it is, so it opens as one next time wherever it is filed.
+    m_model.kind = KindName(m_kind);
     // Rewritten where it already is, or put in the folder the editor is filing new models under.
     if (!m_model.SaveToFile(ModelPathFor(m_saveName, m_folder)))
     {
@@ -215,6 +320,7 @@ void ModelEditor::Rebuild(Scene& scene, MeshLibrary& meshes)
                 scene.CreateMeshEntity("editor_socket", Transform{}, socketMesh, socketMaterial));
         }
     }
+    MeasureModel(false);
     m_dirty = false;
 }
 
@@ -294,6 +400,7 @@ void ModelEditor::Update(Scene& scene, MeshLibrary& meshes, float dt)
         if (Transform* transform = scene.GetTransform(m_socketEntities[i]))
         {
             transform->position = m_model.sockets[i].position;
+            transform->scale = glm::vec3(ToolScale());
         }
     }
 }
@@ -306,8 +413,11 @@ void ModelEditor::DrawOverlays(DebugDraw& draw) const
     }
     // A ten centimetre grid on the ground plane and the model's own axes, so sizes can be judged
     // against something rather than guessed.
-    draw.Grid(0.5f, 0.05f, 0.0f);
-    draw.Axes(glm::mat4(1.0f), 0.25f);
+    // Scaled with the model: under a ship, ten centimetres is a grey smear and half a metre square is under one bolt.
+    const float scale = ToolScale();
+    const float gridStep = scale > 20.0f ? 1.0f : scale > 4.0f ? 0.25f : 0.05f;
+    draw.Grid(std::max(0.5f, m_modelSize * 0.75f), gridStep, 0.0f);
+    draw.Axes(glm::mat4(1.0f), 0.25f * scale);
 
     // Around what the part actually occupies. An imported mesh keeps its size at one, which is not
     // its size: outlining by that drew a metre of box around six centimetres of barrel.
@@ -328,10 +438,10 @@ void ModelEditor::DrawOverlays(DebugDraw& draw) const
     {
         const ModelSocket& socket = m_model.sockets[i];
         const bool selected = m_pick == Pick::Socket && static_cast<int>(i) == m_selectedSocket;
-        draw.Axes(glm::translate(glm::mat4(1.0f), socket.position), selected ? 0.09f : 0.045f);
+        draw.Axes(glm::translate(glm::mat4(1.0f), socket.position), (selected ? 0.09f : 0.045f) * scale);
         if (selected)
         {
-            draw.Sphere(socket.position, 0.022f, Color::kYellow, 10);
+            draw.Sphere(socket.position, 0.022f * scale, Color::kYellow, 10);
         }
     }
 
@@ -368,9 +478,9 @@ void ModelEditor::DrawOverlays(DebugDraw& draw) const
             glm::vec3 unit{0.0f};
             unit[axis] = 1.0f;
             const uint32_t colour = axis == m_dragAxis ? Color::kYellow : colours[axis];
-            draw.Line(at, at + unit * kHandleLength, colour);
+            draw.Line(at, at + unit * kHandleLength * scale, colour);
             // A head on the end, so there is something with size to aim at rather than a line.
-            draw.Sphere(at + unit * kHandleLength, 0.009f, colour, 8);
+            draw.Sphere(at + unit * kHandleLength * scale, 0.009f * scale, colour, 8);
         }
         // And the turning rings, one round each axis in the same colours.
         for (int axis = 0; axis < 3; ++axis)
@@ -381,11 +491,11 @@ void ModelEditor::DrawOverlays(DebugDraw& draw) const
             u[(axis + 1) % 3] = 1.0f;
             v[(axis + 2) % 3] = 1.0f;
             constexpr int kSegments = 40;
-            glm::vec3 last = at + u * kRingRadius;
+            glm::vec3 last = at + u * kRingRadius * scale;
             for (int i = 1; i <= kSegments; ++i)
             {
                 const float angle = glm::two_pi<float>() * static_cast<float>(i) / static_cast<float>(kSegments);
-                const glm::vec3 next = at + (u * std::cos(angle) + v * std::sin(angle)) * kRingRadius;
+                const glm::vec3 next = at + (u * std::cos(angle) + v * std::sin(angle)) * kRingRadius * scale;
                 draw.Line(last, next, colour);
                 last = next;
             }
@@ -413,6 +523,17 @@ void ModelEditor::DrawFilePanel(Scene& scene, MeshLibrary& meshes)
     }
     ImGui::SetItemTooltip("%s", "Under Assets/Models. A model is found by its name whatever folder "
                                 "it is in, so this is only about keeping the tree tidy.");
+
+    // What it is, which is what decides what this editor offers: hands, grips, a magazine and reloads for a weapon, and
+    // none of that for a vehicle or a prop. Saved in the model.
+    int kind = static_cast<int>(m_kind);
+    if (ImGui::Combo("What it is", &kind, "Weapon\0Vehicle\0Prop\0"))
+    {
+        PushUndo("what it is");
+        SetKind(static_cast<Kind>(kind));
+    }
+    ImGui::SetItemTooltip("%s", "A weapon is held, so it has grips, a muzzle, a magazine and reloads, and someone to try "
+                                "it in. A vehicle or a prop is none of that: it is parts, sockets by name and clips.");
 
     // Undo where it can be seen, as well as on the keys. A tool whose undo is invisible is one
     // people do not trust enough to experiment in, which is most of what an editor is for.
@@ -513,13 +634,21 @@ void ModelEditor::DrawFilePanel(Scene& scene, MeshLibrary& meshes)
     // How a download is turned into something the game can hold. All four are wanted before the
     // first look rather than after it: a model that arrives a hundred times too large and facing
     // sideways is indistinguishable from one that failed to load.
-    ImGui::DragFloat("Fit to (m)", &m_importSize, 0.01f, 0.05f, 4.0f, "%.2f");
+    ImGui::DragFloat("Fit to (m)", &m_importSize, 0.01f * std::max(1.0f, m_importSize), 0.05f, 400.0f, "%.2f");
     ImGui::DragFloat3("Turn (deg)", &m_importRotation.x, 1.0f, -180.0f, 180.0f, "%.0f");
     ImGui::Checkbox("Centre on import", &m_importCentre);
     ImGui::SameLine();
     ImGui::Checkbox("Replace parts", &m_importReplace);
-    ImGui::TextDisabled("The game wants the barrel down +Z and the grip at the origin. Replacing "
-                        "keeps sockets and clips, so turning it right takes a few goes.");
+    if (IsWeapon())
+    {
+        ImGui::TextDisabled("The game wants the barrel down +Z and the grip at the origin. Replacing "
+                            "keeps sockets and clips, so turning it right takes a few goes.");
+    }
+    else
+    {
+        ImGui::TextDisabled("The game wants the front facing -Z, up +Y, and the origin on the ground under its "
+                            "middle. Replacing keeps sockets and clips, so turning it right takes a few goes.");
+    }
 
     if (!m_status.empty())
     {
@@ -890,17 +1019,33 @@ void ModelEditor::DrawPartInspector()
 
 void ModelEditor::DrawSocketPanel()
 {
-    ImGui::TextDisabled("Sockets are what the game asks for by name. Carry is where the weapon "
-                        "sits, so moving it moves the gun on the screen; grip and support are "
-                        "where the hands close, so moving those moves the hands along the gun. "
-                        "Muzzle is where rounds appear, magazine is where the magazine seats, and "
-                        "sight is the line aiming puts on the view axis. Click one in the viewport "
-                        "to select it, then drag a handle.");
+    if (IsWeapon())
+    {
+        ImGui::TextDisabled("Sockets are what the game asks for by name. Carry is where the weapon "
+                            "sits, so moving it moves the gun on the screen; grip and support are "
+                            "where the hands close, so moving those moves the hands along the gun. "
+                            "Muzzle is where rounds appear, magazine is where the magazine seats, and "
+                            "sight is the line aiming puts on the view axis. Click one in the viewport "
+                            "to select it, then drag a handle.");
+    }
+    else if (m_kind == Kind::Vehicle)
+    {
+        ImGui::TextDisabled("Sockets are points the game asks for by name. On a vehicle: arrival is where "
+                            "people are put aboard, facing the way it faces; cabin_min and cabin_max are the "
+                            "corners of the box that counts as inside; console is where it is driven from; "
+                            "lamp and light_ ones are where its lights are. Click one in the viewport to select "
+                            "it, then drag a handle.");
+    }
+    else
+    {
+        ImGui::TextDisabled("Sockets are points the game asks for by name. Click one in the viewport to select it, "
+                            "then drag a handle.");
+    }
 
     // A model written before the carry socket existed has none, and falls back to being carried by
     // its grip, which is the behaviour that could not tell the two apart. Offering to add one where
     // the grip is changes nothing until it is moved.
-    if (m_model.FindSocket("carry") == nullptr && m_model.FindSocket("grip") != nullptr)
+    if (IsWeapon() && m_model.FindSocket("carry") == nullptr && m_model.FindSocket("grip") != nullptr)
     {
         ImGui::TextColored({0.90f, 0.80f, 0.55f, 1.0f},
                            "This model has no carry socket, so the gun is carried by its grip and "
@@ -1007,7 +1152,7 @@ void ModelEditor::DrawSocketPanel()
                 m_dirty = true;
                 m_previewChanged = true;
             }
-            if (socket.name == "grip")
+            if (IsWeapon() && socket.name == "grip")
             {
                 ImGui::TextDisabled("This turns the whole weapon in the hand. The grip stays where "
                                     "it is; the model spins about it.");
@@ -1569,57 +1714,73 @@ void ModelEditor::DrawAnimationPanel()
         m_previewChanged = true;
     };
 
-    if (ImGui::Button("Reload clip"))
+    if (IsWeapon())
     {
-        newClip("reload", 2.2f);
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Equip clip"))
-    {
-        newClip("equip", 0.6f);
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Fire clip"))
-    {
-        newClip("fire", 0.18f);
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Other"))
-    {
-        newClip(("clip_" + std::to_string(m_model.clips.size() + 1)).c_str(), 1.5f);
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Empty reload clip"))
-    {
-        newClip("reload_empty", 2.6f);
-    }
-    ImGui::TextDisabled("The game plays reload, reload_empty (when the magazine ran dry), equip and fire "
-                        "at the right moments, and a reload takes exactly as long as its clip. Anything "
-                        "else is yours to play from the Hold it panel.");
+        if (ImGui::Button("Reload clip"))
+        {
+            newClip("reload", 2.2f);
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Equip clip"))
+        {
+            newClip("equip", 0.6f);
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Fire clip"))
+        {
+            newClip("fire", 0.18f);
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Other"))
+        {
+            newClip(("clip_" + std::to_string(m_model.clips.size() + 1)).c_str(), 1.5f);
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Empty reload clip"))
+        {
+            newClip("reload_empty", 2.6f);
+        }
+        ImGui::TextDisabled("The game plays reload, reload_empty (when the magazine ran dry), equip and fire "
+                            "at the right moments, and a reload takes exactly as long as its clip. Anything "
+                            "else is yours to play from the Hold it panel.");
 
-    // Reloads that already move, to shape rather than build from nothing: the hands, the magazine
-    // held and handed over, and the weapon tilting to meet them.
-    ImGui::TextUnformatted("Start a reload from a template:");
-    if (ImGui::Button("Reload"))
-    {
-        MakeReloadTemplate(ReloadTemplate::Tactical);
+        // Reloads that already move, to shape rather than build from nothing: the hands, the magazine
+        // held and handed over, and the weapon tilting to meet them.
+        ImGui::TextUnformatted("Start a reload from a template:");
+        if (ImGui::Button("Reload"))
+        {
+            MakeReloadTemplate(ReloadTemplate::Tactical);
+        }
+        ImGui::SetItemTooltip("%s", "Magazine out, a fresh one from the belt, in. Replaces the clip called reload.");
+        ImGui::SameLine();
+        if (ImGui::Button("Reload from empty"))
+        {
+            MakeReloadTemplate(ReloadTemplate::Empty);
+        }
+        ImGui::SetItemTooltip("%s", "The same, then the hand hits the bolt catch. Replaces the clip called "
+                                    "reload_empty, and moves a part called bolt if there is one.");
+        ImGui::SameLine();
+        if (ImGui::Button("Double magazine"))
+        {
+            MakeReloadTemplate(ReloadTemplate::DoubleMagazine);
+        }
+        ImGui::SetItemTooltip("%s", "Two magazines taped side by side, one upside down: out, roll the pair "
+                                    "over, in. Adds magazine_2 beside the magazine if there is none. "
+                                    "Replaces the clip called reload.");
+
     }
-    ImGui::SetItemTooltip("%s", "Magazine out, a fresh one from the belt, in. Replaces the clip called reload.");
-    ImGui::SameLine();
-    if (ImGui::Button("Reload from empty"))
+    else
     {
-        MakeReloadTemplate(ReloadTemplate::Empty);
+        if (ImGui::Button("New clip"))
+        {
+            newClip(("clip_" + std::to_string(m_model.clips.size() + 1)).c_str(), 1.5f);
+        }
+        ImGui::TextDisabled(m_kind == Kind::Vehicle
+                                ? "A clip is played by its name by whatever drives the vehicle: ramp_opening, "
+                                  "ramp_closing and ramp_closed on the shuttle and the crawler, doors_opening and the "
+                                  "like on the hangar doors. Name one the same to have it played."
+                                : "A clip is played by its name by whatever uses the model.");
     }
-    ImGui::SetItemTooltip("%s", "The same, then the hand hits the bolt catch. Replaces the clip called "
-                                "reload_empty, and moves a part called bolt if there is one.");
-    ImGui::SameLine();
-    if (ImGui::Button("Double magazine"))
-    {
-        MakeReloadTemplate(ReloadTemplate::DoubleMagazine);
-    }
-    ImGui::SetItemTooltip("%s", "Two magazines taped side by side, one upside down: out, roll the pair "
-                                "over, in. Adds magazine_2 beside the magazine if there is none. "
-                                "Replaces the clip called reload.");
 
     for (int i = 0; i < static_cast<int>(m_model.clips.size()); ++i)
     {
@@ -1707,13 +1868,13 @@ void ModelEditor::DrawAnimationPanel()
             selectTrack("root");
         }
         // The hands. A clip with one of these takes that hand over while it plays: where it goes and
-        // how it turns are all in the keys.
-        if (ImGui::Selectable("hand_left (the left hand)"))
+        // how it turns are all in the keys. Only something held has hands on it.
+        if (IsWeapon() && ImGui::Selectable("hand_left (the left hand)"))
         {
             selectTrack(kLeftHandTrack);
             m_pick = Pick::Key;
         }
-        if (ImGui::Selectable("hand_right (the right hand)"))
+        if (IsWeapon() && ImGui::Selectable("hand_right (the right hand)"))
         {
             selectTrack(kRightHandTrack);
             m_pick = Pick::Key;
@@ -1745,13 +1906,16 @@ void ModelEditor::DrawAnimationPanel()
     {
         KeyAllParts();
     }
-    ImGui::SameLine();
-    if (ImGui::Button("Mirror hands"))
+    if (IsWeapon())
     {
-        MirrorHands();
+        ImGui::SameLine();
+        if (ImGui::Button("Mirror hands"))
+        {
+            MirrorHands();
+        }
+        ImGui::SetItemTooltip("%s", "Swap the hands in this clip, reflected across the weapon: what the left hand "
+                                    "did the right does, and every part a hand held goes to the other.");
     }
-    ImGui::SetItemTooltip("%s", "Swap the hands in this clip, reflected across the weapon: what the left hand "
-                                "did the right does, and every part a hand held goes to the other.");
     ImGui::SameLine();
     if (ImGui::Button("Delete key"))
     {
@@ -2264,14 +2428,15 @@ bool ModelEditor::BeginDrag(const glm::vec3& origin, const glm::vec3& direction)
     // Whichever handle the pointer is nearest, so long as it is near one at all and the point
     // grabbed is on the handle rather than out along the line beyond it.
     int best = -1;
-    float nearest = 0.018f; // how close counts as grabbing, in metres
+    const float scale = ToolScale();
+    float nearest = 0.018f * scale; // how close counts as grabbing, in metres
     float grabbed = 0.0f;
     for (int axis = 0; axis < 3; ++axis)
     {
         glm::vec3 unit{0.0f};
         unit[axis] = 1.0f;
         const AxisHit hit = ClosestOnAxis(origin, direction, at, unit);
-        if (hit.along < -0.01f || hit.along > kHandleLength || hit.miss >= nearest)
+        if (hit.along < -0.01f * scale || hit.along > kHandleLength * scale || hit.miss >= nearest)
         {
             continue;
         }
@@ -2289,7 +2454,7 @@ bool ModelEditor::BeginDrag(const glm::vec3& origin, const glm::vec3& direction)
     }
 
     // Or a ring: where the pointer's ray crosses each ring's plane, and how near that is to the ring.
-    float nearestRing = 0.012f;
+    float nearestRing = 0.012f * scale;
     for (int axis = 0; axis < 3; ++axis)
     {
         glm::vec3 normal{0.0f};
@@ -2305,7 +2470,7 @@ bool ModelEditor::BeginDrag(const glm::vec3& origin, const glm::vec3& direction)
             continue;
         }
         const glm::vec3 hit = origin + direction * t;
-        const float off = std::abs(glm::distance(hit, at) - kRingRadius);
+        const float off = std::abs(glm::distance(hit, at) - kRingRadius * scale);
         if (off < nearestRing)
         {
             nearestRing = off;
@@ -2498,40 +2663,7 @@ bool ModelEditor::TakeFrameRequest(glm::vec3& outPosition, glm::vec3& outTarget)
     m_frameRequested = false;
 
     AABB bounds;
-    bool any = false;
-    for (const ModelPart& part : m_model.parts)
-    {
-        if (!part.visible)
-        {
-            continue;
-        }
-        AABB partBounds;
-        if (part.shape == PartShape::Mesh)
-        {
-            if (part.mesh.vertices.empty())
-            {
-                continue;
-            }
-            partBounds = part.mesh.ComputeBounds();
-        }
-        else
-        {
-            partBounds.min = part.size * -0.5f;
-            partBounds.max = part.size * 0.5f;
-        }
-        const glm::mat4 local = part.LocalMatrix();
-        // The eight corners, because a turned box's bounds are not its bounds turned.
-        for (int corner = 0; corner < 8; ++corner)
-        {
-            const glm::vec3 point{(corner & 1) ? partBounds.max.x : partBounds.min.x,
-                                  (corner & 2) ? partBounds.max.y : partBounds.min.y,
-                                  (corner & 4) ? partBounds.max.z : partBounds.min.z};
-            const glm::vec3 world = glm::vec3(local * glm::vec4(point, 1.0f));
-            bounds.min = any ? glm::min(bounds.min, world) : world;
-            bounds.max = any ? glm::max(bounds.max, world) : world;
-            any = true;
-        }
-    }
+    const bool any = ModelBounds(bounds);
 
     if (!any)
     {
@@ -2811,7 +2943,7 @@ void ModelEditor::DrawModelPanel()
                 -(bounds.min.y + bounds.max.y) * 0.5f, -(bounds.min.z + bounds.max.z) * 0.5f);
 
     ImGui::SetNextItemWidth(90.0f);
-    ImGui::DragFloat("##fit", &m_importSize, 0.01f, 0.05f, 4.0f, "%.2f");
+    ImGui::DragFloat("##fit", &m_importSize, 0.01f * std::max(1.0f, m_importSize), 0.05f, 400.0f, "%.2f");
     ImGui::SameLine();
     if (ImGui::Button("Fit longest side to this"))
     {
@@ -2885,12 +3017,14 @@ void ModelEditor::DrawUi(Scene& scene, MeshLibrary& meshes)
         if (ImGui::CollapsingHeader("View"))
         {
             ImGui::Checkbox("Snap to grid", &m_snapEnabled);
-            ImGui::DragFloat("Snap step", &m_gridSnap, 0.001f, 0.001f, 0.1f, "%.3f m");
+            ImGui::DragFloat("Snap step", &m_gridSnap, 0.001f, 0.001f, 1.0f, "%.3f m");
             if (ImGui::Checkbox("Show sockets", &m_showSockets))
             {
                 m_dirty = true;
                 m_previewChanged = true;
             }
+            ImGui::DragFloat("Camera speed", &m_cameraSpeed, 0.05f * std::max(1.0f, m_cameraSpeed), 0.2f, 200.0f, "%.1f m/s");
+            ImGui::SetItemTooltip("%s", "Set from the model's size when it is opened: a rifle at a walk, a ship at a run.");
             ImGui::TextDisabled("WASD to move, Q and E for down and up, right mouse to look.");
         }
         ImGui::PopTextWrapPos();

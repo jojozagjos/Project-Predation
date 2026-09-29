@@ -177,6 +177,7 @@ TEST_CASE("A host answers somebody who asks, straight back to them", "[lan][udp]
 
     LanLobby heard;
     bool answered = false;
+    bool somebodyElse = false;
     std::vector<NetPacket> none;
     for (int i = 0; i < 200 && !answered; ++i)
     {
@@ -191,8 +192,18 @@ TEST_CASE("A host answers somebody who asks, straight back to them", "[lan][udp]
                 heard = lobby;
                 answered = true;
             }
+            else if (!answered && DecodeLanBeacon(datagram.bytes.data(), datagram.bytes.size(), lobby))
+            {
+                somebodyElse = true;
+            }
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
+    // With the game itself open on this machine, the question can reach its socket rather than ours -- two on one port
+    // share what arrives -- and it is the one that answers. That says nothing about ours either way.
+    if (!answered && somebodyElse)
+    {
+        SKIP("another game on this machine answered in its place");
     }
     REQUIRE(answered);
     CHECK(heard.name == "kitchen");

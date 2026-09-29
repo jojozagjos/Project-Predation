@@ -168,6 +168,9 @@ class ModelAsset
 {
 public:
     std::string name;
+    // What it is -- "weapon", "vehicle" or "prop" -- which decides what the editor offers for it. Empty in a model
+    // written before there was such a thing; the editor then goes by the folder it is in.
+    std::string kind;
     std::vector<ModelPart> parts;
     std::vector<ModelSocket> sockets;
     std::vector<AnimationClip> clips;

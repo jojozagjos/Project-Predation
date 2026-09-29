@@ -370,3 +370,40 @@ TEST_CASE("A clip's hands can be swapped over, mirrored", "[editor]")
     REQUIRE(editor.Undo());
     CHECK(editor.Model().clips[0].tracks[0].part == std::string(kLeftHandTrack));
 }
+
+TEST_CASE("The editor offers a model what it is, and works at its size", "[editor]")
+{
+    // A model that does not say what it is goes by its folder.
+    CHECK(ModelEditor::KindOfFolder("Vehicles") == ModelEditor::Kind::Vehicle);
+    CHECK(ModelEditor::KindOfFolder("Props") == ModelEditor::Kind::Prop);
+    CHECK(ModelEditor::KindOfFolder("Weapons") == ModelEditor::Kind::Weapon);
+
+    // A rifle is edited as it always was: handles a hand's width long.
+    ModelEditor rifle;
+    ModelAsset gun;
+    ModelPart receiver;
+    receiver.name = "receiver";
+    receiver.size = {0.06f, 0.12f, 0.8f};
+    gun.parts.push_back(receiver);
+    rifle.SetModelForTesting(gun);
+    CHECK(rifle.IsWeapon());
+    CHECK(rifle.ToolScale() == Catch::Approx(1.0f));
+
+    // A ship sixty metres long is a vehicle, and its handles are big enough to see and grab from where it can be seen
+    // whole; the camera crosses it in a few seconds rather than a minute.
+    ModelEditor carrier;
+    ModelAsset ship;
+    ship.kind = "vehicle";
+    ModelPart hull;
+    hull.name = "hull";
+    hull.size = {14.0f, 12.0f, 60.0f};
+    ship.parts.push_back(hull);
+    carrier.SetModelForTesting(ship);
+    CHECK_FALSE(carrier.IsWeapon());
+    CHECK(carrier.ModelSize() == Catch::Approx(60.0f));
+    CHECK(carrier.ToolScale() > 40.0f);
+    CHECK(carrier.CameraSpeed() >= 15.0f);
+
+    // Said in the file, so it opens as one next time.
+    CHECK(std::string(ModelEditor::KindName(ModelEditor::Kind::Vehicle)) == "vehicle");
+}
