@@ -25,19 +25,6 @@ int StacksOf(const ItemDefinition& definition, int count)
 
 } // namespace
 
-Loadout Default(const ItemDatabase& items)
-{
-    Loadout kit;
-    for (const ItemDefinition& definition : items.All())
-    {
-        if (definition.id != kInvalidItem && definition.loadoutMax > 0 && definition.loadoutDefault > 0)
-        {
-            kit.push_back({definition.id, definition.loadoutDefault});
-        }
-    }
-    return kit;
-}
-
 std::vector<ItemId> Issued(const ItemDatabase& items)
 {
     std::vector<ItemId> issued;

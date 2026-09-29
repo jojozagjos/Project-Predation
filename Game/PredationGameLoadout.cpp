@@ -23,9 +23,6 @@ namespace pred
 namespace
 {
 
-CVar<std::string> cv_loadout{"game.loadout", std::string(), "The kit last drawn at the loadout locker, to start from next time",
-                             CVarFlags::Archive};
-
 // The locker's screen: its size on the locker's face and in pixels.
 constexpr float kScreenW = 1.1f;
 constexpr float kScreenH = 0.62f;
@@ -122,34 +119,13 @@ void PredationGame::BuildLoadoutLocker()
     m_interactions.Register(interactable);
 }
 
-bool PredationGame::CarryingKit() const
-{
-    for (int i = 0; i < m_inventory.SlotCount(); ++i)
-    {
-        const ItemDefinition* item = m_items.Get(m_inventory.At(i).item);
-        if (!m_inventory.At(i).IsEmpty() && item != nullptr && item->loadoutMax > 0)
-        {
-            return true;
-        }
-    }
-    return false;
-}
-
 void PredationGame::OpenLoadout()
 {
-    // Starting from what was drawn last time (or the standard kit), cut to what there is room for beside whatever has
-    // been found and is kept.
-    Loadout start = Loadouts::FromText(m_items, cv_loadout.Get());
-    if (start.empty())
-    {
-        start = Loadouts::Default(m_items);
-    }
-    start = Loadouts::Clamp(m_items, start, m_inventory.SlotCount() - Loadouts::KeptSlots(m_items, m_inventory));
+    // Empty: everybody chooses every time.
     m_loadoutChoice.clear();
     for (const ItemId id : Loadouts::Issued(m_items))
     {
-        const auto found = std::find_if(start.begin(), start.end(), [&](const LoadoutPick& pick) { return pick.item == id; });
-        m_loadoutChoice.push_back({id, found != start.end() ? found->count : 0});
+        m_loadoutChoice.push_back({id, 0});
     }
     m_loadoutOpen = true;
     m_inventoryOpen = false;
@@ -175,7 +151,6 @@ void PredationGame::DrawKit(const Loadout& kit)
     m_weapon = WeaponState{};
     m_ammoSlot = Inventory::kNoSlot;
     const Loadout drawn = Loadouts::Draw(m_items, m_inventory, kit);
-    cv_loadout.Set(Loadouts::ToText(m_items, kit));
     if (m_sessionMode == SessionMode::Client)
     {
         LoadoutMessage message;
@@ -360,16 +335,6 @@ void PredationGame::DrawLoadoutPanel()
         CloseLoadout();
     }
     ImGui::SameLine();
-    if (ImGui::Button("Standard kit", {120.0f, 30.0f}))
-    {
-        const Loadout standard = Loadouts::Clamp(m_items, Loadouts::Default(m_items), room);
-        for (LoadoutPick& pick : m_loadoutChoice)
-        {
-            const auto found = std::find_if(standard.begin(), standard.end(), [&](const LoadoutPick& p) { return p.item == pick.item; });
-            pick.count = found != standard.end() ? found->count : 0;
-        }
-    }
-    ImGui::SameLine();
     if (ImGui::Button("Cancel", {90.0f, 30.0f}))
     {
         CloseLoadout();
@@ -384,13 +349,12 @@ void PredationGame::RegisterLoadoutCommands()
     m_app->GetConsole().RegisterCommand("loadout", "Open the loadout locker's screen, wherever you are standing: loadout",
                             [this](const std::vector<std::string>&) { OpenLoadout(); });
     m_app->GetConsole().RegisterCommand(
-        "loadout_draw", "Draw a kit as the locker would: loadout_draw <medkit:2,battery:2,...|standard>",
+        "loadout_draw", "Draw a kit as the locker would: loadout_draw <medkit:2,battery:2,...>",
         [this](const std::vector<std::string>& args)
         {
-            const std::string text = args.size() >= 2 ? args[1] : std::string("standard");
-            DrawKit(text == "standard" ? Loadouts::Default(m_items) : Loadouts::FromText(m_items, text));
+            DrawKit(Loadouts::FromText(m_items, args.size() >= 2 ? args[1] : std::string()));
         },
-        "loadout_draw <kit|standard>");
+        "loadout_draw <kit>");
 }
 
 } // namespace pred

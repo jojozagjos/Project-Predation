@@ -200,8 +200,7 @@ bool ItemDatabase::LoadFromFile(const std::filesystem::path& file)
         definition.key = entry["key"].get<std::string>();
         for (const std::string& key :
              UnknownKeys(entry, {"key", "name", "max_stack", "mass", "shape", "size", "color", "roughness", "metallic",
-                                 "emissive", "hold_offset", "hold_rotation", "hold_hand", "use", "bench_count", "device", "loadout",
-                                 "loadout_default", "blurb"}))
+                                 "emissive", "hold_offset", "hold_rotation", "hold_hand", "use", "bench_count", "device", "loadout", "blurb"}))
         {
             m_warnings.push_back(definition.key + ": " + key);
             PRED_LOG_WARN(Gameplay, "items.json: '{}' has a key nothing reads, '{}' -- a typo?", definition.key, key);
@@ -247,7 +246,6 @@ bool ItemDatabase::LoadFromFile(const std::filesystem::path& file)
         definition.benchCount = std::max(0, entry.value("bench_count", 1));
         definition.device = entry.value("device", std::string());
         definition.loadoutMax = std::max(0, entry.value("loadout", 0));
-        definition.loadoutDefault = std::clamp(entry.value("loadout_default", 0), 0, definition.loadoutMax);
         definition.blurb = entry.value("blurb", std::string());
         if (const auto use = entry.find("use"); use != entry.end() && use->is_object())
         {

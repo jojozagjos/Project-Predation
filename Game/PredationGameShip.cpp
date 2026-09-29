@@ -389,19 +389,6 @@ void PredationGame::DrawShipHud()
         {
             ImGui::TextColored(text, "Waiting for orders.");
         }
-
-        // Where the kit comes from, until some has been drawn: there is nowhere else aboard to get any.
-        ImGui::Dummy({0.0f, 6.0f});
-        ImGui::TextColored(heading, "KIT");
-        if (!CarryingKit())
-        {
-            ImGui::TextColored({1.0f, 0.67f, 0.24f, 1.0f}, "No kit drawn.");
-            ImGui::TextDisabled("Choose yours at the loadout locker: the gear room, lower deck, to port.");
-        }
-        else
-        {
-            ImGui::TextDisabled("Change it at the loadout locker in the gear room.");
-        }
     }
     ImGui::End();
 }

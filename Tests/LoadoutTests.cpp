@@ -50,13 +50,10 @@ TEST_CASE("The locker issues the kit and not what is only ever found", "[loadout
     }
 }
 
-TEST_CASE("The standard kit fills the bag exactly, and everything cannot be taken at once", "[loadout]")
+TEST_CASE("Everything cannot be taken at once", "[loadout]")
 {
     const ItemDatabase items = LoadItems();
     const Inventory bag;
-    const Loadout standard = Loadouts::Default(items);
-    CHECK(Loadouts::SlotsFor(items, standard) == bag.SlotCount());
-    CHECK(Loadouts::Clamp(items, standard, bag.SlotCount()).size() == standard.size());
 
     // Everything, as much as may be had: more than there is room for, so something has to be chosen.
     Loadout everything;
@@ -106,7 +103,9 @@ TEST_CASE("Drawing a kit hands back the old one and keeps what was found", "[loa
     CHECK(Loadouts::KeptSlots(items, bag) == 2);
 
     // Everything: only four slots are free, so the end of it is left behind.
-    const Loadout drawn = Loadouts::Draw(items, bag, Loadouts::Default(items));
+    const Loadout six{{medkit, 2}, {battery, 2}, {items.IdOf("flare"), 2}, {items.IdOf("sidearm"), 1}, {items.IdOf("site_map"), 1},
+                      {items.IdOf("objective_tracker"), 1}};
+    const Loadout drawn = Loadouts::Draw(items, bag, six);
     CHECK(bag.CountOf(keycard) == 1);
     CHECK(bag.CountOf(drive) == 1);
     CHECK(bag.CountOf(carbine) == 0);

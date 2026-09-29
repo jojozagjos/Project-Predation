@@ -810,8 +810,6 @@ private:
     void DrawKit(const Loadout& kit);
     // The host: a client's kit, drawn.
     void ServeLoadout(uint8_t player, const LoadoutMessage& kit);
-    // Whether anything the locker issues is being carried.
-    bool CarryingKit() const;
 
     // --- Orders and the briefing (PredationGameBriefing.cpp) --------------------------------------------------------
     // A deployment comes in at a random time aboard; anybody plays its briefing at the console, on the briefing room's

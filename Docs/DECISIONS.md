@@ -2594,14 +2594,13 @@ Asked for by the user: a loadout screen instead of every item sitting out on the
 comes from; and the deployment console moved from in front of the briefing screens.
 
 - **The loadout locker** stands straight ahead of the gear room's door: a tall locker with a screen reading LOADOUT, and
-  a hazard line on the floor before it. Using it opens a screen on your own machine listing everything issued (with
+  a hazard line on the floor before it. Using it opens a screen on your own machine, empty each time, listing everything issued (with
   what it is for, and a weapon's magazine and spares), a count of each up to the most one person may have, and the six
-  slots filling as you choose. The standard kit fills them exactly, so taking the carbine means leaving something.
+  slots filling as you choose: there is not room for everything, so something is left.
   Drawing a kit hands back everything you had from the locker and gives you the new one, weapons loaded; what was found
-  (the keycard, the drive) is kept and takes its slot. The last kit drawn is remembered (game.loadout).
-- **What is issued** is data: `loadout`, `loadout_default` and `blurb` per item in items.json. The benches aboard are
+  (the keycard, the drive) is kept and takes its slot.
+- **What is issued** is data: `loadout` and `blurb` per item in items.json. The benches aboard are
   empty; bench_count still lays out the test map's and the creature lab's.
-- **Until you have drawn a kit** the ship's HUD says so, and where the locker is.
 - **Multiplayer**: the locker is nobody else's business, so a client draws its kit itself and tells the host
   (MessageType::Loadout); the host checks they are at the locker, holds the kit to the limits, and sets its count of
   what they carry to it, so drops and uses are checked against what was really drawn. Protocol 28.

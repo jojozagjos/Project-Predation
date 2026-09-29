@@ -89,9 +89,8 @@ struct ItemDefinition
     // How many are laid out on each equipment bench (the test map's and the creature lab's).
     int benchCount = 1;
     // Aboard the ship everything is drawn at the loadout locker instead: the most of it one person may take (0: it is not
-    // issued -- it is only ever found), how many a new kit has, and a line for the locker's screen on what it is for.
+    // issued -- it is only ever found), and a line for the locker's screen on what it is for.
     int loadoutMax = 0;
-    int loadoutDefault = 0;
     std::string blurb;
     // What it shows while it is held, for the things that are screens: "map" (the walls near you, swept like a motion
     // tracker) or "tracker" (the way to the objective, and how far). Empty for everything else.

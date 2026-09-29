@@ -22,9 +22,6 @@ using Loadout = std::vector<LoadoutPick>;
 namespace Loadouts
 {
 
-// What a new kit has: every issued thing's loadout_default, in the order items.json has them.
-Loadout Default(const ItemDatabase& items);
-
 // Everything the locker issues, in items.json's order.
 std::vector<ItemId> Issued(const ItemDatabase& items);
 
