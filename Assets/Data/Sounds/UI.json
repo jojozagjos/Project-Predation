@@ -28,37 +28,39 @@
     ]
   },
   "click": {
-    "seconds": 0.3,
+    "seconds": 0.22,
     "variants": 1,
-    "gain": 0.85,
-    "room": 0.25,
-    "seed": 9011,
+    "gain": 0.8,
+    "room": 0.18,
+    "seed": 9013,
     "layers": [
       {
-        "source": "click",
-        "filter": "bandpass",
-        "cutoff": 1600,
-        "q": 3,
-        "decay": 0.01,
-        "length": 0.04,
-        "gain": 0.9
+        "source": "noise",
+        "filter": "lowpass",
+        "cutoff": 1400,
+        "cutoff_end": 500,
+        "attack": 0.001,
+        "decay": 0.018,
+        "length": 0.05,
+        "gain": 0.5
       },
       {
         "source": "sine",
-        "hz": 190,
-        "hz_end": 95,
+        "hz": 150,
+        "hz_end": 105,
         "attack": 0.002,
-        "decay": 0.09,
-        "length": 0.22,
-        "gain": 0.75
+        "decay": 0.055,
+        "length": 0.16,
+        "gain": 0.7
       },
       {
         "source": "sine",
-        "hz": 1240,
-        "attack": 0.002,
-        "decay": 0.12,
-        "length": 0.28,
-        "gain": 0.12
+        "hz": 760,
+        "hz_end": 720,
+        "attack": 0.003,
+        "decay": 0.06,
+        "length": 0.14,
+        "gain": 0.1
       }
     ]
   },

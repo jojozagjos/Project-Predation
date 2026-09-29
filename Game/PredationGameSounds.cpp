@@ -757,10 +757,6 @@ void PredationGame::MenuSounds()
     const bool menu = m_screen == Screen::Title || m_paused || m_settingsOpen;
     // Last frame's: this runs before anything is drawn this frame, when the new frame has already cleared it.
     const ImGuiID hovered = ImGui::GetCurrentContext() != nullptr ? ImGui::GetCurrentContext()->HoveredIdPreviousFrame : 0;
-    if (menu && hovered != 0 && hovered != m_menuHovered)
-    {
-        PlayNamed("UI/hover", m_renderEye, 0.6f, 1.0f, false);
-    }
     if (menu && hovered != 0 && ImGui::GetIO().MouseClicked[0])
     {
         PlayNamed("UI/click", m_renderEye, 0.75f, 1.0f, false);
