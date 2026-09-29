@@ -2522,3 +2522,20 @@ together from recordings so it always matches the site -- and never text-to-spee
   objective's steps); the right shows the site: its plan when a map came with the order, static when not.
 - The old pop-up for choosing a site is gone. `briefing [seed|play]` has orders come in now (and plays them).
 - The screens' drawing is shared (Game/World/ScreenCanvas.h): the devices' and the briefing room's.
+
+## ADR-117: Boot cards, and a title of our own
+
+Asked for by the user: the boot as black-and-white cards one after another, crediting jojozagjos, and an original title
+where the planet's surface can be seen, without the stars stuttering. (Replaces ADR-115.)
+
+- **Boot**: black and white, each card up out of the black and back into it -- LOADING (walking dots, a hairline
+  along the bottom), "made by jojozagjos", BEST PLAYED WITH HEADPHONES, PROJECT PREDATION -- then the black lifts off
+  the title. A key moves to the next card; `boot` shows them again; scripted runs skip them.
+- **Title**: the scene itself, not a painted backdrop: the carrier in orbit (the stage's, so nothing of anybody's is
+  near), the camera drifting slowly round it, the ice planet below with its day side and night coming across it, the
+  ship right of the middle and the menu down the left. Near plane two metres out, far three kilometres, for a ship a
+  hundred metres off.
+- **Stars** were points smaller than a pixel sampled at the pixel's middle: there one frame and gone the next as the
+  view moved. Each is now a soft point spread over at least the pixel it falls in (`fwidth`), which holds still.
+- **Planets** have ground and cloud at two scales, so seen close they are a surface, not a blur.
+- The credit everywhere is jojozagjos.

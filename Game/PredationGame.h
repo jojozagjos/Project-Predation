@@ -1342,11 +1342,14 @@ private:
     // frame, when nothing is equipped, so a report taken then is about an empty hand.
     int m_holdReportIn = 0;
     float m_titleClock = 0.0f;
+    // Which way round the ship the title's camera looks from, on average.
+    static constexpr float kTitleAngle = 0.6f;
     // The boot screen shown once, when the game starts, and the title's "press any key", which the menu waits behind.
     float m_bootClock = 0.0f;
     bool m_bootDone = false;
     bool m_titleAwake = false;
     bool m_bootForced = false; // the boot command: shown even in a scripted run
+    int m_bootCard = 0;        // which of its cards is up
     bool DrawBootScreen();
     void DrawTitleSplash();
     // Kept between visits to the menu so rejoining the same friend does not mean typing the address

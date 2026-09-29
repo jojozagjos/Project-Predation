@@ -943,6 +943,7 @@ void PredationGame::RegisterCommands()
                                 m_bootDone = false;
                                 m_bootForced = true;
                                 m_bootClock = 0.0f;
+                                m_bootCard = 0;
                                 m_titleAwake = false;
                                 m_titleClock = 0.0f;
                             });
@@ -5287,12 +5288,19 @@ void PredationGame::UpdateTitleCamera(float frameDeltaSeconds)
 {
     m_titleClock += frameDeltaSeconds;
 
-    // Out in open space, well away from everything there is -- nothing within the far plane, so the picture is the sky
-    // alone: the stars and the planet the title is set against -- drifting very slightly, as a held shot does.
-    constexpr glm::vec3 kTitleSpot{5200.0f, 1800.0f, 5200.0f};
-    m_camera.position = kTitleSpot;
-    m_camera.yaw = 0.035f * std::sin(m_titleClock * 0.045f);
-    m_camera.pitch = 0.02f * std::sin(m_titleClock * 0.031f + 1.0f);
+    // The ship in orbit -- the one cinematics fly, on the stage, so nothing of anybody's is near it -- and the camera
+    // drifting slowly round it, the planet's lit face below. Held for a long time, as a title's shot is.
+    const glm::vec3 centre = ShipSpec::kStage + glm::vec3(0.0f, 4.0f, 4.0f);
+    const float angle = kTitleAngle + 0.32f * std::sin(m_titleClock * 0.018f);
+    const float lift = 20.0f + 6.0f * std::sin(m_titleClock * 0.013f + 0.7f);
+    m_camera.position = centre + glm::vec3(std::sin(angle), 0.0f, std::cos(angle)) * 118.0f + glm::vec3(0.0f, lift, 0.0f);
+    // Looking a little to the ship's left of it, so it sits right of the middle, clear of the menu down the left.
+    const glm::vec3 toShip = glm::normalize(centre - m_camera.position);
+    const glm::vec3 across = glm::normalize(glm::cross(toShip, glm::vec3(0.0f, 1.0f, 0.0f)));
+    const glm::vec3 look = glm::normalize(centre - across * 34.0f + glm::vec3(0.0f, -12.0f, 0.0f) - m_camera.position);
+    m_camera.yaw = std::atan2(look.x, -look.z);
+    m_camera.pitch = std::asin(glm::clamp(look.y, -1.0f, 1.0f));
+    m_ship.SetEngines(m_scene, 0.22f);
 }
 
 void PredationGame::DrawTitleScreen()
@@ -5303,8 +5311,8 @@ void PredationGame::DrawTitleScreen()
     // The planet behind it is the sky's (UpdateTitleCamera): over it, only a darkening down the left, so type reads.
     ImDrawList* backdrop = ImGui::GetBackgroundDrawList();
     const ImVec2 topLeft = viewport->WorkPos;
-    backdrop->AddRectFilledMultiColor(topLeft, {topLeft.x + size.x * 0.55f, topLeft.y + size.y}, IM_COL32(0, 0, 0, 170),
-                                      IM_COL32(0, 0, 0, 0), IM_COL32(0, 0, 0, 0), IM_COL32(0, 0, 0, 170));
+    backdrop->AddRectFilledMultiColor(topLeft, {topLeft.x + size.x * 0.42f, topLeft.y + size.y}, IM_COL32(0, 0, 0, 120),
+                                      IM_COL32(0, 0, 0, 0), IM_COL32(0, 0, 0, 0), IM_COL32(0, 0, 0, 120));
 
     // First the name and "press any key"; everything else after a key.
     if (!m_titleAwake)
@@ -5361,7 +5369,7 @@ void PredationGame::DrawTitleScreen()
         }
         ImGui::Spacing();
         ImGui::Separator();
-        ImGui::TextDisabled("made by Joseph Slade  |  v" PRED_VERSION_STRING);
+        ImGui::TextDisabled("made by jojozagjos  |  v" PRED_VERSION_STRING);
         return;
     }
 
@@ -5432,7 +5440,7 @@ void PredationGame::DrawTitleScreen()
         }
         ImGui::Spacing();
         ImGui::Separator();
-        ImGui::TextDisabled("made by Joseph Slade  |  v" PRED_VERSION_STRING);
+        ImGui::TextDisabled("made by jojozagjos  |  v" PRED_VERSION_STRING);
         return;
     }
 
@@ -5467,7 +5475,7 @@ void PredationGame::DrawTitleScreen()
 
     ImGui::Spacing();
     ImGui::Separator();
-    ImGui::TextDisabled("made by Joseph Slade  |  v" PRED_VERSION_STRING);
+    ImGui::TextDisabled("made by jojozagjos  |  v" PRED_VERSION_STRING);
 #if PRED_DEV_TOOLS
     // Said on the title screen as well as in the log. The two builds look identical until
     // you go looking for a menu entry, and knowing which one you handed somebody matters.
@@ -5512,23 +5520,32 @@ std::string Spaced(const char* text)
 
 bool PredationGame::DrawBootScreen()
 {
-    // Black, a ring of segments turning while a line fills across the bottom, the game's name and who made it coming up
-    // out of the dark; then out to the title. A key skips it, once it has been up long enough to be seen.
-    constexpr float kBootSeconds = 6.0f;
-    constexpr float kFadeOut = 0.9f;
-    // A scripted run goes straight in: its first commands are for the game, not for waiting on a boot screen.
+    // Black and white, one card after another, each coming up out of the black and going back into it: loading, who
+    // made it, headphones, the name -- and then the title. A key moves on to the next.
+    static constexpr float kCards[] = {2.2f, 2.8f, 2.8f, 3.0f};
+    constexpr int kCount = static_cast<int>(sizeof(kCards) / sizeof(kCards[0]));
+    // A scripted run goes straight in: its first commands are for the game, not for waiting on cards.
     if (m_app->IsScripted() && !m_bootForced)
     {
         m_bootDone = true;
         m_titleAwake = true;
         return false;
     }
-    m_bootClock += ImGui::GetIO().DeltaTime;
-    if (m_bootClock > 1.2f && AnyKeyPressed() && m_bootClock < kBootSeconds - kFadeOut)
+    const float dt = ImGui::GetIO().DeltaTime;
+    m_bootClock += dt;
+    if (m_bootCard < kCount && m_bootClock > 0.4f && AnyKeyPressed())
     {
-        m_bootClock = kBootSeconds - kFadeOut;
+        ++m_bootCard;
+        m_bootClock = 0.0f;
     }
-    if (m_bootClock >= kBootSeconds)
+    if (m_bootCard < kCount && m_bootClock >= kCards[m_bootCard])
+    {
+        ++m_bootCard;
+        m_bootClock = 0.0f;
+    }
+    // After the last card, the black itself lifts off the title.
+    constexpr float kLift = 0.9f;
+    if (m_bootCard >= kCount && m_bootClock >= kLift)
     {
         m_bootDone = true;
         return false;
@@ -5536,62 +5553,64 @@ bool PredationGame::DrawBootScreen()
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
     const ImVec2 origin = viewport->Pos;
     const ImVec2 size = viewport->Size;
-    const ImVec2 centre{origin.x + size.x * 0.5f, origin.y + size.y * 0.44f};
     ImDrawList* draw = ImGui::GetForegroundDrawList();
-    const float t = m_bootClock;
-    // Everything fades up at the start and away at the end; the black under it goes last, into the title.
-    const float out = std::clamp((kBootSeconds - t) / kFadeOut, 0.0f, 1.0f);
-    const float up = std::clamp(t / 0.6f, 0.0f, 1.0f);
-    const float shown = up * out;
-    const auto alpha = [&](float a) { return static_cast<int>(std::clamp(a, 0.0f, 1.0f) * 255.0f); };
-    draw->AddRectFilled(origin, {origin.x + size.x, origin.y + size.y}, IM_COL32(0, 0, 0, alpha(std::min(out * 1.6f, 1.0f))));
-
-    // The ring: segments round a circle, turning, each brightening as the sweep passes it.
-    constexpr int kSegments = 36;
-    const float radius = std::min(size.x, size.y) * 0.075f;
-    const float sweep = t * 3.4f;
-    for (int i = 0; i < kSegments; ++i)
+    const auto alpha = [](float a) { return static_cast<int>(std::clamp(a, 0.0f, 1.0f) * 255.0f); };
+    const float black = m_bootCard >= kCount ? 1.0f - m_bootClock / kLift : 1.0f;
+    draw->AddRectFilled(origin, {origin.x + size.x, origin.y + size.y}, IM_COL32(0, 0, 0, alpha(black)));
+    if (m_bootCard >= kCount)
     {
-        const float a0 = static_cast<float>(i) / kSegments * 6.2831853f;
-        const float a1 = a0 + 6.2831853f / kSegments * 0.62f;
-        const float behind = std::fmod(sweep - a0 + 62.831853f, 6.2831853f);
-        const float lit = 0.18f + 0.82f * std::exp(-behind * 1.4f);
-        const ImU32 colour = IM_COL32(150, 200, 235, alpha(lit * shown));
-        draw->PathArcTo(centre, radius, a0, a1, 6);
-        draw->PathStroke(colour, ImDrawFlags_None, 3.0f);
-        draw->PathArcTo(centre, radius * 0.78f, -a0 * 0.7f, -a0 * 0.7f + 0.09f, 3);
-        draw->PathStroke(IM_COL32(150, 200, 235, alpha(0.35f * shown)), ImDrawFlags_None, 1.5f);
+        return true;
     }
-    draw->AddCircleFilled(centre, 3.0f + std::sin(t * 6.0f) * 1.0f, IM_COL32(190, 225, 245, alpha(shown)), 12);
-
-    // The name, spread out, and who made it -- each coming up out of the dark in its turn.
+    const float t = m_bootClock;
+    const float length = kCards[m_bootCard];
+    const float shown = std::min(std::clamp(t / 0.6f, 0.0f, 1.0f), std::clamp((length - t) / 0.6f, 0.0f, 1.0f));
     ImFont* font = ImGui::GetFont();
-    const auto text = [&](const std::string& words, float y, float scale, float from, ImU32 rgb)
+    const ImVec2 centre{origin.x + size.x * 0.5f, origin.y + size.y * 0.5f};
+    const auto text = [&](const std::string& words, float y, float scale, float fade)
     {
         const float fontSize = ImGui::GetFontSize() * scale;
         const ImVec2 extent = font->CalcTextSizeA(fontSize, FLT_MAX, 0.0f, words.c_str());
-        const float come = std::clamp((t - from) / 0.8f, 0.0f, 1.0f) * out;
-        // A flicker as it comes, as an old tube's line settles.
-        const float flicker = come < 1.0f ? (0.6f + 0.4f * std::sin(t * 90.0f)) : 1.0f;
-        const ImU32 colour = (rgb & 0x00FFFFFFu) | (static_cast<ImU32>(alpha(come * flicker)) << 24);
-        draw->AddText(font, fontSize, {centre.x - extent.x * 0.5f, y}, colour, words.c_str());
+        draw->AddText(font, fontSize, {centre.x - extent.x * 0.5f, y - extent.y * 0.5f}, IM_COL32(236, 236, 236, alpha(fade)), words.c_str());
     };
-    text(Spaced("PROJECT PREDATION"), centre.y + radius + 38.0f, 2.2f, 0.9f, IM_COL32(226, 232, 236, 255));
-    text(Spaced("MADE BY JOSEPH SLADE"), centre.y + radius + 92.0f, 1.1f, 2.0f, IM_COL32(150, 165, 175, 255));
-
-    // Loading: a thin line filling across the bottom, and what is being done.
-    const float progress = std::clamp((t - 0.4f) / (kBootSeconds - kFadeOut - 0.9f), 0.0f, 1.0f);
-    const float eased = 1.0f - std::pow(1.0f - progress, 2.2f);
-    const float barWidth = size.x * 0.32f;
-    const ImVec2 barLeft{centre.x - barWidth * 0.5f, origin.y + size.y * 0.86f};
-    draw->AddRectFilled(barLeft, {barLeft.x + barWidth, barLeft.y + 2.0f}, IM_COL32(60, 75, 85, alpha(0.7f * shown)));
-    draw->AddRectFilled(barLeft, {barLeft.x + barWidth * eased, barLeft.y + 2.0f}, IM_COL32(170, 215, 240, alpha(shown)));
-    static const char* const kStages[] = {"STARTING", "LOADING SHADERS", "LOADING SOUND", "BUILDING THE WORLD", "READY"};
-    const int stage = std::min(static_cast<int>(eased * 4.0f + (eased >= 1.0f ? 1.0f : 0.0f)), 4);
-    char line[64];
-    std::snprintf(line, sizeof(line), "%s  %3d%%", kStages[stage], static_cast<int>(eased * 100.0f));
-    const float small = ImGui::GetFontSize() * 0.9f;
-    draw->AddText(font, small, {barLeft.x, barLeft.y + 10.0f}, IM_COL32(120, 140, 150, alpha(shown)), line);
+    switch (m_bootCard)
+    {
+    case 0:
+    {
+        // Loading: three dots, walking, and a hairline filling along the bottom.
+        const float settle = std::clamp(t / 0.3f, 0.0f, 1.0f);
+        for (int i = 0; i < 3; ++i)
+        {
+            const float lit = 0.25f + 0.75f * std::max(0.0f, std::sin(t * 5.0f - static_cast<float>(i) * 0.9f));
+            draw->AddCircleFilled({origin.x + size.x - 90.0f + static_cast<float>(i) * 16.0f, origin.y + size.y - 60.0f}, 3.0f,
+                                  IM_COL32(236, 236, 236, alpha(lit * settle)), 12);
+        }
+        const float fontSize = ImGui::GetFontSize() * 0.95f;
+        draw->AddText(font, fontSize, {origin.x + size.x - 200.0f, origin.y + size.y - 68.0f}, IM_COL32(236, 236, 236, alpha(0.7f * settle)), "LOADING");
+        const float fill = std::clamp(t / length, 0.0f, 1.0f);
+        draw->AddRectFilled({origin.x, origin.y + size.y - 2.0f}, {origin.x + size.x * fill, origin.y + size.y}, IM_COL32(236, 236, 236, alpha(0.8f * settle)));
+        break;
+    }
+    case 1:
+        text("made by", centre.y - 26.0f, 1.0f, shown * 0.6f);
+        text("jojozagjos", centre.y + 12.0f, 2.6f, shown);
+        break;
+    case 2:
+    {
+        // Headphones: a band over two cups.
+        const float r = 34.0f;
+        const ImVec2 at{centre.x, centre.y - 40.0f};
+        const ImU32 white = IM_COL32(236, 236, 236, alpha(shown));
+        draw->PathArcTo(at, r, glm::pi<float>() * 1.05f, glm::pi<float>() * 1.95f, 24);
+        draw->PathStroke(white, ImDrawFlags_None, 4.0f);
+        draw->AddRectFilled({at.x - r - 8.0f, at.y - 2.0f}, {at.x - r + 6.0f, at.y + 26.0f}, white, 4.0f);
+        draw->AddRectFilled({at.x + r - 6.0f, at.y - 2.0f}, {at.x + r + 8.0f, at.y + 26.0f}, white, 4.0f);
+        text(Spaced("BEST PLAYED WITH HEADPHONES"), centre.y + 40.0f, 1.05f, shown);
+        break;
+    }
+    default:
+        text(Spaced("PROJECT PREDATION"), centre.y, 2.4f, shown);
+        break;
+    }
     return true;
 }
 
@@ -5603,8 +5622,8 @@ void PredationGame::DrawTitleSplash()
     const ImVec2 size = viewport->WorkSize;
     ImDrawList* draw = ImGui::GetForegroundDrawList();
     ImFont* font = ImGui::GetFont();
-    const float x = origin.x + size.x * 0.08f;
-    const float y = origin.y + size.y * 0.56f;
+    const float x = origin.x + size.x * 0.07f;
+    const float y = origin.y + size.y * 0.12f;
     const float big = ImGui::GetFontSize() * 3.2f;
     const float mid = ImGui::GetFontSize() * 1.6f;
     const float appear = std::clamp(m_titleClock / 1.5f, 0.0f, 1.0f);
@@ -5612,10 +5631,13 @@ void PredationGame::DrawTitleSplash()
     draw->AddText(font, big, {x, y}, IM_COL32(236, 240, 242, a(appear)), Spaced("PROJECT").c_str());
     draw->AddText(font, mid, {x + 2.0f, y + big * 1.02f}, IM_COL32(200, 208, 212, a(appear)), Spaced("PREDATION").c_str());
     const float breathe = 0.45f + 0.55f * (0.5f + 0.5f * std::sin(m_titleClock * 2.4f));
-    draw->AddText(font, ImGui::GetFontSize() * 1.05f, {x + 2.0f, y + big * 1.02f + mid * 2.4f}, IM_COL32(210, 216, 220, a(appear * breathe)),
-                  "Press any key");
+    const char* const prompt = "Press any key";
+    const float promptSize = ImGui::GetFontSize() * 1.1f;
+    const ImVec2 promptExtent = font->CalcTextSizeA(promptSize, FLT_MAX, 0.0f, prompt);
+    draw->AddText(font, promptSize, {origin.x + (size.x - promptExtent.x) * 0.5f, origin.y + size.y * 0.8f}, IM_COL32(220, 226, 230, a(appear * breathe)),
+                  prompt);
     draw->AddText(font, ImGui::GetFontSize() * 0.85f, {x + 2.0f, origin.y + size.y - 36.0f}, IM_COL32(120, 130, 136, a(appear)),
-                  "made by Joseph Slade  |  v" PRED_VERSION_STRING);
+                  "made by jojozagjos  |  v" PRED_VERSION_STRING);
     if (m_titleClock > 0.6f && AnyKeyPressed())
     {
         m_titleAwake = true;
@@ -9784,8 +9806,9 @@ void PredationGame::OnUpdate(double dt, double alpha)
     // On the stage, where the ship is only ever filmed from metres off, the near plane further out: the depth buffer then
     // has far more to give the far end, and the ship's plates do not fight each other a few hundred metres away.
     const bool onStage = glm::distance(m_renderEye, ShipSpec::kStage) < ShipSpec::kStageReach;
-    const float nearPlane = m_cineFar > 0.0f ? (onStage ? 2.0f : 0.25f) : 0.05f;
-    const float farPlane = m_cineFar > 0.0f ? m_cineFar : 500.0f;
+    const bool titleShot = m_screen == Screen::Title;
+    const float nearPlane = titleShot ? 2.0f : m_cineFar > 0.0f ? (onStage ? 2.0f : 0.25f) : 0.05f;
+    const float farPlane = titleShot ? 3000.0f : m_cineFar > 0.0f ? m_cineFar : 500.0f;
     const glm::mat4 projection = renderer.HomogeneousDepth()
                                      ? glm::perspectiveRH_NO(verticalFov, aspect, nearPlane, farPlane)
                                      : glm::perspectiveRH_ZO(verticalFov, aspect, nearPlane, farPlane);
@@ -9848,15 +9871,18 @@ void PredationGame::OnUpdate(double dt, double alpha)
             }
             if (title)
             {
-                // The title's planet: filling the left of the picture, the sun low behind it to the right, so all that
-                // is lit of it is a crescent down its far edge and its air glowing amber there.
-                const glm::vec3 titleSun = glm::normalize(glm::vec3(0.26f, -0.08f, -0.96f));
+                // The title's planet: an ice world below the ship, the way the camera looks, its day side towards the
+                // sun off to the right and night coming across it -- its ground and cloud there to be seen.
+                const glm::vec3 ahead{-std::sin(kTitleAngle), 0.0f, -std::cos(kTitleAngle)};
+                const glm::vec3 right{std::cos(kTitleAngle), 0.0f, -std::sin(kTitleAngle)};
+                const glm::vec3 titleSun = glm::normalize(right * 0.9f + glm::vec3(0.0f, 0.3f, 0.0f) + ahead * 0.55f);
                 environment.sunDirection = -titleSun;
-                environment.planetDirection = glm::normalize(glm::vec3(-0.62f, -0.07f, -0.78f));
-                environment.planetRadius = 0.98f;
-                environment.planetColor = {0.5f, 0.35f, 0.23f};
-                environment.planetAir = 1.1f;
-                environment.planetAirWarm = 1.0f;
+                environment.sunIntensity = 2.2f;
+                environment.planetDirection = glm::normalize(ahead * 0.55f + glm::vec3(0.0f, -0.83f, 0.0f));
+                environment.planetRadius = 0.92f;
+                environment.planetColor = {0.6f, 0.67f, 0.76f};
+                environment.planetAir = 0.9f;
+                environment.planetAirWarm = 0.0f;
             }
         }
         else if (m_skyInShip && !atSite)
@@ -10461,16 +10487,6 @@ void PredationGame::OnRender()
     // one frame only, because items do not change; the reserved view ids sort ahead of the UI that
     // samples the result.
     m_itemIcons.Render(app.GetSceneRenderer(), app.GetMeshes());
-
-    // The world is not drawn behind the menu -- it is still built and still simulating, so starting a game is still
-    // instant -- only the sky: out in space, the planet the title is set against.
-    if (m_screen == Screen::Title)
-    {
-        app.GetSkyRenderer().SetBrightness(cv_skyBrightness.Get());
-        app.GetSkyRenderer().Draw(Renderer::kViewSky, m_scene.GetEnvironment(), app.GetRenderer().ViewMatrix(),
-                                  app.GetRenderer().ProjectionMatrix());
-        return;
-    }
 
     // The editor draws its own scene. The level is not behind it, which is the point of it being a
     // place rather than a mode: a model is judged against an empty floor.

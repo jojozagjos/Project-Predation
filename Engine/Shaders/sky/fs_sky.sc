@@ -61,7 +61,13 @@ vec3 SkyStars(vec3 ray)
 		vec3 jitter = vec3(SkyHash(cell + vec3_splat(7.1)), SkyHash(cell + vec3_splat(3.7)), SkyHash(cell + vec3_splat(11.3)));
 		vec3 centre = normalize(cell + vec3_splat(0.5) + (jitter - vec3_splat(0.5)) * 0.6) * 180.0;
 		float bright = (h - 0.97) / 0.03;
-		float star = smoothstep(0.3, 0.0, length(p - centre)) * (0.12 + 3.2 * bright * bright * bright);
+		// A soft point, spread over at least the pixel it falls in: a star smaller than a pixel sampled at the pixel's middle
+		// was there one frame and gone the next as the view moved -- the whole sky crawling. Spread, it keeps its light
+		// whichever pixel it lands in.
+		float pixel = length(fwidth(p));
+		float spread = sqrt(0.12 * 0.12 + 0.35 * pixel * pixel);
+		float d = length(p - centre);
+		float star = exp(-d * d / (2.0 * spread * spread)) * (0.12 * 0.12) / (spread * spread) * (0.12 + 3.2 * bright * bright * bright);
 		light = mix(vec3(0.72, 0.8, 1.0), vec3(1.0, 0.86, 0.7), SkyHash(cell + vec3_splat(5.3))) * star;
 	}
 	// And the galaxy, a faint band across it.
@@ -113,9 +119,11 @@ void main()
 		{
 			vec3 normal = (ray * (along - sqrt(hit)) - toPlanet) / radius;
 			float lit = dot(normal, towardsSun);
-			float land = SkyFbm(normal * 2.5 + vec3(3.1, 1.7, 5.3));
-			float cloud = smoothstep(0.5, 0.78, SkyFbm(normal * 4.5 + vec3(9.1, 2.2, 4.4)));
-			vec3 ground = mix(u_skyPlanetColor.rgb * (0.55 + 0.7 * land), vec3(0.95, 0.97, 1.0), cloud * 0.8);
+			// Ground large and small, and cloud in banks and streaks: close enough to see, a surface rather than a blur.
+			float land = SkyFbm(normal * 2.5 + vec3(3.1, 1.7, 5.3)) * 0.65 + SkyFbm(normal * 11.0 + vec3(1.3, 7.7, 2.9)) * 0.35;
+			float cloud = smoothstep(0.5, 0.78, SkyFbm(normal * 4.5 + vec3(9.1, 2.2, 4.4))) +
+						  0.45 * smoothstep(0.56, 0.82, SkyFbm(normal * vec3(18.0, 6.0, 18.0) + vec3(4.2, 8.8, 1.6)));
+			vec3 ground = mix(u_skyPlanetColor.rgb * (0.55 + 0.7 * land), vec3(0.95, 0.97, 1.0), clamp(cloud, 0.0, 1.0) * 0.8);
 			vec3 planet = ground * smoothstep(-0.05, 0.4, lit) * u_skySunColor.w * 1.6;
 			float edge = pow(1.0 - max(dot(normal, -ray), 0.0), 4.0);
 			planet += air * edge * smoothstep(-0.25, 0.25, lit);
