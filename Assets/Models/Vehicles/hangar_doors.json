@@ -214,11 +214,11 @@
       "metallic": 0.0,
       "name": "fx_stripe_left_0",
       "parent": "fx_hinge_left",
-      "position": [-0.305, 0.002, -6.3],
+      "position": [-0.305, 0.006, -6.3],
       "rotation": [0.0, 0.0, 0.0],
       "roughness": 0.7,
       "shape": "box",
-      "size": [0.59, 0.004, 1.4],
+      "size": [0.59, 0.012, 1.4],
       "visible": true
     },
     {
@@ -227,11 +227,11 @@
       "metallic": 0.0,
       "name": "fx_stripe_left_1",
       "parent": "fx_hinge_left",
-      "position": [-0.305, 0.002, -4.9],
+      "position": [-0.305, 0.006, -4.9],
       "rotation": [0.0, 0.0, 0.0],
       "roughness": 0.7,
       "shape": "box",
-      "size": [0.59, 0.004, 1.4],
+      "size": [0.59, 0.012, 1.4],
       "visible": true
     },
     {
@@ -240,11 +240,11 @@
       "metallic": 0.0,
       "name": "fx_stripe_left_2",
       "parent": "fx_hinge_left",
-      "position": [-0.305, 0.002, -3.5],
+      "position": [-0.305, 0.006, -3.5],
       "rotation": [0.0, 0.0, 0.0],
       "roughness": 0.7,
       "shape": "box",
-      "size": [0.59, 0.004, 1.4],
+      "size": [0.59, 0.012, 1.4],
       "visible": true
     },
     {
@@ -253,11 +253,11 @@
       "metallic": 0.0,
       "name": "fx_stripe_left_3",
       "parent": "fx_hinge_left",
-      "position": [-0.305, 0.002, -2.1],
+      "position": [-0.305, 0.006, -2.1],
       "rotation": [0.0, 0.0, 0.0],
       "roughness": 0.7,
       "shape": "box",
-      "size": [0.59, 0.004, 1.4],
+      "size": [0.59, 0.012, 1.4],
       "visible": true
     },
     {
@@ -266,11 +266,11 @@
       "metallic": 0.0,
       "name": "fx_stripe_left_4",
       "parent": "fx_hinge_left",
-      "position": [-0.305, 0.002, -0.7],
+      "position": [-0.305, 0.006, -0.7],
       "rotation": [0.0, 0.0, 0.0],
       "roughness": 0.7,
       "shape": "box",
-      "size": [0.59, 0.004, 1.4],
+      "size": [0.59, 0.012, 1.4],
       "visible": true
     },
     {
@@ -279,11 +279,11 @@
       "metallic": 0.0,
       "name": "fx_stripe_left_5",
       "parent": "fx_hinge_left",
-      "position": [-0.305, 0.002, 0.7],
+      "position": [-0.305, 0.006, 0.7],
       "rotation": [0.0, 0.0, 0.0],
       "roughness": 0.7,
       "shape": "box",
-      "size": [0.59, 0.004, 1.4],
+      "size": [0.59, 0.012, 1.4],
       "visible": true
     },
     {
@@ -292,11 +292,11 @@
       "metallic": 0.0,
       "name": "fx_stripe_left_6",
       "parent": "fx_hinge_left",
-      "position": [-0.305, 0.002, 2.1],
+      "position": [-0.305, 0.006, 2.1],
       "rotation": [0.0, 0.0, 0.0],
       "roughness": 0.7,
       "shape": "box",
-      "size": [0.59, 0.004, 1.4],
+      "size": [0.59, 0.012, 1.4],
       "visible": true
     },
     {
@@ -305,11 +305,11 @@
       "metallic": 0.0,
       "name": "fx_stripe_left_7",
       "parent": "fx_hinge_left",
-      "position": [-0.305, 0.002, 3.5],
+      "position": [-0.305, 0.006, 3.5],
       "rotation": [0.0, 0.0, 0.0],
       "roughness": 0.7,
       "shape": "box",
-      "size": [0.59, 0.004, 1.4],
+      "size": [0.59, 0.012, 1.4],
       "visible": true
     },
     {
@@ -318,11 +318,11 @@
       "metallic": 0.0,
       "name": "fx_stripe_left_8",
       "parent": "fx_hinge_left",
-      "position": [-0.305, 0.002, 4.9],
+      "position": [-0.305, 0.006, 4.9],
       "rotation": [0.0, 0.0, 0.0],
       "roughness": 0.7,
       "shape": "box",
-      "size": [0.59, 0.004, 1.4],
+      "size": [0.59, 0.012, 1.4],
       "visible": true
     },
     {
@@ -331,11 +331,11 @@
       "metallic": 0.0,
       "name": "fx_stripe_left_9",
       "parent": "fx_hinge_left",
-      "position": [-0.305, 0.002, 6.3],
+      "position": [-0.305, 0.006, 6.3],
       "rotation": [0.0, 0.0, 0.0],
       "roughness": 0.7,
       "shape": "box",
-      "size": [0.59, 0.004, 1.4],
+      "size": [0.59, 0.012, 1.4],
       "visible": true
     },
     {
@@ -369,11 +369,11 @@
       "metallic": 0.0,
       "name": "fx_stripe_right_0",
       "parent": "fx_hinge_right",
-      "position": [0.305, 0.002, -6.3],
+      "position": [0.305, 0.006, -6.3],
       "rotation": [0.0, 0.0, 0.0],
       "roughness": 0.7,
       "shape": "box",
-      "size": [0.59, 0.004, 1.4],
+      "size": [0.59, 0.012, 1.4],
       "visible": true
     },
     {
@@ -382,11 +382,11 @@
       "metallic": 0.0,
       "name": "fx_stripe_right_1",
       "parent": "fx_hinge_right",
-      "position": [0.305, 0.002, -4.9],
+      "position": [0.305, 0.006, -4.9],
       "rotation": [0.0, 0.0, 0.0],
       "roughness": 0.7,
       "shape": "box",
-      "size": [0.59, 0.004, 1.4],
+      "size": [0.59, 0.012, 1.4],
       "visible": true
     },
     {
@@ -395,11 +395,11 @@
       "metallic": 0.0,
       "name": "fx_stripe_right_2",
       "parent": "fx_hinge_right",
-      "position": [0.305, 0.002, -3.5],
+      "position": [0.305, 0.006, -3.5],
       "rotation": [0.0, 0.0, 0.0],
       "roughness": 0.7,
       "shape": "box",
-      "size": [0.59, 0.004, 1.4],
+      "size": [0.59, 0.012, 1.4],
       "visible": true
     },
     {
@@ -408,11 +408,11 @@
       "metallic": 0.0,
       "name": "fx_stripe_right_3",
       "parent": "fx_hinge_right",
-      "position": [0.305, 0.002, -2.1],
+      "position": [0.305, 0.006, -2.1],
       "rotation": [0.0, 0.0, 0.0],
       "roughness": 0.7,
       "shape": "box",
-      "size": [0.59, 0.004, 1.4],
+      "size": [0.59, 0.012, 1.4],
       "visible": true
     },
     {
@@ -421,11 +421,11 @@
       "metallic": 0.0,
       "name": "fx_stripe_right_4",
       "parent": "fx_hinge_right",
-      "position": [0.305, 0.002, -0.7],
+      "position": [0.305, 0.006, -0.7],
       "rotation": [0.0, 0.0, 0.0],
       "roughness": 0.7,
       "shape": "box",
-      "size": [0.59, 0.004, 1.4],
+      "size": [0.59, 0.012, 1.4],
       "visible": true
     },
     {
@@ -434,11 +434,11 @@
       "metallic": 0.0,
       "name": "fx_stripe_right_5",
       "parent": "fx_hinge_right",
-      "position": [0.305, 0.002, 0.7],
+      "position": [0.305, 0.006, 0.7],
       "rotation": [0.0, 0.0, 0.0],
       "roughness": 0.7,
       "shape": "box",
-      "size": [0.59, 0.004, 1.4],
+      "size": [0.59, 0.012, 1.4],
       "visible": true
     },
     {
@@ -447,11 +447,11 @@
       "metallic": 0.0,
       "name": "fx_stripe_right_6",
       "parent": "fx_hinge_right",
-      "position": [0.305, 0.002, 2.1],
+      "position": [0.305, 0.006, 2.1],
       "rotation": [0.0, 0.0, 0.0],
       "roughness": 0.7,
       "shape": "box",
-      "size": [0.59, 0.004, 1.4],
+      "size": [0.59, 0.012, 1.4],
       "visible": true
     },
     {
@@ -460,11 +460,11 @@
       "metallic": 0.0,
       "name": "fx_stripe_right_7",
       "parent": "fx_hinge_right",
-      "position": [0.305, 0.002, 3.5],
+      "position": [0.305, 0.006, 3.5],
       "rotation": [0.0, 0.0, 0.0],
       "roughness": 0.7,
       "shape": "box",
-      "size": [0.59, 0.004, 1.4],
+      "size": [0.59, 0.012, 1.4],
       "visible": true
     },
     {
@@ -473,11 +473,11 @@
       "metallic": 0.0,
       "name": "fx_stripe_right_8",
       "parent": "fx_hinge_right",
-      "position": [0.305, 0.002, 4.9],
+      "position": [0.305, 0.006, 4.9],
       "rotation": [0.0, 0.0, 0.0],
       "roughness": 0.7,
       "shape": "box",
-      "size": [0.59, 0.004, 1.4],
+      "size": [0.59, 0.012, 1.4],
       "visible": true
     },
     {
@@ -486,11 +486,11 @@
       "metallic": 0.0,
       "name": "fx_stripe_right_9",
       "parent": "fx_hinge_right",
-      "position": [0.305, 0.002, 6.3],
+      "position": [0.305, 0.006, 6.3],
       "rotation": [0.0, 0.0, 0.0],
       "roughness": 0.7,
       "shape": "box",
-      "size": [0.59, 0.004, 1.4],
+      "size": [0.59, 0.012, 1.4],
       "visible": true
     }
   ],
