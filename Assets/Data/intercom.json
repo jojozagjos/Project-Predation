@@ -76,7 +76,7 @@
     "orders": [
       {
         "sound": "Intercom/orders_01",
-        "subtitle": ""
+        "subtitle": "Attention all crew. New deployment orders have been received. Report to the briefing room."
       }
     ]
   }
