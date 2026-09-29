@@ -2587,3 +2587,26 @@ Asked for by the user: better snow, sparks and particle effects.
 - **Snow**: flakes of different sizes, flat, turning over as they fall; the wind gusting; and spindrift -- a share of it
   streaming low along the ground, faster than what falls.
 - Unused code removed: HeldDevice, ObjectiveTarget, Particles::Live.
+
+## ADR-121: The loadout locker; interactions sent in five bits; the console out of the screens' way
+
+Asked for by the user: a loadout screen instead of every item sitting out on the benches, with it made clear where kit
+comes from; and the deployment console moved from in front of the briefing screens.
+
+- **The loadout locker** stands straight ahead of the gear room's door: a tall locker with a screen reading LOADOUT, and
+  a hazard line on the floor before it. Using it opens a screen on your own machine listing everything issued (with
+  what it is for, and a weapon's magazine and spares), a count of each up to the most one person may have, and the six
+  slots filling as you choose. The standard kit fills them exactly, so taking the carbine means leaving something.
+  Drawing a kit hands back everything you had from the locker and gives you the new one, weapons loaded; what was found
+  (the keycard, the drive) is kept and takes its slot. The last kit drawn is remembered (game.loadout).
+- **What is issued** is data: `loadout`, `loadout_default` and `blurb` per item in items.json. The benches aboard are
+  empty; bench_count still lays out the test map's and the creature lab's.
+- **Until you have drawn a kit** the ship's HUD says so, and where the locker is.
+- **Multiplayer**: the locker is nobody else's business, so a client draws its kit itself and tells the host
+  (MessageType::Loadout); the host checks they are at the locker, holds the kit to the limits, and sets its count of
+  what they carry to it, so drops and uses are checked against what was really drawn. Protocol 28.
+- **Fixed**: an interaction was sent to the host in three bits, which holds eight kinds; the ninth and later arrived as
+  others. A client using the deployment console asked the host to open a door, and one at the shuttle's controls asked
+  to pick something up. Now five bits, with a compile-time check.
+- **The deployment console** stands in the briefing room's forward port corner, facing the room, rather than in front
+  of the port screen.

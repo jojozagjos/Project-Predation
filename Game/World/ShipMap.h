@@ -18,7 +18,6 @@ namespace pred
 
 class MeshLibrary;
 class LevelLights;
-class ItemDatabase;
 
 namespace ShipSpec
 {
@@ -31,8 +30,6 @@ inline constexpr float kLowerDeck = 0.0f;
 inline constexpr float kUpperDeck = 3.6f;
 // Where the shuttle rests in the hangar, on the bay doors, in the ship's own frame.
 inline constexpr glm::vec3 kShuttleHome{0.0f, 0.0f, 20.0f};
-// How many whole kits the gear room lays out: one for each of the most people there can be aboard.
-inline constexpr int kKits = 4;
 // Where cinematics fly the ship: its outside again, in open space well away from where everybody is standing in it, so
 // it can go off into the distance and come back without leaving anybody's rooms behind in space.
 inline constexpr glm::vec3 kStage{-1500.0f, 300.0f, -2600.0f};
@@ -53,8 +50,6 @@ class ShipMap
 public:
     // Before the site is built: a site that is rebuilt takes away every lamp added after its own.
     void Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, LevelLights* lights);
-    // The kit on the gear room's benches: every item there is, a kit apiece for everybody who can be aboard.
-    void LayOutKit(const ItemDatabase& items);
     bool Built() const { return m_built; }
 
     // Whether a point is near enough the ship that the sky round it is space.
@@ -63,9 +58,11 @@ public:
     // Where each player stands arriving aboard -- the briefing room, looking at its screen -- and which way that is.
     glm::vec3 Spawn(uint8_t player) const;
     float SpawnYaw() const;
+    // The middle of the loadout locker's screen, in the gear room, turned to face the room.
+    CinePose LoadoutLocker() const;
     // Where the deployment console stands, facing where people stand at it.
     CinePose BriefingConsole() const;
-    // What WorldObjects puts aboard: the lockers and ammunition in the gear room, and the kit on its bench.
+    // What WorldObjects puts aboard: the lockers and ammunition in the gear room.
     const WorldObjects::Placements& Placements() const { return m_placements; }
 
     VehicleProp& Shuttle() { return m_shuttle; }

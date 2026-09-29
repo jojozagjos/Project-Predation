@@ -8,6 +8,7 @@
 #include "Game/Items/ItemDatabase.h"
 #include "Game/Items/ItemAppearance.h"
 #include "Game/Items/ItemIcons.h"
+#include "Game/Items/Loadout.h"
 #include "Engine/Audio/AudioEngine.h"
 #include "Engine/Audio/VoiceCapture.h"
 #include "Engine/Audio/VoiceCodec.h"
@@ -798,6 +799,20 @@ private:
     void LoadMissionData();
     void BuildDeployConsole();
 
+    // --- The loadout locker (PredationGameLoadout.cpp) ------------------------------------------------------------------
+    // In the gear room: everybody chooses their own kit on a screen of their own and draws it, handing back whatever they
+    // had from it before. Nothing is shared, so it is done here and the host told what was taken, to keep count of.
+    void BuildLoadoutLocker();
+    void RegisterLoadoutCommands();
+    void OpenLoadout();
+    void CloseLoadout();
+    void DrawLoadoutPanel();
+    void DrawKit(const Loadout& kit);
+    // The host: a client's kit, drawn.
+    void ServeLoadout(uint8_t player, const LoadoutMessage& kit);
+    // Whether anything the locker issues is being carried.
+    bool CarryingKit() const;
+
     // --- Orders and the briefing (PredationGameBriefing.cpp) --------------------------------------------------------
     // A deployment comes in at a random time aboard; anybody plays its briefing at the console, on the briefing room's
     // screens, with its voice-over; then the console deploys. Orders are orders: none is turned down.
@@ -1433,6 +1448,11 @@ private:
     Entity m_deployConsole;
     Entity m_deployScreen;
     BodyHandle m_deployBody;
+    // The loadout locker's screen, and the kit being chosen on it while it is open.
+    Entity m_loadoutScreen;
+    TextureHandle m_loadoutTexture;
+    bool m_loadoutOpen = false;
+    Loadout m_loadoutChoice;
     // Orders: how they stand, for which site, and (the host's) when the next come in; the briefing's place, its script,
     // what it says about the site and when; and the two screens it plays on.
     OrderState m_order = OrderState::None;

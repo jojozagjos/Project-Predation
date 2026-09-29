@@ -1,5 +1,7 @@
 #include "Game/Net/Protocol.h"
 
+#include "Game/Interaction/Interactable.h"
+
 #include <algorithm>
 #include <cmath>
 #include <glm/geometric.hpp>
@@ -855,15 +857,44 @@ bool ReadItemUse(BitReader& reader, ItemUseMessage& out)
     return !reader.Overran() && (out.target == 0xFF || out.target < kMaxPlayers);
 }
 
+static_assert(static_cast<int>(InteractionKind::Loadout) < 32, "an interaction kind is sent in five bits");
+static_assert(static_cast<int>(WorldEventKind::Count) <= 32, "a world event kind is sent in five bits");
+
+void WriteLoadout(BitWriter& writer, const LoadoutMessage& message)
+{
+    const size_t count = std::min(message.picks.size(), LoadoutMessage::kMaxPicks);
+    writer.WriteBits(static_cast<uint32_t>(count), 4);
+    for (size_t i = 0; i < count; ++i)
+    {
+        writer.WriteBits(message.picks[i].item, 10);
+        writer.WriteBits(std::min<uint32_t>(message.picks[i].count, 63), 6);
+    }
+}
+
+bool ReadLoadout(BitReader& reader, LoadoutMessage& out)
+{
+    const uint32_t count = reader.ReadBits(4);
+    out.picks.clear();
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        LoadoutMessage::Pick pick;
+        pick.item = static_cast<uint16_t>(reader.ReadBits(10));
+        pick.count = static_cast<uint8_t>(reader.ReadBits(6));
+        out.picks.push_back(pick);
+    }
+    return !reader.Overran();
+}
+
 void WriteInteract(BitWriter& writer, const InteractMessage& message)
 {
-    writer.WriteBits(message.kind, 3);
+    // Five bits: there are more than eight kinds (three bits turned Deploy into Door and Board into Pickup).
+    writer.WriteBits(message.kind, 5);
     writer.WriteBits(message.index, 8);
 }
 
 bool ReadInteract(BitReader& reader, InteractMessage& out)
 {
-    out.kind = static_cast<uint8_t>(reader.ReadBits(3));
+    out.kind = static_cast<uint8_t>(reader.ReadBits(5));
     out.index = reader.ReadByte();
     return !reader.Overran();
 }

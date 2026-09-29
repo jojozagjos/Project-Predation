@@ -1,6 +1,7 @@
 
 #include "Engine/Net/BitStream.h"
 #include "Engine/Net/Transport.h"
+#include "Game/Interaction/Interactable.h"
 #include "Game/Net/Protocol.h"
 
 #include <catch2/catch_test_macros.hpp>
@@ -321,6 +322,50 @@ TEST_CASE("A join and a welcome round-trip", "[net][protocol]")
     CHECK(decoded.playerId == 2);
     CHECK(decoded.tick == 99);
     CHECK(decoded.tickRate == 60);
+}
+
+TEST_CASE("Every kind of interaction reaches the host as itself", "[net][protocol]")
+{
+    // It was sent in three bits, so everything past the eighth kind arrived as another: the deployment console as a
+    // door, the shuttle's controls as a pickup.
+    for (int kind = 0; kind <= static_cast<int>(InteractionKind::Loadout); ++kind)
+    {
+        INFO(InteractionKindName(static_cast<InteractionKind>(kind)));
+        BitWriter writer;
+        InteractMessage message;
+        message.kind = static_cast<uint8_t>(kind);
+        message.index = 201;
+        WriteInteract(writer, message);
+        const std::vector<uint8_t>& bytes = writer.Finish();
+        BitReader reader(bytes.data(), bytes.size());
+        InteractMessage received;
+        REQUIRE(ReadInteract(reader, received));
+        CHECK(received.kind == kind);
+        CHECK(received.index == 201);
+    }
+}
+
+TEST_CASE("A kit drawn at the loadout locker round-trips", "[net][protocol]")
+{
+    BitWriter writer;
+    WriteMessageHeader(writer, MessageType::Loadout);
+    LoadoutMessage kit;
+    kit.picks = {{7, 1}, {2, 2}, {3, 4}, {9, 1}};
+    WriteLoadout(writer, kit);
+    const std::vector<uint8_t>& bytes = writer.Finish();
+
+    BitReader reader(bytes.data(), bytes.size());
+    MessageType type = MessageType::Count;
+    REQUIRE(ReadMessageHeader(reader, type));
+    CHECK(type == MessageType::Loadout);
+    LoadoutMessage received;
+    REQUIRE(ReadLoadout(reader, received));
+    REQUIRE(received.picks.size() == 4);
+    for (size_t i = 0; i < 4; ++i)
+    {
+        CHECK(received.picks[i].item == kit.picks[i].item);
+        CHECK(received.picks[i].count == kit.picks[i].count);
+    }
 }
 
 TEST_CASE("Malformed packets are rejected rather than half-applied", "[net][protocol]")

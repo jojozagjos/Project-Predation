@@ -37,13 +37,12 @@ struct Aboard
         meshes.SetHeadless(true);
         REQUIRE(items.LoadFromFile(std::filesystem::path(PRED_SOURCE_DIR) / "Assets" / "Data" / "items.json"));
         ship.Build(scene, meshes, physics, nullptr);
-        ship.LayOutKit(items);
     }
 };
 
 } // namespace
 
-TEST_CASE("The ship, and the lockers, crates and kit put aboard it, are inside nothing", "[ship]")
+TEST_CASE("The ship, and the lockers and crates put aboard it, are inside nothing", "[ship]")
 {
     Aboard aboard;
     REQUIRE(aboard.ship.Built());
@@ -52,10 +51,11 @@ TEST_CASE("The ship, and the lockers, crates and kit put aboard it, are inside n
     CHECK(overlaps.empty());
     CHECK(aboard.ship.Placements().lockers.size() == 3);
     CHECK(aboard.ship.Placements().ammoCrates.size() == 2);
-    CHECK_FALSE(aboard.ship.Placements().items.empty());
+    // Nothing is laid out on the benches: the kit is drawn at the loadout locker.
+    CHECK(aboard.ship.Placements().items.empty());
 }
 
-TEST_CASE("Everybody arrives aboard standing on the briefing room's floor, and the kit is on the bench", "[ship]")
+TEST_CASE("Everybody arrives aboard standing on the briefing room's floor", "[ship]")
 {
     Aboard aboard;
     for (uint8_t player = 0; player < 8; ++player)
@@ -71,16 +71,47 @@ TEST_CASE("Everybody arrives aboard standing on the briefing room's floor, and t
         CHECK(above.distance > 2.5f);
         CHECK(aboard.ship.Contains(spawn));
     }
-    for (const WorldObjects::PlacedItem& item : aboard.ship.Placements().items)
-    {
-        INFO(item.key);
-        const RayHit bench = aboard.physics.RayCastStatic(item.position + glm::vec3(0.0f, 0.3f, 0.0f), {0.0f, -1.0f, 0.0f}, 1.0f);
-        REQUIRE(bench.hit);
-        CHECK(std::abs(bench.position.y - item.position.y) < 0.02f);
-    }
     // And the ship is well away from everywhere else.
     CHECK_FALSE(aboard.ship.Contains({0.0f, 0.0f, 0.0f}));
     CHECK_FALSE(aboard.ship.Contains({250.0f, 0.0f, 40.0f}));
+}
+
+TEST_CASE("The loadout locker is the first thing seen coming into the gear room, its screen on its face", "[ship]")
+{
+    Aboard aboard;
+    const CinePose locker = aboard.ship.LoadoutLocker();
+    // In the gear room, on the lower deck, at the height of a face.
+    const glm::vec3 local = locker.position - ShipSpec::kOrigin;
+    CHECK(local.x < -1.8f);
+    CHECK(std::abs(local.z) < 5.85f);
+    CHECK(local.y > 1.2f);
+    CHECK(local.y < 1.8f);
+    // Facing into the room, towards the door.
+    const glm::vec3 facing = locker.rotation * glm::vec3(0.0f, 0.0f, 1.0f);
+    CHECK(facing.x > 0.99f);
+    // And nothing between the doorway and it: a look straight in from the corridor lands on its face.
+    const glm::vec3 doorway = ShipSpec::kOrigin + glm::vec3(-1.0f, local.y, local.z);
+    const RayHit look = aboard.physics.RayCastStatic(doorway, {-1.0f, 0.0f, 0.0f}, 20.0f);
+    REQUIRE(look.hit);
+    CHECK(std::abs(look.position.x - locker.position.x) < 0.05f);
+}
+
+TEST_CASE("The deployment console stands to one side of the briefing screens, facing the room", "[ship]")
+{
+    Aboard aboard;
+    const CinePose console = aboard.ship.BriefingConsole();
+    const glm::vec3 local = console.position - ShipSpec::kOrigin;
+    // Not in front of either screen (x from 1.9 to 7.4 either side of the middle).
+    CHECK(std::abs(local.x) > 7.9f);
+    // Its front (-z of its own) looks into the room, and there is floor to stand on there with nothing in the way.
+    const glm::vec3 front = console.rotation * glm::vec3(0.0f, 0.0f, -1.0f);
+    CHECK(front.x > 0.99f);
+    const glm::vec3 standing = console.position + front * 1.2f + glm::vec3(0.0f, 1.0f, 0.0f);
+    const RayHit floor = aboard.physics.RayCastStatic(standing, {0.0f, -1.0f, 0.0f}, 2.0f);
+    REQUIRE(floor.hit);
+    CHECK(std::abs(floor.position.y - console.position.y) < 0.05f);
+    const RayHit up = aboard.physics.RayCastStatic(standing, {0.0f, 1.0f, 0.0f}, 3.0f);
+    CHECK((!up.hit || up.distance > 1.5f));
 }
 
 TEST_CASE("The shuttle stands on the closed bay doors, which swing down out of its way", "[ship]")

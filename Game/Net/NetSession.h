@@ -167,6 +167,13 @@ public:
         ItemUseMessage use;
     };
     std::vector<ItemUseRequest> TakeItemUses() { return std::exchange(m_itemUses, {}); }
+    // Kits drawn at the loadout locker, with who drew them filled in by the host.
+    struct LoadoutRequest
+    {
+        uint8_t player = 0;
+        LoadoutMessage kit;
+    };
+    std::vector<LoadoutRequest> TakeLoadouts() { return std::exchange(m_loadouts, {}); }
     // Health back, into the controller the host simulates for them.
     void HealPlayer(uint8_t playerId, float amount);
     // The host keeps a tally of what each client has picked up, so a client cannot put down
@@ -174,6 +181,8 @@ public:
     void NoteCarried(uint8_t player, uint16_t item, int count);
     bool TakeCarried(uint8_t player, uint16_t item, int count);
     int CarriedCount(uint8_t player, uint16_t item) const;
+    // What they now have of something, outright: a kit drawn replaces whatever of it they had before.
+    void SetCarried(uint8_t player, uint16_t item, int count);
     // Players who have just been let in. The game sends them the state of the world.
     std::vector<uint8_t> TakeJoined() { return std::exchange(m_joined, {}); }
 
@@ -276,6 +285,7 @@ private:
     std::vector<DropRequest> m_dropRequests;
     std::vector<VoiceHeard> m_voiceHeard;
     std::vector<ItemUseRequest> m_itemUses;
+    std::vector<LoadoutRequest> m_loadouts;
     // Where the host itself is, kept each tick, so a voice arriving between ticks can be told
     // whether the host is near enough to hear it without the caller having to pass it in.
     glm::vec3 m_localPosition{0.0f};
@@ -424,6 +434,7 @@ public:
     void SendReady();
     void SendDrop(const DropMessage& drop);
     void SendItemUse(const ItemUseMessage& use);
+    void SendLoadout(const LoadoutMessage& kit);
     // My microphone, on its way to the host, which decides who is close enough to hear it.
     void SendVoice(uint16_t sequence, const std::vector<uint8_t>& frame);
     // Voice from other people, waiting to be played. Taken rather than read: each frame is played

@@ -27,7 +27,7 @@ void PredationGame::RegisterShipCommands()
 #if PRED_DEV_TOOLS
     // Somewhere aboard at once, for trying things: ship_goto shuttle|hangar|briefing|gear|cockpit.
     m_app->GetConsole().RegisterCommand(
-        "ship_goto", "Go straight to somewhere aboard: ship_goto <shuttle|hangar|briefing|gear|cockpit>",
+        "ship_goto", "Go straight to somewhere aboard: ship_goto <shuttle|hangar|briefing|gear|loadout|cockpit>",
         [this](const std::vector<std::string>& args)
         {
             const std::string where = args.size() >= 2 ? args[1] : "briefing";
@@ -46,6 +46,11 @@ void PredationGame::RegisterShipCommands()
             else if (where == "gear")
             {
                 at = ShipMap::ToWorld({-6.0f, 0.1f, 0.0f});
+            }
+            else if (where == "loadout")
+            {
+                at = ShipMap::ToWorld({-9.9f, 0.1f, -0.1f});
+                yaw = -glm::half_pi<float>();
             }
             else if (where == "cockpit")
             {
@@ -383,6 +388,19 @@ void PredationGame::DrawShipHud()
         else
         {
             ImGui::TextColored(text, "Waiting for orders.");
+        }
+
+        // Where the kit comes from, until some has been drawn: there is nowhere else aboard to get any.
+        ImGui::Dummy({0.0f, 6.0f});
+        ImGui::TextColored(heading, "KIT");
+        if (!CarryingKit())
+        {
+            ImGui::TextColored({1.0f, 0.67f, 0.24f, 1.0f}, "No kit drawn.");
+            ImGui::TextDisabled("Choose yours at the loadout locker: the gear room, lower deck, to port.");
+        }
+        else
+        {
+            ImGui::TextDisabled("Change it at the loadout locker in the gear room.");
         }
     }
     ImGui::End();

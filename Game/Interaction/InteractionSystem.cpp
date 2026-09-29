@@ -38,6 +38,8 @@ const char* InteractionKindName(InteractionKind kind)
         return "deploy";
     case InteractionKind::Board:
         return "board";
+    case InteractionKind::Loadout:
+        return "loadout";
 
     case InteractionKind::Generic:
     default:

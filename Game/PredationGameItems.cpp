@@ -166,7 +166,7 @@ void PredationGame::UpdateItemUse(float dt)
     // A lit flare is carried held up in front, the way anybody carries a light.
     m_body.SetHeldItemMotion(m_flareBurn > 0.0f ? glm::vec3(-0.05f, 0.15f, 0.06f) : glm::vec3(0.0f),
                              m_flareBurn > 0.0f ? glm::vec3(-20.0f, 0.0f, 0.0f) : glm::vec3(0.0f));
-    const bool pressed = m_app->GetInput().WasActionPressed("fire") && !m_paused && !m_inventoryOpen &&
+    const bool pressed = m_app->GetInput().WasActionPressed("fire") && !m_paused && !m_inventoryOpen && !m_loadoutOpen &&
                          !ImGui::GetIO().WantCaptureMouse && !m_app->IsConsoleOpen();
     if (pressed && alive && held != nullptr && held->use.kind != ItemUseKind::None && !m_weapon.HasWeapon() &&
         m_hidingSpot < 0 && !m_body.ArmsAreClimbing())

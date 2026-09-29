@@ -474,6 +474,18 @@ void NetHost::HandlePacket(const NetPacket& packet)
         break;
     }
 
+    case MessageType::Loadout:
+    {
+        const Client* client = FindClient(packet.peer);
+        LoadoutMessage message;
+        if (client == nullptr || !client->welcomed || !ReadLoadout(reader, message))
+        {
+            return;
+        }
+        m_loadouts.push_back({client->playerId, std::move(message)});
+        break;
+    }
+
     case MessageType::Leave:
         RemoveClient(packet.peer);
         break;
@@ -502,6 +514,25 @@ void NetHost::NoteCarried(uint8_t player, uint16_t item, int count)
         if (client->playerId == player)
         {
             client->carried[item] += count;
+            return;
+        }
+    }
+}
+
+void NetHost::SetCarried(uint8_t player, uint16_t item, int count)
+{
+    for (auto& client : m_clients)
+    {
+        if (client->playerId == player)
+        {
+            if (count > 0)
+            {
+                client->carried[item] = count;
+            }
+            else
+            {
+                client->carried.erase(item);
+            }
             return;
         }
     }
@@ -1450,6 +1481,18 @@ void NetClient::SendItemUse(const ItemUseMessage& use)
     BitWriter writer;
     WriteMessageHeader(writer, MessageType::ItemUse);
     WriteItemUse(writer, use);
+    SendPacket(*m_transport, kHostPeer, Channel::Reliable, writer);
+}
+
+void NetClient::SendLoadout(const LoadoutMessage& kit)
+{
+    if (m_transport == nullptr || !m_welcomed)
+    {
+        return;
+    }
+    BitWriter writer;
+    WriteMessageHeader(writer, MessageType::Loadout);
+    WriteLoadout(writer, kit);
     SendPacket(*m_transport, kHostPeer, Channel::Reliable, writer);
 }
 

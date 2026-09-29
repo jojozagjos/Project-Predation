@@ -24,7 +24,7 @@ namespace pred
 
 // Bumped whenever the wire changes shape. Two ends that disagree are refused at the door rather
 // than left to misread each other, which is what a wire mismatch actually looks like from inside.
-inline constexpr uint16_t kProtocolVersion = 27;
+inline constexpr uint16_t kProtocolVersion = 28;
 // How many bits name a message type. Five, so there is room to add one.
 inline constexpr uint32_t kMessageTypeBits = 5;
 inline constexpr uint8_t kMaxPlayers = 4;
@@ -81,6 +81,8 @@ enum class MessageType : uint8_t
     Creatures,
     // Client to host, reliable: I have started using what is in my hand, finished, or stopped.
     ItemUse,
+    // Client to host, reliable: the kit I have just drawn at the loadout locker, so the host can keep count of it.
+    Loadout,
     Count
 };
 
@@ -171,6 +173,21 @@ struct ItemUseMessage
 };
 void WriteItemUse(BitWriter& writer, const ItemUseMessage& message);
 bool ReadItemUse(BitReader& reader, ItemUseMessage& out);
+
+// A kit drawn at the loadout locker: what, and how many of each. Everything issued that the player had before is handed
+// back, so this is all of it.
+struct LoadoutMessage
+{
+    static constexpr size_t kMaxPicks = 15;
+    struct Pick
+    {
+        uint16_t item = 0;
+        uint8_t count = 0;
+    };
+    std::vector<Pick> picks;
+};
+void WriteLoadout(BitWriter& writer, const LoadoutMessage& message);
+bool ReadLoadout(BitReader& reader, LoadoutMessage& out);
 
 // What a client asks the host to do. It is a request: the host checks the player is close enough
 // and that the thing is still there before anything happens.

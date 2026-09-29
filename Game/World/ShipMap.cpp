@@ -2,7 +2,6 @@
 
 #include "Engine/Core/Log.h"
 #include "Engine/Render/Primitives.h"
-#include "Game/Items/ItemDatabase.h"
 #include "Game/World/LevelLights.h"
 #include "Game/World/MapBuilder.h"
 
@@ -341,10 +340,10 @@ void Table(Builder& b, float x0, float x1, float z0, float z1, float floor, floa
 
 void BuildRooms(Builder& b)
 {
-    // --- The gear room: lockers, the bench the kit is laid on, a rack, cabinets --------------------------------
+    // --- The gear room: the loadout locker, work benches, a rack, cabinets -------------------------------------
     b.Solid("ship_bench", {-10.8f, kLower, -5.8f}, {-3.2f, kLower + 0.9f, -5.1f}, kFurniture);
     b.Solid("ship_bench_top", {-10.85f, kLower + 0.9f, -5.82f}, {-3.15f, kLower + 0.92f, -5.08f}, kTableTop);
-    // And a second bench across the room, under the rack: a kit for everybody, two to a bench.
+    // And a second bench across the room, under the rack.
     b.Solid("ship_bench", {-10.8f, kLower, 5.1f}, {-3.2f, kLower + 0.9f, 5.8f}, kFurniture);
     b.Solid("ship_bench_top", {-10.85f, kLower + 0.9f, 5.08f}, {-3.15f, kLower + 0.92f, 5.82f}, kTableTop);
     b.Solid("ship_rack", {-10.0f, kLower + 1.2f, 5.6f}, {-4.0f, kLower + 2.3f, 5.85f}, kWallDark);
@@ -352,12 +351,22 @@ void BuildRooms(Builder& b)
     {
         b.Decal("ship_rack_slot", {x - 0.03f, kLower + 1.3f, 5.5f}, {x + 0.03f, kLower + 2.2f, 5.6f}, kFrame);
     }
-    for (float z = -4.6f; z < 0.7f; z += 1.8f)
+    for (float z = -4.6f; z < -1.5f; z += 1.8f)
     {
         b.Solid("ship_cabinet", {-11.97f, kLower, z}, {-11.45f, kLower + 2.0f, z + 1.75f}, kFurniture);
         b.Decal("ship_cabinet_line", {-11.46f, kLower + 0.1f, z + 0.86f}, {-11.44f, kLower + 1.9f, z + 0.89f}, kFrame);
     }
     b.Solid("ship_seat", {-8.5f, kLower, 0.8f}, {-5.5f, kLower + 0.45f, 1.2f}, kFurniture);
+    // The loadout locker, straight ahead coming in at the door, where everybody draws their kit: taller than the cabinets
+    // either side of it, with its screen (the game's: LoadoutLocker) and a hazard line on the floor in front of it.
+    // It is the one thing in the room that looks like it is for something.
+    b.Solid("ship_loadout", {-11.97f, kLower, -0.95f}, {-11.3f, kLower + 2.4f, 0.75f}, kFurniture);
+    b.Decal("ship_loadout_shelf", {-11.3f, kLower + 0.95f, -0.8f}, {-11.1f, kLower + 1.0f, 0.6f}, kFrame);
+    for (const float z : {-1.0f, 0.8f})
+    {
+        b.Decal("ship_loadout_line", {-11.3f, kLower, z - 0.04f}, {-10.0f, kLower + 0.004f, z + 0.04f}, kHazardYellow);
+    }
+    b.Decal("ship_loadout_line", {-10.08f, kLower, -1.0f}, {-10.0f, kLower + 0.004f, 0.8f}, kHazardYellow);
     Conduit(b, {-11.85f, 2.75f, -5.7f}, {-11.85f, 2.75f, 5.7f}, 0.14f);
 
     // --- The crew quarters: bunks down the hull side, lockers opposite, a table in the middle -------------------
@@ -446,7 +455,7 @@ void BuildRooms(Builder& b)
     Chair(b, -8.0f, kUpper, 4.2f, 180.0f);
     Chair(b, -5.0f, kUpper, 4.2f, 180.0f);
 
-    // --- The briefing room: the screen ahead, the console before it, the table --------------------------------
+    // --- The briefing room: the screen ahead, the console in the corner, the table --------------------------------
     for (const float side : {-1.0f, 1.0f})
     {
         const float x0 = side < 0.0f ? -7.4f : 1.9f;
@@ -609,8 +618,8 @@ void ShipMap::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, Le
                      "ship_bay_");
     m_shuttle.Build(scene, meshes, &physics, Vehicles::Load("shuttle"), Pose(kShuttleHome), group, "ship_shuttle_");
 
-    // What WorldObjects puts aboard: lockers down the gear room's hull side and ammunition by its bench (and the kit on
-    // the bench: LayOutKit).
+    // What WorldObjects puts aboard: lockers down the gear room's hull side and ammunition by its bench. The kit is drawn
+    // at the loadout locker.
     for (const float z : {4.6f, 3.48f, 2.36f})
     {
         m_placements.lockers.push_back({ToWorld({-11.53f, kLower, z}), -glm::half_pi<float>()});
@@ -619,36 +628,6 @@ void ShipMap::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, Le
     m_placements.ammoCrates.push_back({ToWorld({-4.5f, kLower, -4.2f}), 0.0f});
     m_built = true;
     PRED_LOG_INFO(Gameplay, "The ship: {} bodies, {} entities", m_bodies.size(), m_entities.size());
-}
-
-void ShipMap::LayOutKit(const ItemDatabase& items)
-{
-    // A whole kit for each of the most there can be aboard -- two to each bench, one at either end -- so nobody finds the
-    // bench stripped by whoever got there first. The ship is rebuilt when it sets off for a site, so every deployment
-    // starts with the benches full again.
-    m_placements.items.clear();
-    int laid = 0;
-    for (const ItemDefinition& definition : items.All())
-    {
-        laid += definition.id != kInvalidItem && definition.benchCount > 0 ? 1 : 0;
-    }
-    constexpr float kHalf = 3.5f; // metres of bench for one kit
-    const float spacing = std::min(0.62f, kHalf / static_cast<float>(std::max(laid, 1)));
-    for (int kit = 0; kit < kKits; ++kit)
-    {
-        const float z = kit < 2 ? -5.45f : 5.45f;
-        const float middle = kit % 2 == 0 ? -8.85f : -5.15f;
-        float x = middle - spacing * static_cast<float>(std::max(laid - 1, 0)) * 0.5f;
-        for (const ItemDefinition& definition : items.All())
-        {
-            if (definition.id == kInvalidItem || definition.benchCount <= 0)
-            {
-                continue;
-            }
-            m_placements.items.push_back({definition.key, definition.benchCount, ToWorld({x, kLower + 0.92f, z})});
-            x += spacing;
-        }
-    }
 }
 
 std::vector<glm::vec4> ShipMap::DeckPlan(int deck)
@@ -687,10 +666,17 @@ float ShipMap::SpawnYaw() const
     return 0.0f;
 }
 
+CinePose ShipMap::LoadoutLocker() const
+{
+    // The middle of its screen, on its face, turned to look out into the room (+x).
+    return Pose({-11.285f, kLower + 1.5f, -0.1f}, -90.0f);
+}
+
 CinePose ShipMap::BriefingConsole() const
 {
-    // Before the port screen, its front towards the room, clear of the way forward to the cockpit.
-    return Pose({-4.6f, kUpper, -19.4f}, 180.0f);
+    // Against the port wall in the forward corner, its front towards the room: near the screens but not in front of
+    // them, and clear of the way forward to the cockpit.
+    return Pose({-11.3f, kUpper, -20.2f}, 90.0f);
 }
 
 void ShipMap::ShowFor(Scene& scene, const glm::vec3& eye)

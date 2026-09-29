@@ -9,6 +9,7 @@ set(PRED_GAME_SOURCES
     PredationGameCinematics.cpp
     PredationGameShip.cpp
     PredationGameBriefing.cpp
+    PredationGameLoadout.cpp
     PredationGameDevices.cpp
 
     Mission/Mission.h
@@ -49,6 +50,7 @@ set(PRED_GAME_SOURCES
     Items/ItemIcons.cpp
     Items/Inventory.h
     Items/Inventory.cpp
+    Items/Loadout.cpp
 
     Weapons/WeaponTypes.h
     Weapons/WeaponAppearance.h

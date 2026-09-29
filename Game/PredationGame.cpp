@@ -557,13 +557,13 @@ bool PredationGame::OnInit(Application& app)
     m_itemIcons.Build(m_items, app.GetMeshes(), app.GetRenderer(), &m_weaponData, &app.GetTextures());
     m_world.SetTextures(app.GetTextures());
     m_world.Build(m_scene, app.GetMeshes(), app.GetPhysics(), m_interactions, m_items, &m_weaponData);
-    m_ship.LayOutKit(m_items);
     // A game starts aboard.
     m_spawnPoint = m_ship.Spawn(0);
     m_spawnYaw = m_ship.SpawnYaw();
     // The ship's deployment console, standing in the testing area until there is a ship -- before the walkable surface is
     // worked out, which has to go round it -- and what sites are called and what the intercom says.
     BuildDeployConsole();
+    BuildLoadoutLocker();
     BuildBriefingScreens();
     LoadBriefing();
     BuildShipControls();
@@ -614,6 +614,7 @@ bool PredationGame::OnInit(Application& app)
     RegisterMissionCommands();
     RegisterCinematicCommands();
     RegisterShipCommands();
+    RegisterLoadoutCommands();
     // The game opens at the menu, with the world already built behind it.
     std::snprintf(m_joinAddress, sizeof(m_joinAddress), "%s", cv_lastAddress.Get().c_str());
     std::snprintf(m_playerName, sizeof(m_playerName), "%s", cv_playerName.Get().c_str());
@@ -2130,6 +2131,11 @@ void PredationGame::ServeClientRequests()
     for (const NetHost::ItemUseRequest& request : m_host.TakeItemUses())
     {
         HandleItemUse(request.player, request.use);
+    }
+
+    for (const NetHost::LoadoutRequest& request : m_host.TakeLoadouts())
+    {
+        ServeLoadout(request.player, request.kit);
     }
 
     for (const uint8_t player : m_host.TakeJoined())
@@ -5289,6 +5295,7 @@ void PredationGame::ReturnToTitle()
     m_titleStatus.clear();
     m_wantMouseCaptured = false;
     m_inventoryOpen = false;
+    m_loadoutOpen = false;
     if (m_hidingSpot >= 0)
     {
         LeaveHidingSpot();
@@ -8794,6 +8801,12 @@ void PredationGame::TryInteract()
     {
         return;
     }
+    // The loadout locker is everybody's own: its screen opens here, and only what is drawn from it is told to the host.
+    if (focus.kind == InteractionKind::Loadout)
+    {
+        m_loadoutOpen ? CloseLoadout() : OpenLoadout();
+        return;
+    }
     // A terminal with no power does nothing, and there is nothing to ask the host: it clicks, and the objective says
     // what to do about it.
     if (focus.kind == InteractionKind::Terminal && !m_mission.powered)
@@ -9067,7 +9080,7 @@ void PredationGame::OnFixedUpdate(double fixedDt)
     // The weapon runs before the movement, because aiming down the sights slows the player and the
     // controller needs that this tick rather than next.
     WeaponInput weaponInput;
-    if (!restrained && !m_inventoryOpen)
+    if (!restrained && !m_inventoryOpen && !m_loadoutOpen)
     {
         Input& raw = m_app->GetInput();
         // Held, or pressed since the last tick: a click that goes down and up between two ticks
@@ -9410,7 +9423,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
             m_reloadLatch = 30;
         }
         // Not a click that was aimed at a menu: the one that pressed Resume must not also fire.
-        if (input.WasActionPressed("fire") && !m_paused && !m_inventoryOpen && !ImGui::GetIO().WantCaptureMouse)
+        if (input.WasActionPressed("fire") && !m_paused && !m_inventoryOpen && !m_loadoutOpen && !ImGui::GetIO().WantCaptureMouse)
         {
             m_firePressLatch = true;
         }
@@ -9439,6 +9452,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
         }
         if (input.WasActionPressed("inventory"))
         {
+            m_loadoutOpen = false;
             m_inventoryOpen = !m_inventoryOpen;
             // The panel is clickable, so it needs the pointer back.
             m_wantMouseCaptured = !m_inventoryOpen;
@@ -9507,6 +9521,10 @@ void PredationGame::OnUpdate(double dt, double alpha)
             if (m_paused && m_settingsOpen)
             {
                 m_settingsOpen = false;
+            }
+            else if (m_loadoutOpen)
+            {
+                CloseLoadout();
             }
             else
             {
@@ -11131,7 +11149,8 @@ void PredationGame::DrawHud()
     // Interaction prompt, just below the reticle.
     const InteractionSystem::Focus& focus = m_interactions.CurrentFocus();
     // Nothing in the middle of the view from inside a locker: it is the slits you are looking at.
-    const std::string prompt = m_hidingSpot >= 0 ? std::string() : focus.prompt;
+    // Nor over a panel that is open.
+    const std::string prompt = m_hidingSpot >= 0 || m_loadoutOpen || m_inventoryOpen ? std::string() : focus.prompt;
     if (!prompt.empty())
     {
         // On the thing itself: the door, the locker, the crate. A prompt under the crosshair says what
@@ -11329,6 +11348,10 @@ void PredationGame::DrawHud()
     if (m_inventoryOpen)
     {
         DrawInventoryPanel();
+    }
+    if (m_loadoutOpen)
+    {
+        DrawLoadoutPanel();
     }
 }
 

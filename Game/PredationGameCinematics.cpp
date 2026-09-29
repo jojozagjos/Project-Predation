@@ -240,6 +240,7 @@ void PredationGame::CloseOverlays()
     m_paused = false;
     m_settingsOpen = false;
     m_inventoryOpen = false;
+    m_loadoutOpen = false;
     m_wantMouseCaptured = !m_cineEditor.IsOpen();
 }
 
