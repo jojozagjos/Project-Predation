@@ -612,27 +612,43 @@ TEST_CASE("A stream plays what has arrived and waits for the rest", "[audio][str
     }
     CHECK(mixer.IsPlaying(voice));
 
-    // Now some does.
-    std::vector<float> speech(32, 0.5f);
-    mixer.PushStream(stream, speech.data(), speech.size());
+    // A little arrives: not enough to be sure of the next moment, so it is held rather than played. Played the instant
+    // it arrived, a stream caught up with what was coming every few milliseconds, and every catch-up was a click.
+    std::vector<float> trickle(32, 0.5f);
+    mixer.PushStream(stream, trickle.data(), trickle.size());
     CHECK(mixer.StreamQueued(stream) == 32);
-
     std::fill(out.begin(), out.end(), 0.0f);
     mixer.Mix(out.data(), 64);
-    // The first samples are the ones pushed; the rest is the gap after them.
+    CHECK(out[0] == Catch::Approx(0.0f));
+    CHECK(mixer.StreamQueued(stream) == 32);
+
+    // Enough to be going on with: it plays, from the first sample that came.
+    const auto lead = static_cast<size_t>(AudioEngine::kStreamLeadSeconds * 48000.0f);
+    std::vector<float> speech(lead, 0.5f);
+    mixer.PushStream(stream, speech.data(), speech.size());
+    std::fill(out.begin(), out.end(), 0.0f);
+    mixer.Mix(out.data(), 64);
     CHECK(out[0] > 0.0f);
     CHECK(out[2 * 20] > 0.0f);
-    CHECK(out[2 * 50] == Catch::Approx(0.0f));
     CHECK(mixer.IsPlaying(voice));
 
     // What was played is not kept: an hour of conversation must not be an hour of audio in memory.
-    CHECK(mixer.StreamQueued(stream) < 32);
+    CHECK(mixer.StreamQueued(stream) < lead + 32);
+
+    // Played out to the end, and then a gap: it fades away rather than stopping dead, and waits.
+    std::vector<float> rest((lead + 32) * 2, 0.0f);
+    mixer.Mix(rest.data(), static_cast<int>(lead + 32));
+    std::vector<float> gap(4800 * 2, 0.0f);
+    mixer.Mix(gap.data(), 4800);
+    CHECK(std::abs(gap[2]) <= 0.5f);
+    CHECK(std::abs(gap[2 * 4799]) < 0.01f);
+    CHECK(mixer.IsPlaying(voice));
 
     // More arrives after the gap and is heard, rather than the voice having given up.
     mixer.PushStream(stream, speech.data(), speech.size());
     std::fill(out.begin(), out.end(), 0.0f);
     mixer.Mix(out.data(), 64);
-    CHECK(out[0] > 0.0f);
+    CHECK(out[2 * 63] > 0.0f);
     CHECK(mixer.IsPlaying(voice));
 }
 

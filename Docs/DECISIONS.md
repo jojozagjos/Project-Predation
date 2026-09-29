@@ -2437,3 +2437,37 @@ Reported by the user: the model editor treated everything like a gun, and the sh
   with the model (one for anything hand-sized, so a rifle is edited exactly as before); the camera's pace is set from
   its size when it is opened (and is in the View panel); snapping and the import size default by kind. The carrier,
   sixty metres long, is as workable as a rifle.
+
+## ADR-113: The journey takes time, the crawler is gone, and a kit for everybody
+
+From the user's playtest:
+
+- **The journey to a site is played, not skipped** (replaces ADR-107's transit): `ship_depart` (the ship pulls away from
+  the camera, faster and faster, its engine glow fading, until it is gone), then the burn itself -- everybody has the
+  run of the ship for `game.ship_travel_seconds` (90), the dust going past the windows and the planet coming up ahead
+  over the second half, "Arriving in m:ss" on the HUD -- then `ship_arrive` (in from the distance, slowing all the way to
+  a stop, and the planet below). The host's clock; `ShipState` carries it (protocol 26). No deploying while under way.
+- **Smooth**: the ship's and shuttles' flights were keys eased one at a time, each segment starting from a standstill --
+  a stop-start at every key, which was the stutter. Now smooth curves through them (monotone cubic, sampled every tenth
+  of a second), or motion from a formula.
+- **One ship in the picture**: the stage is 2.6 km ahead of the real ship, so a shot of one had the other in its
+  background. Whichever the camera is nearer is shown, and the other hidden.
+- **Space is black** (it was the day sky's zenith dimmed, which read as grey), the sun's glow tighter in it.
+- **The launch's last shot is from the side**: the shuttle heads straight for the planet's middle, and seen from behind
+  it flew into it.
+- **No crawler** (asked for: it drove through buildings, and on this map the shuttle is enough). The shuttle lands on
+  the pad, which is now towards the middle of the site so every building is a walk; the team arrives in its cabin; the
+  launch is worked from a console at the front of it; the drive comes back to it; the extraction is its ramp closing
+  and it lifting off. Its ramp is now as wide as its hull, so closed it covers the whole back. The crawler's model,
+  routes and parking are gone (its engine sound is kept, for another vehicle later).
+- **Not where**: the objective no longer says which floor the terminal is on, and the insertion looks over the whole
+  site rather than at the terminal's building. The terminal is in any building, each as likely (it was nearly always
+  the big one); a creature arriving indoors can arrive in any building, not only near the players.
+- **The map turns with you**: the way you face is up, north marked round the edge. No map key (M): items are held.
+- **A kit for everybody**: the gear room has two benches, a whole kit at either end of each -- four, one for everybody
+  who can be aboard -- restocked each deployment, when the ship is rebuilt for the new site.
+- **Voice and the microphone test no longer crackle**: a stream played each sample the moment it arrived, and caught up
+  with what was coming every few milliseconds; each catch-up was a gap. Now it keeps 60 ms in hand before playing and
+  after running dry, fades out through a gap rather than stopping dead, and the output is kept about 30 ms ahead of the
+  device, so a slow moment on a slower machine does not starve it.
+- The tracker is quiet in cinematics. Frames over 50 ms are logged ("Long frame"), so a stutter can be found.

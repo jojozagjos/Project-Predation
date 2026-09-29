@@ -1,6 +1,6 @@
 {
   "name": "surface_extraction",
-  "duration": 31,
+  "duration": 17,
   "pauses_gameplay": true,
   "blend_out": 0,
   "loop": false,
@@ -8,23 +8,19 @@
     {
       "name": "shuttle",
       "bind": "site_shuttle"
-    },
-    {
-      "name": "crawler",
-      "bind": "site_crawler"
     }
   ],
   "cameras": [
     {
       "name": "inside",
-      "anchor": "crawler",
+      "anchor": "shuttle",
       "keys": [
         {
           "t": 0,
           "position": [
             0,
-            2.72,
-            0.6
+            2.35,
+            -3.6
           ],
           "rotation": [
             -4,
@@ -38,8 +34,8 @@
           "t": 4.5,
           "position": [
             0,
-            2.72,
-            0.9
+            2.35,
+            -3.3
           ],
           "rotation": [
             -3,
@@ -47,84 +43,6 @@
             0
           ],
           "fov": 66,
-          "ease": "in_out"
-        }
-      ]
-    },
-    {
-      "name": "leaving",
-      "anchor": "crawler_park",
-      "look_at": "crawler",
-      "look_offset": [
-        0,
-        1.5,
-        0
-      ],
-      "keys": [
-        {
-          "t": 4.5,
-          "position": [
-            1.5,
-            2.2,
-            5
-          ],
-          "rotation": [
-            0,
-            0,
-            0
-          ],
-          "fov": 45,
-          "ease": "linear"
-        },
-        {
-          "t": 11.5,
-          "position": [
-            1,
-            2.8,
-            6
-          ],
-          "rotation": [
-            0,
-            0,
-            0
-          ],
-          "fov": 42,
-          "ease": "in_out"
-        }
-      ]
-    },
-    {
-      "name": "rear",
-      "anchor": "crawler",
-      "keys": [
-        {
-          "t": 11.5,
-          "position": [
-            0,
-            4.2,
-            5
-          ],
-          "rotation": [
-            -8,
-            180,
-            0
-          ],
-          "fov": 55,
-          "ease": "linear"
-        },
-        {
-          "t": 18,
-          "position": [
-            0,
-            4.6,
-            5.5
-          ],
-          "rotation": [
-            -6,
-            180,
-            0
-          ],
-          "fov": 55,
           "ease": "in_out"
         }
       ]
@@ -140,7 +58,7 @@
       ],
       "keys": [
         {
-          "t": 17.5,
+          "t": 4.5,
           "position": [
             -30,
             5,
@@ -155,7 +73,7 @@
           "ease": "linear"
         },
         {
-          "t": 31,
+          "t": 17,
           "position": [
             -26,
             4,
@@ -181,18 +99,6 @@
     },
     {
       "t": 4.5,
-      "camera": "leaving",
-      "blend": 0,
-      "ease": "linear"
-    },
-    {
-      "t": 11.5,
-      "camera": "rear",
-      "blend": 0,
-      "ease": "linear"
-    },
-    {
-      "t": 17.5,
       "camera": "pad_view",
       "blend": 0,
       "ease": "linear"
@@ -204,7 +110,7 @@
       "anchor": "pad",
       "keys": [
         {
-          "t": 21,
+          "t": 0,
           "position": [
             0,
             0,
@@ -218,7 +124,1183 @@
           "ease": "linear"
         },
         {
-          "t": 23.5,
+          "t": 0.1,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 0.2,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 0.3,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 0.4,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 0.5,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 0.6,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 0.7,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 0.8,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 0.9,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 1,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 1.1,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 1.2,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 1.3,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 1.4,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 1.5,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 1.6,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 1.7,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 1.8,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 1.9,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 2,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 2.1,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 2.2,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 2.3,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 2.4,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 2.5,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 2.6,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 2.7,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 2.8,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 2.9,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 3,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 3.1,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 3.2,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 3.3,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 3.4,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 3.5,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 3.6,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 3.7,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 3.8,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 3.9,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 4,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 4.1,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 4.2,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 4.3,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 4.4,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 4.5,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 4.6,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 4.7,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 4.8,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 4.9,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 5,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 5.1,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 5.2,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 5.3,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 5.4,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 5.5,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 5.6,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 5.7,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 5.8,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 5.9,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 6,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 6.1,
+          "position": [
+            0,
+            0.01,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 6.2,
+          "position": [
+            0,
+            0.041,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 6.3,
+          "position": [
+            0,
+            0.093,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 6.4,
+          "position": [
+            0,
+            0.167,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 6.5,
+          "position": [
+            0,
+            0.264,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 6.6,
+          "position": [
+            0,
+            0.384,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 6.7,
+          "position": [
+            0,
+            0.528,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 6.8,
+          "position": [
+            0,
+            0.697,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 6.9,
+          "position": [
+            0,
+            0.892,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 7,
+          "position": [
+            0,
+            1.112,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 7.1,
+          "position": [
+            0,
+            1.359,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 7.2,
+          "position": [
+            0,
+            1.634,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 7.3,
+          "position": [
+            0,
+            1.936,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 7.4,
+          "position": [
+            0,
+            2.267,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 7.5,
+          "position": [
+            0,
+            2.628,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 7.6,
+          "position": [
+            0,
+            3.019,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 7.7,
+          "position": [
+            0,
+            3.44,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 7.8,
+          "position": [
+            0,
+            3.893,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 7.9,
+          "position": [
+            0,
+            4.378,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 8,
+          "position": [
+            0,
+            4.896,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 8.1,
+          "position": [
+            0,
+            5.447,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 8.2,
+          "position": [
+            0,
+            6.033,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 8.3,
+          "position": [
+            0,
+            6.653,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 8.4,
+          "position": [
+            0,
+            7.308,
+            0
+          ],
+          "rotation": [
+            0,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 8.5,
           "position": [
             0,
             8,
@@ -229,10 +1311,276 @@
             180,
             0
           ],
-          "ease": "in"
+          "ease": "linear"
         },
         {
-          "t": 25.5,
+          "t": 8.6,
+          "position": [
+            0,
+            8.689,
+            0.002
+          ],
+          "rotation": [
+            0.056,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 8.7,
+          "position": [
+            0,
+            9.343,
+            0.02
+          ],
+          "rotation": [
+            0.217,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 8.8,
+          "position": [
+            0,
+            9.977,
+            0.067
+          ],
+          "rotation": [
+            0.474,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 8.9,
+          "position": [
+            0,
+            10.602,
+            0.16
+          ],
+          "rotation": [
+            0.816,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 9,
+          "position": [
+            0,
+            11.231,
+            0.312
+          ],
+          "rotation": [
+            1.234,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 9.1,
+          "position": [
+            0,
+            11.878,
+            0.54
+          ],
+          "rotation": [
+            1.719,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 9.2,
+          "position": [
+            0,
+            12.556,
+            0.857
+          ],
+          "rotation": [
+            2.26,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 9.3,
+          "position": [
+            0,
+            13.277,
+            1.28
+          ],
+          "rotation": [
+            2.848,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 9.4,
+          "position": [
+            0,
+            14.054,
+            1.822
+          ],
+          "rotation": [
+            3.473,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 9.5,
+          "position": [
+            0,
+            14.9,
+            2.5
+          ],
+          "rotation": [
+            4.125,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 9.6,
+          "position": [
+            0,
+            15.828,
+            3.327
+          ],
+          "rotation": [
+            4.795,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 9.7,
+          "position": [
+            0,
+            16.851,
+            4.32
+          ],
+          "rotation": [
+            5.472,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 9.8,
+          "position": [
+            0,
+            17.982,
+            5.492
+          ],
+          "rotation": [
+            6.147,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 9.9,
+          "position": [
+            0,
+            19.234,
+            6.86
+          ],
+          "rotation": [
+            6.811,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 10,
+          "position": [
+            0,
+            20.619,
+            8.437
+          ],
+          "rotation": [
+            7.453,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 10.1,
+          "position": [
+            0,
+            22.15,
+            10.24
+          ],
+          "rotation": [
+            8.064,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 10.2,
+          "position": [
+            0,
+            23.841,
+            12.282
+          ],
+          "rotation": [
+            8.634,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 10.3,
+          "position": [
+            0,
+            25.705,
+            14.58
+          ],
+          "rotation": [
+            9.153,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 10.4,
+          "position": [
+            0,
+            27.753,
+            17.147
+          ],
+          "rotation": [
+            9.612,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 10.5,
           "position": [
             0,
             30,
@@ -243,10 +1591,346 @@
             180,
             0
           ],
-          "ease": "in_out"
+          "ease": "linear"
         },
         {
-          "t": 28,
+          "t": 10.6,
+          "position": [
+            0,
+            32.373,
+            23.082
+          ],
+          "rotation": [
+            10.346,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 10.7,
+          "position": [
+            0,
+            34.797,
+            26.338
+          ],
+          "rotation": [
+            10.683,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 10.8,
+          "position": [
+            0,
+            37.278,
+            29.78
+          ],
+          "rotation": [
+            11.012,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 10.9,
+          "position": [
+            0,
+            39.824,
+            33.423
+          ],
+          "rotation": [
+            11.331,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 11,
+          "position": [
+            0,
+            42.44,
+            37.28
+          ],
+          "rotation": [
+            11.64,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 11.1,
+          "position": [
+            0,
+            45.134,
+            41.364
+          ],
+          "rotation": [
+            11.939,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 11.2,
+          "position": [
+            0,
+            47.912,
+            45.688
+          ],
+          "rotation": [
+            12.227,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 11.3,
+          "position": [
+            0,
+            50.781,
+            50.267
+          ],
+          "rotation": [
+            12.503,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 11.4,
+          "position": [
+            0,
+            53.748,
+            55.113
+          ],
+          "rotation": [
+            12.768,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 11.5,
+          "position": [
+            0,
+            56.82,
+            60.24
+          ],
+          "rotation": [
+            13.02,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 11.6,
+          "position": [
+            0,
+            60.003,
+            65.661
+          ],
+          "rotation": [
+            13.26,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 11.7,
+          "position": [
+            0,
+            63.303,
+            71.391
+          ],
+          "rotation": [
+            13.486,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 11.8,
+          "position": [
+            0,
+            66.729,
+            77.441
+          ],
+          "rotation": [
+            13.698,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 11.9,
+          "position": [
+            0,
+            70.285,
+            83.827
+          ],
+          "rotation": [
+            13.896,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 12,
+          "position": [
+            0,
+            73.98,
+            90.56
+          ],
+          "rotation": [
+            14.08,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 12.1,
+          "position": [
+            0,
+            77.82,
+            97.655
+          ],
+          "rotation": [
+            14.248,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 12.2,
+          "position": [
+            0,
+            81.811,
+            105.125
+          ],
+          "rotation": [
+            14.401,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 12.3,
+          "position": [
+            0,
+            85.96,
+            112.984
+          ],
+          "rotation": [
+            14.537,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 12.4,
+          "position": [
+            0,
+            90.274,
+            121.244
+          ],
+          "rotation": [
+            14.657,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 12.5,
+          "position": [
+            0,
+            94.76,
+            129.92
+          ],
+          "rotation": [
+            14.76,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 12.6,
+          "position": [
+            0,
+            99.424,
+            139.025
+          ],
+          "rotation": [
+            14.845,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 12.7,
+          "position": [
+            0,
+            104.274,
+            148.572
+          ],
+          "rotation": [
+            14.912,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 12.8,
+          "position": [
+            0,
+            109.315,
+            158.574
+          ],
+          "rotation": [
+            14.961,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 12.9,
+          "position": [
+            0,
+            114.555,
+            169.046
+          ],
+          "rotation": [
+            14.99,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 13,
           "position": [
             0,
             120,
@@ -257,14 +1941,560 @@
             180,
             0
           ],
-          "ease": "in"
+          "ease": "linear"
         },
         {
-          "t": 31,
+          "t": 13.1,
           "position": [
             0,
-            320,
-            600
+            125.646,
+            191.437
+          ],
+          "rotation": [
+            15,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 13.2,
+          "position": [
+            0,
+            131.48,
+            203.336
+          ],
+          "rotation": [
+            15,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 13.3,
+          "position": [
+            0,
+            137.495,
+            215.679
+          ],
+          "rotation": [
+            15,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 13.4,
+          "position": [
+            0,
+            143.682,
+            228.448
+          ],
+          "rotation": [
+            15,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 13.5,
+          "position": [
+            0,
+            150.035,
+            241.625
+          ],
+          "rotation": [
+            15,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 13.6,
+          "position": [
+            0,
+            156.547,
+            255.192
+          ],
+          "rotation": [
+            15,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 13.7,
+          "position": [
+            0,
+            163.209,
+            269.131
+          ],
+          "rotation": [
+            15,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 13.8,
+          "position": [
+            0,
+            170.016,
+            283.424
+          ],
+          "rotation": [
+            15,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 13.9,
+          "position": [
+            0,
+            176.959,
+            298.053
+          ],
+          "rotation": [
+            15,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 14,
+          "position": [
+            0,
+            184.031,
+            313
+          ],
+          "rotation": [
+            15,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 14.1,
+          "position": [
+            0,
+            191.225,
+            328.247
+          ],
+          "rotation": [
+            15,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 14.2,
+          "position": [
+            0,
+            198.534,
+            343.776
+          ],
+          "rotation": [
+            15,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 14.3,
+          "position": [
+            0,
+            205.95,
+            359.569
+          ],
+          "rotation": [
+            15,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 14.4,
+          "position": [
+            0,
+            213.466,
+            375.608
+          ],
+          "rotation": [
+            15,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 14.5,
+          "position": [
+            0,
+            221.074,
+            391.875
+          ],
+          "rotation": [
+            15,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 14.6,
+          "position": [
+            0,
+            228.768,
+            408.352
+          ],
+          "rotation": [
+            15,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 14.7,
+          "position": [
+            0,
+            236.54,
+            425.021
+          ],
+          "rotation": [
+            15,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 14.8,
+          "position": [
+            0,
+            244.382,
+            441.864
+          ],
+          "rotation": [
+            15,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 14.9,
+          "position": [
+            0,
+            252.288,
+            458.863
+          ],
+          "rotation": [
+            15,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 15,
+          "position": [
+            0,
+            260.25,
+            476
+          ],
+          "rotation": [
+            15,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 15.1,
+          "position": [
+            0,
+            268.261,
+            493.257
+          ],
+          "rotation": [
+            15,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 15.2,
+          "position": [
+            0,
+            276.313,
+            510.616
+          ],
+          "rotation": [
+            15,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 15.3,
+          "position": [
+            0,
+            284.399,
+            528.059
+          ],
+          "rotation": [
+            15,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 15.4,
+          "position": [
+            0,
+            292.512,
+            545.568
+          ],
+          "rotation": [
+            15,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 15.5,
+          "position": [
+            0,
+            300.645,
+            563.125
+          ],
+          "rotation": [
+            15,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 15.6,
+          "position": [
+            0,
+            308.789,
+            580.712
+          ],
+          "rotation": [
+            15,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 15.7,
+          "position": [
+            0,
+            316.939,
+            598.311
+          ],
+          "rotation": [
+            15,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 15.8,
+          "position": [
+            0,
+            325.086,
+            615.904
+          ],
+          "rotation": [
+            15,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 15.9,
+          "position": [
+            0,
+            333.223,
+            633.473
+          ],
+          "rotation": [
+            15,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 16,
+          "position": [
+            0,
+            341.344,
+            651
+          ],
+          "rotation": [
+            15,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 16.1,
+          "position": [
+            0,
+            349.44,
+            668.467
+          ],
+          "rotation": [
+            15,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 16.2,
+          "position": [
+            0,
+            357.504,
+            685.856
+          ],
+          "rotation": [
+            15,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 16.3,
+          "position": [
+            0,
+            365.529,
+            703.149
+          ],
+          "rotation": [
+            15,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 16.4,
+          "position": [
+            0,
+            373.508,
+            720.328
+          ],
+          "rotation": [
+            15,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 16.5,
+          "position": [
+            0,
+            381.434,
+            737.375
+          ],
+          "rotation": [
+            15,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 16.6,
+          "position": [
+            0,
+            389.298,
+            754.272
+          ],
+          "rotation": [
+            15,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 16.7,
+          "position": [
+            0,
+            397.094,
+            771.001
+          ],
+          "rotation": [
+            15,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 16.8,
+          "position": [
+            0,
+            404.815,
+            787.544
+          ],
+          "rotation": [
+            15,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 16.9,
+          "position": [
+            0,
+            412.452,
+            803.883
+          ],
+          "rotation": [
+            15,
+            180,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 17,
+          "position": [
+            0,
+            420,
+            820
           ],
           "rotation": [
             15,
@@ -276,26 +2506,10 @@
       ]
     }
   ],
-  "paths": [
-    {
-      "actor": "crawler",
-      "path": "route_back",
-      "start": 4.5,
-      "end": 20,
-      "ease": "in_out",
-      "lift": 0,
-      "face": true
-    }
-  ],
+  "paths": [],
   "clips": [
     {
       "t": 0.3,
-      "actor": "crawler",
-      "clip": "ramp_closing",
-      "speed": 1
-    },
-    {
-      "t": 19,
       "actor": "shuttle",
       "clip": "ramp_closing",
       "speed": 1
@@ -306,46 +2520,18 @@
       "t": 0.3,
       "sound": "World/ramp",
       "volume": 0.9,
-      "at": "crawler",
-      "music": false
-    },
-    {
-      "t": 3.5,
-      "sound": "World/crawler_engine",
-      "volume": 0.9,
-      "at": "crawler",
-      "music": false
-    },
-    {
-      "t": 9.5,
-      "sound": "World/crawler_engine",
-      "volume": 0.9,
-      "at": "crawler",
-      "music": false
-    },
-    {
-      "t": 15.5,
-      "sound": "World/crawler_engine",
-      "volume": 0.8,
-      "at": "crawler",
-      "music": false
-    },
-    {
-      "t": 19,
-      "sound": "World/ramp",
-      "volume": 0.8,
       "at": "shuttle",
       "music": false
     },
     {
-      "t": 20.5,
+      "t": 5.5,
       "sound": "World/shuttle_launch",
       "volume": 1,
       "at": "shuttle",
       "music": false
     },
     {
-      "t": 25,
+      "t": 10,
       "sound": "World/shuttle_launch",
       "volume": 0.8,
       "at": "shuttle",
@@ -354,7 +2540,7 @@
   ],
   "markers": [
     {
-      "t": 30.6,
+      "t": 16.6,
       "name": "go_to_ship",
       "value": ""
     }
@@ -486,12 +2672,12 @@
       "ease": "linear"
     },
     {
-      "t": 28.5,
+      "t": 14.5,
       "value": 0,
       "ease": "linear"
     },
     {
-      "t": 30.3,
+      "t": 16.3,
       "value": 1,
       "ease": "in_out"
     }

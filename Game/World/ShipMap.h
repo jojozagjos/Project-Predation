@@ -31,6 +31,8 @@ inline constexpr float kLowerDeck = 0.0f;
 inline constexpr float kUpperDeck = 3.6f;
 // Where the shuttle rests in the hangar, on the bay doors, in the ship's own frame.
 inline constexpr glm::vec3 kShuttleHome{0.0f, 0.0f, 20.0f};
+// How many whole kits the gear room lays out: one for each of the most people there can be aboard.
+inline constexpr int kKits = 4;
 // Where cinematics fly the ship: its outside again, in open space well away from where everybody is standing in it, so
 // it can go off into the distance and come back without leaving anybody's rooms behind in space.
 inline constexpr glm::vec3 kStage{-1500.0f, 300.0f, -2600.0f};
@@ -51,7 +53,7 @@ class ShipMap
 public:
     // Before the site is built: a site that is rebuilt takes away every lamp added after its own.
     void Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, LevelLights* lights);
-    // The kit on the gear room's bench: every item there is, as the testing area has them.
+    // The kit on the gear room's benches: every item there is, a kit apiece for everybody who can be aboard.
     void LayOutKit(const ItemDatabase& items);
     bool Built() const { return m_built; }
 
@@ -73,6 +75,14 @@ public:
     // The outside of it, round the rooms; and the same outside on the stage, for cinematics to fly.
     VehicleProp& Hull() { return m_hull; }
     VehicleProp& StageHull() { return m_stageHull; }
+
+    // Only the ship that belongs in the picture taken from `eye`: the one round the rooms, or the one on the stage. Each is
+    // in the distance behind the other, so a shot of one showed the other in its background.
+    void ShowFor(Scene& scene, const glm::vec3& eye);
+
+    // Under way: specks of dust going past the windows at `speed` metres a second (0, none), which is how it is seen that
+    // the ship is moving at all -- the stars are too far to.
+    void UpdateDust(Scene& scene, MeshLibrary& meshes, float speed, float dt);
 
     // The engines' glow: 0 cold, 1 at full burn.
     void SetEngines(Scene& scene, float burn);
@@ -96,6 +106,17 @@ private:
     std::vector<Entity> m_entities;
     std::vector<BodyHandle> m_bodies;
     float m_burn = 0.0f;
+    // Which ship is being shown: the one round the rooms (false), or the one on the stage.
+    bool m_showingStage = true;
+    bool m_showSet = false;
+    struct Speck
+    {
+        Entity entity;
+        glm::vec3 at{0.0f}; // in the ship's frame
+    };
+    std::vector<Speck> m_dust;
+    bool m_dustShown = false;
+    uint32_t m_dustSeed = 12345u;
 };
 
 } // namespace pred

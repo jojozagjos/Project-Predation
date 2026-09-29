@@ -92,10 +92,11 @@ void main()
 	float toSun = max(dot(ray, normalize(u_skySun.xyz)), 0.0);
 	float halo = pow(toSun, max(u_skySun.w, 1.0));
 	float core = pow(toSun, max(u_skySun.w, 1.0) * 24.0);
-	// In space there is no horizon: the dark all round, and the sun wherever it is.
+	// In space there is no horizon and no air to light: black all round, but for the stars and the sun wherever it is.
+	// (It was the sky's zenith dimmed, which is the colour of a sky, and read as grey.)
 	float inSpace = step(0.001, u_skySpace.x);
-	color = mix(color, u_skyZenith.rgb * 0.4, inSpace);
-	color += u_skySunColor.rgb * u_skySunColor.w * (halo * 0.35 + core) * mix(clamp(up * 4.0 + 0.4, 0.0, 1.0), 1.0, inSpace);
+	color = mix(color, vec3(0.0006, 0.0007, 0.001), inSpace);
+	color += u_skySunColor.rgb * u_skySunColor.w * (halo * mix(0.35, 0.06, inSpace) + core) * mix(clamp(up * 4.0 + 0.4, 0.0, 1.0), 1.0, inSpace);
 
 	// A planet: a sphere one unit away, as big on the sky as it is asked to be, lit by the sun, with ice and cloud
 	// over it, and its air glowing at the edge on the lit side -- and a little beyond the edge.

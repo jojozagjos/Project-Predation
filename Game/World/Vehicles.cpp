@@ -138,66 +138,18 @@ ModelAsset ShuttleModel()
     b.Box("fx_engine_glow_left", -half - 0.7f, -half - 0.1f, 1.2f, 2.2f, -1.2f, -1.15f, {1.0f, 0.55f, 0.25f}, 0.5f, 0.0f, 0.6f);
     b.Box("fin", -0.08f, 0.08f, ceiling + 0.25f, ceiling + 1.2f, -5.2f, -3.2f, kShuttleTrim, 0.55f, 0.6f);
     b.Box("fx_cabin_light", -0.4f, 0.4f, ceiling - 0.05f, ceiling, -1.9f, -1.1f, {1.0f, 0.95f, 0.85f}, 0.5f, 0.0f, 1.5f);
-    b.Ramp({0.0f, deck, door}, 2.596f, 3.2f, 0.04f, kShuttleHull);
+    // The launch console, against the front wall, its screen on top towards the cabin.
+    b.Box("console", -0.5f, 0.5f, deck, deck + 0.95f, back + wall, back + wall + 0.45f, kShuttleTrim, 0.55f, 0.6f);
+    b.Box("fx_console_screen", -0.4f, 0.4f, deck + 0.95f, deck + 0.97f, back + wall + 0.06f, back + wall + 0.4f, {0.3f, 0.6f, 1.0f}, 0.4f, 0.0f, 0.6f);
+    // As wide as the hull, not just the opening: closed, it covers the whole back, walls' edges and all.
+    b.Ramp({0.0f, deck, door}, 2.596f, 2.0f * half - 0.04f, 0.04f, kShuttleHull);
     b.Socket("arrival", {0.0f, deck, -1.0f}, {0.0f, 180.0f, 0.0f});
+    b.Socket("console", {0.0f, deck, back + wall + 0.225f}, {0.0f, 180.0f, 0.0f});
     b.Socket("lamp", {0.0f, ceiling - 0.05f, -1.5f});
     // A landing light under its belly, straight down.
     b.Socket("light_landing", {0.0f, 0.2f, -2.0f}, {-90.0f, 0.0f, 0.0f});
     b.Socket("cabin_min", {-half + wall, deck - 0.5f, back + wall});
     b.Socket("cabin_max", {half - wall, ceiling, door});
-    return model;
-}
-
-ModelAsset CrawlerModel()
-{
-    // A tracked snow crawler, eight metres long: a cab at the front (-z) and a passenger module behind it, floored 1.1 m
-    // up, two metres of headroom, open at the back with a ramp that swings down to the snow.
-    ModelAsset model;
-    model.name = "snow_crawler";
-    Builder b{model};
-    const float floor = 1.1f;
-    const float front = -1.6f; // the passenger module's front wall
-    const float rear = 4.0f;
-    const float half = 1.55f;
-    const float wall = 0.15f;
-    const float roof = 3.25f;
-    b.Box("track_left", -1.75f, -1.0f, 0.0f, 0.95f, -3.8f, 3.7f, kCrawlerTrack, 0.95f);
-    b.Box("track_right", 1.0f, 1.75f, 0.0f, 0.95f, -3.8f, 3.7f, kCrawlerTrack, 0.95f);
-    b.Box("hull", -1.0f, 1.0f, 0.35f, 0.95f, -3.6f, 3.6f, kCrawlerTrack, 0.9f);
-    b.Box("cab", -half, half, 0.95f, 2.95f, -3.9f, front, kCrawlerBody, 0.7f);
-    b.Box("cab_roof", -half, half, 2.95f, 3.1f, -3.9f, front, kCrawlerBody, 0.7f);
-    b.Box("fx_windscreen", -1.35f, 1.35f, 1.85f, 2.7f, -3.93f, -3.9f, kGlass, 0.2f, 0.0f, 0.05f);
-    b.Box("fx_window_left", -half - 0.02f, -half, 1.85f, 2.6f, -3.6f, -2.0f, kGlass, 0.2f, 0.0f, 0.05f);
-    b.Box("fx_window_right", half, half + 0.02f, 1.85f, 2.6f, -3.6f, -2.0f, kGlass, 0.2f, 0.0f, 0.05f);
-    b.Box("fx_headlight_left", -1.3f, -0.9f, 1.3f, 1.5f, -3.96f, -3.9f, {1.0f, 0.95f, 0.8f}, 0.3f, 0.0f, 3.0f);
-    b.Box("fx_headlight_right", 0.9f, 1.3f, 1.3f, 1.5f, -3.96f, -3.9f, {1.0f, 0.95f, 0.8f}, 0.3f, 0.0f, 3.0f);
-    b.Box("fx_beacon", -0.25f, 0.25f, 3.1f, 3.25f, -2.9f, -2.6f, {1.0f, 0.6f, 0.15f}, 0.3f, 0.0f, 2.0f);
-    b.Box("floor", -half, half, 0.95f, floor, front, rear, kCrawlerInside, 0.85f);
-    b.Box("wall_left", -half, -half + wall, floor, roof, front, rear, kCrawlerBody, 0.7f);
-    b.Box("wall_right", half - wall, half, floor, roof, front, rear, kCrawlerBody, 0.7f);
-    b.Box("front_wall", -half + wall, half - wall, floor, roof, front, front + wall, kCrawlerBody, 0.7f);
-    b.Box("roof", -half, half, roof, roof + 0.15f, front, rear, kCrawlerBody, 0.7f);
-    b.Box("header", -half + wall, half - wall, roof - 0.15f, roof, rear - 0.15f, rear, kCrawlerBody, 0.7f);
-    b.Box("bench_left", -half + wall, -0.95f, floor, floor + 0.45f, -1.1f, 3.0f, kCrawlerInside, 0.85f);
-    b.Box("bench_right", 0.95f, half - wall, floor, floor + 0.45f, -1.1f, 3.0f, kCrawlerInside, 0.85f);
-    b.Box("roof_rack", -1.3f, 1.3f, roof + 0.15f, roof + 0.25f, 0.0f, 3.0f, kCrawlerTrack, 0.6f, 0.5f);
-    ModelPart& exhaust = b.Box("exhaust", 1.17f, 1.33f, 3.1f, 4.0f, -2.0f, -1.84f, kCrawlerTrack, 0.5f, 0.6f);
-    exhaust.shape = PartShape::Cylinder;
-    b.Box("fx_cabin_light", -0.3f, 0.3f, roof - 0.05f, roof, 0.5f, 1.5f, {1.0f, 0.9f, 0.75f}, 0.5f, 0.0f, 1.5f);
-    // The launch console against the front wall, its screen on top, looked down at.
-    const float consoleZ = front + wall + 0.3f;
-    b.Box("console", -0.5f, 0.5f, floor, floor + 0.95f, consoleZ - 0.225f, consoleZ + 0.225f, {0.22f, 0.23f, 0.25f}, 0.5f, 0.5f);
-    b.Box("fx_console_screen", -0.4f, 0.4f, floor + 0.95f, floor + 0.962f, consoleZ - 0.14f, consoleZ + 0.18f, {0.03f, 0.035f, 0.04f}, 0.25f, 0.0f, 0.0f);
-    b.Ramp({0.0f, floor, rear}, 2.3f, 2.7f, 0.04f, kCrawlerInside);
-    b.Socket("arrival", {0.0f, floor, 1.2f}, {0.0f, 180.0f, 0.0f});
-    b.Socket("console", {0.0f, floor, front + wall + 0.3f}, {0.0f, 180.0f, 0.0f});
-    b.Socket("lamp", {0.0f, roof - 0.05f, 1.0f});
-    b.Socket("driver", {-0.6f, 2.25f, -3.0f});
-    // Its headlights, ahead and a little down.
-    b.Socket("light_head_left", {-1.1f, 1.4f, -4.0f}, {-6.0f, 0.0f, 0.0f});
-    b.Socket("light_head_right", {1.1f, 1.4f, -4.0f}, {-6.0f, 0.0f, 0.0f});
-    b.Socket("cabin_min", {-half + wall, floor - 0.5f, front + wall});
-    b.Socket("cabin_max", {half - wall, roof, rear});
     return model;
 }
 
@@ -461,10 +413,6 @@ std::shared_ptr<ModelAsset> Load(const std::string& name)
     {
         *model = ShuttleModel();
     }
-    else if (name == "snow_crawler")
-    {
-        *model = CrawlerModel();
-    }
     else if (name == "hangar_doors")
     {
         *model = BayDoorsModel();
@@ -588,9 +536,19 @@ void VehicleProp::Show(Scene& scene, const CinePose& pose, const std::string& cl
         }
         if (MeshRenderer* renderer = scene.GetMeshRenderer(m_parts[i]))
         {
-            renderer->visible = visible > 0.5f;
+            renderer->visible = visible > 0.5f && !m_hidden;
         }
     }
+}
+
+void VehicleProp::SetHidden(Scene& scene, bool hidden)
+{
+    if (hidden == m_hidden)
+    {
+        return;
+    }
+    m_hidden = hidden;
+    Show(scene, m_shown);
 }
 
 Entity VehicleProp::Part(const std::string& name) const

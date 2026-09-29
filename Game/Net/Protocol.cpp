@@ -630,6 +630,12 @@ void WriteWorldEvent(BitWriter& writer, const WorldEventMessage& message)
         writer.WriteBits(message.index & 0x3u, 2);
         writer.WriteBits(message.item, 16);
         writer.WriteBool(message.flag);
+        writer.WriteBool(message.flag2);
+        if (message.flag2)
+        {
+            writer.WriteQuantised(message.amount, 0.0f, 1200.0f, 16);
+            writer.WriteQuantised(message.direction.x, 0.0f, 1200.0f, 16);
+        }
         break;
 
     case WorldEventKind::Count:
@@ -801,6 +807,12 @@ bool ReadWorldEvent(BitReader& reader, WorldEventMessage& out)
         out.index = static_cast<uint8_t>(reader.ReadBits(2));
         out.item = static_cast<uint16_t>(reader.ReadBits(16));
         out.flag = reader.ReadBool();
+        out.flag2 = reader.ReadBool();
+        if (out.flag2)
+        {
+            out.amount = reader.ReadQuantised(0.0f, 1200.0f, 16);
+            out.direction.x = reader.ReadQuantised(0.0f, 1200.0f, 16);
+        }
         break;
 
     case WorldEventKind::Count:

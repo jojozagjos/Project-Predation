@@ -33,6 +33,11 @@ void SDLCALL FeedStream(void* userdata, SDL_AudioStream* stream, int additional,
     // bytes; a request that is not a whole number of them is rounded down rather than trusted.
     constexpr int kBytesPerFrame = static_cast<int>(sizeof(float)) * 2;
     int framesWanted = additional / kBytesPerFrame;
+    // And a little over, kept queued: the least the device asks for leaves nothing in hand, and a slow moment in the mix
+    // on a slower machine was then a moment the speaker had nothing to play -- a crackle.
+    const int queuedFrames = SDL_GetAudioStreamQueued(stream) / kBytesPerFrame;
+    const int aheadFrames = engine->SampleRate() * 30 / 1000;
+    framesWanted = std::max(framesWanted, aheadFrames - queuedFrames);
 
     // In blocks, so a device asking for a quarter of a second at a time does not put a quarter of a
     // second of buffer on the stack.
@@ -602,25 +607,39 @@ void AudioEngine::MixLocked(float* out, int frames)
                 // because the buffer keeps having its front thrown away as it is consumed.
                 const uint64_t arrived = stream->consumed + stream->pending.size();
                 const double position = voice.cursor - static_cast<double>(stream->consumed);
+                const double ahead = static_cast<double>(arrived) - voice.cursor;
                 if (voice.cursor + 1.0 >= static_cast<double>(arrived))
                 {
-                    // Nothing has arrived yet for this frame. Silence, and the cursor stays where
-                    // it is: a hole in the network is a gap in the sound and not a reason to start
-                    // reading the next words early. A closed stream that has run dry really is over.
+                    // Run dry. A closed stream that has really is over; an open one waits for a little in hand
+                    // again, and the cursor stays where it is: a hole in the network is a gap in the sound and not
+                    // a reason to start reading the next words early.
                     if (!stream->open)
                     {
                         finished = true;
                         break;
                     }
-                    voice.mixedLeft += std::clamp(left - voice.mixedLeft, -kGainStep, kGainStep);
-                    voice.mixedRight += std::clamp(right - voice.mixedRight, -kGainStep, kGainStep);
-                    continue;
+                    voice.buffering = true;
                 }
-                const auto whole = static_cast<size_t>(position);
-                const float fraction = static_cast<float>(position - static_cast<double>(whole));
-                const float a = stream->pending[whole];
-                const float b = whole + 1 < stream->pending.size() ? stream->pending[whole + 1] : a;
-                value = a + (b - a) * fraction;
+                else if (voice.buffering &&
+                         (ahead >= kStreamLeadSeconds * static_cast<double>(stream->sampleRate) || !stream->open))
+                {
+                    voice.buffering = false;
+                }
+                if (voice.buffering)
+                {
+                    // Waiting: what was playing fades away over a few milliseconds rather than stopping dead.
+                    voice.held *= 0.995f;
+                    value = voice.held;
+                }
+                else
+                {
+                    const auto whole = static_cast<size_t>(position);
+                    const float fraction = static_cast<float>(position - static_cast<double>(whole));
+                    const float a = stream->pending[whole];
+                    const float b = whole + 1 < stream->pending.size() ? stream->pending[whole + 1] : a;
+                    value = a + (b - a) * fraction;
+                    voice.held = value;
+                }
             }
             else
             {
@@ -659,7 +678,10 @@ void AudioEngine::MixLocked(float* out, int frames)
             m_send[static_cast<size_t>(frame)] += value * send;
             out[static_cast<size_t>(frame) * 2] += value * voice.mixedLeft;
             out[static_cast<size_t>(frame) * 2 + 1] += value * voice.mixedRight;
-            voice.cursor += rate;
+            if (stream == nullptr || !voice.buffering)
+            {
+                voice.cursor += rate;
+            }
         }
 
         // Everything this voice has read can go. The front of the queue is thrown away rather than

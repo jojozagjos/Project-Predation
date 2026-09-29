@@ -425,42 +425,66 @@ bool PredationGame::FindUnseenPoint(uint32_t seed, glm::vec3& out) const
     const bool inside = site && where.Range(0.0f, 1.0f) < cv_aiArriveIndoors.Get();
     bool found = false;
     float best = -1.0e9f;
-    for (int i = 0; i < 96; ++i)
+    // Out of sight above everything, not within thirty metres of anybody; and where wanted, indoors. `around` is where
+    // to look, and `idealDistance` how far off is best (none: anywhere far enough will do).
+    const auto search = [&](const glm::vec3& around, float radius, float idealDistance)
     {
-        glm::vec3 candidate;
-        if (!m_nav.RandomPointNear(eyes.front(), inside ? 80.0f : 55.0f, pick, candidate))
+        for (int i = 0; i < 96; ++i)
         {
-            continue;
-        }
-        float nearest = 1.0e9f;
-        bool seen = false;
-        const glm::vec3 body = candidate + glm::vec3(0.0f, 0.7f, 0.0f);
-        for (const glm::vec3& eye : eyes)
-        {
-            nearest = std::min(nearest, Horizontal(candidate, eye));
-            const glm::vec3 along = body - eye;
-            const float length = glm::length(along);
-            if (length > 1e-3f && !physics.RayCast(eye, along / length, length))
+            glm::vec3 candidate;
+            if (!m_nav.RandomPointNear(around, radius, pick, candidate))
             {
-                seen = true;
+                continue;
+            }
+            float nearest = 1.0e9f;
+            bool seen = false;
+            const glm::vec3 body = candidate + glm::vec3(0.0f, 0.7f, 0.0f);
+            for (const glm::vec3& eye : eyes)
+            {
+                nearest = std::min(nearest, Horizontal(candidate, eye));
+                const glm::vec3 along = body - eye;
+                const float length = glm::length(along);
+                if (length > 1e-3f && !physics.RayCast(eye, along / length, length))
+                {
+                    seen = true;
+                }
+            }
+            if (nearest < 30.0f)
+            {
+                continue;
+            }
+            const float indoors = inside && m_facility.Plan().Indoors(candidate) ? 50.0f : 0.0f;
+            const float score = (seen ? 0.0f : 100.0f) + indoors - (idealDistance > 0.0f ? std::abs(nearest - idealDistance) : 0.0f);
+            if (score > best)
+            {
+                best = score;
+                out = candidate;
+                found = true;
             }
         }
-        if (nearest < 30.0f)
+    };
+    // Indoors, in any of the site's buildings -- whichever, not only the one everybody is in or near: somewhere in it,
+    // unseen.
+    if (inside && !m_facility.Plan().buildings.empty())
+    {
+        const std::vector<FacilityLayout>& buildings = m_facility.Plan().buildings;
+        const size_t which = std::min(static_cast<size_t>(where.Range(0.0f, static_cast<float>(buildings.size()))), buildings.size() - 1);
+        glm::vec2 lo;
+        glm::vec2 hi;
+        SitePlan::Footprint(buildings[which], 0.0f, lo, hi);
+        const glm::vec2 middle = (lo + hi) * 0.5f;
+        search({middle.x, buildings[which].origin.y, middle.y}, glm::length(hi - lo) * 0.5f, 0.0f);
+        if (found && !m_facility.Plan().Indoors(out))
         {
-            continue;
+            found = false;
+            best = -1.0e9f;
         }
-        // Out of sight above everything, then about forty-five metres off: far enough to have come from
-        // somewhere and not to be on top of anybody, near enough that it arrives into the game rather than into
-        // an empty corner.
-        // Wanted inside, a point indoors comes before any outside that is not badly placed for distance.
-        const float indoors = inside && m_facility.Plan().Indoors(candidate) ? 50.0f : 0.0f;
-        const float score = (seen ? 0.0f : 100.0f) + indoors - std::abs(nearest - 45.0f);
-        if (score > best)
-        {
-            best = score;
-            out = candidate;
-            found = true;
-        }
+    }
+    // Otherwise about forty-five metres off: far enough to have come from somewhere and not to be on top of anybody,
+    // near enough that it arrives into the game rather than into an empty corner.
+    if (!found)
+    {
+        search(eyes.front(), inside ? 80.0f : 55.0f, 45.0f);
     }
     return found;
 }

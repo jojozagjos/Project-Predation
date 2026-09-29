@@ -841,7 +841,7 @@ void CinematicEditor::DrawAddMenu(Context& context)
             Changed(context);
         };
         ImGui::TextDisabled("Something the site already has:");
-        for (const char* bind : {"site_shuttle", "site_crawler"})
+        for (const char* bind : {"site_shuttle"})
         {
             if (ImGui::MenuItem(bind))
             {
@@ -2548,7 +2548,7 @@ void CinematicEditor::DrawInspector(Context& context)
             changed = true;
             m_needsReplay = true;
         }
-        std::vector<std::string> binds{"", "site_shuttle", "site_crawler"};
+        std::vector<std::string> binds{"", "site_shuttle"};
         if (DrawChoice("The site's own", actor.bind, binds, true))
         {
             changed = true;

@@ -13,22 +13,20 @@ namespace pred
 class InteractionSystem;
 class MeshLibrary;
 
-// The mission's things in the world: the terminal on its bench, a breaker panel on a wall of every building, and the
-// crawler waiting at the terminal's building -- which the team comes in on and leaves on -- with its launch console. Each
-// is something solid, something that shows how things stand -- the terminal's screen, the panel's lamp, the console's --
-// and something to press.
+// The mission's things in the world: the terminal on its bench, a breaker panel on a wall of every building, and the launch
+// console in the shuttle on the pad -- which the team comes in on and leaves on. Each is something solid, something that
+// shows how things stand -- the terminal's screen, the panel's lamp, the console's -- and something to press.
 //
 // Built with the site and taken away with it; Show is told how the mission stands whenever that changes, on every
 // machine, so everybody sees the same screens lit and is offered the same things to do.
 class MissionProps
 {
 public:
+    // `shuttle` is the site's, on the pad: its console is the one the launch is worked from.
     void Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, InteractionSystem& interactions, const SitePlan& site,
-               const MissionPlan& plan);
+               const MissionPlan& plan, const VehicleProp& shuttle);
     void Clear(Scene& scene, PhysicsWorld& physics, InteractionSystem& interactions);
     void Show(Scene& scene, InteractionSystem& interactions, const MissionState& state, float time);
-    VehicleProp& Crawler() { return m_crawler; }
-    const VehicleProp& Crawler() const { return m_crawler; }
 
 private:
     struct Prop
@@ -44,7 +42,9 @@ private:
 
     Prop m_terminal;
     std::vector<Prop> m_breakers;
-    VehicleProp m_crawler;
+    // The shuttle's console, and its screen.
+    Entity m_console;
+    Entity m_consoleScreen;
     int m_building = -1; // the terminal's
 };
 

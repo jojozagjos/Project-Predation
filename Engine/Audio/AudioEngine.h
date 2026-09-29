@@ -39,6 +39,10 @@ class AudioEngine
 public:
     // What the whole mix is scaled by before the limiter, so ordinary scenes stay well under the top.
     static constexpr float kHeadroom = 0.8f;
+    // How much of a stream is held in hand before it plays, and again after it runs dry. Played the moment each sample
+    // arrives, a stream caught up with what was coming every few milliseconds -- a microphone's blocks, the network's
+    // packets -- and each catch-up was a gap: crackle, all the way through anybody speaking.
+    static constexpr float kStreamLeadSeconds = 0.06f;
 
     struct Settings
     {
@@ -190,6 +194,10 @@ private:
         float occlusionMixed = -1.0f;
         float lowpass = 0.0f;   // the one-pole filter's memory
         bool primed = false;
+        // A stream's: waiting for a little to be in hand before playing -- at the start, and again whenever it runs
+        // dry -- and the last sample it played, faded out through a gap rather than dropped to nothing.
+        bool buffering = true;
+        float held = 0.0f;
         float reverbSend = 1.0f;
     };
 

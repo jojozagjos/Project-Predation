@@ -27,6 +27,8 @@ public:
     float Unit() { return static_cast<float>(Next() >> 40) / static_cast<float>(1ull << 24); }
     float Range(float low, float high) { return low + (high - low) * Unit(); }
     bool Chance(float p) { return Unit() < p; }
+    // One of `count` things, each as likely.
+    size_t Index(size_t count) { return std::min(static_cast<size_t>(Unit() * static_cast<float>(count)), count - 1); }
 
 private:
     uint64_t m_state;
@@ -64,15 +66,13 @@ MissionPlan MissionPlan::Generate(const SitePlan& site, uint32_t seed)
     Random random((static_cast<uint64_t>(seed) << 20) ^ 0xDA7A5EEDull);
 
     // The terminal stands on a bench, in a room that can be reached without the keycard and is not the one a creature
-    // would build in. The further from the shuttle, the likelier -- getting the data should sometimes take a while.
+    // would build in -- in any of the site's buildings.
     struct Candidate
     {
         int building = 0;
         size_t thing = 0;
-        float away = 0.0f;
     };
     std::vector<Candidate> candidates;
-    const glm::vec2 landing{site.landing.x, site.landing.z};
     for (size_t b = 0; b < site.buildings.size(); ++b)
     {
         const FacilityLayout& building = site.buildings[b];
@@ -90,17 +90,33 @@ MissionPlan MissionPlan::Generate(const SitePlan& site, uint32_t seed)
             {
                 continue;
             }
-            const glm::vec3 at = FacilityMap::ToWorld(building, thing.floor, thing.at);
-            candidates.push_back({static_cast<int>(b), t, glm::distance(glm::vec2(at.x, at.z), landing) + static_cast<float>(thing.floor) * 8.0f});
+            candidates.push_back({static_cast<int>(b), t});
         }
     }
     if (candidates.empty())
     {
         return plan;
     }
-    std::sort(candidates.begin(), candidates.end(), [](const Candidate& a, const Candidate& b) { return a.away < b.away; });
-    const float pick = std::sqrt(random.Unit()); // towards the far end of the list
-    const Candidate& chosen = candidates[std::min(static_cast<size_t>(pick * static_cast<float>(candidates.size())), candidates.size() - 1)];
+    // Any building as likely as any other -- the big one has the most benches, and picking among benches put the data in
+    // it nearly every time -- and then any bench in it.
+    std::vector<int> withBenches;
+    for (const Candidate& candidate : candidates)
+    {
+        if (std::find(withBenches.begin(), withBenches.end(), candidate.building) == withBenches.end())
+        {
+            withBenches.push_back(candidate.building);
+        }
+    }
+    const int pickedBuilding = withBenches[random.Index(withBenches.size())];
+    std::vector<const Candidate*> inIt;
+    for (const Candidate& candidate : candidates)
+    {
+        if (candidate.building == pickedBuilding)
+        {
+            inIt.push_back(&candidate);
+        }
+    }
+    const Candidate& chosen = *inIt[random.Index(inIt.size())];
 
     const FacilityLayout& building = site.buildings[static_cast<size_t>(chosen.building)];
     const FacilityLayout::Placed& bench = building.things[chosen.thing];

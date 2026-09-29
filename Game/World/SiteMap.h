@@ -34,9 +34,9 @@ public:
     uint16_t Seed() const { return m_seed; }
     const SitePlan& Plan() const { return m_plan; }
     const WorldObjects::Placements& Placements() const { return m_placements; }
-    // Where somebody put on the site with nothing to bring them stands: by the pad, where the crawler waits, facing in.
-    glm::vec3 Spawn() const { return m_plan.crawlerStart.position + glm::vec3(0.0f, 0.5f, 0.0f); }
-    float SpawnYaw() const { return m_plan.crawlerStart.yaw; }
+    // Where somebody put on the site with nothing to bring them stands: off the foot of the shuttle's ramp, facing in.
+    glm::vec3 Spawn() const { return m_plan.rampFoot.position + glm::vec3(0.0f, 0.5f, 0.0f); }
+    float SpawnYaw() const { return m_plan.rampFoot.yaw; }
     // The shuttle on the pad: where it rests, its back to the site and its ramp down.
     VehicleProp& Shuttle() { return m_shuttle; }
     const VehicleProp& Shuttle() const { return m_shuttle; }

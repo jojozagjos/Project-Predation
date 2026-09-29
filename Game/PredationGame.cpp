@@ -2639,6 +2639,8 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
         m_map = static_cast<MapChoice>(event.index);
         m_shipOrbiting = event.item;
         m_shipReady = event.flag;
+        m_shipTravel = event.flag2 ? std::max(event.amount, 0.01f) : 0.0f;
+        m_shipTravelTotal = event.flag2 ? std::max(event.direction.x, m_shipTravel) : 0.0f;
         break;
 
     case WorldEventKind::PlayerRespawned:
@@ -3249,10 +3251,10 @@ void PredationGame::GoToMap(MapChoice map)
         {
             ChangeFacility(m_facility.Seed());
         }
-        // Aboard the crawler, parked at the building, facing its ramp: where the insertion hands everybody control.
+        // In the shuttle on the pad, facing its ramp: where the insertion hands everybody control.
         m_spawnPoint = MissionArrival(LocalPlayerId());
         CinePose arrival;
-        yaw = m_missionProps.Crawler().Socket("arrival", arrival)
+        yaw = m_facility.Shuttle().Socket("arrival", arrival)
                   ? std::atan2((arrival.rotation * glm::vec3(0.0f, 0.0f, -1.0f)).x, -(arrival.rotation * glm::vec3(0.0f, 0.0f, -1.0f)).z)
                   : m_facility.SpawnYaw();
         arrived = "At the site planned from seed " + std::to_string(m_facility.Seed()) + ": " +
@@ -3275,7 +3277,7 @@ void PredationGame::GoToMap(MapChoice map)
             m_spawnPoint = MissionArrival(LocalPlayerId());
             RespawnLocalPlayer(m_spawnPoint);
             CinePose arrival;
-            if (m_missionProps.Crawler().Socket("arrival", arrival))
+            if (m_facility.Shuttle().Socket("arrival", arrival))
             {
                 const glm::vec3 faces = arrival.rotation * glm::vec3(0.0f, 0.0f, -1.0f);
                 yaw = std::atan2(faces.x, -faces.z);
@@ -3311,7 +3313,7 @@ void PredationGame::GoToMap(MapChoice map)
     {
         for (const RemotePlayerView& remote : m_host.Remotes())
         {
-            // At the site, each in their own place in the crawler; aboard, each in their own place in the briefing room.
+            // At the site, each in their own place in the shuttle; aboard, each in their own place in the briefing room.
             const glm::vec3 place = ArrivalFor(remote.id);
             m_host.RespawnPlayer(remote.id, place);
             WorldEventMessage event;
@@ -3322,7 +3324,7 @@ void PredationGame::GoToMap(MapChoice map)
         }
     }
     m_app->GetConsole().Print(arrived);
-    // Going in is shown: the shuttle coming down, the crawler out to the building, its ramp down.
+    // Going in is shown: the shuttle coming down onto the pad, its ramp down.
     if (map == MapChoice::Facility && HasCinematic("surface_insertion"))
     {
         PlayCinematic("surface_insertion");
@@ -4326,7 +4328,6 @@ void PredationGame::DrawKeyBindings()
         {nullptr, "Other"},
         {"voice", "Talk"},
         {"flashlight", "Flashlight"},
-        {"map", "Take out the map"},
 #if PRED_DEV_TOOLS
         // Developer keys: a free camera goes through walls and respawning heals, and in a player's
         // hands both are ways round the game rather than parts of it.
@@ -9011,6 +9012,11 @@ void PredationGame::OnUpdate(double dt, double alpha)
     Input& input = app.GetInput();
     Renderer& renderer = app.GetRenderer();
     const auto deltaSeconds = static_cast<float>(dt);
+    // A frame that took long enough to be seen as a stutter, in the log with when it was, so it can be found.
+    if (dt > 0.05 && m_screen == Screen::Playing)
+    {
+        PRED_LOG_INFO(Engine, "Long frame: {:.0f} ms{}", dt * 1000.0, m_cine.Active() ? " (in a cinematic)" : "");
+    }
 
     // --- Input that is sampled per frame, not per tick ------------------------------------------
     SampleLook(deltaSeconds);
@@ -9294,10 +9300,6 @@ void PredationGame::OnUpdate(double dt, double alpha)
     // Alive or dead -- but not while a cinematic has the picture: nothing opens over one.
     if (!app.IsConsoleOpen() && m_screen == Screen::Playing && !m_cine.Active() && !m_cineEditor.IsOpen())
     {
-        if (input.WasActionPressed("map") && !m_paused && m_player.State().alive)
-        {
-            TakeOutMap();
-        }
         if (input.WasActionPressed("quit_capture"))
         {
             // Escape opens the pause menu and frees the pointer; Escape again closes it and takes
@@ -9349,6 +9351,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
     UpdateDroneVisuals(deltaSeconds);
     UpdateCinematic(deltaSeconds);
     UpdateDevices(deltaSeconds);
+    UpdateShipTravel(deltaSeconds);
 
     glm::mat4 view;
     glm::vec3 viewPosition;
@@ -9649,6 +9652,8 @@ void PredationGame::OnUpdate(double dt, double alpha)
     {
         const bool atSite = m_screen == Screen::Playing && m_facility.Built() && m_facility.Contains(m_renderEye);
         const bool inShip = !atSite && m_ship.Contains(m_renderEye);
+        // One ship in the picture, the one it is taken of.
+        m_ship.ShowFor(m_scene, m_renderEye);
         environment.stars = 0.0f;
         environment.planetRadius = 0.0f;
         if (inShip)
@@ -9665,12 +9670,17 @@ void PredationGame::OnUpdate(double dt, double alpha)
             environment.fogStart = 5000.0f;
             environment.fogEnd = 20000.0f;
             environment.stars = 1.0f;
-            if (m_shipOrbiting != 0)
+            // Over a site, its planet; under way to one, it comes up ahead over the second half of the journey, from a
+            // point to as big as it is from orbit.
+            const float journey = m_shipTravelTotal > 0.0f ? 1.0f - m_shipTravel / m_shipTravelTotal : 1.0f;
+            const float nearing = m_shipTravel > 0.0f ? glm::smoothstep(0.45f, 1.0f, journey) : 1.0f;
+            const uint32_t planetSeed = m_shipTravel > 0.0f ? m_facility.Seed() : m_shipOrbiting;
+            if (planetSeed != 0 && nearing > 0.0f)
             {
-                const uint32_t seed = m_shipOrbiting;
+                const uint32_t seed = planetSeed;
                 const float tint = static_cast<float>((seed * 2654435761u) >> 24) / 255.0f;
                 environment.planetDirection = glm::normalize(glm::vec3(0.12f, -0.42f, -0.9f));
-                environment.planetRadius = 0.6f;
+                environment.planetRadius = glm::mix(0.01f, 0.6f, nearing * nearing);
                 environment.planetColor = glm::mix(glm::vec3(0.46f, 0.52f, 0.6f), glm::vec3(0.58f, 0.6f, 0.62f), tint);
                 environment.planetAir = 0.7f;
             }

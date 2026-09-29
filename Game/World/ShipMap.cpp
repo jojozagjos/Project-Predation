@@ -344,10 +344,13 @@ void BuildRooms(Builder& b)
     // --- The gear room: lockers, the bench the kit is laid on, a rack, cabinets --------------------------------
     b.Solid("ship_bench", {-10.8f, kLower, -5.8f}, {-3.2f, kLower + 0.9f, -5.1f}, kFurniture);
     b.Solid("ship_bench_top", {-10.85f, kLower + 0.9f, -5.82f}, {-3.15f, kLower + 0.92f, -5.08f}, kTableTop);
-    b.Solid("ship_rack", {-10.0f, kLower + 0.9f, 5.6f}, {-4.0f, kLower + 2.3f, 5.85f}, kWallDark);
+    // And a second bench across the room, under the rack: a kit for everybody, two to a bench.
+    b.Solid("ship_bench", {-10.8f, kLower, 5.1f}, {-3.2f, kLower + 0.9f, 5.8f}, kFurniture);
+    b.Solid("ship_bench_top", {-10.85f, kLower + 0.9f, 5.08f}, {-3.15f, kLower + 0.92f, 5.82f}, kTableTop);
+    b.Solid("ship_rack", {-10.0f, kLower + 1.2f, 5.6f}, {-4.0f, kLower + 2.3f, 5.85f}, kWallDark);
     for (float x = -9.7f; x < -4.1f; x += 0.6f)
     {
-        b.Decal("ship_rack_slot", {x - 0.03f, kLower + 1.0f, 5.5f}, {x + 0.03f, kLower + 2.2f, 5.6f}, kFrame);
+        b.Decal("ship_rack_slot", {x - 0.03f, kLower + 1.3f, 5.5f}, {x + 0.03f, kLower + 2.2f, 5.6f}, kFrame);
     }
     for (float z = -4.6f; z < 0.7f; z += 1.8f)
     {
@@ -620,22 +623,31 @@ void ShipMap::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, Le
 
 void ShipMap::LayOutKit(const ItemDatabase& items)
 {
+    // A whole kit for each of the most there can be aboard -- two to each bench, one at either end -- so nobody finds the
+    // bench stripped by whoever got there first. The ship is rebuilt when it sets off for a site, so every deployment
+    // starts with the benches full again.
     m_placements.items.clear();
     int laid = 0;
     for (const ItemDefinition& definition : items.All())
     {
         laid += definition.id != kInvalidItem && definition.benchCount > 0 ? 1 : 0;
     }
-    const float spacing = std::min(0.62f, 7.2f / static_cast<float>(std::max(laid, 1)));
-    float x = -7.0f - spacing * static_cast<float>(std::max(laid - 1, 0)) * 0.5f;
-    for (const ItemDefinition& definition : items.All())
+    constexpr float kHalf = 3.5f; // metres of bench for one kit
+    const float spacing = std::min(0.62f, kHalf / static_cast<float>(std::max(laid, 1)));
+    for (int kit = 0; kit < kKits; ++kit)
     {
-        if (definition.id == kInvalidItem || definition.benchCount <= 0)
+        const float z = kit < 2 ? -5.45f : 5.45f;
+        const float middle = kit % 2 == 0 ? -8.85f : -5.15f;
+        float x = middle - spacing * static_cast<float>(std::max(laid - 1, 0)) * 0.5f;
+        for (const ItemDefinition& definition : items.All())
         {
-            continue;
+            if (definition.id == kInvalidItem || definition.benchCount <= 0)
+            {
+                continue;
+            }
+            m_placements.items.push_back({definition.key, definition.benchCount, ToWorld({x, kLower + 0.92f, z})});
+            x += spacing;
         }
-        m_placements.items.push_back({definition.key, definition.benchCount, ToWorld({x, kLower + 0.92f, -5.45f})});
-        x += spacing;
     }
 }
 
@@ -679,6 +691,133 @@ CinePose ShipMap::BriefingConsole() const
 {
     // Before the port screen, its front towards the room, clear of the way forward to the cockpit.
     return Pose({-4.6f, kUpper, -19.4f}, 180.0f);
+}
+
+void ShipMap::ShowFor(Scene& scene, const glm::vec3& eye)
+{
+    if (!m_built)
+    {
+        return;
+    }
+    const bool stage = glm::distance(eye, kStage) < glm::distance(eye, kOrigin);
+    if (m_showSet && stage == m_showingStage)
+    {
+        return;
+    }
+    m_showSet = true;
+    m_showingStage = stage;
+    // Looking at the stage: its ship, and nothing of the one everybody is standing in -- rooms, hangar, shuttle and all.
+    m_stageHull.SetHidden(scene, !stage);
+    m_hull.SetHidden(scene, stage);
+    m_shuttle.SetHidden(scene, stage);
+    m_bayDoors.SetHidden(scene, stage);
+    for (const Entity entity : m_entities)
+    {
+        if (MeshRenderer* renderer = scene.GetMeshRenderer(entity))
+        {
+            renderer->visible = !stage;
+        }
+    }
+    for (Speck& speck : m_dust)
+    {
+        if (MeshRenderer* renderer = scene.GetMeshRenderer(speck.entity))
+        {
+            renderer->visible = m_dustShown && !stage;
+        }
+    }
+}
+
+void ShipMap::UpdateDust(Scene& scene, MeshLibrary& meshes, float speed, float dt)
+{
+    if (!m_built)
+    {
+        return;
+    }
+    // Round the ship, never inside it: its outside's box, and a little more, is kept clear.
+    AABB hull;
+    hull.min = glm::vec3(-12.0f, -8.0f, -60.0f);
+    hull.max = glm::vec3(12.0f, 14.0f, 60.0f);
+    if (m_hull.Built())
+    {
+        bool any = false;
+        for (const ModelPart& part : m_hull.Model()->parts)
+        {
+            const glm::vec3 half = part.size * 0.5f;
+            const glm::vec3 lo = part.position - half;
+            const glm::vec3 hi = part.position + half;
+            hull.min = any ? glm::min(hull.min, lo) : lo;
+            hull.max = any ? glm::max(hull.max, hi) : hi;
+            any = true;
+        }
+    }
+    const glm::vec3 clearLo = hull.min - glm::vec3(4.0f);
+    const glm::vec3 clearHi = hull.max + glm::vec3(4.0f);
+    constexpr float kAhead = 220.0f;
+    const auto random = [this]()
+    {
+        m_dustSeed = m_dustSeed * 1664525u + 1013904223u;
+        return static_cast<float>(m_dustSeed >> 8) / static_cast<float>(1u << 24);
+    };
+    const auto place = [&](Speck& speck, float z)
+    {
+        for (int tries = 0; tries < 16; ++tries)
+        {
+            speck.at = {glm::mix(clearLo.x - 60.0f, clearHi.x + 60.0f, random()), glm::mix(clearLo.y - 40.0f, clearHi.y + 40.0f, random()), z};
+            const bool inside = speck.at.x > clearLo.x && speck.at.x < clearHi.x && speck.at.y > clearLo.y && speck.at.y < clearHi.y;
+            if (!inside)
+            {
+                return;
+            }
+        }
+        speck.at.x = clearHi.x + 10.0f;
+    };
+    if (m_dust.empty())
+    {
+        const MeshHandle mesh = meshes.Upload(Primitives::Box({0.05f, 0.05f, 3.2f}), "ship_dust");
+        const Material glow = Material::Emissive({0.75f, 0.82f, 1.0f}, 2.6f);
+        for (int i = 0; i < 420; ++i)
+        {
+            Speck speck;
+            speck.entity = scene.CreateMeshEntity("ship_dust", Transform{}, mesh, glow);
+            if (MeshRenderer* renderer = scene.GetMeshRenderer(speck.entity))
+            {
+                renderer->castsShadow = false;
+                renderer->blocksSky = false;
+                renderer->visible = false;
+            }
+            place(speck, glm::mix(hull.min.z - kAhead, hull.max.z + kAhead, random()));
+            m_dust.push_back(speck);
+        }
+    }
+    const bool show = speed > 0.0f;
+    if (show != m_dustShown)
+    {
+        m_dustShown = show;
+        for (Speck& speck : m_dust)
+        {
+            if (MeshRenderer* renderer = scene.GetMeshRenderer(speck.entity))
+            {
+                renderer->visible = show && !m_showingStage;
+            }
+        }
+    }
+    if (!show)
+    {
+        return;
+    }
+    // The ship goes forward, down -z: what it passes goes back, and comes round again ahead of it.
+    for (Speck& speck : m_dust)
+    {
+        speck.at.z += speed * dt;
+        if (speck.at.z > hull.max.z + kAhead)
+        {
+            place(speck, hull.min.z - kAhead + (speck.at.z - hull.max.z - kAhead));
+        }
+        if (Transform* transform = scene.GetTransform(speck.entity))
+        {
+            transform->position = kOrigin + speck.at;
+        }
+    }
 }
 
 void ShipMap::SetEngines(Scene& scene, float burn)

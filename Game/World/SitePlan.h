@@ -105,16 +105,9 @@ struct SitePlan
         glm::vec3 position{0.0f};
         float yaw = 0.0f;
     };
-    // Where a vehicle waits at each building, a building apiece: out from its first way in, its back to the door so its
-    // ramp comes down within a step of it, facing away. Kept clear of everything else.
-    std::vector<Spot> parking;
-    // Where the crawler waits by the pad for the shuttle, facing into the site.
-    Spot crawlerStart;
-    // The way over open ground from one point to another: round the buildings, the rock, the pipes and everything
-    // standing about, as a few straight legs, from the first point to the last.
-    std::vector<glm::vec3> Route(const glm::vec3& from, const glm::vec3& to) const;
-    // A way with its corners rounded off, its ends where they were: for a vehicle, which does not turn on a point.
-    static std::vector<glm::vec3> Smoothed(const std::vector<glm::vec3>& way, int passes = 3);
+    // Off the foot of the shuttle's ramp, facing into the site: where somebody put on the site with nothing to bring them
+    // stands. Kept clear.
+    Spot rampFoot;
     Sky sky;
 
     static SitePlan Generate(uint32_t seed);

@@ -4,6 +4,7 @@
 
 #include "Game/PredationGame.h"
 
+#include "Engine/Core/CVar.h"
 #include "Engine/Core/Log.h"
 
 #include <imgui.h>
@@ -15,6 +16,11 @@
 
 namespace pred
 {
+
+// How long the burn to a site takes, walking about the ship, between the ship leaving and it arriving.
+CVar<float> cv_shipTravelSeconds{"game.ship_travel_seconds", 90.0f, "Seconds the ship takes to reach a site once it has left, aboard"};
+// How fast the dust goes past the windows, under way.
+constexpr float kDustSpeed = 140.0f;
 
 void PredationGame::RegisterShipCommands()
 {
@@ -71,6 +77,15 @@ void PredationGame::RegisterShipCommands()
                 }
             }
         });
+    m_app->GetConsole().RegisterCommand("ship_travel", "As the host, under way: this many seconds left of the journey: ship_travel <seconds>",
+                                        [this](const std::vector<std::string>& args)
+                                        {
+                                            if (IsAuthority() && m_shipTravel > 0.0f && args.size() >= 2)
+                                            {
+                                                m_shipTravel = std::max(static_cast<float>(std::atof(args[1].c_str())), 0.01f);
+                                                m_shipStateSent = 0xFFFFFFFFu;
+                                            }
+                                        });
     m_app->GetConsole().RegisterCommand("shuttle_launch", "As the host, work the shuttle's controls, as boarding does",
                                         [this](const std::vector<std::string>&)
                                         {
@@ -140,21 +155,75 @@ glm::vec3 PredationGame::ShipArrival(uint8_t player, float& yaw) const
 
 void PredationGame::BeginTransit()
 {
-    // The site is chosen: the ship burns for it, and arrives over its planet (the transit's "arrive" marker). Without the
-    // cinematic, it is simply there.
+    // The site is chosen: the ship leaves where it was (ship_depart), and is under way to it for the length of the burn,
+    // aboard, everybody free to walk about it; at the end of that it arrives (UpdateShipTravel). Not aboard, it is simply
+    // there.
     m_shipReady = false;
-    if (m_map == MapChoice::Ship && HasCinematic("ship_transit"))
+    if (m_map != MapChoice::Ship)
     {
-        PlayCinematic("ship_transit");
+        ArriveOverSite();
         return;
     }
-    ArriveOverSite();
+    m_shipOrbiting = 0;
+    m_shipTravelTotal = std::max(cv_shipTravelSeconds.Get(), 1.0f);
+    m_shipTravel = m_shipTravelTotal;
+    PRED_LOG_INFO(Gameplay, "Under way to site {}: {:.0f} s", m_facility.Seed(), m_shipTravelTotal);
+    if (HasCinematic("ship_depart"))
+    {
+        PlayCinematic("ship_depart");
+    }
+}
+
+void PredationGame::UpdateShipTravel(float dt)
+{
+    // Only aboard, and only while playing: the menu's backdrop goes nowhere.
+    const bool underWay = m_shipTravel > 0.0f && m_screen == Screen::Playing && m_map == MapChoice::Ship;
+    if (m_shipTravel > 0.0f && m_map != MapChoice::Ship)
+    {
+        m_shipTravel = 0.0f;
+    }
+    // The dust past the windows, and the engines burning -- the picture, not the cinematic's, while one has it.
+    m_ship.UpdateDust(m_scene, m_app->GetMeshes(), underWay ? kDustSpeed : 0.0f, dt);
+    if (!m_cine.Active())
+    {
+        const float burn = underWay ? 0.85f : 0.0f;
+        if (std::abs(m_ship.Engines() - burn) > 1e-3f)
+        {
+            m_ship.SetEngines(m_scene, burn);
+        }
+    }
+    // The clock runs once the leaving has been seen, and the arriving is shown when it runs out -- the host's call.
+    if (!underWay || m_cine.Active())
+    {
+        return;
+    }
+    m_shipTravel = std::max(m_shipTravel - dt, 0.0f);
+    if (m_shipTravel > 0.0f)
+    {
+        return;
+    }
+    if (!IsAuthority())
+    {
+        // Held at the last moment until the host says it is there.
+        m_shipTravel = 0.01f;
+        return;
+    }
+    if (HasCinematic("ship_arrive"))
+    {
+        PlayCinematic("ship_arrive");
+    }
+    else
+    {
+        ArriveOverSite();
+    }
 }
 
 void PredationGame::ArriveOverSite()
 {
     m_shipOrbiting = m_facility.Seed();
     m_shipReady = true;
+    m_shipTravel = 0.0f;
+    m_shipTravelTotal = 0.0f;
     PRED_LOG_INFO(Gameplay, "The ship is over site {}", m_shipOrbiting);
 }
 
@@ -188,6 +257,9 @@ void PredationGame::SendShipState(int player)
     event.index = static_cast<uint8_t>(m_map);
     event.item = m_shipOrbiting;
     event.flag = m_shipReady;
+    event.flag2 = m_shipTravel > 0.0f;
+    event.amount = m_shipTravel;
+    event.direction.x = m_shipTravelTotal;
     event.quiet = true;
     if (player >= 0)
     {
@@ -203,7 +275,9 @@ void PredationGame::UpdateShip()
     // The host says so whenever where everybody is, or how the ship stands, changes.
     if (m_sessionMode == SessionMode::Host && m_screen == Screen::Playing)
     {
-        const uint32_t now = static_cast<uint32_t>(m_map) | (static_cast<uint32_t>(m_shipOrbiting) << 2) | (m_shipReady ? 1u << 18 : 0u);
+        // Under way counts as a change of its own; the seconds left are counted down on each machine from there.
+        const uint32_t now = static_cast<uint32_t>(m_map) | (static_cast<uint32_t>(m_shipOrbiting) << 2) | (m_shipReady ? 1u << 18 : 0u) |
+                             (m_shipTravel > 0.0f ? 1u << 19 : 0u);
         if (now != m_shipStateSent)
         {
             m_shipStateSent = now;
@@ -268,7 +342,13 @@ void PredationGame::DrawShipHud()
         const ImVec4 heading{0.62f, 0.66f, 0.7f, 1.0f};
         const ImVec4 text{0.86f, 0.88f, 0.9f, 1.0f};
         ImGui::TextColored(heading, "OBJECTIVE");
-        if (m_shipReady)
+        if (m_shipTravel > 0.0f)
+        {
+            const int seconds = static_cast<int>(std::ceil(m_shipTravel));
+            ImGui::TextColored(text, "Under way to the site.");
+            ImGui::TextDisabled("Arriving in %d:%02d.", seconds / 60, seconds % 60);
+        }
+        else if (m_shipReady)
         {
             int aboard = 0;
             int everybody = 0;

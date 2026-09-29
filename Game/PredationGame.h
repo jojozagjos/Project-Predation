@@ -681,12 +681,18 @@ private:
     void ApplyDynamicBodies(const WorldStateMessage& state);
     // Everything a player who has just joined needs in order to see the world as it now is.
     void SendWorldToPlayer(uint8_t player);
-    // Where somebody arriving now belongs: in their place aboard, in the crawler at the site, or at the spawn.
+    // Where somebody arriving now belongs: in their place aboard, in the shuttle at the site, or at the spawn.
     glm::vec3 ArrivalFor(uint8_t player) const;
     // The host tells everybody (or one newcomer) the map, the site the ship is over and whether the shuttle is ready:
     // sent whenever any of it changes, so nobody is left in a different place from everybody else.
     void SendShipState(int player = -1);
     uint32_t m_shipStateSent = 0xFFFFFFFFu;
+    // The journey to a site: the ship leaves (ship_depart), everybody has the run of it for the length of the burn --
+    // the dust going past the windows, the planet coming up ahead -- and it arrives (ship_arrive). Seconds left of it (0
+    // when not under way) and how long it is, the host's clock, followed everywhere.
+    float m_shipTravel = 0.0f;
+    float m_shipTravelTotal = 0.0f;
+    void UpdateShipTravel(float dt);
 
     // Where a player is, for checking they are close enough to what they are asking for.
     glm::vec3 PlayerPosition(uint8_t player) const;
@@ -766,7 +772,7 @@ private:
     // --- Things carried for finding the way (PredationGameDevices.cpp) ---------------------------------------------
     // What the held item shows: "map", "tracker", or nothing.
     const std::string& HeldDevice() const;
-    // Where what is to be done next is: the terminal (or its breaker, found dead), the crawler with the drive, the
+    // Where what is to be done next is: the terminal (or its breaker, found dead), the shuttle with the drive, the
     // shuttle or the console aboard. False when there is nothing.
     bool ObjectiveTarget(glm::vec3& at) const;
     // The same, asked for somebody standing at `here`.
@@ -776,8 +782,6 @@ private:
     void DrawMapScreen(ImageData& out, const glm::vec3& here, float yaw) const;
     void DrawTrackerScreen(ImageData& out, const glm::vec3& here, float yaw, float flash) const;
     void UpdateDevices(float dt);
-    // The map's key: the map from the bag into the hand, or back.
-    void TakeOutMap();
     // Arriving at the site (the title card, the intercom's first line), and the intercom's lines as the mission goes.
     void UpdateArrivalAndIntercom(float dt);
     // Queues what the intercom says for a moment (IntercomLines::Moments), after `delay` seconds.
@@ -842,7 +846,7 @@ private:
     void RegisterShipCommands();
     void DrawShipHud();
     void RecoverFallen();
-    // Where a player stands when they arrive at the site: in the crawler, side by side, facing its ramp.
+    // Where a player stands when they arrive at the site: in the shuttle, side by side, facing its ramp.
     glm::vec3 MissionArrival(uint8_t player) const;
     // Whether a cinematic of that name is there to be played.
     bool HasCinematic(const std::string& name) const { return m_cinematics.count(name) != 0; }
@@ -1418,11 +1422,6 @@ private:
     std::map<std::string, std::vector<std::string>> m_cineClipNames;
     // Everybody's bodies hidden while a cinematic has them: they are aboard something the picture is outside of.
     bool m_cineHidBodies = false;
-    // The mission's crawler route, from where it waits by the pad to where it parks at the terminal's building; and
-    // whether the team is on its way out, which the extraction cinematic sees to.
-    std::vector<glm::vec3> m_missionRoute;
-    std::vector<glm::vec3> m_missionReverse;
-    std::vector<glm::vec3> m_missionRouteBack;
     bool m_missionLeaving = false;
     // The lamps that go with the vehicles: which vehicle, which of its sockets, and which of the level's lights it is.
     struct VehicleLamp

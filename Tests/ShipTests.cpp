@@ -116,7 +116,7 @@ TEST_CASE("No two parts of a vehicle share a surface facing the same way, which 
 {
     // Two faces in one plane, facing the same way and overlapping, are drawn in whichever order the depth test happens to
     // pick from pixel to pixel: the flickering seen on the back of the ship. Faces touching back to back are fine.
-    for (const ModelAsset& model : {Vehicles::CarrierModel(), Vehicles::ShuttleModel(), Vehicles::CrawlerModel(), Vehicles::BayDoorsModel()})
+    for (const ModelAsset& model : {Vehicles::CarrierModel(), Vehicles::ShuttleModel(), Vehicles::BayDoorsModel()})
     {
         INFO(model.name);
         for (size_t i = 0; i < model.parts.size(); ++i)

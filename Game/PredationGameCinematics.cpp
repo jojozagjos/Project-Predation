@@ -164,20 +164,8 @@ CinematicBindings PredationGame::CinematicBindingsNow() const
                                                                          glm::degrees(std::atan2(look.x, -look.z)), 0.0f})};
         }
     }
-    // The vehicles: where the crawler waits by the pad and where it parks, where the shuttle rests, and the crawler's way
-    // from one to the other.
-    bindings.anchors["crawler_start"] = {site.crawlerStart.position, TurnFromDegrees({0.0f, glm::degrees(site.crawlerStart.yaw), 0.0f})};
-    if (m_missionProps.Crawler().Built())
-    {
-        bindings.anchors["crawler_park"] = m_missionProps.Crawler().Home();
-    }
+    // Where the shuttle rests.
     bindings.anchors["shuttle_home"] = m_facility.ShuttleHome();
-    if (m_missionRoute.size() >= 2)
-    {
-        bindings.paths["route"] = m_missionRoute;
-        bindings.paths["park_reverse"] = m_missionReverse;
-        bindings.paths["route_back"] = m_missionRouteBack;
-    }
     // What a title card fills in.
     const SiteTitle title = m_siteNames.For(m_facility.Seed());
     bindings.words["site"] = title.site;
@@ -262,10 +250,6 @@ void PredationGame::ParkVehicles()
     {
         m_facility.Shuttle().GoHome(m_scene);
     }
-    if (m_missionProps.Crawler().Built())
-    {
-        m_missionProps.Crawler().GoHome(m_scene);
-    }
     if (m_ship.Built())
     {
         m_ship.Shuttle().GoHome(m_scene);
@@ -315,7 +299,7 @@ void PredationGame::AttachVehicleLamps()
                 m_vehicleLamps.push_back({vehicle, socket.name, light});
             }
         };
-        // The shuttle's cabin lamp is the site's own; its landing light and the crawler's lamps are these.
+        // The shuttle's cabin lamp is the site's own; its landing light is one of these.
         if (m_facility.Shuttle().Built())
         {
             for (const ModelSocket& socket : m_facility.Shuttle().Model()->sockets)
@@ -330,7 +314,6 @@ void PredationGame::AttachVehicleLamps()
                 }
             }
         }
-        add("site_crawler", m_missionProps.Crawler(), LightKind::Flood, 32.0f);
         m_vehicleLampsOf = m_levelLights.Generation();
     }
     UpdateVehicleLamps();
@@ -340,7 +323,7 @@ void PredationGame::UpdateVehicleLamps()
 {
     for (const VehicleLamp& lamp : m_vehicleLamps)
     {
-        const VehicleProp* vehicle = lamp.vehicle == "site_shuttle" ? &m_facility.Shuttle() : &m_missionProps.Crawler();
+        const VehicleProp* vehicle = &m_facility.Shuttle();
         CinePose at;
         if (vehicle->Built() && vehicle->SocketShown(lamp.socket, at))
         {
@@ -489,10 +472,6 @@ VehicleProp* Bound(const std::string& bind, SiteMap& site, MissionProps& props, 
     if (bind == "site_shuttle")
     {
         return site.Shuttle().Built() ? &site.Shuttle() : nullptr;
-    }
-    if (bind == "site_crawler")
-    {
-        return props.Crawler().Built() ? &props.Crawler() : nullptr;
     }
     return nullptr;
 }

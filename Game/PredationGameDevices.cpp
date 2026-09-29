@@ -7,6 +7,7 @@
 
 #include "Engine/Render/TextureLibrary.h"
 
+#include <glm/geometric.hpp>
 #include <glm/gtc/constants.hpp>
 
 #include <algorithm>
@@ -167,6 +168,33 @@ struct Canvas
             }
         }
     }
+    // Four corners in order round, filled: a room turned with the map.
+    void FillQuad(const glm::vec2& a, const glm::vec2& b, const glm::vec2& c, const glm::vec2& d, Rgb colour)
+    {
+        const glm::vec2 lo = glm::min(glm::min(a, b), glm::min(c, d));
+        const glm::vec2 hi = glm::max(glm::max(a, b), glm::max(c, d));
+        const std::array<glm::vec2, 4> corners{a, b, c, d};
+        const auto cross = [](const glm::vec2& u, const glm::vec2& v) { return u.x * v.y - u.y * v.x; };
+        for (int y = std::max(static_cast<int>(lo.y), 0); y <= std::min(static_cast<int>(hi.y), kScreenSize - 1); ++y)
+        {
+            for (int x = std::max(static_cast<int>(lo.x), 0); x <= std::min(static_cast<int>(hi.x), kScreenSize - 1); ++x)
+            {
+                const glm::vec2 p{static_cast<float>(x) + 0.5f, static_cast<float>(y) + 0.5f};
+                bool positive = false;
+                bool negative = false;
+                for (size_t i = 0; i < 4; ++i)
+                {
+                    const float side = cross(corners[(i + 1) % 4] - corners[i], p - corners[i]);
+                    positive = positive || side > 0.0f;
+                    negative = negative || side < 0.0f;
+                }
+                if (!(positive && negative))
+                {
+                    Put(x, y, colour);
+                }
+            }
+        }
+    }
     void Box(float x0, float y0, float x1, float y1, Rgb colour)
     {
         Line(x0, y0, x1, y0, colour);
@@ -219,7 +247,6 @@ struct Canvas
         }
     }
     int TextWidth(const char* text, int scale = 2) const { return static_cast<int>(std::strlen(text)) * 6 * scale - scale; }
-    // The case's own colour in the corner every face but the screen's is mapped to.
     // The corner the case is mapped to: its colour, and alpha nought so that it does not glow as the screen does.
     void PaintCase()
     {
@@ -294,7 +321,7 @@ bool PredationGame::ObjectiveTargetFrom(const glm::vec3& here, glm::vec3& at) co
         at = m_missionPlan.terminal;
         return true;
     case MissionState::Stage::Carry:
-        at = m_missionProps.Crawler().Home().position;
+        at = m_facility.Shuttle().Home().position;
         return true;
     case MissionState::Stage::None:
     case MissionState::Stage::Over:
@@ -325,7 +352,31 @@ void PredationGame::DrawMapScreen(ImageData& out, const glm::vec3& here, float y
     }
     const float across = aboard ? kMapAcrossShip : (m_missionPlan.mapGiven ? kMapAcrossMapped : kMapAcrossUnmapped);
     const float scale = (kScreenSize - 24.0f) / across;
-    const auto at = [&](float x, float z) { return glm::vec2(middle + (x - here.x) * scale, middle + 6.0f + (z - here.z) * scale); };
+    // Turned with whoever holds it, the way they face up the screen, and them a little below the middle, where more of
+    // what is ahead fits.
+    const glm::vec2 ahead{std::sin(yaw), -std::cos(yaw)};
+    const glm::vec2 side{std::cos(yaw), std::sin(yaw)};
+    const glm::vec2 centre{middle, middle + 24.0f};
+    const auto at = [&](float x, float z)
+    {
+        const glm::vec2 offset{x - here.x, z - here.z};
+        return centre + glm::vec2(glm::dot(offset, side), -glm::dot(offset, ahead)) * scale;
+    };
+    const auto quad = [&](float x0, float z0, float x1, float z1, Rgb fill, bool outline)
+    {
+        const glm::vec2 a = at(x0, z0);
+        const glm::vec2 b = at(x1, z0);
+        const glm::vec2 c = at(x1, z1);
+        const glm::vec2 d = at(x0, z1);
+        canvas.FillQuad(a, b, c, d, fill);
+        if (outline)
+        {
+            canvas.Line(a.x, a.y, b.x, b.y, kDim);
+            canvas.Line(b.x, b.y, c.x, c.y, kDim);
+            canvas.Line(c.x, c.y, d.x, d.y, kDim);
+            canvas.Line(d.x, d.y, a.x, a.y, kDim);
+        }
+    };
     char label[32];
     if (aboard)
     {
@@ -334,10 +385,7 @@ void PredationGame::DrawMapScreen(ImageData& out, const glm::vec3& here, float y
         const int deck = local.y > 2.8f && (local.z < 6.15f) ? 1 : 0;
         for (const glm::vec4& room : ShipMap::DeckPlan(deck))
         {
-            const glm::vec2 a = at(ShipSpec::kOrigin.x + room.x, ShipSpec::kOrigin.z + room.y);
-            const glm::vec2 b = at(ShipSpec::kOrigin.x + room.z, ShipSpec::kOrigin.z + room.w);
-            canvas.Fill(a.x, a.y, b.x, b.y, kFaint);
-            canvas.Box(a.x, a.y, b.x, b.y, kDim);
+            quad(ShipSpec::kOrigin.x + room.x, ShipSpec::kOrigin.z + room.y, ShipSpec::kOrigin.x + room.z, ShipSpec::kOrigin.z + room.w, kFaint, true);
         }
         std::snprintf(label, sizeof(label), "DECK %d", deck + 1);
         header(label);
@@ -371,36 +419,42 @@ void PredationGame::DrawMapScreen(ImageData& out, const glm::vec3& here, float y
                     }
                     const float cx = building.origin.x + static_cast<float>(x) * FacilityLayout::kCell;
                     const float cz = building.origin.z + static_cast<float>(z) * FacilityLayout::kCell;
-                    const glm::vec2 a = at(cx, cz);
-                    const glm::vec2 b = at(cx + FacilityLayout::kCell, cz + FacilityLayout::kCell);
-                    canvas.Fill(a.x, a.y, b.x, b.y, colour);
+                    const float cx1 = cx + FacilityLayout::kCell;
+                    const float cz1 = cz + FacilityLayout::kCell;
+                    quad(cx, cz, cx1, cz1, colour, false);
                     // A wall wherever the next cell along is not open.
                     const auto open = [&](int nx, int nz) { return nx >= 0 && nz >= 0 && nx < building.width && nz < building.depth && building.Open(floor, nx, nz); };
+                    const auto wall = [&](float x0, float z0, float x1, float z1)
+                    {
+                        const glm::vec2 a = at(x0, z0);
+                        const glm::vec2 b = at(x1, z1);
+                        canvas.Line(a.x, a.y, b.x, b.y, kGreen);
+                    };
                     if (!open(x - 1, z))
                     {
-                        canvas.Line(a.x, a.y, a.x, b.y, kGreen);
+                        wall(cx, cz, cx, cz1);
                     }
                     if (!open(x + 1, z))
                     {
-                        canvas.Line(b.x, a.y, b.x, b.y, kGreen);
+                        wall(cx1, cz, cx1, cz1);
                     }
                     if (!open(x, z - 1))
                     {
-                        canvas.Line(a.x, a.y, b.x, a.y, kGreen);
+                        wall(cx, cz, cx1, cz);
                     }
                     if (!open(x, z + 1))
                     {
-                        canvas.Line(a.x, b.y, b.x, b.y, kGreen);
+                        wall(cx, cz1, cx1, cz1);
                     }
                 }
             }
         }
-        // The ways home: the crawler and the pad.
-        if (m_missionProps.Crawler().Built())
+        // The way home: the pad, and the shuttle on it.
+        if (m_facility.Shuttle().Built())
         {
-            const glm::vec3 parked = m_missionProps.Crawler().Home().position;
+            const glm::vec3 parked = m_facility.Shuttle().Home().position;
             const glm::vec2 p = at(parked.x, parked.z);
-            canvas.Fill(p.x - 4.0f, p.y - 4.0f, p.x + 4.0f, p.y + 4.0f, kAmber);
+            canvas.Fill(p.x - 3.0f, p.y - 3.0f, p.x + 3.0f, p.y + 3.0f, kAmber);
         }
         const glm::vec3 pad = site.ShuttleBase();
         const glm::vec2 p = at(pad.x, pad.z);
@@ -422,17 +476,22 @@ void PredationGame::DrawMapScreen(ImageData& out, const glm::vec3& here, float y
         const glm::vec2 p = at(m_player.State().position.x, m_player.State().position.z);
         canvas.Dot(p.x, p.y, 3.0f, {200, 200, 120});
     }
-    const glm::vec2 you = at(here.x, here.z);
-    const glm::vec2 ahead{std::sin(yaw), -std::cos(yaw)};
-    const glm::vec2 right{-ahead.y, ahead.x};
-    const glm::vec2 tip = you + ahead * 9.0f;
-    const glm::vec2 left = you - ahead * 5.0f - right * 5.0f;
-    const glm::vec2 rightCorner = you - ahead * 5.0f + right * 5.0f;
+    // You, always pointing up the screen: the map turns, not you.
+    const glm::vec2 you = centre;
+    const glm::vec2 up{0.0f, -1.0f};
+    const glm::vec2 right{1.0f, 0.0f};
+    const glm::vec2 tip = you + up * 9.0f;
+    const glm::vec2 left = you - up * 5.0f - right * 5.0f;
+    const glm::vec2 rightCorner = you - up * 5.0f + right * 5.0f;
     canvas.Line(tip.x, tip.y, left.x, left.y, {235, 245, 235}, 2);
     canvas.Line(tip.x, tip.y, rightCorner.x, rightCorner.y, {235, 245, 235}, 2);
     canvas.Line(left.x, left.y, rightCorner.x, rightCorner.y, {235, 245, 235}, 2);
-    // North, and how far across.
-    canvas.Text(kScreenSize - 26, 10, "N", kGreen);
+    // North, round the edge where it is, and how far across.
+    {
+        const glm::vec2 north{-std::sin(yaw), -std::cos(yaw)};
+        const glm::vec2 mark = glm::vec2(middle, middle) + north * (middle - 22.0f);
+        canvas.Text(static_cast<int>(mark.x) - 5, static_cast<int>(mark.y) - 7, "N", kGreen);
+    }
     std::snprintf(label, sizeof(label), "%dM", static_cast<int>(across));
     canvas.Text(kScreenSize - 12 - canvas.TextWidth(label), kScreenSize - 24, label, kDim);
     canvas.Lines();
@@ -548,7 +607,8 @@ void PredationGame::UpdateDevices(float dt)
         // Its beep: faster and higher the closer it is -- in your head for your own, from where they stand for others'.
         const bool tracker = holder.item->device == "tracker";
         glm::vec3 target;
-        if (tracker && ObjectiveTargetFrom(holder.at, target))
+        // Quiet while a cinematic has everybody: its sound is the cinematic's.
+        if (tracker && !CinematicHoldsPlayers() && !m_cine.Active() && ObjectiveTargetFrom(holder.at, target))
         {
             const float distance = glm::length(glm::vec2(target.x - holder.at.x, target.z - holder.at.z));
             screen.beepIn -= dt;
@@ -584,21 +644,6 @@ void PredationGame::UpdateDevices(float dt)
             renderer->material.emissiveTextured = true;
         }
     }
-}
-
-void PredationGame::TakeOutMap()
-{
-    // The map's key takes the map out of the bag, or puts it away again: there is no map without one.
-    const ItemId map = m_items.IdOf("site_map");
-    for (int slot = 0; slot < m_inventory.SlotCount(); ++slot)
-    {
-        if (map != kInvalidItem && m_inventory.At(slot).item == map)
-        {
-            m_inventory.SelectSlot(m_inventory.SelectedSlot() == slot ? Inventory::kNoSlot : slot);
-            return;
-        }
-    }
-    m_app->GetConsole().Print("No map on you: there are some in the gear room aboard.");
 }
 
 } // namespace pred

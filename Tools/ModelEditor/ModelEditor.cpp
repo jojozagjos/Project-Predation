@@ -1777,7 +1777,7 @@ void ModelEditor::DrawAnimationPanel()
         }
         ImGui::TextDisabled(m_kind == Kind::Vehicle
                                 ? "A clip is played by its name by whatever drives the vehicle: ramp_opening, "
-                                  "ramp_closing and ramp_closed on the shuttle and the crawler, doors_opening and the "
+                                  "ramp_closing and ramp_closed on the shuttle, doors_opening and the "
                                   "like on the hangar doors. Name one the same to have it played."
                                 : "A clip is played by its name by whatever uses the model.");
     }
