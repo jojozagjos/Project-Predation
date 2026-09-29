@@ -278,27 +278,6 @@ void PredationGame::AttachVehicleLamps()
     if (m_vehicleLampsOf != m_levelLights.Generation() || m_vehicleLamps.empty())
     {
         m_vehicleLamps.clear();
-        const auto add = [&](const std::string& vehicle, const VehicleProp& prop, LightKind kind, float range)
-        {
-            if (prop.Model() == nullptr)
-            {
-                return;
-            }
-            for (const ModelSocket& socket : prop.Model()->sockets)
-            {
-                const bool cabin = socket.name == "lamp";
-                if (!cabin && socket.name.rfind("light_", 0) != 0)
-                {
-                    continue;
-                }
-                CinePose at;
-                prop.Socket(socket.name, at);
-                const glm::vec3 direction = cabin ? glm::vec3(0.0f, -1.0f, 0.0f) : at.rotation * glm::vec3(0.0f, 0.0f, -1.0f);
-                const int light = m_levelLights.Add(m_scene, m_app->GetMeshes(), cabin ? LightKind::Ceiling : kind, LightMood::Steady, at.position,
-                                                    direction, 0, 0, cabin ? 5.0f : range);
-                m_vehicleLamps.push_back({vehicle, socket.name, light});
-            }
-        };
         // The shuttle's cabin lamp is the site's own; its landing light is one of these.
         if (m_facility.Shuttle().Built())
         {
@@ -321,6 +300,21 @@ void PredationGame::AttachVehicleLamps()
 
 void PredationGame::UpdateVehicleLamps()
 {
+    // The ship's shuttle's cabin lamp, moved only once the shuttle has: a lamp that has been moved keeps no shadow.
+    if (m_ship.Built() && m_ship.ShuttleLamp() >= 0 && static_cast<size_t>(m_ship.ShuttleLamp()) < m_levelLights.Count())
+    {
+        CinePose cabin;
+        const LevelLights::Light& lamp = m_levelLights.Lights()[static_cast<size_t>(m_ship.ShuttleLamp())];
+        if (m_ship.Shuttle().SocketShown("lamp", cabin) && glm::distance(cabin.position - glm::vec3(0.0f, 0.12f, 0.0f), lamp.position) > 0.01f &&
+            glm::distance(cabin.position, lamp.position) > 0.01f)
+        {
+            m_levelLights.Place(m_scene, m_ship.ShuttleLamp(), cabin.position, glm::vec3(0.0f, -1.0f, 0.0f));
+            glm::vec3 low;
+            glm::vec3 high;
+            ShipSpec::ShuttleCabinBounds(cabin, low, high);
+            m_levelLights.Bound(m_ship.ShuttleLamp(), low, high);
+        }
+    }
     for (const VehicleLamp& lamp : m_vehicleLamps)
     {
         const VehicleProp* vehicle = &m_facility.Shuttle();

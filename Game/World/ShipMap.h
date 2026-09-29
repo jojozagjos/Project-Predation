@@ -6,6 +6,8 @@
 #include "Game/World/Vehicles.h"
 #include "Game/World/WorldObjects.h"
 
+#include <glm/common.hpp>
+#include <glm/gtc/quaternion.hpp>
 #include <glm/vec3.hpp>
 
 #include <cstdint>
@@ -30,6 +32,23 @@ inline constexpr float kLowerDeck = 0.0f;
 inline constexpr float kUpperDeck = 3.6f;
 // Where the shuttle rests in the hangar, on the bay doors, in the ship's own frame.
 inline constexpr glm::vec3 kShuttleHome{0.0f, 0.0f, 20.0f};
+// The shuttle's cabin, from its lamp: all its lamp lights, so none of it comes through the roof.
+inline constexpr glm::vec3 kShuttleCabinMin{-1.8f, -2.45f, -3.8f};
+inline constexpr glm::vec3 kShuttleCabinMax{1.8f, 0.05f, 4.0f};
+// That box round a shuttle's lamp where it now is, turned as the shuttle is.
+inline void ShuttleCabinBounds(const CinePose& lamp, glm::vec3& min, glm::vec3& max)
+{
+    min = glm::vec3(1e9f);
+    max = glm::vec3(-1e9f);
+    for (int corner = 0; corner < 8; ++corner)
+    {
+        const glm::vec3 local{(corner & 1) ? kShuttleCabinMax.x : kShuttleCabinMin.x, (corner & 2) ? kShuttleCabinMax.y : kShuttleCabinMin.y,
+                              (corner & 4) ? kShuttleCabinMax.z : kShuttleCabinMin.z};
+        const glm::vec3 at = lamp.position + lamp.rotation * local;
+        min = glm::min(min, at);
+        max = glm::max(max, at);
+    }
+}
 // Where cinematics fly the ship: its outside again, in open space well away from where everybody is standing in it, so
 // it can go off into the distance and come back without leaving anybody's rooms behind in space.
 inline constexpr glm::vec3 kStage{-1500.0f, 300.0f, -2600.0f};
@@ -66,6 +85,8 @@ public:
     const WorldObjects::Placements& Placements() const { return m_placements; }
 
     VehicleProp& Shuttle() { return m_shuttle; }
+    // The lamp in its cabin: an index into the level's lights, or -1.
+    int ShuttleLamp() const { return m_shuttleLamp; }
     const VehicleProp& Shuttle() const { return m_shuttle; }
     VehicleProp& BayDoors() { return m_bayDoors; }
     const VehicleProp& BayDoors() const { return m_bayDoors; }
@@ -97,6 +118,7 @@ private:
     bool m_built = false;
     WorldObjects::Placements m_placements;
     VehicleProp m_shuttle;
+    int m_shuttleLamp = -1;
     VehicleProp m_bayDoors;
     VehicleProp m_hull;
     VehicleProp m_stageHull;

@@ -222,7 +222,7 @@
       "visible": true
     },
     {
-      "color": [0.06, 0.06, 0.06],
+      "color": [0.72, 0.55, 0.1],
       "emissive": 0.0,
       "metallic": 0.0,
       "name": "fx_stripe_left_1",
@@ -248,7 +248,7 @@
       "visible": true
     },
     {
-      "color": [0.06, 0.06, 0.06],
+      "color": [0.72, 0.55, 0.1],
       "emissive": 0.0,
       "metallic": 0.0,
       "name": "fx_stripe_left_3",
@@ -274,7 +274,7 @@
       "visible": true
     },
     {
-      "color": [0.06, 0.06, 0.06],
+      "color": [0.72, 0.55, 0.1],
       "emissive": 0.0,
       "metallic": 0.0,
       "name": "fx_stripe_left_5",
@@ -300,7 +300,7 @@
       "visible": true
     },
     {
-      "color": [0.06, 0.06, 0.06],
+      "color": [0.72, 0.55, 0.1],
       "emissive": 0.0,
       "metallic": 0.0,
       "name": "fx_stripe_left_7",
@@ -326,7 +326,7 @@
       "visible": true
     },
     {
-      "color": [0.06, 0.06, 0.06],
+      "color": [0.72, 0.55, 0.1],
       "emissive": 0.0,
       "metallic": 0.0,
       "name": "fx_stripe_left_9",
@@ -377,7 +377,7 @@
       "visible": true
     },
     {
-      "color": [0.06, 0.06, 0.06],
+      "color": [0.72, 0.55, 0.1],
       "emissive": 0.0,
       "metallic": 0.0,
       "name": "fx_stripe_right_1",
@@ -403,7 +403,7 @@
       "visible": true
     },
     {
-      "color": [0.06, 0.06, 0.06],
+      "color": [0.72, 0.55, 0.1],
       "emissive": 0.0,
       "metallic": 0.0,
       "name": "fx_stripe_right_3",
@@ -429,7 +429,7 @@
       "visible": true
     },
     {
-      "color": [0.06, 0.06, 0.06],
+      "color": [0.72, 0.55, 0.1],
       "emissive": 0.0,
       "metallic": 0.0,
       "name": "fx_stripe_right_5",
@@ -455,7 +455,7 @@
       "visible": true
     },
     {
-      "color": [0.06, 0.06, 0.06],
+      "color": [0.72, 0.55, 0.1],
       "emissive": 0.0,
       "metallic": 0.0,
       "name": "fx_stripe_right_7",
@@ -481,7 +481,7 @@
       "visible": true
     },
     {
-      "color": [0.06, 0.06, 0.06],
+      "color": [0.72, 0.55, 0.1],
       "emissive": 0.0,
       "metallic": 0.0,
       "name": "fx_stripe_right_9",

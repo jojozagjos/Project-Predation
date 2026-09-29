@@ -4,6 +4,7 @@
 #include "Engine/Render/Mesh.h"
 #include "Engine/Render/Primitives.h"
 #include "Game/World/MapBuilder.h"
+#include "Game/World/ShipMap.h"
 
 #include <glm/gtc/constants.hpp>
 #include <glm/gtc/quaternion.hpp>
@@ -178,7 +179,14 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
     CinePose cabinLamp;
     if (lights != nullptr && m_shuttle.Socket("lamp", cabinLamp))
     {
-        lights->Add(scene, meshes, LightKind::Ceiling, LightMood::Steady, cabinLamp.position, glm::vec3(0.0f, -1.0f, 0.0f), 0, Mix(seed, 0x5A77u) | 1u, 6.0f);
+        const int lamp = lights->Add(scene, meshes, LightKind::Ceiling, LightMood::Steady, cabinLamp.position, glm::vec3(0.0f, -1.0f, 0.0f), 0,
+                                     Mix(seed, 0x5A77u) | 1u, 6.0f);
+        // Kept to the cabin by its box, not a shadow, which let some of it through the roof (see ShipMap).
+        lights->Place(scene, lamp, cabinLamp.position, glm::vec3(0.0f, -1.0f, 0.0f));
+        glm::vec3 low;
+        glm::vec3 high;
+        ShipSpec::ShuttleCabinBounds(cabinLamp, low, high);
+        lights->Bound(lamp, low, high);
     }
 
     // The lamps outside: floodlights over the doors, and on poles over the ground.

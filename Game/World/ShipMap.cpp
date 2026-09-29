@@ -29,7 +29,6 @@ const Material kHangarDeck = Material::Diffuse({0.20f, 0.21f, 0.21f}, 0.9f);
 const Material kFrame = Material::Metal({0.14f, 0.14f, 0.15f}, 0.55f);
 const Material kRib = Material::Metal({0.24f, 0.25f, 0.26f}, 0.5f);
 const Material kHazardYellow = Material::Diffuse({0.72f, 0.55f, 0.10f}, 0.7f);
-const Material kHazardBlack = Material::Diffuse({0.06f, 0.06f, 0.06f}, 0.8f);
 const Material kPipe = Material::Metal({0.40f, 0.40f, 0.41f}, 0.45f);
 const Material kCrate = Material::Diffuse({0.30f, 0.34f, 0.26f}, 0.85f);
 const Material kCrateDark = Material::Diffuse({0.20f, 0.22f, 0.24f}, 0.85f);
@@ -256,12 +255,11 @@ void BuildStructure(Builder& b)
         b.Solid("ship_hangar_rib", {11.75f, kLower, z - 0.2f}, {12.0f, kHangarTop, z + 0.2f}, kRib);
         b.Shape("ship_hangar_girder", {-11.75f, kHangarTop - 0.5f, z - 0.15f}, {11.75f, kHangarTop, z + 0.15f}, kRib);
     }
-    // Yellow and black round the bay, for where not to stand.
+    // Yellow round the bay, for where not to stand.
     {
-        int stripe = 0;
         const auto band = [&](float x0, float z0, float x1, float z1)
         {
-            b.Decal("ship_hazard", {x0, kLower, z0}, {x1, kLower + 0.012f, z1}, (stripe++ % 2 == 0) ? kHazardYellow : kHazardBlack);
+            b.Decal("ship_hazard", {x0, kLower, z0}, {x1, kLower + 0.012f, z1}, kHazardYellow);
         };
         for (float x = -kBayHalfX - 0.4f; x < kBayHalfX + 0.4f - 0.01f; x += 0.7f)
         {
@@ -617,6 +615,20 @@ void ShipMap::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, Le
     m_bayDoors.Build(scene, meshes, &physics, Vehicles::Load("hangar_doors"), Pose({0.0f, kLower, (kBayFront + kBayBack) * 0.5f}), group,
                      "ship_bay_");
     m_shuttle.Build(scene, meshes, &physics, Vehicles::Load("shuttle"), Pose(kShuttleHome), group, "ship_shuttle_");
+    // And a lamp lit in its cabin, which goes with it when it flies (the game moves it: ShuttleLamp).
+    CinePose cabin;
+    if (lights != nullptr && m_shuttle.Socket("lamp", cabin))
+    {
+        m_shuttleLamp = lights->Add(scene, meshes, LightKind::Ceiling, LightMood::Steady, cabin.position, glm::vec3(0.0f, -1.0f, 0.0f), 0, 0x5A77u,
+                                    6.0f);
+        // Kept to the cabin by its box rather than by a shadow: under a roof that thin, what a lamp's shadow lets through
+        // lit the top of it. A lamp that goes with a vehicle has no shadow anyway.
+        lights->Place(scene, m_shuttleLamp, cabin.position, glm::vec3(0.0f, -1.0f, 0.0f));
+        glm::vec3 low;
+        glm::vec3 high;
+        ShuttleCabinBounds(cabin, low, high);
+        lights->Bound(m_shuttleLamp, low, high);
+    }
 
     // What WorldObjects puts aboard: lockers down the gear room's hull side and ammunition by its bench. The kit is drawn
     // at the loadout locker.
