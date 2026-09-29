@@ -175,7 +175,8 @@ CinematicBindings PredationGame::CinematicBindingsNow() const
     if (m_missionRoute.size() >= 2)
     {
         bindings.paths["route"] = m_missionRoute;
-        bindings.paths["route_back"] = std::vector<glm::vec3>(m_missionRoute.rbegin(), m_missionRoute.rend());
+        bindings.paths["park_reverse"] = m_missionReverse;
+        bindings.paths["route_back"] = m_missionRouteBack;
     }
     // What a title card fills in.
     const SiteTitle title = m_siteNames.For(m_facility.Seed());
@@ -198,6 +199,10 @@ bool PredationGame::PlayCinematic(const std::string& name, float from)
         m_app->GetConsole().PrintError("No cinematic called '" + name + "' (cine_list says which there are).");
         return false;
     }
+    // One taking over from another finds everything where it rests, not where the last left it.
+    ParkVehicles();
+    // And nothing is left open over it: the pause menu, the map, the briefing, the inventory.
+    CloseOverlays();
     m_cine.Play(found->second, CinematicBindingsNow(), m_scene, m_app->GetMeshes(), *this, from);
     m_cineHandBack = 0.0f;
     if (m_sessionMode == SessionMode::Host)
@@ -231,6 +236,21 @@ void PredationGame::StopCinematic(bool handBack)
     }
     m_cine.Stop(m_scene);
     m_cineHolds = false;
+    ParkVehicles();
+}
+
+void PredationGame::CloseOverlays()
+{
+    m_paused = false;
+    m_settingsOpen = false;
+    m_briefingOpen = false;
+    m_mapOpen = false;
+    m_inventoryOpen = false;
+    m_wantMouseCaptured = !m_cineEditor.IsOpen();
+}
+
+void PredationGame::ParkVehicles()
+{
     if (m_facility.Shuttle().Built())
     {
         m_facility.Shuttle().GoHome(m_scene);
@@ -344,6 +364,16 @@ void PredationGame::UpdateCinematic(float dt)
         return;
     }
     m_cine.Update(dt, m_scene, *this);
+    if (m_cineGoTo.has_value())
+    {
+        const MapChoice map = *m_cineGoTo;
+        m_cineGoTo.reset();
+        GoToMap(map);
+        if (!m_cine.Active())
+        {
+            return;
+        }
+    }
     UpdateVehicleLamps();
     m_cineHolds = m_cine.Playing().pausesGameplay;
     if (m_cine.GetState() == CinematicPlayer::State::Finished)
@@ -506,7 +536,21 @@ void PredationGame::CineMarker(const pred::Marker& marker)
         m_missionOverFor = 0.0f;
         if (IsAuthority() && m_screen == Screen::Playing && m_map == MapChoice::Facility)
         {
-            GoToMap(MapChoice::Ship);
+            m_cineGoTo = MapChoice::Ship;
+        }
+    }
+    else if (marker.name == "arrive")
+    {
+        // The burn is over: the ship is over the site's planet, and the shuttle is waiting.
+        ArriveOverSite();
+    }
+    else if (marker.name == "go_to_site")
+    {
+        // The shuttle has dropped out of the hangar: everybody is on their way down.
+        m_shipReady = false;
+        if (IsAuthority() && m_screen == Screen::Playing && m_map == MapChoice::Ship)
+        {
+            m_cineGoTo = MapChoice::Facility;
         }
     }
 }
@@ -852,6 +896,7 @@ void PredationGame::DrawCinematicPaths(DebugDraw& draw)
 
 void PredationGame::PlayForEditing(const Cinematic& cinematic, float from)
 {
+    ParkVehicles();
     m_cine.Play(cinematic, CinematicBindingsNow(), m_scene, m_app->GetMeshes(), *this, from);
     m_cineHandBack = 0.0f;
     UpdateVehicleLamps();

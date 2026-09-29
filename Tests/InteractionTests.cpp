@@ -393,3 +393,36 @@ TEST_CASE("Dragging one slot onto another swaps them or tops up a stack, and the
     CHECK_FALSE(inventory.Move(database, 2, 1));
     CHECK_FALSE(inventory.Move(database, 1, 1));
 }
+
+TEST_CASE("Hidden in a locker, you look out of its door whichever way it is turned", "[interaction]")
+{
+    PhysicsWorld physics;
+    PhysicsWorld::Settings settings;
+    settings.workerThreads = 1;
+    REQUIRE(physics.Init(settings));
+    Scene scene;
+    MeshLibrary meshes;
+    meshes.SetHeadless(true);
+    InteractionSystem interactions;
+    ItemDatabase items;
+    WorldObjects world;
+    WorldObjects::Placements placements;
+    const float turns[] = {0.0f, 1.5707963f, -1.5707963f, 3.1415926f, 0.7f};
+    for (size_t i = 0; i < std::size(turns); ++i)
+    {
+        placements.lockers.push_back({glm::vec3(static_cast<float>(i) * 4.0f, 0.0f, 0.0f), turns[i]});
+    }
+    world.AddFacility(scene, meshes, physics, interactions, items, placements);
+    REQUIRE(world.HidingSpots().size() == std::size(turns));
+    for (size_t i = 0; i < std::size(turns); ++i)
+    {
+        INFO("turned " << turns[i]);
+        const WorldObjects::HidingSpot& spot = world.HidingSpots()[i];
+        // The door is on the locker's -z, turned with it; a look of yaw faces (sin, -cos).
+        const glm::vec3 door{-std::sin(turns[i]), 0.0f, -std::cos(turns[i])};
+        const glm::vec3 look{std::sin(spot.insideYaw), 0.0f, -std::cos(spot.insideYaw)};
+        CHECK(glm::dot(door, look) > 0.999f);
+        // And stepping out is through the door.
+        CHECK(glm::dot(spot.exitPosition - spot.insidePosition, door) > 1.0f);
+    }
+}

@@ -189,7 +189,8 @@ int WorldObjects::AddLocker(Scene& scene, MeshLibrary& meshes, PhysicsWorld& phy
     // panel takes up depth that the door does not; looking out of the door.
     spot.insidePosition = at({0.0f, 0.0f, -panelHalfThickness * 0.5f});
     spot.exitPosition = at({0.0f, 0.0f, -1.25f});
-    spot.insideYaw = yaw;
+    // As a look, which turns the other way to a thing: a thing turned by yaw faces (-sin, -cos), a look of yaw (sin, -cos).
+    spot.insideYaw = -yaw;
     // The door fills the clear opening between the sides, and swings out of the locker, not back
     // through its own side.
     const glm::vec3 doorSize{lockerInnerHalfWidth * 2.0f, lockerSize.y, 0.06f};

@@ -118,6 +118,13 @@ public:
     {
         m_map.AddMesh(name, At((lo + hi) * 0.5f), Primitives::Box(glm::abs(hi - lo)), material, false);
     }
+    // Drawn only, and casting no shadow: paint, a screen, a lit panel -- thin things laid on a surface.
+    void Decal(const char* name, const glm::vec3& lo, const glm::vec3& hi, const Material& material)
+    {
+        m_map.SetShadows(false);
+        Shape(name, lo, hi, material);
+        m_map.SetShadows(true);
+    }
     void ShapeTurned(const char* name, const glm::vec3& centre, const glm::vec3& size, float yawDegrees, const Material& material)
     {
         m_map.AddMesh(name, At(centre, yawDegrees), Primitives::Box(size), material, false);
@@ -295,7 +302,7 @@ void BuildStructure(Builder& b)
         int stripe = 0;
         const auto band = [&](float x0, float z0, float x1, float z1)
         {
-            b.Shape("ship_hazard", {x0, kLower, z0}, {x1, kLower + 0.006f, z1}, (stripe++ % 2 == 0) ? kHazardYellow : kHazardBlack);
+            b.Decal("ship_hazard", {x0, kLower, z0}, {x1, kLower + 0.012f, z1}, (stripe++ % 2 == 0) ? kHazardYellow : kHazardBlack);
         };
         for (float x = -kBayHalfX - 0.4f; x < kBayHalfX + 0.4f - 0.01f; x += 0.7f)
         {
@@ -380,12 +387,12 @@ void BuildRooms(Builder& b)
     b.Solid("ship_rack", {-10.0f, kLower + 0.9f, 5.6f}, {-4.0f, kLower + 2.3f, 5.85f}, kWallDark);
     for (float x = -9.7f; x < -4.1f; x += 0.6f)
     {
-        b.Shape("ship_rack_slot", {x - 0.03f, kLower + 1.0f, 5.5f}, {x + 0.03f, kLower + 2.2f, 5.6f}, kFrame);
+        b.Decal("ship_rack_slot", {x - 0.03f, kLower + 1.0f, 5.5f}, {x + 0.03f, kLower + 2.2f, 5.6f}, kFrame);
     }
     for (float z = -4.6f; z < 0.7f; z += 1.8f)
     {
         b.Solid("ship_cabinet", {-11.97f, kLower, z}, {-11.45f, kLower + 2.0f, z + 1.75f}, kFurniture);
-        b.Shape("ship_cabinet_line", {-11.46f, kLower + 0.1f, z + 0.86f}, {-11.44f, kLower + 1.9f, z + 0.89f}, kFrame);
+        b.Decal("ship_cabinet_line", {-11.46f, kLower + 0.1f, z + 0.86f}, {-11.44f, kLower + 1.9f, z + 0.89f}, kFrame);
     }
     b.Solid("ship_seat", {-8.5f, kLower, 0.8f}, {-5.5f, kLower + 0.45f, 1.2f}, kFurniture);
     Conduit(b, {-11.85f, 2.75f, -5.7f}, {-11.85f, 2.75f, 5.7f}, 0.14f);
@@ -424,16 +431,16 @@ void BuildRooms(Builder& b)
             const float hue = static_cast<float>(n++ % 3);
             const Material paint = Material::Diffuse({0.28f + 0.03f * hue, 0.30f, 0.31f - 0.02f * hue}, 0.8f);
             b.Solid("ship_locker", {-2.4f, kLower, z - 1.7f}, {-1.83f, kLower + 2.0f, z - 0.05f}, paint);
-            b.Shape("ship_locker_line", {-2.42f, kLower + 0.1f, z - 0.9f}, {-2.39f, kLower + 1.9f, z - 0.86f}, kFrame);
+            b.Decal("ship_locker_line", {-2.42f, kLower + 0.1f, z - 0.9f}, {-2.39f, kLower + 1.9f, z - 0.86f}, kFrame);
         }
         Table(b, -7.6f, -6.0f, -15.0f, -13.0f, kLower, 0.76f);
         Chair(b, -8.2f, kLower, -14.0f, -90.0f);
         Chair(b, -5.4f, kLower, -14.0f, 90.0f);
         Chair(b, -6.8f, kLower, -15.6f, 180.0f);
         // What people leave on a table.
-        b.Shape("ship_mug", {-7.3f, kLower + 0.76f, -14.4f}, {-7.2f, kLower + 0.86f, -14.3f}, kPipe);
-        b.Shape("ship_mug", {-6.5f, kLower + 0.76f, -13.5f}, {-6.4f, kLower + 0.86f, -13.4f}, kHazardYellow);
-        b.Shape("ship_cards", {-7.0f, kLower + 0.76f, -14.0f}, {-6.85f, kLower + 0.78f, -13.8f}, kMattress);
+        b.Decal("ship_mug", {-7.3f, kLower + 0.76f, -14.4f}, {-7.2f, kLower + 0.86f, -14.3f}, kPipe);
+        b.Decal("ship_mug", {-6.5f, kLower + 0.76f, -13.5f}, {-6.4f, kLower + 0.86f, -13.4f}, kHazardYellow);
+        b.Decal("ship_cards", {-7.0f, kLower + 0.76f, -14.0f}, {-6.85f, kLower + 0.78f, -13.8f}, kMattress);
         // A plant somebody keeps alive.
         b.Shape("ship_pot", {-2.9f, kLower, -21.9f}, {-2.5f, kLower + 0.35f, -21.5f}, kCrate);
         b.Shape("ship_plant", {-2.95f, kLower + 0.35f, -21.95f}, {-2.45f, kLower + 0.8f, -21.45f},
@@ -448,8 +455,8 @@ void BuildRooms(Builder& b)
         b.Solid("ship_cupboard", {11.5f, kLower + 1.6f, -19.5f}, {11.97f, kLower + 2.4f, -6.0f}, kFurniture);
         b.Solid("ship_fridge", {10.9f, kLower, -21.9f}, {11.97f, kLower + 2.1f, -20.1f}, Material::Metal({0.55f, 0.56f, 0.57f}, 0.35f));
         b.Shape("ship_coffee", {11.3f, kLower + 0.95f, -8.4f}, {11.8f, kLower + 1.45f, -8.0f}, kFrame);
-        b.Shape("ship_coffee_light", {11.28f, kLower + 1.3f, -8.3f}, {11.3f, kLower + 1.34f, -8.26f}, kIndicator);
-        b.Shape("ship_sink", {11.1f, kLower + 0.951f, -13.5f}, {11.8f, kLower + 0.955f, -12.5f}, kFrame);
+        b.Decal("ship_coffee_light", {11.28f, kLower + 1.3f, -8.3f}, {11.3f, kLower + 1.34f, -8.26f}, kIndicator);
+        b.Decal("ship_sink", {11.1f, kLower + 0.951f, -13.5f}, {11.8f, kLower + 0.955f, -12.5f}, kFrame);
         for (const float x : {4.4f, 8.0f})
         {
             for (const auto& [z0, z1] : {std::pair{-19.0f, -13.2f}, std::pair{-10.8f, -5.0f}})
@@ -459,10 +466,10 @@ void BuildRooms(Builder& b)
                 b.Solid("ship_mess_bench", {x + 1.45f, kLower, z0}, {x + 1.85f, kLower + 0.45f, z1}, kFurniture);
             }
         }
-        b.Shape("ship_tray", {4.6f, kLower + 0.76f, -17.5f}, {5.0f, kLower + 0.78f, -17.2f}, kPipe);
-        b.Shape("ship_tray", {8.2f, kLower + 0.76f, -8.0f}, {8.6f, kLower + 0.78f, -7.7f}, kPipe);
-        b.Shape("ship_mug", {5.1f, kLower + 0.76f, -7.0f}, {5.2f, kLower + 0.86f, -6.9f}, kPipe);
-        b.Shape("ship_mess_screen", {1.82f, kLower + 1.2f, -20.5f}, {1.84f, kLower + 2.1f, -19.0f}, kScreenWarm);
+        b.Decal("ship_tray", {4.6f, kLower + 0.76f, -17.5f}, {5.0f, kLower + 0.78f, -17.2f}, kPipe);
+        b.Decal("ship_tray", {8.2f, kLower + 0.76f, -8.0f}, {8.6f, kLower + 0.78f, -7.7f}, kPipe);
+        b.Decal("ship_mug", {5.1f, kLower + 0.76f, -7.0f}, {5.2f, kLower + 0.86f, -6.9f}, kPipe);
+        b.Decal("ship_mess_screen", {1.82f, kLower + 1.2f, -20.5f}, {1.84f, kLower + 2.1f, -19.0f}, kScreenWarm);
     }
 
     // --- The stair hall: crates under the landing --------------------------------------------------------------
@@ -471,14 +478,19 @@ void BuildRooms(Builder& b)
 
     // --- The gallery over the hangar: a console under its window, chairs at it ------------------------------------
     b.Solid("ship_gallery_desk", {-9.5f, kUpper, 4.9f}, {-3.5f, kUpper + 0.85f, 5.8f}, kFurniture);
-    b.Shape("ship_gallery_screen", {-9.2f, kUpper + 0.851f, 5.1f}, {-6.8f, kUpper + 0.86f, 5.6f}, kScreen);
-    b.Shape("ship_gallery_screen", {-6.2f, kUpper + 0.851f, 5.1f}, {-3.8f, kUpper + 0.86f, 5.6f}, kScreen);
+    b.Decal("ship_gallery_screen", {-9.2f, kUpper + 0.851f, 5.1f}, {-6.8f, kUpper + 0.86f, 5.6f}, kScreen);
+    b.Decal("ship_gallery_screen", {-6.2f, kUpper + 0.851f, 5.1f}, {-3.8f, kUpper + 0.86f, 5.6f}, kScreen);
     Chair(b, -8.0f, kUpper, 4.2f, 180.0f);
     Chair(b, -5.0f, kUpper, 4.2f, 180.0f);
 
     // --- The briefing room: the screen ahead, the console before it, the table --------------------------------
-    b.Shape("ship_briefing_frame", {-4.7f, kUpper + 0.45f, -22.0f}, {4.7f, kUpper + 2.8f, -21.93f}, kFrame);
-    b.Shape("ship_briefing_screen", {-4.5f, kUpper + 0.6f, -21.93f}, {4.5f, kUpper + 2.65f, -21.9f}, kScreenBig);
+    for (const float side : {-1.0f, 1.0f})
+    {
+        const float x0 = side < 0.0f ? -7.4f : 1.9f;
+        const float x1 = side < 0.0f ? -1.9f : 7.4f;
+        b.Shape("ship_briefing_frame", {x0 - 0.15f, kUpper + 0.55f, -22.0f}, {x1 + 0.15f, kUpper + 2.75f, -21.94f}, kFrame);
+        b.Decal("ship_briefing_screen", {x0, kUpper + 0.7f, -21.94f}, {x1, kUpper + 2.6f, -21.88f}, kScreenBig);
+    }
     Table(b, -3.5f, 3.5f, -13.5f, -9.5f, kUpper, 0.78f);
     for (const float x : {-2.4f, -0.8f, 0.8f, 2.4f})
     {
@@ -487,7 +499,7 @@ void BuildRooms(Builder& b)
     }
     for (const float x : {-11.97f, 11.9f})
     {
-        b.Shape("ship_wall_screen", {x, kUpper + 0.9f, -18.0f}, {x + 0.07f, kUpper + 2.2f, -13.5f}, kScreen);
+        b.Decal("ship_wall_screen", {x, kUpper + 0.9f, -18.0f}, {x + 0.07f, kUpper + 2.2f, -13.5f}, kScreen);
     }
     Conduit(b, {-11.8f, kUpperTop - 0.25f, -21.9f}, {-11.8f, kUpperTop - 0.25f, -4.3f}, 0.16f);
     Conduit(b, {11.8f, kUpperTop - 0.25f, -21.9f}, {11.8f, kUpperTop - 0.25f, -4.3f}, 0.16f);
@@ -496,7 +508,7 @@ void BuildRooms(Builder& b)
     b.Solid("ship_helm", {-6.5f, kUpper, -39.95f}, {6.5f, kUpper + 0.65f, -39.0f}, kFurniture);
     for (float x = -6.1f; x < 6.0f; x += 1.55f)
     {
-        b.Shape("ship_helm_screen", {x, kUpper + 0.651f, -39.8f}, {x + 1.3f, kUpper + 0.66f, -39.2f}, (static_cast<int>(x + 7.0f) % 3 == 0) ? kScreenWarm : kScreen);
+        b.Decal("ship_helm_screen", {x, kUpper + 0.651f, -39.8f}, {x + 1.3f, kUpper + 0.66f, -39.2f}, (static_cast<int>(x + 7.0f) % 3 == 0) ? kScreenWarm : kScreen);
     }
     for (const float x : {-1.6f, 1.6f})
     {
@@ -507,12 +519,12 @@ void BuildRooms(Builder& b)
     for (const float x : {-7.97f, 6.95f})
     {
         b.Solid("ship_station", {x, kUpper, -31.3f}, {x + 1.02f, kUpper + 0.85f, -30.35f}, kFurniture);
-        b.Shape("ship_station_screen", {x + 0.1f, kUpper + 0.851f, -31.2f}, {x + 0.92f, kUpper + 0.86f, -30.45f}, kScreen);
+        b.Decal("ship_station_screen", {x + 0.1f, kUpper + 0.851f, -31.2f}, {x + 0.92f, kUpper + 0.86f, -30.45f}, kScreen);
     }
     b.Shape("ship_overhead", {-2.0f, kUpperTop - 0.2f, -38.6f}, {2.0f, kUpperTop, -36.0f}, kFrame);
     for (float x = -1.7f; x < 1.8f; x += 0.5f)
     {
-        b.Shape("ship_overhead_light", {x, kUpperTop - 0.205f, -37.5f}, {x + 0.06f, kUpperTop - 0.2f, -37.44f}, kIndicator);
+        b.Decal("ship_overhead_light", {x, kUpperTop - 0.205f, -37.5f}, {x + 0.06f, kUpperTop - 0.2f, -37.44f}, kIndicator);
     }
 
     // --- The hangar: crates, a hose reel, pipes along the starboard wall ----------------------------------------
@@ -523,7 +535,7 @@ void BuildRooms(Builder& b)
     b.Solid("ship_reel", {10.6f, kLower, 9.0f}, {11.7f, kLower + 1.3f, 10.6f}, kHazardYellow);
     Conduit(b, {11.65f, 1.2f, 11.0f}, {11.65f, 1.2f, 33.8f}, 0.2f);
     Conduit(b, {11.65f, 1.5f, 11.0f}, {11.65f, 1.5f, 33.8f}, 0.12f);
-    b.Shape("ship_hangar_panel", {-11.74f, 1.2f, 16.0f}, {-11.7f, 2.4f, 18.0f}, kScreenWarm);
+    b.Decal("ship_hangar_panel", {-11.74f, 1.2f, 16.0f}, {-11.7f, 2.4f, 18.0f}, kScreenWarm);
 }
 
 void BuildHull(Builder& b, std::vector<Entity>& glowOut, std::vector<glm::vec3>& colourOut, Scene& scene, MeshLibrary& meshes)
@@ -549,7 +561,7 @@ void BuildHull(Builder& b, std::vector<Entity>& glowOut, std::vector<glm::vec3>&
         // Lit windows along it: people aboard.
         for (float z = -19.0f; z < 4.0f; z += 3.2f)
         {
-            b.Shape("ship_porthole", {side < 0.0f ? -out - 0.06f : out, 5.0f, z}, {side < 0.0f ? -out : out + 0.06f, 5.5f, z + 0.9f}, kWindowGlow);
+            b.Decal("ship_porthole", {side < 0.0f ? -out - 0.06f : out, 5.0f, z}, {side < 0.0f ? -out : out + 0.06f, 5.5f, z + 0.9f}, kWindowGlow);
         }
         // Radiators up off the hangar roof.
         for (const float x : {7.0f, 10.0f})
@@ -640,9 +652,9 @@ void BuildHull(Builder& b, std::vector<Entity>& glowOut, std::vector<glm::vec3>&
     }
 
     // Its lights: red to port, green to starboard, white at the tail.
-    b.Shape("ship_nav_port", {-out - 0.2f, 3.0f, -22.0f}, {-out, 3.2f, -21.8f}, Glow({1.0f, 0.1f, 0.08f}, 4.0f));
-    b.Shape("ship_nav_starboard", {out, 3.0f, -22.0f}, {out + 0.2f, 3.2f, -21.8f}, Glow({0.1f, 1.0f, 0.2f}, 4.0f));
-    b.Shape("ship_nav_tail", {-0.1f, 9.0f, 34.2f}, {0.1f, 9.2f, 34.4f}, Glow({1.0f, 1.0f, 1.0f}, 4.0f));
+    b.Decal("ship_nav_port", {-out - 0.2f, 3.0f, -22.0f}, {-out, 3.2f, -21.8f}, Glow({1.0f, 0.1f, 0.08f}, 4.0f));
+    b.Decal("ship_nav_starboard", {out, 3.0f, -22.0f}, {out + 0.2f, 3.2f, -21.8f}, Glow({0.1f, 1.0f, 0.2f}, 4.0f));
+    b.Decal("ship_nav_tail", {-0.1f, 9.0f, 34.2f}, {0.1f, 9.2f, 34.4f}, Glow({1.0f, 1.0f, 1.0f}, 4.0f));
 }
 
 void BuildLamps(Scene& scene, MeshLibrary& meshes, LevelLights& lights)
@@ -808,8 +820,8 @@ float ShipMap::SpawnYaw() const
 
 CinePose ShipMap::BriefingConsole() const
 {
-    // Before the screen, its front towards the room.
-    return Pose({0.0f, kUpper, -18.8f}, 180.0f);
+    // Before the port screen, its front towards the room, clear of the way forward to the cockpit.
+    return Pose({-4.6f, kUpper, -19.4f}, 180.0f);
 }
 
 void ShipMap::SetEngines(Scene& scene, float burn)

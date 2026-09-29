@@ -353,8 +353,12 @@ void PredationGame::UpdateCreatureSounds(float dt)
             case RigAction::Lunge: PlayNamed("Creature/lunge", head, 1.0f, pitch); break;
             case RigAction::Grab: PlayNamed("Creature/grab", head, 0.9f, pitch); break;
             case RigAction::Roar:
-                // Rearing up is two different things: calling the others, and warning somebody off.
-                PlayNamed(creature.Doing() == Behavior::Warn ? "Creature/warning" : "Creature/call", head, 1.0f, pitch);
+                // Calling the others is heard. Warning somebody off before it goes for them is not: the attack is
+                // not announced.
+                if (creature.Doing() != Behavior::Warn)
+                {
+                    PlayNamed("Creature/call", head, 1.0f, pitch);
+                }
                 break;
             default: break;
             }

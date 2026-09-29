@@ -286,3 +286,22 @@ TEST_CASE("From where everybody lands, every room of every building on a site ca
     CHECK(rooms > 10);
     CHECK(unreachable == 0);
 }
+
+TEST_CASE("A vehicle's way has its corners rounded off, and still starts and ends where it did", "[site]")
+{
+    // A right angle and a hairpin, as a route round buildings has.
+    const std::vector<glm::vec3> way{{0.0f, 0.0f, 0.0f}, {20.0f, 0.0f, 0.0f}, {20.0f, 0.0f, 20.0f}, {0.0f, 0.0f, 21.0f}};
+    const std::vector<glm::vec3> smooth = SitePlan::Smoothed(way);
+    REQUIRE(smooth.size() > way.size());
+    CHECK(glm::distance(smooth.front(), way.front()) < 1.0e-4f);
+    CHECK(glm::distance(smooth.back(), way.back()) < 1.0e-4f);
+    // No turn between one leg and the next of more than a third of the corner it replaced.
+    for (size_t i = 1; i + 1 < smooth.size(); ++i)
+    {
+        const glm::vec3 a = glm::normalize(smooth[i] - smooth[i - 1]);
+        const glm::vec3 b = glm::normalize(smooth[i + 1] - smooth[i]);
+        CHECK(glm::dot(a, b) > std::cos(glm::radians(35.0f)));
+    }
+    // Two points are a straight line: nothing to round.
+    CHECK(SitePlan::Smoothed({way[0], way[1]}).size() == 2);
+}

@@ -131,6 +131,8 @@ struct PathFollow
     Ease ease;
     float lift = 0.0f;
     bool face = true;
+    // Backing along it: facing the way it came from, as a vehicle reversing does.
+    bool reverse = false;
 };
 
 // One of an actor's model's clips played from `time`: doors, a ramp, clamps.

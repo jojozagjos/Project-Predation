@@ -138,7 +138,7 @@ ModelAsset ShuttleModel()
     b.Box("fx_engine_glow_left", -half - 0.7f, -half - 0.1f, 1.2f, 2.2f, -1.2f, -1.15f, {1.0f, 0.55f, 0.25f}, 0.5f, 0.0f, 0.6f);
     b.Box("fin", -0.08f, 0.08f, ceiling + 0.25f, ceiling + 1.2f, -5.2f, -3.2f, kShuttleTrim, 0.55f, 0.6f);
     b.Box("fx_cabin_light", -0.4f, 0.4f, ceiling - 0.05f, ceiling, -1.9f, -1.1f, {1.0f, 0.95f, 0.85f}, 0.5f, 0.0f, 1.5f);
-    b.Ramp({0.0f, deck, door}, 2.596f, 3.2f, 0.12f, kShuttleHull);
+    b.Ramp({0.0f, deck, door}, 2.596f, 3.2f, 0.04f, kShuttleHull);
     b.Socket("arrival", {0.0f, deck, -1.0f}, {0.0f, 180.0f, 0.0f});
     b.Socket("lamp", {0.0f, ceiling - 0.05f, -1.5f});
     // A landing light under its belly, straight down.
@@ -188,7 +188,7 @@ ModelAsset CrawlerModel()
     const float consoleZ = front + wall + 0.3f;
     b.Box("console", -0.5f, 0.5f, floor, floor + 0.95f, consoleZ - 0.225f, consoleZ + 0.225f, {0.22f, 0.23f, 0.25f}, 0.5f, 0.5f);
     b.Box("fx_console_screen", -0.4f, 0.4f, floor + 0.95f, floor + 0.962f, consoleZ - 0.14f, consoleZ + 0.18f, {0.03f, 0.035f, 0.04f}, 0.25f, 0.0f, 0.0f);
-    b.Ramp({0.0f, floor, rear}, 2.3f, 2.7f, 0.1f, kCrawlerInside);
+    b.Ramp({0.0f, floor, rear}, 2.3f, 2.7f, 0.04f, kCrawlerInside);
     b.Socket("arrival", {0.0f, floor, 1.2f}, {0.0f, 180.0f, 0.0f});
     b.Socket("console", {0.0f, floor, front + wall + 0.3f}, {0.0f, 180.0f, 0.0f});
     b.Socket("lamp", {0.0f, roof - 0.05f, 1.0f});

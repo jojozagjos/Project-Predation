@@ -113,6 +113,8 @@ struct SitePlan
     // The way over open ground from one point to another: round the buildings, the rock, the pipes and everything
     // standing about, as a few straight legs, from the first point to the last.
     std::vector<glm::vec3> Route(const glm::vec3& from, const glm::vec3& to) const;
+    // A way with its corners rounded off, its ends where they were: for a vehicle, which does not turn on a point.
+    static std::vector<glm::vec3> Smoothed(const std::vector<glm::vec3>& way, int passes = 3);
     Sky sky;
 
     static SitePlan Generate(uint32_t seed);

@@ -10,14 +10,14 @@
             {
               "ease": "smooth",
               "position": [0.0, 0.0, 0.0],
-              "rotation": [-115.7715, 0.0, 0.0],
+              "rotation": [-117.4432, 0.0, 0.0],
               "time": 0.0,
               "visible": 1.0
             },
             {
               "ease": "smooth",
               "position": [0.0, 0.0, 0.0],
-              "rotation": [-115.7715, 0.0, 0.0],
+              "rotation": [-117.4432, 0.0, 0.0],
               "time": 0.1,
               "visible": 1.0
             }
@@ -36,7 +36,7 @@
             {
               "ease": "smooth",
               "position": [0.0, 0.0, 0.0],
-              "rotation": [-115.7715, 0.0, 0.0],
+              "rotation": [-117.4432, 0.0, 0.0],
               "time": 0.0,
               "visible": 1.0
             },
@@ -69,7 +69,7 @@
             {
               "ease": "smooth",
               "position": [0.0, 0.0, 0.0],
-              "rotation": [-115.7715, 0.0, 0.0],
+              "rotation": [-117.4432, 0.0, 0.0],
               "time": 2.5,
               "visible": 1.0
             }
@@ -387,11 +387,11 @@
       "metallic": 0.0,
       "name": "ramp",
       "parent": "fx_ramp_hinge",
-      "position": [0.0, 0.555, 5.0139],
-      "rotation": [25.7715, 0.0, 0.0],
+      "position": [0.0, 0.5523, 5.0114],
+      "rotation": [27.4432, 0.0, 0.0],
       "roughness": 0.75,
       "shape": "box",
-      "size": [2.7, 0.1, 2.3],
+      "size": [2.7, 0.04, 2.3],
       "visible": true
     }
   ],

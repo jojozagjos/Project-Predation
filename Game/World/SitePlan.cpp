@@ -218,16 +218,25 @@ SitePlan SitePlan::Generate(uint32_t seed)
         }
     }
 
-    // Where a vehicle waits at each building: out from its first way in, its back to the door and its ramp down to within
-    // a step of it, facing away. And where the crawler waits by the pad for the shuttle, facing into the site.
-    constexpr float kParkOut = 7.6f;
+    // Where a vehicle waits at each building: well out from its first way in, its back to the door and its ramp towards
+    // it, facing away. And where the crawler waits by the pad for the shuttle, facing into the site.
+    constexpr float kParkOut = 16.0f;
     for (const FacilityLayout& building : plan.buildings)
     {
         Spot spot;
         if (!building.exits.empty())
         {
             const glm::vec2 out = Outward(building.exits.front().side);
-            spot.position = ExitPoint(building, building.exits.front(), kParkOut);
+            // As far out as there is room: clear of every building and inside the site, closer in only where it has to be.
+            for (float distance = kParkOut; distance >= 7.5f; distance -= 1.5f)
+            {
+                spot.position = ExitPoint(building, building.exits.front(), distance);
+                const glm::vec2 local{spot.position.x - O.x, spot.position.z - O.z};
+                if (!plan.InBuilding(flat(spot.position), 5.5f) && local.x > 14.0f && local.y > 14.0f && local.x < S - 14.0f && local.y < S - 14.0f)
+                {
+                    break;
+                }
+            }
             spot.yaw = std::atan2(out.x, -out.y);
         }
         plan.parking.push_back(spot);
@@ -342,6 +351,14 @@ SitePlan SitePlan::Generate(uint32_t seed)
         cover.push_back({flat(plan.parking[b].position) + out * 12.0f, 6.0f});
     }
     cover.push_back({flat(plan.crawlerStart.position), 6.0f});
+    // And nothing in front of any way in: a container or a rock outside a door is a door nobody can use.
+    for (const FacilityLayout& building : plan.buildings)
+    {
+        for (const FacilityLayout::Exit& exit : building.exits)
+        {
+            cover.push_back({flat(ExitPoint(building, exit, 4.0f)), 5.0f});
+        }
+    }
     const auto clear = [&](glm::vec2 at, float radius)
     {
         const glm::vec2 local = at - flat(O);
@@ -495,6 +512,33 @@ SitePlan SitePlan::Generate(uint32_t seed)
     return plan;
 }
 
+
+std::vector<glm::vec3> SitePlan::Smoothed(const std::vector<glm::vec3>& way, int passes)
+{
+    // Corner cutting: each leg's quarter and three-quarter points in place of its corners, again and again.
+    std::vector<glm::vec3> points = way;
+    for (int pass = 0; pass < passes && points.size() > 2; ++pass)
+    {
+        std::vector<glm::vec3> next;
+        next.push_back(points.front());
+        for (size_t i = 0; i + 1 < points.size(); ++i)
+        {
+            const glm::vec3& a = points[i];
+            const glm::vec3& b = points[i + 1];
+            if (i > 0)
+            {
+                next.push_back(a * 0.75f + b * 0.25f);
+            }
+            if (i + 2 < points.size())
+            {
+                next.push_back(a * 0.25f + b * 0.75f);
+            }
+        }
+        next.push_back(points.back());
+        points = std::move(next);
+    }
+    return points;
+}
 
 std::vector<glm::vec3> SitePlan::Route(const glm::vec3& from, const glm::vec3& to) const
 {

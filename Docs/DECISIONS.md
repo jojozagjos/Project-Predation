@@ -2301,3 +2301,25 @@ the hangar, dropping out through doors in its floor. Game/World/ShipMap.h.
 
 Next: the transit burn and arrival, boarding the shuttle in the hangar and dropping out, the return into the hangar
 and the debrief.
+
+## ADR-106: Fixes from playing the ship build
+
+- **Thin things laid on a surface cast no shadows** (MapBuilder::SetShadows): a screen a few centimetres off a wall,
+  paint on a floor. In a lamp's 16-bit shadow map they are the surface under them, and flickered between lit and
+  shadowed as the lamps given shadow maps changed with the view -- what looked like z-fighting.
+- **Hiding in a locker looks out of its door** whichever way it is turned. A thing turned by yaw faces (-sin, -cos),
+  a look of yaw faces (sin, -cos): the locker gave its turn as the look, which is right only facing north or south.
+- **Creatures only where creatures are**: a site, or the creature lab. Never aboard the ship or in the testing area --
+  including the top-up that replaces the dead, which had ignored the first rule.
+- **A new game is a new game**: it starts aboard, with nothing done, however the last one ended. Only going to a
+  place from the menu (`facility`, `lab`...) starts somewhere else.
+- **Nothing opens over a cinematic** (pause, map, briefing, inventory), and one starting closes whatever was open.
+- **Fallen out of the world** (more than 40 m below any floor): put back where this place is arrived at.
+- **Aboard, nobody tires and no torch runs down.**
+- The briefing room's screen hung over the doorway to the cockpit: now a screen either side of it, the console before
+  the port one. Cinematic shake is a quarter of what it was. The warning roar before an attack is no longer heard.
+  A terminal found without power makes restoring it the objective. Nothing is put in front of any building's doors.
+  Ramps are four centimetres thick, so their foot is almost flush.
+- **The crawler parks well out from the door** (16 m, closer only where another building is in the way), and does not
+  turn on the spot: it pulls past, then backs straight in, its ramp to the door (PathFollow::reverse), and every
+  corner of its ways is rounded off (SitePlan::Smoothed).

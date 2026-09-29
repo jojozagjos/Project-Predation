@@ -311,3 +311,29 @@ TEST_CASE("A saved cinematic reads as it was laid out, with its numbers as short
     CHECK(std::abs(back.cameras[0].keys[0].time - 0.8f) < 1.0e-6f);
     CHECK(std::abs(back.cameras[0].keys[0].position.z + 2.35f) < 1.0e-6f);
 }
+
+TEST_CASE("Something backing along a path faces the way it came from", "[cinematic]")
+{
+    Cinematic cinematic;
+    cinematic.duration = 10.0f;
+    cinematic.actors.push_back({"crawler", "", ""});
+    PathFollow follow;
+    follow.actor = "crawler";
+    follow.path = "in";
+    follow.start = 0.0f;
+    follow.end = 10.0f;
+    follow.ease.kind = Ease::Kind::Linear;
+    follow.reverse = true;
+    cinematic.paths.push_back(follow);
+    CinematicBindings bindings;
+    bindings.paths["in"] = {{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, -20.0f}}; // moving towards -z
+    const CinematicSampler sampler(cinematic, bindings);
+    const CinePose pose = sampler.Actor("crawler", 5.0f);
+    CHECK(Near(pose.position, {0.0f, 0.0f, -10.0f}));
+    // Its front (-z of it) is towards +z: where it came from.
+    CHECK((pose.rotation * glm::vec3(0.0f, 0.0f, -1.0f)).z > 0.99f);
+    // And the flag is kept in the file.
+    Cinematic back;
+    REQUIRE(back.FromJsonText(cinematic.ToJsonText()));
+    CHECK(back.paths[0].reverse);
+}

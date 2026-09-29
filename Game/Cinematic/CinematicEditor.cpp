@@ -2655,6 +2655,7 @@ void CinematicEditor::DrawInspector(Context& context)
         follow.end = std::max(follow.end, follow.start + 0.05f);
         changed |= ImGui::DragFloat("Over the ground", &follow.lift, 0.01f, -5.0f, 50.0f, "%.2f m");
         changed |= ImGui::Checkbox("Faces the way it goes", &follow.face);
+        changed |= ImGui::Checkbox("Backing along it", &follow.reverse);
         ImGui::TextDisabled("The path is the game's: it is wherever this site puts it.");
         changed |= DrawEase(follow.ease, "path");
         break;

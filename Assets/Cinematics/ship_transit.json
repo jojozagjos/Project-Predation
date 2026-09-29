@@ -1,0 +1,414 @@
+{
+  "name": "ship_transit",
+  "duration": 25,
+  "pauses_gameplay": true,
+  "blend_out": 0,
+  "loop": false,
+  "actors": [],
+  "cameras": [
+    {
+      "name": "helm",
+      "anchor": "cockpit",
+      "look_at": "",
+      "look_offset": [
+        0,
+        0,
+        0
+      ],
+      "keys": [
+        {
+          "t": 0,
+          "position": [
+            0.6,
+            1.95,
+            2.2
+          ],
+          "rotation": [
+            -3,
+            0,
+            0
+          ],
+          "fov": 62,
+          "ease": "linear"
+        },
+        {
+          "t": 5,
+          "position": [
+            0.5,
+            1.9,
+            1.8
+          ],
+          "rotation": [
+            -3,
+            0,
+            0
+          ],
+          "fov": 60,
+          "ease": "in_out"
+        }
+      ]
+    },
+    {
+      "name": "wake",
+      "anchor": "engines",
+      "look_at": "engines",
+      "look_offset": [
+        0,
+        0,
+        -15
+      ],
+      "keys": [
+        {
+          "t": 5,
+          "position": [
+            9,
+            5,
+            12
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "fov": 55,
+          "ease": "linear"
+        },
+        {
+          "t": 10.5,
+          "position": [
+            16,
+            9,
+            48
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "fov": 55,
+          "ease": "in"
+        }
+      ]
+    },
+    {
+      "name": "orbit",
+      "anchor": "ship",
+      "look_at": "ship",
+      "look_offset": [
+        0,
+        0,
+        -35
+      ],
+      "keys": [
+        {
+          "t": 16.5,
+          "position": [
+            14,
+            22,
+            78
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "fov": 50,
+          "ease": "linear"
+        },
+        {
+          "t": 21.5,
+          "position": [
+            8,
+            17,
+            60
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "fov": 50,
+          "ease": "out"
+        }
+      ]
+    },
+    {
+      "name": "window",
+      "anchor": "cockpit",
+      "look_at": "",
+      "look_offset": [
+        0,
+        0,
+        0
+      ],
+      "keys": [
+        {
+          "t": 21.5,
+          "position": [
+            0.3,
+            1.9,
+            1.2
+          ],
+          "rotation": [
+            -16,
+            4,
+            0
+          ],
+          "fov": 60,
+          "ease": "linear"
+        },
+        {
+          "t": 25,
+          "position": [
+            0.2,
+            1.85,
+            0.6
+          ],
+          "rotation": [
+            -17,
+            3,
+            0
+          ],
+          "fov": 58,
+          "ease": "in_out"
+        }
+      ]
+    }
+  ],
+  "shots": [
+    {
+      "t": 0,
+      "camera": "helm",
+      "blend": 0,
+      "ease": "linear"
+    },
+    {
+      "t": 5,
+      "camera": "wake",
+      "blend": 0,
+      "ease": "linear"
+    },
+    {
+      "t": 16.5,
+      "camera": "orbit",
+      "blend": 0,
+      "ease": "linear"
+    },
+    {
+      "t": 21.5,
+      "camera": "window",
+      "blend": 0,
+      "ease": "linear"
+    }
+  ],
+  "actor_tracks": [],
+  "paths": [],
+  "clips": [],
+  "sounds": [
+    {
+      "t": 1,
+      "sound": "World/shuttle_launch",
+      "volume": 0.9,
+      "at": "",
+      "music": false
+    },
+    {
+      "t": 5.2,
+      "sound": "World/shuttle_launch",
+      "volume": 1,
+      "at": "engines",
+      "music": false
+    },
+    {
+      "t": 16.8,
+      "sound": "World/shuttle_launch",
+      "volume": 0.5,
+      "at": "",
+      "music": false
+    }
+  ],
+  "markers": [
+    {
+      "t": 15,
+      "name": "arrive",
+      "value": ""
+    },
+    {
+      "t": 22,
+      "name": "say",
+      "value": "orbit"
+    }
+  ],
+  "texts": [
+    {
+      "t": 12,
+      "duration": 4.2,
+      "style": "title_card",
+      "lines": [
+        "IN TRANSIT",
+        "{planet}"
+      ],
+      "type_speed": 16
+    }
+  ],
+  "lights": [
+    {
+      "light": "ship_engines",
+      "intensity": [
+        {
+          "t": 0,
+          "value": 0.05,
+          "ease": "linear"
+        },
+        {
+          "t": 1.5,
+          "value": 0.35,
+          "ease": "in_out"
+        },
+        {
+          "t": 4.5,
+          "value": 1,
+          "ease": "in"
+        },
+        {
+          "t": 14,
+          "value": 1,
+          "ease": "linear"
+        },
+        {
+          "t": 15,
+          "value": 0,
+          "ease": "out"
+        },
+        {
+          "t": 16.5,
+          "value": 0,
+          "ease": "linear"
+        },
+        {
+          "t": 17,
+          "value": 0.35,
+          "ease": "out"
+        },
+        {
+          "t": 19.5,
+          "value": 0.05,
+          "ease": "in_out"
+        }
+      ]
+    }
+  ],
+  "particles": [
+    {
+      "t": 6,
+      "effect": "exhaust",
+      "at": "engines",
+      "offset": [
+        0,
+        0,
+        2
+      ],
+      "duration": 2.5
+    }
+  ],
+  "shake": [
+    {
+      "t": 0,
+      "value": 0,
+      "ease": "linear"
+    },
+    {
+      "t": 2,
+      "value": 0.038,
+      "ease": "in_out"
+    },
+    {
+      "t": 4.5,
+      "value": 0.138,
+      "ease": "in"
+    },
+    {
+      "t": 9.5,
+      "value": 0.138,
+      "ease": "linear"
+    },
+    {
+      "t": 11.5,
+      "value": 0,
+      "ease": "out"
+    },
+    {
+      "t": 16.5,
+      "value": 0,
+      "ease": "linear"
+    },
+    {
+      "t": 17.2,
+      "value": 0.05,
+      "ease": "out"
+    },
+    {
+      "t": 19.5,
+      "value": 0,
+      "ease": "in_out"
+    }
+  ],
+  "shake_speed": [
+    {
+      "t": 0,
+      "value": 18,
+      "ease": "linear"
+    }
+  ],
+  "fade": [
+    {
+      "t": 0,
+      "value": 1,
+      "ease": "linear"
+    },
+    {
+      "t": 0.8,
+      "value": 0,
+      "ease": "out"
+    },
+    {
+      "t": 10,
+      "value": 0,
+      "ease": "linear"
+    },
+    {
+      "t": 11.5,
+      "value": 1,
+      "ease": "in"
+    },
+    {
+      "t": 16.5,
+      "value": 1,
+      "ease": "linear"
+    },
+    {
+      "t": 18,
+      "value": 0,
+      "ease": "out"
+    },
+    {
+      "t": 24,
+      "value": 0,
+      "ease": "linear"
+    },
+    {
+      "t": 25,
+      "value": 1,
+      "ease": "in"
+    }
+  ],
+  "letterbox": [
+    {
+      "t": 0,
+      "value": 1,
+      "ease": "linear"
+    }
+  ],
+  "fog_scale": [],
+  "ambient_scale": []
+}

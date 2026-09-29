@@ -362,8 +362,8 @@ void PredationGame::SpawnCreatures()
     {
         return;
     }
-    // Nothing comes aboard the ship.
-    m_arrivalsPending = m_map == MapChoice::Ship ? 0 : std::clamp(cv_aiCreatures.Get(), 0, static_cast<int>(kMaxCreatures));
+    // Only at a site, or in the lab kept for watching them: nothing comes aboard the ship, or into the testing area.
+    m_arrivalsPending = CreaturesBelongHere() ? std::clamp(cv_aiCreatures.Get(), 0, static_cast<int>(kMaxCreatures)) : 0;
     // A fixed seed when one is set, so a strange behaviour can be had again; otherwise the clock, so
     // every game is a different animal.
     m_arrivalSeed = static_cast<uint32_t>(cv_aiSeed.Get());
@@ -452,8 +452,18 @@ bool PredationGame::FindUnseenPoint(uint32_t seed, glm::vec3& out) const
     return found;
 }
 
+bool PredationGame::CreaturesBelongHere() const
+{
+    return m_map == MapChoice::Facility || m_map == MapChoice::Lab;
+}
+
 void PredationGame::UpdateArrivals()
 {
+    if (!CreaturesBelongHere())
+    {
+        m_arrivalsPending = 0;
+        return;
+    }
     // The numbers kept up: as many as there have been this game, or as the game wants, whichever is more. One that
     // dies is made good after a while, arriving somewhere out of everybody's sight and well away from them.
     int living = 0;

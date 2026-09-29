@@ -562,6 +562,7 @@ bool PredationGame::OnInit(Application& app)
     // The ship's deployment console, standing in the testing area until there is a ship -- before the walkable surface is
     // worked out, which has to go round it -- and what sites are called and what the intercom says.
     BuildDeployConsole();
+    BuildShipControls();
     LoadMissionData();
     LoadCinematics();
     app.GetPhysics().OptimizeBroadPhase();
@@ -1964,6 +1965,7 @@ bool PredationGame::PerformInteraction(InteractionKind kind, int index, uint8_t 
     case InteractionKind::Breaker:
     case InteractionKind::Launch:
     case InteractionKind::Deploy:
+    case InteractionKind::Board:
         return PerformMissionInteraction(kind, index, player);
 
     case InteractionKind::Generic:
@@ -2528,6 +2530,8 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
         {
             if (SoundKey(name) == event.item)
             {
+                ParkVehicles();
+                CloseOverlays();
                 m_cine.Play(cinematic, CinematicBindingsNow(), m_scene, m_app->GetMeshes(), *this, event.amount);
                 m_cineHandBack = 0.0f;
                 break;
@@ -3206,14 +3210,16 @@ void PredationGame::GoToMap(MapChoice map)
         arrived = "In the creature lab, at the north end of the testing area. The nest is to the north.";
         break;
     case MapChoice::Ship:
+        m_shipReady = false;
         m_spawnPoint = m_ship.Spawn(LocalPlayerId());
         yaw = m_ship.SpawnYaw();
         arrived = "Aboard the ship.";
         break;
     case MapChoice::Facility:
     {
-        // The ship is over its planet now.
+        // The ship is over its planet now, and its shuttle has gone down.
         m_shipOrbiting = m_facility.Seed();
+        m_shipReady = false;
         // A deployment that is over is not gone back to: the site is put back as it was, its data on its terminal.
         if (m_mission.stage == MissionState::Stage::Over && IsAuthority() && m_screen == Screen::Playing)
         {
@@ -3237,7 +3243,9 @@ void PredationGame::GoToMap(MapChoice map)
         // From the menu: a game of your own, there.
         StopSession();
         m_sessionMode = SessionMode::Offline;
+        m_enteringMap = true;
         EnterWorld();
+        m_enteringMap = false;
         if (map == MapChoice::Facility)
         {
             m_spawnPoint = MissionArrival(LocalPlayerId());
@@ -3325,6 +3333,13 @@ void PredationGame::ChangeFacility(uint16_t seed)
 void PredationGame::EnterWorld()
 {
     PRED_LOG_INFO(Gameplay, "Entering the world");
+    // A new game starts aboard, whatever the last one was doing -- unless it is going somewhere in particular.
+    if (!m_enteringMap)
+    {
+        m_map = MapChoice::Ship;
+        m_spawnPoint = m_ship.Spawn(LocalPlayerId());
+        m_spawnYaw = m_ship.SpawnYaw();
+    }
     // A new game starts from the beginning. The world has been simulating behind the menu, and
     // whatever was done to it last time is still done.
     ResetWorld();
@@ -3333,6 +3348,8 @@ void PredationGame::EnterWorld()
     m_player.State().yaw = m_lookYaw;
     // Out in space -- unless this game begins by going down to a site, when the ship is over its planet.
     m_shipOrbiting = m_map == MapChoice::Facility ? m_facility.Seed() : 0;
+    m_shipReady = false;
+    m_cineGoTo.reset();
     m_screen = Screen::Playing;
     m_paused = false;
     m_titleStatus.clear();
@@ -8912,6 +8929,7 @@ void PredationGame::OnFixedUpdate(double fixedDt)
     UpdateDroneThreats(dt);
     UpdateWipe(dt);
     UpdateMission(dt);
+    UpdateShip();
 
     // The toggles mirror the stance the body is actually in, every tick, not just when a change is
     // refused. They are a request, and the body is the answer; a request that has been answered is
@@ -9218,8 +9236,8 @@ void PredationGame::OnUpdate(double dt, double alpha)
         }
 #endif
     }
-    // Alive or dead.
-    if (!app.IsConsoleOpen() && m_screen == Screen::Playing)
+    // Alive or dead -- but not while a cinematic has the picture: nothing opens over one.
+    if (!app.IsConsoleOpen() && m_screen == Screen::Playing && !m_cine.Active() && !m_cineEditor.IsOpen())
     {
         if (input.WasActionPressed("map") && !m_paused)
         {
@@ -9584,9 +9602,9 @@ void PredationGame::OnUpdate(double dt, double alpha)
             const glm::vec3 towardsSun = glm::normalize(glm::vec3(0.8f, 0.18f, 0.55f));
             environment.sunDirection = -towardsSun;
             environment.sunColor = {1.0f, 0.95f, 0.88f};
-            environment.sunIntensity = 2.4f;
-            environment.ambientSky = {0.07f, 0.075f, 0.09f};
-            environment.ambientGround = {0.045f, 0.045f, 0.05f};
+            environment.sunIntensity = 1.7f;
+            environment.ambientSky = {0.05f, 0.054f, 0.066f};
+            environment.ambientGround = {0.032f, 0.032f, 0.036f};
             environment.fogColor = {0.0f, 0.0f, 0.0f};
             environment.fogStart = 5000.0f;
             environment.fogEnd = 20000.0f;
@@ -9597,8 +9615,8 @@ void PredationGame::OnUpdate(double dt, double alpha)
                 const float tint = static_cast<float>((seed * 2654435761u) >> 24) / 255.0f;
                 environment.planetDirection = glm::normalize(glm::vec3(0.12f, -0.42f, -0.9f));
                 environment.planetRadius = 0.6f;
-                environment.planetColor = glm::mix(glm::vec3(0.62f, 0.7f, 0.8f), glm::vec3(0.78f, 0.8f, 0.82f), tint);
-                environment.planetAir = 1.0f;
+                environment.planetColor = glm::mix(glm::vec3(0.46f, 0.52f, 0.6f), glm::vec3(0.58f, 0.6f, 0.62f), tint);
+                environment.planetAir = 0.7f;
             }
         }
         else if (m_skyInShip && !atSite)
@@ -10963,6 +10981,7 @@ void PredationGame::DrawHud()
     DrawDroneHud();
     DrawSiteMap();
     DrawMissionHud();
+    DrawShipHud();
     DrawTitleCard();
     DrawSubtitle();
     DrawBriefing();

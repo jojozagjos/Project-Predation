@@ -52,7 +52,13 @@ public:
             }
             const std::string meshName = m_prefix + batch.name + "_batch#" + std::to_string(m_boxCount++);
             const MeshHandle mesh = m_meshes.Upload(batch.mesh, meshName);
-            Keep(m_scene.CreateMeshEntity(batch.name, Transform{}, mesh, batch.material));
+            const Entity entity = m_scene.CreateMeshEntity(batch.name, Transform{}, mesh, batch.material);
+            Keep(entity);
+            if (MeshRenderer* renderer = m_scene.GetMeshRenderer(entity))
+            {
+                renderer->castsShadow = batch.shadows;
+                renderer->levelGeometry = batch.shadows;
+            }
         }
         m_batches.clear();
     }
@@ -69,6 +75,11 @@ public:
     // (PhysicsWorld::SetOverlapGroup): a group from PhysicsWorld::NewOverlapGroup, or 0 for things that
     // have to keep clear of everything.
     void SetStructure(uint32_t group) { m_overlapGroup = group; }
+
+    // Whether what is added from here on casts shadows and counts as the level's own geometry. Off for thin things laid
+    // on a surface -- a screen on a wall, paint on a floor: a few millimetres off it, in a lamp's shadow map they are
+    // the surface, and the two fight over which is in shadow as the lamps with shadow maps change with the view.
+    void SetShadows(bool cast) { m_shadows = cast; }
 
     // Box: rendered as a box mesh, collided as a box shape. Cheaper and more robust than a
     // triangle mesh, and exact for this shape.
@@ -179,6 +190,7 @@ private:
         Material material;
         glm::ivec3 cell{0};
         MeshData mesh;
+        bool shadows = true;
     };
 
     static bool SameMaterial(const Material& a, const Material& b)
@@ -195,7 +207,7 @@ private:
                               static_cast<int>(std::floor(at.z / m_batchCell))};
         for (Batch& batch : m_batches)
         {
-            if (batch.cell == cell && SameMaterial(batch.material, material))
+            if (batch.cell == cell && batch.shadows == m_shadows && SameMaterial(batch.material, material))
             {
                 batch.mesh.Append(data, transform);
                 return;
@@ -205,6 +217,7 @@ private:
         batch.name = name;
         batch.material = material;
         batch.cell = cell;
+        batch.shadows = m_shadows;
         batch.mesh.Append(data, transform);
         m_batches.push_back(std::move(batch));
     }
@@ -243,6 +256,7 @@ private:
     std::string m_prefix;
     float m_batchCell = 0.0f;
     uint32_t m_overlapGroup = 0;
+    bool m_shadows = true;
     std::vector<Batch> m_batches;
 };
 

@@ -24,8 +24,10 @@ enum class InteractionKind : uint8_t
     Terminal,
     Breaker,
     Launch,
-    // The deployment console aboard the ship (the testing area, for now): where the next site is chosen.
-    Deploy
+    // The deployment console aboard the ship: where the next site is chosen.
+    Deploy,
+    // The ship's shuttle's controls, in its cabin in the hangar: down to the site, once everybody is aboard.
+    Board
 };
 
 const char* InteractionKindName(InteractionKind kind);

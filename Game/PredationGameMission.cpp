@@ -201,17 +201,38 @@ void PredationGame::ResetMission()
     m_missionSeen = m_mission;
     m_foundNoPowerSeen = false;
     m_missionLeaving = false;
-    // The crawler's way from the pad to where it parks: round everything, arriving head on to the building so it can turn
-    // on the spot and put its ramp down to the door.
+    // The crawler's ways: from the pad round everything to beside where it parks, and on past it outwards; then backing
+    // straight in, its ramp to the door; and, leaving, straight out and round everything back to the pad. Every corner
+    // rounded off, because a vehicle does not turn on a point.
     m_missionRoute.clear();
+    m_missionReverse.clear();
+    m_missionRouteBack.clear();
     if (m_missionPlan.Valid() && m_missionProps.Crawler().Built())
     {
         const SitePlan& site = m_facility.Plan();
         const CinePose park = m_missionProps.Crawler().Home();
-        const glm::vec3 away = park.rotation * glm::vec3(0.0f, 0.0f, -1.0f);
-        const glm::vec3 approach = park.position + glm::vec3(away.x, 0.0f, away.z) * 12.0f;
-        m_missionRoute = site.Route(site.crawlerStart.position, approach);
-        m_missionRoute.push_back(park.position);
+        const glm::vec3 facing = park.rotation * glm::vec3(0.0f, 0.0f, -1.0f);
+        const glm::vec3 away = glm::normalize(glm::vec3(facing.x, 0.0f, facing.z));
+        glm::vec3 side{-away.z, 0.0f, away.x};
+        // Beside the spot on the side the pad is.
+        if (glm::dot(site.crawlerStart.position - park.position, side) < 0.0f)
+        {
+            side = -side;
+        }
+        const glm::vec3 beside = park.position + side * 6.0f + away * 1.0f;
+        const glm::vec3 past = park.position + away * 6.0f;
+        const glm::vec3 pulled = park.position + away * 12.0f;
+        std::vector<glm::vec3> out = site.Route(site.crawlerStart.position, beside);
+        out.push_back(past);
+        out.push_back(pulled);
+        m_missionRoute = SitePlan::Smoothed(out);
+        m_missionReverse = {pulled, park.position};
+        std::vector<glm::vec3> back{park.position};
+        for (const glm::vec3& point : site.Route(pulled, site.crawlerStart.position))
+        {
+            back.push_back(point);
+        }
+        m_missionRouteBack = SitePlan::Smoothed(back);
     }
     AttachVehicleLamps();
     ShowMission();
@@ -392,6 +413,9 @@ bool PredationGame::PerformMissionInteraction(InteractionKind kind, int index, u
         }
         OpenBriefing(static_cast<uint16_t>(1 + std::chrono::steady_clock::now().time_since_epoch().count() % 65535));
         return true;
+
+    case InteractionKind::Board:
+        return LaunchFromShip(player);
 
     case InteractionKind::Launch:
         if (!MissionRules::ToggleLaunch(m_mission))
@@ -686,6 +710,13 @@ void PredationGame::DrawMissionHud()
         switch (m_mission.stage)
         {
         case Stage::Find:
+            // Found without power, the terminal waits on the breaker: that is what there is to do.
+            if (!m_mission.powered && m_missionFoundNoPower)
+            {
+                ImGui::TextColored(text, "Restore the power: reset the building's breaker.");
+                ImGui::TextDisabled("The terminal is dead until then.");
+                break;
+            }
             ImGui::TextColored(text, "Download the data from the terminal.");
             if (m_missionPlan.mapGiven)
             {
@@ -999,11 +1030,20 @@ void PredationGame::DrawBriefing()
         {
             m_briefingOpen = false;
             m_wantMouseCaptured = true;
-            if (m_nextSite != m_facility.Seed())
+            // A site that has been done is gone back to as it was; another is planned.
+            if (m_nextSite != m_facility.Seed() || m_mission.stage == MissionState::Stage::Over)
             {
                 ChangeFacility(m_nextSite);
             }
-            GoToMap(MapChoice::Facility);
+            // Aboard, the ship burns for it; anywhere else (the testing area), straight there.
+            if (m_map == MapChoice::Ship)
+            {
+                BeginTransit();
+            }
+            else
+            {
+                GoToMap(MapChoice::Facility);
+            }
         }
         ImGui::SameLine();
         if (ImGui::Button("Another site", {120.0f, 0.0f}))

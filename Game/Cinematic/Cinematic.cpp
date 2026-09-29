@@ -308,6 +308,10 @@ CinePose CinematicSampler::Actor(const std::string& actor, float time) const
         glm::vec3 heading;
         const glm::vec3 position = AlongPath(path, follow.ease.Apply((at - follow.start) / span), &heading);
         CinePose pose = Facing(position + glm::vec3(0.0f, follow.lift, 0.0f), glm::vec3(heading.x, 0.0f, heading.z));
+        if (follow.reverse)
+        {
+            pose = Facing(pose.position, -glm::vec3(heading.x, 0.0f, heading.z));
+        }
         if (!follow.face)
         {
             pose.rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
@@ -724,6 +728,7 @@ bool Cinematic::FromJsonText(const std::string& text, std::string* error)
         follow.ease = ReadEase(entry);
         follow.lift = entry.value("lift", 0.0f);
         follow.face = entry.value("face", true);
+        follow.reverse = entry.value("reverse", false);
         paths.push_back(follow);
     }
     for (const json& entry : ListOr<ClipEvent>(j, "clips"))
@@ -831,7 +836,8 @@ std::string Cinematic::ToJsonText() const
                               {"end", follow.end},
                               {"ease", WriteEase(follow.ease)},
                               {"lift", follow.lift},
-                              {"face", follow.face}});
+                              {"face", follow.face},
+                              {"reverse", follow.reverse}});
     }
     j["clips"] = json::array();
     for (const ClipEvent& clip : clips)

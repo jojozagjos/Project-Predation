@@ -50,6 +50,7 @@
 #include <future>
 #include <map>
 #include <memory>
+#include <optional>
 #include <random>
 #include <string>
 #include <vector>
@@ -786,6 +787,26 @@ private:
     CinematicEditor::Context CinematicEditorContext();
     // Plays one for editing: nobody else sees it, and it is measured from wherever the game is now.
     void PlayForEditing(const Cinematic& cinematic, float from);
+    // The vehicles a cinematic moves, back where they rest: before one starts, and when one ends.
+    void ParkVehicles();
+    // Every menu and panel over the world closed, and the mouse taken back: a cinematic starting.
+    void CloseOverlays();
+
+    // Whether creatures come to where everybody is: a site, or the creature lab. Never the ship.
+    bool CreaturesBelongHere() const;
+
+    // --- The ship's part of a deployment (PredationGameShip.cpp) --------------------------------------------------
+    void BuildShipControls();
+    // Who is up, and how many of them are aboard the ship's shuttle.
+    void ShuttleAboard(int& aboard, int& everybody) const;
+    // A site chosen: the burn there, which arrives over it.
+    void BeginTransit();
+    void ArriveOverSite();
+    // Down to the site in the shuttle, everybody aboard: the host's, from its controls.
+    bool LaunchFromShip(uint8_t player);
+    void UpdateShip();
+    void DrawShipHud();
+    void RecoverFallen();
     // Where a player stands when they arrive at the site: in the crawler, side by side, facing its ramp.
     glm::vec3 MissionArrival(uint8_t player) const;
     // Whether a cinematic of that name is there to be played.
@@ -1355,6 +1376,8 @@ private:
     // The mission's crawler route, from where it waits by the pad to where it parks at the terminal's building; and
     // whether the team is on its way out, which the extraction cinematic sees to.
     std::vector<glm::vec3> m_missionRoute;
+    std::vector<glm::vec3> m_missionReverse;
+    std::vector<glm::vec3> m_missionRouteBack;
     bool m_missionLeaving = false;
     // The lamps that go with the vehicles: which vehicle, which of its sockets, and which of the level's lights it is.
     struct VehicleLamp
@@ -1381,6 +1404,8 @@ private:
     ItemId m_driveItem = kInvalidItem;
     // Where the players are, and which way they face arriving there.
     MapChoice m_map = MapChoice::Ship;
+    // GoToMap going in from the menu: EnterWorld is not starting a new game aboard, but going to that map.
+    bool m_enteringMap = false;
     float m_spawnYaw = 3.14159265f;
     // Whose eyes we are watching through while dead. -1 when alive or when nobody is left.
     // What was in the hands when a climb started, and whether a climb has hold of them. kNoSlot
@@ -1464,6 +1489,12 @@ private:
     // The ship, and the site whose planet it is over (0: out in space, over none).
     ShipMap m_ship;
     uint16_t m_shipOrbiting = 0;
+    // Over the site chosen, the shuttle waiting to take everybody down; and its controls.
+    bool m_shipReady = false;
+    Entity m_shipControls;
+    // Where a cinematic's marker has sent everybody, done once the cinematic has finished its frame: a marker that starts
+    // another cinematic from inside the one playing would pull that one out from under itself.
+    std::optional<MapChoice> m_cineGoTo;
     // Whether the site's own sky is the one in the scene, so it can be put back on leaving.
     bool m_skyAtSite = false;
     bool m_skyInShip = false;
