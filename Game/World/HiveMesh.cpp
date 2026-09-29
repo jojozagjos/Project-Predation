@@ -1,5 +1,7 @@
 #include "Game/World/HiveMesh.h"
 
+#include <glm/vector_relational.hpp>
+
 #include "Engine/Core/Log.h"
 #include "Engine/Core/ParallelFor.h"
 #include "Engine/Render/MeshSimplify.h"
@@ -200,7 +202,7 @@ std::vector<MeshData> BuildNestSkin(const NestSkinPlan& plan)
     const uint32_t kSeed = plan.seed * 2246822519u + 71u;
     // Coarse enough to be cheap -- a nest can cover a whole room, floor, walls and ceiling -- and the lumps
     // on it are bigger than a cell anyway.
-    constexpr float kCell = 0.08f;
+    constexpr float kCell = 0.07f;
     constexpr float kChunk = 4.0f;
 
     // Everything the skin is made of, each with a box round it, what it is, and how far it is from the
@@ -255,7 +257,8 @@ std::vector<MeshData> BuildNestSkin(const NestSkinPlan& plan)
         sheet.normal = pad.normal;
         frame(pad.normal, pad.spin, sheet.across, sheet.along);
         const float reach = pad.size * 0.75f;
-        sheet.radii = {reach * pad.stretch, glm::mix(0.11f, 0.045f, edge), reach / pad.stretch};
+        // Never thinner than about a cell: a sheet thinner than the grid it is sampled on breaks into shards at its edges.
+        sheet.radii = {reach * pad.stretch, glm::mix(0.12f, 0.075f, edge), reach / pad.stretch};
         sheet.fromHeartA = sheet.fromHeartB = pad.fromHeart;
         bound(sheet, std::max({sheet.radii.x, sheet.radii.z}) + 0.3f);
         parts.push_back(sheet);
@@ -410,14 +413,16 @@ std::vector<MeshData> BuildNestSkin(const NestSkinPlan& plan)
                     {
                         d = SmoothUnion(fleshy, d, 0.04f);
                     }
-                    // Lumpy, knotted, never smooth: swellings a hand across, a skin of small knots over them, and
-                    // veins standing up out of it in a branching web.
+                    // Lumpy and veined: swellings a hand across, softer knots over them, and veins standing up out
+                    // of it in a branching web -- each broad enough for the grid to hold, so they come out rounded
+                    // rather than as the shards and slivers something finer than a cell breaks into.
                     if (d < 0.14f)
                     {
                         d -= (Fbm(p * 1.6f, kSeed + 17u, 2) - 0.45f) * 0.09f;
-                        d += (Fbm(p * 7.0f, kSeed, 3) - 0.5f) * 0.04f;
+                        d += (Fbm(p * 3.5f, kSeed, 3) - 0.5f) * 0.025f;
                         const float vein = std::abs(Fbm(p * 2.3f, kSeed + 29u, 3) - 0.5f);
-                        d -= 0.022f * std::max(0.0f, 1.0f - vein / 0.035f);
+                        const float ridge = std::max(0.0f, 1.0f - vein / 0.07f);
+                        d -= 0.016f * ridge * ridge * (3.0f - 2.0f * ridge);
                     }
                     return d;
                 };
@@ -446,11 +451,53 @@ std::vector<MeshData> BuildNestSkin(const NestSkinPlan& plan)
                 {
                     continue;
                 }
+                // Eased: each vertex twice drawn halfway to the middle of its neighbours, which rounds off what the
+                // grid leaves angular. Not near the edge of the box sampled, where the next chunk has to meet it.
+                {
+                    std::vector<std::vector<uint32_t>> neighbours(surface.vertices.size());
+                    for (size_t t = 0; t + 2 < surface.indices.size(); t += 3)
+                    {
+                        for (int k = 0; k < 3; ++k)
+                        {
+                            const uint32_t a = surface.indices[t + static_cast<size_t>(k)];
+                            const uint32_t b = surface.indices[t + static_cast<size_t>((k + 1) % 3)];
+                            neighbours[a].push_back(b);
+                            neighbours[b].push_back(a);
+                        }
+                    }
+                    const glm::vec3 keepLo = sampleLo + glm::vec3(kCell * 1.5f);
+                    const glm::vec3 keepHi = sampleHi - glm::vec3(kCell * 1.5f);
+                    for (int pass = 0; pass < 2; ++pass)
+                    {
+                        std::vector<glm::vec3> eased(surface.vertices.size());
+                        for (size_t v = 0; v < surface.vertices.size(); ++v)
+                        {
+                            const glm::vec3 p = surface.vertices[v].position;
+                            eased[v] = p;
+                            if (neighbours[v].empty() || glm::any(glm::lessThan(p, keepLo)) || glm::any(glm::greaterThan(p, keepHi)))
+                            {
+                                continue;
+                            }
+                            glm::vec3 middle(0.0f);
+                            for (const uint32_t n : neighbours[v])
+                            {
+                                middle += surface.vertices[n].position;
+                            }
+                            middle /= static_cast<float>(neighbours[v].size());
+                            eased[v] = p + (middle - p) * 0.5f;
+                        }
+                        for (size_t v = 0; v < surface.vertices.size(); ++v)
+                        {
+                            surface.vertices[v].position = eased[v];
+                        }
+                    }
+                }
                 ParallelFor(surface.vertices.size(), [&](size_t from, size_t to) {
                     for (size_t v = from; v < to; ++v)
                     {
                         MeshVertex& vertex = surface.vertices[v];
-                        const float e = kCell * 0.35f;
+                        // Normals over most of a cell, so they follow the lumps and not every wrinkle in them.
+                        const float e = kCell * 0.9f;
                         const auto gradient = [&](const glm::vec3& at)
                         {
                             const glm::vec3 g{distance(at + glm::vec3(e, 0, 0)) - distance(at - glm::vec3(e, 0, 0)),
@@ -459,8 +506,9 @@ std::vector<MeshData> BuildNestSkin(const NestSkinPlan& plan)
                             const float length = glm::length(g);
                             return length > 1e-8f ? g / length : glm::vec3(0.0f, 1.0f, 0.0f);
                         };
+                        // Onto the surface -- but only so far: pulled a long way, neighbours cross over and fold.
                         glm::vec3 p = vertex.position;
-                        p -= gradient(p) * distance(p);
+                        p -= gradient(p) * std::clamp(distance(p), -kCell * 0.5f, kCell * 0.5f);
                         vertex.position = p;
                         vertex.normal = gradient(p);
 
@@ -512,7 +560,8 @@ std::vector<MeshData> BuildNestSkin(const NestSkinPlan& plan)
                     }
                 }, 256);
                 std::vector<uint32_t> kept;
-                MeshData simple = SimplifyMesh(surface, std::max<size_t>(surface.indices.size() / 3 / 8, 300), 0.012f, kept);
+                // Thinned out, but not so far that the bumps are left as long slivers with creases between them.
+                MeshData simple = SimplifyMesh(surface, std::max<size_t>(surface.indices.size() / 3 / 4, 300), 0.008f, kept);
                 if (!simple.indices.empty())
                 {
                     chunks.push_back(std::move(simple));

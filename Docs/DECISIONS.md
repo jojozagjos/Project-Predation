@@ -2363,3 +2363,17 @@ Decided with the user: no map shows the whole site, or where the creature or the
 - The objective no longer gives bearings: finding the way is the tracker's. The whole-site map is gone.
 - Both are on every equipment bench, the ship's gear room among them. Items say what they show while held with
   `device` in items.json.
+
+## ADR-109: The nest -- smooth, never finished growing, and gone once dead
+
+- **Smooth**: its skin had shards and slivers that caught the light -- detail finer than the grid it is sampled on
+  (knots at 7 per metre, hairline veins), a sheet thinner than a cell at its edges, normals taken over a third of a
+  cell, and the result thinned to an eighth of its triangles. Now nothing finer than the grid holds, the sheet is
+  never thinner than a cell, vertices are eased towards their neighbours, normals are taken over a cell, and it is
+  thinned to a quarter.
+- **No largest size**: past its first spread (17 m, as before) it goes on growing, slower, for as long as it lives. As
+  it nears the edge of what is planned, a ring further out is planned and its skin rebuilt on a worker; every machine
+  extends it at the same distances, so all agree. (Bounded only by what can be drawn: 3000 patches.)
+- **Dying**: the heart goes first -- grey and dry, the same grey as the skin, in two and a half seconds -- then the
+  death goes out through the rest from it; everything then rots away to nothing, the heart shrinking on the wall and
+  the skin sinking into the surfaces behind the death, and when the last of it has gone the nest is gone.

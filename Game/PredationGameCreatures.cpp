@@ -67,12 +67,10 @@ CVar<float> cv_nestGrowth{"ai.nest_growth_seconds", 420.0f,
 CVar<float> cv_nestRot{"ai.nest_rot_seconds", 90.0f, "How long a dead part of a nest takes to rot down to what is left of it"};
 CVar<float> cv_nestRebuild{"ai.nest_rebuild_seconds", 240.0f,
                            "How long after a nest dies before another may be built"};
-// How far from its heart a nest spreads, how long one patch of it takes to come up, and how long a
-// burst heart takes to slump before it starts to rot.
+// How far from its heart a nest reaches to root, and how long one patch of it takes to come up.
 constexpr float kNestReach = 5.0f;
 constexpr float kPatchGrowIn = 9.0f;
-constexpr float kNestWither = 5.0f;
-// How far it creeps over the surfaces from its heart at the most -- along them, round corners and out
+// How far it creeps over the surfaces from its heart in its first growth -- along them, round corners and out
 // through doorways, not only where the heart can see -- in steps of about this much, and how many
 // patches of it that makes at the most.
 constexpr float kNestSpread = 17.0f;
@@ -84,9 +82,24 @@ constexpr size_t kNestMostPatches = 420;
 // from the heart across the floor and up the walls.
 constexpr float kBeatDelayPerMetre = 0.18f;
 constexpr float kNestDeathSpeed = 0.75f;
-constexpr float kNestRemains = 0.32f;
-// What a dead nest is darkened to: grey-brown, dry.
-constexpr glm::vec3 kNestDead{0.42f, 0.36f, 0.33f};
+// Dying, the heart goes first: grey and still before the death goes out through the rest of it from there.
+constexpr float kNestHeartDies = 2.5f;
+// Past its first spread it goes on growing, slower -- this many metres a second -- for as long as it lives, planned a
+// ring further out each time it nears the edge of what has been planned, up to what can be drawn.
+constexpr float kNestLateGrowth = 0.025f;
+constexpr float kNestPlanRing = 8.0f;
+constexpr size_t kNestMostPatchesEver = 3000;
+
+// How far a nest has grown out from its heart at an age, and how old it is when it reaches a distance.
+float NestGrownOut(float age, float growth)
+{
+    return kNestSpread * std::pow(std::clamp(age / growth, 0.0f, 1.0f), 1.0f / 1.15f) + 1.2f + std::max(age - growth, 0.0f) * kNestLateGrowth;
+}
+
+float NestAppears(float fromHeart, float growth)
+{
+    return fromHeart <= kNestSpread ? growth * std::pow(fromHeart / kNestSpread, 1.15f) : growth + (fromHeart - kNestSpread) / kNestLateGrowth;
+}
 // How far a growth patch reaches from its middle, per unit of its size: its tendrils.
 constexpr float kPatchReach = 1.5f;
 constexpr float kRootReach = 2.4f;
@@ -2956,12 +2969,23 @@ void PredationGame::PlanNestGrowth(Nest& nest) const
     // the far side of it -- so it creeps round corners and down corridors the way something growing
     // would, not only as far as a straight line from the heart reaches. Near surfaces are grown over soon
     // and far ones late, by how far it is to them along the way it grows.
+    nest.patches.clear();
+    nest.planMade = 0;
+    GrowNestPlan(nest, kNestSpread);
+}
+
+void PredationGame::GrowNestPlan(Nest& nest, float limit) const
+{
+    // Everything within `limit` of the heart along the surfaces. From nothing, it starts from the heart; given what has
+    // been planned already, it carries on from there -- the same way on every machine, which extend it at the same
+    // limits.
     const PhysicsWorld& physics = m_app->GetPhysics();
     const float growth = std::max(cv_nestGrowth.Get(), 10.0f);
     const uint32_t seed = static_cast<uint32_t>(nest.seed) * 2654435761u + 3u;
     const float turn = Sdf::Hash(nest.seed, 0, 0, 7u) * glm::two_pi<float>();
-    nest.patches.clear();
-    int made = 0;
+    const size_t most = std::min(kNestMostPatchesEver, static_cast<size_t>(static_cast<float>(kNestMostPatches) * (limit / kNestSpread) * (limit / kNestSpread)));
+    const bool fresh = nest.patches.empty();
+    int made = nest.planMade;
     const auto crowded = [&](const glm::vec3& at, const glm::vec3& normal, float size)
     {
         return std::any_of(nest.patches.begin(), nest.patches.end(), [&](const NestPatch& other) {
@@ -2986,7 +3010,7 @@ void PredationGame::PlanNestGrowth(Nest& nest) const
         {
             return;
         }
-        patch.appears = growth * std::pow(std::min(fromHeart / kNestSpread, 1.0f), 1.15f) * (0.85f + 0.3f * Sdf::Hash(made, 2, 0, seed));
+        patch.appears = NestAppears(fromHeart, growth) * (0.85f + 0.3f * Sdf::Hash(made, 2, 0, seed));
         patch.spin = Sdf::Hash(made, 3, 0, seed) * glm::two_pi<float>();
         patch.variant = made % 3;
         patch.stretch = 0.6f + 0.8f * Sdf::Hash(made, 5, 0, seed);
@@ -3012,7 +3036,7 @@ void PredationGame::PlanNestGrowth(Nest& nest) const
     heartRoot.at = nest.wall;
     heartRoot.normal = nest.normal;
     heartRoot.fromHeart = 0.0f;
-    for (int i = 0; i < kRays; ++i)
+    for (int i = 0; i < kRays && fresh; ++i)
     {
         const float y = 1.0f - 2.0f * (static_cast<float>(i) + 0.5f) / static_cast<float>(kRays);
         const float ring = std::sqrt(std::max(1.0f - y * y, 0.0f));
@@ -3029,10 +3053,10 @@ void PredationGame::PlanNestGrowth(Nest& nest) const
     }
 
     // Out over the surfaces from every patch, in the order they were found: a breadth-first creep.
-    for (size_t p = 0; p < nest.patches.size() && nest.patches.size() < kNestMostPatches; ++p)
+    for (size_t p = 0; p < nest.patches.size() && nest.patches.size() < most; ++p)
     {
         const NestPatch parent = nest.patches[p];
-        if (parent.fromHeart + kNestStep > kNestSpread)
+        if (parent.fromHeart + kNestStep > limit)
         {
             continue;
         }
@@ -3041,7 +3065,7 @@ void PredationGame::PlanNestGrowth(Nest& nest) const
         const glm::vec3 across = glm::normalize(glm::cross(helper, n));
         const glm::vec3 along = glm::cross(n, across);
         constexpr int kWays = 6;
-        for (int k = 0; k < kWays && nest.patches.size() < kNestMostPatches; ++k)
+        for (int k = 0; k < kWays && nest.patches.size() < most; ++k)
         {
             const float angle = parent.spin + static_cast<float>(k) * (glm::two_pi<float>() / kWays);
             const glm::vec3 dir = across * std::cos(angle) + along * std::sin(angle);
@@ -3103,6 +3127,47 @@ void PredationGame::PlanNestGrowth(Nest& nest) const
     }
     std::sort(nest.patches.begin(), nest.patches.end(),
               [](const NestPatch& a, const NestPatch& b) { return a.appears < b.appears; });
+    nest.plannedTo = limit;
+    nest.planMade = made;
+}
+
+namespace
+{
+
+// The skin, planned from where it will grow: a sheet of flesh at every patch, and the roots between them -- thick near
+// the heart, a thread at the edges, bent into corners along the surfaces.
+template <typename Patch>
+NestSkinPlan SkinPlanOf(const std::vector<Patch>& patches, uint16_t seed)
+{
+    NestSkinPlan plan;
+    plan.seed = seed;
+    for (const Patch& patch : patches)
+    {
+        plan.pads.push_back({patch.at, patch.normal, patch.size, patch.fromHeart, patch.stretch, patch.spin});
+        if (!patch.rooted)
+        {
+            continue;
+        }
+        const float thick = glm::mix(0.075f, 0.022f, std::clamp(patch.fromHeartThere / kNestSpread, 0.0f, 1.0f));
+        if (patch.bent)
+        {
+            const float first = glm::distance(patch.from, patch.bend);
+            plan.roots.push_back({patch.from, patch.bend, patch.fromNormal, thick, thick * 0.85f, patch.fromHeartThere, patch.fromHeartThere + first});
+            plan.roots.push_back({patch.bend, patch.at, patch.normal, thick * 0.85f, thick * 0.7f, patch.fromHeartThere + first, patch.fromHeart});
+        }
+        else
+        {
+            plan.roots.push_back({patch.from, patch.at, patch.fromNormal, thick, thick * 0.7f, patch.fromHeartThere, patch.fromHeart});
+        }
+    }
+    return plan;
+}
+
+} // namespace
+
+void PredationGame::RegrowNestSkin(Nest& nest)
+{
+    nest.regrowing = std::async(std::launch::async, [plan = SkinPlanOf(nest.patches, nest.seed)]() { return BuildNestSkin(plan); });
 }
 
 void PredationGame::BuildNest(const glm::vec3& at, uint16_t seed, uint8_t owner, bool announce, int index, float age)
@@ -3189,6 +3254,17 @@ void PredationGame::BuildNest(const glm::vec3& at, uint16_t seed, uint8_t owner,
     nest.rootScale = std::clamp(RoomOnSurface(physics, nest.wall, nest.normal, kRootReach) / kRootReach, 0.3f, 1.0f);
     PlaceNestStand(nest);
     PlanNestGrowth(nest);
+    // Grown on past its first spread already, somebody arriving late: planned as far as the host's has been.
+    const float growth = std::max(cv_nestGrowth.Get(), 10.0f);
+    while (nest.plannedTo < NestGrownOut(nest.age, growth) + 3.0f && nest.patches.size() < kNestMostPatchesEver)
+    {
+        const size_t before = nest.patches.size();
+        GrowNestPlan(nest, nest.plannedTo + kNestPlanRing);
+        if (nest.patches.size() == before)
+        {
+            break;
+        }
+    }
 
     // The heart, to be shot at. It moves nothing and blocks nobody: rounds find it, feet do not.
     Transform body;
@@ -3196,29 +3272,7 @@ void PredationGame::BuildNest(const glm::vec3& at, uint16_t seed, uint8_t owner,
     body.rotation = nest.facing;
     nest.heartBody = m_app->GetPhysics().CreateBox({0.3f, 0.42f, 0.27f}, body, BodyMotion::Kinematic, 1000.0f,
                                                    PhysicsLayer::Hitbox);
-    // The skin, planned from where it will grow: a sheet of flesh at every patch, and the roots between
-    // them -- thick near the heart, a thread at the edges, bent into corners along the surfaces.
-    NestSkinPlan plan;
-    plan.seed = seed;
-    for (const NestPatch& patch : nest.patches)
-    {
-        plan.pads.push_back({patch.at, patch.normal, patch.size, patch.fromHeart, patch.stretch, patch.spin});
-        if (!patch.rooted)
-        {
-            continue;
-        }
-        const float thick = glm::mix(0.075f, 0.022f, std::clamp(patch.fromHeartThere / kNestSpread, 0.0f, 1.0f));
-        if (patch.bent)
-        {
-            const float first = glm::distance(patch.from, patch.bend);
-            plan.roots.push_back({patch.from, patch.bend, patch.fromNormal, thick, thick * 0.85f, patch.fromHeartThere, patch.fromHeartThere + first});
-            plan.roots.push_back({patch.bend, patch.at, patch.normal, thick * 0.85f, thick * 0.7f, patch.fromHeartThere + first, patch.fromHeart});
-        }
-        else
-        {
-            plan.roots.push_back({patch.from, patch.at, patch.fromNormal, thick, thick * 0.7f, patch.fromHeartThere, patch.fromHeart});
-        }
-    }
+    NestSkinPlan plan = SkinPlanOf(nest.patches, seed);
     nest.building = std::async(std::launch::async, [seed, plan = std::move(plan)]() {
         std::vector<MeshData> meshes;
         NestHeartMeshes heart = BuildNestHeart(seed);
@@ -3259,6 +3313,11 @@ void PredationGame::ReleaseNest(Nest& nest)
     {
         nest.building.wait();
         nest.building.get();
+    }
+    if (nest.regrowing.valid())
+    {
+        nest.regrowing.wait();
+        nest.regrowing.get();
     }
     for (const Entity entity : nest.skinEntities)
     {
@@ -3449,8 +3508,13 @@ void PredationGame::UpdateNests(float dt)
             Transform where;
             where.position = nest.wall;
             where.rotation = nest.facing;
-            nest.rootsEntity = m_scene.CreateMeshEntity("nest roots", where, nest.rootsMesh, Material::Diffuse(glm::vec3(1.0f), 0.4f));
-            nest.heartEntity = m_scene.CreateMeshEntity("nest heart", where, nest.heartMesh, Material::Diffuse(glm::vec3(1.0f), 0.25f));
+            // Living tissue too, fully grown and never swelling, so that dying it goes the same grey the skin does.
+            Material roots = Material::Diffuse(glm::vec3(1.0f), 0.4f);
+            roots.organic = glm::vec4(1.0f, 1000.0f, -1.0f, 0.0f);
+            Material heart = Material::Diffuse(glm::vec3(1.0f), 0.25f);
+            heart.organic = roots.organic;
+            nest.rootsEntity = m_scene.CreateMeshEntity("nest roots", where, nest.rootsMesh, roots);
+            nest.heartEntity = m_scene.CreateMeshEntity("nest heart", where, nest.heartMesh, heart);
         }
 
         if (nest.dead)
@@ -3462,11 +3526,59 @@ void PredationGame::UpdateNests(float dt)
             nest.age += dt;
         }
         nest.flinch = std::max(nest.flinch - dt * 2.5f, 0.0f);
-        // Dead, the heart slumps and darkens at once, and then rots down -- not to nothing: to a shrunken,
-        // blackened husk on the wall, which stays. The rest of it dies after it, from the heart outwards.
+        // Dead, the heart goes first: it greys and slumps at once, and only then does the death go out through the rest
+        // from it. Then all of it rots away -- the heart shrinking to nothing on the wall, the skin sinking into the
+        // surfaces behind the death -- and once the last of it has gone, so has the nest.
         const float rotFor = std::max(cv_nestRot.Get(), 1.0f);
-        const float wither = nest.dead ? Smooth(nest.deadFor / kNestWither) : 0.0f;
-        const float left = nest.dead ? glm::mix(1.0f, kNestRemains, Smooth((nest.deadFor - kNestWither) / rotFor)) : 1.0f;
+        const float wither = nest.dead ? Smooth(nest.deadFor / kNestHeartDies) : 0.0f;
+        const float left = nest.dead ? 1.0f - Smooth((nest.deadFor - kNestHeartDies) / rotFor) : 1.0f;
+        const float grownOut = NestGrownOut(nest.age, growth);
+        if (nest.dead && nest.deadFor > kNestHeartDies + (grownOut + 3.0f) / kNestDeathSpeed + rotFor + 1.0f)
+        {
+            ReleaseNest(nest);
+            continue;
+        }
+        // Alive, it goes on growing: as it nears the edge of what is planned, a ring further is planned and its skin
+        // rebuilt to cover it, on a worker, taking the place of the old when ready.
+        if (!nest.dead && !nest.building.valid() && !nest.regrowing.valid() && grownOut > nest.plannedTo - 3.0f &&
+            nest.patches.size() < kNestMostPatchesEver && !nest.skinEntities.empty())
+        {
+            const size_t before = nest.patches.size();
+            GrowNestPlan(nest, nest.plannedTo + kNestPlanRing);
+            if (nest.patches.size() > before)
+            {
+                RegrowNestSkin(nest);
+            }
+        }
+        if (nest.regrowing.valid() && nest.regrowing.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
+        {
+            std::vector<MeshData> pieces = nest.regrowing.get();
+            for (const Entity entity : nest.skinEntities)
+            {
+                m_scene.Destroy(entity);
+            }
+            for (const MeshHandle mesh : nest.skinMeshes)
+            {
+                m_app->GetMeshes().Release(mesh);
+            }
+            nest.skinEntities.clear();
+            nest.skinMeshes.clear();
+            const std::string name = "nest_" + std::to_string(n) + "_grown_" + std::to_string(static_cast<int>(nest.plannedTo)) + "_";
+            for (size_t v = 0; v < pieces.size(); ++v)
+            {
+                const MeshHandle piece = m_app->GetMeshes().Upload(pieces[v], name + std::to_string(v));
+                nest.skinMeshes.push_back(piece);
+                Material skin = Material::Diffuse(glm::vec3(1.0f), 0.35f);
+                skin.organic.x = 1.0f;
+                const Entity entity = m_scene.CreateMeshEntity("nest skin", Transform{}, piece, skin);
+                if (MeshRenderer* renderer = m_scene.GetMeshRenderer(entity))
+                {
+                    renderer->castsShadow = false;
+                    renderer->blocksSky = false;
+                }
+                nest.skinEntities.push_back(entity);
+            }
+        }
 
         // Its beat: slow at rest, quicker with somebody close, and quicker again as it is hurt.
         float pulse = 0.0f;
@@ -3501,7 +3613,8 @@ void PredationGame::UpdateNests(float dt)
         if (MeshRenderer* renderer = m_scene.GetMeshRenderer(nest.heartEntity))
         {
             renderer->material.emissive = glm::vec3(0.16f, 0.01f, 0.015f) * (0.2f + 0.1f * pulse) * (1.0f - wither);
-            renderer->material.baseColor = glm::mix(glm::vec3(1.0f), kNestDead, wither);
+            // Grey as it withers: the shader's dead is 1.5 along it (its vertices are all at 0).
+            renderer->material.organic.z = nest.dead ? wither * 1.5f : -1.0f;
         }
         if (Transform* transform = m_scene.GetTransform(nest.rootsEntity))
         {
@@ -3510,14 +3623,13 @@ void PredationGame::UpdateNests(float dt)
         }
         if (MeshRenderer* renderer = m_scene.GetMeshRenderer(nest.rootsEntity))
         {
-            renderer->material.baseColor = glm::mix(glm::vec3(1.0f), kNestDead, wither);
+            renderer->material.organic.z = nest.dead ? wither * 1.5f : -1.0f;
         }
 
         // The skin: grown out from the heart as far as its age has taken it (the same curve the patches were
         // planned to appear on), each beat running out across it, and once the heart is dead the death
         // following it out, and the rot behind that.
-        const float grownOut = kNestSpread * std::pow(std::clamp(nest.age / growth, 0.0f, 1.0f), 1.0f / 1.15f) + 1.2f;
-        const float deathOut = nest.dead ? nest.deadFor * kNestDeathSpeed : -1.0f;
+        const float deathOut = nest.dead && nest.deadFor > kNestHeartDies ? (nest.deadFor - kNestHeartDies) * kNestDeathSpeed : -1.0f;
         for (const Entity entity : nest.skinEntities)
         {
             if (MeshRenderer* renderer = m_scene.GetMeshRenderer(entity))

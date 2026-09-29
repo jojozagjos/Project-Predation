@@ -349,8 +349,12 @@ private:
         float beat = 0.0f;        // where it is in its beat, 0 to 1
         float flinch = 0.0f;      // how hard it was last struck, fading
         std::vector<NestPatch> patches;
-        // Built on a worker: sculpting a heart takes longer than a frame should.
+        // How far from the heart the plan reaches, and how many patches have been tried in making it.
+        float plannedTo = 0.0f;
+        int planMade = 0;
+        // Built on a worker: sculpting a heart takes longer than a frame should. And its skin again, grown further.
         std::future<std::vector<MeshData>> building;
+        std::future<std::vector<MeshData>> regrowing;
         MeshHandle heartMesh;
         MeshHandle rootsMesh;
         // The skin that has grown over everything round it: a few pieces of one sculpted surface, grown, beaten
@@ -375,6 +379,10 @@ private:
     // Where a creature stands at a nest, and where the nest will spread to and when.
     void PlaceNestStand(Nest& nest) const;
     void PlanNestGrowth(Nest& nest) const;
+    // Its plan carried on out to `limit` from the heart.
+    void GrowNestPlan(Nest& nest, float limit) const;
+    // A nest's skin rebuilt from its plan, grown further, on a worker.
+    void RegrowNestSkin(Nest& nest);
     // The heart shot, on the host: down to nothing and the whole nest dies.
     void HurtNest(int index, float damage, int by);
     // What the host said about a heart: how much of it is left, and whether that was news.

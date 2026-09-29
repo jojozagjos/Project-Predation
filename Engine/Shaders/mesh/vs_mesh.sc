@@ -23,15 +23,15 @@ void main()
 		float along = a_texcoord0.x;
 		float height = a_texcoord0.y;
 		float grown = clamp((u_organic.y - along) / 1.2, 0.0, 1.0);
-		// Dead from the source outwards, and then rotted down to a third of itself.
+		// Dead from the source outwards, and then rotted away into the surface to nothing.
 		float dead = clamp((u_organic.z - along) / 1.5, 0.0, 1.0);
 		float rotted = u_organic.w > 0.0 ? clamp((u_organic.z - along - 3.0) / u_organic.w, 0.0, 1.0) : 0.0;
 		// And each beat, going out across it as a swell.
 		float beat = fract(u_organicBeat.x - along * u_organicBeat.z);
 		float swell = (organicBump(beat, 0.0, 0.14) + 0.6 * organicBump(beat, 0.2, 0.12)) * u_organicBeat.y * (1.0 - dead);
-		float thickness = grown * (1.0 + 0.4 * swell) * mix(1.0, 0.33, rotted);
+		float thickness = grown * (1.0 + 0.4 * swell) * (1.0 - rotted);
 		position -= a_normal * height * (1.0 - thickness);
-		v_organic = vec2(grown, dead);
+		v_organic = vec2(grown * (1.0 - rotted), dead);
 	}
 	vec4 worldPosition = mul(u_model[0], vec4(position, 1.0));
 
