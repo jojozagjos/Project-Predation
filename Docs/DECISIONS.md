@@ -2471,3 +2471,21 @@ From the user's playtest:
   after running dry, fades out through a gap rather than stopping dead, and the output is kept about 30 ms ahead of the
   device, so a slow moment on a slower machine does not starve it.
 - The tracker is quiet in cinematics. Frames over 50 ms are logged ("Long frame"), so a stutter can be found.
+
+## ADR-114: The shuttle flies
+
+Reported: the redocking landed and then closed the doors, the shuttle did not point where it went, and it stopped and
+started from place to place without seeming to have any speed.
+
+- **Flown, not keyed.** Every shuttle flight (launch, docking, the empty return, down onto a site and off it) is
+  generated (the flight tool in the scratch scripts, kept in the commit message's spirit here): a centripetal
+  Catmull-Rom path through waypoints -- which never loops or overshoots between unevenly spaced points -- the distance
+  along it a cubic whose ends move at the speeds asked for, so one leg hands its speed to the next; the nose along the
+  way it is going, pitch limited, turned with weight (eased twice) and banked into turns; or held at a set attitude to
+  rise, hover and land.
+- **Docking in the right order**: in under the ship slowing, curving up without stopping through the open bay doors, a
+  hover while the doors close beneath it, down onto them, and only then the ramp. **The insertion** comes in over the
+  site already facing the way it will stand, so it does not spin in the air.
+- **The engines' glow** was a disc a centimetre off each nozzle's end, which fought it for the depth buffer at any
+  distance, and glowed blue even cold. Now a slug set into the nozzle and well proud of it, dark until a burn. On the
+  stage the cinematic camera's near plane is two metres, not a quarter, which gives distant plates far more depth.

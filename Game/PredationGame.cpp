@@ -9625,7 +9625,10 @@ void PredationGame::OnUpdate(double dt, double alpha)
     // A cinematic may want its own lens and to see much further: a planet from orbit, a ship coming in from far off.
     const float horizontal = glm::radians(m_cineFov > 0.0f ? m_cineFov : cv_fov.Get());
     const float verticalFov = 2.0f * std::atan(std::tan(horizontal * 0.5f) / aspect);
-    const float nearPlane = m_cineFar > 0.0f ? 0.25f : 0.05f;
+    // On the stage, where the ship is only ever filmed from metres off, the near plane further out: the depth buffer then
+    // has far more to give the far end, and the ship's plates do not fight each other a few hundred metres away.
+    const bool onStage = glm::distance(m_renderEye, ShipSpec::kStage) < ShipSpec::kStageReach;
+    const float nearPlane = m_cineFar > 0.0f ? (onStage ? 2.0f : 0.25f) : 0.05f;
     const float farPlane = m_cineFar > 0.0f ? m_cineFar : 500.0f;
     const glm::mat4 projection = renderer.HomogeneousDepth()
                                      ? glm::perspectiveRH_NO(verticalFov, aspect, nearPlane, farPlane)

@@ -390,9 +390,11 @@ ModelAsset CarrierModel()
         skin("engine_band", engine.x - engine.half - 0.05f, engine.x + engine.half + 0.05f, engine.y - engine.half - 0.05f,
              engine.y + engine.half + 0.05f, z0 + 2.0f, z0 + 2.6f, dark);
         cylinder(name("nozzle"), {engine.x, engine.y, z1 + 0.8f}, engine.half * 1.9f, 1.6f, {90.0f, 0.0f, 0.0f}, {0.12f, 0.12f, 0.13f}, 1.0f, 0.0f);
-        // On the nozzle's mouth, just proud of it, where it can be seen.
-        cylinder("fx_engine_glow_" + std::to_string(engineIndex++), {engine.x, engine.y, z1 + 1.625f}, engine.half * 1.6f, 0.02f, {90.0f, 0.0f, 0.0f},
-                 {0.55f, 0.75f, 1.0f}, 0.0f, 0.3f);
+        // In the nozzle's mouth and out of it: a slug, a little into the nozzle and well proud of its end, so no face of it
+        // lies close to one of the nozzle's -- a disc a centimetre off the end fought it for the depth buffer from any
+        // distance. Dark until a burn lights it.
+        cylinder("fx_engine_glow_" + std::to_string(engineIndex++), {engine.x, engine.y, z1 + 1.7f}, engine.half * 1.6f, 0.4f, {90.0f, 0.0f, 0.0f},
+                 {0.55f, 0.75f, 1.0f}, 0.0f, 0.0f);
     }
     // Its lights: red to port, green to starboard, white at the tail.
     b.Box("fx_nav_port", -out - 0.2f, -out, 3.0f, 3.2f, -22.0f, -21.8f, {1.0f, 0.1f, 0.08f}, 0.4f, 0.0f, 4.0f);
