@@ -550,7 +550,7 @@ void CreatureBrain::DirectorHint(const glm::vec3& where, float time)
     Log(time, "has a feeling about somewhere");
 }
 
-bool CreatureBrain::AskToWithdraw(float seconds, float time)
+bool CreatureBrain::AskToWithdraw(float seconds, float time, bool insist)
 {
     // Commitment. Whatever it is in the middle of that is about somebody, it finishes first: a creature
     // that heard something and then wandered off before looking would not seem to have heard it at all.
@@ -575,13 +575,36 @@ bool CreatureBrain::AskToWithdraw(float seconds, float time)
     default:
         break;
     }
-    if (busy || m_dead)
+    if ((busy && !insist) || m_dead)
     {
         return false;
     }
     m_withdrawUntil = time + seconds;
+    m_withdrawInsisted = insist;
     Log(time, Format("slips away out of sight for %.0f s", seconds));
     return true;
+}
+
+void CreatureBrain::OnStuck(float time)
+{
+    Log(time, "cannot get to where it is going");
+    switch (m_behavior)
+    {
+    case Behavior::Roam:
+        m_haveRoamPoint = false;
+        m_pauseUntil = time + 1.0f;
+        break;
+    case Behavior::Investigate:
+    case Behavior::Search:
+    case Behavior::Observe:
+    case Behavior::Stalk:
+        Switch(Behavior::Roam, -1, "could not get there", time);
+        m_haveRoamPoint = false;
+        break;
+    default:
+        // Hunting, fleeing, going home: the goal stands, and the fresh route its body took is what it tries.
+        break;
+    }
 }
 
 void CreatureBrain::OnReleased(float time, const std::string& why)
@@ -1912,7 +1935,7 @@ void CreatureBrain::Decide(const CreatureSenses& senses)
     // that matters -- a gunshot, somebody walking into it -- still scores above it.
     if (now < m_withdrawUntil)
     {
-        add(Behavior::Retreat, -1, "Withdraw", {{"giving them room", 0.5f}});
+        add(Behavior::Retreat, -1, "Withdraw", {{m_withdrawInsisted ? "had its fill for now" : "giving them room", m_withdrawInsisted ? 3.0f : 0.5f}});
     }
 
     // Out of the light: the nervous, and anything that has learnt to fear lights, get out of the beam.

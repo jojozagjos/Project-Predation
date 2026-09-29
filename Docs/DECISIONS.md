@@ -2556,3 +2556,21 @@ From the user's playtest:
   leaves it, swaying and drifting with the site's wind, never indoors or in the shuttle's cabin.
 - **The map and the tracker** show a screen when nobody holds them -- on the bench, in the inventory -- drawn once at
   start (`SetDeviceFace`): a plan, and a fan. They were plain pale boxes.
+
+## ADR-119: Creatures that get somewhere and let you get away; a drone that climbs; placeholder voices
+
+From the user: never meeting the creature unless the data was in its building, and dying very quickly when you did; the
+drone stuck on stairs; placeholder audio for the briefing and the intercom.
+
+- **Stuck**: a creature trying to go somewhere and getting nowhere only ever gave up its door-dodging. Now, three
+  seconds of that and it is put back on the walkable surface with a fresh route; six and it gives the destination up
+  (`CreatureBrain::OnStuck`) -- roaming, looking into something, searching or stalking, it goes about something else.
+  One stood in a doorway for the rest of a game before, and was never met.
+- **Pace**: after a creature's blow lands, nobody is struck again for 2.5 s (the blow is held), and the one struck gets
+  their breath back to run. Two blows from one creature within twelve seconds and it pulls back for eight to fourteen
+  (`AskToWithdraw(..., insist)`, scored above anything else while it lasts). It was four blows in three seconds.
+- **The drone** rides up a step by itself -- low in front, clear above, up to about a stair's rise -- held from pitching
+  over as it does. A ledge knee high is still hopped.
+- **Placeholder voices**: a silent placeholder.wav, about as long as what it stands for, in every folder the briefing
+  (its phrases, the site's words, the numbers) and the intercom (one line per moment) will play, with a README in each of
+  Assets/Audio/Briefing and Assets/Audio/Intercom listing what to record where.

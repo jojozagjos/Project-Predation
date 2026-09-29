@@ -369,6 +369,8 @@ bool PredationGame::SpawnCreature(uint32_t seed, const glm::vec3& awayFrom, cons
 void PredationGame::SpawnCreatures()
 {
     ClearCreatures();
+    m_struckAt.clear();
+    m_blowsBy.clear();
     m_creatureClock = 0.0f;
     m_creaturePeak = 0;
     if (!IsAuthority())
@@ -1056,6 +1058,13 @@ void PredationGame::UpdateCreatures(float dt)
                 PRED_LOG_INFO(AI, "Strike at {} (player {}) missed: {:.1f} m away", player.name, player.id, reach);
                 break;
             }
+            // Just struck, they are not struck again yet: a moment to get away, the breath back to run.
+            constexpr float kRespite = 2.5f;
+            if (const auto struck = m_struckAt.find(player.id); struck != m_struckAt.end() && m_creatureClock - struck->second < kRespite)
+            {
+                PRED_LOG_INFO(AI, "Strike at {} (player {}) held: struck {:.1f} s ago", player.name, player.id, m_creatureClock - struck->second);
+                break;
+            }
             // Through the same door as a bullet, so everything that follows from being hurt follows
             // from this too: the victim is told (their health bar, their hurt sound), and a blow that
             // kills them kills them properly -- ragdoll, dropped kit, respawn. Taking health off
@@ -1080,6 +1089,27 @@ void PredationGame::UpdateCreatures(float dt)
                 break;
             }
             ApplyPlayerDamage(static_cast<uint8_t>(player.id), damage, kNoKiller, blow, "creature");
+            m_struckAt[player.id] = m_creatureClock;
+            // Two blows close together and it pulls back for a while: hurt, and then left to get away, rather than
+            // worried to death where they stand.
+            {
+                auto& [since, count] = m_blowsBy[creature->NetId()];
+                if (m_creatureClock - since > 12.0f)
+                {
+                    since = m_creatureClock;
+                    count = 0;
+                }
+                if (++count >= 2 && creature->Brain().AskToWithdraw(8.0f + 6.0f * (static_cast<float>(std::rand()) / static_cast<float>(RAND_MAX)), m_creatureClock, true))
+                {
+                    count = 0;
+                    PRED_LOG_INFO(AI, "Creature {} pulls back after two blows", creature->NetId());
+                }
+            }
+            if (player.id == LocalPlayerId())
+            {
+                m_player.State().stamina = 1.0f;
+                m_player.State().winded = false;
+            }
             m_menace = std::min(m_menace + Tuning().director.perBlow, 1.0f);
             LearnFrom(*creature, 1.0f, "landed a blow");
             PlaySound(m_sounds.hurt.Pick(), player.feet + glm::vec3(0.0f, 1.2f, 0.0f), 0.9f, 0.85f);

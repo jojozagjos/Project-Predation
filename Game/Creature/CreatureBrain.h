@@ -320,7 +320,8 @@ public:
     // The director asking it to give the players some room for a while. It will not while it is busy
     // with something that matters -- looking into something, stalking, searching, fighting -- and says
     // so by refusing.
-    bool AskToWithdraw(float seconds, float time);
+    // `insist`: it pulls back whatever it is doing -- after it has hurt somebody twice in quick succession.
+    bool AskToWithdraw(float seconds, float time, bool insist = false);
     bool Withdrawing(float time) const { return time < m_withdrawUntil; }
     // Whether being shot has taught it to be careful of people.
     bool Wary() const { return m_wary; }
@@ -332,6 +333,8 @@ public:
     // The way of going about somebody it is using, or used within the last few seconds: what gets the
     // credit, or the blame, for what happens now.
     Behavior RecentTactic(float time) const;
+    // Its body has been trying to get where it is going and getting nowhere: it gives that up for something else.
+    void OnStuck(float time);
     // It lost hold of them: shot off them, struggled free, or they died.
     void OnReleased(float time, const std::string& why);
     int Holding() const { return m_holding; }
@@ -909,6 +912,8 @@ private:
     float m_nextCreepAt = 0.0f;
     // Giving the players room, until then, because the director asked.
     float m_withdrawUntil = -1.0f;
+    // Pulled back because it insisted on it (see AskToWithdraw): above anything else for that while.
+    bool m_withdrawInsisted = false;
     // Hit and run: one blow on the way out of a fight, and back to running -- out of their sight, and then
     // round at them again from somewhere else, rather than back the way it went.
     bool m_hitAndRunReady = false;

@@ -47,6 +47,9 @@ constexpr float kHopEvery = 0.9f;
 // For how long after a hop it is still driven, through the air: what it was driving at carries it on, up onto the
 // step or the ledge it hopped at, rather than straight up the face of it and back down.
 constexpr float kHopSteerSeconds = 0.75f;
+// The highest step it rides up by itself, over its own height, and how fast it is lifted onto it: enough to clear it.
+constexpr float kStepHeight = 0.2f;
+constexpr float kStepClimbSpeed = 2.6f;
 
 uint32_t Paint(const glm::vec3& colour, float roughness = 1.0f)
 {
@@ -430,7 +433,32 @@ void SupportDrone::Step(PhysicsWorld& physics, const Controls& controls, float d
     // the floor made of the last tick. Up and down along its own up -- falling, bumping over a step -- is
     // left to the physics, as is any tipping.
     const glm::vec3 forward = m_rotation * glm::vec3(0.0f, 0.0f, -1.0f);
-    physics.SetLinearVelocity(m_body, forward * m_trackSpeed + up * glm::dot(velocity, up));
+    float along = glm::dot(velocity, up);
+    // Up a step by itself: driven into something low with room above it -- a stair, a kerb, a threshold -- it rides
+    // up onto it, as tracks do, rather than grinding against its face until its driver hops. Only a step it can
+    // clear: a wall is a wall.
+    if (driving && std::abs(m_trackSpeed) > 0.3f && m_hopCooldown <= 0.0f)
+    {
+        const glm::vec3 going = forward * (m_trackSpeed > 0.0f ? 1.0f : -1.0f);
+        const float reach = kHalfExtents.z + 0.14f;
+        const RayHit low = physics.RayCast(m_position - up * (kHalfExtents.y - 0.03f), going, reach, m_body);
+        const RayHit high = physics.RayCast(m_position + up * kStepHeight, going, reach + 0.1f, m_body);
+        if (low.hit && low.normal.y < 0.5f && !high.hit)
+        {
+            along = std::max(along, kStepClimbSpeed);
+            m_hopCooldown = 0.25f;
+            m_hopFor = 0.35f;
+            m_climbFor = 0.5f;
+        }
+    }
+    // Riding up, it is held from pitching over: the step's edge under its nose tipped it onto its back.
+    m_climbFor = std::max(m_climbFor - dt, 0.0f);
+    if (m_climbFor > 0.0f)
+    {
+        const glm::vec3 right = m_rotation * glm::vec3(1.0f, 0.0f, 0.0f);
+        spin -= right * glm::dot(spin, right) * 0.85f;
+    }
+    physics.SetLinearVelocity(m_body, forward * m_trackSpeed + up * along);
     spin += up * (-m_trackTurn - glm::dot(spin, up));
     physics.SetAngularVelocity(m_body, spin);
 }

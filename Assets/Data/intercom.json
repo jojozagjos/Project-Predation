@@ -1,18 +1,83 @@
 {
   "_comment": "What the ship's intercom says, by the moment it is for. Each line is a recording -- 'sound' names a folder under Assets/Audio, e.g. \"Intercom/arrival_01\" for Assets/Audio/Intercom/arrival_01/ -- and the subtitle shown while it plays; 'seconds' is how long the subtitle stays up (left out, worked out from its length). With several lines for a moment, one is chosen, the same one on every machine. Moments: arrival (the team has landed), arrival_no_map (landed, and there was no map to give), power_out (somebody found the terminal has no power), download_started, download_done, launch (the shuttle's launch has been started), recovered and not_recovered (it has gone, with the data or without), left_behind (it has gone without you), orbit (the ship has arrived over the next site), deploy (the shuttle is leaving the ship for it), docked (the shuttle is back in the hangar). None written yet.",
   "lines": {
-    "arrival": [],
-    "arrival_no_map": [],
-    "power_out": [],
-    "download_started": [],
-    "download_done": [],
-    "launch": [],
-    "recovered": [],
-    "not_recovered": [],
-    "left_behind": [],
-    "orbit": [],
-    "deploy": [],
-    "docked": [],
-    "orders": []
+    "arrival": [
+      {
+        "sound": "Intercom/arrival_01",
+        "subtitle": ""
+      }
+    ],
+    "arrival_no_map": [
+      {
+        "sound": "Intercom/arrival_no_map_01",
+        "subtitle": ""
+      }
+    ],
+    "power_out": [
+      {
+        "sound": "Intercom/power_out_01",
+        "subtitle": ""
+      }
+    ],
+    "download_started": [
+      {
+        "sound": "Intercom/download_started_01",
+        "subtitle": ""
+      }
+    ],
+    "download_done": [
+      {
+        "sound": "Intercom/download_done_01",
+        "subtitle": ""
+      }
+    ],
+    "launch": [
+      {
+        "sound": "Intercom/launch_01",
+        "subtitle": ""
+      }
+    ],
+    "recovered": [
+      {
+        "sound": "Intercom/recovered_01",
+        "subtitle": ""
+      }
+    ],
+    "not_recovered": [
+      {
+        "sound": "Intercom/not_recovered_01",
+        "subtitle": ""
+      }
+    ],
+    "left_behind": [
+      {
+        "sound": "Intercom/left_behind_01",
+        "subtitle": ""
+      }
+    ],
+    "orbit": [
+      {
+        "sound": "Intercom/orbit_01",
+        "subtitle": ""
+      }
+    ],
+    "deploy": [
+      {
+        "sound": "Intercom/deploy_01",
+        "subtitle": ""
+      }
+    ],
+    "docked": [
+      {
+        "sound": "Intercom/docked_01",
+        "subtitle": ""
+      }
+    ],
+    "orders": [
+      {
+        "sound": "Intercom/orders_01",
+        "subtitle": ""
+      }
+    ]
   }
 }

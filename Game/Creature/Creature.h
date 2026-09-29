@@ -181,6 +181,9 @@ private:
     // pays open door panels no attention because going round one had it stuck.
     glm::vec3 m_progressFrom{0.0f};
     float m_progressCheckAt = 0.0f;
+    // Seconds in a row of trying to move and getting nowhere: at three it is put back on the walkable surface with a
+    // fresh route, and at six it gives up on where it was going.
+    int m_stalled = 0;
     float m_ignoreDoorsUntil = -1.0f;
     glm::vec3 AroundDoors(const glm::vec3& heading, const std::vector<DoorSense>& doors) const;
     // Up a wall, across a ceiling, or dropping from it, for one that climbs.

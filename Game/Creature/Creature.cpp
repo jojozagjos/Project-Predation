@@ -1217,6 +1217,27 @@ void Creature::Move(const CreatureIntent& asked, const std::vector<glm::vec3>& o
         if (Horizontal(m_position, m_progressFrom) < 0.4f && m_progressCheckAt > 0.0f)
         {
             m_ignoreDoorsUntil = m_time + 3.0f;
+            ++m_stalled;
+            if (m_stalled == 3 && m_nav != nullptr)
+            {
+                // Onto the walkable surface, wherever it has got itself, and a route from there.
+                glm::vec3 onFloor;
+                if (m_nav->NearestPoint(m_position, 2.5f, onFloor))
+                {
+                    m_position = glm::vec3(onFloor.x, m_position.y, onFloor.z);
+                }
+                m_routeAge = 1.0e9f;
+            }
+            else if (m_stalled >= 6)
+            {
+                // Not getting there: somewhere else, then.
+                m_stalled = 0;
+                m_brain.OnStuck(m_time);
+            }
+        }
+        else
+        {
+            m_stalled = 0;
         }
         m_progressFrom = m_position;
         m_progressCheckAt = m_time + 1.0f;

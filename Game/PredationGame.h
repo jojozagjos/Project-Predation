@@ -182,6 +182,11 @@ private:
     bool SpawnCreature(uint32_t seed, const glm::vec3& awayFrom, const glm::vec3* exactly = nullptr);
     void ClearCreatures();
     void UpdateCreatures(float dt);
+    // When each player was last struck by a creature: nobody is struck again straight after, so a blow is something
+    // to get away from and not the first of four in three seconds.
+    std::map<int, float> m_struckAt;
+    // Each creature's blows lately (when the run began, and how many): two close together and it pulls back a while.
+    std::map<uint8_t, std::pair<float, int>> m_blowsBy;
     // The director: pacing, over the creatures' heads. It knows where everybody is, and never tells a
     // creature -- only nudges one about where to look when nothing has happened for a while, and asks
     // the ones close to the players to give them room when the pressure has gone on long enough.

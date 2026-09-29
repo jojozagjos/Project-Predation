@@ -326,3 +326,34 @@ TEST_CASE("Somebody else's drone is shown where their machine says, and follows 
     proxy.Remove(floor.scene, floor.physics);
     CHECK_FALSE(proxy.Active());
 }
+
+TEST_CASE("A support drone driven up stairs rides up them by itself", "[drone]")
+{
+    // Stairs as the buildings have them, eighteen centimetres a step: it rides up each, as tracks do, without being
+    // made to hop at every one -- which is where it used to stop.
+    Floor floor;
+    for (int step = 0; step < 6; ++step)
+    {
+        Transform tread;
+        const float top = 0.18f * static_cast<float>(step + 1);
+        tread.position = {0.0f, top * 0.5f, -1.5f - 0.3f * static_cast<float>(step) - 1.5f};
+        floor.physics.CreateBox({1.0f, top * 0.5f, 1.5f}, tread, BodyMotion::Static);
+    }
+    SupportDrone drone;
+    drone.Deploy(floor.scene, floor.meshes, floor.physics, {0.0f, 0.0f, 0.0f}, 0.0f);
+    floor.Run(drone, {}, 0.5f);
+    SupportDrone::Controls forward;
+    forward.move = {0.0f, 1.0f};
+    // Up to the top, a tenth of a second at a time, upright all the way.
+    float highest = 0.0f;
+    bool stayedUpright = true;
+    for (int i = 0; i < 40 && highest < 1.1f; ++i)
+    {
+        floor.Run(drone, forward, 0.1f);
+        highest = std::max(highest, drone.Position().y);
+        stayedUpright = stayedUpright && Upright(drone);
+    }
+    INFO("highest " << highest << ", at " << drone.Position().y << " up, " << drone.Position().z);
+    CHECK(highest > 1.0f);
+    CHECK(stayedUpright);
+}
