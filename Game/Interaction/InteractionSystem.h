@@ -54,9 +54,15 @@ public:
     void ClearFocus();
 
     void DebugDraw(class DebugDraw& draw, const Scene& scene) const;
+    // (An Interactable's focusOffset is in its entity's own frame: FocusPoint turns it.)
+    // Everything within `reach` of the eye, and why each is or is not offered: for finding out why something has no prompt.
+    std::vector<std::string> Report(const Scene& scene, const PhysicsWorld& physics, const glm::vec3& eye, const glm::vec3& forward,
+                                    float reach = 4.0f, float maxAngleDegrees = 28.0f) const;
+
+    // Where something is looked at to be offered: its entity's place and turn, and its focus offset turned with it.
+    glm::vec3 FocusPoint(const Scene& scene, const Interactable& interactable) const;
 
 private:
-    glm::vec3 FocusPoint(const Scene& scene, const Interactable& interactable) const;
 
     std::unordered_map<uint64_t, Interactable> m_interactables; // keyed by Entity::Key()
     Focus m_focus;

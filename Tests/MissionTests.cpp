@@ -356,3 +356,47 @@ TEST_CASE("The intercom says one of the lines written for a moment, the same one
     CHECK(game.LoadFromFile(std::filesystem::path(PRED_SOURCE_DIR) / "Assets" / "Data" / "intercom.json"));
     CHECK(IntercomLines::Moments().size() == 10);
 }
+
+TEST_CASE("Standing in front of the terminal or a breaker and looking at it, it is offered", "[mission][site][interaction]")
+{
+    // Its focus was turned twice -- once where it was set, once where it was used -- so a terminal or a panel facing
+    // any way but one had its focus behind it, hidden by its own front: no prompt, and nothing to be done with it.
+    PhysicsWorld physics;
+    PhysicsWorld::Settings settings;
+    settings.workerThreads = 2;
+    REQUIRE(physics.Init(settings));
+    Scene scene;
+    MeshLibrary meshes;
+    meshes.SetHeadless(true);
+    InteractionSystem interactions;
+    for (const uint16_t seed : {uint16_t{1}, uint16_t{3}, uint16_t{5}, uint16_t{8}})
+    {
+        INFO("seed " << seed);
+        SiteMap site;
+        site.Build(seed, scene, meshes, physics, nullptr);
+        const MissionPlan plan = MissionPlan::Generate(site.Plan(), seed);
+        MissionProps props;
+        props.Build(scene, meshes, physics, interactions, site.Plan(), plan, site.Shuttle());
+        physics.OptimizeBroadPhase();
+        const auto offered = [&](InteractionKind kind, int payload)
+        {
+            const Interactable* thing = interactions.FindByPayload(kind, payload);
+            REQUIRE(thing != nullptr);
+            const Transform* at = scene.GetTransform(thing->entity);
+            REQUIRE(at != nullptr);
+            const glm::vec3 front = at->rotation * glm::vec3(0.0f, 0.0f, -1.0f);
+            const glm::vec3 focus = interactions.FocusPoint(scene, *thing);
+            const glm::vec3 eye = focus + front * 0.9f + glm::vec3(0.0f, 0.5f, 0.0f);
+            const InteractionSystem::Focus& found = interactions.UpdateFocus(scene, physics, eye, focus - eye);
+            return found.valid && found.entity == thing->entity;
+        };
+        CHECK(offered(InteractionKind::Terminal, 0));
+        for (size_t b = 0; b < site.Plan().buildings.size(); ++b)
+        {
+            INFO("breaker " << b);
+            CHECK(offered(InteractionKind::Breaker, static_cast<int>(b)));
+        }
+        props.Clear(scene, physics, interactions);
+        site.Clear(scene, physics, nullptr);
+    }
+}

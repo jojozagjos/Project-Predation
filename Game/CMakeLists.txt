@@ -104,6 +104,7 @@ set(PRED_GAME_SOURCES
     World/SitePlan.cpp
     World/SiteMap.h
     World/SiteMap.cpp
+    World/Snowfall.cpp
     World/ShipMap.h
     World/ShipMap.cpp
     World/Vehicles.h

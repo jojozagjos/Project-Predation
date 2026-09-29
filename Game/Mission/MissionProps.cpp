@@ -85,7 +85,9 @@ void MissionProps::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physic
         Interactable interactable;
         interactable.entity = m_terminal.body;
         interactable.kind = InteractionKind::Terminal;
-        interactable.focusOffset = ThingTurn(plan.terminalYaw) * glm::vec3(0.0f, 0.0f, -size.z * 0.5f);
+        // In the terminal's own frame: the focus is turned with it. Turned here as well, it was turned twice, and a
+        // terminal facing the other way had its focus on its back -- behind its own front, which hid it: no prompt.
+        interactable.focusOffset = glm::vec3(0.0f, 0.0f, -size.z * 0.5f);
         interactable.range = 2.2f;
         interactions.Register(interactable);
     }
@@ -106,7 +108,7 @@ void MissionProps::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physic
         interactable.entity = panel.body;
         interactable.kind = InteractionKind::Breaker;
         interactable.payload = static_cast<int>(b);
-        interactable.focusOffset = ThingTurn(yaw) * glm::vec3(0.0f, 0.0f, -size.z * 0.5f);
+        interactable.focusOffset = glm::vec3(0.0f, 0.0f, -size.z * 0.5f);
         interactable.range = 2.2f;
         interactions.Register(interactable);
         m_breakers.push_back(panel);
@@ -120,7 +122,7 @@ void MissionProps::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physic
         Interactable interactable;
         interactable.entity = m_console;
         interactable.kind = InteractionKind::Launch;
-        interactable.focusOffset = shuttle.Home().rotation * glm::vec3(0.0f, 0.475f, 0.0f);
+        interactable.focusOffset = glm::vec3(0.0f, 0.475f, 0.0f);
         interactable.range = 2.2f;
         interactions.Register(interactable);
     }

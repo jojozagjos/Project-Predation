@@ -45,6 +45,8 @@ struct MeshRenderer
     // drawn from. Not people, creatures, the gun in somebody's hands or anything dropped: their shadows
     // would be left behind on the floor when they moved on.
     bool levelGeometry = false;
+    // Drawn however far off it is, past the draw region (SceneRenderer::SetDrawRegion): a ship flying off into the distance.
+    bool farVisible = false;
 };
 
 // A light that has a place, as opposed to the sun, which only has a direction.

@@ -699,6 +699,21 @@ void ShipMap::ShowFor(Scene& scene, const glm::vec3& eye)
     {
         return;
     }
+    // Both outsides are to be seen however far off they go -- flying away into the distance.
+    if (!m_hullsFar)
+    {
+        m_hullsFar = true;
+        for (VehicleProp* hull : {&m_hull, &m_stageHull})
+        {
+            for (const ModelPart& part : hull->Model()->parts)
+            {
+                if (MeshRenderer* renderer = scene.GetMeshRenderer(hull->Part(part.name)))
+                {
+                    renderer->farVisible = true;
+                }
+            }
+        }
+    }
     const bool stage = glm::distance(eye, kStage) < glm::distance(eye, kOrigin);
     if (m_showSet && stage == m_showingStage)
     {

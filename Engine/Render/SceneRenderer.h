@@ -110,6 +110,9 @@ public:
     // What the next Draw can see, as a projection times a view: anything wholly outside it is not drawn,
     // and no light that cannot reach inside it is weighed for anything that is. For the next Draw only.
     void SetCullFrustum(const glm::mat4& viewProjection);
+    // For the next draw only: nothing further than `radius` from `centre` but what is marked farVisible. Out in space,
+    // where the camera can see for kilometres, the places everybody else is are not in the picture.
+    void SetDrawRegion(const glm::vec3& centre, float radius);
     // And the camera the next Draw is seen from, which lights it with clustered lamps: each surface by
     // exactly the lamps that reach its part of the view. Without it a Draw lights each piece by the dozen
     // lamps nearest that piece. For the next Draw only, like the frustum.
@@ -271,6 +274,9 @@ private:
     // The sides of the view the next Draw culls against (see SetCullFrustum), as planes facing in.
     glm::vec4 m_cullPlanes[5]{};
     bool m_cullEnabled = false;
+    bool m_regionEnabled = false;
+    glm::vec3 m_regionCentre{0.0f};
+    float m_regionRadius = 0.0f;
     bool InView(const glm::vec3& centre, float radius) const;
     std::vector<std::pair<float, size_t>> m_choice;
     void PackLights(const Environment& environment);

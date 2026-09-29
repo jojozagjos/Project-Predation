@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 
 namespace pred
 {
@@ -178,6 +179,47 @@ const InteractionSystem::Focus& InteractionSystem::UpdateFocus(const Scene& scen
         m_focus.prompt = best->name.empty() ? best->verb : best->verb + " " + best->name;
     }
     return m_focus;
+}
+
+std::vector<std::string> InteractionSystem::Report(const Scene& scene, const PhysicsWorld& physics, const glm::vec3& eye,
+                                                   const glm::vec3& forward, float reach, float maxAngleDegrees) const
+{
+    std::vector<std::string> lines;
+    const glm::vec3 aim = glm::normalize(forward);
+    for (const auto& [key, interactable] : m_interactables)
+    {
+        if (!scene.IsAlive(interactable.entity))
+        {
+            continue;
+        }
+        const glm::vec3 point = FocusPoint(scene, interactable);
+        const glm::vec3 toPoint = point - eye;
+        const float distance = glm::length(toPoint);
+        if (distance > reach || distance < 1e-3f)
+        {
+            continue;
+        }
+        const float angle = glm::degrees(std::acos(std::clamp(glm::dot(toPoint / distance, aim), -1.0f, 1.0f)));
+        const RayHit blocked = physics.RayCast(eye, toPoint / distance, distance - 0.15f);
+        char line[256];
+        std::snprintf(line, sizeof(line), "%s %s: %.2f m (range %.1f), %.0f deg off, %s%s", interactable.verb.c_str(), interactable.name.c_str(),
+                      distance, interactable.range, angle, interactable.enabled ? "enabled" : "DISABLED",
+                      blocked ? ", BLOCKED" : "");
+        lines.push_back(line);
+        if (const Transform* transform = scene.GetTransform(interactable.entity))
+        {
+            const glm::vec3 faces = transform->rotation * glm::vec3(0.0f, 0.0f, -1.0f);
+            std::snprintf(line, sizeof(line), "    at %.2f %.2f %.2f facing %.2f %.2f %.2f, focus %.2f %.2f %.2f", transform->position.x, transform->position.y,
+                          transform->position.z, faces.x, faces.y, faces.z, point.x, point.y, point.z);
+            lines.push_back(line);
+        }
+        if (blocked)
+        {
+            std::snprintf(line, sizeof(line), "    blocked %.2f m along, at %.2f %.2f %.2f", blocked.distance, blocked.position.x, blocked.position.y, blocked.position.z);
+            lines.push_back(line);
+        }
+    }
+    return lines;
 }
 
 void InteractionSystem::DebugDraw(class DebugDraw& draw, const Scene& scene) const

@@ -21,6 +21,9 @@ class WeaponDatabase;
 // inventory icon look like the rifle in your hands rather than like a block.
 MeshData ItemMesh(const ItemDefinition& definition, const WeaponDatabase* weapons = nullptr);
 Material ItemMaterial(const ItemDefinition& definition);
+// A device's screen as it looks when nobody is holding it -- on a bench, in the inventory -- by the device it is ("map",
+// "tracker"). Registered by the game once it has drawn them; a device with none is drawn plain.
+void SetDeviceFace(const std::string& device, TextureHandle face);
 
 // The same item as the parts it is made of, each with its own material and its own place.
 //

@@ -552,6 +552,8 @@ bool PredationGame::OnInit(Application& app)
     // model and would otherwise fall back to the placeholder block.
     m_weaponData.LoadFromFile(Paths::AssetsRoot() / "Data" / "weapons.json");
     ApplyWeaponClipTimings();
+    // The devices' screens first: their icons show them.
+    BuildDeviceFaces();
     m_itemIcons.Build(m_items, app.GetMeshes(), app.GetRenderer(), &m_weaponData, &app.GetTextures());
     m_world.SetTextures(app.GetTextures());
     m_world.Build(m_scene, app.GetMeshes(), app.GetPhysics(), m_interactions, m_items, &m_weaponData);
@@ -937,6 +939,16 @@ void PredationGame::RegisterCommands()
                                               static_cast<int>(m_map), m_ship.Contains(state.position), static_cast<int>(m_cameraMode));
                             });
 
+    console.RegisterCommand("interact_report", "List what can be used near the view, and why each is or is not offered",
+                            [this](const std::vector<std::string>&)
+                            {
+                                for (const std::string& line : m_interactions.Report(m_scene, m_app->GetPhysics(), m_player.View().eyePosition,
+                                                                                      m_player.View().Forward()))
+                                {
+                                    m_app->GetConsole().Print(line);
+                                    PRED_LOG_INFO(Gameplay, "interact: {}", line);
+                                }
+                            });
     console.RegisterCommand("boot", "Show the boot screen again, and then the title's press-any-key",
                             [this](const std::vector<std::string>&)
                             {
@@ -9530,6 +9542,16 @@ void PredationGame::OnUpdate(double dt, double alpha)
     UpdateDevices(deltaSeconds);
     UpdateShipTravel(deltaSeconds);
     UpdateOrders(deltaSeconds);
+    // Snowing at the site, drifting with its wind -- not indoors, and not in the shuttle's cabin.
+    {
+        const bool falling = m_screen == Screen::Playing && m_facility.Built() && m_facility.Contains(m_renderEye);
+        const uint32_t seed = m_facility.Seed();
+        const float windAngle = static_cast<float>((seed * 2654435761u) >> 20) / 4096.0f * 6.2831853f;
+        const float windSpeed = falling ? static_cast<float>(ConditionsFor(seed, m_facility.Plan().sky.fogEnd).wind) * 0.12f : 0.0f;
+        m_snow.Update(m_scene, m_app->GetMeshes(), m_renderEye, deltaSeconds, falling,
+                      glm::vec3(std::cos(windAngle), 0.0f, std::sin(windAngle)) * windSpeed,
+                      [this](const glm::vec3& at) { return m_facility.Plan().Indoors(at) || m_facility.Shuttle().Aboard(at); });
+    }
 
     glm::mat4 view;
     glm::vec3 viewPosition;
@@ -10537,6 +10559,12 @@ void PredationGame::OnRender()
     app.GetSkyRenderer().Draw(Renderer::kViewSky, m_scene.GetEnvironment(),
                               app.GetRenderer().ViewMatrix(), app.GetRenderer().ProjectionMatrix());
     app.GetSceneRenderer().SetCullFrustum(app.GetRenderer().ProjectionMatrix() * app.GetRenderer().ViewMatrix());
+    // Out in space the camera sees for kilometres, and the site and the testing area are only one or two away: not in
+    // the picture, only the ship and what is round it (the shuttle leaving showed the site hanging in space behind it).
+    if (m_skyInShip)
+    {
+        app.GetSceneRenderer().SetDrawRegion(m_renderEye, 1200.0f);
+    }
     if (cv_clusteredLights.Get())
     {
         app.GetSceneRenderer().SetClusterCamera(app.GetRenderer().ViewMatrix(), app.GetRenderer().ProjectionMatrix());

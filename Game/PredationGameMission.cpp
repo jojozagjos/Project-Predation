@@ -738,7 +738,7 @@ void PredationGame::BuildDeployConsole()
     interactable.kind = InteractionKind::Deploy;
     interactable.verb = "Use";
     interactable.name = "deployment console";
-    interactable.focusOffset = transform.rotation * glm::vec3(0.0f, kDeployConsoleSize.y * 0.5f, -0.1f);
+    interactable.focusOffset = glm::vec3(0.0f, kDeployConsoleSize.y * 0.5f, -0.1f);
     interactable.range = 2.2f;
     m_interactions.Register(interactable);
 }

@@ -7,6 +7,7 @@
 
 #include "Engine/Render/TextureLibrary.h"
 #include "Game/World/ScreenCanvas.h"
+#include "Game/Items/ItemAppearance.h"
 
 #include <glm/geometric.hpp>
 #include <glm/gtc/constants.hpp>
@@ -38,6 +39,57 @@ constexpr Rgb kFaint{20, 48, 30};
 constexpr Rgb kAmber{235, 160, 70};
 
 } // namespace
+
+void PredationGame::BuildDeviceFaces()
+{
+    // What a device's screen shows lying on a bench or in the bag: a map's plan and a tracker's fan, still -- drawn once,
+    // for its icon and for when nobody is holding it.
+    TextureLibrary& textures = m_app->GetTextures();
+    {
+        ScreenCanvas canvas(kScreenSize, kScreenSize);
+        canvas.Clear(kGlass);
+        const std::array<glm::vec4, 5> rooms{glm::vec4(40, 60, 120, 130), glm::vec4(120, 60, 200, 110), glm::vec4(120, 110, 170, 190),
+                                             glm::vec4(170, 110, 220, 150), glm::vec4(40, 130, 120, 210)};
+        for (const glm::vec4& room : rooms)
+        {
+            canvas.Fill(room.x, room.y, room.z, room.w, {26, 64, 40});
+            canvas.Box(room.x, room.y, room.z, room.w, kGreen);
+        }
+        const glm::vec2 you{128.0f, 150.0f};
+        canvas.Line(you.x, you.y - 9.0f, you.x - 5.0f, you.y + 5.0f, {235, 245, 235}, 2);
+        canvas.Line(you.x, you.y - 9.0f, you.x + 5.0f, you.y + 5.0f, {235, 245, 235}, 2);
+        canvas.Line(you.x - 5.0f, you.y + 5.0f, you.x + 5.0f, you.y + 5.0f, {235, 245, 235}, 2);
+        canvas.Text(12, 10, "MAP", kGreen);
+        canvas.Text(kScreenSize / 2 - 5, 24, "N", kGreen);
+        canvas.Lines();
+        canvas.PaintCase(kCase);
+        const TextureHandle face = textures.CreateDynamic(kScreenSize, kScreenSize, "device_face_map");
+        textures.Update(face, canvas.image);
+        SetDeviceFace("map", face);
+    }
+    {
+        ScreenCanvas canvas(kScreenSize, kScreenSize);
+        canvas.Clear(kGlass);
+        const float cx = kScreenSize * 0.5f;
+        const float cy = kScreenSize - 26.0f;
+        const float reach = kScreenSize - 60.0f;
+        const float half = glm::radians(45.0f);
+        canvas.Line(cx, cy, cx + std::sin(-half) * reach, cy - std::cos(-half) * reach, kGreen, 2);
+        canvas.Line(cx, cy, cx + std::sin(half) * reach, cy - std::cos(half) * reach, kGreen, 2);
+        canvas.Arc(cx, cy, reach, -half, half, kGreen);
+        for (const float ring : {0.33f, 0.66f})
+        {
+            canvas.Arc(cx, cy, reach * ring, -half, half, kDim);
+        }
+        canvas.Dot(cx + 22.0f, cy - reach * 0.6f, 6.0f, {170, 255, 200});
+        canvas.Text(12, 10, "OBJ", kGreen);
+        canvas.Lines();
+        canvas.PaintCase(kCase);
+        const TextureHandle face = textures.CreateDynamic(kScreenSize, kScreenSize, "device_face_tracker");
+        textures.Update(face, canvas.image);
+        SetDeviceFace("tracker", face);
+    }
+}
 
 const std::string& PredationGame::HeldDevice() const
 {

@@ -843,6 +843,13 @@ void SceneRenderer::SetCullFrustum(const glm::mat4& m)
     m_cullEnabled = true;
 }
 
+void SceneRenderer::SetDrawRegion(const glm::vec3& centre, float radius)
+{
+    m_regionEnabled = true;
+    m_regionCentre = centre;
+    m_regionRadius = radius;
+}
+
 bool SceneRenderer::InView(const glm::vec3& centre, float radius) const
 {
     if (!m_cullEnabled)
@@ -896,9 +903,15 @@ void SceneRenderer::Draw(bgfx::ViewId view, const Scene& scene, const MeshLibrar
             {
                 return;
             }
+            if (m_regionEnabled && !renderer.farVisible && WorldSphere(*mesh, model, centre, radius) &&
+                glm::distance(centre, m_regionCentre) - radius > m_regionRadius)
+            {
+                return;
+            }
             SubmitMesh(view, *mesh, renderer.material, model, state);
         });
     m_cullEnabled = false;
+    m_regionEnabled = false;
     m_clustered = false;
 }
 

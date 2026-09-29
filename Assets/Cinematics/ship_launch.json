@@ -38,6 +38,7 @@
             0
           ],
           "fov": 70,
+          "focus": 0,
           "ease": "linear"
         },
         {
@@ -53,6 +54,7 @@
             0
           ],
           "fov": 70,
+          "focus": 0,
           "ease": "in_out"
         }
       ]
@@ -80,6 +82,7 @@
             0
           ],
           "fov": 55,
+          "focus": 0,
           "ease": "linear"
         },
         {
@@ -95,6 +98,7 @@
             0
           ],
           "fov": 52,
+          "focus": 0,
           "ease": "in_out"
         }
       ]
@@ -122,6 +126,7 @@
             0
           ],
           "fov": 50,
+          "focus": 0,
           "ease": "linear"
         },
         {
@@ -137,6 +142,7 @@
             0
           ],
           "fov": 46,
+          "focus": 0,
           "ease": "in_out"
         }
       ]
@@ -1349,7 +1355,7 @@
       "at": "shuttle",
       "offset": [
         0,
-        0.4,
+        3.7,
         0
       ],
       "duration": 2

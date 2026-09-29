@@ -109,6 +109,7 @@ private:
     // Which ship is being shown: the one round the rooms (false), or the one on the stage.
     bool m_showingStage = true;
     bool m_showSet = false;
+    bool m_hullsFar = false;
     struct Speck
     {
         Entity entity;

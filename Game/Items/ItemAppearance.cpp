@@ -4,6 +4,9 @@
 #include "Game/Weapons/WeaponAppearance.h"
 #include "Game/Weapons/WeaponDatabase.h"
 
+#include <map>
+#include <string>
+
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
 
@@ -103,6 +106,22 @@ std::vector<ItemPart> ItemParts(const ItemDefinition& definition, const WeaponDa
     return parts;
 }
 
+namespace
+{
+
+std::map<std::string, TextureHandle>& DeviceFaces()
+{
+    static std::map<std::string, TextureHandle> faces;
+    return faces;
+}
+
+} // namespace
+
+void SetDeviceFace(const std::string& device, TextureHandle face)
+{
+    DeviceFaces()[device] = face;
+}
+
 Material ItemMaterial(const ItemDefinition& definition)
 {
     Material material;
@@ -110,6 +129,18 @@ Material ItemMaterial(const ItemDefinition& definition)
     material.roughness = definition.roughness;
     material.metallic = definition.metallic;
     material.emissive = definition.color * definition.emissive;
+    // A device: its case and its screen both from its face, the screen glowing by its picture.
+    if (!definition.device.empty())
+    {
+        const auto found = DeviceFaces().find(definition.device);
+        if (found != DeviceFaces().end() && found->second.IsValid())
+        {
+            material.baseColor = glm::vec3(1.0f);
+            material.baseColorTexture = found->second;
+            material.emissive = glm::vec3(1.1f);
+            material.emissiveTextured = true;
+        }
+    }
     return material;
 }
 

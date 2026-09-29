@@ -213,7 +213,9 @@ int WorldObjects::AddLocker(Scene& scene, MeshLibrary& meshes, PhysicsWorld& phy
     interactable.range = 2.4f;
     // In the middle of its open doorway, at the height of a look into it: at its foot, as it was, the
     // prompt only came up for somebody looking at the floor in front of it.
-    interactable.focusOffset = turn * glm::vec3(0.0f, 0.1f, -0.4f);
+    // In its own frame: it is turned with it (turned here too, a locker facing any way but one had its focus to the side
+    // or behind it).
+    interactable.focusOffset = glm::vec3(0.0f, 0.1f, -0.4f);
     interactions.Register(interactable);
     return index;
 }

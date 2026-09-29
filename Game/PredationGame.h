@@ -24,6 +24,7 @@
 #include "Game/Player/PlayerBody.h"
 #include "Game/Player/PlayerController.h"
 #include "Game/Mission/Briefing.h"
+#include "Game/World/Snowfall.h"
 #include "Game/Mission/Mission.h"
 #include "Game/Mission/MissionProps.h"
 #include "Game/Mission/SiteNames.h"
@@ -783,6 +784,8 @@ private:
     void DrawMapScreen(ImageData& out, const glm::vec3& here, float yaw) const;
     void DrawTrackerScreen(ImageData& out, const glm::vec3& here, float yaw, float flash) const;
     void UpdateDevices(float dt);
+    // The devices' screens as they look when nobody holds them: for their icons, and on a bench.
+    void BuildDeviceFaces();
     // Arriving at the site (the title card, the intercom's first line), and the intercom's lines as the mission goes.
     void UpdateArrivalAndIntercom(float dt);
     // Queues what the intercom says for a moment (IntercomLines::Moments), after `delay` seconds.
@@ -1446,6 +1449,8 @@ private:
     Entity m_briefingScreens[2];
     TextureHandle m_briefingTextures[2];
     float m_briefingDrawnAt = -10.0f;
+    // Snow, at a site, round whoever is looking.
+    Snowfall m_snow;
     // Cinematics: those there are, by name; the one playing; the picture being handed back to the player's eyes after
     // one (the last picture, and how long is left of the handing back); the field of view and far plane it wants this
     // frame (0 for the game's own); and whether the debugging panel is up.

@@ -2539,3 +2539,20 @@ where the planet's surface can be seen, without the stars stuttering. (Replaces 
   view moved. Each is now a soft point spread over at least the pixel it falls in (`fwidth`), which holds still.
 - **Planets** have ground and cloud at two scales, so seen close they are a surface, not a blur.
 - The credit everywhere is jojozagjos.
+
+## ADR-118: Prompts that face the right way, snow, device faces, and space seen from space
+
+From the user's playtest:
+
+- **No prompt at the terminal**: an interactable's focus offset is in its entity's own frame -- FocusPoint turns it --
+  but the terminal, the breakers, the deployment console and the lockers turned it again where they set it. Facing any
+  way but one, their focus was behind or beside them: behind their own front, the trace to it was blocked, and there
+  was no prompt. Now given in the entity's frame. A test stands in front of every terminal and panel of several sites
+  and checks each is offered; `interact_report` lists what is near the view and why each is or is not offered.
+- **The site in space**: the site is a kilometre and a half from the ship and a cinematic's camera sees for twenty,
+  so leaving the ship showed it hanging there. Out in space nothing further than 1.2 km from the eye is drawn but the
+  ship's two outsides (`MeshRenderer::farVisible`, `SceneRenderer::SetDrawRegion`).
+- **Snow** falls at the site (Game/World/Snowfall): a box of flakes round the eye, each coming round again as it
+  leaves it, swaying and drifting with the site's wind, never indoors or in the shuttle's cabin.
+- **The map and the tracker** show a screen when nobody holds them -- on the bench, in the inventory -- drawn once at
+  start (`SetDeviceFace`): a plan, and a fan. They were plain pale boxes.
