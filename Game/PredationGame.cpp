@@ -5645,8 +5645,8 @@ bool PredationGame::DrawBootScreen()
         ++m_bootCard;
         m_bootClock = 0.0f;
     }
-    // After the last card, the black itself lifts off the title.
-    constexpr float kLift = 0.9f;
+    // After the last card, the black itself lifts off the title, and the name on it glides to where the title has it.
+    constexpr float kLift = 1.6f;
     if (m_bootCard >= kCount && m_bootClock >= kLift)
     {
         m_bootDone = true;
@@ -5657,15 +5657,38 @@ bool PredationGame::DrawBootScreen()
     const ImVec2 size = viewport->Size;
     ImDrawList* draw = ImGui::GetForegroundDrawList();
     const auto alpha = [](float a) { return static_cast<int>(std::clamp(a, 0.0f, 1.0f) * 255.0f); };
-    const float black = m_bootCard >= kCount ? 1.0f - m_bootClock / kLift : 1.0f;
+    // The name as the title sets it -- PROJECT large, PREDATION under it -- with its top left at `at`.
+    const float bigSize = ImGui::GetFontSize() * 3.2f;
+    const float midSize = ImGui::GetFontSize() * 1.6f;
+    const std::string project = Spaced("PROJECT");
+    const std::string predation = Spaced("PREDATION");
+    const auto name = [&](const ImVec2& at, float fade)
+    {
+        ImFont* nameFont = ImGui::GetFont();
+        draw->AddText(nameFont, bigSize, at, IM_COL32(236, 240, 242, alpha(fade)), project.c_str());
+        draw->AddText(nameFont, midSize, {at.x + 2.0f, at.y + bigSize * 1.02f}, IM_COL32(200, 208, 212, alpha(fade)), predation.c_str());
+    };
+    const ImVec2 nameExtent = ImGui::GetFont()->CalcTextSizeA(bigSize, FLT_MAX, 0.0f, project.c_str());
+    const ImVec2 work = viewport->WorkPos;
+    const ImVec2 workSize = viewport->WorkSize;
+    const ImVec2 centred{work.x + (workSize.x - nameExtent.x) * 0.5f, work.y + (workSize.y - bigSize * 1.02f - midSize) * 0.5f};
+    // Where the title draws it (DrawTitleSplash, DrawTitleMenu).
+    const ImVec2 resting{work.x + workSize.x * 0.07f, work.y + workSize.y * 0.12f};
+
+    const float lifted = m_bootCard >= kCount ? std::clamp(m_bootClock / kLift, 0.0f, 1.0f) : 0.0f;
+    const float black = m_bootCard >= kCount ? 1.0f - glm::smoothstep(0.1f, 1.0f, lifted) : 1.0f;
     draw->AddRectFilled(origin, {origin.x + size.x, origin.y + size.y}, IM_COL32(0, 0, 0, alpha(black)));
     if (m_bootCard >= kCount)
     {
+        const float glide = glm::smoothstep(0.0f, 0.85f, lifted);
+        name({centred.x + (resting.x - centred.x) * glide, centred.y + (resting.y - centred.y) * glide}, 1.0f);
         return true;
     }
     const float t = m_bootClock;
     const float length = kCards[m_bootCard];
-    const float shown = std::min(std::clamp(t / 0.6f, 0.0f, 1.0f), std::clamp((length - t) / 0.6f, 0.0f, 1.0f));
+    // Each card up out of the black and back into it -- but the last, the name, stays, to go on to the title.
+    const bool last = m_bootCard == kCount - 1;
+    const float shown = std::min(std::clamp(t / 0.6f, 0.0f, 1.0f), last ? 1.0f : std::clamp((length - t) / 0.6f, 0.0f, 1.0f));
     ImFont* font = ImGui::GetFont();
     const ImVec2 centre{origin.x + size.x * 0.5f, origin.y + size.y * 0.5f};
     const auto text = [&](const std::string& words, float y, float scale, float fade)
@@ -5710,7 +5733,7 @@ bool PredationGame::DrawBootScreen()
         break;
     }
     default:
-        text(Spaced("PROJECT PREDATION"), centre.y, 2.4f, shown);
+        name(centred, shown);
         break;
     }
     return true;
