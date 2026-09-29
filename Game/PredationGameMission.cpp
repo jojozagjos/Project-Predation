@@ -116,8 +116,6 @@ void PredationGame::RegisterMissionCommands()
                                               m_mission.Launching() ? ", launching" : "");
                                 m_app->GetConsole().Print(line);
                             });
-    console.RegisterCommand("site_map", "Open or close the site map, as its key does", [this](const std::vector<std::string>&)
-                            { m_mapOpen = !m_mapOpen; });
 #if PRED_DEV_TOOLS
     console.RegisterCommand("mission_goto", "Stand in front of the mission's terminal, its building's breaker, or the crawler's console: "
                             "mission_goto <terminal|breaker|crawler>",
@@ -541,127 +539,6 @@ void PredationGame::UpdateMission(float dt)
     }
 }
 
-void PredationGame::DrawSiteMap()
-{
-    if (!m_mapOpen || m_screen != Screen::Playing || m_paused || !AtSite() || m_mission.stage == Stage::None)
-    {
-        return;
-    }
-    const SitePlan& site = m_facility.Plan();
-    const ImGuiViewport* viewport = ImGui::GetMainViewport();
-    ImDrawList* draw = ImGui::GetBackgroundDrawList();
-    const float side = std::min(viewport->Size.x, viewport->Size.y) * 0.84f;
-    const ImVec2 min{viewport->Pos.x + (viewport->Size.x - side) * 0.5f, viewport->Pos.y + (viewport->Size.y - side) * 0.5f};
-    const ImVec2 max{min.x + side, min.y + side};
-    draw->AddRectFilled(min, max, IM_COL32(8, 10, 12, 215), 4.0f);
-    draw->AddRect(min, max, IM_COL32(120, 130, 140, 160), 4.0f);
-    const ImU32 label = IM_COL32(170, 178, 186, 230);
-    draw->AddText({min.x + 12.0f, max.y - 24.0f}, IM_COL32(120, 128, 136, 200),
-                  ("[" + KeyFor(m_app->GetInput(), "map") + "] close").c_str());
-
-    if (!m_missionPlan.mapGiven)
-    {
-        // Nothing was given: nothing to show but that.
-        const char* text = "NO MAP DATA FOR THIS SITE";
-        const ImVec2 size = ImGui::CalcTextSize(text);
-        draw->AddText({(min.x + max.x - size.x) * 0.5f, (min.y + max.y - size.y) * 0.5f}, label, text);
-        return;
-    }
-
-    // North up; the open ground and a margin round it.
-    constexpr float kMargin = 10.0f;
-    const float scale = side / (site.size + kMargin * 2.0f);
-    const auto at = [&](float x, float z)
-    {
-        return ImVec2{min.x + (x - site.origin.x + kMargin) * scale, min.y + (z - site.origin.z + kMargin) * scale};
-    };
-    draw->AddRect(at(site.origin.x, site.origin.z), at(site.origin.x + site.size, site.origin.z + site.size), IM_COL32(60, 66, 72, 160));
-    // North, at the top.
-    draw->AddTriangleFilled({(min.x + max.x) * 0.5f, min.y + 6.0f}, {(min.x + max.x) * 0.5f - 5.0f, min.y + 15.0f},
-                            {(min.x + max.x) * 0.5f + 5.0f, min.y + 15.0f}, label);
-    draw->AddText({(min.x + max.x) * 0.5f + 9.0f, min.y + 4.0f}, label, "N");
-
-    // Each building, a floor of it: the one you are on in the building you are in, the ground floor of the rest.
-    const glm::vec3 you = m_player.State().position;
-    for (size_t b = 0; b < site.buildings.size(); ++b)
-    {
-        const FacilityLayout& building = site.buildings[b];
-        int floor = 0;
-        glm::vec2 lo;
-        glm::vec2 hi;
-        SitePlan::Footprint(building, 0.0f, lo, hi);
-        if (you.x > lo.x && you.x < hi.x && you.z > lo.y && you.z < hi.y)
-        {
-            floor = std::clamp(static_cast<int>(std::floor((you.y - building.origin.y + 0.5f) / FacilityLayout::kStorey)), 0, building.floors - 1);
-        }
-        for (int z = 0; z < building.depth; ++z)
-        {
-            for (int x = 0; x < building.width; ++x)
-            {
-                ImU32 colour = 0;
-                switch (building.At(floor, x, z))
-                {
-                case FacilityLayout::Cell::Room: colour = IM_COL32(74, 80, 88, 255); break;
-                case FacilityLayout::Cell::Corridor: colour = IM_COL32(52, 56, 62, 255); break;
-                case FacilityLayout::Cell::Stair: colour = IM_COL32(96, 92, 70, 255); break;
-                case FacilityLayout::Cell::Solid:
-                case FacilityLayout::Cell::Duct: break;
-                }
-                if (colour == 0)
-                {
-                    continue;
-                }
-                const float cx = building.origin.x + static_cast<float>(x) * FacilityLayout::kCell;
-                const float cz = building.origin.z + static_cast<float>(z) * FacilityLayout::kCell;
-                draw->AddRectFilled(at(cx, cz), at(cx + FacilityLayout::kCell, cz + FacilityLayout::kCell), colour);
-            }
-        }
-        draw->AddRect(at(lo.x, lo.y), at(hi.x, hi.y), IM_COL32(140, 148, 156, 200), 0.0f, 0, 1.5f);
-        const std::string name = floor == 0 ? "ground floor" : FloorName(floor);
-        draw->AddText({at(lo.x, lo.y).x + 3.0f, at(lo.x, lo.y).y - 16.0f}, IM_COL32(120, 128, 136, 220), name.c_str());
-        // The data, where it is, and which floor when it is not the one shown.
-        if (static_cast<int>(b) == m_missionPlan.building && m_mission.stage != Stage::Carry)
-        {
-            const ImVec2 mark = at(m_missionPlan.terminal.x, m_missionPlan.terminal.z);
-            draw->AddRectFilled({mark.x - 4.0f, mark.y - 4.0f}, {mark.x + 4.0f, mark.y + 4.0f}, IM_COL32(120, 220, 160, 255));
-            const std::string text = m_missionPlan.floor == floor ? "DATA" : "DATA, " + FloorName(m_missionPlan.floor);
-            draw->AddText({mark.x + 7.0f, mark.y - 7.0f}, IM_COL32(120, 220, 160, 255), text.c_str());
-        }
-    }
-
-    // The crawler, where it is parked.
-    if (m_missionProps.Crawler().Built())
-    {
-        const glm::vec3 parked = m_missionProps.Crawler().Home().position;
-        const ImVec2 mark = at(parked.x, parked.z);
-        draw->AddRectFilled({mark.x - 4.0f, mark.y - 4.0f}, {mark.x + 4.0f, mark.y + 4.0f}, IM_COL32(220, 150, 90, 255));
-        draw->AddText({mark.x + 7.0f, mark.y - 7.0f}, IM_COL32(220, 150, 90, 240), "CRAWLER");
-    }
-    // The shuttle.
-    const glm::vec3 base = site.ShuttleBase();
-    const ImVec2 pad = at(base.x, base.z);
-    draw->AddCircle(pad, 7.0f * scale + 3.0f, IM_COL32(150, 170, 200, 220), 24, 1.5f);
-    draw->AddText({pad.x + 7.0f * scale + 6.0f, pad.y - 7.0f}, IM_COL32(150, 170, 200, 230), "SHUTTLE");
-
-    // Everybody else, and you, pointing the way you look.
-    for (const RemotePlayerView& other : RemotePlayers())
-    {
-        if (other.alive)
-        {
-            draw->AddCircleFilled(at(other.position.x, other.position.z), 4.0f, IM_COL32(210, 190, 110, 255));
-        }
-    }
-    if (m_player.State().alive)
-    {
-        const ImVec2 centre = at(you.x, you.z);
-        const glm::vec2 ahead{std::sin(m_lookYaw), -std::cos(m_lookYaw)};
-        const glm::vec2 right{-ahead.y, ahead.x};
-        const auto point = [&](glm::vec2 offset) { return ImVec2{centre.x + offset.x, centre.y + offset.y}; };
-        draw->AddTriangleFilled(point(ahead * 9.0f), point(-ahead * 5.0f + right * 5.0f), point(-ahead * 5.0f - right * 5.0f),
-                                IM_COL32(235, 240, 245, 255));
-    }
-}
-
 void PredationGame::DrawMissionHud()
 {
     if (m_screen != Screen::Playing || m_mission.stage == Stage::None)
@@ -724,12 +601,7 @@ void PredationGame::DrawMissionHud()
             ImGui::TextColored(text, "Download the data from the terminal.");
             if (m_missionPlan.mapGiven)
             {
-                ImGui::TextDisabled("The terminal: %s, %s.", Bearing(m_player.State().position, m_missionPlan.terminal).c_str(),
-                                    FloorName(m_missionPlan.floor).c_str());
-                if (!m_mapOpen)
-                {
-                    ImGui::TextDisabled("[%s] site map", KeyFor(m_app->GetInput(), "map").c_str());
-                }
+                ImGui::TextDisabled("The terminal is %s.", FloorName(m_missionPlan.floor).c_str());
             }
             else
             {
@@ -753,7 +625,7 @@ void PredationGame::DrawMissionHud()
             break;
         case Stage::Carry:
             ImGui::TextColored(text, "Take the drive to the crawler.");
-            ImGui::TextDisabled("The crawler: %s.", Bearing(m_player.State().position, m_missionProps.Crawler().Home().position).c_str());
+            ImGui::TextDisabled("It is waiting where it left you.");
             if (m_driveItem != kInvalidItem && m_inventory.CountOf(m_driveItem) > 0)
             {
                 ImGui::TextDisabled("You have the drive.");

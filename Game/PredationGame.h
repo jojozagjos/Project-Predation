@@ -745,7 +745,16 @@ private:
     void OnMissionOver();
     void DrawMissionHud();
     // The site from above, when the briefing came with one: the buildings, the shuttle, everybody, and the data.
-    void DrawSiteMap();
+    // --- Things carried for finding the way (PredationGameDevices.cpp) ---------------------------------------------
+    // What the held item shows: "map", "tracker", or nothing.
+    const std::string& HeldDevice() const;
+    // Where what is to be done next is: the terminal (or its breaker, found dead), the crawler with the drive, the
+    // shuttle or the console aboard. False when there is nothing.
+    bool ObjectiveTarget(glm::vec3& at) const;
+    void UpdateDevices(float dt);
+    void DrawDevice();
+    // The map's key: the map from the bag into the hand, or back.
+    void TakeOutMap();
     // Arriving at the site (the title card, the intercom's first line), and the intercom's lines as the mission goes.
     void UpdateArrivalAndIntercom(float dt);
     // Queues what the intercom says for a moment (IntercomLines::Moments), after `delay` seconds.
@@ -1333,7 +1342,15 @@ private:
     // Somebody here has tried the terminal without power, so the objective says what to do about it.
     bool m_missionFoundNoPower = false;
     // The site map is open (the map key).
-    bool m_mapOpen = false;
+    // The held devices: the map's sweep (each sample's distance as a share of its reach, and when the sweep last passed
+    // it), and the tracker's next beep.
+    float m_deviceClock = 0.0f;
+    std::vector<float> m_scanDistance;
+    std::vector<float> m_scanSeen;
+    float m_scanAngle = 0.0f;
+    float m_scanReach = 35.0f;
+    float m_trackerBeepIn = 0.0f;
+    float m_trackerBeepAt = -10.0f;
     // What sites are called, and what the ship's intercom says (Assets/Data/sites.json, intercom.json).
     SiteNames m_siteNames;
     IntercomLines m_intercom;

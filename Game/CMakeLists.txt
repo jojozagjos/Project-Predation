@@ -8,6 +8,7 @@ set(PRED_GAME_SOURCES
     PredationGameMission.cpp
     PredationGameCinematics.cpp
     PredationGameShip.cpp
+    PredationGameDevices.cpp
 
     Mission/Mission.h
     Mission/Mission.cpp

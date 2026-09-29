@@ -342,5 +342,34 @@
         "gain": 0.25
       }
     ]
+  },
+  "tracker_beep": {
+    "seconds": 0.18,
+    "variants": 1,
+    "vary": 0,
+    "room": 0.1,
+    "seed": 12401,
+    "layers": [
+      {
+        "source": "sine",
+        "hz": 1850,
+        "attack": 0.003,
+        "hold": 0.045,
+        "decay": 0.03,
+        "length": 0.09,
+        "gain": 0.35
+      },
+      {
+        "source": "square",
+        "hz": 1850,
+        "filter": "lowpass",
+        "cutoff": 3000,
+        "attack": 0.003,
+        "hold": 0.03,
+        "decay": 0.02,
+        "length": 0.06,
+        "gain": 0.08
+      }
+    ]
   }
 }

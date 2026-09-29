@@ -4303,7 +4303,7 @@ void PredationGame::DrawKeyBindings()
         {nullptr, "Other"},
         {"voice", "Talk"},
         {"flashlight", "Flashlight"},
-        {"map", "Site map"},
+        {"map", "Take out the map"},
 #if PRED_DEV_TOOLS
         // Developer keys: a free camera goes through walls and respawning heals, and in a player's
         // hands both are ways round the game rather than parts of it.
@@ -9244,9 +9244,9 @@ void PredationGame::OnUpdate(double dt, double alpha)
     // Alive or dead -- but not while a cinematic has the picture: nothing opens over one.
     if (!app.IsConsoleOpen() && m_screen == Screen::Playing && !m_cine.Active() && !m_cineEditor.IsOpen())
     {
-        if (input.WasActionPressed("map") && !m_paused)
+        if (input.WasActionPressed("map") && !m_paused && m_player.State().alive)
         {
-            m_mapOpen = !m_mapOpen;
+            TakeOutMap();
         }
         if (input.WasActionPressed("quit_capture"))
         {
@@ -9298,6 +9298,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
 
     UpdateDroneVisuals(deltaSeconds);
     UpdateCinematic(deltaSeconds);
+    UpdateDevices(deltaSeconds);
 
     glm::mat4 view;
     glm::vec3 viewPosition;
@@ -10984,7 +10985,7 @@ void PredationGame::DrawHud()
     }
 
     DrawDroneHud();
-    DrawSiteMap();
+    DrawDevice();
     DrawMissionHud();
     DrawShipHud();
     DrawTitleCard();

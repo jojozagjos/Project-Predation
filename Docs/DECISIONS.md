@@ -2346,3 +2346,20 @@ and the debrief.
 - A marker that sends everybody somewhere is carried out after the cinematic's frame, not inside it: the next
   cinematic starting from inside the one playing would pull it out from under itself.
 - Dev: ship_goto shuttle|hangar|briefing|gear|cockpit, ship_orbit <seed>.
+
+## ADR-108: The map and the objective tracker are things you carry
+
+Decided with the user: no map shows the whole site, or where the creature or the data is.
+
+- **The map** (item `site_map`, device "map") shows only what is near, swept like a motion tracker: a line goes
+  round, casting rays at chest height, and the walls it finds light up and fade after it has passed -- walls on your
+  floor only, nothing moving, no objective. 20 m across on a site that came with map data, 12 m without. It works
+  anywhere, the ship included, because it reads the level rather than a plan. M takes it out of the bag, or puts it
+  back; there is no map without one.
+- **The objective tracker** (`objective_tracker`, device "tracker") points at what is to be done next and says how
+  far, beeping faster and higher the closer it is (Items/tracker_beep): the terminal; its building's breaker once
+  the terminal is found dead; the crawler once the drive is out; aboard, the shuttle when it is waiting, the
+  briefing console otherwise.
+- The objective no longer gives bearings: finding the way is the tracker's. The whole-site map is gone.
+- Both are on every equipment bench, the ship's gear room among them. Items say what they show while held with
+  `device` in items.json.

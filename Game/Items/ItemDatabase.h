@@ -85,6 +85,9 @@ struct ItemDefinition
     ItemUse use;
     // How many are laid out on each equipment bench.
     int benchCount = 1;
+    // What it shows while it is held, for the things that are screens: "map" (the walls near you, swept like a motion
+    // tracker) or "tracker" (the way to the objective, and how far). Empty for everything else.
+    std::string device;
 };
 
 // Item definitions loaded from Assets/Data/items.json.
