@@ -1,90 +1,128 @@
 {
-  "_comment": "The placeholder sounds of UI: each entry is Assets/Audio/UI/<name>/, rendered by sound_bake. See Assets/Audio/README.md and Engine/Audio/SoundDesign.h for every field.",
+  "_comment": "The placeholder sounds of UI: each entry is Assets/Audio/UI/<name>/, rendered by sound_bake. See Assets/Audio/README.md and Engine/Audio/SoundDesign.h for every field. Heavy and mechanical, to sit with the title's drone: a soft relay tick on hover, a solid switch on a press, the same falling for back, and a two-step rise for going in.",
   "hover": {
-    "seconds": 0.05,
+    "seconds": 0.08,
     "variants": 1,
-    "gain": 0.5,
+    "gain": 0.7,
+    "room": 0.15,
     "seed": 9001,
     "layers": [
       {
-        "source": "sine",
-        "hz": 1800,
-        "decay": 0.012,
-        "length": 0.04,
-        "gain": 0.5
-      },
-      {
         "source": "click",
         "filter": "bandpass",
-        "cutoff": 4000,
-        "q": 3,
-        "decay": 0.004,
-        "length": 0.02,
-        "gain": 0.4
+        "cutoff": 2200,
+        "q": 2.5,
+        "decay": 0.006,
+        "length": 0.03,
+        "gain": 0.55
+      },
+      {
+        "source": "sine",
+        "hz": 520,
+        "hz_end": 470,
+        "attack": 0.002,
+        "decay": 0.03,
+        "length": 0.07,
+        "gain": 0.35
       }
     ]
   },
   "click": {
-    "seconds": 0.09,
+    "seconds": 0.3,
     "variants": 1,
-    "gain": 0.6,
+    "gain": 0.85,
+    "room": 0.25,
     "seed": 9011,
     "layers": [
       {
         "source": "click",
         "filter": "bandpass",
-        "cutoff": 2400,
-        "q": 4,
+        "cutoff": 1600,
+        "q": 3,
+        "decay": 0.01,
+        "length": 0.04,
+        "gain": 0.9
+      },
+      {
+        "source": "sine",
+        "hz": 190,
+        "hz_end": 95,
+        "attack": 0.002,
+        "decay": 0.09,
+        "length": 0.22,
+        "gain": 0.75
+      },
+      {
+        "source": "sine",
+        "hz": 1240,
+        "attack": 0.002,
+        "decay": 0.12,
+        "length": 0.28,
+        "gain": 0.12
+      }
+    ]
+  },
+  "back": {
+    "seconds": 0.3,
+    "variants": 1,
+    "gain": 0.8,
+    "room": 0.25,
+    "seed": 9021,
+    "layers": [
+      {
+        "source": "click",
+        "filter": "bandpass",
+        "cutoff": 1100,
+        "q": 3,
         "decay": 0.01,
         "length": 0.04,
         "gain": 0.8
       },
       {
         "source": "sine",
-        "hz": 900,
-        "hz_end": 700,
-        "decay": 0.03,
-        "length": 0.08,
-        "gain": 0.6
-      }
-    ]
-  },
-  "back": {
-    "seconds": 0.09,
-    "variants": 1,
-    "gain": 0.55,
-    "seed": 9021,
-    "layers": [
-      {
-        "source": "sine",
-        "hz": 700,
-        "hz_end": 480,
-        "decay": 0.04,
-        "length": 0.09,
-        "gain": 1
+        "hz": 150,
+        "hz_end": 70,
+        "attack": 0.002,
+        "decay": 0.1,
+        "length": 0.24,
+        "gain": 0.7
       }
     ]
   },
   "confirm": {
-    "seconds": 0.24,
+    "seconds": 0.7,
     "variants": 1,
-    "gain": 0.6,
+    "gain": 0.8,
+    "room": 0.35,
     "seed": 9031,
     "layers": [
       {
         "source": "sine",
-        "hz": 880,
-        "decay": 0.05,
-        "length": 0.1,
-        "gain": 0.8
+        "hz": 220,
+        "hz_end": 110,
+        "attack": 0.002,
+        "decay": 0.14,
+        "length": 0.3,
+        "gain": 0.7
       },
       {
         "source": "sine",
-        "hz": 1320,
-        "start": 0.08,
-        "decay": 0.07,
-        "length": 0.15,
-        "gain": 0.8
+        "hz": 660,
+        "attack": 0.005,
+        "hold": 0.08,
+        "decay": 0.2,
+        "length": 0.35,
+        "gain": 0.18
+      },
+      {
+        "source": "sine",
+        "hz": 990,
+        "start": 0.12,
+        "attack": 0.005,
+        "hold": 0.1,
+        "decay": 0.3,
+        "length": 0.5,
+        "gain": 0.14
       }
     ]
   }

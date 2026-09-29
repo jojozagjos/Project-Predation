@@ -30,6 +30,7 @@ namespace pred
 
 // How loud the building is: the hum, the air in the ducts, the things settling out of sight.
 CVar<float> cv_ambienceVolume{"audio.ambience", 1.0f, "How loud the building's own sounds are", CVarFlags::Archive};
+CVar<float> cv_musicVolume{"audio.music", 0.7f, "How loud the music is", CVarFlags::Archive};
 
 namespace
 {
@@ -539,6 +540,46 @@ void PredationGame::UpdateTension(float dt)
     }
 }
 
+void PredationGame::UpdateMusic(float dt)
+{
+    // Over the boot cards and the title, looping, faded in slowly; faded out over a second or two as a game starts, and
+    // stopped once it is silent. Each time the title comes back it starts again from the beginning.
+    AudioEngine& audio = m_app->GetAudio();
+    const bool wanted = m_screen == Screen::Title;
+    const float target = wanted ? 0.6f * std::clamp(cv_musicVolume.Get(), 0.0f, 2.0f) : 0.0f;
+    const float rate = target > m_titleMusicLevel ? 0.5f : 1.6f;
+    m_titleMusicLevel += (target - m_titleMusicLevel) * (1.0f - std::exp(-rate * dt));
+    if (m_titleMusic != kInvalidVoice && !audio.IsPlaying(m_titleMusic))
+    {
+        m_titleMusic = kInvalidVoice;
+    }
+    if (m_titleMusic == kInvalidVoice && wanted)
+    {
+        AudioEngine::PlayDesc desc;
+        desc.sound = Sounds("Music/title").Pick();
+        desc.loop = true;
+        desc.positioned = false;
+        desc.gain = 0.0f;
+        desc.reverbSend = 0.0f;
+        if (desc.sound != kInvalidSound)
+        {
+            m_titleMusic = audio.Play(desc);
+            m_titleMusicLevel = 0.0f;
+        }
+    }
+    if (m_titleMusic == kInvalidVoice)
+    {
+        return;
+    }
+    if (!wanted && m_titleMusicLevel < 0.002f)
+    {
+        audio.Stop(m_titleMusic);
+        m_titleMusic = kInvalidVoice;
+        return;
+    }
+    audio.SetVoiceGain(m_titleMusic, m_titleMusicLevel);
+}
+
 void PredationGame::UpdateAmbience(float dt)
 {
     // The building: a hum under everything, the air moving in the ducts, and now and then something
@@ -717,11 +758,11 @@ void PredationGame::MenuSounds()
     const ImGuiID hovered = ImGui::GetCurrentContext() != nullptr ? ImGui::GetCurrentContext()->HoveredId : 0;
     if (menu && hovered != 0 && hovered != m_menuHovered)
     {
-        PlayNamed("UI/hover", m_renderEye, 0.45f, 1.0f, false);
+        PlayNamed("UI/hover", m_renderEye, 0.6f, 1.0f, false);
     }
     if (menu && hovered != 0 && ImGui::GetIO().MouseClicked[0])
     {
-        PlayNamed("UI/click", m_renderEye, 0.6f, 1.0f, false);
+        PlayNamed("UI/click", m_renderEye, 0.75f, 1.0f, false);
     }
     m_menuHovered = hovered;
 

@@ -947,6 +947,8 @@ private:
     // The tension layer: a drone that rises with the danger, your own heartbeat when you are afraid,
     // and a sting when something close turns on you.
     void UpdateTension(float dt);
+    // The title's music: in over the boot cards and the title, out as a game starts.
+    void UpdateMusic(float dt);
     // The front end's small sounds: the pointer finding a button, a press, a menu opening and closing.
     void MenuSounds();
     // How much of the level is between the ears and a sound there, 0 to 1, for muffling it.
@@ -1379,6 +1381,10 @@ private:
     int m_bootCard = 0;        // which of its cards is up
     bool DrawBootScreen();
     void DrawTitleSplash();
+    // The title's own menu: the name, and a few words to choose between, drawn over the planet rather than in a box.
+    void DrawTitleMenu();
+    // How far each of its entries has come up under the pointer, 0 to 1, for easing it in and out.
+    std::map<std::string, float> m_titleHover;
     // Kept between visits to the menu so rejoining the same friend does not mean typing the address
     // again. Sized for an address and a port; anything longer is not an address.
     char m_joinAddress[64] = "127.0.0.1";
@@ -1628,6 +1634,8 @@ private:
     glm::mat4 m_viewProjection{1.0f};
     VoiceId m_buzz = kInvalidVoice;
     VoiceId m_drone = kInvalidVoice;
+    VoiceId m_titleMusic = kInvalidVoice;
+    float m_titleMusicLevel = 0.0f;
     float m_droneLevel = 0.0f;
     float m_heartbeatAt = 0.0f;
     float m_stingReadyAt = 0.0f;

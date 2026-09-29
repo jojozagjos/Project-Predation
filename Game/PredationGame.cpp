@@ -48,6 +48,45 @@ namespace
 // were the ones explaining what a button does, which are the ones somebody reading the menu for the
 // first time most needs. Scoped rather than pushed and popped by hand because these panels return
 // early in a dozen places and an unbalanced stack is an assert rather than a wrong-looking menu.
+// Words with their letters spread apart, as a title card sets them (defined with the boot screen's helpers).
+std::string Spaced(const char* text);
+
+// The title's panels, styled as the title is: dark and square, no borders, buttons outlined in grey that warm to amber
+// under the pointer. Pushed before the window and popped after it, whichever way the page returns.
+struct TitleStyle
+{
+    TitleStyle()
+    {
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 0.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(22.0f, 20.0f));
+        ImGui::PushStyleColor(ImGuiCol_WindowBg, IM_COL32(6, 8, 10, 255));
+        ImGui::PushStyleColor(ImGuiCol_Border, IM_COL32(90, 98, 104, 160));
+        ImGui::PushStyleColor(ImGuiCol_Button, IM_COL32(16, 18, 22, 255));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, IM_COL32(64, 42, 18, 255));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, IM_COL32(110, 70, 26, 255));
+        ImGui::PushStyleColor(ImGuiCol_FrameBg, IM_COL32(18, 20, 24, 255));
+        ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, IM_COL32(30, 32, 36, 255));
+        ImGui::PushStyleColor(ImGuiCol_Header, IM_COL32(64, 42, 18, 200));
+        ImGui::PushStyleColor(ImGuiCol_HeaderHovered, IM_COL32(84, 54, 22, 220));
+        ImGui::PushStyleColor(ImGuiCol_SliderGrab, IM_COL32(230, 150, 60, 230));
+        ImGui::PushStyleColor(ImGuiCol_CheckMark, IM_COL32(230, 150, 60, 255));
+        ImGui::PushStyleColor(ImGuiCol_Separator, IM_COL32(60, 64, 70, 200));
+        ImGui::PushStyleColor(ImGuiCol_Tab, IM_COL32(16, 18, 22, 255));
+        ImGui::PushStyleColor(ImGuiCol_TabHovered, IM_COL32(84, 54, 22, 255));
+        ImGui::PushStyleColor(ImGuiCol_TabActive, IM_COL32(64, 42, 18, 255));
+    }
+    ~TitleStyle()
+    {
+        ImGui::PopStyleColor(15);
+        ImGui::PopStyleVar(5);
+    }
+    TitleStyle(const TitleStyle&) = delete;
+    TitleStyle& operator=(const TitleStyle&) = delete;
+};
+
 struct WrapText
 {
     WrapText() { ImGui::PushTextWrapPos(0.0f); }
@@ -4997,6 +5036,15 @@ void PredationGame::DrawSettings()
             }
             ImGui::PopID();
 
+            ImGui::PushID("music");
+            SettingsRow("Music", "audio.music");
+            float music = GetSettingFloat("audio.music", 0.7f);
+            if (ImGui::SliderFloat("##v", &music, 0.0f, 2.0f, "%.2f"))
+            {
+                SetSetting("audio.music", std::to_string(music));
+            }
+            ImGui::PopID();
+
             ImGui::PushID("unfocused");
             SettingsRow("Mute in background", "audio.mute_unfocused");
             check("audio.mute_unfocused", GetSettingBool("audio.mute_unfocused", false));
@@ -5408,10 +5456,21 @@ void PredationGame::DrawTitleScreen()
         return;
     }
 
+    // The first page is the title's own menu, drawn over the planet; the pages under it are a panel in the same style.
+    const bool waitingForHost =
+        m_sessionMode == SessionMode::Client && m_client.Connected() && !m_client.HostStarted();
+    const bool joining = m_sessionMode == SessionMode::Client && !m_client.Connected();
+    if (!m_inLobby && m_joinTransport == nullptr && !waitingForHost && !m_settingsOpen && !joining && m_titlePage == TitlePage::Root)
+    {
+        DrawTitleMenu();
+        return;
+    }
+    const TitleStyle style;
+
     ImGui::SetNextWindowPos({viewport->WorkPos.x + size.x * 0.07f, viewport->WorkPos.y + size.y * 0.5f}, ImGuiCond_Always,
                             {0.0f, 0.5f});
     ImGui::SetNextWindowSize({m_settingsOpen ? 700.0f : 440.0f, 0.0f}, ImGuiCond_Always);
-    ImGui::SetNextWindowBgAlpha(0.72f);
+    ImGui::SetNextWindowBgAlpha(0.88f);
 
     constexpr ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
                                        ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse |
@@ -5424,20 +5483,21 @@ void PredationGame::DrawTitleScreen()
     const WrapText wrap;
 
     ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(226, 232, 236, 255));
-    ImGui::SetWindowFontScale(2.4f);
-    ImGui::TextUnformatted("PROJECT PREDATION");
+    ImGui::SetWindowFontScale(1.5f);
+    ImGui::TextUnformatted(Spaced("PROJECT PREDATION").c_str());
     ImGui::SetWindowFontScale(1.0f);
     ImGui::PopStyleColor();
-    ImGui::Spacing();
-    ImGui::Separator();
-    ImGui::Spacing();
+    {
+        // A short amber rule under the name, as on the title's own page.
+        const ImVec2 at = ImGui::GetCursorScreenPos();
+        ImGui::GetWindowDrawList()->AddRectFilled({at.x, at.y + 2.0f}, {at.x + 56.0f, at.y + 4.0f}, IM_COL32(230, 150, 60, 230));
+        ImGui::Dummy({0.0f, 10.0f});
+    }
 
     const ImVec2 wide{-1.0f, 34.0f};
 
     // The lobby: a host waiting for everybody, a guest waiting for the host to start, or a guest
     // still finding the host from a code.
-    const bool waitingForHost =
-        m_sessionMode == SessionMode::Client && m_client.Connected() && !m_client.HostStarted();
     if (m_inLobby || m_joinTransport != nullptr || waitingForHost)
     {
         DrawLobby();
@@ -5531,45 +5591,7 @@ void PredationGame::DrawTitleScreen()
         return;
     }
 
-    // One button, because there is now one thing to do: look at the games. Hosting is on that
-    // screen, next to the list of what hosting produces.
-    if (ImGui::Button("Play", wide))
-    {
-        m_titlePage = TitlePage::Browse;
-        m_titleStatus.clear();
-    }
-
-    ImGui::Spacing();
-    if (ImGui::Button("Settings", wide))
-    {
-        m_settingsOpen = true;
-    }
-
-#if PRED_DEV_TOOLS
-    ImGui::Spacing();
-    ImGui::Separator();
-    ImGui::Spacing();
-    if (ImGui::Button("Model editor", wide))
-    {
-        EnterEditor(std::string());
-    }
-#endif
-    ImGui::Spacing();
-    if (ImGui::Button("Quit", wide))
-    {
-        m_app->RequestQuit();
-    }
-
-    ImGui::Spacing();
-    ImGui::Separator();
-    ImGui::TextDisabled("made by jojozagjos  |  v" PRED_VERSION_STRING);
-#if PRED_DEV_TOOLS
-    // Said on the title screen as well as in the log. The two builds look identical until
-    // you go looking for a menu entry, and knowing which one you handed somebody matters.
-    ImGui::SameLine();
-    ImGui::TextDisabled("  |  developer build");
-#endif
-
+    // The first page -- Play, Settings, Quit -- is DrawTitleMenu's.
 }
 
 namespace
@@ -5699,6 +5721,117 @@ bool PredationGame::DrawBootScreen()
         break;
     }
     return true;
+}
+
+void PredationGame::DrawTitleMenu()
+{
+    // The name top left, as the splash had it; under it a few words, each a choice. Under the pointer one brightens,
+    // slides out a little and an amber bar comes up beside it (the hover and click sounds are MenuSounds', for every
+    // control). Your name below them, and who made it at the foot.
+    const ImGuiViewport* viewport = ImGui::GetMainViewport();
+    const ImVec2 origin = viewport->WorkPos;
+    const ImVec2 size = viewport->WorkSize;
+    ImGui::SetNextWindowPos(origin);
+    ImGui::SetNextWindowSize(size);
+    constexpr ImGuiWindowFlags kFlags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoMove |
+                                        ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoBringToFrontOnFocus |
+                                        ImGuiWindowFlags_NoScrollWithMouse;
+    if (!ImGui::Begin("##titlemenu", nullptr, kFlags))
+    {
+        ImGui::End();
+        return;
+    }
+    ImDrawList* draw = ImGui::GetWindowDrawList();
+    ImFont* font = ImGui::GetFont();
+    const float dt = ImGui::GetIO().DeltaTime;
+    const float x = origin.x + size.x * 0.07f;
+    const float top = origin.y + size.y * 0.12f;
+    const float big = ImGui::GetFontSize() * 3.2f;
+    const float mid = ImGui::GetFontSize() * 1.6f;
+    draw->AddText(font, big, {x, top}, IM_COL32(236, 240, 242, 255), Spaced("PROJECT").c_str());
+    draw->AddText(font, mid, {x + 2.0f, top + big * 1.02f}, IM_COL32(200, 208, 212, 255), Spaced("PREDATION").c_str());
+    draw->AddRectFilled({x + 2.0f, top + big * 1.02f + mid + 14.0f}, {x + 64.0f, top + big * 1.02f + mid + 16.0f}, IM_COL32(230, 150, 60, 230));
+
+    struct Entry
+    {
+        const char* label;
+        int action;
+    };
+    std::vector<Entry> entries{{"PLAY", 0}, {"SETTINGS", 1}};
+#if PRED_DEV_TOOLS
+    entries.push_back({"MODEL EDITOR", 2});
+#endif
+    entries.push_back({"QUIT", 3});
+
+    const float entrySize = ImGui::GetFontSize() * 1.45f;
+    float y = origin.y + size.y * 0.44f;
+    int chosen = -1;
+    for (const Entry& entry : entries)
+    {
+        const std::string text = Spaced(entry.label);
+        const ImVec2 extent = font->CalcTextSizeA(entrySize, FLT_MAX, 0.0f, text.c_str());
+        ImGui::SetCursorScreenPos({x - 14.0f, y});
+        ImGui::InvisibleButton(entry.label, {extent.x + 60.0f, entrySize + 16.0f});
+        const bool hovered = ImGui::IsItemHovered();
+        if (ImGui::IsItemClicked())
+        {
+            chosen = entry.action;
+        }
+        float& shown = m_titleHover[entry.label];
+        shown += ((hovered ? 1.0f : 0.0f) - shown) * std::min(dt * 14.0f, 1.0f);
+        const auto mix = [&](int a, int b) { return static_cast<int>(static_cast<float>(a) + static_cast<float>(b - a) * shown); };
+        draw->AddRectFilled({x - 14.0f, y + 6.0f}, {x - 11.0f, y + entrySize + 8.0f}, IM_COL32(230, 150, 60, static_cast<int>(230.0f * shown)));
+        draw->AddText(font, entrySize, {x + 12.0f * shown, y + 7.0f}, IM_COL32(mix(140, 244), mix(148, 244), mix(154, 246), 255), text.c_str());
+        y += entrySize + 26.0f;
+    }
+
+    // Your name, a line to write on.
+    y += 18.0f;
+    draw->AddText(font, ImGui::GetFontSize() * 0.85f, {x, y}, IM_COL32(120, 130, 136, 255), Spaced("NAME").c_str());
+    y += ImGui::GetFontSize() * 0.85f + 6.0f;
+    const bool inSession = m_sessionMode != SessionMode::Offline;
+    ImGui::SetCursorScreenPos({x - 4.0f, y});
+    ImGui::PushStyleColor(ImGuiCol_FrameBg, IM_COL32(0, 0, 0, 0));
+    ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, IM_COL32(255, 255, 255, 10));
+    ImGui::PushStyleColor(ImGuiCol_FrameBgActive, IM_COL32(255, 255, 255, 16));
+    ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(226, 232, 236, 255));
+    ImGui::SetNextItemWidth(280.0f);
+    ImGui::BeginDisabled(inSession);
+    if (ImGui::InputText("##playername", m_playerName, sizeof(m_playerName)))
+    {
+        cv_playerName.Set(m_playerName);
+    }
+    ImGui::EndDisabled();
+    ImGui::PopStyleColor(4);
+    const float lineY = y + ImGui::GetFrameHeight();
+    draw->AddLine({x, lineY}, {x + 276.0f, lineY}, ImGui::IsItemActive() ? IM_COL32(230, 150, 60, 220) : IM_COL32(120, 130, 136, 200));
+
+    // Who made it, at the foot.
+    std::string foot = "made by jojozagjos  |  v" PRED_VERSION_STRING;
+#if PRED_DEV_TOOLS
+    foot += "  |  developer build";
+#endif
+    draw->AddText(font, ImGui::GetFontSize() * 0.85f, {x + 2.0f, origin.y + size.y - 36.0f}, IM_COL32(120, 130, 136, 255), foot.c_str());
+    ImGui::End();
+
+    switch (chosen)
+    {
+    case 0:
+        m_titlePage = TitlePage::Browse;
+        m_titleStatus.clear();
+        break;
+    case 1:
+        m_settingsOpen = true;
+        break;
+    case 2:
+        EnterEditor(std::string());
+        break;
+    case 3:
+        m_app->RequestQuit();
+        break;
+    default:
+        break;
+    }
 }
 
 void PredationGame::DrawTitleSplash()
@@ -6470,6 +6603,7 @@ void PredationGame::UpdateSounds(float dt)
 
     UpdateAmbience(dt);
     UpdateTension(dt);
+    UpdateMusic(dt);
     if (m_screen != Screen::Playing)
     {
         return;
