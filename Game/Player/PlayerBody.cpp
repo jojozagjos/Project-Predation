@@ -2673,6 +2673,11 @@ void PlayerBody::SetHeldItem(Scene& scene, MeshLibrary& meshes, const std::strin
     m_hasHeldItem = true;
 }
 
+MeshRenderer* PlayerBody::HeldItemRenderer(Scene& scene)
+{
+    return m_hasHeldItem ? scene.GetMeshRenderer(m_heldItemEntity) : nullptr;
+}
+
 void PlayerBody::SetHeldItemGlow(Scene& scene, const glm::vec3& emissive)
 {
     if (!m_hasHeldItem)
@@ -2709,7 +2714,8 @@ void PlayerBody::UpdateHeldItem(const PlayerState& state, const PlayerView& view
     const float crowded = 1.0f - m_wallClearance;
     glm::vec3 target = view.eyePosition + forward * glm::mix(0.52f, 0.26f, crowded) +
                        yawRight * 0.26f + up * -0.34f;
-    // And wherever a use has taken it.
+    // Wherever the item has the hand held (a device up in front of you), and wherever a use has taken it.
+    target += yawRight * m_heldItemHand.x + up * m_heldItemHand.y + forward * m_heldItemHand.z;
     target += yawRight * m_heldItemMotionOffset.x + up * m_heldItemMotionOffset.y + forward * m_heldItemMotionOffset.z;
 
     // Out of the wall in front and off the floor below, the same as a weapon is. The soft pull-back

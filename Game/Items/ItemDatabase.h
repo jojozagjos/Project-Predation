@@ -82,6 +82,9 @@ struct ItemDefinition
     // something any rule about its box could work out.
     glm::vec3 holdOffset{0.0f};
     glm::vec3 holdRotation{0.0f}; // euler degrees, X then Y then Z
+    // And where the hand itself is brought, from where things are usually carried: metres right, up and forward of the
+    // view. Zero for most; a device is held up in front of you, where you can read it and others can see it.
+    glm::vec3 holdHand{0.0f};
     ItemUse use;
     // How many are laid out on each equipment bench.
     int benchCount = 1;

@@ -28,6 +28,9 @@ struct Material
     // an untextured material is a textured one whose texture happens to be white and the shader
     // needs no branch.
     TextureHandle baseColorTexture;
+    // The glow painted by the texture: emissive times what the texture shows there, and times its alpha, a screen lit
+    // where its picture is and dark between, and not at all where the alpha is nought. Off, the glow is the same all over.
+    bool emissiveTextured = false;
 
     // Living tissue that grows, beats and dies across its surface -- a nest's skin -- driven from here and
     // from each vertex's texture coordinates: x how far along the growth from its source, y how far it

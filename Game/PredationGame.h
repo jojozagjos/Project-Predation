@@ -58,6 +58,8 @@
 namespace pred
 {
 
+struct ImageData;
+
 // The key an action is on, as the player has it bound, for putting in a sentence.
 std::string KeyFor(const Input& input, const char* action);
 
@@ -752,15 +754,19 @@ private:
     // The shuttle has gone, here: the drive goes with the Company or is lost, and the result is shown.
     void OnMissionOver();
     void DrawMissionHud();
-    // The site from above, when the briefing came with one: the buildings, the shuttle, everybody, and the data.
     // --- Things carried for finding the way (PredationGameDevices.cpp) ---------------------------------------------
     // What the held item shows: "map", "tracker", or nothing.
     const std::string& HeldDevice() const;
     // Where what is to be done next is: the terminal (or its breaker, found dead), the crawler with the drive, the
     // shuttle or the console aboard. False when there is nothing.
     bool ObjectiveTarget(glm::vec3& at) const;
+    // The same, asked for somebody standing at `here`.
+    bool ObjectiveTargetFrom(const glm::vec3& here, glm::vec3& at) const;
+    // Each device's screen, painted for somebody standing at `here` facing `yaw`: the map (the walls around them, north
+    // up) and the tracker (the way to the objective, lit up by its beep as `flash` fades from 1).
+    void DrawMapScreen(ImageData& out, const glm::vec3& here, float yaw) const;
+    void DrawTrackerScreen(ImageData& out, const glm::vec3& here, float yaw, float flash) const;
     void UpdateDevices(float dt);
-    void DrawDevice();
     // The map's key: the map from the bag into the hand, or back.
     void TakeOutMap();
     // Arriving at the site (the title card, the intercom's first line), and the intercom's lines as the mission goes.
@@ -1349,16 +1355,18 @@ private:
     float m_missionOverFor = 0.0f;
     // Somebody here has tried the terminal without power, so the objective says what to do about it.
     bool m_missionFoundNoPower = false;
-    // The site map is open (the map key).
-    // The held devices: the map's sweep (each sample's distance as a share of its reach, and when the sweep last passed
-    // it), and the tracker's next beep.
+    // The held devices' screens, one for each player holding one -- theirs as well as ours, so everybody sees what is
+    // on everybody's: the texture it is painted into, its next beep, and when it was last painted, and with what.
+    struct DeviceScreen
+    {
+        TextureHandle texture;
+        float beepIn = 0.0f;
+        float beepAt = -10.0f;
+        float drawnAt = -10.0f;
+        std::string device;
+    };
     float m_deviceClock = 0.0f;
-    std::vector<float> m_scanDistance;
-    std::vector<float> m_scanSeen;
-    float m_scanAngle = 0.0f;
-    float m_scanReach = 35.0f;
-    float m_trackerBeepIn = 0.0f;
-    float m_trackerBeepAt = -10.0f;
+    std::map<uint8_t, DeviceScreen> m_deviceScreens;
     // What sites are called, and what the ship's intercom says (Assets/Data/sites.json, intercom.json).
     SiteNames m_siteNames;
     IntercomLines m_intercom;

@@ -200,7 +200,7 @@ bool ItemDatabase::LoadFromFile(const std::filesystem::path& file)
         definition.key = entry["key"].get<std::string>();
         for (const std::string& key :
              UnknownKeys(entry, {"key", "name", "max_stack", "mass", "shape", "size", "color", "roughness", "metallic",
-                                 "emissive", "hold_offset", "hold_rotation", "use", "bench_count", "device"}))
+                                 "emissive", "hold_offset", "hold_rotation", "hold_hand", "use", "bench_count", "device"}))
         {
             m_warnings.push_back(definition.key + ": " + key);
             PRED_LOG_WARN(Gameplay, "items.json: '{}' has a key nothing reads, '{}' -- a typo?", definition.key, key);
@@ -238,6 +238,10 @@ bool ItemDatabase::LoadFromFile(const std::filesystem::path& file)
         if (entry.contains("hold_rotation"))
         {
             definition.holdRotation = ReadVec3(entry["hold_rotation"], definition.holdRotation);
+        }
+        if (entry.contains("hold_hand"))
+        {
+            definition.holdHand = ReadVec3(entry["hold_hand"], definition.holdHand);
         }
         definition.benchCount = std::max(0, entry.value("bench_count", 1));
         definition.device = entry.value("device", std::string());
@@ -342,6 +346,10 @@ bool ItemDatabase::SaveHoldPlacements(const std::filesystem::path& file) const
         }
         write(entry, "hold_offset", definition->holdOffset);
         write(entry, "hold_rotation", definition->holdRotation);
+        if (definition->holdHand != glm::vec3(0.0f) || entry.contains("hold_hand"))
+        {
+            write(entry, "hold_hand", definition->holdHand);
+        }
         if (definition->use.kind != ItemUseKind::None && entry.contains("use"))
         {
             nlohmann::json& use = entry["use"];

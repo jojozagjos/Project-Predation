@@ -516,7 +516,8 @@ void main()
 
 	// The texture is always bound. A material without one samples a single white pixel, so this is
 	// a multiply by one rather than a branch, and there is only ever one mesh program.
-	vec3 textured = texture2D(s_baseColor, v_texcoord0).rgb;
+	vec4 sampled = texture2D(s_baseColor, v_texcoord0);
+	vec3 textured = sampled.rgb;
 	// Downloads arrive with textures authored in gamma space, which is what an image viewer shows
 	// and what a lighting calculation must not be given: multiplying light by a gamma-encoded
 	// colour washes everything out. Decoded here rather than by asking bgfx for an sRGB format,
@@ -651,7 +652,9 @@ void main()
 	float mirrorAmount =
 		clamp(u_materialParams.z * u_reflectParams.x * (0.82 + 0.18 * pow(1.0 - NoV, 5.0)), 0.0, 1.0);
 
-	color += u_emissive.rgb;
+	// A screen glows by its picture, where its alpha says it is a screen (its case, painted in the same texture, is
+	// alpha nought and does not glow); everything else glows the same all over.
+	color += u_emissive.w > 0.5 ? u_emissive.rgb * textured * sampled.a : u_emissive.rgb;
 
 	// Linear distance fog. Cheap, and it does most of the atmospheric work outdoors.
 	//

@@ -573,10 +573,12 @@ public:
     void ClearHeldItem(Scene& scene);
     // Where in the hand a carried item sits. Live, so the editor can place it by eye and the game
     // reads the same numbers out of items.json.
-    void SetHeldItemPlacement(const glm::vec3& offset, const glm::vec3& rotationDegrees)
+    // `hand` moves the hand itself: metres right, up and forward of where things are usually carried.
+    void SetHeldItemPlacement(const glm::vec3& offset, const glm::vec3& rotationDegrees, const glm::vec3& hand = glm::vec3(0.0f))
     {
         m_heldItemOffset = offset;
         m_heldItemRotation = rotationDegrees;
+        m_heldItemHand = hand;
     }
     // Where a use has the item right now, on top of where it is carried: metres right, up and forward
     // of the view, and a turn in degrees. A medical kit brought to the chest, a card swiped, a flare
@@ -588,6 +590,8 @@ public:
     }
     // How brightly the carried item glows: a struck flare, burning.
     void SetHeldItemGlow(Scene& scene, const glm::vec3& emissive);
+    // What the carried item is drawn with, for a device to paint its screen on; null when nothing is carried.
+    MeshRenderer* HeldItemRenderer(Scene& scene);
     // The same, with nothing to draw, so the one-handed carry can be posed in a test.
     void SetHeldItemForSimulation(bool held) { m_hasHeldItem = held; }
     // Where the carried item is drawn. Exposed for the same reason WeaponOrigin is.
@@ -859,6 +863,7 @@ private:
     // way up a flare goes, so each item carries its own and it is placed by eye in the editor.
     glm::vec3 m_heldItemOffset{0.0f};
     glm::vec3 m_heldItemRotation{0.0f};
+    glm::vec3 m_heldItemHand{0.0f};
     glm::vec3 m_heldItemMotionOffset{0.0f};
     glm::vec3 m_heldItemMotionTurn{0.0f};
     MeshHandle m_heldItemMesh;

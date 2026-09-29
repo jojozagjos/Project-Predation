@@ -368,7 +368,7 @@ void SceneRenderer::SubmitMesh(bgfx::ViewId view, const Mesh& mesh, const Materi
     const float baseColor[4] = {material.baseColor.r, material.baseColor.g, material.baseColor.b, 1.0f};
     const float materialParams[4] = {material.metallic, material.roughness, material.reflectivity,
                                      0.0f};
-    const float emissive[4] = {material.emissive.r, material.emissive.g, material.emissive.b, 0.0f};
+    const float emissive[4] = {material.emissive.r, material.emissive.g, material.emissive.b, material.emissiveTextured ? 1.0f : 0.0f};
 
     bgfx::setUniform(m_uBaseColor, baseColor);
     bgfx::setUniform(m_uMaterialParams, materialParams);

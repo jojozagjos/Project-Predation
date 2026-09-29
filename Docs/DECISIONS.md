@@ -2377,3 +2377,25 @@ Decided with the user: no map shows the whole site, or where the creature or the
 - **Dying**: the heart goes first -- grey and dry, the same grey as the skin, in two and a half seconds -- then the
   death goes out through the rest from it; everything then rots away to nothing, the heart shrinking on the wall and
   the skin sinking into the surfaces behind the death, and when the last of it has gone the nest is gone.
+
+## ADR-110: The map and the tracker are handheld screens (replaces ADR-108's sweep)
+
+Asked for by the user: a normal map rather than a radar, and both devices handheld things with screens that you look
+at in your hand -- and that other players can see too.
+
+- **Screens in the world, not on the HUD.** Each player holding a device has a 256x256 texture of their own
+  (`device_screen_<id>`), painted on the CPU 15 times a second and put on the device in their hand. It is the same for
+  your own and for somebody else's, so looking over a friend's shoulder shows what their screen shows.
+- **The map** is a plain plan, north up, centred on whoever holds it: the building cells of the floor they are on
+  (the ground floor of the buildings they are not in) with their walls, the crawler and the landing pad, everybody
+  else as a dot, and an arrow for the holder. 44 m across with map data, 22 m without; aboard, the rooms of the deck
+  they are on, 40 m across. Nowhere else, "NO MAP DATA". Still no creature and no objective on it.
+- **The tracker** is a fan like the old motion trackers': the objective is a blip that flashes with each beep, or an
+  arrow at the fan's edge when it is behind or to one side, and the distance above. The beep is in your head for your
+  own and from where they stand for anybody else's.
+- **How it is drawn.** A device's case and screen share the one texture: the case is mapped to a corner painted its
+  colour, with alpha nought. `Material::emissiveTextured` makes the glow follow the texture times its alpha, so the
+  picture glows and the case does not.
+- **Held up to be read.** Items can move the hand itself with `hold_hand` (metres right, up and forward of where
+  things are usually carried), set in the bench editor next to Offset and Turn. The devices use it to be held up in
+  front, screen turned to the eye.

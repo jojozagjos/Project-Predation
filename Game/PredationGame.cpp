@@ -6664,7 +6664,7 @@ void PredationGame::SyncRemoteAvatars(float frameDeltaSeconds)
             {
                 avatar->body.SetHeldItem(m_scene, m_app->GetMeshes(), item->key,
                                          ItemMesh(*item, &m_weaponData), ItemMaterial(*item));
-                avatar->body.SetHeldItemPlacement(item->holdOffset, item->holdRotation);
+                avatar->body.SetHeldItemPlacement(item->holdOffset, item->holdRotation, item->holdHand);
             }
             else
             {
@@ -7478,7 +7478,7 @@ void PredationGame::SyncEquippedWeapon()
         {
             m_body.SetHeldItem(m_scene, m_app->GetMeshes(), item->key,
                                ItemMesh(*item, &m_weaponData), ItemMaterial(*item));
-            m_body.SetHeldItemPlacement(item->holdOffset, item->holdRotation);
+            m_body.SetHeldItemPlacement(item->holdOffset, item->holdRotation, item->holdHand);
         }
     }
     m_weaponHolster = 1.0f;
@@ -7797,9 +7797,14 @@ void PredationGame::DrawWeaponBench()
                     ImGui::DragFloat3("Offset", &editable->holdOffset.x, 0.002f, -0.5f, 0.5f, "%.3f m");
                 moved |= ImGui::DragFloat3("Turn", &editable->holdRotation.x, 1.0f, -180.0f, 180.0f,
                                            "%.0f deg");
+                moved |= ImGui::DragFloat3("Hand", &editable->holdHand.x, 0.002f, -0.5f, 0.5f, "%.3f m");
+                if (ImGui::IsItemHovered())
+                {
+                    ImGui::SetTooltip("Where the hand itself goes: right, up and forward of where things are usually carried.");
+                }
                 if (moved)
                 {
-                    m_editorBody.SetHeldItemPlacement(editable->holdOffset, editable->holdRotation);
+                    m_editorBody.SetHeldItemPlacement(editable->holdOffset, editable->holdRotation, editable->holdHand);
                 }
                 if (ImGui::Button("Write to items.json"))
                 {
@@ -8329,7 +8334,7 @@ void PredationGame::UpdateEditorBody(float frameDeltaSeconds)
             const ItemDefinition* item = holdable[static_cast<size_t>(itemIndex)];
             m_editorBody.SetHeldItem(m_editorScene, m_app->GetMeshes(), item->key,
                                      ItemMesh(*item, &m_weaponData), ItemMaterial(*item));
-            m_editorBody.SetHeldItemPlacement(item->holdOffset, item->holdRotation);
+            m_editorBody.SetHeldItemPlacement(item->holdOffset, item->holdRotation, item->holdHand);
             m_benchItemHeld = true;
         }
         // Its use, playing or scrubbed.
@@ -10985,7 +10990,6 @@ void PredationGame::DrawHud()
     }
 
     DrawDroneHud();
-    DrawDevice();
     DrawMissionHud();
     DrawShipHud();
     DrawTitleCard();

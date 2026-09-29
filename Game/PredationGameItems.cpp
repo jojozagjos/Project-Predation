@@ -110,8 +110,12 @@ void PredationGame::UpdateItemUse(float dt)
             }
         }
     }
-    m_body.SetHeldItemGlow(m_scene, m_flareBurn > 0.0f ? glm::vec3(2.4f, 0.32f, 0.12f) * (0.8f + 0.2f * Unit())
-                                                      : (held != nullptr ? held->color * held->emissive : glm::vec3(0.0f)));
+    // A device's glow is its screen's, which UpdateDevices sets.
+    if (held == nullptr || held->device.empty())
+    {
+        m_body.SetHeldItemGlow(m_scene, m_flareBurn > 0.0f ? glm::vec3(2.4f, 0.32f, 0.12f) * (0.8f + 0.2f * Unit())
+                                                          : (held != nullptr ? held->color * held->emissive : glm::vec3(0.0f)));
+    }
 
     if (m_itemUse.active)
     {
@@ -593,7 +597,11 @@ void PredationGame::UpdateRemoteItemUse(RemoteAvatar& avatar, uint8_t id, float 
             held = m_flareHeldBy.end();
         }
     }
-    avatar.body.SetHeldItemGlow(m_scene, held != m_flareHeldBy.end() ? glm::vec3(2.4f, 0.32f, 0.12f) : glm::vec3(0.0f));
+    // Not a device's: its glow is its screen's, which UpdateDevices sets.
+    if (const ItemDefinition* item = m_items.Get(static_cast<ItemId>(avatar.heldItem)); item == nullptr || item->device.empty())
+    {
+        avatar.body.SetHeldItemGlow(m_scene, held != m_flareHeldBy.end() ? glm::vec3(2.4f, 0.32f, 0.12f) : glm::vec3(0.0f));
+    }
 
     const auto found = m_remoteUses.find(id);
     if (found == m_remoteUses.end())

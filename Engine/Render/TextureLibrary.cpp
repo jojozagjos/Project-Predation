@@ -135,6 +135,40 @@ TextureHandle TextureLibrary::Upload(const ImageData& image, const std::string& 
     return TextureHandle{index};
 }
 
+TextureHandle TextureLibrary::CreateDynamic(int width, int height, const std::string& name)
+{
+    if (const auto found = m_byName.find(name); found != m_byName.end())
+    {
+        return TextureHandle{found->second};
+    }
+    if (m_textures.size() >= TextureHandle::kInvalid || width <= 0 || height <= 0)
+    {
+        return White();
+    }
+    // No pixels given: it can be updated afterwards, as a screen is.
+    const bgfx::TextureHandle texture =
+        bgfx::createTexture2D(static_cast<uint16_t>(width), static_cast<uint16_t>(height), false, 1, bgfx::TextureFormat::RGBA8, BGFX_SAMPLER_NONE);
+    if (!bgfx::isValid(texture))
+    {
+        return White();
+    }
+    bgfx::setName(texture, name.c_str());
+    const auto index = static_cast<uint16_t>(m_textures.size());
+    m_textures.push_back({texture, name});
+    m_byName.emplace(name, index);
+    return TextureHandle{index};
+}
+
+void TextureLibrary::Update(TextureHandle handle, const ImageData& image)
+{
+    if (!handle.IsValid() || handle.index == 0 || handle.index >= m_textures.size() || !image.IsValid())
+    {
+        return;
+    }
+    bgfx::updateTexture2D(m_textures[handle.index].texture, 0, 0, 0, 0, static_cast<uint16_t>(image.width), static_cast<uint16_t>(image.height),
+                          bgfx::copy(image.pixels.data(), static_cast<uint32_t>(image.pixels.size())));
+}
+
 TextureHandle TextureLibrary::LoadFromFile(const std::string& file, const std::string& name)
 {
     if (const auto found = m_byName.find(name); found != m_byName.end())

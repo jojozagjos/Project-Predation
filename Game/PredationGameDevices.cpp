@@ -1,16 +1,19 @@
-// The things carried for finding the way, used by holding them: the map, which sweeps the walls near you like a
-// motion tracker sweeps for movement -- only what is close, only walls, never a creature or the objective -- and the
-// objective tracker, which points at what is to be done next and beeps faster the closer it is.
+// The things carried for finding the way: handheld devices with screens on them, looked down at in the hand -- and seen
+// in anybody else's. The map shows the plan of what is round you (the site's buildings, a floor of them, or the ship's
+// deck), never a creature or the objective; the objective tracker points at what is to be done next, a fan like a motion
+// tracker's, and beeps faster the closer it is. Each holder's screen is its own texture, drawn here a few times a second.
 
 #include "Game/PredationGame.h"
 
-#include <imgui.h>
+#include "Engine/Render/TextureLibrary.h"
 
 #include <glm/gtc/constants.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 
 namespace pred
 {
@@ -18,27 +21,232 @@ namespace pred
 namespace
 {
 
-constexpr int kScanSamples = 240;
-constexpr float kScanSweepSeconds = 1.6f; // once round
-constexpr float kScanFade = 1.5f;         // how long a wall stays lit after the sweep has passed it
-// How far it reaches: further on a site that came with map data.
-constexpr float kScanReachMapped = 20.0f;
-constexpr float kScanReachUnmapped = 12.0f;
+constexpr int kScreenSize = 256;
+constexpr float kScreenEvery = 1.0f / 15.0f;
+// How much of the plan round you the map shows, across: more on a site that came with map data.
+constexpr float kMapAcrossMapped = 44.0f;
+constexpr float kMapAcrossUnmapped = 22.0f;
+constexpr float kMapAcrossShip = 40.0f;
 
-// A device's round screen, down on the right: its middle and radius.
-void DeviceScreen(ImVec2& centre, float& radius)
+struct Rgb
 {
-    const ImGuiViewport* viewport = ImGui::GetMainViewport();
-    radius = std::min(viewport->Size.y * 0.13f, 120.0f);
-    centre = {viewport->Pos.x + viewport->Size.x - radius - 36.0f, viewport->Pos.y + viewport->Size.y - radius - 110.0f};
+    uint8_t r = 0;
+    uint8_t g = 0;
+    uint8_t b = 0;
+};
+
+constexpr Rgb kCase{16, 17, 18};
+constexpr Rgb kGlass{4, 12, 7};
+constexpr Rgb kGreen{110, 235, 150};
+constexpr Rgb kDim{40, 95, 60};
+constexpr Rgb kFaint{20, 48, 30};
+constexpr Rgb kAmber{235, 160, 70};
+
+// Five by seven letters, a row a byte, the high five bits the columns.
+const std::array<uint8_t, 7>* Glyph(char c)
+{
+    static const std::array<std::array<uint8_t, 7>, 38> kFont = {{
+        {0x70, 0x88, 0x98, 0xA8, 0xC8, 0x88, 0x70}, // 0
+        {0x20, 0x60, 0x20, 0x20, 0x20, 0x20, 0x70}, // 1
+        {0x70, 0x88, 0x08, 0x10, 0x20, 0x40, 0xF8}, // 2
+        {0xF8, 0x10, 0x20, 0x10, 0x08, 0x88, 0x70}, // 3
+        {0x10, 0x30, 0x50, 0x90, 0xF8, 0x10, 0x10}, // 4
+        {0xF8, 0x80, 0xF0, 0x08, 0x08, 0x88, 0x70}, // 5
+        {0x30, 0x40, 0x80, 0xF0, 0x88, 0x88, 0x70}, // 6
+        {0xF8, 0x08, 0x10, 0x20, 0x40, 0x40, 0x40}, // 7
+        {0x70, 0x88, 0x88, 0x70, 0x88, 0x88, 0x70}, // 8
+        {0x70, 0x88, 0x88, 0x78, 0x08, 0x10, 0x60}, // 9
+        {0x70, 0x88, 0x88, 0xF8, 0x88, 0x88, 0x88}, // A
+        {0xF0, 0x88, 0x88, 0xF0, 0x88, 0x88, 0xF0}, // B
+        {0x70, 0x88, 0x80, 0x80, 0x80, 0x88, 0x70}, // C
+        {0xE0, 0x90, 0x88, 0x88, 0x88, 0x90, 0xE0}, // D
+        {0xF8, 0x80, 0x80, 0xF0, 0x80, 0x80, 0xF8}, // E
+        {0xF8, 0x80, 0x80, 0xF0, 0x80, 0x80, 0x80}, // F
+        {0x70, 0x88, 0x80, 0xB8, 0x88, 0x88, 0x78}, // G
+        {0x88, 0x88, 0x88, 0xF8, 0x88, 0x88, 0x88}, // H
+        {0x70, 0x20, 0x20, 0x20, 0x20, 0x20, 0x70}, // I
+        {0x38, 0x10, 0x10, 0x10, 0x10, 0x90, 0x60}, // J
+        {0x88, 0x90, 0xA0, 0xC0, 0xA0, 0x90, 0x88}, // K
+        {0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0xF8}, // L
+        {0x88, 0xD8, 0xA8, 0xA8, 0x88, 0x88, 0x88}, // M
+        {0x88, 0x88, 0xC8, 0xA8, 0x98, 0x88, 0x88}, // N
+        {0x70, 0x88, 0x88, 0x88, 0x88, 0x88, 0x70}, // O
+        {0xF0, 0x88, 0x88, 0xF0, 0x80, 0x80, 0x80}, // P
+        {0x70, 0x88, 0x88, 0x88, 0xA8, 0x90, 0x68}, // Q
+        {0xF0, 0x88, 0x88, 0xF0, 0xA0, 0x90, 0x88}, // R
+        {0x78, 0x80, 0x80, 0x70, 0x08, 0x08, 0xF0}, // S
+        {0xF8, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20}, // T
+        {0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x70}, // U
+        {0x88, 0x88, 0x88, 0x88, 0x88, 0x50, 0x20}, // V
+        {0x88, 0x88, 0x88, 0xA8, 0xA8, 0xA8, 0x50}, // W
+        {0x88, 0x88, 0x50, 0x20, 0x50, 0x88, 0x88}, // X
+        {0x88, 0x88, 0x50, 0x20, 0x20, 0x20, 0x20}, // Y
+        {0xF8, 0x08, 0x10, 0x20, 0x40, 0x80, 0xF8}, // Z
+        {0x00, 0x00, 0x00, 0x00, 0x00, 0x60, 0x60}, // .
+        {0x00, 0x00, 0x00, 0xF8, 0x00, 0x00, 0x00}, // -
+    }};
+    if (c >= '0' && c <= '9')
+    {
+        return &kFont[static_cast<size_t>(c - '0')];
+    }
+    if (c >= 'A' && c <= 'Z')
+    {
+        return &kFont[static_cast<size_t>(10 + c - 'A')];
+    }
+    if (c == '.')
+    {
+        return &kFont[36];
+    }
+    if (c == '-')
+    {
+        return &kFont[37];
+    }
+    return nullptr;
 }
 
-// A world direction on the screen, the way you face being up.
-ImVec2 OnScreen(const ImVec2& centre, float radius, float worldAngle, float facing, float fraction)
+// A screen's picture, drawn in by hand: lines, boxes, rings, dots and letters.
+struct Canvas
 {
-    const float relative = worldAngle - facing;
-    return {centre.x + std::sin(relative) * radius * fraction, centre.y - std::cos(relative) * radius * fraction};
-}
+    ImageData image;
+
+    Canvas()
+    {
+        image.width = kScreenSize;
+        image.height = kScreenSize;
+        image.pixels.assign(static_cast<size_t>(kScreenSize * kScreenSize * 4), 255);
+    }
+    void Clear(Rgb colour)
+    {
+        for (size_t i = 0; i < image.pixels.size(); i += 4)
+        {
+            image.pixels[i] = colour.r;
+            image.pixels[i + 1] = colour.g;
+            image.pixels[i + 2] = colour.b;
+        }
+    }
+    void Put(int x, int y, Rgb colour)
+    {
+        if (x < 0 || y < 0 || x >= kScreenSize || y >= kScreenSize)
+        {
+            return;
+        }
+        uint8_t* p = &image.pixels[static_cast<size_t>((y * kScreenSize + x) * 4)];
+        p[0] = colour.r;
+        p[1] = colour.g;
+        p[2] = colour.b;
+    }
+    void Fill(float x0, float y0, float x1, float y1, Rgb colour)
+    {
+        const int ax = static_cast<int>(std::floor(std::min(x0, x1)));
+        const int bx = static_cast<int>(std::ceil(std::max(x0, x1)));
+        const int ay = static_cast<int>(std::floor(std::min(y0, y1)));
+        const int by = static_cast<int>(std::ceil(std::max(y0, y1)));
+        for (int y = std::max(ay, 0); y < std::min(by, kScreenSize); ++y)
+        {
+            for (int x = std::max(ax, 0); x < std::min(bx, kScreenSize); ++x)
+            {
+                Put(x, y, colour);
+            }
+        }
+    }
+    void Line(float x0, float y0, float x1, float y1, Rgb colour, int thick = 1)
+    {
+        const float length = std::max(std::abs(x1 - x0), std::abs(y1 - y0));
+        const int steps = std::max(1, static_cast<int>(length));
+        for (int i = 0; i <= steps; ++i)
+        {
+            const float t = static_cast<float>(i) / static_cast<float>(steps);
+            const int x = static_cast<int>(x0 + (x1 - x0) * t);
+            const int y = static_cast<int>(y0 + (y1 - y0) * t);
+            for (int dy = 0; dy < thick; ++dy)
+            {
+                for (int dx = 0; dx < thick; ++dx)
+                {
+                    Put(x + dx - thick / 2, y + dy - thick / 2, colour);
+                }
+            }
+        }
+    }
+    void Box(float x0, float y0, float x1, float y1, Rgb colour)
+    {
+        Line(x0, y0, x1, y0, colour);
+        Line(x1, y0, x1, y1, colour);
+        Line(x1, y1, x0, y1, colour);
+        Line(x0, y1, x0, y0, colour);
+    }
+    void Dot(float cx, float cy, float radius, Rgb colour)
+    {
+        for (int y = static_cast<int>(cy - radius); y <= static_cast<int>(cy + radius); ++y)
+        {
+            for (int x = static_cast<int>(cx - radius); x <= static_cast<int>(cx + radius); ++x)
+            {
+                if ((static_cast<float>(x) - cx) * (static_cast<float>(x) - cx) + (static_cast<float>(y) - cy) * (static_cast<float>(y) - cy) <= radius * radius)
+                {
+                    Put(x, y, colour);
+                }
+            }
+        }
+    }
+    void Arc(float cx, float cy, float radius, float from, float to, Rgb colour)
+    {
+        const int steps = std::max(8, static_cast<int>(radius * (to - from)));
+        for (int i = 0; i <= steps; ++i)
+        {
+            const float a = from + (to - from) * static_cast<float>(i) / static_cast<float>(steps);
+            Put(static_cast<int>(cx + std::sin(a) * radius), static_cast<int>(cy - std::cos(a) * radius), colour);
+        }
+    }
+    void Text(int x, int y, const char* text, Rgb colour, int scale = 2)
+    {
+        for (const char* c = text; *c != '\0'; ++c, x += 6 * scale)
+        {
+            const std::array<uint8_t, 7>* glyph = Glyph(*c);
+            if (glyph == nullptr)
+            {
+                continue;
+            }
+            for (int row = 0; row < 7; ++row)
+            {
+                for (int column = 0; column < 5; ++column)
+                {
+                    if (((*glyph)[static_cast<size_t>(row)] >> (7 - column)) & 1u)
+                    {
+                        Fill(static_cast<float>(x + column * scale), static_cast<float>(y + row * scale), static_cast<float>(x + (column + 1) * scale),
+                             static_cast<float>(y + (row + 1) * scale), colour);
+                    }
+                }
+            }
+        }
+    }
+    int TextWidth(const char* text, int scale = 2) const { return static_cast<int>(std::strlen(text)) * 6 * scale - scale; }
+    // The case's own colour in the corner every face but the screen's is mapped to.
+    // The corner the case is mapped to: its colour, and alpha nought so that it does not glow as the screen does.
+    void PaintCase()
+    {
+        Fill(0.0f, 0.0f, 4.0f, 4.0f, kCase);
+        for (int y = 0; y < 4; ++y)
+        {
+            for (int x = 0; x < 4; ++x)
+            {
+                image.pixels[static_cast<size_t>((y * kScreenSize + x) * 4 + 3)] = 0;
+            }
+        }
+    }
+    // Scan lines, for the look of an old tube.
+    void Lines()
+    {
+        for (int y = 0; y < kScreenSize; y += 3)
+        {
+            for (int x = 0; x < kScreenSize; ++x)
+            {
+                uint8_t* p = &image.pixels[static_cast<size_t>((y * kScreenSize + x) * 4)];
+                p[0] = static_cast<uint8_t>(p[0] * 0.7f);
+                p[1] = static_cast<uint8_t>(p[1] * 0.7f);
+                p[2] = static_cast<uint8_t>(p[2] * 0.7f);
+            }
+        }
+    }
+};
 
 } // namespace
 
@@ -51,14 +259,18 @@ const std::string& PredationGame::HeldDevice() const
 
 bool PredationGame::ObjectiveTarget(glm::vec3& at) const
 {
-    const glm::vec3 here = m_player.State().position;
+    return ObjectiveTargetFrom(m_player.State().position, at);
+}
+
+bool PredationGame::ObjectiveTargetFrom(const glm::vec3& here, glm::vec3& at) const
+{
     // Aboard: the shuttle when it is waiting to go, the console where the next site is chosen otherwise.
     if (m_ship.Contains(here))
     {
         at = m_shipReady ? m_ship.Shuttle().Home().position : m_ship.BriefingConsole().position;
         return true;
     }
-    if (!AtSite() || !m_missionPlan.Valid())
+    if (!m_facility.Built() || !m_facility.Contains(here) || !m_missionPlan.Valid())
     {
         return false;
     }
@@ -91,148 +303,287 @@ bool PredationGame::ObjectiveTarget(glm::vec3& at) const
     return false;
 }
 
-void PredationGame::UpdateDevices(float dt)
+void PredationGame::DrawMapScreen(ImageData& out, const glm::vec3& here, float yaw) const
 {
-    const std::string& device = HeldDevice();
-    if (m_screen != Screen::Playing || CinematicHoldsPlayers())
+    Canvas canvas;
+    canvas.Clear(kGlass);
+    const float middle = kScreenSize * 0.5f;
+    const auto header = [&](const char* text) { canvas.Text(12, 10, text, kGreen); };
+
+    // The plan round you, north up: what it shows, and how much of it.
+    const bool aboard = m_ship.Contains(here);
+    const bool atSite = m_facility.Built() && m_facility.Contains(here) && m_missionPlan.Valid();
+    if (!aboard && !atSite)
     {
+        header("MAP");
+        const char* text = "NO MAP DATA";
+        canvas.Text(static_cast<int>(middle) - canvas.TextWidth(text) / 2, static_cast<int>(middle) - 7, text, kDim);
+        canvas.Lines();
+        canvas.PaintCase();
+        out = std::move(canvas.image);
         return;
     }
-    m_deviceClock += dt;
-    if (device == "map")
+    const float across = aboard ? kMapAcrossShip : (m_missionPlan.mapGiven ? kMapAcrossMapped : kMapAcrossUnmapped);
+    const float scale = (kScreenSize - 24.0f) / across;
+    const auto at = [&](float x, float z) { return glm::vec2(middle + (x - here.x) * scale, middle + 6.0f + (z - here.z) * scale); };
+    char label[32];
+    if (aboard)
     {
-        if (m_scanDistance.size() != kScanSamples)
+        // The deck you are on.
+        const glm::vec3 local = here - ShipSpec::kOrigin;
+        const int deck = local.y > 2.8f && (local.z < 6.15f) ? 1 : 0;
+        for (const glm::vec4& room : ShipMap::DeckPlan(deck))
         {
-            m_scanDistance.assign(kScanSamples, -1.0f);
-            m_scanSeen.assign(kScanSamples, -100.0f);
+            const glm::vec2 a = at(ShipSpec::kOrigin.x + room.x, ShipSpec::kOrigin.z + room.y);
+            const glm::vec2 b = at(ShipSpec::kOrigin.x + room.z, ShipSpec::kOrigin.z + room.w);
+            canvas.Fill(a.x, a.y, b.x, b.y, kFaint);
+            canvas.Box(a.x, a.y, b.x, b.y, kDim);
         }
-        // Round it goes, a few rays each frame along the edge of the sweep, at chest height: walls on this floor only.
-        const float reach = m_missionPlan.Valid() && AtSite() && !m_missionPlan.mapGiven ? kScanReachUnmapped : kScanReachMapped;
-        const glm::vec3 eye = m_player.State().position + glm::vec3(0.0f, 1.2f, 0.0f);
-        const float from = m_scanAngle;
-        m_scanAngle += glm::two_pi<float>() * dt / kScanSweepSeconds;
-        const int first = static_cast<int>(std::floor(from / glm::two_pi<float>() * kScanSamples));
-        const int last = static_cast<int>(std::floor(m_scanAngle / glm::two_pi<float>() * kScanSamples));
-        for (int step = first + 1; step <= last; ++step)
-        {
-            const int i = ((step % kScanSamples) + kScanSamples) % kScanSamples;
-            const float angle = static_cast<float>(i) / kScanSamples * glm::two_pi<float>();
-            const RayHit hit = m_app->GetPhysics().RayCastStatic(eye, {std::sin(angle), 0.0f, -std::cos(angle)}, reach);
-            m_scanDistance[static_cast<size_t>(i)] = hit.hit ? hit.distance / reach : -1.0f;
-            m_scanSeen[static_cast<size_t>(i)] = m_deviceClock;
-        }
-        m_scanAngle = std::fmod(m_scanAngle, glm::two_pi<float>());
-        m_scanReach = reach;
-    }
-    else if (device == "tracker")
-    {
-        glm::vec3 target;
-        if (!ObjectiveTarget(target))
-        {
-            return;
-        }
-        // Faster and higher the closer it is.
-        const float distance = glm::length(glm::vec2(target.x - m_player.State().position.x, target.z - m_player.State().position.z));
-        m_trackerBeepIn -= dt;
-        if (m_trackerBeepIn <= 0.0f)
-        {
-            m_trackerBeepIn = std::clamp(0.15f + distance / 55.0f, 0.15f, 2.0f);
-            m_trackerBeepAt = m_deviceClock;
-            PlayNamed("Items/tracker_beep", m_player.State().position, 0.45f, 1.0f + 0.4f * std::clamp(1.0f - distance / 40.0f, 0.0f, 1.0f), false);
-        }
-    }
-}
-
-void PredationGame::DrawDevice()
-{
-    const std::string& device = HeldDevice();
-    if (device.empty() || m_screen != Screen::Playing || CinematicHoldsPlayers())
-    {
-        return;
-    }
-    ImVec2 centre;
-    float radius = 0.0f;
-    DeviceScreen(centre, radius);
-    ImDrawList* draw = ImGui::GetBackgroundDrawList();
-    const ImU32 glass = IM_COL32(6, 14, 10, 215);
-    const ImU32 line = IM_COL32(70, 170, 110, 120);
-    const ImU32 bright = IM_COL32(120, 240, 160, 255);
-    const float facing = m_lookYaw;
-    draw->AddCircleFilled(centre, radius + 6.0f, IM_COL32(20, 22, 24, 230), 48);
-    draw->AddCircleFilled(centre, radius, glass, 48);
-    draw->AddCircle(centre, radius, line, 48, 1.5f);
-    draw->AddCircle(centre, radius * 0.5f, IM_COL32(70, 170, 110, 60), 48, 1.0f);
-    // You, in the middle, facing up.
-    draw->AddTriangleFilled({centre.x, centre.y - 7.0f}, {centre.x - 5.0f, centre.y + 5.0f}, {centre.x + 5.0f, centre.y + 5.0f}, bright);
-
-    char label[48];
-    if (device == "map")
-    {
-        // The sweep, and the walls it has found, fading after it passes.
-        if (m_scanDistance.size() == kScanSamples)
-        {
-            ImVec2 previous{};
-            bool had = false;
-            for (int i = 0; i <= kScanSamples; ++i)
-            {
-                const int index = i % kScanSamples;
-                const float d = m_scanDistance[static_cast<size_t>(index)];
-                const float age = m_deviceClock - m_scanSeen[static_cast<size_t>(index)];
-                if (d < 0.0f || age > kScanFade)
-                {
-                    had = false;
-                    continue;
-                }
-                const float angle = static_cast<float>(index) / kScanSamples * glm::two_pi<float>();
-                const ImVec2 p = OnScreen(centre, radius, angle, facing, d);
-                const int alpha = static_cast<int>(255.0f * (1.0f - age / kScanFade));
-                const ImU32 colour = IM_COL32(120, 240, 160, alpha);
-                // Joined up where the wall runs on, so it reads as a wall and not a scatter of dots.
-                const float before = m_scanDistance[static_cast<size_t>((index + kScanSamples - 1) % kScanSamples)];
-                if (had && before >= 0.0f && std::abs(before - d) * m_scanReach < 1.2f)
-                {
-                    draw->AddLine(previous, p, colour, 2.0f);
-                }
-                else
-                {
-                    draw->AddCircleFilled(p, 1.6f, colour, 6);
-                }
-                previous = p;
-                had = true;
-            }
-        }
-        const ImVec2 edge = OnScreen(centre, radius, m_scanAngle, facing, 1.0f);
-        draw->AddLine(centre, edge, IM_COL32(120, 240, 160, 150), 1.5f);
-        std::snprintf(label, sizeof(label), "MAP  %.0f M", m_scanReach);
-    }
-    else if (device == "tracker")
-    {
-        glm::vec3 target;
-        if (ObjectiveTarget(target))
-        {
-            // Where it is, on a scale that keeps a long way off inside the screen and a short way readable.
-            const glm::vec2 to{target.x - m_player.State().position.x, target.z - m_player.State().position.z};
-            const float distance = glm::length(to);
-            const float angle = std::atan2(to.x, -to.y);
-            const float fraction = std::clamp(std::log(1.0f + distance) / std::log(1.0f + 150.0f), 0.08f, 1.0f);
-            const ImVec2 blip = OnScreen(centre, radius, angle, facing, fraction);
-            const float flash = std::clamp(1.0f - (m_deviceClock - m_trackerBeepAt) / 0.25f, 0.0f, 1.0f);
-            draw->AddCircleFilled(blip, 5.0f + 4.0f * flash, IM_COL32(120, 240, 160, static_cast<int>(140 + 115 * flash)), 16);
-            // An arrow round the rim the way it lies, for when the blip is lost in the middle.
-            draw->AddCircleFilled(OnScreen(centre, radius - 8.0f, angle, facing, 1.0f), 3.0f, bright, 8);
-            std::snprintf(label, sizeof(label), "OBJ  %.0f M", distance);
-        }
-        else
-        {
-            std::snprintf(label, sizeof(label), "NO SIGNAL");
-        }
+        std::snprintf(label, sizeof(label), "DECK %d", deck + 1);
+        header(label);
     }
     else
     {
+        // Each building near: the floor you are on in the one you are in, the ground floor of the rest.
+        const SitePlan& site = m_facility.Plan();
+        for (const FacilityLayout& building : site.buildings)
+        {
+            glm::vec2 lo;
+            glm::vec2 hi;
+            SitePlan::Footprint(building, 0.0f, lo, hi);
+            int floor = 0;
+            if (here.x > lo.x && here.x < hi.x && here.z > lo.y && here.z < hi.y)
+            {
+                floor = std::clamp(static_cast<int>(std::floor((here.y - building.origin.y + 0.5f) / FacilityLayout::kStorey)), 0, building.floors - 1);
+            }
+            for (int z = 0; z < building.depth; ++z)
+            {
+                for (int x = 0; x < building.width; ++x)
+                {
+                    Rgb colour{};
+                    switch (building.At(floor, x, z))
+                    {
+                    case FacilityLayout::Cell::Room: colour = {26, 64, 40}; break;
+                    case FacilityLayout::Cell::Corridor: colour = {18, 44, 28}; break;
+                    case FacilityLayout::Cell::Stair: colour = {60, 70, 30}; break;
+                    case FacilityLayout::Cell::Solid:
+                    case FacilityLayout::Cell::Duct: continue;
+                    }
+                    const float cx = building.origin.x + static_cast<float>(x) * FacilityLayout::kCell;
+                    const float cz = building.origin.z + static_cast<float>(z) * FacilityLayout::kCell;
+                    const glm::vec2 a = at(cx, cz);
+                    const glm::vec2 b = at(cx + FacilityLayout::kCell, cz + FacilityLayout::kCell);
+                    canvas.Fill(a.x, a.y, b.x, b.y, colour);
+                    // A wall wherever the next cell along is not open.
+                    const auto open = [&](int nx, int nz) { return nx >= 0 && nz >= 0 && nx < building.width && nz < building.depth && building.Open(floor, nx, nz); };
+                    if (!open(x - 1, z))
+                    {
+                        canvas.Line(a.x, a.y, a.x, b.y, kGreen);
+                    }
+                    if (!open(x + 1, z))
+                    {
+                        canvas.Line(b.x, a.y, b.x, b.y, kGreen);
+                    }
+                    if (!open(x, z - 1))
+                    {
+                        canvas.Line(a.x, a.y, b.x, a.y, kGreen);
+                    }
+                    if (!open(x, z + 1))
+                    {
+                        canvas.Line(a.x, b.y, b.x, b.y, kGreen);
+                    }
+                }
+            }
+        }
+        // The ways home: the crawler and the pad.
+        if (m_missionProps.Crawler().Built())
+        {
+            const glm::vec3 parked = m_missionProps.Crawler().Home().position;
+            const glm::vec2 p = at(parked.x, parked.z);
+            canvas.Fill(p.x - 4.0f, p.y - 4.0f, p.x + 4.0f, p.y + 4.0f, kAmber);
+        }
+        const glm::vec3 pad = site.ShuttleBase();
+        const glm::vec2 p = at(pad.x, pad.z);
+        canvas.Arc(p.x, p.y, 7.0f * scale, 0.0f, glm::two_pi<float>(), kDim);
+        std::snprintf(label, sizeof(label), "MAP %s", m_missionPlan.mapGiven ? "" : "LOCAL");
+        header(label);
+    }
+    // Everybody else, and you, pointing the way you face.
+    for (const RemotePlayerView& other : RemotePlayers())
+    {
+        if (other.alive && glm::distance(other.position, here) > 0.3f)
+        {
+            const glm::vec2 p = at(other.position.x, other.position.z);
+            canvas.Dot(p.x, p.y, 3.0f, {200, 200, 120});
+        }
+    }
+    if (m_player.State().alive && glm::distance(m_player.State().position, here) > 0.3f)
+    {
+        const glm::vec2 p = at(m_player.State().position.x, m_player.State().position.z);
+        canvas.Dot(p.x, p.y, 3.0f, {200, 200, 120});
+    }
+    const glm::vec2 you = at(here.x, here.z);
+    const glm::vec2 ahead{std::sin(yaw), -std::cos(yaw)};
+    const glm::vec2 right{-ahead.y, ahead.x};
+    const glm::vec2 tip = you + ahead * 9.0f;
+    const glm::vec2 left = you - ahead * 5.0f - right * 5.0f;
+    const glm::vec2 rightCorner = you - ahead * 5.0f + right * 5.0f;
+    canvas.Line(tip.x, tip.y, left.x, left.y, {235, 245, 235}, 2);
+    canvas.Line(tip.x, tip.y, rightCorner.x, rightCorner.y, {235, 245, 235}, 2);
+    canvas.Line(left.x, left.y, rightCorner.x, rightCorner.y, {235, 245, 235}, 2);
+    // North, and how far across.
+    canvas.Text(kScreenSize - 26, 10, "N", kGreen);
+    std::snprintf(label, sizeof(label), "%dM", static_cast<int>(across));
+    canvas.Text(kScreenSize - 12 - canvas.TextWidth(label), kScreenSize - 24, label, kDim);
+    canvas.Lines();
+    canvas.PaintCase();
+    out = std::move(canvas.image);
+}
+
+void PredationGame::DrawTrackerScreen(ImageData& out, const glm::vec3& here, float yaw, float flash) const
+{
+    // A fan, opening forward from the bottom, rings across it, and the objective as a blip in it -- or, off to one side,
+    // at its edge that side.
+    Canvas canvas;
+    canvas.Clear(kGlass);
+    const float cx = kScreenSize * 0.5f;
+    const float cy = kScreenSize - 26.0f;
+    const float reach = kScreenSize - 60.0f;
+    const float half = glm::radians(45.0f);
+    canvas.Line(cx, cy, cx + std::sin(-half) * reach, cy - std::cos(-half) * reach, kGreen, 2);
+    canvas.Line(cx, cy, cx + std::sin(half) * reach, cy - std::cos(half) * reach, kGreen, 2);
+    canvas.Arc(cx, cy, reach, -half, half, kGreen);
+    canvas.Arc(cx, cy, reach - 1.0f, -half, half, kGreen);
+    for (const float ring : {0.33f, 0.66f})
+    {
+        canvas.Arc(cx, cy, reach * ring, -half, half, kDim);
+    }
+    canvas.Line(cx, cy, cx, cy - reach, kFaint);
+    canvas.Text(12, 10, "OBJ", kGreen);
+    glm::vec3 target;
+    char label[32];
+    if (ObjectiveTargetFrom(here, target))
+    {
+        const glm::vec2 to{target.x - here.x, target.z - here.z};
+        const float distance = glm::length(to);
+        const float relative = std::remainder(std::atan2(to.x, -to.y) - yaw, glm::two_pi<float>());
+        const float fraction = std::clamp(std::log(1.0f + distance) / std::log(1.0f + 150.0f), 0.1f, 1.0f);
+        if (std::abs(relative) <= half)
+        {
+            const float radius = 5.0f + 5.0f * flash;
+            canvas.Dot(cx + std::sin(relative) * reach * fraction, cy - std::cos(relative) * reach * fraction, radius,
+                       {static_cast<uint8_t>(150 + 90 * flash), 255, static_cast<uint8_t>(180 + 60 * flash)});
+        }
+        else
+        {
+            // Off the fan: an arrow on its edge, the side to turn.
+            const float side = relative > 0.0f ? half : -half;
+            const float x = cx + std::sin(side) * reach * 0.7f;
+            const float y = cy - std::cos(side) * reach * 0.7f;
+            const float dir = relative > 0.0f ? 1.0f : -1.0f;
+            canvas.Line(x, y, x + dir * 14.0f, y, kAmber, 3);
+            canvas.Line(x + dir * 14.0f, y, x + dir * 7.0f, y - 7.0f, kAmber, 3);
+            canvas.Line(x + dir * 14.0f, y, x + dir * 7.0f, y + 7.0f, kAmber, 3);
+        }
+        std::snprintf(label, sizeof(label), "%dM", static_cast<int>(distance));
+    }
+    else
+    {
+        std::snprintf(label, sizeof(label), "NO SIGNAL");
+    }
+    canvas.Text(static_cast<int>(cx) - canvas.TextWidth(label) / 2, 10, label, kAmber);
+    canvas.Lines();
+    canvas.PaintCase();
+    out = std::move(canvas.image);
+}
+
+void PredationGame::UpdateDevices(float dt)
+{
+    m_deviceClock += dt;
+    if (m_screen != Screen::Playing)
+    {
         return;
     }
-    const ImVec2 size = ImGui::CalcTextSize(label);
-    draw->AddText({centre.x - size.x * 0.5f, centre.y + radius + 10.0f}, bright, label);
+    // Everybody holding one: you, and anybody else, each with a screen of their own.
+    struct Holder
+    {
+        uint8_t id;
+        PlayerBody* body;
+        glm::vec3 at;
+        float yaw;
+        const ItemDefinition* item;
+    };
+    std::vector<Holder> holders;
+    if (const ItemDefinition* held = m_items.Get(m_heldItem); held != nullptr && !held->device.empty() && m_player.State().alive)
+    {
+        holders.push_back({LocalPlayerId(), &m_body, m_player.State().position, m_lookYaw, held});
+    }
+    for (const std::unique_ptr<RemoteAvatar>& avatar : m_avatars)
+    {
+        if (avatar == nullptr || !avatar->built)
+        {
+            continue;
+        }
+        const ItemDefinition* held = m_items.Get(static_cast<ItemId>(avatar->heldItem));
+        if (held == nullptr || held->device.empty())
+        {
+            continue;
+        }
+        for (const RemotePlayerView& remote : RemotePlayers())
+        {
+            if (remote.id == avatar->id && remote.alive)
+            {
+                holders.push_back({remote.id, &avatar->body, remote.position, remote.yaw, held});
+            }
+        }
+    }
+    TextureLibrary& textures = m_app->GetTextures();
+    for (const Holder& holder : holders)
+    {
+        DeviceScreen& screen = m_deviceScreens[holder.id];
+        if (!screen.texture.IsValid() || screen.texture.index == 0)
+        {
+            screen.texture = textures.CreateDynamic(kScreenSize, kScreenSize, "device_screen_" + std::to_string(holder.id));
+        }
+        // Its beep: faster and higher the closer it is -- in your head for your own, from where they stand for others'.
+        const bool tracker = holder.item->device == "tracker";
+        glm::vec3 target;
+        if (tracker && ObjectiveTargetFrom(holder.at, target))
+        {
+            const float distance = glm::length(glm::vec2(target.x - holder.at.x, target.z - holder.at.z));
+            screen.beepIn -= dt;
+            if (screen.beepIn <= 0.0f)
+            {
+                screen.beepIn = std::clamp(0.15f + distance / 55.0f, 0.15f, 2.0f);
+                screen.beepAt = m_deviceClock;
+                const bool mine = holder.id == LocalPlayerId();
+                PlayNamed("Items/tracker_beep", holder.at, mine ? 0.45f : 0.3f, 1.0f + 0.4f * std::clamp(1.0f - distance / 40.0f, 0.0f, 1.0f), !mine);
+            }
+        }
+        if (m_deviceClock - screen.drawnAt >= kScreenEvery || screen.device != holder.item->device)
+        {
+            screen.drawnAt = m_deviceClock;
+            screen.device = holder.item->device;
+            ImageData picture;
+            if (tracker)
+            {
+                DrawTrackerScreen(picture, holder.at, holder.yaw, std::clamp(1.0f - (m_deviceClock - screen.beepAt) / 0.25f, 0.0f, 1.0f));
+            }
+            else
+            {
+                DrawMapScreen(picture, holder.at, holder.yaw);
+            }
+            textures.Update(screen.texture, picture);
+        }
+        // On the device in the hand: its picture, glowing.
+        if (MeshRenderer* renderer = holder.body->HeldItemRenderer(m_scene))
+        {
+            renderer->material.baseColor = glm::vec3(1.0f);
+            renderer->material.baseColorTexture = screen.texture;
+            renderer->material.emissive = glm::vec3(2.4f);
+            renderer->material.emissiveTextured = true;
+        }
+    }
 }
 
 void PredationGame::TakeOutMap()

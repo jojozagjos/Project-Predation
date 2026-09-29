@@ -639,6 +639,17 @@ void ShipMap::LayOutKit(const ItemDatabase& items)
     }
 }
 
+std::vector<glm::vec4> ShipMap::DeckPlan(int deck)
+{
+    if (deck == 0)
+    {
+        return {{-1.5f, -22.0f, 1.5f, 5.85f}, {-12.0f, -5.85f, -1.8f, 5.85f}, {-12.0f, -22.0f, -1.8f, -6.15f},
+                {1.8f, -0.85f, 12.0f, 5.85f}, {1.8f, -22.0f, 12.0f, -1.15f}, {-12.0f, 6.15f, 12.0f, 34.0f}};
+    }
+    return {{-1.5f, -3.85f, 12.0f, 5.85f}, {-12.0f, -3.85f, -1.8f, 5.85f}, {-12.0f, -22.0f, 12.0f, -4.15f},
+            {-1.5f, -30.0f, 1.5f, -22.3f}, {-8.0f, -40.0f, 8.0f, -30.3f}, {-12.0f, 6.15f, 12.0f, 34.0f}};
+}
+
 bool ShipMap::Contains(const glm::vec3& point) const
 {
     const glm::vec2 d{point.x - kOrigin.x, point.z - kOrigin.z};

@@ -61,6 +61,9 @@ public:
     // file draws a flat surface rather than nothing at all.
     TextureHandle LoadFromFile(const std::string& file, const std::string& name);
     TextureHandle Find(const std::string& name) const;
+    // One that is drawn into again and again -- a screen on a device -- and what is drawn into it now.
+    TextureHandle CreateDynamic(int width, int height, const std::string& name);
+    void Update(TextureHandle handle, const ImageData& image);
 
     bgfx::TextureHandle Get(TextureHandle handle) const;
     size_t Count() const { return m_textures.size(); }

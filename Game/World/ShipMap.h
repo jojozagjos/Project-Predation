@@ -82,6 +82,9 @@ public:
     void Anchors(std::map<std::string, CinePose>& anchors) const;
 
     static glm::vec3 ToWorld(const glm::vec3& local) { return ShipSpec::kOrigin + local; }
+    // The rooms of a deck (0 lower, 1 upper), as rectangles in the ship's frame (x0, z0, x1, z1): its map. The hangar is
+    // on both, being as tall as both.
+    static std::vector<glm::vec4> DeckPlan(int deck);
 
 private:
     bool m_built = false;
