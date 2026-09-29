@@ -205,9 +205,9 @@ struct PlayerConfig
     // --- Stamina ---
     // Seconds of sprinting from full, and seconds to get it all back. Recovery waits a moment after
     // you stop, so tapping sprint on and off is not free.
-    float sprintSeconds = 7.0f;
-    float staminaRecoverSeconds = 11.0f;
-    float staminaRecoverDelay = 1.1f;
+    float sprintSeconds = 12.0f;
+    float staminaRecoverSeconds = 8.0f;
+    float staminaRecoverDelay = 0.8f;
     // Once it is gone you cannot sprint again until this much is back. Without it, sprint flickers
     // on and off at zero and the player runs at a limp for ever.
     float staminaSprintAgain = 0.28f;

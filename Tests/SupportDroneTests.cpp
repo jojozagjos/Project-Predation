@@ -357,3 +357,43 @@ TEST_CASE("A support drone driven up stairs rides up them by itself", "[drone]")
     CHECK(highest > 1.0f);
     CHECK(stayedUpright);
 }
+
+TEST_CASE("A support drone climbs a whole flight of the ship's steeper stairs, and drives off a stair it has stopped on",
+          "[drone]")
+{
+    // The ship's stairs: twenty centimetres a step on a tread of twenty-eight, ten of them. Looking a whole tread ahead
+    // for room above a step saw the next riser and it never climbed any.
+    Floor floor;
+    constexpr int kSteps = 10;
+    for (int step = 0; step < kSteps; ++step)
+    {
+        Transform tread;
+        const float top = 0.2f * static_cast<float>(step + 1);
+        tread.position = {0.0f, top * 0.5f, -1.0f - 0.28f * static_cast<float>(step) - 1.5f};
+        floor.physics.CreateBox({1.0f, top * 0.5f, 1.5f}, tread, BodyMotion::Static);
+    }
+    SupportDrone drone;
+    drone.Deploy(floor.scene, floor.meshes, floor.physics, {0.0f, 0.0f, 0.0f}, 0.0f);
+    floor.Run(drone, {}, 0.5f);
+    SupportDrone::Controls forward;
+    forward.move = {0.0f, 1.0f};
+    float highest = 0.0f;
+    for (int i = 0; i < 80 && highest < 0.2f * kSteps; ++i)
+    {
+        floor.Run(drone, forward, 0.1f);
+        highest = std::max(highest, drone.Position().y);
+    }
+    INFO("highest " << highest << ", at " << drone.Position().y << " up, " << drone.Position().z);
+    CHECK(highest > 0.2f * kSteps - 0.1f);
+
+    // Stopped part way down, and driven again: it goes. It used to sit across a stair's edge with nothing under its
+    // middle, taking itself to be in the air, and never drive again.
+    SupportDrone::Controls back;
+    back.move = {0.0f, -1.0f};
+    floor.Run(drone, back, 0.9f);
+    floor.Run(drone, {}, 1.0f);
+    const glm::vec3 stopped = drone.Position();
+    floor.Run(drone, back, 1.5f);
+    INFO("stopped at " << stopped.y << " up, " << stopped.z << "; now " << drone.Position().y << ", " << drone.Position().z);
+    CHECK(glm::distance(drone.Position(), stopped) > 0.5f);
+}

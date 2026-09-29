@@ -124,7 +124,8 @@ TEST_CASE("A nest's skin grows over the surfaces it is planned on, and knows how
             highest = std::max(highest, vertex.position.y);
             nearest = std::min(nearest, vertex.uv.x);
             farthest = std::max(farthest, vertex.uv.x);
-            CHECK(vertex.uv.y >= 0.0f);
+            // How far it stands off the surface: below nothing only to say it is held still when the nest beats.
+            CHECK(std::abs(vertex.uv.y) < 0.6f);
         }
     }
     CHECK(highest < 0.5f);

@@ -321,9 +321,21 @@ void SupportDrone::Step(PhysicsWorld& physics, const Controls& controls, float d
     glm::vec3 velocity = physics.GetLinearVelocity(m_body);
     glm::vec3 spin = physics.GetAngularVelocity(m_body);
 
-    // On its tracks and on the ground, which is the only time they do anything.
+    // On its tracks and on the ground, which is the only time they do anything. Under its middle, or under any corner:
+    // across the edge of a stair its middle is over the drop, and asking only there it was never on the ground again --
+    // tracks off, hull gripping, stuck where it sat. And upright and resting on something is on the ground, whatever
+    // the rays make of it.
     const RayHit ground = physics.RayCast(m_position, -worldUp, kHalfExtents.y + 0.08f, m_body);
-    const bool grounded = upright && ground.hit;
+    // Not in a hop, though: just off the floor its corners still see it, and it gripped the face of what it hopped at.
+    bool underneath = ground.hit;
+    for (int corner = 0; corner < 4 && !underneath && m_hopFor <= 0.0f; ++corner)
+    {
+        const glm::vec3 local{(corner & 1) ? kHalfExtents.x * 0.8f : -kHalfExtents.x * 0.8f, 0.0f,
+                              (corner & 2) ? kHalfExtents.z * 0.85f : -kHalfExtents.z * 0.85f};
+        underneath = physics.RayCast(m_position + m_rotation * local, -up, kHalfExtents.y + 0.12f, m_body).hit;
+    }
+    m_restingFor = upright && m_hopFor <= 0.0f && glm::length(velocity) < 0.25f ? m_restingFor + dt : 0.0f;
+    const bool grounded = upright && (underneath || m_restingFor > 0.15f);
 
     // On its back or side, and not moving: it counts, and it gets up by itself if left there, or when
     // its driver asks. The arm kicks it off the floor and rolls it over the nearer way.
@@ -442,7 +454,9 @@ void SupportDrone::Step(PhysicsWorld& physics, const Controls& controls, float d
         const glm::vec3 going = forward * (m_trackSpeed > 0.0f ? 1.0f : -1.0f);
         const float reach = kHalfExtents.z + 0.14f;
         const RayHit low = physics.RayCast(m_position - up * (kHalfExtents.y - 0.03f), going, reach, m_body);
-        const RayHit high = physics.RayCast(m_position + up * kStepHeight, going, reach + 0.1f, m_body);
+        // Clear above the step it is against, onto its tread -- and no further: a staircase's next riser is a tread's
+        // depth beyond, and looking that far saw it as a wall and never climbed any stair at all.
+        const RayHit high = low.hit ? physics.RayCast(m_position + up * kStepHeight, going, low.distance + 0.12f, m_body) : RayHit{};
         if (low.hit && low.normal.y < 0.5f && !high.hit)
         {
             along = std::max(along, kStepClimbSpeed);

@@ -457,8 +457,17 @@ bool PredationGame::FindUnseenPoint(uint32_t seed, glm::vec3& out) const
             }
             const float indoors = inside && m_facility.Plan().Indoors(candidate) ? 50.0f : 0.0f;
             const float score = (seen ? 0.0f : 100.0f) + indoors - (idealDistance > 0.0f ? std::abs(nearest - idealDistance) : 0.0f);
+            // And somewhere with a way to the players. The walkable surface has pockets nobody can reach -- a roof, a
+            // sealed room, a gap inside a wall -- and one that arrived in them was out of the game for good. Asked only
+            // of a place that would win, since a route costs more than the rest together.
             if (score > best)
             {
+                std::vector<glm::vec3> route;
+                bool reached = false;
+                if (!m_nav.FindPath(candidate, eyes.front() - glm::vec3(0.0f, 1.6f, 0.0f), route, &reached) || !reached)
+                {
+                    continue;
+                }
                 best = score;
                 out = candidate;
                 found = true;
@@ -2661,21 +2670,20 @@ void PredationGame::RegisterCreatureCommands()
         "spawn_creature", "Make a creature, far from you, or in front of you with 'ahead' (7 m, or the distance given)",
         [this](const std::vector<std::string>& args)
         {
-            if (!IsAuthority())
+            if (ForwardToHost(args))
             {
-                m_app->GetConsole().PrintError("Only the host can make a creature.");
                 return;
             }
             const uint32_t seed = args.size() >= 2
                                       ? static_cast<uint32_t>(std::strtoul(args[1].c_str(), nullptr, 10))
                                       : static_cast<uint32_t>(std::rand());
             const bool ahead = args.size() >= 3 && args[2] == "ahead";
-            const PlayerView& view = m_player.View();
-            const glm::vec3 flat = glm::normalize(glm::vec3(view.Forward().x, 0.0f, view.Forward().z) +
-                                                  glm::vec3(0.0f, 0.0f, 1e-4f));
+            const glm::vec3 forward = CommandForward();
+            const glm::vec3 flat = glm::normalize(glm::vec3(forward.x, 0.0f, forward.z) + glm::vec3(0.0f, 0.0f, 1e-4f));
             const float howFar = args.size() >= 4 ? std::clamp(std::strtof(args[3].c_str(), nullptr), 1.5f, 40.0f) : 7.0f;
-            const glm::vec3 inFront = m_player.State().position + flat * howFar;
-            if (SpawnCreature(seed, m_player.State().position, ahead ? &inFront : nullptr))
+            const glm::vec3 from = CommandPosition();
+            const glm::vec3 inFront = from + flat * howFar;
+            if (SpawnCreature(seed, from, ahead ? &inFront : nullptr))
             {
                 // The one just made is the one somebody wants to watch.
                 m_inspectedCreature = static_cast<int>(m_creatures.size()) - 1;
@@ -2683,7 +2691,7 @@ void PredationGame::RegisterCreatureCommands()
                 {
                     // Facing you: one put in front of you to be looked at is there to look back.
                     Creature& made = *m_creatures.back();
-                    const glm::vec3 toYou = m_player.State().position - made.Position();
+                    const glm::vec3 toYou = from - made.Position();
                     // Or turned by however many degrees are asked for, to see it from the side.
                     const float turn = args.size() >= 5 ? glm::radians(std::strtof(args[4].c_str(), nullptr)) : 0.0f;
                     made.SetShownState(made.Position(), std::atan2(toYou.x, -toYou.z) + turn, 0.0f, 0.0f, true);
@@ -2789,45 +2797,58 @@ void PredationGame::RegisterCreatureCommands()
                                 }
                             });
     console.RegisterCommand("grab_me", "The nearest creature takes hold of you, to see what being held is like",
-                            [this](const std::vector<std::string>&)
+                            [this](const std::vector<std::string>& args)
                             {
+                                if (ForwardToHost(args))
+                                {
+                                    return;
+                                }
                                 Creature* nearest = nullptr;
                                 float best = 1.0e9f;
                                 for (const std::unique_ptr<Creature>& creature : m_creatures)
                                 {
-                                    const float away = glm::distance(creature->Position(), m_player.State().position);
+                                    const float away = glm::distance(creature->Position(), CommandPosition());
                                     if (creature->Alive() && away < best)
                                     {
                                         best = away;
                                         nearest = creature.get();
                                     }
                                 }
-                                if (nearest == nullptr || !IsAuthority())
+                                if (nearest == nullptr)
                                 {
-                                    m_app->GetConsole().PrintError("No creature to do it (and only the host can).");
+                                    m_app->GetConsole().PrintError("No creature to do it.");
                                     return;
                                 }
-                                m_grips[LocalPlayerId()] = Grip{nearest->NetId(), 0.0f, false};
-                                nearest->Brain().OnGrabbed(LocalPlayerId(), m_creatureClock);
+                                m_grips[CommandPlayer()] = Grip{nearest->NetId(), 0.0f, false};
+                                nearest->Brain().OnGrabbed(CommandPlayer(), m_creatureClock);
                             });
     console.RegisterCommand("creature_clear", "Remove every creature",
-                            [this](const std::vector<std::string>&) { ClearCreatures(); });
-    console.RegisterCommand("nest_here", "Build a nest where you stand, as a creature would, to look at one",
-                            [this](const std::vector<std::string>&)
+                            [this](const std::vector<std::string>& args)
                             {
-                                if (!IsAuthority())
+                                if (!ForwardToHost(args))
                                 {
-                                    m_app->GetConsole().PrintError("Only the host has nests.");
+                                    ClearCreatures();
+                                }
+                            });
+    console.RegisterCommand("nest_here", "Build a nest where you stand, as a creature would, to look at one",
+                            [this](const std::vector<std::string>& args)
+                            {
+                                if (ForwardToHost(args))
+                                {
                                     return;
                                 }
                                 const uint16_t seed = static_cast<uint16_t>(std::rand() & 0xFFFF);
-                                BuildNest(m_player.State().position, seed, 0, true);
+                                BuildNest(CommandPosition(), seed, 0, true);
                             });
     console.RegisterCommand("creature_climb",
                             "Send every creature that climbs up onto the ceiling, or down, or back to its own mind: "
                             "creature_climb [up|down|auto]",
                             [this](const std::vector<std::string>& args)
                             {
+                                if (ForwardToHost(args))
+                                {
+                                    return;
+                                }
                                 const std::string how = args.size() >= 2 ? args[1] : "up";
                                 const int climb = how == "down" ? 0 : (how == "auto" ? -1 : 1);
                                 int climbers = 0;
@@ -2842,6 +2863,10 @@ void PredationGame::RegisterCreatureCommands()
     console.RegisterCommand("nest_grow", "Age every nest by some seconds, to see it grown: nest_grow <seconds>",
                             [this](const std::vector<std::string>& args)
                             {
+                                if (ForwardToHost(args))
+                                {
+                                    return;
+                                }
                                 const float seconds = args.size() >= 2 ? std::strtof(args[1].c_str(), nullptr) : 60.0f;
                                 for (Nest& nest : m_nests)
                                 {
@@ -2852,17 +2877,22 @@ void PredationGame::RegisterCreatureCommands()
     console.RegisterCommand("nest_hurt", "Shoot the nearest nest's heart for some damage, as the host: nest_hurt [amount]",
                             [this](const std::vector<std::string>& args)
                             {
+                                if (ForwardToHost(args))
+                                {
+                                    return;
+                                }
                                 const float amount = args.size() >= 2 ? std::strtof(args[1].c_str(), nullptr) : 50.0f;
+                                const glm::vec3 from = CommandPosition();
                                 int nearest = -1;
                                 for (size_t i = 0; i < m_nests.size(); ++i)
                                 {
-                                    if (!m_nests[i].dead && (nearest < 0 || glm::distance(m_nests[i].heart, m_player.State().position) <
-                                                                                 glm::distance(m_nests[nearest].heart, m_player.State().position)))
+                                    if (!m_nests[i].dead && (nearest < 0 || glm::distance(m_nests[i].heart, from) <
+                                                                                 glm::distance(m_nests[nearest].heart, from)))
                                     {
                                         nearest = static_cast<int>(i);
                                     }
                                 }
-                                HurtNest(nearest, amount, LocalPlayerId());
+                                HurtNest(nearest, amount, CommandPlayer());
                             });
     console.RegisterCommand(
         "ai_brain", "Show or hide the creature brain inspector, or open it at a tab: ai_brain [thinking|senses|memory|body|timeline]",

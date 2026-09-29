@@ -174,6 +174,13 @@ public:
         LoadoutMessage kit;
     };
     std::vector<LoadoutRequest> TakeLoadouts() { return std::exchange(m_loadouts, {}); }
+    // Console commands a client has asked the world to run (developer builds), with who asked.
+    struct CommandRequest
+    {
+        uint8_t player = 0;
+        std::string line;
+    };
+    std::vector<CommandRequest> TakeCommands() { return std::exchange(m_commands, {}); }
     // Health back, into the controller the host simulates for them.
     void HealPlayer(uint8_t playerId, float amount);
     // The host keeps a tally of what each client has picked up, so a client cannot put down
@@ -286,6 +293,7 @@ private:
     std::vector<VoiceHeard> m_voiceHeard;
     std::vector<ItemUseRequest> m_itemUses;
     std::vector<LoadoutRequest> m_loadouts;
+    std::vector<CommandRequest> m_commands;
     // Where the host itself is, kept each tick, so a voice arriving between ticks can be told
     // whether the host is near enough to hear it without the caller having to pass it in.
     glm::vec3 m_localPosition{0.0f};
@@ -435,6 +443,7 @@ public:
     void SendDrop(const DropMessage& drop);
     void SendItemUse(const ItemUseMessage& use);
     void SendLoadout(const LoadoutMessage& kit);
+    void SendCommand(const std::string& line);
     // My microphone, on its way to the host, which decides who is close enough to hear it.
     void SendVoice(uint16_t sequence, const std::vector<uint8_t>& frame);
     // Voice from other people, waiting to be played. Taken rather than read: each frame is played

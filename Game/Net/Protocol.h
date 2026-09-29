@@ -24,7 +24,7 @@ namespace pred
 
 // Bumped whenever the wire changes shape. Two ends that disagree are refused at the door rather
 // than left to misread each other, which is what a wire mismatch actually looks like from inside.
-inline constexpr uint16_t kProtocolVersion = 28;
+inline constexpr uint16_t kProtocolVersion = 29;
 // How many bits name a message type. Five, so there is room to add one.
 inline constexpr uint32_t kMessageTypeBits = 5;
 inline constexpr uint8_t kMaxPlayers = 4;
@@ -83,6 +83,9 @@ enum class MessageType : uint8_t
     ItemUse,
     // Client to host, reliable: the kit I have just drawn at the loadout locker, so the host can keep count of it.
     Loadout,
+    // Client to host, reliable, developer builds only: one of the world's console commands (a creature, a nest), to be
+    // run where the world is. The host runs only the ones it lists as the world's.
+    Command,
     Count
 };
 
@@ -188,6 +191,11 @@ struct LoadoutMessage
 };
 void WriteLoadout(BitWriter& writer, const LoadoutMessage& message);
 bool ReadLoadout(BitReader& reader, LoadoutMessage& out);
+
+// A console command line, printable ASCII, cut to the length a command needs.
+inline constexpr size_t kMaxCommandLength = 160;
+void WriteCommand(BitWriter& writer, const std::string& line);
+bool ReadCommand(BitReader& reader, std::string& out);
 
 // What a client asks the host to do. It is a request: the host checks the player is close enough
 // and that the thing is still there before anything happens.

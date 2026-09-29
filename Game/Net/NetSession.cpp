@@ -486,6 +486,18 @@ void NetHost::HandlePacket(const NetPacket& packet)
         break;
     }
 
+    case MessageType::Command:
+    {
+        const Client* client = FindClient(packet.peer);
+        std::string line;
+        if (client == nullptr || !client->welcomed || !ReadCommand(reader, line))
+        {
+            return;
+        }
+        m_commands.push_back({client->playerId, std::move(line)});
+        break;
+    }
+
     case MessageType::Leave:
         RemoveClient(packet.peer);
         break;
@@ -1493,6 +1505,18 @@ void NetClient::SendLoadout(const LoadoutMessage& kit)
     BitWriter writer;
     WriteMessageHeader(writer, MessageType::Loadout);
     WriteLoadout(writer, kit);
+    SendPacket(*m_transport, kHostPeer, Channel::Reliable, writer);
+}
+
+void NetClient::SendCommand(const std::string& line)
+{
+    if (m_transport == nullptr || !m_welcomed)
+    {
+        return;
+    }
+    BitWriter writer;
+    WriteMessageHeader(writer, MessageType::Command);
+    WriteCommand(writer, line);
     SendPacket(*m_transport, kHostPeer, Channel::Reliable, writer);
 }
 

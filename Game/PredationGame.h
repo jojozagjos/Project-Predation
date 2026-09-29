@@ -804,6 +804,15 @@ private:
     // had from it before. Nothing is shared, so it is done here and the host told what was taken, to keep count of.
     void BuildLoadoutLocker();
     void RegisterLoadoutCommands();
+
+    // --- The world's console commands, from a client (developer builds) --------------------------------------------
+    // On a client, sends the command to the host to be run where the world is, and says so: true when it did. On the
+    // host, who a command is being run for -- themselves, or the client who sent it -- and where they are and look.
+    bool ForwardToHost(const std::vector<std::string>& args);
+    uint8_t CommandPlayer() const;
+    glm::vec3 CommandPosition() const;
+    glm::vec3 CommandForward() const;
+    uint8_t m_commandFrom = 0xFF; // 0xFF: this machine's own player
     void OpenLoadout();
     void CloseLoadout();
     void DrawLoadoutPanel();
@@ -1359,6 +1368,7 @@ private:
     // frame, when nothing is equipped, so a report taken then is about an empty hand.
     int m_holdReportIn = 0;
     float m_titleClock = 0.0f;
+    float m_titleStep = 0.0f; // the title camera's even step (UpdateTitleCamera)
     // Which way round the ship the title's camera looks from, on average.
     static constexpr float kTitleAngle = 0.6f;
     // The boot screen shown once, when the game starts, and the title's "press any key", which the menu waits behind.

@@ -276,11 +276,10 @@ void BuildStructure(Builder& b)
             band(kBayHalfX, z, kBayHalfX + 0.4f, to);
         }
     }
-    // The bay's shaft through the hull, lined.
+    // The bay's shaft through the hull, lined along its sides, where the hull's belly stops short of it. Fore and aft the
+    // belly's own ends are its walls: a lining there was in the same place as them, and flickered with them.
     b.Shape("ship_bay_shaft", {-kBayHalfX - 0.05f, -1.4f, kBayFront}, {-kBayHalfX, kLower - kSlab, kBayBack}, kHullDark);
     b.Shape("ship_bay_shaft", {kBayHalfX, -1.4f, kBayFront}, {kBayHalfX + 0.05f, kLower - kSlab, kBayBack}, kHullDark);
-    b.Shape("ship_bay_shaft", {-kBayHalfX, -1.4f, kBayFront - 0.05f}, {kBayHalfX, kLower - kSlab, kBayFront}, kHullDark);
-    b.Shape("ship_bay_shaft", {-kBayHalfX, -1.4f, kBayBack}, {kBayHalfX, kLower - kSlab, kBayBack + 0.05f}, kHullDark);
 
     // --- The upper deck --------------------------------------------------------------------------------------
     b.Solid("ship_wall", {-12.3f, kUpper, -22.3f}, {-12.0f, kUpperTop, 5.85f}, kWall);

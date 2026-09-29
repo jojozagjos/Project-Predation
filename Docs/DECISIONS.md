@@ -2609,3 +2609,27 @@ comes from; and the deployment console moved from in front of the briefing scree
   to pick something up. Now five bits, with a compile-time check.
 - **The deployment console** stands in the briefing room's forward port corner, facing the room, rather than in front
   of the port screen.
+
+## ADR-122: Deaths off-site, drone placement, the nest's look, and a batch of fixes
+
+From the user's list.
+
+- **Dying** on a site is as before: for good, and a drone. Anywhere else (aboard, the creature lab) you are back on your
+  feet at the spawn in three seconds, with no drone and no "everybody down"; the lab no longer sends everybody aboard.
+- **The drone** arrives near where you fell, outside: the nearest open ground two and a half metres or more from the
+  body that can be driven to from it, rather than at the insertion point.
+- **The drone on stairs**: it took itself to be airborne whenever the middle of it was over a stair's edge (one ray,
+  straight down), and never drove again; now any corner will do, or resting upright. And looking for room above a step
+  a whole tread ahead saw the next riser, so it never climbed a flight at all.
+- **Creatures arriving** only where there is a way to the players: the walkable surface has unreachable pockets.
+- **The world's console commands from a client** (spawn_creature, nest_here, nest_grow, nest_hurt, grab_me,
+  creature_clear, creature_climb): sent to the host and run there for them, where they stand (MessageType::Command,
+  developer builds only, only those commands). Protocol 29.
+- **The nest**: the flesh is shaded smooth from its own surface and its colour broadened, where the thinned mesh had
+  shaded and painted it in shards; the egg sacs are smooth shapes of their own -- wet, dark amber, something curled
+  showing through -- gripped by a lip of flesh; strands are whole tubes. The sacs, the strands and the flesh on walls
+  and ceilings are held still when the nest beats (a negative height in the vertex data); the floor's flesh pulses.
+  The eggs do not hatch (the user's call: decoration).
+- **Also**: stamina (12 s of sprint, back in 8); the head shown until a cinematic has handed the camera back; the torch
+  held by the player in third person, not by the camera behind them; the hangar bay's fore and aft linings removed,
+  which fought the hull's belly; the title camera on an evened-out clock; a Default button on each setting and each key.

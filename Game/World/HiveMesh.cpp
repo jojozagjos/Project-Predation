@@ -5,6 +5,7 @@
 #include "Engine/Core/Log.h"
 #include "Engine/Core/ParallelFor.h"
 #include "Engine/Render/MeshSimplify.h"
+#include "Engine/Render/Primitives.h"
 #include "Engine/Render/Sdf.h"
 #include "Engine/Render/SurfaceNets.h"
 
@@ -271,12 +272,12 @@ std::vector<MeshData> BuildNestSkin(const NestSkinPlan& plan)
             {
                 const float angle = Hash(index, 13 + k, 0, kSeed) * 6.2831853f;
                 const float out = 0.1f + 0.35f * Hash(index, 20 + k, 0, kSeed);
-                const float r = 0.08f + 0.06f * Hash(index, 30 + k, 0, kSeed);
+                const float r = 0.11f + 0.07f * Hash(index, 30 + k, 0, kSeed);
                 Part egg;
                 egg.kind = Kind::Egg;
-                egg.a = egg.b = pad.at + (sheet.across * std::cos(angle) + sheet.along * std::sin(angle)) * out + pad.normal * (r * 0.9f);
+                egg.a = egg.b = pad.at + (sheet.across * std::cos(angle) + sheet.along * std::sin(angle)) * out + pad.normal * (r * 0.6f);
                 egg.normal = pad.normal;
-                egg.radii = {r, r * 1.35f, r};
+                egg.radii = {r, r * 1.25f, r * 0.9f};
                 egg.fromHeartA = egg.fromHeartB = pad.fromHeart;
                 bound(egg, r * 1.4f + 0.1f);
                 parts.push_back(egg);
@@ -391,11 +392,25 @@ std::vector<MeshData> BuildNestSkin(const NestSkinPlan& plan)
                 {
                     float d = 1.0e9f;
                     float fleshy = 1.0e9f;
+                    float eggs = 1.0e9f;
                     for (const Part* part : here)
                     {
                         if (p.x < part->lo.x || p.y < part->lo.y || p.z < part->lo.z || p.x > part->hi.x || p.y > part->hi.y ||
                             p.z > part->hi.z)
                         {
+                            continue;
+                        }
+                        if (part->kind == Kind::Strand)
+                        {
+                            continue; // made whole and smooth on its own (Smooth eggs and strands, below)
+                        }
+                        if (part->kind == Kind::Egg)
+                        {
+                            // Grown out of the flesh: the egg itself is made smooth on its own (below), and here, a little
+                            // inside it, the shape the flesh swells up round to grip its base.
+                            const float egg = Ellipsoid(p - part->a, part->radii * 0.8f);
+                            eggs = std::min(eggs, egg);
+                            fleshy = fleshy > 1.0e8f ? egg : SmoothUnion(fleshy, egg, 0.07f);
                             continue;
                         }
                         const float dd = partDistance(*part, p);
@@ -418,11 +433,13 @@ std::vector<MeshData> BuildNestSkin(const NestSkinPlan& plan)
                     // rather than as the shards and slivers something finer than a cell breaks into.
                     if (d < 0.14f)
                     {
-                        d -= (Fbm(p * 1.6f, kSeed + 17u, 2) - 0.45f) * 0.09f;
-                        d += (Fbm(p * 3.5f, kSeed, 3) - 0.5f) * 0.025f;
+                        // Not on an egg: it is smooth and tight, and roughened like the flesh round it its edge broke up.
+                        const float rough = std::clamp(eggs / 0.1f, 0.0f, 1.0f);
+                        d -= (Fbm(p * 1.6f, kSeed + 17u, 2) - 0.45f) * 0.07f * rough;
+                        d += (Fbm(p * 3.5f, kSeed, 3) - 0.5f) * 0.012f * rough;
                         const float vein = std::abs(Fbm(p * 2.3f, kSeed + 29u, 3) - 0.5f);
                         const float ridge = std::max(0.0f, 1.0f - vein / 0.07f);
-                        d -= 0.016f * ridge * ridge * (3.0f - 2.0f * ridge);
+                        d -= 0.016f * ridge * ridge * (3.0f - 2.0f * ridge) * rough;
                     }
                     return d;
                 };
@@ -433,6 +450,10 @@ std::vector<MeshData> BuildNestSkin(const NestSkinPlan& plan)
                     float bestD = 1.0e9f;
                     for (const Part* part : here)
                     {
+                        if (part->kind == Kind::Strand || part->kind == Kind::Egg)
+                        {
+                            continue; // the flesh round an egg is flesh
+                        }
                         const float dd = partDistance(*part, p);
                         if (dd < bestD)
                         {
@@ -536,8 +557,10 @@ std::vector<MeshData> BuildNestSkin(const NestSkinPlan& plan)
                                 // Dark in the hollows, raw where it swells, the veins purple-black.
                                 colour = glm::mix(glm::vec3(0.05f, 0.012f, 0.018f), glm::vec3(0.26f, 0.07f, 0.06f), std::clamp(height / 0.12f, 0.0f, 1.0f));
                                 const float veinLine = std::abs(Fbm(p * 2.3f, kSeed + 29u, 3) - 0.5f);
-                                colour = glm::mix(glm::vec3(0.08f, 0.015f, 0.05f), colour, std::clamp(veinLine / 0.04f, 0.0f, 1.0f));
-                                colour = glm::mix(glm::vec3(0.34f, 0.04f, 0.05f), colour, std::clamp(vein * 9.0f, 0.0f, 1.0f));
+                                // Broad and soft: the surface is thinned to triangles bigger than a fine line, and a line
+                                // painted at their corners smeared into dark triangles. The veins' shape is in the flesh.
+                                colour = glm::mix(glm::vec3(0.1f, 0.02f, 0.05f), colour, 0.35f + 0.65f * std::clamp(veinLine / 0.12f, 0.0f, 1.0f));
+                                colour = glm::mix(glm::vec3(0.3f, 0.05f, 0.05f), colour, std::clamp(vein * 4.0f, 0.0f, 1.0f));
                                 wet = 0.2f + 0.25f * vein;
                                 break;
                             }
@@ -546,16 +569,24 @@ std::vector<MeshData> BuildNestSkin(const NestSkinPlan& plan)
                                 wet = 0.2f;
                                 break;
                             case Kind::Egg:
-                                colour = glm::mix(glm::vec3(0.52f, 0.47f, 0.3f), glm::vec3(0.3f, 0.22f, 0.12f), std::clamp(vein * 5.0f, 0.0f, 1.0f));
-                                wet = 0.3f;
+                            {
+                                // The flesh's red where it has grown round the base, pale and waxy above, veined.
+                                const float up = glm::dot(p - part->a, part->normal) / std::max(part->radii.y, 1e-3f);
+                                colour = glm::mix(glm::vec3(0.5f, 0.45f, 0.29f), glm::vec3(0.34f, 0.24f, 0.13f), std::clamp(1.0f - vein * 6.0f, 0.0f, 1.0f) * 0.5f);
+                                colour = glm::mix(glm::vec3(0.26f, 0.07f, 0.06f), colour, glm::smoothstep(-0.85f, -0.35f, up));
+                                wet = 0.35f;
                                 break;
+                            }
                             case Kind::Strand:
                                 colour = glm::vec3(0.25f, 0.04f, 0.04f);
                                 wet = 0.15f;
                                 break;
                             }
                         }
-                        vertex.uv = {fromHeart, height};
+                        // Held still when the nest beats (a height below nothing), all but what lies on a floor: flesh
+                        // hanging on a wall or from a ceiling throbbing looked wrong.
+                        const bool still = part != nullptr && part->kind == Kind::Membrane && part->normal.y < 0.6f;
+                        vertex.uv = {fromHeart, still ? -std::max(height, 0.001f) : height};
                         vertex.color = PackColour(colour, wet);
                     }
                 }, 256);
@@ -564,11 +595,161 @@ std::vector<MeshData> BuildNestSkin(const NestSkinPlan& plan)
                 MeshData simple = SimplifyMesh(surface, std::max<size_t>(surface.indices.size() / 3 / 4, 300), 0.008f, kept);
                 if (!simple.indices.empty())
                 {
+                    // Shaded smooth, from the surface as it now is: each corner's normal the average of the triangles
+                    // round it, weighted by their size. The field's own normals follow every bump in it, and on the
+                    // thinned surface -- bigger triangles over the same bumps -- that shaded it in facets and shards.
+                    // Near the edge of the piece the field's are kept, where the next piece has to shade the same.
+                    std::vector<glm::vec3> summed(simple.vertices.size(), glm::vec3(0.0f));
+                    for (size_t t = 0; t + 2 < simple.indices.size(); t += 3)
+                    {
+                        const uint32_t a = simple.indices[t];
+                        const uint32_t b = simple.indices[t + 1];
+                        const uint32_t c = simple.indices[t + 2];
+                        const glm::vec3 face = glm::cross(simple.vertices[b].position - simple.vertices[a].position,
+                                                          simple.vertices[c].position - simple.vertices[a].position);
+                        summed[a] += face;
+                        summed[b] += face;
+                        summed[c] += face;
+                    }
+                    const glm::vec3 innerLo = sampleLo + glm::vec3(kCell * 2.5f);
+                    const glm::vec3 innerHi = sampleHi - glm::vec3(kCell * 2.5f);
+                    for (size_t v = 0; v < simple.vertices.size(); ++v)
+                    {
+                        MeshVertex& vertex = simple.vertices[v];
+                        const float length = glm::length(summed[v]);
+                        if (length < 1e-10f)
+                        {
+                            continue;
+                        }
+                        glm::vec3 smooth = summed[v] / length;
+                        if (glm::dot(smooth, vertex.normal) < 0.0f)
+                        {
+                            smooth = -smooth; // wound the other way round: the field says which way is out
+                        }
+                        const glm::vec3 inside = glm::min(vertex.position - innerLo, innerHi - vertex.position);
+                        const float edge = std::clamp(std::min({inside.x, inside.y, inside.z}) / kCell, 0.0f, 1.0f);
+                        vertex.normal = glm::normalize(glm::mix(vertex.normal, smooth, 0.85f * edge));
+                    }
                     chunks.push_back(std::move(simple));
                 }
             }
         }
     }
+    // Smooth eggs and strands. Smaller than the grid the flesh is sampled on can hold -- an egg a hand across is two or three
+    // cells -- and sampled they came out as spiky lumps and broken threads. Made as shapes of their own they are whole; the
+    // eggs and strands are held still when the nest beats (a height given as less than nothing).
+    {
+        MeshData extras;
+        const auto frameOf = [](const glm::vec3& normal, glm::vec3& across, glm::vec3& along)
+        {
+            const glm::vec3 helper = std::abs(normal.y) < 0.9f ? glm::vec3(0.0f, 1.0f, 0.0f) : glm::vec3(1.0f, 0.0f, 0.0f);
+            across = glm::normalize(glm::cross(helper, normal));
+            along = glm::cross(normal, across);
+        };
+        const MeshData ball = Primitives::Sphere(1.0f, 18, 12);
+        int eggCount = 0;
+        for (const Part& part : parts)
+        {
+            if (part.kind == Kind::Egg)
+            {
+                // Smooth and whole, sitting in the lip of flesh grown up round it.
+                ++eggCount;
+                glm::vec3 across;
+                glm::vec3 unused;
+                frameOf(part.normal, across, unused);
+                // Right-handed, (across, up, sideways): the other way round mirrors the ball and turns it inside out.
+                const glm::vec3 sideways = glm::cross(across, part.normal);
+                const uint32_t base = static_cast<uint32_t>(extras.vertices.size());
+                const float shade = Hash(eggCount, 71, 0, kSeed);
+                for (const MeshVertex& unit : ball.vertices)
+                {
+                    MeshVertex vertex = unit;
+                    const glm::vec3 r = part.radii;
+                    vertex.position = part.a + across * (unit.position.x * r.x) + part.normal * (unit.position.y * r.y) + sideways * (unit.position.z * r.z);
+                    vertex.normal = glm::normalize(across * (unit.normal.x / r.x) + part.normal * (unit.normal.y / r.y) + sideways * (unit.normal.z / r.z));
+                    // A sac, not a shell: a thin wet skin the light comes through -- amber where it is thinnest, round
+                    // its sides -- with the dark curled shape of what is inside showing through the middle, dark veins
+                    // over it, and the flesh's red where it is grown into it. Nothing is drawn see-through here, so it
+                    // is painted as if it were.
+                    const float up = unit.position.y * 0.5f + 0.5f;
+                    const float veins = std::clamp(std::abs(Fbm(vertex.position * 12.0f, kSeed + 91u, 2) - 0.5f) * 7.0f, 0.0f, 1.0f);
+                    const float radial = glm::length(glm::vec2(unit.position.x, unit.position.z));
+                    const float curl = Fbm(unit.position * 2.2f + glm::vec3(shade * 9.0f), kSeed + 97u, 2) - 0.5f;
+                    const float inside = glm::smoothstep(0.8f, 0.45f, radial + curl * 0.6f) * glm::smoothstep(-0.4f, 0.2f, unit.position.y);
+                    glm::vec3 colour = glm::mix(glm::vec3(0.46f, 0.2f, 0.07f), glm::vec3(0.36f, 0.1f, 0.06f), shade * 0.6f);
+                    colour = glm::mix(colour, glm::vec3(0.06f, 0.015f, 0.02f), inside);
+                    colour = glm::mix(glm::vec3(0.16f, 0.03f, 0.04f), colour, 0.45f + 0.55f * veins);
+                    colour = glm::mix(glm::vec3(0.26f, 0.07f, 0.06f), colour, glm::smoothstep(0.05f, 0.4f, up));
+                    vertex.color = PackColour(colour, 0.95f);
+                    vertex.uv = {part.fromHeartA, -std::max((unit.position.y + 1.0f) * r.y, 0.001f)}; // held still when the nest beats
+                    extras.vertices.push_back(vertex);
+                }
+                for (const uint32_t corner : ball.indices)
+                {
+                    extras.indices.push_back(base + corner);
+                }
+            }
+            else if (part.kind == Kind::Strand)
+            {
+                // A tapering thread, and a drop gathered at its end.
+                constexpr int kSides = 8;
+                constexpr int kRings = 7;
+                glm::vec3 across;
+                glm::vec3 around;
+                const glm::vec3 down = glm::normalize(part.b - part.a);
+                frameOf(down, across, around);
+                const float length = glm::distance(part.a, part.b);
+                const uint32_t base = static_cast<uint32_t>(extras.vertices.size());
+                for (int ring = 0; ring <= kRings; ++ring)
+                {
+                    const float t = static_cast<float>(ring) / kRings;
+                    const float radius = glm::mix(part.r0, part.r1, t);
+                    const glm::vec3 centre = glm::mix(part.a, part.b, t);
+                    for (int side = 0; side < kSides; ++side)
+                    {
+                        const float angle = static_cast<float>(side) / kSides * 6.2831853f;
+                        const glm::vec3 out = across * std::cos(angle) + around * std::sin(angle);
+                        MeshVertex vertex;
+                        vertex.position = centre + out * radius;
+                        vertex.normal = out;
+                        vertex.color = PackColour(glm::vec3(0.25f, 0.04f, 0.04f), 0.5f);
+                        vertex.uv = {glm::mix(part.fromHeartA, part.fromHeartB, t), -std::max(t * length, 0.001f)};
+                        extras.vertices.push_back(vertex);
+                    }
+                }
+                for (int ring = 0; ring < kRings; ++ring)
+                {
+                    for (int side = 0; side < kSides; ++side)
+                    {
+                        const uint32_t a = base + static_cast<uint32_t>(ring * kSides + side);
+                        const uint32_t b = base + static_cast<uint32_t>(ring * kSides + (side + 1) % kSides);
+                        const uint32_t c = a + kSides;
+                        const uint32_t d = b + kSides;
+                        extras.indices.insert(extras.indices.end(), {a, b, c, b, d, c}); // facing out
+                    }
+                }
+                const uint32_t dropBase = static_cast<uint32_t>(extras.vertices.size());
+                const float drop = part.r0 * 1.6f;
+                for (const MeshVertex& unit : ball.vertices)
+                {
+                    MeshVertex vertex = unit;
+                    vertex.position = part.b + unit.position * drop * glm::vec3(1.0f, 1.3f, 1.0f);
+                    vertex.color = PackColour(glm::vec3(0.3f, 0.05f, 0.05f), 0.85f);
+                    vertex.uv = {part.fromHeartB, -length};
+                    extras.vertices.push_back(vertex);
+                }
+                for (const uint32_t corner : ball.indices)
+                {
+                    extras.indices.push_back(dropBase + corner);
+                }
+            }
+        }
+        if (!extras.indices.empty())
+        {
+            chunks.push_back(std::move(extras));
+        }
+    }
+
     size_t triangles = 0;
     for (const MeshData& chunk : chunks)
     {

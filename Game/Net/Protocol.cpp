@@ -871,6 +871,32 @@ void WriteLoadout(BitWriter& writer, const LoadoutMessage& message)
     }
 }
 
+void WriteCommand(BitWriter& writer, const std::string& line)
+{
+    const size_t length = std::min(line.size(), kMaxCommandLength);
+    writer.WriteBits(static_cast<uint32_t>(length), 8);
+    for (size_t i = 0; i < length; ++i)
+    {
+        writer.WriteByte(static_cast<uint8_t>(line[i]));
+    }
+}
+
+bool ReadCommand(BitReader& reader, std::string& out)
+{
+    const uint32_t length = reader.ReadBits(8);
+    if (length > kMaxCommandLength)
+    {
+        return false;
+    }
+    out.clear();
+    for (uint32_t i = 0; i < length; ++i)
+    {
+        const uint8_t byte = reader.ReadByte();
+        out.push_back(byte >= 32 && byte < 127 ? static_cast<char>(byte) : ' ');
+    }
+    return !reader.Overran();
+}
+
 bool ReadLoadout(BitReader& reader, LoadoutMessage& out)
 {
     const uint32_t count = reader.ReadBits(4);

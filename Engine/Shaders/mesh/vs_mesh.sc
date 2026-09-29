@@ -29,6 +29,9 @@ void main()
 		// And each beat, going out across it as a swell.
 		float beat = fract(u_organicBeat.x - along * u_organicBeat.z);
 		float swell = (organicBump(beat, 0.0, 0.14) + 0.6 * organicBump(beat, 0.2, 0.12)) * u_organicBeat.y * (1.0 - dead);
+		// What hangs from it -- a strand and the drop at its end -- is held still: a height given as less than nothing.
+		swell *= step(0.0, height);
+		height = abs(height);
 		float thickness = grown * (1.0 + 0.4 * swell) * (1.0 - rotted);
 		position -= a_normal * height * (1.0 - thickness);
 		v_organic = vec2(grown * (1.0 - rotted), dead);

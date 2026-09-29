@@ -46,6 +46,8 @@ constexpr float kDroneLampStrength = 0.7f;
 constexpr float kDroneLampReach = 0.8f;
 // Where a timer is parked for a death that is not coming back.
 constexpr float kForGood = 1.0e9f;
+// Dead somewhere that is not a site: back on your feet after this long.
+constexpr float kBackInSeconds = 3.0f;
 
 } // namespace
 
@@ -228,13 +230,14 @@ void PredationGame::UpdatePerfReport()
 
 bool PredationGame::DeathIsPermanent() const
 {
-    // Always: nobody comes back until the deployment is over.
-    return true;
+    // On a site: nobody comes back until the deployment is over, and a drone is what they have. Anywhere else -- aboard,
+    // in the creature lab -- there is nothing to lose, and they are back on their feet in a moment.
+    return m_map == MapChoice::Facility;
 }
 
 float PredationGame::RespawnSecondsForDeath() const
 {
-    return kForGood;
+    return DeathIsPermanent() ? kForGood : kBackInSeconds;
 }
 
 void PredationGame::UpdateDrone(const PlayerInput& input, float dt)
@@ -259,18 +262,46 @@ void PredationGame::UpdateDrone(const PlayerInput& input, float dt)
             m_droneArrivesIn = cv_droneSeconds.Get();
         }
         m_droneArrivesIn -= dt;
-        // A death that is only a pause is not worth a drone arriving for the last moment of it.
-        const bool backSoon = !m_deadForGood && m_respawnTimer < 2.0f;
+        // A death that is only a pause is not worth a drone arriving for it.
+        const bool backSoon = !m_deadForGood;
         // Nor is one sent for nobody: with everybody down, the deployment is over.
         const bool over = IsAuthority() && m_wipeTimer > 0.0f;
         if (m_droneArrivesIn > 0.0f || backSoon || over)
         {
             return;
         }
-        // Put down where the team was: the insertion point. Side by side when there are several, so
-        // two dead players' drones do not arrive inside one another.
+        // Put down near where they fell, outside: the nearest open ground a few metres off that can be driven to from the
+        // body -- out of the building they died in, not on top of the body, and not all the way back at the shuttle.
+        // Failing that, where the team came in, side by side so two dead players' drones do not arrive in one another.
         const glm::vec3 across{std::cos(m_spawnYaw), 0.0f, std::sin(m_spawnYaw)};
-        const glm::vec3 at = m_spawnPoint + across * ((static_cast<float>(LocalPlayerId()) - 1.5f) * 0.7f);
+        glm::vec3 at = m_spawnPoint + across * ((static_cast<float>(LocalPlayerId()) - 1.5f) * 0.7f);
+        if (m_map == MapChoice::Facility && m_nav.Valid())
+        {
+            const glm::vec3 body = m_player.State().position;
+            uint32_t seed = 0x5EED0u + LocalPlayerId() * 977u;
+            float nearest = 1.0e9f;
+            for (const float radius : {12.0f, 25.0f, 50.0f})
+            {
+                for (int i = 0; i < 64; ++i)
+                {
+                    glm::vec3 candidate;
+                    if (!m_nav.RandomPointNear(body, radius, seed, candidate) || m_facility.Plan().Indoors(candidate))
+                    {
+                        continue;
+                    }
+                    const float away = glm::length(glm::vec2(candidate.x - body.x, candidate.z - body.z));
+                    if (away > 2.5f && away < nearest)
+                    {
+                        nearest = away;
+                        at = candidate + glm::vec3(0.0f, 0.1f, 0.0f);
+                    }
+                }
+                if (nearest < 1.0e9f)
+                {
+                    break;
+                }
+            }
+        }
         m_supportDrone.Deploy(m_scene, m_app->GetMeshes(), physics, at, m_spawnYaw);
         m_spectating = -1;
         m_lookYaw = m_spawnYaw;
@@ -525,9 +556,9 @@ void PredationGame::UpdateDroneThreats(float dt)
 
 void PredationGame::UpdateWipe(float dt)
 {
-    // Everybody down is the end of the deployment, and everybody goes back -- to the testing area until
-    // there is a ship to go back to.
-    if (!IsAuthority() || m_screen != Screen::Playing || cv_droneWhenAlone.Get() || m_playingDrone)
+    // Everybody down is the end of the deployment: from a site, everybody goes back aboard; anywhere else it starts again.
+    // Only on a site: anywhere else everybody is back on their feet in a moment anyway.
+    if (!IsAuthority() || m_screen != Screen::Playing || cv_droneWhenAlone.Get() || m_playingDrone || m_map != MapChoice::Facility)
     {
         m_wipeTimer = 0.0f;
         return;
@@ -584,7 +615,8 @@ void PredationGame::UpdateWipe(float dt)
     m_wipeTimer = 0.0f;
     m_remoteRespawnTimers.clear();
     m_respawnTimer = 0.0f;
-    GoToMap(MapChoice::Ship);
+    // Back aboard from a site; anywhere else -- the creature lab, the testing area -- it starts again where it was.
+    GoToMap(m_map == MapChoice::Facility ? MapChoice::Ship : m_map);
 }
 
 bool PredationGame::DroneLamp(PunctualLight& light) const

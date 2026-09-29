@@ -2138,6 +2138,29 @@ void PredationGame::ServeClientRequests()
         ServeLoadout(request.player, request.kit);
     }
 
+    // The world's console commands, sent by a client (developer builds): run here, for them, where they stand. Only the
+    // ones that are the world's -- a client does not get to run anything it likes on somebody else's machine.
+    for (const NetHost::CommandRequest& request : m_host.TakeCommands())
+    {
+#if PRED_DEV_TOOLS
+        static const char* const kWorldCommands[] = {"spawn_creature", "grab_me",   "creature_clear", "nest_here",
+                                                     "creature_climb", "nest_grow", "nest_hurt"};
+        const std::string name = request.line.substr(0, request.line.find(' '));
+        if (std::find_if(std::begin(kWorldCommands), std::end(kWorldCommands), [&](const char* world) { return name == world; }) ==
+            std::end(kWorldCommands))
+        {
+            PRED_LOG_WARN(Network, "Player {} asked to run '{}', which is not one of the world's commands", request.player, name);
+            continue;
+        }
+        PRED_LOG_INFO(Network, "Running '{}' for player {}", request.line, request.player);
+        m_commandFrom = request.player;
+        m_app->GetConsole().Execute(request.line);
+        m_commandFrom = 0xFF;
+#else
+        (void)request;
+#endif
+    }
+
     for (const uint8_t player : m_host.TakeJoined())
     {
         // Put where everybody is now -- the host's idea of where to put a newcomer was decided when it started, which
@@ -4391,6 +4414,10 @@ void PredationGame::DrawKeyBindings()
     };
 
     Input& input = m_app->GetInput();
+    // What each shipped as, for putting one key back on its own.
+    static Input shipped;
+    static bool shippedRead = shipped.LoadBindings(Paths::AssetsRoot() / "Config" / "input.json");
+    const std::vector<std::string> changed = shippedRead ? ChangedActions() : std::vector<std::string>{};
 
     if (!m_rebinding.empty())
     {
@@ -4403,7 +4430,7 @@ void PredationGame::DrawKeyBindings()
     }
     ImGui::Spacing();
 
-    if (ImGui::BeginTable("##bindings", 2, ImGuiTableFlags_SizingStretchProp))
+    if (ImGui::BeginTable("##bindings", 3, ImGuiTableFlags_SizingStretchProp))
     {
         for (const Row& row : kRows)
         {
@@ -4413,6 +4440,7 @@ void PredationGame::DrawKeyBindings()
             {
                 ImGui::Spacing();
                 ImGui::TextDisabled("%s", row.label);
+                ImGui::TableNextColumn();
                 ImGui::TableNextColumn();
                 continue;
             }
@@ -4454,13 +4482,31 @@ void PredationGame::DrawKeyBindings()
             {
                 ImGui::PopStyleColor();
             }
+            // This one key back as it shipped, when it has been changed.
+            ImGui::TableNextColumn();
+            const auto original = shipped.Bindings().find(row.action);
+            if (original != shipped.Bindings().end() && std::find(changed.begin(), changed.end(), row.action) != changed.end())
+            {
+                if (ImGui::SmallButton("Default"))
+                {
+                    input.SetAction(row.action, original->second);
+                    input.SaveBindings(Paths::UserBindings(), ChangedActions());
+                    m_rebinding.clear();
+                }
+                std::string was;
+                for (const Input::Binding& binding : original->second)
+                {
+                    was += (was.empty() ? "" : " / ") + Input::BindingName(binding);
+                }
+                ImGui::SetItemTooltip("Put it back on %s", was.c_str());
+            }
             ImGui::PopID();
         }
         ImGui::EndTable();
     }
 
     ImGui::Spacing();
-    if (ImGui::Button("Put the keys back"))
+    if (ImGui::Button("Put all the keys back"))
     {
         std::error_code ec;
         std::filesystem::remove(Paths::UserBindings(), ec);
@@ -4561,8 +4607,10 @@ void PredationGame::UpdateRebinding()
 // for why the player's file holds the difference rather than the whole set.
 std::vector<std::string> PredationGame::ChangedActions() const
 {
-    Input shipped;
-    if (!shipped.LoadBindings(Paths::AssetsRoot() / "Config" / "input.json"))
+    // Read once: the key list asks every frame it is open.
+    static Input shipped;
+    static const bool read = shipped.LoadBindings(Paths::AssetsRoot() / "Config" / "input.json");
+    if (!read)
     {
         return {}; // nothing to compare against, so write everything
     }
@@ -4600,14 +4648,28 @@ bool BeginSettingsTable(const char* id)
     return true;
 }
 
-void SettingsRow(const char* name)
+// A setting's row: its name, and -- when it has been changed -- a button beside the name that puts that one setting back
+// as it shipped. True the frame it is put back, for a setting that has to be applied as well as stored.
+bool SettingsRow(const char* name, const char* setting = nullptr)
 {
     ImGui::TableNextRow();
     ImGui::TableNextColumn();
     ImGui::AlignTextToFramePadding();
     ImGui::TextUnformatted(name);
+    bool reset = false;
+    if (CVarBase* cvar = setting != nullptr ? CVarRegistry::Instance().Find(setting) : nullptr; cvar != nullptr && !cvar->IsDefault())
+    {
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Default"))
+        {
+            SetSetting(setting, cvar->GetDefaultString());
+            reset = true;
+        }
+        ImGui::SetItemTooltip("Put this back to %s", cvar->GetDefaultString().c_str());
+    }
     ImGui::TableNextColumn();
     ImGui::SetNextItemWidth(-1.0f);
+    return reset;
 }
 
 struct QualityPreset
@@ -4688,7 +4750,7 @@ void PredationGame::DrawSettings()
         if (BeginSettingsTable("##displaytable"))
         {
             ImGui::PushID("mode");
-            SettingsRow("Window");
+            SettingsRow("Window", "r.fullscreen");
             const bool fullscreen = GetSettingBool("r.fullscreen", false);
             if (ImGui::BeginCombo("##v", fullscreen ? "Borderless fullscreen" : "Windowed"))
             {
@@ -4729,12 +4791,12 @@ void PredationGame::DrawSettings()
             ImGui::PopID();
 
             ImGui::PushID("vsync");
-            SettingsRow("V-Sync");
+            SettingsRow("V-Sync", "r.vsync");
             check("r.vsync", GetSettingBool("r.vsync", true));
             ImGui::PopID();
 
             ImGui::PushID("fps");
-            SettingsRow("Frame limit");
+            SettingsRow("Frame limit", "r.max_fps");
             {
                 static const int kLimits[] = {0, 30, 60, 90, 120, 144, 165, 240};
                 const int cap = GetSettingInt("r.max_fps", 0);
@@ -4755,7 +4817,7 @@ void PredationGame::DrawSettings()
             ImGui::PopID();
 
             ImGui::PushID("fov");
-            SettingsRow("Field of view");
+            SettingsRow("Field of view", "r.fov");
             float fov = cv_fov.Get();
             if (ImGui::SliderFloat("##v", &fov, 70.0f, 120.0f, "%.0f deg"))
             {
@@ -4764,7 +4826,7 @@ void PredationGame::DrawSettings()
             ImGui::PopID();
 
             ImGui::PushID("brightness");
-            SettingsRow("Brightness");
+            SettingsRow("Brightness", "r.exposure");
             float exposure = cv_exposure.Get();
             if (ImGui::SliderFloat("##v", &exposure, 0.4f, 2.5f, "%.2f"))
             {
@@ -4773,7 +4835,7 @@ void PredationGame::DrawSettings()
             ImGui::PopID();
 
             ImGui::PushID("contrast");
-            SettingsRow("Contrast");
+            SettingsRow("Contrast", "r.contrast");
             float contrast = cv_contrast.Get();
             if (ImGui::SliderFloat("##v", &contrast, 0.6f, 1.8f, "%.2f"))
             {
@@ -4834,17 +4896,17 @@ void PredationGame::DrawSettings()
             ImGui::PopID();
 
             ImGui::PushID("shadows");
-            SettingsRow("Shadows");
+            SettingsRow("Shadows", "r.shadows");
             check("r.shadows", shadows);
             ImGui::PopID();
 
             ImGui::PushID("torchshadows");
-            SettingsRow("Torch shadows");
+            SettingsRow("Torch shadows", "r.torch_shadows");
             check("r.torch_shadows", torchShadows);
             ImGui::PopID();
 
             ImGui::PushID("msaa");
-            SettingsRow("Anti-aliasing");
+            SettingsRow("Anti-aliasing", "r.msaa");
             {
                 const std::string shown = msaa <= 0 ? std::string("Off") : std::to_string(msaa) + "x MSAA";
                 if (ImGui::BeginCombo("##v", shown.c_str()))
@@ -4863,7 +4925,7 @@ void PredationGame::DrawSettings()
             ImGui::PopID();
 
             ImGui::PushID("bloom");
-            SettingsRow("Bloom");
+            SettingsRow("Bloom", "r.bloom");
             {
                 bool bloom = GetSettingFloat("r.bloom", 0.6f) > 0.01f;
                 if (ImGui::Checkbox("##v", &bloom))
@@ -4874,12 +4936,12 @@ void PredationGame::DrawSettings()
             ImGui::PopID();
 
             ImGui::PushID("grain");
-            SettingsRow("Film grain");
+            SettingsRow("Film grain", "r.film_grain");
             check("r.film_grain", GetSettingBool("r.film_grain", true));
             ImGui::PopID();
 
             ImGui::PushID("reflections");
-            SettingsRow("Mirror reflections");
+            SettingsRow("Mirror reflections", "r.reflections");
             check("r.reflections", reflections);
             ImGui::PopID();
 
@@ -4905,7 +4967,10 @@ void PredationGame::DrawSettings()
         if (BeginSettingsTable("##audiotable"))
         {
             ImGui::PushID("master");
-            SettingsRow("Master volume");
+            if (SettingsRow("Master volume", "audio.volume"))
+            {
+                audio.SetMasterGain(GetSettingFloat("audio.volume", 1.0f));
+            }
             float volume = audio.MasterGain();
             if (ImGui::SliderFloat("##v", &volume, 0.0f, 1.5f, "%.2f"))
             {
@@ -4915,7 +4980,7 @@ void PredationGame::DrawSettings()
             ImGui::PopID();
 
             ImGui::PushID("effects");
-            SettingsRow("Effects");
+            SettingsRow("Effects", "audio.effects");
             float effects = GetSettingFloat("audio.effects", 1.0f);
             if (ImGui::SliderFloat("##v", &effects, 0.0f, 1.5f, "%.2f"))
             {
@@ -4924,7 +4989,7 @@ void PredationGame::DrawSettings()
             ImGui::PopID();
 
             ImGui::PushID("ambience");
-            SettingsRow("Ambience");
+            SettingsRow("Ambience", "audio.ambience");
             float ambience = GetSettingFloat("audio.ambience", 1.0f);
             if (ImGui::SliderFloat("##v", &ambience, 0.0f, 2.0f, "%.2f"))
             {
@@ -4933,7 +4998,7 @@ void PredationGame::DrawSettings()
             ImGui::PopID();
 
             ImGui::PushID("unfocused");
-            SettingsRow("Mute in background");
+            SettingsRow("Mute in background", "audio.mute_unfocused");
             check("audio.mute_unfocused", GetSettingBool("audio.mute_unfocused", false));
             ImGui::PopID();
             ImGui::EndTable();
@@ -4949,7 +5014,7 @@ void PredationGame::DrawSettings()
         if (BeginSettingsTable("##voicetable"))
         {
             ImGui::PushID("voice");
-            SettingsRow("Proximity voice");
+            SettingsRow("Proximity voice", "audio.voice");
             if (ImGui::Checkbox("##v", &voice))
             {
                 SetSetting("audio.voice", voice ? "true" : "false");
@@ -4962,7 +5027,7 @@ void PredationGame::DrawSettings()
 
             ImGui::BeginDisabled(!voice);
             ImGui::PushID("voicevolume");
-            SettingsRow("Voice volume");
+            SettingsRow("Voice volume", "audio.voice_volume");
             float voiceVolume = cv_voiceVolume.Get();
             if (ImGui::SliderFloat("##v", &voiceVolume, 0.0f, 2.0f, "%.2f"))
             {
@@ -4971,7 +5036,7 @@ void PredationGame::DrawSettings()
             ImGui::PopID();
 
             ImGui::PushID("openmic");
-            SettingsRow("Open mic");
+            SettingsRow("Open mic", "audio.voice_open_mic");
             bool openMic = cv_voiceOpenMic.Get();
             if (ImGui::Checkbox("##v", &openMic))
             {
@@ -4980,7 +5045,7 @@ void PredationGame::DrawSettings()
             ImGui::PopID();
 
             ImGui::PushID("threshold");
-            SettingsRow("Open mic sensitivity");
+            SettingsRow("Open mic sensitivity", "audio.voice_threshold");
             ImGui::BeginDisabled(!openMic);
             float threshold = cv_voiceThreshold.Get();
             if (ImGui::SliderFloat("##v", &threshold, 0.005f, 0.30f, "%.3f"))
@@ -4993,7 +5058,7 @@ void PredationGame::DrawSettings()
             // Which microphone, listed fresh rather than remembered: devices come and go while the game
             // is running, and a list of what was plugged in at startup is worse than no list.
             ImGui::PushID("device");
-            SettingsRow("Microphone");
+            SettingsRow("Microphone", "audio.voice_device");
             const std::vector<VoiceCapture::Device> devices = VoiceCapture::Devices();
             const int chosen = cv_voiceDevice.Get();
             std::string current = "System default";
@@ -5056,7 +5121,7 @@ void PredationGame::DrawSettings()
         if (BeginSettingsTable("##controlstable"))
         {
             ImGui::PushID("sensitivity");
-            SettingsRow("Mouse sensitivity");
+            SettingsRow("Mouse sensitivity", "input.mouse_sensitivity");
             float sensitivity = cv_mouseSensitivity.Get();
             if (ImGui::SliderFloat("##v", &sensitivity, 0.02f, 0.60f, "%.3f"))
             {
@@ -5065,7 +5130,7 @@ void PredationGame::DrawSettings()
             ImGui::PopID();
 
             ImGui::PushID("aimsensitivity");
-            SettingsRow("Aiming sensitivity");
+            SettingsRow("Aiming sensitivity", "input.aim_sensitivity");
             float aimSensitivity = GetSettingFloat("input.aim_sensitivity", 0.75f);
             if (ImGui::SliderFloat("##v", &aimSensitivity, 0.2f, 1.5f, "x%.2f"))
             {
@@ -5074,17 +5139,17 @@ void PredationGame::DrawSettings()
             ImGui::PopID();
 
             ImGui::PushID("invert");
-            SettingsRow("Invert up and down");
+            SettingsRow("Invert up and down", "input.invert_y");
             check("input.invert_y", cv_invertY.Get());
             ImGui::PopID();
 
             ImGui::PushID("crouch");
-            SettingsRow("Toggle crouch and prone");
+            SettingsRow("Toggle crouch and prone", "input.crouch_toggle");
             check("input.crouch_toggle", cv_crouchToggle.Get());
             ImGui::PopID();
 
             ImGui::PushID("sprint");
-            SettingsRow("Toggle sprint");
+            SettingsRow("Toggle sprint", "input.sprint_toggle");
             check("input.sprint_toggle", cv_sprintToggle.Get());
             ImGui::PopID();
             ImGui::EndTable();
@@ -5105,7 +5170,7 @@ void PredationGame::DrawSettings()
         if (BeginSettingsTable("##gameplaytable"))
         {
             ImGui::PushID("shake");
-            SettingsRow("Camera shake");
+            SettingsRow("Camera shake", "cam.shake");
             float shake = GetSettingFloat("cam.shake", 1.0f);
             if (ImGui::SliderFloat("##v", &shake, 0.0f, 1.0f, "%.2f"))
             {
@@ -5114,7 +5179,7 @@ void PredationGame::DrawSettings()
             ImGui::PopID();
 
             ImGui::PushID("bob");
-            SettingsRow("Head bob");
+            SettingsRow("Head bob", "cam.head_bob");
             float bob = GetSettingFloat("cam.head_bob", 1.0f);
             if (ImGui::SliderFloat("##v", &bob, 0.0f, 1.0f, "%.2f"))
             {
@@ -5123,12 +5188,12 @@ void PredationGame::DrawSettings()
             ImGui::PopID();
 
             ImGui::PushID("crosshair");
-            SettingsRow("Crosshair");
+            SettingsRow("Crosshair", "hud.crosshair");
             check("hud.crosshair", GetSettingBool("hud.crosshair", true));
             ImGui::PopID();
 
             ImGui::PushID("fps");
-            SettingsRow("Show frame rate");
+            SettingsRow("Show frame rate", "hud.show_fps");
             check("hud.show_fps", GetSettingBool("hud.show_fps", false));
             ImGui::PopID();
             ImGui::EndTable();
@@ -5305,7 +5370,10 @@ void PredationGame::ReturnToTitle()
 
 void PredationGame::UpdateTitleCamera(float frameDeltaSeconds)
 {
-    m_titleClock += frameDeltaSeconds;
+    // On a clock that runs evenly: a frame's measured time wobbles round the screen's steady refresh, and a camera moved
+    // by it judders -- slowly enough to see, in a shot this slow. A spike (a load, a dragged window) is not followed.
+    m_titleStep = m_titleStep <= 0.0f ? frameDeltaSeconds : glm::mix(m_titleStep, std::min(frameDeltaSeconds, 0.05f), 0.02f);
+    m_titleClock += m_titleStep;
 
     // The ship in orbit -- the one cinematics fly, on the stage, so nothing of anybody's is near it -- and the camera
     // drifting slowly round it, the planet's lit face below. Held for a long time, as a title's shot is.
@@ -8777,6 +8845,47 @@ void PredationGame::EnterEditor(const std::string& modelName)
         "Model editor. WASD to move, Q and E for down and up, right mouse to look, Escape to leave.");
 }
 
+bool PredationGame::ForwardToHost(const std::vector<std::string>& args)
+{
+    if (m_sessionMode != SessionMode::Client || args.empty())
+    {
+        return false;
+    }
+    std::string line;
+    for (const std::string& arg : args)
+    {
+        line += (line.empty() ? "" : " ") + arg;
+    }
+    m_client.SendCommand(line);
+    m_app->GetConsole().Print("Asked the host to run: " + line);
+    return true;
+}
+
+uint8_t PredationGame::CommandPlayer() const
+{
+    return m_commandFrom != 0xFF ? m_commandFrom : LocalPlayerId();
+}
+
+glm::vec3 PredationGame::CommandPosition() const
+{
+    return m_commandFrom != 0xFF ? PlayerPosition(m_commandFrom) : m_player.State().position;
+}
+
+glm::vec3 PredationGame::CommandForward() const
+{
+    if (m_commandFrom != 0xFF)
+    {
+        for (const RemotePlayerView& remote : RemotePlayers())
+        {
+            if (remote.id == m_commandFrom)
+            {
+                return {std::sin(remote.yaw) * std::cos(remote.pitch), std::sin(remote.pitch), -std::cos(remote.yaw) * std::cos(remote.pitch)};
+            }
+        }
+    }
+    return m_player.View().Forward();
+}
+
 void PredationGame::TryInteract()
 {
     const InteractionSystem::Focus& focus = m_interactions.CurrentFocus();
@@ -9220,9 +9329,9 @@ void PredationGame::OnUpdate(double dt, double alpha)
     Renderer& renderer = app.GetRenderer();
     const auto deltaSeconds = static_cast<float>(dt);
     // A frame that took long enough to be seen as a stutter, in the log with when it was, so it can be found.
-    if (dt > 0.05 && m_screen == Screen::Playing)
+    if (dt > 0.03 && (m_screen == Screen::Playing || m_screen == Screen::Title))
     {
-        PRED_LOG_INFO(Engine, "Long frame: {:.0f} ms{}", dt * 1000.0, m_cine.Active() ? " (in a cinematic)" : "");
+        PRED_LOG_INFO(Engine, "Long frame: {:.0f} ms{}", dt * 1000.0, m_cine.Active() ? " (in a cinematic)" : m_screen == Screen::Title ? " (title)" : "");
     }
 
     // --- Input that is sampled per frame, not per tick ------------------------------------------
@@ -9797,8 +9906,10 @@ void PredationGame::OnUpdate(double dt, double alpha)
     }
 
     // The body follows the simulation every frame. Its head is only drawn from the fly camera,
-    // because in first person the camera sits inside it.
-    m_body.Tuning().hideHead = m_cameraMode == CameraMode::FirstPerson && m_player.State().alive;
+    // because in first person the camera sits inside it -- and not while a cinematic has the picture, or is still
+    // bringing it back to the eyes: the body was seen from outside, headless, until the camera got there.
+    const bool cameraAway = m_cine.Active() || m_cineHandBack > m_cineHandBackTotal * 0.1f;
+    m_body.Tuning().hideHead = m_cameraMode == CameraMode::FirstPerson && m_player.State().alive && !cameraAway;
 
     // Death hands the body over to the ragdoll, once. Everything below it is animation, and that is
     // exactly what stops.
@@ -10073,18 +10184,28 @@ void PredationGame::OnUpdate(double dt, double alpha)
         }
         else if (torchLit)
         {
+            // Held by the player, not by the camera: in third person the camera is behind them, and a torch hung on it lit
+            // their own back white and everything round them.
+            glm::vec3 torchEye = eyePosition;
+            glm::vec3 torchForward = eyeForward;
+            if (m_cameraMode == CameraMode::ThirdPerson)
+            {
+                const float pitch = m_lookPitch;
+                torchEye = m_body.GetPose().GlobalPosition(m_body.Rig().head);
+                torchForward = {std::sin(m_lookYaw) * std::cos(pitch), std::sin(pitch), -std::cos(m_lookYaw) * std::cos(pitch)};
+            }
             // Straight up or straight down leaves no sideways direction to offset along, and
             // normalising that zero vector would put the torch at NaN and take the whole frame's
             // shading with it. The offset simply goes away at the poles, which is where it matters
             // least: the beam is on the floor or the ceiling and has no wall to rake across.
-            const glm::vec3 across = glm::cross(eyeForward, glm::vec3(0.0f, 1.0f, 0.0f));
+            const glm::vec3 across = glm::cross(torchForward, glm::vec3(0.0f, 1.0f, 0.0f));
             const glm::vec3 right =
                 glm::length(across) > 1e-3f ? glm::normalize(across) : glm::vec3(0.0f);
 
             // Snapped into place the first frame it comes on, then eased. Easing from wherever the
             // beam was last pointing means switching the torch on after a turn sweeps it across the
             // room to catch up, which looks like a fault rather than like weight.
-            const glm::vec3 wanted = eyeForward;
+            const glm::vec3 wanted = torchForward;
             if (!m_torchAimed)
             {
                 m_torchAim = wanted;
@@ -10103,7 +10224,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
             // to white however the falloff is softened. Real weapon lights are clamped near the
             // muzzle for exactly this reason: put the source past the thing you are holding and the
             // thing you are holding stops being the brightest object in the room.
-            torch.position = eyePosition + eyeForward * cv_torchReach.Get() + right * 0.10f -
+            torch.position = torchEye + torchForward * cv_torchReach.Get() + right * 0.10f -
                              glm::vec3(0.0f, 0.10f, 0.0f);
             torch.direction = m_torchAim;
             torch.color = glm::vec3(1.0f, 0.97f, 0.88f);
