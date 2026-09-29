@@ -111,6 +111,8 @@ struct Environment
     float planetRadius = 0.0f;
     glm::vec3 planetColor{0.8f, 0.84f, 0.9f};
     float planetAir = 0.0f;
+    // And how warm that glow is: 0 the blue of daylight scattered, 1 the amber of a sun low behind it.
+    float planetAirWarm = 0.0f;
 
     // The lights of the moment -- a torch, a muzzle flash -- which every surface considers. The first
     // is the one with a shadow map, and the game puts whichever matters most at the eye there.

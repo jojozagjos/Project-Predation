@@ -9,7 +9,7 @@ uniform vec4 u_skySun;     // xyz = direction towards the sun, w = how sharp the
 uniform vec4 u_skySunColor; // rgb, w = how bright
 uniform vec4 u_skyGrade;    // x = exposure, y = contrast
 uniform vec4 u_skySpace;       // x = stars (0 none, 1 all), y = a planet's radius on the sky (radians; 0 none), z = its air, w = brightness
-uniform vec4 u_skyPlanet;      // xyz = towards the planet's middle
+uniform vec4 u_skyPlanet;      // xyz = towards the planet's middle, w = how warm its air glows (0 blue, 1 amber)
 uniform vec4 u_skyPlanetColor; // rgb = its ground from orbit
 
 // Noise over directions, for the planet's ground and cloud and the faint band of the galaxy.
@@ -105,7 +105,7 @@ void main()
 	{
 		vec3 toPlanet = normalize(u_skyPlanet.xyz);
 		vec3 towardsSun = normalize(u_skySun.xyz);
-		vec3 air = vec3(0.3, 0.5, 0.95) * u_skySpace.z;
+		vec3 air = mix(vec3(0.3, 0.5, 0.95), vec3(1.0, 0.68, 0.36), u_skyPlanet.w) * u_skySpace.z;
 		float radius = sin(u_skySpace.y);
 		float along = dot(ray, toPlanet);
 		float hit = along * along - (1.0 - radius * radius);

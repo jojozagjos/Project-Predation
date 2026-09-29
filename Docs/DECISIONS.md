@@ -2489,3 +2489,16 @@ started from place to place without seeming to have any speed.
 - **The engines' glow** was a disc a centimetre off each nozzle's end, which fought it for the depth buffer at any
   distance, and glowed blue even cold. Now a slug set into the nozzle and well proud of it, dark until a burn. On the
   stage the cinematic camera's near plane is two metres, not a quarter, which gives distant plates far more depth.
+
+## ADR-115: A boot screen, and the title over a planet
+
+Asked for by the user, after Alien: Isolation's title: a planet in the background, and a boot screen that loads and
+looks good and says who made the game.
+
+- **Boot screen** (once, at start; any key skips it after a moment; `boot` shows it again): black, a ring of segments
+  turning with a sweep, PROJECT PREDATION and MADE BY JOSEPH SLADE coming up out of the dark in turn, a thin line
+  filling across the bottom with what is loading, then fading into the title. Skipped in scripted runs.
+- **Title**: the sky alone -- the camera out in open space, nothing within its far plane -- with a planet filling the
+  left of the picture and the sun just behind its far edge, so what shows is a thin amber crescent and its air glowing
+  (a planet's air can now glow warm: `Environment::planetAirWarm`). The name, spaced out, and "Press any key" over its
+  dark side; the menu there after a key. The footer says made by Joseph Slade.

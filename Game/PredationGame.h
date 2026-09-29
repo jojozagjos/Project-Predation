@@ -1322,6 +1322,13 @@ private:
     // frame, when nothing is equipped, so a report taken then is about an empty hand.
     int m_holdReportIn = 0;
     float m_titleClock = 0.0f;
+    // The boot screen shown once, when the game starts, and the title's "press any key", which the menu waits behind.
+    float m_bootClock = 0.0f;
+    bool m_bootDone = false;
+    bool m_titleAwake = false;
+    bool m_bootForced = false; // the boot command: shown even in a scripted run
+    bool DrawBootScreen();
+    void DrawTitleSplash();
     // Kept between visits to the menu so rejoining the same friend does not mean typing the address
     // again. Sized for an address and a port; anything longer is not an address.
     char m_joinAddress[64] = "127.0.0.1";

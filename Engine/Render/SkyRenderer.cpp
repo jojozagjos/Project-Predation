@@ -107,7 +107,7 @@ void SkyRenderer::Draw(bgfx::ViewId view, const Environment& environment, const 
     // Space: the stars and a planet, turned down with the rest.
     const glm::vec3 towardsPlanet = glm::normalize(environment.planetDirection);
     const float space[4] = {environment.stars, environment.planetRadius, environment.planetAir, dim};
-    const float planet[4] = {towardsPlanet.x, towardsPlanet.y, towardsPlanet.z, 0.0f};
+    const float planet[4] = {towardsPlanet.x, towardsPlanet.y, towardsPlanet.z, std::clamp(environment.planetAirWarm, 0.0f, 1.0f)};
     const float planetColor[4] = {environment.planetColor.r, environment.planetColor.g, environment.planetColor.b, 0.0f};
     bgfx::setUniform(m_uSpace, space);
     bgfx::setUniform(m_uPlanet, planet);
