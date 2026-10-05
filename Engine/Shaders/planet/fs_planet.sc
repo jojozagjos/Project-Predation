@@ -44,7 +44,7 @@ void main()
 		float r = length(p);
 		float glow = exp(-r * r * 9.0) * 0.8 + exp(-r * 4.0) * 0.18;
 		glow *= smoothstep(1.0, 0.85, r);
-		gl_FragColor = vec4(Develop(u_planetLightColor.rgb * glow * 1.5), 1.0);
+		gl_FragColor = vec4(Develop(u_planetLightColor.rgb * glow * 0.8), 1.0);
 		return;
 	}
 	vec3 n = normalize(v_objectPos);
@@ -66,7 +66,8 @@ void main()
 	float lit = smoothstep(-0.1, 0.3, facing);
 	vec3 albedo = mix(surface.rgb, u_planetD.rgb, surface.w);
 	vec3 light = u_planetLightColor.rgb * u_planetLight.w;
-	vec3 colour = albedo * (lit * light + vec3_splat(0.01));
+	// A little light on the night side, so a world seen from behind is still a world and not a hole.
+	vec3 colour = albedo * (lit * light + vec3_splat(0.05));
 	// The sun off open water.
 	float glint = pow(max(dot(reflect(-L, N), V), 0.0), 60.0) * sea * (1.0 - surface.w) * step(0.0, facing);
 	colour += light * glint * 0.5;

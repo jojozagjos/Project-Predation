@@ -12,6 +12,7 @@ set(PRED_GAME_SOURCES
     PredationGameLoadout.cpp
     PredationGameDevices.cpp
     PredationGameCampaign.cpp
+    PredationGameMap.cpp
 
     Campaign/Universe.h
     Campaign/Universe.cpp

@@ -167,14 +167,14 @@ CinematicBindings PredationGame::CinematicBindingsNow() const
     // Where the shuttle rests.
     bindings.anchors["shuttle_home"] = m_facility.ShuttleHome();
     // What a title card fills in.
-    const SiteTitle title = m_siteNames.For(m_facility.Seed());
+    const SiteTitle title = const_cast<PredationGame*>(this)->PlaceTitle();
     bindings.words["site"] = title.site;
     bindings.words["planet"] = title.planet;
     const size_t comma = title.site.find(", ");
     bindings.words["region"] = comma == std::string::npos ? std::string() : title.site.substr(comma + 2);
     const uint32_t seed = m_facility.Seed();
     bindings.words["local_time"] = "LOCAL " + TwoFigures(static_cast<int>((seed * 7u) % 24u)) + ":" + TwoFigures(static_cast<int>((seed * 13u) % 60u));
-    const SiteConditions weather = ConditionsFor(seed, site.sky.fogEnd);
+    const SiteConditions weather = const_cast<PredationGame*>(this)->PlaceConditions(site.sky.fogEnd);
     bindings.words["conditions"] = std::to_string(weather.temperature) + " C  WIND " + std::to_string(weather.wind) + " M/S  VISIBILITY " + weather.visibility;
     return bindings;
 }
@@ -241,6 +241,7 @@ void PredationGame::CloseOverlays()
     m_settingsOpen = false;
     m_inventoryOpen = false;
     m_loadoutOpen = false;
+    m_mapOpen = false;
     m_wantMouseCaptured = !m_cineEditor.IsOpen();
 }
 

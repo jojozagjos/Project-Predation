@@ -197,8 +197,9 @@ void PredationGame::UpdateShipTravel(float dt)
             m_ship.SetEngines(m_scene, burn);
         }
     }
-    // The clock runs once the leaving has been seen, and the arriving is shown when it runs out -- the host's call.
-    if (!underWay || m_cine.Active())
+    // The clock runs once the leaving has been seen, and the arriving is shown when it runs out -- the host's call. In a
+    // campaign the ship is flown instead (UpdateTravel), and arrives when it gets there.
+    if (!underWay || m_cine.Active() || m_campaignOpen)
     {
         return;
     }
@@ -225,6 +226,11 @@ void PredationGame::UpdateShipTravel(float dt)
 
 void PredationGame::ArriveOverSite()
 {
+    if (m_campaignOpen)
+    {
+        ArriveAtBody();
+        return;
+    }
     m_shipOrbiting = m_facility.Seed();
     m_shipReady = true;
     m_shipTravel = 0.0f;
@@ -304,6 +310,12 @@ void PredationGame::UpdateShip()
         m_player.State().winded = false;
         m_torchCharge = 1.0f;
     }
+    // The console in the briefing room is the navigation console in a campaign.
+    if (Interactable* console = m_interactions.Find(m_deployConsole))
+    {
+        console->verb = m_campaignOpen ? "Open" : "Use";
+        console->name = m_campaignOpen ? "the navigation map" : "deployment console";
+    }
     // The controls offer to launch only when there is somewhere to go, and say who is not aboard yet.
     if (Interactable* controls = m_interactions.Find(m_shipControls))
     {
@@ -351,7 +363,14 @@ void PredationGame::DrawShipHud()
         const ImVec4 heading{0.62f, 0.66f, 0.7f, 1.0f};
         const ImVec4 text{0.86f, 0.88f, 0.9f, 1.0f};
         ImGui::TextColored(heading, "OBJECTIVE");
-        if (m_shipTravel > 0.0f)
+        const StarSystem* system = CurrentSystem();
+        const Body* heading_ = system != nullptr ? system->Find(m_campaign.travel.target) : nullptr;
+        if (system != nullptr && m_campaign.travel.underway)
+        {
+            ImGui::TextColored(text, heading_ != nullptr ? ("Under way to " + heading_->name + ".").c_str() : "Coming to a stop.");
+            ImGui::TextDisabled("The navigation map is in the briefing room.");
+        }
+        else if (m_shipTravel > 0.0f)
         {
             ImGui::TextColored(text, "Under way to the site.");
         }
@@ -382,6 +401,11 @@ void PredationGame::DrawShipHud()
         else if (m_order == OrderState::Ready)
         {
             ImGui::TextColored(text, "Deploy from the console in the briefing room.");
+        }
+        else if (system != nullptr)
+        {
+            ImGui::TextColored(text, "Choose where to go.");
+            ImGui::TextDisabled("The navigation map is in the briefing room.");
         }
         else
         {

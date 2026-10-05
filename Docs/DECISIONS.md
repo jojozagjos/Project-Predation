@@ -2696,3 +2696,28 @@ and CIRRA's missions stay as optional contracts. This is its first step, the par
   campaign as it last had it, saved as a campaign of its own. Protocol 31.
 - Not yet: the ship, the map, travel, landing regions and the rest are still the old game; they come next, each on
   this.
+
+## ADR-125: The system map, and the ship flown between the planets
+
+- **The map** opens at the briefing room's console (the navigation console, in a campaign) on each player's own screen:
+  the system drawn not to scale but true to direction (distance from the star by its square root, bodies larger than
+  life, moons well clear of their planets), with the star, every body's orbit, rings, the ship and its course, lit by
+  the star and turning on their axes. Drag to turn, wheel to zoom, click to pick out, double-click to go to it. The
+  picked-out body's panel shows only what is known: anything can be seen to be a gas giant; records say what it is and
+  who is there; the ship's scan gives its air, warmth and weather; a close scan or a visit its terrain and the rest.
+- **Planets look the same everywhere**: one surface (Shaders/planet/planet_surface.sh -- ground mixed from two colours,
+  seas to the planet's share, ice from the poles, cloud, gas giants' bands and storms) drawn by the map's
+  PlanetRenderer and by the sky for the planet out of the windows. The sky turns a planet's poles to its edge as seen,
+  so one below the ship is not all ice cap.
+- **Travel** (Game/Campaign/Travel): the ship accelerates half the way and slows the rest, steering for where the
+  planet is now; so a trip twice as far takes about half as long again, a new course part way is just steered for,
+  and calling the course off brings it to rest between the planets. Drive tiers push harder (2.5 times each). No fuel.
+  The host flies it; everybody else is told ten times a second (MessageType::Travel, with the campaign's clock and what
+  each player is pointing at) and flies it the same way between. Setting a course from orbit plays the departure;
+  arriving plays the arrival, and in orbit the ship scans the body and finds 1 + sensor tier uncharted landing
+  regions; one is chosen to go down to (the map can change it) and the shuttle is ready. While under way the sensors
+  scan whatever passes close (wider with a better tier). Finds go in the log.
+- **Pointing things out**: what each player has under their pointer on the map is shown to everybody else, a ring in
+  their colour and their name, and marked in the list.
+- Title cards and conditions in a campaign are the body's and the region's, not the old seeded names.
+- A service location (the shipyard) is not gone down to in the shuttle; docking comes with the shipyard.

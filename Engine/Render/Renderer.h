@@ -65,7 +65,9 @@ public:
     // A block reserved for rendering into offscreen targets, such as the inventory icon atlas.
     // bgfx runs views in id order, so these are finished long before the UI that samples them.
     static constexpr bgfx::ViewId kViewOffscreenFirst = 200;
-    static constexpr bgfx::ViewId kViewOffscreenCount = 48;
+    static constexpr bgfx::ViewId kViewOffscreenCount = 44;
+    // The system map's picture: its stars, its bodies, the glow and rings over them, and its lines, in that order.
+    static constexpr bgfx::ViewId kViewMapFirst = 244;
     // One more offscreen view, redrawn every frame rather than once: the editor's first-person
     // panel. Kept out of the block above so a long item list can never grow into it.
     static constexpr bgfx::ViewId kViewOffscreenLive = 249;

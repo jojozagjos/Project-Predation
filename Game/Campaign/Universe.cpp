@@ -968,8 +968,10 @@ StarSystem Universe::Generate(uint64_t universeSeed, SystemId id, const Universe
         {
             Body& world = system.bodies[static_cast<size_t>(best)];
             world.civilization = services->id;
-            // Somewhere to breathe, if it can at all.
-            if (data.Atmosphere("breathable") != nullptr && world.temperature > -60.0f && world.temperature < 80.0f && world.radius >= 0.25f)
+            // Somewhere to breathe, if a world of its kind can have such air at all.
+            const BiomeDef* worldBiome = data.Biome(world.biome);
+            const bool canBreathe = worldBiome != nullptr && worldBiome->atmospheres.count("breathable") != 0;
+            if (canBreathe && data.Atmosphere("breathable") != nullptr && world.temperature > -60.0f && world.temperature < 80.0f && world.radius >= 0.25f)
             {
                 world.atmosphere = "breathable";
                 world.air = data.Atmosphere("breathable")->thickness;

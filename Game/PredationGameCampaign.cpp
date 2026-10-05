@@ -8,6 +8,8 @@
 
 #include <imgui.h>
 
+#include <glm/geometric.hpp>
+
 #include <chrono>
 #include <cmath>
 #include <ctime>
@@ -132,6 +134,12 @@ void PredationGame::CloseCampaign()
     m_campaignOpen = false;
     m_campaignFolder.clear();
     m_campaign = CampaignState{};
+    m_mapOpen = false;
+    m_mapFramed = false;
+    m_mapSelected = -1;
+    m_pointing = {-1, -1, -1, -1};
+    m_mapOpenMask = 0;
+    m_appliedTravels = 0;
     m_campaignSlotsRead = false;
 }
 
@@ -206,8 +214,7 @@ void PredationGame::ServeCampaignRequests()
 {
     for (const NetHost::CampaignAsk& ask : m_host.TakeCampaignRequests())
     {
-        // Each system that asks something of the campaign handles its own action here as it is built.
-        PRED_LOG_INFO(Network, "Player {} asked the campaign for action {}, which nothing handles", ask.player, ask.request.action);
+        DoCampaignAction(ask.player, static_cast<CampaignAction>(ask.request.action), ask.request.a, ask.request.b);
     }
 }
 
@@ -463,6 +470,37 @@ void PredationGame::RegisterCampaignCommands()
                                 }
                                 m_campaign.credits = std::stoll(args[1]);
                                 CampaignChanged();
+                            });
+    console.RegisterCommand("map_open", "Open the system map, as the navigation console does: map_open [body to pick out]",
+                            [this](const std::vector<std::string>& args)
+                            {
+                                OpenSystemMap();
+                                if (args.size() >= 2)
+                                {
+                                    m_mapSelected = std::atoi(args[1].c_str());
+                                }
+                            });
+    console.RegisterCommand("map_close", "Close the system map", [this](const std::vector<std::string>&) { CloseSystemMap(); });
+    console.RegisterCommand("course", "Set a course for a body of this system, as the map does: course <body> [region]",
+                            [this](const std::vector<std::string>& args)
+                            {
+                                if (args.size() >= 2)
+                                {
+                                    AskCampaign(CampaignAction::SetCourse, std::atoi(args[1].c_str()), args.size() >= 3 ? std::atoi(args[2].c_str()) : -1);
+                                }
+                            });
+    // Most of the way there at once, for trying arriving: travel_skip.
+    console.RegisterCommand("travel_skip", "Under way, put the ship almost at its destination (the host)",
+                            [this](const std::vector<std::string>&)
+                            {
+                                const StarSystem* system = CurrentSystem();
+                                if (system == nullptr || !IsAuthority() || !m_campaign.travel.underway || m_campaign.travel.target < 0)
+                                {
+                                    return;
+                                }
+                                const glm::vec3 there = system->Position(m_campaign.travel.target, m_campaign.clock);
+                                m_campaign.travel.position = there + glm::normalize(m_campaign.travel.position - there + glm::vec3(1e-4f)) * 0.004f;
+                                m_campaign.travel.velocity = glm::vec3(0.0f);
                             });
     // A campaign to try things in, without the title: campaign_new [name] [seed].
     console.RegisterCommand("campaign_new", "Begin a campaign here, without the title: campaign_new [name] [seed]",

@@ -614,6 +614,7 @@ bool PredationGame::OnInit(Application& app)
     m_host.SetSpawnFor([this](uint8_t player) { return ArrivalFor(player); });
     LoadMissionData();
     LoadUniverseData();
+    m_planets.Init(app.GetShaders());
     LoadCinematics();
     app.GetPhysics().OptimizeBroadPhase();
     // The walkable surface the creature moves over, worked out from the level's solid geometry.
@@ -3395,6 +3396,12 @@ void PredationGame::GoToMap(MapChoice map)
         // The ship is over its planet now, and its shuttle has gone down.
         m_shipOrbiting = m_facility.Seed();
         m_shipReady = false;
+        if (m_campaignOpen && IsAuthority() && m_campaign.body >= 0 && !m_campaign.travel.underway)
+        {
+            m_campaign.region = m_campaign.travel.region;
+            m_campaign.Learn(m_campaign.system, m_campaign.body, CampaignState::kKnownVisited);
+            CampaignChanged();
+        }
         // A deployment that is over is not gone back to: the site is put back as it was, its data on its terminal.
         if (m_mission.stage == MissionState::Stage::Over && IsAuthority() && m_screen == Screen::Playing)
         {
@@ -3453,9 +3460,18 @@ void PredationGame::GoToMap(MapChoice map)
     {
         RemoveAllDrones();
         ClearOrders();
-        ScheduleOrders(false);
-        // Back aboard from an expedition: a moment worth saving at.
-        SaveCampaign(true, "back aboard");
+        if (m_campaignOpen)
+        {
+            // Back aboard from an expedition: over the same place, the shuttle ready to go down again; and a moment worth
+            // saving at.
+            m_campaign.region = -1;
+            ChooseLandingRegion(m_campaign.travel.region);
+            SaveCampaign(true, "back aboard");
+        }
+        else
+        {
+            ScheduleOrders(false);
+        }
     }
     SpawnCreatures();
     RespawnLocalPlayer(m_spawnPoint);
@@ -3534,11 +3550,16 @@ void PredationGame::EnterWorld()
     m_shipReady = false;
     m_cineGoTo.reset();
     ClearOrders();
-    if (m_map == MapChoice::Ship)
+    if (m_map == MapChoice::Ship && !m_campaignOpen)
     {
         ScheduleOrders(true);
     }
     m_screen = Screen::Playing;
+    // A campaign carries on from where the ship is: over a body, looked at and somewhere chosen to go down.
+    if (m_campaignOpen && IsAuthority() && !m_campaign.travel.underway && m_campaign.body >= 0)
+    {
+        ArriveAtBody();
+    }
     m_paused = false;
     m_titleStatus.clear();
     SetCameraMode(CameraMode::FirstPerson);
@@ -7650,6 +7671,8 @@ void PredationGame::OnShutdown()
     CloseCampaign();
     StopSession();
     DestroyEditorFirstPerson();
+    DestroySystemMapTarget();
+    m_planets.Shutdown();
     m_editor.Shutdown(m_editorScene);
     if (m_editorBodyBuilt)
     {
@@ -7874,7 +7897,7 @@ PlayerInput PredationGame::BuildPlayerInput()
     result.yaw = aimed.x;
     result.pitch = aimed.y;
 
-    if (m_app->IsConsoleOpen() || m_screen != Screen::Playing || CinematicHoldsPlayers())
+    if (m_app->IsConsoleOpen() || m_screen != Screen::Playing || CinematicHoldsPlayers() || m_mapOpen)
     {
         // Console open, paused, at the title, or held by a cinematic: keep looking where we are and stop everything else.
         //
@@ -9203,6 +9226,12 @@ void PredationGame::TryInteract()
         m_loadoutOpen ? CloseLoadout() : OpenLoadout();
         return;
     }
+    // So is the navigation console, in a campaign: the map opens here, and what is chosen on it is asked of the host.
+    if (focus.kind == InteractionKind::Deploy && m_campaignOpen)
+    {
+        m_mapOpen ? CloseSystemMap() : OpenSystemMap();
+        return;
+    }
     // A terminal with no power does nothing, and there is nothing to ask the host: it clicks, and the objective says
     // what to do about it.
     if (focus.kind == InteractionKind::Terminal && !m_mission.powered)
@@ -9496,7 +9525,7 @@ void PredationGame::OnFixedUpdate(double fixedDt)
     // The weapon runs before the movement, because aiming down the sights slows the player and the
     // controller needs that this tick rather than next.
     WeaponInput weaponInput;
-    if (!restrained && !m_inventoryOpen && !m_loadoutOpen && !CinematicHoldsPlayers())
+    if (!restrained && !m_inventoryOpen && !m_loadoutOpen && !m_mapOpen && !CinematicHoldsPlayers())
     {
         Input& raw = m_app->GetInput();
         // Held, or pressed since the last tick: a click that goes down and up between two ticks
@@ -9642,6 +9671,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
     }
 
     UpdateCampaign(deltaSeconds);
+    UpdateTravel(deltaSeconds);
 
     // --- Input that is sampled per frame, not per tick ------------------------------------------
     SampleLook(deltaSeconds);
@@ -9841,7 +9871,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
             m_reloadLatch = 30;
         }
         // Not a click that was aimed at a menu: the one that pressed Resume must not also fire.
-        if (input.WasActionPressed("fire") && !m_paused && !m_inventoryOpen && !m_loadoutOpen && !CinematicHoldsPlayers() &&
+        if (input.WasActionPressed("fire") && !m_paused && !m_inventoryOpen && !m_loadoutOpen && !m_mapOpen && !CinematicHoldsPlayers() &&
             !ImGui::GetIO().WantCaptureMouse)
         {
             m_firePressLatch = true;
@@ -9945,6 +9975,10 @@ void PredationGame::OnUpdate(double dt, double alpha)
             {
                 CloseLoadout();
             }
+            else if (m_mapOpen)
+            {
+                CloseSystemMap();
+            }
             else
             {
                 m_paused = !m_paused;
@@ -9985,7 +10019,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
         const bool falling = m_screen == Screen::Playing && m_facility.Built() && m_facility.Contains(m_renderEye);
         const uint32_t seed = m_facility.Seed();
         const float windAngle = static_cast<float>((seed * 2654435761u) >> 20) / 4096.0f * 6.2831853f;
-        const float windSpeed = falling ? static_cast<float>(ConditionsFor(seed, m_facility.Plan().sky.fogEnd).wind) * 0.12f : 0.0f;
+        const float windSpeed = falling ? static_cast<float>(PlaceConditions(m_facility.Plan().sky.fogEnd).wind) * 0.12f : 0.0f;
         float ground = m_renderEye.y - 1.7f;
         if (falling)
         {
@@ -10985,6 +11019,9 @@ void PredationGame::OnRender()
         return;
     }
 
+    // The system map into its own target, before the UI that shows it.
+    RenderSystemMap();
+
     const glm::vec3 viewPosition = m_renderEye;
     // Depth from the sun and depth from overhead, both fitted around the eye, before anything is
     // shaded. This is where a room with a roof on it becomes dark: nothing declares it dark, the
@@ -11585,7 +11622,7 @@ void PredationGame::DrawHud()
     const InteractionSystem::Focus& focus = m_interactions.CurrentFocus();
     // Nothing in the middle of the view from inside a locker: it is the slits you are looking at.
     // Nor over a panel that is open.
-    const std::string prompt = m_hidingSpot >= 0 || m_loadoutOpen || m_inventoryOpen || m_paused || m_settingsOpen || m_cine.Active()
+    const std::string prompt = m_hidingSpot >= 0 || m_loadoutOpen || m_mapOpen || m_inventoryOpen || m_paused || m_settingsOpen || m_cine.Active()
                                    ? std::string()
                                    : focus.prompt;
     if (!prompt.empty())
@@ -12137,7 +12174,7 @@ void PredationGame::OnImGui()
 
     // The HUD is part of the game, not the debug overlay, so it is always drawn -- except while a cinematic has the players,
     // when there is nothing for it to say but what the intercom does.
-    if (m_cameraMode != CameraMode::Fly && !CinematicHoldsPlayers())
+    if (m_cameraMode != CameraMode::Fly && !CinematicHoldsPlayers() && !m_mapOpen)
     {
         DrawHud();
     }
@@ -12149,6 +12186,7 @@ void PredationGame::OnImGui()
     DrawCinematicDebug();
     DrawCinematicEditor();
 
+    DrawSystemMap();
     if (m_paused)
     {
         DrawPauseMenu();

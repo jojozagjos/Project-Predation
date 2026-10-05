@@ -13,12 +13,15 @@
 #include "Engine/Audio/VoiceCapture.h"
 #include "Engine/Audio/VoiceCodec.h"
 #include "Engine/Net/LobbyClient.h"
+#include "Engine/Render/PlanetRenderer.h"
 #include "Game/Net/NetSession.h"
 #include "Engine/Net/LanDiscovery.h"
 #include "Engine/Net/PortMapper.h"
 #include "Engine/Navigation/NavMesh.h"
 #include "Game/Campaign/Campaign.h"
 #include "Game/Campaign/CampaignStore.h"
+#include "Game/Campaign/SystemMap.h"
+#include "Game/Campaign/Travel.h"
 #include "Game/Campaign/Universe.h"
 #include "Game/Creature/Creature.h"
 #include "Game/Creature/Noise.h"
@@ -55,6 +58,7 @@
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
 
+#include <array>
 #include <future>
 #include <map>
 #include <memory>
@@ -968,6 +972,58 @@ private:
     char m_newCampaignName[32] = "";
     char m_newCampaignSeed[24] = "";
     std::string m_campaignDeleteArmed;
+
+    // --- The system map and travel (PredationGameMap.cpp) -------------------------------------------------------------
+    // The navigation console opens the map, on this machine; what is done with it -- a course, where to go down -- is
+    // asked of the host. What everybody is pointing at is shown to everybody.
+    enum class CampaignAction : uint8_t
+    {
+        None = 0,
+        SetCourse,    // a = body, b = landing region
+        CancelCourse,
+        SetRegion,    // a = landing region
+        Pointer       // a = body pointed at (-1 none), b = the map open
+    };
+    void OpenSystemMap();
+    void CloseSystemMap();
+    void RenderSystemMap();
+    void DrawSystemMap();
+    void DestroySystemMapTarget();
+    void UpdateTravel(float dt);
+    void AskCampaign(CampaignAction action, int a = 0, int b = 0);
+    bool DoCampaignAction(uint8_t player, CampaignAction action, int a, int b);
+    // In orbit of a body at last: its scan, its places found, and where to go down chosen. The host's.
+    void ArriveAtBody();
+    void ChooseLandingRegion(int region);
+    const StarSystem* CurrentSystem();
+    int DriveTier() const;
+    int SensorTier() const;
+    bool RegionKnown(const Body& body, int region) const;
+    bool RegionLandable(const Body& body, int region) const;
+    std::string SummaryOf(const Body& body) const;
+    // What the place being gone to or stood on is called, and its conditions, for title cards: the campaign's body and
+    // region when there is a campaign, the old seeded names when not.
+    SiteTitle PlaceTitle();
+    SiteConditions PlaceConditions(float fogEnd);
+    static PlanetLook LookOf(const Body& body);
+    PlanetRenderer m_planets;
+    SystemMapView m_mapView;
+    bool m_mapOpen = false;
+    bool m_mapFramed = false;
+    bool m_mapDragged = false;
+    int m_mapSelected = -1;
+    int m_mapHovered = -1;
+    bgfx::FrameBufferHandle m_mapBuffer = BGFX_INVALID_HANDLE;
+    bgfx::TextureHandle m_mapTexture = BGFX_INVALID_HANDLE;
+    uint16_t m_mapWidth = 0;
+    uint16_t m_mapHeight = 0;
+    std::array<int8_t, kMaxPlayers> m_pointing{-1, -1, -1, -1};
+    uint8_t m_mapOpenMask = 0;
+    float m_travelSendIn = 0.0f;
+    float m_sensorIn = 0.0f;
+    uint32_t m_appliedTravels = 0;
+    int m_pointerSent = -2;
+    bool m_mapOpenSent = false;
 
     // --- Multiplayer ---------------------------------------------------------------------------
     void RegisterNetCommands();

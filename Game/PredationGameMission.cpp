@@ -847,7 +847,7 @@ void PredationGame::DrawTitleCard()
     {
         return;
     }
-    const SiteTitle title = m_siteNames.For(m_facility.Seed());
+    const SiteTitle title = PlaceTitle();
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos({viewport->Pos.x + viewport->Size.x * 0.5f, viewport->Pos.y + viewport->Size.y * 0.62f}, ImGuiCond_Always, {0.5f, 0.5f});
     // A faint band behind it, so it reads over whatever the site looks like.

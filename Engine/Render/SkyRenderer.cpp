@@ -94,7 +94,7 @@ void SkyRenderer::Draw(bgfx::ViewId view, const Environment& environment, const 
                              environment.ambientGround.b * 1.2f, 0.0f};
     const float sun[4] = {towardsSun.x, towardsSun.y, towardsSun.z, 220.0f};
     const float sunColor[4] = {environment.sunColor.r, environment.sunColor.g, environment.sunColor.b,
-                               0.55f};
+                               0.55f * std::clamp(environment.skySun, 0.0f, 1.0f)};
     // Turned down as a whole. The gradient and the sun glow are the same shape; this is the lamp
     // behind them, and a horror game wants a sky that is present rather than cheerful.
     const float dim = std::clamp(m_brightness, 0.0f, 2.0f);
