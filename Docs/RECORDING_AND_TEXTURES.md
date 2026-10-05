@@ -128,13 +128,16 @@ said a figure at a time, "zero" + "six".
 | Ambient occlusion (AO) | always |
 | Height | optional, nice for later |
 
-- **2K**, **seamless / tiling** (surfaces are tiled across walls and floors, not wrapped onto one model).
+- **2K** for anything tiled across a level (ground, walls, floors), **1K** for small props. **Seamless / tiling**
+  (surfaces are tiled across walls and floors, not wrapped onto one model).
 - **Free sources (CC0):** [ambientCG](https://ambientcg.com), [Poly Haven](https://polyhaven.com).
 - **Where and what to call them:** `Assets/Textures/<set>/<set>_BaseColor.png`, `<set>_Normal.png`, `<set>_Roughness.png`,
   `<set>_Metallic.png`, `<set>_AO.png`. For example `Assets/Textures/snow_ground/snow_ground_Normal.png`.
-- **Before they show up in game**, the engine needs work (Claude's side): materials take only one colour texture
-  today, with no normal/roughness/metallic/AO, and level boxes stretch a texture over each face rather than tiling it.
-  That work adds the PBR maps, tiling by real size, and loading a set by its folder name.
+- **PNG or JPG** both work. An **EXR** normal map has to be saved out as PNG first, as **Non-Color** data (in
+  Blender: open it, set the colour space to Non-Color, save as PNG 8-bit); a normal map that looks greyish-purple
+  rather than light blue is in the wrong colour space and will tilt the lighting.
+- **In game today:** base colour, normal and roughness are used, tiled by real size from every side. Metallic and AO
+  are not read yet; keep them in the folder for later. `snow_02` on the snow ground is the first set in.
 
 Listed most important first within each area.
 
