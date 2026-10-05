@@ -2211,8 +2211,10 @@ void PredationGame::ServeClientRequests()
 
     for (const uint8_t player : m_host.TakeJoined())
     {
-        // The game's rules first: they are the host's, whatever the newcomer has set for themselves.
+        // The game's rules first: they are the host's, whatever the newcomer has set for themselves. And the campaign, so
+        // the lobby can say what they are joining.
         SendRules(player);
+        SendCampaign(player);
         // Put where everybody is now -- the host's idea of where to put a newcomer was decided when it started, which
         // can be before it went anywhere -- and then told everything else.
         const glm::vec3 place = ArrivalFor(player);
@@ -4123,57 +4125,6 @@ void PredationGame::DrawTitleBrowse()
     }
     ImGui::EndChild();
 
-    ImGui::Spacing();
-    if (ImGui::Button("Host a game", wide))
-    {
-        m_titlePage = TitlePage::Host;
-        m_titleStatus.clear();
-    }
-
-    if (!m_titleStatus.empty())
-    {
-        ImGui::Spacing();
-        ImGui::PushTextWrapPos(0.0f);
-        ImGui::TextColored(kWarning, "%s", m_titleStatus.c_str());
-        ImGui::PopTextWrapPos();
-    }
-}
-
-void PredationGame::DrawTitleHost()
-{
-    const ImVec2 wide{-1.0f, 34.0f};
-    ImGui::TextDisabled("Host a game");
-    ImGui::Spacing();
-
-    ImGui::AlignTextToFramePadding();
-    ImGui::TextUnformatted("Game name");
-    ImGui::SameLine(86.0f);
-    ImGui::SetNextItemWidth(-1.0f);
-    ImGui::InputTextWithHint("##lobbyname", LobbyName().c_str(), m_lobbyName, sizeof(m_lobbyName));
-    ImGui::Spacing();
-
-    ImGui::BeginDisabled(!LobbyServerConfigured());
-    ImGui::Checkbox("Show it in Public games", &m_listPublicly);
-    ImGui::EndDisabled();
-
-    ImGui::Spacing();
-    DrawTitleCampaigns();
-    ImGui::Spacing();
-    if (ImGui::Button("Start", wide))
-    {
-        std::string error;
-        if (!OpenChosenCampaign(error))
-        {
-            m_titleStatus = "That campaign could not be opened: " + error;
-            return;
-        }
-        StartHosting();
-        if (m_sessionMode != SessionMode::Host)
-        {
-            CloseCampaign();
-        }
-        return;
-    }
 
     if (!m_titleStatus.empty())
     {
@@ -4316,98 +4267,6 @@ void PredationGame::ApplyRules(const WorldEventMessage& event)
 {
     // The host's, for as long as this is its game.
     SetSetting("game.friendly_fire", event.flag ? "true" : "false");
-}
-
-void PredationGame::DrawLobby()
-{
-    const ImVec2 wide{-1.0f, 32.0f};
-
-    // A guest still finding its way to the host, which can take a few seconds and can fail.
-    if (m_joinTransport != nullptr)
-    {
-        ImGui::SetWindowFontScale(1.2f);
-        ImGui::TextUnformatted("Joining");
-        ImGui::SetWindowFontScale(1.0f);
-        ImGui::Separator();
-        ImGui::Spacing();
-        ImGui::PushTextWrapPos(0.0f);
-        switch (m_lobby.Status())
-        {
-        case LobbyClient::State::Punching:
-            ImGui::Text("Found \"%s\". Connecting to the host...", m_lobby.LobbyName().c_str());
-            break;
-        case LobbyClient::State::Failed:
-            ImGui::TextColored(kWarning, "%s", m_lobby.Message().c_str());
-            break;
-        default:
-            ImGui::TextUnformatted("Looking for that game...");
-            break;
-        }
-        ImGui::PopTextWrapPos();
-        ImGui::Spacing();
-        if (ImGui::Button("Back", wide))
-        {
-            StopSession();
-        }
-        return;
-    }
-
-    const bool hosting = m_sessionMode == SessionMode::Host;
-    ImGui::SetWindowFontScale(1.2f);
-    if (hosting)
-    {
-        ImGui::TextUnformatted(LobbyName().c_str());
-    }
-    else
-    {
-        ImGui::Text("%s's lobby", m_client.NameOf(0).c_str());
-    }
-    ImGui::SetWindowFontScale(1.0f);
-    ImGui::Separator();
-    ImGui::Spacing();
-
-    if (hosting)
-    {
-        DrawInvite();
-        ImGui::Spacing();
-    }
-    DrawLobbyPlayers();
-    ImGui::Spacing();
-    DrawLobbyRules();
-    ImGui::Spacing();
-
-    if (hosting)
-    {
-        if (ImGui::Button("Start the game", {-1.0f, 40.0f}))
-        {
-            StartTheGame();
-            return;
-        }
-        ImGui::Spacing();
-        if (ImGui::Button("Close the lobby", wide))
-        {
-            StopSession();
-            m_titlePage = TitlePage::Browse;
-        }
-    }
-    else
-    {
-        ImGui::TextDisabled("Waiting for %s to start the game...", m_client.NameOf(0).c_str());
-        ImGui::Spacing();
-        if (ImGui::Button("Leave", wide))
-        {
-            StopSession();
-            m_titlePage = TitlePage::Browse;
-        }
-    }
-
-    if (!m_titleStatus.empty())
-    {
-        ImGui::Spacing();
-        ImGui::PushTextWrapPos(0.0f);
-        ImGui::TextColored(kWarning, "%s", m_titleStatus.c_str());
-        ImGui::PopTextWrapPos();
-    }
 }
 
 // The key list, and the whole of rebinding.
@@ -5533,7 +5392,9 @@ void PredationGame::DrawTitleScreen()
 
     ImGui::SetNextWindowPos({viewport->WorkPos.x + size.x * 0.07f, viewport->WorkPos.y + size.y * 0.5f}, ImGuiCond_Always,
                             {0.0f, 0.5f});
-    ImGui::SetNextWindowSize({m_settingsOpen ? 700.0f : 440.0f, 0.0f}, ImGuiCond_Always);
+    const bool lobby = m_inLobby || m_joinTransport != nullptr || waitingForHost;
+    ImGui::SetNextWindowSize({m_settingsOpen ? 700.0f : lobby ? 680.0f : m_titlePage == TitlePage::Browse ? 440.0f : 520.0f, 0.0f},
+                             ImGuiCond_Always);
     ImGui::SetNextWindowBgAlpha(0.88f);
 
     constexpr ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
@@ -5612,28 +5473,32 @@ void PredationGame::DrawTitleScreen()
     ImGui::EndDisabled();
     ImGui::Spacing();
 
-    if (m_titlePage == TitlePage::Browse || m_titlePage == TitlePage::Host)
+    if (m_titlePage == TitlePage::Browse || m_titlePage == TitlePage::NewCampaign || m_titlePage == TitlePage::LoadCampaign)
     {
-        const bool hosting = m_titlePage == TitlePage::Host;
-        if (hosting)
+        if (m_titlePage == TitlePage::NewCampaign)
         {
-            DrawTitleHost();
+            DrawTitleNewCampaign();
+        }
+        else if (m_titlePage == TitlePage::LoadCampaign)
+        {
+            DrawTitleLoadCampaign();
         }
         else
         {
             DrawTitleBrowse();
         }
+        if (!m_titleStatus.empty() && m_titlePage != TitlePage::Browse)
+        {
+            ImGui::Spacing();
+            ImGui::TextColored(kWarning, "%s", m_titleStatus.c_str());
+        }
         ImGui::Spacing();
         if (ImGui::Button("Back", wide))
         {
-            // One step back, not all the way out: the host page is reached from the list.
-            m_titlePage = hosting ? TitlePage::Browse : TitlePage::Root;
-            if (!hosting)
-            {
-                // Nothing to listen for from the root menu. The beacon is a different thing and
-                // keeps going, because it belongs to a game rather than to this screen.
-                StopBrowsing();
-            }
+            // Nothing to listen for from the root menu. The beacon is a different thing and keeps going, because it
+            // belongs to a game rather than to this screen.
+            StopBrowsing();
+            m_titlePage = TitlePage::Root;
             m_titleStatus.clear();
         }
         return;
@@ -5824,7 +5689,20 @@ void PredationGame::DrawTitleMenu()
         const char* label;
         int action;
     };
-    std::vector<Entry> entries{{"PLAY", 0}, {"SETTINGS", 1}};
+    // Carrying on comes first when there is something to carry on with.
+    ReadCampaignSlots();
+    std::vector<Entry> entries;
+    if (!m_campaignSlots.empty())
+    {
+        entries.push_back({"CONTINUE", 4});
+    }
+    entries.push_back({"NEW CAMPAIGN", 5});
+    if (!m_campaignSlots.empty())
+    {
+        entries.push_back({"LOAD CAMPAIGN", 6});
+    }
+    entries.push_back({"JOIN A GAME", 0});
+    entries.push_back({"SETTINGS", 1});
 #if PRED_DEV_TOOLS
     entries.push_back({"MODEL EDITOR", 2});
 #endif
@@ -5859,6 +5737,13 @@ void PredationGame::DrawTitleMenu()
         draw->AddText(font, entrySize, {x + 12.0f * shown + 2.0f, y + 9.0f}, IM_COL32(0, 0, 0, 200), text.c_str());
         draw->AddText(font, entrySize, {x + 12.0f * shown, y + 7.0f}, IM_COL32(mix(200, 255), mix(206, 250), mix(212, 244), 255), text.c_str());
         y += entrySize + 26.0f;
+        // Under Continue, which campaign and where its ship is.
+        if (entry.action == 4 && !m_campaignSlots.empty())
+        {
+            const std::string what = m_campaignSlots.front().name + "  -  " + (m_campaignSlotWhere.empty() ? std::string() : m_campaignSlotWhere.front());
+            draw->AddText(font, ImGui::GetFontSize() * 0.85f, {x + 12.0f * shown + 2.0f, y - 14.0f}, IM_COL32(150, 158, 164, 255), what.c_str());
+            y += 16.0f;
+        }
     }
 
     if (!anyHovered)
@@ -5893,6 +5778,19 @@ void PredationGame::DrawTitleMenu()
     {
     case 0:
         m_titlePage = TitlePage::Browse;
+        m_titleStatus.clear();
+        break;
+    case 4:
+        m_titleStatus.clear();
+        ContinueCampaign();
+        break;
+    case 5:
+        m_titlePage = TitlePage::NewCampaign;
+        m_titleStatus.clear();
+        break;
+    case 6:
+        m_titlePage = TitlePage::LoadCampaign;
+        m_campaignSlotsRead = false;
         m_titleStatus.clear();
         break;
     case 1:
@@ -7283,9 +7181,14 @@ void PredationGame::RegisterNetCommands()
                 m_titlePage = TitlePage::Browse;
                 m_online = page == "online";
             }
-            else if (page == "host")
+            else if (page == "host" || page == "new")
             {
-                m_titlePage = TitlePage::Host;
+                m_titlePage = TitlePage::NewCampaign;
+            }
+            else if (page == "load")
+            {
+                m_titlePage = TitlePage::LoadCampaign;
+                m_campaignSlotsRead = false;
             }
             else if (page == "settings")
             {

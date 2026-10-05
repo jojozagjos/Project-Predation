@@ -611,7 +611,15 @@ private:
     // ports and addresses. Everything about how a game is reached belongs to the two lists it can
     // be in, not to the player.
     void DrawTitleBrowse();
-    void DrawTitleHost();
+    // The campaign pages and the lobby (PredationGameTitle.cpp).
+    void DrawTitleNewCampaign();
+    void DrawTitleLoadCampaign();
+    void DrawHostingChoice();
+    void HostChosenCampaign();
+    void ContinueCampaign();
+    void ReadCampaignSlots();
+    // Where a campaign's ship is, in words: "In orbit of KEPLER-217 IV".
+    std::string WhereIs(uint64_t universeSeed, uint64_t system, int body, bool underway);
     // What this machine's game is called in everybody else's list. Falls back to the player's own
     // name, because an unnamed row still needs the one thing that tells it apart: whose it is.
     std::string LobbyName() const;
@@ -946,7 +954,6 @@ private:
     void SendCampaign(int player = -1);
     void ApplyCampaignDocument(const std::string& text);
     void ServeCampaignRequests();
-    void DrawTitleCampaigns();
     void DrawCampaignNotice();
     void RegisterCampaignCommands();
     UniverseData m_universeData;
@@ -964,6 +971,7 @@ private:
     // The title's list of campaigns, read when the page opens; which is chosen (-1: a new one), the new one's name and
     // seed, and which one the Delete button has been pressed once for.
     std::vector<CampaignSlot> m_campaignSlots;
+    std::vector<std::string> m_campaignSlotWhere;
     bool m_campaignSlotsRead = false;
     int m_campaignChoice = -1;
     char m_newCampaignName[32] = "";
@@ -1413,8 +1421,9 @@ private:
     enum class TitlePage : uint8_t
     {
         Root,
-        Browse,
-        Host
+        Browse,        // joining somebody else's game
+        NewCampaign,   // beginning one, and hosting it
+        LoadCampaign   // carrying one on, and hosting it
     };
     TitlePage m_titlePage = TitlePage::Root;
     // Which list is showing: public games from the lobby server, or games on this network.

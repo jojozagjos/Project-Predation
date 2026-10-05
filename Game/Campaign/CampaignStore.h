@@ -20,8 +20,10 @@ struct CampaignSlot
     int64_t credits = 0;
     int64_t savedAt = 0; // seconds since 1970, of its newest save
     bool newestIsAutosave = false;
+    uint64_t universeSeed = 0;
     uint64_t system = 0;
-    int body = -1;
+    int body = -1; // where it is, or where it is heading when under way
+    bool underway = false;
 };
 
 // Where campaigns are kept: a folder each under the player's own data, with the host's own saves in it.

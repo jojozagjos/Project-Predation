@@ -153,10 +153,17 @@ std::vector<CampaignSlot> CampaignStore::List() const
         slot.credits = newest.campaign.value("credits", int64_t{0});
         slot.savedAt = newest.savedAt;
         slot.newestIsAutosave = useAuto;
+        slot.universeSeed = newest.campaign.value("universeSeed", uint64_t{0});
         if (const auto location = newest.campaign.find("location"); location != newest.campaign.end() && location->is_object())
         {
             slot.system = location->value("system", uint64_t{0});
             slot.body = location->value("body", -1);
+        }
+        if (const auto travel = newest.campaign.find("travel"); travel != newest.campaign.end() && travel->is_object() &&
+                                                                 travel->value("underway", false))
+        {
+            slot.underway = true;
+            slot.body = travel->value("target", -1);
         }
         slots.push_back(slot);
     }
