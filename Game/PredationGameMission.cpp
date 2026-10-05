@@ -769,14 +769,40 @@ void PredationGame::BuildAirlockControls()
 
 void PredationGame::BuildHelm()
 {
-    // A panel on the helm's top, between the two seats, where the course is set out on.
+    // A panel on the helm's top, between the two seats, where the course is set out on: its screen lying in it, the top of
+    // its picture away from the seats (DrawHelmScreen).
     const CinePose at = m_ship.Helm();
     Transform transform;
     transform.position = at.position;
     transform.rotation = at.rotation;
-    Material panel = Material::Diffuse({0.05f, 0.05f, 0.06f}, 0.3f);
-    panel.emissive = {0.45f, 0.25f, 0.06f};
-    m_helm = m_scene.CreateMeshEntity("helm_panel", transform, m_app->GetMeshes().Upload(Primitives::Box({1.2f, 0.03f, 0.45f}), "helm_panel"), panel);
+    MeshLibrary& meshes = m_app->GetMeshes();
+    m_helm = m_scene.CreateMeshEntity("helm_panel", transform, meshes.Upload(Primitives::Box({1.24f, 0.03f, 0.5f}), "helm_panel"),
+                                      Material::Metal({0.1f, 0.1f, 0.11f}, 0.5f));
+    m_helmTexture = m_app->GetTextures().CreateDynamic(512, 192, "helm_screen");
+    {
+        MeshData quad;
+        const float w = 0.56f;
+        const float h = 0.21f;
+        const glm::vec3 normal{0.0f, 0.0f, 1.0f};
+        quad.vertices.push_back(MeshVertex{{-w, h, 0.0f}, normal, {0.0f, 0.0f}});
+        quad.vertices.push_back(MeshVertex{{w, h, 0.0f}, normal, {1.0f, 0.0f}});
+        quad.vertices.push_back(MeshVertex{{w, -h, 0.0f}, normal, {1.0f, 1.0f}});
+        quad.vertices.push_back(MeshVertex{{-w, -h, 0.0f}, normal, {0.0f, 1.0f}});
+        quad.indices = {0, 3, 2, 0, 2, 1};
+        Transform screen = transform;
+        screen.position += glm::vec3(0.0f, 0.017f, 0.0f);
+        // Laid flat, facing up, the picture's top towards the bow.
+        screen.rotation = transform.rotation * glm::angleAxis(-glm::half_pi<float>(), glm::vec3(1.0f, 0.0f, 0.0f));
+        Material glass = Material::Diffuse(glm::vec3(1.0f), 0.3f);
+        glass.baseColorTexture = m_helmTexture;
+        glass.emissive = glm::vec3(1.2f);
+        glass.emissiveTextured = true;
+        m_helmScreen = m_scene.CreateMeshEntity("helm_screen", screen, meshes.Upload(quad, "helm_screen"), glass);
+        if (MeshRenderer* renderer = m_scene.GetMeshRenderer(m_helmScreen))
+        {
+            renderer->castsShadow = false;
+        }
+    }
     Interactable interactable;
     interactable.entity = m_helm;
     interactable.kind = InteractionKind::Helm;

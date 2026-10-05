@@ -488,14 +488,9 @@ glm::vec3 PredationGame::AreaOnGlobe(const LandingRegion& region)
 
 glm::vec3 PredationGame::SunOverBody(const StarSystem& system, const Body& body)
 {
-    // The star's direction from the body, turned into the body's own frame: its axis tipped by its tilt, turned by
-    // its day. So the globe stays still on the map, and the day goes round it as it does.
-    const glm::vec3 at = system.Position(body.index, m_campaign.clock);
-    const glm::vec3 towardsStar = glm::length(at) > 1.0e-6f ? -glm::normalize(at) : glm::vec3(1.0f, 0.0f, 0.0f);
-    const float spin = static_cast<float>(std::fmod(m_campaign.clock / std::max(static_cast<double>(body.day), 1.0), 1.0)) * kTau;
-    glm::mat4 frame = glm::rotate(glm::mat4(1.0f), body.tilt, glm::vec3(0.0f, 0.0f, 1.0f));
-    frame = glm::rotate(frame, spin, glm::vec3(0.0f, 1.0f, 0.0f));
-    return glm::normalize(glm::vec3(glm::transpose(frame) * glm::vec4(towardsStar, 0.0f)));
+    // The star's direction from the body, in the body's own frame (StarSystem::SunOver). So the globe stays still on the
+    // map, and the day goes round it as it does.
+    return glm::normalize(system.SunOver(body.index, m_campaign.clock));
 }
 
 bool PredationGame::AreaInDaylight(const StarSystem& system, const Body& body, const LandingRegion& region)
@@ -815,7 +810,9 @@ void PredationGame::RenderMapSystem(const StarSystem& system, bgfx::ViewId sky, 
         glm::mat4 model = glm::translate(glm::mat4(1.0f), at.at);
         model = glm::rotate(model, body.tilt, glm::vec3(0.0f, 0.0f, 1.0f));
         const glm::mat4 ringModel = glm::scale(model, glm::vec3(at.radius));
-        model = glm::rotate(model, static_cast<float>(std::fmod(m_campaign.clock / std::max(body.day, 1.0f), 1.0)) * kTau, glm::vec3(0.0f, 1.0f, 0.0f));
+        float spin = 0.0f;
+        system.SunOver(body.index, m_campaign.clock, &spin);
+        model = glm::rotate(model, spin, glm::vec3(0.0f, 1.0f, 0.0f));
         model = glm::scale(model, glm::vec3(at.radius));
         float highlight = body.index == m_mapSelected ? 1.0f : body.index == m_mapHovered ? 0.55f : 0.0f;
         for (int player = 0; player < kMaxPlayers && ours; ++player)
@@ -1789,8 +1786,7 @@ void PredationGame::DrawMapBars(const StarSystem* shown)
             ImGui::BeginDisabled(m_map != MapChoice::Ship || m_cine.Active());
             if (ImGui::Button(m_campaign.travel.underway ? "Change course" : "Set out"))
             {
-                AskCampaign(CampaignAction::Depart);
-                PlayNamed("UI/confirm", m_renderEye, 0.6f, 1.0f, false);
+                SetOut();
             }
             ImGui::EndDisabled();
             ImGui::SameLine();

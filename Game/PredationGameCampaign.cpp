@@ -153,6 +153,7 @@ void PredationGame::SaveCampaign(bool autosave, const char* why)
     m_campaignStore->Save(m_campaignFolder, m_campaign, autosave);
     m_campaignNotice = autosave ? "Autosaved" : "Saved";
     m_campaignNoticeFor = 2.5f;
+    m_campaignNoticeCentred = false;
     PRED_LOG_INFO(Gameplay, "Campaign {} ({})", autosave ? "autosaved" : "saved", why);
 }
 
@@ -247,6 +248,25 @@ void PredationGame::UpdateCampaign(float dt)
     }
 }
 
+void PredationGame::ShowCampaignNotice(const std::string& text)
+{
+    m_campaignNotice = text;
+    m_campaignNoticeFor = 3.0f;
+    m_campaignNoticeCentred = true;
+}
+
+void PredationGame::SetOut()
+{
+    if (const std::string why = LeavingBlocked(); !why.empty())
+    {
+        ShowCampaignNotice(why);
+        PlayNamed("UI/back", m_renderEye, 0.5f, 0.8f, false);
+        return;
+    }
+    AskCampaign(CampaignAction::Depart);
+    PlayNamed("UI/confirm", m_renderEye, 0.6f, 1.0f, false);
+}
+
 void PredationGame::DrawCampaignNotice()
 {
     if (m_campaignNoticeFor <= 0.0f || m_campaignNotice.empty())
@@ -256,7 +276,8 @@ void PredationGame::DrawCampaignNotice()
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
     const float alpha = std::min(m_campaignNoticeFor / 0.6f, 1.0f);
     const ImVec2 size = ImGui::CalcTextSize(m_campaignNotice.c_str());
-    const ImVec2 at{viewport->WorkPos.x + viewport->WorkSize.x - size.x - 24.0f, viewport->WorkPos.y + 20.0f};
+    const ImVec2 at = m_campaignNoticeCentred ? ImVec2{viewport->WorkPos.x + (viewport->WorkSize.x - size.x) * 0.5f, viewport->WorkPos.y + viewport->WorkSize.y * 0.62f}
+                                              : ImVec2{viewport->WorkPos.x + viewport->WorkSize.x - size.x - 24.0f, viewport->WorkPos.y + 20.0f};
     ImDrawList* draw = ImGui::GetForegroundDrawList();
     draw->AddText({at.x + 1.0f, at.y + 1.0f}, IM_COL32(0, 0, 0, static_cast<int>(180.0f * alpha)), m_campaignNotice.c_str());
     draw->AddText(at, IM_COL32(220, 226, 230, static_cast<int>(230.0f * alpha)), m_campaignNotice.c_str());
@@ -385,6 +406,19 @@ void PredationGame::RegisterCampaignCommands()
                                     return;
                                 }
                                 m_campaign.credits = std::stoll(args[1]);
+                                CampaignChanged();
+                            });
+    console.RegisterCommand("day_skip", "Move the campaign's clock on by part of the day where the ship is (the host): day_skip <fraction>",
+                            [this](const std::vector<std::string>& args)
+                            {
+                                const StarSystem* system = CurrentSystem();
+                                const Body* body = system != nullptr ? system->Find(m_campaign.body) : nullptr;
+                                if (!m_campaignOpen || m_sessionMode == SessionMode::Client || args.size() < 2 || body == nullptr)
+                                {
+                                    m_app->GetConsole().PrintError("Usage, on the host at a body: day_skip <fraction of its day>");
+                                    return;
+                                }
+                                m_campaign.clock += static_cast<double>(body->day) * std::stod(args[1]);
                                 CampaignChanged();
                             });
     console.RegisterCommand("map_open",

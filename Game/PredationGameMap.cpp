@@ -203,8 +203,8 @@ bool PredationGame::DoCampaignAction(uint8_t player, CampaignAction action, int 
     }
 
     case CampaignAction::Door:
-        // Only on the ground does it open; it can always be shut.
-        if (a != 0 && !ShipLanded())
+        // Only on the ground does it open; it can always be shut -- but never on anybody standing in it.
+        if ((a != 0 && !ShipLanded()) || (a == 0 && DoorwayBlocked()))
         {
             return false;
         }
@@ -219,7 +219,8 @@ bool PredationGame::DoCampaignAction(uint8_t player, CampaignAction action, int 
 
     case CampaignAction::Depart:
     {
-        if (!m_campaign.plan.set)
+        // Off the ground only with everybody aboard: nobody is left on the pad as the station is left behind.
+        if (!m_campaign.plan.set || !LeavingBlocked().empty())
         {
             return false;
         }
@@ -687,7 +688,13 @@ void PredationGame::UpdateHubSigns(bool shown, bool named)
             Transform at;
             at.position = ShipMap::ToWorld(sign.at);
             at.rotation = glm::angleAxis(glm::radians(sign.yaw), glm::vec3(0.0f, 1.0f, 0.0f));
-            const bool painted = sign.style == KestrelStation::Sign::Style::Painted;
+            // Paint on the ground lies flat, its top where it faces.
+            const bool floor = sign.style == KestrelStation::Sign::Style::Floor;
+            if (floor)
+            {
+                at.rotation = at.rotation * glm::angleAxis(-glm::half_pi<float>(), glm::vec3(1.0f, 0.0f, 0.0f));
+            }
+            const bool painted = sign.style == KestrelStation::Sign::Style::Painted || floor;
             Material material = Material::Diffuse(glm::vec3(1.0f), painted ? 0.9f : 0.4f);
             material.baseColorTexture = texture;
             material.emissive = painted ? glm::vec3(0.0f) : glm::vec3(logo ? 1.4f : 1.1f);
@@ -707,6 +714,41 @@ void PredationGame::UpdateHubSigns(bool shown, bool named)
             renderer->visible = shown && (named || m_hubSignIds[i] != "station_name");
         }
     }
+}
+
+std::string PredationGame::LeavingBlocked() const
+{
+    if (!ShipLanded())
+    {
+        return {};
+    }
+    // Nobody is left behind on the pad: everybody up is aboard.
+    int outside = m_player.State().alive && !ShipMap::Aboard(m_player.State().position) ? 1 : 0;
+    for (const RemotePlayerView& remote : RemotePlayers())
+    {
+        outside += remote.alive && !ShipMap::Aboard(remote.position) ? 1 : 0;
+    }
+    if (outside == 0)
+    {
+        return {};
+    }
+    return outside == 1 ? "Not everybody is aboard: one of the crew is still outside" : "Not everybody is aboard: " + std::to_string(outside) + " of the crew are outside";
+}
+
+bool PredationGame::DoorwayBlocked() const
+{
+    if (m_player.State().alive && ShipMap::InDoorway(m_player.State().position))
+    {
+        return true;
+    }
+    for (const RemotePlayerView& remote : RemotePlayers())
+    {
+        if (remote.alive && ShipMap::InDoorway(remote.position))
+        {
+            return true;
+        }
+    }
+    return false;
 }
 
 bool PredationGame::ShipLanded() const

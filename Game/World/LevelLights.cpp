@@ -192,6 +192,25 @@ int LevelLights::Add(Scene& scene, MeshLibrary& meshes, LightKind kind, LightMoo
     return static_cast<int>(m_lights.size()) - 1;
 }
 
+int LevelLights::AddLamp(const glm::vec3& at, const glm::vec3& direction, const glm::vec3& colour, float intensity, float range, float inner,
+                         float outer, int circuit)
+{
+    Light light;
+    light.kind = LightKind::Flood;
+    light.direction = glm::length(direction) > 1e-4f ? glm::normalize(direction) : glm::vec3(0.0f, -1.0f, 0.0f);
+    light.position = at;
+    light.color = colour;
+    light.intensity = intensity;
+    light.range = range;
+    light.innerAngle = inner;
+    light.outerAngle = outer;
+    light.sourceRadius = 0.5f;
+    light.circuit = circuit;
+    light.seed = static_cast<uint32_t>(m_lights.size() * 2654435761u + 17u);
+    m_lights.push_back(light);
+    return static_cast<int>(m_lights.size()) - 1;
+}
+
 void LevelLights::Clear(Scene& scene)
 {
     for (const Light& light : m_lights)

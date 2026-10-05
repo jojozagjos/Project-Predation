@@ -90,6 +90,10 @@ public:
     // floors needs its lamps to stop short of the floor below, since nothing here casts a lamp's shadow.
     int Add(Scene& scene, MeshLibrary& meshes, LightKind kind, LightMood mood, const glm::vec3& at,
             const glm::vec3& direction, int circuit = 0, uint32_t seed = 0, float range = 0.0f);
+    // A light with no fitting of its own and its look given -- for a place whose lamps are part of its model (a station's
+    // street lamps, floodlights on masts). A cone of `inner` to `outer` degrees across; 180 for all round. On `circuit`.
+    int AddLamp(const glm::vec3& at, const glm::vec3& direction, const glm::vec3& colour, float intensity, float range, float inner,
+                float outer, int circuit = 0);
     void Clear(Scene& scene);
     // Every light from `first` on, taken away: the ones a map added after everything else, when that
     // map is rebuilt.

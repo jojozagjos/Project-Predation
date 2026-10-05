@@ -289,6 +289,10 @@ struct StarSystem
     // How high the star stands over a place on a body at `time`: the sine of its height over the horizon there (1
     // overhead, 0 on the horizon, below 0 night), from where the body is and how far round it has turned.
     float SunHeight(int index, const glm::vec2& latLon, double time) const;
+    // Which way the star is from a body at `time`, in the body's own frame (its axis up, turning with it): where the
+    // sun is over its ground. Its day is a solar day -- from noon to noon -- so the star comes round once a `day` whatever
+    // the orbit is doing; how far round the body has turned is `spin` (radians about its axis), for drawing it turned so.
+    glm::vec3 SunOver(int index, double time, float* spin = nullptr) const;
 };
 
 // What a system is from far off, without working all of it out: its name, its star and where it is. For the galaxy

@@ -245,7 +245,8 @@ void FillBody(Body& body, const UniverseData& data, bool gasAllowed, float gasCh
     {
         body.radius = body.gas ? random.Range(3.5f, 11.0f) : random.Range(0.3f, 1.8f);
     }
-    body.day = random.Range(120.0f, 900.0f);
+    // Long enough that an evening at a hub lasts a while: twenty-five minutes to an hour and a quarter from noon to noon.
+    body.day = random.Range(1500.0f, 4500.0f);
     body.tilt = random.Range(0.0f, 0.45f);
 
     if (!body.gas)
@@ -751,21 +752,36 @@ glm::vec3 StarSystem::Position(int index, double time) const
     return {std::cos(angle) * body->orbit, std::sin(angle) * body->orbit * body->inclination, std::sin(angle) * body->orbit};
 }
 
-float StarSystem::SunHeight(int index, const glm::vec2& latLon, double time) const
+glm::vec3 StarSystem::SunOver(int index, double time, float* spin) const
 {
     const Body* body = Find(index);
     if (body == nullptr)
     {
-        return 0.0f;
+        return {0.0f, 1.0f, 0.0f};
     }
     const glm::vec3 at = Position(index, time);
     const glm::vec3 towardsStar = glm::length(at) > 1.0e-6f ? -glm::normalize(at) : glm::vec3(1.0f, 0.0f, 0.0f);
-    // Into the body's own frame: its axis tipped by its tilt, turned by its day (as the map's globe and the sky over a
-    // landed ship have it).
-    const float spin = static_cast<float>(std::fmod(time / std::max(static_cast<double>(body->day), 1.0), 1.0)) * kTau;
-    glm::mat4 frame = glm::rotate(glm::mat4(1.0f), body->tilt, glm::vec3(0.0f, 0.0f, 1.0f));
-    frame = glm::rotate(frame, spin, glm::vec3(0.0f, 1.0f, 0.0f));
-    const glm::vec3 sun = glm::vec3(glm::transpose(frame) * glm::vec4(towardsStar, 0.0f));
+    // Into the body's frame: its axis tipped by its tilt, then turned about it -- by however far round the star is (so
+    // going round the star does not slow or quicken the day, nor stop it when the day is as long as the year), and on by
+    // the day's own turn.
+    const glm::mat4 untilt = glm::rotate(glm::mat4(1.0f), -body->tilt, glm::vec3(0.0f, 0.0f, 1.0f));
+    const glm::vec3 tipped = glm::vec3(untilt * glm::vec4(towardsStar, 0.0f));
+    const float bearing = std::atan2(-tipped.z, tipped.x);
+    const float turned = bearing + static_cast<float>(std::fmod(time / std::max(static_cast<double>(body->day), 1.0), 1.0)) * kTau;
+    if (spin != nullptr)
+    {
+        *spin = turned;
+    }
+    return glm::vec3(glm::rotate(glm::mat4(1.0f), -turned, glm::vec3(0.0f, 1.0f, 0.0f)) * glm::vec4(tipped, 0.0f));
+}
+
+float StarSystem::SunHeight(int index, const glm::vec2& latLon, double time) const
+{
+    if (Find(index) == nullptr)
+    {
+        return 0.0f;
+    }
+    const glm::vec3 sun = SunOver(index, time);
     const float lat = glm::radians(latLon.x);
     const float lon = glm::radians(latLon.y);
     const glm::vec3 up{std::cos(lat) * std::cos(lon), std::sin(lat), std::cos(lat) * std::sin(lon)};

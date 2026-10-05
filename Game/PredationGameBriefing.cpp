@@ -515,6 +515,97 @@ void PredationGame::DrawBriefingScreens()
         canvas.Lines();
         m_app->GetTextures().Update(m_briefingTextures[screen], canvas.image);
     }
+    DrawHelmScreen(clock);
+}
+
+void PredationGame::DrawHelmScreen(const std::string& clock)
+{
+    if (!m_helmTexture.IsValid())
+    {
+        return;
+    }
+    constexpr int kHelmWide = 512;
+    constexpr int kHelmHigh = 192;
+    ScreenCanvas canvas(kHelmWide, kHelmHigh);
+    canvas.Clear(kBack);
+    canvas.Fill(0.0f, 0.0f, static_cast<float>(kHelmWide), 26.0f, {10, 18, 26});
+    canvas.Text(12, 7, "HELM", kAccent);
+    canvas.Text(kHelmWide - 12 - canvas.TextWidth(clock.c_str()), 7, clock.c_str(), kSoft);
+    const auto centred = [&](const std::string& text, int y, Rgb colour, int scale)
+    {
+        canvas.Text(kHelmWide / 2 - canvas.TextWidth(text.c_str(), scale) / 2, y, text.c_str(), colour, scale);
+    };
+    const auto seconds = [](float s)
+    {
+        char text[16];
+        const int whole = std::max(static_cast<int>(std::ceil(s)), 0);
+        std::snprintf(text, sizeof(text), "%d:%02d", whole / 60, whole % 60);
+        return std::string(text);
+    };
+    const StarSystem* system = m_campaignOpen ? CurrentSystem() : nullptr;
+    std::string first;
+    std::string second;
+    std::string third;
+    Rgb tone = kText;
+    bool warn = false;
+    float progress = -1.0f;
+    if (system == nullptr)
+    {
+        first = "STANDING BY";
+    }
+    else if (m_campaign.travel.interstellar)
+    {
+        const float done = Travel::CrossingDone(m_campaign);
+        first = "CROSSING";
+        second = Upper(m_universe.Glance(SystemId::Unpack(m_campaign.travel.toSystem)).name);
+        third = "ARRIVING IN " + seconds((1.0f - done) * m_campaign.travel.duration);
+        progress = done;
+    }
+    else if (m_campaign.travel.underway)
+    {
+        const Body* target = system->Find(m_campaign.travel.target);
+        first = "UNDER WAY";
+        second = target != nullptr ? Upper(target->name) : "COMING TO A STOP";
+        if (target != nullptr)
+        {
+            const float left = glm::length(system->Position(target->index, m_campaign.clock) - m_campaign.travel.position);
+            third = "ARRIVING IN " + seconds(Travel::Seconds(left, DriveTier()));
+        }
+    }
+    if (m_campaign.plan.set && system != nullptr)
+    {
+        // A course plotted waits here to be set out on: it is what this screen is for.
+        const bool flash = std::fmod(m_orderClock, 1.2f) < 0.8f;
+        if (first.empty())
+        {
+            first = "COURSE PLOTTED";
+            second = Upper(PlanName());
+            third = flash ? "PRESS TO SET OUT" : "";
+            tone = kWarn;
+            warn = true;
+        }
+        else
+        {
+            third = "NEW COURSE: " + Upper(PlanName());
+        }
+    }
+    else if (first.empty() && system != nullptr)
+    {
+        first = ShipLanded() ? "LANDED" : "HOLDING";
+        second = "NO COURSE";
+        third = "PLOT ONE AT THE NAVIGATION TABLE";
+        tone = kSoft;
+    }
+    centred(first, 42, tone, 3);
+    centred(second, 86, kText, 2);
+    centred(third, 128, warn ? kWarn : kSoft, 2);
+    if (progress >= 0.0f)
+    {
+        canvas.Fill(12.0f, kHelmHigh - 14.0f, kHelmWide - 12.0f, kHelmHigh - 11.0f, kFaintLine);
+        canvas.Fill(12.0f, kHelmHigh - 14.0f, 12.0f + (kHelmWide - 24.0f) * std::clamp(progress, 0.0f, 1.0f), kHelmHigh - 11.0f, kAccent);
+    }
+    canvas.Lines();
+    m_app->GetTextures().Update(m_helmTexture, canvas.image);
 }
 
 } // namespace pred

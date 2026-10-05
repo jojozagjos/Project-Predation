@@ -5,7 +5,6 @@
 #include "Engine/Render/ShaderLibrary.h"
 #include "Engine/Scene/Scene.h"
 
-#include <glm/gtc/matrix_inverse.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
 namespace pred
@@ -81,9 +80,17 @@ void SkyRenderer::Draw(bgfx::ViewId view, const Environment& environment, const 
 
     // Clip space back to a world direction, with the camera's position taken out of the view first.
     // Leaving it in makes the sky a thing at the origin that the player can walk towards.
-    glm::mat4 rotationOnly = viewMatrix;
-    rotationOnly[3] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
-    const glm::mat4 rays = glm::inverse(projection * rotationOnly);
+    //
+    // Built from the projection's across and up alone -- a point on the screen to a direction one unit in front of the
+    // camera, then turned by the view -- rather than by inverting the whole projection: that inverse's last row nearly
+    // cancels at the far plane (a ten-thousandth left of two terms near one), so each corner of the screen came out with
+    // its own rounding error, the directions between them were bent by a pixel or two, and which way they were bent
+    // changed as the camera moved -- the stars shook whenever the view slid or zoomed.
+    glm::mat4 toView(0.0f);
+    toView[0][0] = 1.0f / projection[0][0];
+    toView[1][1] = 1.0f / projection[1][1];
+    toView[3] = glm::vec4(projection[2][0] / projection[0][0], projection[2][1] / projection[1][1], -1.0f, 1.0f);
+    const glm::mat4 rays = glm::mat4(glm::transpose(glm::mat3(viewMatrix))) * toView;
     bgfx::setUniform(m_uRays, glm::value_ptr(rays));
 
     const glm::vec3 towardsSun = glm::normalize(-environment.sunDirection);

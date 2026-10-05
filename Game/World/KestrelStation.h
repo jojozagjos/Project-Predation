@@ -13,29 +13,51 @@ namespace pred
 
 // Kestrel Station: a CIRRA frontier logistics and contract station on the settled world a campaign starts on, where the
 // crew's ship stands in its bay on Hangar Row (and where the tutorial will end). Not a city: one working station that
-// has grown by additions -- a street of buildings (Operations Hall, Crew Services, the Research Annex, the Navigation
-// Relay), Shipworks beside the ship's bay, Salvage Intake out on the apron, a fence round it all.
+// has grown by additions --
+//   Hangar Row   the ship's bay, open to the sky, its blast walls round three sides, floodlight masts at its corners, a
+//                control booth over its back corner, and a gate in its port wall onto the street
+//   Shipworks    the great shed to starboard, its side the bay's starboard wall, its hangar door onto the pad
+//   the street   through the gate: a road between pavements, sodium lamps, pipes carried over it on trestles, and the
+//                buildings along its far side -- Operations Hall (the CIRRA mark and the station's name over its entrance),
+//                the Research Annex, Crew Services, and the Navigation Relay closing its far end with its mast
+//   the apron    ahead of the bay: Salvage Intake, its docks, containers and gantry crane, lamp masts; a fence round it all
 //
 // Everything is in the ship's frame (ShipSpec: the ship's middle at the origin, its bow towards -z, its deck at y = 0),
-// the ground at ShipSpec::kFieldGround. Other worlds' hubs are built the same way without Kestrel's own name on them.
+// the ground at ShipSpec::kFieldGround. Other worlds' outposts are built the same way without Kestrel's own name on them.
 namespace KestrelStation
 {
 
-// What is walked on and bumped into: the ground, the hub's slab, walls, buildings, containers, the fence, and the ship's
-// boarding stair. Solid, every part of it.
+// What is walked on and bumped into: the ground, the slab, walls, buildings, masts and posts, containers, the fence, and
+// the ship's boarding stair. Solid, every part of it.
 ModelAsset Solid(const glm::vec3& ground, const glm::vec3& rock);
-// What is only looked at: lamps, conduits, gantries, markings, grime, the stair's treads. Not solid.
+// What is only looked at: paint, lamp heads, conduits, gantries out of reach, windows, grime. Not solid.
 ModelAsset Dressing(const glm::vec3& ground);
 
+// A lamp that lights the station: where it is (the ship's frame), which way it shines, its colour, how bright and how far,
+// and its cone (degrees across; 180 for all round). Its fitting is part of the dressing.
+struct Lamp
+{
+    glm::vec3 at{0.0f};
+    glm::vec3 direction{0.0f, -1.0f, 0.0f};
+    glm::vec3 colour{1.0f};
+    float intensity = 20.0f;
+    float range = 15.0f;
+    float inner = 60.0f;
+    float outer = 90.0f;
+};
+std::vector<Lamp> Lamps();
+
 // A sign: what it says, where it hangs (its middle, in the ship's frame), which way it faces (degrees about up; 0 faces
-// +z), how big, and whether it is lit from behind or painted on.
+// +z), how big, and whether it is lit from behind or painted on. A sign on the floor lies flat, its top towards where
+// `yaw` faces.
 struct Sign
 {
     enum class Style
     {
         Lit,     // a lit panel: light letters on dark
         Painted, // painted on a wall: dark on the wall's colour
-        Logo     // the CIRRA mark, lit
+        Logo,    // the CIRRA mark, lit
+        Floor    // painted on the ground: light on the dark of the pad
     };
     std::string id;
     std::vector<std::string> lines;

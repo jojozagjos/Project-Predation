@@ -860,6 +860,8 @@ private:
     void PrepareBriefing(uint16_t site);
     void UpdateOrders(float dt);
     void DrawBriefingScreens();
+    // The helm's screen: the course plotted or under way, and how long is left.
+    void DrawHelmScreen(const std::string& clock);
 
     // --- Cinematics (PredationGameCinematics.cpp) ------------------------------------------------
     //
@@ -953,6 +955,10 @@ private:
     void ApplyCampaignDocument(const std::string& text);
     void ServeCampaignRequests();
     void DrawCampaignNotice();
+    // A line under the middle of the screen for a moment: why something asked for cannot be done.
+    void ShowCampaignNotice(const std::string& text);
+    // Setting out on the course plotted (the helm, the map): asked of the host, or why not said.
+    void SetOut();
     void RegisterCampaignCommands();
     UniverseData m_universeData;
     Universe m_universe;
@@ -966,6 +972,7 @@ private:
     // "Saved", in the corner for a moment.
     std::string m_campaignNotice;
     float m_campaignNoticeFor = 0.0f;
+    bool m_campaignNoticeCentred = false;
     // The title's list of campaigns, read when the page opens; which is chosen (-1: a new one), the new one's name and
     // seed, and which one the Delete button has been pressed once for.
     std::vector<CampaignSlot> m_campaignSlots;
@@ -1001,6 +1008,8 @@ private:
     // The helm, in the cockpit: where a plotted course is set out on.
     void BuildHelm();
     Entity m_helm;
+    Entity m_helmScreen;
+    TextureHandle m_helmTexture;
     // The map's three scales: the galaxy (systems as stars, without end), one system (its star, planets, moons and
     // stations), and one body (the globe, with the areas found on it to go down to).
     enum class MapLevel : uint8_t
@@ -1104,6 +1113,10 @@ private:
     void SetGroundSky(Environment& environment);
     // The ship itself on the ground (at a hub's field), not in orbit.
     bool ShipLanded() const;
+    // Why the ship cannot leave the ground just now, or nothing: somebody is not aboard. And whether anybody is in the
+    // boarding door's way. Checked by the host before it does either, and by whoever asks, to say why not.
+    std::string LeavingBlocked() const;
+    bool DoorwayBlocked() const;
     // Whether a region is one the ship itself sets down at (a hub's field) rather than the shuttle.
     bool RegionIsPort(const Body& body, int region) const;
     // Whether a cinematic of the ship on the ground is playing (taking off from a hub, setting down at one).

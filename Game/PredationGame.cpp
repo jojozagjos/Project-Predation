@@ -9029,7 +9029,12 @@ void PredationGame::TryInteract()
     // The boarding door: opened (only on the ground) or shut, asked of the host.
     if (focus.kind == InteractionKind::Airlock)
     {
-        if (m_campaignOpen)
+        if (m_campaignOpen && m_campaign.doorOpen && DoorwayBlocked())
+        {
+            ShowCampaignNotice("Clear the doorway first");
+            PlayNamed("UI/back", m_renderEye, 0.5f, 0.8f, false);
+        }
+        else if (m_campaignOpen)
         {
             AskCampaign(CampaignAction::Door, m_campaign.doorOpen ? 0 : 1);
             PlayNamed("UI/confirm", m_renderEye, 0.5f, 0.8f, false);
@@ -9041,8 +9046,7 @@ void PredationGame::TryInteract()
     {
         if (m_campaignOpen)
         {
-            AskCampaign(CampaignAction::Depart);
-            PlayNamed("UI/confirm", m_renderEye, 0.6f, 1.0f, false);
+            SetOut();
         }
         return;
     }
@@ -10353,8 +10357,9 @@ void PredationGame::OnUpdate(double dt, double alpha)
         // on top of that person's torch, at the same place and pointing the same way. Two lights in
         // one spot is twice the brightness, which is what "when you die it stacks your flashlight
         // when spectating" was. A corpse does not hold a torch.
+        // Nor while a cinematic has the camera: hung on its eye, the torch lit the shot.
         const bool torchLit = m_torchOn && m_screen == Screen::Playing &&
-                              m_player.State().alive && m_spectating < 0;
+                              m_player.State().alive && m_spectating < 0 && !m_cine.Active();
         if (DroneLamp(torch))
         {
             // Dead and driving a drone: the lamp on its mast, in the torch's place.
@@ -10495,7 +10500,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
             {
                 continue;
             }
-            if (avatar->torchOn)
+            if (avatar->torchOn && !m_cine.Active())
             {
                 // From their eye, pointing where they are looking. Not eased the way the local one
                 // is: that easing is about the weight of a thing held in your own hand, and from
@@ -12006,11 +12011,11 @@ void PredationGame::OnImGui()
 
     // The HUD is part of the game, not the debug overlay, so it is always drawn -- except while a cinematic has the players,
     // when there is nothing for it to say but what the intercom does.
-    if (m_cameraMode != CameraMode::Fly && !CinematicHoldsPlayers() && !m_mapOpen)
+    if (m_cameraMode != CameraMode::Fly && !m_cine.Active() && !m_mapOpen)
     {
         DrawHud();
     }
-    else if (CinematicHoldsPlayers())
+    else if (m_cine.Active())
     {
         DrawSubtitle();
     }

@@ -115,6 +115,10 @@ public:
     // Whether a point is near enough the ship that the sky round it is space.
     bool Contains(const glm::vec3& point) const;
     bool InHangar(const glm::vec3& point) const;
+    // Whether a point is inside the ship's rooms (its own deck, not the station round it), and whether it is in the boarding
+    // door's way -- the doorway, or just either side of it, where a hatch shutting would catch somebody.
+    static bool Aboard(const glm::vec3& point);
+    static bool InDoorway(const glm::vec3& point);
     // Where each player stands arriving aboard -- the briefing room, looking at its screen -- and which way that is.
     glm::vec3 Spawn(uint8_t player) const;
     float SpawnYaw() const;
@@ -169,6 +173,7 @@ private:
     VehicleProp m_stageHull;
     static void FarVisible(Scene& scene, VehicleProp& prop);
     PhysicsWorld* m_physics = nullptr;
+    LevelLights* m_lights = nullptr;
     uint32_t m_group = 0;
     uint32_t m_fieldGroup = 0;
     VehicleProp m_airlock;

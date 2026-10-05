@@ -190,6 +190,9 @@ constexpr float kSideDoorTo = -0.4f;
 constexpr float kDoorsHalfX = 4.5f;
 constexpr float kDoorsFront = 4.5f;
 constexpr float kDoorsBack = 18.5f;
+// The circuits the station's lamps are on: round the rooms, and round the stage.
+constexpr int kFieldCircuit = 9001;
+constexpr int kStageFieldCircuit = 9002;
 // The cockpit's windows: ahead, and either side.
 constexpr Opening kWindscreen{-2.4f, 2.4f, 0.95f, 2.15f};
 constexpr Opening kSideWindow{-16.3f, -13.0f, 1.0f, 2.1f};
@@ -309,10 +312,10 @@ void BuildRooms(Builder& b)
 {
     // --- The cockpit: the helm under the windscreen, two seats at it, the overhead panel --------------------------
     b.Solid("ship_helm", {-2.9f, 0.0f, kNose}, {2.9f, 0.75f, kNose + 0.8f}, kFurniture);
-    for (float x = -2.7f; x < 2.6f; x += 1.1f)
+    // Two screens either side; the middle left for the helm's own (the game's: where a course is set out on).
+    for (const float x : {-2.75f, -1.7f, 0.75f, 1.8f})
     {
-        b.Decal("ship_helm_screen", {x, 0.751f, kNose + 0.1f}, {x + 0.95f, 0.76f, kNose + 0.7f},
-                static_cast<int>((x + 3.0f) / 1.1f) % 3 == 1 ? kScreenWarm : kScreen);
+        b.Decal("ship_helm_screen", {x, 0.751f, kNose + 0.1f}, {x + 0.95f, 0.76f, kNose + 0.7f}, x < -2.0f || x > 1.0f ? kScreen : kScreenWarm);
     }
     for (const float x : {-1.1f, 1.1f})
     {
@@ -359,7 +362,8 @@ void BuildRooms(Builder& b)
         int bunk = 0;
         for (const auto& [z0, z1] : {std::pair{-3.75f, -1.75f}, std::pair{1.1f, 3.1f}})
         {
-            for (const float zp : {z0 + 0.03f, z1 - 0.03f})
+            // Just inside the bunk's ends, so no face of a post lies on one of the bunk's.
+            for (const float zp : {z0 + 0.05f, z1 - 0.05f})
             {
                 b.Shape("ship_bunk_post", {-kHalf + 0.02f, 0.0f, zp - 0.03f}, {-kHalf + 0.08f, 2.3f, zp + 0.03f}, kFrame);
                 b.Shape("ship_bunk_post", {-kHalf + 0.9f, 0.0f, zp - 0.03f}, {-kHalf + 0.96f, 2.3f, zp + 0.03f}, kFrame);
@@ -402,8 +406,9 @@ void BuildRooms(Builder& b)
     b.Solid("ship_crate", {-kBayHalf, 0.0f, kBayBack - 2.0f}, {-kDoorsHalfX - 0.1f, 1.2f, kBayBack}, kCrate);
     b.Solid("ship_crate", {-kBayHalf, 1.2f, kBayBack - 1.6f}, {-kDoorsHalfX - 0.2f, 1.9f, kBayBack - 0.2f}, kCrateDark);
     b.Solid("ship_crate", {kDoorsHalfX + 0.1f, 0.0f, kBayBack - 1.8f}, {kBayHalf, 1.0f, kBayBack}, kCrateDark);
-    b.Decal("ship_bay_panel", {-kBayHalf, 1.2f, 8.0f}, {-kBayHalf + 0.03f, 2.3f, 9.6f}, kScreenWarm);
-    Conduit(b, {kBayHalf - 0.25f, 1.2f, kBayFront + 0.3f}, {kBayHalf - 0.25f, 1.2f, kBayBack - 2.0f}, 0.18f);
+    // Between two of the wall's ribs; the conduit along the other wall in front of them.
+    b.Decal("ship_bay_panel", {-kBayHalf, 1.2f, 6.3f}, {-kBayHalf + 0.03f, 2.3f, 8.1f}, kScreenWarm);
+    Conduit(b, {kBayHalf - 0.4f, 1.2f, kBayFront + 0.3f}, {kBayHalf - 0.4f, 1.2f, kBayBack - 2.0f}, 0.18f);
 
     // --- The engine room: the reactor in the middle, its glow through a band round it, and the machinery round it ------
     b.Solid("ship_reactor", {-0.8f, 0.0f, 21.2f}, {0.8f, 2.4f, 22.8f}, kRib);
@@ -882,6 +887,11 @@ void ShipMap::SetField(Scene& scene, MeshLibrary& meshes, bool shown, const glm:
     {
         return;
     }
+    // Its lamps lit while it is there (made once, with the ship: Build).
+    if (m_lights != nullptr && m_lights->Powered(kFieldCircuit) != shown)
+    {
+        m_lights->SetPowered(kFieldCircuit, shown);
+    }
     // Made again only for another world's colours: the station solid underfoot, its dressing only to be seen.
     if (shown && (!m_field.Built() || ground != m_fieldGround || rock != m_fieldRock))
     {
@@ -916,6 +926,10 @@ void ShipMap::SetStageField(Scene& scene, MeshLibrary& meshes, bool shown, const
     if (!m_built)
     {
         return;
+    }
+    if (m_lights != nullptr && m_lights->Powered(kStageFieldCircuit) != shown)
+    {
+        m_lights->SetPowered(kStageFieldCircuit, shown);
     }
     if (shown && (!m_stageField.Built() || ground != m_stageFieldGround))
     {
@@ -1006,6 +1020,7 @@ void ShipMap::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, Le
     }
     const uint32_t group = physics.NewOverlapGroup();
     m_physics = &physics;
+    m_lights = lights;
     m_group = group;
     m_fieldGroup = physics.NewOverlapGroup();
     {
@@ -1026,6 +1041,15 @@ void ShipMap::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, Le
     if (lights != nullptr)
     {
         BuildLamps(scene, meshes, *lights);
+        // And the station's, round where it stands and round the stage, each on its own circuit, off until it is there. Made
+        // now, with the ship's own and before any site's, so a site rebuilt never takes them away.
+        for (const KestrelStation::Lamp& lamp : KestrelStation::Lamps())
+        {
+            lights->AddLamp(kOrigin + lamp.at, lamp.direction, lamp.colour, lamp.intensity, lamp.range, lamp.inner, lamp.outer, kFieldCircuit);
+            lights->AddLamp(kStage + lamp.at, lamp.direction, lamp.colour, lamp.intensity, lamp.range, lamp.inner, lamp.outer, kStageFieldCircuit);
+        }
+        lights->SetPowered(kFieldCircuit, false);
+        lights->SetPowered(kStageFieldCircuit, false);
     }
 
     // The bay doors in its floor, and the shuttle standing on them nose forward, its ramp down aft.
@@ -1129,6 +1153,30 @@ CinePose ShipMap::LoadoutLocker() const
 {
     // The middle of its screen, on its face, turned to look out into the gear room (-x), across from the room's door.
     return Pose({kHalf - 0.565f, kDeck + 1.5f, -1.0f}, 90.0f);
+}
+
+bool ShipMap::Aboard(const glm::vec3& point)
+{
+    const glm::vec3 local = point - kOrigin;
+    if (local.y < -0.6f || local.y > kBayTop)
+    {
+        return false;
+    }
+    for (const glm::vec4& room : DeckPlan(0))
+    {
+        if (local.x >= room.x && local.x <= room.z && local.z >= room.y && local.z <= room.w)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool ShipMap::InDoorway(const glm::vec3& point)
+{
+    const glm::vec3 local = point - kOrigin;
+    return local.y > -0.6f && local.y < kDoorTop && local.x > -kHalf - kWallT - 0.5f && local.x < -kHalf + 0.5f &&
+           local.z > KestrelStation::kAirlockFrom - 0.35f && local.z < KestrelStation::kAirlockTo + 0.35f;
 }
 
 CinePose ShipMap::AirlockControl(bool inside) const
