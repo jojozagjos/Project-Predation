@@ -2733,51 +2733,71 @@ void PlayerBody::UpdateHeldItem(const PlayerState& state, const PlayerView& view
 
     const glm::vec3 shoulder = m_pose.GlobalPosition(m_rig.shoulder[kRight]);
 
-    // Pulled into reach before the arm is solved. An over-extended chain draws the arm as a
-    // straight bar pointing at the target, and the hand ends up short of what it is meant to be
-    // holding.
+    // The item is placed first, fixed to the view the way a weapon is -- target is where the palm closes on it -- and the
+    // hand is closed on it after, the way a hand is closed on a weapon. Placed the other way round (the hand first, along
+    // the forearm, and the item in it) the item turned with the forearm: as the torso caught up with a turn, or as the
+    // arm was brought up, the forearm swung and the item drifted round in the hand for a second or two, and moving the
+    // view left the hand swaying into and out of it.
+    const glm::quat rotation = glm::quat_cast(glm::mat3(glm::vec3(yawRight), up, -forward));
+    const glm::quat itemTurn = glm::quat(glm::radians(m_heldItemRotation));
+    m_heldItemTransform.rotation = rotation * glm::quat(glm::radians(m_heldItemMotionTurn)) * itemTurn;
+
+    // The wrist a hand's length short of the palm, back towards the shoulder (as for a weapon's grip), and pulled into
+    // reach: an over-extended chain draws the arm as a straight bar.
+    constexpr float kWristBack = 0.075f;
+    const glm::vec3 out = target - shoulder;
+    const float outLength = glm::length(out);
+    glm::vec3 wrist = outLength > 1e-4f ? target - out * (kWristBack / outLength) : target;
     const float reach = (m_rig.upperArmLength + m_rig.lowerArmLength) * 0.94f;
-    const glm::vec3 toTarget = target - shoulder;
-    const float distance = glm::length(toTarget);
-    if (distance > reach && distance > 1e-4f)
+    const glm::vec3 toWrist = wrist - shoulder;
+    const float wristDistance = glm::length(toWrist);
+    if (wristDistance > reach && wristDistance > 1e-4f)
     {
-        target = shoulder + toTarget * (reach / distance);
+        wrist = shoulder + toWrist * (reach / wristDistance);
     }
 
     // Placed, not smoothed. Something in your hand moves with you, so smoothing here is not weight,
     // it is lag: running dragged the item out of shot and left it trailing behind the camera.
     FootState& hand = m_hands[static_cast<size_t>(kRight)];
-    hand.position = target;
+    hand.position = wrist;
     (void)dt;
 
     const glm::vec3 elbowPole = glm::normalize(-up * 1.0f + yawRight * 0.8f - forward * 0.3f);
     const TwoBoneIKResult ik = SolveTwoBoneIK(shoulder, hand.position, elbowPole,
                                               m_rig.upperArmLength, m_rig.lowerArmLength);
-
-    const glm::quat rotation = glm::quat_cast(glm::mat3(glm::vec3(yawRight), up, -forward));
     const glm::vec3 hinge = glm::cross(ik.jointPosition - shoulder, ik.endPosition - ik.jointPosition);
     m_pose.SetGlobal(m_skeleton, m_rig.upperArm[kRight],
                      SegmentFrame(m_rig.upperArm[kRight], shoulder, ik.jointPosition, hinge));
     m_pose.SetGlobal(m_skeleton, m_rig.lowerArm[kRight],
                      SegmentFrame(m_rig.lowerArm[kRight], ik.jointPosition, ik.endPosition, hinge));
-    m_pose.SetGlobal(m_skeleton, m_rig.hand[kRight],
-                     SegmentFrame(m_rig.hand[kRight], ik.endPosition,
-                                  ik.endPosition + (ik.endPosition - ik.jointPosition), hinge));
 
-    // Drawn in the hand rather than at the point the hand was aimed at. The two differ whenever the
-    // arm cannot quite get there, and the difference is exactly the gap between the glove and the
-    // thing it is supposed to be holding. Carried a little beyond the wrist, where the fingers are.
-    // Along the way the hand is held (the view's forward), not along the forearm: the forearm swings as the torso catches
-    // up with a turn, and an item set along it drifted round in the hand for a second or two after every turn.
-    const glm::vec3 palm = forward;
-    // And then wherever the item itself says it sits. No rule about a bounding box can work out how
-    // a keycard is held or which way up a flare goes, so each item carries its own offset and turn,
-    // placed by eye in the editor and written into items.json.
-    const glm::quat itemTurn = glm::quat(glm::radians(m_heldItemRotation));
-    m_heldItemTransform.rotation = rotation * glm::quat(glm::radians(m_heldItemMotionTurn)) * itemTurn;
-    m_heldItemTransform.position = ik.endPosition + palm * (Ratio::kHand * m_rig.height * 0.45f) +
-                                   m_heldItemTransform.rotation * m_heldItemOffset;
+    // Where the arm could not quite get, the item comes back with the hand rather than hanging in front of it.
+    const glm::vec3 shortfall = ik.endPosition - wrist;
+    const glm::vec3 palm = target + shortfall;
+    m_heldItemTransform.position = palm + m_heldItemTransform.rotation * m_heldItemOffset;
 
+    // The hand points at where it closes on the item and takes its roll from the view, not from the arm: the same rule
+    // as a hand on a weapon (see the weapon's hands), with the view as the weapon -- forward along it, up its up. So the
+    // hand and the item are one thing however the forearm swings.
+    const glm::vec3 along = palm - ik.endPosition;
+    glm::vec3 roll = yawRight;
+    if (glm::dot(along, along) > 1e-8f)
+    {
+        const glm::vec3 unit = glm::normalize(along);
+        const float cosine = glm::dot(forward, unit);
+        glm::quat swing{1.0f, 0.0f, 0.0f, 0.0f};
+        if (cosine < -0.99999f)
+        {
+            swing = glm::angleAxis(glm::pi<float>(), up);
+        }
+        else
+        {
+            const glm::vec3 axis = glm::cross(forward, unit);
+            swing = glm::normalize(glm::quat(1.0f + cosine, axis.x, axis.y, axis.z));
+        }
+        roll = glm::cross(unit, swing * up);
+    }
+    m_pose.SetGlobal(m_skeleton, m_rig.hand[kRight], SegmentFrame(m_rig.hand[kRight], ik.endPosition, palm, roll));
 }
 
 void PlayerBody::UpdateMantleArms(const PlayerState& state, float weight)
