@@ -24,10 +24,10 @@ using namespace ShipSpec;
 // Worn industrial: painted steel, grating underfoot, bare metal where hands and boots have been.
 const Material kWall = Material::Diffuse({0.30f, 0.33f, 0.33f}, 0.8f);
 const Material kWallDark = Material::Diffuse({0.22f, 0.24f, 0.25f}, 0.85f);
-const Material kDeck = Material::Diffuse({0.16f, 0.17f, 0.18f}, 0.9f);
+const Material kDeckPlate = Material::Diffuse({0.16f, 0.17f, 0.18f}, 0.9f);
 const Material kCeiling = Material::Diffuse({0.21f, 0.22f, 0.23f}, 0.9f);
-const Material kHangarWall = Material::Diffuse({0.36f, 0.37f, 0.36f}, 0.8f);
-const Material kHangarDeck = Material::Diffuse({0.20f, 0.21f, 0.21f}, 0.9f);
+const Material kBayWall = Material::Diffuse({0.36f, 0.37f, 0.36f}, 0.8f);
+const Material kBayDeck = Material::Diffuse({0.20f, 0.21f, 0.21f}, 0.9f);
 const Material kFrame = Material::Metal({0.14f, 0.14f, 0.15f}, 0.55f);
 const Material kRib = Material::Metal({0.24f, 0.25f, 0.26f}, 0.5f);
 const Material kHazardYellow = Material::Diffuse({0.72f, 0.55f, 0.10f}, 0.7f);
@@ -38,7 +38,6 @@ const Material kFurniture = Material::Metal({0.28f, 0.29f, 0.31f}, 0.6f);
 const Material kTableTop = Material::Diffuse({0.46f, 0.45f, 0.42f}, 0.6f);
 const Material kCushion = Material::Diffuse({0.22f, 0.25f, 0.30f}, 0.95f);
 const Material kMattress = Material::Diffuse({0.52f, 0.52f, 0.49f}, 0.95f);
-const Material kStair = Material::Diffuse({0.26f, 0.27f, 0.28f}, 0.85f);
 const Material kHullDark = Material::Metal({0.17f, 0.18f, 0.19f}, 0.55f);
 
 Material Glow(const glm::vec3& colour, float strength)
@@ -50,8 +49,8 @@ Material Glow(const glm::vec3& colour, float strength)
 
 const Material kScreen = Glow({0.06f, 0.16f, 0.26f}, 0.45f);
 const Material kScreenWarm = Glow({0.30f, 0.20f, 0.08f}, 0.45f);
-const Material kScreenBig = Glow({0.03f, 0.07f, 0.12f}, 0.4f);
 const Material kIndicator = Glow({0.2f, 0.9f, 0.4f}, 2.0f);
+const Material kReactorGlow = Glow({0.35f, 0.6f, 1.0f}, 1.6f);
 
 // The ship's frame to the world's.
 Transform At(const glm::vec3& local, float yawDegrees = 0.0f)
@@ -117,30 +116,23 @@ public:
         m_physics.SetOverlapGroup(body, m_group);
         m_bodies.push_back(body);
     }
-    void Mesh(const char* name, const MeshData& mesh, const Material& material, bool solid = false)
-    {
-        m_map.AddMesh(name, At(glm::vec3(0.0f)), mesh, material, solid);
-    }
 
     // A wall running across the ship (along x) between z0 and z1, and one running along it (along z) between x0 and x1,
     // with gaps in it: doorways from the floor, windows with a sill.
-    void WallX(const char* name, float x0, float x1, float z0, float z1, float y0, float y1, std::vector<Opening> gaps, const Material& material,
-               bool solid = true)
+    void WallX(const char* name, float x0, float x1, float z0, float z1, float y0, float y1, std::vector<Opening> gaps, const Material& material)
     {
-        Wall(name, x0, x1, y0, y1, std::move(gaps), material, solid, [&](float a, float b, float lo, float hi)
+        Wall(name, x0, x1, y0, y1, std::move(gaps), material, [&](float a, float b, float lo, float hi)
              { return std::pair{glm::vec3(a, lo, z0), glm::vec3(b, hi, z1)}; });
     }
-    void WallZ(const char* name, float z0, float z1, float x0, float x1, float y0, float y1, std::vector<Opening> gaps, const Material& material,
-               bool solid = true)
+    void WallZ(const char* name, float z0, float z1, float x0, float x1, float y0, float y1, std::vector<Opening> gaps, const Material& material)
     {
-        Wall(name, z0, z1, y0, y1, std::move(gaps), material, solid, [&](float a, float b, float lo, float hi)
+        Wall(name, z0, z1, y0, y1, std::move(gaps), material, [&](float a, float b, float lo, float hi)
              { return std::pair{glm::vec3(x0, lo, a), glm::vec3(x1, hi, b)}; });
     }
 
 private:
     template <typename Corners>
-    void Wall(const char* name, float from, float to, float y0, float y1, std::vector<Opening> gaps, const Material& material, bool solid,
-              Corners corners)
+    void Wall(const char* name, float from, float to, float y0, float y1, std::vector<Opening> gaps, const Material& material, Corners corners)
     {
         std::sort(gaps.begin(), gaps.end(), [](const Opening& a, const Opening& b) { return a.from < b.from; });
         const auto piece = [&](float a, float b, float lo, float hi)
@@ -150,7 +142,7 @@ private:
                 return;
             }
             const auto [low, high] = corners(a, b, lo, hi);
-            solid ? Solid(name, low, high, material) : Shape(name, low, high, material);
+            Solid(name, low, high, material);
         };
         float at = from;
         for (const Opening& gap : gaps)
@@ -169,150 +161,126 @@ private:
     std::vector<BodyHandle>& m_bodies;
 };
 
-// The decks, in the ship's frame.
-constexpr float kLower = kLowerDeck;          // lower deck floor
-constexpr float kLowerTop = 3.0f;             // its ceiling
-constexpr float kUpper = kUpperDeck;          // upper deck floor
-constexpr float kUpperTop = 6.6f;             // its ceiling
-constexpr float kRoof = 7.2f;                 // the top of the roof over it
-constexpr float kHangarTop = 8.0f;            // the hangar's ceiling
-constexpr float kHangarRoof = 8.6f;
-constexpr float kSlab = 0.6f;
-constexpr float kDoorTop = 2.3f;              // a doorway's height
-// The bay in the hangar floor the shuttle drops through.
-constexpr float kBayHalfX = 4.5f;
-constexpr float kBayFront = 13.0f;
-constexpr float kBayBack = 27.0f;
-// The stairs: up to starboard from the corridor, climbing towards +x.
-constexpr float kStairFoot = 3.06f;
-constexpr float kStairTop = 8.1f;
-constexpr float kStairZ0 = 1.3f;
-constexpr float kStairZ1 = 3.7f;
+// --- The layout, in the ship's frame ------------------------------------------------------------------------------
+//
+// Inside faces of walls, along the spine (z, bow at -z) and across it (x). Walls are kWall thick, outside these faces.
+constexpr float kTop = 2.7f;      // the crew sections' ceilings
+constexpr float kRoof = 3.0f;     // and the top of the roof over them
+constexpr float kBayTop = 5.6f;   // the bay's ceiling
+constexpr float kBayRoof = 5.95f;
+constexpr float kSlab = 0.5f;     // the floor's thickness, under y = 0
+constexpr float kWallT = 0.25f;
+constexpr float kDoorTop = 2.2f;
+constexpr float kDoorHalf = 0.7f;
+constexpr float kHalf = 3.4f;     // the crew sections, inside, either side of the middle
+constexpr float kBayHalf = 5.4f;  // the bay
+constexpr float kNose = -17.0f;      // the cockpit's front wall
+constexpr float kOpsFront = -11.5f;  // cockpit | ops room
+constexpr float kCrewFront = -4.0f;  // ops room | crew section
+constexpr float kBayFront = 3.5f;    // crew section | bay
+constexpr float kBayBack = 19.5f;    // bay | engine room
+constexpr float kStern = 24.5f;      // the engine room's back wall
+// The corridor down the crew section, between the bunks and the gear room.
+constexpr float kCorridor = 0.8f;
+constexpr float kPartition = 0.1f;
+constexpr float kSideDoorFrom = -1.6f;
+constexpr float kSideDoorTo = -0.4f;
+// The bay doors in the bay's floor (BayDoorsModel: nine metres across, fourteen long).
+constexpr float kDoorsHalfX = 4.5f;
+constexpr float kDoorsFront = 4.5f;
+constexpr float kDoorsBack = 18.5f;
+// The cockpit's windows: ahead, and either side.
+constexpr Opening kWindscreen{-2.4f, 2.4f, 0.95f, 2.15f};
+constexpr Opening kSideWindow{-16.3f, -13.0f, 1.0f, 2.1f};
+// The two screens on the ops room's forward wall, either side of the door.
+constexpr float kScreenX = 2.05f;
+constexpr float kScreenWidth = 2.4f;
+constexpr float kScreenY = 1.55f;
 
 void BuildStructure(Builder& b)
 {
-    // --- Floors, ceilings, roofs -------------------------------------------------------------------------------
-    b.Solid("ship_deck", {-12.3f, kLower - kSlab, -22.3f}, {12.3f, kLower, 5.85f}, kDeck);
-    // The hangar's, round the bay.
-    b.Solid("ship_hangar_deck", {-12.3f, kLower - kSlab, 5.85f}, {-kBayHalfX, kLower, 34.3f}, kHangarDeck);
-    b.Solid("ship_hangar_deck", {kBayHalfX, kLower - kSlab, 5.85f}, {12.3f, kLower, 34.3f}, kHangarDeck);
-    b.Solid("ship_hangar_deck", {-kBayHalfX, kLower - kSlab, 5.85f}, {kBayHalfX, kLower, kBayFront}, kHangarDeck);
-    b.Solid("ship_hangar_deck", {-kBayHalfX, kLower - kSlab, kBayBack}, {kBayHalfX, kLower, 34.3f}, kHangarDeck);
-    // Between the decks: the lower's ceiling and the upper's floor, open over the stairs.
-    b.Solid("ship_between", {-12.3f, kLowerTop, -22.3f}, {12.3f, kUpper, kStairZ0}, kDeck);
-    b.Solid("ship_between", {-12.3f, kLowerTop, kStairZ1}, {12.3f, kUpper, 5.85f}, kDeck);
-    b.Solid("ship_between", {-12.3f, kLowerTop, kStairZ0}, {1.8f, kUpper, kStairZ1}, kDeck);
-    b.Solid("ship_between", {kStairTop, kLowerTop, kStairZ0}, {12.3f, kUpper, kStairZ1}, kDeck);
-    b.Solid("ship_between", {-8.3f, kLowerTop, -40.3f}, {8.3f, kUpper, -22.3f}, kDeck);
-    b.Solid("ship_roof", {-12.3f, kUpperTop, -22.3f}, {12.3f, kRoof, 5.85f}, kCeiling);
-    b.Solid("ship_roof", {-8.3f, kUpperTop, -40.3f}, {8.3f, kRoof, -22.3f}, kCeiling);
-    b.Solid("ship_hangar_roof", {-12.3f, kHangarTop, 5.85f}, {12.3f, kHangarRoof, 34.3f}, kCeiling);
+    const float outer = kHalf + kWallT;
+    const float bayOuter = kBayHalf + kWallT;
+    // --- Floors and roofs ---------------------------------------------------------------------------------------
+    b.Solid("ship_deck", {-outer, -kSlab, kNose - kWallT}, {outer, 0.0f, kBayFront - kWallT}, kDeckPlate);
+    b.Solid("ship_deck", {-bayOuter, -kSlab, kBayFront - kWallT}, {bayOuter, 0.0f, kDoorsFront}, kBayDeck);
+    b.Solid("ship_deck", {-bayOuter, -kSlab, kDoorsBack}, {bayOuter, 0.0f, kBayBack + kWallT}, kBayDeck);
+    b.Solid("ship_deck", {-bayOuter, -kSlab, kDoorsFront}, {-kDoorsHalfX, 0.0f, kDoorsBack}, kBayDeck);
+    b.Solid("ship_deck", {kDoorsHalfX, -kSlab, kDoorsFront}, {bayOuter, 0.0f, kDoorsBack}, kBayDeck);
+    b.Solid("ship_deck", {-outer, -kSlab, kBayBack + kWallT}, {outer, 0.0f, kStern + kWallT}, kDeckPlate);
+    b.Solid("ship_roof", {-outer, kTop, kNose - kWallT}, {outer, kRoof, kBayFront - kWallT}, kCeiling);
+    b.Solid("ship_roof", {-bayOuter, kBayTop, kBayFront - kWallT}, {bayOuter, kBayRoof, kBayBack + kWallT}, kCeiling);
+    b.Solid("ship_roof", {-outer, kTop, kBayBack + kWallT}, {outer, kRoof, kStern + kWallT}, kCeiling);
 
-    // --- The lower deck ------------------------------------------------------------------------------------
-    b.Solid("ship_wall", {-12.3f, kLower, -22.3f}, {-12.0f, kLowerTop, 5.85f}, kWall);
-    b.Solid("ship_wall", {12.0f, kLower, -22.3f}, {12.3f, kLowerTop, 5.85f}, kWall);
-    b.Solid("ship_wall", {-12.0f, kLower, -22.3f}, {12.0f, kLowerTop, -22.0f}, kWall);
-    // The corridor: the gear room and the quarters off it to port, the stairs and the mess to starboard.
-    b.WallZ("ship_wall", -22.0f, 5.85f, -1.8f, -1.5f, kLower, kLowerTop,
-            {{-0.8f, 0.8f, kLower, kDoorTop}, {-14.8f, -13.2f, kLower, kDoorTop}}, kWall);
-    b.WallZ("ship_wall", -22.0f, 5.85f, 1.5f, 1.8f, kLower, kLowerTop,
-            {{1.5f, 3.5f, kLower, kDoorTop}, {-12.8f, -11.2f, kLower, kDoorTop}}, kWall);
-    b.Solid("ship_wall", {-12.0f, kLower, -6.15f}, {-1.8f, kLowerTop, -5.85f}, kWall);
-    b.Solid("ship_wall", {1.8f, kLower, -1.15f}, {12.0f, kLowerTop, -0.85f}, kWall);
-
-    // The stairs, up to the upper deck's landing, and rails round the well at the top.
-    b.Mesh("ship_stairs", [] {
-        MeshData stairs;
-        const glm::mat4 turn = glm::translate(glm::mat4(1.0f), glm::vec3(kStairFoot, kLower, 2.5f)) *
-                               glm::mat4_cast(glm::angleAxis(glm::half_pi<float>(), glm::vec3(0.0f, 1.0f, 0.0f)));
-        stairs.Append(Primitives::Stairs(18, 2.0f, 0.2f, 0.28f), turn);
-        return stairs;
-    }(), kStair, true);
-    const float rail = kUpper + 1.05f;
-    for (const float z : {kStairZ0 - 0.05f, kStairZ1 + 0.05f})
+    // --- The outside walls of the crew sections and the engine room -------------------------------------------------
+    b.WallX("ship_wall", -outer, outer, kNose - kWallT, kNose, 0.0f, kTop, {kWindscreen}, kWall);
+    b.Barrier({kWindscreen.from, kWindscreen.bottom, kNose - kWallT}, {kWindscreen.to, kWindscreen.top, kNose});
+    for (const float side : {-1.0f, 1.0f})
     {
-        b.Shape("ship_rail", {1.8f, rail - 0.05f, z - 0.025f}, {kStairTop - 0.2f, rail, z + 0.025f}, kPipe);
-        b.Shape("ship_rail", {1.8f, kUpper + 0.5f, z - 0.02f}, {kStairTop - 0.2f, kUpper + 0.54f, z + 0.02f}, kPipe);
-        for (float x = 1.85f; x < kStairTop - 0.1f; x += 1.25f)
-        {
-            b.Shape("ship_rail_post", {x - 0.025f, kUpper, z - 0.025f}, {x + 0.025f, rail, z + 0.025f}, kPipe);
-        }
-        b.Barrier({1.8f, kUpper, z - 0.03f}, {kStairTop - 0.2f, rail, z + 0.03f});
+        const float x0 = side < 0.0f ? -outer : kHalf;
+        const float x1 = side < 0.0f ? -kHalf : outer;
+        b.WallZ("ship_wall", kNose, kBayFront - kWallT, x0, x1, 0.0f, kTop, {kSideWindow}, kWall);
+        b.Barrier({x0, kSideWindow.bottom, kSideWindow.from}, {x1, kSideWindow.top, kSideWindow.to});
+        b.Solid("ship_wall", {x0, 0.0f, kBayBack + kWallT}, {x1, kTop, kStern}, kWall);
     }
-    b.Shape("ship_rail", {1.74f, rail - 0.05f, kStairZ0}, {1.79f, rail, kStairZ1}, kPipe);
-    b.Barrier({1.74f, kUpper, kStairZ0}, {1.8f, rail, kStairZ1});
-
-    // --- The hangar: as tall as both decks, the bay in its floor ------------------------------------------------
-    // Its forward wall, with the way in from the corridor and the gallery's window high up on the port side.
-    b.WallX("ship_hangar_wall", -12.3f, 12.3f, 5.85f, 6.15f, kLower, kHangarTop,
-            {{-1.2f, 1.2f, kLower, 2.4f}, {-10.0f, -3.0f, kUpper + 1.0f, kUpper + 2.6f}}, kHangarWall);
-    b.Barrier({-10.0f, kUpper + 1.0f, 5.95f}, {-3.0f, kUpper + 2.6f, 6.05f});
-    b.Solid("ship_hangar_wall", {-12.3f, kLower, 6.15f}, {-12.0f, kHangarTop, 34.0f}, kHangarWall);
-    b.Solid("ship_hangar_wall", {12.0f, kLower, 6.15f}, {12.3f, kHangarTop, 34.0f}, kHangarWall);
-    b.Solid("ship_hangar_wall", {-12.3f, kLower, 34.0f}, {12.3f, kHangarTop, 34.3f}, kHangarWall);
-    // Ribs down its walls, and girders across under its roof.
-    for (float z = 9.0f; z < 33.0f; z += 4.0f)
+    b.Solid("ship_wall", {-outer, 0.0f, kStern}, {outer, kTop, kStern + kWallT}, kWall);
+    // The window frames: mullions, so it reads as a window rather than a hole.
+    for (const float x : {-1.2f, 1.2f})
     {
-        b.Solid("ship_hangar_rib", {-12.0f, kLower, z - 0.2f}, {-11.75f, kHangarTop, z + 0.2f}, kRib);
-        b.Solid("ship_hangar_rib", {11.75f, kLower, z - 0.2f}, {12.0f, kHangarTop, z + 0.2f}, kRib);
-        b.Shape("ship_hangar_girder", {-11.75f, kHangarTop - 0.5f, z - 0.15f}, {11.75f, kHangarTop, z + 0.15f}, kRib);
+        b.Shape("ship_mullion", {x - 0.05f, kWindscreen.bottom, kNose - kWallT}, {x + 0.05f, kWindscreen.top, kNose}, kFrame);
     }
-    // Yellow round the bay, for where not to stand.
+    for (const float x : {-outer, kHalf})
     {
-        const auto band = [&](float x0, float z0, float x1, float z1)
+        b.Shape("ship_mullion", {x, kSideWindow.bottom, -14.7f}, {x + kWallT, kSideWindow.top, -14.6f}, kFrame);
+    }
+
+    // --- Bulkheads between the sections, a door through each in the middle --------------------------------------
+    const Opening door{-kDoorHalf, kDoorHalf, 0.0f, kDoorTop};
+    b.WallX("ship_bulkhead", -kHalf, kHalf, kOpsFront - kWallT * 0.5f, kOpsFront + kWallT * 0.5f, 0.0f, kTop, {door}, kWallDark);
+    b.WallX("ship_bulkhead", -kHalf, kHalf, kCrewFront - kWallT * 0.5f, kCrewFront + kWallT * 0.5f, 0.0f, kTop, {door}, kWallDark);
+    b.WallX("ship_bulkhead", -bayOuter, bayOuter, kBayFront - kWallT, kBayFront, 0.0f, kBayTop, {door}, kBayWall);
+    b.WallX("ship_bulkhead", -bayOuter, bayOuter, kBayBack, kBayBack + kWallT, 0.0f, kBayTop, {door}, kBayWall);
+
+    // --- The crew section's corridor, between the bunks and the gear room -------------------------------------------
+    const Opening sideDoor{kSideDoorFrom, kSideDoorTo, 0.0f, kDoorTop};
+    b.WallZ("ship_partition", kCrewFront + kWallT * 0.5f, kBayFront - kWallT, -kCorridor - kPartition, -kCorridor, 0.0f, kTop, {sideDoor}, kWall);
+    b.WallZ("ship_partition", kCrewFront + kWallT * 0.5f, kBayFront - kWallT, kCorridor, kCorridor + kPartition, 0.0f, kTop, {sideDoor}, kWall);
+
+    // --- The bay: its walls, ribs down them and girders over it ---------------------------------------------------
+    for (const float side : {-1.0f, 1.0f})
+    {
+        const float x0 = side < 0.0f ? -bayOuter : kBayHalf;
+        const float x1 = side < 0.0f ? -kBayHalf : bayOuter;
+        b.Solid("ship_bay_wall", {x0, 0.0f, kBayFront}, {x1, kBayTop, kBayBack}, kBayWall);
+        for (float z = kBayFront + 2.0f; z < kBayBack - 1.0f; z += 3.5f)
         {
-            b.Decal("ship_hazard", {x0, kLower, z0}, {x1, kLower + 0.012f, z1}, kHazardYellow);
-        };
-        for (float x = -kBayHalfX - 0.4f; x < kBayHalfX + 0.4f - 0.01f; x += 0.7f)
-        {
-            const float to = std::min(x + 0.7f, kBayHalfX + 0.4f);
-            band(x, kBayFront - 0.4f, to, kBayFront);
-            band(x, kBayBack, to, kBayBack + 0.4f);
-        }
-        for (float z = kBayFront; z < kBayBack - 0.01f; z += 0.7f)
-        {
-            const float to = std::min(z + 0.7f, kBayBack);
-            band(-kBayHalfX - 0.4f, z, -kBayHalfX, to);
-            band(kBayHalfX, z, kBayHalfX + 0.4f, to);
+            const float r0 = side < 0.0f ? -kBayHalf : kBayHalf - 0.2f;
+            b.Solid("ship_bay_rib", {r0, 0.0f, z - 0.15f}, {r0 + 0.2f, kBayTop, z + 0.15f}, kRib);
+            if (side < 0.0f)
+            {
+                b.Shape("ship_bay_girder", {-kBayHalf + 0.2f, kBayTop - 0.4f, z - 0.12f}, {kBayHalf - 0.2f, kBayTop, z + 0.12f}, kRib);
+            }
         }
     }
-    // The bay's shaft through the hull, lined along its sides, where the hull's belly stops short of it. Fore and aft the
-    // belly's own ends are its walls: a lining there was in the same place as them, and flickered with them.
-    b.Shape("ship_bay_shaft", {-kBayHalfX - 0.05f, -1.4f, kBayFront}, {-kBayHalfX, kLower - kSlab, kBayBack}, kHullDark);
-    b.Shape("ship_bay_shaft", {kBayHalfX, -1.4f, kBayFront}, {kBayHalfX + 0.05f, kLower - kSlab, kBayBack}, kHullDark);
-
-    // --- The upper deck --------------------------------------------------------------------------------------
-    b.Solid("ship_wall", {-12.3f, kUpper, -22.3f}, {-12.0f, kUpperTop, 5.85f}, kWall);
-    b.Solid("ship_wall", {12.0f, kUpper, -22.3f}, {12.3f, kUpperTop, 5.85f}, kWall);
-    // The gallery to port of the corridor, the landing open to starboard.
-    b.WallZ("ship_wall", -3.85f, 5.85f, -1.8f, -1.5f, kUpper, kUpperTop, {{-0.8f, 0.8f, kUpper, kUpper + kDoorTop}}, kWall);
-    // Into the briefing room, and out of it forward.
-    b.WallX("ship_wall", -12.0f, 12.0f, -4.15f, -3.85f, kUpper, kUpperTop, {{-1.0f, 1.0f, kUpper, kUpper + kDoorTop}}, kWall);
-    b.WallX("ship_wall", -12.0f, 12.0f, -22.3f, -22.0f, kUpper, kUpperTop, {{-1.0f, 1.0f, kUpper, kUpper + kDoorTop}}, kWall);
-    // The forward corridor, and the cockpit at the end of it: windows ahead and to either side.
-    b.Solid("ship_wall", {-1.8f, kUpper, -30.0f}, {-1.5f, kUpperTop, -22.3f}, kWall);
-    b.Solid("ship_wall", {1.5f, kUpper, -30.0f}, {1.8f, kUpperTop, -22.3f}, kWall);
-    b.WallX("ship_wall", -8.0f, 8.0f, -30.3f, -30.0f, kUpper, kUpperTop, {{-1.0f, 1.0f, kUpper, kUpper + kDoorTop}}, kWall);
-    const Opening side{-38.5f, -31.5f, kUpper + 0.9f, kUpper + 2.5f};
-    b.WallZ("ship_wall", -40.3f, -22.3f, -8.3f, -8.0f, kUpper, kUpperTop, {side}, kWall);
-    b.WallZ("ship_wall", -40.3f, -22.3f, 8.0f, 8.3f, kUpper, kUpperTop, {side}, kWall);
-    const Opening ahead{-6.8f, 6.8f, kUpper + 0.7f, kUpper + 2.7f};
-    b.WallX("ship_wall", -8.3f, 8.3f, -40.3f, -40.0f, kUpper, kUpperTop, {ahead}, kWall);
-    b.Barrier({-8.3f, side.bottom, side.from}, {-8.0f, side.top, side.to});
-    b.Barrier({8.0f, side.bottom, side.from}, {8.3f, side.top, side.to});
-    b.Barrier({ahead.from, ahead.bottom, -40.3f}, {ahead.to, ahead.top, -40.0f});
-    // The window frames: a mullion or two, so it reads as a window rather than a hole.
-    for (const float x : {-2.3f, 2.3f})
+    // Yellow round the doors, for where not to stand.
+    for (float x = -kDoorsHalfX - 0.35f; x < kDoorsHalfX + 0.35f - 0.01f; x += 0.7f)
     {
-        b.Shape("ship_mullion", {x - 0.06f, ahead.bottom, -40.3f}, {x + 0.06f, ahead.top, -40.0f}, kFrame);
+        const float to = std::min(x + 0.7f, kDoorsHalfX + 0.35f);
+        b.Decal("ship_hazard", {x, 0.0f, kDoorsFront - 0.35f}, {to, 0.012f, kDoorsFront}, kHazardYellow);
+        b.Decal("ship_hazard", {x, 0.0f, kDoorsBack}, {to, 0.012f, kDoorsBack + 0.35f}, kHazardYellow);
     }
-    for (const float x : {-8.3f, 8.0f})
+    for (float z = kDoorsFront; z < kDoorsBack - 0.01f; z += 0.7f)
     {
-        b.Shape("ship_mullion", {x, side.bottom, -35.06f}, {x + 0.3f, side.top, -34.94f}, kFrame);
+        const float to = std::min(z + 0.7f, kDoorsBack);
+        b.Decal("ship_hazard", {-kDoorsHalfX - 0.35f, 0.0f, z}, {-kDoorsHalfX, 0.012f, to}, kHazardYellow);
+        b.Decal("ship_hazard", {kDoorsHalfX, 0.0f, z}, {kDoorsHalfX + 0.35f, 0.012f, to}, kHazardYellow);
     }
+    // The shaft through the belly under the doors, lined.
+    b.Shape("ship_bay_shaft", {-kDoorsHalfX - 0.05f, -0.9f, kDoorsFront}, {-kDoorsHalfX, -kSlab, kDoorsBack}, kHullDark);
+    b.Shape("ship_bay_shaft", {kDoorsHalfX, -0.9f, kDoorsFront}, {kDoorsHalfX + 0.05f, -kSlab, kDoorsBack}, kHullDark);
 }
 
-// Conduit along a wall at a height, from one end to the other along z or x.
+// Conduit along a wall at a height, from one end to the other.
 void Conduit(Builder& b, const glm::vec3& from, const glm::vec3& to, float thickness)
 {
     const glm::vec3 lo = glm::min(from, to) - glm::vec3(thickness * 0.5f);
@@ -320,271 +288,465 @@ void Conduit(Builder& b, const glm::vec3& from, const glm::vec3& to, float thick
     b.Shape("ship_conduit", lo, hi, kPipe);
 }
 
-// A chair facing `yaw` (degrees; 0 faces -z), on a floor.
-void Chair(Builder& b, float x, float floor, float z, float yaw)
+// A chair facing `yaw` (degrees; 0 faces -z), on the floor.
+void Chair(Builder& b, float x, float z, float yaw)
 {
-    b.SolidTurned("ship_chair_seat", {x, floor + 0.23f, z}, {0.46f, 0.46f, 0.46f}, yaw, kFurniture);
+    b.SolidTurned("ship_chair_seat", {x, 0.23f, z}, {0.46f, 0.46f, 0.46f}, yaw, kFurniture);
     const float r = glm::radians(yaw);
     const glm::vec3 back{std::sin(r) * 0.21f, 0.0f, std::cos(r) * 0.21f};
-    b.ShapeTurned("ship_chair_back", glm::vec3(x, floor + 0.72f, z) + back, {0.46f, 0.52f, 0.05f}, yaw, kCushion);
-    b.ShapeTurned("ship_chair_cushion", {x, floor + 0.475f, z}, {0.42f, 0.03f, 0.42f}, yaw, kCushion);
-}
-
-// A table: a top and a solid underneath, which nobody wants to crawl under anyway.
-void Table(Builder& b, float x0, float x1, float z0, float z1, float floor, float top)
-{
-    b.Solid("ship_table", {x0 + 0.1f, floor, z0 + 0.1f}, {x1 - 0.1f, floor + top - 0.04f, z1 - 0.1f}, kFrame);
-    b.Solid("ship_table_top", {x0, floor + top - 0.04f, z0}, {x1, floor + top, z1}, kTableTop);
+    b.ShapeTurned("ship_chair_back", glm::vec3(x, 0.72f, z) + back, {0.46f, 0.52f, 0.05f}, yaw, kCushion);
+    b.ShapeTurned("ship_chair_cushion", {x, 0.475f, z}, {0.42f, 0.03f, 0.42f}, yaw, kCushion);
 }
 
 void BuildRooms(Builder& b)
 {
-    // --- The gear room: the loadout locker, work benches, a rack, cabinets -------------------------------------
-    b.Solid("ship_bench", {-10.8f, kLower, -5.8f}, {-3.2f, kLower + 0.9f, -5.1f}, kFurniture);
-    b.Solid("ship_bench_top", {-10.85f, kLower + 0.9f, -5.82f}, {-3.15f, kLower + 0.92f, -5.08f}, kTableTop);
-    // And a second bench across the room, under the rack.
-    b.Solid("ship_bench", {-10.8f, kLower, 5.1f}, {-3.2f, kLower + 0.9f, 5.8f}, kFurniture);
-    b.Solid("ship_bench_top", {-10.85f, kLower + 0.9f, 5.08f}, {-3.15f, kLower + 0.92f, 5.82f}, kTableTop);
-    b.Solid("ship_rack", {-10.0f, kLower + 1.2f, 5.6f}, {-4.0f, kLower + 2.3f, 5.85f}, kWallDark);
-    for (float x = -9.7f; x < -4.1f; x += 0.6f)
+    // --- The cockpit: the helm under the windscreen, two seats at it, the overhead panel --------------------------
+    b.Solid("ship_helm", {-2.9f, 0.0f, kNose}, {2.9f, 0.75f, kNose + 0.8f}, kFurniture);
+    for (float x = -2.7f; x < 2.6f; x += 1.1f)
     {
-        b.Decal("ship_rack_slot", {x - 0.03f, kLower + 1.3f, 5.5f}, {x + 0.03f, kLower + 2.2f, 5.6f}, kFrame);
+        b.Decal("ship_helm_screen", {x, 0.751f, kNose + 0.1f}, {x + 0.95f, 0.76f, kNose + 0.7f},
+                static_cast<int>((x + 3.0f) / 1.1f) % 3 == 1 ? kScreenWarm : kScreen);
     }
-    for (float z = -4.6f; z < -1.5f; z += 1.8f)
+    for (const float x : {-1.1f, 1.1f})
     {
-        b.Solid("ship_cabinet", {-11.97f, kLower, z}, {-11.45f, kLower + 2.0f, z + 1.75f}, kFurniture);
-        b.Decal("ship_cabinet_line", {-11.46f, kLower + 0.1f, z + 0.86f}, {-11.44f, kLower + 1.9f, z + 0.89f}, kFrame);
+        Chair(b, x, kNose + 1.9f, 0.0f);
     }
-    b.Solid("ship_seat", {-8.5f, kLower, 0.8f}, {-5.5f, kLower + 0.45f, 1.2f}, kFurniture);
-    // The loadout locker, straight ahead coming in at the door, where everybody draws their kit: taller than the cabinets
-    // either side of it, with its screen (the game's: LoadoutLocker) and a hazard line on the floor in front of it.
-    // It is the one thing in the room that looks like it is for something.
-    b.Solid("ship_loadout", {-11.97f, kLower, -0.95f}, {-11.3f, kLower + 2.4f, 0.75f}, kFurniture);
-    b.Decal("ship_loadout_shelf", {-11.3f, kLower + 0.95f, -0.8f}, {-11.1f, kLower + 1.0f, 0.6f}, kFrame);
-    for (const float z : {-1.0f, 0.8f})
+    b.Shape("ship_overhead", {-1.6f, kTop - 0.18f, kNose + 0.6f}, {1.6f, kTop, kNose + 2.4f}, kFrame);
+    for (float x = -1.4f; x < 1.5f; x += 0.4f)
     {
-        b.Decal("ship_loadout_line", {-11.3f, kLower, z - 0.04f}, {-10.0f, kLower + 0.004f, z + 0.04f}, kHazardYellow);
+        b.Decal("ship_overhead_light", {x, kTop - 0.185f, kNose + 1.4f}, {x + 0.05f, kTop - 0.18f, kNose + 1.45f}, kIndicator);
     }
-    b.Decal("ship_loadout_line", {-10.08f, kLower, -1.0f}, {-10.0f, kLower + 0.004f, 0.8f}, kHazardYellow);
-    Conduit(b, {-11.85f, 2.75f, -5.7f}, {-11.85f, 2.75f, 5.7f}, 0.14f);
-
-    // --- The crew quarters: bunks down the hull side, lockers opposite, a table in the middle -------------------
-    {
-        int bunk = 0;
-        for (float z = -6.5f; z > -20.6f; z -= 2.4f, ++bunk)
-        {
-            const float z0 = z - 2.0f;
-            const float z1 = z;
-            for (const float zp : {z0 + 0.03f, z1 - 0.03f})
-            {
-                b.Shape("ship_bunk_post", {-11.95f, kLower, zp - 0.03f}, {-11.89f, kLower + 2.3f, zp + 0.03f}, kFrame);
-                b.Shape("ship_bunk_post", {-11.06f, kLower, zp - 0.03f}, {-11.0f, kLower + 2.3f, zp + 0.03f}, kFrame);
-            }
-            for (const float level : {0.35f, 1.5f})
-            {
-                b.Solid("ship_bunk", {-11.97f, kLower + level, z0}, {-11.0f, kLower + level + 0.12f, z1}, kFrame);
-                b.Shape("ship_mattress", {-11.9f, kLower + level + 0.12f, z0 + 0.05f}, {-11.05f, kLower + level + 0.28f, z1 - 0.05f}, kMattress);
-                // A blanket over most of it, each its own colour, and the pillow at the far end.
-                const float hue = static_cast<float>((bunk * 3 + static_cast<int>(level * 2.0f)) % 5) / 5.0f;
-                const Material blanket = Material::Diffuse({0.22f + 0.2f * hue, 0.26f + 0.06f * (1.0f - hue), 0.32f - 0.12f * hue}, 0.95f);
-                b.Shape("ship_blanket", {-11.92f, kLower + level + 0.28f, z0 + 0.1f}, {-11.03f, kLower + level + 0.33f, z1 - 0.55f}, blanket);
-                b.Shape("ship_pillow", {-11.8f, kLower + level + 0.28f, z1 - 0.5f}, {-11.15f, kLower + level + 0.4f, z1 - 0.12f}, kMattress);
-            }
-            // Something stowed under the bottom one.
-            b.Shape("ship_bag", {-11.85f, kLower, z0 + 0.3f + static_cast<float>(bunk % 3) * 0.3f},
-                    {-11.3f, kLower + 0.3f, z0 + 0.8f + static_cast<float>(bunk % 3) * 0.3f}, kCrateDark);
-        }
-        // Personal lockers on the corridor side, clear of the door.
-        const float lockerZ[] = {-6.5f, -8.3f, -10.1f, -15.3f, -17.1f, -18.9f};
-        int n = 0;
-        for (const float z : lockerZ)
-        {
-            const float hue = static_cast<float>(n++ % 3);
-            const Material paint = Material::Diffuse({0.28f + 0.03f * hue, 0.30f, 0.31f - 0.02f * hue}, 0.8f);
-            b.Solid("ship_locker", {-2.4f, kLower, z - 1.7f}, {-1.83f, kLower + 2.0f, z - 0.05f}, paint);
-            b.Decal("ship_locker_line", {-2.42f, kLower + 0.1f, z - 0.9f}, {-2.39f, kLower + 1.9f, z - 0.86f}, kFrame);
-        }
-        Table(b, -7.6f, -6.0f, -15.0f, -13.0f, kLower, 0.76f);
-        Chair(b, -8.2f, kLower, -14.0f, -90.0f);
-        Chair(b, -5.4f, kLower, -14.0f, 90.0f);
-        Chair(b, -6.8f, kLower, -15.6f, 180.0f);
-        // What people leave on a table.
-        b.Decal("ship_mug", {-7.3f, kLower + 0.76f, -14.4f}, {-7.2f, kLower + 0.86f, -14.3f}, kPipe);
-        b.Decal("ship_mug", {-6.5f, kLower + 0.76f, -13.5f}, {-6.4f, kLower + 0.86f, -13.4f}, kHazardYellow);
-        b.Decal("ship_cards", {-7.0f, kLower + 0.76f, -14.0f}, {-6.85f, kLower + 0.78f, -13.8f}, kMattress);
-        // A plant somebody keeps alive.
-        b.Shape("ship_pot", {-2.9f, kLower, -21.9f}, {-2.5f, kLower + 0.35f, -21.5f}, kCrate);
-        b.Shape("ship_plant", {-2.95f, kLower + 0.35f, -21.95f}, {-2.45f, kLower + 0.8f, -21.45f},
-                Material::Diffuse({0.16f, 0.32f, 0.14f}, 0.9f));
-        Conduit(b, {-11.85f, 2.8f, -21.8f}, {-11.85f, 2.8f, -6.3f}, 0.12f);
-    }
-
-    // --- The mess: the galley along the hull, tables either side of an aisle from the door -----------------------
-    {
-        b.Solid("ship_counter", {10.95f, kLower, -19.5f}, {11.97f, kLower + 0.9f, -6.0f}, kFurniture);
-        b.Solid("ship_counter_top", {10.9f, kLower + 0.9f, -19.55f}, {11.97f, kLower + 0.95f, -5.95f}, kTableTop);
-        b.Solid("ship_cupboard", {11.5f, kLower + 1.6f, -19.5f}, {11.97f, kLower + 2.4f, -6.0f}, kFurniture);
-        b.Solid("ship_fridge", {10.9f, kLower, -21.9f}, {11.97f, kLower + 2.1f, -20.1f}, Material::Metal({0.55f, 0.56f, 0.57f}, 0.35f));
-        b.Shape("ship_coffee", {11.3f, kLower + 0.95f, -8.4f}, {11.8f, kLower + 1.45f, -8.0f}, kFrame);
-        b.Decal("ship_coffee_light", {11.28f, kLower + 1.3f, -8.3f}, {11.3f, kLower + 1.34f, -8.26f}, kIndicator);
-        b.Decal("ship_sink", {11.1f, kLower + 0.951f, -13.5f}, {11.8f, kLower + 0.955f, -12.5f}, kFrame);
-        for (const float x : {4.4f, 8.0f})
-        {
-            for (const auto& [z0, z1] : {std::pair{-19.0f, -13.2f}, std::pair{-10.8f, -5.0f}})
-            {
-                Table(b, x, x + 1.0f, z0, z1, kLower, 0.76f);
-                b.Solid("ship_mess_bench", {x - 0.85f, kLower, z0}, {x - 0.45f, kLower + 0.45f, z1}, kFurniture);
-                b.Solid("ship_mess_bench", {x + 1.45f, kLower, z0}, {x + 1.85f, kLower + 0.45f, z1}, kFurniture);
-            }
-        }
-        b.Decal("ship_tray", {4.6f, kLower + 0.76f, -17.5f}, {5.0f, kLower + 0.78f, -17.2f}, kPipe);
-        b.Decal("ship_tray", {8.2f, kLower + 0.76f, -8.0f}, {8.6f, kLower + 0.78f, -7.7f}, kPipe);
-        b.Decal("ship_mug", {5.1f, kLower + 0.76f, -7.0f}, {5.2f, kLower + 0.86f, -6.9f}, kPipe);
-        b.Decal("ship_mess_screen", {1.82f, kLower + 1.2f, -20.5f}, {1.84f, kLower + 2.1f, -19.0f}, kScreenWarm);
-    }
-
-    // --- The stair hall: crates under the landing --------------------------------------------------------------
-    b.Solid("ship_crate", {9.4f, kLower, 3.9f}, {11.9f, kLower + 1.2f, 5.7f}, kCrate);
-    b.Solid("ship_crate", {10.2f, kLower + 1.2f, 4.3f}, {11.6f, kLower + 2.0f, 5.5f}, kCrateDark);
-
-    // --- The gallery over the hangar: a console under its window, chairs at it ------------------------------------
-    b.Solid("ship_gallery_desk", {-9.5f, kUpper, 4.9f}, {-3.5f, kUpper + 0.85f, 5.8f}, kFurniture);
-    b.Decal("ship_gallery_screen", {-9.2f, kUpper + 0.851f, 5.1f}, {-6.8f, kUpper + 0.86f, 5.6f}, kScreen);
-    b.Decal("ship_gallery_screen", {-6.2f, kUpper + 0.851f, 5.1f}, {-3.8f, kUpper + 0.86f, 5.6f}, kScreen);
-    Chair(b, -8.0f, kUpper, 4.2f, 180.0f);
-    Chair(b, -5.0f, kUpper, 4.2f, 180.0f);
-
-    // --- The briefing room: the screen ahead, the console in the corner, the table --------------------------------
+    // A station either side behind the seats.
     for (const float side : {-1.0f, 1.0f})
     {
-        const float x0 = side < 0.0f ? -7.4f : 1.9f;
-        const float x1 = side < 0.0f ? -1.9f : 7.4f;
-        b.Shape("ship_briefing_frame", {x0 - 0.15f, kUpper + 0.55f, -22.0f}, {x1 + 0.15f, kUpper + 2.75f, -21.94f}, kFrame);
-        b.Decal("ship_briefing_screen", {x0, kUpper + 0.7f, -21.94f}, {x1, kUpper + 2.6f, -21.88f}, kScreenBig);
-    }
-    Table(b, -3.5f, 3.5f, -13.5f, -9.5f, kUpper, 0.78f);
-    for (const float x : {-2.4f, -0.8f, 0.8f, 2.4f})
-    {
-        Chair(b, x, kUpper, -14.15f, 180.0f);
-        Chair(b, x, kUpper, -8.85f, 0.0f);
-    }
-    for (const float x : {-11.97f, 11.9f})
-    {
-        b.Decal("ship_wall_screen", {x, kUpper + 0.9f, -18.0f}, {x + 0.07f, kUpper + 2.2f, -13.5f}, kScreen);
-    }
-    Conduit(b, {-11.8f, kUpperTop - 0.25f, -21.9f}, {-11.8f, kUpperTop - 0.25f, -4.3f}, 0.16f);
-    Conduit(b, {11.8f, kUpperTop - 0.25f, -21.9f}, {11.8f, kUpperTop - 0.25f, -4.3f}, 0.16f);
-
-    // --- The cockpit: a console under the windows, the two seats, the side stations -----------------------------
-    b.Solid("ship_helm", {-6.5f, kUpper, -39.95f}, {6.5f, kUpper + 0.65f, -39.0f}, kFurniture);
-    for (float x = -6.1f; x < 6.0f; x += 1.55f)
-    {
-        b.Decal("ship_helm_screen", {x, kUpper + 0.651f, -39.8f}, {x + 1.3f, kUpper + 0.66f, -39.2f}, (static_cast<int>(x + 7.0f) % 3 == 0) ? kScreenWarm : kScreen);
-    }
-    for (const float x : {-1.6f, 1.6f})
-    {
-        Chair(b, x, kUpper, -37.3f, 0.0f);
-        b.Shape("ship_seat_arm", {x - 0.3f, kUpper + 0.45f, -37.55f}, {x - 0.24f, kUpper + 0.7f, -37.05f}, kFrame);
-        b.Shape("ship_seat_arm", {x + 0.24f, kUpper + 0.45f, -37.55f}, {x + 0.3f, kUpper + 0.7f, -37.05f}, kFrame);
-    }
-    for (const float x : {-7.97f, 6.95f})
-    {
-        b.Solid("ship_station", {x, kUpper, -31.3f}, {x + 1.02f, kUpper + 0.85f, -30.35f}, kFurniture);
-        b.Decal("ship_station_screen", {x + 0.1f, kUpper + 0.851f, -31.2f}, {x + 0.92f, kUpper + 0.86f, -30.45f}, kScreen);
-    }
-    b.Shape("ship_overhead", {-2.0f, kUpperTop - 0.2f, -38.6f}, {2.0f, kUpperTop, -36.0f}, kFrame);
-    for (float x = -1.7f; x < 1.8f; x += 0.5f)
-    {
-        b.Decal("ship_overhead_light", {x, kUpperTop - 0.205f, -37.5f}, {x + 0.06f, kUpperTop - 0.2f, -37.44f}, kIndicator);
+        const float x0 = side < 0.0f ? -kHalf : kHalf - 0.6f;
+        b.Solid("ship_station", {x0, 0.0f, -12.9f}, {x0 + 0.6f, 0.85f, -11.75f}, kFurniture);
+        b.Decal("ship_station_screen", {x0 + 0.08f, 0.851f, -12.8f}, {x0 + 0.52f, 0.86f, -11.85f}, kScreen);
     }
 
-    // --- The hangar: crates, a hose reel, pipes along the starboard wall ----------------------------------------
-    b.Solid("ship_crate", {-11.7f, kLower, 7.0f}, {-9.6f, kLower + 1.6f, 9.4f}, kCrate);
-    b.Solid("ship_crate", {-11.7f, kLower + 1.6f, 7.3f}, {-10.2f, kLower + 2.6f, 8.8f}, kCrateDark);
-    b.Solid("ship_crate", {-11.7f, kLower, 29.0f}, {-9.2f, kLower + 1.4f, 32.0f}, kCrateDark);
-    b.Solid("ship_crate", {9.4f, kLower, 30.0f}, {11.7f, kLower + 1.8f, 33.7f}, kCrate);
-    b.Solid("ship_reel", {10.6f, kLower, 9.0f}, {11.7f, kLower + 1.3f, 10.6f}, kHazardYellow);
-    Conduit(b, {11.65f, 1.2f, 11.0f}, {11.65f, 1.2f, 33.8f}, 0.2f);
-    Conduit(b, {11.65f, 1.5f, 11.0f}, {11.65f, 1.5f, 33.8f}, 0.12f);
-    b.Decal("ship_hangar_panel", {-11.74f, 1.2f, 16.0f}, {-11.7f, 2.4f, 18.0f}, kScreenWarm);
+    // --- The ops room: the navigation table in the middle (the game's console), the screens ahead, a galley and a bench
+    for (const float side : {-1.0f, 1.0f})
+    {
+        const float centre = side * kScreenX;
+        b.Shape("ship_screen_frame", {centre - kScreenWidth * 0.5f - 0.08f, kScreenY - 0.5f, kOpsFront + kWallT * 0.5f},
+                {centre + kScreenWidth * 0.5f + 0.08f, kScreenY + 0.5f, kOpsFront + kWallT * 0.5f + 0.04f}, kFrame);
+    }
+    b.Solid("ship_counter", {-kHalf, 0.0f, -11.0f}, {-kHalf + 0.65f, 0.9f, -8.6f}, kFurniture);
+    b.Solid("ship_counter_top", {-kHalf, 0.9f, -11.05f}, {-kHalf + 0.7f, 0.94f, -8.55f}, kTableTop);
+    b.Solid("ship_cupboard", {-kHalf, 1.55f, -11.0f}, {-kHalf + 0.4f, 2.3f, -8.6f}, kFurniture);
+    b.Shape("ship_coffee", {-kHalf + 0.1f, 0.94f, -10.6f}, {-kHalf + 0.5f, 1.38f, -10.25f}, kFrame);
+    b.Decal("ship_coffee_light", {-kHalf + 0.5f, 1.25f, -10.5f}, {-kHalf + 0.52f, 1.28f, -10.46f}, kIndicator);
+    b.Solid("ship_bench", {kHalf - 0.45f, 0.0f, -6.9f}, {kHalf, 0.45f, -4.4f}, kFurniture);
+    b.Solid("ship_table", {kHalf - 1.2f, 0.0f, -6.4f}, {kHalf - 0.6f, 0.72f, -4.9f}, kFrame);
+    b.Solid("ship_table_top", {kHalf - 1.25f, 0.72f, -6.45f}, {kHalf - 0.55f, 0.76f, -4.85f}, kTableTop);
+    b.Decal("ship_mug", {kHalf - 1.0f, 0.76f, -5.5f}, {kHalf - 0.9f, 0.86f, -5.4f}, kHazardYellow);
+    b.Decal("ship_wall_screen", {-kHalf, 0.95f, -7.6f}, {-kHalf + 0.03f, 1.9f, -5.4f}, kScreen);
+    Conduit(b, {kHalf - 0.1f, kTop - 0.2f, -11.3f}, {kHalf - 0.1f, kTop - 0.2f, -4.2f}, 0.12f);
+
+    // --- The bunks, to port of the corridor -------------------------------------------------------------------------
+    {
+        int bunk = 0;
+        for (const auto& [z0, z1] : {std::pair{-3.75f, -1.75f}, std::pair{1.1f, 3.1f}})
+        {
+            for (const float zp : {z0 + 0.03f, z1 - 0.03f})
+            {
+                b.Shape("ship_bunk_post", {-kHalf + 0.02f, 0.0f, zp - 0.03f}, {-kHalf + 0.08f, 2.3f, zp + 0.03f}, kFrame);
+                b.Shape("ship_bunk_post", {-kHalf + 0.9f, 0.0f, zp - 0.03f}, {-kHalf + 0.96f, 2.3f, zp + 0.03f}, kFrame);
+            }
+            for (const float level : {0.35f, 1.45f})
+            {
+                b.Solid("ship_bunk", {-kHalf, level, z0}, {-kHalf + 0.97f, level + 0.12f, z1}, kFrame);
+                b.Shape("ship_mattress", {-kHalf + 0.07f, level + 0.12f, z0 + 0.05f}, {-kHalf + 0.92f, level + 0.28f, z1 - 0.05f}, kMattress);
+                const float hue = static_cast<float>((bunk * 3 + static_cast<int>(level * 2.0f)) % 5) / 5.0f;
+                const Material blanket = Material::Diffuse({0.22f + 0.2f * hue, 0.26f + 0.06f * (1.0f - hue), 0.32f - 0.12f * hue}, 0.95f);
+                b.Shape("ship_blanket", {-kHalf + 0.05f, level + 0.28f, z0 + 0.1f}, {-kHalf + 0.94f, level + 0.33f, z1 - 0.55f}, blanket);
+                b.Shape("ship_pillow", {-kHalf + 0.17f, level + 0.28f, z1 - 0.5f}, {-kHalf + 0.82f, level + 0.4f, z1 - 0.12f}, kMattress);
+            }
+            b.Shape("ship_bag", {-kHalf + 0.1f, 0.0f, z0 + 0.3f + static_cast<float>(bunk % 2) * 0.4f},
+                    {-kHalf + 0.6f, 0.3f, z0 + 0.8f + static_cast<float>(bunk % 2) * 0.4f}, kCrateDark);
+            ++bunk;
+        }
+        // A footlocker under the door's far side, and the light switch's panel.
+        b.Solid("ship_footlocker", {-2.0f, 0.0f, 2.5f}, {-1.0f, 0.45f, 3.2f}, kCrate);
+        Conduit(b, {-kHalf + 0.06f, kTop - 0.15f, -3.8f}, {-kHalf + 0.06f, kTop - 0.15f, 3.2f}, 0.1f);
+    }
+
+    // --- The gear room, to starboard: the loadout locker straight ahead through its door, a bench, lockers ------------
+    // The loadout locker, taller than the lockers beside it, with its screen (the game's: LoadoutLocker) and a hazard line
+    // on the floor in front of it. The one thing in the room that looks like it is for something.
+    b.Solid("ship_loadout", {kHalf - 0.55f, 0.0f, -1.85f}, {kHalf, 2.4f, -0.15f}, kFurniture);
+    b.Decal("ship_loadout_shelf", {kHalf - 0.75f, 0.95f, -1.7f}, {kHalf - 0.55f, 1.0f, -0.3f}, kFrame);
+    for (const float z : {-1.9f, -0.1f})
+    {
+        b.Decal("ship_loadout_line", {kHalf - 1.6f, 0.0f, z - 0.04f}, {kHalf - 0.55f, 0.004f, z + 0.04f}, kHazardYellow);
+    }
+    b.Decal("ship_loadout_line", {kHalf - 1.68f, 0.0f, -1.9f}, {kHalf - 1.6f, 0.004f, -0.1f}, kHazardYellow);
+    b.Solid("ship_bench", {kCorridor + kPartition + 0.2f, 0.0f, kCrewFront + kWallT * 0.5f}, {kHalf - 0.1f, 0.9f, kCrewFront + 0.7f}, kFurniture);
+    b.Solid("ship_bench_top", {kCorridor + kPartition + 0.15f, 0.9f, kCrewFront + kWallT * 0.5f}, {kHalf - 0.05f, 0.92f, kCrewFront + 0.75f},
+            kTableTop);
+    b.Solid("ship_rack", {kCorridor + kPartition + 0.4f, 1.3f, kCrewFront + kWallT * 0.5f}, {kHalf - 0.4f, 2.2f, kCrewFront + 0.3f}, kWallDark);
+    Conduit(b, {kHalf - 0.06f, kTop - 0.15f, -3.8f}, {kHalf - 0.06f, kTop - 0.15f, 3.2f}, 0.12f);
+
+    // --- The bay: crates against the walls aft, out of the way of the doors, and a panel ---------------------------------
+    b.Solid("ship_crate", {-kBayHalf, 0.0f, kBayBack - 2.0f}, {-kDoorsHalfX - 0.1f, 1.2f, kBayBack}, kCrate);
+    b.Solid("ship_crate", {-kBayHalf, 1.2f, kBayBack - 1.6f}, {-kDoorsHalfX - 0.2f, 1.9f, kBayBack - 0.2f}, kCrateDark);
+    b.Solid("ship_crate", {kDoorsHalfX + 0.1f, 0.0f, kBayBack - 1.8f}, {kBayHalf, 1.0f, kBayBack}, kCrateDark);
+    b.Decal("ship_bay_panel", {-kBayHalf, 1.2f, 8.0f}, {-kBayHalf + 0.03f, 2.3f, 9.6f}, kScreenWarm);
+    Conduit(b, {kBayHalf - 0.25f, 1.2f, kBayFront + 0.3f}, {kBayHalf - 0.25f, 1.2f, kBayBack - 2.0f}, 0.18f);
+
+    // --- The engine room: the reactor in the middle, its glow through a band round it, and the machinery round it ------
+    b.Solid("ship_reactor", {-0.8f, 0.0f, 21.2f}, {0.8f, 2.4f, 22.8f}, kRib);
+    b.Decal("ship_reactor_band", {-0.82f, 1.1f, 21.18f}, {0.82f, 1.4f, 22.82f}, kReactorGlow);
+    for (const float side : {-1.0f, 1.0f})
+    {
+        const float x0 = side < 0.0f ? -kHalf : kHalf - 0.7f;
+        b.Solid("ship_machinery", {x0, 0.0f, 20.3f}, {x0 + 0.7f, 1.6f, 23.9f}, kFurniture);
+        b.Decal("ship_machinery_light", {x0 + (side < 0.0f ? 0.7f : -0.01f), 1.2f, 21.5f}, {x0 + (side < 0.0f ? 0.71f : 0.0f), 1.3f, 21.6f},
+                kIndicator);
+        Conduit(b, {side * (kHalf - 0.1f), kTop - 0.2f, kBayBack + 0.4f}, {side * (kHalf - 0.1f), kTop - 0.2f, kStern - 0.2f}, 0.16f);
+    }
+    Conduit(b, {0.0f, 2.4f, 22.0f}, {0.0f, kTop - 0.01f, 22.0f}, 0.3f);
 }
 
 void BuildLamps(Scene& scene, MeshLibrary& meshes, LevelLights& lights)
 {
     const glm::vec3 down{0.0f, -1.0f, 0.0f};
-    struct Room
-    {
-        glm::vec3 a;
-        glm::vec3 b;
-    };
-    const auto lamp = [&](LightKind kind, const glm::vec3& at, const Room& room, float range = 0.0f, const glm::vec3& direction = glm::vec3(0.0f, -1.0f, 0.0f))
+    const auto lamp = [&](LightKind kind, const glm::vec3& at, const glm::vec3& a, const glm::vec3& b, float range,
+                          const glm::vec3& direction = glm::vec3(0.0f, -1.0f, 0.0f))
     {
         const int index = lights.Add(scene, meshes, kind, LightMood::Steady, kOrigin + at, direction, 0, 0, range);
-        lights.Bound(index, kOrigin + room.a, kOrigin + room.b);
+        lights.Bound(index, kOrigin + a, kOrigin + b);
     };
-    const float low = kLowerTop - 0.04f;
-    const float high = kUpperTop - 0.04f;
-    const Room corridor{{-1.5f, -0.05f, -22.0f}, {1.5f, kLowerTop, 5.85f}};
-    for (const float z : {2.5f, -6.0f, -15.0f})
+    const float ceiling = kTop - 0.04f;
+    lamp(LightKind::Wall, {-1.8f, ceiling - 0.1f, -14.0f}, {-kHalf, -0.05f, kNose}, {kHalf, kTop, kOpsFront}, 6.0f, down);
+    lamp(LightKind::Wall, {1.8f, ceiling - 0.1f, -14.0f}, {-kHalf, -0.05f, kNose}, {kHalf, kTop, kOpsFront}, 6.0f, down);
+    for (const float z : {-9.5f, -6.0f})
     {
-        lamp(LightKind::Ceiling, {0.0f, low, z}, corridor, 10.0f);
+        lamp(LightKind::Ceiling, {0.0f, ceiling, z}, {-kHalf, -0.05f, kOpsFront}, {kHalf, kTop, kCrewFront}, 8.0f);
     }
-    const Room gear{{-12.0f, -0.05f, -5.85f}, {-1.8f, kLowerTop, 5.85f}};
-    lamp(LightKind::Ceiling, {-7.0f, low, -2.5f}, gear, 11.0f);
-    lamp(LightKind::Ceiling, {-7.0f, low, 3.0f}, gear, 11.0f);
-    // The quarters and the mess warmer than the rest: a caged bulb over each bunk and table as well as the strips.
-    const Room quarters{{-12.0f, -0.05f, -22.0f}, {-1.8f, kLowerTop, -6.15f}};
-    for (const float z : {-9.0f, -18.0f})
+    lamp(LightKind::Ceiling, {0.0f, ceiling, 0.0f}, {-kCorridor, -0.05f, kCrewFront}, {kCorridor, kTop, kBayFront}, 7.0f);
+    lamp(LightKind::Wall, {-2.1f, ceiling - 0.1f, -0.2f}, {-kHalf, -0.05f, kCrewFront}, {-kCorridor, kTop, kBayFront}, 6.0f, down);
+    lamp(LightKind::Ceiling, {2.1f, ceiling, -0.5f}, {kCorridor, -0.05f, kCrewFront}, {kHalf, kTop, kBayFront}, 7.0f);
+    for (const float x : {-3.2f, 3.2f})
     {
-        lamp(LightKind::Ceiling, {-6.5f, low, z}, quarters, 11.0f);
-    }
-    for (const float z : {-7.5f, -12.3f, -17.1f})
-    {
-        lamp(LightKind::Wall, {-10.2f, low - 0.1f, z}, quarters, 8.0f, down);
-    }
-    lamp(LightKind::Wall, {-6.8f, low - 0.1f, -14.0f}, quarters, 7.0f, down);
-    const Room mess{{1.8f, -0.05f, -22.0f}, {12.0f, kLowerTop, -1.15f}};
-    for (const float z : {-5.0f, -12.0f, -19.0f})
-    {
-        lamp(LightKind::Ceiling, {6.4f, low, z}, mess, 11.0f);
-    }
-    lamp(LightKind::Wall, {10.6f, low - 0.1f, -9.0f}, mess, 7.0f, down);
-    lamp(LightKind::Wall, {10.6f, low - 0.1f, -16.0f}, mess, 7.0f, down);
-    // The stairs and the landing at the top of them are one space.
-    const Room stairs{{1.8f, -0.05f, -0.85f}, {12.0f, kUpperTop, 5.85f}};
-    lamp(LightKind::Ceiling, {10.6f, low, 4.8f}, stairs, 10.0f);
-    const Room landing{{-1.5f, kUpper - 0.05f, -3.85f}, {12.0f, kUpperTop, 5.85f}};
-    lamp(LightKind::Ceiling, {0.0f, high, -1.5f}, landing);
-    lamp(LightKind::Ceiling, {10.0f, high, -1.8f}, landing);
-    const Room gallery{{-12.0f, kUpper - 0.05f, -3.85f}, {-1.8f, kUpperTop, 5.85f}};
-    lamp(LightKind::Ceiling, {-7.0f, high, 0.5f}, gallery, 9.0f);
-    const Room briefing{{-12.0f, kUpper - 0.05f, -22.0f}, {12.0f, kUpperTop, -4.15f}};
-    for (const float x : {-7.0f, 0.0f, 7.0f})
-    {
-        for (const float z : {-8.0f, -16.0f})
+        for (const float z : {7.5f, 15.5f})
         {
-            lamp(LightKind::Ceiling, {x, high, z}, briefing, 11.0f);
+            lamp(LightKind::Flood, {x, kBayTop - 0.1f, z}, {-kBayHalf, -0.05f, kBayFront}, {kBayHalf, kBayTop, kBayBack}, 14.0f, down);
         }
     }
-    const Room forward{{-1.5f, kUpper - 0.05f, -30.0f}, {1.5f, kUpperTop, -22.3f}};
-    lamp(LightKind::Ceiling, {0.0f, high, -26.0f}, forward);
-    const Room cockpit{{-8.0f, kUpper - 0.05f, -40.0f}, {8.0f, kUpperTop, -30.0f}};
-    lamp(LightKind::Wall, {-3.0f, high - 0.1f, -32.0f}, cockpit, 7.0f, down);
-    lamp(LightKind::Wall, {3.0f, high - 0.1f, -32.0f}, cockpit, 7.0f, down);
-    // The hangar: floods from its roof, and caged lamps down its walls.
-    const Room hangar{{-12.0f, -0.05f, 6.15f}, {12.0f, kHangarTop, 34.0f}};
-    for (const float x : {-7.0f, 7.0f})
+    lamp(LightKind::Ceiling, {0.0f, ceiling, 20.6f}, {-kHalf, -0.05f, kBayBack}, {kHalf, kTop, kStern}, 7.0f);
+    lamp(LightKind::Wall, {0.0f, ceiling - 0.1f, 23.9f}, {-kHalf, -0.05f, kBayBack}, {kHalf, kTop, kStern}, 6.0f, down);
+}
+
+// --- The outside --------------------------------------------------------------------------------------------------
+
+// A part of the hull model: a box between two corners.
+ModelPart& HullBox(ModelAsset& model, const std::string& name, const glm::vec3& lo, const glm::vec3& hi, const glm::vec3& colour,
+                   float roughness = 0.7f, float metallic = 0.0f, float emissive = 0.0f)
+{
+    ModelPart part;
+    part.name = name;
+    part.shape = PartShape::Box;
+    part.position = (lo + hi) * 0.5f;
+    part.size = glm::abs(hi - lo);
+    part.color = colour;
+    part.roughness = roughness;
+    part.metallic = metallic;
+    part.emissive = emissive;
+    model.parts.push_back(part);
+    return model.parts.back();
+}
+
+ModelPart& HullCylinder(ModelAsset& model, const std::string& name, const glm::vec3& centre, float diameter, float length, const glm::vec3& rotation,
+                        const glm::vec3& colour, float metallic = 0.0f, float emissive = 0.0f)
+{
+    ModelPart& part = HullBox(model, name, centre - glm::vec3(diameter * 0.5f, length * 0.5f, diameter * 0.5f),
+                              centre + glm::vec3(diameter * 0.5f, length * 0.5f, diameter * 0.5f), colour, 0.45f, metallic, emissive);
+    part.shape = PartShape::Cylinder;
+    part.rotation = rotation;
+    return part;
+}
+
+// A quad facing out from a centre, and a block narrowing from one upright rectangle across x to another.
+void OutwardQuad(MeshData& mesh, const glm::vec3& a, glm::vec3 b, const glm::vec3& c, glm::vec3 d, const glm::vec3& centre)
+{
+    glm::vec3 normal = glm::normalize(glm::cross(b - a, c - a));
+    if (glm::dot(normal, (a + b + c + d) * 0.25f - centre) < 0.0f)
     {
-        for (const float z : {12.0f, 27.0f})
+        std::swap(b, d);
+        normal = -normal;
+    }
+    const auto base = static_cast<uint32_t>(mesh.vertices.size());
+    const glm::vec3 corners[4] = {a, b, c, d};
+    const glm::vec2 uvs[4] = {{0.0f, 0.0f}, {1.0f, 0.0f}, {1.0f, 1.0f}, {0.0f, 1.0f}};
+    for (int i = 0; i < 4; ++i)
+    {
+        mesh.vertices.push_back(MeshVertex{corners[i], normal, uvs[i]});
+    }
+    mesh.indices.insert(mesh.indices.end(), {base, base + 1, base + 2, base, base + 2, base + 3});
+}
+
+MeshData Tapered(float backZ, float backHalf, float backLow, float backHigh, float frontZ, float frontHalf, float frontLow, float frontHigh)
+{
+    const glm::vec3 b0{-backHalf, backLow, backZ}, b1{backHalf, backLow, backZ}, b2{backHalf, backHigh, backZ}, b3{-backHalf, backHigh, backZ};
+    const glm::vec3 f0{-frontHalf, frontLow, frontZ}, f1{frontHalf, frontLow, frontZ}, f2{frontHalf, frontHigh, frontZ},
+        f3{-frontHalf, frontHigh, frontZ};
+    const glm::vec3 centre = (b0 + b1 + b2 + b3 + f0 + f1 + f2 + f3) / 8.0f;
+    MeshData mesh;
+    OutwardQuad(mesh, b0, b1, b2, b3, centre);
+    OutwardQuad(mesh, f0, f1, f2, f3, centre);
+    OutwardQuad(mesh, b0, b1, f1, f0, centre);
+    OutwardQuad(mesh, b3, b2, f2, f3, centre);
+    OutwardQuad(mesh, b0, b3, f3, f0, centre);
+    OutwardQuad(mesh, b1, b2, f2, f1, centre);
+    return mesh;
+}
+
+// A section of hull: an outline across the ship (x, y; convex, either way round) drawn along it from z0 to z1. Open, the
+// outline's last point is not joined back to its first (the bay, open underneath); its ends are closed either way.
+MeshData Extruded(const std::vector<glm::vec2>& outline, float z0, float z1, bool closed)
+{
+    MeshData mesh;
+    glm::vec2 centre{0.0f};
+    for (const glm::vec2& point : outline)
+    {
+        centre += point;
+    }
+    centre /= static_cast<float>(std::max<size_t>(outline.size(), 1));
+    const glm::vec3 middle{centre, (z0 + z1) * 0.5f};
+    const size_t edges = closed ? outline.size() : outline.size() - 1;
+    for (size_t i = 0; i < edges; ++i)
+    {
+        const glm::vec2 a = outline[i];
+        const glm::vec2 b = outline[(i + 1) % outline.size()];
+        OutwardQuad(mesh, {a, z0}, {b, z0}, {b, z1}, {a, z1}, middle);
+    }
+    // The ends, a fan from the outline's middle, wound to face out of the end each closes.
+    for (const float z : {z0, z1})
+    {
+        const glm::vec3 normal{0.0f, 0.0f, z < middle.z ? -1.0f : 1.0f};
+        const auto base = static_cast<uint32_t>(mesh.vertices.size());
+        mesh.vertices.push_back(MeshVertex{{centre, z}, normal, {0.5f, 0.5f}});
+        for (const glm::vec2& point : outline)
         {
-            lamp(LightKind::Flood, {x, kHangarTop - 0.1f, z}, hangar, 22.0f, down);
+            mesh.vertices.push_back(MeshVertex{{point, z}, normal, {0.0f, 0.0f}});
+        }
+        for (size_t i = 0; i < outline.size(); ++i)
+        {
+            const auto first = base + 1 + static_cast<uint32_t>(i);
+            const auto second = base + 1 + static_cast<uint32_t>((i + 1) % outline.size());
+            const glm::vec3 pa = mesh.vertices[first].position - mesh.vertices[base].position;
+            const glm::vec3 pb = mesh.vertices[second].position - mesh.vertices[base].position;
+            if (glm::dot(glm::cross(pa, pb), normal) >= 0.0f)
+            {
+                mesh.indices.insert(mesh.indices.end(), {base, first, second});
+            }
+            else
+            {
+                mesh.indices.insert(mesh.indices.end(), {base, second, first});
+            }
         }
     }
-    lamp(LightKind::Wall, {-11.6f, 4.5f, 20.0f}, hangar, 10.0f, glm::normalize(glm::vec3(1.0f, -0.4f, 0.0f)));
-    lamp(LightKind::Wall, {11.6f, 4.5f, 20.0f}, hangar, 10.0f, glm::normalize(glm::vec3(-1.0f, -0.4f, 0.0f)));
+    return mesh;
+}
+
+void HullMesh(ModelAsset& model, const std::string& name, MeshData mesh, const glm::vec3& colour)
+{
+    ModelPart part;
+    part.name = name;
+    part.shape = PartShape::Mesh;
+    part.size = glm::vec3(1.0f);
+    part.mesh = std::move(mesh);
+    part.color = colour;
+    part.roughness = 0.7f;
+    model.parts.push_back(part);
 }
 
 } // namespace
+
+ModelAsset ShipMap::HullModel(const ShipHullLook& look)
+{
+    // In the ship's frame, round its rooms: the skin a few centimetres outside every outer wall and roof, so it covers them
+    // seen from outside and never shares a face with them; the windows' gaps through it where theirs are.
+    ModelAsset model;
+    model.name = "ship_hull";
+    int count = 0;
+    const auto name = [&](const char* stem) { return std::string(stem) + "_" + std::to_string(count++); };
+    const glm::vec3 primary = look.primary;
+    const glm::vec3 secondary = look.secondary;
+    const glm::vec3 accent = look.accent;
+    const glm::vec3 dark{0.12f, 0.12f, 0.13f};
+    const glm::vec3 glass{0.95f, 0.78f, 0.5f};
+    const float skin = 0.06f;
+    const float outer = kHalf + kWallT;      // the crew sections' outer walls
+    const float bayOuter = kBayHalf + kWallT;
+    const float side = outer + skin;
+    const float belly = -kSlab - 0.4f;
+    const float top = kRoof + 0.06f;
+
+    // --- The cockpit: its own section ahead of the body, narrower and lower, skin round its windows --------------------
+    const float front = kNose - kWallT;
+    for (const float s : {-1.0f, 1.0f})
+    {
+        const float x0 = s < 0.0f ? -side : outer;
+        const float x1 = s < 0.0f ? -outer : side;
+        HullBox(model, name("skin"), {x0, belly, front}, {x1, top, kSideWindow.from}, primary);
+        HullBox(model, name("skin"), {x0, belly, kSideWindow.to}, {x1, top, kOpsFront}, primary);
+        HullBox(model, name("skin"), {x0, belly, kSideWindow.from}, {x1, kSideWindow.bottom, kSideWindow.to}, primary);
+        HullBox(model, name("skin"), {x0, kSideWindow.top, kSideWindow.from}, {x1, top, kSideWindow.to}, primary);
+    }
+    HullBox(model, name("skin"), {-outer, kRoof, front}, {outer, top, kOpsFront}, primary);
+    HullBox(model, name("skin"), {-outer, belly, front}, {outer, -kSlab, kOpsFront}, primary);
+    const float face = front - skin;
+    HullBox(model, name("skin"), {-side, belly, face}, {-kWindscreen.to, top, front}, primary);
+    HullBox(model, name("skin"), {kWindscreen.to, belly, face}, {side, top, front}, primary);
+    HullBox(model, name("skin"), {-kWindscreen.to, belly, face}, {kWindscreen.to, kWindscreen.bottom, front}, primary);
+    HullBox(model, name("skin"), {-kWindscreen.to, kWindscreen.top, face}, {kWindscreen.to, top, front}, primary);
+    HullMesh(model, name("chin"), Tapered(face, side, belly, kWindscreen.bottom - 0.05f, face - 2.8f, 1.6f, -0.2f, 0.5f), secondary);
+    HullMesh(model, name("brow"), Tapered(face, side, kWindscreen.top + 0.05f, top, face - 1.0f, 2.6f, kWindscreen.top + 0.15f, top - 0.35f), primary);
+    HullBox(model, name("visor"), {-2.6f, kWindscreen.top + 0.02f, face - 0.55f}, {2.6f, kWindscreen.top + 0.12f, face - 0.05f}, dark, 0.5f, 0.8f);
+    HullMesh(model, name("nose_stripe"), Tapered(face - 1.2f, 2.45f, -0.05f, 0.25f, face - 1.6f, 2.15f, -0.05f, 0.25f), accent);
+
+    // --- The body: sections drawn along the spine from outlines across it, their long edges bevelled ----------------------
+    // The crew sections from the ops room aft to the bay, wider and taller than the cockpit ahead of them; the bay, widest
+    // and tallest, open underneath where its doors are; and the engine room aft of it. Each a little outside the rooms in it,
+    // so nothing of the rooms shows through, even at the bevels.
+    const float bodySide = outer + 0.25f;
+    const float bodyTop = kRoof + 0.35f;
+    const float bodyLow = belly - 0.1f;
+    const float bayWide = bayOuter + 0.3f;
+    const float bayHigh = kBayRoof + 0.25f;
+    const float bayLow = belly - 0.05f;
+    const auto bevelled = [](float half, float low, float high, float topCut, float bottomCut)
+    {
+        return std::vector<glm::vec2>{{-half, low + bottomCut}, {-half, high - topCut}, {-half + topCut, high}, {half - topCut, high},
+                                      {half, high - topCut},     {half, low + bottomCut}, {half - bottomCut, low}, {-half + bottomCut, low}};
+    };
+    const float bayFront = kBayFront - kWallT - skin;
+    const float bayBack = kBayBack + kWallT + skin;
+    const float tail = kStern + kWallT + skin + 0.1f;
+    HullMesh(model, name("body"), Extruded(bevelled(bodySide, bodyLow, bodyTop, 0.5f, 0.45f), kOpsFront, bayFront, true), primary);
+    HullMesh(model, name("engine_room"), Extruded(bevelled(bodySide, bodyLow, bodyTop, 0.5f, 0.45f), bayBack, tail, true), secondary);
+    const std::vector<glm::vec2> bayOutline{{-bayWide, bayLow},        {-bayWide, bayHigh - 0.4f}, {-bayWide + 0.4f, bayHigh},
+                                            {bayWide - 0.4f, bayHigh}, {bayWide, bayHigh - 0.4f},  {bayWide, bayLow}};
+    HullMesh(model, name("bay"), Extruded(bayOutline, bayFront, bayBack, false), secondary);
+    // Its belly round the doors' shaft, just inside the bay's sides.
+    const float inside = bayWide - 0.02f;
+    HullBox(model, name("bay_belly"), {-inside, bayLow, bayFront}, {inside, -kSlab, kDoorsFront}, secondary, 0.6f, 0.4f);
+    HullBox(model, name("bay_belly"), {-inside, bayLow, kDoorsBack}, {inside, -kSlab, bayBack}, secondary, 0.6f, 0.4f);
+    HullBox(model, name("bay_belly"), {-inside, bayLow, kDoorsFront}, {-kDoorsHalfX - 0.05f, -kSlab, kDoorsBack}, secondary, 0.6f, 0.4f);
+    HullBox(model, name("bay_belly"), {kDoorsHalfX + 0.05f, bayLow, kDoorsFront}, {inside, -kSlab, kDoorsBack}, secondary, 0.6f, 0.4f);
+
+    // --- What is on the body: a belt of the accent, plates, lit portholes, the spine and plating on the roof -------------
+    for (const float s : {-1.0f, 1.0f})
+    {
+        const float b0 = s < 0.0f ? -bodySide - 0.04f : bodySide;
+        const float b1 = s < 0.0f ? -bodySide : bodySide + 0.04f;
+        HullBox(model, name("belt"), {b0, 0.15f, kOpsFront + 0.3f}, {b1, 0.55f, bayFront - 0.3f}, accent);
+        HullBox(model, name("plate"), {b0, -0.45f, -10.5f}, {b1, -0.05f, -5.0f}, secondary, 0.6f, 0.4f);
+        HullBox(model, name("plate"), {b0, -0.45f, -3.5f}, {b1, -0.05f, 2.5f}, secondary, 0.6f, 0.4f);
+        for (float z = -9.8f; z < 2.6f; z += 2.4f)
+        {
+            HullBox(model, name("fx_porthole"), {b0, 1.55f, z}, {b1, 1.9f, z + 0.5f}, glass, 0.4f, 0.0f, 1.3f);
+        }
+        // On the bay's sides: raised panels between ribs, and a stripe of the accent along it.
+        // Each sunk a little way into the side, by a different amount, so no two share a face there.
+        const float p0 = s < 0.0f ? -bayWide - 0.05f : bayWide - 0.01f;
+        const float p1 = s < 0.0f ? -bayWide + 0.01f : bayWide + 0.05f;
+        for (float z = kBayFront; z < kBayBack - 1.0f; z += 4.0f)
+        {
+            HullBox(model, name("bay_panel"), {p0, 0.4f, z + 0.4f}, {p1, 3.9f, z + 3.4f}, primary);
+            HullBox(model, name("bay_rib"), {p0 - (s < 0.0f ? 0.04f : 0.02f), -0.6f, z + 3.6f}, {p1 + (s < 0.0f ? 0.02f : 0.04f), 5.6f, z + 3.85f}, dark,
+                    0.5f, 0.8f);
+        }
+        HullBox(model, name("bay_stripe"), {p0 - (s < 0.0f ? 0.03f : 0.01f), 4.4f, bayFront + 0.3f}, {p1 + (s < 0.0f ? 0.01f : 0.03f), 4.9f, bayBack - 0.3f},
+                accent);
+    }
+    HullBox(model, name("spine"), {-0.8f, bodyTop, -10.8f}, {0.8f, bodyTop + 0.35f, bayFront}, secondary, 0.6f, 0.4f);
+    for (float z = -10.5f; z < 2.0f; z += 4.0f)
+    {
+        HullBox(model, name("roof_plate"), {-3.2f, bodyTop, z}, {-1.2f, bodyTop + 0.06f, z + 3.0f}, secondary, 0.6f, 0.4f);
+        HullBox(model, name("roof_plate"), {1.2f, bodyTop, z + 0.5f}, {3.2f, bodyTop + 0.06f, z + 3.5f}, secondary, 0.6f, 0.4f);
+    }
+    for (float z = bayFront + 1.0f; z < bayBack - 2.0f; z += 5.0f)
+    {
+        HullBox(model, name("bay_roof_plate"), {-4.6f, bayHigh, z}, {4.6f, bayHigh + 0.06f, z + 3.6f}, primary);
+    }
+
+    // --- Sensors on the roof: a mast; a dish with the first upgrade; arrays either side with the third ------------------
+    HullBox(model, name("mast"), {-0.08f, bodyTop + 0.35f, -8.08f}, {0.08f, bodyTop + 2.2f, -7.92f}, dark, 0.5f, 0.8f);
+    HullBox(model, name("fx_mast_light"), {-0.1f, bodyTop + 2.2f, -8.1f}, {0.1f, bodyTop + 2.35f, -7.9f}, {1.0f, 0.15f, 0.1f}, 0.4f, 0.0f, 4.0f);
+    if (look.sensors >= 1)
+    {
+        HullBox(model, name("dish_mount"), {-0.25f, bayHigh + 0.06f, 9.6f}, {0.25f, bayHigh + 0.95f, 10.1f}, dark, 0.5f, 0.8f);
+        HullCylinder(model, name("dish"), {0.0f, bayHigh + 1.45f, 9.85f}, 2.2f + 0.4f * static_cast<float>(std::min(look.sensors, 4)), 0.15f,
+                     {55.0f, 0.0f, 0.0f}, secondary);
+    }
+    if (look.sensors >= 3)
+    {
+        for (const float s : {-1.0f, 1.0f})
+        {
+            HullBox(model, name("array_boom"), {s < 0.0f ? -bayWide - 2.6f : bayWide - 0.04f, 3.6f, 14.0f}, {s < 0.0f ? -bayWide + 0.04f : bayWide + 2.6f, 3.75f, 14.2f},
+                    dark, 0.5f, 0.8f);
+            HullBox(model, name("array"), {s < 0.0f ? -bayWide - 2.7f : bayWide + 2.4f, 2.4f, 13.4f},
+                    {s < 0.0f ? -bayWide - 2.4f : bayWide + 2.7f, 5.0f, 14.8f}, secondary, 0.6f, 0.4f);
+        }
+    }
+
+    // --- The engines aft: a main drive and, as the drive is upgraded, nacelles either side and larger nozzles ------------
+    const float aft = tail;
+    const float tier = static_cast<float>(std::clamp(look.drive, 0, 5));
+    struct Engine
+    {
+        float x;
+        float y;
+        float half;
+        float length;
+    };
+    std::vector<Engine> engines{{0.0f, 1.25f, 1.6f + 0.15f * tier, 3.0f + 0.4f * tier}};
+    if (look.drive >= 2)
+    {
+        // Clear of the bay's side, a pylon's width out.
+        const float half = 1.0f + 0.12f * tier;
+        engines.push_back({-(bayWide + 0.6f + half), 2.5f, half, 6.0f + 0.5f * tier});
+        engines.push_back({bayWide + 0.6f + half, 2.5f, half, 6.0f + 0.5f * tier});
+    }
+    else
+    {
+        engines.push_back({-2.55f, 0.9f, 0.6f, 2.2f});
+        engines.push_back({2.55f, 0.9f, 0.6f, 2.2f});
+    }
+    int engineIndex = 0;
+    for (const Engine& engine : engines)
+    {
+        const bool nacelle = std::abs(engine.x) > outer;
+        // A nacelle is carried on a pylon from the bay's side, along it from the bay's after end.
+        const float z0 = nacelle ? kBayBack - 3.0f : aft;
+        const float z1 = z0 + engine.length;
+        HullBox(model, name("engine"), {engine.x - engine.half, engine.y - engine.half, z0}, {engine.x + engine.half, engine.y + engine.half, z1},
+                secondary, 0.6f, 0.4f);
+        HullBox(model, name("engine_band"), {engine.x - engine.half - 0.05f, engine.y - engine.half - 0.05f, z0 + 0.6f},
+                {engine.x + engine.half + 0.05f, engine.y + engine.half + 0.05f, z0 + 1.0f}, accent);
+        if (nacelle)
+        {
+            const float inner = engine.x < 0.0f ? -bayWide + 0.05f : bayWide - 0.05f;
+            const float out = engine.x < 0.0f ? engine.x + engine.half : engine.x - engine.half;
+            HullBox(model, name("pylon"), {std::min(inner, out), engine.y - 0.2f, z0 + 1.2f}, {std::max(inner, out), engine.y + 0.2f, z0 + 3.2f}, dark,
+                    0.5f, 0.8f);
+        }
+        HullCylinder(model, name("nozzle"), {engine.x, engine.y, z1 + 0.5f}, engine.half * 1.8f, 1.0f, {90.0f, 0.0f, 0.0f}, dark, 1.0f);
+        // In the nozzle's mouth and proud of it, so no face of it lies close to one of the nozzle's. Dark until a burn lights it.
+        HullCylinder(model, "fx_engine_glow_" + std::to_string(engineIndex++), {engine.x, engine.y, z1 + 1.05f}, engine.half * 1.5f, 0.3f,
+                     {90.0f, 0.0f, 0.0f}, {0.55f, 0.75f, 1.0f});
+    }
+
+    // Its lights: red to port, green to starboard, white at the tail.
+    HullBox(model, "fx_nav_port", {-bayWide - 0.2f, 3.0f, kBayFront + 0.2f}, {-bayWide, 3.2f, kBayFront + 0.4f}, {1.0f, 0.1f, 0.08f}, 0.4f, 0.0f, 4.0f);
+    HullBox(model, "fx_nav_starboard", {bayWide, 3.0f, kBayFront + 0.2f}, {bayWide + 0.2f, 3.2f, kBayFront + 0.4f}, {0.1f, 1.0f, 0.2f}, 0.4f, 0.0f,
+            4.0f);
+    HullBox(model, "fx_nav_tail", {-0.1f, bayHigh, kBayBack - 0.4f}, {0.1f, bayHigh + 0.2f, kBayBack - 0.2f}, {1.0f, 1.0f, 1.0f}, 0.4f, 0.0f, 4.0f);
+    return model;
+}
 
 void ShipMap::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, LevelLights* lights)
 {
@@ -602,18 +764,17 @@ void ShipMap::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, Le
         BuildStructure(b);
         BuildRooms(b);
     }
-    // Its outside: a model (Assets/Models/Vehicles/carrier.json), drawn round the rooms and never solid -- nobody is out
-    // there -- and the same again out on the stage.
-    const std::shared_ptr<ModelAsset> carrier = Vehicles::Load("carrier");
-    m_hull.Build(scene, meshes, nullptr, carrier, Pose(glm::vec3(0.0f)), 0, "ship_hull_");
-    m_stageHull.Build(scene, meshes, nullptr, carrier, {kStage, {1.0f, 0.0f, 0.0f, 0.0f}}, 0, "ship_stage_");
+    // Its outside, drawn round the rooms and never solid -- nobody is out there -- and the same again out on the stage.
+    const auto hull = std::make_shared<ModelAsset>(HullModel(m_look));
+    m_hull.Build(scene, meshes, nullptr, hull, Pose(glm::vec3(0.0f)), 0, "ship_hull_");
+    m_stageHull.Build(scene, meshes, nullptr, hull, {kStage, {1.0f, 0.0f, 0.0f, 0.0f}}, 0, "ship_stage_");
     if (lights != nullptr)
     {
         BuildLamps(scene, meshes, *lights);
     }
 
-    // The bay doors in the hangar floor, and the shuttle standing on them nose forward, its ramp down aft.
-    m_bayDoors.Build(scene, meshes, &physics, Vehicles::Load("hangar_doors"), Pose({0.0f, kLower, (kBayFront + kBayBack) * 0.5f}), group,
+    // The bay doors in its floor, and the shuttle standing on them nose forward, its ramp down aft.
+    m_bayDoors.Build(scene, meshes, &physics, Vehicles::Load("hangar_doors"), Pose({0.0f, kDeck, (kDoorsFront + kDoorsBack) * 0.5f}), group,
                      "ship_bay_");
     m_shuttle.Build(scene, meshes, &physics, Vehicles::Load("shuttle"), Pose(kShuttleHome), group, "ship_shuttle_");
     // And a lamp lit in its cabin, which goes with it when it flies (the game moves it: ShuttleLamp).
@@ -622,8 +783,6 @@ void ShipMap::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, Le
     {
         m_shuttleLamp = lights->Add(scene, meshes, LightKind::Ceiling, LightMood::Steady, cabin.position, glm::vec3(0.0f, -1.0f, 0.0f), 0, 0x5A77u,
                                     6.0f);
-        // Kept to the cabin by its box rather than by a shadow: under a roof that thin, what a lamp's shadow lets through
-        // lit the top of it. A lamp that goes with a vehicle has no shadow anyway.
         lights->Place(scene, m_shuttleLamp, cabin.position, glm::vec3(0.0f, -1.0f, 0.0f));
         glm::vec3 low;
         glm::vec3 high;
@@ -633,25 +792,49 @@ void ShipMap::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, Le
 
     // What WorldObjects puts aboard: lockers down the gear room's hull side and ammunition by its bench. The kit is drawn
     // at the loadout locker.
-    for (const float z : {4.6f, 3.48f, 2.36f})
+    for (const float z : {0.45f, 1.57f, 2.69f})
     {
-        m_placements.lockers.push_back({ToWorld({-11.53f, kLower, z}), -glm::half_pi<float>()});
+        m_placements.lockers.push_back({ToWorld({kHalf - 0.47f, kDeck, z}), glm::half_pi<float>()});
     }
-    m_placements.ammoCrates.push_back({ToWorld({-9.5f, kLower, -4.2f}), 0.0f});
-    m_placements.ammoCrates.push_back({ToWorld({-4.5f, kLower, -4.2f}), 0.0f});
+    m_placements.ammoCrates.push_back({ToWorld({1.6f, kDeck, -2.75f}), 0.0f});
+    m_placements.ammoCrates.push_back({ToWorld({2.6f, kDeck, -2.75f}), 0.0f});
     m_built = true;
     PRED_LOG_INFO(Gameplay, "The ship: {} bodies, {} entities", m_bodies.size(), m_entities.size());
 }
 
+void ShipMap::SetLook(Scene& scene, MeshLibrary& meshes, const ShipHullLook& look)
+{
+    if (look == m_look && m_hull.Built())
+    {
+        return;
+    }
+    m_look = look;
+    if (!m_built)
+    {
+        return;
+    }
+    // Both outsides made again for it, where they are now.
+    const CinePose home = m_hull.Home();
+    const CinePose stage = m_stageHull.Home();
+    const auto hull = std::make_shared<ModelAsset>(HullModel(m_look));
+    m_hull.Clear(scene, nullptr);
+    m_stageHull.Clear(scene, nullptr);
+    m_hull.Build(scene, meshes, nullptr, hull, home, 0, "ship_hull_");
+    m_stageHull.Build(scene, meshes, nullptr, hull, stage, 0, "ship_stage_");
+    m_hullsFar = false;
+    m_showSet = false;
+    SetEngines(scene, m_burn);
+}
+
 std::vector<glm::vec4> ShipMap::DeckPlan(int deck)
 {
-    if (deck == 0)
+    if (deck != 0)
     {
-        return {{-1.5f, -22.0f, 1.5f, 5.85f}, {-12.0f, -5.85f, -1.8f, 5.85f}, {-12.0f, -22.0f, -1.8f, -6.15f},
-                {1.8f, -0.85f, 12.0f, 5.85f}, {1.8f, -22.0f, 12.0f, -1.15f}, {-12.0f, 6.15f, 12.0f, 34.0f}};
+        return {};
     }
-    return {{-1.5f, -3.85f, 12.0f, 5.85f}, {-12.0f, -3.85f, -1.8f, 5.85f}, {-12.0f, -22.0f, 12.0f, -4.15f},
-            {-1.5f, -30.0f, 1.5f, -22.3f}, {-8.0f, -40.0f, 8.0f, -30.3f}, {-12.0f, 6.15f, 12.0f, 34.0f}};
+    return {{-kHalf, kNose, kHalf, kOpsFront},           {-kHalf, kOpsFront, kHalf, kCrewFront}, {-kCorridor, kCrewFront, kCorridor, kBayFront},
+            {-kHalf, kCrewFront, -kCorridor, kBayFront}, {kCorridor, kCrewFront, kHalf, kBayFront}, {-kBayHalf, kBayFront, kBayHalf, kBayBack},
+            {-kHalf, kBayBack, kHalf, kStern}};
 }
 
 bool ShipMap::Contains(const glm::vec3& point) const
@@ -664,14 +847,16 @@ bool ShipMap::Contains(const glm::vec3& point) const
 bool ShipMap::InHangar(const glm::vec3& point) const
 {
     const glm::vec3 local = point - kOrigin;
-    return m_built && local.x > -12.0f && local.x < 12.0f && local.z > 6.15f && local.z < 34.0f && local.y > kLower - 0.5f && local.y < kHangarTop;
+    return m_built && local.x > -kBayHalf && local.x < kBayHalf && local.z > kBayFront && local.z < kBayBack && local.y > kDeck - 0.5f &&
+           local.y < kBayTop;
 }
 
 glm::vec3 ShipMap::Spawn(uint8_t player) const
 {
-    // In the briefing room, a row just inside its door, looking at the screen.
-    const float x = -3.5f + static_cast<float>(player % 8) * 1.0f;
-    return ToWorld({x, kUpper + 0.1f, -6.5f});
+    // In the ops room, aft of the navigation table, two rows of four, looking forward at the screens.
+    const float x = -1.5f + static_cast<float>(player % 4) * 1.0f;
+    const float z = -5.6f + static_cast<float>((player / 4) % 2) * 0.9f;
+    return ToWorld({x, kDeck + 0.1f, z});
 }
 
 float ShipMap::SpawnYaw() const
@@ -681,15 +866,20 @@ float ShipMap::SpawnYaw() const
 
 CinePose ShipMap::LoadoutLocker() const
 {
-    // The middle of its screen, on its face, turned to look out into the room (+x).
-    return Pose({-11.285f, kLower + 1.5f, -0.1f}, -90.0f);
+    // The middle of its screen, on its face, turned to look out into the gear room (-x), across from the room's door.
+    return Pose({kHalf - 0.565f, kDeck + 1.5f, -1.0f}, 90.0f);
 }
 
 CinePose ShipMap::BriefingConsole() const
 {
-    // Against the forward wall beside the port screen, its front towards the room, like the screens: next to them but
-    // not in front of them.
-    return Pose({-9.0f, kUpper, -21.3f}, 180.0f);
+    // The navigation table in the middle of the ops room, its front aft, towards where people come in and stand.
+    return Pose({0.0f, kDeck, -8.6f}, 180.0f);
+}
+
+CinePose ShipMap::BriefingScreen(int index, float& width) const
+{
+    width = kScreenWidth;
+    return Pose({index == 0 ? -kScreenX : kScreenX, kScreenY, kOpsFront + kWallT * 0.5f + 0.05f});
 }
 
 void ShipMap::ShowFor(Scene& scene, const glm::vec3& eye)
@@ -720,7 +910,7 @@ void ShipMap::ShowFor(Scene& scene, const glm::vec3& eye)
     }
     m_showSet = true;
     m_showingStage = stage;
-    // Looking at the stage: its ship, and nothing of the one everybody is standing in -- rooms, hangar, shuttle and all.
+    // Looking at the stage: its ship, and nothing of the one everybody is standing in -- rooms, bay, shuttle and all.
     m_stageHull.SetHidden(scene, !stage);
     m_hull.SetHidden(scene, stage);
     m_shuttle.SetHidden(scene, stage);
@@ -749,13 +939,17 @@ void ShipMap::UpdateDust(Scene& scene, MeshLibrary& meshes, float speed, float d
     }
     // Round the ship, never inside it: its outside's box, and a little more, is kept clear.
     AABB hull;
-    hull.min = glm::vec3(-12.0f, -8.0f, -60.0f);
-    hull.max = glm::vec3(12.0f, 14.0f, 60.0f);
+    hull.min = glm::vec3(-8.0f, -4.0f, -24.0f);
+    hull.max = glm::vec3(8.0f, 9.0f, 34.0f);
     if (m_hull.Built())
     {
         bool any = false;
         for (const ModelPart& part : m_hull.Model()->parts)
         {
+            if (part.shape == PartShape::Mesh)
+            {
+                continue;
+            }
             const glm::vec3 half = part.size * 0.5f;
             const glm::vec3 lo = part.position - half;
             const glm::vec3 hi = part.position + half;
@@ -768,8 +962,8 @@ void ShipMap::UpdateDust(Scene& scene, MeshLibrary& meshes, float speed, float d
     const glm::vec3 clearHi = hull.max + glm::vec3(4.0f);
     // A frame along the ship, bow first: dust is laid out across it and moves back down it.
     const glm::vec3 along{0.0f, 0.0f, -1.0f};
-    const glm::vec3 side = glm::normalize(glm::cross(along, glm::vec3(0.0f, 1.0f, 0.0f)));
-    const glm::vec3 up = glm::cross(side, along);
+    const glm::vec3 sideways = glm::normalize(glm::cross(along, glm::vec3(0.0f, 1.0f, 0.0f)));
+    const glm::vec3 up = glm::cross(sideways, along);
     const float reach = std::max(glm::length(hull.min), glm::length(hull.max)) + 220.0f; // how far ahead and behind
     const float across = std::max(std::abs(clearLo.x), std::abs(clearHi.x)) + 60.0f;
     const float over = std::max(std::abs(clearLo.y), std::abs(clearHi.y)) + 40.0f;
@@ -782,7 +976,7 @@ void ShipMap::UpdateDust(Scene& scene, MeshLibrary& meshes, float speed, float d
     {
         for (int tries = 0; tries < 16; ++tries)
         {
-            speck.at = side * glm::mix(-across, across, random()) + up * glm::mix(-over, over, random()) + along * distance;
+            speck.at = sideways * glm::mix(-across, across, random()) + up * glm::mix(-over, over, random()) + along * distance;
             // Across the ship only: it travels the ship's whole length, so a lane that crosses the hull's outline anywhere
             // goes straight through the rooms.
             const bool inside = speck.at.x > clearLo.x && speck.at.x < clearHi.x && speck.at.y > clearLo.y && speck.at.y < clearHi.y;
@@ -791,7 +985,7 @@ void ShipMap::UpdateDust(Scene& scene, MeshLibrary& meshes, float speed, float d
                 return;
             }
         }
-        speck.at += side * (across * 2.0f);
+        speck.at += sideways * (across * 2.0f);
     };
     if (m_dust.empty())
     {
@@ -875,11 +1069,11 @@ void ShipMap::Anchors(std::map<std::string, CinePose>& anchors) const
         return;
     }
     anchors["ship"] = Pose(glm::vec3(0.0f));
-    anchors["hangar"] = Pose({0.0f, kLower, (kBayFront + kBayBack) * 0.5f});
+    anchors["hangar"] = Pose({0.0f, kDeck, (kDoorsFront + kDoorsBack) * 0.5f});
     anchors["ship_shuttle_home"] = m_shuttle.Home();
-    anchors["cockpit"] = Pose({0.0f, kUpper, -35.0f});
-    anchors["briefing"] = Pose({0.0f, kUpper, -13.0f});
-    anchors["engines"] = Pose({0.0f, 3.8f, 46.0f});
+    anchors["cockpit"] = Pose({0.0f, kDeck, -14.5f});
+    anchors["briefing"] = Pose({0.0f, kDeck, -8.0f});
+    anchors["engines"] = Pose({0.0f, 1.3f, kStern + 6.0f});
     anchors["stage"] = {kStage, {1.0f, 0.0f, 0.0f, 0.0f}};
 }
 

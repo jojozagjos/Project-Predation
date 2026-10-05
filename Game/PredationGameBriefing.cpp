@@ -33,12 +33,6 @@ namespace
 constexpr int kWide = 704;
 constexpr int kHigh = 243;
 constexpr float kRedrawEvery = 1.0f / 12.0f;
-// Where they are, in the ship's frame: either side of the door, on the briefing room's front wall.
-constexpr float kScreenX = 4.65f;
-constexpr float kScreenY = 3.6f + 1.65f;
-constexpr float kScreenZ = -21.78f; // well clear of the glass it hangs over, which it fought seen from across the room
-constexpr float kScreenW = 5.5f;
-constexpr float kScreenH = 1.9f;
 // Heard and subtitled within this of the screens.
 constexpr float kBriefingHeard = 30.0f;
 
@@ -135,14 +129,20 @@ void PredationGame::LoadBriefing()
 
 void PredationGame::BuildBriefingScreens()
 {
+    // Where the ship hangs them, either side of the ops room's door, as wide as it says and as tall as the picture is.
     MeshLibrary& meshes = m_app->GetMeshes();
-    const MeshHandle quad = meshes.Upload(ScreenQuad(kScreenW, kScreenH), "briefing_screen");
+    float width = 2.4f;
+    m_ship.BriefingScreen(0, width);
+    const float height = width * static_cast<float>(kHigh) / static_cast<float>(kWide);
+    const MeshHandle quad = meshes.Upload(ScreenQuad(width, height), "briefing_screen");
     TextureLibrary& textures = m_app->GetTextures();
     for (int i = 0; i < 2; ++i)
     {
         m_briefingTextures[i] = textures.CreateDynamic(kWide, kHigh, "briefing_screen_" + std::to_string(i));
         Transform at;
-        at.position = ShipSpec::kOrigin + glm::vec3(i == 0 ? -kScreenX : kScreenX, kScreenY, kScreenZ);
+        const CinePose pose = m_ship.BriefingScreen(i, width);
+        at.position = pose.position;
+        at.rotation = pose.rotation;
         Material material = Material::Diffuse(glm::vec3(1.0f), 0.3f);
         material.baseColorTexture = m_briefingTextures[i];
         material.emissive = glm::vec3(1.25f);
@@ -223,7 +223,8 @@ void PredationGame::UpdateOrders(float dt)
             Say("orders", 1.6f);
         }
     }
-    const glm::vec3 screensAt = ShipSpec::kOrigin + glm::vec3(0.0f, kScreenY, kScreenZ);
+    float screenWidth = 0.0f;
+    const glm::vec3 screensAt = (m_ship.BriefingScreen(0, screenWidth).position + m_ship.BriefingScreen(1, screenWidth).position) * 0.5f;
     if (m_order == OrderState::Briefing)
     {
         PrepareBriefing(m_orderSite);

@@ -5334,14 +5334,14 @@ void PredationGame::UpdateTitleCamera(float frameDeltaSeconds)
 
     // The ship in orbit -- the one cinematics fly, on the stage, so nothing of anybody's is near it -- and the camera
     // drifting slowly round it, the planet's lit face below. Held for a long time, as a title's shot is.
-    const glm::vec3 centre = ShipSpec::kStage + glm::vec3(0.0f, 4.0f, 4.0f);
+    const glm::vec3 centre = ShipSpec::kStage + glm::vec3(0.0f, 2.5f, 4.0f);
     const float angle = kTitleAngle + 0.32f * std::sin(m_titleClock * 0.018f);
-    const float lift = 20.0f + 6.0f * std::sin(m_titleClock * 0.013f + 0.7f);
-    m_camera.position = centre + glm::vec3(std::sin(angle), 0.0f, std::cos(angle)) * 118.0f + glm::vec3(0.0f, lift, 0.0f);
+    const float lift = 11.0f + 3.5f * std::sin(m_titleClock * 0.013f + 0.7f);
+    m_camera.position = centre + glm::vec3(std::sin(angle), 0.0f, std::cos(angle)) * 66.0f + glm::vec3(0.0f, lift, 0.0f);
     // Looking a little to the ship's left of it, so it sits right of the middle, clear of the menu down the left.
     const glm::vec3 toShip = glm::normalize(centre - m_camera.position);
     const glm::vec3 across = glm::normalize(glm::cross(toShip, glm::vec3(0.0f, 1.0f, 0.0f)));
-    const glm::vec3 look = glm::normalize(centre - across * 34.0f + glm::vec3(0.0f, -12.0f, 0.0f) - m_camera.position);
+    const glm::vec3 look = glm::normalize(centre - across * 19.0f + glm::vec3(0.0f, -6.5f, 0.0f) - m_camera.position);
     m_camera.yaw = std::atan2(look.x, -look.z);
     m_camera.pitch = std::asin(glm::clamp(look.y, -1.0f, 1.0f));
     m_ship.SetEngines(m_scene, 0.22f);

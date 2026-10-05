@@ -496,6 +496,14 @@ void PredationGame::UpdateTravel(float dt)
             }
         }
     }
+    // The ship's outside as the campaign has it: its colours, and its drive and sensors.
+    ShipHullLook look;
+    look.primary = m_campaign.colors.primary;
+    look.secondary = m_campaign.colors.secondary;
+    look.accent = m_campaign.colors.accent;
+    look.drive = DriveTier();
+    look.sensors = SensorTier();
+    m_ship.SetLook(m_scene, m_app->GetMeshes(), look);
     // What the ship's own systems go by: under way or not.
     m_shipTravel = m_campaign.travel.underway ? 1.0f : 0.0f;
     m_shipTravelTotal = m_shipTravel;

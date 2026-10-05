@@ -182,14 +182,12 @@ void PredationGame::DrawMapScreen(ImageData& out, const glm::vec3& here, float y
     char label[32];
     if (aboard)
     {
-        // The deck you are on.
-        const glm::vec3 local = here - ShipSpec::kOrigin;
-        const int deck = local.y > 2.8f && (local.z < 6.15f) ? 1 : 0;
-        for (const glm::vec4& room : ShipMap::DeckPlan(deck))
+        // The one deck.
+        for (const glm::vec4& room : ShipMap::DeckPlan(0))
         {
             quad(ShipSpec::kOrigin.x + room.x, ShipSpec::kOrigin.z + room.y, ShipSpec::kOrigin.x + room.z, ShipSpec::kOrigin.z + room.w, kFaint, true);
         }
-        std::snprintf(label, sizeof(label), "DECK %d", deck + 1);
+        std::snprintf(label, sizeof(label), "THE SHIP");
         header(label);
     }
     else

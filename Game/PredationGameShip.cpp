@@ -38,23 +38,28 @@ void PredationGame::RegisterShipCommands()
                 // In its cabin, at the front, facing the controls.
                 at = m_ship.Shuttle().Home().position + m_ship.Shuttle().Home().rotation * glm::vec3(0.0f, 0.8f, -3.6f);
             }
-            else if (where == "hangar")
+            else if (where == "hangar" || where == "bay")
             {
-                at = ShipMap::ToWorld({0.0f, 0.1f, 8.0f});
+                at = ShipMap::ToWorld({-4.9f, 0.1f, 5.0f});
                 yaw = glm::pi<float>();
             }
             else if (where == "gear")
             {
-                at = ShipMap::ToWorld({-6.0f, 0.1f, 0.0f});
+                at = ShipMap::ToWorld({2.0f, 0.1f, 1.0f});
             }
             else if (where == "loadout")
             {
-                at = ShipMap::ToWorld({-9.9f, 0.1f, -0.1f});
-                yaw = -glm::half_pi<float>();
+                at = ShipMap::ToWorld({1.6f, 0.1f, -1.0f});
+                yaw = glm::half_pi<float>();
             }
             else if (where == "cockpit")
             {
-                at = ShipMap::ToWorld({0.0f, ShipSpec::kUpperDeck + 0.1f, -34.0f});
+                at = ShipMap::ToWorld({0.0f, ShipSpec::kDeck + 0.1f, -13.8f});
+            }
+            else if (where == "engines")
+            {
+                at = ShipMap::ToWorld({0.0f, 0.1f, 20.4f});
+                yaw = glm::pi<float>();
             }
             if (m_map != MapChoice::Ship)
             {

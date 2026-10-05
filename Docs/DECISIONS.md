@@ -2732,3 +2732,28 @@ and CIRRA's missions stay as optional contracts. This is its first step, the par
   are gone). The briefing machinery -- the screens, the procedural voice-over from the recordings -- stays for CIRRA's
   contracts, and the orders command still issues one for testing. In a campaign the briefing room's console is the
   navigation console, and its screens show where the ship is going, where it is, or that nothing is chosen.
+
+## ADR-127: The crew's own ship -- small, one deck, its outside made from its look
+
+The old ship was a mid-size CIRRA carrier of two decks and a hangar as tall as both. In the rework the crew operate a
+ship of their own that starts small and grows (REWORK_DESIGN.md), and keeps a shuttle (the user's call). Rebuilt:
+
+- **One deck, about 41 m, along the spine** (bow at -z): the cockpit (the helm under the windscreen, two seats, windows
+  ahead and to either side); the ops room (the navigation table -- the console the system map opens at -- the two
+  screens on its forward wall either side of the door, a galley counter, a bench and table); the crew section (a
+  corridor between the bunks to port and the gear room to starboard: the loadout locker straight ahead through its
+  door, a bench, lockers and ammunition); the shuttle bay (twice as tall, the shuttle on the bay doors in its floor,
+  room down its sides to walk round to the ramp); and the engine room aft (the reactor and the machinery). Ceilings
+  2.7 m, the bay 5.6 m. Spawning is in the ops room, facing the screens.
+- **Its outside is made from a look** (ShipHullLook: primary, secondary and accent colours, drive tier, sensor tier) by
+  ShipMap::HullModel, and made again when the look changes: the campaign's colours, its drive (a main drive and small
+  ones; from the second tier nacelles on pylons off the bay's sides, larger with each) and its sensors (a mast; a dish
+  from the first tier; arrays on booms from the third). Bevelled sections drawn along the spine -- the cockpit
+  narrower and lower ahead of the body, the bay wider and taller, open under its doors -- with an accent belt and
+  stripes, plates, ribs, lit portholes, navigation lights. The old carrier model (and Assets/Models/Vehicles/
+  carrier.json) is gone.
+- **Growth by sections along the spine** (a cargo hold, a lab, more quarters between the crew section and the bay) is
+  what the size upgrades are to add, with the shipyard; the layout is built for it.
+- Cinematics: the launch, docking and empty-return shots from inside the old hangar are moved into the new bay (its
+  aft corner, looking forward over the ramp). The title's shot is reframed for the smaller ship.
+- The map device aboard shows the one deck ("THE SHIP"); the briefing screens hang where the ship says.

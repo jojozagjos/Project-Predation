@@ -55,7 +55,7 @@ TEST_CASE("The ship, and the lockers and crates put aboard it, are inside nothin
     CHECK(aboard.ship.Placements().items.empty());
 }
 
-TEST_CASE("Everybody arrives aboard standing on the briefing room's floor", "[ship]")
+TEST_CASE("Everybody arrives aboard standing on the ops room's floor", "[ship]")
 {
     Aboard aboard;
     for (uint8_t player = 0; player < 8; ++player)
@@ -64,11 +64,11 @@ TEST_CASE("Everybody arrives aboard standing on the briefing room's floor", "[sh
         const glm::vec3 spawn = aboard.ship.Spawn(player);
         const RayHit floor = aboard.physics.RayCastStatic(spawn + glm::vec3(0.0f, 1.0f, 0.0f), {0.0f, -1.0f, 0.0f}, 3.0f);
         REQUIRE(floor.hit);
-        CHECK(std::abs(floor.position.y - (ShipSpec::kOrigin.y + ShipSpec::kUpperDeck)) < 0.05f);
+        CHECK(std::abs(floor.position.y - (ShipSpec::kOrigin.y + ShipSpec::kDeck)) < 0.05f);
         // Nothing overhead but the ceiling, well above a head.
         const RayHit above = aboard.physics.RayCastStatic(spawn + glm::vec3(0.0f, 0.2f, 0.0f), {0.0f, 1.0f, 0.0f}, 10.0f);
         REQUIRE(above.hit);
-        CHECK(above.distance > 2.5f);
+        CHECK(above.distance > 2.3f);
         CHECK(aboard.ship.Contains(spawn));
     }
     // And the ship is well away from everywhere else.
@@ -80,29 +80,33 @@ TEST_CASE("The loadout locker is the first thing seen coming into the gear room,
 {
     Aboard aboard;
     const CinePose locker = aboard.ship.LoadoutLocker();
-    // In the gear room, on the lower deck, at the height of a face.
+    // In the gear room, to starboard of the corridor, at the height of a face.
     const glm::vec3 local = locker.position - ShipSpec::kOrigin;
-    CHECK(local.x < -1.8f);
-    CHECK(std::abs(local.z) < 5.85f);
+    CHECK(local.x > 1.0f);
+    CHECK(local.z > -4.0f);
+    CHECK(local.z < 3.5f);
     CHECK(local.y > 1.2f);
     CHECK(local.y < 1.8f);
     // Facing into the room, towards the door.
     const glm::vec3 facing = locker.rotation * glm::vec3(0.0f, 0.0f, 1.0f);
-    CHECK(facing.x > 0.99f);
+    CHECK(facing.x < -0.99f);
     // And nothing between the doorway and it: a look straight in from the corridor lands on its face.
-    const glm::vec3 doorway = ShipSpec::kOrigin + glm::vec3(-1.0f, local.y, local.z);
-    const RayHit look = aboard.physics.RayCastStatic(doorway, {-1.0f, 0.0f, 0.0f}, 20.0f);
+    const glm::vec3 doorway = ShipSpec::kOrigin + glm::vec3(0.5f, local.y, local.z);
+    const RayHit look = aboard.physics.RayCastStatic(doorway, {1.0f, 0.0f, 0.0f}, 20.0f);
     REQUIRE(look.hit);
     CHECK(std::abs(look.position.x - locker.position.x) < 0.05f);
 }
 
-TEST_CASE("The deployment console stands to one side of the briefing screens, facing the room", "[ship]")
+TEST_CASE("The navigation console stands in the ops room, the screens beyond it, facing where people come in", "[ship]")
 {
     Aboard aboard;
     const CinePose console = aboard.ship.BriefingConsole();
     const glm::vec3 local = console.position - ShipSpec::kOrigin;
-    // Not in front of either screen (x from 1.9 to 7.4 either side of the middle).
-    CHECK(std::abs(local.x) > 7.9f);
+    // Aft of the screens, so they are seen over it.
+    float width = 0.0f;
+    CHECK(aboard.ship.BriefingScreen(0, width).position.z < console.position.z);
+    CHECK(width > 1.5f);
+    CHECK(std::abs(local.x) < 1.0f);
     // Its front (-z of its own) looks into the room, and there is floor to stand on there with nothing in the way.
     const glm::vec3 front = console.rotation * glm::vec3(0.0f, 0.0f, -1.0f);
     CHECK(front.z > 0.99f);
@@ -147,7 +151,10 @@ TEST_CASE("No two parts of a vehicle share a surface facing the same way, which 
 {
     // Two faces in one plane, facing the same way and overlapping, are drawn in whichever order the depth test happens to
     // pick from pixel to pixel: the flickering seen on the back of the ship. Faces touching back to back are fine.
-    for (const ModelAsset& model : {Vehicles::CarrierModel(), Vehicles::ShuttleModel(), Vehicles::BayDoorsModel()})
+    ShipHullLook upgraded;
+    upgraded.drive = 4;
+    upgraded.sensors = 4;
+    for (const ModelAsset& model : {ShipMap::HullModel(ShipHullLook{}), ShipMap::HullModel(upgraded), Vehicles::ShuttleModel(), Vehicles::BayDoorsModel()})
     {
         INFO(model.name);
         for (size_t i = 0; i < model.parts.size(); ++i)

@@ -27,11 +27,10 @@ namespace ShipSpec
 // eye is within kReach of it, the sky is space.
 inline constexpr glm::vec3 kOrigin{-1500.0f, 0.0f, 0.0f};
 inline constexpr float kReach = 600.0f;
-// Its two decks, the top of each floor; the hangar is as tall as both.
-inline constexpr float kLowerDeck = 0.0f;
-inline constexpr float kUpperDeck = 3.6f;
-// Where the shuttle rests in the hangar, on the bay doors, in the ship's own frame.
-inline constexpr glm::vec3 kShuttleHome{0.0f, 0.0f, 20.0f};
+// Its one deck, the top of its floor; the shuttle bay is twice as tall as the rest.
+inline constexpr float kDeck = 0.0f;
+// Where the shuttle rests in its bay, on the bay doors, in the ship's own frame.
+inline constexpr glm::vec3 kShuttleHome{0.0f, 0.0f, 11.5f};
 // Under way to a site the ship flies bow first at the planet: dead ahead, a touch low, in the cockpit's windows.
 // Not quite a unit vector; normalise it.
 inline constexpr glm::vec3 kTravelHeading{0.0f, -0.08f, -1.0f};
@@ -58,20 +57,40 @@ inline constexpr glm::vec3 kStage{-1500.0f, 300.0f, -2600.0f};
 inline constexpr float kStageReach = 900.0f;
 } // namespace ShipSpec
 
-// The team's carrier between deployments: where everybody is before and after a mission.
+// How the ship's outside looks: its colours, and what its upgrades have put on it. A different look is a new outside.
+struct ShipHullLook
+{
+    glm::vec3 primary{0.78f, 0.78f, 0.76f};
+    glm::vec3 secondary{0.16f, 0.17f, 0.18f};
+    glm::vec3 accent{0.92f, 0.52f, 0.14f};
+    int drive = 0;   // engines: more of them and bigger with each tier
+    int sensors = 0; // a mast; then a dish; then arrays
+    bool operator==(const ShipHullLook& other) const = default;
+};
+
+// The crew's own ship: small, cramped, working, and where everybody is between expeditions.
 //
-// Two decks and a hangar as tall as both, laid out in the ship's own frame with its bow towards -z:
-//   lower deck   the hangar aft, with the shuttle parked on the bay doors in its floor; forward of it a corridor with
-//                the gear room and the crew quarters to port, the stairs and the mess to starboard
-//   upper deck   a gallery looking down into the hangar, the landing at the top of the stairs, the briefing room with
-//                the deployment console and its screen, and forward of that the cockpit, its windows on space
-// The hull is built round all of it, so a cinematic outside sees the ship everybody is standing in: the shuttle drops
-// out through its belly, and the cockpit's windows are windows in it. Built once; nothing in it is used up.
+// One deck, laid out along its spine in the ship's own frame with its bow towards -z, a section after another:
+//   cockpit       the helm under the windows, two seats, windows ahead and to either side
+//   ops room      the navigation table (the console the system map opens at), the two screens on its forward wall,
+//                 a galley counter and a bench
+//   crew section  a corridor between the bunks to port and the gear room to starboard (the loadout locker, lockers,
+//                 ammunition)
+//   shuttle bay   twice as tall, the shuttle parked on the bay doors in its floor
+//   engine room   aft, the reactor and the machinery
+// The hull is built round all of it from its look (ShipHullModel), so a cinematic outside sees the ship everybody is
+// standing in: the shuttle drops out through its belly, and the cockpit's windows are windows in it. Upgrades are to
+// add sections along the spine; its outside is made again whenever its look changes.
 class ShipMap
 {
 public:
     // Before the site is built: a site that is rebuilt takes away every lamp added after its own.
     void Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, LevelLights* lights);
+    // Its outside made again for a look (colours, engines, sensors); nothing when it already looks so.
+    void SetLook(Scene& scene, MeshLibrary& meshes, const ShipHullLook& look);
+    const ShipHullLook& Look() const { return m_look; }
+    // The outside for a look, in the ship's frame.
+    static ModelAsset HullModel(const ShipHullLook& look);
     bool Built() const { return m_built; }
 
     // Whether a point is near enough the ship that the sky round it is space.
@@ -82,8 +101,10 @@ public:
     float SpawnYaw() const;
     // The middle of the loadout locker's screen, in the gear room, turned to face the room.
     CinePose LoadoutLocker() const;
-    // Where the deployment console stands, facing where people stand at it.
+    // Where the navigation console stands (the deployment console, without a campaign), facing where people stand at it.
     CinePose BriefingConsole() const;
+    // Where each of the two screens hangs, facing the room, and how wide it is.
+    CinePose BriefingScreen(int index, float& width) const;
     // What WorldObjects puts aboard: the lockers and ammunition in the gear room.
     const WorldObjects::Placements& Placements() const { return m_placements; }
 
@@ -125,6 +146,7 @@ private:
     VehicleProp m_bayDoors;
     VehicleProp m_hull;
     VehicleProp m_stageHull;
+    ShipHullLook m_look;
     std::vector<Entity> m_entities;
     std::vector<BodyHandle> m_bodies;
     float m_burn = 0.0f;
