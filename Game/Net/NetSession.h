@@ -418,16 +418,11 @@ public:
     // Changes the host has made, for the game to apply to its own copy of the world, and the
     // requests this client would like the host to consider.
 
-    // Everyone else in the game, as the host last described them.
-    //
-    // Kept for one purpose: if the host goes, whoever is left elects the lowest surviving player
-    // number as the new host and the rest connect to the address recorded here. There is nobody to
-    // ask by then, which is why it has to be known in advance.
+    // Everyone else in the game, as the host last described them: for their names.
     struct KnownPeer
     {
         uint8_t id = 0;
         std::string name;
-        std::string address;
     };
     const std::vector<KnownPeer>& Peers() const { return m_peers; }
     // Whether the host has started the game. Until it has, this client waits in the lobby.
@@ -436,14 +431,9 @@ public:
     // flight.
     std::string NameOf(uint8_t id) const;
     const std::string& Name() const { return m_name; }
-    // True once the host has gone and this client is the one that should take over.
-    bool ShouldBecomeHost() const;
-    // Where the successor is, when it is not this machine.
-    std::string SuccessorAddress() const;
+    // True once the host this client was playing with has gone. The game is the host's -- its campaign is saved on its
+    // machine -- so it ends for everybody else.
     bool HostLost() const { return m_hostLost; }
-    // The port this session is on. A successor has to listen where everyone will look for it,
-    // which is where they were already connected, not wherever the menu happened to be set to.
-    uint16_t SessionPort() const { return m_sessionPort; }
 
     std::vector<WorldEventMessage> TakeWorldEvents() { return std::exchange(m_worldEvents, {}); }
     const WorldStateMessage& LatestWorldState() const { return m_worldState; }
@@ -566,7 +556,6 @@ private:
     bool m_snapshotArrived = false;
     bool m_hasWorldState = false;
     bool m_hostLost = false;
-    uint16_t m_sessionPort = kDefaultPort;
     JoinRejection m_rejection = JoinRejection::None;
     bool m_welcomed = false;
 };

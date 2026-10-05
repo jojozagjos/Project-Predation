@@ -25,9 +25,6 @@
 namespace pred
 {
 
-CVar<float> cv_firstOrderSeconds{"game.first_order_seconds", 30.0f, "Seconds aboard at the start of a game before the first orders come in"};
-CVar<float> cv_orderSecondsMin{"game.order_seconds_min", 60.0f, "Least seconds back aboard before the next orders come in"};
-CVar<float> cv_orderSecondsMax{"game.order_seconds_max", 180.0f, "Most seconds back aboard before the next orders come in"};
 
 namespace
 {
@@ -159,22 +156,10 @@ void PredationGame::BuildBriefingScreens()
     m_briefingDrawnAt = -10.0f;
 }
 
-void PredationGame::ScheduleOrders(bool firstOfGame)
-{
-    if (!IsAuthority())
-    {
-        return;
-    }
-    m_orderIn = firstOfGame ? std::max(cv_firstOrderSeconds.Get(), 1.0f)
-                            : RandomBetween(std::max(cv_orderSecondsMin.Get(), 1.0f), std::max(cv_orderSecondsMax.Get(), cv_orderSecondsMin.Get() + 1.0f));
-    PRED_LOG_INFO(Gameplay, "Orders in {:.0f} s", m_orderIn);
-}
-
 void PredationGame::ClearOrders()
 {
     m_order = OrderState::None;
     m_orderSite = 0;
-    m_orderIn = -1.0f;
     m_briefingAt = 0.0f;
     m_briefingCue = 0;
 }
@@ -207,7 +192,6 @@ void PredationGame::IssueOrder(uint16_t site)
     }
     m_orderSite = site;
     m_order = OrderState::Incoming;
-    m_orderIn = -1.0f;
     PrepareBriefing(site);
     PRED_LOG_INFO(Gameplay, "Orders in: site {}", site);
 }
@@ -229,15 +213,6 @@ void PredationGame::UpdateOrders(float dt)
 {
     m_orderClock += dt;
     const bool aboard = m_screen == Screen::Playing && m_map == MapChoice::Ship;
-    // Coming in: the host's clock, only while there is nothing else going on aboard.
-    if (IsAuthority() && aboard && m_order == OrderState::None && m_orderIn >= 0.0f && m_shipTravel <= 0.0f && !m_shipReady && !m_cine.Active())
-    {
-        m_orderIn -= dt;
-        if (m_orderIn <= 0.0f)
-        {
-            IssueOrder(0);
-        }
-    }
     // The chime, wherever anybody is aboard, as soon as orders come in -- the same on every machine, from the state.
     if (m_order == OrderState::Incoming && m_orderHeard != m_orderSite)
     {
@@ -276,14 +251,24 @@ void PredationGame::UpdateOrders(float dt)
             m_order = OrderState::Ready;
         }
     }
-    // The console says what it will do.
+    // The console says what it will do: in a campaign it is the navigation console; otherwise it plays a briefing that has
+    // come in, and deploys once it has been seen.
     if (Interactable* console = m_interactions.Find(m_deployConsole))
     {
         const bool incoming = m_order == OrderState::Incoming;
         const bool ready = m_order == OrderState::Ready && m_shipTravel <= 0.0f && !m_shipReady;
-        console->enabled = aboard && (incoming || ready);
-        console->verb = incoming ? "Play" : "Deploy";
-        console->name = incoming ? "the briefing" : "to the site";
+        if (m_campaignOpen)
+        {
+            console->enabled = aboard && !m_cine.Active();
+            console->verb = "Open";
+            console->name = "the navigation map";
+        }
+        else
+        {
+            console->enabled = aboard && (incoming || ready);
+            console->verb = incoming ? "Play" : "Deploy";
+            console->name = incoming ? "the briefing" : "to the site";
+        }
     }
     if (MeshRenderer* renderer = m_scene.GetMeshRenderer(m_deployScreen))
     {
@@ -333,7 +318,27 @@ void PredationGame::DrawBriefingScreens()
         {
             canvas.Text(kWide / 2 - canvas.TextWidth(text.c_str(), scale) / 2, y, text.c_str(), colour, scale);
         };
-        if (m_shipTravel > 0.0f)
+        const SiteTitle place = m_campaignOpen ? PlaceTitle() : SiteTitle{};
+        if (m_campaignOpen && m_campaign.travel.underway)
+        {
+            Frame(canvas, "UNDER WAY", clock, -1.0f);
+            centred(left ? "UNDER WAY" : Upper(place.planet.empty() ? std::string("COMING TO A STOP") : place.planet), 88, kText, left ? 4 : 2);
+            centred(left ? "NAVIGATION MAP AT THE CONSOLE" : "DESTINATION", 150, kSoft, 2);
+        }
+        else if (m_campaignOpen && m_shipReady)
+        {
+            Frame(canvas, "IN ORBIT", clock, -1.0f);
+            centred(Upper(left ? place.planet : place.site), 88, kText, left ? 4 : 2);
+            centred("SHUTTLE READY IN THE HANGAR", 150, kAccent, 2);
+        }
+        else if (m_campaignOpen)
+        {
+            Frame(canvas, "NAVIGATION", clock, -1.0f);
+            centred(left ? Upper(place.planet.empty() ? std::string("BETWEEN THE PLANETS") : place.planet) : "NO DESTINATION", 88, kText,
+                    left ? 3 : 2);
+            centred("CHOOSE ONE AT THE CONSOLE", 150, kSoft, 2);
+        }
+        else if (m_shipTravel > 0.0f)
         {
             Frame(canvas, "UNDER WAY", clock, -1.0f);
             centred(left ? "UNDER WAY" : site, 88, kText, left ? 4 : 2);

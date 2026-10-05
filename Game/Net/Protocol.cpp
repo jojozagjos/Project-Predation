@@ -1347,7 +1347,6 @@ void WritePeerList(BitWriter& writer, const PeerListMessage& message)
     {
         writer.WriteBits(message.peers[i].id, 3);
         WriteText(writer, message.peers[i].name, kMaxNameLength);
-        WriteText(writer, message.peers[i].address, 48);
     }
 }
 
@@ -1363,8 +1362,7 @@ bool ReadPeerList(BitReader& reader, PeerListMessage& out)
     for (uint32_t i = 0; i < count; ++i)
     {
         out.peers[i].id = static_cast<uint8_t>(reader.ReadBits(3));
-        if (!ReadText(reader, out.peers[i].name, kMaxNameLength) ||
-            !ReadText(reader, out.peers[i].address, 48))
+        if (!ReadText(reader, out.peers[i].name, kMaxNameLength))
         {
             return false;
         }

@@ -2721,3 +2721,14 @@ and CIRRA's missions stay as optional contracts. This is its first step, the par
   their colour and their name, and marked in the list.
 - Title cards and conditions in a campaign are the body's and the region's, not the old seeded names.
 - A service location (the shipyard) is not gone down to in the shuttle; docking comes with the shipyard.
+
+## ADR-126: No host migration; briefings only when there is one
+
+- **The host leaving ends the game** for everybody else, and the title says so. The campaign is saved on the host's
+  machine and nowhere else, so handing the game to somebody else made a second copy of the campaign that drifted from
+  the first (the user's call). Gone with it: the successor election, the addresses on the roster (PeerEntry keeps
+  names only) and net.migration_seconds. Protocol 32.
+- **Briefings play only when there is one**: orders no longer come in on their own (the timer and its three settings
+  are gone). The briefing machinery -- the screens, the procedural voice-over from the recordings -- stays for CIRRA's
+  contracts, and the orders command still issues one for testing. In a campaign the briefing room's console is the
+  navigation console, and its screens show where the ship is going, where it is, or that nothing is chosen.

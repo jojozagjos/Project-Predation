@@ -744,7 +744,6 @@ void NetHost::BroadcastPeerList()
             PeerEntry& entry = list.peers[list.count++];
             entry.id = client->playerId;
             entry.name = client->name;
-            entry.address = m_transport->AddressOf(client->peer);
         }
     }
 
@@ -1294,7 +1293,6 @@ bool NetClient::Connect(std::unique_ptr<Transport> transport, const std::string&
     m_lastAcknowledged = 0;
     m_corrections = 0;
     m_clock = 0.0f;
-    m_sessionPort = port;
     m_hostLost = false;
     m_peers.clear();
     m_hostStarted = false;
@@ -1421,7 +1419,7 @@ void NetClient::HandlePacket(const NetPacket& packet)
             m_peers.clear();
             for (uint8_t i = 0; i < list.count; ++i)
             {
-                m_peers.push_back({list.peers[i].id, list.peers[i].name, list.peers[i].address});
+                m_peers.push_back({list.peers[i].id, list.peers[i].name});
             }
         }
         break;
@@ -1713,28 +1711,6 @@ void NetClient::Tick(const PlayerInput& input, PlayerController& local, float dt
     SendInput();
 }
 
-bool NetClient::ShouldBecomeHost() const
-{
-    if (!m_hostLost)
-    {
-        return false;
-    }
-    // The lowest surviving player number takes over. Everyone was given the same roster, so
-    // everyone reaches the same answer without having to agree on one, which is just as well
-    // because the machine they would have agreed through is the one that left.
-    for (const KnownPeer& peer : m_peers)
-    {
-        // The host is on the roster too, for its name. It is also the machine that has just gone,
-        // so it is never a candidate to take over from itself: counting it here would mean nobody
-        // ever decided they were next and the game simply stopped.
-        if (peer.id != 0 && peer.id < m_playerId)
-        {
-            return false;
-        }
-    }
-    return true;
-}
-
 std::string NetClient::NameOf(uint8_t id) const
 {
     for (const KnownPeer& peer : m_peers)
@@ -1748,27 +1724,6 @@ std::string NetClient::NameOf(uint8_t id) const
     // better than a blank row, and the roster is a reliable message so it is a moment behind at
     // worst.
     return "player " + std::to_string(static_cast<int>(id) + 1);
-}
-
-std::string NetClient::SuccessorAddress() const
-{
-    if (!m_hostLost)
-    {
-        return {};
-    }
-    const KnownPeer* best = nullptr;
-    for (const KnownPeer& peer : m_peers)
-    {
-        if (peer.id == m_playerId || peer.address.empty())
-        {
-            continue;
-        }
-        if (best == nullptr || peer.id < best->id)
-        {
-            best = &peer;
-        }
-    }
-    return best != nullptr ? best->address : std::string{};
 }
 
 void NetClient::SetTorch(bool on)

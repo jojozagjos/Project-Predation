@@ -740,10 +740,9 @@ TEST_CASE("A climb is visible to everyone else", "[net][session]")
     CHECK(seen.mantleEdge.y == Catch::Approx(1.1f).margin(0.01));
 }
 
-TEST_CASE("Everyone is told who else is here, so a lost host can be replaced", "[net][session]")
+TEST_CASE("Everyone is told who else is here, by name", "[net][session]")
 {
-    // The roster is what makes migration possible at all: once the host has gone there is nobody
-    // left to ask who was playing or where they were.
+    // The roster: a player list needs a name for every row, and only the host knows them all.
     NetConditions perfect;
     Link link(41020, perfect);
     link.Run(40, PlayerInput{});
@@ -752,15 +751,11 @@ TEST_CASE("Everyone is told who else is here, so a lost host can be replaced", "
     const std::vector<NetClient::KnownPeer>& peers = link.client.Peers();
     REQUIRE_FALSE(peers.empty());
 
-    // The host is on it too, first and with no address, because a player list needs a name for
-    // every row and the host's name cannot come from anywhere else. Everyone already knows how to
-    // reach the host, so the address it would carry is the one thing it does not need.
+    // The host is on it too, first, because its name cannot come from anywhere else.
     CHECK(peers[0].id == 0);
-    CHECK(peers[0].address.empty());
     CHECK_FALSE(peers[0].name.empty());
 
-    // And this client, with the address the host saw it arrive from, which is what the others would
-    // have to reconnect to if the host went.
+    // And this client.
     const auto self = std::find_if(peers.begin(), peers.end(),
                                    [&](const NetClient::KnownPeer& peer)
                                    { return peer.id == link.client.PlayerId(); });
@@ -768,10 +763,9 @@ TEST_CASE("Everyone is told who else is here, so a lost host can be replaced", "
     CHECK(self->name == "tester");
 }
 
-TEST_CASE("The lowest surviving player takes over when the host goes", "[net][session]")
+TEST_CASE("Every client knows when the host has gone", "[net][session]")
 {
-    // Everyone was given the same roster, so everyone reaches the same answer without agreeing on
-    // one. That matters, because the machine they would have agreed through is the one that left.
+    // The game is the host's, so when it goes it is over for everybody: each of them has to know.
     Machine hostMachine;
     NetHost host;
     NetHost::Config config;
@@ -810,24 +804,11 @@ TEST_CASE("The lowest surviving player takes over when the host goes", "[net][se
     host.Stop();
     pump(40);
 
-    int volunteers = 0;
     for (auto& client : clients)
     {
         CHECK(client->HostLost());
-        if (client->ShouldBecomeHost())
-        {
-            ++volunteers;
-            // And it is the lowest number that stepped forward. The host's own row is on the roster
-            // for its name and is skipped here: it is the machine that has just gone, so it is
-            // never a candidate to succeed itself.
-            for (const NetClient::KnownPeer& peer : client->Peers())
-            {
-                CHECK((peer.id == 0 || peer.id >= client->PlayerId()));
-            }
-        }
+        CHECK_FALSE(client->Connected());
     }
-    INFO(volunteers << " clients think they should take over");
-    CHECK(volunteers == 1);
 }
 
 

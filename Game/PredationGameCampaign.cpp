@@ -198,18 +198,6 @@ void PredationGame::ApplyCampaignDocument(const std::string& text)
     m_campaignOpen = true;
 }
 
-void PredationGame::AdoptCampaign()
-{
-    // The host has gone and this machine has taken over: the campaign as it was last sent is now this one's to keep,
-    // saved as a campaign of its own here -- the old host still has theirs.
-    if (!m_campaignOpen || !m_campaignFolder.empty())
-    {
-        return;
-    }
-    m_campaignFolder = m_campaignStore->NewFolder(m_campaign.name);
-    SaveCampaign(true, "taking over as host");
-}
-
 void PredationGame::ServeCampaignRequests()
 {
     for (const NetHost::CampaignAsk& ask : m_host.TakeCampaignRequests())

@@ -739,8 +739,8 @@ private:
                            const char* cause = "gunfire");
     void KillPlayer(uint8_t player, const glm::vec3& direction);
     // Death is a pause. The authority runs the clock and says when somebody comes back.
-    // The host left. Whoever is left elects a successor and the rest follow it.
-    void UpdateHostMigration(float dt);
+    // The host left: the game is over for everybody else.
+    void UpdateHostLost();
     void UpdateRespawns(float dt);
     // Dead, you watch a teammate through their own eyes. Never a free camera: that would show you
     // where the creature is, which is the one thing being dead must not tell you.
@@ -836,8 +836,9 @@ private:
     void ServeLoadout(uint8_t player, const LoadoutMessage& kit);
 
     // --- Orders and the briefing (PredationGameBriefing.cpp) --------------------------------------------------------
-    // A deployment comes in at a random time aboard; anybody plays its briefing at the console, on the briefing room's
-    // screens, with its voice-over; then the console deploys. Orders are orders: none is turned down.
+    // A briefing, played only when there is one to play (the orders command now; CIRRA's contracts when they come): anybody
+    // plays it at the console, on the briefing room's screens, with its voice-over; then the console deploys. Nothing
+    // comes in on its own any more -- in a campaign the crew choose where to go.
     enum class OrderState : uint8_t
     {
         None,
@@ -847,8 +848,6 @@ private:
     };
     void LoadBriefing();
     void BuildBriefingScreens();
-    // The host: when the next orders come in -- soon at the start of a game, a minute or three after getting back.
-    void ScheduleOrders(bool firstOfGame);
     void ClearOrders();
     void IssueOrder(uint16_t site); // 0: a site of its own choosing
     void StartBriefing();
@@ -947,8 +946,6 @@ private:
     void SendCampaign(int player = -1);
     void ApplyCampaignDocument(const std::string& text);
     void ServeCampaignRequests();
-    // A client taking over as host: the campaign as it was last sent becomes this machine's to save.
-    void AdoptCampaign();
     void DrawTitleCampaigns();
     void DrawCampaignNotice();
     void RegisterCampaignCommands();
@@ -1520,7 +1517,6 @@ private:
     float m_worldStateTimer = 0.0f;
     glm::vec3 m_deathImpulse{0.0f};
     float m_respawnTimer = 0.0f;
-    float m_migrationTimer = 0.0f;
     std::map<uint8_t, float> m_remoteRespawnTimers;
     // Dead, the drone this player drives; how long until it arrives (below zero: not counting); and
     // whether this death is for the rest of the deployment.
@@ -1589,7 +1585,6 @@ private:
     OrderState m_order = OrderState::None;
     uint16_t m_orderSite = 0;
     uint16_t m_orderHeard = 0;
-    float m_orderIn = -1.0f;
     float m_orderClock = 0.0f;
     float m_briefingAt = 0.0f;
     size_t m_briefingCue = 0;
