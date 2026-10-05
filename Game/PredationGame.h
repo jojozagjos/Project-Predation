@@ -986,8 +986,21 @@ private:
         CancelCourse,
         SetRegion,    // a = landing region
         Pointer,      // a = body pointed at (-1 none), b = the map open
-        SetSystemCourse // a, b = the low and high halves of the system's number
+        SetSystemCourse, // a, b = the low and high halves of the system's number
+        PlotCourse,      // a = body, b = landing region: plotted, not flown
+        PlotSystem,      // a, b = the system's number, as SetSystemCourse
+        ClearPlot,
+        Depart,          // set out on the course plotted
+        Door             // a = 1 open the boarding door, 0 shut it
     };
+    // The boarding door's controls, inside and out.
+    void BuildAirlockControls();
+    Entity m_airlockControls[2];
+    // What a plotted course is to, in a few words ("KEPLER-91 IV"); empty for none.
+    std::string PlanName();
+    // The helm, in the cockpit: where a plotted course is set out on.
+    void BuildHelm();
+    Entity m_helm;
     // The map's three scales: the galaxy (systems as stars, without end), one system (its star, planets, moons and
     // stations), and one body (the globe, with the areas found on it to go down to).
     enum class MapLevel : uint8_t
@@ -1018,6 +1031,9 @@ private:
     };
     MapTransition m_mapTransition;
     float m_mapFadeIn = 0.0f;
+    // The body the window's sky has the ship in orbit of, and since when: its slow way round counted from arriving.
+    int m_skyOrbitBody = -1;
+    double m_skyOrbitSince = 0.0;
     void RenderMapGalaxy(bgfx::ViewId sky, bgfx::ViewId lines, const glm::mat4& view, const glm::mat4& projection);
     void RenderMapSystem(const StarSystem& system, bgfx::ViewId sky, bgfx::ViewId bodies, bgfx::ViewId glow, bgfx::ViewId lines,
                          const glm::mat4& view, const glm::mat4& projection);
@@ -1031,8 +1047,15 @@ private:
     static glm::vec3 AreaOnGlobe(const LandingRegion& region);
     bool AreaInDaylight(const StarSystem& system, const Body& body, const LandingRegion& region);
     glm::vec3 SunOverBody(const StarSystem& system, const Body& body);
+    // Where the ship is drawn on a body's globe: at its area when landed, otherwise on its way round.
+    glm::vec3 ShipOverGlobe(const Body& body);
     // Asks for a course to another system.
     void AskSystemCourse(uint64_t system);
+    // Whether a system is on the ship's charts: within ChartRange of somewhere it has been, or of the ship.
+    bool SystemCharted(uint64_t system);
+    // The galaxy's charted places, worked out again when the campaign's knowledge changes.
+    std::vector<glm::vec3> m_mapChartCentres;
+    size_t m_mapChartKnown = static_cast<size_t>(-1);
     // How the ship stands, in a line: "Under way to ...", "Docked at ...".
     std::string ShipStatus();
     bool MapAreaKnown(uint64_t system, const Body& body, int region) const;
@@ -1085,6 +1108,12 @@ private:
     bool RegionIsPort(const Body& body, int region) const;
     // Whether a cinematic of the ship on the ground is playing (taking off from a hub, setting down at one).
     bool GroundCinematic() const;
+    // The ship's surroundings as the campaign has it: standing at a hub (the station, its signs, the boarding door open)
+    // or not.
+    void UpdateShipGround();
+    void UpdateHubSigns(bool shown, bool named);
+    std::vector<Entity> m_hubSigns;
+    std::vector<std::string> m_hubSignIds;
     void PlayLeaving(bool fromGround);
     // The body and place the ship last stood at, for the ground and the sky while it leaves or arrives.
     int m_groundBody = -1;

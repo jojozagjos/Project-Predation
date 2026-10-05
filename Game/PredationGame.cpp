@@ -11,6 +11,7 @@
 #include "Engine/Render/Primitives.h"
 #include "Game/Weapons/WeaponAppearance.h"
 #include "Game/World/TestMap.h"
+#include "Game/World/KestrelStation.h"
 #include "Engine/Audio/Sound.h"
 #include "Engine/Debug/FrameStats.h"
 #include "Engine/Platform/Window.h"
@@ -602,6 +603,8 @@ bool PredationGame::OnInit(Application& app)
     // The ship's deployment console, standing in the testing area until there is a ship -- before the walkable surface is
     // worked out, which has to go round it -- and what sites are called and what the intercom says.
     BuildDeployConsole();
+    BuildHelm();
+    BuildAirlockControls();
     BuildLoadoutLocker();
     BuildBriefingScreens();
     LoadBriefing();
@@ -3444,6 +3447,14 @@ void PredationGame::EnterWorld()
         m_map = MapChoice::Ship;
         m_spawnPoint = m_ship.Spawn(LocalPlayerId());
         m_spawnYaw = m_ship.SpawnYaw();
+        // A campaign with the ship standing at a hub starts outside it, on the bay's floor by its stair -- the station
+        // there to stand on first.
+        if (ShipLanded())
+        {
+            UpdateShipGround();
+            m_spawnPoint = KestrelStation::Spawn(LocalPlayerId());
+            m_spawnYaw = KestrelStation::SpawnYaw();
+        }
     }
     // A new game starts from the beginning. The world has been simulating behind the menu, and
     // whatever was done to it last time is still done.
@@ -9013,6 +9024,26 @@ void PredationGame::TryInteract()
     if (focus.kind == InteractionKind::Loadout)
     {
         m_loadoutOpen ? CloseLoadout() : OpenLoadout();
+        return;
+    }
+    // The boarding door: opened (only on the ground) or shut, asked of the host.
+    if (focus.kind == InteractionKind::Airlock)
+    {
+        if (m_campaignOpen)
+        {
+            AskCampaign(CampaignAction::Door, m_campaign.doorOpen ? 0 : 1);
+            PlayNamed("UI/confirm", m_renderEye, 0.5f, 0.8f, false);
+        }
+        return;
+    }
+    // The helm: setting out on the course plotted, asked of the host.
+    if (focus.kind == InteractionKind::Helm)
+    {
+        if (m_campaignOpen)
+        {
+            AskCampaign(CampaignAction::Depart);
+            PlayNamed("UI/confirm", m_renderEye, 0.6f, 1.0f, false);
+        }
         return;
     }
     // So is the navigation console, in a campaign: the map opens here, and what is chosen on it is asked of the host.

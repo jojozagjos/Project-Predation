@@ -56,6 +56,8 @@ public:
     // Out of sight altogether, or back: the ship's two outsides, only one of which belongs in any picture.
     void SetHidden(Scene& scene, bool hidden);
     bool Hidden() const { return m_hidden; }
+    // Its parts whose names begin so, out of sight however it is shown after (the ship's landing gear, put away).
+    void SetPartsHidden(Scene& scene, const std::string& prefix, bool hidden);
 
     bool Built() const { return m_model != nullptr; }
     const CinePose& Home() const { return m_home; }
@@ -76,6 +78,7 @@ private:
     CinePose m_home;
     CinePose m_shown;
     bool m_hidden = false;
+    std::vector<std::string> m_hiddenPrefixes;
     std::vector<Entity> m_parts;
     std::vector<BodyHandle> m_bodies;
 };

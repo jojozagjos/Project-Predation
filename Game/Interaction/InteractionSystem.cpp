@@ -40,6 +40,10 @@ const char* InteractionKindName(InteractionKind kind)
         return "board";
     case InteractionKind::Loadout:
         return "loadout";
+    case InteractionKind::Helm:
+        return "helm";
+    case InteractionKind::Airlock:
+        return "airlock";
 
     case InteractionKind::Generic:
     default:

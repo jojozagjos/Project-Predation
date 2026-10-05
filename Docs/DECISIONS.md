@@ -2843,3 +2843,51 @@ ship of their own that starts small and grows (REWORK_DESIGN.md), and keeps a sh
   dark rather than cutting; left-drag turns more gently; panel text wraps; a list's IDs no longer collide.
 - **The title and menus**: no letter-spacing anywhere; the Continue line says when the ship is landed.
 - The objective no longer gives how far through a crossing it is.
+
+## ADR-131: Kestrel Station, walking off the ship, plotting a course and setting out, and the galaxy opened by upgrades
+
+- **Kestrel Station** (Game/World/KestrelStation): the CIRRA frontier logistics and contract station on the home world,
+  from the user's direction -- where the ship is based when the campaign begins, and where the tutorial will end. Built in
+  the ship's frame round its pad: Hangar Row (the ship's open bay, Bay 02, and Shipworks beside it), a street through the
+  bay's gate with Operations Hall (ribbed concrete, silo towers, the CIRRA mark and the station's name over its
+  entrance), Crew Services, the Research Annex (modules added onto modules) and the Navigation Relay's mast, Salvage
+  Intake on the apron with its docks, containers and gantry crane, a fence round it all. Grounded industrial in the
+  spirit of the user's reference, brighter: weathered concrete, bolted-on steel, conduits, gantries, sodium lamps on the
+  street and floodlights in the bay. Solid to walk on and into; its dressing only to be seen; built only while the ship
+  stands at a hub. Modular: a building is a block and its dressing, added without redesigning the rest. No interiors yet.
+- **Signs** are drawn on the CPU (ScreenCanvas) into textures: lit panels, painted lettering, and the CIRRA mark drawn
+  from rectangles and turned quads after the user's logo (the letters, the orange bar low in the A). "KESTREL STATION"
+  only at Kestrel; other worlds' hubs have the same layout without its name (the home hub's area is named from
+  universe.json, names.homeHub).
+- **Off the ship**: a boarding door to port in the ops room -- the hull's skin and the wall cut round it, lined, the
+  wall's screen, the hull's belt and a porthole moved out of its way -- with a hatch that slides into the wall. Opened and
+  shut at a lit control either side of it (InteractionKind::Airlock, CampaignAction::Door, the state the campaign's,
+  doorOpen); it opens only while the ship stands on the ground, shuts itself when the ship leaves, and is solid only when
+  all the way shut. The station's stair meets it. A campaign begins outside, the door open, on the bay's floor at the
+  stair's foot, looking at the ship.
+- **The landing gear** is hidden as a set of parts on the prop (VehicleProp::SetPartsHidden), so a cinematic moving the
+  ship never shows it again in flight.
+- **Plot, then set out**: choosing somewhere on the map plots a course (CampaignState::plan, saved); nothing moves until
+  someone sets out on it at the helm in the cockpit (a new interaction) or from the map's strip under its top bar, which
+  also clears it. Going down where the ship already is, or landing at a hub the ship is over, stays immediate.
+- **Leaving without a cinematic**: out of orbit the ship simply goes -- engines lit, a rumble, the dust starting slowly
+  past the windows and streaming as it speeds up -- and the departure cinematic waits for the drive that makes trips all
+  but instant (Travel::kInstantTier). Taking off from a hub and arriving keep theirs.
+- **Arriving smoothly**: the bow is on the destination the whole way, so it is dead ahead; over the last of the approach
+  the view turns into the orbit's (the body below, ahead) and grows to its size from orbit, and the orbit's slow turn is
+  counted from arriving -- so nothing snaps. The ship is in the planet's shadow whenever the sun is behind it.
+- **The galaxy opened by upgrades**: the charts reach Travel::ChartRange(sensor tier) round every system been to (and
+  the ship); systems beyond are not drawn, listed or found by search. A crossing reaches Travel::CrossingRange(drive
+  tier) -- none on the first drive, fourteen light years on the next, ten more each tier after. Both are drawn on the
+  galaxy map. Protocol 35 (the campaign's new actions).
+- **The map**: clicking picks reliably (the pointer kept through the press); a click on nothing keeps what was picked;
+  small bodies are easier to hit; tooltips say what is under the pointer; the ship is drawn on the globe -- landed at its
+  area, or going round on its orbit; zooming out at the limit no longer drags the map, zooming towards the pointer only
+  going in and never by more than the view is across (it could throw the view off into empty space and strand it).
+- **Stars that hold still**: each pixel looks for stars in the eight cells nearest it, the stars' points fixed in their
+  cells (a star near its cell's edge was cut off, and the sky seemed to shake as the view moved); a cinematic's shake moves
+  the camera without turning it.
+- **Orbits that make sense**: moons start well outside their planet's rings and go round slower the further out they are
+  (Kepler), so none laps another; the map draws moons outside the rings it draws.
+- **The star**: on the map a granulated surface with spots, its rim darker and redder, a tight corona instead of a fog;
+  out of the windows a white-hot disc with the colour in the light round it and two faint spikes.

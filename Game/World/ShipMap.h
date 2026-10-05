@@ -93,12 +93,18 @@ public:
     const ShipHullLook& Look() const { return m_look; }
     // The outside for a look, in the ship's frame.
     static ModelAsset HullModel(const ShipHullLook& look);
-    // Set down at a hub, in the ship's frame: its legs, the pad, the hub round it and the world's ground in its colours.
-    static ModelAsset FieldModel(const glm::vec3& ground, const glm::vec3& rock);
+    // The boarding door's hatch, in the ops room's port wall.
+    static ModelAsset AirlockModel();
+    // Asked open or shut; it slides there (UpdateAirlock), solid only when shut.
+    void SetAirlockOpen(Scene& scene, MeshLibrary& meshes, bool open);
+    void UpdateAirlock(Scene& scene, MeshLibrary& meshes, float dt);
+    bool AirlockOpen() const { return m_airlockOpen; }
+    // Where the door's controls are: inside on the wall aft of it, and outside on the hull beside it.
+    CinePose AirlockControl(bool inside) const;
     // The landing gear, down or up: round the rooms (standing at a hub) and on the stage (as a cinematic has it).
     void SetGear(Scene& scene, bool rooms, bool stage);
-    // Whether the ship is standing at a hub (built again only for another world's colours). Never on the stage: the
-    // cinematics are of the ship in space.
+    // Whether the ship is standing at a hub: the station round it (KestrelStation), solid to walk on and into, built again
+    // only for another world's colours.
     void SetField(Scene& scene, MeshLibrary& meshes, bool shown, const glm::vec3& ground, const glm::vec3& rock);
     // The same ground on the stage, for the cinematics of taking off and setting down (the ship's legs not on it: there the
     // ship is flying).
@@ -116,6 +122,8 @@ public:
     CinePose LoadoutLocker() const;
     // Where the navigation console stands (the deployment console, without a campaign), facing where people stand at it.
     CinePose BriefingConsole() const;
+    // The middle of the helm's top, in the cockpit, between the seats.
+    CinePose Helm() const;
     // Where each of the two screens hangs, facing the room, and how wide it is.
     CinePose BriefingScreen(int index, float& width) const;
     // What WorldObjects puts aboard: the lockers and ammunition in the gear room.
@@ -159,12 +167,18 @@ private:
     VehicleProp m_bayDoors;
     VehicleProp m_hull;
     VehicleProp m_stageHull;
+    static void FarVisible(Scene& scene, VehicleProp& prop);
+    PhysicsWorld* m_physics = nullptr;
+    uint32_t m_group = 0;
+    uint32_t m_fieldGroup = 0;
+    VehicleProp m_airlock;
+    bool m_airlockOpen = false;
+    bool m_airlockSolid = false;
+    float m_airlockSlide = 0.0f; // 0 shut, 1 open
+    VehicleProp m_fieldDressing;
+    VehicleProp m_stageFieldDressing;
     VehicleProp m_field;
     bool m_fieldShown = false;
-    void ApplyGear(Scene& scene);
-    bool m_gearRooms = false;
-    bool m_gearStage = false;
-    bool m_gearApplied = false;
     VehicleProp m_stageField;
     bool m_stageFieldShown = false;
     glm::vec3 m_stageFieldGround{-1.0f};

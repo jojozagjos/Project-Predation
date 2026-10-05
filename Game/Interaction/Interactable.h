@@ -30,7 +30,11 @@ enum class InteractionKind : uint8_t
     Board,
     // The gear room's loadout locker: where each person chooses what to take down. Opens a screen on their own machine;
     // what is drawn is told to the host, which keeps count of it.
-    Loadout
+    Loadout,
+    // The ship's helm, in the cockpit: setting out on the course plotted on the map.
+    Helm,
+    // The ship's boarding door's controls: opening it on the ground, shutting it.
+    Airlock
 };
 
 const char* InteractionKindName(InteractionKind kind);

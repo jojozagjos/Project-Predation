@@ -107,8 +107,9 @@ Do not overbuild the tutorial story yet. The important thing is that the tutoria
 3. CAMPAIGN START
 ==================================================
 
-The player should begin the real campaign with the ship landed at the hub on the settled home world (ADR-130): the place
-the shipyard's work is done -- selling, upgrades, refits -- and where the tutorial may end.
+The player should begin the real campaign at Kestrel Station, the CIRRA frontier logistics and contract station on the
+settled home world (ADR-131), standing by the ship on its pad on Hangar Row: the place the shipyard's work is done --
+selling, upgrades, refits, contracts -- and where the tutorial ends.
 
 The starting ship should be:
 

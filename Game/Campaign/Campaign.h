@@ -93,7 +93,20 @@ struct CampaignState
     // The ship itself on the ground, at the body's landing region travel.region (a hub's landing field), rather than in
     // orbit over it.
     bool landed = false;
+    // The boarding door, standing at a hub: open or shut. Shut whenever the ship leaves.
+    bool doorOpen = false;
     Travel travel;
+    // A course plotted on the map and not yet flown: a body of this system (and where on it to go down), or another
+    // system. Set out on from the helm (or the map); plotting again replaces it.
+    struct Plan
+    {
+        bool set = false;
+        bool toSystem = false;
+        uint64_t system = 0;
+        int body = -1;
+        int region = -1;
+    };
+    Plan plan;
     std::map<std::string, uint8_t> known;                // by BodyKey: Knowledge bits
     std::map<std::string, bool> regionsFound;            // by RegionKey: found (beyond the charted ones)
     std::map<std::string, nlohmann::json> regionChanges; // by RegionKey: what has been changed there

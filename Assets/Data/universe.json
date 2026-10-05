@@ -6,7 +6,8 @@
     "catalogues": ["KEPLER", "GLIESE", "HD", "HIP", "LHS", "TOI", "WOLF", "ROSS", "LTT", "TYC"],
     "numbers": [100, 9999],
     "moons": ["LV"],
-    "moonNumbers": [100, 999]
+    "moonNumbers": [100, 999],
+    "homeHub": "KESTREL STATION"
   },
 
   "stars": [

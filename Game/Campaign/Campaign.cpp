@@ -51,7 +51,7 @@ const std::set<std::string>& KnownKeys()
 {
     static const std::set<std::string> kKeys{"version", "name",     "universeSeed",  "clock", "played",   "credits",     "components",
                                              "upgrades", "colors",  "location",      "travel", "known",   "regionsFound", "regionChanges",
-                                             "log",     "nextLogId", "story",        "storyComplete", "cargo"};
+                                             "log",     "nextLogId", "story",        "storyComplete", "cargo",     "plan"};
     return kKeys;
 }
 
@@ -157,7 +157,8 @@ nlohmann::json CampaignState::ToJson() const
     out["components"] = components;
     out["upgrades"] = upgrades;
     out["colors"] = {{"primary", Vec3(colors.primary)}, {"secondary", Vec3(colors.secondary)}, {"accent", Vec3(colors.accent)}};
-    out["location"] = {{"system", system}, {"body", body}, {"region", region}, {"landed", landed}};
+    out["location"] = {{"system", system}, {"body", body}, {"region", region}, {"landed", landed}, {"doorOpen", doorOpen}};
+    out["plan"] = {{"set", plan.set}, {"toSystem", plan.toSystem}, {"system", plan.system}, {"body", plan.body}, {"region", plan.region}};
     out["travel"] = {{"underway", travel.underway}, {"position", Vec3(travel.position)}, {"velocity", Vec3(travel.velocity)},
                      {"target", travel.target}, {"region", travel.region},
                      {"interstellar", travel.interstellar}, {"toSystem", travel.toSystem}, {"fromGalaxy", Vec3(travel.fromGalaxy)},
@@ -225,12 +226,21 @@ bool CampaignState::FromJson(const nlohmann::json& json, CampaignState& out, std
             state.colors.secondary = ReadVec3(*colors, "secondary", state.colors.secondary);
             state.colors.accent = ReadVec3(*colors, "accent", state.colors.accent);
         }
+        if (const auto plan = json.find("plan"); plan != json.end() && plan->is_object())
+        {
+            state.plan.set = plan->value("set", false);
+            state.plan.toSystem = plan->value("toSystem", false);
+            state.plan.system = plan->value("system", uint64_t{0});
+            state.plan.body = plan->value("body", -1);
+            state.plan.region = plan->value("region", -1);
+        }
         if (const auto location = json.find("location"); location != json.end() && location->is_object())
         {
             state.system = location->value("system", uint64_t{0});
             state.body = location->value("body", -1);
             state.region = location->value("region", -1);
             state.landed = location->value("landed", false);
+            state.doorOpen = location->value("doorOpen", false);
         }
         if (const auto travel = json.find("travel"); travel != json.end() && travel->is_object())
         {
@@ -336,6 +346,8 @@ CampaignState CampaignState::Begin(const std::string& campaignName, uint64_t see
     state.region = -1;
     state.travel.region = home->hubRegion;
     state.landed = home->hubRegion >= 0;
+    // Its door open: the crew are outside, by the stair, when the campaign begins.
+    state.doorOpen = state.landed;
     // And it is morning there: the campaign's clock starts where the sun is up a little way and rising, so the first
     // thing anybody sees out of the windows is the hub, not the dark.
     if (state.landed)

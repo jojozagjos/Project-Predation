@@ -193,7 +193,14 @@ void PredationGame::UpdateShipTravel(float dt)
         m_shipTravel = 0.0f;
     }
     // The dust past the windows, and the engines burning -- the picture, not the cinematic's, while one has it.
-    m_ship.UpdateDust(m_scene, m_app->GetMeshes(), underWay ? kDustSpeed : 0.0f, dt);
+    // As fast past the windows as the ship is going: slow as it sets out and as it slows to arrive, streaming in the middle
+    // of a trip, and fastest between the stars.
+    float pace = 1.0f;
+    if (m_campaignOpen && m_campaign.travel.underway)
+    {
+        pace = m_campaign.travel.interstellar ? 1.7f : std::clamp(std::sqrt(glm::length(m_campaign.travel.velocity) / 0.004f), 0.12f, 1.6f);
+    }
+    m_ship.UpdateDust(m_scene, m_app->GetMeshes(), underWay ? kDustSpeed * pace : 0.0f, dt);
     if (!m_cine.Active())
     {
         const float burn = underWay ? 0.85f : 0.0f;
@@ -378,7 +385,16 @@ void PredationGame::DrawShipHud()
         }
         else if (system != nullptr && m_campaign.travel.underway)
         {
-            ImGui::TextColored(text, "%s", heading_ != nullptr ? ("Under way to " + heading_->name + ".").c_str() : "Coming to a stop.");
+            if (heading_ != nullptr)
+            {
+                const float left = glm::length(system->Position(heading_->index, m_campaign.clock) - m_campaign.travel.position);
+                const int seconds = static_cast<int>(std::ceil(Travel::Seconds(left, DriveTier())));
+                ImGui::TextColored(text, "Under way to %s, %d:%02d.", heading_->name.c_str(), seconds / 60, seconds % 60);
+            }
+            else
+            {
+                ImGui::TextColored(text, "Coming to a stop.");
+            }
             ImGui::TextDisabled("The navigation map is at the table behind the cockpit.");
         }
         else if (m_shipTravel > 0.0f)
@@ -412,6 +428,11 @@ void PredationGame::DrawShipHud()
         else if (m_order == OrderState::Ready)
         {
             ImGui::TextColored(text, "Deploy from the console in the briefing room.");
+        }
+        else if (system != nullptr && m_campaign.plan.set)
+        {
+            ImGui::TextColored(text, "%s", ("Course plotted for " + PlanName() + ".").c_str());
+            ImGui::TextDisabled("Set out from the helm in the cockpit.");
         }
         else if (system != nullptr)
         {

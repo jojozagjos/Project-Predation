@@ -498,6 +498,7 @@ bool UniverseData::LoadFromFile(const std::filesystem::path& file, std::string* 
             }
             const glm::vec2 moonRange = ReadVec2(*names, "moonNumbers", {100.0f, 999.0f});
             loaded.moonNumbers = {static_cast<int>(moonRange.x), static_cast<int>(moonRange.y)};
+            loaded.homeHubName = names->value("homeHub", loaded.homeHubName);
         }
         for (const auto& entry : root.value("stars", nlohmann::json::array()))
         {
@@ -965,7 +966,11 @@ StarSystem Universe::Generate(uint64_t universeSeed, SystemId id, const Universe
 
         // Its moons: a gas giant has a few, a rocky world one or two at most.
         const int moons = planet.gas ? own.Int(1, 4) : (planet.radius > 0.8f ? own.Int(0, 2) : own.Int(0, 1));
-        float moonOrbit = own.Range(4.0f, 8.0f);
+        // Well outside any rings (which lie inside where a moon could hold together), each further than the last.
+        float moonOrbit = std::max(own.Range(4.0f, 8.0f), planet.rings.y * 1.8f);
+        // How fast the planet's moons go round, by how far out: the further, the slower, as Kepler had it, so an outer moon
+        // never laps an inner one.
+        const float moonPace = UniverseRandom(MixSeed(planet.seed, 0x50414345ull)).Range(80.0f, 160.0f); // 'PACE'
         const size_t planetIndex = system.bodies.size() - 1;
         for (int m = 0; m < moons; ++m)
         {
@@ -985,7 +990,7 @@ StarSystem Universe::Generate(uint64_t universeSeed, SystemId id, const Universe
             }
             moon.orbit = moonOrbit;
             moonOrbit *= moonRandom.Range(1.4f, 2.0f);
-            moon.period = moonRandom.Range(90.0f, 420.0f) * std::sqrt(moon.orbit / 4.0f);
+            moon.period = moonPace * std::pow(moon.orbit / 4.0f, 1.5f);
             moon.phase = moonRandom.Range(0.0f, kTau);
             moon.inclination = moonRandom.Range(-0.1f, 0.1f);
             // As warm as its planet's light makes it, before any air of its own.
@@ -1049,7 +1054,8 @@ StarSystem Universe::Generate(uint64_t universeSeed, SystemId id, const Universe
             hub.seed = static_cast<uint32_t>(MixSeed(world.seed, 0x48554242ull) & 0xFFFFFFFFu) | 1u; // 'HUBB'
             hub.kind = "hub";
             const RegionKindDef* hubKind = data.RegionKind("hub");
-            hub.designation = hubKind != nullptr && !hubKind->designations.empty() ? hubKind->designations.front() : std::string("HUB");
+            hub.designation = home ? data.homeHubName
+                                   : hubKind != nullptr && !hubKind->designations.empty() ? hubKind->designations.front() : std::string("HUB");
             hub.latLon = {random.Range(-20.0f, 20.0f), random.Range(-180.0f, 180.0f)};
             hub.charted = true;
             system.hubRegion = static_cast<int>(world.regions.size());

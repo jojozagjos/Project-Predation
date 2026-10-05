@@ -96,6 +96,7 @@ bool SetCourse(CampaignState& campaign, const StarSystem& system, int body)
         campaign.body = -1;
         campaign.region = -1;
         campaign.landed = false;
+        campaign.doorOpen = false;
     }
     campaign.travel.target = body;
     return true;
@@ -191,6 +192,16 @@ std::vector<glm::vec3> Preview(const CampaignState& campaign, const StarSystem& 
     return path;
 }
 
+float CrossingRange(int tier)
+{
+    return tier < kCrossingTier ? 0.0f : 14.0f + 10.0f * static_cast<float>(tier - kCrossingTier);
+}
+
+float ChartRange(int sensorTier)
+{
+    return 22.0f + 14.0f * static_cast<float>(std::clamp(sensorTier, 0, 8));
+}
+
 float InterstellarSeconds(float lightYears, int tier)
 {
     return 75.0f + 30.0f * std::max(lightYears, 0.0f) / (1.0f + 0.8f * static_cast<float>(std::clamp(tier, 0, 12)));
@@ -226,6 +237,10 @@ bool SetSystemCourse(CampaignState& campaign, Universe& universe, uint64_t toSys
     }
     const glm::vec3 from = GalaxyPosition(campaign, universe);
     const glm::vec3 to = universe.SystemPosition(SystemId::Unpack(toSystem));
+    if (glm::length(to - from) > CrossingRange(tier))
+    {
+        return false;
+    }
     campaign.travel.interstellar = true;
     campaign.travel.underway = true;
     campaign.travel.toSystem = toSystem;
@@ -239,6 +254,7 @@ bool SetSystemCourse(CampaignState& campaign, Universe& universe, uint64_t toSys
     campaign.body = -1;
     campaign.region = -1;
     campaign.landed = false;
+    campaign.doorOpen = false;
     return true;
 }
 

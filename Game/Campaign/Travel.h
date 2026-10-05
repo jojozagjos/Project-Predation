@@ -52,6 +52,12 @@ std::vector<glm::vec3> Preview(const CampaignState& campaign, const StarSystem& 
 float InterstellarSeconds(float lightYears, int tier);
 // The drive it takes to cross between the stars at all: the ship's first drive is for its own system.
 inline constexpr int kCrossingTier = 1;
+// How far one crossing can go at a drive tier, in light years (0: none), and how far round the systems been to the charts
+// reach at a sensor tier -- the galaxy is not all there to see or reach at once; upgrades open it up.
+float CrossingRange(int tier);
+float ChartRange(int sensorTier);
+// The drive that makes a trip short enough that leaving is shown as a cinematic and the trip is all but skipped.
+inline constexpr int kInstantTier = 4;
 bool SetSystemCourse(CampaignState& campaign, Universe& universe, uint64_t toSystem, int tier);
 // Where the ship is in the galaxy, in light years: its system's place, or part way between two.
 glm::vec3 GalaxyPosition(const CampaignState& campaign, Universe& universe);

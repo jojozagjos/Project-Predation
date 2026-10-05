@@ -321,6 +321,18 @@ void PredationGame::DestroySystemMapTarget()
 
 // --- The three scales ---------------------------------------------------------------------------------------------
 
+glm::vec3 PredationGame::ShipOverGlobe(const Body& body)
+{
+    if (ShipLanded() && m_campaign.travel.region >= 0 && m_campaign.travel.region < static_cast<int>(body.regions.size()))
+    {
+        return AreaOnGlobe(body.regions[static_cast<size_t>(m_campaign.travel.region)]) * 1.01f;
+    }
+    // In orbit: once round every so often, on a tilted ring a third of a radius up.
+    const float angle = static_cast<float>(std::fmod(m_campaign.clock / 90.0, 1.0)) * kTau;
+    const glm::vec3 flat{std::cos(angle), 0.0f, std::sin(angle)};
+    return glm::vec3(glm::rotate(glm::mat4(1.0f), 0.45f, glm::vec3(1.0f, 0.0f, 0.3f)) * glm::vec4(flat, 0.0f)) * 1.35f;
+}
+
 void PredationGame::ShowMapGalaxy(const glm::vec3& focus, float distance)
 {
     QueueMap(MapLevel::Galaxy, 0, -1, focus, distance, m_mapView.FocusPoint(), false);
@@ -497,9 +509,38 @@ bool PredationGame::MapAreaKnown(uint64_t system, const Body& body, int region) 
            m_campaign.RegionFound(system, body.index, region, body.regions[static_cast<size_t>(region)].charted);
 }
 
+bool PredationGame::SystemCharted(uint64_t system)
+{
+    // Where the ship has been, and where it is: the charts reach so far round each.
+    if (m_mapChartKnown != m_campaign.known.size() || m_mapChartCentres.empty())
+    {
+        m_mapChartKnown = m_campaign.known.size();
+        m_mapChartCentres.clear();
+        for (const auto& [key, bits] : m_campaign.known)
+        {
+            const size_t colon = key.find(':');
+            if (colon != std::string::npos && key.compare(colon, std::string::npos, ":-1") == 0 && (bits & CampaignState::kKnownVisited) != 0)
+            {
+                m_mapChartCentres.push_back(m_universe.SystemPosition(SystemId::Unpack(std::stoull(key.substr(0, colon)))));
+            }
+        }
+        m_mapChartCentres.push_back(m_universe.SystemPosition(SystemId::Unpack(m_campaign.system)));
+    }
+    const glm::vec3 at = m_universe.Glance(SystemId::Unpack(system)).position;
+    const float reach = Travel::ChartRange(SensorTier());
+    for (const glm::vec3& centre : m_mapChartCentres)
+    {
+        if (glm::length(at - centre) <= reach)
+        {
+            return true;
+        }
+    }
+    return system == m_campaign.system || (m_campaign.travel.interstellar && system == m_campaign.travel.toSystem);
+}
+
 void PredationGame::AskSystemCourse(uint64_t system)
 {
-    AskCampaign(CampaignAction::SetSystemCourse, static_cast<int>(static_cast<uint32_t>(system & 0xFFFFFFFFu)),
+    AskCampaign(CampaignAction::PlotSystem, static_cast<int>(static_cast<uint32_t>(system & 0xFFFFFFFFu)),
                 static_cast<int>(static_cast<uint32_t>(system >> 32)));
     PlayNamed("UI/confirm", m_renderEye, 0.6f, 1.0f, false);
 }
@@ -680,19 +721,26 @@ void PredationGame::RenderMapGalaxy(bgfx::ViewId sky, bgfx::ViewId lines, const 
         }
     }
 
-    // Rings round the ship, for how far things are.
+    // Rings: how far one crossing can go from the ship, bright; how far the charts reach round each place been to, faint.
     const glm::vec3 ship = Travel::GalaxyPosition(m_campaign, m_universe);
-    for (const float radius : {25.0f, 50.0f, 100.0f})
+    const auto ring = [&](const glm::vec3& centre, float radius, uint32_t colour, bool dashed)
     {
-        constexpr int kSegments = 120;
-        for (int i = 0; i < kSegments; ++i)
+        constexpr int kSegments = 144;
+        for (int i = 0; i < kSegments; i += dashed ? 2 : 1)
         {
             const float a0 = kTau * static_cast<float>(i) / kSegments;
             const float a1 = kTau * static_cast<float>(i + 1) / kSegments;
-            const glm::vec3 p0{ship.x + std::cos(a0) * radius, 0.0f, ship.z + std::sin(a0) * radius};
-            const glm::vec3 p1{ship.x + std::cos(a1) * radius, 0.0f, ship.z + std::sin(a1) * radius};
-            m_planets.Line(p0, p1, Abgr(236, 156, 64, 40));
+            m_planets.Line({centre.x + std::cos(a0) * radius, 0.0f, centre.z + std::sin(a0) * radius},
+                           {centre.x + std::cos(a1) * radius, 0.0f, centre.z + std::sin(a1) * radius}, colour);
         }
+    };
+    if (const float reach = Travel::CrossingRange(DriveTier()); reach > 0.0f)
+    {
+        ring(ship, reach, Abgr(236, 156, 64, 110), false);
+    }
+    for (const glm::vec3& centre : m_mapChartCentres)
+    {
+        ring(centre, Travel::ChartRange(SensorTier()), Abgr(120, 170, 220, 45), true);
     }
 
     // The crossing under way: done solid, still to go dashed. And a line to whatever is picked out.
@@ -857,6 +905,20 @@ void PredationGame::RenderMapBody(const StarSystem& system, bgfx::ViewId sky, bg
         const float a1 = kTau * static_cast<float>(i + 1) / kSegments;
         m_planets.Line((side * std::cos(a0) + other * std::sin(a0)) * 1.009f, (side * std::cos(a1) + other * std::sin(a1)) * 1.009f, Abgr(236, 156, 64, 70));
     }
+    // The ship's orbit, if it is going round this body.
+    const bool orbitingHere = system.id.Packed() == m_campaign.system && !m_campaign.travel.underway && !m_campaign.travel.interstellar &&
+                              m_campaign.body == body->index && !ShipLanded();
+    if (orbitingHere)
+    {
+        const glm::mat4 tilt = glm::rotate(glm::mat4(1.0f), 0.45f, glm::vec3(1.0f, 0.0f, 0.3f));
+        for (int i = 0; i < kSegments; i += 2)
+        {
+            const float a0 = kTau * static_cast<float>(i) / kSegments;
+            const float a1 = kTau * static_cast<float>(i + 1) / kSegments;
+            m_planets.Line(glm::vec3(tilt * glm::vec4(std::cos(a0), 0.0f, std::sin(a0), 0.0f)) * 1.35f,
+                           glm::vec3(tilt * glm::vec4(std::cos(a1), 0.0f, std::sin(a1), 0.0f)) * 1.35f, Abgr(255, 236, 200, 90));
+        }
+    }
 }
 
 // --- What is over the picture, and what the mouse and keys do -------------------------------------------------------
@@ -930,7 +992,14 @@ void PredationGame::DrawSystemMap()
         {
             m_mapNearRadius = reach * 1.2f;
             m_mapNearFrom = m_mapView.FocusPoint();
-            m_mapNearSystems = m_universe.Near(m_mapNearFrom, m_mapNearRadius);
+            m_mapNearSystems.clear();
+            for (const SystemId& id : m_universe.Near(m_mapNearFrom, m_mapNearRadius))
+            {
+                if (SystemCharted(id.Packed()))
+                {
+                    m_mapNearSystems.push_back(id);
+                }
+            }
         }
     }
 
@@ -1000,7 +1069,8 @@ void PredationGame::DrawSystemMap()
     m_mapHasHoverSystem = false;
     m_mapHoverRegion = -1;
     const Body* globe = m_mapLevel == MapLevel::Body ? shown->Find(m_mapSelected) : nullptr;
-    if (hovered && m_mapDragButton < 0)
+    // Through a press too (it is a click until it has moved): the release picks what was under the pointer.
+    if (hovered && (m_mapDragButton < 0 || m_mapDragged <= kClickSlop))
     {
         if (m_mapLevel == MapLevel::Galaxy)
         {
@@ -1093,12 +1163,13 @@ void PredationGame::DrawSystemMap()
     const bool doubleClicked = hovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
     if (clicked)
     {
-        if (m_mapLevel == MapLevel::Galaxy)
+        // Picking something out; a click on nothing leaves what was picked as it was.
+        if (m_mapLevel == MapLevel::Galaxy && m_mapHasHoverSystem)
         {
-            m_mapHasPickedSystem = m_mapHasHoverSystem;
-            m_mapPickedSystem = m_mapHasHoverSystem ? m_mapHoverSystem : m_mapPickedSystem;
+            m_mapHasPickedSystem = true;
+            m_mapPickedSystem = m_mapHoverSystem;
         }
-        else if (m_mapLevel == MapLevel::System)
+        else if (m_mapLevel == MapLevel::System && m_mapHovered >= 0)
         {
             m_mapSelected = m_mapHovered;
         }
@@ -1132,14 +1203,22 @@ void PredationGame::DrawSystemMap()
     if (hovered && io.MouseWheel != 0.0f)
     {
         const float factor = std::pow(0.85f, io.MouseWheel);
-        glm::vec3 towards;
-        // Towards what the mouse is over, as maps do -- not over a body, which is always in the middle.
-        if (m_mapLevel != MapLevel::Body && onPlane(towards))
-        {
-            const glm::vec3 offset = towards - m_mapView.FocusPoint();
-            m_mapView.Shift(offset * (1.0f - factor) * 0.9f);
-        }
+        const float before = m_mapView.WantedDistance();
         m_mapView.Zoom(factor);
+        const float after = m_mapView.WantedDistance();
+        // Going in, towards what the mouse is over, as maps do -- as far as the zoom actually went, and never by more than the
+        // view is across (a point near the horizon is a long way off). Going out, straight out: at the limit, nothing moves.
+        glm::vec3 towards;
+        if (after < before && m_mapLevel != MapLevel::Body && onPlane(towards))
+        {
+            glm::vec3 offset = towards - m_mapView.FocusPoint();
+            const float most = before * 1.2f;
+            if (glm::length(offset) > most)
+            {
+                offset *= most / glm::length(offset);
+            }
+            m_mapView.Shift(offset * (1.0f - after / before) * 0.9f);
+        }
     }
 
     // --- Keys, while nothing is being typed ---
@@ -1399,13 +1478,14 @@ void PredationGame::DrawSystemMap()
             draw->AddTriangle(tip, left, right, IM_COL32(0, 0, 0, 200), 1.0f);
             Label(draw, {at.x + 12.0f, at.y + 6.0f}, kShipColour, "SHIP", tiny);
         }
-        // The distance rings' marks.
-        for (const float radius : {25.0f, 50.0f, 100.0f})
+        // The drive's reach, marked on its ring.
+        if (const float reach = Travel::CrossingRange(DriveTier()); reach > 0.0f)
         {
             ImVec2 point;
-            if (toScreen({ship.x + radius, 0.0f, ship.z}, point))
+            if (toScreen({ship.x + reach, 0.0f, ship.z}, point))
             {
-                Label(draw, {point.x + 4.0f, point.y - tiny}, IM_COL32(236, 156, 64, 120), (std::to_string(static_cast<int>(radius)) + " LY").c_str(), tiny);
+                Label(draw, {point.x + 4.0f, point.y - tiny}, IM_COL32(236, 156, 64, 170), ("DRIVE REACH " + std::to_string(static_cast<int>(reach)) + " LY").c_str(),
+                      tiny);
             }
         }
     }
@@ -1472,7 +1552,7 @@ void PredationGame::DrawSystemMap()
             {
                 draw->AddCircleFilled(point, 4.0f, kShipColour);
                 draw->AddCircle(point, 8.0f, kShipColour, 0, 1.5f);
-                Label(draw, {point.x + 11.0f, point.y - small * 0.5f}, kShipColour, "SHIP", small);
+                Label(draw, {point.x + 11.0f, point.y - small * 0.5f}, kShipColour, ShipLanded() ? "SHIP  LANDED" : "SHIP", small);
             }
             // What everybody else is pointing at: a ring round it in their colour, and their name.
             const std::vector<RemotePlayerView>& remotes = RemotePlayers();
@@ -1542,6 +1622,58 @@ void PredationGame::DrawSystemMap()
             const std::string under = std::string(shipHere ? "THE SHIP IS HERE   " : chosen ? (port ? "LANDING HERE   " : "GOING DOWN HERE   ") : port ? "HUB   " : "") +
                                       (day ? "DAY" : "NIGHT");
             Label(draw, {point.x + 14.0f, point.y + small * 0.45f}, Faded(chosen ? kGo : kDim, fade), under.c_str(), tiny);
+        }
+        // The ship: standing at its area, or going round.
+        if (ours && !m_campaign.travel.underway && m_campaign.body == globe->index)
+        {
+            const glm::vec3 at = ShipOverGlobe(*globe);
+            // Hidden behind the globe when it is round the far side.
+            const glm::vec3 eyeAt = shot.Eye();
+            const glm::vec3 toShip = at - eyeAt;
+            const float along = -glm::dot(eyeAt, glm::normalize(toShip));
+            const bool behind = along > 0.0f && along < glm::length(toShip) && glm::length(eyeAt + glm::normalize(toShip) * along) < 1.0f;
+            ImVec2 point;
+            if (!behind && toScreen(at, point))
+            {
+                const ImVec2 tip{point.x, point.y - 9.0f};
+                draw->AddTriangleFilled(tip, {point.x - 6.0f, point.y + 4.0f}, {point.x + 6.0f, point.y + 4.0f}, kShipColour);
+                draw->AddTriangle(tip, {point.x - 6.0f, point.y + 4.0f}, {point.x + 6.0f, point.y + 4.0f}, IM_COL32(0, 0, 0, 220), 1.0f);
+                Label(draw, {point.x + 10.0f, point.y - 14.0f}, kShipColour, ShipLanded() ? "SHIP  LANDED" : "SHIP  IN ORBIT", small);
+            }
+        }
+    }
+    // What is under the pointer, in a line or two, by it.
+    if (hovered && m_mapDragButton < 0)
+    {
+        std::string tip;
+        if (m_mapLevel == MapLevel::Galaxy && m_mapHasHoverSystem)
+        {
+            const SystemGlance& glance = m_universe.Glance(SystemId::Unpack(m_mapHoverSystem));
+            const float lightYears = glm::length(glance.position - Travel::GalaxyPosition(m_campaign, m_universe));
+            tip = glance.name + "\n" + Number(lightYears, 1) + " light years" +
+                  (m_mapHoverSystem == m_campaign.system ? "   the ship is here" : "   crossing " + About(Travel::InterstellarSeconds(lightYears, DriveTier())));
+        }
+        else if (m_mapLevel == MapLevel::System && m_mapHovered >= 0)
+        {
+            const Body& body = shown->bodies[static_cast<size_t>(m_mapHovered)];
+            tip = body.name + "\n" + (body.kind == BodyKind::Moon ? "Moon" : body.gas ? "Gas giant" : "Planet");
+            if (ours && !(m_campaign.body == body.index && !m_campaign.travel.underway))
+            {
+                const float distance = glm::length(shown->Position(body.index, m_campaign.clock) - Travel::ShipPosition(m_campaign, *shown));
+                tip += "   " + Number(distance, 2) + " AU, " + About(Travel::Seconds(distance * 1.15f, DriveTier()));
+            }
+            tip += "\nDouble-click to see its surface";
+        }
+        else if (m_mapLevel == MapLevel::Body && globe != nullptr && m_mapHoverRegion >= 0)
+        {
+            const LandingRegion& region = globe->regions[static_cast<size_t>(m_mapHoverRegion)];
+            const RegionKindDef* kind = m_universeData.RegionKind(region.kind);
+            tip = region.designation + "\n" + (kind != nullptr ? kind->name : region.kind) +
+                  (glm::dot(AreaOnGlobe(region), SunOverBody(*shown, *globe)) > 0.0f ? "   day" : "   night");
+        }
+        if (!tip.empty())
+        {
+            ImGui::SetTooltip("%s", tip.c_str());
         }
     }
     // The fade between scales: darkening into the dive, lifting off the new one.
@@ -1642,6 +1774,34 @@ void PredationGame::DrawMapBars(const StarSystem* shown)
     }
     ImGui::End();
 
+    // Under it, the course plotted: what to, and setting out on it (as the helm does) or clearing it.
+    if (m_campaign.plan.set)
+    {
+        const std::string plan = "Plotted:  " + PlanName();
+        const float planWidth = ImGui::CalcTextSize(plan.c_str()).x + 260.0f;
+        ImGui::SetNextWindowPos({origin.x + size.x * 0.5f - planWidth * 0.5f, origin.y + 66.0f});
+        ImGui::SetNextWindowSize({planWidth, 42.0f});
+        if (ImGui::Begin("##mapplan", nullptr, kPanel | ImGuiWindowFlags_NoScrollbar))
+        {
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextColored(kGoText, "%s", plan.c_str());
+            ImGui::SameLine();
+            ImGui::BeginDisabled(m_map != MapChoice::Ship || m_cine.Active());
+            if (ImGui::Button(m_campaign.travel.underway ? "Change course" : "Set out"))
+            {
+                AskCampaign(CampaignAction::Depart);
+                PlayNamed("UI/confirm", m_renderEye, 0.6f, 1.0f, false);
+            }
+            ImGui::EndDisabled();
+            ImGui::SameLine();
+            if (ImGui::Button("Clear"))
+            {
+                AskCampaign(CampaignAction::ClearPlot);
+            }
+        }
+        ImGui::End();
+    }
+
     // Along the bottom: what the mouse and keys do here.
     const char* help = m_mapLevel == MapLevel::Body
                            ? "Click  pick an area    Double-click  turn to it    Drag / WASD  turn the globe    Wheel  zoom, out to the system    "
@@ -1685,7 +1845,7 @@ void PredationGame::DrawMapGalaxyPanels()
             m_mapListed.clear();
             for (const SystemId& id : m_universe.Near(ship, search.empty() ? 45.0f : 160.0f))
             {
-                if (search.empty() || Contains(m_universe.Glance(id).name, search.c_str()))
+                if (SystemCharted(id.Packed()) && (search.empty() || Contains(m_universe.Glance(id).name, search.c_str())))
                 {
                     m_mapListed.push_back(id);
                 }
@@ -1838,16 +1998,22 @@ void PredationGame::DrawMapGalaxyPanels()
         }
         else if (!here)
         {
-            const bool canCross = DriveTier() >= Travel::kCrossingTier;
-            ImGui::BeginDisabled(!aboard || m_cine.Active() || !canCross);
-            if (ImGui::Button("Set course for this system", {-1.0f, 32.0f}))
+            const float reach = Travel::CrossingRange(DriveTier());
+            const bool canCross = reach > 0.0f && distance <= reach;
+            const bool plotted = m_campaign.plan.set && m_campaign.plan.toSystem && m_campaign.plan.system == m_mapPickedSystem;
+            ImGui::BeginDisabled(!aboard || m_cine.Active() || !canCross || plotted);
+            if (ImGui::Button(plotted ? "Plotted -- set out from the helm" : "Plot course for this system", {-1.0f, 32.0f}))
             {
                 AskSystemCourse(m_mapPickedSystem);
             }
             ImGui::EndDisabled();
-            if (!canCross)
+            if (reach <= 0.0f)
             {
                 Wrapped(kDimText, "Crossing between the stars needs an upgraded drive.");
+            }
+            else if (!canCross)
+            {
+                Wrapped(kDimText, "Beyond the drive's reach of %d light years. A better drive goes further.", static_cast<int>(reach));
             }
             if (!aboard)
             {
@@ -2063,16 +2229,22 @@ void PredationGame::DrawMapSystemPanels(const StarSystem& system)
             Wrapped(kDimText, "The ship is not in this system.");
             if (!(m_campaign.travel.interstellar && m_campaign.travel.toSystem == m_mapSystem))
             {
-                const bool canCross = DriveTier() >= Travel::kCrossingTier;
+                const float reach = Travel::CrossingRange(DriveTier());
+                const float lightYears = glm::length(system.galaxy - Travel::GalaxyPosition(m_campaign, m_universe));
+                const bool canCross = reach > 0.0f && lightYears <= reach;
                 ImGui::BeginDisabled(!aboard || m_cine.Active() || !canCross);
-                if (ImGui::Button("Set course for this system", {-1.0f, 32.0f}))
+                if (ImGui::Button("Plot course for this system", {-1.0f, 32.0f}))
                 {
                     AskSystemCourse(m_mapSystem);
                 }
                 ImGui::EndDisabled();
-                if (!canCross)
+                if (reach <= 0.0f)
                 {
                     Wrapped(kDimText, "Crossing between the stars needs an upgraded drive.");
+                }
+                else if (!canCross)
+                {
+                    Wrapped(kDimText, "Beyond the drive's reach of %d light years.", static_cast<int>(reach));
                 }
             }
         }
@@ -2088,8 +2260,13 @@ void PredationGame::DrawMapSystemPanels(const StarSystem& system)
         }
         else
         {
-            ImGui::BeginDisabled(!aboard || m_cine.Active());
-            if (ImGui::Button("Set course", {-1.0f, 32.0f}))
+            const bool plotted = m_campaign.plan.set && !m_campaign.plan.toSystem && m_campaign.plan.body == picked->index;
+            if (plotted)
+            {
+                Wrapped(kGoText, "Course plotted. Set out from the helm in the cockpit.");
+            }
+            ImGui::BeginDisabled(!aboard || m_cine.Active() || plotted || m_campaign.travel.interstellar);
+            if (ImGui::Button(plotted ? "Plotted" : "Plot course", {-1.0f, 32.0f}))
             {
                 // Down to the first area the shuttle can go down to, until one is picked on the surface.
                 int region = -1;
@@ -2097,7 +2274,7 @@ void PredationGame::DrawMapSystemPanels(const StarSystem& system)
                 {
                     region = RegionLandable(*picked, i) && !RegionIsPort(*picked, i) ? i : -1;
                 }
-                AskCampaign(CampaignAction::SetCourse, picked->index, region);
+                AskCampaign(CampaignAction::PlotCourse, picked->index, region);
                 PlayNamed("UI/confirm", m_renderEye, 0.6f, 1.0f, false);
             }
             ImGui::EndDisabled();
@@ -2245,12 +2422,17 @@ void PredationGame::DrawMapBodyPanels(const StarSystem& system)
         else
         {
             ImGui::BeginDisabled(!aboard || m_cine.Active() || !RegionLandable(*body, m_mapRegion) || m_campaign.travel.interstellar);
-            const char* go = port ? (here || heading ? "Land the ship here" : "Set course and land the ship here")
-                                  : (here || heading ? "Go down here" : "Set course and go down here");
-            if (ImGui::Button(go, {-1.0f, 32.0f}))
+            const bool plotted = m_campaign.plan.set && !m_campaign.plan.toSystem && m_campaign.plan.body == body->index && m_campaign.plan.region == m_mapRegion;
+            const char* go = port ? (here || heading ? "Land the ship here" : plotted ? "Plotted" : "Plot course to land here")
+                                  : (here || heading ? "Go down here" : plotted ? "Plotted" : "Plot course to go down here");
+            if (ImGui::Button(go, {-1.0f, 32.0f}) && !plotted)
             {
-                AskCampaign(CampaignAction::SetCourse, body->index, m_mapRegion);
+                AskCampaign(here || heading ? CampaignAction::SetCourse : CampaignAction::PlotCourse, body->index, m_mapRegion);
                 PlayNamed("UI/confirm", m_renderEye, 0.6f, 1.0f, false);
+            }
+            if (plotted)
+            {
+                Wrapped(kGoText, "Course plotted. Set out from the helm in the cockpit.");
             }
             ImGui::EndDisabled();
             if (!aboard)

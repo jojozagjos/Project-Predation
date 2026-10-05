@@ -39,22 +39,34 @@ void main()
 	}
 	if (mode > 1.5)
 	{
-		// The glow round a star, on a square facing the camera: a bright core and a wide soft halo.
+		// The corona round a star, on a square facing the camera: tight to the disc, faint streamers out from it, and a
+		// soft glow beyond that falls off fast -- not a fog over the inner planets.
 		vec2 p = v_texcoord0 * 2.0 - vec2_splat(1.0);
 		float r = length(p);
-		float glow = exp(-r * r * 9.0) * 0.8 + exp(-r * 4.0) * 0.18;
-		glow *= smoothstep(1.0, 0.85, r);
-		gl_FragColor = vec4(Develop(u_planetLightColor.rgb * glow * 0.8), 1.0);
+		float angle = atan2(p.y, p.x);
+		float streamers = 0.75 + 0.25 * PlanetNoise(vec3(cos(angle) * 3.0, sin(angle) * 3.0, u_planetMode.z * 0.02));
+		float glow = exp(-max(r - 0.2, 0.0) * 14.0) * 0.9 * streamers + exp(-r * 7.0) * 0.12;
+		glow *= smoothstep(1.0, 0.8, r);
+		gl_FragColor = vec4(Develop(mix(u_planetLightColor.rgb, vec3_splat(1.0), 0.35) * glow * 0.9), 1.0);
 		return;
 	}
 	vec3 n = normalize(v_objectPos);
 	vec3 N = normalize(v_normal);
 	if (mode > 0.5)
 	{
-		// A star: blinding, mottled, darker at its limb.
-		float mottle = PlanetFbm(n * 10.0 + vec3_splat(u_planetMode.z * 0.05));
-		float limb = 0.55 + 0.45 * max(dot(N, V), 0.0);
-		gl_FragColor = vec4(Develop(u_planetLightColor.rgb * (2.6 + 1.6 * mottle) * limb), 1.0);
+		// A star: its surface a boil of small cells, a spot or two, and its limb darker and redder than its middle --
+		// the way a real one looks through a filter, and white hot in the middle.
+		float mu = max(dot(N, V), 0.0);
+		vec3 drift = vec3_splat(u_planetMode.z * 0.05);
+		float cells = PlanetNoise(n * 70.0 + drift) * 0.6 + PlanetNoise(n * 140.0 - drift) * 0.4;
+		float faculae = PlanetFbmN(n * 9.0 + drift, 4);
+		float spots = smoothstep(0.7, 0.78, PlanetFbmN(n * 4.0 + vec3_splat(u_planetMode.y), 4));
+		vec3 hot = mix(u_planetLightColor.rgb, vec3_splat(1.0), 0.55);
+		vec3 rim = u_planetLightColor.rgb * vec3(1.0, 0.62, 0.36);
+		vec3 surface = mix(rim, hot, pow(mu, 0.5)) * (0.5 + 0.5 * pow(mu, 0.6));
+		surface *= 0.82 + 0.3 * cells + 0.12 * faculae;
+		surface *= 1.0 - spots * 0.7;
+		gl_FragColor = vec4(Develop(surface * 3.4), 1.0);
 		return;
 	}
 

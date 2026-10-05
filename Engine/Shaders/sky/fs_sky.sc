@@ -97,22 +97,28 @@ float SkyFbm(vec3 p)
 vec3 SkyStars(vec3 ray)
 {
 	vec3 p = ray * 180.0;
-	vec3 cell = floor(p);
-	float h = SkyHash(cell);
 	vec3 light = vec3_splat(0.0);
-	if (h > 0.97)
+	// A soft point, spread over at least the pixel it falls in: a star smaller than a pixel sampled at the pixel's middle
+	// was there one frame and gone the next as the view moved. And looked for in the eight cells nearest the pixel, not
+	// only the one it is in: a star near the edge of its cell was cut off by the pixels just over the edge, and as the
+	// view moved stars broke up and flickered at their cells' edges -- the sky seen to shake.
+	float pixel = length(fwidth(p));
+	float spread = sqrt(0.12 * 0.12 + 0.6 * pixel * pixel);
+	vec3 base = floor(p - vec3_splat(0.5));
+	for (int i = 0; i < 8; ++i)
 	{
-		vec3 jitter = vec3(SkyHash(cell + vec3_splat(7.1)), SkyHash(cell + vec3_splat(3.7)), SkyHash(cell + vec3_splat(11.3)));
-		vec3 centre = normalize(cell + vec3_splat(0.5) + (jitter - vec3_splat(0.5)) * 0.6) * 180.0;
-		float bright = (h - 0.97) / 0.03;
-		// A soft point, spread over at least the pixel it falls in: a star smaller than a pixel sampled at the pixel's middle
-		// was there one frame and gone the next as the view moved -- the whole sky crawling. Spread, it keeps its light
-		// whichever pixel it lands in.
-		float pixel = length(fwidth(p));
-		float spread = sqrt(0.12 * 0.12 + 0.35 * pixel * pixel);
-		float d = length(p - centre);
-		float star = exp(-d * d / (2.0 * spread * spread)) * (0.12 * 0.12) / (spread * spread) * (0.12 + 3.2 * bright * bright * bright);
-		light = mix(vec3(0.72, 0.8, 1.0), vec3(1.0, 0.86, 0.7), SkyHash(cell + vec3_splat(5.3))) * star;
+		vec3 cell = base + vec3(float(i & 1), float((i >> 1) & 1), float((i >> 2) & 1));
+		float h = SkyHash(cell);
+		if (h > 0.93)
+		{
+			vec3 jitter = vec3(SkyHash(cell + vec3_splat(7.1)), SkyHash(cell + vec3_splat(3.7)), SkyHash(cell + vec3_splat(11.3)));
+			// Where it is, fixed in its cell: never pushed onto the sky after, which could put it outside the cells looked in.
+			vec3 centre = cell + vec3_splat(0.5) + (jitter - vec3_splat(0.5)) * 0.6;
+			float bright = (h - 0.93) / 0.07;
+			float d = length(p - centre);
+			float star = exp(-d * d / (2.0 * spread * spread)) * (0.12 * 0.12) / (spread * spread) * (0.12 + 3.2 * bright * bright * bright);
+			light += mix(vec3(0.72, 0.8, 1.0), vec3(1.0, 0.86, 0.7), SkyHash(cell + vec3_splat(5.3))) * star;
+		}
 	}
 	// And the galaxy, a faint band across it.
 	float across = dot(ray, normalize(vec3(0.35, 0.82, 0.45)));
@@ -170,9 +176,11 @@ void main()
 		vec2 p = vec2(dot(ray, across), dot(ray, over));
 		vec2 q = vec2(p.x + p.y, p.x - p.y) * 0.7071;
 		float thin = 1.0 / max(pixelAngle * 1.5, 0.0003);
-		float spikes = (exp(-abs(q.y) * thin) * exp(-abs(q.x) * 14.0) + exp(-abs(q.x) * thin) * exp(-abs(q.y) * 14.0)) *
+		float spikes = (exp(-abs(q.y) * thin) * exp(-abs(q.x) * 18.0) + exp(-abs(q.x) * thin) * exp(-abs(q.y) * 18.0)) *
 					   step(0.0, dot(ray, sunDir));
-		color += (face * disc * 60.0 + hot * (glare + spikes * 0.35)) * u_skySunColor.w;
+		// A star is far too bright to look at: its disc is white whatever its colour, the colour is in the light round it.
+		vec3 discColour = mix(face, vec3(1.0, 0.99, 0.97) * (0.5 + 0.5 * mu), 0.6);
+		color += (discColour * disc * 80.0 + mix(hot, u_skySunColor.rgb, 0.4) * (glare + spikes * 0.18)) * u_skySunColor.w;
 	}
 
 	// A planet: a sphere one unit away, as big on the sky as it is asked to be, lit by the sun, with ice and cloud

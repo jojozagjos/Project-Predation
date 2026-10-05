@@ -181,6 +181,8 @@ public:
     // Moons: a designation of their own, a prefix and a number ("LV-426").
     std::vector<std::string> moonCatalogues{"LV"};
     glm::ivec2 moonNumbers{100, 999};
+    // The hub on the home world: Kestrel Station.
+    std::string homeHubName = "KESTREL STATION";
     // Region designations: the part of a planet it is in ("NORTH CRYOSPHERE"), by biome; "any" for every biome.
     std::map<std::string, std::vector<std::string>> regionAreas;
 };

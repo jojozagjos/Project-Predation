@@ -175,7 +175,7 @@ void PlanetRenderer::Star(bgfx::ViewId view, bgfx::ViewId glowView, const glm::v
     }
     bgfx::TransientVertexBuffer quad;
     bgfx::allocTransientVertexBuffer(&quad, 6, m_layout);
-    const float size = radius * 5.0f;
+    const float size = radius * 3.6f;
     const glm::vec3 corners[4] = {at - cameraRight * size - cameraUp * size, at + cameraRight * size - cameraUp * size,
                                   at + cameraRight * size + cameraUp * size, at - cameraRight * size + cameraUp * size};
     const glm::vec2 uvs[4] = {{0.0f, 0.0f}, {1.0f, 0.0f}, {1.0f, 1.0f}, {0.0f, 1.0f}};

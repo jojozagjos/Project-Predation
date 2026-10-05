@@ -7,6 +7,9 @@
 #include "Engine/Core/Log.h"
 #include "Engine/Debug/ImGuiLayer.h"
 #include "Engine/Render/Renderer.h"
+#include "Engine/Render/TextureLibrary.h"
+#include "Game/World/KestrelStation.h"
+#include "Game/World/ScreenCanvas.h"
 
 #include <imgui.h>
 
@@ -175,6 +178,62 @@ bool PredationGame::DoCampaignAction(uint8_t player, CampaignAction action, int 
         }
         CampaignChanged();
         return true;
+    }
+
+    case CampaignAction::PlotCourse:
+        if (system->Find(a) == nullptr || m_campaign.travel.interstellar)
+        {
+            return false;
+        }
+        m_campaign.plan = {true, false, 0, a, b};
+        CampaignChanged();
+        return true;
+
+    case CampaignAction::PlotSystem:
+    {
+        const uint64_t to = static_cast<uint64_t>(static_cast<uint32_t>(a)) | (static_cast<uint64_t>(static_cast<uint32_t>(b)) << 32);
+        const float distance = glm::length(m_universe.Glance(SystemId::Unpack(to)).position - Travel::GalaxyPosition(m_campaign, m_universe));
+        if (m_universe.System(to) == nullptr || to == m_campaign.system || distance > Travel::CrossingRange(DriveTier()))
+        {
+            return false;
+        }
+        m_campaign.plan = {true, true, to, -1, -1};
+        CampaignChanged();
+        return true;
+    }
+
+    case CampaignAction::Door:
+        // Only on the ground does it open; it can always be shut.
+        if (a != 0 && !ShipLanded())
+        {
+            return false;
+        }
+        m_campaign.doorOpen = a != 0;
+        CampaignChanged();
+        return true;
+
+    case CampaignAction::ClearPlot:
+        m_campaign.plan = {};
+        CampaignChanged();
+        return true;
+
+    case CampaignAction::Depart:
+    {
+        if (!m_campaign.plan.set)
+        {
+            return false;
+        }
+        const CampaignState::Plan plan = m_campaign.plan;
+        m_campaign.plan = {};
+        const bool done = plan.toSystem ? DoCampaignAction(player, CampaignAction::SetSystemCourse, static_cast<int>(static_cast<uint32_t>(plan.system & 0xFFFFFFFFu)),
+                                                           static_cast<int>(static_cast<uint32_t>(plan.system >> 32)))
+                                        : DoCampaignAction(player, CampaignAction::SetCourse, plan.body, plan.region);
+        if (!done)
+        {
+            m_campaign.plan = plan;
+        }
+        CampaignChanged();
+        return done;
     }
 
     case CampaignAction::CancelCourse:
@@ -533,7 +592,45 @@ void PredationGame::UpdateTravel(float dt)
         m_travelSeenTarget = target;
         m_travelSeen = true;
     }
-    // Standing at a hub: its legs down, the pad, the hub round it and the world's ground in its own colours.
+    UpdateShipGround();
+    m_ship.UpdateAirlock(m_scene, m_app->GetMeshes(), dt);
+    for (const Entity control : m_airlockControls)
+    {
+        if (Interactable* door = m_interactions.Find(control))
+        {
+            door->enabled = m_map == MapChoice::Ship && !m_cine.Active() && (ShipLanded() || m_campaign.doorOpen);
+            door->verb = m_campaign.doorOpen ? "Close" : "Open";
+        }
+    }
+    if (Interactable* helm = m_interactions.Find(m_helm))
+    {
+        helm->enabled = m_campaign.plan.set && m_map == MapChoice::Ship && !m_cine.Active();
+        helm->verb = m_campaign.travel.underway ? "Change course for" : "Set out for";
+        helm->name = PlanName();
+    }
+    // The ship's outside as the campaign has it: its colours, and its drive and sensors.
+    ShipHullLook look;
+    look.primary = m_campaign.colors.primary;
+    look.secondary = m_campaign.colors.secondary;
+    look.accent = m_campaign.colors.accent;
+    look.drive = DriveTier();
+    look.sensors = SensorTier();
+    m_ship.SetLook(m_scene, m_app->GetMeshes(), look);
+    // What the ship's own systems go by: under way or not.
+    m_shipTravel = m_campaign.travel.underway ? 1.0f : 0.0f;
+    m_shipTravelTotal = m_shipTravel;
+}
+
+// --- Space out of the windows ------------------------------------------------------------------------------------
+
+void PredationGame::UpdateShipGround()
+{
+    const StarSystem* system = CurrentSystem();
+    if (system == nullptr)
+    {
+        return;
+    }
+    // Standing at a hub: its legs down, the station round it, the world's ground in its own colours, the door open.
     {
         const bool landed = ShipLanded() && system->Find(m_campaign.body) != nullptr;
         if (landed)
@@ -552,21 +649,65 @@ void PredationGame::UpdateTravel(float dt)
         m_ship.SetField(m_scene, m_app->GetMeshes(), landed, ground, rock);
         m_ship.SetStageField(m_scene, m_app->GetMeshes(), GroundCinematic() && at != nullptr, ground, rock);
         m_ship.SetGear(m_scene, landed, GroundCinematic() && m_stageGear);
+        m_ship.SetAirlockOpen(m_scene, m_app->GetMeshes(), landed && m_campaign.doorOpen);
+        // Kestrel's own name only at Kestrel: the home world's hub.
+        const StarSystem* home = m_universe.System(m_universe.Home());
+        const bool kestrel = landed && home != nullptr && m_campaign.system == home->id.Packed() && m_campaign.body == home->hub;
+        UpdateHubSigns(landed, kestrel);
     }
-    // The ship's outside as the campaign has it: its colours, and its drive and sensors.
-    ShipHullLook look;
-    look.primary = m_campaign.colors.primary;
-    look.secondary = m_campaign.colors.secondary;
-    look.accent = m_campaign.colors.accent;
-    look.drive = DriveTier();
-    look.sensors = SensorTier();
-    m_ship.SetLook(m_scene, m_app->GetMeshes(), look);
-    // What the ship's own systems go by: under way or not.
-    m_shipTravel = m_campaign.travel.underway ? 1.0f : 0.0f;
-    m_shipTravelTotal = m_shipTravel;
 }
 
-// --- Space out of the windows ------------------------------------------------------------------------------------
+void PredationGame::UpdateHubSigns(bool shown, bool named)
+{
+    // Made once, the first time the ship stands at a hub; shown and hidden after. Kestrel's name is one of them.
+    if (shown && m_hubSigns.empty())
+    {
+        MeshLibrary& meshes = m_app->GetMeshes();
+        TextureLibrary& textures = m_app->GetTextures();
+        for (const KestrelStation::Sign& sign : KestrelStation::Signs(true))
+        {
+            const bool logo = sign.style == KestrelStation::Sign::Style::Logo;
+            const int high = logo ? 256 : 128;
+            const int wide = std::clamp(static_cast<int>(static_cast<float>(high) * sign.width / std::max(sign.height, 0.1f)), 64, 2048);
+            ScreenCanvas canvas(wide, high);
+            KestrelStation::Draw(canvas, sign);
+            const TextureHandle texture = textures.CreateDynamic(wide, high, "sign_" + sign.id);
+            textures.Update(texture, canvas.image);
+            // A flat panel facing +z, its picture the whole texture, both faces.
+            MeshData quad;
+            const float w = sign.width * 0.5f;
+            const float h = sign.height * 0.5f;
+            const glm::vec3 normal{0.0f, 0.0f, 1.0f};
+            quad.vertices.push_back(MeshVertex{{-w, h, 0.0f}, normal, {0.0f, 0.0f}});
+            quad.vertices.push_back(MeshVertex{{w, h, 0.0f}, normal, {1.0f, 0.0f}});
+            quad.vertices.push_back(MeshVertex{{w, -h, 0.0f}, normal, {1.0f, 1.0f}});
+            quad.vertices.push_back(MeshVertex{{-w, -h, 0.0f}, normal, {0.0f, 1.0f}});
+            quad.indices = {0, 3, 2, 0, 2, 1, 0, 1, 2, 0, 2, 3};
+            const MeshHandle mesh = meshes.Upload(quad, "sign_" + sign.id);
+            Transform at;
+            at.position = ShipMap::ToWorld(sign.at);
+            at.rotation = glm::angleAxis(glm::radians(sign.yaw), glm::vec3(0.0f, 1.0f, 0.0f));
+            const bool painted = sign.style == KestrelStation::Sign::Style::Painted;
+            Material material = Material::Diffuse(glm::vec3(1.0f), painted ? 0.9f : 0.4f);
+            material.baseColorTexture = texture;
+            material.emissive = painted ? glm::vec3(0.0f) : glm::vec3(logo ? 1.4f : 1.1f);
+            material.emissiveTextured = !painted;
+            m_hubSigns.push_back(m_scene.CreateMeshEntity("sign_" + sign.id, at, mesh, material));
+            m_hubSignIds.push_back(sign.id);
+            if (MeshRenderer* renderer = m_scene.GetMeshRenderer(m_hubSigns.back()))
+            {
+                renderer->castsShadow = false;
+            }
+        }
+    }
+    for (size_t i = 0; i < m_hubSigns.size(); ++i)
+    {
+        if (MeshRenderer* renderer = m_scene.GetMeshRenderer(m_hubSigns[i]))
+        {
+            renderer->visible = shown && (named || m_hubSignIds[i] != "station_name");
+        }
+    }
+}
 
 bool PredationGame::ShipLanded() const
 {
@@ -585,12 +726,45 @@ bool PredationGame::GroundCinematic() const
 
 void PredationGame::PlayLeaving(bool fromGround)
 {
-    // Up off a hub's pad, or out of orbit.
-    const char* name = fromGround && HasCinematic("ship_takeoff") ? "ship_takeoff" : "ship_depart";
-    if (HasCinematic(name))
+    // Up off a hub's pad: its cinematic. Out of orbit, nobody is taken out of the ship to watch it go: the engines light,
+    // the dust starts past the windows, the intercom says so -- unless the drive is good enough that the trip is all but a
+    // cut, which is shown as one.
+    if (fromGround && HasCinematic("ship_takeoff"))
     {
-        PlayCinematic(name);
+        PlayCinematic("ship_takeoff");
     }
+    else if (DriveTier() >= Travel::kInstantTier && HasCinematic("ship_depart"))
+    {
+        PlayCinematic("ship_depart");
+    }
+    else if (m_map == MapChoice::Ship)
+    {
+        PlayNamed("World/shuttle_launch", ShipMap::ToWorld({0.0f, 1.0f, 22.0f}), 0.8f, 0.55f, false);
+    }
+}
+
+std::string PredationGame::PlanName()
+{
+    const CampaignState::Plan& plan = m_campaign.plan;
+    if (!plan.set)
+    {
+        return {};
+    }
+    if (plan.toSystem)
+    {
+        return m_universe.Glance(SystemId::Unpack(plan.system)).name;
+    }
+    const StarSystem* system = CurrentSystem();
+    const Body* body = system != nullptr ? system->Find(plan.body) : nullptr;
+    if (body == nullptr)
+    {
+        return {};
+    }
+    if (plan.region >= 0 && plan.region < static_cast<int>(body->regions.size()))
+    {
+        return body->name + ", " + body->regions[static_cast<size_t>(plan.region)].designation;
+    }
+    return body->name;
 }
 
 bool PredationGame::RegionIsPort(const Body& body, int region) const
@@ -721,13 +895,18 @@ void PredationGame::SetSpaceSky(Environment& environment)
     const glm::vec3 ship = Travel::ShipPosition(m_campaign, *system);
     const int main = m_campaign.travel.underway ? m_campaign.travel.target : m_campaign.body;
     glm::vec3 heading{0.0f, 0.0f, -1.0f};
+    // Closing on the body: from far off it is dead ahead; over the last of the way the view turns, as the ship comes round
+    // into orbit, until it is where it is from orbit -- below, ahead -- so arriving is not a jump. 0 far off, 1 there.
+    float closing = 0.0f;
     if (m_campaign.travel.underway && main >= 0)
     {
-        // The bow on where it is going (round the star, when that is the way), so the destination is dead ahead and
-        // the sun stays where it is in the sky rather than swinging about as the ship speeds up and slows.
-        const std::vector<glm::vec3> path = Travel::Preview(m_campaign, *system, DriveTier(), 24);
+        // The bow on where it is going, so the destination is dead ahead and the sun holds its place in the sky.
         const glm::vec3 there = system->Position(main, m_campaign.clock);
-        heading = path.size() > 3 && glm::length(path[3] - ship) > 1.0e-6f ? path[3] - ship : there - ship;
+        const float distance = glm::length(there - ship);
+        closing = 1.0f - glm::smoothstep(Travel::kArrival * 1.2f, Travel::kArrival * 25.0f, distance);
+        const glm::vec3 approach = distance > 1.0e-9f ? (there - ship) / distance : glm::vec3(0.0f, 0.0f, -1.0f);
+        const glm::vec3 prograde = glm::cross(glm::vec3(0.0f, 1.0f, 0.0f), there);
+        heading = glm::length(prograde) > 1.0e-9f ? glm::mix(approach, glm::normalize(prograde), closing) : approach;
     }
     else if (m_campaign.travel.underway)
     {
@@ -751,10 +930,20 @@ void PredationGame::SetSpaceSky(Environment& environment)
     const glm::vec3 below = glm::normalize(glm::vec3(0.12f, -0.42f, -0.9f));
     const bool orbiting = !m_campaign.travel.underway && system->Find(main) != nullptr;
     glm::mat4 orbit(1.0f);
+    // Counted from arriving, so the first moment in orbit is the last of the approach.
+    if (!orbiting)
+    {
+        m_skyOrbitBody = -1;
+    }
+    else if (m_skyOrbitBody != main)
+    {
+        m_skyOrbitBody = main;
+        m_skyOrbitSince = m_campaign.clock;
+    }
     if (orbiting)
     {
         constexpr double kOrbitSeconds = 960.0;
-        const float angle = static_cast<float>(std::fmod(m_campaign.clock / kOrbitSeconds, 1.0)) * kTau;
+        const float angle = static_cast<float>(std::fmod((m_campaign.clock - m_skyOrbitSince) / kOrbitSeconds, 1.0)) * kTau;
         orbit = glm::rotate(glm::mat4(1.0f), -angle, glm::normalize(glm::cross(below, bow)));
     }
     const auto toWorld = [&](const glm::vec3& v)
@@ -785,19 +974,22 @@ void PredationGame::SetSpaceSky(Environment& environment)
             const glm::vec3 there = system->Position(main, m_campaign.clock) - ship;
             const float distance = std::max(glm::length(there), Travel::kArrival);
             const float size = std::sqrt(std::max(body->radius, 0.1f));
-            environment.planetDirection = glm::length(there) > 1.0e-9f ? glm::normalize(toWorld(there)) : bow;
-            environment.planetRadius = std::clamp(0.0016f * size / distance, 0.012f, orbitSize * 0.65f);
+            const glm::vec3 ahead = glm::length(there) > 1.0e-9f ? glm::normalize(toWorld(there)) : bow;
+            const float growing = std::clamp(0.0016f * size / distance, 0.012f, orbitSize * 0.65f);
+            // And over the last of it, round to where it is from orbit, as big as it is from there.
+            environment.planetDirection = glm::normalize(glm::mix(ahead, below, glm::smoothstep(0.0f, 1.0f, closing)));
+            environment.planetRadius = glm::mix(growing, orbitSize, glm::smoothstep(0.0f, 1.0f, closing));
         }
         else
         {
             environment.planetDirection = below;
             environment.planetRadius = orbitSize;
-            // Behind the planet, the sun is gone and the ship is in its shadow: only the lamps, and what light the
-            // planet's day side throws back.
-            const float apart = std::acos(std::clamp(glm::dot(towardsStar, below), -1.0f, 1.0f));
-            const float shade = glm::smoothstep(orbitSize - 0.04f, orbitSize + 0.06f, apart);
-            environment.sunIntensity *= glm::mix(0.06f, 1.0f, shade);
         }
+        // Behind the planet, the sun is gone and the ship is in its shadow: only the lamps, and what light the planet's day
+        // side throws back.
+        const float apart = std::acos(std::clamp(glm::dot(towardsStar, environment.planetDirection), -1.0f, 1.0f));
+        const float shade = glm::smoothstep(environment.planetRadius - 0.04f, environment.planetRadius + 0.06f, apart);
+        environment.sunIntensity *= glm::mix(0.06f, 1.0f, shade);
     }
 
     // Everything else, as many as the sky draws: the nearest first, though what would be brightest counts for something --

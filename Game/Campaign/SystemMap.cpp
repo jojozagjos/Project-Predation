@@ -62,8 +62,9 @@ std::vector<SystemMapView::Drawn> SystemMapView::Layout(const StarSystem& system
         const glm::vec3 offset = system.Position(body.index, clock) - system.Position(body.parent, clock);
         const float length = glm::length(offset);
         const glm::vec3 way = length > 1.0e-9f ? offset / length : glm::vec3(1.0f, 0.0f, 0.0f);
-        // One after another outwards, well clear of the planet.
-        drawn[body.index].at = planet.at + way * (planet.radius * 1.8f + 0.35f + 0.38f * static_cast<float>(nth));
+        // One after another outwards, well clear of the planet and of its rings as drawn.
+        const float clear = std::max(1.8f, system.bodies[static_cast<size_t>(body.parent)].rings.y + 0.45f);
+        drawn[body.index].at = planet.at + way * (planet.radius * clear + 0.35f + 0.38f * static_cast<float>(nth));
     }
     return drawn;
 }
@@ -255,7 +256,8 @@ int SystemMapView::Pick(const glm::vec2& point, const std::vector<Drawn>& drawn,
         // How big it is on the picture, with a little to spare so a small one can be clicked.
         const float depth = glm::length(body.at - eye);
         const float across = body.radius / std::max(depth * std::tan(kFov * 0.5f), 1.0e-4f) * 0.5f;
-        const float reach = std::max(across, 0.012f) * 1.4f;
+        // A small one can be clicked from a little way off: never less than about twenty pixels on a picture 900 high.
+        const float reach = std::max(across * 1.3f, 0.024f);
         glm::vec2 off = point - centre;
         off.x *= aspect;
         if (glm::length(off) <= reach && depth < bestDepth)

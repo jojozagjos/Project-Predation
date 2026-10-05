@@ -743,6 +743,50 @@ void PredationGame::BuildDeployConsole()
     m_interactions.Register(interactable);
 }
 
+void PredationGame::BuildAirlockControls()
+{
+    // A small lit panel either side of the boarding door: inside, on the wall aft of it; outside, on the hull.
+    for (int i = 0; i < 2; ++i)
+    {
+        const CinePose at = m_ship.AirlockControl(i == 0);
+        Transform transform;
+        transform.position = at.position;
+        transform.rotation = at.rotation;
+        Material panel = Material::Diffuse({0.08f, 0.08f, 0.09f}, 0.4f);
+        panel.emissive = {0.5f, 0.3f, 0.06f};
+        m_airlockControls[i] = m_scene.CreateMeshEntity(i == 0 ? "airlock_control_in" : "airlock_control_out", transform,
+                                                        m_app->GetMeshes().Upload(Primitives::Box({0.22f, 0.32f, 0.05f}), "airlock_control"), panel);
+        Interactable interactable;
+        interactable.entity = m_airlockControls[i];
+        interactable.kind = InteractionKind::Airlock;
+        interactable.verb = "Open";
+        interactable.name = "the boarding door";
+        interactable.range = 1.8f;
+        interactable.enabled = false;
+        m_interactions.Register(interactable);
+    }
+}
+
+void PredationGame::BuildHelm()
+{
+    // A panel on the helm's top, between the two seats, where the course is set out on.
+    const CinePose at = m_ship.Helm();
+    Transform transform;
+    transform.position = at.position;
+    transform.rotation = at.rotation;
+    Material panel = Material::Diffuse({0.05f, 0.05f, 0.06f}, 0.3f);
+    panel.emissive = {0.45f, 0.25f, 0.06f};
+    m_helm = m_scene.CreateMeshEntity("helm_panel", transform, m_app->GetMeshes().Upload(Primitives::Box({1.2f, 0.03f, 0.45f}), "helm_panel"), panel);
+    Interactable interactable;
+    interactable.entity = m_helm;
+    interactable.kind = InteractionKind::Helm;
+    interactable.verb = "Set out for";
+    interactable.name = "the course plotted";
+    interactable.range = 2.0f;
+    interactable.enabled = false;
+    m_interactions.Register(interactable);
+}
+
 void PredationGame::Say(const std::string& moment, float delay)
 {
     m_intercomQueue.emplace_back(moment, delay);

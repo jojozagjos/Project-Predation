@@ -344,8 +344,34 @@ void VehicleProp::Show(Scene& scene, const CinePose& pose, const std::string& cl
         }
         if (MeshRenderer* renderer = scene.GetMeshRenderer(m_parts[i]))
         {
-            renderer->visible = visible > 0.5f && !m_hidden;
+            bool put = false;
+            for (const std::string& prefix : m_hiddenPrefixes)
+            {
+                put = put || m_model->parts[i].name.rfind(prefix, 0) == 0;
+            }
+            renderer->visible = visible > 0.5f && !m_hidden && !put;
         }
+    }
+}
+
+void VehicleProp::SetPartsHidden(Scene& scene, const std::string& prefix, bool hidden)
+{
+    const auto found = std::find(m_hiddenPrefixes.begin(), m_hiddenPrefixes.end(), prefix);
+    if (hidden == (found != m_hiddenPrefixes.end()))
+    {
+        return;
+    }
+    if (hidden)
+    {
+        m_hiddenPrefixes.push_back(prefix);
+    }
+    else
+    {
+        m_hiddenPrefixes.erase(found);
+    }
+    if (m_model != nullptr)
+    {
+        Show(scene, m_shown);
     }
 }
 

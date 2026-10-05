@@ -159,11 +159,15 @@ TEST_CASE("Every body is something, moons designated as moons, and only solid on
                 // Smaller than its planet, well outside it, and clear of every other moon of it.
                 CHECK(body.radius < planet.radius);
                 CHECK(body.orbit > 3.0f);
+                // Clear of the planet's rings.
+                CHECK(body.orbit > planet.rings.y * 1.5f);
                 for (const Body& other : system.bodies)
                 {
                     if (other.kind == BodyKind::Moon && other.parent == body.parent && other.index != body.index)
                     {
                         CHECK(std::abs(other.orbit - body.orbit) > 1.0f);
+                        // Further out is slower: no moon laps one inside it.
+                        CHECK((other.orbit > body.orbit) == (other.period > body.period));
                     }
                 }
             }
@@ -236,6 +240,15 @@ TEST_CASE("A campaign begins with the ship landed at home's hub, home's records 
     CampaignState back;
     REQUIRE(CampaignState::FromJson(state.ToJson(), back));
     CHECK(back.landed);
+    // So is a course plotted and not yet flown.
+    CampaignState planned = state;
+    planned.plan = {true, false, 0, 3, 1};
+    CampaignState plannedBack;
+    REQUIRE(CampaignState::FromJson(planned.ToJson(), plannedBack));
+    CHECK(plannedBack.plan.set);
+    CHECK_FALSE(plannedBack.plan.toSystem);
+    CHECK(plannedBack.plan.body == 3);
+    CHECK(plannedBack.plan.region == 1);
     // Setting out takes off.
     CampaignState leaving = state;
     int other = -1;
@@ -567,7 +580,17 @@ TEST_CASE("The ship crosses to another system, arrives at its edge, and can be t
     campaign.clock += campaign.travel.duration * 0.5;
     const glm::vec3 between = Travel::GalaxyPosition(campaign, universe);
     CHECK(glm::length(between - universe.SystemPosition(SystemId{})) > 0.1f);
-    REQUIRE(Travel::SetSystemCourse(campaign, universe, second, Travel::kCrossingTier));
+    // A drive reaches only so far: the furthest of these is out of the first one's reach, not out of a better one's.
+    const uint64_t far = near.back().Packed();
+    const float farAway = glm::length(universe.SystemPosition(near.back()) - between);
+    if (farAway > Travel::CrossingRange(Travel::kCrossingTier))
+    {
+        CampaignState copy = campaign;
+        CHECK_FALSE(Travel::SetSystemCourse(copy, universe, far, Travel::kCrossingTier));
+    }
+    CHECK(Travel::CrossingRange(0) == 0.0f);
+    CHECK(Travel::CrossingRange(3) > Travel::CrossingRange(1));
+    REQUIRE(Travel::SetSystemCourse(campaign, universe, second, 4));
     CHECK(glm::length(campaign.travel.fromGalaxy - between) < 1.0e-3f);
     CHECK_FALSE(Travel::StepInterstellar(campaign, universe));
     // No course to a planet while between the stars.
