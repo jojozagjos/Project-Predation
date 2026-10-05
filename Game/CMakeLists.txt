@@ -11,7 +11,14 @@ set(PRED_GAME_SOURCES
     PredationGameBriefing.cpp
     PredationGameLoadout.cpp
     PredationGameDevices.cpp
+    PredationGameCampaign.cpp
 
+    Campaign/Universe.h
+    Campaign/Universe.cpp
+    Campaign/Campaign.h
+    Campaign/Campaign.cpp
+    Campaign/CampaignStore.h
+    Campaign/CampaignStore.cpp
     Mission/Mission.h
     Mission/Mission.cpp
     Mission/MissionProps.h

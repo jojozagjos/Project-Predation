@@ -24,7 +24,7 @@ namespace pred
 
 // Bumped whenever the wire changes shape. Two ends that disagree are refused at the door rather
 // than left to misread each other, which is what a wire mismatch actually looks like from inside.
-inline constexpr uint16_t kProtocolVersion = 30;
+inline constexpr uint16_t kProtocolVersion = 31;
 // How many bits name a message type. Five, so there is room to add one.
 inline constexpr uint32_t kMessageTypeBits = 5;
 inline constexpr uint8_t kMaxPlayers = 4;
@@ -86,6 +86,12 @@ enum class MessageType : uint8_t
     // Client to host, reliable, developer builds only: one of the world's console commands (a creature, a nest), to be
     // run where the world is. The host runs only the ones it lists as the world's.
     Command,
+    // Host to client, reliable: part of a document too big for one message -- the campaign -- sent whole and put back
+    // together at the far end (DocumentPart).
+    Document,
+    // Client to host, reliable: something asked of the campaign -- a course set, an upgrade bought, an entry marked --
+    // for the host to check and do (CampaignRequest).
+    Request,
     Count
 };
 
@@ -195,6 +201,39 @@ struct LoadoutMessage
 };
 void WriteLoadout(BitWriter& writer, const LoadoutMessage& message);
 bool ReadLoadout(BitReader& reader, LoadoutMessage& out);
+
+// A document too big for one message (the campaign, as JSON), in parts: which kind of document, which sending of it,
+// which part of how many, and that part's bytes. Reliable messages arrive in order, so the parts are simply put end to
+// end; a part of a newer sending starts again.
+enum class DocumentKind : uint8_t
+{
+    Campaign = 0
+};
+struct DocumentPart
+{
+    static constexpr size_t kMaxBytes = 1000;
+    DocumentKind kind = DocumentKind::Campaign;
+    uint16_t serial = 0;
+    uint8_t part = 0;
+    uint8_t parts = 1;
+    std::vector<uint8_t> bytes;
+};
+void WriteDocumentPart(BitWriter& writer, const DocumentPart& message);
+bool ReadDocumentPart(BitReader& reader, DocumentPart& out);
+// A document cut into the parts it is sent in: none for one too big to send (over 255 parts).
+std::vector<DocumentPart> SplitDocument(DocumentKind kind, uint16_t serial, const std::string& text);
+
+// Something a client asks of the campaign: what (an action the game numbers), two numbers and a short text for it.
+struct CampaignRequest
+{
+    static constexpr size_t kMaxText = 64;
+    uint8_t action = 0;
+    int32_t a = 0;
+    int32_t b = 0;
+    std::string text;
+};
+void WriteCampaignRequest(BitWriter& writer, const CampaignRequest& message);
+bool ReadCampaignRequest(BitReader& reader, CampaignRequest& out);
 
 // A console command line, printable ASCII, cut to the length a command needs.
 inline constexpr size_t kMaxCommandLength = 160;

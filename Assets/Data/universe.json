@@ -1,0 +1,178 @@
+{
+  "_comment": "What planets can be. A planet is one biome, atmosphere, terrain, weather and civilization, plus any specials, each picked by weight among the ones that suit it: a biome only where the planet's warmth (degrees C) falls in its 'temperature', and the others from the biome's own lists. Add an entry to add a kind of world. Names are what a player is shown; ids are what saves use, so do not rename an id once campaigns exist. Colours are 0-1 RGB.",
+
+  "names": {
+    "catalogues": ["KEPLER"],
+    "numbers": [10, 999]
+  },
+
+  "stars": [
+    {"id": "m_dwarf", "name": "Red dwarf", "weight": 5, "color": [1.0, 0.58, 0.38], "luminosity": [0.02, 0.08], "radius": 0.45, "planets": [3, 6]},
+    {"id": "k_dwarf", "name": "Orange dwarf", "weight": 3, "color": [1.0, 0.78, 0.55], "luminosity": [0.15, 0.6], "radius": 0.75, "planets": [3, 7]},
+    {"id": "g_dwarf", "name": "Yellow dwarf", "weight": 2, "color": [1.0, 0.95, 0.86], "luminosity": [0.7, 1.4], "radius": 1.0, "planets": [4, 8]},
+    {"id": "f_star", "name": "White star", "weight": 1, "color": [0.95, 0.96, 1.0], "luminosity": [2.0, 5.0], "radius": 1.3, "planets": [3, 8]},
+    {"id": "a_star", "name": "Blue-white star", "weight": 0.4, "color": [0.8, 0.87, 1.0], "luminosity": [8.0, 25.0], "radius": 1.8, "planets": [2, 6]}
+  ],
+
+  "biomes": [
+    {"id": "frozen", "name": "Frozen", "weight": 3, "temperature": [-200, -8],
+     "atmospheres": {"none": 1, "thin": 3, "breathable": 1, "dense": 0.5},
+     "terrains": {"flat": 1, "rolling": 2, "mountainous": 3, "canyons": 1},
+     "weathers": {"clear": 2, "snow": 3, "heavy_snow": 2, "blizzard": 1, "fog": 1},
+     "ground": [[0.86, 0.89, 0.93], [0.56, 0.62, 0.7]], "ocean": [0.12, 0.2, 0.3], "oceanAmount": [0.0, 0.15], "ice": [0.5, 1.0], "clouds": [0.1, 0.5],
+     "site": {"surface": "snow_02", "ground": [0.72, 0.74, 0.78], "rock": [0.3, 0.32, 0.36], "fog": [0.02, 0.025, 0.03]}},
+
+    {"id": "rocky", "name": "Rocky", "weight": 3, "temperature": [-160, 140],
+     "atmospheres": {"none": 3, "thin": 2},
+     "terrains": {"rolling": 2, "mountainous": 2, "cratered": 2, "canyons": 1},
+     "weathers": {"clear": 4, "dust": 1},
+     "ground": [[0.52, 0.48, 0.44], [0.32, 0.3, 0.29]], "ice": [0.0, 0.2], "clouds": [0.0, 0.15],
+     "site": {"ground": [0.42, 0.4, 0.38], "rock": [0.28, 0.27, 0.26], "fog": [0.03, 0.028, 0.026]}},
+
+    {"id": "barren", "name": "Barren", "weight": 2, "temperature": [-260, 420],
+     "atmospheres": {"none": 1},
+     "terrains": {"cratered": 3, "flat": 1, "broken": 1},
+     "weathers": {"clear": 1},
+     "ground": [[0.6, 0.6, 0.6], [0.35, 0.35, 0.36]],
+     "site": {"ground": [0.5, 0.5, 0.5], "rock": [0.3, 0.3, 0.31], "fog": [0.0, 0.0, 0.0]}},
+
+    {"id": "desert", "name": "Desert", "weight": 2, "temperature": [15, 95],
+     "atmospheres": {"thin": 2, "breathable": 1, "dense": 1},
+     "terrains": {"dunes": 3, "canyons": 2, "flat": 1, "mountainous": 1},
+     "weathers": {"clear": 3, "dust": 2, "sandstorm": 1},
+     "ground": [[0.86, 0.68, 0.45], [0.66, 0.42, 0.26]], "ice": [0.0, 0.08], "clouds": [0.0, 0.2],
+     "site": {"ground": [0.74, 0.6, 0.42], "rock": [0.5, 0.36, 0.25], "fog": [0.09, 0.07, 0.05]}},
+
+    {"id": "volcanic", "name": "Volcanic", "weight": 1.5, "temperature": [140, 900],
+     "atmospheres": {"thin": 1, "dense": 2, "toxic": 2},
+     "terrains": {"mountainous": 2, "broken": 2, "canyons": 1},
+     "weathers": {"ash": 3, "clear": 1, "ash_storm": 1},
+     "ground": [[0.16, 0.13, 0.12], [0.85, 0.32, 0.08]], "clouds": [0.1, 0.4], "cloudColor": [0.45, 0.42, 0.4],
+     "site": {"ground": [0.16, 0.14, 0.13], "rock": [0.1, 0.09, 0.09], "fog": [0.05, 0.035, 0.03]}},
+
+    {"id": "oceanic", "name": "Oceanic", "weight": 1.5, "temperature": [-5, 45],
+     "atmospheres": {"breathable": 2, "dense": 2},
+     "terrains": {"islands": 3, "flat": 1},
+     "weathers": {"rain": 3, "storm": 2, "fog": 1, "clear": 1},
+     "ground": [[0.4, 0.5, 0.36], [0.62, 0.58, 0.48]], "ocean": [0.06, 0.18, 0.36], "oceanAmount": [0.82, 0.97], "ice": [0.0, 0.3], "clouds": [0.4, 0.8],
+     "site": {"ground": [0.5, 0.48, 0.42], "rock": [0.3, 0.3, 0.29], "fog": [0.05, 0.06, 0.07]}},
+
+    {"id": "temperate", "name": "Temperate", "weight": 1, "temperature": [0, 35],
+     "atmospheres": {"breathable": 3, "dense": 1},
+     "terrains": {"rolling": 3, "mountainous": 2, "flat": 1},
+     "weathers": {"clear": 3, "rain": 2, "fog": 1, "storm": 1},
+     "ground": [[0.3, 0.42, 0.22], [0.55, 0.48, 0.34]], "ocean": [0.08, 0.2, 0.38], "oceanAmount": [0.4, 0.7], "ice": [0.05, 0.3], "clouds": [0.3, 0.6],
+     "site": {"ground": [0.34, 0.4, 0.26], "rock": [0.36, 0.34, 0.31], "fog": [0.06, 0.07, 0.075]}},
+
+    {"id": "jungle", "name": "Jungle", "weight": 0.8, "temperature": [20, 55],
+     "atmospheres": {"dense": 3, "breathable": 1},
+     "terrains": {"rolling": 2, "flat": 1, "mountainous": 1},
+     "weathers": {"rain": 3, "fog": 2, "storm": 1},
+     "ground": [[0.12, 0.3, 0.12], [0.24, 0.4, 0.16]], "ocean": [0.06, 0.2, 0.3], "oceanAmount": [0.2, 0.5], "clouds": [0.5, 0.85],
+     "site": {"ground": [0.2, 0.3, 0.16], "rock": [0.26, 0.27, 0.22], "fog": [0.05, 0.065, 0.05]}},
+
+    {"id": "toxic", "name": "Toxic", "weight": 1, "temperature": [25, 460],
+     "atmospheres": {"toxic": 3, "dense": 1},
+     "terrains": {"flat": 1, "rolling": 1, "canyons": 1},
+     "weathers": {"fog": 2, "rain": 1, "clear": 1},
+     "ground": [[0.62, 0.62, 0.3], [0.4, 0.44, 0.2]], "clouds": [0.5, 0.95], "cloudColor": [0.86, 0.82, 0.55],
+     "site": {"ground": [0.46, 0.46, 0.3], "rock": [0.32, 0.32, 0.24], "fog": [0.08, 0.08, 0.04]}},
+
+    {"id": "stormworld", "name": "Storm-dominated", "weight": 0.8, "temperature": [-90, 80],
+     "atmospheres": {"dense": 3, "breathable": 1},
+     "terrains": {"flat": 2, "mountainous": 1, "broken": 1},
+     "weathers": {"storm": 3, "rain": 1, "blizzard": 1},
+     "ground": [[0.4, 0.4, 0.44], [0.26, 0.26, 0.3]], "ocean": [0.1, 0.14, 0.22], "oceanAmount": [0.0, 0.4], "clouds": [0.7, 1.0], "cloudColor": [0.7, 0.72, 0.78],
+     "site": {"ground": [0.36, 0.36, 0.38], "rock": [0.22, 0.22, 0.25], "fog": [0.04, 0.045, 0.055]}},
+
+    {"id": "crystalline", "name": "Crystalline", "weight": 0.4, "temperature": [-140, 60],
+     "atmospheres": {"thin": 2, "none": 1},
+     "terrains": {"broken": 2, "flat": 1, "canyons": 1},
+     "weathers": {"clear": 3, "dust": 1},
+     "ground": [[0.6, 0.78, 0.86], [0.5, 0.42, 0.7]], "ice": [0.0, 0.3], "clouds": [0.0, 0.2],
+     "site": {"ground": [0.56, 0.62, 0.68], "rock": [0.36, 0.34, 0.46], "fog": [0.03, 0.035, 0.05]}},
+
+    {"id": "gas_cold", "name": "Gas giant", "weight": 1, "temperature": [-260, 60], "gas": true,
+     "ground": [[0.62, 0.7, 0.8], [0.36, 0.44, 0.6]], "clouds": [0.0, 0.0]},
+
+    {"id": "gas_warm", "name": "Gas giant", "weight": 1, "temperature": [-60, 1500], "gas": true,
+     "ground": [[0.86, 0.72, 0.52], [0.6, 0.4, 0.28]], "clouds": [0.0, 0.0]}
+  ],
+
+  "atmospheres": [
+    {"id": "none", "name": "None", "thickness": 0.0, "visibility": 1.4},
+    {"id": "thin", "name": "Thin", "thickness": 0.3, "visibility": 1.2, "color": [0.45, 0.6, 0.95], "warming": 5},
+    {"id": "breathable", "name": "Breathable", "thickness": 0.6, "visibility": 1.0, "color": [0.35, 0.55, 0.95], "warming": 15, "breathable": true},
+    {"id": "dense", "name": "Dense", "thickness": 1.0, "visibility": 0.7, "color": [0.5, 0.6, 0.85], "warming": 45},
+    {"id": "toxic", "name": "Toxic", "thickness": 0.9, "visibility": 0.6, "color": [0.85, 0.75, 0.35], "warming": 60}
+  ],
+
+  "terrains": [
+    {"id": "flat", "name": "Flat", "roughness": 0.1},
+    {"id": "rolling", "name": "Rolling", "roughness": 0.35},
+    {"id": "mountainous", "name": "Mountainous", "roughness": 0.75},
+    {"id": "canyons", "name": "Canyons", "roughness": 0.6},
+    {"id": "cratered", "name": "Cratered", "roughness": 0.45},
+    {"id": "dunes", "name": "Dunes", "roughness": 0.4},
+    {"id": "islands", "name": "Islands", "roughness": 0.3},
+    {"id": "broken", "name": "Broken", "roughness": 0.85}
+  ],
+
+  "weathers": [
+    {"id": "clear", "name": "Clear", "particles": "none", "visibility": 1.0, "wind": [0, 6]},
+    {"id": "snow", "name": "Snow", "particles": "snow", "intensity": 0.5, "visibility": 0.85, "wind": [2, 8]},
+    {"id": "heavy_snow", "name": "Heavy snow", "particles": "snow", "intensity": 0.85, "visibility": 0.6, "wind": [4, 12]},
+    {"id": "blizzard", "name": "Blizzard", "particles": "snow", "intensity": 1.0, "visibility": 0.35, "wind": [14, 30]},
+    {"id": "fog", "name": "Fog", "particles": "none", "visibility": 0.4, "wind": [0, 4]},
+    {"id": "rain", "name": "Rain", "particles": "rain", "intensity": 0.6, "visibility": 0.8, "wind": [2, 10]},
+    {"id": "storm", "name": "Storms", "particles": "rain", "intensity": 1.0, "visibility": 0.5, "wind": [12, 26]},
+    {"id": "dust", "name": "Dust", "particles": "dust", "intensity": 0.5, "visibility": 0.6, "wind": [6, 14]},
+    {"id": "sandstorm", "name": "Sandstorms", "particles": "dust", "intensity": 1.0, "visibility": 0.3, "wind": [16, 32]},
+    {"id": "ash", "name": "Ashfall", "particles": "ash", "intensity": 0.6, "visibility": 0.6, "wind": [2, 8]},
+    {"id": "ash_storm", "name": "Ash storms", "particles": "ash", "intensity": 1.0, "visibility": 0.35, "wind": [10, 24]}
+  ],
+
+  "civilizations": [
+    {"id": "none", "name": "Uncharted", "weight": 10,
+     "regions": {"survey": 3, "wreck": 1, "signal": 0.6}},
+    {"id": "abandoned_research", "name": "Abandoned research presence", "weight": 3, "records": true,
+     "regions": {"research_facility": 3, "survey": 1, "wreck": 1}},
+    {"id": "active_outpost", "name": "Active outpost", "weight": 1.5, "inhabited": true, "records": true,
+     "regions": {"outpost": 2, "research_facility": 1, "survey": 1}},
+    {"id": "colonized", "name": "Colonized", "weight": 0.5, "inhabited": true, "records": true, "services": true,
+     "regions": {"outpost": 1, "survey": 1}}
+  ],
+
+  "specials": [
+    {"id": "rings", "name": "Rings", "chance": 0.08, "onMoons": false},
+    {"id": "aurora", "name": "Auroras", "chance": 0.1, "needsAir": true},
+    {"id": "tidally_locked", "name": "Tidally locked", "chance": 0.06},
+    {"id": "geothermal", "name": "Geothermal activity", "chance": 0.12, "biomes": ["frozen", "rocky", "volcanic", "oceanic"]},
+    {"id": "crystal_fields", "name": "Crystal formations", "chance": 0.06, "biomes": ["crystalline", "rocky", "barren", "frozen"]},
+    {"id": "magnetic_anomaly", "name": "Magnetic anomaly", "chance": 0.04}
+  ],
+
+  "regions": [
+    {"id": "service_hub", "name": "Shipyard", "charted": true, "service": true, "designations": ["SHIPYARD"]},
+    {"id": "outpost", "name": "Outpost", "charted": true, "designations": ["OUTPOST", "RELAY STATION", "MINING OUTPOST"]},
+    {"id": "research_facility", "name": "Research facility", "designations": ["RESEARCH FACILITY", "FIELD STATION", "SURVEY STATION"]},
+    {"id": "survey", "name": "Open ground", "designations": ["SURVEY SITE"]},
+    {"id": "wreck", "name": "Wreck", "designations": ["CRASH SITE"]},
+    {"id": "signal", "name": "Signal source", "designations": ["SIGNAL SOURCE"]}
+  ],
+
+  "areas": {
+    "frozen": ["NORTH CRYOSPHERE", "SOUTH CRYOSPHERE", "GLACIAL SHELF", "ICE PLAINS"],
+    "rocky": ["HIGHLANDS", "BASIN", "EQUATORIAL RIDGE"],
+    "barren": ["CRATER FIELD", "PLAINS", "TERMINATOR"],
+    "desert": ["DUNE SEA", "SALT FLATS", "EQUATORIAL WASTE"],
+    "volcanic": ["CALDERA", "LAVA PLAINS", "RIFT"],
+    "oceanic": ["ARCHIPELAGO", "NORTH ISLANDS", "SHELF"],
+    "temperate": ["LOWLANDS", "VALLEY", "COAST"],
+    "jungle": ["CANOPY", "BASIN", "DELTA"],
+    "toxic": ["LOWLANDS", "BASIN", "PLATEAU"],
+    "stormworld": ["PLAINS", "HIGHLANDS", "COAST"],
+    "crystalline": ["SHARD FIELD", "PLATEAU", "BASIN"],
+    "any": ["SECTOR"]
+  }
+}

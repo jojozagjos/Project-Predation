@@ -17,6 +17,9 @@
 #include "Engine/Net/LanDiscovery.h"
 #include "Engine/Net/PortMapper.h"
 #include "Engine/Navigation/NavMesh.h"
+#include "Game/Campaign/Campaign.h"
+#include "Game/Campaign/CampaignStore.h"
+#include "Game/Campaign/Universe.h"
 #include "Game/Creature/Creature.h"
 #include "Game/Creature/Noise.h"
 #include "Game/Creature/VoiceMemory.h"
@@ -921,6 +924,50 @@ private:
     float TorchRange() const;
     float TorchInnerAngle() const;
     float TorchOuterAngle() const;
+
+    // --- The campaign (PredationGameCampaign.cpp) -------------------------------------------------------------------
+    // What a crew has, has found and has done (Game/Campaign): kept by the host and saved on its machine, sent whole to
+    // everybody else whenever it changes. The universe it is played in is made again from its seed wherever it is
+    // needed. A game with no campaign open (a test map from the console) has none of it, and nothing of it shows.
+    void LoadUniverseData();
+    bool OpenCampaign(const std::string& folder, std::string& error);
+    bool BeginCampaign(const std::string& name, uint64_t seed, std::string& error);
+    // The one chosen on the title: opened, or begun.
+    bool OpenChosenCampaign(std::string& error);
+    // Saved, if it is this machine's, and put away.
+    void CloseCampaign();
+    void SaveCampaign(bool autosave, const char* why);
+    // Something in it changed: everybody else is sent it in a moment.
+    void CampaignChanged();
+    void UpdateCampaign(float dt);
+    void SendCampaign(int player = -1);
+    void ApplyCampaignDocument(const std::string& text);
+    void ServeCampaignRequests();
+    // A client taking over as host: the campaign as it was last sent becomes this machine's to save.
+    void AdoptCampaign();
+    void DrawTitleCampaigns();
+    void DrawCampaignNotice();
+    void RegisterCampaignCommands();
+    UniverseData m_universeData;
+    Universe m_universe;
+    CampaignState m_campaign;
+    std::unique_ptr<CampaignStore> m_campaignStore;
+    std::string m_campaignFolder; // where this machine saves it; empty on a client
+    bool m_campaignOpen = false;
+    bool m_campaignDirty = false;
+    float m_campaignSendIn = 0.0f;
+    float m_campaignClockIn = 0.0f;
+    // "Saved", in the corner for a moment.
+    std::string m_campaignNotice;
+    float m_campaignNoticeFor = 0.0f;
+    // The title's list of campaigns, read when the page opens; which is chosen (-1: a new one), the new one's name and
+    // seed, and which one the Delete button has been pressed once for.
+    std::vector<CampaignSlot> m_campaignSlots;
+    bool m_campaignSlotsRead = false;
+    int m_campaignChoice = -1;
+    char m_newCampaignName[32] = "";
+    char m_newCampaignSeed[24] = "";
+    std::string m_campaignDeleteArmed;
 
     // --- Multiplayer ---------------------------------------------------------------------------
     void RegisterNetCommands();

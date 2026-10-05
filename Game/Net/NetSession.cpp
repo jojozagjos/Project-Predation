@@ -498,6 +498,18 @@ void NetHost::HandlePacket(const NetPacket& packet)
         break;
     }
 
+    case MessageType::Request:
+    {
+        const Client* client = FindClient(packet.peer);
+        CampaignRequest request;
+        if (client == nullptr || !client->welcomed || !ReadCampaignRequest(reader, request))
+        {
+            return;
+        }
+        m_campaignRequests.push_back({client->playerId, std::move(request)});
+        break;
+    }
+
     case MessageType::Leave:
         RemoveClient(packet.peer);
         break;
@@ -773,6 +785,35 @@ void NetHost::Broadcast(const WorldEventMessage& event)
     {
         if (client->welcomed)
         {
+            m_transport->Send(client->peer, Channel::Reliable, bytes.data(), bytes.size());
+        }
+    }
+}
+
+void NetHost::SendDocument(int playerId, DocumentKind kind, const std::string& text)
+{
+    if (m_transport == nullptr)
+    {
+        return;
+    }
+    const std::vector<DocumentPart> parts = SplitDocument(kind, ++m_documentSerial, text);
+    if (parts.empty())
+    {
+        PRED_LOG_ERROR(Network, "A document of {} bytes is too big to send", text.size());
+        return;
+    }
+    for (const auto& client : m_clients)
+    {
+        if (!client->welcomed || (playerId >= 0 && client->playerId != playerId))
+        {
+            continue;
+        }
+        for (const DocumentPart& part : parts)
+        {
+            BitWriter writer;
+            WriteMessageHeader(writer, MessageType::Document);
+            WriteDocumentPart(writer, part);
+            const std::vector<uint8_t>& bytes = writer.Finish();
             m_transport->Send(client->peer, Channel::Reliable, bytes.data(), bytes.size());
         }
     }
@@ -1379,6 +1420,35 @@ void NetClient::HandlePacket(const NetPacket& packet)
         break;
     }
 
+    case MessageType::Document:
+    {
+        DocumentPart part;
+        if (!ReadDocumentPart(reader, part))
+        {
+            break;
+        }
+        DocumentAssembly& assembly = m_documentParts[static_cast<uint8_t>(part.kind)];
+        if (part.part == 0)
+        {
+            assembly = DocumentAssembly{};
+            assembly.serial = part.serial;
+        }
+        else if (part.serial != assembly.serial || part.part != assembly.next)
+        {
+            break; // a part of a sending this end did not see begin: wait for the next whole one
+        }
+        assembly.text.append(part.bytes.begin(), part.bytes.end());
+        assembly.next = static_cast<uint8_t>(part.part + 1);
+        if (assembly.next == part.parts)
+        {
+            m_documents.push_back({part.kind, std::move(assembly.text)});
+            assembly = DocumentAssembly{};
+            assembly.serial = static_cast<uint16_t>(part.serial + 1);
+            assembly.next = 0xFF;
+        }
+        break;
+    }
+
     case MessageType::WorldState:
     {
         WorldStateMessage state;
@@ -1517,6 +1587,18 @@ void NetClient::SendCommand(const std::string& line)
     BitWriter writer;
     WriteMessageHeader(writer, MessageType::Command);
     WriteCommand(writer, line);
+    SendPacket(*m_transport, kHostPeer, Channel::Reliable, writer);
+}
+
+void NetClient::SendCampaignRequest(const CampaignRequest& request)
+{
+    if (m_transport == nullptr || !m_welcomed)
+    {
+        return;
+    }
+    BitWriter writer;
+    WriteMessageHeader(writer, MessageType::Request);
+    WriteCampaignRequest(writer, request);
     SendPacket(*m_transport, kHostPeer, Channel::Reliable, writer);
 }
 

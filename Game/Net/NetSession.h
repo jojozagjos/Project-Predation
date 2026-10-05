@@ -8,6 +8,7 @@
 #include <glm/vec3.hpp>
 
 #include <functional>
+#include <map>
 #include <memory>
 #include <utility>
 #include <string>
@@ -181,6 +182,15 @@ public:
         std::string line;
     };
     std::vector<CommandRequest> TakeCommands() { return std::exchange(m_commands, {}); }
+    // Things clients have asked of the campaign, with who asked.
+    struct CampaignAsk
+    {
+        uint8_t player = 0;
+        CampaignRequest request;
+    };
+    std::vector<CampaignAsk> TakeCampaignRequests() { return std::exchange(m_campaignRequests, {}); }
+    // A document (the campaign) sent whole, in parts, to one player or (-1) to everybody let in.
+    void SendDocument(int playerId, DocumentKind kind, const std::string& text);
     // Health back, into the controller the host simulates for them.
     void HealPlayer(uint8_t playerId, float amount);
     // The host keeps a tally of what each client has picked up, so a client cannot put down
@@ -296,6 +306,8 @@ private:
     std::vector<ItemUseRequest> m_itemUses;
     std::vector<LoadoutRequest> m_loadouts;
     std::vector<CommandRequest> m_commands;
+    std::vector<CampaignAsk> m_campaignRequests;
+    uint16_t m_documentSerial = 0;
     // Where the host itself is, kept each tick, so a voice arriving between ticks can be told
     // whether the host is near enough to hear it without the caller having to pass it in.
     glm::vec3 m_localPosition{0.0f};
@@ -447,6 +459,14 @@ public:
     void SendItemUse(const ItemUseMessage& use);
     void SendLoadout(const LoadoutMessage& kit);
     void SendCommand(const std::string& line);
+    void SendCampaignRequest(const CampaignRequest& request);
+    // Documents the host has sent that have arrived whole since last asked, oldest first.
+    struct Document
+    {
+        DocumentKind kind = DocumentKind::Campaign;
+        std::string text;
+    };
+    std::vector<Document> TakeDocuments() { return std::exchange(m_documents, {}); }
     // My microphone, on its way to the host, which decides who is close enough to hear it.
     void SendVoice(uint16_t sequence, const std::vector<uint8_t>& frame);
     // Voice from other people, waiting to be played. Taken rather than read: each frame is played
@@ -496,6 +516,15 @@ private:
     std::vector<KnownPeer> m_peers;
     bool m_hostStarted = false;
     std::vector<WorldEventMessage> m_worldEvents;
+    // Documents arriving: the parts so far of the one of each kind being sent, and the ones complete.
+    struct DocumentAssembly
+    {
+        uint16_t serial = 0;
+        uint8_t next = 0;
+        std::string text;
+    };
+    std::map<uint8_t, DocumentAssembly> m_documentParts;
+    std::vector<Document> m_documents;
     std::vector<VoiceHeard> m_voiceIn;
     WorldStateMessage m_worldState;
     CreatureStateMessage m_creatureState;

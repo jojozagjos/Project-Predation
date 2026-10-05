@@ -613,6 +613,7 @@ bool PredationGame::OnInit(Application& app)
     // Somebody joining is made where they belong now: aboard, at the site, or at the spawn.
     m_host.SetSpawnFor([this](uint8_t player) { return ArrivalFor(player); });
     LoadMissionData();
+    LoadUniverseData();
     LoadCinematics();
     app.GetPhysics().OptimizeBroadPhase();
     // The walkable surface the creature moves over, worked out from the level's solid geometry.
@@ -658,6 +659,7 @@ bool PredationGame::OnInit(Application& app)
     RegisterCinematicCommands();
     RegisterShipCommands();
     RegisterLoadoutCommands();
+    RegisterCampaignCommands();
     // The game opens at the menu, with the world already built behind it.
     std::snprintf(m_joinAddress, sizeof(m_joinAddress), "%s", cv_lastAddress.Get().c_str());
     std::snprintf(m_playerName, sizeof(m_playerName), "%s", cv_playerName.Get().c_str());
@@ -2310,6 +2312,7 @@ void PredationGame::SendWorldToPlayer(uint8_t player)
     // And how the mission stands on it: the power, the download, a launch counting down. And where everybody is.
     BroadcastMission(true, player);
     SendShipState(player);
+    SendCampaign(player);
 
     // Somebody who has just walked in has to be told what has already happened, or every door that
     // was opened before they arrived is shut on their screen for the rest of the game.
@@ -2912,6 +2915,7 @@ void PredationGame::UpdateHostMigration(float dt)
             }
             m_ports.Open(port);
             m_portsAnnounced = false;
+            AdoptCampaign();
             m_app->GetConsole().Print("The host left. You are hosting now.");
         }
         else
@@ -3450,6 +3454,8 @@ void PredationGame::GoToMap(MapChoice map)
         RemoveAllDrones();
         ClearOrders();
         ScheduleOrders(false);
+        // Back aboard from an expedition: a moment worth saving at.
+        SaveCampaign(true, "back aboard");
     }
     SpawnCreatures();
     RespawnLocalPlayer(m_spawnPoint);
@@ -4224,9 +4230,21 @@ void PredationGame::DrawTitleHost()
     ImGui::EndDisabled();
 
     ImGui::Spacing();
+    DrawTitleCampaigns();
+    ImGui::Spacing();
     if (ImGui::Button("Start", wide))
     {
+        std::string error;
+        if (!OpenChosenCampaign(error))
+        {
+            m_titleStatus = "That campaign could not be opened: " + error;
+            return;
+        }
         StartHosting();
+        if (m_sessionMode != SessionMode::Host)
+        {
+            CloseCampaign();
+        }
         return;
     }
 
@@ -5446,6 +5464,18 @@ void PredationGame::DrawPauseMenu()
     {
         m_settingsOpen = true;
     }
+    if (m_campaignOpen && !m_campaignFolder.empty())
+    {
+        ImGui::Spacing();
+        if (ImGui::Button("Save the campaign", wide))
+        {
+            SaveCampaign(false, "from the pause menu");
+        }
+    }
+    else if (m_campaignOpen)
+    {
+        ImGui::TextDisabled("The host saves the campaign.");
+    }
 
     // How to let somebody else in, while hosting. People can join a game that has already started,
     // and a host who wants to let somebody in now only has to read the code out again.
@@ -5480,6 +5510,7 @@ void PredationGame::DrawPauseMenu()
 void PredationGame::ReturnToTitle()
 {
     PRED_LOG_INFO(Gameplay, "Back to the title screen");
+    CloseCampaign();
     StopSession();
     ClearCreatures();
     RemoveAllDrones();
@@ -7616,6 +7647,7 @@ void PredationGame::OnShutdown()
     {
         m_navRebuild.wait();
     }
+    CloseCampaign();
     StopSession();
     DestroyEditorFirstPerson();
     m_editor.Shutdown(m_editorScene);
@@ -9608,6 +9640,8 @@ void PredationGame::OnUpdate(double dt, double alpha)
     {
         PRED_LOG_INFO(Engine, "Long frame: {:.0f} ms{}", dt * 1000.0, m_cine.Active() ? " (in a cinematic)" : m_screen == Screen::Title ? " (title)" : "");
     }
+
+    UpdateCampaign(deltaSeconds);
 
     // --- Input that is sampled per frame, not per tick ------------------------------------------
     SampleLook(deltaSeconds);
@@ -11724,6 +11758,7 @@ void PredationGame::DrawHud()
     DrawDroneHud();
     DrawMissionHud();
     DrawShipHud();
+    DrawCampaignNotice();
     DrawTitleCard();
     DrawSubtitle();
     DrawPlayerList();

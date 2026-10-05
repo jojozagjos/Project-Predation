@@ -925,6 +925,94 @@ bool ReadCommand(BitReader& reader, std::string& out)
     return !reader.Overran();
 }
 
+void WriteDocumentPart(BitWriter& writer, const DocumentPart& message)
+{
+    writer.WriteBits(static_cast<uint32_t>(message.kind), 4);
+    writer.WriteBits(message.serial, 16);
+    writer.WriteBits(message.part, 8);
+    writer.WriteBits(message.parts, 8);
+    const size_t length = std::min(message.bytes.size(), DocumentPart::kMaxBytes);
+    writer.WriteBits(static_cast<uint32_t>(length), 10);
+    for (size_t i = 0; i < length; ++i)
+    {
+        writer.WriteByte(message.bytes[i]);
+    }
+}
+
+bool ReadDocumentPart(BitReader& reader, DocumentPart& out)
+{
+    out.kind = static_cast<DocumentKind>(reader.ReadBits(4));
+    out.serial = static_cast<uint16_t>(reader.ReadBits(16));
+    out.part = static_cast<uint8_t>(reader.ReadBits(8));
+    out.parts = static_cast<uint8_t>(reader.ReadBits(8));
+    const uint32_t length = reader.ReadBits(10);
+    if (length > DocumentPart::kMaxBytes || out.parts == 0 || out.part >= out.parts)
+    {
+        return false;
+    }
+    out.bytes.resize(length);
+    for (uint32_t i = 0; i < length; ++i)
+    {
+        out.bytes[i] = reader.ReadByte();
+    }
+    return !reader.Overran();
+}
+
+std::vector<DocumentPart> SplitDocument(DocumentKind kind, uint16_t serial, const std::string& text)
+{
+    const size_t parts = std::max<size_t>((text.size() + DocumentPart::kMaxBytes - 1) / DocumentPart::kMaxBytes, 1);
+    std::vector<DocumentPart> out;
+    if (parts > 255)
+    {
+        return out;
+    }
+    for (size_t i = 0; i < parts; ++i)
+    {
+        DocumentPart part;
+        part.kind = kind;
+        part.serial = serial;
+        part.part = static_cast<uint8_t>(i);
+        part.parts = static_cast<uint8_t>(parts);
+        const size_t from = i * DocumentPart::kMaxBytes;
+        const size_t to = std::min(from + DocumentPart::kMaxBytes, text.size());
+        part.bytes.assign(text.begin() + static_cast<std::ptrdiff_t>(from), text.begin() + static_cast<std::ptrdiff_t>(to));
+        out.push_back(std::move(part));
+    }
+    return out;
+}
+
+void WriteCampaignRequest(BitWriter& writer, const CampaignRequest& message)
+{
+    writer.WriteBits(message.action, 8);
+    writer.WriteBits(static_cast<uint32_t>(message.a), 32);
+    writer.WriteBits(static_cast<uint32_t>(message.b), 32);
+    const size_t length = std::min(message.text.size(), CampaignRequest::kMaxText);
+    writer.WriteBits(static_cast<uint32_t>(length), 7);
+    for (size_t i = 0; i < length; ++i)
+    {
+        writer.WriteByte(static_cast<uint8_t>(message.text[i]));
+    }
+}
+
+bool ReadCampaignRequest(BitReader& reader, CampaignRequest& out)
+{
+    out.action = static_cast<uint8_t>(reader.ReadBits(8));
+    out.a = static_cast<int32_t>(reader.ReadBits(32));
+    out.b = static_cast<int32_t>(reader.ReadBits(32));
+    const uint32_t length = reader.ReadBits(7);
+    if (length > CampaignRequest::kMaxText)
+    {
+        return false;
+    }
+    out.text.clear();
+    for (uint32_t i = 0; i < length; ++i)
+    {
+        const uint8_t byte = reader.ReadByte();
+        out.text.push_back(byte >= 32 && byte < 127 ? static_cast<char>(byte) : ' ');
+    }
+    return !reader.Overran();
+}
+
 bool ReadLoadout(BitReader& reader, LoadoutMessage& out)
 {
     const uint32_t count = reader.ReadBits(4);

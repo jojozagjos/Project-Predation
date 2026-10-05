@@ -2662,3 +2662,37 @@ From the user's list.
   shown for a moment when the hotbar moves to it; a new lobby code shown when a client takes over as host; the held item
   set along the view, not the forearm, which had turned it while the body caught up; less sway aiming down sights;
   lights flicker in short stutters every few seconds, not constantly; lamps keep their shadows to 70 m past their reach.
+
+## ADR-124: The open exploration rework begins: a universe from a seed, and campaigns saved by the host
+
+The user's design for reworking the game round open exploration is [REWORK_DESIGN.md](REWORK_DESIGN.md), with their
+first two answers: the crew is an independent, CIRRA-contracted exploration and recovery crew with a ship of its own,
+and CIRRA's missions stay as optional contracts. This is its first step, the part everything after it stands on.
+
+- **The universe** (Game/Campaign/Universe): star systems in the cells of a thin galactic disc, each made the first time
+  it is asked for from the universe's seed and where it is (SplitMix64, the same on every machine), and kept only while
+  looked at. A system is a star and its planets outwards, about half again as far out each, with moons; how warm each
+  is comes from its star's light and its distance (and its air), and that picks its biome. Everything a planet can be
+  is data (Assets/Data/universe.json): biomes, atmospheres, terrains, weathers, civilizations, specials, stars and the
+  kinds of landing region -- a planet is one of each, picked by weight from what suits it, so variety is combinations
+  and a new kind of world is an entry. Each solid body has landing regions with their own seeds, designations in the
+  agreed style ("SURVEY SITE 05, GLACIAL SHELF") and places on the planet; some are charted, the rest are to be
+  found. Home always has a settled world with a shipyard on it, where a campaign starts. Systems are named from the
+  catalogue list ("KEPLER-217"), planets by numeral, moons by letter ("KEPLER-217 VI b").
+- **A campaign** (Game/Campaign/Campaign): only what is not made from the seed -- credits, components, upgrades, the
+  ship's colours, where the ship is and where it is heading, what is known of each body, regions found, what has been
+  changed in each region, the log, story flags, cargo, and the campaign's clock (which the planets turn by). Its JSON
+  form is the save. Keys a newer game wrote are kept and written back; it carries a version for bringing old saves up.
+- **Saving** (Game/Campaign/CampaignStore): a folder a campaign under the player's own data (Campaigns/<name>), with
+  a hand save and an autosave; loading takes the newer one that reads. Each is written whole to a spare name and put
+  in place, the one before kept as a backup, on a worker thread, so a crash mid-save loses nothing and the game does
+  not stall on the disk. Autosaved on getting back aboard and on leaving; saved by hand from the pause menu (the host).
+- **Hosting** chooses a campaign: the host page lists them (newest first, with time played and when saved; deleting
+  asks twice) or begins a new one with a name and an optional seed. Single player is hosting with nobody else.
+- **Multiplayer**: the host's copy is the campaign. It is sent whole (MessageType::Document: JSON in parts of a
+  thousand bytes, put back together in order) to anybody arriving and to everybody a moment after it changes, and
+  every ten seconds for the clock. Clients ask things of it with MessageType::Request (an action, two numbers, a
+  short text), for the host to check and do; nothing handles one yet. A client that takes over as host keeps the
+  campaign as it last had it, saved as a campaign of its own. Protocol 31.
+- Not yet: the ship, the map, travel, landing regions and the rest are still the old game; they come next, each on
+  this.
