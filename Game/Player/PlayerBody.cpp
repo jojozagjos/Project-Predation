@@ -2747,7 +2747,8 @@ void PlayerBody::UpdateHeldItem(const PlayerState& state, const PlayerView& view
     constexpr float kWristBack = 0.075f;
     const glm::vec3 out = target - shoulder;
     const float outLength = glm::length(out);
-    glm::vec3 wrist = outLength > 1e-4f ? target - out * (kWristBack / outLength) : target;
+    const glm::vec3 wristWanted = outLength > 1e-4f ? target - out * (kWristBack / outLength) : target;
+    glm::vec3 wrist = wristWanted;
     const float reach = (m_rig.upperArmLength + m_rig.lowerArmLength) * 0.94f;
     const glm::vec3 toWrist = wrist - shoulder;
     const float wristDistance = glm::length(toWrist);
@@ -2771,9 +2772,9 @@ void PlayerBody::UpdateHeldItem(const PlayerState& state, const PlayerView& view
     m_pose.SetGlobal(m_skeleton, m_rig.lowerArm[kRight],
                      SegmentFrame(m_rig.lowerArm[kRight], ik.jointPosition, ik.endPosition, hinge));
 
-    // Where the arm could not quite get, the item comes back with the hand rather than hanging in front of it.
-    const glm::vec3 shortfall = ik.endPosition - wrist;
-    const glm::vec3 palm = target + shortfall;
+    // Where the arm could not get -- pulled into reach, or short of where it was aimed -- the item comes back with the
+    // hand rather than hanging in front of it.
+    const glm::vec3 palm = target + (ik.endPosition - wristWanted);
     m_heldItemTransform.position = palm + m_heldItemTransform.rotation * m_heldItemOffset;
 
     // The hand points at where it closes on the item and takes its roll from the view, not from the arm: the same rule
