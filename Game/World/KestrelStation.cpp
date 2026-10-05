@@ -41,7 +41,7 @@ constexpr float kKerb = 0.15f;
 constexpr float kCrossFrom = -8.6f;
 constexpr float kCrossTo = -5.2f;
 // Paint is laid this far over what it is on, and no two coats ever at the same height where they meet.
-constexpr float kPaint = 0.04f;
+constexpr float kPaint = 0.05f;
 
 // The station's colours: weathered concrete and painted steel, the old darker than the new; asphalt; amber sodium light and
 // the cooler white of floodlights; hazard yellow; CIRRA's orange.
@@ -111,6 +111,47 @@ struct Builder
         Box(stem, {hi.x - thick, lo.y, lo.z + thick}, {hi.x, hi.y, hi.z - thick}, colour, 0.85f);
     }
 };
+
+// A rectangle on the ground (x0, z0, x1, z1), less the holes in it: the pieces left, as rectangles.
+std::vector<glm::vec4> Subtract(const glm::vec4& rect, const std::vector<glm::vec4>& holes)
+{
+    std::vector<glm::vec4> pieces{rect};
+    for (const glm::vec4& hole : holes)
+    {
+        std::vector<glm::vec4> next;
+        for (const glm::vec4& r : pieces)
+        {
+            const float x0 = std::max(r.x, hole.x);
+            const float z0 = std::max(r.y, hole.y);
+            const float x1 = std::min(r.z, hole.z);
+            const float z1 = std::min(r.w, hole.w);
+            if (x1 <= x0 || z1 <= z0)
+            {
+                next.push_back(r);
+                continue;
+            }
+            // Either side of the hole the full depth; before and after it between those.
+            if (x0 > r.x)
+            {
+                next.push_back({r.x, r.y, x0, r.w});
+            }
+            if (x1 < r.z)
+            {
+                next.push_back({x1, r.y, r.z, r.w});
+            }
+            if (z0 > r.y)
+            {
+                next.push_back({x0, r.y, x1, z0});
+            }
+            if (z1 < r.w)
+            {
+                next.push_back({x0, z1, x1, r.w});
+            }
+        }
+        pieces = std::move(next);
+    }
+    return pieces;
+}
 
 // A light-ish hash for small variations: which panel of concrete is a shade darker.
 float Shade(int a, int b)
@@ -202,15 +243,32 @@ ModelAsset Solid(const glm::vec3& ground, const glm::vec3& rock)
     }
 
     // The station's slab: everything inside the fence is concrete, poured in squares a shade apart -- and each square its
-    // own piece, so the lamps over it light the part under them.
+    // own piece, so the lamps over it light the part under them. The bay's pad and the street's road are poured into it, not
+    // laid on it: a few centimetres of paint on concrete can be told apart close to, but a hundred metres off the picture's
+    // depth cannot tell which is in front, and they flicker.
+    const std::vector<glm::vec4> poured{{-17.0f, -30.0f, 17.0f, 34.0f}, {kPavementWest, kStreetNorth, kPavementEast, kStreetSouth}};
     for (int i = 0; i < 14; ++i)
     {
         for (int j = 0; j < 14; ++j)
         {
             const float x = -140.0f + 20.0f * static_cast<float>(i);
             const float z = -160.0f + 20.0f * static_cast<float>(j);
-            b.Box("slab", {x, kG, z}, {x + 20.0f, s, z + 20.0f}, kConcrete * (0.72f + 0.1f * Shade(i, j)), 0.9f);
+            for (const glm::vec4& piece : Subtract({x, z, x + 20.0f, z + 20.0f}, poured))
+            {
+                b.Box("slab", {piece.x, kG, piece.y}, {piece.z, s, piece.w}, kConcrete * (0.72f + 0.1f * Shade(i, j)), 0.9f);
+            }
         }
+    }
+    for (const glm::vec2 x : {glm::vec2{-17.0f, 0.0f}, glm::vec2{0.0f, 17.0f}})
+    {
+        for (const glm::vec2 z : {glm::vec2{-30.0f, 2.0f}, glm::vec2{2.0f, 34.0f}})
+        {
+            b.Box("pad", {x.x, kG, z.x}, {x.y, s, z.y}, kPadColour, 0.85f);
+        }
+    }
+    for (float z = kStreetNorth; z < kStreetSouth - 0.01f; z += 25.0f)
+    {
+        b.Box("road", {kPavementWest, kG, z}, {kPavementEast, s, z + 25.0f}, kAsphalt, 0.95f);
     }
 
     // --- Hangar Row: the ship's bay -----------------------------------------------------------------------------------
@@ -408,7 +466,8 @@ ModelAsset Solid(const glm::vec3& ground, const glm::vec3& rock)
         {
             const float b2 = std::min(a + 7.0f, to2);
             const glm::vec3 lo = alongX ? glm::vec3(a, s, fixed - 0.05f) : glm::vec3(fixed - 0.05f, s, a);
-            const glm::vec3 hi = alongX ? glm::vec3(b2, s + 3.4f, fixed + 0.05f) : glm::vec3(fixed + 0.05f, s + 3.4f, b2);
+            // The sides a hand lower than the ends, so where they meet at the corners their tops are not one on the other.
+            const glm::vec3 hi = alongX ? glm::vec3(b2, s + 3.4f, fixed + 0.05f) : glm::vec3(fixed + 0.05f, s + 3.35f, b2);
             b.Box("fence", lo, hi, kSteelDark * 1.3f, 0.6f, 0.5f);
         }
     }
@@ -426,16 +485,9 @@ ModelAsset Dressing(const glm::vec3& ground)
     const float paint = s + kPaint;
 
     // --- The bay's floor ------------------------------------------------------------------------------------------------
-    // The pad, a darker square under the ship, in four so its lamps light it; a hazard border round it, its sides whole
-    // and its ends between them; lamps sunk outside the border; the guide line out to the apron; the walkway from the
-    // stair to the gate, broken where it crosses the border.
-    for (const glm::vec2 x : {glm::vec2{-17.0f, 0.0f}, glm::vec2{0.0f, 17.0f}})
-    {
-        for (const glm::vec2 z : {glm::vec2{-30.0f, 2.0f}, glm::vec2{2.0f, 34.0f}})
-        {
-            b.Box("pad", {x.x, s - 0.02f, z.x}, {x.y, s + 0.02f, z.y}, kPadColour, 0.85f);
-        }
-    }
+    // The pad (poured in the slab: Solid) has a hazard border round it, its sides whole and its ends between them; lamps
+    // sunk outside the border; the guide line out to the apron; the walkway from the stair to the gate, broken where it
+    // crosses the border.
     b.Box("pad_edge", {-17.45f, s, -30.45f}, {-16.55f, paint, 34.45f}, kHazard, 0.7f);
     b.Box("pad_edge", {16.55f, s, -30.45f}, {17.45f, paint, 34.45f}, kHazard, 0.7f);
     b.Box("pad_edge", {-16.55f, s, -30.45f}, {16.55f, paint, -29.55f}, kHazard, 0.7f);
@@ -467,15 +519,16 @@ ModelAsset Dressing(const glm::vec3& ground)
     b.Box("coping", {kPortWall + 0.15f, s + kWallHigh - 0.05f, kBackWall - 0.15f}, {kWorksWall, s + kWallHigh + 0.3f, kBackWall + 1.15f}, kConcrete, 0.85f);
     for (const glm::vec2 run : {glm::vec2{kBayOpen, kGateFrom}, glm::vec2{kGateTo, kBackWall}})
     {
-        b.Box("grime", {kPortWall - 0.05f, s, run.x}, {kPortWall + 0.05f, s + 1.4f, run.y}, kGrime, 0.95f);
-        b.Box("grime", {kPortWall - 1.05f, s, run.x}, {kPortWall - 0.95f, s + 1.2f, run.y}, kGrime, 0.95f);
+        // Short of the wall's ends, so no end of them lies in the end of the wall.
+        b.Box("grime", {kPortWall - 0.05f, s, run.x + 0.05f}, {kPortWall + 0.05f, s + 1.4f, run.y - 0.05f}, kGrime, 0.95f);
+        b.Box("grime", {kPortWall - 1.05f, s, run.x + 0.05f}, {kPortWall - 0.95f, s + 1.2f, run.y - 0.05f}, kGrime, 0.95f);
         for (float z = run.x + 3.0f; z < run.y - 1.0f; z += 7.0f)
         {
             b.Box("streak", {kPortWall - 0.05f, s + 4.0f + std::fmod(std::abs(z) * 0.37f, 2.5f), z}, {kPortWall + 0.03f, s + kWallHigh - 0.1f, z + 1.1f},
                   kGrime * 1.4f, 0.95f);
         }
     }
-    b.Box("grime", {kPortWall, s, kBackWall - 0.05f}, {kWorksWall, s + 1.4f, kBackWall + 0.05f}, kGrime, 0.95f);
+    b.Box("grime", {kPortWall + 0.05f, s, kBackWall - 0.05f}, {kWorksWall, s + 1.3f, kBackWall + 0.05f}, kGrime, 0.95f);
     // A gantry along the inside of the port wall, either side of the gate, on brackets; its rail; a ladder up to it.
     for (const glm::vec2 run : {glm::vec2{kBayOpen + 2.0f, kGateFrom - 1.0f}, glm::vec2{kGateTo + 1.0f, 26.0f}})
     {
@@ -491,7 +544,7 @@ ModelAsset Dressing(const glm::vec3& ground)
     // Conduits along the port wall's inside, high, and along the back wall low.
     for (const float y : {7.4f, 7.9f})
     {
-        b.Box("conduit", {kPortWall - 0.05f, s + y, kBayOpen}, {kPortWall + 0.75f, s + y + 0.3f, kGateFrom}, kSteel * 1.2f, 0.4f, 0.8f);
+        b.Box("conduit", {kPortWall - 0.05f, s + y, kBayOpen + 0.05f}, {kPortWall + 0.75f, s + y + 0.3f, kGateFrom}, kSteel * 1.2f, 0.4f, 0.8f);
         b.Box("conduit", {kPortWall - 0.05f, s + y, kGateTo}, {kPortWall + 0.75f, s + y + 0.3f, 27.0f}, kSteel * 1.2f, 0.4f, 0.8f);
     }
     b.Box("conduit", {-16.0f, s + 2.0f, kBackWall - 0.95f}, {kWorksWall, s + 2.5f, kBackWall - 0.6f}, kRust, 0.6f, 0.5f);
@@ -509,7 +562,7 @@ ModelAsset Dressing(const glm::vec3& ground)
     // The booth's windows on the pad, and its door.
     b.Box("fx_window", {-23.2f, s + 6.2f, 27.72f}, {-21.0f, s + 7.8f, 27.86f}, kWindow, 0.3f, 0.0f, 0.9f);
     b.Box("fx_window", {-19.0f, s + 6.2f, 27.72f}, {-16.8f, s + 7.8f, 27.86f}, kWindow, 0.3f, 0.0f, 0.9f);
-    b.Box("booth_door", {-20.6f, s + 5.0f, 27.72f}, {-19.4f, s + 7.3f, 27.86f}, kSteelDark, 0.6f, 0.5f);
+    b.Box("booth_door", {-20.6f, s + 5.02f, 27.72f}, {-19.4f, s + 7.3f, 27.86f}, kSteelDark, 0.6f, 0.5f);
     for (const float x : {-20.75f, -19.25f})
     {
         // A metre over the ramp's middle, as long as it is and at its slope.
@@ -542,7 +595,7 @@ ModelAsset Dressing(const glm::vec3& ground)
         b.Box("fx_window", {kWorksWall - 0.08f, s + 16.5f, z}, {kWorksWall + 0.05f, s + 18.0f, z + 3.6f}, kWindow, 0.3f, 0.0f, 0.8f);
     }
     b.Box("shipworks_crane", {30.0f, s + 20.8f, -4.0f}, {74.0f, s + 22.0f, -2.8f}, kOrange * 0.85f, 0.6f, 0.4f);
-    b.Box("shipworks_crane_mast", {30.0f, s + 20.8f, -4.0f}, {31.2f, s + 27.8f, -2.8f}, kOrange * 0.85f, 0.6f, 0.4f);
+    b.Box("shipworks_crane_mast", {30.1f, s + 20.8f, -3.9f}, {31.1f, s + 27.8f, -2.9f}, kOrange * 0.85f, 0.6f, 0.4f);
     // Pipes from the tanks into its back.
     for (const float y : {3.0f, 4.0f})
     {
@@ -550,12 +603,8 @@ ModelAsset Dressing(const glm::vec3& ground)
     }
 
     // --- The street -----------------------------------------------------------------------------------------------------
-    // The road, in lengths; its centre line dashed, its edges lined, both broken for the crossing from the gate to Operations
+    // The road (poured in the slab: Solid): its centre line dashed, its edges lined, both broken for the crossing from the gate to Operations
     // Hall, which is striped.
-    for (float z = kStreetNorth; z < kStreetSouth - 0.01f; z += 25.0f)
-    {
-        b.Box("road", {kPavementWest, s - 0.02f, z}, {kPavementEast, s + 0.02f, z + 25.0f}, kAsphalt, 0.95f);
-    }
     const float middle = (kPavementWest + kPavementEast) * 0.5f;
     for (float z = kStreetNorth + 2.0f; z < kStreetSouth - 3.0f; z += 8.0f)
     {
@@ -567,8 +616,8 @@ ModelAsset Dressing(const glm::vec3& ground)
     }
     for (const float x : {kPavementWest + 0.5f, kPavementEast - 0.5f})
     {
-        b.Box("road_line", {x - 0.1f, s, kStreetNorth}, {x + 0.1f, paint, kCrossFrom - 0.6f}, kWhitePaint * 0.9f, 0.7f);
-        b.Box("road_line", {x - 0.1f, s, kCrossTo + 0.6f}, {x + 0.1f, paint, kStreetSouth}, kWhitePaint * 0.9f, 0.7f);
+        b.Box("road_line", {x - 0.1f, s, kStreetNorth + 0.2f}, {x + 0.1f, paint, kCrossFrom - 0.6f}, kWhitePaint * 0.9f, 0.7f);
+        b.Box("road_line", {x - 0.1f, s, kCrossTo + 0.6f}, {x + 0.1f, paint, kStreetSouth - 0.2f}, kWhitePaint * 0.9f, 0.7f);
     }
     for (float x = kPavementWest + 0.4f; x < kPavementEast - 0.5f; x += 1.1f)
     {
@@ -602,12 +651,12 @@ ModelAsset Dressing(const glm::vec3& ground)
     b.Box("fx_lobby_glass", {kFacade - 2.06f, s, -6.0f}, {kFacade - 1.94f, s + 3.2f, 2.0f}, kWindow * 0.75f, 0.2f, 0.0f, 0.55f);
     for (float z = -6.0f; z <= 2.01f; z += 2.0f)
     {
-        b.Box("lobby_mullion", {kFacade - 1.97f, s, z - 0.06f}, {kFacade - 1.85f, s + 3.35f, z + 0.06f}, kSteelDark, 0.5f, 0.7f);
+        b.Box("lobby_mullion", {kFacade - 1.97f, s, z - 0.06f}, {kFacade - 1.85f, s + 3.32f, z + 0.06f}, kSteelDark, 0.5f, 0.7f);
     }
-    b.Box("lobby_transom", {kFacade - 1.96f, s + 3.2f, -6.06f}, {kFacade - 1.86f, s + 3.35f, 2.06f}, kSteelDark, 0.5f, 0.7f);
+    b.Box("lobby_transom", {kFacade - 1.96f, s + 3.2f, -6.04f}, {kFacade - 1.86f, s + 3.35f, 2.04f}, kSteelDark, 0.5f, 0.7f);
     b.Box("ops_canopy", {kFacade - 0.05f, s + 5.6f, -9.5f}, {kPavementWest - 0.5f, s + 6.0f, 5.5f}, kSteel, 0.6f, 0.5f);
-    b.Box("ops_plinth", {kFacade - 0.05f, s, -26.0f}, {kFacade + 0.12f, s + 0.9f, -9.0f}, kConcreteOld * 0.8f, 0.9f);
-    b.Box("ops_plinth", {kFacade - 0.05f, s, 5.0f}, {kFacade + 0.12f, s + 0.9f, 22.0f}, kConcreteOld * 0.8f, 0.9f);
+    b.Box("ops_plinth", {kFacade - 0.05f, s, -25.95f}, {kFacade + 0.12f, s + 0.9f, -9.05f}, kConcreteOld * 0.8f, 0.9f);
+    b.Box("ops_plinth", {kFacade - 0.05f, s, 5.05f}, {kFacade + 0.12f, s + 0.9f, 21.95f}, kConcreteOld * 0.8f, 0.9f);
     for (int i = 0; i < 5; ++i)
     {
         b.Box("roof_unit", {-93.0f + 7.0f * static_cast<float>(i), s + 15.95f, 13.0f}, {-89.0f + 7.0f * static_cast<float>(i), s + 17.9f, 18.0f}, kSteel, 0.6f,
@@ -650,7 +699,7 @@ ModelAsset Dressing(const glm::vec3& ground)
     b.Cylinder("relay_dish", {-69.0f, s + 39.0f, 94.0f}, 9.0f, 0.4f, {60.0f, 0.0f, 0.0f}, kPanel, 0.4f, 0.3f);
     b.Box("fx_relay_light", {-69.3f, s + 42.0f, 98.7f}, {-68.7f, s + 42.6f, 99.3f}, {1.0f, 0.12f, 0.08f}, 0.3f, 0.0f, 6.0f);
     // The barrier arm at the gatehouse.
-    b.Box("barrier_arm", {kPavementWest - 0.4f, s + 0.95f, -145.2f}, {kPavementEast, s + 1.1f, -145.0f}, kHazard, 0.6f);
+    b.Box("barrier_arm", {kPavementWest - 0.4f, s + 0.9f, -145.2f}, {kPavementEast, s + 1.05f, -145.0f}, kHazard, 0.6f);
 
     // --- Salvage Intake: its doors over the dock, the gantry crane over the containers ---------------------------------
     for (int i = 0; i < 4; ++i)
@@ -679,7 +728,9 @@ ModelAsset Dressing(const glm::vec3& ground)
         {
             continue;
         }
-        ModelPart& patch = b.Box("patch", at - glm::vec3(wide, 0.02f, wide * 0.6f), at + glm::vec3(wide, 0.03f + 0.025f * static_cast<float>(i % 5), wide * 0.6f),
+        // Raised a little each, and each by a different amount, so where they overlap their tops never lie together, nor on
+        // the ground's -- this far off the picture's depth needs a hand's breadth between surfaces, not centimetres.
+        ModelPart& patch = b.Box("patch", at - glm::vec3(wide, 0.1f, wide * 0.6f), at + glm::vec3(wide, 0.2f + 0.04f * static_cast<float>(i), wide * 0.6f),
                                  ground * (0.82f + 0.06f * static_cast<float>((i * 5) % 7)), 0.95f);
         patch.rotation = {0.0f, angle * kDegrees, 0.0f};
     }

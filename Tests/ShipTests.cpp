@@ -3,6 +3,7 @@
 #include "Engine/Scene/Scene.h"
 #include "Game/Interaction/InteractionSystem.h"
 #include "Game/Items/ItemDatabase.h"
+#include "Game/World/KestrelStation.h"
 #include "Game/World/ShipMap.h"
 #include "Game/World/Vehicles.h"
 #include "Game/World/WorldObjects.h"
@@ -210,4 +211,89 @@ TEST_CASE("No two parts of a vehicle share a surface facing the same way, which 
             }
         }
     }
+}
+
+namespace
+{
+
+// Every pair of parts, across the models given, with a face within a few millimetres of one of the other's, facing the same way
+// and overlapping, that nothing else covers: what flickers. Turned and non-box parts are left out (none of them lies on another).
+std::vector<std::string> SharedFaces(const std::vector<const ModelAsset*>& models)
+{
+    std::vector<const ModelPart*> parts;
+    for (const ModelAsset* model : models)
+    {
+        for (const ModelPart& part : model->parts)
+        {
+            if (part.shape == PartShape::Box && part.rotation == glm::vec3(0.0f) && part.parent.empty())
+            {
+                parts.push_back(&part);
+            }
+        }
+    }
+    std::vector<std::string> found;
+    for (size_t i = 0; i < parts.size(); ++i)
+    {
+        const ModelPart& a = *parts[i];
+        for (size_t j = i + 1; j < parts.size(); ++j)
+        {
+            const ModelPart& b = *parts[j];
+            for (int axis = 0; axis < 3; ++axis)
+            {
+                const int u = (axis + 1) % 3;
+                const int v = (axis + 2) % 3;
+                const float lowU = std::max(a.position[u] - a.size[u] * 0.5f, b.position[u] - b.size[u] * 0.5f);
+                const float highU = std::min(a.position[u] + a.size[u] * 0.5f, b.position[u] + b.size[u] * 0.5f);
+                const float lowV = std::max(a.position[v] - a.size[v] * 0.5f, b.position[v] - b.size[v] * 0.5f);
+                const float highV = std::min(a.position[v] + a.size[v] * 0.5f, b.position[v] + b.size[v] * 0.5f);
+                if (highU - lowU < 0.01f || highV - lowV < 0.01f)
+                {
+                    continue;
+                }
+                for (const float side : {-0.5f, 0.5f})
+                {
+                    const float faceA = a.position[axis] + a.size[axis] * side;
+                    const float faceB = b.position[axis] + b.size[axis] * side;
+                    if (std::abs(faceA - faceB) > 0.005f)
+                    {
+                        continue;
+                    }
+                    // Buried: just outside the shared face is inside some other part, so neither is ever seen. Looked at in a
+                    // few places over the overlap, not only its middle.
+                    bool seen = false;
+                    for (const glm::vec2 at : {glm::vec2{0.5f, 0.5f}, glm::vec2{0.1f, 0.1f}, glm::vec2{0.9f, 0.1f}, glm::vec2{0.1f, 0.9f}, glm::vec2{0.9f, 0.9f}})
+                    {
+                        glm::vec3 outside;
+                        outside[axis] = std::max(faceA, faceB) * (side > 0.0f ? 1.0f : 0.0f) + std::min(faceA, faceB) * (side > 0.0f ? 0.0f : 1.0f) +
+                                        (side > 0.0f ? 0.004f : -0.004f);
+                        outside[u] = lowU + (highU - lowU) * at.x;
+                        outside[v] = lowV + (highV - lowV) * at.y;
+                        const bool buried = std::any_of(parts.begin(), parts.end(), [&](const ModelPart* c)
+                                                        { return glm::all(glm::lessThanEqual(glm::abs(outside - c->position), c->size * 0.5f + glm::vec3(1.0e-4f))); });
+                        seen = seen || !buried;
+                    }
+                    if (seen)
+                    {
+                        found.push_back(a.name + " and " + b.name + " on axis " + std::to_string(axis));
+                    }
+                }
+            }
+        }
+    }
+    return found;
+}
+
+} // namespace
+
+TEST_CASE("Kestrel Station and the ship standing in it share no surface, which would flicker", "[ship][kestrel]")
+{
+    const ModelAsset hull = ShipMap::HullModel(ShipHullLook{});
+    const ModelAsset solid = KestrelStation::Solid({0.4f, 0.4f, 0.4f}, {0.3f, 0.3f, 0.3f});
+    const ModelAsset dressing = KestrelStation::Dressing({0.4f, 0.4f, 0.4f});
+    const std::vector<std::string> found = SharedFaces({&hull, &solid, &dressing});
+    for (const std::string& pair : found)
+    {
+        UNSCOPED_INFO(pair);
+    }
+    CHECK(found.empty());
 }
