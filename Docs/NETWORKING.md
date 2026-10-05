@@ -79,7 +79,7 @@ infrastructure initially, but no client is trusted for critical events.
 
 ## Not initially
 
-Late join, host migration, interest management, dedicated servers.
+Interest management, dedicated servers.
 
 ## Debug
 
@@ -90,8 +90,11 @@ Network overlay (RTT, loss, bandwidth per channel), replication log, and the sim
 # Implementation notes
 
 **Status**: built through Milestone 8. Two machines connect over UDP, the host simulates everyone, clients
-predict their own movement and interpolate everyone else, and shots, voice, spectating, host migration and
-the creature all cross the wire. Protocol version 9: every player in the snapshot carries whether a
+predict their own movement and interpolate everyone else, and shots, voice, spectating, the campaign and the
+creature all cross the wire. Protocol version 32 now: the campaign is sent whole as a document in parts
+(MessageType::Document, JSON), what clients ask of it comes back as requests (MessageType::Request), and the ship's
+travel and everybody's pointer on the system map ten times a second (MessageType::Travel); the roster carries names
+only, there being no host migration to need addresses for (ADR-124 to 126). The history follows. Protocol version 9: every player in the snapshot carries whether a
 creature has hold of them (and which) or has wrapped them in a cocoon, which the host pins and their own
 machine obeys instead of predicting; every creature carries what its limbs and head are doing (a blow, a
 grab, carrying somebody, a call, a door, and how far through), how far through a jump it is, and what it is
@@ -164,10 +167,10 @@ routers hole punching cannot pass (a relay fallback on the lobby server would be
 The game opens at a title screen with the world already built behind it, so starting is instant and
 there is only ever one world for hosting, joining and leaving to share.
 
-- **Play on your own** goes straight in with no session.
-- **Open a game** binds the port and puts you in the world. Other players join on your address.
-- **Join** takes an address and a port, shows a joining state while the handshake runs, and enters
-  the world when the host answers. Being turned away for a full game or a version mismatch is shown
+- **Continue**, **New campaign** and **Load campaign** open a campaign and host it: the port is bound and the
+  lobby opens, where the host starts the game. Playing alone is hosting with nobody else.
+- **Join a game** takes a code or an address, shows a joining state while the handshake runs, and enters
+  the lobby when the host answers. Being turned away for a full game or a version mismatch is shown
   there rather than dropping you into an empty world.
 
 The address and port are remembered in the archived config (`net.last_address`, `net.last_port`), so

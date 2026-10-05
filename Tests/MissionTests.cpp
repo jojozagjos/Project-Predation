@@ -354,7 +354,7 @@ TEST_CASE("The intercom says one of the lines written for a moment, the same one
     // The file the game reads is readable, and knows every moment.
     IntercomLines game;
     CHECK(game.LoadFromFile(std::filesystem::path(PRED_SOURCE_DIR) / "Assets" / "Data" / "intercom.json"));
-    CHECK(IntercomLines::Moments().size() == 10);
+    CHECK(IntercomLines::Moments().size() == 14);
 }
 
 TEST_CASE("Standing in front of the terminal or a breaker and looking at it, it is offered", "[mission][site][interaction]")

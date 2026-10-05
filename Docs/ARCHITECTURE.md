@@ -113,11 +113,15 @@ In-house: generational entity handles, typed component pools, and systems run in
 may be rich C++ objects. A component registry feeds the inspector, serialization, and replication. Deliberately
 small; EnTT is the fallback if it grows past a few hundred lines.
 
-## Game modules (planned)
+## Game modules
 
-`Player`, `Weapons`, `Interaction`, `Creature`, `Missions`, `Session`, and `Debug` (game-specific panels and
-console commands such as `spawn_creature <seed>`). Milestone 1 contains only `PredationGame`, which drives the
-fly camera and draws a reference scene.
+Under `Game/`: `Campaign` (the universe made from a seed, the campaign's state and its saves, travel, the system
+map's layout), `Player`, `Weapons`, `Items`, `Interaction`, `Creature`, `Mission`, `Cinematic`, `World` (the ship,
+sites and facilities, lights, surfaces), and `Net` (the wire and the session). `PredationGame` ties them together,
+split over files by subject: `PredationGameCampaign.cpp` (campaigns and saving), `PredationGameMap.cpp` (the system
+map and travel), `PredationGameTitle.cpp` (the title's campaign pages and the lobby), `PredationGameShip.cpp`, and
+the rest. The engine draws planets for the map and the sky with `Engine/Render/PlanetRenderer` and
+`Engine/Shaders/planet`.
 
 ## Conventions
 

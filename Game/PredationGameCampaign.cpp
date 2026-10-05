@@ -140,6 +140,7 @@ void PredationGame::CloseCampaign()
     m_pointing = {-1, -1, -1, -1};
     m_mapOpenMask = 0;
     m_appliedTravels = 0;
+    m_travelSeen = false;
     m_campaignSlotsRead = false;
 }
 

@@ -223,8 +223,8 @@ Neither zip carries the `.pdb`. It is forty-five megabytes, it makes the dev zip
 of the game, and nothing reads it: there is no crash handler writing a dump for it to name the
 frames of. What a tester sends back is the log.
 
-To play over the internet, the host presses **Play → Host a game → Start** and sends the code the
-lobby shows; the other person types it into the box at the top of **Play**. That needs a lobby
+To play over the internet, the host opens a campaign (**Continue**, **New campaign** or **Load campaign**) and sends
+the code the lobby shows; the other person types it into the box at the top of **Join a game**. That needs a lobby
 server, which introduces the two PCs so they can connect straight to each other (HOSTING.md,
 SERVER.md). On one network the game appears in the list without one.
 

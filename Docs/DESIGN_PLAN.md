@@ -1,5 +1,10 @@
 # Project Predation: Design Plan
 
+> **Superseded in part (2026-10-04).** The game's structure -- missions ordered by CIRRA, one after another -- is being
+> reworked into an open exploration campaign: see [REWORK_DESIGN.md](REWORK_DESIGN.md) and [ROADMAP.md](ROADMAP.md).
+> The technology, the engine and the systems below still stand; where this plan and the rework disagree about what
+> the game is, the rework is right.
+
 Approved 2026-09-08. This is the plan the codebase follows. The original brief's requirements are the source
 of truth; this document records the interpretation, the technology choices, the roadmap, and the
 recommendations that were raised. Recommendations are labeled as such.

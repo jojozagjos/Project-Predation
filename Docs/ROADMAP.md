@@ -1,91 +1,53 @@
 # What is left
 
-A list of gaps rather than achievements, for deciding what to do next. Updated 2026-09-24, evening.
+The game is being reworked into an open exploration campaign ([REWORK_DESIGN.md](REWORK_DESIGN.md)). This is how far
+it has got, in the order the design's vertical slice puts things. Updated 2026-10-05.
 
-## Where things stand
+## Built
 
-- **The player** walks, runs, sprints, crouches, crawls, leans, mantles, falls, gets hurt, dies as a
-  ragdoll and spectates; carries two weapons with authored reloads and six items that each do
-  something (see [ITEMS.md](ITEMS.md)); and has a torch whose cell runs down.
-- **Multiplayer** is host-authoritative over UDP with prediction, lag compensation, host migration, a
-  lobby with join codes, LAN discovery, UPnP, proximity voice, and everything in the world replicated
-  -- doors, lockers, items and their uses, flares, nests, creatures and what they are doing.
-- **The creatures** are bodies grown from seeds -- four plans, six builds, five kinds of head,
-  markings and growths, runts to brutes -- never winged, sculpted as bone under muscle and posed
-  procedurally, with sight, hearing and memory; temperaments; stalking from cover and creeping up
-  behind, ambushes at doors and crawlspace mouths, going round gunfire, searching down vents or
-  waiting at them, walking walls and ceilings, grabbing and carrying off, cocooning at the one nest,
-  saying back what they heard players say, reading each other, copying the curious way, a director
-  pacing them, and learning over a match which tactics work. See [AI.md](AI.md).
-- **The world** is the test map and the creature lab, lit lamp by lamp, with ambience that follows
-  where you are, a placeholder sound for everything (Assets/Audio), and an in-game model editor.
+- **Campaigns** (ADR-124): begun with a name and a seed or carried on; saved by the host (a hand save and an
+  autosave, written safely); sent to everybody else. Continue, New campaign and Load campaign on the title.
+- **A universe from a seed** (ADR-124): star systems, planets and moons, worlds combined from biome, air, terrain,
+  weather, settlement and specials (Assets/Data/universe.json); landing regions, some charted, the rest to be found.
+- **The system map and travel** (ADR-125): the navigation table in the ops room opens a 3D map of the system; a
+  course is flown, with time to walk the ship, redirected or called off part way; arriving scans the body and finds
+  places to land; everybody sees what the others are pointing at. Space out of the windows is the system as it is.
+- **The crew's own ship** (ADR-127): small, one deck, a shuttle bay; its outside follows the campaign's colours and
+  its drive and sensor upgrades.
+- **The title and lobby** reworked round campaigns; no host migration (the host leaving ends the game, ADR-126).
+- **Briefings only when there is one** (ADR-126): they come back with contracts.
+- Before the rework and still there: the player, weapons and items, the creatures (AI.md), the facility sites and
+  their data-recovery objective, the support drone, cinematics and their editor, proximity voice, the model editor.
+
+## Next, in order
+
+1. **Landing regions that look like their world**: the ground's texture and colour, the rock, the sky, fog and light
+   by where the region is on its planet and the time of day there, weather (snow, rain, dust, ash) that changes; more
+   than snow. And more kinds of place to explore than a facility: wrecks, camps, a signal source, a tower, a cave mouth,
+   some quiet and some not.
+2. **What there is to do there**: salvage and components to carry back, points of interest found by exploring, the
+   log filled in by what is found, a region remembered as it was left (what was taken, what was opened).
+3. **The economy and the shipyard**: credits for what is brought back; the shipyard on the settled world to sell
+   salvage at, buy upgrades (the drive, sensors, storage, the ship's size) and change the ship's colours; the ship
+   gaining sections as it grows. Starting the campaign at the shipyard, on the ground.
+4. **The ship's log**: everything found, kept and shown; entries marked and pinned.
+5. **CIRRA's contracts**: optional work offered over the intercom, briefed at the navigation table, paying credits
+   and components.
+6. **A crew wipe** that costs what was carried and some credits, never the ship or what has been found.
+7. **The tutorial**: a short story-driven prologue ([TUTORIAL_CHECKLIST.md](TUTORIAL_CHECKLIST.md)).
+8. Beyond the slice: more biomes and places, other star systems by a better drive, the story's discoveries, the
+   endgame.
 
 ## Still missing from what exists
 
 - **Melee or shoving.** Nothing to do about something close except shoot it.
 - **Nameplates.** You cannot tell who anybody is at a distance.
-- **Reconnecting.** A player who drops is gone for the round; migration covers only the host.
-- **Real sounds.** Every sound is a synthesised placeholder, meant to be replaced by dropping
-  recordings into its folder. Recordings have to be cleared for use (Docs/CREDITS.md); downloading any
-  is a decision to make one at a time.
-- **Real models for items.** Items are coloured shapes; weapons are authored. Items can move to the
-  same authored models once there are any, and their use motions would drive them.
-- **Creature bodies by size.** One navigation mesh with crawlspaces marked serves every body; a very
-  wide one can still squeeze through a gap it should not. Ceilings are crossed above the floor's route,
-  and a wall is walked only as far along as the one it went up.
-- **Pack hunting, planned.** Creatures read each other -- one going for somebody tells the rest where
-  they are, and the rest go round or wait rather than pile in -- but none plans a drive for another.
-
-## The next phases
-
-In the order the brief puts them, each building on the last. None is started.
-
-### 1. The round
-
-Lobby, everybody ready, then a briefing: the objective, what is known about the site, and sometimes
-a map of the generated location -- sometimes not, when there is none to give. An arrival sequence for
-each kind of location. The mission, then extraction, an extraction sequence, and back to the lobby.
-
-The mission framework comes first and is built to be extended: an objective is a list of steps, each
-a thing to find, reach, use or carry, with the first mission finding the black box or its data and
-getting it out.
-
-Built so far (ADR-100): the first mission at a site -- a terminal on a bench somewhere in one of its
-buildings, a download that goes on only while somebody stays with it, the drive it leaves, and the
-shuttle on the pad that everybody arrives in and leaves on. Sometimes the terminal's building has no
-power until its breaker is reset, and sometimes there is no map. The launch counts down and leaves
-anybody not aboard behind; then the result, and back to the ship (the testing area for now). Still to
-come: the briefing and the arrival card, the ship itself, and choosing the next deployment from it.
-The site map (ADR-101) is a screen for now; a handheld one is part of Feel, below.
-
-### 2. Generated facilities
-
-Sites generated from a seed, like the creatures: non-linear, with loops rather than corridors, several
-floors, height to use, outside ground and more than one building. Vents that run through the walls
-and ceilings as a network creatures move and hide in. Flooding as real geometry -- water you wade and
-swim through, that hides what is under it. Blocked areas and the tasks that open them, restoring power
-first; and modifiers on a whole mission, the power out to begin with. The lamps, circuits and doors
-already built are what these are made of.
-
-Built so far (ADR-085): the seeded layout -- loops, two or three floors and their stairwells, the
-duct network, doors and locked doors with a keycard, lamps with moods, lockers, supplies, clutter, a
-way in and a nest room -- built into the world and sent as a seed. Still to come: power and circuits
-as a task, flooding, outside ground and more than one building, and the round around it.
-
-### 3. Dead, but not gone
-
-A player who dies comes back as a CIRRA support drone: limited, slow to recharge, able to be knocked
-down and disabled by a creature, and rebooting afterwards. What it can do for the living is the
-design question -- lighting the way, marking things, opening something -- and it should never be
-better than being alive.
-
-### 4. Feel
-
-Interaction animations for everything a hand does in the world -- doors, lockers, crates, cocoons,
-panels -- and the handful of cinematic moments the round needs. A handheld map, fuzzy and incomplete,
-that shows the generated site as far as it has been seen, and nothing about where anything is.
+- **Reconnecting.** A player who drops is gone; they can join the campaign again.
+- **Real sounds and voice.** Most sounds are synthesised placeholders and the intercom has placeholders to record
+  over ([RECORDING_AND_TEXTURES.md](RECORDING_AND_TEXTURES.md)).
+- **Real models for items.** Items are coloured shapes; weapons are authored.
 
 ## Keeping the lore in mind
 
-Docs/Project_Predation_Lore_Reference.md shapes these choices. Nothing here writes lore, and any
-design choice the lore influences is asked about first.
+Docs/Project_Predation_Lore_Reference.md shapes these choices. Nothing here writes lore, and any design choice the lore
+influences is asked about first.

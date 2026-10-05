@@ -34,10 +34,9 @@ user's to write. Grouped roughly in the order a player meets them. **Must** is n
 
 ## The ship (must)
 
-- The loadout locker: choosing what to take down.
-- Orders coming in, the briefing, the deploy console.
-- The shuttle: everybody aboard, then the launch.
-- The ship's screens (where you are going, what is happening).
+- The loadout locker in the gear room: choosing what to take down.
+- The shuttle in the bay: everybody aboard, then the launch.
+- The ops room's screens (where the ship is going, where it is, whether the shuttle is ready).
 
 ## The site (must)
 
@@ -67,11 +66,19 @@ user's to write. Grouped roughly in the order a player meets them. **Must** is n
 - The drone: driving it, what it can still do for the team.
 - Dying aboard the ship: back on your feet in a few seconds.
 
-## After the rework (later, once built)
+## The campaign and the ship (must, now built)
 
-From the open-exploration design: the system map and its pointers, choosing and changing a destination in
-flight, landing regions, salvage and resources, credits and components, upgrading the ship, the ship log,
-saving and loading. These will want their own steps once they exist.
+- The navigation table in the ops room: opening the system map, turning and zooming it, picking out a planet or moon.
+- What is known and what is not: a world's details fill in as the ship scans it or the crew goes down.
+- Setting a course; walking the ship while it flies; changing the course or calling it off part way.
+- Pointing things out to the others on the map (they see what you point at).
+- Arriving in orbit: the scan finds places to land; choosing one; the shuttle in the bay.
+- Saving: the host's job (the pause menu), and that the game autosaves on getting back aboard.
+
+## Later (once built)
+
+From the open-exploration design: landing regions of other kinds of world, salvage and resources, credits and
+components, the shipyard and upgrading the ship, the ship's log, CIRRA's contracts.
 
 ## Open questions for the tutorial
 

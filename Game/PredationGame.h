@@ -1031,6 +1031,11 @@ private:
     uint32_t m_appliedTravels = 0;
     int m_pointerSent = -2;
     bool m_mapOpenSent = false;
+    // What the intercom last saw of the ship's travel and finds, for saying what has just changed.
+    bool m_travelSeen = false;
+    bool m_travelSeenUnderway = false;
+    int m_travelSeenTarget = -1;
+    size_t m_regionsSeen = 0;
 
     // --- Multiplayer ---------------------------------------------------------------------------
     void RegisterNetCommands();

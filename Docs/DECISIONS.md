@@ -2757,3 +2757,19 @@ ship of their own that starts small and grows (REWORK_DESIGN.md), and keeps a sh
 - Cinematics: the launch, docking and empty-return shots from inside the old hangar are moved into the new bay (its
   aft corner, looking forward over the ramp). The title's shot is reframed for the smaller ship.
 - The map device aboard shows the one deck ("THE SHIP"); the briefing screens hang where the ship says.
+
+## ADR-128: The intercom for the new loop, and the docs brought up to date
+
+- **Four new intercom moments** for travel: course_set, course_changed, course_stopped, and region_found (the ship's
+  scan has found somewhere new to land). Each machine says them from what it sees change in the campaign -- under way
+  or not, the destination, the regions found -- so everybody hears them without anything more sent. Folders with
+  placeholders to record over; the subtitles are the user's to write (the suggestions in RECORDING_AND_TEXTURES.md
+  are only there to show what each moment is for).
+- **The voice doc rewritten for the ship being the crew's own**: nothing gives orders or sends people to a briefing
+  room; the orders recording waits for CIRRA's contracts; the briefing's pieces (all still placeholders) wait for the
+  contract script, with the words the universe's names now need listed. The textures doc lists a ground set per kind of
+  world and the ship's sets (neutral, to be tinted by the campaign's colours).
+- **Docs updated**: README (what the game is now, and how far it has got), ROADMAP (the rework's steps: built and next),
+  DESIGN_PLAN (marked as superseded in its structure by REWORK_DESIGN), HOSTING and BUILDING (hosting a campaign),
+  NETWORKING (protocol 32, the campaign's messages, no migration), ARCHITECTURE (the game's modules), and the
+  TUTORIAL_CHECKLIST (the map, travel and saving are there to be taught).

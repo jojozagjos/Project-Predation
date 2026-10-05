@@ -13,11 +13,14 @@ these their situation needs.
 
 Hosting goes to the lobby first, not straight into the world:
 
-1. The host presses **Play → Host a game → Start**.
-2. The lobby shows a **code** (with a Copy button) and who is here.
-3. Friends press **Play**, type the code into the box at the top, and press **Join**. They see the
+1. The host picks a campaign: **Continue**, **New campaign** (then **Create it and open the lobby**) or **Load
+   campaign** (then **Open the lobby**). Whether strangers can find it in the public list is chosen there.
+2. The lobby shows the campaign, a **code** (with a Copy button) and who is here.
+3. Friends press **Join a game**, type the code into the box at the top, and press **Join**. They see the
    same lobby, with "Waiting for the host to start".
-4. The host presses **Start the game**, and everybody goes in together.
+4. The host presses **Start**, and everybody goes in together.
+
+The campaign is the host's: it is saved on their machine, and if they leave, the game ends for everybody.
 
 People can still join after the game has started: they go straight in. The code is in the pause menu
 for exactly that.

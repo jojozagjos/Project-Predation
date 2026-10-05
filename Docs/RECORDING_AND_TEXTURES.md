@@ -8,7 +8,9 @@ A checklist. Tick things off (`[x]`) as you add them.
 
 ### How to record
 
-- **Format:** `.wav`, mono, 16-bit, 44.1 or 48 kHz. Your `orders_01/output.wav` is exactly right.
+- **Format:** `.wav`, mono, 16-bit, 44.1 or 48 kHz. Your `orders_01/output.wav` is exactly right. (Your
+  `Player/jump` recording is not: the game reads `jump_1.wav` as having no WAV header, so jumping is silent. Export it
+  again as a WAV.)
 - **Any file name ending `.wav`** works. With several takes in one folder, the first by name is used.
 - **Record dry:** no music, no reverb, and about a quarter of a second of silence at each end. The game adds the
   intercom/radio sound itself.
@@ -19,99 +21,84 @@ A checklist. Tick things off (`[x]`) as you add them.
 
 ### Intercom: the ship's voice (`Assets/Audio/Intercom/<folder>`)
 
-**On the ship**
+The intercom is **your own ship's** voice now, not CIRRA's: the crew are contractors flying their own ship, choosing
+where to go. Nothing should give orders or send people to a briefing room (there isn't one; the ops room has the
+navigation table). The wording below is only a **suggestion**, to show what each moment is for. Write your own, put
+it in the `"subtitle"` in `Assets/Data/intercom.json`, and record to match.
 
-- [x] `orders_01`: *new orders have come in*
-  - Take 1 (recorded): "Attention all crew. New deployment orders have been received. Report to the briefing room."
-  - Take 2 (`orders_02`): "Incoming transmission from the Company. All crew to the briefing room."
-- [ ] `orbit_01`: *the ship has arrived over the site*
-  - Take 1: "Burn complete. We are holding orbit over the site. The shuttle is ready in the hangar."
-  - Take 2: "We have reached orbit. Board the shuttle when ready."
-- [ ] `deploy_01`: *the shuttle is leaving the ship*
-  - Take 1: "Bay doors open. Shuttle away. Beginning descent to the surface."
-  - Take 2: "Shuttle is clear of the ship. Descent under way."
-- [ ] `docked_01`: *the shuttle is back in the hangar*
-  - Take 1: "Shuttle docked. Hangar secure. Report to the briefing room for debrief."
-  - Take 2: "Docking complete. Welcome back aboard."
+Each moment has a folder with a `placeholder.wav` in it; put your recording in and delete the placeholder.
 
-**On the planet**
+**Travel** (new with the system map)
 
-- [ ] `arrival_01`: *landed, with a map*
-  - Take 1: "Touchdown confirmed. Site map data is loaded. Locate the terminal and retrieve the data."
-  - Take 2: "You're on the ground. Map data is on your units. Find the terminal."
-- [ ] `arrival_no_map_01`: *landed, no map*
-  - Take 1: "Touchdown confirmed. We have no map data for this site. You will have to find the terminal yourselves."
-  - Take 2: "You're on the ground. Be advised: there is no layout on file for this facility."
-- [ ] `power_out_01`: *someone found the terminal has no power*
-  - Take 1: "The terminal has no power. Locate the building's breaker panel and restore it."
-  - Take 2: "No power at the terminal. Check the breakers."
-- [ ] `download_started_01`
-  - Take 1: "Connection established. Download in progress. Stay with the terminal until it completes."
-  - Take 2: "We're receiving. Hold that position until the transfer is finished."
-- [ ] `download_done_01`
-  - Take 1: "Download complete. Take the drive and return to the shuttle."
-  - Take 2: "Transfer finished. Get the drive back to the shuttle."
+- [ ] `course_set_01`: *a destination is chosen and the ship is leaving.* Suggestion: "Course set. Departing now."
+- [ ] `course_changed_01`: *a new destination while already under way.* Suggestion: "New course plotted. Adjusting
+  heading."
+- [ ] `course_stopped_01`: *the course is called off; the ship comes to a stop.* Suggestion: "Course cancelled. Bringing
+  us to a stop."
+- [ ] `orbit_01`: *arrived in orbit of a planet or moon.* Suggestion: "We have reached orbit. The shuttle is ready in
+  the bay."
+- [ ] `region_found_01`: *the ship's scan found somewhere new to land.* Suggestion: "Surface scan complete. A new
+  landing site has been marked."
+
+**Going down and coming back**
+
+- [ ] `deploy_01`: *the shuttle is leaving the ship.* Suggestion: "Bay doors open. Shuttle away."
+- [ ] `docked_01`: *the shuttle is back in the bay.* Suggestion: "Shuttle docked. Bay secure." (The old line sent
+  people to the briefing room for a debrief; there is no debrief now.)
+
+**On the ground** (a site with a facility and its terminal)
+
+- [ ] `arrival_01`: *landed, with a map.* Suggestion: "Touchdown. Site map is on your devices."
+- [ ] `arrival_no_map_01`: *landed, no map.* Suggestion: "Touchdown. We have no map of this site."
+- [ ] `power_out_01`: *someone found the terminal has no power.* Suggestion: "No power at the terminal. Find the
+  building's breaker."
+- [ ] `download_started_01`: Suggestion: "Download started. Stay with the terminal until it finishes."
+- [ ] `download_done_01`: Suggestion: "Download complete. Take the drive back to the shuttle."
 
 **Leaving**
 
-- [ ] `launch_01`: *the launch countdown has started*
-  - Take 1: "Launch sequence initiated. All crew, get aboard the shuttle now."
-  - Take 2: "The shuttle is preparing to lift off. Anyone not aboard will be left behind."
-- [ ] `recovered_01`: *left with the data*
-  - Take 1: "Lift-off confirmed. Data recovered. Good work."
-  - Take 2: "Shuttle is clear of the surface with the data aboard. The Company thanks you."
-- [ ] `not_recovered_01`: *left without the data*
-  - Take 1: "Lift-off confirmed. The data was not recovered. This will be noted."
-  - Take 2: "Shuttle is clear of the surface. No data aboard. Deployment failed."
-- [ ] `left_behind_01`: *the shuttle has gone without you*
-  - Take 1: "The shuttle has departed. You have been left on the surface."
-  - Take 2: "Shuttle away. We are unable to return for you."
+- [ ] `launch_01`: *the launch countdown has started.* Suggestion: "Launch sequence started. Everyone aboard the
+  shuttle."
+- [ ] `recovered_01`: *left with the data.* Suggestion: "Lift-off. The data is aboard." (The old lines thanked you on
+  the Company's behalf; it is your ship talking now.)
+- [ ] `not_recovered_01`: *left without the data.* Suggestion: "Lift-off. We did not get the data."
+- [ ] `left_behind_01`: *the shuttle has gone without you.* Suggestion: "The shuttle has gone. You are still on the
+  surface."
 
-### Briefing voice-over (`Assets/Audio/Briefing/...`)
+**For later: CIRRA's contracts**
 
-The briefing is put together from these pieces, so it always names the site it's showing. Record each on its own,
-evenly paced, so they join cleanly. The phrase wording is a placeholder in `Assets/Data/briefing.json`; change it
-there first if you want different words, then record to match.
+- [x] `orders_01` (recorded): *a briefing has come in.* It no longer plays on its own. It will come back for CIRRA's
+  contracts, which are optional offers, so the recorded take ("New deployment orders have been received. Report to the
+  briefing room.") will need replacing: say that a contract offer is waiting, not that there are orders.
 
-**Phrases** (`Briefing/Phrases/<folder>`)
+### Contract briefings (`Assets/Audio/Briefing/...`): for later
 
-- [ ] `begin`: "Deployment briefing."
-- [ ] `destination`: "Destination:"
-- [ ] `site`: "Site:"
-- [ ] `conditions`: "Surface conditions:"
-- [ ] `objective`: "Objective: locate the terminal, download the data, and bring the drive back to the shuttle."
-- [ ] `end`: "Deploy when ready."
-- [ ] `map_given`: "A map of the site is on file."
-- [ ] `map_missing`: "There is no map of the site on file."
+Briefings now play only for **CIRRA's contracts**, which come with the next part of the rework. They are still put
+together from recorded pieces, so they can name the place they are about. **Don't record new pieces yet**: the
+contract briefing script (`Assets/Data/briefing.json`) will be rewritten first, for contracts instead of orders. Then
+this list will be final. What is here now:
 
-**Words** (`Briefing/Words/<folder>`, one word each): the parts of planet and site names and the weather. Adding a
-word to `Assets/Data/sites.json` means recording it here too.
+**Phrases** (`Briefing/Phrases/<folder>`): placeholders, never recorded, written for the old orders. They will change
+with the script.
 
-- [ ] `kepler`
-- [ ] `polar`
-- [ ] `research`
-- [ ] `facility`
-- [ ] `site`
-- [ ] `north`
-- [ ] `cryosphere`
-- [ ] `minus`
-- [ ] `degrees`
-- [ ] `wind`
-- [ ] `metres`
-- [ ] `per`
-- [ ] `second`
-- [ ] `visibility`
-- [ ] `poor`
-- [ ] `fair`
-- [ ] `low`
+- [ ] `begin`, `destination`, `site`, `conditions`, `objective`, `end`, `map_given`, `map_missing`
 
-**Numbers** (`Briefing/Numbers/<folder>`, said on their own). 91 is said "ninety" + "one"; a site number like 06 is
-said a figure at a time, "zero" + "six".
+**Words** (`Briefing/Words/<folder>`): the words planet and site names are made of. Names come from
+`Assets/Data/universe.json` now, so these are the words it can produce:
 
-- [ ] `0` to `9`: zero, one, two, three, four, five, six, seven, eight, nine
-- [ ] `10` to `19`: ten, eleven, twelve, thirteen, fourteen, fifteen, sixteen, seventeen, eighteen, nineteen
-- [ ] `20`, `30`, `40`, `50`, `60`, `70`, `80`, `90`: twenty, thirty, forty, fifty, sixty, seventy, eighty, ninety
-- [ ] `hundred`
+- There already (placeholders): `kepler`, `polar`, `research`, `facility`, `site`, `north`, `cryosphere`, `minus`, `degrees`, `wind`,
+  `metres`, `per`, `second`, `visibility`, `poor`, `fair`, `low`
+- New, when the script is ready: `good` (visibility); the moon prefix said letter by letter, `l` and `v` ("L V four
+  two six"); and the site words: `archipelago`, `basin`, `caldera`, `canopy`, `coast`, `crash`, `crater`, `delta`, `dune`,
+  `equatorial`, `field`, `flats`, `glacial`, `highlands`, `ice`, `islands`, `lava`, `lowlands`, `mining`, `outpost`,
+  `plains`, `plateau`, `relay`, `ridge`, `rift`, `salt`, `sea`, `sector`, `shard`, `shelf`, `shipyard`, `signal`, `source`,
+  `south`, `station`, `survey`, `terminator`, `valley`, `waste`
+- Adding a name to `universe.json` (a catalogue, an area, a kind of site) adds words to this list.
+
+**Numbers** (`Briefing/Numbers/<folder>`): placeholders. A planet's numeral is said as a number ("Kepler two one seven,
+four"); site and moon numbers are said a figure at a time.
+
+- [ ] `0` to `19`, the tens (`20` ... `90`), `hundred`
 
 ---
 
@@ -141,9 +128,24 @@ said a figure at a time, "zero" + "six".
 
 Listed most important first within each area.
 
-### 1. Site: the snow planet (seen most)
+### 1. Landing sites: the ground of each kind of world
 
-- [ ] `snow_ground`: packed, wind-blown snow
+A world's kind (its biome, in `Assets/Data/universe.json`) names the set its ground is to be laid with (`"site"` ->
+`"surface"`). Landing sites do not take their world's look yet -- every site is still snow -- that is the next part of the
+rework; only frozen worlds name a set so far (`snow_02`).
+Each of these is one ground set; a rock set for cliffs and boulders to go with each would be nice later.
+
+- [x] `snow_02`: packed, wind-blown snow (frozen worlds)
+- [ ] `rock_ground`: grey-brown broken rock and grit (rocky worlds)
+- [ ] `regolith`: pale dust and pebbles (barren worlds and airless moons)
+- [ ] `sand`: rippled sand (desert worlds)
+- [ ] `basalt`: black volcanic rock, a little ash (volcanic worlds)
+- [ ] `wet_rock`: dark wet stone and shingle (oceanic worlds, their islands)
+- [ ] `grass_dirt`: rough grass over dirt (temperate worlds)
+- [ ] `jungle_floor`: leaf litter and mud (jungle worlds)
+- [ ] `toxic_crust`: stained, crusted mineral ground (toxic worlds)
+- [ ] `storm_flats`: hard wind-scoured ground (storm-dominated worlds)
+- [ ] `crystal_ground`: glassy, faceted mineral (crystalline worlds)
 - [ ] `rock_cliff`: dark, frost-dusted rock (the ring round the site, boulders)
 - [ ] `concrete_pad`: weathered concrete (the landing pad)
 - [ ] `building_cladding`: corrugated or paneled metal siding, weathered (building outsides)
@@ -165,19 +167,23 @@ Listed most important first within each area.
 
 ### 3. The ship
 
+The crew's own small ship (one deck: cockpit, ops room, crew section, shuttle bay, engine room). Its outside is
+painted in the campaign's three colours, so the hull sets should be **light and neutral** (greyish white): the game
+tints them.
+
 - [ ] `deck_plate`: diamond / tread plate (floors)
 - [ ] `ship_panel`: painted sci-fi wall paneling, clean-ish
-- [ ] `hangar_panel`: heavier, more worn panels (hangar walls and deck)
+- [ ] `bay_panel`: heavier, more worn panels (the shuttle bay's walls and deck)
 - [ ] `hull_dark`: dark metal (frames, trim, ribs)
-- [ ] `hull_exterior`: large plated panels (the ship seen outside in cutscenes)
+- [ ] `hull_plating`: large plated panels, neutral, to be tinted (the outside)
 - [ ] `locker_metal`: lockers, the loadout locker, cabinets
 - [ ] `fabric_cushion`: chairs, bunk mattresses
-- [ ] `tabletop`: mess and briefing tables
+- [ ] `tabletop`: the galley counter and tables
 
 ### 4. Vehicles and props
 
 - [ ] `shuttle_hull`: painted metal and trim
-- [ ] `bay_door`: the hangar's bay doors
+- [ ] `bay_door`: the shuttle bay's doors
 - [ ] `ammo_crate`: olive painted metal
 - [ ] `console_casing`: dark plastic or metal (terminals, consoles)
 
@@ -203,4 +209,5 @@ Listed most important first within each area.
 
 ### Not needed
 
-Screens, the site map and tracker, briefing slides, the sky, planets, snowfall and particles are all drawn by code.
+Screens, the site map and tracker, briefing slides, the system map, the sky, planets (from space), snowfall and
+particles are all drawn by code.

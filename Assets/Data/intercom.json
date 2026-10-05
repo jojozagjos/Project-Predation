@@ -1,5 +1,5 @@
 {
-  "_comment": "What the ship's intercom says, by the moment it is for. Each line is a recording -- 'sound' names a folder under Assets/Audio, e.g. \"Intercom/arrival_01\" for Assets/Audio/Intercom/arrival_01/ -- and the subtitle shown while it plays; 'seconds' is how long the subtitle stays up (left out, worked out from its length). With several lines for a moment, one is chosen, the same one on every machine. Moments: arrival (the team has landed), arrival_no_map (landed, and there was no map to give), power_out (somebody found the terminal has no power), download_started, download_done, launch (the shuttle's launch has been started), recovered and not_recovered (it has gone, with the data or without), left_behind (it has gone without you), orbit (the ship has arrived over the next site), deploy (the shuttle is leaving the ship for it), docked (the shuttle is back in the hangar). None written yet.",
+  "_comment": "What the ship's intercom says, by the moment it is for. Each line is a recording -- 'sound' names a folder under Assets/Audio, e.g. \"Intercom/arrival_01\" for Assets/Audio/Intercom/arrival_01/ -- and the subtitle shown while it plays; 'seconds' is how long the subtitle stays up (left out, worked out from its length). With several lines for a moment, one is chosen, the same one on every machine. Moments: course_set (the ship is leaving for somewhere), course_changed (a new destination part way), course_stopped (the course called off: coming to a stop), orbit (the ship has arrived over a planet or moon), region_found (the ship's scan has found somewhere new to go down), deploy (the shuttle is leaving the ship), arrival (the crew has landed), arrival_no_map (landed, and there was no map to give), power_out (somebody found the terminal has no power), download_started, download_done, launch (the shuttle's launch has been started), recovered and not_recovered (it has gone, with the data or without), left_behind (it has gone without you), docked (the shuttle is back in its bay), orders (a briefing has come in: for CIRRA's contracts, when they come). See Docs/RECORDING_AND_TEXTURES.md.",
   "lines": {
     "arrival": [
       {
@@ -77,6 +77,30 @@
       {
         "sound": "Intercom/orders_01",
         "subtitle": "Attention all crew. New deployment orders have been received. Report to the briefing room."
+      }
+    ],
+    "course_set": [
+      {
+        "sound": "Intercom/course_set_01",
+        "subtitle": ""
+      }
+    ],
+    "course_changed": [
+      {
+        "sound": "Intercom/course_changed_01",
+        "subtitle": ""
+      }
+    ],
+    "course_stopped": [
+      {
+        "sound": "Intercom/course_stopped_01",
+        "subtitle": ""
+      }
+    ],
+    "region_found": [
+      {
+        "sound": "Intercom/region_found_01",
+        "subtitle": ""
       }
     ]
   }

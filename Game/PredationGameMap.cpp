@@ -496,6 +496,36 @@ void PredationGame::UpdateTravel(float dt)
             }
         }
     }
+    // The intercom, on every machine alike, from what it sees change: a course set, changed or called off, and places
+    // found by the ship's scan of the body it is over.
+    {
+        const bool underway = m_campaign.travel.underway;
+        const int target = m_campaign.travel.target;
+        if (m_travelSeen)
+        {
+            if (underway && !m_travelSeenUnderway)
+            {
+                Say("course_set", 1.0f);
+            }
+            else if (underway && target != m_travelSeenTarget)
+            {
+                Say(target >= 0 ? "course_changed" : "course_stopped", 0.3f);
+            }
+        }
+        size_t found = 0;
+        for (const auto& [key, isFound] : m_campaign.regionsFound)
+        {
+            found += isFound ? 1 : 0;
+        }
+        if (m_travelSeen && found > m_regionsSeen && !underway)
+        {
+            Say("region_found", 2.0f);
+        }
+        m_regionsSeen = found;
+        m_travelSeenUnderway = underway;
+        m_travelSeenTarget = target;
+        m_travelSeen = true;
+    }
     // The ship's outside as the campaign has it: its colours, and its drive and sensors.
     ShipHullLook look;
     look.primary = m_campaign.colors.primary;

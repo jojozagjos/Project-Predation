@@ -180,7 +180,8 @@ SiteConditions ConditionsFor(uint32_t seed, float fogEnd)
 const std::vector<std::string>& IntercomLines::Moments()
 {
     static const std::vector<std::string> kMoments{"arrival",       "arrival_no_map", "power_out",     "download_started", "download_done",
-                                                   "launch",        "recovered",      "not_recovered", "left_behind", "orders"};
+                                                   "launch",        "recovered",      "not_recovered", "left_behind",      "orders",
+                                                   "course_set",    "course_changed", "course_stopped", "region_found"};
     return kMoments;
 }
 
