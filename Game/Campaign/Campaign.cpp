@@ -157,7 +157,7 @@ nlohmann::json CampaignState::ToJson() const
     out["components"] = components;
     out["upgrades"] = upgrades;
     out["colors"] = {{"primary", Vec3(colors.primary)}, {"secondary", Vec3(colors.secondary)}, {"accent", Vec3(colors.accent)}};
-    out["location"] = {{"system", system}, {"body", body}, {"region", region}};
+    out["location"] = {{"system", system}, {"body", body}, {"region", region}, {"landed", landed}};
     out["travel"] = {{"underway", travel.underway}, {"position", Vec3(travel.position)}, {"velocity", Vec3(travel.velocity)},
                      {"target", travel.target}, {"region", travel.region},
                      {"interstellar", travel.interstellar}, {"toSystem", travel.toSystem}, {"fromGalaxy", Vec3(travel.fromGalaxy)},
@@ -230,6 +230,7 @@ bool CampaignState::FromJson(const nlohmann::json& json, CampaignState& out, std
             state.system = location->value("system", uint64_t{0});
             state.body = location->value("body", -1);
             state.region = location->value("region", -1);
+            state.landed = location->value("landed", false);
         }
         if (const auto travel = json.find("travel"); travel != json.end() && travel->is_object())
         {
@@ -330,9 +331,31 @@ CampaignState CampaignState::Begin(const std::string& campaignName, uint64_t see
     {
         return state;
     }
-    // Docked at the station over the settled world (or over the world itself, if there were none).
-    state.body = home->station >= 0 ? home->station : home->hub;
+    // Landed at the settled world's hub (or in orbit over it, if it had none).
+    state.body = home->hub;
     state.region = -1;
+    state.travel.region = home->hubRegion;
+    state.landed = home->hubRegion >= 0;
+    // And it is morning there: the campaign's clock starts where the sun is up a little way and rising, so the first
+    // thing anybody sees out of the windows is the hub, not the dark.
+    if (state.landed)
+    {
+        const Body& world = home->bodies[static_cast<size_t>(home->hub)];
+        const glm::vec2 place = world.regions[static_cast<size_t>(home->hubRegion)].latLon;
+        float bestScore = 1.0e9f;
+        for (int i = 0; i < 120; ++i)
+        {
+            const double t = static_cast<double>(world.day) * static_cast<double>(i) / 120.0;
+            const float height = home->SunHeight(world.index, place, t);
+            const bool rising = home->SunHeight(world.index, place, t + world.day * 0.01) > height;
+            const float score = std::abs(height - 0.4f) + (rising ? 0.0f : 1.0f);
+            if (score < bestScore)
+            {
+                bestScore = score;
+                state.clock = t;
+            }
+        }
+    }
     state.Learn(home->id.Packed(), -1, kKnownVisited);
     // Every body of the home system is on the charts by name; whatever has records is known by them; home is visited.
     for (const Body& body : home->bodies)
@@ -343,7 +366,7 @@ CampaignState CampaignState::Begin(const std::string& campaignName, uint64_t see
         {
             bits |= kKnownRecords;
         }
-        if (body.index == home->hub || body.index == home->station)
+        if (body.index == home->hub)
         {
             bits |= kKnownRecords | kKnownScanned | kKnownVisited;
         }

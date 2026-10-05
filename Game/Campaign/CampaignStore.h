@@ -24,6 +24,7 @@ struct CampaignSlot
     uint64_t system = 0;
     int body = -1; // where it is, or where it is heading when under way
     bool underway = false;
+    bool landed = false; // the ship itself on the ground, at a hub
 };
 
 // Where campaigns are kept: a folder each under the player's own data, with the host's own saves in it.

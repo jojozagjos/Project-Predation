@@ -1,0 +1,1119 @@
+{
+  "name": "ship_takeoff",
+  "duration": 12,
+  "pauses_gameplay": true,
+  "blend_out": 0,
+  "loop": false,
+  "actors": [
+    {
+      "name": "carrier",
+      "bind": "ship_stage"
+    }
+  ],
+  "cameras": [
+    {
+      "name": "pad",
+      "anchor": "stage",
+      "look_at": "carrier",
+      "look_offset": [
+        0,
+        2,
+        0
+      ],
+      "keys": [
+        {
+          "t": 0,
+          "position": [
+            -42,
+            2.2,
+            -78
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "fov": 40,
+          "focus": 0,
+          "ease": "linear"
+        },
+        {
+          "t": 6.2,
+          "position": [
+            -44,
+            2,
+            -74
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "fov": 36,
+          "focus": 0,
+          "ease": "in_out"
+        }
+      ]
+    },
+    {
+      "name": "behind",
+      "anchor": "stage",
+      "look_at": "carrier",
+      "look_offset": [
+        0,
+        0,
+        -6
+      ],
+      "keys": [
+        {
+          "t": 6.2,
+          "position": [
+            18,
+            10,
+            42
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "fov": 52,
+          "focus": 0,
+          "ease": "linear"
+        },
+        {
+          "t": 12,
+          "position": [
+            16,
+            16,
+            30
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "fov": 18,
+          "focus": 0,
+          "ease": "in_out"
+        }
+      ]
+    }
+  ],
+  "shots": [
+    {
+      "t": 0,
+      "camera": "pad",
+      "blend": 0,
+      "ease": "linear"
+    },
+    {
+      "t": 6.2,
+      "camera": "behind",
+      "blend": 0,
+      "ease": "linear"
+    }
+  ],
+  "actor_tracks": [
+    {
+      "actor": "carrier",
+      "anchor": "stage",
+      "keys": [
+        {
+          "t": 0,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 0.2,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 0.4,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 0.6,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 0.8,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 1,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 1.2,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 1.4,
+          "position": [
+            0,
+            0.148,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 1.6,
+          "position": [
+            0,
+            0.567,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 1.8,
+          "position": [
+            0,
+            1.22,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 2,
+          "position": [
+            0,
+            2.069,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 2.2,
+          "position": [
+            0,
+            3.078,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 2.4,
+          "position": [
+            0,
+            4.207,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 2.6,
+          "position": [
+            0,
+            5.421,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 2.8,
+          "position": [
+            0,
+            6.682,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 3,
+          "position": [
+            0,
+            7.952,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 3.2,
+          "position": [
+            0,
+            9.194,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 3.4,
+          "position": [
+            0,
+            10.37,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 3.6,
+          "position": [
+            0,
+            11.444,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 3.8,
+          "position": [
+            0,
+            12.377,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 4,
+          "position": [
+            0,
+            13.133,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 4.2,
+          "position": [
+            0,
+            13.674,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 4.4,
+          "position": [
+            0,
+            13.962,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 4.6,
+          "position": [
+            0,
+            14.4,
+            -0.06
+          ],
+          "rotation": [
+            0.35,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 4.8,
+          "position": [
+            0,
+            15.212,
+            -0.543
+          ],
+          "rotation": [
+            1.05,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 5,
+          "position": [
+            0,
+            16.056,
+            -1.522
+          ],
+          "rotation": [
+            1.75,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 5.2,
+          "position": [
+            0,
+            16.954,
+            -3.024
+          ],
+          "rotation": [
+            2.45,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 5.4,
+          "position": [
+            0,
+            17.928,
+            -5.09
+          ],
+          "rotation": [
+            3.15,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 5.6,
+          "position": [
+            0,
+            18.999,
+            -7.772
+          ],
+          "rotation": [
+            3.85,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 5.8,
+          "position": [
+            0,
+            20.189,
+            -11.14
+          ],
+          "rotation": [
+            4.55,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 6,
+          "position": [
+            0,
+            21.519,
+            -15.272
+          ],
+          "rotation": [
+            5.25,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 6.2,
+          "position": [
+            0,
+            23.011,
+            -20.263
+          ],
+          "rotation": [
+            5.95,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 6.4,
+          "position": [
+            0,
+            24.687,
+            -26.221
+          ],
+          "rotation": [
+            6.65,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 6.6,
+          "position": [
+            0,
+            26.567,
+            -33.267
+          ],
+          "rotation": [
+            7.35,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 6.8,
+          "position": [
+            0,
+            28.675,
+            -41.534
+          ],
+          "rotation": [
+            8.05,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 7,
+          "position": [
+            0,
+            31.031,
+            -51.172
+          ],
+          "rotation": [
+            8.75,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 7.2,
+          "position": [
+            0,
+            33.657,
+            -62.34
+          ],
+          "rotation": [
+            9.45,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 7.4,
+          "position": [
+            0,
+            36.575,
+            -75.215
+          ],
+          "rotation": [
+            10,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 7.6,
+          "position": [
+            0,
+            39.806,
+            -89.983
+          ],
+          "rotation": [
+            10,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 7.8,
+          "position": [
+            0,
+            43.372,
+            -106.847
+          ],
+          "rotation": [
+            10,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 8,
+          "position": [
+            0,
+            47.294,
+            -126.022
+          ],
+          "rotation": [
+            10,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 8.2,
+          "position": [
+            0,
+            51.594,
+            -147.736
+          ],
+          "rotation": [
+            10,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 8.4,
+          "position": [
+            0,
+            56.294,
+            -172.23
+          ],
+          "rotation": [
+            10,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 8.6,
+          "position": [
+            0,
+            61.414,
+            -199.762
+          ],
+          "rotation": [
+            10,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 8.8,
+          "position": [
+            0,
+            66.978,
+            -230.598
+          ],
+          "rotation": [
+            10,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 9,
+          "position": [
+            0,
+            73.006,
+            -265.022
+          ],
+          "rotation": [
+            10,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 9.2,
+          "position": [
+            0,
+            79.52,
+            -303.329
+          ],
+          "rotation": [
+            10,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 9.4,
+          "position": [
+            0,
+            86.542,
+            -345.828
+          ],
+          "rotation": [
+            10,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 9.6,
+          "position": [
+            0,
+            94.093,
+            -392.842
+          ],
+          "rotation": [
+            10,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 9.8,
+          "position": [
+            0,
+            102.195,
+            -444.707
+          ],
+          "rotation": [
+            10,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 10,
+          "position": [
+            0,
+            110.869,
+            -501.772
+          ],
+          "rotation": [
+            10,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 10.2,
+          "position": [
+            0,
+            120.137,
+            -564.4
+          ],
+          "rotation": [
+            10,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 10.4,
+          "position": [
+            0,
+            130.021,
+            -632.968
+          ],
+          "rotation": [
+            10,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 10.6,
+          "position": [
+            0,
+            140.541,
+            -707.864
+          ],
+          "rotation": [
+            10,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 10.8,
+          "position": [
+            0,
+            151.721,
+            -789.494
+          ],
+          "rotation": [
+            10,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 11,
+          "position": [
+            0,
+            163.581,
+            -878.272
+          ],
+          "rotation": [
+            10,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 11.2,
+          "position": [
+            0,
+            176.143,
+            -974.629
+          ],
+          "rotation": [
+            10,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 11.4,
+          "position": [
+            0,
+            189.429,
+            -1079.009
+          ],
+          "rotation": [
+            10,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 11.6,
+          "position": [
+            0,
+            203.46,
+            -1191.869
+          ],
+          "rotation": [
+            10,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 11.8,
+          "position": [
+            0,
+            218.258,
+            -1313.678
+          ],
+          "rotation": [
+            10,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "t": 12,
+          "position": [
+            0,
+            233.844,
+            -1444.922
+          ],
+          "rotation": [
+            10,
+            0,
+            0
+          ],
+          "ease": "linear"
+        }
+      ]
+    }
+  ],
+  "paths": [],
+  "clips": [],
+  "sounds": [
+    {
+      "t": 0.6,
+      "sound": "World/shuttle_launch",
+      "volume": 1,
+      "at": "carrier",
+      "music": false
+    }
+  ],
+  "markers": [
+    {
+      "t": 3.4,
+      "name": "gear",
+      "value": "up"
+    }
+  ],
+  "texts": [
+    {
+      "t": 7.6,
+      "duration": 3.6,
+      "style": "title_card",
+      "type_speed": 16,
+      "lines": [
+        "IN TRANSIT",
+        "{planet}"
+      ]
+    }
+  ],
+  "lights": [
+    {
+      "light": "ship_engines",
+      "intensity": [
+        {
+          "t": 0,
+          "value": 0.1,
+          "ease": "linear"
+        },
+        {
+          "t": 1.2,
+          "value": 0.7,
+          "ease": "in_out"
+        },
+        {
+          "t": 4.4,
+          "value": 0.6,
+          "ease": "linear"
+        },
+        {
+          "t": 5.2,
+          "value": 1,
+          "ease": "in"
+        },
+        {
+          "t": 12,
+          "value": 1,
+          "ease": "linear"
+        }
+      ]
+    }
+  ],
+  "particles": [
+    {
+      "t": 0.8,
+      "effect": "exhaust",
+      "duration": 3.2,
+      "at": "carrier",
+      "offset": [
+        0,
+        -1.4,
+        4
+      ]
+    }
+  ],
+  "shake": [
+    {
+      "t": 0,
+      "value": 0,
+      "ease": "linear"
+    },
+    {
+      "t": 1.2,
+      "value": 0.35,
+      "ease": "in"
+    },
+    {
+      "t": 3.6,
+      "value": 0.12,
+      "ease": "out"
+    },
+    {
+      "t": 5,
+      "value": 0.5,
+      "ease": "in"
+    },
+    {
+      "t": 6.5,
+      "value": 0,
+      "ease": "out"
+    }
+  ],
+  "shake_speed": [
+    {
+      "t": 0,
+      "value": 16,
+      "ease": "linear"
+    }
+  ],
+  "fade": [
+    {
+      "t": 0,
+      "value": 1,
+      "ease": "linear"
+    },
+    {
+      "t": 0.8,
+      "value": 0,
+      "ease": "out"
+    },
+    {
+      "t": 10.8,
+      "value": 0,
+      "ease": "linear"
+    },
+    {
+      "t": 11.8,
+      "value": 1,
+      "ease": "in"
+    }
+  ],
+  "letterbox": [
+    {
+      "t": 0,
+      "value": 1,
+      "ease": "linear"
+    }
+  ],
+  "fog_scale": [],
+  "ambient_scale": []
+}

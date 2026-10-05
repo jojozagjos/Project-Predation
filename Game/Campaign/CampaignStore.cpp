@@ -158,6 +158,7 @@ std::vector<CampaignSlot> CampaignStore::List() const
         {
             slot.system = location->value("system", uint64_t{0});
             slot.body = location->value("body", -1);
+            slot.landed = location->value("landed", false);
         }
         if (const auto travel = newest.campaign.find("travel"); travel != newest.campaign.end() && travel->is_object() &&
                                                                  travel->value("underway", false))

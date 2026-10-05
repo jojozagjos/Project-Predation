@@ -64,7 +64,11 @@ void main()
 	float facing = dot(N, L);
 	// A soft edge between day and night: an atmosphere carries a little light round it.
 	float lit = smoothstep(-0.1, 0.3, facing);
-	vec3 albedo = mix(surface.rgb, u_planetD.rgb, surface.w);
+	// The lie of the land in the light (exact when the body is drawn unturned, as the globe view draws it).
+	vec3 bumped = PlanetBump(n, u_planetA, u_planetD, u_planetMode.y, 1.0);
+	vec3 bumpedN = normalize(N + (bumped - n));
+	float relief = clamp(1.0 + (dot(bumpedN, L) - facing) * 1.8, 0.5, 1.45);
+	vec3 albedo = mix(surface.rgb * relief, u_planetD.rgb, surface.w);
 	vec3 light = u_planetLightColor.rgb * u_planetLight.w;
 	// A little light on the night side, so a world seen from behind is still a world and not a hole.
 	vec3 colour = albedo * (lit * light + vec3_splat(0.05));

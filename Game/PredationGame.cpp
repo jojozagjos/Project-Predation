@@ -49,7 +49,6 @@ namespace
 // first time most needs. Scoped rather than pushed and popped by hand because these panels return
 // early in a dozen places and an unbalanced stack is an assert rather than a wrong-looking menu.
 // Words with their letters spread apart, as a title card sets them (defined with the boot screen's helpers).
-std::string Spaced(const char* text);
 
 // How to reach the lobby server (defined with the rest of the lobby's helpers).
 LobbyClient::Settings LobbySettings();
@@ -5518,21 +5517,6 @@ bool AnyKeyPressed()
     return ImGui::IsMouseClicked(ImGuiMouseButton_Left) || ImGui::IsMouseClicked(ImGuiMouseButton_Right);
 }
 
-// Words with their letters spread apart, as a title card sets them.
-std::string Spaced(const char* text)
-{
-    std::string out;
-    for (const char* c = text; *c != '\0'; ++c)
-    {
-        out += *c;
-        if (c[1] != '\0')
-        {
-            out += *c == ' ' ? "   " : " ";
-        }
-    }
-    return out;
-}
-
 } // namespace
 
 bool PredationGame::DrawBootScreen()
@@ -5575,8 +5559,8 @@ bool PredationGame::DrawBootScreen()
     // The name as the title sets it -- PROJECT large, PREDATION under it -- with its top left at `at`.
     const float bigSize = ImGui::GetFontSize() * 3.2f;
     const float midSize = ImGui::GetFontSize() * 1.6f;
-    const std::string project = Spaced("PROJECT");
-    const std::string predation = Spaced("PREDATION");
+    const std::string project = std::string("PROJECT");
+    const std::string predation = std::string("PREDATION");
     const auto name = [&](const ImVec2& at, float fade)
     {
         ImFont* nameFont = ImGui::GetFont();
@@ -5640,7 +5624,7 @@ bool PredationGame::DrawBootScreen()
         draw->PathStroke(white, ImDrawFlags_None, 4.0f);
         draw->AddRectFilled({at.x - r - 8.0f, at.y - 2.0f}, {at.x - r + 6.0f, at.y + 26.0f}, white, 4.0f);
         draw->AddRectFilled({at.x + r - 6.0f, at.y - 2.0f}, {at.x + r + 8.0f, at.y + 26.0f}, white, 4.0f);
-        text(Spaced("BEST PLAYED WITH HEADPHONES"), centre.y + 40.0f, 1.05f, shown);
+        text(std::string("BEST PLAYED WITH HEADPHONES"), centre.y + 40.0f, 1.05f, shown);
         break;
     }
     default:
@@ -5675,8 +5659,8 @@ void PredationGame::DrawTitleMenu()
     const float top = origin.y + size.y * 0.12f;
     const float big = ImGui::GetFontSize() * 3.2f;
     const float mid = ImGui::GetFontSize() * 1.6f;
-    draw->AddText(font, big, {x, top}, IM_COL32(236, 240, 242, 255), Spaced("PROJECT").c_str());
-    draw->AddText(font, mid, {x + 2.0f, top + big * 1.02f}, IM_COL32(200, 208, 212, 255), Spaced("PREDATION").c_str());
+    draw->AddText(font, big, {x, top}, IM_COL32(236, 240, 242, 255), "PROJECT");
+    draw->AddText(font, mid, {x + 2.0f, top + big * 1.02f}, IM_COL32(200, 208, 212, 255), "PREDATION");
     draw->AddRectFilled({x + 2.0f, top + big * 1.02f + mid + 14.0f}, {x + 64.0f, top + big * 1.02f + mid + 16.0f}, IM_COL32(230, 150, 60, 230));
 
     struct Entry
@@ -5749,7 +5733,7 @@ void PredationGame::DrawTitleMenu()
 
     // Your name, a line to write on.
     y += 18.0f;
-    draw->AddText(font, ImGui::GetFontSize() * 0.85f, {x, y}, IM_COL32(120, 130, 136, 255), Spaced("NAME").c_str());
+    draw->AddText(font, ImGui::GetFontSize() * 0.85f, {x, y}, IM_COL32(120, 130, 136, 255), "NAME");
     y += ImGui::GetFontSize() * 0.85f + 6.0f;
     const bool inSession = m_sessionMode != SessionMode::Offline;
     ImGui::SetCursorScreenPos({x - 4.0f, y});
@@ -5817,8 +5801,8 @@ void PredationGame::DrawTitleSplash()
     const float mid = ImGui::GetFontSize() * 1.6f;
     const float appear = glm::smoothstep(0.0f, 1.2f, m_titleShownFor);
     const auto a = [&](float v) { return static_cast<int>(std::clamp(v, 0.0f, 1.0f) * 255.0f); };
-    draw->AddText(font, big, {x, y}, IM_COL32(236, 240, 242, a(appear)), Spaced("PROJECT").c_str());
-    draw->AddText(font, mid, {x + 2.0f, y + big * 1.02f}, IM_COL32(200, 208, 212, a(appear)), Spaced("PREDATION").c_str());
+    draw->AddText(font, big, {x, y}, IM_COL32(236, 240, 242, a(appear)), "PROJECT");
+    draw->AddText(font, mid, {x + 2.0f, y + big * 1.02f}, IM_COL32(200, 208, 212, a(appear)), "PREDATION");
     const float breathe = 0.45f + 0.55f * (0.5f + 0.5f * std::sin(m_titleClock * 2.4f));
     const char* const prompt = "Press any key";
     const float promptSize = ImGui::GetFontSize() * 1.1f;
@@ -10186,6 +10170,10 @@ void PredationGame::OnUpdate(double dt, double alpha)
             if (m_campaignOpen && !title)
             {
                 SetSpaceSky(environment);
+                if (ShipLanded() || GroundCinematic())
+                {
+                    SetGroundSky(environment);
+                }
             }
             if (title)
             {

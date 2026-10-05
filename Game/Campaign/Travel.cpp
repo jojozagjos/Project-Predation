@@ -95,6 +95,7 @@ bool SetCourse(CampaignState& campaign, const StarSystem& system, int body)
         campaign.travel.underway = true;
         campaign.body = -1;
         campaign.region = -1;
+        campaign.landed = false;
     }
     campaign.travel.target = body;
     return true;
@@ -218,7 +219,7 @@ float CrossingDone(const CampaignState& campaign)
 
 bool SetSystemCourse(CampaignState& campaign, Universe& universe, uint64_t toSystem, int tier)
 {
-    if (universe.System(toSystem) == nullptr || (!campaign.travel.interstellar && toSystem == campaign.system) ||
+    if (tier < kCrossingTier || universe.System(toSystem) == nullptr || (!campaign.travel.interstellar && toSystem == campaign.system) ||
         (campaign.travel.interstellar && toSystem == campaign.travel.toSystem))
     {
         return false;
@@ -237,6 +238,7 @@ bool SetSystemCourse(CampaignState& campaign, Universe& universe, uint64_t toSys
     campaign.travel.velocity = glm::vec3(0.0f);
     campaign.body = -1;
     campaign.region = -1;
+    campaign.landed = false;
     return true;
 }
 

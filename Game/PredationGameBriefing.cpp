@@ -345,11 +345,15 @@ void PredationGame::DrawBriefingScreens()
             }
             centred(below, 150, kSoft, 2);
         }
-        else if (at != nullptr && at->kind == BodyKind::Station)
+        else if (at != nullptr && ShipLanded())
         {
-            Frame(canvas, "DOCKED", clock, -1.0f);
-            centred(left ? Upper(at->name) : "DOCKED", 88, kText, left ? 2 : 4);
-            centred(left ? "DOCKING CLAMP ENGAGED" : "CHOOSE A DESTINATION AT THE TABLE", 150, kSoft, 2);
+            const int region = m_campaign.travel.region;
+            Frame(canvas, "LANDED", clock, -1.0f);
+            centred(left ? Upper(at->name) : "LANDED", 88, kText, left ? 2 : 4);
+            centred(left ? (region >= 0 && region < static_cast<int>(at->regions.size()) ? Upper(at->regions[static_cast<size_t>(region)].designation)
+                                                                                          : std::string("ON THE GROUND"))
+                         : "CHOOSE A DESTINATION AT THE TABLE",
+                    150, kSoft, 2);
         }
         else if (m_campaignOpen && m_shipReady)
         {

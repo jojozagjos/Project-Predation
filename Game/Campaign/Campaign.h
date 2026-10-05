@@ -90,6 +90,9 @@ struct CampaignState
     uint64_t system = 0;
     int body = -1;
     int region = -1;
+    // The ship itself on the ground, at the body's landing region travel.region (a hub's landing field), rather than in
+    // orbit over it.
+    bool landed = false;
     Travel travel;
     std::map<std::string, uint8_t> known;                // by BodyKey: Knowledge bits
     std::map<std::string, bool> regionsFound;            // by RegionKey: found (beyond the charted ones)
@@ -123,8 +126,8 @@ struct CampaignState
     // False, with why, when it cannot be read at all; a field it does not have keeps its default.
     static bool FromJson(const nlohmann::json& json, CampaignState& out, std::string* error = nullptr);
 
-    // A campaign begun: its name and seed, the ship at home, at the shipyard, with what a crew starts with, and what
-    // is on the charts known.
+    // A campaign begun: its name and seed, the ship landed at home, at the settled world's hub, with what a crew starts
+    // with, and what is on the charts known.
     static CampaignState Begin(const std::string& name, uint64_t seed, Universe& universe);
 };
 

@@ -41,13 +41,15 @@ bool SkyRenderer::Init(ShaderLibrary& shaders)
     m_uPlanetD = bgfx::createUniform("u_planetD", bgfx::UniformType::Vec4);
     m_uPlanetE = bgfx::createUniform("u_planetE", bgfx::UniformType::Vec4);
     m_uBodies = bgfx::createUniform("u_skyBodies", bgfx::UniformType::Vec4, Environment::kSkyBodies * 2);
+    m_uRings = bgfx::createUniform("u_skyRings", bgfx::UniformType::Vec4);
+    m_uRingColor = bgfx::createUniform("u_skyRingColor", bgfx::UniformType::Vec4);
     return true;
 }
 
 void SkyRenderer::Shutdown()
 {
     const bgfx::UniformHandle uniforms[] = {m_uRays, m_uZenith, m_uHorizon, m_uGround, m_uSun, m_uSunColor,
-                                            m_uGrade, m_uSpace, m_uPlanet, m_uPlanetA, m_uPlanetB, m_uPlanetC, m_uPlanetD, m_uPlanetE, m_uBodies};
+                                            m_uGrade, m_uSpace, m_uPlanet, m_uPlanetA, m_uPlanetB, m_uPlanetC, m_uPlanetD, m_uPlanetE, m_uBodies, m_uRings, m_uRingColor};
     for (const bgfx::UniformHandle handle : uniforms)
     {
         if (bgfx::isValid(handle))
@@ -60,6 +62,7 @@ void SkyRenderer::Shutdown()
     m_uSpace = m_uPlanet = BGFX_INVALID_HANDLE;
     m_uPlanetA = m_uPlanetB = m_uPlanetC = m_uPlanetD = m_uPlanetE = BGFX_INVALID_HANDLE;
     m_uBodies = BGFX_INVALID_HANDLE;
+    m_uRings = m_uRingColor = BGFX_INVALID_HANDLE;
     if (bgfx::isValid(m_triangle))
     {
         bgfx::destroy(m_triangle);
@@ -129,6 +132,11 @@ void SkyRenderer::Draw(bgfx::ViewId view, const Environment& environment, const 
     bgfx::setUniform(m_uPlanetD, d);
     bgfx::setUniform(m_uPlanetE, e);
     bgfx::setUniform(m_uBodies, environment.skyBodies, Environment::kSkyBodies * 2);
+    // The planet's rings (inside and outside, in its radii) and how big the sun's disc is (radians, its edge from its middle).
+    const float rings[4] = {look.rings.x, look.rings.y, std::max(environment.sunDisc, 0.0005f), 0.0f};
+    const float ringColor[4] = {look.ringColor.r, look.ringColor.g, look.ringColor.b, 0.0f};
+    bgfx::setUniform(m_uRings, rings);
+    bgfx::setUniform(m_uRingColor, ringColor);
 
     bgfx::setVertexBuffer(0, m_triangle);
     // No depth write and no depth test: it is drawn first and everything else covers it. Writing

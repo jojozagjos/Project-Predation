@@ -19,8 +19,42 @@ uniform vec4 u_planetE;
 // The rest of a system, further off: per body, xyz which way (its length how bright it is as a point) and w its radius on
 // the sky (0 none), then its colour and air.
 uniform vec4 u_skyBodies[24];
+uniform vec4 u_skyRings;     // x, y = the planet's rings, inside and outside, in its radii (0 none); z = the sun's disc, radians
+uniform vec4 u_skyRingColor; // rgb
 
 #include "planet/planet_surface.sh"
+
+// The planet's own frame on the sky: its pole tipped a little towards the eye (so its rings are seen from a little above,
+// not edge on) but never at it (or every planet below would show nothing but its ice cap).
+void SkyPlanetFrame(vec3 toPlanet, out vec3 pole, out vec3 east, out vec3 third)
+{
+	vec3 across = cross(toPlanet, vec3(1.0, 0.0, 0.0));
+	across = dot(across, across) < 0.01 ? cross(toPlanet, vec3(0.0, 0.0, 1.0)) : across;
+	pole = normalize(normalize(across) - toPlanet * 0.38);
+	east = normalize(cross(pole, toPlanet));
+	third = cross(east, pole);
+}
+
+// How much of the sun the rings hide from a point on the planet (0 none).
+float SkyRingAt(vec3 spot, vec3 towardsSun, vec3 centre, vec3 pole, float radius)
+{
+	if (u_skyRings.y <= 0.0)
+	{
+		return 0.0;
+	}
+	float facing = dot(towardsSun, pole);
+	if (abs(facing) < 0.0001)
+	{
+		return 0.0;
+	}
+	float t = dot(centre - spot, pole) / facing;
+	if (t <= 0.0)
+	{
+		return 0.0;
+	}
+	float r = length(spot + towardsSun * t - centre) / radius;
+	return step(u_skyRings.x, r) * step(r, u_skyRings.y);
+}
 
 // Noise over directions, for the planet's ground and cloud and the faint band of the galaxy.
 float SkyHash(vec3 p)
@@ -117,21 +151,28 @@ void main()
 	// round it and a faint wide glow; and the thin rays a lens throws off anything that bright, four long and four short.
 	if (inSpace > 0.5)
 	{
+		// As big as the star really is from here (and never smaller than a few pixels), its rim darker and redder than its
+		// middle, a tight glare round it that a camera's lens spreads, and four faint spikes -- not a star drawn by a child.
 		vec3 sunDir = normalize(u_skySun.xyz);
 		float angle = acos(clamp(dot(ray, sunDir), -1.0, 1.0));
-		const float kDisc = 0.011;
-		float disc = 1.0 - smoothstep(kDisc * 0.8, kDisc, angle);
-		float limb = mix(0.55, 1.0, sqrt(max(1.0 - (angle / kDisc) * (angle / kDisc), 0.0)));
-		float corona = exp(-angle / 0.018) * 0.9 + exp(-angle / 0.09) * 0.12 + exp(-angle / 0.5) * 0.02;
+		float pixelAngle = max(length(fwidth(ray)), 0.00005);
+		float discR = max(u_skyRings.z, pixelAngle * 2.5);
+		float disc = 1.0 - smoothstep(discR - pixelAngle, discR + pixelAngle, angle);
+		float mu = sqrt(max(1.0 - (angle / discR) * (angle / discR), 0.0));
+		vec3 hot = mix(u_skySunColor.rgb, vec3(1.0, 0.98, 0.95), 0.75);
+		vec3 rim = u_skySunColor.rgb * vec3(1.0, 0.78, 0.6);
+		vec3 face = mix(rim, hot, 0.35 + 0.65 * mu) * (0.45 + 0.55 * mu);
+		float outside = max(angle - discR, 0.0);
+		float glare = exp(-outside / (discR * 1.2 + pixelAngle * 2.0)) * 0.7 + exp(-outside / (discR * 7.0 + 0.01)) * 0.12 +
+					  exp(-angle / 0.4) * 0.02;
 		vec3 across = abs(sunDir.y) < 0.95 ? normalize(cross(sunDir, vec3(0.0, 1.0, 0.0))) : vec3(1.0, 0.0, 0.0);
 		vec3 over = cross(across, sunDir);
 		vec2 p = vec2(dot(ray, across), dot(ray, over));
-		float facing = step(0.0, dot(ray, sunDir));
-		vec2 d = vec2(p.x + p.y, p.x - p.y) * 0.7071;
-		float rays = exp(-abs(p.y) * 900.0) * exp(-abs(p.x) * 9.0) + exp(-abs(p.x) * 900.0) * exp(-abs(p.y) * 9.0) +
-					 0.4 * (exp(-abs(d.y) * 900.0) * exp(-abs(d.x) * 22.0) + exp(-abs(d.x) * 900.0) * exp(-abs(d.y) * 22.0));
-		vec3 white = mix(u_skySunColor.rgb, vec3(1.0, 0.98, 0.94), 0.6);
-		color += white * u_skySunColor.w * (disc * limb * 60.0 + corona + rays * 0.8 * facing);
+		vec2 q = vec2(p.x + p.y, p.x - p.y) * 0.7071;
+		float thin = 1.0 / max(pixelAngle * 1.5, 0.0003);
+		float spikes = (exp(-abs(q.y) * thin) * exp(-abs(q.x) * 14.0) + exp(-abs(q.x) * thin) * exp(-abs(q.y) * 14.0)) *
+					   step(0.0, dot(ray, sunDir));
+		color += (face * disc * 60.0 + hot * (glare + spikes * 0.35)) * u_skySunColor.w;
 	}
 
 	// A planet: a sphere one unit away, as big on the sky as it is asked to be, lit by the sun, with ice and cloud
@@ -153,14 +194,21 @@ void main()
 			float sea = 0.0;
 			// In the planet's own frame, its poles at the top and bottom of it as seen, not facing the eye -- or every planet
 			// below the ship would show its ice cap and nothing else.
-			vec3 across = cross(toPlanet, vec3(1.0, 0.0, 0.0));
-			across = dot(across, across) < 0.01 ? cross(toPlanet, vec3(0.0, 0.0, 1.0)) : across;
-			vec3 pole = normalize(across);
-			vec3 east = normalize(cross(pole, toPlanet));
-			vec3 local = vec3(dot(normal, east), dot(normal, pole), dot(normal, toPlanet));
+			vec3 pole;
+			vec3 east;
+			vec3 third;
+			SkyPlanetFrame(toPlanet, pole, east, third);
+			vec3 local = vec3(dot(normal, east), dot(normal, pole), dot(normal, third));
 			vec4 surface = PlanetAlbedo(local, u_planetA, u_planetB, u_planetC, u_planetD, u_planetE.w, 0.0, sea);
-			vec3 ground = mix(surface.rgb, u_planetD.rgb, surface.w);
-			vec3 planet = ground * smoothstep(-0.05, 0.4, lit) * u_skySunColor.w * 1.6;
+			// The lie of the land in the light: ranges catch it on one side and shadow the other, most of all near the line
+			// between day and night.
+			vec3 bumped = PlanetBump(local, u_planetA, u_planetD, u_planetE.w, 1.0);
+			vec3 bumpedWorld = normalize(east * bumped.x + pole * bumped.y + third * bumped.z);
+			float relief = clamp(1.0 + (dot(bumpedWorld, towardsSun) - lit) * 1.3, 0.6, 1.35);
+			vec3 ground = mix(surface.rgb * relief, u_planetD.rgb, surface.w);
+			// Shadowed by its rings, where they come between it and the sun.
+			float ringShade = 1.0 - SkyRingAt(toPlanet + normal * radius, towardsSun, toPlanet, pole, radius) * 0.7;
+			vec3 planet = ground * smoothstep(-0.05, 0.4, lit) * ringShade * u_skySunColor.w * 1.6;
 			planet += u_skySunColor.rgb * u_skySunColor.w * pow(max(dot(reflect(-towardsSun, normal), -ray), 0.0), 60.0) * sea *
 					  (1.0 - surface.w) * step(0.0, lit) * 0.6;
 			float edge = pow(1.0 - max(dot(normal, -ray), 0.0), 4.0);
@@ -173,6 +221,40 @@ void main()
 			float beyond = max(acos(clamp(along, -1.0, 1.0)) - u_skySpace.y, 0.0) / max(u_skySpace.y * 0.035, 0.0001);
 			vec3 edgeDirection = normalize(ray - toPlanet * along);
 			color += air * exp(-beyond) * 0.6 * max(u_skySpace.w, 0.0) * smoothstep(-0.3, 0.3, dot(edgeDirection, towardsSun));
+		}
+		// Its rings, in front of it or behind it, through them the stars; dark where the planet's shadow falls across them.
+		if (u_skyRings.y > 0.0)
+		{
+			vec3 pole;
+			vec3 east;
+			vec3 third;
+			SkyPlanetFrame(toPlanet, pole, east, third);
+			float facing = dot(ray, pole);
+			if (abs(facing) > 0.00001)
+			{
+				float t = dot(toPlanet, pole) / facing;
+				float planetT = (hit > 0.0 && along > 0.0) ? along - sqrt(hit) : 1.0e9;
+				if (t > 0.0 && t < planetT)
+				{
+					vec3 at = ray * t;
+					float r = length(at - toPlanet) / radius;
+					if (r > u_skyRings.x && r < u_skyRings.y)
+					{
+						float across = (r - u_skyRings.x) / max(u_skyRings.y - u_skyRings.x, 0.001);
+						float bands = SkyFbm(vec3(across * 38.0, u_planetE.w, 0.5));
+						float gaps = smoothstep(0.2, 0.3, abs(fract(across * 3.1 + 0.37) - 0.5) * 2.0);
+						float alpha = smoothstep(0.0, 0.05, across) * smoothstep(1.0, 0.94, across) * (0.3 + 0.65 * bands) * mix(0.35, 1.0, gaps);
+						// Lit from whichever side the sun is, and in the planet's shadow behind it.
+						vec3 q = toPlanet - at;
+						float sunAlong = dot(q, towardsSun);
+						float shadowed = sunAlong > 0.0 && length(q - towardsSun * sunAlong) < radius ? 1.0 : 0.0;
+						float light = (0.35 + 0.65 * abs(dot(pole, towardsSun))) * (1.0 - shadowed * 0.92);
+						vec3 ringColour = u_skyRingColor.rgb * (0.75 + 0.5 * bands) * light * u_skySunColor.w * 1.6;
+						color = mix(color, ringColour * max(u_skySpace.w, 0.0), alpha);
+						starsShow *= 1.0 - alpha;
+					}
+				}
+			}
 		}
 	}
 	// The other planets and moons: lit discs when near enough to have a size, and otherwise what they really are from

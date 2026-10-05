@@ -53,17 +53,8 @@ std::string SavedAgo(int64_t savedAt)
 // A heading as the title sets one: spaced capitals, with an amber rule under it.
 void Heading(const char* text)
 {
-    std::string spaced;
-    for (const char* c = text; *c != '\0'; ++c)
-    {
-        spaced += *c;
-        if (c[1] != '\0')
-        {
-            spaced += *c == ' ' ? "   " : " ";
-        }
-    }
     ImGui::SetWindowFontScale(1.35f);
-    ImGui::TextUnformatted(spaced.c_str());
+    ImGui::TextUnformatted(text);
     ImGui::SetWindowFontScale(1.0f);
     const ImVec2 at = ImGui::GetCursorScreenPos();
     ImGui::GetWindowDrawList()->AddRectFilled({at.x, at.y + 2.0f}, {at.x + 56.0f, at.y + 4.0f}, IM_COL32(230, 150, 60, 230));
@@ -79,7 +70,7 @@ void Label(const char* text)
 
 } // namespace
 
-std::string PredationGame::WhereIs(uint64_t universeSeed, uint64_t system, int body, bool underway)
+std::string PredationGame::WhereIs(uint64_t universeSeed, uint64_t system, int body, bool underway, bool landed)
 {
     // Worked out from the seed, as everything in a universe is: the system the save says, and the body in it.
     Universe scratch;
@@ -99,6 +90,10 @@ std::string PredationGame::WhereIs(uint64_t universeSeed, uint64_t system, int b
     {
         return at != nullptr ? "Under way to " + at->name : "Under way in " + found->name;
     }
+    if (at != nullptr && landed)
+    {
+        return "Landed on " + at->name;
+    }
     return at != nullptr ? "In orbit of " + at->name : "Between the planets of " + found->name;
 }
 
@@ -115,7 +110,7 @@ void PredationGame::ReadCampaignSlots()
     m_campaignSlotWhere.clear();
     for (const CampaignSlot& slot : m_campaignSlots)
     {
-        m_campaignSlotWhere.push_back(WhereIs(slot.universeSeed, slot.system, slot.body, slot.underway));
+        m_campaignSlotWhere.push_back(WhereIs(slot.universeSeed, slot.system, slot.body, slot.underway, slot.landed && !slot.underway));
     }
 }
 
@@ -300,7 +295,7 @@ void PredationGame::DrawLobby()
         ImGui::TextUnformatted(m_campaign.name.c_str());
         ImGui::SetWindowFontScale(1.0f);
         ImGui::TextDisabled("%s   %lld credits   %s", WhereIs(m_campaign.universeSeed, m_campaign.system, m_campaign.travel.underway ? m_campaign.travel.target : m_campaign.body,
-                                                              m_campaign.travel.underway).c_str(),
+                                                              m_campaign.travel.underway, ShipLanded()).c_str(),
                             static_cast<long long>(m_campaign.credits), PlayedFor(m_campaign.played).c_str());
         if (!hosting)
         {

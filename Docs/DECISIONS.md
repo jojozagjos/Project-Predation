@@ -2810,3 +2810,36 @@ ship of their own that starts small and grows (REWORK_DESIGN.md), and keeps a sh
 - **Moons are never more than half their planet's size**, so a planet and its moon are not a matched pair.
 - **The ship's screens** say where the ship is going and when it arrives, how far through a crossing it is, and
   docked; the objective says where the navigation table is.
+
+## ADR-130: Starting landed at a hub, not a station; planets with relief; a sun that makes sense; the map steadier
+
+- **No station** (it superseded ADR-129's): the settled home world has a **hub** -- a charted landing area of the kind
+  "hub" (universe.json, `"ship": true`) -- where the ship itself sets down rather than sending the shuttle. A campaign
+  begins with the ship landed there (CampaignState::landed, saved, and sent in the travel message: protocol 34), at
+  the hub's morning (the clock starts where the sun is up and rising there, StarSystem::SunHeight). The shipyard's
+  work -- selling, upgrades -- is to be done there, and the tutorial may end there. What the hub is in the story is the
+  user's to say (asked); for now its buildings say nothing about whose it is.
+- **Landed, the ship stands on a pad** (ShipMap::FieldModel): the world's ground in its biome's colours, patches and
+  low hills to the haze, the pad with its lamps, hangars, a tower, tanks, masts and low buildings. Its **landing gear**
+  is part of the hull (gear_ parts), down while landed and as the cinematics put it. The sky over it is the world's own
+  (SetGroundSky): the star's height and bearing from the place as the world turns, reddening low, night not black;
+  a world without air keeps a black sky with stars. The haze never lets the edge of the ground show.
+- **Two cinematics**: ship_takeoff (up off the pad, gear up, away over the hub into the haze) plays instead of
+  ship_depart when leaving from a hub; ship_land (in over the hub, slowing, gear down, onto the pad) when the ship
+  sets down at one -- after ship_arrive if it has just arrived. Both are on the stage with a copy of the field and the
+  ground sky. The existing cinematics are unchanged.
+- **Crossing between the stars needs an upgraded drive** (Travel::kCrossingTier = 1); the map says so.
+- **System names** from several real star catalogues (KEPLER, GLIESE, HD, HIP, LHS, TOI, WOLF, ROSS, LTT, TYC) and
+  numbers to 9999, so they are not all alike and rarely the same twice.
+- **Planets**: the shared surface noise is gradient noise with each octave turned against the last (value noise
+  showed its squares), warped coastlines, more octaves, rounded mountain ridges, and relief lighting from the lie of the
+  land, in the sky and on the map. The planet below the ship has its **rings** in the sky, shadowed by it, and the
+  planet's pole is tipped a little towards the eye so they are not seen edge on.
+- **The sun**: its disc as big as the star really is from there (Environment::sunDisc), darker and redder at its rim,
+  a glare round it and four faint spikes instead of eight hard rays. Under way the bow is on the way the ship is going
+  (round the star when that is the way), so the destination is ahead and the sun holds its place in the sky.
+- **The map**: the picture and everything drawn over it come from the same camera each frame (the shaking was the
+  overlay a frame ahead of the picture); going between scales dives into (or pulls out of) the thing and fades through
+  dark rather than cutting; left-drag turns more gently; panel text wraps; a list's IDs no longer collide.
+- **The title and menus**: no letter-spacing anywhere; the Continue line says when the ship is landed.
+- The objective no longer gives how far through a crossing it is.

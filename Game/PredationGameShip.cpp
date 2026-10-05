@@ -374,8 +374,7 @@ void PredationGame::DrawShipHud()
         {
             const std::string to = m_universe.Glance(SystemId::Unpack(m_campaign.travel.toSystem)).name;
             ImGui::TextColored(text, "%s", ("Crossing to " + to + ".").c_str());
-            ImGui::TextDisabled("%d%% of the way. The navigation map is at the table behind the cockpit.",
-                                static_cast<int>(Travel::CrossingDone(m_campaign) * 100.0f));
+            ImGui::TextDisabled("The navigation map is at the table behind the cockpit.");
         }
         else if (system != nullptr && m_campaign.travel.underway)
         {

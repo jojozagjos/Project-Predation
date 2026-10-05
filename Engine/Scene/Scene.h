@@ -114,6 +114,8 @@ struct Environment
     // How much of the sun the sky itself draws (its glow, or out in space its disc and rays): 0 when something else
     // draws it, as the system map draws its star.
     float skySun = 1.0f;
+    // How big the sun's disc is out in space, radians from its middle to its edge: from how big the star is and how far.
+    float sunDisc = 0.006f;
     glm::vec3 planetDirection{0.0f, -1.0f, 0.0f};
     float planetRadius = 0.0f;
     PlanetLook planet = PlanetLook::Plain({0.8f, 0.84f, 0.9f}, 0.0f);

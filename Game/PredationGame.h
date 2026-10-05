@@ -618,7 +618,7 @@ private:
     void ContinueCampaign();
     void ReadCampaignSlots();
     // Where a campaign's ship is, in words: "In orbit of KEPLER-217 IV".
-    std::string WhereIs(uint64_t universeSeed, uint64_t system, int body, bool underway);
+    std::string WhereIs(uint64_t universeSeed, uint64_t system, int body, bool underway, bool landed = false);
     // What this machine's game is called in everybody else's list. Falls back to the player's own
     // name, because an unnamed row still needs the one thing that tells it apart: whose it is.
     std::string LobbyName() const;
@@ -996,9 +996,28 @@ private:
         System,
         Body
     };
+    // Going to a scale: diving towards it (or pulling back) through a quick fade, then easing in. Apply* goes at once.
     void ShowMapGalaxy(const glm::vec3& focus, float distance);
     void ShowMapSystem(uint64_t system, int body);
     void ShowMapBody(int body);
+    void ApplyMapGalaxy(const glm::vec3& focus, float distance);
+    void ApplyMapSystem(uint64_t system, int body);
+    void ApplyMapBody(int body);
+    void QueueMap(MapLevel level, uint64_t system, int body, const glm::vec3& focus, float distance, const glm::vec3& dive, bool inward);
+    struct MapTransition
+    {
+        bool active = false;
+        float time = 0.0f;
+        MapLevel to = MapLevel::System;
+        uint64_t system = 0;
+        int body = -1;
+        glm::vec3 focus{0.0f};
+        float distance = 0.0f;
+        glm::vec3 dive{0.0f};
+        bool inward = true;
+    };
+    MapTransition m_mapTransition;
+    float m_mapFadeIn = 0.0f;
     void RenderMapGalaxy(bgfx::ViewId sky, bgfx::ViewId lines, const glm::mat4& view, const glm::mat4& projection);
     void RenderMapSystem(const StarSystem& system, bgfx::ViewId sky, bgfx::ViewId bodies, bgfx::ViewId glow, bgfx::ViewId lines,
                          const glm::mat4& view, const glm::mat4& projection);
@@ -1058,6 +1077,22 @@ private:
     static PlanetLook LookOf(const Body& body);
     // Space out of the windows in a campaign: the star, the body ahead or below, and the rest of the system.
     void SetSpaceSky(Environment& environment);
+    // Standing at a hub: the world's own sky over the ship, at the time of day it is there.
+    void SetGroundSky(Environment& environment);
+    // The ship itself on the ground (at a hub's field), not in orbit.
+    bool ShipLanded() const;
+    // Whether a region is one the ship itself sets down at (a hub's field) rather than the shuttle.
+    bool RegionIsPort(const Body& body, int region) const;
+    // Whether a cinematic of the ship on the ground is playing (taking off from a hub, setting down at one).
+    bool GroundCinematic() const;
+    void PlayLeaving(bool fromGround);
+    // The body and place the ship last stood at, for the ground and the sky while it leaves or arrives.
+    int m_groundBody = -1;
+    int m_groundRegion = -1;
+    // A cinematic to play when the one playing ends.
+    std::string m_cineAfter;
+    // The stage ship's gear, as a cinematic puts it ("gear" markers): down at the start of taking off, until it is put up.
+    bool m_stageGear = false;
     PlanetRenderer m_planets;
     SystemMapView m_mapView;
     bool m_mapOpen = false;

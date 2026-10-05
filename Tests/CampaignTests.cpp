@@ -1,6 +1,7 @@
 #include "Game/Campaign/Campaign.h"
 #include "Game/Campaign/CampaignStore.h"
 #include "Game/Campaign/Universe.h"
+#include "Game/Campaign/Travel.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -103,7 +104,7 @@ TEST_CASE("A system comes out the same from the same seed, and differently from 
     CHECK(names.size() >= 15);
 }
 
-TEST_CASE("Home always has a settled world with a station over it", "[campaign]")
+TEST_CASE("Home always has a settled world with a hub on it, where the ship itself sets down", "[campaign]")
 {
     const UniverseData& data = ShippedData();
     for (uint64_t seed = 1; seed <= 40; ++seed)
@@ -114,14 +115,21 @@ TEST_CASE("Home always has a settled world with a station over it", "[campaign]"
         const Body& world = home.bodies[static_cast<size_t>(home.hub)];
         CHECK(world.kind == BodyKind::Planet);
         CHECK(world.Landable());
-        REQUIRE(home.station >= 0);
-        const Body& station = home.bodies[static_cast<size_t>(home.station)];
-        CHECK(station.kind == BodyKind::Station);
-        CHECK(station.parent == home.hub);
-        CHECK_FALSE(station.Landable());
-        CHECK(station.name.find(world.name) != std::string::npos);
-        // Close round its world.
-        CHECK(glm::length(home.Position(station.index, 100.0) - home.Position(world.index, 100.0)) < 0.01f);
+        REQUIRE(home.hubRegion >= 0);
+        REQUIRE(home.hubRegion < static_cast<int>(world.regions.size()));
+        const LandingRegion& hub = world.regions[static_cast<size_t>(home.hubRegion)];
+        CHECK(hub.kind == "hub");
+        CHECK(hub.charted);
+        const RegionKindDef* kind = data.RegionKind(hub.kind);
+        REQUIRE(kind != nullptr);
+        CHECK(kind->ship);
+        // Only one hub, and none of the other places is one.
+        int hubs = 0;
+        for (const LandingRegion& region : world.regions)
+        {
+            hubs += region.kind == "hub" ? 1 : 0;
+        }
+        CHECK(hubs == 1);
         CHECK(home.bodies.size() >= 5);
     }
 }
@@ -135,11 +143,6 @@ TEST_CASE("Every body is something, moons designated as moons, and only solid on
         for (const Body& body : system.bodies)
         {
             INFO(body.name);
-            if (body.kind == BodyKind::Station)
-            {
-                CHECK_FALSE(body.Landable());
-                continue;
-            }
             CHECK_FALSE(body.biome.empty());
             CHECK(data.Biome(body.biome) != nullptr);
             if (body.gas)
@@ -215,18 +218,33 @@ TEST_CASE("The galaxy has systems around home, the same ones every time, home fi
     CHECK(universe.System(SystemId{0, 0, 0, 5}) == nullptr);
 }
 
-TEST_CASE("A campaign begins at the shipyard with home's records known", "[campaign]")
+TEST_CASE("A campaign begins with the ship landed at home's hub, home's records known", "[campaign]")
 {
     Universe universe;
     universe.Reset(1234, &ShippedData());
     const CampaignState state = CampaignState::Begin("First", 1234, universe);
     const StarSystem* home = universe.System(universe.Home());
     REQUIRE(home != nullptr);
-    CHECK(state.body == home->station);
+    CHECK(state.body == home->hub);
+    CHECK(state.landed);
+    CHECK(state.travel.region == home->hubRegion);
+    CHECK_FALSE(state.travel.underway);
     CHECK(state.region == -1);
     CHECK(state.credits > 0);
     CHECK((state.Known(home->id.Packed(), home->hub) & CampaignState::kKnownVisited) != 0);
-    CHECK((state.Known(home->id.Packed(), home->station) & CampaignState::kKnownVisited) != 0);
+    // Landed is kept in the save.
+    CampaignState back;
+    REQUIRE(CampaignState::FromJson(state.ToJson(), back));
+    CHECK(back.landed);
+    // Setting out takes off.
+    CampaignState leaving = state;
+    int other = -1;
+    for (const Body& body : home->bodies)
+    {
+        other = other < 0 && body.index != home->hub && body.kind == BodyKind::Planet ? body.index : other;
+    }
+    REQUIRE(Travel::SetCourse(leaving, *home, other));
+    CHECK_FALSE(leaving.landed);
 }
 
 TEST_CASE("A campaign written out reads back the same, keeping what it does not know", "[campaign]")
@@ -537,7 +555,9 @@ TEST_CASE("The ship crosses to another system, arrives at its edge, and can be t
     REQUIRE(near.size() >= 3);
     const uint64_t first = near[1].Packed();
     const uint64_t second = near[2].Packed();
-    REQUIRE(Travel::SetSystemCourse(campaign, universe, first, 0));
+    // The first drive is for the ship's own system only.
+    CHECK_FALSE(Travel::SetSystemCourse(campaign, universe, first, 0));
+    REQUIRE(Travel::SetSystemCourse(campaign, universe, first, Travel::kCrossingTier));
     CHECK(campaign.travel.interstellar);
     CHECK(campaign.body == -1);
     // Not straight away, not for ever.
@@ -547,7 +567,7 @@ TEST_CASE("The ship crosses to another system, arrives at its edge, and can be t
     campaign.clock += campaign.travel.duration * 0.5;
     const glm::vec3 between = Travel::GalaxyPosition(campaign, universe);
     CHECK(glm::length(between - universe.SystemPosition(SystemId{})) > 0.1f);
-    REQUIRE(Travel::SetSystemCourse(campaign, universe, second, 0));
+    REQUIRE(Travel::SetSystemCourse(campaign, universe, second, Travel::kCrossingTier));
     CHECK(glm::length(campaign.travel.fromGalaxy - between) < 1.0e-3f);
     CHECK_FALSE(Travel::StepInterstellar(campaign, universe));
     // No course to a planet while between the stars.

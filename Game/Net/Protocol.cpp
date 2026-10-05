@@ -1024,6 +1024,7 @@ void WriteTravel(BitWriter& writer, const TravelMessage& message)
     writer.WriteUInt(static_cast<uint32_t>(message.system & 0xFFFFFFFFu));
     writer.WriteUInt(static_cast<uint32_t>(message.system >> 32));
     writer.WriteBool(message.underway);
+    writer.WriteBool(message.landed);
     writer.WriteSignedBits(message.target, 8);
     writer.WriteSignedBits(message.body, 8);
     writer.WriteSignedBits(message.region, 8);
@@ -1052,6 +1053,7 @@ bool ReadTravel(BitReader& reader, TravelMessage& out)
     const uint64_t systemHigh = reader.ReadUInt();
     out.system = systemLow | (systemHigh << 32);
     out.underway = reader.ReadBool();
+    out.landed = reader.ReadBool();
     out.target = static_cast<int8_t>(reader.ReadSignedBits(8));
     out.body = static_cast<int8_t>(reader.ReadSignedBits(8));
     out.region = static_cast<int8_t>(reader.ReadSignedBits(8));

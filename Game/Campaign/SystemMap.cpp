@@ -53,19 +53,17 @@ std::vector<SystemMapView::Drawn> SystemMapView::Layout(const StarSystem& system
     }
     for (const Body& body : system.bodies)
     {
-        if ((body.kind != BodyKind::Moon && body.kind != BodyKind::Station) || body.parent < 0)
+        if (body.kind != BodyKind::Moon || body.parent < 0)
         {
             continue;
         }
         const Drawn& planet = drawn[static_cast<size_t>(body.parent)];
-        const int nth = body.kind == BodyKind::Moon ? moonsSoFar[static_cast<size_t>(body.parent)]++ : 0;
+        const int nth = moonsSoFar[static_cast<size_t>(body.parent)]++;
         const glm::vec3 offset = system.Position(body.index, clock) - system.Position(body.parent, clock);
         const float length = glm::length(offset);
         const glm::vec3 way = length > 1.0e-9f ? offset / length : glm::vec3(1.0f, 0.0f, 0.0f);
-        // A station close in, above the plane of the moons; moons further out, one after another.
-        drawn[body.index].at = body.kind == BodyKind::Station
-                                   ? planet.at + glm::normalize(way + glm::vec3(0.0f, 0.6f, 0.0f)) * (planet.radius * 1.45f + 0.18f)
-                                   : planet.at + way * (planet.radius * 1.8f + 0.35f + 0.38f * static_cast<float>(nth));
+        // One after another outwards, well clear of the planet.
+        drawn[body.index].at = planet.at + way * (planet.radius * 1.8f + 0.35f + 0.38f * static_cast<float>(nth));
     }
     return drawn;
 }

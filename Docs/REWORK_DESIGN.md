@@ -107,8 +107,8 @@ Do not overbuild the tutorial story yet. The important thing is that the tutoria
 3. CAMPAIGN START
 ==================================================
 
-The player should begin the real campaign docked at a station in orbit of the settled home world (changed from a
-planet-based hangar / shipyard, ADR-129). The station is where the shipyard's work will be done: selling, upgrades, refits.
+The player should begin the real campaign with the ship landed at the hub on the settled home world (ADR-130): the place
+the shipyard's work is done -- selling, upgrades, refits -- and where the tutorial may end.
 
 The starting ship should be:
 

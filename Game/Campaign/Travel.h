@@ -50,6 +50,8 @@ std::vector<glm::vec3> Preview(const CampaignState& campaign, const StarSystem& 
 // the further it is, less for a better drive. Not flown step by step: set out, and arrived when the time is up, at the
 // edge of the system on the side it came from. A new system can be chosen part way: from wherever it has got to.
 float InterstellarSeconds(float lightYears, int tier);
+// The drive it takes to cross between the stars at all: the ship's first drive is for its own system.
+inline constexpr int kCrossingTier = 1;
 bool SetSystemCourse(CampaignState& campaign, Universe& universe, uint64_t toSystem, int tier);
 // Where the ship is in the galaxy, in light years: its system's place, or part way between two.
 glm::vec3 GalaxyPosition(const CampaignState& campaign, Universe& universe);

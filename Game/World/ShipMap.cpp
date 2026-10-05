@@ -807,6 +807,19 @@ ModelAsset ShipMap::HullModel(const ShipHullLook& look)
                      {90.0f, 0.0f, 0.0f}, {0.55f, 0.75f, 1.0f});
     }
 
+    // Its landing gear: struts down from its belly to feet that reach the ground (ShipSpec::kFieldGround), two forward and
+    // two aft, clear of the bay doors. Shown only while it stands on the ground or is setting down (SetGear).
+    {
+        const float g = kFieldGround;
+        const glm::vec3 metal{0.36f, 0.37f, 0.38f};
+        for (const glm::vec2 leg : {glm::vec2{-3.0f, -6.5f}, glm::vec2{3.0f, -6.5f}, glm::vec2{-4.8f, 16.0f}, glm::vec2{4.8f, 16.0f}})
+        {
+            HullBox(model, name("gear_leg"), {leg.x - 0.22f, g + 0.45f, leg.y - 0.22f}, {leg.x + 0.22f, belly + 0.13f, leg.y + 0.22f}, metal, 0.5f, 0.8f);
+            HullBox(model, name("gear_ram"), {leg.x - 0.12f, g + 0.45f, leg.y + 0.3f}, {leg.x + 0.12f, belly - 0.2f, leg.y + 0.55f}, dark, 0.4f, 0.9f);
+            HullBox(model, name("gear_foot"), {leg.x - 0.7f, g + 0.12f, leg.y - 0.7f}, {leg.x + 0.7f, g + 0.45f, leg.y + 0.7f}, dark, 0.6f, 0.7f);
+        }
+    }
+
     // Its lights: red to port, green to starboard, white at the tail.
     HullBox(model, "fx_nav_port", {-bayWide - 0.2f, 3.0f, kBayFront + 0.2f}, {-bayWide, 3.2f, kBayFront + 0.4f}, {1.0f, 0.1f, 0.08f}, 0.4f, 0.0f, 4.0f);
     HullBox(model, "fx_nav_starboard", {bayWide, 3.0f, kBayFront + 0.2f}, {bayWide + 0.2f, 3.2f, kBayFront + 0.4f}, {0.1f, 1.0f, 0.2f}, 0.4f, 0.0f,
@@ -815,131 +828,183 @@ ModelAsset ShipMap::HullModel(const ShipHullLook& look)
     return model;
 }
 
-ModelAsset ShipMap::StationModel()
+ModelAsset ShipMap::FieldModel(const glm::vec3& ground, const glm::vec3& rock)
 {
-    // A working station, not a city: a long hub, a ring round it turning slowly for its gravity (drawn still), four spokes,
-    // solar wings aft, windows lit along the ring, and a docking arm reaching over to the ship and clamped to its roof over
-    // the crew section, clear of the mast. Off to starboard: the cinematics look past the ship from its port side, so they
-    // see it against the station, and leaving it.
+    // The ship set down at a hub: on a pad (its legs are its own: HullModel's gear), the ground of the world round it as far as the haze lets anybody
+    // see, and the hub's buildings off to starboard and ahead -- hangars, a tower, tanks, lights along the pad. Nothing
+    // here says whose hub it is; that is for the story to fill in.
     ModelAsset model;
-    model.name = "station";
+    model.name = "field";
     int count = 0;
     const auto name = [&](const char* stem) { return std::string(stem) + "_" + std::to_string(count++); };
-    const glm::vec3 hull{0.6f, 0.61f, 0.6f};
-    const glm::vec3 panel{0.42f, 0.43f, 0.43f};
-    const glm::vec3 dark{0.14f, 0.15f, 0.16f};
-    const glm::vec3 accent{0.85f, 0.52f, 0.16f};
-    const glm::vec3 window{1.0f, 0.82f, 0.55f};
-    const glm::vec3 solar{0.07f, 0.1f, 0.2f};
-    const glm::vec3 hub{75.0f, 10.0f, 14.0f};
-    constexpr float kRing = 55.0f;
-    constexpr int kSegments = 28;
-    constexpr float kDegrees = 57.2957795f;
+    const float g = kFieldGround;
+    const glm::vec3 concrete = glm::mix(ground, glm::vec3(0.42f, 0.42f, 0.41f), 0.75f);
+    const glm::vec3 padDark = concrete * 0.62f;
+    const glm::vec3 metal{0.36f, 0.37f, 0.38f};
+    const glm::vec3 dark{0.13f, 0.14f, 0.15f};
+    const glm::vec3 hazard{0.78f, 0.6f, 0.14f};
+    const glm::vec3 white{0.85f, 0.86f, 0.85f};
+    const glm::vec3 lamp{1.0f, 0.84f, 0.58f};
 
-    // The hub, its ends, and bands round it.
-    HullCylinder(model, name("hub"), hub, 24.0f, 48.0f, {90.0f, 0.0f, 0.0f}, hull, 0.3f);
-    HullCylinder(model, name("hub_band"), hub + glm::vec3(0.0f, 0.0f, -14.0f), 24.6f, 2.0f, {90.0f, 0.0f, 0.0f}, accent);
-    HullCylinder(model, name("hub_band"), hub + glm::vec3(0.0f, 0.0f, 14.0f), 24.6f, 2.0f, {90.0f, 0.0f, 0.0f}, dark, 0.5f);
-    HullCylinder(model, name("hub_nose"), hub + glm::vec3(0.0f, 0.0f, -27.0f), 15.0f, 6.0f, {90.0f, 0.0f, 0.0f}, panel, 0.4f);
-    HullCylinder(model, name("hub_port"), hub + glm::vec3(0.0f, 0.0f, -31.0f), 7.0f, 2.5f, {90.0f, 0.0f, 0.0f}, dark, 0.6f);
-    HullCylinder(model, name("fx_hub_port_light"), hub + glm::vec3(0.0f, 0.0f, -32.4f), 3.0f, 0.4f, {90.0f, 0.0f, 0.0f}, window, 0.0f, 3.0f);
-    HullCylinder(model, name("hub_tail"), hub + glm::vec3(0.0f, 0.0f, 27.0f), 18.0f, 6.0f, {90.0f, 0.0f, 0.0f}, dark, 0.5f);
-
-    // The ring, in pieces round the hub, its windows on the outside in two rows.
-    for (int i = 0; i < kSegments; ++i)
+    // The ground, and rock showing through it in places.
+    HullBox(model, name("ground"), {-440.0f, g - 1.0f, -440.0f}, {440.0f, g, 440.0f}, ground, 0.95f);
+    for (int i = 0; i < 14; ++i)
     {
-        const float angle = static_cast<float>(i) / kSegments * 6.28318530718f;
-        const glm::vec3 out{std::cos(angle), std::sin(angle), 0.0f};
-        const glm::vec3 rotation{0.0f, 0.0f, angle * kDegrees};
-        const float along = 2.0f * 3.14159265f * kRing / kSegments * 1.03f;
-        ModelPart& piece = HullBox(model, name("ring"), hub + out * kRing - glm::vec3(3.5f, along * 0.5f, 4.5f),
-                                   hub + out * kRing + glm::vec3(3.5f, along * 0.5f, 4.5f), (i % 2) == 0 ? hull : panel, 0.6f, 0.3f);
-        piece.rotation = rotation;
-        for (const float z : {-2.2f, 2.2f})
-        {
-            ModelPart& lights = HullBox(model, name("fx_ring_window"), hub + out * (kRing + 3.56f) + glm::vec3(-0.1f, -along * 0.3f, z - 0.5f),
-                                        hub + out * (kRing + 3.56f) + glm::vec3(0.1f, along * 0.3f, z + 0.5f), window, 0.4f, 0.0f, 2.2f);
-            lights.rotation = rotation;
-        }
-        if (i % 7 == 0)
-        {
-            // A stripe of colour every quarter, so its turning could be seen.
-            ModelPart& stripe = HullBox(model, name("ring_stripe"), hub + out * kRing - glm::vec3(3.6f, 1.0f, 4.6f),
-                                        hub + out * kRing + glm::vec3(3.6f, 1.0f, 4.6f), accent);
-            stripe.rotation = rotation;
-        }
-    }
-    // Spokes from the hub out to the ring.
-    for (int i = 0; i < 4; ++i)
-    {
-        const float angle = (45.0f + 90.0f * static_cast<float>(i)) / kDegrees;
-        const glm::vec3 out{std::cos(angle), std::sin(angle), 0.0f};
-        HullCylinder(model, name("spoke"), hub + out * ((12.0f + kRing - 3.5f) * 0.5f), 3.0f, kRing - 3.5f - 12.0f, {0.0f, 0.0f, angle * kDegrees - 90.0f},
-                     panel, 0.4f);
+        const float angle = static_cast<float>(i) * 2.39996f;
+        const float reach = 120.0f + 22.0f * static_cast<float>(i);
+        const glm::vec3 at{std::cos(angle) * reach, g, std::sin(angle) * reach};
+        const float size = 6.0f + static_cast<float>((i * 7) % 5) * 3.0f;
+        HullBox(model, name("rock"), at - glm::vec3(size, 0.2f, size * 0.7f), at + glm::vec3(size, size * 0.35f, size * 0.7f), rock, 0.9f);
     }
 
-    // Solar wings aft, on a mast across the hub.
-    HullCylinder(model, name("solar_mast"), hub + glm::vec3(0.0f, 0.0f, 36.0f), 1.6f, 110.0f, {0.0f, 0.0f, 90.0f}, dark, 0.6f);
-    for (const float side : {-1.0f, 1.0f})
+    // Patches of the ground darker and lighter, scuffed tracks out from the pad, and low hills all round at the edge of
+    // what can be seen, so the ground has a lie to it and never stops at a line.
+    for (int i = 0; i < 40; ++i)
     {
-        for (int i = 0; i < 2; ++i)
-        {
-            const float x0 = 16.0f + 20.0f * static_cast<float>(i);
-            HullBox(model, name("solar"), hub + glm::vec3(side * x0, -0.15f, 30.0f), hub + glm::vec3(side * (x0 + 18.0f), 0.15f, 42.0f), solar, 0.25f, 0.6f);
-        }
+        const float angle = static_cast<float>(i) * 2.39996f + 0.7f;
+        const float reach = 50.0f + 8.0f * static_cast<float>(i);
+        const glm::vec3 at{std::cos(angle) * reach, g, std::sin(angle) * reach};
+        const float wide = 14.0f + static_cast<float>((i * 11) % 7) * 6.0f;
+        const float shade = 0.82f + 0.06f * static_cast<float>((i * 5) % 7);
+        ModelPart& patch = HullBox(model, name("patch"), at - glm::vec3(wide, 0.02f, wide * 0.6f), at + glm::vec3(wide, 0.03f + 0.025f * static_cast<float>(i % 5), wide * 0.6f),
+                                   glm::mix(ground, rock, 0.25f * static_cast<float>(i % 3)) * shade, 0.95f);
+        patch.rotation = {0.0f, angle * 57.29578f, 0.0f};
+    }
+    for (int i = 0; i < 22; ++i)
+    {
+        const float angle = 6.28318f * static_cast<float>(i) / 22.0f;
+        const float reach = 330.0f + 40.0f * static_cast<float>((i * 7) % 3);
+        const glm::vec3 at{std::cos(angle) * reach, g, std::sin(angle) * reach};
+        const float high = 14.0f + 9.0f * static_cast<float>((i * 5) % 4);
+        const float wide = 70.0f + 15.0f * static_cast<float>(i % 3);
+        ModelPart& hill = HullBox(model, name("hill"), at - glm::vec3(wide, high, 26.0f), at + glm::vec3(wide, high, 26.0f),
+                                  glm::mix(ground, rock, 0.45f), 0.95f);
+        // Turned across the way out from the pad, and tipped back, so they read as slopes rather than walls.
+        hill.rotation = {18.0f, -angle * 57.29578f + 90.0f, 0.0f};
     }
 
-    // The docking arm: a truss out from the hub over to the ship, and the clamp down onto its roof.
-    const float armY = 7.0f;
-    HullBox(model, name("arm"), {1.6f, armY - 1.0f, -2.5f}, {hub.x - 11.0f, armY + 1.0f, 0.5f}, panel, 0.5f, 0.4f);
-    HullBox(model, name("arm_rail"), {1.6f, armY + 1.0f, -2.3f}, {hub.x - 11.0f, armY + 1.3f, -1.9f}, accent);
-    HullBox(model, name("arm_rail"), {1.6f, armY + 1.0f, -0.1f}, {hub.x - 11.0f, armY + 1.3f, 0.3f}, accent);
-    HullBox(model, name("arm_root"), {hub.x - 14.0f, armY - 2.0f, -3.5f}, {hub.x - 9.0f, armY + 2.0f, 1.5f}, dark, 0.5f, 0.6f);
-    HullBox(model, name("clamp"), {-1.6f, 3.55f, -2.5f}, {1.6f, armY + 1.0f, 0.5f}, dark, 0.5f, 0.7f);
-    HullBox(model, name("clamp_pad"), {-2.0f, 3.4f, -2.9f}, {2.0f, 3.6f, 0.9f}, accent);
+    // The pad: a slab of concrete, a darker square inside, hazard edges, painted lines, and lamps round it.
+    HullBox(model, name("pad"), {-30.0f, g, -36.0f}, {30.0f, g + 0.12f, 36.0f}, concrete, 0.85f);
+    HullBox(model, name("pad_inner"), {-16.0f, g + 0.12f, -24.0f}, {16.0f, g + 0.14f, 30.0f}, padDark, 0.85f);
+    for (const float s : {-1.0f, 1.0f})
+    {
+        HullBox(model, name("pad_edge"), {s * 30.0f - 0.6f, g + 0.12f, -36.0f}, {s * 30.0f + 0.6f, g + 0.15f, 36.0f}, hazard, 0.7f);
+        HullBox(model, name("pad_line"), {s * 16.0f - 0.25f, g + 0.14f, -24.0f}, {s * 16.0f + 0.25f, g + 0.16f, 30.0f}, white, 0.7f);
+    }
+    HullBox(model, name("pad_edge"), {-30.0f, g + 0.12f, -36.6f}, {30.0f, g + 0.15f, -35.4f}, hazard, 0.7f);
+    HullBox(model, name("pad_edge"), {-30.0f, g + 0.12f, 35.4f}, {30.0f, g + 0.15f, 36.6f}, hazard, 0.7f);
+    HullBox(model, name("pad_line"), {-0.25f, g + 0.14f, -34.0f}, {0.25f, g + 0.16f, -26.0f}, white, 0.7f);
     for (int i = 0; i < 6; ++i)
     {
-        const float x = hub.x - 16.5f - 8.5f * static_cast<float>(i);
-        HullBox(model, name("fx_arm_light"), {x, armY - 1.1f, -1.2f}, {x + 0.5f, armY - 0.95f, -0.8f}, window, 0.4f, 0.0f, 3.0f);
+        const float z = -36.0f + 14.4f * static_cast<float>(i);
+        for (const float s : {-1.0f, 1.0f})
+        {
+            HullBox(model, name("pad_post"), {s * 31.5f - 0.15f, g, z - 0.15f}, {s * 31.5f + 0.15f, g + 0.9f, z + 0.15f}, dark, 0.5f, 0.6f);
+            HullBox(model, name("fx_pad_lamp"), {s * 31.5f - 0.2f, g + 0.9f, z - 0.2f}, {s * 31.5f + 0.2f, g + 1.1f, z + 0.2f}, lamp, 0.4f, 0.0f, 3.0f);
+        }
     }
 
-    // Its lights: red to port, green to starboard, white at the top and bottom of the ring.
-    HullBox(model, name("fx_nav"), hub + glm::vec3(-kRing - 4.0f, -0.4f, -0.4f), hub + glm::vec3(-kRing - 3.4f, 0.4f, 0.4f), {1.0f, 0.1f, 0.08f}, 0.4f,
-            0.0f, 5.0f);
-    HullBox(model, name("fx_nav"), hub + glm::vec3(kRing + 3.4f, -0.4f, -0.4f), hub + glm::vec3(kRing + 4.0f, 0.4f, 0.4f), {0.1f, 1.0f, 0.2f}, 0.4f, 0.0f,
-            5.0f);
-    HullBox(model, name("fx_nav"), hub + glm::vec3(-0.4f, kRing + 3.4f, -0.4f), hub + glm::vec3(0.4f, kRing + 4.0f, 0.4f), {1.0f, 1.0f, 1.0f}, 0.4f, 0.0f, 5.0f);
-    HullBox(model, name("fx_nav"), hub + glm::vec3(-0.4f, -kRing - 4.0f, -0.4f), hub + glm::vec3(0.4f, -kRing - 3.4f, 0.4f), {1.0f, 1.0f, 1.0f}, 0.4f, 0.0f,
-            5.0f);
+
+    // Hangars to starboard, big doors facing the pad; a tower ahead of them with its lit windows; tanks behind; lamp
+    // masts; and a few low buildings further off, so it reads as a place people work, not a pad in a field.
+    const auto hangar = [&](float x, float z, float wide, float deep, float high)
+    {
+        HullBox(model, name("hangar"), {x, g, z - deep * 0.5f}, {x + wide, g + high, z + deep * 0.5f}, metal, 0.7f, 0.3f);
+        HullBox(model, name("hangar_roof"), {x - 0.5f, g + high, z - deep * 0.5f - 0.5f}, {x + wide + 0.5f, g + high + 1.2f, z + deep * 0.5f + 0.5f},
+                dark, 0.6f, 0.4f);
+        HullBox(model, name("hangar_door"), {x - 0.2f, g, z - deep * 0.35f}, {x, g + high * 0.8f, z + deep * 0.35f}, dark * 1.6f, 0.6f, 0.5f);
+        HullBox(model, name("hangar_stripe"), {x - 0.25f, g + high * 0.8f, z - deep * 0.35f}, {x, g + high * 0.84f, z + deep * 0.35f}, hazard, 0.6f);
+        HullBox(model, name("fx_hangar_lamp"), {x - 0.6f, g + high * 0.86f, z - 0.4f}, {x - 0.2f, g + high * 0.9f, z + 0.4f}, lamp, 0.4f, 0.0f, 3.0f);
+    };
+    hangar(48.0f, -10.0f, 34.0f, 40.0f, 16.0f);
+    hangar(48.0f, 42.0f, 30.0f, 34.0f, 13.0f);
+    hangar(-120.0f, -150.0f, 40.0f, 46.0f, 18.0f);
+    // The tower.
+    HullBox(model, name("tower"), {40.0f, g, -70.0f}, {48.0f, g + 26.0f, -62.0f}, metal, 0.6f, 0.3f);
+    HullBox(model, name("tower_cab"), {38.5f, g + 26.0f, -71.5f}, {49.5f, g + 31.0f, -60.5f}, dark, 0.4f, 0.5f);
+    HullBox(model, name("fx_tower_windows"), {38.4f, g + 27.4f, -71.6f}, {49.6f, g + 29.4f, -60.4f}, lamp * 0.9f, 0.3f, 0.0f, 1.6f);
+    HullBox(model, name("tower_roof"), {38.0f, g + 31.0f, -72.0f}, {50.0f, g + 31.6f, -60.0f}, metal, 0.6f, 0.3f);
+    HullBox(model, name("tower_mast"), {43.8f, g + 31.6f, -66.2f}, {44.2f, g + 38.0f, -65.8f}, dark, 0.5f, 0.8f);
+    HullBox(model, name("fx_tower_light"), {43.7f, g + 38.0f, -66.3f}, {44.3f, g + 38.5f, -65.7f}, {1.0f, 0.15f, 0.1f}, 0.4f, 0.0f, 5.0f);
+    // Tanks, round, on their plinths.
+    for (int i = 0; i < 3; ++i)
+    {
+        const glm::vec3 at{96.0f + 13.0f * static_cast<float>(i), g + 6.0f, 18.0f};
+        HullBox(model, name("tank_plinth"), at + glm::vec3(-5.5f, -6.0f, -5.5f), at + glm::vec3(5.5f, -5.2f, 5.5f), concrete * 0.8f, 0.9f);
+        HullCylinder(model, name("tank"), at, 9.5f, 10.4f, {0.0f, 0.0f, 0.0f}, white * 0.9f, 0.3f);
+        HullCylinder(model, name("tank_band"), at + glm::vec3(0.0f, 3.0f, 0.0f), 9.7f, 0.6f, {0.0f, 0.0f, 0.0f}, hazard);
+    }
+    // Lamp masts round the pad.
+    for (const glm::vec2 at : {glm::vec2{-40.0f, -46.0f}, glm::vec2{-40.0f, 46.0f}, glm::vec2{36.0f, 60.0f}, glm::vec2{-40.0f, 0.0f}})
+    {
+        HullBox(model, name("mast"), {at.x - 0.25f, g, at.y - 0.25f}, {at.x + 0.25f, g + 18.0f, at.y + 0.25f}, dark, 0.5f, 0.8f);
+        HullBox(model, name("fx_mast_lamp"), {at.x - 1.0f, g + 18.0f, at.y - 0.6f}, {at.x + 1.0f, g + 18.6f, at.y + 0.6f}, lamp, 0.3f, 0.0f, 4.0f);
+    }
+    // Low buildings further off.
+    for (int i = 0; i < 7; ++i)
+    {
+        const float x = 70.0f + 26.0f * static_cast<float>(i % 4);
+        const float z = -120.0f - 30.0f * static_cast<float>(i / 4) + static_cast<float>(i) * 3.0f;
+        const float high = 5.0f + static_cast<float>((i * 5) % 4) * 2.0f;
+        HullBox(model, name("building"), {x, g, z}, {x + 16.0f, g + high, z + 12.0f}, (i % 2) == 0 ? metal : concrete * 0.9f, 0.7f, 0.2f);
+        HullBox(model, name("fx_building_window"), {x - 0.05f, g + high * 0.55f, z + 2.0f}, {x, g + high * 0.7f, z + 10.0f}, lamp * 0.8f, 0.3f, 0.0f, 1.2f);
+    }
     return model;
 }
 
-void ShipMap::SetStation(Scene& scene, MeshLibrary& meshes, bool shown)
+void ShipMap::SetField(Scene& scene, MeshLibrary& meshes, bool shown, const glm::vec3& ground, const glm::vec3& rock)
 {
-    if (!m_built || (shown == m_stationShown && (m_station.Built() || !shown)))
+    if (!m_built)
     {
         return;
     }
-    m_stationShown = shown;
-    if (shown && !m_station.Built())
+    // Made again only for another world's colours.
+    if (shown && (!m_field.Built() || ground != m_fieldGround || rock != m_fieldRock))
     {
-        const auto station = std::make_shared<ModelAsset>(StationModel());
-        m_station.Build(scene, meshes, nullptr, station, Pose(glm::vec3(0.0f)), 0, "station_");
-        m_stageStation.Build(scene, meshes, nullptr, station, {kStage, {1.0f, 0.0f, 0.0f, 0.0f}}, 0, "station_stage_");
-        // Seen from far off, as the ships are.
-        for (VehicleProp* prop : {&m_station, &m_stageStation})
+        m_fieldGround = ground;
+        m_fieldRock = rock;
+        m_field.Clear(scene, nullptr);
+        m_field.Build(scene, meshes, nullptr, std::make_shared<ModelAsset>(FieldModel(ground, rock)), Pose(glm::vec3(0.0f)), 0, "field_");
+        for (const ModelPart& part : m_field.Model()->parts)
         {
-            for (const ModelPart& part : prop->Model()->parts)
+            if (MeshRenderer* renderer = scene.GetMeshRenderer(m_field.Part(part.name)))
             {
-                if (MeshRenderer* renderer = scene.GetMeshRenderer(prop->Part(part.name)))
-                {
-                    renderer->farVisible = true;
-                }
+                renderer->farVisible = true;
             }
         }
     }
-    m_station.SetHidden(scene, !shown || m_showingStage);
-    m_stageStation.SetHidden(scene, !shown || !m_showingStage);
+    m_fieldShown = shown;
+    if (m_field.Built())
+    {
+        m_field.SetHidden(scene, !shown || m_showingStage);
+    }
+}
+
+void ShipMap::SetStageField(Scene& scene, MeshLibrary& meshes, bool shown, const glm::vec3& ground, const glm::vec3& rock)
+{
+    if (!m_built)
+    {
+        return;
+    }
+    if (shown && (!m_stageField.Built() || ground != m_stageFieldGround))
+    {
+        m_stageFieldGround = ground;
+        m_stageField.Clear(scene, nullptr);
+        m_stageField.Build(scene, meshes, nullptr, std::make_shared<ModelAsset>(FieldModel(ground, rock)), {kStage, {1.0f, 0.0f, 0.0f, 0.0f}}, 0,
+                           "field_stage_");
+        for (const ModelPart& part : m_stageField.Model()->parts)
+        {
+            if (MeshRenderer* renderer = scene.GetMeshRenderer(m_stageField.Part(part.name)))
+            {
+                renderer->farVisible = true;
+            }
+        }
+    }
+    m_stageFieldShown = shown;
+    if (m_stageField.Built())
+    {
+        m_stageField.SetHidden(scene, !shown || !m_showingStage);
+    }
 }
 
 void ShipMap::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, LevelLights* lights)
@@ -1018,6 +1083,46 @@ void ShipMap::SetLook(Scene& scene, MeshLibrary& meshes, const ShipHullLook& loo
     m_hullsFar = false;
     m_showSet = false;
     SetEngines(scene, m_burn);
+    m_gearApplied = false;
+    ApplyGear(scene);
+}
+
+void ShipMap::SetGear(Scene& scene, bool rooms, bool stage)
+{
+    if (m_gearApplied && rooms == m_gearRooms && stage == m_gearStage)
+    {
+        return;
+    }
+    m_gearRooms = rooms;
+    m_gearStage = stage;
+    m_gearApplied = false;
+    ApplyGear(scene);
+}
+
+void ShipMap::ApplyGear(Scene& scene)
+{
+    if (m_gearApplied || !m_built)
+    {
+        return;
+    }
+    m_gearApplied = true;
+    for (const auto& [prop, down] : {std::pair<VehicleProp*, bool>{&m_hull, m_gearRooms}, std::pair<VehicleProp*, bool>{&m_stageHull, m_gearStage}})
+    {
+        if (!prop->Built() || prop->Hidden())
+        {
+            continue;
+        }
+        for (const ModelPart& part : prop->Model()->parts)
+        {
+            if (part.name.rfind("gear_", 0) == 0)
+            {
+                if (MeshRenderer* renderer = scene.GetMeshRenderer(prop->Part(part.name)))
+                {
+                    renderer->visible = down;
+                }
+            }
+        }
+    }
 }
 
 std::vector<glm::vec4> ShipMap::DeckPlan(int deck)
@@ -1107,11 +1212,17 @@ void ShipMap::ShowFor(Scene& scene, const glm::vec3& eye)
     // Looking at the stage: its ship, and nothing of the one everybody is standing in -- rooms, bay, shuttle and all.
     m_stageHull.SetHidden(scene, !stage);
     m_hull.SetHidden(scene, stage);
-    if (m_station.Built())
+    if (m_field.Built())
     {
-        m_station.SetHidden(scene, !m_stationShown || stage);
-        m_stageStation.SetHidden(scene, !m_stationShown || !stage);
+        m_field.SetHidden(scene, !m_fieldShown || stage);
     }
+    if (m_stageField.Built())
+    {
+        m_stageField.SetHidden(scene, !m_stageFieldShown || !stage);
+    }
+    // Showing a hull shows all of it: its gear as it should be, again.
+    m_gearApplied = false;
+    ApplyGear(scene);
     m_shuttle.SetHidden(scene, stage);
     m_bayDoors.SetHidden(scene, stage);
     for (const Entity entity : m_entities)

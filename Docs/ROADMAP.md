@@ -16,7 +16,9 @@ it has got, in the order the design's vertical slice puts things. Updated 2026-1
   minute or more; arriving scans the body and finds places to land, chosen on the globe; everybody sees what the
   others are pointing at. Space out of the windows is the system as it is: other worlds as points of light or discs at
   their real size, the sun setting behind the planet below in orbit.
-- **Starting docked at a station** (ADR-129) over the settled home world, the station beside the ship.
+- **Starting landed at the hub** (ADR-130) on the settled home world: the ship on its gear on a pad, under that world's
+  sky at its time of day; taking off and setting down have their own cinematics. Crossing to other systems needs an
+  upgraded drive.
 - **The crew's own ship** (ADR-127): small, one deck, a shuttle bay; its outside follows the campaign's colours and
   its drive and sensor upgrades.
 - **The title and lobby** reworked round campaigns; no host migration (the host leaving ends the game, ADR-126).
@@ -32,8 +34,9 @@ it has got, in the order the design's vertical slice puts things. Updated 2026-1
    some quiet and some not.
 2. **What there is to do there**: salvage and components to carry back, points of interest found by exploring, the
    log filled in by what is found, a region remembered as it was left (what was taken, what was opened).
-3. **The economy and the shipyard**: credits for what is brought back; the station to sell salvage at, buy upgrades
-   (the drive, sensors, storage, the ship's size) and change the ship's colours; the ship gaining sections as it grows.
+3. **The economy and the shipyard**: credits for what is brought back; the hub to sell salvage at, buy upgrades
+   (the drive -- the first upgrade opens other systems --, sensors, storage, the ship's size) and change the ship's
+   colours; the ship gaining sections as it grows. Walking off the ship at the hub. What the hub is in the story.
 4. **The ship's log**: everything found, kept and shown; entries marked and pinned.
 5. **CIRRA's contracts**: optional work offered over the intercom, briefed at the navigation table, paying credits
    and components.

@@ -366,7 +366,7 @@ void PredationGame::RegisterCampaignCommands()
                                     }
                                     if (body.index == system->hub)
                                     {
-                                        line += "  [settled, a station over it]";
+                                        line += "  [settled, its hub is where the ship lands]";
                                     }
                                     say(line);
                                     for (const LandingRegion& region : body.regions)
@@ -398,12 +398,12 @@ void PredationGame::RegisterCampaignCommands()
                                 }
                                 if (args[1] == "galaxy")
                                 {
-                                    ShowMapGalaxy(Travel::GalaxyPosition(m_campaign, m_universe), args.size() >= 3 ? std::stof(args[2]) : 60.0f);
+                                    ApplyMapGalaxy(Travel::GalaxyPosition(m_campaign, m_universe), args.size() >= 3 ? std::stof(args[2]) : 60.0f);
                                 }
                                 else if (args[1] == "body" && args.size() >= 3)
                                 {
-                                    ShowMapSystem(m_campaign.system, -1);
-                                    ShowMapBody(std::atoi(args[2].c_str()));
+                                    ApplyMapSystem(m_campaign.system, -1);
+                                    ApplyMapBody(std::atoi(args[2].c_str()));
                                     if (args.size() >= 4)
                                     {
                                         m_mapRegion = std::atoi(args[3].c_str());
@@ -411,7 +411,7 @@ void PredationGame::RegisterCampaignCommands()
                                 }
                                 else
                                 {
-                                    ShowMapSystem(m_campaign.system, std::atoi(args[1].c_str()));
+                                    ApplyMapSystem(m_campaign.system, std::atoi(args[1].c_str()));
                                 }
                             });
     console.RegisterCommand("course_system", "Set a course for another system, the nth nearest the ship: course_system [n]",

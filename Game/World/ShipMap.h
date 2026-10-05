@@ -26,6 +26,8 @@ namespace ShipSpec
 // Where the ship is in the world: well away from the testing area and the sites, in a space of its own. Wherever the
 // eye is within kReach of it, the sky is space.
 inline constexpr glm::vec3 kOrigin{-1500.0f, 0.0f, 0.0f};
+// Landed at a hub, where the ground is under the ship (its legs reach down to it).
+inline constexpr float kFieldGround = -2.6f;
 inline constexpr float kReach = 600.0f;
 // Its one deck, the top of its floor; the shuttle bay is twice as tall as the rest.
 inline constexpr float kDeck = 0.0f;
@@ -91,11 +93,17 @@ public:
     const ShipHullLook& Look() const { return m_look; }
     // The outside for a look, in the ship's frame.
     static ModelAsset HullModel(const ShipHullLook& look);
-    // A station the ship is docked at, in the ship's frame: off to starboard, its arm clamped to the ship's roof.
-    static ModelAsset StationModel();
-    // Whether the station is there, beside the ship and beside the one on the stage (built the first time it is).
-    void SetStation(Scene& scene, MeshLibrary& meshes, bool shown);
-    bool StationShown() const { return m_stationShown; }
+    // Set down at a hub, in the ship's frame: its legs, the pad, the hub round it and the world's ground in its colours.
+    static ModelAsset FieldModel(const glm::vec3& ground, const glm::vec3& rock);
+    // The landing gear, down or up: round the rooms (standing at a hub) and on the stage (as a cinematic has it).
+    void SetGear(Scene& scene, bool rooms, bool stage);
+    // Whether the ship is standing at a hub (built again only for another world's colours). Never on the stage: the
+    // cinematics are of the ship in space.
+    void SetField(Scene& scene, MeshLibrary& meshes, bool shown, const glm::vec3& ground, const glm::vec3& rock);
+    // The same ground on the stage, for the cinematics of taking off and setting down (the ship's legs not on it: there the
+    // ship is flying).
+    void SetStageField(Scene& scene, MeshLibrary& meshes, bool shown, const glm::vec3& ground, const glm::vec3& rock);
+    bool FieldShown() const { return m_fieldShown; }
     bool Built() const { return m_built; }
 
     // Whether a point is near enough the ship that the sky round it is space.
@@ -151,9 +159,17 @@ private:
     VehicleProp m_bayDoors;
     VehicleProp m_hull;
     VehicleProp m_stageHull;
-    VehicleProp m_station;
-    VehicleProp m_stageStation;
-    bool m_stationShown = false;
+    VehicleProp m_field;
+    bool m_fieldShown = false;
+    void ApplyGear(Scene& scene);
+    bool m_gearRooms = false;
+    bool m_gearStage = false;
+    bool m_gearApplied = false;
+    VehicleProp m_stageField;
+    bool m_stageFieldShown = false;
+    glm::vec3 m_stageFieldGround{-1.0f};
+    glm::vec3 m_fieldGround{-1.0f};
+    glm::vec3 m_fieldRock{-1.0f};
     ShipHullLook m_look;
     std::vector<Entity> m_entities;
     std::vector<BodyHandle> m_bodies;

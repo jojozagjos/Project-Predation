@@ -143,8 +143,10 @@ struct StarDef : TraitEntry
 
 struct RegionKindDef : TraitEntry
 {
-    // Whether one is on the charts before anybody has been (otherwise it is found).
+    // Whether one is on the charts before anybody has been (otherwise it is found); and whether the ship itself sets down
+    // there (a hub's landing field) rather than sending the shuttle.
     bool charted = false;
+    bool ship = false;
     // What it is called on the charts: the designation's kind ("RESEARCH FACILITY") and qualifiers to go before it.
     std::vector<std::string> designations;
 };
@@ -179,8 +181,6 @@ public:
     // Moons: a designation of their own, a prefix and a number ("LV-426").
     std::vector<std::string> moonCatalogues{"LV"};
     glm::ivec2 moonNumbers{100, 999};
-    // A station, after the world it goes round: "{planet}" is that world's name.
-    std::string stationName = "{planet} STATION";
     // Region designations: the part of a planet it is in ("NORTH CRYOSPHERE"), by biome; "any" for every biome.
     std::map<std::string, std::vector<std::string>> regionAreas;
 };
@@ -216,9 +216,7 @@ struct LandingRegion
 enum class BodyKind : uint8_t
 {
     Planet,
-    Moon,
-    // A station in orbit of a settled world: somewhere to dock, not to land. A campaign starts docked at one.
-    Station
+    Moon
 };
 
 // A planet or a moon.
@@ -227,7 +225,7 @@ struct Body
     uint16_t index = 0;
     BodyKind kind = BodyKind::Planet;
     int parent = -1;   // for a moon, the index of the planet it goes round
-    std::string name;  // "KEPLER-91 IV"; a moon "LV-426"; a station after its world
+    std::string name;  // "KEPLER-91 IV"; a moon "LV-426"
     uint64_t seed = 0;
     // Its orbit: how far out (in astronomical units for a planet; for a moon, in its planet's radii), how long a turn
     // takes (seconds of the campaign's clock), where in it it was at the clock's zero (radians), and the slight tilt of
@@ -263,7 +261,7 @@ struct Body
     glm::vec3 ringColor{0.7f, 0.66f, 0.6f};
     std::vector<LandingRegion> regions;
 
-    bool Landable() const { return !gas && kind != BodyKind::Station; }
+    bool Landable() const { return !gas; }
     bool HasSpecial(const std::string& id) const;
 };
 
@@ -278,14 +276,17 @@ struct StarSystem
     float luminosity = 1.0f;
     float starRadius = 1.0f;
     std::vector<Body> bodies; // planets in order outwards, each followed by its moons
-    // The settled world with a station, and the station, or -1.
+    // The settled world with a hub, and the hub's place among its landing regions (where the ship itself sets down), or -1.
     int hub = -1;
-    int station = -1;
+    int hubRegion = -1;
 
     const Body* Find(int index) const { return index >= 0 && index < static_cast<int>(bodies.size()) ? &bodies[static_cast<size_t>(index)] : nullptr; }
     // Where a body is at `time` on the campaign's clock, in astronomical units from the star. A moon's place is its
     // planet's plus its own (drawn larger than life, so it is not lost inside its planet on the map).
     glm::vec3 Position(int index, double time) const;
+    // How high the star stands over a place on a body at `time`: the sine of its height over the horizon there (1
+    // overhead, 0 on the horizon, below 0 night), from where the body is and how far round it has turned.
+    float SunHeight(int index, const glm::vec2& latLon, double time) const;
 };
 
 // What a system is from far off, without working all of it out: its name, its star and where it is. For the galaxy

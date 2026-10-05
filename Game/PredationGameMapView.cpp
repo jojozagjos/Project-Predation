@@ -22,6 +22,7 @@
 #include <cctype>
 #include <cfloat>
 #include <cmath>
+#include <cstdarg>
 #include <cstdio>
 #include <string>
 
@@ -51,6 +52,7 @@ constexpr ImU32 kDim = IM_COL32(130, 138, 146, 255);
 constexpr ImU32 kShipColour = IM_COL32(255, 236, 200, 240);
 constexpr ImU32 kNight = IM_COL32(130, 160, 230, 255);
 constexpr ImU32 kGo = IM_COL32(120, 220, 140, 255);
+constexpr ImU32 kHub = IM_COL32(150, 220, 255, 255);
 constexpr ImVec4 kAmberText{0.93f, 0.61f, 0.25f, 1.0f};
 constexpr ImVec4 kDimText{0.55f, 0.58f, 0.62f, 1.0f};
 constexpr ImVec4 kGoText{0.47f, 0.86f, 0.55f, 1.0f};
@@ -157,15 +159,26 @@ void Section(const char* title)
     ImGui::Spacing();
 }
 
+// Words in a colour, wrapped at the panel's edge rather than running off it.
+void Wrapped(const ImVec4& colour, const char* format, ...)
+{
+    va_list args;
+    va_start(args, format);
+    ImGui::PushStyleColor(ImGuiCol_Text, colour);
+    ImGui::TextWrappedV(format, args);
+    ImGui::PopStyleColor();
+    va_end(args);
+}
+
 // A panel's title: larger, with a line of what it is under it.
 void Title(const std::string& title, const std::string& under)
 {
     ImGui::SetWindowFontScale(1.3f);
-    ImGui::TextUnformatted(title.c_str());
+    ImGui::TextWrapped("%s", title.c_str());
     ImGui::SetWindowFontScale(1.0f);
     if (!under.empty())
     {
-        ImGui::TextColored(kDimText, "%s", under.c_str());
+        Wrapped(kDimText, "%s", under.c_str());
     }
 }
 
@@ -268,12 +281,12 @@ void PredationGame::OpenSystemMap()
         m_mapFramed = true;
         if (m_campaign.travel.interstellar)
         {
-            ShowMapGalaxy(Travel::GalaxyPosition(m_campaign, m_universe), 60.0f);
+            ApplyMapGalaxy(Travel::GalaxyPosition(m_campaign, m_universe), 60.0f);
         }
         else
         {
             // The whole system, with where the ship is (or is going) picked out.
-            ShowMapSystem(m_campaign.system, -1);
+            ApplyMapSystem(m_campaign.system, -1);
             m_mapSelected = m_campaign.travel.underway ? m_campaign.travel.target : m_campaign.body;
         }
     }
@@ -310,6 +323,64 @@ void PredationGame::DestroySystemMapTarget()
 
 void PredationGame::ShowMapGalaxy(const glm::vec3& focus, float distance)
 {
+    QueueMap(MapLevel::Galaxy, 0, -1, focus, distance, m_mapView.FocusPoint(), false);
+}
+
+void PredationGame::ShowMapSystem(uint64_t system, int body)
+{
+    // From the galaxy, into the star; from a body, back out of it.
+    const bool fromGalaxy = m_mapLevel == MapLevel::Galaxy;
+    const glm::vec3 dive = fromGalaxy ? m_universe.Glance(SystemId::Unpack(system)).position : m_mapView.FocusPoint();
+    QueueMap(MapLevel::System, system, body, glm::vec3(0.0f), 0.0f, dive, fromGalaxy);
+}
+
+void PredationGame::ShowMapBody(int body)
+{
+    glm::vec3 dive = m_mapView.FocusPoint();
+    if (const StarSystem* shown = m_universe.System(m_mapSystem); shown != nullptr && shown->Find(body) != nullptr)
+    {
+        dive = SystemMapView::Layout(*shown, m_campaign.clock)[static_cast<size_t>(body)].at;
+    }
+    QueueMap(MapLevel::Body, m_mapSystem, body, glm::vec3(0.0f), 0.0f, dive, true);
+}
+
+void PredationGame::QueueMap(MapLevel level, uint64_t system, int body, const glm::vec3& focus, float distance, const glm::vec3& dive,
+                             bool inward)
+{
+    // Not open yet, or nothing on the screen to move: at once.
+    if (!m_mapOpen || !bgfx::isValid(m_mapTexture))
+    {
+        if (level == MapLevel::Galaxy)
+        {
+            ApplyMapGalaxy(focus, distance);
+        }
+        else if (level == MapLevel::System)
+        {
+            ApplyMapSystem(system, body);
+        }
+        else
+        {
+            ApplyMapBody(body);
+        }
+        return;
+    }
+    m_mapTransition.active = true;
+    m_mapTransition.time = 0.0f;
+    m_mapTransition.to = level;
+    m_mapTransition.system = system;
+    m_mapTransition.body = body;
+    m_mapTransition.focus = focus;
+    m_mapTransition.distance = distance;
+    m_mapTransition.dive = dive;
+    m_mapTransition.inward = inward;
+    m_mapDragButton = -1;
+    // Free to go as close or as far as the dive takes it; the next scale sets its own limits.
+    m_mapView.SetLimits(0.0005f, 1.0e7f);
+    PlayNamed("UI/click", m_renderEye, 0.3f, inward ? 0.85f : 0.7f, false);
+}
+
+void PredationGame::ApplyMapGalaxy(const glm::vec3& focus, float distance)
+{
     const bool fromSystem = m_mapLevel != MapLevel::Galaxy;
     m_mapLevel = MapLevel::Galaxy;
     m_mapHovered = -1;
@@ -325,7 +396,7 @@ void PredationGame::ShowMapGalaxy(const glm::vec3& focus, float distance)
     }
 }
 
-void PredationGame::ShowMapSystem(uint64_t system, int body)
+void PredationGame::ApplyMapSystem(uint64_t system, int body)
 {
     const StarSystem* shown = m_universe.System(system);
     if (shown == nullptr)
@@ -365,11 +436,11 @@ void PredationGame::ShowMapSystem(uint64_t system, int body)
     }
 }
 
-void PredationGame::ShowMapBody(int body)
+void PredationGame::ApplyMapBody(int body)
 {
     const StarSystem* shown = m_universe.System(m_mapSystem);
     const Body* picked = shown != nullptr ? shown->Find(body) : nullptr;
-    if (picked == nullptr || picked->kind == BodyKind::Station)
+    if (picked == nullptr)
     {
         return;
     }
@@ -458,9 +529,11 @@ std::string PredationGame::ShipStatus()
     {
         return "Coming to a stop";
     }
-    if (at != nullptr && at->kind == BodyKind::Station)
+    if (at != nullptr && ShipLanded())
     {
-        return "Docked at " + at->name;
+        const int region = m_campaign.travel.region;
+        return "Landed on " + at->name +
+               (region >= 0 && region < static_cast<int>(at->regions.size()) ? ", " + at->regions[static_cast<size_t>(region)].designation : std::string());
     }
     if (at != nullptr)
     {
@@ -478,7 +551,13 @@ std::string PredationGame::ShipStatus()
 
 void PredationGame::RenderSystemMap()
 {
-    if (!m_mapOpen || !m_campaignOpen || !m_planets.IsValid())
+    if (!m_mapOpen || !m_campaignOpen)
+    {
+        return;
+    }
+    // The camera moved here, before the picture is taken: what is drawn over it is drawn from the same camera after.
+    m_mapView.Update(ImGui::GetIO().DeltaTime);
+    if (!m_planets.IsValid())
     {
         return;
     }
@@ -684,10 +763,6 @@ void PredationGame::RenderMapSystem(const StarSystem& system, bgfx::ViewId sky, 
     for (const Body& body : system.bodies)
     {
         const SystemMapView::Drawn& at = drawn[body.index];
-        if (body.kind == BodyKind::Station)
-        {
-            continue; // a mark, drawn over the picture
-        }
         // Turned on its axis as the day goes round, the axis tipped by its tilt.
         glm::mat4 model = glm::translate(glm::mat4(1.0f), at.at);
         model = glm::rotate(model, body.tilt, glm::vec3(0.0f, 0.0f, 1.0f));
@@ -798,7 +873,7 @@ void PredationGame::DrawSystemMap()
         ShowMapGalaxy(Travel::GalaxyPosition(m_campaign, m_universe), 60.0f);
         return;
     }
-    if (m_mapLevel == MapLevel::Body && (shown->Find(m_mapSelected) == nullptr || shown->Find(m_mapSelected)->kind == BodyKind::Station))
+    if (m_mapLevel == MapLevel::Body && shown->Find(m_mapSelected) == nullptr)
     {
         ShowMapSystem(m_mapSystem, -1);
         return;
@@ -809,7 +884,41 @@ void PredationGame::DrawSystemMap()
     const float aspect = size.x / std::max(size.y, 1.0f);
     const bool homogeneous = m_app->GetRenderer().HomogeneousDepth();
     ImGuiIO& io = ImGui::GetIO();
-    m_mapView.Update(io.DeltaTime);
+    // The camera as the picture was taken with it this frame: everything drawn over the picture goes by this, and what
+    // the mouse and keys do changes the camera for the next.
+    const SystemMapView shot = m_mapView;
+    // Part way to another scale: diving in (or pulling out), then there, then easing in from the fade.
+    if (m_mapTransition.active)
+    {
+        m_mapTransition.time += io.DeltaTime;
+        const float factor = m_mapTransition.inward ? std::exp(-io.DeltaTime * 9.0f) : std::exp(io.DeltaTime * 4.0f);
+        m_mapView.Focus(m_mapTransition.dive, m_mapView.Distance() * factor);
+        if (m_mapTransition.time >= 0.28f)
+        {
+            m_mapTransition.active = false;
+            m_mapFadeIn = 1.0f;
+            if (m_mapTransition.to == MapLevel::Galaxy)
+            {
+                ApplyMapGalaxy(m_mapTransition.focus, m_mapTransition.distance);
+            }
+            else if (m_mapTransition.to == MapLevel::System)
+            {
+                ApplyMapSystem(m_mapTransition.system, m_mapTransition.body);
+            }
+            else
+            {
+                ApplyMapBody(m_mapTransition.body);
+            }
+            // Drawn on at once, under the fade, so no frame goes by without the map.
+            shown = m_mapLevel == MapLevel::Galaxy ? nullptr : m_universe.System(m_mapSystem);
+            if (m_mapLevel != MapLevel::Galaxy && shown == nullptr)
+            {
+                return;
+            }
+        }
+    }
+    m_mapFadeIn = std::max(m_mapFadeIn - io.DeltaTime / 0.4f, 0.0f);
+    const bool interactive = !m_mapTransition.active;
     const std::vector<SystemMapView::Drawn> drawn = shown != nullptr ? SystemMapView::Layout(*shown, m_campaign.clock) : std::vector<SystemMapView::Drawn>{};
     const bool ours = shown != nullptr && m_mapSystem == m_campaign.system && !m_campaign.travel.interstellar;
 
@@ -851,12 +960,12 @@ void PredationGame::DrawSystemMap()
                                   IM_COL32(0, 0, 0, 120), IM_COL32(0, 0, 0, 120), IM_COL32(0, 0, 0, 0));
     ImGui::SetCursorScreenPos(origin);
     ImGui::InvisibleButton("##mapsurface", size, ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight | ImGuiButtonFlags_MouseButtonMiddle);
-    const bool hovered = ImGui::IsItemHovered();
+    const bool hovered = ImGui::IsItemHovered() && interactive;
     const glm::vec2 mouse{(io.MousePos.x - origin.x) / size.x, (io.MousePos.y - origin.y) / size.y};
     const auto toScreen = [&](const glm::vec3& at, ImVec2& out)
     {
         glm::vec2 point;
-        if (!m_mapView.OnScreen(at, aspect, homogeneous, point) || point.x < -0.1f || point.x > 1.1f || point.y < -0.1f || point.y > 1.1f)
+        if (!shot.OnScreen(at, aspect, homogeneous, point) || point.x < -0.1f || point.x > 1.1f || point.y < -0.1f || point.y > 1.1f)
         {
             return false;
         }
@@ -866,7 +975,7 @@ void PredationGame::DrawSystemMap()
     // Where the mouse points on the flat of the map: for zooming towards it.
     const auto onPlane = [&](glm::vec3& out)
     {
-        const glm::mat4 inverse = glm::inverse(m_mapView.Projection(aspect, homogeneous) * m_mapView.View());
+        const glm::mat4 inverse = glm::inverse(shot.Projection(aspect, homogeneous) * shot.View());
         const glm::vec2 ndc{mouse.x * 2.0f - 1.0f, 1.0f - mouse.y * 2.0f};
         const glm::vec4 nearPoint = inverse * glm::vec4(ndc, homogeneous ? -1.0f : 0.0f, 1.0f);
         const glm::vec4 farPoint = inverse * glm::vec4(ndc, 1.0f, 1.0f);
@@ -914,11 +1023,11 @@ void PredationGame::DrawSystemMap()
         }
         else if (m_mapLevel == MapLevel::System)
         {
-            m_mapHovered = m_mapView.Pick(mouse, drawn, aspect, homogeneous);
+            m_mapHovered = shot.Pick(mouse, drawn, aspect, homogeneous);
         }
         else if (globe != nullptr)
         {
-            const glm::vec3 eye = glm::normalize(m_mapView.Eye());
+            const glm::vec3 eye = glm::normalize(shot.Eye());
             float best = 16.0f;
             for (int i = 0; i < static_cast<int>(globe->regions.size()); ++i)
             {
@@ -969,7 +1078,9 @@ void PredationGame::DrawSystemMap()
                 }
                 else
                 {
-                    m_mapView.Turn(-io.MouseDelta.x * 0.006f, io.MouseDelta.y * 0.006f);
+                    // Left-drag turns gently; the middle button a little quicker.
+                    const float rate = m_mapDragButton == ImGuiMouseButton_Left ? 0.0022f : 0.0038f;
+                    m_mapView.Turn(-io.MouseDelta.x * rate, io.MouseDelta.y * rate);
                 }
             }
         }
@@ -1008,15 +1119,7 @@ void PredationGame::DrawSystemMap()
         }
         else if (m_mapLevel == MapLevel::System && m_mapHovered >= 0)
         {
-            const Body& body = shown->bodies[static_cast<size_t>(m_mapHovered)];
-            if (body.kind == BodyKind::Station)
-            {
-                m_mapView.Focus(drawn[body.index].at, drawn[body.index].radius * 10.0f);
-            }
-            else
-            {
-                ShowMapBody(body.index);
-            }
+            ShowMapBody(m_mapHovered);
         }
         else if (m_mapLevel == MapLevel::Body && m_mapHoverRegion >= 0)
         {
@@ -1040,7 +1143,7 @@ void PredationGame::DrawSystemMap()
     }
 
     // --- Keys, while nothing is being typed ---
-    if (!io.WantTextInput)
+    if (!io.WantTextInput && interactive)
     {
         const float dt = io.DeltaTime;
         const float speed = m_mapView.Distance() * 0.9f * dt;
@@ -1131,7 +1234,7 @@ void PredationGame::DrawSystemMap()
                 ImGui::End();
                 return;
             }
-            if (m_mapLevel == MapLevel::System && m_mapSelected >= 0 && shown->bodies[static_cast<size_t>(m_mapSelected)].kind != BodyKind::Station)
+            if (m_mapLevel == MapLevel::System && m_mapSelected >= 0)
             {
                 ShowMapBody(m_mapSelected);
                 ImGui::End();
@@ -1141,7 +1244,7 @@ void PredationGame::DrawSystemMap()
     }
 
     // --- Zoomed past the nearest or furthest: on to the next scale ---
-    if (const int past = m_mapView.TakePastLimit(); past != 0)
+    if (const int past = m_mapView.TakePastLimit(); past != 0 && interactive)
     {
         bool changed = false;
         if (m_mapLevel == MapLevel::Galaxy && past < 0)
@@ -1183,7 +1286,7 @@ void PredationGame::DrawSystemMap()
         {
             // Into the body under the mouse or picked out, if the camera is on it.
             const int body = m_mapHovered >= 0 ? m_mapHovered : m_mapSelected;
-            if (const Body* into = shown->Find(body); into != nullptr && into->kind != BodyKind::Station)
+            if (shown->Find(body) != nullptr)
             {
                 ShowMapBody(body);
                 changed = true;
@@ -1313,31 +1416,25 @@ void PredationGame::DrawSystemMap()
             const SystemMapView::Drawn& at = drawn[body.index];
             const bool picked = body.index == m_mapSelected;
             const bool hover = body.index == m_mapHovered;
-            const bool station = body.kind == BodyKind::Station;
             ImVec2 centre;
             if (!toScreen(at.at, centre))
             {
                 continue;
             }
-            if (station)
-            {
-                Diamond(draw, centre, 5.0f, picked ? kAmber : IM_COL32(150, 220, 255, 230), true);
-                Diamond(draw, centre, 8.0f, Faded(IM_COL32(150, 220, 255, 255), 0.5f), false);
-            }
             if (picked || hover)
             {
                 ImVec2 edge;
-                const float r = toScreen(at.at + m_mapView.Up() * at.radius, edge) ? std::max(std::hypot(edge.x - centre.x, edge.y - centre.y), 6.0f) : 10.0f;
+                const float r = toScreen(at.at + shot.Up() * at.radius, edge) ? std::max(std::hypot(edge.x - centre.x, edge.y - centre.y), 6.0f) : 10.0f;
                 Brackets(draw, centre, r + 6.0f, picked ? kAmber : IM_COL32(255, 255, 255, 190));
             }
-            // A planet's name over it; a moon's or a station's to its side, only close in or when picked out.
+            // A planet's name over it; a moon's to its side, only close in or when picked out.
             if (body.kind != BodyKind::Planet && !picked && !hover && m_mapView.Distance() > 11.0f)
             {
                 continue;
             }
             ImVec2 point;
             const bool beside = body.kind != BodyKind::Planet;
-            if (!toScreen(beside ? at.at : at.at + m_mapView.Up() * (at.radius * 1.35f), point))
+            if (!toScreen(beside ? at.at : at.at + shot.Up() * (at.radius * 1.35f), point))
             {
                 continue;
             }
@@ -1346,9 +1443,15 @@ void PredationGame::DrawSystemMap()
             const ImVec2 extent = TextSize(body.name.c_str(), small);
             // Beside it, past its edge as drawn, however close the camera is.
             ImVec2 rim;
-            const float across = toScreen(at.at + m_mapView.Right() * at.radius, rim) ? std::abs(rim.x - point.x) : 0.0f;
+            const float across = toScreen(at.at + shot.Right() * at.radius, rim) ? std::abs(rim.x - point.x) : 0.0f;
             const ImVec2 corner = beside ? ImVec2{point.x + across + 10.0f, point.y - extent.y * 0.5f} : ImVec2{point.x - extent.x * 0.5f, point.y - extent.y};
             Label(draw, corner, colour, body.name.c_str(), small);
+            // The world with a hub on it: a mark under its name.
+            if (body.index == shown->hub)
+            {
+                Diamond(draw, {corner.x + extent.x * 0.5f - 18.0f, corner.y - 6.0f}, 3.5f, IM_COL32(150, 220, 255, 230), true);
+                Label(draw, {corner.x + extent.x * 0.5f - 11.0f, corner.y - 12.0f}, IM_COL32(150, 220, 255, 230), "HUB", tiny);
+            }
         }
         // The distance rings' marks.
         for (const float au : {1.0f, 5.0f, 20.0f, 50.0f})
@@ -1395,7 +1498,7 @@ void PredationGame::DrawSystemMap()
     }
     else if (globe != nullptr)
     {
-        const glm::vec3 eye = glm::normalize(m_mapView.Eye());
+        const glm::vec3 eye = glm::normalize(shot.Eye());
         const glm::vec3 sun = SunOverBody(*shown, *globe);
         const bool heading = ours && (m_campaign.travel.underway ? m_campaign.travel.target == globe->index : m_campaign.body == globe->index);
         for (int i = 0; i < static_cast<int>(globe->regions.size()); ++i)
@@ -1417,16 +1520,36 @@ void PredationGame::DrawSystemMap()
             const bool picked = i == m_mapRegion;
             const bool hover = i == m_mapHoverRegion;
             const bool chosen = heading && m_campaign.travel.region == i;
-            const ImU32 colour = Faded(chosen ? kGo : picked ? kAmber : day ? kText : kNight, fade);
-            draw->AddCircleFilled(point, 4.0f, colour);
-            draw->AddCircle(point, 8.0f, colour, 0, 1.5f);
+            const bool port = RegionIsPort(*globe, i);
+            const ImU32 colour = Faded(chosen ? kGo : picked ? kAmber : port ? kHub : day ? kText : kNight, fade);
+            if (port)
+            {
+                // A hub: where the ship itself sets down.
+                Diamond(draw, point, 5.0f, colour, true);
+                Diamond(draw, point, 9.0f, colour, false);
+            }
+            else
+            {
+                draw->AddCircleFilled(point, 4.0f, colour);
+                draw->AddCircle(point, 8.0f, colour, 0, 1.5f);
+            }
             if (picked || hover)
             {
                 Brackets(draw, point, 13.0f, Faded(picked ? kAmber : IM_COL32(255, 255, 255, 200), fade));
             }
             Label(draw, {point.x + 14.0f, point.y - small * 0.55f}, colour, region.designation.c_str(), small);
-            const std::string under = std::string(chosen ? "LANDING HERE   " : "") + (day ? "DAY" : "NIGHT");
+            const bool shipHere = chosen && port && ShipLanded();
+            const std::string under = std::string(shipHere ? "THE SHIP IS HERE   " : chosen ? (port ? "LANDING HERE   " : "GOING DOWN HERE   ") : port ? "HUB   " : "") +
+                                      (day ? "DAY" : "NIGHT");
             Label(draw, {point.x + 14.0f, point.y + small * 0.45f}, Faded(chosen ? kGo : kDim, fade), under.c_str(), tiny);
+        }
+    }
+    // The fade between scales: darkening into the dive, lifting off the new one.
+    {
+        const float dark = m_mapTransition.active ? glm::smoothstep(0.05f, 0.28f, m_mapTransition.time) : glm::smoothstep(0.0f, 1.0f, m_mapFadeIn);
+        if (dark > 0.001f)
+        {
+            draw->AddRectFilled(origin, {origin.x + size.x, origin.y + size.y}, IM_COL32(0, 0, 0, static_cast<int>(dark * 235.0f)));
         }
     }
     ImGui::End();
@@ -1577,13 +1700,13 @@ void PredationGame::DrawMapGalaxyPanels()
         {
             if (m_mapListed.empty())
             {
-                ImGui::TextColored(kDimText, "Nothing by that name within 160 light years.");
+                Wrapped(kDimText, "Nothing by that name within 160 light years.");
             }
             for (const SystemId& id : m_mapListed)
             {
                 const SystemGlance& glance = m_universe.Glance(id);
                 const uint64_t packed = id.Packed();
-                ImGui::PushID(static_cast<int>(packed ^ (packed >> 32)));
+                ImGui::PushID(std::to_string(packed).c_str());
                 const bool picked = m_mapHasPickedSystem && m_mapPickedSystem == packed;
                 const ImVec2 corner = ImGui::GetCursorScreenPos();
                 if (ImGui::Selectable("##system", picked, ImGuiSelectableFlags_AllowDoubleClick))
@@ -1665,7 +1788,7 @@ void PredationGame::DrawMapGalaxyPanels()
     }
     const SystemGlance& glance = m_universe.Glance(SystemId::Unpack(m_mapPickedSystem));
     ImGui::SetNextWindowPos({origin.x + size.x - 16.0f - 340.0f, origin.y + 74.0f});
-    ImGui::SetNextWindowSize({340.0f, 0.0f});
+    ImGui::SetNextWindowSizeConstraints({340.0f, 0.0f}, {340.0f, 10000.0f});
     if (ImGui::Begin("##mapgalaxyinfo", nullptr, kPanel | ImGuiWindowFlags_AlwaysAutoResize))
     {
         const StarDef* star = nullptr;
@@ -1691,15 +1814,12 @@ void PredationGame::DrawMapGalaxyPanels()
             {
                 int planets = 0;
                 int moons = 0;
-                int stations = 0;
                 for (const Body& body : system->bodies)
                 {
                     planets += body.kind == BodyKind::Planet ? 1 : 0;
                     moons += body.kind == BodyKind::Moon ? 1 : 0;
-                    stations += body.kind == BodyKind::Station ? 1 : 0;
                 }
-                Row("Bodies", std::to_string(planets) + " planets, " + std::to_string(moons) + " moons" +
-                                  (stations > 0 ? ", " + std::to_string(stations) + " station" : std::string()));
+                Row("Bodies", std::to_string(planets) + " planets, " + std::to_string(moons) + " moons" + (system->hub >= 0 ? ", a hub" : ""));
             }
         }
         else
@@ -1714,19 +1834,24 @@ void PredationGame::DrawMapGalaxyPanels()
         }
         if (course)
         {
-            ImGui::TextColored(kAmberText, "On course. %s left.", About((1.0f - Travel::CrossingDone(m_campaign)) * m_campaign.travel.duration).c_str());
+            Wrapped(kAmberText, "On course. %s left.", About((1.0f - Travel::CrossingDone(m_campaign)) * m_campaign.travel.duration).c_str());
         }
         else if (!here)
         {
-            ImGui::BeginDisabled(!aboard || m_cine.Active());
+            const bool canCross = DriveTier() >= Travel::kCrossingTier;
+            ImGui::BeginDisabled(!aboard || m_cine.Active() || !canCross);
             if (ImGui::Button("Set course for this system", {-1.0f, 32.0f}))
             {
                 AskSystemCourse(m_mapPickedSystem);
             }
             ImGui::EndDisabled();
+            if (!canCross)
+            {
+                Wrapped(kDimText, "Crossing between the stars needs an upgraded drive.");
+            }
             if (!aboard)
             {
-                ImGui::TextColored(kDimText, "Courses are set aboard the ship.");
+                Wrapped(kDimText, "Courses are set aboard the ship.");
             }
         }
     }
@@ -1747,7 +1872,7 @@ void PredationGame::DrawMapSystemPanels(const StarSystem& system)
         star = def.id == system.star ? &def : star;
     }
 
-    // Down the left: the bodies, each moon and station under its planet.
+    // Down the left: the bodies, each moon under its planet.
     ImGui::SetNextWindowPos({origin.x + 16.0f, origin.y + 74.0f});
     ImGui::SetNextWindowSize({310.0f, size.y - 74.0f - 70.0f});
     if (ImGui::Begin("##mapbodies", nullptr, kPanel))
@@ -1765,7 +1890,7 @@ void PredationGame::DrawMapSystemPanels(const StarSystem& system)
                 {
                     m_mapSelected = body.index;
                     m_mapView.Focus(drawn[body.index].at, drawn[body.index].radius * 12.0f);
-                    if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) && body.kind != BodyKind::Station)
+                    if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
                     {
                         ShowMapBody(body.index);
                         ImGui::PopID();
@@ -1780,14 +1905,13 @@ void PredationGame::DrawMapSystemPanels(const StarSystem& system)
                 const float line = ImGui::GetTextLineHeight();
                 const float indent = body.kind == BodyKind::Planet ? 0.0f : 16.0f;
                 const ImVec2 icon{corner.x + indent + 7.0f, corner.y + line * 0.5f};
-                if (body.kind == BodyKind::Station)
-                {
-                    Diamond(draw, icon, 4.5f, IM_COL32(150, 220, 255, 230), true);
-                }
-                else
                 {
                     const glm::vec3 tint = body.gas ? glm::mix(body.groundA, body.groundB, 0.5f) : glm::mix(body.groundA, body.ocean, body.oceanAmount * 0.6f);
                     draw->AddCircleFilled(icon, body.kind == BodyKind::Moon ? 3.5f : 5.0f, Colour(tint, 1.0f));
+                    if (body.index == system.hub)
+                    {
+                        draw->AddCircle(icon, 8.0f, IM_COL32(150, 220, 255, 200), 0, 1.2f);
+                    }
                 }
                 const uint8_t known = m_campaign.Known(m_mapSystem, body.index);
                 draw->AddText({corner.x + indent + 20.0f, corner.y}, picked ? kAmber : known != 0 ? kText : kDim, body.name.c_str());
@@ -1795,7 +1919,7 @@ void PredationGame::DrawMapSystemPanels(const StarSystem& system)
                 ImU32 tagColour = kAmber;
                 if (ours && !m_campaign.travel.underway && body.index == m_campaign.body)
                 {
-                    tag = body.kind == BodyKind::Station ? "DOCKED" : "HERE";
+                    tag = ShipLanded() ? "LANDED" : "HERE";
                 }
                 else if (ours && m_campaign.travel.underway && body.index == m_campaign.travel.target)
                 {
@@ -1846,7 +1970,7 @@ void PredationGame::DrawMapSystemPanels(const StarSystem& system)
         return;
     }
     ImGui::SetNextWindowPos({origin.x + size.x - 16.0f - 340.0f, origin.y + 74.0f});
-    ImGui::SetNextWindowSize({340.0f, 0.0f});
+    ImGui::SetNextWindowSizeConstraints({340.0f, 0.0f}, {340.0f, 10000.0f});
     if (ImGui::Begin("##mapinfo", nullptr, kPanel | ImGuiWindowFlags_AlwaysAutoResize))
     {
         const uint8_t known = m_campaign.Known(m_mapSystem, picked->index);
@@ -1858,21 +1982,12 @@ void PredationGame::DrawMapSystemPanels(const StarSystem& system)
         {
             what = "Moon of " + system.bodies[static_cast<size_t>(picked->parent)].name;
         }
-        else if (picked->kind == BodyKind::Station)
-        {
-            what = "Station in orbit of " + system.bodies[static_cast<size_t>(picked->parent)].name;
-        }
         else
         {
             what = (picked->gas ? "Gas giant, " : "Planet, ") + Number(picked->orbit, 2) + " AU from the star";
         }
         Title(picked->name, what);
         Section("SURVEY");
-        if (picked->kind == BodyKind::Station)
-        {
-            Row("Services", "Docking, trade and refit");
-        }
-        else
         {
             const BiomeDef* biome = m_universeData.Biome(picked->biome);
             Row("Type", biome != nullptr ? biome->name : picked->biome, picked->gas || scanned || records);
@@ -1930,55 +2045,57 @@ void PredationGame::DrawMapSystemPanels(const StarSystem& system)
                 areas += MapAreaKnown(m_mapSystem, *picked, i) ? 1 : 0;
             }
             Section("LANDING AREAS");
-            ImGui::TextColored(areas > 0 ? ImVec4(0.85f, 0.88f, 0.9f, 1.0f) : kDimText, "%s",
+            Wrapped(areas > 0 ? ImVec4(0.85f, 0.88f, 0.9f, 1.0f) : kDimText, "%s",
                                areas > 0 ? (std::to_string(areas) + (areas == 1 ? " area known" : " areas known")).c_str()
                                          : scanned ? "None found yet." : "None charted. Go closer to look.");
         }
 
         ImGui::Spacing();
         ImGui::Spacing();
-        if (picked->kind != BodyKind::Station)
+        if (ImGui::Button(picked->Landable() ? "View the surface   Enter" : "View it closer   Enter", {-1.0f, 32.0f}))
         {
-            if (ImGui::Button(picked->Landable() ? "View the surface   Enter" : "View it closer   Enter", {-1.0f, 32.0f}))
-            {
-                ShowMapBody(picked->index);
-                ImGui::End();
-                return;
-            }
+            ShowMapBody(picked->index);
+            ImGui::End();
+            return;
         }
         if (!ours)
         {
-            ImGui::TextColored(kDimText, "The ship is not in this system.");
+            Wrapped(kDimText, "The ship is not in this system.");
             if (!(m_campaign.travel.interstellar && m_campaign.travel.toSystem == m_mapSystem))
             {
-                ImGui::BeginDisabled(!aboard || m_cine.Active());
+                const bool canCross = DriveTier() >= Travel::kCrossingTier;
+                ImGui::BeginDisabled(!aboard || m_cine.Active() || !canCross);
                 if (ImGui::Button("Set course for this system", {-1.0f, 32.0f}))
                 {
                     AskSystemCourse(m_mapSystem);
                 }
                 ImGui::EndDisabled();
+                if (!canCross)
+                {
+                    Wrapped(kDimText, "Crossing between the stars needs an upgraded drive.");
+                }
             }
         }
         else if (here)
         {
-            ImGui::TextColored(kAmberText, "%s", picked->kind == BodyKind::Station ? "Docked."
-                                                 : m_shipReady                   ? "In orbit. The shuttle is ready in the hangar."
-                                                                                 : "In orbit.");
+            Wrapped(kAmberText, "%s", ShipLanded()   ? "The ship is landed here. Pick a place on the surface to go elsewhere."
+                                                 : m_shipReady ? "In orbit. The shuttle is ready in the hangar."
+                                                               : "In orbit.");
         }
         else if (heading)
         {
-            ImGui::TextColored(kAmberText, "On course.");
+            Wrapped(kAmberText, "On course.");
         }
         else
         {
             ImGui::BeginDisabled(!aboard || m_cine.Active());
-            if (ImGui::Button(picked->kind == BodyKind::Station ? "Set course and dock" : "Set course", {-1.0f, 32.0f}))
+            if (ImGui::Button("Set course", {-1.0f, 32.0f}))
             {
-                // Down to the first area that can be gone down to, until one is picked on the surface.
+                // Down to the first area the shuttle can go down to, until one is picked on the surface.
                 int region = -1;
                 for (int i = 0; i < static_cast<int>(picked->regions.size()) && region < 0; ++i)
                 {
-                    region = RegionLandable(*picked, i) ? i : -1;
+                    region = RegionLandable(*picked, i) && !RegionIsPort(*picked, i) ? i : -1;
                 }
                 AskCampaign(CampaignAction::SetCourse, picked->index, region);
                 PlayNamed("UI/confirm", m_renderEye, 0.6f, 1.0f, false);
@@ -1986,7 +2103,7 @@ void PredationGame::DrawMapSystemPanels(const StarSystem& system)
             ImGui::EndDisabled();
             if (!aboard)
             {
-                ImGui::TextColored(kDimText, "Courses are set aboard the ship.");
+                Wrapped(kDimText, "Courses are set aboard the ship.");
             }
         }
     }
@@ -2059,16 +2176,11 @@ void PredationGame::DrawMapBodyPanels(const StarSystem& system)
             const RegionKindDef* kind = m_universeData.RegionKind(region.kind);
             const std::string under = (kind != nullptr ? kind->name : region.kind) + "   " + (day ? "day " : "night ") + localTime(region);
             draw->AddText({corner.x + 20.0f, corner.y + line + 1.0f}, kDim, under.c_str());
-            if (chosen)
-            {
-                const float right = corner.x + ImGui::GetContentRegionAvail().x;
-                draw->AddText({right - ImGui::CalcTextSize("LANDING").x - 4.0f, corner.y}, kGo, "LANDING");
-            }
             ImGui::PopID();
         }
         if (!body->Landable())
         {
-            ImGui::TextColored(kDimText, "%s", body->gas ? "A gas giant: nothing to land on." : "Nothing to land on.");
+            Wrapped(kDimText, "%s", body->gas ? "A gas giant: nothing to land on." : "Nothing to land on.");
         }
         else if (known == 0)
         {
@@ -2077,7 +2189,7 @@ void PredationGame::DrawMapBodyPanels(const StarSystem& system)
         if (hidden > 0 && known > 0)
         {
             ImGui::Spacing();
-            ImGui::TextColored(kDimText, "There may be more. Better sensors find more from orbit.");
+            Wrapped(kDimText, "There may be more. Better sensors find more from orbit.");
         }
         ImGui::Spacing();
         if (ImGui::Button("Back to the system", {-1.0f, 0.0f}))
@@ -2094,7 +2206,7 @@ void PredationGame::DrawMapBodyPanels(const StarSystem& system)
     }
     const LandingRegion& region = body->regions[static_cast<size_t>(m_mapRegion)];
     ImGui::SetNextWindowPos({origin.x + size.x - 16.0f - 340.0f, origin.y + 74.0f});
-    ImGui::SetNextWindowSize({340.0f, 0.0f});
+    ImGui::SetNextWindowSizeConstraints({340.0f, 0.0f}, {340.0f, 10000.0f});
     if (ImGui::Begin("##maparea", nullptr, kPanel | ImGuiWindowFlags_AlwaysAutoResize))
     {
         const RegionKindDef* kind = m_universeData.RegionKind(region.kind);
@@ -2112,19 +2224,30 @@ void PredationGame::DrawMapBodyPanels(const StarSystem& system)
         ImGui::Spacing();
         ImGui::Spacing();
         const bool chosen = (here || heading) && m_campaign.travel.region == m_mapRegion;
+        const bool port = RegionIsPort(*body, m_mapRegion);
+        if (port)
+        {
+            Wrapped(kDimText, "A hub: the ship itself sets down here.");
+        }
         if (!ours)
         {
-            ImGui::TextColored(kDimText, "The ship is not in this system. Cross to it first.");
+            Wrapped(kDimText, "The ship is not in this system. Cross to it first.");
+        }
+        else if (chosen && port)
+        {
+            Wrapped(kGoText, "%s", ShipLanded() ? "The ship is landed here." : "The ship lands here when it arrives.");
         }
         else if (chosen)
         {
-            ImGui::TextColored(kGoText, "%s", here ? (m_shipReady ? "The shuttle goes down here. It is ready in the hangar." : "The shuttle goes down here.")
+            Wrapped(kGoText, "%s", here ? (m_shipReady ? "The shuttle goes down here. It is ready in the hangar." : "The shuttle goes down here.")
                                                      : "The shuttle goes down here when the ship arrives.");
         }
         else
         {
             ImGui::BeginDisabled(!aboard || m_cine.Active() || !RegionLandable(*body, m_mapRegion) || m_campaign.travel.interstellar);
-            if (ImGui::Button(here || heading ? "Go down here" : "Set course and go down here", {-1.0f, 32.0f}))
+            const char* go = port ? (here || heading ? "Land the ship here" : "Set course and land the ship here")
+                                  : (here || heading ? "Go down here" : "Set course and go down here");
+            if (ImGui::Button(go, {-1.0f, 32.0f}))
             {
                 AskCampaign(CampaignAction::SetCourse, body->index, m_mapRegion);
                 PlayNamed("UI/confirm", m_renderEye, 0.6f, 1.0f, false);
@@ -2132,7 +2255,7 @@ void PredationGame::DrawMapBodyPanels(const StarSystem& system)
             ImGui::EndDisabled();
             if (!aboard)
             {
-                ImGui::TextColored(kDimText, "Courses are set aboard the ship.");
+                Wrapped(kDimText, "Courses are set aboard the ship.");
             }
         }
     }

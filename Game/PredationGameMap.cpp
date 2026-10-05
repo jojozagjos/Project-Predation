@@ -136,6 +136,7 @@ bool PredationGame::DoCampaignAction(uint8_t player, CampaignAction action, int 
             return true;
         }
         const bool leaving = !m_campaign.travel.underway;
+        const bool fromGround = ShipLanded();
         if (!Travel::SetCourse(m_campaign, *system, a))
         {
             return false;
@@ -144,9 +145,9 @@ bool PredationGame::DoCampaignAction(uint8_t player, CampaignAction action, int 
         m_shipReady = false;
         m_shipOrbiting = 0;
         PRED_LOG_INFO(Gameplay, "Player {} set a course for {}", player, system->bodies[static_cast<size_t>(a)].name);
-        if (leaving && HasCinematic("ship_depart"))
+        if (leaving)
         {
-            PlayCinematic("ship_depart");
+            PlayLeaving(fromGround);
         }
         CampaignChanged();
         return true;
@@ -160,6 +161,7 @@ bool PredationGame::DoCampaignAction(uint8_t player, CampaignAction action, int 
         }
         const uint64_t to = static_cast<uint64_t>(static_cast<uint32_t>(a)) | (static_cast<uint64_t>(static_cast<uint32_t>(b)) << 32);
         const bool leaving = !m_campaign.travel.underway;
+        const bool fromGround = ShipLanded();
         if (!Travel::SetSystemCourse(m_campaign, m_universe, to, DriveTier()))
         {
             return false;
@@ -167,9 +169,9 @@ bool PredationGame::DoCampaignAction(uint8_t player, CampaignAction action, int 
         m_shipReady = false;
         m_shipOrbiting = 0;
         PRED_LOG_INFO(Gameplay, "Player {} set a course for {}", player, m_universe.Glance(SystemId::Unpack(to)).name);
-        if (leaving && HasCinematic("ship_depart"))
+        if (leaving)
         {
-            PlayCinematic("ship_depart");
+            PlayLeaving(fromGround);
         }
         CampaignChanged();
         return true;
@@ -216,12 +218,51 @@ void PredationGame::ChooseLandingRegion(int region)
     }
     if (!RegionLandable(*body, region))
     {
+        // The first place the shuttle can go down to -- not a hub, which the ship sets down at only when asked.
         region = -1;
         for (int i = 0; i < static_cast<int>(body->regions.size()) && region < 0; ++i)
         {
-            region = RegionLandable(*body, i) ? i : -1;
+            region = RegionLandable(*body, i) && !RegionIsPort(*body, i) ? i : -1;
         }
     }
+    // A hub's field: the ship itself sets down there, and nobody needs the shuttle.
+    if (RegionIsPort(*body, region))
+    {
+        const bool already = m_campaign.landed;
+        m_campaign.travel.region = region;
+        m_campaign.landed = true;
+        m_shipReady = false;
+        m_shipOrbiting = 0;
+        m_groundBody = body->index;
+        m_groundRegion = region;
+        if (!already && m_map == MapChoice::Ship && HasCinematic("ship_land"))
+        {
+            if (m_cine.Active())
+            {
+                m_cineAfter = "ship_land";
+            }
+            else
+            {
+                PlayCinematic("ship_land");
+            }
+        }
+        if (!already)
+        {
+            m_campaign.Learn(m_campaign.system, body->index, CampaignState::kKnownVisited);
+            m_campaign.AddLog("region", CampaignState::RegionKey(m_campaign.system, body->index, region),
+                              body->regions[static_cast<size_t>(region)].designation, "The ship set down on " + body->name + ".");
+            PRED_LOG_INFO(Gameplay, "Landed at {} on {}", body->regions[static_cast<size_t>(region)].designation, body->name);
+        }
+        CampaignChanged();
+        return;
+    }
+    // Anywhere else the ship stays up, in orbit, and the shuttle goes down: up off the pad first, if it was on one.
+    if (m_campaign.landed && m_map == MapChoice::Ship && !m_cine.Active())
+    {
+        m_campaign.landed = false;
+        PlayLeaving(true);
+    }
+    m_campaign.landed = false;
     m_campaign.travel.region = region;
     CampaignChanged();
     if (region < 0)
@@ -315,16 +356,6 @@ void PredationGame::ArriveAtBody()
     {
         return;
     }
-    // A station is docked at: nothing to scan, nowhere to go down.
-    if (body->kind == BodyKind::Station)
-    {
-        m_campaign.Learn(m_campaign.system, body->index, CampaignState::kKnownRecords | CampaignState::kKnownVisited);
-        m_shipReady = false;
-        m_shipOrbiting = 0;
-        CampaignChanged();
-        PRED_LOG_INFO(Gameplay, "Docked at {}", body->name);
-        return;
-    }
     // In orbit: the sensors look the whole of it over, and find places to go down that nobody had charted.
     const uint8_t bits = static_cast<uint8_t>(CampaignState::kKnownScanned | (SensorTier() >= 2 ? CampaignState::kKnownDeep : 0));
     m_campaign.Learn(m_campaign.system, body->index, bits);
@@ -366,6 +397,7 @@ void PredationGame::UpdateTravel(float dt)
             m_campaign.clock = travel.clock;
             m_campaign.system = travel.system;
             m_campaign.travel.underway = travel.underway;
+            m_campaign.landed = travel.landed;
             m_campaign.travel.target = travel.target;
             m_campaign.travel.position = travel.position;
             m_campaign.travel.velocity = travel.velocity;
@@ -459,6 +491,7 @@ void PredationGame::UpdateTravel(float dt)
                 travel.clock = m_campaign.clock;
                 travel.system = m_campaign.system;
                 travel.underway = m_campaign.travel.underway;
+                travel.landed = m_campaign.landed;
                 travel.target = static_cast<int8_t>(std::clamp(m_campaign.travel.target, -1, 127));
                 travel.body = static_cast<int8_t>(std::clamp(m_campaign.body, -1, 127));
                 travel.region = static_cast<int8_t>(std::clamp(m_campaign.travel.region, -1, 127));
@@ -500,14 +533,25 @@ void PredationGame::UpdateTravel(float dt)
         m_travelSeenTarget = target;
         m_travelSeen = true;
     }
-    // The station beside the ship while it is docked -- and still there while the cinematic shows it leaving.
+    // Standing at a hub: its legs down, the pad, the hub round it and the world's ground in its own colours.
     {
-        const Body* at = system->Find(m_campaign.body);
-        const bool docked = !m_campaign.travel.underway && at != nullptr && at->kind == BodyKind::Station;
-        if (docked || !m_cine.Active())
+        const bool landed = ShipLanded() && system->Find(m_campaign.body) != nullptr;
+        if (landed)
         {
-            m_ship.SetStation(m_scene, m_app->GetMeshes(), docked);
+            m_groundBody = m_campaign.body;
+            m_groundRegion = m_campaign.travel.region;
         }
+        const Body* at = system->Find(m_groundBody);
+        glm::vec3 ground{0.4f};
+        glm::vec3 rock{0.3f};
+        if (const BiomeDef* biome = at != nullptr ? m_universeData.Biome(at->biome) : nullptr)
+        {
+            ground = biome->siteGround;
+            rock = biome->siteRock;
+        }
+        m_ship.SetField(m_scene, m_app->GetMeshes(), landed, ground, rock);
+        m_ship.SetStageField(m_scene, m_app->GetMeshes(), GroundCinematic() && at != nullptr, ground, rock);
+        m_ship.SetGear(m_scene, landed, GroundCinematic() && m_stageGear);
     }
     // The ship's outside as the campaign has it: its colours, and its drive and sensors.
     ShipHullLook look;
@@ -523,6 +567,114 @@ void PredationGame::UpdateTravel(float dt)
 }
 
 // --- Space out of the windows ------------------------------------------------------------------------------------
+
+bool PredationGame::ShipLanded() const
+{
+    return m_campaignOpen && m_campaign.landed && !m_campaign.travel.underway && m_campaign.body >= 0;
+}
+
+bool PredationGame::GroundCinematic() const
+{
+    if (!m_cine.Active())
+    {
+        return false;
+    }
+    const std::string& name = m_cine.Playing().name;
+    return name == "ship_takeoff" || name == "ship_land";
+}
+
+void PredationGame::PlayLeaving(bool fromGround)
+{
+    // Up off a hub's pad, or out of orbit.
+    const char* name = fromGround && HasCinematic("ship_takeoff") ? "ship_takeoff" : "ship_depart";
+    if (HasCinematic(name))
+    {
+        PlayCinematic(name);
+    }
+}
+
+bool PredationGame::RegionIsPort(const Body& body, int region) const
+{
+    if (region < 0 || region >= static_cast<int>(body.regions.size()))
+    {
+        return false;
+    }
+    const RegionKindDef* kind = m_universeData.RegionKind(body.regions[static_cast<size_t>(region)].kind);
+    return kind != nullptr && kind->ship;
+}
+
+void PredationGame::SetGroundSky(Environment& environment)
+{
+    const StarSystem* system = CurrentSystem();
+    const Body* body = system != nullptr ? system->Find(m_groundBody) : nullptr;
+    const int region = m_groundRegion;
+    if (body == nullptr || region < 0 || region >= static_cast<int>(body->regions.size()))
+    {
+        return;
+    }
+    // Where the star is from the place: its height and bearing over the ground there, as the world turns. In the
+    // ship's frame, up is up, north is ahead of the bow and east to starboard.
+    const glm::vec3 up = AreaOnGlobe(body->regions[static_cast<size_t>(region)]);
+    const glm::vec3 sun = SunOverBody(*system, *body);
+    glm::vec3 east = glm::cross(glm::vec3(0.0f, 1.0f, 0.0f), up);
+    east = glm::length(east) > 1.0e-4f ? glm::normalize(east) : glm::vec3(1.0f, 0.0f, 0.0f);
+    const glm::vec3 north = glm::cross(up, east);
+    const glm::vec3 towardsSun = glm::normalize(glm::vec3(glm::dot(sun, east), glm::dot(sun, up), -glm::dot(sun, north)));
+    const float height = towardsSun.y;
+    const float day = glm::smoothstep(-0.12f, 0.2f, height);
+    const float low = 1.0f - glm::smoothstep(0.04f, 0.4f, height);
+    const float air = std::clamp(body->air, 0.0f, 1.0f);
+    glm::vec3 ground{0.4f};
+    if (const BiomeDef* biome = m_universeData.Biome(body->biome))
+    {
+        ground = biome->siteGround;
+    }
+
+    for (glm::vec4& other : environment.skyBodies)
+    {
+        other = glm::vec4(0.0f);
+    }
+    environment.planetRadius = 0.0f;
+    environment.skySun = 1.0f;
+    environment.sunDirection = -towardsSun;
+    const glm::vec3 starLight = glm::mix(system->starColor, glm::vec3(1.0f), 0.4f);
+    // Low in a sky with air in it, the light comes through more of it, and reddens.
+    environment.sunColor = glm::mix(starLight, starLight * glm::vec3(1.0f, 0.6f, 0.34f), low * air);
+    environment.sunIntensity = 2.4f * day * (1.0f - 0.35f * body->clouds);
+    if (air < 0.08f)
+    {
+        // No air to speak of: a black sky with the stars in it whatever the hour, and a hard sun.
+        environment.stars = 1.0f;
+        environment.sunDisc = 0.006f;
+        environment.ambientSky = glm::vec3(0.03f, 0.032f, 0.04f) * (0.3f + 0.7f * day);
+        environment.ambientGround = ground * 0.08f * day + glm::vec3(0.008f);
+        environment.fogColor = glm::vec3(0.0f);
+        environment.fogStart = 3000.0f;
+        environment.fogEnd = 9000.0f;
+        return;
+    }
+    environment.stars = 0.0f;
+    // Night not black: the sky's own glow and the hub's lights are enough to see the shapes of things by.
+    const glm::vec3 night{0.03f, 0.036f, 0.055f};
+    const glm::vec3 daySky = body->airColor * (0.3f + 0.25f * air);
+    environment.ambientSky = glm::mix(night, daySky, day);
+    const glm::vec3 haze = glm::mix(body->airColor, ground, 0.25f) * 0.42f;
+    environment.fogColor = glm::mix(night * 0.8f, glm::mix(haze, haze * glm::vec3(1.25f, 0.8f, 0.6f), low), day);
+    environment.ambientGround = ground * 0.12f * day + glm::vec3(0.018f, 0.02f, 0.026f);
+    // How far anybody can see: by the air and the weather.
+    float visibility = 1.0f;
+    if (const WeatherDef* weather = m_universeData.Weather(body->weather))
+    {
+        visibility *= weather->visibility;
+    }
+    if (const AtmosphereDef* atmosphere = m_universeData.Atmosphere(body->atmosphere))
+    {
+        visibility *= atmosphere->visibility;
+    }
+    // Never so far that the edge of the ground round the hub (440 m out) shows.
+    environment.fogStart = 30.0f * visibility;
+    environment.fogEnd = std::clamp(420.0f * visibility, 140.0f, 400.0f);
+}
 
 void PredationGame::SetSpaceSky(Environment& environment)
 {
@@ -567,21 +719,19 @@ void PredationGame::SetSpaceSky(Environment& environment)
     }
 
     const glm::vec3 ship = Travel::ShipPosition(m_campaign, *system);
-    int main = m_campaign.travel.underway ? m_campaign.travel.target : m_campaign.body;
-    // At a station, the world it goes round is the one below.
-    if (const Body* at = system->Find(main); at != nullptr && at->kind == BodyKind::Station)
-    {
-        main = at->parent;
-    }
+    const int main = m_campaign.travel.underway ? m_campaign.travel.target : m_campaign.body;
     glm::vec3 heading{0.0f, 0.0f, -1.0f};
-    if (m_campaign.travel.underway && glm::length(m_campaign.travel.velocity) > 1.0e-7f)
+    if (m_campaign.travel.underway && main >= 0)
     {
-        // The way it is actually going: round the star, if that is the way it has to go.
-        heading = m_campaign.travel.velocity;
+        // The bow on where it is going (round the star, when that is the way), so the destination is dead ahead and
+        // the sun stays where it is in the sky rather than swinging about as the ship speeds up and slows.
+        const std::vector<glm::vec3> path = Travel::Preview(m_campaign, *system, DriveTier(), 24);
+        const glm::vec3 there = system->Position(main, m_campaign.clock);
+        heading = path.size() > 3 && glm::length(path[3] - ship) > 1.0e-6f ? path[3] - ship : there - ship;
     }
-    else if (m_campaign.travel.underway && main >= 0)
+    else if (m_campaign.travel.underway)
     {
-        heading = system->Position(main, m_campaign.clock) - ship;
+        heading = m_campaign.travel.velocity;
     }
     else if (main >= 0)
     {
@@ -619,6 +769,8 @@ void PredationGame::SetSpaceSky(Environment& environment)
     environment.sunDirection = -towardsStar;
     environment.sunColor = glm::mix(system->starColor, glm::vec3(1.0f), 0.3f);
     environment.sunIntensity = 1.7f * std::clamp(std::sqrt(system->luminosity) / fromStar, 0.35f, 2.2f);
+    // As big as the star is from here: a sun's radius is 0.00465 astronomical units; a little larger, so it reads.
+    environment.sunDisc = std::clamp(0.00465f * std::max(system->starRadius, 0.1f) / fromStar * 1.3f, 0.0012f, 0.06f);
 
     // The body it is over or heading for.
     environment.planetRadius = 0.0f;
@@ -654,7 +806,7 @@ void PredationGame::SetSpaceSky(Environment& environment)
     std::vector<std::pair<float, int>> others;
     for (const Body& body : system->bodies)
     {
-        if (body.index == main || body.kind == BodyKind::Station)
+        if (body.index == main)
         {
             continue;
         }

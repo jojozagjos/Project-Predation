@@ -4,6 +4,9 @@
 
 #include <glm/common.hpp>
 #include <glm/geometric.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/trigonometric.hpp>
+#include <glm/mat4x4.hpp>
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
@@ -495,7 +498,6 @@ bool UniverseData::LoadFromFile(const std::filesystem::path& file, std::string* 
             }
             const glm::vec2 moonRange = ReadVec2(*names, "moonNumbers", {100.0f, 999.0f});
             loaded.moonNumbers = {static_cast<int>(moonRange.x), static_cast<int>(moonRange.y)};
-            loaded.stationName = names->value("station", loaded.stationName);
         }
         for (const auto& entry : root.value("stars", nlohmann::json::array()))
         {
@@ -590,6 +592,7 @@ bool UniverseData::LoadFromFile(const std::filesystem::path& file, std::string* 
             RegionKindDef kind;
             ReadEntry(entry, kind);
             kind.charted = entry.value("charted", false);
+            kind.ship = entry.value("ship", false);
             kind.designations = ReadStrings(entry, "designations");
             loaded.regionKinds.push_back(kind);
         }
@@ -737,7 +740,7 @@ glm::vec3 StarSystem::Position(int index, double time) const
     }
     const double turns = time / static_cast<double>(std::max(body->period, 1.0f));
     const float angle = body->phase + static_cast<float>(std::fmod(turns, 1.0) * static_cast<double>(kTau));
-    if (body->kind == BodyKind::Moon || body->kind == BodyKind::Station)
+    if (body->kind == BodyKind::Moon)
     {
         const Body* planet = Find(body->parent);
         const glm::vec3 around = Position(body->parent, time);
@@ -745,6 +748,27 @@ glm::vec3 StarSystem::Position(int index, double time) const
         return around + glm::vec3(std::cos(angle) * reach, std::sin(angle) * reach * body->inclination, std::sin(angle) * reach);
     }
     return {std::cos(angle) * body->orbit, std::sin(angle) * body->orbit * body->inclination, std::sin(angle) * body->orbit};
+}
+
+float StarSystem::SunHeight(int index, const glm::vec2& latLon, double time) const
+{
+    const Body* body = Find(index);
+    if (body == nullptr)
+    {
+        return 0.0f;
+    }
+    const glm::vec3 at = Position(index, time);
+    const glm::vec3 towardsStar = glm::length(at) > 1.0e-6f ? -glm::normalize(at) : glm::vec3(1.0f, 0.0f, 0.0f);
+    // Into the body's own frame: its axis tipped by its tilt, turned by its day (as the map's globe and the sky over a
+    // landed ship have it).
+    const float spin = static_cast<float>(std::fmod(time / std::max(static_cast<double>(body->day), 1.0), 1.0)) * kTau;
+    glm::mat4 frame = glm::rotate(glm::mat4(1.0f), body->tilt, glm::vec3(0.0f, 0.0f, 1.0f));
+    frame = glm::rotate(frame, spin, glm::vec3(0.0f, 1.0f, 0.0f));
+    const glm::vec3 sun = glm::vec3(glm::transpose(frame) * glm::vec4(towardsStar, 0.0f));
+    const float lat = glm::radians(latLon.x);
+    const float lon = glm::radians(latLon.y);
+    const glm::vec3 up{std::cos(lat) * std::cos(lon), std::sin(lat), std::cos(lat) * std::sin(lon)};
+    return glm::dot(up, sun);
 }
 
 // --- The universe ----------------------------------------------------------------------------------------------------
@@ -974,7 +998,7 @@ StarSystem Universe::Generate(uint64_t universeSeed, SystemId id, const Universe
         }
     }
 
-    // A settled world with a station over it: always at home (the planet nearest pleasant), sometimes elsewhere.
+    // A settled world with a hub on it: always at home (the planet nearest pleasant), sometimes elsewhere.
     const CivilizationDef* services = nullptr;
     for (const CivilizationDef& civ : data.civilizations)
     {
@@ -1019,26 +1043,17 @@ StarSystem Universe::Generate(uint64_t universeSeed, SystemId id, const Universe
                 region.charted = region.charted || region.kind == "outpost";
             }
             system.hub = best;
-            // Its station, close round it, after every other body so no body's number changes for having it.
-            Body station;
-            station.index = static_cast<uint16_t>(system.bodies.size());
-            station.kind = BodyKind::Station;
-            station.parent = best;
-            station.seed = MixSeed(world.seed, 0x5354414Eull); // 'STAN'
-            std::string stationName = data.stationName;
-            if (const size_t at = stationName.find("{planet}"); at != std::string::npos)
-            {
-                stationName.replace(at, 8, world.name);
-            }
-            station.name = stationName;
-            station.orbit = 2.6f;
-            station.period = 240.0f;
-            station.phase = random.Range(0.0f, kTau);
-            station.radius = 0.02f;
-            station.temperature = world.temperature;
-            station.civilization = services->id;
-            system.station = station.index;
-            system.bodies.push_back(station);
+            // Its hub: where people are, and where the ship itself sets down -- on the charts, not far from the equator,
+            // the last of the world's places so no other place's number changes for having it.
+            LandingRegion hub;
+            hub.seed = static_cast<uint32_t>(MixSeed(world.seed, 0x48554242ull) & 0xFFFFFFFFu) | 1u; // 'HUBB'
+            hub.kind = "hub";
+            const RegionKindDef* hubKind = data.RegionKind("hub");
+            hub.designation = hubKind != nullptr && !hubKind->designations.empty() ? hubKind->designations.front() : std::string("HUB");
+            hub.latLon = {random.Range(-20.0f, 20.0f), random.Range(-180.0f, 180.0f)};
+            hub.charted = true;
+            system.hubRegion = static_cast<int>(world.regions.size());
+            world.regions.push_back(hub);
         }
     }
     return system;
