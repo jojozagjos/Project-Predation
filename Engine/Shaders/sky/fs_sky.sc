@@ -16,8 +16,9 @@ uniform vec4 u_planetB;
 uniform vec4 u_planetC;
 uniform vec4 u_planetD;
 uniform vec4 u_planetE;
-// The rest of a system, further off: per body, xyz which way and w its radius on the sky (0 none), then its colour and air.
-uniform vec4 u_skyBodies[16];
+// The rest of a system, further off: per body, xyz which way (its length how bright it is as a point) and w its radius on
+// the sky (0 none), then its colour and air.
+uniform vec4 u_skyBodies[24];
 
 #include "planet/planet_surface.sh"
 
@@ -174,11 +175,14 @@ void main()
 			color += air * exp(-beyond) * 0.6 * max(u_skySpace.w, 0.0) * smoothstep(-0.3, 0.3, dot(edgeDirection, towardsSun));
 		}
 	}
-	// The other planets and moons: small lit discs, behind the near planet and in front of the stars.
+	// The other planets and moons: lit discs when near enough to have a size, and otherwise what they really are from
+	// across a system -- points of light, steadier and brighter than the stars, their colour, as bright as how big they are,
+	// how near and how much of their lit side faces this way. Behind the near planet and in front of the stars.
 	if (starsShow > 0.5 && inSpace > 0.5)
 	{
 		vec3 towardsLight = normalize(u_skySun.xyz);
-		for (int i = 0; i < 8; ++i)
+		float pixelAngle = max(length(fwidth(ray)), 0.00005);
+		for (int i = 0; i < 12; ++i)
 		{
 			vec4 place = u_skyBodies[i * 2];
 			if (place.w <= 0.0)
@@ -190,7 +194,8 @@ void main()
 			float bodyRadius = sin(place.w);
 			float bodyAlong = dot(ray, toBody);
 			float bodyHit = bodyAlong * bodyAlong - (1.0 - bodyRadius * bodyRadius);
-			if (bodyHit > 0.0 && bodyAlong > 0.0)
+			// Smaller than a pixel or two it is a point (below), not a disc that is there one frame and gone the next.
+			if (bodyHit > 0.0 && bodyAlong > 0.0 && place.w > pixelAngle * 1.5)
 			{
 				vec3 bodyNormal = (ray * (bodyAlong - sqrt(bodyHit)) - toBody) / bodyRadius;
 				float bodyLit = dot(bodyNormal, towardsLight);
@@ -201,10 +206,16 @@ void main()
 			}
 			else
 			{
-				// A glow round it, so one across the system reads as a world and not as one more star.
-				float off = max(acos(clamp(bodyAlong, -1.0, 1.0)) - place.w, 0.0) / max(place.w, 0.0005);
-				float litSide = max(dot(toBody, towardsLight) * -0.5 + 0.5, 0.15);
-				color += look.rgb * exp(-off * 1.6) * 0.18 * litSide * u_skySunColor.w * max(u_skySpace.w, 0.0);
+				float angle = acos(clamp(bodyAlong, -1.0, 1.0));
+				float bright = length(place.xyz);
+				// How much of its face is lit, seen from here: full behind the sun, a sliver towards it.
+				float phase = max(dot(toBody, towardsLight) * -0.5 + 0.5, 0.12);
+				vec3 tint = mix(look.rgb, vec3_splat(1.0), 0.35);
+				// A point, spread over at least a pixel and a half so it never flickers, and a soft halo round it.
+				float spread = max(pixelAngle * 0.9, place.w);
+				float glint = exp(-angle * angle / (2.0 * spread * spread)) * (1.0 - smoothstep(1.0, 3.0, place.w / pixelAngle));
+				float halo = exp(-max(angle - place.w, 0.0) / (pixelAngle * 5.0 + place.w * 1.5));
+				color += tint * (glint * 2.2 + halo * 0.07) * bright * phase * max(u_skySpace.w, 0.0);
 			}
 		}
 	}

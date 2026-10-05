@@ -2,11 +2,12 @@
   "_comment": "What planets can be. A planet is one biome, atmosphere, terrain, weather and civilization, plus any specials, each picked by weight among the ones that suit it: a biome only where the planet's warmth (degrees C) falls in its 'temperature', and the others from the biome's own lists. Add an entry to add a kind of world. Names are what a player is shown; ids are what saves use, so do not rename an id once campaigns exist. Colours are 0-1 RGB.",
 
   "names": {
-    "_comment": "Systems are a catalogue and a number ('KEPLER-217'), planets after them by numeral ('KEPLER-217 IV'). Moons have designations of their own, a prefix and a number ('LV-426'), as moons do in the Alien films.",
+    "_comment": "Systems are a catalogue and a number ('KEPLER-217'), planets after them by numeral ('KEPLER-217 IV'). Moons have designations of their own, a prefix and a number ('LV-426'), as moons do in the Alien films. A settled world's station is named after it: '{planet}' is the world's name.",
     "catalogues": ["KEPLER"],
     "numbers": [10, 999],
     "moons": ["LV"],
-    "moonNumbers": [100, 999]
+    "moonNumbers": [100, 999],
+    "station": "{planet} STATION"
   },
 
   "stars": [
@@ -156,7 +157,6 @@
   ],
 
   "regions": [
-    {"id": "service_hub", "name": "Shipyard", "charted": true, "service": true, "designations": ["SHIPYARD"]},
     {"id": "outpost", "name": "Outpost", "charted": true, "designations": ["OUTPOST", "RELAY STATION", "MINING OUTPOST"]},
     {"id": "research_facility", "name": "Research facility", "designations": ["RESEARCH FACILITY", "FIELD STATION", "SURVEY STATION"]},
     {"id": "survey", "name": "Open ground", "designations": ["SURVEY SITE"]},

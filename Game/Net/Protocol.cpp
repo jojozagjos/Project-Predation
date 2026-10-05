@@ -1021,6 +1021,8 @@ void WriteTravel(BitWriter& writer, const TravelMessage& message)
     std::memcpy(&bits, &message.clock, sizeof(bits));
     writer.WriteUInt(static_cast<uint32_t>(bits & 0xFFFFFFFFu));
     writer.WriteUInt(static_cast<uint32_t>(bits >> 32));
+    writer.WriteUInt(static_cast<uint32_t>(message.system & 0xFFFFFFFFu));
+    writer.WriteUInt(static_cast<uint32_t>(message.system >> 32));
     writer.WriteBool(message.underway);
     writer.WriteSignedBits(message.target, 8);
     writer.WriteSignedBits(message.body, 8);
@@ -1046,6 +1048,9 @@ bool ReadTravel(BitReader& reader, TravelMessage& out)
     const uint64_t high = reader.ReadUInt();
     const uint64_t bits = low | (high << 32);
     std::memcpy(&out.clock, &bits, sizeof(bits));
+    const uint64_t systemLow = reader.ReadUInt();
+    const uint64_t systemHigh = reader.ReadUInt();
+    out.system = systemLow | (systemHigh << 32);
     out.underway = reader.ReadBool();
     out.target = static_cast<int8_t>(reader.ReadSignedBits(8));
     out.body = static_cast<int8_t>(reader.ReadSignedBits(8));

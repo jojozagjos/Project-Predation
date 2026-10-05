@@ -177,6 +177,22 @@ Set verbosity with `--log-level` on the command line or `log_level` in the conso
 the capture happens after the scene has drawn. This is how automated smoke tests confirm rendering without a
 person looking at the window.
 
+### The campaign, without playing to it
+
+| Command | Does |
+| --- | --- |
+| `campaign_new [name] [seed]` | Begin a campaign here (then `solo`) |
+| `map_open [galaxy [distance] \| <body> \| body <body> [area]]` | Open the navigation map, at a scale |
+| `course <body> [area]`, `course_system [n]` | Set a course in the system, or for the nth nearest other system |
+| `travel_skip` | Put the ship nearly there (a crossing: nearly through it) |
+
+`wait` counts frames, and a screenshot is taken at the end of the frame, after every command given in that frame:
+
+    ProjectPredation.exe --frames 1500 --exec "campaign_new Test 7" --exec solo --exec "wait 300" --exec "map_open galaxy 60"
+      --exec "wait 300" --exec screenshot --exec quit
+
+These make real campaigns in the saves folder; delete the test ones afterwards.
+
 ## Profiling
 
 `PRED_PROFILE_SCOPE("Name")` records a CPU timing that appears in the overlay. Tracy integration with GPU zones

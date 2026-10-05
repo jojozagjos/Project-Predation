@@ -91,6 +91,11 @@ public:
     const ShipHullLook& Look() const { return m_look; }
     // The outside for a look, in the ship's frame.
     static ModelAsset HullModel(const ShipHullLook& look);
+    // A station the ship is docked at, in the ship's frame: off to starboard, its arm clamped to the ship's roof.
+    static ModelAsset StationModel();
+    // Whether the station is there, beside the ship and beside the one on the stage (built the first time it is).
+    void SetStation(Scene& scene, MeshLibrary& meshes, bool shown);
+    bool StationShown() const { return m_stationShown; }
     bool Built() const { return m_built; }
 
     // Whether a point is near enough the ship that the sky round it is space.
@@ -146,6 +151,9 @@ private:
     VehicleProp m_bayDoors;
     VehicleProp m_hull;
     VehicleProp m_stageHull;
+    VehicleProp m_station;
+    VehicleProp m_stageStation;
+    bool m_stationShown = false;
     ShipHullLook m_look;
     std::vector<Entity> m_entities;
     std::vector<BodyHandle> m_bodies;

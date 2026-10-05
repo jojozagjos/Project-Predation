@@ -68,7 +68,11 @@ user's to write. Grouped roughly in the order a player meets them. **Must** is n
 
 ## The campaign and the ship (must, now built)
 
-- The navigation table in the ops room: opening the system map, turning and zooming it, picking out a planet or moon.
+- The navigation table in the ops room: opening the map; right-drag to move it, left-drag to turn it, the wheel to zoom
+  from the galaxy to a system to a body and back; picking something out and opening it.
+- Starting docked at the station; leaving it.
+- Choosing where to go down: the landing areas on a body's globe, day and night there.
+- Crossing to another system: how long it takes, and arriving at the edge of it.
 - What is known and what is not: a world's details fill in as the ship scans it or the crew goes down.
 - Setting a course; walking the ship while it flies; changing the course or calling it off part way.
 - Pointing things out to the others on the map (they see what you point at).

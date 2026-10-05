@@ -67,6 +67,14 @@ struct CampaignState
         int target = -1; // a body of the current system
         // Where to go down on the body it is at or heading for: one of its landing regions, or -1 for none chosen.
         int region = -1;
+        // Between the stars: the system it is heading for, where in the galaxy it set out from and where that is (light
+        // years), and when it set out and how long the crossing takes (the campaign's clock).
+        bool interstellar = false;
+        uint64_t toSystem = 0;
+        glm::vec3 fromGalaxy{0.0f};
+        glm::vec3 toGalaxy{0.0f};
+        double departed = 0.0;
+        float duration = 0.0f;
     };
 
     int version = kVersion;

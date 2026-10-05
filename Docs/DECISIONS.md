@@ -2773,3 +2773,40 @@ ship of their own that starts small and grows (REWORK_DESIGN.md), and keeps a sh
   DESIGN_PLAN (marked as superseded in its structure by REWORK_DESIGN), HOSTING and BUILDING (hosting a campaign),
   NETWORKING (protocol 32, the campaign's messages, no migration), ARCHITECTURE (the game's modules), and the
   TUTORIAL_CHECKLIST (the map, travel and saving are there to be taught).
+
+## ADR-129: The navigation map at three scales, other systems, starting docked, and space that makes sense
+
+- **One map, three scales** (Game/PredationGameMapView.cpp): the galaxy (systems as stars, as far as anybody scrolls),
+  a system (its star, planets, moons and stations), and a body (its globe, with the landing areas found on it). Zooming
+  in past the nearest goes into whatever is under the mouse or in the middle; out past the furthest goes back up a
+  scale; a trail along the top goes back up too. The galaxy's systems near the camera are worked out again only when it
+  has moved some way, and far ones are drawn as dots, because ImGui has only so many vertices a frame.
+- **Controls**: left-click picks, double-click (or Enter) opens, right-drag slides the map along under the mouse (along
+  the flat of the system or the galaxy's disc), left- or middle-drag turns it, the wheel zooms towards the mouse,
+  WASD moves, Q and E turn, F focuses what is picked, H goes back to the ship, Backspace goes up a scale, Esc closes.
+- **Panels**: a list down the left (nearby systems and a search by name and the ones been to; a system's bodies, moons
+  and stations under their planets; a body's areas with day or night and local time), details down the right with
+  what can be done (open, set course, set course and dock, go down here), how the ship stands along the top.
+- **Landing areas chosen on the globe**: each found area is a marker at its latitude and longitude; day and night come
+  round as the body turns; "go down here" sets the course and the area in one, or just the area when already there.
+- **Other systems** (Travel::SetSystemCourse): a crossing takes 75 s and more with distance, less with a better drive;
+  set out from wherever the ship is, changeable part way, arriving at rest at the edge of the new system on the side it
+  came from. Any drive can cross; whether the first drive should be limited is still open. The travel message carries
+  the system (protocol 33).
+- **A campaign starts docked at the station** over the settled home world. A station is a body (not landable) round its
+  planet; docking at one is arriving there. The ship shows a station beside it when docked (ShipMap::StationModel: hub,
+  ring, spokes, solar wings, an arm clamped to the ship's roof), off to starboard so the cinematics, which look past
+  the ship from port, frame the ship against it, and still there through the cinematic of leaving it.
+- **Courses go round the star** (Travel::StarClearance, AimPoint): a straight way that would pass too close is
+  steered round by a point beside the star until it is clear; the map draws the way the ship will actually go
+  (Travel::Preview, the flight run ahead).
+- **Space out of the windows**: every other body where it really is and as big as it really is from there -- a disc
+  when near enough to have a size, otherwise a steady point of light, brighter than the stars, as bright as its size,
+  its light and its distance make it, and lit to its phase; up to twelve. In orbit the ship goes round the body below
+  every sixteen minutes, so the sun rises over its edge and sets behind it, and in its shadow the sun's light on the
+  ship goes. At a station, the world below is the station's planet, not the station drawn as a planet beside it (which
+  was the "two planets next to each other"). Between the stars, the star left behind is a dimming sun astern and the
+  one ahead a brightening point, the nearer lighting the ship.
+- **Moons are never more than half their planet's size**, so a planet and its moon are not a matched pair.
+- **The ship's screens** say where the ship is going and when it arrives, how far through a crossing it is, and
+  docked; the objective says where the navigation table is.

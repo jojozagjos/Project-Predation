@@ -370,10 +370,17 @@ void PredationGame::DrawShipHud()
         ImGui::TextColored(heading, "OBJECTIVE");
         const StarSystem* system = CurrentSystem();
         const Body* heading_ = system != nullptr ? system->Find(m_campaign.travel.target) : nullptr;
-        if (system != nullptr && m_campaign.travel.underway)
+        if (system != nullptr && m_campaign.travel.interstellar)
         {
-            ImGui::TextColored(text, heading_ != nullptr ? ("Under way to " + heading_->name + ".").c_str() : "Coming to a stop.");
-            ImGui::TextDisabled("The navigation map is in the briefing room.");
+            const std::string to = m_universe.Glance(SystemId::Unpack(m_campaign.travel.toSystem)).name;
+            ImGui::TextColored(text, "%s", ("Crossing to " + to + ".").c_str());
+            ImGui::TextDisabled("%d%% of the way. The navigation map is at the table behind the cockpit.",
+                                static_cast<int>(Travel::CrossingDone(m_campaign) * 100.0f));
+        }
+        else if (system != nullptr && m_campaign.travel.underway)
+        {
+            ImGui::TextColored(text, "%s", heading_ != nullptr ? ("Under way to " + heading_->name + ".").c_str() : "Coming to a stop.");
+            ImGui::TextDisabled("The navigation map is at the table behind the cockpit.");
         }
         else if (m_shipTravel > 0.0f)
         {
@@ -410,7 +417,7 @@ void PredationGame::DrawShipHud()
         else if (system != nullptr)
         {
             ImGui::TextColored(text, "Choose where to go.");
-            ImGui::TextDisabled("The navigation map is in the briefing room.");
+            ImGui::TextDisabled("The navigation map is at the table behind the cockpit.");
         }
         else
         {

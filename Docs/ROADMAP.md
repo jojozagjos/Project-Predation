@@ -9,9 +9,14 @@ it has got, in the order the design's vertical slice puts things. Updated 2026-1
   autosave, written safely); sent to everybody else. Continue, New campaign and Load campaign on the title.
 - **A universe from a seed** (ADR-124): star systems, planets and moons, worlds combined from biome, air, terrain,
   weather, settlement and specials (Assets/Data/universe.json); landing regions, some charted, the rest to be found.
-- **The system map and travel** (ADR-125): the navigation table in the ops room opens a 3D map of the system; a
-  course is flown, with time to walk the ship, redirected or called off part way; arriving scans the body and finds
-  places to land; everybody sees what the others are pointing at. Space out of the windows is the system as it is.
+- **The navigation map and travel** (ADR-125, ADR-129): the navigation table in the ops room opens a 3D map at three
+  scales -- the galaxy, as far as anybody scrolls; a system; a body's globe with its landing areas -- with right-drag to
+  move, left-click to pick, and the wheel going from one scale to the next. A course is flown, round the star rather
+  than through it, with time to walk the ship, redirected or called off part way; other systems are crossed to in a
+  minute or more; arriving scans the body and finds places to land, chosen on the globe; everybody sees what the
+  others are pointing at. Space out of the windows is the system as it is: other worlds as points of light or discs at
+  their real size, the sun setting behind the planet below in orbit.
+- **Starting docked at a station** (ADR-129) over the settled home world, the station beside the ship.
 - **The crew's own ship** (ADR-127): small, one deck, a shuttle bay; its outside follows the campaign's colours and
   its drive and sensor upgrades.
 - **The title and lobby** reworked round campaigns; no host migration (the host leaving ends the game, ADR-126).
@@ -27,16 +32,14 @@ it has got, in the order the design's vertical slice puts things. Updated 2026-1
    some quiet and some not.
 2. **What there is to do there**: salvage and components to carry back, points of interest found by exploring, the
    log filled in by what is found, a region remembered as it was left (what was taken, what was opened).
-3. **The economy and the shipyard**: credits for what is brought back; the shipyard on the settled world to sell
-   salvage at, buy upgrades (the drive, sensors, storage, the ship's size) and change the ship's colours; the ship
-   gaining sections as it grows. Starting the campaign at the shipyard, on the ground.
+3. **The economy and the shipyard**: credits for what is brought back; the station to sell salvage at, buy upgrades
+   (the drive, sensors, storage, the ship's size) and change the ship's colours; the ship gaining sections as it grows.
 4. **The ship's log**: everything found, kept and shown; entries marked and pinned.
 5. **CIRRA's contracts**: optional work offered over the intercom, briefed at the navigation table, paying credits
    and components.
 6. **A crew wipe** that costs what was carried and some credits, never the ship or what has been found.
 7. **The tutorial**: a short story-driven prologue ([TUTORIAL_CHECKLIST.md](TUTORIAL_CHECKLIST.md)).
-8. Beyond the slice: more biomes and places, other star systems by a better drive, the story's discoveries, the
-   endgame.
+8. Beyond the slice: more biomes and places, the story's discoveries, the endgame.
 
 ## Still missing from what exists
 

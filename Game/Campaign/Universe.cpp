@@ -356,11 +356,6 @@ void PlaceRegions(Body& body, const UniverseData& data, int count)
         static const std::map<std::string, float> kNothing;
         region.kind = PickFrom(civ != nullptr ? civ->regions : kNothing, data.regionKinds, random,
                                data.regionKinds.empty() ? std::string() : data.regionKinds.front().id);
-        // Never a service location by chance: those are placed.
-        if (const RegionKindDef* kind = data.RegionKind(region.kind); kind != nullptr && kind->service)
-        {
-            region.kind = "survey";
-        }
         const RegionKindDef* kind = data.RegionKind(region.kind);
         const std::string designation = kind != nullptr && !kind->designations.empty()
                                             ? kind->designations[static_cast<size_t>(random.Int(0, static_cast<int>(kind->designations.size()) - 1))]
@@ -500,6 +495,7 @@ bool UniverseData::LoadFromFile(const std::filesystem::path& file, std::string* 
             }
             const glm::vec2 moonRange = ReadVec2(*names, "moonNumbers", {100.0f, 999.0f});
             loaded.moonNumbers = {static_cast<int>(moonRange.x), static_cast<int>(moonRange.y)};
+            loaded.stationName = names->value("station", loaded.stationName);
         }
         for (const auto& entry : root.value("stars", nlohmann::json::array()))
         {
@@ -594,7 +590,6 @@ bool UniverseData::LoadFromFile(const std::filesystem::path& file, std::string* 
             RegionKindDef kind;
             ReadEntry(entry, kind);
             kind.charted = entry.value("charted", false);
-            kind.service = entry.value("service", false);
             kind.designations = ReadStrings(entry, "designations");
             loaded.regionKinds.push_back(kind);
         }
@@ -700,12 +695,6 @@ void UniverseData::UseDefaults()
     colony.regions = {{"survey", 1.0f}};
     civilizations.push_back(colony);
 
-    RegionKindDef hub;
-    hub.id = "service_hub";
-    hub.charted = true;
-    hub.service = true;
-    hub.designations = {"SHIPYARD"};
-    regionKinds.push_back(hub);
     RegionKindDef facility;
     facility.id = "research_facility";
     facility.designations = {"RESEARCH FACILITY"};
@@ -748,7 +737,7 @@ glm::vec3 StarSystem::Position(int index, double time) const
     }
     const double turns = time / static_cast<double>(std::max(body->period, 1.0f));
     const float angle = body->phase + static_cast<float>(std::fmod(turns, 1.0) * static_cast<double>(kTau));
-    if (body->kind == BodyKind::Moon)
+    if (body->kind == BodyKind::Moon || body->kind == BodyKind::Station)
     {
         const Body* planet = Find(body->parent);
         const glm::vec3 around = Position(body->parent, time);
@@ -851,18 +840,18 @@ const StarSystem* Universe::System(SystemId id)
     return made;
 }
 
-StarSystem Universe::Generate(uint64_t universeSeed, SystemId id, const UniverseData& data)
+namespace
 {
-    StarSystem system;
-    system.id = id;
-    system.seed = MixSeed(universeSeed, id.Packed() + 1);
-    UniverseRandom random(system.seed);
-    const bool home = id == SystemId{};
 
+// A system's name and star, the first of what its seed makes: the same whether the whole system is being made or only
+// glanced at. Null when there are no stars to have.
+const StarDef* BeginSystem(uint64_t universeSeed, SystemId id, const UniverseData& data, StarSystem& system, UniverseRandom& random)
+{
+    system.id = id;
+    const bool home = id == SystemId{};
     const std::string catalogue = data.catalogues.empty() ? std::string("KEPLER")
                                                           : data.catalogues[static_cast<size_t>(random.Int(0, static_cast<int>(data.catalogues.size()) - 1))];
     system.name = catalogue + "-" + std::to_string(random.Int(data.catalogueNumbers.x, data.catalogueNumbers.y));
-
     // The star. Home is a calm, sunlike one, so where a campaign starts is somewhere people would settle.
     std::vector<const StarDef*> stars;
     for (const StarDef& star : data.stars)
@@ -872,12 +861,53 @@ StarSystem Universe::Generate(uint64_t universeSeed, SystemId id, const Universe
     const StarDef* star = home && FindById(data.stars, "g_dwarf") != nullptr ? FindById(data.stars, "g_dwarf") : PickWeighted(stars, random);
     if (star == nullptr)
     {
-        return system;
+        return nullptr;
     }
     system.star = star->id;
     system.starColor = star->color;
     system.luminosity = random.Range(star->luminosity.x, star->luminosity.y);
     system.starRadius = star->radius;
+    (void)universeSeed;
+    return star;
+}
+
+} // namespace
+
+const SystemGlance& Universe::Glance(SystemId id)
+{
+    const uint64_t key = id.Packed();
+    if (const auto found = m_glances.find(key); found != m_glances.end())
+    {
+        return found->second;
+    }
+    SystemGlance glance;
+    glance.id = id;
+    glance.position = SystemPosition(id);
+    if (m_data != nullptr)
+    {
+        StarSystem system;
+        system.seed = MixSeed(m_seed, id.Packed() + 1);
+        UniverseRandom random(system.seed);
+        BeginSystem(m_seed, id, *m_data, system, random);
+        glance.name = system.name;
+        glance.star = system.star;
+        glance.starColor = system.starColor;
+        glance.luminosity = system.luminosity;
+    }
+    return m_glances.emplace(key, glance).first->second;
+}
+
+StarSystem Universe::Generate(uint64_t universeSeed, SystemId id, const UniverseData& data)
+{
+    StarSystem system;
+    system.seed = MixSeed(universeSeed, id.Packed() + 1);
+    UniverseRandom random(system.seed);
+    const bool home = id == SystemId{};
+    const StarDef* star = BeginSystem(universeSeed, id, data, system, random);
+    if (star == nullptr)
+    {
+        return system;
+    }
     const float warmth = std::sqrt(std::max(system.luminosity, 0.001f));
     int planets = random.Int(star->planets.x, star->planets.y);
     if (home)
@@ -937,12 +967,14 @@ StarSystem Universe::Generate(uint64_t universeSeed, SystemId id, const Universe
             // As warm as its planet's light makes it, before any air of its own.
             moon.temperature = 278.0f * std::pow(system.luminosity, 0.25f) / std::sqrt(planet.orbit) - 273.0f + moonRandom.Range(-20.0f, 5.0f);
             FillBody(moon, data, false, 0.0f);
+            // Never bigger than half its planet: a pair the same size is two planets, not a planet and its moon.
+            moon.radius = std::min(moon.radius, std::max(planet.radius * 0.45f, 0.08f));
             PlaceRegions(moon, data, moonRandom.Int(1, 2));
             system.bodies.push_back(moon);
         }
     }
 
-    // A settled world with a shipyard on it: always at home (the planet nearest pleasant), sometimes elsewhere.
+    // A settled world with a station over it: always at home (the planet nearest pleasant), sometimes elsewhere.
     const CivilizationDef* services = nullptr;
     for (const CivilizationDef& civ : data.civilizations)
     {
@@ -952,16 +984,7 @@ StarSystem Universe::Generate(uint64_t universeSeed, SystemId id, const Universe
             break;
         }
     }
-    const RegionKindDef* yard = nullptr;
-    for (const RegionKindDef& kind : data.regionKinds)
-    {
-        if (kind.service)
-        {
-            yard = &kind;
-            break;
-        }
-    }
-    if (services != nullptr && yard != nullptr && (home || random.Chance(0.25f)))
+    if (services != nullptr && (home || random.Chance(0.25f)))
     {
         int best = -1;
         float bestScore = 1.0e9f;
@@ -991,18 +1014,31 @@ StarSystem Universe::Generate(uint64_t universeSeed, SystemId id, const Universe
                 world.air = data.Atmosphere("breathable")->thickness;
                 world.airColor = data.Atmosphere("breathable")->color;
             }
-            LandingRegion hub;
-            hub.seed = static_cast<uint32_t>(MixSeed(world.seed, 0x48554Bull) & 0xFFFFFFFFu) | 1u; // 'HUK'
-            hub.kind = yard->id;
-            hub.designation = (yard->designations.empty() ? std::string("SHIPYARD") : yard->designations.front()) + " 01";
-            hub.latLon = {random.Range(-30.0f, 30.0f), random.Range(-180.0f, 180.0f)};
-            hub.charted = true;
-            world.regions.insert(world.regions.begin(), hub);
             for (LandingRegion& region : world.regions)
             {
                 region.charted = region.charted || region.kind == "outpost";
             }
             system.hub = best;
+            // Its station, close round it, after every other body so no body's number changes for having it.
+            Body station;
+            station.index = static_cast<uint16_t>(system.bodies.size());
+            station.kind = BodyKind::Station;
+            station.parent = best;
+            station.seed = MixSeed(world.seed, 0x5354414Eull); // 'STAN'
+            std::string stationName = data.stationName;
+            if (const size_t at = stationName.find("{planet}"); at != std::string::npos)
+            {
+                stationName.replace(at, 8, world.name);
+            }
+            station.name = stationName;
+            station.orbit = 2.6f;
+            station.period = 240.0f;
+            station.phase = random.Range(0.0f, kTau);
+            station.radius = 0.02f;
+            station.temperature = world.temperature;
+            station.civilization = services->id;
+            system.station = station.index;
+            system.bodies.push_back(station);
         }
     }
     return system;

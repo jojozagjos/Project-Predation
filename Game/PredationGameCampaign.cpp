@@ -366,7 +366,7 @@ void PredationGame::RegisterCampaignCommands()
                                     }
                                     if (body.index == system->hub)
                                     {
-                                        line += "  [shipyard]";
+                                        line += "  [settled, a station over it]";
                                     }
                                     say(line);
                                     for (const LandingRegion& region : body.regions)
@@ -387,13 +387,49 @@ void PredationGame::RegisterCampaignCommands()
                                 m_campaign.credits = std::stoll(args[1]);
                                 CampaignChanged();
                             });
-    console.RegisterCommand("map_open", "Open the system map, as the navigation console does: map_open [body to pick out]",
+    console.RegisterCommand("map_open",
+                            "Open the navigation map, as the console does: map_open [galaxy | <body to pick out> | body <body> [area]]",
                             [this](const std::vector<std::string>& args)
                             {
                                 OpenSystemMap();
-                                if (args.size() >= 2)
+                                if (!m_mapOpen || args.size() < 2)
                                 {
-                                    m_mapSelected = std::atoi(args[1].c_str());
+                                    return;
+                                }
+                                if (args[1] == "galaxy")
+                                {
+                                    ShowMapGalaxy(Travel::GalaxyPosition(m_campaign, m_universe), args.size() >= 3 ? std::stof(args[2]) : 60.0f);
+                                }
+                                else if (args[1] == "body" && args.size() >= 3)
+                                {
+                                    ShowMapSystem(m_campaign.system, -1);
+                                    ShowMapBody(std::atoi(args[2].c_str()));
+                                    if (args.size() >= 4)
+                                    {
+                                        m_mapRegion = std::atoi(args[3].c_str());
+                                    }
+                                }
+                                else
+                                {
+                                    ShowMapSystem(m_campaign.system, std::atoi(args[1].c_str()));
+                                }
+                            });
+    console.RegisterCommand("course_system", "Set a course for another system, the nth nearest the ship: course_system [n]",
+                            [this](const std::vector<std::string>& args)
+                            {
+                                if (!m_campaignOpen)
+                                {
+                                    return;
+                                }
+                                const int n = args.size() >= 2 ? std::max(std::atoi(args[1].c_str()), 1) : 1;
+                                int seen = 0;
+                                for (const SystemId& id : m_universe.Near(Travel::GalaxyPosition(m_campaign, m_universe), 80.0f))
+                                {
+                                    if (id.Packed() != m_campaign.system && ++seen == n)
+                                    {
+                                        AskSystemCourse(id.Packed());
+                                        return;
+                                    }
                                 }
                             });
     console.RegisterCommand("map_close", "Close the system map", [this](const std::vector<std::string>&) { CloseSystemMap(); });
@@ -410,6 +446,12 @@ void PredationGame::RegisterCampaignCommands()
                             [this](const std::vector<std::string>&)
                             {
                                 const StarSystem* system = CurrentSystem();
+                                if (system != nullptr && IsAuthority() && m_campaign.travel.interstellar)
+                                {
+                                    // A crossing: all but the last few seconds of it.
+                                    m_campaign.travel.departed = m_campaign.clock - std::max(m_campaign.travel.duration - 3.0f, 0.0f);
+                                    return;
+                                }
                                 if (system == nullptr || !IsAuthority() || !m_campaign.travel.underway || m_campaign.travel.target < 0)
                                 {
                                     return;

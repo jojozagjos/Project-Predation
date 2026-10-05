@@ -320,11 +320,36 @@ void PredationGame::DrawBriefingScreens()
             canvas.Text(kWide / 2 - canvas.TextWidth(text.c_str(), scale) / 2, y, text.c_str(), colour, scale);
         };
         const SiteTitle place = m_campaignOpen ? PlaceTitle() : SiteTitle{};
-        if (m_campaignOpen && m_campaign.travel.underway)
+        const StarSystem* system = m_campaignOpen ? CurrentSystem() : nullptr;
+        const Body* at = system != nullptr && !m_campaign.travel.underway ? system->Find(m_campaign.body) : nullptr;
+        if (m_campaignOpen && m_campaign.travel.interstellar)
         {
+            // Between the stars: where to, how far through, and how long left.
+            const float done = Travel::CrossingDone(m_campaign);
+            Frame(canvas, "CROSSING", clock, done);
+            centred(left ? "CROSSING" : Upper(m_universe.Glance(SystemId::Unpack(m_campaign.travel.toSystem)).name), 88, kText, left ? 4 : 3);
+            centred(left ? std::to_string(static_cast<int>(done * 100.0f)) + "% OF THE WAY"
+                         : "ARRIVING IN " + seconds((1.0f - done) * m_campaign.travel.duration),
+                    150, kSoft, 2);
+        }
+        else if (m_campaignOpen && m_campaign.travel.underway && system != nullptr)
+        {
+            const Body* target = system->Find(m_campaign.travel.target);
             Frame(canvas, "UNDER WAY", clock, -1.0f);
-            centred(left ? "UNDER WAY" : Upper(place.planet.empty() ? std::string("COMING TO A STOP") : place.planet), 88, kText, left ? 4 : 2);
-            centred(left ? "NAVIGATION MAP AT THE CONSOLE" : "DESTINATION", 150, kSoft, 2);
+            centred(left ? "UNDER WAY" : Upper(target != nullptr ? target->name : std::string("COMING TO A STOP")), 88, kText, left ? 4 : 2);
+            std::string below = left ? "NAVIGATION MAP AT THE TABLE" : "DESTINATION";
+            if (!left && target != nullptr)
+            {
+                const float distance = glm::length(system->Position(target->index, m_campaign.clock) - m_campaign.travel.position);
+                below = "ARRIVING IN " + seconds(Travel::Seconds(distance, DriveTier()));
+            }
+            centred(below, 150, kSoft, 2);
+        }
+        else if (at != nullptr && at->kind == BodyKind::Station)
+        {
+            Frame(canvas, "DOCKED", clock, -1.0f);
+            centred(left ? Upper(at->name) : "DOCKED", 88, kText, left ? 2 : 4);
+            centred(left ? "DOCKING CLAMP ENGAGED" : "CHOOSE A DESTINATION AT THE TABLE", 150, kSoft, 2);
         }
         else if (m_campaignOpen && m_shipReady)
         {

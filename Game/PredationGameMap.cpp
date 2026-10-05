@@ -28,27 +28,11 @@ constexpr float kTravelSendEvery = 0.1f;
 constexpr float kSensorEvery = 1.0f;
 constexpr float kTau = 6.28318530718f;
 
-// Each player's colour on the map, by their number.
-constexpr ImU32 kPlayerColours[kMaxPlayers] = {IM_COL32(236, 156, 64, 255), IM_COL32(90, 200, 230, 255), IM_COL32(130, 220, 120, 255),
-                                               IM_COL32(220, 120, 220, 255)};
-constexpr ImU32 kAmber = IM_COL32(236, 156, 64, 255);
-constexpr ImU32 kText = IM_COL32(220, 226, 230, 255);
-constexpr ImU32 kDim = IM_COL32(130, 138, 146, 255);
 
 // How far the ship's sensors see while under way, in astronomical units, by their tier.
 float SensorRange(int tier)
 {
     return 0.05f * std::pow(3.0f, static_cast<float>(std::clamp(tier, 0, 6)));
-}
-
-std::string About(float seconds)
-{
-    if (seconds < 50.0f)
-    {
-        return "under a minute";
-    }
-    const int minutes = static_cast<int>(std::round(seconds / 60.0f));
-    return "about " + std::to_string(std::max(minutes, 1)) + " min";
 }
 
 // A region's seed as the site builder takes it.
@@ -58,10 +42,6 @@ uint16_t SiteSeed(uint32_t seed)
     return folded == 0 ? uint16_t{1} : folded;
 }
 
-uint32_t Abgr(int r, int g, int b, int a)
-{
-    return (static_cast<uint32_t>(a) << 24) | (static_cast<uint32_t>(b) << 16) | (static_cast<uint32_t>(g) << 8) | static_cast<uint32_t>(r);
-}
 
 } // namespace
 
@@ -107,70 +87,7 @@ bool PredationGame::RegionKnown(const Body& body, int region) const
 
 bool PredationGame::RegionLandable(const Body& body, int region) const
 {
-    if (!RegionKnown(body, region) || !body.Landable())
-    {
-        return false;
-    }
-    // Somewhere with services is docked at, not gone down to in the shuttle: that comes with the shipyard.
-    const RegionKindDef* kind = m_universeData.RegionKind(body.regions[static_cast<size_t>(region)].kind);
-    return kind == nullptr || !kind->service;
-}
-
-// --- Opening and closing ----------------------------------------------------------------------------------------------
-
-void PredationGame::OpenSystemMap()
-{
-    const StarSystem* system = CurrentSystem();
-    if (system == nullptr)
-    {
-        return;
-    }
-    m_mapOpen = true;
-    m_inventoryOpen = false;
-    CloseLoadout();
-    m_wantMouseCaptured = false;
-    UpdateMouseCapture();
-    if (m_mapSelected < 0 || m_mapSelected >= static_cast<int>(system->bodies.size()))
-    {
-        m_mapSelected = m_campaign.travel.underway ? m_campaign.travel.target : m_campaign.body;
-    }
-    if (!m_mapFramed)
-    {
-        // The whole system in view at first, from above and to one side.
-        float outermost = 10.0f;
-        for (const SystemMapView::Drawn& drawn : SystemMapView::Layout(*system, m_campaign.clock))
-        {
-            outermost = std::max(outermost, glm::length(drawn.at));
-        }
-        m_mapView.Focus(glm::vec3(0.0f), outermost * 2.2f);
-        m_mapFramed = true;
-    }
-    PlayNamed("UI/confirm", m_renderEye, 0.5f, 1.0f, false);
-}
-
-void PredationGame::CloseSystemMap()
-{
-    if (!m_mapOpen)
-    {
-        return;
-    }
-    m_mapOpen = false;
-    m_mapHovered = -1;
-    m_wantMouseCaptured = !m_paused;
-    UpdateMouseCapture();
-    PlayNamed("UI/back", m_renderEye, 0.5f, 1.0f, false);
-}
-
-void PredationGame::DestroySystemMapTarget()
-{
-    if (bgfx::isValid(m_mapBuffer))
-    {
-        bgfx::destroy(m_mapBuffer);
-    }
-    m_mapBuffer = BGFX_INVALID_HANDLE;
-    m_mapTexture = BGFX_INVALID_HANDLE;
-    m_mapWidth = 0;
-    m_mapHeight = 0;
+    return RegionKnown(body, region) && body.Landable();
 }
 
 // --- What is asked of the campaign ----------------------------------------------------------------------------------
@@ -227,6 +144,29 @@ bool PredationGame::DoCampaignAction(uint8_t player, CampaignAction action, int 
         m_shipReady = false;
         m_shipOrbiting = 0;
         PRED_LOG_INFO(Gameplay, "Player {} set a course for {}", player, system->bodies[static_cast<size_t>(a)].name);
+        if (leaving && HasCinematic("ship_depart"))
+        {
+            PlayCinematic("ship_depart");
+        }
+        CampaignChanged();
+        return true;
+    }
+
+    case CampaignAction::SetSystemCourse:
+    {
+        if (m_map != MapChoice::Ship || m_cine.Active())
+        {
+            return false;
+        }
+        const uint64_t to = static_cast<uint64_t>(static_cast<uint32_t>(a)) | (static_cast<uint64_t>(static_cast<uint32_t>(b)) << 32);
+        const bool leaving = !m_campaign.travel.underway;
+        if (!Travel::SetSystemCourse(m_campaign, m_universe, to, DriveTier()))
+        {
+            return false;
+        }
+        m_shipReady = false;
+        m_shipOrbiting = 0;
+        PRED_LOG_INFO(Gameplay, "Player {} set a course for {}", player, m_universe.Glance(SystemId::Unpack(to)).name);
         if (leaving && HasCinematic("ship_depart"))
         {
             PlayCinematic("ship_depart");
@@ -375,6 +315,16 @@ void PredationGame::ArriveAtBody()
     {
         return;
     }
+    // A station is docked at: nothing to scan, nowhere to go down.
+    if (body->kind == BodyKind::Station)
+    {
+        m_campaign.Learn(m_campaign.system, body->index, CampaignState::kKnownRecords | CampaignState::kKnownVisited);
+        m_shipReady = false;
+        m_shipOrbiting = 0;
+        CampaignChanged();
+        PRED_LOG_INFO(Gameplay, "Docked at {}", body->name);
+        return;
+    }
     // In orbit: the sensors look the whole of it over, and find places to go down that nobody had charted.
     const uint8_t bits = static_cast<uint8_t>(CampaignState::kKnownScanned | (SensorTier() >= 2 ? CampaignState::kKnownDeep : 0));
     m_campaign.Learn(m_campaign.system, body->index, bits);
@@ -404,7 +354,9 @@ void PredationGame::UpdateTravel(float dt)
     {
         return;
     }
-    const int pointer = m_mapOpen ? (m_mapHovered >= 0 ? m_mapHovered : m_mapSelected) : -1;
+    // What this player is pointing at, for the others: a body of the system the ship is in, on its map.
+    const bool pointable = m_mapOpen && m_mapLevel != MapLevel::Galaxy && m_mapSystem == m_campaign.system;
+    const int pointer = pointable ? (m_mapHovered >= 0 ? m_mapHovered : m_mapSelected) : -1;
     if (m_sessionMode == SessionMode::Client)
     {
         if (m_client.TravelsReceived() != m_appliedTravels)
@@ -412,6 +364,7 @@ void PredationGame::UpdateTravel(float dt)
             m_appliedTravels = m_client.TravelsReceived();
             const TravelMessage& travel = m_client.LatestTravel();
             m_campaign.clock = travel.clock;
+            m_campaign.system = travel.system;
             m_campaign.travel.underway = travel.underway;
             m_campaign.travel.target = travel.target;
             m_campaign.travel.position = travel.position;
@@ -421,7 +374,7 @@ void PredationGame::UpdateTravel(float dt)
             m_pointing = travel.pointing;
             m_mapOpenMask = travel.mapOpen;
         }
-        else if (m_campaign.travel.underway)
+        else if (m_campaign.travel.underway && !m_campaign.travel.interstellar)
         {
             // Between the host's words, flown the same way here, so the map moves smoothly.
             Travel::Step(m_campaign, *system, dt, DriveTier());
@@ -436,7 +389,27 @@ void PredationGame::UpdateTravel(float dt)
     else
     {
         DoCampaignAction(LocalPlayerId(), CampaignAction::Pointer, pointer, m_mapOpen ? 1 : 0);
-        if (m_campaign.travel.underway && !CinematicHoldsWorld())
+        if (m_campaign.travel.interstellar)
+        {
+            // Between the stars: there when the time is up, at the edge of the new system, shown arriving.
+            if (!CinematicHoldsWorld() && Travel::StepInterstellar(m_campaign, m_universe))
+            {
+                const StarSystem* arrived = CurrentSystem();
+                m_campaign.Learn(m_campaign.system, -1, CampaignState::kKnownVisited);
+                if (arrived != nullptr)
+                {
+                    m_campaign.AddLog("system", CampaignState::BodyKey(m_campaign.system, -1), arrived->name,
+                                      "Arrived from across the stars. " + std::to_string(arrived->bodies.size()) + " bodies.");
+                    PRED_LOG_INFO(Gameplay, "Arrived in {}", arrived->name);
+                }
+                CampaignChanged();
+                if (m_map == MapChoice::Ship && HasCinematic("ship_arrive"))
+                {
+                    PlayCinematic("ship_arrive");
+                }
+            }
+        }
+        else if (m_campaign.travel.underway && !CinematicHoldsWorld())
         {
             if (Travel::Step(m_campaign, *system, dt, DriveTier()))
             {
@@ -484,6 +457,7 @@ void PredationGame::UpdateTravel(float dt)
                 m_travelSendIn = kTravelSendEvery;
                 TravelMessage travel;
                 travel.clock = m_campaign.clock;
+                travel.system = m_campaign.system;
                 travel.underway = m_campaign.travel.underway;
                 travel.target = static_cast<int8_t>(std::clamp(m_campaign.travel.target, -1, 127));
                 travel.body = static_cast<int8_t>(std::clamp(m_campaign.body, -1, 127));
@@ -526,6 +500,15 @@ void PredationGame::UpdateTravel(float dt)
         m_travelSeenTarget = target;
         m_travelSeen = true;
     }
+    // The station beside the ship while it is docked -- and still there while the cinematic shows it leaving.
+    {
+        const Body* at = system->Find(m_campaign.body);
+        const bool docked = !m_campaign.travel.underway && at != nullptr && at->kind == BodyKind::Station;
+        if (docked || !m_cine.Active())
+        {
+            m_ship.SetStation(m_scene, m_app->GetMeshes(), docked);
+        }
+    }
     // The ship's outside as the campaign has it: its colours, and its drive and sensors.
     ShipHullLook look;
     look.primary = m_campaign.colors.primary;
@@ -539,537 +522,66 @@ void PredationGame::UpdateTravel(float dt)
     m_shipTravelTotal = m_shipTravel;
 }
 
-// --- The picture ----------------------------------------------------------------------------------------------------
-
-void PredationGame::RenderSystemMap()
-{
-    const StarSystem* system = CurrentSystem();
-    if (!m_mapOpen || system == nullptr || !m_planets.IsValid())
-    {
-        return;
-    }
-    const Renderer& renderer = m_app->GetRenderer();
-    const auto width = static_cast<uint16_t>(std::max(renderer.Width(), 16));
-    const auto height = static_cast<uint16_t>(std::max(renderer.Height(), 16));
-    if (width != m_mapWidth || height != m_mapHeight)
-    {
-        DestroySystemMapTarget();
-    }
-    if (!bgfx::isValid(m_mapBuffer))
-    {
-        const uint64_t flags = BGFX_TEXTURE_RT_MSAA_X4 | BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP;
-        bgfx::TextureHandle attachments[2] = {
-            bgfx::createTexture2D(width, height, false, 1, bgfx::TextureFormat::BGRA8, flags),
-            bgfx::createTexture2D(width, height, false, 1, bgfx::TextureFormat::D24S8, BGFX_TEXTURE_RT_MSAA_X4 | BGFX_TEXTURE_RT_WRITE_ONLY)};
-        if (!bgfx::isValid(attachments[0]) || !bgfx::isValid(attachments[1]))
-        {
-            PRED_LOG_ERROR(Render, "System map: could not create its render target");
-            return;
-        }
-        m_mapBuffer = bgfx::createFrameBuffer(2, attachments, true);
-        m_mapTexture = attachments[0];
-        m_mapWidth = width;
-        m_mapHeight = height;
-    }
-
-    const float aspect = static_cast<float>(width) / static_cast<float>(height);
-    const bool homogeneous = renderer.HomogeneousDepth();
-    const glm::mat4 view = m_mapView.View();
-    const glm::mat4 projection = m_mapView.Projection(aspect, homogeneous);
-    const glm::vec3 eye = m_mapView.Eye();
-    const bgfx::ViewId sky = Renderer::kViewMapFirst;
-    const bgfx::ViewId bodies = static_cast<bgfx::ViewId>(sky + 1);
-    const bgfx::ViewId glow = static_cast<bgfx::ViewId>(sky + 2);
-    const bgfx::ViewId lines = static_cast<bgfx::ViewId>(sky + 3);
-    for (bgfx::ViewId id = sky; id <= lines; ++id)
-    {
-        bgfx::setViewFrameBuffer(id, m_mapBuffer);
-        bgfx::setViewRect(id, 0, 0, width, height);
-        bgfx::setViewTransform(id, glm::value_ptr(view), glm::value_ptr(projection));
-        bgfx::setViewClear(id, id == sky ? (BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH) : BGFX_CLEAR_NONE, 0x000000ff, 1.0f, 0);
-        bgfx::touch(id);
-    }
-
-    // The stars behind it all, and the sky's sun where the star is, which the star itself then covers.
-    Environment space;
-    space.stars = 1.0f;
-    space.planetRadius = 0.0f;
-    space.sunDirection = glm::length(eye) > 1.0e-3f ? glm::normalize(eye) : glm::vec3(0.0f, -1.0f, 0.0f);
-    space.sunColor = system->starColor;
-    space.fogColor = glm::vec3(0.0f);
-    space.skySun = 0.0f;
-    m_app->GetSkyRenderer().Draw(sky, space, view, projection);
-
-    m_planets.SetCamera(eye, 1.0f);
-    const float time = static_cast<float>(std::fmod(m_campaign.clock, 100000.0));
-    m_planets.Star(bodies, glow, glm::vec3(0.0f), SystemMapView::kStarRadius, system->starColor, m_mapView.Right(), m_mapView.Up(), time);
-
-    const std::vector<SystemMapView::Drawn> drawn = SystemMapView::Layout(*system, m_campaign.clock);
-    for (const Body& body : system->bodies)
-    {
-        const SystemMapView::Drawn& at = drawn[body.index];
-        // Turned on its axis as the day goes round, the axis tipped by its tilt.
-        glm::mat4 model = glm::translate(glm::mat4(1.0f), at.at);
-        model = glm::rotate(model, body.tilt, glm::vec3(0.0f, 0.0f, 1.0f));
-        const glm::mat4 ringModel = glm::scale(model, glm::vec3(at.radius));
-        model = glm::rotate(model, static_cast<float>(std::fmod(m_campaign.clock / std::max(body.day, 1.0f), 1.0)) * kTau, glm::vec3(0.0f, 1.0f, 0.0f));
-        model = glm::scale(model, glm::vec3(at.radius));
-        float highlight = body.index == m_mapSelected ? 1.0f : body.index == m_mapHovered ? 0.55f : 0.0f;
-        for (int player = 0; player < kMaxPlayers; ++player)
-        {
-            highlight = std::max(highlight, m_pointing[static_cast<size_t>(player)] == body.index && player != LocalPlayerId() ? 0.45f : 0.0f);
-        }
-        const glm::vec3 towardsStar = glm::length(at.at) > 1.0e-4f ? -glm::normalize(at.at) : glm::vec3(0.0f, 1.0f, 0.0f);
-        const PlanetLook look = LookOf(body);
-        m_planets.Body(bodies, model, look, towardsStar, system->starColor, highlight, time * 0.02f);
-        m_planets.Rings(glow, ringModel, look, towardsStar, system->starColor);
-
-        // Its orbit: faint, brighter for the one picked out.
-        const bool picked = body.index == m_mapSelected;
-        const std::vector<glm::vec3> loop = SystemMapView::Orbit(*system, body.index, drawn, m_campaign.clock, body.kind == BodyKind::Planet ? 160 : 48);
-        const uint32_t colour = picked ? Abgr(236, 156, 64, 170) : body.kind == BodyKind::Planet ? Abgr(120, 140, 170, 70) : Abgr(120, 140, 170, 35);
-        for (size_t i = 1; i < loop.size(); ++i)
-        {
-            m_planets.Line(loop[i - 1], loop[i], colour);
-        }
-    }
-
-    // The ship, and where it is heading.
-    const glm::vec3 shipAu = Travel::ShipPosition(m_campaign, *system);
-    const glm::vec3 ship = SystemMapView::ShipAt(drawn, m_campaign.travel.underway ? -1 : m_campaign.body, shipAu);
-    const float mark = std::max(m_mapView.Distance() * 0.008f, 0.08f);
-    const uint32_t shipColour = Abgr(255, 236, 200, 255);
-    m_planets.Line(ship - glm::vec3(mark, 0.0f, 0.0f), ship + glm::vec3(mark, 0.0f, 0.0f), shipColour);
-    m_planets.Line(ship - glm::vec3(0.0f, mark, 0.0f), ship + glm::vec3(0.0f, mark, 0.0f), shipColour);
-    m_planets.Line(ship - glm::vec3(0.0f, 0.0f, mark), ship + glm::vec3(0.0f, 0.0f, mark), shipColour);
-    if (m_campaign.travel.underway && m_campaign.travel.target >= 0)
-    {
-        const glm::vec3 there = drawn[static_cast<size_t>(m_campaign.travel.target)].at;
-        // Dashed, so it reads as a course and not an orbit.
-        constexpr int kDashes = 40;
-        for (int i = 0; i < kDashes; i += 2)
-        {
-            const float t0 = static_cast<float>(i) / kDashes;
-            const float t1 = static_cast<float>(i + 1) / kDashes;
-            m_planets.Line(glm::mix(ship, there, t0), glm::mix(ship, there, t1), Abgr(236, 156, 64, 220));
-        }
-    }
-    m_planets.FlushLines(lines);
-}
-
-void PredationGame::DrawSystemMap()
-{
-    const StarSystem* system = CurrentSystem();
-    if (!m_mapOpen || system == nullptr)
-    {
-        return;
-    }
-    const ImGuiViewport* viewport = ImGui::GetMainViewport();
-    const ImVec2 origin = viewport->Pos;
-    const ImVec2 size = viewport->Size;
-    const float aspect = size.x / std::max(size.y, 1.0f);
-    const bool homogeneous = m_app->GetRenderer().HomogeneousDepth();
-    m_mapView.Update(ImGui::GetIO().DeltaTime);
-    const std::vector<SystemMapView::Drawn> drawn = SystemMapView::Layout(*system, m_campaign.clock);
-
-    // The picture, and the whole of it a surface to turn, zoom and point with.
-    ImGui::SetNextWindowPos(origin);
-    ImGui::SetNextWindowSize(size);
-    constexpr ImGuiWindowFlags kBack = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings |
-                                       ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoBackground;
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {0.0f, 0.0f});
-    ImGui::Begin("##systemmap", nullptr, kBack);
-    ImGui::PopStyleVar();
-    ImDrawList* draw = ImGui::GetWindowDrawList();
-    if (bgfx::isValid(m_mapTexture))
-    {
-        draw->AddImage(static_cast<ImTextureID>(ImGuiLayer::TextureId(m_mapTexture)), origin, {origin.x + size.x, origin.y + size.y});
-    }
-    else
-    {
-        draw->AddRectFilled(origin, {origin.x + size.x, origin.y + size.y}, IM_COL32(0, 0, 0, 255));
-    }
-    ImGui::SetCursorScreenPos(origin);
-    ImGui::InvisibleButton("##mapsurface", size);
-    const ImGuiIO& io = ImGui::GetIO();
-    const glm::vec2 mouse{(io.MousePos.x - origin.x) / size.x, (io.MousePos.y - origin.y) / size.y};
-    m_mapHovered = ImGui::IsItemHovered() ? m_mapView.Pick(mouse, drawn, aspect, homogeneous) : -1;
-    if (ImGui::IsItemActivated())
-    {
-        m_mapDragged = false;
-    }
-    if (ImGui::IsItemActive() && ImGui::IsMouseDragging(ImGuiMouseButton_Left, 3.0f))
-    {
-        m_mapView.Turn(-io.MouseDelta.x * 0.006f, io.MouseDelta.y * 0.006f);
-        m_mapDragged = true;
-    }
-    if (ImGui::IsItemHovered() && io.MouseWheel != 0.0f)
-    {
-        m_mapView.Zoom(std::pow(0.87f, io.MouseWheel));
-    }
-    if (ImGui::IsItemDeactivated() && !m_mapDragged)
-    {
-        m_mapSelected = m_mapHovered;
-        if (m_mapSelected >= 0)
-        {
-            PlayNamed("UI/click", m_renderEye, 0.5f, 1.0f, false);
-        }
-    }
-    if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) && m_mapHovered >= 0)
-    {
-        m_mapView.Focus(drawn[static_cast<size_t>(m_mapHovered)].at, drawn[static_cast<size_t>(m_mapHovered)].radius * 14.0f);
-    }
-
-    // Names by the bodies: every planet's; a moon's when close enough to tell them apart, or when it is picked out.
-    ImFont* font = ImGui::GetFont();
-    const float small = ImGui::GetFontSize() * 0.85f;
-    const auto toScreen = [&](const glm::vec3& at, ImVec2& out)
-    {
-        glm::vec2 point;
-        if (!m_mapView.OnScreen(at, aspect, homogeneous, point) || point.x < -0.1f || point.x > 1.1f || point.y < -0.1f || point.y > 1.1f)
-        {
-            return false;
-        }
-        out = {origin.x + point.x * size.x, origin.y + point.y * size.y};
-        return true;
-    };
-    for (const Body& body : system->bodies)
-    {
-        const SystemMapView::Drawn& at = drawn[body.index];
-        const bool picked = body.index == m_mapSelected || body.index == m_mapHovered;
-        if (body.kind == BodyKind::Moon && !picked && m_mapView.Distance() > 30.0f)
-        {
-            continue;
-        }
-        // A planet's name over it; a moon's to its side, out of its planet's way.
-        ImVec2 point;
-        const bool moon = body.kind == BodyKind::Moon;
-        if (!toScreen(moon ? at.at : at.at + glm::vec3(0.0f, at.radius * 1.3f, 0.0f), point))
-        {
-            continue;
-        }
-        const uint8_t known = m_campaign.Known(m_campaign.system, body.index);
-        const ImU32 colour = picked ? kAmber : known != 0 ? kText : kDim;
-        const ImVec2 extent = font->CalcTextSizeA(small, FLT_MAX, 0.0f, body.name.c_str());
-        const ImVec2 corner = moon ? ImVec2{point.x + 10.0f, point.y - extent.y * 0.5f} : ImVec2{point.x - extent.x * 0.5f, point.y - extent.y};
-        draw->AddText(font, small, {corner.x + 1.0f, corner.y + 1.0f}, IM_COL32(0, 0, 0, 200), body.name.c_str());
-        draw->AddText(font, small, corner, colour, body.name.c_str());
-    }
-    // The ship.
-    {
-        const glm::vec3 ship = SystemMapView::ShipAt(drawn, m_campaign.travel.underway ? -1 : m_campaign.body, Travel::ShipPosition(m_campaign, *system));
-        ImVec2 point;
-        if (toScreen(ship, point))
-        {
-            draw->AddCircle(point, 7.0f, IM_COL32(255, 236, 200, 230), 0, 1.5f);
-            draw->AddText(font, small, {point.x + 10.0f, point.y - small * 0.5f}, IM_COL32(255, 236, 200, 230), "SHIP");
-        }
-    }
-    // What everybody else is pointing at: a ring round it in their colour, and their name.
-    {
-        const std::vector<RemotePlayerView>& remotes = RemotePlayers();
-        for (int player = 0; player < kMaxPlayers; ++player)
-        {
-            const int body = m_pointing[static_cast<size_t>(player)];
-            if (player == LocalPlayerId() || body < 0 || body >= static_cast<int>(drawn.size()))
-            {
-                continue;
-            }
-            std::string name = "Player " + std::to_string(player + 1);
-            for (const RemotePlayerView& remote : remotes)
-            {
-                name = remote.id == player ? remote.name : name;
-            }
-            ImVec2 point;
-            if (toScreen(drawn[static_cast<size_t>(body)].at, point))
-            {
-                draw->AddCircle(point, 18.0f + 4.0f * static_cast<float>(player), kPlayerColours[player], 0, 2.0f);
-                draw->AddText(font, small, {point.x + 22.0f, point.y + 6.0f + small * static_cast<float>(player)}, kPlayerColours[player], name.c_str());
-            }
-        }
-    }
-    ImGui::End();
-
-    constexpr ImGuiWindowFlags kPanel = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
-                                        ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings;
-    const StarDef* star = nullptr;
-    for (const StarDef& def : m_universeData.stars)
-    {
-        star = def.id == system->star ? &def : star;
-    }
-
-    // The bodies, down the left.
-    ImGui::SetNextWindowPos({origin.x + 20.0f, origin.y + 20.0f});
-    ImGui::SetNextWindowSize({280.0f, size.y - 140.0f});
-    ImGui::SetNextWindowBgAlpha(0.72f);
-    if (ImGui::Begin("##mapbodies", nullptr, kPanel))
-    {
-        ImGui::TextColored({0.92f, 0.62f, 0.25f, 1.0f}, "NAVIGATION");
-        ImGui::TextUnformatted(system->name.c_str());
-        ImGui::TextDisabled("%s", star != nullptr ? star->name.c_str() : system->star.c_str());
-        ImGui::Separator();
-        for (const Body& body : system->bodies)
-        {
-            ImGui::PushID(body.index);
-            std::string label = (body.kind == BodyKind::Moon ? "    " : "") + body.name;
-            if (!m_campaign.travel.underway && body.index == m_campaign.body)
-            {
-                label += "   (here)";
-            }
-            else if (m_campaign.travel.underway && body.index == m_campaign.travel.target)
-            {
-                label += "   (heading)";
-            }
-            for (int player = 0; player < kMaxPlayers; ++player)
-            {
-                if (player != LocalPlayerId() && m_pointing[static_cast<size_t>(player)] == body.index)
-                {
-                    label += "  *";
-                }
-            }
-            if (ImGui::Selectable(label.c_str(), body.index == m_mapSelected))
-            {
-                m_mapSelected = body.index;
-                m_mapView.Focus(drawn[body.index].at, drawn[body.index].radius * 14.0f);
-            }
-            if (ImGui::IsItemHovered())
-            {
-                m_mapHovered = body.index;
-            }
-            ImGui::PopID();
-        }
-        ImGui::Spacing();
-        if (ImGui::SmallButton("Whole system"))
-        {
-            float outermost = 10.0f;
-            for (const SystemMapView::Drawn& at : drawn)
-            {
-                outermost = std::max(outermost, glm::length(at.at));
-            }
-            m_mapView.Focus(glm::vec3(0.0f), outermost * 2.2f);
-        }
-    }
-    ImGui::End();
-
-    // What is known of the one picked out, down the right.
-    const Body* picked = system->Find(m_mapSelected);
-    if (picked != nullptr)
-    {
-        ImGui::SetNextWindowPos({origin.x + size.x - 360.0f, origin.y + 20.0f});
-        ImGui::SetNextWindowSize({340.0f, 0.0f});
-        ImGui::SetNextWindowBgAlpha(0.78f);
-        if (ImGui::Begin("##mapinfo", nullptr, kPanel | ImGuiWindowFlags_AlwaysAutoResize))
-        {
-            const uint8_t known = m_campaign.Known(m_campaign.system, picked->index);
-            const bool records = (known & CampaignState::kKnownRecords) != 0;
-            const bool scanned = (known & (CampaignState::kKnownScanned | CampaignState::kKnownVisited)) != 0;
-            const bool deep = (known & (CampaignState::kKnownDeep | CampaignState::kKnownVisited)) != 0;
-            ImGui::TextUnformatted(picked->name.c_str());
-            if (picked->kind == BodyKind::Moon)
-            {
-                ImGui::TextDisabled("Moon of %s", system->bodies[static_cast<size_t>(picked->parent)].name.c_str());
-            }
-            else
-            {
-                ImGui::TextDisabled("Planet, %.2f AU from the star", picked->orbit);
-            }
-            ImGui::Separator();
-            const auto row = [](const char* what, const std::string& value, bool knownValue)
-            {
-                ImGui::TextDisabled("%s", what);
-                ImGui::SameLine(110.0f);
-                if (knownValue)
-                {
-                    ImGui::TextUnformatted(value.c_str());
-                }
-                else
-                {
-                    ImGui::TextDisabled("Unknown");
-                }
-            };
-            const BiomeDef* biome = m_universeData.Biome(picked->biome);
-            row("Type", biome != nullptr ? biome->name : picked->biome, picked->gas || scanned || records);
-            if (!picked->gas)
-            {
-                const AtmosphereDef* air = m_universeData.Atmosphere(picked->atmosphere);
-                row("Atmosphere", air != nullptr ? air->name : picked->atmosphere, scanned);
-                row("Temperature", std::to_string(static_cast<int>(std::round(picked->temperature))) + " C", scanned);
-                const WeatherDef* weather = m_universeData.Weather(picked->weather);
-                row("Weather", weather != nullptr ? weather->name : picked->weather, scanned);
-                const TerrainDef* terrain = m_universeData.Terrain(picked->terrain);
-                row("Terrain", terrain != nullptr ? terrain->name : picked->terrain, deep);
-                const CivilizationDef* civ = m_universeData.Civilization(picked->civilization);
-                std::string settled = civ != nullptr ? civ->name : std::string("None");
-                if (!records && scanned && civ != nullptr && !civ->inhabited)
-                {
-                    settled = civ->records ? "Structures detected" : "None detected";
-                }
-                row("Settlement", settled, records || scanned);
-            }
-            std::string traits;
-            for (const std::string& id : picked->specials)
-            {
-                const SpecialDef* special = m_universeData.Special(id);
-                const bool visible = id == "rings" || id == "aurora";
-                if (deep || (visible && scanned))
-                {
-                    traits += (traits.empty() ? "" : ", ") + (special != nullptr ? special->name : id);
-                }
-            }
-            if (!traits.empty())
-            {
-                row("Notable", traits, true);
-            }
-
-            // How far, and how long to get there.
-            const glm::vec3 ship = Travel::ShipPosition(m_campaign, *system);
-            const float distance = glm::length(system->Position(picked->index, m_campaign.clock) - ship);
-            const bool here = !m_campaign.travel.underway && picked->index == m_campaign.body;
-            if (!here)
-            {
-                char away[64];
-                std::snprintf(away, sizeof(away), "%.2f AU, ", distance);
-                row("Distance", away + About(Travel::Seconds(distance, DriveTier())), true);
-            }
-
-            // Places to go down.
-            if (picked->Landable())
-            {
-                ImGui::Spacing();
-                ImGui::TextDisabled("LANDING REGIONS");
-                int shown = 0;
-                const bool heading = (m_campaign.travel.underway && m_campaign.travel.target == picked->index) || here;
-                for (int i = 0; i < static_cast<int>(picked->regions.size()); ++i)
-                {
-                    if (!RegionKnown(*picked, i))
-                    {
-                        continue;
-                    }
-                    ++shown;
-                    const LandingRegion& region = picked->regions[static_cast<size_t>(i)];
-                    const bool landable = RegionLandable(*picked, i);
-                    const bool chosen = heading && m_campaign.travel.region == i;
-                    ImGui::PushID(i);
-                    ImGui::BeginDisabled(!landable);
-                    if (ImGui::Selectable(region.designation.c_str(), chosen) && heading && landable)
-                    {
-                        AskCampaign(CampaignAction::SetRegion, i);
-                    }
-                    ImGui::EndDisabled();
-                    if (!landable && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-                    {
-                        ImGui::SetTooltip("A service location: docking comes with the shipyard.");
-                    }
-                    ImGui::PopID();
-                }
-                if (shown == 0)
-                {
-                    ImGui::TextDisabled(scanned ? "None found yet." : "None charted. Go closer to look.");
-                }
-            }
-
-            ImGui::Spacing();
-            const bool aboard = m_map == MapChoice::Ship;
-            if (here)
-            {
-                ImGui::TextColored({0.92f, 0.62f, 0.25f, 1.0f}, m_shipReady ? "In orbit. The shuttle is ready in the hangar." : "In orbit.");
-            }
-            else if (m_campaign.travel.underway && m_campaign.travel.target == picked->index)
-            {
-                ImGui::TextColored({0.92f, 0.62f, 0.25f, 1.0f}, "On course.");
-            }
-            else
-            {
-                ImGui::BeginDisabled(!aboard || m_cine.Active());
-                if (ImGui::Button("Set course", {-1.0f, 32.0f}))
-                {
-                    // Down to whichever region is picked out, or the first that can be gone down to.
-                    int region = -1;
-                    for (int i = 0; i < static_cast<int>(picked->regions.size()) && region < 0; ++i)
-                    {
-                        region = RegionLandable(*picked, i) ? i : -1;
-                    }
-                    AskCampaign(CampaignAction::SetCourse, picked->index, region);
-                    PlayNamed("UI/confirm", m_renderEye, 0.6f, 1.0f, false);
-                }
-                ImGui::EndDisabled();
-            }
-        }
-        ImGui::End();
-    }
-
-    // How the ship stands, along the bottom, and the way out.
-    ImGui::SetNextWindowPos({origin.x + size.x * 0.5f, origin.y + size.y - 20.0f}, ImGuiCond_Always, {0.5f, 1.0f});
-    ImGui::SetNextWindowBgAlpha(0.78f);
-    if (ImGui::Begin("##mapstatus", nullptr, kPanel | ImGuiWindowFlags_AlwaysAutoResize))
-    {
-        const Body* target = system->Find(m_campaign.travel.target);
-        const Body* at = system->Find(m_campaign.body);
-        if (m_campaign.travel.underway && target != nullptr)
-        {
-            const float left = glm::length(system->Position(target->index, m_campaign.clock) - m_campaign.travel.position);
-            ImGui::Text("Under way to %s, %s.", target->name.c_str(), About(Travel::Seconds(left, DriveTier())).c_str());
-        }
-        else if (m_campaign.travel.underway)
-        {
-            ImGui::TextUnformatted("Coming to a stop.");
-        }
-        else if (at != nullptr)
-        {
-            const int region = m_campaign.travel.region;
-            if (region >= 0 && region < static_cast<int>(at->regions.size()))
-            {
-                ImGui::Text("In orbit of %s.  Going down to %s.", at->name.c_str(), at->regions[static_cast<size_t>(region)].designation.c_str());
-            }
-            else
-            {
-                ImGui::Text("In orbit of %s.", at->name.c_str());
-            }
-        }
-        else
-        {
-            ImGui::TextUnformatted("Holding position between the planets.");
-        }
-        if (m_campaign.travel.underway && m_campaign.travel.target >= 0)
-        {
-            ImGui::SameLine();
-            if (ImGui::SmallButton("Call off the course"))
-            {
-                AskCampaign(CampaignAction::CancelCourse);
-            }
-        }
-        ImGui::SameLine();
-        if (ImGui::SmallButton("Close"))
-        {
-            CloseSystemMap();
-        }
-        ImGui::TextDisabled("Drag to turn, wheel to zoom, click to pick out, double-click to go to it. Esc closes.");
-    }
-    ImGui::End();
-}
-
 // --- Space out of the windows ------------------------------------------------------------------------------------
 
 void PredationGame::SetSpaceSky(Environment& environment)
 {
     // The system as it is from where the ship is: the star where it really is, the planet it is over or heading for big
-    // ahead or below, and every other body near enough to see a lit disc in its own direction. Directions in the system
-    // are turned into the ship's: forward is the way it is heading (the bow), up is the system's up.
+    // ahead or below, and every other body where it really is and as big as it really looks -- a disc when it is near
+    // enough to have a size, a point of light when it is not. Directions in the system are turned into the ship's:
+    // forward is the way it is heading (the bow), up is the system's up.
     const StarSystem* system = CurrentSystem();
     if (system == nullptr)
     {
         return;
     }
+    for (glm::vec4& body : environment.skyBodies)
+    {
+        body = glm::vec4(0.0f);
+    }
+    const glm::vec3 bow = glm::normalize(ShipSpec::kTravelHeading);
+    const glm::vec3 starboard = glm::normalize(glm::cross(bow, glm::vec3(0.0f, 1.0f, 0.0f)));
+    const glm::vec3 overhead = glm::cross(starboard, bow);
+
+    // Between the stars: nothing near, the star it left a dimming sun astern and the one it is heading for a brightening
+    // point dead ahead -- the nearer of the two the one that lights the ship.
+    if (m_campaign.travel.interstellar)
+    {
+        const SystemGlance& ahead = m_universe.Glance(SystemId::Unpack(m_campaign.travel.toSystem));
+        const glm::vec3 behindColour = system->starColor;
+        const float done = Travel::CrossingDone(m_campaign);
+        const bool nearerAhead = done >= 0.5f;
+        const float near = nearerAhead ? (done - 0.5f) * 2.0f : 1.0f - done * 2.0f;
+        const glm::vec3 astern = -bow;
+        const glm::vec3 lit = nearerAhead ? bow : astern;
+        environment.sunDirection = -glm::normalize(lit + overhead * 0.04f);
+        environment.sunColor = glm::mix(nearerAhead ? ahead.starColor : behindColour, glm::vec3(1.0f), 0.3f);
+        environment.sunIntensity = glm::mix(0.25f, 1.1f, near * near);
+        environment.planetRadius = 0.0f;
+        // The other star, as a point.
+        const glm::vec3 other = nearerAhead ? astern : bow;
+        const glm::vec3 otherColour = nearerAhead ? behindColour : ahead.starColor;
+        environment.skyBodies[0] = glm::vec4(glm::normalize(other) * 2.0f, 1.0e-6f);
+        environment.skyBodies[1] = glm::vec4(glm::mix(otherColour, glm::vec3(1.0f), 0.4f) * 3.0f, 0.0f);
+        return;
+    }
+
     const glm::vec3 ship = Travel::ShipPosition(m_campaign, *system);
-    const int main = m_campaign.travel.underway ? m_campaign.travel.target : m_campaign.body;
+    int main = m_campaign.travel.underway ? m_campaign.travel.target : m_campaign.body;
+    // At a station, the world it goes round is the one below.
+    if (const Body* at = system->Find(main); at != nullptr && at->kind == BodyKind::Station)
+    {
+        main = at->parent;
+    }
     glm::vec3 heading{0.0f, 0.0f, -1.0f};
-    if (m_campaign.travel.underway && main >= 0)
+    if (m_campaign.travel.underway && glm::length(m_campaign.travel.velocity) > 1.0e-7f)
+    {
+        // The way it is actually going: round the star, if that is the way it has to go.
+        heading = m_campaign.travel.velocity;
+    }
+    else if (m_campaign.travel.underway && main >= 0)
     {
         heading = system->Position(main, m_campaign.clock) - ship;
-    }
-    else if (m_campaign.travel.underway)
-    {
-        heading = m_campaign.travel.velocity;
     }
     else if (main >= 0)
     {
@@ -1084,10 +596,22 @@ void PredationGame::SetSpaceSky(Environment& environment)
     glm::vec3 right = glm::cross(forward, glm::vec3(0.0f, 1.0f, 0.0f));
     right = glm::length(right) > 1.0e-4f ? glm::normalize(right) : glm::vec3(1.0f, 0.0f, 0.0f);
     const glm::vec3 up = glm::cross(right, forward);
-    const glm::vec3 bow = glm::normalize(ShipSpec::kTravelHeading);
-    const glm::vec3 starboard = glm::normalize(glm::cross(bow, glm::vec3(0.0f, 1.0f, 0.0f)));
-    const glm::vec3 overhead = glm::cross(starboard, bow);
-    const auto toWorld = [&](const glm::vec3& v) { return glm::dot(v, right) * starboard + glm::dot(v, up) * overhead + glm::dot(v, forward) * bow; };
+    // In orbit the ship goes round the body below, so everything else goes slowly round the ship: the sun rises over the
+    // planet's edge and sets behind it, and the night side comes under the ship and goes again.
+    const glm::vec3 below = glm::normalize(glm::vec3(0.12f, -0.42f, -0.9f));
+    const bool orbiting = !m_campaign.travel.underway && system->Find(main) != nullptr;
+    glm::mat4 orbit(1.0f);
+    if (orbiting)
+    {
+        constexpr double kOrbitSeconds = 960.0;
+        const float angle = static_cast<float>(std::fmod(m_campaign.clock / kOrbitSeconds, 1.0)) * kTau;
+        orbit = glm::rotate(glm::mat4(1.0f), -angle, glm::normalize(glm::cross(below, bow)));
+    }
+    const auto toWorld = [&](const glm::vec3& v)
+    {
+        const glm::vec3 inShip = glm::dot(v, right) * starboard + glm::dot(v, up) * overhead + glm::dot(v, forward) * bow;
+        return glm::vec3(orbit * glm::vec4(inShip, 0.0f));
+    };
 
     // The star.
     const float fromStar = std::max(glm::length(ship), 0.05f);
@@ -1105,54 +629,61 @@ void PredationGame::SetSpaceSky(Environment& environment)
         const float orbitSize = std::clamp(0.72f * std::pow(std::max(body->radius, 0.05f), 0.32f), 0.3f, 1.25f);
         if (m_campaign.travel.underway)
         {
-            // Dead ahead, growing as the ship closes on it: a point a long way off, the size it is from orbit at the end.
-            const float distance = std::max(glm::length(system->Position(main, m_campaign.clock) - ship), Travel::kArrival);
+            // Where it is, growing as the ship closes on it: a point a long way off, the size it is from orbit at the end.
+            const glm::vec3 there = system->Position(main, m_campaign.clock) - ship;
+            const float distance = std::max(glm::length(there), Travel::kArrival);
             const float size = std::sqrt(std::max(body->radius, 0.1f));
-            environment.planetDirection = bow;
+            environment.planetDirection = glm::length(there) > 1.0e-9f ? glm::normalize(toWorld(there)) : bow;
             environment.planetRadius = std::clamp(0.0016f * size / distance, 0.012f, orbitSize * 0.65f);
         }
         else
         {
-            environment.planetDirection = glm::normalize(glm::vec3(0.12f, -0.42f, -0.9f));
+            environment.planetDirection = below;
             environment.planetRadius = orbitSize;
+            // Behind the planet, the sun is gone and the ship is in its shadow: only the lamps, and what light the
+            // planet's day side throws back.
+            const float apart = std::acos(std::clamp(glm::dot(towardsStar, below), -1.0f, 1.0f));
+            const float shade = glm::smoothstep(orbitSize - 0.04f, orbitSize + 0.06f, apart);
+            environment.sunIntensity *= glm::mix(0.06f, 1.0f, shade);
         }
     }
 
-    // Everything else, the nearest first, as many as the sky draws.
+    // Everything else, as many as the sky draws: the nearest first, though what would be brightest counts for something --
+    // a gas giant across the system is seen before a pebble of a moon round it.
+    constexpr float kEarthRadiusAu = 4.26e-5f;
     std::vector<std::pair<float, int>> others;
     for (const Body& body : system->bodies)
     {
-        if (body.index == main)
+        if (body.index == main || body.kind == BodyKind::Station)
         {
             continue;
         }
-        others.emplace_back(glm::length(system->Position(body.index, m_campaign.clock) - ship), body.index);
+        const float distance = glm::length(system->Position(body.index, m_campaign.clock) - ship);
+        if (distance < 1.0e-7f)
+        {
+            continue;
+        }
+        others.emplace_back(distance / std::sqrt(std::max(body.radius, 0.05f)), body.index);
     }
     std::sort(others.begin(), others.end());
-    for (int i = 0; i < Environment::kSkyBodies; ++i)
+    for (int i = 0; i < Environment::kSkyBodies && i < static_cast<int>(others.size()); ++i)
     {
-        environment.skyBodies[i * 2] = glm::vec4(0.0f);
-        environment.skyBodies[i * 2 + 1] = glm::vec4(0.0f);
-        if (i >= static_cast<int>(others.size()))
-        {
-            continue;
-        }
         const Body& body = system->bodies[static_cast<size_t>(others[static_cast<size_t>(i)].second)];
-        const float distance = std::max(others[static_cast<size_t>(i)].first, 1.0e-4f);
-        const glm::vec3 way = toWorld(system->Position(body.index, m_campaign.clock) - ship);
-        if (glm::length(way) < 1.0e-9f)
+        const glm::vec3 there = system->Position(body.index, m_campaign.clock);
+        const float distance = glm::length(there - ship);
+        const glm::vec3 way = toWorld(there - ship);
+        if (glm::length(way) < 1.0e-12f)
         {
             continue;
         }
-        // Larger than life, so a planet across the system is a speck rather than nothing; a moon of the body below is a
-        // proper disc.
-        const float size = std::sqrt(std::max(body.radius, 0.05f));
-        // The planet a moon goes round is as large in the sky as it would be from the moon: a gas giant over the horizon.
-        const Body* over = system->Find(main);
-        const bool parent = over != nullptr && over->kind == BodyKind::Moon && over->parent == body.index && !m_campaign.travel.underway;
-        const float radius = parent ? std::clamp(0.35f * std::pow(std::max(body.radius, 0.05f), 0.4f), 0.2f, 0.9f)
-                                    : std::clamp(0.0012f * size / distance, 0.003f, 0.14f);
-        environment.skyBodies[i * 2] = glm::vec4(glm::normalize(way), radius);
+        // As big as it really is from here; most are far too small to be anything but a point, which is what they are.
+        const float radius = std::asin(std::min(std::max(body.radius, 0.02f) * kEarthRadiusAu / distance, 0.95f));
+        // As bright as it is big, lit (by how far it is from its star) and near: brighter than the stars, the near and
+        // the large much brighter.
+        const float fromItsStar = std::max(glm::length(there), 0.05f);
+        const float flux = body.radius * body.radius * system->luminosity / (fromItsStar * fromItsStar * distance * distance);
+        const float bright = std::clamp(1.0f + 0.28f * std::log10(std::max(flux, 1.0e-12f)), 0.35f, 2.4f);
+        environment.skyBodies[i * 2] = glm::vec4(glm::normalize(way) * bright, radius);
         environment.skyBodies[i * 2 + 1] = glm::vec4(glm::mix(body.groundA, body.cloudColor, body.clouds * 0.6f), body.air);
     }
 }

@@ -143,10 +143,8 @@ struct StarDef : TraitEntry
 
 struct RegionKindDef : TraitEntry
 {
-    // Whether one is on the charts before anybody has been (otherwise it is found), and whether it is somewhere safe:
-    // a service location, not an expedition.
+    // Whether one is on the charts before anybody has been (otherwise it is found).
     bool charted = false;
-    bool service = false;
     // What it is called on the charts: the designation's kind ("RESEARCH FACILITY") and qualifiers to go before it.
     std::vector<std::string> designations;
 };
@@ -181,6 +179,8 @@ public:
     // Moons: a designation of their own, a prefix and a number ("LV-426").
     std::vector<std::string> moonCatalogues{"LV"};
     glm::ivec2 moonNumbers{100, 999};
+    // A station, after the world it goes round: "{planet}" is that world's name.
+    std::string stationName = "{planet} STATION";
     // Region designations: the part of a planet it is in ("NORTH CRYOSPHERE"), by biome; "any" for every biome.
     std::map<std::string, std::vector<std::string>> regionAreas;
 };
@@ -216,7 +216,9 @@ struct LandingRegion
 enum class BodyKind : uint8_t
 {
     Planet,
-    Moon
+    Moon,
+    // A station in orbit of a settled world: somewhere to dock, not to land. A campaign starts docked at one.
+    Station
 };
 
 // A planet or a moon.
@@ -225,7 +227,7 @@ struct Body
     uint16_t index = 0;
     BodyKind kind = BodyKind::Planet;
     int parent = -1;   // for a moon, the index of the planet it goes round
-    std::string name;  // "KEPLER-91 IV"; a moon "LV-426"
+    std::string name;  // "KEPLER-91 IV"; a moon "LV-426"; a station after its world
     uint64_t seed = 0;
     // Its orbit: how far out (in astronomical units for a planet; for a moon, in its planet's radii), how long a turn
     // takes (seconds of the campaign's clock), where in it it was at the clock's zero (radians), and the slight tilt of
@@ -261,7 +263,7 @@ struct Body
     glm::vec3 ringColor{0.7f, 0.66f, 0.6f};
     std::vector<LandingRegion> regions;
 
-    bool Landable() const { return !gas; }
+    bool Landable() const { return !gas && kind != BodyKind::Station; }
     bool HasSpecial(const std::string& id) const;
 };
 
@@ -276,13 +278,26 @@ struct StarSystem
     float luminosity = 1.0f;
     float starRadius = 1.0f;
     std::vector<Body> bodies; // planets in order outwards, each followed by its moons
-    // The body with a service location (a colonized world's shipyard), or -1.
+    // The settled world with a station, and the station, or -1.
     int hub = -1;
+    int station = -1;
 
     const Body* Find(int index) const { return index >= 0 && index < static_cast<int>(bodies.size()) ? &bodies[static_cast<size_t>(index)] : nullptr; }
     // Where a body is at `time` on the campaign's clock, in astronomical units from the star. A moon's place is its
     // planet's plus its own (drawn larger than life, so it is not lost inside its planet on the map).
     glm::vec3 Position(int index, double time) const;
+};
+
+// What a system is from far off, without working all of it out: its name, its star and where it is. For the galaxy
+// map, which shows a great many at once.
+struct SystemGlance
+{
+    SystemId id;
+    std::string name;
+    std::string star;
+    glm::vec3 starColor{1.0f};
+    float luminosity = 1.0f;
+    glm::vec3 position{0.0f};
 };
 
 // A place in the universe: a system, and a body in it (-1: the system itself, out between its planets).
@@ -308,6 +323,8 @@ public:
     SystemId Home() const { return SystemId{}; }
     // A system, worked out the first time it is asked for. Null for a place with no system.
     const StarSystem* System(SystemId id);
+    // A system from far off; cheap, and kept.
+    const SystemGlance& Glance(SystemId id);
     const StarSystem* System(uint64_t packed) { return System(SystemId::Unpack(packed)); }
     // Every system within `lightYears` of a point, nearest first.
     std::vector<SystemId> Near(const glm::vec3& at, float lightYears);
@@ -322,6 +339,7 @@ private:
     uint64_t m_seed = 0;
     const UniverseData* m_data = nullptr;
     std::map<uint64_t, std::unique_ptr<StarSystem>> m_systems;
+    std::map<uint64_t, SystemGlance> m_glances;
 };
 
 // A planet's name and number: "IV" for 4.

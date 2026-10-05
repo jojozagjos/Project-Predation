@@ -43,8 +43,27 @@ public:
 
     // --- The camera: turned about a point it looks at, from a distance; eased to where it is asked to be. ---
     void Focus(const glm::vec3& at, float distance);
+    // At once, with no easing: for changing from one scale of map to another.
+    void Jump(const glm::vec3& at, float distance);
     void Turn(float yaw, float pitch);
     void Zoom(float factor);
+    // Slides what it looks at across the picture: to the right and up, in fractions of how far off the camera is.
+    void Pan(float right, float up);
+    // Slides what it looks at along the flat of the map (the plane the planets go round in, the galaxy's disc): to the
+    // right and away, in the map's own units, at once -- for dragging the map along under the mouse.
+    void Slide(float right, float away);
+    // Turns, eased, until it looks from the given direction (from what it looks at, towards the camera).
+    void FaceFrom(const glm::vec3& direction);
+    // How much of the map one pixel is across, at what it looks at, on a picture so many pixels high.
+    float PixelSize(float height) const;
+    // How close and how far it can be from what it looks at.
+    void SetLimits(float nearest, float furthest);
+    // Whether a zoom has been asked for past the limits, in or out, since last asked: the way from one scale to the next.
+    int TakePastLimit();
+    glm::vec3 FocusPoint() const { return m_focusWanted; }
+    // Moves what it looks at by so much, eased.
+    void Shift(const glm::vec3& by) { m_focusWanted += by; }
+    float Pitch() const { return m_pitch; }
     void Update(float dt);
     glm::vec3 Eye() const;
     glm::mat4 View() const;
@@ -64,6 +83,11 @@ private:
     float m_distanceWanted = 60.0f;
     float m_yaw = 0.6f;
     float m_pitch = 0.55f;
+    float m_yawWanted = 0.6f;
+    float m_pitchWanted = 0.55f;
+    float m_nearest = 2.0f;
+    float m_furthest = 400.0f;
+    int m_pastLimit = 0;
 };
 
 } // namespace pred

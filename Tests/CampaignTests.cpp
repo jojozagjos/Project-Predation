@@ -103,7 +103,7 @@ TEST_CASE("A system comes out the same from the same seed, and differently from 
     CHECK(names.size() >= 15);
 }
 
-TEST_CASE("Home always has a settled world with a shipyard on the charts", "[campaign]")
+TEST_CASE("Home always has a settled world with a station over it", "[campaign]")
 {
     const UniverseData& data = ShippedData();
     for (uint64_t seed = 1; seed <= 40; ++seed)
@@ -114,9 +114,14 @@ TEST_CASE("Home always has a settled world with a shipyard on the charts", "[cam
         const Body& world = home.bodies[static_cast<size_t>(home.hub)];
         CHECK(world.kind == BodyKind::Planet);
         CHECK(world.Landable());
-        REQUIRE_FALSE(world.regions.empty());
-        CHECK(world.regions.front().kind == "service_hub");
-        CHECK(world.regions.front().charted);
+        REQUIRE(home.station >= 0);
+        const Body& station = home.bodies[static_cast<size_t>(home.station)];
+        CHECK(station.kind == BodyKind::Station);
+        CHECK(station.parent == home.hub);
+        CHECK_FALSE(station.Landable());
+        CHECK(station.name.find(world.name) != std::string::npos);
+        // Close round its world.
+        CHECK(glm::length(home.Position(station.index, 100.0) - home.Position(world.index, 100.0)) < 0.01f);
         CHECK(home.bodies.size() >= 5);
     }
 }
@@ -130,6 +135,11 @@ TEST_CASE("Every body is something, moons designated as moons, and only solid on
         for (const Body& body : system.bodies)
         {
             INFO(body.name);
+            if (body.kind == BodyKind::Station)
+            {
+                CHECK_FALSE(body.Landable());
+                continue;
+            }
             CHECK_FALSE(body.biome.empty());
             CHECK(data.Biome(body.biome) != nullptr);
             if (body.gas)
@@ -143,6 +153,16 @@ TEST_CASE("Every body is something, moons designated as moons, and only solid on
                 // A designation of its own ("LV-426"), not its planet's name.
                 CHECK(body.name.rfind("LV-", 0) == 0);
                 CHECK(planet.kind == BodyKind::Planet);
+                // Smaller than its planet, well outside it, and clear of every other moon of it.
+                CHECK(body.radius < planet.radius);
+                CHECK(body.orbit > 3.0f);
+                for (const Body& other : system.bodies)
+                {
+                    if (other.kind == BodyKind::Moon && other.parent == body.parent && other.index != body.index)
+                    {
+                        CHECK(std::abs(other.orbit - body.orbit) > 1.0f);
+                    }
+                }
             }
             for (const LandingRegion& region : body.regions)
             {
@@ -202,10 +222,11 @@ TEST_CASE("A campaign begins at the shipyard with home's records known", "[campa
     const CampaignState state = CampaignState::Begin("First", 1234, universe);
     const StarSystem* home = universe.System(universe.Home());
     REQUIRE(home != nullptr);
-    CHECK(state.body == home->hub);
+    CHECK(state.body == home->station);
     CHECK(state.region == -1);
     CHECK(state.credits > 0);
     CHECK((state.Known(home->id.Packed(), home->hub) & CampaignState::kKnownVisited) != 0);
+    CHECK((state.Known(home->id.Packed(), home->station) & CampaignState::kKnownVisited) != 0);
 }
 
 TEST_CASE("A campaign written out reads back the same, keeping what it does not know", "[campaign]")
@@ -381,6 +402,51 @@ TEST_CASE("The ship flies to a moving planet and arrives at it, sooner with a be
     CHECK(Travel::Seconds(4.0f, 0) < Travel::Seconds(1.0f, 0) * 2.5f);
 }
 
+TEST_CASE("A course across the system goes round the star, never through it, and the map's preview shows the same way", "[campaign][travel]")
+{
+    Universe universe;
+    universe.Reset(321, &ShippedData());
+    const StarSystem& system = *universe.System(universe.Home());
+    CampaignState campaign = CampaignState::Begin("Round", 321, universe);
+    // The ship dead opposite a planet, across the star from it, at rest.
+    int target = -1;
+    for (const Body& body : system.bodies)
+    {
+        target = target < 0 && body.kind == BodyKind::Planet && body.orbit > 0.8f ? body.index : target;
+    }
+    REQUIRE(target >= 0);
+    const glm::vec3 there = system.Position(target, campaign.clock);
+    campaign.body = -1;
+    campaign.travel.underway = true;
+    campaign.travel.position = -there;
+    campaign.travel.velocity = glm::vec3(0.0f);
+    campaign.travel.target = target;
+    const float clearance = Travel::StarClearance(system, campaign.travel.position, there);
+    REQUIRE(clearance > 0.0f);
+
+    const std::vector<glm::vec3> preview = Travel::Preview(campaign, system, 0, 64);
+    REQUIRE(preview.size() > 4);
+    float previewClosest = 1.0e9f;
+    for (const glm::vec3& point : preview)
+    {
+        previewClosest = std::min(previewClosest, glm::length(point));
+    }
+    CHECK(previewClosest > clearance * 0.6f);
+
+    float closest = 1.0e9f;
+    bool arrived = false;
+    for (int step = 0; step < 200000 && !arrived; ++step)
+    {
+        campaign.clock += 0.05;
+        arrived = Travel::Step(campaign, system, 0.05f, 0);
+        closest = std::min(closest, glm::length(campaign.travel.position));
+    }
+    INFO("kept " << closest << " AU from the star; clearance " << clearance);
+    REQUIRE(arrived);
+    CHECK(campaign.body == target);
+    CHECK(closest > clearance * 0.6f);
+}
+
 TEST_CASE("A new destination part way is simply steered for, and no destination is coming to rest", "[campaign][travel]")
 {
     Universe universe;
@@ -460,4 +526,54 @@ TEST_CASE("The map draws planets outwards in order, moons by their planets, and 
     }
     CHECK(view.Pick({0.5f, 0.5f}, drawn, 16.0f / 9.0f, false) == planet.index);
     CHECK(view.Pick({0.02f, 0.02f}, drawn, 16.0f / 9.0f, false) != planet.index);
+}
+
+TEST_CASE("The ship crosses to another system, arrives at its edge, and can be turned part way", "[campaign][travel]")
+{
+    Universe universe;
+    universe.Reset(77, &ShippedData());
+    CampaignState campaign = CampaignState::Begin("Crossing", 77, universe);
+    const std::vector<SystemId> near = universe.Near(glm::vec3(0.0f), 40.0f);
+    REQUIRE(near.size() >= 3);
+    const uint64_t first = near[1].Packed();
+    const uint64_t second = near[2].Packed();
+    REQUIRE(Travel::SetSystemCourse(campaign, universe, first, 0));
+    CHECK(campaign.travel.interstellar);
+    CHECK(campaign.body == -1);
+    // Not straight away, not for ever.
+    CHECK(campaign.travel.duration >= 75.0f);
+    CHECK(Travel::InterstellarSeconds(10.0f, 4) < Travel::InterstellarSeconds(10.0f, 0));
+    // Half way, it is between them; turned for the second, it sets out from there.
+    campaign.clock += campaign.travel.duration * 0.5;
+    const glm::vec3 between = Travel::GalaxyPosition(campaign, universe);
+    CHECK(glm::length(between - universe.SystemPosition(SystemId{})) > 0.1f);
+    REQUIRE(Travel::SetSystemCourse(campaign, universe, second, 0));
+    CHECK(glm::length(campaign.travel.fromGalaxy - between) < 1.0e-3f);
+    CHECK_FALSE(Travel::StepInterstellar(campaign, universe));
+    // No course to a planet while between the stars.
+    CHECK_FALSE(Travel::SetCourse(campaign, *universe.System(universe.Home()), 0));
+    campaign.clock += campaign.travel.duration + 1.0;
+    REQUIRE(Travel::StepInterstellar(campaign, universe));
+    CHECK(campaign.system == second);
+    CHECK_FALSE(campaign.travel.interstellar);
+    CHECK_FALSE(campaign.travel.underway);
+    CHECK(campaign.body == -1);
+    // At the edge of the new system, outside its planets.
+    const StarSystem& arrived = *universe.System(second);
+    float outermost = 0.0f;
+    for (const Body& body : arrived.bodies)
+    {
+        outermost = body.kind == BodyKind::Planet ? std::max(outermost, body.orbit) : outermost;
+    }
+    CHECK(glm::length(campaign.travel.position) > outermost);
+    // And a glance at a system agrees with the system.
+    CHECK(universe.Glance(SystemId::Unpack(second)).name == arrived.name);
+    CHECK(universe.Glance(SystemId::Unpack(second)).star == arrived.star);
+    // The crossing is kept in a save.
+    REQUIRE(Travel::SetSystemCourse(campaign, universe, first, 2));
+    CampaignState back;
+    REQUIRE(CampaignState::FromJson(campaign.ToJson(), back));
+    CHECK(back.travel.interstellar);
+    CHECK(back.travel.toSystem == first);
+    CHECK(back.travel.duration == campaign.travel.duration);
 }

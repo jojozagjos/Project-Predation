@@ -91,7 +91,8 @@ Network overlay (RTT, loss, bandwidth per channel), replication log, and the sim
 
 **Status**: built through Milestone 8. Two machines connect over UDP, the host simulates everyone, clients
 predict their own movement and interpolate everyone else, and shots, voice, spectating, the campaign and the
-creature all cross the wire. Protocol version 32 now: the campaign is sent whole as a document in parts
+creature all cross the wire. Protocol version 33 now (the travel message names the system the ship is in, for crossings
+to other systems, ADR-129); since 32: the campaign is sent whole as a document in parts
 (MessageType::Document, JSON), what clients ask of it comes back as requests (MessageType::Request), and the ship's
 travel and everybody's pointer on the system map ten times a second (MessageType::Travel); the roster carries names
 only, there being no host migration to need addresses for (ADR-124 to 126). The history follows. Protocol version 9: every player in the snapshot carries whether a

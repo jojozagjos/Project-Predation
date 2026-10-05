@@ -985,8 +985,55 @@ private:
         SetCourse,    // a = body, b = landing region
         CancelCourse,
         SetRegion,    // a = landing region
-        Pointer       // a = body pointed at (-1 none), b = the map open
+        Pointer,      // a = body pointed at (-1 none), b = the map open
+        SetSystemCourse // a, b = the low and high halves of the system's number
     };
+    // The map's three scales: the galaxy (systems as stars, without end), one system (its star, planets, moons and
+    // stations), and one body (the globe, with the areas found on it to go down to).
+    enum class MapLevel : uint8_t
+    {
+        Galaxy,
+        System,
+        Body
+    };
+    void ShowMapGalaxy(const glm::vec3& focus, float distance);
+    void ShowMapSystem(uint64_t system, int body);
+    void ShowMapBody(int body);
+    void RenderMapGalaxy(bgfx::ViewId sky, bgfx::ViewId lines, const glm::mat4& view, const glm::mat4& projection);
+    void RenderMapSystem(const StarSystem& system, bgfx::ViewId sky, bgfx::ViewId bodies, bgfx::ViewId glow, bgfx::ViewId lines,
+                         const glm::mat4& view, const glm::mat4& projection);
+    void RenderMapBody(const StarSystem& system, bgfx::ViewId sky, bgfx::ViewId bodies, bgfx::ViewId glow, const glm::mat4& view,
+                       const glm::mat4& projection);
+    void DrawMapBars(const StarSystem* shown);
+    void DrawMapGalaxyPanels();
+    void DrawMapSystemPanels(const StarSystem& system);
+    void DrawMapBodyPanels(const StarSystem& system);
+    // Where an area of a body is on its globe (unit sphere, the body's own frame), and whether it is day there now.
+    static glm::vec3 AreaOnGlobe(const LandingRegion& region);
+    bool AreaInDaylight(const StarSystem& system, const Body& body, const LandingRegion& region);
+    glm::vec3 SunOverBody(const StarSystem& system, const Body& body);
+    // Asks for a course to another system.
+    void AskSystemCourse(uint64_t system);
+    // How the ship stands, in a line: "Under way to ...", "Docked at ...".
+    std::string ShipStatus();
+    bool MapAreaKnown(uint64_t system, const Body& body, int region) const;
+    std::vector<SystemId> m_mapListed;   // the galaxy panel's list: systems near the ship, or found by name
+    glm::vec3 m_mapListedFrom{1.0e9f};
+    std::string m_mapListedFor;
+    MapLevel m_mapLevel = MapLevel::System;
+    uint64_t m_mapSystem = 0;          // the system shown (System and Body), or last looked at
+    uint64_t m_mapPickedSystem = 0;    // the system picked out on the galaxy map
+    bool m_mapHasPickedSystem = false;
+    uint64_t m_mapHoverSystem = 0;
+    bool m_mapHasHoverSystem = false;
+    int m_mapRegion = -1;              // the area picked out on a body
+    int m_mapHoverRegion = -1;
+    char m_mapSearch[32] = "";
+    int m_mapDragButton = -1;          // which button is dragging the view, or -1
+    float m_mapDragged = 0.0f;         // how far it has moved, in pixels: a click is one that has not
+    std::vector<SystemId> m_mapNearSystems; // the galaxy's systems near the camera, worked out now and then
+    glm::vec3 m_mapNearFrom{1.0e9f};
+    float m_mapNearRadius = 0.0f;
     void OpenSystemMap();
     void CloseSystemMap();
     void RenderSystemMap();
@@ -1015,7 +1062,6 @@ private:
     SystemMapView m_mapView;
     bool m_mapOpen = false;
     bool m_mapFramed = false;
-    bool m_mapDragged = false;
     int m_mapSelected = -1;
     int m_mapHovered = -1;
     bgfx::FrameBufferHandle m_mapBuffer = BGFX_INVALID_HANDLE;

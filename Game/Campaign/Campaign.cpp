@@ -159,7 +159,9 @@ nlohmann::json CampaignState::ToJson() const
     out["colors"] = {{"primary", Vec3(colors.primary)}, {"secondary", Vec3(colors.secondary)}, {"accent", Vec3(colors.accent)}};
     out["location"] = {{"system", system}, {"body", body}, {"region", region}};
     out["travel"] = {{"underway", travel.underway}, {"position", Vec3(travel.position)}, {"velocity", Vec3(travel.velocity)},
-                     {"target", travel.target}, {"region", travel.region}};
+                     {"target", travel.target}, {"region", travel.region},
+                     {"interstellar", travel.interstellar}, {"toSystem", travel.toSystem}, {"fromGalaxy", Vec3(travel.fromGalaxy)},
+                     {"toGalaxy", Vec3(travel.toGalaxy)}, {"departed", travel.departed}, {"duration", travel.duration}};
     nlohmann::json knownJson = nlohmann::json::object();
     for (const auto& [key, bits] : known)
     {
@@ -236,6 +238,12 @@ bool CampaignState::FromJson(const nlohmann::json& json, CampaignState& out, std
             state.travel.velocity = ReadVec3(*travel, "velocity", glm::vec3(0.0f));
             state.travel.target = travel->value("target", -1);
             state.travel.region = travel->value("region", -1);
+            state.travel.interstellar = travel->value("interstellar", false);
+            state.travel.toSystem = travel->value("toSystem", uint64_t{0});
+            state.travel.fromGalaxy = ReadVec3(*travel, "fromGalaxy", glm::vec3(0.0f));
+            state.travel.toGalaxy = ReadVec3(*travel, "toGalaxy", glm::vec3(0.0f));
+            state.travel.departed = travel->value("departed", 0.0);
+            state.travel.duration = travel->value("duration", 0.0f);
         }
         for (const auto& [key, bits] : ReadMap<int>(json, "known"))
         {
@@ -322,9 +330,10 @@ CampaignState CampaignState::Begin(const std::string& campaignName, uint64_t see
     {
         return state;
     }
-    // Over the shipyard's world. (Starting on the ground, at the shipyard itself, comes with the shipyard.)
-    state.body = home->hub;
+    // Docked at the station over the settled world (or over the world itself, if there were none).
+    state.body = home->station >= 0 ? home->station : home->hub;
     state.region = -1;
+    state.Learn(home->id.Packed(), -1, kKnownVisited);
     // Every body of the home system is on the charts by name; whatever has records is known by them; home is visited.
     for (const Body& body : home->bodies)
     {
@@ -334,7 +343,7 @@ CampaignState CampaignState::Begin(const std::string& campaignName, uint64_t see
         {
             bits |= kKnownRecords;
         }
-        if (body.index == home->hub)
+        if (body.index == home->hub || body.index == home->station)
         {
             bits |= kKnownRecords | kKnownScanned | kKnownVisited;
         }

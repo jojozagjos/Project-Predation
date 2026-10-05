@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <utility>
 
 namespace pred
 {
@@ -52,16 +53,19 @@ std::vector<SystemMapView::Drawn> SystemMapView::Layout(const StarSystem& system
     }
     for (const Body& body : system.bodies)
     {
-        if (body.kind != BodyKind::Moon || body.parent < 0)
+        if ((body.kind != BodyKind::Moon && body.kind != BodyKind::Station) || body.parent < 0)
         {
             continue;
         }
         const Drawn& planet = drawn[static_cast<size_t>(body.parent)];
-        const int nth = moonsSoFar[static_cast<size_t>(body.parent)]++;
+        const int nth = body.kind == BodyKind::Moon ? moonsSoFar[static_cast<size_t>(body.parent)]++ : 0;
         const glm::vec3 offset = system.Position(body.index, clock) - system.Position(body.parent, clock);
         const float length = glm::length(offset);
         const glm::vec3 way = length > 1.0e-9f ? offset / length : glm::vec3(1.0f, 0.0f, 0.0f);
-        drawn[body.index].at = planet.at + way * (planet.radius * 1.8f + 0.35f + 0.38f * static_cast<float>(nth));
+        // A station close in, above the plane of the moons; moons further out, one after another.
+        drawn[body.index].at = body.kind == BodyKind::Station
+                                   ? planet.at + glm::normalize(way + glm::vec3(0.0f, 0.6f, 0.0f)) * (planet.radius * 1.45f + 0.18f)
+                                   : planet.at + way * (planet.radius * 1.8f + 0.35f + 0.38f * static_cast<float>(nth));
     }
     return drawn;
 }
@@ -110,18 +114,81 @@ std::vector<glm::vec3> SystemMapView::Orbit(const StarSystem& system, int body, 
 void SystemMapView::Focus(const glm::vec3& at, float distance)
 {
     m_focusWanted = at;
-    m_distanceWanted = std::clamp(distance, 2.0f, 400.0f);
+    m_distanceWanted = std::clamp(distance, m_nearest, m_furthest);
+}
+
+void SystemMapView::Jump(const glm::vec3& at, float distance)
+{
+    Focus(at, distance);
+    m_focus = m_focusWanted;
+    m_distance = m_distanceWanted;
+}
+
+void SystemMapView::Pan(float right, float up)
+{
+    m_focusWanted += (Right() * right + Up() * up) * m_distance;
+}
+
+void SystemMapView::Slide(float right, float away)
+{
+    const glm::vec3 flatRight{std::cos(m_yaw), 0.0f, -std::sin(m_yaw)};
+    const glm::vec3 flatAway{-std::sin(m_yaw), 0.0f, -std::cos(m_yaw)};
+    const glm::vec3 move = flatRight * right + flatAway * away;
+    m_focus += move;
+    m_focusWanted += move;
+}
+
+void SystemMapView::FaceFrom(const glm::vec3& direction)
+{
+    if (glm::length(direction) < 1.0e-6f)
+    {
+        return;
+    }
+    const glm::vec3 way = glm::normalize(direction);
+    m_pitchWanted = std::clamp(std::asin(std::clamp(way.y, -1.0f, 1.0f)), -1.45f, 1.45f);
+    // The nearest way round to it.
+    const float yaw = std::atan2(way.x, way.z);
+    m_yawWanted = m_yaw + std::remainder(yaw - m_yaw, kTau);
+}
+
+float SystemMapView::PixelSize(float height) const
+{
+    return 2.0f * m_distance * std::tan(kFov * 0.5f) / std::max(height, 1.0f);
+}
+
+void SystemMapView::SetLimits(float nearest, float furthest)
+{
+    m_nearest = std::max(nearest, 0.01f);
+    m_furthest = std::max(furthest, m_nearest);
+    m_distanceWanted = std::clamp(m_distanceWanted, m_nearest, m_furthest);
+}
+
+int SystemMapView::TakePastLimit()
+{
+    return std::exchange(m_pastLimit, 0);
 }
 
 void SystemMapView::Turn(float yaw, float pitch)
 {
     m_yaw += yaw;
     m_pitch = std::clamp(m_pitch + pitch, -1.45f, 1.45f);
+    m_yawWanted = m_yaw;
+    m_pitchWanted = m_pitch;
 }
 
 void SystemMapView::Zoom(float factor)
 {
-    m_distanceWanted = std::clamp(m_distanceWanted * factor, 2.0f, 400.0f);
+    const float wanted = m_distanceWanted * factor;
+    // Pushing on past a limit, already at it, is the way to the next scale of map.
+    if (wanted < m_nearest && m_distanceWanted <= m_nearest * 1.02f)
+    {
+        m_pastLimit = -1;
+    }
+    else if (wanted > m_furthest && m_distanceWanted >= m_furthest * 0.98f)
+    {
+        m_pastLimit = 1;
+    }
+    m_distanceWanted = std::clamp(wanted, m_nearest, m_furthest);
 }
 
 void SystemMapView::Update(float dt)
@@ -129,6 +196,8 @@ void SystemMapView::Update(float dt)
     const float ease = 1.0f - std::exp(-dt * 6.0f);
     m_focus += (m_focusWanted - m_focus) * ease;
     m_distance += (m_distanceWanted - m_distance) * ease;
+    m_yaw += (m_yawWanted - m_yaw) * ease;
+    m_pitch += (m_pitchWanted - m_pitch) * ease;
 }
 
 glm::vec3 SystemMapView::Eye() const
@@ -144,8 +213,8 @@ glm::mat4 SystemMapView::View() const
 
 glm::mat4 SystemMapView::Projection(float aspect, bool homogeneousDepth) const
 {
-    const float nearPlane = std::max(m_distance * 0.01f, 0.02f);
-    const float farPlane = 2000.0f;
+    const float nearPlane = std::max(m_distance * 0.01f, 0.005f);
+    const float farPlane = std::max(4000.0f, m_distance * 20.0f);
     return homogeneousDepth ? glm::perspectiveRH_NO(kFov, aspect, nearPlane, farPlane) : glm::perspectiveRH_ZO(kFov, aspect, nearPlane, farPlane);
 }
 
