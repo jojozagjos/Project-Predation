@@ -10183,6 +10183,14 @@ void PredationGame::OnUpdate(double dt, double alpha)
                 environment.planetRadius = glm::mix(0.01f, 0.6f, nearing * nearing);
                 environment.planet = PlanetLook::Plain(glm::mix(glm::vec3(0.46f, 0.52f, 0.6f), glm::vec3(0.58f, 0.6f, 0.62f), tint), 0.7f);
             }
+            for (glm::vec4& body : environment.skyBodies)
+            {
+                body = glm::vec4(0.0f);
+            }
+            if (m_campaignOpen && !title)
+            {
+                SetSpaceSky(environment);
+            }
             if (title)
             {
                 // The title's planet: an ice world below the ship, the way the camera looks, its day side towards the

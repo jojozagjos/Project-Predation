@@ -16,6 +16,8 @@ uniform vec4 u_planetB;
 uniform vec4 u_planetC;
 uniform vec4 u_planetD;
 uniform vec4 u_planetE;
+// The rest of a system, further off: per body, xyz which way and w its radius on the sky (0 none), then its colour and air.
+uniform vec4 u_skyBodies[16];
 
 #include "planet/planet_surface.sh"
 
@@ -170,6 +172,40 @@ void main()
 			float beyond = max(acos(clamp(along, -1.0, 1.0)) - u_skySpace.y, 0.0) / max(u_skySpace.y * 0.035, 0.0001);
 			vec3 edgeDirection = normalize(ray - toPlanet * along);
 			color += air * exp(-beyond) * 0.6 * max(u_skySpace.w, 0.0) * smoothstep(-0.3, 0.3, dot(edgeDirection, towardsSun));
+		}
+	}
+	// The other planets and moons: small lit discs, behind the near planet and in front of the stars.
+	if (starsShow > 0.5 && inSpace > 0.5)
+	{
+		vec3 towardsLight = normalize(u_skySun.xyz);
+		for (int i = 0; i < 8; ++i)
+		{
+			vec4 place = u_skyBodies[i * 2];
+			if (place.w <= 0.0)
+			{
+				continue;
+			}
+			vec4 look = u_skyBodies[i * 2 + 1];
+			vec3 toBody = normalize(place.xyz);
+			float bodyRadius = sin(place.w);
+			float bodyAlong = dot(ray, toBody);
+			float bodyHit = bodyAlong * bodyAlong - (1.0 - bodyRadius * bodyRadius);
+			if (bodyHit > 0.0 && bodyAlong > 0.0)
+			{
+				vec3 bodyNormal = (ray * (bodyAlong - sqrt(bodyHit)) - toBody) / bodyRadius;
+				float bodyLit = dot(bodyNormal, towardsLight);
+				vec3 shade = look.rgb * (smoothstep(-0.08, 0.35, bodyLit) * u_skySunColor.w * 1.8 + 0.01);
+				shade += vec3(0.4, 0.6, 1.0) * look.w * pow(1.0 - max(dot(bodyNormal, -ray), 0.0), 3.0) * smoothstep(-0.2, 0.3, bodyLit);
+				color = shade * max(u_skySpace.w, 0.0);
+				starsShow = 0.0;
+			}
+			else
+			{
+				// A glow round it, so one across the system reads as a world and not as one more star.
+				float off = max(acos(clamp(bodyAlong, -1.0, 1.0)) - place.w, 0.0) / max(place.w, 0.0005);
+				float litSide = max(dot(toBody, towardsLight) * -0.5 + 0.5, 0.15);
+				color += look.rgb * exp(-off * 1.6) * 0.18 * litSide * u_skySunColor.w * max(u_skySpace.w, 0.0);
+			}
 		}
 	}
 	color += SkyStars(ray) * u_skySpace.x * starsShow * max(u_skySpace.w, 0.0);

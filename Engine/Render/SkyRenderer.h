@@ -48,6 +48,7 @@ private:
     bgfx::UniformHandle m_uPlanetC = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uPlanetD = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uPlanetE = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uBodies = BGFX_INVALID_HANDLE;
 
 public:
     // How bright the sky is drawn, as a multiplier. The lighting is not changed by it -- this is the

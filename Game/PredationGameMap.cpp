@@ -1010,4 +1010,107 @@ void PredationGame::DrawSystemMap()
     ImGui::End();
 }
 
+// --- Space out of the windows ------------------------------------------------------------------------------------
+
+void PredationGame::SetSpaceSky(Environment& environment)
+{
+    // The system as it is from where the ship is: the star where it really is, the planet it is over or heading for big
+    // ahead or below, and every other body near enough to see a lit disc in its own direction. Directions in the system
+    // are turned into the ship's: forward is the way it is heading (the bow), up is the system's up.
+    const StarSystem* system = CurrentSystem();
+    if (system == nullptr)
+    {
+        return;
+    }
+    const glm::vec3 ship = Travel::ShipPosition(m_campaign, *system);
+    const int main = m_campaign.travel.underway ? m_campaign.travel.target : m_campaign.body;
+    glm::vec3 heading{0.0f, 0.0f, -1.0f};
+    if (m_campaign.travel.underway && main >= 0)
+    {
+        heading = system->Position(main, m_campaign.clock) - ship;
+    }
+    else if (m_campaign.travel.underway)
+    {
+        heading = m_campaign.travel.velocity;
+    }
+    else if (main >= 0)
+    {
+        // In orbit, going round with the body: forward is the way it goes round its star.
+        heading = glm::cross(glm::vec3(0.0f, 1.0f, 0.0f), system->Position(main, m_campaign.clock));
+    }
+    if (glm::length(heading) < 1.0e-9f)
+    {
+        heading = {0.0f, 0.0f, -1.0f};
+    }
+    const glm::vec3 forward = glm::normalize(heading);
+    glm::vec3 right = glm::cross(forward, glm::vec3(0.0f, 1.0f, 0.0f));
+    right = glm::length(right) > 1.0e-4f ? glm::normalize(right) : glm::vec3(1.0f, 0.0f, 0.0f);
+    const glm::vec3 up = glm::cross(right, forward);
+    const glm::vec3 bow = glm::normalize(ShipSpec::kTravelHeading);
+    const glm::vec3 starboard = glm::normalize(glm::cross(bow, glm::vec3(0.0f, 1.0f, 0.0f)));
+    const glm::vec3 overhead = glm::cross(starboard, bow);
+    const auto toWorld = [&](const glm::vec3& v) { return glm::dot(v, right) * starboard + glm::dot(v, up) * overhead + glm::dot(v, forward) * bow; };
+
+    // The star.
+    const float fromStar = std::max(glm::length(ship), 0.05f);
+    const glm::vec3 towardsStar = glm::normalize(toWorld(-ship));
+    environment.sunDirection = -towardsStar;
+    environment.sunColor = glm::mix(system->starColor, glm::vec3(1.0f), 0.3f);
+    environment.sunIntensity = 1.7f * std::clamp(std::sqrt(system->luminosity) / fromStar, 0.35f, 2.2f);
+
+    // The body it is over or heading for.
+    environment.planetRadius = 0.0f;
+    if (const Body* body = system->Find(main))
+    {
+        environment.planet = LookOf(*body);
+        if (m_campaign.travel.underway)
+        {
+            // Dead ahead, growing as the ship closes on it: a point a long way off, the size it is from orbit at the end.
+            const float distance = std::max(glm::length(system->Position(main, m_campaign.clock) - ship), Travel::kArrival);
+            const float size = std::sqrt(std::max(body->radius, 0.1f));
+            environment.planetDirection = bow;
+            environment.planetRadius = std::clamp(0.0016f * size / distance, 0.012f, 0.6f);
+        }
+        else
+        {
+            environment.planetDirection = glm::normalize(glm::vec3(0.12f, -0.42f, -0.9f));
+            environment.planetRadius = body->gas ? 1.05f : 0.92f;
+        }
+    }
+
+    // Everything else, the nearest first, as many as the sky draws.
+    std::vector<std::pair<float, int>> others;
+    for (const Body& body : system->bodies)
+    {
+        if (body.index == main)
+        {
+            continue;
+        }
+        others.emplace_back(glm::length(system->Position(body.index, m_campaign.clock) - ship), body.index);
+    }
+    std::sort(others.begin(), others.end());
+    for (int i = 0; i < Environment::kSkyBodies; ++i)
+    {
+        environment.skyBodies[i * 2] = glm::vec4(0.0f);
+        environment.skyBodies[i * 2 + 1] = glm::vec4(0.0f);
+        if (i >= static_cast<int>(others.size()))
+        {
+            continue;
+        }
+        const Body& body = system->bodies[static_cast<size_t>(others[static_cast<size_t>(i)].second)];
+        const float distance = std::max(others[static_cast<size_t>(i)].first, 1.0e-4f);
+        const glm::vec3 way = toWorld(system->Position(body.index, m_campaign.clock) - ship);
+        if (glm::length(way) < 1.0e-9f)
+        {
+            continue;
+        }
+        // Larger than life, so a planet across the system is a speck rather than nothing; a moon of the body below is a
+        // proper disc.
+        const float size = std::sqrt(std::max(body.radius, 0.05f));
+        const float radius = std::clamp(0.0012f * size / distance, 0.003f, 0.14f);
+        environment.skyBodies[i * 2] = glm::vec4(glm::normalize(way), radius);
+        environment.skyBodies[i * 2 + 1] = glm::vec4(glm::mix(body.groundA, body.cloudColor, body.clouds * 0.6f), body.air);
+    }
+}
+
 } // namespace pred

@@ -117,6 +117,10 @@ struct Environment
     glm::vec3 planetDirection{0.0f, -1.0f, 0.0f};
     float planetRadius = 0.0f;
     PlanetLook planet = PlanetLook::Plain({0.8f, 0.84f, 0.9f}, 0.0f);
+    // And the rest of a system, further off: up to kSkyBodies more planets and moons, each a lit disc -- which way it is
+    // and how big it looks (xyz, w radians; 0 for none), then its colour and how much air glows at its edge.
+    static constexpr int kSkyBodies = 8;
+    glm::vec4 skyBodies[kSkyBodies * 2]{};
     // And how warm that glow is: 0 the blue of daylight scattered, 1 the amber of a sun low behind it.
     float planetAirWarm = 0.0f;
 

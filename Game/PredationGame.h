@@ -1011,6 +1011,8 @@ private:
     SiteTitle PlaceTitle();
     SiteConditions PlaceConditions(float fogEnd);
     static PlanetLook LookOf(const Body& body);
+    // Space out of the windows in a campaign: the star, the body ahead or below, and the rest of the system.
+    void SetSpaceSky(Environment& environment);
     PlanetRenderer m_planets;
     SystemMapView m_mapView;
     bool m_mapOpen = false;
