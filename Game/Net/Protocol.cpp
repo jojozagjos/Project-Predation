@@ -555,6 +555,20 @@ void WriteWorldEvent(BitWriter& writer, const WorldEventMessage& message)
         writer.WriteQuantised(message.amount, 0.0f, 1.0f, 8);
         break;
 
+    case WorldEventKind::Rules:
+        writer.WriteBits(message.flag ? 1u : 0u, 1);
+        writer.WriteBits(std::min<uint32_t>(message.index, 7u), 3);
+        writer.WriteQuantised(std::clamp(message.amount, 0.25f, 4.0f), 0.25f, 4.0f, 8);
+        writer.WriteBits(message.flag2 ? 1u : 0u, 1);
+        writer.WriteBits(static_cast<uint32_t>(std::clamp(message.direction.x, 1.0f, 60.0f) + 0.5f), 6);
+        writer.WriteBits(static_cast<uint32_t>(std::clamp(message.direction.y, 5.0f, 1000.0f) + 0.5f), 10);
+        break;
+
+    case WorldEventKind::NestAged:
+        writer.WriteBits(message.index, 4);
+        writer.WriteBits(std::min<uint32_t>(static_cast<uint32_t>(std::max(message.amount, 0.0f) + 0.5f), 65535), 16);
+        break;
+
     case WorldEventKind::ItemUsed:
         // Who, what, which phase (in `index`), on whom, and by how much it took effect.
         writer.WriteBits(message.player, 3);
@@ -743,6 +757,20 @@ bool ReadWorldEvent(BitReader& reader, WorldEventMessage& out)
     case WorldEventKind::DoorUnlocked:
         out.index = static_cast<uint8_t>(reader.ReadBits(8));
         out.player = static_cast<uint8_t>(reader.ReadBits(3));
+        break;
+
+    case WorldEventKind::NestAged:
+        out.index = static_cast<uint8_t>(reader.ReadBits(4));
+        out.amount = static_cast<float>(reader.ReadBits(16));
+        break;
+
+    case WorldEventKind::Rules:
+        out.flag = reader.ReadBits(1) != 0;
+        out.index = static_cast<uint8_t>(reader.ReadBits(3));
+        out.amount = reader.ReadQuantised(0.25f, 4.0f, 8);
+        out.flag2 = reader.ReadBits(1) != 0;
+        out.direction.x = static_cast<float>(reader.ReadBits(6));
+        out.direction.y = static_cast<float>(reader.ReadBits(10));
         break;
 
     case WorldEventKind::NestWounded:

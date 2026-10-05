@@ -2633,3 +2633,32 @@ From the user's list.
 - **Also**: stamina (12 s of sprint, back in 8); the head shown until a cinematic has handed the camera back; the torch
   held by the player in third person, not by the camera behind them; the hangar bay's fore and aft linings removed,
   which fought the hull's belly; the title camera on an evened-out clock; a Default button on each setting and each key.
+
+## ADR-123: Surface texture sets, the lobby's rules, one creature, and a batch of fixes
+
+From the user's list.
+
+- **Surface texture sets (PBR)**: a material can carry a normal map and a roughness map beside its base colour and a
+  `surfaceScale`, the metres one copy covers. With a scale the shader lays all three on from every side at once
+  (triplanar, normals blended "whiteout"), by world position, so the level's boxes need no coordinates of their own.
+  Sets are folders, `Assets/Textures/<set>/<set>_BaseColor|_Normal|_Roughness.(png|jpg)`, OpenGL-style normals, read by
+  `Surfaces::Apply` with their mips made on load and sampled anisotropically. Missing maps fall back to white and a flat
+  normal (texture index one). The snow ground is the first: `snow_02`, a copy every 2.5 m. 2K for anything that
+  tiles across a level, 1K for small props.
+- **The lobby's rules**: the host sets them in the lobby, everybody else reads them there; sent to each player on
+  joining and to everybody on a change (WorldEventKind::Rules). Only friendly fire for now (the user's call: trip
+  length, battery, voice copying and creature count are not lobby settings). Protocol 30.
+- **One creature a site**, and no more arriving once it is dead (`ai.return` 0).
+- **The creature torn between players**: having left one player for another, it holds on to the new one for four
+  seconds unless somebody else is much better (0.35 in score), where it had gone back and forth every few frames.
+- **The nest** grown by the host's `nest_grow` is sent to everybody (WorldEventKind::NestAged). A nest only rots away
+  once the nest itself is dead, not when its creature is (the user's call).
+- **Cinematics**: no prompts, no firing and no using items while one holds the players; everybody is heard by everybody
+  while one plays, wherever they stand; the shake is a jolt of the camera's place rather than a turn of it, which had
+  swung the sky; a player's weapon is hidden with their body.
+- **In transit**: no progress bar on the screens and no "arriving in" countdown; the screens' clock is the session's
+  shared tick, so every player's reads the same.
+- **Also**: no prompt over a menu; items dropped are kept this side of walls (a ray from the eye); the name of the item
+  shown for a moment when the hotbar moves to it; a new lobby code shown when a client takes over as host; the held item
+  set along the view, not the forearm, which had turned it while the body caught up; less sway aiming down sights;
+  lights flicker in short stutters every few seconds, not constantly; lamps keep their shadows to 70 m past their reach.

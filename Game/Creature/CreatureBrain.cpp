@@ -2082,6 +2082,15 @@ void CreatureBrain::Decide(const CreatureSenses& senses)
     {
         return;
     }
+    // And from one person to another only after a while on the first, unless the other is far the better plan: with two
+    // or more about, their scores rose and fell as it moved, and it turned back and forth between them, pacing.
+    constexpr float kHoldOnSomebody = 4.0f;
+    constexpr float kMuchBetter = 0.35f;
+    if (current != nullptr && m_target >= 0 && best.target >= 0 && best.target != m_target && now - m_leftAt < kHoldOnSomebody &&
+        best.score < current->score + kMuchBetter)
+    {
+        return;
+    }
 
     // The reason is the considerations of the winner, the strongest first, because "Hunt Joe 0.71:
     // sure where 1.00, aggression 0.84" says why at a glance and "switched to Hunt" does not.

@@ -32,6 +32,14 @@ struct Material
     // where its picture is and dark between, and not at all where the alpha is nought. Off, the glow is the same all over.
     bool emissiveTextured = false;
 
+    // A surface texture set laid on by where things are rather than by their own coordinates: a normal map and a
+    // roughness map beside the base colour, all repeating every `surfaceScale` metres across whatever the material
+    // is on, from whichever side it faces (0: off, and the mesh's own coordinates are used as ever). For level
+    // geometry, which is boxes whose coordinates only stretch one copy over each face.
+    TextureHandle normalTexture;
+    TextureHandle roughnessTexture;
+    float surfaceScale = 0.0f;
+
     // Living tissue that grows, beats and dies across its surface -- a nest's skin -- driven from here and
     // from each vertex's texture coordinates: x how far along the growth from its source, y how far it
     // stands off the surface under it. x = on (0 for everything else), y = how far it has grown, z = how

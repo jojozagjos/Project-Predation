@@ -38,7 +38,7 @@ namespace
 // None, for now: a game starts empty and a creature is made on purpose with spawn_creature. Set this
 // to have them arrive on their own again, the way a real round will.
 CVar<int> cv_aiCreatures{"ai.creatures", 1, "How many creatures arrive on their own in a new game (0: none, use spawn_creature)"};
-CVar<float> cv_aiReturn{"ai.return_seconds", 75.0f,
+CVar<float> cv_aiReturn{"ai.return_seconds", 0.0f,
                         "After a creature dies, roughly how long before another comes, somewhere nobody is (0: never)"};
 // For trying each kind out: every new creature is made this temperament, whatever its seed would give.
 CVar<std::string> cv_aiTemperament{"ai.temperament", "",
@@ -2868,9 +2868,19 @@ void PredationGame::RegisterCreatureCommands()
                                     return;
                                 }
                                 const float seconds = args.size() >= 2 ? std::strtof(args[1].c_str(), nullptr) : 60.0f;
-                                for (Nest& nest : m_nests)
+                                for (size_t n = 0; n < m_nests.size(); ++n)
                                 {
+                                    Nest& nest = m_nests[n];
                                     nest.age += std::max(seconds, 0.0f);
+                                    // Everybody else grows theirs on the same clock, so they are told it has jumped.
+                                    if (m_sessionMode == SessionMode::Host)
+                                    {
+                                        WorldEventMessage event;
+                                        event.kind = WorldEventKind::NestAged;
+                                        event.index = static_cast<uint8_t>(n);
+                                        event.amount = nest.age;
+                                        m_host.Broadcast(event);
+                                    }
                                 }
                                 m_app->GetConsole().Print("Nests aged " + std::to_string(static_cast<int>(seconds)) + " s");
                             });

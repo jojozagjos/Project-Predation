@@ -51,6 +51,9 @@ namespace
 // Words with their letters spread apart, as a title card sets them (defined with the boot screen's helpers).
 std::string Spaced(const char* text);
 
+// How to reach the lobby server (defined with the rest of the lobby's helpers).
+LobbyClient::Settings LobbySettings();
+
 // The title's panels, styled as the title is: dark and square, no borders, buttons outlined in grey that warm to amber
 // under the pointer. Pushed before the window and popped after it, whichever way the page returns.
 struct TitleStyle
@@ -470,6 +473,8 @@ bool PredationGame::OnInit(Application& app)
 {
     m_app = &app;
 
+    // The surface texture sets, for the maps to lay on as they are built.
+    Surfaces::SetLibrary(&app.GetTextures());
     BuildTestMap(m_scene, app.GetMeshes(), &app.GetPhysics());
     // And the creature lab, far off to the east in the same world, with its nest.
     BuildLabMap(m_scene, app.GetMeshes(), &app.GetPhysics(), &m_levelLights);
@@ -2144,7 +2149,7 @@ void PredationGame::ServeClientRequests()
         }
     }
 
-    for (const NetHost::DropRequest& request : m_host.TakeDropRequests())
+    for (NetHost::DropRequest request : m_host.TakeDropRequests())
     {
         // Only what the host actually handed them. Otherwise dropping is a way to make items out of
         // nothing, which is what let one get duplicated.
@@ -2152,6 +2157,8 @@ void PredationGame::ServeClientRequests()
         {
             continue;
         }
+        // Where they asked, but not through a wall from where they stand.
+        request.drop.position = ClearDropPoint(PlayerPosition(request.player) + glm::vec3(0.0f, 1.55f, 0.0f), request.drop.position);
         const int index = m_world.SpawnPickup(
             m_scene, m_app->GetMeshes(), m_app->GetPhysics(), m_interactions, m_items,
             static_cast<ItemId>(request.drop.item), request.drop.count, request.drop.position,
@@ -2171,6 +2178,8 @@ void PredationGame::ServeClientRequests()
     {
         HandleItemUse(request.player, request.use);
     }
+
+    m_host.SetVoiceEverywhere(m_cine.Active());
 
     for (const NetHost::LoadoutRequest& request : m_host.TakeLoadouts())
     {
@@ -2202,6 +2211,8 @@ void PredationGame::ServeClientRequests()
 
     for (const uint8_t player : m_host.TakeJoined())
     {
+        // The game's rules first: they are the host's, whatever the newcomer has set for themselves.
+        SendRules(player);
         // Put where everybody is now -- the host's idea of where to put a newcomer was decided when it started, which
         // can be before it went anywhere -- and then told everything else.
         const glm::vec3 place = ArrivalFor(player);
@@ -2614,6 +2625,17 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
         SetNestHealth(event.index, event.amount, event.quiet);
         break;
 
+    case WorldEventKind::Rules:
+        ApplyRules(event);
+        break;
+
+    case WorldEventKind::NestAged:
+        if (event.index < m_nests.size())
+        {
+            m_nests[event.index].age = event.amount;
+        }
+        break;
+
     case WorldEventKind::NestsCleared:
         ClearNests();
         break;
@@ -2876,6 +2898,20 @@ void PredationGame::UpdateHostMigration(float dt)
             m_sessionMode = SessionMode::Host;
             // Mid-game already, so nobody who follows is kept in a lobby.
             m_host.SetStarted(true);
+            // And a way in of its own: a new code (the old one was the old host's, and went with it), the network
+            // beacon and the router -- the same as hosting from the start. Without it the pause menu went on showing the
+            // old host's code, which led nowhere.
+            m_lobby.Close();
+            if (!m_beacon.Start())
+            {
+                PRED_LOG_WARN(Network, "Not announcing the game on the network: {}", m_beacon.Message());
+            }
+            if (LobbyServerConfigured())
+            {
+                m_lobby.Host(LobbySettings(), LobbyName(), m_listPublicly, kMaxPlayers, port);
+            }
+            m_ports.Open(port);
+            m_portsAnnounced = false;
             m_app->GetConsole().Print("The host left. You are hosting now.");
         }
         else
@@ -4312,6 +4348,31 @@ void PredationGame::DrawLobbyPlayers()
     ImGui::EndChild();
 }
 
+void PredationGame::SendRules(int player)
+{
+    if (m_sessionMode != SessionMode::Host)
+    {
+        return;
+    }
+    WorldEventMessage event;
+    event.kind = WorldEventKind::Rules;
+    event.flag = GetSettingBool("game.friendly_fire", true);
+    if (player >= 0)
+    {
+        m_host.SendTo(static_cast<uint8_t>(player), event);
+    }
+    else
+    {
+        m_host.Broadcast(event);
+    }
+}
+
+void PredationGame::ApplyRules(const WorldEventMessage& event)
+{
+    // The host's, for as long as this is its game.
+    SetSetting("game.friendly_fire", event.flag ? "true" : "false");
+}
+
 void PredationGame::DrawLobby()
 {
     const ImVec2 wide{-1.0f, 32.0f};
@@ -4366,6 +4427,8 @@ void PredationGame::DrawLobby()
         ImGui::Spacing();
     }
     DrawLobbyPlayers();
+    ImGui::Spacing();
+    DrawLobbyRules();
     ImGui::Spacing();
 
     if (hosting)
@@ -4738,6 +4801,35 @@ int GetSettingInt(const char* name, int fallback)
 }
 
 } // namespace
+
+void PredationGame::DrawLobbyRules()
+{
+    // The few things about a game that are the host's to choose, and the same for everybody in it.
+    const bool hosting = m_sessionMode == SessionMode::Host;
+    ImGui::TextDisabled(hosting ? "Game settings" : "Game settings (the host's)");
+    bool changed = false;
+    if (BeginSettingsTable("##rules"))
+    {
+        ImGui::BeginDisabled(!hosting);
+
+        ImGui::PushID("ff");
+        SettingsRow("Friendly fire", hosting ? "game.friendly_fire" : nullptr);
+        bool friendly = GetSettingBool("game.friendly_fire", true);
+        if (ImGui::Checkbox("##v", &friendly))
+        {
+            SetSetting("game.friendly_fire", friendly ? "true" : "false");
+            changed = true;
+        }
+        ImGui::PopID();
+
+        ImGui::EndDisabled();
+        ImGui::EndTable();
+    }
+    if (changed && hosting)
+    {
+        SendRules();
+    }
+}
 
 void PredationGame::DrawSettings()
 {
@@ -6183,9 +6275,11 @@ void PredationGame::UpdateVoice(float dt)
         }
         if (speaker.voice != kInvalidVoice)
         {
-            audio.SetVoicePosition(speaker.voice, SpeakerPosition(speaker));
+            // In a cinematic everybody is heard as if beside you: nobody is anywhere in particular while it plays.
+            const bool beside = m_cine.Active();
+            audio.SetVoicePosition(speaker.voice, beside ? m_renderEye : SpeakerPosition(speaker));
             // Somebody on the other side of a wall is heard through it: muffled, not cut.
-            audio.SetVoiceOcclusion(speaker.voice, OcclusionAt(SpeakerPosition(speaker)) * 0.8f);
+            audio.SetVoiceOcclusion(speaker.voice, beside ? 0.0f : OcclusionAt(SpeakerPosition(speaker)) * 0.8f);
         }
         ++i;
     }
@@ -7250,6 +7344,9 @@ void PredationGame::RegisterNetCommands()
             m_titleStatus.clear();
         },
         "menu <root|browse|online|host|settings [tab]|pause [settings tab]>");
+
+    console.RegisterCommand("lobby_open", "Open a game and wait in its lobby, as the host page's Host button does",
+                            [this](const std::vector<std::string>&) { StartHosting(); });
 
     console.RegisterCommand(
         "host_lan", "Open a game on this network and go in, as the host page's Start button does",
@@ -9197,10 +9294,30 @@ void PredationGame::DropSelected()
     }
 
     const PlayerView& view = m_player.View();
-    const glm::vec3 origin = view.eyePosition + view.Forward() * 0.6f;
+    const glm::vec3 origin = ClearDropPoint(view.eyePosition, view.eyePosition + view.Forward() * 0.6f);
     const glm::vec3 throwVelocity = view.Forward() * 2.5f;
 
     DropIntoWorld(slot.item, removed, rounds, reserve, origin, throwVelocity);
+}
+
+glm::vec3 PredationGame::ClearDropPoint(const glm::vec3& eye, const glm::vec3& wanted) const
+{
+    // Short of anything solid between the eye and where it was going to be: dropped facing a wall it was made on the
+    // wall's far side, and anything could be put through one.
+    const glm::vec3 along = wanted - eye;
+    const float length = glm::length(along);
+    if (length < 1e-3f)
+    {
+        return wanted;
+    }
+    const glm::vec3 direction = along / length;
+    constexpr float kRoom = 0.35f; // about half the largest thing carried
+    const RayHit hit = m_app->GetPhysics().RayCastStatic(eye, direction, length + kRoom);
+    if (!hit)
+    {
+        return wanted;
+    }
+    return eye + direction * std::max(hit.distance - kRoom, 0.05f);
 }
 
 // Puts one thing on the floor, wherever it came from.
@@ -9347,7 +9464,7 @@ void PredationGame::OnFixedUpdate(double fixedDt)
     // The weapon runs before the movement, because aiming down the sights slows the player and the
     // controller needs that this tick rather than next.
     WeaponInput weaponInput;
-    if (!restrained && !m_inventoryOpen && !m_loadoutOpen)
+    if (!restrained && !m_inventoryOpen && !m_loadoutOpen && !CinematicHoldsPlayers())
     {
         Input& raw = m_app->GetInput();
         // Held, or pressed since the last tick: a click that goes down and up between two ticks
@@ -9690,7 +9807,8 @@ void PredationGame::OnUpdate(double dt, double alpha)
             m_reloadLatch = 30;
         }
         // Not a click that was aimed at a menu: the one that pressed Resume must not also fire.
-        if (input.WasActionPressed("fire") && !m_paused && !m_inventoryOpen && !m_loadoutOpen && !ImGui::GetIO().WantCaptureMouse)
+        if (input.WasActionPressed("fire") && !m_paused && !m_inventoryOpen && !m_loadoutOpen && !CinematicHoldsPlayers() &&
+            !ImGui::GetIO().WantCaptureMouse)
         {
             m_firePressLatch = true;
         }
@@ -11431,7 +11549,9 @@ void PredationGame::DrawHud()
     const InteractionSystem::Focus& focus = m_interactions.CurrentFocus();
     // Nothing in the middle of the view from inside a locker: it is the slits you are looking at.
     // Nor over a panel that is open.
-    const std::string prompt = m_hidingSpot >= 0 || m_loadoutOpen || m_inventoryOpen ? std::string() : focus.prompt;
+    const std::string prompt = m_hidingSpot >= 0 || m_loadoutOpen || m_inventoryOpen || m_paused || m_settingsOpen || m_cine.Active()
+                                   ? std::string()
+                                   : focus.prompt;
     if (!prompt.empty())
     {
         // On the thing itself: the door, the locker, the crate. A prompt under the crosshair says what
@@ -11540,6 +11660,33 @@ void PredationGame::DrawHud()
     if (showHands)
     {
         ImGui::End();
+    }
+
+    // What has just been picked out of the bar, named over it for a moment and fading: the bar is pictures, and a
+    // picture of a box is not always enough to say which box.
+    {
+        const Inventory::Slot& chosen = m_inventory.Selected();
+        const ItemId chosenItem = chosen.IsEmpty() ? kInvalidItem : chosen.item;
+        const int chosenSlot = m_inventory.SelectedSlot();
+        if (chosenSlot != m_namedSlot || chosenItem != m_namedItem)
+        {
+            m_namedSlot = chosenSlot;
+            m_namedItem = chosenItem;
+            m_namedFor = chosenItem != kInvalidItem ? 2.2f : 0.0f;
+        }
+        m_namedFor = std::max(m_namedFor - m_lastFrameSeconds, 0.0f);
+        const ItemDefinition* named = m_items.Get(m_namedItem);
+        if (showHands && named != nullptr && m_namedFor > 0.0f)
+        {
+            const float fade = std::clamp(m_namedFor / 0.6f, 0.0f, 1.0f);
+            ImFont* font = ImGui::GetFont();
+            const float size = ImGui::GetFontSize() * 1.15f;
+            const ImVec2 extent = font->CalcTextSizeA(size, FLT_MAX, 0.0f, named->name.c_str());
+            const ImVec2 at{centre.x - extent.x * 0.5f, viewport->Pos.y + viewport->Size.y - 16.0f - kSlotSize - 12.0f - extent.y};
+            ImDrawList* nameList = ImGui::GetForegroundDrawList();
+            nameList->AddText(font, size, {at.x + 1.5f, at.y + 1.5f}, IM_COL32(0, 0, 0, static_cast<int>(200 * fade)), named->name.c_str());
+            nameList->AddText(font, size, at, IM_COL32(236, 238, 242, static_cast<int>(255 * fade)), named->name.c_str());
+        }
     }
 
     // How the player is doing. Nothing to do with what is in their hands, which is where this was

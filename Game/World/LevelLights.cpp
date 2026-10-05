@@ -104,14 +104,23 @@ float LevelLights::MoodLevel(LightMood mood, uint32_t seed, float time)
     }
     case LightMood::Flicker:
     {
-        // On, and every so often a stutter: a few steps of a twentieth of a second where it drops.
-        const int32_t step = static_cast<int32_t>(std::floor(time * 20.0f));
-        const float roll = Hash01(seed, step);
-        if (roll < 0.05f)
+        // Steady, and every several seconds a stutter: a third of a second or so of it catching and dropping. It dipped
+        // about once a second and shimmered in between, which was too much to stand under.
+        constexpr float kEvery = 7.0f;
+        const int32_t slot = static_cast<int32_t>(std::floor(time / kEvery));
+        if (Hash01(seed + 5u, slot) > 0.75f)
         {
-            return 0.15f + 0.4f * Hash01(seed + 1u, step);
+            return 1.0f; // not this time
         }
-        return 0.92f + 0.08f * Hash01(seed + 2u, step);
+        const float start = Hash01(seed + 6u, slot) * (kEvery - 0.8f);
+        const float length = 0.2f + 0.4f * Hash01(seed + 8u, slot);
+        const float into = time - static_cast<float>(slot) * kEvery - start;
+        if (into < 0.0f || into > length)
+        {
+            return 1.0f;
+        }
+        const int32_t step = static_cast<int32_t>(std::floor(time * 18.0f));
+        return Hash01(seed, step) < 0.5f ? 0.15f + 0.35f * Hash01(seed + 1u, step) : 1.0f;
     }
     case LightMood::Failing:
     {

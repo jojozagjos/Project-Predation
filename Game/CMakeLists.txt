@@ -106,6 +106,8 @@ set(PRED_GAME_SOURCES
     World/SitePlan.cpp
     World/SiteMap.h
     World/SiteMap.cpp
+    World/Surfaces.h
+    World/Surfaces.cpp
     World/Snowfall.cpp
     World/Particles.cpp
     World/ShipMap.h

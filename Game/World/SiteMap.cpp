@@ -5,6 +5,7 @@
 #include "Engine/Render/Primitives.h"
 #include "Game/World/MapBuilder.h"
 #include "Game/World/ShipMap.h"
+#include "Game/World/Surfaces.h"
 
 #include <glm/gtc/constants.hpp>
 #include <glm/gtc/quaternion.hpp>
@@ -19,7 +20,8 @@ namespace
 
 using Kind = SitePlan::BlockKind;
 
-const Material kGroundMaterial = Material::Diffuse({0.15f, 0.145f, 0.14f}, 0.97f);
+// The ground: snow, the snow set laid on it (its colour comes from the set; this only tints it).
+const Material kSnowGround = Material::Diffuse({0.72f, 0.74f, 0.78f}, 1.0f);
 const Material kCliffMaterial = Material::Diffuse({0.19f, 0.18f, 0.17f}, 0.95f);
 const Material kRockMaterial = Material::Diffuse({0.22f, 0.21f, 0.19f}, 0.95f);
 const Material kPadMaterial = Material::Diffuse({0.3f, 0.3f, 0.29f}, 0.85f);
@@ -136,7 +138,7 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
         switch (block.kind)
         {
         case Kind::Ground:
-            builder.AddBox(NameOf(block.kind), transform, block.size, kGroundMaterial, kOutdoorTile);
+            builder.AddBox(NameOf(block.kind), transform, block.size, Surfaces::Apply(kSnowGround, "snow_02", 2.5f), kOutdoorTile);
             break;
         case Kind::Cliff:
             builder.AddBox(NameOf(block.kind), transform, block.size, kCliffMaterial, kOutdoorTile);

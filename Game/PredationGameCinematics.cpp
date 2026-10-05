@@ -408,8 +408,11 @@ bool PredationGame::CinematicCamera(glm::mat4& view, glm::vec3& eye, float dt, f
         if (shake > 0.0f)
         {
             const glm::vec3 jolt = Shaking(m_cine.Time(), sampler.ShakeSpeed(m_cine.Time())) * shake;
-            picture.rotation = picture.rotation * TurnFromDegrees(jolt);
-            picture.position += picture.rotation * (jolt * 0.01f);
+            // Mostly a jolt of where the camera is, hardly a turn: the camera rides the ship, so what is near it shakes and
+            // the sky -- far off through the bay doors or the windows -- all but holds still. Turned as much as it was moved,
+            // the stars juddered with everything else.
+            picture.rotation = picture.rotation * TurnFromDegrees(jolt * 0.15f);
+            picture.position += picture.rotation * (jolt * 0.035f);
         }
         view = ViewOf(picture);
         eye = picture.position;

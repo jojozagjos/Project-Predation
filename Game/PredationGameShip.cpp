@@ -353,9 +353,7 @@ void PredationGame::DrawShipHud()
         ImGui::TextColored(heading, "OBJECTIVE");
         if (m_shipTravel > 0.0f)
         {
-            const int seconds = static_cast<int>(std::ceil(m_shipTravel));
             ImGui::TextColored(text, "Under way to the site.");
-            ImGui::TextDisabled("Arriving in %d:%02d.", seconds / 60, seconds % 60);
         }
         else if (m_shipReady)
         {

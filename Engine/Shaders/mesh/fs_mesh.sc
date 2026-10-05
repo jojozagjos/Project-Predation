@@ -3,6 +3,9 @@ $input v_worldPos, v_normal, v_texcoord0, v_color0, v_organic
 #include <bgfx_shader.sh>
 
 SAMPLER2D(s_baseColor, 0);     // multiplied into the albedo; white when a material has none
+SAMPLER2D(s_normalMap, 10);    // a surface set's normal map (OpenGL style); flat when there is none
+SAMPLER2D(s_roughnessMap, 11); // and its roughness, multiplied in; white when there is none
+uniform vec4 u_surfaceParams;  // x = repeats a metre of the surface set, laid on from every side (0: off)
 
 uniform vec4 u_baseColor;       // rgb = albedo
 uniform vec4 u_materialParams;  // x = metallic, y = roughness, z = how much of the mirror it shows
@@ -505,6 +508,34 @@ void main()
 		discard;
 	}
 	vec3 N = normalize(v_normal);
+	// A surface set laid on from every side at once ("triplanar"): sampled across x, y and z by where the point is, and
+	// blended by which way the surface faces, so a box of any size is covered evenly with no coordinates of its own.
+	// Its normal map bends N the same way, each sample turned into the frame of the side it was taken from.
+	vec3 surfaceAlbedo = vec3_splat(1.0);
+	float surfaceRough = 1.0;
+	if (u_surfaceParams.x > 0.0)
+	{
+		vec3 blend = pow(abs(N), vec3_splat(4.0));
+		blend /= max(blend.x + blend.y + blend.z, 1e-4);
+		vec3 at = v_worldPos * u_surfaceParams.x;
+		vec2 uvX = at.zy;
+		vec2 uvY = at.xz;
+		vec2 uvZ = at.xy;
+		surfaceAlbedo = pow(texture2D(s_baseColor, uvX).rgb, vec3_splat(2.2)) * blend.x +
+		                pow(texture2D(s_baseColor, uvY).rgb, vec3_splat(2.2)) * blend.y +
+		                pow(texture2D(s_baseColor, uvZ).rgb, vec3_splat(2.2)) * blend.z;
+		surfaceRough = texture2D(s_roughnessMap, uvX).r * blend.x + texture2D(s_roughnessMap, uvY).r * blend.y +
+		               texture2D(s_roughnessMap, uvZ).r * blend.z;
+		vec3 nX = texture2D(s_normalMap, uvX).xyz * 2.0 - 1.0;
+		vec3 nY = texture2D(s_normalMap, uvY).xyz * 2.0 - 1.0;
+		vec3 nZ = texture2D(s_normalMap, uvZ).xyz * 2.0 - 1.0;
+		// Whiteout blend: each tangent-space normal added to the surface's own in that side's plane.
+		vec3 s = sign(N);
+		nX = vec3(nX.xy * vec2(s.x, 1.0) + N.zy, abs(nX.z) * N.x);
+		nY = vec3(nY.xy * vec2(s.y, 1.0) + N.xz, abs(nY.z) * N.y);
+		nZ = vec3(nZ.xy * vec2(-s.z, 1.0) + N.xy, abs(nZ.z) * N.z);
+		N = normalize(nX.zyx * blend.x + nY.xzy * blend.y + nZ.xyz * blend.z);
+	}
 	vec3 V = normalize(u_cameraPosition.xyz - v_worldPos);
 	vec3 L = normalize(u_lightDirection.xyz);
 	vec3 H = normalize(L + V);
@@ -516,7 +547,7 @@ void main()
 
 	// The texture is always bound. A material without one samples a single white pixel, so this is
 	// a multiply by one rather than a branch, and there is only ever one mesh program.
-	vec4 sampled = texture2D(s_baseColor, v_texcoord0);
+	vec4 sampled = u_surfaceParams.x > 0.0 ? vec4_splat(1.0) : texture2D(s_baseColor, v_texcoord0);
 	vec3 textured = sampled.rgb;
 	// Downloads arrive with textures authored in gamma space, which is what an image viewer shows
 	// and what a lighting calculation must not be given: multiplying light by a gamma-encoded
@@ -525,10 +556,10 @@ void main()
 	textured = pow(textured, vec3_splat(2.2));
 	// And the colour painted on each vertex, white for nearly everything. A creature is one mesh with
 	// its skin, bone, gums and eye sockets painted on it this way, already in linear space.
-	vec3 albedo = u_baseColor.rgb * textured * v_color0.rgb;
+	vec3 albedo = u_baseColor.rgb * textured * v_color0.rgb * surfaceAlbedo;
 	float metallic = clamp(u_materialParams.x, 0.0, 1.0);
 	// Clamp roughness away from zero: perfectly smooth surfaces alias badly with a single light.
-	float roughness = clamp(u_materialParams.y * v_color0.a, 0.045, 1.0);
+	float roughness = clamp(u_materialParams.y * v_color0.a * surfaceRough, 0.045, 1.0);
 	if (u_organic.x > 0.5)
 	{
 		albedo = mix(albedo, vec3(0.42, 0.36, 0.33) * (0.35 + 0.65 * dot(albedo, vec3_splat(0.8))), v_organic.y);

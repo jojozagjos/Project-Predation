@@ -167,7 +167,7 @@ void PredationGame::UpdateItemUse(float dt)
     m_body.SetHeldItemMotion(m_flareBurn > 0.0f ? glm::vec3(-0.05f, 0.15f, 0.06f) : glm::vec3(0.0f),
                              m_flareBurn > 0.0f ? glm::vec3(-20.0f, 0.0f, 0.0f) : glm::vec3(0.0f));
     const bool pressed = m_app->GetInput().WasActionPressed("fire") && !m_paused && !m_inventoryOpen && !m_loadoutOpen &&
-                         !ImGui::GetIO().WantCaptureMouse && !m_app->IsConsoleOpen();
+                         !ImGui::GetIO().WantCaptureMouse && !m_app->IsConsoleOpen() && !CinematicHoldsPlayers();
     if (pressed && alive && held != nullptr && held->use.kind != ItemUseKind::None && !m_weapon.HasWeapon() &&
         m_hidingSpot < 0 && !m_body.ArmsAreClimbing())
     {

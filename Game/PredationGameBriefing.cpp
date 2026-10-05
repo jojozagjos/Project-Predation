@@ -313,7 +313,12 @@ void PredationGame::DrawBriefingScreens()
         return std::string(text);
     };
     char clock[24];
-    const int shipTime = static_cast<int>(m_orderClock);
+    // The same on every screen aboard: the host's tick, which every machine follows (sixty a second), not the time since this
+    // machine started its game.
+    const double shared = m_sessionMode == SessionMode::Host     ? static_cast<double>(m_host.CurrentTick()) / 60.0
+                          : m_sessionMode == SessionMode::Client ? static_cast<double>(m_client.RenderTick()) / 60.0
+                                                                 : static_cast<double>(m_orderClock);
+    const int shipTime = static_cast<int>(shared);
     std::snprintf(clock, sizeof(clock), "%02d:%02d:%02d", (shipTime / 3600) % 24, (shipTime / 60) % 60, shipTime % 60);
     const BriefingFacts& facts = m_briefingFacts;
     const std::string planet = Upper(facts.title.planet);
@@ -330,7 +335,7 @@ void PredationGame::DrawBriefingScreens()
         };
         if (m_shipTravel > 0.0f)
         {
-            Frame(canvas, "UNDER WAY", clock, 1.0f - m_shipTravel / std::max(m_shipTravelTotal, 1.0f));
+            Frame(canvas, "UNDER WAY", clock, -1.0f);
             centred(left ? "UNDER WAY" : site, 88, kText, left ? 4 : 2);
             centred("ARRIVING IN " + seconds(m_shipTravel), 150, kSoft, 3);
         }

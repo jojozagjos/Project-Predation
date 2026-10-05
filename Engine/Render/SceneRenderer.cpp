@@ -113,6 +113,9 @@ bool SceneRenderer::Init(ShaderLibrary& shaders)
     m_uSkyShadowAxis = bgfx::createUniform("u_skyShadowAxis", bgfx::UniformType::Vec4);
     m_uSkyShadowParams = bgfx::createUniform("u_skyShadowParams", bgfx::UniformType::Vec4);
     m_sBaseColor = bgfx::createUniform("s_baseColor", bgfx::UniformType::Sampler);
+    m_sNormalMap = bgfx::createUniform("s_normalMap", bgfx::UniformType::Sampler);
+    m_sRoughnessMap = bgfx::createUniform("s_roughnessMap", bgfx::UniformType::Sampler);
+    m_uSurfaceParams = bgfx::createUniform("u_surfaceParams", bgfx::UniformType::Vec4);
     m_sSunShadow = bgfx::createUniform("s_sunShadow", bgfx::UniformType::Sampler);
     m_uSunNearShadowMtx = bgfx::createUniform("u_sunNearShadowMtx", bgfx::UniformType::Mat4);
     m_uSunNearShadowAxis = bgfx::createUniform("u_sunNearShadowAxis", bgfx::UniformType::Vec4);
@@ -207,7 +210,7 @@ void SceneRenderer::Shutdown()
         m_sSkyShadow,      m_uClipPlane,       m_uReflectParams,   m_sReflection,
         m_uSpotShadowMtx,  m_uSpotShadowAxis,  m_uSpotShadowParams, m_sSpotShadow,
         m_uShadowTexelWorld, m_uSunNearShadowMtx, m_uSunNearShadowAxis, m_uSunNearShadowParams,
-        m_sSunNearShadow};
+        m_sSunNearShadow, m_sNormalMap, m_sRoughnessMap, m_uSurfaceParams};
     for (const bgfx::UniformHandle handle : uniforms)
     {
         if (bgfx::isValid(handle))
@@ -231,6 +234,7 @@ void SceneRenderer::Shutdown()
     m_uSpotShadowMtx = m_uSpotShadowAxis = m_uSpotShadowParams = m_sSpotShadow = BGFX_INVALID_HANDLE;
     m_uShadowTexelWorld = BGFX_INVALID_HANDLE;
     m_uSunNearShadowMtx = m_uSunNearShadowAxis = m_uSunNearShadowParams = m_sSunNearShadow = BGFX_INVALID_HANDLE;
+    m_sNormalMap = m_sRoughnessMap = m_uSurfaceParams = BGFX_INVALID_HANDLE;
 
     if (bgfx::isValid(m_reflectionTarget))
     {
@@ -384,6 +388,14 @@ void SceneRenderer::SubmitMesh(bgfx::ViewId view, const Mesh& mesh, const Materi
     if (bgfx::isValid(m_sBaseColor) && m_textures != nullptr)
     {
         bgfx::setTexture(0, m_sBaseColor, m_textures->Get(material.baseColorTexture));
+        // The surface maps, always bound like the colour (flat and white when there are none), and the scale they repeat
+        // at, set on every draw: bgfx keeps a uniform from one draw to the next.
+        const TextureHandle normal = material.normalTexture.IsValid() ? material.normalTexture : m_textures->FlatNormal();
+        const TextureHandle rough = material.roughnessTexture.IsValid() ? material.roughnessTexture : m_textures->White();
+        bgfx::setTexture(10, m_sNormalMap, m_textures->Get(normal));
+        bgfx::setTexture(11, m_sRoughnessMap, m_textures->Get(rough));
+        const glm::vec4 surface{material.surfaceScale > 0.0f ? 1.0f / material.surfaceScale : 0.0f, 0.0f, 0.0f, 0.0f};
+        bgfx::setUniform(m_uSurfaceParams, glm::value_ptr(surface));
     }
 
     // And the two occlusion maps, here rather than once per pass with the rest of the environment.

@@ -1206,7 +1206,8 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
     m_lastViewYaw = view.yaw;
     m_lastViewPitch = view.pitch;
 
-    const float swayScale = (1.0f - aim * 0.75f) * m_config.weaponSwayAmount;
+    // Down the sights it all but stops: the sights have to sit on what they are pointed at.
+    const float swayScale = (1.0f - aim * 0.95f) * m_config.weaponSwayAmount;
     const glm::vec2 lagTarget = glm::clamp(-m_viewRate * swayScale * 0.12f, glm::vec2(-0.10f),
                                            glm::vec2(0.10f));
 
@@ -1220,14 +1221,14 @@ bool PlayerBody::UpdateWeaponHold(const PlayerState& state, const PlayerView& vi
     // A hurt player cannot hold a weapon still. This is most of what makes being shot something
     // you feel rather than a number you read.
     const float breathe =
-        (1.0f - aim * 0.85f) * m_config.weaponBreatheAmount * (1.0f + m_injurySway);
+        (1.0f - aim * 0.97f) * m_config.weaponBreatheAmount * (1.0f + m_injurySway);
     const glm::vec2 idle{std::sin(m_swayClock * 0.9f) * breathe,
                          std::sin(m_swayClock * 1.7f + 1.1f) * breathe * 0.6f};
 
     // Walking swings it with the stride, on the same phase the legs use, so the weapon moves with
     // the steps rather than on a rhythm of its own.
     const float walkPhase = m_stridePhase * glm::two_pi<float>();
-    const float walk = m_gaitWeight * (1.0f - aim * 0.6f) * m_config.weaponWalkAmount;
+    const float walk = m_gaitWeight * (1.0f - aim * 0.92f) * m_config.weaponWalkAmount;
     const glm::vec2 stride{std::sin(walkPhase) * walk, -std::abs(std::cos(walkPhase)) * walk * 0.8f};
 
     m_weaponSway = glm::vec2(SmoothTowards(m_weaponSway.x, lagTarget.x, m_config.weaponSwayRecover, dt),
@@ -2766,7 +2767,9 @@ void PlayerBody::UpdateHeldItem(const PlayerState& state, const PlayerView& view
     // Drawn in the hand rather than at the point the hand was aimed at. The two differ whenever the
     // arm cannot quite get there, and the difference is exactly the gap between the glove and the
     // thing it is supposed to be holding. Carried a little beyond the wrist, where the fingers are.
-    const glm::vec3 palm = glm::normalize(ik.endPosition - ik.jointPosition + glm::vec3(1e-5f));
+    // Along the way the hand is held (the view's forward), not along the forearm: the forearm swings as the torso catches
+    // up with a turn, and an item set along it drifted round in the hand for a second or two after every turn.
+    const glm::vec3 palm = forward;
     // And then wherever the item itself says it sits. No rule about a bounding box can work out how
     // a keycard is held or which way up a flare goes, so each item carries its own offset and turn,
     // placed by eye in the editor and written into items.json.
@@ -3515,6 +3518,11 @@ void PlayerBody::PushToScene(Scene& scene)
         if (Transform* transform = scene.GetTransform(m_weaponParts[i]))
         {
             *transform = m_weaponPartTransforms[i];
+        }
+        // Hidden with the body: a cinematic hides everybody, and the weapon in their hands was left floating.
+        if (MeshRenderer* renderer = scene.GetMeshRenderer(m_weaponParts[i]))
+        {
+            renderer->visible = m_config.visible;
         }
     }
     if (m_muzzleFlashEntity.IsValid())

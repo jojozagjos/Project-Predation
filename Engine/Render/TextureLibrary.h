@@ -55,6 +55,12 @@ public:
     void Shutdown();
 
     TextureHandle White() const { return TextureHandle{0}; }
+    // A normal map that bends nothing: what a material with no normal map of its own samples.
+    TextureHandle FlatNormal() const { return TextureHandle{1}; }
+    // A surface map -- a colour, normal or roughness map that repeats across a level -- read and uploaded with its
+    // smaller copies (mips) and sharpened at grazing angles, so it holds together into the distance. White when the
+    // file cannot be read.
+    TextureHandle LoadSurfaceMap(const std::string& file, const std::string& name);
     // Uploads, or returns what is already under that name.
     TextureHandle Upload(const ImageData& image, const std::string& name);
     // Reads a file and uploads it. Returns the white texture when it cannot be read, so a missing

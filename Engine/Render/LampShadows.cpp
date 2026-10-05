@@ -153,7 +153,9 @@ void LampShadows::Update(const std::vector<PunctualLight>& lights, const glm::ve
             continue;
         }
         const float away = glm::distance(light.position, focus) - light.range;
-        if (away < 30.0f)
+        // Far enough out that a lamp across a big room keeps its shadow: at thirty metres the far end of a hall lost its
+        // shadows as you walked away from it. The nearest still come first, and there are only so many slots.
+        if (away < 70.0f)
         {
             wanted.emplace_back(away, &light);
         }

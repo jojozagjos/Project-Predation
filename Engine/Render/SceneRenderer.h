@@ -219,6 +219,9 @@ private:
     // The base colour texture. Always bound, because a material with none samples the library's
     // single white pixel and the shader then needs no branch.
     bgfx::UniformHandle m_sBaseColor = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_sNormalMap = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_sRoughnessMap = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uSurfaceParams = BGFX_INVALID_HANDLE;
     const TextureLibrary* m_textures = nullptr;
 
     Stats m_stats;

@@ -198,7 +198,8 @@ private:
         return a.baseColor == b.baseColor && a.metallic == b.metallic && a.roughness == b.roughness && a.emissive == b.emissive &&
                a.emissiveTextured == b.emissiveTextured &&
                a.reflectivity == b.reflectivity && a.baseColorTexture == b.baseColorTexture && a.organic == b.organic &&
-               a.organicBeat == b.organicBeat;
+               a.organicBeat == b.organicBeat && a.normalTexture == b.normalTexture && a.roughnessTexture == b.roughnessTexture &&
+               a.surfaceScale == b.surfaceScale;
     }
 
     void AddToBatch(const std::string& name, const MeshData& data, const glm::mat4& transform, const glm::vec3& at,

@@ -1250,9 +1250,10 @@ struct Planner
                 return random.Chance(0.3f) ? FacilityLayout::LampMood::Emergency : FacilityLayout::LampMood::Dead;
             }
             const float roll = random.Unit();
-            return roll < 0.5f   ? FacilityLayout::LampMood::Steady
-                   : roll < 0.7f ? FacilityLayout::LampMood::Flicker
-                   : roll < 0.85f ? FacilityLayout::LampMood::Failing
+            // Mostly steady: a few flicker or are failing, so those few are noticed.
+            return roll < 0.7f   ? FacilityLayout::LampMood::Steady
+                   : roll < 0.8f ? FacilityLayout::LampMood::Flicker
+                   : roll < 0.88f ? FacilityLayout::LampMood::Failing
                                   : FacilityLayout::LampMood::Dead;
         };
         for (const FacilityLayout::Room& room : plan.rooms)

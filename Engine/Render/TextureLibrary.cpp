@@ -86,6 +86,82 @@ void TextureLibrary::Init()
     white.height = 1;
     white.pixels = {255, 255, 255, 255};
     Upload(white, "white");
+    // And one flat normal, always index one.
+    ImageData flat;
+    flat.width = 1;
+    flat.height = 1;
+    flat.pixels = {128, 128, 255, 255};
+    Upload(flat, "flat_normal");
+}
+
+TextureHandle TextureLibrary::LoadSurfaceMap(const std::string& file, const std::string& name)
+{
+    if (const auto found = m_byName.find(name); found != m_byName.end())
+    {
+        return TextureHandle{found->second};
+    }
+    ImageData image;
+    if (!LoadImageFile(file, image) || !image.IsValid())
+    {
+        PRED_LOG_WARN(Render, "Surface map '{}' could not be read from {}", name, file);
+        return White();
+    }
+    if (m_textures.size() >= TextureHandle::kInvalid)
+    {
+        return White();
+    }
+    // Every smaller copy, each the average of four of the one before, laid one after another as bgfx wants them.
+    std::vector<uint8_t> all = image.pixels;
+    int width = image.width;
+    int height = image.height;
+    std::vector<uint8_t> level = image.pixels;
+    uint8_t mips = 1;
+    while (width > 1 || height > 1)
+    {
+        const int nextWidth = std::max(width / 2, 1);
+        const int nextHeight = std::max(height / 2, 1);
+        std::vector<uint8_t> next(static_cast<size_t>(nextWidth * nextHeight * 4));
+        for (int y = 0; y < nextHeight; ++y)
+        {
+            for (int x = 0; x < nextWidth; ++x)
+            {
+                for (int c = 0; c < 4; ++c)
+                {
+                    int sum = 0;
+                    for (int dy = 0; dy < 2; ++dy)
+                    {
+                        for (int dx = 0; dx < 2; ++dx)
+                        {
+                            const int sx = std::min(x * 2 + dx, width - 1);
+                            const int sy = std::min(y * 2 + dy, height - 1);
+                            sum += level[static_cast<size_t>((sy * width + sx) * 4 + c)];
+                        }
+                    }
+                    next[static_cast<size_t>((y * nextWidth + x) * 4 + c)] = static_cast<uint8_t>((sum + 2) / 4);
+                }
+            }
+        }
+        all.insert(all.end(), next.begin(), next.end());
+        level = std::move(next);
+        width = nextWidth;
+        height = nextHeight;
+        ++mips;
+    }
+    const bgfx::Memory* memory = bgfx::copy(all.data(), static_cast<uint32_t>(all.size()));
+    const bgfx::TextureHandle texture =
+        bgfx::createTexture2D(static_cast<uint16_t>(image.width), static_cast<uint16_t>(image.height), true, 1, bgfx::TextureFormat::RGBA8,
+                              BGFX_SAMPLER_MIN_ANISOTROPIC | BGFX_SAMPLER_MAG_ANISOTROPIC, memory);
+    if (!bgfx::isValid(texture))
+    {
+        PRED_LOG_ERROR(Render, "Surface map '{}' failed to upload", name);
+        return White();
+    }
+    bgfx::setName(texture, name.c_str());
+    const auto index = static_cast<uint16_t>(m_textures.size());
+    m_textures.push_back({texture, name});
+    m_byName.emplace(name, index);
+    PRED_LOG_INFO(Render, "Surface map '{}': {} by {}, {} levels", name, image.width, image.height, static_cast<int>(mips));
+    return TextureHandle{index};
 }
 
 void TextureLibrary::Shutdown()

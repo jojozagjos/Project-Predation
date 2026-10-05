@@ -332,7 +332,7 @@ void NetHost::HandlePacket(const NetPacket& packet)
         heard.speaker = client->playerId;
         heard.sequence = message.sequence;
         heard.frame = std::move(message.frame);
-        heard.audible = glm::distance(m_localPosition, from) <= kVoiceRange;
+        heard.audible = m_voiceEverywhere || glm::distance(m_localPosition, from) <= kVoiceRange;
         m_voiceHeard.push_back(std::move(heard));
         return;
     }
@@ -683,7 +683,7 @@ void NetHost::ForwardVoice(uint8_t speaker, bool creature, uint16_t sequence, co
         // and would also put the whole conversation on every machine.
         // Dead, they hear what their drone does.
         const glm::vec3 to = client->drone.active ? client->drone.position : client->controller.State().position;
-        if (glm::distance(to, from) > kVoiceRange)
+        if (!m_voiceEverywhere && glm::distance(to, from) > kVoiceRange)
         {
             continue;
         }

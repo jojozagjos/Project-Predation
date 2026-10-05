@@ -188,6 +188,8 @@ public:
     void NoteCarried(uint8_t player, uint16_t item, int count);
     bool TakeCarried(uint8_t player, uint16_t item, int count);
     int CarriedCount(uint8_t player, uint16_t item) const;
+    // Everybody heard by everybody, wherever they are: while a cinematic has them all, aboard together in it.
+    void SetVoiceEverywhere(bool everywhere) { m_voiceEverywhere = everywhere; }
     // What they now have of something, outright: a kit drawn replaces whatever of it they had before.
     void SetCarried(uint8_t player, uint16_t item, int count);
     // Players who have just been let in. The game sends them the state of the world.
@@ -299,6 +301,7 @@ private:
     glm::vec3 m_localPosition{0.0f};
     // One place that decides who hears a frame and sends it to them, used by a client relaying
     // through and by the host talking itself.
+    bool m_voiceEverywhere = false;
     void ForwardVoice(uint8_t speaker, bool creature, uint16_t sequence, const std::vector<uint8_t>& frame,
                       const glm::vec3& from);
     struct HistoryEntry

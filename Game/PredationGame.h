@@ -44,6 +44,7 @@
 #include "Game/World/FacilityMap.h"
 #include "Game/World/ShipMap.h"
 #include "Game/World/SiteMap.h"
+#include "Game/World/Surfaces.h"
 #include "Tools/ModelEditor/ModelEditor.h"
 #include "Game/World/WorldObjects.h"
 
@@ -627,6 +628,11 @@ private:
     void UpdateJoining(float frameDeltaSeconds);
     // Everybody together before the game: the code, who is here, and the host's Start button.
     void DrawLobby();
+    // The game's rules, set by the host in the lobby: drawn there (to change, for the host; to read, for everybody
+    // else), sent to whoever joins and to everybody when one changes, and taken on by a client when told.
+    void DrawLobbyRules();
+    void SendRules(int player = -1);
+    void ApplyRules(const WorldEventMessage& event);
     void DrawLobbyPlayers();
     // The code and the other ways in, for the lobby and the pause menu.
     void DrawInvite();
@@ -809,6 +815,8 @@ private:
     // On a client, sends the command to the host to be run where the world is, and says so: true when it did. On the
     // host, who a command is being run for -- themselves, or the client who sent it -- and where they are and look.
     bool ForwardToHost(const std::vector<std::string>& args);
+    // Where something put down from `eye` towards `wanted` can go: short of anything solid on the way.
+    glm::vec3 ClearDropPoint(const glm::vec3& eye, const glm::vec3& wanted) const;
     uint8_t CommandPlayer() const;
     glm::vec3 CommandPosition() const;
     glm::vec3 CommandForward() const;
@@ -1158,6 +1166,10 @@ private:
     float FlareLightAt(const glm::vec3& point) const;
     int m_hidingSpot = -1;
     bool m_inventoryOpen = false;
+    // What the hotbar last named over itself, and for how much longer (the name shown on picking something out).
+    int m_namedSlot = -2;
+    ItemId m_namedItem = kInvalidItem;
+    float m_namedFor = 0.0f;
 
     // First person for play, third person for watching the body animate, fly to inspect the level.
     enum class CameraMode : uint8_t
