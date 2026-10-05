@@ -191,6 +191,8 @@ public:
     std::vector<CampaignAsk> TakeCampaignRequests() { return std::exchange(m_campaignRequests, {}); }
     // A document (the campaign) sent whole, in parts, to one player or (-1) to everybody let in.
     void SendDocument(int playerId, DocumentKind kind, const std::string& text);
+    // How the ship stands and who is pointing at what, to everybody let in.
+    void SendTravel(const TravelMessage& travel);
     // Health back, into the controller the host simulates for them.
     void HealPlayer(uint8_t playerId, float amount);
     // The host keeps a tally of what each client has picked up, so a client cannot put down
@@ -467,6 +469,9 @@ public:
         std::string text;
     };
     std::vector<Document> TakeDocuments() { return std::exchange(m_documents, {}); }
+    // The newest word of the ship, and how many have come, so a new one can be told from one already seen.
+    const TravelMessage& LatestTravel() const { return m_travel; }
+    uint32_t TravelsReceived() const { return m_travelsReceived; }
     // My microphone, on its way to the host, which decides who is close enough to hear it.
     void SendVoice(uint16_t sequence, const std::vector<uint8_t>& frame);
     // Voice from other people, waiting to be played. Taken rather than read: each frame is played
@@ -525,6 +530,8 @@ private:
     };
     std::map<uint8_t, DocumentAssembly> m_documentParts;
     std::vector<Document> m_documents;
+    TravelMessage m_travel;
+    uint32_t m_travelsReceived = 0;
     std::vector<VoiceHeard> m_voiceIn;
     WorldStateMessage m_worldState;
     CreatureStateMessage m_creatureState;

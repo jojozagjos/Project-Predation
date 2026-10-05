@@ -202,7 +202,7 @@ TEST_CASE("A campaign begins at the shipyard with home's records known", "[campa
     const StarSystem* home = universe.System(universe.Home());
     REQUIRE(home != nullptr);
     CHECK(state.body == home->hub);
-    CHECK(state.region == 0);
+    CHECK(state.region == -1);
     CHECK(state.credits > 0);
     CHECK((state.Known(home->id.Packed(), home->hub) & CampaignState::kKnownVisited) != 0);
 }
@@ -327,4 +327,136 @@ TEST_CASE("Saving over a save keeps the one before as a backup", "[campaign]")
     std::ifstream before(file.string() + ".bak");
     before >> text;
     CHECK(text == "first");
+}
+
+#include "Game/Campaign/SystemMap.h"
+#include "Game/Campaign/Travel.h"
+
+TEST_CASE("The ship flies to a moving planet and arrives at it, sooner with a better drive", "[campaign][travel]")
+{
+    Universe universe;
+    universe.Reset(321, &ShippedData());
+    const StarSystem& system = *universe.System(universe.Home());
+    for (const int tier : {0, 2})
+    {
+        CampaignState campaign = CampaignState::Begin("Flight", 321, universe);
+        // To the planet furthest from where it starts, of the first four.
+        int target = -1;
+        float farthest = 0.0f;
+        for (const Body& body : system.bodies)
+        {
+            if (body.kind == BodyKind::Planet && body.index != campaign.body && body.index < 8)
+            {
+                const float distance = glm::length(system.Position(body.index, 0.0) - system.Position(campaign.body, 0.0));
+                if (distance > farthest)
+                {
+                    farthest = distance;
+                    target = body.index;
+                }
+            }
+        }
+        REQUIRE(target >= 0);
+        REQUIRE(Travel::SetCourse(campaign, system, target));
+        CHECK(campaign.travel.underway);
+        CHECK(campaign.body == -1);
+        const float expected = Travel::Seconds(farthest, tier);
+        float flown = 0.0f;
+        bool arrived = false;
+        while (flown < expected * 4.0f && !arrived)
+        {
+            campaign.clock += 0.05;
+            flown += 0.05f;
+            arrived = Travel::Step(campaign, system, 0.05f, tier);
+        }
+        INFO("tier " << tier << ": expected about " << expected << " s, flew " << flown << " s");
+        REQUIRE(arrived);
+        CHECK(campaign.body == target);
+        CHECK_FALSE(campaign.travel.underway);
+        // Not instant, and not wildly longer than the estimate though the planet moved.
+        CHECK(flown > expected * 0.5f);
+        CHECK(flown < expected * 2.0f);
+    }
+    CHECK(Travel::Seconds(1.0f, 3) < Travel::Seconds(1.0f, 0) * 0.5f);
+    CHECK(Travel::Seconds(4.0f, 0) < Travel::Seconds(1.0f, 0) * 2.5f);
+}
+
+TEST_CASE("A new destination part way is simply steered for, and no destination is coming to rest", "[campaign][travel]")
+{
+    Universe universe;
+    universe.Reset(321, &ShippedData());
+    const StarSystem& system = *universe.System(universe.Home());
+    CampaignState campaign = CampaignState::Begin("Redirect", 321, universe);
+    const int first = campaign.body == 0 ? 1 : 0;
+    const int second = campaign.body == 2 ? 3 : 2;
+    REQUIRE(Travel::SetCourse(campaign, system, first));
+    for (int i = 0; i < 400; ++i)
+    {
+        campaign.clock += 0.05;
+        Travel::Step(campaign, system, 0.05f, 0);
+    }
+    REQUIRE(campaign.travel.underway);
+    REQUIRE(Travel::SetCourse(campaign, system, second));
+    bool arrived = false;
+    for (int i = 0; i < 20000 && !arrived; ++i)
+    {
+        campaign.clock += 0.05;
+        arrived = Travel::Step(campaign, system, 0.05f, 0);
+    }
+    CHECK(arrived);
+    CHECK(campaign.body == second);
+
+    // Off again, then stopped: it comes to rest between the planets.
+    REQUIRE(Travel::SetCourse(campaign, system, first));
+    for (int i = 0; i < 200; ++i)
+    {
+        campaign.clock += 0.05;
+        Travel::Step(campaign, system, 0.05f, 0);
+    }
+    REQUIRE(Travel::SetCourse(campaign, system, -1));
+    bool stopped = false;
+    for (int i = 0; i < 20000 && !stopped; ++i)
+    {
+        campaign.clock += 0.05;
+        stopped = Travel::Step(campaign, system, 0.05f, 0);
+    }
+    CHECK(stopped);
+    CHECK(campaign.body == -1);
+    CHECK_FALSE(campaign.travel.underway);
+    // Nowhere to go from where it is already.
+    CHECK_FALSE(Travel::SetCourse(campaign, system, -1));
+}
+
+TEST_CASE("The map draws planets outwards in order, moons by their planets, and picks what is under the pointer", "[campaign][map]")
+{
+    const StarSystem system = Universe::Generate(55, SystemId{}, ShippedData());
+    const auto drawn = SystemMapView::Layout(system, 0.0);
+    REQUIRE(drawn.size() == system.bodies.size());
+    float last = 0.0f;
+    for (const Body& body : system.bodies)
+    {
+        const SystemMapView::Drawn& at = drawn[body.index];
+        if (body.kind == BodyKind::Planet)
+        {
+            const float out = glm::length(at.at);
+            CHECK(out > last);
+            last = out;
+        }
+        else
+        {
+            const SystemMapView::Drawn& planet = drawn[static_cast<size_t>(body.parent)];
+            // Clear of its planet, and nearer it than any other planet is.
+            CHECK(glm::length(at.at - planet.at) > planet.radius + at.radius);
+            CHECK(glm::length(at.at - planet.at) < 4.0f);
+        }
+    }
+    // Looking straight at a planet from close by, the middle of the picture is that planet.
+    SystemMapView view;
+    const SystemMapView::Drawn& planet = drawn[0];
+    view.Focus(planet.at, 4.0f);
+    for (int i = 0; i < 200; ++i)
+    {
+        view.Update(0.05f);
+    }
+    CHECK(view.Pick({0.5f, 0.5f}, drawn, 16.0f / 9.0f, false) == planet.index);
+    CHECK(view.Pick({0.02f, 0.02f}, drawn, 16.0f / 9.0f, false) != planet.index);
 }

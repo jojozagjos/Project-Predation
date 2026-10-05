@@ -819,6 +819,25 @@ void NetHost::SendDocument(int playerId, DocumentKind kind, const std::string& t
     }
 }
 
+void NetHost::SendTravel(const TravelMessage& travel)
+{
+    if (m_transport == nullptr)
+    {
+        return;
+    }
+    BitWriter writer;
+    WriteMessageHeader(writer, MessageType::Travel);
+    WriteTravel(writer, travel);
+    const std::vector<uint8_t>& bytes = writer.Finish();
+    for (const auto& client : m_clients)
+    {
+        if (client->welcomed)
+        {
+            m_transport->Send(client->peer, Channel::Unreliable, bytes.data(), bytes.size());
+        }
+    }
+}
+
 void NetHost::SendTo(uint8_t playerId, const WorldEventMessage& event)
 {
     if (m_transport == nullptr)
@@ -1416,6 +1435,18 @@ void NetClient::HandlePacket(const NetPacket& packet)
             // Queued rather than applied here. What a door or a locker is belongs to the game; this
             // only knows that one changed.
             m_worldEvents.push_back(event);
+        }
+        break;
+    }
+
+    case MessageType::Travel:
+    {
+        TravelMessage travel;
+        // An older one overtaken on the way is no use: the clock says which is newer.
+        if (ReadTravel(reader, travel) && (m_travelsReceived == 0 || travel.clock >= m_travel.clock))
+        {
+            m_travel = travel;
+            ++m_travelsReceived;
         }
         break;
     }

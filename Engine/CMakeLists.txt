@@ -81,6 +81,9 @@ set(PRED_ENGINE_SOURCES
     Core/ParallelFor.h
     Render/SceneRenderer.h
     Render/SceneRenderer.cpp
+    Render/PlanetLook.h
+    Render/PlanetRenderer.h
+    Render/PlanetRenderer.cpp
     Render/SkyRenderer.h
     Render/SkyRenderer.cpp
     Render/PostProcess.h

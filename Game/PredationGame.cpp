@@ -10338,8 +10338,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
                 environment.planetDirection = m_shipTravel > 0.0f ? glm::normalize(ShipSpec::kTravelHeading)
                                                                   : glm::normalize(glm::vec3(0.12f, -0.42f, -0.9f));
                 environment.planetRadius = glm::mix(0.01f, 0.6f, nearing * nearing);
-                environment.planetColor = glm::mix(glm::vec3(0.46f, 0.52f, 0.6f), glm::vec3(0.58f, 0.6f, 0.62f), tint);
-                environment.planetAir = 0.7f;
+                environment.planet = PlanetLook::Plain(glm::mix(glm::vec3(0.46f, 0.52f, 0.6f), glm::vec3(0.58f, 0.6f, 0.62f), tint), 0.7f);
             }
             if (title)
             {
@@ -10352,8 +10351,11 @@ void PredationGame::OnUpdate(double dt, double alpha)
                 environment.sunIntensity = 2.2f;
                 environment.planetDirection = glm::normalize(ahead * 0.55f + glm::vec3(0.0f, -0.83f, 0.0f));
                 environment.planetRadius = 0.92f;
-                environment.planetColor = {0.6f, 0.67f, 0.76f};
-                environment.planetAir = 0.9f;
+                environment.planet = PlanetLook::Plain({0.6f, 0.67f, 0.76f}, 0.9f);
+                environment.planet.groundA = {0.74f, 0.79f, 0.86f};
+                environment.planet.groundB = {0.42f, 0.48f, 0.57f};
+                environment.planet.ice = 0.4f;
+                environment.planet.clouds = 0.35f;
                 environment.planetAirWarm = 0.0f;
             }
         }

@@ -159,7 +159,7 @@ nlohmann::json CampaignState::ToJson() const
     out["colors"] = {{"primary", Vec3(colors.primary)}, {"secondary", Vec3(colors.secondary)}, {"accent", Vec3(colors.accent)}};
     out["location"] = {{"system", system}, {"body", body}, {"region", region}};
     out["travel"] = {{"underway", travel.underway}, {"position", Vec3(travel.position)}, {"velocity", Vec3(travel.velocity)},
-                     {"target", travel.target}};
+                     {"target", travel.target}, {"region", travel.region}};
     nlohmann::json knownJson = nlohmann::json::object();
     for (const auto& [key, bits] : known)
     {
@@ -235,6 +235,7 @@ bool CampaignState::FromJson(const nlohmann::json& json, CampaignState& out, std
             state.travel.position = ReadVec3(*travel, "position", glm::vec3(0.0f));
             state.travel.velocity = ReadVec3(*travel, "velocity", glm::vec3(0.0f));
             state.travel.target = travel->value("target", -1);
+            state.travel.region = travel->value("region", -1);
         }
         for (const auto& [key, bits] : ReadMap<int>(json, "known"))
         {
@@ -321,9 +322,9 @@ CampaignState CampaignState::Begin(const std::string& campaignName, uint64_t see
     {
         return state;
     }
-    // At the shipyard, on the ground.
+    // Over the shipyard's world. (Starting on the ground, at the shipyard itself, comes with the shipyard.)
     state.body = home->hub;
-    state.region = home->hub >= 0 ? 0 : -1;
+    state.region = -1;
     // Every body of the home system is on the charts by name; whatever has records is known by them; home is visited.
     for (const Body& body : home->bodies)
     {

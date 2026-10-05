@@ -19,6 +19,10 @@ set(PRED_GAME_SOURCES
     Campaign/Campaign.cpp
     Campaign/CampaignStore.h
     Campaign/CampaignStore.cpp
+    Campaign/Travel.h
+    Campaign/Travel.cpp
+    Campaign/SystemMap.h
+    Campaign/SystemMap.cpp
     Mission/Mission.h
     Mission/Mission.cpp
     Mission/MissionProps.h

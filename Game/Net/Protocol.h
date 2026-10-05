@@ -92,6 +92,9 @@ enum class MessageType : uint8_t
     // Client to host, reliable: something asked of the campaign -- a course set, an upgrade bought, an entry marked --
     // for the host to check and do (CampaignRequest).
     Request,
+    // Host to client, unreliable, ten times a second while a campaign is open: the campaign's clock, the ship under way,
+    // and what everybody is pointing at on the system map (TravelMessage).
+    Travel,
     Count
 };
 
@@ -234,6 +237,24 @@ struct CampaignRequest
 };
 void WriteCampaignRequest(BitWriter& writer, const CampaignRequest& message);
 bool ReadCampaignRequest(BitReader& reader, CampaignRequest& out);
+
+// How the ship stands in its system, often, and what each player is pointing at on the system map: the part of the
+// campaign that changes every moment, which the whole campaign is not sent for.
+struct TravelMessage
+{
+    double clock = 0.0;
+    bool underway = false;
+    int8_t target = -1;
+    int8_t body = -1;
+    int8_t region = -1;
+    glm::vec3 position{0.0f};
+    glm::vec3 velocity{0.0f};
+    // Each player's: the body they are pointing at on the map (-1: none), and a bit each for having it open.
+    std::array<int8_t, kMaxPlayers> pointing{-1, -1, -1, -1};
+    uint8_t mapOpen = 0;
+};
+void WriteTravel(BitWriter& writer, const TravelMessage& message);
+bool ReadTravel(BitReader& reader, TravelMessage& out);
 
 // A console command line, printable ASCII, cut to the length a command needs.
 inline constexpr size_t kMaxCommandLength = 160;

@@ -10,7 +10,14 @@ uniform vec4 u_skySunColor; // rgb, w = how bright
 uniform vec4 u_skyGrade;    // x = exposure, y = contrast
 uniform vec4 u_skySpace;       // x = stars (0 none, 1 all), y = a planet's radius on the sky (radians; 0 none), z = its air, w = brightness
 uniform vec4 u_skyPlanet;      // xyz = towards the planet's middle, w = how warm its air glows (0 blue, 1 amber)
-uniform vec4 u_skyPlanetColor; // rgb = its ground from orbit
+// How it looks (Shaders/planet/planet_surface.sh); e is the air's colour and the pattern's seed.
+uniform vec4 u_planetA;
+uniform vec4 u_planetB;
+uniform vec4 u_planetC;
+uniform vec4 u_planetD;
+uniform vec4 u_planetE;
+
+#include "planet/planet_surface.sh"
 
 // Noise over directions, for the planet's ground and cloud and the faint band of the galaxy.
 float SkyHash(vec3 p)
@@ -131,7 +138,7 @@ void main()
 	{
 		vec3 toPlanet = normalize(u_skyPlanet.xyz);
 		vec3 towardsSun = normalize(u_skySun.xyz);
-		vec3 air = mix(vec3(0.3, 0.5, 0.95), vec3(1.0, 0.68, 0.36), u_skyPlanet.w) * u_skySpace.z;
+		vec3 air = mix(u_planetE.rgb, vec3(1.0, 0.68, 0.36), u_skyPlanet.w) * u_skySpace.z;
 		float radius = sin(u_skySpace.y);
 		float along = dot(ray, toPlanet);
 		float hit = along * along - (1.0 - radius * radius);
@@ -139,12 +146,20 @@ void main()
 		{
 			vec3 normal = (ray * (along - sqrt(hit)) - toPlanet) / radius;
 			float lit = dot(normal, towardsSun);
-			// Ground large and small, and cloud in banks and streaks: close enough to see, a surface rather than a blur.
-			float land = SkyFbm(normal * 2.5 + vec3(3.1, 1.7, 5.3)) * 0.65 + SkyFbm(normal * 11.0 + vec3(1.3, 7.7, 2.9)) * 0.35;
-			float cloud = smoothstep(0.5, 0.78, SkyFbm(normal * 4.5 + vec3(9.1, 2.2, 4.4))) +
-						  0.45 * smoothstep(0.56, 0.82, SkyFbm(normal * vec3(18.0, 6.0, 18.0) + vec3(4.2, 8.8, 1.6)));
-			vec3 ground = mix(u_skyPlanetColor.rgb * (0.55 + 0.7 * land), vec3(0.95, 0.97, 1.0), clamp(cloud, 0.0, 1.0) * 0.8);
+			// Its ground, seas, ice and cloud, as the system map draws it.
+			float sea = 0.0;
+			// In the planet's own frame, its poles at the top and bottom of it as seen, not facing the eye -- or every planet
+			// below the ship would show its ice cap and nothing else.
+			vec3 across = cross(toPlanet, vec3(1.0, 0.0, 0.0));
+			across = dot(across, across) < 0.01 ? cross(toPlanet, vec3(0.0, 0.0, 1.0)) : across;
+			vec3 pole = normalize(across);
+			vec3 east = normalize(cross(pole, toPlanet));
+			vec3 local = vec3(dot(normal, east), dot(normal, pole), dot(normal, toPlanet));
+			vec4 surface = PlanetAlbedo(local, u_planetA, u_planetB, u_planetC, u_planetD, u_planetE.w, 0.0, sea);
+			vec3 ground = mix(surface.rgb, u_planetD.rgb, surface.w);
 			vec3 planet = ground * smoothstep(-0.05, 0.4, lit) * u_skySunColor.w * 1.6;
+			planet += u_skySunColor.rgb * u_skySunColor.w * pow(max(dot(reflect(-towardsSun, normal), -ray), 0.0), 60.0) * sea *
+					  (1.0 - surface.w) * step(0.0, lit) * 0.6;
 			float edge = pow(1.0 - max(dot(normal, -ray), 0.0), 4.0);
 			planet += air * edge * smoothstep(-0.25, 0.25, lit);
 			color = planet * max(u_skySpace.w, 0.0);

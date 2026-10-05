@@ -65,6 +65,8 @@ struct CampaignState
         glm::vec3 position{0.0f};
         glm::vec3 velocity{0.0f};
         int target = -1; // a body of the current system
+        // Where to go down on the body it is at or heading for: one of its landing regions, or -1 for none chosen.
+        int region = -1;
     };
 
     int version = kVersion;

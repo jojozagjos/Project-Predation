@@ -35,14 +35,18 @@ bool SkyRenderer::Init(ShaderLibrary& shaders)
     m_uGrade = bgfx::createUniform("u_skyGrade", bgfx::UniformType::Vec4);
     m_uSpace = bgfx::createUniform("u_skySpace", bgfx::UniformType::Vec4);
     m_uPlanet = bgfx::createUniform("u_skyPlanet", bgfx::UniformType::Vec4);
-    m_uPlanetColor = bgfx::createUniform("u_skyPlanetColor", bgfx::UniformType::Vec4);
+    m_uPlanetA = bgfx::createUniform("u_planetA", bgfx::UniformType::Vec4);
+    m_uPlanetB = bgfx::createUniform("u_planetB", bgfx::UniformType::Vec4);
+    m_uPlanetC = bgfx::createUniform("u_planetC", bgfx::UniformType::Vec4);
+    m_uPlanetD = bgfx::createUniform("u_planetD", bgfx::UniformType::Vec4);
+    m_uPlanetE = bgfx::createUniform("u_planetE", bgfx::UniformType::Vec4);
     return true;
 }
 
 void SkyRenderer::Shutdown()
 {
     const bgfx::UniformHandle uniforms[] = {m_uRays, m_uZenith, m_uHorizon, m_uGround, m_uSun, m_uSunColor,
-                                            m_uGrade, m_uSpace, m_uPlanet, m_uPlanetColor};
+                                            m_uGrade, m_uSpace, m_uPlanet, m_uPlanetA, m_uPlanetB, m_uPlanetC, m_uPlanetD, m_uPlanetE};
     for (const bgfx::UniformHandle handle : uniforms)
     {
         if (bgfx::isValid(handle))
@@ -52,7 +56,8 @@ void SkyRenderer::Shutdown()
     }
     m_uRays = m_uZenith = m_uHorizon = m_uGround = BGFX_INVALID_HANDLE;
     m_uSun = m_uSunColor = m_uGrade = BGFX_INVALID_HANDLE;
-    m_uSpace = m_uPlanet = m_uPlanetColor = BGFX_INVALID_HANDLE;
+    m_uSpace = m_uPlanet = BGFX_INVALID_HANDLE;
+    m_uPlanetA = m_uPlanetB = m_uPlanetC = m_uPlanetD = m_uPlanetE = BGFX_INVALID_HANDLE;
     if (bgfx::isValid(m_triangle))
     {
         bgfx::destroy(m_triangle);
@@ -106,12 +111,21 @@ void SkyRenderer::Draw(bgfx::ViewId view, const Environment& environment, const 
     bgfx::setUniform(m_uGrade, grade);
     // Space: the stars and a planet, turned down with the rest.
     const glm::vec3 towardsPlanet = glm::normalize(environment.planetDirection);
-    const float space[4] = {environment.stars, environment.planetRadius, environment.planetAir, dim};
+    const PlanetLook& look = environment.planet;
+    const float space[4] = {environment.stars, environment.planetRadius, look.air, dim};
     const float planet[4] = {towardsPlanet.x, towardsPlanet.y, towardsPlanet.z, std::clamp(environment.planetAirWarm, 0.0f, 1.0f)};
-    const float planetColor[4] = {environment.planetColor.r, environment.planetColor.g, environment.planetColor.b, 0.0f};
+    const float a[4] = {look.groundA.r, look.groundA.g, look.groundA.b, look.oceanAmount};
+    const float b[4] = {look.groundB.r, look.groundB.g, look.groundB.b, look.ice};
+    const float c[4] = {look.ocean.r, look.ocean.g, look.ocean.b, look.clouds};
+    const float d[4] = {look.cloudColor.r, look.cloudColor.g, look.cloudColor.b, look.gas ? 1.0f : 0.0f};
+    const float e[4] = {look.airColor.r, look.airColor.g, look.airColor.b, look.seed};
     bgfx::setUniform(m_uSpace, space);
     bgfx::setUniform(m_uPlanet, planet);
-    bgfx::setUniform(m_uPlanetColor, planetColor);
+    bgfx::setUniform(m_uPlanetA, a);
+    bgfx::setUniform(m_uPlanetB, b);
+    bgfx::setUniform(m_uPlanetC, c);
+    bgfx::setUniform(m_uPlanetD, d);
+    bgfx::setUniform(m_uPlanetE, e);
 
     bgfx::setVertexBuffer(0, m_triangle);
     // No depth write and no depth test: it is drawn first and everything else covers it. Writing

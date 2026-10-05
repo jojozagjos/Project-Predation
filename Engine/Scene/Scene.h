@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Engine/Render/PlanetLook.h"
+
 #include "Engine/Core/Math.h"
 #include "Engine/Render/Material.h"
 #include "Engine/Render/Mesh.h"
@@ -105,14 +107,13 @@ struct Environment
     float fogEnd = 90.0f;
 
     // Out in space: how many of the stars show (0 none, 1 all), and a planet hung in the sky -- which way its middle
-    // is, how big it looks (radians from its middle to its edge; 0 for none), the colour of its ground seen from
-    // orbit, and how brightly the air round its edge glows. Drawn in the sky, so it is infinitely far away: it never
-    // meets the far plane and nothing can walk towards it.
+    // is, how big it looks (radians from its middle to its edge; 0 for none), and how it looks (its ground, seas,
+    // ice, cloud and air, as the system map draws it). Drawn in the sky, so it is infinitely far away: it never meets
+    // the far plane and nothing can walk towards it.
     float stars = 0.0f;
     glm::vec3 planetDirection{0.0f, -1.0f, 0.0f};
     float planetRadius = 0.0f;
-    glm::vec3 planetColor{0.8f, 0.84f, 0.9f};
-    float planetAir = 0.0f;
+    PlanetLook planet = PlanetLook::Plain({0.8f, 0.84f, 0.9f}, 0.0f);
     // And how warm that glow is: 0 the blue of daylight scattered, 1 the amber of a sun low behind it.
     float planetAirWarm = 0.0f;
 

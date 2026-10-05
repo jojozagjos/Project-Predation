@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <glm/geometric.hpp>
 #include <glm/gtc/constants.hpp>
 
@@ -1009,6 +1010,63 @@ bool ReadCampaignRequest(BitReader& reader, CampaignRequest& out)
     {
         const uint8_t byte = reader.ReadByte();
         out.text.push_back(byte >= 32 && byte < 127 ? static_cast<char>(byte) : ' ');
+    }
+    return !reader.Overran();
+}
+
+void WriteTravel(BitWriter& writer, const TravelMessage& message)
+{
+    uint64_t bits = 0;
+    static_assert(sizeof(bits) == sizeof(message.clock));
+    std::memcpy(&bits, &message.clock, sizeof(bits));
+    writer.WriteUInt(static_cast<uint32_t>(bits & 0xFFFFFFFFu));
+    writer.WriteUInt(static_cast<uint32_t>(bits >> 32));
+    writer.WriteBool(message.underway);
+    writer.WriteSignedBits(message.target, 8);
+    writer.WriteSignedBits(message.body, 8);
+    writer.WriteSignedBits(message.region, 8);
+    for (int i = 0; i < 3; ++i)
+    {
+        writer.WriteFloat(message.position[i]);
+    }
+    for (int i = 0; i < 3; ++i)
+    {
+        writer.WriteFloat(message.velocity[i]);
+    }
+    for (const int8_t pointing : message.pointing)
+    {
+        writer.WriteSignedBits(pointing, 8);
+    }
+    writer.WriteBits(message.mapOpen, kMaxPlayers);
+}
+
+bool ReadTravel(BitReader& reader, TravelMessage& out)
+{
+    const uint64_t low = reader.ReadUInt();
+    const uint64_t high = reader.ReadUInt();
+    const uint64_t bits = low | (high << 32);
+    std::memcpy(&out.clock, &bits, sizeof(bits));
+    out.underway = reader.ReadBool();
+    out.target = static_cast<int8_t>(reader.ReadSignedBits(8));
+    out.body = static_cast<int8_t>(reader.ReadSignedBits(8));
+    out.region = static_cast<int8_t>(reader.ReadSignedBits(8));
+    for (int i = 0; i < 3; ++i)
+    {
+        out.position[i] = reader.ReadFloat();
+    }
+    for (int i = 0; i < 3; ++i)
+    {
+        out.velocity[i] = reader.ReadFloat();
+    }
+    for (int8_t& pointing : out.pointing)
+    {
+        pointing = static_cast<int8_t>(reader.ReadSignedBits(8));
+    }
+    out.mapOpen = static_cast<uint8_t>(reader.ReadBits(kMaxPlayers));
+    if (!std::isfinite(out.clock) || !std::isfinite(out.position.x) || !std::isfinite(out.position.y) || !std::isfinite(out.position.z) ||
+        !std::isfinite(out.velocity.x) || !std::isfinite(out.velocity.y) || !std::isfinite(out.velocity.z))
+    {
+        return false;
     }
     return !reader.Overran();
 }
