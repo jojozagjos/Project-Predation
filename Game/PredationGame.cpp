@@ -3185,11 +3185,6 @@ void PredationGame::ApplyPlayerDamage(uint8_t player, float amount, uint8_t kill
     }
 }
 
-float PredationGame::RespawnSeconds() const
-{
-    return cv_respawnSeconds.Get();
-}
-
 float PredationGame::TorchIntensity() const
 {
     return cv_torchIntensity.Get();

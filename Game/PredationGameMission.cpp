@@ -726,7 +726,7 @@ void PredationGame::BuildDeployConsole()
     transform.rotation = at.rotation;
     m_deployConsole = m_scene.CreateMeshEntity("deploy_console", transform, meshes.Upload(Primitives::Box(kDeployConsoleSize), "deploy_console"),
                                                Material::Metal({0.22f, 0.23f, 0.25f}, 0.5f));
-    m_deployBody = m_app->GetPhysics().CreateBox(kDeployConsoleSize * 0.5f, transform, BodyMotion::Static);
+    m_app->GetPhysics().CreateBox(kDeployConsoleSize * 0.5f, transform, BodyMotion::Static);
     Transform screen = transform;
     screen.position += transform.rotation * glm::vec3(0.0f, kDeployConsoleSize.y * 0.5f + 0.006f, -0.03f);
     Material glass = Material::Diffuse({0.03f, 0.035f, 0.04f}, 0.25f);

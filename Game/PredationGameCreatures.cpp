@@ -1449,18 +1449,6 @@ void PredationGame::MarkBite(Corpse& corpse, size_t part, const glm::vec3& near)
     corpse.markPart.push_back(part);
 }
 
-PredationGame::Corpse* PredationGame::CorpseById(int id)
-{
-    for (Corpse& corpse : m_corpses)
-    {
-        if (corpse.id == id)
-        {
-            return &corpse;
-        }
-    }
-    return nullptr;
-}
-
 void PredationGame::PlaceCorpse(Corpse& corpse, const glm::vec3& to, float turn)
 {
     corpse.at = to;

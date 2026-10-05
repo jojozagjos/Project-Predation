@@ -251,7 +251,6 @@ private:
     // What the creatures did to the bodies this tick, on the host: taking one up, putting one down.
     void HandleCorpseIntents(Creature& creature, const CreatureIntent& intent, float dt);
     Corpse* CorpseNear(const glm::vec3& at, float within);
-    Corpse* CorpseById(int id);
     // Moves a body, every piece of it, so that its middle is at `to` and it has turned by `turn` since it lay.
     void PlaceCorpse(Corpse& corpse, const glm::vec3& to, float turn);
     float m_fearShown = 0.0f;       // how afraid the picture looks, eased
@@ -758,7 +757,6 @@ private:
     // Dead, a player drives a support drone about the level. In the facility that death is for the
     // rest of the deployment; in the testing area it lasts only until they come back.
     bool DeathIsPermanent() const;
-    float RespawnSeconds() const;
     float RespawnSecondsForDeath() const;
     void UpdateDrone(const PlayerInput& input, float dt);
     void UpdateDroneVisuals(float dt);
@@ -1590,7 +1588,6 @@ private:
     // The deployment console in the briefing room.
     Entity m_deployConsole;
     Entity m_deployScreen;
-    BodyHandle m_deployBody;
     // The loadout locker's screen, and the kit being chosen on it while it is open.
     Entity m_loadoutScreen;
     TextureHandle m_loadoutTexture;
@@ -1789,7 +1786,6 @@ private:
     float m_zoneNest = 0.0f;
     float m_ambienceClock = 0.0f;
     float m_ambienceNext = 25.0f;
-    unsigned int m_menuHovered = 0;
     bool m_menuWasPaused = false;
     int m_menuWasScreen = -1;
 

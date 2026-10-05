@@ -761,7 +761,6 @@ void PredationGame::MenuSounds()
     {
         PlayNamed("UI/click", m_renderEye, 0.75f, 1.0f, false);
     }
-    m_menuHovered = hovered;
 
     // Into a game, and the pause menu coming and going.
     const int screen = static_cast<int>(m_screen);
