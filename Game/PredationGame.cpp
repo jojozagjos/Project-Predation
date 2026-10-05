@@ -5703,13 +5703,14 @@ void PredationGame::DrawTitleMenu()
 #endif
     entries.push_back({"QUIT", 3});
 
-    const float entrySize = ImGui::GetFontSize() * 1.45f;
+    const float entrySize = ImGui::GetFontSize() * 1.55f;
     bool anyHovered = false;
     float y = origin.y + size.y * 0.44f;
     int chosen = -1;
     for (const Entry& entry : entries)
     {
-        const std::string text = Spaced(entry.label);
+        // Plain words, not spaced out letter by letter: only the name above is set that way.
+        const std::string text = entry.label;
         const ImVec2 extent = font->CalcTextSizeA(entrySize, FLT_MAX, 0.0f, text.c_str());
         ImGui::SetCursorScreenPos({x - 14.0f, y});
         if (ImGui::InvisibleButton(entry.label, {extent.x + 60.0f, entrySize + 16.0f}))
@@ -5731,13 +5732,13 @@ void PredationGame::DrawTitleMenu()
         // A shadow under each, so it reads over the stars and the lit edge of the planet alike.
         draw->AddText(font, entrySize, {x + 12.0f * shown + 2.0f, y + 9.0f}, IM_COL32(0, 0, 0, 200), text.c_str());
         draw->AddText(font, entrySize, {x + 12.0f * shown, y + 7.0f}, IM_COL32(mix(200, 255), mix(206, 250), mix(212, 244), 255), text.c_str());
-        y += entrySize + 26.0f;
+        y += entrySize + 20.0f;
         // Under Continue, which campaign and where its ship is.
         if (entry.action == 4 && !m_campaignSlots.empty())
         {
             const std::string what = m_campaignSlots.front().name + "  -  " + (m_campaignSlotWhere.empty() ? std::string() : m_campaignSlotWhere.front());
-            draw->AddText(font, ImGui::GetFontSize() * 0.85f, {x + 12.0f * shown + 2.0f, y - 14.0f}, IM_COL32(150, 158, 164, 255), what.c_str());
-            y += 16.0f;
+            draw->AddText(font, ImGui::GetFontSize() * 0.85f, {x + 12.0f * shown + 1.0f, y - 12.0f}, IM_COL32(150, 158, 164, 255), what.c_str());
+            y += 14.0f;
         }
     }
 

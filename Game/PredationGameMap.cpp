@@ -1101,18 +1101,20 @@ void PredationGame::SetSpaceSky(Environment& environment)
     if (const Body* body = system->Find(main))
     {
         environment.planet = LookOf(*body);
+        // How big it is from orbit, by how big it is: a small moon a ball in the window, a gas giant filling it.
+        const float orbitSize = std::clamp(0.72f * std::pow(std::max(body->radius, 0.05f), 0.32f), 0.3f, 1.25f);
         if (m_campaign.travel.underway)
         {
             // Dead ahead, growing as the ship closes on it: a point a long way off, the size it is from orbit at the end.
             const float distance = std::max(glm::length(system->Position(main, m_campaign.clock) - ship), Travel::kArrival);
             const float size = std::sqrt(std::max(body->radius, 0.1f));
             environment.planetDirection = bow;
-            environment.planetRadius = std::clamp(0.0016f * size / distance, 0.012f, 0.6f);
+            environment.planetRadius = std::clamp(0.0016f * size / distance, 0.012f, orbitSize * 0.65f);
         }
         else
         {
             environment.planetDirection = glm::normalize(glm::vec3(0.12f, -0.42f, -0.9f));
-            environment.planetRadius = body->gas ? 1.05f : 0.92f;
+            environment.planetRadius = orbitSize;
         }
     }
 
@@ -1145,7 +1147,11 @@ void PredationGame::SetSpaceSky(Environment& environment)
         // Larger than life, so a planet across the system is a speck rather than nothing; a moon of the body below is a
         // proper disc.
         const float size = std::sqrt(std::max(body.radius, 0.05f));
-        const float radius = std::clamp(0.0012f * size / distance, 0.003f, 0.14f);
+        // The planet a moon goes round is as large in the sky as it would be from the moon: a gas giant over the horizon.
+        const Body* over = system->Find(main);
+        const bool parent = over != nullptr && over->kind == BodyKind::Moon && over->parent == body.index && !m_campaign.travel.underway;
+        const float radius = parent ? std::clamp(0.35f * std::pow(std::max(body.radius, 0.05f), 0.4f), 0.2f, 0.9f)
+                                    : std::clamp(0.0012f * size / distance, 0.003f, 0.14f);
         environment.skyBodies[i * 2] = glm::vec4(glm::normalize(way), radius);
         environment.skyBodies[i * 2 + 1] = glm::vec4(glm::mix(body.groundA, body.cloudColor, body.clouds * 0.6f), body.air);
     }

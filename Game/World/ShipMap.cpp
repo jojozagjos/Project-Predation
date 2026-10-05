@@ -502,8 +502,8 @@ MeshData Tapered(float backZ, float backHalf, float backLow, float backHigh, flo
     return mesh;
 }
 
-// A section of hull: an outline across the ship (x, y; convex, either way round) drawn along it from z0 to z1. Open, the
-// outline's last point is not joined back to its first (the bay, open underneath); its ends are closed either way.
+// A section of hull: an outline across the ship (x, y; convex, either way round) drawn along it from z0 to z1, its sides
+// only. Open, the outline's last point is not joined back to its first (the bay, open underneath). Its ends are Caps.
 MeshData Extruded(const std::vector<glm::vec2>& outline, float z0, float z1, bool closed)
 {
     MeshData mesh;
@@ -521,30 +521,88 @@ MeshData Extruded(const std::vector<glm::vec2>& outline, float z0, float z1, boo
         const glm::vec2 b = outline[(i + 1) % outline.size()];
         OutwardQuad(mesh, {a, z0}, {b, z0}, {b, z1}, {a, z1}, middle);
     }
-    // The ends, a fan from the outline's middle, wound to face out of the end each closes.
-    for (const float z : {z0, z1})
+    return mesh;
+}
+
+// How far along a ray from inside a convex outline it meets the outline.
+float RayToOutline(const std::vector<glm::vec2>& outline, const glm::vec2& from, const glm::vec2& way)
+{
+    float nearest = 1.0e9f;
+    for (size_t i = 0; i < outline.size(); ++i)
     {
-        const glm::vec3 normal{0.0f, 0.0f, z < middle.z ? -1.0f : 1.0f};
-        const auto base = static_cast<uint32_t>(mesh.vertices.size());
-        mesh.vertices.push_back(MeshVertex{{centre, z}, normal, {0.5f, 0.5f}});
-        for (const glm::vec2& point : outline)
+        const glm::vec2 a = outline[i];
+        const glm::vec2 edge = outline[(i + 1) % outline.size()] - a;
+        const float across = way.x * edge.y - way.y * edge.x;
+        if (std::abs(across) < 1.0e-9f)
         {
-            mesh.vertices.push_back(MeshVertex{{point, z}, normal, {0.0f, 0.0f}});
+            continue;
         }
-        for (size_t i = 0; i < outline.size(); ++i)
+        const glm::vec2 to = a - from;
+        const float t = (to.x * edge.y - to.y * edge.x) / across;
+        const float u = (to.x * way.y - to.y * way.x) / across;
+        if (t > 0.0f && u >= -1.0e-4f && u <= 1.0001f)
         {
-            const auto first = base + 1 + static_cast<uint32_t>(i);
-            const auto second = base + 1 + static_cast<uint32_t>((i + 1) % outline.size());
-            const glm::vec3 pa = mesh.vertices[first].position - mesh.vertices[base].position;
-            const glm::vec3 pb = mesh.vertices[second].position - mesh.vertices[base].position;
-            if (glm::dot(glm::cross(pa, pb), normal) >= 0.0f)
-            {
-                mesh.indices.insert(mesh.indices.end(), {base, first, second});
-            }
-            else
-            {
-                mesh.indices.insert(mesh.indices.end(), {base, second, first});
-            }
+            nearest = std::min(nearest, t);
+        }
+    }
+    return nearest < 1.0e8f ? nearest : 0.0f;
+}
+
+// The end of a section at z, facing along +z or -z: the whole outline, or only the ring of it outside the hole (another
+// convex outline inside it -- the section joined on there), so the end never covers the way through into the next.
+// Laid out by rays from the hole's middle, at every corner of either and evenly between, so both edges are followed.
+MeshData Cap(const std::vector<glm::vec2>& outline, const std::vector<glm::vec2>& hole, float z, bool facingForward)
+{
+    MeshData mesh;
+    const std::vector<glm::vec2>& middleOf = hole.empty() ? outline : hole;
+    glm::vec2 centre{0.0f};
+    for (const glm::vec2& point : middleOf)
+    {
+        centre += point;
+    }
+    centre /= static_cast<float>(std::max<size_t>(middleOf.size(), 1));
+    std::vector<float> angles;
+    for (int i = 0; i < 96; ++i)
+    {
+        angles.push_back(static_cast<float>(i) / 96.0f * glm::two_pi<float>());
+    }
+    for (const std::vector<glm::vec2>* shape : {&outline, &hole})
+    {
+        for (const glm::vec2& point : *shape)
+        {
+            float angle = std::atan2(point.y - centre.y, point.x - centre.x);
+            angles.push_back(angle < 0.0f ? angle + glm::two_pi<float>() : angle);
+        }
+    }
+    std::sort(angles.begin(), angles.end());
+    const glm::vec3 normal{0.0f, 0.0f, facingForward ? 1.0f : -1.0f};
+    std::vector<glm::vec3> outer;
+    std::vector<glm::vec3> inner;
+    for (const float angle : angles)
+    {
+        const glm::vec2 way{std::cos(angle), std::sin(angle)};
+        const float far = RayToOutline(outline, centre, way);
+        const float near = hole.empty() ? 0.0f : std::min(RayToOutline(hole, centre, way), far);
+        outer.push_back({centre + way * far, z});
+        inner.push_back({centre + way * near, z});
+    }
+    for (size_t i = 0; i < angles.size(); ++i)
+    {
+        const size_t j = (i + 1) % angles.size();
+        const auto base = static_cast<uint32_t>(mesh.vertices.size());
+        for (const glm::vec3& point : {inner[i], outer[i], outer[j], inner[j]})
+        {
+            mesh.vertices.push_back(MeshVertex{point, normal, {0.0f, 0.0f}});
+        }
+        // Wound to face the way the end faces.
+        const bool forward = glm::dot(glm::cross(outer[i] - inner[i], outer[j] - inner[i]), normal) >= 0.0f;
+        if (forward)
+        {
+            mesh.indices.insert(mesh.indices.end(), {base, base + 1, base + 2, base, base + 2, base + 3});
+        }
+        else
+        {
+            mesh.indices.insert(mesh.indices.end(), {base, base + 2, base + 1, base, base + 3, base + 2});
         }
     }
     return mesh;
@@ -625,11 +683,20 @@ ModelAsset ShipMap::HullModel(const ShipHullLook& look)
     const float bayFront = kBayFront - kWallT - skin;
     const float bayBack = kBayBack + kWallT + skin;
     const float tail = kStern + kWallT + skin + 0.1f;
-    HullMesh(model, name("body"), Extruded(bevelled(bodySide, bodyLow, bodyTop, 0.5f, 0.45f), kOpsFront, bayFront, true), primary);
-    HullMesh(model, name("engine_room"), Extruded(bevelled(bodySide, bodyLow, bodyTop, 0.5f, 0.45f), bayBack, tail, true), secondary);
+    const std::vector<glm::vec2> bodyOutline = bevelled(bodySide, bodyLow, bodyTop, 0.5f, 0.45f);
+    const std::vector<glm::vec2> cockpitOutline{{-side, belly}, {-side, top}, {side, top}, {side, belly}};
+    HullMesh(model, name("body"), Extruded(bodyOutline, kOpsFront, bayFront, true), primary);
+    // Its ends only where they show from outside: the step up from the cockpit ahead of it, round the cockpit -- never
+    // across the door into it -- and nothing aft, where it goes into the bay.
+    HullMesh(model, name("body_front"), Cap(bodyOutline, cockpitOutline, kOpsFront, false), primary);
+    HullMesh(model, name("engine_room"), Extruded(bodyOutline, bayBack, tail, true), secondary);
+    HullMesh(model, name("engine_room_back"), Cap(bodyOutline, {}, tail, true), secondary);
     const std::vector<glm::vec2> bayOutline{{-bayWide, bayLow},        {-bayWide, bayHigh - 0.4f}, {-bayWide + 0.4f, bayHigh},
                                             {bayWide - 0.4f, bayHigh}, {bayWide, bayHigh - 0.4f},  {bayWide, bayLow}};
     HullMesh(model, name("bay"), Extruded(bayOutline, bayFront, bayBack, false), secondary);
+    // Its ends: the rings round the body forward and the engine room aft, which go on through them.
+    HullMesh(model, name("bay_front"), Cap(bayOutline, bodyOutline, bayFront, false), secondary);
+    HullMesh(model, name("bay_back"), Cap(bayOutline, bodyOutline, bayBack, true), secondary);
     // Its belly round the doors' shaft, just inside the bay's sides.
     const float inside = bayWide - 0.02f;
     HullBox(model, name("bay_belly"), {-inside, bayLow, bayFront}, {inside, -kSlab, kDoorsFront}, secondary, 0.6f, 0.4f);
