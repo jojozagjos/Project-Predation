@@ -121,7 +121,7 @@ TEST_CASE("Home always has a settled world with a shipyard on the charts", "[cam
     }
 }
 
-TEST_CASE("Every body is something, named after what it goes round, and only solid ones have places to land", "[campaign]")
+TEST_CASE("Every body is something, moons designated as moons, and only solid ones have places to land", "[campaign]")
 {
     const UniverseData& data = ShippedData();
     for (uint64_t seed = 1; seed <= 20; ++seed)
@@ -140,7 +140,8 @@ TEST_CASE("Every body is something, named after what it goes round, and only sol
             {
                 REQUIRE(body.parent >= 0);
                 const Body& planet = system.bodies[static_cast<size_t>(body.parent)];
-                CHECK(body.name.rfind(planet.name, 0) == 0);
+                // A designation of its own ("LV-426"), not its planet's name.
+                CHECK(body.name.rfind("LV-", 0) == 0);
                 CHECK(planet.kind == BodyKind::Planet);
             }
             for (const LandingRegion& region : body.regions)

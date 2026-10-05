@@ -178,6 +178,9 @@ public:
     // What systems are called: a catalogue and a number ("KEPLER-91"); planets after it, by Roman numeral.
     std::vector<std::string> catalogues{"KEPLER"};
     glm::ivec2 catalogueNumbers{10, 999};
+    // Moons: a designation of their own, a prefix and a number ("LV-426").
+    std::vector<std::string> moonCatalogues{"LV"};
+    glm::ivec2 moonNumbers{100, 999};
     // Region designations: the part of a planet it is in ("NORTH CRYOSPHERE"), by biome; "any" for every biome.
     std::map<std::string, std::vector<std::string>> regionAreas;
 };
@@ -222,7 +225,7 @@ struct Body
     uint16_t index = 0;
     BodyKind kind = BodyKind::Planet;
     int parent = -1;   // for a moon, the index of the planet it goes round
-    std::string name;  // "KEPLER-91 IV", "KEPLER-91 IV b"
+    std::string name;  // "KEPLER-91 IV"; a moon "LV-426"
     uint64_t seed = 0;
     // Its orbit: how far out (in astronomical units for a planet; for a moon, in its planet's radii), how long a turn
     // takes (seconds of the campaign's clock), where in it it was at the clock's zero (radians), and the slight tilt of

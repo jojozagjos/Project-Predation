@@ -493,6 +493,13 @@ bool UniverseData::LoadFromFile(const std::filesystem::path& file, std::string* 
             }
             const glm::vec2 numbers = ReadVec2(*names, "numbers", {10.0f, 999.0f});
             loaded.catalogueNumbers = {static_cast<int>(numbers.x), static_cast<int>(numbers.y)};
+            const std::vector<std::string> moons = ReadStrings(*names, "moons");
+            if (!moons.empty())
+            {
+                loaded.moonCatalogues = moons;
+            }
+            const glm::vec2 moonRange = ReadVec2(*names, "moonNumbers", {100.0f, 999.0f});
+            loaded.moonNumbers = {static_cast<int>(moonRange.x), static_cast<int>(moonRange.y)};
         }
         for (const auto& entry : root.value("stars", nlohmann::json::array()))
         {
@@ -912,9 +919,16 @@ StarSystem Universe::Generate(uint64_t universeSeed, SystemId id, const Universe
             moon.index = static_cast<uint16_t>(system.bodies.size());
             moon.kind = BodyKind::Moon;
             moon.parent = static_cast<int>(planetIndex);
-            moon.name = system.bodies[planetIndex].name + " " + static_cast<char>('a' + m);
             moon.seed = MixSeed(system.bodies[planetIndex].seed, 100u + static_cast<uint64_t>(m));
             UniverseRandom moonRandom(MixSeed(moon.seed, 0x4F524254ull));
+            // A designation of its own, as a moon in the Alien films has one: a prefix and a number.
+            {
+                UniverseRandom naming(MixSeed(moon.seed, 0x4E414D45ull)); // 'NAME'
+                const std::string prefix = data.moonCatalogues.empty()
+                                               ? std::string("LV")
+                                               : data.moonCatalogues[static_cast<size_t>(naming.Int(0, static_cast<int>(data.moonCatalogues.size()) - 1))];
+                moon.name = prefix + "-" + std::to_string(naming.Int(data.moonNumbers.x, data.moonNumbers.y));
+            }
             moon.orbit = moonOrbit;
             moonOrbit *= moonRandom.Range(1.4f, 2.0f);
             moon.period = moonRandom.Range(90.0f, 420.0f) * std::sqrt(moon.orbit / 4.0f);
