@@ -944,6 +944,7 @@ ModelAsset ShipMap::HullModel(const ShipHullLook& look, bool stage)
             model.parts.back().name = name(part.name.c_str());
         }
     }
+    GearHousings(model);
     return model;
 }
 
@@ -1157,9 +1158,19 @@ void ShipMap::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, Le
         const std::string prefix = which == 0 ? "ship_" : "ship_stage_";
         for (int leg = 0; leg < 4; ++leg)
         {
-            m_legs[which][leg].Build(scene, meshes, nullptr, std::make_shared<ModelAsset>(GearLegModel()), Pose(GearHinge(leg)), 0,
-                                     prefix + "leg" + std::to_string(leg) + "_");
-            FarVisible(scene, m_legs[which][leg]);
+            const std::string name = prefix + "leg" + std::to_string(leg) + "_";
+            m_struts[which][leg].Build(scene, meshes, nullptr, std::make_shared<ModelAsset>(GearStrutModel()), Pose(GearHinge(leg)), 0, name + "strut_");
+            m_pistons[which][leg].Build(scene, meshes, nullptr, std::make_shared<ModelAsset>(GearPistonModel()), Pose(GearHinge(leg)), 0, name + "piston_");
+            m_feet[which][leg].Build(scene, meshes, nullptr, std::make_shared<ModelAsset>(GearFootModel()), Pose(GearHinge(leg)), 0, name + "foot_");
+            FarVisible(scene, m_struts[which][leg]);
+            FarVisible(scene, m_pistons[which][leg]);
+            FarVisible(scene, m_feet[which][leg]);
+            for (int side = 0; side < 2; ++side)
+            {
+                m_podDoors[which][leg][side].Build(scene, meshes, nullptr, std::make_shared<ModelAsset>(PodDoorModel(side)), Pose(GearHinge(leg)), 0,
+                                                   name + "door" + std::to_string(side) + "_");
+                FarVisible(scene, m_podDoors[which][leg][side]);
+            }
         }
         m_stairLanding[which].Build(scene, meshes, nullptr, std::make_shared<ModelAsset>(StairLandingModel()), Pose(glm::vec3(0.0f)), 0,
                                     prefix + "stair_landing_");
@@ -1167,6 +1178,15 @@ void ShipMap::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, Le
                                  prefix + "stair_ramp_");
         FarVisible(scene, m_stairLanding[which]);
         FarVisible(scene, m_stairRamp[which]);
+        for (int side = 0; side < 2; ++side)
+        {
+            m_stairRails[which][side].Build(scene, meshes, nullptr, std::make_shared<ModelAsset>(StairRailModel(side)), Pose(glm::vec3(0.0f)), 0,
+                                            prefix + "stair_rail" + std::to_string(side) + "_");
+            m_stairPosts[which][side].Build(scene, meshes, nullptr, std::make_shared<ModelAsset>(StairPostModel(side)), Pose(glm::vec3(0.0f)), 0,
+                                            prefix + "stair_post" + std::to_string(side) + "_");
+            FarVisible(scene, m_stairRails[which][side]);
+            FarVisible(scene, m_stairPosts[which][side]);
+        }
     }
     m_fittingsSet = false;
     if (lights != nullptr)
@@ -1257,12 +1277,26 @@ const float kStairSlope = std::atan2(kStairDrop, kStairRun);
 const float kStairSlide = (kStairInner - kStairEdge) + kStairLength + 0.3f;
 // How far below the deck it drops before it slides in: its rails, a metre over it, below the floor.
 constexpr float kStairDropBelow = 1.15f;
-// The legs: where each hangs from (under the belly, clear of the bay doors), and the ground below.
-constexpr float kLegTop = -kSlab - 0.4f + 0.13f;
-const glm::vec2 kLegs[] = {{-3.0f, -6.5f}, {3.0f, -6.5f}, {-4.8f, 16.0f}, {4.8f, 16.0f}};
+// The legs. Each folds into a pod of its own under the belly -- the forward pair forward, the aft pair aft, clear of the stair and
+// the bay doors -- its doors opening first; the strut swings down from its hinge, and the piston runs out of it to put the
+// foot on the ground. The foot stays level all the way, folded flat in the pod or flat on the ground.
+constexpr float kBelly = -kSlab - 0.4f;
+constexpr float kPodDepth = 0.62f;
+constexpr float kPodHalf = 0.42f;
+constexpr float kPodLength = 1.75f;
+constexpr float kPodBehind = 0.28f; // how far the pod runs on the other side of the hinge
+constexpr float kLegTop = kBelly - 0.3f;
+constexpr float kStrut = 0.72f;
+constexpr float kFootThick = 0.14f;
+constexpr float kFootHalf = 0.38f;
+// How far the piston runs out, to put the foot on the ground.
+const float kPiston = (kLegTop - kFieldGround) - kStrut - kFootThick;
+const glm::vec2 kLegs[] = {{-2.6f, -10.4f}, {2.6f, -10.4f}, {-5.0f, 15.4f}, {5.0f, 15.4f}};
+// The stair's housing under the belly, which it slides into, open on the side it comes out of.
+constexpr float kHousingDeep = 0.6f;
 // How long each takes to come down or go up: the gear, the stair round the rooms, and on the stage -- where a cinematic has only
 // a moment between the ship's lifting and its legs being out of the way.
-constexpr float kGearSeconds = 2.2f;
+constexpr float kGearSeconds = 3.2f;
 constexpr float kStairSeconds = 3.0f;
 constexpr float kStageStairSeconds = 1.4f;
 
@@ -1280,18 +1314,98 @@ glm::vec3 ShipMap::GearHinge(int leg)
     return {at.x, kLegTop, at.y};
 }
 
-ModelAsset ShipMap::GearLegModel()
+ModelAsset ShipMap::GearStrutModel()
 {
-    // A strut down from its hinge to a foot on the ground, a ram behind it; hanging down as built.
+    // The strut, hanging from its hinge: a knuckle across the top, the oleo body, a collar at its end where the piston leaves
+    // it, and a ram down its back.
     ModelAsset model;
-    model.name = "gear_leg";
-    const float g = kFieldGround - kLegTop;
-    const glm::vec3 metal{0.36f, 0.37f, 0.38f};
-    const glm::vec3 dark{0.16f, 0.17f, 0.18f};
-    HullBox(model, "gear_leg", {-0.22f, g + 0.45f, -0.22f}, {0.22f, 0.0f, 0.22f}, metal, 0.5f, 0.8f);
-    HullBox(model, "gear_ram", {-0.12f, g + 0.45f, 0.3f}, {0.12f, -0.33f, 0.55f}, dark, 0.4f, 0.9f);
-    HullBox(model, "gear_foot", {-0.7f, g + 0.12f, -0.7f}, {0.7f, g + 0.45f, 0.7f}, dark, 0.6f, 0.7f);
+    model.name = "gear_strut";
+    const glm::vec3 metal{0.42f, 0.43f, 0.44f};
+    const glm::vec3 dark{0.15f, 0.16f, 0.17f};
+    HullCylinder(model, "strut_knuckle", {0.0f, 0.0f, 0.0f}, 0.24f, 0.7f, {0.0f, 0.0f, 90.0f}, dark, 0.8f);
+    HullCylinder(model, "strut_body", {0.0f, -kStrut * 0.5f, 0.0f}, 0.26f, kStrut, {0.0f, 0.0f, 0.0f}, metal, 0.85f);
+    HullCylinder(model, "strut_collar", {0.0f, -kStrut + 0.05f, 0.0f}, 0.31f, 0.1f, {0.0f, 0.0f, 0.0f}, dark, 0.8f);
+    HullBox(model, "strut_ram", {-0.06f, -kStrut * 0.85f, 0.15f}, {0.06f, -0.05f, 0.25f}, dark, 0.45f, 0.8f);
     return model;
+}
+
+ModelAsset ShipMap::GearPistonModel()
+{
+    // The piston: polished, its end at the origin and the rest of it up inside the strut.
+    ModelAsset model;
+    model.name = "gear_piston";
+    HullCylinder(model, "piston", {0.0f, kPiston * 0.5f + 0.02f, 0.0f}, 0.16f, kPiston + 0.04f, {0.0f, 0.0f, 0.0f}, {0.7f, 0.71f, 0.72f}, 0.95f);
+    return model;
+}
+
+ModelAsset ShipMap::GearFootModel()
+{
+    // The foot under the piston's end: a ball joint and a broad pad, ridged underneath.
+    ModelAsset model;
+    model.name = "gear_foot";
+    const glm::vec3 dark{0.15f, 0.16f, 0.17f};
+    HullCylinder(model, "foot_joint", {0.0f, -0.04f, 0.0f}, 0.22f, 0.12f, {0.0f, 0.0f, 0.0f}, dark, 0.8f);
+    HullBox(model, "foot_pad", {-kFootHalf, -kFootThick, -kFootHalf}, {kFootHalf, -0.07f, kFootHalf}, dark, 0.7f, 0.6f);
+    HullBox(model, "foot_rim", {-kFootHalf - 0.03f, -kFootThick - 0.01f, -kFootHalf - 0.03f}, {kFootHalf + 0.03f, -kFootThick + 0.03f, kFootHalf + 0.03f},
+            {0.30f, 0.31f, 0.32f}, 0.6f, 0.7f);
+    return model;
+}
+
+ModelAsset ShipMap::PodDoorModel(int side)
+{
+    // Half of a pod's underside, from the hinge along its outer edge across to the middle, the length of the pod.
+    ModelAsset model;
+    model.name = "gear_door";
+    const float across = side == 0 ? kPodHalf : -kPodHalf;
+    HullBox(model, "door_panel", {std::min(0.0f, across), -0.04f, -kPodLength * 0.5f}, {std::max(0.0f, across), 0.0f, kPodLength * 0.5f},
+            {0.3f, 0.31f, 0.33f}, 0.6f, 0.4f);
+    HullBox(model, "door_stripe", {std::min(0.0f, across * 0.15f), -0.045f, -kPodLength * 0.5f}, {std::max(0.0f, across * 0.15f), -0.04f, kPodLength * 0.5f},
+            {0.72f, 0.55f, 0.1f}, 0.7f, 0.0f);
+    return model;
+}
+
+namespace
+{
+
+// Where along the pod its middle is, from the hinge: the way the leg folds.
+float PodMiddle(int leg)
+{
+    const float way = leg < 2 ? -1.0f : 1.0f;
+    return way * (kPodLength * 0.5f - kPodBehind);
+}
+
+} // namespace
+
+void ShipMap::GearHousings(ModelAsset& hull)
+{
+    const glm::vec3 shell{0.24f, 0.25f, 0.27f};
+    const glm::vec3 lining{0.07f, 0.075f, 0.08f};
+    const float bottom = kBelly - kPodDepth;
+    for (int leg = 0; leg < 4; ++leg)
+    {
+        const glm::vec3 hinge = GearHinge(leg);
+        const float mid = hinge.z + PodMiddle(leg);
+        const float z0 = mid - kPodLength * 0.5f;
+        const float z1 = mid + kPodLength * 0.5f;
+        const std::string n = "gear_pod" + std::to_string(leg);
+        // Its sides and ends, open underneath where its doors are; dark inside.
+        HullBox(hull, n + "_side_a", {hinge.x - kPodHalf - 0.07f, bottom, z0 - 0.07f}, {hinge.x - kPodHalf, kBelly + 0.02f, z1 + 0.07f}, shell);
+        HullBox(hull, n + "_side_b", {hinge.x + kPodHalf, bottom, z0 - 0.07f}, {hinge.x + kPodHalf + 0.07f, kBelly + 0.02f, z1 + 0.07f}, shell);
+        HullBox(hull, n + "_end_a", {hinge.x - kPodHalf, bottom, z0 - 0.07f}, {hinge.x + kPodHalf, kBelly + 0.02f, z0}, shell);
+        HullBox(hull, n + "_end_b", {hinge.x - kPodHalf, bottom, z1}, {hinge.x + kPodHalf, kBelly + 0.02f, z1 + 0.07f}, shell);
+        HullBox(hull, n + "_lining", {hinge.x - kPodHalf, kBelly - 0.02f, z0}, {hinge.x + kPodHalf, kBelly + 0.01f, z1}, lining);
+    }
+    // The stair's housing: under the floor where the stair goes when it is put away, open on the boarding side.
+    const float from = KestrelStation::kAirlockFrom - kStairWide - 0.12f;
+    const float to = KestrelStation::kAirlockTo + kStairWide + 0.12f;
+    const float inboard = kStairInner + kStairSlide + 0.15f;
+    const float outboard = -kHalf - kWallT;
+    const float low = kBelly - kHousingDeep;
+    HullBox(hull, "stair_housing_floor", {outboard, low - 0.06f, from - 0.06f}, {inboard + 0.06f, low, to + 0.06f}, shell);
+    HullBox(hull, "stair_housing_side_a", {outboard, low, from - 0.06f}, {inboard + 0.06f, kBelly + 0.02f, from}, shell);
+    HullBox(hull, "stair_housing_side_b", {outboard, low, to}, {inboard + 0.06f, kBelly + 0.02f, to + 0.06f}, shell);
+    HullBox(hull, "stair_housing_end", {inboard, low, from}, {inboard + 0.06f, kBelly + 0.02f, to}, shell);
+    HullBox(hull, "stair_housing_lining", {outboard, kBelly - 0.02f, from}, {inboard, kBelly + 0.01f, to}, lining);
 }
 
 ModelAsset ShipMap::StairLandingModel()
@@ -1304,17 +1418,56 @@ ModelAsset ShipMap::StairLandingModel()
     const float from = KestrelStation::kAirlockFrom - kStairWide;
     const float to = KestrelStation::kAirlockTo + kStairWide;
     HullBox(model, "stair_landing", {kStairEdge, kStairTop - 0.2f, from}, {kStairInner, kStairTop, to}, steel, 0.6f, 0.6f);
-    for (const float z : {from - 0.1f, to + 0.1f})
+    HullBox(model, "stair_landing_lip", {kStairEdge, kStairTop - 0.24f, from}, {kStairEdge + 0.06f, kStairTop - 0.2f, to}, dark, 0.5f, 0.7f);
+    return model;
+}
+
+namespace
+{
+
+// Which side of the stair a rail or post is on: along the door's forward edge (0) or its aft (1).
+float StairSide(int side)
+{
+    return side == 0 ? KestrelStation::kAirlockFrom - kStairWide - 0.1f : KestrelStation::kAirlockTo + kStairWide + 0.1f;
+}
+
+// A rail or post folded flat inwards across the stair (1) or standing (0): turned about the line along its foot.
+glm::quat StairFold(int side, float folded)
+{
+    return glm::angleAxis((side == 0 ? 1.5707963f : -1.5707963f) * folded, glm::vec3(1.0f, 0.0f, 0.0f));
+}
+
+} // namespace
+
+ModelAsset ShipMap::StairPostModel(int side)
+{
+    ModelAsset model;
+    model.name = "stair_post";
+    const float z = StairSide(side);
+    HullBox(model, "stair_post", {kStairEdge, kStairTop, z - 0.04f}, {kStairEdge + 0.08f, kStairTop + 1.0f, z + 0.04f}, {0.17f, 0.18f, 0.19f}, 0.5f, 0.7f);
+    return model;
+}
+
+ModelAsset ShipMap::StairRailModel(int side)
+{
+    // A metre over the ramp, on stanchions; built level with the ramp, as it is.
+    ModelAsset model;
+    model.name = "stair_rail";
+    const glm::vec3 steel{0.36f, 0.38f, 0.40f};
+    const glm::vec3 hazard{0.80f, 0.62f, 0.12f};
+    const float z = StairSide(side);
+    HullBox(model, "stair_rail", {kStairEdge - kStairLength, kStairTop + 0.95f, z - 0.04f}, {kStairEdge, kStairTop + 1.0f, z + 0.04f}, hazard, 0.6f, 0.3f);
+    for (float x = kStairEdge - 0.6f; x > kStairEdge - kStairLength; x -= 1.5f)
     {
-        HullBox(model, "stair_post", {kStairEdge, kStairTop, z - 0.04f}, {kStairEdge + 0.08f, kStairTop + 1.0f, z + 0.04f}, dark, 0.5f, 0.7f);
+        HullBox(model, "stair_stanchion", {x - 0.04f, kStairTop, z - 0.03f}, {x + 0.04f, kStairTop + 0.95f, z + 0.03f}, steel, 0.5f, 0.7f);
     }
     return model;
 }
 
 ModelAsset ShipMap::StairRampModel()
 {
-    // The ramp out from the landing's edge, level as built (it is swung down to the ground: UpdateFittings), rails either side
-    // a metre over it, hazard treads across it.
+    // The ramp out from the landing's edge, level as built (it is swung down to the ground: UpdateFittings), hazard treads across
+    // it; its rails are pieces of their own (StairRailModel), which fold.
     ModelAsset model;
     model.name = "stair_ramp";
     const glm::vec3 steel{0.36f, 0.38f, 0.40f};
@@ -1322,15 +1475,6 @@ ModelAsset ShipMap::StairRampModel()
     const float from = KestrelStation::kAirlockFrom - kStairWide;
     const float to = KestrelStation::kAirlockTo + kStairWide;
     HullBox(model, "stair_ramp", {kStairEdge - kStairLength, kStairTop - 0.2f, from}, {kStairEdge, kStairTop, to}, steel, 0.6f, 0.6f);
-    for (const float z : {from - 0.1f, to + 0.1f})
-    {
-        HullBox(model, "stair_rail", {kStairEdge - kStairLength, kStairTop + 0.95f, z - 0.04f}, {kStairEdge, kStairTop + 1.0f, z + 0.04f}, hazard, 0.6f,
-                0.3f);
-        for (float x = kStairEdge - 0.6f; x > kStairEdge - kStairLength; x -= 1.5f)
-        {
-            HullBox(model, "stair_stanchion", {x - 0.04f, kStairTop, z - 0.03f}, {x + 0.04f, kStairTop + 0.95f, z + 0.03f}, steel, 0.5f, 0.7f);
-        }
-    }
     for (int i = 0; i < 12; ++i)
     {
         const float x = kStairEdge - kStairLength * (static_cast<float>(i) + 0.5f) / 12.0f;
@@ -1393,6 +1537,17 @@ void ShipMap::UpdateFittings(Scene& scene, MeshLibrary& meshes, float dt)
         m_stairRamp[0].Build(scene, meshes, physics, std::make_shared<ModelAsset>(StairRampModel()), ramp, m_group, "ship_stair_ramp_");
         FarVisible(scene, m_stairLanding[0]);
         FarVisible(scene, m_stairRamp[0]);
+        for (int side = 0; side < 2; ++side)
+        {
+            m_stairRails[0][side].Clear(scene, m_physics);
+            m_stairPosts[0][side].Clear(scene, m_physics);
+            m_stairRails[0][side].Build(scene, meshes, physics, std::make_shared<ModelAsset>(StairRailModel(side)), ramp, m_group,
+                                        "ship_stair_rail" + std::to_string(side) + "_");
+            m_stairPosts[0][side].Build(scene, meshes, physics, std::make_shared<ModelAsset>(StairPostModel(side)), home, m_group,
+                                        "ship_stair_post" + std::to_string(side) + "_");
+            FarVisible(scene, m_stairRails[0][side]);
+            FarVisible(scene, m_stairPosts[0][side]);
+        }
     }
     ShowFittings(scene, 0);
     ShowFittings(scene, 1);
@@ -1412,20 +1567,45 @@ void ShipMap::ShowFittings(Scene& scene, int which)
         return CinePose{ship.position + turn * (atHome - home.position), turn * home.rotation * rotation};
     };
     const bool hidden = hull.Hidden();
-    // The legs: hanging down, or folded up against the belly -- forward ones forward, aft ones aft.
-    const float fold = (1.0f - Eased(m_gearDown[which])) * 1.5707963f;
+    // The legs, coming down: the pod's doors opening, the strut swinging down out of it, then the piston running out to put the
+    // foot on the ground (a little past, and settling); going up the same backwards. All the way up, doors shut, nothing shows.
+    const float t = m_gearDown[which];
+    const float doors = Eased(t / 0.22f) * 1.8f;
+    const float fold = (1.0f - Eased((t - 0.16f) / 0.5f)) * 1.5707963f;
+    const float run = Eased((t - 0.62f) / 0.3f);
+    const float settle = t > 0.9f ? 0.025f * std::sin((t - 0.9f) / 0.1f * 3.14159265f) : 0.0f;
+    const float extension = run * kPiston + settle;
+    const bool stowed = t <= 0.0f;
     for (int leg = 0; leg < 4; ++leg)
     {
-        VehicleProp& prop = m_legs[which][leg];
-        prop.SetHidden(scene, hidden);
-        prop.Show(scene, place(GearHinge(leg), glm::angleAxis(leg < 2 ? fold : -fold, glm::vec3(1.0f, 0.0f, 0.0f))));
+        const glm::vec3 hinge = GearHinge(leg);
+        const glm::quat swing = glm::angleAxis(leg < 2 ? fold : -fold, glm::vec3(1.0f, 0.0f, 0.0f));
+        const glm::vec3 end = hinge + swing * glm::vec3(0.0f, -kStrut - extension, 0.0f);
+        for (VehicleProp* prop : {&m_struts[which][leg], &m_pistons[which][leg], &m_feet[which][leg]})
+        {
+            prop->SetHidden(scene, hidden || stowed);
+        }
+        m_struts[which][leg].Show(scene, place(hinge, swing));
+        m_pistons[which][leg].Show(scene, place(end, swing));
+        m_feet[which][leg].Show(scene, place(end, glm::quat(1.0f, 0.0f, 0.0f, 0.0f)));
+        // The doors, either side of the pod's underside, hinged along its outer edges.
+        const float mid = PodMiddle(leg);
+        for (int side = 0; side < 2; ++side)
+        {
+            const float edge = side == 0 ? -kPodHalf : kPodHalf;
+            const glm::vec3 at = glm::vec3(hinge.x + edge, kBelly - kPodDepth, hinge.z + mid);
+            m_podDoors[which][leg][side].SetHidden(scene, hidden);
+            m_podDoors[which][leg][side].Show(scene, place(at, glm::angleAxis(side == 0 ? -doors : doors, glm::vec3(0.0f, 0.0f, 1.0f))));
+        }
     }
-    // The stair, coming out: sliding out from its slot under the belly, rising to the door's sill, then the ramp swinging down
-    // from level. Put away it goes the other way -- dropped below the floor before it slides in, so its rails never pass through
-    // the rooms -- and, all the way in, it is not drawn at all.
+    // The stair, coming out: sliding out of its housing under the belly, rising to the door's sill, its rails and posts standing
+    // up, then the ramp swinging down from level. Put away it goes the other way -- the ramp up level, the rails folded flat
+    // across it, then dropped below the belly and slid into the housing, so nothing of it passes through the ship -- and, all
+    // the way in, it is not drawn at all.
     const float out = m_stairOut[which];
-    const float swing = Eased((out - 0.6f) / 0.4f) * kStairSlope;
-    const float drop = (1.0f - Eased((out - 0.35f) / 0.25f)) * kStairDropBelow;
+    const float swing = Eased((out - 0.7f) / 0.3f) * kStairSlope;
+    const float folded = 1.0f - Eased((out - 0.55f) / 0.15f);
+    const float drop = (1.0f - Eased((out - 0.35f) / 0.2f)) * kStairDropBelow;
     const float slide = (1.0f - Eased(out / 0.35f)) * kStairSlide;
     const glm::vec3 shift{slide, -drop, 0.0f};
     const bool away = out <= 0.0f;
@@ -1434,7 +1614,18 @@ void ShipMap::ShowFittings(Scene& scene, int which)
     m_stairLanding[which].Show(scene, place(shift, glm::quat(1.0f, 0.0f, 0.0f, 0.0f)));
     const glm::quat tilt = glm::angleAxis(swing, glm::vec3(0.0f, 0.0f, 1.0f));
     const glm::vec3 hinge{kStairEdge, kStairTop, 0.0f};
-    m_stairRamp[which].Show(scene, place(shift + hinge - tilt * hinge, tilt));
+    const glm::vec3 rampAt = shift + hinge - tilt * hinge;
+    m_stairRamp[which].Show(scene, place(rampAt, tilt));
+    // Each rail turned about the line along its foot on the ramp, and each post about its foot on the landing.
+    for (int side = 0; side < 2; ++side)
+    {
+        const glm::quat fold = StairFold(side, folded);
+        const glm::vec3 foot{0.0f, kStairTop, StairSide(side)};
+        m_stairRails[which][side].SetHidden(scene, hidden || away);
+        m_stairPosts[which][side].SetHidden(scene, hidden || away);
+        m_stairRails[which][side].Show(scene, place(rampAt + tilt * (foot - fold * foot), tilt * fold));
+        m_stairPosts[which][side].Show(scene, place(shift + (foot - fold * foot), fold));
+    }
 }
 
 std::vector<glm::vec4> ShipMap::DeckPlan(int deck)

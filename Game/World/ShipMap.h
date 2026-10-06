@@ -124,12 +124,21 @@ public:
     // Each leg folding down from its hinge under the belly to stand on, or up against it; the stair swinging down from the
     // boarding door to the ground, or up level and in under the floor. Solid only standing (the stair, all the way out).
     void UpdateFittings(Scene& scene, MeshLibrary& meshes, float dt);
-    // A leg (0 to 3: forward to port and starboard, aft to port and starboard), the stair's landing at the door, and its ramp,
-    // each about its own hinge, in the ship's frame: the leg hanging down, the ramp level.
-    static ModelAsset GearLegModel();
+    // A leg's pieces (legs 0 to 3: forward to port and starboard, aft to port and starboard) -- its strut down from the hinge,
+    // the piston that runs out of it, the foot on the end, a door of its pod -- and the stair's landing at the door and its
+    // ramp, each about its own hinge or end, in the ship's frame: the strut hanging down, the ramp level.
+    static ModelAsset GearStrutModel();
+    static ModelAsset GearPistonModel();
+    static ModelAsset GearFootModel();
+    static ModelAsset PodDoorModel(int side);
     static ModelAsset StairLandingModel();
     static ModelAsset StairRampModel();
+    // The stair's rail along one side of the ramp (0 the door's forward side, 1 its aft), and the post at one side of the landing.
+    static ModelAsset StairRailModel(int side);
+    static ModelAsset StairPostModel(int side);
     static glm::vec3 GearHinge(int leg);
+    // The pods the legs fold into and the housing the stair slides into, under the belly: part of the hull.
+    static void GearHousings(ModelAsset& hull);
     // Whether the ship is standing at an outpost: the outpost round it (Kestrel Station, or another world's), solid to walk on
     // and into, its lamps lit; built again only for another outpost or another world's colours.
     void SetField(Scene& scene, MeshLibrary& meshes, bool shown, const FieldLook& look);
@@ -200,9 +209,15 @@ private:
     VehicleProp m_stageHull;
     // The gear and the stair round the rooms ([0]) and on the stage ([1]): their pieces, how far down or out each is (0 to 1),
     // and how it is wanted; whether the stair round the rooms is solid now.
-    VehicleProp m_legs[2][4];
+    VehicleProp m_struts[2][4];
+    VehicleProp m_pistons[2][4];
+    VehicleProp m_feet[2][4];
+    VehicleProp m_podDoors[2][4][2];
     VehicleProp m_stairLanding[2];
     VehicleProp m_stairRamp[2];
+    // Its rails either side of the ramp, and the posts either side of the landing, which fold flat before it goes in.
+    VehicleProp m_stairRails[2][2];
+    VehicleProp m_stairPosts[2][2];
     float m_gearDown[2] = {0.0f, 0.0f};
     bool m_gearWanted[2] = {false, false};
     float m_stairOut[2] = {0.0f, 0.0f};
