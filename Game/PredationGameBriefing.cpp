@@ -340,7 +340,7 @@ void PredationGame::DrawBriefingScreens()
             std::string below = left ? "NAVIGATION MAP AT THE TABLE" : "DESTINATION";
             if (!left && target != nullptr)
             {
-                const float distance = glm::length(system->Position(target->index, m_campaign.clock) - m_campaign.travel.position);
+                const float distance = glm::length(system->Position(target->index, m_campaign.clock) - glm::vec3(m_campaign.travel.position));
                 below = "ARRIVING IN " + seconds(Travel::Seconds(distance, DriveTier()));
             }
             centred(below, 150, kSoft, 2);
@@ -568,7 +568,7 @@ void PredationGame::DrawHelmScreen(const std::string& clock)
         second = target != nullptr ? Upper(target->name) : "COMING TO A STOP";
         if (target != nullptr)
         {
-            const float left = glm::length(system->Position(target->index, m_campaign.clock) - m_campaign.travel.position);
+            const float left = glm::length(system->Position(target->index, m_campaign.clock) - glm::vec3(m_campaign.travel.position));
             third = "ARRIVING IN " + seconds(Travel::Seconds(left, DriveTier()));
         }
     }

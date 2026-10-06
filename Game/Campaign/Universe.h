@@ -286,6 +286,9 @@ struct StarSystem
     // Where a body is at `time` on the campaign's clock, in astronomical units from the star. A moon's place is its
     // planet's plus its own (drawn larger than life, so it is not lost inside its planet on the map).
     glm::vec3 Position(int index, double time) const;
+    // The same in double precision: what the ship near a small body is measured against, where a float's steps at an
+    // astronomical unit from the star are a noticeable part of the body's size.
+    glm::dvec3 PositionD(int index, double time) const;
     // How high the star stands over a place on a body at `time`: the sine of its height over the horizon there (1
     // overhead, 0 on the horizon, below 0 night), from where the body is and how far round it has turned.
     float SunHeight(int index, const glm::vec2& latLon, double time) const;

@@ -735,21 +735,30 @@ bool Body::HasSpecial(const std::string& id) const
 
 glm::vec3 StarSystem::Position(int index, double time) const
 {
+    return glm::vec3(PositionD(index, time));
+}
+
+glm::dvec3 StarSystem::PositionD(int index, double time) const
+{
     const Body* body = Find(index);
     if (body == nullptr)
     {
-        return glm::vec3(0.0f);
+        return glm::dvec3(0.0);
     }
+    // In double throughout: an angle in float steps by millionths of a turn, which at an astronomical unit out is tens of
+    // kilometres -- and a body seen from orbit jumped along its way in steps of them.
     const double turns = time / static_cast<double>(std::max(body->period, 1.0f));
-    const float angle = body->phase + static_cast<float>(std::fmod(turns, 1.0) * static_cast<double>(kTau));
+    const double angle = static_cast<double>(body->phase) + (turns - std::floor(turns)) * 6.283185307179586;
     if (body->kind == BodyKind::Moon)
     {
         const Body* planet = Find(body->parent);
-        const glm::vec3 around = Position(body->parent, time);
-        const float reach = body->orbit * (planet != nullptr ? planet->radius : 1.0f) * kEarthRadiusAu;
-        return around + glm::vec3(std::cos(angle) * reach, std::sin(angle) * reach * body->inclination, std::sin(angle) * reach);
+        const glm::dvec3 around = PositionD(body->parent, time);
+        const double reach = static_cast<double>(body->orbit) * static_cast<double>(planet != nullptr ? planet->radius : 1.0f) *
+                             static_cast<double>(kEarthRadiusAu);
+        return around + glm::dvec3(std::cos(angle) * reach, std::sin(angle) * reach * body->inclination, std::sin(angle) * reach);
     }
-    return {std::cos(angle) * body->orbit, std::sin(angle) * body->orbit * body->inclination, std::sin(angle) * body->orbit};
+    const double orbit = static_cast<double>(body->orbit);
+    return {std::cos(angle) * orbit, std::sin(angle) * orbit * body->inclination, std::sin(angle) * orbit};
 }
 
 glm::vec3 StarSystem::SunOver(int index, double time, float* spin) const

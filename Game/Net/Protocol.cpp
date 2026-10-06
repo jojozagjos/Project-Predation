@@ -1064,13 +1064,38 @@ bool ReadMapView(BitReader& reader, MapViewMessage& out)
     return !reader.Overran();
 }
 
-void WriteTravel(BitWriter& writer, const TravelMessage& message)
+namespace
+{
+
+void WriteDouble(BitWriter& writer, double value)
 {
     uint64_t bits = 0;
-    static_assert(sizeof(bits) == sizeof(message.clock));
-    std::memcpy(&bits, &message.clock, sizeof(bits));
+    static_assert(sizeof(bits) == sizeof(value));
+    std::memcpy(&bits, &value, sizeof(bits));
     writer.WriteUInt(static_cast<uint32_t>(bits & 0xFFFFFFFFu));
     writer.WriteUInt(static_cast<uint32_t>(bits >> 32));
+}
+
+double ReadDouble(BitReader& reader)
+{
+    const uint64_t low = reader.ReadUInt();
+    const uint64_t high = reader.ReadUInt();
+    const uint64_t bits = low | (high << 32);
+    double value = 0.0;
+    std::memcpy(&value, &bits, sizeof(bits));
+    return value;
+}
+
+bool Finite(const glm::vec3& v)
+{
+    return std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z);
+}
+
+} // namespace
+
+void WriteTravel(BitWriter& writer, const TravelMessage& message)
+{
+    WriteDouble(writer, message.clock);
     writer.WriteUInt(static_cast<uint32_t>(message.system & 0xFFFFFFFFu));
     writer.WriteUInt(static_cast<uint32_t>(message.system >> 32));
     writer.WriteBool(message.underway);
@@ -1080,20 +1105,28 @@ void WriteTravel(BitWriter& writer, const TravelMessage& message)
     writer.WriteSignedBits(message.region, 8);
     for (int i = 0; i < 3; ++i)
     {
-        writer.WriteFloat(message.position[i]);
+        WriteDouble(writer, message.position[i]);
     }
     for (int i = 0; i < 3; ++i)
     {
         writer.WriteFloat(message.velocity[i]);
     }
+    writer.WriteSignedBits(message.from, 8);
+    WriteDouble(writer, message.setOut);
+    WriteDouble(writer, message.orbitSince);
+    for (int i = 0; i < 3; ++i)
+    {
+        writer.WriteFloat(message.departWay[i]);
+    }
+    for (int i = 0; i < 3; ++i)
+    {
+        writer.WriteFloat(message.orbitOut[i]);
+    }
 }
 
 bool ReadTravel(BitReader& reader, TravelMessage& out)
 {
-    const uint64_t low = reader.ReadUInt();
-    const uint64_t high = reader.ReadUInt();
-    const uint64_t bits = low | (high << 32);
-    std::memcpy(&out.clock, &bits, sizeof(bits));
+    out.clock = ReadDouble(reader);
     const uint64_t systemLow = reader.ReadUInt();
     const uint64_t systemHigh = reader.ReadUInt();
     out.system = systemLow | (systemHigh << 32);
@@ -1104,14 +1137,25 @@ bool ReadTravel(BitReader& reader, TravelMessage& out)
     out.region = static_cast<int8_t>(reader.ReadSignedBits(8));
     for (int i = 0; i < 3; ++i)
     {
-        out.position[i] = reader.ReadFloat();
+        out.position[i] = ReadDouble(reader);
     }
     for (int i = 0; i < 3; ++i)
     {
         out.velocity[i] = reader.ReadFloat();
     }
-    if (!std::isfinite(out.clock) || !std::isfinite(out.position.x) || !std::isfinite(out.position.y) || !std::isfinite(out.position.z) ||
-        !std::isfinite(out.velocity.x) || !std::isfinite(out.velocity.y) || !std::isfinite(out.velocity.z))
+    out.from = static_cast<int8_t>(reader.ReadSignedBits(8));
+    out.setOut = ReadDouble(reader);
+    out.orbitSince = ReadDouble(reader);
+    for (int i = 0; i < 3; ++i)
+    {
+        out.departWay[i] = reader.ReadFloat();
+    }
+    for (int i = 0; i < 3; ++i)
+    {
+        out.orbitOut[i] = reader.ReadFloat();
+    }
+    if (!std::isfinite(out.clock) || !std::isfinite(out.setOut) || !std::isfinite(out.orbitSince) || !std::isfinite(out.position.x) || !std::isfinite(out.position.y) || !std::isfinite(out.position.z) ||
+        !Finite(out.velocity) || !Finite(out.departWay) || !Finite(out.orbitOut))
     {
         return false;
     }

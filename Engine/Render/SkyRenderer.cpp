@@ -1,6 +1,7 @@
 #include "Engine/Render/SkyRenderer.h"
 
 #include "Engine/Core/Log.h"
+#include "Engine/Render/DepthConvention.h"
 #include "Engine/Render/Renderer.h"
 #include "Engine/Render/ShaderLibrary.h"
 #include "Engine/Scene/Scene.h"
@@ -26,6 +27,7 @@ bool SkyRenderer::Init(ShaderLibrary& shaders)
     m_triangle = bgfx::createVertexBuffer(bgfx::makeRef(kCorners, sizeof(kCorners)), m_layout);
 
     m_uRays = bgfx::createUniform("u_skyRays", bgfx::UniformType::Mat4);
+    m_uDepth = bgfx::createUniform("u_skyDepth", bgfx::UniformType::Vec4);
     m_uZenith = bgfx::createUniform("u_skyZenith", bgfx::UniformType::Vec4);
     m_uHorizon = bgfx::createUniform("u_skyHorizon", bgfx::UniformType::Vec4);
     m_uGround = bgfx::createUniform("u_skyGround", bgfx::UniformType::Vec4);
@@ -47,7 +49,7 @@ bool SkyRenderer::Init(ShaderLibrary& shaders)
 
 void SkyRenderer::Shutdown()
 {
-    const bgfx::UniformHandle uniforms[] = {m_uRays, m_uZenith, m_uHorizon, m_uGround, m_uSun, m_uSunColor,
+    const bgfx::UniformHandle uniforms[] = {m_uRays, m_uDepth, m_uZenith, m_uHorizon, m_uGround, m_uSun, m_uSunColor,
                                             m_uGrade, m_uSpace, m_uPlanet, m_uPlanetA, m_uPlanetB, m_uPlanetC, m_uPlanetD, m_uPlanetE, m_uBodies, m_uRings, m_uRingColor};
     for (const bgfx::UniformHandle handle : uniforms)
     {
@@ -56,7 +58,7 @@ void SkyRenderer::Shutdown()
             bgfx::destroy(handle);
         }
     }
-    m_uRays = m_uZenith = m_uHorizon = m_uGround = BGFX_INVALID_HANDLE;
+    m_uRays = m_uDepth = m_uZenith = m_uHorizon = m_uGround = BGFX_INVALID_HANDLE;
     m_uSun = m_uSunColor = m_uGrade = BGFX_INVALID_HANDLE;
     m_uSpace = m_uPlanet = BGFX_INVALID_HANDLE;
     m_uPlanetA = m_uPlanetB = m_uPlanetC = m_uPlanetD = m_uPlanetE = BGFX_INVALID_HANDLE;
@@ -71,7 +73,7 @@ void SkyRenderer::Shutdown()
 }
 
 void SkyRenderer::Draw(bgfx::ViewId view, const Environment& environment, const glm::mat4& viewMatrix,
-                       const glm::mat4& projection)
+                       const glm::mat4& projection, bool behind)
 {
     if (!IsValid())
     {
@@ -146,10 +148,13 @@ void SkyRenderer::Draw(bgfx::ViewId view, const Environment& environment, const 
     bgfx::setUniform(m_uRingColor, ringColor);
 
     bgfx::setVertexBuffer(0, m_triangle);
-    // No depth write and no depth test: it is drawn first and everything else covers it. Writing
-    // depth at the far plane would be harmless and testing against it costs a comparison per pixel
-    // for an answer that is always the same.
-    bgfx::setState(BGFX_STATE_WRITE_RGB);
+    // Behind a picture already drawn: at the far end of its depth, and only where it is still clear -- so the sky's stars and
+    // glow are worked out for what shows of it, not for the whole picture and then covered. Otherwise drawn first with no
+    // depth at all, and everything else covers it.
+    const float depth[4] = {behind && Depth::Reversed() ? 0.0f : 1.0f, 0.0f, 0.0f, 0.0f};
+    bgfx::setUniform(m_uDepth, depth);
+    const uint64_t test = !behind ? 0 : Depth::Reversed() ? BGFX_STATE_DEPTH_TEST_GEQUAL : BGFX_STATE_DEPTH_TEST_LEQUAL;
+    bgfx::setState(BGFX_STATE_WRITE_RGB | test);
     bgfx::submit(view, m_program);
 }
 

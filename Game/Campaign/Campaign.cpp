@@ -24,6 +24,21 @@ glm::vec3 ReadVec3(const nlohmann::json& object, const char* key, glm::vec3 fall
     return {(*it)[0].get<float>(), (*it)[1].get<float>(), (*it)[2].get<float>()};
 }
 
+nlohmann::json Vec3D(const glm::dvec3& v)
+{
+    return nlohmann::json::array({v.x, v.y, v.z});
+}
+
+glm::dvec3 ReadVec3D(const nlohmann::json& object, const char* key, glm::dvec3 fallback)
+{
+    const auto it = object.find(key);
+    if (it == object.end() || !it->is_array() || it->size() < 3 || !(*it)[0].is_number())
+    {
+        return fallback;
+    }
+    return {(*it)[0].get<double>(), (*it)[1].get<double>(), (*it)[2].get<double>()};
+}
+
 template <typename T>
 std::map<std::string, T> ReadMap(const nlohmann::json& object, const char* key)
 {
@@ -159,10 +174,12 @@ nlohmann::json CampaignState::ToJson() const
     out["colors"] = {{"primary", Vec3(colors.primary)}, {"secondary", Vec3(colors.secondary)}, {"accent", Vec3(colors.accent)}};
     out["location"] = {{"system", system}, {"body", body}, {"region", region}, {"landed", landed}, {"doorOpen", doorOpen}};
     out["plan"] = {{"set", plan.set}, {"toSystem", plan.toSystem}, {"system", plan.system}, {"body", plan.body}, {"region", plan.region}};
-    out["travel"] = {{"underway", travel.underway}, {"position", Vec3(travel.position)}, {"velocity", Vec3(travel.velocity)},
+    out["travel"] = {{"underway", travel.underway}, {"position", Vec3D(travel.position)}, {"velocity", Vec3(travel.velocity)},
                      {"target", travel.target}, {"region", travel.region},
                      {"interstellar", travel.interstellar}, {"toSystem", travel.toSystem}, {"fromGalaxy", Vec3(travel.fromGalaxy)},
-                     {"toGalaxy", Vec3(travel.toGalaxy)}, {"departed", travel.departed}, {"duration", travel.duration}};
+                     {"toGalaxy", Vec3(travel.toGalaxy)}, {"departed", travel.departed}, {"duration", travel.duration},
+                     {"from", travel.from}, {"setOut", travel.setOut}, {"departWay", Vec3(travel.departWay)},
+                     {"orbitOut", Vec3(travel.orbitOut)}, {"orbitSince", travel.orbitSince}};
     nlohmann::json knownJson = nlohmann::json::object();
     for (const auto& [key, bits] : known)
     {
@@ -245,7 +262,7 @@ bool CampaignState::FromJson(const nlohmann::json& json, CampaignState& out, std
         if (const auto travel = json.find("travel"); travel != json.end() && travel->is_object())
         {
             state.travel.underway = travel->value("underway", false);
-            state.travel.position = ReadVec3(*travel, "position", glm::vec3(0.0f));
+            state.travel.position = ReadVec3D(*travel, "position", glm::dvec3(0.0));
             state.travel.velocity = ReadVec3(*travel, "velocity", glm::vec3(0.0f));
             state.travel.target = travel->value("target", -1);
             state.travel.region = travel->value("region", -1);
@@ -255,6 +272,11 @@ bool CampaignState::FromJson(const nlohmann::json& json, CampaignState& out, std
             state.travel.toGalaxy = ReadVec3(*travel, "toGalaxy", glm::vec3(0.0f));
             state.travel.departed = travel->value("departed", 0.0);
             state.travel.duration = travel->value("duration", 0.0f);
+            state.travel.from = travel->value("from", -1);
+            state.travel.setOut = travel->value("setOut", 0.0);
+            state.travel.departWay = ReadVec3(*travel, "departWay", glm::vec3(0.0f));
+            state.travel.orbitOut = ReadVec3(*travel, "orbitOut", glm::vec3(0.0f));
+            state.travel.orbitSince = travel->value("orbitSince", 0.0);
         }
         for (const auto& [key, bits] : ReadMap<int>(json, "known"))
         {

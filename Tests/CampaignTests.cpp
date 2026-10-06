@@ -454,7 +454,7 @@ TEST_CASE("A course across the system goes round the star, never through it, and
     campaign.travel.position = -there;
     campaign.travel.velocity = glm::vec3(0.0f);
     campaign.travel.target = target;
-    const float clearance = Travel::StarClearance(system, campaign.travel.position, there);
+    const float clearance = Travel::StarClearance(system, glm::vec3(campaign.travel.position), there);
     REQUIRE(clearance > 0.0f);
 
     const std::vector<glm::vec3> preview = Travel::Preview(campaign, system, 0, 64);
@@ -472,7 +472,7 @@ TEST_CASE("A course across the system goes round the star, never through it, and
     {
         campaign.clock += 0.05;
         arrived = Travel::Step(campaign, system, 0.05f, 0);
-        closest = std::min(closest, glm::length(campaign.travel.position));
+        closest = std::min(closest, static_cast<float>(glm::length(campaign.travel.position)));
     }
     INFO("kept " << closest << " AU from the star; clearance " << clearance);
     REQUIRE(arrived);
@@ -621,4 +621,78 @@ TEST_CASE("The ship crosses to another system, arrives at its edge, and can be t
     CHECK(back.travel.interstellar);
     CHECK(back.travel.toSystem == first);
     CHECK(back.travel.duration == campaign.travel.duration);
+}
+
+
+TEST_CASE("Setting out from orbit turns first, leaves gently, never passes through a world, and arrives in orbit", "[campaign][travel]")
+{
+    Universe universe;
+    universe.Reset(321, &ShippedData());
+    const StarSystem& system = *universe.System(universe.Home());
+    for (const int destination : {0, 3})
+    {
+        CampaignState campaign = CampaignState::Begin("Flight", 321, universe);
+        const int home = campaign.body;
+        if (destination == home)
+        {
+            continue;
+        }
+        INFO("to " << destination);
+        REQUIRE(Travel::SetCourse(campaign, system, destination));
+        const Body& from = *system.Find(home);
+        const Body& to = *system.Find(destination);
+        const float align = Travel::AlignSeconds(campaign, system);
+        CHECK(align >= 8.0f);
+        CHECK(align <= 22.0f);
+        constexpr float kEarth = 4.26e-5f;
+        bool arrived = false;
+        float closestToAWorld = 1.0e9f;
+        float lastFromHome = 0.0f;
+        bool steadilyAway = true;
+        for (int step = 0; step < 60000 && !arrived; ++step)
+        {
+            campaign.clock += 0.05;
+            arrived = Travel::Step(campaign, system, 0.05f, 0);
+            const double t = campaign.clock - campaign.travel.setOut;
+            // (Arrived, its place is the world's own: it is in orbit of it.)
+            for (const Body* body : {&from, &to})
+            {
+                if (arrived)
+                {
+                    break;
+                }
+                const float distance = static_cast<float>(glm::length(system.PositionD(body->index, campaign.clock) - campaign.travel.position));
+                closestToAWorld = std::min(closestToAWorld, distance / (std::max(body->radius, 0.02f) * kEarth));
+            }
+            const float fromHome = static_cast<float>(glm::length(system.PositionD(home, campaign.clock) - campaign.travel.position));
+            if (t < align)
+            {
+                // Turning: still in orbit, a little higher, carried round with the world.
+                CHECK(fromHome < Travel::OrbitRadius(from) * 1.3f);
+            }
+            else if (t < align + 12.0 && !arrived)
+            {
+                // Then away, gathering way -- seconds in, still near enough to see the world fall away.
+                steadilyAway = steadilyAway && fromHome >= lastFromHome * 0.999f;
+                if (t > align + 5.0 && t < align + 5.05)
+                {
+                    CHECK(fromHome < Travel::OrbitRadius(from) * 12.0f);
+                }
+            }
+            lastFromHome = fromHome;
+        }
+        REQUIRE(arrived);
+        CHECK(steadilyAway);
+        CHECK(campaign.body == destination);
+        // Never inside a world it left or came to.
+        CHECK(closestToAWorld > 1.0f);
+        // In orbit where it came in, from now.
+        CHECK(glm::length(campaign.travel.orbitOut) > 0.99f);
+        CHECK(campaign.travel.orbitSince == campaign.clock);
+        glm::vec3 out;
+        glm::vec3 along;
+        Travel::OrbitFrame(campaign, system, destination, campaign.clock, out, along);
+        CHECK(glm::dot(out, campaign.travel.orbitOut) > 0.999f);
+        CHECK(std::abs(glm::dot(out, along)) < 1.0e-4f);
+    }
 }

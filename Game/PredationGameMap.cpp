@@ -310,10 +310,10 @@ void PredationGame::ChooseLandingRegion(int region)
     // Anywhere else the ship stays up, in orbit, and the shuttle goes down: up off the pad first, if it was on one.
     if (m_campaign.landed && m_map == MapChoice::Ship && !m_cine.Active())
     {
-        m_campaign.landed = false;
+        Travel::Lift(m_campaign);
         PlayLeaving(true);
     }
-    m_campaign.landed = false;
+    Travel::Lift(m_campaign);
     m_campaign.travel.region = region;
     CampaignChanged();
     if (region < 0)
@@ -453,6 +453,11 @@ void PredationGame::UpdateTravel(float dt)
             m_campaign.travel.position = travel.position;
             m_campaign.travel.velocity = travel.velocity;
             m_campaign.travel.region = travel.region;
+            m_campaign.travel.from = travel.from;
+            m_campaign.travel.setOut = travel.setOut;
+            m_campaign.travel.departWay = travel.departWay;
+            m_campaign.travel.orbitOut = travel.orbitOut;
+            m_campaign.travel.orbitSince = travel.orbitSince;
             m_campaign.body = travel.body;
         }
         else if (m_campaign.travel.underway && !m_campaign.travel.interstellar)
@@ -513,7 +518,7 @@ void PredationGame::UpdateTravel(float dt)
                 const float range = SensorRange(SensorTier());
                 for (const Body& body : system->bodies)
                 {
-                    if (glm::length(system->Position(body.index, m_campaign.clock) - m_campaign.travel.position) <= range &&
+                    if (glm::length(system->Position(body.index, m_campaign.clock) - glm::vec3(m_campaign.travel.position)) <= range &&
                         m_campaign.Learn(m_campaign.system, body.index, CampaignState::kKnownScanned))
                     {
                         m_campaign.AddLog("planet", CampaignState::BodyKey(m_campaign.system, body.index), body.name,
@@ -539,6 +544,11 @@ void PredationGame::UpdateTravel(float dt)
                 travel.region = static_cast<int8_t>(std::clamp(m_campaign.travel.region, -1, 127));
                 travel.position = m_campaign.travel.position;
                 travel.velocity = m_campaign.travel.velocity;
+                travel.from = static_cast<int8_t>(std::clamp(m_campaign.travel.from, -1, 127));
+                travel.setOut = m_campaign.travel.setOut;
+                travel.departWay = m_campaign.travel.departWay;
+                travel.orbitOut = m_campaign.travel.orbitOut;
+                travel.orbitSince = m_campaign.travel.orbitSince;
                 m_host.SendTravel(travel);
             }
         }

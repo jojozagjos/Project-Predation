@@ -10806,9 +10806,9 @@ void PredationGame::OnRender()
         // was standing last time it saw one is worse than no reflection at all.
         app.GetSceneRenderer().NoReflection();
     }
-    // The sky first, into the same view, so the world covers it where there is world.
-    app.GetSkyRenderer().Draw(Renderer::kViewSky, m_scene.GetEnvironment(),
-                              app.GetRenderer().ViewMatrix(), app.GetRenderer().ProjectionMatrix());
+    // The sky behind the world, where none of it is (the world is drawn first: Renderer::kViewMain), and the bodies in it.
+    app.GetSkyRenderer().Draw(Renderer::kViewSky, m_scene.GetEnvironment(), app.GetRenderer().ViewMatrix(),
+                              app.GetRenderer().ProjectionMatrix(), true);
     DrawSpaceBodies();
     app.GetSceneRenderer().SetCullFrustum(app.GetRenderer().ProjectionMatrix() * app.GetRenderer().ViewMatrix());
     // Out in space the camera sees for kilometres, and the site and the testing area are only one or two away: not in

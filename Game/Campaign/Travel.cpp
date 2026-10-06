@@ -1,6 +1,7 @@
 #include "Game/Campaign/Travel.h"
 
 #include <glm/geometric.hpp>
+#include <glm/gtc/quaternion.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -14,11 +15,42 @@ namespace Travel
 namespace
 {
 
-// How a body is moving, from where it is a moment either side.
+constexpr float kTau = 6.28318530718f;
+constexpr float kEarthRadiusAu = 4.26e-5f;
+// Setting out: the least time to turn and swing round, and how much more for half way round the world; how much higher than
+// its orbit it is when it starts to burn.
+constexpr float kAlignLeast = 8.0f;
+constexpr float kAlignMore = 14.0f;
+constexpr float kClimb = 0.25f;
+// Within this many orbits' heights of the world it leaves it goes straight out the way it set out, gathering way: nothing it
+// steers by can turn it back into the world.
+constexpr float kDepartReach = 25.0f;
+// Into orbit within this much of the orbit's height (a share of it, and at least this much, which is what a float can tell at
+// an astronomical unit from the star).
+constexpr float kArriveShare = 0.05f;
+constexpr float kArriveLeast = 2.0e-7f;
+
+// How a body is moving, from where it is a moment either side -- in double, or a float's steps far out are most of it.
 glm::vec3 BodyVelocity(const StarSystem& system, int body, double clock)
 {
     constexpr double kStep = 0.5;
-    return (system.Position(body, clock + kStep) - system.Position(body, clock - kStep)) / static_cast<float>(kStep * 2.0);
+    return glm::vec3((system.PositionD(body, clock + kStep) - system.PositionD(body, clock - kStep)) / (kStep * 2.0));
+}
+
+// How hard a body is being turned in its orbit: a moon going round its planet fast can pull away from a ship pushing gently.
+float BodyPull(const StarSystem& system, int body, double clock)
+{
+    constexpr double kStep = 0.5;
+    const glm::dvec3 before = system.PositionD(body, clock - kStep);
+    const glm::dvec3 now = system.PositionD(body, clock);
+    const glm::dvec3 after = system.PositionD(body, clock + kStep);
+    return static_cast<float>(glm::length((after - now * 2.0 + before) / (kStep * kStep)));
+}
+
+glm::vec3 Unit(const glm::vec3& v, const glm::vec3& otherwise)
+{
+    const float length = glm::length(v);
+    return length > 1.0e-12f ? v / length : otherwise;
 }
 
 // Where to steer for, to go from one place to another without passing through the star: the place itself, or, while
@@ -62,21 +94,147 @@ float Acceleration(int tier)
 
 float Seconds(float distance, int tier)
 {
-    return 2.0f * std::sqrt(std::max(distance, 0.0f) / Acceleration(tier));
+    // Out and back at full push, and the gentle going near each end: about four of the gentle pace's time constants out and
+    // seven settling in, and the turn before it all.
+    const float gentle = std::sqrt(Gentleness(tier));
+    return 2.0f * std::sqrt(std::max(distance, 0.0f) / Acceleration(tier)) + 11.0f / gentle +
+           (kAlignLeast + kAlignMore * 0.5f) / (1.0f + static_cast<float>(std::max(tier, 0)));
 }
 
-float ArrivalDistance(const Body& body)
+float Gentleness(int tier)
 {
-    // Thirty of its radii (an Earth arrives at about the most), never so little the last of the approach is a jump.
-    constexpr float kEarthRadiusAu = 4.26e-5f;
-    return std::clamp(30.0f * std::max(body.radius, 0.02f) * kEarthRadiusAu, 0.0002f, kArrival);
+    // A first drive leaves a world over about twenty seconds and settles into orbit over half a minute; a better one sooner.
+    return 0.04f * std::pow(2.5f, static_cast<float>(std::clamp(tier, 0, 12)));
+}
+
+float OrbitRadius(const Body& body)
+{
+    return std::max(body.radius, 0.02f) * kEarthRadiusAu * (body.gas ? 1.35f : 1.6f);
+}
+
+void Lift(CampaignState& campaign)
+{
+    if (!campaign.landed)
+    {
+        return;
+    }
+    campaign.landed = false;
+    campaign.travel.orbitOut = glm::vec3(0.0f);
+    campaign.travel.orbitSince = campaign.clock;
+}
+
+void OrbitFrame(const CampaignState& campaign, const StarSystem& system, int body, double clock, glm::vec3& out, glm::vec3& along)
+{
+    const CampaignState::Travel& travel = campaign.travel;
+    glm::vec3 first = travel.orbitOut;
+    if (glm::length(first) < 0.5f)
+    {
+        // Nowhere set: over the day side, a little round from noon, as it was when it came into orbit.
+        const glm::vec3 centre = system.Position(body, travel.orbitSince);
+        const glm::vec3 sunward = Unit(-centre, glm::vec3(1.0f, 0.0f, 0.0f));
+        const glm::vec3 side = Unit(glm::cross(glm::vec3(0.0f, 1.0f, 0.0f), sunward), glm::vec3(0.0f, 0.0f, 1.0f));
+        first = sunward + side * 0.8f;
+    }
+    first = Unit(first, glm::vec3(1.0f, 0.0f, 0.0f));
+    glm::vec3 way = glm::cross(glm::vec3(0.0f, 1.0f, 0.0f), first);
+    way = glm::length(way) > 1.0e-4f ? way : glm::cross(glm::vec3(1.0f, 0.0f, 0.0f), first);
+    way = Unit(way - first * glm::dot(way, first), glm::vec3(0.0f, 0.0f, 1.0f));
+    const double turns = (clock - travel.orbitSince) / kOrbitSeconds;
+    const float angle = static_cast<float>((turns - std::floor(turns)) * static_cast<double>(kTau));
+    out = first * std::cos(angle) + way * std::sin(angle);
+    along = -first * std::sin(angle) + way * std::cos(angle);
+}
+
+float AlignSeconds(const CampaignState& campaign, const StarSystem& system)
+{
+    const CampaignState::Travel& travel = campaign.travel;
+    if (travel.from < 0 || system.Find(travel.from) == nullptr)
+    {
+        return 0.0f;
+    }
+    glm::vec3 out;
+    glm::vec3 along;
+    OrbitFrame(campaign, system, travel.from, travel.setOut, out, along);
+    const float angle = std::acos(std::clamp(glm::dot(out, Unit(travel.departWay, out)), -1.0f, 1.0f));
+    // A better drive turns it sooner, as it does everything.
+    return (kAlignLeast + kAlignMore * angle / 3.14159265f) / (1.0f + static_cast<float>(std::max(campaign.Upgrade("travel"), 0)));
+}
+
+float AlignDone(const CampaignState& campaign, const StarSystem& system)
+{
+    const CampaignState::Travel& travel = campaign.travel;
+    const float seconds = AlignSeconds(campaign, system);
+    if (!travel.underway || seconds <= 0.0f)
+    {
+        return 1.0f;
+    }
+    return std::clamp(static_cast<float>(campaign.clock - travel.setOut) / seconds, 0.0f, 1.0f);
+}
+
+glm::vec3 AlignOffset(const CampaignState& campaign, const StarSystem& system, double clock)
+{
+    const CampaignState::Travel& travel = campaign.travel;
+    const Body* from = system.Find(travel.from);
+    if (from == nullptr)
+    {
+        return glm::vec3(0.0f);
+    }
+    // From where it was in its orbit round to the side facing the way it is going, eased in and out, and a little higher.
+    glm::vec3 out;
+    glm::vec3 along;
+    OrbitFrame(campaign, system, travel.from, travel.setOut, out, along);
+    const glm::vec3 way = Unit(travel.departWay, out);
+    const float seconds = std::max(AlignSeconds(campaign, system), 1.0e-3f);
+    const float s = std::clamp(static_cast<float>(clock - travel.setOut) / seconds, 0.0f, 1.0f);
+    const float eased = s * s * (3.0f - 2.0f * s);
+    const float angle = std::acos(std::clamp(glm::dot(out, way), -1.0f, 1.0f));
+    glm::vec3 axis = glm::cross(out, way);
+    // Dead behind: round the orbit's own way.
+    axis = glm::length(axis) > 1.0e-5f ? glm::normalize(axis) : Unit(glm::cross(out, along), glm::vec3(0.0f, 1.0f, 0.0f));
+    const glm::vec3 direction = glm::angleAxis(angle * eased, axis) * out;
+    return direction * (OrbitRadius(*from) * (1.0f + kClimb * eased));
+}
+
+float RelativeSpeed(const CampaignState& campaign, const StarSystem& system)
+{
+    const CampaignState::Travel& travel = campaign.travel;
+    if (!travel.underway || travel.interstellar)
+    {
+        return 0.0f;
+    }
+    if (AlignDone(campaign, system) < 1.0f)
+    {
+        return 0.0f;
+    }
+    // Against the nearer of what it left and where it is going.
+    float best = 1.0e9f;
+    float speed = glm::length(travel.velocity);
+    for (const int body : {travel.from, travel.target})
+    {
+        if (system.Find(body) == nullptr)
+        {
+            continue;
+        }
+        const float distance = static_cast<float>(glm::length(system.PositionD(body, campaign.clock) - travel.position));
+        if (distance < best)
+        {
+            best = distance;
+            speed = glm::length(travel.velocity - BodyVelocity(system, body, campaign.clock));
+        }
+    }
+    return speed;
+}
+
+bool Burning(const CampaignState& campaign, const StarSystem& system)
+{
+    return campaign.travel.underway && !campaign.travel.interstellar && AlignDone(campaign, system) >= 1.0f;
 }
 
 glm::vec3 ShipPosition(const CampaignState& campaign, const StarSystem& system)
 {
     if (campaign.travel.underway || campaign.body < 0)
     {
-        return campaign.travel.position;
+        return glm::vec3(campaign.travel.position);
     }
     return system.Position(campaign.body, campaign.clock);
 }
@@ -93,10 +251,19 @@ bool SetCourse(CampaignState& campaign, const StarSystem& system, int body)
         {
             return false;
         }
-        // Leaving a body: from where it is, moving as it moves.
+        Lift(campaign);
+        // Leaving a body: from where it is in its orbit, moving as the body moves -- first turning and swinging round to the
+        // side facing where it is going (AlignSeconds).
         if (campaign.body >= 0)
         {
-            campaign.travel.position = system.Position(campaign.body, campaign.clock);
+            const glm::vec3 centre = system.Position(campaign.body, campaign.clock);
+            glm::vec3 out;
+            glm::vec3 along;
+            OrbitFrame(campaign, system, campaign.body, campaign.clock, out, along);
+            campaign.travel.from = campaign.body;
+            campaign.travel.setOut = campaign.clock;
+            campaign.travel.departWay = Unit(system.Position(body, campaign.clock) - centre, out);
+            campaign.travel.position = system.PositionD(campaign.body, campaign.clock) + glm::dvec3(out * OrbitRadius(*system.Find(campaign.body)));
             campaign.travel.velocity = BodyVelocity(system, campaign.body, campaign.clock);
         }
         campaign.travel.underway = true;
@@ -117,7 +284,45 @@ bool Step(CampaignState& campaign, const StarSystem& system, float dt, int tier)
         return false;
     }
     const float accel = Acceleration(tier);
-    const float most = accel * dt;
+    const float gentle = Gentleness(tier);
+    // Never so gently it cannot keep up with where it is going: at least twice what turns that in its orbit.
+    const float keepUp = system.Find(travel.target) != nullptr ? 2.0f * BodyPull(system, travel.target, campaign.clock) : 0.0f;
+    float limit = accel;
+    // Setting out: turning and swinging round to the side it leaves from, carried along by the world it is leaving.
+    if (const Body* from = system.Find(travel.from))
+    {
+        const glm::dvec3 centre = system.PositionD(from->index, campaign.clock);
+        if (AlignDone(campaign, system) < 1.0f)
+        {
+            travel.position = centre + glm::dvec3(AlignOffset(campaign, system, campaign.clock));
+            travel.velocity = BodyVelocity(system, from->index, campaign.clock);
+            return false;
+        }
+        const glm::dvec3 began = system.PositionD(from->index, campaign.clock - static_cast<double>(dt));
+        // Then out, gently near it and harder the further it gets -- straight out the way it set out until it is well clear
+        // (or half way to where it is going, a moon close by): only on the way out, the time that takes, so a ship turned back
+        // towards it by a new course is not sent out again.
+        const float distance = static_cast<float>(glm::length(travel.position - began));
+        const float reach = OrbitRadius(*from);
+        limit = std::min(limit, std::max(gentle * std::max(distance, reach), keepUp));
+        float clear = reach * kDepartReach;
+        if (system.Find(travel.target) != nullptr)
+        {
+            clear = std::min(clear, 0.5f * glm::length(system.Position(travel.target, travel.setOut) - system.Position(from->index, travel.setOut)));
+        }
+        const double outFor = AlignSeconds(campaign, system) + 4.0 / std::sqrt(static_cast<double>(gentle));
+        if (distance < clear && travel.target >= 0 && campaign.clock < travel.setOut + outFor)
+        {
+            travel.velocity += Unit(travel.departWay, glm::vec3(0.0f, 0.0f, -1.0f)) * limit * dt;
+            travel.position += glm::dvec3(travel.velocity) * static_cast<double>(dt);
+            return false;
+        }
+        if (gentle * distance >= accel)
+        {
+            travel.from = -1;
+        }
+    }
+    const float most = limit * dt;
     if (travel.target < 0)
     {
         // Nowhere to go: slow to a stop where it is.
@@ -129,41 +334,57 @@ bool Step(CampaignState& campaign, const StarSystem& system, float dt, int tier)
             return true;
         }
         travel.velocity -= travel.velocity / speed * most;
-        travel.position += travel.velocity * dt;
+        travel.position += glm::dvec3(travel.velocity) * static_cast<double>(dt);
         return false;
     }
 
-    // Steer by how the ship is moving against the body: closing on it as fast as it can and still stop in time -- by way
-    // of a point beside the star, if the straight way is through it.
-    const glm::vec3 there = system.Position(travel.target, campaign.clock);
-    const glm::vec3 moving = BodyVelocity(system, travel.target, campaign.clock);
-    const float distance = glm::length(there - travel.position);
-    const glm::vec3 aim = AimPoint(travel.position, there, StarClearance(system, travel.position, there));
-    const glm::vec3 to = aim - travel.position;
-    const float toAim = std::max(glm::length(to), 1.0e-9f);
-    const float remaining = toAim + glm::length(there - aim);
-    const float arrival = ArrivalDistance(*system.Find(travel.target));
-    if (distance <= arrival)
+    // Steer by how the ship is moving against the body: for the near side of it at its orbit's height, closing as fast as it
+    // can and still stop in time, and settling into the orbit over the last of the way -- by way of a point beside the star,
+    // if the straight way is through it.
+    const Body* target = system.Find(travel.target);
+    // Where it is as the step begins -- the ship is still where it was then, the clock already moved on -- and how it moves
+    // over the step, at its middle: a moon going round fast is a long way on by the end of a step, and steered for from there the
+    // ship never quite closes the last of the way.
+    const double begun = campaign.clock - static_cast<double>(dt);
+    const glm::dvec3 there = system.PositionD(travel.target, begun);
+    const glm::vec3 moving = BodyVelocity(system, travel.target, begun + static_cast<double>(dt) * 0.5);
+    const glm::vec3 fromThere = glm::vec3(travel.position - there);
+    const float distance = std::max(glm::length(fromThere), 1.0e-12f);
+    const float height = OrbitRadius(*target);
+    if (distance <= height + std::max(height * kArriveShare, kArriveLeast))
     {
-        travel.position = there;
+        // Into orbit where it came in.
+        travel.orbitOut = fromThere / distance;
+        travel.orbitSince = campaign.clock;
+        travel.position = system.PositionD(travel.target, campaign.clock);
         travel.velocity = moving;
         travel.underway = false;
+        travel.from = -1;
         campaign.body = travel.target;
         campaign.region = -1;
         travel.target = -1;
         return true;
     }
+    // Measured from the ship, so the last of the way is exact; round the star only when the straight way is through it.
+    const glm::vec3 toShell = -fromThere * (1.0f - height / distance);
+    const glm::vec3 ship = glm::vec3(travel.position);
+    const glm::vec3 shell = ship + toShell;
+    const glm::vec3 aim = AimPoint(ship, shell, StarClearance(system, ship, shell));
+    const glm::vec3 to = aim == shell ? toShell : aim - ship;
+    const float toAim = std::max(glm::length(to), 1.0e-12f);
+    const float remaining = toAim + (aim == shell ? 0.0f : glm::length(shell - aim));
+    const float push = std::min(most, std::max(gentle * std::max(distance, height), keepUp) * dt);
     const glm::vec3 relative = travel.velocity - moving;
-    const float closing = std::sqrt(2.0f * accel * std::max(remaining - arrival * 0.5f, 0.0f)) * 0.95f;
+    const float closing = std::min(std::sqrt(2.0f * accel * remaining) * 0.95f, std::sqrt(gentle) * remaining);
     const glm::vec3 wanted = to / toAim * closing;
     glm::vec3 change = wanted - relative;
     const float size = glm::length(change);
-    if (size > most)
+    if (size > push)
     {
-        change *= most / size;
+        change *= push / size;
     }
     travel.velocity += change;
-    travel.position += travel.velocity * dt;
+    travel.position += glm::dvec3(travel.velocity) * static_cast<double>(dt);
     return false;
 }
 
@@ -179,18 +400,19 @@ std::vector<glm::vec3> Preview(const CampaignState& campaign, const StarSystem& 
     ahead.clock = campaign.clock;
     ahead.body = campaign.body;
     ahead.travel = campaign.travel;
-    const float distance = glm::length(system.Position(campaign.travel.target, campaign.clock) - campaign.travel.position);
+    const float distance = glm::length(system.Position(campaign.travel.target, campaign.clock) - glm::vec3(campaign.travel.position));
     const float dt = std::max(Seconds(distance * 1.5f, tier) / 300.0f, 0.05f);
+    ahead.upgrades = campaign.upgrades;
     constexpr int kSteps = 600;
     const int every = std::max(kSteps / points, 1);
-    path.push_back(ahead.travel.position);
+    path.push_back(glm::vec3(ahead.travel.position));
     for (int i = 1; i <= kSteps; ++i)
     {
         ahead.clock += dt;
         const bool arrived = Step(ahead, system, dt, tier);
         if (arrived || i % every == 0)
         {
-            path.push_back(ahead.travel.position);
+            path.push_back(glm::vec3(ahead.travel.position));
         }
         if (arrived || !ahead.travel.underway)
         {
@@ -295,7 +517,7 @@ bool StepInterstellar(CampaignState& campaign, Universe& universe)
     campaign.system = travel.toSystem;
     campaign.body = -1;
     campaign.region = -1;
-    travel.position = back * (outermost * 1.25f);
+    travel.position = glm::dvec3(back * (outermost * 1.25f));
     travel.velocity = glm::vec3(0.0f);
     travel.interstellar = false;
     travel.underway = false;

@@ -28,22 +28,17 @@ namespace pred
 namespace
 {
 
-constexpr float kTau = 6.28318530718f;
 constexpr float kEarthRadiusAu = 4.26e-5f;
-// How long the ship takes to go once round what it orbits, as the windows show it.
-constexpr double kOrbitSeconds = 960.0;
 // How far its nose is pitched down from the way it goes round, so the body below is in the windscreen (radians).
 constexpr float kOrbitPitch = 0.95f;
-// How it turns to a new heading: slowly, as a ship of its size does -- at most this many radians a second, gathering way
-// and losing it again at this many radians a second, a second. Half way round takes the best part of a minute.
-constexpr float kTurnRate = 0.07f;
-constexpr float kTurnEase = 0.012f;
+// Under way, how it turns to a new heading: slowly, as a ship of its size does -- at most this many radians a second, gathering
+// way and losing it again at this many radians a second, a second. Half way round takes a quarter of a minute.
+constexpr float kTurnRate = 0.25f;
+constexpr float kTurnEase = 0.08f;
+// Coming into orbit, how long it takes to settle from the way it came in to the orbit's facing.
+constexpr double kSettleSeconds = 7.0;
 // Smaller than this across (radians from middle to edge), a body is a point of light in the sky rather than a body.
 constexpr float kBodyAngle = 0.0035f;
-// Leaving a body, how it seems to fall away: the distance shown grows by e every this many seconds from the orbit's height,
-// until it has caught up with how far the ship has really gone. The trips are quick -- a planet's width in the first second
-// -- and the world left behind would be gone before the ship had begun to turn from it.
-constexpr float kFallAway = 10.0f;
 // How far off the nearest body is drawn, in the bodies' view; the rest further by the square root of how much further they
 // are, so they go behind one another in the right order.
 constexpr float kNearestDrawn = 1000.0f;
@@ -51,12 +46,6 @@ constexpr float kNearestDrawn = 1000.0f;
 float RadiusAu(const Body& body)
 {
     return std::max(body.radius, 0.02f) * kEarthRadiusAu;
-}
-
-// How far from a body's middle the ship goes round it.
-float OrbitRadius(const Body& body)
-{
-    return RadiusAu(body) * (body.gas ? 1.35f : 1.6f);
 }
 
 // An attitude facing `forward`, its top towards `upHint`: the ship's own right, up and back as columns.
@@ -95,9 +84,8 @@ void PredationGame::SetSpaceSky(Environment& environment)
     if (system->id.Packed() != m_spaceSystem)
     {
         m_spaceSystem = system->id.Packed();
-        m_spaceShipSet = false;
+        m_spaceAttitudeSet = false;
         m_spaceOrbitBody = -1;
-        m_spaceFromBody = -1;
     }
 
     // Between the stars: nothing near, the star it left a dimming sun astern and the one it is heading for a brightening
@@ -123,95 +111,105 @@ void PredationGame::SetSpaceSky(Environment& environment)
         return;
     }
 
-    // --- Where the ship is, and which way it wants to face ---------------------------------------------------------------
+    // --- Where the ship is, and which way it faces -------------------------------------------------------------------------
+    // Measured from the body near it when there is one -- the one it is in orbit of, leaving or coming to -- so a small one is
+    // not lost in a float's steps at an astronomical unit from the star.
     const double clock = m_campaign.clock;
-    const glm::vec3 actual = Travel::ShipPosition(m_campaign, *system);
-    glm::vec3 ship = actual;
-    glm::vec3 wantForward = m_campaign.travel.velocity;
-    glm::vec3 wantUp{0.0f, 1.0f, 0.0f};
-    const Body* at = m_campaign.travel.underway ? nullptr : system->Find(m_campaign.body);
+    const CampaignState::Travel& travel = m_campaign.travel;
+    int reference = -1;
+    glm::vec3 offset{0.0f};
+    glm::vec3 wantForward{0.0f};
+    glm::vec3 wantUp = m_spaceAttitudeSet ? m_spaceAttitude * glm::vec3(0.0f, 1.0f, 0.0f) : glm::vec3(0.0f, 1.0f, 0.0f);
+    bool held = false;
+    const Body* at = travel.underway ? nullptr : system->Find(m_campaign.body);
     if (at != nullptr)
     {
-        const glm::vec3 centre = system->Position(at->index, clock);
-        if (m_spaceOrbitBody != at->index)
-        {
-            // Into orbit where the ship came in; with nothing to go by, on the day side a little round from noon.
-            glm::vec3 out = m_spaceShipSet && glm::length(m_spaceShip - centre) > 1.0e-12f ? glm::normalize(m_spaceShip - centre) : glm::vec3(0.0f);
-            if (glm::length(out) < 0.5f)
-            {
-                const glm::vec3 sunward = glm::length(centre) > 1.0e-9f ? -glm::normalize(centre) : glm::vec3(1.0f, 0.0f, 0.0f);
-                out = glm::normalize(sunward + glm::normalize(glm::cross(glm::vec3(0.0f, 1.0f, 0.0f), sunward) + glm::vec3(1.0e-6f)) * 0.8f);
-            }
-            glm::vec3 along = glm::cross(glm::vec3(0.0f, 1.0f, 0.0f), out);
-            along = glm::length(along) > 1.0e-4f ? glm::normalize(along) : glm::vec3(0.0f, 0.0f, 1.0f);
-            m_spaceOrbitOut = out;
-            m_spaceOrbitAlong = glm::normalize(along - out * glm::dot(along, out));
-            m_spaceOrbitBody = at->index;
-            m_spaceOrbitSince = clock;
-        }
-        const float angle = static_cast<float>(std::fmod((clock - m_spaceOrbitSince) / kOrbitSeconds, 1.0)) * kTau;
-        const glm::vec3 out = m_spaceOrbitOut * std::cos(angle) + m_spaceOrbitAlong * std::sin(angle);
-        const glm::vec3 along = -m_spaceOrbitOut * std::sin(angle) + m_spaceOrbitAlong * std::cos(angle);
-        ship = centre + out * OrbitRadius(*at);
+        // In orbit: going round, its nose pitched down to the ground below and held there -- the world stays where it is in the
+        // windows while its ground goes by underneath.
+        glm::vec3 out;
+        glm::vec3 along;
+        Travel::OrbitFrame(m_campaign, *system, at->index, clock, out, along);
+        reference = at->index;
+        offset = out * Travel::OrbitRadius(*at);
         wantForward = along * std::cos(kOrbitPitch) - out * std::sin(kOrbitPitch);
         wantUp = out * std::cos(kOrbitPitch) + along * std::sin(kOrbitPitch);
-        // What it leaves from, when it goes: here, where it is in the orbit now.
-        m_spaceFromBody = at->index;
-        m_spaceFromOut = out;
-        m_spaceLeftAt = clock;
+        held = true;
+        // Just come into orbit: settling from the way it came in, over a few seconds.
+        if (m_spaceOrbitBody != at->index || m_spaceOrbitSince != travel.orbitSince)
+        {
+            m_spaceOrbitBody = at->index;
+            m_spaceOrbitSince = travel.orbitSince;
+            m_spaceSettleFrom = m_spaceAttitudeSet && clock - travel.orbitSince < kSettleSeconds ? m_spaceAttitude : Facing(wantForward, wantUp);
+        }
     }
-    else
+    else if (const Body* from = travel.underway ? system->Find(travel.from) : nullptr; from != nullptr && Travel::AlignDone(m_campaign, *system) < 1.0f)
     {
-        m_spaceOrbitBody = -1;
-        // Out of the orbit of what it left: from where it was in it, falling away from it at the pace it seems to (kFallAway)
-        // until that has caught up with where the ship really is.
-        if (const Body* from = system->Find(m_spaceFromBody))
+        // Setting out: turning from the orbit's facing to the way it is going, while it swings round to that side of the world
+        // and climbs a little -- the world sliding down out of the windows and round behind.
+        glm::vec3 out;
+        glm::vec3 along;
+        Travel::OrbitFrame(m_campaign, *system, from->index, travel.setOut, out, along);
+        reference = from->index;
+        offset = Travel::AlignOffset(m_campaign, *system, clock);
+        const glm::quat start = Facing(along * std::cos(kOrbitPitch) - out * std::sin(kOrbitPitch), out * std::cos(kOrbitPitch) + along * std::sin(kOrbitPitch));
+        const glm::quat end = Facing(travel.departWay, start * glm::vec3(0.0f, 1.0f, 0.0f));
+        const float s = Travel::AlignDone(m_campaign, *system);
+        const glm::quat turned = glm::slerp(start, end, s * s * (3.0f - 2.0f * s));
+        wantForward = turned * glm::vec3(0.0f, 0.0f, -1.0f);
+        wantUp = turned * glm::vec3(0.0f, 1.0f, 0.0f);
+        held = true;
+    }
+    else if (travel.underway)
+    {
+        // Under way: nose on where it is going -- the near side of it, where it will settle into orbit -- or, coming to a stop,
+        // the way it is going. Measured from whichever of what it left and where it is going is nearer.
+        float nearest = 1.0e9f;
+        for (const int body : {travel.from, travel.target})
         {
-            const glm::vec3 centre = system->Position(from->index, clock);
-            const float reach = OrbitRadius(*from);
-            const float gone = glm::length(actual - centre);
-            const float since = static_cast<float>(std::max(clock - m_spaceLeftAt, 0.0));
-            const float seen = std::min(gone, reach * (std::exp(std::min(since / kFallAway, 30.0f)) - 1.0f));
-            const float away = glm::smoothstep(0.0f, reach * 40.0f, seen);
-            glm::vec3 way = gone > 1.0e-12f ? (actual - centre) / gone : m_spaceFromOut;
-            way = glm::mix(m_spaceFromOut, way, away);
-            way = glm::length(way) > 1.0e-6f ? glm::normalize(way) : m_spaceFromOut;
-            ship = centre + way * (seen + reach * (1.0f - away));
-            if (seen >= gone && away >= 1.0f)
+            if (system->Find(body) == nullptr)
             {
-                m_spaceFromBody = -1;
+                continue;
+            }
+            const float distance = static_cast<float>(glm::length(system->PositionD(body, clock) - travel.position));
+            if (distance < nearest)
+            {
+                nearest = distance;
+                reference = body;
             }
         }
-        // Into the orbit of what it is coming to: drawn in over the last of the way, so it reaches the orbit's height
-        // exactly as it arrives.
-        if (const Body* to = system->Find(m_campaign.travel.target))
+        if (reference >= 0)
         {
-            const glm::vec3 centre = system->Position(to->index, clock);
-            const float reach = OrbitRadius(*to);
-            const float distance = glm::length(ship - centre);
-            const float arrival = Travel::ArrivalDistance(*to);
-            if (distance > 1.0e-12f)
-            {
-                const float drawn = distance > arrival ? distance - (arrival - reach) * std::exp(-(distance - arrival) / (arrival * 4.0f))
-                                                       : reach * distance / arrival;
-                ship = centre + (ship - centre) / distance * drawn;
-            }
-            wantForward = centre - ship;
+            offset = glm::vec3(travel.position - system->PositionD(reference, clock));
+        }
+        if (const Body* to = system->Find(travel.target))
+        {
+            const glm::vec3 toCentre = glm::vec3(system->PositionD(to->index, clock) - travel.position);
+            const float distance = glm::length(toCentre);
+            // The middle until close; then along the way in to the orbit, so it is not staring at the ground as it settles.
+            wantForward = distance > Travel::OrbitRadius(*to) * 6.0f ? toCentre : glm::mix(travel.velocity, toCentre, 0.5f);
+        }
+        else
+        {
+            wantForward = travel.velocity;
         }
     }
-    m_spaceShip = ship;
-    m_spaceShipSet = true;
+    const glm::vec3 ship = glm::vec3(reference >= 0 ? system->PositionD(reference, clock) + glm::dvec3(offset) : travel.position);
 
-    // Turned towards the heading wanted at a ship's pace -- at once only the first time there is one. Its rate of turn eases
-    // up and eases off again so that it comes to the new heading without overshooting it.
+    // Held exactly to what it wants in orbit and setting out (settling into orbit from how it came in); under way turned towards
+    // it at a ship's pace -- gathering way and losing it again, so it comes to the new heading without overshooting.
     if (glm::length(wantForward) > 1.0e-12f)
     {
         const glm::quat want = Facing(wantForward, wantUp);
-        if (!m_spaceAttitudeSet)
+        if (held || !m_spaceAttitudeSet)
         {
             m_spaceAttitude = want;
-            m_spaceAttitudeSet = true;
             m_spaceTurnSpeed = 0.0f;
+            if (at != nullptr && clock - travel.orbitSince < kSettleSeconds && clock >= travel.orbitSince)
+            {
+                const float s = static_cast<float>((clock - travel.orbitSince) / kSettleSeconds);
+                m_spaceAttitude = glm::slerp(m_spaceSettleFrom, want, s * s * (3.0f - 2.0f * s));
+            }
+            m_spaceAttitudeSet = true;
         }
         else
         {
@@ -229,6 +227,10 @@ void PredationGame::SetSpaceSky(Environment& environment)
     // and bow.
     m_spaceToWorld = glm::mat3(starboard, overhead, -bow) * glm::transpose(glm::mat3_cast(m_spaceAttitude));
     const auto toWorld = [&](const glm::vec3& v) { return m_spaceToWorld * v; };
+    // Where a body is from the ship, measured from the reference body so the near one is exact.
+    const glm::dvec3 origin = reference >= 0 ? system->PositionD(reference, clock) : travel.position;
+    const auto fromShip = [&](int index) { return glm::vec3(system->PositionD(index, clock) - origin) - (reference >= 0 ? offset : glm::vec3(0.0f)); };
+
 
     // --- The star ----------------------------------------------------------------------------------------------------
     const float fromStar = std::max(glm::length(ship), 0.05f);
@@ -239,6 +241,8 @@ void PredationGame::SetSpaceSky(Environment& environment)
     // As big as the star is from here: a sun's radius is 0.00465 astronomical units; a little larger, so it reads.
     environment.sunDisc = std::clamp(0.00465f * std::max(system->starRadius, 0.1f) / fromStar * 1.3f, 0.0012f, 0.06f);
 
+    m_spaceSunLight = environment.sunColor * environment.sunIntensity;
+
     // --- The planets and moons ----------------------------------------------------------------------------------------
     // Those near enough to have a size, as bodies (DrawSpaceBodies), the nearest first; the rest as points, as many as the
     // sky draws, the brightest first.
@@ -247,7 +251,7 @@ void PredationGame::SetSpaceSky(Environment& environment)
     for (const Body& body : system->bodies)
     {
         const glm::vec3 there = system->Position(body.index, clock);
-        const glm::vec3 v = there - ship;
+        const glm::vec3 v = fromShip(body.index);
         const float distance = glm::length(v);
         if (distance < 1.0e-12f)
         {
@@ -281,9 +285,8 @@ void PredationGame::SetSpaceSky(Environment& environment)
     for (int i = 0; i < Environment::kSkyBodies && i < static_cast<int>(points.size()); ++i)
     {
         const Body& body = system->bodies[static_cast<size_t>(points[static_cast<size_t>(i)].second)];
-        const glm::vec3 there = system->Position(body.index, clock);
-        const float distance = glm::length(there - ship);
-        const glm::vec3 way = toWorld(there - ship);
+        const float distance = glm::length(fromShip(body.index));
+        const glm::vec3 way = toWorld(fromShip(body.index));
         // As bright as it is big, lit (by how far it is from its star) and near: brighter than the stars, the near and the
         // large much brighter.
         const float bright = std::clamp(1.0f + 0.28f * std::log10(std::max(-points[static_cast<size_t>(i)].first, 1.0e-12f)), 0.35f, 2.4f);
@@ -303,12 +306,18 @@ void PredationGame::DrawSpaceBodies()
     const Renderer& renderer = m_app->GetRenderer();
     glm::mat4 view = renderer.ViewMatrix();
     view[3] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
-    const glm::mat4 projection = Depth::Perspective(m_renderVerticalFov, m_renderAspect, 1.0f, 4.0e6f);
+    // Their depth beyond all of the world's, which is already drawn and hides them where it is: so near a near plane that a body
+    // a thousand units off is nearer the far end than any of the world's surfaces within kilometres of the eye.
+    const glm::mat4 projection = Depth::Perspective(m_renderVerticalFov, m_renderAspect, 1.0e-3f, 4.0e6f);
     bgfx::setViewTransform(Renderer::kViewSkyBodies, glm::value_ptr(view), glm::value_ptr(projection));
     m_planets.SetOutput(true, Depth::Test());
     m_planets.SetCamera(glm::vec3(0.0f), 1.0f);
     const float time = static_cast<float>(std::fmod(m_campaign.clock, 100000.0));
     const glm::mat4 turn(m_spaceToWorld);
+    // Lit as everything else in the picture is: a surface gives back its colour over pi of the light falling on it (the
+    // scene's shading), where the planets' own shading gives back its colour times 1.6 of it -- a world out of the windows
+    // was three times as bright as the ship's own hull beside it.
+    const glm::vec3 light = m_spaceSunLight / (3.14159265f * 1.6f);
     for (const SpaceBody& drawn : m_spaceBodies)
     {
         const Body* body = system->Find(drawn.index);
@@ -327,8 +336,8 @@ void PredationGame::DrawSpaceBodies()
         const glm::vec3 there = system->Position(body->index, m_campaign.clock);
         const glm::vec3 towardsStar = glm::length(there) > 1.0e-9f ? glm::normalize(m_spaceToWorld * -there) : glm::vec3(0.0f, 1.0f, 0.0f);
         const PlanetLook look = LookOf(*body);
-        m_planets.Body(Renderer::kViewSkyBodies, model, look, towardsStar, system->starColor, 0.0f, time * 0.02f);
-        m_planets.Rings(Renderer::kViewSkyBodies, rings, look, towardsStar, system->starColor);
+        m_planets.Body(Renderer::kViewSkyBodies, model, look, towardsStar, light, 0.0f, time * 0.02f);
+        m_planets.Rings(Renderer::kViewSkyBodies, rings, look, towardsStar, light);
     }
     // Back as the map wants it.
     m_planets.SetOutput(false, BGFX_STATE_DEPTH_TEST_LESS);

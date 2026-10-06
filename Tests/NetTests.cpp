@@ -1393,3 +1393,44 @@ TEST_CASE("The ship is inside what the wire can say", "[net][protocol]")
         CHECK(received.flag);
     }
 }
+
+TEST_CASE("The ship's travel round-trips exactly, setting out and the orbit with it", "[net][protocol]")
+{
+    TravelMessage travel;
+    travel.clock = 12345.678901234;
+    travel.system = 0x0123456789ABCDEFull;
+    travel.underway = true;
+    travel.target = 5;
+    travel.body = -1;
+    travel.region = 2;
+    // Near a moon an astronomical unit out: the last of the way is smaller than a float can hold there.
+    travel.position = {0.987654321012345, -0.000123456789, 1.234567890123};
+    travel.velocity = {1.0e-3f, -2.0e-6f, 3.5e-4f};
+    travel.from = 4;
+    travel.setOut = 12000.125;
+    travel.departWay = {0.0f, 0.6f, -0.8f};
+    travel.orbitOut = {1.0f, 0.0f, 0.0f};
+    travel.orbitSince = 11000.5;
+    BitWriter writer;
+    WriteTravel(writer, travel);
+    const std::vector<uint8_t>& bytes = writer.Finish();
+    BitReader reader(bytes.data(), bytes.size());
+    TravelMessage received;
+    REQUIRE(ReadTravel(reader, received));
+    CHECK(received.clock == travel.clock);
+    CHECK(received.position == travel.position);
+    CHECK(received.velocity == travel.velocity);
+    CHECK(received.target == 5);
+    CHECK(received.from == 4);
+    CHECK(received.setOut == travel.setOut);
+    CHECK(received.departWay == travel.departWay);
+    CHECK(received.orbitOut == travel.orbitOut);
+    CHECK(received.orbitSince == travel.orbitSince);
+
+    travel.position.x = std::nan("");
+    BitWriter broken;
+    WriteTravel(broken, travel);
+    const std::vector<uint8_t>& brokenBytes = broken.Finish();
+    BitReader brokenReader(brokenBytes.data(), brokenBytes.size());
+    CHECK_FALSE(ReadTravel(brokenReader, received));
+}

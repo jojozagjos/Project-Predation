@@ -62,7 +62,9 @@ struct CampaignState
     struct Travel
     {
         bool underway = false;
-        glm::vec3 position{0.0f};
+        // Where it is, in astronomical units from the star: in double, since closing the last of the way to a small moon an
+        // astronomical unit out is a step a float there cannot take.
+        glm::dvec3 position{0.0};
         glm::vec3 velocity{0.0f};
         int target = -1; // a body of the current system
         // Where to go down on the body it is at or heading for: one of its landing regions, or -1 for none chosen.
@@ -75,6 +77,15 @@ struct CampaignState
         glm::vec3 toGalaxy{0.0f};
         double departed = 0.0;
         float duration = 0.0f;
+        // Setting out from orbit (Travel::AlignSeconds): the body it left, when, and the way from it to where it is going;
+        // -1 once it is clear of it.
+        int from = -1;
+        double setOut = 0.0;
+        glm::vec3 departWay{0.0f};
+        // The orbit it is in at a body: out from the body's middle when it came into orbit, and when (none set: the day
+        // side, from then). The same on every machine, so everybody sees the same world below.
+        glm::vec3 orbitOut{0.0f};
+        double orbitSince = 0.0;
     };
 
     int version = kVersion;

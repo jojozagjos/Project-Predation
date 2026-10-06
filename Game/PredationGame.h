@@ -1039,23 +1039,18 @@ private:
     };
     MapTransition m_mapTransition;
     float m_mapFadeIn = 0.0f;
-    // Space as the windows show it (PredationGameSpace.cpp): where the ship is in its system (astronomical units) -- going
-    // round what it is at since it arrived, out of the orbit of what it left -- which way it faces there, turned at a ship's
-    // pace, and from that the system's directions turned into the world's.
-    glm::vec3 m_spaceShip{0.0f};
-    bool m_spaceShipSet = false;
+    // Space as the windows show it (PredationGameSpace.cpp): which way the ship faces in its system -- held to its orbit, turned
+    // as it sets out, turned at a ship's pace under way -- and from that the system's directions turned into the world's; the
+    // orbit it last settled into, and how it was facing as it came in; the star's light where it is, for the bodies it lights.
     uint64_t m_spaceSystem = 0;
     glm::quat m_spaceAttitude{1.0f, 0.0f, 0.0f, 0.0f};
     bool m_spaceAttitudeSet = false;
     float m_spaceTurnSpeed = 0.0f;
     int m_spaceOrbitBody = -1;
-    double m_spaceOrbitSince = 0.0;
-    glm::vec3 m_spaceOrbitOut{1.0f, 0.0f, 0.0f};
-    glm::vec3 m_spaceOrbitAlong{0.0f, 0.0f, 1.0f};
-    int m_spaceFromBody = -1;
-    glm::vec3 m_spaceFromOut{1.0f, 0.0f, 0.0f};
-    double m_spaceLeftAt = 0.0;
+    double m_spaceOrbitSince = -1.0;
+    glm::quat m_spaceSettleFrom{1.0f, 0.0f, 0.0f, 0.0f};
     glm::mat3 m_spaceToWorld{1.0f};
+    glm::vec3 m_spaceSunLight{1.0f};
     // The planets and moons near enough to have a size: which, which way (in the world), how big (radians from middle to
     // edge), how far (astronomical units) and how far off they are drawn.
     struct SpaceBody

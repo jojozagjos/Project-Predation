@@ -200,17 +200,21 @@ void PredationGame::UpdateShipTravel(float dt)
         m_shipTravel = 0.0f;
     }
     // The dust past the windows, and the engines burning -- the picture, not the cinematic's, while one has it.
-    // As fast past the windows as the ship is going: slow as it sets out and as it slows to arrive, streaming in the middle
-    // of a trip, and fastest between the stars.
+    // As fast past the windows as the ship is going against the world it is leaving or coming to: none at all in orbit or
+    // while it turns to set out, gathering as it burns away, streaming in the middle of a trip, and fastest between the stars.
     float pace = 1.0f;
+    bool burning = underWay;
     if (m_campaignOpen && m_campaign.travel.underway)
     {
-        pace = m_campaign.travel.interstellar ? 1.7f : std::clamp(std::sqrt(glm::length(m_campaign.travel.velocity) / 0.004f), 0.12f, 1.6f);
+        const StarSystem* system = CurrentSystem();
+        const float speed = system != nullptr ? Travel::RelativeSpeed(m_campaign, *system) : 0.0f;
+        burning = m_campaign.travel.interstellar || (system != nullptr && Travel::Burning(m_campaign, *system));
+        pace = m_campaign.travel.interstellar ? 1.7f : std::min(std::sqrt(speed / 0.004f), 1.6f) * glm::smoothstep(0.0f, 0.04f, std::sqrt(speed / 0.004f));
     }
     m_ship.UpdateDust(m_scene, m_app->GetMeshes(), underWay ? kDustSpeed * pace : 0.0f, dt);
     if (!m_cine.Active())
     {
-        const float burn = underWay ? 0.85f : 0.0f;
+        const float burn = underWay && burning ? 0.85f : 0.0f;
         if (std::abs(m_ship.Engines() - burn) > 1e-3f)
         {
             m_ship.SetEngines(m_scene, burn);

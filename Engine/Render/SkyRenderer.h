@@ -25,9 +25,10 @@ public:
     bool IsValid() const { return bgfx::isValid(m_program); }
 
     // `view` and `projection` are the camera's. The translation is taken out of the view: the sky is
-    // infinitely far away, so walking must not move it.
+    // infinitely far away, so walking must not move it. Behind a picture already drawn (`behind`), only where nothing of it
+    // was -- at the far end of the depth, tested against it; otherwise over everything, first.
     void Draw(bgfx::ViewId view, const Environment& environment, const glm::mat4& viewMatrix,
-              const glm::mat4& projection);
+              const glm::mat4& projection, bool behind = false);
 
 private:
     bgfx::ProgramHandle m_program = BGFX_INVALID_HANDLE;
@@ -35,6 +36,7 @@ private:
     bgfx::VertexLayout m_layout;
 
     bgfx::UniformHandle m_uRays = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uDepth = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uZenith = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uHorizon = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uGround = BGFX_INVALID_HANDLE;

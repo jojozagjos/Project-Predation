@@ -22,24 +22,47 @@ namespace Travel
 
 // How hard the ship can push at a drive tier, in astronomical units a second, a second.
 float Acceleration(int tier);
-// About how long a trip of `distance` astronomical units takes, from rest to rest.
+// About how long a trip of `distance` astronomical units takes, from orbit to orbit.
 float Seconds(float distance, int tier);
-// Within this of a body's middle is arriving at it, at most: a small body less, by its size -- a moon is nearer its planet
-// than this, and a trip to it ended before it began.
-inline constexpr float kArrival = 0.0015f;
-float ArrivalDistance(const Body& body);
+
+// --- In orbit, setting out, arriving -------------------------------------------------------------------------------------
+// At a body the ship is in orbit of it: so far out from its middle, once round in kOrbitSeconds, round from where it came into
+// orbit (CampaignState::Travel::orbitOut, orbitSince) -- the same on every machine.
+inline constexpr double kOrbitSeconds = 960.0;
+float OrbitRadius(const Body& body);
+// Up off the ground into orbit of the body it stood on, its orbit begun now over the day side.
+void Lift(CampaignState& campaign);
+// Out from the body's middle to the ship, and the way it is going round, at a moment.
+void OrbitFrame(const CampaignState& campaign, const StarSystem& system, int body, double clock, glm::vec3& out, glm::vec3& along);
+// Setting out from orbit the ship first turns, swinging round to the side of the world that faces where it is going and a
+// little higher, and only then burns: this long (less with a better drive), by how far round it has to go.
+float AlignSeconds(const CampaignState& campaign, const StarSystem& system);
+// How far through that it is, 0 to 1 (1 once it is burning, or not setting out at all); and where it is in it at a moment, out
+// from the middle of the body it is leaving.
+float AlignDone(const CampaignState& campaign, const StarSystem& system);
+glm::vec3 AlignOffset(const CampaignState& campaign, const StarSystem& system, double clock);
+// Near a body it pushes gently -- harder the further out it is, up to all the drive has -- so the world it leaves falls away
+// and the one it comes to grows over long enough to see: its acceleration at most this many times its distance from the body
+// (per second squared). Settling into orbit, it closes the last of the way at the square root of this times what is left.
+float Gentleness(int tier);
+// How fast it is going against what it is leaving or coming to (astronomical units a second), and whether it is burning --
+// for the dust past the windows and the engines.
+float RelativeSpeed(const CampaignState& campaign, const StarSystem& system);
+bool Burning(const CampaignState& campaign, const StarSystem& system);
 
 // Where the ship is in its system now, in astronomical units from the star.
 glm::vec3 ShipPosition(const CampaignState& campaign, const StarSystem& system);
 
 // Sets a course from wherever the ship is for `body` (-1: stop where it is). False when there is nowhere to go (it is
-// already there, or that is not a body).
+// already there, or that is not a body). From orbit it sets out (AlignSeconds).
 bool SetCourse(CampaignState& campaign, const StarSystem& system, int body);
 
-// One step of the ship under way. True on the step it arrives -- or, with no destination, comes to rest.
+// One step of the ship under way, the campaign's clock already moved on by `dt`. True on the step it comes into orbit of where
+// it is going -- or, with no destination, comes to rest.
 //
-// It never flies through the star: a straight line that would pass too close to it is steered round, by a point
-// beside the star, until the way on is clear.
+// It never flies through the star: a straight line that would pass too close to it is steered round, by a point beside the
+// star, until the way on is clear. Nor through a world: it leaves one straight out from the side facing where it is going, and
+// comes to the next on the near side, into orbit at its height.
 bool Step(CampaignState& campaign, const StarSystem& system, float dt, int tier);
 // How close to the star a course may go, in astronomical units, for a trip between these two places.
 float StarClearance(const StarSystem& system, const glm::vec3& from, const glm::vec3& to);

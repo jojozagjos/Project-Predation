@@ -740,7 +740,7 @@ std::string PredationGame::ShipStatus()
     const Body* at = system->Find(m_campaign.body);
     if (m_campaign.travel.underway && target != nullptr)
     {
-        const float left = glm::length(system->Position(target->index, m_campaign.clock) - m_campaign.travel.position);
+        const float left = glm::length(system->Position(target->index, m_campaign.clock) - glm::vec3(m_campaign.travel.position));
         return "Under way to " + target->name + ", " + About(Travel::Seconds(left, DriveTier()));
     }
     if (m_campaign.travel.underway)

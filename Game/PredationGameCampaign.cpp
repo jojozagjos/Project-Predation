@@ -432,7 +432,7 @@ void PredationGame::RegisterCampaignCommands()
                                 {
                                     return;
                                 }
-                                m_campaign.landed = false;
+                                Travel::Lift(m_campaign);
                                 m_campaign.doorOpen = false;
                                 CampaignChanged();
                             });
@@ -519,7 +519,8 @@ void PredationGame::RegisterCampaignCommands()
                                     return;
                                 }
                                 const glm::vec3 there = system->Position(m_campaign.travel.target, m_campaign.clock);
-                                m_campaign.travel.position = there + glm::normalize(m_campaign.travel.position - there + glm::vec3(1e-4f)) * 0.004f;
+                                m_campaign.travel.position =
+                                    glm::dvec3(there) + glm::dvec3(glm::normalize(glm::vec3(m_campaign.travel.position - glm::dvec3(there)) + glm::vec3(1e-4f)) * 0.004f);
                                 m_campaign.travel.velocity = glm::vec3(0.0f);
                             });
     // A campaign to try things in, without the title: campaign_new [name] [seed].

@@ -52,11 +52,14 @@ public:
     // does, and before the world, because the world reads what it writes.
     static constexpr bgfx::ViewId kViewReflectionSky = 4;
     static constexpr bgfx::ViewId kViewReflection = 5;
-    static constexpr bgfx::ViewId kViewSky = 6;
-    // Out in space, the planets and moons in the sky: real bodies drawn over the sky and under the world, from a camera
-    // that only turns as the eye does (their distances are far beyond anything the world's camera could see).
-    static constexpr bgfx::ViewId kViewSkyBodies = 7;
-    static constexpr bgfx::ViewId kViewMain = 8;
+    // The world first, then the sky only where none of it was drawn, then -- out in space -- the planets and moons in the sky:
+    // real bodies drawn over the sky and behind the world, from a camera that only turns as the eye does (their distances are
+    // far beyond anything the world's camera could see). Drawn before the world, the sky and the bodies were worked out for
+    // every pixel of the picture and then covered: a world filling the windscreen cost several milliseconds a frame behind
+    // the cockpit's walls.
+    static constexpr bgfx::ViewId kViewMain = 6;
+    static constexpr bgfx::ViewId kViewSky = 7;
+    static constexpr bgfx::ViewId kViewSkyBodies = 8;
     static constexpr bgfx::ViewId kViewDebug = 9;
     // Post-processing (PostProcess): the glow's chain of smaller and smaller copies and back, then the
     // finished picture onto the screen, before the interface.
