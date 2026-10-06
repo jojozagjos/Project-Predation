@@ -3028,3 +3028,19 @@ lobby server's `GET /list`. The deployed server goes on answering `/list` until 
   wreckage and lamp poles stand on it at the lowest of their corners.
 - **Sent**: nothing new. The ground comes from the site's seed and the world's terrain, which every machine has.
 - `site_terrain <shape>` builds the next site on that ground instead of its world's, for looking at.
+
+## ADR-137: Flying that holds steady and never passes through a world
+
+- **Slower skies** (the user: the planets out of the windows moved a lot). A planet's year at 1 AU is six hours of the
+  campaign's clock, not one, and moons go round as a ship's orbit does further out (Kepler, from Travel::kOrbitSeconds at
+  1.6 radii): about an hour at four of their planet's radii rather than two minutes. From orbit the star creeps across the sky
+  and a moon drifts, rather than sweeping past.
+- **Never through a world.** A course steers round every world as it did the star -- by a point beside the first thing in the
+  way, the world it is going to included (a way round the star can pass it) -- leaving one too; and as a last guard the ship
+  is never let inside one (Travel's KeepOut).
+- **Arriving without sliding in.** The approach is flown against where it is going, carried along with it (an inner planet
+  covers a dozen of its radii a second), and the closing speed is one it can always stop from with the push it will have:
+  full push far out, the gentle push near a world. The old curve assumed full push all the way in, so the ship came in too
+  fast, overshot and could end up inside the world.
+- **Facing**: under way the nose is on where it is going all the way in, then settles into the orbit's facing -- not swung
+  round by a mix of its speed through space (mostly the world's own way round its star) and the way to it.

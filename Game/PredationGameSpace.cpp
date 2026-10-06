@@ -161,8 +161,7 @@ void PredationGame::SetSpaceSky(Environment& environment)
     }
     else if (travel.underway)
     {
-        // Under way: nose on where it is going -- the near side of it, where it will settle into orbit -- or, coming to a stop,
-        // the way it is going. Measured from whichever of what it left and where it is going is nearer.
+        // Under way: nose on where it is going, or, coming to a stop, the way it is going. Measured from whichever of what it left and where it is going is nearer.
         float nearest = 1.0e9f;
         for (const int body : {travel.from, travel.target})
         {
@@ -183,10 +182,9 @@ void PredationGame::SetSpaceSky(Environment& environment)
         }
         if (const Body* to = system->Find(travel.target))
         {
-            const glm::vec3 toCentre = glm::vec3(system->PositionD(to->index, clock) - travel.position);
-            const float distance = glm::length(toCentre);
-            // The middle until close; then along the way in to the orbit, so it is not staring at the ground as it settles.
-            wantForward = distance > Travel::OrbitRadius(*to) * 6.0f ? toCentre : glm::mix(travel.velocity, toCentre, 0.5f);
+            // Nose on where it is going, all the way in: it comes in to the near side of it, and settles from there into the
+            // orbit's facing. (Not its way through space, which near a world is mostly the world's own way round its star.)
+            wantForward = glm::vec3(system->PositionD(to->index, clock) - travel.position);
         }
         else
         {

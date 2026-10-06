@@ -745,3 +745,66 @@ TEST_CASE("Outposts have owners: Kestrel is CIRRA's, the rest are a mix, each fr
         CHECK(seen[owner] > 0);
     }
 }
+
+TEST_CASE("No course passes through any world on the way: between a planet and its moons, moon to moon, and on to other planets", "[campaign][travel]")
+{
+    constexpr float kEarth = 4.26e-5f;
+    int trips = 0;
+    for (const uint64_t seed : {321ull, 77ull, 9001ull})
+    {
+        Universe universe;
+        universe.Reset(seed, &ShippedData());
+        const StarSystem& system = *universe.System(universe.Home());
+        // The trips most likely to go through something: those round a planet with moons.
+        std::vector<std::pair<int, int>> courses;
+        for (const Body& moon : system.bodies)
+        {
+            if (moon.kind != BodyKind::Moon)
+            {
+                continue;
+            }
+            courses.emplace_back(moon.parent, moon.index);
+            courses.emplace_back(moon.index, moon.parent);
+            for (const Body& other : system.bodies)
+            {
+                if (other.index != moon.index && ((other.kind == BodyKind::Moon && other.parent == moon.parent) ||
+                                                  (other.kind == BodyKind::Planet && other.index != moon.parent && courses.size() % 3 == 0)))
+                {
+                    courses.emplace_back(moon.index, other.index);
+                }
+            }
+        }
+        for (const auto& [from, to] : courses)
+        {
+            INFO("seed " << seed << " from " << from << " to " << to);
+            CampaignState campaign = CampaignState::Begin("Flight", seed, universe);
+            campaign.body = from;
+            campaign.landed = false;
+            campaign.clock = 5000.0 + static_cast<double>(from * 37 + to * 11);
+            campaign.travel.orbitSince = campaign.clock - 100.0;
+            REQUIRE(Travel::SetCourse(campaign, system, to));
+            bool arrived = false;
+            float closest = 1.0e9f;
+            for (int step = 0; step < 80000 && !arrived; ++step)
+            {
+                campaign.clock += 0.1;
+                arrived = Travel::Step(campaign, system, 0.1f, 0);
+                if (arrived)
+                {
+                    break;
+                }
+                for (const Body& body : system.bodies)
+                {
+                    const float distance = static_cast<float>(glm::length(system.PositionD(body.index, campaign.clock) - campaign.travel.position));
+                    closest = std::min(closest, distance / (std::max(body.radius, 0.02f) * kEarth));
+                }
+            }
+            ++trips;
+            CHECK(arrived);
+            CHECK(campaign.body == to);
+            // Never inside a world, nor nearer one than the lowest orbit (a gas giant's, 1.35 of its radii).
+            CHECK(closest > 1.3f);
+        }
+    }
+    CHECK(trips > 5);
+}

@@ -20,9 +20,10 @@ namespace
 {
 
 constexpr float kTau = 6.28318530718f;
-// One astronomical unit's year, in seconds of the campaign's clock: slow enough that a planet is where it was when
-// you left it, fast enough that it has moved on when you come back.
-constexpr float kYearSeconds = 3600.0f;
+// One astronomical unit's year, in seconds of the campaign's clock: slow enough that from orbit the star creeps across the
+// sky rather than sweeping it (a planet goes round its star far slower than a ship goes round the planet), fast enough that
+// over a campaign the planets have moved on when you come back.
+constexpr float kYearSeconds = 6.0f * 3600.0f;
 // An Earth radius in astronomical units, for where a moon is.
 constexpr float kEarthRadiusAu = 4.26e-5f;
 
@@ -1018,8 +1019,9 @@ StarSystem Universe::Generate(uint64_t universeSeed, SystemId id, const Universe
         // Well outside any rings (which lie inside where a moon could hold together), each further than the last.
         float moonOrbit = std::max(own.Range(4.0f, 8.0f), planet.rings.y * 1.8f);
         // How fast the planet's moons go round, by how far out: the further, the slower, as Kepler had it, so an outer moon
-        // never laps an inner one.
-        const float moonPace = UniverseRandom(MixSeed(planet.seed, 0x50414345ull)).Range(80.0f, 160.0f); // 'PACE'
+        // never laps an inner one -- and as a ship's orbit goes, close in (Travel::kOrbitSeconds at 1.6 radii): a moon four
+        // radii out takes about four of the ship's orbits, an hour, give or take how dense its planet is.
+        const float moonPace = UniverseRandom(MixSeed(planet.seed, 0x50414345ull)).Range(3000.0f, 4800.0f); // 'PACE'
         const size_t planetIndex = system.bodies.size() - 1;
         for (int m = 0; m < moons; ++m)
         {

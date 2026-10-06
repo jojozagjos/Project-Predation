@@ -53,27 +53,91 @@ glm::vec3 Unit(const glm::vec3& v, const glm::vec3& otherwise)
     return length > 1.0e-12f ? v / length : otherwise;
 }
 
-// Where to steer for, to go from one place to another without passing through the star: the place itself, or, while
-// the straight way passes too close, a point beside the star on the side the line passes.
-glm::vec3 AimPoint(const glm::vec3& from, const glm::vec3& to, float clearance)
+// Something to keep clear of: the star, or a world, and how far from its middle.
+struct Obstacle
+{
+    glm::vec3 centre{0.0f};
+    float clearance = 0.0f;
+};
+
+// How far a course keeps from a world it is passing: a little inside the height a ship orbits at, so one leaving its
+// orbit is already clear of it.
+float WorldClearance(const Body& body)
+{
+    return OrbitRadius(body) * 0.9f;
+}
+
+// Where to steer for, to go from one place to another without passing through anything: the place itself, or, while the
+// straight way passes too close to something, a point beside the first thing in the way, on the side the line passes. What
+// the ship is already inside the clearance of (the world it is just leaving) is not in the way.
+glm::vec3 AimPoint(const glm::vec3& from, const glm::vec3& to, const std::vector<Obstacle>& obstacles)
 {
     const glm::vec3 way = to - from;
     const float length2 = glm::dot(way, way);
-    if (length2 < 1.0e-12f)
+    if (length2 < 1.0e-24f)
     {
         return to;
     }
-    const float t = std::clamp(glm::dot(-from, way) / length2, 0.0f, 1.0f);
-    const glm::vec3 closest = from + way * t;
-    const float distance = glm::length(closest);
-    if (distance >= clearance || t <= 0.0f || t >= 1.0f)
+    float first = 2.0f;
+    glm::vec3 aim = to;
+    for (const Obstacle& obstacle : obstacles)
     {
-        return to;
+        if (glm::length(from - obstacle.centre) <= obstacle.clearance || glm::length(to - obstacle.centre) <= obstacle.clearance)
+        {
+            continue;
+        }
+        const float t = std::clamp(glm::dot(obstacle.centre - from, way) / length2, 0.0f, 1.0f);
+        const glm::vec3 closest = from + way * t;
+        const float distance = glm::length(closest - obstacle.centre);
+        if (distance >= obstacle.clearance || t <= 0.0f || t >= 1.0f || t >= first)
+        {
+            continue;
+        }
+        // Out from its middle through where the line comes closest; dead through the middle, off to one side of it.
+        glm::vec3 out = distance > obstacle.clearance * 1.0e-4f ? (closest - obstacle.centre) / distance : glm::cross(way, glm::vec3(0.0f, 1.0f, 0.0f));
+        out = glm::length(out) > 1.0e-12f ? glm::normalize(out) : glm::vec3(1.0f, 0.0f, 0.0f);
+        first = t;
+        aim = obstacle.centre + out * (obstacle.clearance * 1.3f);
     }
-    // Out from the star through where the line comes closest; dead through the middle, off to one side of it.
-    glm::vec3 out = distance > 1.0e-6f ? closest / distance : glm::cross(way, glm::vec3(0.0f, 1.0f, 0.0f));
-    out = glm::length(out) > 1.0e-9f ? glm::normalize(out) : glm::vec3(1.0f, 0.0f, 0.0f);
-    return out * (clearance * 1.3f);
+    return aim;
+}
+
+// Everything to keep clear of on the way from one place to another, where each is as the step begins: the star, and every world
+// -- where it is going too, which a way to the near side of it never passes through, but a way round the star might.
+std::vector<Obstacle> Obstacles(const StarSystem& system, double clock, const glm::dvec3& origin, const glm::vec3& from, const glm::vec3& to)
+{
+    std::vector<Obstacle> obstacles;
+    obstacles.reserve(system.bodies.size() + 1);
+    obstacles.push_back({glm::vec3(-origin), StarClearance(system, glm::vec3(origin) + from, glm::vec3(origin) + to)});
+    for (const Body& body : system.bodies)
+    {
+        obstacles.push_back({glm::vec3(system.PositionD(body.index, clock) - origin), WorldClearance(body)});
+    }
+    return obstacles;
+}
+
+// Never inside a world: put back out on its surface (a little over it), moving no further into it than the world itself is.
+void KeepOut(CampaignState::Travel& travel, const StarSystem& system, double clock)
+{
+    for (const Body& body : system.bodies)
+    {
+        const float least = std::max(body.radius, 0.02f) * kEarthRadiusAu * 1.1f;
+        const glm::dvec3 centre = system.PositionD(body.index, clock);
+        const glm::vec3 off = glm::vec3(travel.position - centre);
+        const float distance = glm::length(off);
+        if (distance >= least)
+        {
+            continue;
+        }
+        const glm::vec3 out = distance > least * 1.0e-4f ? off / distance : glm::vec3(0.0f, 1.0f, 0.0f);
+        travel.position = centre + glm::dvec3(out * least);
+        const glm::vec3 moving = BodyVelocity(system, body.index, clock);
+        const float inward = glm::dot(travel.velocity - moving, out);
+        if (inward < 0.0f)
+        {
+            travel.velocity -= out * inward;
+        }
+    }
 }
 
 } // namespace
@@ -313,8 +377,13 @@ bool Step(CampaignState& campaign, const StarSystem& system, float dt, int tier)
         const double outFor = AlignSeconds(campaign, system) + 4.0 / std::sqrt(static_cast<double>(gentle));
         if (distance < clear && travel.target >= 0 && campaign.clock < travel.setOut + outFor)
         {
-            travel.velocity += Unit(travel.departWay, glm::vec3(0.0f, 0.0f, -1.0f)) * limit * dt;
+            // Out the way it set out -- round anything in that way (a moon's planet, between it and another of its moons).
+            const glm::vec3 way = Unit(travel.departWay, glm::vec3(0.0f, 0.0f, -1.0f));
+            const glm::vec3 ahead = way * (clear - distance + reach);
+            const glm::vec3 aim = AimPoint(glm::vec3(0.0f), ahead, Obstacles(system, campaign.clock, travel.position, glm::vec3(0.0f), ahead));
+            travel.velocity += Unit(aim, way) * limit * dt;
             travel.position += glm::dvec3(travel.velocity) * static_cast<double>(dt);
+            KeepOut(travel, system, campaign.clock);
             return false;
         }
         if (gentle * distance >= accel)
@@ -365,17 +434,22 @@ bool Step(CampaignState& campaign, const StarSystem& system, float dt, int tier)
         travel.target = -1;
         return true;
     }
-    // Measured from the ship, so the last of the way is exact; round the star only when the straight way is through it.
+    // Measured from the ship, so the last of the way is exact; round the star or a world only when the straight way is
+    // through it.
     const glm::vec3 toShell = -fromThere * (1.0f - height / distance);
-    const glm::vec3 ship = glm::vec3(travel.position);
-    const glm::vec3 shell = ship + toShell;
-    const glm::vec3 aim = AimPoint(ship, shell, StarClearance(system, ship, shell));
-    const glm::vec3 to = aim == shell ? toShell : aim - ship;
+    const glm::vec3 aim = AimPoint(glm::vec3(0.0f), toShell, Obstacles(system, begun, travel.position, glm::vec3(0.0f), toShell));
+    const glm::vec3 shell = toShell;
+    const glm::vec3 to = aim;
     const float toAim = std::max(glm::length(to), 1.0e-12f);
     const float remaining = toAim + (aim == shell ? 0.0f : glm::length(shell - aim));
     const float push = std::min(most, std::max(gentle * std::max(distance, height), keepUp) * dt);
     const glm::vec3 relative = travel.velocity - moving;
-    const float closing = std::min(std::sqrt(2.0f * accel * remaining) * 0.95f, std::sqrt(gentle) * remaining);
+    // As fast as it can close and still stop in time with the push it will have on the way: full push far out, and near the world
+    // (within accel / gentle) only the gentle push, less the nearer it is -- so it slows on a curve that never asks for more
+    // braking than there will be, rather than coming in too fast to stop and sliding past or into the world.
+    const float gentleFrom = accel / gentle;
+    const float closing = 0.9f * (remaining <= gentleFrom ? std::sqrt(gentle) * remaining
+                                                          : std::sqrt(gentle * gentleFrom * gentleFrom + 2.0f * accel * (remaining - gentleFrom)));
     const glm::vec3 wanted = to / toAim * closing;
     glm::vec3 change = wanted - relative;
     const float size = glm::length(change);
@@ -384,7 +458,10 @@ bool Step(CampaignState& campaign, const StarSystem& system, float dt, int tier)
         change *= push / size;
     }
     travel.velocity += change;
-    travel.position += glm::dvec3(travel.velocity) * static_cast<double>(dt);
+    // Moved as it moves against where it is going, carried along with it: a world going round its star covers many times its
+    // own size a second, and a ship that only matched its pace by steering would slide into it in the last of the way.
+    travel.position = system.PositionD(travel.target, campaign.clock) + glm::dvec3(fromThere) + glm::dvec3(travel.velocity - moving) * static_cast<double>(dt);
+    KeepOut(travel, system, campaign.clock);
     return false;
 }
 
