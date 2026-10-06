@@ -2,6 +2,8 @@
 
 #include <bgfx/bgfx.h>
 
+#include <glm/vec3.hpp>
+
 #include <cstdint>
 #include <string>
 #include <unordered_map>
@@ -61,6 +63,8 @@ public:
     // smaller copies (mips) and sharpened at grazing angles, so it holds together into the distance. White when the
     // file cannot be read.
     TextureHandle LoadSurfaceMap(const std::string& file, const std::string& name);
+    // A surface map's average colour, in linear light (as the shader reads it): white for anything else.
+    glm::vec3 MeanColour(TextureHandle handle) const;
     // Uploads, or returns what is already under that name.
     TextureHandle Upload(const ImageData& image, const std::string& name);
     // Reads a file and uploads it. Returns the white texture when it cannot be read, so a missing
@@ -83,6 +87,7 @@ private:
 
     std::vector<Entry> m_textures;
     std::unordered_map<std::string, uint16_t> m_byName;
+    std::unordered_map<uint16_t, glm::vec3> m_means;
 };
 
 } // namespace pred

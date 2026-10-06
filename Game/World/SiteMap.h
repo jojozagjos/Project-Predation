@@ -41,6 +41,8 @@ public:
         // The texture set its ground is laid with (universe.json, a biome's site surface; Assets/Textures), tinted to its
         // colour: none, a plain colour, until the set is there.
         std::string surface = "snow_02";
+        // And where it is steep (empty: the ground set, darkened to the rock's colour).
+        std::string steep = "rock_cliff";
     };
     void SetLook(const Look& look) { m_look = look; }
     const Look& GetLook() const { return m_look; }

@@ -538,6 +538,7 @@ bool UniverseData::LoadFromFile(const std::filesystem::path& file, std::string* 
             if (const auto site = entry.find("site"); site != entry.end() && site->is_object())
             {
                 biome.surface = site->value("surface", std::string());
+                biome.steepSurface = site->value("steep", std::string());
                 biome.siteGround = ReadVec3(*site, "ground", biome.siteGround);
                 biome.siteRock = ReadVec3(*site, "rock", biome.siteRock);
                 biome.siteFog = ReadVec3(*site, "fog", biome.siteFog);

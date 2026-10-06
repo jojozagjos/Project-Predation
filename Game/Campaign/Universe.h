@@ -79,6 +79,8 @@ struct BiomeDef : TraitEntry
     // And on the ground, landed: the texture set the ground is laid with (empty for none), its colour, the rock's, the
     // fog's, and what falls from the sky when the weather does not say.
     std::string surface;
+    // And the one its slopes show where they are too steep for anything to lie on (rock, mostly).
+    std::string steepSurface;
     glm::vec3 siteGround{0.6f};
     glm::vec3 siteRock{0.35f};
     glm::vec3 siteFog{0.03f};

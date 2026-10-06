@@ -21,6 +21,9 @@ void SetLibrary(TextureLibrary* textures);
 // `material` with the named set laid on it, repeating every `metres`; as it was when there is no such set. Each set is
 // read once, the first time it is asked for.
 Material Apply(Material material, const std::string& name, float metres);
+// And a second set where it is steep, on a material with a set laid on it already: tinted on average to `colour` (the
+// steep parts' own colour, against the material's), repeating every `metres`.
+Material ApplySteep(Material material, const std::string& name, float metres);
 
 } // namespace Surfaces
 

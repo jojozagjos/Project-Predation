@@ -110,6 +110,27 @@ TextureHandle TextureLibrary::LoadSurfaceMap(const std::string& file, const std:
     {
         return White();
     }
+    // Its average colour, in linear light: a photograph has a colour of its own, and a surface tinted to a world's colour
+    // wants only its detail (see Surfaces::Apply).
+    glm::vec3 mean{0.0f};
+    {
+        float linear[256];
+        for (int v = 0; v < 256; ++v)
+        {
+            linear[v] = std::pow(static_cast<float>(v) / 255.0f, 2.2f);
+        }
+        double sum[3] = {0.0, 0.0, 0.0};
+        const size_t pixels = image.pixels.size() / 4;
+        for (size_t i = 0; i < pixels; ++i)
+        {
+            for (int c = 0; c < 3; ++c)
+            {
+                sum[c] += linear[image.pixels[i * 4 + static_cast<size_t>(c)]];
+            }
+        }
+        const double count = static_cast<double>(std::max<size_t>(pixels, 1));
+        mean = glm::vec3(static_cast<float>(sum[0] / count), static_cast<float>(sum[1] / count), static_cast<float>(sum[2] / count));
+    }
     // Every smaller copy, each the average of four of the one before, laid one after another as bgfx wants them.
     std::vector<uint8_t> all = image.pixels;
     int width = image.width;
@@ -160,8 +181,15 @@ TextureHandle TextureLibrary::LoadSurfaceMap(const std::string& file, const std:
     const auto index = static_cast<uint16_t>(m_textures.size());
     m_textures.push_back({texture, name});
     m_byName.emplace(name, index);
+    m_means[index] = mean;
     PRED_LOG_INFO(Render, "Surface map '{}': {} by {}, {} levels", name, image.width, image.height, static_cast<int>(mips));
     return TextureHandle{index};
+}
+
+glm::vec3 TextureLibrary::MeanColour(TextureHandle handle) const
+{
+    const auto found = m_means.find(handle.index);
+    return found != m_means.end() ? found->second : glm::vec3(1.0f);
 }
 
 void TextureLibrary::Shutdown()

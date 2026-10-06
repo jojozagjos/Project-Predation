@@ -143,7 +143,8 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
     // gentle, its rock showing through as it steepens. Part of the one structure the buildings are set into.
     builder.SetStructure(ground);
     const glm::vec3 cliffColour = m_look.rock * 0.88f;
-    const Material terrainMaterial = Surfaces::Apply(Material::Diffuse(SiteTerrain::Paint(m_look.ground, cliffColour), 1.0f), m_look.surface, 2.5f);
+    Material terrainMaterial = Surfaces::Apply(Material::Diffuse(SiteTerrain::Paint(m_look.ground, cliffColour), 1.0f), m_look.surface, 2.5f);
+    terrainMaterial = Surfaces::ApplySteep(terrainMaterial, m_look.steep, 11.0f);
     // Made side by side, a row of pieces a thread -- the shapes to stand on are most of the time a site takes to build -- and
     // put into the world here, in order.
     struct Piece

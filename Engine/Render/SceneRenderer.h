@@ -222,6 +222,10 @@ private:
     bgfx::UniformHandle m_sNormalMap = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_sRoughnessMap = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uSurfaceParams = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_sSteepColor = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_sSteepNormal = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_sSteepRoughness = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uSteepParams = BGFX_INVALID_HANDLE;
     const TextureLibrary* m_textures = nullptr;
 
     Stats m_stats;

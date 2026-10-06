@@ -5,6 +5,10 @@ $input v_worldPos, v_normal, v_texcoord0, v_color0, v_organic
 SAMPLER2D(s_baseColor, 0);     // multiplied into the albedo; white when a material has none
 SAMPLER2D(s_normalMap, 10);    // a surface set's normal map (OpenGL style); flat when there is none
 SAMPLER2D(s_roughnessMap, 11); // and its roughness, multiplied in; white when there is none
+SAMPLER2D(s_steepColor, 12);     // a second set where the surface is steep (Material::steepScale)
+SAMPLER2D(s_steepNormal, 13);
+SAMPLER2D(s_steepRoughness, 14);
+uniform vec4 u_steepParams;      // xyz = its tint, w = repeats a metre (0: none)
 uniform vec4 u_surfaceParams;  // x = repeats a metre of the surface set, laid on from every side (0: off)
 
 uniform vec4 u_baseColor;       // rgb = albedo
@@ -572,7 +576,46 @@ void main()
 		nX = vec3(nX.xy * vec2(s.x, 1.0) + N.zy, abs(nX.z) * N.x);
 		nY = vec3(nY.xy * vec2(s.y, 1.0) + N.xz, abs(nY.z) * N.y);
 		nZ = vec3(nZ.xy * vec2(-s.z, 1.0) + N.xy, abs(nZ.z) * N.z);
+		vec3 Ng = N;
 		N = normalize(nX.zyx * blend.x + nY.xzy * blend.y + nZ.xyz * blend.z);
+		// Where it is steep, the second set -- the world's rock -- showing through as the slope passes what anybody can stand
+		// on (SiteTerrain::Rockiness), laid on the same way.
+		float rock = u_steepParams.w > 0.0 ? 1.0 - smoothstep(0.72, 0.94, Ng.y) : 0.0;
+		if (rock > 0.001)
+		{
+			vec3 at2 = v_worldPos * u_steepParams.w;
+			vec2 sX = vec2(at2.z, -at2.y);
+			vec2 sY = vec2(at2.x, -at2.z);
+			vec2 sZ = vec2(at2.x, -at2.y);
+			// A rock face repeats as plainly as the ground does: blended with a larger copy of itself, turned and shifted,
+			// over patches some metres across.
+			float other = smoothstep(0.35, 0.65, SurfacePatches(vec2(v_worldPos.x + v_worldPos.y * 0.7, v_worldPos.z - v_worldPos.y * 0.6) * 0.09));
+			vec2 oX = vec2(-sX.y, sX.x) * 0.43 + vec2(0.31, 0.57);
+			vec2 oY = vec2(-sY.y, sY.x) * 0.43 + vec2(0.31, 0.57);
+			vec2 oZ = vec2(-sZ.y, sZ.x) * 0.43 + vec2(0.31, 0.57);
+			vec3 rockAlbedo = (pow(mix(texture2D(s_steepColor, sX).rgb, texture2D(s_steepColor, oX).rgb, other), vec3_splat(2.2)) * blend.x +
+			                   pow(mix(texture2D(s_steepColor, sY).rgb, texture2D(s_steepColor, oY).rgb, other), vec3_splat(2.2)) * blend.y +
+			                   pow(mix(texture2D(s_steepColor, sZ).rgb, texture2D(s_steepColor, oZ).rgb, other), vec3_splat(2.2)) * blend.z) *
+			                  u_steepParams.xyz;
+			float rockRough = texture2D(s_steepRoughness, sX).r * blend.x + texture2D(s_steepRoughness, sY).r * blend.y +
+			                  texture2D(s_steepRoughness, sZ).r * blend.z;
+			// The turned copy's bumps turned back (a quarter turn: x from its y, y from minus its x).
+			vec3 qX = texture2D(s_steepNormal, oX).xyz * 2.0 - 1.0;
+			vec3 qY = texture2D(s_steepNormal, oY).xyz * 2.0 - 1.0;
+			vec3 qZ = texture2D(s_steepNormal, oZ).xyz * 2.0 - 1.0;
+			vec3 rX = mix(texture2D(s_steepNormal, sX).xyz * 2.0 - 1.0, vec3(qX.y, -qX.x, qX.z), other);
+			vec3 rY = mix(texture2D(s_steepNormal, sY).xyz * 2.0 - 1.0, vec3(qY.y, -qY.x, qY.z), other);
+			vec3 rZ = mix(texture2D(s_steepNormal, sZ).xyz * 2.0 - 1.0, vec3(qZ.y, -qZ.x, qZ.z), other);
+			rX = vec3(rX.xy * vec2(s.x, 1.0) + Ng.zy, abs(rX.z) * Ng.x);
+			rY = vec3(rY.xy * vec2(s.y, 1.0) + Ng.xz, abs(rY.z) * Ng.y);
+			rZ = vec3(rZ.xy * vec2(-s.z, 1.0) + Ng.xy, abs(rZ.z) * Ng.z);
+			vec3 rockN = normalize(rX.zyx * blend.x + rY.xzy * blend.y + rZ.xyz * blend.z);
+			// Its own colours mostly let go of -- the moss and lichen of the photograph -- for the world's rock colour.
+			rockAlbedo = mix(vec3_splat(dot(rockAlbedo, vec3(0.2126, 0.7152, 0.0722))), rockAlbedo, 0.35);
+			surfaceAlbedo = mix(surfaceAlbedo, rockAlbedo, rock);
+			surfaceRough = mix(surfaceRough, rockRough, rock);
+			N = normalize(mix(N, rockN, rock));
+		}
 	}
 	vec3 V = normalize(u_cameraPosition.xyz - v_worldPos);
 	vec3 L = normalize(u_lightDirection.xyz);

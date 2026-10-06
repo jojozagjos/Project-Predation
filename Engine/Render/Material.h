@@ -39,6 +39,14 @@ struct Material
     TextureHandle normalTexture;
     TextureHandle roughnessTexture;
     float surfaceScale = 0.0f;
+    // And a second set where the surface is steep -- a world's rock showing through its ground on the slopes -- blended in
+    // as the slope passes what anybody can stand on, repeating every `steepScale` metres (0: none), its colour times
+    // `steepTint` (the first set's average colour over its own, so each is tinted to the colour asked of it).
+    TextureHandle steepColorTexture;
+    TextureHandle steepNormalTexture;
+    TextureHandle steepRoughnessTexture;
+    float steepScale = 0.0f;
+    glm::vec3 steepTint{1.0f};
 
     // Living tissue that grows, beats and dies across its surface -- a nest's skin -- driven from here and
     // from each vertex's texture coordinates: x how far along the growth from its source, y how far it
