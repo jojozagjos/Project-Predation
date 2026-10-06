@@ -106,10 +106,13 @@ four"); site and moon numbers are said a figure at a time.
 
 ### Where things stand
 
-Almost everything in the game is drawn in **flat colours** today. Only one texture set is in: `snow_02`, laid on the
-ground of every landing site (tinted to the world's own ground colour). Each set below gets wired in when it arrives --
-a few lines of code per surface -- so they can come in any order. The **first ten** (just below) change the most of what
-you see.
+The ground of every landing site is textured now: each kind of world its own set (section 1, all in), with rock or
+soil showing through on the slopes, each tinted to the world's own colours. Everything else is still drawn in **flat
+colours**. Each set below gets wired in when it arrives -- a few lines of code per surface -- so they can come in any order.
+The rest of the **first ten** (just below) change the most of what you see.
+
+A photograph's own colour is divided out when a set is tinted (its average colour), so a set of any colour works: the
+world's colour decides the hue and the set gives the detail.
 
 ### What each set needs
 
@@ -136,9 +139,9 @@ you see.
 
 ### The first ten
 
-1. `regolith`: pale dust and pebbles (barren worlds, airless moons -- the most common ground) *tinted*
-2. `rock_ground`: grey-brown broken rock and grit (rocky worlds) *tinted*
-3. `rock_cliff`: big rock faces (the rock round every site, boulders, outposts' hills) *tinted*
+1. `regolith` (in): pale dust and pebbles (barren worlds, airless moons -- the most common ground) *tinted*
+2. `rock_ground` (in): grey-brown broken rock and grit (rocky worlds) *tinted*
+3. `rock_cliff` (in, on site slopes): big rock faces (the rock round every site, boulders, outposts' hills) *tinted*
 4. `concrete_slab`: weathered poured concrete in large squares (Kestrel's and every outpost's slab, the pad)
 5. `asphalt`: road surface (the street at Kestrel and the outposts)
 6. `building_cladding`: corrugated or paneled metal siding, weathered (every building's outside) *tinted*
@@ -150,21 +153,22 @@ you see.
 ### 1. Ground of each kind of world (`universe.json` biomes, `"site"` -> `"surface"`)
 
 - [x] `snow_02`: packed, wind-blown snow (frozen worlds)
-- [ ] `regolith`: pale dust and pebbles (barren worlds and airless moons)
-- [ ] `rock_ground`: grey-brown broken rock and grit (rocky worlds)
-- [ ] `sand`: rippled sand (desert worlds)
-- [ ] `basalt`: black volcanic rock, a little ash (volcanic worlds)
-- [ ] `wet_rock`: dark wet stone and shingle (oceanic worlds, their islands)
-- [ ] `grass_dirt`: rough grass over dirt (temperate worlds)
-- [ ] `jungle_floor`: leaf litter and mud (jungle worlds)
-- [ ] `toxic_crust`: stained, crusted mineral ground (toxic worlds)
-- [ ] `storm_flats`: hard wind-scoured ground (storm-dominated worlds)
-- [ ] `crystal_ground`: glassy, faceted mineral (crystalline worlds)
-- [ ] `rock_cliff`: large rock faces (cliffs, boulders, hills)
-- [ ] `ice_cliff`: blue-white ice faces (frozen worlds' cliffs, later)
+- [x] `regolith`: pale dust and pebbles (barren worlds and airless moons) -- Poly Haven moon_03
+- [x] `rock_ground`: grey-brown broken rock and grit (rocky worlds) -- Poly Haven rock_ground
+- [x] `sand`: rippled sand (desert worlds) -- Poly Haven sand_03
+- [x] `basalt`: black volcanic rock, a little ash (volcanic worlds) -- Poly Haven dark_rock
+- [x] `wet_rock`: dark wet stone and shingle (oceanic worlds, their islands) -- Poly Haven brown_mud_03 (no roughness map)
+- [x] `grass_dirt`: rough grass over dirt (temperate worlds) -- Poly Haven grass_ground
+- [x] `jungle_floor`: leaf litter and mud (jungle worlds) -- Poly Haven forest_leaves_04
+- [x] `toxic_crust`: stained, crusted mineral ground (toxic worlds) -- Poly Haven mud_cracked_dry_03
+- [x] `storm_flats`: hard wind-scoured ground (storm-dominated worlds) -- Poly Haven rocks_ground_02
+- [x] `crystal_ground`: glassy, faceted mineral (crystalline worlds) -- ambientCG ice_0002
+- [x] `rock_cliff`: large rock faces (every world's slopes; boulders and hills later) -- Poly Haven rock_wall_02
+- [x] `soil_cliff`: earth faces (temperate and jungle worlds' slopes) -- Poly Haven excavated_soil_wall
+- [ ] `ice_cliff`: blue-white ice faces (frozen worlds' slopes; rock_cliff until then)
 
-When the ground stops being flat (see NEXT_STEPS.md), a **second ground set per world** for slopes (rock showing
-through on steep ground) makes the biggest difference; the rock sets above double as that.
+Each world's slope set is `"steep"` beside `"surface"` in universe.json. To swap a set, drop the new files into its
+folder under the same names; an EXR map is converted to PNG through Blender (as Non-Color, normals re-centred).
 
 ### 2. Kestrel Station and the outposts
 
