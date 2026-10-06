@@ -1174,6 +1174,9 @@ private:
     std::string m_cineAfter;
     // The stage ship's gear, as a cinematic puts it ("gear" markers): down at the start of taking off, until it is put up.
     bool m_stageGear = false;
+    // The stage ship's boarding stair, as a cinematic puts it ("stair" markers): out at the start of taking off until it is
+    // put away, and out once it has set down.
+    bool m_stageStair = false;
     PlanetRenderer m_planets;
     SystemMapView m_mapView;
     bool m_mapOpen = false;

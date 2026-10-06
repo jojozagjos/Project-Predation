@@ -56,9 +56,9 @@ constexpr float kPavementEdge = -25.0f;
 constexpr float kPavementWest = -45.0f;
 constexpr float kFacade = -49.0f;
 constexpr float kCross = (KestrelStation::kCrossFrom + KestrelStation::kCrossTo) * 0.5f;
-// The yards round the pad, kept out of the way of the cinematics' cameras (by the pad's back corner to starboard, and on the
-// street) and of the ship coming in low over the pad's front: to starboard, between the pad's front and short of its back; ahead
-// and off to starboard; behind.
+// The yards round the pad, kept out of the way of the cinematics' cameras (on the street, on the pad's port side, and over its
+// back to starboard) and of the ship coming in low over the pad's front: to starboard, between the pad's front and short of its
+// back; ahead and off to starboard; behind.
 constexpr float kStarboardFront = 24.0f;
 constexpr float kStarboardFrom = -40.0f;
 constexpr float kStarboardTo = 28.0f;
@@ -68,7 +68,7 @@ constexpr float kBehindFront = 48.0f;
 constexpr float kBehindFrom = -22.0f;
 constexpr float kBehindTo = 20.0f;
 // The points the slab always reaches: those cameras' places.
-const glm::vec2 kKeepOnSlab[] = {{34.0f, 46.0f}, {-36.0f, 54.0f}, {-44.0f, -78.0f}, {18.0f, 42.0f}};
+const glm::vec2 kKeepOnSlab[] = {{-40.0f, -22.0f}, {-19.0f, -18.0f}, {-44.0f, -78.0f}, {18.0f, 42.0f}};
 
 // Concrete, asphalt, steel, lamps and windows, as Kestrel's.
 const glm::vec3 kConcrete{0.42f, 0.41f, 0.38f};
@@ -380,7 +380,7 @@ private:
     void Pad()
     {
         KestrelStation::Pad(m_solid);
-        KestrelStation::Stair(m_solid);
+        KestrelStation::Supply(m_solid);
         KestrelStation::PadDressing(m_dress, kPavementEdge + 0.1f);
         KestrelStation::PadMasts(m_solid);
         KestrelStation::PadMastBars(m_dress);

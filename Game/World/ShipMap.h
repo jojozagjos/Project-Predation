@@ -113,8 +113,21 @@ public:
     bool AirlockOpen() const { return m_airlockOpen; }
     // Where the door's controls are: inside on the wall aft of it, and outside on the hull beside it.
     CinePose AirlockControl(bool inside) const;
-    // The landing gear, down or up: round the rooms (standing at a hub) and on the stage (as a cinematic has it).
-    void SetGear(Scene& scene, bool rooms, bool stage);
+    // The landing gear, wanted down or up, and the boarding stair, out or in: round the rooms (standing at an outpost) and on the
+    // stage (as a cinematic has it). They fold and slide there (UpdateFittings) -- the first time at once.
+    void SetGear(bool rooms, bool stage);
+    void SetStair(bool rooms, bool stage);
+    // The stage's straight to how they are wanted: a cinematic starting finds its ship as it begins, not unfolding into it.
+    void SnapStage();
+    // Each leg folding down from its hinge under the belly to stand on, or up against it; the stair swinging down from the
+    // boarding door to the ground, or up level and in under the floor. Solid only standing (the stair, all the way out).
+    void UpdateFittings(Scene& scene, MeshLibrary& meshes, float dt);
+    // A leg (0 to 3: forward to port and starboard, aft to port and starboard), the stair's landing at the door, and its ramp,
+    // each about its own hinge, in the ship's frame: the leg hanging down, the ramp level.
+    static ModelAsset GearLegModel();
+    static ModelAsset StairLandingModel();
+    static ModelAsset StairRampModel();
+    static glm::vec3 GearHinge(int leg);
     // Whether the ship is standing at an outpost: the outpost round it (Kestrel Station, or another world's), solid to walk on
     // and into, its lamps lit; built again only for another outpost or another world's colours.
     void SetField(Scene& scene, MeshLibrary& meshes, bool shown, const FieldLook& look);
@@ -183,6 +196,18 @@ private:
     VehicleProp m_bayDoors;
     VehicleProp m_hull;
     VehicleProp m_stageHull;
+    // The gear and the stair round the rooms ([0]) and on the stage ([1]): their pieces, how far down or out each is (0 to 1),
+    // and how it is wanted; whether the stair round the rooms is solid now.
+    VehicleProp m_legs[2][4];
+    VehicleProp m_stairLanding[2];
+    VehicleProp m_stairRamp[2];
+    float m_gearDown[2] = {0.0f, 0.0f};
+    bool m_gearWanted[2] = {false, false};
+    float m_stairOut[2] = {0.0f, 0.0f};
+    bool m_stairWanted[2] = {false, false};
+    bool m_stairSolid = false;
+    bool m_fittingsSet = false;
+    void ShowFittings(Scene& scene, int which);
     static void FarVisible(Scene& scene, VehicleProp& prop);
     PhysicsWorld* m_physics = nullptr;
     LevelLights* m_lights = nullptr;

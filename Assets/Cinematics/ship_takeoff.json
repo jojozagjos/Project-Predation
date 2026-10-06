@@ -989,6 +989,11 @@
   ],
   "markers": [
     {
+      "t": 0.05,
+      "name": "stair",
+      "value": "up"
+    },
+    {
       "t": 3.4,
       "name": "gear",
       "value": "up"

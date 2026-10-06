@@ -87,10 +87,9 @@ inline constexpr float kSlabTop = ShipSpec::kFieldGround + 0.12f;
 inline constexpr float kCrossFrom = -8.6f;
 inline constexpr float kCrossTo = -5.2f;
 void Pad(PartBuilder& solid);
-// The ship's boarding stair down to the pad, and the ground supply beside it.
-void Stair(PartBuilder& solid);
-// The pad's paint, the lamps sunk round it, the stair's treads and the supply's cable; the walkway from the stair out as far as
-// `walkwayTo` (x).
+// The ground supply the ship is plugged into, beside where its stair comes down (the stair is the ship's: ShipMap).
+void Supply(PartBuilder& solid);
+// The pad's paint, the lamps sunk round it and the supply's cable; the walkway from the stair out as far as `walkwayTo` (x).
 void PadDressing(PartBuilder& dressing, float walkwayTo);
 // The floodlight masts at the pad's corners, their crossbars (dressing) and their lamps.
 void PadMasts(PartBuilder& solid);

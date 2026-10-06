@@ -191,8 +191,12 @@ bool PredationGame::PlayCinematic(const std::string& name, float from)
     ParkVehicles();
     // And nothing is left open over it: the pause menu, the map, the briefing, the inventory.
     CloseOverlays();
-    // Taking off, the ship starts on its gear; setting down, it comes in with it up.
+    // Taking off, the ship starts on its gear with its stair out; setting down, it comes in with both up.
     m_stageGear = name == "ship_takeoff";
+    m_stageStair = name == "ship_takeoff";
+    m_ship.SetGear(ShipLanded(), m_stageGear);
+    m_ship.SetStair(ShipLanded(), m_stageStair);
+    m_ship.SnapStage();
     m_cine.Play(found->second, CinematicBindingsNow(), m_scene, m_app->GetMeshes(), *this, from);
     m_cineHandBack = 0.0f;
     if (m_sessionMode == SessionMode::Host)
@@ -565,6 +569,11 @@ void PredationGame::CineMarker(const pred::Marker& marker)
     {
         // The ship's landing gear, up or down, in a cinematic of taking off or setting down.
         m_stageGear = marker.value == "down";
+    }
+    else if (marker.name == "stair")
+    {
+        // And its boarding stair, in or out.
+        m_stageStair = marker.value == "down";
     }
     else if (marker.name == "arrive")
     {

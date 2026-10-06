@@ -134,38 +134,10 @@ void Pad(PartBuilder& b)
     }
 }
 
-void Stair(PartBuilder& b)
+void Supply(PartBuilder& b)
 {
-    const float s = kSlabTop;
-    // A landing at the ship's door, a ramp down to the pad, rails either side.
-    const float from = kAirlockFrom;
-    const float to = kAirlockTo;
-    // Short of the ship's own deck, so their floors never lie one on the other.
-    b.Box("stair_landing", {-5.3f, -0.2f, from - 0.2f}, {-3.68f, 0.0f, to + 0.2f}, kSteel, 0.6f, 0.6f);
-    {
-        // From the landing's edge (x -5.3, deck height) down to the slab, 3.8 metres out.
-        const float run = 3.8f;
-        const float drop = 0.0f - s;
-        const float length = std::sqrt(run * run + drop * drop);
-        const float slope = std::atan2(drop, run) * kDegrees;
-        const glm::vec3 middle{-5.3f - run * 0.5f, (0.0f + s) * 0.5f - 0.1f, (from + to) * 0.5f};
-        ModelPart& ramp = b.Box("stair_ramp", middle - glm::vec3(length * 0.5f, 0.1f, (to - from) * 0.5f + 0.2f),
-                                middle + glm::vec3(length * 0.5f, 0.1f, (to - from) * 0.5f + 0.2f), kSteel, 0.6f, 0.6f);
-        // Down towards -x: turned about z, its outer end low.
-        ramp.rotation = {0.0f, 0.0f, slope};
-        for (const float z : {from - 0.3f, to + 0.3f})
-        {
-            ModelPart& rail = b.Box("stair_rail", middle + glm::vec3(-length * 0.5f, 0.95f, -0.04f) + glm::vec3(0.0f, 0.0f, z - middle.z),
-                                    middle + glm::vec3(length * 0.5f, 1.0f, 0.04f) + glm::vec3(0.0f, 0.0f, z - middle.z), kHazard, 0.6f, 0.3f);
-            rail.rotation = {0.0f, 0.0f, slope};
-            b.Box("stair_post", {-5.3f, 0.0f, z - 0.04f}, {-5.22f, 1.0f, z + 0.04f}, kSteelDark, 0.5f, 0.7f);
-            b.Box("stair_post", {-9.1f, s, z - 0.04f}, {-9.02f, s + 1.0f, z + 0.04f}, kSteelDark, 0.5f, 0.7f);
-        }
-        b.Box("stair_leg", {-5.3f, s, from - 0.1f}, {-5.1f, -0.2f, from + 0.1f}, kSteelDark, 0.5f, 0.7f);
-        b.Box("stair_leg", {-5.3f, s, to - 0.1f}, {-5.1f, -0.2f, to + 0.1f}, kSteelDark, 0.5f, 0.7f);
-    }
     // The ground supply the ship is plugged into while it stands here.
-    b.Box("bay_supply", {-12.6f, s, 3.0f}, {-10.8f, s + 1.1f, 4.6f}, kHazard * 0.85f, 0.6f, 0.3f);
+    b.Box("bay_supply", {-12.6f, kSlabTop, 3.0f}, {-10.8f, kSlabTop + 1.1f, 4.6f}, kHazard * 0.85f, 0.6f, 0.3f);
 }
 
 void PadDressing(PartBuilder& b, float walkwayTo)
@@ -189,14 +161,6 @@ void PadDressing(PartBuilder& b, float walkwayTo)
     const glm::vec3 walkway{0.22f, 0.36f, 0.42f};
     b.Box("walkway", {walkwayTo, s, kCrossFrom}, {-17.45f, paint, kCrossTo}, walkway, 0.8f);
     b.Box("walkway", {-16.55f, s, kCrossFrom}, {-9.4f, paint, kCrossTo}, walkway, 0.8f);
-    // Treads on the stair, for the look of steps on its ramp.
-    for (int i = 0; i < 12; ++i)
-    {
-        const float t = (static_cast<float>(i) + 0.5f) / 12.0f;
-        const float x = -5.3f - 3.8f * t;
-        const float y = t * s;
-        b.Box("stair_tread", {x - 0.05f, y + 0.005f, kAirlockFrom - 0.15f}, {x + 0.05f, y + 0.045f, kAirlockTo + 0.15f}, kHazard * 0.7f, 0.7f);
-    }
     // The supply's cable across to the ship.
     b.Box("bay_cable", {-10.8f, s + 0.02f, 3.6f}, {-5.6f, s + 0.12f, 3.75f}, kSteelDark, 0.7f, 0.2f);
 }
@@ -338,8 +302,8 @@ ModelAsset Solid(const glm::vec3& ground, const glm::vec3& rock)
         ramp.rotation = {-std::atan2(rise, run) * kDegrees, 0.0f, 0.0f};
     }
 
-    // --- The ship's boarding stair, and the ground supply it is plugged into ---------------------------------------
-    Stair(b);
+    // --- The ground supply the ship is plugged into ------------------------------------------------------------------
+    Supply(b);
 
     // --- Shipworks: the great shed to starboard, its side the bay's starboard wall ---------------------------------------
     b.Box("shipworks", {kWorksWall, s, kBayOpen}, {78.0f, s + 20.0f, kBackWall + 1.0f}, kPanel * 0.85f, 0.75f, 0.2f);

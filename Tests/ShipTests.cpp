@@ -292,7 +292,9 @@ TEST_CASE("Kestrel Station and the ship standing in it share no surface, which w
     const ModelAsset hull = ShipMap::HullModel(ShipHullLook{});
     const ModelAsset solid = KestrelStation::Solid({0.4f, 0.4f, 0.4f}, {0.3f, 0.3f, 0.3f});
     const ModelAsset dressing = KestrelStation::Dressing({0.4f, 0.4f, 0.4f});
-    const std::vector<std::string> found = SharedFaces({&hull, &solid, &dressing});
+    // And the ship's own stair, out at its door.
+    const ModelAsset landing = ShipMap::StairLandingModel();
+    const std::vector<std::string> found = SharedFaces({&hull, &solid, &dressing, &landing});
     for (const std::string& pair : found)
     {
         UNSCOPED_INFO(pair);
@@ -355,7 +357,7 @@ TEST_CASE("Every outpost but Kestrel is its own, planned the same from the same 
 TEST_CASE("An outpost has its name to put up, lamps enough to light it, and nothing where people and cameras stand", "[ship][outpost]")
 {
     // Where the cinematics of setting down and taking off stand their cameras (ship_land, ship_takeoff), in the ship's frame.
-    const glm::vec3 cameras[] = {{34.0f, 3.0f, 46.0f}, {32.0f, 3.4f, 44.0f}, {-36.0f, 2.2f, 54.0f}, {-34.0f, 2.0f, 50.0f},
+    const glm::vec3 cameras[] = {{-40.0f, 3.0f, -22.0f}, {-38.0f, 3.4f, -18.0f}, {-19.0f, 1.6f, -18.0f}, {-18.5f, 1.8f, -14.0f},
                                  {-42.0f, 2.2f, -78.0f}, {-44.0f, 2.0f, -74.0f}, {18.0f, 10.0f, 42.0f}, {16.0f, 16.0f, 30.0f}};
     const float s = KestrelStation::kSlabTop;
     const float cross = (KestrelStation::kCrossFrom + KestrelStation::kCrossTo) * 0.5f;
@@ -428,5 +430,52 @@ TEST_CASE("Outposts and the ship standing in them share no surface, which would 
             UNSCOPED_INFO(pair);
         }
         CHECK(found.empty());
+    }
+}
+
+TEST_CASE("The cinematics of setting down and taking off see the ship, at Kestrel and at every outpost", "[ship][outpost][kestrel]")
+{
+    // Each camera's places and the middle of the ship as it looks at it, in the ship's frame: setting down it is watched coming in
+    // and touching down; taking off, lifting.
+    struct Sight
+    {
+        glm::vec3 eye;
+        glm::vec3 ship;
+    };
+    const Sight sights[] = {{{-40.0f, 3.0f, -22.0f}, {0.0f, 16.0f, 0.0f}}, {{-38.0f, 3.4f, -18.0f}, {0.0f, 16.0f, 0.0f}},
+                            {{-19.0f, 1.6f, -18.0f}, {0.0f, 1.0f, 0.0f}},  {{-18.5f, 1.8f, -14.0f}, {0.0f, 1.0f, 0.0f}},
+                            {{-42.0f, 2.2f, -78.0f}, {0.0f, 4.0f, 0.0f}},  {{-44.0f, 2.0f, -74.0f}, {0.0f, 4.0f, 0.0f}},
+                            {{18.0f, 10.0f, 42.0f}, {0.0f, 4.0f, -6.0f}}, {{16.0f, 16.0f, 30.0f}, {0.0f, 8.0f, -6.0f}}};
+    const auto check = [&](const ModelAsset& solid, const ModelAsset& dressing, const std::string& where)
+    {
+        for (const Sight& sight : sights)
+        {
+            // Up to the ship's side: the last stretch is the ship itself.
+            for (float t = 0.0f; t < 0.75f; t += 0.01f)
+            {
+                const glm::vec3 at = sight.eye + (sight.ship - sight.eye) * t;
+                const ModelPart* part = PartAt(solid, at);
+                if (part == nullptr)
+                {
+                    part = PartAt(dressing, at);
+                }
+                if (part != nullptr && part->name.rfind("fx_", 0) == 0)
+                {
+                    part = nullptr;
+                }
+                INFO(where << ": from " << sight.eye.x << " " << sight.eye.y << " " << sight.eye.z << " blocked by " << (part ? part->name : ""));
+                CHECK(part == nullptr);
+                if (part != nullptr)
+                {
+                    break;
+                }
+            }
+        }
+    };
+    check(KestrelStation::Solid(glm::vec3(0.4f), glm::vec3(0.3f)), KestrelStation::Dressing(glm::vec3(0.4f)), "Kestrel");
+    for (int i = 0; i < 20; ++i)
+    {
+        const Outpost::Layout layout = Outpost::Generate(OutpostSeed(i), glm::vec3(0.4f), glm::vec3(0.3f));
+        check(layout.solid, layout.dressing, "outpost " + std::to_string(i));
     }
 }

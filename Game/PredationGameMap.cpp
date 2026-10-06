@@ -585,6 +585,7 @@ void PredationGame::UpdateTravel(float dt)
     }
     UpdateShipGround();
     m_ship.UpdateAirlock(m_scene, m_app->GetMeshes(), dt);
+    m_ship.UpdateFittings(m_scene, m_app->GetMeshes(), dt);
     for (const Entity control : m_airlockControls)
     {
         if (Interactable* door = m_interactions.Find(control))
@@ -661,7 +662,8 @@ void PredationGame::UpdateShipGround()
         }
         m_ship.SetField(m_scene, m_app->GetMeshes(), landed, field);
         m_ship.SetStageField(m_scene, m_app->GetMeshes(), GroundCinematic() && at != nullptr, field);
-        m_ship.SetGear(m_scene, landed, GroundCinematic() && m_stageGear);
+        m_ship.SetGear(landed, GroundCinematic() && m_stageGear);
+        m_ship.SetStair(landed, GroundCinematic() && m_stageStair);
         m_ship.SetAirlockOpen(m_scene, m_app->GetMeshes(), landed && m_campaign.doorOpen);
         UpdateHubSigns(landed, field, name);
     }
