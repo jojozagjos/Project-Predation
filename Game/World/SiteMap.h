@@ -13,6 +13,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <vector>
 
 namespace pred
@@ -37,6 +38,9 @@ public:
         bool snow = true;
         SiteTerrain::Shape terrain = SiteTerrain::Shape::Flat;
         bool dunes = false;
+        // The texture set its ground is laid with (universe.json, a biome's site surface; Assets/Textures), tinted to its
+        // colour: none, a plain colour, until the set is there.
+        std::string surface = "snow_02";
     };
     void SetLook(const Look& look) { m_look = look; }
     const Look& GetLook() const { return m_look; }

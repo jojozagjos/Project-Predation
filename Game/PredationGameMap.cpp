@@ -1000,6 +1000,7 @@ SiteMap::Look PredationGame::SiteLookHere()
     {
         look.ground = biome->siteGround;
         look.rock = biome->siteRock;
+        look.surface = biome->surface;
     }
     look.snow = body->temperature < -8.0f && body->air > 0.015f;
     return look;
