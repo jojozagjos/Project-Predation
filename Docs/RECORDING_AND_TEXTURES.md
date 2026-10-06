@@ -107,8 +107,8 @@ four"); site and moon numbers are said a figure at a time.
 ### Where things stand
 
 The ground of every landing site is textured now: each kind of world its own set (section 1, all in), with rock or
-soil showing through on the slopes, each tinted to the world's own colours. Everything else is still drawn in **flat
-colours**. Each set below gets wired in when it arrives -- a few lines of code per surface -- so they can come in any order.
+soil showing through on the slopes, each tinted to the world's own colours. Nearly every other set on the list is in too (Poly Haven and ambientCG, CC0; the deck plate is texturecan metal_0069);
+the ones still open are marked below. Each set below gets wired in when it arrives -- a few lines of code per surface -- so they can come in any order.
 The rest of the **first ten** (just below) change the most of what you see.
 
 A photograph's own colour is divided out when a set is tinted (its average colour), so a set of any colour works: the
@@ -165,71 +165,71 @@ world's colour decides the hue and the set gives the detail.
 - [x] `crystal_ground`: glassy, faceted mineral (crystalline worlds) -- ambientCG ice_0002
 - [x] `rock_cliff`: large rock faces (every world's slopes; boulders and hills later) -- Poly Haven rock_wall_02
 - [x] `soil_cliff`: earth faces (temperate and jungle worlds' slopes) -- Poly Haven excavated_soil_wall
-- [ ] `ice_cliff`: blue-white ice faces (frozen worlds' slopes; rock_cliff until then)
+- [x] `ice_cliff`: blue-white ice faces (frozen worlds' slopes; rock_cliff until then)
 
 Each world's slope set is `"steep"` beside `"surface"` in universe.json. To swap a set, drop the new files into its
 folder under the same names; an EXR map is converted to PNG through Blender (as Non-Color, normals re-centred).
 
 ### 2. Kestrel Station and the outposts
 
-- [ ] `concrete_slab`: the slab everything stands on, and the pad
-- [ ] `asphalt`: the street
-- [ ] `pavement`: paving slabs or kerbed concrete (the pavements)
-- [ ] `blast_wall`: heavy cast concrete, stained (the walls round the pad, Kestrel's port wall)
-- [ ] `building_cladding`: corrugated or paneled metal siding *tinted*
-- [ ] `shed_roof`: ribbed metal roofing
-- [ ] `painted_metal`: painted steel *tinted* (freight containers, tanks, the gantry crane)
-- [ ] `pipe_steel`: dull steel (pipes, trestles, lamp posts, masts)
+- [x] `concrete_slab`: the slab everything stands on, and the pad
+- [x] `asphalt`: the street
+- [x] `pavement`: paving slabs or kerbed concrete (the pavements)
+- [x] `blast_wall`: heavy cast concrete, stained (the walls round the pad, Kestrel's port wall)
+- [x] `building_cladding`: corrugated or paneled metal siding *tinted*
+- [x] `shed_roof`: ribbed metal roofing
+- [x] `painted_metal`: painted steel *tinted* (freight containers, tanks, the gantry crane)
+- [x] `pipe_steel`: dull steel (pipes, trestles, lamp posts, masts)
 - [ ] `fence_mesh`: chain-link or welded mesh, **with transparency** (the fences)
-- [ ] `habitat_shell`: pressurised module skin, panel seams *tinted*
+- [x] `habitat_shell`: pressurised module skin, panel seams *tinted*
 
 ### 3. Facility interiors (every site building)
 
-- [ ] `facility_floor`: worn concrete or industrial vinyl
-- [ ] `facility_wall`: painted plaster or paneling, institutional
-- [ ] `facility_ceiling`: ceiling tiles or bare concrete
-- [ ] `facility_stairs`: concrete or metal treads with grip plate
-- [ ] `facility_door`: painted metal door
-- [ ] `metal_grate`: ducts and vents
-- [ ] `shelf_steel`: painted steel (shelves, cabinets)
-- [ ] `worktop`: laminate or steel (benches, tables)
-- [ ] `concrete_pillar`
-- [ ] `plant_grime`: dirtier concrete or metal (plant rooms)
+- [x] `facility_floor`: worn concrete or industrial vinyl
+- [x] `facility_wall`: painted plaster or paneling, institutional
+- [x] `facility_ceiling`: ceiling tiles or bare concrete
+- [x] `facility_stairs`: concrete or metal treads with grip plate
+- [x] `facility_door`: painted metal door
+- [x] `metal_grate`: ducts and vents
+- [x] `shelf_steel`: painted steel (shelves, cabinets)
+- [x] `worktop`: laminate or steel (benches, tables)
+- [x] `concrete_pillar`
+- [x] `plant_grime`: dirtier concrete or metal (plant rooms)
 
 ### 4. The ship
 
-- [ ] `hull_plating`: large plated panels, the outside *tinted*
-- [ ] `hull_dark`: dark metal (frames, trim, ribs, the engine block)
-- [ ] `deck_plate`: diamond / tread plate (floors, the ramp)
-- [ ] `ship_panel`: painted wall paneling, clean-ish *tinted*
-- [ ] `bay_panel`: heavier, more worn panels (the shuttle bay's walls and deck)
-- [ ] `locker_metal`: lockers, the loadout locker, cabinets
-- [ ] `fabric_cushion`: chairs, bunk mattresses
-- [ ] `tabletop`: the galley counter, the navigation table
+- [x] `hull_plating`: large plated panels, the outside *tinted*
+- [x] `hull_dark`: dark metal (frames, trim, ribs, the engine block)
+- [x] `deck_plate`: diamond / tread plate (floors, the ramp)
+- [x] `ship_panel`: painted wall paneling, clean-ish *tinted*
+- [x] `bay_panel`: heavier, more worn panels (the shuttle bay's walls and deck)
+- [x] `locker_metal`: lockers, the loadout locker, cabinets
+- [x] `fabric_cushion`: chairs, bunk mattresses
+- [x] `tabletop`: the galley counter, the navigation table
 - [ ] `cockpit_glass`: tinted glass, faint scratches (the cockpit's windows, from outside)
 
 ### 5. Wrecks (being built next)
 
-- [ ] `hull_scorched`: burnt, blistered hull plating (a recent crash)
-- [ ] `hull_weathered`: faded, pitted plating with streaks (an old wreck) *tinted*
-- [ ] `cut_metal`: plate with torch-cut edges (a picked-over wreck)
-- [ ] `debris_mixed`: twisted metal and cable bundles (small pieces)
+- [x] `hull_scorched`: burnt, blistered hull plating (a recent crash)
+- [x] `hull_weathered`: faded, pitted plating with streaks (an old wreck) *tinted*
+- [x] `cut_metal`: plate with torch-cut edges (a picked-over wreck)
+- [x] `debris_mixed`: twisted metal and cable bundles (small pieces)
 
 ### 6. Vehicles and props
 
-- [ ] `shuttle_hull`: painted metal and trim
-- [ ] `bay_door`: the shuttle bay's doors
-- [ ] `ammo_crate`: olive painted metal
-- [ ] `console_casing`: dark plastic or metal (terminals, consoles)
-- [ ] `cargo_crate`: salvage crates and pallets
+- [x] `shuttle_hull`: painted metal and trim
+- [x] `bay_door`: the shuttle bay's doors
+- [x] `ammo_crate`: olive painted metal
+- [x] `console_casing`: dark plastic or metal (terminals, consoles)
+- [x] `cargo_crate`: salvage crates and pallets
 
 ### 7. Player and weapons
 
-- [ ] `suit_fabric`: heavy, padded environment-suit material
-- [ ] `helmet_composite`: hard plastic or composite
-- [ ] `glove_rubber`: rubber or leather
-- [ ] `gun_metal`: dark, worn steel
-- [ ] `weapon_polymer`: grips and bodies
+- [x] `suit_fabric`: heavy, padded environment-suit material
+- [x] `helmet_composite`: hard plastic or composite
+- [x] `glove_rubber`: rubber or leather
+- [x] `gun_metal`: dark, worn steel
+- [x] `weapon_polymer`: grips and bodies
 
 ### 8. Creature and nest (organic)
 
