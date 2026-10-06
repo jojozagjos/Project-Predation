@@ -302,6 +302,7 @@ bool VehicleProp::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld* physics
                                : part.shape == PartShape::Sphere ? glm::vec3(part.size.x)
                                                                  : glm::vec3(part.size.x, part.size.y, part.size.x);
         const BodyHandle body = physics->CreateBox(glm::max(size * 0.5f, glm::vec3(0.005f)), transform, BodyMotion::Static);
+        physics->SetTag(body, Surfaces::StepOfSet(part.surface, part.metallic > 0.3f));
         if (overlapGroup != 0)
         {
             physics->SetOverlapGroup(body, overlapGroup);

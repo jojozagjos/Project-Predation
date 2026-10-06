@@ -26,6 +26,12 @@ Material Apply(Material material, const std::string& name, float metres, float k
 // steep parts' own colour, against the material's), repeating every `metres`.
 Material ApplySteep(Material material, const std::string& name, float metres);
 
+// What a step on something sounds like: a footstep surface (Assets/Data/footsteps.json), by the set it is laid with, or by
+// what it is (metal or not) when it has none. As a number for PhysicsWorld::SetTag (StepName turns it back).
+uint32_t StepOf(const Material& material);
+uint32_t StepOfSet(const std::string& name, bool metal);
+const char* StepName(uint32_t tag);
+
 } // namespace Surfaces
 
 } // namespace pred

@@ -185,6 +185,9 @@ public:
     // else, put inside one of them, is still reported. A new group per structure; 0 is none.
     uint32_t NewOverlapGroup();
     void SetOverlapGroup(BodyHandle body, uint32_t group);
+    // A number the game keeps with a body -- what it is made of, say, for the sound of a step on it. Nought for none.
+    void SetTag(BodyHandle body, uint32_t tag);
+    uint32_t Tag(BodyHandle body) const;
 
     // Every triangle of every static body, in world space, three corners per triangle.
     //

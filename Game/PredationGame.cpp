@@ -14,6 +14,7 @@
 #include "Game/Weapons/WeaponAppearance.h"
 #include "Game/World/TestMap.h"
 #include "Game/World/KestrelStation.h"
+#include "Game/World/Surfaces.h"
 #include "Engine/Audio/Sound.h"
 #include "Engine/Debug/FrameStats.h"
 #include "Engine/Platform/Window.h"
@@ -770,8 +771,10 @@ void PredationGame::RegisterCommands()
                             {
                                 const PlayerState& state = m_player.State();
                                 char line[128];
-                                std::snprintf(line, sizeof(line), "at %.2f %.2f %.2f, %s", state.position.x, state.position.y,
-                                              state.position.z, state.grounded ? "standing" : "in the air");
+                                const int surface = SurfaceIndexAt(state.position);
+                                const char* underfoot = surface >= 0 && surface < static_cast<int>(m_footsteps.size()) ? m_footsteps[static_cast<size_t>(surface)].name.c_str() : "?";
+                                std::snprintf(line, sizeof(line), "at %.2f %.2f %.2f, %s, on %s", state.position.x, state.position.y,
+                                              state.position.z, state.grounded ? "standing" : "in the air", underfoot);
                                 m_app->GetConsole().Print(line);
                                 PRED_LOG_INFO(Gameplay, "Player {}", line);
                             });
@@ -6308,17 +6311,27 @@ void PredationGame::LoadFootsteps(AudioEngine& audio)
 
 int PredationGame::SurfaceIndexAt(const glm::vec3& position) const
 {
-    // The test map's surface row, if this is standing on it. Everywhere else keeps whatever the
-    // panel last chose, which is what makes the panel useful away from the row.
-    if (const char* name = SurfaceUnderfoot(position.x, position.z))
+    // What the foot is on: what the body under it is made of (PhysicsWorld::Tag), and the test map's surface row, standing on
+    // it -- with a surface that has no clips of its own falling back on the nearest that has.
+    const char* name = SurfaceUnderfoot(position.x, position.z);
+    if (name == nullptr)
+    {
+        const RayHit under = m_app->GetPhysics().RayCastStatic(position + glm::vec3(0.0f, 0.4f, 0.0f), glm::vec3(0.0f, -1.0f, 0.0f), 1.2f);
+        name = under ? Surfaces::StepName(m_app->GetPhysics().Tag(under.body)) : nullptr;
+    }
+    for (int hops = 0; name != nullptr && hops < 3; ++hops)
     {
         for (size_t i = 0; i < m_footsteps.size(); ++i)
         {
-            if (m_footsteps[i].name == name)
+            if (m_footsteps[i].name == name && !m_footsteps[i].clips.empty())
             {
                 return static_cast<int>(i);
             }
         }
+        const std::string missing = name;
+        name = missing == "snow" || missing == "sand" || missing == "grass" || missing == "dirt" || missing == "mud" ? "gravel"
+               : missing == "ice"                                                                                   ? "stone"
+                                                                                                                    : nullptr;
     }
     return m_footstepSurface;
 }

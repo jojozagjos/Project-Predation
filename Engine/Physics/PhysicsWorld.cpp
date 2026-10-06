@@ -292,6 +292,7 @@ struct PhysicsWorld::Impl
         float halfHeight = 0.5f;
         AABB meshBounds;
         uint32_t overlapGroup = 0;
+        uint32_t tag = 0;
     };
     uint32_t nextOverlapGroup = 1;
 
@@ -1042,6 +1043,21 @@ void PhysicsWorld::SetOverlapGroup(BodyHandle body, uint32_t group)
     {
         it->second.overlapGroup = group;
     }
+}
+
+void PhysicsWorld::SetTag(BodyHandle body, uint32_t tag)
+{
+    const auto it = m_impl->records.find(body.id);
+    if (it != m_impl->records.end())
+    {
+        it->second.tag = tag;
+    }
+}
+
+uint32_t PhysicsWorld::Tag(BodyHandle body) const
+{
+    const auto it = m_impl->records.find(body.id);
+    return it != m_impl->records.end() ? it->second.tag : 0;
 }
 
 void PhysicsWorld::DebugDraw(class DebugDraw& draw) const

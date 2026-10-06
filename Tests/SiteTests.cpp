@@ -6,6 +6,7 @@
 #include "Game/World/SiteMap.h"
 #include "Game/World/SitePlan.h"
 #include "Game/World/SiteTerrain.h"
+#include "Game/World/Surfaces.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
@@ -478,4 +479,20 @@ TEST_CASE("Draw each shape of a site's ground from above", "[.terrain_pictures]"
             }
         }
     }
+}
+
+TEST_CASE("What a step sounds like comes from what the ground is laid with", "[site][sound]")
+{
+    const auto step = [](const std::string& set, bool metal) { return std::string(Surfaces::StepName(Surfaces::StepOfSet(set, metal))); };
+    CHECK(step("snow_02", false) == "snow");
+    CHECK(step("regolith", false) == "gravel");
+    CHECK(step("rock_cliff", false) == "stone");
+    CHECK(step("deck_plate", false) == "metal");
+    CHECK(step("concrete_slab", false) == "concrete");
+    CHECK(step("grass_dirt", false) == "grass");
+    CHECK(step("building_cladding", false) == "metal");
+    // Nothing laid on it: metal if it is metal, concrete if not.
+    CHECK(step("", true) == "metal");
+    CHECK(step("", false) == "concrete");
+    CHECK(Surfaces::StepName(0) == nullptr);
 }

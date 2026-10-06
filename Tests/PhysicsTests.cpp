@@ -216,3 +216,17 @@ TEST_CASE("A mesh's shape can be made on other threads and the body added from i
     // Nothing to make a shape from, nothing made.
     CHECK_FALSE(PhysicsWorld::PrepareMesh(MeshData{}).Valid());
 }
+
+TEST_CASE("A body keeps the tag it is given: what it is made of, for a step on it", "[physics]")
+{
+    PhysicsWorld physics;
+    PhysicsWorld::Settings settings;
+    settings.workerThreads = 1;
+    REQUIRE(physics.Init(settings));
+    const BodyHandle floor = physics.CreateBox({5.0f, 0.5f, 5.0f}, Transform{{0.0f, -0.5f, 0.0f}}, BodyMotion::Static);
+    CHECK(physics.Tag(floor) == 0u);
+    physics.SetTag(floor, 3u);
+    const RayHit down = physics.RayCastStatic({0.0f, 0.4f, 0.0f}, {0.0f, -1.0f, 0.0f}, 1.2f);
+    REQUIRE(down);
+    CHECK(physics.Tag(down.body) == 3u);
+}

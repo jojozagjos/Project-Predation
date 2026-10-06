@@ -6,6 +6,7 @@
 #include "Engine/Render/Mesh.h"
 #include "Engine/Render/Primitives.h"
 #include "Engine/Scene/Scene.h"
+#include "Game/World/Surfaces.h"
 
 #include <algorithm>
 #include <cmath>
@@ -108,7 +109,7 @@ public:
             AddToBatch(name, Primitives::Box(size), transform.Matrix(), transform.position, material);
             if (m_physics != nullptr)
             {
-                Keep(m_physics->CreateBox(size * 0.5f, transform, BodyMotion::Static));
+                Keep(m_physics->CreateBox(size * 0.5f, transform, BodyMotion::Static), material);
             }
             return;
         }
@@ -130,7 +131,7 @@ public:
         }
         if (m_physics != nullptr)
         {
-            Keep(m_physics->CreateBox(size * 0.5f, transform, BodyMotion::Static));
+            Keep(m_physics->CreateBox(size * 0.5f, transform, BodyMotion::Static), material);
         }
     }
 
@@ -141,7 +142,7 @@ public:
         Keep(m_scene.CreateMeshEntity(name, transform, mesh, material));
         if (m_physics != nullptr)
         {
-            Keep(m_physics->CreateBox(size * 0.5f, transform, BodyMotion::Static));
+            Keep(m_physics->CreateBox(size * 0.5f, transform, BodyMotion::Static), material);
         }
     }
 
@@ -162,7 +163,7 @@ public:
         }
         if (collide && m_physics != nullptr)
         {
-            Keep(m_physics->CreateMeshBody(data, transform));
+            Keep(m_physics->CreateMeshBody(data, transform), material);
         }
     }
 
@@ -174,7 +175,7 @@ public:
         AddMesh(name, transform, data, material, false);
         if (shape.Valid() && m_physics != nullptr)
         {
-            Keep(m_physics->CreateMeshBody(shape, transform));
+            Keep(m_physics->CreateMeshBody(shape, transform), material);
         }
     }
 
@@ -184,7 +185,7 @@ public:
         Keep(m_scene.CreateMeshEntity(name, transform, mesh, material));
         if (collide && m_physics != nullptr)
         {
-            Keep(m_physics->CreateMeshBody(data, transform));
+            Keep(m_physics->CreateMeshBody(data, transform), material);
         }
     }
 
@@ -247,6 +248,15 @@ private:
         if (m_trackedEntities != nullptr)
         {
             m_trackedEntities->push_back(entity);
+        }
+    }
+    // And what it sounds like underfoot, from what it is made of.
+    void Keep(BodyHandle body, const Material& material)
+    {
+        Keep(body);
+        if (m_physics != nullptr && body.IsValid())
+        {
+            m_physics->SetTag(body, Surfaces::StepOf(material));
         }
     }
     void Keep(BodyHandle body)
