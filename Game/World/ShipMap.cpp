@@ -1209,6 +1209,8 @@ const float kStairDrop = kStairTop - (kFieldGround + 0.12f);
 const float kStairLength = std::sqrt(kStairRun * kStairRun + kStairDrop * kStairDrop);
 const float kStairSlope = std::atan2(kStairDrop, kStairRun);
 const float kStairSlide = (kStairInner - kStairEdge) + kStairLength + 0.3f;
+// How far below the deck it drops before it slides in: its rails, a metre over it, below the floor.
+constexpr float kStairDropBelow = 1.15f;
 // The legs: where each hangs from (under the belly, clear of the bay doors), and the ground below.
 constexpr float kLegTop = -kSlab - 0.4f + 0.13f;
 const glm::vec2 kLegs[] = {{-3.0f, -6.5f}, {3.0f, -6.5f}, {-4.8f, 16.0f}, {4.8f, 16.0f}};
@@ -1372,14 +1374,17 @@ void ShipMap::ShowFittings(Scene& scene, int which)
         prop.SetHidden(scene, hidden);
         prop.Show(scene, place(GearHinge(leg), glm::angleAxis(leg < 2 ? fold : -fold, glm::vec3(1.0f, 0.0f, 0.0f))));
     }
-    // The stair: the ramp swinging down from level over the second half of coming out, the whole of it sliding out from under the
-    // floor over the first.
+    // The stair, coming out: sliding out from its slot under the belly, rising to the door's sill, then the ramp swinging down
+    // from level. Put away it goes the other way -- dropped below the floor before it slides in, so its rails never pass through
+    // the rooms -- and, all the way in, it is not drawn at all.
     const float out = m_stairOut[which];
-    const float swing = Eased((out - 0.5f) * 2.0f) * kStairSlope;
-    const float slide = (1.0f - Eased(out * 2.0f)) * kStairSlide;
-    const glm::vec3 shift{slide, 0.0f, 0.0f};
-    m_stairLanding[which].SetHidden(scene, hidden);
-    m_stairRamp[which].SetHidden(scene, hidden);
+    const float swing = Eased((out - 0.6f) / 0.4f) * kStairSlope;
+    const float drop = (1.0f - Eased((out - 0.35f) / 0.25f)) * kStairDropBelow;
+    const float slide = (1.0f - Eased(out / 0.35f)) * kStairSlide;
+    const glm::vec3 shift{slide, -drop, 0.0f};
+    const bool away = out <= 0.0f;
+    m_stairLanding[which].SetHidden(scene, hidden || away);
+    m_stairRamp[which].SetHidden(scene, hidden || away);
     m_stairLanding[which].Show(scene, place(shift, glm::quat(1.0f, 0.0f, 0.0f, 0.0f)));
     const glm::quat tilt = glm::angleAxis(swing, glm::vec3(0.0f, 0.0f, 1.0f));
     const glm::vec3 hinge{kStairEdge, kStairTop, 0.0f};

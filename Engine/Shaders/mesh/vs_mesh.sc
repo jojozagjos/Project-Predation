@@ -29,11 +29,15 @@ void main()
 		// And each beat, going out across it as a swell.
 		float beat = fract(u_organicBeat.x - along * u_organicBeat.z);
 		float swell = (organicBump(beat, 0.0, 0.14) + 0.6 * organicBump(beat, 0.2, 0.12)) * u_organicBeat.y * (1.0 - dead);
-		// What hangs from it -- a strand and the drop at its end -- is held still: a height given as less than nothing.
-		swell *= step(0.0, height);
+		// What hangs from it -- a strand and the drop at its end -- is held still, and grows down from where it hangs rather than
+		// being drawn in towards the surface along its normal (sideways, for a strand: it started fat and shrank): a height given
+		// as less than nothing, how far down it this point is.
+		float hanging = 1.0 - step(0.0, height);
+		swell *= 1.0 - hanging;
 		height = abs(height);
 		float thickness = grown * (1.0 + 0.4 * swell) * (1.0 - rotted);
-		position -= a_normal * height * (1.0 - thickness);
+		position -= a_normal * height * (1.0 - thickness) * (1.0 - hanging);
+		position.y += height * (1.0 - grown * (1.0 - rotted)) * hanging;
 		v_organic = vec2(grown * (1.0 - rotted), dead);
 	}
 	vec4 worldPosition = mul(u_model[0], vec4(position, 1.0));

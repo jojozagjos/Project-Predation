@@ -1765,6 +1765,25 @@ void PredationGame::DrawSystemMap()
                 {
                     way = glm::normalize(glm::vec2(ahead.x - point.x, ahead.y - point.y));
                 }
+                // The bodies are drawn far larger than life, so a ship just setting out from one or settling into orbit of one is
+                // well inside its disc: pushed out to just beyond the disc's edge, the way the ship really is from it.
+                for (const SystemMapView::Drawn& body : drawn)
+                {
+                    ImVec2 middle;
+                    ImVec2 edge;
+                    if (!toScreen(body.at, middle) || !toScreen(body.at + shot.Up() * body.radius, edge))
+                    {
+                        continue;
+                    }
+                    const float r = std::hypot(edge.x - middle.x, edge.y - middle.y);
+                    const glm::vec2 from{point.x - middle.x, point.y - middle.y};
+                    const float apart = glm::length(from);
+                    if (apart < r + 14.0f)
+                    {
+                        const glm::vec2 out = apart > 0.5f ? from / apart : glm::vec2(-1.0f, 0.0f);
+                        point = {middle.x + out.x * (r + 16.0f), middle.y + out.y * (r + 16.0f)};
+                    }
+                }
                 draw->AddCircle(point, 11.0f, Faded(kShipColour, 0.5f), 0, 1.0f);
                 ShipMark(draw, point, way, 6.0f, kShipColour);
                 LabelUnder(draw, point, 14.0f, kShipColour, "YOUR SHIP", kDim, m_campaign.travel.underway ? "under way" : "holding", small, tiny);
