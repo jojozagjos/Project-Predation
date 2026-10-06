@@ -384,13 +384,13 @@ TEST_CASE("A site's ground is level where people built, the world's own shape el
                     }
                 }
 
-                // Every cell drawn once, as ground or as rock.
+                // Every cell drawn, once.
                 size_t triangles = 0;
                 for (int cz = 0; cz < terrain.Chunks(); ++cz)
                 {
                     for (int cx = 0; cx < terrain.Chunks(); ++cx)
                     {
-                        triangles += (terrain.Mesh(cx, cz, false).indices.size() + terrain.Mesh(cx, cz, true).indices.size()) / 3;
+                        triangles += terrain.Mesh(cx, cz, glm::vec3(0.5f), glm::vec3(0.3f)).indices.size() / 3;
                     }
                 }
                 const size_t cells = static_cast<size_t>(std::lround(terrain.Extent() / SiteTerrain::kCell));
@@ -464,9 +464,9 @@ TEST_CASE("Draw each shape of a site's ground from above", "[.terrain_pictures]"
                 const glm::vec3 n = terrain.Normal(x, z);
                 const float shade = 0.25f + 0.75f * std::max(glm::dot(n, light), 0.0f);
                 const float h = std::clamp((terrain.Height(x, z) - terrain.Base() + 15.0f) / 75.0f, 0.0f, 1.0f);
-                const bool steep = n.y < SiteTerrain::kSteepCosine;
+                const float rock = SiteTerrain::Rockiness(n);
                 const bool built = terrain.Wildness(x, z) < 0.01f;
-                glm::vec3 c = steep ? glm::vec3(0.55f, 0.45f, 0.4f) : glm::mix(glm::vec3(0.3f, 0.55f, 0.35f), glm::vec3(0.95f), h);
+                glm::vec3 c = glm::mix(glm::mix(glm::vec3(0.3f, 0.55f, 0.35f), glm::vec3(0.95f), h), glm::vec3(0.55f, 0.45f, 0.4f), rock);
                 if (built)
                 {
                     c = glm::vec3(0.6f, 0.6f, 0.75f);

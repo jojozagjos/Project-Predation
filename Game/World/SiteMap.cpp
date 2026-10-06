@@ -106,8 +106,6 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
     // one another: the rock is a ragged wall of blocks run together and sunk into the ground, and so is every
     // building's outer wall. The level check has nothing to say of that (PhysicsWorld::SetOverlapGroup).
     const uint32_t ground = physics.NewOverlapGroup();
-    const Material groundMaterial = Surfaces::Apply(Material::Diffuse(m_look.ground, 1.0f), "snow_02", 2.5f);
-    const Material cliffMaterial = Material::Diffuse(m_look.rock * 0.88f, 0.95f);
     const Material rockMaterial = Material::Diffuse(m_look.rock, 0.95f);
     // Where something stands on the ground: how far its foot is moved from the plan's flat ground to the terrain's, at the
     // lowest of its middle and corners, so nothing on a slope stands on air.
@@ -141,19 +139,18 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
     MapBuilder builder(scene, meshes, &physics, "site_");
     builder.Track(&m_entities, &m_bodies);
     // The ground, in pieces each drawn on its own (so what is out of sight is not drawn): the world's ground where it is
-    // gentle, rock where it is too steep to stand on. Part of the one structure the buildings are set into.
+    // gentle, its rock showing through as it steepens. Part of the one structure the buildings are set into.
     builder.SetStructure(ground);
+    const glm::vec3 cliffColour = m_look.rock * 0.88f;
+    const Material terrainMaterial = Surfaces::Apply(Material::Diffuse(SiteTerrain::Paint(m_look.ground, cliffColour), 1.0f), "snow_02", 2.5f);
     for (int cz = 0; cz < m_terrain.Chunks(); ++cz)
     {
         for (int cx = 0; cx < m_terrain.Chunks(); ++cx)
         {
-            for (const bool steep : {false, true})
+            const MeshData mesh = m_terrain.Mesh(cx, cz, m_look.ground, cliffColour);
+            if (!mesh.indices.empty())
             {
-                const MeshData mesh = m_terrain.Mesh(cx, cz, steep);
-                if (!mesh.indices.empty())
-                {
-                    builder.AddMesh(steep ? "site_cliff" : "site_ground", Transform{}, mesh, steep ? cliffMaterial : groundMaterial);
-                }
+                builder.AddMesh("site_ground", Transform{}, mesh, terrainMaterial);
             }
         }
     }

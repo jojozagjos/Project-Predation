@@ -3,6 +3,7 @@
 #include "Engine/Render/Mesh.h"
 #include "Game/World/SitePlan.h"
 
+#include <glm/common.hpp>
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
 
@@ -48,11 +49,15 @@ public:
     // How far a place is from being levelled ground: 0 where it is, 1 where the ground is the world's own.
     float Wildness(float x, float z) const;
 
-    // The ground drawn and stood on, in pieces of so many cells a side: the gentle part, and the steep (shown as rock).
+    // The ground drawn and stood on, in pieces of so many cells a side: the world's ground on the gentle, rock showing through
+    // as it steepens (painted per vertex, as a share of Paint's colour, which is the material's).
     static constexpr int kChunkCells = 30;
     int Chunks() const { return (m_cells + kChunkCells - 1) / kChunkCells; }
-    MeshData Mesh(int chunkX, int chunkZ, bool steep) const;
-    // How steep a triangle is steep: as steep as anybody can walk up, and steeper.
+    MeshData Mesh(int chunkX, int chunkZ, const glm::vec3& ground, const glm::vec3& rock) const;
+    static glm::vec3 Paint(const glm::vec3& ground, const glm::vec3& rock) { return glm::max(glm::max(ground, rock), glm::vec3(1.0e-3f)); }
+    // How much of a place facing this way is rock, 0 to 1.
+    static float Rockiness(const glm::vec3& normal);
+    // How steep a slope is steep: about as steep as anybody can walk up (all rock from here on).
     static constexpr float kSteepCosine = 0.78f;
 
     bool Planned() const { return !m_heights.empty(); }

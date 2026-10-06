@@ -78,10 +78,11 @@ float Fbm(float x, float z, float scale, int octaves, uint32_t seed)
     return sum / total;
 }
 
-// Ridges: sharp crests where the noise crosses its middle, 0 to 1.
+// Ridges: crests where the noise crosses its middle, 0 to 1 -- rounded over rather than knife-edged.
 float Ridged(float x, float z, float scale, int octaves, uint32_t seed)
 {
-    const float n = 1.0f - std::abs(Fbm(x, z, scale, octaves, seed));
+    const float f = Fbm(x, z, scale, octaves, seed);
+    const float n = 1.0f - std::sqrt(f * f + 0.012f);
     return n * n;
 }
 
@@ -107,7 +108,7 @@ float FromSegment(const glm::vec2& p, const glm::vec2& a, const glm::vec2& b)
 
 // Levelled ground reaches this far past what is built, and blends into the world's own over this far beyond.
 constexpr float kLevelled = 4.0f;
-constexpr float kBlend = 12.0f;
+constexpr float kBlend = 18.0f;
 // The walls round the edge: how high, starting this far inside the edge and reaching their height this far outside it.
 constexpr float kWallHigh = 46.0f;
 constexpr float kWallFrom = -6.0f;
@@ -264,11 +265,40 @@ void SiteTerrain::Plan(const SitePlan& plan, Shape shape, bool dunes)
             const float out = std::max(std::max(-local.x, local.x - m_size), std::max(-local.y, local.y - m_size)) +
                               10.0f * Fbm(p.x, p.y, 70.0f, 2, m_seed + 37u);
             const float rise = Smooth(kWallFrom, kWallTo, out) * std::max(wild, Smooth(kWallFrom + 12.0f, kWallFrom + 24.0f, out));
-            const float wall = (kWallHigh + 7.0f * Fbm(p.x, p.y, 40.0f, 3, m_seed + 41u) + 14.0f * (Ridged(p.x, p.y, 45.0f, 3, m_seed + 43u) - 0.5f)) * rise;
+            const float wall = (kWallHigh + 9.0f * Fbm(p.x, p.y, 45.0f, 2, m_seed + 41u) + 10.0f * (Ridged(p.x, p.y, 60.0f, 2, m_seed + 43u) - 0.5f)) * rise;
             const size_t index = static_cast<size_t>(j) * side + static_cast<size_t>(i);
             m_wild[index] = std::max(wild, rise);
-            m_heights[index] = m_base + Natural(p.x, p.y) * wild + wall;
+            m_heights[index] = m_base + Natural(p.x, p.y) * wild * (1.0f - 0.6f * rise) + wall;
         }
+    }
+
+    // Smoothed over a few metres, so nothing is sharper than ground worn by weather is -- and the levelled ground left exactly
+    // level, as it was.
+    std::vector<float> smoothed(m_heights.size());
+    for (int pass = 0; pass < 3; ++pass)
+    {
+        for (int j = 0; j <= m_cells; ++j)
+        {
+            for (int i = 0; i <= m_cells; ++i)
+            {
+                float sum = 0.0f;
+                float weight = 0.0f;
+                for (int dj = -1; dj <= 1; ++dj)
+                {
+                    for (int di = -1; di <= 1; ++di)
+                    {
+                        const int u = std::clamp(i + di, 0, m_cells);
+                        const int v = std::clamp(j + dj, 0, m_cells);
+                        const float w = (di == 0 ? 2.0f : 1.0f) * (dj == 0 ? 2.0f : 1.0f);
+                        sum += At(u, v) * w;
+                        weight += w;
+                    }
+                }
+                const size_t index = static_cast<size_t>(j) * side + static_cast<size_t>(i);
+                smoothed[index] = m_base + (sum / weight - m_base) * Smooth(0.0f, 0.15f, m_wild[index]);
+            }
+        }
+        m_heights.swap(smoothed);
     }
 }
 
@@ -311,7 +341,13 @@ float SiteTerrain::Wildness(float x, float z) const
     return m_wild[static_cast<size_t>(j) * static_cast<size_t>(m_cells + 1) + static_cast<size_t>(i)];
 }
 
-MeshData SiteTerrain::Mesh(int chunkX, int chunkZ, bool steep) const
+float SiteTerrain::Rockiness(const glm::vec3& normal)
+{
+    // Ground on the gentle, the rock showing through as it steepens, all rock by the time nobody could stand on it.
+    return 1.0f - Smooth(kSteepCosine - 0.06f, 0.94f, normal.y);
+}
+
+MeshData SiteTerrain::Mesh(int chunkX, int chunkZ, const glm::vec3& ground, const glm::vec3& rock) const
 {
     MeshData mesh;
     const int i0 = chunkX * kChunkCells;
@@ -322,6 +358,13 @@ MeshData SiteTerrain::Mesh(int chunkX, int chunkZ, bool steep) const
     {
         return mesh;
     }
+    // Painted per vertex as a share of the brighter of the two (the material's colour), so neither is cut short.
+    const glm::vec3 base = Paint(ground, rock);
+    const auto pack = [](const glm::vec3& c)
+    {
+        const auto channel = [](float v) { return static_cast<uint32_t>(std::clamp(v, 0.0f, 1.0f) * 255.0f + 0.5f); };
+        return channel(c.r) | (channel(c.g) << 8) | (channel(c.b) << 16) | (255u << 24);
+    };
     const int across = i1 - i0 + 1;
     for (int j = j0; j <= j1; ++j)
     {
@@ -339,6 +382,7 @@ MeshData SiteTerrain::Mesh(int chunkX, int chunkZ, bool steep) const
             vertex.position = {x, At(i, j), z};
             vertex.normal = glm::normalize(glm::vec3(-dx, 1.0f, -dz));
             vertex.uv = {x, z};
+            vertex.color = pack(glm::mix(ground, rock, Rockiness(vertex.normal)) / base);
             mesh.vertices.push_back(vertex);
         }
     }
@@ -346,22 +390,12 @@ MeshData SiteTerrain::Mesh(int chunkX, int chunkZ, bool steep) const
     {
         for (int i = i0; i < i1; ++i)
         {
+            // Two triangles, wound to face up.
             const uint32_t a = static_cast<uint32_t>((j - j0) * across + (i - i0));
             const uint32_t b = a + 1;
             const uint32_t c = a + static_cast<uint32_t>(across);
             const uint32_t d = c + 1;
-            // Two triangles, a-c-b and b-c-d (wound to face up), each kept with the gentle ground or the steep.
-            for (const auto& tri : {std::array<uint32_t, 3>{a, c, b}, std::array<uint32_t, 3>{b, c, d}})
-            {
-                const glm::vec3 p0 = mesh.vertices[tri[0]].position;
-                const glm::vec3 p1 = mesh.vertices[tri[1]].position;
-                const glm::vec3 p2 = mesh.vertices[tri[2]].position;
-                const glm::vec3 n = glm::normalize(glm::cross(p1 - p0, p2 - p0));
-                if ((std::abs(n.y) < kSteepCosine) == steep)
-                {
-                    mesh.indices.insert(mesh.indices.end(), {tri[0], tri[1], tri[2]});
-                }
-            }
+            mesh.indices.insert(mesh.indices.end(), {a, c, b, b, c, d});
         }
     }
     return mesh;
