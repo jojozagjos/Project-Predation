@@ -116,26 +116,14 @@ void PredationGame::ReadCampaignSlots()
 
 void PredationGame::DrawHostingChoice()
 {
-    // Who can come in, and what the game is called in their list.
+    // Who can come in: whoever is given the code, or is on this network. A campaign is played among friends, so it is in
+    // no public list.
     ImGui::Spacing();
     ImGui::TextDisabled("WHO CAN JOIN");
-    if (ImGui::RadioButton("Only people I give the code to", !m_listPublicly))
-    {
-        m_listPublicly = false;
-    }
-    ImGui::BeginDisabled(!LobbyServerConfigured());
-    if (ImGui::RadioButton("Anyone: show it in the public games", m_listPublicly))
-    {
-        m_listPublicly = true;
-    }
-    ImGui::EndDisabled();
-    if (m_listPublicly)
-    {
-        Label("Game name");
-        ImGui::SetNextItemWidth(-1.0f);
-        ImGui::InputTextWithHint("##lobbyname", LobbyName().c_str(), m_lobbyName, sizeof(m_lobbyName));
-    }
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextDisabled("Friends you give the lobby's code to, and anybody on your own network.");
     ImGui::TextDisabled("Playing alone? Start the game from the lobby when it opens.");
+    ImGui::PopTextWrapPos();
 }
 
 void PredationGame::HostChosenCampaign()

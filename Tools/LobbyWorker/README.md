@@ -9,7 +9,7 @@ See `Docs/SERVER.md` in the game's repository for the whole story, step by step.
 
 | File | What it is |
 | --- | --- |
-| `src/lobbies.js` | Every decision the server makes: codes, introductions, the public list, limits |
+| `src/lobbies.js` | Every decision the server makes: codes, introductions, limits |
 | `src/index.js` | The Cloudflare side: a Worker that hands every request to one Durable Object |
 | `wrangler.jsonc` | Cloudflare's configuration |
 | `local-server.js` | The same server on your own PC, with a STUN responder, for testing (plain Node, nothing to install) |
@@ -21,11 +21,10 @@ All JSON. The game is the only thing meant to call these.
 
 | Request | Body | Answer |
 | --- | --- | --- |
-| `POST /host` | version, name, listed, players, maxPlayers, started, localPort, candidates[, code] | code, secret |
+| `POST /host` | version, name, players, maxPlayers, started, localPort, candidates[, code] | code, secret |
 | `POST /update` | code, secret, and the same as /host | guests: token and candidates of anybody joining |
 | `POST /join` | version, code, localPort, candidates | token, name, started, candidates of the host |
 | `POST /close` | code, secret | |
-| `GET /list?version=N` | | lobbies: public ones on that version |
 
 `candidates` are `"a.b.c.d:port"` strings: where a game might be reached. The server adds one guess of
 its own -- the address the request came from with the game's port -- because most home routers keep a

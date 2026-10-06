@@ -35,7 +35,6 @@ constexpr float kAskSeconds = 1.0f;
 constexpr float kLobbyUpdateSeconds = 2.5f;
 constexpr float kGameUpdateSeconds = 5.0f;
 constexpr float kProbeSeconds = 0.2f;
-constexpr float kListSeconds = 3.0f;
 constexpr float kRetrySeconds = 5.0f;
 // STUN: how often to ask each server, and how long to wait for them before going on without.
 constexpr float kStunResendSeconds = 0.4f;
@@ -234,19 +233,17 @@ void LobbyClient::UpdateDiscovery(float dt, Transport* transport)
     m_elapsed = 0.0f;
 }
 
-bool LobbyClient::Host(const Settings& settings, const std::string& name, bool listed, uint8_t maxPlayers,
-                       uint16_t gamePort)
+bool LobbyClient::Host(const Settings& settings, const std::string& name, uint8_t maxPlayers, uint16_t gamePort)
 {
     if (!Begin(Role::Host, settings))
     {
         return false;
     }
     m_name = name;
-    m_listed = listed;
     m_maxPlayers = maxPlayers;
     m_gamePort = gamePort;
     StartDiscovery();
-    PRED_LOG_INFO(Network, "Lobby: opening \"{}\" at {}{}", name, m_settings.server, listed ? ", public" : "");
+    PRED_LOG_INFO(Network, "Lobby: opening \"{}\" at {}", name, m_settings.server);
     return true;
 }
 
@@ -260,16 +257,6 @@ bool LobbyClient::Join(const Settings& settings, uint32_t code, uint16_t localPo
     m_localPort = localPort;
     StartDiscovery();
     PRED_LOG_INFO(Network, "Lobby: asking {} for {}", m_settings.server, DecodeLobbyCode(code));
-    return true;
-}
-
-bool LobbyClient::Browse(const Settings& settings)
-{
-    if (!Begin(Role::Browser, settings))
-    {
-        return false;
-    }
-    m_state = State::Contacting;
     return true;
 }
 
@@ -305,8 +292,6 @@ void LobbyClient::Close()
     m_hostCandidates.clear();
     m_reached = LobbyEndpoint{};
     m_lobbyName.clear();
-    m_lobbies.clear();
-    m_heard = false;
 }
 
 void LobbyClient::Fail(const std::string& message)
@@ -319,11 +304,10 @@ void LobbyClient::Fail(const std::string& message)
     m_message = message;
 }
 
-void LobbyClient::SetStatus(uint8_t players, bool started, bool listed, const std::string& name)
+void LobbyClient::SetStatus(uint8_t players, bool started, const std::string& name)
 {
     m_players = players;
     m_started = started;
-    m_listed = listed;
     m_name = name;
 }
 
@@ -379,9 +363,9 @@ std::vector<std::string> LobbyClient::Candidates(uint16_t port) const
 
 std::string LobbyClient::HostBody() const
 {
-    nlohmann::json body{{"version", m_settings.version}, {"name", m_name},       {"listed", m_listed},
-                        {"started", m_started},          {"players", m_players}, {"maxPlayers", m_maxPlayers},
-                        {"localPort", m_gamePort},       {"candidates", Candidates(m_gamePort)}};
+    nlohmann::json body{{"version", m_settings.version},   {"name", m_name},           {"started", m_started},
+                        {"players", m_players},            {"maxPlayers", m_maxPlayers}, {"localPort", m_gamePort},
+                        {"candidates", Candidates(m_gamePort)}};
     if (m_code != 0)
     {
         body["code"] = DecodeLobbyCode(m_code);
@@ -560,20 +544,6 @@ void LobbyClient::Poll(float dt, Transport* transport)
         break;
     }
 
-    case Role::Browser:
-        if (idle && m_sendTimer <= 0.0f)
-        {
-            m_sendTimer = kListSeconds;
-            Ask("GET", "/list?version=" + std::to_string(m_settings.version), {});
-        }
-        if (m_elapsed > m_settings.answerSeconds)
-        {
-            // Said, but still asking: the list fills in by itself if the server comes back.
-            m_message = "The lobby server is not answering.";
-            m_heard = false;
-        }
-        break;
-
     case Role::None:
         break;
     }
@@ -702,30 +672,6 @@ void LobbyClient::HandleAnswer(const HttpResult& answer)
             PRED_LOG_INFO(Network, "Lobby: found \"{}\"; trying {}", m_lobbyName, where);
         }
         return;
-    }
-
-    if (what.rfind("/list", 0) == 0 && m_role == Role::Browser)
-    {
-        m_lobbies.clear();
-        if (body.contains("lobbies") && body["lobbies"].is_array())
-        {
-            for (const nlohmann::json& row : body["lobbies"])
-            {
-                LobbyListing listing;
-                if (!EncodeLobbyCode(row.value("code", std::string()), listing.code))
-                {
-                    continue;
-                }
-                listing.name = row.value("name", std::string()).substr(0, kLobbyMaxNameLength);
-                listing.players = static_cast<uint8_t>(std::clamp(row.value("players", 0), 0, 15));
-                listing.maxPlayers = static_cast<uint8_t>(std::clamp(row.value("maxPlayers", 4), 1, 15));
-                listing.started = row.value("started", false);
-                m_lobbies.push_back(std::move(listing));
-            }
-        }
-        m_heard = true;
-        m_message.clear();
-        m_state = State::Open;
     }
 }
 

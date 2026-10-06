@@ -82,16 +82,6 @@ enum class LobbyRejection : uint8_t
 const char* Describe(LobbyRejection reason);
 LobbyRejection RejectionFromText(const std::string& error);
 
-// One row of the public list.
-struct LobbyListing
-{
-    uint32_t code = 0;
-    uint8_t players = 0;
-    uint8_t maxPlayers = 0;
-    bool started = false;
-    std::string name;
-};
-
 // --- Probes: one game to another, straight through the holes -----------------------------------
 
 enum class LobbyMessage : uint8_t

@@ -40,7 +40,7 @@ http
       const result =
         body === null
           ? { status: 400, body: { error: "malformed" } }
-          : lobbies.handle(request.method, url.pathname, url.searchParams, body, ip);
+          : lobbies.handle(request.method, url.pathname, body, ip);
       response.writeHead(result.status, { "content-type": "application/json" });
       response.end(JSON.stringify(result.body));
     });

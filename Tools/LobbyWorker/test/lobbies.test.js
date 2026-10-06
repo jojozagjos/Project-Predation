@@ -17,13 +17,11 @@ function server() {
     // Deterministic, so a failure fails the same way again.
     random: (bytes) => Uint8Array.from({ length: bytes }, () => (counter = (counter * 1103515245 + 12345) & 0xff)),
   });
-  const call = (method, path, body = {}, ip = HOST_IP) =>
-    lobbies.handle(method, path, new URLSearchParams(path.split("?")[1] || ""), body, ip);
   return {
     lobbies,
     advance: (ms) => (clock += ms),
-    post: (path, body, ip) => call("POST", path, body, ip),
-    get: (path, ip) => lobbies.handle("GET", path.split("?")[0], new URLSearchParams(path.split("?")[1] || ""), {}, ip || HOST_IP),
+    post: (path, body, ip = HOST_IP) => lobbies.handle("POST", path, body, ip),
+    get: (path, ip = HOST_IP) => lobbies.handle("GET", path, {}, ip),
   };
 }
 
@@ -98,14 +96,12 @@ test("only the host closes its lobby, and a quiet one is forgotten", () => {
   assert.equal(s.post("/host", hostBody({ code: reopened.code })).body.code, reopened.code);
 });
 
-test("the public list shows public lobbies on the same version, and nothing else", () => {
+test("there is no public list of lobbies: a lobby is found only by its code", () => {
   const s = server();
-  s.post("/host", hostBody({ listed: true }), "1.1.1.1");
-  s.post("/host", hostBody({ listed: false }), "1.1.1.2");
-  s.post("/host", hostBody({ listed: true, version: 6 }), "1.1.1.3");
-  const listing = s.get("/list?version=7", GUEST_IP);
-  assert.equal(listing.body.lobbies.length, 1);
-  assert.equal(listing.body.lobbies[0].name, "kitchen");
+  s.post("/host", hostBody(), "1.1.1.1");
+  const asked = s.get("/list", GUEST_IP);
+  assert.equal(asked.status, 404);
+  assert.equal(asked.body.lobbies, undefined);
 });
 
 test("names are cleaned, addresses are checked, and nonsense is refused", () => {
@@ -122,7 +118,7 @@ test("one address cannot flood it", () => {
   const s = server();
   let answered = 0;
   for (let i = 0; i < 300; ++i) {
-    if (s.get("/list?version=7", "6.6.6.6").status === 200) ++answered;
+    if (s.get("/", "6.6.6.6").status === 200) ++answered;
   }
   assert.ok(answered < 60, `answered ${answered}`);
 });

@@ -30,7 +30,7 @@ export class LobbyDirectory extends DurableObject {
       }
     }
     const clientIp = request.headers.get("CF-Connecting-IP") || "";
-    const result = this.lobbies.handle(request.method, url.pathname, url.searchParams, body, clientIp);
+    const result = this.lobbies.handle(request.method, url.pathname, body, clientIp);
     return json(result.status, result.body);
   }
 }

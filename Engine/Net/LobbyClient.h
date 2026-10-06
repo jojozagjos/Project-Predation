@@ -25,13 +25,14 @@ class Transport;
 // own. Nothing is owned here but timers and what was said; the transport is handed in every Poll, so
 // whoever owns it stays its only owner.
 //
-// Three roles, one at a time:
+// Two roles, one at a time:
 //
 //   Host     registers the game already running on the transport, gets a code, keeps the lobby
 //            alive, and when told a guest is coming sends to every address it might be at.
 //   Guest    asks to be introduced to a code, then sends to every address the host might be at
 //            until one answers. Reached() is where the game should connect.
-//   Browser  asks what public lobbies are open. Needs no transport.
+//
+// There is no public list: a game is a campaign among friends, joined by the code its host gives them.
 class LobbyClient
 {
 public:
@@ -39,8 +40,7 @@ public:
     {
         None,
         Host,
-        Guest,
-        Browser
+        Guest
     };
 
     enum class State : uint8_t
@@ -48,7 +48,7 @@ public:
         Idle,
         Resolving,  // asking the STUN servers what this socket looks like from outside
         Contacting, // asked the lobby server; no answer yet
-        Open,       // host: the lobby is open with a code. Browser: the server has answered
+        Open,       // host: the lobby is open with a code
         Punching,   // guest: introduced, and sending to the host until it answers
         Reached,    // guest: the host answered. Connect to Reached()
         Failed      // Message() says why, in words for a player
@@ -76,20 +76,17 @@ public:
     LobbyClient& operator=(const LobbyClient&) = delete;
 
     // Opens a lobby for the game listening on `gamePort` of the transport that will be polled.
-    bool Host(const Settings& settings, const std::string& name, bool listed, uint8_t maxPlayers,
-              uint16_t gamePort);
+    bool Host(const Settings& settings, const std::string& name, uint8_t maxPlayers, uint16_t gamePort);
     // Asks to join a code, from a transport whose socket is on `localPort`.
     bool Join(const Settings& settings, uint32_t code, uint16_t localPort);
-    bool Browse(const Settings& settings);
     // Stops. A host tells the server its code is finished.
     void Close();
 
-    // Reads what arrived on the transport's side door, and sends whatever is due. A browser may pass
-    // no transport.
+    // Reads what arrived on the transport's side door, and sends whatever is due.
     void Poll(float dt, Transport* transport);
 
     // Host: what to tell the server about the game, as it changes. Cheap; call it every frame.
-    void SetStatus(uint8_t players, bool started, bool listed, const std::string& name);
+    void SetStatus(uint8_t players, bool started, const std::string& name);
     // Host: one more address a guest might reach this machine at, such as the one the router opened
     // for it. Sent with the next update.
     void AddCandidate(const LobbyEndpoint& candidate);
@@ -111,10 +108,6 @@ public:
     const std::string& LobbyName() const { return m_lobbyName; }
     // Host: guests the server has introduced in the last few seconds and not yet reached.
     int Arriving() const;
-    // Browser: what is open, and whether the server has answered at all. An empty list and a server
-    // that is not there look identical otherwise, and only one of them is worth fixing.
-    const std::vector<LobbyListing>& Lobbies() const { return m_lobbies; }
-    bool Heard() const { return m_heard; }
 
 private:
     struct Punch
@@ -174,7 +167,6 @@ private:
     uint32_t m_code = 0;
     std::string m_secret;
     std::string m_name;
-    bool m_listed = false;
     bool m_started = false;
     uint8_t m_players = 1;
     uint8_t m_maxPlayers = 4;
@@ -191,10 +183,6 @@ private:
     std::vector<LobbyEndpoint> m_hostCandidates;
     LobbyEndpoint m_reached;
     std::string m_lobbyName;
-
-    // Browser.
-    std::vector<LobbyListing> m_lobbies;
-    bool m_heard = false;
 };
 
 } // namespace pred

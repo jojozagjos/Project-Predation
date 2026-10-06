@@ -2971,3 +2971,11 @@ ship of their own that starts small and grows (REWORK_DESIGN.md), and keeps a sh
 - **Signs at outposts** are drawn into a texture kept for each place in the list, as wide as any sign, so travelling from
   outpost to outpost makes no more of them; the quad shows only the part drawn into.
 - **outpost_preview <seed>** (developers) shows any outpost round the landed ship without crossing to it.
+
+## ADR-134: No public lobbies
+
+The game is a campaign now, the host's, played among friends, so there is no public list of games (the user's call).
+Hosting no longer asks who can join: friends come in with the lobby's code, and a game on the same network is still in
+that network's list. Gone with it: the host page's choice and game-name box, the join page's *Public games* tab, the
+lobby client's browsing role (LobbyClient::Browse, LobbyListing) and "listed" in what a host tells the server, and the
+lobby server's `GET /list`. The deployed server goes on answering `/list` until it is deployed again; nothing asks it.

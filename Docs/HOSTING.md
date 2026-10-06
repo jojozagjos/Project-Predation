@@ -14,7 +14,7 @@ these their situation needs.
 Hosting goes to the lobby first, not straight into the world:
 
 1. The host picks a campaign: **Continue**, **New campaign** (then **Create it and open the lobby**) or **Load
-   campaign** (then **Open the lobby**). Whether strangers can find it in the public list is chosen there.
+   campaign** (then **Open the lobby**).
 2. The lobby shows the campaign, a **code** (with a Copy button) and who is here.
 3. Friends press **Join a game**, type the code into the box at the top, and press **Join**. They see the
    same lobby, with "Waiting for the host to start".
@@ -25,8 +25,8 @@ The campaign is the host's: it is saved on their machine, and if they leave, the
 People can still join after the game has started: they go straight in. The code is in the pause menu
 for exactly that.
 
-**Show it in Public games** (on the host page) also puts the game in everybody's *Public games* list,
-so strangers can join without a code. Off by default.
+There is no public list of games: a campaign is played among friends, who come in with its code (or from
+the list of games on the same network).
 
 ## By code: how it works
 

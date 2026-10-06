@@ -81,7 +81,7 @@ Multiplayer, from the console or `--exec`:
 | `lobby_state` | Role, state, code, how the lobby server sees this PC, and whether the game has started |
 | `lobby_use <web address> [stun host:port]` | Use a lobby server (and STUN server) for this run only, without saving it |
 | `host_lan [name]` | Host and go straight in, skipping the lobby |
-| `games` | What this PC can see: games on its network, and public ones |
+| `games` | What this PC can see: games on its network |
 
 Two copies on one PC, joining by code through the local lobby server (`node Tools/LobbyWorker/local-server.js`;
 the first copy's log says the code after "open as"):

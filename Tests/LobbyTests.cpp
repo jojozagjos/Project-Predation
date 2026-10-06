@@ -175,15 +175,6 @@ struct FakeLobbyServer
                 lobbies.erase(body.value("code", ""));
                 return Ready(200, nlohmann::json::object());
             }
-            if (method == "GET" && path.rfind("/list", 0) == 0)
-            {
-                nlohmann::json rows = nlohmann::json::array();
-                for (const auto& [code, lobby] : lobbies)
-                {
-                    rows.push_back({{"code", code}, {"name", lobby.name}, {"players", 1}, {"maxPlayers", 4}, {"started", false}});
-                }
-                return Ready(200, {{"lobbies", rows}});
-            }
             return Ready(404, {{"error", "unknown-request"}});
         };
     }
@@ -262,7 +253,7 @@ TEST_CASE("Two games find each other by code and connect directly", "[lobby][udp
     std::unique_ptr<Transport> host = CreateUdpTransport(1u);
     REQUIRE(host->Listen(47931));
     LobbyClient hostLobby;
-    REQUIRE(hostLobby.Host(SettingsFor(server, {stun.Address()}), "kitchen", false, 4, 47931));
+    REQUIRE(hostLobby.Host(SettingsFor(server, {stun.Address()}), "kitchen", 4, 47931));
     for (int i = 0; i < 300 && hostLobby.Status() != LobbyClient::State::Open; ++i)
     {
         Step({{host.get(), &hostLobby}}, {&stun});
@@ -320,7 +311,7 @@ TEST_CASE("A router that changes its port for everybody is recognised", "[lobby]
     std::unique_ptr<Transport> host = CreateUdpTransport(3u);
     REQUIRE(host->Listen(47932));
     LobbyClient lobby;
-    REQUIRE(lobby.Host(SettingsFor(server, {first.Address(), second.Address()}), "strict", false, 4, 47932));
+    REQUIRE(lobby.Host(SettingsFor(server, {first.Address(), second.Address()}), "strict", 4, 47932));
     for (int i = 0; i < 300 && lobby.Status() != LobbyClient::State::Open; ++i)
     {
         Step({{host.get(), &lobby}}, {&first, &second});
@@ -359,28 +350,18 @@ TEST_CASE("Wrong codes, other versions and a missing server are all said in word
     CHECK(failWith(SettingsFor(server, {}), code).find("not answering") != std::string::npos);
 }
 
-TEST_CASE("The public list comes from the lobby server, and a host it forgot opens again", "[lobby]")
+TEST_CASE("A host the lobby server forgot opens again with the same code", "[lobby]")
 {
     FakeLobbyServer server;
     std::unique_ptr<Transport> host = CreateUdpTransport(5u);
     REQUIRE(host->Listen(47933));
     LobbyClient lobby;
-    REQUIRE(lobby.Host(SettingsFor(server, {}), "kitchen", true, 4, 47933));
+    REQUIRE(lobby.Host(SettingsFor(server, {}), "kitchen", 4, 47933));
     for (int i = 0; i < 300 && lobby.Status() != LobbyClient::State::Open; ++i)
     {
         Step({{host.get(), &lobby}});
     }
     REQUIRE(lobby.Status() == LobbyClient::State::Open);
-
-    LobbyClient browser;
-    REQUIRE(browser.Browse(SettingsFor(server, {})));
-    for (int i = 0; i < 30 && !browser.Heard(); ++i)
-    {
-        Step({{nullptr, &browser}});
-    }
-    REQUIRE(browser.Heard());
-    REQUIRE(browser.Lobbies().size() == 1);
-    CHECK(browser.Lobbies()[0].name == "kitchen");
 
     // The server restarts and forgets everything. The host is told on its next update and opens the
     // same code again.
@@ -404,7 +385,7 @@ TEST_CASE("Two games find each other through the real lobby server", "[.][live]"
     std::unique_ptr<Transport> host = CreateUdpTransport(11u);
     REQUIRE(host->Listen(47941));
     LobbyClient hostLobby;
-    REQUIRE(hostLobby.Host(settings, "live test", false, 4, 47941));
+    REQUIRE(hostLobby.Host(settings, "live test", 4, 47941));
     const auto step = [&](std::vector<Game> games)
     {
         std::vector<NetPacket> packets;

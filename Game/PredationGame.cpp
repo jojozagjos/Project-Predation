@@ -1718,7 +1718,6 @@ void PredationGame::RegisterCommands()
             {
             case LobbyClient::Role::Host: role = "host"; break;
             case LobbyClient::Role::Guest: role = "guest"; break;
-            case LobbyClient::Role::Browser: role = "browser"; break;
             case LobbyClient::Role::None: break;
             }
             const char* state = "idle";
@@ -3639,12 +3638,9 @@ void ResetSettingsToDefaults()
 //
 // What used to be here was four pages of questions: over the internet or by address, and if by
 // address then which address, and what port, and had the router agreed to forward it. All of that
-// is true and none of it is the player's problem. A game on your own network announces itself and
-// is simply in the list; a game over the internet is in the relay's list, because the relay is
-// already the thing that opens and closes lobbies. Joining is clicking the row.
-//
-// The typed box has not gone away, because a code sent to one person is still the way to run a
-// game that is not on a list. It is just no longer the first thing anybody sees.
+// is true and none of it is the player's problem. A game over the internet is joined by the code its
+// host gives out; a game on your own network announces itself and is simply in the list, joined by
+// clicking the row. There is no public list: a campaign is played among friends.
 
 std::string PredationGame::LobbyName() const
 {
@@ -3699,22 +3695,15 @@ bool PredationGame::LobbyServerConfigured() const
 
 void PredationGame::StartBrowsing()
 {
-    // Both lists at once, always, rather than whichever tab is showing, so the other tab is already
-    // filled in by the time somebody clicks it.
     if (!m_browser.Running() && !m_browser.Start() && m_titleStatus.empty())
     {
         m_titleStatus = m_browser.Message();
-    }
-    if (!m_lobbyBrowser.Active() && LobbyServerConfigured())
-    {
-        m_lobbyBrowser.Browse(LobbySettings());
     }
 }
 
 void PredationGame::StopBrowsing()
 {
     m_browser.Stop();
-    m_lobbyBrowser.Close();
 }
 
 void PredationGame::UpdateDiscovery(float frameDeltaSeconds)
@@ -3753,7 +3742,6 @@ void PredationGame::UpdateDiscovery(float frameDeltaSeconds)
                       m_seenOnLan.end());
 
     // The public list: web requests only, no socket.
-    m_lobbyBrowser.Poll(frameDeltaSeconds, nullptr);
 
     UpdateJoining(frameDeltaSeconds);
 
@@ -3761,8 +3749,7 @@ void PredationGame::UpdateDiscovery(float frameDeltaSeconds)
         1 + (m_sessionMode == SessionMode::Host ? static_cast<int>(m_host.ConnectedCount()) : 0);
     if (m_sessionMode == SessionMode::Host && m_lobby.GetRole() == LobbyClient::Role::Host)
     {
-        m_lobby.SetStatus(static_cast<uint8_t>(std::min(players, 15)), m_host.Started(), m_listPublicly,
-                          LobbyName());
+        m_lobby.SetStatus(static_cast<uint8_t>(std::min(players, 15)), m_host.Started(), LobbyName());
         // The router's outside address, once it has agreed to let people in: one more way to reach
         // this machine, for a guest whose own router cannot be punched through.
         if (!m_portsAnnounced && m_ports.Status() == PortMapper::State::Open)
@@ -3821,7 +3808,7 @@ void PredationGame::StartHosting()
     // A code, for everybody else.
     if (LobbyServerConfigured())
     {
-        m_lobby.Host(LobbySettings(), LobbyName(), m_listPublicly, kMaxPlayers,
+        m_lobby.Host(LobbySettings(), LobbyName(), kMaxPlayers,
                      static_cast<uint16_t>(m_hostPort));
     }
     // And the router asked to let people straight in, for a guest whose own router cannot be punched
@@ -3995,31 +3982,8 @@ void PredationGame::DrawTitleBrowse()
     ImGui::EndDisabled();
     ImGui::Spacing();
 
-    // Which list, as a tab rather than a question. Both are already filled in behind it.
-    //
-    // The tab bar keeps its own idea of which tab is showing, so a choice made anywhere else -- the
-    // console -- is pushed into it once, or the bar would quietly put the other tab back.
-    const bool wanted = m_online;
-    const bool push = m_onlineShown != wanted;
-    if (ImGui::BeginTabBar("##where"))
-    {
-        if (ImGui::BeginTabItem("On your network", nullptr, push && !wanted ? ImGuiTabItemFlags_SetSelected : 0))
-        {
-            m_online = false;
-            ImGui::EndTabItem();
-        }
-        if (ImGui::BeginTabItem("Public games", nullptr, push && wanted ? ImGuiTabItemFlags_SetSelected : 0))
-        {
-            m_online = true;
-            ImGui::EndTabItem();
-        }
-        ImGui::EndTabBar();
-    }
-    if (push)
-    {
-        m_online = wanted;
-    }
-    m_onlineShown = m_online;
+    // The games on this network, which announce themselves.
+    ImGui::TextDisabled("ON YOUR NETWORK");
 
     // A fixed-height list, so the window does not jump about every time somebody opens or closes a
     // game while it is being read.
@@ -4049,7 +4013,6 @@ void PredationGame::DrawTitleBrowse()
         return join;
     };
 
-    if (!m_online)
     {
         const std::vector<LanLobby>& found = m_browser.Lobbies();
         for (size_t i = 0; i < found.size(); ++i)
@@ -4079,51 +4042,6 @@ void PredationGame::DrawTitleBrowse()
             if (!m_browser.Running())
             {
                 ImGui::TextColored(kWarning, "%s", m_browser.Message().c_str());
-            }
-            ImGui::PopTextWrapPos();
-        }
-    }
-    else if (!LobbyServerConfigured())
-    {
-        ImGui::PushTextWrapPos(0.0f);
-        ImGui::TextUnformatted("Public games need a lobby server, and none is set.");
-        ImGui::PopTextWrapPos();
-    }
-    else
-    {
-        const std::vector<LobbyListing>& open = m_lobbyBrowser.Lobbies();
-        for (size_t i = 0; i < open.size(); ++i)
-        {
-            const LobbyListing& lobby = open[i];
-            ImGui::PushID(static_cast<int>(i));
-            const bool full = lobby.players >= lobby.maxPlayers;
-            const bool join =
-                row(lobby.name, lobby.players, lobby.maxPlayers, lobby.started, !full, full ? "full" : nullptr);
-            ImGui::PopID();
-            if (join)
-            {
-                const uint32_t code = lobby.code;
-                ImGui::EndChild();
-                JoinCode(code);
-                return;
-            }
-        }
-        if (shown == 0)
-        {
-            ImGui::PushTextWrapPos(0.0f);
-            if (!m_lobbyBrowser.Message().empty())
-            {
-                // "Nobody is playing" and "the server is not there" are the same empty list, and only
-                // one of them is worth going and fixing.
-                ImGui::TextColored(kWarning, "%s", m_lobbyBrowser.Message().c_str());
-            }
-            else if (m_lobbyBrowser.Heard())
-            {
-                ImGui::TextDisabled("Nobody has a public game open. Host one, or join with a code.");
-            }
-            else
-            {
-                ImGui::TextDisabled("Asking the lobby server what is open...");
             }
             ImGui::PopTextWrapPos();
         }
@@ -7167,10 +7085,9 @@ void PredationGame::RegisterNetCommands()
             {
                 m_titlePage = TitlePage::Root;
             }
-            else if (page == "browse" || page == "online")
+            else if (page == "browse")
             {
                 m_titlePage = TitlePage::Browse;
-                m_online = page == "online";
             }
             else if (page == "host" || page == "new")
             {
@@ -7195,7 +7112,7 @@ void PredationGame::RegisterNetCommands()
             m_screen = Screen::Title;
             m_titleStatus.clear();
         },
-        "menu <root|browse|online|host|settings [tab]|pause [settings tab]>");
+        "menu <root|browse|host|settings [tab]|pause [settings tab]>");
 
     console.RegisterCommand("lobby_open", "Open a game and wait in its lobby, as the host page's Host button does",
                             [this](const std::vector<std::string>&) { StartHosting(); });
@@ -7249,15 +7166,6 @@ void PredationGame::RegisterNetCommands()
                                          std::to_string(lobby.maxPlayers);
                 out.Print(line);
                 PRED_LOG_INFO(Network, "games lan:{}", line);
-            }
-            const std::vector<LobbyListing>& open = m_lobbyBrowser.Lobbies();
-            out.Print("Public: " + std::to_string(open.size()));
-            for (const LobbyListing& lobby : open)
-            {
-                const std::string line = "  " + lobby.name + "  " + DecodeLobbyCode(lobby.code) + "  " +
-                                         std::to_string(lobby.players) + "/" + std::to_string(lobby.maxPlayers);
-                out.Print(line);
-                PRED_LOG_INFO(Network, "games public:{}", line);
             }
         });
 

@@ -23,7 +23,6 @@ const LIMITS = {
   maxGuestsRemembered: 16,
   maxCandidates: 6,
   maxNameLength: 24,
-  maxListed: 16,
   // Requests one address may make, and how fast that allowance refills.
   burst: 40,
   perSecond: 8,
@@ -37,7 +36,7 @@ export function defaultRandom(bytes) {
 
 function cleanName(value) {
   if (typeof value !== "string") return "";
-  // Printable ASCII only: a lobby name is drawn on the screen of everybody who browses, and anybody
+  // Printable ASCII only: a lobby name is drawn on the screen of everybody who joins it, and anybody
   // at all can open a lobby.
   return value.replace(/[^\x20-\x7E]/g, "?").slice(0, LIMITS.maxNameLength);
 }
@@ -99,7 +98,7 @@ export class Lobbies {
   }
 
   // One request. Returns { status, body } with body a plain object to send as JSON.
-  handle(method, path, query, body, clientIp) {
+  handle(method, path, body, clientIp) {
     const now = this.now();
     this.expire(now);
     if (!this.allow(clientIp || "?", now)) {
@@ -108,7 +107,6 @@ export class Lobbies {
     body = body && typeof body === "object" ? body : {};
     try {
       if (method === "GET" && path === "/") return { status: 200, body: { ok: true, lobbies: this.lobbies.size } };
-      if (method === "GET" && path === "/list") return this.list(query);
       if (method === "POST" && path === "/host") return this.host(body, clientIp, now);
       if (method === "POST" && path === "/update") return this.update(body, clientIp, now);
       if (method === "POST" && path === "/join") return this.join(body, clientIp, now);
@@ -158,7 +156,6 @@ export class Lobbies {
   describe(lobby, body) {
     lobby.version = Number(body.version) | 0;
     lobby.name = cleanName(body.name);
-    lobby.listed = body.listed === true;
     lobby.started = body.started === true;
     lobby.players = Math.max(0, Math.min(Number(body.players) | 0, 15));
     lobby.maxPlayers = Math.max(1, Math.min(Number(body.maxPlayers) | 0 || 4, 15));
@@ -188,7 +185,7 @@ export class Lobbies {
     };
     this.describe(lobby, body);
     this.lobbies.set(code, lobby);
-    this.log(`opened ${code} "${lobby.name}"${lobby.listed ? " (public)" : ""} for ${clientIp}`);
+    this.log(`opened ${code} "${lobby.name}" for ${clientIp}`);
     return { status: 200, body: { code, secret: lobby.secret, seenIp: clientIp || "" } };
   }
 
@@ -249,24 +246,5 @@ export class Lobbies {
       this.log(`closed ${code}`);
     }
     return { status: 200, body: {} };
-  }
-
-  list(query) {
-    const version = Number(query.get ? query.get("version") : query.version) | 0;
-    const open = [...this.lobbies.values()].filter((lobby) => lobby.listed && lobby.version === version);
-    // Ones with room first, then by code, so the order holds still from one ask to the next.
-    open.sort((a, b) => {
-      const aRoom = a.players < a.maxPlayers;
-      const bRoom = b.players < b.maxPlayers;
-      return aRoom !== bRoom ? (aRoom ? -1 : 1) : a.code < b.code ? -1 : 1;
-    });
-    const lobbies = open.slice(0, LIMITS.maxListed).map((lobby) => ({
-      code: lobby.code,
-      name: lobby.name,
-      players: lobby.players,
-      maxPlayers: lobby.maxPlayers,
-      started: lobby.started,
-    }));
-    return { status: 200, body: { lobbies } };
   }
 }

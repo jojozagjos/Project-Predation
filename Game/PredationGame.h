@@ -607,9 +607,8 @@ private:
     // world cannot be paused by one person in it.
     // The settings panel, drawn inside the menu and inside the pause screen alike.
 
-    // The browser: a list of games you can actually join, rather than a page of questions about
-    // ports and addresses. Everything about how a game is reached belongs to the two lists it can
-    // be in, not to the player.
+    // Joining: a code from a friend, or a game on this network from its list, rather than a page of
+    // questions about ports and addresses.
     void DrawTitleBrowse();
     // The campaign pages and the lobby (PredationGameTitle.cpp).
     void DrawTitleNewCampaign();
@@ -623,8 +622,8 @@ private:
     // What this machine's game is called in everybody else's list. Falls back to the player's own
     // name, because an unnamed row still needs the one thing that tells it apart: whose it is.
     std::string LobbyName() const;
-    // Finding games. On your own network that is a beacon and costs nothing; everywhere else it is
-    // a question to the lobby server, which knows every public game.
+    // Finding games on your own network: a beacon, which costs nothing. Anywhere else a game is
+    // joined by its code.
     void StartBrowsing();
     void StopBrowsing();
     void UpdateDiscovery(float frameDeltaSeconds);
@@ -1611,27 +1610,19 @@ private:
         LoadCampaign   // carrying one on, and hosting it
     };
     TitlePage m_titlePage = TitlePage::Root;
-    // Which list is showing: public games from the lobby server, or games on this network.
-    bool m_online = false;
-    // Which of the two the tab bar showed last frame, so a change made elsewhere can be pushed to it.
-    bool m_onlineShown = false;
     // Finding games on this network, and the beacon that puts this machine in everybody else's
     // list while it is hosting one.
     LanListener m_browser;
     LanBeacon m_beacon;
-    // Asking the lobby server what public games are open. Web requests only: browsing has to work
-    // before there is a game, and stops the moment there is one.
-    LobbyClient m_lobbyBrowser;
     // This machine's lobby: the host's registration and introductions, or a guest's way in.
     LobbyClient m_lobby;
     // A guest's transport while it is still finding the host, before the game has it. The lobby
     // server has seen this socket and the holes are punched for it, so it is this one the game
     // connects over, not a new one.
     std::unique_ptr<Transport> m_joinTransport;
-    // What this machine's game is called in other people's lists, and whether it is in the public
-    // one or only reachable by its code.
+    // What this machine's game is called in the list on other machines on this network, and to whoever
+    // joins it by its code.
     char m_lobbyName[24] = "";
-    bool m_listPublicly = false;
     // Which games on the network have already been mentioned in the log, so appearing and going
     // are each said once rather than every frame.
     std::vector<std::string> m_seenOnLan;
