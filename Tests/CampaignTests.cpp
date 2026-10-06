@@ -696,3 +696,52 @@ TEST_CASE("Setting out from orbit turns first, leaves gently, never passes throu
         CHECK(std::abs(glm::dot(out, along)) < 1.0e-4f);
     }
 }
+
+TEST_CASE("Outposts have owners: Kestrel is CIRRA's, the rest are a mix, each from its own seed", "[campaign][universe]")
+{
+    const UniverseData& data = ShippedData();
+    REQUIRE(data.Owner("cirra") != nullptr);
+    REQUIRE(data.Owner("independent") != nullptr);
+    REQUIRE(data.Owner("industrial") != nullptr);
+    REQUIRE(data.Owner("abandoned") != nullptr);
+    CHECK(data.Owner("cirra")->mark);
+    CHECK(data.Owner("abandoned")->abandoned);
+    CHECK(data.Owner("independent")->operatorNumber);
+
+    std::map<std::string, int> seen;
+    for (uint64_t seed = 1; seed <= 12; ++seed)
+    {
+        Universe universe;
+        universe.Reset(seed, &data);
+        const StarSystem& home = *universe.System(universe.Home());
+        const Body* world = home.Find(home.hub);
+        REQUIRE(world != nullptr);
+        INFO("universe " << seed);
+        CHECK(world->regions[static_cast<size_t>(home.hubRegion)].owner == "cirra");
+        for (const SystemId& id : universe.Near(glm::vec3(0.0f), 60.0f))
+        {
+            const StarSystem* system = universe.System(id.Packed());
+            const Body* hubWorld = system != nullptr ? system->Find(system->hub) : nullptr;
+            if (hubWorld == nullptr || id.Packed() == home.id.Packed())
+            {
+                continue;
+            }
+            const LandingRegion& hub = hubWorld->regions[static_cast<size_t>(system->hubRegion)];
+            ++seen[hub.owner];
+            CHECK(data.Owner(hub.owner) != nullptr);
+            CHECK(hub.operatorNumber >= 100);
+            CHECK(hub.operatorNumber <= 9999);
+            // The same again, built again.
+            Universe again;
+            again.Reset(seed, &data);
+            const StarSystem* same = again.System(id.Packed());
+            REQUIRE(same != nullptr);
+            CHECK(same->Find(same->hub)->regions[static_cast<size_t>(same->hubRegion)].owner == hub.owner);
+        }
+    }
+    for (const char* owner : {"cirra", "independent", "industrial", "abandoned"})
+    {
+        INFO(owner);
+        CHECK(seen[owner] > 0);
+    }
+}

@@ -18,6 +18,7 @@
 #include <glm/gtc/type_ptr.hpp>
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <string>
 
@@ -644,21 +645,44 @@ void PredationGame::UpdateShipGround()
         field.rock = rock;
         const StarSystem* home = m_universe.System(m_universe.Home());
         field.kestrel = home != nullptr && m_campaign.system == home->id.Packed() && m_groundBody == home->hub;
-        std::string name;
+        // Its name over the operations block's door, and its operator's number under it where its owner goes by one.
+        std::vector<std::string> name;
         if (at != nullptr && m_groundRegion >= 0 && m_groundRegion < static_cast<int>(at->regions.size()))
         {
-            field.seed = at->regions[static_cast<size_t>(m_groundRegion)].seed;
-            name = at->regions[static_cast<size_t>(m_groundRegion)].designation;
+            const LandingRegion& region = at->regions[static_cast<size_t>(m_groundRegion)];
+            field.seed = region.seed;
+            field.style = StyleOf(region);
+            name = {region.designation};
+            if (const std::string number = OperatorNumber(region); !number.empty())
+            {
+                name.push_back("OPERATOR " + number);
+            }
         }
         if (field.kestrel)
         {
             field.seed = 0;
+            field.style = OutpostStyle{};
         }
         if (m_outpostPreview != 0)
         {
+            LandingRegion preview;
+            preview.seed = m_outpostPreview;
+            preview.designation = "OUTPOST " + std::to_string(10 + m_outpostPreview % 90u);
+            preview.operatorNumber = static_cast<int>(100 + m_outpostPreview % 9900u);
+            // Its owner as asked, or one by its seed.
+            preview.owner = m_outpostPreviewOwner;
+            if (preview.owner.empty() && !m_universeData.owners.empty())
+            {
+                preview.owner = m_universeData.owners[m_outpostPreview % m_universeData.owners.size()].id;
+            }
             field.kestrel = false;
             field.seed = m_outpostPreview;
-            name = "OUTPOST " + std::to_string(10 + m_outpostPreview % 90u);
+            field.style = StyleOf(preview);
+            name = {preview.designation};
+            if (const std::string number = OperatorNumber(preview); !number.empty())
+            {
+                name.push_back("OPERATOR " + number);
+            }
         }
         m_ship.SetField(m_scene, m_app->GetMeshes(), landed, field);
         m_ship.SetStageField(m_scene, m_app->GetMeshes(), GroundCinematic() && at != nullptr, field);
@@ -696,8 +720,9 @@ Entity PredationGame::MakeSign(const KestrelStation::Sign& sign, const std::stri
         at.rotation = at.rotation * glm::angleAxis(-glm::half_pi<float>(), glm::vec3(1.0f, 0.0f, 0.0f));
     }
     const bool logo = sign.style == KestrelStation::Sign::Style::Logo;
-    const bool painted = sign.style == KestrelStation::Sign::Style::Painted || floor;
-    Material material = Material::Diffuse(glm::vec3(1.0f), painted ? 0.9f : 0.4f);
+    // Painted, or lit no longer: only as light falls on it.
+    const bool painted = sign.style == KestrelStation::Sign::Style::Painted || floor || sign.dark;
+    Material material = Material::Diffuse(sign.dark ? glm::vec3(0.45f) : glm::vec3(1.0f), painted ? 0.9f : 0.4f);
     material.baseColorTexture = texture;
     material.emissive = painted ? glm::vec3(0.0f) : glm::vec3(logo ? 1.4f : 1.1f);
     material.emissiveTextured = !painted;
@@ -709,7 +734,67 @@ Entity PredationGame::MakeSign(const KestrelStation::Sign& sign, const std::stri
     return entity;
 }
 
-void PredationGame::UpdateHubSigns(bool shown, const FieldLook& field, const std::string& name)
+OutpostStyle PredationGame::StyleOf(const LandingRegion& region) const
+{
+    OutpostStyle style;
+    const OwnerDef* owner = m_universeData.Owner(region.owner);
+    if (owner == nullptr)
+    {
+        return style;
+    }
+    style.mark = owner->mark;
+    style.standard = owner->standard;
+    style.abandoned = owner->abandoned;
+    style.lit = owner->lit;
+    style.operations = owner->operations;
+    style.blocks = owner->blocks;
+    style.sheds = owner->sheds;
+    style.habitats = owner->habitats;
+    style.tanks = owner->tanks;
+    style.comms = owner->comms;
+    style.uses = owner->uses;
+    return style;
+}
+
+std::string PredationGame::OperatorNumber(const LandingRegion& region) const
+{
+    const OwnerDef* owner = m_universeData.Owner(region.owner);
+    if (owner == nullptr || !owner->operatorNumber)
+    {
+        return {};
+    }
+    std::string number = std::to_string(std::clamp(region.operatorNumber, 0, 9999));
+    return std::string(4 - std::min<size_t>(number.size(), 4), '0') + number;
+}
+
+std::string PredationGame::OperatorOf(const LandingRegion& region) const
+{
+    const OwnerDef* owner = m_universeData.Owner(region.owner);
+    if (owner == nullptr)
+    {
+        return {};
+    }
+    std::string text = owner->map;
+    if (const size_t at = text.find("{operator}"); at != std::string::npos)
+    {
+        text.replace(at, 10, OperatorNumber(region));
+    }
+    return text;
+}
+
+std::string PredationGame::OutpostTag(const LandingRegion& region) const
+{
+    std::string tag = "OUTPOST";
+    if (const OwnerDef* owner = m_universeData.Owner(region.owner))
+    {
+        std::string name = owner->name;
+        std::transform(name.begin(), name.end(), name.begin(), [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
+        tag += ", " + name;
+    }
+    return tag + "   ";
+}
+
+void PredationGame::UpdateHubSigns(bool shown, const FieldLook& field, const std::vector<std::string>& name)
 {
     TextureLibrary& textures = m_app->GetTextures();
     // Kestrel's, made once, the first time the ship stands there; shown and hidden after.
@@ -731,7 +816,7 @@ void PredationGame::UpdateHubSigns(bool shown, const FieldLook& field, const std
     // Another outpost's, made again whenever it is another outpost: what its plan puts up, and its name on its operations block.
     // Each sign drawn into a texture kept for its place in the list, as wide as any sign is, so going from outpost to outpost
     // makes no more of them.
-    if (shown && !field.kestrel && (!m_outpostSignsBuilt || m_outpostSignsSeed != field.seed || m_outpostSignsName != name))
+    if (shown && !field.kestrel && (!m_outpostSignsBuilt || m_outpostSignsSeed != field.seed || m_outpostSignsName != name || !(m_outpostSignsStyle == field.style)))
     {
         for (const Entity entity : m_outpostSigns)
         {
@@ -746,15 +831,16 @@ void PredationGame::UpdateHubSigns(bool shown, const FieldLook& field, const std
         m_outpostSignsBuilt = true;
         m_outpostSignsSeed = field.seed;
         m_outpostSignsName = name;
+        m_outpostSignsStyle = field.style;
         constexpr int kTextureWide = 1024;
         constexpr int kHigh = 128;
-        std::vector<KestrelStation::Sign> signs = Outpost::Generate(field.seed, field.ground, field.rock).signs;
+        std::vector<KestrelStation::Sign> signs = Outpost::Generate(field.seed, field.ground, field.rock, field.style).signs;
         for (size_t i = 0; i < signs.size(); ++i)
         {
             KestrelStation::Sign& sign = signs[i];
             if (sign.id == "outpost_name")
             {
-                sign.lines = {name};
+                sign.lines = name;
             }
             const int wide = std::clamp(static_cast<int>(static_cast<float>(kHigh) * sign.width / std::max(sign.height, 0.1f)), 64, kTextureWide);
             ScreenCanvas canvas(wide, kHigh);

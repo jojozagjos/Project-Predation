@@ -1155,7 +1155,16 @@ private:
     void UpdateShipGround();
     // The signs at the outpost the ship stands at: Kestrel's (made once), or another outpost's with its name on (made again
     // for each outpost).
-    void UpdateHubSigns(bool shown, const FieldLook& field, const std::string& name);
+    void UpdateHubSigns(bool shown, const FieldLook& field, const std::vector<std::string>& name);
+    // An outpost as its owner has it (universe.json "owners"): how it looks, and who the map says runs it ("CIRRA",
+    // "Independent operator 0417", "Operator unknown"); its operator number as its signs show it, empty where it has none.
+    OutpostStyle StyleOf(const LandingRegion& region) const;
+    std::string OperatorOf(const LandingRegion& region) const;
+    std::string OperatorNumber(const LandingRegion& region) const;
+    // What the globe says under an outpost: "OUTPOST, CIRRA".
+    std::string OutpostTag(const LandingRegion& region) const;
+    // Another outpost's owner, for outpost_preview (empty: as its seed would have it).
+    std::string m_outpostPreviewOwner;
     Entity MakeSign(const KestrelStation::Sign& sign, const std::string& meshName, TextureHandle texture, int wide, int high, int textureWide, int textureHigh,
                     MeshHandle& mesh);
     std::vector<Entity> m_hubSigns;
@@ -1165,7 +1174,8 @@ private:
     // Another outpost shown round the ship instead of the one there (outpost_preview, a developer's command); 0 for none.
     uint32_t m_outpostPreview = 0;
     uint32_t m_outpostSignsSeed = 0;
-    std::string m_outpostSignsName;
+    std::vector<std::string> m_outpostSignsName;
+    OutpostStyle m_outpostSignsStyle;
     void PlayLeaving(bool fromGround);
     // The body and place the ship last stood at, for the ground and the sky while it leaves or arrives.
     int m_groundBody = -1;

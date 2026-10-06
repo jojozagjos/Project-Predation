@@ -1815,7 +1815,7 @@ void PredationGame::DrawSystemMap()
             Label(draw, {point.x + 14.0f, point.y - small * 0.55f}, colour, region.designation.c_str(), small);
             const bool shipHere = chosen && port && ShipLanded();
             const std::string under =
-                std::string(shipHere ? "YOUR SHIP IS HERE   " : chosen ? (port ? "LANDING HERE   " : "GOING DOWN HERE   ") : port ? "OUTPOST   " : "") +
+                std::string(shipHere ? "YOUR SHIP IS HERE   " : chosen ? (port ? "LANDING HERE   " : "GOING DOWN HERE   ") : port ? OutpostTag(region) : "") +
                 (day ? "DAY" : "NIGHT");
             if (shipHere)
             {
@@ -2241,7 +2241,13 @@ void PredationGame::DrawMapGalaxyPanels()
                     moons += body.kind == BodyKind::Moon ? 1 : 0;
                 }
                 Row("Bodies", std::to_string(planets) + " planets, " + std::to_string(moons) + " moons");
-                Row("Outpost", system->hub >= 0 ? "Yes: ships land, refit and trade there" : "None", true);
+                const Body* hubWorld = system->Find(system->hub);
+                const bool hasHub = hubWorld != nullptr && system->hubRegion >= 0 && system->hubRegion < static_cast<int>(hubWorld->regions.size());
+                Row("Outpost", hasHub ? "Yes: ships land there" : "None", true);
+                if (hasHub)
+                {
+                    Row("Run by", OperatorOf(hubWorld->regions[static_cast<size_t>(system->hubRegion)]), true);
+                }
             }
         }
         else if ((m_campaign.Known(m_mapPickedSystem, -1) & CampaignState::kKnownRecords) != 0)
@@ -2669,6 +2675,10 @@ void PredationGame::DrawMapBodyPanels(const StarSystem& system)
         if (port)
         {
             Wrapped(kDimText, "An outpost: the ship itself lands here.");
+            if (const std::string runs = OperatorOf(region); !runs.empty())
+            {
+                Row("Run by", runs, true);
+            }
         }
         if (!ours)
         {

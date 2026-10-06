@@ -447,6 +447,8 @@ const CivilizationDef* UniverseData::Civilization(const std::string& id) const {
 const SpecialDef* UniverseData::Special(const std::string& id) const { return FindById(specials, id); }
 const RegionKindDef* UniverseData::RegionKind(const std::string& id) const { return FindById(regionKinds, id); }
 
+const OwnerDef* UniverseData::Owner(const std::string& id) const { return FindById(owners, id); }
+
 bool UniverseData::LoadFromFile(const std::filesystem::path& file, std::string* error)
 {
     std::ifstream stream(file);
@@ -597,6 +599,28 @@ bool UniverseData::LoadFromFile(const std::filesystem::path& file, std::string* 
             kind.ship = entry.value("ship", false);
             kind.designations = ReadStrings(entry, "designations");
             loaded.regionKinds.push_back(kind);
+        }
+        for (const auto& entry : root.value("owners", nlohmann::json::array()))
+        {
+            OwnerDef owner;
+            ReadEntry(entry, owner);
+            owner.map = entry.value("map", owner.name);
+            owner.mark = entry.value("mark", false);
+            owner.standard = entry.value("standard", false);
+            owner.operatorNumber = entry.value("operator", false);
+            owner.abandoned = entry.value("abandoned", false);
+            owner.lit = std::clamp(entry.value("lit", 1.0f), 0.0f, 1.0f);
+            if (const auto signs = entry.find("signs"); signs != entry.end() && signs->is_object())
+            {
+                owner.operations = signs->value("operations", owner.operations);
+                owner.blocks = ReadStrings(*signs, "block");
+                owner.sheds = ReadStrings(*signs, "shed");
+                owner.habitats = ReadStrings(*signs, "habitat");
+                owner.tanks = ReadStrings(*signs, "tanks");
+                owner.comms = signs->value("comms", owner.comms);
+            }
+            owner.uses = ReadWeights(entry, "uses");
+            loaded.owners.push_back(owner);
         }
         if (const auto areas = root.find("areas"); areas != root.end() && areas->is_object())
         {
@@ -1085,6 +1109,20 @@ StarSystem Universe::Generate(uint64_t universeSeed, SystemId id, const Universe
                                          std::to_string(10 + hub.seed % 90u);
             hub.latLon = {random.Range(-20.0f, 20.0f), random.Range(-180.0f, 180.0f)};
             hub.charted = true;
+            // Who runs it: CIRRA at home (Kestrel); elsewhere one of the owners by weight, from its own seed so nothing else
+            // about the system changes for it -- and a number on its signs where its owner goes by one.
+            {
+                UniverseRandom owning(MixSeed(hub.seed, 0x4F574E52ull)); // 'OWNR'
+                std::vector<const OwnerDef*> owners;
+                for (const OwnerDef& owner : data.owners)
+                {
+                    owners.push_back(&owner);
+                }
+                const OwnerDef* cirra = data.Owner("cirra");
+                const OwnerDef* owner = home && cirra != nullptr ? cirra : PickWeighted(owners, owning);
+                hub.owner = owner != nullptr ? owner->id : std::string();
+                hub.operatorNumber = owning.Int(100, 9999);
+            }
             system.hubRegion = static_cast<int>(world.regions.size());
             world.regions.push_back(hub);
         }

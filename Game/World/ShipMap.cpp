@@ -914,7 +914,7 @@ void FieldModels(const FieldLook& look, ModelAsset& solid, ModelAsset& dressing,
         lamps = KestrelStation::Lamps();
         return;
     }
-    Outpost::Layout layout = Outpost::Generate(look.seed, look.ground, look.rock);
+    Outpost::Layout layout = Outpost::Generate(look.seed, look.ground, look.rock, look.style);
     solid = std::move(layout.solid);
     dressing = std::move(layout.dressing);
     lamps = std::move(layout.lamps);

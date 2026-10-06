@@ -165,6 +165,26 @@
     {"id": "signal", "name": "Signal source", "designations": ["SIGNAL SOURCE"]}
   ],
 
+  "_owners": "Who runs an outpost, one picked by weight for each system's outpost (Kestrel is always CIRRA's). name: what it is called; map: what the map says runs it ({operator} is the outpost's operator number); mark: CIRRA's mark on it; standard: CIRRA's standard outpost, its paint, walls and fence the same everywhere; operator: a neutral operator number on its signs; abandoned: nobody there; lit: how many of its lamps work; signs: what its buildings are called; uses: how often each kind of building or yard is put along its street.",
+  "owners": [
+    {"id": "cirra", "name": "CIRRA", "map": "CIRRA", "weight": 1.5, "mark": true, "standard": true, "lit": 1.0,
+     "signs": {"operations": "OPERATIONS HALL", "block": ["CREW SERVICES", "RESEARCH ANNEX", "STORES"], "shed": ["SHIPWORKS", "SALVAGE INTAKE"],
+               "habitat": ["CREW SERVICES"], "tanks": ["FUEL"], "comms": "NAVIGATION RELAY"},
+     "uses": {"block": 35, "shed": 20, "habitat": 10, "tanks": 10, "containers": 15, "comms": 8, "open": 2}},
+    {"id": "independent", "name": "Independent", "map": "Independent operator {operator}", "weight": 3, "operator": true, "lit": 0.9,
+     "signs": {"operations": "OPERATIONS", "block": ["STORAGE", "WORKSHOP", "CREW QUARTERS", "MAINTENANCE", "MEDICAL", "POWER"],
+               "shed": ["HANGAR", "VEHICLE BAY", "WORKSHOP"], "habitat": ["HABITAT", "CREW QUARTERS"], "tanks": ["FUEL", "WATER"], "comms": "COMMS"},
+     "uses": {"block": 30, "shed": 15, "habitat": 20, "tanks": 10, "containers": 12, "comms": 6, "open": 7}},
+    {"id": "industrial", "name": "Industrial", "map": "Industrial operator {operator}", "weight": 2.5, "operator": true, "lit": 1.0,
+     "signs": {"operations": "OPERATIONS", "block": ["POWER", "STORAGE", "MAINTENANCE", "FREIGHT OFFICE"], "shed": ["FREIGHT", "PROCESSING", "VEHICLE BAY"],
+               "habitat": ["CREW QUARTERS"], "tanks": ["FUEL", "COOLANT", "WATER"], "comms": "COMMS"},
+     "uses": {"block": 15, "shed": 25, "habitat": 5, "tanks": 25, "containers": 25, "comms": 5, "open": 0}},
+    {"id": "abandoned", "name": "Unknown", "map": "Operator unknown", "weight": 1, "abandoned": true, "lit": 0.12,
+     "signs": {"operations": "OPERATIONS", "block": ["STORAGE", "WORKSHOP", "CREW QUARTERS", "MAINTENANCE", "POWER"], "shed": ["HANGAR", "VEHICLE BAY"],
+               "habitat": ["HABITAT"], "tanks": ["FUEL", "WATER"], "comms": "COMMS"},
+     "uses": {"block": 30, "shed": 15, "habitat": 15, "tanks": 10, "containers": 10, "comms": 5, "open": 15}}
+  ],
+
   "areas": {
     "frozen": ["NORTH CRYOSPHERE", "SOUTH CRYOSPHERE", "GLACIAL SHELF", "ICE PLAINS"],
     "rocky": ["HIGHLANDS", "BASIN", "EQUATORIAL RIDGE"],

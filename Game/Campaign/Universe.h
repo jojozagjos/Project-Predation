@@ -141,6 +141,26 @@ struct StarDef : TraitEntry
     glm::ivec2 planets{3, 7};
 };
 
+// Who runs an outpost (universe.json "owners"): what it is called and what the map says of it, and how its outposts look --
+// CIRRA's mark and standard outpost, a neutral operator number, or nobody there at all; how many of its lamps work; what its
+// buildings are called (OPERATIONS and the rest, by kind); and how often each kind of building goes along its street.
+struct OwnerDef : TraitEntry
+{
+    std::string map;
+    bool mark = false;
+    bool standard = false;
+    bool operatorNumber = false;
+    bool abandoned = false;
+    float lit = 1.0f;
+    std::string operations = "OPERATIONS";
+    std::vector<std::string> blocks;
+    std::vector<std::string> sheds;
+    std::vector<std::string> habitats;
+    std::vector<std::string> tanks;
+    std::string comms = "COMMS";
+    std::map<std::string, float> uses;
+};
+
 struct RegionKindDef : TraitEntry
 {
     // Whether one is on the charts before anybody has been (otherwise it is found); and whether the ship itself sets down
@@ -166,6 +186,7 @@ public:
     const CivilizationDef* Civilization(const std::string& id) const;
     const SpecialDef* Special(const std::string& id) const;
     const RegionKindDef* RegionKind(const std::string& id) const;
+    const OwnerDef* Owner(const std::string& id) const;
 
     std::vector<BiomeDef> biomes;
     std::vector<AtmosphereDef> atmospheres;
@@ -175,6 +196,7 @@ public:
     std::vector<SpecialDef> specials;
     std::vector<StarDef> stars;
     std::vector<RegionKindDef> regionKinds;
+    std::vector<OwnerDef> owners;
     // What systems are called: a catalogue and a number ("KEPLER-91"); planets after it, by Roman numeral.
     std::vector<std::string> catalogues{"KEPLER"};
     glm::ivec2 catalogueNumbers{10, 999};
@@ -213,6 +235,9 @@ struct LandingRegion
     std::string designation;
     glm::vec2 latLon{0.0f};
     bool charted = false; // on the charts from the start; otherwise found
+    // An outpost's: who runs it (an OwnerDef), and the number on its signs where its owner goes by one.
+    std::string owner;
+    int operatorNumber = 0;
 };
 
 enum class BodyKind : uint8_t

@@ -70,6 +70,8 @@ struct Sign
     float width = 4.0f;
     float height = 1.0f;
     Style style = Style::Lit;
+    // Lit no longer: a place nobody keeps the power on in.
+    bool dark = false;
 };
 // Every sign; `named` puts Kestrel's own name up (only at Kestrel).
 std::vector<Sign> Signs(bool named);
@@ -95,8 +97,8 @@ void PadDressing(PartBuilder& dressing, float walkwayTo);
 void PadMasts(PartBuilder& solid);
 void PadMastBars(PartBuilder& dressing);
 std::vector<Lamp> PadMastLamps();
-// A head and a hood on each lamp.
-void LampHeads(PartBuilder& dressing, const std::vector<Lamp>& lamps);
+// A head and a hood on each lamp; dark heads, for lamps that no longer work.
+void LampHeads(PartBuilder& dressing, const std::vector<Lamp>& lamps, bool lit = true);
 
 // Where people stand when the campaign begins: on the bay's floor by the ship's stair, looking at the ship.
 glm::vec3 Spawn(int player);

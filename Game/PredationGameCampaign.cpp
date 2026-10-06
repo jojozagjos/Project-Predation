@@ -420,10 +420,11 @@ void PredationGame::RegisterCampaignCommands()
                             });
     // Another world's outpost round the ship where it stands, for looking at without crossing to it: outpost_preview <seed>, or
     // with no seed back to the one that is really there.
-    console.RegisterCommand("outpost_preview", "Show the outpost planned from a seed round the landed ship: outpost_preview [seed]",
+    console.RegisterCommand("outpost_preview", "Show the outpost planned from a seed round the landed ship: outpost_preview [seed] [owner]",
                             [this](const std::vector<std::string>& args)
                             {
                                 m_outpostPreview = args.size() >= 2 ? static_cast<uint32_t>(std::stoul(args[1])) : 0u;
+                                m_outpostPreviewOwner = args.size() >= 3 ? args[2] : std::string();
                             });
     console.RegisterCommand("orbit_here", "Put the ship in orbit of the body it is landed on, without the cinematic (the host)",
                             [this](const std::vector<std::string>&)

@@ -159,9 +159,9 @@ struct Placed
 class Planner
 {
 public:
-    Planner(uint32_t seed, Layout& out, const glm::vec3& ground, const glm::vec3& rock)
+    Planner(uint32_t seed, Layout& out, const glm::vec3& ground, const glm::vec3& rock, const OutpostStyle& style)
         : m_random((static_cast<uint64_t>(seed) << 20) ^ 0x0B7905700ull), m_out(out), m_solid{out.solid}, m_dress{out.dressing}, m_ground(ground),
-          m_rock(rock)
+          m_rock(rock), m_style(style), m_seed(seed)
     {
         out.solid.name = "outpost";
         out.dressing.name = "outpost_dressing";
@@ -169,8 +169,21 @@ public:
 
     void Run()
     {
+        // CIRRA's standard outpost in CIRRA's own colours, Kestrel's; another in one of the schemes; one nobody keeps faded and
+        // rusting.
         m_scheme = kSchemes[m_random.Int(0, static_cast<int>(std::size(kSchemes)) - 1)];
         m_concrete = kConcrete * m_random.Range(0.85f, 1.1f);
+        if (m_style.standard)
+        {
+            m_scheme = kSchemes[0];
+            m_concrete = kConcrete;
+        }
+        if (m_style.abandoned)
+        {
+            m_scheme.panel = glm::mix(m_scheme.panel * 0.72f, kRust, 0.15f);
+            m_scheme.warning *= 0.6f;
+            m_concrete *= 0.8f;
+        }
         m_streetNorth = -std::round(m_random.Range(80.0f, 130.0f));
         m_streetSouth = std::round(m_random.Range(50.0f, 105.0f));
         PlanLots();
@@ -183,12 +196,29 @@ public:
         // After the buildings: its lamp posts stand clear of their doors.
         Street();
         Fence();
-        // As many lamps as there are fittings for (ShipMap's), every one with its head.
+        // As many lamps as there are fittings for (ShipMap's), every one with its head -- and of those only as many work as its
+        // owner keeps working; the rest are dark heads. Nobody there: its lit signs dark too.
         if (m_out.lamps.size() > kMaxLamps)
         {
             m_out.lamps.resize(kMaxLamps);
         }
-        KestrelStation::LampHeads(m_dress, m_out.lamps);
+        std::vector<Lamp> working;
+        std::vector<Lamp> dead;
+        for (size_t i = 0; i < m_out.lamps.size(); ++i)
+        {
+            Random which((static_cast<uint64_t>(m_seed) << 24) ^ (0x4C414D50ull + i)); // 'LAMP'
+            (which.Unit() < m_style.lit ? working : dead).push_back(m_out.lamps[i]);
+        }
+        m_out.lamps = working;
+        KestrelStation::LampHeads(m_dress, working);
+        KestrelStation::LampHeads(m_dress, dead, false);
+        if (m_style.abandoned)
+        {
+            for (Sign& sign : m_out.signs)
+            {
+                sign.dark = true;
+            }
+        }
     }
 
 private:
@@ -200,7 +230,7 @@ private:
         const float mainLength = std::round(m_random.Range(24.0f, 34.0f));
         const float before = std::round(m_random.Range(9.0f, mainLength - 9.0f));
         const float mainFrom = kCross - before;
-        Placed main{Lot{{kFacade, mainFrom}, 0, mainLength, std::round(m_random.Range(18.0f, 28.0f))}, Use::Operations, "OPERATIONS", before};
+        Placed main{Lot{{kFacade, mainFrom}, 0, mainLength, std::round(m_random.Range(18.0f, 28.0f))}, Use::Operations, m_style.operations, before};
         m_lots.push_back(main);
         // Along the street both ways from it, with alleys between, as far as the street runs.
         float cursor = mainFrom - m_random.Range(4.0f, 9.0f);
@@ -221,7 +251,8 @@ private:
         {
             const float roll = m_random.Unit();
             const Use use = roll < 0.4f ? Use::Shed : roll < 0.6f ? Use::Tanks : roll < 0.85f ? Use::Containers : Use::Open;
-            m_starboardWall = use != Use::Shed && m_random.Chance(0.6f);
+            // CIRRA's standard outpost has its pad walled behind and to starboard, as Kestrel's is.
+            m_starboardWall = use != Use::Shed && (m_style.standard || m_random.Chance(0.6f));
             // Behind a wall, room between it and the yard for a lamp pole.
             const float front = m_starboardWall ? kStarboardFront + 3.5f : kStarboardFront;
             const float length = std::round(m_random.Range(40.0f, kStarboardTo - kStarboardFrom));
@@ -240,15 +271,35 @@ private:
                                                                                                                               : Use::Open;
             Add({{kBehindFrom, kBehindFront}, 3, kBehindTo - kBehindFrom, std::round(m_random.Range(20.0f, 34.0f))}, use);
         }
-        m_sternWall = m_starboardWall || m_random.Chance(0.45f);
+        m_sternWall = m_starboardWall || m_style.standard || m_random.Chance(0.45f);
     }
 
     void AlongStreet(const Lot& lot)
     {
-        const float roll = m_random.Unit();
-        Use use = roll < 0.3f ? Use::Block : roll < 0.45f ? Use::Shed : roll < 0.6f ? Use::Habitat : roll < 0.7f ? Use::Tanks : roll < 0.85f ? Use::Containers
-                  : roll < 0.93f                                                                                                              ? Use::Comms
-                                                                                                                                              : Use::Open;
+        // As often as its owner has each kind (OutpostStyle::uses), or a mix of everything.
+        static const std::pair<const char*, Use> kinds[] = {{"block", Use::Block},           {"shed", Use::Shed},   {"habitat", Use::Habitat},
+                                                            {"tanks", Use::Tanks},           {"containers", Use::Containers},
+                                                            {"comms", Use::Comms},           {"open", Use::Open}};
+        static const float fallback[] = {30.0f, 15.0f, 15.0f, 10.0f, 15.0f, 8.0f, 7.0f};
+        float weights[std::size(kinds)];
+        float total = 0.0f;
+        for (size_t i = 0; i < std::size(kinds); ++i)
+        {
+            const auto found = m_style.uses.find(kinds[i].first);
+            weights[i] = m_style.uses.empty() ? fallback[i] : found != m_style.uses.end() ? std::max(found->second, 0.0f) : 0.0f;
+            total += weights[i];
+        }
+        float pick = m_random.Unit() * std::max(total, 1.0e-6f);
+        Use use = Use::Block;
+        for (size_t i = 0; i < std::size(kinds); ++i)
+        {
+            pick -= weights[i];
+            if (pick < 0.0f)
+            {
+                use = kinds[i].second;
+                break;
+            }
+        }
         Add(lot, use);
     }
 
@@ -270,15 +321,17 @@ private:
 
     std::string Label(Use use)
     {
-        static const char* const blocks[] = {"STORES", "WORKSHOP", "CREW QUARTERS", "MAINTENANCE", "FREIGHT OFFICE", "MEDICAL", "POWER"};
-        static const char* const sheds[] = {"HANGAR", "VEHICLE BAY", "WORKSHOP", "FREIGHT"};
-        static const char* const habitats[] = {"HABITAT", "CREW QUARTERS"};
-        const auto pick = [this](const char* const* names, size_t count) -> std::string
+        // What its owner calls each kind of building, one of each name to an outpost.
+        const auto pick = [this](const std::vector<std::string>& names) -> std::string
         {
-            const size_t start = static_cast<size_t>(m_random.Int(0, static_cast<int>(count) - 1));
-            for (size_t i = 0; i < count; ++i)
+            if (names.empty())
             {
-                const std::string name = names[(start + i) % count];
+                return {};
+            }
+            const size_t start = static_cast<size_t>(m_random.Int(0, static_cast<int>(names.size()) - 1));
+            for (size_t i = 0; i < names.size(); ++i)
+            {
+                const std::string& name = names[(start + i) % names.size()];
                 if (std::find(m_labels.begin(), m_labels.end(), name) == m_labels.end())
                 {
                     m_labels.push_back(name);
@@ -289,11 +342,11 @@ private:
         };
         switch (use)
         {
-        case Use::Block: return pick(blocks, std::size(blocks));
-        case Use::Shed: return pick(sheds, std::size(sheds));
-        case Use::Habitat: return pick(habitats, std::size(habitats));
-        case Use::Tanks: return m_random.Chance(0.7f) ? "FUEL" : "WATER";
-        case Use::Comms: return "COMMS";
+        case Use::Block: return pick(m_style.blocks);
+        case Use::Shed: return pick(m_style.sheds);
+        case Use::Habitat: return pick(m_style.habitats);
+        case Use::Tanks: return m_style.tanks.empty() ? std::string() : m_style.tanks[static_cast<size_t>(m_random.Int(0, static_cast<int>(m_style.tanks.size()) - 1))];
+        case Use::Comms: return m_style.comms;
         default: return {};
         }
     }
@@ -408,6 +461,11 @@ private:
             {
                 m_solid.Box("bay_buttress", {x - 0.35f, kS, 34.4f}, {x + 0.35f, kS + high - 0.4f, 35.0f}, kSteel, 0.6f, 0.5f);
             }
+            if (m_style.mark)
+            {
+                // In the gap between the two buttresses nearest the middle.
+                m_out.signs.push_back({"bay_logo", {}, {2.0f, kS + high - 2.6f, 34.3f}, 180.0f, 6.0f, 1.5f, Sign::Style::Logo});
+            }
         }
         // (With a wall to starboard there is always one behind: they meet at the corner, under the stern wall's coping.)
         if (m_starboardWall)
@@ -479,7 +537,7 @@ private:
 
     void Fence()
     {
-        if (!m_random.Chance(0.6f))
+        if (!m_style.standard && !m_random.Chance(0.6f))
         {
             return;
         }
@@ -495,6 +553,10 @@ private:
             for (float a = from; a < to; a += 7.0f)
             {
                 const float b = std::min(a + 7.0f, to);
+                if (m_style.abandoned && m_random.Chance(0.3f))
+                {
+                    continue;
+                }
                 const glm::vec3 low = alongX ? glm::vec3(a, kS, fixed - 0.05f) : glm::vec3(fixed - 0.05f, kS, a);
                 const glm::vec3 high = alongX ? glm::vec3(b, kS + 3.4f, fixed + 0.05f) : glm::vec3(fixed + 0.05f, kS + 3.35f, b);
                 m_solid.Box("fence", low, high, kSteelDark * 1.3f, 0.6f, 0.5f);
@@ -552,7 +614,7 @@ private:
                 {
                     continue;
                 }
-                Box(m_dress, lot, "fx_window", {u, y, -0.07f}, {u + wide, y + 1.3f, 0.05f}, kWindow, 0.3f, 0.0f, m_random.Chance(0.15f) ? 0.0f : 0.8f);
+                Box(m_dress, lot, "fx_window", {u, y, -0.07f}, {u + wide, y + 1.3f, 0.05f}, Glass(kWindow), 0.3f, 0.0f, Glow(m_random.Chance(0.15f) ? 0.0f : 0.8f));
             }
         }
     }
@@ -584,7 +646,7 @@ private:
         Box(m_solid, lot, "ops", {0.0f, s, 0.0f}, {L, s + H, D}, m_scheme.panel * 0.9f, 0.85f);
         Parapet(lot, 0.0f, L, 0.0f, D, s + H, m_scheme.panel * 0.9f);
         // Its door and the canopy over it, on posts, lit underneath; what it is over the canopy, and its name high above.
-        Box(m_dress, lot, "fx_door", {door - 1.6f, s, -0.08f}, {door + 1.6f, s + 2.8f, 0.05f}, kWindow * 0.6f, 0.3f, 0.0f, 0.8f);
+        Box(m_dress, lot, "fx_door", {door - 1.6f, s, -0.08f}, {door + 1.6f, s + 2.8f, 0.05f}, Glass(kWindow * 0.6f), 0.3f, 0.0f, Glow(0.8f));
         Box(m_solid, lot, "ops_canopy", {door - 3.0f, s + 3.4f, -2.4f}, {door + 3.0f, s + 3.7f, 0.05f}, kSteel, 0.6f, 0.5f);
         for (const float u : {door - 2.7f, door + 2.7f})
         {
@@ -592,6 +654,10 @@ private:
         }
         m_out.lamps.push_back({lot.At(door, s + 3.2f, -1.2f), {0.0f, -1.0f, 0.0f}, kSodium, 26.0f, 13.0f, 90.0f, 150.0f});
         LitSign(lot, placed.label, door, s + 4.3f, -0.14f);
+        if (m_style.mark)
+        {
+            m_out.signs.push_back({"logo_ops", {}, lot.At(door, s + 5.75f, -0.14f), lot.Yaw(), 7.0f, 1.5f, Sign::Style::Logo});
+        }
         const float nameWidth = std::min(L - 2.0f, 14.0f);
         m_out.signs.push_back({"outpost_name", {}, lot.At(door, s + H - 1.9f, -0.12f), lot.Yaw(), nameWidth, 1.6f, Sign::Style::Painted});
         // Windows in rows below the name, none where the door, the canopy and its sign are; a dark plinth along its foot.
@@ -624,7 +690,7 @@ private:
         Parapet(lot, 0.0f, L, 0.0f, D, s + H, colour);
         const float door = std::round(m_random.Range(3.0f, L - 3.0f));
         StreetDoor(lot, door);
-        Box(m_dress, lot, "fx_door", {door - 1.5f, s, -0.08f}, {door + 1.5f, s + 2.8f, 0.05f}, kWindow * 0.6f, 0.3f, 0.0f, 0.8f);
+        Box(m_dress, lot, "fx_door", {door - 1.5f, s, -0.08f}, {door + 1.5f, s + 2.8f, 0.05f}, Glass(kWindow * 0.6f), 0.3f, 0.0f, Glow(0.8f));
         Box(m_solid, lot, "door_canopy", {door - 2.0f, s + 3.1f, -1.4f}, {door + 2.0f, s + 3.3f, 0.05f}, kSteel, 0.6f, 0.5f);
         DoorLamp(lot, door, s + 3.0f, -0.6f);
         LitSign(lot, placed.label, door, s + 4.2f, -0.12f);
@@ -673,7 +739,7 @@ private:
         const float side = d0 > 5.0f ? d0 - 2.5f : d1 + 2.5f;
         if (side + 1.0f < L)
         {
-            Box(m_dress, lot, "fx_door", {side - 1.0f, s, -0.08f}, {side + 1.0f, s + 2.4f, 0.05f}, kWindow * 0.6f, 0.3f, 0.0f, 0.8f);
+            Box(m_dress, lot, "fx_door", {side - 1.0f, s, -0.08f}, {side + 1.0f, s + 2.4f, 0.05f}, Glass(kWindow * 0.6f), 0.3f, 0.0f, Glow(0.8f));
             DoorLamp(lot, side, s + 2.9f, -0.6f);
         }
         if (!placed.label.empty())
@@ -718,7 +784,7 @@ private:
                 0.7f, 0.2f);
         }
         Box(m_solid, lot, "habitat_porch", {door - 1.4f, s + 1.6f, -0.6f}, {door + 1.4f, s + 4.8f, 2.0f}, shell * 0.8f, 0.7f, 0.2f);
-        Box(m_dress, lot, "fx_door", {door - 0.8f, s + 1.7f, -0.68f}, {door + 0.8f, s + 4.0f, -0.55f}, kWindow * 0.6f, 0.3f, 0.0f, 0.8f);
+        Box(m_dress, lot, "fx_door", {door - 0.8f, s + 1.7f, -0.68f}, {door + 0.8f, s + 4.0f, -0.55f}, Glass(kWindow * 0.6f), 0.3f, 0.0f, Glow(0.8f));
         for (int step = 0; step < 4; ++step)
         {
             const float v0 = -0.6f - 0.45f * static_cast<float>(4 - step);
@@ -733,7 +799,7 @@ private:
             {
                 continue;
             }
-            Box(m_dress, lot, "fx_window", {u, centreY - 0.35f, 0.52f}, {u + 0.8f, centreY + 0.35f, 0.7f}, kWindow, 0.3f, 0.0f, 0.8f);
+            Box(m_dress, lot, "fx_window", {u, centreY - 0.35f, 0.52f}, {u + 0.8f, centreY + 0.35f, 0.7f}, Glass(kWindow), 0.3f, 0.0f, Glow(0.8f));
         }
     }
 
@@ -865,7 +931,7 @@ private:
         const float door = (h0 + h1) * 0.5f;
         StreetDoor(lot, door);
         // Its lamp to one side of the door, what it is over the door.
-        Box(m_dress, lot, "fx_door", {door - 0.6f, s, 0.92f}, {door + 0.6f, s + 2.2f, 1.05f}, kWindow * 0.6f, 0.3f, 0.0f, 0.8f);
+        Box(m_dress, lot, "fx_door", {door - 0.6f, s, 0.92f}, {door + 0.6f, s + 2.2f, 1.05f}, Glass(kWindow * 0.6f), 0.3f, 0.0f, Glow(0.8f));
         DoorLamp(lot, door - 2.2f, s + 2.75f, 0.4f);
         LitSign(lot, placed.label, door, s + 2.65f, 0.94f, 0.5f);
     }
@@ -899,12 +965,18 @@ private:
         }
     }
 
+    // Glass and light, as its owner keeps them: nobody there, dark but for the odd one left on.
+    glm::vec3 Glass(const glm::vec3& colour) const { return m_style.abandoned ? colour * 0.18f : colour; }
+    float Glow(float glow) { return m_style.abandoned ? (m_random.Chance(0.06f) ? glow : 0.0f) : glow; }
+
     Random m_random;
     Layout& m_out;
     PartBuilder m_solid;
     PartBuilder m_dress;
     glm::vec3 m_ground;
     glm::vec3 m_rock;
+    OutpostStyle m_style;
+    uint32_t m_seed = 0;
     Scheme m_scheme{};
     glm::vec3 m_concrete = kConcrete;
     float m_streetNorth = -100.0f;
@@ -921,11 +993,11 @@ private:
 
 } // namespace
 
-Layout Generate(uint32_t seed, const glm::vec3& ground, const glm::vec3& rock)
+Layout Generate(uint32_t seed, const glm::vec3& ground, const glm::vec3& rock, const OutpostStyle& style)
 {
     Layout layout;
     {
-        Planner planner(seed, layout, ground, rock);
+        Planner planner(seed, layout, ground, rock, style);
         planner.Run();
     }
     return layout;

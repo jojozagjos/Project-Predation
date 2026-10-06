@@ -3,6 +3,7 @@
 #include "Engine/Physics/PhysicsWorld.h"
 #include "Engine/Scene/Scene.h"
 #include "Game/Cinematic/Cinematic.h"
+#include "Game/World/OutpostStyle.h"
 #include "Game/World/Vehicles.h"
 #include "Game/World/WorldObjects.h"
 
@@ -78,6 +79,7 @@ struct FieldLook
     uint32_t seed = 0;
     glm::vec3 ground{0.4f};
     glm::vec3 rock{0.3f};
+    OutpostStyle style;
     bool operator==(const FieldLook& other) const = default;
 };
 

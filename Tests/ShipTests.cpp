@@ -479,3 +479,40 @@ TEST_CASE("The cinematics of setting down and taking off see the ship, at Kestre
         check(layout.solid, layout.dressing, "outpost " + std::to_string(i));
     }
 }
+
+TEST_CASE("An outpost looks as its owner has it: CIRRA's marked and walled, one nobody keeps dark", "[ship][outpost]")
+{
+    OutpostStyle cirra;
+    cirra.mark = true;
+    cirra.standard = true;
+    cirra.operations = "OPERATIONS HALL";
+    OutpostStyle abandoned;
+    abandoned.abandoned = true;
+    abandoned.lit = 0.12f;
+    const ModelAsset hull = ShipMap::HullModel(ShipHullLook{});
+    for (int i = 0; i < 8; ++i)
+    {
+        INFO("outpost " << i);
+        const Outpost::Layout plain = Outpost::Generate(OutpostSeed(i), glm::vec3(0.4f), glm::vec3(0.3f));
+        const Outpost::Layout marked = Outpost::Generate(OutpostSeed(i), glm::vec3(0.4f), glm::vec3(0.3f), cirra);
+        const Outpost::Layout dark = Outpost::Generate(OutpostSeed(i), glm::vec3(0.4f), glm::vec3(0.3f), abandoned);
+        const auto has = [](const Outpost::Layout& layout, const std::string& id)
+        { return std::any_of(layout.signs.begin(), layout.signs.end(), [&](const KestrelStation::Sign& sign) { return sign.id == id; }); };
+        // CIRRA's: its mark over the operations block's door and on the wall behind the pad, which it always has, and a fence.
+        CHECK(has(marked, "logo_ops"));
+        CHECK(has(marked, "bay_logo"));
+        CHECK_FALSE(has(plain, "logo_ops"));
+        CHECK(std::any_of(marked.solid.parts.begin(), marked.solid.parts.end(), [](const ModelPart& part) { return part.name.rfind("fence", 0) == 0; }));
+        CHECK(std::any_of(marked.signs.begin(), marked.signs.end(), [](const KestrelStation::Sign& sign) { return !sign.lines.empty() && sign.lines[0] == "OPERATIONS HALL"; }));
+        // Nobody there: few of its lamps working, its signs dark.
+        CHECK(dark.lamps.size() * 3 < plain.lamps.size());
+        CHECK(std::all_of(dark.signs.begin(), dark.signs.end(), [](const KestrelStation::Sign& sign) { return sign.dark; }));
+        // And both still share no flickering surface with the ship, and keep the crew's way clear.
+        for (const Outpost::Layout* layout : {&marked, &dark})
+        {
+            CHECK(SharedFaces({&hull, &layout->solid, &layout->dressing}).empty());
+            const glm::vec3 at = KestrelStation::Spawn(0) - ShipSpec::kOrigin;
+            CHECK(PartAt(layout->solid, {at.x, KestrelStation::kSlabTop + 1.0f, at.z}) == nullptr);
+        }
+    }
+}

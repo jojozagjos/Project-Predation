@@ -197,12 +197,13 @@ std::vector<Lamp> PadMastLamps()
     return lamps;
 }
 
-void LampHeads(PartBuilder& b, const std::vector<Lamp>& lamps)
+void LampHeads(PartBuilder& b, const std::vector<Lamp>& lamps, bool lit)
 {
     for (const Lamp& lamp : lamps)
     {
         const glm::vec3 c = lamp.at;
-        b.Box("fx_lamp_head", c - glm::vec3(0.45f, 0.18f, 0.35f), c + glm::vec3(0.45f, 0.02f, 0.35f), lamp.colour, 0.3f, 0.0f, 3.5f);
+        b.Box("fx_lamp_head", c - glm::vec3(0.45f, 0.18f, 0.35f), c + glm::vec3(0.45f, 0.02f, 0.35f), lit ? lamp.colour : lamp.colour * 0.25f, 0.3f, 0.0f,
+              lit ? 3.5f : 0.0f);
         b.Box("lamp_hood", c - glm::vec3(0.5f, -0.02f, 0.4f), c + glm::vec3(0.5f, 0.22f, 0.4f), kSteelDark, 0.5f, 0.7f);
     }
 }
