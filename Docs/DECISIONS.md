@@ -2979,3 +2979,34 @@ Hosting no longer asks who can join: friends come in with the lobby's code, and 
 that network's list. Gone with it: the host page's choice and game-name box, the join page's *Public games* tab, the
 lobby client's browsing role (LobbyClient::Browse, LobbyListing) and "listed" in what a host tells the server, and the
 lobby server's `GET /list`. The deployed server goes on answering `/list` until it is deployed again; nothing asks it.
+
+## ADR-135: Flying reworked; legs that fold and a stair that is the ship's; outposts with owners
+
+- **Flying** (the user: the ship did not turn, the planets moved oddly, the planet vanished leaving and was flown through
+  arriving, speed lines in orbit, too bright, frame drops). The orbit is part of the campaign (Travel::OrbitFrame, from
+  where and when the ship came into orbit), the same on every machine, and the ship is held to it: the world stays put in
+  the windows while its ground goes by. Setting out from orbit, the ship turns and swings round to the side of the world
+  facing where it is going (Travel::AlignSeconds, 8 to 22 seconds, less with a better drive), then burns -- its push near a
+  world limited to a constant times its distance from it (Travel::Gentleness), so the world falls away over about twenty
+  seconds; straight out until well clear, so nothing turns it back into the world. Arriving, it closes on the near side
+  of the world at its orbit's height and settles into orbit there (the closing speed falls with what is left), never
+  less able to push than the target's own pull (a moon going round fast), and is measured against where the target was
+  as the step began. The space view no longer fakes a departure or an arrival: it draws where the ship is.
+- **Precision**: the ship's position is a double (a float an astronomical unit out cannot take the last steps to a small
+  moon), bodies are placed in double (StarSystem::PositionD; an angle in float made them step), and the space view
+  measures from the body near the ship. Protocol 37: the travel message carries the orbit, setting out, and its position
+  in double.
+- **Speed lines and engines** only while it burns, by its speed against the world it is leaving or coming to.
+- **Planets lit as everything else** (the scene's shading gives back albedo over pi; the planets' did not divide, and were
+  three times as bright as the hull beside them).
+- **The world drawn first, then the sky where nothing is, then the bodies behind the world** (Renderer views reordered;
+  the sky drawn at the far end of depth with a test; the bodies' depth far beyond the world's): the sky and a planet are
+  worked out only where they show. About 12 ms a frame looking at a planet from the cockpit is now about 5.
+- **Landing legs fold** up from hinges under the belly and down again, and the **boarding stair is the ship's**: it swings
+  up level and slides in under the floor as the ship leaves, and out and down as it lands ("stair" cinematic markers),
+  solid only all the way out. The landing cinematic's cameras moved off Kestrel's rebuilt walls; a test holds every landing
+  and takeoff camera to a clear line to the ship at Kestrel and every outpost.
+- **Outposts have owners** (the user's direction; universe.json "owners", data so organisations can be added): CIRRA
+  (its mark, its standard outpost and building names), independent and industrial (a neutral operator number, functional
+  signs, their own mix of buildings), and unknown/abandoned (dark, faded, few lamps, gaps in the fence). Kestrel is
+  CIRRA's. The map says who runs each.

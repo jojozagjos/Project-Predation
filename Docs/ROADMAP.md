@@ -23,9 +23,11 @@ it has got, in the order the design's vertical slice puts things. Updated 2026-1
   Navigation Relay, signed with the CIRRA mark -- under that world's sky at its time of day, lit at night, nothing on it
   flickering (ADR-132). Up the stair and in through the boarding door. Taking off and setting down have their own
   cinematics. Kestrel stays built by hand: it is where the tutorial and the story begin.
-- **Outposts on every other world** (ADR-133): each system's outpost planned from its seed -- an operations block with
-  its name on it across the street from the stair, and sheds, blocks, habitats, tank farms, container yards and comms
-  masts round the pad, each outpost its own.
+- **Outposts on every other world** (ADR-133, ADR-135): each system's outpost planned from its seed -- an operations block
+  with its name on it across the street from the stair, and sheds, blocks, habitats, tank farms, container yards and comms
+  masts round the pad, each outpost its own -- and run by an owner: CIRRA, independent, industrial, or nobody any more.
+- **Flying** (ADR-135): held in orbit, turning and swinging round to set out, leaving a world gently enough to watch it
+  fall away, settling into orbit on arrival; legs that fold and a boarding stair that is the ship's.
 - **Places on planets by kind** (ADR-133): every landing area leads somewhere of its own -- a research facility, a
   remote station, a survey site, a wreck, a signal source -- on its world's own ground, under its sky, with snow only
   where it is cold enough and there is air to carry it.
