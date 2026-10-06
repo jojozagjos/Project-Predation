@@ -65,9 +65,10 @@ constexpr float kSunNearDistance = 12.0f;
 // nearer. It is also redrawn every frame from a light that moves with the player's head, so it is
 // the one map whose cost is paid continuously.
 constexpr uint16_t kSpotShadowSize = 1024;
-// How far the maps reach along their own axis. Deep enough that nothing in a level stands outside
-// it and gets quietly clipped out of its own shadow.
-constexpr float kShadowDepthRange = 220.0f;
+// How far the maps reach along their own axis, half of it towards the light from the player. Deep enough that nothing in a
+// level stands outside it and gets quietly clipped out of its shadow -- a tall building or the rock round a site with the sun
+// low, three hundred metres off along the light. (Metres in a float, so depth costs nothing in precision.)
+constexpr float kShadowDepthRange = 600.0f;
 
 // A mesh as a sphere in the world: its box's middle and the distance to its farthest corner, grown by
 // however much the transform scales it. False when it has no box to go by.
@@ -563,17 +564,18 @@ void SceneRenderer::RenderShadows(bgfx::ViewId sunView, bgfx::ViewId sunNearView
             glm::vec3 centre{0.0f};
             float radius = 1.0e9f;
             const bool sized = !mesh->IsDynamic() && WorldSphere(*mesh, model, centre, radius);
-            const glm::vec2 flat{centre.x - focus.x, centre.z - focus.z};
-            const bool nearFocus = !sized || glm::length(flat) < settings.distance * 1.5f + radius;
-            if (settings.sunEnabled && nearFocus)
+            // In a map when its shadow can fall inside it -- along the light, not by how far it is from the player: a tall
+            // building some way off throws its shadow right to the player's feet with the sun low, and measured by distance
+            // it went in and out of the map as the player walked, its shadow with it.
+            if (settings.sunEnabled && (!sized || m_sunShadow.Covers(centre, radius)))
             {
                 SubmitDepth(sunView, *mesh, model, m_sunShadow);
-                if (!sized || glm::length(flat) < kSunNearDistance * 1.5f + radius)
+                if (!sized || m_sunNearShadow.Covers(centre, radius))
                 {
                     SubmitDepth(sunNearView, *mesh, model, m_sunNearShadow);
                 }
             }
-            if (settings.skyEnabled && renderer.blocksSky && nearFocus)
+            if (settings.skyEnabled && renderer.blocksSky && (!sized || m_skyShadow.Covers(centre, radius)))
             {
                 SubmitDepth(skyView, *mesh, model, m_skyShadow);
             }

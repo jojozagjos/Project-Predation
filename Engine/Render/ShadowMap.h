@@ -93,6 +93,9 @@ public:
     // How much world one texel covers, so the shading pass can spread its samples in world terms
     // rather than in texture ones.
     float TexelSize() const { return m_texelSize; }
+    // Whether anything in a sphere can throw a shadow into what this map covers (Fit): whether it is across the light from the
+    // area covered -- however far along the light from it, up to the light's end of the map.
+    bool Covers(const glm::vec3& centre, float radius) const;
     uint16_t Resolution() const { return m_resolution; }
 
 private:
@@ -102,6 +105,7 @@ private:
     uint16_t m_resolution = 0;
     float m_texelSize = 0.0f;
     float m_depthRange = 0.0f;
+    float m_radius = 0.0f;
     bgfx::UniformHandle m_uRange = BGFX_INVALID_HANDLE;
 
     glm::mat4 m_view{1.0f};

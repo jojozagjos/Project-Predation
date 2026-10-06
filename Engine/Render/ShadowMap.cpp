@@ -140,6 +140,7 @@ void ShadowMap::Fit(const glm::vec3& centre, const glm::vec3& direction, float r
     const ShadowFit fit =
         FitShadowMap(centre, direction, radius, depth, m_resolution, caps->homogeneousDepth);
     m_texelSize = fit.texelSize;
+    m_radius = radius;
     m_view = fit.view;
     m_projection = fit.projection;
 
@@ -161,6 +162,13 @@ void ShadowMap::Fit(const glm::vec3& centre, const glm::vec3& direction, float r
     // because a right-handed view looks down its own -Z, and once for the reversal.
     m_depthRange = depth;
     m_axis = glm::vec4(m_view[0][2], m_view[1][2], m_view[2][2], depth + m_view[3][2]);
+}
+
+bool ShadowMap::Covers(const glm::vec3& centre, float radius) const
+{
+    // In the light's view the map is a box: so wide either way, and from its near plane (the light's end) back.
+    const glm::vec3 inLight = glm::vec3(m_view * glm::vec4(centre, 1.0f));
+    return std::abs(inLight.x) <= m_radius + radius && std::abs(inLight.y) <= m_radius + radius && inLight.z <= radius;
 }
 
 void ShadowMap::FitSpot(const glm::vec3& position, const glm::vec3& direction, float outerDegrees,
