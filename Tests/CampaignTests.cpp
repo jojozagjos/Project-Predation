@@ -808,3 +808,34 @@ TEST_CASE("No course passes through any world on the way: between a planet and i
     }
     CHECK(trips > 5);
 }
+
+TEST_CASE("The time left to arrive counts down with the trip, as the ship is really moving", "[campaign][travel]")
+{
+    Universe universe;
+    universe.Reset(321, &ShippedData());
+    const StarSystem& system = *universe.System(universe.Home());
+    CampaignState campaign = CampaignState::Begin("Flight", 321, universe);
+    const int destination = campaign.body == 0 ? 3 : 0;
+    REQUIRE(Travel::SetCourse(campaign, system, destination));
+    // Every so often along the way, what it says is left against what was really left.
+    std::vector<std::pair<double, float>> said;
+    bool arrived = false;
+    int step = 0;
+    for (; step < 200000 && !arrived; ++step)
+    {
+        if (step % 400 == 0)
+        {
+            said.emplace_back(campaign.clock, Travel::TimeLeft(campaign, system, 0));
+        }
+        campaign.clock += 0.05;
+        arrived = Travel::Step(campaign, system, 0.05f, 0);
+    }
+    REQUIRE(arrived);
+    REQUIRE(said.size() > 4);
+    for (const auto& [when, left] : said)
+    {
+        const float really = static_cast<float>(campaign.clock - when);
+        INFO("at " << when << " said " << left << " s, really " << really << " s");
+        CHECK(std::abs(left - really) < std::max(0.1f * really, 3.0f));
+    }
+}

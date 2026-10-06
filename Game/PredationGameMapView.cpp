@@ -740,8 +740,7 @@ std::string PredationGame::ShipStatus()
     const Body* at = system->Find(m_campaign.body);
     if (m_campaign.travel.underway && target != nullptr)
     {
-        const float left = glm::length(system->Position(target->index, m_campaign.clock) - glm::vec3(m_campaign.travel.position));
-        return "Under way to " + target->name + ", " + About(Travel::Seconds(left, DriveTier()));
+        return "Under way to " + target->name + ", " + About(TravelTimeLeft());
     }
     if (m_campaign.travel.underway)
     {
@@ -2002,33 +2001,6 @@ void PredationGame::DrawMapBars(const StarSystem* shown)
         }
     }
     ImGui::End();
-
-    // Under it, the course plotted: what to, and setting out on it (as the helm does) or clearing it.
-    if (m_campaign.plan.set)
-    {
-        const std::string plan = "Plotted:  " + PlanName();
-        const float planWidth = ImGui::CalcTextSize(plan.c_str()).x + 260.0f;
-        ImGui::SetNextWindowPos({origin.x + size.x * 0.5f - planWidth * 0.5f, origin.y + 66.0f});
-        ImGui::SetNextWindowSize({planWidth, 42.0f});
-        if (ImGui::Begin("##mapplan", nullptr, kPanel | ImGuiWindowFlags_NoScrollbar))
-        {
-            ImGui::AlignTextToFramePadding();
-            ImGui::TextColored(kGoText, "%s", plan.c_str());
-            ImGui::SameLine();
-            ImGui::BeginDisabled(m_map != MapChoice::Ship || m_cine.Active());
-            if (ImGui::Button(m_campaign.travel.underway ? "Change course" : "Set out"))
-            {
-                SetOut();
-            }
-            ImGui::EndDisabled();
-            ImGui::SameLine();
-            if (ImGui::Button("Clear"))
-            {
-                AskCampaign(CampaignAction::ClearPlot);
-            }
-        }
-        ImGui::End();
-    }
 
     // Down in the corner: what the marks on the map mean, at this scale.
     {

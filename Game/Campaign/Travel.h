@@ -69,6 +69,9 @@ float StarClearance(const StarSystem& system, const glm::vec3& from, const glm::
 // The way the ship will go from where it is to where it is heading, flown ahead: up to so many points along it, in
 // astronomical units from the star. Empty when it is not under way to anywhere.
 std::vector<glm::vec3> Preview(const CampaignState& campaign, const StarSystem& system, int tier, int points);
+// How long until it is in orbit where it is going, flown ahead the same way: as it is moving now, not as if it set out from
+// rest. Nought when it is not under way to anywhere.
+float TimeLeft(const CampaignState& campaign, const StarSystem& system, int tier);
 
 // --- Between the stars ---------------------------------------------------------------------------------------------
 // A crossing to another system takes a while however good the drive -- a minute and a bit at the least -- and longer

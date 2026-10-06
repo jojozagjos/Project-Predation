@@ -15,7 +15,6 @@
 #include <glm/vector_relational.hpp>
 
 #include <algorithm>
-#include <cctype>
 #include <vector>
 #include <cmath>
 
@@ -97,8 +96,8 @@ const Material& Laid(const Material& material)
         float keep;
     };
     static const Made kMade[] = {
-        {&kWall, "ship_panel", 3.0f, 0.25f},        {&kWallDark, "hull_dark", 2.5f, 0.3f},       {&kCeiling, "ship_panel", 3.0f, 0.2f},
-        {&kBayWall, "bay_panel", 3.0f, 0.25f},      {&kFrame, "hull_dark", 2.0f, 0.3f},          {&kRib, "hull_dark", 2.0f, 0.3f},
+        {&kWall, "ship_panel", 10.0f, 0.1f},       {&kWallDark, "hull_dark", 2.5f, 0.3f},       {&kCeiling, "ship_panel", 10.0f, 0.1f},
+        {&kBayWall, "bay_panel", 8.0f, 0.2f},       {&kFrame, "hull_dark", 2.0f, 0.3f},          {&kRib, "hull_dark", 2.0f, 0.3f},
         {&kPipe, "pipe_steel", 1.0f, 0.3f},         {&kCrate, "cargo_crate", 1.5f, 0.2f},        {&kCrateDark, "cargo_crate", 1.5f, 0.2f},
         {&kFurniture, "locker_metal", 1.5f, 0.2f},  {&kTableTop, "tabletop", 1.0f, 0.3f},        {&kCushion, "fabric_cushion", 0.8f, 0.3f},
         {&kMattress, "fabric_cushion", 0.8f, 0.3f}, {&kHullDark, "hull_dark", 2.0f, 0.3f},
@@ -690,43 +689,6 @@ void HullMesh(ModelAsset& model, const std::string& name, MeshData mesh, const g
 
 } // namespace
 
-namespace
-{
-
-// The hull's parts, by what each is: plating over the body, dark metal on the engines, frames and masts; laid on the ship
-// itself, which flies, not on the world.
-void LayHull(ModelAsset& model)
-{
-    static const char* const kPlating[] = {"skin", "body", "body_front", "chin", "brow", "bay", "bay_front", "bay_back", "bay_roof_plate",
-                                           "roof_plate", "plate", "bay_panel", "spine"};
-    static const char* const kDark[] = {"core", "belt", "engine", "engine_band", "engine_room", "engine_room_back", "nozzle", "pylon", "mast",
-                                        "array", "array_boom", "dish", "dish_mount", "door_frame", "door_lining", "bay_rib", "bay_belly"};
-    for (ModelPart& part : model.parts)
-    {
-        const size_t cut = part.name.find_last_of('_');
-        const std::string stem = cut != std::string::npos && cut + 1 < part.name.size() && std::isdigit(static_cast<unsigned char>(part.name[cut + 1]))
-                                     ? part.name.substr(0, cut)
-                                     : part.name;
-        const auto is = [&](const char* const* list, size_t count) { return std::find(list, list + count, stem) != list + count; };
-        if (is(kPlating, std::size(kPlating)))
-        {
-            part.surface = "hull_plating";
-            part.surfaceScale = 9.0f;
-            part.surfaceKeep = 0.2f;
-            part.surfaceOnThing = true;
-        }
-        else if (is(kDark, std::size(kDark)))
-        {
-            part.surface = "hull_dark";
-            part.surfaceScale = 2.0f;
-            part.surfaceKeep = 0.3f;
-            part.surfaceOnThing = true;
-        }
-    }
-}
-
-} // namespace
-
 ModelAsset ShipMap::HullModel(const ShipHullLook& look, bool stage)
 {
     // In the ship's frame, round its rooms: the skin a few centimetres outside every outer wall and roof, so it covers them
@@ -982,7 +944,6 @@ ModelAsset ShipMap::HullModel(const ShipHullLook& look, bool stage)
             model.parts.back().name = name(part.name.c_str());
         }
     }
-    LayHull(model);
     return model;
 }
 

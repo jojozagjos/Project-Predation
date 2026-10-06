@@ -499,6 +499,37 @@ std::vector<glm::vec3> Preview(const CampaignState& campaign, const StarSystem& 
     return path;
 }
 
+float TimeLeft(const CampaignState& campaign, const StarSystem& system, int tier)
+{
+    if (!campaign.travel.underway || campaign.travel.interstellar || system.Find(campaign.travel.target) == nullptr)
+    {
+        return 0.0f;
+    }
+    CampaignState ahead;
+    ahead.clock = campaign.clock;
+    ahead.body = campaign.body;
+    ahead.travel = campaign.travel;
+    ahead.upgrades = campaign.upgrades;
+    // In steps sized to the trip, finer as it closes in.
+    const float distance = glm::length(system.Position(campaign.travel.target, campaign.clock) - glm::vec3(campaign.travel.position));
+    const float guess = Seconds(distance, tier);
+    for (int i = 0; i < 6000; ++i)
+    {
+        const float left = static_cast<float>(ahead.clock - campaign.clock);
+        const float dt = std::clamp((guess - left) / 300.0f, 0.05f, 2.0f);
+        ahead.clock += dt;
+        if (Step(ahead, system, dt, tier))
+        {
+            return static_cast<float>(ahead.clock - campaign.clock);
+        }
+        if (!ahead.travel.underway)
+        {
+            break;
+        }
+    }
+    return guess;
+}
+
 float CrossingRange(int tier)
 {
     return tier < kCrossingTier ? 0.0f : 14.0f + 10.0f * static_cast<float>(tier - kCrossingTier);

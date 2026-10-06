@@ -204,11 +204,6 @@ bool PredationGame::DoCampaignAction(uint8_t player, CampaignAction action, int 
         CampaignChanged();
         return true;
 
-    case CampaignAction::ClearPlot:
-        m_campaign.plan = {};
-        CampaignChanged();
-        return true;
-
     case CampaignAction::Depart:
     {
         // Off the ground only with everybody aboard: nobody is left on the pad as the station is left behind.
@@ -935,6 +930,22 @@ void PredationGame::PlayLeaving(bool fromGround)
     {
         PlayNamed("World/shuttle_launch", ShipMap::ToWorld({0.0f, 1.0f, 22.0f}), 0.8f, 0.55f, false);
     }
+}
+
+float PredationGame::TravelTimeLeft()
+{
+    // Flown ahead twice a second of the campaign's clock, counted down between.
+    const StarSystem* system = CurrentSystem();
+    if (system == nullptr || !m_campaign.travel.underway)
+    {
+        return 0.0f;
+    }
+    if (m_timeLeftAt < 0.0 || m_campaign.clock < m_timeLeftAt || m_campaign.clock - m_timeLeftAt > 0.5)
+    {
+        m_timeLeft = Travel::TimeLeft(m_campaign, *system, DriveTier());
+        m_timeLeftAt = m_campaign.clock;
+    }
+    return std::max(m_timeLeft - static_cast<float>(m_campaign.clock - m_timeLeftAt), 0.0f);
 }
 
 std::string PredationGame::PlanName()

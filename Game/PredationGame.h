@@ -995,7 +995,6 @@ private:
         SetSystemCourse, // a, b = the low and high halves of the system's number
         PlotCourse,      // a = body, b = landing region: plotted, not flown
         PlotSystem,      // a, b = the system's number, as SetSystemCourse
-        ClearPlot,
         Depart,          // set out on the course plotted
         Door             // a = 1 open the boarding door, 0 shut it
     };
@@ -1004,6 +1003,10 @@ private:
     Entity m_airlockControls[2];
     // What a plotted course is to, in a few words ("KEPLER-91 IV"); empty for none.
     std::string PlanName();
+    // How long until the ship is in orbit where it is going (Travel::TimeLeft), worked out every so often rather than every frame.
+    float TravelTimeLeft();
+    float m_timeLeft = 0.0f;
+    double m_timeLeftAt = -1.0;
     // The helm, in the cockpit: where a plotted course is set out on.
     void BuildHelm();
     Entity m_helm;
