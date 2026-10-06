@@ -528,6 +528,53 @@ void PredationGame::RegisterCampaignCommands()
                                     glm::dvec3(there) + glm::dvec3(glm::normalize(glm::vec3(m_campaign.travel.position - glm::dvec3(there)) + glm::vec3(1e-4f)) * 0.004f);
                                 m_campaign.travel.velocity = glm::vec3(0.0f);
                             });
+    console.RegisterCommand("travel_now", "Under way, arrive at once: in orbit of where it is going, or at the end of a crossing (the host)",
+                            [this](const std::vector<std::string>&)
+                            {
+                                const StarSystem* system = CurrentSystem();
+                                if (system != nullptr && IsAuthority() && m_campaign.travel.interstellar)
+                                {
+                                    m_campaign.travel.departed = m_campaign.clock - static_cast<double>(m_campaign.travel.duration);
+                                    return;
+                                }
+                                const Body* target = system != nullptr ? system->Find(m_campaign.travel.target) : nullptr;
+                                if (target == nullptr || !IsAuthority() || !m_campaign.travel.underway)
+                                {
+                                    m_app->GetConsole().PrintError("Only on the host, under way to somewhere");
+                                    return;
+                                }
+                                // At the orbit's height on the side it is coming from: the next step takes it into orbit there.
+                                const glm::dvec3 there = system->PositionD(target->index, m_campaign.clock);
+                                glm::vec3 out = glm::vec3(m_campaign.travel.position - there);
+                                out = glm::length(out) > 1.0e-12f ? glm::normalize(out) : glm::vec3(1.0f, 0.0f, 0.0f);
+                                m_campaign.travel.position = there + glm::dvec3(out * Travel::OrbitRadius(*target));
+                                m_campaign.travel.from = -1;
+                            });
+    // The ship's upgrades, as if bought: upgrade <category> <tier>, or on its own what it has.
+    console.RegisterCommand("upgrade", "Set one of the ship's upgrades to a tier (the host): upgrade <travel|sensors|...> <tier>; on its own, list them",
+                            [this](const std::vector<std::string>& args)
+                            {
+                                if (!m_campaignOpen || m_sessionMode == SessionMode::Client)
+                                {
+                                    m_app->GetConsole().PrintError("Only on the host, with a campaign open");
+                                    return;
+                                }
+                                if (args.size() < 3)
+                                {
+                                    m_app->GetConsole().Print("travel " + std::to_string(m_campaign.Upgrade("travel")) + ", sensors " +
+                                                              std::to_string(m_campaign.Upgrade("sensors")));
+                                    for (const auto& [category, tier] : m_campaign.upgrades)
+                                    {
+                                        if (category != "travel" && category != "sensors")
+                                        {
+                                            m_app->GetConsole().Print(category + " " + std::to_string(tier));
+                                        }
+                                    }
+                                    return;
+                                }
+                                m_campaign.upgrades[args[1]] = std::clamp(std::atoi(args[2].c_str()), 0, 12);
+                                CampaignChanged();
+                            });
     // A campaign to try things in, without the title: campaign_new [name] [seed].
     console.RegisterCommand("campaign_new", "Begin a campaign here, without the title: campaign_new [name] [seed]",
                             [this](const std::vector<std::string>& args)
