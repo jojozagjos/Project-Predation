@@ -1,4 +1,4 @@
-$input v_worldPos, v_normal, v_texcoord0, v_color0, v_organic
+$input v_worldPos, v_normal, v_texcoord0, v_color0, v_organic, v_localPos, v_localNormal
 
 #include <bgfx_shader.sh>
 
@@ -9,7 +9,7 @@ SAMPLER2D(s_steepColor, 12);     // a second set where the surface is steep (Mat
 SAMPLER2D(s_steepNormal, 13);
 SAMPLER2D(s_steepRoughness, 14);
 uniform vec4 u_steepParams;      // xyz = its tint, w = repeats a metre (0: none)
-uniform vec4 u_surfaceParams;  // x = repeats a metre of the surface set, laid on from every side (0: off); y = how much of its own colour shows; z = natural ground (1) or laid in a grid (0)
+uniform vec4 u_surfaceParams;  // x = repeats a metre of the surface set, laid on from every side (0: off); y = how much of its own colour shows; z = natural ground (1) or laid in a grid (0); w = laid on the thing itself (1) or the world (0)
 
 uniform vec4 u_baseColor;       // rgb = albedo
 uniform vec4 u_materialParams;  // x = metallic, y = roughness, z = how much of the mirror it shows
@@ -537,11 +537,18 @@ void main()
 	// Its normal map bends N the same way, each sample turned into the frame of the side it was taken from.
 	vec3 surfaceAlbedo = vec3_splat(1.0);
 	float surfaceRough = 1.0;
+	// On something that moves, laid on the thing itself -- or it would slide over it as it went -- and the bent normal turned
+	// back into the world after.
+	bool onThing = u_surfaceParams.w > 0.5;
 	if (u_surfaceParams.x > 0.0)
 	{
+		if (onThing)
+		{
+			N = normalize(v_localNormal);
+		}
 		vec3 blend = pow(abs(N), vec3_splat(4.0));
 		blend /= max(blend.x + blend.y + blend.z, 1e-4);
-		vec3 at = v_worldPos * u_surfaceParams.x;
+		vec3 at = (onThing ? v_localPos : v_worldPos) * u_surfaceParams.x;
 		// Each side's picture the right way up: an image's top row is read first, so up the picture is down its v -- and
 		// an OpenGL normal map's green points up the picture. Laid with v the other way, its bumps would light from the
 		// wrong side across one direction and stand in where they should stand out.
@@ -617,6 +624,10 @@ void main()
 			surfaceRough = mix(surfaceRough, rockRough, rock);
 			N = normalize(mix(N, rockN, rock));
 		}
+	}
+	if (u_surfaceParams.x > 0.0 && onThing)
+	{
+		N = normalize(mul(u_model[0], vec4(N, 0.0)).xyz);
 	}
 	vec3 V = normalize(u_cameraPosition.xyz - v_worldPos);
 	vec3 L = normalize(u_lightDirection.xyz);

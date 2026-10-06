@@ -281,6 +281,7 @@ bool VehicleProp::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld* physics
         if (!part.surface.empty())
         {
             material = Surfaces::Apply(material, part.surface, part.surfaceScale, part.surfaceKeep);
+            material.surfaceOnThing = part.surfaceOnThing;
         }
         const MeshHandle mesh = meshes.Upload(m_model->BuildPartMesh(part), "vehicle_" + m_model->name + "_" + part.name);
         m_parts.push_back(scene.CreateMeshEntity(prefix + part.name, Transform{}, mesh, material));

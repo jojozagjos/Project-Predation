@@ -45,6 +45,9 @@ struct Material
     // Whether the set is natural ground, whose repeat is hidden by blending it with a larger, turned copy of itself --
     // not for anything laid in a grid (paving, plate), which would come out in diamonds.
     bool surfaceNatural = false;
+    // Laid on the thing itself rather than by where it is in the world: for anything that moves, which a set laid on the
+    // world would slide across.
+    bool surfaceOnThing = false;
     // And a second set where the surface is steep -- a world's rock showing through its ground on the slopes -- blended in
     // as the slope passes what anybody can stand on, repeating every `steepScale` metres (0: none), its colour times
     // `steepTint` (the first set's average colour over its own, so each is tinted to the colour asked of it).

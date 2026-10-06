@@ -211,7 +211,7 @@ private:
                a.emissiveTextured == b.emissiveTextured &&
                a.reflectivity == b.reflectivity && a.baseColorTexture == b.baseColorTexture && a.organic == b.organic &&
                a.organicBeat == b.organicBeat && a.normalTexture == b.normalTexture && a.roughnessTexture == b.roughnessTexture &&
-               a.surfaceScale == b.surfaceScale && a.surfaceKeep == b.surfaceKeep && a.surfaceNatural == b.surfaceNatural && a.steepColorTexture == b.steepColorTexture && a.steepScale == b.steepScale &&
+               a.surfaceScale == b.surfaceScale && a.surfaceKeep == b.surfaceKeep && a.surfaceNatural == b.surfaceNatural && a.surfaceOnThing == b.surfaceOnThing && a.steepColorTexture == b.steepColorTexture && a.steepScale == b.steepScale &&
                a.steepTint == b.steepTint;
     }
 

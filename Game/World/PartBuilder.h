@@ -51,10 +51,21 @@ struct PartBuilder
         };
         static constexpr Made kMade[] = {
             {"slab", "concrete_slab", 6.0f, 0.3f},         {"pad", "concrete_slab", 6.0f, 0.3f},
-            {"pavement", "concrete_slab", 3.0f, 0.3f},     {"road", "asphalt", 6.0f, 0.3f},
+            {"pavement", "pavement", 3.0f, 0.3f},          {"road", "asphalt", 6.0f, 0.3f},
+            {"tank", "painted_metal", 3.0f, 0.2f},         {"crane_leg", "painted_metal", 2.0f, 0.2f},
+            {"shipworks_crane", "painted_metal", 2.0f, 0.2f}, {"shipworks_crane_mast", "painted_metal", 2.0f, 0.2f},
+            {"trestle_leg", "pipe_steel", 1.0f, 0.3f},     {"trestle_beam", "pipe_steel", 1.0f, 0.3f},
+            {"pipe", "pipe_steel", 1.0f, 0.3f},            {"street_pipe", "pipe_steel", 1.0f, 0.3f},
+            {"conduit", "pipe_steel", 1.0f, 0.3f},         {"street_post", "pipe_steel", 1.0f, 0.3f},
+            {"street_arm", "pipe_steel", 1.0f, 0.3f},      {"relay_leg", "pipe_steel", 1.0f, 0.3f},
+            {"relay_brace", "pipe_steel", 1.0f, 0.3f},     {"stack", "pipe_steel", 1.5f, 0.3f},
+            {"shipworks_roof", "shed_roof", 3.0f, 0.2f},   {"roof_unit", "shed_roof", 2.0f, 0.2f},
+            {"bay_buttress", "blast_wall", 4.0f, 0.3f},    {"coping", "blast_wall", 4.0f, 0.3f},
+            {"walkway", "facility_stairs", 1.0f, 0.3f},    {"salvage_dock", "blast_wall", 4.0f, 0.3f},
             {"building", "building_cladding", 4.0f, 0.2f}, {"building_parapet", "building_cladding", 4.0f, 0.2f},
-            {"shipworks", "building_cladding", 4.0f, 0.2f}, {"bay_wall", "building_cladding", 4.0f, 0.2f},
-            {"annex_module", "building_cladding", 4.0f, 0.2f},
+            {"shipworks", "building_cladding", 4.0f, 0.2f}, {"bay_wall", "blast_wall", 4.0f, 0.3f},
+            {"annex_module", "habitat_shell", 3.0f, 0.2f},  {"ops_front", "building_cladding", 4.0f, 0.2f},
+            {"ops_plinth", "blast_wall", 4.0f, 0.3f},
         };
         for (const Made& made : kMade)
         {

@@ -15,6 +15,8 @@
 #include <glm/vector_relational.hpp>
 
 #include <algorithm>
+#include <cctype>
+#include <vector>
 #include <cmath>
 
 namespace pred
@@ -83,6 +85,42 @@ struct Opening
     float top = 0.0f;
 };
 
+// What each of the ship's materials is made of: its surface set, how big it repeats, how much of the set's own colour shows.
+// Laid on as the rooms are built (Builder), the first time it is asked for, once the textures are there.
+const Material& Laid(const Material& material)
+{
+    struct Made
+    {
+        const Material* plain;
+        const char* surface;
+        float metres;
+        float keep;
+    };
+    static const Made kMade[] = {
+        {&kWall, "ship_panel", 3.0f, 0.25f},        {&kWallDark, "hull_dark", 2.5f, 0.3f},       {&kCeiling, "ship_panel", 3.0f, 0.2f},
+        {&kBayWall, "bay_panel", 3.0f, 0.25f},      {&kFrame, "hull_dark", 2.0f, 0.3f},          {&kRib, "hull_dark", 2.0f, 0.3f},
+        {&kPipe, "pipe_steel", 1.0f, 0.3f},         {&kCrate, "cargo_crate", 1.5f, 0.2f},        {&kCrateDark, "cargo_crate", 1.5f, 0.2f},
+        {&kFurniture, "locker_metal", 1.5f, 0.2f},  {&kTableTop, "tabletop", 1.0f, 0.3f},        {&kCushion, "fabric_cushion", 0.8f, 0.3f},
+        {&kMattress, "fabric_cushion", 0.8f, 0.3f}, {&kHullDark, "hull_dark", 2.0f, 0.3f},
+    };
+    static std::vector<Material> laid;
+    if (laid.empty())
+    {
+        for (const Made& made : kMade)
+        {
+            laid.push_back(Surfaces::Apply(*made.plain, made.surface, made.metres, made.keep));
+        }
+    }
+    for (size_t i = 0; i < std::size(kMade); ++i)
+    {
+        if (kMade[i].plain == &material)
+        {
+            return laid[i];
+        }
+    }
+    return material;
+}
+
 // Everything the ship is built of, in its own frame, into one structure: its pieces are meant to meet.
 class Builder
 {
@@ -95,12 +133,12 @@ public:
     // Solid and drawn, between two corners.
     void Solid(const char* name, const glm::vec3& lo, const glm::vec3& hi, const Material& material)
     {
-        m_map.AddBox(name, At((lo + hi) * 0.5f), glm::abs(hi - lo), material);
+        m_map.AddBox(name, At((lo + hi) * 0.5f), glm::abs(hi - lo), Laid(material));
     }
     // Drawn only: what is out of reach, or thin on a wall.
     void Shape(const char* name, const glm::vec3& lo, const glm::vec3& hi, const Material& material)
     {
-        m_map.AddMesh(name, At((lo + hi) * 0.5f), Primitives::Box(glm::abs(hi - lo)), material, false);
+        m_map.AddMesh(name, At((lo + hi) * 0.5f), Primitives::Box(glm::abs(hi - lo)), Laid(material), false);
     }
     // Drawn only, and casting no shadow: paint, a screen, a lit panel -- thin things laid on a surface.
     void Decal(const char* name, const glm::vec3& lo, const glm::vec3& hi, const Material& material)
@@ -111,11 +149,11 @@ public:
     }
     void ShapeTurned(const char* name, const glm::vec3& centre, const glm::vec3& size, float yawDegrees, const Material& material)
     {
-        m_map.AddMesh(name, At(centre, yawDegrees), Primitives::Box(size), material, false);
+        m_map.AddMesh(name, At(centre, yawDegrees), Primitives::Box(size), Laid(material), false);
     }
     void SolidTurned(const char* name, const glm::vec3& centre, const glm::vec3& size, float yawDegrees, const Material& material)
     {
-        m_map.AddBox(name, At(centre, yawDegrees), size, material);
+        m_map.AddBox(name, At(centre, yawDegrees), size, Laid(material));
     }
     // Solid only: the glass in a window, which is not drawn.
     void Barrier(const glm::vec3& lo, const glm::vec3& hi)
@@ -652,6 +690,43 @@ void HullMesh(ModelAsset& model, const std::string& name, MeshData mesh, const g
 
 } // namespace
 
+namespace
+{
+
+// The hull's parts, by what each is: plating over the body, dark metal on the engines, frames and masts; laid on the ship
+// itself, which flies, not on the world.
+void LayHull(ModelAsset& model)
+{
+    static const char* const kPlating[] = {"skin", "body", "body_front", "chin", "brow", "bay", "bay_front", "bay_back", "bay_roof_plate",
+                                           "roof_plate", "plate", "bay_panel", "spine"};
+    static const char* const kDark[] = {"core", "belt", "engine", "engine_band", "engine_room", "engine_room_back", "nozzle", "pylon", "mast",
+                                        "array", "array_boom", "dish", "dish_mount", "door_frame", "door_lining", "bay_rib", "bay_belly"};
+    for (ModelPart& part : model.parts)
+    {
+        const size_t cut = part.name.find_last_of('_');
+        const std::string stem = cut != std::string::npos && cut + 1 < part.name.size() && std::isdigit(static_cast<unsigned char>(part.name[cut + 1]))
+                                     ? part.name.substr(0, cut)
+                                     : part.name;
+        const auto is = [&](const char* const* list, size_t count) { return std::find(list, list + count, stem) != list + count; };
+        if (is(kPlating, std::size(kPlating)))
+        {
+            part.surface = "hull_plating";
+            part.surfaceScale = 9.0f;
+            part.surfaceKeep = 0.2f;
+            part.surfaceOnThing = true;
+        }
+        else if (is(kDark, std::size(kDark)))
+        {
+            part.surface = "hull_dark";
+            part.surfaceScale = 2.0f;
+            part.surfaceKeep = 0.3f;
+            part.surfaceOnThing = true;
+        }
+    }
+}
+
+} // namespace
+
 ModelAsset ShipMap::HullModel(const ShipHullLook& look, bool stage)
 {
     // In the ship's frame, round its rooms: the skin a few centimetres outside every outer wall and roof, so it covers them
@@ -907,6 +982,7 @@ ModelAsset ShipMap::HullModel(const ShipHullLook& look, bool stage)
             model.parts.back().name = name(part.name.c_str());
         }
     }
+    LayHull(model);
     return model;
 }
 

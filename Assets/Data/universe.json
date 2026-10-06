@@ -24,7 +24,7 @@
      "terrains": {"flat": 1, "rolling": 2, "mountainous": 3, "canyons": 1},
      "weathers": {"clear": 2, "snow": 3, "heavy_snow": 2, "blizzard": 1, "fog": 1},
      "ground": [[0.86, 0.89, 0.93], [0.56, 0.62, 0.7]], "ocean": [0.12, 0.2, 0.3], "oceanAmount": [0.0, 0.15], "ice": [0.5, 1.0], "clouds": [0.1, 0.5],
-     "site": {"surface": "snow_02", "steep": "rock_cliff", "ground": [0.72, 0.74, 0.78], "rock": [0.3, 0.32, 0.36], "fog": [0.02, 0.025, 0.03]}},
+     "site": {"surface": "snow_02", "steep": "ice_cliff", "ground": [0.72, 0.74, 0.78], "rock": [0.3, 0.32, 0.36], "fog": [0.02, 0.025, 0.03]}},
 
     {"id": "rocky", "name": "Rocky", "weight": 3, "temperature": [-160, 140],
      "atmospheres": {"none": 3, "thin": 2},

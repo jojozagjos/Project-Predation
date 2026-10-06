@@ -11,6 +11,7 @@
 #include <glm/gtc/quaternion.hpp>
 
 #include <algorithm>
+#include <vector>
 #include <cmath>
 #include <map>
 #include <tuple>
@@ -1042,36 +1043,38 @@ void Lamps(const FacilityLayout& layout, Blueprint& out)
 
 const Material& MaterialOf(Kind kind)
 {
-    switch (kind)
+    // What each is made of: its surface set, how big it repeats and how much of the set's own colour shows -- laid on the first
+    // time it is asked for, once the textures are there to lay.
+    struct Made
     {
-    case Kind::Floor:
+        Kind kind;
+        const Material* plain;
+        const char* surface;
+        float metres;
+        float keep;
+    };
+    static const Made kMade[] = {
+        {Kind::Floor, &kFloorMaterial, "facility_floor", 3.0f, 0.3f},     {Kind::Ceiling, &kCeilingMaterial, "facility_ceiling", 3.0f, 0.3f},
+        {Kind::Wall, &kWallMaterial, "facility_wall", 3.0f, 0.3f},        {Kind::Fill, &kWallMaterial, "facility_wall", 3.0f, 0.3f},
+        {Kind::Duct, &kDuctMaterial, "metal_grate", 1.0f, 0.2f},          {Kind::Pillar, &kPillarMaterial, "concrete_pillar", 2.0f, 0.3f},
+        {Kind::Shelf, &kShelfMaterial, "shelf_steel", 1.5f, 0.2f},        {Kind::Bench, &kBenchMaterial, "worktop", 1.0f, 0.3f},
+        {Kind::Crate, &kCrateMaterial, "cargo_crate", 1.5f, 0.3f},        {Kind::Cabinet, &kCabinetMaterial, "locker_metal", 1.5f, 0.2f},
+        {Kind::Cladding, &kCladdingMaterial, "building_cladding", 4.0f, 0.2f},
+    };
+    static std::vector<Material> laid;
+    if (laid.empty())
     {
-        // Laid with its set the first time it is asked for, once the textures are there to lay.
-        static const Material floor = Surfaces::Apply(kFloorMaterial, "facility_floor", 3.0f, 0.3f);
-        return floor;
+        for (const Made& made : kMade)
+        {
+            laid.push_back(Surfaces::Apply(*made.plain, made.surface, made.metres, made.keep));
+        }
     }
-    case Kind::Ceiling:
-        return kCeilingMaterial;
-    case Kind::Wall:
-    case Kind::Fill:
-        return kWallMaterial;
-    case Kind::Duct:
-        return kDuctMaterial;
-    case Kind::Pillar:
-        return kPillarMaterial;
-    case Kind::Shelf:
-        return kShelfMaterial;
-    case Kind::Bench:
-        return kBenchMaterial;
-    case Kind::Crate:
-        return kCrateMaterial;
-    case Kind::Cabinet:
-        return kCabinetMaterial;
-    case Kind::Cladding:
+    for (size_t i = 0; i < std::size(kMade); ++i)
     {
-        static const Material cladding = Surfaces::Apply(kCladdingMaterial, "building_cladding", 4.0f, 0.2f);
-        return cladding;
-    }
+        if (kMade[i].kind == kind)
+        {
+            return laid[i];
+        }
     }
     return kWallMaterial;
 }

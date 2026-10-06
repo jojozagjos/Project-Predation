@@ -68,6 +68,7 @@ struct ModelPart
     std::string surface;
     float surfaceScale = 0.0f;
     float surfaceKeep = 1.0f; // how much of the set's own colour shows (Material::surfaceKeep)
+    bool surfaceOnThing = false; // laid on the model, not the world: for a model that moves (Material::surfaceOnThing)
 
     glm::mat4 LocalMatrix() const;
 };

@@ -1,5 +1,5 @@
 $input a_position, a_normal, a_texcoord0, a_color0
-$output v_worldPos, v_normal, v_texcoord0, v_color0, v_organic
+$output v_worldPos, v_normal, v_texcoord0, v_color0, v_organic, v_localPos, v_localNormal
 
 #include <bgfx_shader.sh>
 
@@ -43,6 +43,9 @@ void main()
 	vec4 worldPosition = mul(u_model[0], vec4(position, 1.0));
 
 	v_worldPos = worldPosition.xyz;
+	// And where it is on the thing itself, for a surface set laid on the thing rather than the world (one that moves).
+	v_localPos = position;
+	v_localNormal = a_normal;
 	v_normal = mul(u_model[0], vec4(a_normal, 0.0)).xyz;
 	v_texcoord0 = a_texcoord0;
 	v_color0 = a_color0;

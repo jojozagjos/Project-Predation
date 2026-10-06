@@ -24,15 +24,15 @@ using Kind = SitePlan::BlockKind;
 
 // The ground, the rock round it and the boulders on it take the world's own colours (SiteMap::Look); the ground has the snow
 // set laid on it, its grain, tinted to that colour.
-const Material kHullDebris = Material::Metal({0.27f, 0.28f, 0.3f}, 0.55f);
-const Material kHullDebrisLight = Material::Diffuse({0.56f, 0.56f, 0.54f}, 0.7f);
-const Material kPadMaterial = Material::Diffuse({0.3f, 0.3f, 0.29f}, 0.85f);
-const Material kPipeMaterial = Material::Metal({0.34f, 0.35f, 0.36f}, 0.5f);
-const Material kSupportMaterial = Material::Metal({0.22f, 0.22f, 0.23f}, 0.6f);
-const Material kTankMaterial = Material::Diffuse({0.5f, 0.5f, 0.47f}, 0.7f);
-const Material kPoleMaterial = Material::Metal({0.25f, 0.25f, 0.26f}, 0.55f);
+const Material kHullDebrisPlain = Material::Metal({0.27f, 0.28f, 0.3f}, 0.55f);
+const Material kHullDebrisLightPlain = Material::Diffuse({0.56f, 0.56f, 0.54f}, 0.7f);
+const Material kPadPlain = Material::Diffuse({0.3f, 0.3f, 0.29f}, 0.85f);
+const Material kPipePlain = Material::Metal({0.34f, 0.35f, 0.36f}, 0.5f);
+const Material kSupportPlain = Material::Metal({0.22f, 0.22f, 0.23f}, 0.6f);
+const Material kTankPlain = Material::Diffuse({0.5f, 0.5f, 0.47f}, 0.7f);
+const Material kPolePlain = Material::Metal({0.25f, 0.25f, 0.26f}, 0.55f);
 // Freight containers come in the colours they always do, faded.
-const Material kContainerMaterials[] = {
+const Material kContainerPlain[] = {
     Material::Diffuse({0.32f, 0.12f, 0.08f}, 0.8f),
     Material::Diffuse({0.1f, 0.18f, 0.27f}, 0.8f),
     Material::Diffuse({0.23f, 0.25f, 0.14f}, 0.8f),
@@ -107,7 +107,20 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
     // one another: the rock is a ragged wall of blocks run together and sunk into the ground, and so is every
     // building's outer wall. The level check has nothing to say of that (PhysicsWorld::SetOverlapGroup).
     const uint32_t ground = physics.NewOverlapGroup();
-    const Material rockMaterial = Material::Diffuse(m_look.rock, 0.95f);
+    const Material rockMaterial = Surfaces::Apply(Material::Diffuse(m_look.rock, 0.95f), "rock_cliff", 4.0f, 0.35f, true);
+    // What people left: wreckage, pipework, tanks, containers, lamp poles, each with what it is made of.
+    const Material hullDebris = Surfaces::Apply(kHullDebrisPlain, "hull_weathered", 2.0f, 0.3f);
+    const Material hullDebrisLight = Surfaces::Apply(kHullDebrisLightPlain, "cut_metal", 2.0f, 0.3f);
+    const Material padMaterial = Surfaces::Apply(kPadPlain, "concrete_slab", 6.0f, 0.3f);
+    const Material pipeMaterial = Surfaces::Apply(kPipePlain, "pipe_steel", 1.0f, 0.3f);
+    const Material supportMaterial = Surfaces::Apply(kSupportPlain, "pipe_steel", 1.0f, 0.3f);
+    const Material tankMaterial = Surfaces::Apply(kTankPlain, "painted_metal", 3.0f, 0.2f);
+    const Material poleMaterial = Surfaces::Apply(kPolePlain, "pipe_steel", 1.0f, 0.3f);
+    Material containerMaterials[std::size(kContainerPlain)];
+    for (size_t i = 0; i < std::size(kContainerPlain); ++i)
+    {
+        containerMaterials[i] = Surfaces::Apply(kContainerPlain[i], "painted_metal", 3.0f, 0.15f);
+    }
     // Where something stands on the ground: how far its foot is moved from the plan's flat ground to the terrain's, at the
     // lowest of its middle and corners, so nothing on a slope stands on air.
     const auto lift = [&](glm::vec2 at, float reach)
@@ -206,13 +219,13 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
             break;
         case Kind::Container:
             builder.AddBox(NameOf(block.kind), transform, block.size,
-                           kContainerMaterials[static_cast<size_t>(Mix(seed, static_cast<uint32_t>(containers++)) % std::size(kContainerMaterials))]);
+                           containerMaterials[static_cast<size_t>(Mix(seed, static_cast<uint32_t>(containers++)) % std::size(containerMaterials))]);
             break;
         case Kind::Pad:
-            builder.AddBox(NameOf(block.kind), transform, block.size, Surfaces::Apply(kPadMaterial, "concrete_slab", 6.0f, 0.3f), kOutdoorTile);
+            builder.AddBox(NameOf(block.kind), transform, block.size, padMaterial, kOutdoorTile);
             break;
         case Kind::Support:
-            builder.AddBox(NameOf(block.kind), transform, block.size, kSupportMaterial);
+            builder.AddBox(NameOf(block.kind), transform, block.size, supportMaterial);
             break;
         case Kind::PipeX:
         case Kind::PipeZ:
@@ -223,11 +236,11 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
             const float radius = block.size.y * 0.5f;
             transform.rotation = alongX ? glm::angleAxis(glm::half_pi<float>(), glm::vec3(0.0f, 0.0f, 1.0f))
                                         : glm::angleAxis(glm::half_pi<float>(), glm::vec3(1.0f, 0.0f, 0.0f));
-            builder.AddMesh(NameOf(block.kind), transform, Primitives::Cylinder(radius, length, 14), kPipeMaterial);
+            builder.AddMesh(NameOf(block.kind), transform, Primitives::Cylinder(radius, length, 14), pipeMaterial);
             break;
         }
         case Kind::Tank:
-            builder.AddMesh(NameOf(block.kind), transform, Primitives::Cylinder(block.size.x * 0.5f, block.size.y, 20), kTankMaterial);
+            builder.AddMesh(NameOf(block.kind), transform, Primitives::Cylinder(block.size.x * 0.5f, block.size.y, 20), tankMaterial);
             break;
         case Kind::Mast:
         {
@@ -240,7 +253,7 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
                 Transform post;
                 post.position = block.centre + turn * glm::vec3(leg.x * half, 0.0f, leg.y * half);
                 post.rotation = turn;
-                builder.AddBox(NameOf(block.kind), post, {0.16f, block.size.y, 0.16f}, kSupportMaterial);
+                builder.AddBox(NameOf(block.kind), post, {0.16f, block.size.y, 0.16f}, supportMaterial);
             }
             for (float y = foot + 3.0f; y < foot + block.size.y - 0.5f; y += 3.5f)
             {
@@ -253,7 +266,7 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
                     brace.rotation = turn;
                     const bool alongX = side < 2;
                     builder.AddMesh(NameOf(block.kind), brace, Primitives::Box(alongX ? glm::vec3(block.size.x, 0.1f, 0.1f) : glm::vec3(0.1f, 0.1f, block.size.x)),
-                                    kSupportMaterial);
+                                    supportMaterial);
                 }
             }
             Material beacon = Material::Diffuse({0.3f, 0.02f, 0.02f}, 0.4f);
@@ -264,7 +277,7 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
             break;
         }
         case Kind::Debris:
-            builder.AddBox(NameOf(block.kind), transform, block.size, Mix(seed, static_cast<uint32_t>(block.centre.x * 7.0f)) % 3u == 0 ? kHullDebrisLight : kHullDebris);
+            builder.AddBox(NameOf(block.kind), transform, block.size, Mix(seed, static_cast<uint32_t>(block.centre.x * 7.0f)) % 3u == 0 ? hullDebrisLight : hullDebris);
             break;
         }
     }
@@ -303,12 +316,12 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
             pole.position = foot + glm::vec3(0.0f, height * 0.5f, 0.0f);
             // The arm is set into the pole: one thing.
             builder.SetStructure(physics.NewOverlapGroup());
-            builder.AddBox("site_pole", pole, {0.18f, height, 0.18f}, kPoleMaterial);
+            builder.AddBox("site_pole", pole, {0.18f, height, 0.18f}, poleMaterial);
             Transform arm;
             arm.position = (foot + glm::vec3(lamp.position.x, 0.0f, lamp.position.z) - glm::vec3(0.0f, foot.y, 0.0f)) * 0.5f;
             arm.position.y = lamp.position.y + raise + 0.12f;
             arm.rotation = glm::angleAxis(std::atan2(-back.z, back.x), glm::vec3(0.0f, 1.0f, 0.0f));
-            builder.AddBox("site_pole_arm", arm, {0.62f, 0.08f, 0.08f}, kPoleMaterial);
+            builder.AddBox("site_pole_arm", arm, {0.62f, 0.08f, 0.08f}, poleMaterial);
             builder.SetStructure(0);
         }
         if (lights != nullptr)
