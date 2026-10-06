@@ -11,6 +11,7 @@
 #include <glm/geometric.hpp>
 #include <glm/gtc/quaternion.hpp>
 
+#include <algorithm>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -285,4 +286,37 @@ TEST_CASE("From where everybody lands, every room of every building on a site ca
     INFO(rooms << " rooms");
     CHECK(rooms > 10);
     CHECK(unreachable == 0);
+}
+
+TEST_CASE("Each kind of place plans what that kind has, and keeps its kind through its seed", "[site]")
+{
+    using SiteKind = SitePlan::SiteKind;
+    for (const SiteKind kind : {SiteKind::Facility, SiteKind::Station, SiteKind::Survey, SiteKind::Wreck, SiteKind::Signal})
+    {
+        for (uint16_t base = 1; base <= 12; ++base)
+        {
+            const uint16_t seed = SitePlan::SeedFor(base, kind);
+            INFO("kind " << static_cast<int>(kind) << " seed " << seed);
+            CHECK(SitePlan::KindOf(seed) == kind);
+            const SitePlan plan = SitePlan::Generate(seed);
+            CHECK(plan.kind == kind);
+            // Always somewhere to go in -- a mission's business is in the first building.
+            REQUIRE(!plan.buildings.empty());
+            const auto count = [&](SitePlan::BlockKind block)
+            {
+                return std::count_if(plan.blocks.begin(), plan.blocks.end(), [&](const SitePlan::Block& b) { return b.kind == block; });
+            };
+            switch (kind)
+            {
+            case SiteKind::Facility: CHECK(plan.buildings.size() >= 2); break;
+            case SiteKind::Survey: CHECK(plan.buildings.size() == 1); break;
+            case SiteKind::Wreck: CHECK(count(SitePlan::BlockKind::Debris) >= 8); break;
+            case SiteKind::Station:
+            case SiteKind::Signal: CHECK(count(SitePlan::BlockKind::Mast) == 1); break;
+            }
+            CHECK((kind == SiteKind::Wreck) == (count(SitePlan::BlockKind::Debris) > 0));
+        }
+    }
+    // A seed of an old campaign, from before kinds, is a facility.
+    CHECK(SitePlan::KindOf(1) == SiteKind::Facility);
 }

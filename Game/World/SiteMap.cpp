@@ -20,10 +20,10 @@ namespace
 
 using Kind = SitePlan::BlockKind;
 
-// The ground: snow, the snow set laid on it (its colour comes from the set; this only tints it).
-const Material kSnowGround = Material::Diffuse({0.72f, 0.74f, 0.78f}, 1.0f);
-const Material kCliffMaterial = Material::Diffuse({0.19f, 0.18f, 0.17f}, 0.95f);
-const Material kRockMaterial = Material::Diffuse({0.22f, 0.21f, 0.19f}, 0.95f);
+// The ground, the rock round it and the boulders on it take the world's own colours (SiteMap::Look); the ground has the snow
+// set laid on it, its grain, tinted to that colour.
+const Material kHullDebris = Material::Metal({0.27f, 0.28f, 0.3f}, 0.55f);
+const Material kHullDebrisLight = Material::Diffuse({0.56f, 0.56f, 0.54f}, 0.7f);
 const Material kPadMaterial = Material::Diffuse({0.3f, 0.3f, 0.29f}, 0.85f);
 const Material kPipeMaterial = Material::Metal({0.34f, 0.35f, 0.36f}, 0.5f);
 const Material kSupportMaterial = Material::Metal({0.22f, 0.22f, 0.23f}, 0.6f);
@@ -53,6 +53,8 @@ const char* NameOf(Kind kind)
     case Kind::PipeZ: return "site_pipe";
     case Kind::Support: return "site_support";
     case Kind::Tank: return "site_tank";
+    case Kind::Mast: return "site_mast";
+    case Kind::Debris: return "site_debris";
     }
     return "site";
 }
@@ -104,6 +106,9 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
     // one another: the rock is a ragged wall of blocks run together and sunk into the ground, and so is every
     // building's outer wall. The level check has nothing to say of that (PhysicsWorld::SetOverlapGroup).
     const uint32_t ground = physics.NewOverlapGroup();
+    const Material groundMaterial = Surfaces::Apply(Material::Diffuse(m_look.ground, 1.0f), "snow_02", 2.5f);
+    const Material cliffMaterial = Material::Diffuse(m_look.rock * 0.88f, 0.95f);
+    const Material rockMaterial = Material::Diffuse(m_look.rock, 0.95f);
 
     // The buildings, each with its own meshes, and everything in them for WorldObjects.
     for (size_t b = 0; b < m_plan.buildings.size(); ++b)
@@ -130,21 +135,21 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
     {
         Transform transform;
         transform.position = block.centre;
-        transform.rotation = glm::angleAxis(block.yaw, glm::vec3(0.0f, 1.0f, 0.0f));
-        // The pipework too, which runs into the side of each building it joins.
+        transform.rotation = glm::angleAxis(block.yaw, glm::vec3(0.0f, 1.0f, 0.0f)) * glm::angleAxis(block.tip, glm::vec3(1.0f, 0.0f, 0.0f));
+        // The pipework too, which runs into the side of each building it joins; and debris, half in the ground.
         const bool terrain = block.kind == Kind::Ground || block.kind == Kind::Cliff || block.kind == Kind::Rock || block.kind == Kind::Pad ||
-                             block.kind == Kind::PipeX || block.kind == Kind::PipeZ || block.kind == Kind::Support;
+                             block.kind == Kind::PipeX || block.kind == Kind::PipeZ || block.kind == Kind::Support || block.kind == Kind::Debris;
         builder.SetStructure(terrain ? ground : 0);
         switch (block.kind)
         {
         case Kind::Ground:
-            builder.AddBox(NameOf(block.kind), transform, block.size, Surfaces::Apply(kSnowGround, "snow_02", 2.5f), kOutdoorTile);
+            builder.AddBox(NameOf(block.kind), transform, block.size, groundMaterial, kOutdoorTile);
             break;
         case Kind::Cliff:
-            builder.AddBox(NameOf(block.kind), transform, block.size, kCliffMaterial, kOutdoorTile);
+            builder.AddBox(NameOf(block.kind), transform, block.size, cliffMaterial, kOutdoorTile);
             break;
         case Kind::Rock:
-            builder.AddBox(NameOf(block.kind), transform, block.size, kRockMaterial);
+            builder.AddBox(NameOf(block.kind), transform, block.size, rockMaterial);
             break;
         case Kind::Container:
             builder.AddBox(NameOf(block.kind), transform, block.size,
@@ -170,6 +175,43 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
         }
         case Kind::Tank:
             builder.AddMesh(NameOf(block.kind), transform, Primitives::Cylinder(block.size.x * 0.5f, block.size.y, 20), kTankMaterial);
+            break;
+        case Kind::Mast:
+        {
+            // A lattice: four legs, braced every few metres, a red light at the top.
+            const float half = block.size.x * 0.5f;
+            const float foot = block.centre.y - block.size.y * 0.5f;
+            const glm::quat turn = glm::angleAxis(block.yaw, glm::vec3(0.0f, 1.0f, 0.0f));
+            for (const glm::vec2 leg : {glm::vec2(-1.0f, -1.0f), glm::vec2(1.0f, -1.0f), glm::vec2(-1.0f, 1.0f), glm::vec2(1.0f, 1.0f)})
+            {
+                Transform post;
+                post.position = block.centre + turn * glm::vec3(leg.x * half, 0.0f, leg.y * half);
+                post.rotation = turn;
+                builder.AddBox(NameOf(block.kind), post, {0.16f, block.size.y, 0.16f}, kSupportMaterial);
+            }
+            for (float y = foot + 3.0f; y < foot + block.size.y - 0.5f; y += 3.5f)
+            {
+                for (int side = 0; side < 4; ++side)
+                {
+                    const glm::vec3 out = side == 0 ? glm::vec3(0.0f, 0.0f, -half) : side == 1 ? glm::vec3(0.0f, 0.0f, half) : side == 2 ? glm::vec3(-half, 0.0f, 0.0f)
+                                                                                                                       : glm::vec3(half, 0.0f, 0.0f);
+                    Transform brace;
+                    brace.position = glm::vec3(block.centre.x, y, block.centre.z) + turn * out;
+                    brace.rotation = turn;
+                    const bool alongX = side < 2;
+                    builder.AddMesh(NameOf(block.kind), brace, Primitives::Box(alongX ? glm::vec3(block.size.x, 0.1f, 0.1f) : glm::vec3(0.1f, 0.1f, block.size.x)),
+                                    kSupportMaterial);
+                }
+            }
+            Material beacon = Material::Diffuse({0.3f, 0.02f, 0.02f}, 0.4f);
+            beacon.emissive = {3.0f, 0.15f, 0.1f};
+            Transform top;
+            top.position = glm::vec3(block.centre.x, foot + block.size.y + 0.25f, block.centre.z);
+            builder.AddMesh("site_mast_light", top, Primitives::Box({0.5f, 0.5f, 0.5f}), beacon);
+            break;
+        }
+        case Kind::Debris:
+            builder.AddBox(NameOf(block.kind), transform, block.size, Mix(seed, static_cast<uint32_t>(block.centre.x * 7.0f)) % 3u == 0 ? kHullDebrisLight : kHullDebris);
             break;
         }
     }

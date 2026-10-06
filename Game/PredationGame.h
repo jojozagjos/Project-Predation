@@ -1140,6 +1140,11 @@ private:
     void DrawSpaceBodies();
     // Standing at a hub: the world's own sky over the ship, at the time of day it is there.
     void SetGroundSky(Environment& environment);
+    // The sky over a place on a body, at the hour it is there: the star's light and colour, the sky's, the haze.
+    void SetSkyOver(const StarSystem& system, const Body& body, int region, Environment& environment);
+    // How the site the shuttle goes down to looks (its world's ground, rock and snow), and what kind of place an area is.
+    SiteMap::Look SiteLookHere();
+    static SitePlan::SiteKind SiteKindOf(const LandingRegion& region);
     // The ship itself on the ground (at a hub's field), not in orbit.
     bool ShipLanded() const;
     // Why the ship cannot leave the ground just now, or nothing: somebody is not aboard. And whether anybody is in the

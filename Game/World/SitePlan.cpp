@@ -132,10 +132,24 @@ bool SitePlan::Indoors(const glm::vec3& at) const
     return false;
 }
 
+uint16_t SitePlan::SeedFor(uint16_t seed, SiteKind kind)
+{
+    const auto packed = static_cast<uint16_t>((seed & 0x1FFFu) | (static_cast<uint16_t>(kind) << 13));
+    return packed == 0 ? uint16_t{1} : packed;
+}
+
+SitePlan::SiteKind SitePlan::KindOf(uint32_t seed)
+{
+    const uint32_t kind = (seed >> 13) & 0x7u;
+    return kind <= static_cast<uint32_t>(SiteKind::Signal) ? static_cast<SiteKind>(kind) : SiteKind::Facility;
+}
+
 SitePlan SitePlan::Generate(uint32_t seed)
 {
     SitePlan plan;
     plan.seed = seed;
+    plan.kind = KindOf(seed);
+    const SiteKind kind = plan.kind;
     Random random((static_cast<uint64_t>(seed) << 16) ^ 0x517E5EEDull);
     const float S = plan.size;
     const glm::vec3 O = plan.origin;
@@ -155,10 +169,15 @@ SitePlan SitePlan::Generate(uint32_t seed)
     const glm::vec2 toCentre = glm::vec2(S * 0.5f) - landingLocal;
     plan.landingYaw = std::atan2(toCentre.x, -toCentre.y);
 
-    // The buildings: three to five, the first much the biggest -- the one a mission's business is usually in --
-    // none too close to another or to the landing.
+    // The buildings: at a facility three to five, the first much the biggest -- the one a mission's business is usually in
+    // -- none too close to another or to the landing; fewer and smaller elsewhere, as the kind of place has them.
     const float roll = random.Unit();
-    const int count = roll < 0.4f ? 3 : roll < 0.8f ? 4 : 5;
+    const int count = kind == SiteKind::Facility ? (roll < 0.4f ? 3 : roll < 0.8f ? 4 : 5)
+                      : kind == SiteKind::Station || kind == SiteKind::Signal ? 2
+                                                                      : 1;
+    // The first building's size (cells across, at least and at most) and floors, by the kind of place.
+    const glm::ivec2 mainCells = kind == SiteKind::Facility ? glm::ivec2(24, 30) : kind == SiteKind::Station ? glm::ivec2(18, 22) : glm::ivec2(14, 18);
+    const glm::ivec2 mainFloors = kind == SiteKind::Facility ? glm::ivec2(3, 4) : kind == SiteKind::Station ? glm::ivec2(2, 3) : glm::ivec2(1, 2);
     std::vector<std::pair<glm::vec2, glm::vec2>> taken; // footprints, local
     for (int b = 0; b < count; ++b)
     {
@@ -168,7 +187,7 @@ SitePlan SitePlan::Generate(uint32_t seed)
         for (int attempt = 0; attempt < 400 && !placed; ++attempt)
         {
             const int shrink = attempt / 100; // smaller if nothing fits
-            cells = b == 0 ? glm::ivec2(random.Int(24, 30) - shrink * 2, random.Int(24, 30) - shrink * 2)
+            cells = b == 0 ? glm::ivec2(random.Int(mainCells.x, mainCells.y) - shrink * 2, random.Int(mainCells.x, mainCells.y) - shrink * 2)
                            : glm::ivec2(random.Int(12, 20) - shrink * 2, random.Int(12, 20) - shrink * 2);
             const glm::vec2 extent = glm::vec2(cells) * kCell;
             corner = {std::round(random.Range(32.0f, S - 32.0f - extent.x) / kCell) * kCell,
@@ -201,8 +220,8 @@ SitePlan SitePlan::Generate(uint32_t seed)
         FacilityLayout::Options options;
         options.width = cells.x;
         options.depth = cells.y;
-        options.minFloors = b == 0 ? 3 : 1;
-        options.maxFloors = b == 0 ? 4 : 3;
+        options.minFloors = b == 0 ? mainFloors.x : 1;
+        options.maxFloors = b == 0 ? mainFloors.y : (kind == SiteKind::Facility ? 3 : 2);
         options.exits = b == 0 ? 3 : random.Int(1, 2);
         options.exitSide = std::abs(toLanding.x) > std::abs(toLanding.y) ? (toLanding.x < 0.0f ? 0 : 1) : (toLanding.y < 0.0f ? 2 : 3);
         options.origin = world(corner.x, corner.y);
@@ -356,7 +375,7 @@ SitePlan SitePlan::Generate(uint32_t seed)
         }
         return false;
     };
-    const int containers = random.Int(6, 10);
+    const int containers = kind == SiteKind::Facility || kind == SiteKind::Station ? random.Int(6, 10) : kind == SiteKind::Wreck ? random.Int(3, 6) : random.Int(1, 3);
     for (int i = 0; i < containers; ++i)
     {
         glm::vec2 at;
@@ -372,7 +391,7 @@ SitePlan SitePlan::Generate(uint32_t seed)
             plan.blocks.push_back({Kind::Container, glm::vec3(at.x, O.y + size.y * 1.5f - 0.02f, at.y), size, yaw + random.Range(-0.1f, 0.1f)});
         }
     }
-    const int rocks = random.Int(18, 28);
+    const int rocks = kind == SiteKind::Survey ? random.Int(34, 48) : random.Int(18, 28);
     for (int i = 0; i < rocks; ++i)
     {
         const glm::vec3 size{random.Range(1.0f, 3.5f), random.Range(0.8f, 2.2f), random.Range(1.0f, 3.5f)};
@@ -383,10 +402,66 @@ SitePlan SitePlan::Generate(uint32_t seed)
         }
         plan.blocks.push_back({Kind::Rock, glm::vec3(at.x, O.y + size.y * 0.5f - 0.25f, at.y), size, random.Range(0.0f, glm::pi<float>())});
     }
+    // A radio mast at a station or a signal source: tall, beside the first building, a landmark from anywhere on the site.
+    if ((kind == SiteKind::Station || kind == SiteKind::Signal) && !plan.buildings.empty())
+    {
+        glm::vec2 min;
+        glm::vec2 max;
+        Footprint(plan.buildings.front(), 0.0f, min, max);
+        const float high = kind == SiteKind::Signal ? random.Range(30.0f, 40.0f) : random.Range(20.0f, 28.0f);
+        for (int attempt = 0; attempt < 30; ++attempt)
+        {
+            const float angle = random.Range(0.0f, 6.2831853f);
+            const glm::vec2 at = (min + max) * 0.5f + glm::vec2(std::cos(angle), std::sin(angle)) * (glm::length(max - min) * 0.5f + random.Range(8.0f, 16.0f));
+            if (!clear(at, 3.0f))
+            {
+                continue;
+            }
+            cover.push_back({at, 3.0f});
+            plan.blocks.push_back({Kind::Mast, glm::vec3(at.x, O.y + high * 0.5f, at.y), {1.4f, high, 1.4f}, random.Range(0.0f, 1.5f)});
+            break;
+        }
+    }
+    // At a wreck, what came down: great plates of it tipped into the ground, and smaller pieces strewn along the way it
+    // came in, all round what is left standing.
+    if (kind == SiteKind::Wreck && !plan.buildings.empty())
+    {
+        glm::vec2 min;
+        glm::vec2 max;
+        Footprint(plan.buildings.front(), 0.0f, min, max);
+        const glm::vec2 middle = (min + max) * 0.5f;
+        const float trail = random.Range(0.0f, 6.2831853f);
+        const glm::vec2 along{std::cos(trail), std::sin(trail)};
+        const int pieces = random.Int(16, 24);
+        for (int i = 0; i < pieces; ++i)
+        {
+            const bool large = i < 4;
+            const glm::vec3 size = large ? glm::vec3(random.Range(9.0f, 15.0f), random.Range(0.6f, 1.2f), random.Range(4.0f, 7.0f))
+                                         : glm::vec3(random.Range(1.5f, 5.0f), random.Range(0.25f, 0.8f), random.Range(1.0f, 3.5f));
+            for (int attempt = 0; attempt < 20; ++attempt)
+            {
+                const float out = glm::length(max - min) * 0.5f + random.Range(6.0f, large ? 30.0f : 70.0f);
+                const glm::vec2 at = middle + along * out * random.Range(0.3f, 1.0f) + glm::vec2(-along.y, along.x) * random.Range(-18.0f, 18.0f);
+                const float radius = std::max(size.x, size.z) * 0.55f;
+                if (!clear(at, radius))
+                {
+                    continue;
+                }
+                cover.push_back({at, radius});
+                // The great plates stand up out of the ground where they dug in, an edge high; the small ones lie nearly flat.
+                // Either way about a third of each rises clear of the ground.
+                const float lean = large ? random.Range(0.5f, 0.95f) : random.Range(0.0f, 0.45f);
+                const float tip = random.Chance(0.5f) ? lean : -lean;
+                plan.blocks.push_back({Kind::Debris, glm::vec3(at.x, O.y + size.y * 0.2f + std::sin(lean) * size.z * 0.18f, at.y), size,
+                                       random.Range(0.0f, glm::pi<float>()), tip});
+                break;
+            }
+        }
+    }
     // Fuel tanks, standing beside a building.
     for (const FacilityLayout& building : plan.buildings)
     {
-        if (!random.Chance(0.6f))
+        if (!random.Chance(kind == SiteKind::Station ? 0.9f : kind == SiteKind::Facility ? 0.6f : 0.3f))
         {
             continue;
         }

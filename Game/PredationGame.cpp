@@ -3417,6 +3417,7 @@ void PredationGame::ChangeFacility(uint16_t seed)
     {
         seed = 1;
     }
+    m_facility.SetLook(SiteLookHere());
     m_facility.Build(seed, m_scene, m_app->GetMeshes(), m_app->GetPhysics(), &m_levelLights);
     // Its doors, lockers, crates and items went with it; everything that can be used up comes back with
     // the new one, in the same order on every machine. What people are carrying they keep.
@@ -9836,7 +9837,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
     m_particles.Update(m_scene, deltaSeconds);
     // Snowing at the site, drifting with its wind -- not indoors, and not in the shuttle's cabin.
     {
-        const bool falling = m_screen == Screen::Playing && m_facility.Built() && m_facility.Contains(m_renderEye);
+        const bool falling = m_screen == Screen::Playing && m_facility.Built() && m_facility.GetLook().snow && m_facility.Contains(m_renderEye);
         const uint32_t seed = m_facility.Seed();
         const float windAngle = static_cast<float>((seed * 2654435761u) >> 20) / 4096.0f * 6.2831853f;
         const float windSpeed = falling ? static_cast<float>(PlaceConditions(m_facility.Plan().sky.fogEnd).wind) * 0.12f : 0.0f;
@@ -10235,7 +10236,17 @@ void PredationGame::OnUpdate(double dt, double alpha)
             environment.fogColor = usual.fogColor;
         }
         m_skyInShip = inShip;
-        if (atSite)
+        const StarSystem* siteSystem = atSite && m_campaignOpen ? CurrentSystem() : nullptr;
+        const Body* siteBody = siteSystem != nullptr ? siteSystem->Find(m_campaign.body) : nullptr;
+        if (siteBody != nullptr && m_campaign.travel.region >= 0 && m_campaign.travel.region < static_cast<int>(siteBody->regions.size()))
+        {
+            // In a campaign, the sky of the world it is on, at the hour it is there -- its haze drawn in close, so the
+            // site is still a place you cannot see across.
+            SetSkyOver(*siteSystem, *siteBody, m_campaign.travel.region, environment);
+            environment.fogStart = std::min(environment.fogStart, 20.0f);
+            environment.fogEnd = std::min(environment.fogEnd, 170.0f);
+        }
+        else if (atSite)
         {
             const SitePlan::Sky& sky = m_facility.Plan().sky;
             environment.sunDirection = sky.sunDirection;

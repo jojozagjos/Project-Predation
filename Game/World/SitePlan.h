@@ -37,6 +37,22 @@ inline constexpr uint16_t kDefaultSeed = 1;
 //   them not working.
 struct SitePlan
 {
+    // What kind of place it is, which decides how much is built there and what lies about it -- a research facility (the
+    // most: several buildings, pipes between them), a remote station (two, a radio mast, tanks), a survey site (a field
+    // shelter in open, broken ground), a wreck (what is left standing, and a field of debris round it), a signal source (a
+    // mast, and what is beside it). Carried in the seed's top three bits, so the one number sent plans the same place
+    // everywhere.
+    enum class SiteKind : uint8_t
+    {
+        Facility = 0,
+        Station,
+        Survey,
+        Wreck,
+        Signal
+    };
+    static uint16_t SeedFor(uint16_t seed, SiteKind kind);
+    static SiteKind KindOf(uint32_t seed);
+
     enum class BlockKind : uint8_t
     {
         Ground,    // what everything stands on
@@ -47,7 +63,9 @@ struct SitePlan
         PipeX,     // an overhead pipe, running along x
         PipeZ,     // and along z
         Support,   // what holds a pipe up
-        Tank       // a fuel tank, standing on end
+        Tank,      // a fuel tank, standing on end
+        Mast,      // a radio mast: a tall lattice, its foot on the ground
+        Debris     // a piece of something broken: a plate of hull, half buried, tipped
     };
 
     struct Block
@@ -56,6 +74,7 @@ struct SitePlan
         glm::vec3 centre{0.0f};
         glm::vec3 size{1.0f};
         float yaw = 0.0f;
+        float tip = 0.0f; // tipped over about its own x (debris), radians
     };
 
     enum class LampKind : uint8_t
@@ -87,6 +106,7 @@ struct SitePlan
     };
 
     uint32_t seed = 0;
+    SiteKind kind = SiteKind::Facility;
     glm::vec3 origin = SiteSpec::kOrigin;
     float size = SiteSpec::kSize;
     std::vector<FacilityLayout> buildings;

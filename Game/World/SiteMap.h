@@ -27,6 +27,17 @@ class MeshLibrary;
 class SiteMap
 {
 public:
+    // How the place's outside looks: its own world's ground and rock, and whether snow lies there and falls. Set before
+    // building; what is built from the seed is the same everywhere whatever it is.
+    struct Look
+    {
+        glm::vec3 ground{0.72f, 0.74f, 0.78f};
+        glm::vec3 rock{0.21f, 0.2f, 0.18f};
+        bool snow = true;
+    };
+    void SetLook(const Look& look) { m_look = look; }
+    const Look& GetLook() const { return m_look; }
+
     void Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, LevelLights* lights);
     void Clear(Scene& scene, PhysicsWorld& physics, LevelLights* lights);
 
@@ -47,6 +58,7 @@ public:
     bool Contains(const glm::vec3& at) const;
 
 private:
+    Look m_look;
     SitePlan m_plan;
     std::vector<std::unique_ptr<FacilityMap>> m_buildings;
     VehicleProp m_shuttle;

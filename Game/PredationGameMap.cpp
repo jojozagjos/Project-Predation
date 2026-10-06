@@ -321,7 +321,8 @@ void PredationGame::ChooseLandingRegion(int region)
         m_shipOrbiting = 0;
         return;
     }
-    const uint16_t seed = SiteSeed(body->regions[static_cast<size_t>(region)].seed);
+    // The kind of place it is decides what is there (SitePlan::SiteKind), carried in the seed.
+    const uint16_t seed = SitePlan::SeedFor(SiteSeed(body->regions[static_cast<size_t>(region)].seed), SiteKindOf(body->regions[static_cast<size_t>(region)]));
     if (m_facility.Seed() != seed || m_mission.stage == MissionState::Stage::Over)
     {
         ChangeFacility(seed);
@@ -802,16 +803,51 @@ void PredationGame::SetGroundSky(Environment& environment)
     // Under a sky, not in space: no bodies hung in it.
     m_spaceBodies.clear();
     const StarSystem* system = CurrentSystem();
-    const Body* body = system != nullptr ? system->Find(m_groundBody) : nullptr;
-    const int region = m_groundRegion;
-    if (body == nullptr || region < 0 || region >= static_cast<int>(body->regions.size()))
+    if (const Body* body = system != nullptr ? system->Find(m_groundBody) : nullptr)
+    {
+        SetSkyOver(*system, *body, m_groundRegion, environment);
+    }
+}
+
+SiteMap::Look PredationGame::SiteLookHere()
+{
+    // The site the shuttle goes down to is on the body the ship is over: its own ground and rock, and snow only where it is
+    // cold enough and there is air to carry it.
+    SiteMap::Look look;
+    const StarSystem* system = m_campaignOpen ? CurrentSystem() : nullptr;
+    const Body* body = system != nullptr ? system->Find(m_campaign.body) : nullptr;
+    if (body == nullptr)
+    {
+        return look;
+    }
+    if (const BiomeDef* biome = m_universeData.Biome(body->biome))
+    {
+        look.ground = biome->siteGround;
+        look.rock = biome->siteRock;
+    }
+    look.snow = body->temperature < -8.0f && body->air > 0.015f;
+    return look;
+}
+
+SitePlan::SiteKind PredationGame::SiteKindOf(const LandingRegion& region)
+{
+    return region.kind == "outpost"   ? SitePlan::SiteKind::Station
+           : region.kind == "survey"  ? SitePlan::SiteKind::Survey
+           : region.kind == "wreck"   ? SitePlan::SiteKind::Wreck
+           : region.kind == "signal"  ? SitePlan::SiteKind::Signal
+                                      : SitePlan::SiteKind::Facility;
+}
+
+void PredationGame::SetSkyOver(const StarSystem& system, const Body& body, int region, Environment& environment)
+{
+    if (region < 0 || region >= static_cast<int>(body.regions.size()))
     {
         return;
     }
     // Where the star is from the place: its height and bearing over the ground there, as the world turns. In the
     // ship's frame, up is up, north is ahead of the bow and east to starboard.
-    const glm::vec3 up = AreaOnGlobe(body->regions[static_cast<size_t>(region)]);
-    const glm::vec3 sun = SunOverBody(*system, *body);
+    const glm::vec3 up = AreaOnGlobe(body.regions[static_cast<size_t>(region)]);
+    const glm::vec3 sun = SunOverBody(system, body);
     glm::vec3 east = glm::cross(glm::vec3(0.0f, 1.0f, 0.0f), up);
     east = glm::length(east) > 1.0e-4f ? glm::normalize(east) : glm::vec3(1.0f, 0.0f, 0.0f);
     const glm::vec3 north = glm::cross(up, east);
@@ -819,9 +855,9 @@ void PredationGame::SetGroundSky(Environment& environment)
     const float height = towardsSun.y;
     const float day = glm::smoothstep(-0.12f, 0.2f, height);
     const float low = 1.0f - glm::smoothstep(0.04f, 0.4f, height);
-    const float air = std::clamp(body->air, 0.0f, 1.0f);
+    const float air = std::clamp(body.air, 0.0f, 1.0f);
     glm::vec3 ground{0.4f};
-    if (const BiomeDef* biome = m_universeData.Biome(body->biome))
+    if (const BiomeDef* biome = m_universeData.Biome(body.biome))
     {
         ground = biome->siteGround;
     }
@@ -833,10 +869,10 @@ void PredationGame::SetGroundSky(Environment& environment)
     environment.planetRadius = 0.0f;
     environment.skySun = 1.0f;
     environment.sunDirection = -towardsSun;
-    const glm::vec3 starLight = glm::mix(system->starColor, glm::vec3(1.0f), 0.4f);
+    const glm::vec3 starLight = glm::mix(system.starColor, glm::vec3(1.0f), 0.4f);
     // Low in a sky with air in it, the light comes through more of it, and reddens.
     environment.sunColor = glm::mix(starLight, starLight * glm::vec3(1.0f, 0.6f, 0.34f), low * air);
-    environment.sunIntensity = 2.4f * day * (1.0f - 0.35f * body->clouds);
+    environment.sunIntensity = 2.4f * day * (1.0f - 0.35f * body.clouds);
     if (air < 0.015f)
     {
         // No air at all: a black sky with the stars in it whatever the hour, and a hard sun.
@@ -852,21 +888,21 @@ void PredationGame::SetGroundSky(Environment& environment)
     // Any air at all lights the sky by day -- a thin one less blue and less bright, its stars showing through as the sun goes
     // low -- and the stars come out at night, as much as the cloud lets them.
     const float thick = glm::smoothstep(0.015f, 0.2f, air);
-    environment.stars = std::clamp((1.0f - day * (0.6f + 0.4f * thick)) * (1.0f - 0.8f * body->clouds), 0.0f, 1.0f);
+    environment.stars = std::clamp((1.0f - day * (0.6f + 0.4f * thick)) * (1.0f - 0.8f * body.clouds), 0.0f, 1.0f);
     // Night not black: the sky's own glow and the outpost's lights are enough to see the shapes of things by.
     const glm::vec3 night{0.04f, 0.048f, 0.07f};
-    const glm::vec3 daySky = body->airColor * (0.3f + 0.25f * air) * glm::mix(0.55f, 1.0f, thick);
+    const glm::vec3 daySky = body.airColor * (0.3f + 0.25f * air) * glm::mix(0.55f, 1.0f, thick);
     environment.ambientSky = glm::mix(night, daySky, day);
-    const glm::vec3 haze = glm::mix(body->airColor, ground, 0.25f) * 0.42f;
+    const glm::vec3 haze = glm::mix(body.airColor, ground, 0.25f) * 0.42f;
     environment.fogColor = glm::mix(night * 0.8f, glm::mix(haze, haze * glm::vec3(1.25f, 0.8f, 0.6f), low), day);
     environment.ambientGround = ground * 0.12f * day + glm::vec3(0.018f, 0.02f, 0.026f);
     // How far anybody can see: by the air and the weather.
     float visibility = 1.0f;
-    if (const WeatherDef* weather = m_universeData.Weather(body->weather))
+    if (const WeatherDef* weather = m_universeData.Weather(body.weather))
     {
         visibility *= weather->visibility;
     }
-    if (const AtmosphereDef* atmosphere = m_universeData.Atmosphere(body->atmosphere))
+    if (const AtmosphereDef* atmosphere = m_universeData.Atmosphere(body.atmosphere))
     {
         visibility *= atmosphere->visibility;
     }
