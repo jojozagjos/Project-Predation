@@ -116,6 +116,9 @@ struct Environment
     float skySun = 1.0f;
     // How big the sun's disc is out in space, radians from its middle to its edge: from how big the star is and how far.
     float sunDisc = 0.006f;
+    // Where the sky draws its star, and lights the worlds hung in it, from -- when that is not where the light on the ground
+    // comes from (at night a moon or a planet overhead lights it, the star below the horizon): zero for the same.
+    glm::vec3 skySunDirection{0.0f};
     glm::vec3 planetDirection{0.0f, -1.0f, 0.0f};
     float planetRadius = 0.0f;
     PlanetLook planet = PlanetLook::Plain({0.8f, 0.84f, 0.9f}, 0.0f);

@@ -10060,6 +10060,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
 
     // --- World ------------------------------------------------------------------------------------
     Environment& environment = m_scene.GetEnvironment();
+    environment.skySunDirection = glm::vec3(0.0f);
     environment.fogStart = cv_fogStart.Get();
     environment.fogEnd = cv_fogEnd.Get();
     environment.sunIntensity = cv_sunIntensity.Get();
@@ -10148,11 +10149,14 @@ void PredationGame::OnUpdate(double dt, double alpha)
         const Body* siteBody = siteSystem != nullptr ? siteSystem->Find(m_campaign.body) : nullptr;
         if (siteBody != nullptr && m_campaign.travel.region >= 0 && m_campaign.travel.region < static_cast<int>(siteBody->regions.size()))
         {
-            // In a campaign, the sky of the world it is on, at the hour it is there -- its haze drawn in close, so the
-            // site is still a place you cannot see across.
+            // In a campaign, the sky of the world it is on, at the hour it is there -- its haze drawn in, so the site is still a
+            // place you cannot quite see across, though you can see the rock round it; and no haze at all without air.
             SetSkyOver(*siteSystem, *siteBody, m_campaign.travel.region, environment);
-            environment.fogStart = std::min(environment.fogStart, 20.0f);
-            environment.fogEnd = std::min(environment.fogEnd, 170.0f);
+            if (siteBody->air >= 0.015f)
+            {
+                environment.fogStart = std::min(environment.fogStart, 30.0f);
+                environment.fogEnd = std::min(environment.fogEnd, 260.0f);
+            }
         }
         else if (atSite)
         {

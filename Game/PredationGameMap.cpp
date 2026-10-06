@@ -1023,11 +1023,12 @@ void PredationGame::SetSkyOver(const StarSystem& system, const Body& body, int r
     // Where the star is from the place: its height and bearing over the ground there, as the world turns. In the
     // ship's frame, up is up, north is ahead of the bow and east to starboard.
     const glm::vec3 up = AreaOnGlobe(body.regions[static_cast<size_t>(region)]);
-    const glm::vec3 sun = SunOverBody(system, body);
     glm::vec3 east = glm::cross(glm::vec3(0.0f, 1.0f, 0.0f), up);
     east = glm::length(east) > 1.0e-4f ? glm::normalize(east) : glm::vec3(1.0f, 0.0f, 0.0f);
     const glm::vec3 north = glm::cross(up, east);
-    const glm::vec3 towardsSun = glm::normalize(glm::vec3(glm::dot(sun, east), glm::dot(sun, up), -glm::dot(sun, north)));
+    // A direction in the body's frame, over the place.
+    const auto overHere = [&](const glm::vec3& d) { return glm::normalize(glm::vec3(glm::dot(d, east), glm::dot(d, up), -glm::dot(d, north))); };
+    const glm::vec3 towardsSun = overHere(SunOverBody(system, body));
     const float height = towardsSun.y;
     const float day = glm::smoothstep(-0.12f, 0.2f, height);
     const float low = 1.0f - glm::smoothstep(0.04f, 0.4f, height);
@@ -1044,18 +1045,82 @@ void PredationGame::SetSkyOver(const StarSystem& system, const Body& body, int r
     }
     environment.planetRadius = 0.0f;
     environment.skySun = 1.0f;
-    environment.sunDirection = -towardsSun;
     const glm::vec3 starLight = glm::mix(system.starColor, glm::vec3(1.0f), 0.4f);
-    // Low in a sky with air in it, the light comes through more of it, and reddens.
-    environment.sunColor = glm::mix(starLight, starLight * glm::vec3(1.0f, 0.6f, 0.34f), low * air);
-    environment.sunIntensity = 2.4f * day * (1.0f - 0.35f * body.clouds);
+
+    // --- The other worlds in the sky, and what lights the night ------------------------------------------------------
+    // A moon's planet hangs huge over it; a planet's moons cross its sky. Each where it really is from here, as big as it
+    // really looks, lit by the star as it really is -- and the brightest of them above the horizon is the light at night
+    // (a planet over its moon a great deal of it, a moon over its planet some), or, with none up, the stars.
+    constexpr float kEarthRadiusAu = 4.26e-5f;
+    const double clock = m_campaign.clock;
+    const glm::dvec3 here = system.PositionD(body.index, clock);
+    glm::vec3 nightWay = glm::normalize(glm::vec3(0.25f, 1.0f, 0.15f));
+    float nightLight = 0.05f;
+    glm::vec3 nightColour = glm::vec3(0.62f, 0.72f, 1.0f);
+    int discs = 0;
+    for (const Body& other : system.bodies)
+    {
+        if (other.index == body.index || (other.parent != body.index && body.parent != other.index &&
+                                          !(body.parent >= 0 && other.parent == body.parent)))
+        {
+            continue; // only the worlds of the same planet's family are near enough to be more than points
+        }
+        const glm::dvec3 there = system.PositionD(other.index, clock);
+        const glm::dvec3 apart = there - here;
+        const double distance = glm::length(apart);
+        if (distance < 1.0e-12)
+        {
+            continue;
+        }
+        const float angle = static_cast<float>(std::asin(std::min(static_cast<double>(std::max(other.radius, 0.02f) * kEarthRadiusAu) / distance, 0.95)));
+        const glm::vec3 way = overHere(system.Over(body.index, glm::vec3(apart / distance), clock));
+        // How much of its face is lit, seen from here: all of it with the star behind us, none with it behind the world.
+        const glm::vec3 fromItToStar = glm::normalize(glm::vec3(-there));
+        const float lit = 0.5f * (1.0f + glm::dot(fromItToStar, glm::vec3(-apart / distance)));
+        const glm::vec3 colour = glm::mix(other.groundA, other.cloudColor, other.clouds * 0.6f);
+        if (other.index == body.parent && angle > 0.01f)
+        {
+            environment.planetDirection = way;
+            environment.planetRadius = angle;
+            environment.planet = LookOf(other);
+            environment.planetAirWarm = 0.0f;
+        }
+        else if (discs < Environment::kSkyBodies)
+        {
+            environment.skyBodies[discs * 2] = glm::vec4(way, angle);
+            environment.skyBodies[discs * 2 + 1] = glm::vec4(colour, other.air);
+            ++discs;
+        }
+        const float light = 0.9f * lit * glm::smoothstep(0.002f, 0.14f, angle) * glm::smoothstep(-0.02f, 0.12f, way.y);
+        if (light > nightLight)
+        {
+            nightLight = light;
+            nightWay = way;
+            nightColour = glm::mix(glm::vec3(0.62f, 0.72f, 1.0f), colour, 0.35f);
+        }
+    }
+    nightLight = std::min(nightLight, 0.5f) * (1.0f - 0.7f * body.clouds);
+
+    // The light on the ground: the star by day; by night what is up; between, the one fading into the other as the light
+    // swings from the one to the other. The sky still draws its star where it is.
+    const float sunUp = glm::smoothstep(-0.1f, 0.12f, height);
+    const glm::vec3 sunColour = glm::mix(starLight, starLight * glm::vec3(1.0f, 0.6f, 0.34f), low * air); // reddened low through air
+    const float sunLight = 2.4f * day * (1.0f - 0.35f * body.clouds);
+    const glm::vec3 between = nightWay * (1.0f - sunUp) + towardsSun * sunUp + glm::vec3(0.0f, 1.2f * sunUp * (1.0f - sunUp), 0.0f);
+    environment.sunDirection = -glm::normalize(between);
+    environment.skySunDirection = -towardsSun;
+    environment.sunColor = glm::mix(nightColour * starLight, sunColour, sunUp);
+    environment.sunIntensity = glm::mix(nightLight, sunLight, sunUp);
+    const float nightGlow = nightLight * (1.0f - sunUp);
+
     if (air < 0.015f)
     {
-        // No air at all: a black sky with the stars in it whatever the hour, and a hard sun.
+        // No air at all: a black sky with the stars in it whatever the hour, and a hard sun -- the shadows lit only by what
+        // the sunlit ground round them throws back.
         environment.stars = 1.0f;
         environment.sunDisc = 0.006f;
-        environment.ambientSky = glm::vec3(0.03f, 0.032f, 0.04f) * (0.3f + 0.7f * day);
-        environment.ambientGround = ground * 0.08f * day + glm::vec3(0.008f);
+        environment.ambientSky = glm::vec3(0.022f, 0.025f, 0.034f) + ground * sunLight * 0.03f + nightColour * nightGlow * 0.12f;
+        environment.ambientGround = ground * (0.08f * sunLight / 2.4f + 0.1f * nightGlow) + glm::vec3(0.01f);
         environment.fogColor = glm::vec3(0.0f);
         environment.fogStart = 3000.0f;
         environment.fogEnd = 9000.0f;
@@ -1065,13 +1130,13 @@ void PredationGame::SetSkyOver(const StarSystem& system, const Body& body, int r
     // low -- and the stars come out at night, as much as the cloud lets them.
     const float thick = glm::smoothstep(0.015f, 0.2f, air);
     environment.stars = std::clamp((1.0f - day * (0.6f + 0.4f * thick)) * (1.0f - 0.8f * body.clouds), 0.0f, 1.0f);
-    // Night not black: the sky's own glow and the outpost's lights are enough to see the shapes of things by.
-    const glm::vec3 night{0.04f, 0.048f, 0.07f};
+    // Night not black: the sky's own glow, and whatever is up, are enough to see the shapes of things by.
+    const glm::vec3 night = glm::vec3(0.045f, 0.054f, 0.078f) + nightColour * nightGlow * 0.12f;
     const glm::vec3 daySky = body.airColor * (0.3f + 0.25f * air) * glm::mix(0.55f, 1.0f, thick);
     environment.ambientSky = glm::mix(night, daySky, day);
     const glm::vec3 haze = glm::mix(body.airColor, ground, 0.25f) * 0.42f;
     environment.fogColor = glm::mix(night * 0.8f, glm::mix(haze, haze * glm::vec3(1.25f, 0.8f, 0.6f), low), day);
-    environment.ambientGround = ground * 0.12f * day + glm::vec3(0.018f, 0.02f, 0.026f);
+    environment.ambientGround = ground * (0.12f * day + 0.1f * nightGlow) + glm::vec3(0.018f, 0.02f, 0.026f);
     // How far anybody can see: by the air and the weather.
     float visibility = 1.0f;
     if (const WeatherDef* weather = m_universeData.Weather(body.weather))

@@ -428,6 +428,8 @@ void PredationGame::RegisterCampaignCommands()
                             });
     console.RegisterCommand("site_terrain", "Build the next site on this ground rather than its world's: site_terrain [flat|rolling|mountainous|canyons|cratered|dunes], none for the world's own",
                             [this](const std::vector<std::string>& args) { m_siteTerrainPreview = args.size() >= 2 && args[1] != "none" ? args[1] : std::string(); });
+    console.RegisterCommand("land_region", "Pick where the shuttle goes down on the world the ship is over, as the map does: land_region <region>",
+                            [this](const std::vector<std::string>& args) { ChooseLandingRegion(args.size() >= 2 ? std::atoi(args[1].c_str()) : 0); });
     console.RegisterCommand("orbit_here", "Put the ship in orbit of the body it is landed on, without the cinematic (the host)",
                             [this](const std::vector<std::string>&)
                             {

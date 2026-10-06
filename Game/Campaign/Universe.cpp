@@ -809,6 +809,21 @@ glm::vec3 StarSystem::SunOver(int index, double time, float* spin) const
     return glm::vec3(glm::rotate(glm::mat4(1.0f), -turned, glm::vec3(0.0f, 1.0f, 0.0f)) * glm::vec4(tipped, 0.0f));
 }
 
+glm::vec3 StarSystem::Over(int index, const glm::vec3& direction, double time) const
+{
+    const Body* body = Find(index);
+    if (body == nullptr)
+    {
+        return direction;
+    }
+    // Tipped and turned as the star's direction is (SunOver).
+    float turned = 0.0f;
+    SunOver(index, time, &turned);
+    const glm::mat4 untilt = glm::rotate(glm::mat4(1.0f), -body->tilt, glm::vec3(0.0f, 0.0f, 1.0f));
+    const glm::vec3 tipped = glm::vec3(untilt * glm::vec4(direction, 0.0f));
+    return glm::vec3(glm::rotate(glm::mat4(1.0f), -turned, glm::vec3(0.0f, 1.0f, 0.0f)) * glm::vec4(tipped, 0.0f));
+}
+
 float StarSystem::SunHeight(int index, const glm::vec2& latLon, double time) const
 {
     if (Find(index) == nullptr)

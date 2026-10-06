@@ -289,7 +289,10 @@ void SiteTerrain::Plan(const SitePlan& plan, Shape shape, bool dunes)
             const glm::vec2 local = p - m_origin;
             // Its foot wanders in and out, and it is broken into buttresses and gullies rather than one even slope -- but it
             // never comes in over what was built.
-            const float out = std::max(std::max(-local.x, local.x - m_size), std::max(-local.y, local.y - m_size)) +
+            // Round its corners, too: two walls meeting square make a crease, one face in the sun and the next in shadow.
+            constexpr float kCorner = 45.0f;
+            const glm::vec2 fromMiddle = glm::abs(local - glm::vec2(m_size * 0.5f)) - glm::vec2(m_size * 0.5f - kCorner);
+            const float out = glm::length(glm::max(fromMiddle, glm::vec2(0.0f))) + std::min(std::max(fromMiddle.x, fromMiddle.y), 0.0f) - kCorner +
                               10.0f * Fbm(p.x, p.y, 70.0f, 2, m_seed + 37u);
             const float rise = Smooth(kWallFrom, kWallTo, out) * std::max(wild, Smooth(kWallFrom + 12.0f, kWallFrom + 24.0f, out));
             const float wall = (kWallHigh + 9.0f * Fbm(p.x, p.y, 45.0f, 2, m_seed + 41u) + 10.0f * (Ridged(p.x, p.y, 60.0f, 2, m_seed + 43u) - 0.5f)) * rise;

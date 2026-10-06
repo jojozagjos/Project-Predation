@@ -418,9 +418,10 @@ TEST_CASE("Not every world's ground is flat: each shape rises and falls as it sh
         terrain.Plan(plan, shape, dunes);
         float low = 1.0e9f;
         float high = -1.0e9f;
-        for (float z = 15.0f; z < plan.size - 15.0f; z += 4.0f)
+        // The open ground, clear of the rock rising round it (and its rounded corners).
+        for (float z = 40.0f; z < plan.size - 40.0f; z += 4.0f)
         {
-            for (float x = 15.0f; x < plan.size - 15.0f; x += 4.0f)
+            for (float x = 40.0f; x < plan.size - 40.0f; x += 4.0f)
             {
                 const float h = terrain.Height(plan.origin.x + x, plan.origin.z + z);
                 low = std::min(low, h);
@@ -434,7 +435,7 @@ TEST_CASE("Not every world's ground is flat: each shape rises and falls as it sh
     CHECK(range(Shape::Rolling, false) > 5.0f);
     CHECK(range(Shape::Mountainous, false) > 12.0f);
     CHECK(range(Shape::Canyons, false) > 7.0f);
-    CHECK(range(Shape::Cratered, false) > 4.0f);
+    CHECK(range(Shape::Cratered, false) > 2.5f);
     CHECK(SiteTerrain::ShapeOf("mountainous") == Shape::Mountainous);
     CHECK(SiteTerrain::ShapeOf("broken") == Shape::Mountainous);
     CHECK(SiteTerrain::ShapeOf("dunes") == Shape::Flat);

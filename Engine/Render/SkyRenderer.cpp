@@ -95,7 +95,7 @@ void SkyRenderer::Draw(bgfx::ViewId view, const Environment& environment, const 
     const glm::mat4 rays = glm::mat4(glm::transpose(glm::mat3(viewMatrix))) * toView;
     bgfx::setUniform(m_uRays, glm::value_ptr(rays));
 
-    const glm::vec3 towardsSun = glm::normalize(-environment.sunDirection);
+    const glm::vec3 towardsSun = glm::normalize(-(glm::length(environment.skySunDirection) > 1.0e-6f ? environment.skySunDirection : environment.sunDirection));
     // The sky is lit by the same numbers the surfaces are, so the two cannot drift apart: the zenith
     // is the ambient sky colour opened up, the horizon sits between that and the fog the distance
     // fades into, and below it is the ground's own bounce.
