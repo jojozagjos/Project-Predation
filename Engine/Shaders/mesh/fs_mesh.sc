@@ -58,6 +58,26 @@ uniform vec4 u_spotShadowParams;
 // a number somebody has to re-tune whenever a map changes size.
 uniform vec4 u_shadowTexelWorld;
 SAMPLER2D(s_spotShadow, 3);
+
+// Soft patches over the ground, 0 to 1, a patch a unit across: smooth noise from a hash of where.
+float SurfaceHash(vec2 p)
+{
+	p = fract(p * vec2(0.1031, 0.1030));
+	p += dot(p, p.yx + 33.33);
+	return fract((p.x + p.y) * p.x);
+}
+
+float SurfacePatches(vec2 p)
+{
+	vec2 i = floor(p);
+	vec2 f = fract(p);
+	f = f * f * (vec2_splat(3.0) - f * 2.0);
+	float a = SurfaceHash(i);
+	float b = SurfaceHash(i + vec2(1.0, 0.0));
+	float c = SurfaceHash(i + vec2(0.0, 1.0));
+	float d = SurfaceHash(i + vec2(1.0, 1.0));
+	return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
 // The planar reflection: the world rendered again from a camera reflected across one flat surface.
 //
 // Sampled at the fragment's own place on the screen, which is what makes it a mirror rather than an
@@ -518,16 +538,34 @@ void main()
 		vec3 blend = pow(abs(N), vec3_splat(4.0));
 		blend /= max(blend.x + blend.y + blend.z, 1e-4);
 		vec3 at = v_worldPos * u_surfaceParams.x;
-		vec2 uvX = at.zy;
-		vec2 uvY = at.xz;
-		vec2 uvZ = at.xy;
-		surfaceAlbedo = pow(texture2D(s_baseColor, uvX).rgb, vec3_splat(2.2)) * blend.x +
-		                pow(texture2D(s_baseColor, uvY).rgb, vec3_splat(2.2)) * blend.y +
-		                pow(texture2D(s_baseColor, uvZ).rgb, vec3_splat(2.2)) * blend.z;
-		surfaceRough = texture2D(s_roughnessMap, uvX).r * blend.x + texture2D(s_roughnessMap, uvY).r * blend.y +
-		               texture2D(s_roughnessMap, uvZ).r * blend.z;
-		vec3 nX = texture2D(s_normalMap, uvX).xyz * 2.0 - 1.0;
+		// Each side's picture the right way up: an image's top row is read first, so up the picture is down its v -- and
+		// an OpenGL normal map's green points up the picture. Laid with v the other way, its bumps would light from the
+		// wrong side across one direction and stand in where they should stand out.
+		vec2 uvX = vec2(at.z, -at.y);
+		vec2 uvY = vec2(at.x, -at.z);
+		vec2 uvZ = vec2(at.x, -at.y);
 		vec3 nY = texture2D(s_normalMap, uvY).xyz * 2.0 - 1.0;
+		vec3 groundAlbedo = pow(texture2D(s_baseColor, uvY).rgb, vec3_splat(2.2));
+		float groundRough = texture2D(s_roughnessMap, uvY).r;
+		// On the ground, which is where a repeat shows -- the same few marks in rows to the horizon -- the set again, larger
+		// and turned, blended in and out over patches some metres across, and the whole of it a little lighter and darker
+		// by patches larger still.
+		if (blend.y > 0.01)
+		{
+			vec2 wide = mul(mat2(0.788, -0.616, 0.616, 0.788), uvY) * 0.41 + vec2(0.37, 0.71);
+			float mixIn = smoothstep(0.35, 0.65, SurfacePatches(v_worldPos.xz * 0.11));
+			vec3 nWide = texture2D(s_normalMap, wide).xyz * 2.0 - 1.0;
+			// The turned sample's bumps turned back into the ground's frame.
+			nWide.xy = mul(mat2(0.788, 0.616, -0.616, 0.788), nWide.xy);
+			nY = normalize(mix(nY, nWide, mixIn));
+			groundAlbedo = mix(groundAlbedo, pow(texture2D(s_baseColor, wide).rgb, vec3_splat(2.2)), mixIn);
+			groundRough = mix(groundRough, texture2D(s_roughnessMap, wide).r, mixIn);
+			groundAlbedo *= 0.9 + 0.2 * SurfacePatches(v_worldPos.xz * 0.023 + vec2_splat(17.0));
+		}
+		surfaceAlbedo = pow(texture2D(s_baseColor, uvX).rgb, vec3_splat(2.2)) * blend.x + groundAlbedo * blend.y +
+		                pow(texture2D(s_baseColor, uvZ).rgb, vec3_splat(2.2)) * blend.z;
+		surfaceRough = texture2D(s_roughnessMap, uvX).r * blend.x + groundRough * blend.y + texture2D(s_roughnessMap, uvZ).r * blend.z;
+		vec3 nX = texture2D(s_normalMap, uvX).xyz * 2.0 - 1.0;
 		vec3 nZ = texture2D(s_normalMap, uvZ).xyz * 2.0 - 1.0;
 		// Whiteout blend: each tangent-space normal added to the surface's own in that side's plane.
 		vec3 s = sign(N);
