@@ -72,14 +72,18 @@ user's to write. Grouped roughly in the order a player meets them. **Must** is n
   from the galaxy to a system to a body and back; picking something out and opening it.
 - Starting outside at Kestrel Station, by the ship's stair; up into the ship through the boarding door, and opening and
   shutting it (it opens only on the ground).
-- Taking off from the hub, and setting down there again (the hub is a place on the globe the ship itself lands at).
+- Taking off from Kestrel, and setting down at an outpost (a place on the globe the ship itself lands at; Kestrel is the
+  home world's, every other system has one of its own).
+- That nobody can shut the boarding door on someone in the doorway, and the ship will not leave with anyone outside.
 - Choosing where to go down: the landing areas on a body's globe, day and night there.
 - Crossing to another system: how long it takes, and arriving at the edge of it.
 - What is known and what is not: a world's details fill in as the ship scans it or the crew goes down.
 - Plotting a course on the map, then setting out on it from the helm in the cockpit; walking the ship while it flies;
   changing the course or calling it off part way.
 - The charts and the drive's reach: why some systems cannot be seen or reached yet.
-- Pointing things out to the others on the map (they see what you point at).
+- The map is one map for the whole crew: whoever moves it moves it for everybody (the top bar says who).
+- What CIRRA has on file: the home system surveyed, nearby systems' planets known, the rest found by going there.
+- The helm's screen: where the ship is going and when it arrives.
 - Arriving in orbit: the scan finds places to land; choosing one; the shuttle in the bay.
 - Saving: the host's job (the pause menu), and that the game autosaves on getting back aboard.
 

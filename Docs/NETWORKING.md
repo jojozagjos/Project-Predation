@@ -91,7 +91,10 @@ Network overlay (RTT, loss, bandwidth per channel), replication log, and the sim
 
 **Status**: built through Milestone 8. Two machines connect over UDP, the host simulates everyone, clients
 predict their own movement and interpolate everyone else, and shots, voice, spectating, the campaign and the
-creature all cross the wire. Protocol version 35 now (the campaign's requests gain plotting a course and setting out on it, ADR-131; in 34 the travel
+creature all cross the wire. Protocol version 36 now (one shared map: MessageType::MapView carries the map's view -- who
+moved it, a count to keep the newest, the scale, the system, what is picked and where the camera is -- sent reliably at
+most ten times a second while it changes and passed on by the host, and the travel message no longer carries anybody's
+pointer, ADR-133; in 35 the campaign's requests gained plotting a course and setting out on it, ADR-131; in 34 the travel
 message said whether the ship is landed at a hub, ADR-130;
 in 33 it gained the system the ship is in, for crossings, ADR-129); since 32: the campaign is sent whole as a document in parts
 (MessageType::Document, JSON), what clients ask of it comes back as requests (MessageType::Request), and the ship's

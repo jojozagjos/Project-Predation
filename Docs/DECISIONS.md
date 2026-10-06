@@ -2891,3 +2891,83 @@ ship of their own that starts small and grows (REWORK_DESIGN.md), and keeps a sh
   (Kepler), so none laps another; the map draws moons outside the rings it draws.
 - **The star**: on the map a granulated surface with spots, its rim darker and redder, a tight corona instead of a fog;
   out of the windows a white-hot disc with the colour in the light round it and two faint spikes.
+
+## ADR-132: Kestrel rebuilt and lit, reversed depth, real planets out of the windows, a ship that turns slowly
+
+- **Kestrel rebuilt** (Game/World/KestrelStation): blast walls round the bay with a gate onto the street, Shipworks as
+  the bay's starboard wall, floodlight masts, a control booth up a ramp, the street with pavements, lamp posts, pipes on
+  trestles; Operations Hall with a lobby under a canopy, the Annex, Crew Services, the Relay, a gatehouse, Salvage
+  Intake. Walls only where a wall makes sense. 46 lamps (LevelLights::AddLamp: a light with no fitting of its own, the
+  model drawing its head) light it at night, on their own circuit, on only while the ship stands there.
+- **Nothing flickers**: paint lies a hand's breadth (kPaint, 5 cm) over what it is on and no two coats meet at one
+  height; the pad and the road are poured into the slab (cut out of its squares) rather than laid on it; anything that
+  ends against something else ends a little short or inside it. A test (ShipTests, SharedFaces) finds every pair of
+  parts across the ship's hull and the station with faces within 5 mm of each other, facing the same way and overlapping,
+  that nothing else covers -- what flickers -- and fails on any.
+- **Reversed float depth** (Engine/Render/DepthConvention): depth is a 32-bit float written far = 0, near = 1, so the
+  precision is spread evenly out to the horizon instead of crowded at the near plane; distant thin layers stopped
+  flickering. Depth::Test(), Clear(), Format() and Perspective() are what everything asks for (the renderer, post
+  processing, the scene's passes and their culling, the debug lines, the game's views, item icons), so the convention is
+  in one place.
+- **Stars that hold still while the view moves**: the sky's rays are built from the projection's scale terms and the
+  view's turn alone; the inverse projection lost precision in its last row and the stars wobbled as the map panned and
+  zoomed.
+- **Planets out of the windows as worlds** (Game/PredationGameSpace.cpp): any body more than about a fifth of a degree
+  across is drawn as a sphere by the planet renderer in a view of its own between the sky and the scene
+  (Renderer::kViewSkyBodies), at a depth scaled to sit in order behind everything aboard; smaller ones stay points of
+  light; a body in front of the star eclipses it. In orbit the ship goes round at 1.6 radii (1.35 for a gas giant), once
+  in sixteen minutes, its nose pitched down to the ground below. Leaving, the world falls away behind (exponentially,
+  from the orbit's distance to the real one) instead of vanishing; arriving, it is drawn in to the orbit's. A moon's trip
+  is no longer instant (Travel::ArrivalDistance: arriving is near enough for the body's size, not a fixed distance).
+- **The ship turns slowly** (the user asked): onto a new heading at no more than 0.07 radians a second, easing in and
+  out, so the view out of the windows swings round rather than snapping.
+- **Moons and planets**: airless bodies are cratered (PlanetCraterCells: craters in the eight nearest cells); rings cast
+  no shadow on their planet. Daytime under air is sky, not stars: stars show only at night or where the air is thin.
+- **Solar days**: the sun's height counts the planet's own orbit (StarSystem::SunOver), and days are 25 to 75 minutes.
+- **The helm's screen** in the cockpit: where the ship is going and when it arrives, or that a course is waiting to be
+  set out on; the objective's countdown is gone from the corner of the screen.
+- **No soft-locks**: the boarding door will not shut on someone in the doorway ("Clear the doorway first"), and the ship
+  will not leave the ground with anybody outside. A joiner while the ship is landed starts outside by the stair.
+- **Leaning** keeps the eye 14 cm clear of what it leans towards, so nobody sees through a wall.
+- **Cinematics**: the torch goes off, held things are hidden and the HUD with them; the stage's ship has a dark core
+  inside its hull, glass in the cockpit and its door shut, so no gap in it shows the sky.
+
+## ADR-133: One shared map, outposts, CIRRA's records, places by kind and by world, procedural outposts
+
+- **One map for the crew**: whoever moves the map moves it for everybody. Each change is a MapView message -- who drove
+  it, a count, the scale, the system, what is picked, the region, the camera -- sent reliably at most ten times a second
+  while it changes; the host passes it on; the newest from each driver wins (the count compared as a 16-bit difference,
+  so it wraps). The top bar says who moved it last. Everybody's own pointer is gone, and with it those fields of the
+  travel message. Protocol 36.
+- **One destination**: the map marks the one place the ship is going (DESTINATION, or COURSE once set out on), in the
+  system and galaxy views alike.
+- **Outposts**: where a ship sets down to land, refit and trade is an outpost on the map (the user's word, chosen over
+  "hub"): "OUTPOST" and a number, Kestrel by its name. The site kind that was called an outpost is now a remote station.
+- **The map says what things are**: labels for the outpost, the ship (beside its body, YOUR SHIP and what it is doing),
+  the course; a legend for each scale; a region the ship is at says so.
+- **CIRRA's records** (the user chose home and nearby): the home system is surveyed whole and every one of its landing
+  areas found; systems within fifteen light years (kRecordsReach) have their planets on file but not their places. The
+  map says, for anything picked, whether it is surveyed, on file, or not known.
+- **Places by kind** (SitePlan::SiteKind): what a landing area is decides what is built there -- a research facility
+  (three to five buildings), a remote station (two, a radio mast, tanks), a survey site (a shelter in broken ground), a
+  wreck (what is left standing, a trail of debris, the great plates dug in on edge), a signal source (a tall mast with a
+  red light). The kind rides in the top three bits of the site's seed, so one number still plans the same place on every
+  machine. What waits at each is the story's, and is left for the user to decide.
+- **Places by world**: a site takes its world's ground and rock colours, its sky at that hour (fog kept short), and has
+  snow only where it is below -8 C and there is air to carry it.
+- **Outposts planned from their seeds** (Game/World/Outpost; the user's direction: every outpost but the starting one
+  procedural, so it feels like exploring): the pad and the stair are Kestrel's (shared: KestrelStation::Pad, Stair,
+  PadDressing, PadMasts), so the ship stands and the crew step off the same way everywhere. A street runs along the
+  pad's port side to an operations block straight across from the stair with the outpost's name over its door. Lots
+  along the street and round the pad are filled from the seed: blocks (stores, a workshop, crew quarters...), sheds with
+  great doors, habitat modules on legs, tank farms in their bunds, container yards (some under a gantry crane), one comms
+  mast -- in one of five paint schemes, with blast walls behind the pad or not, a fence or not. The way the ship comes in
+  and the cinematics' camera places are kept clear; the tests hold every seed to that, to the crew's spawn and the walk
+  to the operations block being clear, and to the same flicker check as Kestrel. Kestrel Station stays built by hand:
+  it is where the tutorial and the story begin. Outposts carry no CIRRA mark until the user says whose they are.
+- **Lamps for whichever outpost it is**: the ship's map keeps 96 lamps ready round the rooms and as many round the stage
+  (Outpost::kMaxLamps), made with the ship before any site's, and re-aims them for the outpost it stands at
+  (LevelLights::Retune, which also forgets the old shadows); those not wanted go on a circuit never lit.
+- **Signs at outposts** are drawn into a texture kept for each place in the list, as wide as any sign, so travelling from
+  outpost to outpost makes no more of them; the quad shows only the part drawn into.
+- **outpost_preview <seed>** (developers) shows any outpost round the landed ship without crossing to it.

@@ -13,13 +13,22 @@ it has got, in the order the design's vertical slice puts things. Updated 2026-1
   scales -- the galaxy, as far as anybody scrolls; a system; a body's globe with its landing areas -- with right-drag to
   move, left-click to pick, and the wheel going from one scale to the next. A course is flown, round the star rather
   than through it, with time to walk the ship, redirected or called off part way; other systems are crossed to in a
-  minute or more; arriving scans the body and finds places to land, chosen on the globe; everybody sees what the
-  others are pointing at. Space out of the windows is the system as it is: other worlds as points of light or discs at
-  their real size, the sun setting behind the planet below in orbit.
+  minute or more; arriving scans the body and finds places to land, chosen on the globe. The map is one for the whole
+  crew: whoever moves it moves it for everybody (ADR-133). It says what each thing is, what CIRRA has on file about it,
+  where the ship is, and the one place it is going. Space out of the windows is the system as it is (ADR-132): planets
+  and moons drawn as the worlds they are, the one just left falling away behind rather than vanishing, the ship turning
+  slowly onto its heading, the sun eclipsed by what is in front of it.
 - **Kestrel Station** (ADR-130, ADR-131): the campaign begins outside the ship on its pad at Kestrel, the CIRRA station
   on the home world -- Hangar Row, Operations Hall, Shipworks, Salvage Intake, Crew Services, the Research Annex and the
-  Navigation Relay, signed with the CIRRA mark -- under that world's sky at its time of day. Up the stair and in through
-  the boarding door. Taking off and setting down have their own cinematics.
+  Navigation Relay, signed with the CIRRA mark -- under that world's sky at its time of day, lit at night, nothing on it
+  flickering (ADR-132). Up the stair and in through the boarding door. Taking off and setting down have their own
+  cinematics. Kestrel stays built by hand: it is where the tutorial and the story begin.
+- **Outposts on every other world** (ADR-133): each system's outpost planned from its seed -- an operations block with
+  its name on it across the street from the stair, and sheds, blocks, habitats, tank farms, container yards and comms
+  masts round the pad, each outpost its own.
+- **Places on planets by kind** (ADR-133): every landing area leads somewhere of its own -- a research facility, a
+  remote station, a survey site, a wreck, a signal source -- on its world's own ground, under its sky, with snow only
+  where it is cold enough and there is air to carry it.
 - **Plotting a course and setting out** (ADR-131): plotted on the map, set out on from the helm; no cinematic leaving
   orbit until the instant-travel drive. The charts and a crossing's reach grow with the sensors and the drive.
 - **The crew's own ship** (ADR-127): small, one deck, a shuttle bay; its outside follows the campaign's colours and
@@ -31,17 +40,17 @@ it has got, in the order the design's vertical slice puts things. Updated 2026-1
 
 ## Next, in order
 
-1. **Landing regions that look like their world**: the ground's texture and colour, the rock, the sky, fog and light
-   by where the region is on its planet and the time of day there, weather (snow, rain, dust, ash) that changes; more
-   than snow. And more kinds of place to explore than a facility: wrecks, camps, a signal source, a tower, a cave mouth,
-   some quiet and some not.
+1. **Landing regions that look like their world, and what waits at each kind of place**: the ground's colour, the rock
+   and the sky are the world's now (ADR-133); still to come, ground textures other than the snow set and weather that
+   changes (rain, dust, ash). The kinds of place exist -- what is at a wreck, a signal source, a survey site or a remote
+   station is the story's, and waits on the lore. Caves, camps and towers after.
 2. **What there is to do there**: salvage and components to carry back, points of interest found by exploring, the
    log filled in by what is found, a region remembered as it was left (what was taken, what was opened).
 3. **Kestrel's interiors**: Operations Hall (contracts), Shipworks (upgrades), Salvage Intake (selling), Crew Services
    -- buildings to walk into, each a module of its own.
 4. **The economy and the shipyard**: credits for what is brought back; the hub to sell salvage at, buy upgrades
    (the drive -- the first upgrade opens other systems --, sensors, storage, the ship's size) and change the ship's
-   colours; the ship gaining sections as it grows. Walking off the ship at the hub. What the hub is in the story.
+   colours; the ship gaining sections as it grows. What other outposts are in the story.
 5. **The ship's log**: everything found, kept and shown; entries marked and pinned.
 6. **CIRRA's contracts**: optional work offered over the intercom, briefed at the navigation table, paying credits
    and components.
