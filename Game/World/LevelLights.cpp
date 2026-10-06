@@ -211,6 +211,26 @@ int LevelLights::AddLamp(const glm::vec3& at, const glm::vec3& direction, const 
     return static_cast<int>(m_lights.size()) - 1;
 }
 
+void LevelLights::Retune(int index, const glm::vec3& at, const glm::vec3& direction, const glm::vec3& colour, float intensity, float range, float inner,
+                         float outer, int circuit)
+{
+    if (index < 0 || static_cast<size_t>(index) >= m_lights.size())
+    {
+        return;
+    }
+    Light& light = m_lights[static_cast<size_t>(index)];
+    light.direction = glm::length(direction) > 1e-4f ? glm::normalize(direction) : glm::vec3(0.0f, -1.0f, 0.0f);
+    light.position = at;
+    light.color = colour;
+    light.intensity = intensity;
+    light.range = range;
+    light.innerAngle = inner;
+    light.outerAngle = outer;
+    light.circuit = circuit;
+    // Its shadow was of where it was: none kept is any good now.
+    ++m_generation;
+}
+
 void LevelLights::Clear(Scene& scene)
 {
     for (const Light& light : m_lights)

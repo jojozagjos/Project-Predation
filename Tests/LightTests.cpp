@@ -5,6 +5,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <glm/geometric.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
 #include <cmath>
@@ -164,4 +165,35 @@ TEST_CASE("A lamp is put in the cells of the view its light reaches, and in none
     // Kept in a box that ends before the view: nowhere.
     SceneRenderer::ClusterCells(view, projection, {0.0f, 0.0f, -5.0f}, 5.0f, true, {-1.0f, -1.0f, 1.0f}, {1.0f, 1.0f, 3.0f}, cells);
     CHECK(cells.empty());
+}
+
+TEST_CASE("A lamp kept ready is made another where it is wanted, and put out where it is not", "[lights]")
+{
+    LevelLights lights;
+    const int lamp = lights.AddLamp({0.0f, 0.0f, 0.0f}, {0.0f, -1.0f, 0.0f}, glm::vec3(0.0f), 0.0f, 1.0f, 60.0f, 90.0f, 7);
+    lights.AddLamp({0.0f, 5.0f, 0.0f}, {0.0f, -1.0f, 0.0f}, glm::vec3(1.0f), 10.0f, 8.0f, 60.0f, 90.0f, 1);
+    lights.SetPowered(7, false);
+    Scene scene;
+    std::vector<PunctualLight> lit;
+    lights.Update(scene, 1.0f);
+    lights.Gather(lit);
+    CHECK(lit.size() == 1);
+
+    // Aimed somewhere else, coloured, and put on a circuit with power: it lights there, and the lamp after it is untouched.
+    lights.Retune(lamp, {20.0f, 9.0f, -3.0f}, {1.0f, -1.0f, 0.0f}, {1.0f, 0.7f, 0.3f}, 40.0f, 18.0f, 70.0f, 120.0f, 1);
+    lights.Update(scene, 2.0f);
+    lit.clear();
+    lights.Gather(lit);
+    REQUIRE(lit.size() == 2);
+    CHECK(lit[0].position == glm::vec3(20.0f, 9.0f, -3.0f));
+    CHECK(std::abs(glm::length(lit[0].direction) - 1.0f) < 1e-4f);
+    CHECK(lit[0].range == 18.0f);
+    CHECK(lit[1].position == glm::vec3(0.0f, 5.0f, 0.0f));
+
+    // Back on a dead circuit: dark again.
+    lights.Retune(lamp, {0.0f, 0.0f, 0.0f}, {0.0f, -1.0f, 0.0f}, glm::vec3(0.0f), 0.0f, 1.0f, 60.0f, 90.0f, 7);
+    lights.Update(scene, 3.0f);
+    lit.clear();
+    lights.Gather(lit);
+    CHECK(lit.size() == 1);
 }

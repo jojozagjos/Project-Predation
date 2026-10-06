@@ -4,6 +4,7 @@
 #include "Game/Interaction/InteractionSystem.h"
 #include "Game/Items/ItemDatabase.h"
 #include "Game/World/KestrelStation.h"
+#include "Game/World/Outpost.h"
 #include "Game/World/ShipMap.h"
 #include "Game/World/Vehicles.h"
 #include "Game/World/WorldObjects.h"
@@ -297,4 +298,135 @@ TEST_CASE("Kestrel Station and the ship standing in it share no surface, which w
         UNSCOPED_INFO(pair);
     }
     CHECK(found.empty());
+}
+
+namespace
+{
+
+// Whether a point is inside any part of a model that is not turned (the hills and dishes are, and are nowhere near), grown by
+// `margin`.
+const ModelPart* PartAt(const ModelAsset& model, const glm::vec3& point, float margin = 0.0f)
+{
+    for (const ModelPart& part : model.parts)
+    {
+        if (part.rotation == glm::vec3(0.0f) && part.parent.empty() && glm::all(glm::lessThanEqual(glm::abs(point - part.position), part.size * 0.5f + margin)))
+        {
+            return &part;
+        }
+    }
+    return nullptr;
+}
+
+uint32_t OutpostSeed(int i)
+{
+    return (static_cast<uint32_t>(i) * 2654435761u + 0x51u) | 1u;
+}
+
+} // namespace
+
+TEST_CASE("Every outpost but Kestrel is its own, planned the same from the same seed", "[ship][outpost]")
+{
+    const glm::vec3 ground{0.4f};
+    const glm::vec3 rock{0.3f};
+    const Outpost::Layout a = Outpost::Generate(OutpostSeed(3), ground, rock);
+    const Outpost::Layout b = Outpost::Generate(OutpostSeed(3), ground, rock);
+    REQUIRE(a.solid.parts.size() == b.solid.parts.size());
+    REQUIRE(a.dressing.parts.size() == b.dressing.parts.size());
+    for (size_t i = 0; i < a.solid.parts.size(); ++i)
+    {
+        REQUIRE(a.solid.parts[i].position == b.solid.parts[i].position);
+        REQUIRE(a.solid.parts[i].size == b.solid.parts[i].size);
+    }
+    REQUIRE(a.lamps.size() == b.lamps.size());
+
+    // And they differ from one another.
+    std::vector<size_t> counts;
+    for (int i = 0; i < 30; ++i)
+    {
+        const size_t count = Outpost::Generate(OutpostSeed(i), ground, rock).solid.parts.size();
+        if (std::find(counts.begin(), counts.end(), count) == counts.end())
+        {
+            counts.push_back(count);
+        }
+    }
+    CHECK(counts.size() >= 20);
+}
+
+TEST_CASE("An outpost has its name to put up, lamps enough to light it, and nothing where people and cameras stand", "[ship][outpost]")
+{
+    // Where the cinematics of setting down and taking off stand their cameras (ship_land, ship_takeoff), in the ship's frame.
+    const glm::vec3 cameras[] = {{34.0f, 3.0f, 46.0f}, {32.0f, 3.4f, 44.0f}, {-36.0f, 2.2f, 54.0f}, {-34.0f, 2.0f, 50.0f},
+                                 {-42.0f, 2.2f, -78.0f}, {-44.0f, 2.0f, -74.0f}, {18.0f, 10.0f, 42.0f}, {16.0f, 16.0f, 30.0f}};
+    const float s = KestrelStation::kSlabTop;
+    const float cross = (KestrelStation::kCrossFrom + KestrelStation::kCrossTo) * 0.5f;
+    CHECK(KestrelStation::Lamps().size() <= Outpost::kMaxLamps);
+    for (int i = 0; i < 40; ++i)
+    {
+        const Outpost::Layout layout = Outpost::Generate(OutpostSeed(i), glm::vec3(0.4f), glm::vec3(0.3f));
+        INFO("outpost " << i);
+        CHECK(layout.lamps.size() >= 12);
+        CHECK(layout.lamps.size() <= Outpost::kMaxLamps);
+        CHECK(std::count_if(layout.signs.begin(), layout.signs.end(), [](const KestrelStation::Sign& sign) { return sign.id == "outpost_name"; }) == 1);
+        for (size_t a = 0; a < layout.signs.size(); ++a)
+        {
+            for (size_t b = a + 1; b < layout.signs.size(); ++b)
+            {
+                CHECK(layout.signs[a].id != layout.signs[b].id);
+            }
+        }
+        for (const glm::vec3& camera : cameras)
+        {
+            const ModelPart* solid = PartAt(layout.solid, camera, 1.0f);
+            const ModelPart* dressing = PartAt(layout.dressing, camera, 1.0f);
+            INFO("camera at " << camera.x << " " << camera.y << " " << camera.z << ": " << (solid ? solid->name : dressing ? dressing->name : ""));
+            CHECK(solid == nullptr);
+            CHECK(dressing == nullptr);
+        }
+        // Where the crew stand when they come off the ship, and the walk from the stair across the street to the operations
+        // block's door: clear, above the kerbs.
+        for (int player = 0; player < 8; ++player)
+        {
+            const glm::vec3 at = KestrelStation::Spawn(player) - ShipSpec::kOrigin;
+            for (float y = 0.3f; y < 1.9f; y += 0.4f)
+            {
+                const ModelPart* part = PartAt(layout.solid, {at.x, s + y, at.z});
+                INFO("player " << player << " in " << (part ? part->name : ""));
+                CHECK(part == nullptr);
+            }
+        }
+        for (float x = -9.6f; x > -48.8f; x -= 0.5f)
+        {
+            const ModelPart* part = PartAt(layout.solid, {x, s + 1.0f, cross});
+            INFO("the walk at " << x << " blocked by " << (part ? part->name : ""));
+            CHECK(part == nullptr);
+        }
+        // The way the ship comes in, low over the pad's front along its middle: nothing standing in it.
+        for (const ModelAsset* model : {&layout.solid, &layout.dressing})
+        {
+            for (const ModelPart& part : model->parts)
+            {
+                if (std::abs(part.position.x) < 22.0f && part.position.z + part.size.z * 0.5f < -40.0f && part.rotation == glm::vec3(0.0f))
+                {
+                    INFO(part.name);
+                    CHECK(part.position.y + part.size.y * 0.5f < s + 4.0f);
+                }
+            }
+        }
+    }
+}
+
+TEST_CASE("Outposts and the ship standing in them share no surface, which would flicker", "[ship][outpost]")
+{
+    const ModelAsset hull = ShipMap::HullModel(ShipHullLook{});
+    for (int i = 0; i < 10; ++i)
+    {
+        const Outpost::Layout layout = Outpost::Generate(OutpostSeed(i), glm::vec3(0.4f), glm::vec3(0.3f));
+        const std::vector<std::string> found = SharedFaces({&hull, &layout.solid, &layout.dressing});
+        INFO("outpost " << i);
+        for (const std::string& pair : found)
+        {
+            UNSCOPED_INFO(pair);
+        }
+        CHECK(found.empty());
+    }
 }

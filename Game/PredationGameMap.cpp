@@ -9,6 +9,7 @@
 #include "Engine/Render/Renderer.h"
 #include "Engine/Render/TextureLibrary.h"
 #include "Game/World/KestrelStation.h"
+#include "Game/World/Outpost.h"
 #include "Game/World/ScreenCanvas.h"
 
 #include <imgui.h>
@@ -626,24 +627,82 @@ void PredationGame::UpdateShipGround()
             ground = biome->siteGround;
             rock = biome->siteRock;
         }
-        m_ship.SetField(m_scene, m_app->GetMeshes(), landed, ground, rock);
-        m_ship.SetStageField(m_scene, m_app->GetMeshes(), GroundCinematic() && at != nullptr, ground, rock);
+        // Kestrel Station on the home world, built by hand; any other world's outpost planned from its own seed, its name on it.
+        FieldLook field;
+        field.ground = ground;
+        field.rock = rock;
+        const StarSystem* home = m_universe.System(m_universe.Home());
+        field.kestrel = home != nullptr && m_campaign.system == home->id.Packed() && m_groundBody == home->hub;
+        std::string name;
+        if (at != nullptr && m_groundRegion >= 0 && m_groundRegion < static_cast<int>(at->regions.size()))
+        {
+            field.seed = at->regions[static_cast<size_t>(m_groundRegion)].seed;
+            name = at->regions[static_cast<size_t>(m_groundRegion)].designation;
+        }
+        if (field.kestrel)
+        {
+            field.seed = 0;
+        }
+        if (m_outpostPreview != 0)
+        {
+            field.kestrel = false;
+            field.seed = m_outpostPreview;
+            name = "OUTPOST " + std::to_string(10 + m_outpostPreview % 90u);
+        }
+        m_ship.SetField(m_scene, m_app->GetMeshes(), landed, field);
+        m_ship.SetStageField(m_scene, m_app->GetMeshes(), GroundCinematic() && at != nullptr, field);
         m_ship.SetGear(m_scene, landed, GroundCinematic() && m_stageGear);
         m_ship.SetAirlockOpen(m_scene, m_app->GetMeshes(), landed && m_campaign.doorOpen);
-        // Kestrel's own name only at Kestrel: the home world's hub.
-        const StarSystem* home = m_universe.System(m_universe.Home());
-        const bool kestrel = landed && home != nullptr && m_campaign.system == home->id.Packed() && m_campaign.body == home->hub;
-        UpdateHubSigns(landed, kestrel);
+        UpdateHubSigns(landed, field, name);
     }
 }
 
-void PredationGame::UpdateHubSigns(bool shown, bool named)
+Entity PredationGame::MakeSign(const KestrelStation::Sign& sign, const std::string& meshName, TextureHandle texture, int wide, int high, int textureWide,
+                               int textureHigh, MeshHandle& mesh)
 {
-    // Made once, the first time the ship stands at a hub; shown and hidden after. Kestrel's name is one of them.
-    if (shown && m_hubSigns.empty())
+    // A flat panel facing +z, both faces, its picture the part of the texture drawn into (wide by high of it; half a texel in
+    // from the edge, where what is beyond would be blended in).
+    MeshData quad;
+    const float w = sign.width * 0.5f;
+    const float h = sign.height * 0.5f;
+    const float u = (static_cast<float>(wide) - 0.5f) / static_cast<float>(textureWide);
+    const float v = (static_cast<float>(high) - 0.5f) / static_cast<float>(textureHigh);
+    const glm::vec3 normal{0.0f, 0.0f, 1.0f};
+    quad.vertices.push_back(MeshVertex{{-w, h, 0.0f}, normal, {0.0f, 0.0f}});
+    quad.vertices.push_back(MeshVertex{{w, h, 0.0f}, normal, {u, 0.0f}});
+    quad.vertices.push_back(MeshVertex{{w, -h, 0.0f}, normal, {u, v}});
+    quad.vertices.push_back(MeshVertex{{-w, -h, 0.0f}, normal, {0.0f, v}});
+    quad.indices = {0, 3, 2, 0, 2, 1, 0, 1, 2, 0, 2, 3};
+    mesh = m_app->GetMeshes().Upload(quad, meshName);
+    Transform at;
+    at.position = ShipMap::ToWorld(sign.at);
+    at.rotation = glm::angleAxis(glm::radians(sign.yaw), glm::vec3(0.0f, 1.0f, 0.0f));
+    // Paint on the ground lies flat, its top where it faces.
+    const bool floor = sign.style == KestrelStation::Sign::Style::Floor;
+    if (floor)
     {
-        MeshLibrary& meshes = m_app->GetMeshes();
-        TextureLibrary& textures = m_app->GetTextures();
+        at.rotation = at.rotation * glm::angleAxis(-glm::half_pi<float>(), glm::vec3(1.0f, 0.0f, 0.0f));
+    }
+    const bool logo = sign.style == KestrelStation::Sign::Style::Logo;
+    const bool painted = sign.style == KestrelStation::Sign::Style::Painted || floor;
+    Material material = Material::Diffuse(glm::vec3(1.0f), painted ? 0.9f : 0.4f);
+    material.baseColorTexture = texture;
+    material.emissive = painted ? glm::vec3(0.0f) : glm::vec3(logo ? 1.4f : 1.1f);
+    material.emissiveTextured = !painted;
+    const Entity entity = m_scene.CreateMeshEntity("sign_" + sign.id, at, mesh, material);
+    if (MeshRenderer* renderer = m_scene.GetMeshRenderer(entity))
+    {
+        renderer->castsShadow = false;
+    }
+    return entity;
+}
+
+void PredationGame::UpdateHubSigns(bool shown, const FieldLook& field, const std::string& name)
+{
+    TextureLibrary& textures = m_app->GetTextures();
+    // Kestrel's, made once, the first time the ship stands there; shown and hidden after.
+    if (shown && field.kestrel && m_hubSigns.empty())
+    {
         for (const KestrelStation::Sign& sign : KestrelStation::Signs(true))
         {
             const bool logo = sign.style == KestrelStation::Sign::Style::Logo;
@@ -653,44 +712,60 @@ void PredationGame::UpdateHubSigns(bool shown, bool named)
             KestrelStation::Draw(canvas, sign);
             const TextureHandle texture = textures.CreateDynamic(wide, high, "sign_" + sign.id);
             textures.Update(texture, canvas.image);
-            // A flat panel facing +z, its picture the whole texture, both faces.
-            MeshData quad;
-            const float w = sign.width * 0.5f;
-            const float h = sign.height * 0.5f;
-            const glm::vec3 normal{0.0f, 0.0f, 1.0f};
-            quad.vertices.push_back(MeshVertex{{-w, h, 0.0f}, normal, {0.0f, 0.0f}});
-            quad.vertices.push_back(MeshVertex{{w, h, 0.0f}, normal, {1.0f, 0.0f}});
-            quad.vertices.push_back(MeshVertex{{w, -h, 0.0f}, normal, {1.0f, 1.0f}});
-            quad.vertices.push_back(MeshVertex{{-w, -h, 0.0f}, normal, {0.0f, 1.0f}});
-            quad.indices = {0, 3, 2, 0, 2, 1, 0, 1, 2, 0, 2, 3};
-            const MeshHandle mesh = meshes.Upload(quad, "sign_" + sign.id);
-            Transform at;
-            at.position = ShipMap::ToWorld(sign.at);
-            at.rotation = glm::angleAxis(glm::radians(sign.yaw), glm::vec3(0.0f, 1.0f, 0.0f));
-            // Paint on the ground lies flat, its top where it faces.
-            const bool floor = sign.style == KestrelStation::Sign::Style::Floor;
-            if (floor)
-            {
-                at.rotation = at.rotation * glm::angleAxis(-glm::half_pi<float>(), glm::vec3(1.0f, 0.0f, 0.0f));
-            }
-            const bool painted = sign.style == KestrelStation::Sign::Style::Painted || floor;
-            Material material = Material::Diffuse(glm::vec3(1.0f), painted ? 0.9f : 0.4f);
-            material.baseColorTexture = texture;
-            material.emissive = painted ? glm::vec3(0.0f) : glm::vec3(logo ? 1.4f : 1.1f);
-            material.emissiveTextured = !painted;
-            m_hubSigns.push_back(m_scene.CreateMeshEntity("sign_" + sign.id, at, mesh, material));
-            m_hubSignIds.push_back(sign.id);
-            if (MeshRenderer* renderer = m_scene.GetMeshRenderer(m_hubSigns.back()))
-            {
-                renderer->castsShadow = false;
-            }
+            MeshHandle mesh;
+            m_hubSigns.push_back(MakeSign(sign, "sign_" + sign.id, texture, wide, high, wide, high, mesh));
         }
     }
-    for (size_t i = 0; i < m_hubSigns.size(); ++i)
+    // Another outpost's, made again whenever it is another outpost: what its plan puts up, and its name on its operations block.
+    // Each sign drawn into a texture kept for its place in the list, as wide as any sign is, so going from outpost to outpost
+    // makes no more of them.
+    if (shown && !field.kestrel && (!m_outpostSignsBuilt || m_outpostSignsSeed != field.seed || m_outpostSignsName != name))
     {
-        if (MeshRenderer* renderer = m_scene.GetMeshRenderer(m_hubSigns[i]))
+        for (const Entity entity : m_outpostSigns)
         {
-            renderer->visible = shown && (named || m_hubSignIds[i] != "station_name");
+            m_scene.Destroy(entity);
+        }
+        for (const MeshHandle mesh : m_outpostSignMeshes)
+        {
+            m_app->GetMeshes().Release(mesh);
+        }
+        m_outpostSigns.clear();
+        m_outpostSignMeshes.clear();
+        m_outpostSignsBuilt = true;
+        m_outpostSignsSeed = field.seed;
+        m_outpostSignsName = name;
+        constexpr int kTextureWide = 1024;
+        constexpr int kHigh = 128;
+        std::vector<KestrelStation::Sign> signs = Outpost::Generate(field.seed, field.ground, field.rock).signs;
+        for (size_t i = 0; i < signs.size(); ++i)
+        {
+            KestrelStation::Sign& sign = signs[i];
+            if (sign.id == "outpost_name")
+            {
+                sign.lines = {name};
+            }
+            const int wide = std::clamp(static_cast<int>(static_cast<float>(kHigh) * sign.width / std::max(sign.height, 0.1f)), 64, kTextureWide);
+            ScreenCanvas canvas(wide, kHigh);
+            KestrelStation::Draw(canvas, sign);
+            const TextureHandle texture = textures.CreateDynamic(kTextureWide, kHigh, "outpost_sign_" + std::to_string(i));
+            textures.Update(texture, canvas.image);
+            MeshHandle mesh;
+            m_outpostSigns.push_back(MakeSign(sign, "outpost_sign_" + std::to_string(field.seed) + "_" + sign.id, texture, wide, kHigh, kTextureWide, kHigh, mesh));
+            m_outpostSignMeshes.push_back(mesh);
+        }
+    }
+    for (const Entity entity : m_hubSigns)
+    {
+        if (MeshRenderer* renderer = m_scene.GetMeshRenderer(entity))
+        {
+            renderer->visible = shown && field.kestrel;
+        }
+    }
+    for (const Entity entity : m_outpostSigns)
+    {
+        if (MeshRenderer* renderer = m_scene.GetMeshRenderer(entity))
+        {
+            renderer->visible = shown && !field.kestrel;
         }
     }
 }

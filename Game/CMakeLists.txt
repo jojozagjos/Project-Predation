@@ -128,6 +128,7 @@ set(PRED_GAME_SOURCES
     World/ShipMap.h
     World/ShipMap.cpp
     World/KestrelStation.cpp
+    World/Outpost.cpp
     World/Vehicles.h
     World/Vehicles.cpp
     World/HiveMesh.h

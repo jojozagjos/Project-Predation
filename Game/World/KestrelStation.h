@@ -2,14 +2,18 @@
 
 #include "Engine/Assets/ModelAsset.h"
 #include "Game/World/ScreenCanvas.h"
+#include "Game/World/ShipMap.h"
 
 #include <glm/vec3.hpp>
+#include <glm/vec4.hpp>
 
 #include <string>
 #include <vector>
 
 namespace pred
 {
+
+struct PartBuilder;
 
 // Kestrel Station: a CIRRA frontier logistics and contract station on the settled world a campaign starts on, where the
 // crew's ship stands in its bay on Hangar Row (and where the tutorial will end). Not a city: one working station that
@@ -23,7 +27,7 @@ namespace pred
 //   the apron    ahead of the bay: Salvage Intake, its docks, containers and gantry crane, lamp masts; a fence round it all
 //
 // Everything is in the ship's frame (ShipSpec: the ship's middle at the origin, its bow towards -z, its deck at y = 0),
-// the ground at ShipSpec::kFieldGround. Other worlds' outposts are built the same way without Kestrel's own name on them.
+// the ground at ShipSpec::kFieldGround. Other worlds' outposts are planned from their seeds (Outpost), on the same pad.
 namespace KestrelStation
 {
 
@@ -73,6 +77,27 @@ std::vector<Sign> Signs(bool named);
 void Draw(ScreenCanvas& canvas, const Sign& sign);
 // The CIRRA mark: the letters, and the orange bar in the A, filling the box given.
 void DrawLogo(ScreenCanvas& canvas, float x, float y, float width, float height, Rgb letters, Rgb bar);
+
+// --- What every outpost's pad has, Kestrel's and the generated ones' (Outpost) alike -----------------------------------
+// The pad the ship stands on (x0, z0, x1, z1), poured into the slab round it rather than laid on it.
+inline constexpr glm::vec4 kPad{-17.0f, -30.0f, 17.0f, 34.0f};
+// The concrete's top, walked on.
+inline constexpr float kSlabTop = ShipSpec::kFieldGround + 0.12f;
+// The walkway from the stair to the street, across the pad's port side, between these (z).
+inline constexpr float kCrossFrom = -8.6f;
+inline constexpr float kCrossTo = -5.2f;
+void Pad(PartBuilder& solid);
+// The ship's boarding stair down to the pad, and the ground supply beside it.
+void Stair(PartBuilder& solid);
+// The pad's paint, the lamps sunk round it, the stair's treads and the supply's cable; the walkway from the stair out as far as
+// `walkwayTo` (x).
+void PadDressing(PartBuilder& dressing, float walkwayTo);
+// The floodlight masts at the pad's corners, their crossbars (dressing) and their lamps.
+void PadMasts(PartBuilder& solid);
+void PadMastBars(PartBuilder& dressing);
+std::vector<Lamp> PadMastLamps();
+// A head and a hood on each lamp.
+void LampHeads(PartBuilder& dressing, const std::vector<Lamp>& lamps);
 
 // Where people stand when the campaign begins: on the bay's floor by the ship's stair, looking at the ship.
 glm::vec3 Spawn(int player);

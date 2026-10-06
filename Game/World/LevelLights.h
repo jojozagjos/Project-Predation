@@ -94,6 +94,10 @@ public:
     // street lamps, floodlights on masts). A cone of `inner` to `outer` degrees across; 180 for all round. On `circuit`.
     int AddLamp(const glm::vec3& at, const glm::vec3& direction, const glm::vec3& colour, float intensity, float range, float inner,
                 float outer, int circuit = 0);
+    // A lamp from AddLamp made another: moved, turned, its colour, brightness, reach and cone changed, and put on `circuit`. For
+    // lamps kept ready for a place that changes (an outpost's, each one's own) while the lights made after them stay.
+    void Retune(int index, const glm::vec3& at, const glm::vec3& direction, const glm::vec3& colour, float intensity, float range, float inner,
+                float outer, int circuit);
     void Clear(Scene& scene);
     // Every light from `first` on, taken away: the ones a map added after everything else, when that
     // map is rebuilt.

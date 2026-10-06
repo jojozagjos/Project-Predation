@@ -70,6 +70,17 @@ struct ShipHullLook
     bool operator==(const ShipHullLook& other) const = default;
 };
 
+// Which outpost the ship stands at -- Kestrel Station, or another world's planned from its seed (Outpost) -- and the colours of
+// that world's ground and rock.
+struct FieldLook
+{
+    bool kestrel = true;
+    uint32_t seed = 0;
+    glm::vec3 ground{0.4f};
+    glm::vec3 rock{0.3f};
+    bool operator==(const FieldLook& other) const = default;
+};
+
 // The crew's own ship: small, cramped, working, and where everybody is between expeditions.
 //
 // One deck, laid out along its spine in the ship's own frame with its bow towards -z, a section after another:
@@ -104,12 +115,12 @@ public:
     CinePose AirlockControl(bool inside) const;
     // The landing gear, down or up: round the rooms (standing at a hub) and on the stage (as a cinematic has it).
     void SetGear(Scene& scene, bool rooms, bool stage);
-    // Whether the ship is standing at a hub: the station round it (KestrelStation), solid to walk on and into, built again
-    // only for another world's colours.
-    void SetField(Scene& scene, MeshLibrary& meshes, bool shown, const glm::vec3& ground, const glm::vec3& rock);
-    // The same ground on the stage, for the cinematics of taking off and setting down (the ship's legs not on it: there the
+    // Whether the ship is standing at an outpost: the outpost round it (Kestrel Station, or another world's), solid to walk on
+    // and into, its lamps lit; built again only for another outpost or another world's colours.
+    void SetField(Scene& scene, MeshLibrary& meshes, bool shown, const FieldLook& look);
+    // The same outpost on the stage, for the cinematics of taking off and setting down (the ship's legs not on it: there the
     // ship is flying).
-    void SetStageField(Scene& scene, MeshLibrary& meshes, bool shown, const glm::vec3& ground, const glm::vec3& rock);
+    void SetStageField(Scene& scene, MeshLibrary& meshes, bool shown, const FieldLook& look);
     bool FieldShown() const { return m_fieldShown; }
     bool Built() const { return m_built; }
 
@@ -187,9 +198,12 @@ private:
     bool m_fieldShown = false;
     VehicleProp m_stageField;
     bool m_stageFieldShown = false;
-    glm::vec3 m_stageFieldGround{-1.0f};
-    glm::vec3 m_fieldGround{-1.0f};
-    glm::vec3 m_fieldRock{-1.0f};
+    FieldLook m_fieldLook;
+    FieldLook m_stageFieldLook;
+    // The lamps kept ready for whichever outpost it is, round the rooms and round the stage (made with the ship, aimed as each
+    // outpost has them: AimFieldLamps).
+    std::vector<int> m_fieldLamps;
+    std::vector<int> m_stageFieldLamps;
     ShipHullLook m_look;
     std::vector<Entity> m_entities;
     std::vector<BodyHandle> m_bodies;

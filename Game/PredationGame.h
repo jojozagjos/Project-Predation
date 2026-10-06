@@ -48,6 +48,7 @@
 #include "Game/World/TestMap.h"
 #include "Game/World/LabMap.h"
 #include "Game/World/FacilityMap.h"
+#include "Game/World/KestrelStation.h"
 #include "Game/World/ShipMap.h"
 #include "Game/World/SiteMap.h"
 #include "Game/World/Surfaces.h"
@@ -1155,12 +1156,22 @@ private:
     bool RegionIsPort(const Body& body, int region) const;
     // Whether a cinematic of the ship on the ground is playing (taking off from a hub, setting down at one).
     bool GroundCinematic() const;
-    // The ship's surroundings as the campaign has it: standing at a hub (the station, its signs, the boarding door open)
+    // The ship's surroundings as the campaign has it: standing at an outpost (the outpost, its signs, the boarding door open)
     // or not.
     void UpdateShipGround();
-    void UpdateHubSigns(bool shown, bool named);
+    // The signs at the outpost the ship stands at: Kestrel's (made once), or another outpost's with its name on (made again
+    // for each outpost).
+    void UpdateHubSigns(bool shown, const FieldLook& field, const std::string& name);
+    Entity MakeSign(const KestrelStation::Sign& sign, const std::string& meshName, TextureHandle texture, int wide, int high, int textureWide, int textureHigh,
+                    MeshHandle& mesh);
     std::vector<Entity> m_hubSigns;
-    std::vector<std::string> m_hubSignIds;
+    std::vector<Entity> m_outpostSigns;
+    std::vector<MeshHandle> m_outpostSignMeshes;
+    bool m_outpostSignsBuilt = false;
+    // Another outpost shown round the ship instead of the one there (outpost_preview, a developer's command); 0 for none.
+    uint32_t m_outpostPreview = 0;
+    uint32_t m_outpostSignsSeed = 0;
+    std::string m_outpostSignsName;
     void PlayLeaving(bool fromGround);
     // The body and place the ship last stood at, for the ground and the sky while it leaves or arrives.
     int m_groundBody = -1;

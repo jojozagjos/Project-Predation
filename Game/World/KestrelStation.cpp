@@ -1,5 +1,6 @@
 #include "Game/World/KestrelStation.h"
 
+#include "Game/World/PartBuilder.h"
 #include "Game/World/ShipMap.h"
 
 #include <glm/common.hpp>
@@ -17,7 +18,6 @@ namespace
 {
 
 constexpr float kG = ShipSpec::kFieldGround; // the ground
-constexpr float kSlabTop = kG + 0.12f;       // the station's concrete, walked on
 constexpr float kDegrees = 57.2957795f;
 
 // Hangar Row's bay: the inside face of its port wall (a metre thick, out to -25), Shipworks' side as its starboard wall,
@@ -38,8 +38,6 @@ constexpr float kFacade = -49.0f;
 constexpr float kStreetNorth = -150.0f;
 constexpr float kStreetSouth = 100.0f;
 constexpr float kKerb = 0.15f;
-constexpr float kCrossFrom = -8.6f;
-constexpr float kCrossTo = -5.2f;
 // Paint is laid this far over what it is on, and no two coats ever at the same height where they meet.
 constexpr float kPaint = 0.05f;
 
@@ -61,97 +59,6 @@ const glm::vec3 kSodium{1.0f, 0.72f, 0.36f};
 const glm::vec3 kFlood{0.92f, 0.95f, 1.0f};
 const glm::vec3 kWindow{1.0f, 0.86f, 0.62f};
 const glm::vec3 kGlass{0.12f, 0.16f, 0.18f};
-
-struct Builder
-{
-    ModelAsset& model;
-    int count = 0;
-
-    std::string Name(const char* stem) { return std::string(stem) + "_" + std::to_string(count++); }
-
-    ModelPart& Box(const char* stem, const glm::vec3& lo, const glm::vec3& hi, const glm::vec3& colour, float rough = 0.8f, float metal = 0.0f,
-                   float emissive = 0.0f)
-    {
-        ModelPart part;
-        part.name = Name(stem);
-        part.shape = PartShape::Box;
-        part.position = (lo + hi) * 0.5f;
-        part.size = glm::abs(hi - lo);
-        part.color = colour;
-        part.roughness = rough;
-        part.metallic = metal;
-        part.emissive = emissive;
-        model.parts.push_back(part);
-        return model.parts.back();
-    }
-    // A box about its middle, turned about up by `yaw` degrees and tipped about its own x by `tip`.
-    ModelPart& Turned(const char* stem, const glm::vec3& centre, const glm::vec3& size, float yaw, const glm::vec3& colour, float tip = 0.0f,
-                      float rough = 0.8f, float metal = 0.0f, float emissive = 0.0f)
-    {
-        ModelPart& part = Box(stem, centre - size * 0.5f, centre + size * 0.5f, colour, rough, metal, emissive);
-        part.rotation = {tip, yaw, 0.0f};
-        return part;
-    }
-    ModelPart& Cylinder(const char* stem, const glm::vec3& centre, float diameter, float length, const glm::vec3& rotation, const glm::vec3& colour,
-                        float rough = 0.6f, float metal = 0.0f, float emissive = 0.0f)
-    {
-        ModelPart& part = Box(stem, centre - glm::vec3(diameter * 0.5f, length * 0.5f, diameter * 0.5f),
-                              centre + glm::vec3(diameter * 0.5f, length * 0.5f, diameter * 0.5f), colour, rough, metal, emissive);
-        part.shape = PartShape::Cylinder;
-        part.rotation = rotation;
-        return part;
-    }
-    // A ring of four along the top of a block, the long sides whole and the short ones between them, so no two meet face
-    // to face on top.
-    void Parapet(const char* stem, const glm::vec3& lo, const glm::vec3& hi, float thick, const glm::vec3& colour)
-    {
-        Box(stem, {lo.x, lo.y, lo.z}, {hi.x, hi.y, lo.z + thick}, colour, 0.85f);
-        Box(stem, {lo.x, lo.y, hi.z - thick}, {hi.x, hi.y, hi.z}, colour, 0.85f);
-        Box(stem, {lo.x, lo.y, lo.z + thick}, {lo.x + thick, hi.y, hi.z - thick}, colour, 0.85f);
-        Box(stem, {hi.x - thick, lo.y, lo.z + thick}, {hi.x, hi.y, hi.z - thick}, colour, 0.85f);
-    }
-};
-
-// A rectangle on the ground (x0, z0, x1, z1), less the holes in it: the pieces left, as rectangles.
-std::vector<glm::vec4> Subtract(const glm::vec4& rect, const std::vector<glm::vec4>& holes)
-{
-    std::vector<glm::vec4> pieces{rect};
-    for (const glm::vec4& hole : holes)
-    {
-        std::vector<glm::vec4> next;
-        for (const glm::vec4& r : pieces)
-        {
-            const float x0 = std::max(r.x, hole.x);
-            const float z0 = std::max(r.y, hole.y);
-            const float x1 = std::min(r.z, hole.z);
-            const float z1 = std::min(r.w, hole.w);
-            if (x1 <= x0 || z1 <= z0)
-            {
-                next.push_back(r);
-                continue;
-            }
-            // Either side of the hole the full depth; before and after it between those.
-            if (x0 > r.x)
-            {
-                next.push_back({r.x, r.y, x0, r.w});
-            }
-            if (x1 < r.z)
-            {
-                next.push_back({x1, r.y, r.z, r.w});
-            }
-            if (z0 > r.y)
-            {
-                next.push_back({x0, r.y, x1, z0});
-            }
-            if (z1 < r.w)
-            {
-                next.push_back({x0, z1, x1, r.w});
-            }
-        }
-        pieces = std::move(next);
-    }
-    return pieces;
-}
 
 // A light-ish hash for small variations: which panel of concrete is a shade darker.
 float Shade(int a, int b)
@@ -191,14 +98,14 @@ const glm::vec2 kApronMasts[] = {{-10.0f, -62.0f}, {20.0f, -100.0f}, {-15.0f, -1
 const float kPipeBridges[] = {-22.0f, 14.0f};
 
 // A building as a block: its walls and roof, and a parapet round the top.
-void Block(Builder& b, const glm::vec3& lo, const glm::vec3& hi, const glm::vec3& colour)
+void Block(PartBuilder& b, const glm::vec3& lo, const glm::vec3& hi, const glm::vec3& colour)
 {
     b.Box("building", lo, hi, colour, 0.85f);
     b.Parapet("building_parapet", {lo.x - 0.15f, hi.y - 0.1f, lo.z - 0.15f}, {hi.x + 0.15f, hi.y + 0.6f, hi.z + 0.15f}, 0.35f, colour * 0.82f);
 }
 
 // Lit windows, a row of them proud of a wall facing +x (at `x`) between z0 and z1: so wide, so far apart, so high.
-void WindowsX(Builder& b, float x, float z0, float z1, float y0, float y1, float wide, float apart, float glow, float skipFrom = 1.0e9f,
+void WindowsX(PartBuilder& b, float x, float z0, float z1, float y0, float y1, float wide, float apart, float glow, float skipFrom = 1.0e9f,
               float skipTo = -1.0e9f)
 {
     for (float z = z0; z + wide <= z1 + 0.01f; z += apart)
@@ -213,111 +120,24 @@ void WindowsX(Builder& b, float x, float z0, float z1, float y0, float y1, float
 
 } // namespace
 
-// --- What is solid -------------------------------------------------------------------------------------------------
+// --- What every pad has ----------------------------------------------------------------------------------------------
 
-ModelAsset Solid(const glm::vec3& ground, const glm::vec3& rock)
+void Pad(PartBuilder& b)
 {
-    ModelAsset model;
-    model.name = "kestrel";
-    Builder b{model};
+    // Poured in four, its seams under the ship where nothing of the ship's own lies on them.
+    for (const glm::vec2 x : {glm::vec2{kPad.x, 0.0f}, glm::vec2{0.0f, kPad.z}})
+    {
+        for (const glm::vec2 z : {glm::vec2{kPad.y, 2.0f}, glm::vec2{2.0f, kPad.w}})
+        {
+            b.Box("pad", {x.x, kG, z.x}, {x.y, kSlabTop, z.y}, kPadColour, 0.85f);
+        }
+    }
+}
+
+void Stair(PartBuilder& b)
+{
     const float s = kSlabTop;
-
-    // The world's ground as far as the haze, rock through it, low hills at the edge of what can be seen.
-    b.Box("ground", {-440.0f, kG - 1.0f, -440.0f}, {440.0f, kG, 440.0f}, ground, 0.95f);
-    for (int i = 0; i < 22; ++i)
-    {
-        const float angle = 6.28318f * static_cast<float>(i) / 22.0f;
-        const float reach = 330.0f + 40.0f * static_cast<float>((i * 7) % 3);
-        const glm::vec3 at{std::cos(angle) * reach, kG, std::sin(angle) * reach};
-        const float high = 14.0f + 9.0f * static_cast<float>((i * 5) % 4);
-        b.Turned("hill", at, {150.0f + 30.0f * static_cast<float>(i % 3), high * 2.0f, 52.0f}, -angle * kDegrees + 90.0f, glm::mix(ground, rock, 0.45f), 18.0f,
-                 0.95f);
-    }
-    for (int i = 0; i < 14; ++i)
-    {
-        const float angle = static_cast<float>(i) * 2.39996f;
-        const float reach = 190.0f + 9.0f * static_cast<float>(i);
-        const glm::vec3 at{std::cos(angle) * reach, kG, std::sin(angle) * reach};
-        const float size = 6.0f + static_cast<float>((i * 7) % 5) * 3.0f;
-        b.Box("rock", at - glm::vec3(size, 0.2f, size * 0.7f), at + glm::vec3(size, size * 0.35f, size * 0.7f), rock, 0.9f);
-    }
-
-    // The station's slab: everything inside the fence is concrete, poured in squares a shade apart -- and each square its
-    // own piece, so the lamps over it light the part under them. The bay's pad and the street's road are poured into it, not
-    // laid on it: a few centimetres of paint on concrete can be told apart close to, but a hundred metres off the picture's
-    // depth cannot tell which is in front, and they flicker.
-    const std::vector<glm::vec4> poured{{-17.0f, -30.0f, 17.0f, 34.0f}, {kPavementWest, kStreetNorth, kPavementEast, kStreetSouth}};
-    for (int i = 0; i < 14; ++i)
-    {
-        for (int j = 0; j < 14; ++j)
-        {
-            const float x = -140.0f + 20.0f * static_cast<float>(i);
-            const float z = -160.0f + 20.0f * static_cast<float>(j);
-            for (const glm::vec4& piece : Subtract({x, z, x + 20.0f, z + 20.0f}, poured))
-            {
-                b.Box("slab", {piece.x, kG, piece.y}, {piece.z, s, piece.w}, kConcrete * (0.72f + 0.1f * Shade(i, j)), 0.9f);
-            }
-        }
-    }
-    for (const glm::vec2 x : {glm::vec2{-17.0f, 0.0f}, glm::vec2{0.0f, 17.0f}})
-    {
-        for (const glm::vec2 z : {glm::vec2{-30.0f, 2.0f}, glm::vec2{2.0f, 34.0f}})
-        {
-            b.Box("pad", {x.x, kG, z.x}, {x.y, s, z.y}, kPadColour, 0.85f);
-        }
-    }
-    for (float z = kStreetNorth; z < kStreetSouth - 0.01f; z += 25.0f)
-    {
-        b.Box("road", {kPavementWest, kG, z}, {kPavementEast, s, z + 25.0f}, kAsphalt, 0.95f);
-    }
-
-    // --- Hangar Row: the ship's bay -----------------------------------------------------------------------------------
-    // The port wall, the gate through it and the lintel over the gate; the back wall between it and Shipworks.
-    b.Box("bay_wall", {kPortWall - 1.0f, s, kBayOpen}, {kPortWall, s + kWallHigh, kGateFrom}, kConcreteOld, 0.9f);
-    b.Box("bay_wall", {kPortWall - 1.0f, s, kGateTo}, {kPortWall, s + kWallHigh, kBackWall + 1.0f}, kConcreteOld, 0.9f);
-    b.Box("bay_lintel", {kPortWall - 1.0f, s + kGateHigh, kGateFrom}, {kPortWall, s + kWallHigh, kGateTo}, kConcreteOld, 0.9f);
-    b.Box("bay_wall", {kPortWall, s, kBackWall}, {kWorksWall, s + kWallHigh, kBackWall + 1.0f}, kConcrete * 0.9f, 0.9f);
-    // Buttresses down the inside of the port wall and the back wall, the newer steel bolted onto the older concrete.
-    for (float z = kBayOpen + 4.0f; z < 26.0f; z += 8.0f)
-    {
-        if (z > kGateFrom - 2.0f && z < kGateTo + 2.0f)
-        {
-            continue;
-        }
-        b.Box("bay_buttress", {kPortWall, s, z - 0.35f}, {kPortWall + 0.6f, s + kWallHigh - 0.4f, z + 0.35f}, kSteel, 0.6f, 0.5f);
-    }
-    for (const float x : {-6.0f, 2.0f, 10.0f, 18.0f})
-    {
-        b.Box("bay_buttress", {x - 0.35f, s, kBackWall - 0.6f}, {x + 0.35f, s + kWallHigh - 0.4f, kBackWall}, kSteel, 0.6f, 0.5f);
-    }
-    // The floodlight masts at its corners.
-    for (const glm::vec2 mast : kBayMasts)
-    {
-        b.Box("bay_mast", {mast.x - 0.3f, s, mast.y - 0.3f}, {mast.x + 0.3f, s + 16.0f, mast.y + 0.3f}, kSteelDark, 0.5f, 0.7f);
-    }
-    // The control booth over the back corner to port, on legs, its windows on the pad; a ramp up to its door.
-    for (const float x : {-23.2f, -17.0f})
-    {
-        for (const float z : {28.4f, 34.4f})
-        {
-            b.Box("booth_leg", {x - 0.2f, s, z - 0.2f}, {x + 0.2f, s + 5.0f, z + 0.2f}, kSteelDark, 0.5f, 0.7f);
-        }
-    }
-    b.Box("booth", {-23.6f, s + 5.0f, 27.8f}, {-16.4f, s + 8.4f, kBackWall}, kPanel * 0.8f, 0.7f, 0.2f);
-    b.Box("booth_roof", {-23.75f, s + 8.35f, 27.65f}, {-16.25f, s + 8.65f, kBackWall}, kSteelDark, 0.6f, 0.4f);
-    b.Box("booth_landing", {-21.0f, s + 4.8f, 26.4f}, {-19.0f, s + 5.0f, 27.8f}, kSteel, 0.6f, 0.6f);
-    {
-        // From the floor ahead of it up to the landing: along z, its far end high.
-        const float run = 12.0f;
-        const float rise = 5.0f;
-        const float length = std::sqrt(run * run + rise * rise);
-        const glm::vec3 middle{-20.0f, s + rise * 0.5f - 0.1f, 26.4f - run * 0.5f};
-        ModelPart& ramp = b.Box("booth_ramp", middle - glm::vec3(0.7f, 0.1f, length * 0.5f), middle + glm::vec3(0.7f, 0.1f, length * 0.5f), kSteel, 0.6f, 0.6f);
-        // Turned about x, its far end (towards +z) up.
-        ramp.rotation = {-std::atan2(rise, run) * kDegrees, 0.0f, 0.0f};
-    }
-
-    // --- The ship's boarding stair: a landing at its door, a ramp down to the bay's floor, rails either side ----------
+    // A landing at the ship's door, a ramp down to the pad, rails either side.
     const float from = kAirlockFrom;
     const float to = kAirlockTo;
     // Short of the ship's own deck, so their floors never lie one on the other.
@@ -346,6 +166,180 @@ ModelAsset Solid(const glm::vec3& ground, const glm::vec3& rock)
     }
     // The ground supply the ship is plugged into while it stands here.
     b.Box("bay_supply", {-12.6f, s, 3.0f}, {-10.8f, s + 1.1f, 4.6f}, kHazard * 0.85f, 0.6f, 0.3f);
+}
+
+void PadDressing(PartBuilder& b, float walkwayTo)
+{
+    const float s = kSlabTop;
+    const float paint = s + kPaint;
+    // A hazard border round the pad, its sides whole and its ends between them; lamps sunk outside the border; the guide line
+    // out ahead; the walkway from the stair, broken where it crosses the border.
+    b.Box("pad_edge", {-17.45f, s, -30.45f}, {-16.55f, paint, 34.45f}, kHazard, 0.7f);
+    b.Box("pad_edge", {16.55f, s, -30.45f}, {17.45f, paint, 34.45f}, kHazard, 0.7f);
+    b.Box("pad_edge", {-16.55f, s, -30.45f}, {16.55f, paint, -29.55f}, kHazard, 0.7f);
+    b.Box("pad_edge", {-16.55f, s, 33.55f}, {16.55f, paint, 34.45f}, kHazard, 0.7f);
+    for (const float x : {-17.9f, 17.9f})
+    {
+        for (float z = -28.0f; z <= 33.0f; z += 8.0f)
+        {
+            b.Box("fx_pad_lamp", {x - 0.2f, s, z - 0.2f}, {x + 0.2f, s + 0.1f, z + 0.2f}, kFlood, 0.3f, 0.0f, 3.0f);
+        }
+    }
+    b.Box("pad_line", {-0.2f, s, kBayOpen}, {0.2f, paint, -31.0f}, kWhitePaint, 0.7f);
+    const glm::vec3 walkway{0.22f, 0.36f, 0.42f};
+    b.Box("walkway", {walkwayTo, s, kCrossFrom}, {-17.45f, paint, kCrossTo}, walkway, 0.8f);
+    b.Box("walkway", {-16.55f, s, kCrossFrom}, {-9.4f, paint, kCrossTo}, walkway, 0.8f);
+    // Treads on the stair, for the look of steps on its ramp.
+    for (int i = 0; i < 12; ++i)
+    {
+        const float t = (static_cast<float>(i) + 0.5f) / 12.0f;
+        const float x = -5.3f - 3.8f * t;
+        const float y = t * s;
+        b.Box("stair_tread", {x - 0.05f, y + 0.005f, kAirlockFrom - 0.15f}, {x + 0.05f, y + 0.045f, kAirlockTo + 0.15f}, kHazard * 0.7f, 0.7f);
+    }
+    // The supply's cable across to the ship.
+    b.Box("bay_cable", {-10.8f, s + 0.02f, 3.6f}, {-5.6f, s + 0.12f, 3.75f}, kSteelDark, 0.7f, 0.2f);
+}
+
+void PadMasts(PartBuilder& b)
+{
+    for (const glm::vec2 mast : kBayMasts)
+    {
+        b.Box("bay_mast", {mast.x - 0.3f, kSlabTop, mast.y - 0.3f}, {mast.x + 0.3f, kSlabTop + 16.0f, mast.y + 0.3f}, kSteelDark, 0.5f, 0.7f);
+    }
+}
+
+void PadMastBars(PartBuilder& b)
+{
+    for (const glm::vec2 mast : kBayMasts)
+    {
+        b.Box("mast_bar", {mast.x - 1.4f, kSlabTop + 16.0f, mast.y - 0.12f}, {mast.x + 1.4f, kSlabTop + 16.25f, mast.y + 0.12f}, kSteelDark, 0.5f, 0.7f);
+    }
+}
+
+std::vector<Lamp> PadMastLamps()
+{
+    const float s = kSlabTop;
+    std::vector<Lamp> lamps;
+    const glm::vec3 padMiddle{0.0f, s, 0.0f};
+    for (const glm::vec2 mast : kBayMasts)
+    {
+        for (const float side : {-1.0f, 1.0f})
+        {
+            const glm::vec3 at{mast.x + side * 1.0f, s + 15.8f, mast.y};
+            lamps.push_back({at, glm::normalize(padMiddle + glm::vec3(side * 6.0f, 0.0f, 0.0f) - at), kFlood, 420.0f, 60.0f, 40.0f, 75.0f});
+        }
+    }
+    return lamps;
+}
+
+void LampHeads(PartBuilder& b, const std::vector<Lamp>& lamps)
+{
+    for (const Lamp& lamp : lamps)
+    {
+        const glm::vec3 c = lamp.at;
+        b.Box("fx_lamp_head", c - glm::vec3(0.45f, 0.18f, 0.35f), c + glm::vec3(0.45f, 0.02f, 0.35f), lamp.colour, 0.3f, 0.0f, 3.5f);
+        b.Box("lamp_hood", c - glm::vec3(0.5f, -0.02f, 0.4f), c + glm::vec3(0.5f, 0.22f, 0.4f), kSteelDark, 0.5f, 0.7f);
+    }
+}
+
+// --- What is solid -------------------------------------------------------------------------------------------------
+
+ModelAsset Solid(const glm::vec3& ground, const glm::vec3& rock)
+{
+    ModelAsset model;
+    model.name = "kestrel";
+    PartBuilder b{model};
+    const float s = kSlabTop;
+
+    // The world's ground as far as the haze, rock through it, low hills at the edge of what can be seen.
+    b.Box("ground", {-440.0f, kG - 1.0f, -440.0f}, {440.0f, kG, 440.0f}, ground, 0.95f);
+    for (int i = 0; i < 22; ++i)
+    {
+        const float angle = 6.28318f * static_cast<float>(i) / 22.0f;
+        const float reach = 330.0f + 40.0f * static_cast<float>((i * 7) % 3);
+        const glm::vec3 at{std::cos(angle) * reach, kG, std::sin(angle) * reach};
+        const float high = 14.0f + 9.0f * static_cast<float>((i * 5) % 4);
+        b.Turned("hill", at, {150.0f + 30.0f * static_cast<float>(i % 3), high * 2.0f, 52.0f}, -angle * kDegrees + 90.0f, glm::mix(ground, rock, 0.45f), 18.0f,
+                 0.95f);
+    }
+    for (int i = 0; i < 14; ++i)
+    {
+        const float angle = static_cast<float>(i) * 2.39996f;
+        const float reach = 190.0f + 9.0f * static_cast<float>(i);
+        const glm::vec3 at{std::cos(angle) * reach, kG, std::sin(angle) * reach};
+        const float size = 6.0f + static_cast<float>((i * 7) % 5) * 3.0f;
+        b.Box("rock", at - glm::vec3(size, 0.2f, size * 0.7f), at + glm::vec3(size, size * 0.35f, size * 0.7f), rock, 0.9f);
+    }
+
+    // The station's slab: everything inside the fence is concrete, poured in squares a shade apart -- and each square its
+    // own piece, so the lamps over it light the part under them. The bay's pad and the street's road are poured into it, not
+    // laid on it: a few centimetres of paint on concrete can be told apart close to, but a hundred metres off the picture's
+    // depth cannot tell which is in front, and they flicker.
+    const std::vector<glm::vec4> poured{kPad, {kPavementWest, kStreetNorth, kPavementEast, kStreetSouth}};
+    for (int i = 0; i < 14; ++i)
+    {
+        for (int j = 0; j < 14; ++j)
+        {
+            const float x = -140.0f + 20.0f * static_cast<float>(i);
+            const float z = -160.0f + 20.0f * static_cast<float>(j);
+            for (const glm::vec4& piece : SubtractRects({x, z, x + 20.0f, z + 20.0f}, poured))
+            {
+                b.Box("slab", {piece.x, kG, piece.y}, {piece.z, s, piece.w}, kConcrete * (0.72f + 0.1f * Shade(i, j)), 0.9f);
+            }
+        }
+    }
+    Pad(b);
+    for (float z = kStreetNorth; z < kStreetSouth - 0.01f; z += 25.0f)
+    {
+        b.Box("road", {kPavementWest, kG, z}, {kPavementEast, s, z + 25.0f}, kAsphalt, 0.95f);
+    }
+
+    // --- Hangar Row: the ship's bay -----------------------------------------------------------------------------------
+    // The port wall, the gate through it and the lintel over the gate; the back wall between it and Shipworks.
+    b.Box("bay_wall", {kPortWall - 1.0f, s, kBayOpen}, {kPortWall, s + kWallHigh, kGateFrom}, kConcreteOld, 0.9f);
+    b.Box("bay_wall", {kPortWall - 1.0f, s, kGateTo}, {kPortWall, s + kWallHigh, kBackWall + 1.0f}, kConcreteOld, 0.9f);
+    b.Box("bay_lintel", {kPortWall - 1.0f, s + kGateHigh, kGateFrom}, {kPortWall, s + kWallHigh, kGateTo}, kConcreteOld, 0.9f);
+    b.Box("bay_wall", {kPortWall, s, kBackWall}, {kWorksWall, s + kWallHigh, kBackWall + 1.0f}, kConcrete * 0.9f, 0.9f);
+    // Buttresses down the inside of the port wall and the back wall, the newer steel bolted onto the older concrete.
+    for (float z = kBayOpen + 4.0f; z < 26.0f; z += 8.0f)
+    {
+        if (z > kGateFrom - 2.0f && z < kGateTo + 2.0f)
+        {
+            continue;
+        }
+        b.Box("bay_buttress", {kPortWall, s, z - 0.35f}, {kPortWall + 0.6f, s + kWallHigh - 0.4f, z + 0.35f}, kSteel, 0.6f, 0.5f);
+    }
+    for (const float x : {-6.0f, 2.0f, 10.0f, 18.0f})
+    {
+        b.Box("bay_buttress", {x - 0.35f, s, kBackWall - 0.6f}, {x + 0.35f, s + kWallHigh - 0.4f, kBackWall}, kSteel, 0.6f, 0.5f);
+    }
+    // The floodlight masts at its corners.
+    PadMasts(b);
+    // The control booth over the back corner to port, on legs, its windows on the pad; a ramp up to its door.
+    for (const float x : {-23.2f, -17.0f})
+    {
+        for (const float z : {28.4f, 34.4f})
+        {
+            b.Box("booth_leg", {x - 0.2f, s, z - 0.2f}, {x + 0.2f, s + 5.0f, z + 0.2f}, kSteelDark, 0.5f, 0.7f);
+        }
+    }
+    b.Box("booth", {-23.6f, s + 5.0f, 27.8f}, {-16.4f, s + 8.4f, kBackWall}, kPanel * 0.8f, 0.7f, 0.2f);
+    b.Box("booth_roof", {-23.75f, s + 8.35f, 27.65f}, {-16.25f, s + 8.65f, kBackWall}, kSteelDark, 0.6f, 0.4f);
+    b.Box("booth_landing", {-21.0f, s + 4.8f, 26.4f}, {-19.0f, s + 5.0f, 27.8f}, kSteel, 0.6f, 0.6f);
+    {
+        // From the floor ahead of it up to the landing: along z, its far end high.
+        const float run = 12.0f;
+        const float rise = 5.0f;
+        const float length = std::sqrt(run * run + rise * rise);
+        const glm::vec3 middle{-20.0f, s + rise * 0.5f - 0.1f, 26.4f - run * 0.5f};
+        ModelPart& ramp = b.Box("booth_ramp", middle - glm::vec3(0.7f, 0.1f, length * 0.5f), middle + glm::vec3(0.7f, 0.1f, length * 0.5f), kSteel, 0.6f, 0.6f);
+        // Turned about x, its far end (towards +z) up.
+        ramp.rotation = {-std::atan2(rise, run) * kDegrees, 0.0f, 0.0f};
+    }
+
+    // --- The ship's boarding stair, and the ground supply it is plugged into ---------------------------------------
+    Stair(b);
 
     // --- Shipworks: the great shed to starboard, its side the bay's starboard wall ---------------------------------------
     b.Box("shipworks", {kWorksWall, s, kBayOpen}, {78.0f, s + 20.0f, kBackWall + 1.0f}, kPanel * 0.85f, 0.75f, 0.2f);
@@ -480,7 +474,7 @@ ModelAsset Dressing(const glm::vec3& ground)
 {
     ModelAsset model;
     model.name = "kestrel_dressing";
-    Builder b{model};
+    PartBuilder b{model};
     const float s = kSlabTop;
     const float paint = s + kPaint;
 
@@ -488,29 +482,7 @@ ModelAsset Dressing(const glm::vec3& ground)
     // The pad (poured in the slab: Solid) has a hazard border round it, its sides whole and its ends between them; lamps
     // sunk outside the border; the guide line out to the apron; the walkway from the stair to the gate, broken where it
     // crosses the border.
-    b.Box("pad_edge", {-17.45f, s, -30.45f}, {-16.55f, paint, 34.45f}, kHazard, 0.7f);
-    b.Box("pad_edge", {16.55f, s, -30.45f}, {17.45f, paint, 34.45f}, kHazard, 0.7f);
-    b.Box("pad_edge", {-16.55f, s, -30.45f}, {16.55f, paint, -29.55f}, kHazard, 0.7f);
-    b.Box("pad_edge", {-16.55f, s, 33.55f}, {16.55f, paint, 34.45f}, kHazard, 0.7f);
-    for (const float x : {-17.9f, 17.9f})
-    {
-        for (float z = -28.0f; z <= 33.0f; z += 8.0f)
-        {
-            b.Box("fx_pad_lamp", {x - 0.2f, s, z - 0.2f}, {x + 0.2f, s + 0.1f, z + 0.2f}, kFlood, 0.3f, 0.0f, 3.0f);
-        }
-    }
-    b.Box("pad_line", {-0.2f, s, kBayOpen}, {0.2f, paint, -31.0f}, kWhitePaint, 0.7f);
-    const glm::vec3 walkway{0.22f, 0.36f, 0.42f};
-    b.Box("walkway", {kPortWall + 0.1f, s, kCrossFrom}, {-17.45f, paint, kCrossTo}, walkway, 0.8f);
-    b.Box("walkway", {-16.55f, s, kCrossFrom}, {-9.4f, paint, kCrossTo}, walkway, 0.8f);
-    // Treads on the stair, for the look of steps on its ramp.
-    for (int i = 0; i < 12; ++i)
-    {
-        const float t = (static_cast<float>(i) + 0.5f) / 12.0f;
-        const float x = -5.3f - 3.8f * t;
-        const float y = t * s;
-        b.Box("stair_tread", {x - 0.05f, y + 0.005f, kAirlockFrom - 0.15f}, {x + 0.05f, y + 0.045f, kAirlockTo + 0.15f}, kHazard * 0.7f, 0.7f);
-    }
+    PadDressing(b, kPortWall + 0.1f);
 
     // --- The bay's walls ------------------------------------------------------------------------------------------------
     // Copings along their tops, over their edges; grime along their feet and down from their tops.
@@ -549,16 +521,8 @@ ModelAsset Dressing(const glm::vec3& ground)
     }
     b.Box("conduit", {-16.0f, s + 2.0f, kBackWall - 0.95f}, {kWorksWall, s + 2.5f, kBackWall - 0.6f}, kRust, 0.6f, 0.5f);
     // The floodlights on the masts: a crossbar and two heads on each, and lamps over the gate and along the gantry.
-    for (const Lamp& lamp : Lamps())
-    {
-        const glm::vec3 c = lamp.at;
-        b.Box("fx_lamp_head", c - glm::vec3(0.45f, 0.18f, 0.35f), c + glm::vec3(0.45f, 0.02f, 0.35f), lamp.colour, 0.3f, 0.0f, 3.5f);
-        b.Box("lamp_hood", c - glm::vec3(0.5f, -0.02f, 0.4f), c + glm::vec3(0.5f, 0.22f, 0.4f), kSteelDark, 0.5f, 0.7f);
-    }
-    for (const glm::vec2 mast : kBayMasts)
-    {
-        b.Box("mast_bar", {mast.x - 1.4f, s + 16.0f, mast.y - 0.12f}, {mast.x + 1.4f, s + 16.25f, mast.y + 0.12f}, kSteelDark, 0.5f, 0.7f);
-    }
+    LampHeads(b, Lamps());
+    PadMastBars(b);
     // The booth's windows on the pad, and its door.
     b.Box("fx_window", {-23.2f, s + 6.2f, 27.72f}, {-21.0f, s + 7.8f, 27.86f}, kWindow, 0.3f, 0.0f, 0.9f);
     b.Box("fx_window", {-19.0f, s + 6.2f, 27.72f}, {-16.8f, s + 7.8f, 27.86f}, kWindow, 0.3f, 0.0f, 0.9f);
@@ -569,8 +533,6 @@ ModelAsset Dressing(const glm::vec3& ground)
         b.Box("booth_rail", {x - 0.04f, s + 3.35f, 20.4f - 6.5f}, {x + 0.04f, s + 3.45f, 20.4f + 6.5f}, kHazard, 0.6f, 0.3f).rotation = {
             -std::atan2(5.0f, 12.0f) * kDegrees, 0.0f, 0.0f};
     }
-    // The supply's cable across to the ship.
-    b.Box("bay_cable", {-10.8f, s + 0.02f, 3.6f}, {-5.6f, s + 0.12f, 3.75f}, kSteelDark, 0.7f, 0.2f);
 
     // --- Shipworks ------------------------------------------------------------------------------------------------------
     // Its roof, its great door onto the apron with stripes along the foot, its hangar door onto the pad, lit windows high on
@@ -742,17 +704,8 @@ ModelAsset Dressing(const glm::vec3& ground)
 std::vector<Lamp> Lamps()
 {
     const float s = kSlabTop;
-    std::vector<Lamp> lamps;
-    const glm::vec3 padMiddle{0.0f, s, 0.0f};
     // The bay's masts, two heads each, on the pad.
-    for (const glm::vec2 mast : kBayMasts)
-    {
-        for (const float side : {-1.0f, 1.0f})
-        {
-            const glm::vec3 at{mast.x + side * 1.0f, s + 15.8f, mast.y};
-            lamps.push_back({at, glm::normalize(padMiddle + glm::vec3(side * 6.0f, 0.0f, 0.0f) - at), kFlood, 420.0f, 60.0f, 40.0f, 75.0f});
-        }
-    }
+    std::vector<Lamp> lamps = PadMastLamps();
     // Along the gantry on the port wall, down onto the floor by it.
     for (const float z : {-30.0f, 10.0f, 22.0f})
     {
