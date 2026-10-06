@@ -54,6 +54,9 @@ public:
     static constexpr int kChunkCells = 30;
     int Chunks() const { return (m_cells + kChunkCells - 1) / kChunkCells; }
     MeshData Mesh(int chunkX, int chunkZ, const glm::vec3& ground, const glm::vec3& rock) const;
+    // Whether anybody could ever stand on a piece: the pieces wholly up the rock round the edge are drawn but need nothing
+    // to stand on.
+    bool InReach(int chunkX, int chunkZ) const;
     static glm::vec3 Paint(const glm::vec3& ground, const glm::vec3& rock) { return glm::max(glm::max(ground, rock), glm::vec3(1.0e-3f)); }
     // How much of a place facing this way is rock, 0 to 1.
     static float Rockiness(const glm::vec3& normal);

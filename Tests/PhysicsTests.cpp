@@ -6,6 +6,9 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <cmath>
+#include <future>
+
 #include <glm/geometric.hpp>
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
@@ -173,4 +176,43 @@ TEST_CASE("The level check says nothing of one structure's pieces reaching into 
     const BodyHandle other = physics.CreateBox({0.1f, 1.5f, 1.0f}, at(3.0f, 1.48f, 0.0f), BodyMotion::Static);
     physics.SetOverlapGroup(other, physics.NewOverlapGroup());
     CHECK(physics.FindStaticOverlaps(0.01f).size() == 2);
+}
+
+TEST_CASE("A mesh's shape can be made on other threads and the body added from it later", "[physics]")
+{
+    PhysicsWorld physics;
+    PhysicsWorld::Settings settings;
+    settings.workerThreads = 1;
+    REQUIRE(physics.Init(settings));
+    // A floor, two triangles, ten metres square, made into a shape on two threads at once.
+    MeshData floor;
+    for (const glm::vec3 corner : {glm::vec3(-5.0f, 0.0f, -5.0f), glm::vec3(5.0f, 0.0f, -5.0f), glm::vec3(-5.0f, 0.0f, 5.0f), glm::vec3(5.0f, 0.0f, 5.0f)})
+    {
+        MeshVertex vertex;
+        vertex.position = corner;
+        floor.vertices.push_back(vertex);
+    }
+    floor.indices = {0, 2, 1, 1, 2, 3};
+    auto first = std::async(std::launch::async, [&] { return PhysicsWorld::PrepareMesh(floor); });
+    auto second = std::async(std::launch::async, [&] { return PhysicsWorld::PrepareMesh(floor); });
+    const PhysicsWorld::PreparedMesh a = first.get();
+    const PhysicsWorld::PreparedMesh b = second.get();
+    REQUIRE(a.Valid());
+    REQUIRE(b.Valid());
+    const BodyHandle low = physics.CreateMeshBody(a, Transform{{0.0f, 0.0f, 0.0f}});
+    const BodyHandle high = physics.CreateMeshBody(b, Transform{{0.0f, 3.0f, 0.0f}});
+    REQUIRE(low.IsValid());
+    REQUIRE(high.IsValid());
+    // Both there, each where it was put; and the one shape can be used again.
+    const RayHit down = physics.RayCast({1.0f, 10.0f, 1.0f}, {0.0f, -1.0f, 0.0f}, 20.0f);
+    REQUIRE(down);
+    CHECK(std::abs(down.position.y - 3.0f) < 1.0e-3f);
+    physics.DestroyBody(high);
+    const RayHit again = physics.RayCast({1.0f, 10.0f, 1.0f}, {0.0f, -1.0f, 0.0f}, 20.0f);
+    REQUIRE(again);
+    CHECK(std::abs(again.position.y) < 1.0e-3f);
+    CHECK(physics.CreateMeshBody(a, Transform{{0.0f, -2.0f, 0.0f}}).IsValid());
+    CHECK(physics.StaticTriangles().size() == 12);
+    // Nothing to make a shape from, nothing made.
+    CHECK_FALSE(PhysicsWorld::PrepareMesh(MeshData{}).Valid());
 }

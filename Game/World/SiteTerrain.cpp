@@ -8,6 +8,8 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <future>
+#include <thread>
 
 namespace pred
 {
@@ -104,6 +106,31 @@ float FromSegment(const glm::vec2& p, const glm::vec2& a, const glm::vec2& b)
     const glm::vec2 ab = b - a;
     const float t = std::clamp(glm::dot(p - a, ab) / std::max(glm::dot(ab, ab), 1.0e-6f), 0.0f, 1.0f);
     return glm::length(p - (a + ab * t));
+}
+
+// Runs `row` for every row from 0 to `last`, the rows shared out across the machine's threads: each row's work is its own,
+// and the same whichever thread does it.
+template <typename Row>
+void ForRows(int last, const Row& row)
+{
+    const int threads = std::clamp(static_cast<int>(std::thread::hardware_concurrency()), 1, 16);
+    const int each = (last + threads) / threads;
+    std::vector<std::future<void>> work;
+    for (int from = 0; from <= last; from += each)
+    {
+        const int to = std::min(from + each - 1, last);
+        work.push_back(std::async(std::launch::async, [&row, from, to]
+                                  {
+                                      for (int j = from; j <= to; ++j)
+                                      {
+                                          row(j);
+                                      }
+                                  }));
+    }
+    for (std::future<void>& done : work)
+    {
+        done.get();
+    }
 }
 
 // Levelled ground reaches this far past what is built, and blends into the world's own over this far beyond.
@@ -243,7 +270,7 @@ void SiteTerrain::Plan(const SitePlan& plan, Shape shape, bool dunes)
     const size_t side = static_cast<size_t>(m_cells + 1);
     m_heights.assign(side * side, m_base);
     m_wild.assign(side * side, 1.0f);
-    for (int j = 0; j <= m_cells; ++j)
+    ForRows(m_cells, [&](int j)
     {
         for (int i = 0; i <= m_cells; ++i)
         {
@@ -270,14 +297,14 @@ void SiteTerrain::Plan(const SitePlan& plan, Shape shape, bool dunes)
             m_wild[index] = std::max(wild, rise);
             m_heights[index] = m_base + Natural(p.x, p.y) * wild * (1.0f - 0.6f * rise) + wall;
         }
-    }
+    });
 
     // Smoothed over a few metres, so nothing is sharper than ground worn by weather is -- and the levelled ground left exactly
     // level, as it was.
     std::vector<float> smoothed(m_heights.size());
     for (int pass = 0; pass < 3; ++pass)
     {
-        for (int j = 0; j <= m_cells; ++j)
+        ForRows(m_cells, [&](int j)
         {
             for (int i = 0; i <= m_cells; ++i)
             {
@@ -297,7 +324,7 @@ void SiteTerrain::Plan(const SitePlan& plan, Shape shape, bool dunes)
                 const size_t index = static_cast<size_t>(j) * side + static_cast<size_t>(i);
                 smoothed[index] = m_base + (sum / weight - m_base) * Smooth(0.0f, 0.15f, m_wild[index]);
             }
-        }
+        });
         m_heights.swap(smoothed);
     }
 }
@@ -339,6 +366,17 @@ float SiteTerrain::Wildness(float x, float z) const
     const int i = std::clamp(static_cast<int>(std::round((x - m_min.x) / kCell)), 0, m_cells);
     const int j = std::clamp(static_cast<int>(std::round((z - m_min.y) / kCell)), 0, m_cells);
     return m_wild[static_cast<size_t>(j) * static_cast<size_t>(m_cells + 1) + static_cast<size_t>(i)];
+}
+
+bool SiteTerrain::InReach(int chunkX, int chunkZ) const
+{
+    // The open ground and the foot of the rock round it, with room to spare; nobody gets further up the rock than that.
+    constexpr float kFoot = 25.0f;
+    const glm::vec2 low = m_min + glm::vec2(static_cast<float>(chunkX), static_cast<float>(chunkZ)) * (kCell * kChunkCells);
+    const glm::vec2 high = low + glm::vec2(kCell * kChunkCells);
+    const glm::vec2 open0 = m_origin - glm::vec2(kFoot);
+    const glm::vec2 open1 = m_origin + glm::vec2(m_size + kFoot);
+    return high.x > open0.x && high.y > open0.y && low.x < open1.x && low.y < open1.y;
 }
 
 float SiteTerrain::Rockiness(const glm::vec3& normal)

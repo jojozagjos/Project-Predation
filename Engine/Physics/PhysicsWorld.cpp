@@ -545,15 +545,20 @@ BodyHandle PhysicsWorld::CreateCapsule(float halfHeight, float radius, const Tra
 
 BodyHandle PhysicsWorld::CreateMeshBody(const MeshData& mesh, const Transform& transform)
 {
-    Impl& impl = *m_impl;
-    if (!impl.initialized)
+    if (!m_impl->initialized)
     {
         return BodyHandle{};
     }
+    return CreateMeshBody(PrepareMesh(mesh), transform);
+}
+
+PhysicsWorld::PreparedMesh PhysicsWorld::PrepareMesh(const MeshData& mesh)
+{
+    PreparedMesh prepared;
     if (mesh.vertices.empty() || mesh.indices.size() < 3)
     {
         PRED_LOG_ERROR(Physics, "Cannot build a mesh body from empty geometry");
-        return BodyHandle{};
+        return prepared;
     }
 
     JPH::VertexList vertices;
@@ -577,15 +582,29 @@ BodyHandle PhysicsWorld::CreateMeshBody(const MeshData& mesh, const Transform& t
     if (result.HasError())
     {
         PRED_LOG_ERROR(Physics, "Mesh shape creation failed: {}", result.GetError().c_str());
+        return prepared;
+    }
+    // Held by Jolt's own reference count, given up when the last copy of this goes.
+    const JPH::Shape* shape = result.Get().GetPtr();
+    shape->AddRef();
+    prepared.m_shape = std::shared_ptr<const void>(shape, [](const void* held) { static_cast<const JPH::Shape*>(held)->Release(); });
+    prepared.m_bounds = mesh.ComputeBounds();
+    return prepared;
+}
+
+BodyHandle PhysicsWorld::CreateMeshBody(const PreparedMesh& prepared, const Transform& transform)
+{
+    Impl& impl = *m_impl;
+    if (!impl.initialized || !prepared.Valid())
+    {
         return BodyHandle{};
     }
-
     Impl::BodyRecord record;
     record.kind = Impl::ShapeKind::Mesh;
     record.motion = BodyMotion::Static;
-    record.meshBounds = mesh.ComputeBounds();
+    record.meshBounds = prepared.m_bounds;
     // Triangle meshes have no volume, so they can only ever be static.
-    return impl.AddBody(result.Get(), transform, BodyMotion::Static, PhysicsLayer::Static, record);
+    return impl.AddBody(JPH::ShapeRefC(static_cast<const JPH::Shape*>(prepared.m_shape.get())), transform, BodyMotion::Static, PhysicsLayer::Static, record);
 }
 
 void PhysicsWorld::DestroyBody(BodyHandle body)

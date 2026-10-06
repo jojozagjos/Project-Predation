@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <future>
 #include <string>
 
 namespace pred
@@ -143,15 +144,42 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
     builder.SetStructure(ground);
     const glm::vec3 cliffColour = m_look.rock * 0.88f;
     const Material terrainMaterial = Surfaces::Apply(Material::Diffuse(SiteTerrain::Paint(m_look.ground, cliffColour), 1.0f), "snow_02", 2.5f);
-    for (int cz = 0; cz < m_terrain.Chunks(); ++cz)
+    // Made side by side, a row of pieces a thread -- the shapes to stand on are most of the time a site takes to build -- and
+    // put into the world here, in order.
+    struct Piece
     {
-        for (int cx = 0; cx < m_terrain.Chunks(); ++cx)
+        MeshData mesh;
+        PhysicsWorld::PreparedMesh shape;
+    };
+    const int chunks = m_terrain.Chunks();
+    std::vector<Piece> pieces(static_cast<size_t>(chunks * chunks));
+    {
+        std::vector<std::future<void>> rows;
+        for (int cz = 0; cz < chunks; ++cz)
         {
-            const MeshData mesh = m_terrain.Mesh(cx, cz, m_look.ground, cliffColour);
-            if (!mesh.indices.empty())
-            {
-                builder.AddMesh("site_ground", Transform{}, mesh, terrainMaterial);
-            }
+            rows.push_back(std::async(std::launch::async, [&, cz]
+                                      {
+                                          for (int cx = 0; cx < chunks; ++cx)
+                                          {
+                                              Piece& piece = pieces[static_cast<size_t>(cz * chunks + cx)];
+                                              piece.mesh = m_terrain.Mesh(cx, cz, m_look.ground, cliffColour);
+                                              if (!piece.mesh.indices.empty() && m_terrain.InReach(cx, cz))
+                                              {
+                                                  piece.shape = PhysicsWorld::PrepareMesh(piece.mesh);
+                                              }
+                                          }
+                                      }));
+        }
+        for (std::future<void>& row : rows)
+        {
+            row.get();
+        }
+    }
+    for (const Piece& piece : pieces)
+    {
+        if (!piece.mesh.indices.empty())
+        {
+            builder.AddMesh("site_ground", Transform{}, piece.mesh, terrainMaterial, piece.shape);
         }
     }
     builder.BeginBatching(24.0f);

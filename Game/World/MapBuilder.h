@@ -166,6 +166,18 @@ public:
         }
     }
 
+    // As AddMesh, collided as a shape already made (PhysicsWorld::PrepareMesh, perhaps on another thread), or not at all
+    // when there is none.
+    void AddMesh(const std::string& name, const Transform& transform, const MeshData& data, const Material& material,
+                 const PhysicsWorld::PreparedMesh& shape)
+    {
+        AddMesh(name, transform, data, material, false);
+        if (shape.Valid() && m_physics != nullptr)
+        {
+            Keep(m_physics->CreateMeshBody(shape, transform));
+        }
+    }
+
     void AddMeshInstance(const std::string& name, const Transform& transform, MeshHandle mesh,
                          const MeshData& data, const Material& material, bool collide = true)
     {

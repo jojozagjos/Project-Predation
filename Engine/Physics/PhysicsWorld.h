@@ -112,6 +112,20 @@ public:
     void RemoveJoint(uint32_t joint);
     // Triangle mesh, static only. Used for level geometry that boxes cannot represent.
     BodyHandle CreateMeshBody(const MeshData& mesh, const Transform& transform);
+    // Or in two halves: the shape made first -- the slow part, its search tree, on any thread and several at once (a
+    // landscape in pieces) -- and the body added from it later, on the physics world's own thread.
+    class PreparedMesh
+    {
+    public:
+        bool Valid() const { return m_shape != nullptr; }
+
+    private:
+        friend class PhysicsWorld;
+        std::shared_ptr<const void> m_shape; // a JPH::Shape, kept alive by its reference count
+        AABB m_bounds;
+    };
+    static PreparedMesh PrepareMesh(const MeshData& mesh);
+    BodyHandle CreateMeshBody(const PreparedMesh& prepared, const Transform& transform);
 
     void DestroyBody(BodyHandle body);
     void DestroyAllBodies();
