@@ -197,8 +197,17 @@ void PredationGame::ApplyCampaignDocument(const std::string& text)
     {
         m_universe.Reset(state.universeSeed, &m_universeData);
     }
+    const bool first = !m_campaignOpen;
     m_campaign = std::move(state);
     m_campaignOpen = true;
+    // Joining while the ship stands at an outpost: the host has put this player outside by the stair (ShipArrival), but which
+    // way to face was chosen before the campaign came, not knowing the ship was landed -- turned now to face the ship.
+    if (first && m_screen == Screen::Playing && m_map == MapChoice::Ship && ShipLanded())
+    {
+        m_lookYaw = KestrelStation::SpawnYaw();
+        m_lookPitch = 0.0f;
+        m_player.State().yaw = m_lookYaw;
+    }
 }
 
 void PredationGame::ServeCampaignRequests()
