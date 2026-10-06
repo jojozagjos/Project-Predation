@@ -104,6 +104,13 @@ four"); site and moon numbers are said a figure at a time.
 
 ## Part 2: Textures (PBR)
 
+### Where things stand
+
+Almost everything in the game is drawn in **flat colours** today. Only one texture set is in: `snow_02`, laid on the
+ground of every landing site (tinted to the world's own ground colour). Each set below gets wired in when it arrives --
+a few lines of code per surface -- so they can come in any order. The **first ten** (just below) change the most of what
+you see.
+
 ### What each set needs
 
 | Map | Needed? |
@@ -115,29 +122,36 @@ four"); site and moon numbers are said a figure at a time.
 | Ambient occlusion (AO) | always |
 | Height | optional, nice for later |
 
-- **2K** for anything tiled across a level (ground, walls, floors), **1K** for small props. **Seamless / tiling**
-  (surfaces are tiled across walls and floors, not wrapped onto one model).
+- **2K** for anything tiled across a level (ground, walls, floors), **1K** for small props. **Seamless / tiling**: the
+  game tiles them by real size across every surface rather than wrapping them onto one model.
 - **Free sources (CC0):** [ambientCG](https://ambientcg.com), [Poly Haven](https://polyhaven.com).
 - **Where and what to call them:** `Assets/Textures/<set>/<set>_BaseColor.png`, `<set>_Normal.png`, `<set>_Roughness.png`,
-  `<set>_Metallic.png`, `<set>_AO.png`. For example `Assets/Textures/snow_ground/snow_ground_Normal.png`.
-- **PNG or JPG** both work. An **EXR** normal map has to be saved out as PNG first, as **Non-Color** data (in
-  Blender: open it, set the colour space to Non-Color, save as PNG 8-bit); a normal map that looks greyish-purple
-  rather than light blue is in the wrong colour space and will tilt the lighting.
-- **In game today:** base colour, normal and roughness are used, tiled by real size from every side. Metallic and AO
-  are not read yet; keep them in the folder for later. `snow_02` on the snow ground is the first set in.
+  `<set>_Metallic.png`, `<set>_AO.png`. For example `Assets/Textures/rock_ground/rock_ground_Normal.png`.
+- **PNG or JPG** both work. An **EXR** normal map has to be saved out as PNG first, as **Non-Color** data (in Blender:
+  open it, set the colour space to Non-Color, save as PNG 8-bit); a normal map that looks greyish-purple rather than
+  light blue is in the wrong colour space and tilts the lighting.
+- **Neutral, light colours** for anything the game tints (marked *tinted*): the ship's hull takes the campaign's colours,
+  outposts their owner's paint, a world's ground its own colour. A pale grey version of the material is best.
+- Base colour, normal and roughness are used; metallic and AO are not read yet -- keep them in the folder for later.
 
-Listed most important first within each area.
+### The first ten
 
-### 1. Landing sites: the ground of each kind of world
+1. `regolith`: pale dust and pebbles (barren worlds, airless moons -- the most common ground) *tinted*
+2. `rock_ground`: grey-brown broken rock and grit (rocky worlds) *tinted*
+3. `rock_cliff`: big rock faces (the rock round every site, boulders, outposts' hills) *tinted*
+4. `concrete_slab`: weathered poured concrete in large squares (Kestrel's and every outpost's slab, the pad)
+5. `asphalt`: road surface (the street at Kestrel and the outposts)
+6. `building_cladding`: corrugated or paneled metal siding, weathered (every building's outside) *tinted*
+7. `hull_plating`: large plated panels (the ship's outside) *tinted*
+8. `deck_plate`: tread / diamond plate (the ship's floors, the boarding ramp, gantries)
+9. `ship_panel`: sci-fi wall paneling, clean-ish (the ship's rooms) *tinted*
+10. `facility_floor`: worn concrete or industrial vinyl (inside every site building)
 
-A world's kind (its biome, in `Assets/Data/universe.json`) names the set its ground is to be laid with (`"site"` ->
-`"surface"`). Landing sites do not take their world's look yet -- every site is still snow -- that is the next part of the
-rework; only frozen worlds name a set so far (`snow_02`).
-Each of these is one ground set; a rock set for cliffs and boulders to go with each would be nice later.
+### 1. Ground of each kind of world (`universe.json` biomes, `"site"` -> `"surface"`)
 
 - [x] `snow_02`: packed, wind-blown snow (frozen worlds)
-- [ ] `rock_ground`: grey-brown broken rock and grit (rocky worlds)
 - [ ] `regolith`: pale dust and pebbles (barren worlds and airless moons)
+- [ ] `rock_ground`: grey-brown broken rock and grit (rocky worlds)
 - [ ] `sand`: rippled sand (desert worlds)
 - [ ] `basalt`: black volcanic rock, a little ash (volcanic worlds)
 - [ ] `wet_rock`: dark wet stone and shingle (oceanic worlds, their islands)
@@ -146,13 +160,26 @@ Each of these is one ground set; a rock set for cliffs and boulders to go with e
 - [ ] `toxic_crust`: stained, crusted mineral ground (toxic worlds)
 - [ ] `storm_flats`: hard wind-scoured ground (storm-dominated worlds)
 - [ ] `crystal_ground`: glassy, faceted mineral (crystalline worlds)
-- [ ] `rock_cliff`: dark, frost-dusted rock (the ring round the site, boulders)
-- [ ] `concrete_pad`: weathered concrete (the landing pad)
-- [ ] `building_cladding`: corrugated or paneled metal siding, weathered (building outsides)
-- [ ] `painted_metal`: painted steel, one you can tint or several colours (freight containers, fuel tanks)
-- [ ] `pipe_steel`: dull steel (overhead pipes, supports, lamp poles)
+- [ ] `rock_cliff`: large rock faces (cliffs, boulders, hills)
+- [ ] `ice_cliff`: blue-white ice faces (frozen worlds' cliffs, later)
 
-### 2. Facility interiors
+When the ground stops being flat (see NEXT_STEPS.md), a **second ground set per world** for slopes (rock showing
+through on steep ground) makes the biggest difference; the rock sets above double as that.
+
+### 2. Kestrel Station and the outposts
+
+- [ ] `concrete_slab`: the slab everything stands on, and the pad
+- [ ] `asphalt`: the street
+- [ ] `pavement`: paving slabs or kerbed concrete (the pavements)
+- [ ] `blast_wall`: heavy cast concrete, stained (the walls round the pad, Kestrel's port wall)
+- [ ] `building_cladding`: corrugated or paneled metal siding *tinted*
+- [ ] `shed_roof`: ribbed metal roofing
+- [ ] `painted_metal`: painted steel *tinted* (freight containers, tanks, the gantry crane)
+- [ ] `pipe_steel`: dull steel (pipes, trestles, lamp posts, masts)
+- [ ] `fence_mesh`: chain-link or welded mesh, **with transparency** (the fences)
+- [ ] `habitat_shell`: pressurised module skin, panel seams *tinted*
+
+### 3. Facility interiors (every site building)
 
 - [ ] `facility_floor`: worn concrete or industrial vinyl
 - [ ] `facility_wall`: painted plaster or paneling, institutional
@@ -165,29 +192,34 @@ Each of these is one ground set; a rock set for cliffs and boulders to go with e
 - [ ] `concrete_pillar`
 - [ ] `plant_grime`: dirtier concrete or metal (plant rooms)
 
-### 3. The ship
+### 4. The ship
 
-The crew's own small ship (one deck: cockpit, ops room, crew section, shuttle bay, engine room). Its outside is
-painted in the campaign's three colours, so the hull sets should be **light and neutral** (greyish white): the game
-tints them.
-
-- [ ] `deck_plate`: diamond / tread plate (floors)
-- [ ] `ship_panel`: painted sci-fi wall paneling, clean-ish
+- [ ] `hull_plating`: large plated panels, the outside *tinted*
+- [ ] `hull_dark`: dark metal (frames, trim, ribs, the engine block)
+- [ ] `deck_plate`: diamond / tread plate (floors, the ramp)
+- [ ] `ship_panel`: painted wall paneling, clean-ish *tinted*
 - [ ] `bay_panel`: heavier, more worn panels (the shuttle bay's walls and deck)
-- [ ] `hull_dark`: dark metal (frames, trim, ribs)
-- [ ] `hull_plating`: large plated panels, neutral, to be tinted (the outside)
 - [ ] `locker_metal`: lockers, the loadout locker, cabinets
 - [ ] `fabric_cushion`: chairs, bunk mattresses
-- [ ] `tabletop`: the galley counter and tables
+- [ ] `tabletop`: the galley counter, the navigation table
+- [ ] `cockpit_glass`: tinted glass, faint scratches (the cockpit's windows, from outside)
 
-### 4. Vehicles and props
+### 5. Wrecks (being built next)
+
+- [ ] `hull_scorched`: burnt, blistered hull plating (a recent crash)
+- [ ] `hull_weathered`: faded, pitted plating with streaks (an old wreck) *tinted*
+- [ ] `cut_metal`: plate with torch-cut edges (a picked-over wreck)
+- [ ] `debris_mixed`: twisted metal and cable bundles (small pieces)
+
+### 6. Vehicles and props
 
 - [ ] `shuttle_hull`: painted metal and trim
 - [ ] `bay_door`: the shuttle bay's doors
 - [ ] `ammo_crate`: olive painted metal
 - [ ] `console_casing`: dark plastic or metal (terminals, consoles)
+- [ ] `cargo_crate`: salvage crates and pallets
 
-### 5. Player and weapons
+### 7. Player and weapons
 
 - [ ] `suit_fabric`: heavy, padded environment-suit material
 - [ ] `helmet_composite`: hard plastic or composite
@@ -195,19 +227,21 @@ tints them.
 - [ ] `gun_metal`: dark, worn steel
 - [ ] `weapon_polymer`: grips and bodies
 
-### 6. Creature and nest (organic)
+### 8. Creature and nest (organic)
 
 - [ ] `creature_skin`: tiling wet flesh or hide
 - [ ] `nest_flesh`: tiling membrane or veined tissue
 - [ ] `egg_sac`: translucent-looking membrane, subtle veins
 
-### 7. Decals: images with transparency, not full PBR sets
+### 9. Decals: images with transparency, not full PBR sets
 
 - [ ] `hazard_stripes`: yellow and black
 - [ ] `grime_streaks`: leaks and dirt to break up walls
-- [ ] Signage and stencils (deck numbers, "LOADOUT", ...): hold off until the wording is decided.
+- [ ] `scorch_marks`: burn marks (wreck sites, fights)
+- [ ] `tyre_tracks` / `footprints`: for ground near outposts and camps
+- Signs and stencils are drawn by the game (the CIRRA mark, outpost names, building names) -- no textures needed.
 
 ### Not needed
 
-Screens, the site map and tracker, briefing slides, the system map, the sky, planets (from space), snowfall and
-particles are all drawn by code.
+Screens, signs, the site map and tracker, briefing slides, the navigation map, the sky, planets and moons (from space and
+on the map), the star, snowfall, dust and particles are all drawn by code.
