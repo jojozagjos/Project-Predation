@@ -143,7 +143,7 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
     // gentle, its rock showing through as it steepens. Part of the one structure the buildings are set into.
     builder.SetStructure(ground);
     const glm::vec3 cliffColour = m_look.rock * 0.88f;
-    Material terrainMaterial = Surfaces::Apply(Material::Diffuse(SiteTerrain::Paint(m_look.ground, cliffColour), 1.0f), m_look.surface, 2.5f);
+    Material terrainMaterial = Surfaces::Apply(Material::Diffuse(SiteTerrain::Paint(m_look.ground, cliffColour), 1.0f), m_look.surface, 2.5f, 0.6f, true);
     terrainMaterial = Surfaces::ApplySteep(terrainMaterial, m_look.steep, 11.0f);
     // Made side by side, a row of pieces a thread -- the shapes to stand on are most of the time a site takes to build -- and
     // put into the world here, in order.
@@ -209,7 +209,7 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
                            kContainerMaterials[static_cast<size_t>(Mix(seed, static_cast<uint32_t>(containers++)) % std::size(kContainerMaterials))]);
             break;
         case Kind::Pad:
-            builder.AddBox(NameOf(block.kind), transform, block.size, kPadMaterial, kOutdoorTile);
+            builder.AddBox(NameOf(block.kind), transform, block.size, Surfaces::Apply(kPadMaterial, "concrete_slab", 6.0f, 0.3f), kOutdoorTile);
             break;
         case Kind::Support:
             builder.AddBox(NameOf(block.kind), transform, block.size, kSupportMaterial);

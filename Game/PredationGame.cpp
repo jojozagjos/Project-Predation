@@ -5376,26 +5376,8 @@ void PredationGame::DrawTitleScreen()
     }
 
 
-    // The menu is two buttons and a name, because that is what anybody came here to do. Everything
-    // about ports, addresses and codes belongs on the screen for the thing it is part of, not on
-    // the first screen somebody sees.
-    // Not once a game is running. Everybody else was told this name when the connection was made
-    // and nothing re-tells them, so a name changed now is a name only this machine can see: the
-    // player list, the kill messages and whatever anybody says over voice all still say the old one.
-    // Better to be unable to change it than to change it and have it not take.
-    const bool inSession = m_sessionMode != SessionMode::Offline;
-    ImGui::AlignTextToFramePadding();
-    ImGui::TextUnformatted("Name");
-    ImGui::SameLine(86.0f);
-    ImGui::SetNextItemWidth(-1.0f);
-    ImGui::BeginDisabled(inSession);
-    if (ImGui::InputText("##playername", m_playerName, sizeof(m_playerName)))
-    {
-        cv_playerName.Set(m_playerName);
-    }
-    ImGui::EndDisabled();
-    ImGui::Spacing();
-
+    // Everything about ports, addresses and codes belongs on the screen for the thing it is part of, not on the first
+    // screen somebody sees. (What others see you called is in the settings, under Multiplayer.)
     if (m_titlePage == TitlePage::Browse || m_titlePage == TitlePage::NewCampaign || m_titlePage == TitlePage::LoadCampaign)
     {
         if (m_titlePage == TitlePage::NewCampaign)
@@ -5659,27 +5641,6 @@ void PredationGame::DrawTitleMenu()
     {
         m_titleHoveredEntry.clear();
     }
-
-    // Your name, a line to write on.
-    y += 18.0f;
-    draw->AddText(font, ImGui::GetFontSize() * 0.85f, {x, y}, IM_COL32(120, 130, 136, 255), "NAME");
-    y += ImGui::GetFontSize() * 0.85f + 6.0f;
-    const bool inSession = m_sessionMode != SessionMode::Offline;
-    ImGui::SetCursorScreenPos({x - 4.0f, y});
-    ImGui::PushStyleColor(ImGuiCol_FrameBg, IM_COL32(0, 0, 0, 0));
-    ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, IM_COL32(255, 255, 255, 10));
-    ImGui::PushStyleColor(ImGuiCol_FrameBgActive, IM_COL32(255, 255, 255, 16));
-    ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(226, 232, 236, 255));
-    ImGui::SetNextItemWidth(280.0f);
-    ImGui::BeginDisabled(inSession);
-    if (ImGui::InputText("##playername", m_playerName, sizeof(m_playerName)))
-    {
-        cv_playerName.Set(m_playerName);
-    }
-    ImGui::EndDisabled();
-    ImGui::PopStyleColor(4);
-    const float lineY = y + ImGui::GetFrameHeight();
-    draw->AddLine({x, lineY}, {x + 276.0f, lineY}, ImGui::IsItemActive() ? IM_COL32(230, 150, 60, 220) : IM_COL32(120, 130, 136, 200));
 
     ImGui::End();
 

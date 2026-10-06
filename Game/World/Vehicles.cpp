@@ -4,6 +4,7 @@
 #include "Engine/Core/Paths.h"
 #include "Engine/Render/Material.h"
 #include "Engine/Render/Mesh.h"
+#include "Game/World/Surfaces.h"
 
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -277,6 +278,10 @@ bool VehicleProp::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld* physics
         Material material = Material::Diffuse(part.color, part.roughness);
         material.metallic = part.metallic;
         material.emissive = part.color * part.emissive;
+        if (!part.surface.empty())
+        {
+            material = Surfaces::Apply(material, part.surface, part.surfaceScale, part.surfaceKeep);
+        }
         const MeshHandle mesh = meshes.Upload(m_model->BuildPartMesh(part), "vehicle_" + m_model->name + "_" + part.name);
         m_parts.push_back(scene.CreateMeshEntity(prefix + part.name, Transform{}, mesh, material));
         if (MeshRenderer* renderer = scene.GetMeshRenderer(m_parts.back()))

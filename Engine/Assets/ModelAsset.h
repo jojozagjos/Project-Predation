@@ -63,6 +63,11 @@ struct ModelPart
     // rather than the bytes, unlike the mesh, because a texture is two megabytes and a model file
     // is meant to stay something a person can open. Empty means the part is drawn in `color` alone.
     std::string texture;
+    // Or a surface texture set (Assets/Textures) laid on by where the part stands in the world, repeating every
+    // `surfaceScale` metres -- for a place that stays put (a station's slab, its walls); empty for none.
+    std::string surface;
+    float surfaceScale = 0.0f;
+    float surfaceKeep = 1.0f; // how much of the set's own colour shows (Material::surfaceKeep)
 
     glm::mat4 LocalMatrix() const;
 };

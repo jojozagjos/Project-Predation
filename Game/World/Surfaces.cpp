@@ -4,7 +4,9 @@
 #include "Engine/Render/TextureLibrary.h"
 
 #include <glm/common.hpp>
+#include <glm/geometric.hpp>
 
+#include <algorithm>
 #include <filesystem>
 
 namespace pred
@@ -40,7 +42,7 @@ void SetLibrary(TextureLibrary* textures)
     g_textures = textures;
 }
 
-Material Apply(Material material, const std::string& name, float metres)
+Material Apply(Material material, const std::string& name, float metres, float keep, bool natural)
 {
     if (g_textures == nullptr || metres <= 0.0f)
     {
@@ -54,7 +56,12 @@ Material Apply(Material material, const std::string& name, float metres)
     material.baseColorTexture = colour;
     // Tinted to the material's colour on average, the set giving only its detail: a photograph of sand or grass has a
     // colour of its own, and multiplied by a world's colour as well it would come out twice as deep.
-    material.baseColor /= glm::max(g_textures->MeanColour(colour), glm::vec3(0.02f));
+    // (Its average as drawn: with only so much of its colour kept, so much nearer grey.)
+    const glm::vec3 mean = g_textures->MeanColour(colour);
+    const glm::vec3 drawn = glm::mix(glm::vec3(glm::dot(mean, glm::vec3(0.2126f, 0.7152f, 0.0722f))), mean, std::clamp(keep, 0.0f, 1.0f));
+    material.baseColor /= glm::max(drawn, glm::vec3(0.02f));
+    material.surfaceKeep = keep;
+    material.surfaceNatural = natural;
     material.normalTexture = Map(name, "Normal");
     material.roughnessTexture = Map(name, "Roughness");
     material.surfaceScale = metres;
@@ -77,7 +84,12 @@ Material ApplySteep(Material material, const std::string& name, float metres)
     material.steepRoughnessTexture = Map(name, "Roughness");
     material.steepScale = metres;
     // The material's colour is already over the first set's average; over this one's instead.
-    material.steepTint = g_textures->MeanColour(material.baseColorTexture) / glm::max(g_textures->MeanColour(colour), glm::vec3(0.02f));
+    // (The first set's average as drawn, against this one's as drawn -- most of its own colour let go of, in the shader.)
+    const glm::vec3 first = g_textures->MeanColour(material.baseColorTexture);
+    const glm::vec3 firstDrawn = glm::mix(glm::vec3(glm::dot(first, glm::vec3(0.2126f, 0.7152f, 0.0722f))), first, material.surfaceKeep);
+    const glm::vec3 own = g_textures->MeanColour(colour);
+    const glm::vec3 ownDrawn = glm::mix(glm::vec3(glm::dot(own, glm::vec3(0.2126f, 0.7152f, 0.0722f))), own, 0.35f);
+    material.steepTint = firstDrawn / glm::max(ownDrawn, glm::vec3(0.02f));
     return material;
 }
 

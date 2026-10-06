@@ -6,6 +6,7 @@
 #include "Game/World/LevelLights.h"
 #include "Game/World/MapBuilder.h"
 #include "Game/World/Outpost.h"
+#include "Game/World/Surfaces.h"
 
 #include <glm/geometric.hpp>
 #include <glm/gtc/constants.hpp>
@@ -216,12 +217,15 @@ void BuildStructure(Builder& b)
     const float outer = kHalf + kWallT;
     const float bayOuter = kBayHalf + kWallT;
     // --- Floors and roofs ---------------------------------------------------------------------------------------
-    b.Solid("ship_deck", {-outer, -kSlab, kNose - kWallT}, {outer, 0.0f, kBayFront - kWallT}, kDeckPlate);
-    b.Solid("ship_deck", {-bayOuter, -kSlab, kBayFront - kWallT}, {bayOuter, 0.0f, kDoorsFront}, kBayDeck);
-    b.Solid("ship_deck", {-bayOuter, -kSlab, kDoorsBack}, {bayOuter, 0.0f, kBayBack + kWallT}, kBayDeck);
-    b.Solid("ship_deck", {-bayOuter, -kSlab, kDoorsFront}, {-kDoorsHalfX, 0.0f, kDoorsBack}, kBayDeck);
-    b.Solid("ship_deck", {kDoorsHalfX, -kSlab, kDoorsFront}, {bayOuter, 0.0f, kDoorsBack}, kBayDeck);
-    b.Solid("ship_deck", {-outer, -kSlab, kBayBack + kWallT}, {outer, 0.0f, kStern + kWallT}, kDeckPlate);
+    // Tread plate underfoot, the bay's worn darker.
+    const Material deck = Surfaces::Apply(kDeckPlate, "deck_plate", 1.6f, 0.6f);
+    const Material bayDeck = Surfaces::Apply(kBayDeck, "deck_plate", 1.6f, 0.6f);
+    b.Solid("ship_deck", {-outer, -kSlab, kNose - kWallT}, {outer, 0.0f, kBayFront - kWallT}, deck);
+    b.Solid("ship_deck", {-bayOuter, -kSlab, kBayFront - kWallT}, {bayOuter, 0.0f, kDoorsFront}, bayDeck);
+    b.Solid("ship_deck", {-bayOuter, -kSlab, kDoorsBack}, {bayOuter, 0.0f, kBayBack + kWallT}, bayDeck);
+    b.Solid("ship_deck", {-bayOuter, -kSlab, kDoorsFront}, {-kDoorsHalfX, 0.0f, kDoorsBack}, bayDeck);
+    b.Solid("ship_deck", {kDoorsHalfX, -kSlab, kDoorsFront}, {bayOuter, 0.0f, kDoorsBack}, bayDeck);
+    b.Solid("ship_deck", {-outer, -kSlab, kBayBack + kWallT}, {outer, 0.0f, kStern + kWallT}, deck);
     b.Solid("ship_roof", {-outer, kTop, kNose - kWallT}, {outer, kRoof, kBayFront - kWallT}, kCeiling);
     b.Solid("ship_roof", {-bayOuter, kBayTop, kBayFront - kWallT}, {bayOuter, kBayRoof, kBayBack + kWallT}, kCeiling);
     b.Solid("ship_roof", {-outer, kTop, kBayBack + kWallT}, {outer, kRoof, kStern + kWallT}, kCeiling);

@@ -39,6 +39,12 @@ struct Material
     TextureHandle normalTexture;
     TextureHandle roughnessTexture;
     float surfaceScale = 0.0f;
+    // How much of the set's own colour shows (1 all; 0 none, only its light and dark): a photograph's paint and rust
+    // fighting the colour asked of the surface is let go of.
+    float surfaceKeep = 1.0f;
+    // Whether the set is natural ground, whose repeat is hidden by blending it with a larger, turned copy of itself --
+    // not for anything laid in a grid (paving, plate), which would come out in diamonds.
+    bool surfaceNatural = false;
     // And a second set where the surface is steep -- a world's rock showing through its ground on the slopes -- blended in
     // as the slope passes what anybody can stand on, repeating every `steepScale` metres (0: none), its colour times
     // `steepTint` (the first set's average colour over its own, so each is tinted to the colour asked of it).

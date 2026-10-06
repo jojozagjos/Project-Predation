@@ -403,6 +403,9 @@ bool ModelAsset::LoadFromFile(const std::filesystem::path& file)
             ReadField(node, "visible", part.visible);
             ReadField(node, "source", part.sourceFile);
             ReadField(node, "texture", part.texture);
+            ReadField(node, "surface", part.surface);
+            ReadField(node, "surfaceScale", part.surfaceScale);
+            ReadField(node, "surfaceKeep", part.surfaceKeep);
             ReadField(node, "parent", part.parent);
 
             // An imported mesh is stored inline, as flat arrays, so the model stays one file.
@@ -549,6 +552,12 @@ bool ModelAsset::SaveToFile(const std::filesystem::path& file) const
         if (!part.texture.empty())
         {
             node["texture"] = part.texture;
+        }
+        if (!part.surface.empty())
+        {
+            node["surface"] = part.surface;
+            node["surfaceScale"] = part.surfaceScale;
+            node["surfaceKeep"] = part.surfaceKeep;
         }
         if (part.shape == PartShape::Mesh && !part.mesh.vertices.empty())
         {

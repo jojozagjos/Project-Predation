@@ -401,7 +401,8 @@ void SceneRenderer::SubmitMesh(bgfx::ViewId view, const Mesh& mesh, const Materi
         const TextureHandle rough = material.roughnessTexture.IsValid() ? material.roughnessTexture : m_textures->White();
         bgfx::setTexture(10, m_sNormalMap, m_textures->Get(normal));
         bgfx::setTexture(11, m_sRoughnessMap, m_textures->Get(rough));
-        const glm::vec4 surface{material.surfaceScale > 0.0f ? 1.0f / material.surfaceScale : 0.0f, 0.0f, 0.0f, 0.0f};
+        const glm::vec4 surface{material.surfaceScale > 0.0f ? 1.0f / material.surfaceScale : 0.0f, std::clamp(material.surfaceKeep, 0.0f, 1.0f),
+                                material.surfaceNatural ? 1.0f : 0.0f, 0.0f};
         bgfx::setUniform(m_uSurfaceParams, glm::value_ptr(surface));
         // The steep set, the same way.
         const bool steep = material.surfaceScale > 0.0f && material.steepScale > 0.0f && material.steepColorTexture.IsValid();

@@ -35,8 +35,37 @@ struct PartBuilder
         part.roughness = rough;
         part.metallic = metal;
         part.emissive = emissive;
+        SurfaceOf(stem, part);
         model.parts.push_back(part);
         return model.parts.back();
+    }
+    // What a part is made of, by what it is: the surface texture set it is laid with, and how big it repeats.
+    static void SurfaceOf(const char* stem, ModelPart& part)
+    {
+        struct Made
+        {
+            const char* stem;
+            const char* surface;
+            float metres;
+            float keep; // how much of the set's own colour shows: little, the part's colour is its paint
+        };
+        static constexpr Made kMade[] = {
+            {"slab", "concrete_slab", 6.0f, 0.3f},         {"pad", "concrete_slab", 6.0f, 0.3f},
+            {"pavement", "concrete_slab", 3.0f, 0.3f},     {"road", "asphalt", 6.0f, 0.3f},
+            {"building", "building_cladding", 4.0f, 0.2f}, {"building_parapet", "building_cladding", 4.0f, 0.2f},
+            {"shipworks", "building_cladding", 4.0f, 0.2f}, {"bay_wall", "building_cladding", 4.0f, 0.2f},
+            {"annex_module", "building_cladding", 4.0f, 0.2f},
+        };
+        for (const Made& made : kMade)
+        {
+            if (std::string(stem) == made.stem)
+            {
+                part.surface = made.surface;
+                part.surfaceScale = made.metres;
+                part.surfaceKeep = made.keep;
+                return;
+            }
+        }
     }
     // A box about its middle, turned about up by `yaw` degrees and tipped about its own x by `tip`.
     ModelPart& Turned(const char* stem, const glm::vec3& centre, const glm::vec3& size, float yaw, const glm::vec3& colour, float tip = 0.0f,

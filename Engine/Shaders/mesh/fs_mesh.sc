@@ -9,7 +9,7 @@ SAMPLER2D(s_steepColor, 12);     // a second set where the surface is steep (Mat
 SAMPLER2D(s_steepNormal, 13);
 SAMPLER2D(s_steepRoughness, 14);
 uniform vec4 u_steepParams;      // xyz = its tint, w = repeats a metre (0: none)
-uniform vec4 u_surfaceParams;  // x = repeats a metre of the surface set, laid on from every side (0: off)
+uniform vec4 u_surfaceParams;  // x = repeats a metre of the surface set, laid on from every side (0: off); y = how much of its own colour shows; z = natural ground (1) or laid in a grid (0)
 
 uniform vec4 u_baseColor;       // rgb = albedo
 uniform vec4 u_materialParams;  // x = metallic, y = roughness, z = how much of the mirror it shows
@@ -554,7 +554,7 @@ void main()
 		// On the ground, which is where a repeat shows -- the same few marks in rows to the horizon -- the set again, larger
 		// and turned, blended in and out over patches some metres across, and the whole of it a little lighter and darker
 		// by patches larger still.
-		if (blend.y > 0.01)
+		if (blend.y > 0.01 && u_surfaceParams.z > 0.5)
 		{
 			vec2 wide = mul(mat2(0.788, -0.616, 0.616, 0.788), uvY) * 0.41 + vec2(0.37, 0.71);
 			float mixIn = smoothstep(0.35, 0.65, SurfacePatches(v_worldPos.xz * 0.11));
@@ -568,6 +568,7 @@ void main()
 		}
 		surfaceAlbedo = pow(texture2D(s_baseColor, uvX).rgb, vec3_splat(2.2)) * blend.x + groundAlbedo * blend.y +
 		                pow(texture2D(s_baseColor, uvZ).rgb, vec3_splat(2.2)) * blend.z;
+		surfaceAlbedo = mix(vec3_splat(dot(surfaceAlbedo, vec3(0.2126, 0.7152, 0.0722))), surfaceAlbedo, u_surfaceParams.y);
 		surfaceRough = texture2D(s_roughnessMap, uvX).r * blend.x + groundRough * blend.y + texture2D(s_roughnessMap, uvZ).r * blend.z;
 		vec3 nX = texture2D(s_normalMap, uvX).xyz * 2.0 - 1.0;
 		vec3 nZ = texture2D(s_normalMap, uvZ).xyz * 2.0 - 1.0;

@@ -4,6 +4,7 @@
 #include "Engine/Render/Mesh.h"
 #include "Engine/Render/Primitives.h"
 #include "Game/World/MapBuilder.h"
+#include "Game/World/Surfaces.h"
 
 #include <glm/common.hpp>
 #include <glm/gtc/constants.hpp>
@@ -1044,7 +1045,11 @@ const Material& MaterialOf(Kind kind)
     switch (kind)
     {
     case Kind::Floor:
-        return kFloorMaterial;
+    {
+        // Laid with its set the first time it is asked for, once the textures are there to lay.
+        static const Material floor = Surfaces::Apply(kFloorMaterial, "facility_floor", 3.0f, 0.3f);
+        return floor;
+    }
     case Kind::Ceiling:
         return kCeilingMaterial;
     case Kind::Wall:
@@ -1063,7 +1068,10 @@ const Material& MaterialOf(Kind kind)
     case Kind::Cabinet:
         return kCabinetMaterial;
     case Kind::Cladding:
-        return kCladdingMaterial;
+    {
+        static const Material cladding = Surfaces::Apply(kCladdingMaterial, "building_cladding", 4.0f, 0.2f);
+        return cladding;
+    }
     }
     return kWallMaterial;
 }
