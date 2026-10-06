@@ -23,6 +23,11 @@ namespace
 
 using namespace ShipSpec;
 
+// The dust past the windows under way: pale blue streaks, glowing, this long at their longest.
+const glm::vec3 kDustColour{0.75f, 0.82f, 1.0f};
+constexpr float kDustGlow = 2.6f;
+constexpr float kDustLength = 3.2f;
+
 // Worn industrial: painted steel, grating underfoot, bare metal where hands and boots have been.
 const Material kWall = Material::Diffuse({0.30f, 0.33f, 0.33f}, 0.8f);
 const Material kWallDark = Material::Diffuse({0.22f, 0.24f, 0.25f}, 0.85f);
@@ -1606,8 +1611,8 @@ void ShipMap::UpdateDust(Scene& scene, MeshLibrary& meshes, float speed, float d
     };
     if (m_dust.empty())
     {
-        const MeshHandle mesh = meshes.Upload(Primitives::Box({0.05f, 0.05f, 3.2f}), "ship_dust");
-        const Material glow = Material::Emissive({0.75f, 0.82f, 1.0f}, 2.6f);
+        const MeshHandle mesh = meshes.Upload(Primitives::Box({0.05f, 0.05f, kDustLength}), "ship_dust");
+        const Material glow = Material::Emissive(kDustColour, kDustGlow);
         for (int i = 0; i < 700; ++i)
         {
             Speck speck;
@@ -1638,10 +1643,19 @@ void ShipMap::UpdateDust(Scene& scene, MeshLibrary& meshes, float speed, float d
     {
         return;
     }
-    // The ship goes forward: what it passes goes back past it, and comes round again ahead of it.
+    // The ship goes forward: what it passes goes back past it, and comes round again ahead of it -- drawn as the eye catches
+    // it, a streak as long as it goes in a moment (a mote, slow; a long line, fast) and the fainter the slower, so a ship
+    // drifting does not look as though it were racing.
     const glm::quat lie = glm::rotation(glm::vec3(0.0f, 0.0f, -1.0f), along);
+    const float streak = std::clamp(speed * 0.03f, 0.08f, kDustLength * 1.3f) / kDustLength;
+    const float fade = glm::smoothstep(3.0f, 70.0f, speed);
     for (Speck& speck : m_dust)
     {
+        if (MeshRenderer* renderer = scene.GetMeshRenderer(speck.entity))
+        {
+            renderer->material.baseColor = kDustColour * fade;
+            renderer->material.emissive = kDustColour * (kDustGlow * fade);
+        }
         speck.at -= along * (speed * dt);
         const float distance = glm::dot(speck.at, along);
         if (distance < -reach)
@@ -1652,6 +1666,7 @@ void ShipMap::UpdateDust(Scene& scene, MeshLibrary& meshes, float speed, float d
         {
             transform->position = kOrigin + speck.at;
             transform->rotation = lie;
+            transform->scale = glm::vec3(1.0f, 1.0f, streak);
         }
     }
 }
