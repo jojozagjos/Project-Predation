@@ -1,6 +1,7 @@
 #include "Engine/Render/Renderer.h"
 
 #include "Engine/Core/Log.h"
+#include "Engine/Render/DepthConvention.h"
 
 #include <bgfx/platform.h>
 #include <bx/bx.h>
@@ -224,6 +225,10 @@ bool Renderer::Init(const RendererDesc& desc)
     PRED_LOG_INFO(Render, "Renderer: {} | {}x{} | vsync {} | msaa {} | homogeneousDepth {} | maxTexture {}",
                   bgfx::getRendererName(caps->rendererType), desc.width, desc.height, desc.vsync, desc.msaa,
                   caps->homogeneousDepth, caps->limits.maxTextureSize);
+    // Depth reversed into floats where the backend can draw to them, multisampled too (DepthConvention).
+    const uint16_t needed = BGFX_CAPS_FORMAT_TEXTURE_FRAMEBUFFER | BGFX_CAPS_FORMAT_TEXTURE_FRAMEBUFFER_MSAA;
+    Depth::Configure(caps->homogeneousDepth, (caps->formats[bgfx::TextureFormat::D32F] & needed) == needed);
+    PRED_LOG_INFO(Render, "Depth: {}", Depth::Reversed() ? "reversed, 32-bit float" : "standard, 24-bit");
 
     bgfx::setDebug(impl.debugFlags);
     bgfx::setViewName(kViewMain, "Main");
@@ -340,6 +345,7 @@ void Renderer::BeginFrame()
 {
     Impl& impl = *m_impl;
     bgfx::setViewFrameBuffer(kViewSky, impl.sceneTarget);
+    bgfx::setViewFrameBuffer(kViewSkyBodies, impl.sceneTarget);
     bgfx::setViewFrameBuffer(kViewMain, impl.sceneTarget);
     bgfx::setViewFrameBuffer(kViewDebug, impl.sceneTarget);
     const auto w = static_cast<uint16_t>(impl.width);
@@ -348,11 +354,14 @@ void Renderer::BeginFrame()
     // The sky clears the colour and the main view clears only the depth over the top of it. Clearing
     // colour in both would wipe the sky before the world was drawn on it.
     bgfx::setViewRect(kViewSky, 0, 0, w, h);
-    bgfx::setViewClear(kViewSky, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, impl.clearColor, 1.0f, 0);
+    bgfx::setViewClear(kViewSky, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, impl.clearColor, Depth::Clear(), 0);
     bgfx::touch(kViewSky);
+    // Over the sky's depth, which it cleared; its camera is the game's to set (only when there is something in it).
+    bgfx::setViewRect(kViewSkyBodies, 0, 0, w, h);
+    bgfx::setViewClear(kViewSkyBodies, BGFX_CLEAR_NONE, impl.clearColor, Depth::Clear(), 0);
 
     bgfx::setViewRect(kViewMain, 0, 0, w, h);
-    bgfx::setViewClear(kViewMain, BGFX_CLEAR_DEPTH, impl.clearColor, 1.0f, 0);
+    bgfx::setViewClear(kViewMain, BGFX_CLEAR_DEPTH, impl.clearColor, Depth::Clear(), 0);
     bgfx::setViewTransform(kViewMain, glm::value_ptr(impl.view), glm::value_ptr(impl.projection));
     bgfx::touch(kViewMain);
 

@@ -638,7 +638,7 @@ void HullMesh(ModelAsset& model, const std::string& name, MeshData mesh, const g
 
 } // namespace
 
-ModelAsset ShipMap::HullModel(const ShipHullLook& look)
+ModelAsset ShipMap::HullModel(const ShipHullLook& look, bool stage)
 {
     // In the ship's frame, round its rooms: the skin a few centimetres outside every outer wall and roof, so it covers them
     // seen from outside and never shares a face with them; the windows' gaps through it where theirs are.
@@ -878,6 +878,32 @@ ModelAsset ShipMap::HullModel(const ShipHullLook& look)
     HullBox(model, "fx_nav_starboard", {bayWide, 3.0f, kBayFront + 0.2f}, {bayWide + 0.2f, 3.2f, kBayFront + 0.4f}, {0.1f, 1.0f, 0.2f}, 0.4f, 0.0f,
             4.0f);
     HullBox(model, "fx_nav_tail", {-0.1f, bayHigh, kBayBack - 0.4f}, {0.1f, bayHigh + 0.2f, kBayBack - 0.2f}, {1.0f, 1.0f, 1.0f}, 0.4f, 0.0f, 4.0f);
+
+    if (stage)
+    {
+        // What the rooms are on the stage: a dark core just inside the walls -- the cockpit and crew sections, the bay, the
+        // engine room, each meeting the next back to back -- so the bay doors' shaft and every other gap shows a dark inside.
+        const glm::vec3 inside{0.05f, 0.05f, 0.06f};
+        const float coreBay = bayFront - 0.02f;
+        const float coreAft = bayBack + 0.02f;
+        HullBox(model, name("core"), {-outer + 0.05f, -kSlab + 0.05f, front + 0.05f}, {outer - 0.05f, kRoof - 0.05f, coreBay}, inside, 0.9f);
+        HullBox(model, name("core"), {-bayOuter + 0.05f, -kSlab + 0.05f, coreBay}, {bayOuter - 0.05f, kBayRoof - 0.05f, coreAft}, inside, 0.9f);
+        HullBox(model, name("core"), {-outer + 0.05f, -kSlab + 0.05f, coreAft}, {outer - 0.05f, kRoof - 0.05f, tail - 0.1f}, inside, 0.9f);
+        // The cockpit's glass, lit from within; the boarding door shut.
+        const glm::vec3 lit{0.55f, 0.45f, 0.3f};
+        HullBox(model, name("fx_glass"), {kWindscreen.from, kWindscreen.bottom, front + 0.01f}, {kWindscreen.to, kWindscreen.top, front + 0.04f}, lit, 0.2f, 0.0f,
+                0.6f);
+        for (const float s : {-1.0f, 1.0f})
+        {
+            const float x0 = s < 0.0f ? -outer - 0.04f : outer + 0.02f;
+            HullBox(model, name("fx_glass"), {x0, kSideWindow.bottom, kSideWindow.from}, {x0 + 0.02f, kSideWindow.top, kSideWindow.to}, lit, 0.2f, 0.0f, 0.6f);
+        }
+        for (const ModelPart& part : AirlockModel().parts)
+        {
+            model.parts.push_back(part);
+            model.parts.back().name = name(part.name.c_str());
+        }
+    }
     return model;
 }
 
@@ -1035,7 +1061,8 @@ void ShipMap::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, Le
     // Its outside, drawn round the rooms and never solid -- nobody is out there -- and the same again out on the stage.
     const auto hull = std::make_shared<ModelAsset>(HullModel(m_look));
     m_hull.Build(scene, meshes, nullptr, hull, Pose(glm::vec3(0.0f)), 0, "ship_hull_");
-    m_stageHull.Build(scene, meshes, nullptr, hull, {kStage, {1.0f, 0.0f, 0.0f, 0.0f}}, 0, "ship_stage_");
+    m_stageHull.Build(scene, meshes, nullptr, std::make_shared<ModelAsset>(HullModel(m_look, true)), {kStage, {1.0f, 0.0f, 0.0f, 0.0f}}, 0,
+                      "ship_stage_");
     // Its landing gear put away until it stands on the ground.
     SetGear(scene, false, false);
     if (lights != nullptr)
@@ -1099,7 +1126,7 @@ void ShipMap::SetLook(Scene& scene, MeshLibrary& meshes, const ShipHullLook& loo
     m_hull.Clear(scene, nullptr);
     m_stageHull.Clear(scene, nullptr);
     m_hull.Build(scene, meshes, nullptr, hull, home, 0, "ship_hull_");
-    m_stageHull.Build(scene, meshes, nullptr, hull, stage, 0, "ship_stage_");
+    m_stageHull.Build(scene, meshes, nullptr, std::make_shared<ModelAsset>(HullModel(m_look, true)), stage, 0, "ship_stage_");
     m_hullsFar = false;
     m_showSet = false;
     SetEngines(scene, m_burn);

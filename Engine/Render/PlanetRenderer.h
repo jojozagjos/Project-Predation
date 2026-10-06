@@ -26,6 +26,9 @@ public:
 
     // Where the camera is and how bright the picture is, for everything drawn after.
     void SetCamera(const glm::vec3& eye, float exposure);
+    // What it draws into: a finished picture of its own (the system map: developed for the screen, depth less), or the
+    // world's picture, which is developed after (linear light) and whose depth runs as DepthConvention has it.
+    void SetOutput(bool linear, uint64_t depthTest);
     // A planet or moon: `model` places, sizes and turns the unit sphere; `towardsLight` is the direction of its star.
     // `highlight` (0 to 1) rims it, for one picked out.
     void Body(bgfx::ViewId view, const glm::mat4& model, const PlanetLook& look, const glm::vec3& towardsLight,
@@ -73,6 +76,8 @@ private:
     bgfx::UniformHandle m_uEye = BGFX_INVALID_HANDLE;
     glm::vec3 m_eye{0.0f};
     float m_exposure = 1.0f;
+    bool m_linear = false;
+    uint64_t m_depthTest = BGFX_STATE_DEPTH_TEST_LESS;
     std::vector<LineVertex> m_lines;
 };
 

@@ -35,27 +35,6 @@ void SkyPlanetFrame(vec3 toPlanet, out vec3 pole, out vec3 east, out vec3 third)
 	third = cross(east, pole);
 }
 
-// How much of the sun the rings hide from a point on the planet (0 none).
-float SkyRingAt(vec3 spot, vec3 towardsSun, vec3 centre, vec3 pole, float radius)
-{
-	if (u_skyRings.y <= 0.0)
-	{
-		return 0.0;
-	}
-	float facing = dot(towardsSun, pole);
-	if (abs(facing) < 0.0001)
-	{
-		return 0.0;
-	}
-	float t = dot(centre - spot, pole) / facing;
-	if (t <= 0.0)
-	{
-		return 0.0;
-	}
-	float r = length(spot + towardsSun * t - centre) / radius;
-	return step(u_skyRings.x, r) * step(r, u_skyRings.y);
-}
-
 // Noise over directions, for the planet's ground and cloud and the faint band of the galaxy.
 float SkyHash(vec3 p)
 {
@@ -207,16 +186,14 @@ void main()
 			vec3 third;
 			SkyPlanetFrame(toPlanet, pole, east, third);
 			vec3 local = vec3(dot(normal, east), dot(normal, pole), dot(normal, third));
-			vec4 surface = PlanetAlbedo(local, u_planetA, u_planetB, u_planetC, u_planetD, u_planetE.w, 0.0, sea);
+			vec4 surface = PlanetAlbedo(local, u_planetA, u_planetB, u_planetC, u_planetD, u_planetE.w, 0.0, 0.0, sea);
 			// The lie of the land in the light: ranges catch it on one side and shadow the other, most of all near the line
 			// between day and night.
-			vec3 bumped = PlanetBump(local, u_planetA, u_planetD, u_planetE.w, 1.0);
+			vec3 bumped = PlanetBump(local, u_planetA, u_planetD, u_planetE.w, 1.0, 0.0);
 			vec3 bumpedWorld = normalize(east * bumped.x + pole * bumped.y + third * bumped.z);
 			float relief = clamp(1.0 + (dot(bumpedWorld, towardsSun) - lit) * 1.3, 0.6, 1.35);
 			vec3 ground = mix(surface.rgb * relief, u_planetD.rgb, surface.w);
-			// Shadowed by its rings, where they come between it and the sun.
-			float ringShade = 1.0 - SkyRingAt(toPlanet + normal * radius, towardsSun, toPlanet, pole, radius) * 0.7;
-			vec3 planet = ground * smoothstep(-0.05, 0.4, lit) * ringShade * u_skySunColor.w * 1.6;
+			vec3 planet = ground * smoothstep(-0.05, 0.4, lit) * u_skySunColor.w * 1.6;
 			planet += u_skySunColor.rgb * u_skySunColor.w * pow(max(dot(reflect(-towardsSun, normal), -ray), 0.0), 60.0) * sea *
 					  (1.0 - surface.w) * step(0.0, lit) * 0.6;
 			float edge = pow(1.0 - max(dot(normal, -ray), 0.0), 4.0);

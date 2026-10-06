@@ -13,6 +13,7 @@ set(PRED_GAME_SOURCES
     PredationGameDevices.cpp
     PredationGameCampaign.cpp
     PredationGameMap.cpp
+    PredationGameSpace.cpp
     PredationGameMapView.cpp
     PredationGameTitle.cpp
 

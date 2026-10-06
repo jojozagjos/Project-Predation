@@ -1,6 +1,7 @@
 #include "Game/Items/ItemIcons.h"
 
 #include "Engine/Core/Log.h"
+#include "Engine/Render/DepthConvention.h"
 #include "Engine/Render/Mesh.h"
 #include "Engine/Render/Renderer.h"
 #include "Engine/Render/SceneRenderer.h"
@@ -51,7 +52,6 @@ bool ItemIcons::Build(const ItemDatabase& items, MeshLibrary& meshes, const Rend
     Shutdown();
 
     m_cellPixels = std::clamp(cellPixels, 32, 256);
-    m_homogeneousDepth = renderer.HomogeneousDepth();
 
     for (const ItemDefinition& definition : items.All())
     {
@@ -147,8 +147,7 @@ bool ItemIcons::Build(const ItemDatabase& items, MeshLibrary& meshes, const Rend
     attachments[0] =
         bgfx::createTexture2D(dimension, dimension, false, 1, bgfx::TextureFormat::BGRA8, kColorFlags);
     // Without a depth attachment the near faces of a box would not reliably cover the far ones.
-    attachments[1] = bgfx::createTexture2D(dimension, dimension, false, 1, bgfx::TextureFormat::D24S8,
-                                           BGFX_TEXTURE_RT_WRITE_ONLY);
+    attachments[1] = bgfx::createTexture2D(dimension, dimension, false, 1, Depth::Format(), BGFX_TEXTURE_RT_WRITE_ONLY);
     if (!bgfx::isValid(attachments[0]) || !bgfx::isValid(attachments[1]))
     {
         PRED_LOG_ERROR(Render, "Item icons: could not create a {}x{} render target", m_size, m_size);
@@ -215,13 +214,10 @@ void ItemIcons::Render(SceneRenderer& sceneRenderer, const MeshLibrary& meshes)
         bgfx::setViewRect(view, static_cast<uint16_t>(column * cell), static_cast<uint16_t>(row * cell),
                           cell, cell);
         // Cleared to fully transparent so the panel behind shows through around the item.
-        bgfx::setViewClear(view, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, 0x00000000, 1.0f, 0);
+        bgfx::setViewClear(view, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, 0x00000000, Depth::Clear(), 0);
 
         const glm::mat4 viewMatrix = glm::lookAtRH(entry.eye, entry.focus, glm::vec3(0.0f, 1.0f, 0.0f));
-        const glm::mat4 projection =
-            m_homogeneousDepth
-                ? glm::perspectiveRH_NO(kVerticalFov, 1.0f, entry.nearPlane, entry.farPlane)
-                : glm::perspectiveRH_ZO(kVerticalFov, 1.0f, entry.nearPlane, entry.farPlane);
+        const glm::mat4 projection = Depth::Perspective(kVerticalFov, 1.0f, entry.nearPlane, entry.farPlane);
         bgfx::setViewTransform(view, glm::value_ptr(viewMatrix), glm::value_ptr(projection));
 
         for (const Entry::Part& part : entry.parts)

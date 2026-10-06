@@ -155,7 +155,8 @@ TEST_CASE("No two parts of a vehicle share a surface facing the same way, which 
     ShipHullLook upgraded;
     upgraded.drive = 4;
     upgraded.sensors = 4;
-    for (const ModelAsset& model : {ShipMap::HullModel(ShipHullLook{}), ShipMap::HullModel(upgraded), Vehicles::ShuttleModel(), Vehicles::BayDoorsModel()})
+    for (const ModelAsset& model : {ShipMap::HullModel(ShipHullLook{}), ShipMap::HullModel(upgraded), ShipMap::HullModel(upgraded, true), Vehicles::ShuttleModel(),
+                                    Vehicles::BayDoorsModel()})
     {
         INFO(model.name);
         for (size_t i = 0; i < model.parts.size(); ++i)

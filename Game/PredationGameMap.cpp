@@ -29,8 +29,6 @@ namespace
 // How often the host tells everybody how the ship stands and who is pointing at what, and how often the sensors look.
 constexpr float kTravelSendEvery = 0.1f;
 constexpr float kSensorEvery = 1.0f;
-constexpr float kTau = 6.28318530718f;
-
 
 // How far the ship's sensors see while under way, in astronomical units, by their tier.
 float SensorRange(int tier)
@@ -821,6 +819,8 @@ bool PredationGame::RegionIsPort(const Body& body, int region) const
 
 void PredationGame::SetGroundSky(Environment& environment)
 {
+    // Under a sky, not in space: no bodies hung in it.
+    m_spaceBodies.clear();
     const StarSystem* system = CurrentSystem();
     const Body* body = system != nullptr ? system->Find(m_groundBody) : nullptr;
     const int region = m_groundRegion;
@@ -857,9 +857,9 @@ void PredationGame::SetGroundSky(Environment& environment)
     // Low in a sky with air in it, the light comes through more of it, and reddens.
     environment.sunColor = glm::mix(starLight, starLight * glm::vec3(1.0f, 0.6f, 0.34f), low * air);
     environment.sunIntensity = 2.4f * day * (1.0f - 0.35f * body->clouds);
-    if (air < 0.08f)
+    if (air < 0.015f)
     {
-        // No air to speak of: a black sky with the stars in it whatever the hour, and a hard sun.
+        // No air at all: a black sky with the stars in it whatever the hour, and a hard sun.
         environment.stars = 1.0f;
         environment.sunDisc = 0.006f;
         environment.ambientSky = glm::vec3(0.03f, 0.032f, 0.04f) * (0.3f + 0.7f * day);
@@ -869,10 +869,13 @@ void PredationGame::SetGroundSky(Environment& environment)
         environment.fogEnd = 9000.0f;
         return;
     }
-    environment.stars = 0.0f;
-    // Night not black: the sky's own glow and the hub's lights are enough to see the shapes of things by.
-    const glm::vec3 night{0.03f, 0.036f, 0.055f};
-    const glm::vec3 daySky = body->airColor * (0.3f + 0.25f * air);
+    // Any air at all lights the sky by day -- a thin one less blue and less bright, its stars showing through as the sun goes
+    // low -- and the stars come out at night, as much as the cloud lets them.
+    const float thick = glm::smoothstep(0.015f, 0.2f, air);
+    environment.stars = std::clamp((1.0f - day * (0.6f + 0.4f * thick)) * (1.0f - 0.8f * body->clouds), 0.0f, 1.0f);
+    // Night not black: the sky's own glow and the outpost's lights are enough to see the shapes of things by.
+    const glm::vec3 night{0.04f, 0.048f, 0.07f};
+    const glm::vec3 daySky = body->airColor * (0.3f + 0.25f * air) * glm::mix(0.55f, 1.0f, thick);
     environment.ambientSky = glm::mix(night, daySky, day);
     const glm::vec3 haze = glm::mix(body->airColor, ground, 0.25f) * 0.42f;
     environment.fogColor = glm::mix(night * 0.8f, glm::mix(haze, haze * glm::vec3(1.25f, 0.8f, 0.6f), low), day);
@@ -890,188 +893,6 @@ void PredationGame::SetGroundSky(Environment& environment)
     // Never so far that the edge of the ground round the hub (440 m out) shows.
     environment.fogStart = 30.0f * visibility;
     environment.fogEnd = std::clamp(420.0f * visibility, 140.0f, 400.0f);
-}
-
-void PredationGame::SetSpaceSky(Environment& environment)
-{
-    // The system as it is from where the ship is: the star where it really is, the planet it is over or heading for big
-    // ahead or below, and every other body where it really is and as big as it really looks -- a disc when it is near
-    // enough to have a size, a point of light when it is not. Directions in the system are turned into the ship's:
-    // forward is the way it is heading (the bow), up is the system's up.
-    const StarSystem* system = CurrentSystem();
-    if (system == nullptr)
-    {
-        return;
-    }
-    for (glm::vec4& body : environment.skyBodies)
-    {
-        body = glm::vec4(0.0f);
-    }
-    const glm::vec3 bow = glm::normalize(ShipSpec::kTravelHeading);
-    const glm::vec3 starboard = glm::normalize(glm::cross(bow, glm::vec3(0.0f, 1.0f, 0.0f)));
-    const glm::vec3 overhead = glm::cross(starboard, bow);
-
-    // Between the stars: nothing near, the star it left a dimming sun astern and the one it is heading for a brightening
-    // point dead ahead -- the nearer of the two the one that lights the ship.
-    if (m_campaign.travel.interstellar)
-    {
-        const SystemGlance& ahead = m_universe.Glance(SystemId::Unpack(m_campaign.travel.toSystem));
-        const glm::vec3 behindColour = system->starColor;
-        const float done = Travel::CrossingDone(m_campaign);
-        const bool nearerAhead = done >= 0.5f;
-        const float near = nearerAhead ? (done - 0.5f) * 2.0f : 1.0f - done * 2.0f;
-        const glm::vec3 astern = -bow;
-        const glm::vec3 lit = nearerAhead ? bow : astern;
-        environment.sunDirection = -glm::normalize(lit + overhead * 0.04f);
-        environment.sunColor = glm::mix(nearerAhead ? ahead.starColor : behindColour, glm::vec3(1.0f), 0.3f);
-        environment.sunIntensity = glm::mix(0.25f, 1.1f, near * near);
-        environment.planetRadius = 0.0f;
-        // The other star, as a point.
-        const glm::vec3 other = nearerAhead ? astern : bow;
-        const glm::vec3 otherColour = nearerAhead ? behindColour : ahead.starColor;
-        environment.skyBodies[0] = glm::vec4(glm::normalize(other) * 2.0f, 1.0e-6f);
-        environment.skyBodies[1] = glm::vec4(glm::mix(otherColour, glm::vec3(1.0f), 0.4f) * 3.0f, 0.0f);
-        return;
-    }
-
-    const glm::vec3 ship = Travel::ShipPosition(m_campaign, *system);
-    const int main = m_campaign.travel.underway ? m_campaign.travel.target : m_campaign.body;
-    glm::vec3 heading{0.0f, 0.0f, -1.0f};
-    // Closing on the body: from far off it is dead ahead; over the last of the way the view turns, as the ship comes round
-    // into orbit, until it is where it is from orbit -- below, ahead -- so arriving is not a jump. 0 far off, 1 there.
-    float closing = 0.0f;
-    if (m_campaign.travel.underway && main >= 0)
-    {
-        // The bow on where it is going, so the destination is dead ahead and the sun holds its place in the sky.
-        const glm::vec3 there = system->Position(main, m_campaign.clock);
-        const float distance = glm::length(there - ship);
-        closing = 1.0f - glm::smoothstep(Travel::kArrival * 1.2f, Travel::kArrival * 25.0f, distance);
-        const glm::vec3 approach = distance > 1.0e-9f ? (there - ship) / distance : glm::vec3(0.0f, 0.0f, -1.0f);
-        const glm::vec3 prograde = glm::cross(glm::vec3(0.0f, 1.0f, 0.0f), there);
-        heading = glm::length(prograde) > 1.0e-9f ? glm::mix(approach, glm::normalize(prograde), closing) : approach;
-    }
-    else if (m_campaign.travel.underway)
-    {
-        heading = m_campaign.travel.velocity;
-    }
-    else if (main >= 0)
-    {
-        // In orbit, going round with the body: forward is the way it goes round its star.
-        heading = glm::cross(glm::vec3(0.0f, 1.0f, 0.0f), system->Position(main, m_campaign.clock));
-    }
-    if (glm::length(heading) < 1.0e-9f)
-    {
-        heading = {0.0f, 0.0f, -1.0f};
-    }
-    const glm::vec3 forward = glm::normalize(heading);
-    glm::vec3 right = glm::cross(forward, glm::vec3(0.0f, 1.0f, 0.0f));
-    right = glm::length(right) > 1.0e-4f ? glm::normalize(right) : glm::vec3(1.0f, 0.0f, 0.0f);
-    const glm::vec3 up = glm::cross(right, forward);
-    // In orbit the ship goes round the body below, so everything else goes slowly round the ship: the sun rises over the
-    // planet's edge and sets behind it, and the night side comes under the ship and goes again.
-    const glm::vec3 below = glm::normalize(glm::vec3(0.12f, -0.42f, -0.9f));
-    const bool orbiting = !m_campaign.travel.underway && system->Find(main) != nullptr;
-    glm::mat4 orbit(1.0f);
-    // Counted from arriving, so the first moment in orbit is the last of the approach.
-    if (!orbiting)
-    {
-        m_skyOrbitBody = -1;
-    }
-    else if (m_skyOrbitBody != main)
-    {
-        m_skyOrbitBody = main;
-        m_skyOrbitSince = m_campaign.clock;
-    }
-    if (orbiting)
-    {
-        constexpr double kOrbitSeconds = 960.0;
-        const float angle = static_cast<float>(std::fmod((m_campaign.clock - m_skyOrbitSince) / kOrbitSeconds, 1.0)) * kTau;
-        orbit = glm::rotate(glm::mat4(1.0f), -angle, glm::normalize(glm::cross(below, bow)));
-    }
-    const auto toWorld = [&](const glm::vec3& v)
-    {
-        const glm::vec3 inShip = glm::dot(v, right) * starboard + glm::dot(v, up) * overhead + glm::dot(v, forward) * bow;
-        return glm::vec3(orbit * glm::vec4(inShip, 0.0f));
-    };
-
-    // The star.
-    const float fromStar = std::max(glm::length(ship), 0.05f);
-    const glm::vec3 towardsStar = glm::normalize(toWorld(-ship));
-    environment.sunDirection = -towardsStar;
-    environment.sunColor = glm::mix(system->starColor, glm::vec3(1.0f), 0.3f);
-    environment.sunIntensity = 1.7f * std::clamp(std::sqrt(system->luminosity) / fromStar, 0.35f, 2.2f);
-    // As big as the star is from here: a sun's radius is 0.00465 astronomical units; a little larger, so it reads.
-    environment.sunDisc = std::clamp(0.00465f * std::max(system->starRadius, 0.1f) / fromStar * 1.3f, 0.0012f, 0.06f);
-
-    // The body it is over or heading for.
-    environment.planetRadius = 0.0f;
-    if (const Body* body = system->Find(main))
-    {
-        environment.planet = LookOf(*body);
-        // How big it is from orbit, by how big it is: a small moon a ball in the window, a gas giant filling it.
-        const float orbitSize = std::clamp(0.72f * std::pow(std::max(body->radius, 0.05f), 0.32f), 0.3f, 1.25f);
-        if (m_campaign.travel.underway)
-        {
-            // Where it is, growing as the ship closes on it: a point a long way off, the size it is from orbit at the end.
-            const glm::vec3 there = system->Position(main, m_campaign.clock) - ship;
-            const float distance = std::max(glm::length(there), Travel::kArrival);
-            const float size = std::sqrt(std::max(body->radius, 0.1f));
-            const glm::vec3 ahead = glm::length(there) > 1.0e-9f ? glm::normalize(toWorld(there)) : bow;
-            const float growing = std::clamp(0.0016f * size / distance, 0.012f, orbitSize * 0.65f);
-            // And over the last of it, round to where it is from orbit, as big as it is from there.
-            environment.planetDirection = glm::normalize(glm::mix(ahead, below, glm::smoothstep(0.0f, 1.0f, closing)));
-            environment.planetRadius = glm::mix(growing, orbitSize, glm::smoothstep(0.0f, 1.0f, closing));
-        }
-        else
-        {
-            environment.planetDirection = below;
-            environment.planetRadius = orbitSize;
-        }
-        // Behind the planet, the sun is gone and the ship is in its shadow: only the lamps, and what light the planet's day
-        // side throws back.
-        const float apart = std::acos(std::clamp(glm::dot(towardsStar, environment.planetDirection), -1.0f, 1.0f));
-        const float shade = glm::smoothstep(environment.planetRadius - 0.04f, environment.planetRadius + 0.06f, apart);
-        environment.sunIntensity *= glm::mix(0.06f, 1.0f, shade);
-    }
-
-    // Everything else, as many as the sky draws: the nearest first, though what would be brightest counts for something --
-    // a gas giant across the system is seen before a pebble of a moon round it.
-    constexpr float kEarthRadiusAu = 4.26e-5f;
-    std::vector<std::pair<float, int>> others;
-    for (const Body& body : system->bodies)
-    {
-        if (body.index == main)
-        {
-            continue;
-        }
-        const float distance = glm::length(system->Position(body.index, m_campaign.clock) - ship);
-        if (distance < 1.0e-7f)
-        {
-            continue;
-        }
-        others.emplace_back(distance / std::sqrt(std::max(body.radius, 0.05f)), body.index);
-    }
-    std::sort(others.begin(), others.end());
-    for (int i = 0; i < Environment::kSkyBodies && i < static_cast<int>(others.size()); ++i)
-    {
-        const Body& body = system->bodies[static_cast<size_t>(others[static_cast<size_t>(i)].second)];
-        const glm::vec3 there = system->Position(body.index, m_campaign.clock);
-        const float distance = glm::length(there - ship);
-        const glm::vec3 way = toWorld(there - ship);
-        if (glm::length(way) < 1.0e-12f)
-        {
-            continue;
-        }
-        // As big as it really is from here; most are far too small to be anything but a point, which is what they are.
-        const float radius = std::asin(std::min(std::max(body.radius, 0.02f) * kEarthRadiusAu / distance, 0.95f));
-        // As bright as it is big, lit (by how far it is from its star) and near: brighter than the stars, the near and
-        // the large much brighter.
-        const float fromItsStar = std::max(glm::length(there), 0.05f);
-        const float flux = body.radius * body.radius * system->luminosity / (fromItsStar * fromItsStar * distance * distance);
-        const float bright = std::clamp(1.0f + 0.28f * std::log10(std::max(flux, 1.0e-12f)), 0.35f, 2.4f);
-        environment.skyBodies[i * 2] = glm::vec4(glm::normalize(way) * bright, radius);
-        environment.skyBodies[i * 2 + 1] = glm::vec4(glm::mix(body.groundA, body.cloudColor, body.clouds * 0.6f), body.air);
-    }
 }
 
 } // namespace pred

@@ -10,13 +10,18 @@ uniform vec4 u_planetC;          // sea colour, cloud
 uniform vec4 u_planetD;          // cloud colour, 1 for a gas giant
 uniform vec4 u_planetE;          // the air's colour, how much air
 uniform vec4 u_planetLight;      // xyz towards the light, w how bright
-uniform vec4 u_planetLightColor; // rgb the light's colour (a star's own, for a star)
+uniform vec4 u_planetLightColor; // rgb the light's colour (a star's own, for a star), w 1 for linear light (the world's picture)
 uniform vec4 u_planetMode;       // x what is drawn (0 body, 1 star, 2 glow, 3 rings), y seed, z cloud drift, w highlight
 uniform vec4 u_planetEye;        // xyz where the camera is, w exposure
 
 vec3 Develop(vec3 colour)
 {
 	colour *= max(u_planetEye.w, 0.0);
+	// Into the world's picture: light as it is, developed with everything else after.
+	if (u_planetLightColor.w > 0.5)
+	{
+		return colour;
+	}
 	colour = clamp((colour * (2.51 * colour + 0.03)) / (colour * (2.43 * colour + 0.59) + 0.14), 0.0, 1.0);
 	return pow(colour, vec3_splat(1.0 / 2.2));
 }
@@ -71,13 +76,15 @@ void main()
 	}
 
 	float sea = 0.0;
-	vec4 surface = PlanetAlbedo(n, u_planetA, u_planetB, u_planetC, u_planetD, u_planetMode.y, u_planetMode.z, sea);
+	// Cratered as far as it has no air to speak of to wear them away; a gas giant has no ground.
+	float craters = u_planetD.w > 0.5 ? 0.0 : 1.0 - smoothstep(0.02, 0.15, u_planetE.w);
+	vec4 surface = PlanetAlbedo(n, u_planetA, u_planetB, u_planetC, u_planetD, u_planetMode.y, u_planetMode.z, craters, sea);
 	vec3 L = normalize(u_planetLight.xyz);
 	float facing = dot(N, L);
 	// A soft edge between day and night: an atmosphere carries a little light round it.
 	float lit = smoothstep(-0.1, 0.3, facing);
 	// The lie of the land in the light (exact when the body is drawn unturned, as the globe view draws it).
-	vec3 bumped = PlanetBump(n, u_planetA, u_planetD, u_planetMode.y, 1.0);
+	vec3 bumped = PlanetBump(n, u_planetA, u_planetD, u_planetMode.y, 1.0, craters);
 	vec3 bumpedN = normalize(N + (bumped - n));
 	float relief = clamp(1.0 + (dot(bumpedN, L) - facing) * 1.8, 0.5, 1.45);
 	vec3 albedo = mix(surface.rgb * relief, u_planetD.rgb, surface.w);

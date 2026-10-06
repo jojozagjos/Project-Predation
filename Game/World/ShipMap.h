@@ -91,8 +91,9 @@ public:
     // Its outside made again for a look (colours, engines, sensors); nothing when it already looks so.
     void SetLook(Scene& scene, MeshLibrary& meshes, const ShipHullLook& look);
     const ShipHullLook& Look() const { return m_look; }
-    // The outside for a look, in the ship's frame.
-    static ModelAsset HullModel(const ShipHullLook& look);
+    // The outside for a look, in the ship's frame. The stage's has no rooms inside it, so it is filled: a dark core in every
+    // section, the boarding door's hatch shut, and lit glass in the cockpit's windows -- or every gap in it was a hole to the sky.
+    static ModelAsset HullModel(const ShipHullLook& look, bool stage = false);
     // The boarding door's hatch, in the ops room's port wall.
     static ModelAsset AirlockModel();
     // Asked open or shut; it slides there (UpdateAirlock), solid only when shut.

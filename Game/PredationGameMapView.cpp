@@ -638,6 +638,7 @@ void PredationGame::RenderSystemMap()
         bgfx::touch(id);
     }
     m_planets.SetCamera(m_mapView.Eye(), 1.0f);
+    m_planets.SetOutput(false, BGFX_STATE_DEPTH_TEST_LESS);
     const StarSystem* shown = m_mapLevel == MapLevel::Galaxy ? nullptr : m_universe.System(m_mapSystem);
     if (m_mapLevel == MapLevel::Galaxy || shown == nullptr)
     {

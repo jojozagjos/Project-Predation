@@ -1,4 +1,6 @@
 #include "Game/PredationGame.h"
+
+#include "Engine/Render/DepthConvention.h"
 #include "Game/Creature/CreatureTuning.h"
 
 #include "Engine/Core/CVar.h"
@@ -8528,7 +8530,7 @@ void PredationGame::RenderEditorFirstPerson()
             bgfx::createTexture2D(kEditorEyeWidth, m_editorEyeHeightPixels, false, 1,
                                   bgfx::TextureFormat::BGRA8, targetFlags),
             bgfx::createTexture2D(kEditorEyeWidth, m_editorEyeHeightPixels, false, 1,
-                                  bgfx::TextureFormat::D24S8, BGFX_TEXTURE_RT_WRITE_ONLY)};
+                                  Depth::Format(), BGFX_TEXTURE_RT_WRITE_ONLY)};
         if (!bgfx::isValid(attachments[0]) || !bgfx::isValid(attachments[1]))
         {
             PRED_LOG_ERROR(Render, "Editor first-person panel: could not create its render target");
@@ -8555,15 +8557,12 @@ void PredationGame::RenderEditorFirstPerson()
     const float aspect =
         static_cast<float>(kEditorEyeWidth) / static_cast<float>(m_editorEyeHeightPixels);
     const float vertical = 2.0f * std::atan(std::tan(glm::radians(cv_fov.Get()) * 0.5f) / aspect);
-    const bool homogeneous = bgfx::getCaps()->homogeneousDepth;
-    const glm::mat4 projection = homogeneous
-                                     ? glm::perspectiveRH_NO(vertical, aspect, 0.05f, 200.0f)
-                                     : glm::perspectiveRH_ZO(vertical, aspect, 0.05f, 200.0f);
+    const glm::mat4 projection = Depth::Perspective(vertical, aspect, 0.05f, 200.0f);
 
     bgfx::setViewFrameBuffer(Renderer::kViewOffscreenLive, m_editorEyeBuffer);
     bgfx::setViewRect(Renderer::kViewOffscreenLive, 0, 0, kEditorEyeWidth, m_editorEyeHeightPixels);
     bgfx::setViewClear(Renderer::kViewOffscreenLive, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, 0x14181cff,
-                       1.0f, 0);
+                       Depth::Clear(), 0);
     bgfx::setViewTransform(Renderer::kViewOffscreenLive, glm::value_ptr(viewMatrix),
                            glm::value_ptr(projection));
     m_app->GetSceneRenderer().Draw(Renderer::kViewOffscreenLive, m_editorScene, m_app->GetMeshes(),
@@ -10137,10 +10136,10 @@ void PredationGame::OnUpdate(double dt, double alpha)
     const bool titleShot = m_screen == Screen::Title;
     const float nearPlane = titleShot ? 2.0f : m_cineFar > 0.0f ? (onStage ? 2.0f : 0.25f) : 0.05f;
     const float farPlane = titleShot ? 3000.0f : m_cineFar > 0.0f ? m_cineFar : 500.0f;
-    const glm::mat4 projection = renderer.HomogeneousDepth()
-                                     ? glm::perspectiveRH_NO(verticalFov, aspect, nearPlane, farPlane)
-                                     : glm::perspectiveRH_ZO(verticalFov, aspect, nearPlane, farPlane);
+    const glm::mat4 projection = Depth::Perspective(verticalFov, aspect, nearPlane, farPlane);
     renderer.SetCamera(view, projection);
+    m_renderVerticalFov = verticalFov;
+    m_renderAspect = aspect;
     // Kept for the HUD, which puts some of what it says on things in the world.
     m_viewProjection = projection * view;
 
@@ -10894,6 +10893,7 @@ void PredationGame::OnRender()
     // The sky first, into the same view, so the world covers it where there is world.
     app.GetSkyRenderer().Draw(Renderer::kViewSky, m_scene.GetEnvironment(),
                               app.GetRenderer().ViewMatrix(), app.GetRenderer().ProjectionMatrix());
+    DrawSpaceBodies();
     app.GetSceneRenderer().SetCullFrustum(app.GetRenderer().ProjectionMatrix() * app.GetRenderer().ViewMatrix());
     // Out in space the camera sees for kilometres, and the site and the testing area are only one or two away: not in
     // the picture, only the ship and what is round it (the shuttle leaving showed the site hanging in space behind it).

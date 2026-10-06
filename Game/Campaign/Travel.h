@@ -24,8 +24,10 @@ namespace Travel
 float Acceleration(int tier);
 // About how long a trip of `distance` astronomical units takes, from rest to rest.
 float Seconds(float distance, int tier);
-// Within this of a body's middle is arriving at it.
+// Within this of a body's middle is arriving at it, at most: a small body less, by its size -- a moon is nearer its planet
+// than this, and a trip to it ended before it began.
 inline constexpr float kArrival = 0.0015f;
+float ArrivalDistance(const Body& body);
 
 // Where the ship is in its system now, in astronomical units from the star.
 glm::vec3 ShipPosition(const CampaignState& campaign, const StarSystem& system);

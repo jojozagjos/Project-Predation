@@ -2,6 +2,7 @@
 
 #include "Engine/Core/Log.h"
 #include "Engine/Debug/FrameStats.h"
+#include "Engine/Render/DepthConvention.h"
 #include "Engine/Render/Mesh.h"
 #include "Engine/Render/TextureLibrary.h"
 #include "Engine/Render/Renderer.h"
@@ -358,7 +359,7 @@ uint64_t SceneRenderer::DrawState() const
     // single-sided geometry such as the ground plane disappearing entirely.
     uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z |
                      
-                   BGFX_STATE_DEPTH_TEST_LESS | BGFX_STATE_CULL_CW | BGFX_STATE_MSAA;
+                   Depth::Test() | BGFX_STATE_CULL_CW | BGFX_STATE_MSAA;
     if (m_wireframe)
     {
         state |= BGFX_STATE_PT_LINES;
@@ -606,7 +607,7 @@ void SceneRenderer::RenderReflection(bgfx::ViewId skyView, bgfx::ViewId worldVie
                                   m_linearOutput ? bgfx::TextureFormat::RGBA16F : bgfx::TextureFormat::RGBA8,
                                   BGFX_TEXTURE_RT | BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP);
         const bgfx::TextureHandle depth = bgfx::createTexture2D(
-            wantWidth, wantHeight, false, 1, bgfx::TextureFormat::D24S8, BGFX_TEXTURE_RT_WRITE_ONLY);
+            wantWidth, wantHeight, false, 1, Depth::Format(), BGFX_TEXTURE_RT_WRITE_ONLY);
         const bgfx::TextureHandle attachments[] = {m_reflectionTexture, depth};
         // The frame buffer owns both from here: destroying it destroys them.
         m_reflectionTarget = bgfx::createFrameBuffer(2, attachments, true);
@@ -652,7 +653,7 @@ void SceneRenderer::RenderReflection(bgfx::ViewId skyView, bgfx::ViewId worldVie
     // straight over it.
     bgfx::setViewFrameBuffer(skyView, m_reflectionTarget);
     bgfx::setViewRect(skyView, 0, 0, m_reflectionWidth, m_reflectionHeight);
-    bgfx::setViewClear(skyView, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, 0x00000000, 1.0f, 0);
+    bgfx::setViewClear(skyView, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, 0x00000000, Depth::Clear(), 0);
     bgfx::setViewTransform(skyView, glm::value_ptr(reflectedView), glm::value_ptr(projection));
     bgfx::touch(skyView);
     if (m_sky != nullptr)
@@ -846,7 +847,8 @@ void SceneRenderer::SetCullFrustum(const glm::mat4& m)
     const glm::vec4 row1{m[0][1], m[1][1], m[2][1], m[3][1]};
     const glm::vec4 row2{m[0][2], m[1][2], m[2][2], m[3][2]};
     const glm::vec4 row3{m[0][3], m[1][3], m[2][3], m[3][3]};
-    const glm::vec4 planes[5] = {row3 + row0, row3 - row0, row3 + row1, row3 - row1, row3 - row2};
+    // The far end is where depth is 1, or with depth reversed where it is 0.
+    const glm::vec4 planes[5] = {row3 + row0, row3 - row0, row3 + row1, row3 - row1, Depth::Reversed() ? row2 : row3 - row2};
     for (int i = 0; i < 5; ++i)
     {
         const float length = glm::length(glm::vec3(planes[i]));

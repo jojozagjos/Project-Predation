@@ -874,6 +874,20 @@ void PlayerController::UpdateView(float dt, float alpha)
                     from + direction * std::max(blocked.distance - kNearPlaneRoom, 0.0f);
             }
         }
+        // And kept a hand's width off every surface round it, not only the one in the way: an eye leaned along a wall, or
+        // into the corner of a doorway, stood clear of the wall it was moving towards but grazed the one beside it, and the
+        // corners of the picture's near plane reached through it -- half the screen showed the outside of the ship.
+        constexpr float kClearance = 0.14f;
+        const glm::vec3 right = m_view.Right();
+        const glm::vec3 ahead = glm::normalize(glm::vec3(std::sin(m_view.yaw), 0.0f, -std::cos(m_view.yaw)));
+        for (const glm::vec3& way : {right, -right, ahead, -ahead, glm::vec3(0.0f, 1.0f, 0.0f)})
+        {
+            const RayHit near = m_physics->RayCastStatic(m_view.eyePosition, way, kClearance);
+            if (near)
+            {
+                m_view.eyePosition -= way * (kClearance - near.distance);
+            }
+        }
     }
 }
 

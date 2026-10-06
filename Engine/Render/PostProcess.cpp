@@ -1,6 +1,7 @@
 #include "Engine/Render/PostProcess.h"
 
 #include "Engine/Core/Log.h"
+#include "Engine/Render/DepthConvention.h"
 #include "Engine/Render/Renderer.h"
 #include "Engine/Render/ShaderLibrary.h"
 
@@ -131,7 +132,7 @@ bgfx::FrameBufferHandle PostProcess::Prepare(int width, int height, int msaa)
     const uint64_t sampling = BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP;
     m_sceneColor = bgfx::createTexture2D(w, h, false, 1, bgfx::TextureFormat::RGBA16F, MsaaTextureFlag(msaa) | sampling);
     const bgfx::TextureHandle depth =
-        bgfx::createTexture2D(w, h, false, 1, bgfx::TextureFormat::D24S8, MsaaTextureFlag(msaa) | BGFX_TEXTURE_RT_WRITE_ONLY);
+        bgfx::createTexture2D(w, h, false, 1, Depth::Format(), MsaaTextureFlag(msaa) | BGFX_TEXTURE_RT_WRITE_ONLY);
     const bgfx::TextureHandle attachments[] = {m_sceneColor, depth};
     m_scene = bgfx::createFrameBuffer(2, attachments, true);
     int levelWidth = width;

@@ -53,12 +53,15 @@ public:
     static constexpr bgfx::ViewId kViewReflectionSky = 4;
     static constexpr bgfx::ViewId kViewReflection = 5;
     static constexpr bgfx::ViewId kViewSky = 6;
-    static constexpr bgfx::ViewId kViewMain = 7;
-    static constexpr bgfx::ViewId kViewDebug = 8;
+    // Out in space, the planets and moons in the sky: real bodies drawn over the sky and under the world, from a camera
+    // that only turns as the eye does (their distances are far beyond anything the world's camera could see).
+    static constexpr bgfx::ViewId kViewSkyBodies = 7;
+    static constexpr bgfx::ViewId kViewMain = 8;
+    static constexpr bgfx::ViewId kViewDebug = 9;
     // Post-processing (PostProcess): the glow's chain of smaller and smaller copies and back, then the
     // finished picture onto the screen, before the interface.
-    static constexpr bgfx::ViewId kViewPostFirst = 9;
-    static constexpr bgfx::ViewId kViewPost = 18;
+    static constexpr bgfx::ViewId kViewPostFirst = 10;
+    static constexpr bgfx::ViewId kViewPost = 19;
     // The lamps' shadows, a few faces a frame into their atlas. After the picture, not before it: what is
     // drawn here is used from the next frame, which is what a shadow drawn once and kept wants anyway.
     static constexpr bgfx::ViewId kViewLampShadowFirst = 120;

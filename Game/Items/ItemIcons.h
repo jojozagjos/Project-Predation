@@ -84,7 +84,6 @@ private:
     int m_cellPixels = 128;
     int m_columns = 1;
     int m_size = 128;
-    bool m_homogeneousDepth = false;
     bool m_rendered = false;
 };
 

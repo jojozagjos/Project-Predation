@@ -94,6 +94,43 @@ float PlanetRidges(vec3 p)
 	return value / 0.9375;
 }
 
+// Craters on a body with no air to wear them down: a cell of space at a time, a crater in about half of them, each a bowl
+// with a raised rim. Only the eight cells nearest the point are looked in (a crater is smaller than its cell). x is how
+// high the ground is from them (the bowl below, the rim above), y how much fresh ejecta is there (bright round the young).
+vec2 PlanetCraterCells(vec3 p, float seed)
+{
+	vec3 cell = floor(p);
+	vec3 f = fract(p);
+	vec3 toward = step(vec3_splat(0.5), f) * 2.0 - vec3_splat(1.0);
+	float height = 0.0;
+	float fresh = 0.0;
+	for (int k = 0; k < 8; ++k)
+	{
+		vec3 o = vec3(float(k / 4), float((k / 2) - (k / 4) * 2), float(k - (k / 2) * 2));
+		vec3 c = cell + o * toward;
+		if (PlanetHash(c + vec3_splat(seed)) > 0.5)
+		{
+			continue;
+		}
+		vec3 centre = c + vec3(0.2, 0.2, 0.2) + 0.6 * vec3(PlanetHash(c + vec3(1.3, seed, 2.9)), PlanetHash(c + vec3(7.1, 0.4, seed)), PlanetHash(c + vec3(seed, 3.7, 5.3)));
+		float radius = 0.18 + 0.22 * PlanetHash(c + vec3(5.5, 5.5, seed));
+		float d = length(p - centre) / radius;
+		float bowl = d < 1.0 ? -(1.0 - d * d) * 0.8 : 0.0;
+		float rim = exp(-(d - 1.0) * (d - 1.0) * 30.0) * 0.45;
+		height += bowl + rim;
+		float young = step(0.8, PlanetHash(c + vec3(9.9, seed, 9.9)));
+		fresh += young * exp(-max(d - 0.9, 0.0) * 2.5) * step(d, 2.4);
+	}
+	return vec2(height, min(fresh, 1.0));
+}
+
+vec2 PlanetCraters(vec3 n, float seed)
+{
+	vec2 large = PlanetCraterCells(n * 4.0 + vec3_splat(seed), seed);
+	vec2 small = PlanetCraterCells(n * 13.0 + vec3(seed * 2.0, 1.7, 3.1), seed + 7.0);
+	return vec2(large.x + small.x * 0.45, max(large.y, small.y * 0.7));
+}
+
 // How high the ground is, 0 at the sea to about 1 on the tallest ranges: for the light across it.
 float PlanetContinents(vec3 n, vec3 offset)
 {
@@ -102,18 +139,24 @@ float PlanetContinents(vec3 n, vec3 offset)
 	return PlanetFbmN(n * 2.1 + offset + (warp - vec3_splat(0.5)) * 0.9, 7);
 }
 
-float PlanetRelief(vec3 n, vec4 a, float seed)
+float PlanetRelief(vec3 n, vec4 a, float seed, float craters)
 {
 	vec3 offset = vec3(seed * 1.7, seed * 0.9, seed * 2.3);
 	float continents = PlanetContinents(n, offset);
 	float shore = 0.5 + (a.w - 0.5) * 0.36;
 	float land = a.w > 0.001 ? smoothstep(shore - 0.01, shore + 0.06, continents) : 1.0;
 	float ridges = PlanetRidges(n * 6.0 + offset * 0.5);
-	return land * (0.35 * continents + 0.65 * ridges * smoothstep(0.35, 0.75, continents + 0.2));
+	float height = land * (0.35 * continents + 0.65 * ridges * smoothstep(0.35, 0.75, continents + 0.2));
+	// The large craters only, for the light: the small are in the colour.
+	if (craters > 0.0)
+	{
+		height = height * (1.0 - craters * 0.5) + PlanetCraterCells(n * 4.0 + vec3_splat(seed), seed).x * craters * 0.5;
+	}
+	return height;
 }
 
 // The normal turned by the lie of the ground, for the light to show its relief; flat for a gas giant.
-vec3 PlanetBump(vec3 n, vec4 a, vec4 d, float seed, float strength)
+vec3 PlanetBump(vec3 n, vec4 a, vec4 d, float seed, float strength, float craters)
 {
 	if (d.w > 0.5 || strength <= 0.0)
 	{
@@ -122,15 +165,15 @@ vec3 PlanetBump(vec3 n, vec4 a, vec4 d, float seed, float strength)
 	vec3 t1 = normalize(cross(n, abs(n.y) < 0.99 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0)));
 	vec3 t2 = cross(n, t1);
 	const float e = 0.005;
-	float h0 = PlanetRelief(n, a, seed);
-	float h1 = PlanetRelief(normalize(n + t1 * e), a, seed);
-	float h2 = PlanetRelief(normalize(n + t2 * e), a, seed);
+	float h0 = PlanetRelief(n, a, seed, craters);
+	float h1 = PlanetRelief(normalize(n + t1 * e), a, seed, craters);
+	float h2 = PlanetRelief(normalize(n + t2 * e), a, seed, craters);
 	return normalize(n - (t1 * (h1 - h0) + t2 * (h2 - h0)) * (strength / e) * 0.02);
 }
 
 // The colour of the ground or sea under the cloud (rgb), and how much cloud is over it (w); `sea` how much of it is
-// open water, for the glint off it.
-vec4 PlanetAlbedo(vec3 n, vec4 a, vec4 b, vec4 c, vec4 d, float seed, float drift, out float sea)
+// open water, for the glint off it. `craters` (0 to 1) how cratered it is: an airless body's face.
+vec4 PlanetAlbedo(vec3 n, vec4 a, vec4 b, vec4 c, vec4 d, float seed, float drift, float craters, out float sea)
 {
 	vec3 offset = vec3(seed * 1.7, seed * 0.9, seed * 2.3);
 	sea = 0.0;
@@ -159,6 +202,15 @@ vec4 PlanetAlbedo(vec3 n, vec4 a, vec4 b, vec4 c, vec4 d, float seed, float drif
 	float height = smoothstep(shore, shore + 0.3, continents);
 	ground = mix(ground * 0.85, ground * 1.12, height);
 	ground *= 0.84 + 0.32 * PlanetFbmN(n * 40.0 + offset, 4);
+	if (craters > 0.0)
+	{
+		// Dark old plains in the low ground, the craters' floors shaded and their rims and fresh rays bright.
+		vec2 crater = PlanetCraters(n, seed);
+		float maria = smoothstep(0.42, 0.36, PlanetFbmN(n * 1.6 + offset * 0.4, 5));
+		ground *= 1.0 - maria * 0.35 * craters;
+		ground *= 1.0 + clamp(crater.x, -0.8, 0.6) * 0.35 * craters;
+		ground = mix(ground, ground * 1.6 + vec3_splat(0.08), crater.y * 0.5 * craters);
+	}
 	vec3 water = c.rgb * (0.6 + 0.5 * smoothstep(shore - 0.16, shore, continents));
 	vec3 colour = mix(water, ground, land);
 	sea = 1.0 - land;

@@ -408,6 +408,17 @@ void PredationGame::RegisterCampaignCommands()
                                 m_campaign.credits = std::stoll(args[1]);
                                 CampaignChanged();
                             });
+    console.RegisterCommand("orbit_here", "Put the ship in orbit of the body it is landed on, without the cinematic (the host)",
+                            [this](const std::vector<std::string>&)
+                            {
+                                if (!m_campaignOpen || m_sessionMode == SessionMode::Client)
+                                {
+                                    return;
+                                }
+                                m_campaign.landed = false;
+                                m_campaign.doorOpen = false;
+                                CampaignChanged();
+                            });
     console.RegisterCommand("day_skip", "Move the campaign's clock on by part of the day where the ship is (the host): day_skip <fraction>",
                             [this](const std::vector<std::string>& args)
                             {

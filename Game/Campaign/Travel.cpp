@@ -65,6 +65,13 @@ float Seconds(float distance, int tier)
     return 2.0f * std::sqrt(std::max(distance, 0.0f) / Acceleration(tier));
 }
 
+float ArrivalDistance(const Body& body)
+{
+    // Thirty of its radii (an Earth arrives at about the most), never so little the last of the approach is a jump.
+    constexpr float kEarthRadiusAu = 4.26e-5f;
+    return std::clamp(30.0f * std::max(body.radius, 0.02f) * kEarthRadiusAu, 0.0002f, kArrival);
+}
+
 glm::vec3 ShipPosition(const CampaignState& campaign, const StarSystem& system)
 {
     if (campaign.travel.underway || campaign.body < 0)
@@ -135,7 +142,8 @@ bool Step(CampaignState& campaign, const StarSystem& system, float dt, int tier)
     const glm::vec3 to = aim - travel.position;
     const float toAim = std::max(glm::length(to), 1.0e-9f);
     const float remaining = toAim + glm::length(there - aim);
-    if (distance <= kArrival)
+    const float arrival = ArrivalDistance(*system.Find(travel.target));
+    if (distance <= arrival)
     {
         travel.position = there;
         travel.velocity = moving;
@@ -146,7 +154,7 @@ bool Step(CampaignState& campaign, const StarSystem& system, float dt, int tier)
         return true;
     }
     const glm::vec3 relative = travel.velocity - moving;
-    const float closing = std::sqrt(2.0f * accel * std::max(remaining - kArrival * 0.5f, 0.0f)) * 0.95f;
+    const float closing = std::sqrt(2.0f * accel * std::max(remaining - arrival * 0.5f, 0.0f)) * 0.95f;
     const glm::vec3 wanted = to / toAim * closing;
     glm::vec3 change = wanted - relative;
     const float size = glm::length(change);

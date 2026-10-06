@@ -1,6 +1,7 @@
 #include "Engine/Render/DebugDraw.h"
 
 #include "Engine/Core/Log.h"
+#include "Engine/Render/DepthConvention.h"
 #include "Engine/Render/ShaderLibrary.h"
 
 #include <glm/gtc/constants.hpp>
@@ -154,7 +155,7 @@ void DebugDraw::Flush(bgfx::ViewId view)
     std::memcpy(tvb.data, m_vertices.data(), static_cast<size_t>(count) * sizeof(Vertex));
 
     bgfx::setVertexBuffer(0, &tvb, 0, count);
-    bgfx::setState(BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z | BGFX_STATE_DEPTH_TEST_LESS |
+    bgfx::setState(BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z | Depth::Test() |
                    BGFX_STATE_PT_LINES | BGFX_STATE_BLEND_ALPHA);
     bgfx::submit(view, m_program);
 

@@ -1040,9 +1040,37 @@ private:
     };
     MapTransition m_mapTransition;
     float m_mapFadeIn = 0.0f;
-    // The body the window's sky has the ship in orbit of, and since when: its slow way round counted from arriving.
-    int m_skyOrbitBody = -1;
-    double m_skyOrbitSince = 0.0;
+    // Space as the windows show it (PredationGameSpace.cpp): where the ship is in its system (astronomical units) -- going
+    // round what it is at since it arrived, out of the orbit of what it left -- which way it faces there, turned at a ship's
+    // pace, and from that the system's directions turned into the world's.
+    glm::vec3 m_spaceShip{0.0f};
+    bool m_spaceShipSet = false;
+    uint64_t m_spaceSystem = 0;
+    glm::quat m_spaceAttitude{1.0f, 0.0f, 0.0f, 0.0f};
+    bool m_spaceAttitudeSet = false;
+    float m_spaceTurnSpeed = 0.0f;
+    int m_spaceOrbitBody = -1;
+    double m_spaceOrbitSince = 0.0;
+    glm::vec3 m_spaceOrbitOut{1.0f, 0.0f, 0.0f};
+    glm::vec3 m_spaceOrbitAlong{0.0f, 0.0f, 1.0f};
+    int m_spaceFromBody = -1;
+    glm::vec3 m_spaceFromOut{1.0f, 0.0f, 0.0f};
+    double m_spaceLeftAt = 0.0;
+    glm::mat3 m_spaceToWorld{1.0f};
+    // The planets and moons near enough to have a size: which, which way (in the world), how big (radians from middle to
+    // edge), how far (astronomical units) and how far off they are drawn.
+    struct SpaceBody
+    {
+        int index = -1;
+        glm::vec3 direction{0.0f};
+        float angle = 0.0f;
+        float distance = 0.0f;
+        float depth = 0.0f;
+    };
+    std::vector<SpaceBody> m_spaceBodies;
+    // The lens the picture is taken with, for the bodies' view to match it.
+    float m_renderVerticalFov = 1.0f;
+    float m_renderAspect = 16.0f / 9.0f;
     void RenderMapGalaxy(bgfx::ViewId sky, bgfx::ViewId lines, const glm::mat4& view, const glm::mat4& projection);
     void RenderMapSystem(const StarSystem& system, bgfx::ViewId sky, bgfx::ViewId bodies, bgfx::ViewId glow, bgfx::ViewId lines,
                          const glm::mat4& view, const glm::mat4& projection);
@@ -1107,8 +1135,10 @@ private:
     SiteTitle PlaceTitle();
     SiteConditions PlaceConditions(float fogEnd);
     static PlanetLook LookOf(const Body& body);
-    // Space out of the windows in a campaign: the star, the body ahead or below, and the rest of the system.
+    // Space out of the windows in a campaign: the star, the planets and moons as bodies or points, from where the ship is.
     void SetSpaceSky(Environment& environment);
+    // The planets and moons near enough to have a size, drawn over the sky (Renderer::kViewSkyBodies).
+    void DrawSpaceBodies();
     // Standing at a hub: the world's own sky over the ship, at the time of day it is there.
     void SetGroundSky(Environment& environment);
     // The ship itself on the ground (at a hub's field), not in orbit.

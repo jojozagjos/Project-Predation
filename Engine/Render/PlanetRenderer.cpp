@@ -111,6 +111,12 @@ void PlanetRenderer::SetCamera(const glm::vec3& eye, float exposure)
     m_exposure = exposure;
 }
 
+void PlanetRenderer::SetOutput(bool linear, uint64_t depthTest)
+{
+    m_linear = linear;
+    m_depthTest = depthTest;
+}
+
 void PlanetRenderer::SetLook(const PlanetLook& look, const glm::vec3& towardsLight, const glm::vec3& lightColor, float mode,
                              float highlight, float drift)
 {
@@ -120,7 +126,7 @@ void PlanetRenderer::SetLook(const PlanetLook& look, const glm::vec3& towardsLig
     const glm::vec4 d{look.cloudColor, look.gas ? 1.0f : 0.0f};
     const glm::vec4 e{mode > 2.5f ? look.ringColor : look.airColor, look.air};
     const glm::vec4 light{glm::length(towardsLight) > 0.0f ? glm::normalize(towardsLight) : glm::vec3(0.0f, 1.0f, 0.0f), 1.6f};
-    const glm::vec4 colour{lightColor, 1.0f};
+    const glm::vec4 colour{lightColor, m_linear ? 1.0f : 0.0f};
     const glm::vec4 modeVec{mode, look.seed, drift, highlight};
     const glm::vec4 eye{m_eye, m_exposure};
     bgfx::setUniform(m_uA, glm::value_ptr(a));
@@ -145,7 +151,7 @@ void PlanetRenderer::Body(bgfx::ViewId view, const glm::mat4& model, const Plane
     bgfx::setTransform(glm::value_ptr(model));
     bgfx::setVertexBuffer(0, m_sphereVertices);
     bgfx::setIndexBuffer(m_sphereIndices);
-    bgfx::setState(BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z | BGFX_STATE_DEPTH_TEST_LESS |
+    bgfx::setState(BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z | m_depthTest |
                    BGFX_STATE_MSAA);
     bgfx::submit(view, m_program);
 }
@@ -164,7 +170,7 @@ void PlanetRenderer::Star(bgfx::ViewId view, bgfx::ViewId glowView, const glm::v
     bgfx::setTransform(glm::value_ptr(model));
     bgfx::setVertexBuffer(0, m_sphereVertices);
     bgfx::setIndexBuffer(m_sphereIndices);
-    bgfx::setState(BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z | BGFX_STATE_DEPTH_TEST_LESS |
+    bgfx::setState(BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z | m_depthTest |
                    BGFX_STATE_MSAA);
     bgfx::submit(view, m_program);
 
@@ -190,7 +196,7 @@ void PlanetRenderer::Star(bgfx::ViewId view, bgfx::ViewId glowView, const glm::v
     const glm::mat4 identity(1.0f);
     bgfx::setTransform(glm::value_ptr(identity));
     bgfx::setVertexBuffer(0, &quad);
-    bgfx::setState(BGFX_STATE_WRITE_RGB | BGFX_STATE_DEPTH_TEST_LESS | BGFX_STATE_BLEND_ADD | BGFX_STATE_MSAA);
+    bgfx::setState(BGFX_STATE_WRITE_RGB | m_depthTest | BGFX_STATE_BLEND_ADD | BGFX_STATE_MSAA);
     bgfx::submit(glowView, m_program);
 }
 
@@ -227,7 +233,7 @@ void PlanetRenderer::Rings(bgfx::ViewId view, const glm::mat4& model, const Plan
     SetLook(look, towardsLight, lightColor, 3.0f, 0.0f, 0.0f);
     bgfx::setTransform(glm::value_ptr(model));
     bgfx::setVertexBuffer(0, &strip);
-    bgfx::setState(BGFX_STATE_WRITE_RGB | BGFX_STATE_DEPTH_TEST_LESS | BGFX_STATE_BLEND_ALPHA | BGFX_STATE_MSAA);
+    bgfx::setState(BGFX_STATE_WRITE_RGB | m_depthTest | BGFX_STATE_BLEND_ALPHA | BGFX_STATE_MSAA);
     bgfx::submit(view, m_program);
 }
 
@@ -255,7 +261,7 @@ void PlanetRenderer::FlushLines(bgfx::ViewId view)
         const glm::mat4 identity(1.0f);
         bgfx::setTransform(glm::value_ptr(identity));
         bgfx::setVertexBuffer(0, &buffer, 0, count);
-        bgfx::setState(BGFX_STATE_WRITE_RGB | BGFX_STATE_DEPTH_TEST_LESS | BGFX_STATE_PT_LINES | BGFX_STATE_BLEND_ALPHA |
+        bgfx::setState(BGFX_STATE_WRITE_RGB | m_depthTest | BGFX_STATE_PT_LINES | BGFX_STATE_BLEND_ALPHA |
                        BGFX_STATE_LINEAA | BGFX_STATE_MSAA);
         bgfx::submit(view, m_lineProgram);
     }
