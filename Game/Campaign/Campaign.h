@@ -142,6 +142,8 @@ struct CampaignState
     // A campaign begun: its name and seed, the ship landed at home, at the settled world's hub, with what a crew starts
     // with, and what is on the charts known.
     static CampaignState Begin(const std::string& name, uint64_t seed, Universe& universe);
+    // How far round home CIRRA's records go when a campaign begins (light years): the systems nearest home are on file.
+    static constexpr float kRecordsReach = 15.0f;
 };
 
 } // namespace pred

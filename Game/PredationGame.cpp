@@ -3447,16 +3447,13 @@ void PredationGame::EnterWorld()
     if (!m_enteringMap)
     {
         m_map = MapChoice::Ship;
-        m_spawnPoint = m_ship.Spawn(LocalPlayerId());
-        m_spawnYaw = m_ship.SpawnYaw();
-        // A campaign with the ship standing at a hub starts outside it, on the bay's floor by its stair -- the station
-        // there to stand on first.
+        // A campaign with the ship standing at an outpost starts outside it, on the bay's floor by its stair -- the station
+        // there to stand on first (ShipArrival).
         if (ShipLanded())
         {
             UpdateShipGround();
-            m_spawnPoint = KestrelStation::Spawn(LocalPlayerId());
-            m_spawnYaw = KestrelStation::SpawnYaw();
         }
+        m_spawnPoint = ShipArrival(LocalPlayerId(), m_spawnYaw);
     }
     // A new game starts from the beginning. The world has been simulating behind the menu, and
     // whatever was done to it last time is still done.

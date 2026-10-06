@@ -368,6 +368,54 @@ TEST_CASE("A kit drawn at the loadout locker round-trips", "[net][protocol]")
     }
 }
 
+TEST_CASE("The shared map round-trips, and a broken one is refused", "[net][protocol]")
+{
+    MapViewMessage view;
+    view.driver = 2;
+    view.serial = 40001;
+    view.level = 2;
+    view.system = 0x0123456789ABCDEFull;
+    view.selected = 6;
+    view.region = -1;
+    view.hasPickedSystem = true;
+    view.pickedSystem = 0xFEDCBA9876543210ull;
+    view.focus = {1.5f, -2.0f, 300.25f};
+    view.distance = 3.0f;
+    view.yaw = -1.25f;
+    view.pitch = 0.4f;
+    BitWriter writer;
+    WriteMessageHeader(writer, MessageType::MapView);
+    WriteMapView(writer, view);
+    const std::vector<uint8_t>& bytes = writer.Finish();
+
+    BitReader reader(bytes.data(), bytes.size());
+    MessageType type = MessageType::Count;
+    REQUIRE(ReadMessageHeader(reader, type));
+    CHECK(type == MessageType::MapView);
+    MapViewMessage received;
+    REQUIRE(ReadMapView(reader, received));
+    CHECK(received.driver == 2);
+    CHECK(received.serial == 40001);
+    CHECK(received.level == 2);
+    CHECK(received.system == view.system);
+    CHECK(received.selected == 6);
+    CHECK(received.region == -1);
+    CHECK(received.hasPickedSystem);
+    CHECK(received.pickedSystem == view.pickedSystem);
+    CHECK(received.focus == view.focus);
+    CHECK(received.distance == 3.0f);
+    CHECK(received.yaw == -1.25f);
+    CHECK(received.pitch == 0.4f);
+
+    // No camera at nowhere: a distance of nothing is refused.
+    view.distance = 0.0f;
+    BitWriter broken;
+    WriteMapView(broken, view);
+    const std::vector<uint8_t>& brokenBytes = broken.Finish();
+    BitReader brokenReader(brokenBytes.data(), brokenBytes.size());
+    CHECK_FALSE(ReadMapView(brokenReader, received));
+}
+
 TEST_CASE("Malformed packets are rejected rather than half-applied", "[net][protocol]")
 {
     SECTION("a truncated snapshot")

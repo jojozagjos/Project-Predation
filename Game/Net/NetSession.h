@@ -191,8 +191,12 @@ public:
     std::vector<CampaignAsk> TakeCampaignRequests() { return std::exchange(m_campaignRequests, {}); }
     // A document (the campaign) sent whole, in parts, to one player or (-1) to everybody let in.
     void SendDocument(int playerId, DocumentKind kind, const std::string& text);
-    // How the ship stands and who is pointing at what, to everybody let in.
+    // How the ship stands, to everybody let in.
     void SendTravel(const TravelMessage& travel);
+    // The shared map, as somebody has just moved it, to everybody let in (its driver ignores its own).
+    void SendMapView(const MapViewMessage& view);
+    // The map as clients have moved it, oldest first, each with its driver set to who sent it.
+    std::vector<MapViewMessage> TakeMapViews() { return std::exchange(m_mapViews, {}); }
     // Health back, into the controller the host simulates for them.
     void HealPlayer(uint8_t playerId, float amount);
     // The host keeps a tally of what each client has picked up, so a client cannot put down
@@ -309,6 +313,7 @@ private:
     std::vector<LoadoutRequest> m_loadouts;
     std::vector<CommandRequest> m_commands;
     std::vector<CampaignAsk> m_campaignRequests;
+    std::vector<MapViewMessage> m_mapViews;
     uint16_t m_documentSerial = 0;
     // Where the host itself is, kept each tick, so a voice arriving between ticks can be told
     // whether the host is near enough to hear it without the caller having to pass it in.
@@ -452,6 +457,10 @@ public:
     void SendLoadout(const LoadoutMessage& kit);
     void SendCommand(const std::string& line);
     void SendCampaignRequest(const CampaignRequest& request);
+    // The shared map, as this player has just moved it.
+    void SendMapView(const MapViewMessage& view);
+    // The map as the host has passed it on, oldest first.
+    std::vector<MapViewMessage> TakeMapViews() { return std::exchange(m_mapViews, {}); }
     // Documents the host has sent that have arrived whole since last asked, oldest first.
     struct Document
     {
@@ -522,6 +531,7 @@ private:
     std::vector<Document> m_documents;
     TravelMessage m_travel;
     uint32_t m_travelsReceived = 0;
+    std::vector<MapViewMessage> m_mapViews;
     std::vector<VoiceHeard> m_voiceIn;
     WorldStateMessage m_worldState;
     CreatureStateMessage m_creatureState;

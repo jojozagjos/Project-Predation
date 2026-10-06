@@ -24,7 +24,7 @@ namespace pred
 
 // Bumped whenever the wire changes shape. Two ends that disagree are refused at the door rather
 // than left to misread each other, which is what a wire mismatch actually looks like from inside.
-inline constexpr uint16_t kProtocolVersion = 35;
+inline constexpr uint16_t kProtocolVersion = 36;
 // How many bits name a message type. Five, so there is room to add one.
 inline constexpr uint32_t kMessageTypeBits = 5;
 inline constexpr uint8_t kMaxPlayers = 4;
@@ -92,9 +92,12 @@ enum class MessageType : uint8_t
     // Client to host, reliable: something asked of the campaign -- a course set, an upgrade bought, an entry marked --
     // for the host to check and do (CampaignRequest).
     Request,
-    // Host to client, unreliable, ten times a second while a campaign is open: the campaign's clock, the ship under way,
-    // and what everybody is pointing at on the system map (TravelMessage).
+    // Host to client, unreliable, ten times a second while a campaign is open: the campaign's clock and the ship under way
+    // (TravelMessage).
     Travel,
+    // Both directions, reliable: the navigation map, which everybody shares -- what it shows and from where. Whoever moves
+    // it sends it to the host, and the host to everybody (MapViewMessage).
+    MapView,
     Count
 };
 
@@ -238,8 +241,8 @@ struct CampaignRequest
 void WriteCampaignRequest(BitWriter& writer, const CampaignRequest& message);
 bool ReadCampaignRequest(BitReader& reader, CampaignRequest& out);
 
-// How the ship stands in its system, often, and what each player is pointing at on the system map: the part of the
-// campaign that changes every moment, which the whole campaign is not sent for.
+// How the ship stands in its system, often: the part of the campaign that changes every moment, which the whole campaign is
+// not sent for.
 struct TravelMessage
 {
     double clock = 0.0;
@@ -251,12 +254,30 @@ struct TravelMessage
     int8_t region = -1;
     glm::vec3 position{0.0f};
     glm::vec3 velocity{0.0f};
-    // Each player's: the body they are pointing at on the map (-1: none), and a bit each for having it open.
-    std::array<int8_t, kMaxPlayers> pointing{-1, -1, -1, -1};
-    uint8_t mapOpen = 0;
 };
 void WriteTravel(BitWriter& writer, const TravelMessage& message);
 bool ReadTravel(BitReader& reader, TravelMessage& out);
+
+// The shared navigation map: which scale it is at (0 the galaxy, 1 a system, 2 a body), which system and what in it is picked
+// out (a body, an area on it, a system on the galaxy), and the camera -- what it looks at, from how far, turned how. Who moved it
+// last, and their count of moves, so an older move overtaken on the way is not applied over a newer one.
+struct MapViewMessage
+{
+    uint8_t driver = 0;
+    uint16_t serial = 0;
+    uint8_t level = 1;
+    uint64_t system = 0;
+    int8_t selected = -1;
+    int8_t region = -1;
+    bool hasPickedSystem = false;
+    uint64_t pickedSystem = 0;
+    glm::vec3 focus{0.0f};
+    float distance = 60.0f;
+    float yaw = 0.6f;
+    float pitch = 0.55f;
+};
+void WriteMapView(BitWriter& writer, const MapViewMessage& message);
+bool ReadMapView(BitReader& reader, MapViewMessage& out);
 
 // A console command line, printable ASCII, cut to the length a command needs.
 inline constexpr size_t kMaxCommandLength = 160;

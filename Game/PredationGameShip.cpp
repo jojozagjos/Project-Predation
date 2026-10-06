@@ -6,6 +6,7 @@
 
 #include "Engine/Core/CVar.h"
 #include "Engine/Core/Log.h"
+#include "Game/World/KestrelStation.h"
 
 #include <imgui.h>
 
@@ -159,6 +160,12 @@ glm::vec3 PredationGame::ShipArrival(uint8_t player, float& yaw) const
         const glm::vec3 across = cabin.rotation * glm::vec3(1.0f, 0.0f, 0.0f);
         return cabin.position + across * ((static_cast<float>(player % kMaxPlayers) - 1.5f) * 0.7f) + glm::vec3(0.0f, 0.1f, 0.0f);
     }
+    // The ship standing at an outpost: outside, by its stair -- everybody, whoever joins and whenever.
+    if (ShipLanded())
+    {
+        yaw = KestrelStation::SpawnYaw();
+        return KestrelStation::Spawn(player);
+    }
     yaw = m_ship.SpawnYaw();
     return m_ship.Spawn(player);
 }
@@ -258,7 +265,7 @@ void PredationGame::RecoverFallen()
     {
         PRED_LOG_INFO(Gameplay, "Fell out of the world at {:.1f} {:.1f} {:.1f}: back to where this place is arrived at", m_player.State().position.x,
                       m_player.State().position.y, m_player.State().position.z);
-        RespawnLocalPlayer(m_map == MapChoice::Ship ? m_ship.Spawn(LocalPlayerId()) : m_spawnPoint);
+        RespawnLocalPlayer(ArrivalFor(LocalPlayerId()));
         m_player.State().velocity = glm::vec3(0.0f);
     }
 }

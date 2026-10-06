@@ -137,8 +137,9 @@ void PredationGame::CloseCampaign()
     m_mapOpen = false;
     m_mapFramed = false;
     m_mapSelected = -1;
-    m_pointing = {-1, -1, -1, -1};
-    m_mapOpenMask = 0;
+    m_mapSharedSet = false;
+    m_mapSerialSeen = {-1, -1, -1, -1};
+    m_mapMovedBy = -1;
     m_appliedTravels = 0;
     m_travelSeen = false;
     m_campaignSlotsRead = false;

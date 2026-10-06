@@ -510,6 +510,20 @@ void NetHost::HandlePacket(const NetPacket& packet)
         break;
     }
 
+    case MessageType::MapView:
+    {
+        const Client* client = FindClient(packet.peer);
+        MapViewMessage view;
+        if (client == nullptr || !client->welcomed || !ReadMapView(reader, view))
+        {
+            return;
+        }
+        // Whoever sent it moved it, whatever it says.
+        view.driver = client->playerId;
+        m_mapViews.push_back(view);
+        break;
+    }
+
     case MessageType::Leave:
         RemoveClient(packet.peer);
         break;
@@ -833,6 +847,25 @@ void NetHost::SendTravel(const TravelMessage& travel)
         if (client->welcomed)
         {
             m_transport->Send(client->peer, Channel::Unreliable, bytes.data(), bytes.size());
+        }
+    }
+}
+
+void NetHost::SendMapView(const MapViewMessage& view)
+{
+    if (m_transport == nullptr)
+    {
+        return;
+    }
+    BitWriter writer;
+    WriteMessageHeader(writer, MessageType::MapView);
+    WriteMapView(writer, view);
+    const std::vector<uint8_t>& bytes = writer.Finish();
+    for (const auto& client : m_clients)
+    {
+        if (client->welcomed)
+        {
+            m_transport->Send(client->peer, Channel::Reliable, bytes.data(), bytes.size());
         }
     }
 }
@@ -1449,6 +1482,16 @@ void NetClient::HandlePacket(const NetPacket& packet)
         break;
     }
 
+    case MessageType::MapView:
+    {
+        MapViewMessage view;
+        if (ReadMapView(reader, view))
+        {
+            m_mapViews.push_back(view);
+        }
+        break;
+    }
+
     case MessageType::Document:
     {
         DocumentPart part;
@@ -1616,6 +1659,18 @@ void NetClient::SendCommand(const std::string& line)
     BitWriter writer;
     WriteMessageHeader(writer, MessageType::Command);
     WriteCommand(writer, line);
+    SendPacket(*m_transport, kHostPeer, Channel::Reliable, writer);
+}
+
+void NetClient::SendMapView(const MapViewMessage& view)
+{
+    if (m_transport == nullptr || !m_welcomed)
+    {
+        return;
+    }
+    BitWriter writer;
+    WriteMessageHeader(writer, MessageType::MapView);
+    WriteMapView(writer, view);
     SendPacket(*m_transport, kHostPeer, Channel::Reliable, writer);
 }
 

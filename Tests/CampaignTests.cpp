@@ -272,6 +272,8 @@ TEST_CASE("A campaign written out reads back the same, keeping what it does not 
     state.travel.underway = true;
     state.travel.target = 4;
     state.travel.position = {1.5f, 0.0f, -2.0f};
+    // Somewhere away from home, where CIRRA has found nothing yet (at home it has found every place).
+    state.system = SystemId{1, 0, 0, 0}.Packed();
     state.Learn(state.system, 3, CampaignState::kKnownScanned);
     state.FindRegion(state.system, 3, 2);
     state.regionChanges[CampaignState::RegionKey(state.system, 3, 2)] = {{"doors", {1, 4}}};

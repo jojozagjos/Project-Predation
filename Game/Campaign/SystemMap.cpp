@@ -116,6 +116,15 @@ void SystemMapView::Focus(const glm::vec3& at, float distance)
     m_distanceWanted = std::clamp(distance, m_nearest, m_furthest);
 }
 
+void SystemMapView::SetWanted(const Wanted& wanted)
+{
+    m_focusWanted = wanted.focus;
+    m_distanceWanted = std::clamp(wanted.distance, m_nearest, m_furthest);
+    // The nearest way round to it.
+    m_yawWanted = m_yaw + std::remainder(wanted.yaw - m_yaw, kTau);
+    m_pitchWanted = std::clamp(wanted.pitch, -1.45f, 1.45f);
+}
+
 void SystemMapView::Jump(const glm::vec3& at, float distance)
 {
     Focus(at, distance);

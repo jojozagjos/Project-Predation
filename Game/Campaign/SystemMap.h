@@ -72,6 +72,17 @@ public:
     glm::vec3 Up() const;
     float Distance() const { return m_distance; }
     float WantedDistance() const { return m_distanceWanted; }
+    // Where it is going to, as a whole: what it looks at, from how far, turned how. For sharing the map: set from somebody
+    // else's, it eases there as it would have for them.
+    struct Wanted
+    {
+        glm::vec3 focus{0.0f};
+        float distance = 60.0f;
+        float yaw = 0.6f;
+        float pitch = 0.55f;
+    };
+    Wanted GetWanted() const { return {m_focusWanted, m_distanceWanted, m_yawWanted, m_pitchWanted}; }
+    void SetWanted(const Wanted& wanted);
     // Which drawn body is under a point on the picture (0 to 1 across and down), or -1.
     int Pick(const glm::vec2& point, const std::vector<Drawn>& drawn, float aspect, bool homogeneousDepth) const;
     // Where a point of the map comes on the picture (0 to 1 across and down); false when it is behind the camera.

@@ -1070,8 +1070,10 @@ StarSystem Universe::Generate(uint64_t universeSeed, SystemId id, const Universe
             hub.seed = static_cast<uint32_t>(MixSeed(world.seed, 0x48554242ull) & 0xFFFFFFFFu) | 1u; // 'HUBB'
             hub.kind = "hub";
             const RegionKindDef* hubKind = data.RegionKind("hub");
+            // Kestrel at home; elsewhere an outpost by its number.
             hub.designation = home ? data.homeHubName
-                                   : hubKind != nullptr && !hubKind->designations.empty() ? hubKind->designations.front() : std::string("HUB");
+                                   : (hubKind != nullptr && !hubKind->designations.empty() ? hubKind->designations.front() : std::string("OUTPOST")) + " " +
+                                         std::to_string(10 + hub.seed % 90u);
             hub.latLon = {random.Range(-20.0f, 20.0f), random.Range(-180.0f, 180.0f)};
             hub.charted = true;
             system.hubRegion = static_cast<int>(world.regions.size());

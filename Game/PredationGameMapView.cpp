@@ -44,8 +44,6 @@ constexpr float kBodyFurthest = 5.0f;
 // A press that moves less than this many pixels is a click, not a drag.
 constexpr float kClickSlop = 4.0f;
 
-constexpr ImU32 kPlayerColours[kMaxPlayers] = {IM_COL32(236, 156, 64, 255), IM_COL32(90, 200, 230, 255), IM_COL32(130, 220, 120, 255),
-                                               IM_COL32(220, 120, 220, 255)};
 constexpr ImU32 kAmber = IM_COL32(236, 156, 64, 255);
 constexpr ImU32 kText = IM_COL32(220, 226, 230, 255);
 constexpr ImU32 kDim = IM_COL32(130, 138, 146, 255);
@@ -247,6 +245,34 @@ void Brackets(ImDrawList* draw, const ImVec2& at, float r, ImU32 colour)
     }
 }
 
+// The ship as the map marks it: a pointed shape, outlined, aimed along `way` (screen, normalised).
+void ShipMark(ImDrawList* draw, const ImVec2& at, const glm::vec2& way, float size, ImU32 colour)
+{
+    const glm::vec2 side{-way.y, way.x};
+    const ImVec2 tip{at.x + way.x * size * 1.4f, at.y + way.y * size * 1.4f};
+    const ImVec2 left{at.x - way.x * size + side.x * size, at.y - way.y * size + side.y * size};
+    const ImVec2 back{at.x - way.x * size * 0.4f, at.y - way.y * size * 0.4f};
+    const ImVec2 right{at.x - way.x * size - side.x * size, at.y - way.y * size - side.y * size};
+    const ImVec2 points[4] = {tip, left, back, right};
+    draw->AddConvexPolyFilled(points, 3, colour);
+    const ImVec2 rest[3] = {tip, back, right};
+    draw->AddConvexPolyFilled(rest, 3, colour);
+    draw->AddPolyline(points, 4, IM_COL32(0, 0, 0, 220), ImDrawFlags_Closed, 1.0f);
+}
+
+// A label under a point, centred on it: a line, and a quieter one under it.
+void LabelUnder(ImDrawList* draw, const ImVec2& at, float gap, ImU32 colour, const std::string& first, ImU32 quiet, const std::string& second, float size,
+                float smaller)
+{
+    const ImVec2 one = TextSize(first.c_str(), size);
+    Label(draw, {at.x - one.x * 0.5f, at.y + gap}, colour, first.c_str(), size);
+    if (!second.empty())
+    {
+        const ImVec2 two = TextSize(second.c_str(), smaller);
+        Label(draw, {at.x - two.x * 0.5f, at.y + gap + one.y}, quiet, second.c_str(), smaller);
+    }
+}
+
 // Where on its globe a place is: latitude and longitude in degrees, on the unit sphere, the pole up.
 glm::vec3 Globe(const glm::vec2& latLon)
 {
@@ -317,6 +343,162 @@ void PredationGame::DestroySystemMapTarget()
     m_mapTexture = BGFX_INVALID_HANDLE;
     m_mapWidth = 0;
     m_mapHeight = 0;
+}
+
+std::string PredationGame::MapRecordsText(uint64_t system, int body)
+{
+    const uint8_t known = m_campaign.Known(system, body);
+    if (body < 0)
+    {
+        if (system == m_universe.Home().Packed())
+        {
+            return "Surveyed: all of it on file";
+        }
+        return (known & CampaignState::kKnownRecords) != 0 ? "On file: its bodies, not what is on them" : "Nothing on file";
+    }
+    if ((known & CampaignState::kKnownRecords) != 0 && (known & CampaignState::kKnownDeep) != 0)
+    {
+        return "Surveyed: all of it on file";
+    }
+    if ((known & CampaignState::kKnownRecords) != 0)
+    {
+        return "On file: what it is, not what is on it";
+    }
+    return "Nothing on file";
+}
+
+// --- The map everybody shares -----------------------------------------------------------------------------------------
+//
+// One map for the whole crew: what it shows (its scale, its system, what is picked out on it) and the camera it is seen
+// through. Whoever moves it -- drags, zooms, picks something, opens a body -- sends where it is now, a few times a second at
+// most; the host passes that on to everybody; everybody else's eases to it. Applied moves are kept as the last known, so they
+// are not sent straight back.
+
+MapViewMessage PredationGame::MapSnapshot() const
+{
+    MapViewMessage view;
+    view.level = m_mapLevel == MapLevel::Galaxy ? 0 : m_mapLevel == MapLevel::System ? 1 : 2;
+    view.system = m_mapSystem;
+    view.selected = static_cast<int8_t>(std::clamp(m_mapSelected, -1, 127));
+    view.region = static_cast<int8_t>(std::clamp(m_mapRegion, -1, 127));
+    view.hasPickedSystem = m_mapHasPickedSystem;
+    view.pickedSystem = m_mapPickedSystem;
+    const SystemMapView::Wanted wanted = m_mapView.GetWanted();
+    view.focus = wanted.focus;
+    view.distance = wanted.distance;
+    view.yaw = wanted.yaw;
+    view.pitch = wanted.pitch;
+    return view;
+}
+
+namespace
+{
+
+bool MapMoved(const MapViewMessage& a, const MapViewMessage& b)
+{
+    if (a.level != b.level || a.system != b.system || a.selected != b.selected || a.region != b.region || a.hasPickedSystem != b.hasPickedSystem ||
+        a.pickedSystem != b.pickedSystem)
+    {
+        return true;
+    }
+    const float scale = std::max(std::min(a.distance, b.distance), 1.0e-3f);
+    return glm::length(a.focus - b.focus) > scale * 1.0e-3f || std::abs(a.distance - b.distance) > scale * 1.0e-3f ||
+           std::abs(std::remainder(a.yaw - b.yaw, kTau)) > 1.0e-3f || std::abs(a.pitch - b.pitch) > 1.0e-3f;
+}
+
+} // namespace
+
+void PredationGame::ApplyMapShared(const MapViewMessage& view)
+{
+    // To the scale and the place it is at, at once (under a fade), then eased to where it is looked at from.
+    const MapLevel level = view.level == 0 ? MapLevel::Galaxy : view.level == 1 ? MapLevel::System : MapLevel::Body;
+    m_mapTransition.active = false;
+    const bool rescaled = level != m_mapLevel || view.system != m_mapSystem || (level == MapLevel::Body && view.selected != m_mapSelected);
+    if (level == MapLevel::Galaxy && m_mapLevel != MapLevel::Galaxy)
+    {
+        ApplyMapGalaxy(view.focus, view.distance);
+    }
+    else if (level == MapLevel::System && (m_mapLevel != MapLevel::System || view.system != m_mapSystem))
+    {
+        ApplyMapSystem(view.system, view.selected);
+    }
+    else if (level == MapLevel::Body && rescaled)
+    {
+        m_mapSystem = view.system;
+        ApplyMapBody(view.selected);
+    }
+    if (rescaled && m_mapOpen)
+    {
+        m_mapFadeIn = 1.0f;
+    }
+    m_mapSystem = view.system;
+    m_mapSelected = view.selected;
+    m_mapRegion = view.region;
+    m_mapHasPickedSystem = view.hasPickedSystem;
+    m_mapPickedSystem = view.pickedSystem;
+    m_mapView.SetWanted({view.focus, view.distance, view.yaw, view.pitch});
+    m_mapFramed = true;
+    m_mapMovedBy = view.driver;
+    m_mapMovedFor = 2.0f;
+    m_mapShared = MapSnapshot();
+    m_mapSharedSet = true;
+}
+
+void PredationGame::UpdateSharedMap(float dt)
+{
+    m_mapMovedFor = std::max(m_mapMovedFor - dt, 0.0f);
+    if (!m_campaignOpen || m_sessionMode == SessionMode::Offline)
+    {
+        return;
+    }
+    // Moved by somebody else: applied, the newest of each player's only -- and on the host, passed on to everybody.
+    const std::vector<MapViewMessage> moves = m_sessionMode == SessionMode::Host ? m_host.TakeMapViews() : m_client.TakeMapViews();
+    for (const MapViewMessage& move : moves)
+    {
+        if (move.driver == LocalPlayerId() || move.driver >= kMaxPlayers)
+        {
+            continue;
+        }
+        int& seen = m_mapSerialSeen[move.driver];
+        if (seen >= 0 && static_cast<int16_t>(move.serial - static_cast<uint16_t>(seen)) <= 0)
+        {
+            continue;
+        }
+        seen = move.serial;
+        ApplyMapShared(move);
+        if (m_sessionMode == SessionMode::Host)
+        {
+            m_host.SendMapView(move);
+        }
+    }
+    // Moved here: sent, no more than ten times a second, the last of a run of moves always.
+    if (m_mapOpen && !m_mapTransition.active)
+    {
+        const MapViewMessage now = MapSnapshot();
+        if (!m_mapSharedSet || MapMoved(now, m_mapShared))
+        {
+            m_mapShared = now;
+            m_mapSharedSet = true;
+            m_mapSendPending = true;
+        }
+    }
+    m_mapSendIn -= dt;
+    if (m_mapSendPending && m_mapSendIn <= 0.0f)
+    {
+        m_mapSendIn = 0.1f;
+        m_mapSendPending = false;
+        MapViewMessage move = m_mapShared;
+        move.driver = LocalPlayerId();
+        move.serial = ++m_mapSerial;
+        if (m_sessionMode == SessionMode::Host)
+        {
+            m_host.SendMapView(move);
+        }
+        else
+        {
+            m_client.SendMapView(move);
+        }
+    }
 }
 
 // --- The three scales ---------------------------------------------------------------------------------------------
@@ -815,11 +997,7 @@ void PredationGame::RenderMapSystem(const StarSystem& system, bgfx::ViewId sky, 
         system.SunOver(body.index, m_campaign.clock, &spin);
         model = glm::rotate(model, spin, glm::vec3(0.0f, 1.0f, 0.0f));
         model = glm::scale(model, glm::vec3(at.radius));
-        float highlight = body.index == m_mapSelected ? 1.0f : body.index == m_mapHovered ? 0.55f : 0.0f;
-        for (int player = 0; player < kMaxPlayers && ours; ++player)
-        {
-            highlight = std::max(highlight, m_pointing[static_cast<size_t>(player)] == body.index && player != LocalPlayerId() ? 0.45f : 0.0f);
-        }
+        const float highlight = body.index == m_mapSelected ? 1.0f : body.index == m_mapHovered ? 0.55f : 0.0f;
         const glm::vec3 towardsStar = glm::length(at.at) > 1.0e-4f ? -glm::normalize(at.at) : glm::vec3(0.0f, 1.0f, 0.0f);
         const PlanetLook look = LookOf(body);
         m_planets.Body(bodies, model, look, towardsStar, system.starColor, highlight, time * 0.02f);
@@ -1426,7 +1604,9 @@ void PredationGame::DrawSystemMap()
             }
 
             const bool here = packed == m_campaign.system && !m_campaign.travel.interstellar;
-            const bool course = m_campaign.travel.interstellar && packed == m_campaign.travel.toSystem;
+            // The one system the ship is bound for: the crossing plotted, or the one it is on.
+            const bool course = (m_campaign.plan.set && m_campaign.plan.toSystem && packed == m_campaign.plan.system) ||
+                                (!m_campaign.plan.set && m_campaign.travel.interstellar && packed == m_campaign.travel.toSystem);
             const bool picked = m_mapHasPickedSystem && packed == m_mapPickedSystem;
             const bool hover = m_mapHasHoverSystem && packed == m_mapHoverSystem;
             const bool visited = (m_campaign.Known(packed, -1) & CampaignState::kKnownVisited) != 0;
@@ -1436,7 +1616,8 @@ void PredationGame::DrawSystemMap()
             }
             if (course)
             {
-                draw->AddCircle(point, radius + 9.0f, kAmber, 24, 1.6f);
+                Diamond(draw, point, radius + 12.0f, kGo, false);
+                LabelUnder(draw, point, radius + 14.0f, kGo, "DESTINATION", kDim, "", tiny, tiny);
             }
             if (picked)
             {
@@ -1458,7 +1639,8 @@ void PredationGame::DrawSystemMap()
                 }
             }
         }
-        // The ship: a pointer, aimed where it is going.
+        // The ship: in a system, its mark beside that system's star (whose name is beside it the other way) and its name under
+        // it; between the stars, where it is, aimed where it is going.
         ImVec2 at;
         if (toScreen(ship, at))
         {
@@ -1468,13 +1650,10 @@ void PredationGame::DrawSystemMap()
             {
                 way = glm::normalize(glm::vec2(ahead.x - at.x, ahead.y - at.y));
             }
-            const glm::vec2 side{-way.y, way.x};
-            const ImVec2 tip{at.x + way.x * 11.0f, at.y + way.y * 11.0f};
-            const ImVec2 left{at.x - way.x * 7.0f + side.x * 7.0f, at.y - way.y * 7.0f + side.y * 7.0f};
-            const ImVec2 right{at.x - way.x * 7.0f - side.x * 7.0f, at.y - way.y * 7.0f - side.y * 7.0f};
-            draw->AddTriangleFilled(tip, left, right, kShipColour);
-            draw->AddTriangle(tip, left, right, IM_COL32(0, 0, 0, 200), 1.0f);
-            Label(draw, {at.x + 12.0f, at.y + 6.0f}, kShipColour, "SHIP", tiny);
+            const ImVec2 mark = m_campaign.travel.interstellar ? at : ImVec2{at.x - 16.0f, at.y};
+            draw->AddCircle(mark, 9.0f, Faded(kShipColour, 0.5f), 0, 1.0f);
+            ShipMark(draw, mark, way, 5.0f, kShipColour);
+            LabelUnder(draw, at, 12.0f, kShipColour, "YOUR SHIP", kDim, m_campaign.travel.interstellar ? "crossing" : "", tiny, tiny);
         }
         // The drive's reach, marked on its ring.
         if (const float reach = Travel::CrossingRange(DriveTier()); reach > 0.0f)
@@ -1524,11 +1703,13 @@ void PredationGame::DrawSystemMap()
             const float across = toScreen(at.at + shot.Right() * at.radius, rim) ? std::abs(rim.x - point.x) : 0.0f;
             const ImVec2 corner = beside ? ImVec2{point.x + across + 10.0f, point.y - extent.y * 0.5f} : ImVec2{point.x - extent.x * 0.5f, point.y - extent.y};
             Label(draw, corner, colour, body.name.c_str(), small);
-            // The world with a hub on it: a mark under its name.
+            // The world with an outpost on it: a mark over its name.
             if (body.index == shown->hub)
             {
-                Diamond(draw, {corner.x + extent.x * 0.5f - 18.0f, corner.y - 6.0f}, 3.5f, IM_COL32(150, 220, 255, 230), true);
-                Label(draw, {corner.x + extent.x * 0.5f - 11.0f, corner.y - 12.0f}, IM_COL32(150, 220, 255, 230), "HUB", tiny);
+                const ImVec2 word = TextSize("OUTPOST", tiny);
+                const float left = corner.x + extent.x * 0.5f - (word.x + 12.0f) * 0.5f;
+                Diamond(draw, {left + 4.0f, corner.y - word.y * 0.5f - 2.0f}, 3.5f, kHub, true);
+                Label(draw, {left + 12.0f, corner.y - word.y - 2.0f}, kHub, "OUTPOST", tiny);
             }
         }
         // The distance rings' marks.
@@ -1543,34 +1724,50 @@ void PredationGame::DrawSystemMap()
         }
         if (ours)
         {
-            // The ship.
-            const glm::vec3 ship = SystemMapView::ShipAt(drawn, m_campaign.travel.underway ? -1 : m_campaign.body, Travel::ShipPosition(m_campaign, *shown));
+            // The one place the ship is going: the course plotted, or the one it is on.
+            const int destination = m_campaign.plan.set && !m_campaign.plan.toSystem ? m_campaign.plan.body
+                                    : m_campaign.travel.underway                     ? m_campaign.travel.target
+                                                                                     : -1;
             ImVec2 point;
-            if (toScreen(ship, point))
+            if (destination >= 0 && destination < static_cast<int>(drawn.size()) && toScreen(drawn[static_cast<size_t>(destination)].at, point))
             {
-                draw->AddCircleFilled(point, 4.0f, kShipColour);
-                draw->AddCircle(point, 8.0f, kShipColour, 0, 1.5f);
-                Label(draw, {point.x + 11.0f, point.y - small * 0.5f}, kShipColour, ShipLanded() ? "SHIP  LANDED" : "SHIP", small);
+                ImVec2 edge;
+                const SystemMapView::Drawn& at = drawn[static_cast<size_t>(destination)];
+                const float r = toScreen(at.at + shot.Up() * at.radius, edge) ? std::max(std::hypot(edge.x - point.x, edge.y - point.y), 6.0f) : 10.0f;
+                Diamond(draw, point, r + 12.0f, kGo, false);
+                LabelUnder(draw, point, r + 14.0f, kGo, m_campaign.travel.underway && !m_campaign.plan.set ? "COURSE" : "DESTINATION", kDim,
+                           m_campaign.plan.set && !m_campaign.travel.underway ? "plotted: set out at the helm" : "", tiny, tiny);
             }
-            // What everybody else is pointing at: a ring round it in their colour, and their name.
-            const std::vector<RemotePlayerView>& remotes = RemotePlayers();
-            for (int player = 0; player < kMaxPlayers; ++player)
+            // The ship: at a body, its mark beside the body and what it is doing under it (the body's name is over it); under way,
+            // its mark where it is, aimed where it is going.
+            const Body* at = m_campaign.travel.underway ? nullptr : shown->Find(m_campaign.body);
+            if (at != nullptr && toScreen(drawn[static_cast<size_t>(at->index)].at, point))
             {
-                const int body = m_pointing[static_cast<size_t>(player)];
-                if (player == LocalPlayerId() || body < 0 || body >= static_cast<int>(drawn.size()))
+                ImVec2 edge;
+                const SystemMapView::Drawn& body = drawn[static_cast<size_t>(at->index)];
+                const float r = toScreen(body.at + shot.Up() * body.radius, edge) ? std::max(std::hypot(edge.x - point.x, edge.y - point.y), 6.0f) : 10.0f;
+                const ImVec2 beside{point.x - r - 16.0f, point.y};
+                draw->AddCircle(beside, 9.0f, Faded(kShipColour, 0.5f), 0, 1.0f);
+                ShipMark(draw, beside, {0.0f, -1.0f}, 5.0f, kShipColour);
+                const int region = m_campaign.travel.region;
+                const std::string doing = ShipLanded() && region >= 0 && region < static_cast<int>(at->regions.size())
+                                              ? "landed at " + at->regions[static_cast<size_t>(region)].designation
+                                              : "in orbit";
+                LabelUnder(draw, point, r + 8.0f, kShipColour, "YOUR SHIP", kDim, doing, tiny, tiny);
+            }
+            const glm::vec3 ship = SystemMapView::ShipAt(drawn, -1, Travel::ShipPosition(m_campaign, *shown));
+            if (at == nullptr && toScreen(ship, point))
+            {
+                glm::vec2 way{0.0f, -1.0f};
+                ImVec2 ahead;
+                if (m_campaign.travel.underway && m_campaign.travel.target >= 0 && toScreen(drawn[static_cast<size_t>(m_campaign.travel.target)].at, ahead) &&
+                    std::hypot(ahead.x - point.x, ahead.y - point.y) > 1.0f)
                 {
-                    continue;
+                    way = glm::normalize(glm::vec2(ahead.x - point.x, ahead.y - point.y));
                 }
-                std::string name = "Player " + std::to_string(player + 1);
-                for (const RemotePlayerView& remote : remotes)
-                {
-                    name = remote.id == player ? remote.name : name;
-                }
-                if (toScreen(drawn[static_cast<size_t>(body)].at, point))
-                {
-                    draw->AddCircle(point, 20.0f + 4.0f * static_cast<float>(player), kPlayerColours[player], 0, 2.0f);
-                    Label(draw, {point.x + 24.0f, point.y + 6.0f + small * static_cast<float>(player)}, kPlayerColours[player], name.c_str(), small);
-                }
+                draw->AddCircle(point, 11.0f, Faded(kShipColour, 0.5f), 0, 1.0f);
+                ShipMark(draw, point, way, 6.0f, kShipColour);
+                LabelUnder(draw, point, 14.0f, kShipColour, "YOUR SHIP", kDim, m_campaign.travel.underway ? "under way" : "holding", small, tiny);
             }
         }
     }
@@ -1617,12 +1814,17 @@ void PredationGame::DrawSystemMap()
             }
             Label(draw, {point.x + 14.0f, point.y - small * 0.55f}, colour, region.designation.c_str(), small);
             const bool shipHere = chosen && port && ShipLanded();
-            const std::string under = std::string(shipHere ? "THE SHIP IS HERE   " : chosen ? (port ? "LANDING HERE   " : "GOING DOWN HERE   ") : port ? "HUB   " : "") +
-                                      (day ? "DAY" : "NIGHT");
+            const std::string under =
+                std::string(shipHere ? "YOUR SHIP IS HERE   " : chosen ? (port ? "LANDING HERE   " : "GOING DOWN HERE   ") : port ? "OUTPOST   " : "") +
+                (day ? "DAY" : "NIGHT");
+            if (shipHere)
+            {
+                ShipMark(draw, {point.x - 20.0f, point.y}, {0.0f, -1.0f}, 5.0f, Faded(kShipColour, fade));
+            }
             Label(draw, {point.x + 14.0f, point.y + small * 0.45f}, Faded(chosen ? kGo : kDim, fade), under.c_str(), tiny);
         }
-        // The ship: standing at its area, or going round.
-        if (ours && !m_campaign.travel.underway && m_campaign.body == globe->index)
+        // The ship going round (standing at its area, the area's own mark says so).
+        if (ours && !m_campaign.travel.underway && m_campaign.body == globe->index && !ShipLanded())
         {
             const glm::vec3 at = ShipOverGlobe(*globe);
             // Hidden behind the globe when it is round the far side.
@@ -1633,10 +1835,9 @@ void PredationGame::DrawSystemMap()
             ImVec2 point;
             if (!behind && toScreen(at, point))
             {
-                const ImVec2 tip{point.x, point.y - 9.0f};
-                draw->AddTriangleFilled(tip, {point.x - 6.0f, point.y + 4.0f}, {point.x + 6.0f, point.y + 4.0f}, kShipColour);
-                draw->AddTriangle(tip, {point.x - 6.0f, point.y + 4.0f}, {point.x + 6.0f, point.y + 4.0f}, IM_COL32(0, 0, 0, 220), 1.0f);
-                Label(draw, {point.x + 10.0f, point.y - 14.0f}, kShipColour, ShipLanded() ? "SHIP  LANDED" : "SHIP  IN ORBIT", small);
+                draw->AddCircle(point, 11.0f, Faded(kShipColour, 0.5f), 0, 1.0f);
+                ShipMark(draw, point, {0.0f, -1.0f}, 6.0f, kShipColour);
+                LabelUnder(draw, point, 14.0f, kShipColour, "YOUR SHIP", kDim, "in orbit", small, tiny);
             }
         }
     }
@@ -1756,6 +1957,17 @@ void PredationGame::DrawMapBars(const StarSystem* shown)
         ImGui::SameLine(statusAt);
         ImGui::AlignTextToFramePadding();
         ImGui::TextColored(m_campaign.travel.underway ? kAmberText : ImVec4(0.85f, 0.88f, 0.9f, 1.0f), "%s", status.c_str());
+        // The map is everybody's: who has just moved it, when it was somebody else.
+        if (m_mapMovedFor > 0.0f && m_mapMovedBy >= 0)
+        {
+            std::string name = "Player " + std::to_string(m_mapMovedBy + 1);
+            for (const RemotePlayerView& remote : RemotePlayers())
+            {
+                name = remote.id == m_mapMovedBy ? remote.name : name;
+            }
+            ImGui::SameLine(0.0f, 18.0f);
+            ImGui::TextColored(ImVec4(0.55f, 0.58f, 0.62f, std::min(m_mapMovedFor, 1.0f)), "moved by %s", name.c_str());
+        }
         ImGui::SameLine(size.x - 32.0f - closeWidth - cancelWidth - 24.0f);
         if (canCancel)
         {
@@ -1794,6 +2006,56 @@ void PredationGame::DrawMapBars(const StarSystem* shown)
             if (ImGui::Button("Clear"))
             {
                 AskCampaign(CampaignAction::ClearPlot);
+            }
+        }
+        ImGui::End();
+    }
+
+    // Down in the corner: what the marks on the map mean, at this scale.
+    {
+        struct Key
+        {
+            int mark; // 0 outpost, 1 ship, 2 destination, 3 been there, 4 a place to go down, 5 drive's reach, 6 the charts' reach
+            const char* words;
+        };
+        std::vector<Key> keys;
+        if (m_mapLevel == MapLevel::Galaxy)
+        {
+            keys = {{1, "Your ship"}, {2, "Destination"}, {3, "Been there"}, {5, "How far the drive reaches"}, {6, "How far the charts reach"}};
+        }
+        else if (m_mapLevel == MapLevel::System)
+        {
+            keys = {{1, "Your ship"}, {2, "Destination"}, {0, "Outpost: the ship lands there"}};
+        }
+        else
+        {
+            keys = {{1, "Your ship"}, {0, "Outpost: the ship lands there"}, {4, "A place to go down in the shuttle"}};
+        }
+        ImGui::SetNextWindowPos({origin.x + size.x - 16.0f, origin.y + size.y - 64.0f}, ImGuiCond_Always, {1.0f, 1.0f});
+        ImGui::SetNextWindowBgAlpha(0.7f);
+        if (ImGui::Begin("##maplegend", nullptr, kPanel | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoInputs))
+        {
+            ImDrawList* draw = ImGui::GetWindowDrawList();
+            const float line = ImGui::GetTextLineHeight();
+            for (const Key& key : keys)
+            {
+                const ImVec2 at = ImGui::GetCursorScreenPos();
+                const ImVec2 middle{at.x + 9.0f, at.y + line * 0.5f};
+                switch (key.mark)
+                {
+                case 0: Diamond(draw, middle, 4.5f, kHub, true); break;
+                case 1: ShipMark(draw, middle, {0.0f, -1.0f}, 4.5f, kShipColour); break;
+                case 2: Diamond(draw, middle, 6.0f, kGo, false); break;
+                case 3: draw->AddCircle(middle, 5.5f, IM_COL32(220, 226, 230, 150), 16, 1.0f); break;
+                case 4: draw->AddCircleFilled(middle, 3.0f, kText); draw->AddCircle(middle, 6.0f, kText, 0, 1.2f); break;
+                case 5: draw->AddLine({middle.x - 7.0f, middle.y}, {middle.x + 7.0f, middle.y}, IM_COL32(236, 156, 64, 200), 1.5f); break;
+                default:
+                    draw->AddLine({middle.x - 7.0f, middle.y}, {middle.x - 2.0f, middle.y}, IM_COL32(120, 170, 220, 160), 1.5f);
+                    draw->AddLine({middle.x + 2.0f, middle.y}, {middle.x + 7.0f, middle.y}, IM_COL32(120, 170, 220, 160), 1.5f);
+                    break;
+                }
+                ImGui::SetCursorScreenPos({at.x + 24.0f, at.y});
+                ImGui::TextColored(kDimText, "%s", key.words);
             }
         }
         ImGui::End();
@@ -1904,9 +2166,11 @@ void PredationGame::DrawMapGalaxyPanels()
                 const ImVec2 tagSize = ImGui::CalcTextSize(tag.c_str());
                 const float right = corner.x + ImGui::GetContentRegionAvail().x;
                 draw->AddText({right - tagSize.x - 4.0f, corner.y}, tag == "HERE" || tag == "COURSE" ? kAmber : kDim, tag.c_str());
-                if ((m_campaign.Known(packed, -1) & CampaignState::kKnownVisited) != 0)
+                const uint8_t known = m_campaign.Known(packed, -1);
+                if ((known & (CampaignState::kKnownVisited | CampaignState::kKnownRecords)) != 0)
                 {
-                    draw->AddText({right - tagSize.x - 4.0f - ImGui::CalcTextSize("visited  ").x, corner.y}, kDim, "visited");
+                    const char* word = (known & CampaignState::kKnownVisited) != 0 ? "visited" : "on file";
+                    draw->AddText({right - tagSize.x - 4.0f - ImGui::CalcTextSize(word).x - 10.0f, corner.y}, kDim, word);
                 }
                 ImGui::PopID();
             }
@@ -1976,13 +2240,22 @@ void PredationGame::DrawMapGalaxyPanels()
                     planets += body.kind == BodyKind::Planet ? 1 : 0;
                     moons += body.kind == BodyKind::Moon ? 1 : 0;
                 }
-                Row("Bodies", std::to_string(planets) + " planets, " + std::to_string(moons) + " moons" + (system->hub >= 0 ? ", a hub" : ""));
+                Row("Bodies", std::to_string(planets) + " planets, " + std::to_string(moons) + " moons");
+                Row("Outpost", system->hub >= 0 ? "Yes: ships land, refit and trade there" : "None", true);
+            }
+        }
+        else if ((m_campaign.Known(m_mapPickedSystem, -1) & CampaignState::kKnownRecords) != 0)
+        {
+            if (const StarSystem* system = m_universe.System(m_mapPickedSystem))
+            {
+                Row("Bodies", std::to_string(system->bodies.size()) + " on CIRRA's records");
             }
         }
         else
         {
             Row("Bodies", "", false);
         }
+        Row("CIRRA", MapRecordsText(m_mapPickedSystem, -1), true);
         ImGui::Spacing();
         ImGui::Spacing();
         if (ImGui::Button("Open the system   Enter", {-1.0f, 32.0f}))
@@ -2098,13 +2371,6 @@ void PredationGame::DrawMapSystemPanels(const StarSystem& system)
                     const float right = corner.x + ImGui::GetContentRegionAvail().x;
                     draw->AddText({right - ImGui::CalcTextSize(tag).x - 4.0f, corner.y}, tagColour, tag);
                 }
-                for (int player = 0; player < kMaxPlayers && ours; ++player)
-                {
-                    if (player != LocalPlayerId() && m_pointing[static_cast<size_t>(player)] == body.index)
-                    {
-                        draw->AddCircleFilled({corner.x + 260.0f - 10.0f * static_cast<float>(player), corner.y + line * 0.5f}, 3.5f, kPlayerColours[player]);
-                    }
-                }
                 ImGui::PopID();
             }
         }
@@ -2151,6 +2417,7 @@ void PredationGame::DrawMapSystemPanels(const StarSystem& system)
         }
         Title(picked->name, what);
         Section("SURVEY");
+        Row("CIRRA", MapRecordsText(m_mapSystem, picked->index), true);
         {
             const BiomeDef* biome = m_universeData.Biome(picked->biome);
             Row("Type", biome != nullptr ? biome->name : picked->biome, picked->gas || scanned || records);
@@ -2401,7 +2668,7 @@ void PredationGame::DrawMapBodyPanels(const StarSystem& system)
         const bool port = RegionIsPort(*body, m_mapRegion);
         if (port)
         {
-            Wrapped(kDimText, "A hub: the ship itself sets down here.");
+            Wrapped(kDimText, "An outpost: the ship itself lands here.");
         }
         if (!ours)
         {

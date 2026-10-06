@@ -992,7 +992,6 @@ private:
         SetCourse,    // a = body, b = landing region
         CancelCourse,
         SetRegion,    // a = landing region
-        Pointer,      // a = body pointed at (-1 none), b = the map open
         SetSystemCourse, // a, b = the low and high halves of the system's number
         PlotCourse,      // a = body, b = landing region: plotted, not flown
         PlotSystem,      // a, b = the system's number, as SetSystemCourse
@@ -1175,13 +1174,25 @@ private:
     bgfx::TextureHandle m_mapTexture = BGFX_INVALID_HANDLE;
     uint16_t m_mapWidth = 0;
     uint16_t m_mapHeight = 0;
-    std::array<int8_t, kMaxPlayers> m_pointing{-1, -1, -1, -1};
-    uint8_t m_mapOpenMask = 0;
     float m_travelSendIn = 0.0f;
     float m_sensorIn = 0.0f;
     uint32_t m_appliedTravels = 0;
-    int m_pointerSent = -2;
-    bool m_mapOpenSent = false;
+    // The map everybody shares (PredationGameMapView.cpp): as it was last sent or applied, so a move of this player's own can
+    // be told from one applied from somebody else's; this player's count of moves and when the next may go; the newest move
+    // applied from each player; and who moved it last, for a moment, to say so.
+    MapViewMessage m_mapShared;
+    bool m_mapSharedSet = false;
+    uint16_t m_mapSerial = 0;
+    float m_mapSendIn = 0.0f;
+    bool m_mapSendPending = false;
+    std::array<int, kMaxPlayers> m_mapSerialSeen{-1, -1, -1, -1};
+    int m_mapMovedBy = -1;
+    float m_mapMovedFor = 0.0f;
+    MapViewMessage MapSnapshot() const;
+    // What CIRRA has on file of a system (body -1) or a body, in a few words.
+    std::string MapRecordsText(uint64_t system, int body);
+    void ApplyMapShared(const MapViewMessage& view);
+    void UpdateSharedMap(float dt);
     // What the intercom last saw of the ship's travel and finds, for saying what has just changed.
     bool m_travelSeen = false;
     bool m_travelSeenUnderway = false;

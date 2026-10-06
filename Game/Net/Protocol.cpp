@@ -1014,6 +1014,56 @@ bool ReadCampaignRequest(BitReader& reader, CampaignRequest& out)
     return !reader.Overran();
 }
 
+void WriteMapView(BitWriter& writer, const MapViewMessage& message)
+{
+    writer.WriteBits(message.driver, 8);
+    writer.WriteBits(message.serial, 16);
+    writer.WriteBits(message.level, 2);
+    writer.WriteUInt(static_cast<uint32_t>(message.system & 0xFFFFFFFFu));
+    writer.WriteUInt(static_cast<uint32_t>(message.system >> 32));
+    writer.WriteSignedBits(message.selected, 8);
+    writer.WriteSignedBits(message.region, 8);
+    writer.WriteBool(message.hasPickedSystem);
+    writer.WriteUInt(static_cast<uint32_t>(message.pickedSystem & 0xFFFFFFFFu));
+    writer.WriteUInt(static_cast<uint32_t>(message.pickedSystem >> 32));
+    for (int i = 0; i < 3; ++i)
+    {
+        writer.WriteFloat(message.focus[i]);
+    }
+    writer.WriteFloat(message.distance);
+    writer.WriteFloat(message.yaw);
+    writer.WriteFloat(message.pitch);
+}
+
+bool ReadMapView(BitReader& reader, MapViewMessage& out)
+{
+    out.driver = static_cast<uint8_t>(reader.ReadBits(8));
+    out.serial = static_cast<uint16_t>(reader.ReadBits(16));
+    out.level = static_cast<uint8_t>(reader.ReadBits(2));
+    const uint64_t systemLow = reader.ReadUInt();
+    const uint64_t systemHigh = reader.ReadUInt();
+    out.system = systemLow | (systemHigh << 32);
+    out.selected = static_cast<int8_t>(reader.ReadSignedBits(8));
+    out.region = static_cast<int8_t>(reader.ReadSignedBits(8));
+    out.hasPickedSystem = reader.ReadBool();
+    const uint64_t pickedLow = reader.ReadUInt();
+    const uint64_t pickedHigh = reader.ReadUInt();
+    out.pickedSystem = pickedLow | (pickedHigh << 32);
+    for (int i = 0; i < 3; ++i)
+    {
+        out.focus[i] = reader.ReadFloat();
+    }
+    out.distance = reader.ReadFloat();
+    out.yaw = reader.ReadFloat();
+    out.pitch = reader.ReadFloat();
+    if (out.level > 2 || !std::isfinite(out.focus.x) || !std::isfinite(out.focus.y) || !std::isfinite(out.focus.z) || !std::isfinite(out.distance) ||
+        !std::isfinite(out.yaw) || !std::isfinite(out.pitch) || out.distance <= 0.0f)
+    {
+        return false;
+    }
+    return !reader.Overran();
+}
+
 void WriteTravel(BitWriter& writer, const TravelMessage& message)
 {
     uint64_t bits = 0;
@@ -1036,11 +1086,6 @@ void WriteTravel(BitWriter& writer, const TravelMessage& message)
     {
         writer.WriteFloat(message.velocity[i]);
     }
-    for (const int8_t pointing : message.pointing)
-    {
-        writer.WriteSignedBits(pointing, 8);
-    }
-    writer.WriteBits(message.mapOpen, kMaxPlayers);
 }
 
 bool ReadTravel(BitReader& reader, TravelMessage& out)
@@ -1065,11 +1110,6 @@ bool ReadTravel(BitReader& reader, TravelMessage& out)
     {
         out.velocity[i] = reader.ReadFloat();
     }
-    for (int8_t& pointing : out.pointing)
-    {
-        pointing = static_cast<int8_t>(reader.ReadSignedBits(8));
-    }
-    out.mapOpen = static_cast<uint8_t>(reader.ReadBits(kMaxPlayers));
     if (!std::isfinite(out.clock) || !std::isfinite(out.position.x) || !std::isfinite(out.position.y) || !std::isfinite(out.position.z) ||
         !std::isfinite(out.velocity.x) || !std::isfinite(out.velocity.y) || !std::isfinite(out.velocity.z))
     {

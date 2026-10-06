@@ -116,14 +116,6 @@ bool PredationGame::DoCampaignAction(uint8_t player, CampaignAction action, int 
     }
     switch (action)
     {
-    case CampaignAction::Pointer:
-        if (player < kMaxPlayers)
-        {
-            m_pointing[player] = static_cast<int8_t>(std::clamp(a, -1, 127));
-            m_mapOpenMask = static_cast<uint8_t>(b != 0 ? (m_mapOpenMask | (1u << player)) : (m_mapOpenMask & ~(1u << player)));
-        }
-        return true;
-
     case CampaignAction::SetCourse:
     {
         // Only aboard, and not while the ship is already doing something that has the picture.
@@ -443,9 +435,8 @@ void PredationGame::UpdateTravel(float dt)
     {
         return;
     }
-    // What this player is pointing at, for the others: a body of the system the ship is in, on its map.
-    const bool pointable = m_mapOpen && m_mapLevel != MapLevel::Galaxy && m_mapSystem == m_campaign.system;
-    const int pointer = pointable ? (m_mapHovered >= 0 ? m_mapHovered : m_mapSelected) : -1;
+    // The map, shared with everybody.
+    UpdateSharedMap(dt);
     if (m_sessionMode == SessionMode::Client)
     {
         if (m_client.TravelsReceived() != m_appliedTravels)
@@ -461,24 +452,15 @@ void PredationGame::UpdateTravel(float dt)
             m_campaign.travel.velocity = travel.velocity;
             m_campaign.travel.region = travel.region;
             m_campaign.body = travel.body;
-            m_pointing = travel.pointing;
-            m_mapOpenMask = travel.mapOpen;
         }
         else if (m_campaign.travel.underway && !m_campaign.travel.interstellar)
         {
             // Between the host's words, flown the same way here, so the map moves smoothly.
             Travel::Step(m_campaign, *system, dt, DriveTier());
         }
-        if (pointer != m_pointerSent || m_mapOpen != m_mapOpenSent)
-        {
-            m_pointerSent = pointer;
-            m_mapOpenSent = m_mapOpen;
-            AskCampaign(CampaignAction::Pointer, pointer, m_mapOpen ? 1 : 0);
-        }
     }
     else
     {
-        DoCampaignAction(LocalPlayerId(), CampaignAction::Pointer, pointer, m_mapOpen ? 1 : 0);
         if (m_campaign.travel.interstellar)
         {
             // Between the stars: there when the time is up, at the edge of the new system, shown arriving.
@@ -555,8 +537,6 @@ void PredationGame::UpdateTravel(float dt)
                 travel.region = static_cast<int8_t>(std::clamp(m_campaign.travel.region, -1, 127));
                 travel.position = m_campaign.travel.position;
                 travel.velocity = m_campaign.travel.velocity;
-                travel.pointing = m_pointing;
-                travel.mapOpen = m_mapOpenMask;
                 m_host.SendTravel(travel);
             }
         }

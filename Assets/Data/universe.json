@@ -157,8 +157,8 @@
   ],
 
   "regions": [
-    {"id": "hub", "name": "Hub", "charted": true, "ship": true, "designations": ["HUB"]},
-    {"id": "outpost", "name": "Outpost", "charted": true, "designations": ["OUTPOST", "RELAY STATION", "MINING OUTPOST"]},
+    {"id": "hub", "name": "Outpost", "charted": true, "ship": true, "designations": ["OUTPOST"]},
+    {"id": "outpost", "name": "Remote station", "charted": true, "designations": ["REMOTE STATION", "RELAY STATION", "MINING STATION"]},
     {"id": "research_facility", "name": "Research facility", "designations": ["RESEARCH FACILITY", "FIELD STATION", "SURVEY STATION"]},
     {"id": "survey", "name": "Open ground", "designations": ["SURVEY SITE"]},
     {"id": "wreck", "name": "Wreck", "designations": ["CRASH SITE"]},

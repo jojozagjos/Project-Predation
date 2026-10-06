@@ -369,22 +369,34 @@ CampaignState CampaignState::Begin(const std::string& campaignName, uint64_t see
         }
     }
     state.Learn(home->id.Packed(), -1, kKnownVisited);
-    // Every body of the home system is on the charts by name; whatever has records is known by them; home is visited.
+    // What CIRRA already has on file. The home system surveyed through and through -- every body looked at closely, every
+    // place on them to go down found -- and the outpost's world stood on.
     for (const Body& body : home->bodies)
     {
-        uint8_t bits = 0;
-        if (const CivilizationDef* civ = universe.Data() != nullptr ? universe.Data()->Civilization(body.civilization) : nullptr;
-            civ != nullptr && civ->records)
-        {
-            bits |= kKnownRecords;
-        }
+        uint8_t bits = kKnownRecords | kKnownScanned | kKnownDeep;
         if (body.index == home->hub)
         {
-            bits |= kKnownRecords | kKnownScanned | kKnownVisited;
+            bits |= kKnownVisited;
         }
-        if (bits != 0)
+        state.Learn(home->id.Packed(), body.index, bits);
+        for (int region = 0; region < static_cast<int>(body.regions.size()); ++region)
         {
-            state.Learn(home->id.Packed(), body.index, bits);
+            state.FindRegion(home->id.Packed(), body.index, region);
+        }
+    }
+    // The systems round it, within reach of the first upgraded drive, on file in part: what their bodies are, not what is on
+    // them.
+    for (const SystemId& id : universe.Near(universe.SystemPosition(universe.Home()), kRecordsReach))
+    {
+        const StarSystem* near = universe.System(id);
+        if (near == nullptr || id.Packed() == home->id.Packed())
+        {
+            continue;
+        }
+        state.Learn(id.Packed(), -1, kKnownRecords);
+        for (const Body& body : near->bodies)
+        {
+            state.Learn(id.Packed(), body.index, kKnownRecords);
         }
     }
     return state;
