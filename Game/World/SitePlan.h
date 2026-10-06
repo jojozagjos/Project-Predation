@@ -55,8 +55,6 @@ struct SitePlan
 
     enum class BlockKind : uint8_t
     {
-        Ground,    // what everything stands on
-        Cliff,     // the rock that closes the site in
         Rock,      // a boulder: cover
         Container, // a freight container: cover, and a landmark
         Pad,       // where the craft sets down

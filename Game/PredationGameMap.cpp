@@ -989,6 +989,9 @@ SiteMap::Look PredationGame::SiteLookHere()
     SiteMap::Look look;
     const StarSystem* system = m_campaignOpen ? CurrentSystem() : nullptr;
     const Body* body = system != nullptr ? system->Find(m_campaign.body) : nullptr;
+    const std::string terrain = !m_siteTerrainPreview.empty() ? m_siteTerrainPreview : body != nullptr ? body->terrain : std::string();
+    look.terrain = SiteTerrain::ShapeOf(terrain);
+    look.dunes = terrain == "dunes";
     if (body == nullptr)
     {
         return look;

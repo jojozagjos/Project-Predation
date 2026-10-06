@@ -1165,6 +1165,8 @@ private:
     std::string OutpostTag(const LandingRegion& region) const;
     // Another outpost's owner, for outpost_preview (empty: as its seed would have it).
     std::string m_outpostPreviewOwner;
+    // The ground the next site is built on instead of its world's (site_terrain): a terrain id, or empty for the world's own.
+    std::string m_siteTerrainPreview;
     Entity MakeSign(const KestrelStation::Sign& sign, const std::string& meshName, TextureHandle texture, int wide, int high, int textureWide, int textureHigh,
                     MeshHandle& mesh);
     std::vector<Entity> m_hubSigns;

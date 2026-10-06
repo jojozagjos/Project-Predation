@@ -10,6 +10,7 @@
 #include <glm/gtc/constants.hpp>
 #include <glm/gtc/quaternion.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <string>
 
@@ -44,8 +45,6 @@ const char* NameOf(Kind kind)
 {
     switch (kind)
     {
-    case Kind::Ground: return "site_ground";
-    case Kind::Cliff: return "site_cliff";
     case Kind::Rock: return "site_rock";
     case Kind::Container: return "site_container";
     case Kind::Pad: return "site_pad";
@@ -96,6 +95,7 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
     Clear(scene, physics, lights);
     m_seed = seed;
     m_plan = SitePlan::Generate(seed);
+    m_terrain.Plan(m_plan, m_look.terrain, m_look.dunes);
     if (lights != nullptr)
     {
         m_firstLight = lights->Count();
@@ -109,6 +109,17 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
     const Material groundMaterial = Surfaces::Apply(Material::Diffuse(m_look.ground, 1.0f), "snow_02", 2.5f);
     const Material cliffMaterial = Material::Diffuse(m_look.rock * 0.88f, 0.95f);
     const Material rockMaterial = Material::Diffuse(m_look.rock, 0.95f);
+    // Where something stands on the ground: how far its foot is moved from the plan's flat ground to the terrain's, at the
+    // lowest of its middle and corners, so nothing on a slope stands on air.
+    const auto lift = [&](glm::vec2 at, float reach)
+    {
+        float low = m_terrain.Height(at.x, at.y);
+        for (const glm::vec2 corner : {glm::vec2(-1.0f, -1.0f), glm::vec2(1.0f, -1.0f), glm::vec2(-1.0f, 1.0f), glm::vec2(1.0f, 1.0f)})
+        {
+            low = std::min(low, m_terrain.Height(at.x + corner.x * reach, at.y + corner.y * reach));
+        }
+        return low - m_plan.origin.y;
+    };
 
     // The buildings, each with its own meshes, and everything in them for WorldObjects.
     for (size_t b = 0; b < m_plan.buildings.size(); ++b)
@@ -129,25 +140,41 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
     // Outside.
     MapBuilder builder(scene, meshes, &physics, "site_");
     builder.Track(&m_entities, &m_bodies);
+    // The ground, in pieces each drawn on its own (so what is out of sight is not drawn): the world's ground where it is
+    // gentle, rock where it is too steep to stand on. Part of the one structure the buildings are set into.
+    builder.SetStructure(ground);
+    for (int cz = 0; cz < m_terrain.Chunks(); ++cz)
+    {
+        for (int cx = 0; cx < m_terrain.Chunks(); ++cx)
+        {
+            for (const bool steep : {false, true})
+            {
+                const MeshData mesh = m_terrain.Mesh(cx, cz, steep);
+                if (!mesh.indices.empty())
+                {
+                    builder.AddMesh(steep ? "site_cliff" : "site_ground", Transform{}, mesh, steep ? cliffMaterial : groundMaterial);
+                }
+            }
+        }
+    }
     builder.BeginBatching(24.0f);
     int containers = 0;
     for (const SitePlan::Block& block : m_plan.blocks)
     {
         Transform transform;
         transform.position = block.centre;
+        // Boulders and wreckage lie where the ground is; everything else stands on levelled ground.
+        if (block.kind == Kind::Rock || block.kind == Kind::Debris)
+        {
+            transform.position.y += lift({block.centre.x, block.centre.z}, std::max(block.size.x, block.size.z) * 0.35f);
+        }
         transform.rotation = glm::angleAxis(block.yaw, glm::vec3(0.0f, 1.0f, 0.0f)) * glm::angleAxis(block.tip, glm::vec3(1.0f, 0.0f, 0.0f));
         // The pipework too, which runs into the side of each building it joins; and debris, half in the ground.
-        const bool terrain = block.kind == Kind::Ground || block.kind == Kind::Cliff || block.kind == Kind::Rock || block.kind == Kind::Pad ||
+        const bool terrain = block.kind == Kind::Rock || block.kind == Kind::Pad ||
                              block.kind == Kind::PipeX || block.kind == Kind::PipeZ || block.kind == Kind::Support || block.kind == Kind::Debris;
         builder.SetStructure(terrain ? ground : 0);
         switch (block.kind)
         {
-        case Kind::Ground:
-            builder.AddBox(NameOf(block.kind), transform, block.size, groundMaterial, kOutdoorTile);
-            break;
-        case Kind::Cliff:
-            builder.AddBox(NameOf(block.kind), transform, block.size, cliffMaterial, kOutdoorTile);
-            break;
         case Kind::Rock:
             builder.AddBox(NameOf(block.kind), transform, block.size, rockMaterial);
             break;
@@ -243,7 +270,8 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
             // pole is inside the pole as far as its shadow is concerned, and lights nothing.
             glm::vec3 back{-lamp.direction.x, 0.0f, -lamp.direction.z};
             back = glm::length(back) > 0.05f ? glm::normalize(back) : glm::vec3(1.0f, 0.0f, 0.0f);
-            const glm::vec3 foot = glm::vec3(lamp.position.x, m_plan.origin.y, lamp.position.z) + back * 0.6f;
+            const float raise = lift({lamp.position.x, lamp.position.z}, 0.5f);
+            const glm::vec3 foot = glm::vec3(lamp.position.x, m_plan.origin.y + raise, lamp.position.z) + back * 0.6f;
             const float height = lamp.position.y - m_plan.origin.y + 0.15f;
             Transform pole;
             pole.position = foot + glm::vec3(0.0f, height * 0.5f, 0.0f);
@@ -251,15 +279,16 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
             builder.SetStructure(physics.NewOverlapGroup());
             builder.AddBox("site_pole", pole, {0.18f, height, 0.18f}, kPoleMaterial);
             Transform arm;
-            arm.position = (foot + glm::vec3(lamp.position.x, 0.0f, lamp.position.z) - glm::vec3(0.0f, m_plan.origin.y, 0.0f)) * 0.5f;
-            arm.position.y = lamp.position.y + 0.12f;
+            arm.position = (foot + glm::vec3(lamp.position.x, 0.0f, lamp.position.z) - glm::vec3(0.0f, foot.y, 0.0f)) * 0.5f;
+            arm.position.y = lamp.position.y + raise + 0.12f;
             arm.rotation = glm::angleAxis(std::atan2(-back.z, back.x), glm::vec3(0.0f, 1.0f, 0.0f));
             builder.AddBox("site_pole_arm", arm, {0.62f, 0.08f, 0.08f}, kPoleMaterial);
             builder.SetStructure(0);
         }
         if (lights != nullptr)
         {
-            lights->Add(scene, meshes, LightKind::Flood, MoodOf(lamp.mood), lamp.position, lamp.direction, 0,
+            const glm::vec3 at = lamp.position + glm::vec3(0.0f, lamp.kind == SitePlan::LampKind::Pole ? lift({lamp.position.x, lamp.position.z}, 0.5f) : 0.0f, 0.0f);
+            lights->Add(scene, meshes, LightKind::Flood, MoodOf(lamp.mood), at, lamp.direction, 0,
                         Mix(seed, 0x1A3Bu + static_cast<uint32_t>(i)) | 1u, lamp.range);
         }
     }
@@ -306,10 +335,17 @@ void SiteMap::Clear(Scene& scene, PhysicsWorld& physics, LevelLights* lights)
 
 void SiteMap::Bounds(glm::vec3& min, glm::vec3& max) const
 {
-    // The rock reaches some way out past the open ground, and up.
-    constexpr float kRock = 55.0f; // and the ground, which reaches 45 m past the open ground every way
-    min = m_plan.origin - glm::vec3(kRock, 5.0f, kRock);
+    // The ground and the rock reach some way out past the open ground (SiteTerrain::kMargin), down into hollows and up.
+    constexpr float kRock = SiteTerrain::kMargin;
+    min = m_plan.origin - glm::vec3(kRock, 20.0f, kRock);
     max = m_plan.origin + glm::vec3(m_plan.size + kRock, 150.0f, m_plan.size + kRock);
+}
+
+bool SiteMap::InReach(const glm::vec3& at) const
+{
+    constexpr float kFoot = 14.0f;
+    const glm::vec3 local = at - m_plan.origin;
+    return local.x > -kFoot && local.z > -kFoot && local.x < m_plan.size + kFoot && local.z < m_plan.size + kFoot;
 }
 
 bool SiteMap::Contains(const glm::vec3& at) const

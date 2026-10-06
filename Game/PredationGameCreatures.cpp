@@ -186,7 +186,7 @@ std::vector<glm::vec3> PredationGame::NavTriangles() const
     for (size_t i = 0; i + 2 < all.size(); i += 3)
     {
         const glm::vec3 middle = (all[i] + all[i + 1] + all[i + 2]) / 3.0f;
-        if (m_facility.Contains(middle) == site)
+        if (m_facility.Contains(middle) == site && (!site || m_facility.InReach(middle)))
         {
             kept.insert(kept.end(), {all[i], all[i + 1], all[i + 2]});
         }

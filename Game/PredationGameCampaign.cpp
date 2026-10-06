@@ -426,6 +426,8 @@ void PredationGame::RegisterCampaignCommands()
                                 m_outpostPreview = args.size() >= 2 ? static_cast<uint32_t>(std::stoul(args[1])) : 0u;
                                 m_outpostPreviewOwner = args.size() >= 3 ? args[2] : std::string();
                             });
+    console.RegisterCommand("site_terrain", "Build the next site on this ground rather than its world's: site_terrain [flat|rolling|mountainous|canyons|cratered|dunes], none for the world's own",
+                            [this](const std::vector<std::string>& args) { m_siteTerrainPreview = args.size() >= 2 && args[1] != "none" ? args[1] : std::string(); });
     console.RegisterCommand("orbit_here", "Put the ship in orbit of the body it is landed on, without the cinematic (the host)",
                             [this](const std::vector<std::string>&)
                             {

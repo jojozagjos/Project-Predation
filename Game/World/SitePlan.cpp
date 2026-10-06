@@ -240,40 +240,6 @@ SitePlan SitePlan::Generate(uint32_t seed)
         plan.rampFoot.yaw = plan.landingYaw;
     }
 
-    // The ground, a little below the buildings' floors so the two never fight over which is drawn.
-    plan.blocks.push_back({Kind::Ground, world(S * 0.5f, S * 0.5f) + glm::vec3(0.0f, -0.27f, 0.0f), {S + 90.0f, 0.5f, S + 90.0f}, 0.0f});
-
-    // Rock all the way round: a ragged wall, and a taller one behind it that fills the wall's gaps.
-    for (int side = 0; side < 4; ++side)
-    {
-        for (int row = 0; row < 2; ++row)
-        {
-            for (float t = -14.0f; t < S + 14.0f; t += random.Range(8.0f, 12.0f))
-            {
-                const float width = random.Range(11.0f, 17.0f);
-                const float deep = random.Range(12.0f, 18.0f);
-                const float height = row == 0 ? random.Range(9.0f, 18.0f) : random.Range(18.0f, 28.0f);
-                const float out = (row == 0 ? 2.0f : -8.0f) + random.Range(-3.0f, 3.0f); // how far its face is inside the edge
-                glm::vec3 centre;
-                glm::vec3 size;
-                if (side < 2)
-                {
-                    const float u = side == 0 ? out - deep * 0.5f : S - out + deep * 0.5f;
-                    centre = world(u, t);
-                    size = {deep, height, width};
-                }
-                else
-                {
-                    const float v = side == 2 ? out - deep * 0.5f : S - out + deep * 0.5f;
-                    centre = world(t, v);
-                    size = {width, height, deep};
-                }
-                centre.y = height * 0.5f - 1.0f;
-                plan.blocks.push_back({Kind::Cliff, centre, size, random.Range(-0.25f, 0.25f)});
-            }
-        }
-    }
-
     // The pad, and floodlights at its corners.
     plan.blocks.push_back({Kind::Pad, world(landingLocal.x, landingLocal.y) + glm::vec3(0.0f, (kPadTop - 0.02f) * 0.5f, 0.0f),
                            {kPadHalf * 2.0f, kPadTop + 0.02f, kPadHalf * 2.0f}, 0.0f});

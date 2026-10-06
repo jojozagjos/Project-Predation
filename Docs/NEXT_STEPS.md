@@ -33,13 +33,14 @@ play, aboard, in orbit -- nothing jumps.
 
 ### 3. The ground is not flat
 
-Today a site is a flat slab ringed by rock. Next:
+Built (ADR-136):
 
 - **Terrain from the seed and the world:** a height field for every site, shaped by the world's terrain kind (flat,
-  rolling, mountainous, canyons, cratered, as `universe.json` already gives each world): ridges, valleys, craters, outcrops,
-  scree slopes, plateaus, gullies.
-- **Buildings and pads on levelled ground**, cut and built up into the slope, with retaining walls where they need them,
-  and paths between them that follow the ground.
+  rolling, mountainous, canyons, cratered, dunes), closed in by steep rock instead of a ring of blocks.
+- **Buildings and pads on levelled ground**, cut into the slope (the cut's face drawn as rock), with the ways between
+  them levelled too.
+
+Next:
 - **Things on the ground, by world:** boulder fields, rock spires, ice formations, crystal growths, dunes, lava crust,
   dead or living vegetation for temperate and jungle worlds, wreckage and old equipment near people.
 - **Ground textures by slope:** the world's ground on the flat, rock showing through on the steep.
@@ -140,8 +141,8 @@ basic kit is always there so nobody goes down empty-handed.
 
 ## C. Suggested order
 
-1. Wrecks, salvage and the hold (decided) -- with short arrival cinematics
-2. Terrain that is not flat, ground by world, weather by world
+1. Terrain that is not flat (built), then things on the ground by world, weather by world
+2. Wrecks, salvage and the hold (decided) -- with short arrival cinematics
 3. Contracts, the economy at outposts, and the loadout
 4. Signal sources
 5. Survey sites

@@ -6,6 +6,7 @@
 #include "Game/World/LevelLights.h"
 #include "Game/World/Vehicles.h"
 #include "Game/World/SitePlan.h"
+#include "Game/World/SiteTerrain.h"
 #include "Game/World/WorldObjects.h"
 
 #include <glm/vec3.hpp>
@@ -19,21 +20,23 @@ namespace pred
 
 class MeshLibrary;
 
-// A mission site, built: SitePlan's buildings (a FacilityMap each), the ground they stand on, the rock
-// round it, the cover and the lamps outside, and the doors, lockers and items of every building together
+// A mission site, built: SitePlan's buildings (a FacilityMap each), the ground they stand on and the rock that rises
+// round it (SiteTerrain, shaped as its world's ground is), the cover and the lamps outside, and the doors, lockers and items of every building together
 // for WorldObjects to put in.
 //
 // Rebuilt in place from a new seed, like a facility was: only the seed is ever sent.
 class SiteMap
 {
 public:
-    // How the place's outside looks: its own world's ground and rock, and whether snow lies there and falls. Set before
-    // building; what is built from the seed is the same everywhere whatever it is.
+    // How the place's outside looks: its own world's ground and rock and the shape of its ground, and whether snow lies
+    // there and falls. Set before building, the same on every machine (it comes from the world the site is on).
     struct Look
     {
         glm::vec3 ground{0.72f, 0.74f, 0.78f};
         glm::vec3 rock{0.21f, 0.2f, 0.18f};
         bool snow = true;
+        SiteTerrain::Shape terrain = SiteTerrain::Shape::Flat;
+        bool dunes = false;
     };
     void SetLook(const Look& look) { m_look = look; }
     const Look& GetLook() const { return m_look; }
@@ -44,6 +47,7 @@ public:
     bool Built() const { return m_built; }
     uint16_t Seed() const { return m_seed; }
     const SitePlan& Plan() const { return m_plan; }
+    const SiteTerrain& Terrain() const { return m_terrain; }
     const WorldObjects::Placements& Placements() const { return m_placements; }
     // Where somebody put on the site with nothing to bring them stands: off the foot of the shuttle's ramp, facing in.
     glm::vec3 Spawn() const { return m_plan.rampFoot.position + glm::vec3(0.0f, 0.5f, 0.0f); }
@@ -56,10 +60,14 @@ public:
     void Bounds(glm::vec3& min, glm::vec3& max) const;
     // Whether a point is on the site.
     bool Contains(const glm::vec3& at) const;
+    // Whether anything could walk there: the open ground and the foot of the rock round it, not the heights of the rock
+    // (too steep for anybody), which the navigation is not built over.
+    bool InReach(const glm::vec3& at) const;
 
 private:
     Look m_look;
     SitePlan m_plan;
+    SiteTerrain m_terrain;
     std::vector<std::unique_ptr<FacilityMap>> m_buildings;
     VehicleProp m_shuttle;
     WorldObjects::Placements m_placements;

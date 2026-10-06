@@ -3010,3 +3010,21 @@ lobby server's `GET /list`. The deployed server goes on answering `/list` until 
   (its mark, its standard outpost and building names), independent and industrial (a neutral operator number, functional
   signs, their own mix of buildings), and unknown/abandoned (dark, faded, few lamps, gaps in the fence). Kestrel is
   CIRRA's. The map says who runs each.
+
+## ADR-136: The ground is not flat (SiteTerrain)
+
+- **What**: every site stands on a height field (SiteTerrain, two metres a cell, 90 m past the open ground every way), shaped
+  by its world's terrain from universe.json: flat (a metre or so of unevenness), rolling, mountainous (ridges), canyons
+  (channels about as steep as can be climbed, so nobody is trapped), cratered (bowls with rims), and dunes on top of any of
+  them. It replaces the flat ground slab and the ring of rock blocks.
+- **Levelled where people built**: under every building, the pad, the yards, the spot off the ramp and the way from the pad
+  to each building's door, out to 4 m, blending into the natural ground over the next 12 m. Cut into a slope, the edge of
+  the cut is steep and shown as rock: a retaining face.
+- **Closed in by rock**: round the edge the ground rises some 45 m (its foot wandering, broken into buttresses and gullies),
+  far steeper than anybody can climb, and never over what is built. Navigation is built only over the open ground and the
+  foot of the rock (SiteMap::InReach), which keeps it to about a second.
+- **Drawn and stood on in chunks** of 30 by 30 cells, each a static triangle mesh: the gentle ground in the world's
+  ground material, anything steeper than kSteepCosine (about 39°, under the 46° anybody can walk) as rock. Boulders,
+  wreckage and lamp poles stand on it at the lowest of their corners.
+- **Sent**: nothing new. The ground comes from the site's seed and the world's terrain, which every machine has.
+- `site_terrain <shape>` builds the next site on that ground instead of its world's, for looking at.

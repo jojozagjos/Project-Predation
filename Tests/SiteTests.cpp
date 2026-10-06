@@ -5,13 +5,18 @@
 #include "Game/World/FacilityMap.h"
 #include "Game/World/SiteMap.h"
 #include "Game/World/SitePlan.h"
+#include "Game/World/SiteTerrain.h"
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 
+#include <glm/common.hpp>
 #include <glm/geometric.hpp>
 #include <glm/gtc/quaternion.hpp>
 
 #include <algorithm>
+#include <cmath>
+#include <fstream>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -247,6 +252,9 @@ TEST_CASE("Nothing in a site's buildings is inside anything else, as far as the 
 
 TEST_CASE("From where everybody lands, every room of every building on a site can be walked to", "[site][navigation]")
 {
+    // On the flattest ground and the roughest.
+    const SiteTerrain::Shape shape = GENERATE(SiteTerrain::Shape::Flat, SiteTerrain::Shape::Mountainous, SiteTerrain::Shape::Canyons);
+    INFO("shape " << static_cast<int>(shape));
     PhysicsWorld physics;
     PhysicsWorld::Settings settings;
     settings.workerThreads = 2;
@@ -255,6 +263,9 @@ TEST_CASE("From where everybody lands, every room of every building on a site ca
     MeshLibrary meshes;
     meshes.SetHeadless(true);
     SiteMap site;
+    SiteMap::Look look;
+    look.terrain = shape;
+    site.SetLook(look);
     site.Build(3, scene, meshes, physics, nullptr);
     NavMesh nav;
     std::string error;
@@ -319,4 +330,151 @@ TEST_CASE("Each kind of place plans what that kind has, and keeps its kind throu
     }
     // A seed of an old campaign, from before kinds, is a facility.
     CHECK(SitePlan::KindOf(1) == SiteKind::Facility);
+}
+
+TEST_CASE("A site's ground is level where people built, the world's own shape elsewhere, and rises into rock round its edge", "[site][terrain]")
+{
+    using Shape = SiteTerrain::Shape;
+    using SiteKind = SitePlan::SiteKind;
+    for (const Shape shape : {Shape::Flat, Shape::Rolling, Shape::Mountainous, Shape::Canyons, Shape::Cratered})
+    {
+        for (const SiteKind kind : {SiteKind::Facility, SiteKind::Station, SiteKind::Survey, SiteKind::Wreck, SiteKind::Signal})
+        {
+            for (uint16_t base = 1; base <= 3; ++base)
+            {
+                const SitePlan plan = SitePlan::Generate(SitePlan::SeedFor(base, kind));
+                INFO("shape " << static_cast<int>(shape) << " kind " << static_cast<int>(kind) << " seed " << plan.seed);
+                SiteTerrain terrain;
+                terrain.Plan(plan, shape, shape == Shape::Flat);
+                const auto level = [&](float x, float z) { return std::abs(terrain.Height(x, z) - terrain.Base()) < 0.01f; };
+
+                // Under every building and round it, and at every way in.
+                for (const FacilityLayout& building : plan.buildings)
+                {
+                    glm::vec2 min;
+                    glm::vec2 max;
+                    SitePlan::Footprint(building, 2.0f, min, max);
+                    for (float u = 0.0f; u <= 1.0f; u += 0.25f)
+                    {
+                        CHECK(level(glm::mix(min.x, max.x, u), min.y));
+                        CHECK(level(glm::mix(min.x, max.x, u), max.y));
+                        CHECK(level(min.x, glm::mix(min.y, max.y, u)));
+                        CHECK(level(max.x, glm::mix(min.y, max.y, u)));
+                    }
+                    for (const FacilityLayout::Exit& exit : building.exits)
+                    {
+                        const glm::vec3 door = FacilityMap::ExitOutside(building, exit, 3.0f);
+                        CHECK(level(door.x, door.z));
+                    }
+                }
+                // The pad, all of it, and where everybody stands off the ramp.
+                for (const glm::vec2 corner : {glm::vec2(0.0f), glm::vec2(-1.0f, -1.0f), glm::vec2(1.0f, -1.0f), glm::vec2(-1.0f, 1.0f), glm::vec2(1.0f, 1.0f)})
+                {
+                    CHECK(level(plan.landing.x + corner.x * 8.0f, plan.landing.z + corner.y * 8.0f));
+                }
+                CHECK(level(plan.rampFoot.position.x, plan.rampFoot.position.z));
+
+                // Rock all the way round, far higher than anybody can climb.
+                for (float t = -20.0f; t <= plan.size + 20.0f; t += 10.0f)
+                {
+                    for (const glm::vec2 out : {glm::vec2(plan.origin.x - 30.0f, plan.origin.z + t), glm::vec2(plan.origin.x + plan.size + 30.0f, plan.origin.z + t),
+                                                glm::vec2(plan.origin.x + t, plan.origin.z - 30.0f), glm::vec2(plan.origin.x + t, plan.origin.z + plan.size + 30.0f)})
+                    {
+                        CHECK(terrain.Height(out.x, out.y) > terrain.Base() + 25.0f);
+                    }
+                }
+
+                // Every cell drawn once, as ground or as rock.
+                size_t triangles = 0;
+                for (int cz = 0; cz < terrain.Chunks(); ++cz)
+                {
+                    for (int cx = 0; cx < terrain.Chunks(); ++cx)
+                    {
+                        triangles += (terrain.Mesh(cx, cz, false).indices.size() + terrain.Mesh(cx, cz, true).indices.size()) / 3;
+                    }
+                }
+                const size_t cells = static_cast<size_t>(std::lround(terrain.Extent() / SiteTerrain::kCell));
+                CHECK(triangles == cells * cells * 2);
+
+                // And the same everywhere from the same seed.
+                SiteTerrain again;
+                again.Plan(plan, shape, shape == Shape::Flat);
+                for (float x = 0.0f; x < plan.size; x += 37.0f)
+                {
+                    CHECK(again.Height(plan.origin.x + x, plan.origin.z + x * 0.7f) == terrain.Height(plan.origin.x + x, plan.origin.z + x * 0.7f));
+                }
+            }
+        }
+    }
+}
+
+TEST_CASE("Not every world's ground is flat: each shape rises and falls as it should", "[site][terrain]")
+{
+    using Shape = SiteTerrain::Shape;
+    const SitePlan plan = SitePlan::Generate(SitePlan::SeedFor(5, SitePlan::SiteKind::Survey));
+    const auto range = [&](Shape shape, bool dunes)
+    {
+        SiteTerrain terrain;
+        terrain.Plan(plan, shape, dunes);
+        float low = 1.0e9f;
+        float high = -1.0e9f;
+        for (float z = 15.0f; z < plan.size - 15.0f; z += 4.0f)
+        {
+            for (float x = 15.0f; x < plan.size - 15.0f; x += 4.0f)
+            {
+                const float h = terrain.Height(plan.origin.x + x, plan.origin.z + z);
+                low = std::min(low, h);
+                high = std::max(high, h);
+            }
+        }
+        return high - low;
+    };
+    CHECK(range(Shape::Flat, false) < 3.0f);
+    CHECK(range(Shape::Flat, true) > 3.0f);
+    CHECK(range(Shape::Rolling, false) > 5.0f);
+    CHECK(range(Shape::Mountainous, false) > 12.0f);
+    CHECK(range(Shape::Canyons, false) > 7.0f);
+    CHECK(range(Shape::Cratered, false) > 4.0f);
+    CHECK(SiteTerrain::ShapeOf("mountainous") == Shape::Mountainous);
+    CHECK(SiteTerrain::ShapeOf("broken") == Shape::Mountainous);
+    CHECK(SiteTerrain::ShapeOf("dunes") == Shape::Flat);
+    CHECK(SiteTerrain::ShapeOf("anything") == Shape::Flat);
+}
+
+// Not run with the rest: writes each shape of ground, shaded from above, to terrain_<shape>.ppm for looking at.
+TEST_CASE("Draw each shape of a site's ground from above", "[.terrain_pictures]")
+{
+    using Shape = SiteTerrain::Shape;
+    const SitePlan plan = SitePlan::Generate(SitePlan::SeedFor(3, SitePlan::SiteKind::Facility));
+    const char* names[] = {"flat", "rolling", "mountainous", "canyons", "cratered", "dunes"};
+    for (int s = 0; s < 6; ++s)
+    {
+        SiteTerrain terrain;
+        terrain.Plan(plan, s == 5 ? Shape::Flat : static_cast<Shape>(s), s == 5);
+        const int size = 480;
+        std::ofstream out(std::string("terrain_") + names[s] + ".ppm", std::ios::binary);
+        out << "P6\n" << size << " " << size << "\n255\n";
+        const glm::vec3 light = glm::normalize(glm::vec3(-0.5f, 0.8f, -0.3f));
+        for (int j = 0; j < size; ++j)
+        {
+            for (int i = 0; i < size; ++i)
+            {
+                const float x = terrain.Min().x + terrain.Extent() * (static_cast<float>(i) + 0.5f) / static_cast<float>(size);
+                const float z = terrain.Min().y + terrain.Extent() * (static_cast<float>(j) + 0.5f) / static_cast<float>(size);
+                const glm::vec3 n = terrain.Normal(x, z);
+                const float shade = 0.25f + 0.75f * std::max(glm::dot(n, light), 0.0f);
+                const float h = std::clamp((terrain.Height(x, z) - terrain.Base() + 15.0f) / 75.0f, 0.0f, 1.0f);
+                const bool steep = n.y < SiteTerrain::kSteepCosine;
+                const bool built = terrain.Wildness(x, z) < 0.01f;
+                glm::vec3 c = steep ? glm::vec3(0.55f, 0.45f, 0.4f) : glm::mix(glm::vec3(0.3f, 0.55f, 0.35f), glm::vec3(0.95f), h);
+                if (built)
+                {
+                    c = glm::vec3(0.6f, 0.6f, 0.75f);
+                }
+                c *= shade;
+                const char px[3] = {static_cast<char>(c.r * 255.0f), static_cast<char>(c.g * 255.0f), static_cast<char>(c.b * 255.0f)};
+                out.write(px, 3);
+            }
+        }
+    }
 }
