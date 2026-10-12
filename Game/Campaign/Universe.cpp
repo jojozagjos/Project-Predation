@@ -223,6 +223,46 @@ std::string TwoFigures(int value)
     return value < 10 ? "0" + std::to_string(value) : std::to_string(value);
 }
 
+// People live under air: a world with outposts on it, rolled without any, is given some -- breathable where its kind of world
+// can have that, or else the thickest its kind lists, or else thin.
+void GiveAir(Body& body, const UniverseData& data)
+{
+    if (const AtmosphereDef* now = data.Atmosphere(body.atmosphere); now != nullptr && now->thickness > 0.0f)
+    {
+        return;
+    }
+    const AtmosphereDef* air = nullptr;
+    if (const BiomeDef* biome = data.Biome(body.biome); biome != nullptr)
+    {
+        if (biome->atmospheres.count("breathable") != 0)
+        {
+            air = data.Atmosphere("breathable");
+        }
+        for (const auto& [id, weight] : biome->atmospheres)
+        {
+            const AtmosphereDef* listed = data.Atmosphere(id);
+            if (air == nullptr && listed != nullptr && listed->thickness > 0.0f)
+            {
+                air = listed;
+            }
+            else if (listed != nullptr && air != nullptr && !air->breathable && listed->thickness > air->thickness)
+            {
+                air = listed;
+            }
+        }
+    }
+    if (air == nullptr)
+    {
+        air = data.Atmosphere("thin");
+    }
+    if (air != nullptr)
+    {
+        body.atmosphere = air->id;
+        body.air = air->thickness;
+        body.airColor = air->color;
+    }
+}
+
 // The kind of thing a planet is made of, its look and its places, from its seed: for planets and moons alike.
 void FillBody(Body& body, const UniverseData& data, bool gasAllowed, float gasChance)
 {
@@ -287,6 +327,10 @@ void FillBody(Body& body, const UniverseData& data, bool gasAllowed, float gasCh
         }
         const CivilizationDef* civ = PickWeighted(civs, random);
         body.civilization = civ != nullptr ? civ->id : std::string();
+        if (civ != nullptr && civ->inhabited)
+        {
+            GiveAir(body, data);
+        }
     }
     else
     {
@@ -503,6 +547,7 @@ bool UniverseData::LoadFromFile(const std::filesystem::path& file, std::string* 
             const glm::vec2 moonRange = ReadVec2(*names, "moonNumbers", {100.0f, 999.0f});
             loaded.moonNumbers = {static_cast<int>(moonRange.x), static_cast<int>(moonRange.y)};
             loaded.homeHubName = names->value("homeHub", loaded.homeHubName);
+            loaded.homeSeed = names->value("homeSeed", loaded.homeSeed);
         }
         for (const auto& entry : root.value("stars", nlohmann::json::array()))
         {
@@ -977,7 +1022,7 @@ const SystemGlance& Universe::Glance(SystemId id)
     if (m_data != nullptr)
     {
         StarSystem system;
-        system.seed = MixSeed(m_seed, id.Packed() + 1);
+        system.seed = MixSeed(id == SystemId{} ? m_data->homeSeed : m_seed, id.Packed() + 1);
         UniverseRandom random(system.seed);
         BeginSystem(m_seed, id, *m_data, system, random);
         glance.name = system.name;
@@ -991,7 +1036,8 @@ const SystemGlance& Universe::Glance(SystemId id)
 StarSystem Universe::Generate(uint64_t universeSeed, SystemId id, const UniverseData& data)
 {
     StarSystem system;
-    system.seed = MixSeed(universeSeed, id.Packed() + 1);
+    // Home from its own fixed seed (UniverseData::homeSeed), the same in every campaign.
+    system.seed = MixSeed(id == SystemId{} ? data.homeSeed : universeSeed, id.Packed() + 1);
     UniverseRandom random(system.seed);
     const bool home = id == SystemId{};
     const StarDef* star = BeginSystem(universeSeed, id, data, system, random);
@@ -1110,6 +1156,7 @@ StarSystem Universe::Generate(uint64_t universeSeed, SystemId id, const Universe
                 world.air = data.Atmosphere("breathable")->thickness;
                 world.airColor = data.Atmosphere("breathable")->color;
             }
+            GiveAir(world, data);
             for (LandingRegion& region : world.regions)
             {
                 region.charted = region.charted || region.kind == "outpost";

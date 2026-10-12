@@ -81,14 +81,16 @@ TEST_CASE("The universe's data file reads, and every table has something in it",
     }
 }
 
-TEST_CASE("A system comes out the same from the same seed, and differently from another", "[campaign]")
+TEST_CASE("A system comes out the same from the same seed, and differently from another; home is the same in every campaign", "[campaign]")
 {
     const UniverseData& data = ShippedData();
+    const SystemId away{3, -2, 1, 0};
     std::set<std::string> names;
+    std::set<std::string> homes;
     for (uint64_t seed = 1; seed <= 20; ++seed)
     {
-        const StarSystem a = Universe::Generate(seed, SystemId{}, data);
-        const StarSystem b = Universe::Generate(seed, SystemId{}, data);
+        const StarSystem a = Universe::Generate(seed, away, data);
+        const StarSystem b = Universe::Generate(seed, away, data);
         REQUIRE(a.name == b.name);
         REQUIRE(a.bodies.size() == b.bodies.size());
         for (size_t i = 0; i < a.bodies.size(); ++i)
@@ -99,9 +101,11 @@ TEST_CASE("A system comes out the same from the same seed, and differently from 
             CHECK(a.bodies[i].regions.size() == b.bodies[i].regions.size());
         }
         names.insert(a.name);
+        homes.insert(Universe::Generate(seed, SystemId{}, data).name);
     }
-    // Twenty seeds, nearly twenty names.
+    // Twenty seeds, nearly twenty names out there; one home.
     CHECK(names.size() >= 15);
+    CHECK(homes.size() == 1);
 }
 
 TEST_CASE("Home always has a settled world with a hub on it, where the ship itself sets down", "[campaign]")

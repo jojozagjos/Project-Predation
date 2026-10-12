@@ -207,6 +207,9 @@ public:
     glm::ivec2 moonNumbers{100, 999};
     // The hub on the home world: Kestrel Station.
     std::string homeHubName = "KESTREL STATION";
+    // The home system is the same in every campaign, whatever its seed: made from this seed, not the campaign's, so the
+    // start of the game can be laid out by hand. Every other system is the campaign's own.
+    uint64_t homeSeed = 736153239;
     // Region designations: the part of a planet it is in ("NORTH CRYOSPHERE"), by biome; "any" for every biome.
     std::map<std::string, std::vector<std::string>> regionAreas;
 };

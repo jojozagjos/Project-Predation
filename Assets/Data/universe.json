@@ -7,7 +7,9 @@
     "numbers": [100, 9999],
     "moons": ["LV"],
     "moonNumbers": [100, 999],
-    "homeHub": "KESTREL STATION"
+    "homeHub": "KESTREL STATION",
+    "_homeSeed": "The home system is made from this seed in every campaign (the same planets, Kestrel on the same world); every other system from the campaign's own seed.",
+    "homeSeed": 736153239
   },
 
   "stars": [
