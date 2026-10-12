@@ -386,7 +386,7 @@ TEST_CASE("A stairwell's walls run unbroken from its floor up to the floor over 
         for (const FacilityMap::Piece& piece : blueprint.pieces)
         {
             if (piece.kind == Kind::Floor || piece.kind == Kind::Ceiling || piece.kind == Kind::Wall || piece.kind == Kind::Fill ||
-                piece.kind == Kind::Cladding)
+                piece.kind == Kind::Cladding || piece.kind == Kind::Sill)
             {
                 building.push_back(Around(piece.centre, piece.size, piece.yaw, ""));
             }

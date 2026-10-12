@@ -51,7 +51,8 @@ public:
             Crate,
             Cabinet, // where supplies are left
             Fill,    // solid under the top of a flight of stairs
-            Cladding // the building's outside finish
+            Cladding, // the building's outside finish
+            Sill      // the threshold plate across a way out
         };
         Kind kind = Kind::Wall;
         glm::vec3 centre{0.0f};
@@ -63,7 +64,7 @@ public:
         bool Structural() const
         {
             return kind == Kind::Floor || kind == Kind::Ceiling || kind == Kind::Wall || kind == Kind::Duct || kind == Kind::Fill ||
-                   kind == Kind::Cladding;
+                   kind == Kind::Cladding || kind == Kind::Sill;
         }
     };
 

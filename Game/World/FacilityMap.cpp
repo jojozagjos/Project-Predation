@@ -84,6 +84,8 @@ const Material kCrateMaterial = Material::Diffuse({0.38f, 0.30f, 0.22f}, 0.85f);
 const Material kCabinetMaterial = Material::Metal({0.26f, 0.31f, 0.28f}, 0.6f);
 // The outside: weathered panels, darker than anything inside.
 const Material kCladdingMaterial = Material::Diffuse({0.24f, 0.25f, 0.25f}, 0.85f);
+// A way out's threshold: worn tread plate, not the cladding (whose ribs, seen from above, read as flicker).
+const Material kSillMaterial = Material::Metal({0.3f, 0.3f, 0.31f}, 0.5f);
 
 // Where the building being drawn stands: the corner of its cell (0, 0), at ground-floor level. Set for the
 // length of a Draw, from the plan; the facility's usual place otherwise.
@@ -478,11 +480,11 @@ void Shell(const FacilityLayout& layout, Blueprint& out)
             const float b = std::max(inner, skin);
             if (alongX)
             {
-                Box(out, Kind::Cladding, {hole.along.a, Base(0) - 0.12f, a}, {hole.along.b, Base(0) + kSill, b});
+                Box(out, Kind::Sill, {hole.along.a, Base(0) - 0.12f, a}, {hole.along.b, Base(0) + kSill, b});
             }
             else
             {
-                Box(out, Kind::Cladding, {a, Base(0) - 0.12f, hole.along.a}, {b, Base(0) + kSill, hole.along.b});
+                Box(out, Kind::Sill, {a, Base(0) - 0.12f, hole.along.a}, {b, Base(0) + kSill, hole.along.b});
             }
         }
     }
@@ -1059,7 +1061,7 @@ const Material& MaterialOf(Kind kind)
         {Kind::Duct, &kDuctMaterial, "metal_grate", 1.0f, 0.2f},          {Kind::Pillar, &kPillarMaterial, "concrete_pillar", 2.0f, 0.3f},
         {Kind::Shelf, &kShelfMaterial, "shelf_steel", 1.5f, 0.2f},        {Kind::Bench, &kBenchMaterial, "worktop", 1.0f, 0.3f},
         {Kind::Crate, &kCrateMaterial, "cargo_crate", 1.5f, 0.3f},        {Kind::Cabinet, &kCabinetMaterial, "locker_metal", 1.5f, 0.2f},
-        {Kind::Cladding, &kCladdingMaterial, "building_cladding", 4.0f, 0.2f},
+        {Kind::Cladding, &kCladdingMaterial, "building_cladding", 4.0f, 0.2f}, {Kind::Sill, &kSillMaterial, "facility_stairs", 1.0f, 0.4f},
     };
     static std::vector<Material> laid;
     if (laid.empty())
@@ -1105,6 +1107,8 @@ const char* NameOf(Kind kind)
         return "facility_cabinet";
     case Kind::Fill:
         return "facility_stair_fill";
+    case Kind::Sill:
+        return "facility_sill";
     }
     return "facility";
 }
