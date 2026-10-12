@@ -14,6 +14,7 @@ set(PRED_ENGINE_SOURCES
     Application.h
     Application.cpp
 
+    Core/BuildInfo.h
     Core/Log.h
     Core/Log.cpp
     Core/CVar.h
@@ -182,7 +183,6 @@ target_compile_definitions(PredationEngine
         BX_CONFIG_DEBUG=$<IF:$<CONFIG:Debug>,1,0>
         PRED_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
         PRED_GENERATED_ASSETS_DIR="${PRED_GENERATED_ASSETS_DIR}"
-        PRED_VERSION_STRING="${PROJECT_VERSION}"
 )
 
 # Compile all engine shaders for every supported backend profile.
@@ -192,3 +192,16 @@ pred_compile_shaders(
     OUTPUT_DIR ${PRED_GENERATED_ASSETS_DIR}
 )
 add_dependencies(PredationEngine PredationEngineShaders)
+
+# The build's number and commit, stamped in at every build (cmake/PredBuildInfo.cmake): made once now so the file exists,
+# then again before every build of the engine, rewritten only when it changes.
+set(PRED_BUILD_INFO_CPP "${CMAKE_CURRENT_BINARY_DIR}/generated/BuildInfo.cpp")
+set(PRED_BUILD_INFO_ARGS -DSOURCE_DIR=${CMAKE_SOURCE_DIR} -DOUTPUT=${PRED_BUILD_INFO_CPP} -DVERSION=${PROJECT_VERSION}
+    -P ${CMAKE_SOURCE_DIR}/cmake/PredBuildInfo.cmake)
+execute_process(COMMAND ${CMAKE_COMMAND} ${PRED_BUILD_INFO_ARGS})
+add_custom_target(PredationBuildInfo
+    COMMAND ${CMAKE_COMMAND} ${PRED_BUILD_INFO_ARGS}
+    BYPRODUCTS ${PRED_BUILD_INFO_CPP}
+    COMMENT "Stamping the build number")
+target_sources(PredationEngine PRIVATE ${PRED_BUILD_INFO_CPP})
+add_dependencies(PredationEngine PredationBuildInfo)

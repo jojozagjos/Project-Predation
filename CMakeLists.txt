@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.28)
 
 project(ProjectPredation
-    VERSION 0.1.0
+    VERSION 0.2.0
     DESCRIPTION "Project Predation - first-person multiplayer horror extraction game"
     LANGUAGES C CXX)
 

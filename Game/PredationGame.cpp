@@ -3,6 +3,7 @@
 #include "Engine/Render/DepthConvention.h"
 #include "Game/Creature/CreatureTuning.h"
 
+#include "Engine/Core/BuildInfo.h"
 #include "Engine/Core/CVar.h"
 #include "Engine/Core/Log.h"
 #include "Engine/Core/Paths.h"
@@ -5406,7 +5407,7 @@ void PredationGame::DrawTitleScreen()
                                       IM_COL32(0, 0, 0, 0), IM_COL32(0, 0, 0, 0), IM_COL32(0, 0, 0, shade));
     // Who made it and which version, in the corner, on every page of it.
     {
-        std::string foot = "made by jojozagjos  |  v" PRED_VERSION_STRING;
+        std::string foot = std::string("made by jojozagjos  |  ") + BuildInfo::Label();
 #if PRED_DEV_TOOLS
         foot += "  |  developer build";
 #endif
@@ -11388,7 +11389,7 @@ void PredationGame::DrawHud()
     // took it is worth a round of "which version were you running"; this whole session has had two
     // of those.
     {
-        const char* version = "v" PRED_VERSION_STRING;
+        const char* version = BuildInfo::Label();
         const ImVec2 size = ImGui::CalcTextSize(version);
         draw->AddText({viewport->Pos.x + 10.0f, viewport->Pos.y + viewport->Size.y - size.y - 8.0f},
                       IM_COL32(180, 190, 200, 90), version);

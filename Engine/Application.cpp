@@ -1,5 +1,6 @@
 #include "Engine/Application.h"
 
+#include "Engine/Core/BuildInfo.h"
 #include "Engine/Core/CVar.h"
 #include "Engine/Core/Config.h"
 #include "Engine/Core/Log.h"
@@ -201,9 +202,9 @@ int Application::Run(Game& game, int argc, char** argv)
     // Which of the two builds this is, said once and in the log, because the difference is invisible
     // from the outside until somebody goes looking for a menu entry that is not there.
 #if PRED_DEV_TOOLS
-    PRED_LOG_INFO(Engine, "Project Predation {} starting (developer build)", PRED_VERSION_STRING);
+    PRED_LOG_INFO(Engine, "Project Predation {} ({}) starting (developer build)", BuildInfo::Label(), BuildInfo::Commit());
 #else
-    PRED_LOG_INFO(Engine, "Project Predation {} starting (shipping build)", PRED_VERSION_STRING);
+    PRED_LOG_INFO(Engine, "Project Predation {} ({}) starting (shipping build)", BuildInfo::Label(), BuildInfo::Commit());
 #endif
     PRED_LOG_INFO(Engine, "Paths: {}", Paths::Describe());
     PRED_LOG_INFO(Engine, "CPU: {} ({} threads), RAM {:.1f} GB", SystemInfo::CpuName(), SystemInfo::HardwareThreads(),

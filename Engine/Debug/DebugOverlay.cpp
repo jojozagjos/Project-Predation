@@ -1,5 +1,6 @@
 #include "Engine/Debug/DebugOverlay.h"
 
+#include "Engine/Core/BuildInfo.h"
 #include "Engine/Core/SystemInfo.h"
 #include "Engine/Debug/DebugCategories.h"
 #include "Engine/Debug/FrameStats.h"
@@ -50,7 +51,7 @@ void DebugOverlay::Draw(const Info& info)
     }
 #else
 
-    ImGui::TextUnformatted("PROJECT PREDATION  " PRED_VERSION_STRING "  [F3 overlay, ` console]");
+    ImGui::Text("PROJECT PREDATION  %s (%s)  [F3 overlay, ` console]", BuildInfo::Label(), BuildInfo::Commit());
     ImGui::Separator();
 
     if (stats != nullptr)
