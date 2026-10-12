@@ -26,7 +26,7 @@ namespace Outpost
 {
 
 // The most lamps an outpost has; ShipMap keeps this many ready for whichever one the ship stands at.
-inline constexpr size_t kMaxLamps = 96;
+inline constexpr size_t kMaxLamps = 160;
 
 struct Layout
 {
@@ -36,6 +36,9 @@ struct Layout
     // What the signs say. The outpost's own name goes on the one with the id "outpost_name", whose lines are left empty here
     // for whoever draws it: the plan knows only the seed.
     std::vector<KestrelStation::Sign> signs;
+    // Red lights high on what is tall, which flash (ShipMap): where each light is. A beacon nobody keeps lit is not here, only
+    // its housing.
+    std::vector<glm::vec3> beacons;
 };
 
 Layout Generate(uint32_t seed, const glm::vec3& ground, const glm::vec3& rock, const OutpostStyle& style = OutpostStyle{});

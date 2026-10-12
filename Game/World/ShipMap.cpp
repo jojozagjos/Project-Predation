@@ -998,7 +998,8 @@ namespace
 {
 
 // Kestrel, or the outpost planned from its seed: what is solid, what is only looked at, and its lamps.
-void FieldModels(const FieldLook& look, ModelAsset& solid, ModelAsset& dressing, std::vector<KestrelStation::Lamp>& lamps)
+void FieldModels(const FieldLook& look, ModelAsset& solid, ModelAsset& dressing, std::vector<KestrelStation::Lamp>& lamps,
+                 std::vector<glm::vec3>* beacons = nullptr)
 {
     if (look.kestrel)
     {
@@ -1011,6 +1012,10 @@ void FieldModels(const FieldLook& look, ModelAsset& solid, ModelAsset& dressing,
     solid = std::move(layout.solid);
     dressing = std::move(layout.dressing);
     lamps = std::move(layout.lamps);
+    if (beacons != nullptr)
+    {
+        *beacons = std::move(layout.beacons);
+    }
 }
 
 // Each of the outpost's lamps from one kept ready (Build); the rest put out of the way, on a circuit never lit.
@@ -1057,7 +1062,27 @@ void ShipMap::SetField(Scene& scene, MeshLibrary& meshes, bool shown, const Fiel
         ModelAsset solid;
         ModelAsset dressing;
         std::vector<KestrelStation::Lamp> lamps;
-        FieldModels(look, solid, dressing, lamps);
+        std::vector<glm::vec3> beacons;
+        FieldModels(look, solid, dressing, lamps, &beacons);
+        // A light in each beacon: one small red thing to draw each, shown when it flashes (UpdateFittings).
+        ClearBeacons(scene);
+        if (!beacons.empty())
+        {
+            const MeshHandle mesh = meshes.Upload(Primitives::Box({0.3f, 0.26f, 0.3f}), "outpost_beacon_light");
+            Material red = Material::Diffuse({1.0f, 0.12f, 0.08f}, 0.3f);
+            red.emissive = {6.0f, 0.5f, 0.3f};
+            for (const glm::vec3& at : beacons)
+            {
+                const Entity light = scene.CreateMeshEntity("outpost_beacon", Transform{ToWorld(at)}, mesh, red);
+                if (MeshRenderer* renderer = scene.GetMeshRenderer(light))
+                {
+                    renderer->castsShadow = false;
+                    renderer->visible = false;
+                    renderer->farVisible = true;
+                }
+                m_fieldBeacons.push_back(light);
+            }
+        }
         // Drawn merged: an outpost is hundreds of parts, and seen part by part it was thousands of things to draw.
         m_field.SetMerged(true);
         m_fieldDressing.SetMerged(true);
@@ -1072,6 +1097,7 @@ void ShipMap::SetField(Scene& scene, MeshLibrary& meshes, bool shown, const Fiel
     {
         m_field.Clear(scene, m_physics);
         m_fieldDressing.Clear(scene, nullptr);
+        ClearBeacons(scene);
     }
     m_fieldShown = shown;
     if (m_field.Built())
@@ -1115,6 +1141,15 @@ void ShipMap::SetStageField(Scene& scene, MeshLibrary& meshes, bool shown, const
         m_stageField.SetHidden(scene, !shown || !m_showingStage);
         m_stageFieldDressing.SetHidden(scene, !shown || !m_showingStage);
     }
+}
+
+void ShipMap::ClearBeacons(Scene& scene)
+{
+    for (const Entity light : m_fieldBeacons)
+    {
+        scene.Destroy(light);
+    }
+    m_fieldBeacons.clear();
 }
 
 void ShipMap::FarVisible(Scene& scene, VehicleProp& prop)
@@ -1551,6 +1586,17 @@ void ShipMap::UpdateFittings(Scene& scene, MeshLibrary& meshes, float dt)
     if (!m_built)
     {
         return;
+    }
+    // The outpost's beacons: a short flash about every second and a third, each at its own moment.
+    m_beaconClock += dt;
+    for (size_t i = 0; i < m_fieldBeacons.size(); ++i)
+    {
+        if (MeshRenderer* renderer = scene.GetMeshRenderer(m_fieldBeacons[i]))
+        {
+            const float phase = std::fmod(static_cast<float>(i) * 0.618034f, 1.0f);
+            const float t = std::fmod(m_beaconClock * 0.75f + phase, 1.0f);
+            renderer->visible = m_fieldShown && !m_showingStage && t < 0.14f;
+        }
     }
     // The first time where they are wanted at once: a campaign begun on the ground starts with its gear down and the stair out.
     for (int which = 0; which < 2; ++which)

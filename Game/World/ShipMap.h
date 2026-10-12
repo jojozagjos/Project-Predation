@@ -235,6 +235,10 @@ private:
     bool m_airlockSolid = false;
     float m_airlockSlide = 0.0f; // 0 shut, 1 open
     VehicleProp m_fieldDressing;
+    // The outpost's beacons: a light in each, flashing, each at its own moment.
+    std::vector<Entity> m_fieldBeacons;
+    float m_beaconClock = 0.0f;
+    void ClearBeacons(Scene& scene);
     VehicleProp m_stageFieldDressing;
     VehicleProp m_field;
     bool m_fieldShown = false;
