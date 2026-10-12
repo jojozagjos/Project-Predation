@@ -124,6 +124,8 @@ set(PRED_GAME_SOURCES
     World/SiteMap.cpp
     World/SiteScatter.cpp
     World/Foliage.cpp
+    World/Cargo.h
+    World/Cargo.cpp
     World/Surfaces.h
     World/Surfaces.cpp
     World/Weather.cpp

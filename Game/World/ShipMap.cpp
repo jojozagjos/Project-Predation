@@ -2,6 +2,7 @@
 
 #include "Engine/Core/Log.h"
 #include "Engine/Render/Primitives.h"
+#include "Game/World/Cargo.h"
 #include "Game/World/KestrelStation.h"
 #include "Game/World/LevelLights.h"
 #include "Game/World/MapBuilder.h"
@@ -41,8 +42,6 @@ const Material kFrame = Material::Metal({0.14f, 0.14f, 0.15f}, 0.55f);
 const Material kRib = Material::Metal({0.24f, 0.25f, 0.26f}, 0.5f);
 const Material kHazardYellow = Material::Diffuse({0.72f, 0.55f, 0.10f}, 0.7f);
 const Material kPipe = Material::Metal({0.40f, 0.40f, 0.41f}, 0.45f);
-const Material kCrate = Material::Diffuse({0.30f, 0.34f, 0.26f}, 0.85f);
-const Material kCrateDark = Material::Diffuse({0.20f, 0.22f, 0.24f}, 0.85f);
 const Material kFurniture = Material::Metal({0.28f, 0.29f, 0.31f}, 0.6f);
 const Material kTableTop = Material::Diffuse({0.46f, 0.45f, 0.42f}, 0.6f);
 const Material kCushion = Material::Diffuse({0.22f, 0.25f, 0.30f}, 0.95f);
@@ -98,7 +97,7 @@ const Material& Laid(const Material& material)
     static const Made kMade[] = {
         {&kWall, "ship_panel", 10.0f, 0.1f},       {&kWallDark, "hull_dark", 2.5f, 0.3f},       {&kCeiling, "ship_panel", 10.0f, 0.1f},
         {&kBayWall, "bay_panel", 8.0f, 0.2f},       {&kFrame, "hull_dark", 2.0f, 0.3f},          {&kRib, "hull_dark", 2.0f, 0.3f},
-        {&kPipe, "pipe_steel", 1.0f, 0.3f},         {&kCrate, "cargo_crate", 1.5f, 0.2f},        {&kCrateDark, "cargo_crate", 1.5f, 0.2f},
+        {&kPipe, "pipe_steel", 1.0f, 0.3f},
         {&kFurniture, "locker_metal", 1.5f, 0.2f},  {&kTableTop, "tabletop", 1.0f, 0.3f},        {&kCushion, "fabric_cushion", 0.8f, 0.3f},
         {&kMattress, "fabric_cushion", 0.8f, 0.3f}, {&kHullDark, "hull_dark", 2.0f, 0.3f},
     };
@@ -153,6 +152,62 @@ public:
     void SolidTurned(const char* name, const glm::vec3& centre, const glm::vec3& size, float yawDegrees, const Material& material)
     {
         m_map.AddBox(name, At(centre, yawDegrees), size, Laid(material));
+    }
+    // A prop (Cargo) stood at `at`, turned `yawDegrees` about up: drawn, its parts gathered by what they are made of, and
+    // solid as the box round it.
+    void Prop(const char* name, const ModelAsset& prop, const glm::vec3& at, float yawDegrees)
+    {
+        struct Gathered
+        {
+            Material material;
+            MeshData mesh;
+        };
+        std::vector<Gathered> gathered;
+        for (const ModelPart& part : prop.parts)
+        {
+            Material material = Material::Diffuse(part.color, part.roughness);
+            material.metallic = part.metallic;
+            if (!part.surface.empty())
+            {
+                material = part.surfaceWear > 0.0f ? Surfaces::ApplyWorn(material, part.surface, part.surfaceScale, part.surfaceWear)
+                                                   : Surfaces::Apply(material, part.surface, part.surfaceScale, part.surfaceKeep);
+                material.surfaceOnThing = part.surfaceOnThing;
+            }
+            auto group = std::find_if(gathered.begin(), gathered.end(), [&](const Gathered& g)
+                                      { return g.material.baseColor == material.baseColor && g.material.metallic == material.metallic &&
+                                               g.material.roughness == material.roughness && g.material.surfaceWear == material.surfaceWear &&
+                                               g.material.baseColorTexture == material.baseColorTexture; });
+            if (group == gathered.end())
+            {
+                gathered.push_back({material, MeshData{}});
+                group = gathered.end() - 1;
+            }
+            const glm::mat4 local = part.LocalMatrix();
+            const glm::mat3 turn(local);
+            const MeshData piece = prop.BuildPartMesh(part);
+            const auto base = static_cast<uint32_t>(group->mesh.vertices.size());
+            for (MeshVertex vertex : piece.vertices)
+            {
+                vertex.position = glm::vec3(local * glm::vec4(vertex.position, 1.0f));
+                vertex.normal = glm::normalize(turn * vertex.normal);
+                group->mesh.vertices.push_back(vertex);
+            }
+            for (const uint32_t index : piece.indices)
+            {
+                group->mesh.indices.push_back(base + index);
+            }
+        }
+        for (const Gathered& g : gathered)
+        {
+            m_map.AddMesh(name, At(at, yawDegrees), g.mesh, g.material, false);
+        }
+        glm::vec3 lo;
+        glm::vec3 hi;
+        Cargo::Bounds(prop, lo, hi);
+        const glm::vec3 middle = glm::angleAxis(glm::radians(yawDegrees), glm::vec3(0.0f, 1.0f, 0.0f)) * ((lo + hi) * 0.5f);
+        const BodyHandle body = m_physics.CreateBox(glm::max((hi - lo) * 0.5f, glm::vec3(0.01f)), At(at + middle, yawDegrees), BodyMotion::Static);
+        m_physics.SetOverlapGroup(body, m_group);
+        m_bodies.push_back(body);
     }
     // Solid only: the glass in a window, which is not drawn.
     void Barrier(const glm::vec3& lo, const glm::vec3& hi)
@@ -440,12 +495,15 @@ void BuildRooms(Builder& b)
                 b.Shape("ship_blanket", {-kHalf + 0.05f, level + 0.28f, z0 + 0.1f}, {-kHalf + 0.94f, level + 0.33f, z1 - 0.55f}, blanket);
                 b.Shape("ship_pillow", {-kHalf + 0.17f, level + 0.28f, z1 - 0.5f}, {-kHalf + 0.82f, level + 0.4f, z1 - 0.12f}, kMattress);
             }
-            b.Shape("ship_bag", {-kHalf + 0.1f, 0.0f, z0 + 0.3f + static_cast<float>(bunk % 2) * 0.4f},
-                    {-kHalf + 0.6f, 0.3f, z0 + 0.8f + static_cast<float>(bunk % 2) * 0.4f}, kCrateDark);
+            {
+                static const glm::vec3 kBags[] = {{0.17f, 0.19f, 0.12f}, {0.06f, 0.06f, 0.07f}, {0.08f, 0.1f, 0.16f}};
+                b.Prop("ship_bag", Cargo::Duffel(kBags[bunk % 3]), {-kHalf + 0.33f, 0.0f, z0 + 0.6f + static_cast<float>(bunk % 2) * 0.4f},
+                       88.0f + static_cast<float>(bunk % 3) * 3.0f);
+            }
             ++bunk;
         }
         // A footlocker under the door's far side, and the light switch's panel.
-        b.Solid("ship_footlocker", {-2.0f, 0.0f, 2.5f}, {-1.0f, 0.45f, 3.2f}, kCrate);
+        b.Prop("ship_footlocker", Cargo::HardCase({1.0f, 0.45f, 0.7f}, {0.14f, 0.16f, 0.1f}), {-1.5f, 0.0f, 2.85f}, 180.0f);
         Conduit(b, {-kHalf + 0.06f, kTop - 0.15f, -3.8f}, {-kHalf + 0.06f, kTop - 0.15f, 3.2f}, 0.1f);
     }
 
@@ -465,10 +523,14 @@ void BuildRooms(Builder& b)
     b.Solid("ship_rack", {kCorridor + kPartition + 0.4f, 1.3f, kCrewFront + kWallT * 0.5f}, {kHalf - 0.4f, 2.2f, kCrewFront + 0.3f}, kWallDark);
     Conduit(b, {kHalf - 0.06f, kTop - 0.15f, -3.8f}, {kHalf - 0.06f, kTop - 0.15f, 3.2f}, 0.12f);
 
-    // --- The bay: crates against the walls aft, out of the way of the doors, and a panel ---------------------------------
-    b.Solid("ship_crate", {-kBayHalf, 0.0f, kBayBack - 2.0f}, {-kDoorsHalfX - 0.1f, 1.2f, kBayBack}, kCrate);
-    b.Solid("ship_crate", {-kBayHalf, 1.2f, kBayBack - 1.6f}, {-kDoorsHalfX - 0.2f, 1.9f, kBayBack - 0.2f}, kCrateDark);
-    b.Solid("ship_crate", {kDoorsHalfX + 0.1f, 0.0f, kBayBack - 1.8f}, {kBayHalf, 1.0f, kBayBack}, kCrateDark);
+    // --- The bay: cargo against the walls aft, out of the way of the doors, and a panel ---------------------------------
+    // Crates stacked against the wall aft to port, a hard case in front of them; drums and a rack of gas bottles to starboard.
+    b.Prop("ship_crate", Cargo::PlasticCrate({1.1f, 0.62f, 0.7f}, {0.2f, 0.23f, 0.15f}), {-kBayHalf + 0.4f, 0.0f, kBayBack - 0.65f}, 90.0f);
+    b.Prop("ship_crate", Cargo::PlasticCrate({1.1f, 0.62f, 0.7f}, {0.12f, 0.13f, 0.14f}), {-kBayHalf + 0.4f, 0.632f, kBayBack - 0.68f}, 92.0f);
+    b.Prop("ship_case", Cargo::HardCase({0.75f, 0.5f, 0.55f}, {0.1f, 0.11f, 0.1f}), {-kBayHalf + 0.38f, 0.0f, kBayBack - 1.75f}, 90.0f);
+    b.Prop("ship_drum", Cargo::Drum({0.06f, 0.12f, 0.3f}), {kBayHalf - 0.38f, 0.0f, kBayBack - 0.35f}, 20.0f);
+    b.Prop("ship_drum", Cargo::Drum({0.06f, 0.12f, 0.3f}), {kBayHalf - 0.38f, 0.0f, kBayBack - 0.96f}, 75.0f);
+    b.Prop("ship_gas", Cargo::GasRack(2, {0.1f, 0.3f, 0.12f}), {kBayHalf - 0.25f, 0.0f, kBayBack - 1.65f}, -90.0f);
     // Between two of the wall's ribs; the conduit along the other wall in front of them.
     b.Decal("ship_bay_panel", {-kBayHalf, 1.2f, 6.3f}, {-kBayHalf + 0.03f, 2.3f, 8.1f}, kScreenWarm);
     Conduit(b, {kBayHalf - 0.4f, 1.2f, kBayFront + 0.3f}, {kBayHalf - 0.4f, 1.2f, kBayBack - 2.0f}, 0.18f);

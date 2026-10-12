@@ -3,6 +3,7 @@
 #include "Engine/Scene/Scene.h"
 #include "Game/Interaction/InteractionSystem.h"
 #include "Game/Items/ItemDatabase.h"
+#include "Game/World/Cargo.h"
 #include "Game/World/KestrelStation.h"
 #include "Game/World/Outpost.h"
 #include "Game/World/ShipMap.h"
@@ -532,5 +533,27 @@ TEST_CASE("The boarding stair's pieces share no surface, standing out as they ar
             UNSCOPED_INFO(pair);
         }
         CHECK(found.empty());
+    }
+}
+
+TEST_CASE("Cargo props share no surface between their own parts", "[ship][cargo]")
+{
+    const glm::vec3 grey{0.3f, 0.3f, 0.3f};
+    const ModelAsset props[] = {Cargo::PlasticCrate({1.1f, 0.62f, 0.7f}, grey), Cargo::HardCase({0.75f, 0.5f, 0.55f}, grey), Cargo::Drum(grey),
+                                Cargo::GasRack(3, grey), Cargo::WrappedPallet(0.9f), Cargo::Duffel(grey)};
+    for (const ModelAsset& prop : props)
+    {
+        INFO(prop.name);
+        const std::vector<std::string> found = SharedFaces({&prop});
+        for (const std::string& pair : found)
+        {
+            UNSCOPED_INFO(pair);
+        }
+        CHECK(found.empty());
+        // Standing on the floor at its origin, nothing of it under it.
+        glm::vec3 lo;
+        glm::vec3 hi;
+        Cargo::Bounds(prop, lo, hi);
+        CHECK(lo.y > -0.001f);
     }
 }
