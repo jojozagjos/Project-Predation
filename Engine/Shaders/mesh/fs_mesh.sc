@@ -660,7 +660,7 @@ void main()
 			// between -- not the photograph's chips evenly everywhere.
 			float worn = smoothstep(1.05 - u_wearParams.w, 1.25 - u_wearParams.w, patches);
 			bare = smoothstep(0.55, 0.25, saturation) * worn;
-			float paintShade = clamp(high * 0.95, 0.55, 1.0);
+			float paintShade = clamp(high, 0.02, 1.0);
 			surfaceAlbedo = mix(vec3_splat(paintShade), u_wearParams.xyz / max(u_baseColor.rgb, vec3_splat(0.04)), bare);
 			// And grime, darker in the patches it has gathered in.
 			surfaceAlbedo *= mix(1.0, 0.82, smoothstep(0.55, 0.9, SurfacePatches(placed.xz * 0.21 + placed.yy * 0.17)));

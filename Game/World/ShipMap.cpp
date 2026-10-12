@@ -725,7 +725,7 @@ void BareMetal(ModelAsset& model)
         // Rough enough everywhere that the sun glancing off a flat panel is a soft sheen across it, not a blinding mirror.
         if (is(kPlating, std::size(kPlating)))
         {
-            part.surface = "cargo_crate";
+            part.surface = "painted_metal";
             part.surfaceScale = 2.2f;
             part.surfaceOnThing = true;
             part.surfaceWear = 0.55f;
@@ -739,7 +739,7 @@ void BareMetal(ModelAsset& model)
         }
         else if (is(kDark, std::size(kDark)))
         {
-            part.surface = "cargo_crate";
+            part.surface = "painted_metal";
             part.surfaceScale = 1.6f;
             part.surfaceOnThing = true;
             part.surfaceWear = 0.4f;

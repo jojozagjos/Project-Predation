@@ -303,7 +303,7 @@ ModelAsset ShuttleModel()
     // The outside's paint, worn: chipped and scratched to the metal, more in some places than others (Material::surfaceWear).
     const auto worn = [](ModelPart& part)
     {
-        part.surface = "cargo_crate";
+        part.surface = "painted_metal";
         part.surfaceScale = 1.4f;
         part.surfaceOnThing = true;
         part.surfaceWear = 0.65f;

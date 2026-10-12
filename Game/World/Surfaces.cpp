@@ -100,8 +100,11 @@ Material ApplyWorn(Material material, const std::string& name, float metres, flo
     {
         return material;
     }
-    // Not tinted to its average as Apply does: the shader takes only where the paint is worn through from it, and the
-    // paint's own light and dark, so the material's colour is the paint's as it stands.
+    // The shader takes the paint's light and dark from the photograph as its brightest channel there (the paint's own
+    // colour let go of); over that channel's average here, so the paint comes out the material's colour on average,
+    // however light or dark the photograph's paint is. (The bare metal is its own colour, whatever this.)
+    const glm::vec3 mean = g_textures->MeanColour(colour);
+    material.baseColor /= std::max(std::max(mean.r, std::max(mean.g, mean.b)), 0.05f);
     material.baseColorTexture = colour;
     material.normalTexture = Map(name, "Normal");
     material.roughnessTexture = Map(name, "Roughness");
