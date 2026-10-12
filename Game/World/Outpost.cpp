@@ -1,5 +1,6 @@
 #include "Game/World/Outpost.h"
 
+#include "Game/World/Cargo.h"
 #include "Game/World/PartBuilder.h"
 #include "Game/World/ShipMap.h"
 
@@ -830,22 +831,26 @@ private:
     // A stack of pallets, each with a load on it.
     void Pallets(const glm::vec3& at, int high)
     {
+        // Each a pallet of strapped cartons (Cargo), one on another; solid as the stack.
+        const float load = 0.95f;
+        const float each = 0.144f + load + 0.006f;
         for (int i = 0; i < high; ++i)
         {
-            const float y = at.y + 1.15f * static_cast<float>(i);
-            m_dress.Box("pallet", at + glm::vec3(-0.6f, y - at.y, -0.5f), at + glm::vec3(0.6f, y - at.y + 0.15f, 0.5f), {0.42f, 0.32f, 0.2f}, 0.9f);
-            m_solid.Box("pallet_load", at + glm::vec3(-0.55f, y - at.y + 0.15f, -0.45f), at + glm::vec3(0.55f, y - at.y + 1.1f, 0.45f),
-                        kBoxes[m_random.Int(0, 5)] * 0.75f, 0.85f, 0.1f);
+            Cargo::Place(m_dress.model, Cargo::WrappedPallet(load), at + glm::vec3(0.0f, each * static_cast<float>(i), 0.0f),
+                         m_random.Range(-4.0f, 4.0f), "pallet_");
         }
+        m_solid.Box("solid_pallets", at + glm::vec3(-0.6f, 0.0f, -0.5f), at + glm::vec3(0.6f, each * static_cast<float>(high), 0.5f), kSteelDark);
     }
-    // Drums standing together.
+    // Drums standing together (Cargo), each solid as itself.
     void Barrels(const glm::vec3& at, int count)
     {
         const glm::vec3 colour = m_random.Chance(0.5f) ? m_scheme.warning * 0.9f : glm::vec3(0.18f, 0.28f, 0.4f);
         for (int i = 0; i < count; ++i)
         {
-            const glm::vec3 c = at + glm::vec3(0.65f * static_cast<float>(i % 3), 0.45f, 0.65f * static_cast<float>(i / 3));
-            m_solid.Cylinder("barrel", c, 0.58f, 0.9f, glm::vec3(0.0f), m_style.abandoned ? glm::mix(colour, kRust, 0.5f) : colour, 0.6f, 0.4f);
+            const glm::vec3 c = at + glm::vec3(0.65f * static_cast<float>(i % 3), 0.0f, 0.65f * static_cast<float>(i / 3));
+            Cargo::Place(m_dress.model, Cargo::Drum(m_style.abandoned ? glm::mix(colour, kRust, 0.5f) : colour), c, m_random.Range(0.0f, 360.0f),
+                         "barrel_");
+            m_solid.Cylinder("solid_barrel", c + glm::vec3(0.0f, 0.44f, 0.0f), 0.6f, 0.88f, glm::vec3(0.0f), colour, 0.6f, 0.4f);
         }
     }
     // A wheeled bin, its lid shut.
