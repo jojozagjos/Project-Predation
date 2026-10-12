@@ -1,5 +1,7 @@
 #include "Game/World/Surfaces.h"
 
+#include "Game/World/Foliage.h"
+
 #include "Engine/Core/Paths.h"
 #include "Engine/Render/TextureLibrary.h"
 
@@ -50,6 +52,15 @@ TextureHandle Map(const std::string& set, const char* kind)
 void SetLibrary(TextureLibrary* textures)
 {
     g_textures = textures;
+}
+
+TextureHandle FoliageAtlas()
+{
+    if (g_textures == nullptr)
+    {
+        return TextureHandle{};
+    }
+    return g_textures->UploadCutout(Foliage::Atlas(), "foliage_atlas");
 }
 
 Material Apply(Material material, const std::string& name, float metres, float keep, bool natural)

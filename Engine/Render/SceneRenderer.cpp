@@ -170,6 +170,8 @@ bool SceneRenderer::Init(ShaderLibrary& shaders)
     // Occlusion is not required for a picture. If the depth program or the float target is missing
     // the game still runs, unshadowed, and says so once rather than every frame.
     const bgfx::ProgramHandle depthProgram = shaders.LoadProgram("vs_shadow", "fs_shadow");
+    m_shadowCutProgram = shaders.LoadProgram("vs_shadow_cut", "fs_shadow_cut");
+    m_sCutout = bgfx::createUniform("s_cutout", bgfx::UniformType::Sampler);
     m_shadowsReady = bgfx::isValid(depthProgram) &&
                      m_sunShadow.Init(kSunShadowSize, depthProgram) &&
                      m_sunNearShadow.Init(kSunNearShadowSize, depthProgram) &&
@@ -271,6 +273,12 @@ void SceneRenderer::Shutdown()
 
     // The programs themselves are owned by the ShaderLibrary.
     m_program = BGFX_INVALID_HANDLE;
+    m_shadowCutProgram = BGFX_INVALID_HANDLE;
+    if (bgfx::isValid(m_sCutout))
+    {
+        bgfx::destroy(m_sCutout);
+    }
+    m_sCutout = BGFX_INVALID_HANDLE;
 }
 
 // Uniforms that are the same for every mesh in a pass. Split out so the item icon atlas can draw
@@ -402,7 +410,12 @@ void SceneRenderer::SubmitMesh(bgfx::ViewId view, const Mesh& mesh, const Materi
 {
     const float baseColor[4] = {material.baseColor.r, material.baseColor.g, material.baseColor.b, 1.0f};
     const float materialParams[4] = {material.metallic, material.roughness, material.reflectivity,
-                                     0.0f};
+                                     material.cutout ? 1.0f : 0.0f};
+    // A card is seen from both sides.
+    if (material.cutout)
+    {
+        state &= ~BGFX_STATE_CULL_MASK;
+    }
     const float emissive[4] = {material.emissive.r, material.emissive.g, material.emissive.b, material.emissiveTextured ? 1.0f : 0.0f};
 
     bgfx::setUniform(m_uBaseColor, baseColor);
@@ -485,8 +498,9 @@ void SceneRenderer::SubmitMesh(bgfx::ViewId view, const Mesh& mesh, const Materi
 }
 
 void SceneRenderer::SubmitDepth(bgfx::ViewId view, const Mesh& mesh, const glm::mat4& model,
-                                const ShadowMap& map)
+                                const ShadowMap& map, const Material* cutout)
 {
+    const bool cut = cutout != nullptr && cutout->cutout && bgfx::isValid(m_shadowCutProgram) && m_textures != nullptr;
     // This map's range, immediately before this draw. The uniform is shared between all three maps
     // and captured at submit, so it cannot be set once when the view starts: see ShadowMap::BindRange.
     map.BindRange();
@@ -504,6 +518,14 @@ void SceneRenderer::SubmitDepth(bgfx::ViewId view, const Mesh& mesh, const glm::
     // pass so a light sees the same faces the camera does. Wireframe is deliberately not honoured
     // here -- a wireframe world should still cast solid shadows, or turning it on to look at
     // geometry changes the lighting of everything.
+    if (cut)
+    {
+        // Both sides, and only where the leaf is.
+        bgfx::setTexture(0, m_sCutout, m_textures->Get(cutout->baseColorTexture));
+        bgfx::setState(BGFX_STATE_WRITE_R | BGFX_STATE_WRITE_Z | BGFX_STATE_DEPTH_TEST_LESS);
+        bgfx::submit(view, m_shadowCutProgram);
+        return;
+    }
     bgfx::setState(BGFX_STATE_WRITE_R | BGFX_STATE_WRITE_Z | BGFX_STATE_DEPTH_TEST_LESS |
                    BGFX_STATE_CULL_CW);
     bgfx::submit(view, map.Program());
@@ -595,15 +617,15 @@ void SceneRenderer::RenderShadows(bgfx::ViewId sunView, bgfx::ViewId sunNearView
             // it went in and out of the map as the player walked, its shadow with it.
             if (settings.sunEnabled && (!sized || m_sunShadow.Covers(centre, radius)))
             {
-                SubmitDepth(sunView, *mesh, model, m_sunShadow);
+                SubmitDepth(sunView, *mesh, model, m_sunShadow, &renderer.material);
                 if (!sized || m_sunNearShadow.Covers(centre, radius))
                 {
-                    SubmitDepth(sunNearView, *mesh, model, m_sunNearShadow);
+                    SubmitDepth(sunNearView, *mesh, model, m_sunNearShadow, &renderer.material);
                 }
             }
             if (settings.sunEnabled && sized && radius >= kSunFarSmallest && m_sunFarShadow.Covers(centre, radius))
             {
-                SubmitDepth(sunFarView, *mesh, model, m_sunFarShadow);
+                SubmitDepth(sunFarView, *mesh, model, m_sunFarShadow, &renderer.material);
             }
             if (settings.skyEnabled && renderer.blocksSky && (!sized || m_skyShadow.Covers(centre, radius)))
             {
@@ -611,7 +633,7 @@ void SceneRenderer::RenderShadows(bgfx::ViewId sunView, bgfx::ViewId sunNearView
             }
             if (m_spotShadowLit && (!sized || glm::distance(centre, first.position) < first.range + radius))
             {
-                SubmitDepth(spotView, *mesh, model, m_spotShadow);
+                SubmitDepth(spotView, *mesh, model, m_spotShadow, &renderer.material);
             }
         });
 }

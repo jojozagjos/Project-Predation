@@ -67,6 +67,9 @@ public:
     glm::vec3 MeanColour(TextureHandle handle) const;
     // Uploads, or returns what is already under that name.
     TextureHandle Upload(const ImageData& image, const std::string& name);
+    // As Upload, with a mip chain, made keeping as much of each level over half alpha as there is at full size (for a
+    // texture whose alpha cuts out what it is on: Material::cutout). Its sides must be powers of two.
+    TextureHandle UploadCutout(const ImageData& image, const std::string& name);
     // Reads a file and uploads it. Returns the white texture when it cannot be read, so a missing
     // file draws a flat surface rather than nothing at all.
     TextureHandle LoadFromFile(const std::string& file, const std::string& name);

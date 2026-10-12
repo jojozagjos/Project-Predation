@@ -65,6 +65,9 @@ struct Material
     // x = where the beat is (0..1), y = how hard it beats, z = how long the beat takes to cross a metre
     // (in beats), w unused.
     glm::vec4 organicBeat{0.0f};
+    // Cut out by its base colour texture's alpha (below a half is not there at all), seen from both sides, and lit through
+    // from behind a little: a leaf, a blade of grass, on a flat card (Game/World/Foliage). Its shadow is cut out the same.
+    bool cutout = false;
 
     static Material Diffuse(const glm::vec3& color, float roughness = 0.85f)
     {

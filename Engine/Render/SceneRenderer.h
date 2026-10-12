@@ -176,13 +176,16 @@ private:
     // own and has no maps fitted to it: leaving them on would light icons through the world.
     void SetEnvironmentUniforms(const Environment& environment, const glm::vec3& cameraPosition,
                                 bool withShadows);
+    // `cutout`: the material, when it is cut out by its texture (Material::cutout), for its shadow to be.
     void SubmitDepth(bgfx::ViewId view, const Mesh& mesh, const glm::mat4& model,
-                     const ShadowMap& map);
+                     const ShadowMap& map, const Material* cutout = nullptr);
     uint64_t DrawState() const;
     void SubmitMesh(bgfx::ViewId view, const Mesh& mesh, const Material& material, const glm::mat4& model,
                     uint64_t state);
 
     bgfx::ProgramHandle m_program = BGFX_INVALID_HANDLE;
+    bgfx::ProgramHandle m_shadowCutProgram = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_sCutout = BGFX_INVALID_HANDLE;
 
     bgfx::UniformHandle m_uBaseColor = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uMaterialParams = BGFX_INVALID_HANDLE;

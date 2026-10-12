@@ -58,6 +58,9 @@ std::vector<Item> Plan(uint32_t seed, const std::string& biome, const SitePlan& 
 // `growth` (on its vertices: a tree's bark is painted its own), the rest white, for its material to colour.
 MeshData Shape(Kind kind, int variant, uint32_t seed, const glm::vec3& growth);
 
+// Its leaves, on cards cut out by the foliage atlas (Foliage; Material::cutout), tinted `growth`: empty for a kind that has none.
+MeshData Leaves(Kind kind, int variant, uint32_t seed, const glm::vec3& growth);
+
 // Whether one of a kind is solid at this size (a boulder you walk round; grass you walk through).
 bool Solid(Kind kind, const glm::vec3& scale);
 

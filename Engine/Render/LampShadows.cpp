@@ -257,7 +257,7 @@ void LampShadows::Draw(int slotIndex, bgfx::ViewId firstView, const Scene& scene
         {
             // The level only: what does not walk about or get picked up. And not the lamp's own fitting, which
             // casts nothing.
-            if (!renderer.castsShadow || !renderer.levelGeometry)
+            if (!renderer.castsShadow || !renderer.levelGeometry || renderer.material.cutout)
             {
                 return;
             }

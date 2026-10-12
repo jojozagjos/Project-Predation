@@ -14,6 +14,8 @@ class TextureLibrary;
 // are rather than by their coordinates (Material::surfaceScale), so a set is chosen by name and how big it repeats.
 namespace Surfaces
 {
+// The foliage atlas (Foliage::Atlas), made and uploaded the first time it is wanted, mipmapped for what it cuts out.
+TextureHandle FoliageAtlas();
 
 // Where the sets are uploaded: the game's texture library. Without one (a test, a headless run) nothing is laid on.
 void SetLibrary(TextureLibrary* textures);

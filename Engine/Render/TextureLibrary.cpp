@@ -239,6 +239,87 @@ TextureHandle TextureLibrary::Upload(const ImageData& image, const std::string& 
     return TextureHandle{index};
 }
 
+TextureHandle TextureLibrary::UploadCutout(const ImageData& image, const std::string& name)
+{
+    if (const auto found = m_byName.find(name); found != m_byName.end())
+    {
+        return TextureHandle{found->second};
+    }
+    if (!image.IsValid() || m_textures.size() >= TextureHandle::kInvalid)
+    {
+        return White();
+    }
+    const auto covered = [](const std::vector<uint8_t>& pixels)
+    {
+        size_t over = 0;
+        for (size_t i = 3; i < pixels.size(); i += 4)
+        {
+            over += pixels[i] >= 128 ? 1 : 0;
+        }
+        return static_cast<double>(over) / static_cast<double>(std::max<size_t>(pixels.size() / 4, 1));
+    };
+    const double want = covered(image.pixels);
+    std::vector<uint8_t> all = image.pixels;
+    std::vector<uint8_t> level = image.pixels;
+    int w = image.width;
+    int h = image.height;
+    while (w > 1 || h > 1)
+    {
+        const int nw = std::max(w / 2, 1);
+        const int nh = std::max(h / 2, 1);
+        std::vector<uint8_t> next(static_cast<size_t>(nw) * static_cast<size_t>(nh) * 4);
+        for (int y = 0; y < nh; ++y)
+        {
+            for (int x = 0; x < nw; ++x)
+            {
+                for (int c = 0; c < 4; ++c)
+                {
+                    int sum = 0;
+                    for (int dy = 0; dy < 2; ++dy)
+                    {
+                        for (int dx = 0; dx < 2; ++dx)
+                        {
+                            const int sx = std::min(x * 2 + dx, w - 1);
+                            const int sy = std::min(y * 2 + dy, h - 1);
+                            sum += level[(static_cast<size_t>(sy) * static_cast<size_t>(w) + static_cast<size_t>(sx)) * 4 + static_cast<size_t>(c)];
+                        }
+                    }
+                    next[(static_cast<size_t>(y) * static_cast<size_t>(nw) + static_cast<size_t>(x)) * 4 + static_cast<size_t>(c)] = static_cast<uint8_t>(sum / 4);
+                }
+            }
+        }
+        // The alpha scaled until as much of the level is over half as was at full size (a few halvings of the search).
+        float low = 0.5f;
+        float high = 4.0f;
+        std::vector<uint8_t> scaled = next;
+        for (int step = 0; step < 10; ++step)
+        {
+            const float scale = (low + high) * 0.5f;
+            for (size_t i = 3; i < next.size(); i += 4)
+            {
+                scaled[i] = static_cast<uint8_t>(std::min(255.0f, static_cast<float>(next[i]) * scale));
+            }
+            (covered(scaled) < want ? low : high) = scale;
+        }
+        level = scaled;
+        all.insert(all.end(), level.begin(), level.end());
+        w = nw;
+        h = nh;
+    }
+    const bgfx::Memory* memory = bgfx::copy(all.data(), static_cast<uint32_t>(all.size()));
+    const bgfx::TextureHandle texture = bgfx::createTexture2D(static_cast<uint16_t>(image.width), static_cast<uint16_t>(image.height), true, 1,
+                                                              bgfx::TextureFormat::RGBA8, BGFX_SAMPLER_NONE, memory);
+    if (!bgfx::isValid(texture))
+    {
+        return White();
+    }
+    bgfx::setName(texture, name.c_str());
+    const auto index = static_cast<uint16_t>(m_textures.size());
+    m_textures.push_back({texture, name});
+    m_byName.emplace(name, index);
+    return TextureHandle{index};
+}
+
 TextureHandle TextureLibrary::CreateDynamic(int width, int height, const std::string& name)
 {
     if (const auto found = m_byName.find(name); found != m_byName.end())

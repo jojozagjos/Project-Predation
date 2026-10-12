@@ -2,6 +2,7 @@
 
 #include "Game/World/SitePlan.h"
 #include "Game/World/SiteTerrain.h"
+#include "Game/World/Foliage.h"
 
 #include <glm/geometric.hpp>
 #include <glm/gtc/quaternion.hpp>
@@ -161,6 +162,96 @@ uint32_t Paint(const glm::vec3& c)
 {
     const auto byte = [](float v) { return static_cast<uint32_t>(std::clamp(v, 0.0f, 1.0f) * 255.0f + 0.5f); };
     return byte(c.r) | (byte(c.g) << 8) | (byte(c.b) << 16) | (0xffu << 24);
+}
+
+// A tube through `points`, its radius at each, `sides` round, smooth-shaded: a trunk, a bough, a branch.
+void Tube(MeshData& mesh, const std::vector<glm::vec3>& points, const std::vector<float>& radii, int sides, uint32_t colour = 0xffffffffu)
+{
+    if (points.size() < 2)
+    {
+        return;
+    }
+    const auto base = static_cast<uint32_t>(mesh.vertices.size());
+    glm::vec3 lastSide{0.0f};
+    for (size_t i = 0; i < points.size(); ++i)
+    {
+        const glm::vec3 way = glm::normalize(i + 1 < points.size() ? points[i + 1] - points[i] : points[i] - points[i - 1]);
+        // A frame carried along it, so the sides do not twist.
+        glm::vec3 side = i == 0 ? glm::cross(way, std::abs(way.y) < 0.95f ? glm::vec3(0.0f, 1.0f, 0.0f) : glm::vec3(1.0f, 0.0f, 0.0f)) : lastSide;
+        side = glm::normalize(side - way * glm::dot(side, way));
+        lastSide = side;
+        const glm::vec3 other = glm::cross(way, side);
+        for (int k = 0; k <= sides; ++k)
+        {
+            const float a = kTau * static_cast<float>(k) / static_cast<float>(sides);
+            const glm::vec3 out = side * std::cos(a) + other * std::sin(a);
+            MeshVertex vertex;
+            vertex.position = points[i] + out * radii[i];
+            vertex.normal = out;
+            vertex.color = colour;
+            vertex.uv = {static_cast<float>(k) / static_cast<float>(sides), static_cast<float>(i)};
+            mesh.vertices.push_back(vertex);
+        }
+    }
+    const auto ring = static_cast<uint32_t>(sides + 1);
+    for (uint32_t i = 0; i + 1 < points.size(); ++i)
+    {
+        for (uint32_t k = 0; k < static_cast<uint32_t>(sides); ++k)
+        {
+            const uint32_t a = base + i * ring + k;
+            const uint32_t b = a + ring;
+            mesh.indices.insert(mesh.indices.end(), {a, a + 1, b, a + 1, b + 1, b});
+        }
+    }
+}
+
+// A bough from `from` going `way`, `length` long, from radius `r0` to `r1`, bending as it goes by `bend` (added to its way
+// per unit of its length, a gravity or a reach for light): its points, for Tube.
+void Bough(MeshData& mesh, glm::vec3 from, glm::vec3 way, float length, float r0, float r1, const glm::vec3& bend, uint32_t colour,
+           std::vector<glm::vec3>* ends = nullptr)
+{
+    std::vector<glm::vec3> points{from};
+    std::vector<float> radii{r0};
+    const int steps = 5;
+    for (int i = 1; i <= steps; ++i)
+    {
+        way = glm::normalize(way + bend * (length / static_cast<float>(steps)));
+        from += way * (length / static_cast<float>(steps));
+        points.push_back(from);
+        radii.push_back(r0 + (r1 - r0) * static_cast<float>(i) / static_cast<float>(steps));
+    }
+    Tube(mesh, points, radii, 6, colour);
+    if (ends != nullptr)
+    {
+        ends->push_back(from);
+    }
+}
+
+// A card: a flat quad round `centre`, `right` and `up` its half-sides, showing the atlas's `cell` (its top row up `up`),
+// painted `colour`.
+void Card(MeshData& mesh, const glm::vec3& centre, const glm::vec3& right, const glm::vec3& up, int cell, uint32_t colour)
+{
+    const glm::vec4 uv = Foliage::Cell(cell);
+    const glm::vec3 normal = glm::normalize(glm::cross(right, up));
+    const auto base = static_cast<uint32_t>(mesh.vertices.size());
+    const glm::vec3 corners[4] = {centre - right - up, centre + right - up, centre + right + up, centre - right + up};
+    const glm::vec2 uvs[4] = {{uv.x, uv.w}, {uv.z, uv.w}, {uv.z, uv.y}, {uv.x, uv.y}};
+    for (int i = 0; i < 4; ++i)
+    {
+        MeshVertex vertex;
+        vertex.position = corners[i];
+        vertex.normal = normal;
+        vertex.uv = uvs[i];
+        vertex.color = colour;
+        mesh.vertices.push_back(vertex);
+    }
+    mesh.indices.insert(mesh.indices.end(), {base, base + 1, base + 2, base, base + 2, base + 3});
+}
+
+// A random way, as a unit vector.
+glm::vec3 Somewhere(Random& random)
+{
+    return glm::normalize(glm::vec3(random.Normal(), random.Normal(), random.Normal()) + glm::vec3(0.0f, 1.0e-3f, 0.0f));
 }
 
 // --- What lies where ---------------------------------------------------------------------------------------------------
@@ -405,74 +496,147 @@ MeshData Shape(Kind kind, int variant, uint32_t seed, const glm::vec3& growth)
         break;
     }
     case Kind::Shrub:
-    {
-        // A few lumps run together, low, darker underneath.
-        const uint32_t colour = Paint(growth * random.Range(0.85f, 1.05f));
-        const int lumps = random.Int(3, 5);
-        for (int i = 0; i < lumps; ++i)
-        {
-            const glm::vec3 at{random.Range(-0.25f, 0.25f), random.Range(0.2f, 0.4f), random.Range(-0.25f, 0.25f)};
-            Lump(mesh, random, at, glm::vec3(random.Range(0.25f, 0.4f), random.Range(0.2f, 0.32f), random.Range(0.25f, 0.4f)), 0.4f, -0.6f, colour);
-        }
+    case Kind::Grass:
+        // All leaves: Foliage.
         break;
-    }
     case Kind::Tree:
     {
-        // A trunk, and leaves on it: a broad crown of lumps, or (one in two) tiers of cones.
-        const uint32_t bark = Paint({0.26f, 0.2f, 0.15f});
-        const uint32_t leaves = Paint(growth * random.Range(0.85f, 1.05f));
-        const float trunk = random.Range(0.035f, 0.05f);
-        // Up into the crown, never short of it.
-        Prism(mesh, {0.0f, -0.1f, 0.0f}, glm::normalize(glm::vec3(random.Range(-0.04f, 0.04f), 1.0f, random.Range(-0.04f, 0.04f))), 0.82f, trunk * 1.3f, trunk * 0.7f,
-              6, 0.0f, 0.0f, bark);
+        const uint32_t bark = Paint({0.3f, 0.24f, 0.19f});
         if (variant % 2 == 0)
         {
-            for (int i = 0; i < random.Int(3, 5); ++i)
+            // A broadleaf: a trunk, three or four boughs out of it into the crown, a branch or two off each.
+            Bough(mesh, {0.0f, -0.1f, 0.0f}, {random.Range(-0.05f, 0.05f), 1.0f, random.Range(-0.05f, 0.05f)}, 0.55f, 0.045f, 0.026f, {0.0f, 0.0f, 0.0f},
+                  bark);
+            const int boughs = random.Int(3, 4);
+            for (int i = 0; i < boughs; ++i)
             {
-                const glm::vec3 at{random.Range(-0.1f, 0.1f), random.Range(0.56f, 0.76f), random.Range(-0.1f, 0.1f)};
-                Lump(mesh, random, at, glm::vec3(random.Range(0.16f, 0.24f), random.Range(0.13f, 0.18f), random.Range(0.16f, 0.24f)), 0.35f, -2.0f, leaves);
+                const float a = kTau * (static_cast<float>(i) + random.Range(0.0f, 0.6f)) / static_cast<float>(boughs);
+                const glm::vec3 from{0.0f, random.Range(0.36f, 0.44f), 0.0f};
+                const glm::vec3 way{std::cos(a) * 0.7f, 1.0f, std::sin(a) * 0.7f};
+                std::vector<glm::vec3> ends;
+                Bough(mesh, from, way, random.Range(0.3f, 0.4f), 0.022f, 0.007f, {0.0f, 0.4f, 0.0f}, bark, &ends);
+                const glm::vec3 mid = from + glm::normalize(way) * 0.16f;
+                Bough(mesh, mid, glm::vec3(std::cos(a + 1.2f), 0.8f, std::sin(a + 1.2f)), 0.18f, 0.01f, 0.004f, {0.0f, 0.3f, 0.0f}, bark);
             }
         }
         else
         {
-            for (int tier = 0; tier < 4; ++tier)
-            {
-                const float y = 0.28f + 0.17f * static_cast<float>(tier);
-                const float r = 0.26f - 0.05f * static_cast<float>(tier);
-                Prism(mesh, {0.0f, y, 0.0f}, {0.0f, 1.0f, 0.0f}, 0.01f, r, r, 7, 0.24f, random.Range(0.0f, kTau), leaves);
-            }
+            // A conifer: one trunk to its top, its branches the needle cards (Foliage).
+            Bough(mesh, {0.0f, -0.1f, 0.0f}, {random.Range(-0.03f, 0.03f), 1.0f, random.Range(-0.03f, 0.03f)}, 1.05f, 0.032f, 0.004f, {0.0f, 0.0f, 0.0f},
+                  bark);
         }
         break;
     }
     case Kind::DeadTree:
     {
-        // A bare trunk and a few bare branches, thin.
-        const float trunk = random.Range(0.03f, 0.045f);
-        const glm::vec3 lean = glm::normalize(glm::vec3(random.Range(-0.12f, 0.12f), 1.0f, random.Range(-0.12f, 0.12f)));
-        Prism(mesh, {0.0f, -0.1f, 0.0f}, lean, 0.9f, trunk * 1.4f, trunk * 0.4f, 5, 0.0f, 0.0f);
+        // A bare trunk and a few bare branches, bent.
+        const uint32_t grey = Paint({0.9f, 0.9f, 0.9f});
+        Bough(mesh, {0.0f, -0.1f, 0.0f}, {random.Range(-0.15f, 0.15f), 1.0f, random.Range(-0.15f, 0.15f)}, 0.95f, 0.04f, 0.006f,
+              {random.Range(-0.3f, 0.3f), 0.0f, random.Range(-0.3f, 0.3f)}, grey);
         for (int i = 0; i < random.Int(3, 5); ++i)
         {
             const float a = random.Range(0.0f, kTau);
-            const float y = random.Range(0.35f, 0.75f);
-            const glm::vec3 from = lean * y;
-            const glm::vec3 up = glm::normalize(glm::vec3(std::cos(a), random.Range(0.4f, 1.0f), std::sin(a)));
-            Prism(mesh, from, up, random.Range(0.15f, 0.35f), trunk * 0.6f, trunk * 0.15f, 4, 0.0f, 0.0f);
+            const glm::vec3 from{0.0f, random.Range(0.35f, 0.75f), 0.0f};
+            Bough(mesh, from, {std::cos(a), random.Range(0.3f, 0.9f), std::sin(a)}, random.Range(0.15f, 0.35f), 0.015f, 0.003f,
+                  {0.0f, random.Range(-0.5f, 0.5f), 0.0f}, grey);
+        }
+        break;
+    }
+    default: break;
+    }
+    return mesh;
+}
+
+MeshData Leaves(Kind kind, int variant, uint32_t seed, const glm::vec3& growth)
+{
+    MeshData mesh;
+    Random random((static_cast<uint64_t>(seed) << 11) ^ (static_cast<uint64_t>(kind) << 5) ^ static_cast<uint64_t>(variant) ^ 0x1EA7E5ull);
+    // Each card a little apart in colour, round the world's own.
+    const auto tint = [&](float low, float high) { return Paint(growth * random.Range(low, high)); };
+    switch (kind)
+    {
+    case Kind::Tree:
+        if (variant % 2 == 0)
+        {
+            // A crown of sprays: clusters of three crossed cards, filling a rounded crown over the boughs, denser outside.
+            const glm::vec3 centre{0.0f, 0.68f, 0.0f};
+            const glm::vec3 reach{0.3f, 0.22f, 0.3f};
+            const int clusters = random.Int(26, 36);
+            for (int i = 0; i < clusters; ++i)
+            {
+                glm::vec3 d = Somewhere(random);
+                d.y = d.y * 0.8f + 0.15f;
+                const glm::vec3 at = centre + glm::normalize(d) * reach * random.Range(0.55f, 1.0f);
+                const float size = random.Range(0.11f, 0.16f);
+                const glm::vec3 axis = glm::normalize(glm::vec3(0.0f, 1.0f, 0.0f) + Somewhere(random) * 0.6f);
+                const glm::vec3 first = glm::normalize(glm::cross(axis, Somewhere(random)));
+                const uint32_t colour = tint(0.75f, 1.15f);
+                const int cell = random.Unit() < 0.5f ? Foliage::kBroad : Foliage::kBroadDense;
+                for (int c = 0; c < 3; ++c)
+                {
+                    const glm::vec3 right = glm::angleAxis(1.0472f * static_cast<float>(c), axis) * first;
+                    Card(mesh, at, right * size, axis * size, cell, colour);
+                }
+            }
+        }
+        else
+        {
+            // Whorls of branches up the trunk, drooping, shorter as they go up; each branch a card and a second across it.
+            for (float y = 0.14f; y < 0.96f; y += random.Range(0.05f, 0.075f))
+            {
+                const float up = (y - 0.14f) / 0.82f;
+                const float length = 0.36f * (1.0f - up) + 0.05f;
+                const int branches = random.Int(6, 8);
+                const float turn = random.Range(0.0f, kTau);
+                for (int i = 0; i < branches; ++i)
+                {
+                    const float a = turn + kTau * static_cast<float>(i) / static_cast<float>(branches);
+                    const float droop = random.Range(0.25f, 0.45f);
+                    const glm::vec3 out = glm::normalize(glm::vec3(std::cos(a), -droop, std::sin(a)));
+                    const glm::vec3 across = glm::normalize(glm::cross(out, glm::vec3(0.0f, 1.0f, 0.0f)));
+                    const glm::vec3 lift = glm::normalize(glm::cross(across, out));
+                    const glm::vec3 middle = glm::vec3(0.0f, y, 0.0f) + out * length * 0.5f;
+                    const uint32_t colour = tint(0.7f, 1.05f);
+                    // The picture's foot at the trunk, its top out at the tip.
+                    Card(mesh, middle, across * length * 0.32f, out * length * 0.5f, Foliage::kNeedles, colour);
+                    Card(mesh, middle, lift * length * 0.22f, out * length * 0.5f, Foliage::kNeedles, colour);
+                }
+            }
+            // And the leader at the top.
+            Card(mesh, {0.0f, 0.98f, 0.0f}, {0.04f, 0.0f, 0.0f}, {0.0f, 0.07f, 0.0f}, Foliage::kNeedles, tint(0.8f, 1.0f));
+            Card(mesh, {0.0f, 0.98f, 0.0f}, {0.0f, 0.0f, 0.04f}, {0.0f, 0.07f, 0.0f}, Foliage::kNeedles, tint(0.8f, 1.0f));
+        }
+        break;
+    case Kind::Shrub:
+    {
+        // Sprays crossed round a low mound.
+        const int clusters = random.Int(6, 9);
+        for (int i = 0; i < clusters; ++i)
+        {
+            glm::vec3 d = Somewhere(random);
+            d.y = std::abs(d.y) * 0.6f + 0.2f;
+            const glm::vec3 at = glm::vec3(0.0f, 0.3f, 0.0f) + glm::normalize(d) * glm::vec3(0.35f, 0.25f, 0.35f) * random.Range(0.3f, 1.0f);
+            const float size = random.Range(0.28f, 0.4f);
+            const glm::vec3 axis = glm::normalize(glm::vec3(0.0f, 1.0f, 0.0f) + Somewhere(random) * 0.5f);
+            const glm::vec3 first = glm::normalize(glm::cross(axis, Somewhere(random)));
+            const uint32_t colour = tint(0.7f, 1.1f);
+            for (int c = 0; c < 2; ++c)
+            {
+                const glm::vec3 right = glm::angleAxis(1.5708f * static_cast<float>(c), axis) * first;
+                Card(mesh, at, right * size, axis * size, Foliage::kBroadDense, colour);
+            }
         }
         break;
     }
     case Kind::Grass:
     {
-        // Blades from one clump, leaning out: thin wedges, each with two faces so it shows from either side.
-        const int blades = random.Int(7, 12);
-        for (int i = 0; i < blades; ++i)
+        // Three tufts crossed, standing.
+        const float turn = random.Range(0.0f, kTau);
+        const uint32_t colour = tint(0.8f, 1.1f);
+        for (int c = 0; c < 3; ++c)
         {
-            const float a = random.Range(0.0f, kTau);
-            const glm::vec3 foot{std::cos(a) * random.Range(0.0f, 0.15f), -0.05f, std::sin(a) * random.Range(0.0f, 0.15f)};
-            const glm::vec3 tip = foot + glm::vec3(std::cos(a) * random.Range(0.1f, 0.35f), random.Range(0.6f, 1.0f), std::sin(a) * random.Range(0.1f, 0.35f));
-            const glm::vec3 side = glm::normalize(glm::vec3(-std::sin(a), 0.0f, std::cos(a))) * random.Range(0.02f, 0.04f);
-            const uint32_t colour = Paint(growth * random.Range(0.75f, 1.05f));
-            Triangle(mesh, foot - side, foot + side, tip, colour);
-            Triangle(mesh, foot + side, foot - side, tip, colour);
+            const float a = turn + 1.0472f * static_cast<float>(c);
+            Card(mesh, {0.0f, 0.45f, 0.0f}, glm::vec3(std::cos(a), 0.0f, std::sin(a)) * 0.55f, {0.0f, 0.5f, 0.0f}, Foliage::kGrass, colour);
         }
         break;
     }

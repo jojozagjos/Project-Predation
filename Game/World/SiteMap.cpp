@@ -297,6 +297,11 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
         crystal.emissive = {0.05f, 0.07f, 0.12f};
         Material basalt = Surfaces::Apply(Material::Diffuse(m_look.rock * 0.55f, 0.9f), "basalt", 3.0f, 0.3f, true);
         Material dead = Material::Diffuse({0.3f, 0.26f, 0.21f}, 0.9f);
+        // Bark, painted on each trunk's vertices; leaves cut out of the foliage atlas.
+        Material wood = Surfaces::Apply(Material::Diffuse({0.75f, 0.7f, 0.65f}, 0.9f), "soil_cliff", 1.2f, 0.25f);
+        Material leaves = Material::Diffuse(glm::vec3(1.0f), 0.7f);
+        leaves.baseColorTexture = Surfaces::FoliageAtlas();
+        leaves.cutout = true;
         const auto materialOf = [&](SiteScatter::Kind kind) -> const Material&
         {
             switch (kind)
@@ -307,17 +312,23 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
             case SiteScatter::Kind::Crystal: return crystal;
             case SiteScatter::Kind::Basalt: return basalt;
             case SiteScatter::Kind::DeadTree: return dead;
+            case SiteScatter::Kind::Tree: return wood;
             default: return plain;
             }
         };
         std::vector<MeshData> shapes(static_cast<size_t>(SiteScatter::Kind::Count) * SiteScatter::kVariants);
+        std::vector<MeshData> foliage(shapes.size());
+        std::vector<bool> made(shapes.size(), false);
         for (const SiteScatter::Item& item : scattered)
         {
-            MeshData& shape = shapes[static_cast<size_t>(item.kind) * SiteScatter::kVariants + static_cast<size_t>(item.variant)];
-            if (shape.vertices.empty())
+            const size_t which = static_cast<size_t>(item.kind) * SiteScatter::kVariants + static_cast<size_t>(item.variant);
+            if (!made[which])
             {
-                shape = SiteScatter::Shape(item.kind, item.variant, seed, growth);
+                shapes[which] = SiteScatter::Shape(item.kind, item.variant, seed, growth);
+                foliage[which] = SiteScatter::Leaves(item.kind, item.variant, seed, growth);
+                made[which] = true;
             }
+            const MeshData& shape = shapes[which];
             const glm::quat turn = glm::angleAxis(item.yaw, glm::vec3(0.0f, 1.0f, 0.0f)) * glm::angleAxis(item.tip, glm::vec3(1.0f, 0.0f, 0.0f));
             MeshData placed = shape;
             for (MeshVertex& vertex : placed.vertices)
@@ -329,7 +340,21 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
             const bool small = item.kind == SiteScatter::Kind::Grass || item.kind == SiteScatter::Kind::Shrub ||
                                (item.kind == SiteScatter::Kind::Boulder && item.scale.y < 0.6f);
             builder.SetShadows(!small);
-            builder.AddMesh("site_scatter", Transform{item.at}, placed, materialOf(item.kind), SiteScatter::Solid(item.kind, item.scale));
+            if (!placed.vertices.empty())
+            {
+                builder.AddMesh("site_scatter", Transform{item.at}, placed, materialOf(item.kind), SiteScatter::Solid(item.kind, item.scale));
+            }
+            if (!foliage[which].vertices.empty())
+            {
+                MeshData leafy = foliage[which];
+                for (MeshVertex& vertex : leafy.vertices)
+                {
+                    vertex.position = turn * (vertex.position * item.scale);
+                    vertex.normal = glm::normalize(turn * (vertex.normal / item.scale));
+                }
+                builder.SetShadows(item.kind == SiteScatter::Kind::Tree);
+                builder.AddMesh("site_foliage", Transform{item.at}, leafy, leaves, false);
+            }
         }
         builder.SetShadows(true);
         PRED_LOG_INFO(Gameplay, "Site scatter: {} things on the ground ({})", scattered.size(), m_look.biome);

@@ -12,7 +12,7 @@ uniform vec4 u_steepParams;      // xyz = its tint, w = repeats a metre (0: none
 uniform vec4 u_surfaceParams;  // x = repeats a metre of the surface set, laid on from every side (0: off); y = how much of its own colour shows; z = natural ground (1) or laid in a grid (0); w = laid on the thing itself (1) or the world (0)
 
 uniform vec4 u_baseColor;       // rgb = albedo
-uniform vec4 u_materialParams;  // x = metallic, y = roughness, z = how much of the mirror it shows
+uniform vec4 u_materialParams;  // x = metallic, y = roughness, z = how much of the mirror it shows, w = 1 cut out (Material::cutout)
 uniform vec4 u_emissive;        // rgb = emissive radiance
 uniform vec4 u_lightDirection;  // xyz = direction towards the light
 uniform vec4 u_lightColor;      // rgb = colour, w = intensity
@@ -552,6 +552,12 @@ void main()
 	{
 		discard;
 	}
+	// A leaf on a card: not there where its picture is not.
+	bool cutout = u_materialParams.w > 0.5;
+	if (cutout && texture2D(s_baseColor, v_texcoord0).a < 0.5)
+	{
+		discard;
+	}
 	vec3 N = normalize(v_normal);
 	// A surface set laid on from every side at once ("triplanar"): sampled across x, y and z by where the point is, and
 	// blended by which way the surface faces, so a box of any size is covered evenly with no coordinates of its own.
@@ -712,6 +718,11 @@ void main()
 		N = normalize(mul(u_model[0], vec4(N, 0.0)).xyz);
 	}
 	vec3 V = normalize(u_cameraPosition.xyz - v_worldPos);
+	// A card is seen from both sides: its back is lit as a front.
+	if (cutout && dot(N, V) < 0.0)
+	{
+		N = -N;
+	}
 	vec3 L = normalize(u_lightDirection.xyz);
 	vec3 H = normalize(L + V);
 
@@ -755,6 +766,11 @@ void main()
 	// Whatever the roof, the wall or the crate in the way is keeping off this surface.
 	float sunReaches = sunReaching(v_worldPos, N, NoL);
 	vec3 color = (diffuse + specular) * radiance * NoL * sunReaches;
+	// And a leaf lit from behind glows with the light through it.
+	if (cutout)
+	{
+		color += diffuseColor * radiance * max(-dot(N, L), 0.0) * 0.35 * sunReaching(v_worldPos, -N, max(-dot(N, L), 0.0));
+	}
 
 	// And the lights that have a place: the torch first, from the list, with its shadow; then either the
 	// lamps of this point's cluster (the main view) or the rest of the list (a mirror, an icon).
