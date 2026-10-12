@@ -16,7 +16,6 @@ namespace
 constexpr float kTau = 6.28318530718f;
 // The map's units for a distance from the star: this times its square root, in astronomical units.
 constexpr float kSpread = 7.0f;
-constexpr float kFov = 0.75f; // radians, up and down
 
 } // namespace
 
@@ -69,16 +68,46 @@ std::vector<SystemMapView::Drawn> SystemMapView::Layout(const StarSystem& system
     return drawn;
 }
 
-glm::vec3 SystemMapView::ShipAt(const std::vector<Drawn>& drawn, int body, const glm::vec3& au)
+glm::vec3 SystemMapView::ShipAt(const StarSystem& system, const std::vector<Drawn>& drawn, double clock, const glm::vec3& au)
 {
-    if (body >= 0 && body < static_cast<int>(drawn.size()))
+    // How far each moon was moved to be drawn, weighed by how near the ship is to it against how far out its orbit is -- and
+    // the planet it goes round, which was not moved, weighed the same: so near a moon the ship goes where the moon is drawn,
+    // near its planet where the planet is, and between them, between; far from both, nowhere it is not.
+    glm::vec3 moved{0.0f};
+    float weights = 0.05f;
+    for (const Body& body : system.bodies)
     {
-        // Just off its sunward side, so it reads as being at that body rather than inside it.
-        const Drawn& at = drawn[static_cast<size_t>(body)];
-        const glm::vec3 sunward = glm::length(at.at) > 1.0e-4f ? -glm::normalize(at.at) : glm::vec3(1.0f, 0.0f, 0.0f);
-        return at.at + (sunward + glm::vec3(0.0f, 0.6f, 0.0f)) * (at.radius + 0.25f);
+        if (body.kind != BodyKind::Moon || body.parent < 0 || body.index >= static_cast<int>(drawn.size()))
+        {
+            continue;
+        }
+        const glm::vec3 moon = system.Position(body.index, clock);
+        const glm::vec3 planet = system.Position(body.parent, clock);
+        const float reach = std::max(glm::length(moon - planet), 1.0e-6f);
+        const auto weight = [&](const glm::vec3& at)
+        {
+            const float apart = glm::length(au - at) / reach;
+            return std::exp(-2.0f * apart * apart);
+        };
+        const float toMoon = weight(moon);
+        moved += (drawn[static_cast<size_t>(body.index)].at - Place(moon)) * toMoon;
+        weights += toMoon + weight(planet);
     }
-    return Place(au);
+    glm::vec3 at = Place(au) + moved / weights;
+    // Outside every disc: the drawn bodies are far larger than life.
+    for (const Drawn& body : drawn)
+    {
+        const float clear = body.radius * 1.35f;
+        const glm::vec3 from = at - body.at;
+        if (body.index < 0 || glm::length(from) >= clear)
+        {
+            continue;
+        }
+        glm::vec3 way = au - system.Position(body.index, clock);
+        way = glm::length(from) > 1.0e-4f ? from : glm::length(way) > 1.0e-9f ? way : glm::vec3(0.0f, 1.0f, 0.0f);
+        at = body.at + glm::normalize(way) * clear;
+    }
+    return at;
 }
 
 std::vector<glm::vec3> SystemMapView::Orbit(const StarSystem& system, int body, const std::vector<Drawn>& drawn, double clock, int points)
@@ -161,7 +190,7 @@ void SystemMapView::FaceFrom(const glm::vec3& direction)
 
 float SystemMapView::PixelSize(float height) const
 {
-    return 2.0f * m_distance * std::tan(kFov * 0.5f) / std::max(height, 1.0f);
+    return 2.0f * m_distance * std::tan(kFieldOfView * 0.5f) / std::max(height, 1.0f);
 }
 
 void SystemMapView::SetLimits(float nearest, float furthest)
@@ -223,7 +252,7 @@ glm::mat4 SystemMapView::Projection(float aspect, bool homogeneousDepth) const
 {
     const float nearPlane = std::max(m_distance * 0.01f, 0.005f);
     const float farPlane = std::max(4000.0f, m_distance * 20.0f);
-    return homogeneousDepth ? glm::perspectiveRH_NO(kFov, aspect, nearPlane, farPlane) : glm::perspectiveRH_ZO(kFov, aspect, nearPlane, farPlane);
+    return homogeneousDepth ? glm::perspectiveRH_NO(kFieldOfView, aspect, nearPlane, farPlane) : glm::perspectiveRH_ZO(kFieldOfView, aspect, nearPlane, farPlane);
 }
 
 glm::vec3 SystemMapView::Right() const
@@ -264,7 +293,7 @@ int SystemMapView::Pick(const glm::vec2& point, const std::vector<Drawn>& drawn,
         }
         // How big it is on the picture, with a little to spare so a small one can be clicked.
         const float depth = glm::length(body.at - eye);
-        const float across = body.radius / std::max(depth * std::tan(kFov * 0.5f), 1.0e-4f) * 0.5f;
+        const float across = body.radius / std::max(depth * std::tan(kFieldOfView * 0.5f), 1.0e-4f) * 0.5f;
         // A small one can be clicked from a little way off: never less than about twenty pixels on a picture 900 high.
         const float reach = std::max(across * 1.3f, 0.024f);
         glm::vec2 off = point - centre;

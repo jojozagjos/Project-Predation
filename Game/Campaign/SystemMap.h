@@ -30,14 +30,18 @@ public:
     };
 
     static constexpr float kStarRadius = 1.4f;
+    // The map camera's field of view, up and down (radians).
+    static constexpr float kFieldOfView = 0.75f;
 
     // Where a point of the system (astronomical units from the star) is drawn.
     static glm::vec3 Place(const glm::vec3& au);
     static float DrawnRadius(const Body& body);
     // Every body of a system where it is at `clock`.
     static std::vector<Drawn> Layout(const StarSystem& system, double clock);
-    // Where the ship is drawn: on its body, if it is at one (just outside it), or where it is.
-    static glm::vec3 ShipAt(const std::vector<Drawn>& drawn, int body, const glm::vec3& au);
+    // Where the ship is drawn, from where it really is: moved as the bodies near it were moved to be drawn (a moon is drawn
+    // much further out from its planet than it is, and a ship at the moon goes with it), and never inside a body's disc --
+    // just outside it, the way it really is from it.
+    static glm::vec3 ShipAt(const StarSystem& system, const std::vector<Drawn>& drawn, double clock, const glm::vec3& au);
     // The drawn orbit of a body as a loop of points, for drawing as lines.
     static std::vector<glm::vec3> Orbit(const StarSystem& system, int body, const std::vector<Drawn>& drawn, double clock, int points);
 

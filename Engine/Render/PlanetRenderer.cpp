@@ -1,11 +1,13 @@
 #include "Engine/Render/PlanetRenderer.h"
 
 #include "Engine/Core/Log.h"
+#include "Engine/Render/Renderer.h"
 #include "Engine/Render/ShaderLibrary.h"
 
 #include <glm/geometric.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 
@@ -19,6 +21,13 @@ constexpr int kRings = 48;    // the sphere's rings from pole to pole
 constexpr int kSegments = 96; // and its segments round
 constexpr int kRingSegments = 160;
 constexpr float kTau = 6.28318530718f;
+// A body's face baked: longitude across, from the pole down; a strip of rows a frame; a body this many pixels across or
+// more drawn from it; at most so many kept (the least lately wanted let go).
+constexpr int kBakeWidth = 2048;
+constexpr int kBakeHeight = 1024;
+constexpr int kBakeStrip = 128;
+constexpr float kBakedFrom = 48.0f;
+constexpr size_t kBakedKept = 6;
 
 } // namespace
 
@@ -26,6 +35,9 @@ bool PlanetRenderer::Init(ShaderLibrary& shaders)
 {
     m_program = shaders.LoadProgram("vs_planet", "fs_planet");
     m_lineProgram = shaders.LoadProgram("vs_debug", "fs_debug");
+    m_bakeProgram = shaders.LoadProgram("vs_planet_bake", "fs_planet_bake");
+    m_sSurface = bgfx::createUniform("s_planetSurface", bgfx::UniformType::Sampler);
+    m_sDetail = bgfx::createUniform("s_planetDetail", bgfx::UniformType::Sampler);
     if (!bgfx::isValid(m_program))
     {
         PRED_LOG_WARN(Render, "PlanetRenderer: no planet program; the system map will be empty");
@@ -82,7 +94,12 @@ bool PlanetRenderer::Init(ShaderLibrary& shaders)
 
 void PlanetRenderer::Shutdown()
 {
-    for (bgfx::UniformHandle* handle : {&m_uA, &m_uB, &m_uC, &m_uD, &m_uE, &m_uLight, &m_uLightColor, &m_uMode, &m_uEye})
+    for (Baked& baked : m_baked)
+    {
+        Forget(baked);
+    }
+    m_baked.clear();
+    for (bgfx::UniformHandle* handle : {&m_uA, &m_uB, &m_uC, &m_uD, &m_uE, &m_uLight, &m_uLightColor, &m_uMode, &m_uEye, &m_sSurface, &m_sDetail})
     {
         if (bgfx::isValid(*handle))
         {
@@ -103,12 +120,119 @@ void PlanetRenderer::Shutdown()
     // The programs belong to the shader library.
     m_program = BGFX_INVALID_HANDLE;
     m_lineProgram = BGFX_INVALID_HANDLE;
+    m_bakeProgram = BGFX_INVALID_HANDLE;
 }
 
-void PlanetRenderer::SetCamera(const glm::vec3& eye, float exposure)
+void PlanetRenderer::SetCamera(const glm::vec3& eye, float exposure, float pixelsPerRadian)
 {
     m_eye = eye;
     m_exposure = exposure;
+    m_pixelsPerRadian = pixelsPerRadian;
+}
+
+void PlanetRenderer::NewFrame()
+{
+    ++m_frame;
+    m_bakedThisFrame = false;
+}
+
+void PlanetRenderer::Forget(Baked& baked)
+{
+    // The target owns its two maps.
+    if (bgfx::isValid(baked.target))
+    {
+        bgfx::destroy(baked.target);
+    }
+    baked.target = BGFX_INVALID_HANDLE;
+    baked.surface = BGFX_INVALID_HANDLE;
+    baked.detail = BGFX_INVALID_HANDLE;
+}
+
+PlanetRenderer::Baked* PlanetRenderer::BakedFor(const PlanetLook& look)
+{
+    if (!bgfx::isValid(m_bakeProgram))
+    {
+        return nullptr;
+    }
+    // Which look it is: the numbers that make its face (not its rings, nor its air's colour, which are drawn over it every
+    // frame -- but how much air, which decides its craters).
+    const float numbers[] = {look.groundA.x, look.groundA.y, look.groundA.z, look.groundB.x, look.groundB.y, look.groundB.z, look.ocean.x,
+                             look.ocean.y, look.ocean.z, look.oceanAmount, look.ice, look.clouds, look.cloudColor.x, look.cloudColor.y,
+                             look.cloudColor.z, look.air, look.gas ? 1.0f : 0.0f, look.seed};
+    uint64_t key = 1469598103934665603ull;
+    for (const float number : numbers)
+    {
+        uint32_t bits = 0;
+        std::memcpy(&bits, &number, sizeof(bits));
+        key = (key ^ bits) * 1099511628211ull;
+    }
+    auto found = std::find_if(m_baked.begin(), m_baked.end(), [&](const Baked& baked) { return baked.key == key; });
+    if (found == m_baked.end())
+    {
+        // Somebody new: room made for it, and its two maps made, mipmapped so it is as smooth far off as near.
+        if (m_baked.size() >= kBakedKept)
+        {
+            auto oldest = std::min_element(m_baked.begin(), m_baked.end(), [](const Baked& a, const Baked& b) { return a.wanted < b.wanted; });
+            Forget(*oldest);
+            m_baked.erase(oldest);
+        }
+        Baked baked;
+        baked.key = key;
+        const uint64_t flags = BGFX_TEXTURE_RT | BGFX_SAMPLER_V_CLAMP;
+        baked.surface = bgfx::createTexture2D(kBakeWidth, kBakeHeight, true, 1, bgfx::TextureFormat::RGBA8, flags);
+        baked.detail = bgfx::createTexture2D(kBakeWidth, kBakeHeight, true, 1, bgfx::TextureFormat::RGBA16F, flags);
+        if (!bgfx::isValid(baked.surface) || !bgfx::isValid(baked.detail))
+        {
+            return nullptr;
+        }
+        bgfx::Attachment attachments[2];
+        attachments[0].init(baked.surface);
+        attachments[1].init(baked.detail);
+        baked.target = bgfx::createFrameBuffer(2, attachments, true);
+        m_baked.push_back(baked);
+        found = m_baked.end() - 1;
+    }
+    found->wanted = m_frame;
+    if (found->rows < kBakeHeight && !m_bakedThisFrame)
+    {
+        BakeStrip(*found, look);
+        m_bakedThisFrame = true;
+    }
+    return &*found;
+}
+
+void PlanetRenderer::BakeStrip(Baked& baked, const PlanetLook& look)
+{
+    if (bgfx::getAvailTransientVertexBuffer(6, m_layout) < 6)
+    {
+        return;
+    }
+    const bgfx::ViewId view = Renderer::kViewPlanetBake;
+    bgfx::setViewFrameBuffer(view, baked.target);
+    bgfx::setViewRect(view, 0, 0, kBakeWidth, kBakeHeight);
+    bgfx::setViewClear(view, BGFX_CLEAR_NONE, 0, 1.0f, 0);
+    // Over the whole of the maps, the first row at the top of the picture -- however the texture's rows run.
+    const bool bottomUp = bgfx::getCaps()->originBottomLeft;
+    bgfx::TransientVertexBuffer quad;
+    bgfx::allocTransientVertexBuffer(&quad, 6, m_layout);
+    const glm::vec2 corners[4] = {{-1.0f, -1.0f}, {1.0f, -1.0f}, {1.0f, 1.0f}, {-1.0f, 1.0f}};
+    const int order[6] = {0, 1, 2, 0, 2, 3};
+    auto* out = reinterpret_cast<Vertex*>(quad.data);
+    for (int i = 0; i < 6; ++i)
+    {
+        const glm::vec2 c = corners[order[i]];
+        const float v = bottomUp ? 0.5f + c.y * 0.5f : 0.5f - c.y * 0.5f;
+        out[i] = {c.x, c.y, 0.0f, 0.0f, 0.0f, 1.0f, 0.5f + c.x * 0.5f, v};
+    }
+    SetLook(look, glm::vec3(0.0f, 1.0f, 0.0f), glm::vec3(1.0f), 0.0f, 0.0f);
+    const int first = baked.rows;
+    const int y = bottomUp ? kBakeHeight - first - kBakeStrip : first;
+    bgfx::setScissor(0, static_cast<uint16_t>(std::max(y, 0)), kBakeWidth, kBakeStrip);
+    bgfx::setVertexBuffer(0, &quad);
+    bgfx::setState(BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A);
+    bgfx::submit(view, m_bakeProgram);
+    baked.rows += kBakeStrip;
+    baked.doneFrame = m_frame;
 }
 
 void PlanetRenderer::SetOutput(bool linear, uint64_t depthTest)
@@ -117,8 +241,7 @@ void PlanetRenderer::SetOutput(bool linear, uint64_t depthTest)
     m_depthTest = depthTest;
 }
 
-void PlanetRenderer::SetLook(const PlanetLook& look, const glm::vec3& towardsLight, const glm::vec3& lightColor, float mode,
-                             float highlight, float drift)
+void PlanetRenderer::SetLook(const PlanetLook& look, const glm::vec3& towardsLight, const glm::vec3& lightColor, float mode, float drift)
 {
     const glm::vec4 a{look.groundA, look.oceanAmount};
     const glm::vec4 b{look.groundB, look.ice};
@@ -127,7 +250,7 @@ void PlanetRenderer::SetLook(const PlanetLook& look, const glm::vec3& towardsLig
     const glm::vec4 e{mode > 2.5f ? look.ringColor : look.airColor, look.air};
     const glm::vec4 light{glm::length(towardsLight) > 0.0f ? glm::normalize(towardsLight) : glm::vec3(0.0f, 1.0f, 0.0f), 1.6f};
     const glm::vec4 colour{lightColor, m_linear ? 1.0f : 0.0f};
-    const glm::vec4 modeVec{mode, look.seed, drift, highlight};
+    const glm::vec4 modeVec{mode, look.seed, drift, 0.0f};
     const glm::vec4 eye{m_eye, m_exposure};
     bgfx::setUniform(m_uA, glm::value_ptr(a));
     bgfx::setUniform(m_uB, glm::value_ptr(b));
@@ -141,13 +264,25 @@ void PlanetRenderer::SetLook(const PlanetLook& look, const glm::vec3& towardsLig
 }
 
 void PlanetRenderer::Body(bgfx::ViewId view, const glm::mat4& model, const PlanetLook& look, const glm::vec3& towardsLight,
-                          const glm::vec3& lightColor, float highlight, float drift)
+                          const glm::vec3& lightColor, float drift)
 {
     if (!IsValid())
     {
         return;
     }
-    SetLook(look, towardsLight, lightColor, 0.0f, highlight, drift);
+    // How many pixels across it is: big enough, and it is drawn from its baked face once that is all there (and was finished
+    // on an earlier frame than this, since this frame's strip is drawn after it).
+    const float radius = glm::length(glm::vec3(model[0]));
+    const float distance = glm::length(glm::vec3(model[3]) - m_eye);
+    const float across = 2.0f * std::asin(std::clamp(radius / std::max(distance, 1.0e-6f), 0.0f, 1.0f)) * m_pixelsPerRadian;
+    const Baked* baked = across >= kBakedFrom ? BakedFor(look) : nullptr;
+    const bool fromMaps = baked != nullptr && baked->rows >= kBakeHeight && baked->doneFrame < m_frame;
+    SetLook(look, towardsLight, lightColor, fromMaps ? 4.0f : 0.0f, drift);
+    if (fromMaps)
+    {
+        bgfx::setTexture(0, m_sSurface, baked->surface, BGFX_SAMPLER_V_CLAMP);
+        bgfx::setTexture(1, m_sDetail, baked->detail, BGFX_SAMPLER_V_CLAMP);
+    }
     bgfx::setTransform(glm::value_ptr(model));
     bgfx::setVertexBuffer(0, m_sphereVertices);
     bgfx::setIndexBuffer(m_sphereIndices);
@@ -166,7 +301,7 @@ void PlanetRenderer::Star(bgfx::ViewId view, bgfx::ViewId glowView, const glm::v
     PlanetLook none;
     glm::mat4 model(radius);
     model[3] = glm::vec4(at, 1.0f);
-    SetLook(none, glm::vec3(0.0f, 1.0f, 0.0f), color, 1.0f, 0.0f, time);
+    SetLook(none, glm::vec3(0.0f, 1.0f, 0.0f), color, 1.0f, time);
     bgfx::setTransform(glm::value_ptr(model));
     bgfx::setVertexBuffer(0, m_sphereVertices);
     bgfx::setIndexBuffer(m_sphereIndices);
@@ -192,7 +327,7 @@ void PlanetRenderer::Star(bgfx::ViewId view, bgfx::ViewId glowView, const glm::v
         const glm::vec3& p = corners[order[i]];
         out[i] = {p.x, p.y, p.z, 0.0f, 0.0f, 1.0f, uvs[order[i]].x, uvs[order[i]].y};
     }
-    SetLook(none, glm::vec3(0.0f, 1.0f, 0.0f), color, 2.0f, 0.0f, time);
+    SetLook(none, glm::vec3(0.0f, 1.0f, 0.0f), color, 2.0f, time);
     const glm::mat4 identity(1.0f);
     bgfx::setTransform(glm::value_ptr(identity));
     bgfx::setVertexBuffer(0, &quad);
@@ -230,7 +365,7 @@ void PlanetRenderer::Rings(bgfx::ViewId view, const glm::mat4& model, const Plan
             out[i * 6 + k] = {q.x, q.y, q.z, 0.0f, 1.0f, 0.0f, t[order[k]], 0.0f};
         }
     }
-    SetLook(look, towardsLight, lightColor, 3.0f, 0.0f, 0.0f);
+    SetLook(look, towardsLight, lightColor, 3.0f, 0.0f);
     bgfx::setTransform(glm::value_ptr(model));
     bgfx::setVertexBuffer(0, &strip);
     bgfx::setState(BGFX_STATE_WRITE_RGB | m_depthTest | BGFX_STATE_BLEND_ALPHA | BGFX_STATE_MSAA);

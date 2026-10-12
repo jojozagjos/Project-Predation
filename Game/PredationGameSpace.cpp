@@ -352,7 +352,7 @@ void PredationGame::DrawSpaceBodies()
     const glm::mat4 projection = Depth::Perspective(m_renderVerticalFov, m_renderAspect, 1.0e-3f, 4.0e6f);
     bgfx::setViewTransform(Renderer::kViewSkyBodies, glm::value_ptr(view), glm::value_ptr(projection));
     m_planets.SetOutput(true, Depth::Test());
-    m_planets.SetCamera(glm::vec3(0.0f), 1.0f);
+    m_planets.SetCamera(glm::vec3(0.0f), 1.0f, static_cast<float>(renderer.Height()) / std::max(m_renderVerticalFov, 0.1f));
     const float time = static_cast<float>(std::fmod(m_campaign.clock, 100000.0));
     const glm::mat4 turn(m_spaceToWorld);
     // Lit as everything else in the picture is: a surface gives back its colour over pi of the light falling on it (the
@@ -377,7 +377,7 @@ void PredationGame::DrawSpaceBodies()
         const glm::vec3 there = system->Position(body->index, m_campaign.clock);
         const glm::vec3 towardsStar = glm::length(there) > 1.0e-9f ? glm::normalize(m_spaceToWorld * -there) : glm::vec3(0.0f, 1.0f, 0.0f);
         const PlanetLook look = LookOf(*body);
-        m_planets.Body(Renderer::kViewSkyBodies, model, look, towardsStar, light, 0.0f, time * 0.02f);
+        m_planets.Body(Renderer::kViewSkyBodies, model, look, towardsStar, light, time * 0.02f);
         m_planets.Rings(Renderer::kViewSkyBodies, rings, look, towardsStar, light);
     }
     // Back as the map wants it.

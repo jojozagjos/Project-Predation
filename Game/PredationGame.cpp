@@ -10894,6 +10894,8 @@ void PredationGame::OnRender()
         return;
     }
 
+    // A new frame for the planets: at most one more strip of one body's face baked (PlanetRenderer).
+    m_planets.NewFrame();
     // The system map into its own target, before the UI that shows it.
     RenderSystemMap();
 

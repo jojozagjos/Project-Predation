@@ -821,7 +821,7 @@ void PredationGame::RenderSystemMap()
         bgfx::setViewClear(id, id == sky ? (BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH) : BGFX_CLEAR_NONE, 0x000000ff, 1.0f, 0);
         bgfx::touch(id);
     }
-    m_planets.SetCamera(m_mapView.Eye(), 1.0f);
+    m_planets.SetCamera(m_mapView.Eye(), 1.0f, static_cast<float>(height) / SystemMapView::kFieldOfView);
     m_planets.SetOutput(false, BGFX_STATE_DEPTH_TEST_LESS);
     const StarSystem* shown = m_mapLevel == MapLevel::Galaxy ? nullptr : m_universe.System(m_mapSystem);
     if (m_mapLevel == MapLevel::Galaxy || shown == nullptr)
@@ -999,10 +999,9 @@ void PredationGame::RenderMapSystem(const StarSystem& system, bgfx::ViewId sky, 
         system.SunOver(body.index, m_campaign.clock, &spin);
         model = glm::rotate(model, spin, glm::vec3(0.0f, 1.0f, 0.0f));
         model = glm::scale(model, glm::vec3(at.radius));
-        const float highlight = body.index == m_mapSelected ? 1.0f : body.index == m_mapHovered ? 0.55f : 0.0f;
         const glm::vec3 towardsStar = glm::length(at.at) > 1.0e-4f ? -glm::normalize(at.at) : glm::vec3(0.0f, 1.0f, 0.0f);
         const PlanetLook look = LookOf(body);
-        m_planets.Body(bodies, model, look, towardsStar, system.starColor, highlight, time * 0.02f);
+        m_planets.Body(bodies, model, look, towardsStar, system.starColor, time * 0.02f);
         m_planets.Rings(glow, ringModel, look, towardsStar, system.starColor);
 
         // Its orbit: faint, brighter for the one picked out.
@@ -1019,13 +1018,15 @@ void PredationGame::RenderMapSystem(const StarSystem& system, bgfx::ViewId sky, 
     if (ours && m_campaign.travel.underway && m_campaign.travel.target >= 0)
     {
         const std::vector<glm::vec3> path = Travel::Preview(m_campaign, system, DriveTier(), 48);
+        // Drawn as the ship is (ShipAt), so it starts at the ship and does not cut through a planet drawn larger than life.
+        const auto drawnAt = [&](const glm::vec3& au) { return SystemMapView::ShipAt(system, drawn, m_campaign.clock, au); };
         for (size_t i = 1; i < path.size(); i += 2)
         {
-            m_planets.Line(SystemMapView::Place(path[i - 1]), SystemMapView::Place(path[i]), Abgr(236, 156, 64, 220));
+            m_planets.Line(drawnAt(path[i - 1]), drawnAt(path[i]), Abgr(236, 156, 64, 220));
         }
         if (!path.empty())
         {
-            m_planets.Line(SystemMapView::Place(path.back()), drawn[static_cast<size_t>(m_campaign.travel.target)].at, Abgr(236, 156, 64, 220));
+            m_planets.Line(drawnAt(path.back()), drawn[static_cast<size_t>(m_campaign.travel.target)].at, Abgr(236, 156, 64, 220));
         }
     }
 }
@@ -1051,7 +1052,7 @@ void PredationGame::RenderMapBody(const StarSystem& system, bgfx::ViewId sky, bg
     // The globe in its own frame, still; the sun goes round it.
     const PlanetLook look = LookOf(*body);
     const float time = static_cast<float>(std::fmod(m_campaign.clock, 100000.0));
-    m_planets.Body(bodies, glm::mat4(1.0f), look, sun, system.starColor, 0.0f, time * 0.02f);
+    m_planets.Body(bodies, glm::mat4(1.0f), look, sun, system.starColor, time * 0.02f);
     m_planets.Rings(glow, glm::mat4(1.0f), look, sun, system.starColor);
 
     // Lines of latitude and longitude, faint; the line between day and night, warmer.
@@ -1757,7 +1758,7 @@ void PredationGame::DrawSystemMap()
                                               : "in orbit";
                 LabelUnder(draw, point, r + 8.0f, kShipColour, "YOUR SHIP", kDim, doing, tiny, tiny);
             }
-            const glm::vec3 ship = SystemMapView::ShipAt(drawn, -1, Travel::ShipPosition(m_campaign, *shown));
+            const glm::vec3 ship = SystemMapView::ShipAt(*shown, drawn, m_campaign.clock, Travel::ShipPosition(m_campaign, *shown));
             if (at == nullptr && toScreen(ship, point))
             {
                 glm::vec2 way{0.0f, -1.0f};
@@ -1766,25 +1767,6 @@ void PredationGame::DrawSystemMap()
                     std::hypot(ahead.x - point.x, ahead.y - point.y) > 1.0f)
                 {
                     way = glm::normalize(glm::vec2(ahead.x - point.x, ahead.y - point.y));
-                }
-                // The bodies are drawn far larger than life, so a ship just setting out from one or settling into orbit of one is
-                // well inside its disc: pushed out to just beyond the disc's edge, the way the ship really is from it.
-                for (const SystemMapView::Drawn& body : drawn)
-                {
-                    ImVec2 middle;
-                    ImVec2 edge;
-                    if (!toScreen(body.at, middle) || !toScreen(body.at + shot.Up() * body.radius, edge))
-                    {
-                        continue;
-                    }
-                    const float r = std::hypot(edge.x - middle.x, edge.y - middle.y);
-                    const glm::vec2 from{point.x - middle.x, point.y - middle.y};
-                    const float apart = glm::length(from);
-                    if (apart < r + 14.0f)
-                    {
-                        const glm::vec2 out = apart > 0.5f ? from / apart : glm::vec2(-1.0f, 0.0f);
-                        point = {middle.x + out.x * (r + 16.0f), middle.y + out.y * (r + 16.0f)};
-                    }
                 }
                 draw->AddCircle(point, 11.0f, Faded(kShipColour, 0.5f), 0, 1.0f);
                 ShipMark(draw, point, way, 6.0f, kShipColour);

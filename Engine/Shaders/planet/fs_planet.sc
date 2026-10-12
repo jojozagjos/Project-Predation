@@ -11,8 +11,21 @@ uniform vec4 u_planetD;          // cloud colour, 1 for a gas giant
 uniform vec4 u_planetE;          // the air's colour, how much air
 uniform vec4 u_planetLight;      // xyz towards the light, w how bright
 uniform vec4 u_planetLightColor; // rgb the light's colour (a star's own, for a star), w 1 for linear light (the world's picture)
-uniform vec4 u_planetMode;       // x what is drawn (0 body, 1 star, 2 glow, 3 rings), y seed, z cloud drift, w highlight
+uniform vec4 u_planetMode;       // x what is drawn (0 body, 1 star, 2 glow, 3 rings, 4 body from its baked maps), y seed, z cloud drift
 uniform vec4 u_planetEye;        // xyz where the camera is, w exposure
+// A body's face baked (fs_planet_bake): colour (square-rooted) and open water; the ground's tip and the cloud.
+SAMPLER2D(s_planetSurface, 0);
+SAMPLER2D(s_planetDetail, 1);
+
+// Where a direction on the body is in its baked maps -- longitude across, from the pole down -- taking whichever of two
+// longitudes runs on smoothly here, so the line where it wraps round does not show (Tarini's trick).
+vec2 BakedAt(vec3 d)
+{
+	float u = atan2(d.z, d.x) / 6.28318530718 + 0.5;
+	float other = fract(u + 0.5) - 0.5;
+	u = fwidth(u) <= fwidth(other) + 0.001 ? u : other;
+	return vec2(u, acos(clamp(d.y, -1.0, 1.0)) / 3.14159265359);
+}
 
 vec3 Develop(vec3 colour)
 {
@@ -30,7 +43,7 @@ void main()
 {
 	float mode = u_planetMode.x;
 	vec3 V = normalize(u_planetEye.xyz - v_worldPos);
-	if (mode > 2.5)
+	if (mode > 2.5 && mode < 3.5)
 	{
 		// Rings: banded across their width, thin at both edges, lit from whichever side the star is on.
 		float t = v_texcoord0.x;
@@ -42,7 +55,7 @@ void main()
 		gl_FragColor = vec4(Develop(colour), alpha);
 		return;
 	}
-	if (mode > 1.5)
+	if (mode > 1.5 && mode < 2.5)
 	{
 		// The corona round a star, on a square facing the camera: tight to the disc, faint streamers out from it, and a
 		// soft glow beyond that falls off fast -- not a fog over the inner planets.
@@ -57,7 +70,7 @@ void main()
 	}
 	vec3 n = normalize(v_objectPos);
 	vec3 N = normalize(v_normal);
-	if (mode > 0.5)
+	if (mode > 0.5 && mode < 1.5)
 	{
 		// A star: its surface a boil of small cells, a spot or two, and its limb darker and redder than its middle --
 		// the way a real one looks through a filter, and white hot in the middle.
@@ -76,15 +89,33 @@ void main()
 	}
 
 	float sea = 0.0;
-	// Cratered as far as it has no air to speak of to wear them away; a gas giant has no ground.
-	float craters = u_planetD.w > 0.5 ? 0.0 : 1.0 - smoothstep(0.02, 0.15, u_planetE.w);
-	vec4 surface = PlanetAlbedo(n, u_planetA, u_planetB, u_planetC, u_planetD, u_planetMode.y, u_planetMode.z, craters, sea);
+	vec4 surface;
+	vec3 bumped;
+	if (mode > 3.5)
+	{
+		// Read from its maps: the same as worked out below, at a fraction of the cost.
+		vec4 ground = texture2D(s_planetSurface, BakedAt(n));
+		vec4 tip = texture2D(s_planetDetail, BakedAt(n));
+		float drift = u_planetMode.z;
+		vec3 m = vec3(n.x * cos(drift) - n.z * sin(drift), n.y, n.x * sin(drift) + n.z * cos(drift));
+		surface = vec4(ground.rgb * ground.rgb, texture2D(s_planetDetail, BakedAt(m)).z);
+		sea = ground.a;
+		vec3 t1 = normalize(cross(n, abs(n.y) < 0.99 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0)));
+		vec3 t2 = cross(n, t1);
+		bumped = normalize(n + t1 * tip.x + t2 * tip.y);
+	}
+	else
+	{
+		// Cratered as far as it has no air to speak of to wear them away; a gas giant has no ground.
+		float craters = u_planetD.w > 0.5 ? 0.0 : 1.0 - smoothstep(0.02, 0.15, u_planetE.w);
+		surface = PlanetAlbedo(n, u_planetA, u_planetB, u_planetC, u_planetD, u_planetMode.y, u_planetMode.z, craters, sea);
+		// The lie of the land in the light (exact when the body is drawn unturned, as the globe view draws it).
+		bumped = PlanetBump(n, u_planetA, u_planetD, u_planetMode.y, 1.0, craters);
+	}
 	vec3 L = normalize(u_planetLight.xyz);
 	float facing = dot(N, L);
 	// A soft edge between day and night: an atmosphere carries a little light round it.
 	float lit = smoothstep(-0.1, 0.3, facing);
-	// The lie of the land in the light (exact when the body is drawn unturned, as the globe view draws it).
-	vec3 bumped = PlanetBump(n, u_planetA, u_planetD, u_planetMode.y, 1.0, craters);
 	vec3 bumpedN = normalize(N + (bumped - n));
 	float relief = clamp(1.0 + (dot(bumpedN, L) - facing) * 1.8, 0.5, 1.45);
 	vec3 albedo = mix(surface.rgb * relief, u_planetD.rgb, surface.w);
@@ -97,7 +128,5 @@ void main()
 	// The air at the edge, on the lit side and a little past it.
 	float edge = pow(1.0 - max(dot(N, V), 0.0), 3.0);
 	colour += u_planetE.rgb * u_planetE.w * edge * (smoothstep(-0.3, 0.3, facing) + 0.02) * light * 0.9;
-	// Picked out: an amber rim.
-	colour += vec3(1.0, 0.6, 0.22) * pow(1.0 - max(dot(N, V), 0.0), 2.0) * u_planetMode.w * 0.9;
 	gl_FragColor = vec4(Develop(colour), 1.0);
 }
