@@ -37,9 +37,11 @@ public:
     // The sun again, over only the few metres round the player, so the shadows you look at closely
     // are sharp while the far map reaches out to the shadow distance.
     static constexpr bgfx::ViewId kViewSunNearShadow = 1;
-    static constexpr bgfx::ViewId kViewSkyShadow = 2;
+    // And once more, coarse, over the whole of a site: so a shadow far off is still there, not cut off at a line.
+    static constexpr bgfx::ViewId kViewSunFarShadow = 2;
+    static constexpr bgfx::ViewId kViewSkyShadow = 3;
     // The torch's own depth map, so a cone light is stopped by walls like everything else.
-    static constexpr bgfx::ViewId kViewSpotShadow = 3;
+    static constexpr bgfx::ViewId kViewSpotShadow = 4;
     // The sky gets a view of its own rather than being the first thing submitted to the main one.
     // bgfx sorts the draws inside a view to save state changes, so "submitted first" is not
     // "drawn first" -- the sky came out over the top of the world. Views run in id order, and that
@@ -50,21 +52,21 @@ public:
     //
     // After the depth maps, because the reflection is lit and wants the same occlusion the world
     // does, and before the world, because the world reads what it writes.
-    static constexpr bgfx::ViewId kViewReflectionSky = 4;
-    static constexpr bgfx::ViewId kViewReflection = 5;
+    static constexpr bgfx::ViewId kViewReflectionSky = 5;
+    static constexpr bgfx::ViewId kViewReflection = 6;
     // The world first, then the sky only where none of it was drawn, then -- out in space -- the planets and moons in the sky:
     // real bodies drawn over the sky and behind the world, from a camera that only turns as the eye does (their distances are
     // far beyond anything the world's camera could see). Drawn before the world, the sky and the bodies were worked out for
     // every pixel of the picture and then covered: a world filling the windscreen cost several milliseconds a frame behind
     // the cockpit's walls.
-    static constexpr bgfx::ViewId kViewMain = 6;
-    static constexpr bgfx::ViewId kViewSky = 7;
-    static constexpr bgfx::ViewId kViewSkyBodies = 8;
-    static constexpr bgfx::ViewId kViewDebug = 9;
+    static constexpr bgfx::ViewId kViewMain = 7;
+    static constexpr bgfx::ViewId kViewSky = 8;
+    static constexpr bgfx::ViewId kViewSkyBodies = 9;
+    static constexpr bgfx::ViewId kViewDebug = 10;
     // Post-processing (PostProcess): the glow's chain of smaller and smaller copies and back, then the
     // finished picture onto the screen, before the interface.
-    static constexpr bgfx::ViewId kViewPostFirst = 10;
-    static constexpr bgfx::ViewId kViewPost = 19;
+    static constexpr bgfx::ViewId kViewPostFirst = 11;
+    static constexpr bgfx::ViewId kViewPost = 20;
     // The lamps' shadows, a few faces a frame into their atlas. After the picture, not before it: what is
     // drawn here is used from the next frame, which is what a shadow drawn once and kept wants anyway.
     static constexpr bgfx::ViewId kViewLampShadowFirst = 120;

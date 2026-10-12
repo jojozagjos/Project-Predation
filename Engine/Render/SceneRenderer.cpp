@@ -59,6 +59,13 @@ constexpr uint16_t kSkyShadowSize = 512;
 // twenty-four metres is about a centimetre each, whatever the shadow distance is set to, so turning
 // that up for the far shadows no longer coarsens the near ones. That is what made them pixelated again.
 constexpr uint16_t kSunNearShadowSize = 2048;
+// And over a whole site: 2048 texels across 720 m, a texel a third of a metre -- coarse, but what it is for is the
+// shadow of a building, a ridge or the ship two hundred metres off, which ended at a line where the main map ran out
+// (r.shadow_distance). Only things big enough for a shadow that size to show go into it.
+constexpr uint16_t kSunFarShadowSize = 2048;
+constexpr float kSunFarDistance = 360.0f;
+constexpr float kSunFarDepthRange = 1500.0f;
+constexpr float kSunFarSmallest = 1.5f;
 constexpr float kSunNearDistance = 12.0f;
 // The torch's. Smaller than the sun's, because a cone covers far less world: a 70 degree beam at 14
 // metres is about 20 m across at the far end, so 1024 texels is 2 cm there and finer everywhere
@@ -127,6 +134,11 @@ bool SceneRenderer::Init(ShaderLibrary& shaders)
     m_uSunNearShadowAxis = bgfx::createUniform("u_sunNearShadowAxis", bgfx::UniformType::Vec4);
     m_uSunNearShadowParams = bgfx::createUniform("u_sunNearShadowParams", bgfx::UniformType::Vec4);
     m_sSunNearShadow = bgfx::createUniform("s_sunNearShadow", bgfx::UniformType::Sampler);
+    m_uSunFarShadowMtx = bgfx::createUniform("u_sunFarShadowMtx", bgfx::UniformType::Mat4);
+    m_uSunFarShadowAxis = bgfx::createUniform("u_sunFarShadowAxis", bgfx::UniformType::Vec4);
+    m_uSunFarShadowParams = bgfx::createUniform("u_sunFarShadowParams", bgfx::UniformType::Vec4);
+    m_uSunFarShadowTexel = bgfx::createUniform("u_sunFarShadowTexel", bgfx::UniformType::Vec4);
+    m_sSunFarShadow = bgfx::createUniform("s_sunFarShadow", bgfx::UniformType::Sampler);
     m_sSkyShadow = bgfx::createUniform("s_skyShadow", bgfx::UniformType::Sampler);
     m_uSpotShadowMtx = bgfx::createUniform("u_spotShadowMtx", bgfx::UniformType::Mat4);
     m_uSpotShadowAxis = bgfx::createUniform("u_spotShadowAxis", bgfx::UniformType::Vec4);
@@ -161,6 +173,7 @@ bool SceneRenderer::Init(ShaderLibrary& shaders)
     m_shadowsReady = bgfx::isValid(depthProgram) &&
                      m_sunShadow.Init(kSunShadowSize, depthProgram) &&
                      m_sunNearShadow.Init(kSunNearShadowSize, depthProgram) &&
+                     m_sunFarShadow.Init(kSunFarShadowSize, depthProgram) &&
                      m_skyShadow.Init(kSkyShadowSize, depthProgram) &&
                      m_spotShadow.Init(kSpotShadowSize, depthProgram);
     if (!m_shadowsReady)
@@ -203,6 +216,7 @@ void SceneRenderer::Shutdown()
     }
     m_sunShadow.Shutdown();
     m_sunNearShadow.Shutdown();
+    m_sunFarShadow.Shutdown();
     m_skyShadow.Shutdown();
     m_spotShadow.Shutdown();
     m_shadowsReady = false;
@@ -217,7 +231,8 @@ void SceneRenderer::Shutdown()
         m_uSpotShadowMtx,  m_uSpotShadowAxis,  m_uSpotShadowParams, m_sSpotShadow,
         m_uShadowTexelWorld, m_uSunNearShadowMtx, m_uSunNearShadowAxis, m_uSunNearShadowParams,
         m_sSunNearShadow, m_sNormalMap, m_sRoughnessMap, m_uSurfaceParams,
-        m_sSteepColor, m_sSteepNormal, m_sSteepRoughness, m_uSteepParams};
+        m_sSteepColor, m_sSteepNormal, m_sSteepRoughness, m_uSteepParams, m_uSunFarShadowMtx, m_uSunFarShadowAxis,
+        m_uSunFarShadowParams, m_uSunFarShadowTexel, m_sSunFarShadow};
     for (const bgfx::UniformHandle handle : uniforms)
     {
         if (bgfx::isValid(handle))
@@ -241,6 +256,7 @@ void SceneRenderer::Shutdown()
     m_uSpotShadowMtx = m_uSpotShadowAxis = m_uSpotShadowParams = m_sSpotShadow = BGFX_INVALID_HANDLE;
     m_uShadowTexelWorld = BGFX_INVALID_HANDLE;
     m_uSunNearShadowMtx = m_uSunNearShadowAxis = m_uSunNearShadowParams = m_sSunNearShadow = BGFX_INVALID_HANDLE;
+    m_uSunFarShadowMtx = m_uSunFarShadowAxis = m_uSunFarShadowParams = m_uSunFarShadowTexel = m_sSunFarShadow = BGFX_INVALID_HANDLE;
     m_sNormalMap = m_sRoughnessMap = m_uSurfaceParams = BGFX_INVALID_HANDLE;
     m_sSteepColor = m_sSteepNormal = m_sSteepRoughness = m_uSteepParams = BGFX_INVALID_HANDLE;
 
@@ -317,6 +333,13 @@ void SceneRenderer::SetEnvironmentUniforms(const Environment& environment,
     const float nearParams[4] = {1.0f / static_cast<float>(std::max<uint16_t>(m_sunNearShadow.Resolution(), 1)),
                                  m_shadowSettings.sunBias, sun ? 1.0f : 0.0f, m_shadowSettings.sunNormalOffset};
     bgfx::setUniform(m_uSunNearShadowParams, nearParams);
+    bgfx::setUniform(m_uSunFarShadowMtx, glm::value_ptr(m_sunFarShadow.TextureMatrix()));
+    bgfx::setUniform(m_uSunFarShadowAxis, glm::value_ptr(m_sunFarShadow.Axis()));
+    const float farParams[4] = {1.0f / static_cast<float>(std::max<uint16_t>(m_sunFarShadow.Resolution(), 1)),
+                                m_shadowSettings.sunBias, sun ? 1.0f : 0.0f, m_shadowSettings.sunNormalOffset};
+    bgfx::setUniform(m_uSunFarShadowParams, farParams);
+    const float farTexel[4] = {m_sunFarShadow.TexelSize(), 0.0f, 0.0f, 0.0f};
+    bgfx::setUniform(m_uSunFarShadowTexel, farTexel);
     bgfx::setUniform(m_uSunShadowParams, sunParams);
     bgfx::setUniform(m_uSkyShadowParams, skyParams);
 
@@ -428,6 +451,7 @@ void SceneRenderer::SubmitMesh(bgfx::ViewId view, const Mesh& mesh, const Materi
         const bgfx::TextureHandle white = m_textures->Get({});
         bgfx::setTexture(1, m_sSunShadow, m_shadowsReady ? m_sunShadow.Texture() : white);
         bgfx::setTexture(5, m_sSunNearShadow, m_shadowsReady ? m_sunNearShadow.Texture() : white);
+        bgfx::setTexture(15, m_sSunFarShadow, m_shadowsReady ? m_sunFarShadow.Texture() : white);
         bgfx::setTexture(2, m_sSkyShadow, m_shadowsReady ? m_skyShadow.Texture() : white);
         bgfx::setTexture(3, m_sSpotShadow, m_shadowsReady ? m_spotShadow.Texture() : white);
         bgfx::setTexture(6, m_sLampShadow, m_lampShadows.Ready() ? m_lampShadows.Texture() : white);
@@ -485,7 +509,7 @@ void SceneRenderer::SubmitDepth(bgfx::ViewId view, const Mesh& mesh, const glm::
     bgfx::submit(view, map.Program());
 }
 
-void SceneRenderer::RenderShadows(bgfx::ViewId sunView, bgfx::ViewId sunNearView, bgfx::ViewId skyView,
+void SceneRenderer::RenderShadows(bgfx::ViewId sunView, bgfx::ViewId sunNearView, bgfx::ViewId sunFarView, bgfx::ViewId skyView,
                                   bgfx::ViewId spotView, const Scene& scene, const MeshLibrary& meshes,
                                   const glm::vec3& focus)
 {
@@ -502,6 +526,7 @@ void SceneRenderer::RenderShadows(bgfx::ViewId sunView, bgfx::ViewId sunNearView
     m_sunShadow.Fit(focus, environment.sunDirection, settings.distance, kShadowDepthRange);
     m_sunNearShadow.Fit(focus, environment.sunDirection, std::min(kSunNearDistance, settings.distance),
                         kShadowDepthRange);
+    m_sunFarShadow.Fit(focus, environment.sunDirection, std::max(kSunFarDistance, settings.distance), kSunFarDepthRange);
     // Straight down. The sky is not a direction but a hemisphere, and the honest version of this
     // would gather visibility over all of it; one look straight down is the cheapest approximation
     // that gets the thing that matters right, which is that a roof is between the room and the sky.
@@ -511,6 +536,7 @@ void SceneRenderer::RenderShadows(bgfx::ViewId sunView, bgfx::ViewId sunNearView
     {
         m_sunShadow.Begin(sunView);
         m_sunNearShadow.Begin(sunNearView);
+        m_sunFarShadow.Begin(sunFarView);
     }
     if (settings.skyEnabled)
     {
@@ -574,6 +600,10 @@ void SceneRenderer::RenderShadows(bgfx::ViewId sunView, bgfx::ViewId sunNearView
                 {
                     SubmitDepth(sunNearView, *mesh, model, m_sunNearShadow);
                 }
+            }
+            if (settings.sunEnabled && sized && radius >= kSunFarSmallest && m_sunFarShadow.Covers(centre, radius))
+            {
+                SubmitDepth(sunFarView, *mesh, model, m_sunFarShadow);
             }
             if (settings.skyEnabled && renderer.blocksSky && (!sized || m_skyShadow.Covers(centre, radius)))
             {

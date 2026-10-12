@@ -93,6 +93,12 @@ uniform mat4 u_sunNearShadowMtx;
 uniform vec4 u_sunNearShadowAxis;
 uniform vec4 u_sunNearShadowParams;
 SAMPLER2D(s_sunNearShadow, 5);
+// The sun over the whole of a site, coarse: for what is beyond the main map.
+uniform mat4 u_sunFarShadowMtx;
+uniform vec4 u_sunFarShadowAxis;
+uniform vec4 u_sunFarShadowParams;
+uniform vec4 u_sunFarShadowTexel; // x = how much world a texel covers
+SAMPLER2D(s_sunFarShadow, 15);
 // xyz = the plane's normal, w = its offset. Fragments behind it are thrown away while the reflection
 // is being drawn, or the mirror shows the things standing behind it. Zero means no clipping, which
 // is what the ordinary pass uses.
@@ -286,9 +292,9 @@ float shadowSlack(float base, float NoL, float mostSlope, float texelWorld, floa
 // a clean limit rather than a thing that pops.
 float sunReaching(vec3 P, vec3 N, float NoL)
 {
-	// Two maps of the same sun: a fine one over the dozen metres round the player, and a coarse one
-	// out to the shadow distance. Whichever covers the point, and a blend across the band where the
-	// fine one runs out, so no line is ever seen where one hands over to the other.
+	// Three maps of the same sun: a fine one over the dozen metres round the player, a coarser one out
+	// to the shadow distance, and a coarse one over the whole site. Whichever covers the point, and a
+	// blend across the band where each runs out, so no line is ever seen where one hands over.
 	vec4 nearProjected = mul(u_sunNearShadowMtx, vec4(P, 1.0));
 	vec2 nearUv = nearProjected.xy / nearProjected.w;
 	vec2 fromEdge = min(nearUv, vec2_splat(1.0) - nearUv);
@@ -304,8 +310,23 @@ float sunReaching(vec3 P, vec3 N, float NoL)
 			return near;
 		}
 	}
-	float far = lightReachesSharp(s_sunShadow, u_sunShadowMtx, u_sunShadowAxis, u_sunShadowParams, P, N,
-	                              shadowSlack(u_sunShadowParams.y, NoL, 6.0, u_shadowTexelWorld.x, 2.0));
+	// The main map, as far as it reaches, and past it the site's -- blended across where it runs out as the near is.
+	vec4 mainProjected = mul(u_sunShadowMtx, vec4(P, 1.0));
+	vec2 mainUv = mainProjected.xy / mainProjected.w;
+	vec2 mainEdge = min(mainUv, vec2_splat(1.0) - mainUv);
+	float mainWeight = clamp((min(mainEdge.x, mainEdge.y) - 0.04) / 0.08, 0.0, 1.0);
+	float far = 1.0;
+	if (mainWeight > 0.0)
+	{
+		far = lightReachesSharp(s_sunShadow, u_sunShadowMtx, u_sunShadowAxis, u_sunShadowParams, P, N,
+		                        shadowSlack(u_sunShadowParams.y, NoL, 6.0, u_shadowTexelWorld.x, 2.0));
+	}
+	if (mainWeight < 1.0)
+	{
+		float site = lightReachesSharp(s_sunFarShadow, u_sunFarShadowMtx, u_sunFarShadowAxis, u_sunFarShadowParams, P, N,
+		                               shadowSlack(u_sunFarShadowParams.y, NoL, 6.0, u_sunFarShadowTexel.x, 2.0));
+		far = mix(site, far, mainWeight);
+	}
 	return mix(far, near, nearWeight);
 }
 
