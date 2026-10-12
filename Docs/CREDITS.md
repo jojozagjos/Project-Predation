@@ -6,19 +6,26 @@ under. Anything whose terms are not confirmed is marked so, because "it was free
 
 ## Audio
 
-### Footstep clips — `Assets/Audio/Footsteps/`
+### Footstep clips — `Assets/Audio/Footsteps/<surface>/`
 
-Sixty-four clips over eleven surfaces (`Assets/Data/footsteps.json`), all **CC0** (public domain: no
-conditions, no attribution required; credited here anyway). Each was made mono 48 kHz, its lead-in
-silence cut, capped at 0.6 s with a fade, and loudness-matched; metal, dirt and mud are two clips mixed.
+Seventy-four clips over eleven surfaces (`Assets/Data/footsteps.json`), each surface in a folder of its own. Each
+was made mono 48 kHz, its lead-in silence cut, capped at 0.6 s with a fade, and loudness-matched; dirt and mud are
+two clips mixed.
 
 | Source | Licence | Used for |
 |---|---|---|
-| **Kenney, Impact Sounds** (kenney.nl/assets/impact-sounds) | CC0 (licence file in the download) | concrete, wood, snow, grass; carpet steps under dirt; grass steps under mud; plate impacts in metal |
+| **Kenney, Impact Sounds** (kenney.nl/assets/impact-sounds) | CC0 (licence file in the download) | concrete, wood, snow, grass; carpet steps under dirt; grass steps under mud |
+| **Ali_6868, Gravel Footsteps** (freesound.org pack 21608), as cut in congusbongus' "Footsteps on different surfaces" (opengameart.org) | CC0 | gravel |
+| **Eelke, "fboots on aluminum ladder 01"** (freesound.org/people/Eelke/sounds/462598), as cut in congusbongus' "Footsteps on different surfaces" (opengameart.org) | **CC-BY 3.0: credit required** | metal |
 | **Fantozzi, Footsteps (Grass/Sand & Stone)** (opengameart.org) | CC0 | stone, sand; the grit in dirt |
-| **Corsica_S, 42 Snow and Gravel Footsteps**, extracted by Iwan Gabovitch (opengameart.org) | CC0, with the recordist's permission (its readme) | gravel (snow-covered gravel), ice (gravel and ice) |
+| **Corsica_S, 42 Snow and Gravel Footsteps**, extracted by Iwan Gabovitch (opengameart.org) | CC0, with the recordist's permission (its readme) | snow (snow-covered gravel), ice (gravel and ice) |
 | **TinyWorlds, Different steps on wood, stone, leaves, gravel and mud** (opengameart.org) | CC0 | one stone and one wood clip |
 | **25 CC0 mud sfx** (opengameart.org) | CC0 | the squelch in mud |
+| **100 CC0 SFX #2** (opengameart.org) | CC0 | wet steps in mud |
+
+**The metal clips are CC-BY 3.0**: the game must credit them where players can see it -- "Footsteps on metal: Eelke
+(freesound.org), adapted by congusbongus (opengameart.org), CC-BY 3.0" -- in an in-game credits screen or a credits
+file shipped with it. There is no credits screen yet; this needs doing before any release.
 
 These replace the JDSherbert Footstep Foley pack, whose terms were never confirmed. The synthesised
 footstep is still in `Assets/Data/Sounds/Player.json` as `step`, for when no clips load.
