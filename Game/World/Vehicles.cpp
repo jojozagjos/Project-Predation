@@ -468,6 +468,15 @@ std::shared_ptr<ModelAsset> Load(const std::string& name)
 namespace
 {
 
+bool SameMaterial(const Material& a, const Material& b)
+{
+    return a.baseColor == b.baseColor && a.metallic == b.metallic && a.roughness == b.roughness && a.emissive == b.emissive &&
+           a.emissiveTextured == b.emissiveTextured && a.reflectivity == b.reflectivity && a.baseColorTexture == b.baseColorTexture &&
+           a.normalTexture == b.normalTexture && a.roughnessTexture == b.roughnessTexture && a.surfaceScale == b.surfaceScale &&
+           a.surfaceKeep == b.surfaceKeep && a.surfaceNatural == b.surfaceNatural && a.surfaceOnThing == b.surfaceOnThing &&
+           a.steepColorTexture == b.steepColorTexture && a.steepScale == b.steepScale && a.organic == b.organic;
+}
+
 glm::mat4 Matrix(const CinePose& pose)
 {
     return glm::translate(glm::mat4(1.0f), pose.position) * glm::mat4_cast(pose.rotation);
@@ -485,6 +494,15 @@ bool VehicleProp::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld* physics
     }
     m_model = std::move(model);
     m_home = home;
+    // Merged: every part's mesh in the model's own frame, gathered by material and by stretch of it, each gathering one mesh.
+    struct Gathered
+    {
+        Material material;
+        bool shadow = true;
+        glm::ivec3 cell{0};
+        MeshData mesh;
+    };
+    std::vector<Gathered> gathered;
     for (const ModelPart& part : m_model->parts)
     {
         Material material = Material::Diffuse(part.color, part.roughness);
@@ -495,11 +513,43 @@ bool VehicleProp::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld* physics
             material = Surfaces::Apply(material, part.surface, part.surfaceScale, part.surfaceKeep);
             material.surfaceOnThing = part.surfaceOnThing;
         }
-        const MeshHandle mesh = meshes.Upload(m_model->BuildPartMesh(part), "vehicle_" + m_model->name + "_" + part.name);
-        m_parts.push_back(scene.CreateMeshEntity(prefix + part.name, Transform{}, mesh, material));
-        if (MeshRenderer* renderer = scene.GetMeshRenderer(m_parts.back()))
+        if (m_merged)
         {
-            renderer->castsShadow = part.emissive <= 0.0f;
+            if (part.visible)
+            {
+                const glm::mat4 local = m_model->PartMatrixAt(part, nullptr, 0.0f);
+                const glm::mat3 turn(local);
+                const glm::ivec3 cell = glm::ivec3(glm::floor(glm::vec3(local[3]) / 32.0f));
+                const bool shadow = part.emissive <= 0.0f;
+                auto group = std::find_if(gathered.begin(), gathered.end(), [&](const Gathered& g)
+                                          { return g.cell == cell && g.shadow == shadow && SameMaterial(g.material, material); });
+                if (group == gathered.end())
+                {
+                    gathered.push_back({material, shadow, cell, MeshData{}});
+                    group = gathered.end() - 1;
+                }
+                const MeshData piece = m_model->BuildPartMesh(part);
+                const auto base = static_cast<uint32_t>(group->mesh.vertices.size());
+                for (MeshVertex vertex : piece.vertices)
+                {
+                    vertex.position = glm::vec3(local * glm::vec4(vertex.position, 1.0f));
+                    vertex.normal = glm::normalize(turn * vertex.normal);
+                    group->mesh.vertices.push_back(vertex);
+                }
+                for (const uint32_t index : piece.indices)
+                {
+                    group->mesh.indices.push_back(base + index);
+                }
+            }
+        }
+        else
+        {
+            const MeshHandle mesh = meshes.Upload(m_model->BuildPartMesh(part), "vehicle_" + m_model->name + "_" + part.name);
+            m_parts.push_back(scene.CreateMeshEntity(prefix + part.name, Transform{}, mesh, material));
+            if (MeshRenderer* renderer = scene.GetMeshRenderer(m_parts.back()))
+            {
+                renderer->castsShadow = part.emissive <= 0.0f;
+            }
         }
         // Solid where it rests, all but its glass, its lamps and its glow.
         if (physics == nullptr || part.name.rfind("fx_", 0) == 0 || !part.visible)
@@ -521,8 +571,28 @@ bool VehicleProp::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld* physics
         }
         m_bodies.push_back(body);
     }
+    for (size_t i = 0; i < gathered.size(); ++i)
+    {
+        const MeshHandle mesh = meshes.Upload(gathered[i].mesh, "vehicle_" + m_model->name + "_merged#" + std::to_string(i));
+        m_parts.push_back(scene.CreateMeshEntity(prefix + "merged", Transform{}, mesh, gathered[i].material));
+        if (MeshRenderer* renderer = scene.GetMeshRenderer(m_parts.back()))
+        {
+            renderer->castsShadow = gathered[i].shadow;
+        }
+    }
     GoHome(scene);
     return true;
+}
+
+void VehicleProp::SetFarVisible(Scene& scene)
+{
+    for (const Entity entity : m_parts)
+    {
+        if (MeshRenderer* renderer = scene.GetMeshRenderer(entity))
+        {
+            renderer->farVisible = true;
+        }
+    }
 }
 
 void VehicleProp::Clear(Scene& scene, PhysicsWorld* physics)
@@ -550,6 +620,23 @@ void VehicleProp::Show(Scene& scene, const CinePose& pose, const std::string& cl
         return;
     }
     m_shown = pose;
+    if (m_merged)
+    {
+        // All of it in one frame, the model's own.
+        for (const Entity entity : m_parts)
+        {
+            if (Transform* transform = scene.GetTransform(entity))
+            {
+                transform->position = pose.position;
+                transform->rotation = pose.rotation;
+            }
+            if (MeshRenderer* renderer = scene.GetMeshRenderer(entity))
+            {
+                renderer->visible = !m_hidden;
+            }
+        }
+        return;
+    }
     const AnimationClip* animation = clip.empty() ? nullptr : m_model->FindClip(clip);
     const glm::mat4 root = Matrix(pose);
     for (size_t i = 0; i < m_parts.size() && i < m_model->parts.size(); ++i)
@@ -606,7 +693,7 @@ void VehicleProp::SetHidden(Scene& scene, bool hidden)
 
 Entity VehicleProp::Part(const std::string& name) const
 {
-    if (m_model == nullptr)
+    if (m_model == nullptr || m_merged)
     {
         return Entity{};
     }

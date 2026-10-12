@@ -70,10 +70,17 @@ public:
     // Whether a point is aboard: between its cabin corners, where it rests.
     bool Aboard(const glm::vec3& point) const;
     const std::vector<BodyHandle>& Bodies() const { return m_bodies; }
-    // The drawn piece of one of its parts, to press (a console) or to light (a screen); invalid when there is none.
+    // The drawn piece of one of its parts, to press (a console) or to light (a screen); invalid when there is none (or merged).
     Entity Part(const std::string& name) const;
+    // Drawn whole, its parts merged -- for a model that never moves its parts and is never asked for one by name (an outpost,
+    // its dressing): everything of one material in one stretch of it drawn as one thing, not part by part. Set before Build.
+    // Still solid part by part.
+    void SetMerged(bool merged) { m_merged = merged; }
+    // Drawn however far off it is (past where things are usually let go of in the distance).
+    void SetFarVisible(Scene& scene);
 
 private:
+    bool m_merged = false;
     std::shared_ptr<ModelAsset> m_model;
     CinePose m_home;
     CinePose m_shown;

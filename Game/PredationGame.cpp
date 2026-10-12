@@ -10819,7 +10819,9 @@ void PredationGame::OnRender()
     app.GetSkyRenderer().SetBrightness(cv_skyBrightness.Get());
     const float inFront =
         glm::dot(viewPosition, glm::vec3(TestMapSpec::kMirrorPlane)) + TestMapSpec::kMirrorPlane.w;
-    if (cv_reflections.Get() && inFront > 0.05f && inFront < cv_reflectionDistance.Get())
+    // Only in the testing area, where the mirrors are: their plane runs on for ever, and the ship -- a long way from them but
+    // close in front of the plane -- drew the whole world a second time for nothing.
+    if (cv_reflections.Get() && m_map == MapChoice::TestMap && inFront > 0.05f && inFront < cv_reflectionDistance.Get())
     {
         app.GetSceneRenderer().RenderReflection(
             Renderer::kViewReflectionSky, Renderer::kViewReflection, m_scene, app.GetMeshes(),

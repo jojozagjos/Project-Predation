@@ -1047,6 +1047,9 @@ void ShipMap::SetField(Scene& scene, MeshLibrary& meshes, bool shown, const Fiel
         ModelAsset dressing;
         std::vector<KestrelStation::Lamp> lamps;
         FieldModels(look, solid, dressing, lamps);
+        // Drawn merged: an outpost is hundreds of parts, and seen part by part it was thousands of things to draw.
+        m_field.SetMerged(true);
+        m_fieldDressing.SetMerged(true);
         m_field.Build(scene, meshes, m_physics, std::make_shared<ModelAsset>(std::move(solid)), Pose(glm::vec3(0.0f)), m_fieldGroup, "outpost_");
         m_fieldDressing.Build(scene, meshes, nullptr, std::make_shared<ModelAsset>(std::move(dressing)), Pose(glm::vec3(0.0f)), 0, "outpost_dressing_");
         FarVisible(scene, m_field);
@@ -1087,6 +1090,8 @@ void ShipMap::SetStageField(Scene& scene, MeshLibrary& meshes, bool shown, const
         std::vector<KestrelStation::Lamp> lamps;
         FieldModels(look, solid, dressing, lamps);
         const CinePose stage{kStage, {1.0f, 0.0f, 0.0f, 0.0f}};
+        m_stageField.SetMerged(true);
+        m_stageFieldDressing.SetMerged(true);
         m_stageField.Build(scene, meshes, nullptr, std::make_shared<ModelAsset>(std::move(solid)), stage, 0, "outpost_stage_");
         m_stageFieldDressing.Build(scene, meshes, nullptr, std::make_shared<ModelAsset>(std::move(dressing)), stage, 0, "outpost_stage_dressing_");
         FarVisible(scene, m_stageField);
@@ -1103,13 +1108,7 @@ void ShipMap::SetStageField(Scene& scene, MeshLibrary& meshes, bool shown, const
 
 void ShipMap::FarVisible(Scene& scene, VehicleProp& prop)
 {
-    for (const ModelPart& part : prop.Model()->parts)
-    {
-        if (MeshRenderer* renderer = scene.GetMeshRenderer(prop.Part(part.name)))
-        {
-            renderer->farVisible = true;
-        }
-    }
+    prop.SetFarVisible(scene);
 }
 
 ModelAsset ShipMap::AirlockModel()

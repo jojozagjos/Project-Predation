@@ -548,6 +548,10 @@ void main()
 		}
 		vec3 blend = pow(abs(N), vec3_splat(4.0));
 		blend /= max(blend.x + blend.y + blend.z, 1e-4);
+		// Only the sides that show: one whose share is all but nothing is not read at all -- a wall is read from one side,
+		// not three -- and the rest share it out.
+		blend *= step(vec3_splat(0.03), blend);
+		blend /= max(blend.x + blend.y + blend.z, 1e-4);
 		vec3 at = (onThing ? v_localPos : v_worldPos) * u_surfaceParams.x;
 		// Each side's picture the right way up: an image's top row is read first, so up the picture is down its v -- and
 		// an OpenGL normal map's green points up the picture. Laid with v the other way, its bumps would light from the
@@ -555,69 +559,126 @@ void main()
 		vec2 uvX = vec2(at.z, -at.y);
 		vec2 uvY = vec2(at.x, -at.z);
 		vec2 uvZ = vec2(at.x, -at.y);
-		vec3 nY = texture2D(s_normalMap, uvY).xyz * 2.0 - 1.0;
-		vec3 groundAlbedo = pow(texture2D(s_baseColor, uvY).rgb, vec3_splat(2.2));
-		float groundRough = texture2D(s_roughnessMap, uvY).r;
-		// On the ground, which is where a repeat shows -- the same few marks in rows to the horizon -- the set again, larger
-		// and turned, blended in and out over patches some metres across, and the whole of it a little lighter and darker
-		// by patches larger still.
-		if (blend.y > 0.01 && u_surfaceParams.z > 0.5)
-		{
-			vec2 wide = mul(mat2(0.788, -0.616, 0.616, 0.788), uvY) * 0.41 + vec2(0.37, 0.71);
-			float mixIn = smoothstep(0.35, 0.65, SurfacePatches(v_worldPos.xz * 0.11));
-			vec3 nWide = texture2D(s_normalMap, wide).xyz * 2.0 - 1.0;
-			// The turned sample's bumps turned back into the ground's frame.
-			nWide.xy = mul(mat2(0.788, 0.616, -0.616, 0.788), nWide.xy);
-			nY = normalize(mix(nY, nWide, mixIn));
-			groundAlbedo = mix(groundAlbedo, pow(texture2D(s_baseColor, wide).rgb, vec3_splat(2.2)), mixIn);
-			groundRough = mix(groundRough, texture2D(s_roughnessMap, wide).r, mixIn);
-			groundAlbedo *= 0.9 + 0.2 * SurfacePatches(v_worldPos.xz * 0.023 + vec2_splat(17.0));
-		}
-		surfaceAlbedo = pow(texture2D(s_baseColor, uvX).rgb, vec3_splat(2.2)) * blend.x + groundAlbedo * blend.y +
-		                pow(texture2D(s_baseColor, uvZ).rgb, vec3_splat(2.2)) * blend.z;
-		surfaceAlbedo = mix(vec3_splat(dot(surfaceAlbedo, vec3(0.2126, 0.7152, 0.0722))), surfaceAlbedo, u_surfaceParams.y);
-		surfaceRough = texture2D(s_roughnessMap, uvX).r * blend.x + groundRough * blend.y + texture2D(s_roughnessMap, uvZ).r * blend.z;
-		vec3 nX = texture2D(s_normalMap, uvX).xyz * 2.0 - 1.0;
-		vec3 nZ = texture2D(s_normalMap, uvZ).xyz * 2.0 - 1.0;
-		// Whiteout blend: each tangent-space normal added to the surface's own in that side's plane.
+		// How each changes across the pixel, worked out here, outside the branches that read them (which cannot).
+		vec2 dxX = dFdx(uvX);
+		vec2 dyX = dFdy(uvX);
+		vec2 dxY = dFdx(uvY);
+		vec2 dyY = dFdy(uvY);
+		vec2 dxZ = dFdx(uvZ);
+		vec2 dyZ = dFdy(uvZ);
 		vec3 s = sign(N);
-		nX = vec3(nX.xy * vec2(s.x, 1.0) + N.zy, abs(nX.z) * N.x);
-		nY = vec3(nY.xy * vec2(s.y, 1.0) + N.xz, abs(nY.z) * N.y);
-		nZ = vec3(nZ.xy * vec2(-s.z, 1.0) + N.xy, abs(nZ.z) * N.z);
+		vec3 albedoSum = vec3_splat(0.0);
+		float roughSum = 0.0;
+		vec3 normalSum = vec3_splat(0.0);
+		if (blend.x > 0.0)
+		{
+			vec3 nX = texture2DGrad(s_normalMap, uvX, dxX, dyX).xyz * 2.0 - 1.0;
+			// Whiteout blend: each tangent-space normal added to the surface's own in that side's plane.
+			nX = vec3(nX.xy * vec2(s.x, 1.0) + N.zy, abs(nX.z) * N.x);
+			albedoSum += pow(texture2DGrad(s_baseColor, uvX, dxX, dyX).rgb, vec3_splat(2.2)) * blend.x;
+			roughSum += texture2DGrad(s_roughnessMap, uvX, dxX, dyX).r * blend.x;
+			normalSum += nX.zyx * blend.x;
+		}
+		if (blend.y > 0.0)
+		{
+			vec3 nY = texture2DGrad(s_normalMap, uvY, dxY, dyY).xyz * 2.0 - 1.0;
+			vec3 groundAlbedo = pow(texture2DGrad(s_baseColor, uvY, dxY, dyY).rgb, vec3_splat(2.2));
+			float groundRough = texture2DGrad(s_roughnessMap, uvY, dxY, dyY).r;
+			// On the ground, which is where a repeat shows -- the same few marks in rows to the horizon -- the set again,
+			// larger and turned, blended in and out over patches some metres across, and the whole of it a little lighter and
+			// darker by patches larger still.
+			if (u_surfaceParams.z > 0.5)
+			{
+				vec2 wide = mul(mat2(0.788, -0.616, 0.616, 0.788), uvY) * 0.41 + vec2(0.37, 0.71);
+				vec2 dxW = mul(mat2(0.788, -0.616, 0.616, 0.788), dxY) * 0.41;
+				vec2 dyW = mul(mat2(0.788, -0.616, 0.616, 0.788), dyY) * 0.41;
+				float mixIn = smoothstep(0.35, 0.65, SurfacePatches(v_worldPos.xz * 0.11));
+				vec3 nWide = texture2DGrad(s_normalMap, wide, dxW, dyW).xyz * 2.0 - 1.0;
+				// The turned sample's bumps turned back into the ground's frame.
+				nWide.xy = mul(mat2(0.788, 0.616, -0.616, 0.788), nWide.xy);
+				nY = normalize(mix(nY, nWide, mixIn));
+				groundAlbedo = mix(groundAlbedo, pow(texture2DGrad(s_baseColor, wide, dxW, dyW).rgb, vec3_splat(2.2)), mixIn);
+				groundRough = mix(groundRough, texture2DGrad(s_roughnessMap, wide, dxW, dyW).r, mixIn);
+				groundAlbedo *= 0.9 + 0.2 * SurfacePatches(v_worldPos.xz * 0.023 + vec2_splat(17.0));
+			}
+			nY = vec3(nY.xy * vec2(s.y, 1.0) + N.xz, abs(nY.z) * N.y);
+			albedoSum += groundAlbedo * blend.y;
+			roughSum += groundRough * blend.y;
+			normalSum += nY.xzy * blend.y;
+		}
+		if (blend.z > 0.0)
+		{
+			vec3 nZ = texture2DGrad(s_normalMap, uvZ, dxZ, dyZ).xyz * 2.0 - 1.0;
+			nZ = vec3(nZ.xy * vec2(-s.z, 1.0) + N.xy, abs(nZ.z) * N.z);
+			albedoSum += pow(texture2DGrad(s_baseColor, uvZ, dxZ, dyZ).rgb, vec3_splat(2.2)) * blend.z;
+			roughSum += texture2DGrad(s_roughnessMap, uvZ, dxZ, dyZ).r * blend.z;
+			normalSum += nZ.xyz * blend.z;
+		}
+		surfaceAlbedo = mix(vec3_splat(dot(albedoSum, vec3(0.2126, 0.7152, 0.0722))), albedoSum, u_surfaceParams.y);
+		surfaceRough = roughSum;
 		vec3 Ng = N;
-		N = normalize(nX.zyx * blend.x + nY.xzy * blend.y + nZ.xyz * blend.z);
+		N = normalize(normalSum);
 		// Where it is steep, the second set -- the world's rock -- showing through as the slope passes what anybody can stand
 		// on (SiteTerrain::Rockiness), laid on the same way.
 		float rock = u_steepParams.w > 0.0 ? 1.0 - smoothstep(0.72, 0.94, Ng.y) : 0.0;
+		// (Its gradients too, outside the branch.)
+		float steepScale = u_steepParams.w / max(u_surfaceParams.x, 1e-6);
+		vec2 sX = uvX * steepScale;
+		vec2 sY = uvY * steepScale;
+		vec2 sZ = uvZ * steepScale;
 		if (rock > 0.001)
 		{
-			vec3 at2 = v_worldPos * u_steepParams.w;
-			vec2 sX = vec2(at2.z, -at2.y);
-			vec2 sY = vec2(at2.x, -at2.z);
-			vec2 sZ = vec2(at2.x, -at2.y);
 			// A rock face repeats as plainly as the ground does: blended with a larger copy of itself, turned and shifted,
 			// over patches some metres across.
 			float other = smoothstep(0.35, 0.65, SurfacePatches(vec2(v_worldPos.x + v_worldPos.y * 0.7, v_worldPos.z - v_worldPos.y * 0.6) * 0.09));
 			vec2 oX = vec2(-sX.y, sX.x) * 0.43 + vec2(0.31, 0.57);
 			vec2 oY = vec2(-sY.y, sY.x) * 0.43 + vec2(0.31, 0.57);
 			vec2 oZ = vec2(-sZ.y, sZ.x) * 0.43 + vec2(0.31, 0.57);
-			vec3 rockAlbedo = (pow(mix(texture2D(s_steepColor, sX).rgb, texture2D(s_steepColor, oX).rgb, other), vec3_splat(2.2)) * blend.x +
-			                   pow(mix(texture2D(s_steepColor, sY).rgb, texture2D(s_steepColor, oY).rgb, other), vec3_splat(2.2)) * blend.y +
-			                   pow(mix(texture2D(s_steepColor, sZ).rgb, texture2D(s_steepColor, oZ).rgb, other), vec3_splat(2.2)) * blend.z) *
-			                  u_steepParams.xyz;
-			float rockRough = texture2D(s_steepRoughness, sX).r * blend.x + texture2D(s_steepRoughness, sY).r * blend.y +
-			                  texture2D(s_steepRoughness, sZ).r * blend.z;
-			// The turned copy's bumps turned back (a quarter turn: x from its y, y from minus its x).
-			vec3 qX = texture2D(s_steepNormal, oX).xyz * 2.0 - 1.0;
-			vec3 qY = texture2D(s_steepNormal, oY).xyz * 2.0 - 1.0;
-			vec3 qZ = texture2D(s_steepNormal, oZ).xyz * 2.0 - 1.0;
-			vec3 rX = mix(texture2D(s_steepNormal, sX).xyz * 2.0 - 1.0, vec3(qX.y, -qX.x, qX.z), other);
-			vec3 rY = mix(texture2D(s_steepNormal, sY).xyz * 2.0 - 1.0, vec3(qY.y, -qY.x, qY.z), other);
-			vec3 rZ = mix(texture2D(s_steepNormal, sZ).xyz * 2.0 - 1.0, vec3(qZ.y, -qZ.x, qZ.z), other);
-			rX = vec3(rX.xy * vec2(s.x, 1.0) + Ng.zy, abs(rX.z) * Ng.x);
-			rY = vec3(rY.xy * vec2(s.y, 1.0) + Ng.xz, abs(rY.z) * Ng.y);
-			rZ = vec3(rZ.xy * vec2(-s.z, 1.0) + Ng.xy, abs(rZ.z) * Ng.z);
-			vec3 rockN = normalize(rX.zyx * blend.x + rY.xzy * blend.y + rZ.xyz * blend.z);
+			vec3 rockAlbedo = vec3_splat(0.0);
+			float rockRough = 0.0;
+			vec3 rockSum = vec3_splat(0.0);
+			if (blend.x > 0.0)
+			{
+				vec2 gx = dxX * steepScale;
+				vec2 gy = dyX * steepScale;
+				vec2 ox = vec2(-gx.y, gx.x) * 0.43;
+				vec2 oy = vec2(-gy.y, gy.x) * 0.43;
+				rockAlbedo += pow(mix(texture2DGrad(s_steepColor, sX, gx, gy).rgb, texture2DGrad(s_steepColor, oX, ox, oy).rgb, other), vec3_splat(2.2)) * blend.x;
+				rockRough += texture2DGrad(s_steepRoughness, sX, gx, gy).r * blend.x;
+				// The turned copy's bumps turned back (a quarter turn: x from its y, y from minus its x).
+				vec3 q = texture2DGrad(s_steepNormal, oX, ox, oy).xyz * 2.0 - 1.0;
+				vec3 r = mix(texture2DGrad(s_steepNormal, sX, gx, gy).xyz * 2.0 - 1.0, vec3(q.y, -q.x, q.z), other);
+				r = vec3(r.xy * vec2(s.x, 1.0) + Ng.zy, abs(r.z) * Ng.x);
+				rockSum += r.zyx * blend.x;
+			}
+			if (blend.y > 0.0)
+			{
+				vec2 gx = dxY * steepScale;
+				vec2 gy = dyY * steepScale;
+				vec2 ox = vec2(-gx.y, gx.x) * 0.43;
+				vec2 oy = vec2(-gy.y, gy.x) * 0.43;
+				rockAlbedo += pow(mix(texture2DGrad(s_steepColor, sY, gx, gy).rgb, texture2DGrad(s_steepColor, oY, ox, oy).rgb, other), vec3_splat(2.2)) * blend.y;
+				rockRough += texture2DGrad(s_steepRoughness, sY, gx, gy).r * blend.y;
+				vec3 q = texture2DGrad(s_steepNormal, oY, ox, oy).xyz * 2.0 - 1.0;
+				vec3 r = mix(texture2DGrad(s_steepNormal, sY, gx, gy).xyz * 2.0 - 1.0, vec3(q.y, -q.x, q.z), other);
+				r = vec3(r.xy * vec2(s.y, 1.0) + Ng.xz, abs(r.z) * Ng.y);
+				rockSum += r.xzy * blend.y;
+			}
+			if (blend.z > 0.0)
+			{
+				vec2 gx = dxZ * steepScale;
+				vec2 gy = dyZ * steepScale;
+				vec2 ox = vec2(-gx.y, gx.x) * 0.43;
+				vec2 oy = vec2(-gy.y, gy.x) * 0.43;
+				rockAlbedo += pow(mix(texture2DGrad(s_steepColor, sZ, gx, gy).rgb, texture2DGrad(s_steepColor, oZ, ox, oy).rgb, other), vec3_splat(2.2)) * blend.z;
+				rockRough += texture2DGrad(s_steepRoughness, sZ, gx, gy).r * blend.z;
+				vec3 q = texture2DGrad(s_steepNormal, oZ, ox, oy).xyz * 2.0 - 1.0;
+				vec3 r = mix(texture2DGrad(s_steepNormal, sZ, gx, gy).xyz * 2.0 - 1.0, vec3(q.y, -q.x, q.z), other);
+				r = vec3(r.xy * vec2(-s.z, 1.0) + Ng.xy, abs(r.z) * Ng.z);
+				rockSum += r.xyz * blend.z;
+			}
+			rockAlbedo *= u_steepParams.xyz;
+			vec3 rockN = normalize(rockSum);
 			// Its own colours mostly let go of -- the moss and lichen of the photograph -- for the world's rock colour.
 			rockAlbedo = mix(vec3_splat(dot(rockAlbedo, vec3(0.2126, 0.7152, 0.0722))), rockAlbedo, 0.35);
 			surfaceAlbedo = mix(surfaceAlbedo, rockAlbedo, rock);
