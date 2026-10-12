@@ -63,8 +63,8 @@ inline constexpr float kStageReach = 900.0f;
 // How the ship's outside looks: its colours, and what its upgrades have put on it. A different look is a new outside.
 struct ShipHullLook
 {
-    glm::vec3 primary{0.14f, 0.145f, 0.15f};
-    glm::vec3 secondary{0.06f, 0.065f, 0.07f};
+    glm::vec3 primary{0.26f, 0.27f, 0.285f};
+    glm::vec3 secondary{0.09f, 0.095f, 0.1f};
     glm::vec3 accent{0.92f, 0.52f, 0.14f};
     int drive = 0;   // engines: more of them and bigger with each tier
     int sensors = 0; // a mast; then a dish; then arrays

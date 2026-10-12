@@ -20,7 +20,7 @@ namespace
 
 // Colours: a worn pale hull and dark metal for the shuttle; for the crawler a faded working orange, grey inside, and
 // black rubber tracks.
-constexpr glm::vec3 kShuttleHull{0.14f, 0.145f, 0.15f};
+constexpr glm::vec3 kShuttleHull{0.26f, 0.27f, 0.285f};
 constexpr glm::vec3 kShuttleTrim{0.07f, 0.075f, 0.08f};
 constexpr glm::vec3 kShuttleDeck{0.44f, 0.45f, 0.43f}; // the floor plate inside, lighter than the paint outside
 constexpr glm::vec3 kCrawlerBody{0.52f, 0.22f, 0.12f};

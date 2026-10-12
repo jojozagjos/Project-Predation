@@ -244,10 +244,14 @@ bool CampaignState::FromJson(const nlohmann::json& json, CampaignState& out, std
             state.colors.primary = ReadVec3(*colors, "primary", state.colors.primary);
             state.colors.secondary = ReadVec3(*colors, "secondary", state.colors.secondary);
             state.colors.accent = ReadVec3(*colors, "accent", state.colors.accent);
-            // Saved with the old light grey default (before 0.2.0 build 438), which nobody chose: the darker default instead.
+            // Saved with an earlier default that nobody chose -- the light grey (before 0.2.0 build 438) or the dark one (build
+            // 438) -- the default now instead.
             const Colors defaults;
-            if (glm::distance(state.colors.primary, glm::vec3(0.78f, 0.78f, 0.76f)) < 0.01f &&
-                glm::distance(state.colors.secondary, glm::vec3(0.16f, 0.17f, 0.18f)) < 0.01f)
+            const bool oldLight = glm::distance(state.colors.primary, glm::vec3(0.78f, 0.78f, 0.76f)) < 0.01f &&
+                                  glm::distance(state.colors.secondary, glm::vec3(0.16f, 0.17f, 0.18f)) < 0.01f;
+            const bool oldDark = glm::distance(state.colors.primary, glm::vec3(0.14f, 0.145f, 0.15f)) < 0.01f &&
+                                 glm::distance(state.colors.secondary, glm::vec3(0.06f, 0.065f, 0.07f)) < 0.01f;
+            if (oldLight || oldDark)
             {
                 state.colors.primary = defaults.primary;
                 state.colors.secondary = defaults.secondary;

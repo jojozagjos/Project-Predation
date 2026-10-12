@@ -38,8 +38,8 @@ struct CampaignState
     // The ship's colours: its main hull, the trim, and the small accents.
     struct Colors
     {
-        glm::vec3 primary{0.14f, 0.145f, 0.15f};
-        glm::vec3 secondary{0.06f, 0.065f, 0.07f};
+        glm::vec3 primary{0.26f, 0.27f, 0.285f};
+        glm::vec3 secondary{0.09f, 0.095f, 0.1f};
         glm::vec3 accent{0.92f, 0.52f, 0.14f};
     };
 
