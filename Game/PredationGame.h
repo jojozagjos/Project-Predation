@@ -32,7 +32,7 @@
 #include "Game/Player/PlayerController.h"
 #include "Game/Mission/Briefing.h"
 #include "Game/World/Particles.h"
-#include "Game/World/Snowfall.h"
+#include "Game/World/Weather.h"
 #include "Game/Mission/Mission.h"
 #include "Game/Mission/MissionProps.h"
 #include "Game/Mission/SiteNames.h"
@@ -1825,7 +1825,7 @@ private:
     TextureHandle m_briefingTextures[2];
     float m_briefingDrawnAt = -10.0f;
     // Snow, at a site, round whoever is looking; and sparks, chips and sprays where things happen.
-    Snowfall m_snow;
+    Weather m_weather;
     Particles m_particles;
     // A burst at `at`, the ground under it found for them to land on.
     void Burst(const glm::vec3& at, const glm::vec3& direction, int count, const ParticleLook& look);

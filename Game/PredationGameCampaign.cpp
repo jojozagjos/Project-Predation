@@ -428,7 +428,20 @@ void PredationGame::RegisterCampaignCommands()
                             });
     console.RegisterCommand("site_terrain", "Build the next site on this ground rather than its world's: site_terrain [flat|rolling|mountainous|canyons|cratered|dunes], none for the world's own",
                             [this](const std::vector<std::string>& args) { m_siteTerrainPreview = args.size() >= 2 && args[1] != "none" ? args[1] : std::string(); });
-    console.RegisterCommand("land_region", "Pick where the shuttle goes down on the world the ship is over, as the map does: land_region <region>",
+    console.RegisterCommand("site_weather", "What falls at the site you are at, on this machine, to see it: site_weather <none|snow|rain|dust|ash> [amount 0-1]",
+                            [this](const std::vector<std::string>& args)
+                            {
+                                if (args.size() < 2)
+                                {
+                                    m_app->GetConsole().PrintError("Usage: site_weather <none|snow|rain|dust|ash> [amount 0-1]");
+                                    return;
+                                }
+                                SiteMap::Look look = m_facility.GetLook();
+                                look.weather = args[1];
+                                look.weatherAmount = args.size() >= 3 ? std::clamp(std::strtof(args[2].c_str(), nullptr), 0.0f, 1.0f) : 0.7f;
+                                m_facility.SetLook(look);
+                            });
+    console.RegisterCommand("land_region","Pick where the shuttle goes down on the world the ship is over, as the map does: land_region <region>",
                             [this](const std::vector<std::string>& args) { ChooseLandingRegion(args.size() >= 2 ? std::atoi(args[1].c_str()) : 0); });
     console.RegisterCommand("orbit_here", "Put the ship in orbit of the body it is landed on, without the cinematic (the host)",
                             [this](const std::vector<std::string>&)

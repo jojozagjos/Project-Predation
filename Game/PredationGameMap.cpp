@@ -1140,8 +1140,9 @@ void PredationGame::SetGroundSky(Environment& environment)
 
 SiteMap::Look PredationGame::SiteLookHere()
 {
-    // The site the shuttle goes down to is on the body the ship is over: its own ground and rock, and snow only where it is
-    // cold enough and there is air to carry it.
+    // The site the shuttle goes down to is on the body the ship is over: its own ground and rock, and its own weather --
+    // rain freezing to snow where it is cold enough and snow melting to rain where it is not, and nothing at all without
+    // air to carry it.
     SiteMap::Look look;
     const StarSystem* system = m_campaignOpen ? CurrentSystem() : nullptr;
     const Body* body = system != nullptr ? system->Find(m_campaign.body) : nullptr;
@@ -1159,7 +1160,21 @@ SiteMap::Look PredationGame::SiteLookHere()
         look.surface = biome->surface;
         look.steep = biome->steepSurface;
     }
-    look.snow = body->temperature < -8.0f && body->air > 0.015f;
+    look.weather = "none";
+    look.weatherAmount = 0.0f;
+    if (const WeatherDef* weather = m_universeData.Weather(body->weather); weather != nullptr && body->air > 0.015f)
+    {
+        look.weather = weather->particles;
+        look.weatherAmount = weather->intensity;
+        if (look.weather == "rain" && body->temperature < -2.0f)
+        {
+            look.weather = "snow";
+        }
+        else if (look.weather == "snow" && body->temperature > 3.0f)
+        {
+            look.weather = "rain";
+        }
+    }
     return look;
 }
 

@@ -9746,9 +9746,10 @@ void PredationGame::OnUpdate(double dt, double alpha)
     UpdateShipTravel(deltaSeconds);
     UpdateOrders(deltaSeconds);
     m_particles.Update(m_scene, deltaSeconds);
-    // Snowing at the site, drifting with its wind -- not indoors, and not in the shuttle's cabin.
+    // The site's weather, blowing with its wind -- not indoors, and not in the shuttle's cabin.
     {
-        const bool falling = m_screen == Screen::Playing && m_facility.Built() && m_facility.GetLook().snow && m_facility.Contains(m_renderEye);
+        const SiteMap::Look& look = m_facility.GetLook();
+        const bool falling = m_screen == Screen::Playing && m_facility.Built() && m_facility.Contains(m_renderEye);
         const uint32_t seed = m_facility.Seed();
         const float windAngle = static_cast<float>((seed * 2654435761u) >> 20) / 4096.0f * 6.2831853f;
         const float windSpeed = falling ? static_cast<float>(PlaceConditions(m_facility.Plan().sky.fogEnd).wind) * 0.12f : 0.0f;
@@ -9760,9 +9761,9 @@ void PredationGame::OnUpdate(double dt, double alpha)
                 ground = below.position.y;
             }
         }
-        m_snow.Update(m_scene, m_app->GetMeshes(), m_renderEye, ground, deltaSeconds, falling,
-                      glm::vec3(std::cos(windAngle), 0.0f, std::sin(windAngle)) * windSpeed,
-                      [this](const glm::vec3& at) { return m_facility.Plan().Indoors(at) || m_facility.Shuttle().Aboard(at); });
+        m_weather.Update(m_scene, m_app->GetMeshes(), m_renderEye, ground, deltaSeconds, Weather::KindOf(look.weather), falling ? look.weatherAmount : 0.0f,
+                         look.ground, glm::vec3(std::cos(windAngle), 0.0f, std::sin(windAngle)) * windSpeed,
+                         [this](const glm::vec3& at) { return m_facility.Plan().Indoors(at) || m_facility.Shuttle().Aboard(at); });
     }
 
     glm::mat4 view;

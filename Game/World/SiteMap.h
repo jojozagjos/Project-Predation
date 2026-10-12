@@ -29,13 +29,15 @@ class MeshLibrary;
 class SiteMap
 {
 public:
-    // How the place's outside looks: its own world's ground and rock and the shape of its ground, and whether snow lies
-    // there and falls. Set before building, the same on every machine (it comes from the world the site is on).
+    // How the place's outside looks: its own world's ground and rock and the shape of its ground, and what falls from its
+    // sky. Set before building, the same on every machine (it comes from the world the site is on).
     struct Look
     {
         glm::vec3 ground{0.72f, 0.74f, 0.78f};
         glm::vec3 rock{0.21f, 0.2f, 0.18f};
-        bool snow = true;
+        // What falls (a weather's particles: "snow", "rain", "dust", "ash", or "none") and how much of it, 0 to 1.
+        std::string weather = "snow";
+        float weatherAmount = 0.6f;
         SiteTerrain::Shape terrain = SiteTerrain::Shape::Flat;
         bool dunes = false;
         // The texture set its ground is laid with (universe.json, a biome's site surface; Assets/Textures), tinted to its
