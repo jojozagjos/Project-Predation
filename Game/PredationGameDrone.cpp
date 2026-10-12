@@ -272,12 +272,16 @@ void PredationGame::UpdateDrone(const PlayerInput& input, float dt)
         }
         // Put down near where they fell, outside: the nearest open ground a few metres off that can be driven to from the
         // body -- out of the building they died in, not on top of the body, and not all the way back at the shuttle.
-        // Failing that, where the team came in, side by side so two dead players' drones do not arrive in one another.
-        const glm::vec3 across{std::cos(m_spawnYaw), 0.0f, std::sin(m_spawnYaw)};
-        glm::vec3 at = m_spawnPoint + across * ((static_cast<float>(LocalPlayerId()) - 1.5f) * 0.7f);
-        if (m_map == MapChoice::Facility && m_nav.Valid())
+        // Failing that, where the team came in -- the site's own landing, when the body is at the site (never the ship's,
+        // a world away) -- side by side so two dead players' drones do not arrive in one another.
+        const glm::vec3 body = m_player.State().position;
+        const bool atSite = m_facility.Built() && m_facility.Contains(body);
+        const float yaw = atSite ? m_facility.SpawnYaw() : m_spawnYaw;
+        const glm::vec3 across{std::cos(yaw), 0.0f, std::sin(yaw)};
+        glm::vec3 at = (atSite ? m_facility.Spawn() : m_spawnPoint) + across * ((static_cast<float>(LocalPlayerId()) - 1.5f) * 0.7f);
+        // Only over the site's own navigation: the ship's, still in place while the site's is built, has nothing near.
+        if (atSite && m_nav.Valid() && !m_navRebuilding)
         {
-            const glm::vec3 body = m_player.State().position;
             uint32_t seed = 0x5EED0u + LocalPlayerId() * 977u;
             float nearest = 1.0e9f;
             for (const float radius : {12.0f, 25.0f, 50.0f})
@@ -302,9 +306,9 @@ void PredationGame::UpdateDrone(const PlayerInput& input, float dt)
                 }
             }
         }
-        m_supportDrone.Deploy(m_scene, m_app->GetMeshes(), physics, at, m_spawnYaw);
+        m_supportDrone.Deploy(m_scene, m_app->GetMeshes(), physics, at, yaw);
         m_spectating = -1;
-        m_lookYaw = m_spawnYaw;
+        m_lookYaw = yaw;
         m_lookPitch = 0.0f;
         PlayNamed("Items/battery_in", at, 0.6f, 0.9f, true);
         PRED_LOG_INFO(Gameplay, "Support drone deployed at {:.1f} {:.1f} {:.1f}", at.x, at.y, at.z);

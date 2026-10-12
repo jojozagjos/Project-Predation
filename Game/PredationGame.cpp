@@ -10512,8 +10512,9 @@ void PredationGame::OnUpdate(double dt, double alpha)
 
     renderer.SetClearColor(0x11131aff);
 
-    // What the player can reach, decided by where they are looking rather than by proximity.
-    if (m_hidingSpot >= 0)
+    // What the player can reach, decided by where they are looking rather than by proximity -- and nothing at all dead (a
+    // drone or a spectator is not where the body is, and cannot pick anything up).
+    if (m_hidingSpot >= 0 || !m_player.State().alive)
     {
         m_interactions.ClearFocus();
     }
