@@ -63,6 +63,9 @@ public:
     static constexpr bgfx::ViewId kViewSky = 8;
     static constexpr bgfx::ViewId kViewSkyBodies = 9;
     static constexpr bgfx::ViewId kViewDebug = 10;
+    // What is see-through (SpriteRenderer: the weather), blended over the world and the sky into the same picture: the
+    // debug lines' view, drawn after both with the same camera and depth.
+    static constexpr bgfx::ViewId kViewTranslucent = kViewDebug;
     // Post-processing (PostProcess): the glow's chain of smaller and smaller copies and back, then the
     // finished picture onto the screen, before the interface.
     static constexpr bgfx::ViewId kViewPostFirst = 11;

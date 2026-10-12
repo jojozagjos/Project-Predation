@@ -618,6 +618,7 @@ bool PredationGame::OnInit(Application& app)
     LoadMissionData();
     LoadUniverseData();
     m_planets.Init(app.GetShaders());
+    m_sprites.Init(app.GetShaders());
     LoadCinematics();
     app.GetPhysics().OptimizeBroadPhase();
     // The walkable surface the creature moves over, worked out from the level's solid geometry.
@@ -7474,6 +7475,7 @@ void PredationGame::OnShutdown()
     DestroyEditorFirstPerson();
     DestroySystemMapTarget();
     m_planets.Shutdown();
+    m_sprites.Shutdown();
     m_editor.Shutdown(m_editorScene);
     if (m_editorBodyBuilt)
     {
@@ -9857,8 +9859,15 @@ void PredationGame::OnUpdate(double dt, double alpha)
                 ground = below.position.y;
             }
         }
-        m_weather.Update(m_scene, m_app->GetMeshes(), m_renderEye, ground, deltaSeconds, Weather::KindOf(look.weather), falling ? look.weatherAmount : 0.0f,
-                         look.ground, glm::vec3(std::cos(windAngle), 0.0f, std::sin(windAngle)) * windSpeed,
+        // Lit and fogged as last frame's world was (the light changes slowly).
+        const Environment& environment = m_scene.GetEnvironment();
+        Weather::Light light;
+        light.light = environment.ambientSky * 1.4f + environment.ambientGround * 0.4f + environment.sunColor * environment.sunIntensity * 0.55f;
+        light.fogColour = environment.fogColor;
+        light.fogStart = environment.fogStart;
+        light.fogEnd = environment.fogEnd;
+        m_weather.Update(m_renderEye, ground, deltaSeconds, Weather::KindOf(look.weather), falling ? look.weatherAmount : 0.0f, look.ground,
+                         glm::vec3(std::cos(windAngle), 0.0f, std::sin(windAngle)) * windSpeed, light,
                          [this](const glm::vec3& at) { return m_facility.Plan().Indoors(at) || m_facility.Shuttle().Aboard(at); });
     }
 
@@ -10274,6 +10283,28 @@ void PredationGame::OnUpdate(double dt, double alpha)
             {
                 environment.fogStart = std::min(environment.fogStart, 30.0f);
                 environment.fogEnd = std::min(environment.fogEnd, 260.0f);
+            }
+            // And the weather thickens it far more: a sandstorm or a blizzard down to a few tens of metres, the fog the
+            // colour of what is in the air, the day dimmed under it, and how far anybody can see coming and going with the
+            // gusts.
+            const SiteMap::Look& look = m_facility.GetLook();
+            const Weather::Kind kind = Weather::KindOf(look.weather);
+            if (kind != Weather::Kind::None && look.weatherAmount > 0.0f && siteBody->air >= 0.015f)
+            {
+                const float amount = std::clamp(look.weatherAmount, 0.0f, 1.0f);
+                const float thickens = kind == Weather::Kind::Dust ? 0.85f : kind == Weather::Kind::Snow ? 0.8f : kind == Weather::Kind::Ash ? 0.75f : 0.55f;
+                const float gust = std::clamp((Weather::GustAt(static_cast<float>(std::fmod(m_campaign.clock, 10000.0))) - 0.4f) / 1.2f, 0.0f, 1.0f);
+                const float sight = (1.0f - amount * thickens) * glm::mix(1.15f, 0.85f, gust);
+                environment.fogEnd = std::max(environment.fogEnd * std::pow(std::max(sight, 0.0f), 1.5f), 25.0f);
+                environment.fogStart = std::min(environment.fogStart, environment.fogEnd * 0.08f);
+                const glm::vec3 lit = environment.ambientSky + environment.sunColor * environment.sunIntensity * 0.25f;
+                const glm::vec3 stuff = kind == Weather::Kind::Dust   ? look.ground * glm::vec3(0.9f, 0.82f, 0.7f)
+                                        : kind == Weather::Kind::Snow ? glm::vec3(0.8f, 0.83f, 0.87f)
+                                        : kind == Weather::Kind::Ash  ? glm::vec3(0.2f, 0.19f, 0.19f)
+                                                                      : glm::vec3(0.5f, 0.54f, 0.58f);
+                const float thick = amount * thickens;
+                environment.fogColor = glm::mix(environment.fogColor, stuff * lit, thick);
+                environment.sunIntensity *= glm::mix(1.0f, 0.4f, thick);
             }
         }
         else if (atSite)
@@ -10954,6 +10985,8 @@ void PredationGame::OnRender()
     app.GetSceneRenderer().SetFullbright(false);
 #endif
     app.GetSceneRenderer().Draw(Renderer::kViewMain, m_scene, app.GetMeshes(), viewPosition);
+    // The air with something in it -- the weather's flakes, streaks and puffs -- over the world and the sky, blended.
+    m_sprites.Draw(Renderer::kViewTranslucent, Depth::Test(), viewPosition, m_weather.Sprites());
     DrawDebugOverlays();
 }
 

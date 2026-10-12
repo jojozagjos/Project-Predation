@@ -87,6 +87,8 @@ set(PRED_ENGINE_SOURCES
     Render/PlanetRenderer.cpp
     Render/SkyRenderer.h
     Render/SkyRenderer.cpp
+    Render/SpriteRenderer.h
+    Render/SpriteRenderer.cpp
     Render/DepthConvention.h
     Render/DepthConvention.cpp
     Render/PostProcess.h

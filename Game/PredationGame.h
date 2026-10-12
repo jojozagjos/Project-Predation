@@ -14,6 +14,7 @@
 #include "Engine/Audio/VoiceCodec.h"
 #include "Engine/Net/LobbyClient.h"
 #include "Engine/Render/PlanetRenderer.h"
+#include "Engine/Render/SpriteRenderer.h"
 #include "Game/Net/NetSession.h"
 #include "Engine/Net/LanDiscovery.h"
 #include "Engine/Net/PortMapper.h"
@@ -1227,6 +1228,8 @@ private:
     // put away, and out once it has set down.
     bool m_stageStair = false;
     PlanetRenderer m_planets;
+    // Soft blended sprites over the picture: the weather (Weather).
+    SpriteRenderer m_sprites;
     SystemMapView m_mapView;
     bool m_mapOpen = false;
     bool m_mapFramed = false;

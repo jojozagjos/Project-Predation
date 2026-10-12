@@ -1,9 +1,8 @@
 #include "Game/World/Weather.h"
 
-#include "Engine/Render/Material.h"
-#include "Engine/Render/Primitives.h"
-
-#include <glm/gtc/quaternion.hpp>
+#include <glm/common.hpp>
+#include <glm/geometric.hpp>
+#include <glm/vec2.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -18,38 +17,39 @@ namespace
 // dust, ash -- so it is thick where it is seen.)
 constexpr glm::vec3 kBigBox{34.0f, 16.0f, 34.0f};
 constexpr float kBigAbove = 11.0f;
+// And the box the puffs drift through: wider, from the ground up.
+constexpr float kPuffBox = 56.0f;
+constexpr float kPuffHigh = 14.0f;
 
 // How each kind falls and looks. `pieces` at the most (fewer as there is less of it); `low` of them blown along the
-// ground rather than falling; `fall` metres a second, from and to; `size` metres, from and to; `shape` the piece's
-// proportions (a flake flat, a drop a streak); `blow` how much of the wind it takes; `swirl` how far it wanders;
-// `glow` the share that are embers.
+// ground rather than falling; `puffs` big soft ones in a heavy fall; `fall` metres a second, from and to; `size` metres
+// across, from and to; `alpha` how much it hides; `blow` how much of the wind it takes; `swirl` how far it wanders;
+// `streak` drawn along the way it is going, `streakTime` how long a moment it is smeared over; `glow` the share that are
+// embers; `puffAlpha` how thick a puff is at the heaviest.
 struct KindLook
 {
     int pieces;
     int low;
+    int puffs;
     float fallFrom, fallTo;
     float sizeFrom, sizeTo;
-    glm::vec3 shape;
+    float alpha;
     float blow;
     float swirl;
-    bool spins;
-    bool streak; // drawn along the way it is going
+    bool streak;
+    float streakTime;
     float glow;
     glm::vec3 color;
-    glm::vec3 emissive;
+    float puffAlpha;
     float reach = 1.0f; // of the box
 };
 
 const KindLook& LookOf(Weather::Kind kind)
 {
-    static const KindLook kSnow{720, 170, 0.7f, 1.7f, 0.026f, 0.064f, {1.0f, 0.35f, 1.0f}, 1.0f, 0.35f, true, false, 0.0f,
-                                {0.92f, 0.94f, 0.97f}, {0.16f, 0.165f, 0.18f}};
-    static const KindLook kRain{1300, 0, 8.0f, 11.0f, 0.4f, 0.65f, {0.014f, 1.0f, 0.014f}, 1.6f, 0.0f, false, true, 0.0f,
-                                {0.6f, 0.66f, 0.72f}, {0.05f, 0.055f, 0.06f}};
-    static const KindLook kDust{1000, 600, -0.15f, 0.35f, 0.02f, 0.05f, {1.0f, 0.8f, 1.0f}, 2.6f, 0.8f, true, false, 0.0f,
-                                {0.6f, 0.5f, 0.38f}, {0.03f, 0.026f, 0.02f}, 0.55f};
-    static const KindLook kAsh{800, 140, 0.3f, 0.8f, 0.03f, 0.07f, {1.0f, 0.3f, 1.0f}, 0.8f, 0.6f, true, false, 0.08f,
-                               {0.16f, 0.16f, 0.17f}, {0.0f, 0.0f, 0.0f}, 0.7f};
+    static const KindLook kSnow{760, 170, 46, 0.7f, 1.7f, 0.04f, 0.09f, 0.95f, 1.0f, 0.35f, false, 0.0f, 0.0f, {0.92f, 0.94f, 0.97f}, 0.16f, 0.7f};
+    static const KindLook kRain{1500, 0, 24, 8.0f, 11.0f, 0.018f, 0.026f, 0.5f, 1.6f, 0.0f, true, 0.07f, 0.0f, {0.72f, 0.76f, 0.82f}, 0.08f, 0.55f};
+    static const KindLook kDust{1100, 650, 80, -0.15f, 0.35f, 0.02f, 0.04f, 0.6f, 2.6f, 0.8f, true, 0.035f, 0.0f, {0.6f, 0.5f, 0.38f}, 0.3f, 0.55f};
+    static const KindLook kAsh{760, 140, 50, 0.3f, 0.8f, 0.04f, 0.09f, 0.85f, 0.8f, 0.6f, false, 0.0f, 0.08f, {0.16f, 0.16f, 0.17f}, 0.2f, 0.7f};
     switch (kind)
     {
     case Weather::Kind::Rain:
@@ -63,24 +63,6 @@ const KindLook& LookOf(Weather::Kind kind)
     }
 }
 
-// One piece: a box of 24 corners (four a face, so each face has its own way out), made once and turned into place.
-const MeshData& UnitBox()
-{
-    static const MeshData box = Primitives::Box({1.0f, 1.0f, 1.0f});
-    return box;
-}
-
-MeshData Pieces(int count)
-{
-    MeshData mesh;
-    const MeshData& box = UnitBox();
-    for (int i = 0; i < count; ++i)
-    {
-        mesh.Append(box, glm::mat4(1.0f));
-    }
-    return mesh;
-}
-
 } // namespace
 
 Weather::Kind Weather::KindOf(const std::string& particles)
@@ -88,28 +70,15 @@ Weather::Kind Weather::KindOf(const std::string& particles)
     return particles == "snow" ? Kind::Snow : particles == "rain" ? Kind::Rain : particles == "dust" ? Kind::Dust : particles == "ash" ? Kind::Ash : Kind::None;
 }
 
-void Weather::Make(Scene& scene, MeshLibrary& meshes, Kind kind, const glm::vec3& eye, const glm::vec3& tint)
+float Weather::GustAt(float seconds)
 {
-    // Whatever was falling before goes.
-    for (Entity* entity : {&m_entity, &m_glowEntity})
-    {
-        if (entity->IsValid())
-        {
-            scene.Destroy(*entity);
-            *entity = Entity{};
-        }
-    }
-    for (MeshHandle* mesh : {&m_mesh, &m_glowMesh})
-    {
-        if (mesh->IsValid())
-        {
-            meshes.Release(*mesh);
-            *mesh = MeshHandle{};
-        }
-    }
+    return 0.7f + 0.6f * std::sin(seconds * 0.31f) * std::sin(seconds * 0.77f + 1.3f) + 0.35f * std::max(std::sin(seconds * 0.13f), 0.0f);
+}
+
+void Weather::Make(Kind kind, const glm::vec3& eye)
+{
     m_pieces.clear();
     m_kind = kind;
-    m_shown = false;
     if (kind == Kind::None)
     {
         return;
@@ -122,91 +91,62 @@ void Weather::Make(Scene& scene, MeshLibrary& meshes, Kind kind, const glm::vec3
     const KindLook& look = LookOf(kind);
     const glm::vec3 box = kBigBox * look.reach;
     const float above = kBigAbove * look.reach;
-    m_glowCount = static_cast<int>(std::round(static_cast<float>(look.pieces) * look.glow));
+    const int glows = static_cast<int>(std::round(static_cast<float>(look.pieces) * look.glow));
     for (int i = 0; i < look.pieces; ++i)
     {
         Piece piece;
         piece.low = i < look.low;
-        piece.glow = i >= look.pieces - m_glowCount;
+        piece.glow = i >= look.pieces - glows;
         piece.at = eye + glm::vec3((random() - 0.5f) * box.x, above - random() * box.y, (random() - 0.5f) * box.z);
         piece.fall = piece.low ? 0.0f : look.fallFrom + random() * (look.fallTo - look.fallFrom);
         piece.sway = random() * 6.2831853f;
         piece.size = look.sizeFrom + random() * (look.sizeTo - look.sizeFrom);
+        piece.alpha = look.alpha * (0.7f + 0.3f * random());
         if (piece.low)
         {
-            piece.size *= 0.7f;
+            // Along the ground: sand snaking across it in ribbons; a little snow skittering.
+            piece.size = kind == Kind::Dust ? 0.06f + random() * 0.08f : piece.size * 0.7f;
+            piece.alpha *= kind == Kind::Dust ? 0.55f : 1.0f;
         }
-        piece.spin = glm::normalize(glm::vec3(random() - 0.5f, random() - 0.5f, random() - 0.5f) + glm::vec3(0.0f, 0.001f, 0.0f));
-        piece.spinRate = 1.5f + random() * 4.0f;
+        if (piece.glow)
+        {
+            piece.size = 0.025f;
+        }
         // Mostly just over it; now and then lifted higher (dust higher than snow).
         piece.height = 0.05f + random() * random() * (kind == Kind::Dust ? 4.0f : 0.7f);
         m_pieces.push_back(piece);
     }
-    const auto entityFor = [&](MeshHandle mesh, const Material& material, const char* name)
+    // The puffs: big and faint, from the ground up, all through the box round the eye.
+    for (int i = 0; i < look.puffs; ++i)
     {
-        const Entity entity = scene.CreateMeshEntity(name, Transform{}, mesh, material);
-        if (MeshRenderer* renderer = scene.GetMeshRenderer(entity))
-        {
-            renderer->castsShadow = false;
-            renderer->blocksSky = false;
-            renderer->visible = false;
-        }
-        return entity;
-    };
-    const int plain = look.pieces - m_glowCount;
-    // Dust is the ground it was lifted from, a shade darker and browner, so it shows crossing it.
-    Material material = Material::Diffuse(kind == Kind::Dust ? tint * glm::vec3(0.62f, 0.55f, 0.46f) : look.color, kind == Kind::Rain ? 0.3f : 1.0f);
-    // A little light of its own, so it shows against the dark as it does, catching whatever light there is.
-    material.emissive = look.emissive;
-    m_tint = tint;
-    m_mesh = meshes.CreateDynamic(Pieces(plain), "weather");
-    m_entity = entityFor(m_mesh, material, "weather");
-    m_vertices.assign(static_cast<size_t>(plain) * UnitBox().vertices.size(), MeshVertex{});
-    if (m_glowCount > 0)
-    {
-        Material ember = Material::Diffuse({1.0f, 0.4f, 0.1f}, 1.0f);
-        ember.emissive = {2.6f, 0.9f, 0.18f};
-        m_glowMesh = meshes.CreateDynamic(Pieces(m_glowCount), "weather_glow");
-        m_glowEntity = entityFor(m_glowMesh, ember, "weather_glow");
-        m_glowVertices.assign(static_cast<size_t>(m_glowCount) * UnitBox().vertices.size(), MeshVertex{});
+        Piece piece;
+        piece.puff = true;
+        piece.at = eye + glm::vec3((random() - 0.5f) * kPuffBox, 0.0f, (random() - 0.5f) * kPuffBox);
+        piece.height = random() * random() * kPuffHigh;
+        piece.size = 3.0f + random() * 5.0f;
+        piece.alpha = 0.55f + 0.45f * random();
+        piece.sway = random() * 6.2831853f;
+        m_pieces.push_back(piece);
     }
 }
 
-void Weather::Show(Scene& scene, bool shown)
+void Weather::Update(const glm::vec3& eye, float ground, float dt, Kind kind, float intensity, const glm::vec3& tint, const glm::vec3& wind,
+                     const Light& light, const std::function<bool(const glm::vec3&)>& indoors)
 {
-    if (shown == m_shown)
+    m_sprites.clear();
+    if (kind != m_kind)
     {
-        return;
-    }
-    m_shown = shown;
-    for (const Entity entity : {m_entity, m_glowEntity})
-    {
-        if (MeshRenderer* renderer = scene.GetMeshRenderer(entity))
-        {
-            renderer->visible = shown;
-        }
-    }
-}
-
-void Weather::Update(Scene& scene, MeshLibrary& meshes, const glm::vec3& eye, float ground, float dt, Kind kind, float intensity, const glm::vec3& tint,
-                     const glm::vec3& wind, const std::function<bool(const glm::vec3&)>& indoors)
-{
-    if (kind != m_kind || (kind == Kind::Dust && glm::length(tint - m_tint) > 0.02f))
-    {
-        Make(scene, meshes, kind, eye, tint);
+        Make(kind, eye);
     }
     if (kind == Kind::None || intensity <= 0.0f)
     {
-        Show(scene, false);
         return;
     }
-    Show(scene, true);
     const KindLook& look = LookOf(kind);
     const glm::vec3 box = kBigBox * look.reach;
     const float above = kBigAbove * look.reach;
     m_clock += dt;
-    // Gusting: the wind rises and falls, now and then hard.
-    const float gust = 0.7f + 0.6f * std::sin(m_clock * 0.31f) * std::sin(m_clock * 0.77f + 1.3f) + 0.35f * std::max(std::sin(m_clock * 0.13f), 0.0f);
+    const float gust = GustAt(m_clock);
     // Dust is only there because the wind is lifting it: never less than a stiff breeze.
     glm::vec3 blown = wind;
     if (kind == Kind::Dust && glm::length(blown) < 1.2f)
@@ -214,17 +154,54 @@ void Weather::Update(Scene& scene, MeshLibrary& meshes, const glm::vec3& eye, fl
         blown = (glm::length(blown) > 1.0e-4f ? glm::normalize(blown) : glm::vec3(0.8f, 0.0f, 0.6f)) * 1.2f;
     }
     const glm::vec3 blowing = blown * gust * look.blow;
-    // As much of it as there is: a light fall is a third of a heavy one.
-    const int shown = static_cast<int>(static_cast<float>(m_pieces.size()) * (0.35f + 0.65f * std::clamp(intensity, 0.0f, 1.0f)));
-    const MeshData& unit = UnitBox();
-    const size_t corners = unit.vertices.size();
-    glm::vec3 lo{1e9f};
-    glm::vec3 hi{-1e9f};
-    int plainIndex = 0;
-    int glowIndex = 0;
-    for (int i = 0; i < static_cast<int>(m_pieces.size()); ++i)
+    const float amount = std::clamp(intensity, 0.0f, 1.0f);
+    // As much of it as there is: a light fall is a third of a heavy one. The puffs only in a heavy one, thicker in the gusts.
+    const int falling = static_cast<int>(std::count_if(m_pieces.begin(), m_pieces.end(), [](const Piece& p) { return !p.puff; }));
+    const int shown = static_cast<int>(static_cast<float>(falling) * (0.35f + 0.65f * amount));
+    const float puffs = look.puffAlpha * glm::smoothstep(0.4f, 1.0f, amount) * glm::mix(0.75f, 1.25f, std::clamp(gust - 0.4f, 0.0f, 1.2f) / 1.2f);
+    // Its own colour: dust the ground it was lifted from, a little browner.
+    const glm::vec3 own = kind == Kind::Dust ? tint * glm::vec3(0.9f, 0.82f, 0.7f) : look.color;
+    const auto fogged = [&](const glm::vec3& colour, const glm::vec3& at)
     {
-        Piece& piece = m_pieces[static_cast<size_t>(i)];
+        const float distance = glm::length(at - eye);
+        const float fog = std::clamp((distance - light.fogStart) / std::max(light.fogEnd - light.fogStart, 0.01f), 0.0f, 1.0f);
+        return glm::mix(colour, light.fogColour, fog);
+    };
+    int index = 0;
+    for (Piece& piece : m_pieces)
+    {
+        if (piece.puff)
+        {
+            // Drifting with the wind, rising and sinking a little, round again at the other side.
+            piece.at += blowing * (kind == Kind::Dust || kind == Kind::Snow ? 2.2f : 0.8f) * dt;
+            glm::vec2 local{piece.at.x - eye.x, piece.at.z - eye.z};
+            local.x = std::fmod(local.x + kPuffBox * 1.5f, kPuffBox) - kPuffBox * 0.5f;
+            local.y = std::fmod(local.y + kPuffBox * 1.5f, kPuffBox) - kPuffBox * 0.5f;
+            piece.at = {eye.x + local.x, ground + piece.height + 0.6f * std::sin(m_clock * 0.21f + piece.sway), eye.z + local.y};
+            if (puffs <= 0.002f || indoors(piece.at))
+            {
+                continue;
+            }
+            // Faded as it nears the eye, so the eye never goes through the face of one.
+            const float distance = glm::length(piece.at - eye);
+            const float near = glm::smoothstep(piece.size * 0.35f, piece.size * 0.9f, distance);
+            Sprite sprite;
+            sprite.at = piece.at;
+            sprite.size = piece.size;
+            // A puff is the colour of the air it thickens -- the fog's, a little lighter or darker -- with some of its own in it;
+            // in a sandstorm or a blizzard drawn out along the wind, streamers of it blowing past.
+            const float horizontal = glm::length(glm::vec2(blowing.x, blowing.z));
+            if ((kind == Kind::Dust || kind == Kind::Snow) && horizontal > 0.5f)
+            {
+                sprite.size = piece.size * 0.55f;
+                sprite.length = piece.size * 2.4f;
+                sprite.along = glm::vec3(blowing.x, 0.0f, blowing.z) / horizontal;
+            }
+            sprite.colour = glm::mix(light.fogColour * (0.88f + 0.24f * std::sin(piece.sway * 3.0f)), own * light.light, 0.4f);
+            sprite.alpha = piece.alpha * puffs * near;
+            m_sprites.push_back(sprite);
+            continue;
+        }
         glm::vec3 local = piece.at - eye;
         if (piece.low)
         {
@@ -258,37 +235,34 @@ void Weather::Update(Scene& scene, MeshLibrary& meshes, const glm::vec3& eye, fl
         {
             piece.at.y = eye.y + local.y;
         }
-        // Not indoors, and only as many as there is weather for: the rest drawn as nothing.
-        const bool show = i < shown && !indoors(piece.at);
-        glm::quat turn;
+        // Only as many as there is weather for, and not indoors.
+        if (index++ >= shown || indoors(piece.at))
+        {
+            continue;
+        }
+        Sprite sprite;
+        sprite.at = piece.at;
+        sprite.size = piece.size;
+        sprite.alpha = piece.alpha;
         if (look.streak)
         {
-            // Along the way it is going: a streak of rain leans with the wind.
-            const glm::vec3 way = glm::normalize(glm::vec3(blowing.x, -piece.fall, blowing.z));
-            turn = glm::quat(glm::vec3(0.0f, -1.0f, 0.0f), way);
+            // Smeared along the way it is going over the moment the eye sees it: rain as streaks leaning with the wind, sand
+            // as streaks blowing past.
+            const glm::vec3 velocity = piece.low ? blowing * 3.2f : glm::vec3(blowing.x, -piece.fall, blowing.z);
+            sprite.length = glm::length(velocity) * look.streakTime * (piece.low ? 2.5f : 1.0f);
+            sprite.along = glm::normalize(velocity);
+        }
+        if (piece.glow)
+        {
+            // An ember: its own light, flickering, unlit by anything.
+            sprite.colour = glm::vec3(3.0f, 1.1f, 0.22f) * (0.6f + 0.4f * std::sin(m_clock * 9.0f + piece.sway * 5.0f));
+            sprite.alpha = 1.0f;
         }
         else
         {
-            turn = glm::angleAxis(m_clock * piece.spinRate + piece.sway, piece.spin);
+            sprite.colour = fogged(own * light.light, piece.at);
         }
-        const glm::vec3 scale = show ? look.shape * piece.size : glm::vec3(0.0f);
-        std::vector<MeshVertex>& out = piece.glow ? m_glowVertices : m_vertices;
-        const size_t base = static_cast<size_t>(piece.glow ? glowIndex++ : plainIndex++) * corners;
-        for (size_t c = 0; c < corners; ++c)
-        {
-            MeshVertex vertex = unit.vertices[c];
-            vertex.position = piece.at + turn * (vertex.position * scale);
-            vertex.normal = turn * vertex.normal;
-            out[base + c] = vertex;
-        }
-        lo = glm::min(lo, piece.at);
-        hi = glm::max(hi, piece.at);
-    }
-    const AABB bounds{lo - glm::vec3(1.0f), hi + glm::vec3(1.0f)};
-    meshes.UpdateDynamic(m_mesh, m_vertices, bounds);
-    if (m_glowMesh.IsValid())
-    {
-        meshes.UpdateDynamic(m_glowMesh, m_glowVertices, bounds);
+        m_sprites.push_back(sprite);
     }
 }
 
