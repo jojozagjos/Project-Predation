@@ -1947,7 +1947,6 @@ private:
     float m_titleMusicLevel = 0.0f;
     float m_droneLevel = 0.0f;
     float m_heartbeatAt = 0.0f;
-    float m_stingReadyAt = 0.0f;
     // The loops that make up where you are, each faded in by how much you are there: a room, the air in
     // its ducts, the open air, the inside of a vent, a nest. See UpdateAmbience.
     struct AmbienceLoop

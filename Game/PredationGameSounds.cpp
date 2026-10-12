@@ -404,20 +404,12 @@ void PredationGame::UpdateCreatureSounds(float dt)
         const bool stalking = doing == Behavior::Stalk;
         // Sneaking, it holds its breath -- until it is close enough to be heard breathing right behind you.
         const bool heldBreath = sneaking && listenerAway > 2.2f;
-        // Breaking cover to go for somebody: a shriek, the first thing about it anybody hears.
+        // Breaking cover to go for somebody: sometimes a shriek, the first thing about it anybody hears -- and sometimes nothing,
+        // so that being seen is not something the game tells you.
         const bool wasHiding = heard.doing == Behavior::Stalk || heard.doing == Behavior::Ambush || heard.doing == Behavior::Lure;
-        if (wasHiding && (intent == Behavior::Hunt || intent == Behavior::Attack))
+        if (wasHiding && (intent == Behavior::Hunt || intent == Behavior::Attack) && Random01() < 0.35f)
         {
             PlayNamed("Creature/call", head, 1.0f, pitch * 1.15f);
-        }
-        // Something close turning on you: the sting, in both ears, over everything. Not every time --
-        // a sting that comes with every chase is a sound effect, not a fright.
-        const bool nowAfter = intent == Behavior::Hunt || intent == Behavior::Attack;
-        const bool wasAfter = heard.doing == Behavior::Hunt || heard.doing == Behavior::Attack || heard.doing == Behavior::Drag;
-        if (nowAfter && !wasAfter && listenerAway < 18.0f && m_player.State().alive && m_soundClock >= m_stingReadyAt)
-        {
-            m_stingReadyAt = m_soundClock + 25.0f;
-            PlayNamed("Music/sting", m_renderEye, 0.7f, 1.0f, false);
         }
         heard.doing = intent;
         const CreatureTraits& habits = creature.Brain().Traits();
