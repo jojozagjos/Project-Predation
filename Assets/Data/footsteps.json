@@ -8,35 +8,57 @@
     "Each surface names its clips. One is picked at random per footfall and its pitch is nudged, so a",
     "run down a corridor does not turn into a metronome.",
     "",
-    "gain levels the surfaces against each other. The numbers are not guesses: each clip was measured",
-    "after its trailing silence was trimmed, and the gain brings that surface's RMS to roughly the",
-    "same place as concrete's. Switching surface should change what the floor sounds like and not how",
-    "loud the game is."
+    "Every clip is mono 48 kHz, its lead-in silence cut, capped at 0.6 s with a short fade, and brought to",
+    "the same loudness (RMS about -23.7 dB, as concrete). gain is then how loud a step on that surface is",
+    "against the others, by ear: soft ground quieter than hard floor. Metal is a concrete heel strike with",
+    "a plate ring under it; dirt a soft step with sand grit; mud a step with a squelch."
   ],
-  "_source": "JDSherbert - Footstep Foley SFX Pack (FREE), mono 48 kHz. See Docs/CREDITS.md.",
-
+  "_source": "CC0: Kenney Impact Sounds; Corsica_S 42 Snow and Gravel Footsteps; Fantozzi Footsteps; TinyWorlds Different Steps; 25 CC0 mud sfx. See Docs/CREDITS.md.",
   "default_surface": "concrete",
-
   "surfaces": {
     "concrete": {
-      "gain": 1.00,
-      "clips": [ "concrete_1.wav", "concrete_2.wav" ]
+      "gain": 1,
+      "clips": [ "concrete_1.wav", "concrete_2.wav", "concrete_3.wav", "concrete_4.wav", "concrete_5.wav" ]
     },
     "stone": {
-      "gain": 1.20,
-      "clips": [ "stone_1.wav", "stone_2.wav" ]
+      "gain": 1,
+      "clips": [ "stone_1.wav", "stone_2.wav", "stone_3.wav", "stone_4.wav", "stone_5.wav", "stone_6.wav", "stone_7.wav" ]
     },
     "metal": {
-      "gain": 1.58,
-      "clips": [ "metal_1.wav", "metal_2.wav" ]
+      "gain": 1.05,
+      "clips": [ "metal_1.wav", "metal_2.wav", "metal_3.wav", "metal_4.wav", "metal_5.wav" ]
     },
     "gravel": {
-      "gain": 0.74,
-      "clips": [ "gravel_1.wav", "gravel_2.wav" ]
+      "gain": 0.8,
+      "clips": [ "gravel_1.wav", "gravel_2.wav", "gravel_3.wav", "gravel_4.wav", "gravel_5.wav", "gravel_6.wav", "gravel_7.wav", "gravel_8.wav" ]
     },
     "wood": {
-      "gain": 0.98,
-      "clips": [ "wood_1.wav", "wood_2.wav" ]
+      "gain": 0.95,
+      "clips": [ "wood_1.wav", "wood_2.wav", "wood_3.wav", "wood_4.wav", "wood_5.wav", "wood_6.wav" ]
+    },
+    "snow": {
+      "gain": 0.75,
+      "clips": [ "snow_1.wav", "snow_2.wav", "snow_3.wav", "snow_4.wav", "snow_5.wav" ]
+    },
+    "sand": {
+      "gain": 0.7,
+      "clips": [ "sand_1.wav", "sand_2.wav", "sand_3.wav", "sand_4.wav", "sand_5.wav", "sand_6.wav" ]
+    },
+    "grass": {
+      "gain": 0.7,
+      "clips": [ "grass_1.wav", "grass_2.wav", "grass_3.wav", "grass_4.wav", "grass_5.wav" ]
+    },
+    "dirt": {
+      "gain": 0.8,
+      "clips": [ "dirt_1.wav", "dirt_2.wav", "dirt_3.wav", "dirt_4.wav", "dirt_5.wav" ]
+    },
+    "mud": {
+      "gain": 0.85,
+      "clips": [ "mud_1.wav", "mud_2.wav", "mud_3.wav", "mud_4.wav", "mud_5.wav" ]
+    },
+    "ice": {
+      "gain": 0.85,
+      "clips": [ "ice_1.wav", "ice_2.wav", "ice_3.wav", "ice_4.wav", "ice_5.wav", "ice_6.wav", "ice_7.wav" ]
     }
   }
 }

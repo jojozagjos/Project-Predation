@@ -8,17 +8,20 @@ under. Anything whose terms are not confirmed is marked so, because "it was free
 
 ### Footstep clips — `Assets/Audio/Footsteps/`
 
-**JDSherbert - Footstep Foley SFX Pack (FREE)**, mono 48 kHz WAV. Ten clips are used: two each of
-concrete, stone, metal, gravel and wood, renamed and otherwise unmodified.
+Sixty-four clips over eleven surfaces (`Assets/Data/footsteps.json`), all **CC0** (public domain: no
+conditions, no attribution required; credited here anyway). Each was made mono 48 kHz, its lead-in
+silence cut, capped at 0.6 s with a fade, and loudness-matched; metal, dirt and mud are two clips mixed.
 
-**Licence: not yet confirmed.** The download contains no licence file, no readme and no terms of any
-kind — only audio. The pack is distributed as free, which says what it costs and not what may be
-done with it. Before any public release, get the terms in writing from wherever it was downloaded
-and record them here, including whether attribution is required and in what form.
+| Source | Licence | Used for |
+|---|---|---|
+| **Kenney, Impact Sounds** (kenney.nl/assets/impact-sounds) | CC0 (licence file in the download) | concrete, wood, snow, grass; carpet steps under dirt; grass steps under mud; plate impacts in metal |
+| **Fantozzi, Footsteps (Grass/Sand & Stone)** (opengameart.org) | CC0 | stone, sand; the grit in dirt |
+| **Corsica_S, 42 Snow and Gravel Footsteps**, extracted by Iwan Gabovitch (opengameart.org) | CC0, with the recordist's permission (its readme) | gravel (snow-covered gravel), ice (gravel and ice) |
+| **TinyWorlds, Different steps on wood, stone, leaves, gravel and mud** (opengameart.org) | CC0 | one stone and one wood clip |
+| **25 CC0 mud sfx** (opengameart.org) | CC0 | the squelch in mud |
 
-If the terms turn out not to allow it, this is a small thing to undo: the clips are named in
-`Assets/Data/footsteps.json` and nothing else refers to them, and the synthesised footstep they
-replaced is still in `Assets/Data/Sounds/Player.json` as `step` and still works.
+These replace the JDSherbert Footstep Foley pack, whose terms were never confirmed. The synthesised
+footstep is still in `Assets/Data/Sounds/Player.json` as `step`, for when no clips load.
 
 ## Code
 
