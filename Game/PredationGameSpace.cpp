@@ -278,7 +278,9 @@ void PredationGame::SetSpaceSky(Environment& environment)
     const glm::vec3 towardsStar = glm::normalize(toWorld(-ship));
     environment.sunDirection = -towardsStar;
     environment.sunColor = glm::mix(system->starColor, glm::vec3(1.0f), 0.3f);
-    environment.sunIntensity = 1.7f * std::clamp(std::sqrt(system->luminosity) / fromStar, 0.35f, 2.2f);
+    // No brighter than a clear noon on the ground, however near the star: the eye (and a camera) sets itself by the sunlit
+    // things in front of it, so a sunlit hull reads as lit, not as glowing.
+    environment.sunIntensity = 1.7f * std::clamp(std::sqrt(system->luminosity) / fromStar, 0.35f, 1.3f);
     // As big as the star is from here: a sun's radius is 0.00465 astronomical units; a little larger, so it reads.
     environment.sunDisc = std::clamp(0.00465f * std::max(system->starRadius, 0.1f) / fromStar * 1.3f, 0.0012f, 0.06f);
 

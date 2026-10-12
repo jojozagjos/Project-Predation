@@ -722,22 +722,24 @@ void BareMetal(ModelAsset& model)
                               part.name.find_first_not_of("0123456789", cut + 1) == std::string::npos;
         const std::string stem = numbered ? part.name.substr(0, cut) : part.name;
         const auto is = [&](const char* const* list, size_t count) { return std::find(list, list + count, stem) != list + count; };
-        // Metal through and through: its own colour in what it reflects, smooth -- not a coat of paint with a shine on it, and
+        // Metal through and through: its own colour in what it reflects, with the dull sheen of a hull that has been out in the
+        // weather -- smooth enough to read as metal, rough enough that the sun glancing off a flat panel is a soft sheen across
+        // it and not a blinding mirror -- not a coat of paint with a shine on it, and
         // no pattern laid over it (a set repeating across a hull this size reads as tiles).
         if (is(kPlating, std::size(kPlating)))
         {
-            part.metallic = 0.92f;
-            part.roughness = 0.3f;
+            part.metallic = 0.85f;
+            part.roughness = 0.52f;
         }
         else if (is(kTrim, std::size(kTrim)))
         {
             part.metallic = 0.6f;
-            part.roughness = 0.35f;
+            part.roughness = 0.48f;
         }
         else if (is(kDark, std::size(kDark)))
         {
             part.metallic = 0.85f;
-            part.roughness = 0.45f;
+            part.roughness = 0.58f;
         }
     }
 }
@@ -1599,8 +1601,8 @@ void StairLugs(ModelAsset& model, float x0, float x1)
     const float y = kStairTop + kStairPivot;
     for (const float x : StairStanchions(x0, x1))
     {
-        HullBox(model, "fx_stair_lug", {x - 0.045f, y - 0.035f, kStairFrom - 0.075f}, {x + 0.045f, y + 0.035f, kStairFrom}, dark, 0.5f, 0.7f);
-        HullBox(model, "fx_stair_lug", {x - 0.045f, y - 0.035f, kStairTo}, {x + 0.045f, y + 0.035f, kStairTo + 0.075f}, dark, 0.5f, 0.7f);
+        HullBox(model, "fx_stair_lug", {x - 0.045f, y - 0.035f, kStairFrom - 0.09f}, {x + 0.045f, y + 0.035f, kStairFrom}, dark, 0.5f, 0.7f);
+        HullBox(model, "fx_stair_lug", {x - 0.045f, y - 0.035f, kStairTo}, {x + 0.045f, y + 0.035f, kStairTo + 0.09f}, dark, 0.5f, 0.7f);
     }
 }
 
@@ -1613,7 +1615,7 @@ void StairRail(ModelAsset& model, int side, float x0, float x1)
     const float z = StairSide(side);
     const float y = kStairTop + kStairPivot;
     HullBox(model, "stair_rail", {x0, y + kStairRail - 0.05f, z - 0.035f}, {x1, y + kStairRail, z + 0.035f}, hazard, 0.6f, 0.3f);
-    HullBox(model, "fx_stair_rail_mid", {x0 + 0.1f, y + kStairRail * 0.5f - 0.02f, z - 0.018f}, {x1 - 0.1f, y + kStairRail * 0.5f + 0.02f, z + 0.018f}, steel,
+    HullBox(model, "fx_stair_rail_mid", {x0 + 0.12f, y + kStairRail * 0.5f - 0.02f, z - 0.018f}, {x1 - 0.12f, y + kStairRail * 0.5f + 0.02f, z + 0.018f}, steel,
             0.5f, 0.7f);
     HullBox(model, "fx_stair_rail_foot", {x0 + 0.05f, y - 0.02f, z - 0.02f}, {x1 - 0.05f, y + 0.02f, z + 0.02f}, steel, 0.5f, 0.7f);
     for (const float x : StairStanchions(x0, x1))

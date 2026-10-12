@@ -516,3 +516,21 @@ TEST_CASE("An outpost looks as its owner has it: CIRRA's marked and walled, one 
         }
     }
 }
+
+TEST_CASE("The boarding stair's pieces share no surface, standing out as they are built", "[ship]")
+{
+    const ModelAsset landing = ShipMap::StairLandingModel();
+    const ModelAsset ramp = ShipMap::StairRampModel();
+    const ModelAsset landingRails[] = {ShipMap::StairPostModel(0), ShipMap::StairPostModel(1)};
+    const ModelAsset rampRails[] = {ShipMap::StairRailModel(0), ShipMap::StairRailModel(1)};
+    for (const std::vector<const ModelAsset*>& set :
+         {std::vector<const ModelAsset*>{&landing, &landingRails[0], &landingRails[1]}, std::vector<const ModelAsset*>{&ramp, &rampRails[0], &rampRails[1]}})
+    {
+        const std::vector<std::string> found = SharedFaces(set);
+        for (const std::string& pair : found)
+        {
+            UNSCOPED_INFO(pair);
+        }
+        CHECK(found.empty());
+    }
+}
