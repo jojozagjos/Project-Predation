@@ -1045,7 +1045,38 @@ void PredationGame::RegisterCommands()
         "cam_pos [x y z [yaw pitch]]");
 
     console.RegisterCommand(
-        "what_is", "Name the drawn things along the middle of the view, nearest first: what_is [how many]",
+        "look_sun", "Turn the fly camera to the sun as the sky draws it, or so many degrees right and up of it: look_sun [right up]",
+        [this](const std::vector<std::string>& args)
+        {
+            const Environment& environment = m_scene.GetEnvironment();
+            const glm::vec3 to = -glm::normalize(glm::length(environment.skySunDirection) > 1.0e-6f ? environment.skySunDirection : environment.sunDirection);
+            m_cameraMode = CameraMode::Fly;
+            m_camera.position = m_cameraMode == CameraMode::Fly ? m_camera.position : m_renderEye;
+            m_lookYaw = std::atan2(to.x, -to.z);
+            m_lookPitch = std::asin(std::clamp(to.y, -1.0f, 1.0f));
+            if (args.size() >= 3)
+            {
+                m_lookYaw += glm::radians(std::strtof(args[1].c_str(), nullptr));
+                m_lookPitch += glm::radians(std::strtof(args[2].c_str(), nullptr));
+            }
+            PRED_LOG_INFO(Gameplay, "sun towards {:.3f} {:.3f} {:.3f}; light from {:.3f} {:.3f} {:.3f}", to.x, to.y, to.z, -environment.sunDirection.x,
+                          -environment.sunDirection.y, -environment.sunDirection.z);
+            // And what else is up there, and how far from it.
+            for (size_t i = 0; i + 1 < std::size(environment.skyBodies); i += 2)
+            {
+                const glm::vec4 place = environment.skyBodies[i];
+                if (place.w <= 0.0f)
+                {
+                    continue;
+                }
+                const float apart = glm::degrees(std::acos(std::clamp(glm::dot(glm::normalize(glm::vec3(place)), to), -1.0f, 1.0f)));
+                PRED_LOG_INFO(Gameplay, "  body {}: {:.1f} deg from the sun, {:.3f} deg across, brightness {:.2f}", i / 2, apart, glm::degrees(place.w),
+                              glm::length(glm::vec3(place)));
+            }
+        });
+
+    console.RegisterCommand(
+        "what_is","Name the drawn things along the middle of the view, nearest first: what_is [how many]",
         [this](const std::vector<std::string>& args)
         {
             // Along the view from the eye, through every drawn thing's box (its mesh's bounds, turned and scaled as it is).
@@ -10129,6 +10160,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
     // --- World ------------------------------------------------------------------------------------
     Environment& environment = m_scene.GetEnvironment();
     environment.skySunDirection = glm::vec3(0.0f);
+    environment.skySun = 1.0f;
     environment.skyAir = 0.0f;
     environment.fogStart = cv_fogStart.Get();
     environment.fogEnd = cv_fogEnd.Get();

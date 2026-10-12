@@ -1021,6 +1021,7 @@ private:
         float skyAir = 0.0f;
         glm::vec3 skyAirColor{0.0f};
         float sunDisc = 0.0f;
+        float skySun = 1.0f;
         float planetRadius = 0.0f;
         glm::vec3 planetDirection{0.0f, -1.0f, 0.0f};
 

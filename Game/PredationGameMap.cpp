@@ -1074,6 +1074,7 @@ PredationGame::SkyState PredationGame::SkyState::Of(const Environment& environme
     state.skyAir = environment.skyAir;
     state.skyAirColor = environment.skyAirColor;
     state.sunDisc = environment.sunDisc;
+    state.skySun = environment.skySun;
     state.planetRadius = environment.planetRadius;
     state.planetDirection = environment.planetDirection;
     return state;
@@ -1089,7 +1090,10 @@ PredationGame::SkyState PredationGame::SkyState::Toward(const SkyState& other, f
     };
     SkyState state;
     state.sunDirection = way(sunDirection, other.sunDirection);
-    state.skySunDirection = way(skySunDirection, other.skySunDirection);
+    // The sun in the sky does not slide across it from where it was to where it will be (two frames that do not line
+    // up: over the ground and in space) -- it goes out, and comes back where it now is, while the sky changes round it.
+    state.skySunDirection = t < 0.5f ? skySunDirection : other.skySunDirection;
+    state.skySun = t < 0.5f ? skySun * (1.0f - glm::smoothstep(0.3f, 0.5f, t)) : other.skySun * glm::smoothstep(0.5f, 0.7f, t);
     state.sunColor = glm::mix(sunColor, other.sunColor, t);
     state.sunIntensity = glm::mix(sunIntensity, other.sunIntensity, t);
     state.ambientSky = glm::mix(ambientSky, other.ambientSky, t);
@@ -1123,6 +1127,7 @@ void PredationGame::SkyState::Into(Environment& environment) const
     environment.skyAir = skyAir;
     environment.skyAirColor = skyAirColor;
     environment.sunDisc = sunDisc;
+    environment.skySun = skySun;
     environment.planetRadius = planetRadius;
     environment.planetDirection = planetDirection;
 }
