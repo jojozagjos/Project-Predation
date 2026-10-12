@@ -9,7 +9,9 @@
     "moonNumbers": [100, 999],
     "homeHub": "KESTREL STATION",
     "_homeSeed": "The home system is made from this seed in every campaign (the same planets, Kestrel on the same world); every other system from the campaign's own seed.",
-    "homeSeed": 736153239
+    "homeSeed": 736153239,
+    "_homeWorld": "Kestrel's world, made like Earth whatever the home seed made it: its biome, how warm before its air (the breathable air adds about 15 C), its size (1 = Earth), weather and ground.",
+    "homeWorld": {"biome": "temperate", "temperature": 2, "radius": 1.0, "weather": "clear", "terrain": "rolling"}
   },
 
   "stars": [

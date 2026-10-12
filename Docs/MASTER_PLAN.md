@@ -26,8 +26,8 @@ nothing here writes lore: where a choice touches the story, it is marked **Your 
   rebuilt (frame, doors, ramp, fin, engines, legs).
 - Sky: no sun sweep on takeoff, no glow blobs; the sky fades to space only as the camera itself climbs.
 - 74 new footstep clips by surface, each surface in its own folder.
-- Every outpost world has air; the home system is the same in every campaign (fixed seed), so the start can be laid out
-  by hand.
+- Every outpost world has air; the home system is the same in every campaign (fixed seed) and Kestrel's world is like
+  Earth, so the start can be laid out by hand.
 
 ---
 
@@ -109,6 +109,10 @@ From WORLDS_FACILITIES_MISSIONS_PLAN.md W1-W4:
   at noon, moons at night, ambience by biome.
 - **Landing areas that feel like somewhere** (your note): a reason the pad is there, things round it, a way in.
 - **Outposts on the world's own ground**, with the same scatter and weather round them.
+- **A full outpost rework** (you, 2026-10-12: "way too small and don't make sense at all"): outposts laid out as
+  real places with a reason to exist -- a landing field with taxiways and service bays, a town or works round it (operations,
+  fuel, cargo, workshops, quarters, a canteen, power and water), roads that lead somewhere, the land round it used (fields,
+  mines, antennas) -- sized by the outpost's importance, many times bigger than now, and walkable.
 
 ---
 
@@ -268,6 +272,8 @@ organisms.
   is known to reveal the next step; the final destination hidden on the map until its thread is complete.
 - **Then the story, written and reviewed by you** (your locked direction is in memory; nothing is built from it until
   you go through every point).
+- **The starting area reworked for the tutorial** (you, 2026-10-12): Kestrel Station rebuilt as the place the tutorial
+  happens -- with the full outpost rework's scale and sense, on its Earth-like world.
 - **The tutorial** at Kestrel Station (approach, establishing shot, hangar, the starting ship), teaching controls and
   the systems that exist by then (codes, power, suit ratings).
 - **The ending**, with its own look.
@@ -301,7 +307,12 @@ organisms.
 | The nest needs rethinking | Phase 6.2 |
 | The AI | Phase 6 |
 | Footsteps (done), metal footsteps | Done; more surfaces in Phase 14 |
-| Outposts small and dead | Done (first pass); more life in 1.8 and Phase 14 |
+| Outposts small and dead; a full outpost rework | First pass done; the full rework is in Phase 2 |
+| Starting area reworked for the tutorial | Phase 17 |
+| Starting planet like Earth | Done |
+| Ship glowing in the sun in space | Done (rougher hull, space sun no brighter than a clear day) |
+| Z-fighting on the stair | Done (and a test for it) |
+| Version number to know the build | Done: `v0.2.0 build N`, N counted automatically; the version goes up a step each phase |
 | Credits for the CC-BY sounds | Phase 15 |
 | Ship rotation when changing course felt strange | Changed earlier (the turn no longer swings through the planet); tell me if it still feels off |
 | Ending and tutorial | Phase 17, last |

@@ -264,14 +264,15 @@ void GiveAir(Body& body, const UniverseData& data)
 }
 
 // The kind of thing a planet is made of, its look and its places, from its seed: for planets and moons alike.
-void FillBody(Body& body, const UniverseData& data, bool gasAllowed, float gasChance)
+// `forced`, when given, is the biome it is, whatever its warmth (the home world).
+void FillBody(Body& body, const UniverseData& data, bool gasAllowed, float gasChance, const BiomeDef* forced = nullptr)
 {
     UniverseRandom random(body.seed);
     const bool gas = gasAllowed && random.Chance(gasChance);
     body.radius = gas ? random.Range(3.5f, 11.0f) : (body.kind == BodyKind::Moon ? random.Range(0.12f, 0.5f) : random.Range(0.3f, 1.8f));
     // Too small to hold air: only the kinds of world that can be airless.
     const bool airless = !gas && body.radius < 0.25f;
-    const BiomeDef* biome = PickBiome(data, body.temperature, gas, airless, random);
+    const BiomeDef* biome = forced != nullptr ? forced : PickBiome(data, body.temperature, gas, airless, random);
     if (biome == nullptr)
     {
         biome = PickBiome(data, body.temperature, !gas, false, random);
@@ -548,6 +549,14 @@ bool UniverseData::LoadFromFile(const std::filesystem::path& file, std::string* 
             loaded.moonNumbers = {static_cast<int>(moonRange.x), static_cast<int>(moonRange.y)};
             loaded.homeHubName = names->value("homeHub", loaded.homeHubName);
             loaded.homeSeed = names->value("homeSeed", loaded.homeSeed);
+            if (const auto world = names->find("homeWorld"); world != names->end() && world->is_object())
+            {
+                loaded.homeBiome = world->value("biome", loaded.homeBiome);
+                loaded.homeTemperature = world->value("temperature", loaded.homeTemperature);
+                loaded.homeRadius = world->value("radius", loaded.homeRadius);
+                loaded.homeWeather = world->value("weather", loaded.homeWeather);
+                loaded.homeTerrain = world->value("terrain", loaded.homeTerrain);
+            }
         }
         for (const auto& entry : root.value("stars", nlohmann::json::array()))
         {
@@ -1146,6 +1155,41 @@ StarSystem Universe::Generate(uint64_t universeSeed, SystemId id, const Universe
         if (best >= 0)
         {
             Body& world = system.bodies[static_cast<size_t>(best)];
+            // At home, a world like Earth (UniverseData::homeBiome and the rest): made again as that kind of world, its places
+            // with it, the size of Earth, clear skies and rolling ground, nothing strange about it.
+            if (const BiomeDef* earthlike = home ? data.Biome(data.homeBiome) : nullptr; earthlike != nullptr && !world.gas)
+            {
+                const size_t places = std::max<size_t>(world.regions.size(), 2);
+                world.temperature = data.homeTemperature;
+                world.specials.clear();
+                world.regions.clear();
+                FillBody(world, data, false, 0.0f, earthlike);
+                world.radius = data.homeRadius;
+                world.specials.clear();
+                if (const AtmosphereDef* air = data.Atmosphere("breathable"); air != nullptr)
+                {
+                    world.atmosphere = air->id;
+                    world.air = air->thickness;
+                    world.airColor = air->color;
+                    world.temperature = data.homeTemperature + air->warming;
+                }
+                if (data.Weather(data.homeWeather) != nullptr)
+                {
+                    world.weather = data.homeWeather;
+                }
+                if (data.Terrain(data.homeTerrain) != nullptr)
+                {
+                    world.terrain = data.homeTerrain;
+                }
+                PlaceRegions(world, data, static_cast<int>(places));
+                for (Body& moon : system.bodies)
+                {
+                    if (moon.kind == BodyKind::Moon && moon.parent == best)
+                    {
+                        moon.radius = std::min(moon.radius, std::max(world.radius * 0.45f, 0.08f));
+                    }
+                }
+            }
             world.civilization = services->id;
             // Somewhere to breathe, if a world of its kind can have such air at all.
             const BiomeDef* worldBiome = data.Biome(world.biome);

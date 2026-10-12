@@ -210,6 +210,13 @@ public:
     // The home system is the same in every campaign, whatever its seed: made from this seed, not the campaign's, so the
     // start of the game can be laid out by hand. Every other system is the campaign's own.
     uint64_t homeSeed = 736153239;
+    // And the home world itself (Kestrel's), made like Earth: its kind of world, how warm before its air warms it, its size
+    // (1 is Earth's), its weather and ground. An empty biome leaves it as its seed made it.
+    std::string homeBiome = "temperate";
+    float homeTemperature = 2.0f;
+    float homeRadius = 1.0f;
+    std::string homeWeather = "clear";
+    std::string homeTerrain = "rolling";
     // Region designations: the part of a planet it is in ("NORTH CRYOSPHERE"), by biome; "any" for every biome.
     std::map<std::string, std::vector<std::string>> regionAreas;
 };
