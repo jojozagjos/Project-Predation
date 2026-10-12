@@ -38,8 +38,8 @@ inline constexpr glm::vec3 kShuttleHome{0.0f, 0.0f, 11.5f};
 // Not quite a unit vector; normalise it.
 inline constexpr glm::vec3 kTravelHeading{0.0f, -0.08f, -1.0f};
 // The shuttle's cabin, from its lamp: all its lamp lights, so none of it comes through the roof.
-inline constexpr glm::vec3 kShuttleCabinMin{-1.8f, -2.45f, -3.8f};
-inline constexpr glm::vec3 kShuttleCabinMax{1.8f, 0.05f, 4.0f};
+inline constexpr glm::vec3 kShuttleCabinMin{-1.9f, -2.3f, -2.8f};
+inline constexpr glm::vec3 kShuttleCabinMax{1.9f, 0.05f, 3.3f};
 // That box round a shuttle's lamp where it now is, turned as the shuttle is.
 inline void ShuttleCabinBounds(const CinePose& lamp, glm::vec3& min, glm::vec3& max)
 {

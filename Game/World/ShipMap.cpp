@@ -689,6 +689,40 @@ void HullMesh(ModelAsset& model, const std::string& name, MeshData mesh, const g
 
 } // namespace
 
+namespace
+{
+
+// The hull's outside as metal: the plating a smooth, glossy finish that catches the light and what is round it but keeps its
+// colour (bare metal reflects an airless world's black sky and goes dark), the engines, frames and masts duller and more
+// metal; the paint (stripes, markings) left as paint.
+void BareMetal(ModelAsset& model)
+{
+    static const char* const kPlating[] = {"skin", "body", "body_front", "chin", "brow", "bay", "bay_front", "bay_back", "bay_roof_plate", "roof_plate",
+                                           "plate", "bay_panel", "spine", "bay_belly"};
+    static const char* const kDark[] = {"engine", "engine_band", "engine_room", "engine_room_back", "nozzle", "pylon", "mast", "array",
+                                        "array_boom", "dish", "dish_mount", "door_frame", "door_lining", "bay_rib", "belt", "visor"};
+    for (ModelPart& part : model.parts)
+    {
+        const size_t cut = part.name.find_last_of('_');
+        const bool numbered = cut != std::string::npos && cut + 1 < part.name.size() &&
+                              part.name.find_first_not_of("0123456789", cut + 1) == std::string::npos;
+        const std::string stem = numbered ? part.name.substr(0, cut) : part.name;
+        const auto is = [&](const char* const* list, size_t count) { return std::find(list, list + count, stem) != list + count; };
+        if (is(kPlating, std::size(kPlating)))
+        {
+            part.metallic = 0.4f;
+            part.roughness = 0.28f;
+        }
+        else if (is(kDark, std::size(kDark)))
+        {
+            part.metallic = 0.7f;
+            part.roughness = 0.4f;
+        }
+    }
+}
+
+} // namespace
+
 ModelAsset ShipMap::HullModel(const ShipHullLook& look, bool stage)
 {
     // In the ship's frame, round its rooms: the skin a few centimetres outside every outer wall and roof, so it covers them
@@ -923,12 +957,12 @@ ModelAsset ShipMap::HullModel(const ShipHullLook& look, bool stage)
     {
         // What the rooms are on the stage: a dark core just inside the walls -- the cockpit and crew sections, the bay, the
         // engine room, each meeting the next back to back -- so the bay doors' shaft and every other gap shows a dark inside.
-        const glm::vec3 inside{0.05f, 0.05f, 0.06f};
+        const glm::vec3 coreColour{0.05f, 0.05f, 0.06f};
         const float coreBay = bayFront - 0.02f;
         const float coreAft = bayBack + 0.02f;
-        HullBox(model, name("core"), {-outer + 0.05f, -kSlab + 0.05f, front + 0.05f}, {outer - 0.05f, kRoof - 0.05f, coreBay}, inside, 0.9f);
-        HullBox(model, name("core"), {-bayOuter + 0.05f, -kSlab + 0.05f, coreBay}, {bayOuter - 0.05f, kBayRoof - 0.05f, coreAft}, inside, 0.9f);
-        HullBox(model, name("core"), {-outer + 0.05f, -kSlab + 0.05f, coreAft}, {outer - 0.05f, kRoof - 0.05f, tail - 0.1f}, inside, 0.9f);
+        HullBox(model, name("core"), {-outer + 0.05f, -kSlab + 0.05f, front + 0.05f}, {outer - 0.05f, kRoof - 0.05f, coreBay}, coreColour, 0.9f);
+        HullBox(model, name("core"), {-bayOuter + 0.05f, -kSlab + 0.05f, coreBay}, {bayOuter - 0.05f, kBayRoof - 0.05f, coreAft}, coreColour, 0.9f);
+        HullBox(model, name("core"), {-outer + 0.05f, -kSlab + 0.05f, coreAft}, {outer - 0.05f, kRoof - 0.05f, tail - 0.1f}, coreColour, 0.9f);
         // The cockpit's glass, lit from within; the boarding door shut.
         const glm::vec3 lit{0.55f, 0.45f, 0.3f};
         HullBox(model, name("fx_glass"), {kWindscreen.from, kWindscreen.bottom, front + 0.01f}, {kWindscreen.to, kWindscreen.top, front + 0.04f}, lit, 0.2f, 0.0f,
@@ -944,6 +978,7 @@ ModelAsset ShipMap::HullModel(const ShipHullLook& look, bool stage)
             model.parts.back().name = name(part.name.c_str());
         }
     }
+    BareMetal(model);
     GearHousings(model);
     return model;
 }
@@ -1389,10 +1424,10 @@ void ShipMap::GearHousings(ModelAsset& hull)
         const float z1 = mid + kPodLength * 0.5f;
         const std::string n = "gear_pod" + std::to_string(leg);
         // Its sides and ends, open underneath where its doors are; dark inside.
-        HullBox(hull, n + "_side_a", {hinge.x - kPodHalf - 0.07f, bottom, z0 - 0.07f}, {hinge.x - kPodHalf, kBelly + 0.02f, z1 + 0.07f}, shell);
-        HullBox(hull, n + "_side_b", {hinge.x + kPodHalf, bottom, z0 - 0.07f}, {hinge.x + kPodHalf + 0.07f, kBelly + 0.02f, z1 + 0.07f}, shell);
-        HullBox(hull, n + "_end_a", {hinge.x - kPodHalf, bottom, z0 - 0.07f}, {hinge.x + kPodHalf, kBelly + 0.02f, z0}, shell);
-        HullBox(hull, n + "_end_b", {hinge.x - kPodHalf, bottom, z1}, {hinge.x + kPodHalf, kBelly + 0.02f, z1 + 0.07f}, shell);
+        HullBox(hull, n + "_side_a", {hinge.x - kPodHalf - 0.07f, bottom, z0 - 0.07f}, {hinge.x - kPodHalf, kBelly + 0.02f, z1 + 0.07f}, shell, 0.3f, 0.4f);
+        HullBox(hull, n + "_side_b", {hinge.x + kPodHalf, bottom, z0 - 0.07f}, {hinge.x + kPodHalf + 0.07f, kBelly + 0.02f, z1 + 0.07f}, shell, 0.3f, 0.4f);
+        HullBox(hull, n + "_end_a", {hinge.x - kPodHalf, bottom, z0 - 0.07f}, {hinge.x + kPodHalf, kBelly + 0.02f, z0}, shell, 0.3f, 0.4f);
+        HullBox(hull, n + "_end_b", {hinge.x - kPodHalf, bottom, z1}, {hinge.x + kPodHalf, kBelly + 0.02f, z1 + 0.07f}, shell, 0.3f, 0.4f);
         HullBox(hull, n + "_lining", {hinge.x - kPodHalf, kBelly - 0.02f, z0}, {hinge.x + kPodHalf, kBelly + 0.01f, z1}, lining);
     }
     // The stair's housing: under the floor where the stair goes when it is put away, open on the boarding side.
@@ -1401,10 +1436,10 @@ void ShipMap::GearHousings(ModelAsset& hull)
     const float inboard = kStairInner + kStairSlide + 0.15f;
     const float outboard = -kHalf - kWallT;
     const float low = kBelly - kHousingDeep;
-    HullBox(hull, "stair_housing_floor", {outboard, low - 0.06f, from - 0.06f}, {inboard + 0.06f, low, to + 0.06f}, shell);
-    HullBox(hull, "stair_housing_side_a", {outboard, low, from - 0.06f}, {inboard + 0.06f, kBelly + 0.02f, from}, shell);
-    HullBox(hull, "stair_housing_side_b", {outboard, low, to}, {inboard + 0.06f, kBelly + 0.02f, to + 0.06f}, shell);
-    HullBox(hull, "stair_housing_end", {inboard, low, from}, {inboard + 0.06f, kBelly + 0.02f, to}, shell);
+    HullBox(hull, "stair_housing_floor", {outboard, low - 0.06f, from - 0.06f}, {inboard + 0.06f, low, to + 0.06f}, shell, 0.3f, 0.4f);
+    HullBox(hull, "stair_housing_side_a", {outboard, low, from - 0.06f}, {inboard + 0.06f, kBelly + 0.02f, from}, shell, 0.3f, 0.4f);
+    HullBox(hull, "stair_housing_side_b", {outboard, low, to}, {inboard + 0.06f, kBelly + 0.02f, to + 0.06f}, shell, 0.3f, 0.4f);
+    HullBox(hull, "stair_housing_end", {inboard, low, from}, {inboard + 0.06f, kBelly + 0.02f, to}, shell, 0.3f, 0.4f);
     HullBox(hull, "stair_housing_lining", {outboard, kBelly - 0.02f, from}, {inboard, kBelly + 0.01f, to}, lining);
 }
 
@@ -1619,12 +1654,12 @@ void ShipMap::ShowFittings(Scene& scene, int which)
     // Each rail turned about the line along its foot on the ramp, and each post about its foot on the landing.
     for (int side = 0; side < 2; ++side)
     {
-        const glm::quat fold = StairFold(side, folded);
+        const glm::quat railFold = StairFold(side, folded);
         const glm::vec3 foot{0.0f, kStairTop, StairSide(side)};
         m_stairRails[which][side].SetHidden(scene, hidden || away);
         m_stairPosts[which][side].SetHidden(scene, hidden || away);
-        m_stairRails[which][side].Show(scene, place(rampAt + tilt * (foot - fold * foot), tilt * fold));
-        m_stairPosts[which][side].Show(scene, place(shift + (foot - fold * foot), fold));
+        m_stairRails[which][side].Show(scene, place(rampAt + tilt * (foot - railFold * foot), tilt * railFold));
+        m_stairPosts[which][side].Show(scene, place(shift + (foot - railFold * foot), railFold));
     }
 }
 

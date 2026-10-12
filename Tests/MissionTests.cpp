@@ -248,14 +248,14 @@ TEST_CASE("The shuttle stands on its legs with its ramp down to the pad", "[miss
     REQUIRE(ramp.hit);
     CHECK(ramp.position.y > 0.1f + 0.25f);
     CHECK(ramp.position.y < 0.8f - 0.2f);
-    // Its launch console at the front of the cabin, facing down it, with room to stand at it.
+    // Its launch console at the front, on the flight deck, facing back down the shuttle, with room to stand at it.
     CinePose console;
     REQUIRE(shuttle.Socket("console", console));
     CHECK(shuttle.Part("console").IsValid());
     CHECK(shuttle.Aboard(console.position + glm::vec3(0.0f, 0.1f, 0.0f)));
     const glm::vec3 faces = console.rotation * glm::vec3(0.0f, 0.0f, -1.0f);
     CHECK(faces.z > 0.99f);
-    CHECK_FALSE(physics.RayCast(console.position + faces * 0.6f + glm::vec3(0.0f, 1.6f, 0.0f), faces, 2.0f).hit);
+    CHECK_FALSE(physics.RayCast(console.position + faces * 0.3f + glm::vec3(0.0f, 1.6f, 0.0f), faces, 0.8f).hit);
 }
 
 TEST_CASE("What the mission puts in the world -- the terminal, the panels, the console -- is inside nothing", "[mission][site]")

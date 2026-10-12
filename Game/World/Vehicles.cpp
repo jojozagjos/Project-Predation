@@ -8,7 +8,9 @@
 
 #include <glm/gtc/matrix_transform.hpp>
 
+#include <array>
 #include <cmath>
+#include <vector>
 
 namespace pred
 {
@@ -102,55 +104,265 @@ struct Builder
 namespace Vehicles
 {
 
+// One cross-section of the shuttle's shell: how far along it, how wide either side, its belly and its roof, and how much of each
+// corner is cut off (top and bottom).
+struct Section
+{
+    float z;
+    float half;
+    float low;
+    float high;
+    float topCut;
+    float bottomCut;
+
+    // Its outline, round from the belly's left corner: eight corners.
+    std::array<glm::vec3, 8> Corners() const
+    {
+        return {glm::vec3(-half + bottomCut, low, z), glm::vec3(half - bottomCut, low, z), glm::vec3(half, low + bottomCut, z),
+                glm::vec3(half, high - topCut, z),     glm::vec3(half - topCut, high, z),     glm::vec3(-half + topCut, high, z),
+                glm::vec3(-half, high - topCut, z),    glm::vec3(-half, low + bottomCut, z)};
+    }
+    glm::vec3 Middle() const { return {0.0f, (low + high) * 0.5f, z}; }
+};
+
+// A flat four-cornered face, turned to face away from `inside`.
+void OutwardFace(MeshData& mesh, const glm::vec3& a, glm::vec3 b, const glm::vec3& c, glm::vec3 d, const glm::vec3& inside)
+{
+    glm::vec3 normal = glm::cross(b - a, c - a);
+    if (glm::length(normal) < 1.0e-8f)
+    {
+        normal = glm::cross(c - a, d - a);
+    }
+    normal = glm::normalize(normal);
+    if (glm::dot(normal, (a + b + c + d) * 0.25f - inside) < 0.0f)
+    {
+        std::swap(b, d);
+        normal = -normal;
+    }
+    const auto base = static_cast<uint32_t>(mesh.vertices.size());
+    for (const glm::vec3& corner : {a, b, c, d})
+    {
+        MeshVertex vertex;
+        vertex.position = corner;
+        vertex.normal = normal;
+        mesh.vertices.push_back(vertex);
+    }
+    mesh.indices.insert(mesh.indices.end(), {base, base + 1, base + 2, base, base + 2, base + 3});
+}
+
+// The skin over a run of sections, one piece with no gaps, closed at the front and open at the back.
+MeshData Shell(const std::vector<Section>& sections)
+{
+    MeshData mesh;
+    for (size_t i = 0; i + 1 < sections.size(); ++i)
+    {
+        const auto a = sections[i].Corners();
+        const auto b = sections[i + 1].Corners();
+        const glm::vec3 inside = (sections[i].Middle() + sections[i + 1].Middle()) * 0.5f;
+        for (size_t k = 0; k < 8; ++k)
+        {
+            OutwardFace(mesh, a[k], a[(k + 1) % 8], b[(k + 1) % 8], b[k], inside);
+        }
+    }
+    // The nose: closed over in a fan from its middle.
+    const auto tip = sections.front().Corners();
+    const glm::vec3 point = sections.front().Middle() - glm::vec3(0.0f, 0.0f, 0.12f);
+    for (size_t k = 0; k < 8; ++k)
+    {
+        OutwardFace(mesh, tip[k], tip[(k + 1) % 8], point, point, sections[1].Middle());
+    }
+    return mesh;
+}
+
+// A pane over one face of the shell, a few millimetres out from it -- from u0 to u1 of the way along the face's run between
+// two sections, and v0 to v1 of the way across it -- facing out, so it is seen from outside and looked out through from in.
+MeshData Pane(const Section& from, const Section& to, size_t corner, float u0, float u1, float v0, float v1)
+{
+    const auto a = from.Corners();
+    const auto b = to.Corners();
+    const auto at = [&](float u, float v)
+    {
+        const glm::vec3 edge0 = glm::mix(a[corner], b[corner], u);
+        const glm::vec3 edge1 = glm::mix(a[(corner + 1) % 8], b[(corner + 1) % 8], u);
+        return glm::mix(edge0, edge1, v);
+    };
+    const glm::vec3 inside = (from.Middle() + to.Middle()) * 0.5f;
+    glm::vec3 out = glm::normalize(glm::cross(at(1.0f, 0.0f) - at(0.0f, 0.0f), at(0.0f, 1.0f) - at(0.0f, 0.0f)));
+    if (glm::dot(out, at(0.5f, 0.5f) - inside) < 0.0f)
+    {
+        out = -out;
+    }
+    MeshData mesh;
+    OutwardFace(mesh, at(u0, v0) + out * 0.012f, at(u1, v0) + out * 0.012f, at(u1, v1) + out * 0.012f, at(u0, v1) + out * 0.012f, inside);
+    return mesh;
+}
+
 ModelAsset ShuttleModel()
 {
-    // Along it: the nose at -z, the cabin's front wall at z = -5.5, its open back at 2.5 and the ramp down to the pad
-    // behind that. Across it: 4 m. Up: the cabin floor 0.7 m off the pad, two and a half metres of headroom.
+    // A working dropship, nose at -z. Its skin is one piece (Shell), lofted through five sections from the nose back to the
+    // open tail -- the windscreen raked up from the chin, the shoulders cut along the roof -- with the engines in nacelles
+    // set into its flanks, a spine and a fin on top, two skids under it. Inside, a flight deck behind the windscreen (two
+    // seats, the console the launch is started from) and, through a doorway, the cabin: benches either side, the ramp at
+    // the back. The cabin floor is 0.7 m up, with two and a bit metres of headroom.
     ModelAsset model;
     model.name = "shuttle";
     Builder b{model};
-    const float back = -5.5f;
-    const float door = 2.5f;
-    const float half = 2.0f;
-    const float wall = 0.2f;
     const float deck = 0.7f;
-    const float ceiling = 3.2f;
-    int leg = 0;
-    for (const float z : {back + 0.7f, door - 0.7f})
+    const float ceiling = 3.0f;
+    const float tail = 2.3f;     // the open back, where the ramp hangs
+    const float bulkhead = -3.8f; // between the cabin and the flight deck
+    const float wall = 0.15f;
+    const float inner = 1.9f;    // the cabin's walls, inside
+    const std::vector<Section> sections = {
+        {-6.0f, 0.8f, 1.0f, 1.45f, 0.2f, 0.15f},  // the nose
+        {-5.75f, 1.4f, 0.58f, 1.6f, 0.3f, 0.2f},  // the foot of the windscreen
+        {-5.05f, 1.85f, 0.55f, 2.75f, 0.45f, 0.25f}, // its top
+        {-4.4f, 2.05f, 0.5f, 3.2f, 0.5f, 0.25f},  // the shoulder
+        {tail, 2.05f, 0.5f, 3.2f, 0.5f, 0.25f},   // the tail
+    };
+    const glm::vec3 warning{0.80f, 0.62f, 0.12f};
+    // What each part is made of, laid on the shuttle itself, which flies.
+    const auto made = [](ModelPart& part, const char* surface, float metres, float keep)
     {
-        for (const float x : {-1.3f, 1.3f})
+        part.surface = surface;
+        part.surfaceScale = metres;
+        part.surfaceKeep = keep;
+        part.surfaceOnThing = true;
+    };
+    const auto hull = [&](ModelPart& part) { made(part, "shuttle_hull", 4.0f, 0.15f); };
+    const auto trim = [&](ModelPart& part) { made(part, "hull_dark", 2.0f, 0.3f); };
+    const auto mesh = [&](const std::string& name, MeshData data, const glm::vec3& colour, float roughness, float metallic, float emissive) -> ModelPart&
+    {
+        ModelPart part;
+        part.name = name;
+        part.shape = PartShape::Mesh;
+        part.size = glm::vec3(1.0f);
+        part.mesh = std::move(data);
+        part.color = colour;
+        part.roughness = roughness;
+        part.metallic = metallic;
+        part.emissive = emissive;
+        model.parts.push_back(part);
+        return model.parts.back();
+    };
+    // A cylinder about its middle, running along z.
+    const auto barrel = [&](const std::string& name, const glm::vec3& centre, float diameter, float length, const glm::vec3& colour, float metallic = 0.6f,
+                            float emissive = 0.0f) -> ModelPart&
+    {
+        ModelPart& part = b.Box(name, centre.x - diameter * 0.5f, centre.x + diameter * 0.5f, centre.y - length * 0.5f, centre.y + length * 0.5f,
+                                centre.z - diameter * 0.5f, centre.z + diameter * 0.5f, colour, 0.5f, metallic, emissive);
+        part.position = centre;
+        part.size = {diameter, length, diameter};
+        part.shape = PartShape::Cylinder;
+        part.rotation = {90.0f, 0.0f, 0.0f};
+        return part;
+    };
+
+    // --- The skin, and its windows: the windscreen and the corners either side of it, the flight deck's side windows, and a
+    // strip either side of the cabin. (Never solid: what is walked into is the walls and the rest inside it.)
+    hull(mesh("fx_shell", Shell(sections), kShuttleHull, 0.6f, 0.2f, 0.0f));
+    MeshData glass;
+    for (const MeshData& pane : {Pane(sections[1], sections[2], 4, 0.04f, 0.96f, 0.04f, 0.96f), Pane(sections[1], sections[2], 3, 0.1f, 0.94f, 0.08f, 0.92f),
+                                 Pane(sections[1], sections[2], 5, 0.1f, 0.94f, 0.08f, 0.92f), Pane(sections[2], sections[3], 2, 0.12f, 0.88f, 0.42f, 0.86f),
+                                 Pane(sections[2], sections[3], 6, 0.12f, 0.88f, 0.14f, 0.58f)})
+    {
+        const auto base = static_cast<uint32_t>(glass.vertices.size());
+        glass.vertices.insert(glass.vertices.end(), pane.vertices.begin(), pane.vertices.end());
+        for (const uint32_t index : pane.indices)
         {
-            b.Box("leg_" + std::to_string(leg++), x - 0.15f, x + 0.15f, 0.0f, 0.25f, z - 0.15f, z + 0.15f, kShuttleTrim, 0.55f, 0.6f);
+            glass.indices.push_back(base + index);
         }
     }
-    b.Box("belly", -1.6f, 1.6f, 0.25f, 0.55f, back, door, kShuttleTrim, 0.55f, 0.6f);
-    b.Box("deck", -half, half, 0.55f, deck, back, door, kShuttleHull);
-    b.Box("wall_right", half - wall, half, deck, ceiling, back, door, kShuttleHull);
-    b.Box("wall_left", -half, -half + wall, deck, ceiling, back, door, kShuttleHull);
-    b.Box("front_wall", -half + wall, half - wall, deck, ceiling, back, back + wall, kShuttleHull);
-    b.Box("roof", -half, half, ceiling, ceiling + 0.25f, back, door, kShuttleHull);
-    b.Box("header", -half + wall, half - wall, ceiling - 0.3f, ceiling, door - wall, door, kShuttleHull);
-    b.Box("bench_right", half - wall - 0.45f, half - wall, deck, deck + 0.45f, -3.6f, 0.8f, kShuttleHull);
-    b.Box("bench_left", -half + wall, -half + wall + 0.45f, deck, deck + 0.45f, -3.6f, 0.8f, kShuttleHull);
-    b.Box("nose", -1.5f, 1.5f, 1.1f, 3.0f, back - 1.2f, back, kShuttleTrim, 0.55f, 0.6f);
-    b.Box("engine_right", half, half + 0.8f, 1.1f, 2.3f, -5.0f, -1.2f, kShuttleTrim, 0.55f, 0.6f);
-    b.Box("engine_left", -half - 0.8f, -half, 1.1f, 2.3f, -5.0f, -1.2f, kShuttleTrim, 0.55f, 0.6f);
-    b.Box("fx_engine_glow_right", half + 0.1f, half + 0.7f, 1.2f, 2.2f, -1.2f, -1.15f, {1.0f, 0.55f, 0.25f}, 0.5f, 0.0f, 0.6f);
-    b.Box("fx_engine_glow_left", -half - 0.7f, -half - 0.1f, 1.2f, 2.2f, -1.2f, -1.15f, {1.0f, 0.55f, 0.25f}, 0.5f, 0.0f, 0.6f);
-    b.Box("fin", -0.08f, 0.08f, ceiling + 0.25f, ceiling + 1.2f, -5.2f, -3.2f, kShuttleTrim, 0.55f, 0.6f);
-    b.Box("fx_cabin_light", -0.4f, 0.4f, ceiling - 0.05f, ceiling, -1.9f, -1.1f, {1.0f, 0.95f, 0.85f}, 0.5f, 0.0f, 1.5f);
-    // The launch console, against the front wall, its screen on top towards the cabin.
-    b.Box("console", -0.5f, 0.5f, deck, deck + 0.95f, back + wall, back + wall + 0.45f, kShuttleTrim, 0.55f, 0.6f);
-    b.Box("fx_console_screen", -0.4f, 0.4f, deck + 0.95f, deck + 0.97f, back + wall + 0.06f, back + wall + 0.4f, {0.3f, 0.6f, 1.0f}, 0.4f, 0.0f, 0.6f);
+    mesh("fx_windscreen", std::move(glass), kGlass, 0.08f, 0.4f, 0.05f);
+    for (const float side : {-1.0f, 1.0f})
+    {
+        const std::string name = side < 0.0f ? "left" : "right";
+        const float x = side * 2.05f;
+        b.Box("fx_window_" + name, std::min(x, x + side * 0.015f), std::max(x, x + side * 0.015f), 2.05f, 2.4f, -3.2f, 0.6f, kGlass, 0.15f, 0.3f, 0.06f);
+        for (int stripe = 0; stripe < 4; ++stripe)
+        {
+            const float y0 = 0.75f + static_cast<float>(stripe) * 0.6f;
+            b.Box("fx_stripe_" + name + "_" + std::to_string(stripe), std::min(x, x + side * 0.015f), std::max(x, x + side * 0.015f), y0, y0 + 0.3f,
+                  tail - 0.4f, tail - 0.04f, warning, 0.7f);
+        }
+    }
+
+    // --- What it stands on: two skids, each on two struts up to the belly.
+    for (const float x : {-1.55f, 1.55f})
+    {
+        const std::string side = x < 0.0f ? "left" : "right";
+        trim(b.Box("skid_" + side, x - 0.1f, x + 0.1f, 0.0f, 0.12f, -5.2f, 1.7f, kShuttleTrim, 0.55f, 0.6f));
+        trim(b.Box("skid_toe_" + side, x - 0.1f, x + 0.1f, 0.06f, 0.2f, -5.45f, -5.2f, kShuttleTrim, 0.55f, 0.6f));
+        for (const float z : {-4.3f, 0.9f})
+        {
+            trim(b.Box("skid_strut_" + side, x - 0.07f, x + 0.07f, 0.12f, 0.52f, z - 0.09f, z + 0.09f, kShuttleTrim, 0.5f, 0.7f));
+        }
+    }
+
+    // --- Inside: the floor right through, the cabin's walls and ceiling, the bulkhead with its doorway, the benches.
+    made(b.Box("deck", -inner - wall, inner + wall, 0.5f, deck, bulkhead, tail, kShuttleHull), "deck_plate", 1.6f, 0.6f);
+    made(b.Box("flight_deck", -1.25f, 1.25f, 0.62f, deck, -5.7f, bulkhead, kShuttleHull), "deck_plate", 1.6f, 0.6f);
+    hull(b.Box("wall_right", inner, inner + wall, deck, ceiling, bulkhead, tail, kShuttleHull));
+    hull(b.Box("wall_left", -inner - wall, -inner, deck, ceiling, bulkhead, tail, kShuttleHull));
+    hull(b.Box("roof", -inner - wall, inner + wall, ceiling, ceiling + 0.15f, bulkhead, tail, kShuttleHull));
+    hull(b.Box("header", -inner, inner, ceiling - 0.3f, ceiling, tail - wall, tail, kShuttleHull));
+    hull(b.Box("bulkhead_left", -inner, -0.5f, deck, ceiling, bulkhead, bulkhead + wall, kShuttleHull));
+    hull(b.Box("bulkhead_right", 0.5f, inner, deck, ceiling, bulkhead, bulkhead + wall, kShuttleHull));
+    hull(b.Box("bulkhead_over", -0.5f, 0.5f, 2.15f, ceiling, bulkhead, bulkhead + wall, kShuttleHull));
+    trim(b.Box("bench_right", inner - 0.45f, inner, deck, deck + 0.45f, -3.2f, 1.3f, kShuttleHull));
+    trim(b.Box("bench_left", -inner, -inner + 0.45f, deck, deck + 0.45f, -3.2f, 1.3f, kShuttleHull));
+    b.Box("fx_cabin_light", -0.4f, 0.4f, ceiling - 0.05f, ceiling, -1.4f, -0.6f, {1.0f, 0.95f, 0.85f}, 0.5f, 0.0f, 1.5f);
+
+    // --- The flight deck: under a ceiling below the windscreen's top, low walls either side to below its side windows, the
+    // console across the front under the windscreen, and two seats.
+    trim(b.Box("flight_ceiling", -1.75f, 1.75f, 2.72f, 2.82f, -5.05f, bulkhead, kShuttleTrim));
+    trim(b.Box("flight_side_left", -1.8f, -1.3f, deck, 1.55f, -5.3f, bulkhead, kShuttleTrim));
+    trim(b.Box("flight_side_right", 1.3f, 1.8f, deck, 1.55f, -5.3f, bulkhead, kShuttleTrim));
+    trim(b.Box("console", -1.3f, 1.3f, deck, 1.3f, -5.7f, -5.3f, kShuttleTrim, 0.55f, 0.6f));
+    b.Box("fx_console_screen", -0.9f, 0.9f, 1.3f, 1.32f, -5.65f, -5.35f, {0.3f, 0.6f, 1.0f}, 0.4f, 0.0f, 0.6f);
+    for (const float x : {-0.75f, 0.75f})
+    {
+        const std::string side = x < 0.0f ? "left" : "right";
+        trim(b.Box("seat_" + side, x - 0.25f, x + 0.25f, deck, deck + 0.45f, -4.85f, -4.35f, kShuttleTrim));
+        trim(b.Box("seat_back_" + side, x - 0.25f, x + 0.25f, deck + 0.45f, deck + 1.25f, -4.35f, -4.22f, kShuttleTrim));
+    }
+
+    // --- On top: a spine along the roof, the fin at the tail, a mast forward.
+    hull(b.Box("spine", -0.4f, 0.4f, 3.18f, 3.4f, -3.9f, 1.6f, kShuttleHull));
+    trim(b.Box("fin", -0.07f, 0.07f, 3.38f, 4.05f, 0.5f, 2.0f, kShuttleTrim, 0.55f, 0.6f));
+    trim(b.Box("mast", -0.04f, 0.04f, 3.38f, 3.95f, -3.3f, -3.22f, kShuttleTrim, 0.5f, 0.7f));
+
+    // --- The engines: a nacelle set into either flank, its intake forward and its nozzle aft, glowing when they burn.
+    for (const float side : {-1.0f, 1.0f})
+    {
+        const std::string name = side < 0.0f ? "left" : "right";
+        const float x = side * 2.3f;
+        const float y = 1.45f;
+        hull(barrel("engine_" + name, {x, y, -0.6f}, 0.95f, 4.0f, kShuttleHull, 0.3f));
+        trim(barrel("intake_" + name, {x, y, -2.66f}, 1.02f, 0.14f, kShuttleTrim));
+        barrel("fx_intake_" + name, {x, y, -2.74f}, 0.78f, 0.02f, {0.02f, 0.02f, 0.025f}, 0.0f);
+        trim(barrel("nozzle_" + name, {x, y, 1.6f}, 0.8f, 0.45f, kShuttleTrim, 0.8f));
+        barrel("fx_engine_glow_" + name, {x, y, 1.84f}, 0.66f, 0.03f, {1.0f, 0.55f, 0.25f}, 0.0f, 0.6f);
+        b.Box("fx_nav_" + name, x + side * 0.45f, x + side * 0.5f, y - 0.06f, y + 0.06f, -0.9f, -0.7f,
+              side < 0.0f ? glm::vec3(0.9f, 0.1f, 0.08f) : glm::vec3(0.1f, 0.9f, 0.2f), 0.4f, 0.0f, 3.0f);
+    }
+
     // As wide as the hull, not just the opening: closed, it covers the whole back, walls' edges and all.
-    b.Ramp({0.0f, deck, door}, 2.596f, 2.0f * half - 0.04f, 0.04f, kShuttleHull);
-    b.Socket("arrival", {0.0f, deck, -1.0f}, {0.0f, 180.0f, 0.0f});
-    b.Socket("console", {0.0f, deck, back + wall + 0.225f}, {0.0f, 180.0f, 0.0f});
-    b.Socket("lamp", {0.0f, ceiling - 0.05f, -1.5f});
+    b.Ramp({0.0f, deck, tail}, 2.596f, 2.0f * (inner + wall) - 0.04f, 0.04f, kShuttleHull);
+    for (ModelPart& part : model.parts)
+    {
+        if (part.name == "ramp")
+        {
+            made(part, "deck_plate", 1.6f, 0.6f);
+        }
+    }
+    b.Socket("arrival", {0.0f, deck, -0.5f}, {0.0f, 180.0f, 0.0f});
+    b.Socket("console", {0.0f, deck, -5.075f}, {0.0f, 180.0f, 0.0f});
+    b.Socket("lamp", {0.0f, ceiling - 0.05f, -1.0f});
     // A landing light under its belly, straight down.
     b.Socket("light_landing", {0.0f, 0.2f, -2.0f}, {-90.0f, 0.0f, 0.0f});
-    b.Socket("cabin_min", {-half + wall, deck - 0.5f, back + wall});
-    b.Socket("cabin_max", {half - wall, ceiling, door});
+    b.Socket("cabin_min", {-inner, deck - 0.5f, -5.7f});
+    b.Socket("cabin_max", {inner, ceiling, tail});
     return model;
 }
 
