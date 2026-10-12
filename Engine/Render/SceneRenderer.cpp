@@ -130,6 +130,7 @@ bool SceneRenderer::Init(ShaderLibrary& shaders)
     m_sSteepRoughness = bgfx::createUniform("s_steepRoughness", bgfx::UniformType::Sampler);
     m_uSteepParams = bgfx::createUniform("u_steepParams", bgfx::UniformType::Vec4);
     m_uWearParams = bgfx::createUniform("u_wearParams", bgfx::UniformType::Vec4);
+    m_uWind = bgfx::createUniform("u_wind", bgfx::UniformType::Vec4);
     m_sSunShadow = bgfx::createUniform("s_sunShadow", bgfx::UniformType::Sampler);
     m_uSunNearShadowMtx = bgfx::createUniform("u_sunNearShadowMtx", bgfx::UniformType::Mat4);
     m_uSunNearShadowAxis = bgfx::createUniform("u_sunNearShadowAxis", bgfx::UniformType::Vec4);
@@ -234,7 +235,7 @@ void SceneRenderer::Shutdown()
         m_uSpotShadowMtx,  m_uSpotShadowAxis,  m_uSpotShadowParams, m_sSpotShadow,
         m_uShadowTexelWorld, m_uSunNearShadowMtx, m_uSunNearShadowAxis, m_uSunNearShadowParams,
         m_sSunNearShadow, m_sNormalMap, m_sRoughnessMap, m_uSurfaceParams,
-        m_sSteepColor, m_sSteepNormal, m_sSteepRoughness, m_uSteepParams, m_uWearParams, m_uSunFarShadowMtx, m_uSunFarShadowAxis,
+        m_sSteepColor, m_sSteepNormal, m_sSteepRoughness, m_uSteepParams, m_uWearParams, m_uWind, m_uSunFarShadowMtx, m_uSunFarShadowAxis,
         m_uSunFarShadowParams, m_uSunFarShadowTexel, m_sSunFarShadow};
     for (const bgfx::UniformHandle handle : uniforms)
     {
@@ -261,7 +262,7 @@ void SceneRenderer::Shutdown()
     m_uSunNearShadowMtx = m_uSunNearShadowAxis = m_uSunNearShadowParams = m_sSunNearShadow = BGFX_INVALID_HANDLE;
     m_uSunFarShadowMtx = m_uSunFarShadowAxis = m_uSunFarShadowParams = m_uSunFarShadowTexel = m_sSunFarShadow = BGFX_INVALID_HANDLE;
     m_sNormalMap = m_sRoughnessMap = m_uSurfaceParams = BGFX_INVALID_HANDLE;
-    m_sSteepColor = m_sSteepNormal = m_sSteepRoughness = m_uSteepParams = m_uWearParams = BGFX_INVALID_HANDLE;
+    m_sSteepColor = m_sSteepNormal = m_sSteepRoughness = m_uSteepParams = m_uWearParams = m_uWind = BGFX_INVALID_HANDLE;
 
     if (bgfx::isValid(m_reflectionTarget))
     {
@@ -307,6 +308,8 @@ void SceneRenderer::SetEnvironmentUniforms(const Environment& environment,
     bgfx::setUniform(m_uFogColor, fogColor);
     bgfx::setUniform(m_uFogParams, fogParams);
     bgfx::setUniform(m_uCameraPosition, cameraPos);
+    const float wind[4] = {environment.wind.x, environment.wind.y, environment.windClock, 0.0f};
+    bgfx::setUniform(m_uWind, wind);
 
     const float grade[4] = {environment.exposure, environment.contrast, m_shadowSettings.indoorLight,
                             withShadows ? static_cast<float>(m_shadowSettings.debugView) : 0.0f};

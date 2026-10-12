@@ -9859,6 +9859,11 @@ void PredationGame::OnUpdate(double dt, double alpha)
                 ground = below.position.y;
             }
         }
+        // And the plants sway with it: the wind itself, gusting (Environment::wind).
+        m_windClock += deltaSeconds;
+        const float plantWind = falling ? static_cast<float>(PlaceConditions(m_facility.Plan().sky.fogEnd).wind) * Weather::GustAt(m_windClock) : 0.0f;
+        m_scene.GetEnvironment().wind = glm::vec2(std::cos(windAngle), std::sin(windAngle)) * plantWind;
+        m_scene.GetEnvironment().windClock = m_windClock;
         // Lit and fogged as last frame's world was (the light changes slowly).
         const Environment& environment = m_scene.GetEnvironment();
         Weather::Light light;

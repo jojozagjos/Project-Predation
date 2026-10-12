@@ -235,6 +235,7 @@ private:
     bgfx::UniformHandle m_sSteepRoughness = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uSteepParams = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uWearParams = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uWind = BGFX_INVALID_HANDLE;
     const TextureLibrary* m_textures = nullptr;
 
     Stats m_stats;

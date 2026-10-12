@@ -7,6 +7,7 @@
 #include "Engine/Render/Mesh.h"
 #include "Engine/Scene/Entity.h"
 
+#include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
 
 #include <array>
@@ -105,6 +106,10 @@ struct Environment
     glm::vec3 fogColor{0.06f, 0.07f, 0.09f};
     float fogStart = 12.0f;
     float fogEnd = 90.0f;
+    // The wind where the eye is, metres a second along x and z, and a clock it gusts by: what plants sway with (leaves,
+    // grass -- anything cut out, Material::cutout).
+    glm::vec2 wind{0.0f};
+    float windClock = 0.0f;
 
     // Out in space: how many of the stars show (0 none, 1 all), and a planet hung in the sky -- which way its middle
     // is, how big it looks (radians from its middle to its edge; 0 for none), and how it looks (its ground, seas,

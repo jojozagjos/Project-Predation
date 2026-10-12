@@ -5,6 +5,8 @@ $output v_worldPos, v_normal, v_texcoord0, v_color0, v_organic, v_localPos, v_lo
 
 uniform vec4 u_organic;     // see Material::organic
 uniform vec4 u_organicBeat; // see Material::organicBeat
+uniform vec4 u_materialParams; // w = 1 cut out (Material::cutout): a plant's card, which sways
+uniform vec4 u_wind;           // xy = the wind, metres a second along x and z; z = a clock it gusts by (Environment::wind)
 
 float organicBump(float t, float at, float width)
 {
@@ -41,6 +43,21 @@ void main()
 		v_organic = vec2(grown * (1.0 - rotted), dead);
 	}
 	vec4 worldPosition = mul(u_model[0], vec4(position, 1.0));
+	// A plant's card (cut out: Material::cutout) moving in the wind: its foot held, its top bent with the wind -- leaning
+	// with it in waves rolling across the ground the way it blows, and fluttering quicker on top. How far up the card a
+	// corner is comes from where it is in its cell of the foliage picture (Foliage::Cell: two rows, the top of each first).
+	if (u_materialParams.w > 0.5)
+	{
+		float up = 1.0 - fract(a_texcoord0.y * 2.0);
+		float strength = max(length(u_wind.xy), 1.5);
+		vec2 way = length(u_wind.xy) > 0.01 ? u_wind.xy / length(u_wind.xy) : vec2(0.8, 0.6);
+		float t = u_wind.z;
+		float wave = 0.6 + 0.4 * sin(t * 1.3 - dot(worldPosition.xz, way) * 0.35);
+		float flutter = sin(t * 7.0 + dot(worldPosition.xz, vec2(2.9, 2.3))) * 0.3;
+		float bend = min(strength, 18.0) * 0.012 * up * up;
+		worldPosition.xz += way * bend * (wave + flutter) + vec2(-way.y, way.x) * bend * flutter * 0.5;
+		worldPosition.y -= bend * 0.25 * up;
+	}
 
 	v_worldPos = worldPosition.xyz;
 	// And where it is on the thing itself, for a surface set laid on the thing rather than the world (one that moves).

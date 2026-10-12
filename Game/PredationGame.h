@@ -1230,6 +1230,8 @@ private:
     PlanetRenderer m_planets;
     // Soft blended sprites over the picture: the weather (Weather).
     SpriteRenderer m_sprites;
+    // The clock the wind gusts by, for the plants.
+    float m_windClock = 0.0f;
     SystemMapView m_mapView;
     bool m_mapOpen = false;
     bool m_mapFramed = false;
