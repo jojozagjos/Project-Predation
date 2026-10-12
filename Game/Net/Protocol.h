@@ -24,7 +24,7 @@ namespace pred
 
 // Bumped whenever the wire changes shape. Two ends that disagree are refused at the door rather
 // than left to misread each other, which is what a wire mismatch actually looks like from inside.
-inline constexpr uint16_t kProtocolVersion = 38;
+inline constexpr uint16_t kProtocolVersion = 39;
 // How many bits name a message type. Five, so there is room to add one.
 inline constexpr uint32_t kMessageTypeBits = 5;
 inline constexpr uint8_t kMaxPlayers = 4;
@@ -144,6 +144,8 @@ enum class WorldEventKind : uint8_t
     NestAged,
     // The game's rules, as the host has set them in the lobby: friendly fire (`flag`). Room in it for more.
     Rules,
+    // Who has the navigation map (`player`; 255 nobody): one at a time, the first to open it.
+    MapHeld,
     Count
 };
 

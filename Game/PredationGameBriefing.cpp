@@ -261,8 +261,9 @@ void PredationGame::UpdateOrders(float dt)
         if (m_campaignOpen)
         {
             console->enabled = aboard && !m_cine.Active();
-            console->verb = "Open";
-            console->name = "the navigation map";
+            const bool theirs = m_mapHolder != kNobody && m_mapHolder != LocalPlayerId();
+            console->verb = theirs ? "Wait for" : "Open";
+            console->name = theirs ? NameOfPlayer(m_mapHolder) + " (at the map)" : std::string("the navigation map");
         }
         else
         {

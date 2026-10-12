@@ -996,13 +996,20 @@ private:
         PlotCourse,      // a = body, b = landing region: plotted, not flown
         PlotSystem,      // a, b = the system's number, as SetSystemCourse
         Depart,          // set out on the course plotted
-        Door             // a = 1 open the boarding door, 0 shut it
+        Door,            // a = 1 open the boarding door, 0 shut it
+        HoldMap          // a = 1 take the navigation map, 0 give it up: one player at a time has it
     };
     // The boarding door's controls, inside and out.
     void BuildAirlockControls();
     Entity m_airlockControls[2];
     // What a plotted course is to, in a few words ("KEPLER-91 IV"); empty for none.
     std::string PlanName();
+    // Who has the navigation map, the host deciding: the first to open it, until they close it (or leave). Nobody: 255.
+    static constexpr uint8_t kNobody = 0xFF;
+    uint8_t m_mapHolder = kNobody;
+    void SendMapHolder(int player = -1);
+    // What a player in the game is called, by number.
+    std::string NameOfPlayer(uint8_t player) const;
     // How long until the ship is in orbit where it is going (Travel::TimeLeft), worked out every so often rather than every frame.
     float TravelTimeLeft();
     float m_timeLeft = 0.0f;

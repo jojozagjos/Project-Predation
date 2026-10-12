@@ -204,6 +204,24 @@ bool PredationGame::DoCampaignAction(uint8_t player, CampaignAction action, int 
         CampaignChanged();
         return true;
 
+    case CampaignAction::HoldMap:
+        // The first to ask has it, until they give it up; anybody else asking is told who has it.
+        if (a != 0 && m_mapHolder != kNobody && m_mapHolder != player)
+        {
+            SendMapHolder();
+            return false;
+        }
+        if (a != 0)
+        {
+            m_mapHolder = player;
+        }
+        else if (m_mapHolder == player)
+        {
+            m_mapHolder = kNobody;
+        }
+        SendMapHolder();
+        return true;
+
     case CampaignAction::Depart:
     {
         // Off the ground only with everybody aboard: nobody is left on the pad as the station is left behind.
@@ -937,6 +955,54 @@ void PredationGame::PlayLeaving(bool fromGround)
     {
         PlayNamed("World/shuttle_launch", ShipMap::ToWorld({0.0f, 1.0f, 22.0f}), 0.8f, 0.55f, false);
     }
+}
+
+void PredationGame::SendMapHolder(int player)
+{
+    if (m_sessionMode != SessionMode::Host)
+    {
+        return;
+    }
+    WorldEventMessage event;
+    event.kind = WorldEventKind::MapHeld;
+    event.player = m_mapHolder;
+    if (player < 0)
+    {
+        m_host.Broadcast(event);
+    }
+    else
+    {
+        m_host.SendTo(static_cast<uint8_t>(player), event);
+    }
+}
+
+std::string PredationGame::NameOfPlayer(uint8_t player) const
+{
+    if (player == LocalPlayerId())
+    {
+        return PlayerName();
+    }
+    if (m_sessionMode == SessionMode::Host)
+    {
+        for (const RemotePlayerView& other : m_host.Remotes())
+        {
+            if (other.id == player)
+            {
+                return other.name;
+            }
+        }
+    }
+    else
+    {
+        for (const NetClient::KnownPeer& peer : m_client.Peers())
+        {
+            if (peer.id == player)
+            {
+                return peer.name;
+            }
+        }
+    }
+    return "Somebody";
 }
 
 float PredationGame::TravelTimeLeft()

@@ -2272,6 +2272,12 @@ void PredationGame::ServeClientRequests()
 void PredationGame::ForgetPlayer(uint8_t player)
 {
     ReleaseGrip(player, "left the game");
+    // The map, if they had it.
+    if (m_mapHolder == player)
+    {
+        m_mapHolder = kNobody;
+        SendMapHolder();
+    }
     m_voiceMemory.Forget(player);
     m_grabImmunity.erase(player);
     const auto wrapped = std::find_if(m_cocoons.begin(), m_cocoons.end(),
@@ -2319,6 +2325,7 @@ void PredationGame::SendWorldToPlayer(uint8_t player)
     BroadcastMission(true, player);
     SendShipState(player);
     SendCampaign(player);
+    SendMapHolder(player);
 
     // Somebody who has just walked in has to be told what has already happened, or every door that
     // was opened before they arrived is shut on their screen for the rest of the game.
@@ -2636,6 +2643,21 @@ void PredationGame::ApplyWorldEvent(const WorldEventMessage& event)
 
     case WorldEventKind::Rules:
         ApplyRules(event);
+        break;
+
+    case WorldEventKind::MapHeld:
+        // Somebody else got to it first: the map is theirs, and ours closes.
+        m_mapHolder = event.player;
+        if (m_mapOpen && m_mapHolder != LocalPlayerId())
+        {
+            m_mapOpen = false;
+            m_mapHovered = -1;
+            m_mapDragButton = -1;
+            m_wantMouseCaptured = !m_paused;
+            UpdateMouseCapture();
+            m_app->GetConsole().Print(NameOfPlayer(m_mapHolder) + " has the navigation map.");
+            PRED_LOG_INFO(Gameplay, "{} has the navigation map", NameOfPlayer(m_mapHolder));
+        }
         break;
 
     case WorldEventKind::NestAged:
@@ -6693,6 +6715,7 @@ const std::vector<RemotePlayerView>& PredationGame::RemotePlayers() const
 
 void PredationGame::StopSession()
 {
+    m_mapHolder = kNobody;
     // The lobby first, while the host's transport still exists to tell the server the code is done.
     // A code that went on working for fifteen seconds after its game closed would send whoever typed
     // it to nothing.
@@ -8932,6 +8955,12 @@ void PredationGame::TryInteract()
     // So is the navigation console, in a campaign: the map opens here, and what is chosen on it is asked of the host.
     if (focus.kind == InteractionKind::Deploy && m_campaignOpen)
     {
+        // One at a time: somebody else at it already, and it stays theirs.
+        if (!m_mapOpen && m_mapHolder != kNobody && m_mapHolder != LocalPlayerId())
+        {
+            PlayNamed("UI/back", m_renderEye, 0.5f, 1.0f, false);
+            return;
+        }
         m_mapOpen ? CloseSystemMap() : OpenSystemMap();
         return;
     }

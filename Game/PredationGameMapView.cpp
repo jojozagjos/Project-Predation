@@ -297,6 +297,8 @@ void PredationGame::OpenSystemMap()
         return;
     }
     m_mapOpen = true;
+    // Asked of the host: whoever is first has it, and the others are told.
+    AskCampaign(CampaignAction::HoldMap, 1);
     m_inventoryOpen = false;
     CloseLoadout();
     m_wantMouseCaptured = false;
@@ -326,6 +328,7 @@ void PredationGame::CloseSystemMap()
         return;
     }
     m_mapOpen = false;
+    AskCampaign(CampaignAction::HoldMap, 0);
     m_mapHovered = -1;
     m_mapDragButton = -1;
     m_wantMouseCaptured = !m_paused;
