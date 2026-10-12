@@ -140,6 +140,27 @@ basic kit is always there so nobody goes down empty-handed.
 
 ---
 
+## Noted for later (the user, 2026-10-12)
+
+To pick up when each area's turn comes (the steps are Docs/MAJOR_REWORK_PROPOSAL.md section 32):
+
+- **Nests** (the creature work, steps 4, 7 and 10): rethink and rework the nest -- what it is, how it grows, how it reads
+  -- alongside the shared signature (rework answers, 2026-10-12).
+- **Why go somewhere** (step 2 and 5): make it clear what there is at a place and why to go -- going to a planet should
+  not feel like nothing is there. Objectives, contracts, scan results and the map have to say what a place offers.
+- **Landing areas** (step 1 and the POI work): where the shuttle sets down should feel like somewhere -- a reason the
+  pad is there, things round it, a way into the site.
+- **Facility exteriors** (the facility update): today every one looks the same from outside; vary them by owner,
+  purpose and condition.
+- **Lamps leading the way** (the facility update): the row of lamps from the landing to the door works but is not
+  loved -- find a better way to draw the eye (lit signs, a path, a beacon, light spilling from a door).
+- **Vents** (the facility update): crawlspace mouths should look like vents -- grilles, frames, ducting -- not like
+  the walls round them.
+- **Outposts** (now being reworked): too small and too dead -- more of them, more going on, people's things, traffic.
+- **Space** (the rendering pass, step 1): more to see out there -- see section 29 of the proposal.
+
+---
+
 ## C. Suggested order
 
 1. Terrain that is not flat (built), then things on the ground by world, weather by world
