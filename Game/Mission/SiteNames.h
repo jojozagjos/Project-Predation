@@ -36,6 +36,7 @@ struct SiteConditions
     int temperature = -20; // degrees Celsius
     int wind = 8;          // metres a second
     std::string visibility = "FAIR"; // POOR, LOW or FAIR
+    bool air = true;       // whether there is any: without it, no wind and no weather at all
 };
 SiteConditions ConditionsFor(uint32_t seed, float fogEnd);
 

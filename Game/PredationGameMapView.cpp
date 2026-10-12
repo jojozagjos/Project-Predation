@@ -2425,7 +2425,8 @@ void PredationGame::DrawMapSystemPanels(const StarSystem& system)
                 Row("Atmosphere", air != nullptr ? air->name : picked->atmosphere, scanned);
                 Row("Temperature", std::to_string(static_cast<int>(std::round(picked->temperature))) + " C", scanned);
                 const WeatherDef* weather = m_universeData.Weather(picked->weather);
-                Row("Weather", weather != nullptr ? weather->name : picked->weather, scanned);
+                // No air, no weather.
+                Row("Weather", picked->air <= 0.015f ? std::string("None") : weather != nullptr ? weather->name : picked->weather, scanned);
                 const TerrainDef* terrain = m_universeData.Terrain(picked->terrain);
                 Row("Terrain", terrain != nullptr ? terrain->name : picked->terrain, deep);
                 const CivilizationDef* civ = m_universeData.Civilization(picked->civilization);
@@ -2656,7 +2657,7 @@ void PredationGame::DrawMapBodyPanels(const StarSystem& system)
         const uint8_t known = m_campaign.Known(m_mapSystem, body->index);
         const bool scanned = (known & (CampaignState::kKnownScanned | CampaignState::kKnownVisited)) != 0;
         const WeatherDef* weather = m_universeData.Weather(body->weather);
-        Row("Weather", weather != nullptr ? weather->name : body->weather, scanned);
+        Row("Weather", body->air <= 0.015f ? std::string("None") : weather != nullptr ? weather->name : body->weather, scanned);
         Row("Temperature", std::to_string(static_cast<int>(std::round(body->temperature + (std::abs(region.latLon.x) > 55.0f ? -25.0f : 0.0f)))) + " C",
             scanned);
         ImGui::Spacing();

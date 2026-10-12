@@ -155,6 +155,10 @@ Spoken Expand(const BriefingSegment& segment, const BriefingFacts& facts, const 
         Append(spoken.clips, NumberClips(degrees));
         spoken.clips.push_back(WordClip("degrees"));
     }
+    else if (segment.say == "wind" && !facts.conditions.air)
+    {
+        // No air, no wind to speak of: nothing said.
+    }
     else if (segment.say == "wind")
     {
         spoken.text = "wind " + std::to_string(facts.conditions.wind) + " metres per second";

@@ -393,6 +393,13 @@ SiteConditions PredationGame::PlaceConditions(float fogEnd)
     conditions.wind = weather != nullptr ? static_cast<int>(std::round(weather->wind.x + (weather->wind.y - weather->wind.x) * spread)) : 0;
     const float seeing = (weather != nullptr ? weather->visibility : 1.0f) * (air != nullptr ? air->visibility : 1.0f);
     conditions.visibility = seeing < 0.45f ? "POOR" : seeing < 0.8f ? "LOW" : seeing < 1.15f ? "FAIR" : "GOOD";
+    // No air: nothing to blow, nothing in the way.
+    conditions.air = body->air > 0.015f;
+    if (!conditions.air)
+    {
+        conditions.wind = 0;
+        conditions.visibility = "GOOD";
+    }
     return conditions;
 }
 

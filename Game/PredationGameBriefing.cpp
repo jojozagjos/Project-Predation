@@ -430,7 +430,8 @@ void PredationGame::DrawBriefingScreens()
                         canvas.Fill(470.0f, y + 2.0f, 470.0f + 190.0f * std::clamp(fill * std::min(since - delay, 1.0f), 0.0f, 1.0f), y + 12.0f, kAccent);
                     };
                     row(90, "TEMPERATURE", std::to_string(facts.conditions.temperature) + " C", -static_cast<float>(facts.conditions.temperature) / 45.0f, 0.3f);
-                    row(130, "WIND", std::to_string(facts.conditions.wind) + " M/S", static_cast<float>(facts.conditions.wind) / 25.0f, 1.2f);
+                    row(130, facts.conditions.air ? "WIND" : "AIR", facts.conditions.air ? std::to_string(facts.conditions.wind) + " M/S" : "NONE",
+                        static_cast<float>(facts.conditions.wind) / 25.0f, 1.2f);
                     const float seen = facts.conditions.visibility == "POOR" ? 0.25f : facts.conditions.visibility == "LOW" ? 0.55f : 0.85f;
                     row(170, "VISIBILITY", facts.conditions.visibility, seen, 2.1f);
                 }
@@ -463,7 +464,14 @@ void PredationGame::DrawBriefingScreens()
                 const size_t comma = site.find(", ");
                 canvas.Text(20, 68, site.substr(0, comma).c_str(), kText, 2);
                 char weather[64];
-                std::snprintf(weather, sizeof(weather), "%d C  WIND %d M/S", facts.conditions.temperature, facts.conditions.wind);
+                if (facts.conditions.air)
+                {
+                    std::snprintf(weather, sizeof(weather), "%d C  WIND %d M/S", facts.conditions.temperature, facts.conditions.wind);
+                }
+                else
+                {
+                    std::snprintf(weather, sizeof(weather), "%d C  NO ATMOSPHERE", facts.conditions.temperature);
+                }
                 canvas.Text(20, 100, weather, kSoft, 2);
                 canvas.Text(20, 124, ("VISIBILITY " + facts.conditions.visibility).c_str(), kSoft, 2);
                 const float mapLeft = 430.0f;
