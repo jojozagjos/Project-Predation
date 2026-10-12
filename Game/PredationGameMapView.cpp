@@ -914,9 +914,9 @@ void PredationGame::RenderMapGalaxy(bgfx::ViewId sky, bgfx::ViewId lines, const 
                            {centre.x + std::cos(a1) * radius, 0.0f, centre.z + std::sin(a1) * radius}, colour);
         }
     };
-    if (const float reach = Travel::CrossingRange(DriveTier()); reach > 0.0f)
+    if (const float crossing = Travel::CrossingRange(DriveTier()); crossing > 0.0f)
     {
-        ring(ship, reach, Abgr(236, 156, 64, 110), false);
+        ring(ship, crossing, Abgr(236, 156, 64, 110), false);
     }
     for (const glm::vec3& centre : m_mapChartCentres)
     {
@@ -1658,12 +1658,12 @@ void PredationGame::DrawSystemMap()
             LabelUnder(draw, at, 12.0f, kShipColour, "YOUR SHIP", kDim, m_campaign.travel.interstellar ? "crossing" : "", tiny, tiny);
         }
         // The drive's reach, marked on its ring.
-        if (const float reach = Travel::CrossingRange(DriveTier()); reach > 0.0f)
+        if (const float crossing = Travel::CrossingRange(DriveTier()); crossing > 0.0f)
         {
             ImVec2 point;
-            if (toScreen({ship.x + reach, 0.0f, ship.z}, point))
+            if (toScreen({ship.x + crossing, 0.0f, ship.z}, point))
             {
-                Label(draw, {point.x + 4.0f, point.y - tiny}, IM_COL32(236, 156, 64, 170), ("DRIVE REACH " + std::to_string(static_cast<int>(reach)) + " LY").c_str(),
+                Label(draw, {point.x + 4.0f, point.y - tiny}, IM_COL32(236, 156, 64, 170), ("DRIVE REACH " + std::to_string(static_cast<int>(crossing)) + " LY").c_str(),
                       tiny);
             }
         }
@@ -2515,7 +2515,7 @@ void PredationGame::DrawMapSystemPanels(const StarSystem& system)
         }
         else if (here)
         {
-            Wrapped(kAmberText, "%s", ShipLanded()   ? "The ship is landed here. Pick a place on the surface to go elsewhere."
+            Wrapped(kAmberText, "%s", ShipLanded()   ? "The ship is landed here. Pick a place on the surface to take the shuttle down."
                                                  : m_shipReady ? "In orbit. The shuttle is ready in the hangar."
                                                                : "In orbit.");
         }
@@ -2704,6 +2704,12 @@ void PredationGame::DrawMapBodyPanels(const StarSystem& system)
                 Wrapped(kGoText, "Course plotted. Set out from the helm in the cockpit.");
             }
             ImGui::EndDisabled();
+            // Going down from the pad: the ship lifts off first and the shuttle goes down from orbit -- said, so the lifting
+            // off is not taken for leaving the world.
+            if (!port && here && ShipLanded())
+            {
+                Wrapped(kDimText, "The ship lifts off to orbit first. The shuttle goes down from there.");
+            }
             if (!aboard)
             {
                 Wrapped(kDimText, "Courses are set aboard the ship.");
