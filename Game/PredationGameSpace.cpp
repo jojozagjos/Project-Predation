@@ -139,7 +139,9 @@ void PredationGame::SetSpaceSky(Environment& environment)
         {
             m_spaceOrbitBody = at->index;
             m_spaceOrbitSince = travel.orbitSince;
-            m_spaceSettleFrom = m_spaceAttitudeSet && clock - travel.orbitSince < kSettleSeconds ? m_spaceAttitude : Facing(wantForward, wantUp);
+            // Not while a cinematic shows it: the stage holds still, and the sky would turn round it. Its cuts hide the turn.
+            m_spaceSettleFrom = m_spaceAttitudeSet && clock - travel.orbitSince < kSettleSeconds && !m_cine.Active() ? m_spaceAttitude
+                                                                                                                      : Facing(wantForward, wantUp);
         }
     }
     else if (const Body* from = travel.underway ? system->Find(travel.from) : nullptr; from != nullptr && Travel::AlignDone(m_campaign, *system) < 1.0f)
@@ -202,7 +204,7 @@ void PredationGame::SetSpaceSky(Environment& environment)
         {
             m_spaceAttitude = want;
             m_spaceTurnSpeed = 0.0f;
-            if (at != nullptr && clock - travel.orbitSince < kSettleSeconds && clock >= travel.orbitSince)
+            if (at != nullptr && clock - travel.orbitSince < kSettleSeconds && clock >= travel.orbitSince && !m_cine.Active())
             {
                 const float s = static_cast<float>((clock - travel.orbitSince) / kSettleSeconds);
                 m_spaceAttitude = glm::slerp(m_spaceSettleFrom, want, s * s * (3.0f - 2.0f * s));

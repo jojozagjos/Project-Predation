@@ -516,8 +516,11 @@ void PredationGame::UpdateTravel(float dt)
                 CampaignChanged();
                 if (m_campaign.body >= 0)
                 {
-                    // There: shown arriving, aboard -- the cinematic's own marker says when it is over the planet.
-                    if (m_map == MapChoice::Ship && HasCinematic("ship_arrive"))
+                    // There: shown arriving, aboard -- the cinematic's own marker says when it is over the planet. Not for an
+                    // outpost the ship is to set down at, though: it comes straight down to it (ArriveAtBody, ship_land).
+                    const Body* arrivedAt = system->Find(m_campaign.body);
+                    const bool settingDown = arrivedAt != nullptr && RegionIsPort(*arrivedAt, m_campaign.travel.region);
+                    if (m_map == MapChoice::Ship && HasCinematic("ship_arrive") && !settingDown)
                     {
                         PlayCinematic("ship_arrive");
                     }
@@ -1053,6 +1056,75 @@ bool PredationGame::RegionIsPort(const Body& body, int region) const
     }
     const RegionKindDef* kind = m_universeData.RegionKind(body.regions[static_cast<size_t>(region)].kind);
     return kind != nullptr && kind->ship;
+}
+
+PredationGame::SkyState PredationGame::SkyState::Of(const Environment& environment)
+{
+    SkyState state;
+    state.sunDirection = environment.sunDirection;
+    state.skySunDirection = glm::length(environment.skySunDirection) > 1.0e-6f ? environment.skySunDirection : environment.sunDirection;
+    state.sunColor = environment.sunColor;
+    state.sunIntensity = environment.sunIntensity;
+    state.ambientSky = environment.ambientSky;
+    state.ambientGround = environment.ambientGround;
+    state.fogColor = environment.fogColor;
+    state.fogStart = environment.fogStart;
+    state.fogEnd = environment.fogEnd;
+    state.stars = environment.stars;
+    state.skyAir = environment.skyAir;
+    state.skyAirColor = environment.skyAirColor;
+    state.sunDisc = environment.sunDisc;
+    state.planetRadius = environment.planetRadius;
+    state.planetDirection = environment.planetDirection;
+    return state;
+}
+
+PredationGame::SkyState PredationGame::SkyState::Toward(const SkyState& other, float amount) const
+{
+    const float t = std::clamp(amount, 0.0f, 1.0f);
+    const auto way = [&](const glm::vec3& a, const glm::vec3& b)
+    {
+        const glm::vec3 between = glm::mix(a, b, t);
+        return glm::length(between) > 1.0e-4f ? glm::normalize(between) : (t < 0.5f ? a : b);
+    };
+    SkyState state;
+    state.sunDirection = way(sunDirection, other.sunDirection);
+    state.skySunDirection = way(skySunDirection, other.skySunDirection);
+    state.sunColor = glm::mix(sunColor, other.sunColor, t);
+    state.sunIntensity = glm::mix(sunIntensity, other.sunIntensity, t);
+    state.ambientSky = glm::mix(ambientSky, other.ambientSky, t);
+    state.ambientGround = glm::mix(ambientGround, other.ambientGround, t);
+    state.fogColor = glm::mix(fogColor, other.fogColor, t);
+    // Fog thins away as it is left behind: by how far, which a mix of distances does not do evenly.
+    state.fogStart = std::exp(glm::mix(std::log(std::max(fogStart, 1.0f)), std::log(std::max(other.fogStart, 1.0f)), t));
+    state.fogEnd = std::exp(glm::mix(std::log(std::max(fogEnd, 1.0f)), std::log(std::max(other.fogEnd, 1.0f)), t));
+    state.stars = glm::mix(stars, other.stars, t);
+    state.skyAir = glm::mix(skyAir, other.skyAir, t);
+    state.skyAirColor = glm::mix(skyAirColor, other.skyAirColor, t);
+    state.sunDisc = glm::mix(sunDisc, other.sunDisc, t);
+    // What hangs in the sky is the one being gone to's.
+    state.planetRadius = t < 0.5f ? planetRadius : other.planetRadius;
+    state.planetDirection = t < 0.5f ? planetDirection : other.planetDirection;
+    return state;
+}
+
+void PredationGame::SkyState::Into(Environment& environment) const
+{
+    environment.sunDirection = sunDirection;
+    environment.skySunDirection = skySunDirection;
+    environment.sunColor = sunColor;
+    environment.sunIntensity = sunIntensity;
+    environment.ambientSky = ambientSky;
+    environment.ambientGround = ambientGround;
+    environment.fogColor = fogColor;
+    environment.fogStart = fogStart;
+    environment.fogEnd = fogEnd;
+    environment.stars = stars;
+    environment.skyAir = skyAir;
+    environment.skyAirColor = skyAirColor;
+    environment.sunDisc = sunDisc;
+    environment.planetRadius = planetRadius;
+    environment.planetDirection = planetDirection;
 }
 
 void PredationGame::SetGroundSky(Environment& environment)

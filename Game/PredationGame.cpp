@@ -10115,7 +10115,24 @@ void PredationGame::OnUpdate(double dt, double alpha)
             if (m_campaignOpen && !title)
             {
                 SetSpaceSky(environment);
-                if (ShipLanded() || GroundCinematic())
+                if (GroundCinematic())
+                {
+                    // Lifting off, the world's sky gives way to space as the ship climbs; setting down, the other way --
+                    // rather than one turning into the other in a frame as the cinematic ends or begins.
+                    const SkyState space = SkyState::Of(environment);
+                    const std::vector<SpaceBody> spaceBodies = m_spaceBodies;
+                    SetGroundSky(environment);
+                    const float through = m_cine.Time() / std::max(m_cine.Playing().duration, 0.1f);
+                    const float ground = m_cine.Playing().name == "ship_takeoff" ? 1.0f - glm::smoothstep(0.45f, 0.95f, through)
+                                                                                 : glm::smoothstep(0.05f, 0.45f, through);
+                    SkyState::Of(environment).Toward(space, 1.0f - ground).Into(environment);
+                    // The worlds out in space, once it is more space than sky.
+                    if (ground < 0.5f)
+                    {
+                        m_spaceBodies = spaceBodies;
+                    }
+                }
+                else if (ShipLanded())
                 {
                     SetGroundSky(environment);
                 }

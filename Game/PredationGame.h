@@ -1004,6 +1004,30 @@ private:
     Entity m_airlockControls[2];
     // What a plotted course is to, in a few words ("KEPLER-91 IV"); empty for none.
     std::string PlanName();
+    // The sky's part of the scene's environment -- its light, air, stars and what hangs in it -- for going over from one sky to
+    // another (the world's to space, lifting off) rather than cutting.
+    struct SkyState
+    {
+        glm::vec3 sunDirection{0.0f, -1.0f, 0.0f};
+        glm::vec3 skySunDirection{0.0f};
+        glm::vec3 sunColor{1.0f};
+        float sunIntensity = 0.0f;
+        glm::vec3 ambientSky{0.0f};
+        glm::vec3 ambientGround{0.0f};
+        glm::vec3 fogColor{0.0f};
+        float fogStart = 0.0f;
+        float fogEnd = 0.0f;
+        float stars = 0.0f;
+        float skyAir = 0.0f;
+        glm::vec3 skyAirColor{0.0f};
+        float sunDisc = 0.0f;
+        float planetRadius = 0.0f;
+        glm::vec3 planetDirection{0.0f, -1.0f, 0.0f};
+
+        static SkyState Of(const Environment& environment);
+        SkyState Toward(const SkyState& other, float amount) const;
+        void Into(Environment& environment) const;
+    };
     // Who has the navigation map, the host deciding: the first to open it, until they close it (or leave). Nobody: 255.
     static constexpr uint8_t kNobody = 0xFF;
     uint8_t m_mapHolder = kNobody;
