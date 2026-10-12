@@ -130,14 +130,16 @@ void main()
 	float core = pow(toSun, max(u_skySun.w, 1.0) * 24.0);
 	// In space there is no horizon and no air to light: black all round, but for the stars and the sun wherever it is.
 	// (It was the sky's zenith dimmed, which is the colour of a sky, and read as grey.)
-	float inSpace = step(0.001, u_skySpace.x) * step(u_skyAir.w, 0.001);
+	// How much the sky is space rather than air: by how little air it is seen through, eased -- not switched at a threshold,
+	// which going up through the air turned a fading sky into black space in a frame.
+	float inSpace = step(0.001, u_skySpace.x) * (1.0 - smoothstep(0.0, 0.25, u_skyAir.w));
 	// Through air at night the sky is still a sky: a faint glow of the air low along the horizon, as much as it is dark.
 	color += u_skyAir.rgb * (0.035 * u_skyAir.w * u_skySpace.x) * exp(-max(up, 0.0) * 7.0) * step(-0.05, up);
 	color = mix(color, vec3(0.0006, 0.0007, 0.001), inSpace);
 	color += u_skySunColor.rgb * u_skySunColor.w * (halo * 0.35 + core) * clamp(up * 4.0 + 0.4, 0.0, 1.0) * (1.0 - inSpace);
 	// In space, with no air to spread it, the sun is a small hard disc, blinding, darker at its rim; a tight corona
 	// round it and a faint wide glow; and the thin rays a lens throws off anything that bright, four long and four short.
-	if (inSpace > 0.5)
+	if (inSpace > 0.001)
 	{
 		// As big as the star really is from here (and never smaller than a few pixels), its rim darker and redder than its
 		// middle, a tight glare round it that a camera's lens spreads, and four faint spikes -- not a star drawn by a child.
@@ -162,7 +164,7 @@ void main()
 					   step(0.0, dot(ray, sunDir));
 		// A star is far too bright to look at: its disc is white whatever its colour, the colour is in the light round it.
 		vec3 discColour = mix(face, vec3(1.0, 0.99, 0.97) * (0.5 + 0.5 * mu), 0.6);
-		color += (discColour * disc * 80.0 + mix(hot, u_skySunColor.rgb, 0.4) * (glare + spikes * 0.18)) * u_skySunColor.w;
+		color += (discColour * disc * 80.0 + mix(hot, u_skySunColor.rgb, 0.4) * (glare + spikes * 0.18)) * u_skySunColor.w * inSpace;
 	}
 
 	// A planet: a sphere one unit away, as big on the sky as it is asked to be, lit by the sun, with ice and cloud
@@ -290,7 +292,7 @@ void main()
 		}
 	}
 	// Seen through air the stars dim and go low down, where there is the most of it to look through.
-	float through = mix(1.0, smoothstep(-0.02, 0.35, up), step(0.001, u_skyAir.w));
+	float through = mix(1.0, smoothstep(-0.02, 0.35, up), clamp(u_skyAir.w * 4.0, 0.0, 1.0));
 	color += SkyStars(ray) * u_skySpace.x * starsShow * max(u_skySpace.w, 0.0) * through;
 
 	// For post-processing to finish, as linear light.

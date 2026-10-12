@@ -429,12 +429,13 @@ ModelAsset ShuttleModel()
         // A fairing along the roof, low and bevelled, rising from the roof at its front and easing down at its back.
         const auto ring = [](float z, float half, float top, float bottom) -> std::vector<glm::vec3>
         { return {{-half, bottom, z}, {half, bottom, z}, {half * 0.7f, top, z}, {-half * 0.7f, top, z}}; };
-        mesh("spine", Loft({ring(-3.9f, 0.18f, 3.36f, 3.32f), ring(-3.2f, 0.42f, 3.56f, 3.32f), ring(1.0f, 0.42f, 3.56f, 3.32f),
-                            ring(1.9f, 0.3f, 3.44f, 3.32f)}),
+        mesh("spine", Loft({ring(-3.9f, 0.18f, 3.36f, 3.32f), ring(-3.2f, 0.42f, 3.56f, 3.32f), ring(1.2f, 0.42f, 3.56f, 3.32f),
+                            ring(2.25f, 0.28f, 3.47f, 3.32f)}),
              kShuttleHull, 0.35f, 0.65f, 0.0f);
         // The fin on it, swept back, thinning to its top.
         const auto side = [](float x, float thin) -> std::vector<glm::vec3>
-        { return {{x, 3.5f, 0.2f}, {x * thin, 4.45f, 1.45f}, {x * thin, 4.45f, 2.05f}, {x, 3.5f, 2.15f}}; };
+        // Its foot sunk into the fairing the whole of its length.
+        { return {{x, 3.4f, 0.2f}, {x * thin, 4.45f, 1.45f}, {x * thin, 4.45f, 2.05f}, {x, 3.4f, 2.15f}}; };
         metal(mesh("fin", Loft({side(-0.07f, 0.45f), side(0.07f, 0.45f)}), kShuttleTrim, 0.4f, 0.75f, 0.0f));
         metal(b.Box("mast", -0.035f, 0.035f, 3.5f, 4.05f, -3.0f, -2.93f, kShuttleTrim));
         b.Box("fx_mast_light", -0.06f, 0.06f, 4.05f, 4.15f, -3.02f, -2.91f, {1.0f, 0.15f, 0.1f}, 0.3f, 0.0f, 3.0f);
@@ -469,8 +470,14 @@ ModelAsset ShuttleModel()
         const glm::vec3 TL{-inner, ceiling, tail};
         const glm::vec3 TR{inner, ceiling, tail};
         const glm::vec3 inside{0.0f, 1.9f, tail - 1.0f};
+        const glm::vec3 behind{0.0f, 1.9f, tail + 1.0f};
         MeshData frame;
-        const auto tri = [&](const glm::vec3& a, const glm::vec3& b2, const glm::vec3& c) { OutwardFace(frame, a, b2, c, c, inside); };
+        // Both faces: from behind, and from inside the cabin looking back past the door.
+        const auto tri = [&](const glm::vec3& a, const glm::vec3& b2, const glm::vec3& c)
+        {
+            OutwardFace(frame, a, b2, c, c, inside);
+            OutwardFace(frame, a, b2, c, c, behind);
+        };
         // Right: from the bottom-right corner of the opening round the hull's right side to its top.
         tri(TR, BR, o[1]);
         tri(TR, o[1], o[2]);
@@ -485,6 +492,13 @@ ModelAsset ShuttleModel()
         tri(TL, o[7], o[0]);
         tri(TL, o[0], BL);
         metal(mesh("tail_frame", std::move(frame), kShuttleTrim, 0.5f, 0.6f, 0.0f));
+        // And the hollow between the cabin's walls and the skin closed at the tail, so nothing is seen through it.
+        for (const float sideX : {-1.0f, 1.0f})
+        {
+            const float x0 = sideX * (inner + wall);
+            const float x1 = sideX * (skin - 0.015f);
+            metal(b.Box("tail_jamb", std::min(x0, x1), std::max(x0, x1), deck, ceiling + 0.08f, aft - 0.2f, tail - 0.003f, kShuttleTrim));
+        }
 
         // The door: hinged at its foot just inside the hull's end, the hull's outline a few centimetres in, its outside the
         // hull's and its inside tread plate. Drawn open, as it rests (its clips close it); walked on as the box under it.
@@ -498,8 +512,9 @@ ModelAsset ShuttleModel()
         {
             return glm::vec3(x, hinge.y + h * std::cos(swing) + d * std::sin(swing), hinge.z + h * std::sin(swing) - d * std::cos(swing));
         };
+        // Inside the cabin's walls, so it closes past them, not into them; the frame round it hides the rest.
         Section shape = end;
-        shape.half -= 0.04f;
+        shape.half -= 0.12f;
         shape.low += 0.04f;
         shape.high -= 0.04f;
         const auto outline = shape.Corners();

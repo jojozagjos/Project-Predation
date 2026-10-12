@@ -40,6 +40,9 @@ constexpr float kParapet = 0.9f;
 constexpr float kCapHeight = 0.08f;
 // How far a way out's sill stands above the floor.
 constexpr float kSill = 0.012f;
+// The sill's top over the doorway's foot: the wall and cladding left under a doorway end at its foot, so a sill whose top
+// were there too would lie on them across the wall's thickness, and the two flicker.
+constexpr float kSillTop = kSill + 0.006f;
 // How far a piece reaches into the one it meets, where it cannot be seen: so a join is never a line with nothing
 // behind it. Only ever into something, never along a face another piece shares, which is z-fighting.
 constexpr float kSink = 0.02f;
@@ -480,11 +483,11 @@ void Shell(const FacilityLayout& layout, Blueprint& out)
             const float b = std::max(inner, skin);
             if (alongX)
             {
-                Box(out, Kind::Sill, {hole.along.a, Base(0) - 0.12f, a}, {hole.along.b, Base(0) + kSill, b});
+                Box(out, Kind::Sill, {hole.along.a, Base(0) - 0.12f, a}, {hole.along.b, Base(0) + kSillTop, b});
             }
             else
             {
-                Box(out, Kind::Sill, {a, Base(0) - 0.12f, hole.along.a}, {b, Base(0) + kSill, hole.along.b});
+                Box(out, Kind::Sill, {a, Base(0) - 0.12f, hole.along.a}, {b, Base(0) + kSillTop, hole.along.b});
             }
         }
     }
@@ -843,7 +846,7 @@ void Doors(const FacilityLayout& layout, Blueprint& out)
         WorldObjects::PlacedDoor placed;
         placed.width = kPanelWidth;
         placed.height = kPanelHeight;
-        const float y = Base(0) + kSill + 0.004f; // just clear of its sill
+        const float y = Base(0) + kSillTop + 0.004f; // just clear of its sill
         const auto [floor, lowX, lowZ, alongZ] = ExitKey(exit);
         (void)floor;
         if (alongZ == 0)

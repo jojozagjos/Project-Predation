@@ -136,8 +136,10 @@ public:
     // The stair's rail along one side of the ramp (0 the door's forward side, 1 its aft), and the post at one side of the landing.
     static ModelAsset StairRailModel(int side);
     static ModelAsset StairPostModel(int side);
+    // The flap over the stair's slot, in the hull's paint, about its hinge along its foot.
+    static ModelAsset StairFlapModel(const glm::vec3& paint);
     static glm::vec3 GearHinge(int leg);
-    // The pods the legs fold into and the housing the stair slides into, under the belly: part of the hull.
+    // The pods the legs fold into, under the belly: part of the hull.
     static void GearHousings(ModelAsset& hull);
     // Whether the ship is standing at an outpost: the outpost round it (Kestrel Station, or another world's), solid to walk on
     // and into, its lamps lit; built again only for another outpost or another world's colours.
@@ -215,9 +217,11 @@ private:
     VehicleProp m_podDoors[2][4][2];
     VehicleProp m_stairLanding[2];
     VehicleProp m_stairRamp[2];
-    // Its rails either side of the ramp, and the posts either side of the landing, which fold flat before it goes in.
+    // Its rails either side of the ramp and either side of the landing, which fold flat before it goes in; and the flap over
+    // the slot it goes into.
     VehicleProp m_stairRails[2][2];
     VehicleProp m_stairPosts[2][2];
+    VehicleProp m_stairFlap[2];
     float m_gearDown[2] = {0.0f, 0.0f};
     bool m_gearWanted[2] = {false, false};
     float m_stairOut[2] = {0.0f, 0.0f};
