@@ -9,6 +9,7 @@ SAMPLER2D(s_steepColor, 12);     // a second set where the surface is steep (Mat
 SAMPLER2D(s_steepNormal, 13);
 SAMPLER2D(s_steepRoughness, 14);
 uniform vec4 u_steepParams;      // xyz = its tint, w = repeats a metre (0: none)
+uniform vec4 u_wearParams;       // xyz = bare metal's colour, w = how worn the paint is, the set read as worn paint (0: off; Material::surfaceWear)
 uniform vec4 u_surfaceParams;  // x = repeats a metre of the surface set, laid on from every side (0: off); y = how much of its own colour shows; z = natural ground (1) or laid in a grid (0); w = laid on the thing itself (1) or the world (0)
 
 uniform vec4 u_baseColor;       // rgb = albedo
@@ -564,6 +565,8 @@ void main()
 	// Its normal map bends N the same way, each sample turned into the frame of the side it was taken from.
 	vec3 surfaceAlbedo = vec3_splat(1.0);
 	float surfaceRough = 1.0;
+	// Where worn paint is worn through to the metal (0 to 1): the bare metal shines as metal.
+	float bare = 0.0;
 	// On something that moves, laid on the thing itself -- or it would slide over it as it went -- and the bent normal turned
 	// back into the world after.
 	bool onThing = u_surfaceParams.w > 0.5;
@@ -642,6 +645,26 @@ void main()
 			normalSum += nZ.xyz * blend.z;
 		}
 		surfaceAlbedo = mix(vec3_splat(dot(albedoSum, vec3(0.2126, 0.7152, 0.0722))), albedoSum, u_surfaceParams.y);
+		if (u_wearParams.w > 0.0)
+		{
+			// Worn paint: the set is a photograph of painted metal, its paint strongly coloured and, where it is chipped or
+			// scratched through, grey. The paint takes the surface's own colour, keeping only its light and dark; the metal is
+			// its own colour whatever the paint; and how far it is worn through comes and goes in patches metres across, so no
+			// repeat of the photograph lines up with the next.
+			float high = max(albedoSum.r, max(albedoSum.g, albedoSum.b));
+			float low = min(albedoSum.r, min(albedoSum.g, albedoSum.b));
+			float saturation = (high - low) / max(high, 1e-3);
+			vec3 placed = onThing ? v_localPos : v_worldPos;
+			float patches = SurfacePatches(placed.xz * 0.09 + placed.yy * 0.05 + vec2(3.1, 7.7));
+			// Worn only in some places: patches where it is (the more worn, the more of the surface they cover), clean paint
+			// between -- not the photograph's chips evenly everywhere.
+			float worn = smoothstep(1.05 - u_wearParams.w, 1.25 - u_wearParams.w, patches);
+			bare = smoothstep(0.55, 0.25, saturation) * worn;
+			float paintShade = clamp(high * 0.95, 0.55, 1.0);
+			surfaceAlbedo = mix(vec3_splat(paintShade), u_wearParams.xyz / max(u_baseColor.rgb, vec3_splat(0.04)), bare);
+			// And grime, darker in the patches it has gathered in.
+			surfaceAlbedo *= mix(1.0, 0.82, smoothstep(0.55, 0.9, SurfacePatches(placed.xz * 0.21 + placed.yy * 0.17)));
+		}
 		surfaceRough = roughSum;
 		vec3 Ng = N;
 		N = normalize(normalSum);
@@ -746,6 +769,9 @@ void main()
 	float metallic = clamp(u_materialParams.x, 0.0, 1.0);
 	// Clamp roughness away from zero: perfectly smooth surfaces alias badly with a single light.
 	float roughness = clamp(u_materialParams.y * v_color0.a * surfaceRough, 0.045, 1.0);
+	// Paint worn through: bare metal, scuffed bright.
+	metallic = mix(metallic, 0.7, bare);
+	roughness = mix(roughness, clamp(roughness * 0.75, 0.2, 0.6), bare);
 	if (u_organic.x > 0.5)
 	{
 		albedo = mix(albedo, vec3(0.42, 0.36, 0.33) * (0.35 + 0.65 * dot(albedo, vec3_splat(0.8))), v_organic.y);

@@ -27,6 +27,9 @@ Material Apply(Material material, const std::string& name, float metres, float k
 // And a second set where it is steep, on a material with a set laid on it already: tinted on average to `colour` (the
 // steep parts' own colour, against the material's), repeating every `metres`.
 Material ApplySteep(Material material, const std::string& name, float metres);
+// `material` painted and worn: the named set read as a photograph of painted metal (Material::surfaceWear), repeating every
+// `metres`, `wear` as much worn as it shows; the material's colour is the paint's, as it is.
+Material ApplyWorn(Material material, const std::string& name, float metres, float wear);
 
 // What a step on something sounds like: a footstep surface (Assets/Data/footsteps.json), by the set it is laid with, or by
 // what it is (metal or not) when it has none. As a number for PhysicsWorld::SetTag (StepName turns it back).

@@ -48,6 +48,11 @@ struct Material
     // Laid on the thing itself rather than by where it is in the world: for anything that moves, which a set laid on the
     // world would slide across.
     bool surfaceOnThing = false;
+    // Worn paint (0: off): the set is read as a photograph of painted metal -- its saturated parts the paint, which takes
+    // the material's own colour, its grey parts (chips, scratches) bare metal of `bareMetal`, whatever the paint -- and this
+    // much of the wear shows, more in some patches than others (about 1: as the photograph has it).
+    float surfaceWear = 0.0f;
+    glm::vec3 bareMetal{0.62f, 0.63f, 0.64f};
     // And a second set where the surface is steep -- a world's rock showing through its ground on the slopes -- blended in
     // as the slope passes what anybody can stand on, repeating every `steepScale` metres (0: none), its colour times
     // `steepTint` (the first set's average colour over its own, so each is tinted to the colour asked of it).

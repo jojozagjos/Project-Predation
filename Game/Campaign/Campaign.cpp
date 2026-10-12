@@ -1,5 +1,7 @@
 #include "Game/Campaign/Campaign.h"
 
+#include <glm/geometric.hpp>
+
 #include <algorithm>
 #include <set>
 
@@ -242,6 +244,14 @@ bool CampaignState::FromJson(const nlohmann::json& json, CampaignState& out, std
             state.colors.primary = ReadVec3(*colors, "primary", state.colors.primary);
             state.colors.secondary = ReadVec3(*colors, "secondary", state.colors.secondary);
             state.colors.accent = ReadVec3(*colors, "accent", state.colors.accent);
+            // Saved with the old light grey default (before 0.2.0 build 438), which nobody chose: the darker default instead.
+            const Colors defaults;
+            if (glm::distance(state.colors.primary, glm::vec3(0.78f, 0.78f, 0.76f)) < 0.01f &&
+                glm::distance(state.colors.secondary, glm::vec3(0.16f, 0.17f, 0.18f)) < 0.01f)
+            {
+                state.colors.primary = defaults.primary;
+                state.colors.secondary = defaults.secondary;
+            }
         }
         if (const auto plan = json.find("plan"); plan != json.end() && plan->is_object())
         {

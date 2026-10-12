@@ -89,6 +89,28 @@ Material Apply(Material material, const std::string& name, float metres, float k
     return material;
 }
 
+Material ApplyWorn(Material material, const std::string& name, float metres, float wear)
+{
+    if (g_textures == nullptr || metres <= 0.0f || wear <= 0.0f)
+    {
+        return material;
+    }
+    const TextureHandle colour = Map(name, "BaseColor");
+    if (!colour.IsValid())
+    {
+        return material;
+    }
+    // Not tinted to its average as Apply does: the shader takes only where the paint is worn through from it, and the
+    // paint's own light and dark, so the material's colour is the paint's as it stands.
+    material.baseColorTexture = colour;
+    material.normalTexture = Map(name, "Normal");
+    material.roughnessTexture = Map(name, "Roughness");
+    material.surfaceScale = metres;
+    material.surfaceKeep = 0.0f;
+    material.surfaceWear = wear;
+    return material;
+}
+
 Material ApplySteep(Material material, const std::string& name, float metres)
 {
     if (g_textures == nullptr || metres <= 0.0f || material.surfaceScale <= 0.0f)

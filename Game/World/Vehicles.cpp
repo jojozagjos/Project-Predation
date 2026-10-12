@@ -20,8 +20,9 @@ namespace
 
 // Colours: a worn pale hull and dark metal for the shuttle; for the crawler a faded working orange, grey inside, and
 // black rubber tracks.
-constexpr glm::vec3 kShuttleHull{0.44f, 0.45f, 0.43f};
-constexpr glm::vec3 kShuttleTrim{0.2f, 0.21f, 0.22f};
+constexpr glm::vec3 kShuttleHull{0.14f, 0.145f, 0.15f};
+constexpr glm::vec3 kShuttleTrim{0.07f, 0.075f, 0.08f};
+constexpr glm::vec3 kShuttleDeck{0.44f, 0.45f, 0.43f}; // the floor plate inside, lighter than the paint outside
 constexpr glm::vec3 kCrawlerBody{0.52f, 0.22f, 0.12f};
 constexpr glm::vec3 kCrawlerInside{0.3f, 0.3f, 0.31f};
 constexpr glm::vec3 kCrawlerTrack{0.1f, 0.1f, 0.11f};
@@ -299,6 +300,16 @@ ModelAsset ShuttleModel()
         part.roughness = 0.6f;
         part.metallic = 0.3f;
     };
+    // The outside's paint, worn: chipped and scratched to the metal, more in some places than others (Material::surfaceWear).
+    const auto worn = [](ModelPart& part)
+    {
+        part.surface = "cargo_crate";
+        part.surfaceScale = 1.4f;
+        part.surfaceOnThing = true;
+        part.surfaceWear = 0.65f;
+        part.roughness = 0.6f;
+        part.metallic = 0.4f;
+    };
     // Bare dark metal: the trim, the gear, the console -- plain, not a texture that reads as stone.
     const auto metal = [](ModelPart& part)
     {
@@ -340,7 +351,7 @@ ModelAsset ShuttleModel()
     // The windscreen and the corners either side of it; the flight deck's side windows.
     const std::vector<Window> windows = {{1, 4, 0.04f, 0.96f, 0.04f, 0.96f}, {1, 3, 0.1f, 0.94f, 0.08f, 0.92f}, {1, 5, 0.1f, 0.94f, 0.08f, 0.92f},
                                          {2, 2, 0.12f, 0.88f, 0.42f, 0.86f}, {2, 6, 0.12f, 0.88f, 0.14f, 0.58f}};
-    mesh("fx_shell", Shell(sections), kShuttleHull, 0.35f, 0.65f, 0.0f);
+    worn(mesh("fx_shell", Shell(sections), kShuttleHull, 0.35f, 0.65f, 0.0f));
     mesh("fx_shell_inside", ShellInside(sections, windows), lining, 0.85f, 0.2f, 0.0f);
     MeshData glass;
     for (const Window& window : windows)
@@ -384,8 +395,8 @@ ModelAsset ShuttleModel()
     // --- Inside: the floor right through, the cabin's walls and ceiling, the bulkhead with its doorway, the benches.
     // The cabin stops short of the tail, where the door closes inside the hull's end.
     const float aft = tail - 0.12f;
-    made(b.Box("deck", -inner, inner, 0.55f, deck, bulkhead, aft, kShuttleHull), "deck_plate", 1.6f, 0.6f);
-    made(b.Box("flight_deck", -1.2f, 1.2f, 0.64f, deck, -5.7f, bulkhead, kShuttleHull), "deck_plate", 1.6f, 0.6f);
+    made(b.Box("deck", -inner, inner, 0.55f, deck, bulkhead, aft, kShuttleDeck), "deck_plate", 1.6f, 0.6f);
+    made(b.Box("flight_deck", -1.2f, 1.2f, 0.64f, deck, -5.7f, bulkhead, kShuttleDeck), "deck_plate", 1.6f, 0.6f);
     panelled(b.Box("wall_right", inner, inner + wall, deck, ceiling, bulkhead, aft, kShuttleHull));
     panelled(b.Box("wall_left", -inner - wall, -inner, deck, ceiling, bulkhead, aft, kShuttleHull));
     panelled(b.Box("roof", -inner - wall, inner + wall, ceiling, ceiling + 0.08f, bulkhead, aft, kShuttleHull));
@@ -429,9 +440,9 @@ ModelAsset ShuttleModel()
         // A fairing along the roof, low and bevelled, rising from the roof at its front and easing down at its back.
         const auto ring = [](float z, float half, float top, float bottom) -> std::vector<glm::vec3>
         { return {{-half, bottom, z}, {half, bottom, z}, {half * 0.7f, top, z}, {-half * 0.7f, top, z}}; };
-        mesh("spine", Loft({ring(-3.9f, 0.18f, 3.36f, 3.32f), ring(-3.2f, 0.42f, 3.56f, 3.32f), ring(1.2f, 0.42f, 3.56f, 3.32f),
+        worn(mesh("spine", Loft({ring(-3.9f, 0.18f, 3.36f, 3.32f), ring(-3.2f, 0.42f, 3.56f, 3.32f), ring(1.2f, 0.42f, 3.56f, 3.32f),
                             ring(2.25f, 0.28f, 3.47f, 3.32f)}),
-             kShuttleHull, 0.35f, 0.65f, 0.0f);
+             kShuttleHull, 0.35f, 0.65f, 0.0f));
         // The fin on it, swept back, thinning to its top.
         const auto side = [](float x, float thin) -> std::vector<glm::vec3>
         // Its foot sunk into the fairing the whole of its length.
@@ -539,8 +550,9 @@ ModelAsset ShuttleModel()
                                  kShuttleHull);
         (void)pivot;
         ModelPart& outside = mesh("ramp_skin", std::move(doorSkin), kShuttleHull, 0.35f, 0.65f, 0.0f);
+        worn(outside);
         outside.parent = "fx_ramp_hinge";
-        ModelPart& inner_ = mesh("ramp_tread", std::move(tread), kShuttleHull, 0.6f, 0.4f, 0.0f);
+        ModelPart& inner_ = mesh("ramp_tread", std::move(tread), kShuttleDeck, 0.6f, 0.4f, 0.0f);
         inner_.parent = "fx_ramp_hinge";
         made(inner_, "deck_plate", 1.6f, 0.6f);
         // What is walked on: a box under the tread, from the hinge down to the ground (never drawn).
@@ -689,7 +701,7 @@ bool SameMaterial(const Material& a, const Material& b)
     return a.baseColor == b.baseColor && a.metallic == b.metallic && a.roughness == b.roughness && a.emissive == b.emissive && a.cutout == b.cutout &&
            a.emissiveTextured == b.emissiveTextured && a.reflectivity == b.reflectivity && a.baseColorTexture == b.baseColorTexture &&
            a.normalTexture == b.normalTexture && a.roughnessTexture == b.roughnessTexture && a.surfaceScale == b.surfaceScale &&
-           a.surfaceKeep == b.surfaceKeep && a.surfaceNatural == b.surfaceNatural && a.surfaceOnThing == b.surfaceOnThing &&
+           a.surfaceKeep == b.surfaceKeep && a.surfaceNatural == b.surfaceNatural && a.surfaceOnThing == b.surfaceOnThing && a.surfaceWear == b.surfaceWear &&
            a.steepColorTexture == b.steepColorTexture && a.steepScale == b.steepScale && a.organic == b.organic;
 }
 
@@ -726,7 +738,8 @@ bool VehicleProp::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld* physics
         material.emissive = part.color * part.emissive;
         if (!part.surface.empty())
         {
-            material = Surfaces::Apply(material, part.surface, part.surfaceScale, part.surfaceKeep);
+            material = part.surfaceWear > 0.0f ? Surfaces::ApplyWorn(material, part.surface, part.surfaceScale, part.surfaceWear)
+                                               : Surfaces::Apply(material, part.surface, part.surfaceScale, part.surfaceKeep);
             material.surfaceOnThing = part.surfaceOnThing;
         }
         // A solid_ part is only there to be walked into: never drawn.

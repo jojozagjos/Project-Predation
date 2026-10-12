@@ -82,7 +82,7 @@
   "name": "shuttle",
   "parts": [
     {
-      "color": [0.44, 0.45, 0.43],
+      "color": [0.14, 0.145, 0.15],
       "emissive": 0.0,
       "mesh": {
         "indices": [
@@ -1292,14 +1292,19 @@
           -6.0
         ]
       },
-      "metallic": 0.65,
+      "metallic": 0.4,
       "name": "fx_shell",
       "position": [0.0, 0.0, 0.0],
       "rotation": [0.0, 0.0, 0.0],
-      "roughness": 0.35,
+      "roughness": 0.6,
       "shape": "mesh",
       "size": [1.0, 1.0, 1.0],
       "source": "",
+      "surface": "cargo_crate",
+      "surfaceKeep": 1.0,
+      "surfaceOnThing": true,
+      "surfaceScale": 1.4,
+      "surfaceWear": 0.65,
       "visible": true
     },
     {
@@ -3265,7 +3270,7 @@
       "visible": true
     },
     {
-      "color": [0.2, 0.21, 0.22],
+      "color": [0.07, 0.075, 0.08],
       "emissive": 0.0,
       "metallic": 0.75,
       "name": "leg_sleeve_left_front",
@@ -3289,7 +3294,7 @@
       "visible": true
     },
     {
-      "color": [0.2, 0.21, 0.22],
+      "color": [0.07, 0.075, 0.08],
       "emissive": 0.0,
       "metallic": 0.75,
       "name": "leg_foot_left_front",
@@ -3301,7 +3306,7 @@
       "visible": true
     },
     {
-      "color": [0.2, 0.21, 0.22],
+      "color": [0.07, 0.075, 0.08],
       "emissive": 0.0,
       "metallic": 0.75,
       "name": "leg_sleeve_left_back",
@@ -3325,7 +3330,7 @@
       "visible": true
     },
     {
-      "color": [0.2, 0.21, 0.22],
+      "color": [0.07, 0.075, 0.08],
       "emissive": 0.0,
       "metallic": 0.75,
       "name": "leg_foot_left_back",
@@ -3337,7 +3342,7 @@
       "visible": true
     },
     {
-      "color": [0.2, 0.21, 0.22],
+      "color": [0.07, 0.075, 0.08],
       "emissive": 0.0,
       "metallic": 0.75,
       "name": "leg_sleeve_right_front",
@@ -3361,7 +3366,7 @@
       "visible": true
     },
     {
-      "color": [0.2, 0.21, 0.22],
+      "color": [0.07, 0.075, 0.08],
       "emissive": 0.0,
       "metallic": 0.75,
       "name": "leg_foot_right_front",
@@ -3373,7 +3378,7 @@
       "visible": true
     },
     {
-      "color": [0.2, 0.21, 0.22],
+      "color": [0.07, 0.075, 0.08],
       "emissive": 0.0,
       "metallic": 0.75,
       "name": "leg_sleeve_right_back",
@@ -3397,7 +3402,7 @@
       "visible": true
     },
     {
-      "color": [0.2, 0.21, 0.22],
+      "color": [0.07, 0.075, 0.08],
       "emissive": 0.0,
       "metallic": 0.75,
       "name": "leg_foot_right_back",
@@ -3422,6 +3427,7 @@
       "surfaceKeep": 0.6,
       "surfaceOnThing": true,
       "surfaceScale": 1.6,
+      "surfaceWear": 0.0,
       "visible": true
     },
     {
@@ -3438,6 +3444,7 @@
       "surfaceKeep": 0.6,
       "surfaceOnThing": true,
       "surfaceScale": 1.6,
+      "surfaceWear": 0.0,
       "visible": true
     },
     {
@@ -3525,7 +3532,7 @@
       "visible": true
     },
     {
-      "color": [0.2, 0.21, 0.22],
+      "color": [0.07, 0.075, 0.08],
       "emissive": 0.0,
       "metallic": 0.75,
       "name": "bench_right",
@@ -3537,7 +3544,7 @@
       "visible": true
     },
     {
-      "color": [0.2, 0.21, 0.22],
+      "color": [0.07, 0.075, 0.08],
       "emissive": 0.0,
       "metallic": 0.75,
       "name": "bench_left",
@@ -3561,7 +3568,7 @@
       "visible": true
     },
     {
-      "color": [0.2, 0.21, 0.22],
+      "color": [0.07, 0.075, 0.08],
       "emissive": 0.0,
       "metallic": 0.75,
       "name": "flight_ceiling",
@@ -3573,7 +3580,7 @@
       "visible": true
     },
     {
-      "color": [0.2, 0.21, 0.22],
+      "color": [0.07, 0.075, 0.08],
       "emissive": 0.0,
       "metallic": 0.75,
       "name": "flight_side_left",
@@ -3585,7 +3592,7 @@
       "visible": true
     },
     {
-      "color": [0.2, 0.21, 0.22],
+      "color": [0.07, 0.075, 0.08],
       "emissive": 0.0,
       "metallic": 0.75,
       "name": "flight_side_right",
@@ -3597,7 +3604,7 @@
       "visible": true
     },
     {
-      "color": [0.2, 0.21, 0.22],
+      "color": [0.07, 0.075, 0.08],
       "emissive": 0.0,
       "metallic": 0.75,
       "name": "console",
@@ -3621,7 +3628,7 @@
       "visible": true
     },
     {
-      "color": [0.2, 0.21, 0.22],
+      "color": [0.07, 0.075, 0.08],
       "emissive": 0.0,
       "metallic": 0.75,
       "name": "seat_left",
@@ -3633,7 +3640,7 @@
       "visible": true
     },
     {
-      "color": [0.2, 0.21, 0.22],
+      "color": [0.07, 0.075, 0.08],
       "emissive": 0.0,
       "metallic": 0.75,
       "name": "seat_back_left",
@@ -3645,7 +3652,7 @@
       "visible": true
     },
     {
-      "color": [0.2, 0.21, 0.22],
+      "color": [0.07, 0.075, 0.08],
       "emissive": 0.0,
       "metallic": 0.75,
       "name": "seat_right",
@@ -3657,7 +3664,7 @@
       "visible": true
     },
     {
-      "color": [0.2, 0.21, 0.22],
+      "color": [0.07, 0.075, 0.08],
       "emissive": 0.0,
       "metallic": 0.75,
       "name": "seat_back_right",
@@ -3705,7 +3712,7 @@
       "visible": true
     },
     {
-      "color": [0.44, 0.45, 0.43],
+      "color": [0.14, 0.145, 0.15],
       "emissive": 0.0,
       "mesh": {
         "indices": [
@@ -4315,18 +4322,23 @@
           2.25
         ]
       },
-      "metallic": 0.65,
+      "metallic": 0.4,
       "name": "spine",
       "position": [0.0, 0.0, 0.0],
       "rotation": [0.0, 0.0, 0.0],
-      "roughness": 0.35,
+      "roughness": 0.6,
       "shape": "mesh",
       "size": [1.0, 1.0, 1.0],
       "source": "",
+      "surface": "cargo_crate",
+      "surfaceKeep": 1.0,
+      "surfaceOnThing": true,
+      "surfaceScale": 1.4,
+      "surfaceWear": 0.65,
       "visible": true
     },
     {
-      "color": [0.2, 0.21, 0.22],
+      "color": [0.07, 0.075, 0.08],
       "emissive": 0.0,
       "mesh": {
         "indices": [
@@ -4707,7 +4719,7 @@
       "visible": true
     },
     {
-      "color": [0.2, 0.21, 0.22],
+      "color": [0.07, 0.075, 0.08],
       "emissive": 0.0,
       "metallic": 0.75,
       "name": "mast",
@@ -4731,7 +4743,7 @@
       "visible": true
     },
     {
-      "color": [0.2, 0.21, 0.22],
+      "color": [0.07, 0.075, 0.08],
       "emissive": 0.0,
       "metallic": 0.75,
       "name": "pylon_left",
@@ -4755,7 +4767,7 @@
       "visible": true
     },
     {
-      "color": [0.2, 0.21, 0.22],
+      "color": [0.07, 0.075, 0.08],
       "emissive": 0.0,
       "metallic": 0.75,
       "name": "intake_left",
@@ -4779,7 +4791,7 @@
       "visible": true
     },
     {
-      "color": [0.2, 0.21, 0.22],
+      "color": [0.07, 0.075, 0.08],
       "emissive": 0.0,
       "metallic": 0.75,
       "name": "nozzle_left",
@@ -4815,7 +4827,7 @@
       "visible": true
     },
     {
-      "color": [0.2, 0.21, 0.22],
+      "color": [0.07, 0.075, 0.08],
       "emissive": 0.0,
       "metallic": 0.75,
       "name": "pylon_right",
@@ -4839,7 +4851,7 @@
       "visible": true
     },
     {
-      "color": [0.2, 0.21, 0.22],
+      "color": [0.07, 0.075, 0.08],
       "emissive": 0.0,
       "metallic": 0.75,
       "name": "intake_right",
@@ -4863,7 +4875,7 @@
       "visible": true
     },
     {
-      "color": [0.2, 0.21, 0.22],
+      "color": [0.07, 0.075, 0.08],
       "emissive": 0.0,
       "metallic": 0.75,
       "name": "nozzle_right",
@@ -4899,7 +4911,7 @@
       "visible": true
     },
     {
-      "color": [0.2, 0.21, 0.22],
+      "color": [0.07, 0.075, 0.08],
       "emissive": 0.0,
       "mesh": {
         "indices": [
@@ -5520,7 +5532,7 @@
       "visible": true
     },
     {
-      "color": [0.2, 0.21, 0.22],
+      "color": [0.07, 0.075, 0.08],
       "emissive": 0.0,
       "metallic": 0.75,
       "name": "tail_jamb",
@@ -5532,7 +5544,7 @@
       "visible": true
     },
     {
-      "color": [0.2, 0.21, 0.22],
+      "color": [0.07, 0.075, 0.08],
       "emissive": 0.0,
       "metallic": 0.75,
       "name": "tail_jamb",
@@ -5544,7 +5556,7 @@
       "visible": true
     },
     {
-      "color": [0.44, 0.45, 0.43],
+      "color": [0.14, 0.145, 0.15],
       "emissive": 0.0,
       "metallic": 0.0,
       "name": "fx_ramp_hinge",
@@ -5556,7 +5568,7 @@
       "visible": true
     },
     {
-      "color": [0.44, 0.45, 0.43],
+      "color": [0.14, 0.145, 0.15],
       "emissive": 0.0,
       "mesh": {
         "indices": [
@@ -6046,15 +6058,20 @@
           2.2403
         ]
       },
-      "metallic": 0.65,
+      "metallic": 0.4,
       "name": "ramp_skin",
       "parent": "fx_ramp_hinge",
       "position": [0.0, 0.0, 0.0],
       "rotation": [0.0, 0.0, 0.0],
-      "roughness": 0.35,
+      "roughness": 0.6,
       "shape": "mesh",
       "size": [1.0, 1.0, 1.0],
       "source": "",
+      "surface": "cargo_crate",
+      "surfaceKeep": 1.0,
+      "surfaceOnThing": true,
+      "surfaceScale": 1.4,
+      "surfaceWear": 0.65,
       "visible": true
     },
     {
@@ -6321,10 +6338,11 @@
       "surfaceKeep": 0.6,
       "surfaceOnThing": true,
       "surfaceScale": 1.6,
+      "surfaceWear": 0.0,
       "visible": true
     },
     {
-      "color": [0.44, 0.45, 0.43],
+      "color": [0.14, 0.145, 0.15],
       "emissive": 0.0,
       "metallic": 0.0,
       "name": "solid_ramp",

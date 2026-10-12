@@ -704,9 +704,9 @@ void HullMesh(ModelAsset& model, const std::string& name, MeshData mesh, const g
 namespace
 {
 
-// The hull's outside as metal: the plating a smooth, glossy finish that catches the light and what is round it but keeps its
-// colour (bare metal reflects an airless world's black sky and goes dark), the engines, frames and masts duller and more
-// metal; the paint (stripes, markings) left as paint.
+// The hull's outside: the plating painted in the campaign's colours and worn -- chipped and scratched through to the metal,
+// more in some places than others, grime gathered in patches (Material::surfaceWear) -- the engines, frames and masts painted
+// dark and less worn; the trim (stripes, door frames) clean paint.
 void BareMetal(ModelAsset& model)
 {
     static const char* const kPlating[] = {"skin", "body", "body_front", "chin", "brow", "bay", "bay_front", "bay_back", "bay_roof_plate", "roof_plate",
@@ -722,14 +722,15 @@ void BareMetal(ModelAsset& model)
                               part.name.find_first_not_of("0123456789", cut + 1) == std::string::npos;
         const std::string stem = numbered ? part.name.substr(0, cut) : part.name;
         const auto is = [&](const char* const* list, size_t count) { return std::find(list, list + count, stem) != list + count; };
-        // Metal through and through: its own colour in what it reflects, with the dull sheen of a hull that has been out in the
-        // weather -- smooth enough to read as metal, rough enough that the sun glancing off a flat panel is a soft sheen across
-        // it and not a blinding mirror -- not a coat of paint with a shine on it, and
-        // no pattern laid over it (a set repeating across a hull this size reads as tiles).
+        // Rough enough everywhere that the sun glancing off a flat panel is a soft sheen across it, not a blinding mirror.
         if (is(kPlating, std::size(kPlating)))
         {
-            part.metallic = 0.85f;
-            part.roughness = 0.52f;
+            part.surface = "cargo_crate";
+            part.surfaceScale = 2.2f;
+            part.surfaceOnThing = true;
+            part.surfaceWear = 0.55f;
+            part.metallic = 0.45f;
+            part.roughness = 0.6f;
         }
         else if (is(kTrim, std::size(kTrim)))
         {
@@ -738,8 +739,12 @@ void BareMetal(ModelAsset& model)
         }
         else if (is(kDark, std::size(kDark)))
         {
-            part.metallic = 0.85f;
-            part.roughness = 0.58f;
+            part.surface = "cargo_crate";
+            part.surfaceScale = 1.6f;
+            part.surfaceOnThing = true;
+            part.surfaceWear = 0.4f;
+            part.metallic = 0.7f;
+            part.roughness = 0.62f;
         }
     }
 }
