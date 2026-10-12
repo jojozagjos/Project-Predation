@@ -1158,12 +1158,14 @@ SiteMap::Look PredationGame::SiteLookHere()
     {
         return look;
     }
-    if (const BiomeDef* biome = m_universeData.Biome(body->biome))
+    const std::string biomeId = !m_siteBiomePreview.empty() ? m_siteBiomePreview : body->biome;
+    if (const BiomeDef* biome = m_universeData.Biome(biomeId))
     {
         look.ground = biome->siteGround;
         look.rock = biome->siteRock;
         look.surface = biome->surface;
         look.steep = biome->steepSurface;
+        look.biome = biomeId;
     }
     look.weather = "none";
     look.weatherAmount = 0.0f;

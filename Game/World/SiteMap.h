@@ -45,6 +45,8 @@ public:
         std::string surface = "snow_02";
         // And where it is steep (empty: the ground set, darkened to the rock's colour).
         std::string steep = "rock_cliff";
+        // Its world's biome (universe.json), for what lies about on the ground (SiteScatter).
+        std::string biome = "frozen";
     };
     void SetLook(const Look& look) { m_look = look; }
     const Look& GetLook() const { return m_look; }

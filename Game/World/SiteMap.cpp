@@ -5,6 +5,7 @@
 #include "Engine/Render/Primitives.h"
 #include "Game/World/MapBuilder.h"
 #include "Game/World/ShipMap.h"
+#include "Game/World/SiteScatter.h"
 #include "Game/World/Surfaces.h"
 
 #include <glm/gtc/constants.hpp>
@@ -280,6 +281,58 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
             builder.AddBox(NameOf(block.kind), transform, block.size, Mix(seed, static_cast<uint32_t>(block.centre.x * 7.0f)) % 3u == 0 ? hullDebrisLight : hullDebris);
             break;
         }
+    }
+
+    // What lies about on the ground, by the world it is on: in clusters on its own ground, never on what was levelled
+    // (SiteScatter). Each shape made once and placed many times, turned and sized in its vertices (a collision mesh is not
+    // scaled with its transform), batched with the rest.
+    {
+        const std::vector<SiteScatter::Item> scattered = SiteScatter::Plan(seed, m_look.biome, m_plan, m_terrain);
+        const bool lush = m_look.biome == "jungle";
+        const glm::vec3 growth = glm::mix(m_look.ground, lush ? glm::vec3(0.12f, 0.3f, 0.08f) : glm::vec3(0.2f, 0.34f, 0.12f), 0.65f);
+        Material plain = Material::Diffuse(glm::vec3(1.0f), 0.85f);
+        Material ice = Surfaces::Apply(Material::Diffuse({0.7f, 0.8f, 0.9f}, 0.35f), "ice_cliff", 3.0f, 0.4f, true);
+        Material crystal = Material::Diffuse({0.62f, 0.72f, 0.95f}, 0.15f);
+        crystal.metallic = 0.1f;
+        crystal.emissive = {0.05f, 0.07f, 0.12f};
+        Material basalt = Surfaces::Apply(Material::Diffuse(m_look.rock * 0.55f, 0.9f), "basalt", 3.0f, 0.3f, true);
+        Material dead = Material::Diffuse({0.3f, 0.26f, 0.21f}, 0.9f);
+        const auto materialOf = [&](SiteScatter::Kind kind) -> const Material&
+        {
+            switch (kind)
+            {
+            case SiteScatter::Kind::Boulder:
+            case SiteScatter::Kind::Spire: return rockMaterial;
+            case SiteScatter::Kind::IceShard: return ice;
+            case SiteScatter::Kind::Crystal: return crystal;
+            case SiteScatter::Kind::Basalt: return basalt;
+            case SiteScatter::Kind::DeadTree: return dead;
+            default: return plain;
+            }
+        };
+        std::vector<MeshData> shapes(static_cast<size_t>(SiteScatter::Kind::Count) * SiteScatter::kVariants);
+        for (const SiteScatter::Item& item : scattered)
+        {
+            MeshData& shape = shapes[static_cast<size_t>(item.kind) * SiteScatter::kVariants + static_cast<size_t>(item.variant)];
+            if (shape.vertices.empty())
+            {
+                shape = SiteScatter::Shape(item.kind, item.variant, seed, growth);
+            }
+            const glm::quat turn = glm::angleAxis(item.yaw, glm::vec3(0.0f, 1.0f, 0.0f)) * glm::angleAxis(item.tip, glm::vec3(1.0f, 0.0f, 0.0f));
+            MeshData placed = shape;
+            for (MeshVertex& vertex : placed.vertices)
+            {
+                vertex.position = turn * (vertex.position * item.scale);
+                vertex.normal = glm::normalize(turn * (vertex.normal / item.scale));
+            }
+            // Small things cast no shadow worth its cost.
+            const bool small = item.kind == SiteScatter::Kind::Grass || item.kind == SiteScatter::Kind::Shrub ||
+                               (item.kind == SiteScatter::Kind::Boulder && item.scale.y < 0.6f);
+            builder.SetShadows(!small);
+            builder.AddMesh("site_scatter", Transform{item.at}, placed, materialOf(item.kind), SiteScatter::Solid(item.kind, item.scale));
+        }
+        builder.SetShadows(true);
+        PRED_LOG_INFO(Gameplay, "Site scatter: {} things on the ground ({})", scattered.size(), m_look.biome);
     }
 
     builder.SetStructure(0);

@@ -428,6 +428,8 @@ void PredationGame::RegisterCampaignCommands()
                             });
     console.RegisterCommand("site_terrain", "Build the next site on this ground rather than its world's: site_terrain [flat|rolling|mountainous|canyons|cratered|dunes], none for the world's own",
                             [this](const std::vector<std::string>& args) { m_siteTerrainPreview = args.size() >= 2 && args[1] != "none" ? args[1] : std::string(); });
+    console.RegisterCommand("site_biome", "Build the next site as on another biome: what lies on its ground, its ground and rock: site_biome <id> (universe.json), none for the world's own",
+                            [this](const std::vector<std::string>& args) { m_siteBiomePreview = args.size() >= 2 && args[1] != "none" ? args[1] : std::string(); });
     console.RegisterCommand("site_weather", "What falls at the site you are at, on this machine, to see it: site_weather <none|snow|rain|dust|ash> [amount 0-1]",
                             [this](const std::vector<std::string>& args)
                             {

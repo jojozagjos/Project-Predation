@@ -122,6 +122,7 @@ set(PRED_GAME_SOURCES
     World/SiteTerrain.cpp
     World/SiteMap.h
     World/SiteMap.cpp
+    World/SiteScatter.cpp
     World/Surfaces.h
     World/Surfaces.cpp
     World/Weather.cpp

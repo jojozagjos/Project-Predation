@@ -1202,6 +1202,8 @@ private:
     std::string m_outpostPreviewOwner;
     // The ground the next site is built on instead of its world's (site_terrain): a terrain id, or empty for the world's own.
     std::string m_siteTerrainPreview;
+    // And on this world's biome rather than its own (site_biome): what lies about on it, its ground and rock (dev).
+    std::string m_siteBiomePreview;
     Entity MakeSign(const KestrelStation::Sign& sign, const std::string& meshName, TextureHandle texture, int wide, int high, int textureWide, int textureHigh,
                     MeshHandle& mesh);
     std::vector<Entity> m_hubSigns;
