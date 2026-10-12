@@ -39,11 +39,12 @@ Built (ADR-136):
   rolling, mountainous, canyons, cratered, dunes), closed in by steep rock instead of a ring of blocks.
 - **Buildings and pads on levelled ground**, cut into the slope (the cut's face drawn as rock), with the ways between
   them levelled too.
+- **Ground textures by slope:** the world's ground on the flat, rock showing through on the steep (ADR-137). No weather
+  where there is no air.
 
 Next:
 - **Things on the ground, by world:** boulder fields, rock spires, ice formations, crystal growths, dunes, lava crust,
   dead or living vegetation for temperate and jungle worlds, wreckage and old equipment near people.
-- **Ground textures by slope:** the world's ground on the flat, rock showing through on the steep.
 - **Weather that is the world's:** snow is in; rain, dust, ash and fog next, with wind.
 - The same for outposts: each on its own piece of the world's ground, not a flat plain.
 
