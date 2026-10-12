@@ -1045,6 +1045,70 @@ void PredationGame::RegisterCommands()
         "cam_pos [x y z [yaw pitch]]");
 
     console.RegisterCommand(
+        "what_is", "Name the drawn things along the middle of the view, nearest first: what_is [how many]",
+        [this](const std::vector<std::string>& args)
+        {
+            // Along the view from the eye, through every drawn thing's box (its mesh's bounds, turned and scaled as it is).
+            const glm::vec3 from = m_cameraMode == CameraMode::Fly ? m_camera.position : m_player.View().eyePosition;
+            const glm::vec3 way = glm::normalize(m_cameraMode == CameraMode::Fly ? m_camera.Forward() : m_player.View().Forward());
+            std::vector<std::pair<float, std::string>> hits;
+            m_scene.ForEachMeshRenderer(
+                [&](Entity entity, const Transform& transform, const MeshRenderer& renderer)
+                {
+                    const Mesh* mesh = m_app->GetMeshes().Get(renderer.mesh);
+                    if (mesh == nullptr || !mesh->bounds.IsValid())
+                    {
+                        return;
+                    }
+                    // Into the thing's own frame, where its box is square to the axes.
+                    const glm::mat4 toThing = glm::inverse(transform.Matrix());
+                    const glm::vec3 o = glm::vec3(toThing * glm::vec4(from, 1.0f));
+                    const glm::vec3 d = glm::vec3(toThing * glm::vec4(way, 0.0f));
+                    float near = 0.0f;
+                    float far = 1.0e9f;
+                    for (int axis = 0; axis < 3; ++axis)
+                    {
+                        if (std::abs(d[axis]) < 1.0e-9f)
+                        {
+                            if (o[axis] < mesh->bounds.min[axis] || o[axis] > mesh->bounds.max[axis])
+                            {
+                                return;
+                            }
+                            continue;
+                        }
+                        float t0 = (mesh->bounds.min[axis] - o[axis]) / d[axis];
+                        float t1 = (mesh->bounds.max[axis] - o[axis]) / d[axis];
+                        if (t0 > t1)
+                        {
+                            std::swap(t0, t1);
+                        }
+                        near = std::max(near, t0);
+                        far = std::min(far, t1);
+                    }
+                    if (near <= far)
+                    {
+                        // Back in metres along the view.
+                        const glm::vec3 at = glm::vec3(transform.Matrix() * glm::vec4(o + d * near, 1.0f));
+                        hits.emplace_back(glm::length(at - from), m_scene.Name(entity) + " (" + mesh->name + ")");
+                    }
+                });
+            std::sort(hits.begin(), hits.end());
+            const size_t count = args.size() >= 2 ? static_cast<size_t>(std::max(std::atoi(args[1].c_str()), 1)) : 6;
+            for (size_t i = 0; i < hits.size() && i < count; ++i)
+            {
+                char line[256];
+                std::snprintf(line, sizeof(line), "%6.2f m  %s", hits[i].first, hits[i].second.c_str());
+                m_app->GetConsole().Print(line);
+                PRED_LOG_INFO(Gameplay, "what_is: {}", line);
+            }
+            if (hits.empty())
+            {
+                m_app->GetConsole().Print("Nothing drawn along the view.");
+            }
+        },
+        "what_is [how many]");
+
+    console.RegisterCommand(
         "give", "Put an item straight into the inventory: give <key> [count]",
         [this](const std::vector<std::string>& args)
         {

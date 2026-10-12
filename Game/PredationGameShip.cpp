@@ -110,21 +110,23 @@ void PredationGame::RegisterShipCommands()
 
 void PredationGame::BuildShipControls()
 {
-    // The shuttle's controls: its cabin's front wall, used from inside.
-    const Entity wall = m_ship.Shuttle().Part("front_wall");
-    if (!m_scene.IsAlive(wall))
+    // The shuttle's controls: its console at the front of the cabin, used from inside.
+    const Entity console = m_ship.Shuttle().Part("console");
+    if (!m_scene.IsAlive(console))
     {
         return;
     }
     Interactable interactable;
-    interactable.entity = wall;
+    interactable.entity = console;
     interactable.kind = InteractionKind::Board;
     interactable.verb = "Launch";
     interactable.name = "the shuttle";
+    // Aimed at its top, where the screen is -- not its middle, inside it, which its own front would hide.
+    interactable.focusOffset = {0.0f, 0.32f, 0.0f};
     interactable.range = 2.6f;
     interactable.enabled = false;
     m_interactions.Register(interactable);
-    m_shipControls = wall;
+    m_shipControls = console;
 }
 
 void PredationGame::ShuttleAboard(int& aboard, int& everybody) const

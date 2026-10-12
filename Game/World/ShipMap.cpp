@@ -710,18 +710,12 @@ void BareMetal(ModelAsset& model)
                               part.name.find_first_not_of("0123456789", cut + 1) == std::string::npos;
         const std::string stem = numbered ? part.name.substr(0, cut) : part.name;
         const auto is = [&](const char* const* list, size_t count) { return std::find(list, list + count, stem) != list + count; };
-        // Metal through and through: its own colour in what it reflects, smooth, with a soft cloudy mottle across it (the hull
-        // plating set's colour only, let go of so the hull keeps the campaign's -- its plate lines and bumps left off) -- not a
-        // coat of paint with a shine on it.
+        // Metal through and through: its own colour in what it reflects, smooth -- not a coat of paint with a shine on it, and
+        // no pattern laid over it (a set repeating across a hull this size reads as tiles).
         if (is(kPlating, std::size(kPlating)))
         {
             part.metallic = 0.92f;
             part.roughness = 0.3f;
-            part.surface = "hull_plating";
-            part.surfaceScale = 6.0f;
-            part.surfaceKeep = 0.0f;
-            part.surfaceOnThing = true;
-            part.surfaceColourOnly = true;
         }
         else if (is(kTrim, std::size(kTrim)))
         {
@@ -731,11 +725,7 @@ void BareMetal(ModelAsset& model)
         else if (is(kDark, std::size(kDark)))
         {
             part.metallic = 0.85f;
-            part.roughness = 0.9f;
-            part.surface = "hull_dark";
-            part.surfaceScale = 2.0f;
-            part.surfaceKeep = 0.0f;
-            part.surfaceOnThing = true;
+            part.roughness = 0.45f;
         }
     }
 }
@@ -887,10 +877,12 @@ ModelAsset ShipMap::HullModel(const ShipHullLook& look, bool stage)
                 accent);
     }
     HullBox(model, name("spine"), {-0.8f, bodyTop, -10.8f}, {0.8f, bodyTop + 0.35f, bayFront}, secondary, 0.6f, 0.4f);
+    // On the body roof only: none runs on past where the bay rises from it (they stood out inside the bay).
+    const float plateEnd = bayFront - 0.3f;
     for (float z = -10.5f; z < 2.0f; z += 4.0f)
     {
-        HullBox(model, name("roof_plate"), {-3.2f, bodyTop, z}, {-1.2f, bodyTop + 0.06f, z + 3.0f}, secondary, 0.6f, 0.4f);
-        HullBox(model, name("roof_plate"), {1.2f, bodyTop, z + 0.5f}, {3.2f, bodyTop + 0.06f, z + 3.5f}, secondary, 0.6f, 0.4f);
+        HullBox(model, name("roof_plate"), {-3.2f, bodyTop, z}, {-1.2f, bodyTop + 0.06f, std::min(z + 3.0f, plateEnd)}, secondary, 0.6f, 0.4f);
+        HullBox(model, name("roof_plate"), {1.2f, bodyTop, z + 0.5f}, {3.2f, bodyTop + 0.06f, std::min(z + 3.5f, plateEnd)}, secondary, 0.6f, 0.4f);
     }
     for (float z = bayFront + 1.0f; z < bayBack - 2.0f; z += 5.0f)
     {
