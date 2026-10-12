@@ -42,10 +42,14 @@ Built (ADR-136):
 - **Ground textures by slope:** the world's ground on the flat, rock showing through on the steep (ADR-137). No weather
   where there is no air.
 
+- **Things on the ground, by world** (SiteScatter, 2026-10-12): boulders, spires, ice shards, crystal, basalt, trees,
+  shrubs, grass, dead trees, by biome. Still to come: lava crust, wreckage and old equipment near people, native
+  wildlife (rework answers: yes, on some worlds).
+- **Weather that is the world's** (Weather, 2026-10-11): snow, rain, dust, ash, by the world's weather; fog by its
+  visibility. Still to come: wind you can see in the scatter (grass, trees).
+
 Next:
-- **Things on the ground, by world:** boulder fields, rock spires, ice formations, crystal growths, dunes, lava crust,
-  dead or living vegetation for temperate and jungle worlds, wreckage and old equipment near people.
-- **Weather that is the world's:** snow is in; rain, dust, ash and fog next, with wind.
+- Outposts on the world's own ground (they stand on a flat plain), and the same scatter round them.
 - The same for outposts: each on its own piece of the world's ground, not a flat plain.
 
 ---
