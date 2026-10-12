@@ -44,13 +44,14 @@ bool SkyRenderer::Init(ShaderLibrary& shaders)
     m_uBodies = bgfx::createUniform("u_skyBodies", bgfx::UniformType::Vec4, Environment::kSkyBodies * 2);
     m_uRings = bgfx::createUniform("u_skyRings", bgfx::UniformType::Vec4);
     m_uRingColor = bgfx::createUniform("u_skyRingColor", bgfx::UniformType::Vec4);
+    m_uAir = bgfx::createUniform("u_skyAir", bgfx::UniformType::Vec4);
     return true;
 }
 
 void SkyRenderer::Shutdown()
 {
     const bgfx::UniformHandle uniforms[] = {m_uRays, m_uDepth, m_uZenith, m_uHorizon, m_uGround, m_uSun, m_uSunColor,
-                                            m_uGrade, m_uSpace, m_uPlanet, m_uPlanetA, m_uPlanetB, m_uPlanetC, m_uPlanetD, m_uPlanetE, m_uBodies, m_uRings, m_uRingColor};
+                                            m_uGrade, m_uSpace, m_uPlanet, m_uPlanetA, m_uPlanetB, m_uPlanetC, m_uPlanetD, m_uPlanetE, m_uBodies, m_uRings, m_uRingColor, m_uAir};
     for (const bgfx::UniformHandle handle : uniforms)
     {
         if (bgfx::isValid(handle))
@@ -63,7 +64,7 @@ void SkyRenderer::Shutdown()
     m_uSpace = m_uPlanet = BGFX_INVALID_HANDLE;
     m_uPlanetA = m_uPlanetB = m_uPlanetC = m_uPlanetD = m_uPlanetE = BGFX_INVALID_HANDLE;
     m_uBodies = BGFX_INVALID_HANDLE;
-    m_uRings = m_uRingColor = BGFX_INVALID_HANDLE;
+    m_uRings = m_uRingColor = m_uAir = BGFX_INVALID_HANDLE;
     if (bgfx::isValid(m_triangle))
     {
         bgfx::destroy(m_triangle);
@@ -146,6 +147,8 @@ void SkyRenderer::Draw(bgfx::ViewId view, const Environment& environment, const 
     const float ringColor[4] = {look.ringColor.r, look.ringColor.g, look.ringColor.b, 0.0f};
     bgfx::setUniform(m_uRings, rings);
     bgfx::setUniform(m_uRingColor, ringColor);
+    const float air[4] = {environment.skyAirColor.r, environment.skyAirColor.g, environment.skyAirColor.b, std::clamp(environment.skyAir, 0.0f, 1.0f)};
+    bgfx::setUniform(m_uAir, air);
 
     bgfx::setVertexBuffer(0, m_triangle);
     // Behind a picture already drawn: at the far end of its depth, and only where it is still clear -- so the sky's stars and

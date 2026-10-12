@@ -10,6 +10,7 @@ uniform vec4 u_skySunColor; // rgb, w = how bright
 uniform vec4 u_skyGrade;    // x = exposure, y = contrast
 uniform vec4 u_skySpace;       // x = stars (0 none, 1 all), y = a planet's radius on the sky (radians; 0 none), z = its air, w = brightness
 uniform vec4 u_skyPlanet;      // xyz = towards the planet's middle, w = how warm its air glows (0 blue, 1 amber)
+uniform vec4 u_skyAir;         // rgb = the colour of the air the sky is seen through, w = how much (0 none: space, or no air)
 // How it looks (Shaders/planet/planet_surface.sh); e is the air's colour and the pattern's seed.
 uniform vec4 u_planetA;
 uniform vec4 u_planetB;
@@ -129,7 +130,9 @@ void main()
 	float core = pow(toSun, max(u_skySun.w, 1.0) * 24.0);
 	// In space there is no horizon and no air to light: black all round, but for the stars and the sun wherever it is.
 	// (It was the sky's zenith dimmed, which is the colour of a sky, and read as grey.)
-	float inSpace = step(0.001, u_skySpace.x);
+	float inSpace = step(0.001, u_skySpace.x) * step(u_skyAir.w, 0.001);
+	// Through air at night the sky is still a sky: a faint glow of the air low along the horizon, as much as it is dark.
+	color += u_skyAir.rgb * (0.035 * u_skyAir.w * u_skySpace.x) * exp(-max(up, 0.0) * 7.0) * step(-0.05, up);
 	color = mix(color, vec3(0.0006, 0.0007, 0.001), inSpace);
 	color += u_skySunColor.rgb * u_skySunColor.w * (halo * 0.35 + core) * clamp(up * 4.0 + 0.4, 0.0, 1.0) * (1.0 - inSpace);
 	// In space, with no air to spread it, the sun is a small hard disc, blinding, darker at its rim; a tight corona
@@ -245,7 +248,7 @@ void main()
 	// The other planets and moons: lit discs when near enough to have a size, and otherwise what they really are from
 	// across a system -- points of light, steadier and brighter than the stars, their colour, as bright as how big they are,
 	// how near and how much of their lit side faces this way. Behind the near planet and in front of the stars.
-	if (starsShow > 0.5 && inSpace > 0.5)
+	if (starsShow > 0.5 && u_skySpace.x > 0.001)
 	{
 		vec3 towardsLight = normalize(u_skySun.xyz);
 		float pixelAngle = max(length(fwidth(ray)), 0.00005);
@@ -286,7 +289,9 @@ void main()
 			}
 		}
 	}
-	color += SkyStars(ray) * u_skySpace.x * starsShow * max(u_skySpace.w, 0.0);
+	// Seen through air the stars dim and go low down, where there is the most of it to look through.
+	float through = mix(1.0, smoothstep(-0.02, 0.35, up), step(0.001, u_skyAir.w));
+	color += SkyStars(ray) * u_skySpace.x * starsShow * max(u_skySpace.w, 0.0) * through;
 
 	// For post-processing to finish, as linear light.
 	if (u_skyGrade.w > 0.5)

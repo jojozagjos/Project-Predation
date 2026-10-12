@@ -1191,7 +1191,8 @@ void PredationGame::SetSkyOver(const StarSystem& system, const Body& body, int r
     // swings from the one to the other. The sky still draws its star where it is.
     const float sunUp = glm::smoothstep(-0.1f, 0.12f, height);
     const glm::vec3 sunColour = glm::mix(starLight, starLight * glm::vec3(1.0f, 0.6f, 0.34f), low * air); // reddened low through air
-    const float sunLight = 2.4f * day * (1.0f - 0.35f * body.clouds);
+    // Bright, not blinding; and dimmer through thick air, which spreads some of it over the sky instead.
+    const float sunLight = 1.6f * day * (1.0f - 0.35f * body.clouds) * (1.0f - 0.2f * glm::smoothstep(0.2f, 1.0f, air));
     const glm::vec3 between = nightWay * (1.0f - sunUp) + towardsSun * sunUp + glm::vec3(0.0f, 1.2f * sunUp * (1.0f - sunUp), 0.0f);
     environment.sunDirection = -glm::normalize(between);
     environment.skySunDirection = -towardsSun;
@@ -1205,16 +1206,18 @@ void PredationGame::SetSkyOver(const StarSystem& system, const Body& body, int r
         // the sunlit ground round them throws back.
         environment.stars = 1.0f;
         environment.sunDisc = 0.006f;
-        environment.ambientSky = glm::vec3(0.022f, 0.025f, 0.034f) + ground * sunLight * 0.03f + nightColour * nightGlow * 0.12f;
-        environment.ambientGround = ground * (0.08f * sunLight / 2.4f + 0.1f * nightGlow) + glm::vec3(0.01f);
+        environment.ambientSky = glm::vec3(0.022f, 0.025f, 0.034f) + ground * sunLight * 0.045f + nightColour * nightGlow * 0.12f;
+        environment.ambientGround = ground * (0.08f * sunLight / 1.6f + 0.1f * nightGlow) + glm::vec3(0.01f);
         environment.fogColor = glm::vec3(0.0f);
         environment.fogStart = 3000.0f;
         environment.fogEnd = 9000.0f;
         return;
     }
     // Any air at all lights the sky by day -- a thin one less blue and less bright, its stars showing through as the sun goes
-    // low -- and the stars come out at night, as much as the cloud lets them.
+    // low -- and the stars come out at night, as much as the cloud lets them; and at night it is still air, not space.
     const float thick = glm::smoothstep(0.015f, 0.2f, air);
+    environment.skyAir = std::max(thick, 0.25f);
+    environment.skyAirColor = body.airColor;
     environment.stars = std::clamp((1.0f - day * (0.6f + 0.4f * thick)) * (1.0f - 0.8f * body.clouds), 0.0f, 1.0f);
     // Night not black: the sky's own glow, and whatever is up, are enough to see the shapes of things by.
     const glm::vec3 night = glm::vec3(0.045f, 0.054f, 0.078f) + nightColour * nightGlow * 0.12f;

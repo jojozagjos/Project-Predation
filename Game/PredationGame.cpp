@@ -10064,6 +10064,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
     // --- World ------------------------------------------------------------------------------------
     Environment& environment = m_scene.GetEnvironment();
     environment.skySunDirection = glm::vec3(0.0f);
+    environment.skyAir = 0.0f;
     environment.fogStart = cv_fogStart.Get();
     environment.fogEnd = cv_fogEnd.Get();
     environment.sunIntensity = cv_sunIntensity.Get();

@@ -119,6 +119,10 @@ struct Environment
     // Where the sky draws its star, and lights the worlds hung in it, from -- when that is not where the light on the ground
     // comes from (at night a moon or a planet overhead lights it, the star below the horizon): zero for the same.
     glm::vec3 skySunDirection{0.0f};
+    // The air the sky is seen through, on a world (0 none: space, or a world without any) and its colour. With air, a night
+    // sky is still a sky -- dark blue, a faint glow along the horizon, its stars dimmed low down -- not space.
+    float skyAir = 0.0f;
+    glm::vec3 skyAirColor{0.35f, 0.55f, 0.95f};
     glm::vec3 planetDirection{0.0f, -1.0f, 0.0f};
     float planetRadius = 0.0f;
     PlanetLook planet = PlanetLook::Plain({0.8f, 0.84f, 0.9f}, 0.0f);
