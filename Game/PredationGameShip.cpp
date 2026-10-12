@@ -347,7 +347,8 @@ void PredationGame::UpdateShip()
         int aboard = 0;
         int everybody = 0;
         ShuttleAboard(aboard, everybody);
-        controls->enabled = m_shipReady && !m_cine.Active() && m_map == MapChoice::Ship;
+        // From inside it only: not through its windows from the bay.
+        controls->enabled = m_shipReady && !m_cine.Active() && m_map == MapChoice::Ship && m_ship.Shuttle().Aboard(m_player.View().eyePosition);
         controls->verb = aboard >= everybody ? "Launch" : "Launch (" + std::to_string(aboard) + " of " + std::to_string(everybody) + " aboard)";
     }
 }

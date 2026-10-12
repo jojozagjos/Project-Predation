@@ -56,48 +56,6 @@ struct Builder
         model.sockets.push_back(socket);
     }
 
-    // A ramp hinged along its top edge at `hinge`, running back (+z) and down to the ground, and the three clips that
-    // close, open and hold it closed: the hinge turns about x, and the ramp is carried round with it.
-    void Ramp(const glm::vec3& hinge, float length, float width, float thickness, const glm::vec3& colour)
-    {
-        ModelPart& pivot = Box("fx_ramp_hinge", hinge.x - 0.005f, hinge.x + 0.005f, hinge.y - 0.005f, hinge.y + 0.005f, hinge.z - 0.005f,
-                               hinge.z + 0.005f, colour);
-        (void)pivot;
-        // Steep enough that the underside of its far edge rests on the ground, rather than its top surface -- which would put
-        // the rest of its thickness into the ground.
-        const float slope = std::asin(std::clamp((hinge.y - thickness) / length, 0.0f, 1.0f));
-        const float c = std::cos(slope);
-        const float s = std::sin(slope);
-        // Its top surface runs from the hinge down to the ground: the middle of it is back from the top edge by half its
-        // length, and under it by half its thickness.
-        const glm::vec3 fromHinge{0.0f, thickness * 0.5f * c + length * 0.5f * s, thickness * 0.5f * s - length * 0.5f * c};
-        ModelPart& ramp = Box("ramp", -width * 0.5f, width * 0.5f, -thickness * 0.5f, thickness * 0.5f, -length * 0.5f, length * 0.5f, colour);
-        ramp.position = hinge - fromHinge;
-        ramp.rotation = {glm::degrees(slope), 0.0f, 0.0f};
-        ramp.parent = "fx_ramp_hinge";
-
-        const float closed = -(90.0f + glm::degrees(slope));
-        const auto clip = [&](const std::string& name, float duration, float from, float to)
-        {
-            AnimationClip animation;
-            animation.name = name;
-            animation.duration = duration;
-            AnimationTrack track;
-            track.part = "fx_ramp_hinge";
-            AnimationKey first;
-            first.time = 0.0f;
-            first.rotation = {from, 0.0f, 0.0f};
-            AnimationKey last;
-            last.time = duration;
-            last.rotation = {to, 0.0f, 0.0f};
-            track.keys = {first, last};
-            animation.tracks.push_back(track);
-            model.clips.push_back(animation);
-        };
-        clip("ramp_closed", 0.1f, closed, closed);
-        clip("ramp_opening", 2.5f, closed, 0.0f);
-        clip("ramp_closing", 2.5f, 0.0f, closed);
-    }
 };
 
 } // namespace
@@ -255,6 +213,48 @@ MeshData ShellInside(const std::vector<Section>& sections, const std::vector<Win
     return mesh;
 }
 
+// A closed solid through a run of rings (each the same number of points, in order round): its sides, and both ends capped --
+// a fin, a fairing.
+MeshData Loft(const std::vector<std::vector<glm::vec3>>& rings)
+{
+    MeshData mesh;
+    glm::vec3 middle{0.0f};
+    size_t count = 0;
+    for (const auto& ring : rings)
+    {
+        for (const glm::vec3& point : ring)
+        {
+            middle += point;
+            ++count;
+        }
+    }
+    middle /= static_cast<float>(std::max<size_t>(count, 1));
+    for (size_t i = 0; i + 1 < rings.size(); ++i)
+    {
+        const auto& a = rings[i];
+        const auto& b = rings[i + 1];
+        for (size_t k = 0; k < a.size(); ++k)
+        {
+            const size_t n = (k + 1) % a.size();
+            OutwardFace(mesh, a[k], a[n], b[n], b[k], middle);
+        }
+    }
+    for (const auto* end : {&rings.front(), &rings.back()})
+    {
+        glm::vec3 centre{0.0f};
+        for (const glm::vec3& point : *end)
+        {
+            centre += point;
+        }
+        centre /= static_cast<float>(end->size());
+        for (size_t k = 0; k < end->size(); ++k)
+        {
+            OutwardFace(mesh, (*end)[k], (*end)[(k + 1) % end->size()], centre, centre, middle);
+        }
+    }
+    return mesh;
+}
+
 ModelAsset ShuttleModel()
 {
     // A working dropship, nose at -z. Its skin is one piece (Shell), lofted through five sections from the nose back to the
@@ -382,23 +382,26 @@ ModelAsset ShuttleModel()
     }
 
     // --- Inside: the floor right through, the cabin's walls and ceiling, the bulkhead with its doorway, the benches.
-    made(b.Box("deck", -inner, inner, 0.55f, deck, bulkhead, tail, kShuttleHull), "deck_plate", 1.6f, 0.6f);
+    // The cabin stops short of the tail, where the door closes inside the hull's end.
+    const float aft = tail - 0.12f;
+    made(b.Box("deck", -inner, inner, 0.55f, deck, bulkhead, aft, kShuttleHull), "deck_plate", 1.6f, 0.6f);
     made(b.Box("flight_deck", -1.2f, 1.2f, 0.64f, deck, -5.7f, bulkhead, kShuttleHull), "deck_plate", 1.6f, 0.6f);
-    panelled(b.Box("wall_right", inner, inner + wall, deck, ceiling, bulkhead, tail, kShuttleHull));
-    panelled(b.Box("wall_left", -inner - wall, -inner, deck, ceiling, bulkhead, tail, kShuttleHull));
-    panelled(b.Box("roof", -inner - wall, inner + wall, ceiling, ceiling + 0.08f, bulkhead, tail, kShuttleHull));
-    panelled(b.Box("header", -inner, inner, ceiling - 0.3f, ceiling, tail - wall, tail, kShuttleHull));
-    // A doorway a person walks through without ducking or turning.
+    panelled(b.Box("wall_right", inner, inner + wall, deck, ceiling, bulkhead, aft, kShuttleHull));
+    panelled(b.Box("wall_left", -inner - wall, -inner, deck, ceiling, bulkhead, aft, kShuttleHull));
+    panelled(b.Box("roof", -inner - wall, inner + wall, ceiling, ceiling + 0.08f, bulkhead, aft, kShuttleHull));
+    panelled(b.Box("header", -inner, inner, ceiling - 0.3f, ceiling, aft - wall, aft, kShuttleHull));
+    // A doorway a person walks through without ducking or turning: as high as the flight deck is.
+    const float flightTop = 2.68f;
     panelled(b.Box("bulkhead_left", -inner, -0.7f, deck, ceiling, bulkhead, bulkhead + wall, kShuttleHull));
     panelled(b.Box("bulkhead_right", 0.7f, inner, deck, ceiling, bulkhead, bulkhead + wall, kShuttleHull));
-    panelled(b.Box("bulkhead_over", -0.7f, 0.7f, 2.3f, ceiling, bulkhead, bulkhead + wall, kShuttleHull));
+    panelled(b.Box("bulkhead_over", -0.7f, 0.7f, flightTop, ceiling, bulkhead, bulkhead + wall, kShuttleHull));
     metal(b.Box("bench_right", inner - 0.45f, inner, deck, deck + 0.45f, -3.2f, 1.3f, kShuttleTrim));
     metal(b.Box("bench_left", -inner, -inner + 0.45f, deck, deck + 0.45f, -3.2f, 1.3f, kShuttleTrim));
     b.Box("fx_cabin_light", -0.4f, 0.4f, ceiling - 0.05f, ceiling, -1.4f, -0.6f, {1.0f, 0.95f, 0.85f}, 0.5f, 0.0f, 1.5f);
 
     // --- The flight deck: under a ceiling below the windscreen's top, low sides under its side windows, the console across
     // the front under the windscreen, and two seats.
-    metal(b.Box("flight_ceiling", -1.3f, 1.3f, 2.6f, 2.68f, -5.05f, bulkhead, kShuttleTrim));
+    metal(b.Box("flight_ceiling", -1.3f, 1.3f, flightTop, flightTop + 0.06f, -5.05f, bulkhead, kShuttleTrim));
     metal(b.Box("flight_side_left", -1.6f, -1.2f, deck, 1.55f, -5.0f, bulkhead, kShuttleTrim));
     metal(b.Box("flight_side_right", 1.2f, 1.6f, deck, 1.55f, -5.0f, bulkhead, kShuttleTrim));
     metal(b.Box("console", -1.15f, 1.15f, deck, 1.3f, -5.65f, -5.3f, kShuttleTrim));
@@ -417,14 +420,25 @@ ModelAsset ShuttleModel()
         const glm::vec3 in{0.0f, -way.z, way.y};
         screen.position = glm::vec3(0.0f, 2.175f, -5.4f) + in * 0.12f;
         screen.rotation = {-glm::degrees(std::atan2(1.15f, 0.7f)), 0.0f, 0.0f};
-        solid("flight_window_left", -1.8f, -1.6f, 1.55f, 2.6f, -5.0f, bulkhead);
-        solid("flight_window_right", 1.6f, 1.8f, 1.55f, 2.6f, -5.0f, bulkhead);
+        solid("flight_window_left", -1.8f, -1.6f, 1.55f, flightTop, -5.0f, bulkhead);
+        solid("flight_window_right", 1.6f, 1.8f, 1.55f, flightTop, -5.0f, bulkhead);
     }
 
     // --- On top: a spine along the roof, the fin at the tail, a mast forward.
-    b.Box("spine", -0.4f, 0.4f, 3.33f, 3.55f, -3.9f, 1.6f, kShuttleHull, 0.35f, 0.65f);
-    metal(b.Box("fin", -0.07f, 0.07f, 3.53f, 4.2f, 0.5f, 2.0f, kShuttleTrim));
-    metal(b.Box("mast", -0.04f, 0.04f, 3.53f, 4.1f, -3.3f, -3.22f, kShuttleTrim));
+    {
+        // A fairing along the roof, low and bevelled, rising from the roof at its front and easing down at its back.
+        const auto ring = [](float z, float half, float top, float bottom) -> std::vector<glm::vec3>
+        { return {{-half, bottom, z}, {half, bottom, z}, {half * 0.7f, top, z}, {-half * 0.7f, top, z}}; };
+        mesh("spine", Loft({ring(-3.9f, 0.18f, 3.36f, 3.32f), ring(-3.2f, 0.42f, 3.56f, 3.32f), ring(1.0f, 0.42f, 3.56f, 3.32f),
+                            ring(1.9f, 0.3f, 3.44f, 3.32f)}),
+             kShuttleHull, 0.35f, 0.65f, 0.0f);
+        // The fin on it, swept back, thinning to its top.
+        const auto side = [](float x, float thin) -> std::vector<glm::vec3>
+        { return {{x, 3.5f, 0.2f}, {x * thin, 4.45f, 1.45f}, {x * thin, 4.45f, 2.05f}, {x, 3.5f, 2.15f}}; };
+        metal(mesh("fin", Loft({side(-0.07f, 0.45f), side(0.07f, 0.45f)}), kShuttleTrim, 0.4f, 0.75f, 0.0f));
+        metal(b.Box("mast", -0.035f, 0.035f, 3.5f, 4.05f, -3.0f, -2.93f, kShuttleTrim));
+        b.Box("fx_mast_light", -0.06f, 0.06f, 4.05f, 4.15f, -3.02f, -2.91f, {1.0f, 0.15f, 0.1f}, 0.3f, 0.0f, 3.0f);
+    }
 
     // --- The engines: a pod up on either flank on a pylon, clear of the skin, its intake forward and its nozzle aft,
     // glowing when they burn.
@@ -445,20 +459,109 @@ ModelAsset ShuttleModel()
               side < 0.0f ? glm::vec3(0.9f, 0.1f, 0.08f) : glm::vec3(0.1f, 0.9f, 0.2f), 0.4f, 0.0f, 3.0f);
     }
 
-    // As wide as the hull's walls, not just the opening: closed, it covers the whole back.
-    b.Ramp({0.0f, deck, tail}, 2.596f, 2.0f * (inner + wall) - 0.04f, 0.04f, kShuttleHull);
-    for (ModelPart& part : model.parts)
+    // --- The tail: the hull's end closed round the cabin's opening -- the sides and the top, between the skin and the cabin's
+    // walls and ceiling -- so nothing is seen through between them; and the door, the hull's own outline, closing inside it.
     {
-        if (part.name == "ramp")
+        const Section& end = sections.back();
+        const auto o = end.Corners();
+        const glm::vec3 BL{-inner, deck, tail};
+        const glm::vec3 BR{inner, deck, tail};
+        const glm::vec3 TL{-inner, ceiling, tail};
+        const glm::vec3 TR{inner, ceiling, tail};
+        const glm::vec3 inside{0.0f, 1.9f, tail - 1.0f};
+        MeshData frame;
+        const auto tri = [&](const glm::vec3& a, const glm::vec3& b2, const glm::vec3& c) { OutwardFace(frame, a, b2, c, c, inside); };
+        // Right: from the bottom-right corner of the opening round the hull's right side to its top.
+        tri(TR, BR, o[1]);
+        tri(TR, o[1], o[2]);
+        tri(TR, o[2], o[3]);
+        tri(TR, o[3], o[4]);
+        // Top.
+        tri(o[4], o[5], TL);
+        tri(o[4], TL, TR);
+        // Left.
+        tri(TL, o[5], o[6]);
+        tri(TL, o[6], o[7]);
+        tri(TL, o[7], o[0]);
+        tri(TL, o[0], BL);
+        metal(mesh("tail_frame", std::move(frame), kShuttleTrim, 0.5f, 0.6f, 0.0f));
+
+        // The door: hinged at its foot just inside the hull's end, the hull's outline a few centimetres in, its outside the
+        // hull's and its inside tread plate. Drawn open, as it rests (its clips close it); walked on as the box under it.
+        const glm::vec3 hinge{0.0f, end.low + 0.06f, tail - 0.04f};
+        const float thick = 0.05f;
+        const float height = end.high - 0.04f - hinge.y;
+        const float slope = std::asin(std::clamp((hinge.y - thick) / height, 0.0f, 1.0f));
+        const float swing = 1.5707963f + slope;
+        // A point of the door as it is closed (x across, h up from the hinge, d in from its outside face) where it is open.
+        const auto open = [&](float x, float h, float d)
         {
-            made(part, "deck_plate", 1.6f, 0.6f);
+            return glm::vec3(x, hinge.y + h * std::cos(swing) + d * std::sin(swing), hinge.z + h * std::sin(swing) - d * std::cos(swing));
+        };
+        Section shape = end;
+        shape.half -= 0.04f;
+        shape.low += 0.04f;
+        shape.high -= 0.04f;
+        const auto outline = shape.Corners();
+        MeshData doorSkin;
+        MeshData tread;
+        const glm::vec3 core = open(0.0f, height * 0.5f, thick * 0.5f);
+        const glm::vec3 treadMiddle = open(0.0f, height * 0.5f, thick);
+        const glm::vec3 skinMiddle = open(0.0f, height * 0.5f, 0.0f);
+        for (size_t k = 0; k < 8; ++k)
+        {
+            const glm::vec3 a = outline[k];
+            const glm::vec3 c = outline[(k + 1) % 8];
+            const glm::vec3 outA = open(a.x, a.y - hinge.y, 0.0f);
+            const glm::vec3 outC = open(c.x, c.y - hinge.y, 0.0f);
+            const glm::vec3 inA = open(a.x, a.y - hinge.y, thick);
+            const glm::vec3 inC = open(c.x, c.y - hinge.y, thick);
+            OutwardFace(doorSkin, outA, outC, skinMiddle, skinMiddle, core);
+            OutwardFace(tread, inA, inC, treadMiddle, treadMiddle, core);
+            OutwardFace(doorSkin, outA, outC, inC, inA, core);
         }
+        ModelPart& pivot = b.Box("fx_ramp_hinge", hinge.x - 0.005f, hinge.x + 0.005f, hinge.y - 0.005f, hinge.y + 0.005f, hinge.z - 0.005f, hinge.z + 0.005f,
+                                 kShuttleHull);
+        (void)pivot;
+        ModelPart& outside = mesh("ramp_skin", std::move(doorSkin), kShuttleHull, 0.35f, 0.65f, 0.0f);
+        outside.parent = "fx_ramp_hinge";
+        ModelPart& inner_ = mesh("ramp_tread", std::move(tread), kShuttleHull, 0.6f, 0.4f, 0.0f);
+        inner_.parent = "fx_ramp_hinge";
+        made(inner_, "deck_plate", 1.6f, 0.6f);
+        // What is walked on: a box under the tread, from the hinge down to the ground (never drawn).
+        const float length = height;
+        const float c = std::cos(slope);
+        const float sn = std::sin(slope);
+        const glm::vec3 fromHinge{0.0f, thick * 0.5f * c + length * 0.5f * sn, thick * 0.5f * sn - length * 0.5f * c};
+        ModelPart& walk = b.Box("solid_ramp", -(inner - 0.05f), inner - 0.05f, -thick * 0.5f, thick * 0.5f, -length * 0.5f, length * 0.5f, kShuttleHull);
+        walk.position = hinge + glm::vec3(0.0f, thick, 0.0f) - fromHinge;
+        walk.rotation = {glm::degrees(slope), 0.0f, 0.0f};
+        walk.parent = "fx_ramp_hinge";
+        const float closed = -glm::degrees(swing);
+        const auto clip = [&](const std::string& name, float duration, float from, float to)
+        {
+            AnimationClip animation;
+            animation.name = name;
+            animation.duration = duration;
+            AnimationTrack track;
+            track.part = "fx_ramp_hinge";
+            AnimationKey first;
+            first.time = 0.0f;
+            first.rotation = {from, 0.0f, 0.0f};
+            AnimationKey last;
+            last.time = duration;
+            last.rotation = {to, 0.0f, 0.0f};
+            track.keys = {first, last};
+            animation.tracks.push_back(track);
+            model.clips.push_back(animation);
+        };
+        clip("ramp_closed", 0.1f, closed, closed);
+        clip("ramp_opening", 2.5f, closed, 0.0f);
+        clip("ramp_closing", 2.5f, 0.0f, closed);
     }
     b.Socket("arrival", {0.0f, deck, -0.5f}, {0.0f, 180.0f, 0.0f});
     b.Socket("console", {0.0f, deck, -5.075f}, {0.0f, 180.0f, 0.0f});
     b.Socket("lamp", {0.0f, ceiling - 0.05f, -1.0f});
-    // A landing light under its belly, straight down.
-    b.Socket("light_landing", {0.0f, 0.2f, -2.0f}, {-90.0f, 0.0f, 0.0f});
     b.Socket("cabin_min", {-inner, deck - 0.5f, -5.7f});
     b.Socket("cabin_max", {inner, ceiling, tail});
     return model;
