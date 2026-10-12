@@ -69,6 +69,7 @@ struct ModelPart
     float surfaceScale = 0.0f;
     float surfaceKeep = 1.0f; // how much of the set's own colour shows (Material::surfaceKeep)
     bool surfaceOnThing = false; // laid on the model, not the world: for a model that moves (Material::surfaceOnThing)
+    bool surfaceColourOnly = false; // only the set's colour, its mottle: smooth, and as shiny all over as the part says
 
     glm::mat4 LocalMatrix() const;
 };

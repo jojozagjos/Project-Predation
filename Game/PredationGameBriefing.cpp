@@ -483,18 +483,18 @@ void PredationGame::DrawBriefingScreens()
                 {
                     const SitePlan& plan = m_briefingPlan;
                     const float scale = mapSize / plan.size;
-                    const auto at = [&](float x, float z) { return glm::vec2(mapLeft + (x - plan.origin.x) * scale, mapTop + (z - plan.origin.z) * scale); };
+                    const auto onMap = [&](float x, float z) { return glm::vec2(mapLeft + (x - plan.origin.x) * scale, mapTop + (z - plan.origin.z) * scale); };
                     for (const FacilityLayout& building : plan.buildings)
                     {
                         glm::vec2 lo;
                         glm::vec2 hi;
                         SitePlan::Footprint(building, 0.0f, lo, hi);
-                        const glm::vec2 a = at(lo.x, lo.y);
-                        const glm::vec2 b = at(hi.x, hi.y);
+                        const glm::vec2 a = onMap(lo.x, lo.y);
+                        const glm::vec2 b = onMap(hi.x, hi.y);
                         canvas.Fill(a.x, a.y, b.x, b.y, {24, 52, 70});
                         canvas.Box(a.x, a.y, b.x, b.y, kAccent);
                     }
-                    const glm::vec2 pad = at(plan.landing.x, plan.landing.z);
+                    const glm::vec2 pad = onMap(plan.landing.x, plan.landing.z);
                     canvas.Arc(pad.x, pad.y, 5.0f, 0.0f, glm::two_pi<float>(), kWarn);
                     canvas.Text(static_cast<int>(pad.x) + 8, static_cast<int>(pad.y) - 7, "PAD", kWarn, 1);
                 }

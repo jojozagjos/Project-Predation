@@ -700,7 +700,9 @@ void BareMetal(ModelAsset& model)
     static const char* const kPlating[] = {"skin", "body", "body_front", "chin", "brow", "bay", "bay_front", "bay_back", "bay_roof_plate", "roof_plate",
                                            "plate", "bay_panel", "spine", "bay_belly"};
     static const char* const kDark[] = {"engine", "engine_band", "engine_room", "engine_room_back", "nozzle", "pylon", "mast", "array",
-                                        "array_boom", "dish", "dish_mount", "door_frame", "door_lining", "bay_rib", "belt", "visor"};
+                                        "array_boom", "dish", "dish_mount", "bay_rib"};
+    // Painted trim: the campaign's colours, kept clean.
+    static const char* const kTrim[] = {"door_frame", "door_lining", "belt", "visor"};
     for (ModelPart& part : model.parts)
     {
         const size_t cut = part.name.find_last_of('_');
@@ -708,15 +710,32 @@ void BareMetal(ModelAsset& model)
                               part.name.find_first_not_of("0123456789", cut + 1) == std::string::npos;
         const std::string stem = numbered ? part.name.substr(0, cut) : part.name;
         const auto is = [&](const char* const* list, size_t count) { return std::find(list, list + count, stem) != list + count; };
+        // Metal through and through: its own colour in what it reflects, smooth, with a soft cloudy mottle across it (the hull
+        // plating set's colour only, let go of so the hull keeps the campaign's -- its plate lines and bumps left off) -- not a
+        // coat of paint with a shine on it.
         if (is(kPlating, std::size(kPlating)))
         {
-            part.metallic = 0.4f;
-            part.roughness = 0.28f;
+            part.metallic = 0.92f;
+            part.roughness = 0.3f;
+            part.surface = "hull_plating";
+            part.surfaceScale = 6.0f;
+            part.surfaceKeep = 0.0f;
+            part.surfaceOnThing = true;
+            part.surfaceColourOnly = true;
+        }
+        else if (is(kTrim, std::size(kTrim)))
+        {
+            part.metallic = 0.6f;
+            part.roughness = 0.35f;
         }
         else if (is(kDark, std::size(kDark)))
         {
-            part.metallic = 0.7f;
-            part.roughness = 0.4f;
+            part.metallic = 0.85f;
+            part.roughness = 0.9f;
+            part.surface = "hull_dark";
+            part.surfaceScale = 2.0f;
+            part.surfaceKeep = 0.0f;
+            part.surfaceOnThing = true;
         }
     }
 }

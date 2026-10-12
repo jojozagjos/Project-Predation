@@ -805,8 +805,13 @@ void main()
 	// direction, so its reflection is pulled back towards the surface normal in proportion.
 	vec3 reflected = reflect(-V, N);
 	reflected = normalize(mix(reflected, N, roughness * roughness));
-	float reflectedHemisphere = reflected.y * 0.5 + 0.5;
+	// With a horizon in it: what reads a polished thing as metal rather than as paint is the line where the ground it
+	// reflects meets the sky, running across it. Sharp on a polished surface, and spread out on a rough one until it is the
+	// even blend from ground to sky it always was; the air low along the horizon a little brighter, where there is any.
+	float horizonWidth = 0.04 + roughness * 1.1;
+	float reflectedHemisphere = smoothstep(-horizonWidth, horizonWidth, reflected.y);
 	vec3 environmentColor = mix(u_ambientGround.rgb, u_ambientSky.rgb, reflectedHemisphere);
+	environmentColor += u_fogColor.rgb * (0.35 * exp(-abs(reflected.y) / (0.05 + roughness * 0.6))) * (1.0 - roughness);
 	// Occluded like the rest of the ambient: a room the sky cannot see into has nothing to reflect.
 	environmentColor *= mix(u_grade.z, 1.0, skyReaches);
 

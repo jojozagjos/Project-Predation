@@ -512,6 +512,11 @@ bool VehicleProp::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld* physics
         {
             material = Surfaces::Apply(material, part.surface, part.surfaceScale, part.surfaceKeep);
             material.surfaceOnThing = part.surfaceOnThing;
+            if (part.surfaceColourOnly)
+            {
+                material.normalTexture = TextureHandle{};
+                material.roughnessTexture = TextureHandle{};
+            }
         }
         if (m_merged)
         {

@@ -62,6 +62,29 @@ glm::quat Facing(const glm::vec3& forward, const glm::vec3& upHint)
     return glm::quat_cast(glm::mat3(r, u, -f));
 }
 
+// The way between two directions, along the great circle from one to the other (s from 0 to 1).
+glm::vec3 Between(const glm::vec3& a, const glm::vec3& b, float s)
+{
+    const float cosine = std::clamp(glm::dot(a, b), -1.0f, 1.0f);
+    const float angle = std::acos(cosine);
+    if (angle < 1.0e-4f)
+    {
+        return b;
+    }
+    glm::vec3 axis = glm::cross(a, b);
+    axis = glm::length(axis) > 1.0e-6f ? glm::normalize(axis) : glm::normalize(glm::cross(a, std::abs(a.y) < 0.9f ? glm::vec3(0.0f, 1.0f, 0.0f) : glm::vec3(1.0f, 0.0f, 0.0f)));
+    return glm::angleAxis(angle * s, axis) * a;
+}
+
+// From one attitude to another as a ship turns: its nose straight along the way from one heading to the other, and its top
+// rolling round as it goes -- not a single twist about some skewed axis, which swings the nose round in a corkscrew.
+glm::quat Turning(const glm::quat& from, const glm::quat& to, float s)
+{
+    const glm::vec3 forward = Between(from * glm::vec3(0.0f, 0.0f, -1.0f), to * glm::vec3(0.0f, 0.0f, -1.0f), s);
+    const glm::vec3 up = Between(from * glm::vec3(0.0f, 1.0f, 0.0f), to * glm::vec3(0.0f, 1.0f, 0.0f), s);
+    return Facing(forward, up);
+}
+
 } // namespace
 
 void PredationGame::SetSpaceSky(Environment& environment)
@@ -119,7 +142,9 @@ void PredationGame::SetSpaceSky(Environment& environment)
     int reference = -1;
     glm::vec3 offset{0.0f};
     glm::vec3 wantForward{0.0f};
-    glm::vec3 wantUp = m_spaceAttitudeSet ? m_spaceAttitude * glm::vec3(0.0f, 1.0f, 0.0f) : glm::vec3(0.0f, 1.0f, 0.0f);
+    // Under way its top is to the system's north: the worlds, all going round in nearly the one plane, along the horizon in
+    // the windows, and a new heading a turn to one side or the other rather than a loop.
+    glm::vec3 wantUp{0.0f, 1.0f, 0.0f};
     bool held = false;
     const Body* at = travel.underway ? nullptr : system->Find(m_campaign.body);
     if (at != nullptr)
@@ -146,18 +171,34 @@ void PredationGame::SetSpaceSky(Environment& environment)
     }
     else if (const Body* from = travel.underway ? system->Find(travel.from) : nullptr; from != nullptr && Travel::AlignDone(m_campaign, *system) < 1.0f)
     {
-        // Setting out: turning from the orbit's facing to the way it is going, while it swings round to that side of the world
-        // and climbs a little -- the world sliding down out of the windows and round behind.
+        // Setting out: its nose lifting off the world below, over and up until it points out the way it is going, while it
+        // swings round to that side of the world and climbs a little -- the world sliding down out of the windows and round
+        // behind, never the nose swinging down through it (the short way round from the orbit's facing often is). Then, clear
+        // of it, rolling level with the system for the way there.
         glm::vec3 out;
         glm::vec3 along;
         Travel::OrbitFrame(m_campaign, *system, from->index, travel.setOut, out, along);
         reference = from->index;
         offset = Travel::AlignOffset(m_campaign, *system, clock);
         const glm::quat start = Facing(along * std::cos(kOrbitPitch) - out * std::sin(kOrbitPitch), out * std::cos(kOrbitPitch) + along * std::sin(kOrbitPitch));
-        const glm::quat end = Facing(travel.departWay, start * glm::vec3(0.0f, 1.0f, 0.0f));
         const float s = Travel::AlignDone(m_campaign, *system);
-        const glm::quat turned = glm::slerp(start, end, s * s * (3.0f - 2.0f * s));
-        wantForward = turned * glm::vec3(0.0f, 0.0f, -1.0f);
+        const float eased = s * s * (3.0f - 2.0f * s);
+        // In orbit its right is the orbit's axis -- the system's north or south -- and the swing round the world is about the
+        // same axis: so its nose comes up about its own right by as far as from the orbit's facing to straight out from the
+        // world, and round with the swing by as far as that goes (AlignOffset, the same way and the same easing).
+        const glm::vec3 right = start * glm::vec3(1.0f, 0.0f, 0.0f);
+        const glm::vec3 way = glm::length(travel.departWay) > 1.0e-6f ? glm::normalize(travel.departWay) : out;
+        const float swing = std::acos(std::clamp(glm::dot(out, way), -1.0f, 1.0f));
+        glm::vec3 swingAxis = glm::cross(out, way);
+        swingAxis = glm::length(swingAxis) > 1.0e-5f ? glm::normalize(swingAxis) : glm::normalize(glm::cross(out, along));
+        const float pitch = (kOrbitPitch + 1.5707963f) * eased + swing * eased * glm::dot(swingAxis, right);
+        glm::quat turned = glm::angleAxis(pitch, right) * start;
+        // Rolling level: its top round to the system's north, from about a third of the way.
+        const glm::vec3 nose = turned * glm::vec3(0.0f, 0.0f, -1.0f);
+        const float roll = (glm::dot(turned * glm::vec3(1.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f)) >= 0.0f ? 1.5707963f : -1.5707963f) *
+                           glm::smoothstep(0.3f, 1.0f, s);
+        turned = glm::angleAxis(roll, nose) * turned;
+        wantForward = nose;
         wantUp = turned * glm::vec3(0.0f, 1.0f, 0.0f);
         held = true;
     }
@@ -207,7 +248,7 @@ void PredationGame::SetSpaceSky(Environment& environment)
             if (at != nullptr && clock - travel.orbitSince < kSettleSeconds && clock >= travel.orbitSince && !m_cine.Active())
             {
                 const float s = static_cast<float>((clock - travel.orbitSince) / kSettleSeconds);
-                m_spaceAttitude = glm::slerp(m_spaceSettleFrom, want, s * s * (3.0f - 2.0f * s));
+                m_spaceAttitude = Turning(m_spaceSettleFrom, want, s * s * (3.0f - 2.0f * s));
             }
             m_spaceAttitudeSet = true;
         }
