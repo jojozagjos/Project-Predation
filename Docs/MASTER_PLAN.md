@@ -305,7 +305,8 @@ organisms.
 | Worn texture on ship and shuttle | 1.1 |
 | Crates look like scratched cubes | 1.2 |
 | Weather looks bad; sand is cubes and does not block vision | 1.3 |
-| Grass on planets; trees and bushes in the wind | 1.4 |
+| Grass on planets; trees and bushes in the wind | Done (grass cover round you on grassy worlds; plants sway with the wind) |
+| Denser trees where needed | Done (groves on temperate worlds, dense forest on jungle worlds) |
 | Other things to look real | 1.6-1.8 |
 | More to see in space | 1.7 |
 | Shadows further | Done (far shadow map) |
