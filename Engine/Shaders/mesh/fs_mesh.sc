@@ -83,6 +83,15 @@ float SurfacePatches(vec2 p)
 	float d = SurfaceHash(i + vec2(1.0, 1.0));
 	return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
 }
+
+// The same, without the squares it is made on showing: two of it, the second turned and smaller, averaged and stretched
+// back out to 0 to 1.
+float SurfaceClouds(vec2 p)
+{
+	float a = SurfacePatches(p);
+	float b = SurfacePatches(mul(mat2(0.6, -0.8, 0.8, 0.6), p) * 1.7 + vec2(5.2, 1.3));
+	return clamp((a * 0.6 + b * 0.4 - 0.5) * 1.6 + 0.5, 0.0, 1.0);
+}
 // The planar reflection: the world rendered again from a camera reflected across one flat surface.
 //
 // Sampled at the fragment's own place on the screen, which is what makes it a mirror rather than an
@@ -619,17 +628,38 @@ void main()
 			// darker by patches larger still.
 			if (u_surfaceParams.z > 0.5)
 			{
+				// Two more copies, each turned and at its own size, coming in over two fields of patches of different sizes,
+				// so nowhere is it the one copy alone for long. Blending copies averages their marks away into a flat wash, so
+				// the colour is taken back out from the set's average as far as the blend took it in (its spread kept).
 				vec2 wide = mul(mat2(0.788, -0.616, 0.616, 0.788), uvY) * 0.41 + vec2(0.37, 0.71);
 				vec2 dxW = mul(mat2(0.788, -0.616, 0.616, 0.788), dxY) * 0.41;
 				vec2 dyW = mul(mat2(0.788, -0.616, 0.616, 0.788), dyY) * 0.41;
-				float mixIn = smoothstep(0.35, 0.65, SurfacePatches(v_worldPos.xz * 0.11));
+				vec2 other = mul(mat2(0.326, 0.946, -0.946, 0.326), uvY) * 0.67 + vec2(0.13, 0.29);
+				vec2 dxO = mul(mat2(0.326, 0.946, -0.946, 0.326), dxY) * 0.67;
+				vec2 dyO = mul(mat2(0.326, 0.946, -0.946, 0.326), dyY) * 0.67;
+				float inWide = smoothstep(0.25, 0.75, SurfaceClouds(v_worldPos.xz * 0.11));
+				float inOther = smoothstep(0.25, 0.75, SurfaceClouds(v_worldPos.xz * 0.073 + vec2(9.1, 4.3)));
+				float w0 = (1.0 - inWide) * (1.0 - inOther);
+				float w1 = inWide * (1.0 - inOther);
+				float w2 = inOther;
+				// The turned samples' bumps turned back into the ground's frame.
 				vec3 nWide = texture2DGrad(s_normalMap, wide, dxW, dyW).xyz * 2.0 - 1.0;
-				// The turned sample's bumps turned back into the ground's frame.
 				nWide.xy = mul(mat2(0.788, 0.616, -0.616, 0.788), nWide.xy);
-				nY = normalize(mix(nY, nWide, mixIn));
-				groundAlbedo = mix(groundAlbedo, pow(texture2DGrad(s_baseColor, wide, dxW, dyW).rgb, vec3_splat(2.2)), mixIn);
-				groundRough = mix(groundRough, texture2DGrad(s_roughnessMap, wide, dxW, dyW).r, mixIn);
-				groundAlbedo *= 0.9 + 0.2 * SurfacePatches(v_worldPos.xz * 0.023 + vec2_splat(17.0));
+				vec3 nOther = texture2DGrad(s_normalMap, other, dxO, dyO).xyz * 2.0 - 1.0;
+				nOther.xy = mul(mat2(0.326, -0.946, 0.946, 0.326), nOther.xy);
+				nY = normalize(nY * w0 + nWide * w1 + nOther * w2);
+				// Only each copy's marks, not how its photograph drifts lighter and darker across itself -- repeated, that drift
+				// is a grid of squares to the horizon -- over the set's average; the patches below are the drift instead.
+				vec3 average = pow(texture2DLod(s_baseColor, vec2_splat(0.5), 12.0).rgb, vec3_splat(2.2));
+				vec3 marks0 = groundAlbedo - pow(texture2DLod(s_baseColor, uvY, 7.0).rgb, vec3_splat(2.2));
+				vec3 marks1 = pow(texture2DGrad(s_baseColor, wide, dxW, dyW).rgb, vec3_splat(2.2)) - pow(texture2DLod(s_baseColor, wide, 7.0).rgb, vec3_splat(2.2));
+				vec3 marks2 = pow(texture2DGrad(s_baseColor, other, dxO, dyO).rgb, vec3_splat(2.2)) - pow(texture2DLod(s_baseColor, other, 7.0).rgb, vec3_splat(2.2));
+				vec3 blended = marks0 * w0 + marks1 * w1 + marks2 * w2;
+				groundAlbedo = max(average + blended / sqrt(w0 * w0 + w1 * w1 + w2 * w2), vec3_splat(0.0));
+				groundRough = groundRough * w0 + texture2DGrad(s_roughnessMap, wide, dxW, dyW).r * w1 + texture2DGrad(s_roughnessMap, other, dxO, dyO).r * w2;
+				// And lighter and darker by patches larger still: ground is never one even shade across a field.
+				groundAlbedo *= (0.84 + 0.32 * SurfaceClouds(v_worldPos.xz * 0.023 + vec2_splat(17.0))) *
+				                (0.93 + 0.14 * SurfaceClouds(v_worldPos.xz * 0.061 + vec2(3.7, 11.0)));
 			}
 			nY = vec3(nY.xy * vec2(s.y, 1.0) + N.xz, abs(nY.z) * N.y);
 			albedoSum += groundAlbedo * blend.y;
