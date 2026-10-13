@@ -360,6 +360,7 @@ organisms.
 | Standing on the shuttle and ship roofs | Done |
 | Jump cutscene turning, the player seen flying | Phase 7, with the drive upgrades |
 | Outposts too small for a ship that will grow | Phase 2, in the full outpost rework |
+| Thunder and lightning that light everything; realistic clouds for the weather | Done (designed thunder for now; recordings would be better) |
 | Ship rotation when changing course felt strange | Changed earlier (the turn no longer swings through the planet); tell me if it still feels off |
 | Ending and tutorial | Phase 17, last |
 
