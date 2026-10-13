@@ -948,8 +948,8 @@ void main()
 	//
 	// Unless the eye is out in that air itself (u_fogParams.z): then what lies between it and anything, roofed or not, is the
 	// open air, and fogs it -- a shuttle's dark cabin across a sandstorm is as lost in it as the ground (a room near by
-	// rather less, below). With the eye
-	// indoors, a room under a roof is all but clear of it -- but anything out under the sky even a little (the underside
+	// rather less, below). With the eye indoors, a room under
+	// a roof is all but clear of it -- but anything out under the sky even a little (the underside
 	// of a hull, a wall under its eaves), or further off than any room, is out in the weather, and fogs as it would from
 	// outside: not left in dark patches through the doorway. In a doorway, between the two (u_fogParams.z eases).
 	float distanceToCamera = length(u_cameraPosition.xyz - v_worldPos);

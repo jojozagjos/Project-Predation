@@ -112,7 +112,9 @@ From WORLDS_FACILITIES_MISSIONS_PLAN.md W1-W4:
 - **A full outpost rework** (you, 2026-10-12: "way too small and don't make sense at all"): outposts laid out as
   real places with a reason to exist -- a landing field with taxiways and service bays, a town or works round it (operations,
   fuel, cargo, workshops, quarters, a canteen, power and water), roads that lead somewhere, the land round it used (fields,
-  mines, antennas) -- sized by the outpost's importance, many times bigger than now, and walkable.
+  mines, antennas) -- sized by the outpost's importance, many times bigger than now, and walkable. And sized for the ship
+  as upgrades make it bigger (you, 2026-10-13): fields, pads and hangars that take the largest hull it can grow to, not
+  only the one it starts as.
 
 ---
 
@@ -197,6 +199,8 @@ fight each other.
   modules); some tiers need a found component, so exploring moves the ship on.
 - **A wipe** (your answer): lose field gear and salvage, plus a capped 10-20% credit fee; permanent progression stays.
 - **Research:** samples and data into knowledge (better scans, leads).
+- **The jump cutscene made again**, with the drive upgrades (you, 2026-10-13): it turns while it plays and the player is
+  sometimes seen flying for a moment; redone as one steady shot of the ship going, nobody seen out of place.
 
 ---
 
@@ -345,6 +349,17 @@ organisms.
 | Graphics settings must not remove shadows | Done (shadows are always on; presets scale distance, grass, weather, mirrors, edges) |
 | Out-of-breath sound | Done (your recording; CC-BY, credited) |
 | Credits for the CC-BY sounds | Phase 15 |
+| Low graphics showing as Custom; the shadow slider going lower than it can be set | Done (Low stays Low; the slider starts where shadows can) |
+| Landing area still picked for you | Done (the planet view picks none either) |
+| Debug windows under the cinematic bars | Done (the bars and fades are drawn under the windows) |
+| Outside to inside switching at once | Done (the air eases over half a second through a doorway) |
+| Sand in buildings; the shuttle odd through a doorway | Done |
+| Grass sitting on the ground, popping in and out, ending in a line | Done (grows out of the ground with distance; matched to the ground; thins out at its edge) |
+| Lamps gone, only their lights; a block floating in the sky | A likely cause fixed (a mesh given back while still drawn); tell me if you see it again |
+| Ground texture tiling | Done |
+| Standing on the shuttle and ship roofs | Done |
+| Jump cutscene turning, the player seen flying | Phase 7, with the drive upgrades |
+| Outposts too small for a ship that will grow | Phase 2, in the full outpost rework |
 | Ship rotation when changing course felt strange | Changed earlier (the turn no longer swings through the planet); tell me if it still feels off |
 | Ending and tutorial | Phase 17, last |
 
