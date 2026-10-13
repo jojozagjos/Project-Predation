@@ -222,10 +222,22 @@ fight each other.
 
 ---
 
-## Phase 11 -- Space places
+## Phase 11 -- Space places: stations and derelicts
 
-- Derelict ships and stations with interiors, reached by a docking console and a cinematic (no zero-G, no EVA, no
-  manual docking -- your answer); scan-and-fly-past points of interest.
+Your direction (2026-10-12): stations are places you can **get things at** and **have missions at**, and some are
+abandoned.
+
+- **Working stations**, in orbit or deep in a system: dock (docking console plus cinematic) and walk aboard -- trade,
+  refit and upgrades, a contracts board, crew services, the station's own people and owners (as outposts have them:
+  CIRRA, independent, industrial). They work as orbital outposts.
+- **Abandoned and damaged stations**: the facility systems (power, doors, terminals, codes) in a station's shape --
+  ring corridors, docking spines, hab modules, hydroponics, reactor sections -- with conditions as wrecks have them
+  (power out, vented sections, overrun); salvage, logs and missions inside.
+- **Derelict ships** drifting in a system: smaller than a station, a ship's layout, the same conditions.
+- **Missions at them**: contracts to recover, repair, investigate or rescue at a station; leads that point to one.
+- **Getting there**: no zero-G, no EVA, no manual docking (your answer) -- stations keep gravity; docking is a console
+  and a cinematic.
+- **Scan-and-fly-past points of interest**: debris fields, beacons, wrecks too small to board.
 
 ---
 
@@ -313,6 +325,18 @@ organisms.
 | Ship glowing in the sun in space | Done (rougher hull, space sun no brighter than a clear day) |
 | Z-fighting on the stair | Done (and a test for it) |
 | Version number to know the build | Done: `v0.2.0 build N`, N counted automatically; the version goes up a step each phase |
+| Stations: get things there, missions there, abandoned ones | Phase 11 |
+| Stair and landing gear textures; shuttle engines and stripes | Done |
+| Nose without collision; gear in the floor; light through the bay doors | Done |
+| Stuck in the closing door; the doorway message | Done (the door waits for you; no message) |
+| Running wobble | Done (toned down) |
+| Landing area picked for you | Done (you choose it on the map) |
+| Debug windows behind the map and cinematics | Done |
+| Landing title card | Done (redesigned; real local time) |
+| Sand: in the shuttle, in buildings, pouring out of buildings; the shuttle seen through fog; clear blue sky in a storm; planets too sharp in the sky | Done |
+| Flare kept after it was dropped | Done |
+| Sand footsteps | Done (new recording) |
+| Terrain row on the planet panel | Removed |
 | Credits for the CC-BY sounds | Phase 15 |
 | Ship rotation when changing course felt strange | Changed earlier (the turn no longer swings through the planet); tell me if it still feels off |
 | Ending and tutorial | Phase 17, last |
