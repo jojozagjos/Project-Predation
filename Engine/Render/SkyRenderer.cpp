@@ -142,7 +142,7 @@ void SkyRenderer::Draw(bgfx::ViewId view, const Environment& environment, const 
     const float a[4] = {look.groundA.r, look.groundA.g, look.groundA.b, look.oceanAmount};
     const float b[4] = {look.groundB.r, look.groundB.g, look.groundB.b, look.ice};
     const float c[4] = {look.ocean.r, look.ocean.g, look.ocean.b, look.clouds};
-    const float d[4] = {look.cloudColor.r, look.cloudColor.g, look.cloudColor.b, look.gas ? 1.0f : 0.0f};
+    const float d[4] = {look.cloudColor.r, look.cloudColor.g, look.cloudColor.b, look.gas ? 1.0f : -std::clamp(look.storms, 0.0f, 1.0f)};
     const float e[4] = {look.airColor.r, look.airColor.g, look.airColor.b, look.seed};
     bgfx::setUniform(m_uSpace, space);
     bgfx::setUniform(m_uPlanet, planet);

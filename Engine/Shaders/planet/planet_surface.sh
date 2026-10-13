@@ -4,7 +4,7 @@
 //   a = ground colour A, sea's share of the surface
 //   b = ground colour B, ice
 //   c = sea colour, cloud
-//   d = cloud colour, 1 for a gas giant
+//   d = cloud colour, 1 for a gas giant (below nought: minus how stormy its weather is)
 // `n` is the point on the unit sphere in the planet's own frame; `seed` moves the pattern; `drift` turns the cloud.
 //
 // The noise is value noise, but each octave turned against the last: on its own grid every octave lines up with the
@@ -236,6 +236,20 @@ vec4 PlanetAlbedo(vec3 n, vec4 a, vec4 b, vec4 c, vec4 d, float seed, float drif
 		float streaks = PlanetFbmN(m * vec3(14.0, 4.5, 14.0) + offset, 5);
 		float cover = 0.72 - c.w * 0.42;
 		cloud = smoothstep(cover - 0.06, cover + 0.1, banks * 0.8 + streaks * 0.3);
+		// Its weather (d.w below nought: how stormy, Engine/Render/PlanetLook.h): storm systems turning in it, each a dense
+		// mass wound into a spiral by its own turning, the worse the weather the more and the bigger.
+		float storms = clamp(-d.w, 0.0, 1.0);
+		if (storms > 0.001)
+		{
+			vec3 at = m * 2.4 + offset * 4.1;
+			float centre = PlanetFbmN(at, 3);
+			// Wound round: the further out from a storm's heart, the more it is turned.
+			float wind = (1.0 - centre) * 9.0;
+			vec3 wound = vec3(at.x * cos(wind) - at.z * sin(wind), at.y, at.x * sin(wind) + at.z * cos(wind));
+			float arms = PlanetFbmN(wound * 2.2 + offset, 5);
+			float system = smoothstep(0.62 - storms * 0.14, 0.7 - storms * 0.1, centre * 0.6 + arms * 0.55);
+			cloud = max(cloud, system * mix(0.75, 1.0, storms));
+		}
 	}
 	return vec4(colour, cloud);
 }

@@ -158,7 +158,7 @@ PlanetRenderer::Baked* PlanetRenderer::BakedFor(const PlanetLook& look)
     // frame -- but how much air, which decides its craters).
     const float numbers[] = {look.groundA.x, look.groundA.y, look.groundA.z, look.groundB.x, look.groundB.y, look.groundB.z, look.ocean.x,
                              look.ocean.y, look.ocean.z, look.oceanAmount, look.ice, look.clouds, look.cloudColor.x, look.cloudColor.y,
-                             look.cloudColor.z, look.air, look.gas ? 1.0f : 0.0f, look.seed};
+                             look.cloudColor.z, look.air, look.gas ? 1.0f : -look.storms, look.seed};
     uint64_t key = 1469598103934665603ull;
     for (const float number : numbers)
     {
@@ -246,7 +246,7 @@ void PlanetRenderer::SetLook(const PlanetLook& look, const glm::vec3& towardsLig
     const glm::vec4 a{look.groundA, look.oceanAmount};
     const glm::vec4 b{look.groundB, look.ice};
     const glm::vec4 c{look.ocean, look.clouds};
-    const glm::vec4 d{look.cloudColor, look.gas ? 1.0f : 0.0f};
+    const glm::vec4 d{look.cloudColor, look.gas ? 1.0f : -std::clamp(look.storms, 0.0f, 1.0f)};
     const glm::vec4 e{mode > 2.5f ? look.ringColor : look.airColor, look.air};
     const glm::vec4 light{glm::length(towardsLight) > 0.0f ? glm::normalize(towardsLight) : glm::vec3(0.0f, 1.0f, 0.0f), 1.6f};
     const glm::vec4 colour{lightColor, m_linear ? 1.0f : 0.0f};

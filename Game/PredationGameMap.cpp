@@ -65,6 +65,44 @@ PlanetLook PredationGame::LookOf(const Body& body)
     look.seed = static_cast<float>(body.seed % 997u) * 0.37f;
     look.rings = body.rings;
     look.ringColor = body.ringColor;
+    // Its weather, seen from space as it is felt on the ground: more cloud and storms turning in it where it rains or snows,
+    // grey sheets of fog, tan veils of dust over a dusty world, dark plumes over an ash-choked one.
+    if (!body.gas && body.air >= 0.015f)
+    {
+        const std::string& w = body.weather;
+        const auto more = [&](float clouds, float storms) {
+            look.clouds = std::max(look.clouds, clouds);
+            look.storms = std::max(look.storms, storms);
+        };
+        if (w == "rain")
+        {
+            more(0.6f, 0.25f);
+        }
+        else if (w == "storm")
+        {
+            more(0.75f, 1.0f);
+            look.cloudColor *= 0.88f;
+        }
+        else if (w == "snow" || w == "heavy_snow" || w == "blizzard")
+        {
+            more(w == "snow" ? 0.6f : 0.75f, w == "blizzard" ? 0.9f : w == "heavy_snow" ? 0.5f : 0.2f);
+        }
+        else if (w == "fog")
+        {
+            more(0.65f, 0.0f);
+            look.cloudColor = glm::mix(look.cloudColor, glm::vec3(0.78f, 0.8f, 0.82f), 0.5f);
+        }
+        else if (w == "dust" || w == "sandstorm")
+        {
+            more(w == "dust" ? 0.45f : 0.65f, w == "sandstorm" ? 0.9f : 0.3f);
+            look.cloudColor = glm::mix(body.groundA, glm::vec3(0.85f, 0.72f, 0.55f), 0.4f);
+        }
+        else if (w == "ash" || w == "ash_storm")
+        {
+            more(w == "ash" ? 0.55f : 0.75f, w == "ash_storm" ? 0.9f : 0.3f);
+            look.cloudColor = glm::vec3(0.32f, 0.29f, 0.27f);
+        }
+    }
     return look;
 }
 

@@ -17,6 +17,9 @@ struct PlanetLook
     float oceanAmount = 0.0f; // 0 to 1, of its surface
     float ice = 0.0f;         // 0 none, 1 covered
     float clouds = 0.0f;      // 0 none, 1 overcast
+    // How stormy its weather is, 0 calm to 1 the worst: dense storm systems turning in its cloud (rain, snow, dust or ash by
+    // `cloudColor`). Sent to the shaders as minus itself in the gas flag's place (gas is 1, never stormy).
+    float storms = 0.0f;
     glm::vec3 cloudColor{0.95f, 0.96f, 1.0f};
     glm::vec3 airColor{0.35f, 0.55f, 0.95f};
     float air = 0.0f; // the glow of its air at the edge, 0 none

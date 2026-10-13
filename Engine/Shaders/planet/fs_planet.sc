@@ -103,6 +103,22 @@ void main()
 		vec3 t1 = normalize(cross(n, abs(n.y) < 0.99 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0)));
 		vec3 t2 = cross(n, t1);
 		bumped = normalize(n + t1 * tip.x + t2 * tip.y);
+		// Seen close -- from a low orbit, a texel of its maps bigger than a pixel -- finer than the maps hold, worked out here:
+		// the ground's grain and its roughness in the light, and the cloud's edges broken into wisps. Nothing of it when
+		// the body is small, where the maps already hold more than the screen does.
+		float texels = length(fwidth(n)) * 2048.0 / 6.28318530718;
+		float close = 1.0 - smoothstep(0.35, 1.2, texels);
+		if (close > 0.001)
+		{
+			vec3 offset = vec3(u_planetMode.y * 1.7, u_planetMode.y * 0.9, u_planetMode.y * 2.3);
+			float grain = PlanetFbmN(n * 170.0 + offset, 4);
+			surface.rgb *= mix(1.0, 0.78 + 0.44 * grain, close * (1.0 - sea));
+			float wisps = PlanetFbmN(m * 70.0 + offset * 3.0, 4);
+			float broken = clamp(surface.w + (wisps - 0.5) * 0.7 * (1.0 - abs(surface.w * 2.0 - 1.0) * 0.6), 0.0, 1.0);
+			surface.w = mix(surface.w, smoothstep(0.15, 0.85, broken), close);
+			float rough = PlanetFbmN(n * 240.0 + offset * 0.5, 3) - 0.5;
+			bumped = normalize(bumped + (t1 * rough - t2 * rough * 0.6) * 0.12 * close * (1.0 - sea));
+		}
 	}
 	else
 	{
