@@ -310,11 +310,21 @@ ModelAsset ShuttleModel()
         part.roughness = 0.6f;
         part.metallic = 0.4f;
     };
-    // Bare dark metal: the trim, the gear, the console -- plain, not a texture that reads as stone.
+    // Dark painted metal: the trim, the gear, the engines, the console -- worn less than the skin; the polished struts bare.
     const auto metal = [](ModelPart& part)
     {
-        part.metallic = 0.75f;
-        part.roughness = 0.4f;
+        if (part.name.find("strut") != std::string::npos)
+        {
+            part.metallic = 0.75f;
+            part.roughness = 0.4f;
+            return;
+        }
+        part.surface = "painted_metal";
+        part.surfaceScale = 0.9f;
+        part.surfaceOnThing = true;
+        part.surfaceWear = 0.4f;
+        part.metallic = 0.55f;
+        part.roughness = 0.55f;
     };
     const auto mesh = [&](const std::string& name, MeshData data, const glm::vec3& colour, float roughness, float metallic, float emissive) -> ModelPart&
     {
@@ -375,8 +385,8 @@ ModelAsset ShuttleModel()
         for (int stripe = 0; stripe < 4; ++stripe)
         {
             const float y0 = 0.85f + static_cast<float>(stripe) * 0.55f;
-            b.Box("fx_stripe_" + name + "_" + std::to_string(stripe), std::min(x0, x1), std::max(x0, x1), y0, y0 + 0.28f, tail - 0.4f, tail - 0.04f,
-                  warning, 0.7f);
+            worn(b.Box("fx_stripe_" + name + "_" + std::to_string(stripe), std::min(x0, x1), std::max(x0, x1), y0, y0 + 0.28f, tail - 0.4f, tail - 0.04f,
+                  warning, 0.7f));
         }
     }
 
@@ -822,6 +832,17 @@ void VehicleProp::SetFarVisible(Scene& scene)
         if (MeshRenderer* renderer = scene.GetMeshRenderer(entity))
         {
             renderer->farVisible = true;
+        }
+    }
+}
+
+void VehicleProp::SetLevel(Scene& scene)
+{
+    for (const Entity entity : m_parts)
+    {
+        if (MeshRenderer* renderer = scene.GetMeshRenderer(entity))
+        {
+            renderer->levelGeometry = true;
         }
     }
 }

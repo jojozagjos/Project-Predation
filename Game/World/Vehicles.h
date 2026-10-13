@@ -78,6 +78,8 @@ public:
     void SetMerged(bool merged) { m_merged = merged; }
     // Drawn however far off it is (past where things are usually let go of in the distance).
     void SetFarVisible(Scene& scene);
+    // Part of the level as the lamps see it: casting their kept shadows (the ship's bay doors, which keep the bay's light in).
+    void SetLevel(Scene& scene);
 
 private:
     bool m_merged = false;

@@ -7,7 +7,7 @@
   },
   "camera": {
     "bob_amount": 0.03,
-    "bob_sprint_scale": 1.35,
+    "bob_sprint_scale": 1.1,
     "bob_stride_length": 1.55,
     "crouch_eye_height": 1.3,
     "eye_transition_speed": 9.0,

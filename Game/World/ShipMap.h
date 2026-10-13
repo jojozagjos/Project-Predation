@@ -109,9 +109,10 @@ public:
     static ModelAsset HullModel(const ShipHullLook& look, bool stage = false);
     // The boarding door's hatch, in the ops room's port wall.
     static ModelAsset AirlockModel();
-    // Asked open or shut; it slides there (UpdateAirlock), solid only when shut.
+    // Asked open or shut; it slides there (UpdateAirlock), solid only when shut -- and, shutting, it goes back open while
+    // anybody is in the doorway (`blocked`), as a door with a sensor does, rather than shutting on them.
     void SetAirlockOpen(Scene& scene, MeshLibrary& meshes, bool open);
-    void UpdateAirlock(Scene& scene, MeshLibrary& meshes, float dt);
+    void UpdateAirlock(Scene& scene, MeshLibrary& meshes, float dt, bool blocked);
     bool AirlockOpen() const { return m_airlockOpen; }
     // Where the door's controls are: inside on the wall aft of it, and outside on the hull beside it.
     CinePose AirlockControl(bool inside) const;

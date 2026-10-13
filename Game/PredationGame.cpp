@@ -9026,15 +9026,11 @@ void PredationGame::TryInteract()
         m_loadoutOpen ? CloseLoadout() : OpenLoadout();
         return;
     }
-    // The boarding door: opened (only on the ground) or shut, asked of the host.
+    // The boarding door: opened (only on the ground) or shut, asked of the host. Shut with somebody in it, it waits until
+    // they are clear (ShipMap::UpdateAirlock).
     if (focus.kind == InteractionKind::Airlock)
     {
-        if (m_campaignOpen && m_campaign.doorOpen && DoorwayBlocked())
-        {
-            ShowCampaignNotice("Clear the doorway first");
-            PlayNamed("UI/back", m_renderEye, 0.5f, 0.8f, false);
-        }
-        else if (m_campaignOpen)
+        if (m_campaignOpen)
         {
             AskCampaign(CampaignAction::Door, m_campaign.doorOpen ? 0 : 1);
             PlayNamed("UI/confirm", m_renderEye, 0.5f, 0.8f, false);

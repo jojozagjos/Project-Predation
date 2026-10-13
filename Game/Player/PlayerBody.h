@@ -325,12 +325,12 @@ public:
         // And how far below. A foot whose target hangs over an edge would otherwise reach the floor
         // underneath, which puts the leg through whatever the player is standing on.
         float maxFootDrop = 0.40f;
-        float hipSwayAmount = 0.035f;
-        float hipBobAmount = 0.030f;
+        float hipSwayAmount = 0.016f; // side to side: a real runner's hips hardly travel; more reads as a wobble
+        float hipBobAmount = 0.02f;
 
         // Posture
-        float leanPerSpeed = 1.4f;    // degrees of forward lean per m/s
-        float maxLean = 12.0f;
+        float leanPerSpeed = 1.1f;    // degrees of forward lean per m/s
+        float maxLean = 8.0f;
         float armSwingDegrees = 22.0f;
         // Splays the arms clear of the thighs. Anything under about 10 degrees and the upper arms
         // overlap the legs at this build's proportions.

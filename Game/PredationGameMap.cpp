@@ -195,8 +195,9 @@ bool PredationGame::DoCampaignAction(uint8_t player, CampaignAction action, int 
     }
 
     case CampaignAction::Door:
-        // Only on the ground does it open; it can always be shut -- but never on anybody standing in it.
-        if ((a != 0 && !ShipLanded()) || (a == 0 && DoorwayBlocked()))
+        // Only on the ground does it open; it can always be shut -- and, shutting, it waits open while anybody stands in it
+        // (ShipMap::UpdateAirlock).
+        if (a != 0 && !ShipLanded())
         {
             return false;
         }
@@ -283,12 +284,9 @@ void PredationGame::ChooseLandingRegion(int region)
     }
     if (!RegionLandable(*body, region))
     {
-        // The first place the shuttle can go down to -- not a hub, which the ship sets down at only when asked.
+        // Nowhere chosen: the ship stays in orbit until somebody picks where to go down on the map -- never a place picked
+        // for them.
         region = -1;
-        for (int i = 0; i < static_cast<int>(body->regions.size()) && region < 0; ++i)
-        {
-            region = RegionLandable(*body, i) && !RegionIsPort(*body, i) ? i : -1;
-        }
     }
     // A hub's field: the ship itself sets down there, and nobody needs the shuttle.
     if (RegionIsPort(*body, region))
@@ -608,7 +606,7 @@ void PredationGame::UpdateTravel(float dt)
         m_travelSeen = true;
     }
     UpdateShipGround();
-    m_ship.UpdateAirlock(m_scene, m_app->GetMeshes(), dt);
+    m_ship.UpdateAirlock(m_scene, m_app->GetMeshes(), dt, DoorwayBlocked());
     m_ship.UpdateFittings(m_scene, m_app->GetMeshes(), dt);
     for (const Entity control : m_airlockControls)
     {

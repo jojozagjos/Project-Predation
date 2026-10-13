@@ -433,6 +433,12 @@ void PredationGame::DrawShipHud()
         {
             ImGui::TextColored(text, "Deploy from the console in the briefing room.");
         }
+        else if (system != nullptr && m_campaign.body >= 0 && !m_campaign.landed && m_campaign.travel.region < 0 && !m_campaign.plan.set)
+        {
+            const Body* over = system->Find(m_campaign.body);
+            ImGui::TextColored(text, "%s", ("In orbit of " + (over != nullptr ? over->name : std::string("the planet")) + ".").c_str());
+            ImGui::TextDisabled("Choose where to land on the navigation map, at the table behind the cockpit.");
+        }
         else if (system != nullptr && m_campaign.plan.set)
         {
             ImGui::TextColored(text, "%s", ("Course plotted for " + PlanName() + ".").c_str());

@@ -337,6 +337,25 @@ void BuildStructure(Builder& b)
     // --- The outside walls of the crew sections and the engine room -------------------------------------------------
     b.WallX("ship_wall", -outer, outer, kNose - kWallT, kNose, 0.0f, kTop, {kWindscreen}, kWall);
     b.Barrier({kWindscreen.from, kWindscreen.bottom, kNose - kWallT}, {kWindscreen.to, kWindscreen.top, kNose});
+    // The nose outside (HullModel: the chin under the windscreen, tapering forward, and the brow over it), solid in steps
+    // to anybody outside walking into it.
+    {
+        const float skin = 0.06f;
+        const float side = outer + skin;
+        const float belly = -kSlab - 0.4f;
+        const float top = kRoof + 0.06f;
+        const float face = kNose - kWallT - skin;
+        const int steps = 4;
+        for (int i = 0; i < steps; ++i)
+        {
+            const float t = static_cast<float>(i) / static_cast<float>(steps);
+            const float half = side + (1.6f - side) * t;
+            const float low = belly + (-0.2f - belly) * t;
+            const float high = (kWindscreen.bottom - 0.05f) + (0.5f - (kWindscreen.bottom - 0.05f)) * t;
+            b.Barrier({-half, low, face - 2.8f * (t + 1.0f / static_cast<float>(steps))}, {half, high, face - 2.8f * t});
+        }
+        b.Barrier({-2.6f, kWindscreen.top + 0.15f, face - 1.0f}, {2.6f, top, face});
+    }
     for (const float side : {-1.0f, 1.0f})
     {
         const float x0 = side < 0.0f ? -outer : kHalf;
@@ -808,6 +827,34 @@ void BareMetal(ModelAsset& model)
             part.metallic = 0.7f;
             part.roughness = 0.62f;
         }
+    }
+}
+
+// A fitting (a leg, the stair, a flap) painted and worn like the hull: all of it but its rubber (the roughest parts), its
+// polished piston, its treads and its glow -- and the deck you walk on, which is chequer plate.
+void Weathered(ModelAsset& model, float wear = 0.6f)
+{
+    for (ModelPart& part : model.parts)
+    {
+        if (part.name.find("deck") != std::string::npos)
+        {
+            part.surface = "deck_plate";
+            part.surfaceScale = 1.0f;
+            part.surfaceKeep = 0.5f;
+            part.surfaceOnThing = true;
+            continue;
+        }
+        if (part.roughness >= 0.9f || part.emissive > 0.0f || part.name.find("piston") != std::string::npos ||
+            part.name.find("tread") != std::string::npos)
+        {
+            continue;
+        }
+        part.surface = "painted_metal";
+        part.surfaceScale = 0.8f;
+        part.surfaceOnThing = true;
+        part.surfaceWear = wear;
+        part.metallic = std::min(part.metallic, 0.55f);
+        part.roughness = std::max(part.roughness, 0.5f);
     }
 }
 
@@ -1292,15 +1339,17 @@ void ShipMap::SetAirlockOpen(Scene& scene, MeshLibrary& meshes, bool open)
     m_airlockOpen = open;
 }
 
-void ShipMap::UpdateAirlock(Scene& scene, MeshLibrary& meshes, float dt)
+void ShipMap::UpdateAirlock(Scene& scene, MeshLibrary& meshes, float dt, bool blocked)
 {
     if (!m_built)
     {
         return;
     }
-    // Sliding to where it is asked to be, over most of a second; solid only when it is all the way shut.
+    // Sliding to where it is asked to be, over most of a second; solid only when it is all the way shut. Not shutting on
+    // anybody: until it is all the way shut, somebody in the doorway sends it back open.
     const float before = m_airlockSlide;
-    m_airlockSlide = std::clamp(m_airlockSlide + (m_airlockOpen ? dt : -dt) / 0.8f, 0.0f, 1.0f);
+    const bool opening = m_airlockOpen || (blocked && m_airlockSlide > 0.0f);
+    m_airlockSlide = std::clamp(m_airlockSlide + (opening ? dt : -dt) / 0.8f, 0.0f, 1.0f);
     const bool solid = m_airlockSlide <= 0.0f;
     if (!m_airlock.Built() || solid != m_airlockSolid)
     {
@@ -1405,6 +1454,8 @@ void ShipMap::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, Le
     // The bay doors in its floor, and the shuttle standing on them nose forward, its ramp down aft.
     m_bayDoors.Build(scene, meshes, &physics, Vehicles::Load("hangar_doors"), Pose({0.0f, kDeck, (kDoorsFront + kDoorsBack) * 0.5f}), group,
                      "ship_bay_");
+    // The doors shut keep the bay's light in: none of it on the ground under the ship.
+    m_bayDoors.SetLevel(scene);
     m_shuttle.Build(scene, meshes, &physics, Vehicles::Load("shuttle"), Pose(kShuttleHome), group, "ship_shuttle_");
     // And a lamp lit in its cabin, which goes with it when it flies (the game moves it: ShuttleLamp).
     CinePose cabin;
@@ -1490,8 +1541,9 @@ constexpr float kLegTop = kBelly - 0.3f;
 constexpr float kStrut = 0.72f;
 constexpr float kFootThick = 0.14f;
 constexpr float kFootHalf = 0.38f;
-// How far the piston runs out, to put the foot on the ground.
-const float kPiston = (kLegTop - kFieldGround) - kStrut - kFootThick;
+// How far the piston runs out, to put the foot on the ground: on the pad's top (KestrelStation::kSlabTop, as every outpost's), not
+// sunk into it.
+const float kPiston = (kLegTop - (kFieldGround + 0.12f)) - kStrut - kFootThick;
 const glm::vec2 kLegs[] = {{-2.6f, -10.4f}, {2.6f, -10.4f}, {-5.0f, 15.4f}, {5.0f, 15.4f}};
 // How long each takes to come down or go up: the gear, the stair round the rooms, and on the stage -- where a cinematic has only
 // a moment between the ship's lifting and its legs being out of the way.
@@ -1525,6 +1577,7 @@ ModelAsset ShipMap::GearStrutModel()
     HullCylinder(model, "strut_body", {0.0f, -kStrut * 0.5f, 0.0f}, 0.26f, kStrut, {0.0f, 0.0f, 0.0f}, metal, 0.85f);
     HullCylinder(model, "strut_collar", {0.0f, -kStrut + 0.05f, 0.0f}, 0.31f, 0.1f, {0.0f, 0.0f, 0.0f}, dark, 0.8f);
     HullBox(model, "strut_ram", {-0.06f, -kStrut * 0.85f, 0.15f}, {0.06f, -0.05f, 0.25f}, dark, 0.45f, 0.8f);
+    Weathered(model);
     return model;
 }
 
@@ -1547,6 +1600,7 @@ ModelAsset ShipMap::GearFootModel()
     HullBox(model, "foot_pad", {-kFootHalf, -kFootThick, -kFootHalf}, {kFootHalf, -0.07f, kFootHalf}, dark, 0.7f, 0.6f);
     HullBox(model, "foot_rim", {-kFootHalf - 0.03f, -kFootThick - 0.01f, -kFootHalf - 0.03f}, {kFootHalf + 0.03f, -kFootThick + 0.03f, kFootHalf + 0.03f},
             {0.30f, 0.31f, 0.32f}, 0.6f, 0.7f);
+    Weathered(model);
     return model;
 }
 
@@ -1560,6 +1614,7 @@ ModelAsset ShipMap::PodDoorModel(int side)
             {0.3f, 0.31f, 0.33f}, 0.6f, 0.4f);
     HullBox(model, "door_stripe", {std::min(0.0f, across * 0.15f), -0.045f, -kPodLength * 0.5f}, {std::max(0.0f, across * 0.15f), -0.04f, kPodLength * 0.5f},
             {0.72f, 0.55f, 0.1f}, 0.7f, 0.0f);
+    Weathered(model);
     return model;
 }
 
@@ -1593,6 +1648,18 @@ void ShipMap::GearHousings(ModelAsset& hull)
         HullBox(hull, n + "_end_a", {hinge.x - kPodHalf, bottom, z0 - 0.07f}, {hinge.x + kPodHalf, kBelly + 0.02f, z0}, shell, 0.3f, 0.4f);
         HullBox(hull, n + "_end_b", {hinge.x - kPodHalf, bottom, z1}, {hinge.x + kPodHalf, kBelly + 0.02f, z1 + 0.07f}, shell, 0.3f, 0.4f);
         HullBox(hull, n + "_lining", {hinge.x - kPodHalf, kBelly - 0.02f, z0}, {hinge.x + kPodHalf, kBelly + 0.01f, z1}, lining);
+    }
+    // The pods painted and worn like the rest of the hull.
+    for (ModelPart& part : hull.parts)
+    {
+        if (part.name.rfind("gear_pod", 0) == 0 && part.name.find("_lining") == std::string::npos)
+        {
+            part.surface = "painted_metal";
+            part.surfaceScale = 1.2f;
+            part.surfaceOnThing = true;
+            part.surfaceWear = 0.45f;
+            part.roughness = 0.6f;
+        }
     }
 }
 
@@ -1713,6 +1780,7 @@ ModelAsset ShipMap::StairLandingModel()
     HullCylinder(model, "fx_stair_hinge", {kStairEdge, kStairTop - 0.09f, (kStairFrom + kStairTo) * 0.5f}, 0.1f, kStairTo - kStairFrom - 0.3f,
                  {90.0f, 0.0f, 0.0f}, dark, 0.7f);
     StairLugs(model, kStairEdge, kLandingRailEnd);
+    Weathered(model);
     return model;
 }
 
@@ -1722,6 +1790,7 @@ ModelAsset ShipMap::StairPostModel(int side)
     ModelAsset model;
     model.name = "stair_post";
     StairRail(model, side, kStairEdge, kLandingRailEnd);
+    Weathered(model);
     return model;
 }
 
@@ -1731,6 +1800,7 @@ ModelAsset ShipMap::StairRailModel(int side)
     ModelAsset model;
     model.name = "stair_rail";
     StairRail(model, side, kStairEdge - kStairLength, kStairEdge);
+    Weathered(model);
     return model;
 }
 
@@ -1757,6 +1827,7 @@ ModelAsset ShipMap::StairRampModel()
         HullBox(model, "fx_stair_foot", {foot + 0.02f, kStairTop - 0.1f, z}, {foot + 0.3f, kStairTop - 0.05f, z + 0.3f}, rubber, 0.95f, 0.0f);
     }
     StairLugs(model, foot, kStairEdge);
+    Weathered(model);
     return model;
 }
 
@@ -1770,6 +1841,7 @@ ModelAsset ShipMap::StairFlapModel(const glm::vec3& paint)
     HullBox(model, "stair_flap", {0.005f, 0.003f, kStairSlotFrom + 0.008f}, {0.045f, high, kStairSlotTo - 0.008f}, paint, 0.55f, 0.55f);
     HullBox(model, "fx_stair_flap_stripe", {0.001f, high - 0.07f, kStairSlotFrom + 0.06f}, {0.006f, high - 0.03f, kStairSlotTo - 0.06f},
             {0.80f, 0.62f, 0.12f}, 0.6f, 0.3f);
+    Weathered(model);
     return model;
 }
 
