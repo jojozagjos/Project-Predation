@@ -50,13 +50,14 @@ bool SkyRenderer::Init(ShaderLibrary& shaders)
     m_uClouds = bgfx::createUniform("u_skyClouds", bgfx::UniformType::Vec4);
     m_uCloudWind = bgfx::createUniform("u_skyCloudWind", bgfx::UniformType::Vec4);
     m_uBolt = bgfx::createUniform("u_skyBolt", bgfx::UniformType::Vec4);
+    m_uNebula = bgfx::createUniform("u_skyNebula", bgfx::UniformType::Vec4);
     return true;
 }
 
 void SkyRenderer::Shutdown()
 {
     const bgfx::UniformHandle uniforms[] = {m_uRays, m_uDepth, m_uZenith, m_uHorizon, m_uGround, m_uSun, m_uSunColor,
-                                            m_uGrade, m_uSpace, m_uPlanet, m_uPlanetA, m_uPlanetB, m_uPlanetC, m_uPlanetD, m_uPlanetE, m_uBodies, m_uRings, m_uRingColor, m_uAir, m_uClouds, m_uCloudWind, m_uBolt};
+                                            m_uGrade, m_uSpace, m_uPlanet, m_uPlanetA, m_uPlanetB, m_uPlanetC, m_uPlanetD, m_uPlanetE, m_uBodies, m_uRings, m_uRingColor, m_uAir, m_uClouds, m_uCloudWind, m_uBolt, m_uNebula};
     for (const bgfx::UniformHandle handle : uniforms)
     {
         if (bgfx::isValid(handle))
@@ -69,7 +70,7 @@ void SkyRenderer::Shutdown()
     m_uSpace = m_uPlanet = BGFX_INVALID_HANDLE;
     m_uPlanetA = m_uPlanetB = m_uPlanetC = m_uPlanetD = m_uPlanetE = BGFX_INVALID_HANDLE;
     m_uBodies = BGFX_INVALID_HANDLE;
-    m_uRings = m_uRingColor = m_uAir = m_uClouds = m_uCloudWind = m_uBolt = BGFX_INVALID_HANDLE;
+    m_uRings = m_uRingColor = m_uAir = m_uClouds = m_uCloudWind = m_uBolt = m_uNebula = BGFX_INVALID_HANDLE;
     if (bgfx::isValid(m_triangle))
     {
         bgfx::destroy(m_triangle);
@@ -155,7 +156,7 @@ void SkyRenderer::Draw(bgfx::ViewId view, const Environment& environment, const 
     bgfx::setUniform(m_uPlanetE, e);
     bgfx::setUniform(m_uBodies, environment.skyBodies, Environment::kSkyBodies * 2);
     // The planet's rings (inside and outside, in its radii) and how big the sun's disc is (radians, its edge from its middle).
-    const float rings[4] = {look.rings.x, look.rings.y, std::max(environment.sunDisc, 0.0005f), 0.0f};
+    const float rings[4] = {look.rings.x, look.rings.y, std::max(environment.sunDisc, 0.0005f), environment.nebulaSeed};
     const float ringColor[4] = {look.ringColor.r, look.ringColor.g, look.ringColor.b, 0.0f};
     bgfx::setUniform(m_uRings, rings);
     bgfx::setUniform(m_uRingColor, ringColor);
@@ -169,6 +170,9 @@ void SkyRenderer::Draw(bgfx::ViewId view, const Environment& environment, const 
     bgfx::setUniform(m_uClouds, clouds);
     bgfx::setUniform(m_uCloudWind, cloudWind);
     bgfx::setUniform(m_uBolt, glm::value_ptr(environment.bolt));
+    // The nebula over the stars: its colour, how much, and (in the rings' spare place) its seed.
+    const float nebula[4] = {environment.nebulaColor.r, environment.nebulaColor.g, environment.nebulaColor.b, std::max(environment.nebula, 0.0f)};
+    bgfx::setUniform(m_uNebula, nebula);
 
     bgfx::setVertexBuffer(0, m_triangle);
     // Behind a picture already drawn: at the far end of its depth, and only where it is still clear -- so the sky's stars and

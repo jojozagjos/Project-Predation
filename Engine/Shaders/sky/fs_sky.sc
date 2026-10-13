@@ -20,11 +20,13 @@ uniform vec4 u_planetE;
 // The rest of a system, further off: per body, xyz which way (its length how bright it is as a point) and w its radius on
 // the sky (0 none), then its colour and air.
 uniform vec4 u_skyBodies[24];
-uniform vec4 u_skyRings;     // x, y = the planet's rings, inside and outside, in its radii (0 none); z = the sun's disc, radians
+uniform vec4 u_skyRings;     // x, y = the planet's rings, inside and outside, in its radii (0 none); z = the sun's disc, radians;
+                             // w = where the system's nebula lies (a seed)
 uniform vec4 u_skyRingColor; // rgb
 uniform vec4 u_skyClouds;    // x = how much of the sky the clouds cover, y = how heavy, z = the clock they drift by, w = lightning in them
 uniform vec4 u_skyCloudWind; // xy = the wind they drift on (the ground's, metres a second)
 uniform vec4 u_skyBolt;      // x = which way the bolt is (yaw), y = the sine of its top's elevation, z = its seed, w = how bright
+uniform vec4 u_skyNebula;    // rgb = the system's nebula's colour, w = how much of it (its seed: u_skyRings.w)
 
 #include "planet/planet_surface.sh"
 
@@ -76,9 +78,15 @@ float SkyFbm(vec3 p)
 	return value;
 }
 
-// Stars: the sky cut into small cells, a few of which hold one, somewhere in it, of its own brightness and colour.
+// The night sky as it is seen from somewhere in a galaxy: most stars faint, a few bright -- far more of them crowded along
+// the galaxy's plane than away from it, white mostly, some hot and blue, some cool and orange -- and the galaxy itself, a
+// band of light mottled by the stars too faint to make out, split down its middle by lanes of dark dust. And, over it all,
+// the system's own nebula, faint, where it lies (u_skyNebula: its colour and how much; its seed in u_skyRings.w).
 vec3 SkyStars(vec3 ray)
 {
+	vec3 plane = normalize(vec3(0.35, 0.82, 0.45));
+	float across = dot(ray, plane);
+	float band = exp(-across * across * 14.0);
 	vec3 p = ray * 180.0;
 	vec3 light = vec3_splat(0.0);
 	// A soft point, spread over at least the pixel it falls in: a star smaller than a pixel sampled at the pixel's middle
@@ -87,25 +95,40 @@ vec3 SkyStars(vec3 ray)
 	// view moved stars broke up and flickered at their cells' edges -- the sky seen to shake.
 	float pixel = length(fwidth(p));
 	float spread = sqrt(0.12 * 0.12 + 0.6 * pixel * pixel);
+	float threshold = mix(0.972, 0.9, band);
 	vec3 base = floor(p - vec3_splat(0.5));
 	for (int i = 0; i < 8; ++i)
 	{
 		vec3 cell = base + vec3(float(i & 1), float((i >> 1) & 1), float((i >> 2) & 1));
 		float h = SkyHash(cell);
-		if (h > 0.93)
+		if (h > threshold)
 		{
 			vec3 jitter = vec3(SkyHash(cell + vec3_splat(7.1)), SkyHash(cell + vec3_splat(3.7)), SkyHash(cell + vec3_splat(11.3)));
 			// Where it is, fixed in its cell: never pushed onto the sky after, which could put it outside the cells looked in.
 			vec3 centre = cell + vec3_splat(0.5) + (jitter - vec3_splat(0.5)) * 0.6;
-			float bright = (h - 0.93) / 0.07;
+			float b = (h - threshold) / (1.0 - threshold);
+			float bright = 0.05 + 4.0 * pow(SkyHash(cell + vec3_splat(2.9)), 9.0) + 0.25 * b * b;
 			float d = length(p - centre);
-			float star = exp(-d * d / (2.0 * spread * spread)) * (0.12 * 0.12) / (spread * spread) * (0.12 + 3.2 * bright * bright * bright);
-			light += mix(vec3(0.72, 0.8, 1.0), vec3(1.0, 0.86, 0.7), SkyHash(cell + vec3_splat(5.3))) * star;
+			float star = exp(-d * d / (2.0 * spread * spread)) * (0.12 * 0.12) / (spread * spread) * bright;
+			float hot = SkyHash(cell + vec3_splat(5.3));
+			vec3 colour = hot < 0.15 ? vec3(0.65, 0.75, 1.0) : hot > 0.85 ? vec3(1.0, 0.75, 0.55) : mix(vec3(0.95, 0.95, 1.0), vec3(1.0, 0.93, 0.82), hot);
+			light += colour * star;
 		}
 	}
-	// And the galaxy, a faint band across it.
-	float across = dot(ray, normalize(vec3(0.35, 0.82, 0.45)));
-	light += vec3(0.5, 0.55, 0.7) * exp(-across * across * 18.0) * SkyFbm(ray * 7.0) * 0.05;
+	// The galaxy's own light: the stars too many and too faint to see one by one, in clouds along the band, and the dust
+	// lanes down its middle hiding them.
+	float clouds = SkyFbm(ray * 6.0) * 0.7 + SkyFbm(ray * 15.0) * 0.3;
+	float lanes = smoothstep(0.5, 0.68, SkyFbm(ray * 9.0 + vec3(4.1, 1.7, 2.2))) * exp(-across * across * 70.0);
+	light += mix(vec3(0.62, 0.62, 0.72), vec3(0.85, 0.75, 0.62), band) * band * (0.35 + clouds) * (1.0 - 0.85 * lanes) * 0.045;
+	// The nebula: a few great soft clouds of its colour, brighter in their hearts, a second colour through them.
+	if (u_skyNebula.w > 0.001)
+	{
+		vec3 at = ray * 2.2 + vec3_splat(u_skyRings.w);
+		float shape = SkyFbm(at + vec3_splat(SkyFbm(at * 1.7) * 1.4));
+		float cloud = smoothstep(0.52, 0.78, shape);
+		vec3 tint = mix(u_skyNebula.rgb, u_skyNebula.gbr * 0.8 + vec3_splat(0.1), SkyFbm(at * 3.0 + vec3_splat(7.0)));
+		light += tint * cloud * (0.4 + 0.6 * SkyFbm(ray * 11.0 + vec3_splat(u_skyRings.w))) * u_skyNebula.w * 0.07;
+	}
 	return light;
 }
 

@@ -10292,6 +10292,19 @@ void PredationGame::OnUpdate(double dt, double alpha)
         environment.stars = 0.0f;
         environment.planetRadius = 0.0f;
         environment.planetAirWarm = 0.0f;
+        // The system's own nebula over its stars, from its number: one of a few kinds -- the red of glowing hydrogen, the
+        // blue of dust lit by stars, a green-teal, a dusky violet -- and in some systems none worth seeing.
+        {
+            const uint64_t which = m_campaignOpen ? m_campaign.system : 0x5EEDull;
+            uint32_t h = static_cast<uint32_t>(which ^ (which >> 32)) * 0x9E3779B1u;
+            h ^= h >> 15;
+            h *= 0x85EBCA6Bu;
+            h ^= h >> 13;
+            static const glm::vec3 kNebulae[] = {{0.9f, 0.32f, 0.38f}, {0.35f, 0.5f, 0.95f}, {0.3f, 0.8f, 0.7f}, {0.65f, 0.4f, 0.85f}};
+            environment.nebulaColor = kNebulae[h % 4u];
+            environment.nebula = (h >> 8) % 5u == 0u ? 0.0f : 0.5f + 0.5f * static_cast<float>((h >> 12) & 0xFFu) / 255.0f;
+            environment.nebulaSeed = static_cast<float>((h >> 20) & 0x3FFu) * 0.37f;
+        }
         if (inShip)
         {
             // Space: black, the stars, a hard sun low off the starboard quarter, and -- over a site -- its planet below

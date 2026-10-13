@@ -138,6 +138,11 @@ struct Environment
     // ice, cloud and air, as the system map draws it). Drawn in the sky, so it is infinitely far away: it never meets
     // the far plane and nothing can walk towards it.
     float stars = 0.0f;
+    // And a nebula of the system's own over its stars, faint: its colour, how much of it there is (0 none), and where it lies
+    // (a seed for its shape).
+    glm::vec3 nebulaColor{0.5f, 0.3f, 0.6f};
+    float nebula = 0.0f;
+    float nebulaSeed = 0.0f;
     // How much of the sun the sky itself draws (its glow, or out in space its disc and rays): 0 when something else
     // draws it, as the system map draws its star.
     float skySun = 1.0f;
