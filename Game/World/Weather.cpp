@@ -131,7 +131,7 @@ void Weather::Make(Kind kind, const glm::vec3& eye)
 }
 
 void Weather::Update(const glm::vec3& eye, float ground, float dt, Kind kind, float intensity, const glm::vec3& tint, const glm::vec3& wind,
-                     const Light& light, float detail, const std::function<bool(const glm::vec3&)>& indoors)
+                     const Light& light, float detail, const std::function<bool(const glm::vec3&, float)>& indoors)
 {
     m_sprites.clear();
     if (kind != m_kind)
@@ -181,7 +181,7 @@ void Weather::Update(const glm::vec3& eye, float ground, float dt, Kind kind, fl
             local.x = std::fmod(local.x + kPuffBox * 1.5f, kPuffBox) - kPuffBox * 0.5f;
             local.y = std::fmod(local.y + kPuffBox * 1.5f, kPuffBox) - kPuffBox * 0.5f;
             piece.at = {eye.x + local.x, ground + piece.height + 0.6f * std::sin(m_clock * 0.21f + piece.sway), eye.z + local.y};
-            if (puffIndex++ >= puffsShown || puffs <= 0.002f || indoors(piece.at))
+            if (puffIndex++ >= puffsShown || puffs <= 0.002f || indoors(piece.at, piece.size * 1.2f))
             {
                 continue;
             }
@@ -239,7 +239,7 @@ void Weather::Update(const glm::vec3& eye, float ground, float dt, Kind kind, fl
             piece.at.y = eye.y + local.y;
         }
         // Only as many as there is weather for, and not indoors.
-        if (index++ >= shown || indoors(piece.at))
+        if (index++ >= shown || indoors(piece.at, 0.3f))
         {
             continue;
         }
@@ -258,6 +258,10 @@ void Weather::Update(const glm::vec3& eye, float ground, float dt, Kind kind, fl
             // the one point the wind comes from.)
             sprite.length = std::min(glm::length(velocity) * look.streakTime * (piece.low ? 1.8f : 1.0f), fromEye * 0.12f);
             sprite.along = glm::normalize(velocity);
+            if (indoors(piece.at, sprite.length * 0.5f))
+            {
+                continue;
+            }
         }
         if (piece.glow)
         {

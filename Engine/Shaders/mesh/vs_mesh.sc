@@ -43,6 +43,22 @@ void main()
 		v_organic = vec2(grown * (1.0 - rotted), dead);
 	}
 	vec4 worldPosition = mul(u_model[0], vec4(position, 1.0));
+	vec4 colour = a_color0;
+	// Ground cover (Material::cover, materialParams.w 2): fewer tufts further off, each one growing up out of the ground
+	// or sinking back into it by where the eye is this frame, not when its patch was last made -- so none pops in or out,
+	// and none is left standing at the edge of what was made. Red says how soon a tuft goes (0 last), green how high this
+	// point is over the ground (over 1.5 metres), blue how light its card is (0.6 to 1.4 of the material). Dark at the roots,
+	// where the blades shade each other.
+	if (u_materialParams.w > 1.5)
+	{
+		vec3 eye = mul(u_invView, vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+		float far = length(worldPosition.xz - eye.xz);
+		float share = clamp(1.0 - (far - 8.0) / 40.0, 0.12, 1.0) * (1.0 - smoothstep(29.0, 35.0, far));
+		float grown = clamp((share - a_color0.r) / 0.08, 0.0, 1.0);
+		worldPosition.y -= (a_color0.g * 1.5 + 0.05) * (1.0 - grown);
+		float up = 1.0 - fract(a_texcoord0.y * 2.0);
+		colour = vec4(vec3_splat(mix(0.5, 1.0, smoothstep(0.0, 0.7, up)) * (0.6 + 0.8 * a_color0.b)), 1.0);
+	}
 	// A plant's card (cut out: Material::cutout) moving in the wind: its foot held, its top bent with the wind -- leaning
 	// with it in waves rolling across the ground the way it blows, and fluttering quicker on top. How far up the card a
 	// corner is comes from where it is in its cell of the foliage picture (Foliage::Cell: two rows, the top of each first).
@@ -65,7 +81,7 @@ void main()
 	v_localNormal = a_normal;
 	v_normal = mul(u_model[0], vec4(a_normal, 0.0)).xyz;
 	v_texcoord0 = a_texcoord0;
-	v_color0 = a_color0;
+	v_color0 = colour;
 
 	gl_Position = mul(u_viewProj, worldPosition);
 }

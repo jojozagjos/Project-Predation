@@ -109,9 +109,9 @@ struct Environment
     // The wind where the eye is, metres a second along x and z, and a clock it gusts by: what plants sway with (leaves,
     // grass -- anything cut out, Material::cutout).
     glm::vec2 wind{0.0f};
-    // Whether the eye is out in the open air (not in a building or a cabin): the distance fog then fogs everything, roofed or
-    // not, since the air between is the open air's.
-    bool eyeOutdoors = true;
+    // How far the eye is out in the open air (0 in a building or a cabin, 1 outside, between in a doorway): the distance fog
+    // then fogs everything, roofed or not, since the air between is the open air's.
+    float eyeOutdoors = 1.0f;
     // How thick the air is with what the weather fills it with (0 to 1): the sky drawn as the haze, its sun, stars and the
     // bodies in it dimmed behind it.
     float skyHaze = 0.0f;

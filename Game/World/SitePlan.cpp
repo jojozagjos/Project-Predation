@@ -116,15 +116,15 @@ bool SitePlan::InBuilding(glm::vec2 xz, float margin) const
     return false;
 }
 
-bool SitePlan::Indoors(const glm::vec3& at) const
+bool SitePlan::Indoors(const glm::vec3& at, float margin) const
 {
     for (const FacilityLayout& building : buildings)
     {
         glm::vec2 min;
         glm::vec2 max;
-        Footprint(building, 0.0f, min, max);
+        Footprint(building, margin, min, max);
         const float roof = building.origin.y + static_cast<float>(building.floors) * FacilityLayout::kStorey - FacilityLayout::kSlab;
-        if (at.x > min.x && at.x < max.x && at.z > min.y && at.z < max.y && at.y > building.origin.y - 0.5f && at.y < roof)
+        if (at.x > min.x && at.x < max.x && at.z > min.y && at.z < max.y && at.y > building.origin.y - 0.5f - margin && at.y < roof + margin)
         {
             return true;
         }

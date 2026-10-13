@@ -9914,7 +9914,13 @@ void PredationGame::OnUpdate(double dt, double alpha)
         light.fogEnd = environment.fogEnd;
         m_weather.Update(m_renderEye, ground, deltaSeconds, Weather::KindOf(look.weather), falling ? look.weatherAmount : 0.0f, look.ground,
                          glm::vec3(std::cos(windAngle), 0.0f, std::sin(windAngle)) * windSpeed, light, cv_weatherDetail.Get(),
-                         [this](const glm::vec3& at) { return m_facility.Plan().Indoors(at) || m_facility.Shuttle().Within(at, 0.4f); });
+                         [this](const glm::vec3& at, float reach)
+                         {
+                             // From under a roof nothing may reach in at all; from outside, a wall hides whatever goes
+                             // through it, and only what would show in a doorway matters (eased between, as the fog is).
+                             const float margin = glm::mix(reach, std::min(reach, 0.6f), m_eyeOutdoors);
+                             return m_facility.Plan().Indoors(at, margin) || m_facility.Shuttle().Within(at, 0.4f + margin);
+                         });
     }
 
     glm::mat4 view;
@@ -10226,7 +10232,15 @@ void PredationGame::OnUpdate(double dt, double alpha)
     {
         const bool atSite = m_screen == Screen::Playing && m_facility.Built() && m_facility.Contains(m_renderEye);
         // In the open air or under a roof (a building, the shuttle's cabin): how the fog falls on what is seen (Environment).
-        environment.eyeOutdoors = !(atSite && (m_facility.Plan().Indoors(m_renderEye) || m_facility.Shuttle().Aboard(m_renderEye)));
+        // Eased over about half a second, so walking through a door the air thins rather than vanishing; a cut (the camera
+        // somewhere else entirely) takes it at once.
+        {
+            const float outdoors = atSite && (m_facility.Plan().Indoors(m_renderEye) || m_facility.Shuttle().Aboard(m_renderEye)) ? 0.0f : 1.0f;
+            const bool cut = glm::distance(m_renderEye, m_eyeOutdoorsAt) > 3.0f;
+            m_eyeOutdoors = cut ? outdoors : m_eyeOutdoors + (outdoors - m_eyeOutdoors) * std::min(m_lastFrameSeconds * 5.0f, 1.0f);
+            m_eyeOutdoorsAt = m_renderEye;
+            environment.eyeOutdoors = m_eyeOutdoors;
+        }
         // The title is in space too.
         const bool title = m_screen == Screen::Title;
         const bool inShip = !atSite && (title || m_ship.Contains(m_renderEye));

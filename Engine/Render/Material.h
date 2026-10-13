@@ -73,6 +73,11 @@ struct Material
     // Cut out by its base colour texture's alpha (below a half is not there at all), seen from both sides, and lit through
     // from behind a little: a leaf, a blade of grass, on a flat card (Game/World/Foliage). Its shadow is cut out the same.
     bool cutout = false;
+    // And ground cover (a cut-out card too): grass drawn round the eye, each tuft growing up out of the ground as the eye
+    // nears and sinking back into it going away, by how far off it is now -- its vertices' colour saying which tufts go first
+    // (red), how high each point is over the ground (green, in metres over 1.5) and how light its card (blue, 0.6 to 1.4 of
+    // the colour); dark at its roots.
+    bool cover = false;
 
     static Material Diffuse(const glm::vec3& color, float roughness = 0.85f)
     {

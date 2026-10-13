@@ -708,7 +708,7 @@ namespace
 
 bool SameMaterial(const Material& a, const Material& b)
 {
-    return a.baseColor == b.baseColor && a.metallic == b.metallic && a.roughness == b.roughness && a.emissive == b.emissive && a.cutout == b.cutout &&
+    return a.baseColor == b.baseColor && a.metallic == b.metallic && a.roughness == b.roughness && a.emissive == b.emissive && a.cutout == b.cutout && a.cover == b.cover &&
            a.emissiveTextured == b.emissiveTextured && a.reflectivity == b.reflectivity && a.baseColorTexture == b.baseColorTexture &&
            a.normalTexture == b.normalTexture && a.roughnessTexture == b.roughnessTexture && a.surfaceScale == b.surfaceScale &&
            a.surfaceKeep == b.surfaceKeep && a.surfaceNatural == b.surfaceNatural && a.surfaceOnThing == b.surfaceOnThing && a.surfaceWear == b.surfaceWear &&

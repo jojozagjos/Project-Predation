@@ -471,6 +471,22 @@ void PredationGame::RegisterCampaignCommands()
                                 m_campaign.clock += static_cast<double>(body->day) * std::stod(args[1]);
                                 CampaignChanged();
                             });
+    console.RegisterCommand("day_hour", "Move the campaign's clock on to an hour of the day where the ship is (the host): day_hour <0 to 24>",
+                            [this](const std::vector<std::string>& args)
+                            {
+                                const StarSystem* system = CurrentSystem();
+                                const Body* body = system != nullptr ? system->Find(m_campaign.body) : nullptr;
+                                if (!m_campaignOpen || m_sessionMode == SessionMode::Client || args.size() < 2 || body == nullptr)
+                                {
+                                    m_app->GetConsole().PrintError("Usage, on the host at a body: day_hour <hour>");
+                                    return;
+                                }
+                                const float now = LocalHour(*system, *body, m_campaign.travel.region);
+                                const float ahead = std::fmod(std::stof(args[1]) - now + 48.0f, 24.0f);
+                                m_campaign.clock += static_cast<double>(body->day) * static_cast<double>(ahead / 24.0f);
+                                PRED_LOG_INFO(Gameplay, "day_hour: local time was {:.1f}, now {:.1f}", now, LocalHour(*system, *body, m_campaign.travel.region));
+                                CampaignChanged();
+                            });
     console.RegisterCommand("map_open",
                             "Open the navigation map, as the console does: map_open [galaxy | <body to pick out> | body <body> [area]]",
                             [this](const std::vector<std::string>& args)

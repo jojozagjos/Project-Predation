@@ -134,8 +134,8 @@ struct SitePlan
     static void Footprint(const FacilityLayout& building, float margin, glm::vec2& min, glm::vec2& max);
     // Whether a point on the ground is under a building, or within `margin` of one.
     bool InBuilding(glm::vec2 xz, float margin) const;
-    // Whether a point is inside one: within its outer wall and under its roof.
-    bool Indoors(const glm::vec3& at) const;
+    // Whether a point is inside one: within its outer wall and under its roof -- or, with a `margin`, that close to being.
+    bool Indoors(const glm::vec3& at, float margin = 0.0f) const;
 };
 
 } // namespace pred

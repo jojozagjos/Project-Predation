@@ -70,14 +70,14 @@
      "terrains": {"rolling": 3, "mountainous": 2, "flat": 1},
      "weathers": {"clear": 3, "rain": 2, "fog": 1, "storm": 1},
      "ground": [[0.3, 0.42, 0.22], [0.55, 0.48, 0.34]], "ocean": [0.08, 0.2, 0.38], "oceanAmount": [0.4, 0.7], "ice": [0.05, 0.3], "clouds": [0.3, 0.6],
-     "site": {"surface": "grass_dirt", "steep": "soil_cliff", "ground": [0.34, 0.4, 0.26], "rock": [0.36, 0.34, 0.31], "fog": [0.06, 0.07, 0.075]}},
+     "site": {"surface": "grass_dirt", "steep": "soil_cliff", "ground": [0.17, 0.2, 0.11], "rock": [0.36, 0.34, 0.31], "fog": [0.06, 0.07, 0.075]}},
 
     {"id": "jungle", "name": "Jungle", "weight": 0.8, "temperature": [20, 55],
      "atmospheres": {"dense": 3, "breathable": 1},
      "terrains": {"rolling": 2, "flat": 1, "mountainous": 1},
      "weathers": {"rain": 3, "fog": 2, "storm": 1},
      "ground": [[0.12, 0.3, 0.12], [0.24, 0.4, 0.16]], "ocean": [0.06, 0.2, 0.3], "oceanAmount": [0.2, 0.5], "clouds": [0.5, 0.85],
-     "site": {"surface": "jungle_floor", "steep": "soil_cliff", "ground": [0.2, 0.3, 0.16], "rock": [0.26, 0.27, 0.22], "fog": [0.05, 0.065, 0.05]}},
+     "site": {"surface": "jungle_floor", "steep": "soil_cliff", "ground": [0.1, 0.15, 0.07], "rock": [0.26, 0.27, 0.22], "fog": [0.05, 0.065, 0.05]}},
 
     {"id": "toxic", "name": "Toxic", "weight": 1, "temperature": [25, 460],
      "atmospheres": {"toxic": 3, "dense": 1},

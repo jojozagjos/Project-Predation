@@ -154,11 +154,37 @@ void PredationGame::RegisterDroneCommands()
                                 m_player.Teleport(at + glm::vec3(0.0f, 0.1f, 0.0f));
                                 const glm::vec3 lo = FacilityMap::ToWorld(building, room.floor, glm::vec2(room.min));
                                 const glm::vec3 hi = FacilityMap::ToWorld(building, room.floor, glm::vec2(room.max + glm::ivec2(1)));
-                                char corners[96];
-                                std::snprintf(corners, sizeof(corners), ", from %.1f %.1f to %.1f %.1f", lo.x, lo.z, hi.x, hi.z);
+                                glm::vec2 outerMin;
+                                glm::vec2 outerMax;
+                                SitePlan::Footprint(building, 0.0f, outerMin, outerMax);
+                                char corners[160];
+                                std::snprintf(corners, sizeof(corners), ", from %.1f %.1f to %.1f %.1f (the building %.1f %.1f to %.1f %.1f)", lo.x, lo.z,
+                                              hi.x, hi.z, outerMin.x, outerMin.y, outerMax.x, outerMax.y);
                                 m_app->GetConsole().Print("Room " + std::to_string(r) + " of building " + std::to_string(b) + ", floor " +
                                                           std::to_string(room.floor) + (room.dark ? ", dark" : "") + corners);
                                 PRED_LOG_INFO(Gameplay, "site_room: building {} room {} floor {}{}", b, r, room.floor, corners);
+                            });
+    console.RegisterCommand("site_exit", "Stand just inside a way out of one of the site's buildings, facing out: site_exit <building> [exit]",
+                            [this](const std::vector<std::string>& args)
+                            {
+                                const SitePlan& plan = m_facility.Plan();
+                                const size_t b = args.size() >= 2 ? std::strtoul(args[1].c_str(), nullptr, 10) : 0;
+                                const size_t e = args.size() >= 3 ? std::strtoul(args[2].c_str(), nullptr, 10) : 0;
+                                if (b >= plan.buildings.size() || e >= plan.buildings[b].exits.size())
+                                {
+                                    m_app->GetConsole().PrintError("No such building or way out.");
+                                    return;
+                                }
+                                const FacilityLayout& building = plan.buildings[b];
+                                const FacilityLayout::Exit& exit = building.exits[e];
+                                // Sides: 0 the -x wall, 1 the +x, 2 the -z, 3 the +z. Yaw 0 looks along -z, 90 along +x.
+                                const float yaw = exit.side == 0 ? 270.0f : exit.side == 1 ? 90.0f : exit.side == 2 ? 0.0f : 180.0f;
+                                const glm::vec3 at = FacilityMap::ToWorld(building, 0, glm::vec2(exit.cell) + glm::vec2(0.5f));
+                                m_player.Teleport(at + glm::vec3(0.0f, 0.1f, 0.0f));
+                                m_lookYaw = glm::radians(yaw);
+                                m_lookPitch = 0.0f;
+                                PRED_LOG_INFO(Gameplay, "site_exit: building {} exit {} at {:.1f} {:.1f} {:.1f}, facing yaw {:.0f}", b, e, at.x, at.y, at.z,
+                                              yaw);
                             });
     console.RegisterCommand("hurt_player", "As the host, hurt somebody: hurt_player <id> [amount]",
                             [this](const std::vector<std::string>& args)

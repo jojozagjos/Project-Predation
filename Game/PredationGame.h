@@ -1356,6 +1356,10 @@ private:
     glm::vec3 m_renderEye{0.0f};
     // And which way the picture looks: where the ears face.
     glm::vec3 m_renderForward{0.0f, 0.0f, -1.0f};
+    // How far out in the open air that eye is, 0 under a roof to 1 outside: eased across a doorway, not switched, with where
+    // it was last frame to tell a step from a cut.
+    float m_eyeOutdoors = 1.0f;
+    glm::vec3 m_eyeOutdoorsAt{0.0f};
 
     ItemDatabase m_items;
     ItemIcons m_itemIcons;

@@ -160,10 +160,10 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
     const int chunks = m_terrain.Chunks();
     // Where the world grows grass, its ground grown over far off as well as the tufts drawn near (UpdateCover): their colour.
     const bool grassy = m_look.biome == "jungle" || m_look.biome == "temperate" || m_look.biome == "oceanic";
-    const glm::vec3 growing = glm::mix(m_look.ground, m_look.biome == "jungle" ? glm::vec3(0.12f, 0.3f, 0.08f) : glm::vec3(0.2f, 0.34f, 0.12f), 0.65f);
-    const glm::vec3 grassColour = glm::mix(growing, m_look.ground, 0.65f) * 1.3f;
+    const glm::vec3 growing = glm::mix(m_look.ground, m_look.biome == "jungle" ? glm::vec3(0.05f, 0.13f, 0.03f) : glm::vec3(0.08f, 0.16f, 0.04f), 0.65f);
+    const glm::vec3 grassColour = glm::mix(growing, m_look.ground, 0.3f) * 1.05f;
     // (The ground under it a deeper green: seen far off, the grass is mostly its own shade.)
-    const glm::vec3 grownOver = growing * 1.15f;
+    const glm::vec3 grownOver = growing;
     std::vector<Piece> pieces(static_cast<size_t>(chunks * chunks));
     {
         std::vector<std::future<void>> rows;
@@ -375,6 +375,10 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
             m_tufts.push_back(SiteScatter::Leaves(SiteScatter::Kind::Grass, variant, seed, grassColour));
         }
         m_coverMaterial = leaves;
+        m_coverMaterial.cover = true;
+        // Its colour on the material, the vertices' being wanted for other things (Material::cover); how much lighter or darker
+        // each card was made than it kept in them still.
+        m_coverMaterial.baseColor = grassColour * 2.4f;
         m_coverAt = glm::ivec2(-100000);
         PRED_LOG_INFO(Gameplay, "Site scatter: {} things on the ground ({})", scattered.size(), m_look.biome);
     }
@@ -580,12 +584,16 @@ MeshData SiteMap::CoverAround(const glm::vec3& eye, float detail) const
             {
                 continue;
             }
-            const float share = std::clamp(1.0f - (distance - 8.0f) / 40.0f, 0.12f, 1.0f) * (1.0f - glm::smoothstep(kReach - 6.0f, kReach, distance));
-            const float count = density * kPatch * kPatch * share;
+            // How many of its tufts could be up by the time this is made again -- the eye some metres nearer by then -- as
+            // the shader has them (vs_mesh, Material::cover): which of those are, and how far grown, it works out each frame.
+            const float near = std::max(distance - 9.0f, 0.0f);
+            const float share = near > 35.0f ? 0.0f : std::clamp(1.0f - (near - 8.0f) / 40.0f, 0.12f, 1.0f);
+            const float all = density * kPatch * kPatch;
             for (int i = 0; i < most; ++i)
             {
-                const float grows = std::clamp(count - static_cast<float>(i), 0.0f, 1.0f);
-                if (grows <= 0.0f)
+                // Which go first: the last of a patch's, the first of them last.
+                const float rank = (static_cast<float>(i) + 0.5f) / std::max(all, 1.0f);
+                if (rank >= share || static_cast<float>(i) >= all)
                 {
                     break;
                 }
@@ -593,21 +601,29 @@ MeshData SiteMap::CoverAround(const glm::vec3& eye, float detail) const
                 const float z = (static_cast<float>(pz) + hash(px, pz, static_cast<uint32_t>(i * 4 + 1))) * kPatch;
                 // On the site, on ground it could grow on (not too steep), thinning out towards what was levelled for buildings,
                 // pads and the ways between them, and none right up against them.
+                const float wild = m_terrain.Wildness(x, z);
+                const float cut = 0.15f + 0.45f * hash(px, pz, static_cast<uint32_t>(i * 4 + 900));
                 if (x < m_plan.origin.x || z < m_plan.origin.z || x > m_plan.origin.x + m_plan.size || z > m_plan.origin.z + m_plan.size ||
-                    m_terrain.Wildness(x, z) < 0.15f + 0.45f * hash(px, pz, static_cast<uint32_t>(i * 4 + 900)) || m_terrain.Normal(x, z).y < 0.85f)
+                    wild < cut || m_terrain.Normal(x, z).y < 0.85f)
                 {
                     continue;
                 }
-                const float size = (0.35f + 0.4f * hash(px, pz, static_cast<uint32_t>(i * 4 + 2))) * grows;
+                // Shorter towards where it stops, so it thins out rather than ending in a line.
+                const float size = (0.35f + 0.4f * hash(px, pz, static_cast<uint32_t>(i * 4 + 2))) * glm::mix(0.4f, 1.0f, glm::smoothstep(cut, cut + 0.3f, wild));
                 const float yaw = hash(px, pz, static_cast<uint32_t>(i * 4 + 3)) * 6.2831853f;
                 const MeshData& tuft = m_tufts[static_cast<size_t>(px * 7 + pz * 13 + i) % m_tufts.size()];
                 const glm::quat turn = glm::angleAxis(yaw, glm::vec3(0.0f, 1.0f, 0.0f));
                 const glm::vec3 foot{x, m_terrain.Height(x, z) - 0.04f, z};
                 const auto base = static_cast<uint32_t>(mesh.vertices.size());
+                const auto channel = [](float v) { return static_cast<uint32_t>(std::clamp(v, 0.0f, 1.0f) * 255.0f + 0.5f); };
                 for (MeshVertex vertex : tuft.vertices)
                 {
+                    const float over = std::max(vertex.position.y * size * 1.1f + 0.04f, 0.0f);
                     vertex.position = foot + turn * (vertex.position * glm::vec3(size, size * 1.1f, size));
-                    vertex.normal = turn * vertex.normal;
+                    // Lit mostly as the ground under it is, so the grass reads as the ground grown up rather than cards on it.
+                    vertex.normal = glm::normalize(glm::mix(turn * vertex.normal, glm::vec3(0.0f, 1.0f, 0.0f), 0.5f));
+                    const float shade = static_cast<float>((vertex.color >> 8) & 0xFFu) / 255.0f / std::max(m_coverMaterial.baseColor.g, 0.01f);
+                    vertex.color = channel(rank) | (channel(over / 1.5f) << 8) | (channel((shade - 0.6f) / 0.8f) << 16) | (255u << 24);
                     mesh.vertices.push_back(vertex);
                 }
                 for (const uint32_t index : tuft.indices)

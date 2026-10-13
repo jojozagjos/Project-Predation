@@ -47,9 +47,10 @@ public:
     // `intensity` 0 to 1, how much of it there is; `tint` the colour of dust (the ground it was lifted from); `wind`
     // metres a second of drift, sideways; `ground` how high the ground is under the eye, for what blows along it; `detail`
     // how much of it is drawn (the r.weather setting, 0.3 to 1: fewer flakes and puffs, not less weather). Then
-    // Sprites() is this frame's to draw.
+    // Sprites() is this frame's to draw. `indoors` says whether anything within a distance of a point is under a roof:
+    // nothing is drawn that would reach in.
     void Update(const glm::vec3& eye, float ground, float dt, Kind kind, float intensity, const glm::vec3& tint, const glm::vec3& wind,
-                const Light& light, float detail, const std::function<bool(const glm::vec3&)>& indoors);
+                const Light& light, float detail, const std::function<bool(const glm::vec3&, float)>& indoors);
     std::vector<Sprite>& Sprites() { return m_sprites; }
 
 private:

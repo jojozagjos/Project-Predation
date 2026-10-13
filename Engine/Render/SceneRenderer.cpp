@@ -298,7 +298,7 @@ void SceneRenderer::SetEnvironmentUniforms(const Environment& environment,
     const float ambientGround[4] = {environment.ambientGround.r, environment.ambientGround.g,
                                     environment.ambientGround.b, 0.0f};
     const float fogColor[4] = {environment.fogColor.r, environment.fogColor.g, environment.fogColor.b, 0.0f};
-    const float fogParams[4] = {environment.fogStart, environment.fogEnd, environment.eyeOutdoors ? 1.0f : 0.0f, 0.0f};
+    const float fogParams[4] = {environment.fogStart, environment.fogEnd, environment.eyeOutdoors, 0.0f};
     const float cameraPos[4] = {cameraPosition.x, cameraPosition.y, cameraPosition.z, 0.0f};
 
     bgfx::setUniform(m_uLightDirection, lightDirection);
@@ -414,7 +414,7 @@ void SceneRenderer::SubmitMesh(bgfx::ViewId view, const Mesh& mesh, const Materi
 {
     const float baseColor[4] = {material.baseColor.r, material.baseColor.g, material.baseColor.b, 1.0f};
     const float materialParams[4] = {material.metallic, material.roughness, material.reflectivity,
-                                     material.cutout ? 1.0f : 0.0f};
+                                     material.cutout ? (material.cover ? 2.0f : 1.0f) : 0.0f};
     // A card is seen from both sides.
     if (material.cutout)
     {
