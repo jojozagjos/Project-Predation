@@ -802,7 +802,10 @@ bool VehicleProp::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld* physics
         }
         else
         {
-            const MeshHandle mesh = meshes.Upload(m_model->BuildPartMesh(part), "vehicle_" + m_model->name + "_" + part.name);
+            // Named by where the part is in the model as well as by its name: meshes are shared by name, and two parts of one
+            // name (a long stringer and the short pieces at its ends) would otherwise all be drawn as whichever came last.
+            const MeshHandle mesh = meshes.Upload(m_model->BuildPartMesh(part), "vehicle_" + m_model->name + "_" + part.name + "#" +
+                                                                                     std::to_string(&part - m_model->parts.data()));
             m_parts.push_back(scene.CreateMeshEntity(prefix + part.name, Transform{}, mesh, material));
             if (MeshRenderer* renderer = scene.GetMeshRenderer(m_parts.back()))
             {

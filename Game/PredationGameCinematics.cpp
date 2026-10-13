@@ -183,12 +183,8 @@ CinematicBindings PredationGame::CinematicBindingsNow() const
         hour = TwoFigures(minutes / 60) + ":" + TwoFigures(minutes % 60);
     }
     bindings.words["local_time"] = "LOCAL " + hour;
-    bindings.words["time"] = hour;
     const SiteConditions weather = const_cast<PredationGame*>(this)->PlaceConditions(site.sky.fogEnd);
     bindings.words["conditions"] = std::to_string(weather.temperature) + " C  WIND " + std::to_string(weather.wind) + " M/S  VISIBILITY " + weather.visibility;
-    bindings.words["temperature"] = std::to_string(weather.temperature) + " C";
-    bindings.words["wind"] = std::to_string(weather.wind) + " M/S";
-    bindings.words["visibility"] = weather.visibility;
     return bindings;
 }
 
@@ -703,71 +699,18 @@ void PredationGame::DrawCinematicOverlay()
             draw->AddText(ImGui::GetFont(), fontSize, at, IM_COL32(230, 232, 236, static_cast<int>(255 * alpha)), text.c_str());
             continue;
         }
-        // A title card, low on the left over a soft band of dark with an accent down its edge: the place's name large over a
-        // rule that draws out under it, its world beneath, then what it is like there in labelled columns (a line of
-        // "LABEL:value" pieces between bars). Typed out as a terminal does; fading in, and out at its end.
         ImFont* font = ImGui::GetFont();
-        const float base = ImGui::GetFontSize() * scale;
-        const float shownAlpha = std::min(alpha, std::clamp((time - item.time) / 0.5f, 0.0f, 1.0f));
-        const auto a = [&](float share) { return static_cast<int>(255.0f * shownAlpha * share); };
-        const auto sizeOf = [&](size_t i) { return item.lines[i].find('|') != std::string::npos ? base * 2.2f : base * (i == 0 ? 1.7f : 1.0f); };
-        float height = 0.0f;
-        for (size_t i = 0; i < item.lines.size(); ++i)
-        {
-            height += sizeOf(i) + (i == 0 ? 18.0f : 10.0f) * scale;
-        }
+        float y = max.y - bars - (60.0f + static_cast<float>(item.lines.size()) * 26.0f) * scale;
         const float x = min.x + (max.x - min.x) * 0.06f;
-        float y = max.y - bars - height - 54.0f * scale;
-        const float bandTop = y - 18.0f * scale;
-        const float bandBottom = y + height + 8.0f * scale;
-        const float bandWidth = (max.x - min.x) * 0.5f;
-        draw->AddRectFilledMultiColor({x - 30.0f * scale, bandTop}, {x - 30.0f * scale + bandWidth, bandBottom}, IM_COL32(4, 6, 8, a(0.62f)),
-                                      IM_COL32(4, 6, 8, 0), IM_COL32(4, 6, 8, 0), IM_COL32(4, 6, 8, a(0.62f)));
-        draw->AddRectFilled({x - 16.0f * scale, bandTop + 10.0f * scale}, {x - 13.0f * scale, bandBottom - 10.0f * scale}, IM_COL32(235, 133, 36, a(0.9f)));
         bool typing = false;
         for (size_t i = 0; i < item.lines.size(); ++i)
         {
             const std::string full = sampler.Fill(item.lines[i]);
             const std::string shown = sampler.Text(item, i, time);
-            const float typed = full.empty() ? 1.0f : static_cast<float>(shown.size()) / static_cast<float>(full.size());
-            if (full.find('|') != std::string::npos)
-            {
-                // Columns: each comes up as its share of the line is typed.
-                std::vector<std::string> pieces;
-                for (size_t from = 0;;)
-                {
-                    const size_t bar = full.find('|', from);
-                    pieces.push_back(full.substr(from, bar == std::string::npos ? std::string::npos : bar - from));
-                    if (bar == std::string::npos)
-                    {
-                        break;
-                    }
-                    from = bar + 1;
-                }
-                float cx = x;
-                for (size_t p = 0; p < pieces.size(); ++p)
-                {
-                    const float showing = std::clamp(typed * static_cast<float>(pieces.size()) - static_cast<float>(p), 0.0f, 1.0f);
-                    const size_t colon = pieces[p].find(':');
-                    const std::string label = colon == std::string::npos ? std::string() : pieces[p].substr(0, colon);
-                    const std::string value = colon == std::string::npos ? pieces[p] : pieces[p].substr(colon + 1);
-                    const float labelSize = base * 0.78f;
-                    const float valueSize = base * 1.12f;
-                    draw->AddText(font, labelSize, {cx, y}, IM_COL32(128, 138, 148, a(showing)), label.c_str());
-                    draw->AddText(font, valueSize, {cx + 1.0f * scale, y + labelSize + 4.0f * scale + 1.0f * scale}, IM_COL32(0, 0, 0, a(0.7f * showing)),
-                                  value.c_str());
-                    draw->AddText(font, valueSize, {cx, y + labelSize + 4.0f * scale}, IM_COL32(222, 226, 230, a(showing)), value.c_str());
-                    const float width = std::max(font->CalcTextSizeA(labelSize, FLT_MAX, 0.0f, label.c_str()).x,
-                                                 font->CalcTextSizeA(valueSize, FLT_MAX, 0.0f, value.c_str()).x);
-                    cx += width + 34.0f * scale;
-                }
-                y += sizeOf(i) + 10.0f * scale;
-                continue;
-            }
-            const float fontSize = sizeOf(i);
-            const ImU32 colour = i == 0 ? IM_COL32(236, 239, 242, a(1.0f)) : IM_COL32(156, 164, 172, a(1.0f));
+            const float fontSize = ImGui::GetFontSize() * (i == 0 ? 1.45f : 1.0f) * scale;
+            const ImU32 colour = i == 0 ? IM_COL32(226, 230, 234, static_cast<int>(255 * alpha)) : IM_COL32(150, 158, 166, static_cast<int>(255 * alpha));
             // A shadow under it, so it reads over something bright behind: an engine, a lit cloud.
-            draw->AddText(font, fontSize, {x + 1.5f * scale, y + 1.5f * scale}, IM_COL32(0, 0, 0, a(0.8f)), shown.c_str());
+            draw->AddText(font, fontSize, {x + 1.5f * scale, y + 1.5f * scale}, IM_COL32(0, 0, 0, static_cast<int>(200 * alpha)), shown.c_str());
             draw->AddText(font, fontSize, {x, y}, colour, shown.c_str());
             // The cursor, at the end of the line being typed, blinking.
             if (!typing && shown.size() < full.size() && !shown.empty())
@@ -779,15 +722,7 @@ void PredationGame::DrawCinematicOverlay()
                     draw->AddRectFilled({x + width + 2.0f, y + 2.0f}, {x + width + 2.0f + fontSize * 0.5f, y + fontSize}, colour);
                 }
             }
-            if (i == 0)
-            {
-                // The rule under the name, drawing out as the card comes up.
-                const float nameWidth = font->CalcTextSizeA(fontSize, FLT_MAX, 0.0f, full.c_str()).x;
-                const float drawn = std::clamp((time - item.time) / 1.2f, 0.0f, 1.0f);
-                draw->AddRectFilled({x, y + fontSize + 7.0f * scale}, {x + std::max(nameWidth, 300.0f * scale) * drawn, y + fontSize + 8.5f * scale},
-                                    IM_COL32(150, 158, 166, a(0.6f)));
-            }
-            y += fontSize + (i == 0 ? 18.0f : 10.0f) * scale;
+            y += fontSize + 8.0f * scale;
         }
     }
 

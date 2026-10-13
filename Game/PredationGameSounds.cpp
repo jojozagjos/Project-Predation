@@ -219,8 +219,11 @@ void PredationGame::UpdateWorldSounds(float dt)
     }
     if (m_exhausted && m_soundClock >= m_breathAt)
     {
-        PlayNamed("Player/out_of_breath", local.position, 0.45f, 0.95f + 0.1f * Random01(), false);
-        m_breathAt = m_soundClock + 1.15f + 0.2f * Random01();
+        PlayNamed("Player/out_of_breath", local.position, 0.45f, 0.97f + 0.06f * Random01(), false);
+        // Again as the last runs out: the recording's own length (a run of breaths), a little less so they meet.
+        const SoundVariants& breath = Sounds("Player/out_of_breath");
+        const float seconds = breath.ids.empty() ? 1.2f : m_app->GetAudio().SecondsOf(breath.ids.front());
+        m_breathAt = m_soundClock + std::max(seconds - 0.2f, 0.8f);
     }
 
     // --- Everybody else's --------------------------------------------------------------------------

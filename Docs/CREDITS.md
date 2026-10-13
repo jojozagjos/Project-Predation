@@ -31,6 +31,12 @@ file shipped with it. There is no credits screen yet; this needs doing before an
 These replace the JDSherbert Footstep Foley pack, whose terms were never confirmed. The synthesised
 footstep is still in `Assets/Data/Sounds/Player.json` as `step`, for when no clips load.
 
+### The player out of breath -- `Assets/Audio/Player/out_of_breath/out_of_breath.wav`
+
+**ceberation, "Heavy Breathing"** (freesound.org/people/ceberation/sounds/235519), made mono and brought up to the
+other sounds' level. **CC-BY 3.0: credit required** -- "Heavy breathing: ceberation (freesound.org), CC-BY 3.0" -- in the
+in-game credits with the metal footsteps. It replaces the synthesised placeholder.
+
 ## Code
 
 Dependencies are declared in `vcpkg.json` and their licences are the ones vcpkg records. All of them
