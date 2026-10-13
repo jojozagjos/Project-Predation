@@ -365,6 +365,16 @@ organisms.
 | Jump cutscene turning, the player seen flying | Phase 7, with the drive upgrades |
 | Outposts too small for a ship that will grow | Phase 2, in the full outpost rework |
 | Thunder and lightning that light everything; realistic clouds for the weather | Done (designed thunder for now; recordings would be better) |
+| Weather and lightning the same for every player | Done (and the rule from now on: anything everybody would compare is synced) |
+| Head through the shuttle's side to its prompt | Done (its nose solid at its skin; a test checks all along it) |
+| Clouds that look real; the whole sky and the ground lit by lightning | Done |
+| Grass and trees showing their card edges | Done (tufts fan from a root; crowns lit as one mass; edge-on cards thin away) |
+| Planets blurry close to; weather visible from space and the map | Done (detail worked out over the baked maps; storm systems, dust veils, lightning on the night side) |
+| Every sun looks the same | Done (its own colour, its real size from where you are, a little brighter or dimmer by its light) |
+| Ambience: rain, wind and storms you can hear, nothing out of place, muffled indoors | Done (recorded weather, CC0; drips only where it is wet) |
+| Straight to a world in another system; nothing to see arriving at a system | Done |
+| The ship going over the landing area before the shuttle can go down | Done |
+| Outposts: buildings, ground, grass, weather; people walking about | Phase 2 (people: your call) |
 | Ship rotation when changing course felt strange | Changed earlier (the turn no longer swings through the planet); tell me if it still feels off |
 | Ending and tutorial | Phase 17, last |
 
