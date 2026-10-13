@@ -563,11 +563,17 @@ void main()
 	{
 		discard;
 	}
-	// A leaf on a card: not there where its picture is not.
+	// A leaf on a card: not there where its picture is not -- and less of it the nearer the card is to edge on, by the way the
+	// card itself faces (not its normal, which a crown or a tuft bends), so no card shows as a hard thin line.
 	bool cutout = u_materialParams.w > 0.5;
-	if (cutout && texture2D(s_baseColor, v_texcoord0).a < 0.5)
+	if (cutout)
 	{
-		discard;
+		vec3 cardFacing = normalize(cross(dFdx(v_worldPos), dFdy(v_worldPos)));
+		float sideOn = 1.0 - smoothstep(0.08, 0.32, abs(dot(cardFacing, normalize(u_cameraPosition.xyz - v_worldPos))));
+		if (texture2D(s_baseColor, v_texcoord0).a < 0.5 + 0.4 * sideOn)
+		{
+			discard;
+		}
 	}
 	vec3 N = normalize(v_normal);
 	// A surface set laid on from every side at once ("triplanar"): sampled across x, y and z by where the point is, and

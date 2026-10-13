@@ -181,13 +181,15 @@ void NeedleBranch(Canvas& canvas, Random& random)
 
 void GrassTuft(Canvas& canvas, Random& random)
 {
-    // Blades from the foot, tapering, curving over.
-    for (int i = 0; i < 70; ++i)
+    // Blades from one root, fanning out from it: the tallest in the middle and leaning least, the outer ones shorter and
+    // leaning further out, so a tuft is a fountain of blades -- not a rectangle of them with a flat top.
+    for (int i = 0; i < 90; ++i)
     {
-        const float x = 256.0f + random.Range(-150.0f, 150.0f);
-        const float high = random.Range(220.0f, 500.0f);
-        const float lean = random.Range(-120.0f, 120.0f);
-        const float wide = random.Range(4.0f, 9.0f);
+        const float out = (random.Unit() + random.Unit() - 1.0f); // -1 to 1, most near the middle
+        const float x = 256.0f + out * 115.0f;
+        const float high = random.Range(0.4f, 1.0f) * 480.0f * (1.0f - 0.35f * out * out);
+        const float lean = out * 230.0f + random.Range(-60.0f, 60.0f);
+        const float wide = random.Range(3.5f, 8.0f);
         const glm::vec3 colour = glm::mix(glm::vec3(0.84f, 0.9f, 0.66f), glm::vec3(0.62f, 0.72f, 0.56f), random.Unit()) * random.Range(0.85f, 1.05f);
         glm::vec2 at{x, 511.0f};
         const int steps = 12;
@@ -195,7 +197,7 @@ void GrassTuft(Canvas& canvas, Random& random)
         {
             const float t0 = static_cast<float>(s) / static_cast<float>(steps);
             const float t1 = static_cast<float>(s + 1) / static_cast<float>(steps);
-            const glm::vec2 next{x + lean * t1 * t1, 511.0f - high * t1};
+            const glm::vec2 next{std::clamp(x + lean * t1 * t1, 6.0f, 505.0f), 511.0f - high * t1};
             canvas.Line(at, next, wide * (1.0f - t0), wide * (1.0f - t1) + 0.4f, colour * (0.8f + 0.2f * t1));
             at = next;
         }

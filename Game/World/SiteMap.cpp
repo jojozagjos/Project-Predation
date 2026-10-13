@@ -367,7 +367,7 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
         }
         builder.SetShadows(true);
         // And the grass all over where the world grows it (UpdateCover): how thick, by the world, and the tufts it is made of.
-        m_coverDensity = m_look.biome == "jungle" ? 4.5f : m_look.biome == "temperate" ? 3.6f : m_look.biome == "oceanic" ? 2.6f : 0.0f;
+        m_coverDensity = m_look.biome == "jungle" ? 6.5f : m_look.biome == "temperate" ? 5.2f : m_look.biome == "oceanic" ? 3.8f : 0.0f;
         m_tufts.clear();
         for (int variant = 0; variant < SiteScatter::kVariants; ++variant)
         {
@@ -609,7 +609,7 @@ MeshData SiteMap::CoverAround(const glm::vec3& eye, float detail) const
                     continue;
                 }
                 // Shorter towards where it stops, so it thins out rather than ending in a line.
-                const float size = (0.35f + 0.4f * hash(px, pz, static_cast<uint32_t>(i * 4 + 2))) * glm::mix(0.4f, 1.0f, glm::smoothstep(cut, cut + 0.3f, wild));
+                const float size = (0.3f + 0.35f * hash(px, pz, static_cast<uint32_t>(i * 4 + 2))) * glm::mix(0.4f, 1.0f, glm::smoothstep(cut, cut + 0.3f, wild));
                 const float yaw = hash(px, pz, static_cast<uint32_t>(i * 4 + 3)) * 6.2831853f;
                 const MeshData& tuft = m_tufts[static_cast<size_t>(px * 7 + pz * 13 + i) % m_tufts.size()];
                 const glm::quat turn = glm::angleAxis(yaw, glm::vec3(0.0f, 1.0f, 0.0f));
@@ -618,8 +618,8 @@ MeshData SiteMap::CoverAround(const glm::vec3& eye, float detail) const
                 const auto channel = [](float v) { return static_cast<uint32_t>(std::clamp(v, 0.0f, 1.0f) * 255.0f + 0.5f); };
                 for (MeshVertex vertex : tuft.vertices)
                 {
-                    const float over = std::max(vertex.position.y * size * 1.1f + 0.04f, 0.0f);
-                    vertex.position = foot + turn * (vertex.position * glm::vec3(size, size * 1.1f, size));
+                    const float over = std::max(vertex.position.y * size * 0.9f + 0.04f, 0.0f);
+                    vertex.position = foot + turn * (vertex.position * glm::vec3(size * 1.15f, size * 0.9f, size * 1.15f));
                     // Lit mostly as the ground under it is, so the grass reads as the ground grown up rather than cards on it.
                     vertex.normal = glm::normalize(glm::mix(turn * vertex.normal, glm::vec3(0.0f, 1.0f, 0.0f), 0.5f));
                     const float shade = static_cast<float>((vertex.color >> 8) & 0xFFu) / 255.0f / std::max(m_coverMaterial.baseColor.g, 0.01f);

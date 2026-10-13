@@ -632,17 +632,40 @@ MeshData Leaves(Kind kind, int variant, uint32_t seed, const glm::vec3& growth)
     }
     case Kind::Grass:
     {
-        // Three tufts crossed, standing.
+        // Four tufts crossed from one root, each turned its own way, its own width, and leaning a little out from the others:
+        // from any side, a clump -- never the one flat shape, nor a star of them.
         const float turn = random.Range(0.0f, kTau);
         const uint32_t colour = tint(0.8f, 1.1f);
-        for (int c = 0; c < 3; ++c)
+        for (int c = 0; c < 4; ++c)
         {
-            const float a = turn + 1.0472f * static_cast<float>(c);
-            Card(mesh, {0.0f, 0.45f, 0.0f}, glm::vec3(std::cos(a), 0.0f, std::sin(a)) * 0.55f, {0.0f, 0.5f, 0.0f}, Foliage::kGrass, colour);
+            const float a = turn + 0.7854f * static_cast<float>(c) + random.Range(-0.3f, 0.3f);
+            const glm::vec3 across{std::cos(a), 0.0f, std::sin(a)};
+            const glm::vec3 lean = glm::vec3(-across.z, 0.0f, across.x) * random.Range(-0.18f, 0.18f);
+            const glm::vec3 up = glm::normalize(glm::vec3(0.0f, 1.0f, 0.0f) + lean) * random.Range(0.42f, 0.55f);
+            Card(mesh, up - glm::vec3(0.0f, 0.05f, 0.0f), across * random.Range(0.42f, 0.6f), up, Foliage::kGrass, colour);
         }
         break;
     }
     default: break;
+    }
+    // A crown lit as the one rounded mass it reads as from any way off -- its sunny side bright, its far side in its own
+    // shade -- rather than each card lit by the way it happens to face, which showed every card for what it is.
+    if ((kind == Kind::Tree || kind == Kind::Shrub) && !mesh.vertices.empty())
+    {
+        glm::vec3 low = mesh.vertices.front().position;
+        glm::vec3 high = low;
+        for (const MeshVertex& vertex : mesh.vertices)
+        {
+            low = glm::min(low, vertex.position);
+            high = glm::max(high, vertex.position);
+        }
+        const glm::vec3 middle = (low + high) * 0.5f;
+        const glm::vec3 reach = glm::max((high - low) * 0.5f, glm::vec3(0.01f));
+        for (MeshVertex& vertex : mesh.vertices)
+        {
+            const glm::vec3 outward = (vertex.position - middle) / reach + glm::vec3(0.0f, 0.3f, 0.0f);
+            vertex.normal = glm::normalize(glm::mix(vertex.normal, glm::normalize(outward + glm::vec3(0.0f, 1.0e-3f, 0.0f)), 0.75f));
+        }
     }
     return mesh;
 }
