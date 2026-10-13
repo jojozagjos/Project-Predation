@@ -228,7 +228,8 @@ std::vector<std::string> SharedFaces(const std::vector<const ModelAsset*>& model
     {
         for (const ModelPart& part : model->parts)
         {
-            if (part.shape == PartShape::Box && part.rotation == glm::vec3(0.0f) && part.parent.empty())
+            // (A solid_ part is never drawn: only something to walk into, it cannot flicker.)
+            if (part.shape == PartShape::Box && part.rotation == glm::vec3(0.0f) && part.parent.empty() && part.name.rfind("solid_", 0) != 0)
             {
                 parts.push_back(&part);
             }
@@ -540,7 +541,7 @@ TEST_CASE("Cargo props share no surface between their own parts", "[ship][cargo]
 {
     const glm::vec3 grey{0.3f, 0.3f, 0.3f};
     const ModelAsset props[] = {Cargo::PlasticCrate({1.1f, 0.62f, 0.7f}, grey), Cargo::HardCase({0.75f, 0.5f, 0.55f}, grey), Cargo::Drum(grey),
-                                Cargo::GasRack(3, grey), Cargo::WrappedPallet(0.9f), Cargo::Duffel(grey)};
+                                Cargo::GasRack(3, grey), Cargo::WrappedPallet(0.9f), Cargo::Duffel(grey), Cargo::ShippingContainer(12.19f, grey)};
     for (const ModelAsset& prop : props)
     {
         INFO(prop.name);

@@ -3,6 +3,7 @@
 #include "Engine/Core/Log.h"
 #include "Engine/Render/Mesh.h"
 #include "Engine/Render/Primitives.h"
+#include "Game/World/Cargo.h"
 #include "Game/World/MapBuilder.h"
 #include "Game/World/ShipMap.h"
 #include "Game/World/SiteScatter.h"
@@ -33,12 +34,7 @@ const Material kSupportPlain = Material::Metal({0.22f, 0.22f, 0.23f}, 0.6f);
 const Material kTankPlain = Material::Diffuse({0.5f, 0.5f, 0.47f}, 0.7f);
 const Material kPolePlain = Material::Metal({0.25f, 0.25f, 0.26f}, 0.55f);
 // Freight containers come in the colours they always do, faded.
-const Material kContainerPlain[] = {
-    Material::Diffuse({0.32f, 0.12f, 0.08f}, 0.8f),
-    Material::Diffuse({0.1f, 0.18f, 0.27f}, 0.8f),
-    Material::Diffuse({0.23f, 0.25f, 0.14f}, 0.8f),
-    Material::Diffuse({0.36f, 0.35f, 0.33f}, 0.8f),
-};
+const glm::vec3 kContainerColours[] = {{0.32f, 0.12f, 0.08f}, {0.1f, 0.18f, 0.27f}, {0.23f, 0.25f, 0.14f}, {0.36f, 0.35f, 0.33f}};
 
 // Open ground is drawn in big pieces: few lamps reach it, and there is a great deal of it.
 constexpr float kOutdoorTile = 24.0f;
@@ -117,11 +113,6 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
     const Material supportMaterial = Surfaces::Apply(kSupportPlain, "pipe_steel", 1.0f, 0.3f);
     const Material tankMaterial = Surfaces::Apply(kTankPlain, "painted_metal", 3.0f, 0.2f);
     const Material poleMaterial = Surfaces::Apply(kPolePlain, "pipe_steel", 1.0f, 0.3f);
-    Material containerMaterials[std::size(kContainerPlain)];
-    for (size_t i = 0; i < std::size(kContainerPlain); ++i)
-    {
-        containerMaterials[i] = Surfaces::Apply(kContainerPlain[i], "painted_metal", 3.0f, 0.15f);
-    }
     // Where something stands on the ground: how far its foot is moved from the plan's flat ground to the terrain's, at the
     // lowest of its middle and corners, so nothing on a slope stands on air.
     const auto lift = [&](glm::vec2 at, float reach)
@@ -225,9 +216,21 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
             builder.AddBox(NameOf(block.kind), transform, block.size, rockMaterial);
             break;
         case Kind::Container:
-            builder.AddBox(NameOf(block.kind), transform, block.size,
-                           containerMaterials[static_cast<size_t>(Mix(seed, static_cast<uint32_t>(containers++)) % std::size(containerMaterials))]);
+        {
+            // A freight container (Cargo) the size of the block, its length along the block's longer side: drawn as one and
+            // solid as the block.
+            const bool alongZ = block.size.z >= block.size.x;
+            const glm::vec3 colour = kContainerColours[static_cast<size_t>(Mix(seed, static_cast<uint32_t>(containers++)) % std::size(kContainerColours))];
+            Transform foot = transform;
+            foot.position.y -= block.size.y * 0.5f;
+            foot.rotation = transform.rotation * glm::angleAxis(alongZ ? 0.0f : glm::half_pi<float>(), glm::vec3(0.0f, 1.0f, 0.0f));
+            for (const auto& [material, mesh] : Cargo::Drawn(Cargo::ShippingContainer(alongZ ? block.size.z : block.size.x, colour)))
+            {
+                builder.AddMesh(NameOf(block.kind), foot, mesh, material, false);
+            }
+            m_bodies.push_back(physics.CreateBox(block.size * 0.5f, transform, BodyMotion::Static));
             break;
+        }
         case Kind::Pad:
             builder.AddBox(NameOf(block.kind), transform, block.size, padMaterial, kOutdoorTile);
             break;

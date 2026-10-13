@@ -1,10 +1,13 @@
 #pragma once
 
 #include "Engine/Assets/ModelAsset.h"
+#include "Engine/Render/Material.h"
 
 #include <glm/vec3.hpp>
 
 #include <cstdint>
+#include <utility>
+#include <vector>
 
 namespace pred
 {
@@ -34,9 +37,16 @@ ModelAsset GasRack(int count, const glm::vec3& colour);
 ModelAsset WrappedPallet(float high);
 // A duffel bag lying along x, in `colour`.
 ModelAsset Duffel(const glm::vec3& colour);
+// A freight container `length` long (6.06 or 12.19, along z; 2.44 wide, 2.59 high), its paint `colour`, faded and worn:
+// corrugated sides, ends and roof, corner posts and the castings at its corners, rails top and bottom, and at its +z end
+// the two doors with their locking bars and handles.
+ModelAsset ShippingContainer(float length, const glm::vec3& colour);
 
 // `prop`'s parts into `into`, stood at `at` and turned `yawDegrees` about up; each part named `prefix` and its own name.
 void Place(ModelAsset& into, const ModelAsset& prop, const glm::vec3& at, float yawDegrees, const std::string& prefix = "cargo_");
+// What a prop is drawn as, placed by its own parts: its parts gathered by what they are made of, each gathering one mesh
+// in the prop's frame (for a map that places it, not a vehicle).
+std::vector<std::pair<Material, MeshData>> Drawn(const ModelAsset& prop);
 // The box round a prop as built: its corners.
 void Bounds(const ModelAsset& prop, glm::vec3& lo, glm::vec3& hi);
 

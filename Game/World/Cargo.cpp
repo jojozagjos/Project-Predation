@@ -1,8 +1,10 @@
 #include "Game/World/Cargo.h"
 
 #include "Engine/Render/Primitives.h"
+#include "Game/World/Surfaces.h"
 
 #include <glm/geometric.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <glm/mat3x3.hpp>
 #include <glm/mat4x4.hpp>
@@ -338,6 +340,112 @@ ModelAsset Duffel(const glm::vec3& colour)
     return model;
 }
 
+ModelAsset ShippingContainer(float length, const glm::vec3& colour)
+{
+    ModelAsset model;
+    model.name = "shipping_container";
+    const float w = 1.22f;
+    const float h = 2.59f;
+    const float l = length * 0.5f;
+    const float post = 0.16f;
+    const float rail = 0.16f;
+    const glm::vec3 frame = colour * 0.82f;
+    const glm::vec3 steel{0.17f, 0.17f, 0.18f};
+
+    // The shell, one mesh of plate and corrugations: the sides' ribs upright every 28 cm, standing out to the frame's face;
+    // the closed end's the same; the roof's across, shallower, every half metre.
+    MeshData shell;
+    const auto plate = [&](const glm::vec3& lo, const glm::vec3& hi)
+    { shell.Append(Primitives::Box(glm::abs(hi - lo)), glm::translate(glm::mat4(1.0f), (lo + hi) * 0.5f)); };
+    for (const float s : {-1.0f, 1.0f})
+    {
+        const float inner = s * (w - 0.06f);
+        const float face = s * (w - 0.035f);
+        const float out = s * (w - 0.006f);
+        plate({std::min(inner, face), rail, -l + post}, {std::max(inner, face), h - rail, l - post});
+        for (float z = -l + post + 0.14f; z < l - post - 0.07f; z += 0.28f)
+        {
+            plate({std::min(face, out), rail, z - 0.07f}, {std::max(face, out), h - rail, z + 0.07f});
+        }
+    }
+    plate({-w + post, rail, -l + 0.035f}, {w - post, h - rail, -l + 0.06f});
+    for (float x = -w + post + 0.14f; x < w - post - 0.07f; x += 0.28f)
+    {
+        plate({x - 0.07f, rail, -l + 0.006f}, {x + 0.07f, h - rail, -l + 0.035f});
+    }
+    plate({-w + 0.1f, h - 0.07f, -l + post}, {w - 0.1f, h - 0.05f, l - post});
+    for (float z = -l + post + 0.25f; z < l - post - 0.1f; z += 0.5f)
+    {
+        plate({-w + 0.12f, h - 0.05f, z - 0.12f}, {w - 0.12f, h - 0.025f, z + 0.12f});
+    }
+    ModelPart& skin = model.parts.emplace_back();
+    skin.name = "container_shell";
+    skin.shape = PartShape::Mesh;
+    skin.size = glm::vec3(1.0f);
+    skin.mesh = std::move(shell);
+    skin.color = colour;
+    skin.roughness = 0.6f;
+    skin.metallic = 0.4f;
+    Worn(skin, 0.6f);
+
+    // The frame: a post at each corner, rails along the sides and across the ends top and bottom, a casting at each corner
+    // standing a little proud of it all; underneath, the floor's cross members.
+    for (const float sx : {-1.0f, 1.0f})
+    {
+        for (const float sz : {-1.0f, 1.0f})
+        {
+            const float x0 = sx < 0.0f ? -w : w - post;
+            const float z0 = sz < 0.0f ? -l : l - post;
+            Worn(Box(model, "container_post", {x0, 0.006f, z0}, {x0 + post, h, z0 + post}, frame, 0.6f, 0.4f), 0.7f);
+            for (const float y : {0.0f, h - 0.118f})
+            {
+                const float cx = sx < 0.0f ? -w - 0.006f : w - 0.172f;
+                const float cz = sz < 0.0f ? -l - 0.012f : l - 0.15f;
+                Box(model, "container_casting", {cx, y, cz}, {cx + 0.178f, y + 0.124f, cz + 0.162f},
+                    steel, 0.7f, 0.6f);
+            }
+        }
+        for (const float y : {0.006f, h - rail})
+        {
+            const float x0 = sx < 0.0f ? -w : w - 0.11f;
+            Worn(Box(model, "container_rail", {x0, y, -l + post}, {x0 + 0.11f, y + rail, l - post}, frame, 0.6f, 0.4f), 0.7f);
+        }
+    }
+    for (const float sz : {-1.0f, 1.0f})
+    {
+        for (const float y : {0.006f, h - rail})
+        {
+            const float z0 = sz < 0.0f ? -l : l - 0.11f;
+            Worn(Box(model, "container_end_rail", {-w + post, y, z0}, {w - post, y + rail, z0 + 0.11f}, frame, 0.6f, 0.4f), 0.7f);
+        }
+    }
+    Box(model, "container_floor", {-w + 0.11f, 0.03f, -l + post}, {w - 0.11f, rail - 0.01f, l - post}, steel * 0.7f, 0.85f, 0.3f);
+
+    // The doors at the +z end: two leaves a little in from the frame, each with stiffeners across it, two locking bars
+    // up it in their cams top and bottom, and a handle on each bar.
+    for (const float s : {-1.0f, 1.0f})
+    {
+        const float x0 = s < 0.0f ? -w + post + 0.004f : 0.004f;
+        const float x1 = s < 0.0f ? -0.004f : w - post - 0.004f;
+        Worn(Box(model, "container_door", {x0, rail, l - 0.07f}, {x1, h - rail, l - 0.035f}, colour, 0.6f, 0.4f), 0.55f);
+        for (const float y : {0.75f, h - 0.75f})
+        {
+            Worn(Box(model, "container_door_rib", {x0 + 0.03f, y - 0.05f, l - 0.035f}, {x1 - 0.03f, y + 0.05f, l - 0.015f}, colour * 0.92f, 0.6f, 0.4f),
+                 0.6f);
+        }
+        for (const float x : {s * 0.18f, s * (w - post - 0.3f)})
+        {
+            Cylinder(model, "container_bar", {x, h * 0.5f, l - 0.002f}, 0.035f, h - 0.36f, Lying::Upright, steel, 0.5f, 0.7f);
+            for (const float y : {0.22f, h - 0.22f})
+            {
+                Box(model, "container_cam", {x - 0.045f, y - 0.05f, l - 0.03f}, {x + 0.045f, y + 0.05f, l + 0.03f}, steel, 0.55f, 0.7f);
+            }
+            Box(model, "container_handle", {x - 0.025f, 1.05f, l - 0.002f}, {x + 0.025f, 1.32f, l + 0.06f}, steel, 0.5f, 0.7f);
+        }
+    }
+    return model;
+}
+
 void Place(ModelAsset& into, const ModelAsset& prop, const glm::vec3& at, float yawDegrees, const std::string& prefix)
 {
     const glm::quat turn = glm::angleAxis(glm::radians(yawDegrees), glm::vec3(0.0f, 1.0f, 0.0f));
@@ -348,6 +456,46 @@ void Place(ModelAsset& into, const ModelAsset& prop, const glm::vec3& at, float 
         part.rotation.y += yawDegrees;
         into.parts.push_back(std::move(part));
     }
+}
+
+std::vector<std::pair<Material, MeshData>> Drawn(const ModelAsset& prop)
+{
+    std::vector<std::pair<Material, MeshData>> gathered;
+    for (const ModelPart& part : prop.parts)
+    {
+        Material material = Material::Diffuse(part.color, part.roughness);
+        material.metallic = part.metallic;
+        if (!part.surface.empty())
+        {
+            material = part.surfaceWear > 0.0f ? Surfaces::ApplyWorn(material, part.surface, part.surfaceScale, part.surfaceWear)
+                                               : Surfaces::Apply(material, part.surface, part.surfaceScale, part.surfaceKeep);
+            material.surfaceOnThing = part.surfaceOnThing;
+        }
+        auto group = std::find_if(gathered.begin(), gathered.end(), [&](const std::pair<Material, MeshData>& g)
+                                  { return g.first.baseColor == material.baseColor && g.first.metallic == material.metallic &&
+                                           g.first.roughness == material.roughness && g.first.surfaceWear == material.surfaceWear &&
+                                           g.first.baseColorTexture == material.baseColorTexture; });
+        if (group == gathered.end())
+        {
+            gathered.emplace_back(material, MeshData{});
+            group = gathered.end() - 1;
+        }
+        const glm::mat4 local = part.LocalMatrix();
+        const glm::mat3 turn(local);
+        const MeshData piece = prop.BuildPartMesh(part);
+        const auto base = static_cast<uint32_t>(group->second.vertices.size());
+        for (MeshVertex vertex : piece.vertices)
+        {
+            vertex.position = glm::vec3(local * glm::vec4(vertex.position, 1.0f));
+            vertex.normal = glm::normalize(turn * vertex.normal);
+            group->second.vertices.push_back(vertex);
+        }
+        for (const uint32_t index : piece.indices)
+        {
+            group->second.indices.push_back(base + index);
+        }
+    }
+    return gathered;
 }
 
 void Bounds(const ModelAsset& prop, glm::vec3& lo, glm::vec3& hi)

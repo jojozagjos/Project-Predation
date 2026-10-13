@@ -717,7 +717,7 @@ private:
             }
             else if (roll < 0.7f)
             {
-                m_solid.Box("container", {kAlleyEast - 4.4f, s, z}, {kAlleyEast - 1.96f, s + 2.59f, z + 6.1f}, kBoxes[m_random.Int(0, 5)], 0.7f, 0.3f);
+                Container({kAlleyEast - 4.4f, s, z}, {kAlleyEast - 1.96f, s + 2.59f, z + 6.06f}, kBoxes[m_random.Int(0, 5)]);
                 z += 4.0f;
             }
             else if (roll < 0.85f)
@@ -852,6 +852,17 @@ private:
                          "barrel_");
             m_solid.Cylinder("solid_barrel", c + glm::vec3(0.0f, 0.44f, 0.0f), 0.6f, 0.88f, glm::vec3(0.0f), colour, 0.6f, 0.4f);
         }
+    }
+    // A freight container (Cargo) filling the box lo..hi, its length along the box's longer side and its doors either end:
+    // drawn as one, solid as the box.
+    void Container(const glm::vec3& lo, const glm::vec3& hi, const glm::vec3& colour)
+    {
+        const glm::vec3 size = hi - lo;
+        const bool alongZ = size.z >= size.x;
+        const float yaw = (alongZ ? 0.0f : 90.0f) + (m_random.Chance(0.5f) ? 180.0f : 0.0f);
+        Cargo::Place(m_dress.model, Cargo::ShippingContainer(alongZ ? size.z : size.x, colour), {(lo.x + hi.x) * 0.5f, lo.y, (lo.z + hi.z) * 0.5f}, yaw,
+                     "container_");
+        m_solid.Box("solid_container", lo, hi, colour);
     }
     // A wheeled bin, its lid shut.
     void Bin(const glm::vec3& at)
@@ -1220,7 +1231,7 @@ private:
         const bool crane = L >= 30.0f && D >= 16.0f && m_random.Chance(0.5f);
         const float margin = crane ? 2.5f : 1.0f;
         const bool deep = D >= 15.0f;
-        const glm::vec2 box = deep ? glm::vec2(2.44f, 12.2f) : glm::vec2(12.2f, 2.44f); // along u, along v
+        const glm::vec2 box = deep ? glm::vec2(2.44f, 12.19f) : glm::vec2(12.19f, 2.44f); // along u, along v
         const glm::vec2 step = deep ? glm::vec2(3.2f, 14.0f) : glm::vec2(13.4f, 3.2f);
         for (float u = margin; u + box.x <= L - margin; u += step.x)
         {
@@ -1234,8 +1245,9 @@ private:
                 for (int level = 0; level < high; ++level)
                 {
                     const float y = s + 2.62f * static_cast<float>(level);
-                    Box(m_solid, lot, "container", {u, y, v}, {u + box.x, y + 2.59f, v + box.y}, kBoxes[m_random.Int(0, static_cast<int>(std::size(kBoxes)) - 1)],
-                        0.7f, 0.3f);
+                    const glm::vec3 a = lot.At(u, y, v);
+                    const glm::vec3 c = lot.At(u + box.x, y + 2.59f, v + box.y);
+                    Container(glm::min(a, c), glm::max(a, c), kBoxes[m_random.Int(0, static_cast<int>(std::size(kBoxes)) - 1)]);
                 }
             }
         }

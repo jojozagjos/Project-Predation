@@ -1,5 +1,6 @@
 #include "Game/World/KestrelStation.h"
 
+#include "Game/World/Cargo.h"
 #include "Game/World/PartBuilder.h"
 #include "Game/World/ShipMap.h"
 
@@ -396,7 +397,10 @@ ModelAsset Solid(const glm::vec3& ground, const glm::vec3& rock)
         for (int level = 0; level < high; ++level)
         {
             const float y = s + 2.62f * static_cast<float>(level);
-            b.Box("container", {x, y, z}, {x + 2.44f, y + 2.59f, z + 12.2f}, boxes[(i + level * 2) % 5], 0.7f, 0.3f);
+            // A freight container (Cargo): drawn, never solid itself, and a box as solid as it.
+            Cargo::Place(b.model, Cargo::ShippingContainer(12.19f, boxes[(i + level * 2) % 5]), {x + 1.22f, y, z + 6.095f}, (i + level) % 2 == 0 ? 0.0f : 180.0f,
+                         "fx_container_");
+            b.Box("solid_container", {x, y, z}, {x + 2.44f, y + 2.59f, z + 12.19f}, boxes[(i + level * 2) % 5]);
         }
     }
     for (const float x : {95.0f, 138.0f})

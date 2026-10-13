@@ -157,49 +157,9 @@ public:
     // solid as the box round it.
     void Prop(const char* name, const ModelAsset& prop, const glm::vec3& at, float yawDegrees)
     {
-        struct Gathered
+        for (const auto& [material, mesh] : Cargo::Drawn(prop))
         {
-            Material material;
-            MeshData mesh;
-        };
-        std::vector<Gathered> gathered;
-        for (const ModelPart& part : prop.parts)
-        {
-            Material material = Material::Diffuse(part.color, part.roughness);
-            material.metallic = part.metallic;
-            if (!part.surface.empty())
-            {
-                material = part.surfaceWear > 0.0f ? Surfaces::ApplyWorn(material, part.surface, part.surfaceScale, part.surfaceWear)
-                                                   : Surfaces::Apply(material, part.surface, part.surfaceScale, part.surfaceKeep);
-                material.surfaceOnThing = part.surfaceOnThing;
-            }
-            auto group = std::find_if(gathered.begin(), gathered.end(), [&](const Gathered& g)
-                                      { return g.material.baseColor == material.baseColor && g.material.metallic == material.metallic &&
-                                               g.material.roughness == material.roughness && g.material.surfaceWear == material.surfaceWear &&
-                                               g.material.baseColorTexture == material.baseColorTexture; });
-            if (group == gathered.end())
-            {
-                gathered.push_back({material, MeshData{}});
-                group = gathered.end() - 1;
-            }
-            const glm::mat4 local = part.LocalMatrix();
-            const glm::mat3 turn(local);
-            const MeshData piece = prop.BuildPartMesh(part);
-            const auto base = static_cast<uint32_t>(group->mesh.vertices.size());
-            for (MeshVertex vertex : piece.vertices)
-            {
-                vertex.position = glm::vec3(local * glm::vec4(vertex.position, 1.0f));
-                vertex.normal = glm::normalize(turn * vertex.normal);
-                group->mesh.vertices.push_back(vertex);
-            }
-            for (const uint32_t index : piece.indices)
-            {
-                group->mesh.indices.push_back(base + index);
-            }
-        }
-        for (const Gathered& g : gathered)
-        {
-            m_map.AddMesh(name, At(at, yawDegrees), g.mesh, g.material, false);
+            m_map.AddMesh(name, At(at, yawDegrees), mesh, material, false);
         }
         glm::vec3 lo;
         glm::vec3 hi;
