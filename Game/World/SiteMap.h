@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Engine/Physics/PhysicsWorld.h"
+#include "Engine/Render/Material.h"
 #include "Engine/Scene/Scene.h"
 #include "Game/World/FacilityMap.h"
 #include "Game/World/LevelLights.h"
@@ -9,9 +10,11 @@
 #include "Game/World/SiteTerrain.h"
 #include "Game/World/WorldObjects.h"
 
+#include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
 
 #include <cstdint>
+#include <future>
 #include <memory>
 #include <string>
 #include <vector>
@@ -73,6 +76,9 @@ public:
     // Whether anything could walk there: the open ground and the foot of the rock round it, not the heights of the rock
     // (too steep for anybody), which the navigation is not built over.
     bool InReach(const glm::vec3& at) const;
+    // The grass round the eye, where the world grows it: tufts thick close by and thinner further off, out to some tens of
+    // metres, made again as the eye moves on (each tuft where its patch of ground puts it, so they stay put).
+    void UpdateCover(Scene& scene, MeshLibrary& meshes, const glm::vec3& eye);
 
 private:
     Look m_look;
@@ -87,6 +93,17 @@ private:
     bool m_hasLights = false;
     bool m_built = false;
     uint16_t m_seed = 0;
+    // The grass round the eye (UpdateCover): tufts a square metre, its tufts' shapes and material, what it is drawn as, and
+    // the patch of ground the eye was on when it was last made.
+    float m_coverDensity = 0.0f;
+    std::vector<MeshData> m_tufts;
+    Material m_coverMaterial;
+    Entity m_cover;
+    MeshHandle m_coverMesh;
+    glm::ivec2 m_coverAt{-100000, -100000};
+    // The next one, being made on another thread.
+    std::future<MeshData> m_coverBuild;
+    MeshData CoverAround(const glm::vec3& eye) const;
 };
 
 } // namespace pred

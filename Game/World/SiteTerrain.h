@@ -53,7 +53,9 @@ public:
     // as it steepens (painted per vertex, as a share of Paint's colour, which is the material's).
     static constexpr int kChunkCells = 30;
     int Chunks() const { return (m_cells + kChunkCells - 1) / kChunkCells; }
-    MeshData Mesh(int chunkX, int chunkZ, const glm::vec3& ground, const glm::vec3& rock) const;
+    // `grown`, when given: the colour of the grass over the world's own ground, laid over it there (and thinning out towards
+    // what was levelled) so the ground reads as grown over far off, past where tufts of it are drawn.
+    MeshData Mesh(int chunkX, int chunkZ, const glm::vec3& ground, const glm::vec3& rock, const glm::vec3* grown = nullptr) const;
     // Whether anybody could ever stand on a piece: the pieces wholly up the rock round the edge are drawn but need nothing
     // to stand on.
     bool InReach(int chunkX, int chunkZ) const;

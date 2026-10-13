@@ -280,15 +280,17 @@ std::vector<Share> SharesOf(const std::string& biome)
     }
     if (biome == "temperate")
     {
-        return {{Kind::Tree, 9.0f, 6}, {Kind::Shrub, 24.0f, 8}, {Kind::Grass, 90.0f, 14}, {Kind::Boulder, 5.0f, 3}};
+        // Woods: groves of trees, close together, with open ground between.
+        return {{Kind::Tree, 26.0f, 16}, {Kind::Shrub, 30.0f, 8}, {Kind::Grass, 90.0f, 14}, {Kind::Boulder, 5.0f, 3}};
     }
     if (biome == "jungle")
     {
-        return {{Kind::Tree, 20.0f, 9}, {Kind::Shrub, 40.0f, 10}, {Kind::Grass, 120.0f, 16}, {Kind::Boulder, 3.0f, 2}};
+        // Dense forest.
+        return {{Kind::Tree, 55.0f, 24}, {Kind::Shrub, 60.0f, 12}, {Kind::Grass, 120.0f, 16}, {Kind::Boulder, 3.0f, 2}};
     }
     if (biome == "oceanic")
     {
-        return {{Kind::Shrub, 16.0f, 7}, {Kind::Grass, 70.0f, 12}, {Kind::Boulder, 8.0f, 4}, {Kind::Tree, 3.0f, 3}};
+        return {{Kind::Shrub, 16.0f, 7}, {Kind::Grass, 70.0f, 12}, {Kind::Boulder, 8.0f, 4}, {Kind::Tree, 8.0f, 6}};
     }
     if (biome == "desert")
     {
@@ -391,7 +393,7 @@ std::vector<Item> Plan(uint32_t seed, const std::string& biome, const SitePlan& 
         const int total = static_cast<int>(share.perHectare * hectares * random.Range(0.75f, 1.25f));
         const int clusters = std::max(1, total / std::max(share.cluster, 1));
         // The spread of a cluster: tight for grass, wide for trees.
-        const float spread = share.kind == Kind::Grass ? 2.5f : share.kind == Kind::Tree ? 9.0f : share.kind == Kind::Boulder ? 6.0f : 4.0f;
+        const float spread = share.kind == Kind::Grass ? 2.5f : share.kind == Kind::Tree ? 13.0f : share.kind == Kind::Boulder ? 6.0f : 4.0f;
         for (int c = 0; c < clusters; ++c)
         {
             const glm::vec2 centre{plan.origin.x + random.Range(0.0f, plan.size), plan.origin.z + random.Range(0.0f, plan.size)};

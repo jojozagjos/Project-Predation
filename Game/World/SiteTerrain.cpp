@@ -388,7 +388,7 @@ float SiteTerrain::Rockiness(const glm::vec3& normal)
     return 1.0f - Smooth(kSteepCosine - 0.06f, 0.94f, normal.y);
 }
 
-MeshData SiteTerrain::Mesh(int chunkX, int chunkZ, const glm::vec3& ground, const glm::vec3& rock) const
+MeshData SiteTerrain::Mesh(int chunkX, int chunkZ, const glm::vec3& ground, const glm::vec3& rock, const glm::vec3* grown) const
 {
     MeshData mesh;
     const int i0 = chunkX * kChunkCells;
@@ -423,7 +423,14 @@ MeshData SiteTerrain::Mesh(int chunkX, int chunkZ, const glm::vec3& ground, cons
             vertex.position = {x, At(i, j), z};
             vertex.normal = glm::normalize(glm::vec3(-dx, 1.0f, -dz));
             vertex.uv = {x, z};
-            vertex.color = pack(glm::mix(ground, rock, Rockiness(vertex.normal)) / base);
+            // Grown over where it is the world's own ground, in patches.
+            glm::vec3 soil = ground;
+            if (grown != nullptr)
+            {
+                const float patchy = 0.55f + 0.45f * std::sin(x * 0.13f + std::sin(z * 0.09f) * 2.0f) * std::sin(z * 0.11f + 1.7f);
+                soil = glm::mix(ground, *grown, std::clamp(Wildness(x, z) * 1.6f - 0.3f, 0.0f, 1.0f) * patchy * 0.75f);
+            }
+            vertex.color = pack(glm::mix(soil, rock, Rockiness(vertex.normal)) / base);
             mesh.vertices.push_back(vertex);
         }
     }

@@ -167,6 +167,12 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
         PhysicsWorld::PreparedMesh shape;
     };
     const int chunks = m_terrain.Chunks();
+    // Where the world grows grass, its ground grown over far off as well as the tufts drawn near (UpdateCover): their colour.
+    const bool grassy = m_look.biome == "jungle" || m_look.biome == "temperate" || m_look.biome == "oceanic";
+    const glm::vec3 growing = glm::mix(m_look.ground, m_look.biome == "jungle" ? glm::vec3(0.12f, 0.3f, 0.08f) : glm::vec3(0.2f, 0.34f, 0.12f), 0.65f);
+    const glm::vec3 grassColour = glm::mix(growing, m_look.ground, 0.65f) * 1.3f;
+    // (The ground under it a deeper green: seen far off, the grass is mostly its own shade.)
+    const glm::vec3 grownOver = growing * 1.15f;
     std::vector<Piece> pieces(static_cast<size_t>(chunks * chunks));
     {
         std::vector<std::future<void>> rows;
@@ -177,7 +183,7 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
                                           for (int cx = 0; cx < chunks; ++cx)
                                           {
                                               Piece& piece = pieces[static_cast<size_t>(cz * chunks + cx)];
-                                              piece.mesh = m_terrain.Mesh(cx, cz, m_look.ground, cliffColour);
+                                              piece.mesh = m_terrain.Mesh(cx, cz, m_look.ground, cliffColour, grassy ? &grownOver : nullptr);
                                               if (!piece.mesh.indices.empty() && m_terrain.InReach(cx, cz))
                                               {
                                                   piece.shape = PhysicsWorld::PrepareMesh(piece.mesh);
@@ -357,6 +363,16 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
             }
         }
         builder.SetShadows(true);
+        // And the grass all over where the world grows it (UpdateCover): how thick, by the world, and the tufts it is made of.
+        m_coverDensity = m_look.biome == "jungle" ? 4.5f : m_look.biome == "temperate" ? 3.6f : m_look.biome == "oceanic" ? 2.6f : 0.0f;
+        m_tufts.clear();
+        for (int variant = 0; variant < SiteScatter::kVariants; ++variant)
+        {
+            // A shade nearer the ground's own colour than the clumps are, so the ground reads as grown over, not dotted.
+            m_tufts.push_back(SiteScatter::Leaves(SiteScatter::Kind::Grass, variant, seed, grassColour));
+        }
+        m_coverMaterial = leaves;
+        m_coverAt = glm::ivec2(-100000);
         PRED_LOG_INFO(Gameplay, "Site scatter: {} things on the ground ({})", scattered.size(), m_look.biome);
     }
 
@@ -424,7 +440,19 @@ CinePose SiteMap::ShuttleHome() const
 
 void SiteMap::Clear(Scene& scene, PhysicsWorld& physics, LevelLights* lights)
 {
+    // The grass being made on another thread reads the ground: done with first.
+    if (m_coverBuild.valid())
+    {
+        m_coverBuild.wait();
+        m_coverBuild = {};
+    }
     m_shuttle.Clear(scene, &physics);
+    if (m_cover.IsValid())
+    {
+        scene.Destroy(m_cover);
+        m_cover = Entity{};
+    }
+    m_coverDensity = 0.0f;
     for (const Entity entity : m_entities)
     {
         scene.Destroy(entity);
@@ -471,6 +499,111 @@ bool SiteMap::Contains(const glm::vec3& at) const
     glm::vec3 max;
     Bounds(min, max);
     return at.x >= min.x && at.y >= min.y && at.z >= min.z && at.x <= max.x && at.y <= max.y && at.z <= max.z;
+}
+
+void SiteMap::UpdateCover(Scene& scene, MeshLibrary& meshes, const glm::vec3& eye)
+{
+    if (!m_built || m_coverDensity <= 0.0f || m_tufts.empty())
+    {
+        return;
+    }
+    // Made on another thread, so walking on never stops for it: drawn when it is ready.
+    if (m_coverBuild.valid() && m_coverBuild.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
+    {
+        const MeshData mesh = m_coverBuild.get();
+        if (!mesh.vertices.empty())
+        {
+            m_coverMesh = m_coverMesh.IsValid() ? meshes.Replace(m_coverMesh, mesh) : meshes.Upload(mesh, "site_grass_cover");
+            if (!m_cover.IsValid())
+            {
+                m_cover = scene.CreateMeshEntity("site_grass_cover", Transform{}, m_coverMesh, m_coverMaterial);
+                if (MeshRenderer* renderer = scene.GetMeshRenderer(m_cover))
+                {
+                    renderer->castsShadow = false;
+                    renderer->blocksSky = false;
+                }
+            }
+        }
+    }
+    // Made again only when the eye has moved onto another patch of ground some metres across (and not while one is being made).
+    constexpr float kStep = 5.0f;
+    const glm::ivec2 on{static_cast<int>(std::floor(eye.x / kStep)), static_cast<int>(std::floor(eye.z / kStep))};
+    if (on == m_coverAt || m_coverBuild.valid())
+    {
+        return;
+    }
+    m_coverAt = on;
+    m_coverBuild = std::async(std::launch::async, [this, eye] { return CoverAround(eye); });
+}
+
+MeshData SiteMap::CoverAround(const glm::vec3& eye) const
+{
+    // Square metres of ground in patches of two, out to some tens of metres. Each patch's tufts are where its own numbers put
+    // them, the same every time; how many of them show falls with how far off the patch is -- each coming up from nothing as
+    // the eye nears, not all at once.
+    constexpr float kPatch = 2.0f;
+    constexpr float kReach = 44.0f;
+    const auto hash = [](int x, int z, uint32_t n)
+    {
+        uint32_t h = static_cast<uint32_t>(x) * 0x8DA6B343u ^ static_cast<uint32_t>(z) * 0xD8163841u ^ n * 0xCB1AB31Fu;
+        h ^= h >> 13;
+        h *= 0x5BD1E995u;
+        h ^= h >> 15;
+        return static_cast<float>(h & 0xFFFFFFu) / static_cast<float>(0x1000000u);
+    };
+    MeshData mesh;
+    const int reach = static_cast<int>(kReach / kPatch);
+    const int cx = static_cast<int>(std::floor(eye.x / kPatch));
+    const int cz = static_cast<int>(std::floor(eye.z / kPatch));
+    const int most = static_cast<int>(std::ceil(m_coverDensity * kPatch * kPatch)) + 1;
+    for (int pz = cz - reach; pz <= cz + reach; ++pz)
+    {
+        for (int px = cx - reach; px <= cx + reach; ++px)
+        {
+            const glm::vec2 middle{(static_cast<float>(px) + 0.5f) * kPatch, (static_cast<float>(pz) + 0.5f) * kPatch};
+            const float distance = glm::length(middle - glm::vec2(eye.x, eye.z));
+            if (distance > kReach)
+            {
+                continue;
+            }
+            const float share = std::clamp(1.0f - (distance - 8.0f) / 40.0f, 0.12f, 1.0f) * (1.0f - glm::smoothstep(kReach - 6.0f, kReach, distance));
+            const float count = m_coverDensity * kPatch * kPatch * share;
+            for (int i = 0; i < most; ++i)
+            {
+                const float grows = std::clamp(count - static_cast<float>(i), 0.0f, 1.0f);
+                if (grows <= 0.0f)
+                {
+                    break;
+                }
+                const float x = (static_cast<float>(px) + hash(px, pz, static_cast<uint32_t>(i * 4))) * kPatch;
+                const float z = (static_cast<float>(pz) + hash(px, pz, static_cast<uint32_t>(i * 4 + 1))) * kPatch;
+                // On the site, on ground it could grow on (not too steep), thinning out towards what was levelled for buildings,
+                // pads and the ways between them, and none right up against them.
+                if (x < m_plan.origin.x || z < m_plan.origin.z || x > m_plan.origin.x + m_plan.size || z > m_plan.origin.z + m_plan.size ||
+                    m_terrain.Wildness(x, z) < 0.15f + 0.45f * hash(px, pz, static_cast<uint32_t>(i * 4 + 900)) || m_terrain.Normal(x, z).y < 0.85f)
+                {
+                    continue;
+                }
+                const float size = (0.35f + 0.4f * hash(px, pz, static_cast<uint32_t>(i * 4 + 2))) * grows;
+                const float yaw = hash(px, pz, static_cast<uint32_t>(i * 4 + 3)) * 6.2831853f;
+                const MeshData& tuft = m_tufts[static_cast<size_t>(px * 7 + pz * 13 + i) % m_tufts.size()];
+                const glm::quat turn = glm::angleAxis(yaw, glm::vec3(0.0f, 1.0f, 0.0f));
+                const glm::vec3 foot{x, m_terrain.Height(x, z) - 0.04f, z};
+                const auto base = static_cast<uint32_t>(mesh.vertices.size());
+                for (MeshVertex vertex : tuft.vertices)
+                {
+                    vertex.position = foot + turn * (vertex.position * glm::vec3(size, size * 1.1f, size));
+                    vertex.normal = turn * vertex.normal;
+                    mesh.vertices.push_back(vertex);
+                }
+                for (const uint32_t index : tuft.indices)
+                {
+                    mesh.indices.push_back(base + index);
+                }
+            }
+        }
+    }
+    return mesh;
 }
 
 } // namespace pred
