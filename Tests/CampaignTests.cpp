@@ -550,7 +550,31 @@ TEST_CASE("The map draws planets outwards in order, moons by their planets, and 
             const SystemMapView::Drawn& planet = drawn[static_cast<size_t>(body.parent)];
             // Clear of its planet, and nearer it than any other planet is.
             CHECK(glm::length(at.at - planet.at) > planet.radius + at.radius);
-            CHECK(glm::length(at.at - planet.at) < 4.0f);
+            for (const SystemMapView::Drawn& other : drawn)
+            {
+                if (system.bodies[static_cast<size_t>(other.index)].kind == BodyKind::Planet && other.index != body.parent)
+                {
+                    CHECK(glm::length(at.at - planet.at) < glm::length(at.at - other.at));
+                }
+            }
+        }
+    }
+    // Nothing drawn over anything else -- no planet over another or its moons, no moon over another -- in any system, at any
+    // time.
+    for (const uint64_t seed : {55ull, 7ull, 1234ull, 98765ull})
+    {
+        const StarSystem other = Universe::Generate(seed, SystemId{}, ShippedData());
+        for (const double clock : {0.0, 1000.0, 54321.0})
+        {
+            const auto shown = SystemMapView::Layout(other, clock);
+            for (size_t a = 0; a < shown.size(); ++a)
+            {
+                for (size_t b = a + 1; b < shown.size(); ++b)
+                {
+                    INFO("seed " << seed << " clock " << clock << " bodies " << a << " and " << b);
+                    CHECK(glm::length(shown[a].at - shown[b].at) > shown[a].radius + shown[b].radius);
+                }
+            }
         }
     }
     // Looking straight at a planet from close by, the middle of the picture is that planet.

@@ -508,20 +508,18 @@ void PredationGame::UpdateSharedMap(float dt)
 
 glm::vec3 PredationGame::ShipOverGlobe(const Body& body)
 {
-    if (ShipLanded() && m_campaign.travel.region >= 0 && m_campaign.travel.region < static_cast<int>(body.regions.size()))
+    // Where it really is round the world (Travel::OrbitFrame) -- going round its orbit, going round to be over where the shuttle
+    // goes down, or held over it -- seen on its globe, a little up: so setting off for somewhere goes on from where it was drawn.
+    const StarSystem* system = CurrentSystem();
+    if (system == nullptr)
     {
-        return AreaOnGlobe(body.regions[static_cast<size_t>(m_campaign.travel.region)]) * 1.01f;
+        return glm::vec3(0.0f, 1.2f, 0.0f);
     }
-    // Going round to be over where the shuttle goes down, or held over it: there, a little up.
-    const glm::vec3 over = Travel::OverGlobe(m_campaign, m_campaign.clock);
-    if (!ShipLanded() && body.index == m_campaign.body && glm::length(over) > 0.5f)
-    {
-        return over * 1.2f;
-    }
-    // In orbit: once round every so often, on a tilted ring a third of a radius up.
-    const float angle = static_cast<float>(std::fmod(m_campaign.clock / 90.0, 1.0)) * kTau;
-    const glm::vec3 flat{std::cos(angle), 0.0f, std::sin(angle)};
-    return glm::vec3(glm::rotate(glm::mat4(1.0f), 0.45f, glm::vec3(1.0f, 0.0f, 0.3f)) * glm::vec4(flat, 0.0f)) * 1.35f;
+    glm::vec3 out;
+    glm::vec3 along;
+    Travel::OrbitFrame(m_campaign, *system, body.index, m_campaign.clock, out, along);
+    const glm::vec3 over = system->Over(body.index, out, m_campaign.clock);
+    return (glm::length(over) > 1.0e-6f ? glm::normalize(over) : glm::vec3(0.0f, 1.0f, 0.0f)) * 1.2f;
 }
 
 void PredationGame::ShowMapGalaxy(const glm::vec3& focus, float distance)
@@ -978,7 +976,7 @@ void PredationGame::RenderMapSystem(const StarSystem& system, bgfx::ViewId sky, 
         {
             break;
         }
-        const float radius = glm::length(SystemMapView::Place({au, 0.0f, 0.0f}));
+        const float radius = glm::length(SystemMapView::Place(system, {au, 0.0f, 0.0f}));
         constexpr int kSegments = 160;
         for (int i = 0; i < kSegments; i += 2)
         {
@@ -1722,7 +1720,7 @@ void PredationGame::DrawSystemMap()
         for (const float au : {1.0f, 5.0f, 20.0f, 50.0f})
         {
             ImVec2 point;
-            const glm::vec3 at = SystemMapView::Place({au, 0.0f, 0.0f});
+            const glm::vec3 at = SystemMapView::Place(*shown, {au, 0.0f, 0.0f});
             if (glm::length(at) < glm::length(drawn.empty() ? glm::vec3(0.0f) : drawn.back().at) * 1.6f && toScreen(at, point))
             {
                 Label(draw, {point.x + 4.0f, point.y}, IM_COL32(150, 160, 180, 110), (Number(au, 0) + " AU").c_str(), tiny);

@@ -15,9 +15,10 @@ namespace pred
 //
 // Not to scale -- at scale the planets are specks and the inner ones are lost in the star -- but true to direction:
 // distances from the star are drawn by their square root, so the inner planets have room and the outer ones are
-// still further out, and a body's size is drawn larger than life but in proportion. Moons are drawn round their
-// planets well clear of them. Anything placed in the system (the ship, a course) goes through Place, so it is drawn
-// where it is among them.
+// still further out -- and further still where a planet and its moons need the room, so no two are drawn over each
+// other -- and a body's size is drawn larger than life but in proportion. Moons are drawn round their planets one
+// after another, well clear of them and of each other. Anything placed in the system (the ship, a course) goes through
+// Place, so it is drawn where it is among them.
 class SystemMapView
 {
 public:
@@ -34,7 +35,7 @@ public:
     static constexpr float kFieldOfView = 0.75f;
 
     // Where a point of the system (astronomical units from the star) is drawn.
-    static glm::vec3 Place(const glm::vec3& au);
+    static glm::vec3 Place(const StarSystem& system, const glm::vec3& au);
     static float DrawnRadius(const Body& body);
     // Every body of a system where it is at `clock`.
     static std::vector<Drawn> Layout(const StarSystem& system, double clock);

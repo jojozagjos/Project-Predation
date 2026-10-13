@@ -14,19 +14,118 @@ namespace
 {
 
 constexpr float kTau = 6.28318530718f;
-// The map's units for a distance from the star: this times its square root, in astronomical units.
+// The map's units for a distance from the star: this times its square root, in astronomical units -- before any planet
+// is moved out to make room for the one inside it.
 constexpr float kSpread = 7.0f;
+// Room left between a planet's moons, and between one planet and its moons and the next.
+constexpr float kMoonGap = 0.16f;
+constexpr float kPlanetGap = 0.5f;
 
-} // namespace
+float Spread(float au)
+{
+    return kSpread * std::sqrt(au) + SystemMapView::kStarRadius;
+}
 
-glm::vec3 SystemMapView::Place(const glm::vec3& au)
+// A planet's moons drawn one after another outwards from it, innermost first, clear of it, its rings and each other: how
+// far out from the planet each is drawn (into `out`, by body index, if given), and how far out from it the furthest of
+// them -- or its rings, or itself -- reaches.
+float MoonsOut(const StarSystem& system, const Body& planet, std::vector<float>* out)
+{
+    const float radius = SystemMapView::DrawnRadius(planet);
+    std::vector<const Body*> moons;
+    for (const Body& body : system.bodies)
+    {
+        if (body.kind == BodyKind::Moon && body.parent == planet.index)
+        {
+            moons.push_back(&body);
+        }
+    }
+    std::sort(moons.begin(), moons.end(), [](const Body* a, const Body* b) { return a->orbit < b->orbit; });
+    float reach = radius * std::max(1.0f, planet.rings.y);
+    float edge = radius * std::max(1.8f, planet.rings.y + 0.45f) + 0.2f;
+    for (const Body* moon : moons)
+    {
+        const float own = SystemMapView::DrawnRadius(*moon);
+        const float at = edge + own;
+        if (out != nullptr)
+        {
+            (*out)[static_cast<size_t>(moon->index)] = at;
+        }
+        edge = at + own + kMoonGap;
+        reach = at + own;
+    }
+    return reach;
+}
+
+// Where each planet's orbit is drawn, innermost first: as far out as its distance says, or further, so that it and its
+// moons are clear of the star, and of the planet inside it and that one's moons. x = its distance from the star (astronomical
+// units), y = drawn there by Spread, z = drawn there in fact.
+std::vector<glm::vec3> Stops(const StarSystem& system)
+{
+    std::vector<glm::vec2> planets; // orbit, reach
+    for (const Body& body : system.bodies)
+    {
+        if (body.kind == BodyKind::Planet)
+        {
+            planets.push_back({body.orbit, MoonsOut(system, body, nullptr)});
+        }
+    }
+    std::sort(planets.begin(), planets.end(), [](const glm::vec2& a, const glm::vec2& b) { return a.x < b.x; });
+    std::vector<glm::vec3> stops;
+    // The star as drawn at its largest, and its glow.
+    float edge = SystemMapView::kStarRadius * 1.6f + 0.4f;
+    for (const glm::vec2& planet : planets)
+    {
+        const float at = std::max(Spread(planet.x), edge + planet.y);
+        stops.push_back({planet.x, Spread(planet.x), at});
+        edge = at + planet.y + kPlanetGap;
+    }
+    return stops;
+}
+
+// Place, from the system's Stops.
+glm::vec3 PlaceAmong(const std::vector<glm::vec3>& stops, const glm::vec3& au)
 {
     const float distance = glm::length(au);
     if (distance < 1.0e-6f)
     {
         return glm::vec3(0.0f);
     }
-    return au / distance * (kSpread * std::sqrt(distance) + kStarRadius);
+    // Between two planets' orbits, as far between where they are drawn as it is between where Spread would draw them; inside
+    // the first, drawn in proportion to it; outside the last, pushed out as far as it was.
+    const float spread = Spread(distance);
+    float drawn = spread;
+    if (!stops.empty())
+    {
+        if (spread <= stops.front().y)
+        {
+            drawn = spread * stops.front().z / stops.front().y;
+        }
+        else if (spread >= stops.back().y)
+        {
+            drawn = spread + (stops.back().z - stops.back().y);
+        }
+        else
+        {
+            for (size_t i = 0; i + 1 < stops.size(); ++i)
+            {
+                if (spread <= stops[i + 1].y)
+                {
+                    const float t = (spread - stops[i].y) / std::max(stops[i + 1].y - stops[i].y, 1.0e-6f);
+                    drawn = stops[i].z + (stops[i + 1].z - stops[i].z) * t;
+                    break;
+                }
+            }
+        }
+    }
+    return au / distance * drawn;
+}
+
+} // namespace
+
+glm::vec3 SystemMapView::Place(const StarSystem& system, const glm::vec3& au)
+{
+    return PlaceAmong(Stops(system), au);
 }
 
 float SystemMapView::DrawnRadius(const Body& body)
@@ -38,16 +137,19 @@ float SystemMapView::DrawnRadius(const Body& body)
 std::vector<SystemMapView::Drawn> SystemMapView::Layout(const StarSystem& system, double clock)
 {
     std::vector<Drawn> drawn(system.bodies.size());
-    // Planets first, where they are; then each moon round its planet, by where it is in its orbit, well clear of it.
-    std::vector<int> moonsSoFar(system.bodies.size(), 0);
+    // Planets first, where they are; then each moon round its planet, by where it is in its orbit, as far out as MoonsOut
+    // has it.
+    std::vector<float> out(system.bodies.size(), 0.0f);
+    const std::vector<glm::vec3> stops = Stops(system);
     for (const Body& body : system.bodies)
     {
-        Drawn& out = drawn[body.index];
-        out.index = body.index;
-        out.radius = DrawnRadius(body);
+        Drawn& at = drawn[body.index];
+        at.index = body.index;
+        at.radius = DrawnRadius(body);
         if (body.kind == BodyKind::Planet)
         {
-            out.at = Place(system.Position(body.index, clock));
+            at.at = PlaceAmong(stops, system.Position(body.index, clock));
+            MoonsOut(system, body, &out);
         }
     }
     for (const Body& body : system.bodies)
@@ -57,13 +159,10 @@ std::vector<SystemMapView::Drawn> SystemMapView::Layout(const StarSystem& system
             continue;
         }
         const Drawn& planet = drawn[static_cast<size_t>(body.parent)];
-        const int nth = moonsSoFar[static_cast<size_t>(body.parent)]++;
         const glm::vec3 offset = system.Position(body.index, clock) - system.Position(body.parent, clock);
         const float length = glm::length(offset);
         const glm::vec3 way = length > 1.0e-9f ? offset / length : glm::vec3(1.0f, 0.0f, 0.0f);
-        // One after another outwards, well clear of the planet and of its rings as drawn.
-        const float clear = std::max(1.8f, system.bodies[static_cast<size_t>(body.parent)].rings.y + 0.45f);
-        drawn[body.index].at = planet.at + way * (planet.radius * clear + 0.35f + 0.38f * static_cast<float>(nth));
+        drawn[body.index].at = planet.at + way * out[static_cast<size_t>(body.index)];
     }
     return drawn;
 }
@@ -73,6 +172,7 @@ glm::vec3 SystemMapView::ShipAt(const StarSystem& system, const std::vector<Draw
     // How far each moon was moved to be drawn, weighed by how near the ship is to it against how far out its orbit is -- and
     // the planet it goes round, which was not moved, weighed the same: so near a moon the ship goes where the moon is drawn,
     // near its planet where the planet is, and between them, between; far from both, nowhere it is not.
+    const std::vector<glm::vec3> stops = Stops(system);
     glm::vec3 moved{0.0f};
     float weights = 0.05f;
     for (const Body& body : system.bodies)
@@ -90,10 +190,10 @@ glm::vec3 SystemMapView::ShipAt(const StarSystem& system, const std::vector<Draw
             return std::exp(-2.0f * apart * apart);
         };
         const float toMoon = weight(moon);
-        moved += (drawn[static_cast<size_t>(body.index)].at - Place(moon)) * toMoon;
+        moved += (drawn[static_cast<size_t>(body.index)].at - PlaceAmong(stops, moon)) * toMoon;
         weights += toMoon + weight(planet);
     }
-    glm::vec3 at = Place(au) + moved / weights;
+    glm::vec3 at = PlaceAmong(stops, au) + moved / weights;
     // Outside every disc: the drawn bodies are far larger than life.
     for (const Drawn& body : drawn)
     {
@@ -120,11 +220,12 @@ std::vector<glm::vec3> SystemMapView::Orbit(const StarSystem& system, int body, 
     }
     if (found->kind == BodyKind::Planet)
     {
+        const std::vector<glm::vec3> stops = Stops(system);
         for (int i = 0; i <= points; ++i)
         {
             // The same orbit, the clock run round it.
             const double at = clock + static_cast<double>(found->period) * static_cast<double>(i) / static_cast<double>(points);
-            loop.push_back(Place(system.Position(body, at)));
+            loop.push_back(PlaceAmong(stops, system.Position(body, at)));
         }
         return loop;
     }

@@ -492,24 +492,55 @@ void PredationGame::ArriveAtBody()
     {
         return;
     }
-    // In orbit: the sensors look the whole of it over, and find places to go down that nobody had charted.
+    // In orbit: the sensors look the whole of it over. Places to go down that nobody had charted are found as the orbit
+    // carries the ship over them (SurveyFromOrbit), not the moment it arrives.
     const uint8_t bits = static_cast<uint8_t>(CampaignState::kKnownScanned | (SensorTier() >= 2 ? CampaignState::kKnownDeep : 0));
     m_campaign.Learn(m_campaign.system, body->index, bits);
-    int found = 0;
-    for (int i = 0; i < static_cast<int>(body->regions.size()) && found < 1 + SensorTier(); ++i)
-    {
-        if (!RegionKnown(*body, i))
-        {
-            m_campaign.FindRegion(m_campaign.system, body->index, i);
-            m_campaign.AddLog("region", CampaignState::RegionKey(m_campaign.system, body->index, i), body->regions[static_cast<size_t>(i)].designation,
-                              "Found from orbit of " + body->name + ".");
-            ++found;
-        }
-    }
+    m_surveyIn = 20.0f / (1.0f + 0.5f * static_cast<float>(SensorTier()));
+    m_surveyFound = 0;
     m_campaign.AddLog("planet", CampaignState::BodyKey(m_campaign.system, body->index), body->name, "Surveyed from orbit. " + SummaryOf(*body));
     ChooseLandingRegion(m_campaign.travel.region);
     CampaignChanged();
     PRED_LOG_INFO(Gameplay, "In orbit of {}", body->name);
+}
+
+void PredationGame::SurveyFromOrbit(float dt)
+{
+    m_surveyIn -= dt;
+    const StarSystem* system = CurrentSystem();
+    const Body* body = system != nullptr ? system->Find(m_campaign.body) : nullptr;
+    if (m_surveyIn > 0.0f || body == nullptr || m_surveyFound >= 1 + SensorTier())
+    {
+        return;
+    }
+    m_surveyIn = 1.0f;
+    // What of the world is under the ship and towards its horizon now -- further round it with better sensors.
+    glm::vec3 out;
+    glm::vec3 along;
+    Travel::OrbitFrame(m_campaign, *system, body->index, m_campaign.clock, out, along);
+    const glm::vec3 over = system->Over(body->index, out, m_campaign.clock);
+    if (glm::length(over) < 1.0e-6f)
+    {
+        return;
+    }
+    const float reach = std::cos(glm::radians(55.0f + 10.0f * static_cast<float>(SensorTier())));
+    for (int i = 0; i < static_cast<int>(body->regions.size()); ++i)
+    {
+        if (RegionKnown(*body, i) || glm::dot(glm::normalize(over), AreaOnGlobe(body->regions[static_cast<size_t>(i)])) < reach)
+        {
+            continue;
+        }
+        m_campaign.FindRegion(m_campaign.system, body->index, i);
+        m_campaign.AddLog("region", CampaignState::RegionKey(m_campaign.system, body->index, i), body->regions[static_cast<size_t>(i)].designation,
+                          "Found from orbit of " + body->name + ".");
+        ++m_surveyFound;
+        // One at a time, a while apart: the sweep has to come round to it.
+        m_surveyIn = 25.0f / (1.0f + 0.5f * static_cast<float>(SensorTier()));
+        ChooseLandingRegion(m_campaign.travel.region);
+        CampaignChanged();
+        PRED_LOG_INFO(Gameplay, "Found {} from orbit of {}", body->regions[static_cast<size_t>(i)].designation, body->name);
+        return;
+    }
 }
 
 // --- Under way ------------------------------------------------------------------------------------------------------
@@ -588,10 +619,11 @@ void PredationGame::UpdateTravel(float dt)
                 if (m_campaign.body >= 0)
                 {
                     // There: shown arriving, aboard -- the cinematic's own marker says when it is over the planet. Not for an
-                    // outpost the ship is to set down at, though: it comes straight down to it (ArriveAtBody, ship_land).
+                    // outpost the ship is to set down at, though: it comes straight down to it (ArriveAtBody, ship_land). Nor after a jump
+                    // the drive made all but instant: there was no trip to come to the end of.
                     const Body* arrivedAt = system->Find(m_campaign.body);
                     const bool settingDown = arrivedAt != nullptr && RegionIsPort(*arrivedAt, m_campaign.travel.region);
-                    if (m_map == MapChoice::Ship && HasCinematic("ship_arrive") && !settingDown)
+                    if (m_map == MapChoice::Ship && HasCinematic("ship_arrive") && !settingDown && DriveTier() < Travel::kInstantTier)
                     {
                         PlayCinematic("ship_arrive");
                     }
@@ -622,6 +654,10 @@ void PredationGame::UpdateTravel(float dt)
                     }
                 }
             }
+        }
+        if (!m_campaign.travel.underway && m_campaign.body >= 0 && !m_campaign.landed)
+        {
+            SurveyFromOrbit(dt);
         }
         if (m_sessionMode == SessionMode::Host)
         {
@@ -1019,15 +1055,10 @@ bool PredationGame::GroundCinematic() const
 void PredationGame::PlayLeaving(bool fromGround)
 {
     // Up off a hub's pad: its cinematic. Out of orbit, nobody is taken out of the ship to watch it go: the engines light,
-    // the dust starts past the windows, the intercom says so -- unless the drive is good enough that the trip is all but a
-    // cut, which is shown as one.
+    // the dust starts past the windows, the intercom says so -- however good the drive.
     if (fromGround && HasCinematic("ship_takeoff"))
     {
         PlayCinematic("ship_takeoff");
-    }
-    else if (DriveTier() >= Travel::kInstantTier && HasCinematic("ship_depart"))
-    {
-        PlayCinematic("ship_depart");
     }
     else if (m_map == MapChoice::Ship)
     {

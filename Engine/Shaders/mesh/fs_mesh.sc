@@ -12,12 +12,12 @@ uniform vec4 u_steepParams;      // xyz = its tint, w = repeats a metre (0: none
 uniform vec4 u_wearParams;       // xyz = bare metal's colour, w = how worn the paint is, the set read as worn paint (0: off; Material::surfaceWear)
 uniform vec4 u_surfaceParams;  // x = repeats a metre of the surface set, laid on from every side (0: off); y = how much of its own colour shows; z = natural ground (1) or laid in a grid (0); w = laid on the thing itself (1) or the world (0)
 
-uniform vec4 u_baseColor;       // rgb = albedo
+uniform vec4 u_baseColor;       // rgb = albedo; w = 1 if rained and snowed on (Material::weathers), 0 not
 uniform vec4 u_materialParams;  // x = metallic, y = roughness, z = how much of the mirror it shows, w = 1 cut out (Material::cutout)
 uniform vec4 u_emissive;        // rgb = emissive radiance
 uniform vec4 u_lightDirection;  // xyz = direction towards the light
 uniform vec4 u_lightColor;      // rgb = colour, w = intensity
-uniform vec4 u_ambientSky;      // rgb = light from above
+uniform vec4 u_ambientSky;      // rgb = light from above; w = lightning (Environment::lightning)
 uniform vec4 u_ambientGround;   // rgb = bounce from below
 uniform vec4 u_fogColor;        // rgb
 uniform vec4 u_fogParams;       // x = start distance, y = end distance, z = how far out in the open air the eye is (0 to 1),
@@ -709,6 +709,15 @@ void main()
 		// Where it is steep, the second set -- the world's rock -- showing through as the slope passes what anybody can stand
 		// on (SiteTerrain::Rockiness), laid on the same way.
 		float rock = u_steepParams.w > 0.0 ? 1.0 - smoothstep(0.72, 0.94, Ng.y) : 0.0;
+		// And on the flat too, here and there: patches of it a few tens of metres apart where the ground is thin over it, so a
+		// world is not one surface from one horizon to the other -- their edges ragged by the ground's own light and dark,
+		// the dark hollows filling with ground first.
+		if (u_steepParams.w > 0.0)
+		{
+			float spread = SurfacePatches(v_worldPos.xz * 0.021 + vec2(7.3, 1.9)) * 0.65 + SurfacePatches(v_worldPos.xz * 0.083) * 0.35;
+			float grain = dot(surfaceAlbedo, vec3(0.2126, 0.7152, 0.0722));
+			rock = max(rock, smoothstep(0.6, 0.68, spread + (grain - 0.5) * 0.12) * 0.9);
+		}
 		// (Its gradients too, outside the branch.)
 		float steepScale = u_steepParams.w / max(u_surfaceParams.x, 1e-6);
 		vec2 sX = uvX * steepScale;
@@ -820,7 +829,7 @@ void main()
 	// puddles in the low patches of the flat. Snowed on (y): what faces up white, thickest on the flattest, gone at its
 	// edges in patches. Neither on a creature, nor where the sky does not reach.
 	float puddle = 0.0;
-	if (u_organic.x < 0.5 && (u_surfaceWeather.x > 0.001 || u_surfaceWeather.y > 0.001))
+	if (u_organic.x < 0.5 && u_baseColor.w > 0.5 && (u_surfaceWeather.x > 0.001 || u_surfaceWeather.y > 0.001))
 	{
 		float open = smoothstep(0.3, 0.8, skyReaches);
 		float wet = u_surfaceWeather.x * open * mix(0.55, 1.0, max(N.y, 0.0));
@@ -913,6 +922,9 @@ void main()
 	ambient *= mix(u_grade.z, 1.0, skyReaches);
 
 	color += diffuseColor * ambient;
+	// Lightning: the sky lit up for a moment, cold and white, from above and a little back off the ground -- only where the
+	// sky itself reaches, none of it under a roof (the sky's own light leaves a little in every room; this leaves none).
+	color += diffuseColor * vec3(0.75, 0.8, 1.0) * u_ambientSky.w * mix(0.8, 2.4, hemisphere) * skyReaches;
 
 	// What the surface reflects of its surroundings.
 	//
@@ -999,19 +1011,18 @@ void main()
 		vec3 ray = v_worldPos - u_cameraPosition.xyz;
 		float reach = min(length(ray), min(u_lights[0].w, 30.0));
 		vec3 way = ray / max(length(ray), 1e-4);
-		float jitter = fract(52.9829189 * fract(0.06711056 * gl_FragCoord.x + 0.00583715 * gl_FragCoord.y));
 		vec3 aim = normalize(u_lights[2].xyz);
 		float lit = 0.0;
-		for (int i = 0; i < 10; ++i)
+		for (int i = 0; i < 16; ++i)
 		{
-			float t = 0.5 + (float(i) + jitter) / 10.0 * max(reach - 0.5, 0.0);
+			float t = 0.5 + (float(i) + 0.5) / 16.0 * max(reach - 0.5, 0.0);
 			vec3 fromLight = u_cameraPosition.xyz + way * t - u_lights[0].xyz;
 			float d = length(fromLight);
 			float cone = clamp((dot(fromLight / max(d, 1e-3), aim) - u_lights[3].x) / max(u_lights[2].w - u_lights[3].x, 1e-4), 0.0, 1.0);
 			float window = clamp(1.0 - pow(d / max(u_lights[0].w, 1e-3), 4.0), 0.0, 1.0);
 			lit += cone * cone * window / max(d * d, 1.0);
 		}
-		color += u_lights[1].rgb * u_lights[1].w * lit * (max(reach - 0.5, 0.0) / 10.0) * u_fogParams.w * 0.015 * (1.0 - fogAmount * 0.5);
+		color += u_lights[1].rgb * u_lights[1].w * lit * (max(reach - 0.5, 0.0) / 16.0) * u_fogParams.w * 0.015 * (1.0 - fogAmount * 0.5);
 	}
 	// Fullbright: the surface's own colour, with a little shading by which way it faces so edges still read.
 	if (u_fullbright.x > 0.5)

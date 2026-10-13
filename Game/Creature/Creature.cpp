@@ -660,6 +660,7 @@ void Creature::BuildVisual(MeshLibrary& meshes)
     const std::string prefix = "creature_" + std::to_string(m_anatomy.seed) + "_" + std::to_string(reinterpret_cast<uintptr_t>(this));
     m_skinMesh = meshes.CreateDynamic(skin.mesh, prefix + "_skin");
     Material flesh = Material::Diffuse(glm::vec3(1.0f), m_anatomy.roughness);
+    flesh.weathers = false; // (Material::weathers: it would be white the moment it came out under the sky)
     m_skinEntity = m_scene.CreateMeshEntity(prefix + "_skin", Transform{}, m_skinMesh, flesh);
     if (MeshRenderer* renderer = m_scene.GetMeshRenderer(m_skinEntity))
     {

@@ -6496,7 +6496,7 @@ int PredationGame::SurfaceIndexAt(const glm::vec3& position) const
             }
         }
         const std::string missing = name;
-        name = missing == "snow" || missing == "sand" || missing == "grass" || missing == "dirt" || missing == "mud" ? "gravel"
+        name = missing == "snow" || missing == "sand" || missing == "grass" || missing == "dirt" ? "gravel"
                : missing == "ice"                                                                                   ? "stone"
                                                                                                                     : nullptr;
     }
@@ -6686,7 +6686,7 @@ void PredationGame::UpdateSounds(float dt)
             if (surface >= 0 && surface < static_cast<int>(m_footsteps.size()) && m_facility.Built() && m_facility.Contains(where))
             {
                 const std::string& underfoot = m_footsteps[static_cast<size_t>(surface)].name;
-                if (underfoot == "sand" || underfoot == "snow" || underfoot == "mud")
+                if (underfoot == "sand" || underfoot == "snow")
                 {
                     const float yaw = std::atan2(velocity.x, -velocity.z);
                     m_footprints.Leave(m_scene, m_app->GetMeshes(), m_facility, where, yaw, crossed(0.0f), m_campaign.clock);
@@ -7758,7 +7758,7 @@ PlayerInput PredationGame::BuildPlayerInput()
     result.yaw = aimed.x;
     result.pitch = aimed.y;
 
-    if (m_app->IsConsoleOpen() || m_screen != Screen::Playing || CinematicHoldsPlayers() || m_mapOpen)
+    if (m_app->IsConsoleOpen() || m_screen != Screen::Playing || m_paused || CinematicHoldsPlayers() || m_mapOpen)
     {
         // Console open, paused, at the title, or held by a cinematic: keep looking where we are and stop everything else.
         //
@@ -9742,7 +9742,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
     // actions asked whether the player was alive, because the camera moves to a teammate and it
     // looked as though nothing was being driven any more. Movement is already refused by the
     // controller; this is everything else.
-    if (!app.IsConsoleOpen() && m_screen == Screen::Playing && !dead && !CinematicHoldsPlayers())
+    if (!app.IsConsoleOpen() && m_screen == Screen::Playing && !dead && !m_paused && !CinematicHoldsPlayers())
     {
         if (input.WasActionPressed("jump"))
         {
@@ -9863,6 +9863,11 @@ void PredationGame::OnUpdate(double dt, double alpha)
             {
                 CloseSystemMap();
             }
+            else if (m_inventoryOpen)
+            {
+                m_inventoryOpen = false;
+                m_wantMouseCaptured = true;
+            }
             else
             {
                 m_paused = !m_paused;
@@ -9924,6 +9929,13 @@ void PredationGame::OnUpdate(double dt, double alpha)
         const float plantWind = falling ? static_cast<float>(PlaceConditions(m_facility.Plan().sky.fogEnd).wind) * Weather::GustAt(m_windClock) : 0.0f;
         m_scene.GetEnvironment().wind = glm::vec2(std::cos(windAngle), std::sin(windAngle)) * plantWind;
         m_scene.GetEnvironment().windClock = m_windClock;
+        // The clouds drift on the wind up there -- steady, a few times the ground's, its gusts left on the ground -- by the
+        // campaign's clock, so every player sees the same sky.
+        {
+            const float aloft = static_cast<float>(PlaceConditions(m_facility.Plan().sky.fogEnd).wind) * 3.0f + 4.0f;
+            const float since = static_cast<float>(std::fmod(m_campaign.clock, 20000.0));
+            m_scene.GetEnvironment().cloudDrift = glm::vec2(std::cos(windAngle), std::sin(windAngle)) * (aloft * since * 0.001f);
+        }
         // And what the weather leaves on things: wet in rain, getting so over a minute and drying over several; snow lying
         // as it falls, and going slower still -- and on a frozen world, old snow on everything that faces up whatever the
         // sky is doing. A site just arrived at, or its weather just changed by hand, is as wet or snowed on as it would be.
@@ -10000,7 +10012,8 @@ void PredationGame::OnUpdate(double dt, double alpha)
         // body follows the interpolated position, so the camera inherits that and does not judder.
         const glm::vec3 focus = (m_body.GetPose().GlobalPosition(m_body.Rig().head) +
                                  m_body.GetPose().GlobalPosition(m_body.Rig().pelvis)) *
-                                0.5f;
+                                0.5f +
+                                (m_player.View().renderPosition - m_bodyPosedAt);
         const float orbitYaw = m_lookYaw + m_orbitYaw;
         const float orbitPitch = std::clamp(m_lookPitch + m_orbitPitch, glm::radians(-85.0f),
                                             glm::radians(85.0f));
@@ -10212,6 +10225,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
 
     m_body.Update(m_scene, m_player.State(), m_player.View(), m_player.Config(), app.GetPhysics(),
                   deltaSeconds);
+    m_bodyPosedAt = m_player.View().renderPosition;
 
     UpdateSpectating();
 
@@ -12482,7 +12496,7 @@ void PredationGame::UpdateLightning(float dt, float storm)
         const float near = 1.0f - glm::smoothstep(400.0f, 6000.0f, distance);
         const glm::vec3 towards{std::sin(yaw), 0.3f, -std::cos(yaw)};
         QueueSound(distance / 343.0f, distance < 1300.0f ? "Weather/thunder_near" : "Weather/thunder", m_renderEye + towards * 2.0f,
-                   glm::mix(0.3f, 1.0f, near), false);
+                   glm::mix(0.1f, 0.42f, near), false);
     }
     m_lightningFlash = 0.0f;
     m_lightningBolt.w = 0.0f;

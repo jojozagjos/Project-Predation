@@ -1118,7 +1118,7 @@ private:
     static glm::vec3 AreaOnGlobe(const LandingRegion& region);
     bool AreaInDaylight(const StarSystem& system, const Body& body, const LandingRegion& region);
     glm::vec3 SunOverBody(const StarSystem& system, const Body& body);
-    // Where the ship is drawn on a body's globe: at its area when landed, otherwise on its way round.
+    // Where the ship is drawn on the globe of the body it is going round: where it really is round it, a little up.
     glm::vec3 ShipOverGlobe(const Body& body);
     // Asks for a course to another system.
     void AskSystemCourse(uint64_t system);
@@ -1155,8 +1155,10 @@ private:
     void UpdateTravel(float dt);
     void AskCampaign(CampaignAction action, int a = 0, int b = 0);
     bool DoCampaignAction(uint8_t player, CampaignAction action, int a, int b);
-    // In orbit of a body at last: its scan, its places found, and where to go down chosen. The host's.
+    // In orbit of a body at last: its scan, and where to go down chosen (its places found after, SurveyFromOrbit). The host's.
     void ArriveAtBody();
+    // In orbit, the sensors finding places to go down as the orbit carries the ship over them (the host's, or alone).
+    void SurveyFromOrbit(float dt);
     void ChooseLandingRegion(int region);
     const StarSystem* CurrentSystem();
     int DriveTier() const;
@@ -1265,6 +1267,9 @@ private:
     uint16_t m_mapHeight = 0;
     float m_travelSendIn = 0.0f;
     float m_sensorIn = 0.0f;
+    // The survey from orbit: how long until it next looks for somewhere new, and how many places it has found this stay.
+    float m_surveyIn = 20.0f;
+    int m_surveyFound = 0;
     uint32_t m_appliedTravels = 0;
     // The map everybody shares (PredationGameMapView.cpp): as it was last sent or applied, so a move of this player's own can
     // be told from one applied from somebody else's; this player's count of moves and when the next may go; the newest move
@@ -1556,6 +1561,9 @@ private:
     };
     CameraMode m_cameraMode = CameraMode::FirstPerson;
     float m_thirdPersonDistance = 3.2f;
+    // Where the body was last posed from (PlayerView::renderPosition): the third-person camera is placed before the body is
+    // posed for the frame, so it frames last frame's pose moved on by as far as the body has moved since -- not a frame behind.
+    glm::vec3 m_bodyPosedAt{0.0f};
     // Third-person orbit, applied on top of the look angles. Holding the look button turns the
     // camera around the character without turning the character, so the animation can be inspected
     // from any side.
@@ -2033,14 +2041,14 @@ private:
         float occlusion = 0.0f;
     };
     static constexpr int kAmbienceLoops = 12;
-    AmbienceLoop m_ambienceLoops[kAmbienceLoops] = {{"Ambience/room_tone", 0.22f},
-                                       {"Ambience/vent", 0.12f},
-                                       {"Weather/wind", 0.2f},
+    AmbienceLoop m_ambienceLoops[kAmbienceLoops] = {{"Ambience/room_tone", 0.3f},
+                                       {"Ambience/vent", 0.14f},
+                                       {"Weather/wind", 0.25f},
                                        {"Ambience/vent_close", 0.32f},
                                        {"Ambience/nest", 0.45f},
                                        {"Weather/rain", 0.5f},
-                                       {"Weather/rain_heavy", 0.6f},
-                                       {"Weather/rain_roof", 0.45f},
+                                       {"Weather/rain_heavy", 0.5f},
+                                       {"Weather/rain_roof", 0.38f},
                                        {"Weather/rain_cabin", 0.5f},
                                        {"Weather/gale", 0.35f},
                                        {"Weather/sandstorm", 0.4f},
@@ -2049,6 +2057,8 @@ private:
     // nest.
     float m_zoneProbeAt = 0.0f;
     float m_zoneIndoor = 1.0f;
+    // The ears out in space, outside the ship (a cinematic's camera): nothing there to carry a sound to them.
+    bool m_earInVacuum = false;
     float m_zoneTight = 0.0f;
     float m_zoneNest = 0.0f;
     float m_ambienceClock = 0.0f;

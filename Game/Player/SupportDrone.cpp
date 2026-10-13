@@ -222,6 +222,7 @@ void SupportDrone::Build(Scene& scene, MeshLibrary& meshes, const Transform& tra
     const MeshHandle lamp = meshes.Upload(Primitives::Box({0.026f, 0.018f, 0.006f}), "support_drone_lamp");
 
     Material painted = Material::Diffuse(glm::vec3(1.0f), 0.7f);
+    painted.weathers = false;
     m_chassisParts.push_back(scene.CreateMeshEntity("support_drone", transform, chassis, painted));
     m_chassisRest.push_back(glm::vec3(0.0f));
 

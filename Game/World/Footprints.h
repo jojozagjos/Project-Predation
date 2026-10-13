@@ -15,7 +15,7 @@ class MeshLibrary;
 class Scene;
 class SiteMap;
 
-// The prints left walking over soft ground -- sand, snow, mud -- at a site: a sole's shape pressed into it, the ground's
+// The prints left walking over soft ground -- sand, snow -- at a site: a sole's shape pressed into it, the ground's
 // own surface and colour over it, darker where it is pressed down and shaded by the dent's slopes (a few millimetres over
 // the ground, as a bullet hole is: sunk into it, the ground would hide it). The oldest go when there are too many, and
 // any of them after a few minutes, as the wind or the snow fills them in.

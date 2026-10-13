@@ -131,6 +131,9 @@ struct Environment
     // reaches up the sky (the sine of its top's elevation), its own seed for its shape, and how bright it is now.
     float lightning = 0.0f;
     glm::vec4 bolt{0.0f};
+    // How far the clouds have drifted, kilometres along x and z: carried on a little each frame with the wind up there, so a
+    // gust speeds them up rather than swinging the whole sky back and forth.
+    glm::vec2 cloudDrift{0.0f};
     float windClock = 0.0f;
 
     // Out in space: how many of the stars show (0 none, 1 all), and a planet hung in the sky -- which way its middle

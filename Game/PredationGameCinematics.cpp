@@ -528,6 +528,11 @@ void PredationGame::CinePoseBound(const std::string& bind, const std::string& cl
 
 void PredationGame::CineSound(const SoundEvent& sound, const glm::vec3* at)
 {
+    // Nothing heard by a camera out in space, but its music.
+    if (m_earInVacuum && !sound.music)
+    {
+        return;
+    }
     if (at != nullptr && !sound.music)
     {
         PlayNamed(sound.sound, *at, sound.volume, 1.0f, true);

@@ -294,14 +294,13 @@ void SceneRenderer::SetEnvironmentUniforms(const Environment& environment,
     const float lightDirection[4] = {towardsLight.x, towardsLight.y, towardsLight.z, 0.0f};
     const float lightColor[4] = {environment.sunColor.r, environment.sunColor.g, environment.sunColor.b,
                                  environment.sunIntensity};
-    // Lightning (Environment::lightning) is the sky lighting up: cold white light from above for the moment it lasts, kept
-    // out from under a roof as the sky's is, a little of it back from the ground, and the air lit with it.
+    // Lightning (Environment::lightning) is the sky lighting up: cold white light from above for the moment it lasts, only
+    // where the sky itself reaches (sent apart from the sky's own light, in its w, for the shader to keep out from under a
+    // roof entirely -- the sky's own leaves a little in every room), a little of it back from the ground, and the air lit.
     const glm::vec3 flash = glm::vec3(0.75f, 0.8f, 1.0f) * std::max(environment.lightning, 0.0f);
-    const glm::vec3 fromSky = environment.ambientSky + flash * 2.4f;
-    const glm::vec3 below = environment.ambientGround + flash * 0.8f;
     const glm::vec3 fog = environment.fogColor + flash * 0.12f;
-    const float ambientSky[4] = {fromSky.r, fromSky.g, fromSky.b, 0.0f};
-    const float ambientGround[4] = {below.r, below.g, below.b, 0.0f};
+    const float ambientSky[4] = {environment.ambientSky.r, environment.ambientSky.g, environment.ambientSky.b, std::max(environment.lightning, 0.0f)};
+    const float ambientGround[4] = {environment.ambientGround.r, environment.ambientGround.g, environment.ambientGround.b, 0.0f};
     const float fogColor[4] = {fog.r, fog.g, fog.b, 0.0f};
     // (w: how hazy the air is, for light to show in it -- the torch's beam: thick in a sandstorm or a fog, a little on a clear
     // day, a little in a dusty room.)
@@ -422,7 +421,7 @@ uint64_t SceneRenderer::DrawState() const
 void SceneRenderer::SubmitMesh(bgfx::ViewId view, const Mesh& mesh, const Material& material,
                                const glm::mat4& model, uint64_t state)
 {
-    const float baseColor[4] = {material.baseColor.r, material.baseColor.g, material.baseColor.b, 1.0f};
+    const float baseColor[4] = {material.baseColor.r, material.baseColor.g, material.baseColor.b, material.weathers ? 1.0f : 0.0f};
     const float materialParams[4] = {material.metallic, material.roughness, material.reflectivity,
                                      material.cutout ? (material.cover ? 2.0f : 1.0f) : 0.0f};
     // A card is seen from both sides.

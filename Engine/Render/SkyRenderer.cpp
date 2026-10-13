@@ -166,7 +166,7 @@ void SkyRenderer::Draw(bgfx::ViewId view, const Environment& environment, const 
     // on (high up, faster than the ground's); and the bolt.
     const float clouds[4] = {std::clamp(environment.cloudCover, 0.0f, 1.0f), std::clamp(environment.cloudDark, 0.0f, 1.0f), environment.windClock,
                              std::max(environment.lightning, 0.0f)};
-    const float cloudWind[4] = {environment.wind.x, environment.wind.y, 0.0f, 0.0f};
+    const float cloudWind[4] = {environment.cloudDrift.x, environment.cloudDrift.y, 0.0f, 0.0f};
     bgfx::setUniform(m_uClouds, clouds);
     bgfx::setUniform(m_uCloudWind, cloudWind);
     bgfx::setUniform(m_uBolt, glm::value_ptr(environment.bolt));

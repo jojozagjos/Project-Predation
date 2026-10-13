@@ -143,7 +143,7 @@ namespace
 {
 
 // The footstep surfaces, as numbered for a body's tag (from one: nought is none).
-constexpr const char* kSteps[] = {"concrete", "stone", "metal", "gravel", "wood", "snow", "sand", "grass", "dirt", "mud", "ice"};
+constexpr const char* kSteps[] = {"concrete", "stone", "metal", "gravel", "wood", "snow", "sand", "grass", "dirt", "ice"};
 
 } // namespace
 
@@ -156,7 +156,7 @@ uint32_t StepOfSet(const std::string& name, bool metal)
     };
     static constexpr Sounds kSounds[] = {
         {"snow_02", "snow"},          {"regolith", "gravel"},       {"rock_ground", "gravel"},  {"sand", "sand"},
-        {"basalt", "gravel"},         {"wet_rock", "mud"},          {"grass_dirt", "grass"},    {"jungle_floor", "grass"},
+        {"basalt", "gravel"},         {"wet_rock", "gravel"},       {"grass_dirt", "grass"},    {"jungle_floor", "grass"},
         {"toxic_crust", "dirt"},      {"storm_flats", "gravel"},    {"crystal_ground", "ice"},  {"rock_cliff", "stone"},
         {"soil_cliff", "dirt"},       {"ice_cliff", "ice"},         {"concrete_slab", "concrete"}, {"pavement", "concrete"},
         {"asphalt", "concrete"},      {"blast_wall", "concrete"},   {"facility_floor", "concrete"}, {"facility_wall", "concrete"},

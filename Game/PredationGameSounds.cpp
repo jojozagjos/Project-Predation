@@ -666,16 +666,37 @@ void PredationGame::UpdateAmbience(float dt)
     const float blizzard = kind == Weather::Kind::Snow ? glm::smoothstep(0.45f, 0.9f, amount) : 0.0f;
     const float cabin = atSite && m_facility.Shuttle().Aboard(m_renderEye) ? 1.0f : 0.0f;
     const float under = std::max(m_zoneIndoor, cabin);
-    const float outside = (1.0f - under) + 0.35f * under;
+    // In a building, how near the roof is: on its top floor the rain is right over you; floors down, only a murmur of it
+    // comes through the floors above. Heard through the walls, less still.
+    float roofOver = 1.0f;
+    if (atSite && cabin < 0.5f && m_zoneIndoor > 0.5f)
+    {
+        for (const FacilityLayout& building : m_facility.Plan().buildings)
+        {
+            glm::vec2 low;
+            glm::vec2 high;
+            SitePlan::Footprint(building, 0.0f, low, high);
+            if (m_renderEye.x > low.x && m_renderEye.x < high.x && m_renderEye.z > low.y && m_renderEye.z < high.y)
+            {
+                const int floor = static_cast<int>(std::floor((m_renderEye.y - building.origin.y) / FacilityLayout::kStorey));
+                roofOver = floor >= building.floors - 1 ? 1.0f : 0.15f;
+                break;
+            }
+        }
+    }
+    const float outside = (1.0f - under) + (0.18f + 0.1f * roofOver) * under;
+    // Aboard in space there is no air outside the hull to blow or carry anything; with the ears outside it, nothing at all.
+    const float air = m_map == MapChoice::Ship && !(m_campaignOpen && m_campaign.landed) ? 0.0f : 1.0f;
+    m_earInVacuum = air < 0.5f && m_zoneIndoor < 0.5f;
     const float targets[kAmbienceLoops] = {
         m_zoneIndoor * (1.0f - m_zoneTight) * (1.0f - 0.6f * m_zoneNest) * (1.0f - cabin), // the room (not the shuttle's cabin)
-        m_zoneIndoor * (1.0f - m_zoneTight) * 0.8f * (1.0f - cabin) + 0.1f * (1.0f - under), // air in the ducts, faint outside
-        ((1.0f - under) + 0.12f * under) * windiness,                         // wind, a breath of it indoors; as hard as it blows
+        m_zoneIndoor * (1.0f - m_zoneTight) * 0.8f * (1.0f - cabin) + 0.1f * (1.0f - under) * air, // air in the ducts, faint outside
+        ((1.0f - under) + 0.12f * under) * windiness * air,                   // wind, a breath of it indoors; as hard as it blows
         m_zoneTight,                                                          // inside the vent itself
         m_zoneNest,                                                           // the nest
         rain * (1.0f - heavy) * outside,                                      // rain
         rain * heavy * outside,                                               // heavy rain
-        rain * under * (1.0f - cabin),                                        // on the roof over you
+        rain * under * (1.0f - cabin) * roofOver * 0.7f,                      // on the roof over you, the top floor's
         rain * cabin,                                                         // on the shuttle round you
         gale * outside,                                                       // a gale
         sand * outside * std::min(windiness, 1.3f),                           // a sandstorm
@@ -776,7 +797,7 @@ void PredationGame::UpdateAmbience(float dt)
     // site where it is raining or has been, or in a wet world's air -- never aboard the ship, nor in a desert.
     const bool wet = atSite && (m_surfaceWet > 0.15f || look.biome == "jungle" || look.biome == "oceanic" || look.biome == "temperate");
     const char* name = m_zoneIndoor > 0.5f ? kDistant[std::rand() % (wet ? 5 : 3)] : "Ambience/distant_bang";
-    if (m_zoneTight > 0.5f)
+    if (m_zoneTight > 0.5f || m_earInVacuum)
     {
         m_ambienceNext = m_ambienceClock + 10.0f;
         return;
@@ -787,7 +808,7 @@ void PredationGame::UpdateAmbience(float dt)
     desc.sound = Sounds(name).Pick();
     desc.position = m_renderEye + glm::vec3(std::cos(angle) * distance, 2.0f + 3.0f * Random01(), std::sin(angle) * distance);
     desc.positioned = true;
-    desc.gain = 0.55f * level;
+    desc.gain = (name == std::string("Ambience/drip") ? 0.35f : 0.55f) * level;
     desc.pitch = 0.9f + 0.2f * Random01();
     // Heard from a long way off, as a building carries a sound.
     desc.nearDistance = 12.0f;

@@ -379,6 +379,19 @@ organisms.
 | The ship going over the landing area before the shuttle can go down | Done |
 | Outposts: buildings, ground, grass, weather; people walking about | Phase 2 (people: your call) |
 | Mirrors placed by generation | Phase 4 (facilities), and outposts, stations and wrecks as they come |
+| Clouds swaying back and forth fast | Done (they drift one way with the wind, by the campaign clock) |
+| Noisy pattern in the torch beam | Done (no more jitter in its haze) |
+| Rain loud inside buildings; facility lit by lightning indoors | Done (loud on the top floor only; lightning lights only what the sky reaches) |
+| Snow on the character the moment they step out | Done (bodies, creatures, the drone and held things are never snowed or rained on) |
+| Thunder and much else too loud | Done (weather and ambience recordings levelled to one loudness, thunder and roof rain turned down); say what is still off |
+| Mud steps sounded like guts; one surface over the whole world | Done (mud steps removed, that ground uses gravel; the world's rock and soil show through in patches) |
+| Pause and inventory open together; moving while paused | Done (pause stops movement and every action; Escape closes the inventory first) |
+| Planets and moons drawn over each other on the map | Done (moons spaced by size, planets pushed out to make room; tested) |
+| Sound in space in the cutscenes | Done (a camera outside the ship in space hears nothing but music) |
+| The near-instant travel cutscene | Removed (both leaving and arriving, with a near-instant drive) |
+| Ship snapping into place on the globe | Done (drawn where it really is round its orbit all the time) |
+| A crash site appearing the moment the ship came back | Done (places are found as the orbit carries the ship over them, after a while, not on arrival) |
+| Third person: the character jittering when strafing | Done (the camera was framing last frame's pose) |
 | Ship rotation when changing course felt strange | Changed earlier (the turn no longer swings through the planet); tell me if it still feels off |
 | Ending and tutorial | Phase 17, last |
 

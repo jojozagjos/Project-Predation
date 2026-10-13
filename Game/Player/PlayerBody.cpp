@@ -361,8 +361,11 @@ void PlayerBody::BuildParts(Scene& scene, MeshLibrary& meshes)
         // A mesh per part, sized to that part. Sharing one unit box and scaling it would skew the
         // normals, because the shader transforms them by the model matrix directly.
         part.mesh = meshes.Upload(Primitives::Box(boxSize), std::string("player_") + spec.name);
+        // Not rained or snowed on: it would be white the moment it stepped out (Material::weathers).
+        Material material = *spec.material;
+        material.weathers = false;
         part.entity = scene.CreateMeshEntity(std::string("player_") + spec.name, Transform{}, part.mesh,
-                                             *spec.material);
+                                             material);
         m_parts.push_back(part);
     }
 }
@@ -1050,8 +1053,10 @@ void PlayerBody::BuildWeaponEntities(Scene& scene, MeshLibrary& meshes,
     for (const WeaponVisual::Part& part : m_weaponVisual.parts)
     {
         const MeshHandle mesh = meshes.Upload(part.mesh, key + "_" + part.name);
+        Material material = part.material;
+        material.weathers = false;
         m_weaponParts.push_back(scene.CreateMeshEntity(key + "_" + part.name, Transform{}, mesh,
-                                                       part.material));
+                                                       material));
         m_weaponPartTransforms.emplace_back();
     }
     m_weaponEntity = m_weaponParts.empty() ? Entity{} : m_weaponParts.front();
@@ -2669,8 +2674,10 @@ void PlayerBody::SetHeldItem(Scene& scene, MeshLibrary& meshes, const std::strin
                              const MeshData& mesh, const Material& material)
 {
     ClearHeldItem(scene);
+    Material held = material;
+    held.weathers = false;
     m_heldItemMesh = meshes.Upload(mesh, "held_" + name);
-    m_heldItemEntity = scene.CreateMeshEntity("held_" + name, Transform{}, m_heldItemMesh, material);
+    m_heldItemEntity = scene.CreateMeshEntity("held_" + name, Transform{}, m_heldItemMesh, held);
     m_hasHeldItem = true;
 }
 

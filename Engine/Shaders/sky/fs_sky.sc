@@ -24,7 +24,7 @@ uniform vec4 u_skyRings;     // x, y = the planet's rings, inside and outside, i
                              // w = where the system's nebula lies (a seed)
 uniform vec4 u_skyRingColor; // rgb
 uniform vec4 u_skyClouds;    // x = how much of the sky the clouds cover, y = how heavy, z = the clock they drift by, w = lightning in them
-uniform vec4 u_skyCloudWind; // xy = the wind they drift on (the ground's, metres a second)
+uniform vec4 u_skyCloudWind; // xy = how far they have drifted, kilometres (Environment::cloudDrift)
 uniform vec4 u_skyBolt;      // x = which way the bolt is (yaw), y = the sine of its top's elevation, z = its seed, w = how bright
 uniform vec4 u_skyNebula;    // rgb = the system's nebula's colour, w = how much of it (its seed: u_skyRings.w)
 
@@ -341,8 +341,8 @@ void main()
 		float cover = u_skyClouds.x;
 		float heavy = u_skyClouds.y;
 		float base = mix(2.0, 1.1, heavy);
-		// Where this ray meets the layer, in kilometres; drifting, a high wind three times the ground's.
-		vec2 at = ray.xz / max(up, 0.015) * base - u_skyCloudWind.xy * (u_skyClouds.z * 0.003);
+		// Where this ray meets the layer, in kilometres, as far on as it has drifted.
+		vec2 at = ray.xz / max(up, 0.015) * base - u_skyCloudWind.xy;
 		vec3 q = vec3(at * 0.35, 3.7);
 		// Billowing, not smeared: the pattern pushed about by a larger one of its own, and its edges eaten into by a finer
 		// one -- less of that far off, where it would only shimmer.
