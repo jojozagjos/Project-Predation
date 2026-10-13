@@ -13,7 +13,7 @@
     "against the others, by ear: soft ground quieter than hard floor. Metal is boots on aluminium; dirt a",
     "soft step with sand grit mixed in; mud a step with a squelch, and wet steps."
   ],
-  "_source": "CC0: Kenney Impact Sounds; Ali_6868 gravel; Corsica_S snow and gravel; Fantozzi; TinyWorlds; 25 CC0 mud sfx; 100 CC0 SFX #2. CC-BY 3.0: Eelke, boots on aluminium (metal). See Docs/CREDITS.md.",
+  "_source": "CC0: Kenney Impact Sounds; Ali_6868 gravel; Corsica_S snow and gravel; Fantozzi; felix.blume desert sand; TinyWorlds; 25 CC0 mud sfx; 100 CC0 SFX #2. CC-BY 3.0: Eelke, boots on aluminium (metal). See Docs/CREDITS.md.",
   "default_surface": "concrete",
   "surfaces": {
     "concrete": {
@@ -42,7 +42,7 @@
     },
     "sand": {
       "gain": 0.7,
-      "clips": [ "sand/sand_1.wav", "sand/sand_2.wav", "sand/sand_3.wav", "sand/sand_4.wav", "sand/sand_5.wav", "sand/sand_6.wav" ]
+      "clips": [ "sand/sand_1.wav", "sand/sand_2.wav", "sand/sand_3.wav", "sand/sand_4.wav", "sand/sand_5.wav", "sand/sand_6.wav", "sand/sand_7.wav", "sand/sand_8.wav" ]
     },
     "grass": {
       "gain": 0.7,
