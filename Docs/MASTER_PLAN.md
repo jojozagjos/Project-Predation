@@ -338,6 +338,12 @@ organisms.
 | Flare kept after it was dropped | Done |
 | Sand footsteps | Done (new recording) |
 | Terrain row on the planet panel | Removed |
+| Floating cubes under the stair | Done (the side beams were being drawn as their short end pieces) |
+| Landing title card too modern | Reverted to the old one (keeps the real local time) |
+| Containers that do not look like containers | Done (corrugated freight containers everywhere) |
+| Freeze when closing a lobby | Done (the router is no longer waited on) |
+| Graphics settings must not remove shadows | Done (shadows are always on; presets scale distance, grass, weather, mirrors, edges) |
+| Out-of-breath sound | Done (your recording; CC-BY, credited) |
 | Credits for the CC-BY sounds | Phase 15 |
 | Ship rotation when changing course felt strange | Changed earlier (the turn no longer swings through the planet); tell me if it still feels off |
 | Ending and tutorial | Phase 17, last |
