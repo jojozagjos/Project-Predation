@@ -504,7 +504,7 @@ bool SiteMap::Contains(const glm::vec3& at) const
     return at.x >= min.x && at.y >= min.y && at.z >= min.z && at.x <= max.x && at.y <= max.y && at.z <= max.z;
 }
 
-void SiteMap::UpdateCover(Scene& scene, MeshLibrary& meshes, const glm::vec3& eye)
+void SiteMap::UpdateCover(Scene& scene, MeshLibrary& meshes, const glm::vec3& eye, float detail)
 {
     if (!m_built || m_coverDensity <= 0.0f || m_tufts.empty())
     {
@@ -514,32 +514,42 @@ void SiteMap::UpdateCover(Scene& scene, MeshLibrary& meshes, const glm::vec3& ey
     if (m_coverBuild.valid() && m_coverBuild.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
     {
         const MeshData mesh = m_coverBuild.get();
-        if (!mesh.vertices.empty())
+        // None at all (the setting at nought, or bare ground all round): what was drawn put out of sight.
+        if (mesh.vertices.empty())
+        {
+            if (MeshRenderer* renderer = scene.GetMeshRenderer(m_cover))
+            {
+                renderer->visible = false;
+            }
+        }
+        else
         {
             m_coverMesh = m_coverMesh.IsValid() ? meshes.Replace(m_coverMesh, mesh) : meshes.Upload(mesh, "site_grass_cover");
             if (!m_cover.IsValid())
             {
                 m_cover = scene.CreateMeshEntity("site_grass_cover", Transform{}, m_coverMesh, m_coverMaterial);
-                if (MeshRenderer* renderer = scene.GetMeshRenderer(m_cover))
-                {
-                    renderer->castsShadow = false;
-                    renderer->blocksSky = false;
-                }
+            }
+            if (MeshRenderer* renderer = scene.GetMeshRenderer(m_cover))
+            {
+                renderer->castsShadow = false;
+                renderer->blocksSky = false;
+                renderer->visible = true;
             }
         }
     }
     // Made again only when the eye has moved onto another patch of ground some metres across (and not while one is being made).
     constexpr float kStep = 5.0f;
     const glm::ivec2 on{static_cast<int>(std::floor(eye.x / kStep)), static_cast<int>(std::floor(eye.z / kStep))};
-    if (on == m_coverAt || m_coverBuild.valid())
+    if ((on == m_coverAt && detail == m_coverDetail) || m_coverBuild.valid())
     {
         return;
     }
     m_coverAt = on;
-    m_coverBuild = std::async(std::launch::async, [this, eye] { return CoverAround(eye); });
+    m_coverDetail = detail;
+    m_coverBuild = std::async(std::launch::async, [this, eye, detail] { return CoverAround(eye, detail); });
 }
 
-MeshData SiteMap::CoverAround(const glm::vec3& eye) const
+MeshData SiteMap::CoverAround(const glm::vec3& eye, float detail) const
 {
     // Square metres of ground in patches of two, out to some tens of metres. Each patch's tufts are where its own numbers put
     // them, the same every time; how many of them show falls with how far off the patch is -- each coming up from nothing as
@@ -558,7 +568,8 @@ MeshData SiteMap::CoverAround(const glm::vec3& eye) const
     const int reach = static_cast<int>(kReach / kPatch);
     const int cx = static_cast<int>(std::floor(eye.x / kPatch));
     const int cz = static_cast<int>(std::floor(eye.z / kPatch));
-    const int most = static_cast<int>(std::ceil(m_coverDensity * kPatch * kPatch)) + 1;
+    const float density = m_coverDensity * detail;
+    const int most = static_cast<int>(std::ceil(density * kPatch * kPatch)) + 1;
     for (int pz = cz - reach; pz <= cz + reach; ++pz)
     {
         for (int px = cx - reach; px <= cx + reach; ++px)
@@ -570,7 +581,7 @@ MeshData SiteMap::CoverAround(const glm::vec3& eye) const
                 continue;
             }
             const float share = std::clamp(1.0f - (distance - 8.0f) / 40.0f, 0.12f, 1.0f) * (1.0f - glm::smoothstep(kReach - 6.0f, kReach, distance));
-            const float count = m_coverDensity * kPatch * kPatch * share;
+            const float count = density * kPatch * kPatch * share;
             for (int i = 0; i < most; ++i)
             {
                 const float grows = std::clamp(count - static_cast<float>(i), 0.0f, 1.0f);

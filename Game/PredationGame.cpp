@@ -170,6 +170,9 @@ CVar<bool> cv_spotShadows{"r.torch_shadows", true, "Whether the flashlight is st
 // the next.
 CVar<bool> cv_lampShadows{"r.lamp_shadows", true, "Whether the lamps are stopped by walls (off: kept in their rooms)",
                           CVarFlags::Archive};
+// How much grass is drawn round the eye (0 none, 1 as the world has it), and how much of what falls from the sky.
+CVar<float> cv_grass{"r.grass", 1.0f, "How thick the grass is drawn round you (0 none, 1 as the world grows it)", CVarFlags::Archive};
+CVar<float> cv_weatherDetail{"r.weather", 1.0f, "How much of the falling weather is drawn (0.3 to 1)", CVarFlags::Archive};
 CVar<int> cv_occlusionDebug{"r.show_occlusion", 0,
                             "Draw occlusion instead of the scene: 1 the sun, 2 the sky"};
 // Mirrors. A second pass over the whole scene, at half the window's width and height, so it is the
@@ -620,6 +623,11 @@ bool PredationGame::OnInit(Application& app)
     LoadUniverseData();
     m_planets.Init(app.GetShaders());
     m_sprites.Init(app.GetShaders());
+    // The light's shadows -- the sun's, the torch's, a roof keeping the sky out -- are not settings: an older settings file
+    // that turned one off (the old Low preset did) has it on again.
+    cv_sunShadows.Set(true);
+    cv_skyShadows.Set(true);
+    cv_spotShadows.Set(true);
     LoadCinematics();
     app.GetPhysics().OptimizeBroadPhase();
     // The walkable surface the creature moves over, worked out from the level's solid geometry.
@@ -4627,22 +4635,23 @@ bool SettingsRow(const char* name, const char* setting = nullptr)
 struct QualityPreset
 {
     const char* name;
-    bool shadows;
     float shadowDistance;
-    bool torchShadows;
-    bool skyOcclusion;
+    float grass;   // how thick the grass is drawn (r.grass)
+    float weather; // how much of what falls is drawn (r.weather)
     bool reflections;
     float reflectionDistance;
     int msaa;
 };
 
 // What each word means, in the settings it sets. Anything that does not match one of these exactly is
-// "Custom", which is what somebody who has moved one slider has.
+// Custom. None of them takes the light's shadows away -- the sun's, the torch's, a roof keeping the sky out of a room:
+// they are what the game looks like, not a cost to save, and those stay on at every quality. What scales is how far the
+// sun's shadows reach, how much grass and weather is drawn, mirrors and edges.
 constexpr QualityPreset kPresets[] = {
-    {"Low", false, 24.0f, false, false, false, 10.0f, 0},
-    {"Medium", true, 40.0f, false, true, true, 18.0f, 0},
-    {"High", true, 64.0f, true, true, true, 30.0f, 0},
-    {"Ultra", true, 96.0f, true, true, true, 50.0f, 4},
+    {"Low", 32.0f, 0.45f, 0.5f, false, 10.0f, 0},
+    {"Medium", 48.0f, 0.7f, 0.75f, true, 18.0f, 0},
+    {"High", 64.0f, 1.0f, 1.0f, true, 30.0f, 0},
+    {"Ultra", 96.0f, 1.3f, 1.0f, true, 50.0f, 4},
 };
 
 int GetSettingInt(const char* name, int fallback)
@@ -4833,10 +4842,9 @@ void PredationGame::DrawSettings()
     if (tab("Graphics"))
     {
         ImGui::BeginChild("##graphics");
-        const bool shadows = GetSettingBool("r.shadows", true);
         const float shadowDistance = GetSettingFloat("r.shadow_distance", 64.0f);
-        const bool torchShadows = GetSettingBool("r.torch_shadows", true);
-        const bool skyOcclusion = GetSettingBool("r.sky_occlusion", true);
+        const float grass = GetSettingFloat("r.grass", 1.0f);
+        const float weather = GetSettingFloat("r.weather", 1.0f);
         const bool reflections = GetSettingBool("r.reflections", true);
         const float reflectionDistance = GetSettingFloat("r.reflection_distance", 30.0f);
         const int msaa = GetSettingInt("r.msaa", 0);
@@ -4845,10 +4853,9 @@ void PredationGame::DrawSettings()
         const char* presetName = "Custom";
         for (const QualityPreset& preset : kPresets)
         {
-            if (preset.shadows == shadows && std::abs(preset.shadowDistance - shadowDistance) < 0.5f &&
-                preset.torchShadows == torchShadows && preset.skyOcclusion == skyOcclusion &&
-                preset.reflections == reflections && std::abs(preset.reflectionDistance - reflectionDistance) < 0.5f &&
-                preset.msaa == msaa)
+            if (std::abs(preset.shadowDistance - shadowDistance) < 0.5f && std::abs(preset.grass - grass) < 0.01f &&
+                std::abs(preset.weather - weather) < 0.01f && preset.reflections == reflections &&
+                std::abs(preset.reflectionDistance - reflectionDistance) < 0.5f && preset.msaa == msaa)
             {
                 presetName = preset.name;
             }
@@ -4863,10 +4870,9 @@ void PredationGame::DrawSettings()
                 {
                     if (ImGui::Selectable(preset.name, std::strcmp(preset.name, presetName) == 0))
                     {
-                        SetSetting("r.shadows", preset.shadows ? "true" : "false");
                         SetSetting("r.shadow_distance", std::to_string(preset.shadowDistance));
-                        SetSetting("r.torch_shadows", preset.torchShadows ? "true" : "false");
-                        SetSetting("r.sky_occlusion", preset.skyOcclusion ? "true" : "false");
+                        SetSetting("r.grass", std::to_string(preset.grass));
+                        SetSetting("r.weather", std::to_string(preset.weather));
                         SetSetting("r.reflections", preset.reflections ? "1" : "0");
                         SetSetting("r.reflection_distance", std::to_string(preset.reflectionDistance));
                         SetSetting("r.msaa", std::to_string(preset.msaa));
@@ -4876,14 +4882,37 @@ void PredationGame::DrawSettings()
             }
             ImGui::PopID();
 
-            ImGui::PushID("shadows");
-            SettingsRow("Shadows", "r.shadows");
-            check("r.shadows", shadows);
+            ImGui::PushID("shadowdistance");
+            SettingsRow("Shadow distance", "r.shadow_distance");
+            {
+                float value = shadowDistance;
+                if (ImGui::SliderFloat("##v", &value, 24.0f, 128.0f, "%.0f m"))
+                {
+                    SetSetting("r.shadow_distance", std::to_string(value));
+                }
+            }
             ImGui::PopID();
 
-            ImGui::PushID("torchshadows");
-            SettingsRow("Torch shadows", "r.torch_shadows");
-            check("r.torch_shadows", torchShadows);
+            ImGui::PushID("grass");
+            SettingsRow("Grass", "r.grass");
+            {
+                float value = grass;
+                if (ImGui::SliderFloat("##v", &value, 0.0f, 1.5f, "%.2f"))
+                {
+                    SetSetting("r.grass", std::to_string(value));
+                }
+            }
+            ImGui::PopID();
+
+            ImGui::PushID("weather");
+            SettingsRow("Weather detail", "r.weather");
+            {
+                float value = weather;
+                if (ImGui::SliderFloat("##v", &value, 0.3f, 1.0f, "%.2f"))
+                {
+                    SetSetting("r.weather", std::to_string(value));
+                }
+            }
             ImGui::PopID();
 
             ImGui::PushID("msaa");
@@ -9859,7 +9888,8 @@ void PredationGame::OnUpdate(double dt, double alpha)
         // The grass round the eye, where the world grows it.
         if (falling)
         {
-            m_facility.UpdateCover(m_scene, m_app->GetMeshes(), m_cameraMode == CameraMode::Fly ? m_camera.position : m_renderEye);
+            m_facility.UpdateCover(m_scene, m_app->GetMeshes(), m_cameraMode == CameraMode::Fly ? m_camera.position : m_renderEye,
+                                   std::clamp(cv_grass.Get(), 0.0f, 1.5f));
         }
         // And the plants sway with it: the wind itself, gusting (Environment::wind).
         m_windClock += deltaSeconds;
@@ -9874,7 +9904,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
         light.fogStart = environment.fogStart;
         light.fogEnd = environment.fogEnd;
         m_weather.Update(m_renderEye, ground, deltaSeconds, Weather::KindOf(look.weather), falling ? look.weatherAmount : 0.0f, look.ground,
-                         glm::vec3(std::cos(windAngle), 0.0f, std::sin(windAngle)) * windSpeed, light,
+                         glm::vec3(std::cos(windAngle), 0.0f, std::sin(windAngle)) * windSpeed, light, cv_weatherDetail.Get(),
                          [this](const glm::vec3& at) { return m_facility.Plan().Indoors(at) || m_facility.Shuttle().Within(at, 0.4f); });
     }
 

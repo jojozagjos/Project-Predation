@@ -131,7 +131,7 @@ void Weather::Make(Kind kind, const glm::vec3& eye)
 }
 
 void Weather::Update(const glm::vec3& eye, float ground, float dt, Kind kind, float intensity, const glm::vec3& tint, const glm::vec3& wind,
-                     const Light& light, const std::function<bool(const glm::vec3&)>& indoors)
+                     const Light& light, float detail, const std::function<bool(const glm::vec3&)>& indoors)
 {
     m_sprites.clear();
     if (kind != m_kind)
@@ -157,7 +157,10 @@ void Weather::Update(const glm::vec3& eye, float ground, float dt, Kind kind, fl
     const float amount = std::clamp(intensity, 0.0f, 1.0f);
     // As much of it as there is: a light fall is a third of a heavy one. The puffs only in a heavy one, thicker in the gusts.
     const int falling = static_cast<int>(std::count_if(m_pieces.begin(), m_pieces.end(), [](const Piece& p) { return !p.puff; }));
-    const int shown = static_cast<int>(static_cast<float>(falling) * (0.35f + 0.65f * amount));
+    const float drawn = std::clamp(detail, 0.1f, 1.0f);
+    const int shown = static_cast<int>(static_cast<float>(falling) * (0.35f + 0.65f * amount) * drawn);
+    int puffIndex = 0;
+    const int puffsShown = static_cast<int>(std::round(static_cast<float>(look.puffs) * drawn));
     const float puffs = look.puffAlpha * glm::smoothstep(0.4f, 1.0f, amount) * glm::mix(0.75f, 1.25f, std::clamp(gust - 0.4f, 0.0f, 1.2f) / 1.2f);
     // Its own colour: dust the ground it was lifted from, a little browner.
     const glm::vec3 own = kind == Kind::Dust ? tint * glm::vec3(0.9f, 0.82f, 0.7f) : look.color;
@@ -178,7 +181,7 @@ void Weather::Update(const glm::vec3& eye, float ground, float dt, Kind kind, fl
             local.x = std::fmod(local.x + kPuffBox * 1.5f, kPuffBox) - kPuffBox * 0.5f;
             local.y = std::fmod(local.y + kPuffBox * 1.5f, kPuffBox) - kPuffBox * 0.5f;
             piece.at = {eye.x + local.x, ground + piece.height + 0.6f * std::sin(m_clock * 0.21f + piece.sway), eye.z + local.y};
-            if (puffs <= 0.002f || indoors(piece.at))
+            if (puffIndex++ >= puffsShown || puffs <= 0.002f || indoors(piece.at))
             {
                 continue;
             }

@@ -78,7 +78,8 @@ public:
     bool InReach(const glm::vec3& at) const;
     // The grass round the eye, where the world grows it: tufts thick close by and thinner further off, out to some tens of
     // metres, made again as the eye moves on (each tuft where its patch of ground puts it, so they stay put).
-    void UpdateCover(Scene& scene, MeshLibrary& meshes, const glm::vec3& eye);
+    // `detail` scales how thick it is drawn (the r.grass setting: 0 none).
+    void UpdateCover(Scene& scene, MeshLibrary& meshes, const glm::vec3& eye, float detail);
 
 private:
     Look m_look;
@@ -103,7 +104,8 @@ private:
     glm::ivec2 m_coverAt{-100000, -100000};
     // The next one, being made on another thread.
     std::future<MeshData> m_coverBuild;
-    MeshData CoverAround(const glm::vec3& eye) const;
+    MeshData CoverAround(const glm::vec3& eye, float detail) const;
+    float m_coverDetail = -1.0f;
 };
 
 } // namespace pred
