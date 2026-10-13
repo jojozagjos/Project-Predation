@@ -11,7 +11,8 @@ Sounds are sorted by what makes them, one folder per category and one folder per
       Items/       using what is in your hand: a medical kit, a battery, a keycard, a flare
       Nest/        a nest growing, its heart, cocoons
       Creature/    everything the creature does with its feet, lungs and throat
-      Ambience/    the building itself: loops for each kind of place, and things heard far off
+      Ambience/    the places themselves: loops for each kind of place, and things heard far off
+      Weather/     what the sky does: wind, rain, gales, sandstorms, blizzards, thunder (recordings, CREDITS.md)
       UI/          the menus
       Intercom/    the ship's intercom: the recordings Assets/Data/intercom.json names
       Footsteps/   recorded steps, one set per surface (listed in Assets/Data/footsteps.json)
@@ -125,14 +126,28 @@ The loops are faded in and out by where you are, measured a few times a second:
 | Folder | Heard |
 |---|---|
 | `room_tone`, `vent` | Indoors: the hum of the place and the air in its ducts |
-| `wind` | Outside, and a breath of it indoors |
 | `vent_close` | Inside a vent or the crawlspace, where the fan is right there |
 | `nest` | Near a nest, before you see it |
 | `buzz` | The nearest failing or flickering lamp, from where it hangs, stuttering with its light |
-| `groan`, `drip`, `distant_bang` | Now and then, somewhere out of sight: a building's noises indoors, only something falling far off outside |
-| `thunder`, `thunder_near` | In a storm, after each flash, as long after as the sound takes to come: a long roll from far off, a crack close by. Designed placeholders; a recording would beat them |
+| `groan`, `drip`, `distant_bang` | Now and then, somewhere out of sight: a building's noises indoors (water dripping only where it is wet), only something falling far off outside |
 
-`audio.ambience` sets how loud all of it is.
+`audio.ambience` sets how loud all of it is, and the weather too.
+
+**Weather**
+
+Recordings, not designs (their sources are in Docs/CREDITS.md). Faded in by the site's weather and wind, and heard
+through a roof or the shuttle's hull muffled -- but for the rain on that roof or hull itself:
+
+| Folder | Heard |
+|---|---|
+| `wind` | Outside, as hard as it blows, gusting; a breath of it indoors |
+| `gale` | Outside in a strong wind |
+| `rain`, `rain_heavy` | Outside in rain, the one giving way to the other as it gets heavier |
+| `rain_roof` | Under a roof in rain: the rain on it |
+| `rain_cabin` | In the shuttle in rain: the rain on its hull |
+| `sandstorm` | Outside in dust and sandstorms |
+| `blizzard` | Outside in heavy snow and blizzards |
+| `thunder`, `thunder_near` | After each flash of lightning, as long after as the sound takes to come: a long roll from far off, a crack close by |
 
 **UI**
 

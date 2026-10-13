@@ -2017,19 +2017,30 @@ private:
     float m_droneLevel = 0.0f;
     float m_heartbeatAt = 0.0f;
     // The loops that make up where you are, each faded in by how much you are there: a room, the air in
-    // its ducts, the open air, the inside of a vent, a nest. See UpdateAmbience.
+    // its ducts, the open air, the inside of a vent, a nest; and the weather -- rain, light and heavy, rain on a roof over you
+    // and on the shuttle's cabin round you, a gale, a sandstorm, a blizzard -- muffled as much as a roof or a hull is between
+    // you and it (`occlusion`). See UpdateAmbience.
     struct AmbienceLoop
     {
         const char* name;
         float gain;          // at full strength
         VoiceId voice = kInvalidVoice;
         float weight = 0.0f; // how much of it is heard now, eased
+        float occlusion = 0.0f;
     };
-    AmbienceLoop m_ambienceLoops[5] = {{"Ambience/room_tone", 0.22f},
+    static constexpr int kAmbienceLoops = 12;
+    AmbienceLoop m_ambienceLoops[kAmbienceLoops] = {{"Ambience/room_tone", 0.22f},
                                        {"Ambience/vent", 0.12f},
-                                       {"Ambience/wind", 0.3f},
+                                       {"Weather/wind", 0.2f},
                                        {"Ambience/vent_close", 0.32f},
-                                       {"Ambience/nest", 0.45f}};
+                                       {"Ambience/nest", 0.45f},
+                                       {"Weather/rain", 0.5f},
+                                       {"Weather/rain_heavy", 0.6f},
+                                       {"Weather/rain_roof", 0.45f},
+                                       {"Weather/rain_cabin", 0.5f},
+                                       {"Weather/gale", 0.35f},
+                                       {"Weather/sandstorm", 0.4f},
+                                       {"Weather/blizzard", 0.4f}};
     // Where the listener is, measured a few times a second: under a roof, in somewhere tight, how near a
     // nest.
     float m_zoneProbeAt = 0.0f;

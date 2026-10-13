@@ -12438,7 +12438,7 @@ void PredationGame::UpdateLightning(float dt, float storm)
         // further.
         const float near = 1.0f - glm::smoothstep(400.0f, 6000.0f, distance);
         const glm::vec3 towards{std::sin(yaw), 0.3f, -std::cos(yaw)};
-        QueueSound(distance / 343.0f, distance < 1300.0f ? "Ambience/thunder_near" : "Ambience/thunder", m_renderEye + towards * 2.0f,
+        QueueSound(distance / 343.0f, distance < 1300.0f ? "Weather/thunder_near" : "Weather/thunder", m_renderEye + towards * 2.0f,
                    glm::mix(0.3f, 1.0f, near), false);
     }
     m_lightningFlash = 0.0f;

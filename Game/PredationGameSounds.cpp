@@ -172,6 +172,18 @@ void PredationGame::UpdateWorldSounds(float dt)
         {
             const QueuedSound sound = m_queuedSounds[i];
             m_queuedSounds.erase(m_queuedSounds.begin() + static_cast<ptrdiff_t>(i));
+            // Thunder is the weather's: as loud as the ambience is set, and muffled under a roof or a hull.
+            if (sound.name.rfind("Weather/thunder", 0) == 0)
+            {
+                AudioEngine::PlayDesc desc;
+                desc.sound = Sounds(sound.name).Pick();
+                desc.positioned = false;
+                desc.gain = sound.gain * std::clamp(cv_ambienceVolume.Get(), 0.0f, 2.0f);
+                desc.pitch = 0.92f + 0.12f * Random01();
+                desc.occlusion = m_zoneIndoor * 0.65f;
+                m_app->GetAudio().Play(desc);
+                continue;
+            }
             PlayNamed(sound.name, sound.position, sound.gain, 0.94f + 0.12f * Random01(), sound.positioned);
             continue;
         }
@@ -636,29 +648,59 @@ void PredationGame::UpdateAmbience(float dt)
     }
     // How hard the wind is blowing where the ears are (the plants' wind, Environment::wind, gusts and all): a calm day a murmur,
     // a storm a roar.
-    const float windiness = std::clamp(0.6f + glm::length(m_scene.GetEnvironment().wind) / 14.0f, 0.6f, 1.8f);
-    const float targets[5] = {
-        m_zoneIndoor * (1.0f - m_zoneTight) * (1.0f - 0.6f * m_zoneNest), // the room
-        m_zoneIndoor * (1.0f - m_zoneTight) * 0.8f + 0.1f,                // air in the ducts, faint outside
-        ((1.0f - m_zoneIndoor) + 0.08f * m_zoneIndoor) * windiness,        // wind, a breath of it indoors; as hard as it blows
-        m_zoneTight,                                                      // inside the vent itself
-        m_zoneNest,                                                       // the nest
+    const float windSpeed = glm::length(m_scene.GetEnvironment().wind);
+    const float windiness = std::clamp(0.6f + windSpeed / 14.0f, 0.6f, 1.8f);
+    // The weather where the ears are, at a site: rain, how heavy; a gale; a sandstorm; a blizzard. Heard outside as it is;
+    // under a roof, through it -- some of it, and muffled -- with the rain drumming on the roof itself; in the shuttle, on its
+    // hull round you.
+    const bool atSite = m_screen == Screen::Playing && m_facility.Built() && m_facility.Contains(m_renderEye);
+    const SiteMap::Look& look = m_facility.GetLook();
+    const Weather::Kind kind = atSite ? Weather::KindOf(look.weather) : Weather::Kind::None;
+    const float amount = std::clamp(look.weatherAmount, 0.0f, 1.0f);
+    const float rain = kind == Weather::Kind::Rain ? amount : 0.0f;
+    const float heavy = glm::smoothstep(0.55f, 0.9f, rain);
+    const float gale = atSite && kind != Weather::Kind::Dust && kind != Weather::Kind::Snow ? glm::smoothstep(7.0f, 18.0f, windSpeed) : 0.0f;
+    const float sand = kind == Weather::Kind::Dust ? amount : 0.0f;
+    const float blizzard = kind == Weather::Kind::Snow ? glm::smoothstep(0.45f, 0.9f, amount) : 0.0f;
+    const float cabin = atSite && m_facility.Shuttle().Aboard(m_renderEye) ? 1.0f : 0.0f;
+    const float under = std::max(m_zoneIndoor, cabin);
+    const float outside = (1.0f - under) + 0.35f * under;
+    const float targets[kAmbienceLoops] = {
+        m_zoneIndoor * (1.0f - m_zoneTight) * (1.0f - 0.6f * m_zoneNest) * (1.0f - cabin), // the room (not the shuttle's cabin)
+        m_zoneIndoor * (1.0f - m_zoneTight) * 0.8f * (1.0f - cabin) + 0.1f * (1.0f - under), // air in the ducts, faint outside
+        ((1.0f - under) + 0.12f * under) * windiness,                         // wind, a breath of it indoors; as hard as it blows
+        m_zoneTight,                                                          // inside the vent itself
+        m_zoneNest,                                                           // the nest
+        rain * (1.0f - heavy) * outside,                                      // rain
+        rain * heavy * outside,                                               // heavy rain
+        rain * under * (1.0f - cabin),                                        // on the roof over you
+        rain * cabin,                                                         // on the shuttle round you
+        gale * outside,                                                       // a gale
+        sand * outside * std::min(windiness, 1.3f),                           // a sandstorm
+        blizzard * outside,                                                   // a blizzard
     };
-    float faded[5];
-    for (int i = 0; i < 5; ++i)
-    {
-        faded[i] = targets[i] * inGame;
-    }
+    // Muffled under a roof or a hull: all of the weather but what lands on the roof or the hull itself.
+    const float muffled = std::clamp(under * 0.8f + m_zoneTight * 0.15f, 0.0f, 0.95f);
+    const float occlusion[kAmbienceLoops] = {0.0f, 0.0f, muffled, 0.0f, 0.0f, muffled, muffled, 0.15f, 0.1f, muffled, muffled, muffled};
     const float ease = 1.0f - std::exp(-1.6f * dt);
-    for (int i = 0; i < 5; ++i)
+    for (int i = 0; i < kAmbienceLoops; ++i)
     {
         AmbienceLoop& loop = m_ambienceLoops[i];
-        loop.weight += (faded[i] - loop.weight) * ease;
+        const float target = targets[i] * inGame;
+        loop.weight += (target - loop.weight) * ease;
+        loop.occlusion += (occlusion[i] - loop.occlusion) * ease;
         if (loop.voice != kInvalidVoice && !audio.IsPlaying(loop.voice))
         {
             loop.voice = kInvalidVoice;
         }
-        if (loop.voice == kInvalidVoice)
+        // Only playing while there is any of it to hear.
+        if (loop.voice != kInvalidVoice && target <= 0.0f && loop.weight < 0.002f)
+        {
+            audio.Stop(loop.voice);
+            loop.voice = kInvalidVoice;
+            continue;
+        }
+        if (loop.voice == kInvalidVoice && target > 0.0f)
         {
             AudioEngine::PlayDesc desc;
             desc.sound = Sounds(loop.name).Pick();
@@ -674,6 +716,7 @@ void PredationGame::UpdateAmbience(float dt)
         if (loop.voice != kInvalidVoice)
         {
             audio.SetVoiceGain(loop.voice, loop.gain * loop.weight * level);
+            audio.SetVoiceOcclusion(loop.voice, loop.occlusion);
         }
     }
 
@@ -727,8 +770,10 @@ void PredationGame::UpdateAmbience(float dt)
     }
     static const char* const kDistant[] = {"Ambience/groan", "Ambience/groan", "Ambience/distant_bang", "Ambience/drip", "Ambience/drip"};
     // A building's noises, heard as a building's: outside only something falling far off, and nothing at
-    // all from inside a vent, where the fan covers it.
-    const char* name = m_zoneIndoor > 0.5f ? kDistant[std::rand() % 5] : "Ambience/distant_bang";
+    // all from inside a vent, where the fan covers it. Water dripping only where there is water to drip: a building at a
+    // site where it is raining or has been, or in a wet world's air -- never aboard the ship, nor in a desert.
+    const bool wet = atSite && (m_surfaceWet > 0.15f || look.biome == "jungle" || look.biome == "oceanic" || look.biome == "temperate");
+    const char* name = m_zoneIndoor > 0.5f ? kDistant[std::rand() % (wet ? 5 : 3)] : "Ambience/distant_bang";
     if (m_zoneTight > 0.5f)
     {
         m_ambienceNext = m_ambienceClock + 10.0f;

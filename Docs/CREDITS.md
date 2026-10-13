@@ -37,6 +37,28 @@ footstep is still in `Assets/Data/Sounds/Player.json` as `step`, for when no cli
 other sounds' level. **CC-BY 3.0: credit required** -- "Heavy breathing: ceberation (freesound.org), CC-BY 3.0" -- in the
 in-game credits with the metal footsteps. It replaces the synthesised placeholder.
 
+### Weather -- `Assets/Audio/Weather/`
+
+All **CC0** (public domain dedication: no credit required, credited anyway), from freesound.org, taken from each sound's
+high-quality preview; made mono 48 kHz, cut, levelled, and the loops crossfaded end into start.
+
+| Recording | Used for |
+|---|---|
+| **director89, "Rain-Atmo.WAV"** (freesound.org/people/director89/sounds/265627) | `rain` |
+| **Rubaoliva, "Heavy_Rain_Loop.wav"** (freesound.org/people/Rubaoliva/sounds/624645) | `rain_heavy` |
+| **kyles, "rain light on tin roof soft.flac"** (freesound.org/people/kyles/sounds/451152) | `rain_roof` |
+| **conleec, "AMB_Int_Rain_Auto_001.wav"** (freesound.org/people/conleec/sounds/149244) | `rain_cabin` |
+| **dhallcomposer, "Looping Gentle Wind Ambience on an Open Desert Plain.wav"** (freesound.org/people/dhallcomposer/sounds/697217) | `wind` |
+| **jpnien, "Wind strong JPN.wav"** (freesound.org/people/jpnien/sounds/97397) | `gale` |
+| **craigsmith, "G56-22-Sandstorm.wav"** (freesound.org/people/craigsmith/sounds/438877) | `sandstorm` |
+| **slugzilla, "desertwind1FINAL.wav"** (freesound.org/people/slugzilla/sounds/112296) | `sandstorm` |
+| **cobratronik, "Wind__Artic__Cold.wav"** (freesound.org/people/cobratronik/sounds/117136) | `blizzard` |
+| **klangfabrik, "winter wind 01c.aiff"** (freesound.org/people/klangfabrik/sounds/117513) | `blizzard` |
+| **Fission9, "Huge Thunderclap"** (freesound.org/people/Fission9/sounds/576041) | `thunder_near`, and low-passed for `thunder` far off |
+| **BlueDelta, "Heavy Thunder Strike - no Rain - QUADRO.wav"** (freesound.org/people/BlueDelta/sounds/446753) | `thunder_near`, and low-passed for `thunder` far off |
+| **lennyboy, "Thunder.ogg"** (freesound.org/people/lennyboy/sounds/244053) | `thunder` |
+| **Dave Welsh, "Thunder Clap OWB KY 441x16.wav"** (freesound.org/people/Dave%20Welsh/sounds/194364) | `thunder` |
+
 ## Code
 
 Dependencies are declared in `vcpkg.json` and their licences are the ones vcpkg records. All of them
