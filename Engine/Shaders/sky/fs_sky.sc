@@ -22,6 +22,9 @@ uniform vec4 u_planetE;
 uniform vec4 u_skyBodies[24];
 uniform vec4 u_skyRings;     // x, y = the planet's rings, inside and outside, in its radii (0 none); z = the sun's disc, radians
 uniform vec4 u_skyRingColor; // rgb
+uniform vec4 u_skyClouds;    // x = how much of the sky the clouds cover, y = how heavy, z = the clock they drift by, w = lightning in them
+uniform vec4 u_skyCloudWind; // xy = the wind they drift on (the ground's, metres a second)
+uniform vec4 u_skyBolt;      // x = which way the bolt is (yaw), y = the sine of its top's elevation, z = its seed, w = how bright
 
 #include "planet/planet_surface.sh"
 
@@ -301,7 +304,62 @@ void main()
 	}
 	// Seen through air the stars dim and go low down, where there is the most of it to look through.
 	float through = mix(1.0, smoothstep(-0.02, 0.35, up), clamp(u_skyAir.w * 4.0, 0.0, 1.0));
-	color += SkyStars(ray) * u_skySpace.x * starsShow * max(u_skySpace.w, 0.0) * through * (1.0 - haze);
+	color += SkyStars(ray) * u_skySpace.x * starsShow * max(u_skySpace.w, 0.0) * through * (1.0 - haze) * (1.0 - smoothstep(0.7, 0.95, u_skyClouds.x));
+
+	// The clouds over a world with air: a layer a couple of kilometres up (lower, heavier and darker in a storm), drifting on
+	// the wind up there, as much of the sky as the weather has them cover. Lit by the sky, and by the sun on the side facing
+	// it -- shadowed where there is more cloud between it and the sun, bright at the edges round it -- and lost into the haze
+	// towards the horizon. Over the stars and the sun.
+	vec3 sunDir = normalize(u_skySun.xyz);
+	// Lightning lights the sky most round where it struck.
+	float flashHere = mix(0.35, 1.0, pow(0.5 + 0.5 * cos(atan2(ray.x, -ray.z) - u_skyBolt.x), 2.0));
+	if (u_skyClouds.x > 0.001 && up > -0.02 && inSpace < 0.999)
+	{
+		float cover = u_skyClouds.x;
+		float heavy = u_skyClouds.y;
+		float base = mix(2.0, 1.1, heavy);
+		// Where this ray meets the layer, in kilometres; drifting, a high wind three times the ground's.
+		vec2 at = ray.xz / max(up, 0.015) * base - u_skyCloudWind.xy * (u_skyClouds.z * 0.003);
+		vec3 q = vec3(at * 0.35, 3.7);
+		float shape = SkyFbm(q);
+		float density = smoothstep(mix(0.62, 0.2, cover), mix(0.78, 0.44, cover), shape);
+		// More cloud towards the sun than here: this part is in that cloud's shade.
+		float shaded = clamp((SkyFbm(q + vec3(sunDir.x, 0.0, sunDir.z) * 0.18) - shape) * 4.0 + 0.5, 0.0, 1.0);
+		float sunUp = clamp(sunDir.y * 3.0 + 0.3, 0.0, 1.0);
+		vec3 skyLight = mix(u_skyHorizon.rgb, u_skyZenith.rgb, 0.5);
+		vec3 sunLight = u_skySunColor.rgb * u_skySunColor.w * sunUp;
+		vec3 cloud = skyLight * mix(1.1, 0.45, heavy) * mix(1.0, 0.65, density) +
+		             sunLight * mix(1.4, 0.12, heavy) * (1.0 - shaded * 0.7) * mix(1.0, 0.5, density);
+		// The thin edges near the sun lit through.
+		cloud += sunLight * pow(max(dot(ray, sunDir), 0.0), 8.0) * (1.0 - density) * 2.0 * (1.0 - heavy);
+		// Lightning in them, lighting them from inside, the thickest most.
+		cloud += vec3(0.8, 0.85, 1.0) * u_skyClouds.w * flashHere * (0.15 + 1.8 * shape * shape) * 1.5;
+		cloud = mix(cloud, u_skyHorizon.rgb + vec3(0.8, 0.85, 1.0) * u_skyClouds.w * flashHere * 0.5, smoothstep(0.25, 0.0, up) * 0.75);
+		float alpha = density * smoothstep(-0.02, 0.06, up) * (1.0 - inSpace) * (1.0 - 0.3 * haze);
+		color = mix(color, cloud, alpha);
+	}
+	// A flash lights the whole sky.
+	color += vec3(0.6, 0.65, 0.8) * u_skyClouds.w * flashHere * 0.12 * (1.0 - inSpace) * step(-0.05, up);
+	// And the bolt itself, while it strikes: from the ground to the clouds somewhere round the horizon, crooked at two sizes,
+	// a fork off it part way, a hard white core in a glow -- dimmed through the rain.
+	if (u_skyBolt.w > 0.001 && up > -0.01 && up < u_skyBolt.y)
+	{
+		float yaw = atan2(ray.x, -ray.z) - u_skyBolt.x;
+		yaw -= 6.2831853 * floor((yaw + 3.14159265) / 6.2831853);
+		float seed = u_skyBolt.z;
+		float path = (SkyNoise(vec3(up * 60.0, seed, 1.0)) - 0.5) * 0.012 + (SkyNoise(vec3(up * 14.0, seed, 7.0)) - 0.5) * 0.03;
+		float width = max(length(fwidth(ray)), 0.0003) * 1.2;
+		float off = abs(yaw - path);
+		float bolt = exp(-off / width) * 6.0 + exp(-off / (width * 12.0)) * 0.25;
+		float forkFrom = u_skyBolt.y * 0.55;
+		if (up < forkFrom && up > forkFrom * 0.35)
+		{
+			float fork = path + (forkFrom - up) * (fract(seed * 7.13) < 0.5 ? 0.5 : -0.5) + (SkyNoise(vec3(up * 80.0, seed, 3.0)) - 0.5) * 0.01;
+			bolt += exp(-abs(yaw - fork) / width) * 3.0 * smoothstep(forkFrom * 0.35, forkFrom * 0.6, up);
+		}
+		color += vec3(0.85, 0.9, 1.0) * bolt * u_skyBolt.w * smoothstep(u_skyBolt.y, u_skyBolt.y * 0.85, up) * (1.0 - 0.6 * haze) *
+		         (1.0 - inSpace);
+	}
 
 	// For post-processing to finish, as linear light.
 	if (u_skyGrade.w > 0.5)

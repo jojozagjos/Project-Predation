@@ -20,7 +20,8 @@ uniform vec4 u_lightColor;      // rgb = colour, w = intensity
 uniform vec4 u_ambientSky;      // rgb = light from above
 uniform vec4 u_ambientGround;   // rgb = bounce from below
 uniform vec4 u_fogColor;        // rgb
-uniform vec4 u_fogParams;       // x = start distance, y = end distance, z = 1 when the eye is out in the open air
+uniform vec4 u_fogParams;       // x = start distance, y = end distance, z = how far out in the open air the eye is (0 to 1)
+uniform vec4 u_surfaceWeather;  // x = how wet what is under the sky is, y = how much snow lies on it (Environment)
 uniform vec4 u_cameraPosition;  // xyz
 uniform vec4 u_output;          // x = 1: write linear light for post-processing to finish
 uniform vec4 u_grade;           // x = exposure, y = contrast, z = light where the sky cannot reach,
@@ -802,6 +803,30 @@ void main()
 	// Paint worn through: bare metal, scuffed bright.
 	metallic = mix(metallic, 0.7, bare);
 	roughness = mix(roughness, clamp(roughness * 0.75, 0.2, 0.6), bare);
+
+	// How much of the sky reaches this point (the ambient below says why it is worked out as it is): here, first, for the
+	// weather on what is out under it.
+	float skySlack = shadowSlack(u_skyShadowParams.y, abs(N.y), 1.0, u_shadowTexelWorld.y, 1.0);
+	skySlack = mix(min(skySlack, 0.2), skySlack, smoothstep(0.3, 0.7, abs(N.y)));
+	float skyReaches = skyReaching(v_worldPos, N, skySlack);
+	// Rained on (u_surfaceWeather.x): darker, as anything soaks it up the rougher it is, and glossier; the water standing in
+	// puddles in the low patches of the flat. Snowed on (y): what faces up white, thickest on the flattest, gone at its
+	// edges in patches. Neither on a creature, nor where the sky does not reach.
+	float puddle = 0.0;
+	if (u_organic.x < 0.5 && (u_surfaceWeather.x > 0.001 || u_surfaceWeather.y > 0.001))
+	{
+		float open = smoothstep(0.3, 0.8, skyReaches);
+		float wet = u_surfaceWeather.x * open * mix(0.55, 1.0, max(N.y, 0.0));
+		puddle = wet * smoothstep(0.93, 0.99, N.y) * smoothstep(0.76, 0.84, SurfaceClouds(v_worldPos.xz * 0.9 + vec2(2.3, 8.1)));
+		albedo *= mix(1.0, mix(0.85, 0.55, roughness), wet) * mix(1.0, 0.6, puddle);
+		roughness = mix(roughness, mix(roughness * 0.45, 0.06, puddle), wet);
+		// (A leaf or a blade, a card at any angle, only dusted.)
+		float lying = (cutout ? 0.45 : smoothstep(0.45, 0.85, N.y)) * open;
+		float snow = smoothstep(0.0, 0.25, u_surfaceWeather.y * lying - 0.35 * SurfaceClouds(v_worldPos.xz * 0.6 + vec2_splat(4.0)) * (1.0 - u_surfaceWeather.y));
+		albedo = mix(albedo, vec3(0.78, 0.8, 0.84), snow);
+		roughness = mix(roughness, 0.75, snow);
+		metallic = mix(metallic, 0.0, snow);
+	}
 	if (u_organic.x > 0.5)
 	{
 		albedo = mix(albedo, vec3(0.42, 0.36, 0.33) * (0.35 + 0.65 * dot(albedo, vec3_splat(0.8))), v_organic.y);
@@ -877,9 +902,7 @@ void main()
 	// every wall under it read as open to the sky and lit up in a band along the ceiling -- worse the
 	// higher the graphics were set. A wall is judged by the probes out into the room it faces anyway
 	// (skyReaching), which do not need the slack; only floors and ramps, lying along the map, do.
-	float skySlack = shadowSlack(u_skyShadowParams.y, abs(N.y), 1.0, u_shadowTexelWorld.y, 1.0);
-	skySlack = mix(min(skySlack, 0.2), skySlack, smoothstep(0.3, 0.7, abs(N.y)));
-	float skyReaches = skyReaching(v_worldPos, N, skySlack);
+	// (skyReaches is worked out above, before the surface was lit, with the slack as just said.)
 	ambient *= mix(u_grade.z, 1.0, skyReaches);
 
 	color += diffuseColor * ambient;
@@ -907,6 +930,8 @@ void main()
 	environmentColor += u_fogColor.rgb * (0.35 * exp(-abs(reflected.y) / (0.05 + roughness * 0.6))) * (1.0 - roughness);
 	// Occluded like the rest of the ambient: a room the sky cannot see into has nothing to reflect.
 	environmentColor *= mix(u_grade.z, 1.0, skyReaches);
+	// Standing water shows the sky brighter than the hemisphere's average: it is the sky itself, mirrored.
+	environmentColor *= 1.0 + 0.25 * puddle;
 
 	// How much of that reflection actually leaves the surface, from Karis' analytic fit to the split
 	// sum approximation. It is two numbers -- a scale and a bias on the Fresnel colour -- and they

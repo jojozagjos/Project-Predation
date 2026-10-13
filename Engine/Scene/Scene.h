@@ -115,6 +115,19 @@ struct Environment
     // How thick the air is with what the weather fills it with (0 to 1): the sky drawn as the haze, its sun, stars and the
     // bodies in it dimmed behind it.
     float skyHaze = 0.0f;
+    // How wet what is out under the sky is (0 to 1) -- darker, glossier, puddles on the flat -- and how much snow lies on
+    // what faces up (0 to 1). Only where the sky reaches it.
+    float wetness = 0.0f;
+    float snowCover = 0.0f;
+    // The sky's clouds over a world with air: how much of it they cover (0 clear, 1 overcast) and how dark and heavy they are
+    // (0 white, 1 a storm's); drifting with `wind` by `windClock`.
+    float cloudCover = 0.0f;
+    float cloudDark = 0.0f;
+    // Lightning this frame: how bright its flash is (0 none; above 1 near and at its peak), lighting everything under the
+    // sky and the clouds from inside; and the bolt itself, which way round the horizon it is (radians, as yaw), how high it
+    // reaches up the sky (the sine of its top's elevation), its own seed for its shape, and how bright it is now.
+    float lightning = 0.0f;
+    glm::vec4 bolt{0.0f};
     float windClock = 0.0f;
 
     // Out in space: how many of the stars show (0 none, 1 all), and a planet hung in the sky -- which way its middle

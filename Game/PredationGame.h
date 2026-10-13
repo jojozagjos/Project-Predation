@@ -1236,6 +1236,21 @@ private:
     SpriteRenderer m_sprites;
     // The clock the wind gusts by, for the plants.
     float m_windClock = 0.0f;
+    // How wet the site is and how much snow lies on it (Environment::wetness, snowCover), coming and going as the weather
+    // does; and which site it is for -- arriving somewhere, it has been raining there all along.
+    float m_surfaceWet = 0.0f;
+    float m_surfaceSnow = 0.0f;
+    uint32_t m_surfaceWeatherSite = 0;
+    // Lightning (UpdateLightning): how long until the next strike, how long since the last (below nought, none going), how
+    // far off it is and its shape's seed; and what it is this frame.
+    float m_lightningIn = 8.0f;
+    float m_lightningAge = -1.0f;
+    float m_lightningDistance = 0.0f;
+    float m_lightningSeed = 0.0f;
+    float m_lightningFlash = 0.0f;
+    glm::vec4 m_lightningBolt{0.0f};
+    // The next strike's way round (degrees, as yaw) and how far, when asked for one (lightning_now); below nought, anywhere.
+    glm::vec2 m_lightningAim{-1.0f};
     SystemMapView m_mapView;
     bool m_mapOpen = false;
     bool m_mapFramed = false;
@@ -1300,6 +1315,10 @@ private:
     void UpdateWorldSounds(float dt);
     void UpdateCreatureSounds(float dt);
     void UpdateAmbience(float dt);
+    // Lightning in a storm (`storm` 0 none, 1 the worst): now and then a strike somewhere round about -- its flash in a
+    // few strokes, the bolt in the sky, thunder after it as long as the sound takes to come -- into m_lightningFlash and
+    // m_lightningBolt for the picture (Environment::lightning, bolt).
+    void UpdateLightning(float dt, float storm);
     // The tension layer: a drone that rises with the danger, your own heartbeat when you are afraid,
     // and a sting when something close turns on you.
     void UpdateTension(float dt);

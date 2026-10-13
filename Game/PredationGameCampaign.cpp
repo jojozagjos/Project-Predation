@@ -444,6 +444,15 @@ void PredationGame::RegisterCampaignCommands()
                                 look.weather = args[1];
                                 look.weatherAmount = args.size() >= 3 ? std::clamp(std::strtof(args[2].c_str(), nullptr), 0.0f, 1.0f) : 0.7f;
                                 m_facility.SetLook(look);
+                                // The ground as wet or snowed on as that weather would leave it, at once.
+                                m_surfaceWeatherSite = 0;
+                            });
+    console.RegisterCommand("lightning_now", "In a storm, lightning now, to see it: lightning_now [yaw degrees] [metres off]",
+                            [this](const std::vector<std::string>& args)
+                            {
+                                m_lightningIn = 0.0f;
+                                m_lightningAim = {args.size() >= 2 ? std::strtof(args[1].c_str(), nullptr) : -1.0f,
+                                                  args.size() >= 3 ? std::strtof(args[2].c_str(), nullptr) : -1.0f};
                             });
     console.RegisterCommand("land_region","Pick where the shuttle goes down on the world the ship is over, as the map does: land_region <region>",
                             [this](const std::vector<std::string>& args) { ChooseLandingRegion(args.size() >= 2 ? std::atoi(args[1].c_str()) : 0); });

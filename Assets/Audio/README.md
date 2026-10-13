@@ -130,6 +130,7 @@ The loops are faded in and out by where you are, measured a few times a second:
 | `nest` | Near a nest, before you see it |
 | `buzz` | The nearest failing or flickering lamp, from where it hangs, stuttering with its light |
 | `groan`, `drip`, `distant_bang` | Now and then, somewhere out of sight: a building's noises indoors, only something falling far off outside |
+| `thunder`, `thunder_near` | In a storm, after each flash, as long after as the sound takes to come: a long roll from far off, a crack close by. Designed placeholders; a recording would beat them |
 
 `audio.ambience` sets how loud all of it is.
 

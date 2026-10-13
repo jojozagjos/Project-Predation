@@ -7,6 +7,7 @@ uniform vec4 u_organic;     // see Material::organic
 uniform vec4 u_organicBeat; // see Material::organicBeat
 uniform vec4 u_materialParams; // w = 1 cut out (Material::cutout): a plant's card, which sways
 uniform vec4 u_wind;           // xy = the wind, metres a second along x and z; z = a clock it gusts by (Environment::wind)
+uniform vec4 u_surfaceWeather;  // y = how much snow lies (Environment::snowCover): ground cover half buried in it
 
 float organicBump(float t, float at, float width)
 {
@@ -56,6 +57,8 @@ void main()
 		float share = clamp(1.0 - (far - 8.0) / 40.0, 0.12, 1.0) * (1.0 - smoothstep(29.0, 35.0, far));
 		float grown = clamp((share - a_color0.r) / 0.08, 0.0, 1.0);
 		worldPosition.y -= (a_color0.g * 1.5 + 0.05) * (1.0 - grown);
+		// Half buried where snow lies (as deep as a short tuft at the most).
+		worldPosition.y -= u_surfaceWeather.y * 0.3;
 		float up = 1.0 - fract(a_texcoord0.y * 2.0);
 		colour = vec4(vec3_splat(mix(0.5, 1.0, smoothstep(0.0, 0.7, up)) * (0.6 + 0.8 * a_color0.b)), 1.0);
 	}

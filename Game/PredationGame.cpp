@@ -9905,10 +9905,39 @@ void PredationGame::OnUpdate(double dt, double alpha)
         const float plantWind = falling ? static_cast<float>(PlaceConditions(m_facility.Plan().sky.fogEnd).wind) * Weather::GustAt(m_windClock) : 0.0f;
         m_scene.GetEnvironment().wind = glm::vec2(std::cos(windAngle), std::sin(windAngle)) * plantWind;
         m_scene.GetEnvironment().windClock = m_windClock;
+        // And what the weather leaves on things: wet in rain, getting so over a minute and drying over several; snow lying
+        // as it falls, and going slower still -- and on a frozen world, old snow on everything that faces up whatever the
+        // sky is doing. A site just arrived at, or its weather just changed by hand, is as wet or snowed on as it would be.
+        {
+            const Weather::Kind kind = Weather::KindOf(look.weather);
+            const bool built = m_facility.Built();
+            const float wetFor = built && kind == Weather::Kind::Rain ? std::clamp(look.weatherAmount * 1.3f, 0.0f, 1.0f) : 0.0f;
+            const float snowFor = built ? std::max(kind == Weather::Kind::Snow ? look.weatherAmount : 0.0f, look.biome == "frozen" ? 0.55f : 0.0f) : 0.0f;
+            if (seed != m_surfaceWeatherSite)
+            {
+                m_surfaceWeatherSite = seed;
+                m_surfaceWet = wetFor;
+                m_surfaceSnow = snowFor;
+            }
+            const auto towards = [&](float& value, float to, float up, float down)
+            {
+                const float step = (to > value ? up : down) * deltaSeconds;
+                value = to > value ? std::min(value + step, to) : std::max(value - step, to);
+            };
+            towards(m_surfaceWet, wetFor, 1.0f / 60.0f, 1.0f / 400.0f);
+            towards(m_surfaceSnow, snowFor, 1.0f / 120.0f, 1.0f / 900.0f);
+            m_scene.GetEnvironment().wetness = falling ? m_surfaceWet : 0.0f;
+            m_scene.GetEnvironment().snowCover = falling ? m_surfaceSnow : 0.0f;
+            UpdateLightning(deltaSeconds, falling ? (kind == Weather::Kind::Rain   ? glm::smoothstep(0.75f, 0.95f, look.weatherAmount)
+                                                     : kind == Weather::Kind::Ash ? 0.6f * glm::smoothstep(0.85f, 1.0f, look.weatherAmount)
+                                                                                  : 0.0f)
+                                                  : 0.0f);
+        }
         // Lit and fogged as last frame's world was (the light changes slowly).
         const Environment& environment = m_scene.GetEnvironment();
         Weather::Light light;
         light.light = environment.ambientSky * 1.4f + environment.ambientGround * 0.4f + environment.sunColor * environment.sunIntensity * 0.55f;
+        light.light += glm::vec3(0.75f, 0.8f, 1.0f) * m_lightningFlash * 1.2f;
         light.fogColour = environment.fogColor;
         light.fogStart = environment.fogStart;
         light.fogEnd = environment.fogEnd;
@@ -10225,6 +10254,10 @@ void PredationGame::OnUpdate(double dt, double alpha)
     environment.skySun = 1.0f;
     environment.skyAir = 0.0f;
     environment.skyHaze = 0.0f;
+    environment.cloudCover = 0.0f;
+    environment.cloudDark = 0.0f;
+    environment.lightning = 0.0f;
+    environment.bolt = glm::vec4(0.0f);
     environment.fogStart = cv_fogStart.Get();
     environment.fogEnd = cv_fogEnd.Get();
     environment.sunIntensity = cv_sunIntensity.Get();
@@ -10370,6 +10403,43 @@ void PredationGame::OnUpdate(double dt, double alpha)
                 environment.sunIntensity *= glm::mix(1.0f, 0.4f, thick);
                 environment.skyHaze = thick;
             }
+            // Clouds, by the weather: a few fair-weather ones on a clear day (more or fewer by the world), a grey lid in fog,
+            // rain or snow, low and dark in a storm, ash's heavy and brown-black; little over a dust storm, whose haze is the
+            // sky. Fewer the thinner the air, none without it.
+            {
+                const float amount = std::clamp(look.weatherAmount, 0.0f, 1.0f);
+                const float fair = 0.2f + 0.3f * static_cast<float>((m_facility.Seed() * 2246822519u) >> 24) / 255.0f;
+                float cover = siteBody->weather == "fog" ? 0.9f : fair;
+                float dark = siteBody->weather == "fog" ? 0.35f : 0.0f;
+                if (kind == Weather::Kind::Rain)
+                {
+                    cover = 0.8f + 0.2f * glm::smoothstep(0.3f, 0.8f, amount);
+                    dark = 0.3f + 0.65f * amount;
+                }
+                else if (kind == Weather::Kind::Snow)
+                {
+                    cover = 0.85f + 0.15f * amount;
+                    dark = 0.2f + 0.3f * amount;
+                }
+                else if (kind == Weather::Kind::Ash)
+                {
+                    cover = 0.95f;
+                    dark = 0.8f;
+                }
+                else if (kind == Weather::Kind::Dust)
+                {
+                    cover = 0.15f;
+                    dark = 0.3f;
+                }
+                const float air = glm::smoothstep(0.015f, 0.3f, siteBody->air);
+                environment.cloudCover = kind != Weather::Kind::None && look.weatherAmount <= 0.0f ? fair * air : cover * air;
+                environment.cloudDark = dark;
+            }
+            // And lightning: the world under the open sky lit by it, cold and white, for the moment it lasts -- what is under a
+            // roof only through its doors and windows (the ambient is the sky's, which a roof keeps out) -- and the sky with it.
+            // (Environment::lightning: the renderer adds it to the light from the sky, and the sky draws its own.)
+            environment.lightning = m_lightningFlash;
+            environment.bolt = m_lightningBolt;
         }
         else if (atSite)
         {
@@ -12303,6 +12373,69 @@ void PredationGame::KeepDebugOnTop()
         {
             ImGui::BringWindowToDisplayFront(window);
         }
+    }
+}
+
+void PredationGame::UpdateLightning(float dt, float storm)
+{
+    const auto random = [] { return static_cast<float>(std::rand()) / static_cast<float>(RAND_MAX); };
+    // A strike every so often, more often the worse the storm: mostly far off, now and then close.
+    if (storm > 0.0f)
+    {
+        m_lightningIn -= dt;
+        if (m_lightningIn <= 0.0f)
+        {
+            m_lightningIn = glm::mix(45.0f, 9.0f, storm) * (0.4f + 1.2f * random());
+            m_lightningAge = 0.0f;
+            m_lightningDistance = m_lightningAim.y > 0.0f ? m_lightningAim.y : 400.0f + 5600.0f * std::pow(random(), 1.4f);
+            m_lightningSeed = random() * 100.0f;
+            const float yaw = m_lightningAim.x >= 0.0f ? glm::radians(m_lightningAim.x) : random() * glm::two_pi<float>();
+            m_lightningAim = glm::vec2(-1.0f);
+            // Up to the cloud base, a kilometre and some up: high in the sky close by, low over the horizon far off.
+            const float top = 1100.0f / std::sqrt(1100.0f * 1100.0f + m_lightningDistance * m_lightningDistance);
+            m_lightningBolt = {yaw, top, m_lightningSeed, 0.0f};
+            // The thunder, as long after as sound takes to come that far: a crack close by, a long roll far off, quieter
+            // the further, and muffled under a roof.
+            const float near = 1.0f - glm::smoothstep(400.0f, 6000.0f, m_lightningDistance);
+            const glm::vec3 towards{std::sin(yaw), 0.3f, -std::cos(yaw)};
+            QueueSound(m_lightningDistance / 343.0f, m_lightningDistance < 1300.0f ? "Ambience/thunder_near" : "Ambience/thunder",
+                       m_renderEye + towards * 2.0f, glm::mix(0.3f, 1.0f, near), false);
+        }
+    }
+    else
+    {
+        m_lightningIn = std::max(m_lightningIn, 4.0f);
+    }
+    m_lightningFlash = 0.0f;
+    m_lightningBolt.w = 0.0f;
+    if (m_lightningAge < 0.0f)
+    {
+        return;
+    }
+    // In one to four strokes a tenth of a second or so apart, each a hard flash dying in a few hundredths, the sky glowing a
+    // little after; as bright as it is near.
+    m_lightningAge += dt;
+    const int strokes = 1 + static_cast<int>(std::fmod(m_lightningSeed * 7.31f, 4.0f));
+    float flash = 0.0f;
+    float bolt = 0.0f;
+    for (int i = 0; i < strokes; ++i)
+    {
+        const float at = static_cast<float>(i) * 0.085f + std::fmod(m_lightningSeed * (3.7f + static_cast<float>(i)), 0.05f);
+        const float since = m_lightningAge - at;
+        if (since >= 0.0f)
+        {
+            const float strength = i == 0 ? 1.0f : 0.55f + 0.4f * std::fmod(m_lightningSeed * (1.9f + static_cast<float>(i)), 1.0f);
+            flash += strength * std::exp(-since / 0.045f);
+            bolt += strength * std::exp(-since / 0.03f);
+        }
+    }
+    flash += 0.12f * std::exp(-m_lightningAge / 0.35f);
+    const float bright = std::clamp(1.0f - m_lightningDistance / 6000.0f, 0.15f, 0.9f);
+    m_lightningFlash = flash * bright;
+    m_lightningBolt.w = std::min(bolt, 1.5f) * std::clamp(1.4f - m_lightningDistance / 6000.0f, 0.3f, 1.0f);
+    if (m_lightningAge > 1.2f)
+    {
+        m_lightningAge = -1.0f;
     }
 }
 

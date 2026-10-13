@@ -131,6 +131,7 @@ bool SceneRenderer::Init(ShaderLibrary& shaders)
     m_uSteepParams = bgfx::createUniform("u_steepParams", bgfx::UniformType::Vec4);
     m_uWearParams = bgfx::createUniform("u_wearParams", bgfx::UniformType::Vec4);
     m_uWind = bgfx::createUniform("u_wind", bgfx::UniformType::Vec4);
+    m_uSurfaceWeather = bgfx::createUniform("u_surfaceWeather", bgfx::UniformType::Vec4);
     m_sSunShadow = bgfx::createUniform("s_sunShadow", bgfx::UniformType::Sampler);
     m_uSunNearShadowMtx = bgfx::createUniform("u_sunNearShadowMtx", bgfx::UniformType::Mat4);
     m_uSunNearShadowAxis = bgfx::createUniform("u_sunNearShadowAxis", bgfx::UniformType::Vec4);
@@ -235,7 +236,7 @@ void SceneRenderer::Shutdown()
         m_uSpotShadowMtx,  m_uSpotShadowAxis,  m_uSpotShadowParams, m_sSpotShadow,
         m_uShadowTexelWorld, m_uSunNearShadowMtx, m_uSunNearShadowAxis, m_uSunNearShadowParams,
         m_sSunNearShadow, m_sNormalMap, m_sRoughnessMap, m_uSurfaceParams,
-        m_sSteepColor, m_sSteepNormal, m_sSteepRoughness, m_uSteepParams, m_uWearParams, m_uWind, m_uSunFarShadowMtx, m_uSunFarShadowAxis,
+        m_sSteepColor, m_sSteepNormal, m_sSteepRoughness, m_uSteepParams, m_uWearParams, m_uWind, m_uSurfaceWeather, m_uSunFarShadowMtx, m_uSunFarShadowAxis,
         m_uSunFarShadowParams, m_uSunFarShadowTexel, m_sSunFarShadow};
     for (const bgfx::UniformHandle handle : uniforms)
     {
@@ -262,7 +263,7 @@ void SceneRenderer::Shutdown()
     m_uSunNearShadowMtx = m_uSunNearShadowAxis = m_uSunNearShadowParams = m_sSunNearShadow = BGFX_INVALID_HANDLE;
     m_uSunFarShadowMtx = m_uSunFarShadowAxis = m_uSunFarShadowParams = m_uSunFarShadowTexel = m_sSunFarShadow = BGFX_INVALID_HANDLE;
     m_sNormalMap = m_sRoughnessMap = m_uSurfaceParams = BGFX_INVALID_HANDLE;
-    m_sSteepColor = m_sSteepNormal = m_sSteepRoughness = m_uSteepParams = m_uWearParams = m_uWind = BGFX_INVALID_HANDLE;
+    m_sSteepColor = m_sSteepNormal = m_sSteepRoughness = m_uSteepParams = m_uWearParams = m_uWind = m_uSurfaceWeather = BGFX_INVALID_HANDLE;
 
     if (bgfx::isValid(m_reflectionTarget))
     {
@@ -293,11 +294,15 @@ void SceneRenderer::SetEnvironmentUniforms(const Environment& environment,
     const float lightDirection[4] = {towardsLight.x, towardsLight.y, towardsLight.z, 0.0f};
     const float lightColor[4] = {environment.sunColor.r, environment.sunColor.g, environment.sunColor.b,
                                  environment.sunIntensity};
-    const float ambientSky[4] = {environment.ambientSky.r, environment.ambientSky.g, environment.ambientSky.b,
-                                 0.0f};
-    const float ambientGround[4] = {environment.ambientGround.r, environment.ambientGround.g,
-                                    environment.ambientGround.b, 0.0f};
-    const float fogColor[4] = {environment.fogColor.r, environment.fogColor.g, environment.fogColor.b, 0.0f};
+    // Lightning (Environment::lightning) is the sky lighting up: cold white light from above for the moment it lasts, kept
+    // out from under a roof as the sky's is, a little of it back from the ground, and the air lit with it.
+    const glm::vec3 flash = glm::vec3(0.75f, 0.8f, 1.0f) * std::max(environment.lightning, 0.0f);
+    const glm::vec3 fromSky = environment.ambientSky + flash * 1.6f;
+    const glm::vec3 below = environment.ambientGround + flash * 0.5f;
+    const glm::vec3 fog = environment.fogColor + flash * 0.12f;
+    const float ambientSky[4] = {fromSky.r, fromSky.g, fromSky.b, 0.0f};
+    const float ambientGround[4] = {below.r, below.g, below.b, 0.0f};
+    const float fogColor[4] = {fog.r, fog.g, fog.b, 0.0f};
     const float fogParams[4] = {environment.fogStart, environment.fogEnd, environment.eyeOutdoors, 0.0f};
     const float cameraPos[4] = {cameraPosition.x, cameraPosition.y, cameraPosition.z, 0.0f};
 
@@ -310,6 +315,8 @@ void SceneRenderer::SetEnvironmentUniforms(const Environment& environment,
     bgfx::setUniform(m_uCameraPosition, cameraPos);
     const float wind[4] = {environment.wind.x, environment.wind.y, environment.windClock, 0.0f};
     bgfx::setUniform(m_uWind, wind);
+    const float surfaceWeather[4] = {std::clamp(environment.wetness, 0.0f, 1.0f), std::clamp(environment.snowCover, 0.0f, 1.0f), 0.0f, 0.0f};
+    bgfx::setUniform(m_uSurfaceWeather, surfaceWeather);
 
     const float grade[4] = {environment.exposure, environment.contrast, m_shadowSettings.indoorLight,
                             withShadows ? static_cast<float>(m_shadowSettings.debugView) : 0.0f};

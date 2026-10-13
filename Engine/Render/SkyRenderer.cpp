@@ -47,13 +47,16 @@ bool SkyRenderer::Init(ShaderLibrary& shaders)
     m_uRings = bgfx::createUniform("u_skyRings", bgfx::UniformType::Vec4);
     m_uRingColor = bgfx::createUniform("u_skyRingColor", bgfx::UniformType::Vec4);
     m_uAir = bgfx::createUniform("u_skyAir", bgfx::UniformType::Vec4);
+    m_uClouds = bgfx::createUniform("u_skyClouds", bgfx::UniformType::Vec4);
+    m_uCloudWind = bgfx::createUniform("u_skyCloudWind", bgfx::UniformType::Vec4);
+    m_uBolt = bgfx::createUniform("u_skyBolt", bgfx::UniformType::Vec4);
     return true;
 }
 
 void SkyRenderer::Shutdown()
 {
     const bgfx::UniformHandle uniforms[] = {m_uRays, m_uDepth, m_uZenith, m_uHorizon, m_uGround, m_uSun, m_uSunColor,
-                                            m_uGrade, m_uSpace, m_uPlanet, m_uPlanetA, m_uPlanetB, m_uPlanetC, m_uPlanetD, m_uPlanetE, m_uBodies, m_uRings, m_uRingColor, m_uAir};
+                                            m_uGrade, m_uSpace, m_uPlanet, m_uPlanetA, m_uPlanetB, m_uPlanetC, m_uPlanetD, m_uPlanetE, m_uBodies, m_uRings, m_uRingColor, m_uAir, m_uClouds, m_uCloudWind, m_uBolt};
     for (const bgfx::UniformHandle handle : uniforms)
     {
         if (bgfx::isValid(handle))
@@ -66,7 +69,7 @@ void SkyRenderer::Shutdown()
     m_uSpace = m_uPlanet = BGFX_INVALID_HANDLE;
     m_uPlanetA = m_uPlanetB = m_uPlanetC = m_uPlanetD = m_uPlanetE = BGFX_INVALID_HANDLE;
     m_uBodies = BGFX_INVALID_HANDLE;
-    m_uRings = m_uRingColor = m_uAir = BGFX_INVALID_HANDLE;
+    m_uRings = m_uRingColor = m_uAir = m_uClouds = m_uCloudWind = m_uBolt = BGFX_INVALID_HANDLE;
     if (bgfx::isValid(m_triangle))
     {
         bgfx::destroy(m_triangle);
@@ -156,6 +159,14 @@ void SkyRenderer::Draw(bgfx::ViewId view, const Environment& environment, const 
     bgfx::setUniform(m_uRingColor, ringColor);
     const float air[4] = {environment.skyAirColor.r, environment.skyAirColor.g, environment.skyAirColor.b, std::clamp(environment.skyAir, 0.0f, 1.0f)};
     bgfx::setUniform(m_uAir, air);
+    // The clouds: how much they cover and how heavy, the clock they drift by and the lightning in them; the wind they drift
+    // on (high up, faster than the ground's); and the bolt.
+    const float clouds[4] = {std::clamp(environment.cloudCover, 0.0f, 1.0f), std::clamp(environment.cloudDark, 0.0f, 1.0f), environment.windClock,
+                             std::max(environment.lightning, 0.0f)};
+    const float cloudWind[4] = {environment.wind.x, environment.wind.y, 0.0f, 0.0f};
+    bgfx::setUniform(m_uClouds, clouds);
+    bgfx::setUniform(m_uCloudWind, cloudWind);
+    bgfx::setUniform(m_uBolt, glm::value_ptr(environment.bolt));
 
     bgfx::setVertexBuffer(0, m_triangle);
     // Behind a picture already drawn: at the far end of its depth, and only where it is still clear -- so the sky's stars and
