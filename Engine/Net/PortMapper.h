@@ -43,7 +43,8 @@ public:
     // Starts asking. Returns at once; watch Status().
     void Open(uint16_t port);
     // Takes the mapping down again. Routers keep them for a long time otherwise, and a forwarded
-    // port pointing at a machine that is no longer listening is worse than none.
+    // port pointing at a machine that is no longer listening is worse than none. Returns at once: the asking is
+    // stopped and the mapping taken down on a thread of its own (Shut), which the next Open, and quitting, wait for.
     void Close();
 
     State Status() const { return m_state.load(); }
@@ -54,8 +55,11 @@ public:
 
 private:
     void Run(uint16_t port);
+    void Shut(std::thread& worker);
+    void WaitForClose();
 
     std::thread m_worker;
+    std::thread m_closer;
     std::atomic<State> m_state{State::Idle};
     std::atomic<bool> m_cancel{false};
 

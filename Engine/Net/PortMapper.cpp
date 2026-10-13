@@ -602,11 +602,13 @@ bool FindConnectionServiceForTesting(const std::string& description, const std::
 PortMapper::~PortMapper()
 {
     Close();
+    WaitForClose();
 }
 
 void PortMapper::Open(uint16_t port)
 {
     Close();
+    WaitForClose();
     m_cancel.store(false);
     m_state.store(State::Working);
     {
@@ -621,9 +623,29 @@ void PortMapper::Open(uint16_t port)
 void PortMapper::Close()
 {
     m_cancel.store(true);
-    if (m_worker.joinable())
+    if (!m_worker.joinable() && !m_mapped.load())
     {
-        m_worker.join();
+        return;
+    }
+    // Leaving a game must not wait on the router: finding it can take seconds, and so can asking it to close the port. So
+    // that happens on a thread of its own.
+    WaitForClose();
+    m_closer = std::thread([this, worker = std::move(m_worker)]() mutable { Shut(worker); });
+}
+
+void PortMapper::WaitForClose()
+{
+    if (m_closer.joinable())
+    {
+        m_closer.join();
+    }
+}
+
+void PortMapper::Shut(std::thread& worker)
+{
+    if (worker.joinable())
+    {
+        worker.join();
     }
 
     if (m_mapped.load() && !m_controlUrl.empty())
