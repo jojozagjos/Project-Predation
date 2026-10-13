@@ -4,6 +4,7 @@
 // one: its sounds, its markers, its puffs of exhaust. The cinematic itself is Game/Cinematic.
 
 #include "Game/PredationGame.h"
+#include "Game/OverlayLayer.h"
 
 #include "Engine/Core/Log.h"
 #include "Engine/Core/Paths.h"
@@ -638,10 +639,12 @@ void PredationGame::CineLight(const std::string& light, float intensity)
 
 void PredationGame::DrawCinematicOverlay()
 {
+    // Over the picture and the HUD, under the developer's windows.
+    OverlayLayer layer("##cinematic");
     if (m_cineFadeIn > 0.0f && !m_cine.Active())
     {
         const ImGuiViewport* view = ImGui::GetMainViewport();
-        ImGui::GetForegroundDrawList()->AddRectFilled(view->Pos, {view->Pos.x + view->Size.x, view->Pos.y + view->Size.y},
+        layer.Draw()->AddRectFilled(view->Pos, {view->Pos.x + view->Size.x, view->Pos.y + view->Size.y},
                                                        IM_COL32(0, 0, 0, static_cast<int>(255 * m_cineFadeIn)));
     }
     if (!m_cine.Active() || m_screen != Screen::Playing)
@@ -662,10 +665,10 @@ void PredationGame::DrawCinematicOverlay()
     const float scale = (max.x - min.x) / std::max(viewport->Size.x, 1.0f);
     if (m_cineEditor.IsOpen() && !m_cineEditor.ThroughCinematic())
     {
-        ImGui::GetForegroundDrawList()->AddText({min.x + 10.0f, min.y + 8.0f}, IM_COL32(255, 210, 120, 255), "FREE CAMERA  (C: through the cinematic's)");
+        layer.Draw()->AddText({min.x + 10.0f, min.y + 8.0f}, IM_COL32(255, 210, 120, 255), "FREE CAMERA  (C: through the cinematic's)");
         return;
     }
-    ImDrawList* draw = m_cineEditor.IsOpen() ? ImGui::GetBackgroundDrawList() : ImGui::GetForegroundDrawList();
+    ImDrawList* draw = m_cineEditor.IsOpen() ? ImGui::GetBackgroundDrawList() : layer.Draw();
     const CinematicSampler sampler = m_cine.Sampler();
     const float time = m_cine.Time();
 

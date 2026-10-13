@@ -2,6 +2,7 @@
 // everybody else being sent it. What a campaign is, is Game/Campaign.
 
 #include "Game/PredationGame.h"
+#include "Game/OverlayLayer.h"
 
 #include "Engine/Core/Log.h"
 #include "Engine/Core/Paths.h"
@@ -288,7 +289,8 @@ void PredationGame::DrawCampaignNotice()
     const ImVec2 size = ImGui::CalcTextSize(m_campaignNotice.c_str());
     const ImVec2 at = m_campaignNoticeCentred ? ImVec2{viewport->WorkPos.x + (viewport->WorkSize.x - size.x) * 0.5f, viewport->WorkPos.y + viewport->WorkSize.y * 0.62f}
                                               : ImVec2{viewport->WorkPos.x + viewport->WorkSize.x - size.x - 24.0f, viewport->WorkPos.y + 20.0f};
-    ImDrawList* draw = ImGui::GetForegroundDrawList();
+    const OverlayLayer layer("##notice");
+    ImDrawList* draw = layer.Draw();
     draw->AddText({at.x + 1.0f, at.y + 1.0f}, IM_COL32(0, 0, 0, static_cast<int>(180.0f * alpha)), m_campaignNotice.c_str());
     draw->AddText(at, IM_COL32(220, 226, 230, static_cast<int>(230.0f * alpha)), m_campaignNotice.c_str());
 }

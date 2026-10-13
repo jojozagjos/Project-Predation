@@ -1,4 +1,5 @@
 #include "Game/PredationGame.h"
+#include "Game/OverlayLayer.h"
 
 #include "Engine/Render/DepthConvention.h"
 #include "Game/Creature/CreatureTuning.h"
@@ -628,6 +629,12 @@ bool PredationGame::OnInit(Application& app)
     cv_sunShadows.Set(true);
     cv_skyShadows.Set(true);
     cv_spotShadows.Set(true);
+    // And anything saved from before the map was made bigger comes up to the shortest the settings offer: 24 m of shadow
+    // in a level you can see a hundred metres across reads as shadows simply not working.
+    if (cv_shadowDistance.Get() < 40.0f)
+    {
+        cv_shadowDistance.Set(40.0f);
+    }
     LoadCinematics();
     app.GetPhysics().OptimizeBroadPhase();
     // The walkable surface the creature moves over, worked out from the level's solid geometry.
@@ -4648,8 +4655,8 @@ struct QualityPreset
 // they are what the game looks like, not a cost to save, and those stay on at every quality. What scales is how far the
 // sun's shadows reach, how much grass and weather is drawn, mirrors and edges.
 constexpr QualityPreset kPresets[] = {
-    {"Low", 32.0f, 0.45f, 0.5f, false, 10.0f, 0},
-    {"Medium", 48.0f, 0.7f, 0.75f, true, 18.0f, 0},
+    {"Low", 40.0f, 0.45f, 0.5f, false, 10.0f, 0},
+    {"Medium", 52.0f, 0.7f, 0.75f, true, 18.0f, 0},
     {"High", 64.0f, 1.0f, 1.0f, true, 30.0f, 0},
     {"Ultra", 96.0f, 1.3f, 1.0f, true, 50.0f, 4},
 };
@@ -4886,7 +4893,7 @@ void PredationGame::DrawSettings()
             SettingsRow("Shadow distance", "r.shadow_distance");
             {
                 float value = shadowDistance;
-                if (ImGui::SliderFloat("##v", &value, 24.0f, 128.0f, "%.0f m"))
+                if (ImGui::SliderFloat("##v", &value, 40.0f, 128.0f, "%.0f m"))
                 {
                     SetSetting("r.shadow_distance", std::to_string(value));
                 }
@@ -5443,7 +5450,7 @@ void PredationGame::DrawTitleScreen()
         foot += "  |  developer build";
 #endif
         const float footSize = ImGui::GetFontSize() * 0.9f;
-        ImGui::GetForegroundDrawList()->AddText(ImGui::GetFont(), footSize, {topLeft.x + 16.0f, topLeft.y + size.y - footSize - 14.0f},
+        OverlayLayer("##titlefoot").Draw()->AddText(ImGui::GetFont(), footSize, {topLeft.x + 16.0f, topLeft.y + size.y - footSize - 14.0f},
                                                 IM_COL32(150, 158, 164, static_cast<int>(255.0f * titleFade)), foot.c_str());
     }
 
@@ -5617,7 +5624,8 @@ bool PredationGame::DrawBootScreen()
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
     const ImVec2 origin = viewport->Pos;
     const ImVec2 size = viewport->Size;
-    ImDrawList* draw = ImGui::GetForegroundDrawList();
+    const OverlayLayer layer("##boot");
+    ImDrawList* draw = layer.Draw();
     const auto alpha = [](float a) { return static_cast<int>(std::clamp(a, 0.0f, 1.0f) * 255.0f); };
     // The name as the title sets it -- PROJECT large, PREDATION under it -- with its top left at `at`.
     const float bigSize = ImGui::GetFontSize() * 3.2f;
@@ -5835,7 +5843,8 @@ void PredationGame::DrawTitleSplash()
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
     const ImVec2 origin = viewport->WorkPos;
     const ImVec2 size = viewport->WorkSize;
-    ImDrawList* draw = ImGui::GetForegroundDrawList();
+    const OverlayLayer layer("##splash");
+    ImDrawList* draw = layer.Draw();
     ImFont* font = ImGui::GetFont();
     const float x = origin.x + size.x * 0.07f;
     const float y = origin.y + size.y * 0.12f;
@@ -10735,12 +10744,6 @@ void PredationGame::OnUpdate(double dt, double alpha)
     shadows.sunEnabled = cv_sunShadows.Get();
     shadows.skyEnabled = cv_skyShadows.Get();
     app.GetSceneRenderer().SetLampShadowsEnabled(cv_lampShadows.Get());
-    // Anything saved from before the map was made bigger comes up to the new distance: 24 m of shadow in
-    // a level you can see a hundred metres across reads as shadows simply not working.
-    if (cv_shadowDistance.Get() < 40.0f)
-    {
-        cv_shadowDistance.Set(64.0f);
-    }
     shadows.distance = std::clamp(cv_shadowDistance.Get(), 10.0f, 160.0f);
     shadows.indoorLight = std::clamp(cv_indoorLight.Get(), 0.0f, 1.0f);
     shadows.sunBias = cv_sunShadowBias.Get();
@@ -11624,7 +11627,8 @@ void PredationGame::DrawHud()
         const float width = keyBox + pad + textSize.x + pad * 2.0f;
         const float height = keyBox;
         const ImVec2 corner{at.x - width * 0.5f, at.y - height * 0.5f};
-        ImDrawList* list = ImGui::GetForegroundDrawList();
+        const OverlayLayer layer("##prompt");
+        ImDrawList* list = layer.Draw();
         list->AddRectFilled(corner, {corner.x + width, corner.y + height}, IM_COL32(6, 7, 10, 225), 4.0f);
         list->AddRect(corner, {corner.x + width, corner.y + height}, IM_COL32(225, 205, 150, 150), 4.0f, 0, 1.5f);
         list->AddRectFilled({corner.x + 2.0f, corner.y + 2.0f}, {corner.x + keyBox - 2.0f, corner.y + height - 2.0f},
@@ -11710,7 +11714,8 @@ void PredationGame::DrawHud()
             const float size = ImGui::GetFontSize() * 1.15f;
             const ImVec2 extent = font->CalcTextSizeA(size, FLT_MAX, 0.0f, named->name.c_str());
             const ImVec2 at{centre.x - extent.x * 0.5f, viewport->Pos.y + viewport->Size.y - 16.0f - kSlotSize - 12.0f - extent.y};
-            ImDrawList* nameList = ImGui::GetForegroundDrawList();
+            const OverlayLayer layer("##named");
+            ImDrawList* nameList = layer.Draw();
             nameList->AddText(font, size, {at.x + 1.5f, at.y + 1.5f}, IM_COL32(0, 0, 0, static_cast<int>(200 * fade)), named->name.c_str());
             nameList->AddText(font, size, at, IM_COL32(236, 238, 242, static_cast<int>(255 * fade)), named->name.c_str());
         }

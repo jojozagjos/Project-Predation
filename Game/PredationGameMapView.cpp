@@ -644,17 +644,14 @@ void PredationGame::ApplyMapBody(int body)
     m_mapLevel = MapLevel::Body;
     m_mapSelected = body;
     m_mapHoverRegion = -1;
-    // The place the ship is going down to, if it is this body's; or the first known, so there is something to read.
+    // The place the ship is going down to, if it is this body's -- and otherwise none: where to go down is picked, never
+    // picked for anybody (a course plotted with none puts the ship in orbit, to choose there).
     m_mapRegion = -1;
     const bool ours = m_mapSystem == m_campaign.system &&
                       (m_campaign.travel.underway ? m_campaign.travel.target == body : m_campaign.body == body);
     if (ours && m_campaign.travel.region >= 0 && MapAreaKnown(m_mapSystem, *picked, m_campaign.travel.region))
     {
         m_mapRegion = m_campaign.travel.region;
-    }
-    for (int i = 0; i < static_cast<int>(picked->regions.size()) && m_mapRegion < 0; ++i)
-    {
-        m_mapRegion = MapAreaKnown(m_mapSystem, *picked, i) ? i : -1;
     }
     m_mapView.SetLimits(kBodyNearest, kBodyFurthest);
     m_mapView.Jump(glm::vec3(0.0f), kBodyFurthest);
@@ -2513,13 +2510,8 @@ void PredationGame::DrawMapSystemPanels(const StarSystem& system)
             ImGui::BeginDisabled(!aboard || m_cine.Active() || plotted || m_campaign.travel.interstellar);
             if (ImGui::Button(plotted ? "Plotted" : "Plot course", {-1.0f, 32.0f}))
             {
-                // Down to the first area the shuttle can go down to, until one is picked on the surface.
-                int region = -1;
-                for (int i = 0; i < static_cast<int>(picked->regions.size()) && region < 0; ++i)
-                {
-                    region = RegionLandable(*picked, i) && !RegionIsPort(*picked, i) ? i : -1;
-                }
-                AskCampaign(CampaignAction::PlotCourse, picked->index, region);
+                // To the planet, nowhere on it yet: the ship goes into orbit and where to go down is picked there.
+                AskCampaign(CampaignAction::PlotCourse, picked->index, -1);
                 PlayNamed("UI/confirm", m_renderEye, 0.6f, 1.0f, false);
             }
             ImGui::EndDisabled();
