@@ -69,7 +69,10 @@ public:
     // Post-processing (PostProcess): the glow's chain of smaller and smaller copies and back, then the
     // finished picture onto the screen, before the interface.
     static constexpr bgfx::ViewId kViewPostFirst = 11;
-    static constexpr bgfx::ViewId kViewPost = 20;
+    // Then the eye adapting to the picture's brightness: measured small, then in one, then carried on from last frame, and read
+    // back now and then -- before the finished picture, which uses it.
+    static constexpr bgfx::ViewId kViewAdaptFirst = 20;
+    static constexpr bgfx::ViewId kViewPost = 24;
     // The lamps' shadows, a few faces a frame into their atlas. After the picture, not before it: what is
     // drawn here is used from the next frame, which is what a shadow drawn once and kept wants anyway.
     static constexpr bgfx::ViewId kViewLampShadowFirst = 120;

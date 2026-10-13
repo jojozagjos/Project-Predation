@@ -6,6 +6,7 @@
 #include "Engine/Render/ShaderLibrary.h"
 
 #include <algorithm>
+#include <cmath>
 
 namespace pred
 {
@@ -62,6 +63,38 @@ bool PostProcess::Init(ShaderLibrary& shaders)
         m_bloom[i] = BGFX_INVALID_HANDLE;
         m_bloomColor[i] = BGFX_INVALID_HANDLE;
     }
+
+    // The eye: its own small targets, the same whatever the screen. Without them (or its shaders) the picture is simply not
+    // adapted.
+    for (size_t i = 0; i < m_adapt.size(); ++i)
+    {
+        m_adapt[i] = BGFX_INVALID_HANDLE;
+        m_adaptColor[i] = BGFX_INVALID_HANDLE;
+    }
+    m_lumProgram = shaders.LoadProgram("vs_post", "fs_post_lum");
+    m_avgProgram = shaders.LoadProgram("vs_post", "fs_post_avg");
+    m_adaptProgram = shaders.LoadProgram("vs_post", "fs_post_adapt");
+    m_sAdapt = bgfx::createUniform("s_adapt", bgfx::UniformType::Sampler);
+    m_uAdapt = bgfx::createUniform("u_postAdapt", bgfx::UniformType::Vec4);
+    m_uAdaptRate = bgfx::createUniform("u_postAdaptRate", bgfx::UniformType::Vec4);
+    const bool floats = (bgfx::getCaps()->formats[bgfx::TextureFormat::R32F] & BGFX_CAPS_FORMAT_TEXTURE_FRAMEBUFFER) != 0;
+    if (floats && bgfx::isValid(m_lumProgram) && bgfx::isValid(m_avgProgram) && bgfx::isValid(m_adaptProgram))
+    {
+        const uint64_t point = BGFX_TEXTURE_RT | BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP;
+        m_lumColor = bgfx::createTexture2D(64, 64, false, 1, bgfx::TextureFormat::R32F, point);
+        m_lum = bgfx::createFrameBuffer(1, &m_lumColor, true);
+        m_avgColor = bgfx::createTexture2D(1, 1, false, 1, bgfx::TextureFormat::R32F, point | BGFX_SAMPLER_POINT);
+        m_avg = bgfx::createFrameBuffer(1, &m_avgColor, true);
+        for (size_t i = 0; i < m_adapt.size(); ++i)
+        {
+            m_adaptColor[i] = bgfx::createTexture2D(1, 1, false, 1, bgfx::TextureFormat::R32F, point | BGFX_SAMPLER_POINT);
+            m_adapt[i] = bgfx::createFrameBuffer(1, &m_adaptColor[i], true);
+        }
+        if ((bgfx::getCaps()->supported & (BGFX_CAPS_TEXTURE_BLIT | BGFX_CAPS_TEXTURE_READ_BACK)) == (BGFX_CAPS_TEXTURE_BLIT | BGFX_CAPS_TEXTURE_READ_BACK))
+        {
+            m_readback = bgfx::createTexture2D(1, 1, false, 1, bgfx::TextureFormat::R32F, BGFX_TEXTURE_BLIT_DST | BGFX_TEXTURE_READ_BACK);
+        }
+    }
     return true;
 }
 
@@ -89,6 +122,31 @@ void PostProcess::DestroyTargets()
 void PostProcess::Shutdown()
 {
     DestroyTargets();
+    const bgfx::FrameBufferHandle eye[] = {m_lum, m_avg, m_adapt[0], m_adapt[1]};
+    for (const bgfx::FrameBufferHandle handle : eye)
+    {
+        if (bgfx::isValid(handle))
+        {
+            bgfx::destroy(handle); // its texture with it
+        }
+    }
+    m_lum = m_avg = m_adapt[0] = m_adapt[1] = BGFX_INVALID_HANDLE;
+    m_lumColor = m_avgColor = m_adaptColor[0] = m_adaptColor[1] = BGFX_INVALID_HANDLE;
+    if (bgfx::isValid(m_readback))
+    {
+        bgfx::destroy(m_readback);
+    }
+    m_readback = BGFX_INVALID_HANDLE;
+    const bgfx::UniformHandle eyeUniforms[] = {m_sAdapt, m_uAdapt, m_uAdaptRate};
+    for (const bgfx::UniformHandle handle : eyeUniforms)
+    {
+        if (bgfx::isValid(handle))
+        {
+            bgfx::destroy(handle);
+        }
+    }
+    m_sAdapt = m_uAdapt = m_uAdaptRate = BGFX_INVALID_HANDLE;
+    m_lumProgram = m_avgProgram = m_adaptProgram = BGFX_INVALID_HANDLE;
     const bgfx::UniformHandle uniforms[] = {m_sScene, m_sBloom, m_uTexel, m_uTone, m_uLens, m_uMood, m_uFlip};
     for (const bgfx::UniformHandle handle : uniforms)
     {
@@ -216,6 +274,56 @@ void PostProcess::Apply(float seconds, bool originBottomLeft)
         FullScreen(view, m_up, write | BGFX_STATE_BLEND_ADD);
     }
 
+    // The eye: how bright the picture is, in one number, and what it has adapted to by now -- the one from last frame
+    // carried on towards it.
+    // (Measured whether or not it is used, so it can be measured with it off.)
+    const bool eye = bgfx::isValid(m_lum) && bgfx::isValid(m_avg) && bgfx::isValid(m_adapt[0]) && bgfx::isValid(m_adapt[1]);
+    if (eye)
+    {
+        const auto small = [&](bgfx::ViewId at, bgfx::FrameBufferHandle into, int size)
+        {
+            bgfx::setViewFrameBuffer(at, into);
+            bgfx::setViewRect(at, 0, 0, static_cast<uint16_t>(size), static_cast<uint16_t>(size));
+            bgfx::setViewClear(at, BGFX_CLEAR_NONE, 0x00000000, 1.0f, 0);
+        };
+        small(Renderer::kViewAdaptFirst, m_lum, 64);
+        bgfx::setUniform(m_uFlip, flip);
+        texel(m_width, m_height);
+        bgfx::setTexture(0, m_sScene, m_sceneColor);
+        FullScreen(Renderer::kViewAdaptFirst, m_lumProgram, write);
+        small(Renderer::kViewAdaptFirst + 1, m_avg, 1);
+        bgfx::setUniform(m_uFlip, flip);
+        bgfx::setTexture(0, m_sScene, m_lumColor);
+        FullScreen(Renderer::kViewAdaptFirst + 1, m_avgProgram, write);
+        const int before = m_adaptCurrent;
+        m_adaptCurrent = 1 - m_adaptCurrent;
+        small(Renderer::kViewAdaptFirst + 2, m_adapt[static_cast<size_t>(m_adaptCurrent)], 1);
+        // To brighter in about half a second, to darker over three or four.
+        const float rate[4] = {std::clamp(s.deltaSeconds, 0.0f, 0.25f), 4.0f, 0.7f, m_adaptFresh ? 1.0f : 0.0f};
+        bgfx::setUniform(m_uFlip, flip);
+        bgfx::setUniform(m_uAdaptRate, rate);
+        bgfx::setTexture(0, m_sScene, m_avgColor);
+        bgfx::setTexture(1, m_sBloom, m_adaptColor[static_cast<size_t>(before)]);
+        FullScreen(Renderer::kViewAdaptFirst + 2, m_adaptProgram, write);
+        m_adaptFresh = false;
+        // Now and then, read back what it came to, for tuning by.
+        if (bgfx::isValid(m_readback))
+        {
+            if (m_reading && --m_readIn <= 0)
+            {
+                m_measured = std::exp(m_readValue);
+                m_reading = false;
+            }
+            if (!m_reading)
+            {
+                bgfx::blit(Renderer::kViewAdaptFirst + 3, m_readback, 0, 0, m_adaptColor[static_cast<size_t>(m_adaptCurrent)]);
+                bgfx::readTexture(m_readback, &m_readValue);
+                m_reading = true;
+                m_readIn = 30;
+            }
+        }
+    }
+
     // And the picture, onto the screen.
     const bgfx::ViewId last = Renderer::kViewPost;
     bgfx::setViewFrameBuffer(last, BGFX_INVALID_HANDLE);
@@ -239,6 +347,12 @@ void PostProcess::Apply(float seconds, bool originBottomLeft)
     bgfx::setUniform(m_uMood, mood);
     bgfx::setTexture(0, m_sScene, m_sceneColor);
     bgfx::setTexture(1, m_sBloom, m_bloomColor[0]);
+    const float adapt[4] = {std::max(s.adaptReference, 1.0e-4f), eye ? s.adapt : 0.0f, s.adaptDarker, s.adaptBrighter};
+    bgfx::setUniform(m_uAdapt, adapt);
+    if (eye)
+    {
+        bgfx::setTexture(2, m_sAdapt, m_adaptColor[static_cast<size_t>(m_adaptCurrent)]);
+    }
     FullScreen(last, m_final, write);
 }
 

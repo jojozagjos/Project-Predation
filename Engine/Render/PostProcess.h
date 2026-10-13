@@ -35,6 +35,14 @@ public:
         float fringe = 0.004f;
         float fear = 0.0f;           // 0 to 1, set by the game
         float flash = 0.0f;          // 0 to 1: the picture washed red, for a moment
+        // The eye adapting to how bright the picture is (fs_post_adapt): how far it brings the picture back towards the
+        // brightness it is set for (0 not at all, 1 all the way), that brightness, and how much darker and brighter that can
+        // make it at most; and the seconds since last frame, which it adapts over.
+        float adapt = 0.25f;
+        float adaptReference = 0.11f;
+        float adaptDarker = 0.7f;
+        float adaptBrighter = 1.4f;
+        float deltaSeconds = 1.0f / 60.0f;
         float coldShadows = 1.0f;
         float warmHighlights = 1.0f;
         // Where on the screen the finished picture goes, in pixels from the top left: all of it when the width is
@@ -57,6 +65,9 @@ public:
     void Apply(float seconds, bool originBottomLeft);
 
     Settings& GetSettings() { return m_settings; }
+    // How bright the picture has been lately, as the eye has adapted to it (linear light): read back from the graphics card
+    // every so often, for tuning `adaptReference` by; nought until the first reading.
+    float MeasuredLuminance() const { return m_measured; }
     bool Active() const;
 
 private:
@@ -69,6 +80,12 @@ private:
     bgfx::ProgramHandle m_down = BGFX_INVALID_HANDLE;
     bgfx::ProgramHandle m_up = BGFX_INVALID_HANDLE;
     bgfx::ProgramHandle m_final = BGFX_INVALID_HANDLE;
+    bgfx::ProgramHandle m_lumProgram = BGFX_INVALID_HANDLE;
+    bgfx::ProgramHandle m_avgProgram = BGFX_INVALID_HANDLE;
+    bgfx::ProgramHandle m_adaptProgram = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_sAdapt = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uAdapt = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uAdaptRate = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_sScene = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_sBloom = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uTexel = BGFX_INVALID_HANDLE;
@@ -88,6 +105,21 @@ private:
     int m_width = 0;
     int m_height = 0;
     int m_msaa = -1;
+    // The eye: the picture's brightness 64 across, then in one, then adapted to (two, last frame's and this one's, turn and
+    // turn about), and somewhere to read it back from.
+    bgfx::FrameBufferHandle m_lum = BGFX_INVALID_HANDLE;
+    bgfx::TextureHandle m_lumColor = BGFX_INVALID_HANDLE;
+    bgfx::FrameBufferHandle m_avg = BGFX_INVALID_HANDLE;
+    bgfx::TextureHandle m_avgColor = BGFX_INVALID_HANDLE;
+    std::array<bgfx::FrameBufferHandle, 2> m_adapt{};
+    std::array<bgfx::TextureHandle, 2> m_adaptColor{};
+    int m_adaptCurrent = 0;
+    bool m_adaptFresh = true;
+    bgfx::TextureHandle m_readback = BGFX_INVALID_HANDLE;
+    float m_readValue = 0.0f;
+    int m_readIn = 0;
+    bool m_reading = false;
+    float m_measured = 0.0f;
 };
 
 } // namespace pred

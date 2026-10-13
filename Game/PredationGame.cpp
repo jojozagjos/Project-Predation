@@ -231,6 +231,8 @@ CVar<bool> cv_post{"r.post", true, "Finish the picture in a pass of its own: glo
 CVar<float> cv_bloom{"r.bloom", 0.6f, "How much bright things glow", CVarFlags::Archive};
 CVar<bool> cv_grain{"r.film_grain", true, "Film grain over the picture", CVarFlags::Archive};
 CVar<float> cv_vignette{"r.vignette", 0.35f, "How much the edges of the picture darken"};
+CVar<float> cv_eyeAdapt{"r.adapt", 0.25f, "How far the eye adapts to how bright the picture is: 0 not at all, 1 all the way"};
+CVar<float> cv_eyeReference{"r.adapt_reference", 0.11f, "The brightness the picture is set for, that the eye adapts towards"};
 CVar<bool> cv_crosshair{"hud.crosshair", true, "Draw the crosshair", CVarFlags::Archive};
 CVar<bool> cv_showFps{"hud.show_fps", false, "Show the frame rate in the corner", CVarFlags::Archive};
 CVar<bool> cv_voiceEnabled{"audio.voice", true, "Send and hear proximity voice", CVarFlags::Archive};
@@ -1008,6 +1010,12 @@ void PredationGame::RegisterCommands()
                                               static_cast<int>(m_map), m_ship.Contains(state.position), static_cast<int>(m_cameraMode));
                             });
 
+    console.RegisterCommand("eye_measure", "Log how bright the picture has been lately, as the eye adapted to it (for r.adapt_reference)",
+                            [this](const std::vector<std::string>&)
+                            {
+                                PRED_LOG_INFO(Render, "eye_measure: the picture's brightness lately {:.4f} (r.adapt_reference {:.4f})",
+                                              m_app->GetPostProcess().MeasuredLuminance(), cv_eyeReference.Get());
+                            });
     console.RegisterCommand("interact_report", "List what can be used near the view, and why each is or is not offered",
                             [this](const std::vector<std::string>&)
                             {
@@ -10507,6 +10515,9 @@ void PredationGame::OnUpdate(double dt, double alpha)
         post.bloom = std::clamp(cv_bloom.Get(), 0.0f, 3.0f);
         post.grain = cv_grain.Get() ? 0.035f : 0.0f;
         post.vignette = std::clamp(cv_vignette.Get(), 0.0f, 0.9f);
+        post.adapt = std::clamp(cv_eyeAdapt.Get(), 0.0f, 1.0f);
+        post.adaptReference = std::max(cv_eyeReference.Get(), 1.0e-4f);
+        post.deltaSeconds = m_lastFrameSeconds;
         float fear = 0.0f;
         if (m_player.State().alive && m_screen == Screen::Playing)
         {

@@ -164,6 +164,9 @@ should look like vents, and the lamp path is not loved. From the worlds plan F1-
 - **The way in** (replacing the lamp row): one of a lit entrance, light spilling from a door, a worn path, signage, or
   a beacon -- chosen per site.
 - **Owners** change materials, colours, signage and upkeep, as outposts already do.
+- **Mirrors in what is generated** (you, 2026-10-13): the mirrors that exist now (the test map's, polished, brushed and
+  matte) placed by the generator where they belong -- washrooms, changing rooms, quarters, labs, polished panels and steel
+  -- in facilities, outposts, stations and wrecks; cracked, fogged or dirty by condition.
 
 ---
 
@@ -375,6 +378,7 @@ organisms.
 | Straight to a world in another system; nothing to see arriving at a system | Done |
 | The ship going over the landing area before the shuttle can go down | Done |
 | Outposts: buildings, ground, grass, weather; people walking about | Phase 2 (people: your call) |
+| Mirrors placed by generation | Phase 4 (facilities), and outposts, stations and wrecks as they come |
 | Ship rotation when changing course felt strange | Changed earlier (the turn no longer swings through the planet); tell me if it still feels off |
 | Ending and tutorial | Phase 17, last |
 

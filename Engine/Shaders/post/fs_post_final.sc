@@ -4,10 +4,13 @@ $input v_texcoord0
 
 SAMPLER2D(s_scene, 0);
 SAMPLER2D(s_bloom, 1);
+SAMPLER2D(s_adapt, 2); // the brightness the eye has adapted to, as its logarithm (fs_post_adapt)
 uniform vec4 u_postTexel; // zw = the screen, in pixels
 uniform vec4 u_postTone;  // x = exposure, y = contrast, z = how much glow, w = saturation
 uniform vec4 u_postLens;  // x = vignette, y = grain, z = colour fringe at the edges, w = seconds
 uniform vec4 u_postMood;  // x = fear, 0 to 1; y = cold in the shadows; z = warmth in the highlights; w = a red flash
+uniform vec4 u_postAdapt; // x = the brightness the picture is set for, y = how far the eye adapts away from it (0 none), z, w = how
+                          // much darker and brighter that can make it at most
 
 float Hash(vec2 p)
 {
@@ -31,6 +34,14 @@ void main()
 	color.g = texture2D(s_scene, uv).g;
 	color.b = texture2D(s_scene, uv - fringe).b;
 	color += texture2D(s_bloom, uv).rgb * u_postTone.z;
+
+	// The eye, adapted to what it is looking at: brought partway towards the brightness the picture is set for -- only
+	// partway, so a dark room is still dark once the eyes are used to it, and a lit field still bright.
+	if (u_postAdapt.y > 0.0)
+	{
+		float adapted = exp(texture2D(s_adapt, vec2_splat(0.5)).r);
+		color *= clamp(pow(u_postAdapt.x / max(adapted, 1.0e-4), u_postAdapt.y), u_postAdapt.z, u_postAdapt.w);
+	}
 
 	// Exposure, the Narkowicz approximation of the ACES curve, gamma, and contrast about middle grey.
 	color *= max(u_postTone.x, 0.0);
