@@ -206,7 +206,9 @@ std::vector<Span> Cut(std::vector<Span> solid, const std::vector<Span>& holes)
         }
         merged = std::move(next);
     }
-    std::erase_if(merged, [](const Span& s) { return s.b - s.a < 0.01f; });
+    // (Nor a sliver left beside a doorway at a corner, a few centimetres inside the wall crossing it there: drawn in the same
+    // place as that wall's faces, it flickered.)
+    std::erase_if(merged, [](const Span& s) { return s.b - s.a < 0.05f; });
     return merged;
 }
 
@@ -269,7 +271,8 @@ void Walls(const FacilityLayout& layout, int f, const Openings& openings, Bluepr
     const float y1 = Base(f) + kClear + kSink;
     // Round a stairwell, the whole storey: its walls go on up past the ceiling to the floor above, so the slab
     // between is never seen edge on from the stairs.
-    const float tall = Base(f) + kStorey - kSink * 0.5f; // past the next floor's walls, which start kSink under it
+    const float tall = Base(f) + kStorey - kSink; // up to the next floor's walls, which start kSink under it: on, not into them
+                                                  // (their sides and these would be one face drawn twice where they met)
     const auto stair = [&](int x, int z) { return layout.At(f, x, z) == Cell::Stair; };
     std::vector<bool> corner(static_cast<size_t>((w + 1) * (d + 1)), false);
     const auto cornerIndex = [&](int i, int j) { return static_cast<size_t>(j * (w + 1) + i); };
@@ -309,7 +312,13 @@ void Walls(const FacilityLayout& layout, int f, const Openings& openings, Bluepr
             }
         }
         const float z = WorldZ(j);
-        for (const Span& span : Cut(solid, holes))
+        // (Stopping where a stairwell's taller wall in the same line takes over, rather than running on along its faces.)
+        std::vector<Span> notHere = holes;
+        for (const Span& span : Cut(solidTall, {}))
+        {
+            notHere.push_back(span);
+        }
+        for (const Span& span : Cut(solid, notHere))
         {
             Box(out, Kind::Wall, {span.a, y0, z - kHalfWall}, {span.b, y1, z + kHalfWall});
         }
@@ -350,7 +359,11 @@ void Walls(const FacilityLayout& layout, int f, const Openings& openings, Bluepr
             {
                 if (corner[cornerIndex(i, v)])
                 {
-                    holes.push_back({WorldZ(v) - kHalfWall + kSink, WorldZ(v) + kHalfWall - kSink});
+                    // Into the wall across it only where that wall goes on past it both ways, and so is round it: where it
+                    // ends here, its end and this wall's side would be one face drawn twice (kSink), so this one stops at it.
+                    const bool through = Space(layout, f, i - 1, v - 1) != Space(layout, f, i - 1, v) && Space(layout, f, i, v - 1) != Space(layout, f, i, v);
+                    const float sink = through ? kSink : 0.0f;
+                    holes.push_back({WorldZ(v) - kHalfWall + sink, WorldZ(v) + kHalfWall - sink});
                 }
             }
             const auto found = openings.find({f, i - 1, k, 0});
@@ -363,7 +376,13 @@ void Walls(const FacilityLayout& layout, int f, const Openings& openings, Bluepr
             }
         }
         const float x = WorldX(i);
-        for (const Span& span : Cut(solid, holes))
+        // (Stopping where a stairwell's taller wall in the same line takes over, rather than running on along its faces.)
+        std::vector<Span> notHere = holes;
+        for (const Span& span : Cut(solidTall, {}))
+        {
+            notHere.push_back(span);
+        }
+        for (const Span& span : Cut(solid, notHere))
         {
             Box(out, Kind::Wall, {x - kHalfWall, y0, span.a}, {x + kHalfWall, y1, span.b});
         }
@@ -476,11 +495,13 @@ void Shell(const FacilityLayout& layout, Blueprint& out)
         face(alongX, std::min(outer, skin), std::max(outer, skin), skinFrom, skinTo, holes, Kind::Cladding, Base(0) - 0.25f, top);
         face(alongX, std::min(inner, skin), std::max(inner, skin), capFrom, capTo, {}, Kind::Cladding, top, top + kCapHeight);
         // A sill across each way out, through the whole wall, a little above the floor inside and the ground outside:
-        // the wall under the doorway otherwise ends exactly at the ground's height, and the two flicker.
+        // the wall under the doorway otherwise ends exactly at the ground's height, and the two flicker. Standing a few
+        // millimetres proud of the cladding outside, as a sill does -- flush, its face and the cladding's were one, drawn twice.
         for (const Hole& hole : holes)
         {
-            const float a = std::min(inner, skin);
-            const float b = std::max(inner, skin);
+            const float proud = skin > inner ? 0.006f : -0.006f;
+            const float a = std::min(inner, skin + proud);
+            const float b = std::max(inner, skin + proud);
             if (alongX)
             {
                 Box(out, Kind::Sill, {hole.along.a, Base(0) - 0.12f, a}, {hole.along.b, Base(0) + kSillTop, b});

@@ -24,6 +24,16 @@ public:
     // How big a drawn piece of a box may be across, in metres. See AddBox.
     static constexpr float kTile = 4.0f;
 
+    // For tests: when set, every box drawn square to the world (not turned) is listed here as well, to look for two faces
+    // drawn in the same place, which flicker.
+    struct DrawnBox
+    {
+        std::string name;
+        glm::vec3 centre{0.0f};
+        glm::vec3 size{0.0f};
+    };
+    static inline std::vector<DrawnBox>* s_drawnBoxes = nullptr;
+
     // `prefix` goes on the front of every mesh name, so two maps built into one world do not share each
     // other's numbered meshes.
     MapBuilder(Scene& scene, MeshLibrary& meshes, PhysicsWorld* physics, std::string prefix = {})
@@ -91,6 +101,7 @@ public:
     void AddBox(const std::string& name, const Transform& transform, const glm::vec3& size,
                 const Material& material, float tile = kTile)
     {
+        Record(name, transform, size);
         // The mesh gets a name of its own, numbered in the order the map is built.
         //
         // Meshes are shared by name, so several boxes that call themselves the same thing and are
@@ -139,6 +150,7 @@ public:
     void AddBoxInstance(const std::string& name, const Transform& transform, MeshHandle mesh,
                         const glm::vec3& size, const Material& material)
     {
+        Record(name, transform, size);
         Keep(m_scene.CreateMeshEntity(name, transform, mesh, material));
         if (m_physics != nullptr)
         {
@@ -197,6 +209,14 @@ public:
     }
 
 private:
+    static void Record(const std::string& name, const Transform& transform, const glm::vec3& size)
+    {
+        if (s_drawnBoxes != nullptr && std::abs(transform.rotation.w) > 0.99999f)
+        {
+            s_drawnBoxes->push_back({name, transform.position, size});
+        }
+    }
+
     struct Batch
     {
         std::string name;

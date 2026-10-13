@@ -7,6 +7,9 @@
 #include "Game/World/KestrelStation.h"
 #include "Game/World/Outpost.h"
 #include "Game/World/ShipMap.h"
+#include "Game/World/MapBuilder.h"
+#include "Game/World/SiteMap.h"
+#include "Game/World/SitePlan.h"
 #include "Game/World/Vehicles.h"
 #include "Game/World/WorldObjects.h"
 
@@ -15,6 +18,7 @@
 #include <glm/vector_relational.hpp>
 
 #include <algorithm>
+#include <cstdio>
 #include <filesystem>
 
 using namespace pred;
@@ -219,29 +223,29 @@ TEST_CASE("No two parts of a vehicle share a surface facing the same way, which 
 namespace
 {
 
-// Every pair of parts, across the models given, with a face within a few millimetres of one of the other's, facing the same way
-// and overlapping, that nothing else covers: what flickers. Turned and non-box parts are left out (none of them lies on another).
-std::vector<std::string> SharedFaces(const std::vector<const ModelAsset*>& models)
+// A box drawn square to the world: what is looked at for faces drawn in the same place.
+struct FaceBox
 {
-    std::vector<const ModelPart*> parts;
-    for (const ModelAsset* model : models)
-    {
-        for (const ModelPart& part : model->parts)
-        {
-            // (A solid_ part is never drawn: only something to walk into, it cannot flicker.)
-            if (part.shape == PartShape::Box && part.rotation == glm::vec3(0.0f) && part.parent.empty() && part.name.rfind("solid_", 0) != 0)
-            {
-                parts.push_back(&part);
-            }
-        }
-    }
+    std::string name;
+    glm::vec3 position{0.0f};
+    glm::vec3 size{0.0f};
+};
+
+// Every pair of boxes with a face within a few millimetres of one of the other's, facing the same way and overlapping, that
+// nothing else covers: what flickers. Faces turned down at or under `ground` are never seen (they are in the ground).
+std::vector<std::string> SharedFacesOf(const std::vector<FaceBox>& parts, float ground = -1.0e9f)
+{
     std::vector<std::string> found;
     for (size_t i = 0; i < parts.size(); ++i)
     {
-        const ModelPart& a = *parts[i];
+        const FaceBox& a = parts[i];
         for (size_t j = i + 1; j < parts.size(); ++j)
         {
-            const ModelPart& b = *parts[j];
+            const FaceBox& b = parts[j];
+            if (glm::any(glm::greaterThan(glm::abs(a.position - b.position), (a.size + b.size) * 0.5f + glm::vec3(0.01f))))
+            {
+                continue;
+            }
             for (int axis = 0; axis < 3; ++axis)
             {
                 const int u = (axis + 1) % 3;
@@ -258,7 +262,7 @@ std::vector<std::string> SharedFaces(const std::vector<const ModelAsset*>& model
                 {
                     const float faceA = a.position[axis] + a.size[axis] * side;
                     const float faceB = b.position[axis] + b.size[axis] * side;
-                    if (std::abs(faceA - faceB) > 0.005f)
+                    if (std::abs(faceA - faceB) > 0.005f || (axis == 1 && side < 0.0f && faceA <= ground))
                     {
                         continue;
                     }
@@ -272,19 +276,45 @@ std::vector<std::string> SharedFaces(const std::vector<const ModelAsset*>& model
                                         (side > 0.0f ? 0.004f : -0.004f);
                         outside[u] = lowU + (highU - lowU) * at.x;
                         outside[v] = lowV + (highV - lowV) * at.y;
-                        const bool buried = std::any_of(parts.begin(), parts.end(), [&](const ModelPart* c)
-                                                        { return glm::all(glm::lessThanEqual(glm::abs(outside - c->position), c->size * 0.5f + glm::vec3(1.0e-4f))); });
+                        const bool buried = std::any_of(parts.begin(), parts.end(), [&](const FaceBox& c)
+                                                        { return glm::all(glm::lessThanEqual(glm::abs(outside - c.position), c.size * 0.5f + glm::vec3(1.0e-4f))); });
                         seen = seen || !buried;
                     }
                     if (seen)
                     {
-                        found.push_back(a.name + " and " + b.name + " on axis " + std::to_string(axis));
+                        const auto extent = [](const FaceBox& box)
+                        {
+                            char text[160];
+                            std::snprintf(text, sizeof(text), "(%.2f %.2f %.2f to %.2f %.2f %.2f)", box.position.x - box.size.x * 0.5f,
+                                          box.position.y - box.size.y * 0.5f, box.position.z - box.size.z * 0.5f, box.position.x + box.size.x * 0.5f,
+                                          box.position.y + box.size.y * 0.5f, box.position.z + box.size.z * 0.5f);
+                            return std::string(text);
+                        };
+                        found.push_back(a.name + " " + extent(a) + " and " + b.name + " " + extent(b) + " on axis " + std::to_string(axis));
                     }
                 }
             }
         }
     }
     return found;
+}
+
+// The same, of the parts of models. Turned and non-box parts are left out (none of them lies on another).
+std::vector<std::string> SharedFaces(const std::vector<const ModelAsset*>& models)
+{
+    std::vector<FaceBox> parts;
+    for (const ModelAsset* model : models)
+    {
+        for (const ModelPart& part : model->parts)
+        {
+            // (A solid_ part is never drawn: only something to walk into, it cannot flicker.)
+            if (part.shape == PartShape::Box && part.rotation == glm::vec3(0.0f) && part.parent.empty() && part.name.rfind("solid_", 0) != 0)
+            {
+                parts.push_back({part.name, part.position, part.size});
+            }
+        }
+    }
+    return SharedFacesOf(parts);
 }
 
 } // namespace
@@ -556,5 +586,45 @@ TEST_CASE("Cargo props share no surface between their own parts", "[ship][cargo]
         glm::vec3 hi;
         Cargo::Bounds(prop, lo, hi);
         CHECK(lo.y > -0.001f);
+    }
+}
+
+TEST_CASE("Sites of every kind -- their buildings, wrecks and what stands about -- draw no two faces in one place", "[site]")
+{
+    PhysicsWorld physics;
+    PhysicsWorld::Settings settings;
+    settings.workerThreads = 2;
+    REQUIRE(physics.Init(settings));
+    Scene scene;
+    MeshLibrary meshes;
+    meshes.SetHeadless(true);
+    for (const SitePlan::SiteKind kind : {SitePlan::SiteKind::Facility, SitePlan::SiteKind::Station, SitePlan::SiteKind::Survey,
+                                          SitePlan::SiteKind::Wreck, SitePlan::SiteKind::Signal})
+    {
+        for (const uint16_t seed : {uint16_t{1}, uint16_t{7}})
+        {
+            INFO("kind " << static_cast<int>(kind) << " seed " << seed);
+            std::vector<MapBuilder::DrawnBox> drawn;
+            MapBuilder::s_drawnBoxes = &drawn;
+            SiteMap site;
+            site.Build(SitePlan::SeedFor(seed, kind), scene, meshes, physics, nullptr);
+            MapBuilder::s_drawnBoxes = nullptr;
+            std::vector<FaceBox> boxes;
+            for (const MapBuilder::DrawnBox& box : drawn)
+            {
+                boxes.push_back({box.name, box.centre, box.size});
+            }
+            // (The ground at a site is at its plan's height round its buildings.)
+            const std::vector<std::string> found = SharedFacesOf(boxes, site.Plan().origin.y - 0.1f);
+            CHECK(drawn.size() > 50);
+            std::string listed = std::to_string(found.size()) + " found:";
+            for (size_t i = 0; i < found.size() && i < 12; ++i)
+            {
+                listed += "\n  " + found[i];
+            }
+            INFO(listed);
+            CHECK(found.empty());
+            site.Clear(scene, physics, nullptr);
+        }
     }
 }
