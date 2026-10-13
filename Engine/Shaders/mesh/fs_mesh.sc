@@ -947,14 +947,18 @@ void main()
 	// interior is viewed at.
 	//
 	// Unless the eye is out in that air itself (u_fogParams.z): then what lies between it and anything, roofed or not, is the
-	// open air, and fogs it all -- a shuttle's dark cabin across a sandstorm is as lost in it as the ground. With the eye
+	// open air, and fogs it -- a shuttle's dark cabin across a sandstorm is as lost in it as the ground (a room near by
+	// rather less, below). With the eye
 	// indoors, a room under a roof is all but clear of it -- but anything out under the sky even a little (the underside
 	// of a hull, a wall under its eaves), or further off than any room, is out in the weather, and fogs as it would from
 	// outside: not left in dark patches through the doorway. In a doorway, between the two (u_fogParams.z eases).
 	float distanceToCamera = length(u_cameraPosition.xyz - v_worldPos);
 	float fogAmount = clamp((distanceToCamera - u_fogParams.x) / max(u_fogParams.y - u_fogParams.x, 1e-4), 0.0, 1.0);
 	float fogIndoors = max(mix(0.05, 1.0, smoothstep(0.0, 0.35, skyReaches)), smoothstep(15.0, 40.0, distanceToCamera));
-	color = mix(color, u_fogColor.rgb, fogAmount * mix(fogIndoors, 1.0, u_fogParams.z));
+	// And from outside, into a building through its door near by: the dust is out here, not in there, so what is under a
+	// roof takes less of it near to -- though from further off, all of it, the doorway lost with the rest.
+	float fogOutdoors = max(mix(0.35, 1.0, smoothstep(0.0, 0.35, skyReaches)), smoothstep(8.0, 30.0, distanceToCamera));
+	color = mix(color, u_fogColor.rgb, fogAmount * mix(fogIndoors, fogOutdoors, u_fogParams.z));
 	// Fullbright: the surface's own colour, with a little shading by which way it faces so edges still read.
 	if (u_fullbright.x > 0.5)
 	{
