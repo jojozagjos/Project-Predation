@@ -178,10 +178,11 @@ nlohmann::json CampaignState::ToJson() const
     out["plan"] = {{"set", plan.set}, {"toSystem", plan.toSystem}, {"system", plan.system}, {"body", plan.body}, {"region", plan.region}};
     out["travel"] = {{"underway", travel.underway}, {"position", Vec3D(travel.position)}, {"velocity", Vec3(travel.velocity)},
                      {"target", travel.target}, {"region", travel.region},
-                     {"interstellar", travel.interstellar}, {"toSystem", travel.toSystem}, {"fromGalaxy", Vec3(travel.fromGalaxy)},
+                     {"interstellar", travel.interstellar}, {"toSystem", travel.toSystem}, {"onward", travel.onward}, {"fromGalaxy", Vec3(travel.fromGalaxy)},
                      {"toGalaxy", Vec3(travel.toGalaxy)}, {"departed", travel.departed}, {"duration", travel.duration},
                      {"from", travel.from}, {"setOut", travel.setOut}, {"departWay", Vec3(travel.departWay)},
-                     {"orbitOut", Vec3(travel.orbitOut)}, {"orbitSince", travel.orbitSince}};
+                     {"orbitOut", Vec3(travel.orbitOut)}, {"orbitSince", travel.orbitSince}, {"overFrom", Vec3(travel.overFrom)},
+                     {"overAt", Vec3(travel.overAt)}, {"overSince", travel.overSince}, {"overSeconds", travel.overSeconds}};
     nlohmann::json knownJson = nlohmann::json::object();
     for (const auto& [key, bits] : known)
     {
@@ -282,6 +283,7 @@ bool CampaignState::FromJson(const nlohmann::json& json, CampaignState& out, std
             state.travel.region = travel->value("region", -1);
             state.travel.interstellar = travel->value("interstellar", false);
             state.travel.toSystem = travel->value("toSystem", uint64_t{0});
+            state.travel.onward = travel->value("onward", -1);
             state.travel.fromGalaxy = ReadVec3(*travel, "fromGalaxy", glm::vec3(0.0f));
             state.travel.toGalaxy = ReadVec3(*travel, "toGalaxy", glm::vec3(0.0f));
             state.travel.departed = travel->value("departed", 0.0);
@@ -291,6 +293,10 @@ bool CampaignState::FromJson(const nlohmann::json& json, CampaignState& out, std
             state.travel.departWay = ReadVec3(*travel, "departWay", glm::vec3(0.0f));
             state.travel.orbitOut = ReadVec3(*travel, "orbitOut", glm::vec3(0.0f));
             state.travel.orbitSince = travel->value("orbitSince", 0.0);
+            state.travel.overFrom = ReadVec3(*travel, "overFrom", glm::vec3(0.0f));
+            state.travel.overAt = ReadVec3(*travel, "overAt", glm::vec3(0.0f));
+            state.travel.overSince = travel->value("overSince", 0.0);
+            state.travel.overSeconds = travel->value("overSeconds", 0.0f);
         }
         for (const auto& [key, bits] : ReadMap<int>(json, "known"))
         {

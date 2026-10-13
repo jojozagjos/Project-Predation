@@ -523,7 +523,9 @@ void PredationGame::RegisterCampaignCommands()
                                     ApplyMapSystem(m_campaign.system, std::atoi(args[1].c_str()));
                                 }
                             });
-    console.RegisterCommand("course_system", "Set a course for another system, the nth nearest the ship: course_system [n]",
+    console.RegisterCommand("depart", "Set out on the course plotted, as the helm does: depart",
+                            [this](const std::vector<std::string>&) { AskCampaign(CampaignAction::Depart); });
+    console.RegisterCommand("course_system", "Set a course for another system, the nth nearest the ship, and a world there to fly on to: course_system [n] [body]",
                             [this](const std::vector<std::string>& args)
                             {
                                 if (!m_campaignOpen)
@@ -537,6 +539,10 @@ void PredationGame::RegisterCampaignCommands()
                                     if (id.Packed() != m_campaign.system && ++seen == n)
                                     {
                                         AskSystemCourse(id.Packed());
+                                        if (args.size() >= 3)
+                                        {
+                                            AskCampaign(CampaignAction::PlotOnward, std::atoi(args[2].c_str()), 0);
+                                        }
                                         return;
                                     }
                                 }

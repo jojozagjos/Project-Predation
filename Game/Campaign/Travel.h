@@ -34,6 +34,14 @@ float OrbitRadius(const Body& body);
 void Lift(CampaignState& campaign);
 // Out from the body's middle to the ship, and the way it is going round, at a moment.
 void OrbitFrame(const CampaignState& campaign, const StarSystem& system, int body, double clock, glm::vec3& out, glm::vec3& along);
+// Sets the ship going round its orbit to be over `at` (a direction on the body's globe, in its own frame) from wherever it is
+// round it now, taking longer the further round that is (less with a better drive); and then holding over it as the world
+// turns, until it goes anywhere else.
+void MoveOver(CampaignState& campaign, const StarSystem& system, int body, const glm::vec3& at, int tier);
+// How long until it is over where it is going: nought there, or going nowhere in particular.
+float SecondsToOver(const CampaignState& campaign);
+// Where over the globe it is now on that way (unit, in the body's own frame); nought when it is not going over anywhere.
+glm::vec3 OverGlobe(const CampaignState& campaign, double clock);
 // Setting out from orbit the ship first turns, swinging round to the side of the world that faces where it is going and a
 // little higher, and only then burns: this long (less with a better drive), by how far round it has to go.
 float AlignSeconds(const CampaignState& campaign, const StarSystem& system);

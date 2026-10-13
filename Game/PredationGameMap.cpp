@@ -244,6 +244,19 @@ bool PredationGame::DoCampaignAction(uint8_t player, CampaignAction action, int 
         CampaignChanged();
         return true;
 
+    case CampaignAction::PlotOnward:
+    {
+        // A world of the system just plotted for, to fly on to once there.
+        const StarSystem* to = m_campaign.plan.set && m_campaign.plan.toSystem ? m_universe.System(m_campaign.plan.system) : nullptr;
+        if (to == nullptr || to->Find(a) == nullptr)
+        {
+            return false;
+        }
+        m_campaign.plan.body = a;
+        CampaignChanged();
+        return true;
+    }
+
     case CampaignAction::HoldMap:
         // The first to ask has it, until they give it up; anybody else asking is told who has it.
         if (a != 0 && m_mapHolder != kNobody && m_mapHolder != player)
@@ -274,6 +287,11 @@ bool PredationGame::DoCampaignAction(uint8_t player, CampaignAction action, int 
         const bool done = plan.toSystem ? DoCampaignAction(player, CampaignAction::SetSystemCourse, static_cast<int>(static_cast<uint32_t>(plan.system & 0xFFFFFFFFu)),
                                                            static_cast<int>(static_cast<uint32_t>(plan.system >> 32)))
                                         : DoCampaignAction(player, CampaignAction::SetCourse, plan.body, plan.region);
+        // Across the stars and on to a world there, if one was picked: the crossing knows where it goes on to.
+        if (done && plan.toSystem)
+        {
+            m_campaign.travel.onward = plan.body;
+        }
         if (!done)
         {
             m_campaign.plan = plan;
@@ -381,6 +399,14 @@ void PredationGame::ChooseLandingRegion(int region)
     }
     m_shipOrbiting = seed;
     m_shipReady = true;
+    // And round the orbit to be over it -- the shuttle goes down from right above it, not from wherever the ship happened to
+    // be (LaunchFromShip waits for it). Not begun again for the place it is already going to or over.
+    const glm::vec3 over = AreaOnGlobe(body->regions[static_cast<size_t>(region)]);
+    if (glm::length(m_campaign.travel.overAt) < 0.5f || glm::dot(glm::normalize(m_campaign.travel.overAt), glm::normalize(over)) < 0.9999f)
+    {
+        Travel::MoveOver(m_campaign, *system, body->index, over, DriveTier());
+        CampaignChanged();
+    }
     PRED_LOG_INFO(Gameplay, "Going down to {} on {}", body->regions[static_cast<size_t>(region)].designation, body->name);
 }
 
@@ -516,6 +542,10 @@ void PredationGame::UpdateTravel(float dt)
             m_campaign.travel.departWay = travel.departWay;
             m_campaign.travel.orbitOut = travel.orbitOut;
             m_campaign.travel.orbitSince = travel.orbitSince;
+            m_campaign.travel.overFrom = travel.overFrom;
+            m_campaign.travel.overAt = travel.overAt;
+            m_campaign.travel.overSince = travel.overSince;
+            m_campaign.travel.overSeconds = travel.overSeconds;
             m_campaign.body = travel.body;
         }
         else if (m_campaign.travel.underway && !m_campaign.travel.interstellar)
@@ -540,9 +570,13 @@ void PredationGame::UpdateTravel(float dt)
                     PRED_LOG_INFO(Gameplay, "Arrived in {}", arrived->name);
                 }
                 CampaignChanged();
-                if (m_map == MapChoice::Ship && HasCinematic("ship_arrive"))
+                // At the system's edge there is nothing to be shown arriving at (the arrival over a planet is for reaching
+                // one): straight on to the world picked across the stars, if one was, or waiting here to be told where.
+                const int onward = m_campaign.travel.onward;
+                m_campaign.travel.onward = -1;
+                if (arrived != nullptr && onward >= 0 && arrived->Find(onward) != nullptr)
                 {
-                    PlayCinematic("ship_arrive");
+                    DoCampaignAction(LocalPlayerId(), CampaignAction::SetCourse, onward, -1);
                 }
             }
         }
@@ -610,6 +644,10 @@ void PredationGame::UpdateTravel(float dt)
                 travel.departWay = m_campaign.travel.departWay;
                 travel.orbitOut = m_campaign.travel.orbitOut;
                 travel.orbitSince = m_campaign.travel.orbitSince;
+                travel.overFrom = m_campaign.travel.overFrom;
+                travel.overAt = m_campaign.travel.overAt;
+                travel.overSince = m_campaign.travel.overSince;
+                travel.overSeconds = m_campaign.travel.overSeconds;
                 m_host.SendTravel(travel);
             }
         }
@@ -1070,7 +1108,10 @@ std::string PredationGame::PlanName()
     }
     if (plan.toSystem)
     {
-        return m_universe.Glance(SystemId::Unpack(plan.system)).name;
+        // Its world, if one there was picked to fly on to; otherwise the system.
+        const StarSystem* to = m_universe.System(plan.system);
+        const Body* onward = to != nullptr ? to->Find(plan.body) : nullptr;
+        return onward != nullptr ? onward->name : m_universe.Glance(SystemId::Unpack(plan.system)).name;
     }
     const StarSystem* system = CurrentSystem();
     const Body* body = system != nullptr ? system->Find(plan.body) : nullptr;

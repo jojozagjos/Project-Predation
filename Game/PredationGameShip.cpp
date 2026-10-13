@@ -349,7 +349,11 @@ void PredationGame::UpdateShip()
         ShuttleAboard(aboard, everybody);
         // From inside it only: not through its windows from the bay.
         controls->enabled = m_shipReady && !m_cine.Active() && m_map == MapChoice::Ship && m_ship.Shuttle().Aboard(m_player.View().eyePosition);
-        controls->verb = aboard >= everybody ? "Launch" : "Launch (" + std::to_string(aboard) + " of " + std::to_string(everybody) + " aboard)";
+        // Not until the ship is over the place, going round to it after it was picked.
+        const float toOver = Travel::SecondsToOver(m_campaign);
+        controls->verb = toOver > 0.0f      ? "Wait: over the site in " + std::to_string(static_cast<int>(std::ceil(toOver))) + " s"
+                         : aboard >= everybody ? "Launch"
+                                               : "Launch (" + std::to_string(aboard) + " of " + std::to_string(everybody) + " aboard)";
     }
 }
 
@@ -359,7 +363,8 @@ bool PredationGame::LaunchFromShip(uint8_t player)
     int aboard = 0;
     int everybody = 0;
     ShuttleAboard(aboard, everybody);
-    if (!IsAuthority() || !m_shipReady || m_cine.Active() || aboard < everybody || !HasCinematic("ship_launch"))
+    if (!IsAuthority() || !m_shipReady || m_cine.Active() || aboard < everybody || !HasCinematic("ship_launch") ||
+        Travel::SecondsToOver(m_campaign) > 0.0f)
     {
         return false;
     }
@@ -404,6 +409,17 @@ void PredationGame::DrawShipHud()
         else if (m_shipTravel > 0.0f)
         {
             ImGui::TextColored(text, "Under way to the site.");
+        }
+        else if (m_shipReady && Travel::SecondsToOver(m_campaign) > 0.0f)
+        {
+            const Body* over = system != nullptr ? system->Find(m_campaign.body) : nullptr;
+            const int region = m_campaign.travel.region;
+            const std::string place = over != nullptr && region >= 0 && region < static_cast<int>(over->regions.size())
+                                          ? over->regions[static_cast<size_t>(region)].designation
+                                          : std::string("the site");
+            ImGui::TextColored(text, "%s", ("Going round the orbit to be over " + place + ".").c_str());
+            ImGui::TextDisabled("The shuttle can go down once the ship is over it: %d s.",
+                                static_cast<int>(std::ceil(Travel::SecondsToOver(m_campaign))));
         }
         else if (m_shipReady)
         {

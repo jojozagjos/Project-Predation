@@ -1,5 +1,6 @@
 #include "Game/Campaign/Travel.h"
 
+#include <glm/common.hpp>
 #include <glm/geometric.hpp>
 #include <glm/gtc/quaternion.hpp>
 
@@ -187,9 +188,83 @@ void Lift(CampaignState& campaign)
     campaign.travel.orbitSince = campaign.clock;
 }
 
+namespace
+{
+
+// Round the sphere from one direction to another, `t` of the way, at an even pace.
+glm::vec3 RoundTo(const glm::vec3& from, const glm::vec3& to, float t)
+{
+    const float cosine = std::clamp(glm::dot(from, to), -1.0f, 1.0f);
+    const float angle = std::acos(cosine);
+    if (angle < 1.0e-4f)
+    {
+        return to;
+    }
+    // Straight opposite: any way round will do.
+    glm::vec3 side = to - from * cosine;
+    if (glm::length(side) < 1.0e-5f)
+    {
+        side = std::abs(from.y) < 0.9f ? glm::cross(from, glm::vec3(0.0f, 1.0f, 0.0f)) : glm::cross(from, glm::vec3(1.0f, 0.0f, 0.0f));
+    }
+    side = glm::normalize(side);
+    return from * std::cos(angle * t) + side * std::sin(angle * t);
+}
+
+} // namespace
+
+void MoveOver(CampaignState& campaign, const StarSystem& system, int body, const glm::vec3& at, int tier)
+{
+    if (system.Find(body) == nullptr || glm::length(at) < 0.5f)
+    {
+        return;
+    }
+    // From where it is round its orbit now, as seen on the globe.
+    glm::vec3 out;
+    glm::vec3 along;
+    OrbitFrame(campaign, system, body, campaign.clock, out, along);
+    const glm::vec3 from = Unit(system.Over(body, out, campaign.clock), glm::vec3(1.0f, 0.0f, 0.0f));
+    const glm::vec3 to = Unit(at, glm::vec3(1.0f, 0.0f, 0.0f));
+    const float angle = std::acos(std::clamp(glm::dot(from, to), -1.0f, 1.0f));
+    CampaignState::Travel& travel = campaign.travel;
+    travel.overFrom = from;
+    travel.overAt = to;
+    travel.overSince = campaign.clock;
+    travel.overSeconds = (6.0f + 34.0f * angle / 3.14159265f) / (1.0f + 0.5f * static_cast<float>(std::max(tier, 0)));
+}
+
+float SecondsToOver(const CampaignState& campaign)
+{
+    const CampaignState::Travel& travel = campaign.travel;
+    if (glm::length(travel.overAt) < 0.5f)
+    {
+        return 0.0f;
+    }
+    return std::max(static_cast<float>(travel.overSince + static_cast<double>(travel.overSeconds) - campaign.clock), 0.0f);
+}
+
+glm::vec3 OverGlobe(const CampaignState& campaign, double clock)
+{
+    const CampaignState::Travel& travel = campaign.travel;
+    if (glm::length(travel.overAt) < 0.5f)
+    {
+        return glm::vec3(0.0f);
+    }
+    const float moved = travel.overSeconds > 0.0f ? static_cast<float>((clock - travel.overSince) / static_cast<double>(travel.overSeconds)) : 1.0f;
+    return RoundTo(travel.overFrom, travel.overAt, glm::smoothstep(0.0f, 1.0f, moved));
+}
+
 void OrbitFrame(const CampaignState& campaign, const StarSystem& system, int body, double clock, glm::vec3& out, glm::vec3& along)
 {
     const CampaignState::Travel& travel = campaign.travel;
+    // Going round to be over somewhere, or held over it: there on the globe, turning with the world.
+    if (glm::length(travel.overAt) > 0.5f && system.Find(body) != nullptr)
+    {
+        out = Unit(system.FromOver(body, OverGlobe(campaign, clock), clock), glm::vec3(1.0f, 0.0f, 0.0f));
+        const glm::vec3 there = system.FromOver(body, travel.overAt, clock);
+        along = there - out * glm::dot(there, out);
+        along = glm::length(along) > 1.0e-3f ? glm::normalize(along) : Unit(glm::cross(glm::vec3(0.0f, 1.0f, 0.0f), out), glm::vec3(0.0f, 0.0f, 1.0f));
+        return;
+    }
     glm::vec3 first = travel.orbitOut;
     if (glm::length(first) < 0.5f)
     {
@@ -424,6 +499,7 @@ bool Step(CampaignState& campaign, const StarSystem& system, float dt, int tier)
     {
         // Into orbit where it came in.
         travel.orbitOut = fromThere / distance;
+        travel.overAt = glm::vec3(0.0f);
         travel.orbitSince = campaign.clock;
         travel.position = system.PositionD(travel.target, campaign.clock);
         travel.velocity = moving;

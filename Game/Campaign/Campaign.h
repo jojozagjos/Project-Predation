@@ -73,6 +73,8 @@ struct CampaignState
         // years), and when it set out and how long the crossing takes (the campaign's clock).
         bool interstellar = false;
         uint64_t toSystem = 0;
+        // And a body of it to fly on to once there, without stopping at its edge (-1, none: the ship waits there).
+        int onward = -1;
         glm::vec3 fromGalaxy{0.0f};
         glm::vec3 toGalaxy{0.0f};
         double departed = 0.0;
@@ -86,6 +88,13 @@ struct CampaignState
         // side, from then). The same on every machine, so everybody sees the same world below.
         glm::vec3 orbitOut{0.0f};
         double orbitSince = 0.0;
+        // Gone round the orbit to be over where the shuttle is to go down, and held over it as the world turns: where over the
+        // globe it set off from and where it is going (unit, in the body's own frame; `overAt` none, nought), when, and how long
+        // the move takes (Travel::MoveOver).
+        glm::vec3 overFrom{0.0f};
+        glm::vec3 overAt{0.0f};
+        double overSince = 0.0;
+        float overSeconds = 0.0f;
     };
 
     int version = kVersion;

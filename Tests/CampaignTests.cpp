@@ -843,3 +843,41 @@ TEST_CASE("The time left to arrive counts down with the trip, as the ship is rea
         CHECK(std::abs(left - really) < std::max(0.1f * really, 3.0f));
     }
 }
+
+TEST_CASE("Picking where to go down, the ship goes round its orbit to be over it, and holds there as the world turns", "[campaign][travel]")
+{
+    Universe universe;
+    universe.Reset(321, &ShippedData());
+    const StarSystem& system = *universe.System(universe.Home());
+    CampaignState campaign = CampaignState::Begin("Over", 321, universe);
+    const int body = campaign.body;
+    Travel::Lift(campaign);
+
+    // A direction on the globe out into the system and back is itself.
+    const glm::vec3 somewhere = glm::normalize(glm::vec3(0.3f, 0.5f, -0.8f));
+    CHECK(glm::distance(system.Over(body, system.FromOver(body, somewhere, 1234.0), 1234.0), somewhere) < 1.0e-4f);
+
+    // Over the far side of the world from where it is, it takes a while; over the near side, less.
+    glm::vec3 out;
+    glm::vec3 along;
+    Travel::OrbitFrame(campaign, system, body, campaign.clock, out, along);
+    const glm::vec3 here = system.Over(body, out, campaign.clock);
+    Travel::MoveOver(campaign, system, body, -here, 0);
+    const float far = Travel::SecondsToOver(campaign);
+    CHECK(far > 30.0f);
+    CampaignState near = campaign;
+    near.travel.overAt = glm::vec3(0.0f);
+    Travel::MoveOver(near, system, body, glm::normalize(here + glm::vec3(0.0f, 0.2f, 0.0f)), 0);
+    CHECK(Travel::SecondsToOver(near) < far);
+
+    // It starts from where it was, and ends over the place -- and stays over it as the world turns under it.
+    CHECK(glm::distance(Travel::OverGlobe(campaign, campaign.clock), here) < 1.0e-3f);
+    campaign.clock += static_cast<double>(far) + 1.0;
+    CHECK(Travel::SecondsToOver(campaign) == 0.0f);
+    CHECK(glm::distance(Travel::OverGlobe(campaign, campaign.clock), -here) < 1.0e-3f);
+    for (const double later : {0.0, 600.0, 5000.0})
+    {
+        Travel::OrbitFrame(campaign, system, body, campaign.clock + later, out, along);
+        CHECK(glm::distance(system.Over(body, out, campaign.clock + later), -here) < 1.0e-3f);
+    }
+}

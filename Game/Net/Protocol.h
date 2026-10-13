@@ -24,7 +24,7 @@ namespace pred
 
 // Bumped whenever the wire changes shape. Two ends that disagree are refused at the door rather
 // than left to misread each other, which is what a wire mismatch actually looks like from inside.
-inline constexpr uint16_t kProtocolVersion = 39;
+inline constexpr uint16_t kProtocolVersion = 40;
 // How many bits name a message type. Five, so there is room to add one.
 inline constexpr uint32_t kMessageTypeBits = 5;
 inline constexpr uint8_t kMaxPlayers = 4;
@@ -262,6 +262,11 @@ struct TravelMessage
     glm::vec3 departWay{0.0f};
     glm::vec3 orbitOut{0.0f};
     double orbitSince = 0.0;
+    // Going round to be over where the shuttle goes down (CampaignState::Travel::overAt).
+    glm::vec3 overFrom{0.0f};
+    glm::vec3 overAt{0.0f};
+    double overSince = 0.0;
+    float overSeconds = 0.0f;
 };
 void WriteTravel(BitWriter& writer, const TravelMessage& message);
 bool ReadTravel(BitReader& reader, TravelMessage& out);

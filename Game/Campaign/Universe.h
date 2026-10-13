@@ -335,6 +335,8 @@ struct StarSystem
     glm::vec3 SunOver(int index, double time, float* spin = nullptr) const;
     // Any direction in the system (from the body: towards a moon, its planet), in that same frame.
     glm::vec3 Over(int index, const glm::vec3& direction, double time) const;
+    // The other way: a direction in the body's own frame, out into the system's.
+    glm::vec3 FromOver(int index, const glm::vec3& direction, double time) const;
 };
 
 // What a system is from far off, without working all of it out: its name, its star and where it is. For the galaxy

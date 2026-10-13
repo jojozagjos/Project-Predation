@@ -512,6 +512,12 @@ glm::vec3 PredationGame::ShipOverGlobe(const Body& body)
     {
         return AreaOnGlobe(body.regions[static_cast<size_t>(m_campaign.travel.region)]) * 1.01f;
     }
+    // Going round to be over where the shuttle goes down, or held over it: there, a little up.
+    const glm::vec3 over = Travel::OverGlobe(m_campaign, m_campaign.clock);
+    if (!ShipLanded() && body.index == m_campaign.body && glm::length(over) > 0.5f)
+    {
+        return over * 1.2f;
+    }
     // In orbit: once round every so often, on a tilted ring a third of a radius up.
     const float angle = static_cast<float>(std::fmod(m_campaign.clock / 90.0, 1.0)) * kTau;
     const glm::vec3 flat{std::cos(angle), 0.0f, std::sin(angle)};
@@ -2474,10 +2480,18 @@ void PredationGame::DrawMapSystemPanels(const StarSystem& system)
                 const float reach = Travel::CrossingRange(DriveTier());
                 const float lightYears = glm::length(system.galaxy - Travel::GalaxyPosition(m_campaign, m_universe));
                 const bool canCross = reach > 0.0f && lightYears <= reach;
-                ImGui::BeginDisabled(!aboard || m_cine.Active() || !canCross);
-                if (ImGui::Button("Plot course for this system", {-1.0f, 32.0f}))
+                // Straight to this world: across the stars, and on to it without stopping at the system's edge.
+                const bool plotted = m_campaign.plan.set && m_campaign.plan.toSystem && m_campaign.plan.system == m_mapSystem &&
+                                     m_campaign.plan.body == picked->index;
+                if (plotted)
+                {
+                    Wrapped(kGoText, "Course plotted, across the stars and on to here. Set out from the helm in the cockpit.");
+                }
+                ImGui::BeginDisabled(!aboard || m_cine.Active() || !canCross || plotted);
+                if (ImGui::Button(plotted ? "Plotted" : "Plot course straight here", {-1.0f, 32.0f}))
                 {
                     AskSystemCourse(m_mapSystem);
+                    AskCampaign(CampaignAction::PlotOnward, picked->index, 0);
                 }
                 ImGui::EndDisabled();
                 if (reach <= 0.0f)
@@ -2492,9 +2506,13 @@ void PredationGame::DrawMapSystemPanels(const StarSystem& system)
         }
         else if (here)
         {
-            Wrapped(kAmberText, "%s", ShipLanded()   ? "The ship is landed here. Pick a place on the surface to take the shuttle down."
-                                                 : m_shipReady ? "In orbit. The shuttle is ready in the hangar."
-                                                               : "In orbit.");
+            const float toOver = Travel::SecondsToOver(m_campaign);
+            const std::string moving = "In orbit, going round to be over where the shuttle goes down: " +
+                                       std::to_string(static_cast<int>(std::ceil(toOver))) + " s.";
+            Wrapped(kAmberText, "%s", ShipLanded()                    ? "The ship is landed here. Pick a place on the surface to take the shuttle down."
+                                      : m_shipReady && toOver > 0.0f ? moving.c_str()
+                                      : m_shipReady                   ? "In orbit, over where the shuttle goes down. The shuttle is ready in the hangar."
+                                                                      : "In orbit.");
         }
         else if (heading)
         {
@@ -2657,8 +2675,12 @@ void PredationGame::DrawMapBodyPanels(const StarSystem& system)
         }
         else if (chosen)
         {
-            Wrapped(kGoText, "%s", here ? (m_shipReady ? "The shuttle goes down here. It is ready in the hangar." : "The shuttle goes down here.")
-                                                     : "The shuttle goes down here when the ship arrives.");
+            const float toOver = Travel::SecondsToOver(m_campaign);
+            const std::string moving = "The shuttle goes down here, once the ship is over it: " + std::to_string(static_cast<int>(std::ceil(toOver))) + " s.";
+            Wrapped(kGoText, "%s", !here                         ? "The shuttle goes down here when the ship arrives."
+                                   : m_shipReady && toOver > 0.0f ? moving.c_str()
+                                   : m_shipReady                 ? "The shuttle goes down here. It is ready in the hangar."
+                                                                 : "The shuttle goes down here.");
         }
         else
         {

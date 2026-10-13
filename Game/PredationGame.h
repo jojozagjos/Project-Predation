@@ -1000,7 +1000,8 @@ private:
         PlotSystem,      // a, b = the system's number, as SetSystemCourse
         Depart,          // set out on the course plotted
         Door,            // a = 1 open the boarding door, 0 shut it
-        HoldMap          // a = 1 take the navigation map, 0 give it up: one player at a time has it
+        HoldMap,         // a = 1 take the navigation map, 0 give it up: one player at a time has it
+        PlotOnward       // a = a body of the system just plotted for (PlotSystem), to fly on to once there
     };
     // The boarding door's controls, inside and out.
     void BuildAirlockControls();
