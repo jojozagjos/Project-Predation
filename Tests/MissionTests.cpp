@@ -400,3 +400,49 @@ TEST_CASE("Standing in front of the terminal or a breaker and looking at it, it 
         site.Clear(scene, physics, nullptr);
     }
 }
+
+TEST_CASE("The shuttle's sides are solid at its skin, so nobody puts their head through into it", "[mission][vehicle]")
+{
+    PhysicsWorld physics;
+    PhysicsWorld::Settings settings;
+    settings.workerThreads = 1;
+    REQUIRE(physics.Init(settings));
+    Scene scene;
+    MeshLibrary meshes;
+    meshes.SetHeadless(true);
+    const CinePose home{{0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f, 0.0f}};
+    VehicleProp shuttle;
+    REQUIRE(shuttle.Build(scene, meshes, &physics, std::make_shared<ModelAsset>(Vehicles::ShuttleModel()), home, physics.NewOverlapGroup(), "test_"));
+    // The skin's half width and the height of its straight sides along its length (Vehicles::ShuttleModel's sections).
+    struct Section
+    {
+        float z, half, low, high;
+    };
+    const Section sections[] = {{-5.75f, 1.45f, 0.78f, 1.3f}, {-5.05f, 1.9f, 0.8f, 2.3f}, {-4.4f, 2.12f, 0.75f, 3.05f}, {2.2f, 2.12f, 0.75f, 3.05f}};
+    int tested = 0;
+    for (float z = -5.6f; z < 2.2f; z += 0.25f)
+    {
+        size_t i = 0;
+        while (sections[i + 1].z < z)
+        {
+            ++i;
+        }
+        const float t = (z - sections[i].z) / (sections[i + 1].z - sections[i].z);
+        const float half = sections[i].half + (sections[i + 1].half - sections[i].half) * t;
+        const float low = std::max(sections[i].low, sections[i + 1].low);
+        const float high = std::min(sections[i].high, sections[i + 1].high);
+        for (float y = low + 0.1f; y < high - 0.1f; y += 0.3f)
+        {
+            for (const float s : {-1.0f, 1.0f})
+            {
+                INFO("z " << z << " y " << y << " side " << s);
+                const RayHit hit = physics.RayCast({s * 4.0f, y, z}, {-s, 0.0f, 0.0f}, 4.0f);
+                REQUIRE(hit.hit);
+                // Stopped within a few centimetres of the skin (or on something outside it, an engine).
+                CHECK(std::abs(hit.position.x) > half - 0.15f);
+                ++tested;
+            }
+        }
+    }
+    CHECK(tested > 40);
+}

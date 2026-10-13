@@ -443,6 +443,24 @@ ModelAsset ShuttleModel()
         screen.rotation = {-glm::degrees(std::atan2(1.15f, 0.7f)), 0.0f, 0.0f};
         solid("flight_window_left", -1.8f, -1.6f, 1.55f, flightTop, -5.0f, bulkhead);
         solid("flight_window_right", 1.6f, 1.8f, 1.55f, flightTop, -5.0f, bulkhead);
+        // And the nose's sides from outside, just inside the skin where it widens from the windscreen's foot to the shoulder:
+        // the flight deck's own sides are tens of centimetres in from it, and a head went in through the gap as far as the
+        // console. Each a slab turned to follow the skin between two of its sections.
+        const auto side = [&](const char* name, float z0, float half0, float z1, float half1, float top)
+        {
+            for (const float s : {-1.0f, 1.0f})
+            {
+                const glm::vec2 from{s * (half0 - 0.06f), z0};
+                const glm::vec2 to{s * (half1 - 0.06f), z1};
+                const float along = glm::length(to - from);
+                ModelPart& slab = solid(std::string(name) + (s < 0.0f ? "_left" : "_right"), -0.04f, 0.04f, 0.6f, top, -along * 0.5f, along * 0.5f);
+                slab.position = glm::vec3((from.x + to.x) * 0.5f, slab.position.y, (from.y + to.y) * 0.5f);
+                slab.rotation = {0.0f, glm::degrees(std::atan2(to.x - from.x, to.y - from.y)), 0.0f};
+            }
+        };
+        side("nose_side_low", -5.75f, 1.45f, -5.05f, 1.9f, 1.55f);
+        side("nose_side_high", -5.05f, 1.9f, -4.4f, skin, 2.7f);
+        side("nose_side_aft", -4.4f, skin, bulkhead, skin, 3.25f);
     }
     // And something to stand on up top: the roof skin is a few tens of centimetres over the cabin's ceiling, and anybody
     // up there stood on the ceiling, sunk in to the knees. Its flat, from the shoulder back to the tail, just under the skin;
