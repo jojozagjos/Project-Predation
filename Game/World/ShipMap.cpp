@@ -169,11 +169,13 @@ public:
         m_physics.SetOverlapGroup(body, m_group);
         m_bodies.push_back(body);
     }
-    // Solid only: the glass in a window, which is not drawn.
+    // Solid only: the glass in a window, which is not drawn, or the hull's skin outside (HullModel draws it).
     void Barrier(const glm::vec3& lo, const glm::vec3& hi)
     {
         const BodyHandle body = m_physics.CreateBox(glm::abs(hi - lo) * 0.5f, At((lo + hi) * 0.5f), BodyMotion::Static);
         m_physics.SetOverlapGroup(body, m_group);
+        // Glass, or the hull from outside: metal underfoot.
+        m_physics.SetTag(body, Surfaces::StepOfSet("", true));
         m_bodies.push_back(body);
     }
 
@@ -293,6 +295,19 @@ void BuildStructure(Builder& b)
     b.Solid("ship_roof", {-outer, kTop, kNose - kWallT}, {outer, kRoof, kBayFront - kWallT}, kCeiling);
     b.Solid("ship_roof", {-bayOuter, kBayTop, kBayFront - kWallT}, {bayOuter, kBayRoof, kBayBack + kWallT}, kCeiling);
     b.Solid("ship_roof", {-outer, kTop, kBayBack + kWallT}, {outer, kRoof, kStern + kWallT}, kCeiling);
+    // And what anybody up on top stands on: the hull's roof (HullModel) is over the rooms' -- 0.35 m over the body's, a
+    // quarter over the bay's -- and the rooms' roofs were all there was to stand on, sunk in to the knees. Its flats, just
+    // under the skin, inside the bevels at its edges.
+    {
+        const float skin = 0.06f;
+        const float body = outer + 0.25f - 0.5f;
+        const float bay = bayOuter + 0.3f - 0.4f;
+        const float bayFront = kBayFront - kWallT - skin;
+        const float bayBack = kBayBack + kWallT + skin;
+        b.Barrier({-body, kRoof, kOpsFront}, {body, kRoof + 0.33f, bayFront});
+        b.Barrier({-bay, kBayRoof, bayFront}, {bay, kBayRoof + 0.23f, bayBack});
+        b.Barrier({-body, kRoof, bayBack}, {body, kRoof + 0.33f, kStern + kWallT + skin + 0.1f});
+    }
 
     // --- The outside walls of the crew sections and the engine room -------------------------------------------------
     b.WallX("ship_wall", -outer, outer, kNose - kWallT, kNose, 0.0f, kTop, {kWindscreen}, kWall);

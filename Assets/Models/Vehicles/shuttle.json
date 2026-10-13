@@ -3842,6 +3842,30 @@
       "visible": true
     },
     {
+      "color": [0.17, 0.18, 0.19],
+      "emissive": 0.0,
+      "metallic": 0.0,
+      "name": "solid_roof_top",
+      "position": [0.0, 3.215, -1.06],
+      "rotation": [0.0, 0.0, 0.0],
+      "roughness": 0.75,
+      "shape": "box",
+      "size": [3.6, 0.23, 6.68],
+      "visible": true
+    },
+    {
+      "color": [0.17, 0.18, 0.19],
+      "emissive": 0.0,
+      "metallic": 0.0,
+      "name": "solid_roof_brow",
+      "position": [0.0, 2.98, -4.725],
+      "rotation": [-42.7094, 0.0, 0.0],
+      "roughness": 0.75,
+      "shape": "box",
+      "size": [2.8, 0.08, 0.88],
+      "visible": true
+    },
+    {
       "color": [0.26, 0.27, 0.285],
       "emissive": 0.0,
       "mesh": {

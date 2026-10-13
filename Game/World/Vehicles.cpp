@@ -444,6 +444,16 @@ ModelAsset ShuttleModel()
         solid("flight_window_left", -1.8f, -1.6f, 1.55f, flightTop, -5.0f, bulkhead);
         solid("flight_window_right", 1.6f, 1.8f, 1.55f, flightTop, -5.0f, bulkhead);
     }
+    // And something to stand on up top: the roof skin is a few tens of centimetres over the cabin's ceiling, and anybody
+    // up there stood on the ceiling, sunk in to the knees. Its flat, from the shoulder back to the tail, just under the skin;
+    // and the slope of the windscreen's top up to it.
+    solid("roof_top", -(skin - 0.32f), skin - 0.32f, ceiling + 0.1f, 3.33f, -4.4f, tail - 0.02f);
+    {
+        ModelPart& brow = solid("roof_brow", -1.4f, 1.4f, -0.04f, 0.04f, -0.44f, 0.44f);
+        // From the windscreen's top (2.75 m at -5.05) to the shoulder (3.35 at -4.4), a little under it.
+        brow.position = glm::vec3(0.0f, 2.98f, -4.725f);
+        brow.rotation = {-glm::degrees(std::atan2(0.6f, 0.65f)), 0.0f, 0.0f};
+    }
 
     // --- On top: a spine along the roof, the fin at the tail, a mast forward.
     {
@@ -825,7 +835,8 @@ bool VehicleProp::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld* physics
                                : part.shape == PartShape::Sphere ? glm::vec3(part.size.x)
                                                                  : glm::vec3(part.size.x, part.size.y, part.size.x);
         const BodyHandle body = physics->CreateBox(glm::max(size * 0.5f, glm::vec3(0.005f)), transform, BodyMotion::Static);
-        physics->SetTag(body, Surfaces::StepOfSet(part.surface, part.metallic > 0.3f));
+        // (One that is only there to be walked into is the hull it stands in for: metal.)
+        physics->SetTag(body, Surfaces::StepOfSet(part.surface, part.metallic > 0.3f || part.name.rfind("solid_", 0) == 0));
         if (overlapGroup != 0)
         {
             physics->SetOverlapGroup(body, overlapGroup);
