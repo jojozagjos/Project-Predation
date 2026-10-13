@@ -447,6 +447,26 @@ void PredationGame::RegisterCampaignCommands()
                                 // The ground as wet or snowed on as that weather would leave it, at once.
                                 m_surfaceWeatherSite = 0;
                             });
+    console.RegisterCommand("footprint_trail", "Lay a few steps' prints on the ground ahead, as if walked there: footprint_trail [steps]",
+                            [this](const std::vector<std::string>& args)
+                            {
+                                if (!m_facility.Built())
+                                {
+                                    return;
+                                }
+                                const int steps = args.size() >= 2 ? std::clamp(std::atoi(args[1].c_str()), 1, 40) : 10;
+                                const glm::vec3 ahead = glm::normalize(glm::vec3(std::sin(m_lookYaw), 0.0f, -std::cos(m_lookYaw)));
+                                for (int i = 0; i < steps; ++i)
+                                {
+                                    const glm::vec3 at = m_player.State().position + ahead * (1.0f + 0.7f * static_cast<float>(i));
+                                    m_footprints.Leave(m_scene, m_app->GetMeshes(), m_facility, at, m_lookYaw, i % 2 == 0, m_campaign.clock);
+                                    if (i == 0)
+                                    {
+                                        PRED_LOG_INFO(Gameplay, "footprint_trail: from {:.1f} {:.2f} {:.1f}, the ground there {:.2f}", at.x, at.y, at.z,
+                                                      m_facility.Terrain().Height(at.x, at.z));
+                                    }
+                                }
+                            });
     console.RegisterCommand("lightning_now", "In a storm, lightning now, to see it: lightning_now [yaw degrees] [metres off]",
                             [this](const std::vector<std::string>& args)
                             {

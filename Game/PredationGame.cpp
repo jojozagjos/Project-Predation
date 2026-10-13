@@ -6661,7 +6661,7 @@ void PredationGame::UpdateSounds(float dt)
         return speed < 2.2f ? NoiseReach::kFootstepCrouch + 0.5f : NoiseReach::kFootstepWalk;
     };
 
-    const auto footfalls = [&](float phase, float& previous, const glm::vec3& where, bool moving,
+    const auto footfalls = [&](float phase, float& previous, const glm::vec3& where, const glm::vec3& velocity, bool moving,
                                float gain, bool positioned, int player, float reach)
     {
         if (!moving)
@@ -6677,10 +6677,21 @@ void PredationGame::UpdateSounds(float dt)
             // With recorded clips the random pick does most of that work and the pitch nudge only
             // has to stop two plays of the same clip being identical, so it is gentler than it was.
             float loudness = gain;
-            const SoundId clip = PickFootstep(loudness, SurfaceIndexAt(where));
+            const int surface = SurfaceIndexAt(where);
+            const SoundId clip = PickFootstep(loudness, surface);
             const float wobble = 0.96f + 0.08f * std::fmod(std::abs(phase) * 7.13f, 1.0f);
             PlaySound(clip, where, loudness, wobble, positioned);
             MakeNoise(NoiseKind::Footstep, where, reach, player);
+            // And in soft ground at a site, a print where the foot came down: the left foot at one mark, the right at the other.
+            if (surface >= 0 && surface < static_cast<int>(m_footsteps.size()) && m_facility.Built() && m_facility.Contains(where))
+            {
+                const std::string& underfoot = m_footsteps[static_cast<size_t>(surface)].name;
+                if (underfoot == "sand" || underfoot == "snow" || underfoot == "mud")
+                {
+                    const float yaw = std::atan2(velocity.x, -velocity.z);
+                    m_footprints.Leave(m_scene, m_app->GetMeshes(), m_facility, where, yaw, crossed(0.0f), m_campaign.clock);
+                }
+            }
         }
         previous = phase;
     };
@@ -6690,7 +6701,7 @@ void PredationGame::UpdateSounds(float dt)
                              glm::length(glm::vec2(local.velocity.x, local.velocity.z)) > 0.8f;
     // Your own steps are not placed in the world either: they come from under you, and panning
     // them puts your own feet in one ear.
-    footfalls(local.stridePhase, m_lastStridePhase, local.position, localMoving,
+    footfalls(local.stridePhase, m_lastStridePhase, local.position, local.velocity, localMoving,
               0.30f * StanceLoudness(local.stance), false, LocalPlayerId(),
               stepReach(local.stance, local.velocity));
 
@@ -6699,7 +6710,7 @@ void PredationGame::UpdateSounds(float dt)
         const bool moving = avatar->state.alive && avatar->state.grounded &&
                             glm::length(glm::vec2(avatar->state.velocity.x,
                                                   avatar->state.velocity.z)) > 0.8f;
-        footfalls(avatar->state.stridePhase, avatar->lastStridePhase, avatar->drawn, moving,
+        footfalls(avatar->state.stridePhase, avatar->lastStridePhase, avatar->drawn, avatar->state.velocity, moving,
                   0.75f * StanceLoudness(avatar->state.stance), true, avatar->id,
                   stepReach(avatar->state.stance, avatar->state.velocity));
     }

@@ -61,6 +61,13 @@ public:
     uint16_t Seed() const { return m_seed; }
     const SitePlan& Plan() const { return m_plan; }
     const SiteTerrain& Terrain() const { return m_terrain; }
+    // What its ground is drawn in, and the colour painted on it at a point: for what is laid on the ground to match it (a
+    // footprint).
+    const Material& GroundMaterial() const { return m_groundMaterial; }
+    glm::vec3 GroundTint(float x, float z) const
+    {
+        return m_terrain.Colour(x, z, m_terrain.Normal(x, z), m_look.ground, m_cliffColour, m_grassy ? &m_grownOver : nullptr);
+    }
     const WorldObjects::Placements& Placements() const { return m_placements; }
     // Where somebody put on the site with nothing to bring them stands: off the foot of the shuttle's ramp, facing in.
     glm::vec3 Spawn() const { return m_plan.rampFoot.position + glm::vec3(0.0f, 0.5f, 0.0f); }
@@ -106,6 +113,10 @@ private:
     std::future<MeshData> m_coverBuild;
     MeshData CoverAround(const glm::vec3& eye, float detail) const;
     float m_coverDetail = -1.0f;
+    Material m_groundMaterial;
+    glm::vec3 m_cliffColour{0.3f};
+    glm::vec3 m_grownOver{0.3f};
+    bool m_grassy = false;
 };
 
 } // namespace pred

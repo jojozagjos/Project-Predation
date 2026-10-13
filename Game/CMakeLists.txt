@@ -129,6 +129,8 @@ set(PRED_GAME_SOURCES
     World/Surfaces.h
     World/Surfaces.cpp
     World/Weather.cpp
+    World/Footprints.h
+    World/Footprints.cpp
     World/Particles.cpp
     World/ShipMap.h
     World/ShipMap.cpp

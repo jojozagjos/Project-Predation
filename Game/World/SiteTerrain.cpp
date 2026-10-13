@@ -399,8 +399,6 @@ MeshData SiteTerrain::Mesh(int chunkX, int chunkZ, const glm::vec3& ground, cons
     {
         return mesh;
     }
-    // Painted per vertex as a share of the brighter of the two (the material's colour), so neither is cut short.
-    const glm::vec3 base = Paint(ground, rock);
     const auto pack = [](const glm::vec3& c)
     {
         const auto channel = [](float v) { return static_cast<uint32_t>(std::clamp(v, 0.0f, 1.0f) * 255.0f + 0.5f); };
@@ -423,14 +421,7 @@ MeshData SiteTerrain::Mesh(int chunkX, int chunkZ, const glm::vec3& ground, cons
             vertex.position = {x, At(i, j), z};
             vertex.normal = glm::normalize(glm::vec3(-dx, 1.0f, -dz));
             vertex.uv = {x, z};
-            // Grown over where it is the world's own ground, in patches.
-            glm::vec3 soil = ground;
-            if (grown != nullptr)
-            {
-                const float patchy = 0.55f + 0.45f * std::sin(x * 0.13f + std::sin(z * 0.09f) * 2.0f) * std::sin(z * 0.11f + 1.7f);
-                soil = glm::mix(ground, *grown, std::clamp(Wildness(x, z) * 1.6f - 0.3f, 0.0f, 1.0f) * patchy * 0.75f);
-            }
-            vertex.color = pack(glm::mix(soil, rock, Rockiness(vertex.normal)) / base);
+            vertex.color = pack(Colour(x, z, vertex.normal, ground, rock, grown));
             mesh.vertices.push_back(vertex);
         }
     }
@@ -447,6 +438,19 @@ MeshData SiteTerrain::Mesh(int chunkX, int chunkZ, const glm::vec3& ground, cons
         }
     }
     return mesh;
+}
+
+glm::vec3 SiteTerrain::Colour(float x, float z, const glm::vec3& normal, const glm::vec3& ground, const glm::vec3& rock, const glm::vec3* grown) const
+{
+    // Grown over where it is the world's own ground, in patches; rock where it is steep. As a share of the brighter of the
+    // two (the material's colour, Paint), so neither is cut short.
+    glm::vec3 soil = ground;
+    if (grown != nullptr)
+    {
+        const float patchy = 0.55f + 0.45f * std::sin(x * 0.13f + std::sin(z * 0.09f) * 2.0f) * std::sin(z * 0.11f + 1.7f);
+        soil = glm::mix(ground, *grown, std::clamp(Wildness(x, z) * 1.6f - 0.3f, 0.0f, 1.0f) * patchy * 0.75f);
+    }
+    return glm::mix(soil, rock, Rockiness(normal)) / Paint(ground, rock);
 }
 
 } // namespace pred

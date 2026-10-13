@@ -34,6 +34,7 @@
 #include "Game/Mission/Briefing.h"
 #include "Game/World/Particles.h"
 #include "Game/World/Weather.h"
+#include "Game/World/Footprints.h"
 #include "Game/Mission/Mission.h"
 #include "Game/Mission/MissionProps.h"
 #include "Game/Mission/SiteNames.h"
@@ -1865,6 +1866,8 @@ private:
     float m_briefingDrawnAt = -10.0f;
     // Snow, at a site, round whoever is looking; and sparks, chips and sprays where things happen.
     Weather m_weather;
+    // The prints left walking over soft ground at a site (UpdateWorldSounds lays them with the steps).
+    Footprints m_footprints;
     Particles m_particles;
     // A burst at `at`, the ground under it found for them to land on.
     void Burst(const glm::vec3& at, const glm::vec3& direction, int count, const ParticleLook& look);

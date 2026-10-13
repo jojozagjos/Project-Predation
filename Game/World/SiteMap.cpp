@@ -150,6 +150,8 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
     const glm::vec3 cliffColour = m_look.rock * 0.88f;
     Material terrainMaterial = Surfaces::Apply(Material::Diffuse(SiteTerrain::Paint(m_look.ground, cliffColour), 1.0f), m_look.surface, 2.5f, 0.6f, true);
     terrainMaterial = Surfaces::ApplySteep(terrainMaterial, m_look.steep, 11.0f);
+    m_groundMaterial = terrainMaterial;
+    m_cliffColour = cliffColour;
     // Made side by side, a row of pieces a thread -- the shapes to stand on are most of the time a site takes to build -- and
     // put into the world here, in order.
     struct Piece
@@ -164,6 +166,8 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
     const glm::vec3 grassColour = glm::mix(growing, m_look.ground, 0.3f) * 1.05f;
     // (The ground under it a deeper green: seen far off, the grass is mostly its own shade.)
     const glm::vec3 grownOver = growing;
+    m_grownOver = grownOver;
+    m_grassy = grassy;
     std::vector<Piece> pieces(static_cast<size_t>(chunks * chunks));
     {
         std::vector<std::future<void>> rows;

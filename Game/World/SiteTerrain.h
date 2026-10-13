@@ -60,6 +60,9 @@ public:
     // to stand on.
     bool InReach(int chunkX, int chunkZ) const;
     static glm::vec3 Paint(const glm::vec3& ground, const glm::vec3& rock) { return glm::max(glm::max(ground, rock), glm::vec3(1.0e-3f)); }
+    // The colour painted on the ground at a point and facing (Mesh's, over Paint's): its own, grown over where it is wild
+    // when `grown` is given, the rock's where it is steep.
+    glm::vec3 Colour(float x, float z, const glm::vec3& normal, const glm::vec3& ground, const glm::vec3& rock, const glm::vec3* grown) const;
     // How much of a place facing this way is rock, 0 to 1.
     static float Rockiness(const glm::vec3& normal);
     // How steep a slope is steep: about as steep as anybody can walk up (all rock from here on).

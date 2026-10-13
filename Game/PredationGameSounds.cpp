@@ -164,6 +164,8 @@ void PredationGame::PlayReloadCues(const WeaponDefinition* weapon, bool empty, f
 void PredationGame::UpdateWorldSounds(float dt)
 {
     m_soundClock += dt;
+    // Old prints filled in by the wind and the snow.
+    m_footprints.Update(m_scene, m_facility, m_campaign.clock);
 
     // Whatever was put off -- a casing that has not hit the floor yet -- once its moment comes.
     for (size_t i = 0; i < m_queuedSounds.size();)
