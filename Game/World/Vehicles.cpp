@@ -731,6 +731,23 @@ bool VehicleProp::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld* physics
         return false;
     }
     m_model = std::move(model);
+    // The box round the whole of it, as it rests (Within).
+    m_lo = glm::vec3(1.0e9f);
+    m_hi = glm::vec3(-1.0e9f);
+    for (const ModelPart& part : m_model->parts)
+    {
+        if (part.name.rfind("solid_", 0) == 0 || !part.visible)
+        {
+            continue;
+        }
+        const glm::mat4 local = m_model->PartMatrixAt(part, nullptr, 0.0f);
+        for (const MeshVertex& vertex : m_model->BuildPartMesh(part).vertices)
+        {
+            const glm::vec3 p = glm::vec3(local * glm::vec4(vertex.position, 1.0f));
+            m_lo = glm::min(m_lo, p);
+            m_hi = glm::max(m_hi, p);
+        }
+    }
     m_home = home;
     // Merged: every part's mesh in the model's own frame, gathered by material and by stretch of it, each gathering one mesh.
     struct Gathered
@@ -1004,6 +1021,16 @@ bool VehicleProp::Aboard(const glm::vec3& point) const
     const glm::vec3 lo = glm::min(low->position, high->position);
     const glm::vec3 hi = glm::max(low->position, high->position);
     return local.x > lo.x && local.x < hi.x && local.y > lo.y && local.y < hi.y && local.z > lo.z && local.z < hi.z;
+}
+
+bool VehicleProp::Within(const glm::vec3& point, float margin) const
+{
+    if (m_model == nullptr)
+    {
+        return false;
+    }
+    const glm::vec3 local = glm::inverse(m_home.rotation) * (point - m_home.position);
+    return glm::all(glm::greaterThan(local, m_lo - glm::vec3(margin))) && glm::all(glm::lessThan(local, m_hi + glm::vec3(margin)));
 }
 
 } // namespace pred

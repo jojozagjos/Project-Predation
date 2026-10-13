@@ -48,7 +48,7 @@ const KindLook& LookOf(Weather::Kind kind)
 {
     static const KindLook kSnow{760, 170, 46, 0.7f, 1.7f, 0.04f, 0.09f, 0.95f, 1.0f, 0.35f, false, 0.0f, 0.0f, {0.92f, 0.94f, 0.97f}, 0.16f, 0.7f};
     static const KindLook kRain{1500, 0, 24, 8.0f, 11.0f, 0.018f, 0.026f, 0.5f, 1.6f, 0.0f, true, 0.07f, 0.0f, {0.72f, 0.76f, 0.82f}, 0.08f, 0.55f};
-    static const KindLook kDust{1100, 650, 80, -0.15f, 0.35f, 0.02f, 0.04f, 0.6f, 2.6f, 0.8f, true, 0.035f, 0.0f, {0.6f, 0.5f, 0.38f}, 0.3f, 0.55f};
+    static const KindLook kDust{1100, 650, 80, -0.15f, 0.35f, 0.02f, 0.04f, 0.6f, 2.6f, 0.8f, true, 0.022f, 0.0f, {0.6f, 0.5f, 0.38f}, 0.3f, 0.55f};
     static const KindLook kAsh{760, 140, 50, 0.3f, 0.8f, 0.04f, 0.09f, 0.85f, 0.8f, 0.6f, false, 0.0f, 0.08f, {0.16f, 0.16f, 0.17f}, 0.2f, 0.7f};
     switch (kind)
     {
@@ -243,13 +243,17 @@ void Weather::Update(const glm::vec3& eye, float ground, float dt, Kind kind, fl
         Sprite sprite;
         sprite.at = piece.at;
         sprite.size = piece.size;
-        sprite.alpha = piece.alpha;
+        // Faded close to the eye: a flake or a grain a hand's breadth from it would fill the view as a blot.
+        const float fromEye = glm::length(piece.at - eye);
+        sprite.alpha = piece.alpha * glm::smoothstep(0.5f, 2.0f, fromEye);
         if (look.streak)
         {
             // Smeared along the way it is going over the moment the eye sees it: rain as streaks leaning with the wind, sand
             // as streaks blowing past.
             const glm::vec3 velocity = piece.low ? blowing * 3.2f : glm::vec3(blowing.x, -piece.fall, blowing.z);
-            sprite.length = glm::length(velocity) * look.streakTime * (piece.low ? 2.5f : 1.0f);
+            // (Never long against how far off it is: smeared across half the view, close streaks all seem to pour out of
+            // the one point the wind comes from.)
+            sprite.length = std::min(glm::length(velocity) * look.streakTime * (piece.low ? 1.8f : 1.0f), fromEye * 0.12f);
             sprite.along = glm::normalize(velocity);
         }
         if (piece.glow)

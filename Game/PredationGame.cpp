@@ -9869,7 +9869,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
         light.fogEnd = environment.fogEnd;
         m_weather.Update(m_renderEye, ground, deltaSeconds, Weather::KindOf(look.weather), falling ? look.weatherAmount : 0.0f, look.ground,
                          glm::vec3(std::cos(windAngle), 0.0f, std::sin(windAngle)) * windSpeed, light,
-                         [this](const glm::vec3& at) { return m_facility.Plan().Indoors(at) || m_facility.Shuttle().Aboard(at); });
+                         [this](const glm::vec3& at) { return m_facility.Plan().Indoors(at) || m_facility.Shuttle().Within(at, 0.4f); });
     }
 
     glm::mat4 view;
@@ -10173,12 +10173,15 @@ void PredationGame::OnUpdate(double dt, double alpha)
     environment.skySunDirection = glm::vec3(0.0f);
     environment.skySun = 1.0f;
     environment.skyAir = 0.0f;
+    environment.skyHaze = 0.0f;
     environment.fogStart = cv_fogStart.Get();
     environment.fogEnd = cv_fogEnd.Get();
     environment.sunIntensity = cv_sunIntensity.Get();
     // Out at the site it is night: its own sky, fog and light, while the picture is taken from there.
     {
         const bool atSite = m_screen == Screen::Playing && m_facility.Built() && m_facility.Contains(m_renderEye);
+        // In the open air or under a roof (a building, the shuttle's cabin): how the fog falls on what is seen (Environment).
+        environment.eyeOutdoors = !(atSite && (m_facility.Plan().Indoors(m_renderEye) || m_facility.Shuttle().Aboard(m_renderEye)));
         // The title is in space too.
         const bool title = m_screen == Screen::Title;
         const bool inShip = !atSite && (title || m_ship.Contains(m_renderEye));
@@ -10306,6 +10309,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
                 const float thick = amount * thickens;
                 environment.fogColor = glm::mix(environment.fogColor, stuff * lit, thick);
                 environment.sunIntensity *= glm::mix(1.0f, 0.4f, thick);
+                environment.skyHaze = thick;
             }
         }
         else if (atSite)

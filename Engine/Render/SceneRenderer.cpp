@@ -298,7 +298,7 @@ void SceneRenderer::SetEnvironmentUniforms(const Environment& environment,
     const float ambientGround[4] = {environment.ambientGround.r, environment.ambientGround.g,
                                     environment.ambientGround.b, 0.0f};
     const float fogColor[4] = {environment.fogColor.r, environment.fogColor.g, environment.fogColor.b, 0.0f};
-    const float fogParams[4] = {environment.fogStart, environment.fogEnd, 0.0f, 0.0f};
+    const float fogParams[4] = {environment.fogStart, environment.fogEnd, environment.eyeOutdoors ? 1.0f : 0.0f, 0.0f};
     const float cameraPos[4] = {cameraPosition.x, cameraPosition.y, cameraPosition.z, 0.0f};
 
     bgfx::setUniform(m_uLightDirection, lightDirection);

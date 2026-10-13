@@ -8,6 +8,8 @@
 
 #include <glm/gtc/type_ptr.hpp>
 
+#include <algorithm>
+
 namespace pred
 {
 
@@ -100,8 +102,13 @@ void SkyRenderer::Draw(bgfx::ViewId view, const Environment& environment, const 
     // The sky is lit by the same numbers the surfaces are, so the two cannot drift apart: the zenith
     // is the ambient sky colour opened up, the horizon sits between that and the fog the distance
     // fades into, and below it is the ground's own bounce.
-    const float zenith[4] = {environment.ambientSky.r * 1.9f, environment.ambientSky.g * 1.9f,
-                             environment.ambientSky.b * 2.1f, 0.0f};
+    // In a storm the whole sky is the haze: the zenith drawn towards the horizon's colour as the air thickens (w: how thick,
+    // for the sun, the stars and the bodies behind it).
+    const float haze = std::clamp(environment.skyHaze, 0.0f, 1.0f);
+    const glm::vec3 open{environment.ambientSky.r * 1.9f, environment.ambientSky.g * 1.9f, environment.ambientSky.b * 2.1f};
+    const glm::vec3 hazed = environment.fogColor * 2.6f + glm::vec3(0.06f, 0.07f, 0.08f);
+    const glm::vec3 overhead = glm::mix(open, hazed * 0.92f, haze);
+    const float zenith[4] = {overhead.r, overhead.g, overhead.b, haze};
     const float horizon[4] = {environment.fogColor.r * 2.6f + 0.06f,
                               environment.fogColor.g * 2.6f + 0.07f,
                               environment.fogColor.b * 2.6f + 0.08f, 0.0f};

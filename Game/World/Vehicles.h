@@ -69,6 +69,9 @@ public:
     bool SocketShown(const std::string& name, CinePose& out) const;
     // Whether a point is aboard: between its cabin corners, where it rests.
     bool Aboard(const glm::vec3& point) const;
+    // Whether a point is within it at all, where it rests: inside the box round the whole of it, `margin` more all round (the
+    // weather kept out of all of it, not only its cabin).
+    bool Within(const glm::vec3& point, float margin) const;
     const std::vector<BodyHandle>& Bodies() const { return m_bodies; }
     // The drawn piece of one of its parts, to press (a console) or to light (a screen); invalid when there is none (or merged).
     Entity Part(const std::string& name) const;
@@ -90,6 +93,8 @@ private:
     std::vector<std::string> m_hiddenPrefixes;
     std::vector<Entity> m_parts;
     std::vector<BodyHandle> m_bodies;
+    glm::vec3 m_lo{0.0f};
+    glm::vec3 m_hi{0.0f};
 };
 
 } // namespace pred

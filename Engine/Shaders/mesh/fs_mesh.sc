@@ -20,7 +20,7 @@ uniform vec4 u_lightColor;      // rgb = colour, w = intensity
 uniform vec4 u_ambientSky;      // rgb = light from above
 uniform vec4 u_ambientGround;   // rgb = bounce from below
 uniform vec4 u_fogColor;        // rgb
-uniform vec4 u_fogParams;       // x = start distance, y = end distance
+uniform vec4 u_fogParams;       // x = start distance, y = end distance, z = 1 when the eye is out in the open air
 uniform vec4 u_cameraPosition;  // xyz
 uniform vec4 u_output;          // x = 1: write linear light for post-processing to finish
 uniform vec4 u_grade;           // x = exposure, y = contrast, z = light where the sky cannot reach,
@@ -915,9 +915,13 @@ void main()
 	// the eye and the surface. Left at full strength it lifts the inside of a sealed room back to
 	// the colour of the sky outside it, which undoes the occlusion above at exactly the distances an
 	// interior is viewed at.
+	//
+	// Unless the eye is out in that air itself (u_fogParams.z): then what lies between it and anything, roofed or not, is the
+	// open air, and fogs it all -- a shuttle's dark cabin across a sandstorm is as lost in it as the ground. With the eye
+	// indoors, a room under a roof is all but clear of it.
 	float distanceToCamera = length(u_cameraPosition.xyz - v_worldPos);
 	float fogAmount = clamp((distanceToCamera - u_fogParams.x) / max(u_fogParams.y - u_fogParams.x, 1e-4), 0.0, 1.0);
-	color = mix(color, u_fogColor.rgb, fogAmount * mix(0.15, 1.0, skyReaches));
+	color = mix(color, u_fogColor.rgb, fogAmount * (u_fogParams.z > 0.5 ? 1.0 : mix(0.05, 1.0, skyReaches)));
 	// Fullbright: the surface's own colour, with a little shading by which way it faces so edges still read.
 	if (u_fullbright.x > 0.5)
 	{

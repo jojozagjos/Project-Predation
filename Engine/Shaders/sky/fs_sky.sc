@@ -2,7 +2,7 @@ $input v_ray
 
 #include <bgfx_shader.sh>
 
-uniform vec4 u_skyZenith;  // rgb
+uniform vec4 u_skyZenith;  // rgb; w = how thick the air is with the weather (0 to 1): the sun, the stars and the bodies dimmed behind it
 uniform vec4 u_skyHorizon; // rgb
 uniform vec4 u_skyGround;  // rgb
 uniform vec4 u_skySun;     // xyz = direction towards the sun, w = how sharp the glow is
@@ -136,7 +136,10 @@ void main()
 	// Through air at night the sky is still a sky: a faint glow of the air low along the horizon, as much as it is dark.
 	color += u_skyAir.rgb * (0.035 * u_skyAir.w * u_skySpace.x) * exp(-max(up, 0.0) * 7.0) * step(-0.05, up);
 	color = mix(color, vec3(0.0006, 0.0007, 0.001), inSpace);
-	color += u_skySunColor.rgb * u_skySunColor.w * (halo * 0.35 + core) * clamp(up * 4.0 + 0.4, 0.0, 1.0) * (1.0 - inSpace);
+	// Through a storm's haze, a pale smudge rather than a sun: the core lost, the glow spread and dimmed.
+	float haze = clamp(u_skyZenith.w, 0.0, 1.0);
+	float spread = pow(toSun, max(u_skySun.w, 1.0) * 0.08);
+	color += u_skySunColor.rgb * u_skySunColor.w * mix(halo * 0.35 + core, spread * 0.12, haze) * clamp(up * 4.0 + 0.4, 0.0, 1.0) * (1.0 - inSpace);
 	// In space, with no air to spread it, the sun is a small hard disc, blinding, darker at its rim; a tight corona
 	// round it and a faint wide glow; and the thin rays a lens throws off anything that bright, four long and four short.
 	if (inSpace > 0.001)
@@ -170,6 +173,11 @@ void main()
 	// A planet: a sphere one unit away, as big on the sky as it is asked to be, lit by the sun, with ice and cloud
 	// over it, and its air glowing at the edge on the lit side -- and a little beyond the edge.
 	float starsShow = 1.0;
+	// Seen up through air, what lies beyond it -- a planet, a moon -- is behind the sky, not cut out of it: the light the air
+	// scatters lies over it (its night side the colour of the sky, not black), and less of it comes through the more air
+	// there is, the lower it is, and the thicker a storm's haze. In space it hides what is behind it.
+	float transmit = mix(1.0, mix(0.3, 0.8, smoothstep(0.0, 0.35, up)), clamp(u_skyAir.w * 2.0, 0.0, 1.0)) * (1.0 - haze);
+	transmit = mix(transmit, 1.0, inSpace);
 	if (u_skySpace.y > 0.0)
 	{
 		vec3 toPlanet = normalize(u_skyPlanet.xyz);
@@ -203,7 +211,7 @@ void main()
 					  (1.0 - surface.w) * step(0.0, lit) * 0.6;
 			float edge = pow(1.0 - max(dot(normal, -ray), 0.0), 4.0);
 			planet += air * edge * smoothstep(-0.25, 0.25, lit);
-			color = planet * max(u_skySpace.w, 0.0);
+			color = color * (1.0 - inSpace) + planet * max(u_skySpace.w, 0.0) * transmit;
 			starsShow = 0.0;
 		}
 		else
@@ -273,7 +281,7 @@ void main()
 				float bodyLit = dot(bodyNormal, towardsLight);
 				vec3 shade = look.rgb * (smoothstep(-0.08, 0.35, bodyLit) * u_skySunColor.w * 1.8 + 0.01);
 				shade += vec3(0.4, 0.6, 1.0) * look.w * pow(1.0 - max(dot(bodyNormal, -ray), 0.0), 3.0) * smoothstep(-0.2, 0.3, bodyLit);
-				color = shade * max(u_skySpace.w, 0.0);
+				color = color * (1.0 - inSpace) + shade * max(u_skySpace.w, 0.0) * transmit;
 				starsShow = 0.0;
 			}
 			else
@@ -287,13 +295,13 @@ void main()
 				float spread = max(pixelAngle * 0.9, place.w);
 				float glint = exp(-angle * angle / (2.0 * spread * spread)) * (1.0 - smoothstep(1.0, 3.0, place.w / pixelAngle));
 				float halo = exp(-max(angle - place.w, 0.0) / (pixelAngle * 5.0 + place.w * 1.5));
-				color += tint * (glint * 2.2 + halo * 0.07) * bright * phase * max(u_skySpace.w, 0.0);
+				color += tint * (glint * 2.2 + halo * 0.07) * bright * phase * max(u_skySpace.w, 0.0) * transmit;
 			}
 		}
 	}
 	// Seen through air the stars dim and go low down, where there is the most of it to look through.
 	float through = mix(1.0, smoothstep(-0.02, 0.35, up), clamp(u_skyAir.w * 4.0, 0.0, 1.0));
-	color += SkyStars(ray) * u_skySpace.x * starsShow * max(u_skySpace.w, 0.0) * through;
+	color += SkyStars(ray) * u_skySpace.x * starsShow * max(u_skySpace.w, 0.0) * through * (1.0 - haze);
 
 	// For post-processing to finish, as linear light.
 	if (u_skyGrade.w > 0.5)
