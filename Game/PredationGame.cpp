@@ -1013,8 +1013,9 @@ void PredationGame::RegisterCommands()
     console.RegisterCommand("eye_measure", "Log how bright the picture has been lately, as the eye adapted to it (for r.adapt_reference)",
                             [this](const std::vector<std::string>&)
                             {
-                                PRED_LOG_INFO(Render, "eye_measure: the picture's brightness lately {:.4f} (r.adapt_reference {:.4f})",
-                                              m_app->GetPostProcess().MeasuredLuminance(), cv_eyeReference.Get());
+                                const Environment& air = m_scene.GetEnvironment();
+                                PRED_LOG_INFO(Render, "eye_measure: the picture's brightness lately {:.4f} (r.adapt_reference {:.4f}); air haze {:.3f}, fog {:.0f} to {:.0f} m",
+                                              m_app->GetPostProcess().MeasuredLuminance(), cv_eyeReference.Get(), air.airHaze, air.fogStart, air.fogEnd);
                             });
     console.RegisterCommand("interact_report", "List what can be used near the view, and why each is or is not offered",
                             [this](const std::vector<std::string>&)
@@ -10262,6 +10263,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
     environment.skyAir = 0.0f;
     environment.skyHaze = 0.0f;
     environment.sunDisc = 0.0047f;
+    environment.airHaze = 0.03f;
     environment.cloudCover = 0.0f;
     environment.cloudDark = 0.0f;
     environment.lightning = 0.0f;
@@ -10486,6 +10488,12 @@ void PredationGame::OnUpdate(double dt, double alpha)
                 environment.sunIntensity *= light;
             }
         }
+    }
+    // How hazy the air is where the eye is, for light to show in (Environment::airHaze): as thick as the fog out at a site --
+    // a sandstorm's, a fog's -- and some dust in the air of its buildings; the ship's and the outposts' clean.
+    if (m_screen == Screen::Playing && m_facility.Built() && m_facility.Contains(m_renderEye))
+    {
+        environment.airHaze = glm::mix(0.1f, std::clamp(28.0f / std::max(environment.fogEnd, 1.0f), 0.04f, 1.5f), std::clamp(environment.eyeOutdoors, 0.0f, 1.0f));
     }
     environment.exposure = cv_exposure.Get();
     environment.contrast = cv_contrast.Get();

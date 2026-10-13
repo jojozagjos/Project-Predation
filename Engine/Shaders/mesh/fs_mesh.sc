@@ -20,7 +20,8 @@ uniform vec4 u_lightColor;      // rgb = colour, w = intensity
 uniform vec4 u_ambientSky;      // rgb = light from above
 uniform vec4 u_ambientGround;   // rgb = bounce from below
 uniform vec4 u_fogColor;        // rgb
-uniform vec4 u_fogParams;       // x = start distance, y = end distance, z = how far out in the open air the eye is (0 to 1)
+uniform vec4 u_fogParams;       // x = start distance, y = end distance, z = how far out in the open air the eye is (0 to 1),
+                                // w = how hazy the air is, for light to show in (Environment::airHaze)
 uniform vec4 u_surfaceWeather;  // x = how wet what is under the sky is, y = how much snow lies on it (Environment)
 uniform vec4 u_cameraPosition;  // xyz
 uniform vec4 u_output;          // x = 1: write linear light for post-processing to finish
@@ -990,6 +991,28 @@ void main()
 	// roof takes less of it near to -- though from further off, all of it, the doorway lost with the rest.
 	float fogOutdoors = max(mix(0.35, 1.0, smoothstep(0.0, 0.35, skyReaches)), smoothstep(8.0, 30.0, distanceToCamera));
 	color = mix(color, u_fogColor.rgb, fogAmount * mix(fogIndoors, fogOutdoors, u_fogParams.z));
+	// The torch's beam, seen in the air it shines through: what of its light the dust, sand or fog between the eye and
+	// this surface throws back -- a few places along the way, each as lit as the torch's cone and fall-off make it there.
+	// Only where the air is hazy enough to show it (u_fogParams.w), and only in the picture itself, not a mirror's.
+	if (u_clusterParams.w > 0.5 && u_lights[3].y > 0.5 && u_fogParams.w > 0.001)
+	{
+		vec3 ray = v_worldPos - u_cameraPosition.xyz;
+		float reach = min(length(ray), min(u_lights[0].w, 30.0));
+		vec3 way = ray / max(length(ray), 1e-4);
+		float jitter = fract(52.9829189 * fract(0.06711056 * gl_FragCoord.x + 0.00583715 * gl_FragCoord.y));
+		vec3 aim = normalize(u_lights[2].xyz);
+		float lit = 0.0;
+		for (int i = 0; i < 10; ++i)
+		{
+			float t = 0.5 + (float(i) + jitter) / 10.0 * max(reach - 0.5, 0.0);
+			vec3 fromLight = u_cameraPosition.xyz + way * t - u_lights[0].xyz;
+			float d = length(fromLight);
+			float cone = clamp((dot(fromLight / max(d, 1e-3), aim) - u_lights[3].x) / max(u_lights[2].w - u_lights[3].x, 1e-4), 0.0, 1.0);
+			float window = clamp(1.0 - pow(d / max(u_lights[0].w, 1e-3), 4.0), 0.0, 1.0);
+			lit += cone * cone * window / max(d * d, 1.0);
+		}
+		color += u_lights[1].rgb * u_lights[1].w * lit * (max(reach - 0.5, 0.0) / 10.0) * u_fogParams.w * 0.015 * (1.0 - fogAmount * 0.5);
+	}
 	// Fullbright: the surface's own colour, with a little shading by which way it faces so edges still read.
 	if (u_fullbright.x > 0.5)
 	{

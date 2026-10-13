@@ -303,7 +303,10 @@ void SceneRenderer::SetEnvironmentUniforms(const Environment& environment,
     const float ambientSky[4] = {fromSky.r, fromSky.g, fromSky.b, 0.0f};
     const float ambientGround[4] = {below.r, below.g, below.b, 0.0f};
     const float fogColor[4] = {fog.r, fog.g, fog.b, 0.0f};
-    const float fogParams[4] = {environment.fogStart, environment.fogEnd, environment.eyeOutdoors, 0.0f};
+    // (w: how hazy the air is, for light to show in it -- the torch's beam: thick in a sandstorm or a fog, a little on a clear
+    // day, a little in a dusty room.)
+    const float haze = std::clamp(environment.airHaze, 0.0f, 1.5f);
+    const float fogParams[4] = {environment.fogStart, environment.fogEnd, environment.eyeOutdoors, haze};
     const float cameraPos[4] = {cameraPosition.x, cameraPosition.y, cameraPosition.z, 0.0f};
 
     bgfx::setUniform(m_uLightDirection, lightDirection);

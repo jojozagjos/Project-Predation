@@ -121,6 +121,9 @@ struct Environment
     float snowCover = 0.0f;
     // The sky's clouds over a world with air: how much of it they cover (0 clear, 1 overcast) and how dark and heavy they are
     // (0 white, 1 a storm's); drifting with `wind` by `windClock`.
+    // How hazy the air the eye is in is, for light to show in it (the torch's beam): clean air nought, a sandstorm or a fog
+    // over one.
+    float airHaze = 0.03f;
     float cloudCover = 0.0f;
     float cloudDark = 0.0f;
     // Lightning this frame: how bright its flash is (0 none; above 1 near and at its peak), lighting everything under the
