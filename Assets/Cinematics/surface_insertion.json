@@ -2768,7 +2768,7 @@
       "lines": [
         "{site}",
         "{planet}",
-        "{local_time}    {conditions}"
+        "LOCAL TIME:{time}|TEMPERATURE:{temperature}|WIND:{wind}|VISIBILITY:{visibility}"
       ]
     }
   ],

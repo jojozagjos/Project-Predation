@@ -2412,8 +2412,6 @@ void PredationGame::DrawMapSystemPanels(const StarSystem& system)
                 const WeatherDef* weather = m_universeData.Weather(picked->weather);
                 // No air, no weather.
                 Row("Weather", picked->air <= 0.015f ? std::string("None") : weather != nullptr ? weather->name : picked->weather, scanned);
-                const TerrainDef* terrain = m_universeData.Terrain(picked->terrain);
-                Row("Terrain", terrain != nullptr ? terrain->name : picked->terrain, deep);
                 const CivilizationDef* civ = m_universeData.Civilization(picked->civilization);
                 std::string settled = civ != nullptr ? civ->name : std::string("None");
                 if (!records && scanned && civ != nullptr && !civ->inhabited)

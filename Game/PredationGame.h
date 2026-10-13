@@ -445,6 +445,8 @@ private:
     void OpenDoorForCreature(int door);
     void BashDoor(int door, const Creature& creature);
     void DrawBrainInspector();
+    // The developer's windows over everything else, whatever else is open.
+    void KeepDebugOnTop();
     void DrawCreatureOverlays(DebugDraw& draw);
     void RegisterCreatureCommands();
     void RegisterDroneCommands();
@@ -1173,6 +1175,8 @@ private:
     void SetGroundSky(Environment& environment);
     // The sky over a place on a body, at the hour it is there: the star's light and colour, the sky's, the haze.
     void SetSkyOver(const StarSystem& system, const Body& body, int region, Environment& environment);
+    // The hour of the day at a landing region, by where its star stands over it: 12 at noon, 6 at sunrise.
+    float LocalHour(const StarSystem& system, const Body& body, int region);
     // How the site the shuttle goes down to looks (its world's ground, rock and snow), and what kind of place an area is.
     SiteMap::Look SiteLookHere();
     static SitePlan::SiteKind SiteKindOf(const LandingRegion& region);
@@ -1490,6 +1494,8 @@ private:
     float TorchStrength() const;
     // Seconds left on the flare burning in this player's own hand, 0 when there is none.
     float m_flareBurn = 0.0f;
+    // And the slot it was struck from: whichever is in the hand when it goes, it is that one that is used up.
+    int m_flareSlot = -1;
     // Flares burning where they were thrown, on every machine.
     struct BurningFlare
     {

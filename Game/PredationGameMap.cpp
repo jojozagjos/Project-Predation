@@ -14,6 +14,7 @@
 
 #include <imgui.h>
 
+#include <glm/gtc/constants.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
@@ -1190,6 +1191,21 @@ SitePlan::SiteKind PredationGame::SiteKindOf(const LandingRegion& region)
            : region.kind == "wreck"   ? SitePlan::SiteKind::Wreck
            : region.kind == "signal"  ? SitePlan::SiteKind::Signal
                                       : SitePlan::SiteKind::Facility;
+}
+
+float PredationGame::LocalHour(const StarSystem& system, const Body& body, int region)
+{
+    if (region < 0 || region >= static_cast<int>(body.regions.size()))
+    {
+        return 12.0f;
+    }
+    // As SetSkyOver: the star's way over the place, in its east and up; noon with it overhead, sunrise with it to the east.
+    const glm::vec3 up = AreaOnGlobe(body.regions[static_cast<size_t>(region)]);
+    glm::vec3 east = glm::cross(glm::vec3(0.0f, 1.0f, 0.0f), up);
+    east = glm::length(east) > 1.0e-4f ? glm::normalize(east) : glm::vec3(1.0f, 0.0f, 0.0f);
+    const glm::vec3 sun = SunOverBody(system, body);
+    const float angle = std::atan2(glm::dot(sun, east), glm::dot(sun, up));
+    return std::fmod(12.0f - angle / glm::two_pi<float>() * 24.0f + 24.0f, 24.0f);
 }
 
 void PredationGame::SetSkyOver(const StarSystem& system, const Body& body, int region, Environment& environment)

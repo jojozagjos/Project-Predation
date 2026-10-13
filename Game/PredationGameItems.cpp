@@ -102,12 +102,15 @@ void PredationGame::UpdateItemUse(float dt)
             }
             m_flareBurn = 0.0f;
             m_flareHeldBy.erase(LocalPlayerId());
-            // Burnt out or let go of, it is gone from the bag either way.
-            const Inventory::Slot& slot = m_inventory.Selected();
-            if (stillHeld && !slot.IsEmpty())
+            // Burnt out or let go of, it is gone from the bag either way: from the slot it was struck from, wherever the
+            // hand is now.
+            const int from = m_flareSlot >= 0 ? m_flareSlot : m_inventory.SelectedSlot();
+            const ItemId flare = m_items.IdOf("flare");
+            if (from >= 0 && !m_inventory.At(from).IsEmpty() && m_inventory.At(from).item == flare)
             {
-                m_inventory.RemoveFromSlot(m_inventory.SelectedSlot(), 1);
+                m_inventory.RemoveFromSlot(from, 1);
             }
+            m_flareSlot = -1;
         }
     }
     // A device's glow is its screen's, which UpdateDevices sets.
@@ -288,6 +291,7 @@ void PredationGame::FinishItemUse()
     case ItemUseKind::Flare:
         // Struck: it burns in the hand until it is thrown, and is used up when it goes.
         m_flareBurn = std::max(item->use.amount, 1.0f);
+        m_flareSlot = m_inventory.SelectedSlot();
         usedUp = false;
         break;
     case ItemUseKind::Unlock:

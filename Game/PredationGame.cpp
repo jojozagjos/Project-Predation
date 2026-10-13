@@ -26,6 +26,7 @@
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtx/quaternion.hpp>
 #include <imgui.h>
+#include <imgui_internal.h>
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
@@ -12115,6 +12116,7 @@ void PredationGame::OnImGui()
 
     if (!m_app->IsOverlayVisible())
     {
+        KeepDebugOnTop();
         return;
     }
 
@@ -12233,6 +12235,21 @@ void PredationGame::OnImGui()
     }
     ImGui::End();
 #endif
+    KeepDebugOnTop();
+}
+
+void PredationGame::KeepDebugOnTop()
+{
+    // The developer's windows -- the F3 overlay, the panels, the console last -- over everything else, whatever is open: the
+    // map, a cinematic, the title. (They are made before most of the game's windows, which otherwise came up over them.)
+    for (const char* name : {"##DebugOverlay", "Player", "World", "Sound", "Network", "Hold it", "First person", "Cinematic",
+                             "Creature brain", "##PredationConsole", "##PredationConsoleSuggestions"})
+    {
+        if (ImGuiWindow* window = ImGui::FindWindowByName(name); window != nullptr && window->Active)
+        {
+            ImGui::BringWindowToDisplayFront(window);
+        }
+    }
 }
 
 } // namespace pred
