@@ -311,8 +311,8 @@ void main()
 	// it -- shadowed where there is more cloud between it and the sun, bright at the edges round it -- and lost into the haze
 	// towards the horizon. Over the stars and the sun.
 	vec3 sunDir = normalize(u_skySun.xyz);
-	// Lightning lights the sky most round where it struck.
-	float flashHere = mix(0.35, 1.0, pow(0.5 + 0.5 * cos(atan2(ray.x, -ray.z) - u_skyBolt.x), 2.0));
+	// Lightning lights the whole sky, most round where it struck.
+	float flashHere = mix(0.6, 1.0, pow(0.5 + 0.5 * cos(atan2(ray.x, -ray.z) - u_skyBolt.x), 2.0));
 	if (u_skyClouds.x > 0.001 && up > -0.02 && inSpace < 0.999)
 	{
 		float cover = u_skyClouds.x;
@@ -321,25 +321,35 @@ void main()
 		// Where this ray meets the layer, in kilometres; drifting, a high wind three times the ground's.
 		vec2 at = ray.xz / max(up, 0.015) * base - u_skyCloudWind.xy * (u_skyClouds.z * 0.003);
 		vec3 q = vec3(at * 0.35, 3.7);
-		float shape = SkyFbm(q);
-		float density = smoothstep(mix(0.62, 0.2, cover), mix(0.78, 0.44, cover), shape);
+		// Billowing, not smeared: the pattern pushed about by a larger one of its own, and its edges eaten into by a finer
+		// one -- less of that far off, where it would only shimmer.
+		vec3 warp = vec3(SkyFbm(q * 0.5 + vec3(7.1, 0.0, 1.3)), SkyFbm(q * 0.5 + vec3(2.3, 9.1, 0.0)), 0.0) - vec3(0.5, 0.5, 0.0);
+		float shape = SkyFbm(q + warp * 0.9);
+		shape -= ((SkyFbm(q * 3.1 + vec3(1.3, 4.4, 2.2)) - 0.5) * 0.3 + (SkyFbm(q * 8.3 + vec3(5.5, 0.7, 3.9)) - 0.5) * 0.14 * smoothstep(0.12, 0.35, up)) *
+		         smoothstep(0.03, 0.2, up) * (1.0 - 0.6 * heavy);
+		float threshold = mix(0.6, 0.2, cover);
+		// Crisp edges on a fair day's clouds, soft ones in a grey sky.
+		float density = smoothstep(threshold, threshold + mix(0.07, 0.25, max(heavy, cover * cover)), shape);
+		// How thick it is here: thick cloud lets little through, grey in its middle from below, its thin edges bright.
+		float depth = clamp((shape - threshold) / 0.18, 0.0, 1.0);
+		float through = exp(-depth * 2.5);
 		// More cloud towards the sun than here: this part is in that cloud's shade.
-		float shaded = clamp((SkyFbm(q + vec3(sunDir.x, 0.0, sunDir.z) * 0.18) - shape) * 4.0 + 0.5, 0.0, 1.0);
+		float shaded = clamp((SkyFbm(q + warp * 0.9 + vec3(sunDir.x, 0.0, sunDir.z) * 0.18) - shape) * 4.0 + 0.5, 0.0, 1.0);
 		float sunUp = clamp(sunDir.y * 3.0 + 0.3, 0.0, 1.0);
 		vec3 skyLight = mix(u_skyHorizon.rgb, u_skyZenith.rgb, 0.5);
 		vec3 sunLight = u_skySunColor.rgb * u_skySunColor.w * sunUp;
-		vec3 cloud = skyLight * mix(1.1, 0.45, heavy) * mix(1.0, 0.65, density) +
-		             sunLight * mix(1.4, 0.12, heavy) * (1.0 - shaded * 0.7) * mix(1.0, 0.5, density);
+		vec3 cloud = skyLight * mix(1.15, 0.45, heavy) * mix(1.0, 0.55, depth) +
+		             sunLight * mix(1.3, 0.1, heavy) * (0.25 + 0.75 * through) * (1.0 - shaded * 0.6);
 		// The thin edges near the sun lit through.
-		cloud += sunLight * pow(max(dot(ray, sunDir), 0.0), 8.0) * (1.0 - density) * 2.0 * (1.0 - heavy);
-		// Lightning in them, lighting them from inside, the thickest most.
-		cloud += vec3(0.8, 0.85, 1.0) * u_skyClouds.w * flashHere * (0.15 + 1.8 * shape * shape) * 1.5;
-		cloud = mix(cloud, u_skyHorizon.rgb + vec3(0.8, 0.85, 1.0) * u_skyClouds.w * flashHere * 0.5, smoothstep(0.25, 0.0, up) * 0.75);
+		cloud += sunLight * pow(max(dot(ray, sunDir), 0.0), 8.0) * through * 2.0 * (1.0 - heavy);
+		// Lightning in them, lighting them from inside: the whole layer, the thickest and the nearest the strike most.
+		cloud += vec3(0.8, 0.85, 1.0) * u_skyClouds.w * flashHere * (0.35 + 1.4 * depth) * 1.6;
+		cloud = mix(cloud, u_skyHorizon.rgb + vec3(0.8, 0.85, 1.0) * u_skyClouds.w * flashHere * 0.6, smoothstep(0.25, 0.0, up) * 0.75);
 		float alpha = density * smoothstep(-0.02, 0.06, up) * (1.0 - inSpace) * (1.0 - 0.3 * haze);
 		color = mix(color, cloud, alpha);
 	}
 	// A flash lights the whole sky.
-	color += vec3(0.6, 0.65, 0.8) * u_skyClouds.w * flashHere * 0.12 * (1.0 - inSpace) * step(-0.05, up);
+	color += vec3(0.6, 0.65, 0.8) * u_skyClouds.w * flashHere * 0.35 * (1.0 - inSpace) * step(-0.05, up);
 	// And the bolt itself, while it strikes: from the ground to the clouds somewhere round the horizon, crooked at two sizes,
 	// a fork off it part way, a hard white core in a glow -- dimmed through the rain.
 	if (u_skyBolt.w > 0.001 && up > -0.01 && up < u_skyBolt.y)

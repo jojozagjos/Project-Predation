@@ -12464,7 +12464,7 @@ void PredationGame::UpdateLightning(float dt, float storm)
         }
     }
     flash += 0.12f * std::exp(-m_lightningAge / 0.35f);
-    const float bright = std::clamp(1.0f - m_lightningDistance / 6000.0f, 0.15f, 0.9f);
+    const float bright = std::clamp(1.2f - m_lightningDistance / 6000.0f, 0.3f, 1.0f);
     m_lightningFlash = flash * bright;
     m_lightningBolt.w = std::min(bolt, 1.5f) * std::clamp(1.4f - m_lightningDistance / 6000.0f, 0.3f, 1.0f);
     if (m_lightningAge > 1.2f)

@@ -297,8 +297,8 @@ void SceneRenderer::SetEnvironmentUniforms(const Environment& environment,
     // Lightning (Environment::lightning) is the sky lighting up: cold white light from above for the moment it lasts, kept
     // out from under a roof as the sky's is, a little of it back from the ground, and the air lit with it.
     const glm::vec3 flash = glm::vec3(0.75f, 0.8f, 1.0f) * std::max(environment.lightning, 0.0f);
-    const glm::vec3 fromSky = environment.ambientSky + flash * 1.6f;
-    const glm::vec3 below = environment.ambientGround + flash * 0.5f;
+    const glm::vec3 fromSky = environment.ambientSky + flash * 2.4f;
+    const glm::vec3 below = environment.ambientGround + flash * 0.8f;
     const glm::vec3 fog = environment.fogColor + flash * 0.12f;
     const float ambientSky[4] = {fromSky.r, fromSky.g, fromSky.b, 0.0f};
     const float ambientGround[4] = {below.r, below.g, below.b, 0.0f};
