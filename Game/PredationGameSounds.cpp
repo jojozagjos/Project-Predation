@@ -634,10 +634,13 @@ void PredationGame::UpdateAmbience(float dt)
         }
         audio.SetRoom(room);
     }
+    // How hard the wind is blowing where the ears are (the plants' wind, Environment::wind, gusts and all): a calm day a murmur,
+    // a storm a roar.
+    const float windiness = std::clamp(0.6f + glm::length(m_scene.GetEnvironment().wind) / 14.0f, 0.6f, 1.8f);
     const float targets[5] = {
         m_zoneIndoor * (1.0f - m_zoneTight) * (1.0f - 0.6f * m_zoneNest), // the room
         m_zoneIndoor * (1.0f - m_zoneTight) * 0.8f + 0.1f,                // air in the ducts, faint outside
-        (1.0f - m_zoneIndoor) + 0.08f * m_zoneIndoor,                     // wind, a breath of it indoors
+        ((1.0f - m_zoneIndoor) + 0.08f * m_zoneIndoor) * windiness,        // wind, a breath of it indoors; as hard as it blows
         m_zoneTight,                                                      // inside the vent itself
         m_zoneNest,                                                       // the nest
     };
