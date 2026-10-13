@@ -156,11 +156,15 @@ MeshHandle MeshLibrary::Upload(const MeshData& data, std::string name)
     // give any back. Four thousand of them is a couple of minutes of dragging a socket, and after
     // that nothing can be uploaded at all and the model quietly disappears.
     const size_t fingerprint = MeshFingerprintImpl(data);
+    // Whoever asks has it until they give it back (Mesh::owners), as well as whoever had it already.
+    uint32_t owners = 1;
     if (const auto found = m_byName.find(name); found != m_byName.end())
     {
         Mesh& existing = m_meshes[found->second];
+        owners = existing.owners + 1;
         if (existing.fingerprint == fingerprint && existing.IsValid())
         {
+            existing.owners = owners;
             return MeshHandle{found->second};
         }
         // Same name, different geometry: a part that has been resized. The buffers are replaced
@@ -191,6 +195,7 @@ MeshHandle MeshLibrary::Upload(const MeshData& data, std::string name)
         record.vertexCount = static_cast<uint32_t>(data.vertices.size());
         record.indexCount = static_cast<uint32_t>(data.indices.size());
         record.fingerprint = fingerprint;
+        record.owners = owners;
         record.name = name;
         if (const auto found = m_byName.find(name); found != m_byName.end())
         {
@@ -232,6 +237,7 @@ MeshHandle MeshLibrary::Upload(const MeshData& data, std::string name)
 
     bgfx::setName(mesh.vertexBuffer, mesh.name.c_str());
     mesh.fingerprint = fingerprint;
+    mesh.owners = owners;
     PRED_LOG_DEBUG(Render, "Uploaded mesh '{}': {} vertices, {} triangles", mesh.name, mesh.vertexCount,
                    mesh.indexCount / 3);
 
@@ -260,7 +266,14 @@ MeshHandle MeshLibrary::Replace(MeshHandle handle, const MeshData& data)
     // the mesh it already has. Same slot, same name, so every handle already out keeps working.
     Mesh& existing = m_meshes[handle.index];
     existing.fingerprint = MeshFingerprintImpl(data) ^ 1u;
-    return Upload(data, existing.name);
+    // New geometry for the same owners, not another of them.
+    const uint32_t owners = existing.owners;
+    const MeshHandle replaced = Upload(data, existing.name);
+    if (replaced.IsValid())
+    {
+        m_meshes[replaced.index].owners = std::max(owners, 1u);
+    }
+    return replaced;
 }
 
 MeshHandle MeshLibrary::CreateDynamic(const MeshData& data, std::string name)
@@ -273,7 +286,7 @@ MeshHandle MeshLibrary::CreateDynamic(const MeshData& data, std::string name)
     // Made again under a name it already has: the old buffers go first, whatever they were.
     if (const auto found = m_byName.find(name); found != m_byName.end())
     {
-        Release(MeshHandle{found->second});
+        Free(found->second);
     }
 
     Mesh mesh;
@@ -282,6 +295,7 @@ MeshHandle MeshLibrary::CreateDynamic(const MeshData& data, std::string name)
     mesh.bounds = data.ComputeBounds();
     mesh.name = name;
     mesh.fingerprint = MeshFingerprintImpl(data);
+    mesh.owners = 1;
     if (!m_headless)
     {
         const bgfx::Memory* vertexMemory =
@@ -357,7 +371,27 @@ void MeshLibrary::Release(MeshHandle handle)
     {
         return;
     }
+    // Gone already (given back twice would put its slot on the free list twice, and two meshes made later would share
+    // it), or still somebody else's as well.
     Mesh& mesh = m_meshes[handle.index];
+    if (mesh.owners == 0)
+    {
+        return;
+    }
+    if (--mesh.owners > 0)
+    {
+        return;
+    }
+    Free(handle.index);
+}
+
+void MeshLibrary::Free(uint16_t index)
+{
+    Mesh& mesh = m_meshes[index];
+    if (mesh.owners == 0)
+    {
+        return;
+    }
     if (bgfx::isValid(mesh.vertexBuffer))
     {
         bgfx::destroy(mesh.vertexBuffer);
@@ -370,12 +404,12 @@ void MeshLibrary::Release(MeshHandle handle)
     {
         bgfx::destroy(mesh.indexBuffer);
     }
-    if (const auto found = m_byName.find(mesh.name); found != m_byName.end() && found->second == handle.index)
+    if (const auto found = m_byName.find(mesh.name); found != m_byName.end() && found->second == index)
     {
         m_byName.erase(found);
     }
     mesh = Mesh{};
-    m_free.push_back(handle.index);
+    m_free.push_back(index);
 }
 
 const Mesh* MeshLibrary::Get(MeshHandle handle) const

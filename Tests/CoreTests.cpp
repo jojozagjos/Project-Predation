@@ -740,3 +740,29 @@ TEST_CASE("Two boxes of different sizes do not end up as the same mesh", "[rende
     const MeshData again = Primitives::Box({1.6f, 0.9f, 0.3f});
     CHECK(MeshFingerprintForTesting(wide) == MeshFingerprintForTesting(again));
 }
+
+TEST_CASE("A mesh asked for by two is kept until both give it back, and given back twice is nothing", "[render][mesh]")
+{
+    MeshLibrary meshes;
+    meshes.SetHeadless(true);
+    const MeshData box = Primitives::Box({1.0f, 1.0f, 1.0f});
+    const MeshHandle first = meshes.Upload(box, "shared");
+    const MeshHandle second = meshes.Upload(box, "shared");
+    REQUIRE(first.index == second.index);
+
+    // One owner lets go: the other still has it, and nothing made now is put in its slot.
+    meshes.Release(first);
+    REQUIRE(meshes.Get(second) != nullptr);
+    CHECK(meshes.Get(second)->name == "shared");
+    const MeshHandle made = meshes.CreateDynamic(box, "made");
+    CHECK(made.index != second.index);
+
+    // The last lets go, then gives it back again by mistake: its slot goes to one new mesh, not two.
+    meshes.Release(second);
+    meshes.Release(second);
+    const MeshHandle a = meshes.CreateDynamic(box, "a");
+    const MeshHandle b = meshes.CreateDynamic(box, "b");
+    CHECK(a.index != b.index);
+    CHECK(meshes.Get(a)->name == "a");
+    CHECK(meshes.Get(b)->name == "b");
+}

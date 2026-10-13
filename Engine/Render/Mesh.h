@@ -60,6 +60,10 @@ struct Mesh
     std::string name;
     // Enough of the geometry to tell whether a second upload under the same name is the same mesh.
     size_t fingerprint = 0;
+    // How many have asked for it (by name, Upload; or made it) and not given it back (Release): one name asked for twice is
+    // one mesh with two owners, and it goes only when both have let go -- given back while another still drew it, its slot
+    // went to the next mesh made and that other drew the wrong thing.
+    uint32_t owners = 0;
 
     bool IsDynamic() const { return bgfx::isValid(dynamicVertexBuffer); }
     bool IsValid() const
@@ -106,9 +110,9 @@ public:
     // New positions, normals and colours for a dynamic mesh, as many as it was made with. False when
     // the handle is not a dynamic mesh or the count is wrong, which is a mistake and is not drawn.
     bool UpdateDynamic(MeshHandle handle, const std::vector<MeshVertex>& vertices, const AABB& bounds);
-    // Gives a mesh back: its buffers are destroyed, its name forgotten, and its slot reused by the next
-    // new name. For meshes made for one thing that has gone for good, such as a creature that has been
-    // removed, which would otherwise each keep a slot for the rest of the session.
+    // Gives a mesh back: once everybody who asked for it has (Mesh::owners), its buffers are destroyed, its name forgotten,
+    // and its slot reused by the next mesh made. For meshes made for one thing that has gone for good, such as a creature
+    // that has been removed, which would otherwise each keep a slot for the rest of the session. Given back twice, nothing.
     void Release(MeshHandle handle);
     const Mesh* Get(MeshHandle handle) const;
     size_t Count() const { return m_meshes.size(); }
@@ -123,6 +127,8 @@ private:
     std::unordered_map<std::string, uint16_t> m_byName;
     // Slots given back by Release, taken again before the list grows.
     std::vector<uint16_t> m_free;
+    // A slot's buffers destroyed and the slot given back, whoever else held it.
+    void Free(uint16_t index);
     bool m_headless = false;
 };
 
