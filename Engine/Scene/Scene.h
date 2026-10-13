@@ -138,8 +138,9 @@ struct Environment
     // How much of the sun the sky itself draws (its glow, or out in space its disc and rays): 0 when something else
     // draws it, as the system map draws its star.
     float skySun = 1.0f;
-    // How big the sun's disc is out in space, radians from its middle to its edge: from how big the star is and how far.
-    float sunDisc = 0.006f;
+    // How big the sun's disc is, radians from its middle to its edge: from how big the star is and how far (the Sun's from
+    // the Earth, 0.0047, where nothing says): its disc in space, and how tight its glow is through air.
+    float sunDisc = 0.0047f;
     // Where the sky draws its star, and lights the worlds hung in it, from -- when that is not where the light on the ground
     // comes from (at night a moon or a planet overhead lights it, the star below the horizon): zero for the same.
     glm::vec3 skySunDirection{0.0f};

@@ -10253,6 +10253,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
     environment.skySun = 1.0f;
     environment.skyAir = 0.0f;
     environment.skyHaze = 0.0f;
+    environment.sunDisc = 0.0047f;
     environment.cloudCover = 0.0f;
     environment.cloudDark = 0.0f;
     environment.lightning = 0.0f;

@@ -117,7 +117,9 @@ void SkyRenderer::Draw(bgfx::ViewId view, const Environment& environment, const 
                               environment.fogColor.b * 2.6f + 0.08f, 0.0f};
     const float ground[4] = {environment.ambientGround.r * 1.2f, environment.ambientGround.g * 1.2f,
                              environment.ambientGround.b * 1.2f, 0.0f};
-    const float sun[4] = {towardsSun.x, towardsSun.y, towardsSun.z, 220.0f};
+    // The glow round it as tight as the star is small on the sky: a big red sun a broad soft one, a small white one a pinpoint.
+    const float discRatio = 0.0047f / std::max(environment.sunDisc, 0.0005f);
+    const float sun[4] = {towardsSun.x, towardsSun.y, towardsSun.z, std::clamp(220.0f * discRatio * discRatio, 25.0f, 3000.0f)};
     const float sunColor[4] = {environment.sunColor.r, environment.sunColor.g, environment.sunColor.b,
                                0.55f * std::clamp(environment.skySun, 0.0f, 1.0f)};
     // Turned down as a whole. The gradient and the sun glow are the same shape; this is the lamp

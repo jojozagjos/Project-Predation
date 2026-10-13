@@ -85,7 +85,7 @@ PlanetLook PredationGame::LookOf(const Body& body)
         }
         else if (w == "snow" || w == "heavy_snow" || w == "blizzard")
         {
-            more(w == "snow" ? 0.6f : 0.75f, w == "blizzard" ? 0.9f : w == "heavy_snow" ? 0.5f : 0.2f);
+            more(w == "snow" ? 0.6f : 0.75f, w == "blizzard" ? 0.58f : w == "heavy_snow" ? 0.45f : 0.2f);
         }
         else if (w == "fog")
         {
@@ -94,12 +94,12 @@ PlanetLook PredationGame::LookOf(const Body& body)
         }
         else if (w == "dust" || w == "sandstorm")
         {
-            more(w == "dust" ? 0.45f : 0.65f, w == "sandstorm" ? 0.9f : 0.3f);
+            more(w == "dust" ? 0.25f : 0.38f, w == "sandstorm" ? 0.55f : 0.2f);
             look.cloudColor = glm::mix(body.groundA, glm::vec3(0.85f, 0.72f, 0.55f), 0.4f);
         }
         else if (w == "ash" || w == "ash_storm")
         {
-            more(w == "ash" ? 0.55f : 0.75f, w == "ash_storm" ? 0.9f : 0.3f);
+            more(w == "ash" ? 0.55f : 0.75f, w == "ash_storm" ? 0.85f : 0.3f);
             look.cloudColor = glm::vec3(0.32f, 0.29f, 0.27f);
         }
     }
@@ -1277,7 +1277,9 @@ void PredationGame::SetSkyOver(const StarSystem& system, const Body& body, int r
     }
     environment.planetRadius = 0.0f;
     environment.skySun = 1.0f;
-    const glm::vec3 starLight = glm::mix(system.starColor, glm::vec3(1.0f), 0.4f);
+    // Its own star's light: a red dwarf's orange, a white star's cold white -- the eye adjusting a little towards white, not
+    // all the way.
+    const glm::vec3 starLight = glm::mix(system.starColor, glm::vec3(1.0f), 0.18f);
 
     // --- The other worlds in the sky, and what lights the night ------------------------------------------------------
     // A moon's planet hangs huge over it; a planet's moons cross its sky. Each where it really is from here, as big as it
@@ -1338,7 +1340,14 @@ void PredationGame::SetSkyOver(const StarSystem& system, const Body& body, int r
     const float sunUp = glm::smoothstep(-0.1f, 0.12f, height);
     const glm::vec3 sunColour = glm::mix(starLight, starLight * glm::vec3(1.0f, 0.6f, 0.34f), low * air); // reddened low through air
     // Bright, not blinding; and dimmer through thick air, which spreads some of it over the sky instead.
-    const float sunLight = 1.6f * day * (1.0f - 0.35f * body.clouds) * (1.0f - 0.2f * glm::smoothstep(0.2f, 1.0f, air));
+    // How much of its star reaches here (its light over the square of how far off it is, against the Sun's at Earth): a
+    // little brighter or dimmer for it, the eye taking up most of the difference. And the star as big as it really looks from
+    // here -- a red dwarf's near worlds under a big dim sun, a blue-white star's a small fierce one.
+    const double fromStar = std::max(glm::length(here), 1.0e-4);
+    const float reaching = static_cast<float>(static_cast<double>(std::max(system.luminosity, 0.001f)) / (fromStar * fromStar));
+    const float sunLight = 1.6f * day * (1.0f - 0.35f * body.clouds) * (1.0f - 0.2f * glm::smoothstep(0.2f, 1.0f, air)) *
+                           std::clamp(std::pow(reaching, 0.2f), 0.7f, 1.35f);
+    environment.sunDisc = std::clamp(static_cast<float>(0.00465 * static_cast<double>(std::max(system.starRadius, 0.05f)) / fromStar), 0.0012f, 0.06f);
     const glm::vec3 between = nightWay * (1.0f - sunUp) + towardsSun * sunUp + glm::vec3(0.0f, 1.2f * sunUp * (1.0f - sunUp), 0.0f);
     environment.sunDirection = -glm::normalize(between);
     environment.skySunDirection = -towardsSun;
@@ -1351,7 +1360,6 @@ void PredationGame::SetSkyOver(const StarSystem& system, const Body& body, int r
         // No air at all: a black sky with the stars in it whatever the hour, and a hard sun -- the shadows lit only by what
         // the sunlit ground round them throws back.
         environment.stars = 1.0f;
-        environment.sunDisc = 0.006f;
         environment.ambientSky = glm::vec3(0.022f, 0.025f, 0.034f) + ground * sunLight * 0.045f + nightColour * nightGlow * 0.12f;
         environment.ambientGround = ground * (0.08f * sunLight / 1.6f + 0.1f * nightGlow) + glm::vec3(0.01f);
         environment.fogColor = glm::vec3(0.0f);
