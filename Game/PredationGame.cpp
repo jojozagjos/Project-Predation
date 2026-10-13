@@ -6703,7 +6703,6 @@ void PredationGame::UpdateSounds(float dt)
         MakeNoise(NoiseKind::Impact, local.position, NoiseReach::kImpact * force, LocalPlayerId());
     }
 
-    (void)dt;
 }
 
 void PredationGame::UpdateMantleStow()
@@ -12378,33 +12377,68 @@ void PredationGame::KeepDebugOnTop()
 
 void PredationGame::UpdateLightning(float dt, float storm)
 {
-    const auto random = [] { return static_cast<float>(std::rand()) / static_cast<float>(RAND_MAX); };
-    // A strike every so often, more often the worse the storm: mostly far off, now and then close.
-    if (storm > 0.0f)
+    // Where and when every strike is comes from the campaign's clock and the site, not from this machine's dice: everybody
+    // sees the same bolt at the same moment and hears the same thunder after it. A storm's time is cut into stretches, as
+    // long as the storm is bad (forty-five seconds to nine), and in each one strike at a time of its own, somewhere of its
+    // own -- mostly far off, now and then close.
+    const auto hash = [](uint32_t a, uint32_t b)
     {
-        m_lightningIn -= dt;
-        if (m_lightningIn <= 0.0f)
+        uint32_t h = a * 0x8DA6B343u ^ b * 0xD8163841u;
+        h ^= h >> 13;
+        h *= 0x5BD1E995u;
+        h ^= h >> 15;
+        return static_cast<float>(h & 0xFFFFFFu) / static_cast<float>(0x1000000u);
+    };
+    const double now = m_campaign.clock;
+    bool strike = false;
+    float distance = 0.0f;
+    float yaw = 0.0f;
+    float shape = 0.0f;
+    if (storm > 0.0f && m_lightningClock >= 0.0 && now > m_lightningClock && now - m_lightningClock < 2.0)
+    {
+        const double stretch = glm::mix(45.0, 9.0, static_cast<double>(storm));
+        const uint32_t site = m_facility.Seed();
+        for (auto k = static_cast<int64_t>(std::floor(m_lightningClock / stretch)); k <= static_cast<int64_t>(std::floor(now / stretch)); ++k)
         {
-            m_lightningIn = glm::mix(45.0f, 9.0f, storm) * (0.4f + 1.2f * random());
-            m_lightningAge = 0.0f;
-            m_lightningDistance = m_lightningAim.y > 0.0f ? m_lightningAim.y : 400.0f + 5600.0f * std::pow(random(), 1.4f);
-            m_lightningSeed = random() * 100.0f;
-            const float yaw = m_lightningAim.x >= 0.0f ? glm::radians(m_lightningAim.x) : random() * glm::two_pi<float>();
-            m_lightningAim = glm::vec2(-1.0f);
-            // Up to the cloud base, a kilometre and some up: high in the sky close by, low over the horizon far off.
-            const float top = 1100.0f / std::sqrt(1100.0f * 1100.0f + m_lightningDistance * m_lightningDistance);
-            m_lightningBolt = {yaw, top, m_lightningSeed, 0.0f};
-            // The thunder, as long after as sound takes to come that far: a crack close by, a long roll far off, quieter
-            // the further, and muffled under a roof.
-            const float near = 1.0f - glm::smoothstep(400.0f, 6000.0f, m_lightningDistance);
-            const glm::vec3 towards{std::sin(yaw), 0.3f, -std::cos(yaw)};
-            QueueSound(m_lightningDistance / 343.0f, m_lightningDistance < 1300.0f ? "Ambience/thunder_near" : "Ambience/thunder",
-                       m_renderEye + towards * 2.0f, glm::mix(0.3f, 1.0f, near), false);
+            const auto slot = static_cast<uint32_t>(k);
+            const double at = (static_cast<double>(k) + 0.1 + 0.8 * hash(site, slot * 5u)) * stretch;
+            if (at > m_lightningClock && at <= now)
+            {
+                strike = true;
+                distance = 400.0f + 5600.0f * std::pow(hash(site, slot * 5u + 1u), 1.4f);
+                yaw = hash(site, slot * 5u + 2u) * glm::two_pi<float>();
+                shape = hash(site, slot * 5u + 3u) * 100.0f;
+            }
         }
     }
-    else
+    // (A clock that has jumped -- a day skipped, the host's arriving -- is not a storm's worth of strikes at once.)
+    m_lightningClock = now;
+    // And one asked for (lightning_now), on this machine only, to look at.
+    if (m_lightningIn <= 0.0f)
     {
-        m_lightningIn = std::max(m_lightningIn, 4.0f);
+        m_lightningIn = 1.0f;
+        const auto random = [] { return static_cast<float>(std::rand()) / static_cast<float>(RAND_MAX); };
+        strike = true;
+        distance = m_lightningAim.y > 0.0f ? m_lightningAim.y : 400.0f + 5600.0f * std::pow(random(), 1.4f);
+        yaw = m_lightningAim.x >= 0.0f ? glm::radians(m_lightningAim.x) : random() * glm::two_pi<float>();
+        shape = random() * 100.0f;
+        m_lightningAim = glm::vec2(-1.0f);
+    }
+    if (strike)
+    {
+        PRED_LOG_DEBUG(Gameplay, "Lightning {:.0f} m off at {:.0f} degrees", distance, glm::degrees(yaw));
+        m_lightningAge = 0.0f;
+        m_lightningDistance = distance;
+        m_lightningSeed = shape;
+        // Up to the cloud base, a kilometre and some up: high in the sky close by, low over the horizon far off.
+        const float top = 1100.0f / std::sqrt(1100.0f * 1100.0f + distance * distance);
+        m_lightningBolt = {yaw, top, shape, 0.0f};
+        // The thunder, as long after as sound takes to come that far: a crack close by, a long roll far off, quieter the
+        // further.
+        const float near = 1.0f - glm::smoothstep(400.0f, 6000.0f, distance);
+        const glm::vec3 towards{std::sin(yaw), 0.3f, -std::cos(yaw)};
+        QueueSound(distance / 343.0f, distance < 1300.0f ? "Ambience/thunder_near" : "Ambience/thunder", m_renderEye + towards * 2.0f,
+                   glm::mix(0.3f, 1.0f, near), false);
     }
     m_lightningFlash = 0.0f;
     m_lightningBolt.w = 0.0f;

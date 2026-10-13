@@ -114,7 +114,11 @@ From WORLDS_FACILITIES_MISSIONS_PLAN.md W1-W4:
   fuel, cargo, workshops, quarters, a canteen, power and water), roads that lead somewhere, the land round it used (fields,
   mines, antennas) -- sized by the outpost's importance, many times bigger than now, and walkable. And sized for the ship
   as upgrades make it bigger (you, 2026-10-13): fields, pads and hangars that take the largest hull it can grow to, not
-  only the one it starts as.
+  only the one it starts as. With real buildings people would use (hangars, workshops, warehouses, offices, quarters,
+  a canteen, a control tower), the world's own ground under it -- terrain, grass and scatter as at a site -- and its
+  weather (rain, snow, dust, storms and lightning, as at sites).
+- **People at outposts -- Your call** (you, 2026-10-13: not sure how, or whether, you want this yet): workers walking
+  between buildings, loading cargo, at the fuel pumps; to be decided before the outpost rework starts.
 
 ---
 

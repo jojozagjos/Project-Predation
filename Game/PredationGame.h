@@ -1241,9 +1241,10 @@ private:
     float m_surfaceWet = 0.0f;
     float m_surfaceSnow = 0.0f;
     uint32_t m_surfaceWeatherSite = 0;
-    // Lightning (UpdateLightning): how long until the next strike, how long since the last (below nought, none going), how
+    // Lightning (UpdateLightning): how long since the last strike (below nought, none going), how
     // far off it is and its shape's seed; and what it is this frame.
-    float m_lightningIn = 8.0f;
+    float m_lightningIn = 1.0f;  // a strike asked for when it reaches nought (lightning_now)
+    double m_lightningClock = -1.0; // the campaign clock when it last looked for strikes
     float m_lightningAge = -1.0f;
     float m_lightningDistance = 0.0f;
     float m_lightningSeed = 0.0f;
