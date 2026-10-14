@@ -66,6 +66,9 @@ public:
     // What its ground is drawn in, and the colour painted on it at a point: for what is laid on the ground to match it (a
     // footprint).
     const Material& GroundMaterial() const { return m_groundMaterial; }
+    // Which way the wind blows at a site (radians about up, from +x towards +z), from its seed: the same for its weather, its
+    // plants and the drifts against its walls, on every machine.
+    static float WindAngle(uint32_t seed);
     glm::vec3 GroundTint(float x, float z) const
     {
         return m_terrain.Colour(x, z, m_terrain.Normal(x, z), m_look.ground, m_cliffColour, m_grassy ? &m_grownOver : nullptr);

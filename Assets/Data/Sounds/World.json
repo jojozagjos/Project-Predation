@@ -542,6 +542,21 @@
       }
     ]
   },
+  "spark": {
+    "seconds": 0.5,
+    "variants": 3,
+    "vary": 0.08,
+    "room": 0.3,
+    "seed": 7131,
+    "layers": [
+      {"source": "click", "filter": "highpass", "cutoff": 1800, "decay": 0.02, "length": 0.05, "gain": 0.8},
+      {"source": "noise", "filter": "highpass", "cutoff": 2600, "attack": 0.001, "decay": 0.03, "length": 0.06, "gain": 0.9},
+      {"source": "noise", "filter": "highpass", "cutoff": 3200, "start": 0.05, "attack": 0.001, "decay": 0.02, "length": 0.04, "gain": 0.6},
+      {"source": "noise", "filter": "bandpass", "cutoff": 4200, "q": 1.5, "start": 0.11, "attack": 0.001, "decay": 0.025, "length": 0.05, "gain": 0.7},
+      {"source": "noise", "filter": "highpass", "cutoff": 2400, "start": 0.19, "attack": 0.001, "decay": 0.04, "length": 0.08, "gain": 0.5},
+      {"source": "noise", "filter": "highpass", "cutoff": 3600, "start": 0.3, "attack": 0.001, "decay": 0.02, "length": 0.04, "gain": 0.3}
+    ]
+  },
   "breaker": {
     "seconds": 2.2,
     "variants": 2,

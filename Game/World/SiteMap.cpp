@@ -547,6 +547,107 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
                 }
             }
         }
+        // Drifts against the buildings on a snow or sand world: the wind piling it against the walls -- deepest on the side it
+        // blows away from, where it eddies and drops what it carries, less round the others -- rising to the wall and running
+        // out over a couple of metres, uneven along it, tapering at the corners and stopping short of the doors. The ground's
+        // own surface, walked through, not over.
+        if (m_look.biome == "frozen" || m_look.surface == "sand")
+        {
+            const float deepest = m_look.biome == "frozen" ? 0.9f : 0.55f;
+            const float windAngle = WindAngle(seed);
+            const glm::vec2 wind{std::cos(windAngle), std::sin(windAngle)};
+            MeshData drifts;
+            for (size_t b = 0; b < m_plan.buildings.size(); ++b)
+            {
+                const FacilityLayout& building = m_plan.buildings[b];
+                glm::vec2 low;
+                glm::vec2 high;
+                SitePlan::Footprint(building, 0.0f, low, high);
+                std::vector<glm::vec2> doors;
+                for (const FacilityLayout::Exit& exit : building.exits)
+                {
+                    const glm::vec3 at = FacilityMap::ExitOutside(building, exit, 0.5f);
+                    doors.emplace_back(at.x, at.z);
+                }
+                // Each side: where it runs from and to, and which way is out from it.
+                const struct
+                {
+                    glm::vec2 from;
+                    glm::vec2 to;
+                    glm::vec2 out;
+                } sides[4] = {{{low.x, low.y}, {low.x, high.y}, {-1.0f, 0.0f}},
+                              {{high.x, high.y}, {high.x, low.y}, {1.0f, 0.0f}},
+                              {{high.x, low.y}, {low.x, low.y}, {0.0f, -1.0f}},
+                              {{low.x, high.y}, {high.x, high.y}, {0.0f, 1.0f}}};
+                for (int s = 0; s < 4; ++s)
+                {
+                    const float lee = glm::smoothstep(-0.3f, 0.8f, glm::dot(sides[s].out, wind));
+                    const float height = deepest * glm::mix(0.3f, 1.0f, lee);
+                    const float length = glm::distance(sides[s].from, sides[s].to);
+                    const int along = std::max(static_cast<int>(length / 0.5f), 2);
+                    constexpr int kAcross = 6;
+                    const auto base = static_cast<uint32_t>(drifts.vertices.size());
+                    for (int i = 0; i <= along; ++i)
+                    {
+                        const float t = static_cast<float>(i) / static_cast<float>(along);
+                        const glm::vec2 wall = glm::mix(sides[s].from, sides[s].to, t) + sides[s].out * 0.03f;
+                        const float fromEnd = std::min(t, 1.0f - t) * length;
+                        // Uneven along it, smoothly: a value every couple of metres, eased between.
+                        const float knot = t * length / 2.0f;
+                        const auto k0 = static_cast<uint32_t>(knot);
+                        const float f = glm::smoothstep(0.0f, 1.0f, knot - static_cast<float>(k0));
+                        const float uneven = glm::mix(Hash01(seed, static_cast<uint32_t>(b * 4 + s), k0), Hash01(seed, static_cast<uint32_t>(b * 4 + s), k0 + 1u), f);
+                        float h = height * (0.6f + 0.4f * uneven) *
+                                  glm::smoothstep(0.0f, 2.5f, fromEnd);
+                        for (const glm::vec2& door : doors)
+                        {
+                            h *= glm::smoothstep(1.4f, 2.6f, glm::distance(door, wall));
+                        }
+                        const float reach = 0.4f + h * 2.4f;
+                        for (int k = 0; k <= kAcross; ++k)
+                        {
+                            const float u = static_cast<float>(k) / static_cast<float>(kAcross);
+                            const glm::vec2 at = wall + sides[s].out * (reach * u);
+                            MeshVertex vertex;
+                            // Highest at the wall, falling away in a curve to nothing.
+                            vertex.position = {at.x, m_terrain.Height(at.x, at.y) + h * std::pow(1.0f - u, 1.6f) - 0.02f, at.y};
+                            vertex.uv = at;
+                            drifts.vertices.push_back(vertex);
+                        }
+                    }
+                    for (int i = 0; i < along; ++i)
+                    {
+                        for (int k = 0; k < kAcross; ++k)
+                        {
+                            const auto a = base + static_cast<uint32_t>(i * (kAcross + 1) + k);
+                            const auto c = a + static_cast<uint32_t>(kAcross + 1);
+                            // Wound to face up (sides round the building one way, `out` turned from `along` the same way each).
+                            drifts.indices.insert(drifts.indices.end(), {a, a + 1, c, a + 1, c + 1, c});
+                        }
+                    }
+                }
+            }
+            // Lit by its own shape: each corner's normal from the faces round it.
+            std::vector<glm::vec3> normals(drifts.vertices.size(), glm::vec3(0.0f));
+            for (size_t i = 0; i + 2 < drifts.indices.size(); i += 3)
+            {
+                const uint32_t a = drifts.indices[i];
+                const uint32_t b = drifts.indices[i + 1];
+                const uint32_t c = drifts.indices[i + 2];
+                const glm::vec3 n = glm::cross(drifts.vertices[b].position - drifts.vertices[a].position, drifts.vertices[c].position - drifts.vertices[a].position);
+                normals[a] += n;
+                normals[b] += n;
+                normals[c] += n;
+            }
+            for (size_t i = 0; i < normals.size(); ++i)
+            {
+                drifts.vertices[i].normal = glm::length(normals[i]) > 1.0e-9f ? glm::normalize(normals[i]) : glm::vec3(0.0f, 1.0f, 0.0f);
+            }
+            if (!drifts.vertices.empty())
+            {
+                builder.AddMesh("site_drifts", Transform{}, drifts, m_groundMaterial, false);
+            }
+        }
         builder.SetShadows(true);
         // And the grass all over where the world grows it (UpdateCover): how thick, by the world, and the tufts it is made of.
         m_coverDensity = m_look.biome == "jungle" ? 6.5f : m_look.biome == "temperate" ? 5.2f : m_look.biome == "oceanic" ? 3.8f : 0.0f;
@@ -817,6 +918,11 @@ MeshData SiteMap::CoverAround(const glm::vec3& eye, float detail) const
         }
     }
     return mesh;
+}
+
+float SiteMap::WindAngle(uint32_t seed)
+{
+    return static_cast<float>((seed * 2654435761u) >> 20) / 4096.0f * 6.2831853f;
 }
 
 } // namespace pred

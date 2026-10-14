@@ -2030,6 +2030,10 @@ private:
     // The main camera's view and projection, last frame: for putting HUD text on things in the world.
     glm::mat4 m_viewProjection{1.0f};
     VoiceId m_buzz = kInvalidVoice;
+    // How lit each lamp was last frame, so one failing that cuts out can be seen to spark (UpdateAmbience).
+    std::vector<float> m_sparkLevels;
+    // How long until a drop of water next falls from the ceiling somewhere in sight, where it is damp (UpdateAmbience).
+    float m_dripIn = 3.0f;
     VoiceId m_drone = kInvalidVoice;
     VoiceId m_titleMusic = kInvalidVoice;
     float m_titleMusicLevel = 0.0f;

@@ -743,6 +743,74 @@ void PredationGame::UpdateAmbience(float dt)
         }
     }
 
+    // And a failing lamp spits sparks now and then as it cuts out -- the fitting shorting -- when anybody is near enough to see
+    // them: a few falling and bouncing off the floor under it, and a crackle.
+    {
+        const std::vector<LevelLights::Light>& lights = m_levelLights.Lights();
+        if (m_sparkLevels.size() != lights.size())
+        {
+            m_sparkLevels.assign(lights.size(), 1.0f);
+        }
+        for (size_t i = 0; i < lights.size(); ++i)
+        {
+            const LevelLights::Light& light = lights[i];
+            const bool cutOut = m_sparkLevels[i] > 0.5f && light.level < 0.15f;
+            m_sparkLevels[i] = light.level;
+            if (!cutOut || light.mood != LightMood::Failing || light.parent >= 0 || light.spill || m_screen != Screen::Playing ||
+                glm::distance(light.position, m_renderEye) > 25.0f || Random01() > 0.35f)
+            {
+                continue;
+            }
+            const glm::vec3 at = light.position + light.direction * 0.08f;
+            float floor = at.y - 4.0f;
+            if (const RayHit below = m_app->GetPhysics().RayCastStatic(at, {0.0f, -1.0f, 0.0f}, 8.0f))
+            {
+                floor = below.position.y;
+            }
+            m_particles.Emit(m_scene, m_app->GetMeshes(), at, glm::vec3(0.0f, -1.0f, 0.0f), 5 + static_cast<int>(Random01() * 8.0f), Particles::Sparks(), floor);
+            PlayNamed("World/spark", at, 0.35f, 0.9f + 0.2f * Random01(), true);
+        }
+    }
+
+    // Indoors where it is damp -- a site where it is raining or has been, or a wet world's -- now and then a drop of water
+    // falling from the ceiling somewhere ahead in sight, and its drip where it lands.
+    {
+        m_dripIn -= dt;
+        const std::string& biome = m_facility.GetLook().biome;
+        const bool damp = m_screen == Screen::Playing && m_facility.Built() && m_facility.Contains(m_renderEye) && m_zoneIndoor > 0.5f &&
+                          m_zoneTight < 0.5f && !m_facility.Shuttle().Aboard(m_renderEye) &&
+                          (m_surfaceWet > 0.15f || biome == "jungle" || biome == "oceanic" || biome == "temperate");
+        if (damp && m_dripIn <= 0.0f)
+        {
+            m_dripIn = 2.0f + 5.0f * Random01();
+            const float yaw = m_lookYaw + (Random01() - 0.5f) * 1.4f;
+            const glm::vec3 way{std::sin(yaw), 0.0f, -std::cos(yaw)};
+            const float out = 2.5f + 6.0f * Random01();
+            PhysicsWorld& physics = m_app->GetPhysics();
+            const RayHit across = physics.RayCastStatic(m_renderEye, way, out);
+            const glm::vec3 under = m_renderEye + way * (across ? across.distance - 0.3f : out);
+            const RayHit ceiling = physics.RayCastStatic(under, {0.0f, 1.0f, 0.0f}, 6.0f);
+            const RayHit floor = physics.RayCastStatic(under, {0.0f, -1.0f, 0.0f}, 6.0f);
+            if ((!across || across.distance > 1.5f) && ceiling && floor)
+            {
+                const glm::vec3 from = ceiling.position - glm::vec3(0.0f, 0.03f, 0.0f);
+                ParticleLook drop;
+                drop.colour = drop.endColour = {0.55f, 0.62f, 0.7f};
+                drop.glow = 0.15f;
+                drop.size = drop.endSize = 0.012f;
+                drop.life = 3.0f;
+                drop.speed = 0.05f;
+                drop.spread = 0.0f;
+                drop.drag = 0.0f;
+                drop.bounce = 0.0f;
+                drop.streak = true;
+                m_particles.Emit(m_scene, m_app->GetMeshes(), from, glm::vec3(0.0f, -1.0f, 0.0f), 1, drop, floor.position.y);
+                const float fall = std::max(from.y - floor.position.y, 0.1f);
+                QueueSound(std::sqrt(2.0f * fall / 9.8f), "Ambience/drip", floor.position, 0.3f, true);
+            }
+        }
+    }
+
     // A failing lamp buzzes, and the buzz stutters with it: the nearest one within earshot, from where
     // it hangs, as loud as it is lit.
     m_lightClock += dt;

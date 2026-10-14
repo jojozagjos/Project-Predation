@@ -9940,7 +9940,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
         const SiteMap::Look& look = m_facility.GetLook();
         const bool falling = m_screen == Screen::Playing && m_facility.Built() && m_facility.Contains(m_renderEye);
         const uint32_t seed = m_facility.Seed();
-        const float windAngle = static_cast<float>((seed * 2654435761u) >> 20) / 4096.0f * 6.2831853f;
+        const float windAngle = SiteMap::WindAngle(seed);
         const float windSpeed = falling ? static_cast<float>(PlaceConditions(m_facility.Plan().sky.fogEnd).wind) * 0.12f : 0.0f;
         float ground = m_renderEye.y - 1.7f;
         if (falling)
