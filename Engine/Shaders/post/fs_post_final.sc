@@ -5,12 +5,14 @@ $input v_texcoord0
 SAMPLER2D(s_scene, 0);
 SAMPLER2D(s_bloom, 1);
 SAMPLER2D(s_adapt, 2); // the brightness the eye has adapted to, as its logarithm (fs_post_adapt)
+SAMPLER2D(s_ao, 3);    // how open each point is (fs_post_ao, smoothed): 1 open, 0 shut in
 uniform vec4 u_postTexel; // zw = the screen, in pixels
 uniform vec4 u_postTone;  // x = exposure, y = contrast, z = how much glow, w = saturation
 uniform vec4 u_postLens;  // x = vignette, y = grain, z = colour fringe at the edges, w = seconds
 uniform vec4 u_postMood;  // x = fear, 0 to 1; y = cold in the shadows; z = warmth in the highlights; w = a red flash
 uniform vec4 u_postAdapt; // x = the brightness the picture is set for, y = how far the eye adapts away from it (0 none), z, w = how
                           // much darker and brighter that can make it at most
+uniform vec4 u_aoParams; // x = how much the shut-in parts are darkened (0: none)
 
 float Hash(vec2 p)
 {
@@ -33,6 +35,15 @@ void main()
 	color.r = texture2D(s_scene, uv + fringe).r;
 	color.g = texture2D(s_scene, uv).g;
 	color.b = texture2D(s_scene, uv - fringe).b;
+	// Darker where it is shut in -- a corner, under a crate, at a boot -- for the light that comes from all round, not the
+	// sun or a lamp straight on it: so less of it the brighter the point is against what the eye is set for.
+	if (u_aoParams.x > 0.0)
+	{
+		float open = texture2D(s_ao, uv).r;
+		float setFor = u_postAdapt.y > 0.0 ? exp(texture2D(s_adapt, vec2_splat(0.5)).r) : u_postAdapt.x;
+		float lit = dot(color, vec3(0.2126, 0.7152, 0.0722)) / max(setFor, 1.0e-4);
+		color *= mix(1.0, open, u_aoParams.x * (1.0 - 0.75 * smoothstep(1.5, 6.0, lit)));
+	}
 	color += texture2D(s_bloom, uv).rgb * u_postTone.z;
 
 	// The eye, adapted to what it is looking at: brought partway towards the brightness the picture is set for -- only

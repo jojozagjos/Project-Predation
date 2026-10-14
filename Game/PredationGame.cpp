@@ -174,6 +174,7 @@ CVar<bool> cv_lampShadows{"r.lamp_shadows", true, "Whether the lamps are stopped
 // How much grass is drawn round the eye (0 none, 1 as the world has it), and how much of what falls from the sky.
 CVar<float> cv_grass{"r.grass", 1.0f, "How thick the grass is drawn round you (0 none, 1 as the world grows it)", CVarFlags::Archive};
 CVar<float> cv_weatherDetail{"r.weather", 1.0f, "How much of the falling weather is drawn (0.3 to 1)", CVarFlags::Archive};
+CVar<float> cv_ambientOcclusion{"r.ao", 0.7f, "How much corners and the undersides of things are darkened (ambient occlusion; 0 off; not with multisampling)", CVarFlags::Archive};
 CVar<int> cv_occlusionDebug{"r.show_occlusion", 0,
                             "Draw occlusion instead of the scene: 1 the sun, 2 the sky"};
 // Mirrors. A second pass over the whole scene, at half the window's width and height, so it is the
@@ -4659,6 +4660,7 @@ struct QualityPreset
     bool reflections;
     float reflectionDistance;
     int msaa;
+    float ambientOcclusion; // r.ao (only without multisampling, which it cannot read the depth of)
 };
 
 // What each word means, in the settings it sets. Anything that does not match one of these exactly is
@@ -4666,10 +4668,10 @@ struct QualityPreset
 // they are what the game looks like, not a cost to save, and those stay on at every quality. What scales is how far the
 // sun's shadows reach, how much grass and weather is drawn, mirrors and edges.
 constexpr QualityPreset kPresets[] = {
-    {"Low", 40.0f, 0.45f, 0.5f, false, 10.0f, 0},
-    {"Medium", 52.0f, 0.7f, 0.75f, true, 18.0f, 0},
-    {"High", 64.0f, 1.0f, 1.0f, true, 30.0f, 0},
-    {"Ultra", 96.0f, 1.3f, 1.0f, true, 50.0f, 4},
+    {"Low", 40.0f, 0.45f, 0.5f, false, 10.0f, 0, 0.0f},
+    {"Medium", 52.0f, 0.7f, 0.75f, true, 18.0f, 0, 0.7f},
+    {"High", 64.0f, 1.0f, 1.0f, true, 30.0f, 0, 0.7f},
+    {"Ultra", 96.0f, 1.3f, 1.0f, true, 50.0f, 0, 0.7f},
 };
 
 int GetSettingInt(const char* name, int fallback)
@@ -4866,6 +4868,7 @@ void PredationGame::DrawSettings()
         const bool reflections = GetSettingBool("r.reflections", true);
         const float reflectionDistance = GetSettingFloat("r.reflection_distance", 30.0f);
         const int msaa = GetSettingInt("r.msaa", 0);
+        const float ambientOcclusion = GetSettingFloat("r.ao", 0.7f);
 
         // The preset the settings amount to right now, or Custom.
         const char* presetName = "Custom";
@@ -4873,7 +4876,7 @@ void PredationGame::DrawSettings()
         {
             if (std::abs(preset.shadowDistance - shadowDistance) < 0.5f && std::abs(preset.grass - grass) < 0.01f &&
                 std::abs(preset.weather - weather) < 0.01f && preset.reflections == reflections &&
-                std::abs(preset.reflectionDistance - reflectionDistance) < 0.5f && preset.msaa == msaa)
+                std::abs(preset.reflectionDistance - reflectionDistance) < 0.5f && preset.msaa == msaa && std::abs(preset.ambientOcclusion - ambientOcclusion) < 0.01f)
             {
                 presetName = preset.name;
             }
@@ -4894,6 +4897,7 @@ void PredationGame::DrawSettings()
                         SetSetting("r.reflections", preset.reflections ? "1" : "0");
                         SetSetting("r.reflection_distance", std::to_string(preset.reflectionDistance));
                         SetSetting("r.msaa", std::to_string(preset.msaa));
+                        SetSetting("r.ao", std::to_string(preset.ambientOcclusion));
                     }
                 }
                 ImGui::EndCombo();
@@ -4907,6 +4911,17 @@ void PredationGame::DrawSettings()
                 if (ImGui::SliderFloat("##v", &value, 40.0f, 128.0f, "%.0f m"))
                 {
                     SetSetting("r.shadow_distance", std::to_string(value));
+                }
+            }
+            ImGui::PopID();
+
+            ImGui::PushID("ao");
+            SettingsRow("Ambient occlusion", "r.ao");
+            {
+                float value = ambientOcclusion;
+                if (ImGui::SliderFloat("##v", &value, 0.0f, 1.0f, "%.2f"))
+                {
+                    SetSetting("r.ao", std::to_string(value));
                 }
             }
             ImGui::PopID();
@@ -10606,6 +10621,8 @@ void PredationGame::OnUpdate(double dt, double alpha)
     {
         PostProcess::Settings& post = app.GetPostProcess().GetSettings();
         post.enabled = cv_post.Get();
+        post.ambientOcclusion = std::clamp(cv_ambientOcclusion.Get(), 0.0f, 1.0f);
+        post.projection = projection;
         // Editing a cinematic, the picture is in the editor's preview: the whole of it, smaller.
         glm::vec2 previewMin;
         glm::vec2 previewMax;

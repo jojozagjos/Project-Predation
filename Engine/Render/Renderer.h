@@ -72,7 +72,9 @@ public:
     // Then the eye adapting to the picture's brightness: measured small, then in one, then carried on from last frame, and read
     // back now and then -- before the finished picture, which uses it.
     static constexpr bgfx::ViewId kViewAdaptFirst = 20;
-    static constexpr bgfx::ViewId kViewPost = 24;
+    // And how shut in each point of the picture is (ambient occlusion), worked out from its depth and then smoothed.
+    static constexpr bgfx::ViewId kViewOcclusionFirst = 24;
+    static constexpr bgfx::ViewId kViewPost = 26;
     // The lamps' shadows, a few faces a frame into their atlas. After the picture, not before it: what is
     // drawn here is used from the next frame, which is what a shadow drawn once and kept wants anyway.
     static constexpr bgfx::ViewId kViewLampShadowFirst = 120;

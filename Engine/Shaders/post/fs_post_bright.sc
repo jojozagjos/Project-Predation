@@ -22,5 +22,5 @@ void main()
 	float over = max(soft, exposed - u_postTone.w) / max(exposed, 1e-4);
 	// Capped: a lamp glows, but a few pixels of sun or of sun glancing off metal -- far brighter than anything else -- must not
 	// spread into a blob a tenth of the screen across.
-	gl_FragColor = vec4(min(c * over, vec3_splat(4.0)), 1.0);
+	gl_FragColor = vec4(min(c * over, vec3_splat(2.5)), 1.0);
 }

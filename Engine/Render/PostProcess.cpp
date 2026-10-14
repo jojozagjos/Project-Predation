@@ -5,6 +5,9 @@
 #include "Engine/Render/Renderer.h"
 #include "Engine/Render/ShaderLibrary.h"
 
+#include <glm/gtc/type_ptr.hpp>
+#include <glm/matrix.hpp>
+
 #include <algorithm>
 #include <cmath>
 
@@ -77,6 +80,12 @@ bool PostProcess::Init(ShaderLibrary& shaders)
     m_sAdapt = bgfx::createUniform("s_adapt", bgfx::UniformType::Sampler);
     m_uAdapt = bgfx::createUniform("u_postAdapt", bgfx::UniformType::Vec4);
     m_uAdaptRate = bgfx::createUniform("u_postAdaptRate", bgfx::UniformType::Vec4);
+    m_aoProgram = shaders.LoadProgram("vs_post", "fs_post_ao");
+    m_aoBlurProgram = shaders.LoadProgram("vs_post", "fs_post_aoblur");
+    m_sAo = bgfx::createUniform("s_ao", bgfx::UniformType::Sampler);
+    m_uAoProj = bgfx::createUniform("u_aoProj", bgfx::UniformType::Mat4);
+    m_uAoInvProj = bgfx::createUniform("u_aoInvProj", bgfx::UniformType::Mat4);
+    m_uAoParams = bgfx::createUniform("u_aoParams", bgfx::UniformType::Vec4);
     const bool floats = (bgfx::getCaps()->formats[bgfx::TextureFormat::R32F] & BGFX_CAPS_FORMAT_TEXTURE_FRAMEBUFFER) != 0;
     if (floats && bgfx::isValid(m_lumProgram) && bgfx::isValid(m_avgProgram) && bgfx::isValid(m_adaptProgram))
     {
@@ -106,6 +115,16 @@ void PostProcess::DestroyTargets()
     }
     m_scene = BGFX_INVALID_HANDLE;
     m_sceneColor = BGFX_INVALID_HANDLE;
+    m_sceneDepth = BGFX_INVALID_HANDLE;
+    for (bgfx::FrameBufferHandle* handle : {&m_ao, &m_aoBlur})
+    {
+        if (bgfx::isValid(*handle))
+        {
+            bgfx::destroy(*handle);
+        }
+        *handle = BGFX_INVALID_HANDLE;
+    }
+    m_aoColor = m_aoBlurColor = BGFX_INVALID_HANDLE;
     for (size_t i = 0; i < m_bloom.size(); ++i)
     {
         if (bgfx::isValid(m_bloom[i]))
@@ -137,7 +156,7 @@ void PostProcess::Shutdown()
         bgfx::destroy(m_readback);
     }
     m_readback = BGFX_INVALID_HANDLE;
-    const bgfx::UniformHandle eyeUniforms[] = {m_sAdapt, m_uAdapt, m_uAdaptRate};
+    const bgfx::UniformHandle eyeUniforms[] = {m_sAdapt, m_uAdapt, m_uAdaptRate, m_sAo, m_uAoProj, m_uAoInvProj, m_uAoParams};
     for (const bgfx::UniformHandle handle : eyeUniforms)
     {
         if (bgfx::isValid(handle))
@@ -145,8 +164,8 @@ void PostProcess::Shutdown()
             bgfx::destroy(handle);
         }
     }
-    m_sAdapt = m_uAdapt = m_uAdaptRate = BGFX_INVALID_HANDLE;
-    m_lumProgram = m_avgProgram = m_adaptProgram = BGFX_INVALID_HANDLE;
+    m_sAdapt = m_uAdapt = m_uAdaptRate = m_sAo = m_uAoProj = m_uAoInvProj = m_uAoParams = BGFX_INVALID_HANDLE;
+    m_lumProgram = m_avgProgram = m_adaptProgram = m_aoProgram = m_aoBlurProgram = BGFX_INVALID_HANDLE;
     const bgfx::UniformHandle uniforms[] = {m_sScene, m_sBloom, m_uTexel, m_uTone, m_uLens, m_uMood, m_uFlip};
     for (const bgfx::UniformHandle handle : uniforms)
     {
@@ -189,10 +208,25 @@ bgfx::FrameBufferHandle PostProcess::Prepare(int width, int height, int msaa)
     const auto h = static_cast<uint16_t>(height);
     const uint64_t sampling = BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP;
     m_sceneColor = bgfx::createTexture2D(w, h, false, 1, bgfx::TextureFormat::RGBA16F, MsaaTextureFlag(msaa) | sampling);
+    // The depth kept to be read (for ambient occlusion) when there is no multisampling, which cannot be read as it is.
+    const bool readable = msaa <= 0 && bgfx::isValid(m_aoProgram) && bgfx::isValid(m_aoBlurProgram);
     const bgfx::TextureHandle depth =
-        bgfx::createTexture2D(w, h, false, 1, Depth::Format(), MsaaTextureFlag(msaa) | BGFX_TEXTURE_RT_WRITE_ONLY);
+        bgfx::createTexture2D(w, h, false, 1, Depth::Format(), readable ? BGFX_TEXTURE_RT | sampling | BGFX_SAMPLER_POINT : MsaaTextureFlag(msaa) | BGFX_TEXTURE_RT_WRITE_ONLY);
+    if (readable)
+    {
+        m_sceneDepth = depth;
+    }
     const bgfx::TextureHandle attachments[] = {m_sceneColor, depth};
     m_scene = bgfx::createFrameBuffer(2, attachments, true);
+    if (readable)
+    {
+        const bgfx::TextureFormat::Enum format =
+            (bgfx::getCaps()->formats[bgfx::TextureFormat::R8] & BGFX_CAPS_FORMAT_TEXTURE_FRAMEBUFFER) != 0 ? bgfx::TextureFormat::R8 : bgfx::TextureFormat::RGBA8;
+        m_aoColor = bgfx::createTexture2D(w, h, false, 1, format, BGFX_TEXTURE_RT | sampling | BGFX_SAMPLER_POINT);
+        m_ao = bgfx::createFrameBuffer(1, &m_aoColor, true);
+        m_aoBlurColor = bgfx::createTexture2D(w, h, false, 1, format, BGFX_TEXTURE_RT | sampling);
+        m_aoBlur = bgfx::createFrameBuffer(1, &m_aoBlurColor, true);
+    }
     int levelWidth = width;
     int levelHeight = height;
     for (int i = 0; i < kBloomLevels; ++i)
@@ -324,6 +358,38 @@ void PostProcess::Apply(float seconds, bool originBottomLeft)
         }
     }
 
+    // How shut in each point is, from the depth, then smoothed -- when there is a depth to read and it is wanted.
+    const bool occlusion = bgfx::isValid(m_sceneDepth) && bgfx::isValid(m_ao) && bgfx::isValid(m_aoBlur) && s.ambientOcclusion > 0.0f;
+    const float aoParams[4] = {occlusion ? std::clamp(s.ambientOcclusion, 0.0f, 1.0f) : 0.0f, std::max(s.occlusionRadius, 0.05f), Depth::Clear(),
+                               bgfx::getCaps()->homogeneousDepth ? 1.0f : 0.0f};
+    if (occlusion)
+    {
+        const glm::mat4 inverse = glm::inverse(s.projection);
+        for (int pass = 0; pass < 2; ++pass)
+        {
+            const bgfx::ViewId at = static_cast<bgfx::ViewId>(Renderer::kViewOcclusionFirst + pass);
+            bgfx::setViewFrameBuffer(at, pass == 0 ? m_ao : m_aoBlur);
+            bgfx::setViewRect(at, 0, 0, static_cast<uint16_t>(m_width), static_cast<uint16_t>(m_height));
+            bgfx::setViewClear(at, BGFX_CLEAR_NONE, 0x00000000, 1.0f, 0);
+            bgfx::setUniform(m_uFlip, flip);
+            texel(m_width, m_height);
+            bgfx::setUniform(m_uAoProj, glm::value_ptr(s.projection));
+            bgfx::setUniform(m_uAoInvProj, glm::value_ptr(inverse));
+            bgfx::setUniform(m_uAoParams, aoParams);
+            if (pass == 0)
+            {
+                bgfx::setTexture(0, m_sScene, m_sceneDepth);
+                FullScreen(at, m_aoProgram, write);
+            }
+            else
+            {
+                bgfx::setTexture(0, m_sScene, m_aoColor);
+                bgfx::setTexture(1, m_sBloom, m_sceneDepth);
+                FullScreen(at, m_aoBlurProgram, write);
+            }
+        }
+    }
+
     // And the picture, onto the screen.
     const bgfx::ViewId last = Renderer::kViewPost;
     bgfx::setViewFrameBuffer(last, BGFX_INVALID_HANDLE);
@@ -346,6 +412,11 @@ void PostProcess::Apply(float seconds, bool originBottomLeft)
     bgfx::setUniform(m_uLens, lens);
     bgfx::setUniform(m_uMood, mood);
     bgfx::setTexture(0, m_sScene, m_sceneColor);
+    bgfx::setUniform(m_uAoParams, aoParams);
+    if (occlusion)
+    {
+        bgfx::setTexture(3, m_sAo, m_aoBlurColor);
+    }
     bgfx::setTexture(1, m_sBloom, m_bloomColor[0]);
     const float adapt[4] = {std::max(s.adaptReference, 1.0e-4f), eye ? s.adapt : 0.0f, s.adaptDarker, s.adaptBrighter};
     bgfx::setUniform(m_uAdapt, adapt);

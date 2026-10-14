@@ -1,6 +1,7 @@
 #pragma once
 
 #include <bgfx/bgfx.h>
+#include <glm/mat4x4.hpp>
 
 #include <array>
 
@@ -45,6 +46,12 @@ public:
         float deltaSeconds = 1.0f / 60.0f;
         float coldShadows = 1.0f;
         float warmHighlights = 1.0f;
+        // How much the shut-in parts of the picture are darkened -- corners, under things, the ground at a boot -- by how much
+        // of the open world round them other surfaces take up (ambient occlusion, fs_post_ao; 0 off), out to how far round
+        // (metres); and the picture's projection, to find where each of its points is. Only without multisampling.
+        float ambientOcclusion = 0.7f;
+        float occlusionRadius = 0.6f;
+        glm::mat4 projection{1.0f};
         // Where on the screen the finished picture goes, in pixels from the top left: all of it when the width is
         // 0, or a smaller window of it, the whole picture scaled down into it -- an editor's preview, framed exactly
         // as the game frames it.
@@ -86,6 +93,18 @@ private:
     bgfx::UniformHandle m_sAdapt = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uAdapt = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uAdaptRate = BGFX_INVALID_HANDLE;
+    // Ambient occlusion: its passes, the scene's depth to work it from, and what it makes, then that smoothed.
+    bgfx::ProgramHandle m_aoProgram = BGFX_INVALID_HANDLE;
+    bgfx::ProgramHandle m_aoBlurProgram = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_sAo = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uAoProj = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uAoInvProj = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uAoParams = BGFX_INVALID_HANDLE;
+    bgfx::TextureHandle m_sceneDepth = BGFX_INVALID_HANDLE;
+    bgfx::FrameBufferHandle m_ao = BGFX_INVALID_HANDLE;
+    bgfx::TextureHandle m_aoColor = BGFX_INVALID_HANDLE;
+    bgfx::FrameBufferHandle m_aoBlur = BGFX_INVALID_HANDLE;
+    bgfx::TextureHandle m_aoBlurColor = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_sScene = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_sBloom = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uTexel = BGFX_INVALID_HANDLE;
