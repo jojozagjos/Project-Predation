@@ -4,6 +4,7 @@
 #include "Engine/Render/Mesh.h"
 #include "Engine/Render/Primitives.h"
 #include "Game/World/Cargo.h"
+#include "Game/World/Foliage.h"
 #include "Game/World/MapBuilder.h"
 #include "Game/World/ShipMap.h"
 #include "Game/World/SiteScatter.h"
@@ -13,6 +14,7 @@
 #include <glm/gtc/quaternion.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <future>
 #include <string>
@@ -76,6 +78,55 @@ uint32_t Mix(uint32_t a, uint32_t b)
     h *= 0x2C1B3C6Du;
     h ^= h >> 12;
     return h;
+}
+
+// A colour for a vertex (MeshVertex::color: linear, opaque).
+uint32_t PaintVertex(const glm::vec3& c)
+{
+    const auto channel = [](float v) { return static_cast<uint32_t>(std::clamp(v, 0.0f, 1.0f) * 255.0f + 0.5f); };
+    return channel(c.r) | (channel(c.g) << 8) | (channel(c.b) << 16) | (255u << 24);
+}
+
+// 0 to 1 from a few numbers, the same everywhere.
+float Hash01(uint32_t a, uint32_t b, uint32_t c)
+{
+    return static_cast<float>(Mix(Mix(a, b), c) & 0xFFFFFFu) / static_cast<float>(0x1000000u);
+}
+
+// A pebble about a unit across: a squashed, uneven double pyramid of six points, faceted (each face its own corners, so it
+// is lit as a chipped stone, not a smooth one), a third of it under its middle.
+MeshData Pebble(uint32_t seed)
+{
+    const auto r = [&](uint32_t n, float low, float high) { return low + (high - low) * Hash01(seed, n, 0x9EBBu); };
+    const glm::vec3 points[6] = {{r(1, 0.38f, 0.55f), r(2, -0.08f, 0.08f), 0.0f},
+                                 {-r(3, 0.38f, 0.55f), r(4, -0.08f, 0.08f), r(5, -0.1f, 0.1f)},
+                                 {r(6, -0.1f, 0.1f), r(7, -0.08f, 0.08f), r(8, 0.32f, 0.5f)},
+                                 {r(9, -0.1f, 0.1f), r(10, -0.08f, 0.08f), -r(11, 0.32f, 0.5f)},
+                                 {r(12, -0.12f, 0.12f), r(13, 0.22f, 0.36f), r(14, -0.12f, 0.12f)},
+                                 {0.0f, -r(15, 0.12f, 0.18f), 0.0f}};
+    const int faces[8][3] = {{0, 4, 2}, {2, 4, 1}, {1, 4, 3}, {3, 4, 0}, {2, 5, 0}, {1, 5, 2}, {3, 5, 1}, {0, 5, 3}};
+    MeshData mesh;
+    for (const auto& face : faces)
+    {
+        const glm::vec3 a = points[face[0]];
+        const glm::vec3 b = points[face[1]];
+        const glm::vec3 c = points[face[2]];
+        glm::vec3 n = glm::normalize(glm::cross(b - a, c - a));
+        // Wound to face out, whichever way it came.
+        const bool flip = glm::dot(n, a + b + c) < 0.0f;
+        n = flip ? -n : n;
+        const auto base = static_cast<uint32_t>(mesh.vertices.size());
+        for (const glm::vec3& at : {a, flip ? c : b, flip ? b : c})
+        {
+            MeshVertex vertex;
+            vertex.position = at;
+            vertex.normal = n;
+            vertex.uv = {at.x, at.z};
+            mesh.vertices.push_back(vertex);
+        }
+        mesh.indices.insert(mesh.indices.end(), {base, base + 1, base + 2});
+    }
+    return mesh;
 }
 
 void Append(WorldObjects::Placements& into, const WorldObjects::Placements& from)
@@ -303,6 +354,8 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
         const std::vector<SiteScatter::Item> scattered = SiteScatter::Plan(seed, m_look.biome, m_plan, m_terrain);
         const bool lush = m_look.biome == "jungle";
         const glm::vec3 growth = glm::mix(m_look.ground, lush ? glm::vec3(0.12f, 0.3f, 0.08f) : glm::vec3(0.2f, 0.34f, 0.12f), 0.65f);
+        // Whether things grow here, so moss does on its rocks and leaves lie under its trees.
+        const bool mossy = m_look.biome == "jungle" || m_look.biome == "temperate" || m_look.biome == "oceanic";
         Material plain = Material::Diffuse(glm::vec3(1.0f), 0.85f);
         Material ice = Surfaces::Apply(Material::Diffuse({0.7f, 0.8f, 0.9f}, 0.35f), "ice_cliff", 3.0f, 0.4f, true);
         Material crystal = Material::Diffuse({0.62f, 0.72f, 0.95f}, 0.15f);
@@ -348,6 +401,12 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
             {
                 vertex.position = turn * (vertex.position * item.scale);
                 vertex.normal = glm::normalize(turn * (vertex.normal / item.scale));
+                // Moss on the tops of the rocks where things grow, as it lies on them -- not on their sides.
+                if (mossy && (item.kind == SiteScatter::Kind::Boulder || item.kind == SiteScatter::Kind::Spire))
+                {
+                    const float moss = glm::smoothstep(0.35f, 0.85f, vertex.normal.y) * 0.85f;
+                    vertex.color = PaintVertex(glm::mix(glm::vec3(1.0f), growth * 2.2f, moss));
+                }
             }
             // Small things cast no shadow worth its cost.
             const bool small = item.kind == SiteScatter::Kind::Grass || item.kind == SiteScatter::Kind::Shrub ||
@@ -367,6 +426,125 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
                 }
                 builder.SetShadows(item.kind == SiteScatter::Kind::Tree);
                 builder.AddMesh("site_foliage", Transform{item.at}, leafy, leaves, false);
+            }
+        }
+        // Leaves fallen under the trees, lying flat on the ground round each trunk as far out as its crown, dried brown and
+        // yellow -- under a conifer (its odd shapes, SiteScatter::Leaves) its needles, rust-brown: cards of the foliage picture, as
+        // its leaves are.
+        builder.SetShadows(false);
+        {
+            MeshData litter;
+            uint32_t n = 0;
+            for (const SiteScatter::Item& item : scattered)
+            {
+                if (item.kind != SiteScatter::Kind::Tree)
+                {
+                    continue;
+                }
+                const float crown = std::max(item.scale.x, item.scale.z) * 0.9f;
+                const bool conifer = item.variant % 2 != 0;
+                const glm::vec4 cell = Foliage::Cell(conifer ? Foliage::kNeedles : Foliage::kBroad);
+                const int count = 6 + static_cast<int>(Hash01(seed, n, 0x11u) * 8.0f);
+                for (int i = 0; i < count; ++i, ++n)
+                {
+                    const float angle = Hash01(seed, n, 0x21u) * glm::two_pi<float>();
+                    const float out = crown * std::sqrt(Hash01(seed, n, 0x22u));
+                    const glm::vec2 at = glm::vec2(item.at.x, item.at.z) + glm::vec2(std::cos(angle), std::sin(angle)) * out;
+                    const float size = 0.35f + 0.35f * Hash01(seed, n, 0x23u);
+                    const float yaw = Hash01(seed, n, 0x24u) * glm::two_pi<float>();
+                    const glm::vec3 up = m_terrain.Normal(at.x, at.y);
+                    const glm::vec3 across = glm::normalize(glm::cross(up, glm::vec3(std::sin(yaw), 0.0f, std::cos(yaw)))) * (size * 0.5f);
+                    const glm::vec3 along = glm::normalize(glm::cross(across, up)) * (size * 0.5f);
+                    const glm::vec3 middle{at.x, m_terrain.Height(at.x, at.y) + 0.012f + 0.004f * static_cast<float>(i % 3), at.y};
+                    const glm::vec3 dried = conifer ? glm::mix(glm::vec3(0.4f, 0.22f, 0.1f), glm::vec3(0.5f, 0.32f, 0.15f), Hash01(seed, n, 0x25u))
+                                                    : glm::mix(glm::vec3(0.42f, 0.3f, 0.14f), glm::vec3(0.55f, 0.46f, 0.18f), Hash01(seed, n, 0x25u));
+                    const uint32_t colour = PaintVertex(dried *
+                                                        glm::mix(0.6f, 1.0f, Hash01(seed, n, 0x26u)));
+                    const auto base = static_cast<uint32_t>(litter.vertices.size());
+                    const glm::vec3 corners[4] = {middle - across - along, middle + across - along, middle + across + along, middle - across + along};
+                    const glm::vec2 uvs[4] = {{cell.x, cell.w}, {cell.z, cell.w}, {cell.z, cell.y}, {cell.x, cell.y}};
+                    for (int c = 0; c < 4; ++c)
+                    {
+                        MeshVertex vertex;
+                        vertex.position = corners[c];
+                        vertex.normal = up;
+                        vertex.uv = uvs[c];
+                        vertex.color = colour;
+                        litter.vertices.push_back(vertex);
+                    }
+                    litter.indices.insert(litter.indices.end(), {base, base + 1, base + 2, base, base + 2, base + 3});
+                }
+            }
+            if (!litter.vertices.empty())
+            {
+                builder.AddMesh("site_litter", Transform{}, litter, leaves, false);
+            }
+        }
+        // And pebbles: small stones lying all over the ground, a handful round every step -- the world's rock, a few shapes
+        // turned and sized, sunk a little into the ground, too small to stand on or to throw a shadow worth drawing. In blocks
+        // of ground, so what is far off can be let go of.
+        {
+            std::array<MeshData, 6> stones;
+            for (size_t i = 0; i < stones.size(); ++i)
+            {
+                stones[i] = Pebble(Mix(seed, static_cast<uint32_t>(i) + 0x5EB1u));
+            }
+            constexpr float kCell = 1.5f;
+            constexpr int kBlockCells = 24;
+            const int cells = static_cast<int>(m_plan.size / kCell);
+            for (int bz = 0; bz < cells; bz += kBlockCells)
+            {
+                for (int bx = 0; bx < cells; bx += kBlockCells)
+                {
+                    MeshData block;
+                    for (int cz = bz; cz < std::min(bz + kBlockCells, cells); ++cz)
+                    {
+                        for (int cx = bx; cx < std::min(bx + kBlockCells, cells); ++cx)
+                        {
+                            const auto ux = static_cast<uint32_t>(cx);
+                            const auto uz = static_cast<uint32_t>(cz);
+                            if (Hash01(seed ^ 0x9EBB1Eu, ux, uz) > 0.38f)
+                            {
+                                continue;
+                            }
+                            const int count = 1 + static_cast<int>(Hash01(seed, ux * 7u + 1u, uz) * 3.0f);
+                            for (int p = 0; p < count; ++p)
+                            {
+                                const auto k = static_cast<uint32_t>(p) * 31u;
+                                const float x = m_plan.origin.x + (static_cast<float>(cx) + Hash01(seed, ux + k, uz * 3u + 1u)) * kCell;
+                                const float z = m_plan.origin.z + (static_cast<float>(cz) + Hash01(seed, ux + k, uz * 3u + 2u)) * kCell;
+                                if (m_terrain.Normal(x, z).y < 0.8f)
+                                {
+                                    continue;
+                                }
+                                // Mostly small, now and then a stone a hand across.
+                                const float pick = Hash01(seed, ux + k, uz * 3u + 3u);
+                                const float size = pick > 0.9f ? 0.2f + 0.15f * Hash01(seed, ux + k, uz * 5u) : 0.06f + 0.12f * pick;
+                                const float yaw = Hash01(seed, ux + k, uz * 5u + 1u) * glm::two_pi<float>();
+                                const glm::quat turn = glm::angleAxis(yaw, glm::vec3(0.0f, 1.0f, 0.0f));
+                                const glm::vec3 foot{x, m_terrain.Height(x, z) - size * 0.05f, z};
+                                const MeshData& stone = stones[static_cast<size_t>(ux * 5u + uz * 3u + static_cast<uint32_t>(p)) % stones.size()];
+                                const uint32_t shade = PaintVertex(glm::vec3(0.7f + 0.5f * Hash01(seed, ux + k, uz * 5u + 2u)));
+                                const auto base = static_cast<uint32_t>(block.vertices.size());
+                                for (MeshVertex vertex : stone.vertices)
+                                {
+                                    vertex.position = foot + turn * (vertex.position * glm::vec3(size, size * 0.8f, size));
+                                    vertex.normal = turn * vertex.normal;
+                                    vertex.color = shade;
+                                    block.vertices.push_back(vertex);
+                                }
+                                for (const uint32_t index : stone.indices)
+                                {
+                                    block.indices.push_back(base + index);
+                                }
+                            }
+                        }
+                    }
+                    if (!block.vertices.empty())
+                    {
+                        builder.AddMesh("site_pebbles", Transform{}, block, rockMaterial, false);
+                    }
+                }
             }
         }
         builder.SetShadows(true);
