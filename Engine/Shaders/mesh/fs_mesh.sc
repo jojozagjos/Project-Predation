@@ -577,6 +577,12 @@ void main()
 			discard;
 		}
 	}
+	// Ground cover thinning out with distance (vs_mesh, Material::cover): its tufts going from it in a fine scatter of
+	// pixels by how far each is gone (its colour's alpha) -- not sinking into the ground, which is seen as growing.
+	if (u_materialParams.w > 1.5 && fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715)))) >= v_color0.a)
+	{
+		discard;
+	}
 	vec3 N = normalize(v_normal);
 	// A surface set laid on from every side at once ("triplanar"): sampled across x, y and z by where the point is, and
 	// blended by which way the surface faces, so a box of any size is covered evenly with no coordinates of its own.
@@ -710,14 +716,14 @@ void main()
 		// Where it is steep, the second set -- the world's rock -- showing through as the slope passes what anybody can stand
 		// on (SiteTerrain::Rockiness), laid on the same way.
 		float rock = u_steepParams.w > 0.0 ? 1.0 - smoothstep(0.72, 0.94, Ng.y) : 0.0;
-		// And on the flat too, here and there: patches of it a few tens of metres apart where the ground is thin over it, so a
-		// world is not one surface from one horizon to the other -- their edges ragged by the ground's own light and dark,
-		// the dark hollows filling with ground first.
+		// And now and then on a gentle rise, an outcrop of it where the ground is thin over it -- small and few, so a world is
+		// not one surface from one horizon to the other without being paved with rock -- its edges ragged by the ground's own
+		// light and dark. (Game/World/Surfaces, OutcropAt, has the same, for what it sounds like underfoot.)
 		if (u_steepParams.w > 0.0)
 		{
-			float spread = SurfacePatches(v_worldPos.xz * 0.021 + vec2(7.3, 1.9)) * 0.65 + SurfacePatches(v_worldPos.xz * 0.083) * 0.35;
+			float spread = SurfacePatches(v_worldPos.xz * 0.035 + vec2(7.3, 1.9)) * 0.65 + SurfacePatches(v_worldPos.xz * 0.11) * 0.35;
 			float grain = dot(surfaceAlbedo, vec3(0.2126, 0.7152, 0.0722));
-			rock = max(rock, smoothstep(0.6, 0.68, spread + (grain - 0.5) * 0.12) * 0.9);
+			rock = max(rock, smoothstep(0.68, 0.74, spread + (grain - 0.5) * 0.08) * smoothstep(0.996, 0.975, Ng.y) * 0.9);
 		}
 		// (Its gradients too, outside the branch.)
 		float steepScale = u_steepParams.w / max(u_surfaceParams.x, 1e-6);
@@ -816,7 +822,7 @@ void main()
 	vec3 albedo = u_baseColor.rgb * textured * v_color0.rgb * surfaceAlbedo;
 	float metallic = clamp(u_materialParams.x, 0.0, 1.0);
 	// Clamp roughness away from zero: perfectly smooth surfaces alias badly with a single light.
-	float roughness = clamp(u_materialParams.y * v_color0.a * surfaceRough, 0.045, 1.0);
+	float roughness = clamp(u_materialParams.y * (u_materialParams.w > 1.5 ? 1.0 : v_color0.a) * surfaceRough, 0.045, 1.0);
 	// Paint worn through: bare metal, scuffed bright.
 	metallic = mix(metallic, 0.7, bare);
 	roughness = mix(roughness, clamp(roughness * 0.75, 0.2, 0.6), bare);

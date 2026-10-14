@@ -67,7 +67,7 @@ std::map<std::string, T> ReadMap(const nlohmann::json& object, const char* key)
 const std::set<std::string>& KnownKeys()
 {
     static const std::set<std::string> kKeys{"version", "name",     "universeSeed",  "clock", "played",   "credits",     "components",
-                                             "upgrades", "colors",  "location",      "travel", "known",   "regionsFound", "regionChanges",
+                                             "upgrades", "colors",  "location",      "travel", "known",   "regionChanges",
                                              "log",     "nextLogId", "story",        "storyComplete", "cargo",     "plan"};
     return kKeys;
 }
@@ -96,24 +96,6 @@ bool CampaignState::Learn(uint64_t systemId, int bodyIndex, uint8_t bits)
     const uint8_t now = static_cast<uint8_t>(had | bits);
     const bool news = now != had;
     had = now;
-    return news;
-}
-
-bool CampaignState::RegionFound(uint64_t systemId, int bodyIndex, int regionIndex, bool charted) const
-{
-    if (charted)
-    {
-        return true;
-    }
-    const auto it = regionsFound.find(RegionKey(systemId, bodyIndex, regionIndex));
-    return it != regionsFound.end() && it->second;
-}
-
-bool CampaignState::FindRegion(uint64_t systemId, int bodyIndex, int regionIndex)
-{
-    bool& found = regionsFound[RegionKey(systemId, bodyIndex, regionIndex)];
-    const bool news = !found;
-    found = true;
     return news;
 }
 
@@ -189,7 +171,6 @@ nlohmann::json CampaignState::ToJson() const
         knownJson[key] = bits;
     }
     out["known"] = knownJson;
-    out["regionsFound"] = regionsFound;
     nlohmann::json changes = nlohmann::json::object();
     for (const auto& [key, change] : regionChanges)
     {
@@ -302,7 +283,6 @@ bool CampaignState::FromJson(const nlohmann::json& json, CampaignState& out, std
         {
             state.known[key] = static_cast<uint8_t>(bits);
         }
-        state.regionsFound = ReadMap<bool>(json, "regionsFound");
         if (const auto changes = json.find("regionChanges"); changes != json.end() && changes->is_object())
         {
             for (const auto& [key, change] : changes->items())
@@ -411,20 +391,15 @@ CampaignState CampaignState::Begin(const std::string& campaignName, uint64_t see
         }
     }
     state.Learn(home->id.Packed(), -1, kKnownVisited);
-    // What CIRRA already has on file. The home system surveyed through and through -- every body looked at closely, every
-    // place on them to go down found -- and the outpost's world stood on.
+    // What CIRRA already has on file: the home system, and the outpost's world stood on.
     for (const Body& body : home->bodies)
     {
-        uint8_t bits = kKnownRecords | kKnownScanned | kKnownDeep;
+        uint8_t bits = kKnownRecords;
         if (body.index == home->hub)
         {
             bits |= kKnownVisited;
         }
         state.Learn(home->id.Packed(), body.index, bits);
-        for (int region = 0; region < static_cast<int>(body.regions.size()); ++region)
-        {
-            state.FindRegion(home->id.Packed(), body.index, region);
-        }
     }
     // The systems round it, within reach of the first upgraded drive, on file in part: what their bodies are, not what is on
     // them.

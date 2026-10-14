@@ -102,6 +102,12 @@ bool SetSystemCourse(CampaignState& campaign, Universe& universe, uint64_t toSys
 glm::vec3 GalaxyPosition(const CampaignState& campaign, Universe& universe);
 // How far through a crossing it is, 0 to 1.
 float CrossingDone(const CampaignState& campaign);
+// A crossing begins by leaving the system it is in: out from the world it was at (Travel::from), turning to the way it is
+// going and gathering speed, that world falling behind, for this long; how far through that it is (1 once it is clear, or not
+// crossing), and how far out from where it set off it is then (astronomical units, the way of the star it is going to).
+inline constexpr float kLeaveSeconds = 20.0f;
+float LeavingDone(const CampaignState& campaign);
+glm::vec3 LeavingOffset(const CampaignState& campaign);
 // True on the step it arrives in the new system.
 bool StepInterstellar(CampaignState& campaign, Universe& universe);
 

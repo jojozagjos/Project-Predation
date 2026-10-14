@@ -30,8 +30,6 @@ struct CampaignState
     enum Knowledge : uint8_t
     {
         kKnownRecords = 1 << 0, // the Company's or others' records of it
-        kKnownScanned = 1 << 1, // the ship's sensors have looked at it
-        kKnownDeep = 1 << 2,    // and looked closely
         kKnownVisited = 1 << 3  // somebody has stood on it
     };
 
@@ -128,7 +126,6 @@ struct CampaignState
     };
     Plan plan;
     std::map<std::string, uint8_t> known;                // by BodyKey: Knowledge bits
-    std::map<std::string, bool> regionsFound;            // by RegionKey: found (beyond the charted ones)
     std::map<std::string, nlohmann::json> regionChanges; // by RegionKey: what has been changed there
     std::vector<LogEntry> log;
     uint32_t nextLogId = 1;
@@ -145,8 +142,6 @@ struct CampaignState
     uint8_t Known(uint64_t system, int body) const;
     // Adds to what is known; true when that was news.
     bool Learn(uint64_t system, int body, uint8_t bits);
-    bool RegionFound(uint64_t system, int body, int region, bool charted) const;
-    bool FindRegion(uint64_t system, int body, int region);
     int Upgrade(const std::string& category) const;
     int Components(const std::string& id) const;
 

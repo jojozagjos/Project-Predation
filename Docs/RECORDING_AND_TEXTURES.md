@@ -37,7 +37,6 @@ Each moment has a folder with a `placeholder.wav` in it; put your recording in a
   us to a stop."
 - [ ] `orbit_01`: *arrived in orbit of a planet or moon.* Suggestion: "We have reached orbit. The shuttle is ready in
   the bay."
-- [ ] `region_found_01`: *the ship's scan found somewhere new to land.* Suggestion: "Surface scan complete. A new
   landing site has been marked."
 
 **Going down and coming back**

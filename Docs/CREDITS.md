@@ -49,7 +49,6 @@ high-quality preview; made mono 48 kHz, cut, levelled, and the loops crossfaded 
 | **dhallcomposer, "Looping Gentle Wind Ambience on an Open Desert Plain.wav"** (freesound.org/people/dhallcomposer/sounds/697217) | `wind` |
 | **jpnien, "Wind strong JPN.wav"** (freesound.org/people/jpnien/sounds/97397) | `gale` |
 | **craigsmith, "G56-22-Sandstorm.wav"** (freesound.org/people/craigsmith/sounds/438877) | `sandstorm` |
-| **slugzilla, "desertwind1FINAL.wav"** (freesound.org/people/slugzilla/sounds/112296) | `sandstorm` |
 | **cobratronik, "Wind__Artic__Cold.wav"** (freesound.org/people/cobratronik/sounds/117136) | `blizzard` |
 | **klangfabrik, "winter wind 01c.aiff"** (freesound.org/people/klangfabrik/sounds/117513) | `blizzard` |
 | **Fission9, "Huge Thunderclap"** (freesound.org/people/Fission9/sounds/576041) | `thunder_near`, and low-passed for `thunder` far off |

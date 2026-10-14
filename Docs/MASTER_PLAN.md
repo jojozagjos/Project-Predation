@@ -401,9 +401,14 @@ organisms.
 | Travel far too fast with a top drive; the ship snapping over a site | Done (no faster past drive tier 6 within a system; moving over a site always takes some seconds) |
 | Sound in cinematics; the launch beep too loud | Cinematic sounds kept (only wind and ambience go in space); beep turned down |
 | Weather too loud indoors | Done (rain, wind and thunder much quieter and more muffled under a roof; the roof's drumming only loud on the top floor) |
-| A landing area appearing out of nowhere | Done (the scan says what it found; every place on a world is found from orbit, sensors only find them sooner) |
-| Grass growing in as you walk | Done (drawn out past 100 metres, thinning, so the edge is in the haze) |
+| A landing area appearing out of nowhere; scanners | Scanning removed for now: every place on a world and everything about it known at once (ideas for what scanners could become: your call) |
+| Grass growing in as you walk; tufts sunk in the ground | Done (all of it out to 28 m, then thinning out past 100 m by fading, not sinking; only a little sunk in snow) |
 | A ringed world's rings from its ground | Done (a band across the sky, the world's shadow across it at night) |
+| The sun jumping as the ship got over a landing spot; turning too fast | Done (its way round stays steady to the end, tested; big swings turned at a ship's pace; turning no longer sped up much by the drive) |
+| Leaving for another system: the planet vanishing, full speed at once | Done (twenty seconds leaving first: turning, gathering speed, the world falling behind) |
+| A planet jumping as the ship came into orbit | Done (it settles down to the orbit's height, not dropped onto it) |
+| Rock on the flat ground; footsteps not matching | Done (small outcrops on rises only; footsteps on them sound of rock) |
+| sandstorm_2 sounding bad; the scan's on-screen text | Removed |
 | Ship rotation when changing course felt strange | Changed earlier (the turn no longer swings through the planet); tell me if it still feels off |
 | Ending and tutorial | Phase 17, last |
 

@@ -276,10 +276,9 @@ TEST_CASE("A campaign written out reads back the same, keeping what it does not 
     state.travel.underway = true;
     state.travel.target = 4;
     state.travel.position = {1.5f, 0.0f, -2.0f};
-    // Somewhere away from home, where CIRRA has found nothing yet (at home it has found every place).
+    // Somewhere away from home.
     state.system = SystemId{1, 0, 0, 0}.Packed();
-    state.Learn(state.system, 3, CampaignState::kKnownScanned);
-    state.FindRegion(state.system, 3, 2);
+    state.Learn(state.system, 3, CampaignState::kKnownVisited);
     state.regionChanges[CampaignState::RegionKey(state.system, 3, 2)] = {{"doors", {1, 4}}};
     CampaignState::LogEntry& entry = state.AddLog("planet", CampaignState::BodyKey(state.system, 3), "Scanned", "Seen from orbit.");
     entry.important = true;
@@ -299,9 +298,7 @@ TEST_CASE("A campaign written out reads back the same, keeping what it does not 
     CHECK(back.travel.underway);
     CHECK(back.travel.target == 4);
     CHECK(back.Known(state.system, 3) == state.Known(state.system, 3));
-    CHECK((back.Known(state.system, 3) & CampaignState::kKnownScanned) != 0);
-    CHECK(back.RegionFound(state.system, 3, 2, false));
-    CHECK_FALSE(back.RegionFound(state.system, 3, 1, false));
+    CHECK((back.Known(state.system, 3) & CampaignState::kKnownVisited) != 0);
     CHECK(back.regionChanges.size() == 1);
     REQUIRE(back.log.size() == 1);
     CHECK(back.log.front().important);
@@ -914,4 +911,34 @@ TEST_CASE("Past the fastest tier the drive is no quicker within a system", "[cam
     // And still something seen to happen: a planet an astronomical unit off is a few seconds away at the quickest.
     CHECK(Travel::Seconds(1.0f, 12) > 5.0f);
     CHECK(Travel::Acceleration(Travel::kFastestTier) > Travel::Acceleration(Travel::kFastestTier - 1));
+}
+
+TEST_CASE("Going round to be over a place, the ship's way round never swings at once -- not even as it gets there", "[campaign][travel]")
+{
+    Universe universe;
+    universe.Reset(321, &ShippedData());
+    const StarSystem& system = *universe.System(universe.Home());
+    CampaignState campaign = CampaignState::Begin("Way", 321, universe);
+    const int body = campaign.body;
+    Travel::Lift(campaign);
+    glm::vec3 out;
+    glm::vec3 along;
+    Travel::OrbitFrame(campaign, system, body, campaign.clock, out, along);
+    const glm::vec3 here = system.Over(body, out, campaign.clock);
+    // A good way round, not straight across (which has no one way round).
+    const glm::vec3 there = glm::normalize(glm::cross(here, glm::vec3(0.0f, 1.0f, 0.0f)) + here * 0.3f);
+    Travel::MoveOver(campaign, system, body, there, 0);
+    const double end = campaign.clock + static_cast<double>(Travel::SecondsToOver(campaign));
+    glm::vec3 last{0.0f};
+    for (double t = campaign.clock; t < end + 20.0; t += 0.25)
+    {
+        Travel::OrbitFrame(campaign, system, body, t, out, along);
+        INFO("at " << t - campaign.clock << " s of " << end - campaign.clock);
+        CHECK(std::abs(glm::length(along) - 1.0f) < 1.0e-3f);
+        if (glm::length(last) > 0.5f)
+        {
+            CHECK(glm::dot(along, last) > 0.995f);
+        }
+        last = along;
+    }
 }

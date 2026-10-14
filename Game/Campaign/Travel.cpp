@@ -163,7 +163,7 @@ float Seconds(float distance, int tier)
     // seven settling in, and the turn before it all.
     const float gentle = std::sqrt(Gentleness(tier));
     return 2.0f * std::sqrt(std::max(distance, 0.0f) / Acceleration(tier)) + 11.0f / gentle +
-           (kAlignLeast + kAlignMore * 0.5f) / (1.0f + static_cast<float>(std::clamp(tier, 0, kFastestTier)));
+           (kAlignLeast + kAlignMore * 0.5f) / (1.0f + 0.2f * static_cast<float>(std::clamp(tier, 0, kFastestTier)));
 }
 
 float Gentleness(int tier)
@@ -260,10 +260,16 @@ void OrbitFrame(const CampaignState& campaign, const StarSystem& system, int bod
     // Going round to be over somewhere, or held over it: there on the globe, turning with the world.
     if (glm::length(travel.overAt) > 0.5f && system.Find(body) != nullptr)
     {
-        out = Unit(system.FromOver(body, OverGlobe(campaign, clock), clock), glm::vec3(1.0f, 0.0f, 0.0f));
-        const glm::vec3 there = system.FromOver(body, travel.overAt, clock);
-        along = there - out * glm::dot(there, out);
-        along = glm::length(along) > 1.0e-3f ? glm::normalize(along) : Unit(glm::cross(glm::vec3(0.0f, 1.0f, 0.0f), out), glm::vec3(0.0f, 0.0f, 1.0f));
+        const glm::vec3 overNow = OverGlobe(campaign, clock);
+        out = Unit(system.FromOver(body, overNow, clock), glm::vec3(1.0f, 0.0f, 0.0f));
+        // Going the way of the great circle it goes round on from where it set off to where it is going -- and still that way
+        // when it is there and held over it, not towards a point now right underneath it, which has no way at all and swung
+        // the ship round in a frame as it got there.
+        const glm::vec3 axis = glm::cross(travel.overFrom, travel.overAt);
+        glm::vec3 way = glm::length(axis) > 1.0e-4f ? system.FromOver(body, glm::cross(glm::normalize(axis), Unit(overNow, glm::vec3(1.0f, 0.0f, 0.0f))), clock)
+                                                   : glm::cross(glm::vec3(0.0f, 1.0f, 0.0f), out);
+        way -= out * glm::dot(way, out);
+        along = Unit(way, Unit(glm::cross(glm::vec3(0.0f, 1.0f, 0.0f), out), glm::vec3(0.0f, 0.0f, 1.0f)));
         return;
     }
     glm::vec3 first = travel.orbitOut;
@@ -296,8 +302,8 @@ float AlignSeconds(const CampaignState& campaign, const StarSystem& system)
     glm::vec3 along;
     OrbitFrame(campaign, system, travel.from, travel.setOut, out, along);
     const float angle = std::acos(std::clamp(glm::dot(out, Unit(travel.departWay, out)), -1.0f, 1.0f));
-    // A better drive turns it sooner, as it does everything.
-    return (kAlignLeast + kAlignMore * angle / 3.14159265f) / (1.0f + static_cast<float>(std::clamp(campaign.Upgrade("travel"), 0, kFastestTier)));
+    // A better drive turns it a little sooner -- never so fast the windows whirl.
+    return (kAlignLeast + kAlignMore * angle / 3.14159265f) / (1.0f + 0.2f * static_cast<float>(std::clamp(campaign.Upgrade("travel"), 0, kFastestTier)));
 }
 
 float AlignDone(const CampaignState& campaign, const StarSystem& system)
@@ -643,6 +649,26 @@ float CrossingDone(const CampaignState& campaign)
     return static_cast<float>(std::clamp((campaign.clock - campaign.travel.departed) / static_cast<double>(campaign.travel.duration), 0.0, 1.0));
 }
 
+float LeavingDone(const CampaignState& campaign)
+{
+    if (!campaign.travel.interstellar)
+    {
+        return 1.0f;
+    }
+    return static_cast<float>(std::clamp((campaign.clock - campaign.travel.departed) / static_cast<double>(kLeaveSeconds), 0.0, 1.0));
+}
+
+glm::vec3 LeavingOffset(const CampaignState& campaign)
+{
+    // The way of the star it is going to, across the system's plane; a few seconds turning to it before the drive lights, then
+    // harder and harder, so that by the end of it the world it left is a point far behind.
+    glm::vec3 way = campaign.travel.toGalaxy - campaign.travel.fromGalaxy;
+    way.y = 0.0f;
+    way = Unit(way, glm::vec3(0.0f, 0.0f, -1.0f));
+    const float burning = std::max(static_cast<float>(campaign.clock - campaign.travel.departed) - 4.0f, 0.0f);
+    return way * (0.5f * 0.003f * burning * burning);
+}
+
 bool SetSystemCourse(CampaignState& campaign, Universe& universe, uint64_t toSystem, int tier)
 {
     if (tier < kCrossingTier || universe.System(toSystem) == nullptr || (!campaign.travel.interstellar && toSystem == campaign.system) ||
@@ -656,6 +682,8 @@ bool SetSystemCourse(CampaignState& campaign, Universe& universe, uint64_t toSys
     {
         return false;
     }
+    // Leaving from the world it was at, if it was at one (LeavingOffset).
+    campaign.travel.from = campaign.body;
     campaign.travel.interstellar = true;
     campaign.travel.underway = true;
     campaign.travel.toSystem = toSystem;
@@ -685,6 +713,7 @@ bool StepInterstellar(CampaignState& campaign, Universe& universe)
     {
         travel.interstellar = false;
         travel.underway = false;
+        travel.from = -1;
         return true;
     }
     // At the edge of it, on the side it came in from, well outside the furthest planet, at rest.
@@ -704,6 +733,7 @@ bool StepInterstellar(CampaignState& campaign, Universe& universe)
     campaign.region = -1;
     travel.position = glm::dvec3(back * (outermost * 1.25f));
     travel.velocity = glm::vec3(0.0f);
+    travel.from = -1;
     travel.interstellar = false;
     travel.underway = false;
     travel.target = -1;

@@ -200,6 +200,46 @@ uint32_t StepOf(const Material& material)
     return StepOfSet(std::string(), metal);
 }
 
+namespace
+{
+
+// As fs_mesh's SurfaceHash and SurfacePatches: a value at each whole point, eased between.
+float PatchHash(float x, float z)
+{
+    const auto fract = [](float v) { return v - std::floor(v); };
+    float px = fract(x * 0.1031f);
+    float pz = fract(z * 0.1030f);
+    const float d = px * (pz + 33.33f) + pz * (px + 33.33f);
+    px += d;
+    pz += d;
+    return fract((px + pz) * px);
+}
+
+float Patches(float x, float z)
+{
+    const float ix = std::floor(x);
+    const float iz = std::floor(z);
+    float fx = x - ix;
+    float fz = z - iz;
+    fx = fx * fx * (3.0f - 2.0f * fx);
+    fz = fz * fz * (3.0f - 2.0f * fz);
+    const float a = PatchHash(ix, iz);
+    const float b = PatchHash(ix + 1.0f, iz);
+    const float c = PatchHash(ix, iz + 1.0f);
+    const float d = PatchHash(ix + 1.0f, iz + 1.0f);
+    return (a + (b - a) * fx) + ((c + (d - c) * fx) - (a + (b - a) * fx)) * fz;
+}
+
+} // namespace
+
+bool OutcropAt(float x, float z, float normalUp)
+{
+    // As the shader has it, without the ground picture's own light and dark at its edges: over half of the way into it.
+    const float spread = Patches(x * 0.035f + 7.3f, z * 0.035f + 1.9f) * 0.65f + Patches(x * 0.11f, z * 0.11f) * 0.35f;
+    const float rise = std::clamp((0.996f - normalUp) / (0.996f - 0.975f), 0.0f, 1.0f);
+    return spread > 0.71f && rise > 0.5f;
+}
+
 const char* StepName(uint32_t tag)
 {
     return tag >= 1 && tag <= std::size(kSteps) ? kSteps[tag - 1] : nullptr;

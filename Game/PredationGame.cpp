@@ -6487,6 +6487,16 @@ int PredationGame::SurfaceIndexAt(const glm::vec3& position) const
     {
         const RayHit under = m_app->GetPhysics().RayCastStatic(position + glm::vec3(0.0f, 0.4f, 0.0f), glm::vec3(0.0f, -1.0f, 0.0f), 1.2f);
         name = under ? Surfaces::StepName(m_app->GetPhysics().Tag(under.body)) : nullptr;
+        // On a site's own ground, where its rock shows through it (Surfaces::OutcropAt, as the ground is drawn): the rock's.
+        if (under && m_facility.Built() && m_facility.Contains(position) && !m_facility.GetLook().steep.empty())
+        {
+            const SiteTerrain& ground = m_facility.Terrain();
+            if (std::abs(under.position.y - ground.Height(position.x, position.z)) < 0.15f &&
+                Surfaces::OutcropAt(position.x, position.z, ground.Normal(position.x, position.z).y))
+            {
+                name = Surfaces::StepName(Surfaces::StepOfSet(m_facility.GetLook().steep, false));
+            }
+        }
     }
     for (int hops = 0; name != nullptr && hops < 3; ++hops)
     {

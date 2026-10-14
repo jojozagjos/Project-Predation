@@ -67,7 +67,6 @@
 #include <memory>
 #include <optional>
 #include <random>
-#include <set>
 #include <string>
 #include <vector>
 
@@ -1090,6 +1089,11 @@ private:
     int m_spaceOrbitBody = -1;
     double m_spaceOrbitSince = -1.0;
     glm::quat m_spaceSettleFrom{1.0f, 0.0f, 0.0f, 0.0f};
+    // Coming into orbit: how far out it was (astronomical units) when it last was under way to that world, so it is drawn
+    // settling down to the orbit's height over the settle rather than dropped onto it.
+    float m_spaceApproachReach = 0.0f;
+    int m_spaceApproachTo = -1;
+    float m_spaceArriveReach = 0.0f;
     glm::mat3 m_spaceToWorld{1.0f};
     glm::vec3 m_spaceSunLight{1.0f};
     // The planets and moons near enough to have a size: which, which way (in the world), how big (radians from middle to
@@ -1130,7 +1134,6 @@ private:
     size_t m_mapChartKnown = static_cast<size_t>(-1);
     // How the ship stands, in a line: "Under way to ...", "Docked at ...".
     std::string ShipStatus();
-    bool MapAreaKnown(uint64_t system, const Body& body, int region) const;
     std::vector<SystemId> m_mapListed;   // the galaxy panel's list: systems near the ship, or found by name
     glm::vec3 m_mapListedFrom{1.0e9f};
     std::string m_mapListedFor;
@@ -1156,14 +1159,13 @@ private:
     void UpdateTravel(float dt);
     void AskCampaign(CampaignAction action, int a = 0, int b = 0);
     bool DoCampaignAction(uint8_t player, CampaignAction action, int a, int b);
-    // In orbit of a body at last: its scan, and where to go down chosen (its places found after, SurveyFromOrbit). The host's.
+    // In orbit of a body at last: where to go down chosen. The host's.
     void ArriveAtBody();
-    // In orbit, the sensors finding places to go down as the orbit carries the ship over them (the host's, or alone).
-    void SurveyFromOrbit(float dt);
     void ChooseLandingRegion(int region);
     const StarSystem* CurrentSystem();
     int DriveTier() const;
     int SensorTier() const;
+    // Every place on a world is known from the start (there is no scanning for them): one of its places, then.
     bool RegionKnown(const Body& body, int region) const;
     bool RegionLandable(const Body& body, int region) const;
     std::string SummaryOf(const Body& body) const;
@@ -1276,9 +1278,6 @@ private:
     uint16_t m_mapWidth = 0;
     uint16_t m_mapHeight = 0;
     float m_travelSendIn = 0.0f;
-    float m_sensorIn = 0.0f;
-    // The survey from orbit: how long until it next looks for somewhere new.
-    float m_surveyIn = 20.0f;
     uint32_t m_appliedTravels = 0;
     // The map everybody shares (PredationGameMapView.cpp): as it was last sent or applied, so a move of this player's own can
     // be told from one applied from somebody else's; this player's count of moves and when the next may go; the newest move
@@ -1292,17 +1291,14 @@ private:
     int m_mapMovedBy = -1;
     float m_mapMovedFor = 0.0f;
     MapViewMessage MapSnapshot() const;
-    // What CIRRA has on file of a system (body -1) or a body, in a few words.
-    std::string MapRecordsText(uint64_t system, int body);
+    // What CIRRA has on file of a system, in a few words.
+    std::string MapRecordsText(uint64_t system);
     void ApplyMapShared(const MapViewMessage& view);
     void UpdateSharedMap(float dt);
-    // What the intercom last saw of the ship's travel and finds, for saying what has just changed.
+    // What the intercom last saw of the ship's travel, for saying what has just changed.
     bool m_travelSeen = false;
     bool m_travelSeenUnderway = false;
     int m_travelSeenTarget = -1;
-    size_t m_regionsSeen = 0;
-    // The places found so far, so the one the scan has just found can be named (ShowCampaignNotice).
-    std::set<std::string> m_scanKnown;
 
     // --- Multiplayer ---------------------------------------------------------------------------
     void RegisterNetCommands();

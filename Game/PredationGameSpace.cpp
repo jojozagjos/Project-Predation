@@ -32,8 +32,8 @@ constexpr float kEarthRadiusAu = 4.26e-5f;
 // How far its nose is pitched down from the way it goes round, so the body below is in the windscreen (radians).
 constexpr float kOrbitPitch = 0.95f;
 // Under way, how it turns to a new heading: slowly, as a ship of its size does -- at most this many radians a second, gathering
-// way and losing it again at this many radians a second, a second. Half way round takes a quarter of a minute.
-constexpr float kTurnRate = 0.25f;
+// way and losing it again at this many radians a second, a second. Half way round takes about twenty seconds.
+constexpr float kTurnRate = 0.18f;
 constexpr float kTurnEase = 0.08f;
 // Coming into orbit, how long it takes to settle from the way it came in to the orbit's facing.
 constexpr double kSettleSeconds = 7.0;
@@ -112,8 +112,10 @@ void PredationGame::SetSpaceSky(Environment& environment)
     }
 
     // Between the stars: nothing near, the star it left a dimming sun astern and the one it is heading for a brightening
-    // point dead ahead -- the nearer of the two the one that lights the ship.
-    if (m_campaign.travel.interstellar)
+    // point dead ahead -- the nearer of the two the one that lights the ship. (Once out of the system it left: leaving it, it is
+    // still among its worlds, below.)
+    const Body* leaving = m_campaign.travel.interstellar && Travel::LeavingDone(m_campaign) < 1.0f ? system->Find(m_campaign.travel.from) : nullptr;
+    if (m_campaign.travel.interstellar && leaving == nullptr)
     {
         m_spaceAttitudeSet = false;
         const SystemGlance& ahead = m_universe.Glance(SystemId::Unpack(m_campaign.travel.toSystem));
@@ -147,7 +149,20 @@ void PredationGame::SetSpaceSky(Environment& environment)
     glm::vec3 wantUp{0.0f, 1.0f, 0.0f};
     bool held = false;
     const Body* at = travel.underway ? nullptr : system->Find(m_campaign.body);
-    if (at != nullptr)
+    if (leaving != nullptr)
+    {
+        // Leaving across the stars (Travel::LeavingOffset): out from the orbit it was in, turning to face the way it is going
+        // at a ship's pace and gathering speed, the world it left falling away behind.
+        glm::vec3 out;
+        glm::vec3 along;
+        Travel::OrbitFrame(m_campaign, *system, leaving->index, travel.departed, out, along);
+        reference = leaving->index;
+        offset = out * Travel::OrbitRadius(*leaving) + Travel::LeavingOffset(m_campaign);
+        glm::vec3 way = travel.toGalaxy - travel.fromGalaxy;
+        way.y = 0.0f;
+        wantForward = glm::length(way) > 1.0e-6f ? way : along;
+    }
+    else if (at != nullptr)
     {
         // In orbit: going round, its nose pitched down to the ground below and held there -- the world stays where it is in the
         // windows while its ground goes by underneath.
@@ -167,6 +182,13 @@ void PredationGame::SetSpaceSky(Environment& environment)
             // Not while a cinematic shows it: the stage holds still, and the sky would turn round it. Its cuts hide the turn.
             m_spaceSettleFrom = m_spaceAttitudeSet && clock - travel.orbitSince < kSettleSeconds && !m_cine.Active() ? m_spaceAttitude
                                                                                                                       : Facing(wantForward, wantUp);
+            m_spaceArriveReach = m_spaceApproachTo == at->index && clock - travel.orbitSince < kSettleSeconds ? m_spaceApproachReach : 0.0f;
+        }
+        // And down from how far out it came in to the orbit's height, over the same few seconds.
+        if (m_spaceArriveReach > 0.0f && clock - travel.orbitSince < kSettleSeconds && clock >= travel.orbitSince && !m_cine.Active())
+        {
+            const float s = static_cast<float>((clock - travel.orbitSince) / kSettleSeconds);
+            offset = out * glm::mix(m_spaceArriveReach, Travel::OrbitRadius(*at), s * s * (3.0f - 2.0f * s));
         }
     }
     else if (const Body* from = travel.underway ? system->Find(travel.from) : nullptr; from != nullptr && Travel::AlignDone(m_campaign, *system) < 1.0f)
@@ -225,6 +247,8 @@ void PredationGame::SetSpaceSky(Environment& environment)
         }
         if (const Body* to = system->Find(travel.target))
         {
+            m_spaceApproachTo = to->index;
+            m_spaceApproachReach = static_cast<float>(glm::length(travel.position - system->PositionD(to->index, clock)));
             // Nose on where it is going, all the way in: it comes in to the near side of it, and settles from there into the
             // orbit's facing. (Not its way through space, which near a world is mostly the world's own way round its star.)
             wantForward = glm::vec3(system->PositionD(to->index, clock) - travel.position);
@@ -241,7 +265,11 @@ void PredationGame::SetSpaceSky(Environment& environment)
     if (glm::length(wantForward) > 1.0e-12f)
     {
         const glm::quat want = Facing(wantForward, wantUp);
-        if (held || !m_spaceAttitudeSet)
+        // Held to it -- unless that is a sudden swing of more than a few degrees (going round to be over somewhere else, the
+        // orbit's way turning with it): then turned to at a ship's pace, as under way, never all at once.
+        const float jump = m_spaceAttitudeSet ? 2.0f * std::acos(std::min(std::abs(glm::dot(m_spaceAttitude, want)), 1.0f)) : 0.0f;
+        const bool settling = at != nullptr && clock - travel.orbitSince < kSettleSeconds && clock >= travel.orbitSince;
+        if ((held && (jump < 0.05f || settling || m_cine.Active())) || !m_spaceAttitudeSet)
         {
             m_spaceAttitude = want;
             m_spaceTurnSpeed = 0.0f;

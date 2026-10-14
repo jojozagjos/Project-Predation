@@ -523,3 +523,22 @@ TEST_CASE("A site's weather comes and goes in spells, smoothly, the same for eve
         CHECK(most <= 1.31f);
     }
 }
+
+TEST_CASE("The ground's rock outcrops are few, on rises, never on the dead flat", "[site][surfaces]")
+{
+    int rises = 0;
+    int samples = 0;
+    for (float z = -500.0f; z < 500.0f; z += 2.5f)
+    {
+        for (float x = -500.0f; x < 500.0f; x += 2.5f)
+        {
+            CHECK_FALSE(Surfaces::OutcropAt(x, z, 1.0f));
+            rises += Surfaces::OutcropAt(x, z, 0.97f) ? 1 : 0;
+            ++samples;
+        }
+    }
+    const float share = static_cast<float>(rises) / static_cast<float>(samples);
+    INFO("share of a gentle rise that is rock: " << share);
+    CHECK(share > 0.005f);
+    CHECK(share < 0.15f);
+}

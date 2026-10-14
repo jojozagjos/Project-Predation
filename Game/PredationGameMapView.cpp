@@ -348,26 +348,13 @@ void PredationGame::DestroySystemMapTarget()
     m_mapHeight = 0;
 }
 
-std::string PredationGame::MapRecordsText(uint64_t system, int body)
+std::string PredationGame::MapRecordsText(uint64_t system)
 {
-    const uint8_t known = m_campaign.Known(system, body);
-    if (body < 0)
-    {
-        if (system == m_universe.Home().Packed())
-        {
-            return "Surveyed: all of it on file";
-        }
-        return (known & CampaignState::kKnownRecords) != 0 ? "On file: its bodies, not what is on them" : "Nothing on file";
-    }
-    if ((known & CampaignState::kKnownRecords) != 0 && (known & CampaignState::kKnownDeep) != 0)
+    if (system == m_universe.Home().Packed())
     {
         return "Surveyed: all of it on file";
     }
-    if ((known & CampaignState::kKnownRecords) != 0)
-    {
-        return "On file: what it is, not what is on it";
-    }
-    return "Nothing on file";
+    return (m_campaign.Known(system, -1) & CampaignState::kKnownRecords) != 0 ? "On file" : "Nothing on file";
 }
 
 // --- The map everybody shares -----------------------------------------------------------------------------------------
@@ -653,7 +640,7 @@ void PredationGame::ApplyMapBody(int body)
     m_mapRegion = -1;
     const bool ours = m_mapSystem == m_campaign.system &&
                       (m_campaign.travel.underway ? m_campaign.travel.target == body : m_campaign.body == body);
-    if (ours && m_campaign.travel.region >= 0 && MapAreaKnown(m_mapSystem, *picked, m_campaign.travel.region))
+    if (ours && m_campaign.travel.region >= 0 && RegionKnown(*picked, m_campaign.travel.region))
     {
         m_mapRegion = m_campaign.travel.region;
     }
@@ -682,12 +669,6 @@ glm::vec3 PredationGame::SunOverBody(const StarSystem& system, const Body& body)
 bool PredationGame::AreaInDaylight(const StarSystem& system, const Body& body, const LandingRegion& region)
 {
     return glm::dot(AreaOnGlobe(region), SunOverBody(system, body)) > 0.0f;
-}
-
-bool PredationGame::MapAreaKnown(uint64_t system, const Body& body, int region) const
-{
-    return region >= 0 && region < static_cast<int>(body.regions.size()) &&
-           m_campaign.RegionFound(system, body.index, region, body.regions[static_cast<size_t>(region)].charted);
 }
 
 bool PredationGame::SystemCharted(uint64_t system)
@@ -1283,7 +1264,7 @@ void PredationGame::DrawSystemMap()
             {
                 const glm::vec3 at = AreaOnGlobe(globe->regions[static_cast<size_t>(i)]);
                 ImVec2 point;
-                if (!MapAreaKnown(m_mapSystem, *globe, i) || glm::dot(at, eye) < 0.12f || !toScreen(at, point))
+                if (!RegionKnown(*globe, i) || glm::dot(at, eye) < 0.12f || !toScreen(at, point))
                 {
                     continue;
                 }
@@ -1782,7 +1763,7 @@ void PredationGame::DrawSystemMap()
         const bool heading = ours && (m_campaign.travel.underway ? m_campaign.travel.target == globe->index : m_campaign.body == globe->index);
         for (int i = 0; i < static_cast<int>(globe->regions.size()); ++i)
         {
-            if (!MapAreaKnown(m_mapSystem, *globe, i))
+            if (!RegionKnown(*globe, i))
             {
                 continue;
             }
@@ -2238,7 +2219,7 @@ void PredationGame::DrawMapGalaxyPanels()
         {
             Row("Bodies", "", false);
         }
-        Row("CIRRA", MapRecordsText(m_mapPickedSystem, -1), true);
+        Row("CIRRA", MapRecordsText(m_mapPickedSystem), true);
         ImGui::Spacing();
         ImGui::Spacing();
         if (ImGui::Button("Open the system   Enter", {-1.0f, 32.0f}))
@@ -2385,10 +2366,6 @@ void PredationGame::DrawMapSystemPanels(const StarSystem& system)
     ImGui::SetNextWindowSizeConstraints({340.0f, 0.0f}, {340.0f, 10000.0f});
     if (ImGui::Begin("##mapinfo", nullptr, kPanel | ImGuiWindowFlags_AlwaysAutoResize))
     {
-        const uint8_t known = m_campaign.Known(m_mapSystem, picked->index);
-        const bool records = (known & CampaignState::kKnownRecords) != 0;
-        const bool scanned = (known & (CampaignState::kKnownScanned | CampaignState::kKnownVisited)) != 0;
-        const bool deep = (known & (CampaignState::kKnownDeep | CampaignState::kKnownVisited)) != 0;
         std::string what;
         if (picked->kind == BodyKind::Moon)
         {
@@ -2400,37 +2377,27 @@ void PredationGame::DrawMapSystemPanels(const StarSystem& system)
         }
         Title(picked->name, what);
         Section("SURVEY");
-        Row("CIRRA", MapRecordsText(m_mapSystem, picked->index), true);
         {
             const BiomeDef* biome = m_universeData.Biome(picked->biome);
-            Row("Type", biome != nullptr ? biome->name : picked->biome, picked->gas || scanned || records);
+            Row("Type", biome != nullptr ? biome->name : picked->biome, true);
             Row("Size", Number(picked->radius, 2) + " Earth radii", true);
             if (!picked->gas)
             {
                 const AtmosphereDef* air = m_universeData.Atmosphere(picked->atmosphere);
-                Row("Atmosphere", air != nullptr ? air->name : picked->atmosphere, scanned);
-                Row("Temperature", std::to_string(static_cast<int>(std::round(picked->temperature))) + " C", scanned);
+                Row("Atmosphere", air != nullptr ? air->name : picked->atmosphere, true);
+                Row("Temperature", std::to_string(static_cast<int>(std::round(picked->temperature))) + " C", true);
                 const WeatherDef* weather = m_universeData.Weather(picked->weather);
                 // No air, no weather.
-                Row("Weather", picked->air <= 0.015f ? std::string("None") : weather != nullptr ? weather->name : picked->weather, scanned);
+                Row("Weather", picked->air <= 0.015f ? std::string("None") : weather != nullptr ? weather->name : picked->weather, true);
                 const CivilizationDef* civ = m_universeData.Civilization(picked->civilization);
-                std::string settled = civ != nullptr ? civ->name : std::string("None");
-                if (!records && scanned && civ != nullptr && !civ->inhabited)
-                {
-                    settled = civ->records ? "Structures detected" : "None detected";
-                }
-                Row("Settlement", settled, records || scanned);
-                Row("Day", About(picked->day), scanned || records);
+                Row("Settlement", civ != nullptr ? civ->name : std::string("None"), true);
+                Row("Day", About(picked->day), true);
             }
             std::string traits;
             for (const std::string& id : picked->specials)
             {
                 const SpecialDef* special = m_universeData.Special(id);
-                const bool visible = id == "rings" || id == "aurora";
-                if (deep || (visible && scanned))
-                {
-                    traits += (traits.empty() ? "" : ", ") + (special != nullptr ? special->name : id);
-                }
+                traits += (traits.empty() ? "" : ", ") + (special != nullptr ? special->name : id);
             }
             if (!traits.empty())
             {
@@ -2451,15 +2418,10 @@ void PredationGame::DrawMapSystemPanels(const StarSystem& system)
         // Places to go down.
         if (picked->Landable())
         {
-            int areas = 0;
-            for (int i = 0; i < static_cast<int>(picked->regions.size()); ++i)
-            {
-                areas += MapAreaKnown(m_mapSystem, *picked, i) ? 1 : 0;
-            }
+            const int areas = static_cast<int>(picked->regions.size());
             Section("LANDING AREAS");
             Wrapped(areas > 0 ? ImVec4(0.85f, 0.88f, 0.9f, 1.0f) : kDimText, "%s",
-                               areas > 0 ? (std::to_string(areas) + (areas == 1 ? " area known" : " areas known")).c_str()
-                                         : scanned ? "None found yet." : "None charted. Go closer to look.");
+                    areas > 0 ? (std::to_string(areas) + (areas == 1 ? " area" : " areas")).c_str() : "None.");
         }
 
         ImGui::Spacing();
@@ -2579,7 +2541,7 @@ void PredationGame::DrawMapBodyPanels(const StarSystem& system)
         int hidden = 0;
         for (int i = 0; i < static_cast<int>(body->regions.size()); ++i)
         {
-            if (!MapAreaKnown(m_mapSystem, *body, i))
+            if (!RegionKnown(*body, i))
             {
                 ++hidden;
                 continue;
@@ -2630,7 +2592,7 @@ void PredationGame::DrawMapBodyPanels(const StarSystem& system)
     ImGui::End();
 
     // Down the right: the area picked out, and going there.
-    if (m_mapRegion < 0 || m_mapRegion >= static_cast<int>(body->regions.size()) || !MapAreaKnown(m_mapSystem, *body, m_mapRegion))
+    if (m_mapRegion < 0 || m_mapRegion >= static_cast<int>(body->regions.size()) || !RegionKnown(*body, m_mapRegion))
     {
         return;
     }
@@ -2645,12 +2607,10 @@ void PredationGame::DrawMapBodyPanels(const StarSystem& system)
         Row("Location", LatLonText(region.latLon));
         const bool day = glm::dot(AreaOnGlobe(region), sun) > 0.0f;
         Row("Local time", localTime(region) + (day ? "   daylight" : "   night"));
-        const uint8_t known = m_campaign.Known(m_mapSystem, body->index);
-        const bool scanned = (known & (CampaignState::kKnownScanned | CampaignState::kKnownVisited)) != 0;
         const WeatherDef* weather = m_universeData.Weather(body->weather);
-        Row("Weather", body->air <= 0.015f ? std::string("None") : weather != nullptr ? weather->name : body->weather, scanned);
+        Row("Weather", body->air <= 0.015f ? std::string("None") : weather != nullptr ? weather->name : body->weather, true);
         Row("Temperature", std::to_string(static_cast<int>(std::round(body->temperature + (std::abs(region.latLon.x) > 55.0f ? -25.0f : 0.0f)))) + " C",
-            scanned);
+            true);
         ImGui::Spacing();
         ImGui::Spacing();
         const bool chosen = (here || heading) && m_campaign.travel.region == m_mapRegion;

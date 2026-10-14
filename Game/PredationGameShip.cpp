@@ -210,8 +210,9 @@ void PredationGame::UpdateShipTravel(float dt)
     {
         const StarSystem* system = CurrentSystem();
         const float speed = system != nullptr ? Travel::RelativeSpeed(m_campaign, *system) : 0.0f;
-        burning = m_campaign.travel.interstellar || (system != nullptr && Travel::Burning(m_campaign, *system));
-        pace = m_campaign.travel.interstellar ? 1.7f : std::min(std::sqrt(speed / 0.004f), 1.6f) * glm::smoothstep(0.0f, 0.04f, std::sqrt(speed / 0.004f));
+        burning = (m_campaign.travel.interstellar && Travel::LeavingDone(m_campaign) > 0.2f) || (!m_campaign.travel.interstellar && system != nullptr && Travel::Burning(m_campaign, *system));
+        // (Across the stars at full pace only once out of the system it left, gathering it as it leaves.)
+        pace = m_campaign.travel.interstellar ? 1.7f * glm::smoothstep(0.2f, 1.0f, Travel::LeavingDone(m_campaign)) : std::min(std::sqrt(speed / 0.004f), 1.6f) * glm::smoothstep(0.0f, 0.04f, std::sqrt(speed / 0.004f));
     }
     m_ship.UpdateDust(m_scene, m_app->GetMeshes(), underWay ? kDustSpeed * pace : 0.0f, dt);
     if (!m_cine.Active())

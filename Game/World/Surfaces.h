@@ -36,6 +36,9 @@ Material ApplyWorn(Material material, const std::string& name, float metres, flo
 uint32_t StepOf(const Material& material);
 uint32_t StepOfSet(const std::string& name, bool metal);
 const char* StepName(uint32_t tag);
+// Whether the ground at (x, z) on a site is one of the outcrops of its rock showing through it (the ground shader's, fs_mesh:
+// small patches on gentle rises), its slope given as its normal's up: so it sounds like rock underfoot where it looks like it.
+bool OutcropAt(float x, float z, float normalUp);
 
 } // namespace Surfaces
 

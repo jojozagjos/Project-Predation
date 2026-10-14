@@ -29,15 +29,8 @@ namespace pred
 namespace
 {
 
-// How often the host tells everybody how the ship stands and who is pointing at what, and how often the sensors look.
+// How often the host tells everybody how the ship stands and who is pointing at what.
 constexpr float kTravelSendEvery = 0.1f;
-constexpr float kSensorEvery = 1.0f;
-
-// How far the ship's sensors see while under way, in astronomical units, by their tier.
-float SensorRange(int tier)
-{
-    return 0.05f * std::pow(3.0f, static_cast<float>(std::clamp(tier, 0, 6)));
-}
 
 // A region's seed as the site builder takes it.
 uint16_t SiteSeed(uint32_t seed)
@@ -123,8 +116,7 @@ int PredationGame::SensorTier() const
 
 bool PredationGame::RegionKnown(const Body& body, int region) const
 {
-    return region >= 0 && region < static_cast<int>(body.regions.size()) &&
-           m_campaign.RegionFound(m_campaign.system, body.index, region, body.regions[static_cast<size_t>(region)].charted);
+    return region >= 0 && region < static_cast<int>(body.regions.size());
 }
 
 bool PredationGame::RegionLandable(const Body& body, int region) const
@@ -492,53 +484,10 @@ void PredationGame::ArriveAtBody()
     {
         return;
     }
-    // In orbit: the sensors look the whole of it over. Places to go down that nobody had charted are found as the orbit
-    // carries the ship over them (SurveyFromOrbit), not the moment it arrives.
-    const uint8_t bits = static_cast<uint8_t>(CampaignState::kKnownScanned | (SensorTier() >= 2 ? CampaignState::kKnownDeep : 0));
-    m_campaign.Learn(m_campaign.system, body->index, bits);
-    m_surveyIn = 10.0f / (1.0f + 0.5f * static_cast<float>(SensorTier()));
-    m_campaign.AddLog("planet", CampaignState::BodyKey(m_campaign.system, body->index), body->name, "Surveyed from orbit. " + SummaryOf(*body));
+    m_campaign.AddLog("planet", CampaignState::BodyKey(m_campaign.system, body->index), body->name, "In orbit. " + SummaryOf(*body));
     ChooseLandingRegion(m_campaign.travel.region);
     CampaignChanged();
     PRED_LOG_INFO(Gameplay, "In orbit of {}", body->name);
-}
-
-void PredationGame::SurveyFromOrbit(float dt)
-{
-    m_surveyIn -= dt;
-    const StarSystem* system = CurrentSystem();
-    const Body* body = system != nullptr ? system->Find(m_campaign.body) : nullptr;
-    if (m_surveyIn > 0.0f || body == nullptr)
-    {
-        return;
-    }
-    m_surveyIn = 1.0f;
-    // The half of the world the ship can see now, out to its horizon: every place on it is found in time, whatever the
-    // sensors -- better ones only find them sooner.
-    glm::vec3 out;
-    glm::vec3 along;
-    Travel::OrbitFrame(m_campaign, *system, body->index, m_campaign.clock, out, along);
-    const glm::vec3 over = system->Over(body->index, out, m_campaign.clock);
-    if (glm::length(over) < 1.0e-6f)
-    {
-        return;
-    }
-    const float reach = -0.05f;
-    for (int i = 0; i < static_cast<int>(body->regions.size()); ++i)
-    {
-        if (RegionKnown(*body, i) || glm::dot(glm::normalize(over), AreaOnGlobe(body->regions[static_cast<size_t>(i)])) < reach)
-        {
-            continue;
-        }
-        m_campaign.FindRegion(m_campaign.system, body->index, i);
-        m_campaign.AddLog("region", CampaignState::RegionKey(m_campaign.system, body->index, i), body->regions[static_cast<size_t>(i)].designation,
-                          "Found from orbit of " + body->name + ".");
-        // One at a time, a while apart: the sweep has to come round to it.
-        m_surveyIn = 12.0f / (1.0f + 0.5f * static_cast<float>(SensorTier()));
-        CampaignChanged();
-        PRED_LOG_INFO(Gameplay, "Found {} from orbit of {}", body->regions[static_cast<size_t>(i)].designation, body->name);
-        return;
-    }
 }
 
 // --- Under way ------------------------------------------------------------------------------------------------------
@@ -635,27 +584,6 @@ void PredationGame::UpdateTravel(float dt)
                     PRED_LOG_INFO(Gameplay, "The ship has come to rest between the planets");
                 }
             }
-            // The sensors, as the ship passes things.
-            m_sensorIn -= dt;
-            if (m_sensorIn <= 0.0f)
-            {
-                m_sensorIn = kSensorEvery;
-                const float range = SensorRange(SensorTier());
-                for (const Body& body : system->bodies)
-                {
-                    if (glm::length(system->Position(body.index, m_campaign.clock) - glm::vec3(m_campaign.travel.position)) <= range &&
-                        m_campaign.Learn(m_campaign.system, body.index, CampaignState::kKnownScanned))
-                    {
-                        m_campaign.AddLog("planet", CampaignState::BodyKey(m_campaign.system, body.index), body.name,
-                                          "Scanned in passing. " + SummaryOf(body));
-                        CampaignChanged();
-                    }
-                }
-            }
-        }
-        if (!m_campaign.travel.underway && m_campaign.body >= 0 && !m_campaign.landed)
-        {
-            SurveyFromOrbit(dt);
         }
         if (m_sessionMode == SessionMode::Host)
         {
@@ -686,8 +614,7 @@ void PredationGame::UpdateTravel(float dt)
             }
         }
     }
-    // The intercom, on every machine alike, from what it sees change: a course set, changed or called off, and places
-    // found by the ship's scan of the body it is over.
+    // The intercom, on every machine alike, from what it sees change: a course set, changed or called off.
     {
         const bool underway = m_campaign.travel.underway;
         const int target = m_campaign.travel.target;
@@ -702,35 +629,6 @@ void PredationGame::UpdateTravel(float dt)
                 Say(target >= 0 ? "course_changed" : "course_stopped", 0.3f);
             }
         }
-        size_t found = 0;
-        for (const auto& [key, isFound] : m_campaign.regionsFound)
-        {
-            found += isFound ? 1 : 0;
-        }
-        if (m_travelSeen && found > m_regionsSeen && !underway)
-        {
-            Say("region_found", 2.0f);
-            // And which, where: the place on the body the ship is at that was not found before.
-            const StarSystem* here = CurrentSystem();
-            const Body* at = here != nullptr ? here->Find(m_campaign.body) : nullptr;
-            for (int i = 0; at != nullptr && i < static_cast<int>(at->regions.size()); ++i)
-            {
-                const std::string key = CampaignState::RegionKey(m_campaign.system, at->index, i);
-                const auto it = m_campaign.regionsFound.find(key);
-                if (it != m_campaign.regionsFound.end() && it->second && m_scanKnown.count(key) == 0)
-                {
-                    ShowCampaignNotice("Scan: " + at->regions[static_cast<size_t>(i)].designation + " found on " + at->name);
-                }
-            }
-        }
-        for (const auto& [key, isFound] : m_campaign.regionsFound)
-        {
-            if (isFound)
-            {
-                m_scanKnown.insert(key);
-            }
-        }
-        m_regionsSeen = found;
         m_travelSeenUnderway = underway;
         m_travelSeenTarget = target;
         m_travelSeen = true;

@@ -45,22 +45,21 @@ void main()
 	}
 	vec4 worldPosition = mul(u_model[0], vec4(position, 1.0));
 	vec4 colour = a_color0;
-	// Ground cover (Material::cover, materialParams.w 2): fewer tufts further off, each one growing up out of the ground
-	// or sinking back into it by where the eye is this frame, not when its patch was last made -- so none pops in or out,
-	// and none is left standing at the edge of what was made. Red says how soon a tuft goes (0 last), green how high this
-	// point is over the ground (over 1.5 metres), blue how light its card is (0.6 to 1.4 of the material). Dark at the roots,
-	// where the blades shade each other.
+	// Ground cover (Material::cover, materialParams.w 2): all of it out to some tens of metres, fewer tufts further off, each
+	// one fading in or out (its alpha, which fs_mesh scatters away by) by where the eye is this frame, not when its patch was
+	// last made -- so none pops in or out, none is seen growing, and none is left standing at the edge of what was made. Red
+	// says how soon a tuft goes (0 last), green how high this point is over the ground (over 1.5 metres), blue how light its
+	// card is (0.6 to 1.4 of the material). Dark at the roots, where the blades shade each other.
 	if (u_materialParams.w > 1.5)
 	{
 		vec3 eye = mul(u_invView, vec4(0.0, 0.0, 0.0, 1.0)).xyz;
 		float far = length(worldPosition.xz - eye.xz);
-		float share = clamp(256.0 / max(far * far, 1.0), 0.0, 1.0) * (1.0 - smoothstep(95.0, 108.0, far));
+		float share = clamp(784.0 / max(far * far, 1.0), 0.0, 1.0) * (1.0 - smoothstep(95.0, 108.0, far));
 		float grown = clamp((share - a_color0.r) / 0.08, 0.0, 1.0);
-		worldPosition.y -= (a_color0.g * 1.5 + 0.05) * (1.0 - grown);
-		// Half buried where snow lies (as deep as a short tuft at the most).
-		worldPosition.y -= u_surfaceWeather.y * 0.3;
+		// A little sunk where snow lies, the snow round its foot.
+		worldPosition.y -= u_surfaceWeather.y * 0.1;
 		float up = 1.0 - fract(a_texcoord0.y * 2.0);
-		colour = vec4(vec3_splat(mix(0.5, 1.0, smoothstep(0.0, 0.7, up)) * (0.6 + 0.8 * a_color0.b)), 1.0);
+		colour = vec4(vec3_splat(mix(0.5, 1.0, smoothstep(0.0, 0.7, up)) * (0.6 + 0.8 * a_color0.b)), grown);
 	}
 	// A plant's card (cut out: Material::cutout) moving in the wind: its foot held, its top bent with the wind -- leaning
 	// with it in waves rolling across the ground the way it blows, and fluttering quicker on top. How far up the card a
