@@ -34,6 +34,10 @@ public:
     // How hard the wind is blowing just now, as a share of its usual (about 0.4 to 1.6), `seconds` into anything: the same
     // gusting moves what falls and thickens the fog with it.
     static float GustAt(float seconds);
+    // How much of a world's weather is coming down at a site just now, as a share of its usual (0 to about 1.3): spells of it
+    // building up and easing off over minutes, lulls between them, and now and then a peak past the usual -- a downpour that
+    // turns to a thunderstorm. From the campaign's clock, so every player has the same weather at the same moment.
+    static float SpellAt(uint32_t seed, double clock);
 
     // The light it is seen in: what lights it (the sky's and the sun's, together), and the fog it fades into.
     struct Light

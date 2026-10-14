@@ -94,6 +94,9 @@ float CrossingRange(int tier);
 float ChartRange(int sensorTier);
 // The drive that makes a trip short enough that leaving is shown as a cinematic and the trip is all but skipped.
 inline constexpr int kInstantTier = 4;
+// Past this tier the drive is no faster within a system -- better drives only reach further between the stars: a trip from
+// one world to the next stays something seen to happen, not a fling across the map.
+inline constexpr int kFastestTier = 6;
 bool SetSystemCourse(CampaignState& campaign, Universe& universe, uint64_t toSystem, int tier);
 // Where the ship is in the galaxy, in light years: its system's place, or part way between two.
 glm::vec3 GalaxyPosition(const CampaignState& campaign, Universe& universe);

@@ -5,6 +5,9 @@
 #include "Engine/Scene/Scene.h"
 #include "Game/Cinematic/Cinematic.h"
 
+#include <glm/geometric.hpp>
+#include <glm/vec2.hpp>
+
 #include <memory>
 #include <string>
 #include <vector>
@@ -83,6 +86,11 @@ public:
     void SetFarVisible(Scene& scene);
     // Part of the level as the lamps see it: casting their kept shadows (the ship's bay doors, which keep the bay's light in).
     void SetLevel(Scene& scene);
+    // How much it has been out in the weather (Material::weathering), on every part of it.
+    void SetWeathering(Scene& scene, float weathering);
+    // Its box, where it rests: the middle of it, and how far it reaches from there across the ground at most.
+    glm::vec3 Middle() const { return m_home.position + m_home.rotation * ((m_lo + m_hi) * 0.5f); }
+    float Reach() const { return 0.5f * glm::length(glm::vec2(m_hi.x - m_lo.x, m_hi.z - m_lo.z)); }
 
 private:
     bool m_merged = false;

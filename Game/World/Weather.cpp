@@ -75,6 +75,30 @@ float Weather::GustAt(float seconds)
     return 0.7f + 0.6f * std::sin(seconds * 0.31f) * std::sin(seconds * 0.77f + 1.3f) + 0.35f * std::max(std::sin(seconds * 0.13f), 0.0f);
 }
 
+float Weather::SpellAt(uint32_t seed, double clock)
+{
+    // Smooth noise along time: a value at each step, eased between.
+    const auto noise = [seed](double t, uint32_t salt)
+    {
+        const double step = std::floor(t);
+        const auto value = [&](double at)
+        {
+            uint32_t h = static_cast<uint32_t>(static_cast<int64_t>(at)) * 2654435761u ^ (seed + salt) * 2246822519u;
+            h ^= h >> 15;
+            h *= 2246822519u;
+            h ^= h >> 13;
+            return static_cast<float>(h >> 8) / static_cast<float>(1u << 24);
+        };
+        const float f = static_cast<float>(t - step);
+        const float eased = f * f * (3.0f - 2.0f * f);
+        return value(step) + (value(step + 1.0) - value(step)) * eased;
+    };
+    // The spells, about a quarter of an hour apart; and within them, how hard, every few minutes.
+    const float spell = noise(clock / 900.0, 0x51u) * 0.75f + noise(clock / 300.0, 0x3au) * 0.25f;
+    const float hard = noise(clock / 240.0, 0x9cu);
+    return glm::smoothstep(0.28f, 0.62f, spell) * (0.55f + 0.75f * hard);
+}
+
 void Weather::Make(Kind kind, const glm::vec3& eye)
 {
     m_pieces.clear();

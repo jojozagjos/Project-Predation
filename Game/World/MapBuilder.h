@@ -229,7 +229,7 @@ private:
     static bool SameMaterial(const Material& a, const Material& b)
     {
         return a.baseColor == b.baseColor && a.metallic == b.metallic && a.roughness == b.roughness && a.emissive == b.emissive &&
-               a.emissiveTextured == b.emissiveTextured && a.cutout == b.cutout && a.cover == b.cover && a.weathers == b.weathers &&
+               a.emissiveTextured == b.emissiveTextured && a.cutout == b.cutout && a.cover == b.cover && a.weathering == b.weathering &&
                a.reflectivity == b.reflectivity && a.baseColorTexture == b.baseColorTexture && a.organic == b.organic &&
                a.organicBeat == b.organicBeat && a.normalTexture == b.normalTexture && a.roughnessTexture == b.roughnessTexture &&
                a.surfaceScale == b.surfaceScale && a.surfaceKeep == b.surfaceKeep && a.surfaceNatural == b.surfaceNatural && a.surfaceOnThing == b.surfaceOnThing && a.surfaceWear == b.surfaceWear && a.steepColorTexture == b.steepColorTexture && a.steepScale == b.steepScale &&

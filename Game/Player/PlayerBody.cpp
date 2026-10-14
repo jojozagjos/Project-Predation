@@ -361,9 +361,9 @@ void PlayerBody::BuildParts(Scene& scene, MeshLibrary& meshes)
         // A mesh per part, sized to that part. Sharing one unit box and scaling it would skew the
         // normals, because the shader transforms them by the model matrix directly.
         part.mesh = meshes.Upload(Primitives::Box(boxSize), std::string("player_") + spec.name);
-        // Not rained or snowed on: it would be white the moment it stepped out (Material::weathers).
+        // Not rained or snowed on: it would be white the moment it stepped out (Material::weathering).
         Material material = *spec.material;
-        material.weathers = false;
+        material.weathering = 0.0f;
         part.entity = scene.CreateMeshEntity(std::string("player_") + spec.name, Transform{}, part.mesh,
                                              material);
         m_parts.push_back(part);
@@ -1054,9 +1054,13 @@ void PlayerBody::BuildWeaponEntities(Scene& scene, MeshLibrary& meshes,
     {
         const MeshHandle mesh = meshes.Upload(part.mesh, key + "_" + part.name);
         Material material = part.material;
-        material.weathers = false;
+        material.weathering = 0.0f;
         m_weaponParts.push_back(scene.CreateMeshEntity(key + "_" + part.name, Transform{}, mesh,
                                                        material));
+        if (MeshRenderer* renderer = scene.GetMeshRenderer(m_weaponParts.back()))
+        {
+            renderer->blocksSky = false; // (MeshRenderer::blocksSky: it keeps no weather off anything)
+        }
         m_weaponPartTransforms.emplace_back();
     }
     m_weaponEntity = m_weaponParts.empty() ? Entity{} : m_weaponParts.front();
@@ -2675,9 +2679,13 @@ void PlayerBody::SetHeldItem(Scene& scene, MeshLibrary& meshes, const std::strin
 {
     ClearHeldItem(scene);
     Material held = material;
-    held.weathers = false;
+    held.weathering = 0.0f;
     m_heldItemMesh = meshes.Upload(mesh, "held_" + name);
     m_heldItemEntity = scene.CreateMeshEntity("held_" + name, Transform{}, m_heldItemMesh, held);
+    if (MeshRenderer* renderer = scene.GetMeshRenderer(m_heldItemEntity))
+    {
+        renderer->blocksSky = false;
+    }
     m_hasHeldItem = true;
 }
 

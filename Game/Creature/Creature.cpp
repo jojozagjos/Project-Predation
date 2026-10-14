@@ -660,11 +660,13 @@ void Creature::BuildVisual(MeshLibrary& meshes)
     const std::string prefix = "creature_" + std::to_string(m_anatomy.seed) + "_" + std::to_string(reinterpret_cast<uintptr_t>(this));
     m_skinMesh = meshes.CreateDynamic(skin.mesh, prefix + "_skin");
     Material flesh = Material::Diffuse(glm::vec3(1.0f), m_anatomy.roughness);
-    flesh.weathers = false; // (Material::weathers: it would be white the moment it came out under the sky)
+    flesh.weathering = 0.0f; // (Material::weathering: it would be white the moment it came out under the sky)
     m_skinEntity = m_scene.CreateMeshEntity(prefix + "_skin", Transform{}, m_skinMesh, flesh);
     if (MeshRenderer* renderer = m_scene.GetMeshRenderer(m_skinEntity))
     {
         renderer->castsShadow = true;
+        // A sun shadow and not a sky one (MeshRenderer::blocksSky): the snow and the wet under it are not kept off by it.
+        renderer->blocksSky = false;
     }
 
     // The pinpricks deep in its sockets, which go out when it goes down. Faint: enough to find it by in a

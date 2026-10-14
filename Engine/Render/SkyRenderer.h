@@ -58,6 +58,9 @@ private:
     bgfx::UniformHandle m_uCloudWind = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uBolt = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uNebula = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uTorch = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uFog = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uOwnRings = BGFX_INVALID_HANDLE;
 
 public:
     // How bright the sky is drawn, as a multiplier. The lighting is not changed by it -- this is the

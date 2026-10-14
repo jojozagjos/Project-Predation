@@ -6,7 +6,10 @@
 #include "Engine/Render/ShaderLibrary.h"
 #include "Engine/Scene/Scene.h"
 
+#include <glm/geometric.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <glm/matrix.hpp>
+#include <glm/trigonometric.hpp>
 
 #include <algorithm>
 
@@ -51,13 +54,16 @@ bool SkyRenderer::Init(ShaderLibrary& shaders)
     m_uCloudWind = bgfx::createUniform("u_skyCloudWind", bgfx::UniformType::Vec4);
     m_uBolt = bgfx::createUniform("u_skyBolt", bgfx::UniformType::Vec4);
     m_uNebula = bgfx::createUniform("u_skyNebula", bgfx::UniformType::Vec4);
+    m_uTorch = bgfx::createUniform("u_skyTorch", bgfx::UniformType::Vec4, 4);
+    m_uFog = bgfx::createUniform("u_skyFog", bgfx::UniformType::Vec4);
+    m_uOwnRings = bgfx::createUniform("u_skyOwnRings", bgfx::UniformType::Vec4);
     return true;
 }
 
 void SkyRenderer::Shutdown()
 {
     const bgfx::UniformHandle uniforms[] = {m_uRays, m_uDepth, m_uZenith, m_uHorizon, m_uGround, m_uSun, m_uSunColor,
-                                            m_uGrade, m_uSpace, m_uPlanet, m_uPlanetA, m_uPlanetB, m_uPlanetC, m_uPlanetD, m_uPlanetE, m_uBodies, m_uRings, m_uRingColor, m_uAir, m_uClouds, m_uCloudWind, m_uBolt, m_uNebula};
+                                            m_uGrade, m_uSpace, m_uPlanet, m_uPlanetA, m_uPlanetB, m_uPlanetC, m_uPlanetD, m_uPlanetE, m_uBodies, m_uRings, m_uRingColor, m_uAir, m_uClouds, m_uCloudWind, m_uBolt, m_uNebula, m_uTorch, m_uFog, m_uOwnRings};
     for (const bgfx::UniformHandle handle : uniforms)
     {
         if (bgfx::isValid(handle))
@@ -70,7 +76,7 @@ void SkyRenderer::Shutdown()
     m_uSpace = m_uPlanet = BGFX_INVALID_HANDLE;
     m_uPlanetA = m_uPlanetB = m_uPlanetC = m_uPlanetD = m_uPlanetE = BGFX_INVALID_HANDLE;
     m_uBodies = BGFX_INVALID_HANDLE;
-    m_uRings = m_uRingColor = m_uAir = m_uClouds = m_uCloudWind = m_uBolt = m_uNebula = BGFX_INVALID_HANDLE;
+    m_uRings = m_uRingColor = m_uAir = m_uClouds = m_uCloudWind = m_uBolt = m_uNebula = m_uTorch = m_uFog = m_uOwnRings = BGFX_INVALID_HANDLE;
     if (bgfx::isValid(m_triangle))
     {
         bgfx::destroy(m_triangle);
@@ -160,6 +166,7 @@ void SkyRenderer::Draw(bgfx::ViewId view, const Environment& environment, const 
     const float ringColor[4] = {look.ringColor.r, look.ringColor.g, look.ringColor.b, 0.0f};
     bgfx::setUniform(m_uRings, rings);
     bgfx::setUniform(m_uRingColor, ringColor);
+    bgfx::setUniform(m_uOwnRings, glm::value_ptr(environment.ownRings));
     const float air[4] = {environment.skyAirColor.r, environment.skyAirColor.g, environment.skyAirColor.b, std::clamp(environment.skyAir, 0.0f, 1.0f)};
     bgfx::setUniform(m_uAir, air);
     // The clouds: how much they cover and how heavy, the clock they drift by and the lightning in them; the wind they drift
@@ -173,6 +180,29 @@ void SkyRenderer::Draw(bgfx::ViewId view, const Environment& environment, const 
     // The nebula over the stars: its colour, how much, and (in the rings' spare place) its seed.
     const float nebula[4] = {environment.nebulaColor.r, environment.nebulaColor.g, environment.nebulaColor.b, std::max(environment.nebula, 0.0f)};
     bgfx::setUniform(m_uNebula, nebula);
+    // The fog the ground fades into, as the meshes draw it (not turned down as the sky is): a storm's rain haze is this.
+    const float fog[4] = {environment.fogColor.r, environment.fogColor.g, environment.fogColor.b, 0.0f};
+    bgfx::setUniform(m_uFog, fog);
+    // The torch (the first light, when it is a cone), from the eye, for its beam in the hazy air (as SceneRenderer packs it).
+    {
+        float torch[16] = {};
+        const PunctualLight& light = environment.lights[0];
+        if (light.intensity > 0.0f && light.range > 0.0f && light.outerAngle < 89.0f && environment.airHaze > 0.001f)
+        {
+            const glm::vec3 eye = glm::vec3(glm::inverse(viewMatrix)[3]);
+            const glm::vec3 from = light.position - eye;
+            const glm::vec3 aim = glm::length(light.direction) > 1e-4f ? glm::normalize(light.direction) : glm::vec3(0.0f, -1.0f, 0.0f);
+            const float inner = std::cos(glm::radians(std::clamp(light.innerAngle, 0.0f, 180.0f)));
+            const float outer = std::cos(glm::radians(std::clamp(std::max(light.outerAngle, light.innerAngle + 0.5f), 0.0f, 180.0f)));
+            const float values[16] = {from.x, from.y, from.z, light.range,
+                                      light.color.r * light.intensity, light.color.g * light.intensity, light.color.b * light.intensity,
+                                      std::clamp(environment.airHaze, 0.0f, 1.5f),
+                                      aim.x, aim.y, aim.z, inner,
+                                      outer, 1.0f, 0.0f, 0.0f};
+            std::copy(values, values + 16, torch);
+        }
+        bgfx::setUniform(m_uTorch, torch, 4);
+    }
 
     bgfx::setVertexBuffer(0, m_triangle);
     // Behind a picture already drawn: at the far end of its depth, and only where it is still clear -- so the sky's stars and

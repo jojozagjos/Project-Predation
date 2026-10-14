@@ -331,7 +331,7 @@ void PredationGame::ApplyMissionEvent(const WorldEventMessage& event)
         }
         if (!was.Launching() && m_mission.Launching())
         {
-            PlayNamed("World/shuttle_alarm", ConsoleOf(m_facility.Shuttle()), 0.9f);
+            PlayNamed("World/shuttle_alarm", ConsoleOf(m_facility.Shuttle()), 0.25f); // (a square wave: loud for its peak)
         }
     }
     if (was.stage != Stage::Over && m_mission.stage == Stage::Over)
@@ -441,7 +441,7 @@ bool PredationGame::PerformMissionInteraction(InteractionKind kind, int index, u
         }
         if (m_mission.Launching())
         {
-            PlayNamed("World/shuttle_alarm", ConsoleOf(m_facility.Shuttle()), 0.9f);
+            PlayNamed("World/shuttle_alarm", ConsoleOf(m_facility.Shuttle()), 0.25f); // (a square wave: loud for its peak)
         }
         PRED_LOG_INFO(Gameplay, "Player {} {} the launch", player, m_mission.Launching() ? "started" : "held");
         break;

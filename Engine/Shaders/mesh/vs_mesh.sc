@@ -54,7 +54,7 @@ void main()
 	{
 		vec3 eye = mul(u_invView, vec4(0.0, 0.0, 0.0, 1.0)).xyz;
 		float far = length(worldPosition.xz - eye.xz);
-		float share = clamp(1.0 - (far - 8.0) / 40.0, 0.12, 1.0) * (1.0 - smoothstep(29.0, 35.0, far));
+		float share = clamp(256.0 / max(far * far, 1.0), 0.0, 1.0) * (1.0 - smoothstep(95.0, 108.0, far));
 		float grown = clamp((share - a_color0.r) / 0.08, 0.0, 1.0);
 		worldPosition.y -= (a_color0.g * 1.5 + 0.05) * (1.0 - grown);
 		// Half buried where snow lies (as deep as a short tuft at the most).

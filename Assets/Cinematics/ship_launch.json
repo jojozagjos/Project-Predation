@@ -1301,7 +1301,7 @@
     {
       "t": 0.2,
       "sound": "World/shuttle_alarm",
-      "volume": 0.8,
+      "volume": 0.25,
       "at": "hangar",
       "music": false
     },

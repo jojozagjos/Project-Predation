@@ -52,6 +52,8 @@ public:
         std::string biome = "frozen";
     };
     void SetLook(const Look& look) { m_look = look; }
+    // How much of its weather is coming down just now (Look::weatherAmount): its spells come and go.
+    void SetWeatherAmount(float amount) { m_look.weatherAmount = amount; }
     const Look& GetLook() const { return m_look; }
 
     void Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWorld& physics, LevelLights* lights);

@@ -237,6 +237,7 @@ private:
     bgfx::UniformHandle m_uWearParams = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uWind = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uSurfaceWeather = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uShelter = BGFX_INVALID_HANDLE;
     const TextureLibrary* m_textures = nullptr;
 
     Stats m_stats;

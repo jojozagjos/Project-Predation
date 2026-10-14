@@ -27,6 +27,9 @@ uniform vec4 u_skyClouds;    // x = how much of the sky the clouds cover, y = ho
 uniform vec4 u_skyCloudWind; // xy = how far they have drifted, kilometres (Environment::cloudDrift)
 uniform vec4 u_skyBolt;      // x = which way the bolt is (yaw), y = the sine of its top's elevation, z = its seed, w = how bright
 uniform vec4 u_skyNebula;    // rgb = the system's nebula's colour, w = how much of it (its seed: u_skyRings.w)
+uniform vec4 u_skyTorch[4];   // the torch, as fs_mesh has it (u_lights[0..3]), its position from the eye; [1].w = how hazy the air is (0: no beam)
+uniform vec4 u_skyFog;        // rgb = the fog the ground fades into, as the meshes have it
+uniform vec4 u_skyOwnRings;   // xyz = the pole of the world underfoot, over the place; w = 1 when it has rings to see (their size: u_skyRings.xy)
 
 #include "planet/planet_surface.sh"
 
@@ -325,6 +328,37 @@ void main()
 			}
 		}
 	}
+	// The rings of the world underfoot (u_skyOwnRings: its pole over the place), from its ground: a band across the sky from
+	// horizon to horizon -- low and edge on near the equator, arching high nearer the poles -- lit by the sun, cut across by the
+	// world's own shadow at night, the stars dimmed behind it, and fainter through the haze of a thick day sky.
+	if (u_skyOwnRings.w > 0.5 && u_skyRings.y > 0.0 && up > 0.0)
+	{
+		vec3 pole = normalize(u_skyOwnRings.xyz);
+		// The world's middle, a radius below (in its radii).
+		vec3 centre = vec3(0.0, -1.0, 0.0);
+		float facing = dot(ray, pole);
+		float t = abs(facing) > 0.00001 ? dot(centre, pole) / facing : -1.0;
+		if (t > 0.0)
+		{
+			vec3 at = ray * t;
+			float r = length(at - centre);
+			if (r > u_skyRings.x && r < u_skyRings.y)
+			{
+				float across = (r - u_skyRings.x) / max(u_skyRings.y - u_skyRings.x, 0.001);
+				float bands = SkyFbm(vec3(across * 38.0, u_planetE.w, 0.5));
+				float gaps = smoothstep(0.2, 0.3, abs(fract(across * 3.1 + 0.37) - 0.5) * 2.0);
+				float alpha = smoothstep(0.0, 0.05, across) * smoothstep(1.0, 0.94, across) * (0.3 + 0.65 * bands) * mix(0.35, 1.0, gaps);
+				vec3 sunWay = normalize(u_skySun.xyz);
+				vec3 q = centre - at;
+				float sunAlong = dot(q, sunWay);
+				float shadowed = sunAlong > 0.0 && length(q - sunWay * sunAlong) < 1.0 ? 1.0 : 0.0;
+				float light = (0.35 + 0.65 * abs(dot(pole, sunWay))) * (1.0 - shadowed * 0.92);
+				vec3 ringColour = u_skyRingColor.rgb * (0.75 + 0.5 * bands) * light * u_skySunColor.w * 1.6;
+				color += ringColour * alpha * (1.0 - 0.8 * haze) * smoothstep(0.0, 0.04, up);
+				starsShow *= 1.0 - alpha;
+			}
+		}
+	}
 	// Seen through air the stars dim and go low down, where there is the most of it to look through.
 	float through = mix(1.0, smoothstep(-0.02, 0.35, up), clamp(u_skyAir.w * 4.0, 0.0, 1.0));
 	color += SkyStars(ray) * u_skySpace.x * starsShow * max(u_skySpace.w, 0.0) * through * (1.0 - haze) * (1.0 - smoothstep(0.7, 0.95, u_skyClouds.x));
@@ -368,6 +402,28 @@ void main()
 		// Lightning in them, lighting them from inside: the whole layer, the thickest and the nearest the strike most.
 		cloud += vec3(0.8, 0.85, 1.0) * u_skyClouds.w * flashHere * (0.35 + 1.4 * depth) * 1.6;
 		cloud = mix(cloud, u_skyHorizon.rgb + vec3(0.8, 0.85, 1.0) * u_skyClouds.w * flashHere * 0.6, smoothstep(0.25, 0.0, up) * 0.75);
+		// A storm's sky is one low deck, not clouds with sky between them: closed over, its underside soft and mottled in great
+		// dark lumps, ragged scud driven under it lower down and faster, and towards the horizon lost in the grey of the rain
+		// -- no bright gaps, no streaks.
+		float storm = smoothstep(0.5, 0.85, heavy) * smoothstep(0.8, 0.95, cover);
+		if (storm > 0.001)
+		{
+			// The grey the rain fills the air with: the fog the ground fades into at a distance (the horizon is drawn from it,
+			// u_skyFog), so the far hills are lost into it rather than standing out against it.
+			vec3 fogLike = u_skyFog.rgb;
+			vec3 grey = mix(vec3_splat(dot(fogLike, vec3(0.2126, 0.7152, 0.0722))), fogLike, 0.5);
+			float lumps = SkyFbm(vec3(at * 0.12, 1.9) + warp * 0.4);
+			vec3 deck = grey * mix(1.05, 0.7, lumps);
+			vec2 low = ray.xz / max(up, 0.015) * base * 0.45 - u_skyCloudWind.xy * 1.8;
+			float scud = smoothstep(0.55, 0.78, SkyFbm(vec3(low * 0.9, 6.1))) * smoothstep(0.04, 0.2, up);
+			deck = mix(deck, grey * 0.45, scud * 0.7);
+			vec3 flash = vec3(0.8, 0.85, 1.0) * u_skyClouds.w * flashHere;
+			deck += flash * (0.6 + 0.8 * lumps) * 1.6;
+			vec3 rain = fogLike + flash * 0.6;
+			deck = mix(deck, rain, smoothstep(0.45, 0.0, up));
+			cloud = mix(cloud, deck, storm);
+			density = mix(density, 1.0, storm);
+		}
 		float alpha = density * smoothstep(-0.02, 0.06, up) * (1.0 - inSpace) * (1.0 - 0.3 * haze);
 		color = mix(color, cloud, alpha);
 	}
@@ -392,6 +448,25 @@ void main()
 		}
 		color += vec3(0.85, 0.9, 1.0) * bolt * u_skyBolt.w * smoothstep(u_skyBolt.y, u_skyBolt.y * 0.85, up) * (1.0 - 0.6 * haze) *
 		         (1.0 - inSpace);
+	}
+
+	// The torch's beam in the air it shines through, as fs_mesh draws it in front of everything else: here too, or it stops
+	// where the ground meets the sky and looks like a light shone on whatever is furthest off.
+	if (u_skyTorch[1].w > 0.001)
+	{
+		float reach = min(u_skyTorch[0].w, 30.0);
+		vec3 aim = normalize(u_skyTorch[2].xyz);
+		float lit = 0.0;
+		for (int i = 0; i < 16; ++i)
+		{
+			float t = 0.5 + (float(i) + 0.5) / 16.0 * max(reach - 0.5, 0.0);
+			vec3 fromLight = ray * t - u_skyTorch[0].xyz;
+			float d = length(fromLight);
+			float cone = clamp((dot(fromLight / max(d, 1e-3), aim) - u_skyTorch[3].x) / max(u_skyTorch[2].w - u_skyTorch[3].x, 1e-4), 0.0, 1.0);
+			float window = clamp(1.0 - pow(d / max(u_skyTorch[0].w, 1e-3), 4.0), 0.0, 1.0);
+			lit += cone * cone * window / max(d * d, 2.5);
+		}
+		color += u_skyTorch[1].rgb * lit * (max(reach - 0.5, 0.0) / 16.0) * u_skyTorch[1].w * 0.006 * 0.5;
 	}
 
 	// For post-processing to finish, as linear light.

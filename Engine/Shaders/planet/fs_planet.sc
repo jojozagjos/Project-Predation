@@ -139,17 +139,27 @@ void main()
 	// A little light on the night side, so a world seen from behind is still a world and not a hole.
 	vec3 colour = albedo * (lit * light + vec3_splat(0.05));
 	// A stormy world's storms flickering with lightning (thunderstorms and ash storms: their storms are over 0.6, a dust
-	// storm's or a blizzard's under it), seen from space on its night side: here and there in the thick of
-	// the cloud a soft flash, gone a moment later, somewhere else the next.
+	// storm's or a blizzard's under it), seen from space on its night side: a few storms at a time, each now and then lit up
+	// from inside for a moment -- a soft glow some hundreds of kilometres across, flickering, broken up by the cloud it is in
+	// -- and somewhere else the next time.
 	float storms = clamp(-u_planetD.w, 0.0, 1.0);
 	if (storms > 0.6 && surface.w > 0.4 && u_planetE.w > 0.015)
 	{
-		vec3 cells = n * 22.0;
-		vec3 cell = floor(cells);
-		float tick = floor(u_planetMode.z * 300.0);
-		float strikes = step(1.0 - 0.012 * storms, PlanetHash(cell + vec3(tick * 0.13, tick * 0.71, tick * 0.37)));
-		float soft = exp(-length(fract(cells) - vec3_splat(0.5)) * 5.0);
-		colour += vec3(0.7, 0.75, 1.0) * strikes * soft * smoothstep(0.4, 0.8, surface.w) * (1.0 - lit) * 1.6;
+		float seconds = u_planetMode.z * 50.0; // (the cloud drift is the clock times 0.02)
+		float flash = 0.0;
+		for (int k = 0; k < 6; ++k)
+		{
+			float fk = float(k);
+			float t = seconds * 0.7 + fk * 0.618;
+			float slot = floor(t);
+			float phase = fract(t);
+			vec3 at = normalize(vec3(PlanetHash(vec3(slot, fk, 1.3)), PlanetHash(vec3(slot, fk, 7.9)), PlanetHash(vec3(slot, fk, 4.1))) * 2.0 - 1.0);
+			float on = step(PlanetHash(vec3(slot, fk, 2.7)), 0.55 * storms);
+			float pulse = exp(-phase * 9.0) * (0.65 + 0.35 * sin(phase * 90.0 + fk));
+			flash += on * pulse * exp(-(1.0 - dot(n, at)) * 900.0);
+		}
+		float cloudy = smoothstep(0.35, 0.75, PlanetFbm(n * 40.0 + vec3_splat(u_planetMode.y)) + surface.w * 0.3);
+		colour += vec3(0.7, 0.75, 1.0) * flash * cloudy * smoothstep(0.4, 0.8, surface.w) * (1.0 - lit) * 1.2;
 	}
 	// The sun off open water.
 	float glint = pow(max(dot(reflect(-L, N), V), 0.0), 60.0) * sea * (1.0 - surface.w) * step(0.0, facing);

@@ -3564,6 +3564,8 @@ void PredationGame::ChangeFacility(uint16_t seed)
         seed = 1;
     }
     m_facility.SetLook(SiteLookHere());
+    m_climateAmount = m_facility.GetLook().weatherAmount;
+    m_weatherHeld = false;
     m_facility.Build(seed, m_scene, m_app->GetMeshes(), m_app->GetPhysics(), &m_levelLights);
     // Its doors, lockers, crates and items went with it; everything that can be used up comes back with
     // the new one, in the same order on every machine. What people are carrying they keep.
@@ -9905,6 +9907,11 @@ void PredationGame::OnUpdate(double dt, double alpha)
     m_particles.Update(m_scene, deltaSeconds);
     // The site's weather, blowing with its wind -- not indoors, and not in the shuttle's cabin.
     {
+        // How much of its weather is coming down just now: its spells come and go (Weather::SpellAt), by the campaign's clock.
+        if (m_facility.Built() && !m_weatherHeld)
+        {
+            m_facility.SetWeatherAmount(std::clamp(m_climateAmount * Weather::SpellAt(m_facility.Seed(), m_campaign.clock), 0.0f, 1.0f));
+        }
         const SiteMap::Look& look = m_facility.GetLook();
         const bool falling = m_screen == Screen::Playing && m_facility.Built() && m_facility.Contains(m_renderEye);
         const uint32_t seed = m_facility.Seed();
@@ -9937,28 +9944,63 @@ void PredationGame::OnUpdate(double dt, double alpha)
             m_scene.GetEnvironment().cloudDrift = glm::vec2(std::cos(windAngle), std::sin(windAngle)) * (aloft * since * 0.001f);
         }
         // And what the weather leaves on things: wet in rain, getting so over a minute and drying over several; snow lying
-        // as it falls, and going slower still -- and on a frozen world, old snow on everything that faces up whatever the
-        // sky is doing. A site just arrived at, or its weather just changed by hand, is as wet or snowed on as it would be.
+        // as it falls, over a few minutes, and going slower still -- and on a frozen world, old snow on everything that faces
+        // up whatever the sky is doing. A site just arrived at is as wet or snowed on as the last hour's weather has left it.
         {
             const Weather::Kind kind = Weather::KindOf(look.weather);
             const bool built = m_facility.Built();
-            const float wetFor = built && kind == Weather::Kind::Rain ? std::clamp(look.weatherAmount * 1.3f, 0.0f, 1.0f) : 0.0f;
-            const float snowFor = built ? std::max(kind == Weather::Kind::Snow ? look.weatherAmount : 0.0f, look.biome == "frozen" ? 0.55f : 0.0f) : 0.0f;
+            const auto wetFor = [&](float amount) { return built && kind == Weather::Kind::Rain ? std::clamp(amount * 1.3f, 0.0f, 1.0f) : 0.0f; };
+            const auto snowFor = [&](float amount)
+            { return built ? std::max(kind == Weather::Kind::Snow ? std::min(amount, 1.0f) : 0.0f, look.biome == "frozen" ? 0.55f : 0.0f) : 0.0f; };
+            const auto towards = [](float& value, float to, float up, float down, float seconds)
+            {
+                const float step = (to > value ? up : down) * seconds;
+                value = to > value ? std::min(value + step, to) : std::max(value - step, to);
+            };
+            constexpr float kWetting = 1.0f / 60.0f;
+            constexpr float kDrying = 1.0f / 400.0f;
+            constexpr float kSnowing = 1.0f / 300.0f;
+            constexpr float kMelting = 1.0f / 900.0f;
             if (seed != m_surfaceWeatherSite)
             {
                 m_surfaceWeatherSite = seed;
-                m_surfaceWet = wetFor;
-                m_surfaceSnow = snowFor;
+                m_surfaceWet = 0.0f;
+                m_surfaceSnow = snowFor(0.0f);
+                for (double back = 3600.0; back > 0.0; back -= 20.0)
+                {
+                    const float then = m_weatherHeld ? look.weatherAmount : m_climateAmount * Weather::SpellAt(seed, m_campaign.clock - back);
+                    towards(m_surfaceWet, wetFor(then), kWetting, kDrying, 20.0f);
+                    towards(m_surfaceSnow, snowFor(then), kSnowing, kMelting, 20.0f);
+                }
+                // The shuttle comes down into it now: the ground under it kept as it is, and itself dry and clean.
+                m_shuttleOut = 0.0f;
+                m_shelterWet = m_surfaceWet;
+                m_shelterSnow = m_surfaceSnow;
             }
-            const auto towards = [&](float& value, float to, float up, float down)
+            towards(m_surfaceWet, wetFor(look.weatherAmount), kWetting, kDrying, deltaSeconds);
+            towards(m_surfaceSnow, snowFor(look.weatherAmount), kSnowing, kMelting, deltaSeconds);
+            // Under the shuttle it dries as it does anywhere, and the snow there goes as it goes everywhere else.
+            towards(m_shelterWet, 0.0f, 0.0f, kDrying, deltaSeconds);
+            m_shelterSnow = std::min(m_shelterSnow, m_surfaceSnow);
+            m_shuttleOut += deltaSeconds;
+            Environment& surface = m_scene.GetEnvironment();
+            surface.wetness = falling ? m_surfaceWet : 0.0f;
+            surface.snowCover = falling ? m_surfaceSnow : 0.0f;
+            VehicleProp& shuttle = m_facility.Shuttle();
+            if (falling && shuttle.Built())
             {
-                const float step = (to > value ? up : down) * deltaSeconds;
-                value = to > value ? std::min(value + step, to) : std::max(value - step, to);
-            };
-            towards(m_surfaceWet, wetFor, 1.0f / 60.0f, 1.0f / 400.0f);
-            towards(m_surfaceSnow, snowFor, 1.0f / 120.0f, 1.0f / 900.0f);
-            m_scene.GetEnvironment().wetness = falling ? m_surfaceWet : 0.0f;
-            m_scene.GetEnvironment().snowCover = falling ? m_surfaceSnow : 0.0f;
+                // Wet soon and snowed on slowly as it has been out longer (short of the ground's 1: it is not the ground).
+                shuttle.SetWeathering(m_scene, std::min(m_shuttleOut * kSnowing, 0.99f));
+                const glm::vec3 middle = shuttle.Middle();
+                surface.shelter = {middle.x, middle.z, shuttle.Reach()};
+                surface.shelterWet = std::min(m_shelterWet, 1.0f);
+                surface.shelterSnow = m_shelterSnow;
+            }
+            else
+            {
+                surface.shelter = glm::vec3(0.0f);
+                surface.shelterWet = surface.shelterSnow = 0.0f;
+            }
             UpdateLightning(deltaSeconds, falling ? (kind == Weather::Kind::Rain   ? glm::smoothstep(0.75f, 0.95f, look.weatherAmount)
                                                      : kind == Weather::Kind::Ash ? 0.6f * glm::smoothstep(0.85f, 1.0f, look.weatherAmount)
                                                                                   : 0.0f)
@@ -10316,6 +10358,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
         m_ship.ShowFor(m_scene, m_renderEye);
         environment.stars = 0.0f;
         environment.planetRadius = 0.0f;
+        environment.ownRings = glm::vec4(0.0f);
         environment.planetAirWarm = 0.0f;
         // The system's own nebula over its stars, from its number: one of a few kinds -- the red of glowing hydrogen, the
         // blue of dust lit by stars, a green-teal, a dusky violet -- and in some systems none worth seeing.
@@ -10480,8 +10523,20 @@ void PredationGame::OnUpdate(double dt, double alpha)
                     dark = 0.3f;
                 }
                 const float air = glm::smoothstep(0.015f, 0.3f, siteBody->air);
-                environment.cloudCover = kind != Weather::Kind::None && look.weatherAmount <= 0.0f ? fair * air : cover * air;
-                environment.cloudDark = dark;
+                // Gathering as a spell of it comes on and breaking up as it eases: between the fair-weather sky and its own.
+                const float gathered = kind == Weather::Kind::None ? 1.0f : glm::smoothstep(0.0f, 0.3f, amount);
+                const float usual = siteBody->weather == "fog" ? 0.35f : 0.0f;
+                environment.cloudCover = glm::mix(fair, cover, gathered) * air;
+                environment.cloudDark = glm::mix(usual, dark, gathered);
+                // And under a heavy, dark sky the whole of the day is dimmer and greyer -- the light from above, the sun through
+                // it, the air and the haze over the horizon -- not a white sky over a storm.
+                const float gloom = environment.cloudCover * environment.cloudDark;
+                environment.ambientSky *= glm::mix(1.0f, 0.42f, gloom);
+                environment.ambientGround *= glm::mix(1.0f, 0.5f, gloom);
+                environment.sunIntensity *= glm::mix(1.0f, 0.2f, gloom * environment.cloudCover);
+                const float grey = glm::dot(environment.fogColor, glm::vec3(0.2126f, 0.7152f, 0.0722f));
+                environment.fogColor = glm::mix(environment.fogColor, glm::vec3(grey), 0.6f * gloom) * glm::mix(1.0f, 0.45f, gloom);
+                environment.skyHaze = std::max(environment.skyHaze, 0.7f * gloom);
             }
             // And lightning: the world under the open sky lit by it, cold and white, for the moment it lasts -- what is under a
             // roof only through its doors and windows (the ambient is the sky's, which a roof keeps out) -- and the sky with it.
@@ -10647,7 +10702,16 @@ void PredationGame::OnUpdate(double dt, double alpha)
             // Snapped into place the first frame it comes on, then eased. Easing from wherever the
             // beam was last pointing means switching the torch on after a turn sweeps it across the
             // room to catch up, which looks like a fault rather than like weight.
-            const glm::vec3 wanted = torchForward;
+            // Aimed in at what is in the middle of the view, from where it is held to the side: so the spot is round the
+            // crosshair on whatever wall it is looking at, not always a hand's width off it.
+            const glm::vec3 lens = torchEye + torchForward * cv_torchReach.Get() + right * 0.10f - glm::vec3(0.0f, 0.10f, 0.0f);
+            float ahead = cv_torchRange.Get();
+            if (const RayHit hit = m_app->GetPhysics().RayCastStatic(torchEye, torchForward, ahead))
+            {
+                ahead = std::max(hit.distance, 1.5f);
+            }
+            const glm::vec3 toward = torchEye + torchForward * ahead - lens;
+            const glm::vec3 wanted = glm::length(toward) > 1e-3f ? glm::normalize(toward) : torchForward;
             if (!m_torchAimed)
             {
                 m_torchAim = wanted;
@@ -10666,8 +10730,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
             // to white however the falloff is softened. Real weapon lights are clamped near the
             // muzzle for exactly this reason: put the source past the thing you are holding and the
             // thing you are holding stops being the brightest object in the room.
-            torch.position = torchEye + torchForward * cv_torchReach.Get() + right * 0.10f -
-                             glm::vec3(0.0f, 0.10f, 0.0f);
+            torch.position = lens;
             torch.direction = m_torchAim;
             torch.color = glm::vec3(1.0f, 0.97f, 0.88f);
             torch.intensity = cv_torchIntensity.Get() * TorchStrength();

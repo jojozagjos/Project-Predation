@@ -154,7 +154,7 @@ float Acceleration(int tier)
 {
     // A first drive makes an astronomical unit in about a minute and a half; each tier pushes two and a half times as
     // hard, so the fifth crosses a whole system in under a minute.
-    return 4.0e-4f * std::pow(2.5f, static_cast<float>(std::clamp(tier, 0, 12)));
+    return 4.0e-4f * std::pow(2.5f, static_cast<float>(std::clamp(tier, 0, kFastestTier)));
 }
 
 float Seconds(float distance, int tier)
@@ -163,13 +163,13 @@ float Seconds(float distance, int tier)
     // seven settling in, and the turn before it all.
     const float gentle = std::sqrt(Gentleness(tier));
     return 2.0f * std::sqrt(std::max(distance, 0.0f) / Acceleration(tier)) + 11.0f / gentle +
-           (kAlignLeast + kAlignMore * 0.5f) / (1.0f + static_cast<float>(std::max(tier, 0)));
+           (kAlignLeast + kAlignMore * 0.5f) / (1.0f + static_cast<float>(std::clamp(tier, 0, kFastestTier)));
 }
 
 float Gentleness(int tier)
 {
     // A first drive leaves a world over about twenty seconds and settles into orbit over half a minute; a better one sooner.
-    return 0.04f * std::pow(2.5f, static_cast<float>(std::clamp(tier, 0, 12)));
+    return 0.04f * std::pow(2.5f, static_cast<float>(std::clamp(tier, 0, kFastestTier)));
 }
 
 float OrbitRadius(const Body& body)
@@ -229,7 +229,8 @@ void MoveOver(CampaignState& campaign, const StarSystem& system, int body, const
     travel.overFrom = from;
     travel.overAt = to;
     travel.overSince = campaign.clock;
-    travel.overSeconds = (6.0f + 34.0f * angle / 3.14159265f) / (1.0f + 0.5f * static_cast<float>(std::max(tier, 0)));
+    // (Never so fast the world is seen to spin under it: a quarter of the way round in a few seconds at the quickest.)
+    travel.overSeconds = (6.0f + 34.0f * angle / 3.14159265f) / (1.0f + 0.15f * static_cast<float>(std::clamp(tier, 0, kFastestTier)));
 }
 
 float SecondsToOver(const CampaignState& campaign)
@@ -296,7 +297,7 @@ float AlignSeconds(const CampaignState& campaign, const StarSystem& system)
     OrbitFrame(campaign, system, travel.from, travel.setOut, out, along);
     const float angle = std::acos(std::clamp(glm::dot(out, Unit(travel.departWay, out)), -1.0f, 1.0f));
     // A better drive turns it sooner, as it does everything.
-    return (kAlignLeast + kAlignMore * angle / 3.14159265f) / (1.0f + static_cast<float>(std::max(campaign.Upgrade("travel"), 0)));
+    return (kAlignLeast + kAlignMore * angle / 3.14159265f) / (1.0f + static_cast<float>(std::clamp(campaign.Upgrade("travel"), 0, kFastestTier)));
 }
 
 float AlignDone(const CampaignState& campaign, const StarSystem& system)

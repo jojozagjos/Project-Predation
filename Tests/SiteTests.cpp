@@ -7,6 +7,7 @@
 #include "Game/World/SitePlan.h"
 #include "Game/World/SiteTerrain.h"
 #include "Game/World/Surfaces.h"
+#include "Game/World/Weather.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
@@ -495,4 +496,30 @@ TEST_CASE("What a step sounds like comes from what the ground is laid with", "[s
     CHECK(step("", true) == "metal");
     CHECK(step("", false) == "concrete");
     CHECK(Surfaces::StepName(0) == nullptr);
+}
+
+TEST_CASE("A site's weather comes and goes in spells, smoothly, the same for everyone", "[site][weather]")
+{
+    for (const uint32_t seed : {1u, 77u, 4096u, 123456u})
+    {
+        float least = 10.0f;
+        float most = 0.0f;
+        float last = Weather::SpellAt(seed, 0.0);
+        for (double clock = 1.0; clock < 4.0 * 3600.0; clock += 1.0)
+        {
+            const float now = Weather::SpellAt(seed, clock);
+            INFO("seed " << seed << " at " << clock);
+            // Never switched on or off: a second's change is small.
+            CHECK(std::abs(now - last) < 0.02f);
+            // The same moment, the same weather (every player's clock is the campaign's).
+            CHECK(now == Weather::SpellAt(seed, clock));
+            least = std::min(least, now);
+            most = std::max(most, now);
+            last = now;
+        }
+        // Over a few hours: a lull with nothing coming down, and a spell past the usual.
+        CHECK(least < 0.02f);
+        CHECK(most > 1.0f);
+        CHECK(most <= 1.31f);
+    }
 }

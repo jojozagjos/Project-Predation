@@ -67,6 +67,7 @@
 #include <memory>
 #include <optional>
 #include <random>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -1245,6 +1246,15 @@ private:
     float m_surfaceWet = 0.0f;
     float m_surfaceSnow = 0.0f;
     uint32_t m_surfaceWeatherSite = 0;
+    // The site's weather as its world has it (SiteLookHere): how much comes down, usually -- the spells of it come and go round
+    // that (Weather::SpellAt) -- or held as it is while site_weather has set it by hand.
+    float m_climateAmount = 0.0f;
+    bool m_weatherHeld = false;
+    // The shuttle out in it: how long since it came down (Material::weathering), and how wet and snowed on the ground under
+    // it was then (Environment::shelterWet, shelterSnow).
+    float m_shuttleOut = 0.0f;
+    float m_shelterWet = 0.0f;
+    float m_shelterSnow = 0.0f;
     // Lightning (UpdateLightning): how long since the last strike (below nought, none going), how
     // far off it is and its shape's seed; and what it is this frame.
     float m_lightningIn = 1.0f;  // a strike asked for when it reaches nought (lightning_now)
@@ -1267,9 +1277,8 @@ private:
     uint16_t m_mapHeight = 0;
     float m_travelSendIn = 0.0f;
     float m_sensorIn = 0.0f;
-    // The survey from orbit: how long until it next looks for somewhere new, and how many places it has found this stay.
+    // The survey from orbit: how long until it next looks for somewhere new.
     float m_surveyIn = 20.0f;
-    int m_surveyFound = 0;
     uint32_t m_appliedTravels = 0;
     // The map everybody shares (PredationGameMapView.cpp): as it was last sent or applied, so a move of this player's own can
     // be told from one applied from somebody else's; this player's count of moves and when the next may go; the newest move
@@ -1292,6 +1301,8 @@ private:
     bool m_travelSeenUnderway = false;
     int m_travelSeenTarget = -1;
     size_t m_regionsSeen = 0;
+    // The places found so far, so the one the scan has just found can be named (ShowCampaignNotice).
+    std::set<std::string> m_scanKnown;
 
     // --- Multiplayer ---------------------------------------------------------------------------
     void RegisterNetCommands();
@@ -2057,7 +2068,8 @@ private:
     // nest.
     float m_zoneProbeAt = 0.0f;
     float m_zoneIndoor = 1.0f;
-    // The ears out in space, outside the ship (a cinematic's camera): nothing there to carry a sound to them.
+    // The ears out in space, outside the ship (a cinematic's camera): no wind and no building noises out there (a cinematic's
+    // own sounds still play: the engines and the ramps are what it is about).
     bool m_earInVacuum = false;
     float m_zoneTight = 0.0f;
     float m_zoneNest = 0.0f;

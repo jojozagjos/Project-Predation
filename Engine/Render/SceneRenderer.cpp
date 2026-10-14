@@ -132,6 +132,7 @@ bool SceneRenderer::Init(ShaderLibrary& shaders)
     m_uWearParams = bgfx::createUniform("u_wearParams", bgfx::UniformType::Vec4);
     m_uWind = bgfx::createUniform("u_wind", bgfx::UniformType::Vec4);
     m_uSurfaceWeather = bgfx::createUniform("u_surfaceWeather", bgfx::UniformType::Vec4);
+    m_uShelter = bgfx::createUniform("u_shelter", bgfx::UniformType::Vec4);
     m_sSunShadow = bgfx::createUniform("s_sunShadow", bgfx::UniformType::Sampler);
     m_uSunNearShadowMtx = bgfx::createUniform("u_sunNearShadowMtx", bgfx::UniformType::Mat4);
     m_uSunNearShadowAxis = bgfx::createUniform("u_sunNearShadowAxis", bgfx::UniformType::Vec4);
@@ -236,7 +237,7 @@ void SceneRenderer::Shutdown()
         m_uSpotShadowMtx,  m_uSpotShadowAxis,  m_uSpotShadowParams, m_sSpotShadow,
         m_uShadowTexelWorld, m_uSunNearShadowMtx, m_uSunNearShadowAxis, m_uSunNearShadowParams,
         m_sSunNearShadow, m_sNormalMap, m_sRoughnessMap, m_uSurfaceParams,
-        m_sSteepColor, m_sSteepNormal, m_sSteepRoughness, m_uSteepParams, m_uWearParams, m_uWind, m_uSurfaceWeather, m_uSunFarShadowMtx, m_uSunFarShadowAxis,
+        m_sSteepColor, m_sSteepNormal, m_sSteepRoughness, m_uSteepParams, m_uWearParams, m_uWind, m_uSurfaceWeather, m_uShelter, m_uSunFarShadowMtx, m_uSunFarShadowAxis,
         m_uSunFarShadowParams, m_uSunFarShadowTexel, m_sSunFarShadow};
     for (const bgfx::UniformHandle handle : uniforms)
     {
@@ -263,7 +264,7 @@ void SceneRenderer::Shutdown()
     m_uSunNearShadowMtx = m_uSunNearShadowAxis = m_uSunNearShadowParams = m_sSunNearShadow = BGFX_INVALID_HANDLE;
     m_uSunFarShadowMtx = m_uSunFarShadowAxis = m_uSunFarShadowParams = m_uSunFarShadowTexel = m_sSunFarShadow = BGFX_INVALID_HANDLE;
     m_sNormalMap = m_sRoughnessMap = m_uSurfaceParams = BGFX_INVALID_HANDLE;
-    m_sSteepColor = m_sSteepNormal = m_sSteepRoughness = m_uSteepParams = m_uWearParams = m_uWind = m_uSurfaceWeather = BGFX_INVALID_HANDLE;
+    m_sSteepColor = m_sSteepNormal = m_sSteepRoughness = m_uSteepParams = m_uWearParams = m_uWind = m_uSurfaceWeather = m_uShelter = BGFX_INVALID_HANDLE;
 
     if (bgfx::isValid(m_reflectionTarget))
     {
@@ -317,7 +318,10 @@ void SceneRenderer::SetEnvironmentUniforms(const Environment& environment,
     bgfx::setUniform(m_uCameraPosition, cameraPos);
     const float wind[4] = {environment.wind.x, environment.wind.y, environment.windClock, 0.0f};
     bgfx::setUniform(m_uWind, wind);
-    const float surfaceWeather[4] = {std::clamp(environment.wetness, 0.0f, 1.0f), std::clamp(environment.snowCover, 0.0f, 1.0f), 0.0f, 0.0f};
+    const float surfaceWeather[4] = {std::clamp(environment.wetness, 0.0f, 1.0f), std::clamp(environment.snowCover, 0.0f, 1.0f),
+                                     std::clamp(environment.shelterWet, 0.0f, 1.0f), std::clamp(environment.shelterSnow, 0.0f, 1.0f)};
+    const float shelter[4] = {environment.shelter.x, environment.shelter.y, environment.shelter.z, 0.0f};
+    bgfx::setUniform(m_uShelter, shelter);
     bgfx::setUniform(m_uSurfaceWeather, surfaceWeather);
 
     const float grade[4] = {environment.exposure, environment.contrast, m_shadowSettings.indoorLight,
@@ -421,7 +425,7 @@ uint64_t SceneRenderer::DrawState() const
 void SceneRenderer::SubmitMesh(bgfx::ViewId view, const Mesh& mesh, const Material& material,
                                const glm::mat4& model, uint64_t state)
 {
-    const float baseColor[4] = {material.baseColor.r, material.baseColor.g, material.baseColor.b, material.weathers ? 1.0f : 0.0f};
+    const float baseColor[4] = {material.baseColor.r, material.baseColor.g, material.baseColor.b, std::clamp(material.weathering, 0.0f, 1.0f)};
     const float materialParams[4] = {material.metallic, material.roughness, material.reflectivity,
                                      material.cutout ? (material.cover ? 2.0f : 1.0f) : 0.0f};
     // A card is seen from both sides.

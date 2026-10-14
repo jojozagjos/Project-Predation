@@ -559,11 +559,12 @@ void SiteMap::UpdateCover(Scene& scene, MeshLibrary& meshes, const glm::vec3& ey
 
 MeshData SiteMap::CoverAround(const glm::vec3& eye, float detail) const
 {
-    // Square metres of ground in patches of two, out to some tens of metres. Each patch's tufts are where its own numbers put
+    // Square metres of ground in patches of two, out past a hundred metres (thinning as the square of the distance past
+    // sixteen, so the far edge where they grow in is out in the haze). Each patch's tufts are where its own numbers put
     // them, the same every time; how many of them show falls with how far off the patch is -- each coming up from nothing as
     // the eye nears, not all at once.
     constexpr float kPatch = 2.0f;
-    constexpr float kReach = 44.0f;
+    constexpr float kReach = 112.0f;
     const auto hash = [](int x, int z, uint32_t n)
     {
         uint32_t h = static_cast<uint32_t>(x) * 0x8DA6B343u ^ static_cast<uint32_t>(z) * 0xD8163841u ^ n * 0xCB1AB31Fu;
@@ -591,7 +592,7 @@ MeshData SiteMap::CoverAround(const glm::vec3& eye, float detail) const
             // How many of its tufts could be up by the time this is made again -- the eye some metres nearer by then -- as
             // the shader has them (vs_mesh, Material::cover): which of those are, and how far grown, it works out each frame.
             const float near = std::max(distance - 9.0f, 0.0f);
-            const float share = near > 35.0f ? 0.0f : std::clamp(1.0f - (near - 8.0f) / 40.0f, 0.12f, 1.0f);
+            const float share = near > 108.0f ? 0.0f : std::clamp(256.0f / std::max(near * near, 1.0f), 0.0f, 1.0f);
             const float all = density * kPatch * kPatch;
             for (int i = 0; i < most; ++i)
             {

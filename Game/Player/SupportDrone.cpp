@@ -222,7 +222,7 @@ void SupportDrone::Build(Scene& scene, MeshLibrary& meshes, const Transform& tra
     const MeshHandle lamp = meshes.Upload(Primitives::Box({0.026f, 0.018f, 0.006f}), "support_drone_lamp");
 
     Material painted = Material::Diffuse(glm::vec3(1.0f), 0.7f);
-    painted.weathers = false;
+    painted.weathering = 0.0f;
     m_chassisParts.push_back(scene.CreateMeshEntity("support_drone", transform, chassis, painted));
     m_chassisRest.push_back(glm::vec3(0.0f));
 
@@ -234,6 +234,17 @@ void SupportDrone::Build(Scene& scene, MeshLibrary& meshes, const Transform& tra
     m_headParts.push_back(scene.CreateMeshEntity("support_drone_lamp", transform, lamp,
                                                  Material::Diffuse({0.6f, 0.6f, 0.55f}, 0.3f)));
     m_headRest.push_back({0.045f, 0.06f, -0.091f});
+    // A sun shadow and not a sky one (MeshRenderer::blocksSky): it keeps no snow or rain off what is under it.
+    for (const std::vector<Entity>* parts : {&m_chassisParts, &m_headParts})
+    {
+        for (const Entity part : *parts)
+        {
+            if (MeshRenderer* renderer = scene.GetMeshRenderer(part))
+            {
+                renderer->blocksSky = false;
+            }
+        }
+    }
 
     m_active = true;
     m_position = transform.position;

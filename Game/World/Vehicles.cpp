@@ -736,7 +736,7 @@ namespace
 
 bool SameMaterial(const Material& a, const Material& b)
 {
-    return a.baseColor == b.baseColor && a.metallic == b.metallic && a.roughness == b.roughness && a.emissive == b.emissive && a.cutout == b.cutout && a.cover == b.cover && a.weathers == b.weathers &&
+    return a.baseColor == b.baseColor && a.metallic == b.metallic && a.roughness == b.roughness && a.emissive == b.emissive && a.cutout == b.cutout && a.cover == b.cover && a.weathering == b.weathering &&
            a.emissiveTextured == b.emissiveTextured && a.reflectivity == b.reflectivity && a.baseColorTexture == b.baseColorTexture &&
            a.normalTexture == b.normalTexture && a.roughnessTexture == b.roughnessTexture && a.surfaceScale == b.surfaceScale &&
            a.surfaceKeep == b.surfaceKeep && a.surfaceNatural == b.surfaceNatural && a.surfaceOnThing == b.surfaceOnThing && a.surfaceWear == b.surfaceWear &&
@@ -1053,6 +1053,17 @@ bool VehicleProp::Aboard(const glm::vec3& point) const
     const glm::vec3 lo = glm::min(low->position, high->position);
     const glm::vec3 hi = glm::max(low->position, high->position);
     return local.x > lo.x && local.x < hi.x && local.y > lo.y && local.y < hi.y && local.z > lo.z && local.z < hi.z;
+}
+
+void VehicleProp::SetWeathering(Scene& scene, float weathering)
+{
+    for (const Entity part : m_parts)
+    {
+        if (MeshRenderer* renderer = scene.GetMeshRenderer(part))
+        {
+            renderer->material.weathering = weathering;
+        }
+    }
 }
 
 bool VehicleProp::Within(const glm::vec3& point, float margin) const

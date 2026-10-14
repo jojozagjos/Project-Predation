@@ -444,6 +444,7 @@ void PredationGame::RegisterCampaignCommands()
                                 look.weather = args[1];
                                 look.weatherAmount = args.size() >= 3 ? std::clamp(std::strtof(args[2].c_str(), nullptr), 0.0f, 1.0f) : 0.7f;
                                 m_facility.SetLook(look);
+                                m_weatherHeld = true;
                                 // The ground as wet or snowed on as that weather would leave it, at once.
                                 m_surfaceWeatherSite = 0;
                             });

@@ -78,10 +78,11 @@ struct Material
     // (red), how high each point is over the ground (green, in metres over 1.5) and how light its card (blue, 0.6 to 1.4 of
     // the colour); dark at its roots.
     bool cover = false;
-    // Rained and snowed on where the sky reaches it (Environment wetness, snowCover): the ground, buildings, the things
-    // left lying out. Not anything that moves about -- a body, a creature, what is held -- which would be white the moment
-    // it stepped outside.
-    bool weathers = true;
+    // How much it has been out in the weather, 0 to 1: rained and snowed on where the sky reaches it (Environment wetness,
+    // snowCover) as the ground is at 1 -- the ground, buildings, the things left lying out -- wet soon and snowed on slowly as
+    // it goes up from nought (a shuttle just come down), and never at nought: anything that moves about -- a body, a
+    // creature, what is held -- which would be white the moment it stepped outside.
+    float weathering = 1.0f;
 
     static Material Diffuse(const glm::vec3& color, float roughness = 0.85f)
     {

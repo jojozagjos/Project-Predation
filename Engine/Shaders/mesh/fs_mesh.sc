@@ -12,7 +12,7 @@ uniform vec4 u_steepParams;      // xyz = its tint, w = repeats a metre (0: none
 uniform vec4 u_wearParams;       // xyz = bare metal's colour, w = how worn the paint is, the set read as worn paint (0: off; Material::surfaceWear)
 uniform vec4 u_surfaceParams;  // x = repeats a metre of the surface set, laid on from every side (0: off); y = how much of its own colour shows; z = natural ground (1) or laid in a grid (0); w = laid on the thing itself (1) or the world (0)
 
-uniform vec4 u_baseColor;       // rgb = albedo; w = 1 if rained and snowed on (Material::weathers), 0 not
+uniform vec4 u_baseColor;       // rgb = albedo; w = how much it has been out in the weather (Material::weathering)
 uniform vec4 u_materialParams;  // x = metallic, y = roughness, z = how much of the mirror it shows, w = 1 cut out (Material::cutout)
 uniform vec4 u_emissive;        // rgb = emissive radiance
 uniform vec4 u_lightDirection;  // xyz = direction towards the light
@@ -22,7 +22,8 @@ uniform vec4 u_ambientGround;   // rgb = bounce from below
 uniform vec4 u_fogColor;        // rgb
 uniform vec4 u_fogParams;       // x = start distance, y = end distance, z = how far out in the open air the eye is (0 to 1),
                                 // w = how hazy the air is, for light to show in (Environment::airHaze)
-uniform vec4 u_surfaceWeather;  // x = how wet what is under the sky is, y = how much snow lies on it (Environment)
+uniform vec4 u_surfaceWeather;  // x = how wet what is under the sky is, y = how much snow lies on it; z, w = the same under the shuttle (Environment)
+uniform vec4 u_shelter;         // xy = where the shuttle came down (x, z), z = how far round it the ground is kept as it was then (0: none)
 uniform vec4 u_cameraPosition;  // xyz
 uniform vec4 u_output;          // x = 1: write linear light for post-processing to finish
 uniform vec4 u_grade;           // x = exposure, y = contrast, z = light where the sky cannot reach,
@@ -827,18 +828,25 @@ void main()
 	float skyReaches = skyReaching(v_worldPos, N, skySlack);
 	// Rained on (u_surfaceWeather.x): darker, as anything soaks it up the rougher it is, and glossier; the water standing in
 	// puddles in the low patches of the flat. Snowed on (y): what faces up white, thickest on the flattest, gone at its
-	// edges in patches. Neither on a creature, nor where the sky does not reach.
+	// edges in patches. Neither on a creature, nor where the sky does not reach -- and on what has not been out in it long
+	// (u_baseColor.w, Material::weathering), wet soon and snowed on slowly. Under the shuttle (u_shelter), the ground as wet
+	// and snowed on as it was when it came down (z, w), and no more since.
 	float puddle = 0.0;
-	if (u_organic.x < 0.5 && u_baseColor.w > 0.5 && (u_surfaceWeather.x > 0.001 || u_surfaceWeather.y > 0.001))
+	if (u_organic.x < 0.5 && u_baseColor.w > 0.001 && (u_surfaceWeather.x > 0.001 || u_surfaceWeather.y > 0.001 || u_shelter.z > 0.0))
 	{
+		float exposed = u_baseColor.w;
 		float open = smoothstep(0.3, 0.8, skyReaches);
-		float wet = u_surfaceWeather.x * open * mix(0.55, 1.0, max(N.y, 0.0));
+		float under = u_baseColor.w > 0.995 && u_shelter.z > 0.0
+			? (1.0 - smoothstep(u_shelter.z * 0.8, u_shelter.z, length(v_worldPos.xz - u_shelter.xy))) * (1.0 - open) : 0.0;
+		float wet = (u_surfaceWeather.x * open * smoothstep(0.0, 0.15, exposed) + u_surfaceWeather.z * under) * mix(0.55, 1.0, max(N.y, 0.0));
 		puddle = wet * smoothstep(0.93, 0.99, N.y) * smoothstep(0.76, 0.84, SurfaceClouds(v_worldPos.xz * 0.9 + vec2(2.3, 8.1)));
 		albedo *= mix(1.0, mix(0.85, 0.55, roughness), wet) * mix(1.0, 0.6, puddle);
 		roughness = mix(roughness, mix(roughness * 0.45, 0.06, puddle), wet);
 		// (A leaf or a blade, a card at any angle, only dusted.)
-		float lying = (cutout ? 0.45 : smoothstep(0.45, 0.85, N.y)) * open;
-		float snow = smoothstep(0.0, 0.25, u_surfaceWeather.y * lying - 0.35 * SurfaceClouds(v_worldPos.xz * 0.6 + vec2_splat(4.0)) * (1.0 - u_surfaceWeather.y));
+		// Lying on anything up to about sixty degrees from flat, thinner the steeper.
+		float facing = cutout ? 0.45 : smoothstep(0.4, 0.75, N.y);
+		float lies = max(u_surfaceWeather.y * exposed * open, u_surfaceWeather.w * under) * facing;
+		float snow = smoothstep(0.0, 0.25, lies - 0.35 * SurfaceClouds(v_worldPos.xz * 0.6 + vec2_splat(4.0)) * (1.0 - u_surfaceWeather.y));
 		albedo = mix(albedo, vec3(0.78, 0.8, 0.84), snow);
 		roughness = mix(roughness, 0.75, snow);
 		metallic = mix(metallic, 0.0, snow);
@@ -1020,9 +1028,9 @@ void main()
 			float d = length(fromLight);
 			float cone = clamp((dot(fromLight / max(d, 1e-3), aim) - u_lights[3].x) / max(u_lights[2].w - u_lights[3].x, 1e-4), 0.0, 1.0);
 			float window = clamp(1.0 - pow(d / max(u_lights[0].w, 1e-3), 4.0), 0.0, 1.0);
-			lit += cone * cone * window / max(d * d, 1.0);
+			lit += cone * cone * window / max(d * d, 2.5);
 		}
-		color += u_lights[1].rgb * u_lights[1].w * lit * (max(reach - 0.5, 0.0) / 16.0) * u_fogParams.w * 0.015 * (1.0 - fogAmount * 0.5);
+		color += u_lights[1].rgb * u_lights[1].w * lit * (max(reach - 0.5, 0.0) / 16.0) * u_fogParams.w * 0.006 * (1.0 - fogAmount * 0.5);
 	}
 	// Fullbright: the surface's own colour, with a little shading by which way it faces so edges still read.
 	if (u_fullbright.x > 0.5)

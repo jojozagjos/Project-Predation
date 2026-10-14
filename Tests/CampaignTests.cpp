@@ -905,3 +905,13 @@ TEST_CASE("Picking where to go down, the ship goes round its orbit to be over it
         CHECK(glm::distance(system.Over(body, out, campaign.clock + later), -here) < 1.0e-3f);
     }
 }
+
+TEST_CASE("Past the fastest tier the drive is no quicker within a system", "[campaign][travel]")
+{
+    CHECK(Travel::Acceleration(Travel::kFastestTier + 6) == Travel::Acceleration(Travel::kFastestTier));
+    CHECK(Travel::Gentleness(12) == Travel::Gentleness(Travel::kFastestTier));
+    CHECK(Travel::Seconds(1.0f, 12) == Travel::Seconds(1.0f, Travel::kFastestTier));
+    // And still something seen to happen: a planet an astronomical unit off is a few seconds away at the quickest.
+    CHECK(Travel::Seconds(1.0f, 12) > 5.0f);
+    CHECK(Travel::Acceleration(Travel::kFastestTier) > Travel::Acceleration(Travel::kFastestTier - 1));
+}

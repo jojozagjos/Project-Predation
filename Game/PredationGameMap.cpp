@@ -496,8 +496,7 @@ void PredationGame::ArriveAtBody()
     // carries the ship over them (SurveyFromOrbit), not the moment it arrives.
     const uint8_t bits = static_cast<uint8_t>(CampaignState::kKnownScanned | (SensorTier() >= 2 ? CampaignState::kKnownDeep : 0));
     m_campaign.Learn(m_campaign.system, body->index, bits);
-    m_surveyIn = 20.0f / (1.0f + 0.5f * static_cast<float>(SensorTier()));
-    m_surveyFound = 0;
+    m_surveyIn = 10.0f / (1.0f + 0.5f * static_cast<float>(SensorTier()));
     m_campaign.AddLog("planet", CampaignState::BodyKey(m_campaign.system, body->index), body->name, "Surveyed from orbit. " + SummaryOf(*body));
     ChooseLandingRegion(m_campaign.travel.region);
     CampaignChanged();
@@ -509,12 +508,13 @@ void PredationGame::SurveyFromOrbit(float dt)
     m_surveyIn -= dt;
     const StarSystem* system = CurrentSystem();
     const Body* body = system != nullptr ? system->Find(m_campaign.body) : nullptr;
-    if (m_surveyIn > 0.0f || body == nullptr || m_surveyFound >= 1 + SensorTier())
+    if (m_surveyIn > 0.0f || body == nullptr)
     {
         return;
     }
     m_surveyIn = 1.0f;
-    // What of the world is under the ship and towards its horizon now -- further round it with better sensors.
+    // The half of the world the ship can see now, out to its horizon: every place on it is found in time, whatever the
+    // sensors -- better ones only find them sooner.
     glm::vec3 out;
     glm::vec3 along;
     Travel::OrbitFrame(m_campaign, *system, body->index, m_campaign.clock, out, along);
@@ -523,7 +523,7 @@ void PredationGame::SurveyFromOrbit(float dt)
     {
         return;
     }
-    const float reach = std::cos(glm::radians(55.0f + 10.0f * static_cast<float>(SensorTier())));
+    const float reach = -0.05f;
     for (int i = 0; i < static_cast<int>(body->regions.size()); ++i)
     {
         if (RegionKnown(*body, i) || glm::dot(glm::normalize(over), AreaOnGlobe(body->regions[static_cast<size_t>(i)])) < reach)
@@ -533,10 +533,8 @@ void PredationGame::SurveyFromOrbit(float dt)
         m_campaign.FindRegion(m_campaign.system, body->index, i);
         m_campaign.AddLog("region", CampaignState::RegionKey(m_campaign.system, body->index, i), body->regions[static_cast<size_t>(i)].designation,
                           "Found from orbit of " + body->name + ".");
-        ++m_surveyFound;
         // One at a time, a while apart: the sweep has to come round to it.
-        m_surveyIn = 25.0f / (1.0f + 0.5f * static_cast<float>(SensorTier()));
-        ChooseLandingRegion(m_campaign.travel.region);
+        m_surveyIn = 12.0f / (1.0f + 0.5f * static_cast<float>(SensorTier()));
         CampaignChanged();
         PRED_LOG_INFO(Gameplay, "Found {} from orbit of {}", body->regions[static_cast<size_t>(i)].designation, body->name);
         return;
@@ -712,6 +710,25 @@ void PredationGame::UpdateTravel(float dt)
         if (m_travelSeen && found > m_regionsSeen && !underway)
         {
             Say("region_found", 2.0f);
+            // And which, where: the place on the body the ship is at that was not found before.
+            const StarSystem* here = CurrentSystem();
+            const Body* at = here != nullptr ? here->Find(m_campaign.body) : nullptr;
+            for (int i = 0; at != nullptr && i < static_cast<int>(at->regions.size()); ++i)
+            {
+                const std::string key = CampaignState::RegionKey(m_campaign.system, at->index, i);
+                const auto it = m_campaign.regionsFound.find(key);
+                if (it != m_campaign.regionsFound.end() && it->second && m_scanKnown.count(key) == 0)
+                {
+                    ShowCampaignNotice("Scan: " + at->regions[static_cast<size_t>(i)].designation + " found on " + at->name);
+                }
+            }
+        }
+        for (const auto& [key, isFound] : m_campaign.regionsFound)
+        {
+            if (isFound)
+            {
+                m_scanKnown.insert(key);
+            }
         }
         m_regionsSeen = found;
         m_travelSeenUnderway = underway;
@@ -1352,6 +1369,15 @@ void PredationGame::SetSkyOver(const StarSystem& system, const Body& body, int r
     // Its own star's light: a red dwarf's orange, a white star's cold white -- the eye adjusting a little towards white, not
     // all the way.
     const glm::vec3 starLight = glm::mix(system.starColor, glm::vec3(1.0f), 0.18f);
+
+    // A ringed world's own rings, over its ground: their plane through its middle about its pole (the globe's y), seen from
+    // here (the sky shader draws them from that; their size and colour as a near planet's are).
+    environment.ownRings = glm::vec4(0.0f);
+    if (body.rings.y > 0.0f && body.parent < 0)
+    {
+        environment.planet = LookOf(body);
+        environment.ownRings = glm::vec4(overHere(glm::vec3(0.0f, 1.0f, 0.0f)), 1.0f);
+    }
 
     // --- The other worlds in the sky, and what lights the night ------------------------------------------------------
     // A moon's planet hangs huge over it; a planet's moons cross its sky. Each where it really is from here, as big as it

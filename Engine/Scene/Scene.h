@@ -119,6 +119,11 @@ struct Environment
     // what faces up (0 to 1). Only where the sky reaches it.
     float wetness = 0.0f;
     float snowCover = 0.0f;
+    // And a shelter that came down after the weather had begun -- the shuttle: where (x and z) and how far round it reaches
+    // (radius 0: none), and how wet and snowed on the ground under it was when it came down, which it has kept since.
+    glm::vec3 shelter{0.0f};
+    float shelterWet = 0.0f;
+    float shelterSnow = 0.0f;
     // The sky's clouds over a world with air: how much of it they cover (0 clear, 1 overcast) and how dark and heavy they are
     // (0 white, 1 a storm's); drifting with `wind` by `windClock`.
     // How hazy the air the eye is in is, for light to show in it (the torch's beam): clean air nought, a sandstorm or a fog
@@ -161,6 +166,9 @@ struct Environment
     glm::vec3 skyAirColor{0.35f, 0.55f, 0.95f};
     glm::vec3 planetDirection{0.0f, -1.0f, 0.0f};
     float planetRadius = 0.0f;
+    // The rings of the world underfoot, seen from its ground: xyz = its pole over the place (the sky's frame), w = 1 when it has
+    // rings to see (their size and colour in `planet`, as a near planet's are).
+    glm::vec4 ownRings{0.0f};
     PlanetLook planet = PlanetLook::Plain({0.8f, 0.84f, 0.9f}, 0.0f);
     // And the rest of a system, further off: up to kSkyBodies more planets and moons, each a lit disc -- which way it is
     // and how big it looks (xyz, w radians; 0 for none), then its colour and how much air glows at its edge.

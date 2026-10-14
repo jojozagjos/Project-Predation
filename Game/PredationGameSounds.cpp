@@ -174,15 +174,15 @@ void PredationGame::UpdateWorldSounds(float dt)
         {
             const QueuedSound sound = m_queuedSounds[i];
             m_queuedSounds.erase(m_queuedSounds.begin() + static_cast<ptrdiff_t>(i));
-            // Thunder is the weather's: as loud as the ambience is set, and muffled under a roof or a hull.
+            // Thunder is the weather's: as loud as the ambience is set, and under a roof or a hull a low muffled rumble through it.
             if (sound.name.rfind("Weather/thunder", 0) == 0)
             {
                 AudioEngine::PlayDesc desc;
                 desc.sound = Sounds(sound.name).Pick();
                 desc.positioned = false;
-                desc.gain = sound.gain * std::clamp(cv_ambienceVolume.Get(), 0.0f, 2.0f);
+                desc.gain = sound.gain * std::clamp(cv_ambienceVolume.Get(), 0.0f, 2.0f) * glm::mix(1.0f, 0.35f, m_zoneIndoor);
                 desc.pitch = 0.92f + 0.12f * Random01();
-                desc.occlusion = m_zoneIndoor * 0.65f;
+                desc.occlusion = m_zoneIndoor * 0.85f;
                 m_app->GetAudio().Play(desc);
                 continue;
             }
@@ -679,31 +679,31 @@ void PredationGame::UpdateAmbience(float dt)
             if (m_renderEye.x > low.x && m_renderEye.x < high.x && m_renderEye.z > low.y && m_renderEye.z < high.y)
             {
                 const int floor = static_cast<int>(std::floor((m_renderEye.y - building.origin.y) / FacilityLayout::kStorey));
-                roofOver = floor >= building.floors - 1 ? 1.0f : 0.15f;
+                roofOver = floor >= building.floors - 1 ? 1.0f : 0.08f;
                 break;
             }
         }
     }
-    const float outside = (1.0f - under) + (0.18f + 0.1f * roofOver) * under;
+    const float outside = (1.0f - under) + (0.05f + 0.07f * roofOver) * under;
     // Aboard in space there is no air outside the hull to blow or carry anything; with the ears outside it, nothing at all.
     const float air = m_map == MapChoice::Ship && !(m_campaignOpen && m_campaign.landed) ? 0.0f : 1.0f;
     m_earInVacuum = air < 0.5f && m_zoneIndoor < 0.5f;
     const float targets[kAmbienceLoops] = {
         m_zoneIndoor * (1.0f - m_zoneTight) * (1.0f - 0.6f * m_zoneNest) * (1.0f - cabin), // the room (not the shuttle's cabin)
         m_zoneIndoor * (1.0f - m_zoneTight) * 0.8f * (1.0f - cabin) + 0.1f * (1.0f - under) * air, // air in the ducts, faint outside
-        ((1.0f - under) + 0.12f * under) * windiness * air,                   // wind, a breath of it indoors; as hard as it blows
+        ((1.0f - under) + 0.04f * under) * windiness * air,                   // wind, a breath of it indoors; as hard as it blows
         m_zoneTight,                                                          // inside the vent itself
         m_zoneNest,                                                           // the nest
         rain * (1.0f - heavy) * outside,                                      // rain
         rain * heavy * outside,                                               // heavy rain
-        rain * under * (1.0f - cabin) * roofOver * 0.7f,                      // on the roof over you, the top floor's
+        rain * under * (1.0f - cabin) * roofOver * 0.45f,                     // on the roof over you, the top floor's
         rain * cabin,                                                         // on the shuttle round you
         gale * outside,                                                       // a gale
         sand * outside * std::min(windiness, 1.3f),                           // a sandstorm
         blizzard * outside,                                                   // a blizzard
     };
     // Muffled under a roof or a hull: all of the weather but what lands on the roof or the hull itself.
-    const float muffled = std::clamp(under * 0.8f + m_zoneTight * 0.15f, 0.0f, 0.95f);
+    const float muffled = std::clamp(under * 0.92f + m_zoneTight * 0.05f, 0.0f, 0.97f);
     const float occlusion[kAmbienceLoops] = {0.0f, 0.0f, muffled, 0.0f, 0.0f, muffled, muffled, 0.15f, 0.1f, muffled, muffled, muffled};
     const float ease = 1.0f - std::exp(-1.6f * dt);
     for (int i = 0; i < kAmbienceLoops; ++i)
