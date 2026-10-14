@@ -35,6 +35,14 @@ nothing here writes lore: where a choice touches the story, it is marked **Your 
 
 Everything you raised in the last message about looks. Order inside the phase is the order I will do them.
 
+**Where it stands (2026-10-14):** 1.1, 1.2, 1.3, 1.5 and 1.9 done. Left:
+- 1.4: the small things on the ground (pebbles, leaf litter, moss and flowers on some worlds).
+- 1.6: ambient occlusion and contact shadows; the pass on lamp brightness and bloom.
+- 1.7: rings casting their shadow on the planet; a soft lens flare.
+- 1.8: drifts piling against walls, sparks from damaged machines, water dripping that can be seen. The outposts' own
+  details (steam, smoke, windsocks and flags, blinking mast lights, oil stains, tyre tracks, cables and pipes) move to the
+  outpost rework in Phase 2: the outposts are being rebuilt there, and dressing them now would be thrown away.
+
 ### 1.1 Worn exteriors for the ship and the shuttle
 - **What:** painted metal that has been used: chipped edges, grime in the seams, streaks below vents and windows,
   scuffs where people walk, darker panel lines, the paint a little different from panel to panel.
@@ -119,6 +127,12 @@ From WORLDS_FACILITIES_MISSIONS_PLAN.md W1-W4:
   weather (rain, snow, dust, storms and lightning, as at sites).
 - **People at outposts -- Your call** (you, 2026-10-13: not sure how, or whether, you want this yet): workers walking
   between buildings, loading cargo, at the fuel pumps; to be decided before the outpost rework starts.
+- **The outposts' details** (moved from 1.8): steam from vents, smoke from stacks, windsocks and flags in the wind,
+  blinking lights on masts, oil stains and tyre tracks, cables and pipes between buildings.
+- **Water you can see** (moved up from Phase 12, 2026-10-14, because so much else has to know about it): a water surface
+  (reflections, darker with depth, gentle waves, foam at the shore, rain rings in a storm); a sea level at oceanic, island
+  and coast sites, and lakes and streams elsewhere, with buildings and pads kept on dry ground; wading in the shallows
+  (slower, splashing steps and sound); deep water the edge of where you can go until swimming comes in Phase 12.
 
 ---
 
@@ -254,7 +268,9 @@ abandoned.
 
 ## Phase 12 -- Water (your order)
 
-1. Flooded interiors and swimming; 2. shallow water; 3. underwater outside places; 4. the deep ocean; 5. huge aquatic
+(The water surface, sea levels at sites and wading are in Phase 2.)
+
+1. Flooded interiors and swimming; 2. deeper open water; 3. underwater outside places; 4. the deep ocean; 5. huge aquatic
 organisms.
 
 ---
