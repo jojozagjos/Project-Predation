@@ -175,6 +175,7 @@ CVar<bool> cv_lampShadows{"r.lamp_shadows", true, "Whether the lamps are stopped
 CVar<float> cv_grass{"r.grass", 1.0f, "How thick the grass is drawn round you (0 none, 1 as the world grows it)", CVarFlags::Archive};
 CVar<float> cv_weatherDetail{"r.weather", 1.0f, "How much of the falling weather is drawn (0.3 to 1)", CVarFlags::Archive};
 CVar<float> cv_ambientOcclusion{"r.ao", 0.7f, "How much corners and the undersides of things are darkened (ambient occlusion; 0 off; not with multisampling)", CVarFlags::Archive};
+CVar<float> cv_lensFlare{"r.flare", 0.35f, "How much the sun flares in the lens (0 none)", CVarFlags::Archive};
 CVar<int> cv_occlusionDebug{"r.show_occlusion", 0,
                             "Draw occlusion instead of the scene: 1 the sun, 2 the sky"};
 // Mirrors. A second pass over the whole scene, at half the window's width and height, so it is the
@@ -1680,6 +1681,15 @@ void PredationGame::RegisterCommands()
             }
         },
         "look <yaw> [pitch]");
+
+    console.RegisterCommand("look_sun", "Point the view at the sun (its flare, its glow), or so many degrees off it: look_sun [yaw] [pitch]",
+                            [this](const std::vector<std::string>& args)
+                            {
+                                const glm::vec3 towards = glm::normalize(-m_scene.GetEnvironment().sunDirection);
+                                m_lookYaw = std::atan2(towards.x, -towards.z) + glm::radians(args.size() >= 2 ? std::strtof(args[1].c_str(), nullptr) : 0.0f);
+                                m_lookPitch = std::asin(std::clamp(towards.y, -0.99f, 0.99f)) + glm::radians(args.size() >= 3 ? std::strtof(args[2].c_str(), nullptr) : 0.0f);
+                                m_app->GetConsole().Print("The sun is " + std::to_string(static_cast<int>(glm::degrees(m_lookPitch))) + " degrees up");
+                            });
 
     console.RegisterCommand("interact", "Press the interact key: use whatever the player is looking at",
                             [this](const std::vector<std::string>&) { PressInteract(); });
@@ -10623,6 +10633,12 @@ void PredationGame::OnUpdate(double dt, double alpha)
         post.enabled = cv_post.Get();
         post.ambientOcclusion = std::clamp(cv_ambientOcclusion.Get(), 0.0f, 1.0f);
         post.projection = projection;
+        // Where the sun is in the picture, for its flare: its direction, a point at no distance at all, through the camera.
+        {
+            const glm::vec4 clip = projection * view * glm::vec4(-m_scene.GetEnvironment().sunDirection, 0.0f);
+            post.sunAhead = clip.w > 1.0e-4f ? glm::vec3(clip.x / clip.w, clip.y / clip.w, 1.0f) : glm::vec3(0.0f);
+            post.lensFlare = std::max(cv_lensFlare.Get(), 0.0f);
+        }
         // Editing a cinematic, the picture is in the editor's preview: the whole of it, smaller.
         glm::vec2 previewMin;
         glm::vec2 previewMax;

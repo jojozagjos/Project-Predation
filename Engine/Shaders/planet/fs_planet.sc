@@ -13,6 +13,8 @@ uniform vec4 u_planetLight;      // xyz towards the light, w how bright
 uniform vec4 u_planetLightColor; // rgb the light's colour (a star's own, for a star), w 1 for linear light (the world's picture)
 uniform vec4 u_planetMode;       // x what is drawn (0 body, 1 star, 2 glow, 3 rings, 4 body from its baked maps), y seed, z cloud drift
 uniform vec4 u_planetEye;        // xyz where the camera is, w exposure
+uniform vec4 u_planetRingPole; // xyz = the way its rings face (its pole), in the world; nought: no rings
+uniform vec4 u_planetRingSize; // x, y = its rings, inside and outside, in its radii; z = its seed (their bands)
 // A body's face baked (fs_planet_bake): colour (square-rooted) and open water; the ground's tip and the cloud.
 SAMPLER2D(s_planetSurface, 0);
 SAMPLER2D(s_planetDetail, 1);
@@ -132,6 +134,26 @@ void main()
 	float facing = dot(N, L);
 	// A soft edge between day and night: an atmosphere carries a little light round it.
 	float lit = smoothstep(-0.1, 0.3, facing);
+	// Its rings' shadow across it: from where this point is, towards the star, through the rings' plane -- where that is
+	// within them, as much of the light kept off as the rings are thick there.
+	if (u_planetRingSize.y > 0.0)
+	{
+		vec3 pole = normalize(u_planetRingPole.xyz);
+		vec3 here = normalize(N);
+		float towards = dot(L, pole);
+		float t = abs(towards) > 1.0e-4 ? -dot(here, pole) / towards : -1.0;
+		if (t > 0.0)
+		{
+			float r = length(here + L * t);
+			float across = (r - u_planetRingSize.x) / max(u_planetRingSize.y - u_planetRingSize.x, 1.0e-3);
+			if (across > 0.0 && across < 1.0)
+			{
+				float bands = PlanetFbm(vec3(across * 46.0, u_planetRingSize.z, 0.5));
+				float thick = smoothstep(0.0, 0.06, across) * smoothstep(1.0, 0.92, across) * (0.25 + 0.6 * bands);
+				lit *= 1.0 - 0.85 * thick;
+			}
+		}
+	}
 	vec3 bumpedN = normalize(N + (bumped - n));
 	float relief = clamp(1.0 + (dot(bumpedN, L) - facing) * 1.8, 0.5, 1.45);
 	vec3 albedo = mix(surface.rgb * relief, u_planetD.rgb, surface.w);

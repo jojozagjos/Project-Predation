@@ -101,6 +101,9 @@ private:
     bgfx::UniformHandle m_uLightColor = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uMode = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uEye = BGFX_INVALID_HANDLE;
+    // A body's rings for the shadow they cast on it: its pole (the way its rings face) in the world, and their size.
+    bgfx::UniformHandle m_uRingPole = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uRingSize = BGFX_INVALID_HANDLE;
     glm::vec3 m_eye{0.0f};
     float m_exposure = 1.0f;
     bool m_linear = false;

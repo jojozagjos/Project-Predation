@@ -13,6 +13,7 @@ uniform vec4 u_postMood;  // x = fear, 0 to 1; y = cold in the shadows; z = warm
 uniform vec4 u_postAdapt; // x = the brightness the picture is set for, y = how far the eye adapts away from it (0 none), z, w = how
                           // much darker and brighter that can make it at most
 uniform vec4 u_aoParams; // x = how much the shut-in parts are darkened (0: none)
+uniform vec4 u_postSun;  // xy = where the sun is in the picture (as its texture runs), z = 1 when it is ahead, w = how much it flares
 
 float Hash(vec2 p)
 {
@@ -45,6 +46,34 @@ void main()
 		color *= mix(1.0, open, u_aoParams.x * (1.0 - 0.75 * smoothstep(1.5, 6.0, lit)));
 	}
 	color += texture2D(s_bloom, uv).rgb * u_postTone.z;
+
+	// A soft lens flare off the sun: a few faint ghosts of it along the line from it through the middle of the picture, as
+	// much as the sun itself shows -- the picture there as bright as a sun is (a wall, a hill or a cloud in front of it: none).
+	if (u_postSun.z > 0.5 && u_postSun.w > 0.0 && all(greaterThan(u_postSun.xy, vec2_splat(-0.05))) && all(lessThan(u_postSun.xy, vec2_splat(1.05))))
+	{
+		float setFor = u_postAdapt.y > 0.0 ? exp(texture2D(s_adapt, vec2_splat(0.5)).r) : u_postAdapt.x;
+		vec2 tap = u_postTexel.xy * 3.0;
+		float seen = 0.0;
+		for (int i = 0; i < 5; ++i)
+		{
+			vec2 offset = i == 0 ? vec2_splat(0.0) : vec2(i == 1 ? tap.x : i == 2 ? -tap.x : 0.0, i == 3 ? tap.y : i == 4 ? -tap.y : 0.0);
+			vec3 there = texture2DLod(s_scene, clamp(u_postSun.xy + offset, vec2_splat(0.0), vec2_splat(1.0)), 0.0).rgb;
+			seen += smoothstep(1.8, 4.0, dot(there, vec3(0.2126, 0.7152, 0.0722)) / max(setFor, 1.0e-4)) * 0.2;
+		}
+		float aspect = u_postTexel.z / max(u_postTexel.w, 1.0);
+		vec2 axis = vec2_splat(0.5) - u_postSun.xy;
+		vec3 flare = vec3_splat(0.0);
+		for (int k = 0; k < 4; ++k)
+		{
+			float fk = float(k);
+			float along = k == 0 ? 0.55 : k == 1 ? 1.0 : k == 2 ? 1.35 : 1.8;
+			float radius = k == 0 ? 0.035 : k == 1 ? 0.07 : k == 2 ? 0.025 : 0.11;
+			vec3 tint = k == 0 ? vec3(1.0, 0.8, 0.55) : k == 1 ? vec3(0.55, 0.75, 1.0) : k == 2 ? vec3(0.9, 0.6, 1.0) : vec3(0.5, 0.9, 0.7);
+			vec2 apart = (uv - (u_postSun.xy + axis * along)) * vec2(aspect, 1.0);
+			flare += tint * smoothstep(radius, radius * 0.55, length(apart)) * (k == 3 ? 0.35 : 0.6) / (1.0 + fk * 0.2);
+		}
+		color += flare * seen * u_postSun.w * setFor * 1.5;
+	}
 
 	// The eye, adapted to what it is looking at: brought partway towards the brightness the picture is set for -- only
 	// partway, so a dark room is still dark once the eyes are used to it, and a lit field still bright.

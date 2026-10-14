@@ -52,6 +52,10 @@ public:
         float ambientOcclusion = 0.7f;
         float occlusionRadius = 0.6f;
         glm::mat4 projection{1.0f};
+        // Where the sun is in the picture (x, y as the projection has it, -1 to 1; z = 1 when it is ahead of the eye) and how
+        // much it flares in the lens (fs_post_final; 0 none).
+        glm::vec3 sunAhead{0.0f};
+        float lensFlare = 0.35f;
         // Where on the screen the finished picture goes, in pixels from the top left: all of it when the width is
         // 0, or a smaller window of it, the whole picture scaled down into it -- an editor's preview, framed exactly
         // as the game frames it.
@@ -100,6 +104,7 @@ private:
     bgfx::UniformHandle m_uAoProj = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uAoInvProj = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uAoParams = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uSun = BGFX_INVALID_HANDLE;
     bgfx::TextureHandle m_sceneDepth = BGFX_INVALID_HANDLE;
     bgfx::FrameBufferHandle m_ao = BGFX_INVALID_HANDLE;
     bgfx::TextureHandle m_aoColor = BGFX_INVALID_HANDLE;

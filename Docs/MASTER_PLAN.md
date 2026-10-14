@@ -35,13 +35,14 @@ nothing here writes lore: where a choice touches the story, it is marked **Your 
 
 Everything you raised in the last message about looks. Order inside the phase is the order I will do them.
 
-**Where it stands (2026-10-14):** 1.1, 1.2, 1.3, 1.5 and 1.9 done. Left:
-- 1.4: the small things on the ground (pebbles, leaf litter, moss and flowers on some worlds).
-- 1.6: ambient occlusion and contact shadows; the pass on lamp brightness and bloom.
-- 1.7: rings casting their shadow on the planet; a soft lens flare.
-- 1.8: drifts piling against walls, sparks from damaged machines, water dripping that can be seen. The outposts' own
-  details (steam, smoke, windsocks and flags, blinking mast lights, oil stains, tyre tracks, cables and pipes) move to the
-  outpost rework in Phase 2: the outposts are being rebuilt there, and dressing them now would be thrown away.
+**Done (2026-10-14).** Everything above is in, with these notes:
+- 1.4: pebbles, leaf litter (needles under conifers) and moss on rocks; no flowers yet (they need a picture of their own).
+- 1.6: ambient occlusion (r.ao, not with multisampling); the near shadow cascade and the occlusion's small radius do the
+  work of contact shadows -- say if anything still looks to float in sunlight.
+- 1.8: drifts against the walls on snow and sand worlds, sparks from failing lamps, drops falling from damp ceilings. The
+  outposts' own details (steam, smoke, windsocks and flags, blinking mast lights, oil stains, tyre tracks, cables and
+  pipes) moved to the outpost rework in Phase 2: the outposts are being rebuilt there, and dressing them now would be
+  thrown away.
 
 ### 1.1 Worn exteriors for the ship and the shuttle
 - **What:** painted metal that has been used: chipped edges, grime in the seams, streaks below vents and windows,

@@ -88,6 +88,8 @@ bool PlanetRenderer::Init(ShaderLibrary& shaders)
     m_uLight = bgfx::createUniform("u_planetLight", bgfx::UniformType::Vec4);
     m_uLightColor = bgfx::createUniform("u_planetLightColor", bgfx::UniformType::Vec4);
     m_uMode = bgfx::createUniform("u_planetMode", bgfx::UniformType::Vec4);
+    m_uRingPole = bgfx::createUniform("u_planetRingPole", bgfx::UniformType::Vec4);
+    m_uRingSize = bgfx::createUniform("u_planetRingSize", bgfx::UniformType::Vec4);
     m_uEye = bgfx::createUniform("u_planetEye", bgfx::UniformType::Vec4);
     return true;
 }
@@ -99,7 +101,7 @@ void PlanetRenderer::Shutdown()
         Forget(baked);
     }
     m_baked.clear();
-    for (bgfx::UniformHandle* handle : {&m_uA, &m_uB, &m_uC, &m_uD, &m_uE, &m_uLight, &m_uLightColor, &m_uMode, &m_uEye, &m_sSurface, &m_sDetail})
+    for (bgfx::UniformHandle* handle : {&m_uA, &m_uB, &m_uC, &m_uD, &m_uE, &m_uLight, &m_uLightColor, &m_uMode, &m_uEye, &m_uRingPole, &m_uRingSize, &m_sSurface, &m_sDetail})
     {
         if (bgfx::isValid(*handle))
         {
@@ -261,6 +263,10 @@ void PlanetRenderer::SetLook(const PlanetLook& look, const glm::vec3& towardsLig
     bgfx::setUniform(m_uLightColor, glm::value_ptr(colour));
     bgfx::setUniform(m_uMode, glm::value_ptr(modeVec));
     bgfx::setUniform(m_uEye, glm::value_ptr(eye));
+    // No rings' shadow unless a body says otherwise (Body).
+    const glm::vec4 none{0.0f};
+    bgfx::setUniform(m_uRingPole, glm::value_ptr(none));
+    bgfx::setUniform(m_uRingSize, glm::value_ptr(none));
 }
 
 void PlanetRenderer::Body(bgfx::ViewId view, const glm::mat4& model, const PlanetLook& look, const glm::vec3& towardsLight,
@@ -278,6 +284,14 @@ void PlanetRenderer::Body(bgfx::ViewId view, const glm::mat4& model, const Plane
     const Baked* baked = across >= kBakedFrom ? BakedFor(look) : nullptr;
     const bool fromMaps = baked != nullptr && baked->rows >= kBakeHeight && baked->doneFrame < m_frame;
     SetLook(look, towardsLight, lightColor, fromMaps ? 4.0f : 0.0f, drift);
+    // Its rings' shadow across it: they lie round its middle, square to its pole -- the model's up.
+    if (look.rings.y > look.rings.x && look.rings.x > 0.0f)
+    {
+        const glm::vec4 pole{glm::normalize(glm::vec3(model[1])), 0.0f};
+        const glm::vec4 size{look.rings.x, look.rings.y, look.seed, 0.0f};
+        bgfx::setUniform(m_uRingPole, glm::value_ptr(pole));
+        bgfx::setUniform(m_uRingSize, glm::value_ptr(size));
+    }
     if (fromMaps)
     {
         bgfx::setTexture(0, m_sSurface, baked->surface, BGFX_SAMPLER_V_CLAMP);

@@ -86,6 +86,7 @@ bool PostProcess::Init(ShaderLibrary& shaders)
     m_uAoProj = bgfx::createUniform("u_aoProj", bgfx::UniformType::Mat4);
     m_uAoInvProj = bgfx::createUniform("u_aoInvProj", bgfx::UniformType::Mat4);
     m_uAoParams = bgfx::createUniform("u_aoParams", bgfx::UniformType::Vec4);
+    m_uSun = bgfx::createUniform("u_postSun", bgfx::UniformType::Vec4);
     const bool floats = (bgfx::getCaps()->formats[bgfx::TextureFormat::R32F] & BGFX_CAPS_FORMAT_TEXTURE_FRAMEBUFFER) != 0;
     if (floats && bgfx::isValid(m_lumProgram) && bgfx::isValid(m_avgProgram) && bgfx::isValid(m_adaptProgram))
     {
@@ -156,7 +157,7 @@ void PostProcess::Shutdown()
         bgfx::destroy(m_readback);
     }
     m_readback = BGFX_INVALID_HANDLE;
-    const bgfx::UniformHandle eyeUniforms[] = {m_sAdapt, m_uAdapt, m_uAdaptRate, m_sAo, m_uAoProj, m_uAoInvProj, m_uAoParams};
+    const bgfx::UniformHandle eyeUniforms[] = {m_sAdapt, m_uAdapt, m_uAdaptRate, m_sAo, m_uAoProj, m_uAoInvProj, m_uAoParams, m_uSun};
     for (const bgfx::UniformHandle handle : eyeUniforms)
     {
         if (bgfx::isValid(handle))
@@ -164,7 +165,7 @@ void PostProcess::Shutdown()
             bgfx::destroy(handle);
         }
     }
-    m_sAdapt = m_uAdapt = m_uAdaptRate = m_sAo = m_uAoProj = m_uAoInvProj = m_uAoParams = BGFX_INVALID_HANDLE;
+    m_sAdapt = m_uAdapt = m_uAdaptRate = m_sAo = m_uAoProj = m_uAoInvProj = m_uAoParams = m_uSun = BGFX_INVALID_HANDLE;
     m_lumProgram = m_avgProgram = m_adaptProgram = m_aoProgram = m_aoBlurProgram = BGFX_INVALID_HANDLE;
     const bgfx::UniformHandle uniforms[] = {m_sScene, m_sBloom, m_uTexel, m_uTone, m_uLens, m_uMood, m_uFlip};
     for (const bgfx::UniformHandle handle : uniforms)
@@ -417,6 +418,10 @@ void PostProcess::Apply(float seconds, bool originBottomLeft)
     {
         bgfx::setTexture(3, m_sAo, m_aoBlurColor);
     }
+    // The sun, where it is in the picture as its texture runs.
+    const float sun[4] = {s.sunAhead.x * 0.5f + 0.5f, originBottomLeft ? s.sunAhead.y * 0.5f + 0.5f : 0.5f - s.sunAhead.y * 0.5f, s.sunAhead.z,
+                          std::max(s.lensFlare, 0.0f)};
+    bgfx::setUniform(m_uSun, sun);
     bgfx::setTexture(1, m_sBloom, m_bloomColor[0]);
     const float adapt[4] = {std::max(s.adaptReference, 1.0e-4f), eye ? s.adapt : 0.0f, s.adaptDarker, s.adaptBrighter};
     bgfx::setUniform(m_uAdapt, adapt);
