@@ -146,6 +146,7 @@ set(PRED_ENGINE_SOURCES
 add_library(PredationEngine STATIC ${PRED_ENGINE_SOURCES})
 add_library(Predation::Engine ALIAS PredationEngine)
 pred_set_warnings(PredationEngine)
+pred_precompile(PredationEngine)
 
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${PRED_ENGINE_SOURCES})
 

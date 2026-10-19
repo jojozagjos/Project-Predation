@@ -43,6 +43,7 @@ add_executable(PredationTests
     CampaignTests.cpp
 )
 pred_set_warnings(PredationTests)
+pred_precompile(PredationTests)
 target_link_libraries(PredationTests PRIVATE Predation::GameLib Catch2::Catch2WithMain)
 set_target_properties(PredationTests PROPERTIES FOLDER "Tests")
 

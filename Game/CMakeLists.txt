@@ -159,6 +159,7 @@ set(PRED_GAME_SOURCES
 add_library(PredationGameLib STATIC ${PRED_GAME_SOURCES})
 add_library(Predation::GameLib ALIAS PredationGameLib)
 pred_set_warnings(PredationGameLib)
+pred_precompile(PredationGameLib)
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${PRED_GAME_SOURCES})
 target_link_libraries(PredationGameLib PUBLIC Predation::Engine Predation::Tools)
 set_target_properties(PredationGameLib PROPERTIES FOLDER "Game")
