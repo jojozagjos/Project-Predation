@@ -164,7 +164,7 @@ struct Marker
 };
 
 // Words on the screen from `time` for `duration`: a title card typed out a letter at a time, or a caption. Lines may
-// name what the game fills in: {planet}, {site}, {region}, {local_time}, {conditions}, {sector}.
+// name what the game fills in: {planet}, {site}, {region}, {local_time}, {temperature}, {wind}, {visibility}, {sector}.
 struct TextItem
 {
     float time = 0.0f;

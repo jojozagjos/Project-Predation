@@ -2736,7 +2736,7 @@ void CinematicEditor::DrawInspector(Context& context)
             text.lines = Split(buffer);
             changed = true;
         }
-        ImGui::TextDisabled("Filled in: {site} {planet} {region} {local_time} {conditions}");
+        ImGui::TextDisabled("Filled in: {site} {planet} {region} {local_time} {temperature} {wind} {visibility}");
         for (size_t line = 0; line < text.lines.size(); ++line)
         {
             ImGui::TextDisabled("> %s", sampler.Fill(text.lines[line]).c_str());

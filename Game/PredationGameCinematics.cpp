@@ -185,7 +185,9 @@ CinematicBindings PredationGame::CinematicBindingsNow() const
     }
     bindings.words["local_time"] = "LOCAL " + hour;
     const SiteConditions weather = const_cast<PredationGame*>(this)->PlaceConditions(site.sky.fogEnd);
-    bindings.words["conditions"] = std::to_string(weather.temperature) + " C  WIND " + std::to_string(weather.wind) + " M/S  VISIBILITY " + weather.visibility;
+    bindings.words["temperature"] = "TEMPERATURE " + std::to_string(weather.temperature) + " C";
+    bindings.words["wind"] = weather.air ? "WIND " + std::to_string(weather.wind) + " M/S" : "NO ATMOSPHERE";
+    bindings.words["visibility"] = "VISIBILITY " + weather.visibility;
     return bindings;
 }
 
@@ -703,11 +705,17 @@ void PredationGame::DrawCinematicOverlay()
             continue;
         }
         ImFont* font = ImGui::GetFont();
-        float y = max.y - bars - (60.0f + static_cast<float>(item.lines.size()) * 26.0f) * scale;
+        // The names, then a little apart, the readings under them a line each.
+        constexpr float kReadingsGap = 12.0f;
+        float y = max.y - bars - (60.0f + static_cast<float>(item.lines.size()) * 26.0f + (item.lines.size() > 2 ? kReadingsGap : 0.0f)) * scale;
         const float x = min.x + (max.x - min.x) * 0.06f;
         bool typing = false;
         for (size_t i = 0; i < item.lines.size(); ++i)
         {
+            if (i == 2)
+            {
+                y += kReadingsGap * scale;
+            }
             const std::string full = sampler.Fill(item.lines[i]);
             const std::string shown = sampler.Text(item, i, time);
             const float fontSize = ImGui::GetFontSize() * (i == 0 ? 1.45f : 1.0f) * scale;

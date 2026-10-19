@@ -2096,7 +2096,16 @@ void PredationGame::OnUpdate(double dt, double alpha)
     // A frame that took long enough to be seen as a stutter, in the log with when it was, so it can be found.
     if (dt > 0.03 && (m_screen == Screen::Playing || m_screen == Screen::Title))
     {
-        PRED_LOG_INFO(Engine, "Long frame: {:.0f} ms{}", dt * 1000.0, m_cine.Active() ? " (in a cinematic)" : m_screen == Screen::Title ? " (title)" : "");
+        // With what took the time in it, the longest parts first.
+        std::vector<FrameStats::Timing> parts = FrameStats::Instance().Timings();
+        std::sort(parts.begin(), parts.end(), [](const FrameStats::Timing& a, const FrameStats::Timing& b) { return a.milliseconds > b.milliseconds; });
+        std::string where;
+        for (size_t i = 0; i < parts.size() && i < 3; ++i)
+        {
+            where += fmt::format("{}{} {:.0f}", i > 0 ? ", " : "", parts[i].name, parts[i].milliseconds);
+        }
+        PRED_LOG_INFO(Engine, "Long frame: {:.0f} ms{} [{}]", dt * 1000.0, m_cine.Active() ? " (in a cinematic)" : m_screen == Screen::Title ? " (title)" : "",
+                      where);
     }
 
     UpdateCampaign(deltaSeconds);

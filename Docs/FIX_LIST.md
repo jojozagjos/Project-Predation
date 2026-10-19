@@ -12,7 +12,7 @@ Status: **Open**, **Doing**, **Done** (commit), **Planned** (a bigger piece that
 
 | # | You said | What is behind it | Status |
 |---|---|---|---|
-| 1 | The game feels choppy though it says about 111 FPS | Physics runs at a fixed 60 steps a second; if what is drawn is not smoothed between steps, the picture only changes 60 times a second however fast frames come, and unevenly. Frame pacing and hitches (grass rebuilt as you walk) to check too | Open |
+| 1 | The game feels choppy though it says about 111 FPS | The view is smoothed between physics steps, so it is not that. Your settings have vsync off and no frame cap, in a window: frames reach the screen unevenly and tear, which reads as choppy at any rate (try vsync on). Long frames now name what took the time, in the log. Measured properly once your game is closed (two at once share the graphics card) | Doing |
 | 2 | Jungle about 53 FPS: optimise trees and grass | Every leaf card of every near tree drawn, far trees as many triangles as near; grass a mesh rebuilt as you walk. Fewer, cheaper draws at distance (impostors), grass drawn by instancing | Open |
 | 3 | A big pause setting out from an outpost | Something built on the spot when leaving (the site, the far land, meshes) on the main thread | Open |
 | 4 | Two different loading screens; want one | The new loading bar at start and the boot cards after it: one screen that shows the cards while the bar fills | Open |
@@ -43,7 +43,7 @@ Status: **Open**, **Doing**, **Done** (commit), **Planned** (a bigger piece that
 
 | # | You said | What is behind it | Status |
 |---|---|---|---|
-| 17 | The desert's sand tornadoes do not look good | Dust devils as sprites look like blobs (and over a roof, round stains). Remove until they can be done properly | Open |
+| 17 | The desert's sand tornadoes do not look good | Dust devils as sprites looked like blobs and leaned tens of metres off their bases (the wind read in the wrong units). Removed until they can be done properly | Done (4fa60db) |
 | 18 | Signs of the organism: wherever a creature is, there should always be signs, more with a harder situation | Signs are by place only now; tie them to the creatures there (and the nest) | Open |
 | 19 | Different sky colours, sunsets and sunrises by where you are | The sky's colour from the star and the air: thick air, thin air, dust, a red or blue star | Planned (Phase 2, W4) |
 | 20 | Sites feel the same: each needs its own obstacles and challenges (water swimming, toxic radiation, lava...) | Hazards by world: toxic air and radiation, heat, cold, storms, water; what the suit must deal with | Open |
@@ -61,4 +61,5 @@ Status: **Open**, **Doing**, **Done** (commit), **Planned** (a bigger piece that
 
 | # | You said | What is behind it | Status |
 |---|---|---|---|
-| 25 | Landing title card: time, temperature, wind and visibility hard to tell apart | All on one line; each on a line of its own (or clearly separated) | Open |
+| 25 | Landing title card: time, temperature, wind and visibility hard to tell apart | Were all on one line; now each on a line of its own, set a little apart from the place names | Done |
+| 26 | Snow on the ground going back and forth fast | Blown snow placed by the clock times the gusting wind: each gust threw it metres. Now moved a frame at a time; and at the right speed (the wind is metres a second) | Done (4fa60db) |
