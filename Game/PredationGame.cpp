@@ -2108,8 +2108,14 @@ void PredationGame::OnUpdate(double dt, double alpha)
                       where);
     }
 
-    UpdateCampaign(deltaSeconds);
-    UpdateTravel(deltaSeconds);
+    {
+        PRED_PROFILE_SCOPE("Update: campaign");
+        UpdateCampaign(deltaSeconds);
+    }
+    {
+        PRED_PROFILE_SCOPE("Update: travel");
+        UpdateTravel(deltaSeconds);
+    }
 
     // --- Input that is sampled per frame, not per tick ------------------------------------------
     SampleLook(deltaSeconds);
@@ -2452,10 +2458,22 @@ void PredationGame::OnUpdate(double dt, double alpha)
     }
 
     UpdateDroneVisuals(deltaSeconds);
-    UpdateCinematic(deltaSeconds);
-    UpdateDevices(deltaSeconds);
-    UpdateShipTravel(deltaSeconds);
-    UpdateOrders(deltaSeconds);
+    {
+        PRED_PROFILE_SCOPE("Update: cinematic");
+        UpdateCinematic(deltaSeconds);
+    }
+    {
+        PRED_PROFILE_SCOPE("Update: devices");
+        UpdateDevices(deltaSeconds);
+    }
+    {
+        PRED_PROFILE_SCOPE("Update: ship travel");
+        UpdateShipTravel(deltaSeconds);
+    }
+    {
+        PRED_PROFILE_SCOPE("Update: orders");
+        UpdateOrders(deltaSeconds);
+    }
     m_particles.Update(m_scene, deltaSeconds);
     // The organism's rhythm, where its signs are plain (Signs::Pulse, by the campaign's clock, so the same moment for everybody
     // and on every world): a faint glow through its formations as it swells, and the lamps dipping with it where it is

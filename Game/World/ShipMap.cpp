@@ -1241,7 +1241,7 @@ void ShipMap::SetField(Scene& scene, MeshLibrary& meshes, bool shown, const Fiel
     }
 }
 
-void ShipMap::SetStageField(Scene& scene, MeshLibrary& meshes, bool shown, const FieldLook& look)
+void ShipMap::SetStageField(Scene& scene, MeshLibrary& meshes, bool shown, bool ready, const FieldLook& look)
 {
     if (!m_built)
     {
@@ -1251,7 +1251,7 @@ void ShipMap::SetStageField(Scene& scene, MeshLibrary& meshes, bool shown, const
     {
         m_lights->SetPowered(kStageFieldCircuit, shown);
     }
-    if (shown && (!m_stageField.Built() || !(look == m_stageFieldLook)))
+    if ((shown || ready) && (!m_stageField.Built() || !(look == m_stageFieldLook)))
     {
         m_stageFieldLook = look;
         m_stageField.Clear(scene, nullptr);

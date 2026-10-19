@@ -735,7 +735,7 @@ void PredationGame::UpdateShipGround()
             }
         }
         m_ship.SetField(m_scene, m_app->GetMeshes(), landed, field);
-        m_ship.SetStageField(m_scene, m_app->GetMeshes(), GroundCinematic() && at != nullptr, field);
+        m_ship.SetStageField(m_scene, m_app->GetMeshes(), GroundCinematic() && at != nullptr, landed, field);
         m_ship.SetGear(landed, GroundCinematic() && m_stageGear);
         m_ship.SetStair(landed, GroundCinematic() && m_stageStair);
         m_ship.SetAirlockOpen(m_scene, m_app->GetMeshes(), landed && m_campaign.doorOpen);

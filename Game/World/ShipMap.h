@@ -147,7 +147,9 @@ public:
     void SetField(Scene& scene, MeshLibrary& meshes, bool shown, const FieldLook& look);
     // The same outpost on the stage, for the cinematics of taking off and setting down (the ship's legs not on it: there the
     // ship is flying).
-    void SetStageField(Scene& scene, MeshLibrary& meshes, bool shown, const FieldLook& look);
+    // Made ready, hidden, while `ready` (the ship standing there): built the moment a takeoff began, it held that first frame
+    // up for as long as building a whole outpost takes.
+    void SetStageField(Scene& scene, MeshLibrary& meshes, bool shown, bool ready, const FieldLook& look);
     bool FieldShown() const { return m_fieldShown; }
     bool Built() const { return m_built; }
 
