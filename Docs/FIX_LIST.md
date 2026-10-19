@@ -44,7 +44,7 @@ Status: **Open**, **Doing**, **Done** (commit), **Planned** (a bigger piece that
 | # | You said | What is behind it | Status |
 |---|---|---|---|
 | 17 | The desert's sand tornadoes do not look good | Dust devils as sprites looked like blobs and leaned tens of metres off their bases (the wind read in the wrong units). Removed until they can be done properly | Done (4fa60db) |
-| 18 | Signs of the organism: wherever a creature is, there should always be signs, more with a harder situation | Signs are by place only now; tie them to the creatures there (and the nest) | Open |
+| 18 | Signs of the organism: wherever a creature is, there should always be signs, more with a harder situation | Creatures come to every mission site, so every one now has signs: faint near home, plainer further out. Sites have no difficulty of their own yet; distance from home stands in for it until they do | Done |
 | 19 | Different sky colours, sunsets and sunrises by where you are | The sky's colour from the star and the air: thick air, thin air, dust, a red or blue star | Planned (Phase 2, W4) |
 | 20 | Sites feel the same: each needs its own obstacles and challenges (water swimming, toxic radiation, lava...) | Hazards by world: toxic air and radiation, heat, cold, storms, water; what the suit must deal with | Open |
 | 21 | Water worlds (like Subnautica), and larger maps for larger facilities | Planned (Phase 12, and the facility rework, Phase 4) | Planned |

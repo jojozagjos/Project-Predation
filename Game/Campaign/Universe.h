@@ -210,10 +210,9 @@ public:
     // Moons: a designation of their own, a prefix and a number ("LV-426").
     std::vector<std::string> moonCatalogues{"LV"};
     glm::ivec2 moonNumbers{100, 999};
-    // The organism's signs in the land (Signs): the share of sites with any (0 to 1); how far from home, in light years, they
+    // The organism's signs in the land (Signs), at every site the creatures are: how far from home, in light years, they
     // are as plain as they get (fainter nearer); the colour of the faint glow in the strongest; and the one rhythm they keep
     // everywhere, seconds from one pulse to the next. Data, for the story to set.
-    float signShare = 0.18f;
     float signFullDistance = 90.0f;
     glm::vec3 signGlow{0.12f, 0.35f, 0.3f};
     float signRhythm = 47.0f;

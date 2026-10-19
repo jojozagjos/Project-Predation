@@ -1240,8 +1240,9 @@ SiteMap::Look PredationGame::SiteLookHere()
             look.blendShore = 1.0f;
         }
     }
-    // Signs of the organism, at the rare place that has any (Signs): faint near home, plainer the further out it is -- by the
-    // place, so the same for everyone and every visit. (Or as a test asked for: site_signs.)
+    // Signs of the organism wherever the creatures are -- at every site -- faint near home, plainer the further out it is
+    // (until a site has a difficulty of its own, the further out the harder): by the place, so the same for everyone and every
+    // visit. (Or as a test asked for: site_signs.)
     look.signTissue = m_universeData.signTissue;
     if (system != nullptr && body != nullptr)
     {
@@ -1250,13 +1251,9 @@ SiteMap::Look PredationGame::SiteLookHere()
         h ^= h >> 31;
         h *= 0xD6E8FEB86659FD93ull;
         h ^= h >> 29;
-        const float roll = static_cast<float>(h & 0xFFFFFFull) / static_cast<float>(0x1000000);
         const float spread = static_cast<float>((h >> 24) & 0xFFFFull) / 65536.0f;
-        if (roll < m_universeData.signShare)
-        {
-            const float out = glm::distance(m_universe.SystemPosition(system->id), m_universe.SystemPosition(m_universe.Home()));
-            look.signs = std::clamp(0.12f + 0.8f * out / std::max(m_universeData.signFullDistance, 1.0f) + (spread - 0.5f) * 0.15f, 0.08f, 1.0f);
-        }
+        const float out = glm::distance(m_universe.SystemPosition(system->id), m_universe.SystemPosition(m_universe.Home()));
+        look.signs = std::clamp(0.12f + 0.8f * out / std::max(m_universeData.signFullDistance, 1.0f) + (spread - 0.5f) * 0.15f, 0.08f, 1.0f);
     }
     if (m_siteSignsPreview >= 0.0f)
     {

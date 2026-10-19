@@ -13,7 +13,7 @@ namespace pred
 struct SitePlan;
 class SiteTerrain;
 
-// Signs of the organism in the land beyond the creatures, at the rare site that has any: formations of rock that branch out
+// Signs of the organism in the land beyond the creatures, at every site they are: formations of rock that branch out
 // over the ground like roots or veins from a half-buried knot.
 // How plain they are is the site's strength (0 to 1, from how far it is from home: SiteMap::Look::signs) -- faint, small and
 // the colour of the rock near home, larger and darker with a wet sheen further out. And one rhythm they all keep, the same on
