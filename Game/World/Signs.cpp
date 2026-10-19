@@ -119,7 +119,9 @@ MeshData Rock(const Formation& formation, float strength, const SiteTerrain& ter
         for (int i = 0; i <= kSteps; ++i)
         {
             const float t = static_cast<float>(i) / kSteps;
-            const float r = std::max(branch.radius * (1.0f - 0.8f * t), 0.04f);
+            // (Thickest where it leaves the knot, flaring into it, so the two are one piece.)
+            const float flare = branch.depth == 0 ? 1.0f + 1.2f * std::exp(-t * 10.0f) : 1.0f;
+            const float r = std::max(branch.radius * (1.0f - 0.8f * t) * flare, 0.04f);
             if (branch.upright)
             {
                 // Rising, leaning out and curling a little.
@@ -147,64 +149,20 @@ MeshData Rock(const Formation& formation, float strength, const SiteTerrain& ter
         Landmark::Sweep(mesh, path, radii, 7, branch.upright ? glm::vec3(1.0f, 0.0f, 0.0f) : glm::vec3(0.0f, 1.0f, 0.0f), 0.22f, 0.0f,
                         formation.seed + static_cast<uint32_t>(b), false, true);
     }
-    // The knot.
+    // The knot: a swell of the same rock, closing over at its top, the branches growing out of it.
     std::vector<glm::vec3> knot;
     std::vector<float> knotRadii;
-    for (int i = 0; i <= 6; ++i)
+    for (int i = 0; i <= 8; ++i)
     {
-        const float t = static_cast<float>(i) / 6.0f;
-        knot.push_back(formation.at + glm::vec3(0.0f, -thick * 1.5f + thick * 3.0f * t, 0.0f));
-        knotRadii.push_back(thick * 2.2f * std::sqrt(std::max(0.05f, std::sin(3.14159265f * (0.1f + 0.8f * t)))));
+        const float t = static_cast<float>(i) / 8.0f;
+        knot.push_back(formation.at + glm::vec3(0.0f, -thick * 1.2f + thick * 2.5f * t, 0.0f));
+        knotRadii.push_back(thick * 2.2f * std::sqrt(std::max(0.0f, 1.0f - t * t)) + 0.02f);
     }
     Landmark::Sweep(mesh, knot, knotRadii, 14, glm::vec3(1.0f, 0.0f, 0.0f), 0.3f, 0.0f, formation.seed + 7u, true, true, 0.3f);
     Landmark::SmoothNormals(mesh);
     for (MeshVertex& vertex : mesh.vertices)
     {
         vertex.color = 0xffffffffu;
-    }
-    return mesh;
-}
-
-MeshData Growths(const Formation& formation, float strength, const SiteTerrain& terrain)
-{
-    // Glossy films over the ground round the knot where the signs are plain: low patches, each following the ground, their
-    // edges uneven, a little raised in the middle.
-    MeshData mesh;
-    if (strength < 0.45f)
-    {
-        return mesh;
-    }
-    Random random((static_cast<uint64_t>(formation.seed) << 7) ^ 0x6A0Bull);
-    const int patches = 3 + static_cast<int>(random.Unit() * 5.0f * strength);
-    constexpr int kSides = 16;
-    for (int k = 0; k < patches; ++k)
-    {
-        const float a = random.Range(0.0f, kTau);
-        const float out = random.Range(1.0f, formation.size * 0.5f);
-        const glm::vec2 middle = glm::vec2(formation.at.x, formation.at.z) + glm::vec2(std::cos(a), std::sin(a)) * out;
-        const float wide = random.Range(1.2f, 3.5f) * strength;
-        const auto base = static_cast<uint32_t>(mesh.vertices.size());
-        MeshVertex centre;
-        centre.position = {middle.x, terrain.GroundHeight(middle.x, middle.y) + 0.06f, middle.y};
-        centre.normal = {0.0f, 1.0f, 0.0f};
-        centre.color = 0xffffffffu;
-        mesh.vertices.push_back(centre);
-        for (int s = 0; s < kSides; ++s)
-        {
-            const float b = kTau * static_cast<float>(s) / kSides;
-            const float edge = wide * random.Range(0.6f, 1.2f);
-            const glm::vec2 q = middle + glm::vec2(std::cos(b), std::sin(b)) * edge;
-            MeshVertex vertex;
-            vertex.position = {q.x, terrain.GroundHeight(q.x, q.y) + 0.015f, q.y};
-            vertex.normal = glm::normalize(glm::vec3(std::cos(b) * 0.15f, 1.0f, std::sin(b) * 0.15f));
-            vertex.color = 0xffffffffu;
-            mesh.vertices.push_back(vertex);
-        }
-        for (uint32_t s = 0; s < kSides; ++s)
-        {
-            const uint32_t n = (s + 1) % kSides;
-            mesh.indices.insert(mesh.indices.end(), {base, base + 1 + n, base + 1 + s});
-        }
     }
     return mesh;
 }

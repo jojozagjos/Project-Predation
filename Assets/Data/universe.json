@@ -2,7 +2,7 @@
   "_comment": "What planets can be. A planet is one biome, atmosphere, terrain, weather and civilization, plus any specials, each picked by weight among the ones that suit it: a biome only where the planet's warmth (degrees C) falls in its 'temperature', and the others from the biome's own lists. Add an entry to add a kind of world. Names are what a player is shown; ids are what saves use, so do not rename an id once campaigns exist. Colours are 0-1 RGB.",
 
   "signs": {
-    "_comment": "Signs of the organism in the land, beyond the creatures: rare branching formations of rock, glossy growths round the stronger ones, and one rhythm they keep everywhere. share: the fraction of sites with any; fullDistance: light years from home at which they are as plain as they get (fainter nearer home); glow: the colour of the faint glow the strongest give on the rhythm; rhythm: seconds from one pulse to the next, the same on every world; tissue: the colour the plainest take on. Yours to set.",
+    "_comment": "Signs of the organism in the land, beyond the creatures: rare branching formations of rock and one rhythm they keep everywhere. share: the fraction of sites with any; fullDistance: light years from home at which they are as plain as they get (fainter nearer home); glow: the colour of the faint glow the strongest give on the rhythm; rhythm: seconds from one pulse to the next, the same on every world; tissue: the colour the plainest take on. Yours to set.",
     "share": 0.18, "fullDistance": 90, "glow": [0.12, 0.35, 0.3], "rhythm": 47, "tissue": [0.13, 0.1, 0.1]
   },
 

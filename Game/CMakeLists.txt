@@ -171,7 +171,8 @@ set_target_properties(ProjectPredation PROPERTIES
     VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
     FOLDER "Game")
 
-# Console subsystem during development so logs are visible in a terminal.
+# A window of its own, no console behind it: what it says goes to its log (%APPDATA%\CIRRA\ProjectPredation\Logs) and the
+# in-game console. Still started at main(); run from a terminal with its output redirected, that output is still written.
 if(MSVC)
-    target_link_options(ProjectPredation PRIVATE /SUBSYSTEM:CONSOLE)
+    target_link_options(ProjectPredation PRIVATE /SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup)
 endif()

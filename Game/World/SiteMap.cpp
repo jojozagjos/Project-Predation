@@ -596,23 +596,19 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
             // (The rock material's colour is over its set's average: the tissue colour put over the same.)
             stone.baseColor = glm::mix(rockMaterial.baseColor, rockMaterial.baseColor * m_look.signTissue / glm::max(m_look.rock, glm::vec3(0.02f)), plain * 0.85f);
             stone.roughness = glm::mix(rockMaterial.roughness, 0.3f, plain);
-            Material film = Material::Diffuse(m_look.signTissue, 0.15f);
             for (const Signs::Formation& formation : Signs::Make(seed, m_look.signs, m_plan, m_terrain))
             {
-                for (const bool growth : {false, true})
+                const MeshData data = Signs::Rock(formation, m_look.signs, m_terrain);
+                if (data.indices.empty())
                 {
-                    const MeshData data = growth ? Signs::Growths(formation, m_look.signs, m_terrain) : Signs::Rock(formation, m_look.signs, m_terrain);
-                    if (data.indices.empty())
-                    {
-                        continue;
-                    }
-                    // (Each its own name: the library shares meshes by name.)
-                    const MeshHandle mesh = meshes.Upload(data, (growth ? "site_sign_growth#" : "site_sign_rock#") + std::to_string(m_signs.size()));
-                    m_meshHandles.push_back(mesh);
-                    const Entity entity = scene.CreateMeshEntity(growth ? "site_sign_growth" : "site_sign_rock", Transform{}, mesh, growth ? film : stone);
-                    m_entities.push_back(entity);
-                    m_signs.push_back(entity);
+                    continue;
                 }
+                // (Each its own name: the library shares meshes by name.)
+                const MeshHandle mesh = meshes.Upload(data, "site_sign_rock#" + std::to_string(m_signs.size()));
+                m_meshHandles.push_back(mesh);
+                const Entity entity = scene.CreateMeshEntity("site_sign_rock", Transform{}, mesh, stone);
+                m_entities.push_back(entity);
+                m_signs.push_back(entity);
             }
             PRED_LOG_INFO(Gameplay, "Site signs: {:.2f}, {} pieces", m_look.signs, m_signs.size());
         }

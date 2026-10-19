@@ -487,7 +487,9 @@ MeshData Strike(const glm::vec3& at, uint32_t seed, const SiteTerrain& terrain)
         {
             const float t = static_cast<float>(i) / kSteps;
             path.emplace_back(p.x, terrain.GroundHeight(p.x, p.y) + 0.01f, p.y);
-            radii.push_back(std::max(branch.radius * (1.0f - 0.85f * t), 0.015f));
+            // (Thickest where it leaves the pit, flaring into it, so the two are one piece.)
+            const float flare = branch.depth == 0 ? 1.0f + 1.4f * std::exp(-t * 14.0f) : 1.0f;
+            radii.push_back(std::max(branch.radius * (1.0f - 0.85f * t) * flare, 0.015f));
             heading += random.Range(-0.45f, 0.45f);
             p += glm::vec2(std::cos(heading), std::sin(heading)) * (branch.length / kSteps);
             // Forking now and then, the forks thinner and shorter.
@@ -499,16 +501,16 @@ MeshData Strike(const glm::vec3& at, uint32_t seed, const SiteTerrain& terrain)
         }
         Sweep(mesh, path, radii, 5, glm::vec3(0.0f, 1.0f, 0.0f), 0.25f, 0.0f, seed + static_cast<uint32_t>(b), false, true);
     }
-    // The pit: a low glassy rim round where it went in.
+    // The pit: a low glassy swell round where it went in, closing over at its middle, the branches growing out of it.
     std::vector<glm::vec3> rim;
     std::vector<float> rimRadii;
-    for (int i = 0; i <= 4; ++i)
+    for (int i = 0; i <= 6; ++i)
     {
-        const float t = static_cast<float>(i) / 4.0f;
-        rim.push_back(at + glm::vec3(0.0f, -0.2f + 0.3f * t, 0.0f));
-        rimRadii.push_back(0.9f * (1.0f - 0.5f * t * t));
+        const float t = static_cast<float>(i) / 6.0f;
+        rim.push_back(at + glm::vec3(0.0f, -0.25f + 0.4f * t, 0.0f));
+        rimRadii.push_back(0.75f * std::sqrt(std::max(0.0f, 1.0f - t * t)) + 0.01f);
     }
-    Sweep(mesh, rim, rimRadii, 10, glm::vec3(1.0f, 0.0f, 0.0f), 0.3f, 0.0f, seed + 999u);
+    Sweep(mesh, rim, rimRadii, 12, glm::vec3(1.0f, 0.0f, 0.0f), 0.2f, 0.0f, seed + 999u);
     SmoothNormals(mesh);
     for (MeshVertex& vertex : mesh.vertices)
     {

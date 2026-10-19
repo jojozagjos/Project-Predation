@@ -737,9 +737,7 @@ TEST_CASE("The organism's signs: none where there are none, plainer further out,
     REQUIRE_FALSE(plain.empty());
     CHECK(plain.size() >= faint.size());
     CHECK(plain.front().size > faint.front().size);
-    // Nothing growing round a faint one; growths round a plain one.
-    CHECK(Signs::Growths(faint.front(), 0.15f, terrain).indices.empty());
-    CHECK_FALSE(Signs::Growths(plain.front(), 1.0f, terrain).indices.empty());
+    CHECK_FALSE(Signs::Rock(plain.front(), 1.0f, terrain).indices.empty());
     // The rhythm: between nought and one, at its height once in each, and the same at the same moment wherever it is asked.
     float most = 0.0f;
     for (double t = 0.0; t < 47.0; t += 0.05)
