@@ -25,7 +25,7 @@ Status: **Open**, **Doing**, **Done** (commit), **Planned** (a bigger piece that
 | 6 | Pine trees from a distance (from below) look bad | The far conifers are thin tiers; seen against the sky they read as skeletons | Open |
 | 7 | Details right next to the site, then nothing further out | Scatter (rocks, shrubs, grass clumps, litter) laid only over the site and the land just round it; the far land is bare but for trees | Open |
 | 8 | Footprints: the rectangle of the print can be seen | The print was shaded by a normal worked out at each point, painted a colour worked out at each point, and weathered less than the ground; the ground blends its corners' normals and colours across each triangle. The print now takes them exactly as the ground is drawn, and weathers as it does. To check in play | Done (check) |
-| 9 | Rain and puddles do not look real; should all the ground be wet after rain? | Puddles are pale patches, reading as snow; real ground darkens evenly when wet, with puddles only in hollows, and dries patchily | Open |
+| 9 | Rain and puddles do not look real; should all the ground be wet after rain? | Yes. The ground is now soaked evenly while it rains and dries in patches after. Puddles were small, many and pale with the sky (read as snow); now a few metres across and few, only once it is soaked, on truly flat ground, growing while it rains and shrinking as it dries: dark, flat-faced, a darker rim round each | Done |
 
 ## Water
 

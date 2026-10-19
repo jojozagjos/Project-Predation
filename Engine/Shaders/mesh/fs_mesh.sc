@@ -911,16 +911,42 @@ void main()
 		float open = smoothstep(0.3, 0.8, skyReaches);
 		float under = u_baseColor.w > 0.995 && u_shelter.z > 0.0
 			? (1.0 - smoothstep(u_shelter.z * 0.8, u_shelter.z, length(v_worldPos.xz - u_shelter.xy))) * (1.0 - open) : 0.0;
-		float wet = (u_surfaceWeather.x * open * smoothstep(0.0, 0.15, exposed) + u_surfaceWeather.z * under) * mix(0.55, 1.0, max(N.y, 0.0));
+		// Soaked evenly while it rains; drying, in patches -- some ground dry while the rest is still dark -- as the weather's
+		// wetness (u_surfaceWeather.x) falls.
+		float soaked = u_surfaceWeather.x * open * smoothstep(0.0, 0.15, exposed);
+		float drying = SurfaceClouds(v_worldPos.xz * 0.21 + vec2(5.1, 1.7));
+		float wet = max(smoothstep(drying * 0.6, drying * 0.6 + 0.4, soaked), u_surfaceWeather.z * under) * mix(0.55, 1.0, max(N.y, 0.0));
 		if (byWater && exposed > 0.995)
 		{
 			// Wet up the shore from the water's edge, and darker still under it (the water itself is drawn over it).
 			wet = max(wet, 1.0 - smoothstep(u_shelter.w + 0.05, u_shelter.w + 0.9, v_worldPos.y));
 			albedo *= mix(1.0, 0.55, smoothstep(u_shelter.w, u_shelter.w - 0.8, v_worldPos.y));
 		}
-		puddle = wet * smoothstep(0.93, 0.99, N.y) * smoothstep(0.76, 0.84, SurfaceClouds(v_worldPos.xz * 0.9 + vec2(2.3, 8.1)));
-		albedo *= mix(1.0, mix(0.85, 0.55, roughness), wet) * mix(1.0, 0.6, puddle);
-		roughness = mix(roughness, mix(roughness * 0.45, 0.06, puddle), wet);
+		// Puddles: only once it is soaked, a few metres across and few, on what is truly flat (the ground itself, not its
+		// texture's bumps); growing as it goes on raining and shrinking as it dries. Dark water with the sky in it, a flat face,
+		// and the ground round each a little darker still. (Small and many, pale with the sky, they were read as snow.)
+		if (!cutout)
+		{
+			vec3 shape = normalize(v_normal);
+			float pooled = smoothstep(0.55, 1.0, soaked);
+			float lie = SurfaceClouds(v_worldPos.xz * 0.16 + vec2(2.3, 8.1));
+			float edge = 0.93 - 0.2 * pooled;
+			float level = smoothstep(0.985, 0.997, shape.y);
+			puddle = pooled * level * smoothstep(edge, edge + 0.025, lie);
+			float rim = pooled * level * smoothstep(edge - 0.07, edge, lie) * (1.0 - puddle);
+			albedo *= mix(1.0, 0.8, rim) * mix(1.0, 0.35, puddle);
+			if (puddle > 0.0)
+			{
+				N = normalize(mix(N, shape, puddle));
+				H = normalize(L + V);
+				NoL = max(dot(N, L), 0.0);
+				NoV = max(dot(N, V), 1e-4);
+				NoH = max(dot(N, H), 0.0);
+				VoH = max(dot(V, H), 0.0);
+			}
+		}
+		albedo *= mix(1.0, mix(0.85, 0.55, roughness), wet);
+		roughness = mix(roughness, mix(roughness * 0.45, 0.05, puddle), wet);
 		// (A leaf or a blade, a card at any angle, only dusted.)
 		// Lying on anything up to about sixty degrees from flat, thinner the steeper.
 		float facing = cutout ? 0.45 : smoothstep(0.4, 0.75, N.y);
