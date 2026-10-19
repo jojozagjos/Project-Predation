@@ -99,7 +99,7 @@ public:
     static float WindAngle(uint32_t seed);
     glm::vec3 GroundTint(float x, float z) const
     {
-        return m_terrain.Colour(x, z, m_terrain.Normal(x, z), m_look.ground, m_cliffColour, m_grassy ? &m_grownOver : nullptr);
+        return m_terrain.DrawnColour(x, z, m_look.ground, m_cliffColour, m_grassy ? &m_grownOver : nullptr);
     }
     const WorldObjects::Placements& Placements() const { return m_placements; }
     // Where somebody put on the site with nothing to bring them stands: off the foot of the shuttle's ramp, facing in.

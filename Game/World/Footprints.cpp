@@ -80,7 +80,8 @@ void Footprints::Leave(Scene& scene, MeshLibrary& meshes, const SiteMap& site, c
             // Over the ground, never into it: the lip a few millimetres higher still.
             vertex.position = {place.x, ground.Height(place.x, place.z) + 0.004f + 0.003f * lip, place.z};
             const glm::vec3 slope = right * slopeAcross + forward * slopeAlong;
-            vertex.normal = glm::normalize(ground.Normal(place.x, place.z) - glm::vec3(slope.x, 0.0f, slope.z));
+            // (The ground's normal and colour as it is drawn there, so the print is shaded and painted as the ground round it is.)
+            vertex.normal = glm::normalize(ground.DrawnNormal(place.x, place.z) - glm::vec3(slope.x, 0.0f, slope.z));
             vertex.uv = {place.x, place.z};
             // The ground's own colour, darker where it is pressed down and in the shade of the dent.
             const glm::vec3 tint = glm::clamp(site.GroundTint(place.x, place.z) * (1.0f - 0.3f * pressed), glm::vec3(0.0f), glm::vec3(1.0f));
@@ -117,9 +118,9 @@ void Footprints::Leave(Scene& scene, MeshLibrary& meshes, const SiteMap& site, c
     if (MeshRenderer* renderer = scene.GetMeshRenderer(print.entity))
     {
         renderer->mesh = print.mesh;
+        // As much out in the weather as the ground round it: less snowed on than it, the whole print showed as a patch. In
+        // snow it shows by the shading of its dent.
         renderer->material = site.GroundMaterial();
-        // Pressed down: less of the lying snow in it than round it, so it shows in snow lying on any ground.
-        renderer->material.weathering = 0.6f;
         renderer->castsShadow = false;
         renderer->blocksSky = false;
         renderer->visible = true;

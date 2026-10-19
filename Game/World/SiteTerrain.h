@@ -64,6 +64,11 @@ public:
     // How high the ground is at a place (world x, z), and which way it faces.
     float Height(float x, float z) const;
     glm::vec3 Normal(float x, float z) const;
+    // As the drawn ground has it, between its corners: the corners' own normals and colours blended across each of the two
+    // triangles a cell is drawn as. What is laid flat on the ground and painted to match it -- a footprint -- takes these,
+    // not Normal's and Colour's at the place itself, or it is shaded and coloured a little differently and shows as a patch.
+    glm::vec3 DrawnNormal(float x, float z) const;
+    glm::vec3 DrawnColour(float x, float z, const glm::vec3& ground, const glm::vec3& rock, const glm::vec3* grown) const;
     // The levelled ground's height: the buildings' floors, a hand under them.
     float Base() const { return m_base; }
     // And as drawn anywhere out to the horizon: the field's where it reaches, the land round it (FarMesh) past that.
@@ -109,6 +114,10 @@ public:
 
 private:
     float At(int i, int j) const { return m_heights[static_cast<size_t>(j) * static_cast<size_t>(m_cells + 1) + static_cast<size_t>(i)]; }
+    // The normal the drawn ground has at a corner of its grid; and the corners of the triangle a place is drawn in, how much of
+    // each (DrawnNormal, DrawnColour).
+    glm::vec3 VertexNormal(int i, int j) const;
+    void DrawnCorners(float x, float z, int (&i)[3], int (&j)[3], float (&weight)[3]) const;
     float Natural(float x, float z) const;
     // The far land's lines out from the middle each way (offsets, metres), and its height at a place.
     std::vector<float> FarLines() const;

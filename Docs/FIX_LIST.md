@@ -24,7 +24,7 @@ Status: **Open**, **Doing**, **Done** (commit), **Planned** (a bigger piece that
 | 5 | Rework the grass so it can always be seen | Tufts drawn only round the eye and thinning with distance: grass that reaches the horizon (cards near, a grass layer in the ground's own shading far) | Open |
 | 6 | Pine trees from a distance (from below) look bad | The far conifers are thin tiers; seen against the sky they read as skeletons | Open |
 | 7 | Details right next to the site, then nothing further out | Scatter (rocks, shrubs, grass clumps, litter) laid only over the site and the land just round it; the far land is bare but for trees | Open |
-| 8 | Footprints: the rectangle of the print can be seen | Each print is a card with the ground's texture; it does not match the ground under it exactly (wetness, blending, the second surface) | Open |
+| 8 | Footprints: the rectangle of the print can be seen | The print was shaded by a normal worked out at each point, painted a colour worked out at each point, and weathered less than the ground; the ground blends its corners' normals and colours across each triangle. The print now takes them exactly as the ground is drawn, and weathers as it does. To check in play | Done (check) |
 | 9 | Rain and puddles do not look real; should all the ground be wet after rain? | Puddles are pale patches, reading as snow; real ground darkens evenly when wet, with puddles only in hollows, and dries patchily | Open |
 
 ## Water

@@ -523,6 +523,78 @@ glm::vec3 SiteTerrain::Normal(float x, float z) const
     return glm::normalize(glm::vec3(-dx, 2.0f * e, -dz));
 }
 
+glm::vec3 SiteTerrain::VertexNormal(int i, int j) const
+{
+    const int il = std::max(i - 1, 0);
+    const int ir = std::min(i + 1, m_cells);
+    const int jd = std::max(j - 1, 0);
+    const int ju = std::min(j + 1, m_cells);
+    const float dx = (At(ir, j) - At(il, j)) / (static_cast<float>(ir - il) * kCell);
+    const float dz = (At(i, ju) - At(i, jd)) / (static_cast<float>(ju - jd) * kCell);
+    return glm::normalize(glm::vec3(-dx, 1.0f, -dz));
+}
+
+void SiteTerrain::DrawnCorners(float x, float z, int (&i)[3], int (&j)[3], float (&weight)[3]) const
+{
+    // As Height divides a cell: the triangle by the cell's low corner, or the one by its high corner.
+    const float u = std::clamp((x - m_min.x) / kCell, 0.0f, static_cast<float>(m_cells) - 1.0e-3f);
+    const float v = std::clamp((z - m_min.y) / kCell, 0.0f, static_cast<float>(m_cells) - 1.0e-3f);
+    const int ci = static_cast<int>(u);
+    const int cj = static_cast<int>(v);
+    const float tx = u - static_cast<float>(ci);
+    const float tz = v - static_cast<float>(cj);
+    if (tx + tz <= 1.0f)
+    {
+        i[0] = ci;     j[0] = cj;     weight[0] = 1.0f - tx - tz;
+        i[1] = ci + 1; j[1] = cj;     weight[1] = tx;
+        i[2] = ci;     j[2] = cj + 1; weight[2] = tz;
+    }
+    else
+    {
+        i[0] = ci + 1; j[0] = cj + 1; weight[0] = tx + tz - 1.0f;
+        i[1] = ci;     j[1] = cj + 1; weight[1] = 1.0f - tx;
+        i[2] = ci + 1; j[2] = cj;     weight[2] = 1.0f - tz;
+    }
+}
+
+glm::vec3 SiteTerrain::DrawnNormal(float x, float z) const
+{
+    if (m_heights.empty())
+    {
+        return {0.0f, 1.0f, 0.0f};
+    }
+    int i[3];
+    int j[3];
+    float weight[3];
+    DrawnCorners(x, z, i, j, weight);
+    glm::vec3 normal{0.0f};
+    for (int k = 0; k < 3; ++k)
+    {
+        normal += VertexNormal(i[k], j[k]) * weight[k];
+    }
+    return glm::normalize(normal);
+}
+
+glm::vec3 SiteTerrain::DrawnColour(float x, float z, const glm::vec3& ground, const glm::vec3& rock, const glm::vec3* grown) const
+{
+    if (m_heights.empty())
+    {
+        return Colour(x, z, Normal(x, z), ground, rock, grown);
+    }
+    int i[3];
+    int j[3];
+    float weight[3];
+    DrawnCorners(x, z, i, j, weight);
+    glm::vec3 colour{0.0f};
+    for (int k = 0; k < 3; ++k)
+    {
+        const float cx = m_min.x + static_cast<float>(i[k]) * kCell;
+        const float cz = m_min.y + static_cast<float>(j[k]) * kCell;
+        colour += Colour(cx, cz, VertexNormal(i[k], j[k]), ground, rock, grown) * weight[k];
+    }
+    return colour;
+}
+
 float SiteTerrain::Wildness(float x, float z) const
 {
     if (m_wild.empty())
@@ -574,15 +646,9 @@ MeshData SiteTerrain::Mesh(int chunkX, int chunkZ, const glm::vec3& ground, cons
         {
             const float x = m_min.x + static_cast<float>(i) * kCell;
             const float z = m_min.y + static_cast<float>(j) * kCell;
-            const int il = std::max(i - 1, 0);
-            const int ir = std::min(i + 1, m_cells);
-            const int jd = std::max(j - 1, 0);
-            const int ju = std::min(j + 1, m_cells);
-            const float dx = (At(ir, j) - At(il, j)) / (static_cast<float>(ir - il) * kCell);
-            const float dz = (At(i, ju) - At(i, jd)) / (static_cast<float>(ju - jd) * kCell);
             MeshVertex vertex;
             vertex.position = {x, At(i, j), z};
-            vertex.normal = glm::normalize(glm::vec3(-dx, 1.0f, -dz));
+            vertex.normal = VertexNormal(i, j);
             vertex.uv = {x, z};
             vertex.color = pack(Colour(x, z, vertex.normal, ground, rock, grown));
             mesh.vertices.push_back(vertex);
