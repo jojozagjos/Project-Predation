@@ -9531,6 +9531,22 @@ void PredationGame::OnFixedUpdate(double fixedDt)
     {
         m_player.Step(input, dt);
     }
+    // No further round a site than anybody may go (SiteTerrain::kRoam): the land goes on to the horizon, the shuttle's comms do
+    // not -- turned back at the edge, and told so.
+    if (m_facility.Built() && m_player.State().alive && m_facility.Contains(m_player.State().position))
+    {
+        const glm::vec3 at = m_player.State().position;
+        const glm::vec3 kept = m_facility.WithinRoam(at);
+        if (glm::distance(glm::vec2(at.x, at.z), glm::vec2(kept.x, kept.z)) > 1.0e-3f)
+        {
+            m_player.Teleport(kept);
+            if (m_time - m_roamToldAt > 4.0)
+            {
+                m_roamToldAt = m_time;
+                ShowCampaignNotice("Out of the shuttle's comms range. Turn back.");
+            }
+        }
+    }
     // Dead, the same input drives the drone, and its owner tells everybody where it is.
     UpdateDrone(input, dt);
     if (m_sessionMode == SessionMode::Host)
@@ -10341,7 +10357,8 @@ void PredationGame::OnUpdate(double dt, double alpha)
     const bool onStage = glm::distance(m_renderEye, ShipSpec::kStage) < ShipSpec::kStageReach;
     const bool titleShot = m_screen == Screen::Title;
     const float nearPlane = titleShot ? 2.0f : m_cineFar > 0.0f ? (onStage ? 2.0f : 0.25f) : 0.05f;
-    const float farPlane = titleShot ? 3000.0f : m_cineFar > 0.0f ? m_cineFar : 500.0f;
+    // Out to the horizon at a site (SiteTerrain::kFar and a little more).
+    const float farPlane = titleShot ? 3000.0f : m_cineFar > 0.0f ? m_cineFar : 4500.0f;
     const glm::mat4 projection = Depth::Perspective(verticalFov, aspect, nearPlane, farPlane);
     renderer.SetCamera(view, projection);
     m_renderVerticalFov = verticalFov;
@@ -10498,13 +10515,22 @@ void PredationGame::OnUpdate(double dt, double alpha)
         const Body* siteBody = siteSystem != nullptr ? siteSystem->Find(m_campaign.body) : nullptr;
         if (siteBody != nullptr && m_campaign.travel.region >= 0 && m_campaign.travel.region < static_cast<int>(siteBody->regions.size()))
         {
-            // In a campaign, the sky of the world it is on, at the hour it is there -- its haze drawn in, so the site is still a
-            // place you cannot quite see across, though you can see the rock round it; and no haze at all without air.
+            // In a campaign, the sky of the world it is on, at the hour it is there -- and the land round the site seen out to the
+            // horizon on a clear day (SiteTerrain::FarMesh), hazier the thicker its air and its weather; no haze at all without air.
             SetSkyOver(*siteSystem, *siteBody, m_campaign.travel.region, environment);
             if (siteBody->air >= 0.015f)
             {
-                environment.fogStart = std::min(environment.fogStart, 30.0f);
-                environment.fogEnd = std::min(environment.fogEnd, 260.0f);
+                float visibility = 1.0f;
+                if (const WeatherDef* weather = m_universeData.Weather(siteBody->weather))
+                {
+                    visibility *= weather->visibility;
+                }
+                if (const AtmosphereDef* atmosphere = m_universeData.Atmosphere(siteBody->atmosphere))
+                {
+                    visibility *= atmosphere->visibility;
+                }
+                environment.fogStart = 60.0f * visibility;
+                environment.fogEnd = std::clamp(2400.0f * visibility, 700.0f, 3000.0f);
             }
             // And the weather thickens it far more: a sandstorm or a blizzard down to a few tens of metres, the fog the
             // colour of what is in the air, the day dimmed under it, and how far anybody can see coming and going with the

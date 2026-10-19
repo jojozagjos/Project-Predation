@@ -88,6 +88,8 @@ public:
     // Whether anything could walk there: the open ground and the foot of the rock round it, not the heights of the rock
     // (too steep for anybody), which the navigation is not built over.
     bool InReach(const glm::vec3& at) const;
+    // A place on the ground kept within how far round the site anybody may go (SiteTerrain::kRoam): itself, inside it.
+    glm::vec3 WithinRoam(const glm::vec3& at) const;
     // The grass round the eye, where the world grows it: tufts thick close by and thinner further off, out to some tens of
     // metres, made again as the eye moves on (each tuft where its patch of ground puts it, so they stay put).
     // `detail` scales how thick it is drawn (the r.grass setting: 0 none).

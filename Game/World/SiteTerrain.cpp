@@ -137,9 +137,6 @@ void ForRows(int last, const Row& row)
 constexpr float kLevelled = 4.0f;
 constexpr float kBlend = 18.0f;
 // The walls round the edge: how high, starting this far inside the edge and reaching their height this far outside it.
-constexpr float kWallHigh = 46.0f;
-constexpr float kWallFrom = -6.0f;
-constexpr float kWallTo = 30.0f;
 
 } // namespace
 
@@ -208,7 +205,63 @@ float SiteTerrain::Natural(float x, float z) const
         const float wave = std::sin(across / 16.0f + 3.0f * Fbm(x, z, 70.0f, 2, s + 29u)) * 0.5f + 0.5f;
         h += 3.2f * wave * wave;
     }
+    // And further off, the land the site sits in: its world's landforms at their own size (Macro), coming in only past the
+    // site's own ground, so that is as it was planned.
+    const float fromMiddle = glm::length(glm::vec2(x, z) - (m_origin + glm::vec2(m_size * 0.5f)));
+    h += (Macro(x, z) - m_macroHere) * Smooth(150.0f, 700.0f, fromMiddle);
     return h;
+}
+
+float SiteTerrain::Macro(float x, float z) const
+{
+    const uint32_t s = m_seed + 101u;
+    switch (m_shape)
+    {
+    case Shape::Flat:
+        // Long low swells, a plain going away.
+        return 7.0f * Fbm(x, z, 900.0f, 3, s);
+    case Shape::Rolling:
+        // Hills, and further, higher ones.
+        return 40.0f * Fbm(x, z, 700.0f, 4, s) + 12.0f;
+    case Shape::Mountainous:
+        // A range: ridged peaks a couple of hundred metres high, valleys between.
+        return 330.0f * (Ridged(x, z, 1400.0f, 4, s) - 0.3f);
+    case Shape::Canyons:
+    {
+        // Mesas: flat-topped and steep-sided, the land between them low, cut by the canyons.
+        const float v = Fbm(x, z, 900.0f, 3, s);
+        return 75.0f * Smooth(0.04f, 0.1f, v) + 25.0f * Smooth(0.18f, 0.24f, v) - 15.0f;
+    }
+    case Shape::Cratered:
+    {
+        // Great craters, one now and then in each stretch of ground some hundreds of metres across: a bowl, and its rim.
+        constexpr float kSpan = 800.0f;
+        const int cx = static_cast<int>(std::floor(x / kSpan));
+        const int cz = static_cast<int>(std::floor(z / kSpan));
+        float h = 6.0f * Fbm(x, z, 700.0f, 3, s);
+        for (int dz = -1; dz <= 1; ++dz)
+        {
+            for (int dx = -1; dx <= 1; ++dx)
+            {
+                if (Hash(cx + dx, cz + dz, s + 1u) > 0.6f)
+                {
+                    continue;
+                }
+                const glm::vec2 at{(static_cast<float>(cx + dx) + Hash(cx + dx, cz + dz, s + 2u)) * kSpan,
+                                   (static_cast<float>(cz + dz) + Hash(cx + dx, cz + dz, s + 3u)) * kSpan};
+                const float radius = 140.0f + 220.0f * Hash(cx + dx, cz + dz, s + 4u);
+                const float d = glm::length(glm::vec2(x, z) - at) / radius;
+                if (d < 1.0f)
+                {
+                    h += radius * 0.12f * (d * d - 1.0f);
+                }
+                h += radius * 0.06f * std::exp(-(d - 1.0f) * (d - 1.0f) / 0.05f);
+            }
+        }
+        return h;
+    }
+    }
+    return 0.0f;
 }
 
 void SiteTerrain::Plan(const SitePlan& plan, Shape shape, bool dunes)
@@ -225,6 +278,7 @@ void SiteTerrain::Plan(const SitePlan& plan, Shape shape, bool dunes)
     Random random((static_cast<uint64_t>(m_seed) << 8) ^ 0xC4A7E45ull);
     m_duneAngle = random.Range(0.0f, 3.14159265f);
     m_craters.clear();
+    m_macroHere = Macro(m_origin.x + m_size * 0.5f, m_origin.y + m_size * 0.5f);
     if (shape == Shape::Cratered)
     {
         const int count = 30 + static_cast<int>(random.Unit() * 20.0f);
@@ -285,20 +339,9 @@ void SiteTerrain::Plan(const SitePlan& plan, Shape shape, bool dunes)
                 nearest = std::min(nearest, FromSegment(p, a, b) - 1.5f);
             }
             const float wild = Smooth(kLevelled, kLevelled + kBlend, nearest);
-            // Out past the open ground every way, up into walls of rock.
-            const glm::vec2 local = p - m_origin;
-            // Its foot wanders in and out, and it is broken into buttresses and gullies rather than one even slope -- but it
-            // never comes in over what was built.
-            // Round its corners, too: two walls meeting square make a crease, one face in the sun and the next in shadow.
-            constexpr float kCorner = 45.0f;
-            const glm::vec2 fromMiddle = glm::abs(local - glm::vec2(m_size * 0.5f)) - glm::vec2(m_size * 0.5f - kCorner);
-            const float out = glm::length(glm::max(fromMiddle, glm::vec2(0.0f))) + std::min(std::max(fromMiddle.x, fromMiddle.y), 0.0f) - kCorner +
-                              10.0f * Fbm(p.x, p.y, 70.0f, 2, m_seed + 37u);
-            const float rise = Smooth(kWallFrom, kWallTo, out) * std::max(wild, Smooth(kWallFrom + 12.0f, kWallFrom + 24.0f, out));
-            const float wall = (kWallHigh + 9.0f * Fbm(p.x, p.y, 45.0f, 2, m_seed + 41u) + 10.0f * (Ridged(p.x, p.y, 60.0f, 2, m_seed + 43u) - 0.5f)) * rise;
             const size_t index = static_cast<size_t>(j) * side + static_cast<size_t>(i);
-            m_wild[index] = std::max(wild, rise);
-            m_heights[index] = m_base + Natural(p.x, p.y) * wild * (1.0f - 0.6f * rise) + wall;
+            m_wild[index] = wild;
+            m_heights[index] = m_base + Natural(p.x, p.y) * wild;
         }
     });
 
@@ -373,8 +416,8 @@ float SiteTerrain::Wildness(float x, float z) const
 
 bool SiteTerrain::InReach(int chunkX, int chunkZ) const
 {
-    // The open ground and the foot of the rock round it, with room to spare; nobody gets further up the rock than that.
-    constexpr float kFoot = 25.0f;
+    // The open ground and as far round it as anybody may go, with room to spare.
+    constexpr float kFoot = kRoam + 10.0f;
     const glm::vec2 low = m_min + glm::vec2(static_cast<float>(chunkX), static_cast<float>(chunkZ)) * (kCell * kChunkCells);
     const glm::vec2 high = low + glm::vec2(kCell * kChunkCells);
     const glm::vec2 open0 = m_origin - glm::vec2(kFoot);
@@ -433,6 +476,82 @@ MeshData SiteTerrain::Mesh(int chunkX, int chunkZ, const glm::vec3& ground, cons
             const uint32_t a = static_cast<uint32_t>((j - j0) * across + (i - i0));
             const uint32_t b = a + 1;
             const uint32_t c = a + static_cast<uint32_t>(across);
+            const uint32_t d = c + 1;
+            mesh.indices.insert(mesh.indices.end(), {a, c, b, b, c, d});
+        }
+    }
+    return mesh;
+}
+
+
+MeshData SiteTerrain::FarMesh(const glm::vec3& ground, const glm::vec3& rock, const glm::vec3* grown) const
+{
+    MeshData mesh;
+    if (m_heights.empty())
+    {
+        return mesh;
+    }
+    // Lines across it a cell or so apart near the site, further and further apart out towards the horizon, where a hill a
+    // kilometre off is a few pixels: out from the middle each way.
+    const glm::vec2 middle = m_origin + glm::vec2(m_size * 0.5f);
+    const float inner = Extent() * 0.5f;
+    std::vector<float> offsets{0.0f};
+    for (float o = 0.0f; o < kFar;)
+    {
+        o += o < inner ? 16.0f : std::clamp(o * 0.06f, 16.0f, 220.0f);
+        offsets.push_back(std::min(o, kFar));
+    }
+    std::vector<float> lines;
+    for (auto it = offsets.rbegin(); it != offsets.rend(); ++it)
+    {
+        lines.push_back(-*it);
+    }
+    lines.insert(lines.end(), offsets.begin() + 1, offsets.end());
+    const auto n = static_cast<int>(lines.size());
+    const auto pack = [](const glm::vec3& c)
+    {
+        const auto channel = [](float v) { return static_cast<uint32_t>(std::clamp(v, 0.0f, 1.0f) * 255.0f + 0.5f); };
+        return channel(c.r) | (channel(c.g) << 8) | (channel(c.b) << 16) | (255u << 24);
+    };
+    const auto height = [&](float x, float z)
+    {
+        // Under the height field where they overlap, so it never shows through it.
+        const glm::vec2 local = glm::abs(glm::vec2(x, z) - middle);
+        const float under = local.x < inner && local.y < inner ? 0.8f : 0.0f;
+        return m_base + Natural(x, z) - under;
+    };
+    for (int j = 0; j < n; ++j)
+    {
+        for (int i = 0; i < n; ++i)
+        {
+            const float x = middle.x + lines[static_cast<size_t>(i)];
+            const float z = middle.y + lines[static_cast<size_t>(j)];
+            const float e = std::max(4.0f, std::abs(lines[static_cast<size_t>(std::min(i + 1, n - 1))] - lines[static_cast<size_t>(i)]) * 0.5f);
+            MeshVertex vertex;
+            vertex.position = {x, height(x, z), z};
+            vertex.normal = glm::normalize(glm::vec3(-(Natural(x + e, z) - Natural(x - e, z)), 2.0f * e, -(Natural(x, z + e) - Natural(x, z - e))));
+            vertex.uv = {x, z};
+            vertex.color = pack(Colour(x, z, vertex.normal, ground, rock, grown));
+            mesh.vertices.push_back(vertex);
+        }
+    }
+    // Every square of it but those wholly inside the height field (a little in from its edge: the rest overlaps it).
+    const float hole = inner - 6.0f;
+    for (int j = 0; j + 1 < n; ++j)
+    {
+        for (int i = 0; i + 1 < n; ++i)
+        {
+            const float x0 = lines[static_cast<size_t>(i)];
+            const float x1 = lines[static_cast<size_t>(i + 1)];
+            const float z0 = lines[static_cast<size_t>(j)];
+            const float z1 = lines[static_cast<size_t>(j + 1)];
+            if (x0 >= -hole && x1 <= hole && z0 >= -hole && z1 <= hole)
+            {
+                continue;
+            }
+            const auto a = static_cast<uint32_t>(j * n + i);
+            const uint32_t b = a + 1;
+            const auto c = static_cast<uint32_t>(a + static_cast<uint32_t>(n));
             const uint32_t d = c + 1;
             mesh.indices.insert(mesh.indices.end(), {a, c, b, b, c, d});
         }

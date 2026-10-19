@@ -2149,6 +2149,8 @@ private:
     MeshHandle m_propSphereMesh;
     MeshHandle m_propBoxMesh;
     double m_time = 0.0;
+    // When the player was last told they were at the edge of how far round a site they may go.
+    double m_roamToldAt = -100.0;
 };
 
 } // namespace pred

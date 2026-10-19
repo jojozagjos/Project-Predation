@@ -249,6 +249,23 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
             builder.AddMesh("site_ground", Transform{}, piece.mesh, terrainMaterial, piece.shape);
         }
     }
+    // And the land round it to the horizon (SiteTerrain::FarMesh): drawn however far off, nothing to stand on, no shadow worth
+    // its cost at that distance.
+    {
+        const MeshData far = m_terrain.FarMesh(m_look.ground, cliffColour, grassy ? &grownOver : nullptr);
+        if (!far.indices.empty())
+        {
+            const MeshHandle mesh = meshes.Upload(far, "site_far_land");
+            const Entity entity = scene.CreateMeshEntity("site_far_land", Transform{}, mesh, terrainMaterial);
+            if (MeshRenderer* renderer = scene.GetMeshRenderer(entity))
+            {
+                renderer->castsShadow = false;
+                renderer->blocksSky = false;
+                renderer->farVisible = true;
+            }
+            m_entities.push_back(entity);
+        }
+    }
     builder.BeginBatching(24.0f);
     int containers = 0;
     for (const SitePlan::Block& block : m_plan.blocks)
@@ -781,6 +798,13 @@ bool SiteMap::InReach(const glm::vec3& at) const
     constexpr float kFoot = 14.0f;
     const glm::vec3 local = at - m_plan.origin;
     return local.x > -kFoot && local.z > -kFoot && local.x < m_plan.size + kFoot && local.z < m_plan.size + kFoot;
+}
+
+glm::vec3 SiteMap::WithinRoam(const glm::vec3& at) const
+{
+    constexpr float kRoam = SiteTerrain::kRoam;
+    return {std::clamp(at.x, m_plan.origin.x - kRoam, m_plan.origin.x + m_plan.size + kRoam), at.y,
+            std::clamp(at.z, m_plan.origin.z - kRoam, m_plan.origin.z + m_plan.size + kRoam)};
 }
 
 bool SiteMap::Contains(const glm::vec3& at) const

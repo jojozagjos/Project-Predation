@@ -334,7 +334,7 @@ TEST_CASE("Each kind of place plans what that kind has, and keeps its kind throu
     CHECK(SitePlan::KindOf(1) == SiteKind::Facility);
 }
 
-TEST_CASE("A site's ground is level where people built, the world's own shape elsewhere, and rises into rock round its edge", "[site][terrain]")
+TEST_CASE("A site's ground is level where people built, the world's own shape elsewhere, and open land round it to the horizon", "[site][terrain]")
 {
     using Shape = SiteTerrain::Shape;
     using SiteKind = SitePlan::SiteKind;
@@ -376,14 +376,36 @@ TEST_CASE("A site's ground is level where people built, the world's own shape el
                 }
                 CHECK(level(plan.rampFoot.position.x, plan.rampFoot.position.z));
 
-                // Rock all the way round, far higher than anybody can climb.
-                for (float t = -20.0f; t <= plan.size + 20.0f; t += 10.0f)
+                // No wall round it: as far round it as anybody may go, the ground mostly no steeper than can be walked -- nothing
+                // like a cliff of rock all the way round.
                 {
-                    for (const glm::vec2 out : {glm::vec2(plan.origin.x - 30.0f, plan.origin.z + t), glm::vec2(plan.origin.x + plan.size + 30.0f, plan.origin.z + t),
-                                                glm::vec2(plan.origin.x + t, plan.origin.z - 30.0f), glm::vec2(plan.origin.x + t, plan.origin.z + plan.size + 30.0f)})
+                    int steep = 0;
+                    int samples = 0;
+                    for (float t = 0.0f; t <= plan.size; t += 10.0f)
                     {
-                        CHECK(terrain.Height(out.x, out.y) > terrain.Base() + 25.0f);
+                        for (const glm::vec2 out : {glm::vec2(plan.origin.x - SiteTerrain::kRoam, plan.origin.z + t),
+                                                    glm::vec2(plan.origin.x + plan.size + SiteTerrain::kRoam, plan.origin.z + t),
+                                                    glm::vec2(plan.origin.x + t, plan.origin.z - SiteTerrain::kRoam),
+                                                    glm::vec2(plan.origin.x + t, plan.origin.z + plan.size + SiteTerrain::kRoam)})
+                        {
+                            steep += terrain.Normal(out.x, out.y).y < SiteTerrain::kSteepCosine ? 1 : 0;
+                            ++samples;
+                        }
                     }
+                    CHECK(steep * 4 < samples);
+                }
+                // And the land round it out to the horizon, every way.
+                {
+                    const MeshData far = terrain.FarMesh(glm::vec3(0.5f), glm::vec3(0.3f));
+                    REQUIRE_FALSE(far.indices.empty());
+                    glm::vec2 reach{0.0f};
+                    const glm::vec2 middle{plan.origin.x + plan.size * 0.5f, plan.origin.z + plan.size * 0.5f};
+                    for (const MeshVertex& vertex : far.vertices)
+                    {
+                        reach = glm::max(reach, glm::abs(glm::vec2(vertex.position.x, vertex.position.z) - middle));
+                    }
+                    CHECK(reach.x >= SiteTerrain::kFar - 1.0f);
+                    CHECK(reach.y >= SiteTerrain::kFar - 1.0f);
                 }
 
                 // Every cell drawn, once.

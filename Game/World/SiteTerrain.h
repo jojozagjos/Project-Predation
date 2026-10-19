@@ -18,9 +18,10 @@ namespace pred
 // into dunes -- planned from the site's seed and the kind of ground its world has (universe.json, a body's "terrain").
 //
 // Where people built (the buildings, the pad, the yards, and the ways between them) it is levelled: cut and filled to the
-// buildings' floor, blending out into the natural ground over the next twenty metres or so. Round the edge of the site it
-// rises into steep walls of rock, too steep to climb, so the site is a basin of its own. Everything outside the levelled
-// ground -- boulders, debris, lamp poles -- stands on it where it is.
+// buildings' floor, blending out into the natural ground over the next twenty metres or so. Round it the land goes on to
+// the horizon: the world's landforms at their own size coming in with distance (a range of mountains, mesas, great
+// craters), drawn out to a few kilometres (FarMesh); how far anybody may go is kRoam past the open ground, no wall of rock.
+// Everything outside the levelled ground -- boulders, debris, lamp poles -- stands on it where it is.
 //
 // A height field, two metres a cell, over the site and well past its edge. Every machine plans the same ground from the
 // same seed and world, so only the seed is ever sent.
@@ -59,6 +60,12 @@ public:
     // Whether anybody could ever stand on a piece: the pieces wholly up the rock round the edge are drawn but need nothing
     // to stand on.
     bool InReach(int chunkX, int chunkZ) const;
+    // The land round the site out to the horizon, drawn only: coarser the further it is, from just inside the edge of the
+    // height field (under it there, so no gap shows where the two meet) out to kFar from the site's middle every way.
+    MeshData FarMesh(const glm::vec3& ground, const glm::vec3& rock, const glm::vec3* grown = nullptr) const;
+    static constexpr float kFar = 3000.0f;
+    // How far past the site's open ground anybody may go (the shuttle's comms): the game turns them back there.
+    static constexpr float kRoam = 40.0f;
     static glm::vec3 Paint(const glm::vec3& ground, const glm::vec3& rock) { return glm::max(glm::max(ground, rock), glm::vec3(1.0e-3f)); }
     // The colour painted on the ground at a point and facing (Mesh's, over Paint's): its own, grown over where it is wild
     // when `grown` is given, the rock's where it is steep.
@@ -79,6 +86,8 @@ public:
 private:
     float At(int i, int j) const { return m_heights[static_cast<size_t>(j) * static_cast<size_t>(m_cells + 1) + static_cast<size_t>(i)]; }
     float Natural(float x, float z) const;
+    // The world's landforms at their own size (a range, mesas, great craters, swells), for the land round the site.
+    float Macro(float x, float z) const;
 
     struct Crater
     {
@@ -98,6 +107,7 @@ private:
     std::vector<float> m_wild;
     std::vector<Crater> m_craters;
     float m_duneAngle = 0.0f;
+    float m_macroHere = 0.0f; // Macro at the site's middle: the land round it is measured from it
 };
 
 } // namespace pred
