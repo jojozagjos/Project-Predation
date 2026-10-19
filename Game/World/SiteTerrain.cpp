@@ -271,14 +271,14 @@ float SiteTerrain::Edge(float x, float z) const
         float tall = 14.0f;
         switch (m_shape)
         {
-        case Shape::Flat: tall = 14.0f; break;
+        case Shape::Flat: tall = 17.0f; break;
         case Shape::Rolling: tall = 22.0f; break;
         case Shape::Mountainous: tall = 42.0f; break;
         case Shape::Canyons: tall = 28.0f; break;
         case Shape::Cratered: tall = 18.0f; break;
         }
         // Higher and lower along it, never one even wall.
-        tall *= (0.8f + 0.4f * Noise(angle * 3.0f + 11.0f, 0.5f, s + 1u)) * (0.8f + 0.55f * Fbm(x, z, 90.0f, 3, s + 4u));
+        tall *= (0.8f + 0.4f * Noise(angle * 3.0f + 11.0f, 0.5f, s + 1u)) * std::max(0.85f + 0.45f * Fbm(x, z, 90.0f, 3, s + 4u), 0.65f);
         // Its foot wandering in and out, in long bays and headlands and short ones.
         const float foot = 24.0f + 18.0f * Fbm(x, z, 130.0f, 2, s + 5u) + 8.0f * wander + 6.0f * std::sin(angle * 5.0f + m_edgeWaves[0].y);
         // The steep face of a ridge, its back falling away again past it: so where a stretch of it ends, it ends as a ridge
