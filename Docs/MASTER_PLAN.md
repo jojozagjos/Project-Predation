@@ -112,7 +112,10 @@ From WORLDS_FACILITIES_MISSIONS_PLAN.md W1-W4:
 - ✅ **A real horizon** (W1): the site sits in open land with a far terrain ring out to a few kilometres. *Done 2026-10-18.*
   The edge of where you can go is the land itself (a ravine, a cliff, water) or a soft limit, never a ring of rock --
   *done 2026-10-19: ridges with cliff faces, ravines on canyon and mountain worlds, the sea at coasts, one pass each.*
-- **A landmark at every landing region** (W3): an arch, a spire, a crashed hulk, a frozen waterfall, a derelict mast.
+- ✅ **Landmarks** (W3) -- *done 2026-10-19, natural ones*: arches, spires, buttes, balanced rocks, giant trees, crystal and
+  ice towers scattered over the land by the world (in groups where its land makes them), near and far, never on the site,
+  each its own shape. Still to come: a frozen waterfall; and **Your call**: man-made landmarks (a crashed hulk, a derelict
+  mast) say something about who was here, so they wait for your word.
 - **Landform types** (W2) -- *partly: each world's landforms at their own size round the site (ranges, mesas, great
   craters, swells); the rest to come*: mesa country, canyons, crater fields, ice sheets, dune seas, lava plains, pillars and
   sinkholes, glacial valleys, highlands, crystal fields.
@@ -467,6 +470,7 @@ lakes on cold worlds, recorded water sounds in place of the made ones.
 | A quicker way to test planets | ✅ Done: `test_site <biome> [ground] [water] [seed]` from anywhere, the title screen too |
 | Console autocomplete | ✅ Done (finds any part of a name, shows usage and argument values, arrow keys pick) |
 | Outposts: terrain, big, a pad for the grown ship, buildings that connect, fitted to the world, air | Phase 2, the outpost rework |
+| Landmarks right by the facility; the same landmark everywhere | ✅ Done (scattered over the land near and far; each its own shape) |
 | Ending and tutorial | Phase 17, last |
 
 ---
