@@ -55,6 +55,20 @@ MeshData Shape(const Placed& placed);
 
 const char* Name(Kind kind);
 
+// The making of rock shapes, shared with Signs: a body of rock swept along a path (a ring of `sides` round each point,
+// `radii` across, turned about `across`), weathered by `rough` of its radius and banded by `strata`, closed at its ends, its
+// outline lobed by `outline`; and each corner's normal from the faces round it.
+void Sweep(MeshData& mesh, const std::vector<glm::vec3>& path, const std::vector<float>& radii, int sides, const glm::vec3& across,
+           float rough, float strata, uint32_t seed, bool capStart = true, bool capEnd = true, float outline = 0.0f);
+void SmoothNormals(MeshData& mesh);
+
+// Where lightning has struck a storm world's ground often enough to leave it glassed (none on any other): over the site's
+// ground and round it.
+std::vector<glm::vec3> Strikes(uint32_t seed, const std::string& biome, const SitePlan& plan, const SiteTerrain& terrain);
+// The glass it left at one: fused branches running out over the ground from a glassed pit, in the world, white for its
+// material to colour.
+MeshData Strike(const glm::vec3& at, uint32_t seed, const SiteTerrain& terrain);
+
 } // namespace Landmark
 
 } // namespace pred

@@ -10108,6 +10108,22 @@ void PredationGame::OnUpdate(double dt, double alpha)
     UpdateShipTravel(deltaSeconds);
     UpdateOrders(deltaSeconds);
     m_particles.Update(m_scene, deltaSeconds);
+    // The organism's rhythm, where its signs are plain (Signs::Pulse, by the campaign's clock, so the same moment for everybody
+    // and on every world): a faint glow through its formations as it swells, and the lamps dipping with it where it is
+    // strongest. Nothing said about it.
+    {
+        const float signs = m_facility.Built() ? m_facility.GetLook().signs : 0.0f;
+        const float pulse = signs > 0.5f ? Signs::Pulse(m_campaign.clock, m_universeData.signRhythm) : 0.0f;
+        const float plain = std::clamp((signs - 0.5f) * 2.0f, 0.0f, 1.0f);
+        for (const Entity entity : m_facility.SignEntities())
+        {
+            if (MeshRenderer* renderer = m_scene.GetMeshRenderer(entity))
+            {
+                renderer->material.emissive = m_universeData.signGlow * (pulse * plain * 0.8f);
+            }
+        }
+        m_levelLights.SetDim(1.0f - 0.35f * pulse * glm::smoothstep(0.65f, 1.0f, signs));
+    }
     // The site's weather, blowing with its wind -- not indoors, and not in the shuttle's cabin.
     {
         // How much of its weather is coming down just now: its spells come and go (Weather::SpellAt), by the campaign's clock.

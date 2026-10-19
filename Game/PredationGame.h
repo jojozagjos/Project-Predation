@@ -1219,6 +1219,8 @@ private:
     std::string m_siteBiomePreview;
     // And its water (site_water): none, lakes, coast or island; empty for the world's own.
     std::string m_siteWaterPreview;
+    // And how plain its organism signs are (site_signs): below 0 for the place's own.
+    float m_siteSignsPreview = -1.0f;
     Entity MakeSign(const KestrelStation::Sign& sign, const std::string& meshName, TextureHandle texture, int wide, int high, int textureWide, int textureHigh,
                     MeshHandle& mesh);
     std::vector<Entity> m_hubSigns;

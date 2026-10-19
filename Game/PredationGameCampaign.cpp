@@ -428,18 +428,56 @@ void PredationGame::RegisterCampaignCommands()
                                 m_outpostPreview = args.size() >= 2 ? static_cast<uint32_t>(std::stoul(args[1])) : 0u;
                                 m_outpostPreviewOwner = args.size() >= 3 ? args[2] : std::string();
                             });
+    // The site test commands change only the site this machine builds: in a game with others theirs would not match it, so
+    // they are for a game on your own.
+    const auto soloOnly = [this]
+    {
+        if (m_sessionMode != SessionMode::Offline)
+        {
+            m_app->GetConsole().PrintError("Site test commands change only this machine's site: use them in a game on your own.");
+            return false;
+        }
+        return true;
+    };
     console.RegisterCommand("site_terrain", "Build the next site on this ground rather than its world's: site_terrain [flat|rolling|mountainous|canyons|cratered|dunes], none for the world's own",
-                            [this](const std::vector<std::string>& args) { m_siteTerrainPreview = args.size() >= 2 && args[1] != "none" ? args[1] : std::string(); });
+                            [this, soloOnly](const std::vector<std::string>& args)
+                            {
+                                if (soloOnly())
+                                {
+                                    m_siteTerrainPreview = args.size() >= 2 && args[1] != "none" ? args[1] : std::string();
+                                }
+                            });
     console.RegisterCommand("site_biome", "Build the next site as on another biome: what lies on its ground, its ground and rock: site_biome <id> (universe.json), none for the world's own",
-                            [this](const std::vector<std::string>& args) { m_siteBiomePreview = args.size() >= 2 && args[1] != "none" ? args[1] : std::string(); });
+                            [this, soloOnly](const std::vector<std::string>& args)
+                            {
+                                if (soloOnly())
+                                {
+                                    m_siteBiomePreview = args.size() >= 2 && args[1] != "none" ? args[1] : std::string();
+                                }
+                            });
+    console.RegisterCommand("site_signs", "Build the next site with the organism's signs this plain: site_signs <0 to 1>, world for the place's own",
+                            [this, soloOnly](const std::vector<std::string>& args)
+                            {
+                                if (soloOnly())
+                                {
+                                    m_siteSignsPreview = args.size() >= 2 && args[1] != "world" ? std::clamp(std::stof(args[1]), 0.0f, 1.0f) : -1.0f;
+                                }
+                            });
+    console.SetCompleter("site_signs", [](size_t argument) { return argument == 1 ? std::vector<std::string>{"0", "0.2", "0.5", "0.8", "1", "world"} : std::vector<std::string>{}; });
     console.RegisterCommand("site_water", "Build the next site with this water rather than its world's: site_water <none|lakes|coast|island>, world for the world's own",
-                            [this](const std::vector<std::string>& args) { m_siteWaterPreview = args.size() >= 2 && args[1] != "world" ? args[1] : std::string(); });
+                            [this, soloOnly](const std::vector<std::string>& args)
+                            {
+                                if (soloOnly())
+                                {
+                                    m_siteWaterPreview = args.size() >= 2 && args[1] != "world" ? args[1] : std::string();
+                                }
+                            });
     // Straight to a new site of any kind, from anywhere (the title screen too): no world to find first.
     console.RegisterCommand(
         "test_site",
         "Go straight to a new site of any kind, no world needed: test_site <biome> [flat|rolling|mountainous|canyons|cratered|dunes|islands|any] "
         "[none|lakes|coast|island|any] [seed]",
-        [this](const std::vector<std::string>& args)
+        [this, soloOnly](const std::vector<std::string>& args)
         {
             std::string biomes;
             for (const BiomeDef& biome : m_universeData.biomes)
@@ -454,9 +492,8 @@ void PredationGame::RegisterCampaignCommands()
                 m_app->GetConsole().PrintError("Usage: test_site <biome> [ground] [water] [seed]. Biomes: " + biomes);
                 return;
             }
-            if (m_screen == Screen::Playing && !IsAuthority())
+            if (!soloOnly())
             {
-                m_app->GetConsole().PrintError("Only the host can change the site.");
                 return;
             }
             m_siteBiomePreview = args[1];

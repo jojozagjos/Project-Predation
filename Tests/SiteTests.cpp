@@ -7,6 +7,7 @@
 #include "Game/World/SiteMap.h"
 #include "Game/World/SitePlan.h"
 #include "Game/World/SiteScatter.h"
+#include "Game/World/Signs.h"
 #include "Game/World/SiteTerrain.h"
 #include "Game/World/Surfaces.h"
 #include "Game/World/Weather.h"
@@ -722,4 +723,32 @@ TEST_CASE("Landmarks stand out on the land, never on the site, each its own shap
     }
     const MeshData shape = Landmark::Shape(desert.front());
     CHECK_FALSE(shape.indices.empty());
+}
+
+TEST_CASE("The organism's signs: none where there are none, plainer further out, one rhythm everywhere", "[site][signs]")
+{
+    const SitePlan plan = SitePlan::Generate(SitePlan::SeedFor(7, SitePlan::SiteKind::Facility));
+    SiteTerrain terrain;
+    terrain.Plan(plan, SiteTerrain::Shape::Rolling, false);
+    CHECK(Signs::Make(plan.seed, 0.0f, plan, terrain).empty());
+    const std::vector<Signs::Formation> faint = Signs::Make(plan.seed, 0.15f, plan, terrain);
+    const std::vector<Signs::Formation> plain = Signs::Make(plan.seed, 1.0f, plan, terrain);
+    REQUIRE_FALSE(faint.empty());
+    REQUIRE_FALSE(plain.empty());
+    CHECK(plain.size() >= faint.size());
+    CHECK(plain.front().size > faint.front().size);
+    // Nothing growing round a faint one; growths round a plain one.
+    CHECK(Signs::Growths(faint.front(), 0.15f, terrain).indices.empty());
+    CHECK_FALSE(Signs::Growths(plain.front(), 1.0f, terrain).indices.empty());
+    // The rhythm: between nought and one, at its height once in each, and the same at the same moment wherever it is asked.
+    float most = 0.0f;
+    for (double t = 0.0; t < 47.0; t += 0.05)
+    {
+        const float pulse = Signs::Pulse(t, 47.0f);
+        CHECK(pulse >= 0.0f);
+        CHECK(pulse <= 1.0f);
+        most = std::max(most, pulse);
+    }
+    CHECK(most > 0.95f);
+    CHECK(Signs::Pulse(12345.6, 47.0f) == Signs::Pulse(12345.6, 47.0f));
 }

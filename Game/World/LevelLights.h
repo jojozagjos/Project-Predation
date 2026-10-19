@@ -132,6 +132,8 @@ public:
     void Update(Scene& scene, float time);
     // Every light lit at all, as the renderer wants them.
     void Gather(std::vector<PunctualLight>& out) const;
+    // All of them a little dimmer for a moment, whatever their power (1: as they are): a dip in the supply, interference.
+    void SetDim(float dim) { m_dim = dim; }
 
     const std::vector<Light>& Lights() const { return m_lights; }
 
@@ -145,6 +147,7 @@ private:
     float m_boundsMargin = 0.05f;
     // Counted up whenever lamps are taken away, so a lamp's shadow key is never reused for a different lamp.
     uint32_t m_generation = 1;
+    float m_dim = 1.0f;
     MeshHandle m_fittingMeshes[4] = {};
 };
 

@@ -423,7 +423,7 @@ void LevelLights::Gather(std::vector<PunctualLight>& out) const
         punctual.position = light.position;
         punctual.direction = light.direction;
         punctual.color = light.color;
-        punctual.intensity = light.intensity * light.level * light.gate;
+        punctual.intensity = light.intensity * light.level * light.gate * m_dim;
         punctual.range = light.range;
         punctual.innerAngle = light.innerAngle;
         punctual.outerAngle = light.outerAngle;

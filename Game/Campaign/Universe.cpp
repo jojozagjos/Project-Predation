@@ -531,6 +531,14 @@ bool UniverseData::LoadFromFile(const std::filesystem::path& file, std::string* 
     UniverseData loaded;
     try
     {
+        if (const auto signs = root.find("signs"); signs != root.end() && signs->is_object())
+        {
+            loaded.signShare = signs->value("share", loaded.signShare);
+            loaded.signFullDistance = signs->value("fullDistance", loaded.signFullDistance);
+            loaded.signGlow = ReadVec3(*signs, "glow", loaded.signGlow);
+            loaded.signRhythm = signs->value("rhythm", loaded.signRhythm);
+            loaded.signTissue = ReadVec3(*signs, "tissue", loaded.signTissue);
+        }
         if (const auto names = root.find("names"); names != root.end() && names->is_object())
         {
             const std::vector<std::string> listed = ReadStrings(*names, "catalogues");

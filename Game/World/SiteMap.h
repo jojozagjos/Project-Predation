@@ -7,6 +7,7 @@
 #include "Game/World/Landmark.h"
 #include "Game/World/Atmospherics.h"
 #include "Game/World/Vents.h"
+#include "Game/World/Signs.h"
 #include "Game/World/LevelLights.h"
 #include "Game/World/Vehicles.h"
 #include "Game/World/SitePlan.h"
@@ -57,6 +58,9 @@ public:
             Ice
         };
         Liquid liquid = Liquid::Water;
+        // How plain the organism's signs are here (Signs): none at 0, faint near home, plainer further out.
+        float signs = 0.0f;
+        glm::vec3 signTissue{0.13f, 0.1f, 0.1f};
         // The texture set its ground is laid with (universe.json, a biome's site surface; Assets/Textures), tinted to its
         // colour: none, a plain colour, until the set is there.
         std::string surface = "snow_02";
@@ -86,6 +90,7 @@ public:
     const std::vector<Landmark::Placed>& Landmarks() const { return m_landmarks; }
     const std::vector<Vents::Vent>& GetVents() const { return m_vents; }
     const Atmospherics::Plan& Air() const { return m_air; }
+    const std::vector<Entity>& SignEntities() const { return m_signs; }
     // What its ground is drawn in, and the colour painted on it at a point: for what is laid on the ground to match it (a
     // footprint).
     const Material& GroundMaterial() const { return m_groundMaterial; }
@@ -142,6 +147,8 @@ private:
     std::vector<Vents::Vent> m_vents;
     // What its air does (Atmospherics).
     Atmospherics::Plan m_air;
+    // The organism's signs in it, each its own entity (Signs), for the rhythm's glow.
+    std::vector<Entity> m_signs;
     MeshHandle m_waterMesh;
     std::vector<BodyHandle> m_bodies;
     size_t m_firstLight = 0;

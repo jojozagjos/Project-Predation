@@ -1240,6 +1240,28 @@ SiteMap::Look PredationGame::SiteLookHere()
             look.blendShore = 1.0f;
         }
     }
+    // Signs of the organism, at the rare place that has any (Signs): faint near home, plainer the further out it is -- by the
+    // place, so the same for everyone and every visit. (Or as a test asked for: site_signs.)
+    look.signTissue = m_universeData.signTissue;
+    if (system != nullptr && body != nullptr)
+    {
+        uint64_t h = m_campaign.system * 0x9E3779B97F4A7C15ull ^ static_cast<uint64_t>(m_campaign.body + 1) * 0xBF58476D1CE4E5B9ull ^
+                     static_cast<uint64_t>(m_campaign.travel.region + 7) * 0x94D049BB133111EBull;
+        h ^= h >> 31;
+        h *= 0xD6E8FEB86659FD93ull;
+        h ^= h >> 29;
+        const float roll = static_cast<float>(h & 0xFFFFFFull) / static_cast<float>(0x1000000);
+        const float spread = static_cast<float>((h >> 24) & 0xFFFFull) / 65536.0f;
+        if (roll < m_universeData.signShare)
+        {
+            const float out = glm::distance(m_universe.SystemPosition(system->id), m_universe.SystemPosition(m_universe.Home()));
+            look.signs = std::clamp(0.12f + 0.8f * out / std::max(m_universeData.signFullDistance, 1.0f) + (spread - 0.5f) * 0.15f, 0.08f, 1.0f);
+        }
+    }
+    if (m_siteSignsPreview >= 0.0f)
+    {
+        look.signs = m_siteSignsPreview;
+    }
     look.weather = "none";
     look.weatherAmount = 0.0f;
     // Its weather: the world's -- or, for a site built as on another biome (site_biome, test_site), that biome's usual

@@ -129,6 +129,8 @@ set(PRED_GAME_SOURCES
     World/Vents.cpp
     World/Atmospherics.h
     World/Atmospherics.cpp
+    World/Signs.h
+    World/Signs.cpp
     World/Foliage.cpp
     World/Cargo.h
     World/Cargo.cpp

@@ -586,6 +586,50 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
         // draw, by the clock: Vents::Plumes).
         m_vents = Vents::Plan(seed, m_look.biome, m_plan, m_terrain);
         m_air = Atmospherics::Make(seed, m_look.biome, m_plan, m_terrain);
+        // And the organism's signs, where this place has any (Signs): its rock the world's own where faint, darker and wet with a
+        // sheen where plain -- each its own thing in the scene, not batched, so the game can give it the rhythm's faint glow.
+        m_signs.clear();
+        if (m_look.signs > 0.0f)
+        {
+            const float plain = glm::smoothstep(0.15f, 0.9f, m_look.signs);
+            Material stone = rockMaterial;
+            // (The rock material's colour is over its set's average: the tissue colour put over the same.)
+            stone.baseColor = glm::mix(rockMaterial.baseColor, rockMaterial.baseColor * m_look.signTissue / glm::max(m_look.rock, glm::vec3(0.02f)), plain * 0.85f);
+            stone.roughness = glm::mix(rockMaterial.roughness, 0.3f, plain);
+            Material film = Material::Diffuse(m_look.signTissue, 0.15f);
+            for (const Signs::Formation& formation : Signs::Make(seed, m_look.signs, m_plan, m_terrain))
+            {
+                for (const bool growth : {false, true})
+                {
+                    const MeshData data = growth ? Signs::Growths(formation, m_look.signs, m_terrain) : Signs::Rock(formation, m_look.signs, m_terrain);
+                    if (data.indices.empty())
+                    {
+                        continue;
+                    }
+                    // (Each its own name: the library shares meshes by name.)
+                    const MeshHandle mesh = meshes.Upload(data, (growth ? "site_sign_growth#" : "site_sign_rock#") + std::to_string(m_signs.size()));
+                    m_meshHandles.push_back(mesh);
+                    const Entity entity = scene.CreateMeshEntity(growth ? "site_sign_growth" : "site_sign_rock", Transform{}, mesh, growth ? film : stone);
+                    m_entities.push_back(entity);
+                    m_signs.push_back(entity);
+                }
+            }
+            PRED_LOG_INFO(Gameplay, "Site signs: {:.2f}, {} pieces", m_look.signs, m_signs.size());
+        }
+        // And on a storm world, glass where lightning has struck: dark, glossy, fused into the ground.
+        {
+            Material glass = Material::Diffuse({0.05f, 0.05f, 0.06f}, 0.08f);
+            glass.metallic = 0.15f;
+            const std::vector<glm::vec3> strikes = Landmark::Strikes(seed, m_look.biome, m_plan, m_terrain);
+            if (!strikes.empty())
+            {
+                PRED_LOG_INFO(Gameplay, "Site glass: {} lightning strikes, the first at {:.0f} {:.0f} {:.0f}", strikes.size(), strikes[0].x, strikes[0].y, strikes[0].z);
+            }
+            for (const glm::vec3& strike : strikes)
+            {
+                builder.AddMesh("site_strike", Transform{}, Landmark::Strike(strike, seed, m_terrain), glass, false);
+            }
+        }
         PRED_LOG_INFO(Gameplay, "Site air: {} dust devils, {} banks of mist, {} vents", m_air.devils.size(), m_air.mist.size(), m_vents.size());
         builder.SetShadows(false);
         for (const Vents::Vent& vent : m_vents)

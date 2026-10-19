@@ -71,18 +71,27 @@ float Rough(const glm::vec3& p, float scale, uint32_t seed)
            0.25f * (Noise(p / (scale * 0.15f), seed + 2u) - 0.5f);
 }
 
+} // namespace
+
 // A body of rock swept along a path: a ring round each point of it, `radii` across, `sides` round, pushed in and out by
 // `rough` of its radius where the rock is weathered -- and `strata` of it in bands by height, as layered rock wears --
 // closed at either end. Its rings face along the path, turned about `across` (any way not along it).
 void Sweep(MeshData& mesh, const std::vector<glm::vec3>& path, const std::vector<float>& radii, int sides, const glm::vec3& across,
-           float rough, float strata, uint32_t seed, bool capStart = true, bool capEnd = true, float outline = 0.0f)
+           float rough, float strata, uint32_t seed, bool capStart, bool capEnd, float outline)
 {
     const auto first = static_cast<uint32_t>(mesh.vertices.size());
     const size_t rings = path.size();
     for (size_t i = 0; i < rings; ++i)
     {
-        const glm::vec3 along = glm::normalize(i + 1 < rings ? path[i + 1] - path[i] : path[i] - path[i - 1]);
-        const glm::vec3 u = glm::normalize(glm::cross(along, across));
+        const glm::vec3 step = i + 1 < rings ? path[i + 1] - path[i] : path[i] - path[i - 1];
+        const glm::vec3 along = glm::length(step) > 1.0e-5f ? glm::normalize(step) : glm::vec3(0.0f, 1.0f, 0.0f);
+        // (Square to the path: about `across`, or -- where the path runs along that -- about another way.)
+        glm::vec3 square = glm::cross(along, across);
+        if (glm::length(square) < 1.0e-3f)
+        {
+            square = glm::cross(along, std::abs(along.x) < 0.9f ? glm::vec3(1.0f, 0.0f, 0.0f) : glm::vec3(0.0f, 0.0f, 1.0f));
+        }
+        const glm::vec3 u = glm::normalize(square);
         const glm::vec3 v = glm::cross(u, along);
         for (int s = 0; s < sides; ++s)
         {
@@ -173,6 +182,9 @@ void SmoothNormals(MeshData& mesh)
         mesh.vertices[i].normal = glm::length(sums[i]) > 1.0e-9f ? glm::normalize(sums[i]) : glm::vec3(0.0f, 1.0f, 0.0f);
     }
 }
+
+namespace
+{
 
 // A column standing up from `foot`, `high`, `rings` rings, its radius at each height (0 at its foot, 1 at its top) by
 // `profile`, leaning a little and wandering as it rises.
@@ -418,6 +430,91 @@ std::vector<Placed> Scatter(uint32_t seed, const std::string& biome, SiteTerrain
         }
     }
     return placed;
+}
+
+std::vector<glm::vec3> Strikes(uint32_t seed, const std::string& biome, const SitePlan& plan, const SiteTerrain& terrain)
+{
+    std::vector<glm::vec3> strikes;
+    if (biome != "stormworld")
+    {
+        return strikes;
+    }
+    Random random((static_cast<uint64_t>(seed) << 33) ^ 0x57121CEull);
+    const float reach = SiteTerrain::kRoam + 20.0f;
+    const int wanted = 12 + static_cast<int>(random.Unit() * 10.0f);
+    for (int tries = 0; tries < wanted * 10 && static_cast<int>(strikes.size()) < wanted; ++tries)
+    {
+        const glm::vec2 at{plan.origin.x - reach + random.Range(0.0f, plan.size + reach * 2.0f), plan.origin.z - reach + random.Range(0.0f, plan.size + reach * 2.0f)};
+        if (terrain.Wildness(at.x, at.y) < 0.8f || terrain.GroundNormal(at.x, at.y).y < 0.9f || terrain.WaterDepth(at.x, at.y) > -0.3f)
+        {
+            continue;
+        }
+        strikes.emplace_back(at.x, terrain.GroundHeight(at.x, at.y), at.y);
+    }
+    return strikes;
+}
+
+MeshData Strike(const glm::vec3& at, uint32_t seed, const SiteTerrain& terrain)
+{
+    // Branches of fused glass running out over the ground from where the bolt went in, forking as they go and thinning to
+    // nothing, half sunk in it; and the glassed pit at the middle.
+    MeshData mesh;
+    Random random((static_cast<uint64_t>(seed) << 11) ^ static_cast<uint64_t>(at.x * 31.0f) ^ (static_cast<uint64_t>(at.z * 17.0f) << 20));
+    struct Branch
+    {
+        glm::vec2 from;
+        float heading;
+        float length;
+        float radius;
+        int depth;
+    };
+    std::vector<Branch> branches;
+    const int arms = 4 + static_cast<int>(random.Unit() * 4.0f);
+    for (int a = 0; a < arms; ++a)
+    {
+        branches.push_back({{at.x, at.z}, kTau * (static_cast<float>(a) + random.Range(0.0f, 0.7f)) / static_cast<float>(arms), random.Range(2.5f, 6.0f),
+                            random.Range(0.08f, 0.14f), 0});
+    }
+    for (size_t b = 0; b < branches.size() && b < 60; ++b)
+    {
+        const Branch branch = branches[b];
+        std::vector<glm::vec3> path;
+        std::vector<float> radii;
+        glm::vec2 p = branch.from;
+        float heading = branch.heading;
+        constexpr int kSteps = 8;
+        for (int i = 0; i <= kSteps; ++i)
+        {
+            const float t = static_cast<float>(i) / kSteps;
+            path.emplace_back(p.x, terrain.GroundHeight(p.x, p.y) + 0.01f, p.y);
+            radii.push_back(std::max(branch.radius * (1.0f - 0.85f * t), 0.015f));
+            heading += random.Range(-0.45f, 0.45f);
+            p += glm::vec2(std::cos(heading), std::sin(heading)) * (branch.length / kSteps);
+            // Forking now and then, the forks thinner and shorter.
+            if (branch.depth < 2 && i > 1 && i < kSteps && random.Unit() < 0.22f)
+            {
+                branches.push_back({p, heading + random.Range(0.4f, 1.0f) * (random.Unit() < 0.5f ? -1.0f : 1.0f), branch.length * random.Range(0.4f, 0.7f),
+                                    radii.back() * 0.8f, branch.depth + 1});
+            }
+        }
+        Sweep(mesh, path, radii, 5, glm::vec3(0.0f, 1.0f, 0.0f), 0.25f, 0.0f, seed + static_cast<uint32_t>(b), false, true);
+    }
+    // The pit: a low glassy rim round where it went in.
+    std::vector<glm::vec3> rim;
+    std::vector<float> rimRadii;
+    for (int i = 0; i <= 4; ++i)
+    {
+        const float t = static_cast<float>(i) / 4.0f;
+        rim.push_back(at + glm::vec3(0.0f, -0.2f + 0.3f * t, 0.0f));
+        rimRadii.push_back(0.9f * (1.0f - 0.5f * t * t));
+    }
+    Sweep(mesh, rim, rimRadii, 10, glm::vec3(1.0f, 0.0f, 0.0f), 0.3f, 0.0f, seed + 999u);
+    SmoothNormals(mesh);
+    for (MeshVertex& vertex : mesh.vertices)
+    {
+        vertex.color = 0xffffffffu;
+    }
+    return mesh;
 }
 
 MeshData Shape(const Placed& placed)
