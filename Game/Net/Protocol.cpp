@@ -1126,6 +1126,7 @@ void WriteTravel(BitWriter& writer, const TravelMessage& message)
     {
         writer.WriteFloat(message.overFrom[i]);
         writer.WriteFloat(message.overAt[i]);
+        writer.WriteFloat(message.overVia[i]);
     }
     WriteDouble(writer, message.overSince);
     writer.WriteFloat(message.overSeconds);
@@ -1165,11 +1166,12 @@ bool ReadTravel(BitReader& reader, TravelMessage& out)
     {
         out.overFrom[i] = reader.ReadFloat();
         out.overAt[i] = reader.ReadFloat();
+        out.overVia[i] = reader.ReadFloat();
     }
     out.overSince = ReadDouble(reader);
     out.overSeconds = reader.ReadFloat();
     if (!std::isfinite(out.clock) || !std::isfinite(out.setOut) || !std::isfinite(out.orbitSince) || !std::isfinite(out.position.x) || !std::isfinite(out.position.y) || !std::isfinite(out.position.z) ||
-        !Finite(out.velocity) || !Finite(out.departWay) || !Finite(out.orbitOut) || !Finite(out.overFrom) || !Finite(out.overAt) ||
+        !Finite(out.velocity) || !Finite(out.departWay) || !Finite(out.orbitOut) || !Finite(out.overFrom) || !Finite(out.overAt) || !Finite(out.overVia) ||
         !std::isfinite(out.overSince) || !std::isfinite(out.overSeconds))
     {
         return false;

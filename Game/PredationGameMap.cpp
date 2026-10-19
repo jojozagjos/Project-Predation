@@ -522,6 +522,7 @@ void PredationGame::UpdateTravel(float dt)
             m_campaign.travel.orbitSince = travel.orbitSince;
             m_campaign.travel.overFrom = travel.overFrom;
             m_campaign.travel.overAt = travel.overAt;
+            m_campaign.travel.overVia = travel.overVia;
             m_campaign.travel.overSince = travel.overSince;
             m_campaign.travel.overSeconds = travel.overSeconds;
             m_campaign.body = travel.body;
@@ -566,11 +567,10 @@ void PredationGame::UpdateTravel(float dt)
                 if (m_campaign.body >= 0)
                 {
                     // There: shown arriving, aboard -- the cinematic's own marker says when it is over the planet. Not for an
-                    // outpost the ship is to set down at, though: it comes straight down to it (ArriveAtBody, ship_land). Nor after a jump
-                    // the drive made all but instant: there was no trip to come to the end of.
+                    // outpost the ship is to set down at, though: it comes straight down to it (ArriveAtBody, ship_land).
                     const Body* arrivedAt = system->Find(m_campaign.body);
                     const bool settingDown = arrivedAt != nullptr && RegionIsPort(*arrivedAt, m_campaign.travel.region);
-                    if (m_map == MapChoice::Ship && HasCinematic("ship_arrive") && !settingDown && DriveTier() < Travel::kInstantTier)
+                    if (m_map == MapChoice::Ship && HasCinematic("ship_arrive") && !settingDown)
                     {
                         PlayCinematic("ship_arrive");
                     }
@@ -608,6 +608,7 @@ void PredationGame::UpdateTravel(float dt)
                 travel.orbitSince = m_campaign.travel.orbitSince;
                 travel.overFrom = m_campaign.travel.overFrom;
                 travel.overAt = m_campaign.travel.overAt;
+                travel.overVia = m_campaign.travel.overVia;
                 travel.overSince = m_campaign.travel.overSince;
                 travel.overSeconds = m_campaign.travel.overSeconds;
                 m_host.SendTravel(travel);

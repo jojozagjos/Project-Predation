@@ -211,6 +211,11 @@ void Particles::Update(Scene& scene, float dt)
             const float floor = particle.floor;
             if (particle.at.y < floor)
             {
+                // A drop of water is gone into what it lands on, not left lying there.
+                if (look.vanishOnLanding)
+                {
+                    particle.age = particle.life;
+                }
                 particle.at.y = floor;
                 particle.velocity.y = std::abs(particle.velocity.y) * look.bounce;
                 particle.velocity.x *= 0.6f;

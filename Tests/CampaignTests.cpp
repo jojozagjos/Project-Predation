@@ -926,8 +926,12 @@ TEST_CASE("Going round to be over a place, the ship's way round never swings at 
     Travel::OrbitFrame(campaign, system, body, campaign.clock, out, along);
     const glm::vec3 here = system.Over(body, out, campaign.clock);
     // A good way round, not straight across (which has no one way round).
+    const glm::vec3 wasGoing = along;
     const glm::vec3 there = glm::normalize(glm::cross(here, glm::vec3(0.0f, 1.0f, 0.0f)) + here * 0.3f);
     Travel::MoveOver(campaign, system, body, there, 0);
+    // Setting off the way it was going already -- not turned round on the spot to face the place first.
+    Travel::OrbitFrame(campaign, system, body, campaign.clock, out, along);
+    CHECK(glm::dot(along, wasGoing) > 0.99f);
     const double end = campaign.clock + static_cast<double>(Travel::SecondsToOver(campaign));
     glm::vec3 last{0.0f};
     for (double t = campaign.clock; t < end + 20.0; t += 0.25)

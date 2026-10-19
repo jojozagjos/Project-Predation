@@ -24,7 +24,8 @@ class Footprints
 public:
     // A print at `at` (on the ground under a foot), its toe the way `yaw` faces (radians, about up: 0 along -z), the left
     // foot's or the right's.
-    void Leave(Scene& scene, MeshLibrary& meshes, const SiteMap& site, const glm::vec3& at, float yaw, bool left, double now);
+    // How long it lasts (seconds): kLast in still air, less in falling snow or blowing sand, which fill it in.
+    void Leave(Scene& scene, MeshLibrary& meshes, const SiteMap& site, const glm::vec3& at, float yaw, bool left, double now, double last = kLast);
     // Takes away those older than they last -- and all of them, the site gone or another in its place.
     void Update(Scene& scene, const SiteMap& site, double now);
     // All of them, for another site.
@@ -39,6 +40,7 @@ private:
         Entity entity;
         MeshHandle mesh;
         double made = 0.0;
+        double last = kLast;
         bool shown = false;
     };
     std::vector<Print> m_prints;

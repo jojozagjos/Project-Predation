@@ -33,7 +33,7 @@ void Sole(float u, float v, bool left, float& pressed, float& lip)
 
 } // namespace
 
-void Footprints::Leave(Scene& scene, MeshLibrary& meshes, const SiteMap& site, const glm::vec3& at, float yaw, bool left, double now)
+void Footprints::Leave(Scene& scene, MeshLibrary& meshes, const SiteMap& site, const glm::vec3& at, float yaw, bool left, double now, double last)
 {
     if (site.Seed() != m_site)
     {
@@ -118,11 +118,14 @@ void Footprints::Leave(Scene& scene, MeshLibrary& meshes, const SiteMap& site, c
     {
         renderer->mesh = print.mesh;
         renderer->material = site.GroundMaterial();
+        // Pressed down: less of the lying snow in it than round it, so it shows in snow lying on any ground.
+        renderer->material.weathering = 0.6f;
         renderer->castsShadow = false;
         renderer->blocksSky = false;
         renderer->visible = true;
     }
     print.made = now;
+    print.last = last;
     print.shown = true;
 }
 
@@ -135,7 +138,7 @@ void Footprints::Update(Scene& scene, const SiteMap& site, double now)
     }
     for (Print& print : m_prints)
     {
-        if (print.shown && now - print.made > kLast)
+        if (print.shown && now - print.made > print.last)
         {
             if (MeshRenderer* renderer = scene.GetMeshRenderer(print.entity))
             {

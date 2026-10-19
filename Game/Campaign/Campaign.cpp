@@ -164,7 +164,7 @@ nlohmann::json CampaignState::ToJson() const
                      {"toGalaxy", Vec3(travel.toGalaxy)}, {"departed", travel.departed}, {"duration", travel.duration},
                      {"from", travel.from}, {"setOut", travel.setOut}, {"departWay", Vec3(travel.departWay)},
                      {"orbitOut", Vec3(travel.orbitOut)}, {"orbitSince", travel.orbitSince}, {"overFrom", Vec3(travel.overFrom)},
-                     {"overAt", Vec3(travel.overAt)}, {"overSince", travel.overSince}, {"overSeconds", travel.overSeconds}};
+                     {"overAt", Vec3(travel.overAt)}, {"overVia", Vec3(travel.overVia)}, {"overSince", travel.overSince}, {"overSeconds", travel.overSeconds}};
     nlohmann::json knownJson = nlohmann::json::object();
     for (const auto& [key, bits] : known)
     {
@@ -276,6 +276,7 @@ bool CampaignState::FromJson(const nlohmann::json& json, CampaignState& out, std
             state.travel.orbitSince = travel->value("orbitSince", 0.0);
             state.travel.overFrom = ReadVec3(*travel, "overFrom", glm::vec3(0.0f));
             state.travel.overAt = ReadVec3(*travel, "overAt", glm::vec3(0.0f));
+            state.travel.overVia = ReadVec3(*travel, "overVia", glm::vec3(0.0f));
             state.travel.overSince = travel->value("overSince", 0.0);
             state.travel.overSeconds = travel->value("overSeconds", 0.0f);
         }

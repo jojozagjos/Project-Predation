@@ -470,6 +470,10 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
                     const float angle = Hash01(seed, n, 0x21u) * glm::two_pi<float>();
                     const float out = crown * std::sqrt(Hash01(seed, n, 0x22u));
                     const glm::vec2 at = glm::vec2(item.at.x, item.at.z) + glm::vec2(std::cos(angle), std::sin(angle)) * out;
+                    if (m_plan.InBuilding(at, 0.5f))
+                    {
+                        continue;
+                    }
                     const float size = 0.35f + 0.35f * Hash01(seed, n, 0x23u);
                     const float yaw = Hash01(seed, n, 0x24u) * glm::two_pi<float>();
                     const glm::vec3 up = m_terrain.Normal(at.x, at.y);
@@ -533,7 +537,7 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
                                 const auto k = static_cast<uint32_t>(p) * 31u;
                                 const float x = m_plan.origin.x + (static_cast<float>(cx) + Hash01(seed, ux + k, uz * 3u + 1u)) * kCell;
                                 const float z = m_plan.origin.z + (static_cast<float>(cz) + Hash01(seed, ux + k, uz * 3u + 2u)) * kCell;
-                                if (m_terrain.Normal(x, z).y < 0.8f)
+                                if (m_terrain.Normal(x, z).y < 0.8f || m_plan.InBuilding({x, z}, 0.5f))
                                 {
                                     continue;
                                 }

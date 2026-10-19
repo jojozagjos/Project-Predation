@@ -419,8 +419,7 @@ void PredationGame::DrawShipHud()
                                           ? over->regions[static_cast<size_t>(region)].designation
                                           : std::string("the site");
             ImGui::TextColored(text, "%s", ("Going round the orbit to be over " + place + ".").c_str());
-            ImGui::TextDisabled("The shuttle can go down once the ship is over it: %d s.",
-                                static_cast<int>(std::ceil(Travel::SecondsToOver(m_campaign))));
+            ImGui::TextDisabled("The shuttle can go down once the ship is over it.");
         }
         else if (m_shipReady)
         {

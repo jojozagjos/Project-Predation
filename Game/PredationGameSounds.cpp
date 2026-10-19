@@ -804,6 +804,7 @@ void PredationGame::UpdateAmbience(float dt)
                 drop.drag = 0.0f;
                 drop.bounce = 0.0f;
                 drop.streak = true;
+                drop.vanishOnLanding = true;
                 m_particles.Emit(m_scene, m_app->GetMeshes(), from, glm::vec3(0.0f, -1.0f, 0.0f), 1, drop, floor.position.y);
                 const float fall = std::max(from.y - floor.position.y, 0.1f);
                 QueueSound(std::sqrt(2.0f * fall / 9.8f), "Ambience/drip", floor.position, 0.3f, true);

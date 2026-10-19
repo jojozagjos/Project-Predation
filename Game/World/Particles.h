@@ -29,6 +29,7 @@ struct ParticleLook
     float drag = 1.0f;       // how much of its speed it loses a second, as a fraction
     float bounce = 0.3f;     // off the floor it meets: how much of its fall it keeps (0: stops)
     bool streak = false;
+    bool vanishOnLanding = false; // gone the moment it reaches the floor (a drop of water), rather than lying there
 };
 
 // Sparks, chips, smoke-less bits: small things thrown off something that has just happened, drawn as little boxes from a

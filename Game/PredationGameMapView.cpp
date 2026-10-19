@@ -2644,11 +2644,14 @@ void PredationGame::DrawMapBodyPanels(const StarSystem& system)
         {
             ImGui::BeginDisabled(!aboard || m_cine.Active() || !RegionLandable(*body, m_mapRegion) || m_campaign.travel.interstellar);
             const bool plotted = m_campaign.plan.set && !m_campaign.plan.toSystem && m_campaign.plan.body == body->index && m_campaign.plan.region == m_mapRegion;
-            const char* go = port ? (here || heading ? "Land the ship here" : plotted ? "Plotted" : "Plot course to land here")
-                                  : (here || heading ? "Go down here" : plotted ? "Plotted" : "Plot course to go down here");
+            // In orbit, or on the way, straight there; standing on the ground, only plotted -- the ship takes off from the helm
+            // in the cockpit, not from the map.
+            const bool direct = (here || heading) && !ShipLanded();
+            const char* go = port ? (direct ? "Land the ship here" : plotted ? "Plotted" : "Plot course to land here")
+                                  : (direct ? "Go down here" : plotted ? "Plotted" : "Plot course to go down here");
             if (ImGui::Button(go, {-1.0f, 32.0f}) && !plotted)
             {
-                AskCampaign(here || heading ? CampaignAction::SetCourse : CampaignAction::PlotCourse, body->index, m_mapRegion);
+                AskCampaign(direct ? CampaignAction::SetCourse : CampaignAction::PlotCourse, body->index, m_mapRegion);
                 PlayNamed("UI/confirm", m_renderEye, 0.6f, 1.0f, false);
             }
             if (plotted)

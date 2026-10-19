@@ -6719,14 +6719,36 @@ void PredationGame::UpdateSounds(float dt)
             const float wobble = 0.96f + 0.08f * std::fmod(std::abs(phase) * 7.13f, 1.0f);
             PlaySound(clip, where, loudness, wobble, positioned);
             MakeNoise(NoiseKind::Footstep, where, reach, player);
-            // And in soft ground at a site, a print where the foot came down: the left foot at one mark, the right at the other.
+            // And in soft ground at a site, a print where the foot came down: the left foot at one mark, the right at the other --
+            // in sand, snow and soft earth, in any ground with snow lying on it, and in grass or earth gone to mud in the rain; on
+            // the ground itself (not a pad or a floor). Filled in sooner while snow is falling or sand blowing, and in rain.
             if (surface >= 0 && surface < static_cast<int>(m_footsteps.size()) && m_facility.Built() && m_facility.Contains(where))
             {
                 const std::string& underfoot = m_footsteps[static_cast<size_t>(surface)].name;
-                if (underfoot == "sand" || underfoot == "snow")
+                const bool onGround = std::abs(where.y - m_facility.Terrain().Height(where.x, where.z)) < 0.25f;
+                const bool soft = underfoot == "sand" || underfoot == "snow" || underfoot == "dirt";
+                const bool snowedOver = m_surfaceSnow > 0.3f;
+                const bool muddy = m_surfaceWet > 0.5f && (underfoot == "grass" || underfoot == "dirt");
+                if (onGround && (soft || snowedOver || muddy))
                 {
+                    const SiteMap::Look& look = m_facility.GetLook();
+                    const Weather::Kind kind = Weather::KindOf(look.weather);
+                    const float amount = std::clamp(look.weatherAmount, 0.0f, 1.0f);
+                    double last = Footprints::kLast;
+                    if (kind == Weather::Kind::Snow)
+                    {
+                        last = glm::mix(Footprints::kLast, 30.0, static_cast<double>(glm::smoothstep(0.1f, 0.8f, amount)));
+                    }
+                    else if (kind == Weather::Kind::Dust)
+                    {
+                        last = glm::mix(Footprints::kLast, 25.0, static_cast<double>(glm::smoothstep(0.2f, 0.9f, amount)));
+                    }
+                    else if (kind == Weather::Kind::Rain)
+                    {
+                        last = glm::mix(Footprints::kLast, 70.0, static_cast<double>(amount));
+                    }
                     const float yaw = std::atan2(velocity.x, -velocity.z);
-                    m_footprints.Leave(m_scene, m_app->GetMeshes(), m_facility, where, yaw, crossed(0.0f), m_campaign.clock);
+                    m_footprints.Leave(m_scene, m_app->GetMeshes(), m_facility, where, yaw, crossed(0.0f), m_campaign.clock, last);
                 }
             }
         }

@@ -210,6 +210,18 @@ glm::vec3 RoundTo(const glm::vec3& from, const glm::vec3& to, float t)
     return from * std::cos(angle * t) + side * std::sin(angle * t);
 }
 
+// Along the way round to be over a place, `s` of the way (0 to 1): bent through `overVia`, if it has one -- the way it was
+// going, then round to the place -- as a curve on the globe (each point of it the same share between two that are the same
+// share along each half), or straight across.
+glm::vec3 OverPath(const CampaignState::Travel& travel, float s)
+{
+    if (glm::length(travel.overVia) < 0.5f)
+    {
+        return RoundTo(travel.overFrom, travel.overAt, s);
+    }
+    return RoundTo(RoundTo(travel.overFrom, travel.overVia, s), RoundTo(travel.overVia, travel.overAt, s), s);
+}
+
 } // namespace
 
 void MoveOver(CampaignState& campaign, const StarSystem& system, int body, const glm::vec3& at, int tier)
@@ -224,13 +236,32 @@ void MoveOver(CampaignState& campaign, const StarSystem& system, int body, const
     OrbitFrame(campaign, system, body, campaign.clock, out, along);
     const glm::vec3 from = Unit(system.Over(body, out, campaign.clock), glm::vec3(1.0f, 0.0f, 0.0f));
     const glm::vec3 to = Unit(at, glm::vec3(1.0f, 0.0f, 0.0f));
-    const float angle = std::acos(std::clamp(glm::dot(from, to), -1.0f, 1.0f));
+    // Going on the way it was going first, and bending round to the place -- through a point ahead of it, as far ahead as
+    // half the way there (a little at least, a quarter of the world at most) -- never turning on the spot to face it.
+    glm::vec3 ahead = system.Over(body, along, campaign.clock);
+    ahead -= from * glm::dot(ahead, from);
+    const float across = std::acos(std::clamp(glm::dot(from, to), -1.0f, 1.0f));
+    glm::vec3 via{0.0f};
+    // How far it has to turn: from the way it is going to the way to the place (nought straight ahead, half a turn behind).
+    float turn = 0.0f;
+    if (glm::length(ahead) > 1.0e-4f && across > 0.02f)
+    {
+        glm::vec3 towards = to - from * glm::dot(to, from);
+        towards = Unit(towards, glm::normalize(ahead));
+        turn = std::acos(std::clamp(glm::dot(glm::normalize(ahead), towards), -1.0f, 1.0f));
+        // A wider bend the more it turns, so the turn is spread over the way.
+        const float reach = std::clamp(across * 0.5f + 0.35f * turn, 0.15f, 1.57f);
+        via = glm::normalize(from * std::cos(reach) + glm::normalize(ahead) * std::sin(reach));
+    }
     CampaignState::Travel& travel = campaign.travel;
     travel.overFrom = from;
     travel.overAt = to;
+    travel.overVia = via;
     travel.overSince = campaign.clock;
+    // As long as the way round is, bent or straight.
+    const float angle = glm::length(via) > 0.5f ? std::acos(std::clamp(glm::dot(from, via), -1.0f, 1.0f)) + std::acos(std::clamp(glm::dot(via, to), -1.0f, 1.0f)) : across;
     // (Never so fast the world is seen to spin under it: a quarter of the way round in a few seconds at the quickest.)
-    travel.overSeconds = (6.0f + 34.0f * angle / 3.14159265f) / (1.0f + 0.15f * static_cast<float>(std::clamp(tier, 0, kFastestTier)));
+    travel.overSeconds = (6.0f + 34.0f * angle / 3.14159265f + 24.0f * turn / 3.14159265f) / (1.0f + 0.15f * static_cast<float>(std::clamp(tier, 0, kFastestTier)));
 }
 
 float SecondsToOver(const CampaignState& campaign)
@@ -251,7 +282,7 @@ glm::vec3 OverGlobe(const CampaignState& campaign, double clock)
         return glm::vec3(0.0f);
     }
     const float moved = travel.overSeconds > 0.0f ? static_cast<float>((clock - travel.overSince) / static_cast<double>(travel.overSeconds)) : 1.0f;
-    return RoundTo(travel.overFrom, travel.overAt, glm::smoothstep(0.0f, 1.0f, moved));
+    return OverPath(travel, glm::smoothstep(0.0f, 1.0f, std::clamp(moved, 0.0f, 1.0f)));
 }
 
 void OrbitFrame(const CampaignState& campaign, const StarSystem& system, int body, double clock, glm::vec3& out, glm::vec3& along)
@@ -262,12 +293,12 @@ void OrbitFrame(const CampaignState& campaign, const StarSystem& system, int bod
     {
         const glm::vec3 overNow = OverGlobe(campaign, clock);
         out = Unit(system.FromOver(body, overNow, clock), glm::vec3(1.0f, 0.0f, 0.0f));
-        // Going the way of the great circle it goes round on from where it set off to where it is going -- and still that way
-        // when it is there and held over it, not towards a point now right underneath it, which has no way at all and swung
-        // the ship round in a frame as it got there.
-        const glm::vec3 axis = glm::cross(travel.overFrom, travel.overAt);
-        glm::vec3 way = glm::length(axis) > 1.0e-4f ? system.FromOver(body, glm::cross(glm::normalize(axis), Unit(overNow, glm::vec3(1.0f, 0.0f, 0.0f))), clock)
-                                                   : glm::cross(glm::vec3(0.0f, 1.0f, 0.0f), out);
+        // Going the way its path goes (OverPath) -- and, there and held over the place, still the way it came in, not towards
+        // a point now right underneath it, which has no way at all and swung the ship round in a frame as it got there.
+        const float moved = travel.overSeconds > 0.0f ? static_cast<float>((clock - travel.overSince) / static_cast<double>(travel.overSeconds)) : 1.0f;
+        const float s = std::min(glm::smoothstep(0.0f, 1.0f, std::clamp(moved, 0.0f, 1.0f)), 0.998f);
+        const glm::vec3 onward = OverPath(travel, s + 0.002f) - OverPath(travel, s);
+        glm::vec3 way = glm::length(onward) > 1.0e-7f ? system.FromOver(body, onward, clock) : glm::cross(glm::vec3(0.0f, 1.0f, 0.0f), out);
         way -= out * glm::dot(way, out);
         along = Unit(way, Unit(glm::cross(glm::vec3(0.0f, 1.0f, 0.0f), out), glm::vec3(0.0f, 0.0f, 1.0f)));
         return;
