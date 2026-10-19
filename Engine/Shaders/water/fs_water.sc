@@ -62,9 +62,17 @@ float WaterPlates(vec2 p)
 	return second - first;
 }
 
+// How much of a pattern of `frequency` (cycles a metre) is left where one pixel covers `pixel` metres: all of it while it
+// is several pixels across, none once it is finer than about two -- below that it cannot be drawn, only shimmer.
+float WaterKeep(float frequency, float pixel)
+{
+	return 1.0 - smoothstep(0.18, 0.45, frequency * pixel);
+}
+
 // How the surface leans here: long swells and short chop, moving with the wind (more and steeper the harder it blows),
-// and the rings of drops landing on it in rain.
-vec2 WaterSlope(vec2 p, float t, float wind, float rain)
+// and the rings of drops landing on it in rain. Each only while it is big enough on the screen to be drawn (`pixel`: the
+// metres one pixel covers there).
+vec2 WaterSlope(vec2 p, float t, float wind, float rain, float pixel)
 {
 	vec2 slope = vec2_splat(0.0);
 	float strength = 0.25 + 0.06 * min(wind, 15.0);
@@ -79,18 +87,24 @@ vec2 WaterSlope(vec2 p, float t, float wind, float rain)
 		float k = 6.2831853 / wavelength;
 		float speed = sqrt(9.8 / k);
 		float height = 0.05 * wavelength / 9.0;
-		slope += way * (k * height * cos(dot(p, way) * k - t * speed)) * strength;
+		slope += way * (k * height * cos(dot(p, way) * k - t * speed)) * strength * WaterKeep(1.0 / wavelength, pixel);
 	}
 	// And chop: two layers of noise drifting past each other.
 	float e = 0.08;
 	vec2 q = p * 1.7 + vec2(t * 0.6, t * 0.35);
 	vec2 r = p * 3.1 - vec2(t * 0.45, -t * 0.7);
-	float n0 = WaterNoise(q) + 0.5 * WaterNoise(r);
-	float nx = WaterNoise(q + vec2(e, 0.0)) + 0.5 * WaterNoise(r + vec2(e, 0.0));
-	float nz = WaterNoise(q + vec2(0.0, e)) + 0.5 * WaterNoise(r + vec2(0.0, e));
-	slope += vec2(nx - n0, nz - n0) / e * 0.06 * strength;
+	float keepQ = WaterKeep(1.7, pixel);
+	float keepR = WaterKeep(3.1, pixel) * 0.5;
+	if (keepQ > 0.0)
+	{
+		float n0 = WaterNoise(q) * keepQ + WaterNoise(r) * keepR;
+		float nx = WaterNoise(q + vec2(e, 0.0)) * keepQ + WaterNoise(r + vec2(e, 0.0)) * keepR;
+		float nz = WaterNoise(q + vec2(0.0, e)) * keepQ + WaterNoise(r + vec2(0.0, e)) * keepR;
+		slope += vec2(nx - n0, nz - n0) / e * 0.06 * strength;
+	}
 	// Rain: in cells a third of a metre across, a drop landing now and then and its ring going out.
-	if (rain > 0.01)
+	float keepRain = WaterKeep(6.0, pixel);
+	if (rain > 0.01 && keepRain > 0.0)
 	{
 		vec2 cellSize = vec2_splat(0.35);
 		vec2 cell = floor(p / cellSize);
@@ -101,7 +115,7 @@ vec2 WaterSlope(vec2 p, float t, float wind, float rain)
 		vec2 fromDrop = inCell - off;
 		float d = length(fromDrop);
 		float ring = sin((d - age * 0.45) * 60.0) * exp(-abs(d - age * 0.45) * 30.0) * (1.0 - age);
-		slope += (d > 1.0e-4 ? fromDrop / d : vec2_splat(0.0)) * ring * 0.6 * rain * step(h, 0.3 + 0.7 * rain);
+		slope += (d > 1.0e-4 ? fromDrop / d : vec2_splat(0.0)) * ring * 0.6 * rain * step(h, 0.3 + 0.7 * rain) * keepRain;
 	}
 	return slope;
 }
@@ -117,9 +131,12 @@ void main()
 	float far = length(toEye);
 	vec3 V = toEye / max(far, 1.0e-4);
 	float t = u_waterEye.w;
-	// The small waves only near enough to be seen; far off, calmer, so it does not shimmer.
+	// How much of the surface one pixel covers here, along whichever way it is longest (far off and at a glancing look, a
+	// long way): what is finer than that is left out rather than shimmering (WaterKeep).
+	vec2 footprint = fwidth(v_worldPos.xz);
+	float pixel = max(footprint.x, footprint.y);
 	float near = 1.0 - smoothstep(60.0, 400.0, far);
-	vec2 slope = WaterSlope(v_worldPos.xz, t, u_waterHorizon.w, u_waterSky.w) * mix(0.25, 1.0, near);
+	vec2 slope = WaterSlope(v_worldPos.xz, t, u_waterHorizon.w, u_waterSky.w, pixel);
 	vec3 N = normalize(vec3(-slope.x, 1.0, -slope.y));
 
 	// The sky in it, more of it the more glancing the look.
@@ -158,7 +175,7 @@ void main()
 	// (The shore's foam washing in and out with the swell, not standing in one line.)
 	float wash = 0.3 + 0.2 * sin(t * 0.9 + WaterNoise(v_worldPos.xz * 0.15) * 6.0);
 	float shore = 1.0 - smoothstep(0.0, wash, depth);
-	float broken = WaterNoise(v_worldPos.xz * 2.3 + vec2(t * 0.3, -t * 0.2)) * WaterNoise(v_worldPos.xz * 0.6 - vec2(t * 0.1, 0.0));
+	float broken = mix(0.5, WaterNoise(v_worldPos.xz * 2.3 + vec2(t * 0.3, -t * 0.2)), WaterKeep(2.3, pixel)) * WaterNoise(v_worldPos.xz * 0.6 - vec2(t * 0.1, 0.0));
 	float foam = shore * smoothstep(0.25, 0.6, broken + shore * 0.15) * 0.65;
 	colour = mix(colour, (u_waterAmbient.rgb + u_waterSunColor.rgb * u_waterSun.w * 0.3) * 0.8, foam);
 	alpha = max(alpha, foam * 0.8);
@@ -184,16 +201,33 @@ void main()
 	{
 		vec2 p = v_worldPos.xz;
 		float tt = t * 0.04;
+		// Its own pixel: across the look and along it together (pixel is the longer of the two), so a field of it seen at a
+		// glancing angle keeps its plates further out; it moves too slowly to shimmer as the waves would.
+		float area = sqrt(max(footprint.x * footprint.y, 1.0e-8));
 		vec2 warp = vec2(WaterNoise(p * 0.05 + vec2(tt, 0.0)), WaterNoise(p * 0.05 - vec2(0.0, tt) + vec2_splat(5.0)));
 		float plates = WaterNoise(p * 0.12 + warp * 3.0 + vec2(tt * 2.0, tt));
-		float fine = WaterNoise(p * 0.9 + warp * 5.0 - vec2_splat(tt * 3.0));
+		// The fine churn and the cracks' wander only while big enough on the screen; the cracks no thinner than a pixel and a
+		// half, dimmed by as much as they are widened, so far off they are a glow along the seams, not glitter.
+		float keepFine = WaterKeep(0.9, area);
+		float rough = WaterNoise(p * 0.9 + warp * 5.0 - vec2_splat(tt * 3.0));
+		float fine = mix(0.5, rough, keepFine);
 		float heat = smoothstep(0.0, 2.5, depth);
-		float seam = WaterPlates(p * 0.22 + warp * 1.5 + vec2(tt * 1.5, tt * 0.7) + vec2(fine, WaterNoise(p * 0.7 + vec2_splat(4.0))) * 0.35);
-		float crack = (1.0 - smoothstep(0.0, 0.02 + 0.09 * fine * fine * (0.4 + heat), seam)) * smoothstep(0.15, 0.6, plates + 0.3 * heat);
+		vec2 wander = vec2(fine, mix(0.5, WaterNoise(p * 0.7 + vec2_splat(4.0)), WaterKeep(0.7, area))) * 0.35;
+		float seam = WaterPlates(p * 0.22 + warp * 1.5 + vec2(tt * 1.5, tt * 0.7) + wander);
+		float width = 0.02 + 0.09 * fine * fine * (0.4 + heat);
+		float drawnWidth = max(width, area * 0.22 * 1.5);
+		float crack = (1.0 - smoothstep(0.0, drawnWidth, seam)) * (width / drawnWidth) * smoothstep(0.15, 0.6, plates + 0.3 * heat);
 		float crusted = mix(0.95, 0.62, heat);
-		float molten = max(crack * (0.4 + 0.6 * heat), smoothstep(crusted, crusted + 0.12, fine * 0.5 + plates * 0.5));
+		float molten = max(crack * (0.4 + 0.6 * heat), smoothstep(crusted, crusted + 0.12, rough * 0.5 + plates * 0.5));
+		// Far off, where the plates are only a few pixels, what glows on average and nothing finer: a field of bright flecks
+		// there was all that could be seen of it, and it glittered.
+		float detail = WaterKeep(0.25, area);
+		// (Still in patches as the big plates lie: those are metres across and are drawn as far as it can be seen.)
+		float patches = 0.25 + 1.6 * smoothstep(0.45, 0.8, plates + 0.15 * warp.x);
+		molten = mix((0.015 + 0.035 * heat) * patches, molten, detail);
 		float churn = 0.8 + 0.2 * sin(t * 0.7 + plates * 12.0);
-		vec3 hot = mix(vec3(1.6, 0.22, 0.02), vec3(4.5, 1.5, 0.3), fine * heat) * churn * (0.5 + 0.9 * heat);
+		// (Far off, the dull red of most of it rather than the white heat of the brightest.)
+		vec3 hot = mix(vec3(1.6, 0.22, 0.02), vec3(4.5, 1.5, 0.3), fine * heat * detail) * churn * (0.5 + 0.9 * heat);
 		vec3 lit = u_waterAmbient.rgb + u_waterSunColor.rgb * u_waterSun.w * max(L.y, 0.0) * 0.6;
 		vec3 crust = vec3(0.03, 0.028, 0.027) * lit * (0.7 + 0.6 * fine) + hot * 0.006;
 		colour = mix(crust, hot, molten);
@@ -204,9 +238,12 @@ void main()
 	else if (u_waterKind.x > 2.5)
 	{
 		vec2 p = v_worldPos.xz;
-		float frost = WaterNoise(p * 0.08) * 0.6 + WaterNoise(p * 0.6) * 0.4;
-		float cracks = (1.0 - smoothstep(0.0, 0.02, abs(WaterNoise(p * 0.31) - 0.5))) * 0.7 +
-		               (1.0 - smoothstep(0.0, 0.015, abs(WaterNoise(p * 1.3 + vec2_splat(3.0)) - 0.5))) * 0.3;
+		float frost = WaterNoise(p * 0.08) * 0.6 + mix(0.5, WaterNoise(p * 0.6), WaterKeep(0.6, pixel)) * 0.4;
+		// The cracks no thinner than a pixel and a half, dimmed as they are widened (as the lava's).
+		float wideA = max(0.02, pixel * 0.31 * 1.5);
+		float wideB = max(0.015, pixel * 1.3 * 1.5);
+		float cracks = (1.0 - smoothstep(0.0, wideA, abs(WaterNoise(p * 0.31) - 0.5))) * 0.7 * (0.02 / wideA) +
+		               (1.0 - smoothstep(0.0, wideB, abs(WaterNoise(p * 1.3 + vec2_splat(3.0)) - 0.5))) * 0.3 * (0.015 / wideB);
 		vec3 ice = mix(vec3(0.4, 0.53, 0.63), vec3(0.78, 0.84, 0.9), smoothstep(0.3, 0.8, frost));
 		ice *= mix(1.0, 0.7, smoothstep(0.5, 4.0, depth)) * (1.0 - 0.35 * cracks);
 		vec3 lit = u_waterAmbient.rgb + u_waterSunColor.rgb * u_waterSun.w * max(L.y, 0.0);

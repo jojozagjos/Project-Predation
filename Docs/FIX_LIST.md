@@ -37,7 +37,7 @@ Status: **Open**, **Doing**, **Done** (commit), **Planned** (a bigger piece that
 | 13 | No ocean or water sounds | The shore loop is a made sound and only at the shore; recorded surf, lapping, wind over water (needs your yes to download) | Open |
 | 14 | Water should have waves | The surface is flat with moving normals; real swell needs the mesh moved (and things floating on it) | Open |
 | 15 | Underwater: a camera effect, sounds muffled; seeing clearly under the water and the edge of the map is wrong | No underwater view yet: fog and colour under the surface, light from above, sound muffled; the sea floor carried out past where it can be seen | Open |
-| 16 | Water and lava look noisy from far away | Their detail is drawn at full strength at every distance: it shimmers. Faded out with distance | Open |
+| 16 | Water and lava look noisy from far away | Their ripples, rain rings, cracks and churn were drawn however small on the screen, so far off they glittered. Each now fades as it gets finer than a pixel or two; far lava is dark crust with patches of dull red glow, far water calm and reflecting | Done |
 
 ## Worlds being different
 
