@@ -146,6 +146,9 @@ public:
     // The room the listener is in; eased towards over about half a second, so walking through a door
     // is heard as the space opening out and not as a switch.
     void SetRoom(const Room& room);
+    // How far under water the listener's ears are, 0 to 1: everything in the world heard dull and far, as through water (the
+    // interface and the radio are not: they are in the helmet). Eased, so going under is heard as going under.
+    void SetSubmerged(float amount);
     bool IsPlaying(VoiceId voice) const;
 
     void SetListener(const glm::vec3& position, const glm::vec3& forward, const glm::vec3& up);
@@ -223,6 +226,8 @@ private:
     std::vector<float> m_send;
     Room m_room;
     Room m_roomMixed;
+    float m_submerged = 0.0f;
+    float m_submergedMixed = 0.0f;
 
     void MixLocked(float* out, int frames);
     Voice* FindVoice(VoiceId id);

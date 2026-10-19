@@ -3193,6 +3193,26 @@ void PredationGame::OnUpdate(double dt, double alpha)
     {
         environment.airHaze = glm::mix(0.1f, std::clamp(28.0f / std::max(environment.fogEnd, 1.0f), 0.04f, 1.5f), std::clamp(environment.eyeOutdoors, 0.0f, 1.0f));
     }
+    // Under water: the eye below the surface of a site's water. Murk all round in the water's own colour, lit from above,
+    // a few metres to see by (further the clearer it is), nothing of the sky -- and everything heard dull through it.
+    m_underwater = 0.0f;
+    if (m_screen == Screen::Playing && m_swimWaterSet && m_swimWater.depth(m_renderEye.x, m_renderEye.z) > 0.0f)
+    {
+        m_underwater = std::clamp((m_swimWater.level - m_renderEye.y) / 0.06f, 0.0f, 1.0f);
+    }
+    if (m_underwater > 0.0f)
+    {
+        glm::vec3 tint;
+        float clarity = 1.0f;
+        SiteWaterLook(tint, clarity);
+        const glm::vec3 lit = environment.ambientSky + environment.sunColor * environment.sunIntensity * std::max(environment.sunDirection.y * -1.0f, 0.1f) * 0.4f;
+        environment.fogColor = glm::mix(environment.fogColor, tint * 5.0f * lit, m_underwater);
+        environment.fogStart = glm::mix(environment.fogStart, 0.0f, m_underwater);
+        environment.fogEnd = glm::mix(environment.fogEnd, 5.0f + clarity * 6.0f, m_underwater);
+        environment.skyHaze = std::max(environment.skyHaze, m_underwater);
+        environment.airHaze = std::max(environment.airHaze, 0.8f * m_underwater);
+    }
+    app.GetAudio().SetSubmerged(m_underwater);
     environment.exposure = cv_exposure.Get();
     environment.contrast = cv_contrast.Get();
 
@@ -3522,7 +3542,17 @@ void PredationGame::OnUpdate(double dt, double alpha)
         }
     }
 
-    renderer.SetClearColor(0x11131aff);
+    // Behind everything: the dark, or under water the water's own murk (the sky is not drawn there).
+    if (m_underwater > 0.5f)
+    {
+        const glm::vec3 murk = glm::clamp(m_scene.GetEnvironment().fogColor, glm::vec3(0.0f), glm::vec3(1.0f));
+        const auto byte = [](float v) { return static_cast<uint32_t>(v * 255.0f + 0.5f); };
+        renderer.SetClearColor((byte(murk.r) << 24) | (byte(murk.g) << 16) | (byte(murk.b) << 8) | 0xffu);
+    }
+    else
+    {
+        renderer.SetClearColor(0x11131aff);
+    }
 
     // What the player can reach, decided by where they are looking rather than by proximity -- and nothing at all dead (a
     // drone or a spectator is not where the body is, and cannot pick anything up).
@@ -3695,10 +3725,14 @@ void PredationGame::OnRender()
         // was standing last time it saw one is worse than no reflection at all.
         app.GetSceneRenderer().NoReflection();
     }
-    // The sky behind the world, where none of it is (the world is drawn first: Renderer::kViewMain), and the bodies in it.
-    app.GetSkyRenderer().Draw(Renderer::kViewSky, m_scene.GetEnvironment(), app.GetRenderer().ViewMatrix(),
-                              app.GetRenderer().ProjectionMatrix(), true);
-    DrawSpaceBodies();
+    // The sky behind the world, where none of it is (the world is drawn first: Renderer::kViewMain), and the bodies in it --
+    // not from under water, where what is behind everything is the water.
+    if (m_underwater <= 0.5f)
+    {
+        app.GetSkyRenderer().Draw(Renderer::kViewSky, m_scene.GetEnvironment(), app.GetRenderer().ViewMatrix(),
+                                  app.GetRenderer().ProjectionMatrix(), true);
+        DrawSpaceBodies();
+    }
     app.GetSceneRenderer().SetCullFrustum(app.GetRenderer().ProjectionMatrix() * app.GetRenderer().ViewMatrix());
     // Out in space the camera sees for kilometres, and the site and the testing area are only one or two away: not in
     // the picture, only the ship and what is round it (the shuttle leaving showed the site hanging in space behind it).
@@ -3726,21 +3760,8 @@ void PredationGame::OnRender()
         {
             const SiteMap::Look& look = m_facility.GetLook();
             WaterRenderer::Look waterLook;
-            if (look.biome == "jungle")
-            {
-                waterLook.tint = {0.035f, 0.045f, 0.02f};
-                waterLook.clarity = 1.0f;
-            }
-            else if (look.water == SiteTerrain::Water::Lakes)
-            {
-                waterLook.tint = {0.03f, 0.045f, 0.035f};
-                waterLook.clarity = 2.0f;
-            }
-            else
-            {
-                waterLook.tint = {0.02f, 0.055f, 0.07f};
-                waterLook.clarity = 4.0f;
-            }
+            SiteWaterLook(waterLook.tint, waterLook.clarity);
+            waterLook.below = m_underwater > 0.5f;
             waterLook.rain = Weather::KindOf(look.weather) == Weather::Kind::Rain ? std::clamp(look.weatherAmount, 0.0f, 1.0f) : 0.0f;
             // Or lava, acid or ice in its place: acid yellow-green and thick, bubbling (the rings rain leaves, always there).
             switch (look.liquid)
@@ -3748,8 +3769,6 @@ void PredationGame::OnRender()
             case SiteMap::Look::Liquid::Lava: waterLook.kind = 1; break;
             case SiteMap::Look::Liquid::Acid:
                 waterLook.kind = 2;
-                waterLook.tint = {0.16f, 0.21f, 0.02f};
-                waterLook.clarity = 0.6f;
                 waterLook.rain = std::max(waterLook.rain, 0.25f);
                 break;
             case SiteMap::Look::Liquid::Ice: waterLook.kind = 3; break;

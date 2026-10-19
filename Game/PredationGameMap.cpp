@@ -686,6 +686,31 @@ void PredationGame::UpdateWater()
     }
 }
 
+void PredationGame::SiteWaterLook(glm::vec3& tint, float& clarity) const
+{
+    const SiteMap::Look& look = m_facility.GetLook();
+    if (look.liquid == SiteMap::Look::Liquid::Acid)
+    {
+        tint = {0.16f, 0.21f, 0.02f};
+        clarity = 0.6f;
+    }
+    else if (look.biome == "jungle")
+    {
+        tint = {0.035f, 0.045f, 0.02f};
+        clarity = 1.0f;
+    }
+    else if (look.water == SiteTerrain::Water::Lakes)
+    {
+        tint = {0.03f, 0.045f, 0.035f};
+        clarity = 2.0f;
+    }
+    else
+    {
+        tint = {0.02f, 0.055f, 0.07f};
+        clarity = 4.0f;
+    }
+}
+
 void PredationGame::UpdateShipGround()
 {
     const StarSystem* system = CurrentSystem();

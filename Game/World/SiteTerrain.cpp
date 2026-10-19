@@ -282,8 +282,10 @@ float SiteTerrain::Edge(float x, float z) const
         // Its foot wandering in and out, in long bays and headlands and short ones.
         const float foot = 24.0f + 18.0f * Fbm(x, z, 130.0f, 2, s + 5u) + 8.0f * wander + 6.0f * std::sin(angle * 5.0f + m_edgeWaves[0].y);
         // The steep face of a ridge, its back falling away again past it: so where a stretch of it ends, it ends as a ridge
-        // does, not as a step in the land running off to the horizon.
-        h += cliff * tall * (Smooth(foot, foot + 8.0f, past) - 0.85f * Smooth(foot + 30.0f, foot + 200.0f, past));
+        // does, not as a step in the land running off to the horizon. (Back down to the land round it altogether: some of its
+        // height left on for good was a step in the land along straight lines out from the site, and over low ground at a
+        // coast a dead straight strip of land standing out of the sea to the horizon.)
+        h += cliff * tall * (Smooth(foot, foot + 8.0f, past) - Smooth(foot + 30.0f, foot + 200.0f, past));
         // Its face broken into ledges and buttresses.
         const float face = Smooth(foot - 2.0f, foot + 4.0f, past) * (1.0f - Smooth(foot + 8.0f, foot + 18.0f, past));
         h += cliff * face * tall * 0.18f * Fbm(x, z, 9.0f, 2, s + 3u);

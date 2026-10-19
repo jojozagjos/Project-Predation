@@ -36,7 +36,7 @@ Status: **Open**, **Doing**, **Done** (commit), **Planned** (a bigger piece that
 | 12 | Footsteps in water wrong; walking-in-water sounds bad | Ground footsteps play under the splash; water wants wading sounds by depth, no ground step | Open |
 | 13 | No ocean or water sounds | The shore loop is a made sound and only at the shore; recorded surf, lapping, wind over water (needs your yes to download) | Open |
 | 14 | Water should have waves | The surface is flat with moving normals; real swell needs the mesh moved (and things floating on it) | Open |
-| 15 | Underwater: a camera effect, sounds muffled; seeing clearly under the water and the edge of the map is wrong | No underwater view yet: fog and colour under the surface, light from above, sound muffled; the sea floor carried out past where it can be seen | Open |
+| 15 | Underwater: a camera effect, sounds muffled; seeing clearly under the water and the edge of the map is wrong | Under water now: murk all round in the water's own colour (a few metres to see by, more the clearer the water), no sky, the surface overhead bright and wavering; everything in the world heard dull and quieter (the radio and the interface clear). Deep water is fully opaque from above | Done |
 | 16 | Water and lava look noisy from far away | Their ripples, rain rings, cracks and churn were drawn however small on the screen, so far off they glittered. Each now fades as it gets finer than a pixel or two; far lava is dark crust with patches of dull red glow, far water calm and reflecting | Done |
 
 ## Worlds being different
@@ -63,3 +63,4 @@ Status: **Open**, **Doing**, **Done** (commit), **Planned** (a bigger piece that
 |---|---|---|---|
 | 25 | Landing title card: time, temperature, wind and visibility hard to tell apart | Were all on one line; now each on a line of its own, set a little apart from the place names | Done |
 | 26 | Snow on the ground going back and forth fast | Blown snow placed by the clock times the gusting wind: each gust threw it metres. Now moved a frame at a time; and at the right speed (the wind is metres a second) | Done (4fa60db) |
+| 27 | A straight line across the sea to the horizon: shading error? | A bug: the cliffs round a site kept 15% of their height on past their back for ever, a step in the land along straight lines out from the site; over low ground at a coast it stood out of the sea as a dead straight strip. Now gone back to the land | Done |

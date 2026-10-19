@@ -84,7 +84,7 @@ void WaterRenderer::Draw(bgfx::ViewId view, uint64_t depthTest, const Mesh& mesh
     bgfx::setUniform(m_uFog, fog);
     bgfx::setUniform(m_uFogParams, fogParams);
     bgfx::setUniform(m_uTint, tint);
-    const float kind[4] = {static_cast<float>(look.kind), 0.0f, 0.0f, 0.0f};
+    const float kind[4] = {static_cast<float>(look.kind), look.below ? 1.0f : 0.0f, 0.0f, 0.0f};
     bgfx::setUniform(m_uKind, kind);
     // The torch, when it is one (the first light, a cone), as SceneRenderer packs it.
     {

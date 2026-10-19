@@ -171,6 +171,12 @@ void AudioEngine::SetRoom(const Room& room)
     m_room.wet = std::clamp(room.wet, 0.0f, 1.0f);
 }
 
+void AudioEngine::SetSubmerged(float amount)
+{
+    std::lock_guard lock(m_mutex);
+    m_submerged = std::clamp(amount, 0.0f, 1.0f);
+}
+
 void AudioEngine::BuildReverb()
 {
     // The classic Freeverb lengths, which were tuned at 44.1 kHz, scaled to the rate the mix runs at.
@@ -506,6 +512,7 @@ void AudioEngine::MixLocked(float* out, int frames)
 {
     std::fill(out, out + static_cast<size_t>(frames) * 2, 0.0f);
     m_send.assign(static_cast<size_t>(frames), 0.0f);
+    m_submergedMixed += (m_submerged - m_submergedMixed) * (1.0f - std::exp(-static_cast<float>(frames) / (0.15f * static_cast<float>(m_settings.sampleRate))));
 
     for (size_t index = 0; index < m_voices.size();)
     {
@@ -570,11 +577,12 @@ void AudioEngine::MixLocked(float* out, int frames)
         }
         voice.occlusionMixed += (voice.occlusion - voice.occlusionMixed) *
                                 (1.0f - std::exp(-static_cast<float>(frames) / (0.08f * static_cast<float>(m_settings.sampleRate))));
-        const float muffle = voice.positioned ? voice.occlusionMixed : 0.0f;
+        // (And under water, everything in the world dull, and quieter, whatever is in the way.)
+        const float muffle = voice.positioned ? std::max(voice.occlusionMixed, m_submergedMixed * 0.92f) : 0.0f;
         const float corner = 18000.0f * std::pow(700.0f / 18000.0f, muffle);
         const float smooth = std::exp(-2.0f * 3.14159265f * corner / static_cast<float>(m_settings.sampleRate));
-        left *= 1.0f - 0.5f * muffle;
-        right *= 1.0f - 0.5f * muffle;
+        left *= (1.0f - 0.5f * muffle) * (voice.positioned ? 1.0f - 0.3f * m_submergedMixed : 1.0f);
+        right *= (1.0f - 0.5f * muffle) * (voice.positioned ? 1.0f - 0.3f * m_submergedMixed : 1.0f);
         // What goes to the room: as loud as the sound is where it is, not panned -- the room is all round.
         float send = voice.gain * (m_muted ? 0.0f : m_masterGain) * voice.reverbSend;
         if (voice.positioned)

@@ -31,6 +31,7 @@ public:
         float skyBrightness = 1.0f;          // as the sky is drawn (SkyRenderer::SetBrightness), so what it shows matches
         bool linear = true;                  // drawing linear light for post-processing to finish
         int kind = 0;                        // what it is: 0 water, 1 lava, 2 acid, 3 ice (fs_water)
+        bool below = false;                  // seen from under it: its underside, bright and murky
     };
 
     // Into `view` (one drawn after the sky, into the world's picture, with its camera), tested against the world's depth in

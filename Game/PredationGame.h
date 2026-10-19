@@ -1809,6 +1809,11 @@ private:
     WaterQuery m_swimWater;
     bool m_swimWaterSet = false;
     void UpdateWater();
+    // How far under the water the eye is, 0 to 1 (just under: all of it): the picture murky and the sound dull while it is.
+    float m_underwater = 0.0f;
+    // The site's water's own colour, deep, and how clear it is (metres to see a third of the way down): a sea blue-green and
+    // clear, a lake browner, a jungle's murky, acid thick.
+    void SiteWaterLook(glm::vec3& tint, float& clarity) const;
     NetClient m_client;
     std::vector<std::unique_ptr<RemoteAvatar>> m_avatars;
     uint32_t m_networkTick = 0;

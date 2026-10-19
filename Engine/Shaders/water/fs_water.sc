@@ -20,7 +20,7 @@ uniform vec4 u_waterTint;      // rgb = the water's own colour, deep; w = how cl
 uniform vec4 u_waterTorchAt;    // xyz = the torch, w = how far it reaches (0: none)
 uniform vec4 u_waterTorchAim;   // xyz = which way it points, w = the cosine of its cone's edge
 uniform vec4 u_waterTorchLight; // rgb = its light, w = the cosine of its cone's full middle
-uniform vec4 u_waterKind;       // x = what it is: 0 water, 1 lava, 2 acid, 3 ice
+uniform vec4 u_waterKind;       // x = what it is: 0 water, 1 lava, 2 acid, 3 ice; y = 1 seen from under it
 
 float WaterHash(vec2 p)
 {
@@ -167,7 +167,8 @@ void main()
 		torchGlint = u_waterTorchLight.rgb * reach * pow(max(dot(R, Lt), 0.0), 120.0) * 4.0;
 	}
 	float through = exp(-depth / max(u_waterTint.w, 0.1));
-	float alpha = mix(0.96, 0.15, through);
+	// (Deep, nothing at all through it: a little let through showed the sea floor tens of metres down.)
+	float alpha = mix(1.0, 0.15, through);
 	vec3 colour = mix(body, sky, fresnel) + glint + torchGlint;
 	alpha = max(alpha, fresnel);
 
@@ -254,6 +255,15 @@ void main()
 		colour = mix(ice * lit, skyIn, sheen * 0.35) + u_waterSunColor.rgb * pow(max(dot(Rf, L), 0.0), 200.0) * 6.0 * u_waterSun.w * (1.0 - frost);
 		colour += ice * vec3(0.75, 0.8, 1.0) * flash * 0.8 + torchGlint * 0.5;
 		alpha = smoothstep(0.0, 0.04, depth) * 0.97;
+	}
+
+	// From under it: the surface overhead bright with the light coming down through it, wavering with its waves, the sun a
+	// smear where it is -- murk all the same (the fog, which under water is the water, has its colour).
+	if (u_waterKind.y > 0.5)
+	{
+		float waver = 0.85 + 0.3 * WaterNoise(v_worldPos.xz * 0.8 + slope * 3.0 + vec2(t * 0.4, -t * 0.3));
+		colour = u_waterFog.rgb * 2.2 * waver + u_waterSunColor.rgb * u_waterSun.w * pow(max(dot(-V, L), 0.0), 40.0) * 0.6;
+		alpha = 0.95;
 	}
 
 	// Fogged as everything is.
