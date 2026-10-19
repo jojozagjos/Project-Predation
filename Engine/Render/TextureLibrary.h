@@ -59,10 +59,12 @@ public:
     TextureHandle White() const { return TextureHandle{0}; }
     // A normal map that bends nothing: what a material with no normal map of its own samples.
     TextureHandle FlatNormal() const { return TextureHandle{1}; }
-    // A surface map -- a colour, normal or roughness map that repeats across a level -- read and uploaded with its
-    // smaller copies (mips) and sharpened at grazing angles, so it holds together into the distance. White when the
-    // file cannot be read.
+    // A surface map -- a colour or normal map that repeats across a level -- read and uploaded with its smaller copies
+    // (mips) and sharpened at grazing angles, so it holds together into the distance. White when the file cannot be read.
     TextureHandle LoadSurfaceMap(const std::string& file, const std::string& name);
+    // A set's colour map, as LoadSurfaceMap, with its roughness map (`roughnessFile`; empty or unreadable: all rough) in its
+    // alpha: one texture to bind for both, so the mesh shader has samplers to spare for a second set.
+    TextureHandle LoadSurfaceColour(const std::string& file, const std::string& roughnessFile, const std::string& name);
     // A surface map's average colour, in linear light (as the shader reads it): white for anything else.
     glm::vec3 MeanColour(TextureHandle handle) const;
     // Uploads, or returns what is already under that name.
@@ -82,6 +84,9 @@ public:
     size_t Count() const { return m_textures.size(); }
 
 private:
+    // The upload LoadSurfaceMap and LoadSurfaceColour share: mips made, its average colour kept.
+    TextureHandle UploadSurface(const ImageData& image, const std::string& name);
+
     struct Entry
     {
         bgfx::TextureHandle texture = BGFX_INVALID_HANDLE;

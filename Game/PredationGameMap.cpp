@@ -1190,6 +1190,9 @@ SiteMap::Look PredationGame::SiteLookHere()
         look.rock = biome->siteRock;
         look.surface = biome->surface;
         look.steep = biome->steepSurface;
+        look.blend = biome->blendSurface;
+        look.blendColour = biome->blendColour;
+        look.blendShare = biome->blendShare;
         look.biome = biomeId;
     }
     // Its water: the sea all round on an island world, along one side at a coast or on an ocean world; lakes in the low ground
@@ -1201,6 +1204,23 @@ SiteMap::Look PredationGame::SiteLookHere()
                      : coast || look.biome == "oceanic"      ? SiteTerrain::Water::Coast
                      : look.biome == "temperate" || look.biome == "jungle" ? SiteTerrain::Water::Lakes
                                                              : SiteTerrain::Water::None;
+        // Along the sea, a beach: sand up from the water (a sand world's beach is its own sand; an icy one's, its snow) --
+        // and bare sandy patches inland, the grass thin on them. Round a lake, its second ground a little way up from the water.
+        const bool sea = look.water == SiteTerrain::Water::Coast || look.water == SiteTerrain::Water::Island;
+        if (sea && look.surface != "sand" && look.surface != "snow_02")
+        {
+            if (look.blend != "sand")
+            {
+                look.blend = "sand";
+                look.blendColour = glm::vec3(0.36f, 0.31f, 0.22f);
+                look.blendShare = 0.14f;
+            }
+            look.blendShore = 1.4f;
+        }
+        else if (look.water == SiteTerrain::Water::Lakes)
+        {
+            look.blendShore = 1.0f;
+        }
     }
     look.weather = "none";
     look.weatherAmount = 0.0f;

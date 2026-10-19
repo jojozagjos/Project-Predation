@@ -50,6 +50,8 @@ struct Item
 
 // How many shapes each kind has to choose from.
 inline constexpr int kVariants = 4;
+// How far past the site's open ground Plan's own trees go (every leaf of them); FarTrees has those further out.
+inline constexpr float kTreeReach = 150.0f;
 
 // What lies on a site of this world (the biome's id: universe.json), and where.
 std::vector<Item> Plan(uint32_t seed, const std::string& biome, const SitePlan& plan, const SiteTerrain& terrain);
@@ -60,6 +62,14 @@ MeshData Shape(Kind kind, int variant, uint32_t seed, const glm::vec3& growth);
 
 // Its leaves, on cards cut out by the foliage atlas (Foliage; Material::cutout), tinted `growth`: empty for a kind that has none.
 MeshData Leaves(Kind kind, int variant, uint32_t seed, const glm::vec3& growth);
+
+// How wooded a place is on a world, 0 to 1: its woods some hundreds of metres across and the clearings between (none where
+// no trees grow). Plan's trees and FarTrees grow by it, the grass thins under it (SiteMap).
+float Woodland(uint32_t seed, const std::string& biome, float x, float z);
+
+// The trees of the land round the site past kTreeReach (Plan has those nearer), out to where one is a pixel: each a crown of
+// a few faces, painted `growth`, and a trunk -- drawn only, nothing to walk into.
+MeshData FarTrees(uint32_t seed, const std::string& biome, const SitePlan& plan, const SiteTerrain& terrain, const glm::vec3& growth);
 
 // Whether one of a kind is solid at this size (a boulder you walk round; grass you walk through).
 bool Solid(Kind kind, const glm::vec3& scale);

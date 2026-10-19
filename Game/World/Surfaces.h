@@ -27,6 +27,9 @@ Material Apply(Material material, const std::string& name, float metres, float k
 // And a second set where it is steep, on a material with a set laid on it already: tinted on average to `colour` (the
 // steep parts' own colour, against the material's), repeating every `metres`.
 Material ApplySteep(Material material, const std::string& name, float metres);
+// And a second ground set across the first in patches, `share` of it about (Material::blendShare), and all of the ground
+// within `shore` metres above open water: repeating every `metres`, coloured `colour` on average.
+Material ApplyBlend(Material material, const std::string& name, float metres, const glm::vec3& colour, float share, float shore);
 // `material` painted and worn: the named set read as a photograph of painted metal (Material::surfaceWear), repeating every
 // `metres`, `wear` as much worn as it shows; the material's colour is the paint's, as it is.
 Material ApplyWorn(Material material, const std::string& name, float metres, float wear);
@@ -39,6 +42,9 @@ const char* StepName(uint32_t tag);
 // Whether the ground at (x, z) on a site is one of the outcrops of its rock showing through it (the ground shader's, fs_mesh:
 // small patches on gentle rises), its slope given as its normal's up: so it sounds like rock underfoot where it looks like it.
 bool OutcropAt(float x, float z, float normalUp);
+// And whether it is the second ground set laid across the first there (Material::blendShare, blendShore; the ground shader's
+// patches and beach, without the sets' own ragged edges), a point `y` high by open water at `waterLevel`.
+bool BlendAt(float x, float z, float y, float share, float waterLevel, float shore);
 
 } // namespace Surfaces
 

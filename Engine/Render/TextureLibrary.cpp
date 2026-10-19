@@ -106,6 +106,44 @@ TextureHandle TextureLibrary::LoadSurfaceMap(const std::string& file, const std:
         PRED_LOG_WARN(Render, "Surface map '{}' could not be read from {}", name, file);
         return White();
     }
+    return UploadSurface(image, name);
+}
+
+TextureHandle TextureLibrary::LoadSurfaceColour(const std::string& file, const std::string& roughnessFile, const std::string& name)
+{
+    if (const auto found = m_byName.find(name); found != m_byName.end())
+    {
+        return TextureHandle{found->second};
+    }
+    ImageData image;
+    if (!LoadImageFile(file, image) || !image.IsValid())
+    {
+        PRED_LOG_WARN(Render, "Surface map '{}' could not be read from {}", name, file);
+        return White();
+    }
+    // Its roughness in the alpha, read where the colour is (the nearest of its own pixels, were it a different size), or
+    // all rough (white, as the shader multiplies it in) without one.
+    ImageData rough;
+    const bool hasRough = !roughnessFile.empty() && LoadImageFile(roughnessFile, rough) && rough.IsValid();
+    for (int y = 0; y < image.height; ++y)
+    {
+        for (int x = 0; x < image.width; ++x)
+        {
+            uint8_t value = 255;
+            if (hasRough)
+            {
+                const int rx = x * rough.width / image.width;
+                const int ry = y * rough.height / image.height;
+                value = rough.pixels[static_cast<size_t>((ry * rough.width + rx) * 4)];
+            }
+            image.pixels[static_cast<size_t>((y * image.width + x) * 4 + 3)] = value;
+        }
+    }
+    return UploadSurface(image, name);
+}
+
+TextureHandle TextureLibrary::UploadSurface(const ImageData& image, const std::string& name)
+{
     if (m_textures.size() >= TextureHandle::kInvalid)
     {
         return White();

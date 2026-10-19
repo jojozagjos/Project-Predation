@@ -228,11 +228,13 @@ private:
     // single white pixel and the shader then needs no branch.
     bgfx::UniformHandle m_sBaseColor = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_sNormalMap = BGFX_INVALID_HANDLE;
-    bgfx::UniformHandle m_sRoughnessMap = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uSurfaceParams = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_sSteepColor = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_sSteepNormal = BGFX_INVALID_HANDLE;
-    bgfx::UniformHandle m_sSteepRoughness = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_sBlendColor = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_sBlendNormal = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uBlendParams = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_uBlendShape = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uSteepParams = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uWearParams = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_uWind = BGFX_INVALID_HANDLE;

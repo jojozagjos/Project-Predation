@@ -32,12 +32,11 @@ struct Material
     // where its picture is and dark between, and not at all where the alpha is nought. Off, the glow is the same all over.
     bool emissiveTextured = false;
 
-    // A surface texture set laid on by where things are rather than by their own coordinates: a normal map and a
-    // roughness map beside the base colour, all repeating every `surfaceScale` metres across whatever the material
-    // is on, from whichever side it faces (0: off, and the mesh's own coordinates are used as ever). For level
+    // A surface texture set laid on by where things are rather than by their own coordinates: a normal map beside the
+    // base colour (its roughness in the colour's alpha), both repeating every `surfaceScale` metres across whatever the
+    // material is on, from whichever side it faces (0: off, and the mesh's own coordinates are used as ever). For level
     // geometry, which is boxes whose coordinates only stretch one copy over each face.
     TextureHandle normalTexture;
-    TextureHandle roughnessTexture;
     float surfaceScale = 0.0f;
     // How much of the set's own colour shows (1 all; 0 none, only its light and dark): a photograph's paint and rust
     // fighting the colour asked of the surface is let go of.
@@ -58,9 +57,19 @@ struct Material
     // `steepTint` (the first set's average colour over its own, so each is tinted to the colour asked of it).
     TextureHandle steepColorTexture;
     TextureHandle steepNormalTexture;
-    TextureHandle steepRoughnessTexture;
     float steepScale = 0.0f;
     glm::vec3 steepTint{1.0f};
+    // And a second ground set across the first, in patches -- grass giving way to bare earth, rock breaking through gravel
+    // -- their edges ragged by which set stands higher there, repeating every `blendScale` metres (0: none), its colour
+    // `blendTint` times the set over its average -- its own, whatever the material's and what is painted under it.
+    // `blendShare` of the ground is it, about; and within `blendShore` metres above open water (Environment::waterLevel),
+    // all of it: a beach.
+    TextureHandle blendColorTexture;
+    TextureHandle blendNormalTexture;
+    float blendScale = 0.0f;
+    glm::vec3 blendTint{1.0f};
+    float blendShare = 0.0f;
+    float blendShore = 0.0f;
 
     // Living tissue that grows, beats and dies across its surface -- a nest's skin -- driven from here and
     // from each vertex's texture coordinates: x how far along the growth from its source, y how far it

@@ -381,48 +381,175 @@ float SteepestFor(Kind kind)
     }
 }
 
+// --- Woods ---------------------------------------------------------------------------------------------------------------
+
+// A value at each whole point from a hash of it, eased between: smooth noise, 0 to 1.
+float Lattice(int x, int z, uint32_t seed)
+{
+    uint32_t h = static_cast<uint32_t>(x) * 0x8DA6B343u ^ static_cast<uint32_t>(z) * 0xD8163841u ^ seed * 0xCB1AB31Fu;
+    h ^= h >> 13;
+    h *= 0x5BD1E995u;
+    h ^= h >> 15;
+    return static_cast<float>(h & 0xFFFFFFu) / static_cast<float>(0x1000000u);
+}
+
+float Smooth(float x, float z, uint32_t seed)
+{
+    const float fx = std::floor(x);
+    const float fz = std::floor(z);
+    const int ix = static_cast<int>(fx);
+    const int iz = static_cast<int>(fz);
+    float tx = x - fx;
+    float tz = z - fz;
+    tx = tx * tx * (3.0f - 2.0f * tx);
+    tz = tz * tz * (3.0f - 2.0f * tz);
+    const float a = Lattice(ix, iz, seed);
+    const float b = Lattice(ix + 1, iz, seed);
+    const float c = Lattice(ix, iz + 1, seed);
+    const float d = Lattice(ix + 1, iz + 1, seed);
+    return (a + (b - a) * tx) + ((c + (d - c) * tx) - (a + (b - a) * tx)) * tz;
+}
+
+// How much of a world's ground is wooded (0: none grows trees), and how far apart the trees of a wood stand (metres).
+struct Woods
+{
+    float cover = 0.0f;
+    float spacing = 9.0f;
+    float broadleaf = 0.5f; // the share of them that are broadleaves, the rest conifers
+};
+
+Woods WoodsOf(const std::string& biome)
+{
+    if (biome == "temperate")
+    {
+        return {0.42f, 8.0f, 0.5f};
+    }
+    if (biome == "jungle")
+    {
+        return {0.85f, 6.5f, 1.0f};
+    }
+    if (biome == "oceanic")
+    {
+        return {0.16f, 9.0f, 0.75f};
+    }
+    return {};
+}
+
+} // namespace
+
+float Woodland(uint32_t seed, const std::string& biome, float x, float z)
+{
+    const Woods woods = WoodsOf(biome);
+    if (woods.cover <= 0.0f)
+    {
+        return 0.0f;
+    }
+    // Woods some hundreds of metres across and the clearings between, their edges ragged with smaller stands and gaps.
+    const uint32_t s = seed * 2246822519u + 0x900Du;
+    const float n = Smooth(x / 260.0f, z / 260.0f, s) * 0.55f + Smooth(x / 80.0f, z / 80.0f, s + 1u) * 0.3f + Smooth(x / 26.0f, z / 26.0f, s + 2u) * 0.15f;
+    // (The sum is about a half, mostly within a third of it: the line it must pass for about `cover` of the ground to.)
+    const float line = 0.5f + (0.5f - woods.cover) * 0.55f;
+    const float t = std::clamp((n - line + 0.05f) / 0.1f, 0.0f, 1.0f);
+    return t * t * (3.0f - 2.0f * t);
+}
+
+namespace
+{
+
+// Whether a tree could grow at a place: dry ground, not on the shore, not too steep.
+bool TreeGround(const SiteTerrain& terrain, float x, float z, float up)
+{
+    return terrain.WaterDepth(x, z) < -1.2f && up >= 0.85f;
+}
+
 } // namespace
 
 std::vector<Item> Plan(uint32_t seed, const std::string& biome, const SitePlan& plan, const SiteTerrain& terrain)
 {
     std::vector<Item> items;
     Random random((static_cast<uint64_t>(seed) << 17) ^ 0x5CA77E2ull);
-    const float hectares = plan.size * plan.size / 10000.0f;
+    // Over the site and all the ground round it as far as the height field goes (FarTrees has the land past that): not just
+    // round the buildings.
+    const float reach = SiteTerrain::kMargin - 6.0f;
+    const glm::vec2 low{plan.origin.x - reach, plan.origin.z - reach};
+    const float side = plan.size + reach * 2.0f;
+    const float hectares = side * side / 10000.0f;
+    const auto place = [&](Kind kind, const glm::vec2& at)
+    {
+        Item item;
+        item.kind = kind;
+        item.variant = random.Int(0, kVariants - 1);
+        item.scale = SizeOf(kind, random);
+        item.yaw = random.Range(0.0f, kTau);
+        item.tip = kind == Kind::IceShard || kind == Kind::Spire ? random.Range(-0.25f, 0.25f) : 0.0f;
+        // Sunk a little, so it sits in the ground rather than on it: the most where the ground falls away under it.
+        const float half = std::max(item.scale.x, item.scale.z) * 0.45f;
+        float under = terrain.GroundHeight(at.x, at.y);
+        for (const glm::vec2 corner : {glm::vec2(-1.0f, -1.0f), glm::vec2(1.0f, -1.0f), glm::vec2(-1.0f, 1.0f), glm::vec2(1.0f, 1.0f)})
+        {
+            under = std::min(under, terrain.GroundHeight(at.x + corner.x * half, at.y + corner.y * half));
+        }
+        const float sink = kind == Kind::Boulder ? item.scale.y * 0.18f : 0.08f;
+        item.at = {at.x, under - sink, at.y};
+        items.push_back(item);
+    };
+    // Trees in woods, close together, with clearings between (Woodland): one a spot some metres apart, more or less, where
+    // the woods are -- and fewer at their edges -- on dry ground they could stand on; out past the height field, as far as
+    // kTreeReach (on the land round it there, as it is drawn).
+    const Woods woods = WoodsOf(biome);
+    if (woods.cover > 0.0f)
+    {
+        const glm::vec2 from{plan.origin.x - kTreeReach, plan.origin.z - kTreeReach};
+        const int cells = static_cast<int>((plan.size + kTreeReach * 2.0f) / woods.spacing);
+        for (int j = 0; j < cells; ++j)
+        {
+            for (int i = 0; i < cells; ++i)
+            {
+                const glm::vec2 at = from + (glm::vec2(static_cast<float>(i), static_cast<float>(j)) + glm::vec2(random.Range(0.1f, 0.9f), random.Range(0.1f, 0.9f))) * woods.spacing;
+                const float chance = Woodland(seed, biome, at.x, at.y) * 0.85f;
+                if (!random.Chance(chance) || terrain.Wildness(at.x, at.y) < 0.6f || !TreeGround(terrain, at.x, at.y, terrain.GroundNormal(at.x, at.y).y))
+                {
+                    continue;
+                }
+                place(Kind::Tree, at);
+                // Broadleaf or conifer by the world's share of them (the shapes alternate).
+                items.back().variant = (random.Int(0, 1) * 2) + (random.Chance(woods.broadleaf) ? 0 : 1);
+            }
+        }
+    }
     for (const Share& share : SharesOf(biome))
     {
+        if (share.kind == Kind::Tree && woods.cover > 0.0f)
+        {
+            continue;
+        }
         const int total = static_cast<int>(share.perHectare * hectares * random.Range(0.75f, 1.25f));
         const int clusters = std::max(1, total / std::max(share.cluster, 1));
         // The spread of a cluster: tight for grass, wide for trees.
         const float spread = share.kind == Kind::Grass ? 2.5f : share.kind == Kind::Tree ? 13.0f : share.kind == Kind::Boulder ? 6.0f : 4.0f;
         for (int c = 0; c < clusters; ++c)
         {
-            const glm::vec2 centre{plan.origin.x + random.Range(0.0f, plan.size), plan.origin.z + random.Range(0.0f, plan.size)};
+            const glm::vec2 centre = low + glm::vec2(random.Range(0.0f, side), random.Range(0.0f, side));
+            // Shrubs thickest at the woods' edges and in their gaps, as undergrowth is where the light gets in.
+            if (share.kind == Kind::Shrub && woods.cover > 0.0f)
+            {
+                const float wood = Woodland(seed, biome, centre.x, centre.y);
+                if (!random.Chance(0.35f + 0.65f * (1.0f - std::abs(wood - 0.5f) * 2.0f)))
+                {
+                    continue;
+                }
+            }
             const int count = std::max(1, static_cast<int>(static_cast<float>(share.cluster) * random.Range(0.5f, 1.5f)));
             for (int i = 0; i < count; ++i)
             {
                 const glm::vec2 at = centre + glm::vec2(random.Normal(), random.Normal()) * spread;
                 // On the world's own ground, well clear of anything levelled, and on a slope it could stand on.
-                if (at.x < plan.origin.x || at.y < plan.origin.z || at.x > plan.origin.x + plan.size || at.y > plan.origin.z + plan.size ||
-                    terrain.Wildness(at.x, at.y) < 0.6f || terrain.Normal(at.x, at.y).y < SteepestFor(share.kind))
+                if (at.x < low.x || at.y < low.y || at.x > low.x + side || at.y > low.y + side || terrain.Wildness(at.x, at.y) < 0.6f ||
+                    terrain.Normal(at.x, at.y).y < SteepestFor(share.kind))
                 {
                     continue;
                 }
-                Item item;
-                item.kind = share.kind;
-                item.variant = random.Int(0, kVariants - 1);
-                item.scale = SizeOf(share.kind, random);
-                item.yaw = random.Range(0.0f, kTau);
-                item.tip = share.kind == Kind::IceShard || share.kind == Kind::Spire ? random.Range(-0.25f, 0.25f) : 0.0f;
-                // Sunk a little, so it sits in the ground rather than on it: the most where the ground falls away under it.
-                const float half = std::max(item.scale.x, item.scale.z) * 0.45f;
-                float low = terrain.Height(at.x, at.y);
-                for (const glm::vec2 corner : {glm::vec2(-1.0f, -1.0f), glm::vec2(1.0f, -1.0f), glm::vec2(-1.0f, 1.0f), glm::vec2(1.0f, 1.0f)})
-                {
-                    low = std::min(low, terrain.Height(at.x + corner.x * half, at.y + corner.y * half));
-                }
-                const float sink = share.kind == Kind::Boulder ? item.scale.y * 0.18f : 0.08f;
-                item.at = {at.x, low - sink, at.y};
-                items.push_back(item);
+                place(share.kind, at);
             }
         }
     }
@@ -682,6 +809,153 @@ bool Solid(Kind kind, const glm::vec3& scale)
     case Kind::Tree: return true;
     default: return false;
     }
+}
+
+MeshData FarTrees(uint32_t seed, const std::string& biome, const SitePlan& plan, const SiteTerrain& terrain, const glm::vec3& growth)
+{
+    const glm::vec3 middle{plan.origin.x + plan.size * 0.5f, plan.origin.y, plan.origin.z + plan.size * 0.5f};
+    const float nearest = plan.size * 0.5f + kTreeReach;
+    MeshData mesh;
+    const Woods woods = WoodsOf(biome);
+    if (woods.cover <= 0.0f)
+    {
+        return mesh;
+    }
+    Random random((static_cast<uint64_t>(seed) << 21) ^ 0xFA77EE5ull);
+    // A crown of so many sides, smooth-shaded round its own middle: a ring round its widest, one smaller over that, its top
+    // and its underside; under a broadleaf a short trunk. Darker below, where its own leaves shade it.
+    constexpr int kSides = 8;
+    const auto vertex = [&](const glm::vec3& at, const glm::vec3& normal, const glm::vec3& colour)
+    {
+        MeshVertex v;
+        v.position = at;
+        v.normal = glm::normalize(normal);
+        v.color = Paint(colour);
+        mesh.vertices.push_back(v);
+        return static_cast<uint32_t>(mesh.vertices.size() - 1);
+    };
+    const auto ring = [&](uint32_t first, uint32_t second)
+    {
+        for (uint32_t s = 0; s < kSides; ++s)
+        {
+            const uint32_t n = (s + 1) % kSides;
+            mesh.indices.insert(mesh.indices.end(), {first + s, second + s, first + n, first + n, second + s, second + n});
+        }
+    };
+    const auto fan = [&](uint32_t centre, uint32_t first, bool up)
+    {
+        for (uint32_t s = 0; s < kSides; ++s)
+        {
+            const uint32_t n = (s + 1) % kSides;
+            if (up)
+            {
+                mesh.indices.insert(mesh.indices.end(), {first + s, centre, first + n});
+            }
+            else
+            {
+                mesh.indices.insert(mesh.indices.end(), {first + s, first + n, centre});
+            }
+        }
+    };
+    const auto tree = [&](const glm::vec3& foot, float h, bool broadleaf)
+    {
+        const float turn = random.Range(0.0f, kTau);
+        const glm::vec3 leaf = growth * random.Range(0.75f, 1.1f) * (broadleaf ? 1.0f : 0.72f);
+        const glm::vec3 shaded = leaf * 0.55f;
+        const auto round = [&](float y, float r, const glm::vec3& centre, const glm::vec3& colour)
+        {
+            const auto first = static_cast<uint32_t>(mesh.vertices.size());
+            for (int s = 0; s < kSides; ++s)
+            {
+                const float a = turn + kTau * static_cast<float>(s) / kSides;
+                // Uneven all round, as no crown is a round: boughs out here, a gap there.
+                const float wobble = (1.0f + 0.12f * std::sin(a * 3.0f + turn)) * random.Range(0.8f, 1.18f);
+                const glm::vec3 p = foot + glm::vec3(std::cos(a) * r * wobble, y * random.Range(0.93f, 1.07f), std::sin(a) * r * wobble);
+                vertex(p, p - centre, colour);
+            }
+            return first;
+        };
+        if (broadleaf)
+        {
+            const float r = h * random.Range(0.3f, 0.4f);
+            const glm::vec3 centre = foot + glm::vec3(0.0f, h * 0.58f, 0.0f);
+            const uint32_t bottom = vertex(foot + glm::vec3(0.0f, h * 0.3f, 0.0f), {0.0f, -1.0f, 0.0f}, shaded * 0.8f);
+            const uint32_t widest = round(h * 0.5f, r, centre, glm::mix(shaded, leaf, 0.6f));
+            const uint32_t upper = round(h * 0.78f, r * 0.8f, centre, leaf);
+            const uint32_t top = vertex(foot + glm::vec3(0.0f, h, 0.0f), {0.0f, 1.0f, 0.0f}, leaf * 1.1f);
+            fan(bottom, widest, false);
+            ring(widest, upper);
+            fan(top, upper, true);
+            // The trunk under it: three sides, bark.
+            const glm::vec3 bark{0.16f, 0.12f, 0.09f};
+            const float t = h * 0.035f;
+            const auto base = static_cast<uint32_t>(mesh.vertices.size());
+            for (int s = 0; s < 3; ++s)
+            {
+                const float a = turn + kTau * static_cast<float>(s) / 3.0f;
+                const glm::vec3 out{std::cos(a), 0.0f, std::sin(a)};
+                vertex(foot + out * t - glm::vec3(0.0f, 0.3f, 0.0f), out, bark);
+                vertex(foot + out * t * 0.7f + glm::vec3(0.0f, h * 0.4f, 0.0f), out, bark);
+            }
+            for (uint32_t s = 0; s < 3; ++s)
+            {
+                const uint32_t n = (s + 1) % 3;
+                mesh.indices.insert(mesh.indices.end(), {base + s * 2, base + s * 2 + 1, base + n * 2, base + n * 2, base + s * 2 + 1, base + n * 2 + 1});
+            }
+        }
+        else
+        {
+            // A conifer: a cone from a little above its foot to its top, a narrower one over its middle for its tiers.
+            const float r = h * random.Range(0.17f, 0.22f);
+            const glm::vec3 centre = foot + glm::vec3(0.0f, h * 0.35f, 0.0f);
+            const uint32_t bottom = vertex(foot + glm::vec3(0.0f, h * 0.12f, 0.0f), {0.0f, -1.0f, 0.0f}, shaded * 0.8f);
+            const uint32_t skirt = round(h * 0.15f, r, centre, glm::mix(shaded, leaf, 0.5f));
+            const uint32_t tier = round(h * 0.5f, r * 0.62f, centre, leaf);
+            const uint32_t top = vertex(foot + glm::vec3(0.0f, h, 0.0f), {0.0f, 1.0f, 0.0f}, leaf);
+            fan(bottom, skirt, false);
+            ring(skirt, tier);
+            fan(top, tier, true);
+        }
+    };
+    // From where Plan's trees stop (kTreeReach) out to where a tree is a pixel in the haze: a spot every
+    // so many metres where the woods are, further apart and larger out past where one could be told from the next.
+    constexpr float kOut = 1800.0f;
+    for (int band = 0; band < 2; ++band)
+    {
+        const float spacing = woods.spacing * (band == 0 ? 1.0f : 1.8f);
+        const float from = band == 0 ? 0.0f : 650.0f;
+        const float to = band == 0 ? 650.0f : kOut;
+        const int cells = static_cast<int>(to * 2.0f / spacing);
+        for (int j = 0; j < cells; ++j)
+        {
+            for (int i = 0; i < cells; ++i)
+            {
+                const float x = middle.x - to + (static_cast<float>(i) + random.Range(0.1f, 0.9f)) * spacing;
+                const float z = middle.z - to + (static_cast<float>(j) + random.Range(0.1f, 0.9f)) * spacing;
+                const float size = random.Range(0.0f, 1.0f);
+                const bool broadleaf = random.Chance(woods.broadleaf);
+                const float chance = random.Unit();
+                const float out = std::max(std::abs(x - middle.x), std::abs(z - middle.z));
+                if (out < from || out < nearest)
+                {
+                    continue;
+                }
+                // (As close as Plan's in the near band; further out, fewer and larger, standing for the rest.)
+                if (chance >= Woodland(seed, biome, x, z) * 0.85f)
+                {
+                    continue;
+                }
+                const glm::vec3 normal = terrain.GroundNormal(x, z);
+                if (!TreeGround(terrain, x, z, normal.y))
+                {
+                    continue;
+                }
+                const float h = (5.0f + 7.0f * size) * (band == 0 ? 1.0f : 1.25f);
+                tree({x, terrain.GroundHeight(x, z) - 0.2f, z}, h, broadleaf);
+            }
+        }
+    }
+    return mesh;
 }
 
 } // namespace SiteScatter

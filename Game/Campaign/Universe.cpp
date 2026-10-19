@@ -593,6 +593,12 @@ bool UniverseData::LoadFromFile(const std::filesystem::path& file, std::string* 
             {
                 biome.surface = site->value("surface", std::string());
                 biome.steepSurface = site->value("steep", std::string());
+                if (const auto blend = site->find("blend"); blend != site->end() && blend->is_object())
+                {
+                    biome.blendSurface = blend->value("surface", std::string());
+                    biome.blendColour = ReadVec3(*blend, "colour", biome.blendColour);
+                    biome.blendShare = blend->value("share", 0.0f);
+                }
                 biome.siteGround = ReadVec3(*site, "ground", biome.siteGround);
                 biome.siteRock = ReadVec3(*site, "rock", biome.siteRock);
                 biome.siteFog = ReadVec3(*site, "fog", biome.siteFog);

@@ -232,9 +232,10 @@ private:
         return a.baseColor == b.baseColor && a.metallic == b.metallic && a.roughness == b.roughness && a.emissive == b.emissive &&
                a.emissiveTextured == b.emissiveTextured && a.cutout == b.cutout && a.cover == b.cover && a.weathering == b.weathering &&
                a.reflectivity == b.reflectivity && a.baseColorTexture == b.baseColorTexture && a.organic == b.organic &&
-               a.organicBeat == b.organicBeat && a.normalTexture == b.normalTexture && a.roughnessTexture == b.roughnessTexture &&
+               a.organicBeat == b.organicBeat && a.normalTexture == b.normalTexture &&
                a.surfaceScale == b.surfaceScale && a.surfaceKeep == b.surfaceKeep && a.surfaceNatural == b.surfaceNatural && a.surfaceOnThing == b.surfaceOnThing && a.surfaceWear == b.surfaceWear && a.steepColorTexture == b.steepColorTexture && a.steepScale == b.steepScale &&
-               a.steepTint == b.steepTint;
+               a.steepTint == b.steepTint && a.blendColorTexture == b.blendColorTexture && a.blendScale == b.blendScale && a.blendTint == b.blendTint &&
+               a.blendShare == b.blendShare && a.blendShore == b.blendShore;
     }
 
     void AddToBatch(const std::string& name, const MeshData& data, const glm::mat4& transform, const glm::vec3& at,

@@ -6520,10 +6520,18 @@ int PredationGame::SurfaceIndexAt(const glm::vec3& position) const
         if (under && m_facility.Built() && m_facility.Contains(position) && !m_facility.GetLook().steep.empty())
         {
             const SiteTerrain& ground = m_facility.Terrain();
-            if (std::abs(under.position.y - ground.Height(position.x, position.z)) < 0.15f &&
-                Surfaces::OutcropAt(position.x, position.z, ground.Normal(position.x, position.z).y))
+            const SiteMap::Look& look = m_facility.GetLook();
+            const bool onGround = std::abs(under.position.y - ground.Height(position.x, position.z)) < 0.15f;
+            if (onGround && Surfaces::OutcropAt(position.x, position.z, ground.Normal(position.x, position.z).y))
             {
-                name = Surfaces::StepName(Surfaces::StepOfSet(m_facility.GetLook().steep, false));
+                name = Surfaces::StepName(Surfaces::StepOfSet(look.steep, false));
+            }
+            // Or where its second ground lies across it (Surfaces::BlendAt): that one's.
+            else if (onGround && !look.blend.empty() &&
+                     Surfaces::BlendAt(position.x, position.z, under.position.y, look.blendShare, ground.HasWater() ? ground.WaterLevel() : -1.0e9f,
+                                       ground.HasWater() ? look.blendShore : 0.0f))
+            {
+                name = Surfaces::StepName(Surfaces::StepOfSet(look.blend, false));
             }
         }
     }

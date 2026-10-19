@@ -5,6 +5,7 @@
 #include "Game/World/FacilityMap.h"
 #include "Game/World/SiteMap.h"
 #include "Game/World/SitePlan.h"
+#include "Game/World/SiteScatter.h"
 #include "Game/World/SiteTerrain.h"
 #include "Game/World/Surfaces.h"
 #include "Game/World/Weather.h"
@@ -605,4 +606,69 @@ TEST_CASE("A coast or an island has the sea past it, and nothing built is ever i
     dry.Plan(SitePlan::Generate(1), SiteTerrain::Shape::Flat, false);
     CHECK_FALSE(dry.HasWater());
     CHECK(dry.WaterMesh().indices.empty());
+}
+
+TEST_CASE("The ground is two surfaces in patches, and sand along the water", "[site][surfaces]")
+{
+    // None asked for, none anywhere.
+    CHECK_FALSE(Surfaces::BlendAt(10.0f, 10.0f, 0.0f, 0.0f, -1.0e9f, 0.0f));
+    // About as much of the ground as asked for, in patches (not none, not all).
+    int in = 0;
+    int samples = 0;
+    for (float z = -400.0f; z < 400.0f; z += 4.0f)
+    {
+        for (float x = -400.0f; x < 400.0f; x += 4.0f)
+        {
+            in += Surfaces::BlendAt(x, z, 0.0f, 0.3f, -1.0e9f, 0.0f) ? 1 : 0;
+            ++samples;
+        }
+    }
+    const float share = static_cast<float>(in) / static_cast<float>(samples);
+    CHECK(share > 0.1f);
+    CHECK(share < 0.5f);
+    // A beach: at the water's edge always, well up from it never.
+    CHECK(Surfaces::BlendAt(5.0f, 5.0f, 0.2f, 0.0f, 0.0f, 1.4f));
+    CHECK_FALSE(Surfaces::BlendAt(5.0f, 5.0f, 6.0f, 0.0f, 0.0f, 1.4f));
+}
+
+TEST_CASE("Trees grow in woods with clearings, round the site and out to the horizon, never in the water", "[site][scatter]")
+{
+    const SitePlan plan = SitePlan::Generate(SitePlan::SeedFor(3, SitePlan::SiteKind::Facility));
+    SiteTerrain terrain;
+    terrain.Plan(plan, SiteTerrain::Shape::Rolling, false, SiteTerrain::Water::Coast);
+    // Nothing grows on ice; a temperate world has both woods and open ground.
+    CHECK(SiteScatter::Woodland(plan.seed, "frozen", 0.0f, 0.0f) == 0.0f);
+    int wooded = 0;
+    int open = 0;
+    for (float z = -1500.0f; z < 1500.0f; z += 20.0f)
+    {
+        for (float x = -1500.0f; x < 1500.0f; x += 20.0f)
+        {
+            const float wood = SiteScatter::Woodland(plan.seed, "temperate", x, z);
+            wooded += wood > 0.9f ? 1 : 0;
+            open += wood < 0.1f ? 1 : 0;
+        }
+    }
+    CHECK(wooded > 500);
+    CHECK(open > 500);
+    // Trees past the site's own square, not only round the buildings, and none of them standing in the water.
+    int outside = 0;
+    for (const SiteScatter::Item& item : SiteScatter::Plan(plan.seed, "temperate", plan, terrain))
+    {
+        if (item.kind != SiteScatter::Kind::Tree)
+        {
+            continue;
+        }
+        CHECK(terrain.WaterDepth(item.at.x, item.at.z) < 0.0f);
+        const glm::vec3 local = item.at - plan.origin;
+        outside += local.x < 0.0f || local.z < 0.0f || local.x > plan.size || local.z > plan.size ? 1 : 0;
+    }
+    CHECK(outside > 50);
+    CHECK_FALSE(SiteScatter::FarTrees(plan.seed, "temperate", plan, terrain, glm::vec3(0.2f, 0.3f, 0.1f)).indices.empty());
+    CHECK(SiteScatter::FarTrees(plan.seed, "desert", plan, terrain, glm::vec3(0.2f, 0.3f, 0.1f)).indices.empty());
+    // The ground as drawn: the field's on it, and no step where the field gives way to the land round it.
+    const glm::vec2 corner = terrain.Min();
+    CHECK(terrain.GroundHeight(corner.x + 50.0f, corner.y + 50.0f) == terrain.Height(corner.x + 50.0f, corner.y + 50.0f));
+    const float z = corner.y + terrain.Extent() * 0.5f;
+    CHECK(std::abs(terrain.GroundHeight(corner.x + 0.5f, z) - terrain.GroundHeight(corner.x - 0.5f, z)) < 1.5f);
 }

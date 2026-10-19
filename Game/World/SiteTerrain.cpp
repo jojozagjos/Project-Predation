@@ -390,6 +390,7 @@ void SiteTerrain::Plan(const SitePlan& plan, Shape shape, bool dunes, Water wate
         });
         m_heights.swap(smoothed);
     }
+    m_farLines = FarLines();
 }
 
 float SiteTerrain::Height(float x, float z) const
@@ -501,16 +502,10 @@ MeshData SiteTerrain::Mesh(int chunkX, int chunkZ, const glm::vec3& ground, cons
 }
 
 
-MeshData SiteTerrain::FarMesh(const glm::vec3& ground, const glm::vec3& rock, const glm::vec3* grown) const
+std::vector<float> SiteTerrain::FarLines() const
 {
-    MeshData mesh;
-    if (m_heights.empty())
-    {
-        return mesh;
-    }
     // Lines across it a cell or so apart near the site, further and further apart out towards the horizon, where a hill a
     // kilometre off is a few pixels: out from the middle each way.
-    const glm::vec2 middle = m_origin + glm::vec2(m_size * 0.5f);
     const float inner = Extent() * 0.5f;
     std::vector<float> offsets{0.0f};
     for (float o = 0.0f; o < kFar;)
@@ -524,18 +519,84 @@ MeshData SiteTerrain::FarMesh(const glm::vec3& ground, const glm::vec3& rock, co
         lines.push_back(-*it);
     }
     lines.insert(lines.end(), offsets.begin() + 1, offsets.end());
+    return lines;
+}
+
+float SiteTerrain::FarHeight(float x, float z) const
+{
+    // Under the height field where they overlap, so it never shows through it.
+    const glm::vec2 middle = m_origin + glm::vec2(m_size * 0.5f);
+    const float inner = Extent() * 0.5f;
+    const glm::vec2 local = glm::abs(glm::vec2(x, z) - middle);
+    const float under = local.x < inner && local.y < inner ? 0.8f : 0.0f;
+    return m_base + Natural(x, z) - under;
+}
+
+bool SiteTerrain::OnField(float x, float z) const
+{
+    const glm::vec2 local = glm::vec2(x, z) - m_min;
+    return local.x >= 0.0f && local.y >= 0.0f && local.x <= Extent() && local.y <= Extent();
+}
+
+float SiteTerrain::GroundHeight(float x, float z) const
+{
+    if (m_heights.empty() || OnField(x, z))
+    {
+        return Height(x, z);
+    }
+    // Past the field, the land round it as it is drawn (FarMesh): its corners' heights, and the two triangles each square is.
+    if (m_farLines.size() < 2)
+    {
+        return FarHeight(x, z);
+    }
+    const glm::vec2 middle = m_origin + glm::vec2(m_size * 0.5f);
+    const auto cell = [&](float offset, float& t)
+    {
+        const auto above = std::upper_bound(m_farLines.begin(), m_farLines.end(), offset);
+        const auto i = static_cast<size_t>(std::clamp<std::ptrdiff_t>(above - m_farLines.begin() - 1, 0, static_cast<std::ptrdiff_t>(m_farLines.size()) - 2));
+        t = std::clamp((offset - m_farLines[i]) / std::max(m_farLines[i + 1] - m_farLines[i], 1.0e-3f), 0.0f, 1.0f);
+        return i;
+    };
+    float tx = 0.0f;
+    float tz = 0.0f;
+    const size_t i = cell(x - middle.x, tx);
+    const size_t j = cell(z - middle.y, tz);
+    const float x0 = middle.x + m_farLines[i];
+    const float x1 = middle.x + m_farLines[i + 1];
+    const float z0 = middle.y + m_farLines[j];
+    const float z1 = middle.y + m_farLines[j + 1];
+    const float a = FarHeight(x0, z0);
+    const float b = FarHeight(x1, z0);
+    const float c = FarHeight(x0, z1);
+    const float d = FarHeight(x1, z1);
+    return tx + tz <= 1.0f ? a + (b - a) * tx + (c - a) * tz : d + (c - d) * (1.0f - tx) + (b - d) * (1.0f - tz);
+}
+
+glm::vec3 SiteTerrain::GroundNormal(float x, float z) const
+{
+    if (m_heights.empty() || OnField(x, z))
+    {
+        return Normal(x, z);
+    }
+    constexpr float e = 4.0f;
+    return glm::normalize(glm::vec3(-(Natural(x + e, z) - Natural(x - e, z)), 2.0f * e, -(Natural(x, z + e) - Natural(x, z - e))));
+}
+
+MeshData SiteTerrain::FarMesh(const glm::vec3& ground, const glm::vec3& rock, const glm::vec3* grown) const
+{
+    MeshData mesh;
+    if (m_heights.empty())
+    {
+        return mesh;
+    }
+    const glm::vec2 middle = m_origin + glm::vec2(m_size * 0.5f);
+    const float inner = Extent() * 0.5f;
+    const std::vector<float> lines = FarLines();
     const auto n = static_cast<int>(lines.size());
     const auto pack = [](const glm::vec3& c)
     {
         const auto channel = [](float v) { return static_cast<uint32_t>(std::clamp(v, 0.0f, 1.0f) * 255.0f + 0.5f); };
         return channel(c.r) | (channel(c.g) << 8) | (channel(c.b) << 16) | (255u << 24);
-    };
-    const auto height = [&](float x, float z)
-    {
-        // Under the height field where they overlap, so it never shows through it.
-        const glm::vec2 local = glm::abs(glm::vec2(x, z) - middle);
-        const float under = local.x < inner && local.y < inner ? 0.8f : 0.0f;
-        return m_base + Natural(x, z) - under;
     };
     for (int j = 0; j < n; ++j)
     {
@@ -545,7 +606,7 @@ MeshData SiteTerrain::FarMesh(const glm::vec3& ground, const glm::vec3& rock, co
             const float z = middle.y + lines[static_cast<size_t>(j)];
             const float e = std::max(4.0f, std::abs(lines[static_cast<size_t>(std::min(i + 1, n - 1))] - lines[static_cast<size_t>(i)]) * 0.5f);
             MeshVertex vertex;
-            vertex.position = {x, height(x, z), z};
+            vertex.position = {x, FarHeight(x, z), z};
             vertex.normal = glm::normalize(glm::vec3(-(Natural(x + e, z) - Natural(x - e, z)), 2.0f * e, -(Natural(x, z + e) - Natural(x, z - e))));
             vertex.uv = {x, z};
             vertex.color = pack(Colour(x, z, vertex.normal, ground, rock, grown));
@@ -584,9 +645,7 @@ float SiteTerrain::WaterDepth(float x, float z) const
         return -1.0e9f;
     }
     // On the height field where it is (what is walked on), the land round it past that.
-    const glm::vec2 local = glm::vec2(x, z) - m_min;
-    const bool onField = local.x >= 0.0f && local.y >= 0.0f && local.x <= Extent() && local.y <= Extent();
-    return m_waterLevel - (onField ? Height(x, z) : m_base + Natural(x, z));
+    return m_waterLevel - (OnField(x, z) ? Height(x, z) : m_base + Natural(x, z));
 }
 
 MeshData SiteTerrain::WaterMesh() const

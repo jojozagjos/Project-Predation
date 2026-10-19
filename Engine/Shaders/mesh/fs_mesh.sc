@@ -3,11 +3,13 @@ $input v_worldPos, v_normal, v_texcoord0, v_color0, v_organic, v_localPos, v_loc
 #include <bgfx_shader.sh>
 
 SAMPLER2D(s_baseColor, 0);     // multiplied into the albedo; white when a material has none
-SAMPLER2D(s_normalMap, 10);    // a surface set's normal map (OpenGL style); flat when there is none
-SAMPLER2D(s_roughnessMap, 11); // and its roughness, multiplied in; white when there is none
+SAMPLER2D(s_normalMap, 10);    // a surface set's normal map (OpenGL style); flat when there is none. (Its roughness is the colour's alpha.)
+SAMPLER2D(s_blendColor, 11);   // a second ground set across the first in patches (Material::blendScale); its roughness in alpha
 SAMPLER2D(s_steepColor, 12);     // a second set where the surface is steep (Material::steepScale)
 SAMPLER2D(s_steepNormal, 13);
-SAMPLER2D(s_steepRoughness, 14);
+SAMPLER2D(s_blendNormal, 14);
+uniform vec4 u_blendParams;      // xyz = the second ground set's tint, w = repeats a metre (0: none)
+uniform vec4 u_blendShape;       // x = how much of the ground it is, about; y = metres above open water (u_shelter.w) all of it is
 uniform vec4 u_steepParams;      // xyz = its tint, w = repeats a metre (0: none)
 uniform vec4 u_wearParams;       // xyz = bare metal's colour, w = how worn the paint is, the set read as worn paint (0: off; Material::surfaceWear)
 uniform vec4 u_surfaceParams;  // x = repeats a metre of the surface set, laid on from every side (0: off); y = how much of its own colour shows; z = natural ground (1) or laid in a grid (0); w = laid on the thing itself (1) or the world (0)
@@ -630,15 +632,17 @@ void main()
 			vec3 nX = texture2DGrad(s_normalMap, uvX, dxX, dyX).xyz * 2.0 - 1.0;
 			// Whiteout blend: each tangent-space normal added to the surface's own in that side's plane.
 			nX = vec3(nX.xy * vec2(s.x, 1.0) + N.zy, abs(nX.z) * N.x);
-			albedoSum += pow(texture2DGrad(s_baseColor, uvX, dxX, dyX).rgb, vec3_splat(2.2)) * blend.x;
-			roughSum += texture2DGrad(s_roughnessMap, uvX, dxX, dyX).r * blend.x;
+			vec4 c = texture2DGrad(s_baseColor, uvX, dxX, dyX);
+			albedoSum += pow(c.rgb, vec3_splat(2.2)) * blend.x;
+			roughSum += c.a * blend.x;
 			normalSum += nX.zyx * blend.x;
 		}
 		if (blend.y > 0.0)
 		{
 			vec3 nY = texture2DGrad(s_normalMap, uvY, dxY, dyY).xyz * 2.0 - 1.0;
-			vec3 groundAlbedo = pow(texture2DGrad(s_baseColor, uvY, dxY, dyY).rgb, vec3_splat(2.2));
-			float groundRough = texture2DGrad(s_roughnessMap, uvY, dxY, dyY).r;
+			vec4 groundSample = texture2DGrad(s_baseColor, uvY, dxY, dyY);
+			vec3 groundAlbedo = pow(groundSample.rgb, vec3_splat(2.2));
+			float groundRough = groundSample.a;
 			// On the ground, which is where a repeat shows -- the same few marks in rows to the horizon -- the set again,
 			// larger and turned, blended in and out over patches some metres across, and the whole of it a little lighter and
 			// darker by patches larger still.
@@ -668,11 +672,67 @@ void main()
 				// is a grid of squares to the horizon -- over the set's average; the patches below are the drift instead.
 				vec3 average = pow(texture2DLod(s_baseColor, vec2_splat(0.5), 12.0).rgb, vec3_splat(2.2));
 				vec3 marks0 = groundAlbedo - pow(texture2DLod(s_baseColor, uvY, 7.0).rgb, vec3_splat(2.2));
-				vec3 marks1 = pow(texture2DGrad(s_baseColor, wide, dxW, dyW).rgb, vec3_splat(2.2)) - pow(texture2DLod(s_baseColor, wide, 7.0).rgb, vec3_splat(2.2));
-				vec3 marks2 = pow(texture2DGrad(s_baseColor, other, dxO, dyO).rgb, vec3_splat(2.2)) - pow(texture2DLod(s_baseColor, other, 7.0).rgb, vec3_splat(2.2));
+				vec4 wideSample = texture2DGrad(s_baseColor, wide, dxW, dyW);
+				vec4 otherSample = texture2DGrad(s_baseColor, other, dxO, dyO);
+				vec3 marks1 = pow(wideSample.rgb, vec3_splat(2.2)) - pow(texture2DLod(s_baseColor, wide, 7.0).rgb, vec3_splat(2.2));
+				vec3 marks2 = pow(otherSample.rgb, vec3_splat(2.2)) - pow(texture2DLod(s_baseColor, other, 7.0).rgb, vec3_splat(2.2));
 				vec3 blended = marks0 * w0 + marks1 * w1 + marks2 * w2;
 				groundAlbedo = max(average + blended / sqrt(w0 * w0 + w1 * w1 + w2 * w2), vec3_splat(0.0));
-				groundRough = groundRough * w0 + texture2DGrad(s_roughnessMap, wide, dxW, dyW).r * w1 + texture2DGrad(s_roughnessMap, other, dxO, dyO).r * w2;
+				groundRough = groundRough * w0 + wideSample.a * w1 + otherSample.a * w2;
+				// A second ground across the first -- grass giving way to bare earth, rock breaking through gravel -- in patches
+				// tens of metres across, and all of it up from open water: a beach. Its edges are where one set stands higher
+				// than the other (the lighter of them, as a stone or a tuft is lighter than the hollow round it), so it gives
+				// way stone by stone rather than fading. (Game/World/Surfaces, BlendAt, has the same, for what it sounds like.)
+				if (u_blendParams.w > 0.0)
+				{
+					vec2 xz = v_worldPos.xz;
+					float lay = -1.0;
+					if (u_blendShape.x > 0.0)
+					{
+						// Large patches, their edges ragged down to the size of a footprint.
+						float field = SurfacePatches(xz * 0.017 + vec2(41.3, 13.7)) * 0.5 + SurfacePatches(xz * 0.053 + vec2(5.1, 23.9)) * 0.25 +
+						              SurfacePatches(xz * 0.19 + vec2(2.3, 8.8)) * 0.13 + SurfacePatches(xz * 0.7 + vec2(7.7, 1.1)) * 0.08 +
+						              SurfacePatches(xz * 2.3 + vec2(4.4, 9.2)) * 0.04;
+						lay = field - (0.5 + (0.5 - u_blendShape.x) * 0.45);
+					}
+					if (u_blendShape.y > 0.0 && u_shelter.w > -1.0e8)
+					{
+						lay = max(lay, (u_shelter.w + u_blendShape.y * (0.6 + 0.8 * SurfacePatches(xz * 0.13 + vec2(3.3, 6.1))) - v_worldPos.y) * 0.25);
+					}
+					if (lay > -0.1)
+					{
+						// Laid on as the first is, at its own size, with a larger copy turned a quarter over the same patches the
+						// first's own copies come and go on -- and only its marks, over its average, as the first's.
+						float ratio = u_blendParams.w / u_surfaceParams.x;
+						vec2 bY = uvY * ratio;
+						vec2 bdx = dxY * ratio;
+						vec2 bdy = dyY * ratio;
+						vec2 bO = vec2(-bY.y, bY.x) * 0.43 + vec2(0.31, 0.57);
+						vec2 odx = vec2(-bdx.y, bdx.x) * 0.43;
+						vec2 ody = vec2(-bdy.y, bdy.x) * 0.43;
+						vec4 b0 = texture2DGrad(s_blendColor, bY, bdx, bdy);
+						vec4 b1 = texture2DGrad(s_blendColor, bO, odx, ody);
+						vec3 bAverage = pow(texture2DLod(s_blendColor, vec2_splat(0.5), 12.0).rgb, vec3_splat(2.2));
+						vec3 bMarks0 = pow(b0.rgb, vec3_splat(2.2)) - pow(texture2DLod(s_blendColor, bY, 7.0).rgb, vec3_splat(2.2));
+						vec3 bMarks1 = pow(b1.rgb, vec3_splat(2.2)) - pow(texture2DLod(s_blendColor, bO, 7.0).rgb, vec3_splat(2.2));
+						vec3 bAlbedo = max(bAverage + (bMarks0 * (1.0 - inWide) + bMarks1 * inWide) / sqrt((1.0 - inWide) * (1.0 - inWide) + inWide * inWide),
+						                   vec3_splat(0.0));
+						// Its own colour (u_blendParams.xyz, over its average), so much of the set's own kept as the first's is -- whatever the
+						// material's colour and the ground painted under it (grown over green, say): both taken back out, of what it is to come out
+						// as once the same share of its own colour is kept below, so that is what it comes out as.
+						vec3 target = mix(vec3_splat(dot(bAlbedo, vec3(0.2126, 0.7152, 0.0722))), bAlbedo, u_surfaceParams.y) * u_blendParams.xyz;
+						vec3 want = target / max(u_baseColor.rgb * v_color0.rgb, vec3_splat(0.002));
+						float wantLuma = dot(want, vec3(0.2126, 0.7152, 0.0722));
+						bAlbedo = max((want - wantLuma * (1.0 - u_surfaceParams.y)) / max(u_surfaceParams.y, 0.05), vec3_splat(0.0));
+						vec3 q = texture2DGrad(s_blendNormal, bO, odx, ody).xyz * 2.0 - 1.0;
+						vec3 bN = mix(texture2DGrad(s_blendNormal, bY, bdx, bdy).xyz * 2.0 - 1.0, vec3(q.y, -q.x, q.z), inWide);
+						float higher = dot(mix(b0.rgb, b1.rgb, inWide) - groundSample.rgb, vec3(0.2126, 0.7152, 0.0722));
+						float into = smoothstep(-0.015, 0.015, lay + clamp(higher * 0.2, -0.05, 0.05));
+						groundAlbedo = mix(groundAlbedo, bAlbedo, into);
+						groundRough = mix(groundRough, mix(b0.a, b1.a, inWide), into);
+						nY = normalize(mix(nY, bN, into));
+					}
+				}
 				// And lighter and darker by patches larger still: ground is never one even shade across a field.
 				groundAlbedo *= (0.84 + 0.32 * SurfaceClouds(v_worldPos.xz * 0.023 + vec2_splat(17.0))) *
 				                (0.93 + 0.14 * SurfaceClouds(v_worldPos.xz * 0.061 + vec2(3.7, 11.0)));
@@ -686,8 +746,9 @@ void main()
 		{
 			vec3 nZ = texture2DGrad(s_normalMap, uvZ, dxZ, dyZ).xyz * 2.0 - 1.0;
 			nZ = vec3(nZ.xy * vec2(-s.z, 1.0) + N.xy, abs(nZ.z) * N.z);
-			albedoSum += pow(texture2DGrad(s_baseColor, uvZ, dxZ, dyZ).rgb, vec3_splat(2.2)) * blend.z;
-			roughSum += texture2DGrad(s_roughnessMap, uvZ, dxZ, dyZ).r * blend.z;
+			vec4 c = texture2DGrad(s_baseColor, uvZ, dxZ, dyZ);
+			albedoSum += pow(c.rgb, vec3_splat(2.2)) * blend.z;
+			roughSum += c.a * blend.z;
 			normalSum += nZ.xyz * blend.z;
 		}
 		surfaceAlbedo = mix(vec3_splat(dot(albedoSum, vec3(0.2126, 0.7152, 0.0722))), albedoSum, u_surfaceParams.y);
@@ -748,8 +809,9 @@ void main()
 				vec2 gy = dyX * steepScale;
 				vec2 ox = vec2(-gx.y, gx.x) * 0.43;
 				vec2 oy = vec2(-gy.y, gy.x) * 0.43;
-				rockAlbedo += pow(mix(texture2DGrad(s_steepColor, sX, gx, gy).rgb, texture2DGrad(s_steepColor, oX, ox, oy).rgb, other), vec3_splat(2.2)) * blend.x;
-				rockRough += texture2DGrad(s_steepRoughness, sX, gx, gy).r * blend.x;
+				vec4 rc = mix(texture2DGrad(s_steepColor, sX, gx, gy), texture2DGrad(s_steepColor, oX, ox, oy), other);
+				rockAlbedo += pow(rc.rgb, vec3_splat(2.2)) * blend.x;
+				rockRough += rc.a * blend.x;
 				// The turned copy's bumps turned back (a quarter turn: x from its y, y from minus its x).
 				vec3 q = texture2DGrad(s_steepNormal, oX, ox, oy).xyz * 2.0 - 1.0;
 				vec3 r = mix(texture2DGrad(s_steepNormal, sX, gx, gy).xyz * 2.0 - 1.0, vec3(q.y, -q.x, q.z), other);
@@ -762,8 +824,9 @@ void main()
 				vec2 gy = dyY * steepScale;
 				vec2 ox = vec2(-gx.y, gx.x) * 0.43;
 				vec2 oy = vec2(-gy.y, gy.x) * 0.43;
-				rockAlbedo += pow(mix(texture2DGrad(s_steepColor, sY, gx, gy).rgb, texture2DGrad(s_steepColor, oY, ox, oy).rgb, other), vec3_splat(2.2)) * blend.y;
-				rockRough += texture2DGrad(s_steepRoughness, sY, gx, gy).r * blend.y;
+				vec4 rc = mix(texture2DGrad(s_steepColor, sY, gx, gy), texture2DGrad(s_steepColor, oY, ox, oy), other);
+				rockAlbedo += pow(rc.rgb, vec3_splat(2.2)) * blend.y;
+				rockRough += rc.a * blend.y;
 				vec3 q = texture2DGrad(s_steepNormal, oY, ox, oy).xyz * 2.0 - 1.0;
 				vec3 r = mix(texture2DGrad(s_steepNormal, sY, gx, gy).xyz * 2.0 - 1.0, vec3(q.y, -q.x, q.z), other);
 				r = vec3(r.xy * vec2(s.y, 1.0) + Ng.xz, abs(r.z) * Ng.y);
@@ -775,8 +838,9 @@ void main()
 				vec2 gy = dyZ * steepScale;
 				vec2 ox = vec2(-gx.y, gx.x) * 0.43;
 				vec2 oy = vec2(-gy.y, gy.x) * 0.43;
-				rockAlbedo += pow(mix(texture2DGrad(s_steepColor, sZ, gx, gy).rgb, texture2DGrad(s_steepColor, oZ, ox, oy).rgb, other), vec3_splat(2.2)) * blend.z;
-				rockRough += texture2DGrad(s_steepRoughness, sZ, gx, gy).r * blend.z;
+				vec4 rc = mix(texture2DGrad(s_steepColor, sZ, gx, gy), texture2DGrad(s_steepColor, oZ, ox, oy), other);
+				rockAlbedo += pow(rc.rgb, vec3_splat(2.2)) * blend.z;
+				rockRough += rc.a * blend.z;
 				vec3 q = texture2DGrad(s_steepNormal, oZ, ox, oy).xyz * 2.0 - 1.0;
 				vec3 r = mix(texture2DGrad(s_steepNormal, sZ, gx, gy).xyz * 2.0 - 1.0, vec3(q.y, -q.x, q.z), other);
 				r = vec3(r.xy * vec2(-s.z, 1.0) + Ng.xy, abs(r.z) * Ng.z);

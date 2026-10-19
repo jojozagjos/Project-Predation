@@ -123,11 +123,13 @@ bool SceneRenderer::Init(ShaderLibrary& shaders)
     m_uSkyShadowParams = bgfx::createUniform("u_skyShadowParams", bgfx::UniformType::Vec4);
     m_sBaseColor = bgfx::createUniform("s_baseColor", bgfx::UniformType::Sampler);
     m_sNormalMap = bgfx::createUniform("s_normalMap", bgfx::UniformType::Sampler);
-    m_sRoughnessMap = bgfx::createUniform("s_roughnessMap", bgfx::UniformType::Sampler);
+    m_sBlendColor = bgfx::createUniform("s_blendColor", bgfx::UniformType::Sampler);
     m_uSurfaceParams = bgfx::createUniform("u_surfaceParams", bgfx::UniformType::Vec4);
     m_sSteepColor = bgfx::createUniform("s_steepColor", bgfx::UniformType::Sampler);
     m_sSteepNormal = bgfx::createUniform("s_steepNormal", bgfx::UniformType::Sampler);
-    m_sSteepRoughness = bgfx::createUniform("s_steepRoughness", bgfx::UniformType::Sampler);
+    m_sBlendNormal = bgfx::createUniform("s_blendNormal", bgfx::UniformType::Sampler);
+    m_uBlendParams = bgfx::createUniform("u_blendParams", bgfx::UniformType::Vec4);
+    m_uBlendShape = bgfx::createUniform("u_blendShape", bgfx::UniformType::Vec4);
     m_uSteepParams = bgfx::createUniform("u_steepParams", bgfx::UniformType::Vec4);
     m_uWearParams = bgfx::createUniform("u_wearParams", bgfx::UniformType::Vec4);
     m_uWind = bgfx::createUniform("u_wind", bgfx::UniformType::Vec4);
@@ -236,8 +238,8 @@ void SceneRenderer::Shutdown()
         m_sSkyShadow,      m_uClipPlane,       m_uReflectParams,   m_sReflection,
         m_uSpotShadowMtx,  m_uSpotShadowAxis,  m_uSpotShadowParams, m_sSpotShadow,
         m_uShadowTexelWorld, m_uSunNearShadowMtx, m_uSunNearShadowAxis, m_uSunNearShadowParams,
-        m_sSunNearShadow, m_sNormalMap, m_sRoughnessMap, m_uSurfaceParams,
-        m_sSteepColor, m_sSteepNormal, m_sSteepRoughness, m_uSteepParams, m_uWearParams, m_uWind, m_uSurfaceWeather, m_uShelter, m_uSunFarShadowMtx, m_uSunFarShadowAxis,
+        m_sSunNearShadow, m_sNormalMap, m_sBlendColor, m_uSurfaceParams,
+        m_sSteepColor, m_sSteepNormal, m_sBlendNormal, m_uBlendParams, m_uBlendShape, m_uSteepParams, m_uWearParams, m_uWind, m_uSurfaceWeather, m_uShelter, m_uSunFarShadowMtx, m_uSunFarShadowAxis,
         m_uSunFarShadowParams, m_uSunFarShadowTexel, m_sSunFarShadow};
     for (const bgfx::UniformHandle handle : uniforms)
     {
@@ -263,8 +265,8 @@ void SceneRenderer::Shutdown()
     m_uShadowTexelWorld = BGFX_INVALID_HANDLE;
     m_uSunNearShadowMtx = m_uSunNearShadowAxis = m_uSunNearShadowParams = m_sSunNearShadow = BGFX_INVALID_HANDLE;
     m_uSunFarShadowMtx = m_uSunFarShadowAxis = m_uSunFarShadowParams = m_uSunFarShadowTexel = m_sSunFarShadow = BGFX_INVALID_HANDLE;
-    m_sNormalMap = m_sRoughnessMap = m_uSurfaceParams = BGFX_INVALID_HANDLE;
-    m_sSteepColor = m_sSteepNormal = m_sSteepRoughness = m_uSteepParams = m_uWearParams = m_uWind = m_uSurfaceWeather = m_uShelter = BGFX_INVALID_HANDLE;
+    m_sNormalMap = m_sBlendColor = m_uSurfaceParams = BGFX_INVALID_HANDLE;
+    m_sSteepColor = m_sSteepNormal = m_sBlendNormal = m_uBlendParams = m_uBlendShape = m_uSteepParams = m_uWearParams = m_uWind = m_uSurfaceWeather = m_uShelter = BGFX_INVALID_HANDLE;
 
     if (bgfx::isValid(m_reflectionTarget))
     {
@@ -451,10 +453,9 @@ void SceneRenderer::SubmitMesh(bgfx::ViewId view, const Mesh& mesh, const Materi
         bgfx::setTexture(0, m_sBaseColor, m_textures->Get(material.baseColorTexture));
         // The surface maps, always bound like the colour (flat and white when there are none), and the scale they repeat
         // at, set on every draw: bgfx keeps a uniform from one draw to the next.
+        // (A set's roughness is in its colour map's alpha: TextureLibrary::LoadSurfaceColour.)
         const TextureHandle normal = material.normalTexture.IsValid() ? material.normalTexture : m_textures->FlatNormal();
-        const TextureHandle rough = material.roughnessTexture.IsValid() ? material.roughnessTexture : m_textures->White();
         bgfx::setTexture(10, m_sNormalMap, m_textures->Get(normal));
-        bgfx::setTexture(11, m_sRoughnessMap, m_textures->Get(rough));
         const glm::vec4 surface{material.surfaceScale > 0.0f ? 1.0f / material.surfaceScale : 0.0f, std::clamp(material.surfaceKeep, 0.0f, 1.0f),
                                 material.surfaceNatural ? 1.0f : 0.0f, material.surfaceOnThing ? 1.0f : 0.0f};
         bgfx::setUniform(m_uSurfaceParams, glm::value_ptr(surface));
@@ -462,10 +463,17 @@ void SceneRenderer::SubmitMesh(bgfx::ViewId view, const Mesh& mesh, const Materi
         const bool steep = material.surfaceScale > 0.0f && material.steepScale > 0.0f && material.steepColorTexture.IsValid();
         bgfx::setTexture(12, m_sSteepColor, m_textures->Get(steep ? material.steepColorTexture : m_textures->White()));
         bgfx::setTexture(13, m_sSteepNormal, m_textures->Get(steep && material.steepNormalTexture.IsValid() ? material.steepNormalTexture : m_textures->FlatNormal()));
-        bgfx::setTexture(14, m_sSteepRoughness,
-                         m_textures->Get(steep && material.steepRoughnessTexture.IsValid() ? material.steepRoughnessTexture : m_textures->White()));
         const glm::vec4 steepParams{material.steepTint, steep ? 1.0f / material.steepScale : 0.0f};
         bgfx::setUniform(m_uSteepParams, glm::value_ptr(steepParams));
+        // And the second ground set, in patches across the first.
+        const bool blended = material.surfaceScale > 0.0f && material.blendScale > 0.0f && material.blendColorTexture.IsValid();
+        bgfx::setTexture(11, m_sBlendColor, m_textures->Get(blended ? material.blendColorTexture : m_textures->White()));
+        bgfx::setTexture(14, m_sBlendNormal,
+                         m_textures->Get(blended && material.blendNormalTexture.IsValid() ? material.blendNormalTexture : m_textures->FlatNormal()));
+        const glm::vec4 blendParams{material.blendTint, blended ? 1.0f / material.blendScale : 0.0f};
+        const glm::vec4 blendShape{std::clamp(material.blendShare, 0.0f, 1.0f), std::max(material.blendShore, 0.0f), 0.0f, 0.0f};
+        bgfx::setUniform(m_uBlendParams, glm::value_ptr(blendParams));
+        bgfx::setUniform(m_uBlendShape, glm::value_ptr(blendShape));
         // Worn paint, the same way: off unless the set is laid on.
         const glm::vec4 wearParams{material.bareMetal, material.surfaceScale > 0.0f ? material.surfaceWear : 0.0f};
         bgfx::setUniform(m_uWearParams, glm::value_ptr(wearParams));

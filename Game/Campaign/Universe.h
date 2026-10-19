@@ -81,6 +81,11 @@ struct BiomeDef : TraitEntry
     std::string surface;
     // And the one its slopes show where they are too steep for anything to lie on (rock, mostly).
     std::string steepSurface;
+    // And a second ground set laid across the first in patches (empty: none), its colour on the ground, and about how much
+    // of the ground it is.
+    std::string blendSurface;
+    glm::vec3 blendColour{0.5f};
+    float blendShare = 0.0f;
     glm::vec3 siteGround{0.6f};
     glm::vec3 siteRock{0.35f};
     glm::vec3 siteFog{0.03f};

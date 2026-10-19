@@ -50,6 +50,12 @@ public:
         std::string surface = "snow_02";
         // And where it is steep (empty: the ground set, darkened to the rock's colour).
         std::string steep = "rock_cliff";
+        // And a second set across the ground in patches (empty: none; Material::blendShare), coloured `blendColour`, about
+        // `blendShare` of it; and all of the ground within `blendShore` metres above open water (a beach).
+        std::string blend;
+        glm::vec3 blendColour{0.5f};
+        float blendShare = 0.0f;
+        float blendShore = 0.0f;
         // Its world's biome (universe.json), for what lies about on the ground (SiteScatter).
         std::string biome = "frozen";
     };
@@ -114,6 +120,7 @@ private:
     std::vector<MeshHandle> m_meshHandles;
     MeshLibrary* m_meshLibrary = nullptr;
     Entity m_farLand;
+    Entity m_farTrees;
     MeshHandle m_waterMesh;
     std::vector<BodyHandle> m_bodies;
     size_t m_firstLight = 0;

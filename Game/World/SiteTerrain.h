@@ -65,6 +65,11 @@ public:
     glm::vec3 Normal(float x, float z) const;
     // The levelled ground's height: the buildings' floors, a hand under them.
     float Base() const { return m_base; }
+    // And as drawn anywhere out to the horizon: the field's where it reaches, the land round it (FarMesh) past that.
+    float GroundHeight(float x, float z) const;
+    glm::vec3 GroundNormal(float x, float z) const;
+    // Whether a place is on the height field (what can be walked on and a margin round it).
+    bool OnField(float x, float z) const;
     // How far a place is from being levelled ground: 0 where it is, 1 where the ground is the world's own.
     float Wildness(float x, float z) const;
 
@@ -104,6 +109,9 @@ public:
 private:
     float At(int i, int j) const { return m_heights[static_cast<size_t>(j) * static_cast<size_t>(m_cells + 1) + static_cast<size_t>(i)]; }
     float Natural(float x, float z) const;
+    // The far land's lines out from the middle each way (offsets, metres), and its height at a place.
+    std::vector<float> FarLines() const;
+    float FarHeight(float x, float z) const;
     // The world's landforms at their own size (a range, mesas, great craters, swells), for the land round the site.
     float Macro(float x, float z) const;
 
@@ -123,6 +131,7 @@ private:
     int m_cells = 0;
     std::vector<float> m_heights;
     std::vector<float> m_wild;
+    std::vector<float> m_farLines; // FarLines, kept for GroundHeight
     std::vector<Crater> m_craters;
     float m_duneAngle = 0.0f;
     float m_macroHere = 0.0f; // Macro at the site's middle: the land round it is measured from it

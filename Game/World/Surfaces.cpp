@@ -23,11 +23,11 @@ namespace
 
 TextureLibrary* g_textures = nullptr;
 
-// The map of a set, whichever of the usual image types it was saved as; white (nothing) when it is not there.
 // Which set each base colour texture laid on is, for what a step on it sounds like.
 std::vector<std::string> g_setOf;
 
-TextureHandle Map(const std::string& set, const char* kind)
+// Where a set's map is, whichever of the usual image types it was saved as (empty: it has none).
+std::string File(const std::string& set, const char* kind)
 {
     const std::filesystem::path folder = Paths::AssetsRoot() / "Textures" / set;
     for (const char* extension : {".png", ".jpg", ".jpeg"})
@@ -35,16 +35,32 @@ TextureHandle Map(const std::string& set, const char* kind)
         const std::filesystem::path file = folder / (set + "_" + kind + extension);
         if (std::filesystem::exists(file))
         {
-            const TextureHandle handle = g_textures->LoadSurfaceMap(file.string(), "surface/" + set + "/" + kind);
-            if (handle.IsValid() && std::string(kind) == "BaseColor")
-            {
-                g_setOf.resize(std::max<size_t>(g_setOf.size(), static_cast<size_t>(handle.index) + 1));
-                g_setOf[handle.index] = set;
-            }
-            return handle;
+            return file.string();
         }
     }
-    return TextureHandle{};
+    return std::string();
+}
+
+// The map of a set; nothing when it is not there.
+TextureHandle Map(const std::string& set, const char* kind)
+{
+    const std::string file = File(set, kind);
+    if (file.empty())
+    {
+        return TextureHandle{};
+    }
+    // The colour with its roughness in its alpha (TextureLibrary::LoadSurfaceColour).
+    if (std::string(kind) == "BaseColor")
+    {
+        const TextureHandle handle = g_textures->LoadSurfaceColour(file, File(set, "Roughness"), "surface/" + set + "/" + kind);
+        if (handle.IsValid())
+        {
+            g_setOf.resize(std::max<size_t>(g_setOf.size(), static_cast<size_t>(handle.index) + 1));
+            g_setOf[handle.index] = set;
+        }
+        return handle;
+    }
+    return g_textures->LoadSurfaceMap(file, "surface/" + set + "/" + kind);
 }
 
 } // namespace
@@ -84,7 +100,6 @@ Material Apply(Material material, const std::string& name, float metres, float k
     material.surfaceKeep = keep;
     material.surfaceNatural = natural;
     material.normalTexture = Map(name, "Normal");
-    material.roughnessTexture = Map(name, "Roughness");
     material.surfaceScale = metres;
     return material;
 }
@@ -107,7 +122,6 @@ Material ApplyWorn(Material material, const std::string& name, float metres, flo
     material.baseColor /= std::max(std::max(mean.r, std::max(mean.g, mean.b)), 0.05f);
     material.baseColorTexture = colour;
     material.normalTexture = Map(name, "Normal");
-    material.roughnessTexture = Map(name, "Roughness");
     material.surfaceScale = metres;
     material.surfaceKeep = 0.0f;
     material.surfaceWear = wear;
@@ -127,7 +141,6 @@ Material ApplySteep(Material material, const std::string& name, float metres)
     }
     material.steepColorTexture = colour;
     material.steepNormalTexture = Map(name, "Normal");
-    material.steepRoughnessTexture = Map(name, "Roughness");
     material.steepScale = metres;
     // The material's colour is already over the first set's average; over this one's instead.
     // (The first set's average as drawn, against this one's as drawn -- most of its own colour let go of, in the shader.)
@@ -136,6 +149,30 @@ Material ApplySteep(Material material, const std::string& name, float metres)
     const glm::vec3 own = g_textures->MeanColour(colour);
     const glm::vec3 ownDrawn = glm::mix(glm::vec3(glm::dot(own, glm::vec3(0.2126f, 0.7152f, 0.0722f))), own, 0.35f);
     material.steepTint = firstDrawn / glm::max(ownDrawn, glm::vec3(0.02f));
+    return material;
+}
+
+Material ApplyBlend(Material material, const std::string& name, float metres, const glm::vec3& colour, float share, float shore)
+{
+    if (g_textures == nullptr || metres <= 0.0f || material.surfaceScale <= 0.0f || (share <= 0.0f && shore <= 0.0f))
+    {
+        return material;
+    }
+    const TextureHandle texture = Map(name, "BaseColor");
+    if (!texture.IsValid())
+    {
+        return material;
+    }
+    material.blendColorTexture = texture;
+    material.blendNormalTexture = Map(name, "Normal");
+    material.blendScale = metres;
+    material.blendShare = share;
+    material.blendShore = shore;
+    // Its own colour, over this set's average as drawn (as much of its own colour kept as the first's): whatever the material's
+    // colour and what is painted on the ground under it, which the shader takes back out of it.
+    const glm::vec3 mean = g_textures->MeanColour(texture);
+    const glm::vec3 drawn = glm::mix(glm::vec3(glm::dot(mean, glm::vec3(0.2126f, 0.7152f, 0.0722f))), mean, material.surfaceKeep);
+    material.blendTint = colour / glm::max(drawn, glm::vec3(1.0e-3f));
     return material;
 }
 
@@ -238,6 +275,33 @@ bool OutcropAt(float x, float z, float normalUp)
     const float spread = Patches(x * 0.035f + 7.3f, z * 0.035f + 1.9f) * 0.65f + Patches(x * 0.11f, z * 0.11f) * 0.35f;
     const float rise = std::clamp((0.996f - normalUp) / (0.996f - 0.975f), 0.0f, 1.0f);
     return spread > 0.71f && rise > 0.5f;
+}
+
+namespace
+{
+
+float BlendLay(float x, float z, float share)
+{
+    // Patches some tens of metres across, ragged with smaller ones down to a footprint, and as much of them over the line as
+    // is asked for.
+    const float patch = Patches(x * 0.017f + 41.3f, z * 0.017f + 13.7f) * 0.5f + Patches(x * 0.053f + 5.1f, z * 0.053f + 23.9f) * 0.25f +
+                        Patches(x * 0.19f + 2.3f, z * 0.19f + 8.8f) * 0.13f + Patches(x * 0.7f + 7.7f, z * 0.7f + 1.1f) * 0.08f +
+                        Patches(x * 2.3f + 4.4f, z * 2.3f + 9.2f) * 0.04f;
+    return patch - (0.5f + (0.5f - std::clamp(share, 0.0f, 1.0f)) * 0.45f);
+}
+
+float ShoreLay(float x, float z, float y, float waterLevel, float shore)
+{
+    // From the water up to about `shore` metres above it, its top edge wandering.
+    return (waterLevel + shore * (0.6f + 0.8f * Patches(x * 0.13f + 3.3f, z * 0.13f + 6.1f)) - y) * 0.25f;
+}
+
+} // namespace
+
+bool BlendAt(float x, float z, float y, float share, float waterLevel, float shore)
+{
+    const float lay = share > 0.0f ? BlendLay(x, z, share) : -1.0f;
+    return std::max(lay, shore > 0.0f ? ShoreLay(x, z, y, waterLevel, shore) : -1.0f) > 0.0f;
 }
 
 const char* StepName(uint32_t tag)

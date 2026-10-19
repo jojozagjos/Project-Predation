@@ -202,6 +202,11 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
     const glm::vec3 cliffColour = m_look.rock * 0.88f;
     Material terrainMaterial = Surfaces::Apply(Material::Diffuse(SiteTerrain::Paint(m_look.ground, cliffColour), 1.0f), m_look.surface, 2.5f, 0.6f, true);
     terrainMaterial = Surfaces::ApplySteep(terrainMaterial, m_look.steep, 11.0f);
+    if (!m_look.blend.empty())
+    {
+        terrainMaterial = Surfaces::ApplyBlend(terrainMaterial, m_look.blend, 3.0f, m_look.blendColour, m_look.blendShare,
+                                               m_look.water != SiteTerrain::Water::None ? m_look.blendShore : 0.0f);
+    }
     m_groundMaterial = terrainMaterial;
     m_cliffColour = cliffColour;
     // Made side by side, a row of pieces a thread -- the shapes to stand on are most of the time a site takes to build -- and
@@ -449,10 +454,14 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
             // Small things cast no shadow worth its cost.
             const bool small = item.kind == SiteScatter::Kind::Grass || item.kind == SiteScatter::Kind::Shrub ||
                                (item.kind == SiteScatter::Kind::Boulder && item.scale.y < 0.6f);
-            builder.SetShadows(!small);
+            // (And none past the height field, where they are too far off to need one.)
+            const bool shaded = m_terrain.OnField(item.at.x, item.at.z);
+            builder.SetShadows(!small && shaded);
             if (!placed.vertices.empty())
             {
-                builder.AddMesh("site_scatter", Transform{item.at}, placed, materialOf(item.kind), SiteScatter::Solid(item.kind, item.scale));
+                // (Solid only where anybody could walk into it.)
+                const bool reachable = WithinRoam(item.at) == item.at;
+                builder.AddMesh("site_scatter", Transform{item.at}, placed, materialOf(item.kind), reachable && SiteScatter::Solid(item.kind, item.scale));
             }
             if (!foliage[which].vertices.empty())
             {
@@ -462,8 +471,28 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
                     vertex.position = turn * (vertex.position * item.scale);
                     vertex.normal = glm::normalize(turn * (vertex.normal / item.scale));
                 }
-                builder.SetShadows(item.kind == SiteScatter::Kind::Tree);
+                builder.SetShadows(item.kind == SiteScatter::Kind::Tree && shaded);
                 builder.AddMesh("site_foliage", Transform{item.at}, leafy, leaves, false);
+            }
+        }
+        // And the trees of the land round it, past the height field, to the horizon (SiteScatter::FarTrees): drawn however far
+        // off, nothing to walk into, no shadow worth its cost at that distance.
+        {
+            const MeshData far = SiteScatter::FarTrees(seed, m_look.biome, m_plan, m_terrain, growth * 0.55f);
+            if (!far.indices.empty())
+            {
+                const MeshHandle mesh = meshes.Upload(far, "site_far_trees");
+                m_meshHandles.push_back(mesh);
+                const Entity entity = scene.CreateMeshEntity("site_far_trees", Transform{}, mesh, Material::Diffuse(glm::vec3(1.0f), 0.85f));
+                if (MeshRenderer* renderer = scene.GetMeshRenderer(entity))
+                {
+                    renderer->castsShadow = false;
+                    renderer->blocksSky = false;
+                    renderer->farVisible = true;
+                }
+                m_entities.push_back(entity);
+                m_farTrees = entity;
+                PRED_LOG_INFO(Gameplay, "Site trees: {} near, {} far vertices", std::count_if(scattered.begin(), scattered.end(), [](const SiteScatter::Item& item) { return item.kind == SiteScatter::Kind::Tree; }), far.vertices.size());
             }
         }
         // Leaves fallen under the trees, lying flat on the ground round each trunk as far out as its crown, dried brown and
@@ -494,10 +523,10 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
                     }
                     const float size = 0.35f + 0.35f * Hash01(seed, n, 0x23u);
                     const float yaw = Hash01(seed, n, 0x24u) * glm::two_pi<float>();
-                    const glm::vec3 up = m_terrain.Normal(at.x, at.y);
+                    const glm::vec3 up = m_terrain.GroundNormal(at.x, at.y);
                     const glm::vec3 across = glm::normalize(glm::cross(up, glm::vec3(std::sin(yaw), 0.0f, std::cos(yaw)))) * (size * 0.5f);
                     const glm::vec3 along = glm::normalize(glm::cross(across, up)) * (size * 0.5f);
-                    const glm::vec3 middle{at.x, m_terrain.Height(at.x, at.y) + 0.012f + 0.004f * static_cast<float>(i % 3), at.y};
+                    const glm::vec3 middle{at.x, m_terrain.GroundHeight(at.x, at.y) + 0.012f + 0.004f * static_cast<float>(i % 3), at.y};
                     const glm::vec3 dried = conifer ? glm::mix(glm::vec3(0.4f, 0.22f, 0.1f), glm::vec3(0.5f, 0.32f, 0.15f), Hash01(seed, n, 0x25u))
                                                     : glm::mix(glm::vec3(0.42f, 0.3f, 0.14f), glm::vec3(0.55f, 0.46f, 0.18f), Hash01(seed, n, 0x25u));
                     const uint32_t colour = PaintVertex(dried *
@@ -533,7 +562,9 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
             }
             constexpr float kCell = 1.5f;
             constexpr int kBlockCells = 24;
-            const int cells = static_cast<int>(m_plan.size / kCell);
+            // (Over all of the ground that can be walked on, not only the site.)
+            constexpr float kOut = SiteTerrain::kRoam + 6.0f;
+            const int cells = static_cast<int>((m_plan.size + kOut * 2.0f) / kCell);
             for (int bz = 0; bz < cells; bz += kBlockCells)
             {
                 for (int bx = 0; bx < cells; bx += kBlockCells)
@@ -553,8 +584,8 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
                             for (int p = 0; p < count; ++p)
                             {
                                 const auto k = static_cast<uint32_t>(p) * 31u;
-                                const float x = m_plan.origin.x + (static_cast<float>(cx) + Hash01(seed, ux + k, uz * 3u + 1u)) * kCell;
-                                const float z = m_plan.origin.z + (static_cast<float>(cz) + Hash01(seed, ux + k, uz * 3u + 2u)) * kCell;
+                                const float x = m_plan.origin.x - kOut + (static_cast<float>(cx) + Hash01(seed, ux + k, uz * 3u + 1u)) * kCell;
+                                const float z = m_plan.origin.z - kOut + (static_cast<float>(cz) + Hash01(seed, ux + k, uz * 3u + 2u)) * kCell;
                                 if (m_terrain.Normal(x, z).y < 0.8f || m_plan.InBuilding({x, z}, 0.5f))
                                 {
                                     continue;
@@ -840,6 +871,11 @@ void SiteMap::ShowFarLand(Scene& scene, const glm::vec3& eye)
         const glm::vec2 middle{m_plan.origin.x + m_plan.size * 0.5f, m_plan.origin.z + m_plan.size * 0.5f};
         renderer->visible = m_built && glm::distance(glm::vec2(eye.x, eye.z), middle) < 2000.0f;
     }
+    if (MeshRenderer* renderer = scene.GetMeshRenderer(m_farTrees))
+    {
+        const glm::vec2 middle{m_plan.origin.x + m_plan.size * 0.5f, m_plan.origin.z + m_plan.size * 0.5f};
+        renderer->visible = m_built && glm::distance(glm::vec2(eye.x, eye.z), middle) < 2000.0f;
+    }
 }
 
 glm::vec3 SiteMap::WithinRoam(const glm::vec3& at) const
@@ -957,8 +993,19 @@ MeshData SiteMap::CoverAround(const glm::vec3& eye, float detail) const
                 }
                 const float wild = m_terrain.Wildness(x, z);
                 const float cut = 0.15f + 0.45f * hash(px, pz, static_cast<uint32_t>(i * 4 + 900));
-                if (x < m_plan.origin.x || z < m_plan.origin.z || x > m_plan.origin.x + m_plan.size || z > m_plan.origin.z + m_plan.size ||
-                    wild < cut || m_terrain.Normal(x, z).y < 0.85f)
+                if (!m_terrain.OnField(x, z) || wild < cut || m_terrain.Normal(x, z).y < 0.85f)
+                {
+                    continue;
+                }
+                // Thinner deep in the woods, where little light reaches the ground (SiteScatter::Woodland); none on a second
+                // ground that is not grass -- a beach, bare earth (Surfaces::BlendAt).
+                if (hash(px, pz, static_cast<uint32_t>(i * 4 + 901)) < SiteScatter::Woodland(m_seed, m_look.biome, x, z) * 0.6f)
+                {
+                    continue;
+                }
+                if (!m_look.blend.empty() && Surfaces::StepName(Surfaces::StepOfSet(m_look.blend, false)) != std::string_view("grass") &&
+                    Surfaces::BlendAt(x, z, m_terrain.Height(x, z), m_look.blendShare, m_terrain.WaterLevel(),
+                                      m_terrain.HasWater() ? m_look.blendShore : 0.0f))
                 {
                     continue;
                 }
