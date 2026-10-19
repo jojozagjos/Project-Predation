@@ -5,6 +5,12 @@ set(PRED_GAME_SOURCES
     PredationGameShared.cpp
     PredationGameCommands.cpp
     PredationGameNet.cpp
+    PredationGameMenus.cpp
+    PredationGameHud.cpp
+    PredationGameVoice.cpp
+    PredationGameCombat.cpp
+    PredationGameEditor.cpp
+    PredationGameAudio.cpp
     PredationGameCreatures.cpp
     PredationGameItems.cpp
     PredationGameSounds.cpp
