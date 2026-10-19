@@ -13,10 +13,11 @@ namespace pred
 
 namespace SiteSpec
 {
-// The corner of the site's open ground, east of the testing area. Its ground reaches 45 m further out every way and
-// its rock about 30 m, so none of it reaches the test map (which ends at x = 45) or the lab beside it.
-inline constexpr glm::vec3 kOrigin{100.0f, 0.0f, -110.0f};
-// How much open ground there is inside the rock that closes it in, each way.
+// The corner of the site's open ground: kilometres from the testing area, the lab and the ship (round x 0, z 0 and
+// x -1500), so the land round a site (SiteTerrain::FarMesh, out to its horizon) reaches none of them, and none of them is
+// seen from it.
+inline constexpr glm::vec3 kOrigin{100.0f, 0.0f, 6000.0f};
+// How much open ground there is, each way.
 inline constexpr float kSize = 300.0f;
 // The site every machine builds until the host says otherwise.
 inline constexpr uint16_t kDefaultSeed = 1;

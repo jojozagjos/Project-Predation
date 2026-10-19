@@ -1211,7 +1211,8 @@ void FacilityMap::Build(FacilityLayout layout, uint32_t seed, Scene& scene, Mesh
     const Blueprint blueprint = Draw(m_layout);
 
     MapBuilder builder(scene, meshes, &physics, prefix);
-    builder.Track(&m_entities, &m_bodies);
+    m_meshLibrary = &meshes;
+    builder.Track(&m_entities, &m_bodies, &m_meshHandles);
     builder.BeginBatching();
     if (structure == 0)
     {
@@ -1287,6 +1288,14 @@ void FacilityMap::Clear(Scene& scene, PhysicsWorld& physics, LevelLights* lights
     {
         scene.Destroy(entity);
     }
+    if (m_meshLibrary != nullptr)
+    {
+        for (const MeshHandle mesh : m_meshHandles)
+        {
+            m_meshLibrary->Release(mesh);
+        }
+    }
+    m_meshHandles.clear();
     for (const BodyHandle body : m_bodies)
     {
         physics.DestroyBody(body);

@@ -90,6 +90,9 @@ public:
     bool InReach(const glm::vec3& at) const;
     // A place on the ground kept within how far round the site anybody may go (SiteTerrain::kRoam): itself, inside it.
     glm::vec3 WithinRoam(const glm::vec3& at) const;
+    // The land round the site to the horizon shown only to an eye over it (within a couple of kilometres, at any height: a
+    // shuttle coming down), never from anywhere else.
+    void ShowFarLand(Scene& scene, const glm::vec3& eye);
     // The grass round the eye, where the world grows it: tufts thick close by and thinner further off, out to some tens of
     // metres, made again as the eye moves on (each tuft where its patch of ground puts it, so they stay put).
     // `detail` scales how thick it is drawn (the r.grass setting: 0 none).
@@ -103,6 +106,10 @@ private:
     VehicleProp m_shuttle;
     WorldObjects::Placements m_placements;
     std::vector<Entity> m_entities;
+    // The meshes it uploaded, given back when it is taken away (MeshLibrary::Release), and where they were uploaded to.
+    std::vector<MeshHandle> m_meshHandles;
+    MeshLibrary* m_meshLibrary = nullptr;
+    Entity m_farLand;
     std::vector<BodyHandle> m_bodies;
     size_t m_firstLight = 0;
     bool m_hasLights = false;

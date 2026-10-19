@@ -194,7 +194,8 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
 
     // Outside.
     MapBuilder builder(scene, meshes, &physics, "site_");
-    builder.Track(&m_entities, &m_bodies);
+    m_meshLibrary = &meshes;
+    builder.Track(&m_entities, &m_bodies, &m_meshHandles);
     // The ground, in pieces each drawn on its own (so what is out of sight is not drawn): the world's ground where it is
     // gentle, its rock showing through as it steepens. Part of the one structure the buildings are set into.
     builder.SetStructure(ground);
@@ -256,6 +257,7 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
         if (!far.indices.empty())
         {
             const MeshHandle mesh = meshes.Upload(far, "site_far_land");
+            m_meshHandles.push_back(mesh);
             const Entity entity = scene.CreateMeshEntity("site_far_land", Transform{}, mesh, terrainMaterial);
             if (MeshRenderer* renderer = scene.GetMeshRenderer(entity))
             {
@@ -264,6 +266,7 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
                 renderer->farVisible = true;
             }
             m_entities.push_back(entity);
+            m_farLand = entity;
         }
     }
     builder.BeginBatching(24.0f);
@@ -764,6 +767,14 @@ void SiteMap::Clear(Scene& scene, PhysicsWorld& physics, LevelLights* lights)
     {
         scene.Destroy(entity);
     }
+    if (m_meshLibrary != nullptr)
+    {
+        for (const MeshHandle mesh : m_meshHandles)
+        {
+            m_meshLibrary->Release(mesh);
+        }
+    }
+    m_meshHandles.clear();
     for (const BodyHandle body : m_bodies)
     {
         physics.DestroyBody(body);
@@ -798,6 +809,15 @@ bool SiteMap::InReach(const glm::vec3& at) const
     constexpr float kFoot = 14.0f;
     const glm::vec3 local = at - m_plan.origin;
     return local.x > -kFoot && local.z > -kFoot && local.x < m_plan.size + kFoot && local.z < m_plan.size + kFoot;
+}
+
+void SiteMap::ShowFarLand(Scene& scene, const glm::vec3& eye)
+{
+    if (MeshRenderer* renderer = scene.GetMeshRenderer(m_farLand))
+    {
+        const glm::vec2 middle{m_plan.origin.x + m_plan.size * 0.5f, m_plan.origin.z + m_plan.size * 0.5f};
+        renderer->visible = m_built && glm::distance(glm::vec2(eye.x, eye.z), middle) < 2000.0f;
+    }
 }
 
 glm::vec3 SiteMap::WithinRoam(const glm::vec3& at) const
@@ -862,12 +882,12 @@ void SiteMap::UpdateCover(Scene& scene, MeshLibrary& meshes, const glm::vec3& ey
 
 MeshData SiteMap::CoverAround(const glm::vec3& eye, float detail) const
 {
-    // Square metres of ground in patches of two, out past a hundred metres (thinning as the square of the distance past
-    // twenty-eight, so the far edge where they grow in is out in the haze). Each patch's tufts are where its own numbers put
+    // Square metres of ground in patches of two, out to ninety metres (thinning as the square of the distance past
+    // sixteen, so the far edge where they grow in is out in the haze). Each patch's tufts are where its own numbers put
     // them, the same every time; how many of them show falls with how far off the patch is -- each coming up from nothing as
     // the eye nears, not all at once.
     constexpr float kPatch = 2.0f;
-    constexpr float kReach = 112.0f;
+    constexpr float kReach = 96.0f;
     const auto hash = [](int x, int z, uint32_t n)
     {
         uint32_t h = static_cast<uint32_t>(x) * 0x8DA6B343u ^ static_cast<uint32_t>(z) * 0xD8163841u ^ n * 0xCB1AB31Fu;
@@ -895,7 +915,7 @@ MeshData SiteMap::CoverAround(const glm::vec3& eye, float detail) const
             // How many of its tufts could be up by the time this is made again -- the eye some metres nearer by then -- as
             // the shader has them (vs_mesh, Material::cover): which of those are, and how far grown, it works out each frame.
             const float near = std::max(distance - 9.0f, 0.0f);
-            const float share = near > 108.0f ? 0.0f : std::clamp(784.0f / std::max(near * near, 1.0f), 0.0f, 1.0f);
+            const float share = near > 90.0f ? 0.0f : std::clamp(256.0f / std::max(near * near, 1.0f), 0.0f, 1.0f);
             const float all = density * kPatch * kPatch;
             for (int i = 0; i < most; ++i)
             {

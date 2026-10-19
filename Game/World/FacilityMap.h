@@ -148,6 +148,9 @@ private:
     uint16_t m_seed = 0;
     bool m_built = false;
     std::vector<Entity> m_entities;
+    // The meshes it uploaded, given back when it is taken away (MeshLibrary::Release), and where they were uploaded to.
+    std::vector<MeshHandle> m_meshHandles;
+    MeshLibrary* m_meshLibrary = nullptr;
     std::vector<BodyHandle> m_bodies;
     size_t m_firstLight = 0;
     bool m_hasLights = false;

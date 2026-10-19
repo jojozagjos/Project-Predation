@@ -62,7 +62,7 @@ public:
                 continue;
             }
             const std::string meshName = m_prefix + batch.name + "_batch#" + std::to_string(m_boxCount++);
-            const MeshHandle mesh = m_meshes.Upload(batch.mesh, meshName);
+            const MeshHandle mesh = Uploaded(m_meshes.Upload(batch.mesh, meshName));
             const Entity entity = m_scene.CreateMeshEntity(batch.name, Transform{}, mesh, batch.material);
             Keep(entity);
             if (MeshRenderer* renderer = m_scene.GetMeshRenderer(entity))
@@ -76,10 +76,11 @@ public:
 
     // Keeps every entity and body made from here on in these lists, so a map that is rebuilt (a
     // generated facility, from a new seed) can take everything it made away again.
-    void Track(std::vector<Entity>* entities, std::vector<BodyHandle>* bodies)
+    void Track(std::vector<Entity>* entities, std::vector<BodyHandle>* bodies, std::vector<MeshHandle>* meshes = nullptr)
     {
         m_trackedEntities = entities;
         m_trackedBodies = bodies;
+        m_trackedMeshes = meshes;
     }
 
     // What is added from here on is part of one structure, whose pieces are built to reach into one another
@@ -128,7 +129,7 @@ public:
         const int deep = std::max(1, static_cast<int>(std::ceil(size.z / tile)));
         const glm::vec3 piece{size.x / static_cast<float>(across), size.y, size.z / static_cast<float>(deep)};
         const std::string meshName = m_prefix + name + "#" + std::to_string(m_boxCount++);
-        const MeshHandle mesh = m_meshes.Upload(Primitives::Box(piece), meshName);
+        const MeshHandle mesh = Uploaded(m_meshes.Upload(Primitives::Box(piece), meshName));
         for (int i = 0; i < across; ++i)
         {
             for (int k = 0; k < deep; ++k)
@@ -170,7 +171,7 @@ public:
         {
             // Numbered like the boxes above, and for the same reason: two stairs of different sizes
             // both called "stairs" would share one mesh and the second would draw as the first.
-            const MeshHandle mesh = m_meshes.Upload(data, m_prefix + name + "#" + std::to_string(m_boxCount++));
+            const MeshHandle mesh = Uploaded(m_meshes.Upload(data, m_prefix + name + "#" + std::to_string(m_boxCount++)));
             Keep(m_scene.CreateMeshEntity(name, transform, mesh, material));
         }
         if (collide && m_physics != nullptr)
@@ -291,7 +292,18 @@ private:
         }
     }
 
+    // And every mesh it uploads, so the map can give them back (MeshLibrary::Release) when it is taken away -- or each site
+    // visited would keep its buffers, and after enough of them there would be none left for anything.
+    MeshHandle Uploaded(MeshHandle mesh)
+    {
+        if (m_trackedMeshes != nullptr && mesh.IsValid())
+        {
+            m_trackedMeshes->push_back(mesh);
+        }
+        return mesh;
+    }
     std::vector<Entity>* m_trackedEntities = nullptr;
+    std::vector<MeshHandle>* m_trackedMeshes = nullptr;
     std::vector<BodyHandle>* m_trackedBodies = nullptr;
     Scene& m_scene;
     MeshLibrary& m_meshes;

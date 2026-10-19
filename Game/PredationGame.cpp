@@ -9976,6 +9976,7 @@ void PredationGame::OnUpdate(double dt, double alpha)
                 ground = below.position.y;
             }
         }
+        m_facility.ShowFarLand(m_scene, m_renderEye);
         // The grass round the eye, where the world grows it.
         if (falling)
         {
