@@ -572,6 +572,14 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
                               landmark.at.y, landmark.at.z);
             }
         }
+        // And its vents, where the world is still alive under it: a crusted mound round each mouth (its plume is the game's to
+        // draw, by the clock: Vents::Plumes).
+        m_vents = Vents::Plan(seed, m_look.biome, m_plan, m_terrain);
+        builder.SetShadows(false);
+        for (const Vents::Vent& vent : m_vents)
+        {
+            builder.AddMesh("site_vent", Transform{}, Vents::Mound(vent, m_look.biome, seed), rockMaterial, false);
+        }
         // Leaves fallen under the trees, lying flat on the ground round each trunk as far out as its crown, dried brown and
         // yellow -- under a conifer (its odd shapes, SiteScatter::Leaves) its needles, rust-brown: cards of the foliage picture, as
         // its leaves are.

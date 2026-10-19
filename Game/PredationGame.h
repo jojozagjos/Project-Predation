@@ -1244,6 +1244,8 @@ private:
     PlanetRenderer m_planets;
     // Soft blended sprites over the picture: the weather (Weather).
     SpriteRenderer m_sprites;
+    // What the sprites draw this frame: the weather's and the vents' plumes.
+    std::vector<Sprite> m_airSprites;
     WaterRenderer m_water;
     // The clock the wind gusts by, for the plants.
     float m_windClock = 0.0f;

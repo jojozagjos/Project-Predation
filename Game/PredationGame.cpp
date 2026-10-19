@@ -11503,7 +11503,15 @@ void PredationGame::OnRender()
         }
     }
     // The air with something in it -- the weather's flakes, streaks and puffs -- over the world and the sky, blended.
-    m_sprites.Draw(Renderer::kViewTranslucent, Depth::Test(), viewPosition, m_weather.Sprites());
+    // (And the plumes of the site's vents, by the clock, with the weather's.)
+    m_airSprites = m_weather.Sprites();
+    if (m_facility.Built())
+    {
+        Vents::Plumes(m_facility.GetVents(), m_facility.GetLook().biome, std::fmod(m_campaign.clock, 86400.0),
+                      glm::vec3(m_scene.GetEnvironment().wind.x, 0.0f, m_scene.GetEnvironment().wind.y),
+                      m_scene.GetEnvironment(), viewPosition, m_airSprites);
+    }
+    m_sprites.Draw(Renderer::kViewTranslucent, Depth::Test(), viewPosition, m_airSprites);
     DrawDebugOverlays();
 }
 

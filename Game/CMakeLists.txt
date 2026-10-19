@@ -125,6 +125,8 @@ set(PRED_GAME_SOURCES
     World/SiteScatter.cpp
     World/Landmark.h
     World/Landmark.cpp
+    World/Vents.h
+    World/Vents.cpp
     World/Foliage.cpp
     World/Cargo.h
     World/Cargo.cpp
