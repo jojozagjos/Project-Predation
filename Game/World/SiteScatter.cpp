@@ -481,12 +481,9 @@ std::vector<Item> Plan(uint32_t seed, const std::string& biome, const SitePlan& 
 {
     std::vector<Item> items;
     Random random((static_cast<uint64_t>(seed) << 17) ^ 0x5CA77E2ull);
-    // Over the site and all the ground round it as far as the height field goes (FarTrees has the land past that): not just
-    // round the buildings.
+    // Over the site and the ground round it -- the small and growing things as far as the height field goes, the rest as far
+    // as the trees (FarScatter and FarTrees have the land past that): not just round the buildings.
     const float reach = SiteTerrain::kMargin - 6.0f;
-    const glm::vec2 low{plan.origin.x - reach, plan.origin.z - reach};
-    const float side = plan.size + reach * 2.0f;
-    const float hectares = side * side / 10000.0f;
     // (Whether it was placed: never in the clearing round a landmark.)
     const auto place = [&](Kind kind, const glm::vec2& at)
     {
@@ -545,13 +542,19 @@ std::vector<Item> Plan(uint32_t seed, const std::string& biome, const SitePlan& 
         {
             continue;
         }
-        const int total = static_cast<int>(share.perHectare * hectares * random.Range(0.75f, 1.25f));
+        // Grass clumps and shrubs over the height field (past it the grass cover and the woods have the ground); rock, ice and
+        // crystal as far out as the trees, so the ground does not go bare a little way past the site (FarScatter past that).
+        const bool lowGrowing = share.kind == Kind::Grass || share.kind == Kind::Shrub;
+        const float out = lowGrowing ? reach : kTreeReach;
+        const glm::vec2 corner{plan.origin.x - out, plan.origin.z - out};
+        const float across = plan.size + out * 2.0f;
+        const int total = static_cast<int>(share.perHectare * (across * across / 10000.0f) * random.Range(0.75f, 1.25f));
         const int clusters = std::max(1, total / std::max(share.cluster, 1));
         // The spread of a cluster: tight for grass, wide for trees.
         const float spread = share.kind == Kind::Grass ? 2.5f : share.kind == Kind::Tree ? 13.0f : share.kind == Kind::Boulder ? 6.0f : 4.0f;
         for (int c = 0; c < clusters; ++c)
         {
-            const glm::vec2 centre = low + glm::vec2(random.Range(0.0f, side), random.Range(0.0f, side));
+            const glm::vec2 centre = corner + glm::vec2(random.Range(0.0f, across), random.Range(0.0f, across));
             // Shrubs thickest at the woods' edges and in their gaps, as undergrowth is where the light gets in.
             if (share.kind == Kind::Shrub && woods.cover > 0.0f)
             {
@@ -566,8 +569,8 @@ std::vector<Item> Plan(uint32_t seed, const std::string& biome, const SitePlan& 
             {
                 const glm::vec2 at = centre + glm::vec2(random.Normal(), random.Normal()) * spread;
                 // On the world's own ground, well clear of anything levelled, and on a slope it could stand on.
-                if (at.x < low.x || at.y < low.y || at.x > low.x + side || at.y > low.y + side || terrain.Wildness(at.x, at.y) < 0.6f ||
-                    terrain.Normal(at.x, at.y).y < SteepestFor(share.kind))
+                if (at.x < corner.x || at.y < corner.y || at.x > corner.x + across || at.y > corner.y + across || terrain.Wildness(at.x, at.y) < 0.6f ||
+                    terrain.GroundNormal(at.x, at.y).y < SteepestFor(share.kind))
                 {
                     continue;
                 }
@@ -1010,6 +1013,82 @@ MeshData FarTrees(uint32_t seed, const std::string& biome, const SitePlan& plan,
                 }
                 const float h = (5.0f + 7.0f * size) * (band == 0 ? 1.0f : 1.25f);
                 tree({x, terrain.GroundHeight(x, z) - 0.2f, z}, h, broadleaf, band == 0);
+            }
+        }
+    }
+    return mesh;
+}
+
+MeshData FarScatter(uint32_t seed, const std::string& biome, const SitePlan& plan, const SiteTerrain& terrain, const glm::vec3& rock,
+                    const std::vector<glm::vec3>& clearings)
+{
+    // Only what can be seen from that far: the larger rocks, the spires, the ice and crystal and columns of basalt -- fewer than
+    // near, and the bigger of them, standing for the rest -- each a few faces in its own colour.
+    const glm::vec3 middle{plan.origin.x + plan.size * 0.5f, plan.origin.y, plan.origin.z + plan.size * 0.5f};
+    const float nearest = plan.size * 0.5f + kTreeReach;
+    constexpr float kOut = 900.0f;
+    MeshData mesh;
+    Random random((static_cast<uint64_t>(seed) << 23) ^ 0xFA5CA77ull);
+    const auto colourOf = [&](Kind kind)
+    {
+        switch (kind)
+        {
+        case Kind::IceShard: return glm::vec3(0.62f, 0.72f, 0.82f);
+        case Kind::Crystal: return glm::vec3(0.56f, 0.65f, 0.86f);
+        case Kind::Basalt: return rock * 0.55f;
+        default: return rock;
+        }
+    };
+    for (const Share& share : SharesOf(biome))
+    {
+        if (share.kind != Kind::Boulder && share.kind != Kind::Spire && share.kind != Kind::IceShard && share.kind != Kind::Crystal &&
+            share.kind != Kind::Basalt)
+        {
+            continue;
+        }
+        // A sixth as many, in clusters as near, over the land from where Plan's stop out to where they are a pixel.
+        const float across = kOut * 2.0f;
+        const int total = static_cast<int>(share.perHectare / 6.0f * (across * across / 10000.0f));
+        const int clusters = std::max(1, total / std::max(share.cluster, 1));
+        const float spread = share.kind == Kind::Boulder ? 8.0f : 5.0f;
+        for (int c = 0; c < clusters; ++c)
+        {
+            const glm::vec2 centre{middle.x - kOut + random.Range(0.0f, across), middle.z - kOut + random.Range(0.0f, across)};
+            const int count = std::max(1, static_cast<int>(static_cast<float>(share.cluster) * random.Range(0.5f, 1.5f)));
+            for (int i = 0; i < count; ++i)
+            {
+                const glm::vec2 at = centre + glm::vec2(random.Normal(), random.Normal()) * spread;
+                glm::vec3 size = SizeOf(share.kind, random);
+                const float turn = random.Range(0.0f, kTau);
+                const float out = std::max(std::abs(at.x - middle.x), std::abs(at.y - middle.z));
+                if (out < nearest || out > kOut || Cleared(clearings, at) || terrain.GroundNormal(at.x, at.y).y < SteepestFor(share.kind) ||
+                    terrain.WaterDepth(at.x, at.y) > -0.5f)
+                {
+                    continue;
+                }
+                // (A boulder out there only if it is a big one: the small ones could not be seen.)
+                if (share.kind == Kind::Boulder)
+                {
+                    size *= random.Range(1.6f, 2.6f);
+                }
+                const glm::vec3 colour = colourOf(share.kind) * random.Range(0.85f, 1.1f);
+                const glm::vec3 foot{at.x, terrain.GroundHeight(at.x, at.y) - size.y * 0.15f, at.y};
+                switch (share.kind)
+                {
+                case Kind::Boulder:
+                    Prism(mesh, foot, {0.0f, 1.0f, 0.0f}, size.y, size.x * 0.55f, size.x * 0.32f, 6, size.y * 0.15f, turn, Paint(colour));
+                    break;
+                case Kind::IceShard:
+                case Kind::Crystal:
+                {
+                    const glm::vec3 lean = glm::normalize(glm::vec3(random.Range(-0.3f, 0.3f), 1.0f, random.Range(-0.3f, 0.3f)));
+                    Prism(mesh, foot, lean, size.y * 0.8f, size.x * 0.5f, size.x * 0.4f, 5, size.y * 0.3f, turn, Paint(colour));
+                    break;
+                }
+                default:
+                    Prism(mesh, foot, {0.0f, 1.0f, 0.0f}, size.y, size.x * 0.5f, size.x * 0.25f, 6, size.y * 0.08f, turn, Paint(colour));
+                    break;
+                }
             }
         }
     }

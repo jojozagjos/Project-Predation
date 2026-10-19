@@ -552,6 +552,24 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
                 PRED_LOG_INFO(Gameplay, "Site trees: {} near, {} far vertices", std::count_if(scattered.begin(), scattered.end(), [](const SiteScatter::Item& item) { return item.kind == SiteScatter::Kind::Tree; }), far.vertices.size());
             }
         }
+        // And its rocks there, the same way (SiteScatter::FarScatter).
+        {
+            const MeshData far = SiteScatter::FarScatter(seed, m_look.biome, m_plan, m_terrain, m_look.rock, clearings);
+            if (!far.indices.empty())
+            {
+                const MeshHandle mesh = meshes.Upload(far, "site_far_scatter");
+                m_meshHandles.push_back(mesh);
+                const Entity entity = scene.CreateMeshEntity("site_far_scatter", Transform{}, mesh, Material::Diffuse(glm::vec3(1.0f), 0.9f));
+                if (MeshRenderer* renderer = scene.GetMeshRenderer(entity))
+                {
+                    renderer->castsShadow = false;
+                    renderer->blocksSky = false;
+                    renderer->farVisible = true;
+                }
+                m_entities.push_back(entity);
+                PRED_LOG_INFO(Gameplay, "Site far scatter: {} vertices", far.vertices.size());
+            }
+        }
         // And the landmarks: rock in the world's own rock, ice and crystal in theirs, a giant tree from a tree's own shapes, each
         // its own shape. Drawn however far off -- throwing their shadows where they are near enough for it to show -- and
         // nothing to walk into, out past where anybody may go.
