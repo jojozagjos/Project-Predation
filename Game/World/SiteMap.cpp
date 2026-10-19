@@ -231,7 +231,7 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
     const glm::vec3 growing = glm::mix(m_look.ground, m_look.biome == "jungle" ? glm::vec3(0.05f, 0.13f, 0.03f) : glm::vec3(0.08f, 0.16f, 0.04f), 0.65f);
     const glm::vec3 grassColour = glm::mix(growing, m_look.ground, 0.3f) * 1.05f;
     // (The ground under it a deeper green: seen far off, the grass is mostly its own shade.)
-    const glm::vec3 grownOver = growing;
+    const glm::vec3 grownOver = growing * 0.78f;
     m_grownOver = grownOver;
     m_grassy = grassy;
     std::vector<Piece> pieces(static_cast<size_t>(chunks * chunks));
@@ -1086,12 +1086,12 @@ void SiteMap::UpdateCover(Scene& scene, MeshLibrary& meshes, const glm::vec3& ey
 
 MeshData SiteMap::CoverAround(const glm::vec3& eye, float detail) const
 {
-    // Square metres of ground in patches of two, out to ninety metres (thinning as the square of the distance past
+    // Square metres of ground in patches of two, out to a hundred and twenty metres (thinning as the square of the distance past
     // sixteen, so the far edge where they grow in is out in the haze). Each patch's tufts are where its own numbers put
     // them, the same every time; how many of them show falls with how far off the patch is -- each coming up from nothing as
     // the eye nears, not all at once.
     constexpr float kPatch = 2.0f;
-    constexpr float kReach = 96.0f;
+    constexpr float kReach = 128.0f;
     const auto hash = [](int x, int z, uint32_t n)
     {
         uint32_t h = static_cast<uint32_t>(x) * 0x8DA6B343u ^ static_cast<uint32_t>(z) * 0xD8163841u ^ n * 0xCB1AB31Fu;
@@ -1119,7 +1119,7 @@ MeshData SiteMap::CoverAround(const glm::vec3& eye, float detail) const
             // How many of its tufts could be up by the time this is made again -- the eye some metres nearer by then -- as
             // the shader has them (vs_mesh, Material::cover): which of those are, and how far grown, it works out each frame.
             const float near = std::max(distance - 9.0f, 0.0f);
-            const float share = near > 90.0f ? 0.0f : std::clamp(256.0f / std::max(near * near, 1.0f), 0.0f, 1.0f);
+            const float share = near > 122.0f ? 0.0f : std::clamp(256.0f / std::max(near * near, 1.0f), 0.0f, 1.0f);
             const float all = density * kPatch * kPatch;
             for (int i = 0; i < most; ++i)
             {
@@ -1156,6 +1156,10 @@ MeshData SiteMap::CoverAround(const glm::vec3& eye, float detail) const
                     continue;
                 }
                 // Shorter towards where it stops, so it thins out rather than ending in a line.
+                // Wider the further off, and a little taller, standing in for the ones left out there: fewer, but still covering
+                // the ground (the share left falls as the square of the distance; this makes up some of it).
+                const float spread = std::clamp(std::sqrt(std::max(distance, 16.0f) / 16.0f), 1.0f, 2.5f);
+                const float rise = std::sqrt(spread);
                 const float size = (0.3f + 0.35f * hash(px, pz, static_cast<uint32_t>(i * 4 + 2))) * glm::mix(0.4f, 1.0f, glm::smoothstep(cut, cut + 0.3f, wild));
                 const float yaw = hash(px, pz, static_cast<uint32_t>(i * 4 + 3)) * 6.2831853f;
                 const MeshData& tuft = m_tufts[static_cast<size_t>(px * 7 + pz * 13 + i) % m_tufts.size()];
@@ -1165,8 +1169,8 @@ MeshData SiteMap::CoverAround(const glm::vec3& eye, float detail) const
                 const auto channel = [](float v) { return static_cast<uint32_t>(std::clamp(v, 0.0f, 1.0f) * 255.0f + 0.5f); };
                 for (MeshVertex vertex : tuft.vertices)
                 {
-                    const float over = std::max(vertex.position.y * size * 0.9f + 0.04f, 0.0f);
-                    vertex.position = foot + turn * (vertex.position * glm::vec3(size * 1.15f, size * 0.9f, size * 1.15f));
+                    const float over = std::max(vertex.position.y * size * 0.9f * rise + 0.04f, 0.0f);
+                    vertex.position = foot + turn * (vertex.position * glm::vec3(size * 1.15f * spread, size * 0.9f * rise, size * 1.15f * spread));
                     // Lit mostly as the ground under it is, so the grass reads as the ground grown up rather than cards on it.
                     vertex.normal = glm::normalize(glm::mix(turn * vertex.normal, glm::vec3(0.0f, 1.0f, 0.0f), 0.5f));
                     const float shade = static_cast<float>((vertex.color >> 8) & 0xFFu) / 255.0f / std::max(m_coverMaterial.baseColor.g, 0.01f);

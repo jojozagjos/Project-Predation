@@ -888,13 +888,14 @@ MeshData SiteTerrain::WaterMesh() const
 
 glm::vec3 SiteTerrain::Colour(float x, float z, const glm::vec3& normal, const glm::vec3& ground, const glm::vec3& rock, const glm::vec3* grown) const
 {
-    // Grown over where it is the world's own ground, in patches; rock where it is steep. As a share of the brighter of the
+    // Grown over where it is the world's own ground, most of it and more in patches (seen past the tufts, the ground is what
+    // says it is grass); rock where it is steep. As a share of the brighter of the
     // two (the material's colour, Paint), so neither is cut short.
     glm::vec3 soil = ground;
     if (grown != nullptr)
     {
         const float patchy = 0.55f + 0.45f * std::sin(x * 0.13f + std::sin(z * 0.09f) * 2.0f) * std::sin(z * 0.11f + 1.7f);
-        soil = glm::mix(ground, *grown, std::clamp(Wildness(x, z) * 1.6f - 0.3f, 0.0f, 1.0f) * patchy * 0.75f);
+        soil = glm::mix(ground, *grown, std::clamp(Wildness(x, z) * 1.6f - 0.3f, 0.0f, 1.0f) * (0.6f + 0.35f * patchy));
     }
     return glm::mix(soil, rock, Rockiness(normal)) / Paint(ground, rock);
 }

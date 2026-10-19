@@ -54,7 +54,7 @@ void main()
 	{
 		vec3 eye = mul(u_invView, vec4(0.0, 0.0, 0.0, 1.0)).xyz;
 		float far = length(worldPosition.xz - eye.xz);
-		float share = clamp(256.0 / max(far * far, 1.0), 0.0, 1.0) * (1.0 - smoothstep(78.0, 90.0, far));
+		float share = clamp(256.0 / max(far * far, 1.0), 0.0, 1.0) * (1.0 - smoothstep(105.0, 120.0, far));
 		float grown = clamp((share - a_color0.r) / 0.08, 0.0, 1.0);
 		// A little sunk where snow lies, the snow round its foot.
 		worldPosition.y -= u_surfaceWeather.y * 0.1;
