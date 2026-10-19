@@ -114,8 +114,8 @@ From WORLDS_FACILITIES_MISSIONS_PLAN.md W1-W4:
   *done 2026-10-19: ridges with cliff faces, ravines on canyon and mountain worlds, the sea at coasts, one pass each.*
 - ✅ **Landmarks** (W3) -- *done 2026-10-19, natural ones*: arches, spires, buttes, balanced rocks, giant trees, crystal and
   ice towers scattered over the land by the world (in groups where its land makes them), near and far, never on the site,
-  each its own shape. Still to come: a frozen waterfall; and **Your call**: man-made landmarks (a crashed hulk, a derelict
-  mast) say something about who was here, so they wait for your word.
+  each its own shape, and old masts now and then. (Decided 2026-10-19, your pick: crashed hulks come with the wrecks in
+  Phase 5, so any hulk seen can be explored.)
 - **Landform types** (W2) -- *partly: each world's landforms at their own size round the site (ranges, mesas, great
   craters, swells); the rest to come*: mesa country, canyons, crater fields, ice sheets, dune seas, lava plains, pillars and
   sinkholes, glacial valleys, highlands, crystal fields.
@@ -147,8 +147,8 @@ From WORLDS_FACILITIES_MISSIONS_PLAN.md W1-W4:
 - **Every world its own** (you, 2026-10-19: "all planets need to be unique ... lava ... toxic planets") -- *partly done
   2026-10-19*: lava pools on volcanic worlds (crusted, glowing, lighting their banks, burning), acid on toxic ones (wading
   burns), frozen lakes and seas on icy ones (walked on), steam and gas vents, dust devils over deserts, mist in jungle
-  hollows. Still to come: a frozen waterfall, spindrift over ice, lightning-glassed rock on storm worlds, and **Your
-  call**: whether crystal glows at night (the lore's faint bioluminescent signature is close to this).
+  hollows, frozen waterfalls down cliffs, spindrift in the wind. Still to come: lightning-glassed rock on storm worlds.
+  (Decided 2026-10-19, your pick: crystal does not glow; a glow in the dark stays the organisms' sign.)
 - ✅ **Trees and grass over all the land** (you, 2026-10-18: "just around the facility") -- *done 2026-10-18*: woods and
   clearings round the site and out to the horizon, grass over all the ground you can walk on, thinner in the woods.
 - ✅ **Water you can see** (moved up from Phase 12, 2026-10-14, because so much else has to know about it) -- *done
