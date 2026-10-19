@@ -418,6 +418,9 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
         }
     }
 
+    // (Over open ground, in larger cells and not split by height: what lies about over hundreds of metres in cells as small
+    // as a building's would be thousands of meshes -- more than there are buffers for.)
+    builder.BeginBatching(96.0f, true);
     // What lies about on the ground, by the world it is on: in clusters on its own ground, never on what was levelled
     // (SiteScatter). Each shape made once and placed many times, turned and sized in its vertices (a collision mesh is not
     // scaled with its transform), batched with the rest.
@@ -575,6 +578,8 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
         // And its vents, where the world is still alive under it: a crusted mound round each mouth (its plume is the game's to
         // draw, by the clock: Vents::Plumes).
         m_vents = Vents::Plan(seed, m_look.biome, m_plan, m_terrain);
+        m_air = Atmospherics::Make(seed, m_look.biome, m_plan, m_terrain);
+        PRED_LOG_INFO(Gameplay, "Site air: {} dust devils, {} banks of mist, {} vents", m_air.devils.size(), m_air.mist.size(), m_vents.size());
         builder.SetShadows(false);
         for (const Vents::Vent& vent : m_vents)
         {

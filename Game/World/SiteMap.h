@@ -5,6 +5,7 @@
 #include "Engine/Scene/Scene.h"
 #include "Game/World/FacilityMap.h"
 #include "Game/World/Landmark.h"
+#include "Game/World/Atmospherics.h"
 #include "Game/World/Vents.h"
 #include "Game/World/LevelLights.h"
 #include "Game/World/Vehicles.h"
@@ -84,6 +85,7 @@ public:
     const SiteTerrain& Terrain() const { return m_terrain; }
     const std::vector<Landmark::Placed>& Landmarks() const { return m_landmarks; }
     const std::vector<Vents::Vent>& GetVents() const { return m_vents; }
+    const Atmospherics::Plan& Air() const { return m_air; }
     // What its ground is drawn in, and the colour painted on it at a point: for what is laid on the ground to match it (a
     // footprint).
     const Material& GroundMaterial() const { return m_groundMaterial; }
@@ -138,6 +140,8 @@ private:
     std::vector<Landmark::Placed> m_landmarks;
     // Its vents, if its world has any (Vents).
     std::vector<Vents::Vent> m_vents;
+    // What its air does (Atmospherics).
+    Atmospherics::Plan m_air;
     MeshHandle m_waterMesh;
     std::vector<BodyHandle> m_bodies;
     size_t m_firstLight = 0;

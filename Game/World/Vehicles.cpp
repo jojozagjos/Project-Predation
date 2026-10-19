@@ -805,21 +805,36 @@ bool VehicleProp::Build(Scene& scene, MeshLibrary& meshes, PhysicsWorld* physics
             {
                 const glm::mat4 local = m_model->PartMatrixAt(part, nullptr, 0.0f);
                 const glm::mat3 turn(local);
-                const glm::ivec3 cell = glm::ivec3(glm::floor(glm::vec3(local[3]) / 32.0f));
+                const glm::ivec3 cell = glm::ivec3(glm::floor(glm::vec3(local[3]) / 96.0f));
                 const bool shadow = part.emissive <= 0.0f;
+                // Its colour carried on its corners rather than its material, so parts of many colours and one make (the same
+                // set laid on, or none) are drawn as one mesh -- not one each, which a large model would run out of buffers
+                // with. (Not worn paint, whose shading needs the material's own colour; nor a colour too bright to carry.)
+                constexpr float kFold = 3.0f;
+                Material grouped = material;
+                glm::vec3 fold{1.0f};
+                if (material.surfaceWear <= 0.0f && glm::all(glm::lessThanEqual(material.baseColor, glm::vec3(kFold))))
+                {
+                    fold = material.baseColor / kFold;
+                    grouped.baseColor = glm::vec3(kFold);
+                }
                 auto group = std::find_if(gathered.begin(), gathered.end(), [&](const Gathered& g)
-                                          { return g.cell == cell && g.shadow == shadow && SameMaterial(g.material, material); });
+                                          { return g.cell == cell && g.shadow == shadow && SameMaterial(g.material, grouped); });
                 if (group == gathered.end())
                 {
-                    gathered.push_back({material, shadow, cell, MeshData{}});
+                    gathered.push_back({grouped, shadow, cell, MeshData{}});
                     group = gathered.end() - 1;
                 }
                 const MeshData piece = m_model->BuildPartMesh(part);
                 const auto base = static_cast<uint32_t>(group->mesh.vertices.size());
+                const auto channel = [](uint32_t colour, int shift, float by)
+                { return static_cast<uint32_t>(std::clamp(static_cast<float>((colour >> shift) & 0xFFu) * by + 0.5f, 0.0f, 255.0f)) << shift; };
                 for (MeshVertex vertex : piece.vertices)
                 {
                     vertex.position = glm::vec3(local * glm::vec4(vertex.position, 1.0f));
                     vertex.normal = glm::normalize(turn * vertex.normal);
+                    vertex.color = channel(vertex.color, 0, fold.r) | channel(vertex.color, 8, fold.g) | channel(vertex.color, 16, fold.b) |
+                                   (vertex.color & 0xFF000000u);
                     group->mesh.vertices.push_back(vertex);
                 }
                 for (const uint32_t index : piece.indices)

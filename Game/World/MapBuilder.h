@@ -51,7 +51,13 @@ public:
     // Lamps are found per pixel now (SceneRenderer::SetClusterCamera), so how a level is cut up no longer
     // decides how it is lit, and a building drawn as a few hundred things rather than several thousand is
     // most of the difference between thirty frames a second and a hundred.
-    void BeginBatching(float cellSize = 16.0f) { m_batchCell = cellSize; }
+    // `flat`: cells all the way up and down (no split by height) -- for what lies over open ground, where a hill would
+    // otherwise cut a cell's batch in two. May be called again partway, to batch what follows in other cells.
+    void BeginBatching(float cellSize = 16.0f, bool flat = false)
+    {
+        m_batchCell = cellSize;
+        m_batchFlat = flat;
+    }
     // Uploads what has been batched and puts it in the scene. Called by the destructor if not before.
     void FlushBatches()
     {
@@ -223,6 +229,7 @@ private:
         std::string name;
         Material material;
         glm::ivec3 cell{0};
+        float cellSize = 0.0f;
         MeshData mesh;
         bool shadows = true;
     };
@@ -241,11 +248,11 @@ private:
     void AddToBatch(const std::string& name, const MeshData& data, const glm::mat4& transform, const glm::vec3& at,
                     const Material& material)
     {
-        const glm::ivec3 cell{static_cast<int>(std::floor(at.x / m_batchCell)), static_cast<int>(std::floor(at.y / m_batchCell)),
+        const glm::ivec3 cell{static_cast<int>(std::floor(at.x / m_batchCell)), m_batchFlat ? 0 : static_cast<int>(std::floor(at.y / m_batchCell)),
                               static_cast<int>(std::floor(at.z / m_batchCell))};
         for (Batch& batch : m_batches)
         {
-            if (batch.cell == cell && batch.shadows == m_shadows && SameMaterial(batch.material, material))
+            if (batch.cell == cell && batch.cellSize == m_batchCell && batch.shadows == m_shadows && SameMaterial(batch.material, material))
             {
                 batch.mesh.Append(data, transform);
                 return;
@@ -255,6 +262,7 @@ private:
         batch.name = name;
         batch.material = material;
         batch.cell = cell;
+        batch.cellSize = m_batchCell;
         batch.shadows = m_shadows;
         batch.mesh.Append(data, transform);
         m_batches.push_back(std::move(batch));
@@ -313,6 +321,7 @@ private:
     size_t m_boxCount = 0;
     std::string m_prefix;
     float m_batchCell = 0.0f;
+    bool m_batchFlat = false;
     uint32_t m_overlapGroup = 0;
     bool m_shadows = true;
     std::vector<Batch> m_batches;
