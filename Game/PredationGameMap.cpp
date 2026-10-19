@@ -1332,6 +1332,28 @@ void PredationGame::SetSkyOver(const StarSystem& system, const Body& body, int r
     }
     nightLight = std::min(nightLight, 0.5f) * (1.0f - 0.7f * body.clouds);
 
+    // And the ship, in orbit of this world: a point of sunlit light going over, as a satellite is -- brighter the nearer it
+    // is (the orbit is so many of the world's radii up, so over a small moon it is close), seen once the sky is dark enough
+    // for the stars.
+    if (discs < Environment::kSkyBodies && m_campaign.body == body.index && !m_campaign.travel.underway && !m_campaign.landed)
+    {
+        glm::vec3 out;
+        glm::vec3 along;
+        Travel::OrbitFrame(m_campaign, system, body.index, clock, out, along);
+        const float orbitUp = Travel::OrbitRadius(body) / (std::max(body.radius, 0.02f) * kEarthRadiusAu);
+        const glm::vec3 apart = system.Over(body.index, out, clock) * orbitUp - up;
+        const glm::vec3 way = overHere(apart);
+        if (way.y > 0.0f)
+        {
+            // Its distance in kilometres: the world's radius (6371 km an Earth radius) times how far off it is in them.
+            const float distance = glm::length(apart) * std::max(body.radius, 0.02f) * 6371.0f;
+            const float bright = std::clamp(1500.0f / std::max(distance, 1.0f), 0.25f, 2.0f);
+            environment.skyBodies[discs * 2] = glm::vec4(way * bright, 1.0e-6f);
+            environment.skyBodies[discs * 2 + 1] = glm::vec4(0.9f, 0.92f, 0.95f, 0.0f);
+            ++discs;
+        }
+    }
+
     // The light on the ground: the star by day; by night what is up; between, the one fading into the other as the light
     // swings from the one to the other. The sky still draws its star where it is.
     const float sunUp = glm::smoothstep(-0.1f, 0.12f, height);

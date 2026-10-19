@@ -308,7 +308,23 @@ void main()
 			{
 				vec3 bodyNormal = (ray * (bodyAlong - sqrt(bodyHit)) - toBody) / bodyRadius;
 				float bodyLit = dot(bodyNormal, towardsLight);
-				vec3 shade = look.rgb * (smoothstep(-0.08, 0.35, bodyLit) * u_skySunColor.w * 1.8 + 0.01);
+				// Not a flat disc: a world's face -- mottled ground, and on one without air darker plains across it; on one with
+				// air, soft swirls of cloud -- its own by its colour (the same each time it is seen), darker towards its rim.
+				float seed = dot(look.rgb, vec3(17.3, 31.7, 7.9));
+				float mottle = SkyFbm(bodyNormal * 3.5 + vec3_splat(seed));
+				float fine = SkyFbm(bodyNormal * 11.0 + vec3_splat(seed * 1.7));
+				vec3 albedo = look.rgb * (0.78 + 0.5 * (mottle - 0.5) + 0.25 * (fine - 0.5));
+				if (look.w < 0.05)
+				{
+					albedo *= mix(0.6, 1.0, smoothstep(0.42, 0.58, SkyFbm(bodyNormal * 2.2 + vec3_splat(seed * 3.1))));
+				}
+				else
+				{
+					float swirl = SkyFbm(vec3(bodyNormal.x * 4.0, bodyNormal.y * 9.0, bodyNormal.z * 4.0) + vec3_splat(seed * 0.7));
+					albedo = mix(albedo, vec3_splat(0.92), smoothstep(0.55, 0.75, swirl) * min(look.w * 2.0, 0.7));
+				}
+				albedo *= 0.65 + 0.35 * max(dot(bodyNormal, -ray), 0.0);
+				vec3 shade = albedo * (smoothstep(-0.08, 0.35, bodyLit) * u_skySunColor.w * 1.8 + 0.01);
 				shade += vec3(0.4, 0.6, 1.0) * look.w * pow(1.0 - max(dot(bodyNormal, -ray), 0.0), 3.0) * smoothstep(-0.2, 0.3, bodyLit);
 				color = color * (1.0 - inSpace) + shade * max(u_skySpace.w, 0.0) * transmit;
 				starsShow = 0.0;
