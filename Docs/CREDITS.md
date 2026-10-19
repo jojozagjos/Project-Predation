@@ -47,7 +47,7 @@ high-quality preview; made mono 48 kHz, cut, levelled, and the loops crossfaded 
 | **kyles, "rain light on tin roof soft.flac"** (freesound.org/people/kyles/sounds/451152) | `rain_roof` |
 | **conleec, "AMB_Int_Rain_Auto_001.wav"** (freesound.org/people/conleec/sounds/149244) | `rain_cabin` |
 | **dhallcomposer, "Looping Gentle Wind Ambience on an Open Desert Plain.wav"** (freesound.org/people/dhallcomposer/sounds/697217) | `wind` |
-| **jpnien, "Wind strong JPN.wav"** (freesound.org/people/jpnien/sounds/97397) | `gale` |
+| **keirofinch, "Strong Wind Recorded with Soundfield Microphone Manchester 2"** (freesound.org/people/keirofinch/sounds/376534) | `gale` |
 | **craigsmith, "G56-22-Sandstorm.wav"** (freesound.org/people/craigsmith/sounds/438877) | `sandstorm` |
 | **cobratronik, "Wind__Artic__Cold.wav"** (freesound.org/people/cobratronik/sounds/117136) | `blizzard` |
 | **klangfabrik, "winter wind 01c.aiff"** (freesound.org/people/klangfabrik/sounds/117513) | `blizzard` |
