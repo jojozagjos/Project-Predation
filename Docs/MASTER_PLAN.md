@@ -147,7 +147,11 @@ From WORLDS_FACILITIES_MISSIONS_PLAN.md W1-W4:
 - **Every world its own** (you, 2026-10-19: "all planets need to be unique ... lava ... toxic planets") -- *partly done
   2026-10-19*: lava pools on volcanic worlds (crusted, glowing, lighting their banks, burning), acid on toxic ones (wading
   burns), frozen lakes and seas on icy ones (walked on), steam and gas vents, dust devils over deserts, mist in jungle
-  hollows, frozen waterfalls down cliffs, spindrift in the wind. Still to come: lightning-glassed rock on storm worlds.
+  hollows, frozen waterfalls down cliffs, spindrift in the wind, lightning glass on storm worlds.
+- ✅ **Signs of the organism beyond the creatures** (you, 2026-10-19; rare, faint early and plainer later, kinds my pick) --
+  *first pass done*: root-like branching rock formations, glossy growths round the plain ones, one shared rhythm (a faint
+  glow, lamps dipping) the same on every world. Their colours, how common, how far out they are plainest and the rhythm's
+  timing are data (universe.json `signs`) for you to set when the story is written. Old human finds wait for the records.
   (Decided 2026-10-19, your pick: crystal does not glow; a glow in the dark stays the organisms' sign.)
 - ✅ **Trees and grass over all the land** (you, 2026-10-18: "just around the facility") -- *done 2026-10-18*: woods and
   clearings round the site and out to the horizon, grass over all the ground you can walk on, thinner in the woods.
@@ -477,6 +481,8 @@ lakes on cold worlds, recorded water sounds in place of the made ones.
 | Outposts: terrain, big, a pad for the grown ship, buildings that connect, fitted to the world, air | Phase 2, the outpost rework |
 | Landmarks right by the facility; the same landmark everywhere | ✅ Done (scattered over the land near and far; each its own shape) |
 | Every planet unique; lava; things on toxic worlds | Partly done (lava, acid, ice, vents, dust devils, mist); more per world to come |
+| Signs of the organism besides the creatures | ✅ First pass (rare formations, growths, one shared rhythm; tunable in universe.json) |
+| Everything synced in multiplayer | ✅ Checked: all of the world comes from the site seed, the shared place and the shared clock; burns dealt by the host; the site test commands are solo-only |
 | Ending and tutorial | Phase 17, last |
 
 ---
