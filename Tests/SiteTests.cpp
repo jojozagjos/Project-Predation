@@ -3,6 +3,7 @@
 #include "Engine/Render/Mesh.h"
 #include "Engine/Scene/Scene.h"
 #include "Game/World/FacilityMap.h"
+#include "Game/World/Landmark.h"
 #include "Game/World/SiteMap.h"
 #include "Game/World/SitePlan.h"
 #include "Game/World/SiteScatter.h"
@@ -692,4 +693,33 @@ TEST_CASE("Trees grow in woods with clearings, round the site and out to the hor
     CHECK(terrain.GroundHeight(corner.x + 50.0f, corner.y + 50.0f) == terrain.Height(corner.x + 50.0f, corner.y + 50.0f));
     const float z = corner.y + terrain.Extent() * 0.5f;
     CHECK(std::abs(terrain.GroundHeight(corner.x + 0.5f, z) - terrain.GroundHeight(corner.x - 0.5f, z)) < 1.5f);
+}
+
+TEST_CASE("Landmarks stand out on the land, never on the site, each its own shape", "[site][landmark]")
+{
+    const SitePlan plan = SitePlan::Generate(SitePlan::SeedFor(5, SitePlan::SiteKind::Facility));
+    SiteTerrain terrain;
+    terrain.Plan(plan, SiteTerrain::Shape::Flat, false);
+    const std::vector<Landmark::Placed> desert = Landmark::Scatter(plan.seed, "desert", SiteTerrain::Shape::Flat, plan, terrain);
+    REQUIRE_FALSE(desert.empty());
+    const glm::vec2 middle{plan.origin.x + plan.size * 0.5f, plan.origin.z + plan.size * 0.5f};
+    for (const Landmark::Placed& landmark : desert)
+    {
+        // Out on the land, well past where anybody may go.
+        CHECK(glm::distance(glm::vec2(landmark.at.x, landmark.at.z), middle) > plan.size * 0.5f + SiteTerrain::kRoam + 200.0f);
+        CHECK(landmark.size > 20.0f);
+    }
+    // The same from the same seed; no two of a kind the same shape.
+    const std::vector<Landmark::Placed> again = Landmark::Scatter(plan.seed, "desert", SiteTerrain::Shape::Flat, plan, terrain);
+    REQUIRE(again.size() == desert.size());
+    for (size_t i = 0; i < desert.size(); ++i)
+    {
+        CHECK(again[i].at == desert[i].at);
+        for (size_t j = i + 1; j < desert.size(); ++j)
+        {
+            CHECK(desert[i].seed != desert[j].seed);
+        }
+    }
+    const MeshData shape = Landmark::Shape(desert.front());
+    CHECK_FALSE(shape.indices.empty());
 }

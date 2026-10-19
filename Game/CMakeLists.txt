@@ -123,6 +123,8 @@ set(PRED_GAME_SOURCES
     World/SiteMap.h
     World/SiteMap.cpp
     World/SiteScatter.cpp
+    World/Landmark.h
+    World/Landmark.cpp
     World/Foliage.cpp
     World/Cargo.h
     World/Cargo.cpp

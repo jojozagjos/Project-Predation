@@ -54,7 +54,9 @@ inline constexpr int kVariants = 4;
 inline constexpr float kTreeReach = 200.0f;
 
 // What lies on a site of this world (the biome's id: universe.json), and where.
-std::vector<Item> Plan(uint32_t seed, const std::string& biome, const SitePlan& plan, const SiteTerrain& terrain);
+// `clearings`: (x, z, radius) of ground kept clear, round the landmarks.
+std::vector<Item> Plan(uint32_t seed, const std::string& biome, const SitePlan& plan, const SiteTerrain& terrain,
+                       const std::vector<glm::vec3>& clearings = {});
 
 // A kind's shape, about a metre across (a tree or a spire a metre tall), its foot at the origin, faceted; what grows painted
 // `growth` (on its vertices: a tree's bark is painted its own), the rest white, for its material to colour.
@@ -69,7 +71,8 @@ float Woodland(uint32_t seed, const std::string& biome, float x, float z);
 
 // The trees of the land round the site past kTreeReach (Plan has those nearer), out to where one is a pixel: each a crown of
 // a few faces, painted `growth`, and a trunk -- drawn only, nothing to walk into.
-MeshData FarTrees(uint32_t seed, const std::string& biome, const SitePlan& plan, const SiteTerrain& terrain, const glm::vec3& growth);
+MeshData FarTrees(uint32_t seed, const std::string& biome, const SitePlan& plan, const SiteTerrain& terrain, const glm::vec3& growth,
+                  const std::vector<glm::vec3>& clearings = {});
 
 // Whether one of a kind is solid at this size (a boulder you walk round; grass you walk through).
 bool Solid(Kind kind, const glm::vec3& scale);

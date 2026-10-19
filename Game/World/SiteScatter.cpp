@@ -462,9 +462,22 @@ bool TreeGround(const SiteTerrain& terrain, float x, float z, float up)
     return terrain.WaterDepth(x, z) < -1.2f && up >= 0.85f;
 }
 
+// Whether a place is in a landmark's clearing.
+bool Cleared(const std::vector<glm::vec3>& clearings, const glm::vec2& at)
+{
+    for (const glm::vec3& clearing : clearings)
+    {
+        if (glm::distance(at, glm::vec2(clearing.x, clearing.y)) < clearing.z)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 } // namespace
 
-std::vector<Item> Plan(uint32_t seed, const std::string& biome, const SitePlan& plan, const SiteTerrain& terrain)
+std::vector<Item> Plan(uint32_t seed, const std::string& biome, const SitePlan& plan, const SiteTerrain& terrain, const std::vector<glm::vec3>& clearings)
 {
     std::vector<Item> items;
     Random random((static_cast<uint64_t>(seed) << 17) ^ 0x5CA77E2ull);
@@ -474,8 +487,13 @@ std::vector<Item> Plan(uint32_t seed, const std::string& biome, const SitePlan& 
     const glm::vec2 low{plan.origin.x - reach, plan.origin.z - reach};
     const float side = plan.size + reach * 2.0f;
     const float hectares = side * side / 10000.0f;
+    // (Whether it was placed: never in the clearing round a landmark.)
     const auto place = [&](Kind kind, const glm::vec2& at)
     {
+        if (Cleared(clearings, at))
+        {
+            return false;
+        }
         Item item;
         item.kind = kind;
         item.variant = random.Int(0, kVariants - 1);
@@ -492,6 +510,7 @@ std::vector<Item> Plan(uint32_t seed, const std::string& biome, const SitePlan& 
         const float sink = kind == Kind::Boulder ? item.scale.y * 0.18f : 0.08f;
         item.at = {at.x, under - sink, at.y};
         items.push_back(item);
+        return true;
     };
     // Trees in woods, close together, with clearings between (Woodland): one a spot some metres apart, more or less, where
     // the woods are -- and fewer at their edges -- on dry ground they could stand on; out past the height field, as far as
@@ -511,7 +530,10 @@ std::vector<Item> Plan(uint32_t seed, const std::string& biome, const SitePlan& 
                 {
                     continue;
                 }
-                place(Kind::Tree, at);
+                if (!place(Kind::Tree, at))
+                {
+                    continue;
+                }
                 // Broadleaf or conifer by the world's share of them (the shapes alternate).
                 items.back().variant = (random.Int(0, 1) * 2) + (random.Chance(woods.broadleaf) ? 0 : 1);
             }
@@ -811,7 +833,8 @@ bool Solid(Kind kind, const glm::vec3& scale)
     }
 }
 
-MeshData FarTrees(uint32_t seed, const std::string& biome, const SitePlan& plan, const SiteTerrain& terrain, const glm::vec3& growth)
+MeshData FarTrees(uint32_t seed, const std::string& biome, const SitePlan& plan, const SiteTerrain& terrain, const glm::vec3& growth,
+                  const std::vector<glm::vec3>& clearings)
 {
     const glm::vec3 middle{plan.origin.x + plan.size * 0.5f, plan.origin.y, plan.origin.z + plan.size * 0.5f};
     const float nearest = plan.size * 0.5f + kTreeReach;
@@ -967,7 +990,7 @@ MeshData FarTrees(uint32_t seed, const std::string& biome, const SitePlan& plan,
                 const bool broadleaf = random.Chance(woods.broadleaf);
                 const float chance = random.Unit();
                 const float out = std::max(std::abs(x - middle.x), std::abs(z - middle.z));
-                if (out < from || out < nearest)
+                if (out < from || out < nearest || Cleared(clearings, glm::vec2(x, z)))
                 {
                     continue;
                 }

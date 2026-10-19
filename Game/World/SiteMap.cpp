@@ -387,7 +387,14 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
     // (SiteScatter). Each shape made once and placed many times, turned and sized in its vertices (a collision mesh is not
     // scaled with its transform), batched with the rest.
     {
-        const std::vector<SiteScatter::Item> scattered = SiteScatter::Plan(seed, m_look.biome, m_plan, m_terrain);
+        // The landmarks first, so nothing grows or lies where they stand.
+        m_landmarks = Landmark::Scatter(seed, m_look.biome, m_look.terrain, m_plan, m_terrain);
+        std::vector<glm::vec3> clearings;
+        for (const Landmark::Placed& landmark : m_landmarks)
+        {
+            clearings.emplace_back(landmark.at.x, landmark.at.z, landmark.radius);
+        }
+        const std::vector<SiteScatter::Item> scattered = SiteScatter::Plan(seed, m_look.biome, m_plan, m_terrain, clearings);
         const bool lush = m_look.biome == "jungle";
         const glm::vec3 growth = glm::mix(m_look.ground, lush ? glm::vec3(0.12f, 0.3f, 0.08f) : glm::vec3(0.2f, 0.34f, 0.12f), 0.65f);
         // Whether things grow here, so moss does on its rocks and leaves lie under its trees.
@@ -478,7 +485,7 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
         // And the trees of the land round it, past the height field, to the horizon (SiteScatter::FarTrees): drawn however far
         // off, nothing to walk into, no shadow worth its cost at that distance.
         {
-            const MeshData far = SiteScatter::FarTrees(seed, m_look.biome, m_plan, m_terrain, growth * 0.5f);
+            const MeshData far = SiteScatter::FarTrees(seed, m_look.biome, m_plan, m_terrain, growth * 0.5f, clearings);
             if (!far.indices.empty())
             {
                 const MeshHandle mesh = meshes.Upload(far, "site_far_trees");
@@ -493,6 +500,41 @@ void SiteMap::Build(uint16_t seed, Scene& scene, MeshLibrary& meshes, PhysicsWor
                 m_entities.push_back(entity);
                 m_farTrees = entity;
                 PRED_LOG_INFO(Gameplay, "Site trees: {} near, {} far vertices", std::count_if(scattered.begin(), scattered.end(), [](const SiteScatter::Item& item) { return item.kind == SiteScatter::Kind::Tree; }), far.vertices.size());
+            }
+        }
+        // And the landmarks: rock in the world's own rock, ice and crystal in theirs, a giant tree from a tree's own shapes, each
+        // its own shape. Drawn however far off -- throwing their shadows where they are near enough for it to show -- and
+        // nothing to walk into, out past where anybody may go.
+        {
+            const glm::vec2 middle{m_plan.origin.x + m_plan.size * 0.5f, m_plan.origin.z + m_plan.size * 0.5f};
+            for (const Landmark::Placed& landmark : m_landmarks)
+            {
+                builder.SetShadows(glm::distance(glm::vec2(landmark.at.x, landmark.at.z), middle) < 1300.0f);
+                if (landmark.kind == Landmark::Kind::GreatTree)
+                {
+                    const glm::vec3 scale(landmark.size);
+                    const glm::quat turn = glm::angleAxis(landmark.yaw, glm::vec3(0.0f, 1.0f, 0.0f));
+                    const int variant = static_cast<int>(landmark.seed % 2u) * 2;
+                    MeshData trunk = SiteScatter::Shape(SiteScatter::Kind::Tree, variant, landmark.seed, growth);
+                    MeshData crown = SiteScatter::Leaves(SiteScatter::Kind::Tree, variant, landmark.seed, growth);
+                    for (MeshData* part : {&trunk, &crown})
+                    {
+                        for (MeshVertex& vertex : part->vertices)
+                        {
+                            vertex.position = turn * (vertex.position * scale);
+                            vertex.normal = glm::normalize(turn * vertex.normal);
+                        }
+                    }
+                    builder.AddMesh("site_landmark", Transform{landmark.at - glm::vec3(0.0f, 0.5f, 0.0f)}, trunk, wood, false);
+                    builder.AddMesh("site_landmark_leaves", Transform{landmark.at - glm::vec3(0.0f, 0.5f, 0.0f)}, crown, leaves, false);
+                }
+                else
+                {
+                    const Material& stone = landmark.kind == Landmark::Kind::IceTower ? ice : landmark.kind == Landmark::Kind::Crystals ? crystal : rockMaterial;
+                    builder.AddMesh("site_landmark", Transform{}, Landmark::Shape(landmark), stone, false);
+                }
+                PRED_LOG_INFO(Gameplay, "Site landmark: {} {:.0f} m at {:.0f} {:.0f} {:.0f}", Landmark::Name(landmark.kind), landmark.size, landmark.at.x,
+                              landmark.at.y, landmark.at.z);
             }
         }
         // Leaves fallen under the trees, lying flat on the ground round each trunk as far out as its crown, dried brown and

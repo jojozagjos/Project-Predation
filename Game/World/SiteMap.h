@@ -4,6 +4,7 @@
 #include "Engine/Render/Material.h"
 #include "Engine/Scene/Scene.h"
 #include "Game/World/FacilityMap.h"
+#include "Game/World/Landmark.h"
 #include "Game/World/LevelLights.h"
 #include "Game/World/Vehicles.h"
 #include "Game/World/SitePlan.h"
@@ -71,6 +72,7 @@ public:
     uint16_t Seed() const { return m_seed; }
     const SitePlan& Plan() const { return m_plan; }
     const SiteTerrain& Terrain() const { return m_terrain; }
+    const std::vector<Landmark::Placed>& Landmarks() const { return m_landmarks; }
     // What its ground is drawn in, and the colour painted on it at a point: for what is laid on the ground to match it (a
     // footprint).
     const Material& GroundMaterial() const { return m_groundMaterial; }
@@ -121,6 +123,8 @@ private:
     MeshLibrary* m_meshLibrary = nullptr;
     Entity m_farLand;
     Entity m_farTrees;
+    // The landmarks of the land round it (Landmark).
+    std::vector<Landmark::Placed> m_landmarks;
     MeshHandle m_waterMesh;
     std::vector<BodyHandle> m_bodies;
     size_t m_firstLight = 0;
