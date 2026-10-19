@@ -197,3 +197,28 @@ TEST_CASE("A lamp kept ready is made another where it is wanted, and put out whe
     lights.Gather(lit);
     CHECK(lit.size() == 1);
 }
+
+TEST_CASE("A failing lamp dark for the moment is still gathered, giving no light, so it keeps its shadow", "[lights]")
+{
+    Scene scene;
+    MeshLibrary meshes;
+    meshes.SetHeadless(true);
+    LevelLights lights;
+    lights.Add(scene, meshes, LightKind::Ceiling, LightMood::Failing, {0.0f, 3.0f, 0.0f}, {0.0f, -1.0f, 0.0f}, 1);
+    // A moment when it is out (a failing lamp is dark for seconds at a time).
+    float when = -1.0f;
+    for (float t = 0.0f; t < 60.0f && when < 0.0f; t += 0.05f)
+    {
+        lights.Update(scene, t);
+        if (lights.Lights()[0].level <= 0.0f)
+        {
+            when = t;
+        }
+    }
+    REQUIRE(when >= 0.0f);
+    std::vector<PunctualLight> lit;
+    lights.Gather(lit);
+    REQUIRE(lit.size() == 1);
+    CHECK(lit[0].intensity == 0.0f);
+    CHECK(lit[0].shadowKey != 0u);
+}
