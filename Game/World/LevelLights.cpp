@@ -415,7 +415,11 @@ void LevelLights::Gather(std::vector<PunctualLight>& out) const
 {
     for (const Light& light : m_lights)
     {
-        if (light.level * light.gate <= 0.01f)
+        // Dark for the moment, a lamp of its own is still gathered, giving no light: so it keeps its shadow (LampShadows), and
+        // does not come back on without one. Left out, a failing lamp gave its shadow's slot away each time it went dark and
+        // came back lit as if nothing stood in its way -- through a shut door -- until its shadow was drawn again.
+        const bool ownShadow = light.parent < 0 && !light.moving;
+        if (light.level * light.gate <= 0.01f && !ownShadow)
         {
             continue;
         }

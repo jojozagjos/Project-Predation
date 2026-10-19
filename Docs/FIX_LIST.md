@@ -69,11 +69,12 @@ Status: **Open**, **Doing**, **Done** (commit), **Planned** (a bigger piece that
 
 | # | You said | What is behind it | Status |
 |---|---|---|---|
-| 28 | The light through a door: the door was shut | A lamp beyond it losing its shadow for a moment (its slot taken when it flickered dark), lit the old way meanwhile, through the door | Open |
+| 28 | The light through a door: the door was shut | A failing lamp beyond it was left out while dark, gave its shadow away, and came back lit with nothing in its way, through the door, until its shadow was drawn again. Dark, it now keeps its shadow | Done (check) |
 | 29 | Footprints still look bad from the side | Each print is still a card a few millimetres over the ground; seen low, its edges show | Open |
 | 30 | Snow worlds: the frozen falls clip into things and look bad | The icefall landmark: a flat sheet laid down a cliff, its own texture, through the rock | Open |
 | 31 | The organism's signs had missing faces | Some of the branches' faces wound the wrong way or degenerate: a blade sticking out | Open |
 | 32 | A lag spike choosing where to land on the map | Something built on the spot when a landing area is picked | Open |
-| 33 | On a moon with no air, wind should not be heard | The wind sound plays whatever the air | Open |
+| 33 | On a moon with no air, wind should not be heard | Right. Out on a world without air there is now no wind and the ears are in vacuum; inside its buildings and the shuttle, which have air, sound carries but no wind is heard through the walls | Done |
 | 34 | Should the organism's signs move or breathe; more kinds of them? | Yours to decide (it is the organism): ideas to choose from | Asked |
 | 35 | Huge landscapes, but on the ground you hardly ever see them | Yours to decide how: ideas to choose from | Asked |
+| 36 | A ringed planet in the sky looked wrong (smeared bands on one side) | From a moon near a big planet its rings reached past the eye: half behind it, the rest smeared. Kept within reach now, a wide ring round it | Done (check) |

@@ -265,9 +265,14 @@ void main()
 				{
 					vec3 at = ray * t;
 					float r = length(at - toPlanet) / radius;
-					if (r > u_skyRings.x && r < u_skyRings.y)
+					// No further out than most of the way to the eye: a planet as near as a moon's is big on the sky, and rings
+					// two and more of its radii across reached past the eye -- half of them behind it, the rest smeared out
+					// across the sky in bands. Drawn smaller, they are still a wide ring round it.
+					float outer = min(u_skyRings.y, 0.8 / max(radius, 0.001));
+					float inner = u_skyRings.x * outer / max(u_skyRings.y, 0.001);
+					if (r > inner && r < outer)
 					{
-						float across = (r - u_skyRings.x) / max(u_skyRings.y - u_skyRings.x, 0.001);
+						float across = (r - inner) / max(outer - inner, 0.001);
 						float bands = SkyFbm(vec3(across * 38.0, u_planetE.w, 0.5));
 						float gaps = smoothstep(0.2, 0.3, abs(fract(across * 3.1 + 0.37) - 0.5) * 2.0);
 						float alpha = smoothstep(0.0, 0.05, across) * smoothstep(1.0, 0.94, across) * (0.3 + 0.65 * bands) * mix(0.35, 1.0, gaps);

@@ -710,13 +710,15 @@ void PredationGame::UpdateAmbience(float dt)
         }
     }
     const float outside = (1.0f - under) + (0.05f + 0.07f * roofOver) * under;
-    // Aboard in space there is no air outside the hull to blow or carry anything; with the ears outside it, nothing at all.
-    const float air = m_map == MapChoice::Ship && !(m_campaignOpen && m_campaign.landed) ? 0.0f : 1.0f;
+    // Aboard in space there is no air outside the hull to blow or carry anything; with the ears outside it, nothing at all. Nor
+    // out on a world without air -- a moon, a rock -- though inside its buildings and the shuttle, which are kept full of it.
+    const bool airless = m_map == MapChoice::Facility && m_facility.Built() && !PlaceConditions(m_facility.Plan().sky.fogEnd).air;
+    const float air = (m_map == MapChoice::Ship && !(m_campaignOpen && m_campaign.landed)) || (airless && under < 0.5f) ? 0.0f : 1.0f;
     m_earInVacuum = air < 0.5f && m_zoneIndoor < 0.5f;
     const float targets[kAmbienceLoops] = {
         m_zoneIndoor * (1.0f - m_zoneTight) * (1.0f - 0.6f * m_zoneNest) * (1.0f - cabin), // the room (not the shuttle's cabin)
         m_zoneIndoor * (1.0f - m_zoneTight) * 0.8f * (1.0f - cabin) + 0.1f * (1.0f - under) * air, // air in the ducts, faint outside
-        ((1.0f - under) + 0.04f * under) * windiness * air,                   // wind, a breath of it indoors; as hard as it blows
+        ((1.0f - under) + 0.04f * under) * windiness * air * (airless ? 0.0f : 1.0f), // wind, a breath of it indoors; as hard as it blows; none without air
         m_zoneTight,                                                          // inside the vent itself
         m_zoneNest,                                                           // the nest
         rain * (1.0f - heavy) * outside,                                      // rain
