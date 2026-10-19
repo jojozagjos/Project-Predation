@@ -432,6 +432,107 @@ void PredationGame::RegisterCampaignCommands()
                             [this](const std::vector<std::string>& args) { m_siteTerrainPreview = args.size() >= 2 && args[1] != "none" ? args[1] : std::string(); });
     console.RegisterCommand("site_biome", "Build the next site as on another biome: what lies on its ground, its ground and rock: site_biome <id> (universe.json), none for the world's own",
                             [this](const std::vector<std::string>& args) { m_siteBiomePreview = args.size() >= 2 && args[1] != "none" ? args[1] : std::string(); });
+    console.RegisterCommand("site_water", "Build the next site with this water rather than its world's: site_water <none|lakes|coast|island>, world for the world's own",
+                            [this](const std::vector<std::string>& args) { m_siteWaterPreview = args.size() >= 2 && args[1] != "world" ? args[1] : std::string(); });
+    // Straight to a new site of any kind, from anywhere (the title screen too): no world to find first.
+    console.RegisterCommand(
+        "test_site",
+        "Go straight to a new site of any kind, no world needed: test_site <biome> [flat|rolling|mountainous|canyons|cratered|dunes|islands|any] "
+        "[none|lakes|coast|island|any] [seed]",
+        [this](const std::vector<std::string>& args)
+        {
+            std::string biomes;
+            for (const BiomeDef& biome : m_universeData.biomes)
+            {
+                if (!biome.surface.empty())
+                {
+                    biomes += (biomes.empty() ? "" : " ") + biome.id;
+                }
+            }
+            if (args.size() < 2 || m_universeData.Biome(args[1]) == nullptr)
+            {
+                m_app->GetConsole().PrintError("Usage: test_site <biome> [ground] [water] [seed]. Biomes: " + biomes);
+                return;
+            }
+            if (m_screen == Screen::Playing && !IsAuthority())
+            {
+                m_app->GetConsole().PrintError("Only the host can change the site.");
+                return;
+            }
+            m_siteBiomePreview = args[1];
+            m_siteTerrainPreview = args.size() >= 3 && args[2] != "any" ? args[2] : std::string();
+            m_siteWaterPreview = args.size() >= 4 && args[3] != "any" ? args[3] : std::string();
+            // A new site each time unless a seed is given, so the same command again shows another.
+            const auto seed = static_cast<uint16_t>(args.size() >= 5 ? std::clamp(std::atoi(args[4].c_str()), 1, 65535)
+                                                                     : 1 + std::chrono::steady_clock::now().time_since_epoch().count() % 65535);
+            if (m_screen == Screen::Title)
+            {
+                StopSession();
+                EnterWorld();
+            }
+            // With no campaign open, a world to stand on all the same -- its sun, its sky and its weather, its clock -- kept
+            // in memory only (no folder: nothing is saved, nothing left in the list), and the site at midday on it.
+            const bool scratch = !m_campaignOpen;
+            if (scratch)
+            {
+                const uint64_t world = 0x5173u;
+                m_universe.Reset(world, &m_universeData);
+                m_campaign = CampaignState::Begin("Site test", world, m_universe);
+                m_campaignFolder.clear();
+                m_campaignOpen = true;
+            }
+            ChangeFacility(seed);
+            GoToMap(MapChoice::Facility);
+            if (scratch)
+            {
+                m_app->GetConsole().Execute("day_hour 11");
+            }
+            m_app->GetConsole().Print("Site " + std::to_string(seed) + ": " + args[1] + (m_siteTerrainPreview.empty() ? "" : ", " + m_siteTerrainPreview) +
+                                      (m_siteWaterPreview.empty() ? "" : ", water " + m_siteWaterPreview) +
+                                      ". site_weather and day_hour set the weather and the time; test_site again for another.");
+        });
+    // What each of them can be, offered under the console's input as it is typed.
+    {
+        const auto biomes = [this]
+        {
+            std::vector<std::string> ids;
+            for (const BiomeDef& biome : m_universeData.biomes)
+            {
+                if (!biome.surface.empty())
+                {
+                    ids.push_back(biome.id);
+                }
+            }
+            return ids;
+        };
+        const std::vector<std::string> grounds{"flat", "rolling", "mountainous", "canyons", "cratered", "dunes", "islands"};
+        const std::vector<std::string> waters{"none", "lakes", "coast", "island"};
+        const auto with = [](std::vector<std::string> values, const char* extra)
+        {
+            values.emplace_back(extra);
+            return values;
+        };
+        console.SetCompleter("test_site",
+                             [=](size_t argument)
+                             {
+                                 return argument == 1   ? biomes()
+                                        : argument == 2 ? with(grounds, "any")
+                                        : argument == 3 ? with(waters, "any")
+                                                        : std::vector<std::string>{};
+                             });
+        console.SetCompleter("site_biome", [=](size_t argument) { return argument == 1 ? with(biomes(), "none") : std::vector<std::string>{}; });
+        console.SetCompleter("site_terrain", [=](size_t argument) { return argument == 1 ? with(grounds, "none") : std::vector<std::string>{}; });
+        console.SetCompleter("site_water", [=](size_t argument) { return argument == 1 ? with(waters, "world") : std::vector<std::string>{}; });
+        console.SetCompleter("site_weather",
+                             [](size_t argument)
+                             {
+                                 return argument == 1   ? std::vector<std::string>{"none", "snow", "rain", "dust", "ash"}
+                                        : argument == 2 ? std::vector<std::string>{"0.3", "0.6", "1"}
+                                                        : std::vector<std::string>{};
+                             });
+        console.SetCompleter("day_hour", [](size_t argument)
+                             { return argument == 1 ? std::vector<std::string>{"6", "9", "12", "15", "18", "21", "0"} : std::vector<std::string>{}; });
+    }
     console.RegisterCommand("site_weather", "What falls at the site you are at, on this machine, to see it: site_weather <none|snow|rain|dust|ash> [amount 0-1]",
                             [this](const std::vector<std::string>& args)
                             {

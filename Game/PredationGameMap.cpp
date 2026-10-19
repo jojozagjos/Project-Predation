@@ -1179,11 +1179,12 @@ SiteMap::Look PredationGame::SiteLookHere()
     const std::string terrain = !m_siteTerrainPreview.empty() ? m_siteTerrainPreview : body != nullptr ? body->terrain : std::string();
     look.terrain = SiteTerrain::ShapeOf(terrain);
     look.dunes = terrain == "dunes";
-    if (body == nullptr)
+    // (With no world under the ship, only what a test asked for: test_site.)
+    const std::string biomeId = !m_siteBiomePreview.empty() ? m_siteBiomePreview : body != nullptr ? body->biome : std::string();
+    if (biomeId.empty())
     {
         return look;
     }
-    const std::string biomeId = !m_siteBiomePreview.empty() ? m_siteBiomePreview : body->biome;
     if (const BiomeDef* biome = m_universeData.Biome(biomeId))
     {
         look.ground = biome->siteGround;
@@ -1198,12 +1199,20 @@ SiteMap::Look PredationGame::SiteLookHere()
     // Its water: the sea all round on an island world, along one side at a coast or on an ocean world; lakes in the low ground
     // where things grow; none in a desert, on ice or on bare rock.
     {
-        const bool coast = m_campaign.travel.region >= 0 && m_campaign.travel.region < static_cast<int>(body->regions.size()) &&
+        const bool coast = body != nullptr && m_campaign.travel.region >= 0 && m_campaign.travel.region < static_cast<int>(body->regions.size()) &&
                            body->regions[static_cast<size_t>(m_campaign.travel.region)].designation.find("COAST") != std::string::npos;
         look.water = terrain == "islands"                    ? SiteTerrain::Water::Island
                      : coast || look.biome == "oceanic"      ? SiteTerrain::Water::Coast
                      : look.biome == "temperate" || look.biome == "jungle" ? SiteTerrain::Water::Lakes
                                                              : SiteTerrain::Water::None;
+        // (Or what a test asked for: site_water, test_site.)
+        if (m_siteWaterPreview == "none" || m_siteWaterPreview == "lakes" || m_siteWaterPreview == "coast" || m_siteWaterPreview == "island")
+        {
+            look.water = m_siteWaterPreview == "lakes"   ? SiteTerrain::Water::Lakes
+                         : m_siteWaterPreview == "coast" ? SiteTerrain::Water::Coast
+                         : m_siteWaterPreview == "island" ? SiteTerrain::Water::Island
+                                                          : SiteTerrain::Water::None;
+        }
         // Along the sea, a beach: sand up from the water (a sand world's beach is its own sand; an icy one's, its snow) --
         // and bare sandy patches inland, the grass thin on them. Round a lake, its second ground a little way up from the water.
         const bool sea = look.water == SiteTerrain::Water::Coast || look.water == SiteTerrain::Water::Island;
@@ -1224,7 +1233,7 @@ SiteMap::Look PredationGame::SiteLookHere()
     }
     look.weather = "none";
     look.weatherAmount = 0.0f;
-    if (const WeatherDef* weather = m_universeData.Weather(body->weather); weather != nullptr && body->air > 0.015f)
+    if (const WeatherDef* weather = body != nullptr ? m_universeData.Weather(body->weather) : nullptr; weather != nullptr && body->air > 0.015f)
     {
         look.weather = weather->particles;
         look.weatherAmount = weather->intensity;

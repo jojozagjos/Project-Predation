@@ -297,6 +297,7 @@ void Console::Draw(int displayWidth, int displayHeight)
 
     const ImGuiInputTextFlags inputFlags = ImGuiInputTextFlags_EnterReturnsTrue |
                                            ImGuiInputTextFlags_CallbackCompletion |
+                                           ImGuiInputTextFlags_CallbackEdit |
                                            ImGuiInputTextFlags_CallbackHistory;
     ImGui::PushItemWidth(-1.0f);
     if (ImGui::InputText("##ConsoleInput", m_inputBuffer, sizeof(m_inputBuffer), inputFlags,
@@ -321,49 +322,116 @@ void Console::Draw(int displayWidth, int displayHeight)
     DrawSuggestions(consolePos.x, consolePos.y + consoleSize.y, consoleSize.x);
 }
 
-// What is being typed, matched against everything that could be typed, as it is typed.
-//
-// Tab completion was already here and was not enough: it tells you what you half-remembered only
-// once you have half-remembered it, and it says nothing about what any of them do. This is the
-// list, under the cursor, with each command's own description beside it.
+void Console::SetCompleter(const std::string& command, Completer completer)
+{
+    m_completers[command] = std::move(completer);
+}
+
+std::vector<Console::CommandInfo> Console::Suggestions(size_t& wordStart, std::string& usage) const
+{
+    const std::string_view line(m_inputBuffer);
+    const size_t lastSpace = line.rfind(' ');
+    wordStart = lastSpace == std::string_view::npos ? 0 : lastSpace + 1;
+    const std::string_view typed = line.substr(wordStart);
+    // Those that start with what is typed, then those with it anywhere: a half-remembered name found by any part of it.
+    std::vector<CommandInfo> starting;
+    std::vector<CommandInfo> within;
+    const auto offer = [&](const std::string& name, const std::string& description, const std::string& help)
+    {
+        if (typed.empty() || name.compare(0, typed.size(), typed) == 0)
+        {
+            starting.push_back({name, description, help});
+        }
+        else if (name.find(typed) != std::string::npos)
+        {
+            within.push_back({name, description, help});
+        }
+    };
+    if (wordStart == 0)
+    {
+        // The command's name.
+        if (typed.empty())
+        {
+            return {};
+        }
+        for (const auto& [name, command] : m_commands)
+        {
+            offer(name, command.description, command.usage);
+        }
+        for (const CVarBase* var : CVarRegistry::Instance().All())
+        {
+            offer(var->Name(), var->Description(), std::string());
+        }
+    }
+    else
+    {
+        // One of its arguments: what the command says it can be.
+        const std::vector<std::string> words = Tokenize(line.substr(0, wordStart));
+        if (words.empty())
+        {
+            return {};
+        }
+        if (const auto command = m_commands.find(words[0]); command != m_commands.end())
+        {
+            usage = command->second.usage.empty() ? command->second.description : command->second.usage;
+        }
+        else if (const CVarBase* var = CVarRegistry::Instance().Find(words[0]))
+        {
+            usage = var->Description() + " (now " + var->GetString() + ")";
+        }
+        if (const auto completer = m_completers.find(words[0]); completer != m_completers.end())
+        {
+            for (const std::string& value : completer->second(words.size()))
+            {
+                offer(value, std::string(), std::string());
+            }
+        }
+        // And help, about any command.
+        if (words[0] == "help" && words.size() == 1)
+        {
+            for (const auto& [name, command] : m_commands)
+            {
+                offer(name, command.description, command.usage);
+            }
+        }
+    }
+    const auto byName = [](const CommandInfo& a, const CommandInfo& b) { return a.name < b.name; };
+    std::sort(starting.begin(), starting.end(), byName);
+    std::sort(within.begin(), within.end(), byName);
+    starting.insert(starting.end(), within.begin(), within.end());
+    // (Nothing to offer once it is typed out in full.)
+    if (starting.size() == 1 && starting[0].name == typed)
+    {
+        starting.clear();
+    }
+    return starting;
+}
+
+// What is being typed, matched against everything that could be typed, as it is typed: the command's name, then each of
+// its arguments, with what each command does beside it and its usage over its arguments. Up and down pick one; Tab or a
+// click takes it.
 void Console::DrawSuggestions(float x, float y, float width)
 {
-    // Only while the first word is still being typed. Once there is a space the rest of the line is
-    // arguments, and a list of command names is no help with those.
-    const std::string_view typed(m_inputBuffer);
-    if (typed.empty() || typed.find(' ') != std::string_view::npos)
+    size_t wordStart = 0;
+    std::string usage;
+    const std::vector<CommandInfo> matches = Suggestions(wordStart, usage);
+    m_shown.clear();
+    if (matches.empty() && usage.empty())
     {
+        m_picked = -1;
         return;
     }
 
-    std::vector<CommandInfo> matches;
-    for (const auto& [name, command] : m_commands)
-    {
-        if (name.size() >= typed.size() && name.compare(0, typed.size(), typed) == 0)
-        {
-            matches.push_back({name, command.description, command.usage});
-        }
-    }
-    for (const CVarBase* var : CVarRegistry::Instance().All())
-    {
-        const std::string& name = var->Name();
-        if (name.size() >= typed.size() && name.compare(0, typed.size(), typed) == 0)
-        {
-            matches.push_back({name, var->Description(), std::string()});
-        }
-    }
-    if (matches.empty())
-    {
-        return;
-    }
-    std::sort(matches.begin(), matches.end(),
-              [](const CommandInfo& a, const CommandInfo& b) { return a.name < b.name; });
-
-    constexpr size_t kMostShown = 8;
+    constexpr size_t kMostShown = 10;
     const size_t shown = std::min(matches.size(), kMostShown);
+    for (size_t i = 0; i < shown; ++i)
+    {
+        m_shown.push_back(matches[i].name);
+    }
+    m_picked = std::min(m_picked, static_cast<int>(shown) - 1);
     const float rowHeight = ImGui::GetTextLineHeightWithSpacing();
-    const float height = rowHeight * static_cast<float>(shown + (matches.size() > shown ? 1 : 0)) +
-                         ImGui::GetStyle().WindowPadding.y * 2.0f;
+    const float rows = static_cast<float>(shown + (matches.size() > shown ? 1 : 0) + (usage.empty() ? 0 : 1));
+    const float height = rowHeight * rows + ImGui::GetStyle().WindowPadding.y * 2.0f;
 
     ImGui::SetNextWindowPos(ImVec2(x, y));
     ImGui::SetNextWindowSize(ImVec2(width, height));
@@ -374,23 +442,32 @@ void Console::DrawSuggestions(float x, float y, float width)
                                    ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNavInputs;
     if (ImGui::Begin("##PredationConsoleSuggestions", nullptr, flags))
     {
+        if (!usage.empty())
+        {
+            ImGui::PushStyleColor(ImGuiCol_Text, kColorCommand);
+            ImGui::TextUnformatted(usage.c_str());
+            ImGui::PopStyleColor();
+        }
         for (size_t i = 0; i < shown; ++i)
         {
             const CommandInfo& match = matches[i];
             ImGui::PushID(static_cast<int>(i));
-            // Clicking one fills it in. Tab still completes to the common prefix, which is faster
-            // once you know what you are typing; this is for when you do not.
-            if (ImGui::Selectable(match.name.c_str(), false, ImGuiSelectableFlags_AllowOverlap,
-                                  ImVec2(ImGui::GetContentRegionAvail().x * 0.28f, 0.0f)))
+            const bool picked = static_cast<int>(i) == m_picked;
+            const bool described = !match.description.empty() || !match.usage.empty();
+            const float nameWidth = described ? ImGui::GetContentRegionAvail().x * 0.28f : 0.0f;
+            if (ImGui::Selectable(match.name.c_str(), picked, ImGuiSelectableFlags_AllowOverlap, ImVec2(nameWidth, 0.0f)))
             {
-                std::snprintf(m_inputBuffer, sizeof(m_inputBuffer), "%s ", match.name.c_str());
+                std::snprintf(m_inputBuffer + wordStart, sizeof(m_inputBuffer) - wordStart, "%s ", match.name.c_str());
+                m_picked = -1;
                 m_reclaimFocus = true;
             }
-            ImGui::SameLine();
-            ImGui::PushStyleColor(ImGuiCol_Text, kColorMuted);
-            ImGui::TextUnformatted(match.usage.empty() ? match.description.c_str()
-                                                       : match.usage.c_str());
-            ImGui::PopStyleColor();
+            if (described)
+            {
+                ImGui::SameLine();
+                ImGui::PushStyleColor(ImGuiCol_Text, kColorMuted);
+                ImGui::TextUnformatted(match.usage.empty() ? match.description.c_str() : match.usage.c_str());
+                ImGui::PopStyleColor();
+            }
             ImGui::PopID();
         }
         if (matches.size() > shown)
@@ -412,47 +489,51 @@ int Console::TextEditCallback(ImGuiInputTextCallbackData* data)
 {
     switch (data->EventFlag)
     {
+    case ImGuiInputTextFlags_CallbackEdit:
+        // Typing again: nothing picked from the list until the arrows pick again.
+        m_picked = -1;
+        break;
     case ImGuiInputTextFlags_CallbackCompletion:
     {
-        // Complete the word under the cursor against commands and cvars.
+        // The word under the cursor (the last on the line, as the list has it).
         const char* wordEnd = data->Buf + data->CursorPos;
         const char* wordStart = wordEnd;
         while (wordStart > data->Buf && wordStart[-1] != ' ')
         {
             --wordStart;
         }
-        const std::string_view prefix(wordStart, static_cast<size_t>(wordEnd - wordStart));
-
+        const std::string prefix(wordStart, static_cast<size_t>(wordEnd - wordStart));
+        const auto replace = [&](const std::string& with)
+        {
+            data->DeleteChars(static_cast<int>(wordStart - data->Buf), static_cast<int>(wordEnd - wordStart));
+            data->InsertChars(data->CursorPos, with.c_str());
+        };
+        // The one picked with the arrows, or the only one there is.
+        if (m_picked >= 0 && m_picked < static_cast<int>(m_shown.size()))
+        {
+            replace(m_shown[static_cast<size_t>(m_picked)] + " ");
+            m_picked = -1;
+            break;
+        }
         std::vector<std::string> candidates;
-        for (const auto& [name, command] : m_commands)
+        for (const std::string& name : m_shown)
         {
             if (name.compare(0, prefix.size(), prefix) == 0)
             {
                 candidates.push_back(name);
             }
         }
-        for (const CVarBase* var : CVarRegistry::Instance().All())
+        if (candidates.empty() && m_shown.size() == 1)
         {
-            if (var->Name().compare(0, prefix.size(), prefix) == 0)
-            {
-                candidates.push_back(var->Name());
-            }
+            candidates = m_shown; // (matched within the name, not at its start)
         }
-        std::sort(candidates.begin(), candidates.end());
-
-        if (candidates.empty())
+        if (candidates.size() == 1)
         {
-            Print("No match for '" + std::string(prefix) + "'", kColorMuted);
+            replace(candidates[0] + " ");
         }
-        else if (candidates.size() == 1)
+        else if (candidates.size() > 1)
         {
-            data->DeleteChars(static_cast<int>(wordStart - data->Buf), static_cast<int>(wordEnd - wordStart));
-            data->InsertChars(data->CursorPos, candidates[0].c_str());
-            data->InsertChars(data->CursorPos, " ");
-        }
-        else
-        {
-            // Complete to the longest common prefix and list the options.
+            // As far as they all agree; the list shows the rest.
             size_t common = candidates[0].size();
             for (const std::string& candidate : candidates)
             {
@@ -465,21 +546,21 @@ int Console::TextEditCallback(ImGuiInputTextCallbackData* data)
             }
             if (common > prefix.size())
             {
-                data->DeleteChars(static_cast<int>(wordStart - data->Buf), static_cast<int>(wordEnd - wordStart));
-                data->InsertChars(data->CursorPos, candidates[0].substr(0, common).c_str());
+                replace(candidates[0].substr(0, common));
             }
-            std::string list = "Matches:";
-            for (const std::string& candidate : candidates)
-            {
-                list += ' ';
-                list += candidate;
-            }
-            Print(list, kColorMuted);
         }
         break;
     }
     case ImGuiInputTextFlags_CallbackHistory:
     {
+        // With a list showing under what is being typed, the arrows go up and down it; with nothing typed (or going back
+        // through what was typed before), through the history.
+        if (!m_shown.empty() && data->BufTextLen > 0 && m_historyPos == -1)
+        {
+            const int count = static_cast<int>(m_shown.size());
+            m_picked = data->EventKey == ImGuiKey_DownArrow ? (m_picked + 1) % count : (m_picked <= 0 ? count - 1 : m_picked - 1);
+            break;
+        }
         const int previous = m_historyPos;
         if (data->EventKey == ImGuiKey_UpArrow)
         {

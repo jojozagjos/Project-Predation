@@ -22,6 +22,8 @@ class Console
 {
 public:
     using CommandFn = std::function<void(const std::vector<std::string>& args)>;
+    // What could be typed for a command's argument (1: the first after its name), for the list under the input.
+    using Completer = std::function<std::vector<std::string>(size_t argument)>;
 
     struct CommandInfo
     {
@@ -41,6 +43,8 @@ public:
 
     void RegisterCommand(std::string name, std::string description, CommandFn fn, std::string usage = "");
     bool UnregisterCommand(const std::string& name);
+    // The values a command's arguments can take, offered as they are typed.
+    void SetCompleter(const std::string& command, Completer completer);
     bool HasCommand(std::string_view name) const;
     std::vector<CommandInfo> Commands() const; // sorted by name
 
@@ -78,11 +82,19 @@ private:
 
     // The live list of what could be typed, drawn under the input as it is typed.
     void DrawSuggestions(float x, float y, float width);
+    // Everything that fits the word being typed (a command or cvar, or an argument by the command's Completer): those
+    // that start with it first, then those with it anywhere; where that word starts in the line, and the command's usage
+    // once its name is typed.
+    std::vector<CommandInfo> Suggestions(size_t& wordStart, std::string& usage) const;
     void RegisterBuiltins();
     int TextEditCallback(ImGuiInputTextCallbackData* data);
     static int TextEditCallbackStub(ImGuiInputTextCallbackData* data);
 
     std::unordered_map<std::string, Command> m_commands;
+    std::unordered_map<std::string, Completer> m_completers;
+    // What the list under the input shows (for Tab and the arrow keys), and which of it is picked (-1: none).
+    std::vector<std::string> m_shown;
+    int m_picked = -1;
     std::deque<Line> m_lines;
     mutable std::mutex m_linesMutex;
     size_t m_maxLines = 4000;
