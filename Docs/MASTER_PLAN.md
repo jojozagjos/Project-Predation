@@ -144,6 +144,11 @@ From WORLDS_FACILITIES_MISSIONS_PLAN.md W1-W4:
   sand beaches along the sea, footsteps to match; by how the land lies (hollows, rises, paths) still to come*: the ground
   blended from several surfaces -- soil, gravel, grass, sand, rock -- in patches by how the land lies (wet hollows, dry
   rises, worn paths), not one texture over the whole world.
+- **Every world its own** (you, 2026-10-19: "all planets need to be unique ... lava ... toxic planets") -- *partly done
+  2026-10-19*: lava pools on volcanic worlds (crusted, glowing, lighting their banks, burning), acid on toxic ones (wading
+  burns), frozen lakes and seas on icy ones (walked on), steam and gas vents, dust devils over deserts, mist in jungle
+  hollows. Still to come: a frozen waterfall, spindrift over ice, lightning-glassed rock on storm worlds, and **Your
+  call**: whether crystal glows at night (the lore's faint bioluminescent signature is close to this).
 - ✅ **Trees and grass over all the land** (you, 2026-10-18: "just around the facility") -- *done 2026-10-18*: woods and
   clearings round the site and out to the horizon, grass over all the ground you can walk on, thinner in the woods.
 - ✅ **Water you can see** (moved up from Phase 12, 2026-10-14, because so much else has to know about it) -- *done
@@ -471,6 +476,7 @@ lakes on cold worlds, recorded water sounds in place of the made ones.
 | Console autocomplete | ✅ Done (finds any part of a name, shows usage and argument values, arrow keys pick) |
 | Outposts: terrain, big, a pad for the grown ship, buildings that connect, fitted to the world, air | Phase 2, the outpost rework |
 | Landmarks right by the facility; the same landmark everywhere | ✅ Done (scattered over the land near and far; each its own shape) |
+| Every planet unique; lava; things on toxic worlds | Partly done (lava, acid, ice, vents, dust devils, mist); more per world to come |
 | Ending and tutorial | Phase 17, last |
 
 ---
